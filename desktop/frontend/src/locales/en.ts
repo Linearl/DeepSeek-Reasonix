@@ -78,6 +78,7 @@ export const en = {
   "composer.splitTargetBoth": "Send to both panes",
   "tabBar.splitView": "Split view",
   "splitView.resizeDivider": "Resize split",
+  "splitView.previewWidth": "Preview width",
   "tabBar.closeSplitView": "Close split view",
   "tabBar.newSession": "New session",
   "tabBar.newSessionMore": "More ways to create",

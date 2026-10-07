@@ -39,6 +39,7 @@ import {
   FilePlus2,
   Bot,
   LayoutGrid,
+  Check,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { buildSubagentDirectory } from "./lib/subagentDirectory";
@@ -61,7 +62,8 @@ import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor"
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 import { CollabInboxPanel, setCollabInboxOpen, useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
-import { clampedSplitRatio, loadSplitRatio, persistSplitRatio, setSplitPaneTitle, setSplitViewEnabled } from "./lib/splitView";
+import { effectiveSplitTier, loadSplitPreviewTier, persistSplitPreviewTier, splitPreviewTierFromPointer, SPLIT_PREVIEW_TIERS, setSplitPaneTitle, setSplitViewEnabled, type SplitPreviewTier } from "./lib/splitView";
+import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./components/ContextMenu";
 import { reportFrontendLog } from "./lib/frontendLog";
 import { app, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
@@ -716,14 +718,29 @@ export default function App() {
   // Which pane the composer targets while a split is open (task 70, B). It defaults
   // to the primary pane, matching focusedPane's default.
   const [splitTarget, setSplitTarget] = useState<"primary" | "secondary" | "both">("primary");
-  // Task 70 二期: the divider ratio. Loaded from its own additive localStorage
-  // key (ratio memory), clamped through clampedSplitRatio on every move so
-  // neither pane can be dragged under its width floor, persisted once on
-  // release rather than per frame.
-  const [splitRatio, setSplitRatio] = useState(() => loadSplitRatio());
+  // Task 247: the split width is remembered as one of three fixed preview
+  // tiers (40/50/60%), not a free two-pane ratio. The fraction is the file
+  // preview's INTRUSION into the session area — preview width = container
+  // width × tier — persisted in its own additive localStorage key with a
+  // one-time migration from the task-70 二期 ratio key. Divider drags snap to
+  // the same tiers through splitPreviewTierFromPointer; the value persists
+  // once on release rather than per frame.
+  const [splitPreviewTier, setSplitPreviewTier] = useState<SplitPreviewTier>(() => loadSplitPreviewTier());
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
-  const splitRatioRef = useRef(splitRatio);
-  splitRatioRef.current = splitRatio;
+  const splitPreviewTierRef = useRef(splitPreviewTier);
+  splitPreviewTierRef.current = splitPreviewTier;
+  const [splitWidthMenuPoint, setSplitWidthMenuPoint] = useState<ContextMenuPoint | null>(null);
+  const applySplitPreviewTier = useCallback((tier: SplitPreviewTier) => {
+    // The per-pane floor is a hard constraint (task 70): in a container too
+    // narrow for the chosen tier the 50/50 default stands. Without a mounted
+    // container to measure there is no evidence against the choice, so it
+    // passes through untouched.
+    const width = splitContainerRef.current?.getBoundingClientRect().width ?? 0;
+    const next = width > 0 ? effectiveSplitTier(tier, width) : tier;
+    splitPreviewTierRef.current = next;
+    setSplitPreviewTier(next);
+    persistSplitPreviewTier(next);
+  }, []);
   const beginSplitDividerDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const container = splitContainerRef.current;
     if (!container) return;
@@ -731,15 +748,15 @@ export default function App() {
     const apply = (clientX: number) => {
       const rect = container.getBoundingClientRect();
       if (rect.width <= 0) return;
-      const ratio = clampedSplitRatio((clientX - rect.left) / rect.width, rect.width);
-      splitRatioRef.current = ratio;
-      setSplitRatio(ratio);
+      const tier = splitPreviewTierFromPointer(clientX, rect.left, rect.width);
+      splitPreviewTierRef.current = tier;
+      setSplitPreviewTier(tier);
     };
     const finish = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
-      persistSplitRatio(splitRatioRef.current);
+      persistSplitPreviewTier(splitPreviewTierRef.current);
     };
     const onMove = (ev: PointerEvent) => apply(ev.clientX);
     // Window listeners rather than pointer capture: dragging past the
@@ -5209,7 +5226,7 @@ export default function App() {
                     <div
                       className={splitTabId ? "transcript-split" : "transcript-split transcript-split--closed"}
                       ref={splitContainerRef}
-                      style={splitTabId ? ({ "--split-primary-ratio": splitRatio } as CSSProperties) : undefined}
+                      style={splitTabId ? ({ "--split-preview-ratio": splitPreviewTier } as CSSProperties) : undefined}
                     >
                       <div className="transcript-split__pane transcript-split__pane--primary">
                                         <Transcript
@@ -5281,19 +5298,40 @@ export default function App() {
                           remaining call sites' values are the primary tab's own state. */}
                       {splitTabId && (
                         <>
-                          {/* Task 70 二期: the resize handle between the panes.
-                              Only rendered while a split is open; ratio drag
-                              clamps in clampedSplitRatio, memory persists on
-                              release. */}
+                          {/* Task 247: the resize handle between the panes.
+                              Dragging snaps to the fixed preview tiers and a
+                              right-click opens the tier selector; the choice
+                              persists under the intrusion semantics (preview
+                              width = container width × tier). */}
                           <div
                             className="transcript-split__divider"
                             role="separator"
                             aria-orientation="vertical"
                             aria-label={t("splitView.resizeDivider")}
-                            aria-valuenow={Math.round(splitRatio * 100)}
-                            aria-valuemin={20}
-                            aria-valuemax={80}
+                            aria-valuenow={Math.round(splitPreviewTier * 100)}
+                            aria-valuemin={40}
+                            aria-valuemax={60}
                             onPointerDown={beginSplitDividerDrag}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              setSplitWidthMenuPoint(contextMenuPointFromEvent(event));
+                            }}
+                          />
+                          <ContextMenu
+                            open={Boolean(splitWidthMenuPoint)}
+                            point={splitWidthMenuPoint}
+                            onClose={() => setSplitWidthMenuPoint(null)}
+                            ariaLabel={t("splitView.previewWidth")}
+                            minWidth={140}
+                            items={SPLIT_PREVIEW_TIERS.map((tier): ContextMenuItem => ({
+                              key: `split-preview-width-${tier}`,
+                              label: `${Math.round(tier * 100)}%`,
+                              icon: tier === splitPreviewTier ? <Check size={14} /> : undefined,
+                              onSelect: () => {
+                                applySplitPreviewTier(tier);
+                                setSplitWidthMenuPoint(null);
+                              },
+                            }))}
                           />
                           <div className="transcript-split__pane transcript-split__pane--secondary">
                             <Transcript

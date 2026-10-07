@@ -3512,12 +3512,13 @@ a[href] {
   overflow: hidden;
 }
 
-/* Task 70 二期: the primary pane carries the remembered ratio (inline
-   --split-primary-ratio from App), the secondary absorbs the remainder — so a
-   divider drag moves exactly one flex basis. With no inline var (defensive
-   default) the layout is the phase-one 50/50. */
+/* Task 247: the primary (session) pane gets the complement of the remembered
+   preview tier (inline --split-preview-ratio from App — the fraction of the
+   container the file preview intrudes), the secondary absorbs the remainder —
+   so a tier switch moves exactly one flex basis. With no inline var
+   (defensive default) the layout is the 50/50 default tier. */
 .transcript-split__pane--primary {
-  flex: 0 0 calc(var(--split-primary-ratio, 0.5) * 100%);
+  flex: 0 0 calc((1 - var(--split-preview-ratio, 0.5)) * 100%);
 }
 
 .transcript-split__pane--secondary {

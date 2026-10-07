@@ -80,62 +80,115 @@ export function reconcileSplitState(state: SplitState, liveTabIds: readonly stri
   return { secondaryTabId: null, focusedPane: state.focusedPane };
 }
 
-// ── divider ratio memory (task 70, 二期: 比例记忆) ────────────────────────────
-// The pane split is stored beside the split state itself: an additive number
-// key, same old-build-ignores-the-key contract. Dragging clamps through
-// clampedSplitRatio so a stored value can never park either pane too narrow —
-// and a container too narrow for two legal panes collapses to 50/50 rather
-// than an unusable sliver.
+// ── preview tier memory (task 247: 分栏比例语义纠偏) ──────────────────────────
+// The stored fraction is NOT a two-pane width ratio (the task-70 二期 model: the
+// primary pane's fraction, clamped to 0.2–0.8). It is the file-preview pane's
+// INTRUSION into the session area, measured against the full split container —
+// the width the session area alone occupied before the split opened:
+//
+//   preview pane width = container width × tier
+//   session pane width = container width − preview pane width
+//
+// e.g. a 1000px session area at tier 60% → the preview takes 600px and the
+// session keeps 400px. Continuous dragging is replaced by three fixed tiers;
+// the divider drag survives but snaps to the same tiers instead of moving
+// freely, so the pane can only ever land where the selector would put it.
 
-/** Fraction bounds for the primary pane, plus the per-pane floor in px. */
-export const SPLIT_RATIO_MIN = 0.2;
-export const SPLIT_RATIO_MAX = 0.8;
+export const SPLIT_PREVIEW_TIERS = [0.4, 0.5, 0.6] as const;
+export type SplitPreviewTier = (typeof SPLIT_PREVIEW_TIERS)[number];
+export const SPLIT_PREVIEW_TIER_DEFAULT: SplitPreviewTier = 0.5;
+
+/** Per-pane floor in px, carried over from task-70 二期's hard constraint. */
 const SPLIT_MIN_PANE_PX = 360;
-const RATIO_KEY = "desktop:splitRatio";
+const TIER_KEY = "desktop:splitPreviewTier";
+/** task-70 二期's primary-fraction key: read once for migration, then removed. */
+const LEGACY_RATIO_KEY = "desktop:splitRatio";
 
 /**
- * clampedSplitRatio bounds a candidate ratio two ways: the static 0.2/0.8
- * guard and a per-pane pixel floor (task 70's hard constraint: each pane stays
- * at least ~360px wide). When the container itself is too narrow for two legal
- * panes the two rules disagree, and the answer is 0.5 — an equal split is the
- * only defensible fallback. NaN/zero width reads as "no opinion" (0.5).
+ * normalizeSplitTier snaps a candidate onto the nearest fixed tier; null and
+ * other non-numeric shapes are "no value", not zero, and read as the 50/50
+ * default. Out-of-range survivors of old storage (or a manual edit) still land
+ * on the closest legal tier instead of being rejected.
  */
-export function clampedSplitRatio(raw: number, containerWidth: number): number {
-  if (!Number.isFinite(raw)) return 0.5;
-  let lo = SPLIT_RATIO_MIN;
-  let hi = SPLIT_RATIO_MAX;
-  if (containerWidth > 0) {
-    const byPx = SPLIT_MIN_PANE_PX / containerWidth;
-    if (byPx > hi - byPx) return 0.5;
-    lo = Math.max(lo, byPx);
-    hi = Math.min(hi, 1 - byPx);
-  }
-  if (lo > hi) return 0.5;
-  return Math.min(hi, Math.max(lo, raw));
-}
-
-export function normalizeSplitRatio(raw: unknown): number {
-  // null/undefined/"" are "no value", not zero: Number(null) === 0 would park
-  // the ratio at the floor instead of the 50/50 default.
-  if (raw === null || raw === undefined || raw === "") return 0.5;
+export function normalizeSplitTier(raw: unknown): SplitPreviewTier {
+  if (raw === null || raw === undefined || raw === "") return SPLIT_PREVIEW_TIER_DEFAULT;
   const value = typeof raw === "number" ? raw : Number(raw);
-  if (!Number.isFinite(value)) return 0.5;
-  return Math.min(SPLIT_RATIO_MAX, Math.max(SPLIT_RATIO_MIN, value));
+  if (!Number.isFinite(value)) return SPLIT_PREVIEW_TIER_DEFAULT;
+  // Distances compare as integer percent: binary floats make 0.55 measure
+  // infinitesimally closer to 0.6 than to 0.5, and a snap must not depend on
+  // that noise. Equal distance keeps the earlier (narrower) tier.
+  const percent = Math.round(value * 100);
+  let best: SplitPreviewTier = SPLIT_PREVIEW_TIERS[0];
+  for (const tier of SPLIT_PREVIEW_TIERS) {
+    if (Math.abs(Math.round(tier * 100) - percent) < Math.abs(Math.round(best * 100) - percent)) best = tier;
+  }
+  return best;
 }
 
-export function loadSplitRatio(): number {
+/**
+ * effectiveSplitTier applies task-70's per-pane pixel floor to a tier choice:
+ * a tier that would park either pane under ~360px resolves to the 50/50
+ * default, and a container too narrow for two legal panes collapses to it
+ * outright. NaN/zero width reads as "no opinion" (the default).
+ */
+export function effectiveSplitTier(tier: number, containerWidth: number): SplitPreviewTier {
+  const requested = normalizeSplitTier(tier);
+  if (!(containerWidth > 0)) return SPLIT_PREVIEW_TIER_DEFAULT;
+  const previewPx = requested * containerWidth;
+  if (previewPx < SPLIT_MIN_PANE_PX || containerWidth - previewPx < SPLIT_MIN_PANE_PX) {
+    return SPLIT_PREVIEW_TIER_DEFAULT;
+  }
+  return requested;
+}
+
+/**
+ * splitPreviewTierFromPointer maps a divider-drag position onto a tier. The
+ * preview pane sits on the RIGHT, so the pointer's distance to the container's
+ * right edge — not to the left — is the preview width the user is asking for.
+ */
+export function splitPreviewTierFromPointer(clientX: number, rectLeft: number, rectWidth: number): SplitPreviewTier {
+  if (!(rectWidth > 0)) return SPLIT_PREVIEW_TIER_DEFAULT;
+  const previewFraction = (rectLeft + rectWidth - clientX) / rectWidth;
+  return effectiveSplitTier(previewFraction, rectWidth);
+}
+
+/**
+ * migrateLegacySplitRatio converts task-70 二期 storage (the PRIMARY pane's
+ * fraction) into the intrusion semantics: the preview's fraction is the
+ * complement, 1 − primary, snapped to the nearest fixed tier. A user parked at
+ * the old 0.2 floor (an 80% preview) lands on the widest tier, the old 0.8
+ * ceiling (a 20% preview) on the narrowest — direction preserved.
+ */
+export function migrateLegacySplitRatio(raw: unknown): SplitPreviewTier {
+  if (raw === null || raw === undefined || raw === "") return SPLIT_PREVIEW_TIER_DEFAULT;
+  const value = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(value)) return SPLIT_PREVIEW_TIER_DEFAULT;
+  return normalizeSplitTier(1 - value);
+}
+
+export function loadSplitPreviewTier(): SplitPreviewTier {
   try {
-    const stored = localStorage.getItem(RATIO_KEY);
-    if (stored === null) return 0.5;
-    return normalizeSplitRatio(JSON.parse(stored));
+    const stored = localStorage.getItem(TIER_KEY);
+    if (stored !== null) return normalizeSplitTier(JSON.parse(stored));
+    // One-time migration from the task-70 二期 key. The legacy value is
+    // converted, persisted under the new key and then removed, so a stale
+    // primary fraction can never resurface after a downgrade/upgrade cycle.
+    const legacy = localStorage.getItem(LEGACY_RATIO_KEY);
+    if (legacy !== null) {
+      const migrated = migrateLegacySplitRatio(JSON.parse(legacy));
+      localStorage.removeItem(LEGACY_RATIO_KEY);
+      persistSplitPreviewTier(migrated);
+      return migrated;
+    }
+    return SPLIT_PREVIEW_TIER_DEFAULT;
   } catch {
-    return 0.5;
+    return SPLIT_PREVIEW_TIER_DEFAULT;
   }
 }
 
-export function persistSplitRatio(ratio: number): void {
+export function persistSplitPreviewTier(tier: number): void {
   try {
-    localStorage.setItem(RATIO_KEY, JSON.stringify(normalizeSplitRatio(ratio)));
+    localStorage.setItem(TIER_KEY, JSON.stringify(normalizeSplitTier(tier)));
   } catch {
     // A full or unavailable storage must not break the layout.
   }
