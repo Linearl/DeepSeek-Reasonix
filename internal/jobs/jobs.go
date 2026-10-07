@@ -194,11 +194,19 @@ type Manager struct {
 	stalledWarning time.Duration
 	teardownGrace  time.Duration
 
+	// completionObservers fire on the job's own goroutine after a completion
+	// summary is queued (task 553). Guarded by mu; invoked outside it, and a
+	// callback must return quickly — it may take other locks but must never
+	// call back into the Manager.
+	completionObservers map[int]func(sessionID string, jobID string, st Status)
+	nextCompletionObs   int
+
 	taskRecorder TaskRecorder // optional task-monitoring lifecycle hook
 }
 
 type completion struct {
 	sessionID string
+	jobID     string
 	text      string
 }
 
@@ -701,6 +709,7 @@ func (m *Manager) recordCompletion(j *Job, st Status, err error) string {
 	}
 	m.completed = append(m.completed, completion{
 		sessionID: parentSession,
+		jobID:     id,
 		text:      text,
 	})
 	active := m.active
@@ -722,6 +731,18 @@ func (m *Manager) recordCompletion(j *Job, st Status, err error) string {
 	}
 	if shouldEmit {
 		m.sink.Emit(event.Event{Kind: event.Notice, Code: event.NoticeCodeBackgroundJobFinished, Level: level, Text: text, Detail: detail})
+	}
+	// Task 553: observers fire only when a summary actually joined the drain
+	// queue (the destroying early-returns above skipped both the queue and this
+	// notification). Snapshot under mu, invoke outside it.
+	m.mu.Lock()
+	observers := make([]func(string, string, Status), 0, len(m.completionObservers))
+	for _, fn := range m.completionObservers {
+		observers = append(observers, fn)
+	}
+	m.mu.Unlock()
+	for _, fn := range observers {
+		fn(parentSession, id, st)
 	}
 	return parentSession
 }
@@ -1120,6 +1141,48 @@ func (m *Manager) DrainCompletedNoteForSession(parentSession string) string {
 	}
 	return "Background job updates since your last message: " + strings.Join(c, "; ") +
 		". Read their output with bash_output or wait if you still need it."
+}
+
+// AddCompletionObserver registers fn to run on each job's own goroutine after
+// that job's completion summary joins the drain queue (task 553). sessionID is
+// the owning parent session ("" = legacy unscoped); st is the terminal status.
+// The returned remove func unregisters; both are safe for concurrent use. A
+// callback must return quickly and must not call back into the Manager.
+func (m *Manager) AddCompletionObserver(fn func(sessionID string, jobID string, st Status)) (remove func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.completionObservers == nil {
+		m.completionObservers = map[int]func(string, string, Status){}
+	}
+	id := m.nextCompletionObs
+	m.nextCompletionObs++
+	m.completionObservers[id] = fn
+	return func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		delete(m.completionObservers, id)
+	}
+}
+
+// HasCompletedNotesForSession reports whether parentSession has undrained
+// completion summaries (task 553 wake peek). Unlike DrainCompletedNoteForSession
+// it drains nothing. Only terminal completions count: recordCompletion stamps
+// the job id, while recordStalled's queued stalled warnings do not, so a
+// stalled heads-up never wakes the session on its own. Empty parentSession
+// preserves the legacy unscoped view.
+func (m *Manager) HasCompletedNotesForSession(parentSession string) bool {
+	parentSession = strings.TrimSpace(parentSession)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, item := range m.completed {
+		if item.jobID == "" {
+			continue // stalled warning, not a terminal completion
+		}
+		if parentSession == "" || item.sessionID == parentSession {
+			return true
+		}
+	}
+	return false
 }
 
 // SetActiveSession controls which session receives lifecycle notices for jobs
