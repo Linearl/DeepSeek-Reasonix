@@ -7,8 +7,11 @@
 // it shows already sits in a recipient inbox — a queued send is not an entry
 // (contract ②), and dismissed/decided/retention state lives on disk, so a
 // restart keeps all of it (contract f).
+// 任务587（后端正常前端空断裂修复）：读取失败/读取中与健康空三态分离——失败
+// 显式报错+重试按钮+退避自动恢复，绝不渲染成「暂无信件」；所有 catch 路径
+// 经 reportFrontendLog 落 console + ring buffer（网关断连也有本地痕迹）。
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
 import { collabTitleFor, rememberCollabContactNames, shortContactId } from "../lib/collabContactNames";
@@ -115,6 +118,16 @@ export type CollabSessionDirectory = {
 let panelOpen = false;
 const openListeners = new Set<(open: boolean) => void>();
 
+/**
+ * 任务587（失败后自动恢复刷新）：a failed read retries on this escalating
+ * schedule while the panel stays open — the gateway that rejected the call
+ * usually comes back on its own, and the panel must show the recovered mail
+ * WITHOUT the user closing/reopening (验收②). It settles at the last value
+ * and keeps a slow heartbeat until one attempt succeeds. Tests splice this
+ * array down to milliseconds; production never reads it faster than 2s.
+ */
+export const collabInboxRetryDelaysMs = [2_000, 4_000, 8_000, 15_000];
+
 export function isCollabInboxOpen(): boolean {
   return panelOpen;
 }
@@ -146,7 +159,12 @@ export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): numbe
     const refresh = () => {
       b.CountUnreadCollabMail()
         .then((n) => { if (alive) setCount(n); })
-        .catch(() => { /* closed gateway: keep the last count */ });
+        .catch((err) => {
+          // 任务587：closed gateway keeps the last count, but the failure must
+          // leave a trace (console + ring buffer survive; the desktop.log hop
+          // is best effort) — silent swallowing is what made 511 复发无从诊断.
+          reportFrontendLog("collab-inbox", "unread count failed", String(err), "warn");
+        });
     };
     refresh();
     const off = onCollabInboxOpenChange(refresh);
@@ -238,6 +256,10 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   const [chains, setChains] = useState<CollabMailChains | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 任务587（失败态与空态分离）：loading = 读取进行中（不得冒充「暂无信件」），
+  // loadError = 最近一次读取失败（显式报错 + 重试按钮，绝不渲染成空态）。
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => onCollabInboxOpenChange((next) => setOpen(next)), []);
 
@@ -255,35 +277,86 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
           setSessions(Array.isArray(rows) ? rows : []);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (alive) setSessions([]);
+        // 任务587：the roster degrades to an empty dropdown by design, but the
+        // failure itself must stay diagnosable (console + ring buffer).
+        reportFrontendLog("collab-inbox", "addressable roster failed", String(err), "warn");
       });
     return () => {
       alive = false;
     };
   }, [open, dir]);
 
+  // 任务587（失败后自动恢复）：the retry loop lives in refs so re-creating
+  // `refresh` (every filter change) never stacks timers, and the pending timer
+  // always calls the LATEST refresh closure.
+  const retryRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; attempt: number }>({ timer: null, attempt: 0 });
+  const refreshRef = useRef<() => void>(() => {});
+
+  const cancelRetry = useCallback(() => {
+    if (retryRef.current.timer !== null) {
+      clearTimeout(retryRef.current.timer);
+      retryRef.current.timer = null;
+    }
+  }, []);
+
+  const scheduleRetry = useCallback(() => {
+    if (retryRef.current.timer !== null) return; // one pending retry is enough
+    const delays = collabInboxRetryDelaysMs;
+    const delay = delays[Math.min(retryRef.current.attempt, delays.length - 1)];
+    retryRef.current.timer = setTimeout(() => {
+      retryRef.current.timer = null;
+      retryRef.current.attempt += 1;
+      refreshRef.current();
+    }, delay);
+  }, []);
+
   const refresh = useCallback(async () => {
+    setLoading(true);
+    // 任务587：the banner describes the LATEST attempt only — starting a new
+    // read retires the previous attempt's error (it returns as a fresh
+    // failure if this one fails too, and as data if it succeeds).
+    setLoadError(null);
     try {
       if (view === "chains") {
         setChains(await b.ListCollabMailChains(bucket, 100));
       } else {
         setSnapshot(await b.ListCollabMail(bucket, from.trim(), to.trim(), state, 100, showDismissed, order));
       }
+      // 任务587：success stops the recovery loop and resets its backoff for
+      // the next failure.
+      retryRef.current.attempt = 0;
+      cancelRetry();
     } catch (err) {
       // A closed gateway must not crash the panel — it keeps the last
-      // snapshot. But a silently swallowed failure made "badge says N unread,
-      // panel shows nothing" undiagnosable, so every failure now travels the
-      // frontend log channel (desktop.log) with its query context.
+      // snapshot. 任务587：but a failure must never RENDER as 「暂无信件」 —
+      // the panel now carries an explicit failure state (retry button below),
+      // and the error travels console + ring buffer + desktop.log.
+      setLoadError(String(err));
       reportFrontendLog("collab-inbox", "list failed",
-        `view=${view} bucket=${bucket} state=${state} order=${order} from=${from.trim()} to=${to.trim()} dismissed=${showDismissed} err=${String(err)}`);
+        `view=${view} bucket=${bucket} state=${state} order=${order} from=${from.trim()} to=${to.trim()} dismissed=${showDismissed} err=${String(err)}`,
+        "warn");
+      scheduleRetry();
+    } finally {
+      setLoading(false);
     }
-  }, [b, bucket, from, to, state, order, showDismissed, view]);
+  }, [b, bucket, from, to, state, order, showDismissed, view, cancelRetry, scheduleRetry]);
 
   useEffect(() => {
-    if (!open) return;
+    refreshRef.current = () => void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!open) {
+      cancelRetry();
+      return;
+    }
     void refresh();
-  }, [open, refresh]);
+  }, [open, refresh, cancelRetry]);
+
+  // unmount cleanup: no retry timer may outlive the panel.
+  useEffect(() => cancelRetry, [cancelRetry]);
 
   // 任务461-P4: dropdown options — one addressable session per contact id,
   // labeled by session name, hover showing 项目 › 分组 › 会话名 › contact_id.
@@ -324,14 +397,23 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
     try {
       setSnapshot(await fn());
       setView("list");
-    } catch {
-      // keep the previous snapshot on failure
+    } catch (err) {
+      // keep the previous snapshot on failure; 任务587：the failure itself
+      // still leaves a trace (console + ring buffer) instead of vanishing.
+      reportFrontendLog("collab-inbox", "action failed", String(err), "warn");
     } finally {
       setBusy(false);
     }
   };
 
   const rows: CollabMailEntry[] = snapshot?.entries ?? [];
+
+  // 任务587（失败态与空态分离）：四个展示位互斥——
+  //   失败+无数据 → 显式错误块（含重试）；失败+有旧数据 → 旧数据照常渲染 +
+  //   顶部细条提示「上次刷新失败」；读取中 → 「读取中」；健康空 → 「暂无信件」。
+  const listEmpty = view === "list" && rows.length === 0;
+  const chainsEmpty = view === "chains" && (chains?.chains?.length ?? 0) === 0;
+  const viewEmpty = listEmpty || chainsEmpty;
 
 
   return createPortal(
@@ -470,13 +552,40 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
       </div>
 
       <div className="collab-inbox-panel__rows">
-        {view === "list" && rows.length === 0 && (
+        {/* 任务587：读取失败但有旧数据 → 旧数据优先（可用性>新鲜度），顶部细条
+            如实声明「显示的不是最新结果」，附重试。 */}
+        {loadError && !viewEmpty && (
+          <div className="collab-inbox-panel__errorstrip" role="alert">
+            <span>{t("collabInbox.error.stale")}</span>
+            <button type="button" className="btn btn--small" onClick={() => void refresh()}>
+              {t("collabInbox.retry")}
+            </button>
+          </div>
+        )}
+        {/* 任务587：读取失败且无数据 → 显式失败块（错误原文在 title/详情里，
+            绝不冒充「暂无信件」）。 */}
+        {viewEmpty && loadError && (
+          <div className="collab-inbox-panel__error" role="alert">
+            <span className="collab-inbox-panel__error-label">{t("collabInbox.error")}</span>
+            <span className="collab-inbox-panel__error-detail" title={loadError}>{loadError}</span>
+            <button type="button" className="btn btn--small" onClick={() => void refresh()}>
+              {t("collabInbox.retry")}
+            </button>
+          </div>
+        )}
+        {view === "list" && rows.length === 0 && !loadError && (
           <div
             className={`collab-inbox-panel__empty${snapshot?.degraded ? " collab-inbox-panel__empty--degraded" : ""}`}
           >
             {/* 任务511：锁繁忙导致的空必须与「真空」可区分——降级提示代替
                 「暂无信件」，否则空面板依旧无从诊断。 */}
-            {snapshot?.degraded ? t("collabInbox.degraded") : t("collabInbox.empty")}
+            {/* 任务587：读取进行中同样不冒充「暂无信件」——in-flight / 失败 /
+                健康空 三态分开展示。 */}
+            {snapshot?.degraded
+              ? t("collabInbox.degraded")
+              : loading
+                ? t("collabInbox.loading")
+                : t("collabInbox.empty")}
           </div>
         )}
         {view === "list" &&
@@ -552,8 +661,11 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
             </div>
           ))}
 
-        {view === "chains" && (chains?.chains?.length ?? 0) === 0 && (
-          <div className="collab-inbox-panel__empty">{t("collabInbox.empty")}</div>
+        {view === "chains" && (chains?.chains?.length ?? 0) === 0 && !loadError && (
+          <div className="collab-inbox-panel__empty">
+            {/* 任务587：链视图同样区分读取中与真空。 */}
+            {loading ? t("collabInbox.loading") : t("collabInbox.empty")}
+          </div>
         )}
         {view === "chains" &&
           (chains?.chains ?? []).map((chain) => (
