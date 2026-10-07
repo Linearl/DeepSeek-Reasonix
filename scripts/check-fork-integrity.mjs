@@ -1260,7 +1260,7 @@ const CHECKS = [
   { feature: "512 速率/截断测试存续", file: "desktop/frontend/src/__tests__/task512-chime-rate-interrupt.test.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE", "UPDATE_CHIME_INTERRUPT_DELAY_MS"] },
 
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役，表A 46 项）──
-  { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "\"modelCapabilityFilter\", LabTierRetired", "labNonFeatureKeys", "labSpecialKeys"] },
+  { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "\"modelCapabilityFilter\":  \"task 551：B9 gate 退役", "labNonFeatureKeys", "labSpecialKeys"] },
   { feature: "任务562 门禁测试（新增实验项不标档位⇒失败 + 表A 计数钉）", file: "internal/config/render_lab_tiers_test.go", patterns: ["TestLabRenderKeysAllTaggedWithTier", "TestLabFeatureTierCountsMatchTableA", "门禁失败（任务562）"] },
   { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 10", "LAB_WALL_PICKS", "railTiersFor"] },
   { feature: "任务562 徽章组件（纯展示）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "lab-tier-badge--"] },
