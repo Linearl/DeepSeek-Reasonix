@@ -2947,7 +2947,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                approval). Read-only display like the M2 modelCapabilityFilter
                block: stored value shows, no setter, config key still renders
                (nothing silently dropped on save). */
-            <SettingsField label={t("settings.pathRules")} hint={t("settings.pathRules.retired")} icon={<FolderLock size={18} />} stacked>
+            <SettingsField label={labLabel("pathRules", t("settings.pathRules"))} hint={t("settings.pathRules.retired")} icon={<FolderLock size={18} />} stacked>
               <p className="settings-field__hint-line">
                 {t("settings.pathRules.value", { value: t(Boolean(s.experimentalPathRules) ? "settings.pathRules.on" : "settings.pathRules.off") })}
               </p>
