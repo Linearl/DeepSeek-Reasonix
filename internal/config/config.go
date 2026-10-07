@@ -692,6 +692,14 @@ func (c *Config) SubagentPolicyIntakeEnabled() bool {
 	return c == nil || c.Agent.ExperimentalSubagentPolicy == nil || *c.Agent.ExperimentalSubagentPolicy
 }
 
+// ToolOptimizationsEnabled reports whether the "工具优化" tool family is lit
+// (task 603). The field is a plain default-false bool: the zero value (and a
+// nil config) keeps every tool surface byte-identical to the pre-family
+// baseline.
+func (c *Config) ToolOptimizationsEnabled() bool {
+	return c != nil && c.Agent.ExperimentalToolOptimizations
+}
+
 // NormalizeCLIUpdateChannel returns the only public native CLI update channel.
 // The input remains accepted so older preview configurations keep loading.
 func NormalizeCLIUpdateChannel(_ string) string {
@@ -1631,6 +1639,16 @@ type AgentConfig struct {
 	// S1b tool-surface migration, so flipping it today changes nothing (铁律
 	// 2: the on state is opt-in, the off state is the guaranteed baseline).
 	ExperimentalBaseProcess bool `toml:"experimental_base_process"`
+	// ExperimentalToolOptimizations is the task-603 "工具优化" lab family
+	// switch — later agent-efficiency tool upgrades hang off this one family.
+	// First member: edit_file/multi_edit accept a readBack parameter that
+	// returns the edited snippet with surrounding context and files the
+	// returned window as fresh read evidence, so a same-file follow-up edit
+	// passes the write gate without a separate read_file round trip. Off
+	// (default, 铁律 2): the parameter is absent from both tool schemas and an
+	// argument that still passes it is ignored — every tool output, gate
+	// verdict, and schema byte stays exactly as before the family existed.
+	ExperimentalToolOptimizations bool `toml:"experimental_tool_optimizations"`
 	// DagGraphCacheCapacity bounds the process-wide replayed-graph cache that
 	// saves reuse across Session instances (task 196fix2). 0 keeps the
 	// built-in default (3); the reader clamps outside 1..16 and the setter

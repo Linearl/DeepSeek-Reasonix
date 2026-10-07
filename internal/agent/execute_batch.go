@@ -88,11 +88,16 @@ type toolOutcome struct {
 	readEnvelope       *tool.ReadResultEnvelope
 	diagnostic         *tool.OperationDiagnostic
 	evidenceSource     tool.EvidenceTargetInfo
-	finalReadEnvelope  *tool.ReadResultEnvelope
-	readReference      *readDelivery
-	readActiveMillis   int64
-	incompleteRead     *incompleteReadDeferred
-	subagentOutcome    *SubagentOutcome
+	// readBackObs is the window an edit tool read back after a successful
+	// write (task 603). The ordered finalizer files it as fresh read evidence
+	// so a same-file follow-up edit passes the write gate against this new
+	// baseline; nil means the call performed no read-back.
+	readBackObs       *tool.ReadBackObservation
+	finalReadEnvelope *tool.ReadResultEnvelope
+	readReference     *readDelivery
+	readActiveMillis  int64
+	incompleteRead    *incompleteReadDeferred
+	subagentOutcome   *SubagentOutcome
 }
 
 // batchExecution is the result of one provider tool-call batch.

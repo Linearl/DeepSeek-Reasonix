@@ -63,6 +63,15 @@ type editApplyResult struct {
 	matches int
 	fuzzy   bool
 	receipt editReplacementReceipt
+	// updatedStart/updatedEnd bound the first replaced region in updated
+	// (byte offsets; -1 when nothing was applied), and matchedStart/matchedEnd
+	// bound the same region in the input content. readBack (task 603) turns
+	// the span into the rendered/filed window; replace_all only tracks its
+	// first region — coverage past it degrades safely to an ordinary read.
+	matchedStart int
+	matchedEnd   int
+	updatedStart int
+	updatedEnd   int
 }
 
 type editRange struct {
@@ -89,8 +98,19 @@ type editReplacementReceipt struct {
 // matches.
 func applyOldStringEdit(content, oldString, newString string, replaceAll bool) editApplyResult {
 	old, newStr := matchLineEndings(content, oldString, newString)
+	// span maps the first replaced region's input bounds to its bounds in
+	// updated (byte offsets; -1/-1 when the offset is out of range). The
+	// replacement length comes from the caller: fuzzy branches write the
+	// CRLF-adapted text, whose length may differ from newStr.
+	span := func(start, end int, replacement string) (int, int, int, int) {
+		if start < 0 || end < start || end > len(content) {
+			return -1, -1, -1, -1
+		}
+		return start, end, start, start + len(replacement)
+	}
 	if replaceAll {
 		if count := strings.Count(content, old); count > 0 {
+			ms, me, s, e := span(strings.Index(content, old), strings.Index(content, old)+len(old), newStr)
 			return editApplyResult{
 				updated: strings.ReplaceAll(content, old, newStr),
 				applied: count,
@@ -100,6 +120,10 @@ func applyOldStringEdit(content, oldString, newString string, replaceAll bool) e
 					replacement: newStr,
 					occurrences: count,
 				},
+				matchedStart: ms,
+				matchedEnd:   me,
+				updatedStart: s,
+				updatedEnd:   e,
 			}
 		}
 		ranges := fuzzyEditRanges(content, old)
@@ -107,6 +131,7 @@ func applyOldStringEdit(content, oldString, newString string, replaceAll bool) e
 			return editApplyResult{updated: content}
 		}
 		replacement := matchReplacementLineEndings(content, newStr)
+		ms, me, s, e := span(ranges[0].start, ranges[0].end, replacement)
 		return editApplyResult{
 			updated: replaceEditRanges(content, ranges, replacement),
 			applied: len(ranges),
@@ -118,6 +143,10 @@ func applyOldStringEdit(content, oldString, newString string, replaceAll bool) e
 				occurrences: len(ranges),
 				fuzzy:       true,
 			},
+			matchedStart: ms,
+			matchedEnd:   me,
+			updatedStart: s,
+			updatedEnd:   e,
 		}
 	}
 
@@ -127,19 +156,27 @@ func applyOldStringEdit(content, oldString, newString string, replaceAll bool) e
 		if len(ranges) != 1 {
 			return editApplyResult{updated: content, matches: len(ranges)}
 		}
+		replaced := matchReplacementLineEndings(content, newStr)
+		ms, me, s, e := span(ranges[0].start, ranges[0].end, replaced)
 		return editApplyResult{
-			updated: replaceEditRanges(content, ranges, matchReplacementLineEndings(content, newStr)),
+			updated: replaceEditRanges(content, ranges, replaced),
 			applied: 1,
 			matches: 1,
 			fuzzy:   true,
 			receipt: editReplacementReceipt{
 				matched:     matchedRangeSample(content, old, ranges),
-				replacement: matchReplacementLineEndings(content, newStr),
+				replacement: replaced,
 				occurrences: 1,
 				fuzzy:       true,
 			},
+			matchedStart: ms,
+			matchedEnd:   me,
+			updatedStart: s,
+			updatedEnd:   e,
 		}
 	case 1:
+		idx := strings.Index(content, old)
+		ms, me, s, e := span(idx, idx+len(old), newStr)
 		return editApplyResult{
 			updated: strings.Replace(content, old, newStr, 1),
 			applied: 1,
@@ -149,6 +186,10 @@ func applyOldStringEdit(content, oldString, newString string, replaceAll bool) e
 				replacement: newStr,
 				occurrences: 1,
 			},
+			matchedStart: ms,
+			matchedEnd:   me,
+			updatedStart: s,
+			updatedEnd:   e,
 		}
 	default:
 		return editApplyResult{updated: content, matches: count}

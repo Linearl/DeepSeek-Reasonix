@@ -96,6 +96,23 @@ func (a *Agent) recordToolExecutionAudit(readOnly, parallel bool, startedAt, dur
 func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall, o toolOutcome) {
 	if o.executed && o.errMsg == "" && !o.blocked {
 		a.retireWrittenSource(o.evidenceSource)
+		// Task 603: the read-back window rides a completed write only — the
+		// tool files it after its write succeeded, and the agent records it
+		// here as fresh read evidence for the file's new content version.
+		// Recorded after the write receipt, its ledger sequence lands past the
+		// write, and past this batch's frozen boundary: the model can cite it
+		// from the next provider round on, never inside the batch that
+		// produced it.
+		if obs := o.readBackObs; obs != nil && obs.Path != "" && len(obs.LineHashes) > 0 && a.task.ledger != nil {
+			window := tool.ReadWindow{StartLine: obs.StartLine, Lines: make([]string, len(obs.LineHashes))}
+			a.recordModelTextObservation(tool.ModelTextObservation{
+				Path:       obs.Path,
+				StartLine:  obs.StartLine,
+				LineHashes: obs.LineHashes,
+				Version:    tool.WindowDigest(obs.Path, window),
+				Snapshot:   obs.Snapshot,
+			}, call.ID)
+		}
 	}
 	state := outcomeRunState(o)
 	msg := provider.Message{Role: provider.RoleTool, Content: o.output, Images: o.images, VisionSummary: o.visionSummary, ToolCallID: call.ID, Name: call.Name, ToolRunState: state, ToolExecution: toProviderToolExecution(o.execution)}

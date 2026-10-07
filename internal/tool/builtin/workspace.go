@@ -58,6 +58,11 @@ type Workspace struct {
 	// write_file mutation. It is instance-scoped so concurrent runtimes never
 	// record into another session's recovery ledger.
 	FileWriteReceipt func(path string, hadPrior bool, prior []byte)
+	// ToolOptimizations lights the 工具优化 lab family (task 603) on the edit
+	// writers: edit_file/multi_edit then accept a readBack parameter. The zero
+	// value (off) keeps both tools byte-identical to the pre-family surface
+	// (铁律 2).
+	ToolOptimizations bool
 }
 
 // Tools returns the built-in tools bound to the workspace, ready to Add to a
@@ -77,8 +82,8 @@ func (w Workspace) Tools(enabled ...string) []tool.Tool {
 		"view_image":    viewImage{workDir: w.Dir, paths: w.ReadPaths, forbidRoots: forbidRoots},
 		"read_file":     readFile{workDir: w.Dir, paths: w.ReadPaths, forbidRoots: forbidRoots, overlay: w.FileOverlay},
 		"write_file":    writeFile{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay, receipt: w.FileWriteReceipt},
-		"edit_file":     editFile{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay},
-		"multi_edit":    multiEdit{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay},
+		"edit_file":     editFile{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay, readBack: w.ToolOptimizations},
+		"multi_edit":    multiEdit{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay, readBack: w.ToolOptimizations},
 		"move_file":     moveFile{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig},
 		"notebook_edit": notebookEdit{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay},
 		"delete_range":  deleteRange{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay},

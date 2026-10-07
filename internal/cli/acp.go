@@ -383,13 +383,14 @@ func (f *acpFactory) SessionConfigState(_ context.Context, p acp.SessionConfigSt
 func acpBuiltinTools(cfg *config.Config, cwd string, writeRoots []string) []tool.Tool {
 	bashSpec := sandbox.Spec{Mode: cfg.BashMode(), WriteRoots: writeRoots, Network: cfg.Sandbox.Network}
 	ws := builtin.Workspace{
-		Dir:          cwd,
-		WriteRoots:   writeRoots,
-		Bash:         bashSpec,
-		BashTimeout:  time.Duration(cfg.BashTimeoutSeconds()) * time.Second,
-		Search:       builtin.ResolveSearch(cfg.Tools.Search.Engine, cfg.Tools.Search.RgPath, nil),
-		ProxySpec:    cfg.NetworkProxySpec(),
-		SessionGuard: builtin.NewSessionDataGuard(config.MemoryUserDir(), cfg.AllowWriteRoots()),
+		Dir:               cwd,
+		WriteRoots:        writeRoots,
+		Bash:              bashSpec,
+		BashTimeout:       time.Duration(cfg.BashTimeoutSeconds()) * time.Second,
+		Search:            builtin.ResolveSearch(cfg.Tools.Search.Engine, cfg.Tools.Search.RgPath, nil),
+		ProxySpec:         cfg.NetworkProxySpec(),
+		SessionGuard:      builtin.NewSessionDataGuard(config.MemoryUserDir(), cfg.AllowWriteRoots()),
+		ToolOptimizations: cfg.ToolOptimizationsEnabled(),
 	}
 	return ws.Tools(cfg.Tools.Enabled...)
 }

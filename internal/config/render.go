@@ -100,6 +100,8 @@ var labFeatureTiers = []labFeatureTier{
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
+	// ── tool-opt（工具优化，1 项）────────────────────────────────
+	{"toolOptimizations", LabTierUnstable, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动），用户定档未稳定
 }
 
 // labNonFeatureKeys：渲染表里存在、但不属于表A 46 项的实验室族键（豁免门禁，
@@ -593,6 +595,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 163: explicit render — omit-on-off would silently disable a
 	// saved-on usage card on the next render (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "experimental_opencode_go_usage = %v   # task 163: OpenCode Go subscription usage card (5h/7d/month windows; no query while off)\n", c.Agent.ExperimentalOpenCodeGoUsage)
+	// Task 603: explicit render — omit-on-off would silently spring a saved-on
+	// switch back off on the next render (81/123 lost-save lesson).
+	fmt.Fprintf(&b, "experimental_tool_optimizations = %v   # task 603: 工具优化 family — edit_file/multi_edit accept readBack (edited snippet + context returned and filed as fresh read evidence); off keeps every schema/output byte identical (restart to apply)\n", c.Agent.ExperimentalToolOptimizations)
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 

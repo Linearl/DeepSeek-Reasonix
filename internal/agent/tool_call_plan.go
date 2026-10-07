@@ -40,7 +40,10 @@ type toolCallPlan struct {
 	expectedWriteSource tool.EvidenceTargetInfo
 	cctx                context.Context
 	// mcpApp collects the call's Apps presentation from the executing tool.
-	mcpApp                                                 *tool.MCPAppResult
+	mcpApp *tool.MCPAppResult
+	// readBack collects the window an edit tool read back after a successful
+	// write (task 603); the ordered finalizer files it as fresh read evidence.
+	readBackSink                                           *tool.ReadBackObservation
 	releaseParentWrite, releaseMutationWrite, releaseLease func()
 	mutationPath                                           string
 	mutationObserved, mutationAfterDone, executed          bool

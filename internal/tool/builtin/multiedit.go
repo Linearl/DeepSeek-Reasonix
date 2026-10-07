@@ -14,7 +14,11 @@ func init() { tool.RegisterBuiltin(multiEdit{}) }
 // multiEdit applies a batch of edits to one file. roots confines the target to
 // the workspace when non-empty (see writeFile); guard rejects Reasonix
 // session-data targets (see SessionDataGuard); workDir, when non-empty, is the
-// directory a relative path resolves against (see resolveIn).
+// directory a relative path resolves against (see resolveIn). readBack, when
+// true (the experimental_tool_optimizations family, task 603), lets a call
+// pass readBack to get the edited region rendered back with surrounding
+// context and filed as fresh read evidence; the zero value keeps the tool
+// byte-identical to the pre-family surface.
 type multiEdit struct {
 	roots   []string
 	rootSet *sandbox.WritableRootSet
@@ -22,6 +26,7 @@ type multiEdit struct {
 	managed ManagedConfigPaths
 	workDir string
 	overlay FileOverlay
+	readBack bool
 }
 
 // editStep is one edit in a multi_edit operation. Mirrors edit_file's args
@@ -40,7 +45,12 @@ func (multiEdit) Description() string {
 	return "WHEN TO USE: modifying 2+ places in the same file — use this INSTEAD of chained edit_file calls (atomic, fewer calls, per-step errors). Chinese phrasings like 同文件多处修改, 批量修改, 一次改完整个文件 all mean this tool. Apply a list of edits to a single file atomically: each edit runs against the result of the previous one, all in memory; the file is rewritten only if every edit succeeds. Cheaper and safer than chaining edit_file calls — a failure in step 3 leaves the file untouched instead of half-edited."
 }
 
-func (multiEdit) Schema() json.RawMessage {
+func (m multiEdit) Schema() json.RawMessage {
+	readBackField := ""
+	if m.readBack {
+		readBackField = `,
+  "readBack":{"type":"boolean","description":"Set true to have the result read back the edited region (first to last edit) with ±20 surrounding lines. The returned window counts as having read the file: a follow-up edit on this file passes the read-evidence gate without a separate read_file call (any outside change is still caught)."}`
+	}
 	return json.RawMessage(`{
 "type":"object",
 "properties":{
@@ -60,7 +70,7 @@ func (multiEdit) Schema() json.RawMessage {
       "required":["old_string","new_string"]
     }
   },
-  "source_token":{"type":"string","description":"Optional: the source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten."}
+  "source_token":{"type":"string","description":"Optional: the source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten."}` + readBackField + `
 },
 "required":["path","edits"]
 }`)
@@ -77,6 +87,7 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 		Path     string     `json:"path"`
 		Edits    []editStep `json:"edits"`
 		Expected string     `json:"expected"`
+		ReadBack bool       `json:"readBack"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -87,6 +98,10 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 	if len(p.Edits) == 0 {
 		return "", fmt.Errorf("edits must not be empty")
 	}
+	// The readBack parameter only exists while the experimental_tool_optimizations
+	// family is lit (task 603). With the family off the field is ignored —
+	// identical bytes in, identical bytes out (铁律 2).
+	useReadBack := p.ReadBack && m.readBack
 	p.Path = resolveIn(m.workDir, p.Path)
 	if err := confineWrite(ctx, effectiveWriteRoots(ctx, m.rootSet, m.roots), m.guard, m.managed, p.Path); err != nil {
 		return "", err
@@ -108,6 +123,7 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 	applied := 0
 	usedFuzzy := false
 	receipts := make([]editReplacementReceipt, 0, len(p.Edits))
+	var spanStart, spanEnd int // union of replaced regions in the CURRENT buffer
 	for i, step := range p.Edits {
 		if step.OldString == "" {
 			return "", fmt.Errorf("edit %d: old_string is required", i+1)
@@ -115,6 +131,9 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 		result := applyOldStringEdit(content, step.OldString, step.NewString, step.ReplaceAll)
 		switch {
 		case result.applied > 0:
+			if useReadBack && result.updatedStart >= 0 {
+				spanStart, spanEnd = unionReadBackSpan(spanStart, spanEnd, content, result)
+			}
 			content = result.updated
 			applied += result.applied
 			usedFuzzy = usedFuzzy || result.fuzzy
@@ -133,5 +152,34 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 	if usedFuzzy {
 		summary += " (fuzzy match)"
 	}
-	return withActualPostWriteReceipts(summary, receipts), nil
+	summary = withActualPostWriteReceipts(summary, receipts)
+	if useReadBack && spanStart >= 0 {
+		first, last := readBackSpanLines(content, spanStart, spanEnd)
+		summary = withReadBack(ctx, summary, p.Path, content, src.postWriteSnapshot(p.Path, content), first, last)
+	}
+	return summary, nil
+}
+
+// unionReadBackSpan folds one step's replaced region into the running union.
+// Region coordinates live in the buffer the step read; earlier spans already
+// sit in that same buffer, so those wholly before the replacement merge with
+// its new bounds, those wholly after shift by the replacement's length delta,
+// and a partial overlap merges into the replacement's own bounds.
+func unionReadBackSpan(start, end int, buffer string, result editApplyResult) (int, int) {
+	ms, me := result.matchedStart, result.matchedEnd
+	us, ue := result.updatedStart, result.updatedEnd
+	if ms < 0 || me < ms || us < 0 || ue < us || me > len(buffer) {
+		return start, end
+	}
+	delta := (ue - us) - (me - ms)
+	switch {
+	case start < 0:
+		return us, ue
+	case end <= ms:
+		return start, ue
+	case start >= me:
+		return us, max(end+delta, ue)
+	default:
+		return min(start, us), max(end, ue)
+	}
 }
