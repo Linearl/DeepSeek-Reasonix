@@ -432,6 +432,58 @@ section("运行分组与停止接线");
   await cleanup();
 }
 
+section("时长实时跳动：面板打开且运行中每秒刷新（任务 440 ①）");
+{
+  // Same clock-capture pattern as tool-card-running-elapsed: the panel ticks
+  // through window.setInterval; capturing the callbacks lets the test advance
+  // the clock without waiting real seconds.
+  listResult = Promise.resolve([]);
+  const realNow = Date.now;
+  const BASE = realNow();
+  const realSetInterval = window.setInterval.bind(window);
+  const realClearInterval = window.clearInterval.bind(window);
+  const intervals = new Map<number, () => void>();
+  let nextIntervalId = 1;
+  window.setInterval = ((handler: TimerHandler) => {
+    const id = nextIntervalId++;
+    if (typeof handler === "function") intervals.set(id, handler as () => void);
+    return id;
+  }) as typeof window.setInterval;
+  window.clearInterval = ((id?: number) => {
+    if (id !== undefined) intervals.delete(id);
+  }) as typeof window.clearInterval;
+  try {
+    Date.now = () => BASE + 2_000;
+    await renderIndicator({
+      jobs: [job({ id: "bash-tick", kind: "bash", label: "后台拉起 serve (8787)", startedAt: BASE - 62_000 })],
+      sessionPath: "s.jsonl",
+    });
+    await clickTrigger(30);
+    eq(intervals.size, 1, "面板打开且有运行任务时恰好注册一个秒级刷新定时器");
+    const elapsed = () => document.querySelector('[data-capsule-job-id="bash-tick"] .capsule-panel__elapsed')?.getAttribute("data-elapsed") ?? "";
+    eq(elapsed(), "1m04s", "打开时刻显示已运行时长（62s 命令 + 2s 打开基准）");
+    Date.now = () => BASE + 5_000;
+    await act(async () => {
+      for (const fire of [...intervals.values()]) fire();
+      await flush();
+    });
+    eq(elapsed(), "1m07s", "定时器触发后时长标签实时跳动（+3s）");
+    Date.now = () => BASE + 8_000;
+    await act(async () => {
+      for (const fire of [...intervals.values()]) fire();
+      await flush();
+    });
+    eq(elapsed(), "1m10s", "时长标签随秒级定时器持续推进（再 +3s）");
+    await clickTrigger(300);
+    eq(intervals.size, 0, "面板关闭时清理秒级刷新定时器");
+  } finally {
+    await cleanup();
+    window.setInterval = realSetInterval;
+    window.clearInterval = realClearInterval;
+    Date.now = realNow;
+  }
+}
+
 section("已结束子代理目录：过滤运行中、缺失转录禁点");
 {
   listCalls.length = 0;
