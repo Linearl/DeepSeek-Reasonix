@@ -3363,6 +3363,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.splitTargetBoth": "同時傳送到兩欄",
   "tabBar.splitView": "分欄顯示",
   "splitView.resizeDivider": "調整分欄寬度",
+  "splitView.previewWidth": "預覽寬度檔位",
   "tabBar.closeSplitView": "關閉分欄",
   "tabBar.newSession": "新建會話",
   "tabBar.tabActions": "標籤頁操作",
