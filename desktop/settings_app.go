@@ -2066,8 +2066,10 @@ func (a *App) downgradePostSaveRebuildFailure(setting string, err error) (string
 			return warning, true
 		}
 	}
-	slog.Warn("desktop: settings rebuild failed after save", "setting", setting, "err", err)
-	warning := fmt.Sprintf("%s saved, but the current session could not refresh: %s — restart the desktop to apply", setting, err.Error())
+	// err 链可引入 provider 回显文本，日志与 UI 文案边界统一脱敏（418 同一纪律；
+	// codeql[go/clear-text-logging]）。
+	slog.Warn("desktop: settings rebuild failed after save", "setting", setting, "err", secrets.RedactError(err))
+	warning := fmt.Sprintf("%s saved, but the current session could not refresh: %s — restart the desktop to apply", setting, secrets.RedactError(err))
 	if tab := a.activeTab(); tab != nil {
 		a.warnForTab(tab.ID, warning)
 	}
@@ -3825,7 +3827,7 @@ func (a *App) SetOptimisticWrite(enabled bool) (string, error) {
 			return warning, nil
 		}
 		slog.Warn("desktop: optimistic-write rebuild deferred; the saved change takes effect after a restart",
-			"enabled", enabled, "err", err)
+			"enabled", enabled, "err", secrets.RedactError(err))
 		return "Optimistic parallel writes saved — the change takes effect after a restart.", nil
 	}
 	return "", nil

@@ -76,7 +76,9 @@ func applyLineRangeEdit(content, lineRange, anchorHead, anchorTail, replacement 
 			}
 		}
 	}
-	out := make([]string, 0, len(lines)-(end-start+1)+len(replLines))
+	// 容量提示只取单一 len（无加减算术，32 位下不可溢出，消除
+	// go/allocation-size-overflow）；实际长度由 append 摊销兜底，行为不变。
+	out := make([]string, 0, len(lines))
 	out = append(out, lines[:start-1]...)
 	out = append(out, replLines...)
 	out = append(out, lines[end:]...)
