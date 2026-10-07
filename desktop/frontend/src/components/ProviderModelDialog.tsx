@@ -7,10 +7,10 @@ import { ModalCloseButton } from "./ModalCloseButton";
 import type { ProviderModelCapabilityView } from "../lib/types";
 import { modelDraftError } from "../lib/providerModelDraft";
 
-export interface ModelDetailsDraft { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; }
-export default function ProviderModelDialog({ initial, candidates, contextDefault, capability, baseURL, busy, onClose, onApply, onDelete }: {
+export interface ModelDetailsDraft { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; highSpeed: boolean; }
+export default function ProviderModelDialog({ initial, candidates, contextDefault, capability, baseURL, highSpeedSwitchOn, busy, onClose, onApply, onDelete }: {
   initial?: ModelDetailsDraft; candidates: string[]; contextDefault?: number;
-  capability?: ProviderModelCapabilityView; baseURL?: string; busy: boolean; onClose: () => void; onApply: (draft: ModelDetailsDraft) => void;
+  capability?: ProviderModelCapabilityView; baseURL?: string; highSpeedSwitchOn: boolean; busy: boolean; onClose: () => void; onApply: (draft: ModelDetailsDraft) => void;
   onDelete?: () => void;
 }) {
   const t = useT(), titleId = useId();
@@ -19,6 +19,7 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
   const [context, setContext] = useState(initial?.contextWindow ?? "");
   const [output, setOutput] = useState(initial?.maxOutputTokens ? String(Math.max(-1, initial.maxOutputTokens)) : "");
   const [vision, setVision] = useState(initial?.vision == null ? "auto" : String(initial.vision));
+  const [highSpeed, setHighSpeed] = useState(initial?.highSpeed ?? false);
   const [error, setError] = useState(false);
   useLayoutEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -31,7 +32,7 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
   const imageState = imageBlocked ? "unsupported" : imageInputState(vision === "auto" ? "auto" : vision === "true" ? "on" : "off", capability);
   return createPortal(<dialog ref={dialog} className="provider-model-dialog" aria-labelledby={titleId}
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <form onSubmit={event => { event.preventDefault(); if (validation) { setError(true); return; } onApply({ model:model.trim(), contextWindow:context.trim(), maxOutputTokens:Number(output) || 0, vision:vision === "auto" ? null : !imageBlocked && vision === "true" }); }}>
+    <form onSubmit={event => { event.preventDefault(); if (validation) { setError(true); return; } onApply({ model:model.trim(), contextWindow:context.trim(), maxOutputTokens:Number(output) || 0, vision:vision === "auto" ? null : !imageBlocked && vision === "true", highSpeed }); }}>
       <header><h2 id={titleId}>{t(initial ? "settings.modelDialog.edit" : "settings.models.add")}</h2><ModalCloseButton label={t("common.close")} disabled={busy} onClick={onClose}/></header>
       <label className="provider-model-dialog__id">{t("settings.modelDialog.id")}
         {initial ? <span><LockKeyhole size={16}/>{model}</span> : <input autoFocus className="mem-input" value={model} disabled={busy} onChange={e=>setModel(e.target.value)} placeholder="deepseek-v4-flash"/>}
@@ -61,6 +62,20 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
           <dl><div><dt>{t("settings.modelDialog.source")}</dt><dd>{vision !== "auto" ? t("settings.modelDialog.manual") : capability ? t("settings.modelDialog.metadata") : t("settings.imageInputUnknown")}</dd></div></dl>
           <button type="button" className="btn" disabled={busy || vision === "auto"} onClick={()=>setVision("auto")}>{t("settings.modelDialog.restore")}</button>
           <p>{t("settings.modelDialog.overrideHint")}</p>
+          {/* Task 468: the high-speed mark is user-maintained (a "flash" id is
+              not high TPS by itself). Draft state like vision — it lands with
+              the connection save via the provider save chain. The whole block
+              stays hidden while the 318.1 master switch is off (off = marks
+              are never injected, so the entry would be a dead switch). */}
+          {highSpeedSwitchOn && <>
+            <div className="provider-model-dialog__capability-title">{t("settings.highSpeedModel")}</div>
+            <div className="provider-model-dialog__chips">
+              <label title={t("settings.highSpeedModelLabHint")}>
+                <input type="checkbox" data-testid="high-speed-model-toggle" checked={highSpeed} disabled={busy} onChange={event=>setHighSpeed(event.target.checked)}/>
+                ⚡ {t("settings.highSpeedModel")}
+              </label>
+            </div>
+          </>}
         </aside>
       </div>
       {error && validation && <p role="alert">{t(`providerUI.validation.${validation}`)}</p>}

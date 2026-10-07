@@ -1018,6 +1018,15 @@ const CHECKS = [
   { feature: "463 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"composer.expandAll\": \"Expand all work processes\""] },
   { feature: "463 双向开关测试存续", file: "desktop/frontend/src/__tests__/fold-toggle-button.test.tsx", patterns: ["allWorkProcessesCollapsed", "reasonix:expand-all-folds"] },
 
+  // 任务 468：高速模型 UI 接线（318 收尾）。三处缺口各一道锚：render 渲染行
+  // （缺了 = 手写配置被保存抹掉）、provider 级 setter、弹框勾选草稿链。
+  { feature: "468 render 渲染行（full + project delta 双路径）", file: "internal/config/render.go", patterns: ["high_speed_models = %s", "len(p.HighSpeedModels) > 0"] },
+  { feature: "468 provider 级 setter（config + desktop 桥接）", file: "internal/config/edit.go", patterns: ["func (c *Config) SetProviderModelHighSpeed"] },
+  { feature: "468 desktop 桥接 setter", file: "desktop/settings_preferences.go", patterns: ["func (a *App) SetProviderModelHighSpeed", "applyModelConfigChange"] },
+  { feature: "468 弹框勾选（总闸联动隐藏）", file: "desktop/frontend/src/components/ProviderModelDialog.tsx", patterns: ["highSpeedSwitchOn", "high-speed-model-toggle"] },
+  { feature: "468 编辑器草稿透传（保存不抹掉）+ 行内实时徽标", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["highSpeedModelNames", "highSpeedModels: hsms", "high-speed-row-badge"] },
+  { feature: "468 前后端测试存续", file: "desktop/frontend/src/__tests__/task468-high-speed-model.test.tsx", patterns: ["high-speed-model-toggle", "connection save"] },
+
 ];
 
 let failed = 0;
