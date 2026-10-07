@@ -526,7 +526,9 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 	if (plan.effects.WorkspaceMutation || plan.hooksMayMutateWorkspace) &&
 		a.svc.mutationObserver != nil && a.svc.mutationObserver.Store() != nil {
 		barrier := a.svc.mutationObserver.Store().Barrier()
-		if err := barrier.EnterWrite(); err != nil {
+		// ctx 接入（task 472 增补 / 474 切片 3）：屏障等待改走 EnterWriteContext，
+		// 点停止（ctx 取消）即时生效，无 deadline 时仍有 5s 默认预算兜底。
+		if err := barrier.EnterWriteContext(ctx); err != nil {
 			return toolOutcome{output: "blocked: " + err.Error(), blocked: true, errMsg: "blocked: mutation barrier unavailable"}, true
 		}
 		plan.releaseMutationWrite = barrier.ExitWrite
