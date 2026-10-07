@@ -1334,6 +1334,13 @@ const CHECKS = [
   { feature: "任务578 窗口控制 min/max 变体 hover（--close 红色 hover 已随上游在位）", file: "desktop/frontend/src/styles.css", patterns: [".windows-window-control--minimize:hover,", ".windows-window-control--maximize:hover,"] },
   { feature: "任务578 防复发 check-class-contract.mjs（四断言：类名差集/Tailwind 专项/硬编码色/豁免）", file: "desktop/frontend/scripts/check-class-contract.mjs", patterns: ["BASELINE_WHITELIST", "TAILWIND_EXEMPT_FILES", "HARDCOLOR_WHITELIST", "--self-test", "--emit-baseline"] },
   { feature: "任务578 防复发接线（进 check-all-parallel 并行组）", file: "desktop/frontend/scripts/check-all-parallel.mjs", patterns: ["check:class-contract"] },
+  // ── 任务553 后台任务完成 → 唤起空闲父会话续轮（机制级：默认关 + 预算 + 让位）──
+  { feature: "任务553 jobs 完成观察者与非清空 peek（观察者 m.mu 外触发；stalled 警告不算完成）", file: "internal/jobs/jobs.go", patterns: ["func (m *Manager) AddCompletionObserver", "func (m *Manager) HasCompletedNotesForSession", "item.jobID == \"\""] },
+  { feature: "任务553 唤醒控制器（coalesce 合并窗/滚动窗口预算/会话级节流/同 job 去重/让位双检/三路径日志）", file: "internal/control/job_wake.go", patterns: ["scheduleWakeTurnLocked", "budget_exhausted", "\"reason\", \"turn_running\"", "hasPendingUserWork", "runSyntheticTurnWithRawDisplay"] },
+  { feature: "任务553 生命周期接线（New 注册观察者/close 反注册/finish 钩子重踢）", file: "internal/control/controller.go", patterns: ["initBackgroundJobWake", "shutdownBackgroundJobWake", "wakeKickAfterTurnFinished"] },
+  { feature: "任务553 默认关配置四键（铁律 2；预算不可经配置拆除）", file: "internal/config/config.go", patterns: ["wake_idle_session", "wake_max_turns_per_window", "BackgroundJobWakeIdleSession", "BackgroundJobWakeMaxTurnsPerWindow"] },
+  { feature: "任务553 render 双面（全量带默认；diff 按键发射防丢键防重复表头）", file: "internal/config/render.go", patterns: ["wake_idle_session = %t", "lines = append(lines, \"wake_idle_session = true\\n\")"] },
+  { feature: "任务553 验收测试（端到端见摘要/预算降级/节流/让位重踢/合并一轮/默认关等价/跨会话隔离）", file: "internal/control/job_wake_test.go", patterns: ["TestBackgroundWakeEndToEndModelSeesSummary", "TestBackgroundWakeBudgetExhaustsToNoticeOnly", "TestBackgroundWakeYieldsToRunningTurnThenKicksAfterFinish", "TestBackgroundWakeMergesCompletionsIntoOneTurn", "TestBackgroundWakeDisabledKeepsLegacyBehavior"] },
 ];
 
 let failed = 0;
