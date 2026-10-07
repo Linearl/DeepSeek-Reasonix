@@ -223,6 +223,11 @@ func (a *App) SetExperimentalBaseProcess(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalBaseProcess(enabled) })
 }
 
+// SetExperimentalToolOptimizations toggles the 工具优化 family (task 603).
+func (a *App) SetExperimentalToolOptimizations(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalToolOptimizations(enabled) })
+}
+
 // SetAutonomousUpdateResume sets the auto-resume scope dial (task 254): off
 // resumes nothing, goal_autopilot resumes goal runs and autopilot sessions
 // that asked for the update, all additionally resumes every mid-turn session.

@@ -689,6 +689,14 @@ func (c *Config) SetExperimentalBaseProcess(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalToolOptimizations toggles the 工具优化 family (task 603):
+// edit_file/multi_edit accept readBack and file the returned window as read
+// evidence. Restart to apply — the boot assembly lights the tool surface.
+func (c *Config) SetExperimentalToolOptimizations(enabled bool) error {
+	c.Agent.ExperimentalToolOptimizations = enabled
+	return nil
+}
+
 // SetAutonomousUpdateResume scopes the auto-resume family (task 254). Only the
 // three known values are accepted so a typo cannot silently disable resuming.
 func (c *Config) SetAutonomousUpdateResume(mode string) error {

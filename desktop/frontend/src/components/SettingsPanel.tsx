@@ -1864,7 +1864,9 @@ type ExperimentFeatureId =
   | "subagentSuite"
   | "devDebug"
   | "updateFeedback"
-  | "sessionStore";
+  | "sessionStore"
+  // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
+  | "toolOptimizations";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -1901,7 +1903,8 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // automation, misc renames to infra, debug splits into observability +
   // dev-debug. Membership follows the 2026-10-06 audit table (46 items,
   // 8/10/15/2/2/2/7).
-  type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra";
+  // 任务 603: adds the 工具优化 group after the 561 audit-table seven.
+  type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra" | "tool-opt";
   // Task 257: turning full access ON passes one danger confirmation first —
   // the same one-shot gate shape as Claude Code / MiMo's yolo mode. Turning
   // it OFF never asks.
@@ -2017,6 +2020,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     { key: "dev-debug", labelKey: "settings.labGroup.devDebug" },
     { key: "storage", labelKey: "settings.labGroup.storage" },
     { key: "infra", labelKey: "settings.labGroup.infra" },
+    // 任务 603:「工具优化」— agent-facing tool upgrades hang here as one family.
+    { key: "tool-opt", labelKey: "settings.labGroup.toolOpt" },
   ] as const;
   // 任务 561: the features array is the lab render table — every entry below
   // must keep its own `on` read and its own setter wiring in the pane (81/123
@@ -2115,6 +2120,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // switch now — the entry light reads the single merged key.
     { id: "orphanHandling", group: "infra", label: t("settings.orphanHandling"), on: Boolean(s.experimentalOrphanHandling) },
     { id: "localServer", group: "infra", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
+    // ── tool-opt（工具优化，1 项）─────────────────────────────────
+    // 任务 603: edit readBack + evidence gate linkage (family switch).
+    { id: "toolOptimizations", group: "tool-opt", label: t("settings.toolOptimizations"), on: Boolean(s.experimentalToolOptimizations) },
   ];
 
   // 任务 562: pane-side tier badge — wrap a 表A feature's label with its tier
@@ -4307,6 +4315,31 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </>
               )}
             </>
+          )}
+          {selected === "toolOptimizations" && (
+            /* 任务 603:「工具优化」族首件 — edit_file/multi_edit accept
+               readBack (edited snippet + context) and the returned window
+               counts as fresh read evidence, so a same-file follow-up edit
+               skips the read round trip. Gate 联动是行为变更：开关默认关，
+               异常时先关开关回退。 */
+            <SettingsField label={labLabel("toolOptimizations", t("settings.toolOptimizations"))} hint={t("settings.toolOptimizationsHint")} icon={<Sparkles size={18} />} stacked>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalToolOptimizations) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalToolOptimizations(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.toolOptimizations.on" : "settings.toolOptimizations.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+              <p className="approval-mode-hint">{t("settings.toolOptimizations.risk")}</p>
+            </SettingsField>
           )}
         </div>
       </div>

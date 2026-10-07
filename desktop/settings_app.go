@@ -439,6 +439,9 @@ type SettingsView struct {
 	// ExperimentalBaseProcess is the S1 resident-base-subprocess lab switch
 	// (design 2026-09-30 §7 R4); boot snapshot, restart to apply.
 	ExperimentalBaseProcess bool `json:"experimentalBaseProcess"`
+	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
+	// (edit readBack + evidence gate linkage); boot snapshot, restart to apply.
+	ExperimentalToolOptimizations bool `json:"experimentalToolOptimizations"`
 	// ExperimentalLifecycleNoiseGate is the task-377 crash-report noise
 	// triage; the gate is read once at startup diagnostics, restart to apply.
 	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
@@ -665,6 +668,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalBaseProcess is the S1 resident-base-subprocess lab switch
 	// (design 2026-09-30 §7 R4); boot snapshot, restart to apply.
 	ExperimentalBaseProcess bool `json:"experimentalBaseProcess"`
+	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
+	// (edit readBack + evidence gate linkage); boot snapshot, restart to apply.
+	ExperimentalToolOptimizations bool `json:"experimentalToolOptimizations"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
@@ -1444,6 +1450,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
 		// S1: resident-base-subprocess switch readback (design §7 R4).
 		view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess
+		// Task 603: 工具优化 family readback.
+		view.ExperimentalToolOptimizations = cfg.Agent.ExperimentalToolOptimizations
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Agent.ExperimentalDream
 		view.ExperimentalAutonomousIdleTerminate = cfg.Agent.ExperimentalAutonomousIdleTerminate
@@ -1597,6 +1605,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalActiveTabResident:       cfg.Agent.ExperimentalActiveTabResident,
 		ExperimentalFullAccess:              cfg.Agent.ExperimentalFullAccess,
 		ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess,
+		ExperimentalToolOptimizations:       cfg.Agent.ExperimentalToolOptimizations,
 		ExperimentalTraceAsState:            cfg.Agent.TraceAsState,
 		ExperimentalDream:                   cfg.Agent.ExperimentalDream,
 		ExperimentalAutonomousIdleTerminate: cfg.Agent.ExperimentalAutonomousIdleTerminate,
