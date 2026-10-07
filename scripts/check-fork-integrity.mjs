@@ -1362,6 +1362,16 @@ const CHECKS = [
   { feature: "任务553 默认关配置四键（铁律 2；预算不可经配置拆除）", file: "internal/config/config.go", patterns: ["wake_idle_session", "wake_max_turns_per_window", "BackgroundJobWakeIdleSession", "BackgroundJobWakeMaxTurnsPerWindow"] },
   { feature: "任务553 render 双面（全量带默认；diff 按键发射防丢键防重复表头）", file: "internal/config/render.go", patterns: ["wake_idle_session = %t", "lines = append(lines, \"wake_idle_session = true\\n\")"] },
   { feature: "任务553 验收测试（端到端见摘要/预算降级/节流/让位重踢/合并一轮/默认关等价/跨会话隔离）", file: "internal/control/job_wake_test.go", patterns: ["TestBackgroundWakeEndToEndModelSeesSummary", "TestBackgroundWakeBudgetExhaustsToNoticeOnly", "TestBackgroundWakeYieldsToRunningTurnThenKicksAfterFinish", "TestBackgroundWakeMergesCompletionsIntoOneTurn", "TestBackgroundWakeDisabledKeepsLegacyBehavior"] },
+  // ── 任务509 归档前置门（软开关默认关）：delete_session 在目标收件箱还有
+  // queued≠已读 条目时拒绝归档——tl 509 验收② 的「无未消费消息前置检查」
+  // 落进进程内归档路径（workspace plan 脚本之外的第二道）。逐机制锚定，
+  // merge 丢任一半边即报警；开关关闭 = 行为逐字节回退。
+  { feature: "任务509 delete_session 未消费消息门（Peek 探针 fail-closed + confirm 拒绝 + dry-run/留痕上报）", file: "internal/agent/delete_session_tool.go", patterns: ["unconsumedMailCount", "unconsumed inbox message", "fails closed", "mailGate"] },
+  { feature: "任务509 门配置字段（软开关默认关）+ boot 装配", file: "internal/config/config.go", patterns: ["SessionCollabDeleteUnreadGate bool `toml:\"session_collab_delete_unread_gate\"`"] },
+  { feature: "任务509 render 无条件渲染行（防手改键被重写静默丢弃）", file: "internal/config/render.go", patterns: ["session_collab_delete_unread_gate = %v"] },
+  { feature: "任务509 boot 接线（boot 快照，翻转重启生效）", file: "internal/boot/boot.go", patterns: ["DeleteUnreadGate: cfg.Agent.SessionCollabDeleteUnreadGate"] },
+  { feature: "任务509 验收测试（门关放行不回退/未读拒 confirm/dry-run 上报/Ack 消费放行/无信箱放行/核验失败拒）", file: "internal/agent/session_collab_delete_unread_gate_test.go", patterns: ["TestDeleteSessionGateOffKeepsLegacyBehavior", "TestDeleteSessionGateRefusesUnconsumedConfirm", "TestDeleteSessionGateDryRunReportsUnconsumed", "TestDeleteSessionGatePassesWhenConsumed", "TestDeleteSessionGateFailsClosedOnUnreadableInbox"] },
+  { feature: "任务509 config 往返测试（默认关 + 无条件渲染 + 显式 TOML）", file: "internal/config/session_collab_delete_unread_gate_test.go", patterns: ["TestSessionCollabDeleteUnreadGateDefaultsOff", "TestRenderSessionCollabDeleteUnreadGate"] },
 ];
 
 let failed = 0;
