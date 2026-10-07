@@ -19,6 +19,109 @@ const (
 	RenderScopeProject RenderScope = "project"
 )
 
+// ─── 实验室三档徽章注册表（任务 562，落点 A：与渲染表同文件同源）──────────
+//
+// 权威数据：workspace xlsx 表A「实验室特性-档位与图墙-20261006」推荐等级列
+// （46 项：推荐 15 / 可选 20 / 未稳定 10 / 已退役 1）。用户口径：推荐 = 核心
+// 特性，不开启会有体验缺口；可选 = 非核心，不开启只小幅影响；未稳定 = 开发
+// 测试中，开启可能不稳定；已退役 = 开关已退役（只读展示，见任务 551/564）。
+//
+// 与 81/123 渲染表防线同源：每个条目的 renderKeys 必须覆盖该特性在渲染表
+// 中的全部开关键。render_lab_tiers_test.go 是门禁——渲染表新出现一个未在
+// 本表登记（也未列入 labNonFeatureKeys 豁免）的实验室键 ⇒ 测试失败，即
+// 「新增实验项必须标档位」。
+type LabTier string
+
+const (
+	LabTierRecommended LabTier = "recommended" // 推荐：不开启致体验缺口
+	LabTierOptional    LabTier = "optional"    // 可选：不开启只小幅影响
+	LabTierUnstable    LabTier = "unstable"    // 未稳定：开启可能不稳定
+	LabTierRetired     LabTier = "retired"     // 已退役：开关只读展示
+)
+
+type labFeatureTier struct {
+	id         string   // 表A id（与前端镜像 desktop/frontend/src/lib/experimentTiers.ts 同名）
+	tier       LabTier  // 推荐等级（表A「推荐等级」列）
+	renderKeys []string // 该特性在渲染表中的全部开关键（含家族子键与镜像键）
+}
+
+var labFeatureTiers = []labFeatureTier{
+	// ── automation（自动化，8 项）────────────────────────────────
+	{"autopilot", LabTierRecommended, []string{"autopilot", "experimental_autopilot_ask_timeout"}}, // ask-timeout 为 task 477 家族子键
+	{"sessionCollab", LabTierRecommended, []string{"experimental_session_collab"}},
+	{"fullAccess", LabTierRecommended, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
+	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write"}},
+	{"dream", LabTierOptional, []string{"experimental_dream"}},
+	{"autonomousIdleTerminate", LabTierOptional, []string{"experimental_autonomous_idle_terminate"}},
+	{"loopStreakNote", LabTierOptional, []string{"experimental_loop_streak_note"}},
+	{"subagentPolicy", LabTierUnstable, []string{"experimental_subagent_policy"}},
+	// ── efficiency（提效，10 项）─────────────────────────────────
+	{"budgetControl", LabTierRecommended, []string{"experimental_context_budget", "experimental_research_budget"}},
+	{"compressOpt", LabTierRecommended, []string{"experimental_proactive_compact", "experimental_cold_cache_compact"}},
+	{"messageMerge", LabTierRecommended, []string{"collab_inbox_merge", "collab_guidance_merge"}},
+	{"quickCommands", LabTierRecommended, []string{"experimental_quick_commands"}},
+	{"highSpeedModel", LabTierOptional, []string{"experimental_high_speed_model"}},
+	{"compactionParallel", LabTierOptional, []string{"experimental_compaction_parallel"}},
+	{"traceAsState", LabTierOptional, []string{"trace_as_state", "experimental_trace_as_state"}}, // desktop 键为设置视图镜像
+	{"eventWaitRecheck", LabTierOptional, []string{"experimental_event_wait_recheck"}},
+	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
+	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
+	// ── ui（界面，15 项）────────────────────────────────────────
+	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
+	{"todoSidebar", LabTierRecommended, []string{"experimental_todo_sidebar"}},
+	{"promptHistoryPicker", LabTierRecommended, []string{"experimental_prompt_history_picker"}},
+	{"restartUpdate", LabTierRecommended, []string{"experimental_restart_update", "experimental_autonomous_update"}}, // autonomous_update 为 task 254 家族子键
+	{"sessionWall", LabTierRecommended, []string{"experimental_session_wall"}},
+	{"subagentPanel", LabTierOptional, []string{"experimental_subagent_panel"}},
+	{"subagentDetail", LabTierOptional, []string{"experimental_subagent_detail"}},
+	{"completionSummary", LabTierOptional, []string{"experimental_completion_summary"}},
+	{"autoLoadOlder", LabTierOptional, []string{"experimental_auto_load_older"}},
+	{"splitView", LabTierOptional, []string{"experimental_split_view"}},
+	{"draftPersistence", LabTierOptional, []string{"experimental_composer_draft"}},
+	{"selectionActions", LabTierOptional, []string{"experimental_selection_actions"}},
+	{"questionSearch", LabTierRecommended, []string{"experimental_question_search"}},
+	{"opencodeGoUsage", LabTierUnstable, []string{"experimental_opencode_go_usage"}},
+	{"feedback", LabTierOptional, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键
+	// ── observability（可观测性，2 项）───────────────────────────
+	{"monitoring", LabTierRecommended, []string{"experimental_session_monitor", "experimental_perf_monitor", "experimental_heap_high_profile"}}, // heap_high_profile 为 task 501 家族子键（rides perf_monitor）
+	{"subagentTps", LabTierOptional, []string{"experimental_subagent_tps"}},
+	// ── dev-debug（开发调试，2 项）───────────────────────────────
+	{"cdpDebugPort", LabTierUnstable, []string{"experimental_cdp_debug_port"}},
+	{"lifecycleNoiseGate", LabTierUnstable, []string{"experimental_lifecycle_noise_gate"}},
+	// ── storage（存储，2 项）────────────────────────────────────
+	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation"}},
+	{"sessionStorage", LabTierUnstable, []string{"session_storage"}},
+	// ── infra（基础设施，7 项）──────────────────────────────────
+	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
+	{"baseProcess", LabTierUnstable, []string{"experimental_base_process"}},
+	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
+	{"modelCapabilityFilter", LabTierRetired, []string{"experimental_model_capability_filter"}}, // 任务 551 退役，只读镜像
+	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
+	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
+	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
+}
+
+// labNonFeatureKeys：渲染表里存在、但不属于表A 46 项的实验室族键（豁免门禁，
+// 逐键给理由；键消亡后应从此清单移除）。
+var labNonFeatureKeys = map[string]string{
+	"experimental_preapprove_managed":        "task 231/364 域：入口并入 autopilot 卡，非表A 46 项，不挂档位",
+	"experimental_cascade_approval":          "task 225：派遣审批回投任务源，实验室 tab 无入口",
+	"experimental_fallback_model":            "task 242：额度耗尽切 fallback_model，实验室 tab 无入口",
+	"experimental_collab_background_delivery": "task 224：协作投递后台化，实验室 tab 无入口",
+}
+
+// labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
+// （连同 experimental_* 一起纳入门禁扫描范围）。
+var labSpecialKeys = map[string]bool{
+	"autopilot":            true,
+	"optimistic_write":     true,
+	"session_storage":      true,
+	"events_auto_rotation": true,
+	"collab_inbox_merge":   true,
+	"collab_guidance_merge": true,
+	"trace_as_state":       true,
+}
+
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
 // comments preserved, system_prompt as a multi-line string, helpful hints. The
 // output round-trips back through Load (see render_test.go).
