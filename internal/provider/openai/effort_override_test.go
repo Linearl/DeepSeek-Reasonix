@@ -2,8 +2,13 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"slices"
+	"sync"
 	"testing"
 
 	"reasonix/internal/provider"
@@ -74,7 +79,11 @@ func assertRejectedEffort(t *testing.T, c *client, id string) {
 	}
 }
 func TestEffortOverrideRejectedByBinaryThinkingKnobs(t *testing.T) {
-	for _, url := range []string{"https://api.minimaxi.com/v1", "https://open.bigmodel.cn/api/paas/v4", "https://api.longcat.chat/v1"} {
+	// Zhipu GLM left this loop in task 601: its wire mapping carries
+	// low..max through reasoning_effort on top of thinking.type, so strengths
+	// are admitted (TestEffortOverrideGLMStrengthsReachWire) — only MiniMax
+	// and LongCat keep the hard strength rejection.
+	for _, url := range []string{"https://api.minimaxi.com/v1", "https://api.longcat.chat/v1"} {
 		p, err := New(provider.Config{Name: "test", BaseURL: url, Model: "model"})
 		if err != nil {
 			t.Fatal(err)
@@ -116,5 +125,160 @@ func TestEffortOverrideMiMoVocabulary(t *testing.T) {
 	want := []string{"none", "low", "medium", "high"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("PerRequestEfforts = %v, want %v", got, want)
+	}
+}
+
+// Task 601: a stock Zhipu GLM entry declares no supported_efforts, so the
+// per-request probe used to come up empty and every /effort switch declined
+// as level-not-in-vocabulary and paid a full runtime rebuild (observed 5.3s
+// per switch on the GLM coding plan, desktop.log 23:02:07). The probe must
+// expose exactly the set internal/config's normalizeGLMEffort can emit, and
+// an explicit supported_efforts list stays the probe face — NormalizeEffort
+// emits from it verbatim.
+func TestEffortOverrideGLMVocabulary(t *testing.T) {
+	p, err := New(provider.Config{
+		Name:    "glm",
+		BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+		Model:   "glm-5.3-flash",
+		APIKey:  "k",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	got := p.(*client).PerRequestEfforts()
+	want := []string{"disabled", "low", "medium", "high", "max"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("PerRequestEfforts = %v, want %v", got, want)
+	}
+
+	declared, err := New(provider.Config{
+		Name:    "glm",
+		BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+		Model:   "glm-5.3-flash",
+		APIKey:  "k",
+		Extra:   map[string]any{"supported_efforts": []string{"low", "high"}},
+	})
+	if err != nil {
+		t.Fatalf("New declared: %v", err)
+	}
+	if got := declared.(*client).PerRequestEfforts(); !slices.Equal(got, []string{"low", "high"}) {
+		t.Fatalf("declared PerRequestEfforts = %v, want [low high]", got)
+	}
+}
+
+// Task 601: the resolved GLM capability is clipped to enabled|disabled, but
+// the wire mapping carries low..max through reasoning_effort on top of
+// thinking.type. Stream must admit the strengths — the same fork exception
+// configuredEffort applies at boot — so a per-request depth switch reaches
+// the wire instead of failing the turn after the session override was armed.
+func TestEffortOverrideGLMStrengthsReachWire(t *testing.T) {
+	var mu sync.Mutex
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		mu.Lock()
+		bodies = append(bodies, body)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	p, err := New(provider.Config{
+		Name:    "glm",
+		BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+		Model:   "glm-5.3-flash",
+		APIKey:  "k",
+		Extra:   map[string]any{"request_url": srv.URL},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c := p.(*client)
+
+	cases := []struct {
+		override   string
+		wantType   string
+		wantEffort string // "" = the key must be absent
+	}{
+		{override: "max", wantType: "enabled", wantEffort: "max"},
+		{override: "high", wantType: "enabled", wantEffort: "high"},
+		{override: "medium", wantType: "enabled", wantEffort: "medium"},
+		{override: "low", wantType: "enabled", wantEffort: "low"},
+		{override: "disabled", wantType: "disabled", wantEffort: ""},
+	}
+	for _, tc := range cases {
+		ch, err := c.Stream(context.Background(), provider.Request{
+			Messages:       []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
+			EffortOverride: tc.override,
+		})
+		if err != nil {
+			var unsupported *provider.UnsupportedReasoningEffort
+			if errors.As(err, &unsupported) {
+				t.Fatalf("override %q rejected before I/O: %v", tc.override, err)
+			}
+			t.Fatalf("Stream override %q: %v", tc.override, err)
+		}
+		for range ch {
+		}
+		shape := c.buildRequest(provider.Request{EffortOverride: tc.override})
+		if shape.Thinking == nil || shape.Thinking.Type != tc.wantType {
+			t.Fatalf("override %q thinking = %#v, want type %q", tc.override, shape.Thinking, tc.wantType)
+		}
+		if shape.ReasoningEffort != tc.wantEffort {
+			t.Fatalf("override %q reasoning_effort = %q, want %q", tc.override, shape.ReasoningEffort, tc.wantEffort)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != len(cases) {
+		t.Fatalf("server saw %d bodies, want %d", len(bodies), len(cases))
+	}
+	wireEffort, _ := bodies[0]["reasoning_effort"].(string)
+	if wireEffort != "max" {
+		t.Fatalf("wire body reasoning_effort = %v, want max", bodies[0]["reasoning_effort"])
+	}
+	wireThinking, _ := bodies[0]["thinking"].(map[string]any)
+	if wireThinking == nil || wireThinking["type"] != "enabled" {
+		t.Fatalf("wire body thinking = %v, want enabled", bodies[0]["thinking"])
+	}
+}
+
+// A declared supported_efforts list keeps the probe face, and its strengths
+// still reach the wire: the resolved capability is clipped to the binary knob,
+// so without the fork bypass a declared low/high would fail the turn.
+func TestEffortOverrideGLMDeclaredStrengthsReachWire(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	p, err := New(provider.Config{
+		Name:    "glm",
+		BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4",
+		Model:   "glm-5.3-flash",
+		APIKey:  "k",
+		Extra: map[string]any{
+			"request_url":       srv.URL,
+			"supported_efforts": []string{"low", "high"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ch, err := p.(*client).Stream(context.Background(), provider.Request{
+		Messages:       []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
+		EffortOverride: "low",
+	})
+	if err != nil {
+		t.Fatalf("Stream declared low: %v", err)
+	}
+	for range ch {
 	}
 }
