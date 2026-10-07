@@ -3630,6 +3630,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.capsuleRecordError": "刪除失敗：",
   "composer.contentAddAttachment": "新增檔案或圖片",
   "composer.contentAddAttachmentDesc": "從本機選擇並附加到訊息",
+  "composer.runningGateHint": "會話執行中，結束後可用",
   "composer.contentReferenceFiles": "引用檔案或資料夾",
   "composer.contentReferenceFilesDesc": "從目前工作區選擇上下文",
   "composer.contentReferenceSessions": "引用歷史會話",

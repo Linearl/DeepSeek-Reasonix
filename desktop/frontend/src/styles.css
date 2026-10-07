@@ -9367,6 +9367,16 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg);
   background: var(--bg-elev-2);
 }
+/* Task 594: unavailable rows carry the shared btn disabled look (opacity
+   .52, no hover lift) so a gated item answers visually instead of silently. */
+.composer-access-menu__item:disabled {
+  cursor: default;
+  opacity: 0.52;
+}
+.composer-access-menu__item:disabled:hover {
+  background: transparent;
+  color: var(--fg-dim);
+}
 .composer-access-menu__copy {
   flex: 1;
   min-width: 0;
@@ -43408,6 +43418,10 @@ body > .mermaid-diagram--fullscreen {
 :root .composer-menu-surface :is(.composer-access-menu__item--active, .modelsw__item--current) {
   background: var(--bg-elev-2);
   color: var(--fg);
+}
+/* Task 594: the denser surface keeps the disabled look flat on hover too. */
+:root .composer-menu-surface .composer-access-menu__item:disabled:hover {
+  background: transparent;
 }
 :root .composer-menu-surface :is(.composer-access-menu__item, .modelsw__item):focus-visible {
   outline: 2px solid var(--accent);

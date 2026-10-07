@@ -4794,7 +4794,10 @@ export function Composer({
         }}
       />
       {!heroMode && <AnchoredPopover
-        open={(contentMenuOpen || intentMenuOpen) && !disabled && !readOnly && !running}
+        // Task 594: the popover stays reachable mid-turn — pure text inserts
+        // (quick commands, @/#/ triggers) must stay available while running;
+        // per-item gates own the rest instead of a blanket close.
+        open={(contentMenuOpen || intentMenuOpen) && !disabled && !readOnly}
         anchorRef={contentMenuOpen ? contentMenuAnchorRef : intentMenuAnchorRef}
         onClose={() => { setContentMenuOpen(false); closeIntentMenu(); }}
         className="composer-access-menu composer-content-menu composer-intent-menu composer-menu-surface"
@@ -4802,6 +4805,7 @@ export function Composer({
       >
         <ComposerContentMenuActions
           attachmentInputEnabled={attachmentInputEnabled}
+          running={running}
           textPresent={text.trim().length > 0}
           onChooseAttachment={chooseAttachmentFiles}
           onInsertTrigger={insertContentTrigger}
@@ -4828,6 +4832,7 @@ export function Composer({
             className={`composer-access-menu__item composer-intent-menu__item${planModeOn ? " composer-access-menu__item--active" : ""}`}
             onClick={() => chooseTaskMode(planModeOn ? "normal" : "plan")}
             disabled={disabled || running}
+            title={running ? t("composer.runningGateHint") : undefined}
           >
             <List size={16} />
             <span className="composer-access-menu__copy">
@@ -4842,7 +4847,7 @@ export function Composer({
             className={`composer-access-menu__item composer-intent-menu__item${goalModeOn ? " composer-access-menu__item--active" : ""}`}
             onClick={() => chooseTaskMode(goalModeOn && !activeGoal ? "normal" : "goal")}
             disabled={disabled || running}
-            title={activeGoal || undefined}
+            title={running ? t("composer.runningGateHint") : (activeGoal || undefined)}
           >
             <Target size={16} />
             <span className="composer-access-menu__copy">
@@ -4928,6 +4933,7 @@ export function Composer({
                 aria-checked={normalizeSubagentPolicy(subagentPolicy) === level}
                 className={`composer-access-menu__item${normalizeSubagentPolicy(subagentPolicy) === level ? " composer-access-menu__item--active" : ""}`}
                 disabled={disabled || running}
+                title={running ? t("composer.runningGateHint") : undefined}
                 onClick={() => { onSetSubagentPolicy(level); setContentMenuOpen(false); closeIntentMenu(); }}>
                 <Users size={18} aria-hidden="true" />
                 <span className="composer-access-menu__copy"><span className="composer-access-menu__title">{t(`composer.subagentPolicy_${level}`)}</span></span>
@@ -5484,7 +5490,10 @@ export function Composer({
                     type="button"
                     className={`composer-content-trigger${contentMenuOpen ? " composer-content-trigger--open" : ""}`}
                     onClick={() => (contentMenuOpen ? setContentMenuOpen(false) : openContentMenu())}
-                    disabled={disabled || readOnly || running}
+                    // Task 594: the + menu must answer mid-turn — quick-command
+                    // and reference inserts are draft-only and stay usable
+                    // while running; per-item gates give the feedback.
+                    disabled={disabled || readOnly}
                     aria-haspopup="menu"
                     aria-expanded={contentMenuOpen}
                     aria-label={t("composer.contentMenuTitle")}

@@ -931,6 +931,7 @@ export const en = {
   "composer.capsuleRecordError": "Delete failed: ",
   "composer.contentAddAttachment": "Add file or image",
   "composer.contentAddAttachmentDesc": "Choose an attachment from this device",
+  "composer.runningGateHint": "Session is running — available once it finishes",
   "composer.contentReferenceFiles": "Reference file or folder",
   "composer.contentReferenceFilesDesc": "Add context from the current workspace",
   "composer.contentReferenceSessions": "Reference recent session",

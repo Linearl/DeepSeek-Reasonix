@@ -931,6 +931,7 @@ export const zh: Record<DictKey, string> = {
   "composer.capsuleRecordError": "删除失败：",
   "composer.contentAddAttachment": "添加文件或图片",
   "composer.contentAddAttachmentDesc": "从本机选择并附加到消息",
+  "composer.runningGateHint": "会话运行中，结束后可用",
   "composer.contentReferenceFiles": "引用文件或文件夹",
   "composer.contentReferenceFilesDesc": "从当前工作区选择上下文",
   "composer.contentReferenceSessions": "引用历史会话",
