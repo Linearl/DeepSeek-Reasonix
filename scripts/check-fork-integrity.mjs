@@ -1073,6 +1073,18 @@ const CHECKS = [
   { feature: "531 write_paths 解锁写并行引导（aggressive）", file: "internal/agent/subagent_policy.go", patterns: ["unlock parallel writers", "serializes every writer behind it"] },
   { feature: "531 文案钉测试（正面存在+write_paths 引导+公式措辞同步）", file: "internal/agent/subagent_policy_test.go", patterns: ["TestSubagentPolicyGuidancePositiveGuidance", "TestSubagentPolicyGuidanceStepCapWordingMatchesSchema"] },
 
+  // 任务508（wt-508-session-metrics，2026-10-06）：list_addressable_sessions 的
+  // include_stats 门控（eventsBytes/turns/lastActivityAt）。心跳轮换审计（509）
+  // 依赖这条「一次调用拿大小/轮次」的一等公民通道；全部字段是纯文件元数据
+  // （一次 os.Stat + 已读 meta 侧车的 turns），零正文解码。merge 若顶掉门控，
+  // 工具静默退回无统计状态且无编译错误——锚定门控指针行、stat 助手、turns
+  // 接力与门控默认关/开行为钉。
+  { feature: "508 include_stats 门控行字段（指针nil=不加键，关时行shape不变）", file: "internal/agent/session_collab_tools.go", patterns: ["EventsBytes    *int64 `json:\"eventsBytes,omitempty\"`", "if includeStats {", "payload[\"stats\"] ="] },
+  { feature: "508 stat 助手（只 stat 主事件日志，零正文解码，口径=脚本）", file: "internal/agent/session_collab_tools.go", patterns: ["func sessionEventLogStats(sessionPath string) (eventsBytes, lastActivityAtMS int64)", "store.SessionEventLog(sessionPath)"] },
+  { feature: "508 turns 从 meta 侧车接力（scanAddressable 单读携带）", file: "internal/agent/session_collab_tools.go", patterns: ["info.Turns = m.Turns"] },
+  { feature: "508 sessioncollab 侧 Turns 透传（ScanDirMeta 拷贝）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["Turns:          info.Turns,"] },
+  { feature: "508 行为钉（门控默认关=零键/开=对账读数/缺失文件=0）", file: "internal/agent/session_collab_stats_test.go", patterns: ["TestListAddressableSessionsStatsOffByDefault", "TestListAddressableSessionsStatsOnDemand", "TestListAddressableSessionsStatsMissingEventLog"] },
+
   // ── 任务499（wt-499-memory-fix）──────────────────────────────────
   // 桌面版内存膨胀（10-05 现场 14.6GB heap）的持有链两环：graph cache 无字节
   // 上限 + 全仓无失效点。字节上限（总 2048MiB / 单体 1024MiB，账目=st.size）

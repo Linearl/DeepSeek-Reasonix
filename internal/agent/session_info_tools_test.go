@@ -59,7 +59,7 @@ func TestDirectoryRowsCarryGroupAndFilterByGroup(t *testing.T) {
 		return "", false
 	}
 
-	page, err := directoryPageFiltered(cfg, 10, nil, "", "")
+	page, err := directoryPageFiltered(cfg, 10, nil, "", "", false)
 	if err != nil {
 		t.Fatalf("directoryPageFiltered: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestDirectoryRowsCarryGroupAndFilterByGroup(t *testing.T) {
 	}
 
 	// 大小写不敏感的组名过滤：只留命中组，total 只数过滤后的行。
-	page, err = directoryPageFiltered(cfg, 10, nil, "", "审计")
+	page, err = directoryPageFiltered(cfg, 10, nil, "", "审计", false)
 	if err != nil {
 		t.Fatalf("directoryPageFiltered(group): %v", err)
 	}
@@ -91,7 +91,7 @@ func TestDirectoryRowsCarryGroupAndFilterByGroup(t *testing.T) {
 	}
 
 	// 未命中组：零行但请求成功（空页，不是错误）。
-	page, err = directoryPageFiltered(cfg, 10, nil, "", "不存在组")
+	page, err = directoryPageFiltered(cfg, 10, nil, "", "不存在组", false)
 	if err != nil {
 		t.Fatalf("group filter miss: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestDirectoryRowsCarryGroupAndFilterByGroup(t *testing.T) {
 	}
 
 	// 探针为 nil：行的 group 字段整体缺席（payload 的 group 回显不算）。
-	page, err = directoryPageFiltered(SessionCollabConfig{SessionDir: cfg.SessionDir, WorkspaceRoot: cfg.WorkspaceRoot}, 10, nil, "", "")
+	page, err = directoryPageFiltered(SessionCollabConfig{SessionDir: cfg.SessionDir, WorkspaceRoot: cfg.WorkspaceRoot}, 10, nil, "", "", false)
 	if err != nil {
 		t.Fatalf("nil-probe page: %v", err)
 	}

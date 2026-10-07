@@ -12,6 +12,7 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/store"
 	"reasonix/internal/tool"
 )
 
@@ -266,22 +267,23 @@ type listAddressableSessionsTool struct{ cfg SessionCollabConfig }
 func (listAddressableSessionsTool) Name() string { return "list_addressable_sessions" }
 
 func (listAddressableSessionsTool) Description() string {
-	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id, and the sidebar session group when the host knows it (task 285). Task 348: rows registered with structured fields also carry identityType (human|main|sub|heartbeat|system), identityDomain and duties[] — absent for purpose-only sessions. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id; pass group to keep only one session group (task 454: the group title OR its flat id both work — e.g. reasonix-for-ai and collab-reasonix address the same group). Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
+	return "List the contact directory (通讯录): metadata only — title, purpose, contact_id, topic_id, and the sidebar session group when the host knows it (task 285). Task 348: rows registered with structured fields also carry identityType (human|main|sub|heartbeat|system), identityDomain and duties[] — absent for purpose-only sessions. No transcript content (read_session_tail does that). Task 174 merged search in: omit query for the newest-first page; pass query for a keyword filter over title/purpose/contact_id/topic_id; pass group to keep only one session group (task 454: the group title OR its flat id both work — e.g. reasonix-for-ai and collab-reasonix address the same group). Task 175: pass sent=true to read YOUR OWN outgoing log — the misdirected-send check after a batch dispatch. Task 508: pass include_stats=true to add per-row eventsBytes / turns / lastActivityAt (file size and persisted sidecar counters — still zero transcript bytes; this is what a heartbeat rotation audit needs to size up sessions in one call). Use contact_id, topic_id, or the exact title as `to` in talk_to_session. Entries frozen for over a week carry stale=true (task 175) — re-check before trusting the purpose. Experimental."
 }
 
 func (listAddressableSessionsTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max rows to return (directory: newest first, default 200, max 1000; sent: default 20)."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."},"group":{"type":"string","description":"Keep only sessions in this sidebar session group (task 285/454; case-insensitive group title or flat group id — the returned rows name the title). Omit for all groups."},"sent":{"type":"boolean","description":"Return your OWN outgoing log instead of the directory (task 175) — id, recipient, thread, first line of each message you sent. Use it to catch a misdirected send."}},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max rows to return (directory: newest first, default 200, max 1000; sent: default 20)."},"archived":{"type":"boolean","description":"Include retired archive sessions (default false)."},"query":{"type":"string","description":"Keyword filter over title/purpose/ids (the old search_sessions). Omit for the unfiltered newest-first page."},"group":{"type":"string","description":"Keep only sessions in this sidebar session group (task 285/454; case-insensitive group title or flat group id — the returned rows name the title). Omit for all groups."},"sent":{"type":"boolean","description":"Return your OWN outgoing log instead of the directory (task 175) — id, recipient, thread, first line of each message you sent. Use it to catch a misdirected send."},"include_stats":{"type":"boolean","description":"Task 508: add eventsBytes (size of the PRIMARY event log <id>.events.jsonl only — sidecars like .meta/.turns/.damaged are NOT counted; 0 when the log is missing), turns (persisted meta sidecar counter; 0 = unknown), lastActivityAt (event-log mtime, ms epoch; 0 = unknown) to every row. Default false — without it rows carry no stats keys at all. Still metadata only: one stat per row, no log body is ever read."}},"required":[]}`)
 }
 
 func (listAddressableSessionsTool) ReadOnly() bool { return true }
 
 func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		Limit    int    `json:"limit"`
-		Archived *bool  `json:"archived"`
-		Query    string `json:"query"`
-		Group    string `json:"group"`
-		Sent     bool   `json:"sent"`
+		Limit        int    `json:"limit"`
+		Archived     *bool  `json:"archived"`
+		Query        string `json:"query"`
+		Group        string `json:"group"`
+		Sent         bool   `json:"sent"`
+		IncludeStats bool   `json:"include_stats"`
 	}
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &p)
@@ -289,7 +291,7 @@ func (t listAddressableSessionsTool) Execute(_ context.Context, args json.RawMes
 	if p.Sent {
 		return sentLogPage(t.cfg, p.Limit)
 	}
-	return directoryPageFiltered(t.cfg, p.Limit, p.Archived, p.Query, p.Group)
+	return directoryPageFiltered(t.cfg, p.Limit, p.Archived, p.Query, p.Group, p.IncludeStats)
 }
 
 // sentLogPage renders the caller's own outgoing log (task 175), reachable as
@@ -574,14 +576,21 @@ func collabDispatchEcho(cfg SessionCollabConfig) []string {
 const collabDirectoryMaxRows = 1000
 
 func directoryPage(cfg SessionCollabConfig, limit int, archived *bool, query string) (string, error) {
-	return directoryPageFiltered(cfg, limit, archived, query, "")
+	return directoryPageFiltered(cfg, limit, archived, query, "", false)
 }
 
 // directoryPageFiltered is directoryPage with the task-285 group filter: rows
 // carry their sidebar session group (when the host probe knows it) and a
 // non-empty group argument keeps only that group. The filter applies BEFORE
 // the eligibility count, so `total` respects it exactly like the query filter.
-func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, query, group string) (string, error) {
+//
+// includeStats (task 508) gates the per-row eventsBytes/turns/lastActivityAt
+// enrichment. Off — the default and every pre-508 caller — the row shape is
+// byte-identical to before; on, each EMITTED row (never a paged-out one)
+// gains the three fields. Both sources are metadata, not content: turns comes
+// from the meta sidecar already read by the scan, and the other two are one
+// os.Stat on the primary event log — the log body is never opened.
+func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, query, group string, includeStats bool) (string, error) {
 	if limit <= 0 {
 		limit = 200
 	}
@@ -615,6 +624,16 @@ func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, q
 		IdentityType   string   `json:"identityType,omitempty"`
 		IdentityDomain string   `json:"identityDomain,omitempty"`
 		Duties         []string `json:"duties,omitempty"`
+		// 任务 508: stats, present only when the caller passed include_stats=true
+		// (pointers stay nil otherwise, so the un-gated row shape is unchanged).
+		// When present they are ALWAYS emitted — even as 0 — so a consumer can
+		// tell "no event log on disk" (eventsBytes 0) from "stats not requested"
+		// (keys absent). eventsBytes/lastActivityAt cover ONLY the primary event
+		// log <id>.events.jsonl: no sidecar (.meta/.turns.jsonl/.damaged) is
+		// counted, matching heartbeat_session_rotate.py's accounting.
+		EventsBytes    *int64 `json:"eventsBytes,omitempty"`
+		Turns          *int   `json:"turns,omitempty"`
+		LastActivityAt *int64 `json:"lastActivityAt,omitempty"`
 	}
 	// A duty older than a week, in a codebase where batches live for days, is
 	// presumed stale rather than presumed current.
@@ -665,6 +684,14 @@ func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, q
 				IdentityDomain: id.IdentityDomain,
 				Duties:         id.Duties,
 			})
+			if includeStats {
+				eventsBytes, lastActivityAt := sessionEventLogStats(id.SessionPath)
+				turns := id.Turns
+				r := &rows[len(rows)-1]
+				r.EventsBytes = &eventsBytes
+				r.Turns = &turns
+				r.LastActivityAt = &lastActivityAt
+			}
 		}
 	}
 	payload := map[string]any{
@@ -678,6 +705,12 @@ func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, q
 		"note":     "live conversations only; pass archived=true to include retired history. Deleted (.trash) sessions are never listed.",
 		"sessions": rows,
 	}
+	// 任务 508: when stats ride the rows, say so — and pin the accounting so a
+	// heartbeat audit never mistakes eventsBytes for a directory-wide total
+	// (sidecars excluded) or turns for a live replay (persisted counter).
+	if includeStats {
+		payload["stats"] = "eventsBytes = primary event log (<id>.events.jsonl) size only, sidecars (.meta/.turns/.damaged) excluded, 0 when missing; turns = persisted meta-sidecar counter, 0 = unknown; lastActivityAt = event-log mtime (ms epoch), 0 = unknown. Metadata only — no log body is read."
+	}
 	// Task 243 A2: the directory doubles as the batch echo — who this turn
 	// already dispatched to, so a batch dispatcher can spot its own sends
 	// before double-sending (tasks 175/218).
@@ -686,6 +719,22 @@ func directoryPageFiltered(cfg SessionCollabConfig, limit int, archived *bool, q
 	}
 	out, _ := json.Marshal(payload)
 	return string(out), nil
+}
+
+// sessionEventLogStats answers task 508's "how big, how active?" for one
+// session with filesystem metadata only: the size and mtime of the PRIMARY
+// event log (<id>.events.jsonl). The log body is never opened — a 200 MB
+// transcript costs the same one stat as an empty one. Sidecars (.meta,
+// .turns.jsonl, .damaged, ...) are deliberately NOT counted, so the number
+// reconciles exactly with heartbeat_session_rotate.py's `os.path.getsize` on
+// the same file. A missing log (fresh session, or one still on the array
+// format) reports 0/0 — unknown, never a guessed activity time.
+func sessionEventLogStats(sessionPath string) (eventsBytes, lastActivityAtMS int64) {
+	info, err := os.Stat(store.SessionEventLog(sessionPath))
+	if err != nil {
+		return 0, 0
+	}
+	return info.Size(), info.ModTime().UnixMilli()
 }
 
 // topicInSessionGroup applies the task-454 group filter: a row stays when the
@@ -1354,6 +1403,9 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 			info.IdentityType = m.IdentityType
 			info.IdentityDomain = m.IdentityDomain
 			info.Duties = m.Duties
+			// 任务 508: the persisted turn count rides the same read. 0 (older
+			// sidecars, purpose-only sessions) means unknown — never a guess.
+			info.Turns = m.Turns
 		}
 		return info
 	}
