@@ -1029,6 +1029,15 @@ const CHECKS = [
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
   { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/20/10/1", "identical feature ids", "registers agree on every tier"] },
+
+  // ── 任务563 图墙 16 项三要素 + 弹窗详情（表B 第6/7列 + 实时状态 + 建议开启角标）──
+  { feature: "任务563 图墙卡片三要素（徽章/一句话效果/实时状态）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["lab-picks-wall__card-effect", "lab-picks-wall__card-state", "useLabWallOn()", "suggestEnable(EXPERIMENT_FEATURE_TIERS[id], on)"] },
+  { feature: "任务563 详情弹窗（portal 挂 body 防 529 裁剪，Escape 仅关顶层）", file: "desktop/frontend/src/components/LabPickDetailDialog.tsx", patterns: ["createPortal(", "document.body", 'addEventListener("keydown", onKey, true)'] },
+  { feature: "任务563 图墙实时状态经 context（钉死挂载串不动，features 数组派生）", file: "desktop/frontend/src/lib/labWallOn.ts", patterns: ["LabWallOnContext", "labWallOnFor"] },
+  { feature: "任务563 表B 文案运行时数据（yaml labPicks 段，词不带货）", file: "desktop/frontend/src/lib/forkFeaturesYaml.ts", patterns: ["labPicks: LabPickCopy[]", "labPickCopyFor"] },
+  { feature: "任务563 建议开启规则（仅推荐档且未开启，纯函数单源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["export function suggestEnable(tier: LabTier, on: boolean): boolean"] },
+  { feature: "任务563 状态提供方（ExperimentalSection 从 features 派生，合并卡成员读自身键）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["LabWallOnContext.Provider value={labWallOnById}", "features.find((f) => f.id === pick)", "Boolean(s.experimentalRestartUpdate)"] },
+  { feature: "任务563 验收测试（三要素/弹窗/角标两态/新增项不进墙/表B逐字）", file: "desktop/frontend/src/__tests__/task563-lab-picks-wall.test.ts", patterns: ["byte-equal to xlsx 表B cols 6/7", "recommended + off ⇒ badge shows", "simulated new tier item is absent from LAB_WALL_PICKS"] },
 ];
 
 let failed = 0;
