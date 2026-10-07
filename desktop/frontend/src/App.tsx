@@ -1522,6 +1522,9 @@ export default function App() {
   // open/running state instead of a fresh proxy method identity per render.
   const capsuleListSubagents = useCallback((sessionPath: string) => app.ListSubagentsByParent(sessionPath), []);
   const capsuleReadSubagent = useCallback((sessionPath: string, ref: string) => app.ReadSubagentSession(sessionPath, ref), []);
+  // Task 558 capsule: delete surface for the ended sub-agents directory.
+  const capsuleDeleteSubagent = useCallback((sessionPath: string, ref: string) => app.DeleteSubagentRecord(sessionPath, ref), []);
+  const capsuleClearEndedSubagents = useCallback((sessionPath: string) => app.ClearEndedSubagents(sessionPath), []);
   const composerSessionKey = useMemo(() => {
     return composerDraftKeyForTab(activeTab, activeTabId);
   }, [activeTab, activeTabId]);
@@ -5517,6 +5520,8 @@ export default function App() {
               capsuleSessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}
               onCapsuleListSubagents={capsuleListSubagents}
               onCapsuleReadSubagent={capsuleReadSubagent}
+              onCapsuleDeleteSubagent={capsuleDeleteSubagent}
+              onCapsuleClearEndedSubagents={capsuleClearEndedSubagents}
               tabId={activeTabId} turnId={remoteSurfaceActive ? undefined : state.activeTurnId}
               effort={remoteSurfaceActive ? remoteSession.effort : state.effort}
               onSend={remoteSurfaceActive ? remoteComposerSend : handleComposerSend}

@@ -139,6 +139,8 @@ async function renderIndicator(props: {
   onCancelJob?: (jobID: string) => Promise<boolean>;
   onCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
   sessionPath?: string;
+  onDeleteSubagent?: (sessionPath: string, ref: string) => Promise<void>;
+  onClearEndedSubagents?: (sessionPath: string) => Promise<number>;
 }) {
   activeHost = document.createElement("div");
   document.body.appendChild(activeHost);
@@ -154,6 +156,8 @@ async function renderIndicator(props: {
           sessionPath={props.sessionPath}
           onListSubagents={onListSubagents}
           onReadSubagent={onReadSubagent}
+          onDeleteSubagent={props.onDeleteSubagent}
+          onClearEndedSubagents={props.onClearEndedSubagents}
         />
       </LocaleProvider>,
     );
@@ -198,6 +202,29 @@ function triggerButton(): HTMLButtonElement {
   const button = document.querySelector<HTMLButtonElement>(".capsule__trigger");
   if (!button) throw new Error("missing capsule trigger");
   return button;
+}
+
+// expandEnded clicks the ended-directory collapse toggle (task 558: the
+// directory defaults to collapsed, so any row-level assertion opts in first).
+async function expandEnded(waitMs = 10) {
+  const toggle = document.querySelector<HTMLButtonElement>(".capsule-panel__ended-toggle");
+  if (!toggle) throw new Error("missing ended toggle");
+  await act(async () => {
+    toggle.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    await flush(waitMs);
+  });
+}
+
+// clickConfirm clicks an in-place confirm button twice (arm, then confirm) —
+// the InlineConfirmButton contract.
+async function clickConfirm(button: HTMLButtonElement | null, waitMs = 10) {
+  if (!button) throw new Error("missing confirm button");
+  for (let i = 0; i < 2; i += 1) {
+    await act(async () => {
+      button.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+      await flush(waitMs);
+    });
+  }
 }
 
 async function clickTrigger(waitMs = 10) {
@@ -500,11 +527,13 @@ section("已结束子代理目录：过滤运行中、缺失转录禁点");
   eq(trigger.querySelector(".capsule__badge"), null, "目录只在打开后加载，未开无徽标");
   await clickTrigger(30);
   ok(document.querySelector('[data-capsule-group="ended"]') !== null, "已结束节渲染");
-  const rows = document.querySelectorAll<HTMLButtonElement>("[data-capsule-ended-id]");
+  eq(document.querySelectorAll("[data-capsule-ended-id]").length, 0, "任务 558：已结束目录默认折叠，行不渲染");
+  await expandEnded();
+  const rows = document.querySelectorAll("[data-capsule-ended-id]");
   eq(rows.length, 3, "目录只列非 running 条目");
-  const missing = document.querySelector<HTMLButtonElement>('[data-capsule-ended-id="sa_4"]');
+  const missing = document.querySelector<HTMLButtonElement>('[data-capsule-ended-id="sa_4"] .capsule-panel__row-main');
   eq(missing?.disabled, true, "缺转录条目禁用不可点");
-  eq(missing?.dataset.capsuleEndedOpenable, "false", "缺转录条目标记 openable=false");
+  eq(document.querySelector('[data-capsule-ended-id="sa_4"]')?.getAttribute("data-capsule-ended-openable"), "false", "缺转录条目标记 openable=false");
   eq(document.querySelector('[data-capsule-ended-id="sa_1"]')?.getAttribute("data-capsule-ended-status"), "completed", "条目带状态标记");
   ok(listCalls.length > 0, "目录查询已发起");
   eq(listCalls[0], "capsule-parent.jsonl", "目录查询携带会话路径");
@@ -527,6 +556,7 @@ section("目录事件驱动刷新：面板常开期间单个任务结束即重�
   listResult = Promise.resolve([ended({ ref: "sa_old", name: "旧条目" })]);
   await renderIndicator({ jobs: jobsTwo, sessionPath: "s.jsonl" });
   await clickTrigger(30);
+  await expandEnded();
   const callsAfterOpen = listCalls.length;
   ok(callsAfterOpen > 0, "打开时目录已拉取");
   ok(document.querySelector('[data-capsule-ended-id="sa_old"]') !== null, "既有条目在目录中");
@@ -607,7 +637,8 @@ section("子代理历史：加载态与失败态");
   readResult = new Promise((_resolve, reject) => { rejectRead = reject; });
   await renderIndicator({ jobs: [], sessionPath: "capsule-parent.jsonl" });
   await clickTrigger();
-  const row = document.querySelector<HTMLButtonElement>('[data-capsule-ended-id="sa_load"]');
+  await expandEnded();
+  const row = document.querySelector<HTMLButtonElement>('[data-capsule-ended-id="sa_load"] .capsule-panel__row-main');
   await act(async () => {
     row?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
     await flush();
@@ -634,6 +665,190 @@ section("子代理历史：加载态与失败态");
   await cleanup();
 }
 
+section("任务 558 折叠规则：已结束默认折叠（failed/interrupted 同口径）、运行中始终展开、会话内记住");
+{
+  listCalls.length = 0;
+  const views = [
+    ended({ ref: "sa_c1", name: "完成件", status: "completed" }),
+    ended({ ref: "sa_c2", name: "失败件", status: "failed" }),
+    ended({ ref: "sa_c3", name: "中断件", status: "interrupted" }),
+  ];
+  listResult = Promise.resolve(views);
+  await renderIndicator({ jobs: [job({ id: "task-live", kind: "task", label: "运行中" })], sessionPath: "s.jsonl" });
+  await clickTrigger(30);
+  const group = document.querySelector('[data-capsule-group="ended"]');
+  ok(group !== null, "已结束节头（计数标题）始终可见");
+  eq(group?.getAttribute("data-capsule-ended-expanded"), "false", "默认折叠");
+  eq(document.querySelector('.capsule-panel__ended-toggle')?.getAttribute("aria-expanded"), "false", "开关 aria-expanded=false");
+  eq(document.querySelectorAll("[data-capsule-ended-id]").length, 0, "折叠时不渲染行（12 项平铺撑满整屏的反例不再出现）");
+  ok(document.querySelector('[data-capsule-job-id="task-live"]') !== null, "运行区不受折叠影响，始终展开");
+  // failed / interrupted 与 completed 同口径：折叠态下三者都不可见，展开后一齐出现。
+  await expandEnded();
+  eq(group?.getAttribute("data-capsule-ended-expanded"), "true", "手动展开生效");
+  eq(document.querySelectorAll("[data-capsule-ended-id]").length, 3, "展开后 completed/failed/interrupted 全部可见");
+  eq(document.querySelector('.capsule-panel__ended-toggle')?.getAttribute("aria-expanded"), "true", "开关 aria-expanded=true");
+  await expandEnded();
+  eq(document.querySelectorAll("[data-capsule-ended-id]").length, 0, "再点收起，行随之隐藏");
+  // 会话内记住：展开状态跨面板开合保留（组件常驻，不随面板卸载）。
+  await expandEnded();
+  await clickTrigger(220); // 关闭面板
+  await act(async () => { await flush(200); });
+  await clickTrigger(30); // 重新打开
+  await act(async () => { await flush(300); });
+  eq(document.querySelectorAll("[data-capsule-ended-id]").length, 3, "重开面板仍保持展开（会话内记住）");
+  await cleanup();
+  // 重启语义：重新挂载回到默认折叠（不持久化）。
+  listResult = Promise.resolve(views);
+  await renderIndicator({ jobs: [], sessionPath: "s.jsonl" });
+  await clickTrigger(30);
+  await act(async () => { await flush(200); });
+  eq(document.querySelectorAll("[data-capsule-ended-id]").length, 0, "重新挂载后回到默认折叠（重启回到默认）");
+  await cleanup();
+}
+
+section("任务 558 单条删除：两段确认 → (sessionPath, ref) → 重拉目录 → 行消失");
+{
+  listCalls.length = 0;
+  readCalls.length = 0;
+  const holder: { rows: SubagentArtifactView[] } = {
+    rows: [ended({ ref: "sa_d1", name: "待删件" }), ended({ ref: "sa_d2", name: "保留件" })],
+  };
+  listResult = Promise.resolve(holder.rows);
+  const deleted: Array<[string, string]> = [];
+  await renderIndicator({
+    jobs: [],
+    sessionPath: "capsule-parent.jsonl",
+    onDeleteSubagent: (sessionPath, ref) => {
+      deleted.push([sessionPath, ref]);
+      holder.rows = holder.rows.filter((row) => row.ref !== ref);
+      // 模拟后端：下一次目录查询反映删除后的状态。
+      listResult = Promise.resolve(holder.rows);
+      return Promise.resolve();
+    },
+  });
+  await clickTrigger(30);
+  await expandEnded();
+  const callsBefore = listCalls.length;
+  const deleteButton = document.querySelector<HTMLButtonElement>('[data-capsule-ended-id="sa_d1"] .inline-confirm button');
+  ok(deleteButton !== null, "每行有删除入口");
+  await clickConfirm(deleteButton);
+  await act(async () => { await flush(30); });
+  eq(deleted.length, 1, "两段确认后删除调用恰好一次");
+  eq(deleted[0]?.[0], "capsule-parent.jsonl", "删除调用携带会话路径");
+  eq(deleted[0]?.[1], "sa_d1", "删除调用携带目标 ref");
+  eq(listCalls.length, callsBefore + 1, "删除成功后目录自动重拉（刷新为真值来源）");
+  ok(document.querySelector('[data-capsule-ended-id="sa_d1"]') === null, "已删条目从目录消失");
+  ok(document.querySelector('[data-capsule-ended-id="sa_d2"]') !== null, "其余条目保持");
+  await cleanup();
+}
+
+section("任务 558 单条删除失败：错误行内展示，记录保留");
+{
+  listCalls.length = 0;
+  listResult = Promise.resolve([ended({ ref: "sa_err", name: "删不掉件" })]);
+  await renderIndicator({
+    jobs: [],
+    sessionPath: "s.jsonl",
+    onDeleteSubagent: () => Promise.reject(new Error("disk busy")),
+  });
+  await clickTrigger(30);
+  await expandEnded();
+  const button = document.querySelector<HTMLButtonElement>('[data-capsule-ended-id="sa_err"] .inline-confirm button');
+  await clickConfirm(button);
+  await act(async () => { await flush(30); });
+  ok(document.querySelector("[data-capsule-record-error]") !== null, "失败显示行内错误");
+  ok((document.querySelector("[data-capsule-record-error]")?.textContent ?? "").includes("disk busy"), "错误含后端原因");
+  ok(document.querySelector('[data-capsule-ended-id="sa_err"]') !== null, "删除失败的记录保留在目录");
+  await cleanup();
+}
+
+section("任务 558 查看详情后删除：返回列表再删，记录与文件一并消失");
+{
+  readCalls.length = 0;
+  const holder: { rows: SubagentArtifactView[] } = { rows: [ended({ ref: "sa_open", name: "打开件" })] };
+  listResult = Promise.resolve(holder.rows);
+  readResult = Promise.resolve([]);
+  await renderIndicator({
+    jobs: [],
+    sessionPath: "s.jsonl",
+    onDeleteSubagent: () => {
+      holder.rows = [];
+      listResult = Promise.resolve(holder.rows);
+      return Promise.resolve();
+    },
+  });
+  await clickTrigger(30);
+  await expandEnded();
+  const rowMain = document.querySelector<HTMLButtonElement>('[data-capsule-ended-id="sa_open"] .capsule-panel__row-main');
+  await act(async () => {
+    rowMain?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    await flush(30);
+  });
+  ok(document.querySelector("[data-capsule-history]") !== null, "详情已打开");
+  const back = document.querySelector<HTMLButtonElement>(".capsule-panel__back");
+  await act(async () => {
+    back?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    await flush();
+  });
+  ok(document.querySelector("[data-capsule-history]") === null, "返回退出详情视图");
+  const confirmButton = document.querySelector<HTMLButtonElement>('[data-capsule-ended-id="sa_open"] .inline-confirm button');
+  await clickConfirm(confirmButton);
+  await act(async () => { await flush(30); });
+  ok(document.querySelector('[data-capsule-ended-id="sa_open"]') === null, "记录删除后目录清空");
+  ok(document.querySelector("[data-capsule-history]") === null, "详情不再显示");
+  await cleanup();
+}
+
+section("任务 558 清空已结束：调 onClearEndedSubagents(sessionPath)，运行区不受影响");
+{
+  listCalls.length = 0;
+  const holder: { rows: SubagentArtifactView[] } = {
+    rows: [
+      ended({ ref: "sa_x1", name: "完一件", status: "completed" }),
+      ended({ ref: "sa_x2", name: "败一件", status: "failed" }),
+      ended({ ref: "sa_x3", name: "断一件", status: "interrupted" }),
+    ],
+  };
+  listResult = Promise.resolve(holder.rows);
+  const cleared: string[] = [];
+  await renderIndicator({
+    jobs: [job({ id: "task-keep", kind: "task", label: "仍在运行" })],
+    sessionPath: "s.jsonl",
+    onClearEndedSubagents: (sessionPath) => {
+      cleared.push(sessionPath);
+      holder.rows = [];
+      listResult = Promise.resolve(holder.rows);
+      return Promise.resolve(holder.rows.length);
+    },
+  });
+  await clickTrigger(30);
+  await expandEnded();
+  eq(document.querySelectorAll("[data-capsule-ended-id]").length, 3, "清空前 3 条已结束可见");
+  const callsBefore = listCalls.length;
+  const clearButton = document.querySelector<HTMLButtonElement>('.capsule-panel__ended-head .inline-confirm button');
+  ok(clearButton !== null, "已结束节头有清空入口");
+  await clickConfirm(clearButton);
+  await act(async () => { await flush(30); });
+  eq(cleared.length, 1, "两段确认后清空调用恰好一次");
+  eq(cleared[0], "s.jsonl", "清空调用携带会话路径");
+  eq(listCalls.length, callsBefore + 1, "清空成功后目录自动重拉");
+  eq(document.querySelectorAll("[data-capsule-ended-id]").length, 0, "已结束目录清空");
+  ok(document.querySelector('[data-capsule-job-id="task-keep"]') !== null, "运行中的任务不受清空影响");
+  await cleanup();
+}
+
+section("任务 558 未接删除链时不渲染说谎的删除/清空入口");
+{
+  listResult = Promise.resolve([ended({ ref: "sa_nochain", name: "无链件" })]);
+  await renderIndicator({ jobs: [], sessionPath: "s.jsonl" });
+  await clickTrigger(30);
+  await expandEnded();
+  eq(document.querySelector(".inline-confirm"), null, "无 onDeleteSubagent 时不渲染删除按钮");
+  eq(document.querySelector(".capsule-panel__ended-head .inline-confirm"), null, "无 onClearEndedSubagents 时不渲染清空按钮");
+  ok(document.querySelector('[data-capsule-ended-id="sa_nochain"]') !== null, "目录展示不受影响");
+  await cleanup();
+}
+
 section("详情就绪分支：源级契约断言（Transcript 挂载）");
 {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -645,6 +860,25 @@ section("详情就绪分支：源级契约断言（Transcript 挂载）");
   ok(source.includes('view.status !== "running"'), "目录过滤 running 条目");
   ok(source.includes('data-capsule-badge="running"'), "徽标只以 running 态渲染（任务 497）");
   ok(!source.includes("data-capsule-badge={"), "徽标不再按运行/结束二态切换取值");
+  // 任务 558 源级契约：折叠默认值、删除经注入的 Wails 方法、成功后重拉。
+  ok(source.includes("const [endedExpanded, setEndedExpanded] = useState(false)"), "已结束目录默认折叠（useState(false)）");
+  ok(source.includes("onDeleteSubagent(sessionPath ?? \"\", view.ref)"), "单条删除按 (sessionPath, ref) 走注入的 Wails 方法");
+  ok(source.includes("onClearEndedSubagents(sessionPath ?? \"\")"), "清空已结束走注入的 Wails 方法");
+  ok(source.includes("setListNonce((n) => n + 1)"), "删除/清空成功后经 nonce 触发目录重拉");
+  ok(source.includes('status !== "running"') || source.includes('view.status !== "running"'), "已结束目录口径排除 running");
+}
+
+section("任务 558 限高：列表内部滚动 CSS 契约（空态走 .capsule-panel__empty，无大空块）");
+{
+  const here = dirname(fileURLToPath(import.meta.url));
+  const css = readFileSync(resolve(here, "../styles.css"), "utf8");
+  const listBlock = css.match(/\.capsule-panel__list\s*{[^}]*}/);
+  ok(listBlock !== null, ".capsule-panel__list 规则存在");
+  ok((listBlock?.[0] ?? "").includes("max-height"), "列表限高（超出滚动而非撑满整屏）");
+  ok((listBlock?.[0] ?? "").includes("min(46vh"), "限高随视口缩放（约 46% 视口封顶 430px）");
+  ok((listBlock?.[0] ?? "").includes("overflow-y: auto"), "超出部分列表内部滚动");
+  const source = readFileSync(resolve(here, "../components/CapsulePanel.tsx"), "utf8");
+  ok(source.includes('className="capsule-panel__empty"'), "空数据走空态分支，不渲染限高列表（无怪异大空块）");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

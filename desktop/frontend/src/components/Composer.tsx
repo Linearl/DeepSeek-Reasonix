@@ -650,6 +650,8 @@ export function Composer({
   capsuleSessionPath,
   onCapsuleListSubagents,
   onCapsuleReadSubagent,
+  onCapsuleDeleteSubagent,
+  onCapsuleClearEndedSubagents,
   onInvocationMetadataChange,
 }: {
   running: boolean;
@@ -803,6 +805,9 @@ export function Composer({
   // Stable wrappers over the read-only subagent Wails surface (task 447).
   onCapsuleListSubagents?: (sessionPath: string) => Promise<import("../lib/types").SubagentArtifactView[]>;
   onCapsuleReadSubagent?: (sessionPath: string, ref: string) => Promise<import("../lib/types").HistoryMessage[]>;
+  // Task 558 delete surface for the ended sub-agents directory.
+  onCapsuleDeleteSubagent?: (sessionPath: string, ref: string) => Promise<void>;
+  onCapsuleClearEndedSubagents?: (sessionPath: string) => Promise<number>;
 }) {
   const { t, locale } = useI18n();
   const { showToast } = useToast();
@@ -5393,6 +5398,8 @@ export function Composer({
                   sessionPath={capsuleSessionPath}
                   onListSubagents={onCapsuleListSubagents}
                   onReadSubagent={onCapsuleReadSubagent}
+                  onDeleteSubagent={onCapsuleDeleteSubagent}
+                  onClearEndedSubagents={onCapsuleClearEndedSubagents}
                 />
               </div>
             )}

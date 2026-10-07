@@ -221,25 +221,87 @@ func ListSubagentsByParent(sessionDir, parentSession string) ([]SubagentArtifact
 }
 
 // DeleteSubagentsByParent permanently removes sub-agent artifacts owned by a
-// parent session. Missing counterpart files are ignored.
+// parent session, running ones included — session-destroy paths rely on the
+// sweep reaching still-attached children. Missing counterpart files are
+// ignored.
 func DeleteSubagentsByParent(sessionDir, parentSession string) error {
 	artifacts, err := ListSubagentsByParent(sessionDir, parentSession)
 	if err != nil {
 		return err
 	}
 	for _, artifact := range artifacts {
-		paths := []string{artifact.SessionPath, artifact.MetaPath}
-		// Sub-agent saves are single-file today, but sweep transcript sidecars
-		// (event log, event index, …) so no earlier build's artifacts survive
-		// the delete.
-		paths = append(paths, store.SessionSidecarFiles(artifact.SessionPath)...)
-		for _, path := range paths {
-			if path == "" {
-				continue
-			}
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				return err
-			}
+		if err := removeSubagentArtifactFiles(artifact); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteEndedSubagents permanently removes every non-running sub-agent
+// artifact owned by a parent session and returns how many records were
+// removed. Running invocations are left untouched — their transcripts are
+// still being written. Like DeleteSubagentsByParent, cleanup converges on the
+// fully-deleted state: a retry after a partial failure re-lists whatever
+// remains, and missing counterpart files are tolerated rather than fatal.
+func DeleteEndedSubagents(sessionDir, parentSession string) (int, error) {
+	artifacts, err := ListSubagentsByParent(sessionDir, parentSession)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, artifact := range artifacts {
+		if artifact.Meta.Status == SubagentRunning {
+			continue
+		}
+		if err := removeSubagentArtifactFiles(artifact); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
+}
+
+// DeleteSubagentArtifact permanently removes one sub-agent artifact owned by
+// the given parent session. The ref must appear in the parent's own artifact
+// list — membership is proven before any path is built, so a traversal-shaped
+// ref can only fail with "not found". A record still marked running is
+// refused: its transcript is being written, and deleting it mid-run would
+// strand the writer. (The listing snapshot can theoretically race a
+// continuation that flips a terminal record back to running; the window is a
+// single re-list, and the resumed save then fails loudly instead of
+// corrupting anything.) The remove itself is convergent — transcript,
+// sidecars, and metadata each tolerate already being gone, so a retry after a
+// partial failure finishes the job.
+func DeleteSubagentArtifact(sessionDir, parentSession, ref string) error {
+	artifacts, err := ListSubagentsByParent(sessionDir, parentSession)
+	if err != nil {
+		return err
+	}
+	for _, artifact := range artifacts {
+		if artifact.Ref != ref {
+			continue
+		}
+		if artifact.Meta.Status == SubagentRunning {
+			return fmt.Errorf("subagent %q is still running", ref)
+		}
+		return removeSubagentArtifactFiles(artifact)
+	}
+	return fmt.Errorf("subagent %q does not belong to this session", ref)
+}
+
+// removeSubagentArtifactFiles deletes one artifact's transcript, its sidecars,
+// and its metadata. Sub-agent saves are single-file today, but sidecars are
+// swept (event log, event index, …) so no earlier build's artifacts survive
+// the delete; files that are already gone are not an error.
+func removeSubagentArtifactFiles(artifact SubagentArtifact) error {
+	paths := []string{artifact.SessionPath, artifact.MetaPath}
+	paths = append(paths, store.SessionSidecarFiles(artifact.SessionPath)...)
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
 		}
 	}
 	return nil

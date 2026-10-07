@@ -932,6 +932,14 @@ const CHECKS = [
   // 任务440 时长实时跳动行为钉：丢了会让「已运行时长」退化成静态快照（打开
   // 时刻的值不再推进），用户无法判断任务是否仍在推进。
   { feature: "任务440 时长实时跳动行为钉（打开注册秒级定时器/触发推进/关闭清理）", file: "desktop/frontend/src/__tests__/capsule-panel.test.tsx", patterns: ["时长实时跳动：面板打开且运行中每秒刷新（任务 440 ①）", "定时器触发后时长标签实时跳动（+3s）", "面板关闭时清理秒级刷新定时器"] },
+  // 任务558（wt-558-subagent-panel，2026-10-06）：已结束目录限高 + 删除记录
+  //（含文件清理）+ 默认折叠。删除是「记录+文件」双清（收敛式，缺件容忍），
+  // merge 顶掉任一环都会退化成「只藏行不删文件」或「12 项平铺撑满整屏」。
+  { feature: "任务558 删除原语（单条/清空已结束，sidecar 收敛清理）", file: "internal/agent/subagent_store.go", patterns: ["func DeleteSubagentArtifact", "func DeleteEndedSubagents", "func removeSubagentArtifactFiles"] },
+  { feature: "任务558 桌面桥接（DeleteSubagentRecord/ClearEndedSubagents）", file: "desktop/subagents_app.go", patterns: ["func (a *App) DeleteSubagentRecord", "func (a *App) ClearEndedSubagents"] },
+  { feature: "任务558 面板折叠与删除入口（默认折叠+会话内记住+nonce 重拉）", file: "desktop/frontend/src/components/CapsulePanel.tsx", patterns: ["const [endedExpanded, setEndedExpanded] = useState(false)", "data-capsule-ended-expanded={endedExpanded}", "deleteRecord", "clearEnded"] },
+  { feature: "任务558 已结束列表限高+内部滚动", file: "desktop/frontend/src/styles.css", patterns: [".capsule-panel__list", "max-height: min(46vh, 430px)", "overscroll-behavior: contain"] },
+  { feature: "任务558 行为钉测试（折叠默认/两段确认删除/重拉目录）", file: "desktop/frontend/src/__tests__/capsule-panel.test.tsx", patterns: ["已结束目录默认折叠，行不渲染", "两段确认后删除调用恰好一次", "删除/清空成功后经 nonce 触发目录重拉"] },
   // 任务462：跨会话消息卡显示双方对话名（contact_id 降为 hover）。解析层丢
   // 了会退回裸 sc_id；降级与 hover 断言丢了会掩盖「id 丢失/空白渲染」回归。
   { feature: "任务462 contact_id→会话名 解析层（TTL 缓存+降级短 id）", file: "desktop/frontend/src/lib/collabContactNames.ts", patterns: ["refreshCollabContactNames", "collabDisplayLabel", "shortContactId"] },

@@ -516,6 +516,11 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // Task 447 capsule: one sub-agent transcript through the same preview
   // pipeline as PreviewSession (same HistoryMessage shape).
   ReadSubagentSession(sessionPath: string, ref: string): Promise<HistoryMessage[]>;
+  // Task 558 capsule: remove one ended sub-agent record (transcript, sidecars,
+  // and metadata — the files, not just the row), and clear every ended record
+  // at once (running invocations kept; resolves how many were removed).
+  DeleteSubagentRecord(sessionPath: string, ref: string): Promise<void>;
+  ClearEndedSubagents(sessionPath: string): Promise<number>;
 }
 
 export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
@@ -4250,6 +4255,12 @@ function makeMockApp(): AppBindings {
         { role: "user", content: `(mock) sub-agent ${ref} transcript` },
         { role: "assistant", content: "Mock transcript: the browser preview has no persisted sub-agent files." },
       ];
+    },
+    // Task 558 capsule: the browser dev mock has no persisted sub-agent
+    // records, so the delete surface is a silent no-op here.
+    async DeleteSubagentRecord() {},
+    async ClearEndedSubagents() {
+      return 0;
     },
     async DeleteSession(path: string) {
       const i = sessions.findIndex((s) => s.path === path);

@@ -132,6 +132,46 @@ func (a *App) ReadSubagentSession(sessionPath, ref string) ([]HistoryMessage, er
 	return nil, fmt.Errorf("subagent %q does not belong to this session", ref)
 }
 
+// DeleteSubagentRecord permanently removes one ended sub-agent artifact owned
+// by the given parent session — transcript, sidecar files (event log, event
+// index, …), and metadata. Task 558 capsule "delete record": the record
+// disappears from the ended directory and its files are gone, not merely
+// hidden. Delegation and ownership live in agent.DeleteSubagentArtifact: the
+// ref must appear in the session's own artifact list, and a still-running
+// record is refused (the ended directory never lists one anyway).
+func (a *App) DeleteSubagentRecord(sessionPath, ref string) error {
+	sessionPath = strings.TrimSpace(sessionPath)
+	ref = strings.TrimSpace(ref)
+	if sessionPath == "" {
+		return fmt.Errorf("empty session path")
+	}
+	if ref == "" {
+		return fmt.Errorf("empty subagent reference")
+	}
+	dir, validated, err := a.sessionDirForPath(sessionPath)
+	if err != nil {
+		return err
+	}
+	return agent.DeleteSubagentArtifact(dir, agent.BranchID(validated), ref)
+}
+
+// ClearEndedSubagents permanently removes every ended (non-running) sub-agent
+// artifact owned by the given parent session and returns how many records
+// were removed. Task 558 capsule "clear ended": running invocations are left
+// untouched, and a rerun after a partial failure converges on the empty
+// directory instead of erroring on what a previous pass already deleted.
+func (a *App) ClearEndedSubagents(sessionPath string) (int, error) {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return 0, fmt.Errorf("empty session path")
+	}
+	dir, validated, err := a.sessionDirForPath(sessionPath)
+	if err != nil {
+		return 0, err
+	}
+	return agent.DeleteEndedSubagents(dir, agent.BranchID(validated))
+}
+
 // SubagentProfileInput is the desktop-bound shape for authoring a subagent
 // profile. Named SubagentProfile* rather than bare Subagent* to stay distinct
 // from internal/agent's Subagent* run-transcript types: this is a saved
