@@ -241,6 +241,17 @@ const CHECKS = [
   { feature: "任务575 bash 重命令白名单表", file: "internal/agent/bash_heavy_commands.go", patterns: ["bashHeavyWholeToolHeads", "bashHeavySubcommandHeads", "bashHeavyWriteCommand"] },
   { feature: "任务575 乐观分支重命令取写租约", file: "internal/agent/tool_write_coordination.go", patterns: ["bashHeavyGuard && bashHeavyWriteCommand(plan.runTool.Name(), plan.runArgs)"] },
   { feature: "任务575 config 开关（默认关）", file: "internal/config/config.go", patterns: ["experimental_bash_heavy_guard"] },
+  // 任务573（并行 writer 只读 bash 回退，2026-10-08）：Windows 无 OS bash sandbox
+  // ⇒ BindWritePaths keepBash=false ⇒ 显式 write_paths 的子代理 bash 被整体移除。
+  // 回退 = 开关开启时以 readOnlyBash 包裸 bash 重新注入（分类器为主墙，注入点在
+  // BindChildWriteRoots 前使写根重绑仍生效）。逐机制锚定：config 开关 / 注入门+
+  // 注入调用 / 裸 bash 解包（重绑面）/ boot 接线 / 两态+写拦截测试。少任何一环，
+  // 开关要么失效要么退回「bash 整体缺席」。
+  { feature: "任务573 config 开关（默认关）", file: "internal/config/config.go", patterns: ["experimental_parallel_writer_readonly_bash"] },
+  { feature: "任务573 被丢 bash 的只读回退注入（门控+readOnlyBash 复用）", file: "internal/agent/write_access.go", patterns: ["t.parallelWriterReadOnlyBash && hadBash && slices.Contains(removed, \"bash\")", "reg.Add(readOnlyBash{inner: droppedBash})"] },
+  { feature: "任务573 裸 bash 解包（注入包最内层，OS 写根重绑面保持）", file: "internal/agent/write_access.go", patterns: ["func unwrapBashTool", "return fb.inner, true"] },
+  { feature: "任务573 boot 接线（唯一生产构造点）", file: "internal/boot/boot.go", patterns: ["WithParallelWriterReadOnlyBash(cfg.Sandbox.ExperimentalParallelWriterReadOnlyBash)"] },
+  { feature: "任务573 验收测试（两态+写拦截+sandbox 象限不降级）", file: "internal/agent/write_access_readonly_bash_test.go", patterns: ["TestParallelWriterReadOnlyBashFallbackGatesCommands", "TestParallelWriterReadOnlyBashOffKeepsCurrentShape", "TestParallelWriterReadOnlyBashNotAppliedWhenSandboxRebinds"] },
 
   // ── 副本预览与切换链路（2026-09-12/13，任务 92/93）──────────────
   // 教训（33b6c32ec 被 1.38.3 merge 冲掉、2026-09-13 才发现）：行为语义级
