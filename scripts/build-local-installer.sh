@@ -65,6 +65,13 @@ export HTTP_PROXY="${HTTP_PROXY:-http://127.0.0.1:10808}"
 export HTTPS_PROXY="${HTTPS_PROXY:-http://127.0.0.1:10808}"
 export PATH="$(go env GOPATH)/bin:${LOCALAPPDATA:-$HOME/AppData/Local}/reasonix-nsis/nsis-3.12:$PATH"
 export REASONIX_CHANNEL="$CHANNEL"
+# Task 598: a local installer build IS the "local build" for the chime assets —
+# without this the vite define __CHIME_LOCAL_ASSETS__ stays false, the settings
+# dropdown hides Mario and the guarded wav is tree-shaken out. Default on; set
+# REASONIX_CHIME_LOCAL_ASSETS=0 to rehearse the public-build flavor locally.
+# CI public packaging never runs this script (desktop-build.sh), so the var
+# cannot leak into public artifacts.
+export REASONIX_CHIME_LOCAL_ASSETS="${REASONIX_CHIME_LOCAL_ASSETS:-1}"
 
 INS="$ROOT/desktop/build/windows/installer"
 mkdir -p "$INS"
