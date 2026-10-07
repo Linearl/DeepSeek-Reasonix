@@ -1,16 +1,16 @@
 //go:build !windows
 
-package baseproc
+package pidalive
 
 import (
 	"os"
 	"syscall"
 )
 
-// pidAlive reports whether pid names a live process on POSIX: a zero signal
+// Alive reports whether pid names a live process on POSIX: a zero signal
 // only checks permission, so ESRCH means "no such process". A zombie child
 // still answers (it exists until reaped) — conservative, same as Windows.
-func pidAlive(pid int) bool {
+func Alive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}

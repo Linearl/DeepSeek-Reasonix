@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/baseproc/pidalive"
 	"reasonix/internal/filelock"
 	"reasonix/internal/store"
 )
@@ -683,6 +684,10 @@ type MailStore struct {
 	// rather than in package state so a sender using a different configured limit
 	// cannot race a reader, and 0 keeps the package default.
 	hopLimit int
+	// listDir is the directory-listing seam (任务511 复发③): nil means
+	// os.ReadDir. A test injects a failure here to pin the "cannot see the
+	// library ⇒ degraded, never a silent empty" contract.
+	listDir func(name string) ([]os.DirEntry, error)
 }
 
 func NewMailStore(mailboxDir string) *MailStore {
@@ -729,6 +734,35 @@ func (s *MailStore) LockHolderInfo() string {
 	return strings.TrimSpace(string(b))
 }
 
+// clearStaleHolderIfDead is the mail-lock twin of collabinbox's recycle
+// (任务511 复发断根): a holder sidecar naming a DEAD pid is a stale diagnostic
+// — the OS lock died with the process — so remove it and log what was cleared,
+// so waiters and the degraded-read warn stop naming a zombie. 防误杀边界与
+// 竞态窗口分析同 collabinbox.Store.clearStaleHolderIfDead（同一契约，两把锁
+// 各自治理各自的诊断文件）：只删诊断文件、绝不触碰锁文件与 OS 锁；pid 存活
+// （含复用后看似存活）或不可解析 ⇒ 一字不动。
+func (s *MailStore) clearStaleHolderIfDead() string {
+	info := s.LockHolderInfo()
+	if info == "" {
+		return ""
+	}
+	pid := pidalive.ParseHolderPid(info)
+	if pid <= 0 {
+		return "" // unparsable: cannot judge — leave it, never guess
+	}
+	if pidalive.Alive(pid) {
+		return "" // live holder (or pid reuse): NEVER touch a live holder's record
+	}
+	if err := os.Remove(s.lockHolderPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.Warn("session collab mail: stale lock holder sidecar removal failed",
+			"path", s.lockHolderPath(), "stale_holder", info, "pid", pid, "err", err)
+		return ""
+	}
+	slog.Info("session collab mail: stale lock holder sidecar cleared (recorded holder process is gone; the OS lock died with it)",
+		"stale_holder", info, "pid", pid)
+	return info
+}
+
 // lock takes the mail directory's cross-process lock. ctx is the caller's
 // request context where one exists (task 461 P1): cancellation ends the wait
 // immediately, and the wait itself never exceeds lockWaitTimeout even when the
@@ -739,6 +773,11 @@ func (s *MailStore) lock(ctx context.Context) (func(), error) {
 	}
 	release, err := filelock.AcquireWithExternalTimeout(ctx, filepath.Join(s.root, ".mail.lock"), lockWaitTimeout)
 	if err != nil {
+		// 任务511 复发断根：侧车指认的 pid 已死 ⇒ 陈旧诊断，清掉留痕——
+		// 紧随其后的 degraded warn 不再指认一个早已死亡的进程。
+		if s.clearStaleHolderIfDead() != "" {
+			return nil, fmt.Errorf("session collab mail lock busy, gave up waiting (stale holder sidecar cleared — the recorded holder process is gone, a live holder may still exist): %w", err)
+		}
 		return nil, fmt.Errorf("session collab mail lock busy (held by another window or process?), gave up waiting: %w", err)
 	}
 	s.writeLockHolderInfo()
@@ -1420,6 +1459,15 @@ type HistoryRow struct {
 	Read    bool   // the recipient's seen cursor covers this id
 }
 
+// listDirOrDefault resolves the directory-listing seam (任务511 复发③):
+// the injected failure source in tests, os.ReadDir in production.
+func (s *MailStore) listDirOrDefault(name string) ([]os.DirEntry, error) {
+	if s.listDir != nil {
+		return s.listDir(name)
+	}
+	return os.ReadDir(name)
+}
+
 // History returns every delivered message across every inbox in the store,
 // newest first. One lock, one cursor read per mailbox — the task-320 index
 // consumer, so it must not re-read a cursor per message.
@@ -1442,9 +1490,15 @@ func (s *MailStore) History(ctx context.Context) ([]HistoryRow, bool) {
 		return nil, true
 	}
 	defer unlock()
-	entries, err := os.ReadDir(s.root)
+	entries, err := s.listDirOrDefault(s.root)
 	if err != nil {
-		return nil, false
+		// 任务511 复发③：读不到信箱库 ≠ 没有信件。旧行为 (nil, false) 是整条
+		// 读链最后一个静默空分支——「库不可读」会被渲染成「暂无信件」且零痕迹，
+		// 与 320 复盘修掉的空面板同形。现在 Warn 留痕 + degraded=true，快照
+		// 显示「暂时不可用」而不是诚实的空态。
+		slog.Warn("session collab mail: cannot list the mail directory — degraded history read",
+			"root", s.root, "err", err)
+		return nil, true
 	}
 	var out []HistoryRow
 	for _, e := range entries {

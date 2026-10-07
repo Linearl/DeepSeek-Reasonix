@@ -75,6 +75,14 @@ func (a *App) collabInboxViewer() string {
 // date sort, surfaced as a panel toggle (the index layer has always been
 // dual-order; the agent query tool exposes the same field).
 func (a *App) ListCollabMail(bucket, from, to, state string, limit int, includeDismissed bool, order string) (collabinbox.Snapshot, error) {
+	// 任务511 复发断根（②入口留痕）：每次点开必有一行后端 INFO——复发事故的
+	// 「15:27 点开零后端日志」是静默通道特征，这条 INFO 与数据层的结果 INFO
+	// （collab inbox: panel read）一起构成两级哨兵：本行在 = 绑定到达 Go；
+	// 两行都在 = 请求走完了读取链。都不在 ⇒ 问题在前端绑定/网关（前端
+	// reportFrontendLog 通道已留痕），不再是无从诊断的空面板。
+	slog.Info("collab inbox: ListCollabMail", "bucket", bucket, "from", from,
+		"to", to, "state", state, "limit", limit, "dismissed", includeDismissed,
+		"order", order, "viewer", a.collabInboxViewer())
 	store := collabInboxStore()
 	snap, err := store.List(collabInboxCtx(), collabinbox.Query{
 		Bucket:           bucket,

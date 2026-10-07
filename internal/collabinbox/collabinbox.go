@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -345,6 +346,12 @@ func (s *Store) lock(ctx context.Context) (func(), error) {
 	if err != nil {
 		holder := s.LockHolderInfo()
 		if holder != "" {
+			// 任务511 复发断根：侧车指认的 pid 已死 ⇒ 那是一份陈旧诊断（OS 锁
+			// 随进程死亡已被内核释放，此刻的 busy 只能来自其他存活持有者，常见
+			// 为共享读）。清掉留痕，错误信息不再把死进程当持锁者指认。
+			if s.clearStaleHolderIfDead() != "" {
+				return nil, fmt.Errorf("collab inbox lock busy, gave up waiting (stale holder sidecar cleared — the recorded holder process is gone, a live holder may still exist): %w", err)
+			}
 			return nil, fmt.Errorf("collab inbox lock busy, gave up waiting (last holder: %s): %w", holder, err)
 		}
 		return nil, fmt.Errorf("collab inbox lock busy (held by another window or process?), gave up waiting: %w", err)
@@ -362,6 +369,11 @@ func (s *Store) lockRead(ctx context.Context) (release func(), degraded bool, er
 	if err := os.MkdirAll(s.mailDir, 0o755); err != nil {
 		return nil, false, err
 	}
+	// 任务511 复发断根：读入口先做一次 stale 侧车回收——指认死进程的 holder
+	// 诊断在下一次读取时自动清掉并留痕，「pid 26048 持锁 1.5 天」这类误导性
+	// 诊断不再跨日残留（锁本体是 OS 句柄锁，死进程的锁由内核回收，这里只
+	// 治理诊断文件；防误杀边界见 clearStaleHolderIfDead）。
+	s.clearStaleHolderIfDead()
 	readCtx, cancel := context.WithTimeout(ctx, readLockWaitTimeout)
 	defer cancel()
 	release, err = filelock.AcquireMode(readCtx, s.lockFilePath(), filelock.ModeShared)
@@ -800,6 +812,7 @@ func (s *Store) applyCleanupLocked(ctx context.Context, st stateFile) (int, erro
 // 照常完成读，并把快照标记 Degraded 让桌面端留痕指认最后持锁者——
 // 可用性 > 锁完整性。
 func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapshot, error) {
+	started := time.Now()
 	unlock, degraded, err := s.lockRead(ctx)
 	if err != nil {
 		return Snapshot{}, err
@@ -868,6 +881,18 @@ func (s *Store) List(ctx context.Context, q Query, applyRetention bool) (Snapsho
 	page := filtered[offset:]
 	if len(page) > limit {
 		page = page[:limit]
+	}
+	// 任务511 复发断根（静默通道堵截）：面板每次打开必须留下一条后端 INFO——
+	// 「请求到没到后端、看到了几封信、是否降级、耗时多少」从此一处可查。复发
+	// 事故的「点开零后端日志」正是静默通道的特征：这条 INFO 在，即证明请求
+	// 落到了数据层；不在，问题在前端绑定/网关（前端侧 reportFrontendLog 已留痕）。
+	// 仅 applyRetention=true 的面板路径打点；查询工具、徽标、mutate 回读（false）
+	// 不打，避免高频噪音。
+	if applyRetention {
+		slog.Info("collab inbox: panel read",
+			"bucket", q.Bucket, "state", q.State, "order", q.Order, "limit", limit,
+			"total", total, "returned", len(page), "degraded", degraded,
+			"ms", time.Since(started).Milliseconds())
 	}
 	return Snapshot{
 		Revision:  revisionOf(st.Revision, filtered),
