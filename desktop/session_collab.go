@@ -75,6 +75,10 @@ type sessionCollabPump struct {
 	// retryMu guards the per-contact backoff state (task 485 P2).
 	retryMu sync.Mutex
 	retry   map[string]*collabRetryState
+
+	// idleTurns is the task-569 idle-turn bridge state (per-target idle clock +
+	// in-flight marks). The bridge itself is switch-gated (default off).
+	idleTurns *idleTurnBridge
 }
 
 // collabRetryState is one contact's consecutive-failure chain: the count
@@ -116,7 +120,7 @@ func (p *sessionCollabPump) resetContactRetry(contactID string) {
 }
 
 func newSessionCollabPump(app *App) *sessionCollabPump {
-	return &sessionCollabPump{app: app}
+	return &sessionCollabPump{app: app, idleTurns: newIdleTurnBridge()}
 }
 
 func (p *sessionCollabPump) Start() {
@@ -267,9 +271,14 @@ func (p *sessionCollabPump) drainOnce() {
 	syncCollabInboxMergeMode()
 	result := p.drain(true)
 	if result.Delivered == 0 && result.Refused == 0 {
+		// 任务 569: the idle-turn bridge still gets its pass on quiet ticks —
+		// exactly the ticks where a degraded follow-up would otherwise sit
+		// forever (验收②: no queued item ⇒ no turn is opened at all).
+		p.sweepIdleInboxTurns(time.Now())
 		return
 	}
 	log.Printf("[session-collab] delivered=%d refused=%d across %d tab(s)", result.Delivered, result.Refused, len(result.Targets))
+	p.sweepIdleInboxTurns(time.Now())
 }
 
 // createCollabSession is the host capability behind create_collab_session
