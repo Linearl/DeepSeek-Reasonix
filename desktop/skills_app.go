@@ -40,9 +40,6 @@ type SkillsSettingsView struct {
 	AllowImplicitInvocation bool            `json:"allowImplicitInvocation"`
 }
 
-// ServerView is one MCP server for the drawer. Status is "connected" (with
-// tool/prompt/resource counts), "deferred" (enabled but idle), "failed" (with
-
 // SkillView is one discoverable skill for the drawer. Also backs the
 // Subagents settings surface: the frontend filters this same list to
 // RunAs=="subagent" rather than calling a second, redundant endpoint.
