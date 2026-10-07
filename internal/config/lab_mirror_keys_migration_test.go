@@ -222,6 +222,14 @@ func TestLabMirrorKeysRenderExactlyOnce(t *testing.T) {
 		// numeric-mirror comment texts may still mention a key name.
 		assignment := tc.desktopKey + " ="
 		if tc.desktopKey == tc.agentKey {
+			// Task 551: the B9 gate is removed — the legacy key is accepted on
+			// read and deliberately NEVER rendered, so its expected count is 0.
+			if tc.desktopKey == "experimental_model_capability_filter" {
+				if got := strings.Count(out, assignment); got != 0 {
+					t.Fatalf("the retired B9 key %s must not render (task 551), got %d:\n%s", tc.desktopKey, got, out)
+				}
+				continue
+			}
 			if got := strings.Count(out, assignment); got != 1 {
 				t.Fatalf("%s must be assigned exactly once in the render (the [agent] row), got %d:\n%s", tc.desktopKey, got, out)
 			}
