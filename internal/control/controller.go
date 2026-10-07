@@ -1856,7 +1856,9 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 	case trimmed == "/clear":
 		c.runSessionVerb(c.ClearSession, "context cleared", "clear context failed: ")
 	case strings.HasPrefix(trimmed, "/mcp__"):
-		c.runGuarded(func(ctx context.Context) error {
+		// 任务581: user-authored input parks behind a running turn instead of
+		// being dropped (see the runRefTurnWithFormat note above).
+		c.runGuardedOrPark(func(ctx context.Context) error {
 			sent, found, err := c.MCPPrompt(ctx, trimmed)
 			if err != nil {
 				return err
@@ -1943,19 +1945,19 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 				}
 				return
 			}
-			c.runGuarded(func(ctx context.Context) error {
-				sent, err := docsCommandPrompt(ctx, query)
-				if err != nil {
-					return fmt.Errorf("docs: %w", err)
-				}
-				return runGoalLoop(ctx, sent, sent, display)
-			})
+		c.runGuardedOrPark(func(ctx context.Context) error {
+			sent, err := docsCommandPrompt(ctx, query)
+			if err != nil {
+				return fmt.Errorf("docs: %w", err)
+			}
+			return runGoalLoop(ctx, sent, sent, display)
+		})
 			return
 		}
 		// A custom command wins over a skill of the same name; both resolve to a
 		// turn. Built-ins and their explicit Reasonix namespace are handled above.
 		if sent, ok := c.CustomCommand(trimmed); ok {
-			c.runGuarded(func(ctx context.Context) error {
+			c.runGuardedOrPark(func(ctx context.Context) error {
 				return runGoalLoop(ctx, sent, sent, display)
 			})
 			return
@@ -1974,7 +1976,7 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 			// args" line — require routing, memory recall, and the transcript's
 			// raw content must not consume the rendered skill body.
 			sent := c.skills.renderPinned(sk, task)
-			c.runGuarded(func(ctx context.Context) error {
+			c.runGuardedOrPark(func(ctx context.Context) error {
 				return runGoalLoop(ctx, sent, trimmed, display)
 			})
 			return
@@ -2289,38 +2291,45 @@ func (c *Controller) runRefTurn(input, display string) {
 // format bound to its context (symmetric with runGoalLoop's withTurnFormat
 // injection — format is a property of every accepted turn, not just the
 // plain-goal path; review #7234 binds format to the accepted turn).
+// 任务581: every function below admits user-authored text. The running/finishing
+// gate parks instead of dropping (runGuardedOrPark): a submission that arrives
+// while another turn runs or finishes is queued FIFO and starts the moment the
+// gate reopens, so the user's words always reach the transcript. The old
+// deliberately-silent drop (runGuarded) silently evaporated the submission at
+// exactly the boundary the 580 diagnosis could not see (受理 but never appended).
+
 func (c *Controller) runRefTurnWithFormat(input, display, format string) {
-	c.runGuarded(func(ctx context.Context) error {
+	c.runGuardedOrPark(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, "", c.ResolveRefs)
 	})
 }
 
 func (c *Controller) runScopedRefTurnWithFormat(input, display, format string) {
-	c.runGuarded(func(ctx context.Context) error {
+	c.runGuardedOrPark(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, "", c.ResolveScopedRefs)
 	})
 }
 
 func (c *Controller) runRefTurnWithRefsFormat(input, refLine, display, format string) {
-	c.runGuarded(func(ctx context.Context) error {
+	c.runGuardedOrPark(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, "", c.ResolveRefs)
 	})
 }
 
 func (c *Controller) runScopedRefTurnWithRefsFormat(input, refLine, display, format string) {
-	c.runGuarded(func(ctx context.Context) error {
+	c.runGuardedOrPark(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, "", c.ResolveScopedRefs)
 	})
 }
 
 func (c *Controller) runEditedRefTurnWithFormat(input, display, original, format string) {
-	c.runGuarded(func(ctx context.Context) error {
+	c.runGuardedOrPark(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, input, display, original, c.ResolveRefs)
 	})
 }
 
 func (c *Controller) runEditedRefTurnWithRefsFormat(input, refLine, display, original, format string) {
-	c.runGuarded(func(ctx context.Context) error {
+	c.runGuardedOrPark(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(c.withTurnFormat(ctx, format), input, refLine, display, original, c.ResolveRefs)
 	})
 }

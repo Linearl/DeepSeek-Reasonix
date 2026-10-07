@@ -386,6 +386,12 @@ const CHECKS = [
   { feature: "任务579 去开关（桥始终打开；3 次有界预算+守卫④互斥门保留）", file: "desktop/session_collab_idle_turn.go", patterns: ["idleTurnMaxAttempts", "idleTurnSweepActive", "recordOpeningFailure"] },
   { feature: "任务579 控制器侧失效路径留痕+有界重试（5/15/45s，上限 3 次）", file: "internal/control/inbox_dispatch.go", patterns: ["inboxDispatchRuntimePending", "inboxRuntimeRetryBackoff", "scheduleInboxRuntimeRetry", "SetOnInboxDispatchExhausted"] },
   { feature: "任务579 用尽可见（get_message_status 新结局 open_retry_exhausted）", file: "internal/sessioncollab/receipt.go", patterns: ["ReceiptOpenRetryExhausted", "open_retry_exhausted"] },
+  // 任务 581：用户提交不可丢。两个锚点按链路登记——用户手发提交在 running/finishing
+  // 门上 park 排队（退回 runGuarded 会重新出现「受理即静默蒸发」的 580 断裂形态）、
+  // desktop 提交受理链分段计时留痕（580 事发三无盲区的观测面）。少任何一个都会
+  // 退回「拒收无痕 / 卡死无定位」。
+  { feature: "任务581 用户手发提交 running/finishing 门 park 不丢（Submit 族直提路径）", file: "internal/control/controller.go", patterns: ["every function below admits user-authored text", "user-authored input parks behind a running turn"] },
+  { feature: "任务581 desktop 提交受理链分段留痕（四段计时，阈值 2s Warn）", file: "desktop/turn_submission_app.go", patterns: ["timedSubmitStage", "submitAdmissionSlowWarn", "submit admission stage slow"] },
   { feature: "任务388 autopilot 代批上下文感知：两档 scope+自然语言 manifest（tail-kept 有界）", file: "internal/control/autopilot_approval.go", patterns: ["autopilotProxyContext", "PROXY SCOPE: level 1", "PROXY SCOPE: level 2", "PROXY MANIFEST"] },
   // 任务 433：recovery fence 无副作用工具白名单。三个锚点按链路登记——
   // 白名单表本体（bash 走 shellsafe 只读判定，fail closed）、中断即判未生效
