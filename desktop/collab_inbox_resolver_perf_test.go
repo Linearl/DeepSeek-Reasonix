@@ -136,3 +136,36 @@ func TestIdentityScanCachedWithinTTL(t *testing.T) {
 		t.Fatalf("call after TTL: ids=%d scans=%d, want rescan (1/2)", len(ids), scans)
 	}
 }
+
+func TestIdentityScanCachedLatchesEmptyRoster(t *testing.T) {
+	// 空扫描结果是合法状态，同样要被缓存锁存——否则空花名册的机器每次构店
+	// 都重扫（探针实查：desktop TestMain 沙箱目录扫出空表时 cache==nil 失锁）。
+	restoreFn, restoreNow, restoreCache, restoreAt := identityScanFn, identityScanNow, identityScanCache, identityScanAt
+	t.Cleanup(func() {
+		identityScanFn = restoreFn
+		identityScanNow = restoreNow
+		identityScanCache = restoreCache
+		identityScanAt = restoreAt
+	})
+
+	identityScanFn = func() []sessioncollab.Identity { return nil }
+	identityScanCache = nil
+	identityScanAt = time.Time{}
+
+	if ids := scanIdentityDirectoryCached(); len(ids) != 0 {
+		t.Fatalf("cold call: ids=%d, want empty", len(ids))
+	}
+	// 第二次取用必须命中缓存（不再触底层扫描——若实现以 nil 判定未缓存，
+	// 这里会拿到非空？不，底层恒空；用计数源证明没有重扫）。
+	scans := 0
+	identityScanFn = func() []sessioncollab.Identity {
+		scans++
+		return nil
+	}
+	if ids := scanIdentityDirectoryCached(); len(ids) != 0 {
+		t.Fatalf("warm call: ids=%d, want empty", len(ids))
+	}
+	if scans != 0 {
+		t.Fatalf("empty roster rescanned %d times inside TTL, want 0 (empty result must latch)", scans)
+	}
+}

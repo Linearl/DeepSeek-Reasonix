@@ -40,9 +40,12 @@ func collabInboxCtx() context.Context { return context.Background() }
 const identityScanTTL = 30 * time.Second
 
 var (
-	identityScanMu    sync.Mutex
+	identityScanMu sync.Mutex
+	// identityScanCache holds the last scan verbatim — an EMPTY roster is a
+	// valid result and is cached too (latch keyed on identityScanAt, not on
+	// nil-ness: a nil-capable slice would otherwise rescan per store build).
 	identityScanCache []sessioncollab.Identity
-	identityScanAt    time.Time
+	identityScanAt    time.Time // zero = never scanned
 	// identityScanNow is the injectable clock for the TTL (task 600 tests).
 	identityScanNow = time.Now
 	// identityScanFn is the injectable scan source (task 600 tests); production
@@ -60,7 +63,7 @@ var (
 func scanIdentityDirectoryCached() []sessioncollab.Identity {
 	identityScanMu.Lock()
 	defer identityScanMu.Unlock()
-	if identityScanCache != nil && identityScanNow().Sub(identityScanAt) < identityScanTTL {
+	if !identityScanAt.IsZero() && identityScanNow().Sub(identityScanAt) < identityScanTTL {
 		return identityScanCache
 	}
 	ids := identityScanFn()
