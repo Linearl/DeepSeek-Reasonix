@@ -28,6 +28,18 @@ export interface ForkFeaturesCopy {
   columns: number;
   groups: ForkFeaturesYamlGroup[];
   byId: Record<string, { title: string; desc: string; how: string; icon: string; recommended: boolean }>;
+  /** 任务 563 — lab picks wall copy (xlsx 表B cols 6/7): one-line effect for
+   * the card, detail paragraph for the pick dialog. WHICH picks exist stays in
+   * code (lib/experimentTiers LAB_WALL_PICKS, human-curated) — this carries
+   * words only, so a yaml edit can never grow the wall. */
+  labPicks: LabPickCopy[];
+}
+
+/** 表B copy for one wall pick (effect = col 6, detail = col 7). */
+export interface LabPickCopy {
+  id: string;
+  effect: string;
+  detail: string;
 }
 
 export const FORK_FEATURES_DEFAULT_COLUMNS = 3;
@@ -43,7 +55,7 @@ function parseScalar(raw: string): string {
 /** parseForkFeaturesYaml accepts the file's fixed shape; throws on structural
  * trouble so the caller falls back to locale wholesale. */
 export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
-  const out: ForkFeaturesCopy = { lead: "", columns: FORK_FEATURES_DEFAULT_COLUMNS, groups: [], byId: {} };
+  const out: ForkFeaturesCopy = { lead: "", columns: FORK_FEATURES_DEFAULT_COLUMNS, groups: [], byId: {}, labPicks: [] };
   let group: ForkFeaturesYamlGroup | null = null;
   let feature: Record<string, string> | null = null;
   const flushFeature = () => {
@@ -59,6 +71,19 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
     }
     feature = null;
   };
+  // 任务 563: the labPicks section runs its own two-level state machine
+  // (items at one indent, id/effect/detail fields under them). Mutually
+  // exclusive with the intro-wall machine — `groups:` ends the section, and
+  // any other top-level key leaves it — so a hand edit in one half can never
+  // corrupt the other.
+  let inLabPicks = false;
+  let labPick: Record<string, string> | null = null;
+  const flushLabPick = () => {
+    if (labPick?.id) {
+      out.labPicks.push({ id: labPick.id, effect: labPick.effect ?? "", detail: labPick.detail ?? "" });
+    }
+    labPick = null;
+  };
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.replace(/#.*$/, "");
     if (!line.trim()) continue;
@@ -66,6 +91,9 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
     const body = line.trim();
     if (indent === 0) {
       flushFeature();
+      flushLabPick();
+      if (/^labPicks:\s*$/.test(body)) { inLabPicks = true; continue; }
+      inLabPicks = false;
       const lead = body.match(/^lead:\s*(.*)$/);
       if (lead) { out.lead = parseScalar(lead[1]); continue; }
       const cols = body.match(/^columns:\s*(\d+)\s*$/);
@@ -82,6 +110,23 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
     // fields 8 in the shipped file), so drive the state machine off content
     // shape instead of hardcoded columns — a blank/odd indent can never drop
     // a feature (that would silently blank the wall).
+    // 任务 563: labPicks items (`- id:` + effect/detail fields) never reach
+    // the intro-wall machine below — the section owns every line until a
+    // top-level key ends it.
+    if (inLabPicks) {
+      if (body.startsWith("- ")) {
+        flushLabPick();
+        labPick = {};
+        const m = body.slice(2).match(/^([A-Za-z]+):\s*(.*)$/);
+        if (m) labPick[m[1]] = parseScalar(m[2]);
+        continue;
+      }
+      if (labPick) {
+        const m = body.match(/^([A-Za-z]+):\s*(.*)$/);
+        if (m) labPick[m[1]] = parseScalar(m[2]);
+        continue;
+      }
+    }
     if (body === "groups:" || body === "features:") continue;
     if (body.startsWith("- key:")) {
       flushFeature();
@@ -110,6 +155,7 @@ export function parseForkFeaturesYaml(text: string): ForkFeaturesCopy {
     }
   }
   flushFeature();
+  flushLabPick();
   if (Object.keys(out.byId).length === 0 && !out.lead) throw new Error("fork-features.yaml: no content parsed");
   return out;
 }
@@ -138,6 +184,13 @@ export interface ForkFeatureWallGroup {
   id: string;
   yamlLabel: string;
   features: Array<{ id: string; title: string; desc: string; how: string; icon: string; recommended: boolean }>;
+}
+
+/** 任务 563 — the 表B copy for one wall pick, or null when the yaml section is
+ * absent/malformed or misses the id: the card then renders without its copy
+ * lines (same per-field degradation as the intro wall), never a blank wall. */
+export function labPickCopyFor(yaml: ForkFeaturesCopy | null, id: string): LabPickCopy | null {
+  return yaml?.labPicks.find((p) => p.id === id) ?? null;
 }
 
 /** forkFeatureCopyFor builds the WALL MODEL:
