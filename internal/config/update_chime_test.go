@@ -58,3 +58,47 @@ func TestUpdateChimeDefaultAndRoundTrip(t *testing.T) {
 		t.Fatal("off switch still renders as true")
 	}
 }
+
+// Task 512 (update-chime tune): the dial defaults to nokia, the setter rejects
+// unknown values, the user-scope renderer lists the key (the 81/123
+// fixed-key-set lesson), the rendered document round-trips through the loader,
+// and a hand-edited dirty value reads as nokia (never a broken tune).
+func TestUpdateChimeTuneDefaultSetterRoundTrip(t *testing.T) {
+	c := Default()
+	if got := c.UpdateChimeTuneMode(); got != "nokia" {
+		t.Fatalf("update chime tune must default to nokia, got %q", got)
+	}
+
+	if err := c.SetUpdateChimeTune("mario"); err != nil {
+		t.Fatalf("SetUpdateChimeTune(mario): %v", err)
+	}
+	if got := c.UpdateChimeTuneMode(); got != "mario" {
+		t.Fatalf("SetUpdateChimeTune(mario) did not stick, got %q", got)
+	}
+	if err := c.SetUpdateChimeTune("gran-vals"); err == nil {
+		t.Fatal("SetUpdateChimeTune must reject unknown tunes")
+	}
+
+	rendered := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(rendered, `update_chime_tune = "mario"`) {
+		t.Fatalf("user-scope render dropped update_chime_tune (81/123 fixed-key-set lesson):\n%s", rendered)
+	}
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(rendered), 0o600); err != nil {
+		t.Fatalf("write rendered config: %v", err)
+	}
+	loaded := LoadForEdit(path)
+	if loaded.Desktop.UpdateChimeTune != "mario" {
+		t.Fatalf("update_chime_tune did not survive render/load, got %q", loaded.Desktop.UpdateChimeTune)
+	}
+
+	dirty := strings.Replace(rendered, `update_chime_tune = "mario"`, `update_chime_tune = "bogus"`, 1)
+	dirtyPath := filepath.Join(t.TempDir(), "config-dirty.toml")
+	if err := os.WriteFile(dirtyPath, []byte(dirty), 0o600); err != nil {
+		t.Fatalf("write dirty config: %v", err)
+	}
+	if got := LoadForEdit(dirtyPath).UpdateChimeTuneMode(); got != "nokia" {
+		t.Fatalf("dirty tune value must read as nokia, got %q", got)
+	}
+}

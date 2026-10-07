@@ -942,6 +942,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalAutonomousUpdate(enabled: boolean): Promise<void>;
   // Task 277: update-complete chime switch (lab → automatic update group).
   SetUpdateChime(enabled: boolean): Promise<void>;
+  // Task 512: update-chime melody dial ("nokia" | "mario").
+  SetUpdateChimeTune(tune: string): Promise<void>;
   // Task 257: the full-access (yolo) lab switch. Boot resolves it into the
   // writable-root set and the bash spec — the flip applies on the next restart.
   SetExperimentalFullAccess(enabled: boolean): Promise<void>;
@@ -5453,6 +5455,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalRestartUpdate() {},
     async SetExperimentalAutonomousUpdate() {},
     async SetUpdateChime() {},
+    async SetUpdateChimeTune() {},
     async SetExperimentalFullAccess() {},
     async SetExperimentalBaseProcess() {},
     async SetAutonomousUpdateResume() {},

@@ -2400,6 +2400,8 @@ export interface DesktopStartupSettingsView {
   autonomousUpdateResume?: string;
   /** Update-complete chime (task 277): plays once on the first launch after a version swap; off by default. */
   updateChime?: boolean;
+  /** Update-chime melody (task 512): "nokia" | "mario", normalized server-side; empty reads nokia. */
+  updateChimeTune?: string;
   /** Session-monitor board experiment switch (task 123); off unless the user opts in. */
   experimentalSessionMonitor?: boolean;
   /** Split-view experiment switch (task 70-1); off unless the user opts in. */

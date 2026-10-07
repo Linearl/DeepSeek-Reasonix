@@ -107,7 +107,9 @@ async function runCase(
   ok(app.includes("app.ListInstalledVersions()"), "App uses the existing version detection");
 
   const sound = read("../lib/sound.ts");
-  ok(sound.includes('playWav("positive"'), "chime uses the bundled wav (positive = 2.8s ≈ 3s)");
+  // Task 512 moved the update chime onto the dedicated nokia wav (1.25×, cut)
+  // — the same AudioContext path remains (guard below).
+  ok(sound.includes('"./sounds/nokia-tune.wav"'), "chime uses the bundled nokia wav (task 512 tune dial)");
   ok(sound.includes("new AudioContext()"), "same system-output audio path as notification chimes (system mute applies)");
 
   const panel = read("../components/SettingsPanel.tsx");
@@ -127,7 +129,9 @@ async function runCase(
   ok(prefs.includes("func (a *App) SetUpdateChime"), "App setter exists");
 
   const settingsApp = read("../../../settings_app.go");
-  const viewFields = (settingsApp.match(/UpdateChime bool `json:"updateChime"`/g) ?? []).length;
+  // \s+ (not a literal single space): gofmt re-aligns the struct as siblings
+  // land, which had silently broken this counter into a pre-existing red.
+  const viewFields = (settingsApp.match(/UpdateChime\s+bool\s+`json:"updateChime"`/g) ?? []).length;
   const viewAssigns = (settingsApp.match(/UpdateChime:?\s*=?\s*(cfg\.Desktop\.UpdateChime|view\.UpdateChime = cfg\.Desktop\.UpdateChime)/g) ?? []).length;
   ok(viewFields === 2, `render table: 2 view structs carry UpdateChime (got ${viewFields}) — 81/123 lesson`);
   ok(viewAssigns === 2, `render table: 2 assignments wired (got ${viewAssigns})`);

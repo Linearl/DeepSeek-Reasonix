@@ -219,21 +219,197 @@ export function playAttentionChime(): void {
   }
 }
 
-// ── Task 277: update-complete chime ──────────────────────────────────────────
+// ── Task 277 + 512: update-complete chime ────────────────────────────────────
 
 /** localStorage key remembering which version already chimed (one-shot). */
 export const UPDATE_CHIME_LAST_VERSION_KEY = "updateChimeLastVersion";
 
+// ── Task 512: tune picker, playback rate, interaction cut ────────────────────
+
+/** The two selectable melodies (settings update_chime_tune). */
+export type UpdateChimeTune = "nokia" | "mario";
+
+export const UPDATE_CHIME_TUNES: readonly UpdateChimeTune[] = ["nokia", "mario"];
+
+export function normalizeUpdateChimeTune(value: unknown): UpdateChimeTune {
+  return value === "mario" ? "mario" : "nokia";
+}
+
+/** Task 512: the chime plays at 1.25× so it reads as a prompt, not a concert. */
+export const UPDATE_CHIME_PLAYBACK_RATE = 1.25;
+/** Task 512: after the first qualifying pointer interaction the chime plays on
+ *  for 3 more seconds and is then cut (the user is back at the wheel). */
+export const UPDATE_CHIME_INTERRUPT_DELAY_MS = 3000;
+/** Task 512: the cut is a short fade instead of a hard stop — an aborted
+ *  buffer otherwise ends with an audible click/pop. */
+export const UPDATE_CHIME_FADE_OUT_S = 0.2;
+/** Task 512: a mousemove arms the countdown only once per-event travel exceeds
+ *  this threshold, so brushing/tapping the mouse does not kill the chime; any
+ *  click always does. */
+export const UPDATE_CHIME_MOVE_THRESHOLD_PX = 12;
+
+// Nintendo owns the Mario theme (task 512 copyright ruling, option A): the
+// asset is loaded through a build-time-guarded dynamic import. The
+// __CHIME_LOCAL_ASSETS__ define is only true when the local build sets
+// REASONIX_CHIME_LOCAL_ASSETS=1; every public packaging path leaves it unset,
+// so the guarded import is dead code, the wav never reaches dist, and the
+// "mario" selection resolves back to the Nokia tune at runtime.
+declare const __CHIME_LOCAL_ASSETS__: boolean;
+
+// Test seam: the bare node runner never sees the build-time define, so tests
+// override the flag to exercise both build flavors. Production never sets it.
+let chimeLocalAssetsOverride: boolean | null = null;
+
+export function setChimeLocalAssetsForTests(value: boolean | null): void {
+  chimeLocalAssetsOverride = value;
+}
+
+export function chimeLocalAssetsEnabled(): boolean {
+  if (chimeLocalAssetsOverride !== null) return chimeLocalAssetsOverride;
+  try {
+    return typeof __CHIME_LOCAL_ASSETS__ !== "undefined" && __CHIME_LOCAL_ASSETS__ === true;
+  } catch {
+    return false;
+  }
+}
+
+let marioAssetUrlPromise: Promise<string | null> | null = null;
+
+async function loadMarioAssetUrlDefault(): Promise<string | null> {
+  marioAssetUrlPromise ??= import("../assets/sounds/mario-theme.wav?url")
+    .then((mod) => mod.default)
+    .catch(() => null);
+  return marioAssetUrlPromise;
+}
+
+// Test seam: the real loader dynamic-imports the wav, which a bare node test
+// runner cannot parse. Production code never calls the setter.
+let marioAssetUrlLoader: () => Promise<string | null> = loadMarioAssetUrlDefault;
+
+export function setMarioAssetLoaderForTests(loader: (() => Promise<string | null>) | null): void {
+  marioAssetUrlLoader = loader ?? loadMarioAssetUrlDefault;
+  if (loader) marioAssetUrlPromise = null;
+}
+
+function loadMarioAssetUrl(): Promise<string | null> {
+  if (!chimeLocalAssetsEnabled()) return Promise.resolve(null);
+  return marioAssetUrlLoader();
+}
+
+/** Resolve the playable URL for a tune. Public builds (no local assets) fall
+ *  back from Mario to the bundled Nokia wav rather than muting the chime. */
+export async function resolveUpdateChimeUrl(tune: UpdateChimeTune): Promise<string> {
+  if (tune === "mario") {
+    const mario = await loadMarioAssetUrl();
+    if (mario) return mario;
+  }
+  return "./sounds/nokia-tune.wav";
+}
+
+export type UpdateChimePlayOptions = {
+  /** Tune chosen in settings (config update_chime_tune). Defaults to nokia. */
+  tune?: UpdateChimeTune;
+  /** Test seam: override the AudioContext factory. */
+  audioCtxFactory?: () => AudioContext;
+  /** Test seam: override the shared notification volume. */
+  volume?: number;
+};
+
 /**
- * Play the bundled ~3s update chime. It goes through the exact same
- * AudioContext → default-output path as every notification chime, so a system
- * mute silences it like any other app sound (no exclusive/raw output device).
- * The bundled "positive" wav is 2.8s — the ~3s the task asks for.
+ * Play the update chime buffer at 1.25× with the interaction cut armed:
+ * document-level mousemove/click listeners exist only while this playback
+ * lives — natural end or cut detaches them immediately. Output rides the same
+ * AudioContext → default-output path as every notification chime (system mute
+ * applies). Load failure keeps the old fail-open-to-synth fallback.
+ * Exported for the task-512 tests (they need a awaitable, seam-injected run).
  */
-export function playUpdateChime(): void {
-  const volume = notificationVolumeToGain(getNotificationVolume());
+export async function playUpdateChimeSound(volume: number, tune: UpdateChimeTune, ctxFactory?: () => AudioContext): Promise<void> {
+  const ctx = ctxFactory ? ctxFactory() : new AudioContext();
+  try {
+    const url = await resolveUpdateChimeUrl(tune);
+    const buf = await loadBuffer(ctx, url);
+    if (buf) {
+      playUpdateChimeBuffer(ctx, buf, volume);
+    } else {
+      playSynthSuccess(ctx, volume);
+    }
+  } catch {
+    playSynthSuccess(ctx, volume);
+  }
+  setTimeout(() => ctx.close(), 2000);
+}
+
+function playUpdateChimeBuffer(ctx: AudioContext, buffer: AudioBuffer, volume: number): void {
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.playbackRate.value = UPDATE_CHIME_PLAYBACK_RATE;
+  const gain = ctx.createGain();
+  gain.gain.value = volume;
+  src.connect(gain);
+  gain.connect(ctx.destination);
+
+  let countdownArmed = false;  // an interaction started the 3 s countdown
+  let fadeStarted = false;     // the fade ramp has been scheduled
+  let countdownTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastMove: { x: number; y: number } | null = null;
+
+  // detach closes the listening window; safe to call from every path.
+  const detach = () => {
+    document.removeEventListener("mousemove", onInteract);
+    document.removeEventListener("click", onInteract);
+    if (countdownTimer !== null) clearTimeout(countdownTimer);
+    countdownTimer = null;
+  };
+
+  const startFade = () => {
+    if (fadeStarted) return;
+    fadeStarted = true;
+    try {
+      const now = ctx.currentTime;
+      const current = gain.gain.value;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(current, now);
+      gain.gain.linearRampToValueAtTime(0, now + UPDATE_CHIME_FADE_OUT_S);
+      src.stop(now + UPDATE_CHIME_FADE_OUT_S);
+    } catch { /* the source may have finished already */ }
+  };
+
+  // Natural end — or the fade-stop firing onended — closes the window.
+  src.onended = () => detach();
+
+  const armCountdown = () => {
+    if (countdownArmed) return;
+    countdownArmed = true;
+    // First qualifying interaction starts the countdown; the listeners come
+    // off right away so later events can neither restart nor extend the 3 s.
+    detach();
+    countdownTimer = setTimeout(startFade, UPDATE_CHIME_INTERRUPT_DELAY_MS);
+  };
+
+  const onInteract = (event: MouseEvent) => {
+    if (countdownArmed || fadeStarted) return;
+    if (event.type === "mousemove") {
+      const previous = lastMove;
+      lastMove = { x: event.clientX, y: event.clientY };
+      if (!previous) return;
+      const travel = Math.hypot(event.clientX - previous.x, event.clientY - previous.y);
+      if (travel < UPDATE_CHIME_MOVE_THRESHOLD_PX) return;
+    }
+    armCountdown();
+  };
+
+  document.addEventListener("mousemove", onInteract, { passive: true });
+  document.addEventListener("click", onInteract, { passive: true });
+
+  src.start();
+}
+
+/** Fire-and-forget entry used by the startup gate in App.tsx. */
+export function playUpdateChime(options?: UpdateChimePlayOptions): void {
+  const volume = options?.volume ?? notificationVolumeToGain(getNotificationVolume());
   if (volume <= 0) return;
-  void playWav("positive", volume, playSynthSuccess);
+  const tune = normalizeUpdateChimeTune(options?.tune);
+  void playUpdateChimeSound(volume, tune, options?.audioCtxFactory);
 }
 
 export type UpdateChimeOutcome =

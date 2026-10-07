@@ -109,7 +109,7 @@ import { Tooltip } from "./Tooltip";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { getGenerativePreset, setGenerativePreset, generativeMusic, type GenerativePreset } from "../lib/generative-music";
 import { SoundSelect } from "./SoundSelect";
-import { getSuccessPreference, setSuccessPreference, getAttentionPreference, setAttentionPreference, getNotificationVolume, setNotificationVolume as persistNotificationVolume, playSuccessChime, playAttentionChime, type SoundWavPref } from "../lib/sound";
+import { getSuccessPreference, setSuccessPreference, getAttentionPreference, setAttentionPreference, getNotificationVolume, setNotificationVolume as persistNotificationVolume, playSuccessChime, playAttentionChime, chimeLocalAssetsEnabled, normalizeUpdateChimeTune, UPDATE_CHIME_TUNES, type SoundWavPref } from "../lib/sound";
 import { NotificationVolumeSlider } from "./NotificationVolumeSlider";
 import { ShortcutComboDisplay } from "./ShortcutComboDisplay";
 import { SettingsNavigation, SETTINGS_NAV_TABS } from "./SettingsNavigation";

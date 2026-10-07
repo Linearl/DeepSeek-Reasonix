@@ -66,7 +66,7 @@ import { reportFrontendLog } from "./lib/frontendLog";
 import { app, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
-import { clearAttentionChimeKeys, maybePlayUpdateChime, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
+import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { TodoPanel } from "./components/TodoPanel";
@@ -688,7 +688,8 @@ export default function App() {
   // receive the split state).
   // Task 277: update-complete chime — one shot, on the first launch after a
   // version swap. The gate lives in maybePlayUpdateChime (seen-version record
-  // + lab switch), and any failure never blocks startup.
+  // + lab switch), and any failure never blocks startup. Task 512 passes the
+  // configured melody through (public builds fall back from Mario to Nokia).
   useEffect(() => {
     void (async () => {
       try {
@@ -696,7 +697,7 @@ export default function App() {
         await maybePlayUpdateChime({
           enabled: Boolean(view.updateChime),
           listVersions: async () => versions,
-          play: playUpdateChime,
+          play: () => playUpdateChime({ tune: normalizeUpdateChimeTune(view.updateChimeTune) }),
         });
       } catch { /* never block startup */ }
     })();

@@ -117,6 +117,13 @@ function keepDistPlaceholder(): Plugin {
 const commit = buildCommit();
 const channel = buildChannel();
 
+// Task 512: Nintendo-owned chime assets stay out of public builds. The Mario
+// asset is only imported when this flag is baked in at build time
+// (REASONIX_CHIME_LOCAL_ASSETS=1 vite build / dev); every public packaging
+// path leaves it unset, so the guarded dynamic import is dead code and the
+// wav never reaches dist.
+const chimeLocalAssets = process.env.REASONIX_CHIME_LOCAL_ASSETS === "1";
+
 const nodeModulePath = String.raw`[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?`;
 const vendorReact = new RegExp(`${nodeModulePath}(?:react|react-dom)(?:[\\/]|$)`);
 const vendorMarkdown = new RegExp(
@@ -139,7 +146,11 @@ export default defineConfig({
   // so the shipped bundle is byte-for-byte what it was.
   plugins: [useSwcTransform ? reactSwc() : react(), stripCrossorigin(), archiveHiddenSourcemaps(commit), keepDistPlaceholder()],
   base: "./",
-  define: { __BUILD_COMMIT__: JSON.stringify(commit), __BUILD_CHANNEL__: JSON.stringify(channel) },
+  define: {
+    __BUILD_COMMIT__: JSON.stringify(commit),
+    __BUILD_CHANNEL__: JSON.stringify(channel),
+    __CHIME_LOCAL_ASSETS__: JSON.stringify(chimeLocalAssets),
+  },
   resolve: {
     alias: {
       // decode-named-character-reference (micromark/remark dependency) ships a

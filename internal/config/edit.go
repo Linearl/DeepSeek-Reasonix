@@ -646,6 +646,29 @@ func (c *Config) SetUpdateChime(enabled bool) error {
 	return nil
 }
 
+// SetUpdateChimeTune picks the update-chime melody (task 512). Only the two
+// known values are accepted so a typo cannot silently flip the tune.
+func (c *Config) SetUpdateChimeTune(tune string) error {
+	switch tune {
+	case "nokia", "mario":
+		c.Desktop.UpdateChimeTune = tune
+		return nil
+	default:
+		return fmt.Errorf("update_chime_tune must be nokia or mario (got %q)", tune)
+	}
+}
+
+// UpdateChimeTuneMode returns the normalized chime tune. Empty and unknown
+// values read as "nokia": the task-277 behavior before the tune picker existed.
+func (c *Config) UpdateChimeTuneMode() string {
+	switch c.Desktop.UpdateChimeTune {
+	case "mario":
+		return "mario"
+	default:
+		return "nokia"
+	}
+}
+
 // SetExperimentalFullAccess toggles the full-access (yolo) lab switch
 // (task 257). Boot resolves it into the writable-root set and the bash spec,
 // so the flip applies on the next restart — the settings pane says so.
