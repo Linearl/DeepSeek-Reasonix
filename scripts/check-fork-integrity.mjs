@@ -74,6 +74,18 @@ const CHECKS = [
   // 任务474（X8 方案 B）：filelock 固定 20ms 轮询升级为阶梯退避+抖动+预算自适应
   // 封顶；锚定阶梯函数、预算自适应除数与抖动源，合并静默回退固定轮询时报警。
   { feature: "任务474 锁等待阶梯退避+抖动（预算自适应封顶）", file: "internal/filelock/filelock.go", patterns: ["backoffBase", "backoffBudgetDivisor", "jitterNext"] },
+  // 任务511 复发断根（2026-10-07）：stale 锁持有者诊断自动回收——holder 侧车
+  // 指认死进程即清（防误杀：pid 存活/不可解析绝不清），OS 锁随进程死亡由内核
+  // 回收，本机制只治理诊断文件；面板读取两级 INFO 留痕堵静默通道；History
+  // 最后一个静默空分支诚实化。逐机制锚定，merge 丢任一半边即报警。
+  { feature: "任务511 复发 pid 存活叶子包（零依赖，解 config→sessioncollab 环）", file: "internal/baseproc/pidalive/pidalive.go", patterns: ["func ParseHolderPid"] },
+  { feature: "任务511 复发 pid 存活平台实现", file: "internal/baseproc/pidalive/pidalive_windows.go", patterns: ["func Alive"] },
+  { feature: "任务511 复发 lease 存活源切至叶子包", file: "internal/baseproc/lease.go", patterns: ["var leaseAlive = pidalive.Alive"] },
+  { feature: "任务511 复发 inbox 锁 stale 侧车回收（防误杀契约）", file: "internal/collabinbox/stale_holder.go", patterns: ["clearStaleHolderIfDead", "pidalive.Alive", "never guess"] },
+  { feature: "任务511 复发 mail 锁 stale 侧车回收（同契约孪生）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["clearStaleHolderIfDead", "stale lock holder sidecar cleared"] },
+  { feature: "任务511 复发 面板读取 INFO 留痕（静默通道哨兵）", file: "internal/collabinbox/collabinbox.go", patterns: ["collab inbox: panel read"] },
+  { feature: "任务511 复发 ListCollabMail 入口 INFO", file: "desktop/collab_inbox_app.go", patterns: ["collab inbox: ListCollabMail"] },
+  { feature: "任务511 复发 History ReadDir 静默空分支诚实化（degraded 非 nil,false）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["cannot list the mail directory", "listDirOrDefault"] },
   // 任务461 P8（收件箱重入污染）：投递层幂等与消费层折叠均为 fork 侧行为修复，
   // 与上游共享文件可能被合并静默回退，逐条锚定。
   { feature: "任务461-P8 投递层重发幂等（同 from+to+内容窗内返原 id）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["dedupeResend", "resendDedupWindowDefault", "resendDedupWindowSystem"] },
@@ -844,7 +856,9 @@ const CHECKS = [
   // 回收。掉一道，底座就无从知道哪些 workspace 在用（注册表托管的前置）。
   { feature: "S1c 会话租约表与 attach/detach 处理器", file: "internal/baseproc/lease.go", patterns: ["type leaseTable struct", "func (t *leaseTable) reclaimDead(", "AttachSessionAccounting", "func (s *Server) handleAttach("] },
   { feature: "S1c 孤儿回收挂在 base.hello 上", file: "internal/baseproc/serve.go", patterns: ["leases *leaseTable", "onHello := s.onHello", "onHello(p.ClientPID)"] },
-  { feature: "S1c 孤儿判定 pidAlive（双平台）", file: "internal/baseproc/pidalive_windows.go", patterns: ["func pidAlive(pid int) bool", "os.FindProcess(pid)"] },
+  // 任务511 复发断根把 pidAlive 双平台实现迁入零依赖叶子包 internal/baseproc/pidalive/
+  //（解 config→sessioncollab 导入环），S1c 锚随迁至新路径。
+  { feature: "S1c 孤儿判定 pidAlive（双平台）", file: "internal/baseproc/pidalive/pidalive_windows.go", patterns: ["func Alive(pid int) bool", "os.FindProcess(pid)"] },
 
   // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1c 单例收敛）────────────────
   // S1b 审计 note 的遗留：manager one-shot = N boot 各起一个子进程。掉一道，
