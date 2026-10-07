@@ -1648,6 +1648,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.labPicks.statusOn": "已開啟",
   "settings.labPicks.statusOff": "未開啟",
   "settings.labPicks.suggest": "建議開啟",
+  // 任務 604：詳情彈窗「設定位置」提示行前綴（路徑段落復用既有鍵，不入本表）。
+  "settings.labPicks.settingsPath": "設定位置：",
   // 任務 561：合併卡（合入口不合鍵——成員開關仍各自獨立保存）。
   "settings.autonomousRunGuard": "自主執行防護",
   "settings.modelStrategy": "模型策略",

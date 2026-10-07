@@ -4308,6 +4308,31 @@ a[href] {
   color: var(--fg);
   white-space: pre-wrap;
 }
+/* 任务 604: settings-location hint — 设置 → 实验室 → 组 → 卡, muted metadata
+   under a hairline so it reads as a pointer, not body copy. */
+.lab-pick-dialog__path {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 12px;
+}
+.lab-pick-dialog__path-label {
+  color: var(--fg-faint, #8a8f98);
+  flex-shrink: 0;
+}
+.lab-pick-dialog__path-seg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--fg);
+}
+.lab-pick-dialog__path-arrow {
+  color: var(--fg-faint, #8a8f98);
+}
 
 /* Task 132: experimental features left rail + detail pane. */
 .experimental-layout {

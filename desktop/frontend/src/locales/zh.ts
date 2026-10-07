@@ -2093,6 +2093,8 @@ export const zh: Record<DictKey, string> = {
   "settings.labPicks.statusOn": "已开启",
   "settings.labPicks.statusOff": "未开启",
   "settings.labPicks.suggest": "建议开启",
+  // 任务 604：详情弹窗「设置位置」提示行前缀（路径段落复用既有键，不入本表）。
+  "settings.labPicks.settingsPath": "设置位置：",
   // 任务 561：合并卡（合入口不合键——成员开关仍各自独立保存）。
   "settings.autonomousRunGuard": "自主运行防护",
   "settings.modelStrategy": "模型策略",

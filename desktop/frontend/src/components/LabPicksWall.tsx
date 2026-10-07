@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from "react";
 import type { Translator } from "../lib/i18n";
-import { EXPERIMENT_FEATURE_TIERS, LAB_WALL_PICKS, suggestEnable, type LabWallPickId } from "../lib/experimentTiers";
+import { EXPERIMENT_FEATURE_TIERS, LAB_SETTINGS_LOCATION, LAB_WALL_PICKS, suggestEnable, type LabWallPickId } from "../lib/experimentTiers";
 import { labPickCopyFor, loadForkFeaturesCopy, type ForkFeaturesCopy } from "../lib/forkFeaturesYaml";
 import { labWallOnFor, useLabWallOn } from "../lib/labWallOn";
 import { TierBadge } from "./TierBadge";
@@ -44,6 +44,16 @@ const PICK_TITLE_KEYS = {
   selectionActions: "settings.selectionActions",
   completionSummary: "settings.completionSummary",
 } as const satisfies Readonly<Record<LabWallPickId, string>>;
+
+/** 任务 604 — detail dialog 的「设置位置」路径：设置 → 实验室 → <组> → <卡>。
+ * 段落全部来自既有 locale 键（settings.title / lab tab / 562 注册表旁的
+ * LAB_SETTINGS_LOCATION 组+卡键）；无路径的纯展示 pick 返回 null，弹窗不渲染
+ * 该行。 */
+function settingsPathFor(t: Translator, pick: LabWallPickId): readonly string[] | null {
+  const loc = LAB_SETTINGS_LOCATION[pick];
+  if (!loc) return null;
+  return [t("settings.title"), t("settings.tab.experimental"), t(loc[0]), t(loc[1])];
+}
 
 export default function LabPicksWall({ t }: LabPicksWallProps) {
   // Live states from ExperimentalSection's features render table (context, so
@@ -103,6 +113,7 @@ export default function LabPicksWall({ t }: LabPicksWallProps) {
           on={labWallOnFor(wallOn, openPick)}
           suggest={suggestEnable(EXPERIMENT_FEATURE_TIERS[openPick], labWallOnFor(wallOn, openPick))}
           copy={labPickCopyFor(yaml, openPick)}
+          settingsPath={settingsPathFor(t, openPick)}
           onClose={() => setOpenPick(null)}
         />
       ) : null}

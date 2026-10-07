@@ -1305,6 +1305,12 @@ const CHECKS = [
   { feature: "任务578 窗口控制 min/max 变体 hover（--close 红色 hover 已随上游在位）", file: "desktop/frontend/src/styles.css", patterns: [".windows-window-control--minimize:hover,", ".windows-window-control--maximize:hover,"] },
   { feature: "任务578 防复发 check-class-contract.mjs（四断言：类名差集/Tailwind 专项/硬编码色/豁免）", file: "desktop/frontend/scripts/check-class-contract.mjs", patterns: ["BASELINE_WHITELIST", "TAILWIND_EXEMPT_FILES", "HARDCOLOR_WHITELIST", "--self-test", "--emit-baseline"] },
   { feature: "任务578 防复发接线（进 check-all-parallel 并行组）", file: "desktop/frontend/scripts/check-all-parallel.mjs", patterns: ["check:class-contract"] },
+  // ── 任务604 图墙详情弹窗「设置位置」提示（562 注册表旁映射 + 无路径不渲染）──
+  { feature: "任务604 设置位置映射（挂 562 注册表：组+卡 DictKey 标签键，与 rail 同源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_SETTINGS_LOCATION", "Partial<Record<LabWallPickId, readonly [DictKey, DictKey]>>"] },
+  { feature: "任务604 弹窗设置位置行（可选 prop，无路径整行不渲染）", file: "desktop/frontend/src/components/LabPickDetailDialog.tsx", patterns: ["settingsPath?: readonly string[] | null", "lab-pick-dialog__path", "{settingsPath && settingsPath.length > 0 ? ("] },
+  { feature: "任务604 图墙接线（设置 → 实验室 → 组 → 卡 四段路径，段落全复用既有键）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["function settingsPathFor", "t(\"settings.tab.experimental\")", "settingsPath={settingsPathFor(t, openPick)}"] },
+  { feature: "任务604 设置位置行 CSS（merge 丢块高发区）", file: "desktop/frontend/src/styles.css", patterns: [".lab-pick-dialog__path {", ".lab-pick-dialog__path-label {", ".lab-pick-dialog__path-arrow {"] },
+  { feature: "任务604 验收测试（抽 3 项路径逐字 + rail 真源逐项锚定 + 三语 + 无路径不显示）", file: "desktop/frontend/src/__tests__/task604-lab-picks-settings-path.test.ts", patterns: ["设置 → 实验室 → 界面 → 会话图墙", "every location names an existing features render table entry (rail truth)", "simulated pure-display pick has no location entry"] },
 ];
 
 let failed = 0;

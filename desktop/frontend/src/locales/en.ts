@@ -2093,6 +2093,9 @@ export const en = {
   "settings.labPicks.statusOn": "On",
   "settings.labPicks.statusOff": "Off",
   "settings.labPicks.suggest": "Suggested",
+  // Task 604: detail-dialog settings-location prefix (path segments reuse
+  // existing keys, nothing added to this table for them).
+  "settings.labPicks.settingsPath": "Settings location:",
   // Task 561: merged family cards (entry-level merge only — every member
   // switch still saves through its own setter).
   "settings.autonomousRunGuard": "Autonomous-run guards",
