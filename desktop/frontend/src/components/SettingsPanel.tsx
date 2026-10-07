@@ -1808,6 +1808,8 @@ type ExperimentFeatureId =
   | "promptHistoryPicker"
   // 任务 506: tab-strip adaptive compression (tiered tab width once >8 tabs).
   | "tabCompress"
+  // 任务 504: tab mode tint (low-opacity per-mode tab background instead of badges).
+  | "tabModeTint"
   | "localServer"
   | "pathRules"
   | "traceAsState"
@@ -2050,6 +2052,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // ── ui（界面，15 项）─────────────────────────────────────────
     // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
     { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
+    // 任务 504：标签模式色调（低透明模式底色代替审批/协作模式徽章）。
+    { id: "tabModeTint", group: "ui", label: t("settings.tabModeTint"), on: Boolean(s.experimentalTabModeTint) },
     { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
     // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
     { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
@@ -3237,6 +3241,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       // 任务 506：纯前端门——设置保存后的 onChanged 会重放
                       // 快照（applyLabFlags），标签栏即时换档，无需重启。
                       await app.SetExperimentalTabCompress(on);
+                    })}
+                  >
+                    {t(on ? "settings.tabCompress.on" : "settings.tabCompress.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "tabModeTint" && (
+            <SettingsField label={t("settings.tabModeTint")} hint={t("settings.tabModeTintHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalTabModeTint) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      // 任务 504：纯前端门——设置保存后的 onChanged 会重放
+                      // 快照（applyLabFlags），标签栏即时换色，无需重启。
+                      await app.SetExperimentalTabModeTint(on);
                     })}
                   >
                     {t(on ? "settings.tabCompress.on" : "settings.tabCompress.off")}

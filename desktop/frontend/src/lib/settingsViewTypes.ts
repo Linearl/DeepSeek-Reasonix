@@ -63,6 +63,8 @@ export interface SettingsView {
   experimentalTabCompress?: boolean;
   // Task 507: subagent detail view (row click → read-only in-dock detail + back).
   experimentalSubagentDetail?: boolean;
+  // Task 504: tab mode tint (low-opacity per-mode tab background instead of mode badges).
+  experimentalTabModeTint?: boolean;
   // Task 265 lab intake: nil-means-on switches, resolved server-side.
   experimentalCompactionParallel?: boolean;
   experimentalContextBudget?: boolean;

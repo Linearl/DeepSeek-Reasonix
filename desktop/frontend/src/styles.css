@@ -43907,3 +43907,31 @@ body > .mermaid-diagram--fullscreen {
   padding: 0 18px 0 8px;
   gap: 4px;
 }
+
+/* ═══ 任务504：对话标签模式色调（experimental_tab_mode_tint，默认关）═══
+   开启时 TabBar 在着色标签上写 data-mode-tint（档位阶梯见 TabBar
+   tabModeTintFor：autopilot > yolo > auto > goal > plan，ask+normal
+   默认态不着色），本段把档位映射为 ~30% 低透明底色，代替 plan/goal/
+   auto/yolo 文本徽章（四档审批各自色相可辨：询问=无色基线、自动=蓝、
+   YOLO=红、autopilot=紫；goal=青、plan=琥珀为协作档补充）。选择器
+   统一带 .tabbar 前缀补特异性：底色 (0,4,0) 压过基础/darwin/native-tabs/
+   theme-style 的 base 面（≤0,3,0），hover/active 与各消费面最高特异性
+   持平、按源顺序（本段在文件末尾）压过。开关关闭时 data-mode-tint 不
+   存在，以下规则全部不命中 = 逐字节等价旧行为（铁律 2）。 */
+.tabbar .tabbar__tab[data-mode-tint="plan"] { --tab-tint-color: #b45309; }
+.tabbar .tabbar__tab[data-mode-tint="goal"] { --tab-tint-color: #0d9488; }
+.tabbar .tabbar__tab[data-mode-tint="auto"] { --tab-tint-color: var(--mode-auto-bg); }
+.tabbar .tabbar__tab[data-mode-tint="yolo"] { --tab-tint-color: var(--mode-yolo-bg); }
+.tabbar .tabbar__tab[data-mode-tint="autopilot"] { --tab-tint-color: #7c3aed; }
+
+.tabbar .tabbar__tab[data-mode-tint]:not(.tabbar__tab--active) {
+  background: color-mix(in srgb, var(--tab-tint-color) 30%, transparent);
+}
+
+.tabbar .tabbar__tab[data-mode-tint]:not(.tabbar__tab--active):hover {
+  background: color-mix(in srgb, var(--tab-tint-color) 42%, transparent);
+}
+
+.tabbar .tabbar__tab--active[data-mode-tint] {
+  background: color-mix(in srgb, var(--tab-tint-color) 30%, var(--chat-bg));
+}

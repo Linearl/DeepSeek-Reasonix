@@ -351,6 +351,15 @@ func (a *App) SetExperimentalSubagentDetail(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSubagentDetail(enabled) })
 }
 
+// SetExperimentalTabModeTint toggles the tab mode tint (task 504): the strip
+// paints a low-opacity (~30%) per-mode background instead of the
+// plan/goal/auto/yolo text badges, hover keeps the full annotated title. The
+// frontend re-applies the snapshot on settings save, so the change is visible
+// without a restart.
+func (a *App) SetExperimentalTabModeTint(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTabModeTint(enabled) })
+}
+
 // Task 262 install-fix: the Wails exposure layer for the intake batch was
 // missed while the config layer landed — the frontend's calls hit a missing
 // App method at runtime, so the switch clicked but never saved (the installed

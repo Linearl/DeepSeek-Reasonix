@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "tabModeTint" | "subagentDetail";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -22,6 +22,10 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // Task 506: tab-strip adaptive compression (tiered tab width once >8 tabs,
   // floor 84px) ships off — with it off the strip keeps the exact fixed widths.
   tabCompress: false,
+  // Task 504: tab mode tint (low-opacity ~30% per-mode tab background instead
+  // of the plan/goal/auto/yolo text badges) ships off — with it off no tint
+  // attribute is written and the badge rendering is byte-identical.
+  tabModeTint: false,
   // Task 507: subagent detail view ships off — dual state, off = plan C
   // (inline preview expansion + widen affordance), on = plan A (row click
   // opens the read-only in-dock detail view with a back button).
@@ -39,7 +43,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} tabModeTint=${flags.tabModeTint} subagentDetail=${flags.subagentDetail}`,
   );
   for (const listener of listeners) listener();
 }

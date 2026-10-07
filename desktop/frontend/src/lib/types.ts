@@ -2420,6 +2420,8 @@ export interface DesktopStartupSettingsView {
   experimentalTabCompress?: boolean;
   /** Subagent detail view (task 507); off = inline preview + widen affordance, on = read-only in-dock detail view. */
   experimentalSubagentDetail?: boolean;
+  /** Tab mode tint (task 504); off by default; low-opacity per-mode tab background instead of mode badges. */
+  experimentalTabModeTint?: boolean;
   /** Task 265 lab intake: nil-means-on switches resolved server-side; boot snapshots. */
   experimentalCompactionParallel?: boolean;
   experimentalContextBudget?: boolean;

@@ -155,6 +155,16 @@ type DesktopConfig struct {
 	// dock width. It ships off (铁律 2). Pure frontend gate: the settings save
 	// re-applies the boot snapshot, so a change is visible without a restart.
 	ExperimentalSubagentDetail bool `toml:"experimental_subagent_detail"`
+	// ExperimentalTabModeTint gates the tab mode tint (task 504): with it on
+	// the tab strip paints a low-opacity (~30%) per-mode background instead of
+	// the plan/goal/auto/yolo text badges — the ladder is autopilot (violet) >
+	// yolo (red) > auto (blue) > goal (teal) > plan (amber), ask+normal stays
+	// untinted, and hovering keeps the full annotated title. It ships off
+	// (铁律 2): with it off no data-mode-tint attribute is written, so every
+	// tint CSS rule misses and the badge rendering is byte-identical. Pure
+	// frontend gate: the settings save re-applies the boot snapshot, so a
+	// change is visible without a restart.
+	ExperimentalTabModeTint bool `toml:"experimental_tab_mode_tint"`
 	// Task 265 (lab intake): three render-surface features ship ON via
 	// nil-means-on pointers — existing behaviour getting an off switch, so the
 	// default must not regress anyone. Each is a pure frontend gate.
