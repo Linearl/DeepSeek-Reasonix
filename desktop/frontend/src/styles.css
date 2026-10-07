@@ -220,6 +220,10 @@
   --mode-yolo-bg: #f04b52;
   --mode-yolo-border: #ff6268;
   --mode-yolo-fg: #fff;
+  /* 任务 595：autopilot 专属橙色系——与 yolo 红（#f04b52）明确区分。 */
+  --mode-autopilot-bg: #cf6a1d;
+  --mode-autopilot-border: #e8813a;
+  --mode-autopilot-fg: #fff;
 
   /* diff */
   --add-bg: rgba(116, 184, 122, 0.12);
@@ -413,6 +417,9 @@
     --mode-yolo-bg: #e5484d;
     --mode-yolo-border: #ed5d62;
     --mode-yolo-fg: #fff;
+    --mode-autopilot-bg: #c05e12;
+    --mode-autopilot-border: #d4742a;
+    --mode-autopilot-fg: #fff;
   }
 }
 
@@ -488,6 +495,9 @@
   --mode-yolo-bg: #e5484d;
   --mode-yolo-border: #ed5d62;
   --mode-yolo-fg: #fff;
+  --mode-autopilot-bg: #c05e12;
+  --mode-autopilot-border: #d4742a;
+  --mode-autopilot-fg: #fff;
 }
 
 :root[data-theme="dark"] {
@@ -8850,12 +8860,12 @@ body > .mermaid-diagram--fullscreen {
   --composer-modebar-active-fg: var(--mode-yolo-fg);
 }
 
-/* 任务 465：autopilot 隐含 yolo，点亮配色沿用 yolo 面板（无人值守=全自动放行
-   的同一姿态），避免再造一套语义色。 */
+/* 任务 595：autopilot 档点亮换专属橙色系——465 时期沿用 yolo 红，与 Yolo 档
+   同色难区分；橙红分明，四档各自可辨。 */
 .composer-modebar--approval[data-mode="autopilot"] {
-  --composer-modebar-active-bg: var(--mode-yolo-bg);
-  --composer-modebar-active-border: var(--mode-yolo-border);
-  --composer-modebar-active-fg: var(--mode-yolo-fg);
+  --composer-modebar-active-bg: var(--mode-autopilot-bg);
+  --composer-modebar-active-border: var(--mode-autopilot-border);
+  --composer-modebar-active-fg: var(--mode-autopilot-fg);
 }
 
 /* 任务 465：autopilot 档开启时审批条为四格（325 关掉的旧「+」菜单入口由

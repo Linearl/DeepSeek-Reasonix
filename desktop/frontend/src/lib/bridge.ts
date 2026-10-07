@@ -676,6 +676,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetToolApprovalMode(mode: string): Promise<void>;
   // Same drained-prompt-id contract as SetModeForTab.
   SetToolApprovalModeForTab(tabID: string, mode: string): Promise<string[] | void>;
+  // Task 595 four-tier single-select (ask|auto|yolo|autopilot): picking an
+  // attended tier while autopilot holds leaves autopilot in the same call.
+  SetApprovalTierForTab(tabID: string, tier: string): Promise<string[] | void>;
   // Atomically applies the controller-facing composer profile and reports any
   // approval prompts drained by the resulting tool-approval posture.
   SetComposerProfileForTab(tabID: string, collaborationMode: string, toolApprovalMode: string, goal: string): Promise<string[] | void>;
@@ -4043,6 +4046,22 @@ function makeMockApp(): AppBindings {
               : tab,
           );
           return drainMockApprovalPreviews(next);
+        },
+        async SetApprovalTierForTab(tabID, tier) {
+          // 任务 595 四档单选：任一档一键直达；普通档在 autopilot 持有时同调用
+          // 内离开 autopilot（yolo 档=普通 yolo），autopilot 档走 collaboration
+          // 通道自动假设 yolo。
+          if (String(tier).trim().toLowerCase() === "autopilot") {
+            await this.SetCollaborationModeForTab(tabID, "autopilot");
+            return [];
+          }
+          const next = normalizeToolApprovalMode(tier);
+          return this.SetToolApprovalModeForTab(tabID, next).then((drained) => {
+            mockTabs = mockTabs.map((tab) =>
+              tab.id === tabID ? { ...tab, autopilot: false } : tab,
+            );
+            return drained;
+          });
         },
         async SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMode, goal) {
           const nextCollaboration = normalizeCollaborationMode(collaborationMode);

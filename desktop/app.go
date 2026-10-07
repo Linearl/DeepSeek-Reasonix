@@ -7477,6 +7477,26 @@ func (a *App) SetToolApprovalMode(mode string) {
 // SetToolApprovalModeForTab returns the pending approval prompt ids the
 // switch auto-allowed (see SetModeForTab).
 func (a *App) SetToolApprovalModeForTab(tabID, mode string) []string {
+	return a.setToolApprovalModeForTabInner(tabID, mode, false)
+}
+
+// SetApprovalTierForTab is the task-595 four-tier single-select on the
+// approval-posture axis: ask|auto|yolo|autopilot, one click lands the axis
+// exactly on the picked tier. Picking any of the three attended tiers while
+// autopilot holds also leaves autopilot in the same call — on the mode bar the
+// yolo tier is plain yolo, not an autopilot alias — while picking the
+// autopilot tier delegates to the task-465 engagement (auto-assumes yolo).
+// The plan/goal axis rides along untouched. Programmatic writers that must
+// keep (autopilot, yolo) coherent keep using SetToolApprovalModeForTab.
+func (a *App) SetApprovalTierForTab(tabID, tier string) []string {
+	if strings.ToLower(strings.TrimSpace(tier)) == "autopilot" {
+		a.SetCollaborationModeForTab(tabID, "autopilot")
+		return nil
+	}
+	return a.setToolApprovalModeForTabInner(tabID, tier, true)
+}
+
+func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelect bool) []string {
 	tab := a.tabByID(tabID)
 	if tab == nil {
 		return nil
@@ -7498,13 +7518,24 @@ func (a *App) SetToolApprovalModeForTab(tabID, mode string) []string {
 	// unattended flag is the side that yields. The live controller keeps its
 	// built-in autopilot posture until the next rebuild, but its approval mode
 	// is updated below in the same call, so no build accepts the combination.
+	// Task 595: the composer tier path additionally treats a yolo pick under a
+	// holding autopilot as leaving the tier (single-select bar).
 	autopilotClosed := closeAutopilotForOffYolo(tab, mode)
+	// tierYoloLeave marks the deliberate yolo-pick leave: no surprise notice
+	// (the mode bar moving is the feedback), guard cleanup still runs.
+	tierYoloLeave := false
+	if !autopilotClosed && tierSingleSelect {
+		tierYoloLeave = closeAutopilotForTier(tab)
+		autopilotClosed = tierYoloLeave
+	}
 	ctrl := tab.Ctrl
 	tabIDForSave := tab.ID
 	guardTopic := strings.TrimSpace(tab.TopicID)
 	a.mu.Unlock()
-	if autopilotClosed {
+	if autopilotClosed && !tierYoloLeave {
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
+	}
+	if autopilotClosed {
 		// Task 326: symmetric cleanup — once autopilot is off there is no
 		// session left for the guard to watch.
 		a.clearAutopilotGuard(guardTopic)

@@ -84,6 +84,21 @@ func closeAutopilotForOffYolo(tab *WorkspaceTab, approvalMode string) bool {
 	if tab == nil || !tab.autopilot || autopilotGateAllowed(approvalMode) {
 		return false
 	}
+	return closeAutopilotForTier(tab)
+}
+
+// closeAutopilotForTier clears the autopilot fields on tab when a tier pick
+// lands the approval axis off the autopilot tier (task 595 four-tier
+// single-select). Yolo picks included: on the mode bar the yolo tier is plain
+// yolo, not an autopilot alias — the only way back onto the tier is the
+// autopilot tier itself. Callers that must keep the pre-595 semantics
+// (heartbeat tasks re-arming yolo, the legacy bypass toggle) stay on
+// closeAutopilotForOffYolo, which leaves (autopilot, yolo) untouched. Caller
+// holds the App lock; returns true when the flag was cleared.
+func closeAutopilotForTier(tab *WorkspaceTab) bool {
+	if tab == nil || !tab.autopilot {
+		return false
+	}
 	tab.autopilot = false
 	tab.autopilotMaxRuntime = 0
 	tab.autopilotApprovalGrace = 0

@@ -152,11 +152,13 @@ assert.ok(composerSrc.includes('onClick={() => chooseTaskMode("autopilot")}'), "
 assert.ok(composerSrc.includes("(planModeOn || goalModeOn)"), "徽章只承载第二维（计划/目标）");
 assert.ok(!composerSrc.includes('t("composer.taskModeAutopilot")</span>\n              </span>\n              {autopilotModeOn'), "执行方式菜单不再有 autopilot 项（其关闭路径已失效）");
 
-// ── 5. CSS 锚：四格网格 + 滑块四等分 + autopilot 沿用 yolo 配色。
+// ── 5. CSS 锚：四格网格 + 滑块四等分 + autopilot 专属橙（595 改色：465 时期
+//    沿用 yolo 红与 Yolo 档同色难区分，任务 595 换 --mode-autopilot-* 橙系）。
 const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
 assert.match(styles, /\.composer-modebar--approval\[data-autopilot="on"\]\s*\{\s*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/, "四格网格");
 assert.match(styles, /\.composer-modebar--approval\[data-autopilot="on"\] \.composer-modebar__thumb\s*\{\s*width:\s*calc\(\(100% - 4px\) \/ 4\);/, "滑块四等分");
-assert.match(styles, /\.composer-modebar--approval\[data-mode="autopilot"\]\s*\{\s*--composer-modebar-active-bg:\s*var\(--mode-yolo-bg\);/, "autopilot 点亮沿用 yolo 配色（隐含 yolo）");
+assert.match(styles, /\.composer-modebar--approval\[data-mode="autopilot"\]\s*\{\s*--composer-modebar-active-bg:\s*var\(--mode-autopilot-bg\);/, "autopilot 点亮用专属橙色系（595：与 yolo 红区分）");
+assert.doesNotMatch(styles, /\.composer-modebar--approval\[data-mode="autopilot"\]\s*\{[^}]*--mode-yolo-bg/, "autopilot 档不再借用 yolo 红");
 assert.match(styles, /\.composer-modebar\[data-mode="autopilot"\]\s*\{\s*--composer-modebar-index:\s*3;/, "滑块落到第 4 格");
 
 // ── 6. 留痕三语 + notice 映射（验收⑤/铁律：决策必须可见可查）。
