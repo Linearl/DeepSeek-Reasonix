@@ -108,6 +108,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_cascade_approval":          "task 225：派遣审批回投任务源，实验室 tab 无入口",
 	"experimental_fallback_model":            "task 242：额度耗尽切 fallback_model，实验室 tab 无入口",
 	"experimental_collab_background_delivery": "task 224：协作投递后台化，实验室 tab 无入口",
+	"experimental_bash_heavy_guard":          "task 575：bash 重命令写守卫（写并发保护，optimistic_write 家族伴生开关，实验室 tab 无入口）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
@@ -917,6 +918,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "optimistic_write = %v\n", c.Sandbox.OptimisticWrite)
 	} else {
 		b.WriteString("# optimistic_write = false    # enable write-if-unchanged parallel writes (#9213)\n")
+	}
+	if c.Sandbox.ExperimentalBashHeavyGuard {
+		fmt.Fprintf(&b, "experimental_bash_heavy_guard = %v\n", c.Sandbox.ExperimentalBashHeavyGuard)
+	} else {
+		b.WriteString("# experimental_bash_heavy_guard = false    # task 575: heavy bash commands (install/build) take the write lease under optimistic_write\n")
 	}
 	b.WriteString("\n")
 

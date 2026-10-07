@@ -1153,6 +1153,12 @@ type Options struct {
 	// path-bound file writers skip the whole-path serialization wait and rely on
 	// the "expected" stale-content check for parallel safety. Default false.
 	OptimisticWrite bool
+	// BashHeavyGuard is the task-575 companion switch (config
+	// [sandbox] experimental_bash_heavy_guard): under OptimisticWrite, bash
+	// invocations matching the heavy-command whitelist
+	// (bash_heavy_commands.go) take the workspace write lease again instead of
+	// running lock-free. Off (default) keeps the exact current behavior.
+	BashHeavyGuard bool
 
 	// LoopStreakNote enables task 244 B2: after the first text-repeat nudge, a
 	// repeated loop injects a bounded neutral "Continue." host note instead of

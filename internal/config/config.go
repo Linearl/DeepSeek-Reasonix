@@ -1351,6 +1351,19 @@ type SandboxConfig struct {
 	//
 	// Default false keeps the pessimistic path-lock behavior.
 	OptimisticWrite bool `toml:"optimistic_write"`
+	// ExperimentalBashHeavyGuard is the task-575 replacement for the coverage
+	// gap above: under optimistic_write, bash invocations whose command matches
+	// the declarative heavy-command whitelist (internal/agent/
+	// bash_heavy_commands.go: package install/build orchestration, git
+	// worktree-mutating subcommands) take the workspace write lease again, so
+	// two sessions running `pnpm install` on one workspace serialize instead of
+	// corrupting each other's node_modules. Ordinary commands (ls/cat/git
+	// status/…) stay lock-free — the optimistic-parallel win is untouched.
+	// Conflict behavior is the existing conservative one: bounded wait
+	// (filelock.DefaultWaitTimeout), then a clear "workspace write lease
+	// unavailable" refusal. Off (default, 铁律 2) keeps the exact current
+	// behavior: bash never takes a hold under optimistic_write.
+	ExperimentalBashHeavyGuard bool `toml:"experimental_bash_heavy_guard"`
 }
 
 // WriteRoots returns the directories file-writer tools may modify: the

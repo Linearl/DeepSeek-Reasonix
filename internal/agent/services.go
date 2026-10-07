@@ -109,6 +109,9 @@ type agentServices struct {
 	// optimisticWrite enables write-if-unchanged concurrency: path-bound file
 	// writers skip the whole-path serialization wait (see #9213).
 	optimisticWrite bool
+	// bashHeavyGuard is the task-575 companion switch: under optimisticWrite,
+	// whitelisted heavy bash commands take the workspace write lease again.
+	bashHeavyGuard bool
 
 	// loopStreakNote gates task 244 B2's neutral Continue. streak note
 	// (Options.LoopStreakNote → run_loop text-repeat branch).
@@ -167,6 +170,7 @@ func newAgentServices(
 		writeScheduler:        opts.WriteScheduler,
 		workspaceLease:        opts.WorkspaceLease,
 		optimisticWrite:       opts.OptimisticWrite,
+		bashHeavyGuard:        opts.BashHeavyGuard,
 		loopStreakNote:        opts.LoopStreakNote,
 		feedbackNudge:         opts.FeedbackNudge,
 		collabReplyNudge:      opts.CollabReplyNudge,
