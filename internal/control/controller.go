@@ -242,6 +242,10 @@ type Controller struct {
 	// tools spawn into it; Compose drains its completion notes into the next turn;
 	// Close cancels its still-running jobs.
 	jobs *jobs.Manager
+	// wake owns task 553's idle-session wake bookkeeping (completion observer,
+	// coalesce timer, self-drive budget, throttle, per-job dedupe). Guarded by
+	// c.mu; see job_wake.go.
+	wake jobWakeState
 	// workspaceLease is the Delivery writer owner shared with the executor.
 	// It is exposed only through a sanitized state snapshot for Desktop recovery.
 	workspaceLease *workspacelease.Owner
@@ -708,6 +712,10 @@ type Options struct {
 	BalanceClient *http.Client
 	// Jobs is the session-scoped background-job manager (nil disables background jobs).
 	Jobs *jobs.Manager
+	// BackgroundJobWake opts in to idle-session wake turns when an owned
+	// background job finishes (task 553). Iron rule 2: default off; boot
+	// snapshot — restart to apply.
+	BackgroundJobWake BackgroundJobWakeOptions
 	// TaskStore remains a FileStore-compatible authority. Desktop injects one
 	// observed instance so recorder and task-control APIs share post-commit
 	// projection hints; nil preserves the ordinary FileStore.
@@ -965,6 +973,7 @@ func New(opts Options) *Controller {
 	// Checkpoints: bind a store to the session and route writer pre-edits into it.
 	c.rebindCheckpoints(opts.SessionPath)
 	c.setActiveJobSession(opts.SessionPath)
+	c.initBackgroundJobWake(opts.BackgroundJobWake)
 	c.rebindInbox()
 	// Observe Steer / unapplied-steer for durable inbox state transitions.
 	// Must wrap both the controller sink and the executor sink: agent.Steer
@@ -1355,6 +1364,10 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 			c.mu.Unlock()
 			// No parked compatibility body: admit the next durable inbox item.
 			c.maybeDispatchInbox()
+			// 任务553: the gate just reopened — re-arm the idle-session wake in
+			// case completion notes queued while a turn was running. All wake
+			// guards (yield/budget/throttle) re-checked at fire time.
+			c.wakeKickAfterTurnFinished()
 			c.refreshRuntimeState(event.Event{})
 			return
 		}
@@ -5714,6 +5727,10 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 			c.hooks.SessionEnd(context.Background(), "other")
 			c.extensionSessionEvent(extension.PointSessionEnd, dispatch.PhaseEnd, c.SessionPath())
 		}
+		// Task 553: detach the wake observer and disarm the coalesce timer
+		// before the manager closes. Runs outside the c.mu critical section;
+		// fireWakeTurn's closed check covers any timer already in flight.
+		c.shutdownBackgroundJobWake()
 		if c.jobs != nil {
 			switch jobsMode {
 			case closeJobsAsync:

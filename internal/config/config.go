@@ -2361,6 +2361,65 @@ func (c *Config) MCPStartupTimeoutSeconds() int {
 // BackgroundJobsConfig tunes parent-created background jobs.
 type BackgroundJobsConfig struct {
 	StalledWarningSeconds *int `toml:"stalled_warning_seconds"`
+	// 任务553 idle-session wake（铁律 2：默认关）。wake_idle_session 打开
+	// 「本会话拥有的后台 job 完成 → 会话空闲时自动注入一轮续轮」，其余三键
+	// 约束其自驱预算（滚动窗口轮数 / 窗口 / 最小间隔）。
+	WakeIdleSession       *bool `toml:"wake_idle_session"`
+	WakeMaxTurnsPerWindow *int  `toml:"wake_max_turns_per_window"`
+	WakeWindowSeconds     *int  `toml:"wake_window_seconds"`
+	WakeThrottleSeconds   *int  `toml:"wake_throttle_seconds"`
+}
+
+const (
+	// defaultWake* are the conservative wake-budget defaults (task 553). The
+	// master switch ships off; the budget knobs only shape an opt-in feature.
+	defaultWakeMaxTurnsPerWindow = 3
+	defaultWakeWindowSeconds     = 600
+	defaultWakeThrottleSeconds   = 60
+	maxWakeWindowSeconds         = 86400
+	maxWakeThrottleSeconds       = 86400
+)
+
+// BackgroundJobWakeIdleSession reports whether an owned background job may
+// wake its idle session with an automatic continuation turn. Default off.
+func (c *Config) BackgroundJobWakeIdleSession() bool {
+	return c.Tools.BackgroundJobs.WakeIdleSession != nil && *c.Tools.BackgroundJobs.WakeIdleSession
+}
+
+// BackgroundJobWakeMaxTurnsPerWindow returns the self-drive budget: how many
+// wake turns may be admitted per rolling window. Omitted/negative values keep
+// the default; 0 also keeps the default (disabling the budget would defeat the
+// anti-loop bound — use wake_idle_session = false to turn the feature off).
+func (c *Config) BackgroundJobWakeMaxTurnsPerWindow() int {
+	if c.Tools.BackgroundJobs.WakeMaxTurnsPerWindow == nil || *c.Tools.BackgroundJobs.WakeMaxTurnsPerWindow <= 0 {
+		return defaultWakeMaxTurnsPerWindow
+	}
+	return *c.Tools.BackgroundJobs.WakeMaxTurnsPerWindow
+}
+
+// BackgroundJobWakeWindowSeconds returns the rolling budget window in seconds.
+// Omitted/negative values keep the default; oversized values clamp to one day.
+func (c *Config) BackgroundJobWakeWindowSeconds() int {
+	if c.Tools.BackgroundJobs.WakeWindowSeconds == nil || *c.Tools.BackgroundJobs.WakeWindowSeconds <= 0 {
+		return defaultWakeWindowSeconds
+	}
+	if *c.Tools.BackgroundJobs.WakeWindowSeconds > maxWakeWindowSeconds {
+		return maxWakeWindowSeconds
+	}
+	return *c.Tools.BackgroundJobs.WakeWindowSeconds
+}
+
+// BackgroundJobWakeThrottleSeconds returns the minimum spacing between
+// admitted wake turns in seconds. Omitted/negative values keep the default;
+// oversized values clamp to one day.
+func (c *Config) BackgroundJobWakeThrottleSeconds() int {
+	if c.Tools.BackgroundJobs.WakeThrottleSeconds == nil || *c.Tools.BackgroundJobs.WakeThrottleSeconds <= 0 {
+		return defaultWakeThrottleSeconds
+	}
+	if *c.Tools.BackgroundJobs.WakeThrottleSeconds > maxWakeThrottleSeconds {
+		return maxWakeThrottleSeconds
+	}
+	return *c.Tools.BackgroundJobs.WakeThrottleSeconds
 }
 
 // BackgroundJobStalledWarningSeconds returns the stalled warning threshold in

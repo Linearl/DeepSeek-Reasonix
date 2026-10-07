@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -152,5 +153,87 @@ func TestBackgroundJobStalledWarningSecondsBounds(t *testing.T) {
 	cfg.Tools.BackgroundJobs.StalledWarningSeconds = intPtr(90000)
 	if got := cfg.BackgroundJobStalledWarningSeconds(); got != 86400 {
 		t.Fatalf("oversized BackgroundJobStalledWarningSeconds() = %d, want 86400", got)
+	}
+}
+
+// 任务553：idle-session wake 四键的默认/显式/钳制三态。
+func TestBackgroundJobWakeAccessorsDefaultOff(t *testing.T) {
+	cfg := Default()
+	if cfg.BackgroundJobWakeIdleSession() {
+		t.Fatal("wake_idle_session must default to false (iron rule 2)")
+	}
+	if got := cfg.BackgroundJobWakeMaxTurnsPerWindow(); got != 3 {
+		t.Fatalf("default wake_max_turns_per_window = %d, want 3", got)
+	}
+	if got := cfg.BackgroundJobWakeWindowSeconds(); got != 600 {
+		t.Fatalf("default wake_window_seconds = %d, want 600", got)
+	}
+	if got := cfg.BackgroundJobWakeThrottleSeconds(); got != 60 {
+		t.Fatalf("default wake_throttle_seconds = %d, want 60", got)
+	}
+}
+
+func TestBackgroundJobWakeAccessorsExplicitAndClamped(t *testing.T) {
+	cfg := Default()
+	cfg.Tools.BackgroundJobs.WakeIdleSession = boolPtr(true)
+	cfg.Tools.BackgroundJobs.WakeMaxTurnsPerWindow = intPtr(0) // 0 也回默认：预算不可经配置拆除
+	cfg.Tools.BackgroundJobs.WakeWindowSeconds = intPtr(-1)
+	cfg.Tools.BackgroundJobs.WakeThrottleSeconds = intPtr(999999)
+	if !cfg.BackgroundJobWakeIdleSession() {
+		t.Fatal("explicit wake_idle_session = true did not resolve")
+	}
+	if got := cfg.BackgroundJobWakeMaxTurnsPerWindow(); got != 3 {
+		t.Fatalf("zero wake_max_turns_per_window = %d, want the default 3", got)
+	}
+	if got := cfg.BackgroundJobWakeWindowSeconds(); got != 600 {
+		t.Fatalf("negative wake_window_seconds = %d, want the default 600", got)
+	}
+	if got := cfg.BackgroundJobWakeThrottleSeconds(); got != 86400 {
+		t.Fatalf("oversized wake_throttle_seconds = %d, want 86400", got)
+	}
+}
+
+// 任务553：diff 视图必须独立发射 wake 键——只设 wake 不设 stalled 时不得丢键，
+// 且输出是合法 TOML（单表头）。
+func TestRenderTOMLProjectDeltaEmitsWakeKeysWithoutStalled(t *testing.T) {
+	custom := Default()
+	custom.Tools.BackgroundJobs.WakeIdleSession = boolPtr(true)
+	custom.Tools.BackgroundJobs.WakeThrottleSeconds = intPtr(120)
+
+	delta := RenderTOMLProjectDelta(custom)
+	if !strings.Contains(delta, "wake_idle_session = true") {
+		t.Fatalf("project delta dropped wake_idle_session:\n%s", delta)
+	}
+	if !strings.Contains(delta, "wake_throttle_seconds = 120") {
+		t.Fatalf("project delta dropped wake_throttle_seconds:\n%s", delta)
+	}
+	if strings.Count(delta, "[tools.background_jobs]") != 1 {
+		t.Fatalf("project delta must emit the section header exactly once:\n%s", delta)
+	}
+	var got Config
+	if _, err := toml.Decode(delta, &got); err != nil {
+		t.Fatalf("delta TOML does not parse: %v\n%s", err, delta)
+	}
+	if got.Tools.BackgroundJobs.WakeIdleSession == nil || !*got.Tools.BackgroundJobs.WakeIdleSession {
+		t.Fatal("wake_idle_session did not round-trip through the delta render")
+	}
+}
+
+// 任务553：全量视图始终带着四键的解析值（含默认），且可解析回读。
+func TestRenderTOMLFullViewCarriesWakeKeys(t *testing.T) {
+	rendered := RenderTOML(Default())
+	for _, key := range []string{
+		"wake_idle_session = false",
+		"wake_max_turns_per_window = 3",
+		"wake_window_seconds = 600",
+		"wake_throttle_seconds = 60",
+	} {
+		if !strings.Contains(rendered, key) {
+			t.Fatalf("full render missing %q:\n%s", key, rendered)
+		}
+	}
+	var got Config
+	if _, err := toml.Decode(rendered, &got); err != nil {
+		t.Fatalf("full render does not parse: %v", err)
 	}
 }
