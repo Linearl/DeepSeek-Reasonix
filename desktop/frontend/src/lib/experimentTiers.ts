@@ -181,6 +181,13 @@ export function railTiersFor(entryId: string): LabTier[] {
   return LAB_TIER_ORDER.filter((tier) => members.some((m) => EXPERIMENT_FEATURE_TIERS[m] === tier));
 }
 
+/** 任务 563 — 「建议开启」badge rule (xlsx 表B W4): ONLY a recommended-tier
+ * pick that is currently off. Optional/unstable never nag; an on pick never
+ * nags. Pure so both card and dialog call the one rule. */
+export function suggestEnable(tier: LabTier, on: boolean): boolean {
+  return tier === "recommended" && !on;
+}
+
 /** Locale keys for tier labels (DictKey-checked literals — a typo here is a
  * compile error once the keys exist in locales/*). */
 export const LAB_TIER_LABEL_KEYS: Readonly<Record<LabTier, "settings.labTier.recommended" | "settings.labTier.optional" | "settings.labTier.unstable" | "settings.labTier.retired">> = {
