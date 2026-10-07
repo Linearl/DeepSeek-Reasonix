@@ -664,7 +664,12 @@ type Options struct {
 	// queued message becomes a new turn. The returned release runs after claim
 	// and synchronous turn admission, outside every controller lock.
 	BeforeInboxDispatch func(*Controller) (func(), error)
-	SystemPrompt        string
+	// OnInboxDispatchExhausted (任务579) fires without any controller lock when
+	// the bounded runtime-unpublished retry budget is spent for one item —
+	// the host's chance to surface the stuck message (desktop: a 570 delivery
+	// receipt). Nil keeps the slog-only behaviour.
+	OnInboxDispatchExhausted func(InboxDispatchExhausted)
+	SystemPrompt             string
 	// PinnedContextLoader snapshots the current session sidecar at turn
 	// admission. The Agent persists changes as append-only user-role revisions.
 	PinnedContextLoader PinnedContextLoader

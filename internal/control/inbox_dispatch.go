@@ -10,8 +10,12 @@ import (
 
 const maxInboxDispatchRetryAttempts = 3
 
-// ErrInboxRuntimeUnpublished means the host owns the next dispatch kick:
-// either this runtime is a candidate or it was replaced before admission.
+// ErrInboxRuntimeUnpublished means admission could not resolve a published
+// runtime owner (detached runtime, or the runtime was replaced mid-admission).
+// 任务579 root-cause note: the old contract comment claimed "the host owns the
+// next dispatch kick", but for a detached runtime no host kick ever comes —
+// the controller therefore leaves its own bounded trail (log + 5s/15s/45s
+// retries + exhaustion report) instead of dropping the item silently.
 var ErrInboxRuntimeUnpublished = errors.New("inbox runtime is not published")
 
 // NotifyInboxRuntimeReady is called after a host publishes a complete runtime.
@@ -29,7 +33,33 @@ const (
 	inboxDispatchIdle inboxDispatchResult = iota
 	inboxDispatchStarted
 	inboxDispatchRetry
+	// inboxDispatchRuntimePending marks the 任务579 dead path: admission says
+	// the runtime owner is not published (detached runtime, replaced runtime),
+	// so nothing consumed the item and NOBODY else owns the next kick. Unlike
+	// ErrTurnRunning (the running turn's completion re-kicks) this condition
+	// used to be silent and permanent; it now leaves a log trail and arms a
+	// bounded host-independent retry.
+	inboxDispatchRuntimePending
 )
+
+// InboxDispatchExhausted is what the host learns when the bounded opening
+// retry budget for one stuck item is spent (任务579 验收④: exhaustion must be
+// observable, never a silent drop). The item STAYS queued — this is a status
+// report, not an eviction; the idle-turn bridge or a later runtime publish
+// can still consume it.
+type InboxDispatchExhausted struct {
+	ItemID string
+	// Source / CollabMsgID / CollabMailTo carry the task-309 receipt
+	// coordinates when the item arrived over the collaboration mail pump;
+	// empty for local queue entries.
+	Source       string
+	CollabMsgID  string
+	CollabMailTo string
+	// Attempts counts the retries that were made after the initial kick.
+	Attempts int
+	// Err is the last admission error (ErrInboxRuntimeUnpublished).
+	Err error
+}
 
 // endRotation releases the admission gate and republishes durable queue work.
 func (c *Controller) endRotation() {
@@ -83,8 +113,11 @@ func (c *Controller) drainInboxDispatch() {
 		switch c.dispatchInboxOnce() {
 		case inboxDispatchRetry:
 			c.scheduleInboxDispatchRetry()
+		case inboxDispatchRuntimePending:
+			c.scheduleInboxRuntimeRetry()
 		case inboxDispatchStarted, inboxDispatchIdle:
 			c.resetInboxDispatchRetries()
+			c.resetInboxRuntimeRetry()
 		}
 	}
 }
@@ -132,8 +165,23 @@ func (c *Controller) dispatchInboxOnce() inboxDispatchResult {
 	}
 	receipt, err := c.TrySubmitInboxItem(meta.ID)
 	if err != nil {
-		if errors.Is(err, ErrInboxRuntimeUnpublished) || errors.Is(err, ErrTurnRunning) {
+		if errors.Is(err, ErrTurnRunning) {
+			// The running turn owns the next kick: its completion re-runs the
+			// dispatcher, so staying silent here is by design.
 			return inboxDispatchIdle
+		}
+		if errors.Is(err, ErrInboxRuntimeUnpublished) {
+			// 任务579②: the host does NOT own a kick for this state (detached
+			// runtime; the host that could publish one is gone or never
+			// comes). Record the trail and arm the bounded retry instead of
+			// dropping the kick as idle — that silence was the 2026-10-07
+			// five-hour backlog.
+			c.inbox.mu.Lock()
+			c.inbox.runtimeRetryItem = meta
+			c.inbox.mu.Unlock()
+			slog.Warn("controller: inbox dispatch deferred, runtime unpublished (item stays queued; bounded retry armed)",
+				"id", meta.ID, "source", meta.Source)
+			return inboxDispatchRuntimePending
 		}
 		slog.Warn("controller: dispatch inbox item", "err", err, "id", meta.ID)
 		return inboxDispatchRetry
@@ -242,5 +290,103 @@ func (c *Controller) scheduleInboxDispatchRetry() {
 func (c *Controller) resetInboxDispatchRetries() {
 	c.inbox.mu.Lock()
 	c.inbox.dispatchRetryAttempts = 0
+	c.inbox.mu.Unlock()
+}
+
+// inboxRuntimeRetryBackoff is the 任务579 schedule for the runtime-unpublished
+// dead path: 3 retries after the initial kick (5s / 15s / 45s, the task book's
+// prescription). Bounded by construction — after the last attempt the item is
+// reported through the exhaustion hook and the budget re-arms for the next
+// episode, so a permanently unpublished runtime costs at most one timer at a
+// time and one report per stuck item, never a hot loop.
+var inboxRuntimeRetryBackoff = [...]time.Duration{5 * time.Second, 15 * time.Second, 45 * time.Second}
+
+// SetOnInboxDispatchExhausted registers the host-visible sink for the bounded
+// retry budget running out (任务579 验收④). Production wiring normally comes
+// through Options.OnInboxDispatchExhausted; this setter exists for hosts that
+// wire after construction. Nil keeps the log-only behaviour.
+func (c *Controller) SetOnInboxDispatchExhausted(fn func(InboxDispatchExhausted)) {
+	c.mu.Lock()
+	c.modelSettings.onInboxDispatchExhausted = fn
+	c.mu.Unlock()
+}
+
+// scheduleInboxRuntimeRetry arms one bounded retry for the runtime-unpublished
+// dead path, or reports exhaustion once the 3-retry budget is spent. The
+// timer is one-shot and single-instance: a second caller while one is armed
+// is a no-op, the callback is a no-op on a closed inbox, and a successful or
+// empty dispatch stops and clears it — the goroutine/timer lifecycle always
+// terminates (交付纪律: 重试必须有终止条件).
+func (c *Controller) scheduleInboxRuntimeRetry() {
+	c.inbox.mu.Lock()
+	if c.inbox.closed || c.inbox.runtimeRetryScheduled {
+		c.inbox.mu.Unlock()
+		return
+	}
+	item := c.inbox.runtimeRetryItem
+	attempt := c.inbox.runtimeRetryAttempts
+	if attempt >= len(inboxRuntimeRetryBackoff) {
+		// Budget spent: surface it once, then re-arm the counter so the NEXT
+		// stuck item (or a manually retried one) gets its own bounded budget
+		// instead of inheriting a burned one. The hook is read under c.mu
+		// (same home as beforeInboxDispatch) with inbox.mu already released —
+		// the hook must never run under any controller lock.
+		c.inbox.runtimeRetryAttempts = 0
+		c.inbox.mu.Unlock()
+		c.mu.Lock()
+		hook := c.modelSettings.onInboxDispatchExhausted
+		c.mu.Unlock()
+		slog.Error("controller: inbox open retries exhausted; item stays queued, not dropped",
+			"id", item.ID, "source", item.Source, "collab_msg_id", item.CollabMsgID,
+			"attempts", len(inboxRuntimeRetryBackoff), "last_err", ErrInboxRuntimeUnpublished.Error())
+		if hook != nil {
+			hook(InboxDispatchExhausted{
+				ItemID:       item.ID,
+				Source:       item.Source,
+				CollabMsgID:  item.CollabMsgID,
+				CollabMailTo: item.CollabMailTo,
+				Attempts:     len(inboxRuntimeRetryBackoff),
+				Err:          ErrInboxRuntimeUnpublished,
+			})
+		}
+		return
+	}
+	delay := inboxRuntimeRetryBackoff[attempt]
+	c.inbox.runtimeRetryAttempts++
+	c.inbox.runtimeRetryScheduled = true
+	retry := func() {
+		c.inbox.mu.Lock()
+		c.inbox.runtimeRetryScheduled = false
+		if c.inbox.runtimeRetryTimer != nil {
+			c.inbox.runtimeRetryTimer.Stop()
+			c.inbox.runtimeRetryTimer = nil
+		}
+		c.inbox.mu.Unlock()
+		c.maybeDispatchInbox()
+	}
+	if schedule := c.inbox.scheduleRuntimeRetry; schedule != nil {
+		// Deterministic tests own the timer; the single-instance guard above
+		// is the scheduled flag, which covers this path too.
+		c.inbox.mu.Unlock()
+		schedule(delay, retry)
+		return
+	}
+	c.inbox.runtimeRetryTimer = time.AfterFunc(delay, retry)
+	c.inbox.mu.Unlock()
+	slog.Warn("controller: inbox open retry armed",
+		"id", item.ID, "attempt", attempt+1, "max", len(inboxRuntimeRetryBackoff), "delay", delay)
+}
+
+// resetInboxRuntimeRetry stops a pending runtime-unpublished retry and clears
+// the budget: a started turn or an empty queue means the dead path is over.
+func (c *Controller) resetInboxRuntimeRetry() {
+	c.inbox.mu.Lock()
+	if c.inbox.runtimeRetryTimer != nil {
+		c.inbox.runtimeRetryTimer.Stop()
+		c.inbox.runtimeRetryTimer = nil
+	}
+	c.inbox.runtimeRetryScheduled = false
+	c.inbox.runtimeRetryAttempts = 0
+	c.inbox.runtimeRetryItem = sessioninbox.InboxItemMeta{}
 	c.inbox.mu.Unlock()
 }
