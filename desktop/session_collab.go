@@ -932,6 +932,15 @@ type collabDelivery struct {
 	// construction) skips recording — the delivery contract itself is unchanged
 	// without it.
 	recordReceipt func(msg sessioncollab.MailMessage, outcome, detail string)
+	// settledReceipt (任务585) returns the prior SETTLED outcome for this
+	// message from the 570 receipt store, or "" when none exists. The pump then
+	// acks and skips: the mail cursor can lose an ack in an update-restart
+	// window (write-authority revocation racing the pump's Ack), and once the
+	// target consumed + deleted the queue item, a re-claim would enqueue the
+	// processed message all over. A settled receipt only exists after an
+	// enqueue/steer actually succeeded, so the skip can never drop an
+	// undelivered message. Empty return keeps the legacy behavior.
+	settledReceipt func(msg sessioncollab.MailMessage) string
 }
 
 // deliverToTarget hands every pending message to the target and acks only what
@@ -952,6 +961,14 @@ func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (deliver
 		notify:    p.notifySenderOnce,
 		deriveHop: p.verifyHop,
 		render:    sessionCollabDeliveryText,
+		// 任务585: a settled 570 receipt proves a prior pass handed this message
+		// over already — re-claiming it after a restart must not re-inject it.
+		settledReceipt: func(msg sessioncollab.MailMessage) string {
+			if r, ok := mail.DeliveryReceipt(msg.ID); ok && sessioncollab.DeliveryReceiptSettled(r.Outcome) {
+				return r.Outcome
+			}
+			return ""
+		},
 		// 任务 570 c1: every settle outcome lands in the receipt store, so the
 		// sender can query the truth by message id instead of trusting the
 		// "queued" green light.
@@ -1042,6 +1059,21 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 	}
 
 	for _, msg := range pending {
+		if d.settledReceipt != nil {
+			if outcome := d.settledReceipt(msg); outcome != "" {
+				// 任务585: a prior pass already settled this message — the mail
+				// cursor lost its ack (update-restart window), but the delivery
+				// itself happened. Re-handing a processed message to the target
+				// is the repeat-injection the user explicitly ruled out
+				// ("已经发过的，不需要重入队列"); settle it quietly instead.
+				// Silent on purpose (任务461 P10① precedent): a failure notice
+				// would feed retry loops, and nothing failed here.
+				log.Printf("[session-collab] skipping re-delivery of %s: already settled by a prior pass (%s)", msg.ID, outcome)
+				acked = append(acked, msg.ID)
+				delivered++
+				continue
+			}
+		}
 		effectiveHop, verr := d.deriveHop(msg)
 		if verr != nil {
 			// Task 213: the refusal must name its real cause. An exhausted

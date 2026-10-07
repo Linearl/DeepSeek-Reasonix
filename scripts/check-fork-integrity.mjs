@@ -398,6 +398,14 @@ const CHECKS = [
   { feature: "任务579 去开关（桥始终打开；3 次有界预算+守卫④互斥门保留）", file: "desktop/session_collab_idle_turn.go", patterns: ["idleTurnMaxAttempts", "idleTurnSweepActive", "recordOpeningFailure"] },
   { feature: "任务579 控制器侧失效路径留痕+有界重试（5/15/45s，上限 3 次）", file: "internal/control/inbox_dispatch.go", patterns: ["inboxDispatchRuntimePending", "inboxRuntimeRetryBackoff", "scheduleInboxRuntimeRetry", "SetOnInboxDispatchExhausted"] },
   { feature: "任务579 用尽可见（get_message_status 新结局 open_retry_exhausted）", file: "internal/sessioncollab/receipt.go", patterns: ["ReceiptOpenRetryExhausted", "open_retry_exhausted"] },
+  // 任务 585：已投递 follow-up 不重入。锚点按链路登记——turn 完成结算消费
+  // durability 半（退回无条件 park Uncertain 会复活已应用消息：重启窗 authority
+  // stale 每次更新重启必发，实测 2026-10-07 四次重启各留 WARN+残留）、泵
+  // settled-receipt 防重投与其结局分类器（邮件游标丢 ack 后的重投闸）。少任何
+  // 一个都会退回「重启后已处理消息重复注入」。
+  { feature: "任务585 turn 完成结算消费 durability 半（transcript 已落盘即结算不 park）", file: "internal/control/inbox.go", patterns: ["snapshotCompletion", "inbox turn transcript durable before metadata update failed", "c.snapshotWithDurability(true, false, false, false)"] },
+  { feature: "任务585 泵 settled-receipt 防重投（已结算消息跳过重投并补结算游标）", file: "desktop/session_collab.go", patterns: ["settledReceipt", "DeliveryReceiptSettled", "already settled by a prior pass"] },
+  { feature: "任务585 结算结局分类器（仅 failed_retrying 非终态）", file: "internal/sessioncollab/receipt.go", patterns: ["func DeliveryReceiptSettled"] },
   // 任务 581：用户提交不可丢。两个锚点按链路登记——用户手发提交在 running/finishing
   // 门上 park 排队（退回 runGuarded 会重新出现「受理即静默蒸发」的 580 断裂形态）、
   // desktop 提交受理链分段计时留痕（580 事发三无盲区的观测面）。少任何一个都会

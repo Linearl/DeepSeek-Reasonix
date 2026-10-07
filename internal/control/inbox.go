@@ -134,6 +134,10 @@ type inboxState struct {
 	// beforeCompletionSnapshot exposes the slow snapshot boundary without
 	// changing production behavior.
 	beforeCompletionSnapshot func()
+	// snapshotCompletion (任务585) replaces the completion transcript snapshot
+	// in deterministic tests, so both (durable, err) branches are reachable.
+	// Production leaves it nil and the real durability-aware snapshot runs.
+	snapshotCompletion func() (bool, error)
 	// beforeCompletionAck exposes the ownership-to-ack boundary to race tests.
 	beforeCompletionAck func()
 	// beforeSnapshotRead exposes the final Store snapshot boundary to lock tests.
@@ -813,6 +817,7 @@ func (c *Controller) onInboxTurnDone() {
 	st := c.inbox.store
 	beforeSnapshot := c.inbox.beforeCompletionSnapshot
 	beforeAck := c.inbox.beforeCompletionAck
+	snapshotCompletion := c.inbox.snapshotCompletion
 	c.inbox.mu.Unlock()
 	if st == nil || len(ids) == 0 {
 		return
@@ -821,8 +826,24 @@ func (c *Controller) onInboxTurnDone() {
 		beforeSnapshot()
 	}
 	// Transcript snapshot is the durable receipt boundary for the whole set.
-	if err := c.SnapshotActivity(); err != nil {
-		slog.Warn("controller: inbox turn snapshot", "err", err)
+	// 任务585: consume the durability half. A transcript that reached disk makes
+	// every applied item DONE even when a later metadata write failed — update
+	// restarts fail here routinely with session-write-authority-stale AFTER the
+	// transcript saved, and parking the items as Uncertain resurrected already
+	// processed messages onto the shelf, where every retry re-injected them
+	// (实测 2026-10-07：四次更新重启各留 1-2 条 WARN，队列残留与之一一对应).
+	// Same contract as finishInFlightTurn: only a transcript that did NOT become
+	// durable keeps the items as recoverable work — a real write failure still
+	// parks them, so nothing silently drops.
+	var durable bool
+	var serr error
+	if snapshotCompletion != nil {
+		durable, serr = snapshotCompletion()
+	} else {
+		durable, serr = c.snapshotWithDurability(true, false, false, false)
+	}
+	if serr != nil && !durable {
+		slog.Warn("controller: inbox turn snapshot", "err", serr)
 		for _, id := range ids {
 			_ = st.SetState(id, sessioninbox.StateUncertain, "turn completed but transcript snapshot failed")
 		}
@@ -832,6 +853,9 @@ func (c *Controller) onInboxTurnDone() {
 		c.inbox.mu.Unlock()
 		sessioninbox.NoteUncertain()
 		return
+	}
+	if serr != nil {
+		slog.Warn("controller: inbox turn transcript durable before metadata update failed", "err", serr)
 	}
 	// Keep ownership published through every durable acknowledgement. Recovery
 	// can run concurrently, sees these IDs as live without a Controller lock,

@@ -108,3 +108,20 @@ func TestValidDeliveryReceiptOutcomeVocabulary(t *testing.T) {
 		t.Fatal("empty and unknown outcomes must be invalid")
 	}
 }
+
+// 任务585：结算结局分类。只有 failed_retrying 非终态——泵的防重投判据据此放行
+// 真失败的重试、拦下「已发过」的重投。
+func TestDeliveryReceiptSettledClassifier(t *testing.T) {
+	settled := []string{ReceiptInjected, ReceiptQueuedFollowup, ReceiptRefusedHop, ReceiptRefusedProvenance, ReceiptRefusedCrossWire, ReceiptOpenRetryExhausted}
+	for _, outcome := range settled {
+		if !DeliveryReceiptSettled(outcome) {
+			t.Fatalf("outcome %q must count as settled", outcome)
+		}
+	}
+	if DeliveryReceiptSettled(ReceiptFailedRetrying) {
+		t.Fatal("failed_retrying must not count as settled — the pump must retry it")
+	}
+	if DeliveryReceiptSettled("") || DeliveryReceiptSettled("unknown") {
+		t.Fatal("empty and unknown outcomes must not count as settled")
+	}
+}
