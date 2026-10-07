@@ -220,6 +220,9 @@ const CHECKS = [
   { feature: "#9564 kill_shell 非变更分类", file: "internal/evidence/classify_profile.go", patterns: ["kill_shell"] },
   { feature: "写协调体系 #9111", file: "internal/agent/tool_write_coordination.go", patterns: ["parentWriteGuardTarget", "reserveCoordinatedParentWrite"] },
   { feature: "乐观写 #9213", file: "internal/agent/tool_write_coordination.go", patterns: ["optimisticWrite"] },
+  { feature: "任务575 bash 重命令白名单表", file: "internal/agent/bash_heavy_commands.go", patterns: ["bashHeavyWholeToolHeads", "bashHeavySubcommandHeads", "bashHeavyWriteCommand"] },
+  { feature: "任务575 乐观分支重命令取写租约", file: "internal/agent/tool_write_coordination.go", patterns: ["bashHeavyGuard && bashHeavyWriteCommand(plan.runTool.Name(), plan.runArgs)"] },
+  { feature: "任务575 config 开关（默认关）", file: "internal/config/config.go", patterns: ["experimental_bash_heavy_guard"] },
 
   // ── 副本预览与切换链路（2026-09-12/13，任务 92/93）──────────────
   // 教训（33b6c32ec 被 1.38.3 merge 冲掉、2026-09-13 才发现）：行为语义级

@@ -2049,6 +2049,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		WriteScheduler:     subagentScheduler,
 		WriteWorkspaceRoot: root,
 		OptimisticWrite:    cfg.Sandbox.OptimisticWrite,
+		// Task 575: heavy bash commands take the write lease under optimistic_write.
+		BashHeavyGuard:     cfg.Sandbox.ExperimentalBashHeavyGuard,
 		LoopStreakNote:     cfg.Agent.ExperimentalLoopStreakNote,
 		// Task 172: feedback touchpoints — FeedbackNudgeEnabled ANDs the nudge
 		// dial with the parent feedback switch, so the agent sees one dial that

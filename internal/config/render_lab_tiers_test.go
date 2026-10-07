@@ -18,6 +18,7 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalFullAccess = true
 	c.Desktop.ExperimentalParallelFullAccess = true
 	c.Sandbox.OptimisticWrite = true
+	c.Sandbox.ExperimentalBashHeavyGuard = true // task 575：豁免键，门禁要求仍被渲染
 	c.Agent.ExperimentalDream = true
 	c.Agent.ExperimentalAutonomousIdleTerminate = true
 	c.Agent.ExperimentalLoopStreakNote = true

@@ -86,8 +86,19 @@ func (a *Agent) acquireWorkspaceLease(ctx context.Context, plan *toolCallPlan) (
 	}
 	// Non-path-bound writers (bash, MCP, opaque tools). In optimistic-write mode
 	// skip the whole-workspace serialization hold too, matching the user's
-	// explicit choice to disable the parallel-write safety check.
+	// explicit choice to disable the parallel-write safety check — except task
+	// 575's heavy bash commands when the companion guard switch is on: they
+	// have no expected baseline, so the whitelist (bash_heavy_commands.go)
+	// restores the workspace hold for exactly the install/build/git-mutation
+	// invocations that corrupt shared state when run concurrently
+	// (2026-10-07 node_modules 互毁事故面). Conflict behavior is the existing
+	// conservative one: bounded hold wait (filelock.DefaultWaitTimeout), then
+	// the standard "workspace did not become available for writing" refusal —
+	// no unbounded waiting, no new lock primitive.
 	if a.svc.optimisticWrite {
+		if a.svc.bashHeavyGuard && bashHeavyWriteCommand(plan.runTool.Name(), plan.runArgs) {
+			return a.svc.workspaceLease.HoldWrite(ctx)
+		}
 		return noop, nil
 	}
 	return a.svc.workspaceLease.HoldWrite(ctx)
