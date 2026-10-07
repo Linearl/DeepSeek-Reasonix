@@ -10349,6 +10349,41 @@ type modelSwitchTiming struct {
 	Outcome        string
 }
 
+// resolveTabModelRef validates a user-facing model name against the tab's
+// config and returns the canonical "provider/model" ref plus the resolved
+// entry, mirroring plugin-namespaced fallback and provider-access gating.
+// Shared by the model-switch fast path and the build+swap path (task 148) so
+// the two cannot drift on what counts as a switchable model. For
+// plugin-namespaced refs the descriptor ref comes back as the canonical ref
+// and pluginRef is true (the entry stays nil — extension sidecars own it).
+func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string) (string, *config.ProviderEntry, bool, error) {
+	cfg, err := config.LoadForRoot(workspaceRoot)
+	if err != nil {
+		return "", nil, false, err
+	}
+	entry, ok := cfg.ResolveModel(name)
+	pluginRef := false
+	if !ok {
+		// Plugin-namespaced refs belong to extension sidecars: validate them
+		// against the tab controller's merged catalog instead of the config.
+		if d, found := extensionModelDescriptor(a.providerCatalogForTab(tab), name); found {
+			pluginRef = true
+			ok = true
+			name = d.Ref
+		}
+	}
+	if !ok {
+		return "", nil, false, fmt.Errorf("unknown model %q", name)
+	}
+	if !pluginRef {
+		if !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, entry.Name) {
+			return "", nil, false, fmt.Errorf("model %q is not available because provider %q is not added", name, entry.Name)
+		}
+		name = entry.Name + "/" + entry.Model
+	}
+	return name, entry, pluginRef, nil
+}
+
 func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	if name == "" {
 		return nil
@@ -10383,6 +10418,54 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	stageStarted = time.Now()
 	tab.turnStartMu.Lock()
 	defer tab.turnStartMu.Unlock()
+	// Task 148 per-request fast path (mirrors the task-334 effort seam in
+	// SetEffortForTab): a same-provider target arms a session-scoped model
+	// override on the running controller, so the next request carries the new
+	// model with no runtime rebuild. An active turn is no longer a rejection
+	// reason — the in-flight request stays frozen and the override lands from
+	// the next request freeze — while the build+swap path below keeps its
+	// active-work guard for everything that declines here (no controller,
+	// cross-provider targets, recovery-forked sessions).
+	stageStarted = time.Now()
+	switchSnap := a.tabRuntimeSnapshot(tab)
+	switchRef, _, _, err := a.resolveTabModelRef(tab, switchSnap.workspaceRoot, name)
+	if err != nil {
+		return err
+	}
+	timing.Config = time.Since(stageStarted)
+	// Alias-folded same-model short circuit: the raw check above runs before
+	// resolution; tab.model holds the canonical ref the tab currently runs.
+	a.mu.RLock()
+	sameModel := switchRef == tab.model
+	a.mu.RUnlock()
+	if sameModel {
+		slog.Info("desktop: model switch", "tab", tabID, "path", "fast-same-model", "model", switchRef) // task 148: same-model exits before arming anything.
+		return nil
+	}
+	if ctrl := a.controllerForTab(tab); ctrl != nil {
+		if setter, ok := ctrl.(interface {
+			SetSessionModelOverride(string) bool
+		}); ok && setter.SetSessionModelOverride(switchRef) {
+			a.mu.Lock()
+			tab.model = switchRef
+			a.saveTabsLocked()
+			a.mu.Unlock()
+			// Same sidecar rationale as the rebuild path: empty sessions do
+			// not autosave a turn, so persisting the provider identity here
+			// keeps a later startup on the provider the tab actually runs, and
+			// keeps last-click-wins across overlapping switches.
+			if path := a.currentSessionPathFor(tab); path != "" {
+				if err := agent.SetBranchModelPreserveUpdated(path, switchRef); err != nil {
+					return fmt.Errorf("persist selected model: %w", err)
+				}
+			}
+			// A model switch changes the pricing context; discard the
+			// session-local automatic wallet hint, same as the rebuild path.
+			tab.clearRuntimeDisplayCurrency()
+			slog.Info("desktop: model switch", "tab", tabID, "path", "fast-per-request", "model", switchRef) // task 148: fast path observability (paired against runtime build end path=fallback).
+			return nil
+		}
+	}
 	prevPath := a.sessionPathForSettingsRebuild(tab)
 	if a.controllerForTab(tab) == nil && prevPath != "" {
 		a.attachExistingSessionRuntime(tab, prevPath, a.ctx)
@@ -10410,30 +10493,13 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	stageStarted = time.Now()
 	snap := a.tabRuntimeSnapshot(tab)
 	runtime := snap.normalizedRuntime()
-	cfg, err := config.LoadForRoot(snap.workspaceRoot)
+	// Same resolution as the fast path above (task 148): one helper so the
+	// build+swap fallback cannot drift from what the fast path accepts.
+	canonicalRef, entry, pluginRef, err := a.resolveTabModelRef(tab, snap.workspaceRoot, name)
 	if err != nil {
 		return err
 	}
-	entry, ok := cfg.ResolveModel(name)
-	pluginRef := false
-	if !ok {
-		// Plugin-namespaced refs belong to extension sidecars: validate them
-		// against the tab controller's merged catalog instead of the config.
-		if d, found := extensionModelDescriptor(a.providerCatalogForTab(tab), name); found {
-			pluginRef = true
-			ok = true
-			name = d.Ref
-		}
-	}
-	if !ok {
-		return fmt.Errorf("unknown model %q", name)
-	}
-	if !pluginRef {
-		if !modelProviderAccessAllowed(cfg.Desktop.ProviderAccess, entry.Name) {
-			return fmt.Errorf("model %q is not available because provider %q is not added", name, entry.Name)
-		}
-		name = entry.Name + "/" + entry.Model
-	}
+	name = canonicalRef
 	effortOverride := cloneStringPtr(snap.effort)
 	if effortOverride != nil && !pluginRef {
 		normalized, err := config.NormalizeEffort(entry, config.EffortDisplay(&config.ProviderEntry{Effort: *effortOverride}))
@@ -10632,6 +10698,10 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 	// Build+swap path; serialize with the other rebuild paths (see
 	// runtimeRebuildMu). The tab==nil branch above goes through
 	// applyProviderEffortConfig → rebuildSetting, which takes the lock itself.
+	// switchStarted feeds the fast-path elapsed_ms lines (task 148) so an
+	// effort-vs-model fast-path comparison reads from logs directly; the
+	// fallback path keeps its own runtime build end line.
+	switchStarted := time.Now()
 	pendingSequence := a.deferredRebuildSequence(tab.ID)
 	a.runtimeRebuildMu.Lock()
 	defer a.runtimeRebuildMu.Unlock()
@@ -10646,7 +10716,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 		if entry, err := a.currentProviderEntryForTab(tabID); err == nil {
 			if effort, err := config.NormalizeEffort(entry, level); err == nil &&
 				strings.EqualFold(strings.TrimSpace(*tab.effort), effort) {
-				slog.Info("desktop: effort switch", "tab", tabID, "path", "fast-same-level", "level", effort) // task 334: fast path observability (paired against runtime build end path=fallback).
+				slog.Info("desktop: effort switch", "tab", tabID, "path", "fast-same-level", "level", effort, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 334: fast path observability (paired against runtime build end path=fallback); elapsed_ms: task 148.
 				return nil
 			}
 		}
@@ -10674,7 +10744,7 @@ func (a *App) SetEffortForTab(tabID, level string) error {
 					a.mu.Lock()
 					tab.effort = &effort
 					a.mu.Unlock()
-					slog.Info("desktop: effort switch", "tab", tabID, "path", "fast-per-request", "level", effort) // task 334: fast path observability; declines log on the agent side with reason.
+					slog.Info("desktop: effort switch", "tab", tabID, "path", "fast-per-request", "level", effort, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 334: fast path observability; declines log on the agent side with reason; elapsed_ms: task 148.
 					return nil
 				}
 			}

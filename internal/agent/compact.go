@@ -464,10 +464,11 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 	if req.MaxTokens < 256 {
 		return "", usage, fmt.Errorf("summary output budget too small (%d tokens)", req.MaxTokens)
 	}
-	if a.svc.prov == nil {
+	dest := a.providerForRequest()
+	if dest == nil {
 		return "", usage, fmt.Errorf("summary unavailable")
 	}
-	ch, err := provider.StreamAuxiliary(provider.WithRecoverySleeper(ctx, recoverySleep), a.svc.prov, req)
+	ch, err := provider.StreamAuxiliary(provider.WithRecoverySleeper(ctx, recoverySleep), dest, req)
 	if err != nil {
 		return "", usage, err
 	}

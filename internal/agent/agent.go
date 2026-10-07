@@ -395,6 +395,9 @@ type Agent struct {
 	responseLanguage     atomic.Value // string: auto|zh|en
 	reasoningLanguage    atomic.Value // string: auto|zh|en
 	sessionEffort        sessionEffortOverride
+	// sessionModel holds the per-request model destination override (task 148,
+	// model_override.go): *sessionModelOverride when armed, nil otherwise.
+	sessionModel atomic.Value
 
 	requireVisibleFinal bool // internal callers require final Content
 	continuationPolicy  ContinuationPolicy
@@ -1056,6 +1059,12 @@ type Options struct {
 	// provider instance. It is attached to emitted Usage events so downstream
 	// usage accounting can attribute tokens to the exact model.
 	ModelRef string
+	// ModelResolver resolves an alternate "provider/model" ref into a live
+	// provider for the session-scoped model override (task 148). Optional: nil
+	// keeps SetSessionModelOverride declining, so the host's rebuild path stays
+	// the only model switch. Boot wires the same resolver (and proxy, inside
+	// it) that built the agent's own provider.
+	ModelResolver provider.Resolver
 	// HighSpeedModels lists the models of this agent's provider that the user
 	// explicitly marked as high-throughput (Model panel checkbox). When ModelRef
 	// matches one, each user turn is prefixed with the exec-speed-mode transient
@@ -2187,19 +2196,21 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	defer cancel()
 
 	var req provider.Request
-	var err error
+	var dest provider.Provider
 	if frozen != nil {
 		req = freezeProviderRequest(frozen.req)
+		dest = frozen.destination(a)
 	} else {
 		prepared, perr := a.prepareSamplingRequest(ctx)
 		if perr != nil {
 			return streamedTurn{err: perr}
 		}
 		req = prepared.req
+		dest = prepared.destination(a)
 	}
 	// Host stream cancels on generation drain (OpenAI/Anthropic HTTP reads).
 	defer trackPublishedHostStream(ctx, cancel)()
-	ch, err := a.streamProviderRequest(ctx, req)
+	ch, err := a.streamProviderRequest(ctx, dest, req)
 	if err != nil {
 		return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: err}
 	}

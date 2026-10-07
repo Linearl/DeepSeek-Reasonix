@@ -26,6 +26,12 @@ import (
 type agentServices struct {
 	prov  provider.Provider
 	tools *tool.Registry
+	// modelResolver resolves an alternate model ref into a live provider for
+	// the session-scoped model override (task 148, model_override.go). Bound
+	// once from Options at construction with the same resolver+proxy the boot
+	// used for prov; nil means the override declines (hosts that never switch
+	// models) and the rebuild fallback stays authoritative.
+	modelResolver provider.Resolver
 	// base is the resident-base client (S1b), set once from Options at
 	// construction: nil keeps every tool call on the in-process path; a remote
 	// client opens the base-toolcall gate in base_toolcall.go. Sub-agents never
@@ -152,6 +158,7 @@ func newAgentServices(
 ) agentServices {
 	return agentServices{
 		prov:                  prov,
+		modelResolver:         opts.ModelResolver,
 		tools:                 tools,
 		base:                  opts.BaseClient,
 		pricing:               opts.Pricing,

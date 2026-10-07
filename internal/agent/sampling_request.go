@@ -13,6 +13,20 @@ import (
 // messages, no schema reorder, no previous_response_id drift from failed attempts.
 type samplingRequest struct {
 	req provider.Request
+	// prov is the request's destination, captured at freeze (task 148): a
+	// session-scoped model override must not flip mid-round, mirroring how
+	// EffortOverride rides inside the frozen payload. nil falls back to the
+	// agent's effective destination at stream time.
+	prov provider.Provider
+}
+
+// destination resolves the round's destination provider: the one captured at
+// freeze when set, else the agent's current effective destination.
+func (s samplingRequest) destination(a *Agent) provider.Provider {
+	if s.prov != nil {
+		return s.prov
+	}
+	return a.providerForRequest()
 }
 
 func isEmptyStreamResult(text, reasoning string, calls []provider.ToolCall, responsesItems []json.RawMessage, serverSearch []provider.ServerSearchCall) bool {
@@ -47,17 +61,20 @@ func (a *Agent) normalizeModelRequestMessages(msgs []provider.Message) []provide
 	return requestMessages
 }
 
-func (a *Agent) streamProviderRequest(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+func (a *Agent) streamProviderRequest(ctx context.Context, dest provider.Provider, req provider.Request) (<-chan provider.Chunk, error) {
 	if err := provider.ValidateModelTranscript(req.Messages); err != nil {
 		return nil, err
 	}
-	ch, err := a.svc.prov.Stream(ctx, req)
+	if dest == nil {
+		dest = a.providerForRequest()
+	}
+	ch, err := dest.Stream(ctx, req)
 	if err != nil {
 		if limit := provider.AsOutputLimitError(err); !provider.ManagedRecovery(ctx) && limit != nil && req.MaxTokens > limit.MaxOutputTokens {
 			a.learnOutputBudget(limit.MaxOutputTokens)
 			retryReq := req
 			retryReq.MaxTokens = limit.MaxOutputTokens
-			return a.svc.prov.Stream(ctx, retryReq)
+			return dest.Stream(ctx, retryReq)
 		}
 		return nil, err
 	}
@@ -96,11 +113,11 @@ func (a *Agent) prepareSamplingRequest(ctx context.Context) (samplingRequest, er
 		}
 		shape := a.requestCalibrationShape(rebuilt.req)
 		a.sess.output.activeReqShape.Store(&shape)
-		return samplingRequest{req: freezeProviderRequest(rebuilt.req)}, nil
+		return samplingRequest{req: freezeProviderRequest(rebuilt.req), prov: rebuilt.prov}, nil
 	}
 	shape := a.requestCalibrationShape(frozen.req)
 	a.sess.output.activeReqShape.Store(&shape)
-	return samplingRequest{req: freezeProviderRequest(frozen.req)}, nil
+	return samplingRequest{req: freezeProviderRequest(frozen.req), prov: frozen.prov}, nil
 }
 
 func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (samplingRequest, error) {
@@ -119,6 +136,10 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 	if err != nil {
 		return samplingRequest{}, err
 	}
+	// Task 148: the destination is fixed once per round — request shaping
+	// (native tool search) and the wire both talk to the same provider even if
+	// a model switch lands mid-round.
+	dest := a.providerForRequest()
 	req := provider.Request{
 		Messages:       requestMessages,
 		Tools:          a.providerToolSchemas(),
@@ -127,7 +148,7 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 		ResponseFormat: responseFormatFromRequest(ctx),
 		EffortOverride: a.effortOverrideForRequest(),
 	}
-	if provider.NativeToolSearchEnabled(a.svc.prov) {
+	if provider.NativeToolSearchEnabled(dest) {
 		req.ToolSearch = &provider.ToolSearch{Enabled: true}
 	}
 	// provider.request: the fully assembled request gets one last ruling
@@ -139,7 +160,7 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 	if err := provider.ValidateModelTranscript(req.Messages); err != nil {
 		return samplingRequest{}, err
 	}
-	return samplingRequest{req: req}, nil
+	return samplingRequest{req: req, prov: dest}, nil
 }
 
 // providerProjectionMessages applies provider-specific role compatibility to a
@@ -147,6 +168,11 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 // explicit range compression can continue to resolve anchors across calls.
 func (a *Agent) providerProjectionMessages(msgs []provider.Message) []provider.Message {
 	if a != nil {
+		// Task 148: project for the destination the request will actually reach
+		// (session model override when armed), not always the construction
+		// provider — same-family gate keeps the policy identical in accepted
+		// cases; this keeps the shapes honest if a switch just landed.
+		prov := a.providerForRequest()
 		strongCutoff := a.sess.reasoningReplayStrongProjection
 		if strongCutoff > 0 && a.strictAlternatingRoles {
 			// The cutoff is measured after role coalescing on the repaired
@@ -158,7 +184,7 @@ func (a *Agent) providerProjectionMessages(msgs []provider.Message) []provider.M
 			// projection only for the history that caused the rejection.
 			resolvedCutoff := resolveReasoningReplayPrefix(msgs, strongCutoff, a.sess.reasoningReplayStrongProjectionAnchor)
 			if resolvedCutoff > 0 {
-				if repaired, changed := provider.ProjectReasoningStrippedMessagesPrefix(a.svc.prov, msgs, resolvedCutoff); changed {
+				if repaired, changed := provider.ProjectReasoningStrippedMessagesPrefix(prov, msgs, resolvedCutoff); changed {
 					msgs = a.replayRecoveryFacts(msgs[:resolvedCutoff], repaired)
 				}
 			} else {
@@ -166,11 +192,11 @@ func (a *Agent) providerProjectionMessages(msgs []provider.Message) []provider.M
 				// (for example after rewind). Do not silently disable all
 				// provider projection; re-arm from the current history.
 				a.sess.clearReasoningReplayStrongProjection()
-				if repaired, changed := provider.ProjectReplaySafeMessages(a.svc.prov, msgs); changed {
+				if repaired, changed := provider.ProjectReplaySafeMessages(prov, msgs); changed {
 					msgs = repaired
 				}
 			}
-		} else if repaired, changed := provider.ProjectReplaySafeMessages(a.svc.prov, msgs); changed {
+		} else if repaired, changed := provider.ProjectReplaySafeMessages(prov, msgs); changed {
 			msgs = repaired
 		}
 		if a.strictAlternatingRoles && a.sess.reasoningReplayStrongProjection <= 0 {

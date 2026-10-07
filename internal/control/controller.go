@@ -1196,6 +1196,17 @@ func (c *Controller) SetSessionEffortOverride(level string) bool {
 	return c.executor.SetSessionEffortOverride(level)
 }
 
+// SetSessionModelOverride arms a session-scoped model override on the running
+// agent (no rebuild; task 148) and reports acceptance; false means the caller
+// must fall back to the rebuild path (cross-family targets, recovery forks,
+// hosts without a resolver seam). Mirrors SetSessionEffortOverride.
+func (c *Controller) SetSessionModelOverride(ref string) bool {
+	if c.executor == nil {
+		return false
+	}
+	return c.executor.SetSessionModelOverride(ref)
+}
+
 func (c *Controller) markEditedForNewUser(startMessages int, original string) {
 	if strings.TrimSpace(original) == "" || c.executor == nil {
 		return
