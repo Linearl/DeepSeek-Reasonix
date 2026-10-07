@@ -1403,8 +1403,21 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 		}
 		// Every conversation belongs in the directory; contact_id is minted on
 		// first contact rather than being a precondition for existence.
+		// 任务 600：标题从已加载的 m 派生，不再经 SessionDirectoryTitle 二次读
+		// 同一 sidecar——err!=nil 已在上面提前返回，此处 found 与
+		// SessionDirectoryTitle 的 err==nil&&found 完全同义，输出逐字节一致。
+		// 实测扫描占收件箱面板冷启动耗时的大头（456 会话 ×2 次 sidecar 读），
+		// 合并后读数减半。
+		title := strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
+		if found {
+			if m.CustomTitle != "" {
+				title = m.CustomTitle
+			} else if m.TopicTitle != "" {
+				title = m.TopicTitle
+			}
+		}
 		info := sessioncollab.MetaInfo{
-			Title: SessionDirectoryTitle(sessionPath),
+			Title: title,
 			OK:    true,
 		}
 		if found {
