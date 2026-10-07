@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"log/slog"
+	"sync"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/collabinbox"
 	"reasonix/internal/config"
+	"reasonix/internal/sessioncollab"
 )
 
 // collabInboxCtx is the context every panel method hands down. Wails bindings
@@ -24,34 +27,83 @@ func collabInboxCtx() context.Context { return context.Background() }
 // never re-fetches to converge, and the state lives beside the mail directory
 // (contract f: restart keeps entries, dismissals, decisions and settings).
 
+// 任务 600（收件箱性能优化）：identity 目录扫描的 30s TTL 进程内缓存。
+//
+// 排查实证（调研报告 收件箱性能优化调研-20261008 §2）：旧实现把全目录扫描放进
+// resolver 闭包，classify 对每条无身份戳的消息调一次 → 一次面板读触发 ~2600 次
+// 全目录扫描（单次实测 3.4~18s）→ 生产日志单次面板读 18.6~39.5 分钟。查表化后
+// 每次构店只扫一次，TTL 缓存再把「切桶 / 徽标刷新 / 连续点开」合并为至多 30s
+// 一次真实扫描。
+//
+// 新鲜度边界（有意为之）：30s 内新建/改身份的会话晚 ≤30s 生效——只影响桶归类
+// 与会话删除清理（后者本有 5 分钟 sweep 节流，任务 511），无实质风险。
+const identityScanTTL = 30 * time.Second
+
+var (
+	identityScanMu sync.Mutex
+	// identityScanCache holds the last scan verbatim — an EMPTY roster is a
+	// valid result and is cached too (latch keyed on identityScanAt, not on
+	// nil-ness: a nil-capable slice would otherwise rescan per store build).
+	identityScanCache []sessioncollab.Identity
+	identityScanAt    time.Time // zero = never scanned
+	// identityScanNow is the injectable clock for the TTL (task 600 tests).
+	identityScanNow = time.Now
+	// identityScanFn is the injectable scan source (task 600 tests); production
+	// keeps the real directory scan.
+	identityScanFn = func() []sessioncollab.Identity {
+		return agent.ScanCollabIdentityDirectory(config.SessionDir(), "")
+	}
+)
+
+// scanIdentityDirectoryCached returns the addressable identity roster, reusing
+// one directory scan across the whole desktop inbox surface for at most
+// identityScanTTL. The mutex coalesces concurrent cold calls: the second window
+// waits for the first scan instead of double-scanning (the wait happens OUTSIDE
+// the inbox locks, so it cannot wedge the panel's lock chain).
+func scanIdentityDirectoryCached() []sessioncollab.Identity {
+	identityScanMu.Lock()
+	defer identityScanMu.Unlock()
+	if !identityScanAt.IsZero() && identityScanNow().Sub(identityScanAt) < identityScanTTL {
+		return identityScanCache
+	}
+	ids := identityScanFn()
+	identityScanCache = ids
+	identityScanAt = identityScanNow()
+	return ids
+}
+
 // collabInboxStore opens the aggregate index over the shared mail dir. The
 // sender-identity resolver (task 348) reads the same BranchMeta the directory
 // scan uses, so heartbeat/system senders land in the right bucket; a session
 // outside the scanned dirs simply falls back to the mention bucket.
 //
-// 任务 464: the SAME scan feeds the cleanup rule's liveness oracle — a contact
-// is "alive" while its session exists in the addressable directory (live +
-// archived; archive is restorable, so it is NOT deletion). Trash is the only
-// delete that removes a session from the roster. No oracle installed on
-// stores built elsewhere (the query tool) — cleanup there is a no-op.
+// 任务 600：扫描结果在构店时查表成 map——resolver 必须 O(1)（与查询工具
+// query_collab_mail_tool 的既有注释契约对齐），绝不再对每条消息扫一遍目录。
 func collabInboxStore() *collabinbox.Store {
-	store := collabinbox.New(config.SessionCollabMailDir(), func(contact string) string {
-		for _, id := range agent.ScanCollabIdentityDirectory(config.SessionDir(), "") {
-			if id.ContactID == contact {
-				return id.IdentityType
-			}
+	return newCollabInboxStore(config.SessionCollabMailDir(), scanIdentityDirectoryCached)
+}
+
+// newCollabInboxStore is the injectable constructor behind collabInboxStore
+// (task 600 tests): one scan feeds BOTH the O(1) identity-type resolver and the
+// cleanup rule's liveness oracle. The liveness roster is as-of-construction —
+// consistent with the sweep's own 5-minute throttle (任务 511); with the default
+// cleanup rule (never) the oracle is not consulted at all.
+func newCollabInboxStore(mailDir string, scan func() []sessioncollab.Identity) *collabinbox.Store {
+	identityByContact := map[string]string{}
+	live := map[string]bool{}
+	for _, id := range scan() {
+		if id.ContactID == "" {
+			continue
 		}
-		return ""
-	})
-	store.SetLiveContacts(func() map[string]bool {
-		live := map[string]bool{}
-		for _, id := range agent.ScanCollabIdentityDirectory(config.SessionDir(), "") {
-			if id.ContactID != "" {
-				live[id.ContactID] = true
-			}
+		if id.IdentityType != "" {
+			identityByContact[id.ContactID] = id.IdentityType
 		}
-		return live
+		live[id.ContactID] = true
+	}
+	store := collabinbox.New(mailDir, func(contact string) string {
+		return identityByContact[contact]
 	})
+	store.SetLiveContacts(func() map[string]bool { return live })
 	return store
 }
 
