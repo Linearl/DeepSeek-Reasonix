@@ -42493,6 +42493,7 @@ body > .mermaid-diagram--fullscreen {
 }
 .session-recovery__copy strong { font-size: var(--text-lg); }
 .session-recovery__copy span { color: var(--fg-dim); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.session-recovery__copy .session-recovery__wait { color: var(--fg-faint); font-size: var(--text-xs); }
 .session-recovery > .btn { flex: 0 0 auto; min-height: 38px; padding-inline: 16px; font-size: var(--text-base); }
 .session-recovery > .btn--ghost { background: transparent; border-color: transparent; box-shadow: none; }
 .app .session-recovery ~ .footer { padding: 24px 28px 32px; }

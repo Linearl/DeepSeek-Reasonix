@@ -697,6 +697,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   HistoryPageForTab(tabID: string, beforeTurn: number, limit: number): Promise<HistoryPage>;
   // Windowed history paging (supersedes HistoryPageForTab for tab history).
   HistorySliceForTab(tabID: string, req: HistorySliceRequest): Promise<HistorySlice>;
+  // 任务 560：会话加载分阶段文案——该 tab 正在执行的 history 读阶段名（既有
+  // 埋点名，如 live-index-load / cold-eventlog）；空串=无进行中的读或阶段未知。
+  // 纯内存读（sync.Map），无任何 IO。
+  HistoryLoadPhase(tabID: string): Promise<string>;
   HistoryContentForTab(tabID: string, ref: HistoryContentRef, chunkIndex: number): Promise<HistoryContentChunk>;
   HistoryCheckpointTurnsForTab(tabID: string): Promise<number[]>;
   Checkpoints(): Promise<CheckpointMeta[]>;
@@ -4172,6 +4176,9 @@ function makeMockApp(): AppBindings {
         },
         async HistorySliceForTab(tabID: string, req: HistorySliceRequest) {
           return mockHistorySlice(tabID, await this.HistoryForTab(tabID), req, benchMock);
+        },
+        async HistoryLoadPhase(_tabID: string) {
+          return "";
         },
         async HistoryContentForTab(tabID: string, ref: HistoryContentRef, chunkIndex: number): Promise<HistoryContentChunk> {
           const out: HistoryContentChunk = { entryId: ref.entryId, field: ref.field, chunk: Math.max(0, chunkIndex), chunks: 1, data: "", done: true, stale: false };

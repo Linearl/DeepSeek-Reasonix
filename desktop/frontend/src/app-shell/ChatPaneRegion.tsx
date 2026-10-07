@@ -88,7 +88,7 @@ export function ChatPaneRegion(props: ChatPaneRegionProps) {
   return (
     <>
     {!transitioning && !props.imDetail && !noticePreview && <SessionRecoveryBanner key={transcript.tabId}
-      availability={transcript.availability} onRetry={props.onRetryHistory} />}
+      availability={transcript.availability} onRetry={props.onRetryHistory} tabId={transcript.tabId} />}
     <main className="main">
       {props.imDetail && !transitioning ? (
         <SidebarImConnectionDetail

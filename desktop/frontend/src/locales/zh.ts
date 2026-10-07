@@ -165,6 +165,11 @@ export const zh: Record<DictKey, string> = {
   "sessionRecovery.historyFailed": "暂时无法加载会话",
   "sessionRecovery.historyHint": "本次历史加载未完成，请重试后继续。",
   "sessionRecovery.loadingHistory": "正在加载会话历史…",
+  // 任务 560：加载分阶段主标题 + 预期时长副文案 + 等待行。
+  "sessionRecovery.loadingIndex": "正在读取会话索引…",
+  "sessionRecovery.loadingEvents": "正在还原消息历史…",
+  "sessionRecovery.loadingHint": "大会话首次加载约需 20–30 秒，之后会更快",
+  "sessionRecovery.waitedSeconds": "已等待 {n} 秒",
   "sessionRecovery.retryHistory": "重试加载",
   "sessionRecovery.retryFailed": "恢复失败，请查看详情后重试。",
   "sessionRecovery.details": "详情",

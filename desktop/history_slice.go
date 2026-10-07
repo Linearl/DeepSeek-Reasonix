@@ -447,8 +447,11 @@ func (a *App) HistorySliceForTab(tabID string, req HistorySliceRequest) HistoryS
 
 	// 任务 451 分相打点：慢调用（>=150ms）在 desktop.log 留一行分相汇总，
 	// 回答"读/解析/投影哪步占大头"；快调用降为 Debug，噪音水位不变。
-	tr := newHistorySliceTrace()
+	// 任务 560：trace 顺带向 historyLoadPhases 发布正在执行的既有阶段名
+	// （纯内存，供前端加载分阶段文案轮询）；调用结束即清键。
+	tr := newHistorySliceTrace(tabID)
 	defer tr.emit(tabID)
+	defer tr.clearPhase()
 
 	if ctrl == nil {
 		if strings.TrimSpace(sessionPath) == "" {

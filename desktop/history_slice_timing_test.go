@@ -31,10 +31,13 @@ func TestHistorySliceTraceNilReceiver(t *testing.T) {
 	if tr.elapsed() != 0 {
 		t.Fatalf("nil trace elapsed = %d, want 0", tr.elapsed())
 	}
+	// 任务 560：nil trace 的阶段发布/清理同样必须无操作、不 panic。
+	tr.publishPhase("cold-eventlog")
+	tr.clearPhase()
 }
 
 func TestHistorySliceTraceRecordsPhases(t *testing.T) {
-	tr := newHistorySliceTrace()
+	tr := newHistorySliceTrace("tab-records")
 	value := 0
 	tr.run("a", func() { value = 1 })
 	if value != 1 {
@@ -82,7 +85,7 @@ func TestHistorySliceTraceEmitThreshold(t *testing.T) {
 	}
 
 	buf.Reset()
-	fast := newHistorySliceTrace()
+	fast := newHistorySliceTrace("tab-fast")
 	fast.step("page-fetch", time.Millisecond)
 	fast.emit("tab-2")
 	if out := buf.String(); !strings.Contains(out, "level=DEBUG") || !strings.Contains(out, "history slice timing") {
@@ -97,7 +100,7 @@ func TestPageHistorySliceSourceRecordsTracePhases(t *testing.T) {
 		historySliceAssistant(0, "answer"),
 	}
 	src := newInMemoryHistorySliceSource("phase-trace", msgs, func(s string) string { return s }, agent.PersistedState{}, false)
-	tr := newHistorySliceTrace()
+	tr := newHistorySliceTrace("tab-page")
 	src.trace = tr
 	req := HistorySliceRequest{Turns: 12, Entries: 50, Bytes: 512 << 10}
 	page, err := app.pageHistorySliceSource(src, req, func(s string) string { return s }, nil, nil, "")
@@ -114,5 +117,57 @@ func TestPageHistorySliceSourceRecordsTracePhases(t *testing.T) {
 		if !strings.HasSuffix(part, "ms") {
 			t.Fatalf("trace part %q is not a ms duration", part)
 		}
+	}
+}
+
+// 任务 560：HistoryLoadPhase 轮询口的发布/覆盖/清理语义。只发布既有阶段名，
+// 纯内存注册表，无任何 IO。
+func TestHistoryLoadPhasePublishesExistingStageNames(t *testing.T) {
+	app := &App{}
+	if got := app.HistoryLoadPhase("tab-x"); got != "" {
+		t.Fatalf("idle HistoryLoadPhase = %q, want empty", got)
+	}
+
+	tr := newHistorySliceTrace("tab-x")
+	inside := ""
+	tr.run("cold-eventlog", func() { inside = app.HistoryLoadPhase("tab-x") })
+	if inside != "cold-eventlog" {
+		t.Fatalf("phase during cold-eventlog run = %q, want cold-eventlog", inside)
+	}
+	tr.clearPhase()
+	if got := app.HistoryLoadPhase("tab-x"); got != "" {
+		t.Fatalf("phase after clearPhase = %q, want empty", got)
+	}
+
+	// 嵌套 run：注册表始终指向最近开始的阶段（外层 live-source 被内层
+	// live-index-load 覆盖），这正是前端想要的「正在执行」语义。
+	nested := newHistorySliceTrace("tab-y")
+	inner := ""
+	nested.run("live-source", func() {
+		nested.run("live-index-load", func() { inner = app.HistoryLoadPhase("tab-y") })
+	})
+	if inner != "live-index-load" {
+		t.Fatalf("nested phase = %q, want live-index-load", inner)
+	}
+	nested.clearPhase()
+	if got := app.HistoryLoadPhase("tab-y"); got != "" {
+		t.Fatalf("phase after nested clearPhase = %q, want empty", got)
+	}
+
+	// 空 tabID 的 trace 不发布：注册表无键可写。
+	anonymous := newHistorySliceTrace("")
+	anonymous.run("cold-eventlog", func() {
+		if got := app.HistoryLoadPhase(""); got != "" {
+			t.Fatalf("anonymous trace published a phase: %q", got)
+		}
+	})
+	anonymous.clearPhase()
+
+	// 未知 tabID 与带空白的 tabID 都安全返回空串。
+	if got := app.HistoryLoadPhase("never-registered"); got != "" {
+		t.Fatalf("unknown tab HistoryLoadPhase = %q, want empty", got)
+	}
+	if got := app.HistoryLoadPhase("  tab-x  "); got != "" {
+		t.Fatalf("padded tab HistoryLoadPhase = %q, want empty", got)
 	}
 }

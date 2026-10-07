@@ -164,6 +164,11 @@ export const en = {
   "sessionRecovery.historyFailed": "Unable to load this session",
   "sessionRecovery.historyHint": "History could not be loaded. Retry to continue.",
   "sessionRecovery.loadingHistory": "Loading session history…",
+  // Task 560: staged loading headline + expected-duration hint + waited row.
+  "sessionRecovery.loadingIndex": "Reading session index…",
+  "sessionRecovery.loadingEvents": "Restoring message history…",
+  "sessionRecovery.loadingHint": "Large sessions can take 20–30 seconds on first load; later loads are faster",
+  "sessionRecovery.waitedSeconds": "Waited {n}s",
   "sessionRecovery.retryHistory": "Retry loading",
   "sessionRecovery.retryFailed": "Recovery failed. Check the details and try again.",
   "sessionRecovery.details": "Details",

@@ -129,6 +129,11 @@ export const zhTW: Record<DictKey, string> = {
   "sessionRecovery.historyFailed": "暫時無法載入會話",
   "sessionRecovery.historyHint": "本次歷史載入未完成，請重試後繼續。",
   "sessionRecovery.loadingHistory": "正在載入會話歷史…",
+  // 任務 560：載入分階段主標題 + 預期時長副文案 + 等待行。
+  "sessionRecovery.loadingIndex": "正在讀取會話索引…",
+  "sessionRecovery.loadingEvents": "正在還原訊息歷史…",
+  "sessionRecovery.loadingHint": "大會話首次載入約需 20–30 秒，之後會更快",
+  "sessionRecovery.waitedSeconds": "已等待 {n} 秒",
   "sessionRecovery.retryHistory": "重試載入",
   "sessionRecovery.retryFailed": "恢復失敗，請查看詳情後重試。",
   "sessionRecovery.details": "詳情",
