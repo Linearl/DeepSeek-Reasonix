@@ -298,9 +298,9 @@ func TestLabMirrorSettersSingleWrite(t *testing.T) {
 		{"SetExperimentalOrphanHandling", c.SetExperimentalOrphanHandling,
 			func() bool { return c.Agent.ExperimentalOrphanHandling },
 			func() bool { return c.Desktop.ExperimentalOrphanHandling }},
-		{"SetExperimentalModelCapabilityFilter", c.SetExperimentalModelCapabilityFilter,
-			func() bool { return c.Agent.ExperimentalModelCapabilityFilter },
-			func() bool { return c.Desktop.ExperimentalModelCapabilityFilter }},
+		// Task 551 retired the B9 writable path (gate removed, desktop mirror
+		// read-only); the migrate fold still covers legacy [desktop] values at
+		// load, but the key no longer participates in the setter table below.
 		{"SetExperimentalRuntimeReuse", c.SetExperimentalRuntimeReuse,
 			func() bool { return c.Agent.ExperimentalRuntimeReuse },
 			func() bool { return c.Desktop.ExperimentalRuntimeReuse }},
