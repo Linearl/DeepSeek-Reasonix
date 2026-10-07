@@ -388,6 +388,16 @@ func (a *App) SetExperimentalHighSpeedModel(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalHighSpeedModel(enabled) })
 }
 
+// SetProviderModelHighSpeed marks or unmarks one model of one provider as
+// high-throughput (task 468). The panel's model dialog writes the list through
+// the provider save chain (SaveProvider → saveProviderConfig carries
+// HighSpeedModels); this is the direct provider-level setter for programmatic
+// callers. Goes through the model-settings apply path like every provider
+// write so the runtime picks up the new effective snapshot.
+func (a *App) SetProviderModelHighSpeed(provider, model string, enabled bool) error {
+	return a.applyModelConfigChange(func(c *config.Config) error { return c.SetProviderModelHighSpeed(provider, model, enabled) })
+}
+
 // SetExperimentalProactiveCompact toggles the configurable fold cooldown
 // (task 318.2; live-read on the next fold, no restart).
 func (a *App) SetExperimentalProactiveCompact(enabled bool) error {
