@@ -1,6 +1,29 @@
 package main
 
-import "reasonix/internal/event"
+import (
+	"log/slog"
+	"time"
+
+	"reasonix/internal/control"
+	"reasonix/internal/event"
+)
+
+// 任务581: 事发（2026-10-07 11:42-11:43，580 诊断）用户提交在 desktop 受理链
+// 某段卡死且全程零日志——turns ledger、会话 WAL、desktop.log 均无痕迹，事后只
+// 能圈定区间无法定位段。这里给每条提交链的各段计时：超过 submitAdmissionSlowWarn
+// 的段留一行 Warn（带 stage 名），把「卡在哪一段」变成下一次事故可以直接读出的
+// 答案。纯观测：不改任何受理语义、不加锁、不设超时（有界失败模式是另一个决策）。
+
+// submitAdmissionSlowWarn 是单段受理耗时留痕阈值。var 以便测试收窄。
+var submitAdmissionSlowWarn = 2 * time.Second
+
+func timedSubmitStage(stage string, fn func()) {
+	start := time.Now()
+	fn()
+	if elapsed := time.Since(start); elapsed >= submitAdmissionSlowWarn {
+		slog.Warn("desktop: submit admission stage slow", "stage", stage, "ms", elapsed.Milliseconds())
+	}
+}
 
 type turnSubmissionState struct {
 	inFlight     bool
@@ -145,15 +168,20 @@ func (a *App) submitDisplayToTab(tabID, display, input, submissionID string) err
 	if err := validateTurnInput(input); err != nil {
 		return err
 	}
-	admission, ctrl, err := a.beginTabTurn(tabID, true, submissionID)
-	if err != nil {
-		return err
+	var admission *tabTurnAdmission
+	var ctrl control.SessionAPI
+	var beginErr error
+	timedSubmitStage("begin_tab_turn", func() {
+		admission, ctrl, beginErr = a.beginTabTurn(tabID, true, submissionID)
+	})
+	if beginErr != nil {
+		return beginErr
 	}
 	defer admission.abort()
 	tab := admission.tab
-	a.ensureTabTopicIndexedForUserTurn(tab)
-	ctrl.SubmitDisplay(display, input)
-	admission.finish(ctrl)
+	timedSubmitStage("topic_index", func() { a.ensureTabTopicIndexedForUserTurn(tab) })
+	timedSubmitStage("controller_submit", func() { ctrl.SubmitDisplay(display, input) })
+	timedSubmitStage("admission_finish", func() { admission.finish(ctrl) })
 	return nil
 }
 
@@ -165,15 +193,20 @@ func (a *App) submitDeliveryRecoveryToTab(tabID, display, input, submissionID st
 	if err := validateTurnInput(input); err != nil {
 		return err
 	}
-	admission, ctrl, err := a.beginTabTurn(tabID, true, submissionID)
-	if err != nil {
-		return err
+	var admission *tabTurnAdmission
+	var ctrl control.SessionAPI
+	var beginErr error
+	timedSubmitStage("begin_tab_turn", func() {
+		admission, ctrl, beginErr = a.beginTabTurn(tabID, true, submissionID)
+	})
+	if beginErr != nil {
+		return beginErr
 	}
 	defer admission.abort()
 	tab := admission.tab
-	a.ensureTabTopicIndexedForUserTurn(tab)
-	ctrl.SubmitDeliveryRecovery(display, input)
-	admission.finish(ctrl)
+	timedSubmitStage("topic_index", func() { a.ensureTabTopicIndexedForUserTurn(tab) })
+	timedSubmitStage("controller_submit", func() { ctrl.SubmitDeliveryRecovery(display, input) })
+	timedSubmitStage("admission_finish", func() { admission.finish(ctrl) })
 	return nil
 }
 
@@ -185,15 +218,22 @@ func (a *App) submitInvocationsToTab(tabID, display, input string, invocations [
 	if err := validateInvocationTurnInput(input, invocations); err != nil {
 		return err
 	}
-	admission, ctrl, err := a.beginTabTurn(tabID, true, submissionID)
-	if err != nil {
-		return err
+	var admission *tabTurnAdmission
+	var ctrl control.SessionAPI
+	var beginErr error
+	timedSubmitStage("begin_tab_turn", func() {
+		admission, ctrl, beginErr = a.beginTabTurn(tabID, true, submissionID)
+	})
+	if beginErr != nil {
+		return beginErr
 	}
 	defer admission.abort()
 	tab := admission.tab
-	a.ensureTabTopicIndexedForUserTurn(tab)
-	ctrl.SubmitInvocationDisplay(display, input, controlInvocationRequests(invocations))
-	admission.finish(ctrl)
+	timedSubmitStage("topic_index", func() { a.ensureTabTopicIndexedForUserTurn(tab) })
+	timedSubmitStage("controller_submit", func() {
+		ctrl.SubmitInvocationDisplay(display, input, controlInvocationRequests(invocations))
+	})
+	timedSubmitStage("admission_finish", func() { admission.finish(ctrl) })
 	return nil
 }
 
@@ -218,14 +258,19 @@ func (a *App) submitEditedDisplayToTab(tabID, display, input, original, submissi
 	if err := validateTurnInput(input); err != nil {
 		return err
 	}
-	admission, ctrl, err := a.beginTabTurn(tabID, true, submissionID)
-	if err != nil {
-		return err
+	var admission *tabTurnAdmission
+	var ctrl control.SessionAPI
+	var beginErr error
+	timedSubmitStage("begin_tab_turn", func() {
+		admission, ctrl, beginErr = a.beginTabTurn(tabID, true, submissionID)
+	})
+	if beginErr != nil {
+		return beginErr
 	}
 	defer admission.abort()
 	tab := admission.tab
-	a.ensureTabTopicIndexedForUserTurn(tab)
-	ctrl.SubmitEditedDisplay(display, input, original)
-	admission.finish(ctrl)
+	timedSubmitStage("topic_index", func() { a.ensureTabTopicIndexedForUserTurn(tab) })
+	timedSubmitStage("controller_submit", func() { ctrl.SubmitEditedDisplay(display, input, original) })
+	timedSubmitStage("admission_finish", func() { admission.finish(ctrl) })
 	return nil
 }
