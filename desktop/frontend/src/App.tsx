@@ -111,7 +111,6 @@ import { TopicbarMoreMenu } from "./components/TopicbarMoreMenu";
 import { RemoteReclaimBanner } from "./components/RemoteReclaimBanner";
 import { startTerminalEventBridge } from "./lib/terminalEvents";
 import { applyTerminalThemePreference } from "./lib/terminalTheme";
-import { formatTerminalOutputForComposer } from "./lib/terminalOutput";
 import { useTerminalStore } from "./store/terminal";
 import { hydrateReasoningDisplayMode, setReasoningDisplayPending } from "./lib/reasoningDisplayPreference";
 import { parseTodos, type Todo } from "./lib/tools";
@@ -133,7 +132,6 @@ import {
   type BackgroundRuntimeView,
   type CollaborationMode,
   type SubagentPolicy,
-  type ComposerInsertRequest,
   type Mode,
   modeHasPlan,
   type RewindResultView,
@@ -167,7 +165,6 @@ import { requestSessionVersions } from "./lib/sessionRecoveryVersionHostBridge";
 import type { WorkspaceVerificationRevealRequest } from "./components/WorkspacePanel";
 import type { StructuredInvocationSubmit } from "./lib/invocationDisplay";
 import type { RewindUndoState } from "./lib/rewindTypes";
-import { formatSelectionReference, type SelectedTextInsertRequest } from "./lib/selectedTextContext";
 import { resolveTaskMonitorSession } from "./lib/taskMonitorNavigation";
 import {
   composerProfileFromMeta,
@@ -267,7 +264,7 @@ import { setSelectionActionsEnabled } from "./lib/selectionActionsPreference";
 import { continueDelivery } from "./lib/deliveryContinue";
 import { activateGoalAndSubmitOnTab } from "./lib/goalSubmit";
 import { isChannelSession, taskSessionIDFromPath } from "./app-runtime/sidebarImProjection";
-import { WorkspaceInsertTarget } from "./app-runtime/useComposerInsertCommands";
+import { useComposerInsertOwner } from "./app-runtime/useComposerInsert";
 import { isMacOSWorkbenchSidebarTitlebar, normalizeDesktopPlatform } from "./lib/desktopPlatform";
 import { isGuidanceMockScenario } from "./lib/mockScenarios";
 import { safeFilename, tabWorkspaceTitle, topicDisplayTitle, topicTitle } from "./lib/sessionTitles";
@@ -1049,15 +1046,26 @@ export default function App() {
   const composerFileRefRefreshKey = `${dockRefreshKey}:${fileRefRefreshKey}`;
   const projectRevision = useRefreshSignalsStore((s) => s.projectRevision);
   const [activeTopicTurns, setActiveTopicTurns] = useState<number | undefined>(undefined);
-  const [composerInsertRequestsByTab, setComposerInsertRequestsByTab] = useState<Record<string, ComposerInsertRequest>>({});
-  const [selectedTextRequestsByTab, setSelectedTextRequestsByTab] = useState<Record<string, SelectedTextInsertRequest>>({});
-  const selectedTextRequestIdRef = useRef(0);
-  const [planRevisionInsertRequest, setPlanRevisionInsertRequest] = useState<{
-    tabId: string;
-    approvalId: string;
-    request: ComposerInsertRequest;
-  } | null>(null);
-  const [workspaceInsertTarget, setWorkspaceInsertTarget] = useState<WorkspaceInsertTarget>("composer");
+  // Task 38 B1: the composer insert family is owned by its module; the
+  // terminal-output port keeps the direct bridge call the monolith used.
+  const composerInsertPorts = useMemo(() => ({
+    terminalOutput: (tabId: string, sessionId: string) => app.TerminalOutputForTab(tabId, sessionId),
+  }), []);
+  const {
+    activePlanRevisionInsertRequest,
+    composerInsertRequest,
+    selectedTextRequest,
+    setInsertTarget,
+    handleRevisionActiveChange,
+    replaceComposerInsert,
+    prefillSubagentCommand,
+    insertQuickCommand,
+    addWorkspaceTextToComposer,
+    addTerminalOutputToComposer,
+    addSelectedTextToComposer,
+    addTerminalSelectionToComposer,
+    addWorkspaceCodeToComposer,
+  } = useComposerInsertOwner({ activeTabId, approval: state.approval, t, showToast, ports: composerInsertPorts });
   const transientOverlayDismissSignal = useOverlayStore((s) => s.transientOverlayDismissSignal);
   const setTransientOverlayDismissSignal = useOverlayStore((s) => s.setTransientOverlayDismissSignal);
   // Task 505: the session wall joins the transient-overlay family — any
@@ -1515,32 +1523,6 @@ export default function App() {
     [visibleRuntimeState.items],
   );
   const exportLive = liveStore.getSnapshot(activeTabId) ?? state.live;
-  const activePlanRevisionInsertRequest =
-    planRevisionInsertRequest &&
-    planRevisionInsertRequest.tabId === activeTabId &&
-    planRevisionInsertRequest.approvalId === state.approval?.id
-      ? planRevisionInsertRequest.request
-      : null;
-  const composerInsertRequest = activeTabId ? composerInsertRequestsByTab[activeTabId] ?? null : null;
-  const handleRevisionActiveChange = useCallback((active: boolean) => {
-    setWorkspaceInsertTarget(active ? "planRevision" : "composer");
-  }, []);
-  const selectedTextRequest = activeTabId ? selectedTextRequestsByTab[activeTabId] ?? null : null;
-  const prefillSubagentCommand = useCallback((command: string) => {
-    if (!activeTabId) return;
-    setComposerInsertRequestsByTab((current) => ({
-      ...current,
-      [activeTabId]: { id: Date.now(), text: command, mode: "prefix" },
-    }));
-  }, [activeTabId]);
-  // Quick-command snippets (#18) insert at the caret; the user still sends.
-  const insertQuickCommand = useCallback((text: string) => {
-    if (!activeTabId || !text) return;
-    setComposerInsertRequestsByTab((current) => ({
-      ...current,
-      [activeTabId]: { id: Date.now(), text, mode: "insert" },
-    }));
-  }, [activeTabId]);
   // Task 447 capsule: stable wrappers so the panel's reload effects key on
   // open/running state instead of a fresh proxy method identity per render.
   const capsuleListSubagents = useCallback((sessionPath: string) => app.ListSubagentsByParent(sessionPath), []);
@@ -2133,8 +2115,8 @@ export default function App() {
 
   useEffect(() => {
     setClearContextPending(false);
-    setWorkspaceInsertTarget("composer");
-  }, [activeTabId]);
+    setInsertTarget("composer");
+  }, [activeTabId, setInsertTarget]);
 
   const cancelClearContext = useCallback(() => {
     setClearContextPending(false);
@@ -3074,68 +3056,6 @@ export default function App() {
     }
   }, [closeWorkspacePanel, openWorkspacePanel]);
 
-  const addWorkspaceTextToComposer = useCallback((text: string) => {
-    if (activeTabId && workspaceInsertTarget === "planRevision" && state.approval?.tool === "exit_plan_mode") {
-      setPlanRevisionInsertRequest({
-        tabId: activeTabId,
-        approvalId: state.approval.id,
-        request: { id: Date.now(), text },
-      });
-      return;
-    }
-    if (activeTabId) {
-      setComposerInsertRequestsByTab((current) => ({
-        ...current,
-        [activeTabId]: { id: Date.now(), text },
-      }));
-    }
-  }, [activeTabId, state.approval, workspaceInsertTarget]);
-
-  const addTerminalOutputToComposer = useCallback(async (sessionId: string) => {
-    if (!activeTabId) return;
-    try {
-      const output = await app.TerminalOutputForTab(activeTabId, sessionId);
-      const formatted = formatTerminalOutputForComposer(output);
-      if (!formatted) {
-        showToast(t("terminal.noOutput"), "info");
-        return;
-      }
-      addWorkspaceTextToComposer(formatted);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), "error");
-    }
-  }, [activeTabId, addWorkspaceTextToComposer, showToast, t]);
-
-  const addSelectedTextToComposer = useCallback((text: string, source?: SelectedTextInsertRequest["source"]) => {
-    const selected = text.trim();
-    if (!activeTabId || !selected) return;
-    selectedTextRequestIdRef.current += 1;
-    setSelectedTextRequestsByTab((current) => ({
-      ...current,
-      [activeTabId]: { id: selectedTextRequestIdRef.current, text: selected, ...(source ? { source } : {}) },
-    }));
-  }, [activeTabId]);
-
-  const addTerminalSelectionToComposer = useCallback((text: string) => addSelectedTextToComposer(text, "terminal"), [addSelectedTextToComposer]);
-  const addWorkspaceCodeToComposer = useCallback((path: string, code: string) => {
-    if (!activeTabId || !code.trim()) return;
-    if (workspaceInsertTarget === "planRevision" && state.approval?.tool === "exit_plan_mode") {
-      // The plan-revision input is plain text and only consumes request.text,
-      // so hand it the fenced rendering instead of a structured reference.
-      setPlanRevisionInsertRequest({
-        tabId: activeTabId,
-        approvalId: state.approval.id,
-        request: { id: Date.now(), text: formatSelectionReference(path, code) },
-      });
-      return;
-    }
-    selectedTextRequestIdRef.current += 1;
-    setSelectedTextRequestsByTab((current) => ({
-      ...current,
-      [activeTabId]: { id: selectedTextRequestIdRef.current, text: code, path },
-    }));
-  }, [activeTabId, state.approval, workspaceInsertTarget]);
-
   // Coalesce tab-bar switches through the same last-click-wins scheduler that
   // openTopic/blank/resume navigation uses, so rapidly clicking between two
   // running sessions can't run two switchTab() calls concurrently. Concurrent
@@ -3822,11 +3742,7 @@ export default function App() {
         filesRestored: outcome.written ?? [],
         filesRemoved: outcome.deleted ?? [],
       });
-      const insertId = Date.now();
-      setComposerInsertRequestsByTab((current) => ({
-        ...current,
-        [targetTabId]: { id: insertId, text: prompt, mode: "replace" },
-      }));
+      replaceComposerInsert(targetTabId, prompt);
       setRewindSignal((v) => v + 1);
       if (scope === "both" || scope === "code") {
         bumpDockRefresh();
@@ -5387,10 +5303,7 @@ export default function App() {
                     void undo.then((ok) => {
                       if (!ok) return;
                       setRewindStateForTab(tabId, null);
-                      setComposerInsertRequestsByTab((current) => ({
-                        ...current,
-                        [tabId]: { id: Date.now(), text: "", mode: "replace" },
-                      }));
+                      replaceComposerInsert(tabId, "");
                       setRewindSignal((v) => v + 1);
                       bumpDockRefresh();
                       bumpProjectRevision();
