@@ -179,8 +179,20 @@ export function isSubagentProgressName(name: string | undefined): boolean {
 export function isTerminalSubagentPhase(phase: string | undefined): boolean {
   return phase === "completed" || phase === "partial" || phase === "failed" || phase === "cancelled";
 }
-function isGroupSubagentTool(name: string): boolean {
-  return name === "parallel_tasks" || name === "fleet";
+// isBackgroundSubagentDispatch reports whether the card's own call set
+// run_in_background — the same discrimination the engine makes
+// (agent.go isBackgroundTaskCall, execute_one.go SubagentStop): a backgrounded
+// task/read_only_task/fleet returns a job id as its result while the child
+// keeps working, so the result must not settle the card. parallel_tasks has no
+// background form, so its result always means the batch finished.
+function isBackgroundSubagentDispatch(name: string, args: string | undefined): boolean {
+  if (name !== "task" && name !== "read_only_task" && name !== "fleet") return false;
+  if (!args) return false;
+  try {
+    return (JSON.parse(args) as { run_in_background?: unknown }).run_in_background === true;
+  } catch {
+    return false; // incomplete/legacy args: treat as foreground
+  }
 }
 function terminalStatusOf(phase: string): ToolStatus {
   switch (phase) {
@@ -1888,25 +1900,27 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
           const summary = t.err ? undefined : existing.summary || summarize(existing.name, existing.args, t.output);
           let status: ToolStatus = t.err ? "error" : "done";
           if (existing.subagentProgress) {
-            // Sub-agent progress owns the card's final visual: a background
-            // call that returned a job id stays running while the child
-            // works; a cancelled child keeps its stopped semantics even when
-            // the aggregate result carries an error. Group cards
-            // (parallel_tasks/fleet) settle only from their own lifecycle
-            // terminal event — the backend emits running at start and exactly
-            // one terminal at the end (including validation failures and
-            // zero-child cancellation) — never from inferring the children
-            // observed so far, since a background group's children dispatch
-            // asynchronously and a fast child can finish before later ones
-            // even appear.
-            if (isGroupSubagentTool(existing.name)) {
-              status = isTerminalSubagentPhase(existing.subagentProgress.phase)
-                ? terminalStatusOf(existing.subagentProgress.phase)
-                : "running";
-            } else if (!isTerminalSubagentPhase(existing.subagentProgress.phase)) {
+            // A terminal progress phase keeps its precise semantics (a
+            // cancelled child stays stopped even when the aggregate result
+            // carries an error). Beyond that, the call's own result is
+            // authoritative: a run_in_background dispatch returned a job id
+            // and the child keeps working, so its card still settles only
+            // from the terminal progress event; a foreground dispatch BLOCKS
+            // until the child finishes — the backend emits exactly one
+            // terminal progress event before this result, but a dropped or
+            // reordered event can no longer strand the card as "running"
+            // forever (任务 533: the completed-children-stuck-in-running
+            // screenshot). Group cards included: parallel_tasks has no
+            // background form, and a foreground fleet's aggregate result
+            // means every child already finished. The rule still never
+            // infers group completion from the children observed so far —
+            // only the group's own result/terminal settles it.
+            if (isTerminalSubagentPhase(existing.subagentProgress.phase)) {
+              status = terminalStatusOf(existing.subagentProgress.phase);
+            } else if (isBackgroundSubagentDispatch(existing.name, existing.args)) {
               status = "running";
             } else {
-              status = terminalStatusOf(existing.subagentProgress.phase);
+              status = t.err ? "error" : "done";
             }
           }
           next[idx] = {
