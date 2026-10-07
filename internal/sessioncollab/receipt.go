@@ -38,12 +38,12 @@ import (
 //     用尽重试预算（3 次）——消息保留在队列未丢弃；空闲桥在队首变化或会话恢复
 //     活动后会重新获得预算，人工重试同样有效
 const (
-	ReceiptInjected          = "injected"
-	ReceiptQueuedFollowup    = "queued_followup"
-	ReceiptRefusedHop        = "refused_hop"
-	ReceiptRefusedProvenance = "refused_provenance"
-	ReceiptRefusedCrossWire  = "refused_cross_wire"
-	ReceiptFailedRetrying    = "failed_retrying"
+	ReceiptInjected           = "injected"
+	ReceiptQueuedFollowup     = "queued_followup"
+	ReceiptRefusedHop         = "refused_hop"
+	ReceiptRefusedProvenance  = "refused_provenance"
+	ReceiptRefusedCrossWire   = "refused_cross_wire"
+	ReceiptFailedRetrying     = "failed_retrying"
 	ReceiptOpenRetryExhausted = "open_retry_exhausted"
 )
 
@@ -59,6 +59,19 @@ func ValidDeliveryReceiptOutcome(s string) bool {
 	default:
 		return false
 	}
+}
+
+// DeliveryReceiptSettled reports whether an outcome is terminal in the sense of
+// 任务585: the delivery pass finished handling the message (injected, queued
+// into the target's durable inbox, refused for good, or exhausted its idle-turn
+// budget with the message kept queued). Only failed_retrying is not settled —
+// that outcome names a pass that did NOT hand the message over, so the pump
+// must retry it. The pump uses this to skip re-claiming a message whose mail
+// cursor lost its ack in an update-restart window: a settled receipt proves a
+// prior pass handed the message over, so re-delivering it would re-inject an
+// already-handled message into the target.
+func DeliveryReceiptSettled(outcome string) bool {
+	return outcome != ReceiptFailedRetrying && ValidDeliveryReceiptOutcome(outcome)
 }
 
 // DeliveryReceipt is one message's settle record, written by the host pump at
