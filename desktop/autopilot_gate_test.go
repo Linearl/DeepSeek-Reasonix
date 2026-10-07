@@ -208,20 +208,24 @@ func TestRestoreTabEntryCarriesAutopilotFlag(t *testing.T) {
 	// Restore-side gate (same call the restore path makes): under yolo the
 	// flag comes back with its bounds; under ask/auto it must refuse with
 	// zeroed bounds so a stale entry can never resurrect unattended.
-	prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait := desktopAutopilotDefaults()
+	// 任务579 申报：本文件 211/215/222 三行在基线 e82c0108d 即为红（465 给
+	// desktopAutopilotDefaults / gateRestoredAutopilotDefaults 增加了第 6 个
+	// 返回值 askAutoContinue，测试未跟上，卡死整个 desktop 测试包编译）。
+	// 此处按 6 值签名最小追逐修复，语义与同文件 397 行既有 6 值用法一致。
+	prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, prefAskAutoContinue := desktopAutopilotDefaults()
 	if !prefOn {
 		t.Fatal("precondition failed — the test config turns the autopilot preference on")
 	}
-	on, runtime, grace, askEnabled, askWait := gateRestoredAutopilotDefaults(entry.Autopilot, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, control.ToolApprovalYolo)
+	on, runtime, grace, askEnabled, askWait, askAutoContinue := gateRestoredAutopilotDefaults(entry.Autopilot, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, prefAskAutoContinue, control.ToolApprovalYolo)
 	if !on || runtime <= 0 {
 		t.Fatalf("restore under yolo must carry the flag with its runtime bound, got on=%v runtime=%v", on, runtime)
 	}
-	if grace != prefGrace || askEnabled != prefAskEnabled || askWait != prefAskWait {
-		t.Fatalf("restore under yolo must pass the preference dials through, got grace=%v askEnabled=%v askWait=%v (want %v/%v/%v)", grace, askEnabled, askWait, prefGrace, prefAskEnabled, prefAskWait)
+	if grace != prefGrace || askEnabled != prefAskEnabled || askWait != prefAskWait || askAutoContinue != prefAskAutoContinue {
+		t.Fatalf("restore under yolo must pass the preference dials through, got grace=%v askEnabled=%v askWait=%v askAutoContinue=%v (want %v/%v/%v/%v)", grace, askEnabled, askWait, askAutoContinue, prefGrace, prefAskEnabled, prefAskWait, prefAskAutoContinue)
 	}
-	on, runtime, grace, askEnabled, askWait = gateRestoredAutopilotDefaults(entry.Autopilot, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, control.ToolApprovalAsk)
-	if on || runtime != 0 || grace != 0 || askEnabled || askWait != 0 {
-		t.Fatalf("restore under ask must refuse with zeroed bounds, got on=%v runtime=%v grace=%v askEnabled=%v askWait=%v", on, runtime, grace, askEnabled, askWait)
+	on, runtime, grace, askEnabled, askWait, askAutoContinue = gateRestoredAutopilotDefaults(entry.Autopilot, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, prefAskAutoContinue, control.ToolApprovalAsk)
+	if on || runtime != 0 || grace != 0 || askEnabled || askWait != 0 || askAutoContinue {
+		t.Fatalf("restore under ask must refuse with zeroed bounds, got on=%v runtime=%v grace=%v askEnabled=%v askWait=%v askAutoContinue=%v", on, runtime, grace, askEnabled, askWait, askAutoContinue)
 	}
 }
 
