@@ -37,6 +37,7 @@ const checks = [
   ]],
   ["check:z-index", "node", ["scripts/check-z-index-tokens.mjs", "src/styles.css", "src/components/RemoteConnectWizard.css"]],
   ["check:theme-token", "node", ["scripts/check-theme-token-contract.mjs"]],
+  ["check:class-contract", "node", ["scripts/check-class-contract.mjs"]],
   ["check:bridge-json-tags", "node", ["../../scripts/check-bridge-json-tags.mjs", "../.."]],
 ];
 

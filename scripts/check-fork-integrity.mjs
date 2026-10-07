@@ -1289,6 +1289,12 @@ const CHECKS = [
   { feature: "任务563 建议开启规则（仅推荐档且未开启，纯函数单源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["export function suggestEnable(tier: LabTier, on: boolean): boolean"] },
   { feature: "任务563 状态提供方（ExperimentalSection 从 features 派生，合并卡成员读自身键）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["LabWallOnContext.Provider value={labWallOnById}", "features.find((f) => f.id === pick)", "Boolean(s.experimentalRestartUpdate)"] },
   { feature: "任务563 验收测试（三要素/弹窗/角标两态/新增项不进墙/表B逐字）", file: "desktop/frontend/src/__tests__/task563-lab-picks-wall.test.ts", patterns: ["byte-equal to xlsx 表B cols 6/7", "recommended + off ⇒ badge shows", "simulated new tier item is absent from LAB_WALL_PICKS"] },
+  // ── 任务578 按钮样式一档（变体类补定义，纯 CSS，既有 token）──
+  { feature: "任务578 btn--secondary 变体（20 处引用，次要按钮配色）", file: "desktop/frontend/src/styles.css", patterns: [".btn--secondary {", ".btn--secondary:hover {", ".btn--secondary:disabled:hover {"] },
+  { feature: "任务578 btn--sm / btn--icon 变体（与 btn--small 独立，不互为别名）", file: "desktop/frontend/src/styles.css", patterns: [".btn--sm {", ".btn--icon {"] },
+  { feature: "任务578 窗口控制 min/max 变体 hover（--close 红色 hover 已随上游在位）", file: "desktop/frontend/src/styles.css", patterns: [".windows-window-control--minimize:hover,", ".windows-window-control--maximize:hover,"] },
+  { feature: "任务578 防复发 check-class-contract.mjs（四断言：类名差集/Tailwind 专项/硬编码色/豁免）", file: "desktop/frontend/scripts/check-class-contract.mjs", patterns: ["BASELINE_WHITELIST", "TAILWIND_EXEMPT_FILES", "HARDCOLOR_WHITELIST", "--self-test", "--emit-baseline"] },
+  { feature: "任务578 防复发接线（进 check-all-parallel 并行组）", file: "desktop/frontend/scripts/check-all-parallel.mjs", patterns: ["check:class-contract"] },
 ];
 
 let failed = 0;
