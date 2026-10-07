@@ -44,6 +44,15 @@ type SessionCollabConfig struct {
 	// recheckSatisfied, exposing a judged-vs-returned window race. Off
 	// (default) keeps the return shape byte-identical.
 	EventWaitRecheck bool
+	// DeleteUnreadGate enables the task-509 pre-archive unconsumed-mail gate on
+	// delete_session (软开关, default off): with it on, a target whose inbox
+	// still holds entries its seen cursor does not cover (queued≠read) refuses
+	// the confirm path, and the dry run reports the count. Off = byte-identical
+	// behavior. The workspace plan script (session_archive_plan.py) applies the
+	// same reconciliation for its tickets, but the gate must hold in-process
+	// too — the automated archive action itself runs through this tool, not
+	// through the script.
+	DeleteUnreadGate bool
 	// CurrentContactID is filled on first ensure for the calling session.
 	CurrentContactID string
 	// Task 309 mailbox defaults for talk_to_session (boot-bridged from

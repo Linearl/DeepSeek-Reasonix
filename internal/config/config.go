@@ -1682,6 +1682,15 @@ type AgentConfig struct {
 	SessionCollabAllowReadTail     bool `toml:"session_collab_allow_read_tail"`
 	SessionCollabAllowCreate       bool `toml:"session_collab_allow_create"`
 	SessionCollabAllowSteer        bool `toml:"session_collab_allow_steer"`
+	// SessionCollabDeleteUnreadGate enables the task-509 pre-archive
+	// unconsumed-mail gate on delete_session (软开关, default off): with it on,
+	// the confirm path refuses a target whose inbox still holds entries its
+	// seen cursor does not cover (queued≠read), and the dry run reports the
+	// count — an unverifiable inbox refuses too (fail closed). Off = the prior
+	// behavior byte-for-byte. It constrains an already-gated tool
+	// (session_collab_allow_delete) and needs no panel surface; enable by
+	// editing config.toml and restarting.
+	SessionCollabDeleteUnreadGate bool `toml:"session_collab_delete_unread_gate"`
 	// SessionCollabReplyNudge enables the task-530 turn-closure reply reminder:
 	// when a turn closes with settled-but-unanswered require_reply mail, the
 	// host injects ONE visible reminder round. Off (the default) keeps turns

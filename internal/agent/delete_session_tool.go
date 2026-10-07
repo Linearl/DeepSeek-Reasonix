@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"reasonix/internal/config"
+	"reasonix/internal/sessioncollab"
 	"reasonix/internal/tool"
 )
 
@@ -75,6 +77,28 @@ func (deleteSessionTool) Schema() json.RawMessage {
 
 func (deleteSessionTool) ReadOnly() bool { return false }
 
+// unconsumedMailCount is the task-509 pre-archive gate probe: how many inbox
+// entries of the target contact are NOT covered by its seen cursor
+// (queued≠read — memory 跨会话消息投递复核法). A read error is returned, not
+// swallowed: the gate must fail closed (宁紧勿松), so an unverifiable inbox
+// refuses the archive exactly like an unconsumed one. A contact with no id
+// never participated in the mail system — the same convention the
+// get_session_status mail probe uses — so there is nothing to protect.
+func (t deleteSessionTool) unconsumedMailCount(contactID string) (int, error) {
+	if strings.TrimSpace(contactID) == "" {
+		return 0, nil
+	}
+	mailDir := t.cfg.MailDir
+	if strings.TrimSpace(mailDir) == "" {
+		mailDir = config.SessionCollabMailDir()
+	}
+	unread, err := sessioncollab.NewMailStore(mailDir).Peek(contactID)
+	if err != nil {
+		return 0, err
+	}
+	return len(unread), nil
+}
+
 func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Target  string `json:"target"`
@@ -101,6 +125,22 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if t.del == nil {
 		return "", fmt.Errorf("delete_session: this host cannot delete sessions")
 	}
+	// 任务 509 未消费消息前置门（软开关，默认关）：开关注册在 [agent]
+	// session_collab_delete_unread_gate。开启时，目标收件箱还有 seen 游标未
+	// 覆盖的条目（queued≠已读）就拒绝 confirm 归档，dry-run 则如实上报条数；
+	// 关闭 = 行为与既有版本逐字节一致。归档 ≠ 删除（manual-restore trash），
+	// 但排队未读的消息会随归档退出活跃协作面——自动归档路径必须先消费。
+	unconsumed := -1 // -1 = gate off / not probed
+	if t.cfg.DeleteUnreadGate {
+		n, err := t.unconsumedMailCount(id.ContactID)
+		if err != nil {
+			return "", fmt.Errorf("delete_session: cannot verify the inbox of %q (%v) — the unconsumed-mail gate fails closed (宁紧勿松), archive refused; check the inbox panel and retry", p.Target, err)
+		}
+		unconsumed = n
+		if p.Confirm && n > 0 {
+			return "", fmt.Errorf("delete_session: %q still has %d unconsumed inbox message(s) (queued≠read) — the task-509 pre-archive gate refuses; have the recipient consume them first (drain_inbox / inbox panel), then re-run", p.Target, n)
+		}
+	}
 	// Dry run and real delete are separate calls with an explicit dryRun flag,
 	// so a "just look at the impact" request can never move the session (audit
 	// F154-2: a prior version called the host unconditionally and the host
@@ -116,12 +156,18 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 		if strings.TrimSpace(impact.Title) == "" {
 			impact.Title = id.Title
 		}
-		out, _ := json.Marshal(map[string]any{
+		out := map[string]any{
 			"status": "dry_run",
 			"impact": impact,
 			"note":   "re-run with confirm=true to move it to trash",
-		})
-		return string(out), nil
+		}
+		// 任务 509: with the gate on, the dry run also answers "will confirm be
+		// refused?" so the orchestrator can consume mail before asking.
+		if unconsumed >= 0 {
+			out["mailGate"] = map[string]any{"unconsumed": unconsumed, "refusesConfirm": unconsumed > 0}
+		}
+		outJSON, _ := json.Marshal(out)
+		return string(outJSON), nil
 	}
 	impact, result, err := t.del(id.ContactID, id.SessionPath, false)
 	if err != nil {
@@ -130,10 +176,16 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	if strings.TrimSpace(impact.Title) == "" {
 		impact.Title = id.Title
 	}
-	out, _ := json.Marshal(map[string]any{
+	out := map[string]any{
 		"status": "trashed",
 		"result": result,
 		"impact": impact,
-	})
-	return string(out), nil
+	}
+	// 任务 509: the gate passed with zero unconsumed — record that in the tool
+	// result so the archive decision carries its own evidence (留痕).
+	if unconsumed >= 0 {
+		out["mailGate"] = map[string]any{"unconsumed": unconsumed}
+	}
+	outJSON, _ := json.Marshal(out)
+	return string(outJSON), nil
 }
