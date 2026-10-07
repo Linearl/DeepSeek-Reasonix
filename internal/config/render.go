@@ -352,18 +352,15 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "history_body_budget_mb = %d   # desktop: transcript body cache ceiling in MiB (task 161; 0 = default 192)\n", c.Desktop.HistoryBodyBudgetMb)
 		fmt.Fprintf(&b, "markdown_budget_mb = %d   # desktop: markdown parse-cache ceiling in MiB (task 161; 0 = default 256)\n", c.Desktop.MarkdownBudgetMb)
 		fmt.Fprintf(&b, "experimental_cache_tuning = %v   # desktop: expose Settings → 缓存大小调整 (task 161); off = user values ignored, defaults apply\n", c.Desktop.ExperimentalCacheTuning)
-		fmt.Fprintf(&b, "experimental_trace_as_state = %v   # desktop: settings-view mirror of [agent] trace_as_state (task 60)\n", c.Desktop.ExperimentalTraceAsState)
-		fmt.Fprintf(&b, "experimental_dream = %v   # desktop: settings-view mirror of [agent] experimental_dream (task 115)\n", c.Desktop.ExperimentalDream)
-		fmt.Fprintf(&b, "experimental_session_collab = %v   # desktop: settings-view mirror of [agent] experimental_session_collab (task 19)\n", c.Desktop.ExperimentalSessionCollab)
-		fmt.Fprintf(&b, "experimental_auto_load_older = %v   # desktop: settings-view mirror of [agent] experimental_auto_load_older (fork task 160)\n", c.Desktop.ExperimentalAutoLoadOlder)
-		fmt.Fprintf(&b, "experimental_perf_monitor = %v   # desktop: settings-view mirror of [agent] experimental_perf_monitor (task 184)\n", c.Desktop.ExperimentalPerfMonitor)
-		fmt.Fprintf(&b, "experimental_heap_high_profile = %v   # desktop: settings-view mirror of [agent] experimental_heap_high_profile (task 501)\n", c.Desktop.ExperimentalHeapHighProfile)
-
-		fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # desktop: settings-view mirror of [agent] experimental_autonomous_idle_terminate (task 244 B1)\n", c.Desktop.ExperimentalAutonomousIdleTerminate)
-		fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # desktop: settings-view mirror of [agent] experimental_loop_streak_note (task 244 B2)\n", c.Desktop.ExperimentalLoopStreakNote)
-		fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # desktop: settings-view mirror of [agent] experimental_event_wait_recheck (task 244 B3)\n", c.Desktop.ExperimentalEventWaitRecheck)
-
-		fmt.Fprintf(&b, "experimental_orphan_handling = %v   # desktop: settings-view mirror of [agent] experimental_orphan_handling (task 449: merged 244 B5 lease reclaim + B4 recovery sweep)\n", c.Desktop.ExperimentalOrphanHandling)
+		// Task 473: the [desktop] settings-view mirrors of the lab boolean
+		// switches (trace_as_state / dream / session_collab / auto_load_older /
+		// perf_monitor / heap_high_profile / idle_terminate / loop_streak_note /
+		// event_wait_recheck / orphan_handling / model_capability_filter /
+		// runtime_reuse / collab_guidance_merge) are retired — the [agent] key
+		// is the single source of truth and the [desktop] field folds into it
+		// at load (migrateLabMirrorKeysToAgent), so no mirror row is rendered
+		// here anymore. The two task-244 orphan legacy keys below stay rendered
+		// per task 449 so an older binary sees the migrated-off state.
 
 		// Task 449: legacy keys are read-only (folded into
 		// experimental_orphan_handling at load) but still rendered so an older
@@ -372,14 +369,12 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_orphan_lease_reclaim = %v   # desktop: legacy key (task 244 B5), migrated into experimental_orphan_handling (task 449)\n", c.Desktop.ExperimentalOrphanLeaseReclaim)
 
 		fmt.Fprintf(&b, "experimental_recovery_orphan_sweep = %v   # desktop: legacy key (task 244 B4), migrated into experimental_orphan_handling (task 449)\n", c.Desktop.ExperimentalRecoveryOrphanSweep)
-		fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # desktop: settings-view mirror of [agent] experimental_runtime_reuse (task 363A)\n", c.Desktop.ExperimentalRuntimeReuse)
 		fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # desktop: settings-view mirror of [agent] perf_monitor_interval_seconds (task 184; 0 = 5s)\n", c.Desktop.PerfMonitorIntervalSeconds)
 		fmt.Fprintf(&b, "perf_monitor_heap_high_threshold_mb = %d   # desktop: settings-view mirror of [agent] perf_monitor_heap_high_threshold_mb (task 528; 0 = built-in default 6144)\n", c.Desktop.PerfMonitorHeapHighThresholdMB)
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
 		fmt.Fprintf(&b, "detached_idle_release_minutes = %d   # desktop: settings-view mirror of [agent] detached_idle_release_minutes (task 308-O4; 0 = never release)\n", c.Desktop.DetachedIdleReleaseMinutes)
 		fmt.Fprintf(&b, "go_mem_limit_mb = %d   # desktop: settings-view mirror of [agent] go_mem_limit_mb (task 308-O3; 0 = unbounded)\n", c.Desktop.GoMemLimitMB)
 		fmt.Fprintf(&b, "collab_inbox_merge = %q   # desktop: settings-view mirror of [agent] collab_inbox_merge (task 221; off | same_sender | all)\n", NormalizeCollabInboxMerge(c.Desktop.CollabInboxMerge))
-		fmt.Fprintf(&b, "collab_guidance_merge = %v   # desktop: settings-view mirror of [agent] collab_guidance_merge (task 153)\n", c.Desktop.CollabGuidanceMerge)
 		fmt.Fprintf(&b, "telemetry = %v   # desktop: anonymous launch ping + scrubbed next-launch native crash diagnostics; never content\n", c.DesktopTelemetry())
 		fmt.Fprintf(&b, "metrics = %v   # desktop: aggregate quality/lifecycle metrics (anonymous signal/bucket counts); never content\n", c.DesktopMetrics())
 		// A non-nil empty slice is intentional: provider_access = [] means the

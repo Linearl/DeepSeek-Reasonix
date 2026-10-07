@@ -82,11 +82,16 @@ type DesktopConfig struct {
 	// ships off: with it off the tab context menu looks exactly as it did before the
 	// split existed (zero regression), and the split stays an opt-in experiment.
 	ExperimentalSplitView bool `toml:"experimental_split_view"`
-	// ExperimentalPerfMonitor is the settings-view mirror for
-	// Agent.ExperimentalPerfMonitor (task 184).
+	// Task 473: the [desktop] boolean mirrors of [agent] lab switches are
+	// retired. These fields are READ-ONLY legacy inputs: migrateLabMirrorKeysToAgent
+	// folds any leftover true into the [agent] key at load and the setters only
+	// clear them, so the [agent] key is the single source of truth and the
+	// settings view derives from it. They are never rendered back to disk.
+	//
+	// ExperimentalPerfMonitor mirrored Agent.ExperimentalPerfMonitor (task 184).
 	ExperimentalPerfMonitor bool `toml:"experimental_perf_monitor"`
-	// ExperimentalHeapHighProfile is the settings-view mirror for
-	// Agent.ExperimentalHeapHighProfile (task 501).
+	// ExperimentalHeapHighProfile mirrored Agent.ExperimentalHeapHighProfile
+	// (task 501).
 	ExperimentalHeapHighProfile bool `toml:"experimental_heap_high_profile"`
 	// PerfMonitorIntervalSeconds is the settings-view mirror for the sampler
 	// interval (task 184). 0 = default 5s.
@@ -188,16 +193,12 @@ type DesktopConfig struct {
 	// documented in docs/PATH_SCOPE_RULES.md (task 134). Ships off: production
 	// keeps the existing confine + allow_write + write-access approval model.
 	ExperimentalPathRules bool `toml:"experimental_path_rules"`
-	// ExperimentalTraceAsState is the settings-view mirror for Agent.TraceAsState
-	// (task 60). The runtime flag lives on [agent]; this field keeps the
-	// experimental features tab reading the same saved value.
+	// ExperimentalTraceAsState mirrored Agent.TraceAsState (task 60).
 	ExperimentalTraceAsState bool `toml:"experimental_trace_as_state"`
-	// ExperimentalDream is the settings-view mirror for Agent.ExperimentalDream
-	// (task 115). The runtime flag lives on [agent]; this field keeps the
-	// experimental features tab reading the same saved value.
+	// ExperimentalDream mirrored Agent.ExperimentalDream (task 115).
 	ExperimentalDream bool `toml:"experimental_dream"`
-	// ExperimentalSessionCollab is the settings-view mirror for
-	// Agent.ExperimentalSessionCollab (task 19).
+	// ExperimentalSessionCollab mirrored Agent.ExperimentalSessionCollab
+	// (task 19).
 	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
@@ -210,21 +211,19 @@ type DesktopConfig struct {
 	// GoMemLimitMB is the settings-view mirror for the [agent] runtime value
 	// of task 308-O3 (soft memory limit in MB, 0 = unbounded).
 	GoMemLimitMB int `toml:"go_mem_limit_mb"`
-	// ExperimentalAutoLoadOlder is the settings-view mirror for
-	// Agent.ExperimentalAutoLoadOlder (fork task 160).
+	// ExperimentalAutoLoadOlder mirrored Agent.ExperimentalAutoLoadOlder
+	// (fork task 160).
 	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`
 
 	// ExperimentalAutonomousIdleTerminate / ExperimentalLoopStreakNote /
-	// ExperimentalEventWaitRecheck are the settings-view mirrors for the
-	// [agent] runtime flags of task 244 B1/B2/B3 (same double-write pattern
-	// as experimental_dream).
+	// ExperimentalEventWaitRecheck mirrored the [agent] runtime flags of
+	// task 244 B1/B2/B3.
 	ExperimentalAutonomousIdleTerminate bool `toml:"experimental_autonomous_idle_terminate"`
 	ExperimentalLoopStreakNote          bool `toml:"experimental_loop_streak_note"`
 	ExperimentalEventWaitRecheck        bool `toml:"experimental_event_wait_recheck"`
 
-	// ExperimentalOrphanHandling is the settings-view mirror for the [agent]
-	// merged orphan switch (task 449; folds task 244 B5 lease reclaim + B4
-	// recovery sweep into one).
+	// ExperimentalOrphanHandling mirrored the [agent] merged orphan switch
+	// (task 449; folds task 244 B5 lease reclaim + B4 recovery sweep into one).
 	ExperimentalOrphanHandling bool `toml:"experimental_orphan_handling"`
 	// Legacy task-244 keys: READ-ONLY, migrated into
 	// experimental_orphan_handling at load (task 449), never written back.
@@ -235,15 +234,14 @@ type DesktopConfig struct {
 	// kept READ-ONLY so old configs still load (task 551; the [agent] gate is
 	// removed). Never rendered or written back.
 	ExperimentalModelCapabilityFilter bool `toml:"experimental_model_capability_filter"`
-	// ExperimentalRuntimeReuse is the settings-view mirror for the [agent]
-	// runtime flag of task 363A (runtime assembly reuse pool).
+	// ExperimentalRuntimeReuse mirrored the [agent] runtime flag of task 363A
+	// (runtime assembly reuse pool).
 	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
 	// CollabInboxMerge is the settings-view mirror for Agent.CollabInboxMerge
 	// (task 221): off | same_sender | all.
 	CollabInboxMerge string `toml:"collab_inbox_merge"`
-	// CollabGuidanceMerge is the settings-view mirror for
-	// Agent.CollabGuidanceMerge (task 153): the manual "merge next" button in
-	// the guidance shelf.
+	// CollabGuidanceMerge mirrored Agent.CollabGuidanceMerge (task 153): the
+	// manual "merge next" button in the guidance shelf.
 	CollabGuidanceMerge    bool   `toml:"collab_guidance_merge"`
 	AutopilotMaxRuntime    string `toml:"autopilot_max_runtime"`    // Go duration; required when autopilot is on
 	AutopilotApprovalGrace string `toml:"autopilot_approval_grace"` // wait for a human before the reviewer decides; empty = 15s

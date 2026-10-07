@@ -200,10 +200,13 @@ func TestPerfMonitorHeapHighSettings(t *testing.T) {
 	if enabled, _ := perfMonitorHeapHighSettings(agentOn); !enabled {
 		t.Fatal("agent-side switch must enable")
 	}
+	// Task 473: the [desktop] mirror is retired — the gate reads the [agent]
+	// key only; a [desktop] true folds into it at load (config migration), so
+	// an unmigrated bare struct must NOT enable.
 	desktopOn := &config.Config{}
 	desktopOn.Desktop.ExperimentalHeapHighProfile = true
-	if enabled, _ := perfMonitorHeapHighSettings(desktopOn); !enabled {
-		t.Fatal("desktop-side switch must enable")
+	if enabled, _ := perfMonitorHeapHighSettings(desktopOn); enabled {
+		t.Fatal("retired desktop mirror must not drive the gate directly")
 	}
 	thresholdCases := []struct {
 		raw  int
@@ -247,7 +250,12 @@ func TestSetPerfMonitorHeapHighThresholdClamps(t *testing.T) {
 	if err := cfg.SetExperimentalHeapHighProfile(true); err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Agent.ExperimentalHeapHighProfile || !cfg.Desktop.ExperimentalHeapHighProfile {
-		t.Fatal("heap-high setter must write both faces (agent + settings-view mirror)")
+	// Task 473: the setter single-writes the [agent] key; the retired
+	// [desktop] mirror stays cleared.
+	if !cfg.Agent.ExperimentalHeapHighProfile {
+		t.Fatal("heap-high setter must write the [agent] key")
+	}
+	if cfg.Desktop.ExperimentalHeapHighProfile {
+		t.Fatal("retired [desktop] mirror must stay cleared")
 	}
 }

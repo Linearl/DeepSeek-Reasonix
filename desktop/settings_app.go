@@ -1444,12 +1444,12 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
 		// S1: resident-base-subprocess switch readback (design §7 R4).
 		view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess
-		view.ExperimentalTraceAsState = cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState
-		view.ExperimentalDream = cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream
-		view.ExperimentalAutonomousIdleTerminate = cfg.Desktop.ExperimentalAutonomousIdleTerminate || cfg.Agent.ExperimentalAutonomousIdleTerminate
-		view.ExperimentalLoopStreakNote = cfg.Desktop.ExperimentalLoopStreakNote || cfg.Agent.ExperimentalLoopStreakNote
-		view.ExperimentalEventWaitRecheck = cfg.Desktop.ExperimentalEventWaitRecheck || cfg.Agent.ExperimentalEventWaitRecheck
-		view.ExperimentalOrphanHandling = cfg.Desktop.ExperimentalOrphanHandling || cfg.Agent.ExperimentalOrphanHandling
+		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
+		view.ExperimentalDream = cfg.Agent.ExperimentalDream
+		view.ExperimentalAutonomousIdleTerminate = cfg.Agent.ExperimentalAutonomousIdleTerminate
+		view.ExperimentalLoopStreakNote = cfg.Agent.ExperimentalLoopStreakNote
+		view.ExperimentalEventWaitRecheck = cfg.Agent.ExperimentalEventWaitRecheck
+		view.ExperimentalOrphanHandling = cfg.Agent.ExperimentalOrphanHandling
 
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
 		view.ExperimentalPerfMonitor = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
@@ -1462,10 +1462,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
 		view.DetachedIdleReleaseMinutes = cfg.Desktop.DetachedIdleReleaseMinutes
 		view.GoMemLimitMB = cfg.Desktop.GoMemLimitMB
-		view.ExperimentalSessionCollab = cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab
-		view.ExperimentalAutoLoadOlder = cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder
+		view.ExperimentalSessionCollab = cfg.Agent.ExperimentalSessionCollab
+		view.ExperimentalAutoLoadOlder = cfg.Agent.ExperimentalAutoLoadOlder
 		view.CollabInboxMerge = config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge)
-		view.CollabGuidanceMerge = cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge
+		view.CollabGuidanceMerge = cfg.Agent.CollabGuidanceMerge
 		view.ExperimentalLocalServer = cfg.Desktop.ExperimentalLocalServer
 		// Task 377: noise-triage readback (boot snapshot).
 		view.ExperimentalLifecycleNoiseGate = cfg.Desktop.ExperimentalLifecycleNoiseGate
@@ -1597,11 +1597,11 @@ func (a *App) Settings() SettingsView {
 		ExperimentalActiveTabResident:       cfg.Agent.ExperimentalActiveTabResident,
 		ExperimentalFullAccess:              cfg.Agent.ExperimentalFullAccess,
 		ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess,
-		ExperimentalTraceAsState:            cfg.Desktop.ExperimentalTraceAsState || cfg.Agent.TraceAsState,
-		ExperimentalDream:                   cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream,
-		ExperimentalAutonomousIdleTerminate: cfg.Desktop.ExperimentalAutonomousIdleTerminate || cfg.Agent.ExperimentalAutonomousIdleTerminate,
-		ExperimentalLoopStreakNote:          cfg.Desktop.ExperimentalLoopStreakNote || cfg.Agent.ExperimentalLoopStreakNote,
-		ExperimentalEventWaitRecheck:        cfg.Desktop.ExperimentalEventWaitRecheck || cfg.Agent.ExperimentalEventWaitRecheck,
+		ExperimentalTraceAsState:            cfg.Agent.TraceAsState,
+		ExperimentalDream:                   cfg.Agent.ExperimentalDream,
+		ExperimentalAutonomousIdleTerminate: cfg.Agent.ExperimentalAutonomousIdleTerminate,
+		ExperimentalLoopStreakNote:          cfg.Agent.ExperimentalLoopStreakNote,
+		ExperimentalEventWaitRecheck:        cfg.Agent.ExperimentalEventWaitRecheck,
 		// Task 163: usage card switch readback.
 		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
 		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).

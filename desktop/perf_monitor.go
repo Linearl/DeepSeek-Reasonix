@@ -258,7 +258,7 @@ func perfMonitorHeapHighSettings(cfg *config.Config) (bool, float64) {
 	enabled := false
 	threshold := float64(config.PerfMonitorHeapHighDefaultMB)
 	if cfg != nil {
-		enabled = cfg.Agent.ExperimentalHeapHighProfile || cfg.Desktop.ExperimentalHeapHighProfile
+		enabled = cfg.Agent.ExperimentalHeapHighProfile
 		if cfg.Agent.PerfMonitorHeapHighThresholdMB > 0 {
 			threshold = float64(cfg.Agent.PerfMonitorHeapHighThresholdMB)
 		}

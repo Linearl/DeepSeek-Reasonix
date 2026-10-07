@@ -3689,7 +3689,7 @@ func collabDisabledSkillNames(cfg *config.Config) []string {
 // writes both, and a boot that only read one of them would fail to register the
 // toolset while Settings still showed the experiment as enabled.
 func sessionCollabEnabled(cfg *config.Config) bool {
-	return cfg != nil && (cfg.Agent.ExperimentalSessionCollab || cfg.Desktop.ExperimentalSessionCollab)
+	return cfg != nil && cfg.Agent.ExperimentalSessionCollab
 }
 
 // highSpeedModelsFromConfig arms the high-speed model lane only when the

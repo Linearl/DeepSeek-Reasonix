@@ -93,7 +93,7 @@ func (a *App) PerfTimeSeries(windowMinutes int) PerfTimeSeriesView {
 	}
 	view := PerfTimeSeriesView{Points: []PerfPoint{}, IntervalSeconds: 5}
 	if cfg, err := config.Load(); err == nil && cfg != nil {
-		view.Enabled = cfg.Desktop.ExperimentalPerfMonitor || cfg.Agent.ExperimentalPerfMonitor
+		view.Enabled = cfg.Agent.ExperimentalPerfMonitor
 		if cfg.Agent.PerfMonitorIntervalSeconds > 0 {
 			view.IntervalSeconds = cfg.Agent.PerfMonitorIntervalSeconds
 		}
