@@ -77,6 +77,8 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalOrphanLeaseReclaim = true
 	c.Agent.ExperimentalRecoveryOrphanSweep = true
 	c.Desktop.ExperimentalLocalServer = true
+	// tool-opt（任务 603）
+	c.Agent.ExperimentalToolOptimizations = true
 	// 豁免键（非表A，但属于实验室族，门禁要求它们仍被渲染）
 	c.Agent.ExperimentalPreapproveManagedPaths = true
 	c.Agent.ExperimentalCascadeApproval = true
@@ -176,7 +178,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// 任务 545（sessionCwdFollow）+ 任务 504（tabModeTint）为 562 表A 快照后
 		// 新增的默认关实验项，按未稳定档登记；任务 551 将 B9
 		// （modelCapabilityFilter）退役移出表A——xlsx 侧待同步。
-		LabTierUnstable: 12,
+		// 任务 603（toolOptimizations，「工具优化」族首件）同为快照后新增，
+		// 用户定档未稳定。
+		LabTierUnstable: 13,
 		LabTierRetired:  0,
 	}
 	got := map[LabTier]int{}
@@ -198,7 +202,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 47 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 47", len(labFeatureTiers))
+	if len(labFeatureTiers) != 48 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 48", len(labFeatureTiers))
 	}
 }

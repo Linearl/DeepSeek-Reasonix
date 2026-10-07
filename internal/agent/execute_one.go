@@ -569,6 +569,10 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 		cctx = mcpinteraction.WithBroker(cctx, a.svc.interactionBroker)
 	}
 	cctx, plan.mcpApp = tool.WithMCPAppCollector(cctx)
+	// Task 603: an edit writer that performed a readBack files its window
+	// here; finishToolExecution moves it onto the outcome for the ordered
+	// finalizer. Tools that do not read back leave it empty.
+	cctx, plan.readBackSink = tool.WithReadBackCollector(cctx)
 	cctx = WithSubagentDepth(cctx, a.subagentDepth)
 	if a.task.ledger != nil {
 		cctx = evidence.WithLedger(cctx, a.task.ledger)
@@ -743,6 +747,13 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 	out := toolOutcome{
 		runState: runState, output: body, images: images, visionSummary: visionSummary, truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
 		execution: execution, mcpApp: toProviderMCPApp(plan.mcpApp), recoveryGeneration: recoveryGen,
+	}
+	// Task 603: only a completed call can carry a read-back — the tool files
+	// its window after its write succeeded, so an error return never reaches
+	// here and a failed write never becomes read evidence.
+	if sink := plan.readBackSink; sink != nil && sink.Path != "" && len(sink.LineHashes) > 0 {
+		observed := *sink
+		out.readBackObs = &observed
 	}
 	if original != "" {
 		out.rawOutput = original

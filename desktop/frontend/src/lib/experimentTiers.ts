@@ -63,7 +63,9 @@ export type TierFeatureId =
   | "modelCapabilityFilter"
   | "pathRules"
   | "orphanHandling"
-  | "localServer";
+  | "localServer"
+  // 任务 603:「工具优化」族首件 (edit readBack + evidence gate linkage).
+  | "toolOptimizations";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，8 项）────────────────────────────────
@@ -119,6 +121,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   pathRules: "unstable",
   orphanHandling: "unstable",
   localServer: "unstable",
+  // ── tool-opt（工具优化，1 项）────────────────────────────────
+  toolOptimizations: "unstable",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,

@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,6 +72,19 @@ func (s editSource) readSnapshot(path string) string {
 		kind, prefix = tool.ReadSourceOverlay, "overlay:"
 	}
 	return tool.SourceSnapshot(kind, path, fmt.Sprintf("%s%x", prefix, s.id.sum))
+}
+
+// postWriteSnapshot derives the content version the file carries after a
+// successful write of content on this source's route — the same derivation a
+// follow-up edit's evidence declaration computes when it re-reads the file
+// (editSource.readSnapshot). readBack (task 603) stamps the read-back window
+// with it, so the window matches that edit's evidence target exactly: any
+// change anywhere else still misses the match and keeps the stale rejection.
+func (s editSource) postWriteSnapshot(path, content string) string {
+	if s.overlay {
+		return tool.SourceSnapshot(tool.ReadSourceOverlay, path, fmt.Sprintf("overlay:%x", sha256.Sum256([]byte(content))))
+	}
+	return tool.SourceSnapshot(tool.ReadSourceDisk, path, fmt.Sprintf("raw-sha256:%x", sha256.Sum256(fileenc.Encode(content, s.enc))))
 }
 
 // write persists content on the same route the source was read from. An overlay

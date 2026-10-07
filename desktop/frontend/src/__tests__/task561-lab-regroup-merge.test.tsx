@@ -34,14 +34,14 @@ function cardSlice(startMarker: string, endMarker: string): string {
 
 console.log("\ntask 561 lab regroup + merged cards");
 
-// ① 7-group structure.
+// ① 7-group structure (+ 任务 603「工具优化」appended after the audit table).
 ok(
-  panel.includes('type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra";'),
-  "LabGroupKey is exactly the 7 audit-table groups",
+  panel.includes('type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra" | "tool-opt";'),
+  "LabGroupKey is the 7 audit-table groups + the 603 tool-opt group",
 );
 {
   const order = [
-    '"automation"', '"efficiency"', '"ui"', '"observability"', '"dev-debug"', '"storage"', '"infra"',
+    '"automation"', '"efficiency"', '"ui"', '"observability"', '"dev-debug"', '"storage"', '"infra"', '"tool-opt"',
   ].map((k) => panel.indexOf(`key: ${k}`));
   ok(order.every((i) => i >= 0) && [...order].sort((a, b) => a - b).every((v, i) => v === order[i]),
     "labGroups renders in the audit-table order (rail order)");
@@ -49,15 +49,17 @@ ok(
 ok(panel.includes('labelKey: "settings.labGroup.automation"') && panel.includes('labelKey: "settings.labGroup.infra"'),
   "new groups carry locale label keys");
 
-// ① rail census: exactly 36 feature entries, 6/7/14/1/1/1/6 per group.
+// ① rail census: exactly 37 feature entries, 6/7/14/1/1/1/6/1 per group
+// (任务 603 adds the single tool-opt entry after the 561 audit table).
 {
   const entries = [...panel.matchAll(/\{ id: "([a-zA-Z]+)", group: "([a-z-]+)",/g)];
   const groups: Record<string, number> = {};
   for (const [, , g] of entries) groups[g] = (groups[g] ?? 0) + 1;
-  ok(entries.length === 36, `rail carries exactly 36 entries (got ${entries.length})`);
+  ok(entries.length === 37, `rail carries exactly 37 entries (got ${entries.length})`);
   ok(groups["automation"] === 6 && groups["efficiency"] === 7 && groups["ui"] === 14 &&
-     groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 1 && groups["infra"] === 6,
-    `group counts are 6/7/13/1/1/1/6 (got ${JSON.stringify(groups)})`);
+     groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 1 && groups["infra"] === 6 &&
+     groups["tool-opt"] === 1,
+    `group counts are 6/7/13/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
   const ids = entries.map(([, id]) => id);
   ok(new Set(ids).size === ids.length, "no duplicate rail ids");
 }
