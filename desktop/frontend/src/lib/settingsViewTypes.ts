@@ -160,6 +160,8 @@ export interface SettingsView {
   fallbackModel?: string;
   // Task 318: lab internal optimizations (three switches default off).
   experimentalHighSpeedModel?: boolean;
+  /** Task 561 M2: retired key (task 551/564) — read-only display inside the modelStrategy card, never written. */
+  experimentalModelCapabilityFilter?: boolean;
   experimentalProactiveCompact?: boolean;
   proactiveCompactCooldownMinutes?: number;
   experimentalComposerDraft?: boolean;
