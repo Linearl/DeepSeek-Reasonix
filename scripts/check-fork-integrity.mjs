@@ -409,6 +409,21 @@ const CHECKS = [
   { feature: "任务421 effort 补取超时上限+缓存兜底（入口包装）", file: "desktop/effort_fetch.go", patterns: ["effortReadTimeout = 2 * time.Second", "func (a *App) EffortForTab(tabID string) EffortInfo", "serving cached value"] },
   { feature: "任务421 直读函数让位包装（app.go 不再直连 binding）", file: "desktop/app.go", patterns: ["func (a *App) effortForTabDirect(tabID string) EffortInfo"] },
   { feature: "任务421 三态测试（超时兜底/冷缓存缺省/正常刷新）", file: "desktop/effort_fetch_test.go", patterns: ["TestEffortForTabTimeoutServesCachedValue", "TestEffortForTabTimeoutWithoutCacheServesDefault", "TestEffortForTabNormalReadRefreshesCache"] },
+  // 任务148/334 切换不重建运行时链路（effort+model 并集）。锚点锁「同族目标切换零重建、
+  // 活跃 turn 不拒绝、轮内不换线」：agent 侧两道覆盖门（effort 词表门 / model 同族门+目的地
+  // 覆盖）、请求冻结捕获目的地（切换轮间生效）、boot resolver 接缝（快路径构造与全量重建
+  // 同形）、desktop 两条分派接缝、活跃 turn 钉子族。上游 merge 若把 SetEffortForTab/
+  // SetModelForTab 还原成无条件 Build+swap，活跃 turn 切换会退回拒绝/秒级重建。
+  // 注：wt-148-perrequest-config 分支 6ad9b6ecb 登记过 effort 三锚（指向
+  // effort_fast_path_active_turn_test.go）；该文件未进主线，本块按本分支实际文件名
+  // 携入并扩展 model 侧，后并线时二选一保留。
+  { feature: "任务334 agent 侧 per-request effort 覆盖（词表门+请求侧读取+拒绝留痕）", file: "internal/agent/effort_override.go", patterns: ["func (a *Agent) SetSessionEffortOverride(level string) bool", "func (a *Agent) effortOverrideForRequest() string", "provider-not-effort-varying"] },
+  { feature: "任务334 desktop 侧 effort fast path 分派（fast-per-request 接缝）", file: "desktop/app.go", patterns: ["SetSessionEffortOverride(string) bool"] },
+  { feature: "任务148 agent 侧 per-request model 覆盖（同族门+目的地读取+拒绝留痕）", file: "internal/agent/model_override.go", patterns: ["func (a *Agent) SetSessionModelOverride(ref string) bool", "func (a *Agent) providerForRequest() provider.Provider", "provider-family-mismatch"] },
+  { feature: "任务148 请求冻结捕获目的地（切换轮间生效、轮内不换线）", file: "internal/agent/sampling_request.go", patterns: ["func (s samplingRequest) destination(a *Agent) provider.Provider", "dest := a.providerForRequest()"] },
+  { feature: "任务148 boot resolver 接缝（快路径构造与全量重建同形）", file: "internal/boot/boot.go", patterns: ["ModelResolver: resolveModelResolver(effectiveResolver, cfg, proxySpec)"] },
+  { feature: "任务148 desktop 侧 model fast path 分派（SetSessionModelOverride 接缝）", file: "desktop/app.go", patterns: ["SetSessionModelOverride(string) bool", "func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string)"] },
+  { feature: "任务148 活跃 turn 钉子族（effort/model 快路径先于活跃工作守卫；跨族仍拒绝）", file: "desktop/model_fast_path_active_turn_test.go", patterns: ["TestSetEffortForTabFastPathAheadOfActiveWorkGuard", "TestSetModelForTabFastPathAheadOfActiveWorkGuard", "TestSetModelForTabCrossProviderStillRefusedDuringActiveWork"] },
   // 任务 245：面板记忆键域级归一。三个锚点锁「键只经 workspacePanelMemoryRoot 产出」：
   // 映射函数本体（global→单键分支）+ 两条接线点（App 与 composition）的调用形状。
   // 上游若重新引入 `?? state.meta?.cwd` 兜底，Global 域面板记忆会重新按会话碎裂。
