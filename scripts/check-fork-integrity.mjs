@@ -436,6 +436,17 @@ const CHECKS = [
   { feature: "任务148 boot resolver 接缝（快路径构造与全量重建同形）", file: "internal/boot/boot.go", patterns: ["ModelResolver: resolveModelResolver(effectiveResolver, cfg, proxySpec)"] },
   { feature: "任务148 desktop 侧 model fast path 分派（SetSessionModelOverride 接缝）", file: "desktop/app.go", patterns: ["SetSessionModelOverride(string) bool", "func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string)"] },
   { feature: "任务148 活跃 turn 钉子族（effort/model 快路径先于活跃工作守卫；跨族仍拒绝）", file: "desktop/model_fast_path_active_turn_test.go", patterns: ["TestSetEffortForTabFastPathAheadOfActiveWorkGuard", "TestSetModelForTabFastPathAheadOfActiveWorkGuard", "TestSetModelForTabCrossProviderStillRefusedDuringActiveWork"] },
+  // 任务601 GLM 接入 per-request effort（334 词表门的 GLM 补全）。锚点锁两个机制：
+  // ①探针词表——GLM 无显式 supported_efforts 时 PerRequestEfforts 必须等于
+  // normalizeGLMEffort 输出域（探针空 ⇒ agent 词表门拒收 ⇒ 退回全量重建，实测
+  // 5.3s/次）；②Stream 请求门旁路——resolved capability 被裁剪成二元
+  // enabled|disabled，而 wire 层靠 reasoning_effort 承载 low..max，旁路缺席会让
+  // 已 armed 的会话覆盖在下一轮直接报错。上游若还原裁剪或删旁路，GLM 切 effort
+  // 退回 5 秒级重建或轮内失败。
+  { feature: "任务601 GLM per-request effort 探针词表（对齐 normalizeGLMEffort 输出域，显式声明优先）", file: "internal/provider/openai/mimo_request_effort.go", patterns: ["var zhipuRequestEffortVocabulary", "IsZhipu(baseURL) && !hasExplicitSupportedEfforts(configured)"] },
+  { feature: "任务601 GLM strength 请求门旁路本体（镜像 configuredEffort boot 例外）", file: "internal/provider/openai/effort.go", patterns: ["func (c *client) admitsGLMStrengthOverride(effort string) bool"] },
+  { feature: "任务601 Stream 请求门接线（Validate 拒绝时经旁路复核）", file: "internal/provider/openai/openai.go", patterns: ["c.reasoning.Validate(c.model, req.EffortOverride); err != nil && !c.admitsGLMStrengthOverride(req.EffortOverride)"] },
+  { feature: "任务601 GLM effort 验收测试（探针词表+strength 端到端到线）", file: "internal/provider/openai/effort_override_test.go", patterns: ["TestEffortOverrideGLMVocabulary", "TestEffortOverrideGLMStrengthsReachWire"] },
   // 任务 245：面板记忆键域级归一。三个锚点锁「键只经 workspacePanelMemoryRoot 产出」：
   // 映射函数本体（global→单键分支）+ 两条接线点（App 与 composition）的调用形状。
   // 上游若重新引入 `?? state.meta?.cwd` 兜底，Global 域面板记忆会重新按会话碎裂。
