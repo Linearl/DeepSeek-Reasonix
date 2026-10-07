@@ -1644,6 +1644,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.labTier.unstable": "未穩定",
   "settings.labTier.retired": "已退役",
   "settings.labPicks.title": "實驗室精選",
+  // 任務 563：圖牆卡片目前狀態 +「建議開啟」角標（文案本體在 fork-features.yaml labPicks 段，不入 locale 預算）。
+  "settings.labPicks.statusOn": "已開啟",
+  "settings.labPicks.statusOff": "未開啟",
+  "settings.labPicks.suggest": "建議開啟",
   // 任務 561：合併卡（合入口不合鍵——成員開關仍各自獨立保存）。
   "settings.autonomousRunGuard": "自主執行防護",
   "settings.modelStrategy": "模型策略",

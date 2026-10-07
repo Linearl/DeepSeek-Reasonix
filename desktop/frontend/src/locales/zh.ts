@@ -2089,6 +2089,10 @@ export const zh: Record<DictKey, string> = {
   "settings.labTier.unstable": "未稳定",
   "settings.labTier.retired": "已退役",
   "settings.labPicks.title": "实验室精选",
+  // 任务 563：图墙卡片当前状态 +「建议开启」角标（文案本体在 fork-features.yaml labPicks 段，不入 locale 预算）。
+  "settings.labPicks.statusOn": "已开启",
+  "settings.labPicks.statusOff": "未开启",
+  "settings.labPicks.suggest": "建议开启",
   // 任务 561：合并卡（合入口不合键——成员开关仍各自独立保存）。
   "settings.autonomousRunGuard": "自主运行防护",
   "settings.modelStrategy": "模型策略",

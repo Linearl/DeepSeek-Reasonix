@@ -75,3 +75,57 @@ groups:
         desc: 乐观并行、快捷指令、完全访问、写目录授权集中在沙箱页。
         how: 设置 → 沙箱与权限。
 
+# 任务 563 — lab picks wall copy (xlsx 表B「实验室特性-档位与图墙-20261006」
+# 第 6/7 列逐字收录；which picks exist is decided in code — lib/experimentTiers
+# LAB_WALL_PICKS, human-curated; this section only supplies the words). Same
+# runtime-edit + reload contract as the wall above; a missing id simply renders
+# its card without the copy lines.
+labPicks:
+  - id: sessionWall
+    effect: 一屏总览所有会话，点开即跳转
+    detail: 会话网格（搜索 / 按项目 / 按最近活跃）；命令面板另插「跳转会话」项
+  - id: tabCompress
+    effect: 标签再多也不挤，自动逐级降宽
+    detail: 档位 176→148→122→100→84；tier ≥3 时隐藏 plan/goal/auto/yolo 徽章
+  - id: todoSidebar
+    effect: 待办、产物、引用全收进右侧面板
+    detail: todo 列表搬进 dock + Artifacts / References 只读标签
+  - id: promptHistoryPicker
+    effect: 点一下时钟图标，历史提问任你挑
+    detail: 历史插入光标处；普通 ArrowUp 只在空 composer 才触发浏览
+  - id: monitoring
+    effect: 会话与性能异常，一眼看出
+    detail: 合并入口（灯 = 会话监控 OR 性能监控）；perf 每 5s 采样写 logs/perf/、每 60s 落 heap profile
+  - id: restartUpdate
+    effect: 换新版本不用手动装
+    detail: 门控发布 / 切换 / 删除版本整族操作；状态栏按钮入口
+  - id: budgetControl
+    effect: 长任务不再超预算
+    detail: 每轮前置预算块 + 研究预算扩展（extend_research_budget 对模型可见）
+  - id: compressOpt
+    effect: 长会话越聊越顺
+    detail: 主动压缩（用配置冷却取代硬编码 10 分钟）+ 冷缓存压缩；⚠️ 依赖 traceAsState
+  - id: messageMerge
+    effect: 多条引导消息不再刷屏
+    detail: inbox 合并（逐条 / 同发送者 / 全部）+ 引导消息合并
+  - id: autopilot
+    effect: 交给它自己干，你只管看
+    detail: 非值守运行 + 截止时间 + 代理审批（破坏性 / 外联 / 凭据类自动拒绝）；⚠️ 需 YOLO 审批模式
+  - id: sessionCollab
+    effect: 多个会话之间能互相传话
+    detail: talk_to_session 等 5 个工具 + 通讯录提示块；桌面侧投递 pump
+  - id: fullAccess
+    effect: 不再反复点审批（⚠️ 安全权衡）
+    detail: 写根集合解除边界 + bash 沙箱关闭；仍保留 session-data guard / ProtectedWriteRoots
+  - id: splitView
+    effect: 一个窗口并排看两个会话
+    detail: tab 右键菜单插入 / 移除分屏；⚠️ off 不会关闭已存在的分屏
+  - id: subagentPanel
+    effect: 谁在跑、跑到哪，右栏一目了然
+    detail: dock 的 Subagents 标签；ended 卡片默认折叠、running 自动展开
+  - id: selectionActions
+    effect: 选中一段文字，直接翻译或解释
+    detail: 选区浮卡（Translate / Explain）+ 右键菜单项
+  - id: completionSummary
+    effect: 干完活自动给一张总结卡
+    detail: 完成摘要卡；⚠️ 历史回放时不显示

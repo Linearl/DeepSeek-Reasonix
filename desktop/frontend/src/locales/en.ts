@@ -2088,6 +2088,11 @@ export const en = {
   "settings.labTier.unstable": "Unstable",
   "settings.labTier.retired": "Retired",
   "settings.labPicks.title": "Lab picks",
+  // Task 563: wall card live state + "suggested" badge (the copy body
+  // lives in fork-features.yaml labPicks, outside the locale budget).
+  "settings.labPicks.statusOn": "On",
+  "settings.labPicks.statusOff": "Off",
+  "settings.labPicks.suggest": "Suggested",
   // Task 561: merged family cards (entry-level merge only — every member
   // switch still saves through its own setter).
   "settings.autonomousRunGuard": "Autonomous-run guards",

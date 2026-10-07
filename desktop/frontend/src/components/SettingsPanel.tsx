@@ -90,7 +90,11 @@ import { SettingsOpenCodeGoUsageCard } from "./SettingsOpenCodeGoUsageCard";
 // (display mirror of the Go labFeatureTiers register in internal/config/render.go,
 // xlsx 表A 46 items). The rail, every pane switch and the ForkFeaturesIntroDialog
 // picks wall read the SAME map — two views, one source.
-import { EXPERIMENT_FEATURE_TIERS, railTiersFor, type TierFeatureId } from "../lib/experimentTiers";
+import { EXPERIMENT_FEATURE_TIERS, LAB_WALL_PICKS, railTiersFor, type TierFeatureId } from "../lib/experimentTiers";
+// 任务 563: the picks wall reads its live on/off states through this context
+// (provided below, derived from the `features` render table) — props would
+// rewrite the dialog mount JSX that guard suites pin byte-for-byte.
+import { LabWallOnContext } from "../lib/labWallOn";
 import { TierBadge } from "./TierBadge";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
 import { normalizeSubagentPolicy, normalizeToolApprovalMode } from "../lib/types";
@@ -2124,7 +2128,39 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     </>
   );
 
+  // 任务 563: the picks wall's live states — read from the SAME `features`
+  // render table the rail reads (recomputed on every settings update, never
+  // hardcoded). The four wall picks folded into 561 merged cards read their
+  // OWN keys, never the merged light: the merged `on` is an OR of siblings,
+  // so it would leak a sibling's state into this member's card
+  // (restartUpdate ≠ feedback, budgetControl ≠ cacheTuning, …).
+  const labWallOnById = (() => {
+    const map: Record<string, boolean> = {};
+    for (const pick of LAB_WALL_PICKS) {
+      const direct = features.find((f) => f.id === pick);
+      if (direct) { map[pick] = direct.on; continue; }
+      switch (pick) {
+        case "budgetControl":
+          map[pick] = Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget);
+          break;
+        case "compressOpt":
+          map[pick] = Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact);
+          break;
+        case "restartUpdate":
+          map[pick] = Boolean(s.experimentalRestartUpdate);
+          break;
+        case "subagentPanel":
+          map[pick] = Boolean(s.experimentalSubagentPanel);
+          break;
+        default:
+          map[pick] = false;
+      }
+    }
+    return map;
+  })();
+
   return (
+    <LabWallOnContext.Provider value={labWallOnById}>
     <SettingsPageShell s={s} tab="experimental" busy={busy} apply={apply}>
       <div className="experimental-layout">
         <div className="experimental-lab">
@@ -4275,6 +4311,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
         </div>
       </div>
     </SettingsPageShell>
+    </LabWallOnContext.Provider>
   );
 }
 
