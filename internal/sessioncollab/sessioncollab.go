@@ -1259,6 +1259,23 @@ func (s *MailStore) InboxMessages(contactID string) ([]MailMessage, error) {
 	return s.readAll(contactID)
 }
 
+// InboxWithCursor is InboxMessages plus the contact's settled cursor in one
+// locked read (任务 570 c2): the peek surface needs the settled flag for every
+// row, and re-reading the cursor file per row would be O(n) syscalls for the
+// same small JSON. Read-only — no claim, no ack, the cursor is not written.
+func (s *MailStore) InboxWithCursor(contactID string) ([]MailMessage, map[string]bool, error) {
+	unlock, err := s.lock(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+	defer unlock()
+	all, err := s.readAll(contactID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return all, s.readCursor(contactID), nil
+}
+
 // PendingContacts lists contacts that have at least one un-acked message.
 // It is what lets a host discover *which* sessions need waking, including ones
 // with no open tab — delivery must not depend on the target already being on

@@ -919,6 +919,9 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	if p.Receipt != nil {
 		receiptRequested = *p.Receipt
 	}
+	// 任务 570 (c1)：面板开关对 steer 的静默降级必须可见。这里只记录事实，
+	// 由返回体的增量字段把它还给调用方——这是本次调用同步可知的部分 disposition。
+	steerDegradedByPanel := false
 	if delivery == sessioncollab.DeliverySteer && !t.cfg.AllowSteer {
 		// Task 173 ④: with the panel switch off, steer degrades to followup —
 		// the message still lands, it just loses the mid-turn injection. A
@@ -926,6 +929,7 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		// they have never seen; the degraded flag in the result keeps the
 		// outcome honest.
 		delivery = sessioncollab.DeliveryFollowup
+		steerDegradedByPanel = true
 	}
 	if p.RequireReply && !t.cfg.AllowRequireReply {
 		return "", refuseGate("require_reply（要求对方回信）", "允许配置回信要求")
@@ -1086,6 +1090,15 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 		"delivery":     msg.Delivery,
 		"hop":          msg.Hop,
 		"queued":       true,
+	}
+	// 任务 570 (c1)：把「queued 只是入队回执，不是投递终态」说成显式字段，
+	// 并给出查询终态的现成入口。既有调用方零破坏：全部为增量字段，原字段
+	// 语义与取值不变（回归由既有测试钉住）。
+	payload["deliveryOutcome"] = "pending"
+	payload["deliveryOutcomeNote"] = "queued 只代表消息已进入持久信箱；是否注入当轮/降级排队/被拒绝由投递泵异步定局（约 4 秒一轮）。用 get_message_status(message_id=\"" + msg.ID + "\") 查询终态（injected/queued_followup/refused_*/failed_retrying）；用 peek_own_inbox 查看落进你自己信箱的系统回执（降级/拒绝通知）。pending 不是成功回执。"
+	if steerDegradedByPanel {
+		payload["deliveryDegradedByPanel"] = true
+		payload["deliveryOutcomeNote"] = "你请求的 delivery=steer 因面板开关未开启（session_collab_allow_steer）已按 followup 排队投递——这是本次调用同步可知的事实；后续终态查询方式同上（" + payload["deliveryOutcomeNote"].(string) + "）"
 	}
 	// Task 375: when the target's runtime state is unknown to this process,
 	// say so on the receipt — queued is the mailbox acknowledgment, NOT proof

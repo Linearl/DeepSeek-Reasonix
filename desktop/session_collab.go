@@ -927,6 +927,11 @@ type collabDelivery struct {
 	onDelivered func(msg sessioncollab.MailMessage)
 	// render builds the text the target reads.
 	render func(msg sessioncollab.MailMessage, effectiveHop int) string
+	// recordReceipt (任务 570 c1) persists one message's settle outcome so the
+	// sender can query it by id (get_message_status). Nil (tests, direct
+	// construction) skips recording — the delivery contract itself is unchanged
+	// without it.
+	recordReceipt func(msg sessioncollab.MailMessage, outcome, detail string)
 }
 
 // deliverToTarget hands every pending message to the target and acks only what
@@ -947,11 +952,37 @@ func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (deliver
 		notify:    p.notifySenderOnce,
 		deriveHop: p.verifyHop,
 		render:    sessionCollabDeliveryText,
+		// 任务 570 c1: every settle outcome lands in the receipt store, so the
+		// sender can query the truth by message id instead of trusting the
+		// "queued" green light.
+		recordReceipt: p.recordDeliveryReceipt,
 		// Task 225: a settled delivery binds the target's approval prompts to
 		// this sender for the grant window — the task-source registration the
 		// cascade delegate resolves later.
 		onDelivered: func(msg sessioncollab.MailMessage) { registerCascadeGrant(msg.To, msg.From) },
 	})
+}
+
+// recordDeliveryReceipt persists one message's settle outcome (任务 570 c1).
+// Best-effort: a receipt failure never changes the delivery decision — the
+// message itself is already settled or still pending at this point, and the
+// pump logs the loss so it is not silent.
+func (p *sessionCollabPump) recordDeliveryReceipt(msg sessioncollab.MailMessage, outcome, detail string) {
+	mailDir := config.SessionCollabMailDir()
+	if mailDir == "" {
+		return
+	}
+	store := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit())
+	if err := store.RecordDeliveryReceipt(context.Background(), sessioncollab.DeliveryReceipt{
+		MessageID: msg.ID,
+		From:      msg.From,
+		To:        msg.To,
+		Delivery:  msg.Delivery,
+		Outcome:   outcome,
+		Detail:    detail,
+	}); err != nil {
+		log.Printf("[session-collab] delivery receipt for %s (%s): %v", msg.ID, outcome, err)
+	}
 }
 
 // runCollabDelivery is the whole delivery contract in one place: claim without
@@ -975,6 +1006,9 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 	for _, msg := range rejected {
 		// Hop exhausted: the sender must learn why, and the message is settled.
 		d.notify(msg, "refused_hop", sessionCollabRefusedHopText(msg))
+		if d.recordReceipt != nil {
+			d.recordReceipt(msg, sessioncollab.ReceiptRefusedHop, "collaboration chain hop limit reached")
+		}
 		acked = append(acked, msg.ID)
 		refused++
 	}
@@ -988,6 +1022,11 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 			// senders hunting for a threadId bug that does not exist.
 			kind, text := sessionCollabRefusalText(msg, verr)
 			d.notify(msg, kind, text)
+			if d.recordReceipt != nil {
+				// 任务 570 c1: a refusal is terminal — the sender must be able
+				// to see it by id, not only as a note that landed unread.
+				d.recordReceipt(msg, kind, verr.Error())
+			}
 			acked = append(acked, msg.ID)
 			refused++
 			continue
@@ -1000,14 +1039,32 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 				// 任务461 P10①：重发的同内容已在目标收件箱——静默结算（ack），
 				// 不给发送方任何「失败」通知：通知会喂养重试循环（实测每
 				// 5-6s 一次 conflict 重投风暴）。
+				if d.recordReceipt != nil {
+					d.recordReceipt(msg, sessioncollab.ReceiptQueuedFollowup, "duplicate: target inbox already holds identical content (idempotent resend)")
+				}
 				acked = append(acked, msg.ID)
 				delivered++
 				continue
 			}
 			// Not acked: retried next pass. The sender hears about it once.
 			d.notify(msg, "delivery_failed", sessionCollabDeliveryFailedText(msg, derr))
+			if d.recordReceipt != nil {
+				// 任务 570 c1: a failed pass is NOT terminal — the receipt says
+				// so (failed_retrying) and a later success overwrites it.
+				d.recordReceipt(msg, sessioncollab.ReceiptFailedRetrying, derr.Error())
+			}
 			note(derr)
 			continue
+		}
+		if d.recordReceipt != nil {
+			// 任务 570 c1: the settle outcome. steered=true means the steer
+			// actually injected mid-turn; false means it landed as a queued
+			// follow-up (normal for delivery=followup, a degradation for steer).
+			if steered {
+				d.recordReceipt(msg, sessioncollab.ReceiptInjected, "")
+			} else {
+				d.recordReceipt(msg, sessioncollab.ReceiptQueuedFollowup, "")
+			}
 		}
 		if !steered && msg.Delivery == string(sessioncollab.DeliverySteer) {
 			d.notify(msg, "steer_degraded", sessionCollabSteerDegradedText(msg))
