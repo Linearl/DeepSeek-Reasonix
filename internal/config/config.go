@@ -1372,6 +1372,17 @@ type SandboxConfig struct {
 	// unavailable" refusal. Off (default, 铁律 2) keeps the exact current
 	// behavior: bash never takes a hold under optimistic_write.
 	ExperimentalBashHeavyGuard bool `toml:"experimental_bash_heavy_guard"`
+	// ExperimentalParallelWriterReadOnlyBash is the task-573 fallback for the
+	// path-bound (parallel) writer quadrant: when the OS sandbox cannot confine
+	// bash writes to the declared write_paths (always the case on Windows, where
+	// no OS bash sandbox ships), BindWritePaths drops bash entirely and the
+	// child loses read-only self-verification (timestamps, read-only
+	// inspections). With this switch on, the dropped bash is re-admitted wrapped
+	// in the permission-layer read-only command classifier (readOnlyBash): only
+	// permission-classified foreground read-only commands run; every write
+	// attempt is still refused and the write-claims isolation is untouched. Off
+	// (default, 铁律 2) keeps the exact current behavior: bash stays absent.
+	ExperimentalParallelWriterReadOnlyBash bool `toml:"experimental_parallel_writer_readonly_bash"`
 }
 
 // WriteRoots returns the directories file-writer tools may modify: the

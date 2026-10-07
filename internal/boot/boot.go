@@ -1460,6 +1460,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			WithProfileLookup(profileLookup).
 			WithProfileConfigResolvers(profileConfigModel, profileConfigEffort).
 			WithBashSandboxEnforced(bashSandboxEnforced).
+			WithParallelWriterReadOnlyBash(cfg.Sandbox.ExperimentalParallelWriterReadOnlyBash).
 			WithCapabilityRuntime(capRuntime).
 			WithWriteRoots(writeRootSet)
 	}
