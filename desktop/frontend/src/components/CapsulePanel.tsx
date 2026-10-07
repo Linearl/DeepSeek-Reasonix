@@ -549,6 +549,7 @@ export function CapsuleIndicator({
                             cancelLabel={t("common.cancel")}
                             disabled={clearing || deletingRef !== null}
                             danger
+                            primary
                             onConfirm={() => void clearEnded()}
                           />
                         )}
