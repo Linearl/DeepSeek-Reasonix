@@ -824,7 +824,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "mcp_call_timeout_seconds = %d   # default MCP call safety cap; per-plugin/tool overrides may raise it\n\n", c.MCPCallTimeoutSeconds())
 
 	b.WriteString("[tools.background_jobs]\n")
-	fmt.Fprintf(&b, "stalled_warning_seconds = %d   # heads-up once per background job after this many quiet seconds; a quiet job is not necessarily stuck; 0 disables\n\n", c.BackgroundJobStalledWarningSeconds())
+	fmt.Fprintf(&b, "stalled_warning_seconds = %d   # heads-up once per background job after this many quiet seconds; a quiet job is not necessarily stuck; 0 disables\n", c.BackgroundJobStalledWarningSeconds())
+	// 任务553: idle-session wake — default off (iron rule 2). The budget keys
+	// only shape the opt-in behavior and render their resolved defaults so the
+	// full round-trip view stays explicit about what a session runs with.
+	fmt.Fprintf(&b, "wake_idle_session = %t   # when an owned background job finishes and the session is idle, start one automatic continuation turn so the model handles the result; default false\n", c.BackgroundJobWakeIdleSession())
+	fmt.Fprintf(&b, "wake_max_turns_per_window = %d   # anti self-drive budget: at most this many automatic wake turns per rolling window\n", c.BackgroundJobWakeMaxTurnsPerWindow())
+	fmt.Fprintf(&b, "wake_window_seconds = %d   # rolling window for the wake budget\n", c.BackgroundJobWakeWindowSeconds())
+	fmt.Fprintf(&b, "wake_throttle_seconds = %d   # minimum spacing between automatic wake turns\n\n", c.BackgroundJobWakeThrottleSeconds())
 
 	b.WriteString("[tools.shell]\n")
 	if c.Tools.Shell.Prefer != "" {
@@ -1566,9 +1573,32 @@ func RenderTOMLProjectDelta(c *Config) string {
 
 	// [tools.background_jobs]
 	if c.Tools.BackgroundJobs != d.Tools.BackgroundJobs {
-		if c.Tools.BackgroundJobs.StalledWarningSeconds != nil && *c.Tools.BackgroundJobs.StalledWarningSeconds > 0 {
+		// 任务553: per-key emission — the old shape gated the whole section on
+		// StalledWarningSeconds, which would silently drop an explicitly-set
+		// wake key when stalled_warning_seconds stayed at its default. The
+		// header is written once, before any key line.
+		bg := c.Tools.BackgroundJobs
+		var lines []string
+		if bg.StalledWarningSeconds != nil && *bg.StalledWarningSeconds > 0 {
+			lines = append(lines, fmt.Sprintf("stalled_warning_seconds = %d\n", *bg.StalledWarningSeconds))
+		}
+		if bg.WakeIdleSession != nil && *bg.WakeIdleSession {
+			lines = append(lines, "wake_idle_session = true\n")
+		}
+		if bg.WakeMaxTurnsPerWindow != nil && *bg.WakeMaxTurnsPerWindow > 0 {
+			lines = append(lines, fmt.Sprintf("wake_max_turns_per_window = %d\n", *bg.WakeMaxTurnsPerWindow))
+		}
+		if bg.WakeWindowSeconds != nil && *bg.WakeWindowSeconds > 0 {
+			lines = append(lines, fmt.Sprintf("wake_window_seconds = %d\n", *bg.WakeWindowSeconds))
+		}
+		if bg.WakeThrottleSeconds != nil && *bg.WakeThrottleSeconds > 0 {
+			lines = append(lines, fmt.Sprintf("wake_throttle_seconds = %d\n", *bg.WakeThrottleSeconds))
+		}
+		if len(lines) > 0 {
 			b.WriteString("[tools.background_jobs]\n")
-			fmt.Fprintf(&b, "stalled_warning_seconds = %d\n", *c.Tools.BackgroundJobs.StalledWarningSeconds)
+			for _, line := range lines {
+				b.WriteString(line)
+			}
 			b.WriteString("\n")
 		}
 	}

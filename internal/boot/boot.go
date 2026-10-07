@@ -2383,6 +2383,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ImageCapabilityChanged:     runtimeImageCapabilityReader(root, modelName, imageSnapshot, opts.ModelSettings),
 		TaskBudget:                 taskBudgetFromConfig(cfg),
 		GoalTokenBudget:            cfg.Agent.GoalTokenBudget,
+		// 任务553: idle-session wake on owned background-job completion. Iron
+		// rule 2: master switch default off; budget knobs boot-snapshot here.
+		BackgroundJobWake: control.BackgroundJobWakeOptions{
+			Enabled:           cfg.BackgroundJobWakeIdleSession(),
+			MaxTurnsPerWindow: cfg.BackgroundJobWakeMaxTurnsPerWindow(),
+			WindowSeconds:     cfg.BackgroundJobWakeWindowSeconds(),
+			ThrottleSeconds:   cfg.BackgroundJobWakeThrottleSeconds(),
+		},
 		Autopilot:                  opts.Autopilot,
 		AutopilotMaxRuntime:        opts.MaxRuntime,
 		AutopilotApprovalGrace:     opts.AutopilotApprovalGrace,
