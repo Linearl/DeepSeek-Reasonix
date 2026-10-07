@@ -30820,7 +30820,7 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .tab-overview__input:focus {
-  border-color: var(--border-strong, var(--border));
+  border-color: var(--border);
   background: var(--bg-elev, var(--surface-2));
 }
 
