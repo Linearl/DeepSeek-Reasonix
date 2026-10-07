@@ -52,7 +52,9 @@ func (c *Controller) RunFinalReadinessRecoveryWithAdmission(ctx context.Context,
 // SubmitFinalReadinessRecovery preserves the immediately preceding exhausted
 // ledger for one explicit asynchronous continuation.
 func (c *Controller) SubmitFinalReadinessRecovery(display, input string) {
-	c.runGuarded(func(ctx context.Context) error {
+	// 任务581: user-authored recovery text parks behind a running/finishing
+	// turn instead of being dropped — same contract as the Submit family.
+	c.runGuardedOrPark(func(ctx context.Context) error {
 		if c.executor == nil || !c.executor.PrepareFinalReadinessRecovery() {
 			return ErrNoFinalReadinessRecovery
 		}
