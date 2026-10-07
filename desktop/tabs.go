@@ -4109,6 +4109,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		OnSessionRecovered:         a.handleTabSessionRecovered(tab),
 		OnSessionTransition:        a.handleTabSessionTransition(tab),
 		BeforeInboxDispatch:        a.beforeInboxDispatch,
+		OnInboxDispatchExhausted:   a.inboxDispatchExhausted,
 		OnSessionTitleChanged:      a.onSessionTitleChanged,
 		OnCreateCollabSession:      a.createCollabSession,
 		OnSessionStatus:            a.collabSessionStatus,

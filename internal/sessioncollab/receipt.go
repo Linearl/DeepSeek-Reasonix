@@ -34,6 +34,9 @@ import (
 //   - refused_provenance：thread 来源无法核实，消息被拒绝并丢弃
 //   - refused_cross_wire：thread 串线到另一条链，消息被拒绝并丢弃
 //   - failed_retrying：目标暂不可用，消息未 ack、将自动重试（非终态）
+//   - open_retry_exhausted（任务579）：消息已入目标收件箱队列，但空闲开轮尝试
+//     用尽重试预算（3 次）——消息保留在队列未丢弃；空闲桥在队首变化或会话恢复
+//     活动后会重新获得预算，人工重试同样有效
 const (
 	ReceiptInjected          = "injected"
 	ReceiptQueuedFollowup    = "queued_followup"
@@ -41,6 +44,7 @@ const (
 	ReceiptRefusedProvenance = "refused_provenance"
 	ReceiptRefusedCrossWire  = "refused_cross_wire"
 	ReceiptFailedRetrying    = "failed_retrying"
+	ReceiptOpenRetryExhausted = "open_retry_exhausted"
 )
 
 // ValidDeliveryReceiptOutcome reports whether s is part of the outcome
@@ -49,7 +53,8 @@ const (
 func ValidDeliveryReceiptOutcome(s string) bool {
 	switch s {
 	case ReceiptInjected, ReceiptQueuedFollowup, ReceiptRefusedHop,
-		ReceiptRefusedProvenance, ReceiptRefusedCrossWire, ReceiptFailedRetrying:
+		ReceiptRefusedProvenance, ReceiptRefusedCrossWire, ReceiptFailedRetrying,
+		ReceiptOpenRetryExhausted:
 		return true
 	default:
 		return false

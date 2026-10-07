@@ -44,7 +44,7 @@ type getMessageStatusTool struct{ cfg SessionCollabConfig }
 func (getMessageStatusTool) Name() string { return "get_message_status" }
 
 func (getMessageStatusTool) Description() string {
-	return "Query the delivery outcome of one cross-session message by its messageId (task 570). talk_to_session only reports status=queued — the real outcome (injected mid-turn / degraded to queued follow-up / refused / temporarily failing with retries) is decided asynchronously by the host delivery pump, and this tool is how the sender sees it. Statuses: injected (steer entered the target's running turn); queued_followup (landed as a queued follow-up — normal for delivery=followup, a degradation when you sent delivery=steer); refused_hop / refused_provenance / refused_cross_wire (terminal refusals, the message was dropped); failed_retrying (target unavailable, will keep retrying — not terminal); pending (queued, no outcome recorded yet — NOT a success); in_my_inbox (you are the recipient; see the settled flag); not_found. Only your own sent and received messages are queryable — a message id you are not a party to is refused. Read-only."
+	return "Query the delivery outcome of one cross-session message by its messageId (task 570). talk_to_session only reports status=queued — the real outcome (injected mid-turn / degraded to queued follow-up / refused / temporarily failing with retries / idle-turn opening exhausted) is decided asynchronously by the host delivery pump, and this tool is how the sender sees it. Statuses: injected (steer entered the target's running turn); queued_followup (landed as a queued follow-up — normal for delivery=followup, a degradation when you sent delivery=steer; the target auto-opens a turn when idle); refused_hop / refused_provenance / refused_cross_wire (terminal refusals, the message was dropped); failed_retrying (target unavailable, will keep retrying — not terminal); open_retry_exhausted (task 579: the message is queued in the target's inbox but 3 automatic idle-turn opening attempts failed — the message is NOT dropped and a later success overwrites this status); pending (queued, no outcome recorded yet — NOT a success); in_my_inbox (you are the recipient; see the settled flag); not_found. Only your own sent and received messages are queryable — a message id you are not a party to is refused. Read-only."
 }
 
 func (getMessageStatusTool) Schema() json.RawMessage {
@@ -60,7 +60,9 @@ func receiptStatusSemantics(outcome string) string {
 	case sessioncollab.ReceiptInjected:
 		return "已注入目标会话当轮（steer 生效）——这是真正的「已送达并生效」。"
 	case sessioncollab.ReceiptQueuedFollowup:
-		return "已落为排队 follow-up：delivery=followup 时这是正常落点；delivery=steer 时这是降级（未能注入目标当轮）。目标会在其下一轮处理。"
+		return "已落为排队 follow-up：delivery=followup 时这是正常落点；delivery=steer 时这是降级（未能注入目标当轮）。目标空闲后约 1 分钟内自动开轮处理；若开轮重试用尽会转为 open_retry_exhausted 状态。"
+	case sessioncollab.ReceiptOpenRetryExhausted:
+		return "空闲开轮重试用尽：目标收件箱已收到该消息，但自动开轮尝试 3 次未成功。消息仍保留在目标收件箱队列，未丢失；稍后复查（状态可能被后续成功覆盖），或让目标会话人工重试收件箱。"
 	case sessioncollab.ReceiptRefusedHop:
 		return "被拒绝并丢弃：协作链达到 hop 上限。新起一条链（hop=0、不带旧 thread_id）重发。"
 	case sessioncollab.ReceiptRefusedProvenance:

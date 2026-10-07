@@ -985,6 +985,34 @@ func (p *sessionCollabPump) recordDeliveryReceipt(msg sessioncollab.MailMessage,
 	}
 }
 
+// inboxDispatchExhausted surfaces the 任务579 controller-side retry exhaustion
+// (runtime unpublished, bounded 5/15/45s budget spent) as a 任务570 delivery
+// receipt — get_message_status can then answer the sender truthfully instead
+// of the queued_followup green light standing forever. The idle-turn bridge
+// records the same outcome from its own budget; the latest write wins.
+// Best-effort: the item itself stays queued in the inbox, never dropped.
+func (a *App) inboxDispatchExhausted(info control.InboxDispatchExhausted) {
+	if info.CollabMsgID == "" {
+		return // local queue entry: no mail message to answer
+	}
+	mailDir := config.SessionCollabMailDir()
+	if mailDir == "" {
+		return
+	}
+	store := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit())
+	detail := fmt.Sprintf("目标空闲开轮尝试 %d 次未成功（%v）；消息仍保留在目标会话收件箱队列，未丢失，可人工重试", info.Attempts, info.Err)
+	if err := store.RecordDeliveryReceipt(context.Background(), sessioncollab.DeliveryReceipt{
+		MessageID: info.CollabMsgID,
+		From:      strings.TrimPrefix(info.Source, "collab:"),
+		To:        info.CollabMailTo,
+		Outcome:   sessioncollab.ReceiptOpenRetryExhausted,
+		Detail:    detail,
+		Attempts:  info.Attempts,
+	}); err != nil {
+		log.Printf("[session-collab] dispatch exhaustion receipt for %s: %v", info.CollabMsgID, err)
+	}
+}
+
 // runCollabDelivery is the whole delivery contract in one place: claim without
 // consuming, derive the hop, hand over, ack exactly what settled, and report
 // anything that did not. Every exit path either acks a message or leaves it for
@@ -1295,8 +1323,14 @@ func (p *sessionCollabPump) deliverOne(target sessionCollabTarget, msg sessionco
 	return steered, nil
 }
 
+// sessionCollabSteerDegradedText 描述与实现一致的降级后果（任务579④：旧文案
+// 「目标会在下一轮处理」是虚假承诺——目标空闲时不会再有「下一轮」，只有空闲
+// 开轮桥会开轮）。现在如实说明：目标空闲后自动开轮（空闲窗口 45s + 至多一个
+// 4s 泵周期），结局可按 messageId 用 get_message_status 查询。
 func sessionCollabSteerDegradedText(msg sessioncollab.MailMessage) string {
-	return "你发送的 steer 未能注入目标会话当轮（目标不可注入），已自动降级为排队 follow-up，目标会在下一轮处理。（messageId=" + msg.ID + "）"
+	return "你发送的 steer 未能注入目标会话当轮（目标不可注入），已自动降级为排队 follow-up。" +
+		"目标空闲后会自动开轮处理（约 1 分钟内）；若多次开轮失败会转为 open_retry_exhausted 状态，消息不会丢失。" +
+		"可用 get_message_status 按 messageId 查询最终结局。（messageId=" + msg.ID + "）"
 }
 
 // sessionCollabReceiptSteered reports whether the admission actually injected
@@ -1327,7 +1361,8 @@ func (p *sessionCollabPump) notifyDegradedSteer(msg sessioncollab.MailMessage, d
 		return
 	}
 	note := "你发送的 steer 未能注入目标会话当轮（目标不可注入，disposition=" + disposition +
-		"），已自动降级为排队 follow-up，目标会在下一轮处理。"
+		"），已自动降级为排队 follow-up。目标空闲后会自动开轮处理（约 1 分钟内）；" +
+		"可用 get_message_status 按 messageId 查询最终结局。（messageId=" + msg.ID + "）"
 	if _, err := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit()).Deliver(context.Background(), sessioncollab.MailMessage{
 		From:    msg.To,
 		To:      msg.From,

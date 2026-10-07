@@ -115,6 +115,19 @@ type inboxState struct {
 	// disk or materialization failure cannot create a hot background loop.
 	dispatchRetryAttempts  int
 	dispatchRetryScheduled bool
+	// 任务579: bounded host-independent retries for the runtime-unpublished
+	// dead path. Before this state the kick for ErrInboxRuntimeUnpublished was
+	// dropped as idle — silent, permanent backlog on detached runtimes. The
+	// item is recorded so the exhaustion report can name it (and its collab
+	// receipt coordinates) when the retry budget runs out.
+	runtimeRetryAttempts int
+	runtimeRetryTimer    *time.Timer
+	runtimeRetryItem     sessioninbox.InboxItemMeta
+	// runtimeRetryScheduled guards single-instance arming across both the
+	// production timer and the deterministic test seam.
+	runtimeRetryScheduled bool
+	// scheduleRuntimeRetry replaces the production timer in deterministic tests.
+	scheduleRuntimeRetry func(delay time.Duration, retry func())
 	// beforePreparedAdmission is a deterministic test hook for the gap between
 	// durable preparation and Controller admission. Production leaves it nil.
 	beforePreparedAdmission func()

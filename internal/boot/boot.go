@@ -223,6 +223,10 @@ type Options struct {
 	OnSessionRecovered  func(control.SessionRecoveryInfo) error
 	OnSessionTransition func(control.SessionTransitionInfo) error
 	BeforeInboxDispatch func(*control.Controller) (func(), error)
+	// OnInboxDispatchExhausted (任务579) rides the same chain as
+	// BeforeInboxDispatch: the host surfaces the bounded-retry exhaustion of a
+	// stuck inbox item (desktop: a 570 delivery receipt).
+	OnInboxDispatchExhausted func(control.InboxDispatchExhausted)
 	// OnSessionTitleChanged lets a host project the canonical BranchMeta title
 	// into compatibility indexes and refresh notifications after the current
 	// conversation renames itself through set_session_title.
@@ -2500,6 +2504,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		OnSessionRecovered:  opts.OnSessionRecovered,
 		OnSessionTransition: opts.OnSessionTransition,
 		BeforeInboxDispatch: opts.BeforeInboxDispatch,
+		OnInboxDispatchExhausted: opts.OnInboxDispatchExhausted,
 		// The merged catalog lets frontends enumerate sidecar providers.
 		ProviderResolver:  extensionResolver,
 		RuntimeGeneration: generation,

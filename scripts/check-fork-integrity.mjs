@@ -376,12 +376,16 @@ const CHECKS = [
   { feature: "任务375 collab unknown 状态自解释 hint（status+talk 回执+FORK）", file: "internal/agent/session_collab_tools.go", patterns: ["unknown = this process cannot see the session", "targetStatusHint", "authoritative dispatch evidence"] },
   { feature: "任务387 跨会话换模型增强：非己拒绝+审计行+effort note+actionable 列表", file: "internal/agent/session_control_tool.go", patterns: ["calling session itself", "cross-session model change", "old_model", "resets to the new model"] },
   { feature: "任务387 unknown-model actionable 列表包装", file: "desktop/session_collab.go", patterns: ["wrapUnknownModelErr", "available models on that session"] },
-  // 任务 569：desktop 空闲开轮桥（接 Bot/ACP RunInboxTurn）。三个锚点按链路登记——
-  // 桥本体（N 常量 + active-tab 判据 + RunInboxTurn 接桥）、pump drainOnce 的接线
-  // 点、config 开关（铁律 2 默认关）。少任何一个都会退回「降级 follow-up 静默死锁」。
+  // 任务 569 + 579：desktop 空闲开轮桥（接 Bot/ACP RunInboxTurn）。锚点按链路
+  // 登记——桥本体（N 常量 + active-tab 判据 + RunInboxTurn 接桥 + 579 有界预算）、
+  // pump drainOnce 的接线点、579 去开关（桥始终打开，唯一剩余门是守卫④互斥）、
+  // 控制器侧失效路径留痕 + 5/15/45s 有界重试 + 用尽可见（570 状态面新结局）。
+  // 少任何一个都会退回「降级 follow-up 静默死锁 / 4s 无限重试 / 无痕滞留」。
   { feature: "任务569 空闲开轮桥本体（RunInboxTurn 接桥+active-tab 判据）", file: "desktop/session_collab_idle_turn.go", patterns: ["sessionCollabIdleTurnDelay", "target.activeTab || target.contactID", "view.run = t.ctrl.RunInboxTurn", "sweepIdleInboxTurns"] },
   { feature: "任务569 pump 接线（drainOnce 每拍过桥）", file: "desktop/session_collab.go", patterns: ["p.sweepIdleInboxTurns(time.Now())"] },
-  { feature: "任务569 config 开关（默认关）", file: "internal/config/config.go", patterns: ["experimental_collab_idle_turn"] },
+  { feature: "任务579 去开关（桥始终打开；3 次有界预算+守卫④互斥门保留）", file: "desktop/session_collab_idle_turn.go", patterns: ["idleTurnMaxAttempts", "idleTurnSweepActive", "recordOpeningFailure"] },
+  { feature: "任务579 控制器侧失效路径留痕+有界重试（5/15/45s，上限 3 次）", file: "internal/control/inbox_dispatch.go", patterns: ["inboxDispatchRuntimePending", "inboxRuntimeRetryBackoff", "scheduleInboxRuntimeRetry", "SetOnInboxDispatchExhausted"] },
+  { feature: "任务579 用尽可见（get_message_status 新结局 open_retry_exhausted）", file: "internal/sessioncollab/receipt.go", patterns: ["ReceiptOpenRetryExhausted", "open_retry_exhausted"] },
   { feature: "任务388 autopilot 代批上下文感知：两档 scope+自然语言 manifest（tail-kept 有界）", file: "internal/control/autopilot_approval.go", patterns: ["autopilotProxyContext", "PROXY SCOPE: level 1", "PROXY SCOPE: level 2", "PROXY MANIFEST"] },
   // 任务 433：recovery fence 无副作用工具白名单。三个锚点按链路登记——
   // 白名单表本体（bash 走 shellsafe 只读判定，fail closed）、中断即判未生效

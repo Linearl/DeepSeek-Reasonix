@@ -3,10 +3,12 @@ package control
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -307,5 +309,195 @@ func TestNaturalCompletionAutoDispatchesDurableFIFO(t *testing.T) {
 	}
 	if snap := c.InboxSnapshot(); len(snap.Items) != 0 || snap.Paused {
 		t.Fatalf("completed FIFO left inbox state: %+v", snap)
+	}
+}
+
+// ---- 任务579: runtime-unpublished 死路径的有界重试（5/15/45s，上限 3 次）----
+
+// runtimeUnpublishedAdmission is a host admission that always answers the
+// 任务579 dead-path error; publish flips it to success for recovery tests.
+type runtimeUnpublishedAdmission struct{ published atomic.Bool }
+
+func (a *runtimeUnpublishedAdmission) admit(*Controller) (func(), error) {
+	if a.published.Load() {
+		return func() {}, nil
+	}
+	return nil, ErrInboxRuntimeUnpublished
+}
+
+// captureRuntimeRetries installs the deterministic timer seam and returns a
+// channel delivering every armed retry (delay, fire).
+func captureRuntimeRetries(c *Controller) <-chan struct {
+	delay time.Duration
+	fire  func()
+} {
+	ch := make(chan struct {
+		delay time.Duration
+		fire  func()
+	}, 8)
+	c.inbox.mu.Lock()
+	c.inbox.scheduleRuntimeRetry = func(delay time.Duration, retry func()) {
+		ch <- struct {
+			delay time.Duration
+			fire  func()
+		}{delay, retry}
+	}
+	c.inbox.mu.Unlock()
+	return ch
+}
+
+// 验收③+④（控制层）：runtime 未发布时开轮失败 ⇒ 恰好 3 次有界重试
+// （5s/15s/45s），第 3 次仍失败 ⇒ 用尽报告（钩子收到 item 与协作回执坐标），
+// 期间不产生任何 turn（幂等：无重复轮）。
+func TestInboxRuntimeUnpublishedRetriesBoundedThenReports(t *testing.T) {
+	c, runner, _ := newInboxDispatchController(t)
+	admission := &runtimeUnpublishedAdmission{}
+	c.SetBeforeInboxDispatch(admission.admit)
+	retries := captureRuntimeRetries(c)
+
+	exhausted := make(chan InboxDispatchExhausted, 1)
+	c.SetOnInboxDispatchExhausted(func(info InboxDispatchExhausted) { exhausted <- info })
+
+	rec, err := c.TryEnqueueFollowup(InboxRequest{
+		Intent:       sessioninbox.IntentFollowup,
+		Submit:       "stuck on a detached runtime",
+		Source:       "collab:sender-1",
+		CollabMsgID:  "msg_1",
+		CollabMailTo: "target-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantDelays := []time.Duration{5 * time.Second, 15 * time.Second, 45 * time.Second}
+	for i, wantDelay := range wantDelays {
+		var armed struct {
+			delay time.Duration
+			fire  func()
+		}
+		select {
+		case armed = <-retries:
+		case <-time.After(inboxDispatchTestTimeout):
+			failInboxDispatchWait(t, c, fmt.Sprintf("runtime retry %d", i+1))
+		}
+		if armed.delay != wantDelay {
+			t.Fatalf("retry %d delay = %s, want %s", i+1, armed.delay, wantDelay)
+		}
+		armed.fire()
+	}
+
+	select {
+	case info := <-exhausted:
+		if info.ItemID != rec.ItemID || info.Attempts != len(inboxRuntimeRetryBackoff) {
+			t.Fatalf("exhaustion report = %+v, want item %s with %d attempts", info, rec.ItemID, len(inboxRuntimeRetryBackoff))
+		}
+		if info.CollabMsgID != "msg_1" || info.CollabMailTo != "target-1" || info.Source != "collab:sender-1" {
+			t.Fatalf("exhaustion report lost collab receipt coordinates: %+v", info)
+		}
+		if !errors.Is(info.Err, ErrInboxRuntimeUnpublished) {
+			t.Fatalf("exhaustion report err = %v", info.Err)
+		}
+	case <-time.After(inboxDispatchTestTimeout):
+		failInboxDispatchWait(t, c, "exhaustion report")
+	}
+	// 用尽 ≠ 丢弃：item 仍在队列里，且全程没有产生任何 turn（幂等）。
+	snap := c.InboxSnapshot()
+	if len(snap.Items) != 1 || snap.Items[0].ID != rec.ItemID {
+		t.Fatalf("exhausted item must stay queued, snapshot = %+v", snap)
+	}
+	c.autosaveWG.Wait()
+	select {
+	case got := <-runner.inputs:
+		t.Fatalf("exhausted budget must not have opened a turn, got %q", got)
+	default:
+	}
+}
+
+// 验收⑤（幂等）：3 次重试期间 runtime 发布 ⇒ 恰好开一轮、恰好消费一次，
+// 不因重试叠出重复 turn。
+func TestInboxRuntimeRecoveryOpensExactlyOneTurn(t *testing.T) {
+	c, runner, done := newInboxDispatchController(t)
+	admission := &runtimeUnpublishedAdmission{}
+	c.SetBeforeInboxDispatch(admission.admit)
+	retries := captureRuntimeRetries(c)
+
+	if _, err := c.TryEnqueueFollowup(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "wake me once"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 前两次重试仍失败。收到第 3 次装填（证明第 2 次排水的「未发布」结论已
+	// 落定——排水在 autosaveWG 上异步跑，先发布再等会在竞态下跳过第 3 次）。
+	var third func()
+	for i := 0; i < 2; i++ {
+		select {
+		case a := <-retries:
+			a.fire()
+		case <-time.After(inboxDispatchTestTimeout):
+			failInboxDispatchWait(t, c, fmt.Sprintf("runtime retry %d", i+1))
+		}
+	}
+	select {
+	case a := <-retries:
+		third = a.fire
+	case <-time.After(inboxDispatchTestTimeout):
+		failInboxDispatchWait(t, c, "runtime retry 3 arming")
+	}
+	admission.published.Store(true)
+	third()
+
+	if got := waitForInboxDispatch(t, c, runner); got != "wake me once" {
+		t.Fatalf("recovered input = %q", got)
+	}
+	waitForInboxTurnDone(t, c, done)
+	c.autosaveWG.Wait()
+	// 不许有第二轮。
+	select {
+	case got := <-runner.inputs:
+		t.Fatalf("duplicate turn after recovery: %q", got)
+	default:
+	}
+	if snap := c.InboxSnapshot(); len(snap.Items) != 0 {
+		t.Fatalf("recovered item must be consumed, snapshot = %+v", snap)
+	}
+}
+
+// 验收③（预算复位）：用尽后队列清空 ⇒ 下一条消息拿到全新的 3 次预算，
+// 而不是继承已烧尽的预算立即用尽。
+func TestInboxRuntimeRetryBudgetRearmsAfterEpisode(t *testing.T) {
+	c, _, _ := newInboxDispatchController(t)
+	admission := &runtimeUnpublishedAdmission{}
+	c.SetBeforeInboxDispatch(admission.admit)
+	retries := captureRuntimeRetries(c)
+	c.SetOnInboxDispatchExhausted(func(InboxDispatchExhausted) {})
+
+	if _, err := c.TryEnqueueFollowup(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "episode one"}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < len(inboxRuntimeRetryBackoff); i++ {
+		select {
+		case a := <-retries:
+			a.fire()
+		case <-time.After(inboxDispatchTestTimeout):
+			failInboxDispatchWait(t, c, "episode one retry")
+		}
+	}
+	// 用尽后删除该 item；下一次空扫描把预算复位。
+	if err := c.DeleteInboxItem(c.InboxSnapshot().Items[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	c.maybeDispatchInbox()
+	c.autosaveWG.Wait()
+
+	// 新消息必须重新拿到 3 次预算（第一枪就是 5s，而不是立即用尽）。
+	if _, err := c.TryEnqueueFollowup(InboxRequest{Intent: sessioninbox.IntentFollowup, Submit: "episode two"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case a := <-retries:
+		if a.delay != inboxRuntimeRetryBackoff[0] {
+			t.Fatalf("rearmed budget first delay = %s, want %s", a.delay, inboxRuntimeRetryBackoff[0])
+		}
+	case <-time.After(inboxDispatchTestTimeout):
+		failInboxDispatchWait(t, c, "episode two first retry")
 	}
 }
