@@ -238,8 +238,9 @@ export function normalizeUpdateChimeTune(value: unknown): UpdateChimeTune {
 /** Task 512: the chime plays at 1.25× so it reads as a prompt, not a concert. */
 export const UPDATE_CHIME_PLAYBACK_RATE = 1.25;
 /** Task 512: after the first qualifying pointer interaction the chime plays on
- *  for 3 more seconds and is then cut (the user is back at the wheel). */
-export const UPDATE_CHIME_INTERRUPT_DELAY_MS = 3000;
+ *  for 10 more seconds and is then cut (task 598 raised it from 3 s — 3 s kept
+ *  cutting the melody off while the user was merely passing by). */
+export const UPDATE_CHIME_INTERRUPT_DELAY_MS = 10000;
 /** Task 512: the cut is a short fade instead of a hard stop — an aborted
  *  buffer otherwise ends with an audible click/pop. */
 export const UPDATE_CHIME_FADE_OUT_S = 0.2;
@@ -276,6 +277,17 @@ export function chimeLocalAssetsEnabled(): boolean {
 let marioAssetUrlPromise: Promise<string | null> | null = null;
 
 async function loadMarioAssetUrlDefault(): Promise<string | null> {
+  // Task 598 (found while verifying the local-build fix): the UI-side
+  // chimeLocalAssetsEnabled() gate below is a runtime function, so the
+  // bundler could not prove this import dead and every build — public ones
+  // included — emitted the Nintendo wav into dist/assets, defeating the
+  // task-512 copyright ruling. Folding the raw define here (the typeof
+  // guard keeps the bare-node test runner, which has no define, alive) makes
+  // the guarded import statically unreachable in public builds: after the
+  // define is substituted, `!__CHIME_LOCAL_ASSETS__` folds to `!false` and
+  // the wav is tree-shaken out of dist for real.
+  if (typeof __CHIME_LOCAL_ASSETS__ === "undefined") return null;
+  if (!__CHIME_LOCAL_ASSETS__) return null;
   marioAssetUrlPromise ??= import("../assets/sounds/mario-theme.wav?url")
     .then((mod) => mod.default)
     .catch(() => null);
@@ -348,7 +360,7 @@ function playUpdateChimeBuffer(ctx: AudioContext, buffer: AudioBuffer, volume: n
   src.connect(gain);
   gain.connect(ctx.destination);
 
-  let countdownArmed = false;  // an interaction started the 3 s countdown
+  let countdownArmed = false;  // an interaction started the 10 s countdown
   let fadeStarted = false;     // the fade ramp has been scheduled
   let countdownTimer: ReturnType<typeof setTimeout> | null = null;
   let lastMove: { x: number; y: number } | null = null;
@@ -381,7 +393,7 @@ function playUpdateChimeBuffer(ctx: AudioContext, buffer: AudioBuffer, volume: n
     if (countdownArmed) return;
     countdownArmed = true;
     // First qualifying interaction starts the countdown; the listeners come
-    // off right away so later events can neither restart nor extend the 3 s.
+    // off right away so later events can neither restart nor extend the 10 s.
     detach();
     countdownTimer = setTimeout(startFade, UPDATE_CHIME_INTERRUPT_DELAY_MS);
   };

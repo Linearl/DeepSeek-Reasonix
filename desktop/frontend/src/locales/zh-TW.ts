@@ -1815,7 +1815,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.autonomousUpdateResume.goal_autopilot": "僅 goal/autopilot",
 "settings.autonomousUpdateResume.all": "全部",
 "settings.updateChime": "更新完成提示音",
-"settings.updateChimeHint": "更新後新版本首次啟動時播放提示音；僅播放一次，再次啟動不重複。偵測到滑鼠操作後 3 秒截斷。",
+"settings.updateChimeHint": "更新後新版本首次啟動時播放提示音；僅播放一次，再次啟動不重複。偵測到滑鼠操作後 10 秒截斷。",
 "settings.updateChime.on": "開",
 "settings.updateChime.off": "關",
 "settings.updateChimeTune": "提示音曲目",

@@ -1305,7 +1305,7 @@ const CHECKS = [
   { feature: "任务560 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"sessionRecovery.loadingIndex\": \"Reading session index…\""] },
 
   // ── 任务 512 提示音速率/截断/曲目 ──────────────────────────────────────
-  { feature: "512 1.25× 速率 + 3 秒截断常量", file: "desktop/frontend/src/lib/sound.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE = 1.25", "UPDATE_CHIME_INTERRUPT_DELAY_MS = 3000", "UPDATE_CHIME_FADE_OUT_S = 0.2", "UPDATE_CHIME_MOVE_THRESHOLD_PX = 12"] },
+  { feature: "512 1.25× 速率 + 截断常量（598：3s 改 10s）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE = 1.25", "UPDATE_CHIME_INTERRUPT_DELAY_MS = 10000", "UPDATE_CHIME_FADE_OUT_S = 0.2", "UPDATE_CHIME_MOVE_THRESHOLD_PX = 12"] },
   { feature: "512 马里奥资产版权守卫（公开构建条件导入）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["__CHIME_LOCAL_ASSETS__", "../assets/sounds/mario-theme.wav?url"] },
   { feature: "512 曲目下拉（公开构建仅 Nokia）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["SetUpdateChimeTune(value)", "settings.updateChimeTune"] },
   { feature: "512 曲目配置字段+归一化（Go）", file: "internal/config/desktop_preferences.go", patterns: ["update_chime_tune"] },
@@ -1314,6 +1314,13 @@ const CHECKS = [
   { feature: "512 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"settings.updateChimeTune\": \"提示音曲目\"", "\"settings.updateChimeTune.mario\": \"超級瑪利歐\""] },
   { feature: "512 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"settings.updateChimeTune\": \"Chime melody\"", "\"settings.updateChimeTune.mario\": \"Super Mario\""] },
   { feature: "512 速率/截断测试存续", file: "desktop/frontend/src/__tests__/task512-chime-rate-interrupt.test.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE", "UPDATE_CHIME_INTERRUPT_DELAY_MS"] },
+
+  // ── 任务 598 提示音收尾（马里奥本地构建判定 + 截断 10s）───────────────
+  { feature: "598 本地构建启用马里奥资产（build-local-installer 导出 env，默认 1）", file: "scripts/build-local-installer.sh", patterns: ["REASONIX_CHIME_LOCAL_ASSETS:-1"] },
+  { feature: "598 公开构建摇除马里奥（define 折叠守卫，修 512 摇除失守）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["if (typeof __CHIME_LOCAL_ASSETS__ === \"undefined\") return null;", "if (!__CHIME_LOCAL_ASSETS__) return null;"] },
+  { feature: "598 截断 10 秒三语 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["检测到鼠标操作后 10 秒截断"] },
+  { feature: "598 截断 10 秒三语 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["偵測到滑鼠操作後 10 秒截斷"] },
+  { feature: "598 截断 10 秒三语 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["Cut 10 seconds after pointer activity"] },
 
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役，表A 46 项）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },

@@ -1,9 +1,9 @@
 // Task 512 acceptance (update chime: 1.25× rate + interaction cut + tune dial):
 //  1. 1.25× playback — the decoded buffer source's playbackRate is 1.25;
-//  2. interaction cut — the first qualifying mousemove/click starts a 3 s
-//     countdown, after which the chime fades out over 200 ms and stops; the
-//     document-level listeners live only for this playback and are detached
-//     on countdown-arm, natural end and cut alike;
+//  2. interaction cut — the first qualifying mousemove/click starts a 10 s
+//     countdown (task 598; was 3 s), after which the chime fades out over
+//     200 ms and stops; the document-level listeners live only for this
+//     playback and are detached on countdown-arm, natural end and cut alike;
 //  3. move threshold — a mousemove only arms the countdown once per-event
 //     travel exceeds UPDATE_CHIME_MOVE_THRESHOLD_PX (brushing the mouse is
 //     ignored); any click always arms;

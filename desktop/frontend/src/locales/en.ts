@@ -2326,7 +2326,7 @@ export const en = {
 "settings.autonomousUpdateResume.goal_autopilot": "Goal/autopilot only",
 "settings.autonomousUpdateResume.all": "All sessions",
 "settings.updateChime": "Update chime",
-"settings.updateChimeHint": "Plays a sound on the first launch after an update swaps versions; once only, never on later launches. Cut 3 seconds after pointer activity.",
+"settings.updateChimeHint": "Plays a sound on the first launch after an update swaps versions; once only, never on later launches. Cut 10 seconds after pointer activity.",
 "settings.updateChime.on": "On",
 "settings.updateChime.off": "Off",
 "settings.updateChimeTune": "Chime melody",
