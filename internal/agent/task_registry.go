@@ -42,6 +42,14 @@ var readOnlySubagentWorkflowTools = []string{
 
 const subagentToolBoundarySummary = "Recursive agent/skill tools are exposed only while max_subagent_depth leaves another delegation layer; unsupported background job tools (parallel_tasks, wait, bash_output, kill_shell) are excluded; bash is exposed as foreground-only inside subagents."
 
+// Task 572 (484-a): appended to the summary only when the host cannot enforce
+// bash write roots. BindWritePaths then fail-closes and removes bash from
+// sub-agents dispatched with explicit write_paths, so the unconditional
+// "foreground-only" claim above would describe a tool the sub-agent never
+// receives. Hosts that enforce the sandbox keep the historical text
+// byte-identical (see TaskTool.boundarySummary).
+const subagentToolBoundaryNoSandboxClause = " On hosts where the OS bash sandbox cannot enforce write roots, sub-agents dispatched with explicit write_paths are spawned without a bash tool."
+
 // AlwaysHiddenSubagentTools returns the tool names excluded from every
 // subagent's registry regardless of an explicit allowlist or delegation
 // depth (unlike subagentRecursiveTools, which depends on remaining depth).
