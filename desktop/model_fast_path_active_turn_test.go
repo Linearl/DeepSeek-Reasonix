@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"errors"
-	"time"
 	"testing"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/boot"
