@@ -1268,6 +1268,15 @@ const CHECKS = [
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
   { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/20/10/1", "identical feature ids", "registers agree on every tier"] },
+  // 任务 468：高速模型 UI 接线（318 收尾）。三处缺口各一道锚：render 渲染行
+  // （缺了 = 手写配置被保存抹掉）、provider 级 setter、弹框勾选草稿链。
+  { feature: "468 render 渲染行（full + project delta 双路径）", file: "internal/config/render.go", patterns: ["high_speed_models = %s", "len(p.HighSpeedModels) > 0"] },
+  { feature: "468 provider 级 setter（config + desktop 桥接）", file: "internal/config/edit.go", patterns: ["func (c *Config) SetProviderModelHighSpeed"] },
+  { feature: "468 desktop 桥接 setter", file: "desktop/settings_preferences.go", patterns: ["func (a *App) SetProviderModelHighSpeed", "applyModelConfigChange"] },
+  { feature: "468 弹框勾选（总闸联动隐藏）", file: "desktop/frontend/src/components/ProviderModelDialog.tsx", patterns: ["highSpeedSwitchOn", "high-speed-model-toggle"] },
+  { feature: "468 编辑器草稿透传（保存不抹掉）+ 行内实时徽标", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["highSpeedModelNames", "highSpeedModels: hsms", "high-speed-row-badge"] },
+  { feature: "468 前后端测试存续", file: "desktop/frontend/src/__tests__/task468-high-speed-model.test.tsx", patterns: ["high-speed-model-toggle", "connection save"] },
+
 ];
 
 let failed = 0;

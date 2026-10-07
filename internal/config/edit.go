@@ -1377,6 +1377,46 @@ func (c *Config) SetExperimentalHighSpeedModel(enabled bool) error {
 	return nil
 }
 
+// SetProviderModelHighSpeed marks (enabled) or unmarks (!enabled) a single
+// model of the named provider as high-throughput (task 468 — the write side
+// of the user-maintained HighSpeedModels list; the panel's model dialog saves
+// it through the provider save chain, this is the direct setter). Marking
+// requires the model to be on the provider's configured list so the list can
+// never go stale; unmarking an unmarked model is a no-op. The list is dropped
+// entirely once empty so renders stay clean.
+func (c *Config) SetProviderModelHighSpeed(provider, model string, enabled bool) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return fmt.Errorf("set provider high-speed model: empty model")
+	}
+	for i := range c.Providers {
+		if c.Providers[i].Name != provider {
+			continue
+		}
+		p := &c.Providers[i]
+		idx := slices.Index(p.HighSpeedModels, model)
+		if !enabled {
+			if idx < 0 {
+				return nil
+			}
+			p.HighSpeedModels = slices.Delete(p.HighSpeedModels, idx, idx+1)
+			if len(p.HighSpeedModels) == 0 {
+				p.HighSpeedModels = nil
+			}
+			return nil
+		}
+		if idx >= 0 {
+			return nil
+		}
+		if !slices.Contains(p.Models, model) {
+			return fmt.Errorf("set provider high-speed model: model %q is not configured on provider %q", model, provider)
+		}
+		p.HighSpeedModels = append(p.HighSpeedModels, model)
+		return nil
+	}
+	return fmt.Errorf("set provider high-speed model: no provider %q", provider)
+}
+
 // SetExperimentalProactiveCompact toggles the configurable fold cooldown
 // (task 318.2, iron rule 2: default off — off keeps the hard-coded 10-minute
 // cooldown byte-for-byte).

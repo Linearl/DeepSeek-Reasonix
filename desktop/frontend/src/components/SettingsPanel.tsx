@@ -7761,6 +7761,7 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
             kinds={s.providerKinds}
             officialProviders={s.officialProviders}
             providerPresets={s.providerPresets}
+            highSpeedSwitchOn={Boolean(s.experimentalHighSpeedModel)}
             busy={busy}
             onMode={setAdding}
             onCancel={() => onboarding ? onOnboardingComplete?.() : setAdding(null)}
@@ -7811,6 +7812,7 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
             })}
             group={group}
             providerPresets={s.providerPresets}
+            highSpeedSwitchOn={Boolean(s.experimentalHighSpeedModel)}
             busy={busy}
             fetching={fetchingProviders.has(group.id)}
             fetchResult={fetchResults[group.id]}
@@ -7940,6 +7942,7 @@ export function AddProviderPanel({
   kinds,
   officialProviders,
   providerPresets,
+  highSpeedSwitchOn,
   busy,
   onMode,
   onCancel,
@@ -7951,6 +7954,7 @@ export function AddProviderPanel({
 }: {
   mode: AddProviderMode; kinds: string[]; officialProviders: ProviderView[];
   providerPresets: ProviderPresetView[];
+  highSpeedSwitchOn?: boolean;
   busy: boolean;
   onMode: (mode: AddProviderMode) => void;
   onCancel: () => void;
@@ -8008,7 +8012,7 @@ export function AddProviderPanel({
     {mode === "official" && <ProviderCatalogPicker choices={choices} busy={busy}
       onConnect={(id, key, baseURL, format) => { if (id.startsWith("official:")) void onAddOfficial("deepseek", key, baseURL, format); else void onAddPreset(id.slice(7), key, baseURL, format); }}
       onView={onViewPresetConflict} onReset={id => { if (id.startsWith("preset:")) void onResetPreset(id.slice(7)); }} />}
-    {mode === "custom" && <ProviderEditor kinds={kinds} busy={busy} onCancel={onCancel} onSave={onAddCustom} />}
+    {mode === "custom" && <ProviderEditor kinds={kinds} highSpeedSwitchOn={highSpeedSwitchOn} busy={busy} onCancel={onCancel} onSave={onAddCustom} />}
   </div>;
 }
 
@@ -8018,6 +8022,7 @@ export function ProviderAccessCard({
   onRename,
   group,
   providerPresets,
+  highSpeedSwitchOn,
   busy,
   fetching,
   fetchResult,
@@ -8044,6 +8049,7 @@ export function ProviderAccessCard({
   onRename?: (label: string) => Promise<boolean>;
   group: ProviderAccessGroup;
   providerPresets?: ProviderPresetView[];
+  highSpeedSwitchOn?: boolean;
   busy: boolean;
   fetching: boolean;
   fetchResult?: ProviderFetchResult;
@@ -8238,6 +8244,7 @@ export function ProviderAccessCard({
           hideConnectionName={detail}
           providerPresets={providerPresets}
           kinds={kinds}
+          highSpeedSwitchOn={highSpeedSwitchOn}
           busy={busy}
           onCancel={() => { onCancelEdit(); setEditorRevision((n) => n + 1); }}
           onSave={onSave}
@@ -8760,6 +8767,7 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
   selectedModels,
   visionModels,
   visionModelsConfigured,
+  highSpeedModels = [],
   modelCapabilities,
   contextWindows,
   inheritedContextWindow,
@@ -8774,6 +8782,9 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
   selectedModels: string[];
   visionModels: string[];
   visionModelsConfigured: boolean;
+  /** Task 468: draft high-speed marks — the row badge reflects the dialog
+   * checkbox in real time, before the connection save lands. */
+  highSpeedModels?: string[];
   modelCapabilities: ProviderModelCapabilityView[];
   contextWindows: Record<string, string>;
   inheritedContextWindow?: number;
@@ -8796,6 +8807,7 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
     : candidates;
   const deferredCandidates = useDeferredValue(visibleCandidates);
   const selected = new Set(selectedModels);
+  const highSpeedSet = new Set(highSpeedModels);
   return (
     <div className="provider-model-draft provider-model-draft--inline">
       <div className="provider-model-draft__head provider-model-toolbar">
@@ -8844,6 +8856,11 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
               <div className="provider-model-draft__capabilities" aria-label={t("settings.modelCapabilitiesAria", { model })}>
                 {capability === "supported" && <span>{t("settings.visionModel")}</span>}
                 {capability === "unknown" && <span>{t("settings.imageInputUnknown")}</span>}
+                {highSpeedSet.has(model) && (
+                  <span className="provider-model-draft__highspeed-badge" data-testid="high-speed-row-badge" aria-label={t("settings.highSpeedModel")}>
+                    ⚡ {t("settings.highSpeedModel")}
+                  </span>
+                )}
               </div>
               <span className="provider-context-badge">{Number(contextWindows[model]) || inheritedContextWindow ? new Intl.NumberFormat("en", {notation:"compact",maximumFractionDigits:1}).format(Number(contextWindows[model]) || inheritedContextWindow!) : t("settings.models.inherit")}</span>
               <button type="button" className="btn provider-icon-action" title={t("settings.models.options")} aria-label={`${t("settings.models.options")}: ${model}`} aria-haspopup="dialog" disabled={disabled || !onEditModel} onClick={()=>onEditModel?.(model)}><SlidersHorizontal size={17}/></button>
@@ -8862,6 +8879,7 @@ export function ProviderEditor({
   initial,
   providerPresets = [],
   kinds,
+  highSpeedSwitchOn = false,
   busy,
   onCancel,
   onSave,
@@ -8870,6 +8888,9 @@ export function ProviderEditor({
   initial?: ProviderView;
   providerPresets?: ProviderPresetView[];
   kinds: string[];
+  /** Task 468: 318.1 master switch — off hides the model-dialog high-speed
+   * mark entirely (off never injects marks, so the entry would be dead). */
+  highSpeedSwitchOn?: boolean;
   busy: boolean;
   onCancel: () => void;
   onSave: (p: ProviderView, key?: string) => void | Promise<void>;
@@ -8895,6 +8916,10 @@ export function ProviderEditor({
   const [showKey, setShowKey] = useState(false);
   const [modelCandidates, setModelCandidates] = useState<string[]>(initial?.models ?? []);
   const [legacyVisionModels, setLegacyVisionModels] = useState(initial?.visionModels ?? []);
+  // Task 468: high-speed marks ride the same draft → connection-save chain as
+  // the rest of the editor. Without this state the save draft omitted the
+  // field and every connection save silently unmarked the models.
+  const [highSpeedModelNames, setHighSpeedModelNames] = useState<string[]>(initial?.highSpeedModels ?? []);
   const [modelCapabilities, setModelCapabilities] = useState<ProviderModelCapabilityView[]>(initial?.modelCapabilities ?? []);
   const visionModelsConfigured = Boolean(initial?.visionModelsConfigured ?? legacyVisionModels.length > 0);
   const [modelsUrl, setModelsUrl] = useState(initial?.modelsUrl ?? "");
@@ -8921,7 +8946,7 @@ export function ProviderEditor({
   const [fetchStatus, setFetchStatus] = useState<string | null>(null);
   const [fetchFallback, setFetchFallback] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const draftSnapshot = JSON.stringify([name, hideConnectionName ? "" : displayName, kind, requestUrl, models, modelsUrl, headersDraft, extraBodyDraft, authHeader, noProxy, keyDraft, balanceUrl, ctx, modelContextWindows, modelOverrides, modelCapabilities, legacyVisionModels, reasoningProtocol, thinking, webSearch]);
+  const draftSnapshot = JSON.stringify([name, hideConnectionName ? "" : displayName, kind, requestUrl, models, modelsUrl, headersDraft, extraBodyDraft, authHeader, noProxy, keyDraft, balanceUrl, ctx, modelContextWindows, modelOverrides, modelCapabilities, legacyVisionModels, highSpeedModelNames, reasoningProtocol, thinking, webSearch]);
   const [savedSnapshot, setSavedSnapshot] = useState(draftSnapshot);
   const latestDraftSnapshot = useRef(draftSnapshot);
   const saveGeneration = useRef(0);
@@ -9060,6 +9085,9 @@ export function ProviderEditor({
     setFetchFallback(null);
     const ms = parseProviderListInput(models);
     const vms = legacyVisionModels.filter((model) => ms.includes(model));
+    // Task 468: drop marks for models that left the list (saveProviderConfig
+    // filters again on the Go side; this keeps the draft honest).
+    const hsms = highSpeedModelNames.filter((model) => ms.includes(model));
     const effectiveApiKeyEnv = providerApiKeyEnvForSave(name, apiKeyEnv, keyDraft);
     const provider: ProviderView = {
       name: name.trim(),
@@ -9075,6 +9103,7 @@ export function ProviderEditor({
       models: ms,
       visionModels: vms,
       visionModelsConfigured,
+      highSpeedModels: hsms,
       default: ms[0] ?? "",
       apiKeyEnv: effectiveApiKeyEnv,
       headers: effectiveHeaders,
@@ -9134,6 +9163,10 @@ export function ProviderEditor({
       setModels(current => uniqueStrings([...parseProviderListInput(current), draft.model]).join(", "));
     }
     setModelContextWindows(current => ({...current, [draft.model]:draft.contextWindow}));
+    // Task 468: the dialog's high-speed checkbox joins the same draft.
+    setHighSpeedModelNames(current => draft.highSpeed
+      ? uniqueStrings([...current, draft.model])
+      : current.filter(item => item !== draft.model));
     setModelOverrides(current => {
       const previous = current.find(item => item.model === draft.model);
       return [...current.filter(item => item.model !== draft.model), {...previous, model:draft.model, reasoningProtocol:previous?.reasoningProtocol ?? "", supportedEfforts:previous?.supportedEfforts ?? [], defaultEffort:previous?.defaultEffort ?? "", vision:draft.vision, maxOutputTokens:draft.maxOutputTokens}];
@@ -9149,6 +9182,7 @@ export function ProviderEditor({
     setModelOverrides(current => current.filter(item => item.model !== model));
     setModelCapabilities(current => current.filter(item => item.model !== model));
     setLegacyVisionModels(current => current.filter(item => item !== model));
+    setHighSpeedModelNames(current => current.filter(item => item !== model));
     setModelContextWindows(current => Object.fromEntries(Object.entries(current).filter(([key]) => key !== model)));
     setModelDialog(null);
   };
@@ -9338,7 +9372,8 @@ export function ProviderEditor({
       {fetchFallback && <div role="alert" className="provider-fetch-status provider-fetch-status--warn">{fetchFallback}</div>}
       {modelDialog !== null && <Suspense fallback={null}><ProviderModelDialog
         baseURL={effectiveRequestUrl} candidates={modelCandidateNames} contextDefault={Number(ctx) || undefined}
-        initial={modelDialog ? {model:modelDialog, contextWindow:modelContextWindows[modelDialog] ?? "", maxOutputTokens:modelOverrides.find(item=>item.model === modelDialog)?.maxOutputTokens ?? 0, vision:modelOverrides.find(item=>item.model === modelDialog)?.vision ?? null} : undefined}
+        initial={modelDialog ? {model:modelDialog, contextWindow:modelContextWindows[modelDialog] ?? "", maxOutputTokens:modelOverrides.find(item=>item.model === modelDialog)?.maxOutputTokens ?? 0, vision:modelOverrides.find(item=>item.model === modelDialog)?.vision ?? null, highSpeed:highSpeedModelNames.includes(modelDialog)} : undefined}
+        highSpeedSwitchOn={highSpeedSwitchOn}
         capability={modelCapabilities.find(item=>item.model === modelDialog)} busy={busy || fetchingModels}
         onClose={()=>setModelDialog(null)} onApply={applyModelDetails} onDelete={deleteModel}/></Suspense>}
       <ProviderEditorModelPicker
@@ -9350,6 +9385,7 @@ export function ProviderEditor({
         selectedModels={modelNames}
         visionModels={visionModelNames}
         visionModelsConfigured={visionModelsConfigured}
+        highSpeedModels={highSpeedModelNames}
         modelCapabilities={modelCandidateNames.map(model => { const override = modelOverrides.find(item=>item.model === model)?.vision; const info = modelCapabilities.find(item=>item.model === model); return override == null ? info : {...info, model, state:override ? "supported" : "unsupported", inputModalities:override ? ["text","image"] : ["text"], source:"override"}; }).filter((item): item is ProviderModelCapabilityView => Boolean(item))}
         contextWindows={modelContextWindows}
         inheritedContextWindow={Number(ctx) || undefined}

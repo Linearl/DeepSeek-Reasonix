@@ -19220,6 +19220,22 @@ body > .mermaid-diagram--fullscreen {
   color: var(--fg-dim);
   font-family: inherit;
 }
+/* Task 468: high-speed mark badge (318 read side rendered the span without
+   styles; 468 wires the write side so the badge is now reachable from UI). */
+.provider-model-chip--highspeed {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.provider-model-chip__highspeed-badge {
+  color: var(--accent);
+  font-family: inherit;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.provider-model-draft__highspeed-badge {
+  color: var(--accent);
+  font-weight: 650;
+  white-space: nowrap;
+}
 .provider-card-status {
   width: fit-content;
   max-width: 100%;

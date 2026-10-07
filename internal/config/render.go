@@ -777,6 +777,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			if p.VisionModels != nil {
 				fmt.Fprintf(&b, "vision_models = %s   # models in this provider that accept image input\n", renderStringArray(p.VisionModels))
 			}
+			if len(p.HighSpeedModels) > 0 {
+				fmt.Fprintf(&b, "high_speed_models = %s   # models in this provider marked high-throughput (task 318.1 exec-speed lane)\n", renderStringArray(p.HighSpeedModels))
+			}
 			if p.VisionDetail != "" {
 				fmt.Fprintf(&b, "vision_detail = %q   # openai image detail hint: low|high; empty = auto\n", p.VisionDetail)
 			}
@@ -1505,6 +1508,9 @@ func RenderTOMLProjectDelta(c *Config) string {
 			}
 			if p.VisionModels != nil {
 				fmt.Fprintf(&b, "vision_models = %s\n", renderStringArray(p.VisionModels))
+			}
+			if len(p.HighSpeedModels) > 0 {
+				fmt.Fprintf(&b, "high_speed_models = %s\n", renderStringArray(p.HighSpeedModels))
 			}
 			if p.VisionDetail != "" {
 				fmt.Fprintf(&b, "vision_detail = %q\n", p.VisionDetail)

@@ -1088,6 +1088,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetFallbackModel(model: string): Promise<void>;
   // Task 318: lab internal optimizations (three switches + cooldown minutes).
   SetExperimentalHighSpeedModel(enabled: boolean): Promise<void>;
+  // Task 468: provider-level high-speed mark (ProviderView.highSpeedModels).
+  // The model dialog saves through the provider save chain; this is the
+  // direct setter (tests / programmatic callers).
+  SetProviderModelHighSpeed(provider: string, model: string, enabled: boolean): Promise<void>;
   SetExperimentalProactiveCompact(enabled: boolean): Promise<void>;
   SetProactiveCompactCooldownMinutes(minutes: number): Promise<void>;
   SetExperimentalComposerDraft(enabled: boolean): Promise<void>;
@@ -5554,6 +5558,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalFallbackModel() {},
     async SetFallbackModel() {},
     async SetExperimentalHighSpeedModel() {},
+    async SetProviderModelHighSpeed() {},
     async SetExperimentalProactiveCompact() {},
     async SetProactiveCompactCooldownMinutes() {},
     async RunSelectionSideQuery() { return ""; },
