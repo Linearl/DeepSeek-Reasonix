@@ -2036,6 +2036,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		Pricing:                    entry.Price,
 		QuoteContext:               quoteCtx,
 		ModelRef:                   modelRef,
+		// Task 148: the session model override resolves alternates through the
+		// same resolver (and proxy, inside it) that built execProv, so a fast
+		// model switch constructs byte-identical adapter state to a full
+		// rebuild. Nil resolver (never here) keeps the override declining.
+		ModelResolver: resolveModelResolver(effectiveResolver, cfg, proxySpec),
 		// Task 318.1: the high-speed lane only arms when the experiment is on
 		// (iron rule 2, default off — the configured list is ignored otherwise).
 		// Boot-time read: flipping the setting applies from the next start,

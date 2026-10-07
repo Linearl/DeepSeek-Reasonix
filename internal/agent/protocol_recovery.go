@@ -177,7 +177,7 @@ func (a *Agent) offerProtocolRecovery(frozen samplingRequest, err error) error {
 	if !provider.IsOpaqueBadRequest(err) || a.protocolRecoverySpent() {
 		return nil
 	}
-	if _, changed := provider.ProjectReasoningStrippedMessages(a.svc.prov, frozen.req.Messages); !changed {
+	if _, changed := provider.ProjectReasoningStrippedMessages(frozen.destination(a), frozen.req.Messages); !changed {
 		return nil
 	}
 	if len(frozen.req.Messages) == 0 {
@@ -200,7 +200,7 @@ func (a *Agent) consumeManualProtocolRecovery(ctx context.Context, s *samplingRe
 	if prefix <= 0 {
 		return ErrProtocolRecoveryUnavailable
 	}
-	projected, changed := provider.ProjectReasoningStrippedMessagesPrefix(a.svc.prov, s.frozen.req.Messages, prefix)
+	projected, changed := provider.ProjectReasoningStrippedMessagesPrefix(s.frozen.destination(a), s.frozen.req.Messages, prefix)
 	if !changed {
 		return ErrProtocolRecoveryUnavailable
 	}

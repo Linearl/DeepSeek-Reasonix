@@ -69,7 +69,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
 		a.emitContextRecoveryNotice(contextRecoveryLearnedRetry, limit, next.MaxTokens)
 		shape := a.requestCalibrationShape(next)
 		a.sess.output.activeReqShape.Store(&shape)
-		return samplingRequest{req: next}, true, contextRecoveryLearnedRetry
+		return samplingRequest{req: next, prov: frozen.prov}, true, contextRecoveryLearnedRetry
 	}
 	if physical <= 0 && budget.retries == 0 {
 		startProjectionVersion := a.currentProjectionVersion()
@@ -98,7 +98,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
 		a.emitContextRecoveryNotice(contextRecoveryCompacted, limit, rebuilt.req.MaxTokens)
 		shape := a.requestCalibrationShape(rebuilt.req)
 		a.sess.output.activeReqShape.Store(&shape)
-		return samplingRequest{req: freezeProviderRequest(rebuilt.req)}, true, contextRecoveryCompacted
+		return samplingRequest{req: freezeProviderRequest(rebuilt.req), prov: rebuilt.prov}, true, contextRecoveryCompacted
 	}
 	a.setLastRecovery(contextRecoveryFailed)
 	return samplingRequest{}, false, contextRecoveryFailed

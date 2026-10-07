@@ -55,7 +55,7 @@ func (p *outputLimitRetryProvider) Stream(_ context.Context, req provider.Reques
 func TestStreamProviderRequestRetriesOutputLimitBeforeAnyOutput(t *testing.T) {
 	prov := &outputLimitRetryProvider{}
 	a := &Agent{svc: agentServices{prov: prov}, sess: sessionRuntime{}}
-	ch, err := a.streamProviderRequest(context.Background(), provider.Request{MaxTokens: 384_000})
+	ch, err := a.streamProviderRequest(context.Background(), nil, provider.Request{MaxTokens: 384_000})
 	if err != nil {
 		t.Fatalf("streamProviderRequest: %v", err)
 	}

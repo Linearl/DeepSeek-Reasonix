@@ -36,7 +36,7 @@ func (a *Agent) recoverReasoningReplayHistory(frozen samplingRequest, budget *re
 	if a == nil || budget == nil || budget.retries > 0 || a.protocolRecoverySpent() {
 		return samplingRequest{}, false
 	}
-	repaired, changed := provider.ProjectReasoningStrippedMessages(a.svc.prov, frozen.req.Messages)
+	repaired, changed := provider.ProjectReasoningStrippedMessages(frozen.destination(a), frozen.req.Messages)
 	if !changed {
 		return samplingRequest{}, false
 	}
@@ -47,7 +47,7 @@ func (a *Agent) recoverReasoningReplayHistory(frozen samplingRequest, budget *re
 	}
 	next := frozen.req
 	next.Messages = a.replayRecoveryFacts(frozen.req.Messages, repaired)
-	return samplingRequest{req: next}, true
+	return samplingRequest{req: next, prov: frozen.prov}, true
 }
 
 // tryRecoverReasoningReplay400 is the streamWithSamplingRecovery branch for a

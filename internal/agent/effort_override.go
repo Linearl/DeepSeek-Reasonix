@@ -50,7 +50,10 @@ func (a *Agent) SetSessionEffortOverride(level string) bool {
 			return false
 		}
 	}
-	varying, ok := a.svc.prov.(effortVarying)
+	// Task 148: probe the effective destination (session model override when
+	// armed) so a post-switch depth change validates against the vocabulary
+	// the request will actually reach.
+	varying, ok := a.providerForRequest().(effortVarying)
 	if !ok {
 		// Task 334: provider exposes no per-request vocabulary probe — the
 		// other documented fallback cause (e.g. non-openai adapters).

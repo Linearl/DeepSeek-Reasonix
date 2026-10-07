@@ -23,7 +23,7 @@ func TestSamplingTranscriptGateBlocksInvalidArgumentsBeforeProvider(t *testing.T
 				{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "a", Name: "read_file", Arguments: args}}},
 				{Role: provider.RoleTool, ToolCallID: "a", Name: "read_file", Content: "result"},
 			}}
-			_, err := a.streamProviderRequest(context.Background(), req)
+			_, err := a.streamProviderRequest(context.Background(), nil, req)
 			if err == nil {
 				t.Fatal("invalid tool arguments reached provider")
 			}
@@ -77,7 +77,7 @@ func TestSamplingTranscriptGatePreservesHealthyRequestBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch, err := a.streamProviderRequest(context.Background(), req)
+	ch, err := a.streamProviderRequest(context.Background(), nil, req)
 	if err != nil {
 		t.Fatal(err)
 	}

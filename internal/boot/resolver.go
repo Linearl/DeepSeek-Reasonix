@@ -126,6 +126,18 @@ func resolveProvider(resolver provider.Resolver, cfg *config.Config, proxy netcl
 	return NewLocalProviderResolver(cfg, proxy).Resolve(selection)
 }
 
+// resolveModelResolver returns the resolver the agent's model-override seam
+// (task 148) uses to construct alternate destinations: the merged resolver
+// when the boot has one, else the local config-backed resolver over the same
+// proxy — the exact pair resolveProvider would consult, so a fast switch
+// builds the same provider a rebuild would.
+func resolveModelResolver(resolver provider.Resolver, cfg *config.Config, proxy netclient.ProxySpec) provider.Resolver {
+	if resolver != nil {
+		return resolver
+	}
+	return NewLocalProviderResolver(cfg, proxy)
+}
+
 // mergeSidecarProviders wraps the build's resolver with the extension-hosted
 // provider adapter (stage 7) whenever a started sidecar declared providers.
 // It does not install stream routers — call installSidecarStreamRouters after
