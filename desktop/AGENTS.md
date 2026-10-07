@@ -1,5 +1,14 @@
 # Desktop agent notes
 
+## UI design system
+
+When generating or editing any UI in `frontend/`, read
+[`frontend/DESIGN.md`](./frontend/DESIGN.md) **before** inventing new visual
+rules. It is the concentrated design system for this fork (font-scale ladder,
+theme-token discipline enforced by `check:theme-token`, radius/spacing tiers,
+popup/menu/wall language, 383 three-layout verdict whitelist); violations are
+design-system defects, not stylistic preferences (task 391).
+
 ## Transcript scroll discipline
 
 The transcript (`frontend/src/components/Transcript.tsx`) is governed by
