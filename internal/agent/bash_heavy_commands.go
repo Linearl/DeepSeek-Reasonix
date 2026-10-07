@@ -156,7 +156,7 @@ func argvIsHeavy(argv []string) bool {
 		if heavy[strings.ToLower(token)] {
 			return true
 		}
-		if i+1 < len(rest) && heavy[head+" "+strings.ToLower(token)+" "+strings.ToLower(rest[i+1])] {
+		if i+1 < len(rest) && heavy[strings.ToLower(token)+" "+strings.ToLower(rest[i+1])] {
 			return true
 		}
 	}
@@ -182,7 +182,7 @@ func tokenScanIsHeavy(command string) bool {
 			if i+1 < len(tokens) && heavy[strings.ToLower(tokens[i+1])] {
 				return true
 			}
-			if i+2 < len(tokens) && heavy[head+" "+strings.ToLower(tokens[i+1])+" "+strings.ToLower(tokens[i+2])] {
+			if i+2 < len(tokens) && heavy[strings.ToLower(tokens[i+1])+" "+strings.ToLower(tokens[i+2])] {
 				return true
 			}
 		}
