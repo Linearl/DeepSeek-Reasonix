@@ -2212,6 +2212,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(agent.NewChannelSendTool(collab))
 		reg.Add(agent.NewChannelCancelTool(collab))
 		reg.Add(agent.NewTalkToSessionTool(collab))
+		// 任务 570 (c1)：按 messageId 查询投递终态（只读）。talk_to_session
+		// 的 queued 只是入队回执；注入/降级/拒绝由投递泵异步定局并写入回执
+		// 存储，发送方从这里读回真实结局。读类工具，随协作工具集注册。
+		reg.Add(agent.NewGetMessageStatusTool(collab))
+		// 任务 570 (c2)：会话读自己跨会话信箱的只读通道（不 Claim 不 Ack，
+		// 不写游标——泵/drain_inbox 的单消费者设计不受影响，消费权利仍由
+		// experimental_collab_background_delivery 的 boot 门决定）。降级/拒绝
+		// 系统回执由此第一次对发送方可见。
+		reg.Add(agent.NewPeekOwnInboxTool(collab))
 		// Task 284: cross-session subscriptions (the push half). Registered
 		// ONLY under task 230's experimental_event_trigger switch — 284 is
 		// the persistent form of the same engine family, so one switch

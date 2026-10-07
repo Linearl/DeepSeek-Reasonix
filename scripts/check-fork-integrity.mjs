@@ -396,6 +396,17 @@ const CHECKS = [
   { feature: "任务530 boot 接线（父开关 AND，executor 后补 resolver）", file: "internal/boot/boot.go", patterns: ["collabReplyNudge.ResolveSessionPath = executor.SessionPath", "sessionCollabEnabled(cfg) && cfg.Agent.SessionCollabReplyNudge"] },
   { feature: "任务530 已读未回扫描的存储读口（settled 不消失）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) InboxMessages"] },
   { feature: "任务530 面板开关+三语文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["settings.sessionCollabReplyNudge", "settings.sessionCollabReplyNudgeHint"] },
+
+  // ── 任务 570：投递可见性（c1 回执+查询 / c2 只读 peek，2026-10-07）────
+  // 发送方对投递失败曾经完全无感知（queued 恒绿灯、降级回执无人能读）。
+  // 泵定局写回执 → 按 id 查询 → 只读 peek 自己信箱，三处少一处链路就断。
+  { feature: "任务570 c1 投递回执存储（结局词汇+attempts 续接+原子写）", file: "internal/sessioncollab/receipt.go", patterns: ["RecordDeliveryReceipt", "func (s *MailStore) DeliveryReceipt", "ReceiptFailedRetrying", "ValidDeliveryReceiptOutcome"] },
+  { feature: "任务570 c1 泵定局写回执（降级/注入/拒绝/重试四类落盘）", file: "desktop/session_collab.go", patterns: ["recordReceipt", "p.recordDeliveryReceipt", "ReceiptQueuedFollowup"] },
+  { feature: "任务570 c1 get_message_status 查询工具（双方可查+pending 不假绿）", file: "internal/agent/collab_message_status_tool.go", patterns: ["NewGetMessageStatusTool", "get_message_status", "receiptStatusSemantics"] },
+  { feature: "任务570 c2 peek_own_inbox 只读自读信箱（不 Claim 不写游标）", file: "internal/agent/collab_inbox_peek_tool.go", patterns: ["NewPeekOwnInboxTool", "peek_own_inbox", "peekInboxPreview"] },
+  { feature: "任务570 c2 自读信箱的一次锁定读口（行+游标单次读，只读）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) InboxWithCursor"] },
+  { feature: "任务570 两工具注册（协作工具集内无条件）", file: "internal/boot/boot.go", patterns: ["agent.NewGetMessageStatusTool(collab)", "agent.NewPeekOwnInboxTool(collab)"] },
+  { feature: "任务570 talk_to_session 增量字段（deliveryOutcome=pending+面板降级可见）", file: "internal/agent/session_collab_tools.go", patterns: ["deliveryOutcome", "steerDegradedByPanel", "deliveryDegradedByPanel"] },
   // ── 任务 152：todo 树状任务系统（2026-09-30）────────────────────
   // schema/校验在 evidence（树状状态机 + 终态 + 层级 ID），工具面在 builtin/todo，
   // agent 侧树列表跳过扁平 normalizer，前端树渲染 + 归档区——五处都要在。
