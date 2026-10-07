@@ -658,7 +658,7 @@ func (a *App) startup(ctx context.Context) {
 	// and file table come from the config read here). When the switch is off this
 	// block does nothing at all.
 	if cfg, err := config.Load(); err == nil &&
-		(cfg.Agent.ExperimentalPerfMonitor || cfg.Desktop.ExperimentalPerfMonitor) {
+		cfg.Agent.ExperimentalPerfMonitor {
 		interval, retention, heapInterval, paths := perfMonitorSettings(cfg)
 		monitor := newPerfMonitor(a, perfMonitorDir(), interval, retention, heapInterval, paths)
 		// 任务 501: 高峰快照挂在同一采样循环上，随 monitor 的启停启停。开关
@@ -672,7 +672,7 @@ func (a *App) startup(ctx context.Context) {
 			"heapHighEnabled", monitor.heapHighEnabled,
 			"heapHighThresholdMB", int64(monitor.heapHighThresholdMB))
 	} else if err == nil &&
-		(cfg.Agent.ExperimentalHeapHighProfile || cfg.Desktop.ExperimentalHeapHighProfile) {
+		cfg.Agent.ExperimentalHeapHighProfile {
 		// 任务 501: 高峰开关开着但主监控关着——触发器骑在采样循环上，主监控
 		// 不跑它永远不会命中；把「下一步」直接写进日志（设置面板可开主监控）。
 		slog.Info("desktop: perf monitor heap-high armed but perf monitor off — the trigger rides the perf monitor's sampling loop; enable experimental_perf_monitor to activate it")
@@ -717,7 +717,7 @@ func (a *App) startup(ctx context.Context) {
 		if err != nil {
 			return false
 		}
-		return cfg.Agent.ExperimentalAutonomousIdleTerminate || cfg.Desktop.ExperimentalAutonomousIdleTerminate
+		return cfg.Agent.ExperimentalAutonomousIdleTerminate
 	}
 	a.heartbeat.Start()
 	// Expose the scheduler's admin surface to agent tools (task 201). The
@@ -10174,7 +10174,7 @@ func (a *App) experimentalOrphanLeaseReclaim() bool {
 	if err != nil {
 		return false
 	}
-	return cfg.Agent.ExperimentalOrphanHandling || cfg.Desktop.ExperimentalOrphanHandling
+	return cfg.Agent.ExperimentalOrphanHandling
 }
 
 func (a *App) canReclaimCurrentProcessSessionLease(tab *WorkspaceTab, path string, err error) bool {

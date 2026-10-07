@@ -692,7 +692,7 @@ func (a *App) CreateDreamHeartbeatTask() (created bool, err error) {
 	if lerr != nil {
 		return false, lerr
 	}
-	if cfg != nil && !(cfg.Desktop.ExperimentalDream || cfg.Agent.ExperimentalDream) {
+	if cfg != nil && !cfg.Agent.ExperimentalDream {
 		return false, errors.New("enable the Dream experiment in Settings → Experimental first")
 	}
 	if a.heartbeat == nil {

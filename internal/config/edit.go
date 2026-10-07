@@ -469,10 +469,11 @@ func (c *Config) SetSessionStorage(mode string) error {
 
 // SetExperimentalPerfMonitor toggles the host performance monitor (task 184). It is
 // opt-in because, although it only observes, it appends to a file for as long as
-// it runs; the Desktop copy is the settings-view mirror.
+// it runs. Single-writes the [agent] key (task 473); the [desktop] mirror is
+// retired and only cleared here.
 func (c *Config) SetExperimentalPerfMonitor(enabled bool) error {
-	c.Desktop.ExperimentalPerfMonitor = enabled
 	c.Agent.ExperimentalPerfMonitor = enabled
+	c.Desktop.ExperimentalPerfMonitor = false
 	return nil
 }
 
@@ -512,12 +513,13 @@ func (c *Config) SetPerfMonitorHeapIntervalSeconds(seconds int) error {
 
 // SetExperimentalHeapHighProfile toggles the threshold-triggered heap snapshot
 // (task 501). It is opt-in because it writes a profile file whenever the host
-// crosses the configured watermark; the Desktop copy is the settings-view
-// mirror. Restart-scoped like the perf monitor itself: the trigger rides its
-// sampling loop, which is built once at boot.
+// crosses the configured watermark. Single-writes the [agent] key (task 473);
+// the [desktop] mirror is retired and only cleared here. Restart-scoped like
+// the perf monitor itself: the trigger rides its sampling loop, which is built
+// once at boot.
 func (c *Config) SetExperimentalHeapHighProfile(enabled bool) error {
-	c.Desktop.ExperimentalHeapHighProfile = enabled
 	c.Agent.ExperimentalHeapHighProfile = enabled
+	c.Desktop.ExperimentalHeapHighProfile = false
 	return nil
 }
 
@@ -1063,71 +1065,77 @@ func (c *Config) SetTranscriptCacheTuning(maxCachedTabs, historyBodyBudgetMb, ma
 }
 
 // SetExperimentalTraceAsState toggles Trace-as-State compaction (task 60).
-// Desktop keeps a settings-view mirror; Agent.TraceAsState is the runtime flag.
+// Single-writes the [agent] key (task 473); the [desktop] mirror is retired
+// and only cleared here.
 func (c *Config) SetExperimentalTraceAsState(enabled bool) error {
-	c.Desktop.ExperimentalTraceAsState = enabled
 	c.Agent.TraceAsState = enabled
+	c.Desktop.ExperimentalTraceAsState = false
 	return nil
 }
 
 // SetExperimentalDream toggles the dream/distill memory-curation tools (task 115).
-// Desktop keeps a settings-view mirror; Agent.ExperimentalDream is the runtime flag.
+// Single-writes the [agent] key (task 473); the [desktop] mirror is retired
+// and only cleared here.
 func (c *Config) SetExperimentalDream(enabled bool) error {
-	c.Desktop.ExperimentalDream = enabled
 	c.Agent.ExperimentalDream = enabled
+	c.Desktop.ExperimentalDream = false
 	return nil
 }
 
 // SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork
-// task 160). Desktop keeps a settings-view mirror; Agent is the runtime flag.
+// task 160). Single-writes the [agent] key (task 473); the [desktop] mirror is
+// retired and only cleared here.
 func (c *Config) SetExperimentalAutoLoadOlder(enabled bool) error {
-	c.Desktop.ExperimentalAutoLoadOlder = enabled
 	c.Agent.ExperimentalAutoLoadOlder = enabled
+	c.Desktop.ExperimentalAutoLoadOlder = false
 	return nil
 }
 
 // SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
-// Desktop keeps a settings-view mirror; Agent.ExperimentalSessionCollab is the
-// runtime flag that gates the collaboration tools.
+// Single-writes the [agent] key (task 473); the [desktop] mirror is retired
+// and only cleared here. Agent.ExperimentalSessionCollab gates the
+// collaboration tools.
 func (c *Config) SetExperimentalSessionCollab(enabled bool) error {
-	c.Desktop.ExperimentalSessionCollab = enabled
 	c.Agent.ExperimentalSessionCollab = enabled
+	c.Desktop.ExperimentalSessionCollab = false
 	return nil
 }
 
 // SetExperimentalAutonomousIdleTerminate toggles the heartbeat idle-streak
-// self-terminate guard (task 244 B1). Desktop keeps the settings-view mirror;
-// Agent carries the runtime flag.
+// self-terminate guard (task 244 B1). Single-writes the [agent] key
+// (task 473); the [desktop] mirror is retired and only cleared here.
 func (c *Config) SetExperimentalAutonomousIdleTerminate(enabled bool) error {
-	c.Desktop.ExperimentalAutonomousIdleTerminate = enabled
 	c.Agent.ExperimentalAutonomousIdleTerminate = enabled
+	c.Desktop.ExperimentalAutonomousIdleTerminate = false
 	return nil
 }
 
 // SetExperimentalLoopStreakNote toggles the neutral Continue. streak note
-// (task 244 B2). Desktop keeps the settings-view mirror; Agent is the runtime flag.
+// (task 244 B2). Single-writes the [agent] key (task 473); the [desktop]
+// mirror is retired and only cleared here.
 func (c *Config) SetExperimentalLoopStreakNote(enabled bool) error {
-	c.Desktop.ExperimentalLoopStreakNote = enabled
 	c.Agent.ExperimentalLoopStreakNote = enabled
+	c.Desktop.ExperimentalLoopStreakNote = false
 	return nil
 }
 
 // SetExperimentalEventWaitRecheck toggles event_wait's return-time recheck
-// (task 244 B3). Desktop keeps the settings-view mirror; Agent is the runtime flag.
+// (task 244 B3). Single-writes the [agent] key (task 473); the [desktop]
+// mirror is retired and only cleared here.
 func (c *Config) SetExperimentalEventWaitRecheck(enabled bool) error {
-	c.Desktop.ExperimentalEventWaitRecheck = enabled
 	c.Agent.ExperimentalEventWaitRecheck = enabled
+	c.Desktop.ExperimentalEventWaitRecheck = false
 	return nil
 }
 
 // SetExperimentalOrphanHandling toggles the merged orphan switch (task 449):
 // both the task-244 B5 lease reclaim and the B4 recovery-store sweep follow
-// this one key. Desktop keeps the settings-view mirror; Agent is the runtime
-// flag. The legacy keys are cleared too so an explicit off can never be
-// resurrected by an unmigrated legacy true.
+// this one key. Single-writes the [agent] key (task 473); the [desktop]
+// mirror and the task-244 legacy keys are only cleared here so an explicit
+// off can never be resurrected.
 func (c *Config) SetExperimentalOrphanHandling(enabled bool) error {
-	c.Desktop.ExperimentalOrphanHandling = enabled
 	c.Agent.ExperimentalOrphanHandling = enabled
+	c.Desktop.ExperimentalOrphanHandling = false
 	c.Desktop.ExperimentalOrphanLeaseReclaim = false
 	c.Agent.ExperimentalOrphanLeaseReclaim = false
 	c.Desktop.ExperimentalRecoveryOrphanSweep = false
@@ -1150,20 +1158,20 @@ func (c *Config) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
 }
 
 // SetExperimentalModelCapabilityFilter toggles the per-task model capability
-// filter with explained rejections (task 244 B9). Desktop keeps the
-// settings-view mirror; Agent carries the runtime flag.
+// filter with explained rejections (task 244 B9). Single-writes the [agent]
+// key (task 473); the [desktop] mirror is retired and only cleared here.
 func (c *Config) SetExperimentalModelCapabilityFilter(enabled bool) error {
-	c.Desktop.ExperimentalModelCapabilityFilter = enabled
 	c.Agent.ExperimentalModelCapabilityFilter = enabled
+	c.Desktop.ExperimentalModelCapabilityFilter = false
 	return nil
 }
 
 // SetExperimentalRuntimeReuse toggles the task-363A runtime assembly reuse
-// pool (settings → 实验特性). Desktop keeps the settings-view mirror; Agent
-// carries the runtime flag.
+// pool (settings → 实验特性). Single-writes the [agent] key (task 473); the
+// [desktop] mirror is retired and only cleared here.
 func (c *Config) SetExperimentalRuntimeReuse(enabled bool) error {
-	c.Desktop.ExperimentalRuntimeReuse = enabled
 	c.Agent.ExperimentalRuntimeReuse = enabled
+	c.Desktop.ExperimentalRuntimeReuse = false
 	return nil
 }
 
@@ -1406,10 +1414,12 @@ func (c *Config) SetCollabInboxMerge(mode string) error {
 }
 
 // SetCollabGuidanceMerge toggles the guidance shelf's manual "merge next"
-// button (task 153). Off by default: the queue then behaves exactly as before.
+// button (task 153). Single-writes the [agent] key (task 473); the [desktop]
+// mirror is retired and only cleared here. Off by default: the queue then
+// behaves exactly as before.
 func (c *Config) SetCollabGuidanceMerge(enabled bool) error {
-	c.Desktop.CollabGuidanceMerge = enabled
 	c.Agent.CollabGuidanceMerge = enabled
+	c.Desktop.CollabGuidanceMerge = false
 	return nil
 }
 

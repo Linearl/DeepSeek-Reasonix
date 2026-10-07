@@ -809,6 +809,7 @@ func normalizeConfigForEdit(cfg *Config) bool {
 	normalizeOfficialDeepSeekModels(cfg)
 	migrateBillingDisplayCurrency(cfg)
 	changed = migrateOrphanHandlingMerge(cfg) || changed
+	changed = migrateLabMirrorKeysToAgent(cfg) || changed
 	freezeProviderBillingCurrencies(cfg)
 	applyDeepSeekOfficialDefaultPricing(cfg)
 	backfillDeepSeekOfficialPrices(cfg)
@@ -840,6 +841,44 @@ func migrateOrphanHandlingMerge(c *Config) bool {
 	c.Desktop.ExperimentalRecoveryOrphanSweep = false
 	c.Agent.ExperimentalRecoveryOrphanSweep = false
 	return true
+}
+
+// migrateLabMirrorKeysToAgent retires the task-473 lab mirror set: the
+// [desktop] boolean keys that used to mirror an [agent] switch for the
+// settings view. The [agent] key is the single source of truth now and the
+// settings view derives from it, so a [desktop] true left behind by an older
+// build folds into the [agent] key (OR — the view always displayed the OR of
+// both) and the mirror field is cleared so an explicit off can never be
+// resurrected by a stale mirror true on the next load. A bool cannot
+// distinguish "absent" from false, so only a mirror true carries intent; a
+// mirror false is left alone (no change, nothing to persist). Returns true
+// when anything changed so loadForEditStrict can persist the folded state.
+func migrateLabMirrorKeysToAgent(c *Config) bool {
+	if c == nil {
+		return false
+	}
+	changed := false
+	fold := func(agent, desktop *bool) {
+		if *desktop {
+			*agent = true
+			*desktop = false
+			changed = true
+		}
+	}
+	fold(&c.Agent.TraceAsState, &c.Desktop.ExperimentalTraceAsState)
+	fold(&c.Agent.ExperimentalDream, &c.Desktop.ExperimentalDream)
+	fold(&c.Agent.ExperimentalSessionCollab, &c.Desktop.ExperimentalSessionCollab)
+	fold(&c.Agent.ExperimentalAutoLoadOlder, &c.Desktop.ExperimentalAutoLoadOlder)
+	fold(&c.Agent.ExperimentalPerfMonitor, &c.Desktop.ExperimentalPerfMonitor)
+	fold(&c.Agent.ExperimentalHeapHighProfile, &c.Desktop.ExperimentalHeapHighProfile)
+	fold(&c.Agent.ExperimentalAutonomousIdleTerminate, &c.Desktop.ExperimentalAutonomousIdleTerminate)
+	fold(&c.Agent.ExperimentalLoopStreakNote, &c.Desktop.ExperimentalLoopStreakNote)
+	fold(&c.Agent.ExperimentalEventWaitRecheck, &c.Desktop.ExperimentalEventWaitRecheck)
+	fold(&c.Agent.ExperimentalOrphanHandling, &c.Desktop.ExperimentalOrphanHandling)
+	fold(&c.Agent.ExperimentalModelCapabilityFilter, &c.Desktop.ExperimentalModelCapabilityFilter)
+	fold(&c.Agent.ExperimentalRuntimeReuse, &c.Desktop.ExperimentalRuntimeReuse)
+	fold(&c.Agent.CollabGuidanceMerge, &c.Desktop.CollabGuidanceMerge)
+	return changed
 }
 
 // normalizeRetiredMultiThresholdCompaction clears retired multi-threshold keys

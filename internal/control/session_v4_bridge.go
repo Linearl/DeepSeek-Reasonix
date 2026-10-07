@@ -126,7 +126,7 @@ func NewSessionV4Bridge(root string) (*SessionV4Bridge, error) {
 		if cerr != nil {
 			return false
 		}
-		return cfg.Agent.ExperimentalOrphanHandling || cfg.Desktop.ExperimentalOrphanHandling
+		return cfg.Agent.ExperimentalOrphanHandling
 	})
 	svc, err := session.NewService("desktop-v4-bridge", session.NewFilesystemPersistence(root))
 	if err != nil {

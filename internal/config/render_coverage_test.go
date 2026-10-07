@@ -35,6 +35,13 @@ var desktopRenderOmissions = map[string]string{
 	"session_experience":                 "rendered by renderDesktopSessionExperience",
 	"reasoning_display_mode":             "rendered by renderDesktopReasoningDisplayMode",
 	"conversation_width":                 "rendered with the session-experience block",
+	// Task 473: the [desktop] boolean mirrors of the [agent] lab switches are
+	// retired — migrateLabMirrorKeysToAgent folds them into the [agent] key at
+	// load and the render face only carries the [agent] row. The other twelve
+	// mirrors pass the Contains check via their same-named [agent] row; this
+	// one has a renamed [agent] key (trace_as_state), so its [desktop] spelling
+	// must be listed here.
+	"experimental_trace_as_state": "task 473: retired [desktop] mirror of [agent] trace_as_state; folded at load, never rendered",
 }
 
 // TestDesktopRenderTableCoversEveryKey is the single guard against that class of bug:

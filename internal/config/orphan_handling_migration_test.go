@@ -26,8 +26,13 @@ func TestOrphanHandlingMigratesLegacyLeaseKey(t *testing.T) {
 experimental_orphan_lease_reclaim = true
 `)
 	cfg := LoadForEdit(path)
-	if !cfg.Agent.ExperimentalOrphanHandling || !cfg.Desktop.ExperimentalOrphanHandling {
-		t.Fatal("legacy lease key must fold into experimental_orphan_handling (agent+desktop mirrors)")
+	// Task 473: the [agent] key is the single source; the [desktop] mirror is
+	// retired and must be cleared by the fold.
+	if !cfg.Agent.ExperimentalOrphanHandling {
+		t.Fatal("legacy lease key must fold into experimental_orphan_handling")
+	}
+	if cfg.Desktop.ExperimentalOrphanHandling {
+		t.Fatal("the retired [desktop] mirror must be cleared after the fold")
 	}
 	if cfg.Agent.ExperimentalOrphanLeaseReclaim || cfg.Desktop.ExperimentalOrphanLeaseReclaim {
 		t.Fatal("legacy lease key must be cleared after the fold")
@@ -43,8 +48,11 @@ func TestOrphanHandlingMigratesLegacySweepKey(t *testing.T) {
 experimental_recovery_orphan_sweep = true
 `)
 	cfg := LoadForEdit(path)
-	if !cfg.Agent.ExperimentalOrphanHandling || !cfg.Desktop.ExperimentalOrphanHandling {
-		t.Fatal("legacy sweep key must fold into experimental_orphan_handling (agent+desktop mirrors)")
+	if !cfg.Agent.ExperimentalOrphanHandling {
+		t.Fatal("legacy sweep key must fold into experimental_orphan_handling")
+	}
+	if cfg.Desktop.ExperimentalOrphanHandling {
+		t.Fatal("the retired [desktop] mirror must be cleared after the fold")
 	}
 	if cfg.Agent.ExperimentalRecoveryOrphanSweep || cfg.Desktop.ExperimentalRecoveryOrphanSweep {
 		t.Fatal("legacy sweep key must be cleared after the fold")
@@ -58,8 +66,11 @@ func TestOrphanHandlingMigratesDesktopMirrorOnly(t *testing.T) {
 experimental_orphan_lease_reclaim = true
 `)
 	cfg := LoadForEdit(path)
-	if !cfg.Desktop.ExperimentalOrphanHandling || !cfg.Agent.ExperimentalOrphanHandling {
-		t.Fatal("desktop-only legacy key must fold into both merged mirrors")
+	if !cfg.Agent.ExperimentalOrphanHandling {
+		t.Fatal("desktop-only legacy key must fold into the merged switch")
+	}
+	if cfg.Desktop.ExperimentalOrphanHandling {
+		t.Fatal("the retired [desktop] mirror must be cleared after the fold")
 	}
 }
 
@@ -159,8 +170,13 @@ func TestOrphanHandlingLegacySettersDelegateToMergedSwitch(t *testing.T) {
 	if err := cfg.SetExperimentalOrphanLeaseReclaim(true); err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Agent.ExperimentalOrphanHandling || !cfg.Desktop.ExperimentalOrphanHandling {
+	// Task 473: the merged switch single-writes the [agent] key; the retired
+	// [desktop] mirror stays cleared.
+	if !cfg.Agent.ExperimentalOrphanHandling {
 		t.Fatal("legacy lease setter must toggle the merged switch")
+	}
+	if cfg.Desktop.ExperimentalOrphanHandling {
+		t.Fatal("the retired [desktop] mirror must stay cleared after a legacy setter")
 	}
 	if err := cfg.SetExperimentalRecoveryOrphanSweep(true); err != nil {
 		t.Fatal(err)
@@ -181,11 +197,11 @@ func TestOrphanHandlingLegacySettersDelegateToMergedSwitch(t *testing.T) {
 }
 
 // Both halves of the orphan flow follow the one switch: the render face must
-// carry the merged key in both sections (settings-view mirror + agent runtime)
-// so an untouched or migrated config round-trips through save.
+// carry the merged key in the [agent] section (unconditional, fixed key set)
+// so an untouched or migrated config round-trips through save. Task 473: the
+// [desktop] mirror row is gone — the [agent] row is the only render.
 func TestOrphanHandlingRendersMergedKey(t *testing.T) {
 	c := &Config{}
-	c.Desktop.ExperimentalOrphanHandling = true
 	c.Agent.ExperimentalOrphanHandling = true
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	if !strings.Contains(out, "experimental_orphan_handling = true") {

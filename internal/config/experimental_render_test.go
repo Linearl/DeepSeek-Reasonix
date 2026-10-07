@@ -21,23 +21,20 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalTodoSidebar = true
 	c.Desktop.ExperimentalPromptHistoryPicker = true
 	c.Desktop.ExperimentalPathRules = true
-	c.Desktop.ExperimentalTraceAsState = true
-	c.Desktop.ExperimentalDream = true
+	// Task 473: the lab mirror set is single-source now — the [agent] key
+	// carries the value and the render face has only the [agent] row.
+	c.Agent.TraceAsState = true
+	c.Agent.ExperimentalDream = true
 	c.Agent.ExperimentalSessionCollab = true
-	c.Desktop.ExperimentalAutonomousIdleTerminate = true
 	c.Agent.ExperimentalAutonomousIdleTerminate = true
-	c.Desktop.ExperimentalLoopStreakNote = true
 	c.Agent.ExperimentalLoopStreakNote = true
-	c.Desktop.ExperimentalEventWaitRecheck = true
 	c.Agent.ExperimentalEventWaitRecheck = true
 	c.Desktop.ExperimentalOrphanLeaseReclaim = true
 	c.Agent.ExperimentalOrphanLeaseReclaim = true
 	c.Desktop.ExperimentalRecoveryOrphanSweep = true
 	c.Desktop.ExperimentalLifecycleNoiseGate = true
 
-	c.Desktop.ExperimentalModelCapabilityFilter = true
 	c.Agent.ExperimentalModelCapabilityFilter = true
-	c.Desktop.ExperimentalSessionCollab = true
 	// Task 439: the built-in zcode task bus switch must survive the render.
 	c.Desktop.ExperimentalZcodeTaskBus = true
 
@@ -52,7 +49,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_todo_sidebar = true",
 		"experimental_prompt_history_picker = true",
 		"experimental_path_rules = true",
-		"experimental_trace_as_state = true",
+		"trace_as_state = true",
 		"experimental_dream = true",
 		"experimental_session_collab = true",
 		"experimental_autonomous_idle_terminate = true",
@@ -84,8 +81,9 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_parallel_full_access = false",
 		"experimental_todo_sidebar = false",
 		"experimental_path_rules = false",
-		"experimental_trace_as_state = false",
-		"experimental_dream = false", // [agent] and desktop mirror both render this key
+		// Task 473: the [desktop] mirror spelling is gone; the [agent] key
+		// (trace_as_state) is asserted further down the list.
+		"experimental_dream = false", // [agent] row only — single source (task 473)
 		"experimental_session_collab = false",
 		"experimental_autonomous_idle_terminate = false",
 		"experimental_loop_streak_note = false",
