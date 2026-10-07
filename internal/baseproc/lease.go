@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reasonix/internal/baseproc/pidalive"
 )
 
 // Slice S1c — session attach/detach lease accounting (design §6, matrix C3/C4).
@@ -106,8 +108,11 @@ func (t *leaseTable) count() int {
 
 // leaseAlive reports whether a client pid still names a live process.
 // Overridden in tests; kept as a variable so the C4 sweep can be driven
-// deterministically instead of depending on real process lifetimes.
-var leaseAlive = pidAlive
+// deterministically instead of depending on real process lifetimes. The
+// oracle itself moved to the zero-dependency leaf internal/baseproc/pidalive
+// (任务511 复发断根) so sessioncollab/collabinbox can share it without an
+// import cycle through config.
+var leaseAlive = pidalive.Alive
 
 // AttachSessionAccounting registers the session face on this server:
 // base.attach / base.detach plus the CapSessions capability base.hello
