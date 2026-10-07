@@ -1,4 +1,5 @@
 import { PanelLeft, PanelRight, Search } from "lucide-react";
+import type { ReactNode } from "react";
 import { TabBar } from "./TabBar";
 import type { LastSessionWorkspaceInfo, TabMeta } from "../lib/types";
 import { useT } from "../lib/i18n";
@@ -29,6 +30,8 @@ export interface AppChromeProps {
   onTabsReorder: (tabIds: string[]) => void;
   onNewTab: () => void;
   onOpenPalette: () => void;
+  /** 任务 552:标签页概览面板(自带触发按钮),渲染在放大镜按钮左侧;三套 chrome 各一处。 */
+  tabOverview?: ReactNode;
   /** Split view (task 70): the tab in the secondary pane, and its toggle. */
   splitTabId?: string | null;
   onToggleSplit?: (tabId: string) => void;
@@ -61,6 +64,7 @@ export function AppChrome({
   onTabsReorder,
   onNewTab,
   onOpenPalette,
+  tabOverview,
   splitTabId = null,
   onToggleSplit,
   onFetchLastSessionWorkspace,
@@ -123,14 +127,18 @@ export function AppChrome({
         <PanelLeft size={16} />
       </button>
       {workbenchChrome && (
-        <button
-          className="app-chrome__workbench-search"
-          type="button"
-          onClick={onOpenPalette}
-          aria-label={t("palette.placeholder")}
-        >
-          <Search size={18} />
-        </button>
+        <>
+          {/* 任务 552:标签页概览入口,位于放大镜左侧(CSS 绝对定位再左移一位)。 */}
+          {tabOverview}
+          <button
+            className="app-chrome__workbench-search"
+            type="button"
+            onClick={onOpenPalette}
+            aria-label={t("palette.placeholder")}
+          >
+            <Search size={18} />
+          </button>
+        </>
       )}
 
       {workbenchChrome ? (
@@ -147,6 +155,8 @@ export function AppChrome({
             ].filter(Boolean).join(" ")}
             aria-label={t("tabBar.commandSearch")}
           >
+            {/* 任务 552:标签页概览入口,DOM 顺序在放大镜前 = 视觉在其左侧(flex 行)。 */}
+            {tabOverview}
             <button
               className={[
                 "tabbar__command",
@@ -173,6 +183,8 @@ export function AppChrome({
             ].filter(Boolean).join(" ")}
             aria-label={t("tabBar.commandSearch")}
           >
+            {/* 任务 552:标签页概览入口,DOM 顺序在放大镜前 = 视觉在其左侧(flex 行)。 */}
+            {tabOverview}
             <button
               className={[
                 "tabbar__command",

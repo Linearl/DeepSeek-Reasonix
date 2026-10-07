@@ -89,6 +89,17 @@ export const en = {
   "tabBar.commandSearch": "Search · Command · Open file",
   "tabBar.commandSearchCompact": "Search",
 
+  // task 552: tab overview panel (entry left of the search button)
+  "tabOverview.title": "Tab overview",
+  "tabOverview.searchPlaceholder": "Search tabs…",
+  "tabOverview.openTabs": "Open tabs",
+  "tabOverview.recentlyClosed": "Recently closed",
+  "tabOverview.noResults": "No matching tabs",
+  "tabOverview.close": "Close",
+  "tabOverview.closeTabTitle": "Close \"{title}\"",
+  "tabOverview.scopeProject": "project",
+  "tabOverview.scopeGlobal": "global",
+
   // sidebar
   "sidebar.conversations": "Chats",
   "sidebar.trash": "Trash",
