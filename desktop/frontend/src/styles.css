@@ -10510,6 +10510,21 @@ body > .mermaid-diagram--fullscreen {
   border-color: var(--button-danger-border);
   color: var(--button-danger-fg);
 }
+/* 任务578：btn--secondary 被 20 处引用但从未有定义（上游同病）——
+   次要按钮用降一档的底色与弱化前景，与默认按钮区分主次。 */
+.btn--secondary {
+  background: var(--bg-soft);
+  color: var(--button-muted-fg);
+}
+.btn--secondary:hover {
+  background: var(--bg-elev-2);
+  border-color: var(--button-border-hover);
+  color: var(--button-fg);
+}
+.btn--secondary:disabled:hover {
+  background: var(--bg-soft);
+  color: var(--button-muted-fg);
+}
 
 .inline-confirm {
   display: inline-flex;
@@ -14967,6 +14982,20 @@ body > .mermaid-diagram--fullscreen {
   height: var(--button-small-height);
   padding: 0 10px;
   font-size: var(--font-control-small);
+}
+/* 任务578：btn--sm（5 处）与 btn--small 是两个独立变体，不互为别名——
+   sm 更矮更窄，用于对话框头部/横幅里的紧凑动作。 */
+.btn--sm {
+  height: calc(var(--button-small-height) - 4px);
+  padding: 0 8px;
+  font-size: var(--font-control-small);
+}
+/* 任务578：btn--icon（ThemeGallery 关闭键）方形图标规格，.btn 的 flex 居中承接图标。 */
+.btn--icon {
+  width: var(--button-icon-size);
+  min-width: var(--button-icon-size);
+  height: var(--button-icon-size);
+  padding: 0;
 }
 .badge {
   flex-shrink: 0;
@@ -25128,6 +25157,16 @@ body > .mermaid-diagram--fullscreen {
 .windows-window-control--close:focus-visible {
   color: #fff;
   background: #c42b1c;
+}
+
+/* 任务578：minimize/maximize 变体此前零定义（引用 4 处）。钉住与 --close
+   同型的中性 hover 意图：基础类改动不再静默改掉标题栏按钮的悬停语义。 */
+.windows-window-control--minimize:hover,
+.windows-window-control--minimize:focus-visible,
+.windows-window-control--maximize:hover,
+.windows-window-control--maximize:focus-visible {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg-faint) 13%, transparent);
 }
 
 .app--darwin .app-chrome--tabs {
