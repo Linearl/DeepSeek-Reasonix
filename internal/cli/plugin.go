@@ -13,6 +13,7 @@ import (
 	"reasonix/internal/hook"
 	"reasonix/internal/installsource"
 	"reasonix/internal/pluginpkg"
+	"reasonix/internal/secrets"
 )
 
 func pluginCommand(args []string) int {
@@ -175,7 +176,9 @@ func runInstallSourceJSON(body map[string]any) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Println(out)
+	// Install-source 输出可能携带 provider 配置面的 env 名/回显文本，打印前统一
+	// 脱敏（与 418 六处日志边界 RedactError 同一纪律；codeql[go/clear-text-logging]）。
+	fmt.Println(secrets.Redact(out))
 	var resp struct {
 		OK bool `json:"ok"`
 	}

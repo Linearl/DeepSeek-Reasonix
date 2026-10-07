@@ -16,6 +16,7 @@ import (
 	"reasonix/internal/control"
 	"reasonix/internal/event"
 	"reasonix/internal/plugin"
+	"reasonix/internal/secrets"
 	"reasonix/internal/store"
 )
 
@@ -341,10 +342,11 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 		// Failed passes stay invisible to the user (no dialog) and retry on
 		// the next tick: the attempt stamp is only written on success, so a
 		// transient provider error does not park the conversation until the
-		// user touches it again.
+		// user touches it again. err 链可引入 provider/config 回显文本，日志边界
+		// 统一脱敏（418 同一纪律；codeql[go/clear-text-logging]）。
 		slog.Warn("desktop: cold cache compact failed (will retry next tick)",
 			"path", path, "mode", mode, "bytes", size,
-			"durationMs", duration.Milliseconds(), "err", err)
+			"durationMs", duration.Milliseconds(), "err", secrets.RedactError(err))
 		return
 	}
 	l.mu.Lock()
