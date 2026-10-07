@@ -36,7 +36,10 @@ func desktopStartupSettingsFromConfig(cfg *config.Config) DesktopStartupSettings
 		// same boot snapshot — without it the frontend store resets to off on
 		// every restart while the settings switch keeps reading on.
 		ExperimentalSelectionActions: cfg.Agent.ExperimentalSelectionActions,
-		ConfigWarnings:               cfg.LoadWarnings(), ConfigPath: config.UserConfigPath(),
+		// Task 588: the quick-command snippets ride the boot snapshot with the
+		// gate; DesktopQuickCommands returns nil (omitted in JSON) when unset.
+		QuickCommands:  cfg.DesktopQuickCommands(),
+		ConfigWarnings: cfg.LoadWarnings(), ConfigPath: config.UserConfigPath(),
 	}
 }
 

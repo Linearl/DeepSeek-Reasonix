@@ -189,6 +189,76 @@ func TestAutopilotTierPreservesTaskDimension(t *testing.T) {
 	}
 }
 
+// Task 595: the mode bar is a four-tier single-select on the approval axis.
+// While autopilot holds, picking any attended tier (ask/auto/yolo — yolo
+// included: the yolo tier is plain yolo, not an autopilot alias) leaves
+// autopilot in the same call, and picking the autopilot tier re-engages it —
+// every adjacent pair flips in one hop, which is the "双向切换连续 5 次" user
+// acceptance. The legacy SetToolApprovalModeForTab keeps its (autopilot, yolo)
+// semantics for programmatic writers (heartbeat, bypass toggle).
+func TestApprovalTierSingleSelectLeavesAutopilot(t *testing.T) {
+	app, tab, codes := autopilotGateTestApp(t, control.ToolApprovalAsk)
+	app.SetApprovalTierForTab(tab.ID, "autopilot")
+	if !tab.autopilot {
+		t.Fatal("precondition failed — autopilot tier must engage autopilot")
+	}
+	if tab.toolApprovalMode != control.ToolApprovalYolo {
+		t.Fatalf("approval after autopilot tier = %q, want yolo (465 assumed yolo)", tab.toolApprovalMode)
+	}
+
+	// yolo pick leaves autopilot in the same call — the "autopilot 切不到 yolo" fix.
+	app.SetApprovalTierForTab(tab.ID, control.ToolApprovalYolo)
+	if tab.autopilot {
+		t.Fatal("yolo tier pick under autopilot must leave autopilot (595 single-select)")
+	}
+	if tab.toolApprovalMode != control.ToolApprovalYolo {
+		t.Fatalf("approval after yolo tier pick = %q, want yolo", tab.toolApprovalMode)
+	}
+	// The deliberate leave fires no surprise notice (the bar moving is the
+	// feedback); the 325 off-yolo close keeps its warn.
+	for _, code := range *codes {
+		if code == NoticeCodeAutopilotClosedOffYolo {
+			t.Fatalf("deliberate yolo-leave must not emit %q", NoticeCodeAutopilotClosedOffYolo)
+		}
+	}
+
+	// auto pick re-engages nothing but still lands the axis; the round trip
+	// autopilot → yolo → auto → autopilot flips in one hop per direction.
+	app.SetApprovalTierForTab(tab.ID, control.ToolApprovalAuto)
+	if tab.autopilot || tab.toolApprovalMode != control.ToolApprovalAuto {
+		t.Fatalf("auto tier pick = autopilot:%v approval:%q, want plain auto", tab.autopilot, tab.toolApprovalMode)
+	}
+	app.SetApprovalTierForTab(tab.ID, "autopilot")
+	if !tab.autopilot || tab.toolApprovalMode != control.ToolApprovalYolo {
+		t.Fatalf("autopilot tier pick from auto = autopilot:%v approval:%q, want engaged+yolo", tab.autopilot, tab.toolApprovalMode)
+	}
+
+	// The plan axis rides along every tier switch (定版：模式轴保持不变随行).
+	app.SetCollaborationModeForTab(tab.ID, "plan")
+	app.SetApprovalTierForTab(tab.ID, "yolo")
+	if !tabModeHasPlan(tab.mode) {
+		t.Fatal("yolo tier pick must preserve the plan axis")
+	}
+	if tab.autopilot {
+		t.Fatal("yolo tier pick must leave autopilot even with plan riding")
+	}
+}
+
+// The legacy writer keeps pre-595 semantics: SetToolApprovalModeForTab("yolo")
+// under a holding autopilot does NOT close it (yolo is compatible), heartbeat
+// tasks re-arming yolo must not tear down an unattended run.
+func TestLegacyApprovalWriterKeepsAutopilotOnYolo(t *testing.T) {
+	app, tab, _ := autopilotGateTestApp(t, control.ToolApprovalAsk)
+	app.SetCollaborationModeForTab(tab.ID, "autopilot")
+	if !tab.autopilot {
+		t.Fatal("precondition failed — autopilot tier must engage autopilot")
+	}
+	app.SetToolApprovalModeForTab(tab.ID, control.ToolApprovalYolo)
+	if !tab.autopilot {
+		t.Fatal("legacy yolo write must keep autopilot on (yolo-compatible posture)")
+	}
+}
+
 // Task 465 X4 断点 C: the bare autopilot toggle (no goal, hence no goal-state
 // sidecar) must survive a restart via the desktopTabEntry column — gate-
 // filtered, so a stale true under ask/auto restores attended.

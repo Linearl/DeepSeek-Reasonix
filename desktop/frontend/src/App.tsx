@@ -623,6 +623,7 @@ export default function App() {
     drainExtensionNotifications,
     setCollaborationMode: setControllerCollaborationMode,
     setToolApprovalMode: setControllerToolApprovalMode,
+    setApprovalTier: setControllerApprovalTier,
     setQualityFloor: setControllerQualityFloor,
     setComposerProfileForTab: setControllerComposerProfileForTab,
     setGoalForTab: setControllerGoalForTab,
@@ -1826,14 +1827,21 @@ export default function App() {
       }
       // 任务 465：审批离开 yolo 而 autopilot 在开 → 325 反向联动后端会自动关
       // autopilot；乐观 profile 同步落旗，模式条立即掉档。
-      const autopilotDrops = m !== "yolo" && composerProfile.autopilot;
+      // 任务 595 四档单选：autopilot 持有时点任意档（含 yolo——模式条上 yolo
+      // 档是普通 yolo，不是 autopilot 的别名）= 一次调用内原子离开 autopilot
+      // 落到该档，走 SetApprovalTierForTab；「autopilot 切不到 yolo」即此修。
+      const autopilotDrops = composerProfile.autopilot;
       patchActiveComposerProfile(
         autopilotDrops ? { toolApprovalMode: m, autopilot: false } : { toolApprovalMode: m },
         autopilotDrops ? ["toolApprovalMode", "autopilot"] : ["toolApprovalMode"],
       );
+      if (autopilotDrops) {
+        void setControllerApprovalTier(m);
+        return;
+      }
       void setControllerToolApprovalMode(m);
     },
-    [activeTabId, composerProfile.autopilot, patchActiveComposerProfile, setControllerToolApprovalMode, toolApprovalMode],
+    [activeTabId, composerProfile.autopilot, patchActiveComposerProfile, setControllerApprovalTier, setControllerToolApprovalMode, toolApprovalMode],
   );
   // Fork: sub-agent delegation tier is a per-tab setting; the + menu is the
   // only entry point now (it needs no frequent switching).

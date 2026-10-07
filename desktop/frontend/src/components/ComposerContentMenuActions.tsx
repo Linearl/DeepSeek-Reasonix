@@ -5,6 +5,7 @@ import type { QuickCommandEntry } from "../lib/settingsViewTypes";
 
 export function ComposerContentMenuActions({
   attachmentInputEnabled,
+  running = false,
   textPresent,
   onChooseAttachment,
   onInsertTrigger,
@@ -12,6 +13,7 @@ export function ComposerContentMenuActions({
   onChooseQuickCommand,
 }: {
   attachmentInputEnabled: boolean;
+  running?: boolean;
   textPresent: boolean;
   onChooseAttachment: () => void;
   onInsertTrigger: (trigger: "@" | "#" | "/") => void;
@@ -45,6 +47,8 @@ export function ComposerContentMenuActions({
           placeholder={t("composer.contentQuickCommandsSearch")}
           onChange={(event) => setQuery(event.target.value)}
         />
+        {/* Task 593: surface the "!!" line-head trigger next to the snippets. */}
+        <div className="composer-access-menu__hint">{t("composer.quickCommandsBangHint")}</div>
         {matches.length === 0 ? (
           <div className="composer-access-menu__hint">{t("composer.contentQuickCommandsEmpty")}</div>
         ) : (
@@ -72,7 +76,12 @@ export function ComposerContentMenuActions({
     <div className="composer-access-menu__section" role="menu" aria-label={t("composer.contentMenuTitle")}>
       <div className="composer-access-menu__label">{t("composer.contentMenuTitle")}</div>
       {attachmentInputEnabled ? <>
-        <button type="button" role="menuitem" className="composer-access-menu__item composer-content-menu__item" onClick={onChooseAttachment}>
+        {/* Task 594: attachments stay turn-gated (grayed with a reason) while
+            the text-only inserts below remain usable mid-turn. */}
+        <button type="button" role="menuitem" className="composer-access-menu__item composer-content-menu__item"
+          onClick={onChooseAttachment}
+          disabled={running}
+          title={running ? t("composer.runningGateHint") : undefined}>
           <FilePlus2 size={16} aria-hidden="true" />
           <span className="composer-access-menu__copy">
             <span className="composer-access-menu__title">{t("composer.contentAddAttachment")}</span>

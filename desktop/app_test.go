@@ -1242,6 +1242,39 @@ func TestDesktopStartupSettingsCarriesSelectionActionsGate(t *testing.T) {
 	}
 }
 
+// Task 588: the boot snapshot must carry the quick-command snippets next to
+// the gate. The view missing the field made applyDesktopPreferences refill
+// the composer state with an empty list on every restart (gate on, + menu
+// entry gone) until a settings save happened to refill it from the full
+// Settings view — the "快捷指令入口从 + 菜单消失" user report.
+func TestDesktopStartupSettingsCarriesQuickCommandSnippets(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	userCfg := config.LoadForEdit(config.UserConfigPath())
+	userCfg.Desktop.ExperimentalQuickCommands = true
+	if err := userCfg.SetQuickCommands([]config.QuickCommandEntry{
+		{Title: "pre-release关键动作", Text: "跑发布检查单"},
+		{Title: "转线", Text: "切换到另一条线"},
+	}); err != nil {
+		t.Fatalf("set quick commands: %v", err)
+	}
+	if err := userCfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("save user config: %v", err)
+	}
+
+	got := NewApp().DesktopStartupSettings()
+	if !got.ExperimentalQuickCommands {
+		t.Fatalf("DesktopStartupSettings.ExperimentalQuickCommands = false, want true")
+	}
+	want := []config.QuickCommandEntry{
+		{Title: "pre-release关键动作", Text: "跑发布检查单"},
+		{Title: "转线", Text: "切换到另一条线"},
+	}
+	if !reflect.DeepEqual(got.QuickCommands, want) {
+		t.Fatalf("DesktopStartupSettings.QuickCommands = %+v, want %+v (boot snapshot must carry the task-588 snippets)", got.QuickCommands, want)
+	}
+}
+
 func BenchmarkDesktopSettingsPayloads(b *testing.B) {
 	home := b.TempDir()
 	xdg := filepath.Join(home, ".config")
