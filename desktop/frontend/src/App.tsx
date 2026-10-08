@@ -5810,6 +5810,11 @@ export default function App() {
                     detailEnabled={subagentDetailEnabled}
                     wide={subagentsWide}
                     onToggleWide={toggleSubagentsWide}
+                    /* 任务440: the dock detail's live transcript reads through
+                       the same injected bridge the capsule detail uses; the
+                       session path scopes the reads to the active tab. */
+                    sessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}
+                    onReadSubagent={capsuleReadSubagent}
                   />
                 </Suspense>
               ) : effectiveRightDockMode === "remote" ? (

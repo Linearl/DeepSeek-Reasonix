@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -11,12 +11,33 @@ import {
   UnfoldHorizontal,
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
+import { historyMessagesToItems } from "../lib/useController";
 import { subjectOf } from "../lib/tools";
+import type { HistoryMessage } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
   type SubagentDirectory,
   type SubagentDirectoryEntry,
 } from "../lib/subagentDirectory";
+
+// 任务440: the dock detail's live transcript loads lazily — the same pattern
+// as the capsule detail, and the chunk is already in the bundle (main
+// transcript).
+const LazyTranscript = lazy(async () => ({ default: (await import("./Transcript")).Transcript }));
+
+// 任务440: transcript read states for the dock detail view. loading/failed/
+// empty mirror the capsule history view; a running entry re-pulls every 2s so
+// the message stream keeps up with the child's work (the same cadence the
+// capsule's live clock uses), an ended entry reads once.
+interface DockLiveTranscriptState {
+  loading: boolean;
+  failed: boolean;
+  messages: HistoryMessage[];
+}
+
+const EMPTY_DOCK_LIVE: DockLiveTranscriptState = { loading: false, failed: false, messages: [] };
+
+export const SUBAGENT_LIVE_POLL_MS = 2000;
 
 // Task 495: right-dock "子代理" tab body, modeled on the zcode subagent
 // directory (SubagentDirectorySidePane): a running section and an ended
@@ -127,8 +148,26 @@ const DirectoryRow = memo(function DirectoryRow({
 /** Task 507 plan A: the read-only in-dock detail view. Same content the
  *  plan-C inline preview carries (summary/error + the in-memory progress
  *  preview), in the wider dock body, with a back button and an explicit
- *  read-only notice — no input surface by design. */
-function SubagentDetailView({ entry, onBack }: { entry: SubagentDirectoryEntry; onBack: () => void }) {
+ *  read-only notice — no input surface by design.
+ *
+ *  任务440: when the entry carries a persisted transcript ref and the App
+ *  injected the read bridge, the view renders the child's actual work
+ *  process (message stream / tool calls) instead of the truncated preview —
+ *  re-pulling every SUBAGENT_LIVE_POLL_MS while the child is still running so
+ *  the stream keeps up live (this is the supplement's "运行中也能看" next to
+ *  zcode). Without a ref (ephemeral run) or without the bridge the view falls
+ *  back to the memory-only preview, byte for byte the 507 behavior. */
+function SubagentDetailView({
+  entry,
+  onBack,
+  sessionPath,
+  onReadSubagent,
+}: {
+  entry: SubagentDirectoryEntry;
+  onBack: () => void;
+  sessionPath?: string;
+  onReadSubagent?: (sessionPath: string, ref: string) => Promise<HistoryMessage[]>;
+}) {
   const t = useT();
   const title = rowTitle(entry);
   const summary = entry.item.summary || "";
@@ -140,6 +179,43 @@ function SubagentDetailView({ entry, onBack }: { entry: SubagentDirectoryEntry; 
   const hasPreview = Boolean(previewReasoning || previewText || previewNotice);
   const durationSeconds = entryDurationSeconds(entry);
   const startedClock = entryStartedClock(entry);
+  const ref = entry.ref;
+  const liveEnabled = Boolean(ref && onReadSubagent && sessionPath);
+  const [live, setLive] = useState<DockLiveTranscriptState>(liveEnabled ? { loading: true, failed: false, messages: [] } : EMPTY_DOCK_LIVE);
+  const liveSeq = useRef(0);
+  useEffect(() => {
+    if (!ref || !onReadSubagent || !sessionPath) return;
+    const seq = ++liveSeq.current;
+    let cancelled = false;
+    const pull = () => {
+      onReadSubagent(sessionPath, ref)
+        .then((messages) => {
+          if (cancelled || seq !== liveSeq.current) return;
+          setLive({ loading: false, failed: false, messages });
+        })
+        .catch(() => {
+          if (cancelled || seq !== liveSeq.current) return;
+          setLive({ loading: false, failed: true, messages: [] });
+        });
+    };
+    pull();
+    // A running child keeps the stream fresh; an ended one reads once — its
+    // transcript is final (the parent re-render supplies the new running
+    // flag, and the effect re-subscribes on that transition).
+    if (!entry.running) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const timer = window.setInterval(pull, SUBAGENT_LIVE_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [ref, sessionPath, onReadSubagent, entry.running]);
+  // Value-keyed projection: a poll returning identical content re-renders the
+  // wrapper but not the transcript tree.
+  const liveItems = useMemo(() => historyMessagesToItems(live.messages, "subagent-dock").items, [live.messages]);
   return (
     <div className="subagents-panel__detailview" role="region" aria-label={t("subagentPanel.detailTitle")}>
       <div className="subagents-panel__detailview-head">
@@ -157,40 +233,62 @@ function SubagentDetailView({ entry, onBack }: { entry: SubagentDirectoryEntry; 
         {startedClock ? <span>{t("subagentPanel.startedAt", { time: startedClock })}</span> : null}
         {durationSeconds > 0 ? <span>{t("subagent.phase.elapsed", { n: durationSeconds })}</span> : null}
       </p>
-      {error ? (
-        <div className="subagents-panel__detailview-block subagents-panel__detailview-block--error">
-          <div className="subagents-panel__detailview-label">{t("subagent.preview.notice")}</div>
-          <pre className="subagents-panel__detailview-text">{error}</pre>
+      {liveEnabled ? (
+        <div
+          className="subagents-panel__live"
+          data-subagents-live={entry.running ? "running" : "ended"}
+          data-subagents-live-state={live.loading ? "loading" : live.failed ? "failed" : liveItems.length === 0 ? "empty" : "ready"}
+        >
+          {live.loading ? (
+            <div className="subagents-panel__detailview-note">{t("composer.capsuleHistoryLoading")}</div>
+          ) : live.failed ? (
+            <div className="subagents-panel__detailview-note">{t("composer.capsuleHistoryFailed")}</div>
+          ) : liveItems.length === 0 ? (
+            <div className="subagents-panel__detailview-note">{t("composer.capsuleHistoryEmpty")}</div>
+          ) : (
+            <Suspense fallback={<div className="subagents-panel__detailview-note">{t("composer.capsuleHistoryLoading")}</div>}>
+              <LazyTranscript items={liveItems} onPrompt={() => {}} questionNavigator={false} rewindDisabled />
+            </Suspense>
+          )}
         </div>
-      ) : null}
-      {summary ? (
-        <div className="subagents-panel__detailview-block">
-          <div className="subagents-panel__detailview-label">{t("subagentPanel.detailSummary")}</div>
-          <pre className="subagents-panel__detailview-text">{summary}</pre>
-        </div>
-      ) : null}
-      {previewReasoning ? (
-        <div className="subagents-panel__detailview-block">
-          <div className="subagents-panel__detailview-label">{t("subagent.preview.reasoning")}</div>
-          <pre className="subagents-panel__detailview-text">{previewReasoning}</pre>
-        </div>
-      ) : null}
-      {previewText ? (
-        <div className="subagents-panel__detailview-block">
-          <div className="subagents-panel__detailview-label">{t("subagent.preview.text")}</div>
-          <pre className="subagents-panel__detailview-text">{previewText}</pre>
-        </div>
-      ) : null}
-      {previewNotice ? (
-        <div className="subagents-panel__detailview-block">
-          <div className="subagents-panel__detailview-label">{t("subagent.preview.notice")}</div>
-          <pre className="subagents-panel__detailview-text">{previewNotice}</pre>
-        </div>
-      ) : null}
-      {progress?.truncated ? <div className="subagents-panel__detailview-note">{t("subagent.preview.truncated")}</div> : null}
-      {!summary && !error && !hasPreview ? (
-        <p className="subagents-panel__detailview-note">{t("subagentPanel.detailNoPreview")}</p>
-      ) : null}
+      ) : (
+        <>
+          {error ? (
+            <div className="subagents-panel__detailview-block subagents-panel__detailview-block--error">
+              <div className="subagents-panel__detailview-label">{t("subagent.preview.notice")}</div>
+              <pre className="subagents-panel__detailview-text">{error}</pre>
+            </div>
+          ) : null}
+          {summary ? (
+            <div className="subagents-panel__detailview-block">
+              <div className="subagents-panel__detailview-label">{t("subagentPanel.detailSummary")}</div>
+              <pre className="subagents-panel__detailview-text">{summary}</pre>
+            </div>
+          ) : null}
+          {previewReasoning ? (
+            <div className="subagents-panel__detailview-block">
+              <div className="subagents-panel__detailview-label">{t("subagent.preview.reasoning")}</div>
+              <pre className="subagents-panel__detailview-text">{previewReasoning}</pre>
+            </div>
+          ) : null}
+          {previewText ? (
+            <div className="subagents-panel__detailview-block">
+              <div className="subagents-panel__detailview-label">{t("subagent.preview.text")}</div>
+              <pre className="subagents-panel__detailview-text">{previewText}</pre>
+            </div>
+          ) : null}
+          {previewNotice ? (
+            <div className="subagents-panel__detailview-block">
+              <div className="subagents-panel__detailview-label">{t("subagent.preview.notice")}</div>
+              <pre className="subagents-panel__detailview-text">{previewNotice}</pre>
+            </div>
+          ) : null}
+          {progress?.truncated ? <div className="subagents-panel__detailview-note">{t("subagent.preview.truncated")}</div> : null}
+          {!summary && !error && !hasPreview ? (
+            <p className="subagents-panel__detailview-note">{t("subagentPanel.detailNoPreview")}</p>
+          ) : null}
+        </>
+      )}
       <p className="subagents-panel__readonly">{t("subagentPanel.detailReadOnly")}</p>
     </div>
   );
@@ -201,6 +299,8 @@ export function SubagentsDockPanel({
   detailEnabled = false,
   wide = false,
   onToggleWide,
+  sessionPath,
+  onReadSubagent,
 }: {
   directory: SubagentDirectory;
   /** Task 507 plan-A gate: row clicks open the read-only detail view. */
@@ -210,6 +310,14 @@ export function SubagentsDockPanel({
   /** Provided only where the dock width commands are wired; without it the
    *  toolbar is not rendered and the panel is byte-for-byte the 495 body. */
   onToggleWide?: (next: boolean) => void;
+  /** 任务440: the active tab's session path — owner scope for the live
+   *  transcript reads. Empty (no bound session) keeps every entry
+   *  preview-only, exactly the 507 behavior. */
+  sessionPath?: string;
+  /** 任务440: read-only bridge (desktop ReadSubagentSession), injected by App
+   *  with the same callback the capsule detail uses. Without it the live
+   *  view stays off and rows render the preview blocks. */
+  onReadSubagent?: (sessionPath: string, ref: string) => Promise<HistoryMessage[]>;
 }) {
   const t = useT();
   // Task 495 ④: reveal the ended list 20 rows at a time (zcode's PAGE_SIZE).
@@ -254,7 +362,16 @@ export function SubagentsDockPanel({
     return (
       <div className="subagents-panel" aria-label={t("workspace.subagentsTab")}>
         {widenToolbar}
-        <SubagentDetailView entry={selected} onBack={() => setSelectedId(null)} />
+        {/* 任务440: keyed per selection so the live transcript state resets
+            cleanly when the user switches rows — no stale stream of the
+            previous child bleeds into the next detail view. */}
+        <SubagentDetailView
+          key={selected.item.id}
+          entry={selected}
+          onBack={() => setSelectedId(null)}
+          sessionPath={sessionPath}
+          onReadSubagent={onReadSubagent}
+        />
       </div>
     );
   }
