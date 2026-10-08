@@ -141,6 +141,14 @@ type HookConfig struct {
 	Command string `json:"command"`
 	// Argv is the literal argument vector for exec-form plugin hooks.
 	Argv []string `json:"-"`
+	// Args is the settings.json spelling of Argv: a non-empty vector runs the
+	// command exec-form (plugin manifest parity with pluginpkg.Hook.Args).
+	// Task 628: native settings previously dropped this field silently, so a
+	// "…reasonix-computer-use.bat" + args:["--hook"] hook executed its .bat
+	// with no arguments — the batch file fell through to its MCP-server branch
+	// (heavy imports, ~3.4s measured per call) and cold starts blew the
+	// PreToolUse budget instead of running the lightweight route_guard.
+	Args []string `json:"args,omitempty"`
 	// ExecutionMode and Shell are internal plugin-package metadata. Native
 	// Reasonix settings retain their legacy shell-command behavior.
 	ExecutionMode ExecutionMode `json:"-"`
@@ -318,6 +326,15 @@ func appendResolved(out *[]ResolvedHook, s *Settings, scope Scope, source string
 				continue
 			}
 			cfg.Command = NormalizeCommand(cfg.Command)
+			// Task 628: promote the settings.json args vector to the exec-form
+			// argv so spawnLegacyCommand's args!=nil path (and, on Windows, the
+			// batch+argv command line) sees it. Plugin hooks keep their own
+			// Argv wiring in appendPluginHooks; this only fills the gap where
+			// the field was parsed away and the argument tail never reached the
+			// child process.
+			if len(cfg.Argv) == 0 && len(cfg.Args) > 0 {
+				cfg.Argv = cfg.Args
+			}
 			*out = append(*out, ResolvedHook{HookConfig: cfg, Event: event, Scope: scope, Source: source})
 		}
 	}
