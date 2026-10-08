@@ -62,9 +62,7 @@ import (
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
 	"reasonix/internal/sentinel"
-	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioncontext"
-	"reasonix/internal/sessioninbox"
 	"reasonix/internal/sessiontemp"
 	"reasonix/internal/skill"
 	"reasonix/internal/stats"
@@ -2449,22 +2447,20 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MemorySystemReload:      memoryReload,
 		PinnedContextLoader:     opts.PinnedContextLoader,
 		SessionDir:              sessionDir,
-		// Task 263: recovery drops in-flight inbox items whose collab source
-		// message was already consumed (the seen cursor), so an update restart
-		// stops replaying processed messages onto the guidance shelf. The probe
-		// runs under the Store's transaction lock, so it must stay lock-free
-		// file reads only — NewMailStore + readCursor never take a Store lock.
-		InboxSettledProbe: func(meta sessioninbox.InboxItemMeta) bool {
-			from := strings.TrimPrefix(meta.Source, "collab:")
-			if from == meta.Source || from == "" {
-				return false // only collab-sourced items carry a mailbox cursor
-			}
-			msgID := strings.TrimPrefix(meta.Idempotency, "collab:")
-			if msgID == meta.Idempotency || msgID == "" {
-				return false
-			}
-			return sessioncollab.NewMailStore(config.SessionCollabMailDir()).Settled(from, msgID)
-		},
+		// Task 263 + 641: recovery drops admitted inbox items whose collab
+		// source message was already delivered, so an update restart stops
+		// replaying processed messages onto the guidance shelf. The probe runs
+		// under the Store's transaction lock, so it must stay lock-free file
+		// reads only — NewMailStore + DeliveryReceipt/readCursor never take a
+		// Store lock. Coordinates come from the task-309 delivery record the
+		// pump stamps on every row: CollabMsgID is the real mail id,
+		// CollabMailTo the recipient contact. The pre-641 closure parsed the
+		// idempotency key and read the SENDER's cursor — since task 309 the
+		// key is a content hash (never a mail id) and the ack lives under the
+		// RECIPIENT's cursor file, so the probe answered false forever and the
+		// 263/300 drop never fired (the 641 residue: consumed cross-session
+		// messages back on the shelf after every install restart).
+		InboxSettledProbe: collabInboxSettledProbe(config.SessionCollabMailDir()),
 		// P15: the transcript is the application receipt for desktop-source
 		// guidance — every injected steer persists there behind the mid-turn
 		// prefix. Residue rows in Uncertain whose body matches a receipt were

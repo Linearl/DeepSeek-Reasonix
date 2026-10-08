@@ -23,11 +23,22 @@ func (s *Store) RecoverOrphanedInFlight(ownedIDs []string) (int, error) {
 // Store methods; Controller uses sync.Map-backed ownership so a newly admitted
 // item cannot be recovered from a stale pre-transaction snapshot.
 //
-// Task 263: settledBy reports whether an in-flight item's source message was
-// already consumed elsewhere (the collab mailbox cursor). Such an item finished
-// its job before the restart — it is dropped along the normal completion path
-// instead of being resurrected as uncertain work, so consumed messages never
-// replay onto the guidance shelf after an update. nil keeps the old behaviour.
+// Task 263: settledBy reports whether an item's source message was already
+// delivered elsewhere (the collab mailbox cursor / task-570 delivery
+// receipt). Such an item finished its job before the restart — it is dropped
+// along the normal completion path instead of being resurrected as uncertain
+// work, so consumed messages never replay onto the guidance shelf after an
+// update. nil keeps the old behaviour.
+//
+// Task 641: "delivered" is not "consumed into a turn". The pump acks the mail
+// cursor (and records the delivery receipt) the moment the message lands in
+// this inbox — long before any turn admits it. Only states that prove
+// admission may therefore settle as residue: in-flight, plus the Uncertain
+// face loadOrInit gives them after a cross-process restart. A Queued/Blocked
+// row was never admitted — its content is real pending work that must survive
+// the restart and resume (settling it silently deleted the message: with a
+// working probe every delivered-but-unprocessed collab row would have
+// vanished on every restart).
 //
 // P15: an orphaned StateSteerConsumed row is dropped unconditionally, probe or
 // not. The consume transition is the durable "instruction handed to the agent"
@@ -50,12 +61,19 @@ func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settle
 		}
 	}
 	isSettled := func(m InboxItemMeta) bool {
-		// Task 300: the settled drop applies to every active pending state, not
-		// just in-flight. loadOrInit's cross-process pass rewrites in-flight
-		// items to Uncertain before any recovery call runs, and a Queued/Blocked
-		// item whose collab source was already consumed is settled residue too —
-		// gating on in-flight let both replay onto the guidance shelf.
-		if settledBy == nil || !(inFlight(m) || isPendingState(m.State)) {
+		// Task 300 + 641: the settled drop covers admission-proven states only.
+		// 300 gated on in-flight and missed the Uncertain face loadOrInit gives
+		// them after a cross-process restart; extending to every pending state
+		// also matched Queued/Blocked rows, whose mail cursor is settled at
+		// DELIVERY time — with a live probe that deleted real pending work.
+		if settledBy == nil || !(inFlight(m) || m.State == StateUncertain) {
+			return false
+		}
+		// Task 585/641: review parks keep the row even when the mail was
+		// delivered — their content did not durably reach the transcript, so
+		// delivery is not application evidence. Dropping them would silently
+		// delete exactly the work the parks exist to surface for inspection.
+		if m.BlockReason == BlockReasonSteerUnapplied || m.BlockReason == BlockReasonTranscriptNotDurable {
 			return false
 		}
 		return settledBy(m)
@@ -72,13 +90,16 @@ func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settle
 		// Task 300: an all-pending leftover set must not return early (the 263
 		// drop ran only on in-flight, and loadOrInit had already rewritten those
 		// to Uncertain), but a plain live queue needs no disk pass — only
-		// settled residue is worth the transaction. Probe reads are lock-free
-		// file reads, safe under s.mu.
+		// settled Uncertain residue is worth the transaction (task 641: Queued
+		// and Blocked never settle). Probe reads are lock-free file reads,
+		// safe under s.mu.
 		if inFlight(item) {
 			needsRecovery = true
 			continue
 		}
-		if isPendingState(item.State) && settledBy != nil && settledBy(item) {
+		// Task 641: only Uncertain survives to this probe — Queued/Blocked were
+		// never admitted, so their settled delivery is not residue.
+		if item.State == StateUncertain && settledBy != nil && isSettled(item) {
 			needsRecovery = true
 		}
 	}
@@ -105,15 +126,14 @@ func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settle
 			// P15: a consumed steer crossed the durable delivery boundary
 			// (MarkSteerConsumed commits before the instruction is handed to
 			// the agent), so an unowned consumed row was already applied when
-			// the previous run ended. Drop it the way a completed item is
-			// dropped — rewriting it to Uncertain is what replayed finished
-			// guidance onto the shelf after every update restart. Runs ahead
-			// of the settled probe so the drop holds for hosts that inject no
-			// probe at all.
+			// the previous run ended — rewriting it to Uncertain is what
+			// replayed finished guidance onto the shelf after every update
+			// restart. Task 641: isSettled gates on admission-proven states,
+			// so a settled Queued/Blocked row (delivered, never admitted) is
+			// real pending work and survives. Runs ahead of the settled probe
+			// so the consumed-steer drop holds for hosts that inject no probe
+			// at all.
 			if item.State == StateSteerConsumed || isSettled(item) {
-				// Task 263 + 300 + P15: already consumed before the restart —
-				// drop it the way a completed item is dropped; it is not
-				// recovered work.
 				if item.Idempotency != "" {
 					if droppedIDs == nil {
 						droppedIDs = map[string]string{}

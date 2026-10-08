@@ -845,7 +845,7 @@ func (c *Controller) onInboxTurnDone() {
 	if serr != nil && !durable {
 		slog.Warn("controller: inbox turn snapshot", "err", serr)
 		for _, id := range ids {
-			_ = st.SetState(id, sessioninbox.StateUncertain, "turn completed but transcript snapshot failed")
+			_ = st.SetState(id, sessioninbox.StateUncertain, sessioninbox.BlockReasonTranscriptNotDurable)
 		}
 		_ = st.SetPaused(true)
 		c.inbox.mu.Lock()
@@ -892,7 +892,7 @@ func (c *Controller) onInboxUnappliedSteer(itemID string) {
 	if err != nil {
 		return
 	}
-	if err := st.MarkAcceptedSteerUncertain(itemID, "steer accepted but unapplied before turn exit"); err != nil {
+	if err := st.MarkAcceptedSteerUncertain(itemID, sessioninbox.BlockReasonSteerUnapplied); err != nil {
 		if errors.Is(err, sessioninbox.ErrNotFound) {
 			c.inbox.mu.Lock()
 			c.inbox.untrackActive(itemID)
