@@ -119,8 +119,15 @@ func (t *runSkillTool) CapabilityArguments(capabilityID string) (tool.Capability
 	if !ok {
 		return tool.CapabilityArgumentContract{}, false
 	}
+	return runSkillArgumentContract(name, sk.RunAs == RunSubagent), true
+}
+
+// runSkillArgumentContract builds the run_skill argument contract; the schema
+// varies only by whether the skill runs as a subagent. Kept beside
+// CapabilityArgumentsIndex so per-id and batch lookups stay byte-identical.
+func runSkillArgumentContract(name string, runAsSubagent bool) tool.CapabilityArgumentContract {
 	required := ""
-	if sk.RunAs == RunSubagent {
+	if runAsSubagent {
 		required = `,"required":["arguments"]`
 	}
 	schema := json.RawMessage(`{"type":"object","properties":{"arguments":{"type":"string","description":"Concrete task or inline skill arguments."},"continue_from":{"type":"string","description":"Optional compatible subagent reference."}}` + required + `}`)
@@ -131,7 +138,21 @@ func (t *runSkillTool) CapabilityArguments(capabilityID string) (tool.Capability
 			"arguments": "specific task for " + name,
 		},
 	})
-	return tool.CapabilityArgumentContract{Schema: schema, Example: example}, true
+	return tool.CapabilityArgumentContract{Schema: schema, Example: example}
+}
+
+// CapabilityArgumentsIndex serves the whole skill directory with ONE discovery
+// scan. Task 660: catalog-wide consumers (use_capability action=search) used
+// to call CapabilityArguments once per catalog entry, and every call re-ran
+// the full disk scan — a 216-skill root turned one local search into ~217
+// scans (41s observed). List and Read draw on the same deduplicated
+// discovery, so the index matches per-id lookups exactly.
+func (t *runSkillTool) CapabilityArgumentsIndex() map[string]tool.CapabilityArgumentContract {
+	out := make(map[string]tool.CapabilityArgumentContract)
+	for _, sk := range t.store.List() {
+		out[sk.Name] = runSkillArgumentContract(sk.Name, sk.RunAs == RunSubagent)
+	}
+	return out
 }
 
 func (t *runSkillTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
@@ -275,8 +296,14 @@ func (t *readOnlySkillTool) CapabilityArguments(capabilityID string) (tool.Capab
 	if !ok {
 		return tool.CapabilityArgumentContract{}, false
 	}
+	return readOnlySkillArgumentContract(name, sk.RunAs == RunSubagent), true
+}
+
+// readOnlySkillArgumentContract mirrors runSkillArgumentContract for the
+// read-only tool flavor; the schema varies only by run-as state.
+func readOnlySkillArgumentContract(name string, runAsSubagent bool) tool.CapabilityArgumentContract {
 	required := ""
-	if sk.RunAs == RunSubagent {
+	if runAsSubagent {
 		required = `,"required":["arguments"]`
 	}
 	schema := json.RawMessage(`{"type":"object","properties":{"arguments":{"type":"string","description":"Concrete read-only task or inline skill arguments."}}` + required + `}`)
@@ -287,7 +314,17 @@ func (t *readOnlySkillTool) CapabilityArguments(capabilityID string) (tool.Capab
 			"arguments": "specific read-only task for " + name,
 		},
 	})
-	return tool.CapabilityArgumentContract{Schema: schema, Example: example}, true
+	return tool.CapabilityArgumentContract{Schema: schema, Example: example}
+}
+
+// CapabilityArgumentsIndex serves the whole skill directory with ONE discovery
+// scan; see runSkillTool.CapabilityArgumentsIndex for the task 660 rationale.
+func (t *readOnlySkillTool) CapabilityArgumentsIndex() map[string]tool.CapabilityArgumentContract {
+	out := make(map[string]tool.CapabilityArgumentContract)
+	for _, sk := range t.store.List() {
+		out[sk.Name] = readOnlySkillArgumentContract(sk.Name, sk.RunAs == RunSubagent)
+	}
+	return out
 }
 
 func (t *readOnlySkillTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
