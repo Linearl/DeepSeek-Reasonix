@@ -38,6 +38,7 @@ workflow_pins=(
   "$root/.github/workflows/ci.yml"
   "$root/.github/workflows/release-desktop.yml"
   "$root/.github/workflows/transcript-native-smoke.yml"
+  "$root/.github/workflows/release-fork.yml"
 )
 for workflow in "${workflow_pins[@]}"; do
   if grep -q "cmd/wails@v" "$workflow"; then
@@ -59,6 +60,7 @@ unexpected_sources="$(awk -v module="$module" '
   index($0, ".github/workflows/ci.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
   index($0, ".github/workflows/release-desktop.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
   index($0, ".github/workflows/transcript-native-smoke.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
+  index($0, ".github/workflows/release-fork.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
   index($0, "Makefile:") == 1 && index($0, module "@$(WAILS_VERSION)") { next }
   index($0, "prod_test:") == 1 && index($0, module "@$wails_pin") { next }
   { print }
