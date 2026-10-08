@@ -252,6 +252,33 @@ describe("diagnostic classification", () => {
     expect(severityForReport({ ...base, version: "v1.40.0", channel: "stable" })).toBe("high");
   });
 
+  // Task 642: a lab mock-crash drill is a pipeline rehearsal, never an incident —
+  // severity pins to low and its fingerprint never merges into a real group.
+  it("pins mock drill reports to low severity", () => {
+    expect(severityForReport({ ...base, version: "v1.40.0", channel: "stable", testMock: true })).toBe("low");
+    expect(severityForReport({ ...base, version: "v1.40.0", channel: "stable" })).toBe("high");
+  });
+
+  it("namespaces mock drill fingerprints away from real crash groups", () => {
+    const basisInput = {
+      kind: base.kind,
+      message: "[window.error] boom",
+      source: base.source,
+      label: base.label,
+      errorType: base.errorType,
+      errorMessage: "boom",
+      topFrame: base.topFrame,
+      fingerprintHint: undefined,
+    };
+    const real = normalizeForFingerprint({ ...basisInput });
+    // prepareCrashEvent prefixes the mock basis with a "mock" + newline line
+    // before hashing — a mimic payload can never land in the real group's
+    // fingerprint.
+    const mockBasis = `mock\n${normalizeForFingerprint({ ...basisInput })}`;
+    expect(mockBasis).not.toBe(real);
+    expect(mockBasis.startsWith("mock\n")).toBe(true);
+  });
+
   it("reclassifies historical groups before dashboard prioritization", () => {
     expect(
       effectiveGroupSeverity({

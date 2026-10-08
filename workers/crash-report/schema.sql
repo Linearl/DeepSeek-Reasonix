@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS reports (
   stack TEXT NOT NULL DEFAULT '',
   occurred_at TEXT NOT NULL DEFAULT '',
   webview2 TEXT NOT NULL DEFAULT '',
-  web_runtime TEXT NOT NULL DEFAULT ''
+  web_runtime TEXT NOT NULL DEFAULT '',
+  test_mock INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS reports_fingerprint ON reports (fingerprint);
