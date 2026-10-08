@@ -325,7 +325,7 @@ export function DiagnosticsSettingsPage({
                               {settingsTab && onNavigate ? (
                                 <button
                                   type="button"
-                                  className="btn btn--secondary btn--small diag-issue-cluster__goto"
+                                  className="btn btn--secondary btn--small diag-issue__goto"
                                   onClick={() => goSettings(settingsTab)}
                                 >
                                   {t("diag.gotoSettings")}

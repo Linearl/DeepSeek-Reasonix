@@ -423,7 +423,7 @@ console.log("diagnostics settings page");
     (b.textContent || "").includes("Open settings"),
   );
   ok(clusterGoto, "cluster row must expose a goto-settings action");
-  const gotoButtonsCollapsed = rootEl.querySelectorAll(".diag-issue-cluster__row .diag-issue-cluster__goto").length;
+  const gotoButtonsCollapsed = rootEl.querySelectorAll(".diag-issue-cluster__row .diag-issue__goto").length;
   ok(gotoButtonsCollapsed === 4, `exactly 4 cluster goto buttons (no settings_tab on one cluster), got ${gotoButtonsCollapsed}`);
   ok(
     rootEl.querySelectorAll(".diag-issue .diag-issue__goto").length === 0,
@@ -452,7 +452,7 @@ console.log("diagnostics settings page");
   );
 
   // Acceptance 2+4: cluster goto navigates once to the shared settings tab.
-  const warningClusterGoto = Array.from(rootEl.querySelectorAll(".diag-issue-cluster__row .diag-issue-cluster__goto")).find(
+  const warningClusterGoto = Array.from(rootEl.querySelectorAll(".diag-issue-cluster__row .diag-issue__goto")).find(
     (b) => (b.closest(".diag-issue-cluster")?.textContent || "").includes("skill.missing_description"),
   );
   ok(warningClusterGoto, "warning cluster goto button must exist");

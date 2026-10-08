@@ -39672,8 +39672,8 @@ body > .mermaid-diagram--fullscreen {
 .diag-issue--nested header {
   justify-content: flex-start;
 }
-/* Detail-row goto stays a small inline control, never a full-width button. */
-.diag-issue .diag-issue__goto {
+/* Goto button stays a small inline control pinned to its row's right edge, never full-width. */
+.diag-issue__goto {
   align-self: flex-start;
   margin-left: auto;
   flex: 0 0 auto;
