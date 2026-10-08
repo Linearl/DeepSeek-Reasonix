@@ -9420,6 +9420,11 @@ body > .mermaid-diagram--fullscreen {
   min-height: 56px;
 }
 
+/* 656: the bottom create entry is separated from the stored list above. */
+.composer-content-menu__add {
+  margin-top: 6px;
+}
+
 .composer-content-menu__trigger-icon {
   flex: 0 0 16px;
   width: 16px;
