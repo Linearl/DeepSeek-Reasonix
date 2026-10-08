@@ -10570,6 +10570,25 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg-soft);
   color: var(--button-muted-fg);
 }
+/* 任务591：btn--ghost 被 9 处引用但从未有全局定义（578 同病复发；原仅
+   .session-recovery > .btn--ghost 一条作用域规则兜底）——
+   ghost = 透明底透明边的低调钮，hover 浮出 bg-soft 底与弱边框，
+   token 全走现有主题变量，与 quiet/secondary-bar 同构。 */
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-dim);
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--bg-soft);
+  border-color: var(--border-soft);
+  color: var(--fg);
+}
+.btn--ghost:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-dim);
+}
 
 .inline-confirm {
   display: inline-flex;
