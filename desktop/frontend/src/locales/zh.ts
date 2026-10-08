@@ -2858,7 +2858,7 @@ export const zh: Record<DictKey, string> = {
 "settings.quickCommandsLab.off": "关",
 // 任务 342：WebView2 CDP 调试端口（实验室，调试组）。
 "settings.lifecycleNoiseGate": "崩溃 lifecycle 噪音分诊",
-"settings.lifecycleNoiseGateHint": "任务 377：开启后跳过正常关机残留（shutting_down/healthy 相位，clean()/exit 竞态所致）的崩溃报告。wedged（关机卡死被看门狗强杀）与未知相位永不抑制；每次抑制都计数落日志摘要与 metrics。开关在启动时读取一次，改动需重启生效。默认关闭：上报行为逐字节不变。",
+"settings.lifecycleNoiseGateHint": "开启后跳过正常关机残留（shutting_down/healthy 相位，clean()/exit 竞态所致）的崩溃报告。wedged（关机卡死被看门狗强杀）与未知相位永不抑制；每次抑制都计数落日志摘要与 metrics。开关在启动时读取一次，改动需重启生效。默认关闭：上报行为逐字节不变。",
 "settings.lifecycleNoiseGate.on": "开",
 "settings.lifecycleNoiseGate.off": "关",
 "settings.cdpDebugPort": "CDP 调试端口",
