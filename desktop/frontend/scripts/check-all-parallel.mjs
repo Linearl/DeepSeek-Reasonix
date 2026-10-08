@@ -24,6 +24,7 @@ const root = resolve(here, "..");
 const checks = [
   ["lint:hooks", "pnpm", ["lint:hooks"]],
   ["check:waapi", "node", ["scripts/check-waapi-contract.mjs"]],
+  ["check:comment-leak", "node", ["scripts/check-comment-leak.mjs"]],
   ["check:scroll-writer", "node", ["scripts/check-single-scroll-writer.mjs"]],
   ["check:app-layers", "pnpm", ["check:app-layers"]],
   ["check:css-syntax", "node", [

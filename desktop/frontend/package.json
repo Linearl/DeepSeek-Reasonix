@@ -9,6 +9,7 @@
     "build": "node scripts/check-all-parallel.mjs && tsc --noEmit --incremental && vite build && node scripts/check-bundle-budget.mjs",
     "check:bridge-tags": "node ../../scripts/check-bridge-json-tags.mjs ../..",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "check:comment-leak": "node scripts/check-comment-leak.mjs",
     "check:scroll-writer": "node scripts/check-single-scroll-writer.mjs",
     "preview": "vite preview",
     "check:css": "node scripts/check-css-syntax.mjs src/styles.css src/components/RemoteConnectWizard.css src/components/MCPInteractionCard.css && node scripts/check-z-index-tokens.mjs src/styles.css src/components/RemoteConnectWizard.css && node scripts/check-theme-token-contract.mjs",
