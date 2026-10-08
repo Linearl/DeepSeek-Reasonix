@@ -10270,6 +10270,19 @@ body > .mermaid-diagram--fullscreen {
 .statusbar__balance b {
   color: var(--ok);
 }
+/* 任务287：statusBar plan 用量项——随窗口临期/耗尽变色（临期→warn、耗尽→danger） */
+.statusbar__metric--plan,
+.stat--plan {
+  justify-content: flex-start;
+}
+.statusbar__plan b.statusbar__plan-value--notice {
+  color: var(--warn);
+  font-weight: 700;
+}
+.statusbar__plan b.statusbar__plan-value--critical {
+  color: var(--danger);
+  font-weight: 700;
+}
 .statusbar__compact b.statusbar__compact-value--warn {
   color: var(--warn);
 }
@@ -20467,6 +20480,105 @@ body > .mermaid-diagram--fullscreen {
   font: inherit;
   font-size: var(--font-control-small);
   cursor: pointer;
+}
+
+/* ─── 任务287：右侧概览 Plan 用量卡（ContextPanel 显示位） ───── */
+.plan-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-usage__provider {
+  color: var(--fg-faint);
+  font-size: var(--font-control-small);
+}
+.plan-usage__refresh {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.plan-usage__refresh:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--list-row-hover-bg);
+}
+.plan-usage__refresh:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.plan-usage__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-usage__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.plan-usage__row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.plan-usage__window {
+  color: var(--fg-dim);
+  font-size: var(--font-control-small);
+  font-weight: 620;
+}
+.plan-usage__row-head strong {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-control-small);
+}
+.plan-usage__row-head strong.plan-usage__percent--notice {
+  color: var(--warn);
+}
+.plan-usage__row-head strong.plan-usage__percent--critical {
+  color: var(--danger);
+}
+.plan-usage__track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-soft);
+  overflow: hidden;
+}
+.plan-usage__fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.plan-usage__fill--notice {
+  background: var(--warn);
+}
+.plan-usage__fill--critical {
+  background: var(--danger);
+}
+.plan-usage__reset {
+  color: var(--fg-faint);
+  font-size: var(--font-control-small);
+  font-variant-numeric: tabular-nums;
+}
+.plan-usage__note {
+  margin: 0;
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.plan-usage__exhausted {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 620;
 }
 
 /* ─── Session-collab capability gates (task 253) ─────

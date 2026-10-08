@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
+import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, PieChart, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
 import { labFlagEnabled } from "../lib/labFlags";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { RemoteConnectionErrorDialog } from "./RemoteConnectionErrorDialog";
 import { Tooltip } from "./Tooltip";
 import { contextWindowPercentages } from "../lib/contextWindow";
-import { useI18n, type Translator } from "../lib/i18n";
+import { useI18n, type DictKey, type Translator } from "../lib/i18n";
 import { formatMoneyLocalized } from "../lib/money";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
 import { appendRateBand, rateBandLabel } from "../lib/costRateBand";
 import { isRemoteDegradedWarning, isRemoteHostKeyMismatch, isRemoteTerminalFailure, remoteConnectionErrorSummaryKey } from "../lib/remoteErrors";
+import { planFiveHourExhausted, planUsageTone, planWindowLabelKey } from "../lib/planUsage";
+import { ensurePlanUsagePolling, usePlanUsageStore } from "../store/planUsage";
+import { resetCountdown } from "../lib/opencodeGoUsage";
 import type { ExtensionStatusEntry } from "../lib/useController";
 import { type BackgroundRuntimeView, type BalanceInfo, type ContextInfo, type JobView, type RemoteConnectionStatus, type RemoteHostView, type UsageSourceStats, type WireUsage } from "../lib/types";
 import { useRemoteStore } from "../store/remote";
@@ -282,6 +285,20 @@ export function StatusBar({
       ? `${t("status.balanceTitle")}: ${balance.detail}`
       : t("status.balanceTitle"))
     : t("status.balanceTitle");
+  // Task 287: plan usage readout — provider-scoped global store, started from
+  // the first mounted surface (the status bar is always mounted). A provider
+  // without plan support renders nothing: hidden, never an error.
+  const planView = usePlanUsageStore((s) => s.view);
+  useEffect(() => {
+    ensurePlanUsagePolling();
+  }, []);
+  const planWindows = planView?.supported
+    ? planView.windows.filter((w) => typeof w.percent === "number")
+    : [];
+  const planFive = planWindows.find((w) => w.window === "five_hour");
+  const planPercent = planFive?.percent ?? null;
+  const planTone = planUsageTone(planPercent);
+  const planExhausted = planFiveHourExhausted(planView);
   const tpsLabel = lastRequestTps === undefined
     ? formatTps(lastTurnOutputTokens && lastTurnModelMs ? lastTurnOutputTokens / (lastTurnModelMs / 1_000) : null, lastTurnOutputEstimated)
     : formatTps(lastRequestTps);
@@ -421,6 +438,30 @@ export function StatusBar({
         <span className="stat stat--balance statusbar__balance">
           <MetricLabel style={metricLabelStyle} icon={<Wallet size={12} />} label={t("status.balanceLabel")} />
           <b className={balanceLabel === "-" ? "stat__value--empty" : undefined}>{balanceLabel}</b>
+        </span>
+      </Tooltip>
+    ),
+    plan: planWindows.length === 0 ? null : (
+      <Tooltip
+        label={
+          <span className="statusbar__tooltip-stack">
+            <span>{t("status.planTitle")}{planView?.provider ? `: ${planView.provider}${planView.region ? ` (${planView.region.toUpperCase()})` : ""}` : ""}</span>
+            {planWindows.map((w) => (
+              <span key={w.window}>
+                {t(planWindowLabelKey(w.window) as DictKey)}: {Math.round(w.percent ?? 0)}%
+                {w.resetsAt ? ` · ${t("planUsage.resetsIn")} ${resetCountdown(w.resetsAt) || "—"}` : ""}
+              </span>
+            ))}
+            {planExhausted && <span>{t("planUsage.exhausted")}</span>}
+          </span>
+        }
+        className="statusbar__metric statusbar__metric--plan"
+      >
+        <span className="stat stat--plan statusbar__plan">
+          <MetricLabel style={metricLabelStyle} icon={<PieChart size={12} />} label={t("status.planLabel")} />
+          <b className={[planTone ? `statusbar__plan-value--${planTone}` : undefined].filter(Boolean).join(" ") || undefined}>
+            {planPercent !== null ? `${Math.round(planPercent)}%` : "-"}
+          </b>
         </span>
       </Tooltip>
     ),
