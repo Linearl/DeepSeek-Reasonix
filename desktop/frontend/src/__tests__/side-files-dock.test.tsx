@@ -132,6 +132,16 @@ console.log("\nside-files dock tabs (task 260)");
   // Non-path subjects (bash command, grep pattern) never leak into the lists.
   const NOISE = { kind: "tool", name: "bash", args: "", subject: "pnpm build" };
   eq(renderPanel("artifacts", [NOISE]).includes("pnpm build"), false, "hydrated: bash subject does not leak into artifacts");
+  // Task 659: bash write collection (C phase of 629) — explicit literal
+  // redirect/tee targets land in the artifacts tab, live via args.command and
+  // hydrated via the persisted command-text subject; the command text itself
+  // never leaks.
+  const HYD_BASH = { kind: "tool", name: "bash", args: "", subject: "go test ./... | tee test.out | tail -3" };
+  const hydBash = renderPanel("artifacts", [HYD_BASH]);
+  eq(hydBash.includes("test.out"), true, "hydrated: bash explicit tee target lands in artifacts (task 659)");
+  eq(hydBash.includes("tail -3"), false, "hydrated: bash command text itself never leaks (task 659)");
+  const LIVE_BASH = item("tool", "bash", JSON.stringify({ command: "echo hi > out/report.txt" }));
+  eq(renderPanel("artifacts", [LIVE_BASH]).includes("out/report.txt"), true, "live: bash redirect target lands in artifacts (task 659)");
   // Task 629: a hydrated whitelist-external writer with no args/subject still
   // lands via its persisted fileDiff header.
   const HYD_DIFF = { kind: "tool", name: "future_writer", args: "", fileDiff: { diff: "--- a/nb/report.md\n+++ b/nb/report.md\n", added: 2, removed: 1 } };

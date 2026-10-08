@@ -6,9 +6,11 @@
 // copy defines 产物 as "files the session wrote"). References = files the
 // session read. Still distinct from the per-turn task-113 edit list by design.
 //
-// bash-written files are NOT collected yet: bash produces no previewed diff
-// and its command text is not parsed (false artifacts cost more than misses;
-// task 629 deferred that to a dedicated follow-up).
+// bash-written files ARE collected too (task 659, the C phase of task 629):
+// bash produces no previewed diff, so the collector instead extracts EXPLICIT
+// literal output targets from the command text — redirect operators and tee
+// arguments (bashWriteTargets below). Variables, devices, fd dups, globs and
+// heredoc bodies never become paths: a wrong artifact costs more than a miss.
 
 import type { ToolItem } from "./transcriptRows";
 
@@ -107,6 +109,183 @@ function fileDiffPath(diff: string | undefined): string | undefined {
   return value || undefined;
 }
 
+type ShellToken = { text: string; kind: "word" | "op" | "control"; quoted: boolean };
+
+// Quote-aware shell word splitter: just enough structure to tell redirect
+// operators and control characters from literal words — deliberately NOT a
+// full shell parser. Anything ambiguous resolves to "not a write target".
+function tokenizeShellWords(command: string): ShellToken[] {
+  const toks: ShellToken[] = [];
+  let cur = "";
+  let quoted = false;
+  const flush = () => {
+    if (cur !== "") toks.push({ text: cur, kind: "word", quoted });
+    cur = "";
+    quoted = false;
+  };
+  const n = command.length;
+  let i = 0;
+  while (i < n) {
+    const c = command[i];
+    if (c === "\\" && i + 1 < n) {
+      // backslash escape outside quotes
+      cur += command[i + 1];
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const close = command.indexOf(c, i + 1);
+      const end = close === -1 ? n : close + 1;
+      cur += command.slice(i, end);
+      quoted = true;
+      i = end;
+      continue;
+    }
+    if (/\s/.test(c)) {
+      flush();
+      i += 1;
+      continue;
+    }
+    if (c === "&" && command[i + 1] === ">") {
+      // both-streams redirect &> / &>>
+      flush();
+      let j = i + 1;
+      while (command[j] === ">") j += 1;
+      toks.push({ text: command.slice(i, j), kind: "op", quoted: false });
+      i = j;
+      continue;
+    }
+    if (c === "&" || c === "|" || c === ";" || c === "(" || c === ")") {
+      flush();
+      if ((c === "&" || c === "|") && command[i + 1] === c) {
+        toks.push({ text: c + c, kind: "control", quoted: false });
+        i += 2;
+      } else {
+        toks.push({ text: c, kind: "control", quoted: false });
+        i += 1;
+      }
+      continue;
+    }
+    if (c === "<" || c === ">") {
+      flush();
+      let text: string;
+      if (c === "<" && command[i + 1] === "<") {
+        text = command[i + 2] === "<" ? "<<<" : "<<";
+      } else if (c === ">" && command[i + 1] === ">") {
+        text = ">>";
+      } else if (c === ">" && command[i + 1] === "|") {
+        text = ">|";
+      } else if (c === ">" && command[i + 1] === "&") {
+        text = ">&";
+      } else {
+        text = c;
+      }
+      toks.push({ text, kind: "op", quoted: false });
+      i += text.length;
+      continue;
+    }
+    cur += c;
+    i += 1;
+  }
+  flush();
+  return toks;
+}
+
+// Literal-path check for a redirect/tee target: one layer of matching quotes
+// stripped, everything runtime-shaped rejected. op is the operator the target
+// belongs to ("tee" for tee arguments); only ">&" plus digits is an fd dup.
+function validWriteTarget(raw: string, op: string): string | undefined {
+  let value = raw.trim();
+  if (
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  if (!value) return undefined;
+  if (value.startsWith("&")) return undefined; // fd dup: 2>&1
+  if (op === ">&" && /^\d+$/.test(value)) return undefined; // >&2
+  if (value.startsWith("(")) return undefined; // process substitution
+  if (value.includes("$") || value.includes("`")) return undefined; // shell-expanded at run time
+  if (value.startsWith("/dev/")) return undefined;
+  if (value.toLowerCase() === "nul") return undefined;
+  if (value.includes("*") || value.includes("?")) return undefined; // glob — not concrete
+  if (value.includes("(") || value.includes(")")) return undefined; // ambiguous punctuation
+  return value;
+}
+
+// Task 659 (bash write collection — C phase of task 629): bash produces no
+// previewed diff, so its write targets are extracted from the command text
+// itself, and only from EXPLICIT, literal output targets: the redirect
+// operators (> >> >| &> &>> >& [N]> [N]>>) and tee file arguments. Everything
+// the shell resolves at run time stays out — $vars, backticks, fd dups (&1,
+// >&2), /dev and NUL devices, process substitution, globs — a wrong path in
+// the artifacts list costs more than a missed one (the task-629 red line).
+// Heredoc bodies are dropped wholesale: everything from the first unquoted
+// "<<" operator to the end is cut, so a body line like "x > y" inside
+// cat <<EOF cannot masquerade as a redirect. The cut is token-level rather
+// than line-level because hydrated subjects flatten newlines (clipSingleLine
+// on the host collapses them). Accepted misses by design: sed -i / cp / mv
+// style writes and paths carried in variables.
+export function bashWriteTargets(command: string | undefined): string[] {
+  if (!command) return [];
+  const toks = tokenizeShellWords(command);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let teeMode = false;
+  for (let k = 0; k < toks.length; k++) {
+    const tok = toks[k];
+    if (tok.kind === "control") {
+      teeMode = false;
+      continue;
+    }
+    if (tok.kind === "op") {
+      if (tok.text === "<<") return out; // heredoc: drop everything after it
+      const operand = toks[k + 1];
+      if (operand && operand.kind === "word") {
+        if (tok.text.includes(">")) {
+          const path = validWriteTarget(operand.text, tok.text);
+          if (path !== undefined && !seen.has(path)) {
+            seen.add(path);
+            out.push(path);
+          }
+        }
+        k += 1; // input files, here-strings and fd dups are consumed too
+      }
+      continue;
+    }
+    // word: a pure-digit word right before an operator is an fd prefix (2>, 2>>)
+    if (/^\d+$/.test(tok.text) && toks[k + 1]?.kind === "op") continue;
+    if (teeMode) {
+      if (!tok.quoted && tok.text.startsWith("-")) continue; // tee option (-a, --append)
+      const path = validWriteTarget(tok.text, "tee");
+      if (path !== undefined && !seen.has(path)) {
+        seen.add(path);
+        out.push(path);
+      }
+      continue;
+    }
+    if (tok.text === "tee" || tok.text.endsWith("/tee")) teeMode = true;
+  }
+  return out;
+}
+
+// Live bash items carry args {command}; hydrated items carry the clipped
+// command text as subject (historyToolSubject). Args win when present — same
+// priority as the path tools above.
+function bashCommandText(args: string | undefined, subject: string | undefined): string | undefined {
+  if (args) {
+    try {
+      const parsed = JSON.parse(args) as Record<string, unknown>;
+      if (typeof parsed.command === "string" && parsed.command.trim()) return parsed.command;
+    } catch {
+      // hydrated or malformed args — fall through to the subject
+    }
+  }
+  const value = subject?.trim();
+  return value || undefined;
+}
+
 /**
  * Aggregate artifacts and references from transcript tool items.
  * Order is first-seen; later tools do not reshuffle earlier entries.
@@ -154,6 +333,17 @@ export function collectSessionSideFiles(items: readonly SessionSideItem[]): Sess
       pushUnique(artifacts, path ?? source ?? diffFallback, name, artSeen);
       continue;
     }
+    // Task 659: bash has no Previewer and never carries a fileDiff, so its
+    // write targets come from explicit redirect/tee paths in the command text
+    // (live args.command; the persisted command text as subject when
+    // hydrated). The fileDiff fallback above stays barred for bash — a diff
+    // on a bash item would be host-bug spillover, not proof of a write.
+    if (name === "bash") {
+      for (const target of bashWriteTargets(bashCommandText(item.args, item.subject))) {
+        pushUnique(artifacts, target, name, artSeen);
+      }
+      continue;
+    }
     // Whitelist-external writers (future Previewer tools): the diff header is
     // the only trustworthy path source — args of an unknown tool may point at
     // an output dir or an unrelated param, so they are not consulted here.
@@ -161,7 +351,6 @@ export function collectSessionSideFiles(items: readonly SessionSideItem[]): Sess
   }
   return { artifacts, references };
 }
-
 export function formatReferenceListForPrompt(files: SessionSideFile[], max = 20): string {
   const paths = files.slice(0, max).map((f) => f.path);
   if (paths.length === 0) return "";
