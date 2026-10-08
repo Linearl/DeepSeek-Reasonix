@@ -46,16 +46,17 @@ type labFeatureTier struct {
 }
 
 var labFeatureTiers = []labFeatureTier{
-	// ── automation（自动化，8 项）────────────────────────────────
+	// ── automation（自动化，7 项；任务 517 B1+B2 并入 safetyCostControl）──
 	{"autopilot", LabTierRecommended, []string{"autopilot", "experimental_autopilot_ask_timeout"}}, // ask-timeout 为 task 477 家族子键
 	{"sessionCollab", LabTierRecommended, []string{"experimental_session_collab"}},
 	{"fullAccess", LabTierRecommended, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
 	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write"}},
 	{"dream", LabTierOptional, []string{"experimental_dream"}},
-	{"autonomousIdleTerminate", LabTierOptional, []string{"experimental_autonomous_idle_terminate"}},
-	{"loopStreakNote", LabTierOptional, []string{"experimental_loop_streak_note"}},
+	// 任务 517：B1/B2/B3 三开关合并为「安全 / 成本控制」单键；三个 legacy 键
+	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
+	{"safetyCostControl", LabTierOptional, []string{"experimental_safety_cost_control", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
 	{"subagentPolicy", LabTierUnstable, []string{"experimental_subagent_policy"}},
-	// ── efficiency（提效，10 项）─────────────────────────────────
+	// ── efficiency（提效，9 项；任务 517 B3 并入 safetyCostControl）─────
 	{"budgetControl", LabTierRecommended, []string{"experimental_context_budget", "experimental_research_budget"}},
 	{"compressOpt", LabTierRecommended, []string{"experimental_proactive_compact", "experimental_cold_cache_compact"}},
 	{"messageMerge", LabTierRecommended, []string{"collab_inbox_merge", "collab_guidance_merge"}},
@@ -63,7 +64,6 @@ var labFeatureTiers = []labFeatureTier{
 	{"highSpeedModel", LabTierOptional, []string{"experimental_high_speed_model"}},
 	{"compactionParallel", LabTierOptional, []string{"experimental_compaction_parallel"}},
 	{"traceAsState", LabTierOptional, []string{"trace_as_state"}}, // 任务 473 单键化：[desktop] 旧拼写已退役
-	{"eventWaitRecheck", LabTierOptional, []string{"experimental_event_wait_recheck"}},
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
 	// ── ui（界面，15 项）────────────────────────────────────────
@@ -602,9 +602,17 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 
-	fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # task 244 B1: heartbeat self-disables after 3 consecutive runs with no conversation history\n", c.Agent.ExperimentalAutonomousIdleTerminate)
-	fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # task 244 B2: bounded neutral Continue. note instead of an immediate second text-repeat pause\n", c.Agent.ExperimentalLoopStreakNote)
-	fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # task 244 B3: re-evaluate the event_wait checker before returning (recheckSatisfied field)\n", c.Agent.ExperimentalEventWaitRecheck)
+	// Task 517: the merged unattended-safety switch — one「安全 / 成本控制」
+	// knob for the three task-244 B-group guards (B1 idle terminate, B2 loop
+	// streak note, B3 event-wait recheck).
+	fmt.Fprintf(&b, "experimental_safety_cost_control = %v   # task 517: merged safety/cost switch — B1 heartbeat self-disables after 3 consecutive runs with no conversation history + B2 bounded neutral Continue. note instead of an immediate second text-repeat pause + B3 re-evaluate the event_wait checker before returning (recheckSatisfied field)\n", c.Agent.ExperimentalSafetyCostControl)
+
+	// Task 517: legacy B1/B2/B3 keys stay rendered (post-migration they read
+	// false) so the render face keeps the pinned task-244 round-trip and an
+	// older binary never sees a stale on (task 449 precedent).
+	fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # task 244 B1: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalAutonomousIdleTerminate)
+	fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # task 244 B2: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalLoopStreakNote)
+	fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # task 244 B3: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalEventWaitRecheck)
 
 	fmt.Fprintf(&b, "experimental_orphan_handling = %v   # task 449: merged orphan switch — B5 reclaim a session lease whose recorded owner process is dead (live foreign owners still respected) + B4 settle recovery-store operations past the covered durable sequence at open\n", c.Agent.ExperimentalOrphanHandling)
 

@@ -23,6 +23,7 @@ func normalizeLoadedConfig(cfg *Config) error {
 	migrateBillingDisplayCurrency(cfg)
 	migrateOrphanHandlingMerge(cfg)
 	migrateLabMirrorKeysToAgent(cfg)
+	migrateSafetyCostControlMerge(cfg)
 	freezeProviderBillingCurrencies(cfg)
 	applyDeepSeekOfficialDefaultPricing(cfg)
 	backfillDeepSeekOfficialPrices(cfg)

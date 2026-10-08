@@ -215,9 +215,10 @@ type DesktopConfig struct {
 	// (fork task 160).
 	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`
 
-	// ExperimentalAutonomousIdleTerminate / ExperimentalLoopStreakNote /
-	// ExperimentalEventWaitRecheck mirrored the [agent] runtime flags of
-	// task 244 B1/B2/B3.
+	// Legacy task-244 B1/B2/B3 [desktop] mirrors: READ-ONLY. The task-473
+	// fold still folds a stale [desktop] true into the [agent] legacy field,
+	// and task 517's migrateSafetyCostControlMerge then carries it into the
+	// merged experimental_safety_cost_control key; never written back.
 	ExperimentalAutonomousIdleTerminate bool `toml:"experimental_autonomous_idle_terminate"`
 	ExperimentalLoopStreakNote          bool `toml:"experimental_loop_streak_note"`
 	ExperimentalEventWaitRecheck        bool `toml:"experimental_event_wait_recheck"`

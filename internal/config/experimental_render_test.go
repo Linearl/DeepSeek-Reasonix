@@ -26,9 +26,8 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Agent.TraceAsState = true
 	c.Agent.ExperimentalDream = true
 	c.Agent.ExperimentalSessionCollab = true
-	c.Agent.ExperimentalAutonomousIdleTerminate = true
-	c.Agent.ExperimentalLoopStreakNote = true
-	c.Agent.ExperimentalEventWaitRecheck = true
+	// 任务 517：合并键往返；legacy B1/B2/B3 键不再是可写面（见 off 断言）。
+	c.Agent.ExperimentalSafetyCostControl = true
 	c.Desktop.ExperimentalOrphanLeaseReclaim = true
 	c.Agent.ExperimentalOrphanLeaseReclaim = true
 	c.Desktop.ExperimentalRecoveryOrphanSweep = true
@@ -54,9 +53,7 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"trace_as_state = true",
 		"experimental_dream = true",
 		"experimental_session_collab = true",
-		"experimental_autonomous_idle_terminate = true",
-		"experimental_loop_streak_note = true",
-		"experimental_event_wait_recheck = true",
+		"experimental_safety_cost_control = true",
 		"experimental_orphan_lease_reclaim = true",
 		"experimental_recovery_orphan_sweep = true",
 		"experimental_zcode_task_bus = true",
@@ -87,6 +84,8 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		// (trace_as_state) is asserted further down the list.
 		"experimental_dream = false", // [agent] row only — single source (task 473)
 		"experimental_session_collab = false",
+		"experimental_safety_cost_control = false",
+		// 任务 517：legacy B1/B2/B3 键保持渲染（迁移后读 false），关态可记录。
 		"experimental_autonomous_idle_terminate = false",
 		"experimental_loop_streak_note = false",
 		"experimental_event_wait_recheck = false",

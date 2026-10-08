@@ -810,6 +810,7 @@ func normalizeConfigForEdit(cfg *Config) bool {
 	migrateBillingDisplayCurrency(cfg)
 	changed = migrateOrphanHandlingMerge(cfg) || changed
 	changed = migrateLabMirrorKeysToAgent(cfg) || changed
+	changed = migrateSafetyCostControlMerge(cfg) || changed
 	freezeProviderBillingCurrencies(cfg)
 	applyDeepSeekOfficialDefaultPricing(cfg)
 	backfillDeepSeekOfficialPrices(cfg)
@@ -879,6 +880,35 @@ func migrateLabMirrorKeysToAgent(c *Config) bool {
 	fold(&c.Agent.ExperimentalRuntimeReuse, &c.Desktop.ExperimentalRuntimeReuse)
 	fold(&c.Agent.CollabGuidanceMerge, &c.Desktop.CollabGuidanceMerge)
 	return changed
+}
+
+// migrateSafetyCostControlMerge folds the three legacy task-244 B-group keys
+// (B1 idle terminate / B2 loop streak note / B3 event-wait recheck) into the
+// single task-517 experimental_safety_cost_control switch. It runs AFTER
+// migrateLabMirrorKeysToAgent so a stale [desktop] mirror true has already
+// converged onto the [agent] legacy field. Any legacy true means the user had
+// that guard enabled before the merge, so the merged switch reads on (union
+// migration — the guards are one safety class; task 449 precedent); the
+// legacy fields are then cleared so an explicit off (which only writes the
+// merged key) can never be resurrected by a stale legacy true on the next
+// load. Returns true when anything changed so loadForEditStrict can persist
+// the folded state.
+func migrateSafetyCostControlMerge(c *Config) bool {
+	if c == nil {
+		return false
+	}
+	// A bool cannot distinguish "absent" from false, so only legacy true
+	// carries intent: any guard on = the merged switch on (all three follow).
+	if !(c.Agent.ExperimentalAutonomousIdleTerminate ||
+		c.Agent.ExperimentalLoopStreakNote ||
+		c.Agent.ExperimentalEventWaitRecheck) {
+		return false
+	}
+	c.Agent.ExperimentalSafetyCostControl = true
+	c.Agent.ExperimentalAutonomousIdleTerminate = false
+	c.Agent.ExperimentalLoopStreakNote = false
+	c.Agent.ExperimentalEventWaitRecheck = false
+	return true
 }
 
 // normalizeRetiredMultiThresholdCompaction clears retired multi-threshold keys

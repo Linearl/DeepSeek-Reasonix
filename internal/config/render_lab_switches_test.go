@@ -23,8 +23,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.ExperimentalFullAccess = true       // fullAccess (M8 standalone)
 	orig.Sandbox.OptimisticWrite = true            // optimisticParallel (M8 standalone)
 	orig.Agent.ExperimentalDream = true            // dream
-	orig.Agent.ExperimentalAutonomousIdleTerminate = true // M1
-	orig.Agent.ExperimentalLoopStreakNote = true          // M1
+	orig.Agent.ExperimentalSafetyCostControl = true       // 任务 517 合并键（B1/B2/B3）
 	orig.Agent.ExperimentalSubagentPolicy = boolPtr(true) // M4 (*bool, nil means on)
 
 	// efficiency（提效）
@@ -39,8 +38,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.CollabGuidanceMerge = true                     // messageMerge light half 2
 	orig.Desktop.ExperimentalQuickCommands = true             // quickCommands
 	orig.Agent.TraceAsState = true                            // traceAsState ([agent] authoritative; task-60 field has no Experimental prefix)
-	orig.Agent.TraceAsState = true                            // traceAsState (agent side)
-	orig.Agent.ExperimentalEventWaitRecheck = true            // eventWaitRecheck
 	orig.Desktop.ExperimentalOutputStyleUI = true             // outputStyle
 
 	// ui（界面）
@@ -118,9 +115,11 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_session_collab = true",
 		"experimental_auto_load_older = true",
 		"experimental_perf_monitor = true",
-		"experimental_autonomous_idle_terminate = true",
-		"experimental_loop_streak_note = true",
-		"experimental_event_wait_recheck = true",
+		"experimental_safety_cost_control = true",
+		// 任务 517：legacy B1/B2/B3 键保持渲染（迁移后读 false），旧配置往返面不缩。
+		"experimental_autonomous_idle_terminate = false",
+		"experimental_loop_streak_note = false",
+		"experimental_event_wait_recheck = false",
 		"experimental_orphan_handling = true",
 		// (task 551: experimental_model_capability_filter retired from the render
 		// face — accepted on read, never rendered; see render_coverage_test.)
@@ -174,12 +173,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"agent.experimental_session_collab":      got.Agent.ExperimentalSessionCollab,
 		"agent.experimental_full_access":         got.Agent.ExperimentalFullAccess,
 		"agent.experimental_dream":               got.Agent.ExperimentalDream,
-		"agent.experimental_autonomous_idle_terminate": got.Agent.ExperimentalAutonomousIdleTerminate,
-		"agent.experimental_loop_streak_note":    got.Agent.ExperimentalLoopStreakNote,
+		"agent.experimental_safety_cost_control": got.Agent.ExperimentalSafetyCostControl,
 		"agent.experimental_proactive_compact":   got.Agent.ExperimentalProactiveCompact,
 		"agent.experimental_cold_cache_compact":  got.Agent.ExperimentalColdCacheCompact,
 		"agent.experimental_high_speed_model":    got.Agent.ExperimentalHighSpeedModel,
-		"agent.experimental_event_wait_recheck":  got.Agent.ExperimentalEventWaitRecheck,
 		"agent.experimental_composer_draft":      got.Agent.ExperimentalComposerDraft,
 		"agent.experimental_selection_actions":   got.Agent.ExperimentalSelectionActions,
 		"agent.experimental_opencode_go_usage":   got.Agent.ExperimentalOpenCodeGoUsage,

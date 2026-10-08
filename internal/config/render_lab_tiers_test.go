@@ -21,8 +21,8 @@ func allLabSwitchesOn() *Config {
 	c.Sandbox.ExperimentalBashHeavyGuard = true // task 575：豁免键，门禁要求仍被渲染
 	c.Sandbox.ExperimentalParallelWriterReadOnlyBash = true // task 573：豁免键，门禁要求仍被渲染
 	c.Agent.ExperimentalDream = true
-	c.Agent.ExperimentalAutonomousIdleTerminate = true
-	c.Agent.ExperimentalLoopStreakNote = true
+	// 任务 517：B1/B2/B3 合并为单键，legacy 键渲染面保持（迁移后读 false）。
+	c.Agent.ExperimentalSafetyCostControl = true
 	c.Agent.ExperimentalSubagentPolicy = boolPtr(true)
 	// efficiency
 	c.Agent.ExperimentalContextBudget = boolPtr(true)
@@ -36,7 +36,6 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalCompactionParallel = boolPtr(true)
 	c.Agent.TraceAsState = true
 	c.Desktop.ExperimentalTraceAsState = true
-	c.Agent.ExperimentalEventWaitRecheck = true
 	c.Desktop.ExperimentalOutputStyleUI = true
 	c.Desktop.ExperimentalCacheTuning = true
 	c.Agent.ExperimentalActiveTabResident = true
@@ -170,12 +169,14 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 15 / 可选 20 / 未稳定 10 / 已退役 1 = 46.
+// register must stay exactly 推荐 15 / 可选 18 / 未稳定 13 / 已退役 0 = 46.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
 		LabTierRecommended: 15,
-		LabTierOptional:    20,
+		// 任务 517：B1/B2/B3（可选×3）合并为 safetyCostControl（可选×1），
+		// 可选 20→18、总数 48→46。
+		LabTierOptional: 18,
 		// 任务 545（sessionCwdFollow）+ 任务 504（tabModeTint）为 562 表A 快照后
 		// 新增的默认关实验项，按未稳定档登记；任务 551 将 B9
 		// （modelCapabilityFilter）退役移出表A——xlsx 侧待同步。
@@ -203,7 +204,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 48 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 48", len(labFeatureTiers))
+	if len(labFeatureTiers) != 46 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 46", len(labFeatureTiers))
 	}
 }

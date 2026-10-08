@@ -697,7 +697,8 @@ func (a *App) startup(ctx context.Context) {
 		if err != nil {
 			return false
 		}
-		return cfg.Agent.ExperimentalAutonomousIdleTerminate
+		// Task 517: the B1 gate rides the merged safety/cost switch.
+		return cfg.Agent.ExperimentalSafetyCostControl
 	}
 	a.heartbeat.Start()
 	// Expose the scheduler's admin surface to agent tools (task 201). The
