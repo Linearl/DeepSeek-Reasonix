@@ -185,7 +185,7 @@ export function LocalServerPage() {
               style={{ width: 120 }}
               aria-label={t("localserver.port")}
             />
-            <button className="btn btn--small" type="button" disabled={busy || !portDraft} onClick={() => void savePort()}>
+            <button className="btn btn--primary btn--small" type="button" disabled={busy || !portDraft} onClick={() => void savePort()}>
               {t("localserver.savePort")}
             </button>
           </div>
@@ -207,10 +207,10 @@ export function LocalServerPage() {
             <span className="token-display__eye">{showToken ? "🙈" : "👁"}</span>
           </button>
           <div className="settings-actions">
-            <button className="btn btn--small" onClick={copyToken} disabled={!status?.token}>
+            <button className="btn btn--secondary btn--small" onClick={copyToken} disabled={!status?.token}>
               {copied ? t("localserver.copied") : t("localserver.copyToken")}
             </button>
-            <button className="btn btn--small" onClick={refresh} disabled={busy}>
+            <button className="btn btn--secondary btn--small" onClick={refresh} disabled={busy}>
               {t("localserver.refresh")}
             </button>
           </div>

@@ -119,7 +119,7 @@ export function MoveToGroupPanel({
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") confirmCreate(); }}
           />
-          <button type="button" className="btn btn--small" disabled={!title.trim()} onClick={confirmCreate}>
+          <button type="button" className="btn btn--primary btn--small" disabled={!title.trim()} onClick={confirmCreate}>
             {t("projectGroup.createConfirm")}
           </button>
         </div>

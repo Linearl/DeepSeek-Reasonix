@@ -369,10 +369,10 @@ export function ThemeLibrarySection() {
   return (
     <div className="theme-library">
       <div className="theme-library__toolbar">
-        <button type="button" className="btn btn--small" disabled={busy} onClick={openCreate}>
+        <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={openCreate}>
           <Plus size={13} /> {t("settings.themeLibrary.new")}
         </button>
-        <button type="button" className="btn btn--small" disabled={busy} onClick={() => void doImport(false)}>
+        <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => void doImport(false)}>
           <Upload size={13} /> {t("settings.themeLibrary.import")}
         </button>
         <button type="button" className="btn btn--small theme-reset-btn" disabled={busy} onClick={() => void resetDefault()}>
@@ -539,7 +539,7 @@ function OfficialThemeCard({
         <button type="button" className="btn btn--small btn--primary" disabled={busy || active} onClick={onActivate}>
           {active ? t("settings.themeLibrary.active") : t("settings.themeLibrary.enable")}
         </button>
-        <button type="button" className="btn btn--small" disabled={busy} onClick={onCopy}>
+        <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={onCopy}>
           <Copy size={12} /> {t("settings.themeLibrary.copyFrom")}
         </button>
       </div>
@@ -829,7 +829,7 @@ function ThemeEditor({
         <div className="theme-editor__label">{t("settings.themeLibrary.fieldBackground")}</div>
         <div className="theme-editor__fields">
           <div className="theme-library__toolbar">
-            <button type="button" className="btn btn--small" disabled={busy} onClick={() => void pickBackground()}>
+            <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => void pickBackground()}>
               {t("settings.themeLibrary.pickImage")}
             </button>
             <button
@@ -930,7 +930,7 @@ function ThemeEditor({
         <button type="button" className="btn btn--small" disabled={busy} onClick={onCancel}>
           {t("settings.themeLibrary.cancel")}
         </button>
-        <button type="button" className="btn btn--small" disabled={busy} onClick={() => onSave(false)}>
+        <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => onSave(false)}>
           {t("settings.themeLibrary.save")}
         </button>
         <button type="button" className="btn btn--small btn--primary" disabled={busy} onClick={() => onSave(true)}>

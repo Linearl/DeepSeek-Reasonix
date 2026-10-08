@@ -330,11 +330,11 @@ export function AppearanceOverview({
               <button type="button" className="btn btn--primary" disabled={busy} onClick={handleBrowse}>
                 <Images size={14} /> {t("settings.themeGallery.browse")}
               </button>
-              <button type="button" className="btn" disabled={busy} onClick={() => void handleCopy()}>
+              <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => void handleCopy()}>
                 <Copy size={14} /> {t("settings.themeGallery.createCopy")}
               </button>
               {pack ? (
-                <button type="button" className="btn" disabled={busy} onClick={() => void handleDisable()}>
+                <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => void handleDisable()}>
                   {t("settings.themeGallery.disable")}
                 </button>
               ) : null}
@@ -543,7 +543,7 @@ export function AppearanceOverview({
             <div className="appearance-overview__row-label">{t("settings.typography.title")}</div>
             <div className="appearance-overview__row-note">{t("settings.typography.entrySummary")}</div>
           </div>
-          <button type="button" className="btn btn--small" onClick={() => setView("typography")}>
+          <button type="button" className="btn btn--secondary btn--small" onClick={() => setView("typography")}>
             {t("settings.typography.open")}
           </button>
         </div>

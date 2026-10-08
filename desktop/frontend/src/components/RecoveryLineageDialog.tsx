@@ -182,7 +182,7 @@ export function RecoveryLineageDialog({ topic, initial, onClose, onChanged, onOp
                         }}
                         placeholder={t("recovery.versionNotePlaceholder")}
                       />
-                      <button type="button" className="btn btn--small" disabled={busy} onClick={() => void saveNote(member)}>{t("common.save")}</button>
+                      <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => void saveNote(member)}>{t("common.save")}</button>
                       <button type="button" className="btn btn--small" disabled={busy} onClick={() => setEditingPath("")}>{t("common.cancel")}</button>
                     </div>
                   ) : (
@@ -204,7 +204,7 @@ export function RecoveryLineageDialog({ topic, initial, onClose, onChanged, onOp
                     </button>
                   )}
                   {!member.canonical && (
-                    <button type="button" className="btn btn--small" disabled={busy} onClick={() => void choose(member)}>
+                    <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => void choose(member)}>
                       {t(member.headId ? "recovery.makeCurrent" : "recovery.chooseBranch")}
                     </button>
                   )}
@@ -216,7 +216,7 @@ export function RecoveryLineageDialog({ topic, initial, onClose, onChanged, onOp
         </div>
         <footer className="modal__actions recovery-lineage-dialog__actions">
           {heads && view.cleanupEligible > 0 && (
-            <button type="button" className="btn" disabled={busy} onClick={() => void retireCovered()}>
+            <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => void retireCovered()}>
               {t("recovery.retireCovered", { n: view.cleanupEligible })}
             </button>
           )}

@@ -15,7 +15,7 @@ export function ManagementSurface<P extends object>({ loader, surfaceProps, acti
   const fallback = (failed: boolean) => active ? <section aria-label={t("settings.title")} style={{ position: "fixed", inset: 0, zIndex: "var(--z-modal)", background: "var(--bg-soft)", padding: "60px 24px", color: "var(--fg)" }}>
     <button className="btn" onClick={onBack}>{t("settings.backToWorkspace")}</button>
     <p role={failed ? "alert" : "status"}>{t(failed ? "settings.loadFailed" : "common.loading")}</p>
-    {failed && <button className="btn" onClick={() => setAttempt((value) => ({ key: value.key + 1, View: lazy(loader) }))}>{t("common.retry")}</button>}
+    {failed && <button className="btn btn--secondary" onClick={() => setAttempt((value) => ({ key: value.key + 1, View: lazy(loader) }))}>{t("common.retry")}</button>}
   </section> : null;
   return <SurfaceBoundary key={attempt.key} fallback={fallback(true)}><Suspense fallback={fallback(false)}><View {...surfaceProps} /></Suspense></SurfaceBoundary>;
 }

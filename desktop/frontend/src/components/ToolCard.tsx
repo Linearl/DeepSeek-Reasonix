@@ -472,7 +472,7 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
         {open && (fullDataLoading || fullDataFailed) && (
           <div className="tool__data-status" role={fullDataFailed ? "alert" : "status"}>
             <span>{t(fullDataFailed ? "tool.loadFailed" : "common.loading")}</span>
-            {fullDataFailed && tabId && <button type="button" className="btn btn--small" onClick={() => { beginUserResize(); retryFullData(); }}>{t("common.retry")}</button>}
+            {fullDataFailed && tabId && <button type="button" className="btn btn--secondary btn--small" onClick={() => { beginUserResize(); retryFullData(); }}>{t("common.retry")}</button>}
           </div>
         )}
 

@@ -5048,7 +5048,7 @@ export default function App() {
                 <div className="banner banner--error">
                   <span className="banner__msg">{t("topbar.startupError", { msg: blocked.runtime!.issue!.message })}</span>
                   <span className="banner__spacer" />
-                  <button type="button" className="btn btn--small" onClick={() => setTakeoverDialogTab(blocked.id)}>
+                  <button type="button" className="btn btn--primary btn--small" onClick={() => setTakeoverDialogTab(blocked.id)}>
                     {t("takeover.bannerButton")}
                   </button>
                 </div>
@@ -5073,14 +5073,14 @@ export default function App() {
               <span className="banner__spacer" />
               <button
                 type="button"
-                className="btn btn--small"
+                className="btn btn--secondary btn--small"
                 onClick={() => void app.OpenUserConfigPath?.().catch(() => {})}
               >
                 {t("config.openConfig")}
               </button>
               <button
                 type="button"
-                className="btn btn--small"
+                className="btn btn--secondary btn--small"
                 onClick={() => {
                   void (async () => {
                     try {
@@ -5104,7 +5104,7 @@ export default function App() {
             <div className="banner banner--warning banner--actionable">
               <span className="banner__msg">{t("onboarding.inlinePrompt")}</span>
               <span className="banner__spacer" />
-              <button type="button" className="btn btn--small" onClick={() => {
+              <button type="button" className="btn btn--primary btn--small" onClick={() => {
                 setSettingsFocus({ target: "model-access" });
                 setSettingsTarget("models");
               }}>
@@ -5278,7 +5278,7 @@ export default function App() {
                     </div>
                   ) : null}
                 </div>
-                {!runtimeTransitioning && state.hydrateError ? <div className="history-load-error" role="alert"><span>{state.hydrateError}</span><button type="button" className="btn btn--small" onClick={() => void retrySessionHistory(activeTabId)}>{t("common.retry")}</button></div> : null}
+                {!runtimeTransitioning && state.hydrateError ? <div className="history-load-error" role="alert"><span>{state.hydrateError}</span><button type="button" className="btn btn--secondary btn--small" onClick={() => void retrySessionHistory(activeTabId)}>{t("common.retry")}</button></div> : null}
               </>
             )}
           </main>

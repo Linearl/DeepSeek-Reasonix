@@ -41,7 +41,7 @@ export function RemotePanel({ onClose }: { onClose: () => void }) {
         <RemoteStatusChip state={status?.state ?? "stopped"} />
         <div className="remote-panel__header-actions">
           {connected ? (
-            <button className="btn btn--small" onClick={() => void app.DisconnectRemoteHost(hostId).catch(() => {})}>
+            <button className="btn btn--secondary btn--small" onClick={() => void app.DisconnectRemoteHost(hostId).catch(() => {})}>
               {t("remote.disconnect")}
             </button>
           ) : (
@@ -49,7 +49,7 @@ export function RemotePanel({ onClose }: { onClose: () => void }) {
               {busy ? t(`remote.status.${status?.state ?? "connecting"}`) : t("remote.connect")}
             </button>
           )}
-          <button className="btn btn--ghost" onClick={() => setSettingsTarget("remote")}>
+          <button className="btn btn--secondary" onClick={() => setSettingsTarget("remote")}>
             {t("remote.manageHosts")}
           </button>
           <button className="btn btn--ghost" onClick={onClose} aria-label={t("rightDock.collapse")}>
@@ -229,7 +229,7 @@ function RemoteFileView({ hostId, path, connected }: { hostId: string; path: str
         {binary && <span className="remote-panel__hint">{t("remote.editor.binaryBlocked")}</span>}
         {truncated && <span className="remote-panel__hint">{t("remote.editor.truncatedBlocked")}</span>}
         {editable && draft === null && (
-          <button className="btn" onClick={() => setDraft(body)}>{t("remote.editor.edit")}</button>
+          <button className="btn btn--secondary" onClick={() => setDraft(body)}>{t("remote.editor.edit")}</button>
         )}
         {draft !== null && (
           <button className="btn btn--primary" disabled={saving || !dirty || !connected} onClick={() => void save(false)}>
@@ -252,7 +252,7 @@ function RemoteFileView({ hostId, path, connected }: { hostId: string; path: str
         <div className="remote-file-view__conflict" role="alertdialog">
           <p><strong>{t("remote.editor.conflictTitle")}</strong></p>
           <p>{t("remote.editor.conflictBody")}</p>
-          <button className="btn" onClick={() => void load()}>{t("remote.editor.reload")}</button>
+          <button className="btn btn--secondary" onClick={() => void load()}>{t("remote.editor.reload")}</button>
           <button className="btn btn--danger" onClick={() => void save(true)}>{t("remote.editor.overwrite")}</button>
         </div>
       )}
@@ -307,7 +307,7 @@ function RemotePortsTab({ hostId, connected }: { hostId: string; connected: bool
               <span className={`remote-dot remote-dot--${f.state}`} aria-hidden />
               <span>{f.label || f.id}</span>
               {f.error && <span className="remote-panel__error">{f.error}</span>}
-              <button className="btn btn--ghost" onClick={() => void remove(f.id)}>
+              <button className="btn btn--secondary" onClick={() => void remove(f.id)}>
                 {t("remote.ports.remove")}
               </button>
             </li>
@@ -436,10 +436,10 @@ function RemoteServerTab({ hostId, connected, defaultWorkspace }: { hostId: stri
         <button className="btn btn--primary" disabled={!connected || !workspace || busy} onClick={() => void start()}>
           {t("remote.server.openWeb")}
         </button>
-        <button className="btn" disabled={!canManageServer || busy} onClick={() => void stop()}>
+        <button className="btn btn--secondary" disabled={!canManageServer || busy} onClick={() => void stop()}>
           {t("remote.server.stop")}
         </button>
-        <button className="btn btn--ghost" disabled={!canManageServer} onClick={() => void refreshLogs()}>
+        <button className="btn btn--secondary" disabled={!canManageServer} onClick={() => void refreshLogs()}>
           {t("remote.server.logs")}
         </button>
       </div>
@@ -447,7 +447,7 @@ function RemoteServerTab({ hostId, connected, defaultWorkspace }: { hostId: stri
       {logsOpen.current && (
         <pre className="remote-server__logs">
           {logs}
-          <button className="btn btn--ghost" onClick={() => void refreshLogs()}>{t("remote.server.refreshLogs")}</button>
+          <button className="btn btn--secondary" onClick={() => void refreshLogs()}>{t("remote.server.refreshLogs")}</button>
         </pre>
       )}
     </div>

@@ -119,7 +119,7 @@ export function RemoteHostsPage() {
         <div className="remote-hosts__toolbar settings-toolbar">
           <h2>{t("remote.hosts.title")}</h2>
           <div className="remote-hosts__actions">
-            <button className="btn" onClick={() => setScreen({ kind: "import" })}>
+            <button className="btn btn--secondary" onClick={() => setScreen({ kind: "import" })}>
               {t("remote.hosts.import")}
             </button>
             <button className="btn btn--primary" onClick={() => setScreen({ kind: "add" })}>
@@ -233,10 +233,10 @@ function RemoteHostRow(props: {
       <div className="remote-host-row__actions">
         {connected ? (
           <>
-            <button className="btn" onClick={props.onOpen}>
+            <button className="btn btn--secondary" onClick={props.onOpen}>
               {t("remote.explorer")}
             </button>
-            <button className="btn" onClick={props.onDisconnect}>
+            <button className="btn btn--secondary" onClick={props.onDisconnect}>
               {t("remote.disconnect")}
             </button>
           </>
@@ -342,7 +342,7 @@ function RemoteHostForm(props: {
           </span>
           {props.passwordSet && (
             <button
-              className="btn btn--small"
+              className="btn btn--secondary btn--small"
               type="button"
               onClick={() => setForm((current) => ({ ...current, password: "", clearPassword: !current.clearPassword }))}
             >
@@ -372,7 +372,7 @@ function RemoteHostForm(props: {
           </span>
           {props.keyPassphraseSet && (
             <button
-              className="btn btn--small"
+              className="btn btn--secondary btn--small"
               type="button"
               onClick={() => setForm((current) => ({ ...current, keyPassphrase: "", clearPassphrase: !current.clearPassphrase }))}
             >

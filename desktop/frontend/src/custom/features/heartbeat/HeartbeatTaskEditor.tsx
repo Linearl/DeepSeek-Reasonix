@@ -325,8 +325,8 @@ export function TaskEditor({
       {isDirty && !isNew && <div className="management-notice">{m("savedRun")}</div>}
       {managed && entry && (entry.missing || entry.conflicts.length > 0) && <div className="management-notice" role="alert">
         {m(entry.missing ? "missingTask" : "conflict")}
-        {!entry.missing && <button className="btn btn--small" disabled={saving} onClick={handleCancel}>{m("reloadTask")}</button>}
-        <button className="btn btn--small" disabled={saving || !draft.title.trim() || !draft.prompt.trim()} onClick={() => void onSaveAsNew?.(draft)}>{m("saveAsNew")}</button>
+        {!entry.missing && <button className="btn btn--secondary btn--small" disabled={saving} onClick={handleCancel}>{m("reloadTask")}</button>}
+        <button className="btn btn--secondary btn--small" disabled={saving || !draft.title.trim() || !draft.prompt.trim()} onClick={() => void onSaveAsNew?.(draft)}>{m("saveAsNew")}</button>
       </div>}
       <div className="heartbeat-detail-tabs" role="tablist" aria-label={t("heartbeat.detailTitle")}>
         <button role="tab" aria-selected={tab === "configuration"} onClick={() => setTab("configuration")}>{m("configuration")}</button>

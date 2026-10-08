@@ -77,7 +77,7 @@ export function SessionSideFilesPanel({ items, onInjectReferences }: SessionSide
             <FileList files={references} />
             {references.length > 0 && onInjectReferences && (
               <div className="side-files__foot">
-                <button type="button" className="btn btn--small" onClick={inject}>
+                <button type="button" className="btn btn--secondary btn--small" onClick={inject}>
                   <ListPlus size={13} aria-hidden="true" />
                   <span>{t("sideFiles.injectReferences")}</span>
                 </button>
@@ -139,7 +139,7 @@ export function SideFilesDockPanel({ items, variant, onInjectReferences }: {
           {onInjectReferences && (
             <div className="side-files__foot">
               <button
-                type="button" className="btn btn--small"
+                type="button" className="btn btn--secondary btn--small"
                 onClick={() => {
                   const block = formatReferenceListForPrompt(references);
                   if (block) onInjectReferences(block);

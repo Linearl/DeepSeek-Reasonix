@@ -157,7 +157,7 @@ export function ProviderCatalogPicker({ choices, busy, onConnect, onView, onRese
       </div>
       {selected.statusLabel && <div role="status" className="mem-hint">{selected.statusLabel}</div>}
       <div className="prov-card__actions">
-        {selected.conflictName && <button type="button" className="btn btn--small" disabled={busy} onClick={() => onView(selected.conflictName!)}>{t("settings.addProvider.viewPresetProvider")}</button>}
+        {selected.conflictName && <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => onView(selected.conflictName!)}>{t("settings.addProvider.viewPresetProvider")}</button>}
         {(selected.status === "name_conflict" || selected.status === "installed_modified") && <button type="button" className="btn btn--small" disabled={busy}
           onClick={() => { if (confirmReset) { onReset(selected.id); setConfirmReset(false); } else setConfirmReset(true); }}>
           {t(confirmReset ? "settings.addProvider.confirmResetPreset" : "settings.addProvider.resetPreset")}

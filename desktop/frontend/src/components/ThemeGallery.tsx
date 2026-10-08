@@ -573,15 +573,15 @@ export function ThemeGallery({
     return (
       <div className="theme-gallery theme-gallery--immersive">
         <header className="theme-gallery__top">
-          <button type="button" className="btn btn--small" onClick={closeImmersivePreview}>
+          <button type="button" className="btn btn--secondary btn--small" onClick={closeImmersivePreview}>
             <ArrowLeft size={14} /> {t("settings.themeGallery.back")}
           </button>
           <h2 className="theme-gallery__title">{t("settings.themeGallery.previewTitle")}</h2>
           <div className="theme-gallery__top-actions">
-            <button type="button" className="btn btn--small" onClick={() => void doImport()} disabled={busy}>
+            <button type="button" className="btn btn--secondary btn--small" onClick={() => void doImport()} disabled={busy}>
               <Upload size={13} /> {t("settings.themeLibrary.import")}
             </button>
-            <button type="button" className="btn btn--small" onClick={openCreate} disabled={busy}>
+            <button type="button" className="btn btn--secondary btn--small" onClick={openCreate} disabled={busy}>
               <Plus size={13} /> {t("settings.themeLibrary.new")}
             </button>
           </div>
@@ -675,10 +675,10 @@ export function ThemeGallery({
           <p className="theme-gallery__sub">{t("settings.themeGallery.subtitle")}</p>
         </div>
         <div className="theme-gallery__top-actions">
-          <button type="button" className="btn btn--small" onClick={openCreate} disabled={busy}>
+          <button type="button" className="btn btn--secondary btn--small" onClick={openCreate} disabled={busy}>
             <Plus size={13} /> {t("settings.themeLibrary.new")}
           </button>
-          <button type="button" className="btn btn--small" onClick={() => void doImport()} disabled={busy}>
+          <button type="button" className="btn btn--secondary btn--small" onClick={() => void doImport()} disabled={busy}>
             <Upload size={13} /> {t("settings.themeLibrary.import")}
           </button>
         </div>
@@ -813,21 +813,21 @@ export function ThemeGallery({
                   </button>
                 ) : null}
                 <div className="theme-gallery__detail-actions">
-                  <button type="button" className="btn btn--small theme-gallery__open-preview" disabled={busy} onClick={() => setImmersive(true)}>
+                  <button type="button" className="btn btn--primary btn--small theme-gallery__open-preview" disabled={busy} onClick={() => setImmersive(true)}>
                     {t("settings.themeGallery.openPreview")}
                   </button>
                   {themePackKind(selectedPack) === "user" ? (
                     <div className="theme-gallery__detail-user-actions">
-                      <button type="button" className="btn btn--small" disabled={busy} onClick={openEdit}>
+                      <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={openEdit}>
                         <Pencil size={12} /> {t("settings.themeLibrary.edit")}
                       </button>
-                      <button type="button" className="btn btn--small" disabled={busy} onClick={() => void exportSelected()}>
+                      <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => void exportSelected()}>
                         <Download size={12} /> {t("settings.themeLibrary.export")}
                       </button>
                     </div>
                   ) : null}
                   {themePackKind(selectedPack) !== "plugin" ? (
-                    <button type="button" className="btn btn--small theme-gallery__detail-copy" disabled={busy} onClick={() => void copySelected()}>
+                    <button type="button" className="btn btn--secondary btn--small theme-gallery__detail-copy" disabled={busy} onClick={() => void copySelected()}>
                       <Copy size={12} /> {t("settings.themeLibrary.copyFrom")}
                     </button>
                   ) : null}
@@ -1166,7 +1166,7 @@ function ThemeEditorInline({
           <button type="button" className="btn" disabled={busy} onClick={onCancel}>
             {t("common.cancel")}
           </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => onSave(false)}>
+          <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => onSave(false)}>
             {t("common.save")}
           </button>
           <button type="button" className="btn btn--primary" disabled={busy} onClick={() => onSave(true)}>
@@ -1238,7 +1238,7 @@ function SceneImageEditor({
       <div className="theme-editor__scene-head">
         <div><strong>{title}</strong><p>{hint}</p></div>
         <div className="theme-editor__scene-actions">
-          <button type="button" className="btn btn--small" disabled={busy} onClick={onPick}><ImagePlus size={13} /> {t("settings.themeLibrary.pickImage")}</button>
+          <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={onPick}><ImagePlus size={13} /> {t("settings.themeLibrary.pickImage")}</button>
           {present ? <button type="button" className="btn btn--small" disabled={busy} onClick={onClear}>{t("settings.themeLibrary.clearImage")}</button> : null}
         </div>
       </div>

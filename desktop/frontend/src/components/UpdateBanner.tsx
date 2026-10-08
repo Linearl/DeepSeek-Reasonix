@@ -63,7 +63,7 @@ export function UpdateBanner({
           {!info.canSelfUpdate && <span className="banner__hint">{info.manualReason || t("updater.macHint")}</span>}
           <span className="banner__spacer" />
           {onShowReleaseNotes && (
-            <button className="btn btn--small" onClick={() => onShowReleaseNotes(info.latest)}>
+            <button className="btn btn--secondary btn--small" onClick={() => onShowReleaseNotes(info.latest)}>
               {t("updater.releaseNotes")}
             </button>
           )}
@@ -140,7 +140,7 @@ export function UpdateBanner({
           >
             {t("updater.retry")}
           </button>
-          <button className="btn btn--small" onClick={() => reset()}>
+          <button className="btn btn--secondary btn--small" onClick={() => reset()}>
             {t("updater.dismiss")}
           </button>
         </div>

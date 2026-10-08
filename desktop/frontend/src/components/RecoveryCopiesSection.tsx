@@ -661,7 +661,7 @@ export function RecoveryCopiesSection() {
           <span className={groupUnique ? "rc-unique" : "rc-muted"}>{groupUnique ?? "—"}</span>
           <span className="rc-action">
             <button
-              className="btn btn--small"
+              className="btn btn--secondary btn--small"
               type="button"
               disabled={isScanning || scanningAll}
               onClick={() => void scanOne(group.mainPath)}
@@ -749,7 +749,7 @@ export function RecoveryCopiesSection() {
                           <span className="rc-chain__picked-badge">{t("settings.recoveryCopiesPickedBadge")}</span>
                         ) : null}
                         <button
-                          className="btn btn--small rc-chain__preview-btn"
+                          className="btn btn--secondary btn--small rc-chain__preview-btn"
                           type="button"
                           disabled={busy || scanning.size > 0}
                           onClick={() => { void togglePick(group.mainPath, chain); }}
@@ -807,7 +807,7 @@ export function RecoveryCopiesSection() {
           </div>
         </div>
         <div className="settings-section__body">
-          <button className="btn btn--small" type="button" onClick={() => setOpen(true)}>
+          <button className="btn btn--secondary btn--small" type="button" onClick={() => setOpen(true)}>
             {t("settings.recoveryCopiesOpen")}
           </button>
         </div>
@@ -833,7 +833,7 @@ export function RecoveryCopiesSection() {
                 {failed ? (
                   <div className="banner banner--error" role="alert">
                     <span>{t("settings.loadFailed")}</span>
-                    <button className="btn btn--small" type="button" onClick={() => void load()}>
+                    <button className="btn btn--secondary btn--small" type="button" onClick={() => void load()}>
                       {t("common.retry")}
                     </button>
                   </div>
@@ -946,7 +946,7 @@ export function RecoveryCopiesSection() {
                     : `${t("settings.recoveryCopiesMerge")} (${selected.size})`}
                 </button>
                 <button
-                  className="btn btn--small"
+                  className="btn btn--secondary btn--small"
                   type="button"
                   disabled={busy || scanningAll}
                   onClick={() => void scanAll()}
@@ -955,7 +955,7 @@ export function RecoveryCopiesSection() {
                 </button>
                 {selected.size > 0 ? (
                   <button
-                    className="btn btn--small"
+                    className="btn btn--secondary btn--small"
                     type="button"
                     disabled={busy || scanningAll}
                     onClick={() => void scanSelected()}
@@ -964,7 +964,7 @@ export function RecoveryCopiesSection() {
                   </button>
                 ) : null}
                 <button
-                  className="btn btn--small"
+                  className="btn btn--secondary btn--small"
                   type="button"
                   disabled={busy || scanningAll}
                   onClick={() => void load()}

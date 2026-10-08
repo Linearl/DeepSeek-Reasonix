@@ -34,7 +34,7 @@ export function StorageSettingsPage() {
     return (
       <div className="banner banner--error settings-load-error" role="alert">
         <span>{t("settings.loadFailed")}</span>
-        <button className="btn btn--small" type="button" onClick={() => void load()}>{t("common.retry")}</button>
+        <button className="btn btn--secondary btn--small" type="button" onClick={() => void load()}>{t("common.retry")}</button>
       </div>
     );
   }

@@ -43,7 +43,7 @@ export function SessionStatusBanners(props: SessionStatusBannersProps) {
         <div className="banner banner--error">
           <span className="banner__msg">{t("topbar.startupError", { msg: props.leaseBlocked.message })}</span>
           <span className="banner__spacer" />
-          <button type="button" className="btn btn--small" onClick={() => props.onOpenTakeover(props.leaseBlocked!.tabId)}>
+          <button type="button" className="btn btn--primary btn--small" onClick={() => props.onOpenTakeover(props.leaseBlocked!.tabId)}>
             {t("takeover.bannerButton")}
           </button>
         </div>
@@ -63,10 +63,10 @@ export function SessionStatusBanners(props: SessionStatusBannersProps) {
             {t("config.loadWarning", { msg: props.configWarnings[0] })}
           </span>
           <span className="banner__spacer" />
-          <button type="button" className="btn btn--small" onClick={props.onOpenConfigFile}>
+          <button type="button" className="btn btn--secondary btn--small" onClick={props.onOpenConfigFile}>
             {t("config.openConfig")}
           </button>
-          <button type="button" className="btn btn--small" onClick={props.onReloadConfigFile}>
+          <button type="button" className="btn btn--secondary btn--small" onClick={props.onReloadConfigFile}>
             {t("config.reloadConfig")}
           </button>
           <span className="banner__hint">{t("config.doctorHint")}</span>
@@ -79,7 +79,7 @@ export function SessionStatusBanners(props: SessionStatusBannersProps) {
         <div className="banner banner--warning banner--actionable">
           <span className="banner__msg">{t("onboarding.inlinePrompt")}</span>
           <span className="banner__spacer" />
-          <button type="button" className="btn btn--small" onClick={props.onConfigureProvider}>
+          <button type="button" className="btn btn--primary btn--small" onClick={props.onConfigureProvider}>
             {t("onboarding.configureProvider")}
           </button>
         </div>

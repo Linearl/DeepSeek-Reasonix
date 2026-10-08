@@ -622,7 +622,7 @@ export function HistoryPanel({
               )}
               {!isTrash && nextCursor && (
                 <button
-                  className="btn btn--small"
+                  className="btn btn--secondary btn--small"
                   type="button"
                   onClick={loadMore}
                 >
@@ -635,7 +635,7 @@ export function HistoryPanel({
           </div>
 
           <section className={`history-preview${!preview && !searchContext ? " history-preview--empty" : ""}`}>
-            {presentation === "page" && <button className="btn btn--small management-list-back" onClick={() => setDetailVisible(false)}>{m("listBack")}</button>}
+            {presentation === "page" && <button className="btn btn--secondary btn--small management-list-back" onClick={() => setDetailVisible(false)}>{m("listBack")}</button>}
             {searchContext ? (
               <>
                 <div className="history-preview__head">
@@ -681,12 +681,12 @@ export function HistoryPanel({
                       <button className="btn btn--primary btn--small" type="button" disabled={!selectedSession || running} onClick={openSelected}>
                         {tr("history.openSession")}
                       </button>
-                      <button className="btn btn--small" type="button" disabled={!selectedSession || running} onClick={renameSelected}>
+                      <button className="btn btn--secondary btn--small" type="button" disabled={!selectedSession || running} onClick={renameSelected}>
                         {tr("history.rename")}
                       </button>
                       {selectedSession && selectedVersions && (
                         <button
-                          className="btn btn--small"
+                          className="btn btn--secondary btn--small"
                           type="button"
                           onClick={inspectSelectedVersions}
                         >
@@ -709,7 +709,7 @@ export function HistoryPanel({
                 {preview.loading ? (
                   <div className="mem-empty">{tr("common.loading")}</div>
                 ) : preview.error ? (
-                  <div className="mem-empty" role="alert">{m("loadFailed")}<button className="btn btn--small" onClick={() => { if (selectedSession) void loadPreview(selectedSession); }}>{m("retry")}</button></div>
+                  <div className="mem-empty" role="alert">{m("loadFailed")}<button className="btn btn--secondary btn--small" onClick={() => { if (selectedSession) void loadPreview(selectedSession); }}>{m("retry")}</button></div>
                 ) : previewItems.length === 0 ? (
                   <div className="mem-empty">{tr("history.previewEmpty")}</div>
                 ) : (

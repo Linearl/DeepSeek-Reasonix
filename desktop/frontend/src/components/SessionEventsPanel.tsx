@@ -133,7 +133,7 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
           </label>
           <button
             type="button"
-            className="btn btn--sm"
+            className="btn btn--primary btn--sm"
             disabled={busy}
             onClick={() =>
               void apply(async () => {
@@ -157,12 +157,12 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
             {t("settings.eventsRotation.card.overCount", { count: inventory?.overCount ?? 0 })}
           </span>
           <span className="events-rotation-panel__actions">
-            <button type="button" className="btn btn--small" disabled={busy || !inventory} onClick={() => void refresh()}>
+            <button type="button" className="btn btn--secondary btn--small" disabled={busy || !inventory} onClick={() => void refresh()}>
               {t("settings.eventsRotation.card.refresh")}
             </button>
             <button
               type="button"
-              className="btn btn--small"
+              className="btn btn--primary btn--small"
               disabled={busy || !inventory || inventory.overCount === 0}
               onClick={compactAll}
             >
@@ -193,7 +193,7 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
                 </span>
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className="btn btn--secondary btn--small"
                   disabled={mode === "manual" ? busy : busy || entry.busy}
                   title={
                     entry.busy
