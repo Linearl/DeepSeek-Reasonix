@@ -1501,6 +1501,14 @@ func (s *tabEventSink) Emit(e event.Event) {
 			// hub owns the actual resource invalidation and coalesces this probe.
 			app.reconcileWorkspaceForTab(tabID)
 		}
+		// Task 557: foreground sub-agents cannot outlive their parent turn, so
+		// the turn boundary is the authoritative count-reset — TurnDone clears
+		// normally (interrupted and abnormally ended turns included), and
+		// TurnStarted clears defensively so residue from a turn whose TurnDone
+		// was lost can never leak into the new turn's count.
+		if e.Kind == event.TurnStarted || e.Kind == event.TurnDone {
+			app.clearForegroundSubagents(tabID)
+		}
 		switch e.Kind {
 		case event.TurnStarted:
 			s.resetDisplayTurn()

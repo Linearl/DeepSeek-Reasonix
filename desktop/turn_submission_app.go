@@ -52,6 +52,7 @@ func (t *WorkspaceTab) turnStartedAt() int64 {
 // created for a different frontend tab.
 func (s *tabEventSink) setBinding(tabID string, app *App, generation ...uint64) {
 	s.mu.Lock()
+	previous := s.tabID
 	if s.tabID != tabID {
 		s.turn.submissionID = ""
 	}
@@ -65,7 +66,16 @@ func (s *tabEventSink) setBinding(tabID string, app *App, generation ...uint64) 
 	if app != nil {
 		s.app = app
 	}
+	boundApp := s.app
 	s.mu.Unlock()
+	// Task 557: the same controller keeps emitting across a detach (tab closed,
+	// session kept running) or a reattach onto another tab, so its running
+	// foreground sub-agents move with the binding — otherwise the old tab's
+	// entries would linger with no turn left to clear them. Runs outside the
+	// sink lock; the registry mutex is never taken under s.mu.
+	if previous != tabID {
+		boundApp.moveForegroundSubagents(previous, tabID)
+	}
 }
 
 func (s *tabEventSink) setSessionGeneration(generation uint64) {
