@@ -80,7 +80,13 @@ func stagingRoot() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if cfg, err := config.Load(); err == nil && cfg != nil {
+	// Task 472: [desktop].staging_dir is user-level state, so the read goes
+	// through LoadUserConfigReadOnly — no project reasonix.toml resolution, no
+	// on-disk migration, no credential pinning. The old config.Load() made
+	// every staging call (list_versions/set_target) pay the full merged-config
+	// decode (0.3-1.3s healthy, a heavy allocator on congested days); failure
+	// semantics are unchanged: on error we fall through to the default.
+	if cfg, err := config.LoadUserConfigReadOnly(); err == nil && cfg != nil {
 		if dir := strings.TrimSpace(cfg.Desktop.StagingDir); dir != "" {
 			return dir, nil
 		}

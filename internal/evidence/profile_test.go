@@ -75,6 +75,33 @@ func TestClassifyEffectKillShellIsHostStateOnly(t *testing.T) {
 	}
 }
 
+// Task 472: restart_update writes only outside the workspace (install root
+// pointer moves / in-memory staging), so it must classify host-state — the
+// full permission gate stays (StateMutation), but the whole-workspace write
+// lease, the checkpoint barrier, and preimage capture are skipped. Regression
+// face: the 10-05 set_target call that silently waited 55.4s inside the
+// writer-serialization path.
+func TestClassifyEffectRestartUpdateIsHostStateOnly(t *testing.T) {
+	// Every action shares the tool-level classification; set_target is the
+	// incident action, execute/restart the pointer movers.
+	for _, args := range []string{
+		`{"action":"list_versions"}`,
+		`{"action":"set_target","target":"staging"}`,
+		`{"action":"execute"}`,
+		`{"action":"restart"}`,
+		`{}`,
+	} {
+		profile := ClassifyEffect(EffectInput{ToolName: "restart_update", Args: json.RawMessage(args)})
+		if !profile.Known || profile.ReadOnly || !profile.HostState || profile.WorkspaceWrite || profile.RepoMetadata || profile.ExternalState {
+			t.Fatalf("restart_update(%s) profile = %+v, want host-state-only mutation", args, profile)
+		}
+		effects := profile.ToolEffects()
+		if !effects.StateMutation || effects.WorkspaceMutation || effects.ContentMutation || effects.RepositoryMutation {
+			t.Fatalf("restart_update(%s) effects = %+v, want state mutation without workspace mutation", args, effects)
+		}
+	}
+}
+
 func TestClassifyWriteScopeScratchWriteFile(t *testing.T) {
 	workspace := t.TempDir()
 	scratchPath := filepath.Join(os.TempDir(), "reasonix-scope-probe.py")

@@ -49,6 +49,7 @@ func TestClassifyToolCallSeparatesMutationDomains(t *testing.T) {
 		{"fleet meta tool", "fleet", `{}`, false, ToolEffects{Known: true}},
 		{"session title", "set_session_title", `{"title":"Current task"}`, false, ToolEffects{Known: true, StateMutation: true, Reason: "host session metadata write"}},
 		{"background kill", "kill_shell", `{"job_id":"task-1"}`, false, ToolEffects{Known: true, StateMutation: true}},
+		{"restart update", "restart_update", `{"action":"set_target","target":"staging"}`, false, ToolEffects{Known: true, StateMutation: true}},
 		{"generic writer", "edit_file", `{}`, false, ToolEffects{Known: true, StateMutation: true, WorkspaceMutation: true, ContentMutation: true}},
 	}
 	for _, tt := range tests {
