@@ -470,18 +470,17 @@ func providerVisibleFingerprint(msgs []provider.Message) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-// projectionValid reports whether st can be reused for the current transcript
-// and provider/model lineage. Fail closed: missing CoveredPrefixHash or a blank
-// sidecar PromptCacheKey when the current lineage key is known forces rebuild.
-func projectionValid(st CompactionState, msgs []provider.Message, cacheKey string) bool {
+// projectionValid reports whether st can be reused for the current transcript.
+// 任务638: validity is content-authoritative. The lineage key (workspace |
+// branch | model ref) names a prompt-cache namespace, not a validity gate — a
+// key change such as a model hot switch rebinds the namespace (see
+// rebindProjectionLineage, the runtime twin of LoadProjectionSidecar's
+// key-change fallback) instead of invalidating the fold, while real content
+// drift still fails closed through the covered-prefix hash inside
+// projectionContentValid.
+func projectionValid(st CompactionState, msgs []provider.Message) bool {
 	if len(st.Projection.Messages) == 0 {
 		return false
-	}
-	// Current lineage known: stored key must match (legacy native suffix ok).
-	if cacheKey != "" {
-		if _, ok := lineageKeyCompatible(st.PromptCacheKey, cacheKey); !ok {
-			return false
-		}
 	}
 	return projectionContentValid(st, msgs)
 }
