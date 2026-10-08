@@ -88,6 +88,12 @@ export const SHORTCUT_DEFINITIONS: readonly ShortcutDefinition[] = [
     descriptionKey: "shortcuts.desc.settings",
     defaults: modCombo(","),
     preventDefault: true,
+    // Task 622: settings must open no matter where focus sits. Without this
+    // flag the chord died not only in the composer textarea but also in the
+    // rich composer's contentEditable, the xterm hidden textarea (terminal
+    // panel focus) and every sidebar search input — i.e. "anywhere the user
+    // actually was". Matches commandPalette.open's scope.
+    allowInEditable: true,
   },
   {
     action: "tab.close",
@@ -244,7 +250,11 @@ export const SHORTCUT_DEFINITIONS: readonly ShortcutDefinition[] = [
     section: "help",
     labelKey: "shortcuts.action.showShortcuts",
     descriptionKey: "shortcuts.desc.showShortcuts",
-    defaults: allPlatforms({ key: "?", shift: true }),
+    // Task 622: was a bare Shift+/ ("?"), which fired whenever the user typed
+    // "?" anywhere outside an editable target — the transcript area popping
+    // the sheet with no modifier intent. Ctrl|Cmd+/ is the convention
+    // (VS Code, GitHub, Slack) and cannot clash with plain typing.
+    defaults: modCombo("/"),
     preventDefault: true,
   },
   {

@@ -30,7 +30,6 @@ import { useActiveTabUiReset, useDecisionSurfaceFocus } from "./useLocalUiLifecy
 import { useActiveTabMirrorCommit } from "./activeTabMirror";
 import { useInvocationMetadata } from "./useInvocationMetadata";
 import { useFooterHeightLifecycle } from "./useFooterHeightLifecycle";
-import { useNativeSettingsEvent } from "./useNativeSettingsEvent";
 import { useWindowsMaximisedSync } from "./useNativeWindowController";
 import { useShellGeometry } from "./useShellGeometry";
 import { useTopicSummary } from "./useTopicSummary";
@@ -240,7 +239,10 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
 
   useSidebarConnectionValidity({ connections: sidebarImConnections, setConnectionId: setSidebarImDetailConnectionId });
 
-  useNativeSettingsEvent({ closeTransientOverlays, setSettingsTarget });
+  // Task 622: the useNativeSettingsEvent listener that lived here was removed.
+  // It duplicated App.tsx's "app:open-settings" subscription; since the
+  // AppRuntimeView tree this hook belongs to is not mounted by any root, the
+  // surviving listener is the one in App.tsx (see the task-622 comment there).
 
   const [footerHeight, setFooterHeight] = useState(0);
   const footerRef = useRef<HTMLElement>(null);

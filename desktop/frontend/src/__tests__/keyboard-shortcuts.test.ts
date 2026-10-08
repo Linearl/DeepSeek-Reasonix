@@ -73,7 +73,16 @@ for (const platform of ["darwin", "windows", "linux"] satisfies ShortcutPlatform
 
 eq(matchesShortcut(event("k", { metaKey: true }), "commandPalette.open", "darwin"), true, "Cmd+K opens the palette on macOS");
 eq(matchesShortcut(event("k", { ctrlKey: true }), "commandPalette.open", "windows"), true, "Ctrl+K opens the palette on Windows");
-eq(matchesShortcut({ key: "?", shiftKey: true }, "shortcuts.show", "darwin"), true, "? opens shortcut help");
+eq(matchesShortcut(event(",", { metaKey: true }), "settings.open", "darwin"), true, "Cmd+, opens settings on macOS");
+eq(matchesShortcut(event(",", { ctrlKey: true }), "settings.open", "windows"), true, "Ctrl+, opens settings on Windows");
+eq(matchesShortcut(event("/", { metaKey: true }), "shortcuts.show", "darwin"), true, "Cmd+/ opens shortcut help on macOS");
+eq(matchesShortcut(event("/", { ctrlKey: true }), "shortcuts.show", "windows"), true, "Ctrl+/ opens shortcut help on Windows");
+eq(matchesShortcut(event("/", { ctrlKey: true }), "shortcuts.show", "linux"), true, "Ctrl+/ opens shortcut help on Linux");
+// Task 622: the bare "?" chord is retired — it fired from plain typing in the
+// transcript area. No platform keeps an alias for it.
+for (const platform of ["darwin", "windows", "linux"] satisfies ShortcutPlatform[]) {
+  eq(matchesShortcut({ key: "?", shiftKey: true }, "shortcuts.show", platform), false, `${platform} no longer binds bare ? to shortcut help`);
+}
 eq(matchesShortcut({ key: "+", metaKey: true, shiftKey: true }, "textSize.increase", "darwin"), true, "Cmd+Plus still increases text size");
 eq(formatShortcutCombo(defaultShortcutCombo("settings.open", "darwin"), "darwin"), "⌘,", "formats mac settings shortcut");
 eq(JSON.stringify(formatShortcutComboParts(defaultShortcutCombo("settings.open", "darwin"), "darwin")), JSON.stringify(["⌘", ","]), "splits mac settings shortcut for display");
@@ -84,6 +93,9 @@ eq(matchesShortcut(event("l", { metaKey: true }), "selection.addToChat", "darwin
 eq(matchesShortcut(event("l", { ctrlKey: true }), "selection.addToChat", "windows"), true, "Ctrl+L adds the selection to chat on Windows");
 eq(matchesShortcut(event("l", { ctrlKey: true, metaKey: true }), "selection.addToChat", "darwin"), false, "extra modifiers do not trigger the selection shortcut");
 eq(shortcutConflict("app.newSession", { key: "l", ctrl: true }, "linux")?.action, "selection.addToChat", "rebinding another action onto Ctrl+L conflicts with the selection shortcut");
+eq(shortcutDefinition("settings.open").allowInEditable, true, "task 622: settings chord fires from editable targets (composer, rich input, terminal textarea, search boxes)");
+eq(shortcutConflict("settings.open", defaultShortcutCombo("settings.open", "windows"), "windows"), null, "Ctrl+, settings chord conflicts with no other default");
+eq(shortcutConflict("shortcuts.show", defaultShortcutCombo("shortcuts.show", "windows"), "windows"), null, "Ctrl+/ help chord conflicts with no other default");
 eq(topicShortcutIndexFromEvent(event("1", { metaKey: true }), "darwin"), 0, "Cmd+1 maps to the first topic shortcut on macOS");
 eq(topicShortcutIndexFromEvent(event("1", { ctrlKey: true }), "darwin"), null, "Ctrl+1 is not a topic shortcut on macOS");
 eq(topicShortcutIndexFromEvent(event("9", { ctrlKey: true }), "windows"), 8, "Ctrl+9 maps to the ninth topic shortcut on Windows");
