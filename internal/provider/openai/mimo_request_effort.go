@@ -24,15 +24,20 @@ var mimoRequestEffortVocabulary = []string{"none", "low", "medium", "high"}
 var zhipuRequestEffortVocabulary = []string{"disabled", "low", "medium", "high", "max"}
 
 // requestEffortVocabularyFor picks the per-request EffortOverride vocabulary
-// for a client: MiMo gets its canonical four-level set regardless of
-// configured supported_efforts (the vendor scale is folded upstream, and the
-// config-layer capability list is the input face, not this probe's face);
-// GLM gets its canonical five-level set only when the entry declares no
-// supported_efforts of its own — an explicit list stays the probe face
-// because internal/config's NormalizeEffort emits from it verbatim; every
-// other endpoint keeps the configured/derived vocabulary unchanged.
+// for a client: MiMo gets its canonical four-level set when the entry declares
+// no supported_efforts of its own — the canonical set is exactly what
+// internal/config's normalizeMimoEffort emits and what the resolved capability
+// lists (task 606), so the probe face, the Stream gate, and the boot gate all
+// agree; an explicit supported_efforts list stays the probe face for MiMo too
+// (task 606 alignment with the GLM branch): DeclaredReasoning replaces the
+// capability with that same list, so probe and gates keep a single face
+// instead of the probe admitting a level the next request rejects; GLM gets
+// its canonical five-level set under the same condition — an explicit list
+// stays the probe face because internal/config's NormalizeEffort emits from it
+// verbatim; every other endpoint keeps the configured/derived vocabulary
+// unchanged.
 func requestEffortVocabularyFor(baseURL string, configured []string) []string {
-	if IsMiMo(baseURL) {
+	if IsMiMo(baseURL) && !hasExplicitSupportedEfforts(configured) {
 		return mimoRequestEffortVocabulary
 	}
 	if IsZhipu(baseURL) && !hasExplicitSupportedEfforts(configured) {

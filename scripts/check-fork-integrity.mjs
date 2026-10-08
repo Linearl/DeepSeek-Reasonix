@@ -492,6 +492,20 @@ const CHECKS = [
   { feature: "任务601 GLM strength 请求门旁路本体（镜像 configuredEffort boot 例外）", file: "internal/provider/openai/effort.go", patterns: ["func (c *client) admitsGLMStrengthOverride(effort string) bool"] },
   { feature: "任务601 Stream 请求门接线（Validate 拒绝时经旁路复核）", file: "internal/provider/openai/openai.go", patterns: ["c.reasoning.Validate(c.model, req.EffortOverride); err != nil && !c.admitsGLMStrengthOverride(req.EffortOverride)"] },
   { feature: "任务601 GLM effort 验收测试（探针词表+strength 端到端到线）", file: "internal/provider/openai/effort_override_test.go", patterns: ["TestEffortOverrideGLMVocabulary", "TestEffortOverrideGLMStrengthsReachWire"] },
+  // 任务606 MiMo effort none 裂缝修复（探针放行 none 而 Stream/boot 门拒绝的
+  // 双门错位，与 601 的 zhipu 裂缝同机制）。修法与 601 不同：GLM 的二元裁剪是
+  // 上游契约只能加旁路，MiMo 的 capability 缺 none 属漏列，直接补数据——
+  // ①capability 词表：MiMo 分支列进 none（关思考档，normalizeMimoEffort 输出域
+  // 成员），Stream reasoning.Validate 与 New 构造两道门自然通过；缺 none 时
+  // armed 覆盖下一轮必报 UNSUPPORTED_REASONING_EFFORT，持久化 effort=none 则
+  // New 直接失败；②New boot 白名单：MiMo 专属 case 收 none/low/medium/high
+  // （generic OpenAI 枚举曾拒 none）；③探针面显式声明优先（镜像 GLM 分支，
+  // 与 DeclaredReasoning 的 capability 替换同面）。上游若还原任一环，none 档
+  // 切换重新出现「看似成功、下一条消息报错」的持续破中间态。
+  { feature: "任务606 MiMo capability 补 none 档（探针词表=capability=normalizeMimoEffort 输出域）", file: "internal/provider/openai/reasoning_capability.go", patterns: ["case protocol == \"\" && IsMiMo(cfg.BaseURL):", "ReasoningOptions(\"\", \"none\", \"low\", \"medium\", \"high\")"] },
+  { feature: "任务606 New boot 白名单 MiMo 专属 case（none 合法，显式声明覆盖）", file: "internal/provider/openai/openai.go", patterns: ["case protocol == \"\" && IsMiMo(cfg.BaseURL) && effort != \"\":", "uses MiMo thinking; effort must be none, low, medium, or high"] },
+  { feature: "任务606 MiMo 探针面显式声明优先（镜像 GLM 分支）", file: "internal/provider/openai/mimo_request_effort.go", patterns: ["IsMiMo(baseURL) && !hasExplicitSupportedEfforts(configured)"] },
+  { feature: "任务606 MiMo effort 验收测试（none 端到端到线+双门+显式声明拒绝）", file: "internal/provider/openai/effort_override_test.go", patterns: ["TestEffortOverrideMiMoNoneReachesWire", "TestEffortOverrideMiMoDeclaredEffortsRuleBothGates"] },
   // 任务 245：面板记忆键域级归一。三个锚点锁「键只经 workspacePanelMemoryRoot 产出」：
   // 映射函数本体（global→单键分支）+ 两条接线点（App 与 composition）的调用形状。
   // 上游若重新引入 `?? state.meta?.cwd` 兜底，Global 域面板记忆会重新按会话碎裂。
