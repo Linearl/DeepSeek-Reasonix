@@ -17,7 +17,9 @@ export type LabTier = "recommended" | "optional" | "unstable" | "retired";
 /** Badge display order: strongest first. */
 export const LAB_TIER_ORDER: readonly LabTier[] = ["recommended", "optional", "unstable", "retired"];
 
-/** Every 表A feature id (46 items). The union is the type-level gate: a badge
+/** Every 表A feature id (48 items as of 任务 621 — the register mirrors the Go
+ * labFeatureTiers registry; see the LAB_TIER_COUNTS note for the two items
+ * 562's original 46 missed). The union is the type-level gate: a badge
  * can only ever reference a feature that carries a tier. */
 export type TierFeatureId =
   | "autopilot"
@@ -53,6 +55,7 @@ export type TierFeatureId =
   | "questionSearch"
   | "opencodeGoUsage"
   | "feedback"
+  | "tabModeTint"
   | "monitoring"
   | "subagentTps"
   | "cdpDebugPort"
@@ -106,6 +109,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   questionSearch: "recommended",
   opencodeGoUsage: "unstable",
   feedback: "optional",
+  // 任务 621：tabModeTint（任务 504 标签模式色调）在 Go labFeatureTiers 一直
+  // 有档（unstable），但前端注册表漏收——实验室页渲染却无徽章，621 验收
+  // 「每项特性有且仅有一个徽章」不允许。档位镜像 Go 侧。
+  tabModeTint: "unstable",
   // ── observability（可观测性，2 项）───────────────────────────
   monitoring: "recommended",
   subagentTps: "optional",
@@ -128,11 +135,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
- * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 20 / 未稳定 10 / 已退役 1. */
+ * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 20 / 未稳定 12 / 已退役 1.
+ * (任务 621 修正：原钉 46 项未收 toolOptimizations（603）与 tabModeTint（504，
+ * Go 侧一直有档），漏收使实验室页出现无徽章特性。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
   optional: 20,
-  unstable: 10,
+  unstable: 12,
   retired: 1,
 };
 
@@ -232,4 +241,15 @@ export const LAB_TIER_LABEL_KEYS: Readonly<Record<LabTier, "settings.labTier.rec
   optional: "settings.labTier.optional",
   unstable: "settings.labTier.unstable",
   retired: "settings.labTier.retired",
+};
+
+/** 任务 621 — tooltip text keys: one line per tier saying what the tier means
+ * (口径出处 2026-10-06 用户定：推荐 = 核心特性、不开启会有体验缺口；可选 =
+ * 非核心增强；未稳定 = 开发测试中、开启可能不稳定). Same DictKey-checked
+ * literal discipline as LAB_TIER_LABEL_KEYS. */
+export const LAB_TIER_DESC_KEYS: Readonly<Record<LabTier, `settings.labTier.${LabTier}.desc`>> = {
+  recommended: "settings.labTier.recommended.desc",
+  optional: "settings.labTier.optional.desc",
+  unstable: "settings.labTier.unstable.desc",
+  retired: "settings.labTier.retired.desc",
 };

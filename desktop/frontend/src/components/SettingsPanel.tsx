@@ -2140,6 +2140,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // pill. `id` is typed as TierFeatureId, so a badge can never reference a
   // feature outside the 46-item register (preapproveManagedPaths, task-364
   // domain, deliberately shows no badge).
+  // 任务 621 (用户口径 2026-10-08): a feature with several setting rows shows
+  // its badge EXACTLY ONCE — on the master switch row; sibling switches and
+  // dials (时长/间隔/阈值) never carry one. The task621 test pins the count
+  // per id (labLabel("id") appears exactly once, or the usage card covers it).
   const labLabel = (id: TierFeatureId, label: string) => (
     <>
       {label}
@@ -2590,7 +2594,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   {t("settings.sessionMonitorOpenAction")}
                 </button>
               </SettingsField>
-              <SettingsField label={labLabel("monitoring", t("settings.perfMonitor"))} hint={t("settings.perfMonitorHint")} icon={<Sparkles size={18} />}>
+              {/* 任务 621：perfMonitor 是 monitoring 特性的附属开关——徽章只挂
+                  主控开关行（sessionMonitor），附属行不再重复挂。 */}
+              <SettingsField label={t("settings.perfMonitor")} hint={t("settings.perfMonitorHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2933,8 +2939,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
+          {/* 任务 621：tabModeTint（任务 504）在 Go 侧一直有档（unstable），
+              前端注册表漏收导致渲染无徽章——补挂主控开关行徽章。 */}
           {selected === "tabModeTint" && (
-            <SettingsField label={t("settings.tabModeTint")} hint={t("settings.tabModeTintHint")} icon={<Sparkles size={18} />}>
+              <SettingsField label={labLabel("tabModeTint", t("settings.tabModeTint"))} hint={t("settings.tabModeTintHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -3095,7 +3103,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("messageMerge", t("settings.collabGuidanceMerge"))} hint={t("settings.collabGuidanceMergeHint")} icon={<Sparkles size={18} />}>
+              {/* 任务 621：collabGuidanceMerge 是 messageMerge 的附属开关——徽章只在
+                  主控开关行（collabInboxMerge），附属行不重复挂。 */}
+              <SettingsField label={t("settings.collabGuidanceMerge")} hint={t("settings.collabGuidanceMergeHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -3828,7 +3838,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 <SettingsField label={t("settings.contextBudgetCompress")} hint={t("settings.contextBudgetCompressHint")} icon={<Sparkles size={18} />}>
                   <span />
                 </SettingsField>
-                <SettingsField label={labLabel("budgetControl", t("settings.researchBudget"))} hint={t("settings.researchBudgetHint")} icon={<Sparkles size={18} />}>
+                {/* 任务 621：researchBudget 是 budgetControl 的附属开关——徽章只在
+                    主控开关行（contextBudget），附属行不重复挂。 */}
+                <SettingsField label={t("settings.researchBudget")} hint={t("settings.researchBudgetHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -3876,7 +3888,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   />
                 </SettingsField>
-                <SettingsField label={labLabel("compressOpt", t("settings.coldCacheCompact"))} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
+                {/* 任务 621：coldCacheCompact 是 compressOpt 的附属开关——徽章只在
+                    主控开关行（proactiveCompact），附属行不重复挂。 */}
+                <SettingsField label={t("settings.coldCacheCompact")} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
