@@ -153,6 +153,13 @@ type TaskTool struct {
 	// bashSandboxEnforced reports whether OS sandbox can honour write roots
 	// for bash inside path-bound writer sub-agents.
 	bashSandboxEnforced func() bool
+	// parallelWriterReadOnlyBash is the task-573 experimental fallback: when
+	// BindWritePaths drops bash from a path-bound writer's registry (OS sandbox
+	// cannot confine bash writes to the claim roots), re-admit the parent bash
+	// wrapped in the read-only command classifier (readOnlyBash) so the child
+	// regains read-only self-verification (timestamps, inspections) without any
+	// write capability. Off (default) keeps the exact current behavior.
+	parallelWriterReadOnlyBash bool
 	// Task 265 audit-3 M2: the fork-only agent behaviours children inherit.
 	compactionParallel bool
 	contextBudget      bool
@@ -310,6 +317,17 @@ func (t *TaskTool) WithProfileConfigResolvers(model, effort func(profile string)
 // the same write roots under the OS sandbox.
 func (t *TaskTool) WithBashSandboxEnforced(fn func() bool) *TaskTool {
 	t.bashSandboxEnforced = fn
+	return t
+}
+
+// WithParallelWriterReadOnlyBash arms the task-573 experimental fallback: a
+// path-bound (parallel) writer whose bash was dropped by BindWritePaths gets
+// the parent bash re-admitted behind the readOnlyBash classifier. Off keeps
+// bash absent exactly as before.
+func (t *TaskTool) WithParallelWriterReadOnlyBash(on bool) *TaskTool {
+	if t != nil {
+		t.parallelWriterReadOnlyBash = on
+	}
 	return t
 }
 

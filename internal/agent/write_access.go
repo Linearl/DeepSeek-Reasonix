@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"reasonix/internal/nilutil"
@@ -57,6 +58,21 @@ func (b foregroundOnlyBash) DeclareWriteAccess(args json.RawMessage) (tool.Write
 	return tool.WriteAccessDeclaration{}, nil
 }
 
+// unwrapBashTool returns the registry's bash innermost execution tool: the raw
+// builtin behind the foregroundOnly wrapper when present, the tool itself
+// otherwise. readOnlyBash re-wraps this innermost tool so write-root rebinding
+// (BindWriteRootSet case bash) keeps working through the wrapper stack.
+func unwrapBashTool(reg *tool.Registry) (tool.Tool, bool) {
+	tl, ok := reg.Get("bash")
+	if !ok {
+		return nil, false
+	}
+	if fb, isWrapped := tl.(foregroundOnlyBash); isWrapped {
+		return fb.inner, true
+	}
+	return tl, true
+}
+
 func (t *TaskTool) buildSubagentRegistry(spec ProfileExecSpec, toolNames []string, childDepth int) (*tool.Registry, *sandbox.WritableRootSet, error) {
 	if spec.Grant.ReadOnly {
 		reg := ReadOnlySubagentToolRegistryForDepthWithRuntime(t.parentReg, toolNames, childDepth, t.maxDepth(), t.capabilityRuntime)
@@ -69,10 +85,20 @@ func (t *TaskTool) buildSubagentRegistry(spec ProfileExecSpec, toolNames []strin
 	// Explicit paths are an execution boundary and rebind/drop tools that cannot
 	// honor it. A synthesized whole-workspace claim preserves legacy boundaries.
 	if !spec.Grant.WritePaths.Empty() && !spec.Grant.WritePaths.WholeWorkspace {
+		// Task 573 (experimental_parallel_writer_readonly_bash): remember the
+		// pre-bind bash so a dropped one can be re-admitted behind the read-only
+		// classifier. The raw inner is what gets wrapped — mirroring the
+		// read-only registry builder — so BindChildWriteRoots below can still
+		// rebind its OS-sandbox write roots onto the child claim (defense in
+		// depth behind the permission-layer classification).
+		droppedBash, hadBash := unwrapBashTool(reg)
 		bound, removed := BindWritePaths(reg, spec.Grant.WritePaths, t.workspaceRoot, t.bashCanEnforceWriteRoots())
 		reg = bound
 		if len(removed) > 0 && reg.Len() == 0 {
 			return nil, nil, fmt.Errorf("no path-bound write tools available after dropping unbound writers: %s", strings.Join(removed, ", "))
+		}
+		if t.parallelWriterReadOnlyBash && hadBash && slices.Contains(removed, "bash") {
+			reg.Add(readOnlyBash{inner: droppedBash})
 		}
 	}
 	reg, roots := BindChildWriteRoots(reg, t.writeRoots, spec.Grant.WritePaths)

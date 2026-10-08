@@ -112,6 +112,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_fallback_model":            "task 242：额度耗尽切 fallback_model，实验室 tab 无入口",
 	"experimental_collab_background_delivery": "task 224：协作投递后台化，实验室 tab 无入口",
 	"experimental_bash_heavy_guard":          "task 575：bash 重命令写守卫（写并发保护，optimistic_write 家族伴生开关，实验室 tab 无入口）",
+	"experimental_parallel_writer_readonly_bash": "task 573：并行 writer 只读 bash 回退（写隔离伴生开关，write_paths 象限自证能力，实验室 tab 无入口）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
@@ -943,6 +944,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_bash_heavy_guard = %v\n", c.Sandbox.ExperimentalBashHeavyGuard)
 	} else {
 		b.WriteString("# experimental_bash_heavy_guard = false    # task 575: heavy bash commands (install/build) take the write lease under optimistic_write\n")
+	}
+	if c.Sandbox.ExperimentalParallelWriterReadOnlyBash {
+		fmt.Fprintf(&b, "experimental_parallel_writer_readonly_bash = %v\n", c.Sandbox.ExperimentalParallelWriterReadOnlyBash)
+	} else {
+		b.WriteString("# experimental_parallel_writer_readonly_bash = false    # task 573: parallel writers keep a read-only bash when the OS sandbox cannot confine writes\n")
 	}
 	b.WriteString("\n")
 
