@@ -11,7 +11,7 @@
 //
 // 用法：
 //   node scripts/check-architecture.mjs                  全量扫（基线过滤；CI/make lint 同位）
-//   node scripts/check-architecture.mjs --changed        增量：改动文件 + 反向依赖闭包（本地环）
+//   node scripts/check-architecture.mjs --changed        增量：改动文件 + 直接反向依赖（一层，不递归）
 //   node scripts/check-architecture.mjs --base <ref>     增量对照基线改为 git ref（默认 HEAD）
 //   node scripts/check-architecture.mjs --context <id>   打印模块受控上下文（改码前先拉）
 //   node scripts/check-architecture.mjs --strict         全量审计（忽略基线，不进门禁）
@@ -75,6 +75,16 @@ function moduleById(policy, id) {
 
 // ── 源码收集与依赖图 ────────────────────────────────────────────
 
+// 只收集本脚本解析得了的源码扩展名（.go/.ts/.tsx/.js/.jsx）。仓库里的构建
+// 产物（如 desktop/build/ 下数 GB 的 .exe/.wav）一旦被整体读进堆，4GB/8GB
+// 堆都会被击穿（613：--changed 生产路径 OOM / AppHang 元凶）；其余扩展名
+// 本来就没有任何下游消费，在收集期直接排除，扫描内存天然有界。
+const SOURCE_FILE_RE = /\.(?:go|[jt]sx?)$/;
+
+export function isSourceFile(name) {
+  return SOURCE_FILE_RE.test(name);
+}
+
 function walkFiles(root) {
   const out = [];
   const visit = (dir) => {
@@ -82,7 +92,7 @@ function walkFiles(root) {
       if (entry.name.startsWith(".git") || SKIP_DIRS.has(entry.name)) continue;
       const path = join(dir, entry.name);
       if (entry.isDirectory()) visit(path);
-      else out.push(path);
+      else if (isSourceFile(entry.name)) out.push(path);
     }
   };
   visit(root);
@@ -391,40 +401,31 @@ export function gitChangedFiles(root, base = "HEAD") {
   return files;
 }
 
-// 改动 Go 包的传递下游（谁 import 它，逐层向上）+ 改动 TS 文件的传递导入方。
-export function expandClosure(graph, changedFiles) {
-  const closure = new Set(changedFiles);
-  const queue = [];
+// 改动集的直接反向依赖（一层展开，不递归；613 增量语义修正）：
+// - Go 按包粒度——改动文件所在包的全部文件 + 直接导入这些包的包的全部文件；
+// - TS 按文件粒度——直接导入改动文件的生产文件。
+// 不再传递展开（旧实现把「导入方的导入方」也收进来，改动一个底层包就把
+// 半个仓拉进增量集）：边规则违规一律由「含导入语句的文件」承担，隔层的包
+// 不因本次改动产生新违规，一层即为语义完备的最小集，规模天然有界。
+export function expandTouched(graph, changedFiles) {
+  const touched = new Set(changedFiles);
+  const pkgs = new Set();
   for (const rel of changedFiles) {
-    if (rel.endsWith(".go")) {
-      const pkg = rel.slice(0, rel.lastIndexOf("/")) || ".";
-      if (graph.go.has(pkg)) queue.push(pkg);
-    }
+    if (!rel.endsWith(".go")) continue;
+    const pkg = rel.slice(0, rel.lastIndexOf("/")) || ".";
+    if (graph.go.has(pkg)) pkgs.add(pkg);
   }
-  const seenPkg = new Set(queue);
-  while (queue.length) {
-    const pkg = queue.shift();
+  for (const pkg of pkgs) {
+    for (const rel of graph.go.get(pkg)?.files ?? []) touched.add(rel);
     for (const importer of graph.goImporters.get(pkg) ?? []) {
-      for (const rel of graph.go.get(importer)?.files ?? []) closure.add(rel);
-      if (!seenPkg.has(importer)) {
-        seenPkg.add(importer);
-        queue.push(importer);
-      }
+      for (const rel of graph.go.get(importer)?.files ?? []) touched.add(rel);
     }
   }
-  const tsQueue = [...changedFiles].filter((rel) => graph.tsFiles.has(rel));
-  const seenTs = new Set(tsQueue);
-  while (tsQueue.length) {
-    const rel = tsQueue.shift();
-    for (const importer of graph.tsImporters.get(rel) ?? []) {
-      closure.add(importer);
-      if (!seenTs.has(importer)) {
-        seenTs.add(importer);
-        tsQueue.push(importer);
-      }
-    }
+  for (const rel of changedFiles) {
+    if (!graph.tsFiles.has(rel)) continue;
+    for (const importer of graph.tsImporters.get(rel) ?? []) touched.add(importer);
   }
-  return closure;
+  return touched;
 }
 
 // ── --context：改码前拉模块受控上下文 ───────────────────────────
@@ -522,9 +523,9 @@ async function main(argv) {
   let meta = `全量 ${graph.go.size} 个 Go 包 + ${graph.tsFiles.size} 个 TS 文件`;
   if (incremental) {
     const changed = gitChangedFiles(root, base);
-    const closure = expandClosure(graph, changed);
-    findings = allFindings.filter((f) => f.rule === "go-cycles" || closure.has(f.file));
-    meta = `增量闭包 ${closure.size} 个文件（改动 + 反向依赖），环检测恒为全图`;
+    const touched = expandTouched(graph, changed);
+    findings = allFindings.filter((f) => f.rule === "go-cycles" || touched.has(f.file));
+    meta = `增量 ${touched.size} 个文件（改动 + 直接反向依赖，一层），环检测恒为全图`;
   }
 
   if (strict) {
