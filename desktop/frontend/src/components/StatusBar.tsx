@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, PieChart, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
-import { Activity, CircleAlert, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
+import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, PieChart, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap, CircleAlert } from "lucide-react";
 import { labFlagEnabled } from "../lib/labFlags";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { RemoteConnectionErrorDialog } from "./RemoteConnectionErrorDialog";
