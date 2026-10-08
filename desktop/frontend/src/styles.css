@@ -4002,7 +4002,8 @@ a[href] {
 .experimental-lab__group-title {
   position: sticky;
   top: 0;
-  z-index: 1;
+  /* local stacking only; lowest non-zero token tier */
+  z-index: var(--z-app-content);
   background: var(--bg);
 }
 .experimental-lab__group-count {
