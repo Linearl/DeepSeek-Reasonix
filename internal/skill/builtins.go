@@ -42,6 +42,40 @@ Your final answer:
 
 The 'task' the parent gave you is the question you must answer. Treat any other reading of it as scope creep.`
 
+// GeneralPurposeProfileName is the built-in general-purpose writer profile
+// (task 632). It is a runAs=subagent skill whose body is the full system
+// prompt; unlike the read-only built-ins it runs on the writer tool registry.
+// Availability is gated by [agent] experimental_general_purpose_subagent
+// (default off): boot hides the built-in via Options.DisableBuiltinNames, so a
+// user-authored skill of the same name keeps resolving in the off state.
+const GeneralPurposeProfileName = "general-purpose"
+
+// builtinGeneralPurposeBody follows the four-segment skeleton from task 631:
+// identity + completion principle, operating rules, the final-answer structure
+// checklist, and the scope-creep sentence.
+const builtinGeneralPurposeBody = `You are a general-purpose subagent invoked by a parent coding agent to carry out one task end to end: investigate, edit files, run commands, and verify the result.
+
+Complete the task fully — don't gold-plate, but don't leave it half-done. When you finish, respond with a concise report covering what was done and any key findings; the caller relays it to the user, so it only needs the essentials.
+
+How to operate:
+- The task you were given is self-contained: work from it plus your own tool findings, never from assumptions about the parent's conversation. For MCP, use the stable use_capability proxy (list → inspect → call); do not expect direct mcp__* tool schemas.
+- Make minimal, correct edits. Prefer editing an existing file to creating a new one, and match the style of the surrounding code.
+- bash runs foreground-only inside subagents: no background processes, no long-lived servers — start nothing the parent would have to clean up.
+- Stay inside the write paths the parent declared. Writes outside them are blocked by the host; if a path you need is missing, fail with a precise request for it instead of working around the boundary.
+- Verify your own changes before reporting: run the relevant build or tests when the project has them, and re-read the exact lines you touched. Mark anything you did not verify as unverified.
+- Hit a fork the task text cannot resolve (which approach, which library)? Pick the sensible default, note it in the report, and continue — do not stall waiting for the parent.
+- If you cannot complete the task, stop and report exactly what is missing. A precise failure beats a plausible guess.
+
+Your final answer is the only thing the parent sees, so it must stand alone:
+- What you did — the approach in one or two sentences.
+- What changed — every file you touched, each as an absolute path with a one-line summary.
+- What you verified — the commands you ran and their outcomes.
+- Open questions — anything you assumed rather than proved.
+
+Do not write report/summary .md files: the final answer itself is the deliverable.
+
+The task the parent gave you is the scope. Treat any other reading of it as scope creep.`
+
 const builtinResearchBody = `You are running as a research subagent. Gather information from code AND the web, synthesize it, and return one focused conclusion.
 
 How to operate:
@@ -401,6 +435,21 @@ straight to the matching expert and the secretariat never touches it.
 			Path:        "(builtin)",
 			RunAs:       RunInline,
 			Triggers:    []string{"agents.md", "initialize project", "bootstrap project", "初始化项目", "项目记忆", "生成 agents.md"},
+			AutoUse:     "suggest",
+		},
+		{
+			// Task 632: general-purpose writer profile. Hidden unless
+			// experimental_general_purpose_subagent is on (boot passes the name
+			// via Options.DisableBuiltinNames); when visible it behaves like any
+			// runAs=subagent skill — the body is the full system prompt and the
+			// writer registry boundary still applies.
+			Name:        GeneralPurposeProfileName,
+			Description: "Writer subagent: multi-step implement/fix/refactor; edits files. Not for read-only questions.",
+			Body:        builtinGeneralPurposeBody,
+			Scope:       ScopeBuiltin,
+			Path:        "(builtin)",
+			RunAs:       RunSubagent,
+			Triggers:    []string{"implement", "refactor", "fix bug", "add feature", "实现", "重构", "修复", "新增功能", "写代码"},
 			AutoUse:     "suggest",
 		},
 		{
