@@ -266,5 +266,40 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
   container.remove();
 }
 
+// 15. Task 627: SessionWallBoundary — a wall-sized render crash is contained:
+//     the boundary renders null (wall only), reports the crash, and the app
+//     around it keeps other children alive.
+{
+  const { SessionWallBoundary } = await import("../components/SessionWallBoundary");
+  const consoleError = console.error;
+  console.error = () => {}; // React logs the caught error; keep the run output clean.
+  try {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    function Bomb(): never {
+      throw new Error("wall render bomb (627 test)");
+    }
+    await act(async () => {
+      root.render(
+        createElement(
+          "div",
+          null,
+          createElement("span", { id: "survivor" }, "app"),
+          createElement(SessionWallBoundary, null, createElement(Bomb)),
+        ),
+      );
+    });
+    ok(container.querySelector("#survivor") !== null, "boundary: sibling content outside the wall survives a wall crash");
+    ok(container.querySelectorAll(".session-wall").length === 0, "boundary: crashed wall renders nothing (no crash bleed)");
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  } finally {
+    console.error = consoleError;
+  }
+}
+
 process.stdout.write(`\nsession-wall: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
