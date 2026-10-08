@@ -27,6 +27,7 @@ fmt:
 # particular never surface in `go vet`.
 lint: lint-go
 	go run ./tools/repolint
+	node scripts/check-architecture.mjs
 	bash scripts/check-wails-pin.sh
 	bash scripts/check-wails-pin.test.sh
 

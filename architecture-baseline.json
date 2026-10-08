@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "note": "存量违规一次性登记（任务 392）。本文件只能人工核对后编辑，检查器无自动刷新通道（CLI 无 update 参数）。条目只减不增：违规还清后删除对应指纹。",
+    "generated": "2026-10-08",
+    "commit": "0d30e5812abf",
+    "count": 15
+  },
+  "violations": {
+    "c5011f436df3bb3889c71bdc9e4595fbcacac1fd9b29aa14e01006b15e290e74": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/markdownPipeline.ts",
+      "target": "desktop/frontend/src/components/mathNormalize.ts"
+    },
+    "ecc77af8882f591b2ac16a1ee44db962e0727160004ff11ca811c041435aff7c": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/markdownPipeline.ts",
+      "target": "desktop/frontend/src/components/markdownRemarkPlugins.ts"
+    },
+    "370a51197260eeea8f7e0b8beed308f210a389b7a630143cceaf30ec020b0671": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/markdownPipeline.ts",
+      "target": "desktop/frontend/src/components/rehypeReasonixKatex.ts"
+    },
+    "081e12cb81a1542e25f519938425fe52a66a8828f7fb5fe8564d2c35e99e393d": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/markdownWorkerClient.ts",
+      "target": "desktop/frontend/src/components/markdown.worker.ts"
+    },
+    "1f2e6de08e2c63ef86766fe819575261cdc830928c700207b6bc782cb2e2fae4": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/sessionExport.tsx",
+      "target": "desktop/frontend/src/components/markdownRemarkPlugins.ts"
+    },
+    "48fc9455e30916db409132f9a831f54ea53f5d5914f64ef2c68a5eb1c2f6b59d": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/sessionExport.tsx",
+      "target": "desktop/frontend/src/components/mathNormalize.ts"
+    },
+    "31c635257dc456d2cc13c8c8d4f286460c3cef195b5246012b2ecb5a4bc84eb3": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/transcriptRows.ts",
+      "target": "desktop/frontend/src/components/ToolGroup.tsx"
+    },
+    "cfb7752dd33b6dad6354355bf1375682a7ff8c7bb404b9a42eced13397102d43": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/useComposerInboxRefresh.ts",
+      "target": "desktop/frontend/src/components/ComposerGuidanceShelf.tsx"
+    },
+    "737096d72610c65db74521a94016c12c49a9288a727d586b415419b14e129e1a": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/useRemoteSession.ts",
+      "target": "desktop/frontend/src/components/RemoteSessionSurface.tsx"
+    },
+    "f8973afe22f2dc0f28002b917ac5d4fcebefc90a297ea2d55196d715e0313a29": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/useWarmTerminalPanel.ts",
+      "target": "desktop/frontend/src/components/TerminalPanel.tsx"
+    },
+    "68c2602e1d04c169bf0b7e80f08c9a1fa1fbecb4722ba2525bebc73f58a4c5b8": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/lib/workspacePathCopyMenuItems.tsx",
+      "target": "desktop/frontend/src/components/FloatingMenu.tsx"
+    },
+    "45af0b94ac086df74f313af40c699c717d675982099436fa5159aead340d49dd": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/store/appNavigation.ts",
+      "target": "desktop/frontend/src/components/SettingsPanel.tsx"
+    },
+    "788f8a8ddfbffe704158005dac13bd1c98f43f4cf6bb22024b6df0ad9da36f22": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/store/automationDrafts.ts",
+      "target": "desktop/frontend/src/custom/features/heartbeat/heartbeat.types.ts"
+    },
+    "5ef776c8156c42900947bc30281d5b40be9456a01fbb2fa67a1e177df3805b2a": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/store/automationDrafts.ts",
+      "target": "desktop/frontend/src/custom/features/heartbeat/heartbeat.presentation.ts"
+    },
+    "186972910c84da69bd666246da91ed0661bfdb9cef306cfd3dbb7baef8e754a4": {
+      "rule": "ts-kernel-no-presentation",
+      "file": "desktop/frontend/src/store/overlays.ts",
+      "target": "desktop/frontend/src/components/SettingsPanel.tsx"
+    }
+  }
+}

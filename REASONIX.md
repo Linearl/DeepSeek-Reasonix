@@ -47,6 +47,13 @@ agent. It is the Reasonix analog of Claude Code's CLAUDE.md.
   (enforced by `check:theme-token`), radius/spacing tiers, popup/menu language,
   and the 383 three-layout verdict whitelist. Violations are design-system
   defects, not stylistic preferences (task 391).
+- Structure changes are gated by the module registry: before touching a
+  registered module, pull its context with
+  `node scripts/check-architecture.mjs --context <module-id>` (docs/
+  ARCHITECTURE_CONTEXT.md), and run the same script with `--changed` when done.
+  Dependency-direction, testutil-isolation, import-cycle and deep-import
+  violations are structural defects, not style; pre-existing ones live in
+  `architecture-baseline.json` and only new ones block (task 392).
 
 ## Comments
 

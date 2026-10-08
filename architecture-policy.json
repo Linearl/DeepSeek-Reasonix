@@ -1,0 +1,178 @@
+{
+  "_what": "结构治理门禁的模块注册表（任务 392）。scripts/check-architecture.mjs 消费本文件：模块归属、依赖方向红线、testutil 隔离、internal 包禁环、按需受控上下文（--context）。",
+  "_division-of-labor": "本表只管『模块级结构』。不重叠的既有防线：tools/repolint（单文件行数 800 棘轮/复杂度/注释/Go 粗粒度分层，基线 tools/repolint/baseline.json）；scripts/check-fork-integrity.mjs（上游合并后 fork 特有锚点防丢）；desktop/frontend/scripts/check-app-layers.mjs（app-runtime/app-shell AST 层内契约）；check-bundle-budget.mjs（打包体积预算）。四者各管一面，本表不复制它们的规则。",
+  "_baseline": "存量违规登记在 architecture-baseline.json（违规指纹 sha256），检查器只报基线外的新增违规。基线没有自动刷新通道：CLI 不提供 update 类参数，只能人工核对后编辑该文件并随 commit 送审。",
+  "_managed": "managed=true 的模块参与下方全部规则；managed=false 仅登记归属与上下文（渐进启用，不追全量）。",
+  "version": 1,
+  "modules": [
+    {
+      "id": "go/desktop-host",
+      "kind": "go",
+      "roots": ["desktop"],
+      "host": true,
+      "managed": true,
+      "owner": "桌面宿主",
+      "notes": "Wails 桌面宿主与 desktop/internal/*；只能被 main 装配，任何其他 Go 包不得反向导入（实测 0 违规）。"
+    },
+    {
+      "id": "go/cmd-host",
+      "kind": "go",
+      "roots": ["cmd"],
+      "host": true,
+      "managed": true,
+      "owner": "CLI 宿主",
+      "notes": "cmd/reasonix 等可执行入口；与 desktop 同为宿主层。"
+    },
+    {
+      "id": "go/control",
+      "kind": "go",
+      "roots": ["internal/control"],
+      "managed": true,
+      "owner": "内核",
+      "notes": "transport 无关的 Controller 内核；上下层关系（仅前端可导入 control）由 tools/repolint layers.go 把守，本表不重复。"
+    },
+    {
+      "id": "go/agent",
+      "kind": "go",
+      "roots": ["internal/agent"],
+      "managed": true,
+      "owner": "内核",
+      "notes": "agent 执行核心（最大内核包，含子包 testutil）。"
+    },
+    {
+      "id": "go/session",
+      "kind": "go",
+      "roots": ["internal/session"],
+      "managed": true,
+      "owner": "内核",
+      "notes": "会话存储/流读面。"
+    },
+    {
+      "id": "go/boot",
+      "kind": "go",
+      "roots": ["internal/boot"],
+      "frontend": true,
+      "managed": true,
+      "owner": "装配根",
+      "notes": "boot.Build 装配根，前端侧组装入口。"
+    },
+    {
+      "id": "go/frontends",
+      "kind": "go",
+      "roots": ["internal/cli", "internal/serve", "internal/acp", "internal/bot", "internal/botruntime"],
+      "frontend": true,
+      "managed": true,
+      "owner": "前端传输层",
+      "notes": "五个前端（TUI/HTTP-SSE/ACP/bot/runtime）；粗粒度分层归 repolint layers.go。"
+    },
+    {
+      "id": "go/testutil",
+      "kind": "go",
+      "patterns": ["internal/**/testutil"],
+      "testOnly": true,
+      "managed": true,
+      "owner": "测试辅助",
+      "notes": "测试辅助包只许被 _test.go 导入；生产代码导入即违规（实测 0 违规）。"
+    },
+    {
+      "id": "go/sdk",
+      "kind": "go",
+      "roots": ["sdk"],
+      "managed": false,
+      "owner": "SDK",
+      "notes": "对外 SDK；v1 只登记不强制。"
+    },
+    {
+      "id": "ts/lib",
+      "kind": "ts",
+      "roots": ["desktop/frontend/src/lib"],
+      "managed": true,
+      "owner": "前端内核库",
+      "notes": "无 DOM 组件依赖的内核库（transcript kernel、bridge 等）；不得反向依赖展示层（存量 15 条已登记基线）。"
+    },
+    {
+      "id": "ts/store",
+      "kind": "ts",
+      "roots": ["desktop/frontend/src/store"],
+      "managed": true,
+      "owner": "前端状态",
+      "notes": "状态 store；与 ts/lib 同属内核侧。"
+    },
+    {
+      "id": "ts/components",
+      "kind": "ts",
+      "roots": ["desktop/frontend/src/components"],
+      "managed": true,
+      "owner": "前端展示层",
+      "notes": "React 组件；不得上探 app-runtime/app-shell 装配层（实测 0 违规）。层内 AST 契约归 check-app-layers.mjs。"
+    },
+    {
+      "id": "ts/app-shell",
+      "kind": "ts",
+      "roots": ["desktop/frontend/src/app-shell"],
+      "managed": true,
+      "owner": "前端壳层",
+      "notes": "应用壳；只有它可被 app-runtime 之上引用为呈现层。"
+    },
+    {
+      "id": "ts/app-runtime",
+      "kind": "ts",
+      "roots": ["desktop/frontend/src/app-runtime"],
+      "managed": true,
+      "owner": "前端装配层",
+      "notes": "Owner/组合层；层内依赖契约归 check-app-layers.mjs。"
+    },
+    {
+      "id": "ts/custom",
+      "kind": "ts",
+      "roots": ["desktop/frontend/src/custom"],
+      "managed": true,
+      "owner": "前端特性区",
+      "notes": "custom/features 特性目录，展示侧。"
+    },
+    {
+      "id": "ts/locales",
+      "kind": "ts",
+      "roots": ["desktop/frontend/src/locales"],
+      "managed": false,
+      "owner": "文案数据",
+      "notes": "翻译数据，repolint 行数豁免同源；不参与方向规则。"
+    },
+    {
+      "id": "ts/app-root",
+      "kind": "ts",
+      "roots": [
+        "desktop/frontend/src/App.tsx",
+        "desktop/frontend/src/AppRuntime.tsx",
+        "desktop/frontend/src/main.tsx"
+      ],
+      "managed": false,
+      "owner": "前端入口",
+      "notes": "src 根入口三件；v1 只登记不强制。"
+    }
+  ],
+  "directionRules": [
+    {
+      "id": "ts-kernel-no-presentation",
+      "from": ["ts/lib", "ts/store"],
+      "forbid": ["ts/components", "ts/app-shell", "ts/custom"],
+      "note": "内核侧（lib/store）不得 import 展示侧（components/app-shell/custom）。存量 15 条已登记 architecture-baseline.json，新增即报错。"
+    },
+    {
+      "id": "ts-components-no-app",
+      "from": ["ts/components"],
+      "forbid": ["ts/app-runtime", "ts/app-shell"],
+      "note": "组件层不得上探装配/壳层（实测 0 违规）。"
+    }
+  ],
+  "hostImportRule": {
+    "note": "生产 Go 文件（非 _test.go、非宿主模块内）不得 import 任何 host:true 模块的包（reasonix/desktop*、reasonix/cmd*）。宿主只能被装配，不能被反向依赖。实测 0 违规。"
+  },
+  "cycleRule": {
+    "roots": ["internal"],
+    "note": "internal/** 生产包导入图禁止环（SCC>1 即违规）。实测 0 违规。"
+  },
+  "deepImportRule": {
+    "note": "模块声明 publicEntrypoints 后，外部导入只许经过入口包，直达子包即违规（禁深导入）。渐进启用：当前无模块声明入口，机制由单测把守。"
+  }
+}
