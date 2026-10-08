@@ -115,7 +115,7 @@ func (a *Agent) interceptAgentStart(ctx context.Context) error {
 	}
 	providerCtx := a.withAgentContext(ctx)
 	payload := dispatch.AgentStartPayload{
-		Model:     a.svc.prov.Name(),
+		Model:     a.providerForRequest().Name(),
 		ToolCount: len(a.svc.tools.SchemasForContext(providerCtx)),
 		SessionID: ParentSession(ctx),
 	}

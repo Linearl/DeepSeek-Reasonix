@@ -173,7 +173,7 @@ func (a *Agent) softBudgetHistoryKey() string {
 	} else if a.readOnlyExecution {
 		kind = "read_only_agent"
 	}
-	return strings.TrimSpace(a.modelRef) + "|" + kind
+	return strings.TrimSpace(a.destinationModelRef()) + "|" + kind
 }
 
 func recordReadonlySoftBudgetDuration(key string, duration time.Duration) {

@@ -181,11 +181,14 @@ func outputBudgetCacheKey(a *Agent) string {
 	if a == nil {
 		return ""
 	}
+	// Task 602: the cache key follows the request destination, so a hot model
+	// switch never reuses the previous provider's learned output budget.
+	dest := a.providerForRequest()
 	providerName := ""
-	if !nilutil.IsNil(a.svc.prov) {
-		providerName = strings.TrimSpace(a.svc.prov.Name())
+	if !nilutil.IsNil(dest) {
+		providerName = strings.TrimSpace(dest.Name())
 	}
-	modelRef := strings.TrimSpace(a.modelRef)
+	modelRef := strings.TrimSpace(a.destinationModelRef())
 	if providerName == "" && modelRef == "" {
 		return ""
 	}
@@ -244,7 +247,7 @@ func requestCalibrationShapeOf(req provider.Request) requestCalibrationShape {
 }
 
 func (a *Agent) requestCalibrationShape(req provider.Request) requestCalibrationShape {
-	return requestCalibrationShapeWithPolicy(req, sharedWindowInputPolicyOf(a.svc.prov))
+	return requestCalibrationShapeWithPolicy(req, sharedWindowInputPolicyOf(a.providerForRequest()))
 }
 
 func requestCalibrationShapeWithPolicy(req provider.Request, policy provider.SharedWindowInputPolicy) requestCalibrationShape {
@@ -364,7 +367,11 @@ func (a *Agent) effectiveContextWindow() int {
 	if a == nil {
 		return 0
 	}
-	cfg := a.contextWindow
+	// Task 602: the configured side follows the request destination, so a hot
+	// model switch sizes against the destination's window; the learned side
+	// keeps its min-composition (a stale learned window from the previous
+	// provider can only shrink the estimate, never exceed the destination).
+	cfg := a.destinationContextWindow()
 	learned := 0
 	if snap := a.sess.output.learned.Load(); snap != nil {
 		learned = snap.windowTokens
@@ -524,7 +531,7 @@ func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens
 		adm.ObservedWindow = learned.windowTokens
 		adm.ObservedCompletion = learned.completionBudget
 	}
-	policy := contextBudgetPolicyOf(a.svc.prov)
+	policy := contextBudgetPolicyOf(a.providerForRequest())
 	if shouldUseSharedWindowForAdmission(policy.WindowMode, adm.ObservedWindow, conservativeUnknown) {
 		policy.WindowMode = provider.ContextWindowShared
 	}
@@ -545,7 +552,7 @@ func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens
 	adm.MaxOutputTokens = policy.MaxOutputTokens
 	window := a.effectiveContextWindow()
 	adm.WindowTokens = window
-	learnedWindow := window > 0 && (a.contextWindow <= 0 || window < a.contextWindow)
+	learnedWindow := window > 0 && (a.destinationContextWindow() <= 0 || window < a.destinationContextWindow())
 	adm.Source = admissionSource(req.MaxTokens, policy, learnedWindow)
 	if window <= 0 {
 		a.storeAdmission(adm)

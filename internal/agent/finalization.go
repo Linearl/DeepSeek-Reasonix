@@ -27,14 +27,21 @@ type turnFinalizer interface {
 }
 
 func (a *Agent) providerToolSchemas() []provider.ToolSchema {
-	if a == nil || a.svc.tools == nil || !provider.SupportsTools(a.svc.prov) {
+	if a == nil || a.svc.tools == nil {
+		return []provider.ToolSchema{}
+	}
+	// Task 602: schema shaping (tool support, native tool search) follows the
+	// request destination, so a cross-family hot switch shapes schemas the way
+	// a rebuild of that destination would.
+	dest := a.providerForRequest()
+	if !provider.SupportsTools(dest) {
 		return []provider.ToolSchema{}
 	}
 	schemas := a.svc.tools.Schemas()
-	if !provider.NativeToolSearchEnabled(a.svc.prov) {
+	if !provider.NativeToolSearchEnabled(dest) {
 		return schemas
 	}
-	return provider.ApplyNativeToolSearch(schemas, deferredMCPSchemas(a.svc.tools), a.svc.prov)
+	return provider.ApplyNativeToolSearch(schemas, deferredMCPSchemas(a.svc.tools), dest)
 }
 
 func deferredMCPSchemas(reg *tool.Registry) []provider.ToolSchema {

@@ -456,11 +456,27 @@ const CHECKS = [
   // 携入并扩展 model 侧，后并线时二选一保留。
   { feature: "任务334 agent 侧 per-request effort 覆盖（词表门+请求侧读取+拒绝留痕）", file: "internal/agent/effort_override.go", patterns: ["func (a *Agent) SetSessionEffortOverride(level string) bool", "func (a *Agent) effortOverrideForRequest() string", "provider-not-effort-varying"] },
   { feature: "任务334 desktop 侧 effort fast path 分派（fast-per-request 接缝）", file: "desktop/app.go", patterns: ["SetSessionEffortOverride(string) bool"] },
-  { feature: "任务148 agent 侧 per-request model 覆盖（同族门+目的地读取+拒绝留痕）", file: "internal/agent/model_override.go", patterns: ["func (a *Agent) SetSessionModelOverride(ref string) bool", "func (a *Agent) providerForRequest() provider.Provider", "provider-family-mismatch"] },
+  { feature: "任务148 agent 侧 per-request model 覆盖（602 演进：家族门移除，仅目的地读取+拒绝留痕）", file: "internal/agent/model_override.go", patterns: ["func (a *Agent) SetSessionModelOverride(ref string, extras ModelOverrideExtras) bool", "func (a *Agent) providerForRequest() provider.Provider"] },
   { feature: "任务148 请求冻结捕获目的地（切换轮间生效、轮内不换线）", file: "internal/agent/sampling_request.go", patterns: ["func (s samplingRequest) destination(a *Agent) provider.Provider", "dest := a.providerForRequest()"] },
   { feature: "任务148 boot resolver 接缝（快路径构造与全量重建同形）", file: "internal/boot/boot.go", patterns: ["ModelResolver: resolveModelResolver(effectiveResolver, cfg, proxySpec)"] },
-  { feature: "任务148 desktop 侧 model fast path 分派（SetSessionModelOverride 接缝）", file: "desktop/app.go", patterns: ["SetSessionModelOverride(string) bool", "func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string)"] },
-  { feature: "任务148 活跃 turn 钉子族（effort/model 快路径先于活跃工作守卫；跨族仍拒绝）", file: "desktop/model_fast_path_active_turn_test.go", patterns: ["TestSetEffortForTabFastPathAheadOfActiveWorkGuard", "TestSetModelForTabFastPathAheadOfActiveWorkGuard", "TestSetModelForTabCrossProviderStillRefusedDuringActiveWork"] },
+  { feature: "任务148 desktop 侧 model fast path 分派（SetSessionModelOverride 接缝）", file: "desktop/app.go", patterns: ["SetSessionModelOverride(string, agent.ModelOverrideExtras) bool", "func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string)"] },
+  { feature: "任务148 活跃 turn 钉子族（effort/model 快路径先于活跃工作守卫；602 演进为跨族放行）", file: "desktop/model_fast_path_active_turn_test.go", patterns: ["TestSetEffortForTabFastPathAheadOfActiveWorkGuard", "TestSetModelForTabFastPathAheadOfActiveWorkGuard"] },
+  // 任务602 跨 provider 切模型热替换（148 同族门移除后的目的地全域跟随）。锚点锁四层机制：
+  // ①agent 标量重绑——override 携带 entry 派生标量（pricing/窗口/输出上限/高速白名单），
+  //   destination* accessor 族读取；②协议读点目的地化——塑形面（reasoning replay/压缩窗口
+  //   模式/native tool search）全部读 providerForRequest，跨族不再借构造期协议；③control
+  //   身份原子重绑——SetModelIdentity（ref/label/balance/图片门），active* accessor 族；
+  //   ④desktop persona 边界门——官方 DeepSeek-V4-Pro 烘焙提示词无覆盖接缝，跨界退 Build+swap。
+  // 上游 merge 若还原同族门（prov.Name 相等）或把读点改回 a.svc.prov，跨族切换会静默
+  // 带上错误协议塑形/错误计费归属。
+  { feature: "任务602 override 携带 entry 派生标量（destination* accessor 族+家族门移除）", file: "internal/agent/model_override.go", patterns: ["type ModelOverrideExtras struct", "func (a *Agent) destinationModelRef() string", "func (a *Agent) destinationPricing() *provider.Pricing", "func (a *Agent) destinationContextWindow() int"] },
+  { feature: "任务602 协议读点目的地化（塑形面跟随请求目的地）", file: "internal/agent/reasoning_replay.go", patterns: ["dest := a.providerForRequest()", "provider.DecideReasoningReplay(dest, result.assistantMessage(), result.reasoningComplete)"] },
+  { feature: "任务602 工具 schema 塑形目的地化（ SupportsTools/NativeToolSearch 按目的地）", file: "internal/agent/finalization.go", patterns: ["dest := a.providerForRequest()", "if !provider.SupportsTools(dest)"] },
+  { feature: "任务602 窗口学习组合以目的地为配置输入（effectiveContextWindow 走 destinationContextWindow）", file: "internal/agent/output_budget.go", patterns: ["cfg := a.destinationContextWindow()"] },
+  { feature: "任务602 control 身份原子重绑（SetModelIdentity+active* accessor 族）", file: "internal/control/controller.go", patterns: ["func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput *bool)", "func (c *Controller) activeModelRef() string", "func (c *Controller) activeBalance() (url, key string)"] },
+  { feature: "任务602 desktop persona 边界门（跨界退 Build+swap 回退）", file: "desktop/app.go", patterns: ["func modelSwitchPersonaBoundary(workspaceRoot, currentRef string, target *config.ProviderEntry) bool", "fallback-persona-boundary"] },
+  { feature: "任务602 desktop extras/identity 派生（镜像 boot 的标量折叠）", file: "desktop/app.go", patterns: ["func modelSwitchExtras(workspaceRoot, ref string, entry *config.ProviderEntry)", "boot.HighSpeedModelsFor(cfg, entry.HighSpeedModels)"] },
+  { feature: "任务602 跨族钉子族（活跃 turn 跨族快路径/身份重绑/persona 回退）", file: "desktop/model_fast_path_active_turn_test.go", patterns: ["TestSetModelForTabCrossProviderFastPathDuringActiveWork", "TestSetModelForTabCrossProviderRebindsControllerIdentity", "TestSetModelForTabPersonaBoundaryKeepsRebuildFallback"] },
   // 任务601 GLM 接入 per-request effort（334 词表门的 GLM 补全）。锚点锁两个机制：
   // ①探针词表——GLM 无显式 supported_efforts 时 PerRequestEfforts 必须等于
   // normalizeGLMEffort 输出域（探针空 ⇒ agent 词表门拒收 ⇒ 退回全量重建，实测

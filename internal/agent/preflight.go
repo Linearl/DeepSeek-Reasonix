@@ -61,7 +61,9 @@ func (a *Agent) currentPromptCacheKey() string {
 }
 
 func (a *Agent) currentPromptCacheKeyLocked() string {
-	return promptCacheKey(a.workspaceID, BranchID(a.sess.path), a.modelRef)
+	// Task 602: the key carries the effective ref so a hot switch lands the
+	// destination's cache namespace from its first request.
+	return promptCacheKey(a.workspaceID, BranchID(a.sess.path), a.destinationModelRef())
 }
 
 // InvalidateProjection drops the in-memory and on-disk projection after

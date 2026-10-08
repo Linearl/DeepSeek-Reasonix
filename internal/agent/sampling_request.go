@@ -143,7 +143,7 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 	req := provider.Request{
 		Messages:       requestMessages,
 		Tools:          a.providerToolSchemas(),
-		MaxTokens:      a.maxOutputTokens,
+		MaxTokens:      a.destinationMaxOutputTokens(),
 		Temperature:    provider.OptionalTemperature(a.temperature),
 		ResponseFormat: responseFormatFromRequest(ctx),
 		EffortOverride: a.effortOverrideForRequest(),

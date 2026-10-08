@@ -513,8 +513,8 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	if isKnownProviderRejection(text) {
 		state.terminal.rejectedTemplateBlocks++
 		providerName := ""
-		if a.svc.prov != nil {
-			providerName = a.svc.prov.Name()
+		if dest := a.providerForRequest(); dest != nil {
+			providerName = dest.Name()
 		}
 		a.svc.sink.Emit(event.Event{
 			Kind:   event.Notice,
@@ -667,7 +667,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			if state.terminal.emptyFinalBlocks >= maxEmptyFinalBlocks {
 				return false, fmt.Errorf("model finished without a visible final answer %d times", state.terminal.emptyFinalBlocks)
 			}
-			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeEmptyFinal, Text: emptyFinalNotice(), Detail: emptyFinalNoticeDetail(a.svc.prov.Name(), usage, len(reasoning))})
+			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeEmptyFinal, Text: emptyFinalNotice(), Detail: emptyFinalNoticeDetail(a.providerForRequest().Name(), usage, len(reasoning))})
 			a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(emptyFinalRetryMessage())))
 			a.contextManager().ObserveUsage(usage)
 			return true, nil

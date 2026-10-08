@@ -3731,6 +3731,13 @@ func highSpeedModelsFromConfig(cfg *config.Config, models []string) []string {
 	return models
 }
 
+// HighSpeedModelsFor is the exported face of highSpeedModelsFromConfig for the
+// desktop hot model switch (task 602): the fast path derives the same
+// allowlist a rebuild would fold into agent.Options.HighSpeedModels.
+func HighSpeedModelsFor(cfg *config.Config, models []string) []string {
+	return highSpeedModelsFromConfig(cfg, models)
+}
+
 // sessionCollabIndexBlock is the system-prompt section that teaches the model
 // the directory exists and what it is called in Chinese. Without it, a user
 // saying 「通讯录」 gets "no such tool" even when every tool is registered.

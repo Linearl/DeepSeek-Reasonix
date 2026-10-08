@@ -296,7 +296,7 @@ func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message,
 		result.Usage = run.usage
 		result.Spans = run.calls
 	}()
-	chunks := splitExtractChunks(fold, extractChunkOverlapBytes, sharedWindowInputPolicyOf(a.svc.prov))
+	chunks := splitExtractChunks(fold, extractChunkOverlapBytes, sharedWindowInputPolicyOf(a.providerForRequest()))
 	if len(chunks) == 0 {
 		return result, fmt.Errorf("fold is empty")
 	}

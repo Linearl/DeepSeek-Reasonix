@@ -32,7 +32,7 @@ func (a *Agent) processToolImages(ctx context.Context, text string, images []str
 	if a.imageInput.native {
 		return imageResult{text: text}
 	}
-	summary, err := a.imageInput.service.Understand(ctx, a.modelRef, images, a.Session().Snapshot, a.svc.sink)
+	summary, err := a.imageInput.service.Understand(ctx, a.destinationModelRef(), images, a.Session().Snapshot, a.svc.sink)
 	if err != nil {
 		return imageResult{text: text + fmt.Sprintf("\n[Image understanding unavailable: %v. The tool already executed; its text result remains valid. Do not claim to have seen the image or repeat the original action to retry image understanding.]", err), diagnostic: err}
 	}

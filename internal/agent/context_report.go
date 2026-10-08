@@ -37,9 +37,9 @@ func (a *Agent) ContextReport() ContextReport {
 		return ContextReport{}
 	}
 	rep := ContextReport{
-		Window:       a.contextWindow,
+		Window:       a.effectiveContextWindow(),
 		HardCeiling:  a.hardInputCeiling(),
-		OutputBudget: a.maxOutputTokens,
+		OutputBudget: a.destinationMaxOutputTokens(),
 		CacheState:   a.CacheState(),
 	}
 	if u := a.sess.output.lastUsage.Load(); u != nil {
@@ -53,7 +53,7 @@ func (a *Agent) ContextReport() ContextReport {
 	rep.ProjectionTokens = a.estimatedPromptTokens(provider.ModelMessages(visible))
 	rep.Projected = rep.ProjectionTokens != rep.CanonicalTokens
 
-	if a.contextWindow > 0 {
+	if a.effectiveContextWindow() > 0 {
 		rep.FoldThreshold = a.compactTrigger()
 		if _, reason := a.contextMaintenanceBlocked(a.contextMaintenanceInputHash(visible), 0); reason != "" {
 			rep.BlockedReason = reason

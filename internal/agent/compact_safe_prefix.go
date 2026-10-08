@@ -62,7 +62,7 @@ func (a *Agent) maximumSafeSummaryPrefixEnd(msgs []provider.Message, head, end i
 // or learned window; explicitly independent providers retain the full fold.
 func (a *Agent) safeSummaryPromptTokenLimit() (int, bool) {
 	window := a.effectiveContextWindow()
-	if window <= 0 || contextBudgetPolicyOf(a.svc.prov).WindowMode == provider.ContextWindowIndependent {
+	if window <= 0 || contextBudgetPolicyOf(a.providerForRequest()).WindowMode == provider.ContextWindowIndependent {
 		return 0, false
 	}
 	return window - a.summaryOutputBudget() - summaryPlanReserve(window), true

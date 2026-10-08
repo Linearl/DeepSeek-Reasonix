@@ -150,8 +150,8 @@ func (a *Agent) observeRunBudget(state *turnRuntime, usage *provider.Usage, quot
 	var quote *billing.CostQuote
 	if len(quotes) > 0 {
 		quote = quotes[0]
-	} else if usage != nil && a.svc.pricing != nil {
-		e := event.Event{Kind: event.Usage, ModelRef: a.modelRef, Usage: usage, Pricing: a.svc.pricing, UsageSource: a.usageSource}
+	} else if usage != nil && a.destinationPricing() != nil {
+		e := event.Event{Kind: event.Usage, ModelRef: a.destinationModelRef(), Usage: usage, Pricing: a.destinationPricing(), UsageSource: a.usageSource}
 		quote = event.EnsureCostQuote(e, a.svc.quoteContext)
 	}
 	state.budget.observeQuote(usage, quote)
