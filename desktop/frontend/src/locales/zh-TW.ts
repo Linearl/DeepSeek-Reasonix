@@ -4744,7 +4744,7 @@ export const zhTW: Record<DictKey, string> = {
   "crash.analyze": "一鍵分析",
   "crash.analyzeChecking": "檢查前置條件…",
   "crash.analyzeNoSource": "未偵測到本機原始碼：根因分析需要 Reasonix fork 原始碼（診斷只有症狀）。請先在本機準備原始碼，或改用「複製」手動回饋。",
-  "crash.analyzeNoGh": "未偵測到已認證的 GitHub CLI：提交 issue 需要 GitHub 認證。請先執行 gh auth login，或改用「複製」手動回饋。",
+  "crash.analyzeNoGh": "未偵測到已認證的 GitHub CLI：提交 issue 需要 GitHub 認證。若下方詳情顯示未找到 gh，請先安裝 GitHub CLI；否則請執行 gh auth login。也可改用「複製」手動回饋。",
   "crash.analyzeNoWorkspace": "目前沒有可用工作階段承載分析（工作區未就緒），請改用「複製」手動回饋。",
   "crash.analyzeConfirm": "一鍵分析會新建一個 YOLO 工作階段、真實執行一輪 agent 分析並提交 issue，會消耗 token 額度。",
   "crash.analyzeConfirmGo": "開始分析",

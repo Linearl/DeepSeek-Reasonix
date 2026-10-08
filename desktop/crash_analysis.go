@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -76,7 +77,7 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 		if hint == "" {
 			hint = "gh auth status failed"
 		}
-		return "", fmt.Errorf("GitHub CLI is not authenticated (%s) — run gh auth login first, or use the Copy button to report manually", hint)
+		return "", fmt.Errorf("GitHub CLI check failed (%s) — install the GitHub CLI or run gh auth login first, or use the Copy button to report manually", hint)
 	}
 
 	r, err := crashReportFromDetail(kind, detail)
@@ -147,14 +148,73 @@ func isReasonixSourceDir(dir string) bool {
 	return err == nil
 }
 
+// ghFallbackLocationDirs yields the candidate install directories for gh that a
+// launcher-started GUI process can miss: desktop.exe inherits the PATH snapshot
+// captured at launch, so a gh installed (or PATH-extended) afterwards stays
+// invisible to exec.LookPath even though shells see it fine (task 643).
+// Tests stub this var; production resolves from the platform env per call.
+var ghFallbackLocationDirs = func() []string {
+	if runtime.GOOS == "windows" {
+		return []string{
+			filepath.Join(os.Getenv("ProgramFiles"), "GitHub CLI"),
+			filepath.Join(os.Getenv("ProgramFiles(x86)"), "GitHub CLI"),
+			filepath.Join(os.Getenv("LocalAppData"), "Programs", "GitHub CLI"),
+			filepath.Join(os.Getenv("LocalAppData"), "Microsoft", "WinGet", "Links"),
+			filepath.Join(os.Getenv("USERPROFILE"), "scoop", "shims"),
+		}
+	}
+	return []string{"/usr/local/bin", "/opt/homebrew/bin"}
+}
+
+func ghExecutableName() string {
+	if runtime.GOOS == "windows" {
+		return "gh.exe"
+	}
+	return "gh"
+}
+
+// ghFallbackLocations turns the candidate directories into absolute executable
+// paths. An unset env var would yield a relative path (e.g. "GitHub CLI") that
+// could accidentally resolve against the process cwd — those are dropped.
+func ghFallbackLocations() []string {
+	exe := ghExecutableName()
+	locations := make([]string, 0)
+	for _, dir := range ghFallbackLocationDirs() {
+		if dir == "" || !filepath.IsAbs(dir) {
+			continue
+		}
+		locations = append(locations, filepath.Join(dir, exe))
+	}
+	return locations
+}
+
+// resolveGhExecutable finds gh: PATH first, then the known install locations.
+// The returned path is exec-ready (an absolute path with spaces is fine — no
+// shell is involved). onPath records which source matched so the report can
+// explain a stale process PATH instead of silently absorbing it.
+func resolveGhExecutable() (ghPath string, onPath bool, found bool) {
+	if gh, err := exec.LookPath("gh"); err == nil {
+		return gh, true, true
+	}
+	for _, candidate := range ghFallbackLocations() {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, false, true
+		}
+	}
+	return "", false, false
+}
+
 // ghAuthenticated probes the GitHub CLI the same way the analysis run will use
 // it: token env vars stripped so gh resolves the keyring-stored identity (the
 // libs-side `env -u GITHUB_TOKEN gh ...` convention) rather than an exported
-// variable the session would not see.
+// variable the session would not see. The detail string distinguishes the three
+// outcomes the UI needs to tell apart (task 643): not found anywhere, found
+// outside PATH (a stale process PATH — the historical false alarm), and found
+// but `gh auth status` failed (its output is passed through).
 func ghAuthenticated() (bool, string) {
-	gh, err := exec.LookPath("gh")
-	if err != nil {
-		return false, "gh CLI not found on PATH"
+	gh, onPath, found := resolveGhExecutable()
+	if !found {
+		return false, "gh CLI not found on PATH or in known install locations"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -168,7 +228,18 @@ func ghAuthenticated() (bool, string) {
 		}
 		return false, detail
 	}
-	return true, ""
+	return true, ghSuccessDetail(gh, onPath)
+}
+
+// ghSuccessDetail keeps a fallback discovery visible even when auth passes: the
+// analysis session itself runs gh from the user's shell (whose PATH is fine),
+// so route B can proceed, but the report should still say why the app process
+// could not see gh directly.
+func ghSuccessDetail(ghPath string, onPath bool) string {
+	if onPath {
+		return ""
+	}
+	return fmt.Sprintf("gh found outside PATH at %s (this process inherited an outdated PATH); auth OK", ghPath)
 }
 
 func filterEnv(environ []string, names ...string) []string {

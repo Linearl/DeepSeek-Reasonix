@@ -4694,7 +4694,7 @@ export const zh: Record<DictKey, string> = {
   "crash.analyze": "一键分析",
   "crash.analyzeChecking": "检查前置条件…",
   "crash.analyzeNoSource": "未检测到本地源码：根因分析需要 Reasonix fork 源码（诊断只有症状）。请先在本机准备源码，或改用「复制」手动反馈。",
-  "crash.analyzeNoGh": "未检测到已认证的 GitHub CLI：提交 issue 需要 GitHub 认证。请先运行 gh auth login，或改用「复制」手动反馈。",
+  "crash.analyzeNoGh": "未检测到已认证的 GitHub CLI：提交 issue 需要 GitHub 认证。若下方详情显示未找到 gh，请先安装 GitHub CLI；否则请运行 gh auth login。也可改用「复制」手动反馈。",
   "crash.analyzeNoWorkspace": "当前没有可用会话承载分析（工作区未就绪），请改用「复制」手动反馈。",
   "crash.analyzeConfirm": "一键分析会新建一个 YOLO 会话、真实运行一轮 agent 分析并提交 issue，会消耗 token 额度。",
   "crash.analyzeConfirmGo": "开始分析",
