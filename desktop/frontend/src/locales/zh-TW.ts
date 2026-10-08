@@ -1641,6 +1641,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.labGroup.infra": "基礎設施",
   "settings.labGroup.toolOpt": "工具最佳化",
   "settings.labGroup.onCount": "{n} 開",
+  // 任務 626: 組頭項數徽章（與篩選 chips 同源 labGroupTotals）。
+  "settings.labGroup.itemCount": "{n} 項",
   "settings.labTier.recommended": "推薦",
   "settings.labTier.optional": "可選",
   "settings.labTier.unstable": "未穩定",
