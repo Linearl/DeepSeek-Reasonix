@@ -35,6 +35,15 @@ type HeadEvent struct {
 	// controller resolves into "dual tab open" (real dual writer) or a
 	// logged-only in-process race (the misattributed case).
 	Class string
+	// OtherPID and OtherHostname carry the competing writer's registered
+	// identity (task 646) so the concurrent-writer log names who it was
+	// instead of only an opaque writer id. Zero/empty when unknown.
+	OtherPID      int
+	OtherHostname string
+	// UnknownReason names which identity record was missing when Class is
+	// HeadDivergenceUnknown (task 646): no_replay_state, no_writer_id,
+	// writer_unregistered, or pid_missing. Empty for external/local.
+	UnknownReason string
 }
 
 const (
@@ -66,20 +75,35 @@ const (
 // treat like external: losing a real outside-writer warning is worse than
 // keeping a conservative one.
 func classifyHeadDivergence(st *sessionDAGState, otherWriter string) string {
-	if st == nil || otherWriter == "" {
-		return HeadDivergenceUnknown
+	class, _ := classifyHeadDivergenceReason(st, otherWriter)
+	return class
+}
+
+// classifyHeadDivergenceReason is classifyHeadDivergence with the missing-
+// identity cause spelled out (task 646): the reason lands in the
+// concurrent-writer log so an unknown attribution can be investigated from
+// the log alone instead of by re-deriving the registry state.
+func classifyHeadDivergenceReason(st *sessionDAGState, otherWriter string) (string, string) {
+	if st == nil {
+		return HeadDivergenceUnknown, "no_replay_state"
+	}
+	if otherWriter == "" {
+		return HeadDivergenceUnknown, "no_writer_id"
 	}
 	w := st.writers[otherWriter]
-	if w == nil || w.pid == 0 {
-		return HeadDivergenceUnknown
+	if w == nil {
+		return HeadDivergenceUnknown, "writer_unregistered"
+	}
+	if w.pid == 0 {
+		return HeadDivergenceUnknown, "pid_missing"
 	}
 	if w.pid != os.Getpid() {
-		return HeadDivergenceExternal
+		return HeadDivergenceExternal, ""
 	}
 	if host, err := os.Hostname(); err == nil && w.hostname != "" && host != "" && w.hostname != host {
-		return HeadDivergenceExternal
+		return HeadDivergenceExternal, ""
 	}
-	return HeadDivergenceLocal
+	return HeadDivergenceLocal, ""
 }
 
 // recentHeadWindow bounds how old a competing head may be before opening a
