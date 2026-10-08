@@ -296,6 +296,19 @@ export function buildTurnModels(
       if (item.kind !== "assistant" || item.streaming || !item.text.trim()) continue;
       actionText = appendTurnActionCopyText(actionText, item.text);
     }
+    // Task 630: a stream-interrupted turn often settles with NO assistant text
+    // (the empty assistant item is dropped at finalize), which used to blank
+    // the whole turn-actions copy entry exactly when the user needs it most.
+    // Fall back to the turn's warn notices — the same diagnosis the warning
+    // strip shows — so the copy payload names the failure. Turns with real
+    // assistant output never pick this up: copy stays the final markdown text.
+    if (actionText.trim() === "") {
+      for (const item of model.turnItems) {
+        if (item.kind !== "notice" || item.level !== "warn" || !item.text.trim()) continue;
+        const detail = item.detail?.trim();
+        actionText = appendTurnActionCopyText(actionText, detail ? `${item.text.trim()}\n${detail}` : item.text.trim());
+      }
+    }
     model.actionText = actionText;
   }
   return turns;

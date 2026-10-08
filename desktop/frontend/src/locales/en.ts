@@ -4112,6 +4112,7 @@ export const en = {
   "msg.foldCollapse": "Show less",
   "turnActions.summary": "Compress",
   "turnActions.rewind": "Rewind",
+  "turnActions.copyEmpty": "No text to copy for this turn",
   "transcript.jumpToBottom": "Jump to bottom",
   "markdown.tableExpandAll": "Expand all {n} rows",
   "markdown.tableCollapse": "Collapse table",
