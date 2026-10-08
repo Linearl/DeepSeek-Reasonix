@@ -1428,6 +1428,11 @@ export default function App() {
   }, [sidebarImConnections]);
 
   // Open settings when the native menu item (CmdOrCtrl+,) is activated.
+  // Platform scope (task 622): desktop/menu.go builds the native menu on macOS
+  // only, so this event ever fires on darwin — on Windows/Linux it is a dead
+  // path and the live settings chord is the frontend useGlobalShortcut
+  // ("settings.open") below. This is the single listener for the event; the
+  // duplicate in the unmounted app-runtime tree was removed in the same task.
   useEffect(() => {
     if (typeof window === "undefined" || !window.runtime) return;
     return window.runtime.EventsOn("app:open-settings", () => {
