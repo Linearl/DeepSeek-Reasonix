@@ -37,7 +37,10 @@ func TestProjectionValidAcceptsLegacyNativeKey(t *testing.T) {
 		},
 		TranscriptVersion: 1,
 	}
-	if !projectionValid(st, msgs, "ws|s|m") {
+	// 任务638: the lineage key is advisory for validity — a legacy native
+	// suffix cannot fail a content-matching projection (it normalizes on
+	// rebind; see lineageKeyCompatible).
+	if !projectionValid(st, msgs) {
 		t.Fatal("projectionValid rejected legacy native lineage key")
 	}
 }

@@ -72,7 +72,7 @@ func TestLoadProjectionSidecarMigratesPromotedV3ToolHash(t *testing.T) {
 	}
 	mutated := append([]provider.Message(nil), msgs...)
 	mutated[len(mutated)-1].RawContent = "changed after migration"
-	if !projectionValid(a.sess.compactionState, mutated, a.currentPromptCacheKey()) {
+	if !projectionValid(a.sess.compactionState, mutated) {
 		t.Fatal("local RawContent edit invalidated a bounded provider projection")
 	}
 }
