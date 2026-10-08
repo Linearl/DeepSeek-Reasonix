@@ -220,10 +220,15 @@
   --mode-yolo-bg: #f04b52;
   --mode-yolo-border: #ff6268;
   --mode-yolo-fg: #fff;
-  /* 任务 595：autopilot 专属橙色系——与 yolo 红（#f04b52）明确区分。 */
-  --mode-autopilot-bg: #cf6a1d;
-  --mode-autopilot-border: #e8813a;
-  --mode-autopilot-fg: #fff;
+  /* 任务 595/614：autopilot 专属橙色系——与 yolo 红（#f04b52）明确区分。
+     614 修色三层排查：①token 定义（主因）——原 #cf6a1d 亮度 L*≈49 本就在
+     棕色域，再叠滑块内 18% 白色高光后视觉呈土黄，提饱和提亮至 #f97316；
+     ②透明度叠加——滑块填充不透明，内高光仅 1px 顶缘，非主因，不改；
+     ③容器背景——填充不透明，与容器（--surface-2）无混色，非因素。
+     前景改深色：白字在真橙上对比不足 3:1，深字（#2b1503）≥4.8:1。 */
+  --mode-autopilot-bg: #f97316;
+  --mode-autopilot-border: #fb8f3d;
+  --mode-autopilot-fg: #2b1503;
 
   /* diff */
   --add-bg: rgba(116, 184, 122, 0.12);
@@ -417,9 +422,10 @@
     --mode-yolo-bg: #e5484d;
     --mode-yolo-border: #ed5d62;
     --mode-yolo-fg: #fff;
-    --mode-autopilot-bg: #c05e12;
-    --mode-autopilot-border: #d4742a;
-    --mode-autopilot-fg: #fff;
+    /* 614 修色：亮背景同提饱和（#c05e12 L*≈45 棕色域 → #ea580c），深字保对比。 */
+    --mode-autopilot-bg: #ea580c;
+    --mode-autopilot-border: #f4772e;
+    --mode-autopilot-fg: #2b1503;
   }
 }
 
@@ -495,9 +501,10 @@
   --mode-yolo-bg: #e5484d;
   --mode-yolo-border: #ed5d62;
   --mode-yolo-fg: #fff;
-  --mode-autopilot-bg: #c05e12;
-  --mode-autopilot-border: #d4742a;
-  --mode-autopilot-fg: #fff;
+  /* 614 修色：亮背景同提饱和（#c05e12 L*≈45 棕色域 → #ea580c），深字保对比。 */
+  --mode-autopilot-bg: #ea580c;
+  --mode-autopilot-border: #f4772e;
+  --mode-autopilot-fg: #2b1503;
 }
 
 :root[data-theme="dark"] {
