@@ -136,6 +136,20 @@ func (c *Controller) CheckpointHasBoundary(turn int) bool {
 // Branch copies the current conversation into a child branch and switches to it.
 // Unlike Fork, it branches at the current tip and does not require a checkpoint.
 func (c *Controller) Branch(name string) (string, error) {
+	return c.branchTip(name, false)
+}
+
+// BranchToFile branches at the current tip into a separate session file even
+// when the live log is schema-2 and Branch would take an in-log head (task
+// 540): remote surfaces (GrandCouncil) list and resume sessions by file path,
+// so the serve child-session spawn needs a distinct file the client can
+// switch back from with /resume. Branch's behavior is unchanged — this only
+// forces the file-fork path that Branch already uses for schema-1 logs.
+func (c *Controller) BranchToFile(name string) (string, error) {
+	return c.branchTip(name, true)
+}
+
+func (c *Controller) branchTip(name string, forceFile bool) (string, error) {
 	if c.executor == nil {
 		return "", c.rewindFail(fmt.Errorf("branch unavailable"))
 	}
@@ -157,8 +171,10 @@ func (c *Controller) Branch(name string) (string, error) {
 	if err := c.Snapshot(); err != nil {
 		return "", c.rewindFail(err)
 	}
-	if sess := c.headBranchSession(); sess != nil {
-		return c.forkHeadReady(sess, -1, sess.Len(), name, agent.HeadKindFork)
+	if !forceFile {
+		if sess := c.headBranchSession(); sess != nil {
+			return c.forkHeadReady(sess, -1, sess.Len(), name, agent.HeadKindFork)
+		}
 	}
 	parentPath := c.SessionPath()
 	parentID := agent.BranchID(parentPath)

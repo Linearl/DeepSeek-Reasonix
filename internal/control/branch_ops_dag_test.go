@@ -216,3 +216,50 @@ func TestBranchTreeMarksTheCurrentHead(t *testing.T) {
 		t.Fatalf("CurrentBranchID back on main = %q", got)
 	}
 }
+
+// 任务540：BranchToFile 在 schema-2 日志上也必须产出独立会话文件（Branch 走
+// in-log head 的默认行为保持不变）——GC 派生子会话按 path 列表/切换，需要
+// 一个 /resume 可回切的新文件，且源日志不得新增 head。
+func TestBranchToFileForcesFileBranchForSchemaTwo(t *testing.T) {
+	c, sess, path := newSchemaTwoBranchController(t)
+	rootID := agent.BranchID(path)
+	before := len(sess.Snapshot())
+
+	branchPath, err := c.BranchToFile("child")
+	if err != nil {
+		t.Fatalf("BranchToFile: %v", err)
+	}
+	if branchPath == path || !strings.HasSuffix(branchPath, ".jsonl") {
+		t.Fatalf("BranchToFile must return a new transcript path, got %q", branchPath)
+	}
+	if c.SessionPath() != branchPath {
+		t.Fatalf("BranchToFile must switch the controller to the new file: %q", c.SessionPath())
+	}
+	loaded, err := agent.LoadSession(branchPath)
+	if err != nil {
+		t.Fatalf("load branched file: %v", err)
+	}
+	if len(loaded.Messages) < before {
+		t.Fatalf("branched file lost history: %d messages, want >= %d", len(loaded.Messages), before)
+	}
+	if heads, _ := agent.ListSessionHeads(path); len(heads) != 1 {
+		t.Fatalf("BranchToFile must not add heads to the source log: %+v", heads)
+	}
+	meta, ok, err := agent.LoadBranchMeta(branchPath)
+	if err != nil || !ok {
+		t.Fatalf("load branch meta: ok=%v err=%v", ok, err)
+	}
+	if meta.ParentID != rootID {
+		t.Fatalf("branch meta parent = %q, want source %q", meta.ParentID, rootID)
+	}
+	entries, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.jsonl"))
+	transcripts := 0
+	for _, entry := range entries {
+		if store.IsSessionTranscriptName(filepath.Base(entry)) {
+			transcripts++
+		}
+	}
+	if transcripts != 2 {
+		t.Fatalf("expected exactly two transcript files, got %v", entries)
+	}
+}
