@@ -339,14 +339,73 @@ const keys = (rows: TranscriptRow[]) => rows.map((row) => row.key).join(",");
 }
 
 {
-  // Info notices (steers, cancelled-turn hints) never leak into the copy
-  // payload of an otherwise textless turn.
-  const models = buildTurnModels([
+  // Task 648 splits the old "info never leaks" rule: steers are the user's
+  // own words and still never enter the copy payload, but system receipts
+  // (cancelled-turn hints included) are the turn's actual content — a
+  // receipt-only turn copies the receipt.
+  const steerOnly = buildTurnModels([
+    { kind: "user", id: "u-steer", text: "go" },
+    { kind: "notice", id: "n-steer", level: "info", text: "↪ steer text" },
+  ]);
+  eq(steerOnly[0]?.actionText, "", "steer notices never leak into the copy payload of a textless turn");
+
+  const receiptOnly = buildTurnModels([
     { kind: "user", id: "u-info", text: "go" },
-    { kind: "notice", id: "n-info", level: "info", text: "↪ steer text" },
     { kind: "notice", id: "n-info-cancelled", level: "info", text: "已取消该轮" },
   ]);
-  eq(models[0]?.actionText, "", "info-only textless turns keep an empty copy payload (disabled button with reason)");
+  eq(receiptOnly[0]?.actionText, "已取消该轮", "system receipts fill the copy payload of a textless turn (task 648)");
+}
+
+{
+  // Task 648: an info-level system receipt (cross-session degradation, a
+  // cancelled turn) can be a turn's ONLY content. The 630 fallback covered
+  // warn strips only, so these turns kept an empty payload and — with no
+  // checkpoint — the whole turn-actions row vanished, taking the copy icon
+  // with it.
+  const degradeText = "会话已在其他窗口打开；本地记录已转为降级只读。";
+  const models = buildTurnModels([
+    { kind: "user", id: "u-degrade", text: "continue" },
+    { kind: "notice", id: "n-degrade", level: "info", text: degradeText },
+  ]);
+  eq(models[0]?.actionText, degradeText, "a receipt-only turn copies the receipt text verbatim");
+
+  const rows = buildTranscriptRows(models, {
+    ...rowOptions(EMPTY_FOLDS),
+    turnForUser: (item: Extract<Item, { kind: "user" }>) => (item.id === "u-degrade" ? 0 : undefined),
+  });
+  const action = rows.find((row) => row.kind === "turn-actions");
+  ok(Boolean(action), "a receipt-only turn mounts the turn-actions row without needing a checkpoint");
+  eq(action?.kind === "turn-actions" ? action.text : "missing", degradeText, "the mounted copy entry carries the receipt verbatim");
+}
+
+{
+  // Action/variant receipts (concurrent writer, delivery pause) are equally
+  // capable of being a turn's only content — the row must mount for them too,
+  // with the receipts joined in turn order.
+  const models = buildTurnModels([
+    { kind: "user", id: "u-receipt", text: "go" },
+    { kind: "notice", id: "n-concurrent", level: "info", text: "会话已被其他写入者更新。", action: "view_versions" },
+    { kind: "notice", id: "n-delivery", level: "info", text: "投递已暂停，可继续。", variant: "delivery", action: "continue_delivery" },
+  ]);
+  eq(models[0]?.actionText, "会话已被其他写入者更新。\n\n投递已暂停，可继续。", "action/variant receipts join the copy payload in turn order");
+  const rows = buildTranscriptRows(models, {
+    ...rowOptions(EMPTY_FOLDS),
+    turnForUser: (item: Extract<Item, { kind: "user" }>) => (item.id === "u-receipt" ? 0 : undefined),
+  });
+  ok(rows.some((row) => row.kind === "turn-actions"), "action/variant receipt turns mount the turn-actions row");
+}
+
+{
+  // Exclusions hold: completion cards and host-recovery guidance are not turn
+  // output — a textless turn containing only those keeps an empty payload
+  // (host-recovery guidance is dropped from display entirely, so copying it
+  // would surface text the user cannot see).
+  const models = buildTurnModels([
+    { kind: "user", id: "u-excl", text: "go" },
+    { kind: "notice", id: "n-comp", level: "info", text: "本轮完成。", variant: "completion" },
+    { kind: "notice", id: "n-host", level: "info", text: "↪ A tool failed. Use read-only diagnosis as needed, continue unrelated work automatically." },
+  ]);
+  eq(models[0]?.actionText, "", "completion and host-recovery notices never leak into the copy payload");
 }
 
 // ── Fold reconciliation ───────────────────────────────────────────────────────
