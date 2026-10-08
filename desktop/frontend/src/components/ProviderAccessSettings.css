@@ -189,8 +189,11 @@
 /* Task 278: the quick-command manager carries search + title input + content
    column per row; 620px clipped them into a horizontal scrollbar (the task
    262-3 content floor of 680px sat *inside* this shell and never applied).
-   Viewport cap keeps narrow screens from overflowing. */
-.provider-dialog--wide { width: min(900px, calc(100vw - 32px)); }
+   Viewport cap keeps narrow screens from overflowing.
+   Task 656: 900px still clipped real snippet titles (pre-release…) and left
+   the content column cramped, so the wide shell grows to 1100px; the viewport
+   cap is untouched so narrow screens keep the same guarantee. */
+.provider-dialog--wide { width: min(1100px, calc(100vw - 32px)); }
 .provider-dialog > header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .provider-dialog h3 { margin: 0; font-size: 17px; }
 .provider-dialog footer { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border-soft); }

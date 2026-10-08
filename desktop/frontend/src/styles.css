@@ -43723,8 +43723,13 @@ body > .mermaid-diagram--fullscreen {
   gap: 10px;
 }
 
+/* Task 656: 60vh capped the manager well below what the dialog shell allows,
+   so everyday lists scrolled when they did not need to. The cap now derives
+   from the viewport minus the shell chrome (24px padding x2 + header), so the
+   dialog grows vertically up to the same 100dvh - 48px limit the shell owns;
+   overflow-y stays as the fallback for lists longer than the screen. */
 .settings-quick-commands--panel {
-  max-height: 60vh;
+  max-height: calc(100dvh - 160px);
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -43735,7 +43740,8 @@ body > .mermaid-diagram--fullscreen {
    Task 278: the floor moved OUT of this rule — at 680px it still lost to the
    620px shell (.provider-dialog), which is what actually clipped the rows.
    The wide shell (.provider-dialog--wide, 900px) now owns the width and this
-   block simply fills it. */
+   block simply fills it.
+   Task 656: the shell itself is now 1100px (see ProviderAccessSettings.css). */
 .settings-quick-commands--wide {
   width: 100%;
   max-width: none;
@@ -43814,6 +43820,23 @@ body > .mermaid-diagram--fullscreen {
 .composer-content-menu__search {
   width: calc(100% - 20px);
   margin: 8px 10px;
+}
+
+/* Task 656: the inline create form the picker's bottom "add" entry opens. It
+   replaces the snippet list while open, mirroring the settings-manager draft
+   look so the same flow reads the same in both surfaces. */
+.composer-content-menu__draft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 10px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+.composer-content-menu__draft-actions {
+  display: flex;
+  gap: 6px;
 }
 
 /* One-line preview for menu items that carry a secondary line: a long snippet must

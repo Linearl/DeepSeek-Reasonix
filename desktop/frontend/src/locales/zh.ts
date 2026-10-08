@@ -953,6 +953,7 @@ export const zh: Record<DictKey, string> = {
   "composer.contentQuickCommands": "快捷指令",
   "composer.contentQuickCommandsSearch": "搜索快捷指令",
   "composer.contentQuickCommandsEmpty": "还没有快捷指令。可在 设置 → 通用 → 快捷指令 中添加。",
+  "composer.contentQuickCommandsAdd": "添加快捷指令",
   "composer.quickCommandsBangHint": "在输入框开头输入 !! 可随时唤起此列表",
   "composer.contentUseCommandsDesc": "浏览可用命令和技能",
   "composer.contentUseCommandsEmptyOnly": "输入框为空时可用——命令会构成整条消息",
