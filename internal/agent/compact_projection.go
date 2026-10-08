@@ -596,6 +596,24 @@ func summaryRateLimitWait(err error) time.Duration {
 	return summaryRateLimitWaitDefault
 }
 
+// summaryModelRejected reports the status-400 shape: the upstream answer when
+// the request's model (or another request-side fact) is refused — the 切模型
+// incident's "status 400: {\"model\":…}" echo carried no reason at all. The
+// typed APIError is preferred; free-text status extraction keeps the task-243
+// A4 shape discipline for providers that flatten the error. Distinct from
+// summaryTransientRetryable: a 400 never heals by waiting, only by changing
+// what the request is — the 任务635 lane retries it on the current model.
+func summaryModelRejected(err error) bool {
+	if err == nil {
+		return false
+	}
+	var api *provider.APIError
+	if errors.As(err, &api) {
+		return api.Status == 400
+	}
+	return httpStatusOf(err.Error()) == 400
+}
+
 // summaryTransientRetryable reports whether a summary request failed in a way
 // that a short backoff can fix: the provider broke the stream or the transport
 // mid-response, not a semantic rejection of the input.
@@ -683,7 +701,16 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 	var tele CompactionTelemetry
 	var err error
 	rateWaits := 0
+	// 任务635 P0: the summary request destination resolves live per attempt
+	// (runSummaryRequest → providerForRequest), so a model switch landing while
+	// a summary is in flight changes what the next attempt reaches. The 切模型
+	// 上下文窗口异常 incident (根因诊断 20261008) deadlocked because a
+	// status-400 aimed at the projection-era model left the input hash parked
+	// with no alternative exit. modelRefRetried bounds that escape hatch to one
+	// retry, mirroring the 429 lane's wait-once discipline.
+	modelRefRetried := false
 	for attempt := 0; ; attempt++ {
+		attemptRef := a.destinationModelRef()
 		if req.allowChunked {
 			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 		} else {
@@ -696,12 +723,35 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 					"source_tokens", sourceTokens)
 			}
 			if attempt > 0 && rateWaits == 0 {
-				slog.Info("agent: summary request succeeded after transient retry",
-					"attempts", attempt+1, "trigger", trigger,
-					"source_tokens", sourceTokens,
-					"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
+				if modelRefRetried {
+					slog.Info("agent: summary request succeeded after model-ref retry",
+						"attempts", attempt+1, "trigger", trigger,
+						"model_ref", a.destinationModelRef(),
+						"source_tokens", sourceTokens,
+						"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
+				} else {
+					slog.Info("agent: summary request succeeded after transient retry",
+						"attempts", attempt+1, "trigger", trigger,
+						"source_tokens", sourceTokens,
+						"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
+				}
 			}
 			return res, tele, nil
+		}
+		// 任务635 P0: a status-400 rejection is the shape the upstream answers
+		// with when the request's model is refused (the incident's
+		// "status 400: {\"model\":…}" echo). When the destination ref changed
+		// since the failed attempt, one retry on the CURRENT model is the
+		// alternative exit — the rejection is not deterministic input shape.
+		// When the ref is unchanged the same 400 would fire again, so no blind
+		// duplicate spend; the failure then parks as before.
+		if !modelRefRetried && summaryModelRejected(err) {
+			if ref := a.destinationModelRef(); ref != attemptRef {
+				modelRefRetried = true
+				slog.Warn("agent: summary request rejected — retrying once on the current model",
+					"trigger", trigger, "failed_ref", attemptRef, "current_ref", ref, "err", err)
+				continue
+			}
 		}
 		// Task 330: 429 gets its own lane ahead of the generic transient
 		// backoff - wait the window out (Retry-After when the provider states
@@ -728,6 +778,7 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 			a.sess.lastProviderErrorAt.Store(time.Now().UnixMilli())
 			slog.Warn("agent: summary request failed",
 				"trigger", trigger, "attempts", attempt+1, "err", err,
+				"model_ref", attemptRef,
 				"transient", summaryTransientRetryable(err),
 				"rate_limited", summaryRateLimited(err),
 				"source_tokens", sourceTokens,

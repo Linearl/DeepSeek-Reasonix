@@ -297,6 +297,7 @@ func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash str
 	}
 	slog.Warn("agent: context summary failed",
 		"status", status, "trigger", policy.Trigger, "fold_installed", foldInstalled,
+		"model_ref", a.destinationModelRef(),
 		"transient_stream", summaryTransientRetryable(err), "err", err)
 	a.recordContextMaintenanceOutcome(inputHash, policy.Trigger, "summary", status, reason)
 	// Task 307: a candidate at or above the physical ceiling would be rejected
