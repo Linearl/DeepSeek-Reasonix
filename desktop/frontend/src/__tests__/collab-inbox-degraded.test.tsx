@@ -98,19 +98,19 @@ const assertOnce = (needle: string, present: boolean, what: string) => {
 await openWith({ ...emptySnapshot, degraded: true });
 let panel = document.querySelector(".collab-inbox-panel");
 assert.ok(panel, "the panel renders");
-assertOnce("Inbox temporarily unavailable (lock busy)", true, "degraded snapshot shows the lock-busy notice");
+assertOnce("Mail Center temporarily unavailable (lock busy)", true, "degraded snapshot shows the lock-busy notice");
 assertOnce("No mail yet", false, "a degraded empty panel must NOT say 暂无信件");
 assert.ok(
   panel!.querySelector(".collab-inbox-panel__empty--degraded"),
   "the degraded empty state carries its modifier class",
 );
 await close();
-assertOnce("Inbox temporarily unavailable (lock busy)", false, "closing unmounts the notice");
+assertOnce("Mail Center temporarily unavailable (lock busy)", false, "closing unmounts the notice");
 
 // ② 零回归：健康空快照（无 degraded 字段）仍显示「暂无信件」。
 await openWith({ ...emptySnapshot });
 assertOnce("No mail yet", true, "a healthy empty snapshot keeps the honest empty state");
-assertOnce("Inbox temporarily unavailable (lock busy)", false, "a healthy snapshot shows no degraded notice");
+assertOnce("Mail Center temporarily unavailable (lock busy)", false, "a healthy snapshot shows no degraded notice");
 await close();
 
 // ③ 降级但有数据 → 数据优先渲染，不出空态行。

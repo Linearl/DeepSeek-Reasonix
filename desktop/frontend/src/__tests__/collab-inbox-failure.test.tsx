@@ -119,7 +119,7 @@ let panel = query(".collab-inbox-panel");
 assert.ok(panel, "the panel renders");
 assertOnce("No mail yet", false, "a failed read must NOT render the honest-empty text");
 assertOnce("暂无信件", false, "a failed read must NOT render the empty state in any locale");
-assertOnce("Couldn't load the inbox", true, "the failure state renders an explicit error label");
+assertOnce("Couldn't load the Mail Center", true, "the failure state renders an explicit error label");
 assert.ok(
   query(".collab-inbox-panel__error"),
   "the failure state carries its own block class (distinct from __empty)",
@@ -145,7 +145,7 @@ await act(async () => setCollabInboxOpen(false));
 await act(async () => setCollabInboxOpen(true));
 assertOnce("Loading mail…", true, "an in-flight read renders the loading state");
 assertOnce("No mail yet", false, "an in-flight read must NOT render the empty state");
-assertOnce("Couldn't load the inbox", false, "the previous attempt's banner retires when a new attempt starts");
+assertOnce("Couldn't load the Mail Center", false, "the previous attempt's banner retires when a new attempt starts");
 // 挂起的读取没有 catch 路径；直接关面板收尾（cancel 清计时器，hang 的 promise 无害）。
 await act(async () => setCollabInboxOpen(false));
 
@@ -157,7 +157,7 @@ listMode = "ok";
 await act(async () => {
   query<HTMLButtonElement>(".collab-inbox-panel__error button")!.click();
 });
-assertOnce("Couldn't load the inbox", false, "a successful retry clears the failure state");
+assertOnce("Couldn't load the Mail Center", false, "a successful retry clears the failure state");
 assertOnce("recovered mail", true, "the recovered mail renders after the retry");
 assertOnce("No mail yet", false, "no empty-state text while rows render");
 
@@ -209,7 +209,7 @@ await act(async () => {
 assertOnce("recovered mail", true, "a failed refresh keeps the previously fetched rows visible");
 assertOnce("Last refresh failed", true, "the stale-data strip declares the rows are not fresh");
 assert.ok(query(".collab-inbox-panel__errorstrip"), "the stale strip carries its own class");
-assertOnce("Couldn't load the inbox", false, "no full failure block while stale rows render");
+assertOnce("Couldn't load the Mail Center", false, "no full failure block while stale rows render");
 // 自动恢复（同 ④ 的机制）清掉细条。
 listMode = "ok";
 await act(async () => {

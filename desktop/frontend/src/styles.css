@@ -44852,6 +44852,287 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
 }
 
+/* 群聊式协作视图 (task 409): fixed overlay beside the collab inbox panel,
+   roster tabs + per-session state/task/exchange rows + channel tail with
+   per-member fan-out chips. Theme tokens only — no raw colors — 同收件箱面板
+   纪律（graphite/aurora/... 主题都正确渲染）。*/
+.collab-group-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 56px;
+  z-index: var(--z-popover);
+  width: min(620px, calc(100vw - 24px));
+  max-height: min(640px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated, var(--bg));
+  box-shadow: var(--shadow-2);
+  overflow: auto;
+}
+.collab-group-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.collab-group-panel__title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.collab-group-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.collab-group-panel__tabs {
+  display: flex;
+  gap: 6px;
+}
+.collab-group-panel__tab {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+.collab-group-panel__tab--on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.collab-group-panel__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.collab-group-panel__empty {
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+.collab-group-panel__error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--warn, #c80) 55%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn, #c80) 8%, var(--bg));
+}
+.collab-group-panel__error-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.collab-group-panel__error-detail {
+  font-size: 11px;
+  color: var(--fg-dim);
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.collab-group-panel__errorstrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--warn, #c80) 45%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warn, #c80) 7%, var(--bg));
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.collab-group-panel__session {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.collab-group-panel__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.collab-group-panel__state {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.collab-group-panel__state--running {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+}
+.collab-group-panel__state--queued {
+  border-color: color-mix(in srgb, var(--warn, #c80) 55%, var(--border));
+  color: var(--warn, #c80);
+}
+.collab-group-panel__name {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collab-group-panel__idtype {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.collab-group-panel__unread {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  font-size: 10px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.collab-group-panel__purpose {
+  font-size: 11px;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collab-group-panel__card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+}
+.collab-group-panel__cardstatus {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.collab-group-panel__cardstatus--running {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+}
+.collab-group-panel__cardtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.collab-group-panel__preview {
+  font-size: 11px;
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collab-group-panel__channel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.collab-group-panel__channelhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.collab-group-panel__channelname {
+  font-weight: 600;
+}
+.collab-group-panel__channelcounts {
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.collab-group-panel__channelbody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 2px 10px;
+  border-left: 2px solid var(--border-soft);
+  margin-left: 8px;
+}
+.collab-group-panel__message {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.collab-group-panel__sender {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-dim);
+}
+.collab-group-panel__messagebody {
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.collab-group-panel__fanout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.collab-group-panel__fanoutcell {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.collab-group-panel__fanoutcell--read {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent);
+}
+.collab-group-panel__fanoutcell--failed {
+  border-color: color-mix(in srgb, var(--warn, #c80) 55%, var(--border));
+  color: var(--warn, #c80);
+}
+.collab-group-panel__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+.collab-group-panel__note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collab-group-panel__time {
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
 .session-monitor__log {
   display: flex;
   flex-direction: column;

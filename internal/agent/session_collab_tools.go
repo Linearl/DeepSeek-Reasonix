@@ -370,6 +370,16 @@ func (getSessionStatusTool) Schema() json.RawMessage {
 
 func (getSessionStatusTool) ReadOnly() bool { return true }
 
+// CollabStatusRecords exports the shared busy/idle judgement for hosts (task
+// 409 呈现层): the desktop group-chat overview renders the SAME running/
+// queued/idle/unknown states the get_session_status tool answers, from this
+// one function, so the panel and the tool can never disagree about a peer
+// (task 409 验收: 数据来自现有接口，不新造状态). Read-only by construction —
+// the records carry metadata only.
+func CollabStatusRecords(cfg SessionCollabConfig, targets []string) (records []map[string]any, unmatched []string, liveTotal int) {
+	return collabStatusRecords(cfg, targets)
+}
+
 // collabStatusRecords is the single source of the "who is busy?" judgement
 // (task 218): directory scan, target resolution and the state classification
 // (running > queued > idle; unknown never guessed). get_session_status answers
