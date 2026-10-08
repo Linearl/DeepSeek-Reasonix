@@ -747,7 +747,12 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	if strings.TrimSpace(spec.Context.ContinueFrom) != "" || strings.TrimSpace(spec.Context.ForkFrom) != "" {
 		lifecyclePhase = "child_resume"
 	}
-	emitSubagentLifecycle(parentSink, lifecyclePhase, parentID, spec.Worker.Name, usageModelRef, effortRef, run, nil)
+	// Task 557: the lifecycle payload carries background ownership so the
+	// desktop foreground-subagent registry can skip job-owned children (they
+	// are already represented by their job row). The flag comes from the spec
+	// routing here, and from the background-job context marker for fleet
+	// children running under a backgrounded fleet.
+	emitSubagentLifecycle(parentSink, lifecyclePhase, parentID, spec.Worker.Name, usageModelRef, effortRef, run, nil, spec.Sched.RunInBackground || BackgroundOwnedLifecycle(ctx))
 
 	isWriter := !spec.Grant.ReadOnly
 	acquireReq := AcquireRequest{
@@ -810,22 +815,22 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	defer releaseSlot()
 	defer run.Release()
 	ctx = WithSubagentClaimID(ctx, claimID)
-	emitSubagentLifecycle(parentSink, "child_running", parentID, spec.Worker.Name, usageModelRef, effortRef, run, nil)
+	emitSubagentLifecycle(parentSink, "child_running", parentID, spec.Worker.Name, usageModelRef, effortRef, run, nil, BackgroundOwnedLifecycle(ctx))
 	answer, err := runSession(ctx, trk.wrap(), false)
 	if err != nil {
 		result, runErr := t.resolveAmbiguousSubagentFailure(ctx, run, spec.Task.Objective, usageModelRef, parentSink, err)
 		phase, outcome := terminalSubagentLifecycle(runErr)
-		emitSubagentLifecycle(parentSink, phase, parentID, spec.Worker.Name, usageModelRef, effortRef, run, outcome)
+		emitSubagentLifecycle(parentSink, phase, parentID, spec.Worker.Name, usageModelRef, effortRef, run, outcome, BackgroundOwnedLifecycle(ctx))
 		return result, runErr
 	}
 	if t.transcripts != nil && run.Ref != "" {
 		if err := t.transcripts.SaveCompleted(run); err != nil {
 			result, runErr := t.failedSubagentResult(run, err)
 			phase, outcome := terminalSubagentLifecycle(runErr)
-			emitSubagentLifecycle(parentSink, phase, parentID, spec.Worker.Name, usageModelRef, effortRef, run, outcome)
+			emitSubagentLifecycle(parentSink, phase, parentID, spec.Worker.Name, usageModelRef, effortRef, run, outcome, BackgroundOwnedLifecycle(ctx))
 			return result, runErr
 		}
-		emitSubagentLifecycle(parentSink, "child_completed", parentID, spec.Worker.Name, usageModelRef, effortRef, run, &SubagentOutcome{Status: SubagentOutcomeCompleted, FinalAnswer: answer})
+		emitSubagentLifecycle(parentSink, "child_completed", parentID, spec.Worker.Name, usageModelRef, effortRef, run, &SubagentOutcome{Status: SubagentOutcomeCompleted, FinalAnswer: answer}, BackgroundOwnedLifecycle(ctx))
 		return FormatSubagentRunResult(answer, run, false), nil
 	}
 	return GuardSubagentHostDecisionText(answer), nil
@@ -881,6 +886,10 @@ func (t *TaskTool) runBackgroundProfileSpec(ctx context.Context, spec ProfileExe
 		jobCtx = WithParentSession(jobCtx, parentSession)
 		jobCtx = withInheritedHostConstraints(ctx, jobCtx)
 		jobCtx = evidence.WithLedger(jobCtx, backgroundEvidence)
+		// Task 557: this child is job-owned; its lifecycle events must never
+		// enter the desktop foreground-subagent registry (the job row already
+		// represents it).
+		jobCtx = withBackgroundOwnedLifecycle(jobCtx)
 		defer run.Release()
 		defer publishBackgroundEvidence(jobCtx, backgroundEvidence, t.workspaceRoot)
 		defer func() {
@@ -889,7 +898,7 @@ func (t *TaskTool) runBackgroundProfileSpec(ctx context.Context, spec ProfileExe
 				result, err = t.failedSubagentResult(run, panicErr)
 			}
 			phase, outcome := terminalSubagentLifecycle(err)
-			emitSubagentLifecycle(parentSink, phase, parentID, spec.Worker.Name, usageModelRef, effortRef, run, outcome)
+			emitSubagentLifecycle(parentSink, phase, parentID, spec.Worker.Name, usageModelRef, effortRef, run, outcome, true)
 			trk.finish(jobCtx.Err(), err)
 		}()
 		releaseSlot, claimID, slotErr := t.acquireSlot(jobCtx, slotReq)
@@ -899,7 +908,7 @@ func (t *TaskTool) runBackgroundProfileSpec(ctx context.Context, spec ProfileExe
 		defer releaseSlot()
 		jobCtx = WithSubagentClaimID(jobCtx, claimID)
 		trk.running()
-		emitSubagentLifecycle(parentSink, "child_running", parentID, spec.Worker.Name, usageModelRef, effortRef, run, nil)
+		emitSubagentLifecycle(parentSink, "child_running", parentID, spec.Worker.Name, usageModelRef, effortRef, run, nil, true)
 		answer, err := runSession(jobCtx, trk.wrap(), writerRegistered)
 		if err != nil {
 			return t.resolveAmbiguousSubagentFailure(jobCtx, run, spec.Task.Objective, usageModelRef, parentSink, err)

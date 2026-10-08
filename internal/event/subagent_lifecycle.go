@@ -22,6 +22,12 @@ type SubagentLifecycleInfo struct {
 	ValidatorOutcome  string
 	ValidatorAttempt  int
 	ProviderRequestID string
+	// Background reports whether this child is owned by a background job
+	// (task run_in_background, a backgrounded fleet) instead of the parent
+	// turn. Job-owned children are already represented by their job row in
+	// the desktop running-work surfaces, so the foreground-subagent runtime
+	// registry (task 557) must never count them from lifecycle events.
+	Background bool
 }
 
 // SubagentLifecycleAuditSink receives host-only child lifecycle telemetry.

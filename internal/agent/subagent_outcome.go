@@ -219,13 +219,13 @@ func validSubagentOutcomeStatus(status SubagentOutcomeStatus) bool {
 	}
 }
 
-func emitSubagentLifecycle(sink event.Sink, phase, parentToolCallID, skillName, model, effort string, run *SubagentRun, outcome *SubagentOutcome) {
+func emitSubagentLifecycle(sink event.Sink, phase, parentToolCallID, skillName, model, effort string, run *SubagentRun, outcome *SubagentOutcome, background bool) {
 	if run == nil || run.Ref == "" || sink == nil {
 		return
 	}
 	info := event.SubagentLifecycleInfo{
 		Phase: phase, Ref: run.Ref, ParentToolCallID: parentToolCallID,
-		Skill: skillName, Model: model, Effort: effort,
+		Skill: skillName, Model: model, Effort: effort, Background: background,
 	}
 	if !run.Meta.CreatedAt.IsZero() {
 		info.StartUnixMs = run.Meta.CreatedAt.UnixMilli()
@@ -246,9 +246,10 @@ func emitSubagentLifecycle(sink event.Sink, phase, parentToolCallID, skillName, 
 
 // EmitSubagentLifecycle publishes a content-free lifecycle transition for a
 // child runner implemented outside the agent package, such as boot-wired
-// skills.
+// skills. Those runners execute inside the parent turn, so they are never
+// background-owned.
 func EmitSubagentLifecycle(sink event.Sink, phase, parentToolCallID, skillName, model, effort string, run *SubagentRun, outcome *SubagentOutcome) {
-	emitSubagentLifecycle(sink, phase, parentToolCallID, skillName, model, effort, run, outcome)
+	emitSubagentLifecycle(sink, phase, parentToolCallID, skillName, model, effort, run, outcome, false)
 }
 
 func terminalSubagentLifecycle(runErr error) (string, *SubagentOutcome) {
