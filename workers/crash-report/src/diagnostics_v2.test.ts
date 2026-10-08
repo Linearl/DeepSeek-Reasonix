@@ -91,6 +91,18 @@ describe("diagnostics v2 compatibility and privacy", () => {
     }).success).toBe(true);
   });
 
+  // Task 642: the lab mock-crash drill flag must survive parsing (storage
+  // re-validates with this schema on read, so an unknown key would be stripped
+  // and the drill indistinguishable from a real failure).
+  it("keeps the lab mock-crash drill flag through schema parse", () => {
+    const parsed = Report.safeParse({ ...oldReport, testMock: true });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.testMock).toBe(true);
+    const plain = Report.safeParse(oldReport);
+    expect(plain.success).toBe(true);
+    if (plain.success) expect(plain.data.testMock).toBeUndefined();
+  });
+
   it("rejects full failure-source paths and puts channel=test in development", () => {
     expect(Report.safeParse({
       ...oldReport,

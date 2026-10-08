@@ -113,5 +113,6 @@ function firebaseSampleToReport(sample: FirebaseCrashSample): ReportSample {
     occurred_at: string("occurredAt"),
     webview2: sample.webview2 ? json("webview2", {}) : "",
     web_runtime: sample.webRuntime ? json("webRuntime", {}) : "",
+    test_mock: sample.testMock === true ? 1 : 0,
   };
 }

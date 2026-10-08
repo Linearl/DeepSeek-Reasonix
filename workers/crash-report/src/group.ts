@@ -60,6 +60,8 @@ export type ReportSample = {
   occurred_at: string;
   webview2: string;
   web_runtime: string;
+  // Task 642: lab mock-crash drill marker (0/1 from reports.test_mock).
+  test_mock?: number;
 };
 
 type GroupDiagnosticSummary = {
@@ -99,6 +101,9 @@ function sampleReport(r: ReportSample, i: number): string {
   const platform = [r.os, r.arch].filter(Boolean).join("/");
   const title = r.error_message || r.message.split("\n").find((line) => line.trim()) || r.error_type || "sample";
   const structured = [
+    ...(r.test_mock === 1
+      ? [[i18n("MOCK", "模拟"), i18n("test drill — not a real failure", "测试演练 —— 非真实故障")] as [string, string]]
+      : []),
     r.source && [i18n("source", "来源"), r.source],
     r.label && [i18n("label", "标签"), r.label],
     r.error_type && [i18n("type", "类型"), r.error_type],

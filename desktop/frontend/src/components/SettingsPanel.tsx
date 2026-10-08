@@ -28,7 +28,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Check, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Trash2, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Check, FlaskConical, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -38,6 +38,7 @@ import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionM
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
 import { setFeedbackEnabled, setFeedbackOpen } from "./FeedbackPanel";
+import { fireMockCrashDrill } from "../lib/crashMock";
 import { setCollabInboxOpen } from "./CollabInboxPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
@@ -4226,6 +4227,22 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       {t(on ? "settings.lifecycleNoiseGate.on" : "settings.lifecycleNoiseGate.off")}
                     </button>
                   ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* Task 642: mock crash drill. Not a flag — a one-shot action that
+                  synthesizes a clearly marked test report and opens the real
+                  crash overlay, so 617/618 (report channel, pending queue,
+                  one-click analysis) are verifiable end to end without a real
+                  crash. The overlay itself carries the anti-misreport banner. */}
+              <SettingsField label={t("settings.mockCrash")} hint={t("settings.mockCrashHint")} icon={<FlaskConical size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  <button
+                    className="set-seg__btn"
+                    disabled={busy}
+                    onClick={() => fireMockCrashDrill()}
+                  >
+                    {t("settings.mockCrashRun")}
+                  </button>
                 </SettingsOptions>
               </SettingsField>
             </>

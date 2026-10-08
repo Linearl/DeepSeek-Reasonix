@@ -4703,6 +4703,18 @@ export const en = {
   "crash.analyzeStarting": "Starting the analysis session…",
   "crash.analyzeStarted": "YOLO analysis session started — the issue link will appear in that session once the analysis completes.",
   "crash.analyzeFailed": "Failed to start the analysis — use Copy to report manually.",
+  // Task 642: lab mock-crash drill — every surface repeats the test/mock marking
+  // so a simulated report can never be read (or triaged) as a real failure.
+  "crash.mockBadge": "MOCK",
+  "crash.mockBanner": "This is a SIMULATED test report generated from the lab (dev-debug → mock crash test) — not a real failure. Send, Copy and one-click Analyze all run the real pipeline.",
+  "crash.mockNote": "The simulated report carries the test/mock flag on the receiving end and is pinned to the lowest severity; it never counts as a real failure.",
+  "crash.mockSend": "Send test report",
+  "crash.mockSent": "Uploaded via the real pipeline (test/mock flag attached)",
+  "crash.mockQueued": "Upload failed — the report was queued locally; the next launch retries it through the real pipeline (same as a real crash)",
+  "crash.mockSendFailed": "Send failed — the test report was not queued",
+  "settings.mockCrash": "Mock crash test (simulated)",
+  "settings.mockCrashHint": "Synthesizes a marked test report (the process never crashes) and opens the real crash overlay, so the report channel, the pending queue and one-click analysis (617/618) are verifiable end to end without a real crash. The report is labeled test/mock on the receiving end and pinned to the lowest severity.",
+  "settings.mockCrashRun": "Run mock crash drill",
   "performanceReport.title": "Reasonix noticed a responsiveness issue",
   "performanceReport.dismiss": "Dismiss",
   "performanceReport.privacyNote": "Before upload, the desktop scrubber removes paths and secrets. The diagnostic is intended to contain timing, memory, network state, sampled app function names, recent breadcrumbs, app version, and OS.",

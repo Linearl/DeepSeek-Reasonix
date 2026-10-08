@@ -32,13 +32,19 @@ function suggestedTitle(payload: CrashPayload): string {
   const what = oneLine(payload.errorMessage || payload.errorType || "diagnostic report");
   const where = oneLine(payload.topFrame || payload.label || "");
   const head = what.length > 80 ? `${what.slice(0, 80)}…` : what;
-  return where ? `[${kind}] ${head} at ${where}` : `[${kind}] ${head}`;
+  // Task 642: a lab-simulated report must stay identifiable even after the
+  // user renames the pasted issue — the mock tag leads the title.
+  const tag = payload.testMock ? `[mock][${kind}]` : `[${kind}]`;
+  return where ? `${tag} ${head} at ${where}` : `${tag} ${head}`;
 }
 
 function suggestedLabels(payload: CrashPayload): string[] {
   // Conservative set: the generic bug tag plus the report kind (crash,
-  // exception, performance, feedback, bot).
-  return ["bug", payload.kind || "crash"];
+  // exception, performance, feedback, bot). Mock drills (task 642) add explicit
+  // test labels so triage can filter them out at a glance.
+  const labels = ["bug", payload.kind || "crash"];
+  if (payload.testMock) labels.push("mock", "test");
+  return labels;
 }
 
 export function buildCrashIssueSkeleton(payload: CrashPayload): string {
@@ -51,6 +57,7 @@ export function buildCrashIssueSkeleton(payload: CrashPayload): string {
     `- view: ${payload.view || "unknown"}`,
     `- language: ${payload.language || "unknown"}`,
     `- occurred at: ${payload.occurredAt || "unknown"}`,
+    ...(payload.testMock ? ["- mock: YES — simulated test event from the lab (task 642), not a real failure"] : []),
   ].join("\n");
 
   const sections: string[] = [];

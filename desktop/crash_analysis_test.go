@@ -62,7 +62,7 @@ func TestBuildCrashAnalysisInstructionCarriesPayloadAndContract(t *testing.T) {
   "errorType": "panic",
   "topFrame": "desktop/crash_app.go:99"
 }`
-	instruction := buildCrashAnalysisInstruction(`C:\src\reasonix`, payload)
+	instruction := buildCrashAnalysisInstruction(`C:\src\reasonix`, payload, false)
 	for _, want := range []string{
 		"gh-issue-submit",
 		crashAnalysisRepo,
@@ -176,5 +176,19 @@ func TestGhSuccessDetailExplainsFallbackDiscovery(t *testing.T) {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("fallback success detail missing %q, got %q", want, detail)
 		}
+
+// Task 642: a mock payload's analysis run must announce the simulation so the
+// submitted issue is labeled mock/test instead of triaged as a real failure.
+func TestBuildCrashAnalysisInstructionMarksMockPayload(t *testing.T) {
+	instruction := buildCrashAnalysisInstruction(`C:\src\reasonix`, `{"kind":"crash"}`, true)
+	if !strings.Contains(instruction, "测试/mock 报告") || !strings.Contains(instruction, "mock/test") {
+		t.Fatalf("mock instruction missing the simulation notice:\n%s", instruction)
+	}
+	if !strings.HasPrefix(instruction, "请分析") {
+		t.Fatalf("mock instruction should still open with the analysis ask:\n%s", instruction)
+	}
+	plain := buildCrashAnalysisInstruction(`C:\src\reasonix`, `{"kind":"crash"}`, false)
+	if strings.Contains(plain, "测试/mock 报告") {
+		t.Fatalf("non-mock instruction must not carry the simulation notice:\n%s", plain)
 	}
 }
