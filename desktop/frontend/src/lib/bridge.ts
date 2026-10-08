@@ -435,6 +435,84 @@ export interface CollabInboxCleanNowView {
   snapshot: CollabMailSnapshotView;
 }
 
+// ── 任务 409: 群聊式协作视图（只读观察窗）─────────────────────────────
+// 全部字段来自现有数据源（desktop.CollabView*）：状态词汇与 get_session_status
+// 完全一致（running|queued|idle|unknown），不新造状态。
+
+/** 409: 会话当前任务卡（进度维度复用任务卡状态机）。 */
+export interface CollabViewCardView {
+  id: string;
+  title: string;
+  status: string;
+  updatedAt: number;
+}
+
+/** 409: 最近一条已投递往来（队列中的发送不算往来，与 320 契约 ② 同口径）。 */
+export interface CollabViewExchangeView {
+  from: string;
+  to: string;
+  preview: string;
+  at: number;
+  threadId?: string;
+}
+
+/** 409: 一行群聊名册（谁、什么状态、在办哪件事）。 */
+export interface CollabViewSessionView {
+  contactId: string;
+  topicId?: string;
+  title: string;
+  purpose?: string;
+  identityType?: string;
+  state: string;
+  lastActivity: number;
+  unreadInbox: number;
+  card?: CollabViewCardView;
+  lastExchange?: CollabViewExchangeView;
+}
+
+/** 409: 一张总览快照（sessions 可为空——空目录渲染空态，不是错误）。 */
+export interface CollabViewOverviewView {
+  sessions: CollabViewSessionView[];
+  generatedAt: number;
+}
+
+/** 409/349: 频道名册一行。 */
+export interface CollabChannelView {
+  id: string;
+  name: string;
+  topic?: string;
+  createdAt: number;
+  hourlyLimit: number;
+  members: string[];
+  messages: number;
+}
+
+/** 349: 每成员投递行（delivered/read 按成员各算，永不合并）。 */
+export interface CollabChannelFanoutCellView {
+  messageId: string;
+  member: string;
+  fanoutId: string;
+  state: string;
+  error?: string;
+  deliveredAt?: number;
+  readAt?: number;
+}
+
+/** 409: 频道内一行消息 + 其每成员投递标注。 */
+export interface CollabChannelMessageView {
+  id: string;
+  sender: string;
+  body: string;
+  at: number;
+  fanout?: CollabChannelFanoutCellView[];
+}
+
+/** 409: 一次频道读取（频道头 + 最近消息，旧→新）。 */
+export interface CollabChannelReadView {
+  channel: CollabChannelView;
+  messages: CollabChannelMessageView[];
+}
+
 interface NativeConfirmRequest {
   title: string;
   message: string;
@@ -1159,6 +1237,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetCollabMailCleanupRule(rule: string): Promise<CollabMailSnapshotView>;
   /** 任务 620: 立即清理——按当前保留期与清理规则立即执行一次清理，返回物理移除数与新快照。 */
   CleanCollabMailNow(): Promise<CollabInboxCleanNowView>;
+  // 任务 409: 群聊式协作视图（只读观察窗）— 聚合通讯录/共享忙闲判定/任务卡/
+  // 已投递往来，全部现有数据源，无新协议。
+  GetCollabViewOverview(): Promise<CollabViewOverviewView>;
+  ListCollabChannels(): Promise<CollabChannelView[]>;
+  ReadCollabChannel(ref: string, limit: number): Promise<CollabChannelReadView>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -5683,6 +5766,17 @@ function makeMockApp(): AppBindings {
         removed: 0,
         snapshot: { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] },
       };
+    },
+    // 任务 409 mocks: the dev shell has no collaboration either — an honest
+    // empty roster, so the panel renders its empty state in the dev shell.
+    async GetCollabViewOverview() {
+      return { sessions: [], generatedAt: 0 };
+    },
+    async ListCollabChannels() {
+      return [];
+    },
+    async ReadCollabChannel(_ref: string, _limit: number) {
+      return { channel: { id: "", name: "", createdAt: 0, hourlyLimit: 0, members: [], messages: 0 }, messages: [] };
     },
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;

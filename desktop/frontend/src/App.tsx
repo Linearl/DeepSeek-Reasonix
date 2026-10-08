@@ -28,6 +28,7 @@ import {
   Trash2,
   AlarmClock,
   Mailbox,
+  MessagesSquare,
   BarChart3,
   Brain,
   Cpu,
@@ -61,6 +62,7 @@ import { useController, type Item } from "./lib/useController";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 import { CollabInboxPanel, setCollabInboxOpen, useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
+import { CollabGroupPanel, setCollabGroupOpen } from "./components/CollabGroupPanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { SessionWallBoundary } from "./components/SessionWallBoundary";
 import { effectiveSplitTier, loadSplitPreviewTier, persistSplitPreviewTier, splitPreviewTierFromPointer, SPLIT_PREVIEW_TIERS, setSplitPaneTitle, setSplitViewEnabled, type SplitPreviewTier } from "./lib/splitView";
@@ -4829,6 +4831,18 @@ export default function App() {
                     <span className="sr-only">{t("sidebar.collabInbox")}{collabInboxUnread > 0 ? ` (${collabInboxUnread})` : ""}</span>
                   </button>
                 </Tooltip>
+                {/* 任务 409：群聊式协作视图并排此行（回收站 → 信件中心 → 群聊 →
+                    自动化 → 设置），兑现 320 UI 规格里预留的群聊图标位。 */}
+                <Tooltip label={t("sidebar.collabGroup")} fill side="top">
+                  <button
+                    className="sidebar__utility-button"
+                    type="button"
+                    onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); setCollabGroupOpen(true); }}
+                  >
+                    <MessagesSquare size={16} aria-hidden="true" />
+                    <span className="sr-only">{t("sidebar.collabGroup")}</span>
+                  </button>
+                </Tooltip>
                 <Tooltip label={t("heartbeat.scheduler")} fill side="top">
                   <button
                     className="sidebar__utility-button"
@@ -6169,6 +6183,9 @@ export default function App() {
       {/* Task 320: cross-session inbox — same portal-at-root rule as above;
           primary entry = sidebar bottom utility row (20261002 UI spec), settings keeps a secondary path. */}
       <CollabInboxPanel />
+      {/* Task 409: 群聊式协作视图（多 Agent 协作可视化）— same portal-at-root
+          rule, opened from the sidebar utility row (与信件中心并排). */}
+      <CollabGroupPanel />
     </div>
     </UpdaterProvider>
     </RemoteNavigationContext.Provider>

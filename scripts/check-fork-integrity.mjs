@@ -782,6 +782,17 @@ const CHECKS = [
   // 被 merge 摘掉则面板退回仅设置可达。
   { feature: "任务320 左下角图标行入口（邮箱图标+开合接线）", file: "desktop/frontend/src/App.tsx", patterns: ["Mailbox size={16}", "setCollabInboxOpen(true)", "sidebar.collabInbox"] },
   { feature: "任务320 图标行入口三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["sidebar.collabInbox"] },
+  // 任务 409 群聊式协作视图（20261009）：只读观察窗——聚合面（Go）+ 面板组件
+  // + 图标行入口 + 三语。状态词汇必须与 get_session_status 同源
+  // （CollabStatusRecords），任一侧被 merge 摘掉则视图报错或各说各话。
+  { feature: "任务409 共享忙闲判定导出", file: "internal/agent/session_collab_tools.go", patterns: ["func CollabStatusRecords("] },
+  { feature: "任务409 Wails 只读聚合面", file: "desktop/collab_view_app.go", patterns: ["func (a *App) GetCollabViewOverview(", "func (a *App) ListCollabChannels(", "func (a *App) ReadCollabChannel("] },
+  { feature: "任务409 聚合面测试（≥3 会话/四态/往来只算已投递）", file: "desktop/collab_view_app_test.go", patterns: ["TestGetCollabViewOverviewAggregatesRoster", "TestCollabViewCardForPicksCurrentCard"] },
+  { feature: "任务409 群聊面板组件", file: "desktop/frontend/src/components/CollabGroupPanel.tsx", patterns: ["collab-group-panel__session", "GetCollabViewOverview", "COLLAB_GROUP_POLL_MS"] },
+  { feature: "任务409 面板测试（≥3 同屏/空态/失败≠空态）", file: "desktop/frontend/src/__tests__/collab-group-panel.test.tsx", patterns: ["acceptance: ≥3", "must never render as the healthy empty state"] },
+  { feature: "任务409 图标行群聊入口", file: "desktop/frontend/src/App.tsx", patterns: ["MessagesSquare size={16}", "setCollabGroupOpen(true)", "sidebar.collabGroup"] },
+  { feature: "任务409 三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["sidebar.collabGroup", "collabGroup.state.unknown", "collabGroup.note"] },
+  { feature: "任务409 面板 CSS", file: "desktop/frontend/src/styles.css", patterns: [".collab-group-panel__state--running", ".collab-group-panel__fanoutcell--read"] },
   // 任务 320 余段（20261003）：a 的面板侧日期升/降切换——索引层 Query.Order
   // 双序早已在，缺的是 Wails 透传与面板控件；锁 Go 参数、控件类与三语键，
   // 任一侧被摘则排序切换静默失灵。
