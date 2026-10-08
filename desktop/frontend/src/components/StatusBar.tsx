@@ -7,7 +7,6 @@ import { RemoteConnectionErrorDialog } from "./RemoteConnectionErrorDialog";
 import { Tooltip } from "./Tooltip";
 import { contextWindowPercentages } from "../lib/contextWindow";
 import { useI18n, type DictKey, type Translator } from "../lib/i18n";
-import { useI18n, type Translator } from "../lib/i18n";
 import { summarizeMcpServers, type McpStatusSummary } from "../lib/mcpStatus";
 import { formatMoneyLocalized } from "../lib/money";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
