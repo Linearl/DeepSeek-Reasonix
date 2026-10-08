@@ -9,6 +9,7 @@ import { useT } from "../lib/i18n";
 import { mcpServerLifecycleActions, mcpServerRetryableFromAvailableList } from "../lib/mcpServerLifecycle";
 import { mcpSessionStateLabel, mcpSettingsSearchText } from "../lib/mcpSessionStatus";
 import { canUseNativeMCPOAuth } from "../lib/mcpOAuthEligibility";
+import { publishMcpServers } from "../store/mcpStatus";
 import type { CapabilitiesView, MCPMarketplaceEntry, MCPMarketplaceView, MCPServerInput, PluginAgentView, PluginCommandView, PluginCompatibilityIssue, PluginHookView, PluginInstallOptions, PluginMCPServerView, PluginSkillView, PluginView, ServerView, SkillRootSkillView, SkillRootView, SkillsSettingsView, SkillView, TabMeta } from "../lib/types";
 import { InlineConfirmButton } from "./InlineConfirmButton";
 import { ResizableDrawer } from "./ResizableDrawer";
@@ -62,7 +63,11 @@ export function CapabilitiesPanel({
   const [expandedServerTools, setExpandedServerTools] = useState<Set<string>>(() => new Set());
 
   const reload = useCallback(async () => {
-    setView(normalizeCapabilitiesView(await app.Capabilities().catch(() => ({ servers: [], skills: [], skillRoots: [], plugins: [] }))));
+    const next = normalizeCapabilitiesView(await app.Capabilities().catch(() => ({ servers: [], skills: [], skillRoots: [], plugins: [] })));
+    setView(next);
+    // Task 559: share the fresh read with the status-bar MCP chip so retries
+    // and connects made here show up there without waiting for its next poll.
+    publishMcpServers(next.servers);
   }, []);
   useEffect(() => {
     void reload();
@@ -3068,6 +3073,8 @@ export function MCPServersSettingsPage() {
 		const next = normalizeServerViews(await app.MCPServers().catch(() => []));
 		mcpSettingsSnapshot = { key, value: next };
 		setServers(next);
+		// Task 559: the status-bar MCP chip mirrors this page's fresh snapshot.
+		publishMcpServers(next);
 	}, []);
 	useEffect(() => { void reload(); }, [reload]);
 	useEffect(() => {
