@@ -13,6 +13,16 @@ import (
 
 func effectiveWriteRoots(ctx context.Context, set *sandbox.WritableRootSet, fallback []string) []string {
 	if set != nil {
+		// 任务 634：full access（yolo，task 257）在写工具的静态边界上放行。
+		// 预检层（agent.applyWriteAccess）与控制器门（WritableRootSet.Missing）
+		// 都按 unbounded 短路，但本函数此前仍返回基线列表，confine 检查把
+		// yolo 会话拦在 workspace 边界内（外部反馈 634 问题①；存量会话基线
+		// 未含新增 allow 目录时问题②同源于此）。空列表 = confine 不设边界；
+		// 会话数据 guard 在 confineWrite/confinePreview 中照常生效，yolo 不
+		// 豁免 Reasonix 自有会话存储（与 boot 注释口径一致）。
+		if set.Unbounded() {
+			return nil
+		}
 		return set.Effective(ctx)
 	}
 	if extra := sandbox.PerCallWriteRoots(ctx); len(extra) > 0 {
