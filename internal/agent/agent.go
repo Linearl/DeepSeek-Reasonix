@@ -38,6 +38,7 @@ import (
 	"reasonix/internal/secrets"
 	"reasonix/internal/sessiontemp"
 	"reasonix/internal/shellparse"
+	"reasonix/internal/subagentmailbox"
 	"reasonix/internal/taskcontract"
 	"reasonix/internal/tool"
 	"reasonix/internal/workspacelease"
@@ -1150,6 +1151,16 @@ type Options struct {
 	// MemoryQueue optionally gives a child agent an explicitly owned live-memory
 	// queue. When nil, child construction shadows inherited queues.
 	MemoryQueue memory.Queue
+
+	// SubagentMailbox is the persisted inbox plus in-process steer handle
+	// registry entry for ONE subagent run (task 616). RunSubAgentWithSession
+	// publishes the run's steer handle for the exact run lifetime — defer
+	// unpublish covers panic unwinding — so a parent-side send_message (or the
+	// desktop send box) can inject guidance into this child mid-turn. Non-nil
+	// only when the parent session persists transcripts and the
+	// experimental_subagent_messaging switch is on; nil keeps every pre-616
+	// behavior byte for byte (no mailbox files, no registry entries).
+	SubagentMailbox *subagentmailbox.Mailbox
 
 	// WriteScheduler is the session-scoped subagent concurrency/write-claim
 	// controller. When set on the parent executor, write-capable tools reserve

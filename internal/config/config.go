@@ -692,6 +692,14 @@ func (c *Config) SubagentPolicyIntakeEnabled() bool {
 	return c == nil || c.Agent.ExperimentalSubagentPolicy == nil || *c.Agent.ExperimentalSubagentPolicy
 }
 
+// SubagentMessagingEnabled reports whether the runtime message channel to
+// running sub-agents is lit (task 616). Nil means ON — the user's explicit
+// 2026-10-08 ruling, the recorded exception to the default-off fork rule;
+// only an explicit false turns the channel off.
+func (c *Config) SubagentMessagingEnabled() bool {
+	return c == nil || c.Agent.ExperimentalSubagentMessaging == nil || *c.Agent.ExperimentalSubagentMessaging
+}
+
 // ToolOptimizationsEnabled reports whether the "工具优化" tool family is lit
 // (task 603). The field is a plain default-false bool: the zero value (and a
 // nil config) keeps every tool surface byte-identical to the pre-family
@@ -1610,6 +1618,17 @@ type AgentConfig struct {
 	// 265): the composer switcher and the settings default. Nil means on; off
 	// hides both entries and forces new sessions to light.
 	ExperimentalSubagentPolicy *bool `toml:"experimental_subagent_policy"`
+	// ExperimentalSubagentMessaging keeps the runtime message channel to
+	// running sub-agents (task 616): the parent-side send_message tool, the
+	// desktop send box in the subagent panel, and the per-ref mailboxes
+	// persisted under subagents/<ref>.mailbox. Nil means on — this switch is
+	// the user's explicit 2026-10-08 ruling and the recorded exception to the
+	// default-off fork rule. Off removes send_message from the parent
+	// registry, returns "disabled" from the desktop binding without touching
+	// disk, and never publishes steer handles or drains mailboxes on
+	// continue_from — the pre-616 surface byte for byte. Applies on restart
+	// (boot snapshot), like every boot-resolved switch.
+	ExperimentalSubagentMessaging *bool `toml:"experimental_subagent_messaging"`
 	// ExperimentalFullAccess is the "full access (yolo)" lab switch (task 257).
 	// On passes every declared write directory through the preflight and the
 	// desktop gate without authorization, and runs bash unwrapped. The zero
