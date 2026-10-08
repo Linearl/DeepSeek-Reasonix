@@ -13,6 +13,7 @@ import (
 	"reasonix/internal/hook"
 	"reasonix/internal/jobs"
 	"reasonix/internal/memory"
+	"reasonix/internal/pendingcards"
 	"reasonix/internal/plugin"
 	"reasonix/internal/provider"
 	"reasonix/internal/sandbox"
@@ -123,6 +124,13 @@ type Approvals interface {
 	Bypass() bool
 	SetBypass(on bool)
 	SetMode(plan, autoApproveTools bool)
+	// PendingDecisionCards (任务 408 异步决策点回访) lists the durable
+	// pending-decision cards awaiting the user ("N 个待你决定"); nil while the
+	// experimental switch is off.
+	PendingDecisionCards() []pendingcards.Card
+	// WithdrawPendingCard is the 撤回 arm: the user declines to decide; the
+	// underlying prompt resolves deny/dismiss and the card records withdrawn.
+	WithdrawPendingCard(promptID string) error
 }
 
 // Goals covers the active-goal FSM and plan mode.

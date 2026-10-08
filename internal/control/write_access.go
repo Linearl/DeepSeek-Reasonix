@@ -10,6 +10,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/event"
+	"reasonix/internal/pendingcards"
 	"reasonix/internal/permission"
 	"reasonix/internal/sandbox"
 )
@@ -238,6 +239,9 @@ func (c *Controller) requestWriteAccessDecision(ctx context.Context, toolName, s
 	}
 	c.sink.Emit(c.approvalRequestEvent(approval))
 	c.approval.promptEmitMu.Unlock()
+	// 任务 408: durable pending card for the write-access decision point.
+	turnID, _, _, _ := c.turnEventRuntimeStatus()
+	c.notePendingCard(pendingcards.KindApproval, id, turnID, pendingCardSummaryForApproval(toolName, subject))
 	go c.hooks.Notification(ctx, approvalNotificationText(toolName, subject), "permission_prompt")
 
 	waitCtx, cancelWait := c.approval.waitContext(ctx)
@@ -247,6 +251,7 @@ func (c *Controller) requestWriteAccessDecision(ctx context.Context, toolName, s
 		return r, nil
 	case <-waitCtx.Done():
 		c.cancelOwnedPrompt(id)
+		c.expirePendingCardErr(id, waitCtx.Err())
 		return approvalReply{}, waitCtx.Err()
 	}
 }
@@ -307,6 +312,8 @@ func (c *Controller) resolveWriteAccess(pending pendingApproval, allow bool, sco
 	}
 	if !allow {
 		c.recordDecisionReceipt(pending, "deny")
+		// 任务 408: the durable card closes with the deny (批完).
+		c.settlePendingCard(pending.id, pendingcards.StateResolved, "deny")
 		pending.reply <- approvalReply{}
 		return nil
 	}
@@ -322,6 +329,7 @@ func (c *Controller) resolveWriteAccess(pending pendingApproval, allow bool, sco
 		verified, err := sandbox.EnsureWriteDir(dir, stateRoot)
 		if err != nil {
 			c.recordDecisionReceipt(pending, "deny")
+			c.settlePendingCard(pending.id, pendingcards.StateResolved, "dir_error")
 			pending.reply <- approvalReply{persistErr: err}
 			c.sink.Emit(event.Event{
 				Kind:  event.Notice,
@@ -335,6 +343,7 @@ func (c *Controller) resolveWriteAccess(pending pendingApproval, allow bool, sco
 	if scope == sandbox.ApprovalScopeProject {
 		if err := c.persistWriteAccess(pending.tool, pending.subject, verifiedDirs, merge); err != nil {
 			c.recordDecisionReceipt(pending, "deny")
+			c.settlePendingCard(pending.id, pendingcards.StateResolved, "persist_error")
 			pending.reply <- approvalReply{persistErr: err}
 			c.sink.Emit(event.Event{
 				Kind:  event.Notice,
@@ -367,6 +376,8 @@ func (c *Controller) resolveWriteAccess(pending pendingApproval, allow bool, sco
 		}
 	}
 	c.recordDecisionReceipt(pending, outcome)
+	// 任务 408: the durable card closes with the grant (批完 allow_*).
+	c.settlePendingCard(pending.id, pendingcards.StateResolved, outcome)
 	pending.reply <- reply
 	return nil
 }

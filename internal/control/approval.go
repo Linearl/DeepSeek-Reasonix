@@ -13,6 +13,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"reasonix/internal/i18n"
+	"reasonix/internal/pendingcards"
 	"reasonix/internal/permission"
 )
 
@@ -69,6 +70,8 @@ func (c *Controller) approveChecked(id string, allow, session, persist bool) err
 		}
 	}
 	c.recordDecisionReceipt(pending, outcome)
+	// 任务 408: the durable card closes with the decision (批完 allow/deny).
+	c.settlePendingCard(id, pendingcards.StateResolved, outcome)
 	pending.reply <- approvalReply{allow: allow, session: session, persist: persist}
 	return nil
 }

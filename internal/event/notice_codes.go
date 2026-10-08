@@ -70,3 +70,10 @@ const (
 	// turn or the automatic re-kick once the gate reopens.
 	NoticeCodeBackgroundJobWakeYielded = "background_job_wake_yielded"
 )
+
+// 任务408 异步决策点回访: pending-card lifecycle notices. Enqueue marks the
+// in-session "决策点已挂起待你决定" flag; the count itself rides the runtime
+// state snapshot (PendingCards).
+const (
+	NoticeCodePendingCardEnqueued = "pending_card_enqueued"
+)

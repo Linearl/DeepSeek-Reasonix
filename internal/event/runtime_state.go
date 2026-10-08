@@ -28,6 +28,9 @@ type RuntimeStateSnapshot struct {
 	// grace (StopDeadlineUnix is the countdown's authoritative end), 3 force.
 	StopLevel        int   `json:"stopLevel,omitempty"`
 	StopDeadlineUnix int64 `json:"stopDeadlineUnix,omitempty"`
+	// 任务408 异步决策点回访: durable pending-decision cards awaiting the
+	// user ("N 个待你决定"). Always 0 while the experimental switch is off.
+	PendingCards int `json:"pendingCards,omitempty"`
 }
 
 func (s RuntimeStateSnapshot) ActiveWork() bool {

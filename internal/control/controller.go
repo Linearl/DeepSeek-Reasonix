@@ -52,6 +52,7 @@ import (
 	"reasonix/internal/mcpinteraction"
 	"reasonix/internal/memory"
 	"reasonix/internal/nilutil"
+	"reasonix/internal/pendingcards"
 	"reasonix/internal/permission"
 	"reasonix/internal/plugin"
 	"reasonix/internal/provider"
@@ -343,6 +344,11 @@ type Controller struct {
 	// (requestApproval/Ask emit events + fire hooks + rebuild the executor gate).
 	// See approval.go.
 	approval approvalManager
+
+	// pendingCards owns 任务 408's durable pending-decision card queue (nil
+	// queue until the experimental switch turns on and a session path exists).
+	// See pending_cards.go.
+	pendingCards pendingCardState
 
 	// mu guards the run state; every critical section under it is short and
 	// non-blocking.
@@ -3084,6 +3090,10 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	c.approval.markAskEmitted(id)
 	c.approval.promptEmitMu.Unlock()
 	log.Printf("[ask-panel] ask request emitted turn=%s item=%s questions=%d", turnID, id, len(questions))
+	// 任务 408: the decision point is now durable — enqueue the pending card,
+	// flag the session, and fire the notify hook (Ask previously had no
+	// system-notification hop of its own).
+	c.notePendingCard(pendingcards.KindAsk, id, turnID, pendingCardSummaryForAsk(questions))
 
 	waitCtx, cancelWait := c.approval.waitContext(ctx)
 	defer cancelWait()
@@ -3110,6 +3120,7 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 		return ans, nil
 	case <-askTimeout:
 		c.cancelOwnedPrompt(id)
+		c.expirePendingCard(id)
 		if c.autopilotAskTimeoutEnabled {
 			// Task 477 判据锚: one grep-able log line plus one notice, so
 			// "did the ask timeout fire and what did it decide" is answerable
@@ -3136,9 +3147,11 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			Text:   "autopilot · ask — refused: high-risk question unanswered after " + askWait.String(),
 			Detail: "the unattended run stopped instead of deciding destructive/outward-facing/credential actions for the user",
 		})
+		c.expirePendingCard(id)
 		return nil, ErrAutopilotAskUnanswered
 	case <-waitCtx.Done():
 		c.cancelOwnedPrompt(id)
+		c.expirePendingCardErr(id, waitCtx.Err())
 		return nil, waitCtx.Err()
 	}
 }
@@ -3171,6 +3184,13 @@ func (c *Controller) answerQuestionCheckedLocked(id string, answers []event.AskA
 		// chat" path. End the current turn instead of feeding a prose dismissal
 		// back to the model and trusting it not to ask again (#6869).
 		hasSelection := askAnswersHaveSelection(answers)
+		// 任务 408: the durable card closes with the decision (批完 answered /
+		// dismissed) — the resumed run below is the 断点续跑, no restart.
+		if hasSelection {
+			c.settlePendingCard(id, pendingcards.StateResolved, "answered")
+		} else {
+			c.settlePendingCard(id, pendingcards.StateResolved, "dismissed")
+		}
 		if !hasSelection {
 			c.mu.Lock()
 			activeTurn := c.cancel != nil
@@ -6607,6 +6627,9 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 		return approvalReply{}, fmt.Errorf("persist approval request: %w", err)
 	}
 	c.approval.promptEmitMu.Unlock()
+	// 任务 408: durable pending card for the approval decision point.
+	turnID, _, _, _ := c.turnEventRuntimeStatus()
+	c.notePendingCard(pendingcards.KindApproval, id, turnID, pendingCardSummaryForApproval(tool, subject))
 	// The agent now needs the user's attention; a Notification hook can ping an
 	// external channel (desktop notice, phone) while the run blocks on the reply.
 	go c.hooks.Notification(ctx, approvalNotificationText(tool, subject), "permission_prompt")
@@ -6632,6 +6655,7 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 	case <-graceCh:
 		if decision, decided := c.reviewUnattendedApproval(ctx, tool, subject, reason, args); decided {
 			c.cancelOwnedPrompt(id)
+			c.expirePendingCard(id)
 			return decision, nil
 		}
 		// Task 109 B6: nothing could decide on the absent user's behalf. Waiting
@@ -6642,9 +6666,11 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 		// refusal. Interactive runs keep the plain wait, having no grace at all.
 		c.emitAutopilotApprovalNotice(tool, subject, "refused: no unattended reviewer could decide")
 		c.cancelOwnedPrompt(id)
+		c.expirePendingCard(id)
 		return approvalReply{allow: false}, nil
 	case <-waitCtx.Done():
 		c.cancelOwnedPrompt(id)
+		c.expirePendingCardErr(id, waitCtx.Err())
 		return approvalReply{}, waitCtx.Err()
 	}
 }
