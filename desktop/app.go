@@ -6673,6 +6673,78 @@ func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string) 
 	return name, entry, pluginRef, nil
 }
 
+// modelSwitchPersonaBoundary reports whether the switch crosses the official
+// DeepSeek-V4-Pro persona boundary (task 602). The persona is prepended to the
+// cache-stable system prompt at boot (config.ApplyOfficialDeepSeekV4ProPersona)
+// and ReasoningLanguageForEntry pins its auto reasoning language — neither has
+// an override seam, so crossing the boundary keeps the build+swap path, which
+// re-derives the prompt exactly as boot does. Plugin-namespaced targets (nil
+// entry) never apply the persona.
+func modelSwitchPersonaBoundary(workspaceRoot, currentRef string, target *config.ProviderEntry) bool {
+	cfg, err := config.LoadForRoot(workspaceRoot)
+	if err != nil {
+		return false // unreadable config declines the gate; resolution fails later either way
+	}
+	current := false
+	if ref := strings.TrimSpace(currentRef); ref != "" {
+		if e, ok := cfg.ResolveModel(ref); ok {
+			current = config.AppliesOfficialDeepSeekV4ProPersona(e)
+		}
+	}
+	targetApplies := target != nil && config.AppliesOfficialDeepSeekV4ProPersona(target)
+	return current != targetApplies
+}
+
+// modelSwitchIdentity carries what the fast path rebinding writes into the
+// controller and the tab: SetModelIdentity fields plus the tab label.
+type modelSwitchIdentity struct {
+	label      string
+	balanceURL string
+	balanceKey string
+	imageInput *bool
+}
+
+// modelSwitchExtras derives the entry-scoped payload the hot switch needs
+// (task 602): the agent override scalars plus the controller identity, exactly
+// the surfaces a rebuild re-derives from the new entry (boot folds the same
+// pricing/window/high-speed inputs into the executor and the controller).
+func modelSwitchExtras(workspaceRoot, ref string, entry *config.ProviderEntry) (agent.ModelOverrideExtras, modelSwitchIdentity, error) {
+	if entry == nil {
+		// Plugin-namespaced ref: the sidecar owns the entry; the agent-side
+		// resolver seam constructs the provider, zero extras keep the
+		// construction scalars.
+		return agent.ModelOverrideExtras{}, modelSwitchIdentity{}, nil
+	}
+	cfg, err := config.LoadForRoot(workspaceRoot)
+	if err != nil {
+		return agent.ModelOverrideExtras{}, modelSwitchIdentity{}, err
+	}
+	extras := agent.ModelOverrideExtras{
+		Pricing:         entry.Price,
+		ContextWindow:   entry.ContextWindow,
+		MaxOutputTokens: entry.MaxOutputTokens,
+		HighSpeedModels: boot.HighSpeedModelsFor(cfg, entry.HighSpeedModels),
+	}
+	// Label mirrors boot's derivation (entry.Model, plus the planner suffix
+	// when a planner model is configured). The frozen image gate mirrors boot's
+	// capability resolution; a catalog entry without modality data stays
+	// conservative exactly as a rebuild would.
+	label := entry.Model
+	if planner := strings.TrimSpace(cfg.Agent.PlannerModel); planner != "" {
+		if pe, ok := cfg.ResolveModel(planner); ok {
+			label = entry.Model + " + planner " + pe.Model
+		}
+	}
+	imageEnabled := config.NewModelCapabilityResolver().Resolve(entry).State == config.CapabilitySupported
+	identity := modelSwitchIdentity{
+		label:      label,
+		balanceURL: entry.BalanceURL,
+		balanceKey: entry.APIKey(),
+		imageInput: &imageEnabled,
+	}
+	return extras, identity, nil
+}
+
 func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	if name == "" {
 		return nil
@@ -6710,14 +6782,17 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 	// Task 148 per-request fast path (mirrors the task-334 effort seam in
 	// SetEffortForTab): a same-provider target arms a session-scoped model
 	// override on the running controller, so the next request carries the new
-	// model with no runtime rebuild. An active turn is no longer a rejection
-	// reason — the in-flight request stays frozen and the override lands from
-	// the next request freeze — while the build+swap path below keeps its
-	// active-work guard for everything that declines here (no controller,
-	// cross-provider targets, recovery-forked sessions).
+	// model with no runtime rebuild. Task 602 lifts the same-provider
+	// restriction: every destination-scoped surface (protocol shaping, wire,
+	// pricing, window scalars, controller identity) follows the override, so
+	// cross-provider targets take this path too. An active turn is no longer
+	// a rejection reason — the in-flight request stays frozen and the
+	// override lands from the next request freeze — while the build+swap path
+	// below keeps its active-work guard for everything that declines here
+	// (no controller, persona-boundary crossings, recovery-forked sessions).
 	stageStarted = time.Now()
 	switchSnap := a.tabRuntimeSnapshot(tab)
-	switchRef, _, _, err := a.resolveTabModelRef(tab, switchSnap.workspaceRoot, name)
+	switchRef, switchEntry, _, err := a.resolveTabModelRef(tab, switchSnap.workspaceRoot, name)
 	if err != nil {
 		return err
 	}
@@ -6732,27 +6807,47 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		return nil
 	}
 	if ctrl := a.controllerForTab(tab); ctrl != nil {
-		if setter, ok := ctrl.(interface {
-			SetSessionModelOverride(string) bool
-		}); ok && setter.SetSessionModelOverride(switchRef) {
-			a.mu.Lock()
-			tab.model = switchRef
-			a.saveTabsLocked()
-			a.mu.Unlock()
-			// Same sidecar rationale as the rebuild path: empty sessions do
-			// not autosave a turn, so persisting the provider identity here
-			// keeps a later startup on the provider the tab actually runs, and
-			// keeps last-click-wins across overlapping switches.
-			if path := a.currentSessionPathFor(tab); path != "" {
-				if err := agent.SetBranchModelPreserveUpdated(path, switchRef); err != nil {
-					return fmt.Errorf("persist selected model: %w", err)
+		if !modelSwitchPersonaBoundary(switchSnap.workspaceRoot, tab.model, switchEntry) {
+			if setter, ok := ctrl.(interface {
+				SetSessionModelOverride(string, agent.ModelOverrideExtras) bool
+			}); ok {
+				extras, identity, extrasErr := modelSwitchExtras(switchSnap.workspaceRoot, switchRef, switchEntry)
+				if extrasErr != nil {
+					return extrasErr
+				}
+				if setter.SetSessionModelOverride(switchRef, extras) {
+					if idSetter, ok := ctrl.(interface {
+						SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput *bool)
+					}); ok {
+						idSetter.SetModelIdentity(switchRef, identity.label, identity.balanceURL, identity.balanceKey, identity.imageInput)
+					}
+					a.mu.Lock()
+					tab.model = switchRef
+					tab.Label = identity.label
+					a.saveTabsLocked()
+					a.mu.Unlock()
+					// Same sidecar rationale as the rebuild path: empty sessions do
+					// not autosave a turn, so persisting the provider identity here
+					// keeps a later startup on the provider the tab actually runs, and
+					// keeps last-click-wins across overlapping switches.
+					if path := a.currentSessionPathFor(tab); path != "" {
+						if err := agent.SetBranchModelPreserveUpdated(path, switchRef); err != nil {
+							return fmt.Errorf("persist selected model: %w", err)
+						}
+					}
+					// A model switch changes the pricing context; discard the
+					// session-local automatic wallet hint, same as the rebuild path.
+					tab.clearRuntimeDisplayCurrency()
+					slog.Info("desktop: model switch", "tab", tabID, "path", "fast-per-request", "model", switchRef) // task 148/602: fast path observability (paired against runtime build end path=fallback).
+					return nil
 				}
 			}
-			// A model switch changes the pricing context; discard the
-			// session-local automatic wallet hint, same as the rebuild path.
-			tab.clearRuntimeDisplayCurrency()
-			slog.Info("desktop: model switch", "tab", tabID, "path", "fast-per-request", "model", switchRef) // task 148: fast path observability (paired against runtime build end path=fallback).
-			return nil
+		} else {
+			// Task 602: the official DeepSeek-V4-Pro persona is baked into the
+			// session's cache-stable system prompt and has no override seam —
+			// crossing its boundary keeps the rebuild path, which re-derives
+			// the prompt exactly as boot does.
+			slog.Info("desktop: model switch", "tab", tabID, "path", "fallback-persona-boundary", "model", switchRef)
 		}
 	}
 	prevPath := a.sessionPathForSettingsRebuild(tab)
