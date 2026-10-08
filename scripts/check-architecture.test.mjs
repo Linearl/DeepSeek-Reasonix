@@ -1,7 +1,7 @@
 // check-architecture 规则引擎单测（node --test scripts/check-architecture.test.mjs）。
 // 夹具树落在临时目录，逐条验证：方向规则 / testutil 隔离 / 禁环 / 禁深导入 /
-// 基线只报新增与陈旧指纹 / 反向依赖闭包 / --context 输出。同时承担
-// `check-architecture.mjs --self-test` 的实际执行体。
+// 基线只报新增与陈旧指纹 / 直接反向依赖（一层，有界）/ 源码扩展名过滤 /
+// --context 输出。同时承担 `check-architecture.mjs --self-test` 的实际执行体。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -9,11 +9,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  expandClosure,
+  expandTouched,
   filterBaseline,
   fingerprint,
   findCycles,
   formatContext,
+  isSourceFile,
   moduleForPath,
   resolveTsTarget,
   runEdgeRules,
@@ -26,12 +27,17 @@ function makeFixture(policyOver = {}) {
     mkdirSync(join(root, rel, ".."), { recursive: true });
     writeFileSync(join(root, rel), body);
   };
-  // Go：干净边 a->b、反向闭包链 p<-q<-r、违规样例（host/testonly/环/深导入）
+  // Go：干净边 a->b、直接反向链 p<-q<-r、更长链 c1<-c2<-c3（有界性证明）、
+  // 违规样例（host/testonly/环/深导入）
   w("internal/a/a.go", `package a\n\nimport (\n\t"reasonix/internal/b"\n)\n\nvar _ = b.X\n`);
   w("internal/b/b.go", `package b\n\nconst X = 1\n`);
   w("internal/p/p.go", `package p\nconst P = 1\n`);
   w("internal/q/q.go", `package q\n\nimport "reasonix/internal/p"\n\nvar _ = p.P\n`);
+  w("internal/q/helper.go", `package q\nconst H = 1\n`);
   w("internal/r/r.go", `package r\n\nimport "reasonix/internal/q"\n\nvar _ = q.P\n`);
+  w("internal/c1/c1.go", `package c1\nconst C1 = 1\n`);
+  w("internal/c2/c2.go", `package c2\n\nimport "reasonix/internal/c1"\n\nvar _ = c1.C1\n`);
+  w("internal/c3/c3.go", `package c3\n\nimport "reasonix/internal/c2"\n\nvar _ = c2.C2\n`);
   w("internal/y/y.go", `package y\n\nimport "reasonix/desktop/app"\n\nvar _ = app.X\n`);
   w("desktop/app.go", `package desktop\n\nconst X = 1\n`);
   w("internal/x/x.go", `package x\n\nimport "reasonix/internal/agent/testutil"\n\nvar _ = testutil.T\n`);
@@ -114,16 +120,60 @@ test("基线：指纹精确吸收存量，新增仍报，陈旧指纹提示", as
   }
 });
 
-test("反向依赖闭包：改动 p 收齐 q、r 及其 TS 导入方", async () => {
+test("直接反向依赖（一层）：改动 p 收直接导入方 q，不收传递导入方 r", async () => {
   const fx = makeFixture();
   try {
     const graph = await scanGraph(fx.root);
-    const closure = expandClosure(graph, new Set(["internal/p/p.go", "src/components/P.tsx"]));
-    assert.ok(closure.has("internal/q/q.go"), "直接导入方入闭包");
-    assert.ok(closure.has("internal/r/r.go"), "传递导入方入闭包");
-    assert.ok(closure.has("src/lib/k.ts"), "TS 导入方入闭包");
-    assert.ok(closure.has("src/store/s.ts"), "TS 传递导入方入闭包");
-    assert.ok(!closure.has("internal/a/a.go"), "无关包不入闭包");
+    const touched = expandTouched(graph, new Set(["internal/p/p.go", "src/components/P.tsx"]));
+    assert.ok(touched.has("internal/p/p.go"), "改动文件本身入集");
+    assert.ok(touched.has("internal/q/q.go"), "Go 直接导入方（一层）入集");
+    assert.ok(!touched.has("internal/r/r.go"), "Go 传递导入方（二层）不入集：一层展开即止");
+    assert.ok(touched.has("src/lib/k.ts"), "TS 直接导入方入集");
+    assert.ok(!touched.has("src/store/s.ts"), "TS 传递导入方不入集");
+    assert.ok(!touched.has("internal/a/a.go"), "无关包不入集");
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("有界性：Go 按包粒度收齐，增量集大小不随反向链深增长", async () => {
+  const fx = makeFixture();
+  try {
+    const graph = await scanGraph(fx.root);
+    // 长链 c1<-c2<-c3：触 c1 只收 c2，链再深也不扩大
+    const t1 = expandTouched(graph, new Set(["internal/c1/c1.go"]));
+    assert.ok(t1.has("internal/c2/c2.go"), "直接导入方入集");
+    assert.ok(!t1.has("internal/c3/c3.go"), "链深第二层不入集");
+    // 改 q 包任一文件：同包文件整体入集 + 直接导入包 r 整体入集
+    const tq = expandTouched(graph, new Set(["internal/q/helper.go"]));
+    assert.ok(tq.has("internal/q/q.go"), "同包文件随包入集");
+    assert.ok(tq.has("internal/r/r.go"), "直接导入包整体入集");
+    assert.ok(!tq.has("internal/c2/c2.go"), "非反向侧的链不入集");
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test("源码扩展名过滤：构建产物不进收集集（613 OOM 根因）", async () => {
+  assert.ok(isSourceFile("main.go"));
+  assert.ok(isSourceFile("app.ts"));
+  assert.ok(isSourceFile("comp.tsx"));
+  assert.ok(isSourceFile("legacy.js"));
+  assert.ok(isSourceFile("legacy.jsx"));
+  assert.ok(!isSourceFile("reasonix.exe"), "构建产物不入集");
+  assert.ok(!isSourceFile("alert.wav"));
+  assert.ok(!isSourceFile("desktop"), "无扩展名二进制不入集");
+  assert.ok(!isSourceFile("bundle.min.css"));
+  assert.ok(!isSourceFile("tsconfig.json"));
+  // scanGraph 全程不碰二进制：夹具塞入构建产物后图规模不变
+  const fx = makeFixture();
+  try {
+    mkdirSync(join(fx.root, "desktop", "build", "bin-old"), { recursive: true });
+    writeFileSync(join(fx.root, "desktop", "build", "bin-old", "reasonix.exe"), Buffer.from([0x4d, 0x5a, 0x00, 0x01]));
+    writeFileSync(join(fx.root, "desktop", "desktop"), Buffer.alloc(4096, 0x7f));
+    const graph = await scanGraph(fx.root);
+    assert.equal(graph.tsFiles.size, 4, "夹具 4 个 TS 生产文件，二进制不影响图");
+    assert.equal(graph.go.size, 17, "夹具 17 个 Go 包，.exe 不成包");
   } finally {
     fx.cleanup();
   }
