@@ -33,7 +33,7 @@ import { AnchoredPopover } from "./AnchoredPopover";
 import { InlineConfirmButton } from "./InlineConfirmButton";
 import { useT, type DictKey } from "../lib/i18n";
 import { historyMessagesToItems } from "../lib/useController";
-import type { BackgroundRuntimeView, HistoryMessage, JobView, SubagentArtifactView, SubagentSendReceiptView } from "../lib/types";
+import type { BackgroundRuntimeView, ForegroundSubagentView, HistoryMessage, JobView, SubagentArtifactView, SubagentSendReceiptView } from "../lib/types";
 
 // Transcript loads lazily: the capsule only mounts it once a transcript is
 // actually opened, and the static import would drag the full transcript
@@ -86,10 +86,19 @@ export interface CapsuleWorkEntry {
 // order. Job ids seen in any runtime group are skipped in the active
 // snapshot — the same controller surfaces in both sources, and a duplicate
 // row would double-count the badge and render twice.
+//
+// Task 557: a third source rides the same dedupe — running foreground
+// (synchronous) sub-agents (App.RunningSubagents). Foreground children never
+// register as jobs, so the sources are disjoint by construction; entries are
+// projected as kind "subagent" rows (agents section, no stop affordance — a
+// foreground child ends with its parent turn, not on its own). Own-tab rows
+// arrive with tabId "" (App normalizes before the panel sees them); foreign
+// rows keep their tab and show the tab title as origin.
 export function mergeCapsuleWork(
   jobs: readonly JobView[],
   runtimes: readonly BackgroundRuntimeView[],
   unknownOriginLabel: string,
+  subagents: readonly ForegroundSubagentView[] = [],
 ): CapsuleWorkEntry[] {
   const entries: CapsuleWorkEntry[] = [];
   const seen = new Set<string>();
@@ -104,6 +113,25 @@ export function mergeCapsuleWork(
       seen.add(job.id);
       entries.push({ job, tabId: runtime.tabId, origin: runtime.title || unknownOriginLabel, detached: runtime.detached });
     }
+  }
+  for (const subagent of subagents) {
+    // Defensive dedupe on the ref: the backend never reports a background
+    // child here, so a collision with a job id cannot happen today — the
+    // shared seen-set keeps that invariant load-bearing instead of assumed.
+    if (seen.has(subagent.ref)) continue;
+    seen.add(subagent.ref);
+    entries.push({
+      job: {
+        id: subagent.ref,
+        kind: "subagent",
+        label: subagent.name || subagent.ref,
+        status: "running",
+        startedAt: subagent.startedAt,
+      },
+      tabId: subagent.tabId,
+      origin: subagent.tabId ? (subagent.title || unknownOriginLabel) : "",
+      detached: false,
+    });
   }
   return entries;
 }
@@ -248,6 +276,7 @@ function CapsuleMailComposer({
 export function CapsuleIndicator({
   jobs = [],
   runtimes = [],
+  subagents = [],
   onCancelJob,
   onCancelRuntimeJob,
   sessionPath,
@@ -263,6 +292,12 @@ export function CapsuleIndicator({
   // status-bar jobs chip uses. The panel lists ALL running sub-agents and
   // background commands, not just the active tab's.
   runtimes?: readonly BackgroundRuntimeView[];
+  // Task 557: running foreground (synchronous) sub-agents (App.RunningSubagents)
+  // — they block inside the parent turn and never register as jobs, so the two
+  // job-based sources above cannot see them. Own-tab rows arrive with tabId "";
+  // foreign rows carry their tab and render the tab title as origin. No stop
+  // chain: a foreground child ends with its parent turn (composer stop).
+  subagents?: readonly ForegroundSubagentView[];
   // Existing stop chain (App.CancelJobForTab -> Controller.CancelJob ->
   // jobs.KillForSession); shared with the status-bar jobs chip. Stops rows
   // from the active snapshot (tabId "").
@@ -320,8 +355,8 @@ export function CapsuleIndicator({
   // auto-close only applies to panels that HAD content and drained to empty.
   const hadContentRef = useRef(false);
   const runningEntries = useMemo(
-    () => mergeCapsuleWork(jobs, runtimes, t("runtime.unknownTask")),
-    [jobs, runtimes, t],
+    () => mergeCapsuleWork(jobs, runtimes, t("runtime.unknownTask"), subagents),
+    [jobs, runtimes, subagents, t],
   );
   const groups = useMemo(() => splitCapsuleEntries(runningEntries), [runningEntries]);
   const runningCount = runningEntries.length;
@@ -480,7 +515,10 @@ export function CapsuleIndicator({
           // A foreign-runtime row can only stop through the per-tab chain; if
           // App didn't wire it, the button renders disabled rather than lying
           // (cancelling a foreign id on the active controller stops nothing).
-          const canStop = entry.tabId ? Boolean(onCancelRuntimeJob) : Boolean(onCancelJob);
+          // Task 557: foreground sub-agent rows are never stoppable — there is
+          // no per-child cancel; the child ends with its parent turn, whose
+          // stop the composer already owns.
+          const canStop = entry.job.kind !== "subagent" && (entry.tabId ? Boolean(onCancelRuntimeJob) : Boolean(onCancelJob));
           return (
             <div className="capsule-panel__row" key={`${entry.tabId}:${entry.job.id}`} data-capsule-job-id={entry.job.id} data-capsule-job-kind={entry.job.kind} data-capsule-job-tab={entry.tabId}>
               <span className="capsule-panel__row-icon" aria-hidden="true">

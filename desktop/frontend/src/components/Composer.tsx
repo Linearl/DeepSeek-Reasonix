@@ -645,6 +645,7 @@ export function Composer({
   pinnedFiles,
   capsuleJobs,
   capsuleRuntimes,
+  capsuleSubagents,
   onCapsuleCancelJob,
   onCapsuleCancelRuntimeJob,
   capsuleSessionPath,
@@ -800,6 +801,11 @@ export function Composer({
   // onCapsuleCancelRuntimeJob stops a foreign-runtime row by tab id.
   capsuleJobs?: readonly JobView[];
   capsuleRuntimes?: readonly BackgroundRuntimeView[];
+  // Task 557: running foreground (synchronous) sub-agents — the third
+  // running-work source. Rows are not individually stoppable (a foreground
+  // child ends with its parent turn; the composer stop covers it), so no
+  // cancel chain is wired for them.
+  capsuleSubagents?: readonly import("../lib/types").ForegroundSubagentView[];
   onCapsuleCancelJob?: (jobID: string) => Promise<boolean>;
   onCapsuleCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
   capsuleSessionPath?: string;
@@ -5475,6 +5481,7 @@ export function Composer({
                 <CapsuleIndicator
                   jobs={capsuleJobs}
                   runtimes={capsuleRuntimes}
+                  subagents={capsuleSubagents}
                   onCancelJob={onCapsuleCancelJob}
                   onCancelRuntimeJob={onCapsuleCancelRuntimeJob}
                   sessionPath={capsuleSessionPath}
