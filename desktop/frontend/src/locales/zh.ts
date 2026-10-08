@@ -4325,6 +4325,8 @@ export const zh: Record<DictKey, string> = {
   "sideFiles.injectReferences": "注入参考到消息",
   "sideFiles.injected": "已把 {count} 条参考路径加入输入框",
   "sideFiles.showMore": "再显示 {count} 项",
+  "sideFiles.artifactsHint": "产物：会话写过的文件（含新建与修改）",
+  "sideFiles.referencesHint": "参考：会话读过的文件",
   "notice.deliveryIncompleteMissing": "仍需完成：{items}",
   "notice.deliveryRequirementSeparator": "、",
   "notice.deliveryRequirementProjectCheck": "项目检查",

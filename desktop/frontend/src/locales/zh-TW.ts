@@ -3087,6 +3087,8 @@ export const zhTW: Record<DictKey, string> = {
   "sideFiles.injectReferences": "注入參考到訊息",
   "sideFiles.injected": "已把 {count} 條參考路徑加入輸入框",
   "sideFiles.showMore": "再顯示 {count} 項",
+  "sideFiles.artifactsHint": "產物：會話寫過的檔案（含新建與修改）",
+  "sideFiles.referencesHint": "參考：會話讀過的檔案",
   "notice.deliveryIncompleteMissing": "仍需完成：{items}",
   "notice.deliveryRequirementSeparator": "、",
   "notice.deliveryRequirementProjectCheck": "專案檢查",

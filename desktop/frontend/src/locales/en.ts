@@ -4323,6 +4323,8 @@ export const en = {
   "sideFiles.injectReferences": "Add references to message",
   "sideFiles.injected": "Added {count} reference paths to the composer",
   "sideFiles.showMore": "Show {count} more",
+  "sideFiles.artifactsHint": "Artifacts: files this session wrote (created or modified)",
+  "sideFiles.referencesHint": "References: files this session read",
   "completion.gaps": "Verification gaps: {gaps}",
   "completion.gapStaleCheck": "stale checks",
   "completion.constraintsLimited": "Turn verification limited",

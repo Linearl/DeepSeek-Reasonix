@@ -59,7 +59,7 @@ export function SessionSideFilesPanel({ items, onInjectReferences }: SessionSide
       ) : (
         <>
           <details className="side-files__group" open>
-            <summary>
+            <summary title={t("sideFiles.artifactsHint")}>
               <span>
                 <FilePlus2 size={13} aria-hidden="true" /> {t("sideFiles.artifacts")}
               </span>
@@ -68,7 +68,7 @@ export function SessionSideFilesPanel({ items, onInjectReferences }: SessionSide
             <FileList files={artifacts} />
           </details>
           <details className="side-files__group" open>
-            <summary>
+            <summary title={t("sideFiles.referencesHint")}>
               <span>
                 <FileText size={13} aria-hidden="true" /> {t("sideFiles.references")}
               </span>
@@ -111,7 +111,7 @@ export function SideFilesDockPanel({ items, variant, onInjectReferences }: {
           <p className="side-files__empty">{t("sideFiles.empty")}</p>
         ) : (
           <details className="side-files__group" open>
-            <summary>
+            <summary title={t("sideFiles.artifactsHint")}>
               <span>
                 <FilePlus2 size={13} aria-hidden="true" /> {t("sideFiles.artifacts")}
               </span>
@@ -129,12 +129,12 @@ export function SideFilesDockPanel({ items, variant, onInjectReferences }: {
         <p className="side-files__empty">{t("sideFiles.empty")}</p>
       ) : (
         <details className="side-files__group" open>
-          <summary>
-            <span>
-              <FileText size={13} aria-hidden="true" /> {t("sideFiles.references")}
-            </span>
-            <span className="side-files__meta">{t("sideFiles.referencesMeta", { count: references.length })}</span>
-          </summary>
+          <summary title={t("sideFiles.referencesHint")}>
+              <span>
+                <FileText size={13} aria-hidden="true" /> {t("sideFiles.references")}
+              </span>
+              <span className="side-files__meta">{t("sideFiles.referencesMeta", { count: references.length })}</span>
+            </summary>
           <FileList files={references} />
           {onInjectReferences && (
             <div className="side-files__foot">

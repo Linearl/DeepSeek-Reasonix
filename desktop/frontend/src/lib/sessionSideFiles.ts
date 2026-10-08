@@ -1,8 +1,14 @@
-// Session-side file grouping (task 114): artifacts vs references.
+// Session-side file grouping (task 114; revised by task 629): artifacts vs
+// references.
 //
-// Artifacts = files the session produced (created/written).
-// References = files the session read. Distinct from "all modified files"
-// (task 113 edit list) by design.
+// Artifacts = files the session wrote — created AND modified (task 629 user
+// ruling 2026-10-08 supersedes the task-114 create-only mapping; the panel
+// copy defines 产物 as "files the session wrote"). References = files the
+// session read. Still distinct from the per-turn task-113 edit list by design.
+//
+// bash-written files are NOT collected yet: bash produces no previewed diff
+// and its command text is not parsed (false artifacts cost more than misses;
+// task 629 deferred that to a dedicated follow-up).
 
 import type { ToolItem } from "./transcriptRows";
 
@@ -87,6 +93,20 @@ function pushUnique(list: SessionSideFile[], path: string | undefined, via: stri
   list.push({ path: key, via });
 }
 
+// Task 629: unified diffs rendered by internal/diff always open with
+// "--- a/<path>" then "+++ b/<path>" (go-udiff writes the labels verbatim).
+// Anchoring on that first header pair keeps a diff BODY line that happens to
+// start with "+++" from being mistaken for the header. Returns undefined for
+// the "(diff omitted: …)" placeholders, which carry no header — the path is
+// then unknown and we skip rather than guess.
+function fileDiffPath(diff: string | undefined): string | undefined {
+  if (!diff) return undefined;
+  const lines = diff.split("\n");
+  if (lines.length < 2 || !lines[0].startsWith("--- a/")) return undefined;
+  const value = lines[1].startsWith("+++ b/") ? lines[1].slice("+++ b/".length).trim() : "";
+  return value || undefined;
+}
+
 /**
  * Aggregate artifacts and references from transcript tool items.
  * Order is first-seen; later tools do not reshuffle earlier entries.
@@ -105,25 +125,39 @@ export function collectSessionSideFiles(items: readonly SessionSideItem[]): Sess
     const path = fromArgs.path ?? fromSubject.path;
     const source = fromArgs.source ?? fromSubject.source;
     const dest = fromArgs.dest ?? fromSubject.dest;
+    // Task 629: a previewed diff proves the call wrote a file whatever its
+    // name — the host attaches FileDiff only to non-read-only tools that
+    // implement Previewer (internal/agent/agent.go withPreviewFileDiffs), so
+    // reads can never carry one. The path comes from the diff header; bash is
+    // barred by name for defense in depth (it has no Previewer today).
+    const diffFallback = name !== "bash" ? fileDiffPath(item.fileDiff?.diff) : undefined;
     if (READ_TOOLS.has(name)) {
       pushUnique(references, path ?? source, name, refSeen);
       continue;
     }
     if (WRITE_CREATE_TOOLS.has(name)) {
-      pushUnique(artifacts, path, name, artSeen);
+      pushUnique(artifacts, path ?? diffFallback, name, artSeen);
       continue;
     }
     if (WRITE_MODIFY_TOOLS.has(name)) {
-      // Modified existing files are not "artifacts" (task 114 acceptance).
-      // They still count as references when the session opened them first.
-      pushUnique(references, path ?? source, name, refSeen);
-      if (dest) pushUnique(artifacts, dest, name, artSeen);
+      if (name === "move_file") {
+        // A rename leaves the destination behind and the source gone: the
+        // surviving path is the artifact, the old path stays a reference.
+        pushUnique(artifacts, dest, name, artSeen);
+        pushUnique(references, path ?? source, name, refSeen);
+        continue;
+      }
+      // Task 629 (user ruling 2026-10-08): modified files ARE artifacts —
+      // the panel defines 产物 as "files the session wrote", and an edit
+      // writes. Supersedes the task-114 reference-only mapping; reads still
+      // land in references unchanged.
+      pushUnique(artifacts, path ?? source ?? diffFallback, name, artSeen);
       continue;
     }
-    // fileDiff create kind also counts as an artifact.
-    if (item.fileDiff?.diff && name !== "bash") {
-      // Previewed whole-file create without a parseable path stays out.
-    }
+    // Whitelist-external writers (future Previewer tools): the diff header is
+    // the only trustworthy path source — args of an unknown tool may point at
+    // an output dir or an unrelated param, so they are not consulted here.
+    if (diffFallback) pushUnique(artifacts, diffFallback, name, artSeen);
   }
   return { artifacts, references };
 }
