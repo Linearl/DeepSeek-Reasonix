@@ -90,6 +90,10 @@ func appendDesktopLogLine(line string) {
 	if path == "" {
 		return
 	}
+	// The mirror may fire before any desktop ever created logs/desktop (the
+	// task-404 watchdog restarts from the launcher alone); create the parent
+	// so the evidence is not silently dropped on a first-run machine.
+	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return
