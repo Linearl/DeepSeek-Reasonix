@@ -272,6 +272,11 @@ func (f *FleetTool) Execute(ctx context.Context, args json.RawMessage) (result s
 			}
 			jobCtx = WithParentSession(jobCtx, parentSession)
 			jobCtx = evidence.WithLedger(jobCtx, backgroundEvidence)
+			// Task 557: fleet children run with foreground specs (the fleet owns
+			// backgrounding), so the background ownership must ride the context —
+			// otherwise the desktop foreground-subagent registry would double
+			// count them next to the fleet job row.
+			jobCtx = withBackgroundOwnedLifecycle(jobCtx)
 			defer publishBackgroundEvidence(jobCtx, backgroundEvidence, f.taskTool.workspaceRoot)
 			// The job shares the Execute-level merger so the group lifecycle
 			// events and the child previews ride the same pacing budget.

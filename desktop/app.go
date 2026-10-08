@@ -289,6 +289,15 @@ type App struct {
 	tryRunMu     sync.Mutex
 	tryRunCancel context.CancelFunc
 
+	// Task 557: registry of running foreground (synchronous) sub-agents per
+	// tab, maintained from content-free lifecycle telemetry (see
+	// foreground_subagents.go). Foreground children block inside the parent
+	// turn and never register as jobs, so the capsule's job-based running
+	// list cannot see them; this registry is the third running-work source.
+	// Lazy-init under its own mutex — never held together with a.mu.
+	foregroundSubagentsMu sync.RWMutex
+	foregroundSubagents   map[string]map[string]foregroundSubagentEntry
+
 	// updaterOperationMu guards the single native download/install operation.
 	// Checks are read-only and may overlap; cache mutation and installation fail
 	// fast when another updater operation is already active.

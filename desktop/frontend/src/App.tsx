@@ -131,6 +131,7 @@ import {
   type BotRuntimeStatusView,
   type ActiveWorkView,
   type BackgroundRuntimeView,
+  type ForegroundSubagentView,
   type CollaborationMode,
   type SubagentPolicy,
   type Mode,
@@ -1140,6 +1141,10 @@ export default function App() {
   const clearContextPending = useOverlayStore((s) => s.clearContextPending);
   const setClearContextPending = useOverlayStore((s) => s.setClearContextPending);
   const [backgroundRuntimes, setBackgroundRuntimes] = useState<BackgroundRuntimeView[]>([]);
+  // Task 557: running foreground (synchronous) sub-agents across all tabs —
+  // the third running-work source for the capsule (foreground children never
+  // register as jobs). Same 1s cadence as the background runtime list.
+  const [foregroundSubagents, setForegroundSubagents] = useState<ForegroundSubagentView[]>([]);
   const [workspaceConflict, setWorkspaceConflict] = useState<WorkspaceConflictView | null>(null);
   const [pendingClose, setPendingClose] = useState<{ tabId: string; work: ActiveWorkView; stopping: boolean } | null>(null);
   const [worktreeMergeTabId, setWorktreeMergeTabId] = useState<string | null>(null);
@@ -1167,6 +1172,13 @@ export default function App() {
     } catch {
       // The global recovery entry is supplementary; the active-tab job list
       // remains available even when the detached-runtime list is unavailable.
+    }
+    // Task 557: same cadence, independent failure — a sub-agent listing error
+    // must not blank the job rows that already rendered.
+    try {
+      setForegroundSubagents(asArray(await app.RunningSubagents()));
+    } catch {
+      // Keep the previous snapshot; the next tick retries.
     }
   }, []);
 
@@ -5572,6 +5584,9 @@ export default function App() {
               capsuleJobs={state.jobs}
               // prettier-ignore
               capsuleRuntimes={backgroundRuntimes.filter((runtime) => runtime.tabId !== activeTabId) /* 任务 440：面板列出全部运行中工作；当前 tab 的 runtime 条目由 capsuleJobs（当前控制器快照）代表，不过滤会同 id 双行 */}
+              // 任务 557：前台同步子代理是第三路运行中数据源；当前 tab 的条目折成
+              // tabId ""（自身行），面板不再显示自己的来源标签，也与 440 的过滤互不影响。
+              capsuleSubagents={foregroundSubagents.map((entry) => (entry.tabId === activeTabId ? { ...entry, tabId: "", title: "" } : entry))}
               onCapsuleCancelJob={cancelJob}
               onCapsuleCancelRuntimeJob={cancelRuntimeJob}
               capsuleSessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}

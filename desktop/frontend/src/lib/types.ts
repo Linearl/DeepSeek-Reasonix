@@ -2117,6 +2117,20 @@ export interface BackgroundRuntimeView {
   jobs: JobView[];
 }
 
+// ForegroundSubagentView is one running foreground (synchronous) sub-agent
+// (desktop/foreground_subagents.go RunningSubagents, task 557). Foreground
+// children block inside the parent turn and never register as jobs, so the
+// capsule's job-based running list cannot see them — this is the third
+// running-work source. Background sub-agents never appear here (they are
+// represented by their job row), so the two sources are disjoint.
+export interface ForegroundSubagentView {
+  tabId: string;
+  title?: string; // owning tab display title; empty when the tab is unknown
+  ref: string;
+  name?: string; // skill/worker name; the row falls back to the ref
+  startedAt: number; // unix milliseconds
+}
+
 export interface WorkspaceConflictView {
   state: "none" | "local" | "external";
   ownerTabId?: string; ownerTitle?: string;

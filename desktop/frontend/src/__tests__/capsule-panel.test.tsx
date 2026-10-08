@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { LocaleProvider } from "../lib/i18n";
-import type { BackgroundRuntimeView, HistoryMessage, JobView, SubagentArtifactView } from "../lib/types";
+import type { BackgroundRuntimeView, ForegroundSubagentView, HistoryMessage, JobView, SubagentArtifactView } from "../lib/types";
 
 let passed = 0;
 let failed = 0;
@@ -111,6 +111,20 @@ function runtime(overrides: Partial<BackgroundRuntimeView> = {}): BackgroundRunt
   };
 }
 
+// 任务 557: one running foreground (synchronous) sub-agent from
+// App.RunningSubagents. Own-tab rows arrive with tabId "" (App folds them);
+// foreign rows keep their tab id and title.
+function subagent(overrides: Partial<ForegroundSubagentView> = {}): ForegroundSubagentView {
+  return {
+    tabId: "",
+    title: "",
+    ref: "sa_20261009_090000_000000000_000000000001",
+    name: "调研子代理",
+    startedAt: Date.now() - 120_000,
+    ...overrides,
+  };
+}
+
 function ended(overrides: Partial<SubagentArtifactView> = {}): SubagentArtifactView {
   return {
     ref: "sa_20261002_100000_000000000_000000000001",
@@ -136,6 +150,7 @@ async function flush(ms = 10) {
 async function renderIndicator(props: {
   jobs?: JobView[];
   runtimes?: BackgroundRuntimeView[];
+  subagents?: ForegroundSubagentView[];
   onCancelJob?: (jobID: string) => Promise<boolean>;
   onCancelRuntimeJob?: (tabId: string, jobID: string) => Promise<boolean>;
   sessionPath?: string;
@@ -151,6 +166,7 @@ async function renderIndicator(props: {
         <CapsuleIndicator
           jobs={props.jobs ?? []}
           runtimes={props.runtimes ?? []}
+          subagents={props.subagents ?? []}
           onCancelJob={props.onCancelJob}
           onCancelRuntimeJob={props.onCancelRuntimeJob}
           sessionPath={props.sessionPath}
@@ -180,6 +196,7 @@ async function cleanup() {
 async function rerenderIndicator(props: {
   jobs?: JobView[];
   runtimes?: BackgroundRuntimeView[];
+  subagents?: ForegroundSubagentView[];
   sessionPath?: string;
 }) {
   await act(async () => {
@@ -188,6 +205,7 @@ async function rerenderIndicator(props: {
         <CapsuleIndicator
           jobs={props.jobs ?? []}
           runtimes={props.runtimes ?? []}
+          subagents={props.subagents ?? []}
           sessionPath={props.sessionPath}
           onListSubagents={onListSubagents}
           onReadSubagent={onReadSubagent}
@@ -284,6 +302,41 @@ section("mergeCapsuleWork：跨 tab 合并去重 + 当前会话优先");
   eq(split.commands.length, 2, "bash 条目归命令节");
   eq(split.agents.length, 2, "task 条目归智能体节");
   eq(mergeCapsuleWork([], [], "x").length, 0, "空输入合并为空");
+}
+
+// --- pure: 任务 557 前台同步子代理第三路合并 ---
+
+section("mergeCapsuleWork：前台子代理并入运行列表（557 第三路数据源）");
+{
+  const activeJobs = [job({ id: "bash-active", kind: "bash", label: "当前会话 serve" })];
+  const runtimes = [runtime({ tabId: "tab-a", title: "别的会话", jobs: [job({ id: "task-a", kind: "task" })] })];
+  const subs = [
+    subagent({ ref: "sa_own", name: "调研子代理" }),
+    subagent({ tabId: "tab-x", title: "邻居会话", ref: "sa_foreign", name: "" }),
+  ];
+  const merged = mergeCapsuleWork(activeJobs, runtimes, "未知任务", subs);
+  eq(merged.length, 4, "前台子代理条目并入且不挤掉 job 条目");
+  const own = merged.find((entry) => entry.job.id === "sa_own");
+  ok(own !== undefined && own.tabId === "" && own.origin === "", "自身子代理行 tabId 空、无来源标签");
+  eq(own?.job.kind, "subagent", "子代理行 kind 为 subagent（据此免停止按钮）");
+  eq(own?.job.label, "调研子代理", "行标题取子代理名");
+  eq(own?.job.startedAt, subs[0].startedAt, "行起始时间来自生命周期 StartUnixMs");
+  const foreign = merged.find((entry) => entry.job.id === "sa_foreign");
+  ok((foreign?.origin ?? "").includes("邻居会话"), "外 tab 子代理行显示来源标题");
+  eq(foreign?.job.label, "sa_foreign", "无名子代理行回退为 ref");
+  const split = splitCapsuleEntries(merged);
+  eq(split.agents.length, 3, "子代理行归智能体节（非 bash）");
+  eq(mergeCapsuleWork([], [], "x", [subagent()]).length, 1, "仅子代理时也有条目");
+}
+
+section("mergeCapsuleWork：子代理 ref 与 job id 相撞时防御性去重（557 双源断言前端侧）");
+{
+  // 后端按构造互斥（Background 位），此前端去重是把不变量当作承重墙：
+  // 万一同一标识从两路到来，徽标也不虚高。
+  const jobs = [job({ id: "sa_dup", kind: "task", label: "同标识 job" })];
+  const merged = mergeCapsuleWork(jobs, [], "未知任务", [subagent({ ref: "sa_dup" })]);
+  eq(merged.length, 1, "同标识只保留先到的 job 行");
+  eq(merged[0].job.kind, "task", "保留的是 job 行");
 }
 
 // --- component ---
@@ -411,6 +464,56 @@ section("未接 per-tab 停止链时：跨 tab 条目不渲染说谎的停止按
   await clickTrigger();
   eq(document.querySelector('[data-capsule-job-id="task-a"] .capsule-panel__stop'), null, "无 per-tab 链的跨 tab 行无停止按钮（不渲染无效按钮）");
   ok(document.querySelector('[data-capsule-job-id="bash-active"] .capsule-panel__stop') !== null, "当前会话行停止按钮不受影响");
+  await cleanup();
+}
+
+section("任务 557：前台同步子代理入徽标计数、可展开看到条目、无说谎停止按钮");
+{
+  listResult = Promise.resolve([]);
+  const runningSub = subagent({ ref: "sa_live", name: "调研子代理", startedAt: Date.now() - 60_000 });
+  await renderIndicator({ jobs: [], subagents: [runningSub], sessionPath: "s.jsonl" });
+  const trigger = triggerButton();
+  ok(trigger.classList.contains("capsule__trigger--active"), "前台子代理运行时入口高亮（截图缺口：此前计数恒 0）");
+  eq(trigger.querySelector(".capsule__badge")?.textContent, "1", "前台子代理计徽标（≥1）");
+  await clickTrigger(30);
+  const row = document.querySelector('[data-capsule-job-id="sa_live"]');
+  ok(row !== null, "展开可见前台子代理条目");
+  eq(row?.getAttribute("data-capsule-job-kind"), "subagent", "条目标记为 subagent 种类");
+  ok((row?.textContent ?? "").includes("调研子代理"), "条目显示子代理名");
+  eq(row?.querySelector(".capsule-panel__stop"), null, "前台子代理无独立停止按钮（随父 turn 结束，不渲染无效按钮）");
+  eq(row?.querySelector(".capsule-panel__origin"), null, "自身条目无来源标签");
+  await cleanup();
+}
+
+section("任务 557：外 tab 前台子代理带来源标题；多路并发计数 = 实际运行数");
+{
+  listResult = Promise.resolve([]);
+  const subs = [
+    subagent({ ref: "sa_1", name: "调研一" }),
+    subagent({ ref: "sa_2", name: "调研二" }),
+    subagent({ tabId: "tab-other", title: "邻居会话", ref: "sa_3", name: "调研三" }),
+  ];
+  await renderIndicator({ jobs: [job({ id: "bash-active", kind: "bash", label: "serve" })], subagents: subs, sessionPath: "s.jsonl" });
+  eq(triggerButton().querySelector(".capsule__badge")?.textContent, "4", "1 命令 + 3 前台子代理 = 4（fleet/parallel_tasks 口径）");
+  await clickTrigger(30);
+  eq(document.querySelectorAll('[data-capsule-job-kind="subagent"]').length, 3, "三个并发前台子代理各一行");
+  const foreignRow = document.querySelector('[data-capsule-job-id="sa_3"]');
+  ok((foreignRow?.querySelector(".capsule-panel__origin")?.textContent ?? "").includes("邻居会话"), "外 tab 子代理行显示来源标题");
+  await cleanup();
+}
+
+section("任务 557：结束后计数及时归零（轮询快照驱动，不悬挂）");
+{
+  listResult = Promise.resolve([]);
+  const runningSub = subagent({ ref: "sa_live", name: "调研子代理" });
+  await renderIndicator({ jobs: [], subagents: [runningSub], sessionPath: "s.jsonl" });
+  eq(triggerButton().querySelector(".capsule__badge")?.textContent, "1", "运行中计 1");
+  await clickTrigger(30);
+  ok(document.querySelector('[data-capsule-job-id="sa_live"]') !== null, "面板可见运行条目");
+  // 模拟一次 1s 轮询：后端生命周期终态/TurnDone 清零后，RunningSubagents 返回空。
+  await rerenderIndicator({ jobs: [], subagents: [], sessionPath: "s.jsonl" });
+  eq(triggerButton().querySelector(".capsule__badge"), null, "结束后徽标消失（归零，不悬挂）");
+  ok(triggerButton().classList.contains("capsule__trigger--idle"), "入口回到灰显");
   await cleanup();
 }
 

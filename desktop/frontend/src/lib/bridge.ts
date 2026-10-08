@@ -100,6 +100,7 @@ import type {
   SubagentSendReceiptView,
   ActiveWorkView,
   BackgroundRuntimeView,
+  ForegroundSubagentView,
   JobCancelBatchView,
   WorkspaceConflictView,
   MCPMarketplaceEntry,
@@ -793,6 +794,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   CancelJobsForTab(tabID: string, jobIDs: string[]): Promise<JobCancelBatchView>;
   ActiveWorkForTab(tabID: string): Promise<ActiveWorkView>;
   BackgroundRuntimes(): Promise<BackgroundRuntimeView[]>;
+  // Task 557: running foreground (synchronous) sub-agents across all tabs and
+  // detached runtimes — the third running-work source next to jobs and the
+  // background runtime list.
+  RunningSubagents(): Promise<ForegroundSubagentView[]>;
   RevealBackgroundRuntime(tabID: string): Promise<TabMeta>;
   WorkspaceConflictForTab(tabID: string): Promise<WorkspaceConflictView>;
   RevealWorkspaceWriterForTab(tabID: string): Promise<TabMeta>;
@@ -4500,6 +4505,9 @@ function makeMockApp(): AppBindings {
         },
         async BackgroundRuntimes() {
           return [];
+        },
+        async RunningSubagents() {
+          return []; // browser dev mock has no live sub-agent runs
         },
         async RevealBackgroundRuntime() {
           throw new Error("background runtime is unavailable in browser preview");
