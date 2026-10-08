@@ -29,9 +29,9 @@ runas: inline
 
 | # | 源 | 位置 | 判据 |
 |---|---|---|---|
-| 1 | **意见箱** | `%APPDATA%\reasonix\feedback-inbox\feedback-*.md` | 主目录下的即为**未消纳**；**跳过 `archived/` 子目录**（已处理项都在里面）；`analysis-*.md` 是产出不是输入 |
-| 2 | **崩溃残留** | `%APPDATA%\reasonix\crash-pending\`、`crash-fatal\` | 目录内有新文件（非空）即报警；读里面的摘要/日志片段 |
-| 3 | **性能告警** | `%APPDATA%\reasonix\logs\desktop\desktop.log` | 全新 `perf monitor threshold`（metrics：workingSetMb / eventsMb / storeMb / v4OperationMb）——按 metric 聚成一条候选，别每 3 秒一条 |
+| 1 | **意见箱** | `%APPDATA%\reasonix\feedback-inbox\feedback-*.md` | 主目录下的即为**未消纳**；**跳过 `archived/` 子目录**（已处理项都在里面）；`analysis-*.md` 是产出不是输入。**机器草稿人审门（344-A）**：`origin: signal-scan` 且 `confirmed: false` 的草稿**不是输入**——不分析不立候选，只在收尾摘要记「待确认 N 条」；`confirmed: true` 的机器草稿按普通候选处理（签名/证据字段直接沿用） |
+| 2 | **崩溃残留** | `%APPDATA%\reasonix\crash-pending\`、`crash-fatal\` | **判据已固化为脚本（344-A）**：优先跑 `python scripts/feedback_signal_scan.py`（仓内 scripts/）消费其产出草稿，不在本技能里自行定判据；脚本不可用时才退回原始扫法——目录内有新文件（非空）即报警；读里面的摘要/日志片段 |
+| 3 | **性能告警** | `%APPDATA%\reasonix\logs\desktop\desktop.log` | 同上：优先消费 signal-scan 脚本产出的 `fp:desktop.log:perf-threshold:*` 草稿（已按 metric 聚合）；脚本不可用时才退回——全新 `perf monitor threshold` 按 metric 聚成一条候选，别每 3 秒一条 |
 | 4 | **tasklist 状态** | `docs/tasklist/`（`python scripts/tasklist_db.py sql "..."`） | `watching` 到期该复看、`partial` 有剩余项、`blocked` 的外部条件可能已解 |
 | 5 | **上游动向** | `gh api` 查 esengine/DeepSeek-Reasonix 新 issue/PR | 涉及 fork 魔改面（classic 布局、协作工具、实验开关、v4 存储）才立候选；其余只记录不立项 |
 
@@ -63,6 +63,28 @@ runas: inline
 
 ---
 
+## 2.6 信号签名聚类（任务 344-C，每轮巡检收尾前必做）
+
+> 候选与意见箱条目可能带 `fingerprint:` 签名字段（signal-scan 草稿必有，
+> 格式 `fp:<source>:<error_type>:<pattern>:<规则版本>`）。同签名 = 同根因，
+> 不该散落多条各拍各的优先级。
+
+**做法**：本轮扫出的全部候选（含已入池的待确认条目）按 `fingerprint` 分组；没有签名字段的条目不参与聚类（人写条目不强求签名）。
+
+对每个 **同签名 ≥2 条** 的组，产出一条「**建议合并组**」写入收尾摘要：
+
+```
+建议合并组 <fingerprint>：N 条（<编号列表>，时间跨度 X~Y）——建议并成一条，
+频次 N 次纳入优先级理由（高频/跨日持续 → 升半级），影响面取组内最大。
+```
+
+**硬边界（三条）**：
+1. **只建议，不执行**——合并动作必须人确认后由人/收取方执行，本技能**零条目被自动删除或自动改写**（保留决策轨迹）；
+2. 频次只作为**建议优先级的理由**写进条目，不直接改 4 态状态枚举；
+3. `superseded-by:` 非空的条目在聚类清单里**折叠**（一行带指针，不展开分析）——被取代的旧态不进组、不计数。
+
+---
+
 ## 3. 条目格式（写进候选池）
 
 ```markdown
@@ -74,6 +96,8 @@ runas: inline
 - 预估：S/M/L（改动面）
 - 关联：任务 NNN / 记忆条目 / 上游 issue
 - 状态：待确认 ｜ 已确认 → 任务 NNN ｜ 已拒绝（理由）｜ 冷置（超 30 天）
+- superseded-by：<取代它的候选编号/任务 NNN/文件名>（**可缺省**，任务 344-B；
+  只有确实被取代时才写。状态枚举保持上面 4 态不动，本字段是附加行不是状态）
 ```
 
 编号 `C-YYYYMMDD-NN`：按天递增，同日从 01 起。
@@ -89,6 +113,7 @@ runas: inline
 | 真是新问题 | 立候选（第 3 步） |
 | 与已有候选重复 | 合并到较早那条，补证据，注明"（合并自 X）" |
 | 已是已知任务/已修 | **不立**，但要在收尾摘要里说明"X 已由任务 NNN/提交 sha 覆盖"，并在源文件标记 |
+| 旧条目已被取代（344-B） | 给旧条目补一行 `superseded-by: <新候选编号/任务 NNN>`（只加行不改正文不删条目）；带该字段的条目此后在清单与聚类中折叠 |
 | 无可执行价值 | 记「已拒绝 + 理由」（短，一行），避免下轮重复分析 |
 | 证据不足 | 立候选但标「证据不足」，写清还缺什么 |
 
@@ -132,7 +157,7 @@ git add <显式路径> && git commit -m "tl: ..."   # 内层仓库，禁止 add 
 ## 收尾报告（对话输出，一行）
 
 ```
-迭代巡检 YYYY-MM-DD HH:MM ｜ 新增候选 N 条（P0 x / P1 y / P2 z）｜ 已拒绝 K 条 ｜ 滞留/异常：<一句话>
+迭代巡检 YYYY-MM-DD HH:MM ｜ 新增候选 N 条（P0 x / P1 y / P2 z）｜ 已拒绝 K 条 ｜ 待确认机器草稿 M 条 ｜ 建议合并组 G 组 ｜ 滞留/异常：<一句话>
 ```
 
 新增为 0 时只输出：`迭代巡检 <时间>：无新增候选。`

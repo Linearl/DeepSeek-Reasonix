@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,18 @@ type FeedbackEntry struct {
 	Tags    []string `json:"tags,omitempty"`
 	Session string   `json:"session,omitempty"`
 	Model   string   `json:"model,omitempty"`
+	// Task 344-A/B optional machine fields, all absent on human notes and on
+	// legacy entries (schema compatible): Origin/Fingerprint/EvidenceID/
+	// RuleVersion tag signal-scan drafts; Confirmed is the human-review gate
+	// (nil = human note or legacy; false = machine draft awaiting review);
+	// SupersededBy points at the entry/task that replaces this one — collectors
+	// fold superseded entries instead of re-filing them.
+	Origin       string `json:"origin,omitempty"`
+	Fingerprint  string `json:"fingerprint,omitempty"`
+	EvidenceID   string `json:"evidence-id,omitempty"`
+	Confirmed    *bool  `json:"confirmed,omitempty"`
+	RuleVersion  string `json:"rule-version,omitempty"`
+	SupersededBy string `json:"superseded-by,omitempty"`
 }
 
 var (
@@ -154,6 +167,26 @@ func writeFeedbackMD(dir string, entry FeedbackEntry) (string, error) {
 	if entry.Model != "" {
 		fmt.Fprintf(&b, "model: %s\n", entry.Model)
 	}
+	// Task 344-A/B: optional machine/supersede fields — written only when set
+	// so human notes and legacy migrations stay byte-compatible.
+	if entry.Origin != "" {
+		fmt.Fprintf(&b, "origin: %s\n", entry.Origin)
+	}
+	if entry.Fingerprint != "" {
+		fmt.Fprintf(&b, "fingerprint: %s\n", entry.Fingerprint)
+	}
+	if entry.EvidenceID != "" {
+		fmt.Fprintf(&b, "evidence-id: %s\n", entry.EvidenceID)
+	}
+	if entry.Confirmed != nil {
+		fmt.Fprintf(&b, "confirmed: %t\n", *entry.Confirmed)
+	}
+	if entry.RuleVersion != "" {
+		fmt.Fprintf(&b, "rule-version: %s\n", entry.RuleVersion)
+	}
+	if entry.SupersededBy != "" {
+		fmt.Fprintf(&b, "superseded-by: %s\n", entry.SupersededBy)
+	}
 	if len(entry.Tags) > 0 {
 		fmt.Fprintf(&b, "tags: [%s]\n", strings.Join(entry.Tags, ", "))
 	}
@@ -196,6 +229,20 @@ func parseFeedbackMD(raw string) FeedbackEntry {
 					entry.Session = val
 				case "model":
 					entry.Model = val
+				case "origin":
+					entry.Origin = val
+				case "fingerprint":
+					entry.Fingerprint = val
+				case "evidence-id":
+					entry.EvidenceID = val
+				case "confirmed":
+					if v, err := strconv.ParseBool(val); err == nil {
+						entry.Confirmed = &v
+					}
+				case "rule-version":
+					entry.RuleVersion = val
+				case "superseded-by":
+					entry.SupersededBy = val
 				case "tags":
 					val = strings.TrimPrefix(val, "[")
 					val = strings.TrimSuffix(val, "]")

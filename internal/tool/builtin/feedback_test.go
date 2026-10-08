@@ -216,10 +216,93 @@ func TestParseFeedbackMDExtendedFrontmatterCompat(t *testing.T) {
 	if entry.Text == "" || !strings.Contains(entry.Text, "body text") {
 		t.Fatalf("Text = %q", entry.Text)
 	}
+	// Task 344-B (this slice): the extended fields must be captured, not just
+	// tolerated — supersede folding and the human-review gate read them.
+	if entry.Origin != "signal-scan" {
+		t.Fatalf("Origin = %q, want signal-scan", entry.Origin)
+	}
+	if entry.Fingerprint != "fp:desktop.log:perf-threshold:eventsMb:v1" {
+		t.Fatalf("Fingerprint = %q", entry.Fingerprint)
+	}
+	if entry.EvidenceID != "eventsMb|2026-10-02" {
+		t.Fatalf("EvidenceID = %q", entry.EvidenceID)
+	}
+	if entry.Confirmed == nil || *entry.Confirmed {
+		t.Fatalf("Confirmed = %v, want false", entry.Confirmed)
+	}
+	if entry.RuleVersion != "v1" {
+		t.Fatalf("RuleVersion = %q", entry.RuleVersion)
+	}
+	if entry.SupersededBy != "feedback-20261003-090000-note.md" {
+		t.Fatalf("SupersededBy = %q", entry.SupersededBy)
+	}
 
 	// Old entries without any extended field keep parsing unchanged.
 	old := parseFeedbackMD("---\nat: 2026-09-01T00:00:00Z\ncategory: idea\n---\n\n# plain\n\nold body\n")
 	if old.Kind != "idea" || old.Session != "" || old.Model != "" || len(old.Tags) != 0 {
 		t.Fatalf("legacy entry = %+v", old)
+	}
+	if old.Origin != "" || old.Fingerprint != "" || old.EvidenceID != "" ||
+		old.Confirmed != nil || old.RuleVersion != "" || old.SupersededBy != "" {
+		t.Fatalf("legacy entry must leave extended fields zero, got %+v", old)
+	}
+}
+
+// Task 344-B: a supersede write must round-trip — writeFeedbackMD emits the
+// extended fields it is given, parseFeedbackMD reads them back, and human
+// notes (fields unset) produce byte-identical frontmatter to before.
+func TestFeedbackSupersededByRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	SetFeedbackHome(dir)
+	t.Cleanup(func() { SetFeedbackHome("") })
+
+	confirmed := false
+	path, err := AppendFeedbackEntry(FeedbackEntry{
+		Kind:         "bug",
+		Text:         "old issue text",
+		Title:        "old issue",
+		Origin:       "signal-scan",
+		Fingerprint:  "fp:crash-pending:go.fatal:GoRuntimeFatal:v1",
+		EvidenceID:   "1791256504479939100-29548-1.json|2026-10-06T03:14:07Z",
+		Confirmed:    &confirmed,
+		RuleVersion:  "v1",
+		SupersededBy: "feedback-20261009-000000-fixed.md",
+	})
+	if err != nil {
+		t.Fatalf("AppendFeedbackEntry: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	for _, want := range []string{
+		"origin: signal-scan",
+		"fingerprint: fp:crash-pending:go.fatal:GoRuntimeFatal:v1",
+		"confirmed: false",
+		"rule-version: v1",
+		"superseded-by: feedback-20261009-000000-fixed.md",
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("written md missing %q:\n%s", want, raw)
+		}
+	}
+	got := parseFeedbackMD(string(raw))
+	if got.SupersededBy != "feedback-20261009-000000-fixed.md" || got.Fingerprint == "" {
+		t.Fatalf("round-trip lost extended fields: %+v", got)
+	}
+	if got.Confirmed == nil || *got.Confirmed {
+		t.Fatalf("round-trip Confirmed = %v, want false", got.Confirmed)
+	}
+
+	// Human note: no extended fields in the emitted frontmatter.
+	humanPath, err := AppendFeedbackEntry(FeedbackEntry{Kind: "idea", Text: "human note"})
+	if err != nil {
+		t.Fatalf("AppendFeedbackEntry human: %v", err)
+	}
+	humanRaw, _ := os.ReadFile(humanPath)
+	for _, banned := range []string{"origin:", "fingerprint:", "confirmed:", "superseded-by:"} {
+		if strings.Contains(string(humanRaw), banned) {
+			t.Fatalf("human note must not carry %s:\n%s", banned, humanRaw)
+		}
 	}
 }
