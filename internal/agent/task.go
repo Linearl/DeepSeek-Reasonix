@@ -27,13 +27,17 @@ import (
 )
 
 // DefaultTaskSystemPrompt steers a sub-agent toward focused, terse delivery —
-// it doesn't see the parent's conversation so it must self-contain.
+// it doesn't see the parent's conversation so it must self-contain. The
+// answer-structure sentence (task 632, from the 631 attribution) names what a
+// final answer must contain so the parent can relay it without re-reading the
+// child's transcript. The read-only default below keeps its historical text.
 const DefaultTaskSystemPrompt = `You are a sub-agent invoked by a parent coding agent to carry out one focused task.
 Use the provided tools to investigate or act. For MCP, use the stable use_capability
 proxy (list → inspect → call); do not expect direct mcp__* tool schemas. Return a
 single final answer that is concise and self-contained — the parent will see only
-that answer, not your tool calls or reasoning. If you need to ask for clarification,
-fail with a precise question instead of guessing.`
+that answer, not your tool calls or reasoning — covering what you did, what changed
+(absolute paths), what you verified, and anything you assumed but did not verify.
+If you need to ask for clarification, fail with a precise question instead of guessing.`
 
 // DefaultReadOnlyTaskSystemPrompt steers read-only sub-agents toward isolated
 // research. They never receive writer tools, persisted transcript controls, or
@@ -826,7 +830,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 			return result, runErr
 		}
 		emitSubagentLifecycle(parentSink, "child_completed", parentID, spec.Worker.Name, usageModelRef, effortRef, run, &SubagentOutcome{Status: SubagentOutcomeCompleted, FinalAnswer: answer})
-		return FormatSubagentRunResult(answer, run, false), nil
+		return FormatSubagentRunResult(answer, run, false, formatSubagentUsageLine(trk.usageSummary())), nil
 	}
 	return GuardSubagentHostDecisionText(answer), nil
 }
@@ -907,7 +911,7 @@ func (t *TaskTool) runBackgroundProfileSpec(ctx context.Context, spec ProfileExe
 		if err := t.transcripts.SaveCompleted(run); err != nil {
 			return t.failedSubagentResult(run, err)
 		}
-		return FormatSubagentRunResult(answer, run, false), nil
+		return FormatSubagentRunResult(answer, run, false, formatSubagentUsageLine(trk.usageSummary())), nil
 	})
 	releaseStart()
 	queuedNote := ""

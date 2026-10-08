@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"reasonix/internal/skill"
 	"reasonix/internal/tool"
 )
 
@@ -64,6 +65,37 @@ const subagentToolBoundaryNoSandboxClause = " On hosts where the OS bash sandbox
 func AlwaysHiddenSubagentTools() []string {
 	names := append([]string(nil), subagentAlwaysHiddenTools...)
 	return append(names, subagentJobTools...)
+}
+
+// generalPurposeDisallowedTools lists tools the general-purpose profile never
+// inherits even though the writer face would otherwise include them (task 632).
+// ask is parent-only: a child's question cannot reach the user through the
+// delegation boundary, so a writer decides from the task text and fails with a
+// precise question instead of prompting.
+var generalPurposeDisallowedTools = []string{"ask"}
+
+// ProfileDisallowedTools returns the tool names excluded from a sub-agent
+// registry for the named built-in profile, regardless of allowlist sources.
+// Deny entries win over every allow source (profile ceiling, call whitelist,
+// inheritance). Empty for profiles without a denylist — existing profiles and
+// unnamed tasks keep their exact historical tool face.
+func ProfileDisallowedTools(profile string) []string {
+	if strings.TrimSpace(profile) == skill.GeneralPurposeProfileName {
+		return append([]string(nil), generalPurposeDisallowedTools...)
+	}
+	return nil
+}
+
+// StripProfileDisallowedTools removes the named profile's denylist from an
+// already-built sub-agent registry (exact names). Both delegation entry points
+// (task profile= and run_skill) call it so the boundary cannot drift between
+// them. No-op for profiles without a denylist.
+func StripProfileDisallowedTools(profile string, reg *tool.Registry) *tool.Registry {
+	deny := ProfileDisallowedTools(profile)
+	if reg == nil || len(deny) == 0 {
+		return reg
+	}
+	return FilterRegistry(reg, reg.Names(), deny...)
 }
 
 // SubagentMetaTools returns the tool names that spawned agents should not inherit

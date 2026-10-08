@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -599,6 +600,12 @@ type subagentProgressTracker struct {
 	started    time.Time
 	ownsMerger bool
 	done       bool
+	// usage accounting for the result line (task 632 / 631 #5): counted from
+	// the child's own events, so the totals exist even when the parent sink is
+	// Discard (headless/direct-execute runs).
+	toolCalls     int
+	usageTokens   int
+	usageRequests int
 }
 
 // subagentProgressSink retains all host-only audit capabilities while the
@@ -714,8 +721,16 @@ func (s *subagentProgressSink) Emit(e event.Event) {
 		t.merger.deltaEvent(t.childID, subagentProgressChanNotice, text)
 	case event.Retrying:
 		t.setPhaseLocked(subagentPhaseRetrying)
-	case event.ToolDispatch, event.ToolResult, event.ToolProgress:
+	case event.ToolDispatch:
+		t.toolCalls++
 		t.setPhaseLocked(subagentPhaseTool)
+	case event.ToolResult, event.ToolProgress:
+		t.setPhaseLocked(subagentPhaseTool)
+	case event.Usage:
+		if e.Usage != nil {
+			t.usageTokens += usageTotalTokens(e.Usage)
+			t.usageRequests += usageRequestCount(e.Usage)
+		}
 	}
 	t.mu.Unlock()
 	switch e.Kind {
@@ -727,6 +742,40 @@ func (s *subagentProgressSink) Emit(e event.Event) {
 		}
 		t.sink.Emit(e)
 	}
+}
+
+// SubagentUsageSummary is the per-run accounting shown in the result the
+// parent model reads (task 632, from the 631 attribution's usage-reporting
+// recommendation). Zero values mean the child emitted nothing observable.
+type SubagentUsageSummary struct {
+	ToolCalls int
+	Requests  int
+	Tokens    int
+	Duration  time.Duration
+}
+
+// usageSummary snapshots the counters. Read after the child run settles; the
+// mutex only guards against late child events racing the read.
+func (t *subagentProgressTracker) usageSummary() SubagentUsageSummary {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return SubagentUsageSummary{
+		ToolCalls: t.toolCalls,
+		Requests:  t.usageRequests,
+		Tokens:    t.usageTokens,
+		Duration:  t.merger.clock.Now().Sub(t.started),
+	}
+}
+
+// formatSubagentUsageLine renders the one-line usage footer appended to a
+// persisted-run task result. Empty when nothing was observable, so results in
+// tests and headless runs keep their historical shape.
+func formatSubagentUsageLine(s SubagentUsageSummary) string {
+	if s.ToolCalls == 0 && s.Requests == 0 && s.Tokens == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Subagent usage: %d tool calls, %d requests, %d tokens, %s.",
+		s.ToolCalls, s.Requests, s.Tokens, s.Duration.Round(time.Second))
 }
 
 // finish flushes pending previews, emits the single terminal status, and — if

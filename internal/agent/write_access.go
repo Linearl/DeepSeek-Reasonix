@@ -82,6 +82,9 @@ func (t *TaskTool) buildSubagentRegistry(spec ProfileExecSpec, toolNames []strin
 		return reg, nil, nil
 	}
 	reg := t.buildSubReg(toolNames, childDepth)
+	// Task 632: the profile denylist (deny wins over every allow source) applies
+	// before write-path binding so the binding pass sees the final tool set.
+	reg = StripProfileDisallowedTools(spec.Worker.Profile, reg)
 	// Explicit paths are an execution boundary and rebind/drop tools that cannot
 	// honor it. A synthesized whole-workspace claim preserves legacy boundaries.
 	if !spec.Grant.WritePaths.Empty() && !spec.Grant.WritePaths.WholeWorkspace {
