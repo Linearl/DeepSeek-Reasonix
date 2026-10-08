@@ -2669,14 +2669,9 @@ func (p plannerPlanApprover) RunWithPlannerApproval(ctx context.Context, plan st
 func (c *Controller) newInteractiveGate() *permission.Gate {
 	policy := c.policy
 	mode := c.approval.mode()
-	switch mode {
-	case ToolApprovalAuto, ToolApprovalYolo:
-		policy.Mode = permission.Allow
-	case ToolApprovalDontAsk:
-		policy.Mode = permission.Deny
-	default:
-		policy.Mode = permission.Ask
-	}
+	// 任务 426：模式 → 写入兜底判定走 approvalModeFallback 单点（ask 态强制
+	// Ask，与历史行为一致）。
+	policy.Mode, _ = approvalModeFallback(mode)
 	// SessionAllow must not cover fresh-human tools: it is checked before Ask,
 	// so `--allowed-tools remember` would skip the prompt. Interactive Auto and
 	// YOLO treat remember/forget as ordinary policy decisions; Auto still

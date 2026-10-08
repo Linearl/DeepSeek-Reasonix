@@ -158,11 +158,11 @@ func displayForAbs(abs, display, missing []string) []string {
 func (c *Controller) ordinaryWriteDecision(toolName string, args []byte, readOnly bool) permission.Decision {
 	policy := c.policy
 	mode := c.approval.mode()
-	switch mode {
-	case ToolApprovalAuto, ToolApprovalYolo:
-		policy.Mode = permission.Allow
-	case ToolApprovalDontAsk:
-		policy.Mode = permission.Deny
+	// 任务 426：模式 → 写入兜底判定走 approvalModeFallback 单点；ask 态（ok
+	// =false）保留配置的 policy.Mode，是该路径的既有行为（与交互门强制 Ask
+	// 的差异刻意不动）。
+	if fallback, ok := approvalModeFallback(mode); ok {
+		policy.Mode = fallback
 	}
 	dec := policy.Decide(toolName, readOnly, args)
 	if dec != permission.Ask {
