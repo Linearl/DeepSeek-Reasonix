@@ -135,3 +135,45 @@ const t: Translator = ((key: string, vars?: Record<string, string | number>) => 
   assert.deepEqual(artifacts.map((f) => f.path), ["rescued.md"], "fileDiff rescues a hydrated write without args/subject");
   console.log("  PASS  session side files fileDiff hydration rescue (629)");
 }
+
+// --- 659: bash write collection (C phase of 629) — explicit, literal output
+// targets from the command text land in artifacts; everything the shell would
+// resolve at run time stays out. ---
+{
+  const bash = (command: string) =>
+    collectSessionSideFiles([{ kind: "tool", name: "bash", args: JSON.stringify({ command }) }] as never)
+      .artifacts.map((f) => f.path);
+
+  assert.deepEqual(bash("echo hi > out/report.txt"), ["out/report.txt"], "simple redirect lands");
+  assert.deepEqual(bash("echo hi >> out/log.txt"), ["out/log.txt"], "append redirect lands");
+  assert.deepEqual(bash("printf '%s' x >f"), ["f"], "operator glued to the target still lands");
+  assert.deepEqual(bash("make > build.log 2>&1"), ["build.log"], "file redirect lands, fd dup stays out");
+  assert.deepEqual(bash("cmd 2> err.log"), ["err.log"], "stderr file redirect lands");
+  assert.deepEqual(bash("go test ./... | tee test.out | tail -3"), ["test.out"], "tee in a pipeline lands");
+  assert.deepEqual(bash("tee -a a.log b.log < in"), ["a.log", "b.log"], "tee options skipped, both files land");
+  assert.deepEqual(bash("cat > doc.md <<EOF\nbody with > fake.txt\nEOF"), ["doc.md"], "heredoc body dropped (live multi-line)");
+  assert.deepEqual(bash("cat > doc.md <<EOF body with > fake.txt EOF"), ["doc.md"], "heredoc body dropped (flattened hydrated subject)");
+  assert.deepEqual(bash('echo x > "my report.md"'), ["my report.md"], "quoted target keeps its space");
+  assert.deepEqual(bash("grep x $input > \"$out\""), [], "variable targets stay out");
+  assert.deepEqual(bash("echo x > /dev/null 2>&1"), [], "devices and fd dups stay out");
+  assert.deepEqual(bash("cmd > nul"), [], "windows NUL device stays out");
+  assert.deepEqual(bash("sort < in.txt"), [], "input redirect never becomes an artifact");
+  assert.deepEqual(bash("pnpm build"), [], "command with no explicit target yields nothing");
+  assert.deepEqual(bash("echo $(cmd > inner.log) > outer.txt"), ["inner.log", "outer.txt"], "substitution writes are real writes; punctuation never leaks into paths");
+  assert.deepEqual(bash("cp a b && rm c"), [], "cp/mv/rm writes are out of scope (no redirect, no guess)");
+
+  // Hydrated: no args, the persisted subject carries the command text.
+  const hydrated = collectSessionSideFiles([
+    { kind: "tool", name: "bash", args: "", subject: "go test ./... | tee test.out | tail -3" },
+  ] as never);
+  assert.deepEqual(hydrated.artifacts.map((f) => f.path), ["test.out"], "hydrated bash subject drives extraction");
+
+  // Dedup across tools: first writer wins, a later bash write does not reshuffle.
+  const dedup = collectSessionSideFiles([
+    { kind: "tool", name: "write_file", args: JSON.stringify({ path: "same.txt" }) },
+    { kind: "tool", name: "bash", args: JSON.stringify({ command: "echo x >> same.txt" }) },
+  ] as never);
+  assert.deepEqual(dedup.artifacts.map((f) => f.via), ["write_file"], "first writer keeps via");
+
+  console.log("  PASS  session side files bash write targets (659)");
+}
