@@ -3193,6 +3193,7 @@ export const zhTW: Record<DictKey, string> = {
   "tool.stepOther": "{n} 步",
   "tool.error": "錯誤",
   "tool.askWaiting": "等待使用者確認…",
+  "tool.destructive": "破壞性工具——執行涉及宿主程式或任意命令面",
   "tool.receivingArgs": "接收參數中 ↓ {chars}…",
   "tool.errorReceiptMismatch": "證據命令沒有匹配的成功執行記錄",
   "tool.command": "命令",

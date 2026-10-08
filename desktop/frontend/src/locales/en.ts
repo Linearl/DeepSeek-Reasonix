@@ -4348,6 +4348,7 @@ export const en = {
   "tool.stepOther": "{n} steps",
   "tool.error": "error",
   "tool.askWaiting": "waiting for your answer…",
+  "tool.destructive": "destructive tool — runs with host process or command-surface impact",
   "tool.receivingArgs": "receiving arguments ↓ {chars}…",
   "tool.errorReceiptMismatch": "verification command has no matching successful receipt",
   "tool.command": "Command",

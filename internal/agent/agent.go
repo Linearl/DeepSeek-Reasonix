@@ -2353,11 +2353,11 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			// working instead of a stall. executeBatch emits the full dispatch
 			// (with args) once the call completes; the frontend merges by ID.
 			if tc := chunk.ToolCall; tc != nil {
-				partialCalls = upsertPartialToolCall(partialCalls, *tc)
-				sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{
-					ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, AttemptID: attemptID,
-				}})
-			}
+					partialCalls = upsertPartialToolCall(partialCalls, *tc)
+					ev := event.Tool{ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, AttemptID: attemptID}
+					applySafetyMeta(&ev, tc.Name)
+					sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
+				}
 		case provider.ChunkToolCallArgsDelta:
 			partialToolStarted = true
 			// Liveness ticks while a large argument payload streams: re-emit the
@@ -2368,12 +2368,12 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 				maxArgChars = chunk.ArgChars
 			}
 			if tc := chunk.ToolCall; tc != nil && time.Since(lastArgProgress) >= 250*time.Millisecond {
-				partialCalls = upsertPartialToolCall(partialCalls, *tc)
-				lastArgProgress = time.Now()
-				sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{
-					ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, ArgChars: chunk.ArgChars, AttemptID: attemptID,
-				}})
-			}
+					partialCalls = upsertPartialToolCall(partialCalls, *tc)
+					lastArgProgress = time.Now()
+					ev := event.Tool{ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, ArgChars: chunk.ArgChars, AttemptID: attemptID}
+					applySafetyMeta(&ev, tc.Name)
+					sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
+				}
 		case provider.ChunkToolCall:
 			partialToolStarted = true
 			if chunk.ToolCall != nil {
@@ -2617,6 +2617,7 @@ func (a *Agent) emitFullToolDispatch(ctx context.Context, c provider.ToolCall, r
 	t, _, ambiguous := a.svc.tools.ResolveCall(c.Name)
 	ok := t != nil && len(ambiguous) == 0
 	ev := event.Tool{ID: c.ID, Name: c.Name, Args: c.Arguments, ReadOnly: ok && t.ReadOnly(), Refreshed: refreshed, RunState: provider.ToolRunPending}
+	applySafetyMeta(&ev, c.Name)
 	ev.FileDiff = event.FileDiff{Diff: c.Diff, Added: c.Added, Removed: c.Removed}
 	if ok && ev.Diff == "" && ev.Added == 0 && ev.Removed == 0 {
 		if ch, ok := tool.PreviewChange(ctx, t, json.RawMessage(c.Arguments)); ok {

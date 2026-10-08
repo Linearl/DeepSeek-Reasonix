@@ -33,6 +33,7 @@ func (a *Agent) emitBatchToolResult(c provider.ToolCall, o toolOutcome, duration
 		DurationMs:   duration,
 		Execution:    toEventShellExecution(o.execution, duration),
 	}
+	applySafetyMeta(&tr, c.Name)
 	if o.diagnostic != nil {
 		tr.Diagnostic, _ = json.Marshal(o.diagnostic)
 	}

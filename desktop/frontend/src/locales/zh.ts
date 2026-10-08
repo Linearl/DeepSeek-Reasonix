@@ -4347,6 +4347,7 @@ export const zh: Record<DictKey, string> = {
   "tool.stepOther": "{n} 步",
   "tool.error": "错误",
   "tool.askWaiting": "等待用户确认…",
+  "tool.destructive": "破坏性工具——执行涉及宿主进程或任意命令面",
   "tool.receivingArgs": "接收参数中 ↓ {chars}…",
   "tool.errorReceiptMismatch": "证据命令没有匹配的成功执行记录",
   "tool.command": "命令",

@@ -249,7 +249,14 @@ type Tool struct {
 	Output       string // ToolResult: the result text fed to the model
 	Err          string // ToolResult: non-empty when the call failed or was blocked
 	ReadOnly     bool
-	Truncated    bool  // ToolResult: Output was head+tailed before display/model
+	// RiskLevel/Destructive carry the tool's registered static safety metadata
+	// (task 426 single source: tool.SafetyOf) for frontend display — the UI
+	// consumer of the same declaration that drives concurrency grouping and
+	// permission rule matching. Empty/false for unregistered dynamic tools.
+	// Optional display metadata only; never enters provider requests.
+	RiskLevel   string
+	Destructive bool
+	Truncated   bool // ToolResult: Output was head+tailed before display/model
 	DurationMs   int64 // ToolResult: wall-clock execution time in milliseconds
 	// StartedAt/EndedAt are unix-millisecond execution bounds (ToolResult).
 	// Zero when the call never ran (dependency-skipped, cancelled, synthetic).

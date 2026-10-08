@@ -443,6 +443,11 @@ export const ToolCard = memo(function ToolCard({ item, subcalls, tabId, displayN
           {item.status === "done" && <span className="tool__status-icon tool__status-icon--ok">✓</span>}
           {item.status === "stopped" && <span className="tool__status-icon tool__status-icon--stopped">—</span>}
           <span className="tool__name">{isShellCard ? shellName : (displayName ?? item.name)}</span>
+          {item.destructive && (
+            <span className="tool__risk-badge" title={t("tool.destructive")} aria-label={t("tool.destructive")}>
+              ⚠
+            </span>
+          )}
           {subject && <span className="tool__subject">{subject}</span>}
         </span>
         {profileText && <span className="tool__profile">{profileText}</span>}

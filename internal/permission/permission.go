@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"reasonix/internal/shellparse"
+	"reasonix/internal/tool"
 )
 
 // Decision is the outcome of evaluating a tool call against a Policy.
@@ -859,13 +860,11 @@ func isPackageManagerRun(base string) bool {
 }
 
 // IsFileMutationTool reports whether a built-in tool mutates workspace files.
+// 任务 426 单一事实源：文件变更集合不再由本包维护名单，而是读
+// tool.SafetySpec.FileMutation（internal/tool 契约测试守卫该集合与收敛前
+// 名单等价）。未知名与动态工具一律 false，语义与原名单一致。
 func IsFileMutationTool(toolName string) bool {
-	switch toolName {
-	case "write_file", "edit_file", "multi_edit", "move_file", "notebook_edit", "delete_range", "delete_symbol":
-		return true
-	default:
-		return false
-	}
+	return tool.SafetyOfName(toolName).FileMutation
 }
 
 func ruleToolMatches(ruleTool, toolName string) bool {

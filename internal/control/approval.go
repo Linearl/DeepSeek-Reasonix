@@ -187,18 +187,12 @@ func BuildHeadlessApprovalGate(policy permission.Policy, mode string) *freshHuma
 	if strings.TrimSpace(mode) == "" {
 		return NewHeadlessPermissionGate(policy)
 	}
+	// 任务 426：模式 → 写入兜底判定走 approvalModeFallback 单点。
+	policy.Mode, _ = approvalModeFallback(mode)
 	switch normalizeToolApprovalMode(mode) {
 	case ToolApprovalYolo:
-		policy.Mode = permission.Allow
 		return &freshHumanHeadlessGate{gate: permission.NewGate(policy, nil), dynamicBashBypass: true}
-	case ToolApprovalAuto:
-		policy.Mode = permission.Allow
-		return &freshHumanHeadlessGate{gate: permission.NewGate(policy, denyPermissionApprover{})}
-	case ToolApprovalDontAsk:
-		policy.Mode = permission.Deny
-		return &freshHumanHeadlessGate{gate: permission.NewGate(policy, denyPermissionApprover{})}
 	default:
-		policy.Mode = permission.Ask
 		return &freshHumanHeadlessGate{gate: permission.NewGate(policy, denyPermissionApprover{})}
 	}
 }
@@ -745,6 +739,14 @@ func (a *approvalManager) bypassAllowsLocked(tool, subject string, args json.Raw
 	if !a.planAutoApprove {
 		return false
 	}
+	return a.policyAllowsUnderWriterFallbackLocked(tool, subject, args)
+}
+
+// policyAllowsUnderWriterFallbackLocked is the task-426 single point replaying
+// the rule table with the writer fallback forced to Allow (the plan-execution
+// window and the auto-drain path share it). Deny/ask rules keep their existing
+// precedence inside Decide/DecideSubject; only the fallback changes.
+func (a *approvalManager) policyAllowsUnderWriterFallbackLocked(tool, subject string, args json.RawMessage) bool {
 	policy := a.policy
 	policy.Mode = permission.Allow
 	if len(args) > 0 {
@@ -757,12 +759,7 @@ func (a *approvalManager) autoApprovalWouldAllowLocked(tool, subject string, arg
 	if requiresFreshApprovalTool(tool) && !isMemoryApprovalTool(tool) {
 		return false
 	}
-	policy := a.policy
-	policy.Mode = permission.Allow
-	if len(args) > 0 {
-		return policy.Decide(tool, false, args) == permission.Allow
-	}
-	return policy.DecideSubject(tool, false, subject) == permission.Allow
+	return a.policyAllowsUnderWriterFallbackLocked(tool, subject, args)
 }
 
 func (a *approvalManager) sessionGrantAllowsLocked(tool, subject string) bool {
@@ -811,6 +808,26 @@ func (a *approvalManager) drainLocked(includeExplicitAsk bool) []drainedApproval
 }
 
 // pure approval helpers
+
+// approvalModeFallback is the task-426 single point mapping an approval mode
+// onto the writer-fallback decision. Three call sites used to carry their own
+// switch over the same modes (newInteractiveGate, BuildHeadlessApprovalGate,
+// ordinaryWriteDecision); a drift between those copies is exactly the
+// "mode combination misses a state" class the convergence exists to kill.
+// ok is false for ask: the interactive gate forces Ask there, the headless
+// gate also forces Ask, but ordinaryWriteDecision preserves the configured
+// policy.Mode — that asymmetry is long-standing behavior this refactor must
+// not change (铁律 2).
+func approvalModeFallback(mode string) (permission.Decision, bool) {
+	switch normalizeToolApprovalMode(mode) {
+	case ToolApprovalAuto, ToolApprovalYolo:
+		return permission.Allow, true
+	case ToolApprovalDontAsk:
+		return permission.Deny, true
+	default:
+		return permission.Ask, false
+	}
+}
 
 func normalizeToolApprovalMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
