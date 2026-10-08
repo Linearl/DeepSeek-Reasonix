@@ -21,6 +21,7 @@ import (
 	"reasonix/internal/planmode"
 	"reasonix/internal/provider"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/subagentmailbox"
 	"reasonix/internal/tool"
 	"reasonix/internal/workspacelease"
 )
@@ -164,6 +165,12 @@ type TaskTool struct {
 	compactionParallel bool
 	contextBudget      bool
 	researchBudget     bool
+
+	// mailboxes is the session's running-subagent message channel (task 616):
+	// persisted per-ref mailboxes under the subagents dir plus the process
+	// steer registry. nil (switch off, or no persisted transcripts) keeps
+	// send_message unregistered, publishes no handles, and drains nothing.
+	mailboxes *subagentmailbox.Hub
 
 	// mutationObserver is shared with spawned sub-agents for checkpoint capture.
 	mutationObserver *checkpoint.MutationObserver
@@ -339,6 +346,34 @@ func (t *TaskTool) WithCapabilityRuntime(rt *MCPCapabilityRuntime) *TaskTool {
 		t.capabilityRuntime = rt
 	}
 	return t
+}
+
+// WithSubagentMailbox attaches the session's running-subagent message channel
+// (task 616). nil (switch off / headless builds without persisted transcripts)
+// keeps every pre-616 behavior: send_message stays unregistered, subagent
+// runs publish no steer handles, and continue_from drains no mailboxes.
+func (t *TaskTool) WithSubagentMailbox(hub *subagentmailbox.Hub) *TaskTool {
+	if t != nil {
+		t.mailboxes = hub
+	}
+	return t
+}
+
+// MailboxHub returns the attached message channel (nil when off).
+func (t *TaskTool) MailboxHub() *subagentmailbox.Hub {
+	if t == nil {
+		return nil
+	}
+	return t.mailboxes
+}
+
+// mailboxForRun returns the mailbox for one prepared run: nil for ephemeral
+// runs (empty ref), a disabled channel, or a nil run.
+func (t *TaskTool) mailboxForRun(run *SubagentRun) *subagentmailbox.Mailbox {
+	if t == nil || t.mailboxes == nil || run == nil || run.Ref == "" {
+		return nil
+	}
+	return t.mailboxes.MailboxFor(run.Ref)
 }
 
 func (t *TaskTool) Name() string { return tool.HostTask }
@@ -705,6 +740,9 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	if err != nil {
 		return t.failBeforeSubagentRelease(run, fmt.Errorf("sub-agent profile: %w", err))
 	}
+	// 任务616: the mailbox is keyed by this run's own ref. Ephemeral runs
+	// (empty ref) get nil and publish nothing.
+	mailbox := t.mailboxForRun(run)
 	lifecyclePhase := "child_created"
 	if strings.TrimSpace(spec.Context.ContinueFrom) != "" || strings.TrimSpace(spec.Context.ForkFrom) != "" {
 		lifecyclePhase = "child_resume"
@@ -744,10 +782,18 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 			}
 			defer mutationObserver.UnregisterWriter(recoveryTaskID)
 		}
-		if spec.Grant.ReadOnly {
-			return t.runReadOnlySubSession(runCtx, composeChildTaskPrompt(spec), subReg, sink, maxSteps, prov, pricing, ctxWin, run.Session, childDepth, recoveryTaskID, usageModelRef, mutationObserver)
+		prompt := composeChildTaskPrompt(spec)
+		// 任务616: a continued transcript receives everything that arrived in
+		// the source ref's mailbox while the sub-agent was not running. The
+		// drain happens at run start so messages sent in the park window are
+		// delivered exactly once and marked delivered on disk.
+		if block := t.mailboxes.DrainForContinue(spec.Context.ContinueFrom); block != "" {
+			prompt = block + "\n\n" + prompt
 		}
-		return t.runSubSession(WithSubagentWriteClaim(runCtx, spec.Grant.WritePaths), composeChildTaskPrompt(spec), subReg, sink, maxSteps, prov, pricing, ctxWin, run.Session, childDepth, recoveryTaskID, usageModelRef, mutationObserver, childWriteRoots)
+		if spec.Grant.ReadOnly {
+			return t.runReadOnlySubSession(runCtx, prompt, subReg, sink, maxSteps, prov, pricing, ctxWin, run.Session, childDepth, recoveryTaskID, usageModelRef, mutationObserver, mailbox)
+		}
+		return t.runSubSession(WithSubagentWriteClaim(runCtx, spec.Grant.WritePaths), prompt, subReg, sink, maxSteps, prov, pricing, ctxWin, run.Session, childDepth, recoveryTaskID, usageModelRef, mutationObserver, childWriteRoots, mailbox)
 	}
 
 	if spec.Sched.RunInBackground {
@@ -1125,11 +1171,12 @@ func (t *TaskTool) resolveSubSessionRuntime(modelRef, effort string) (provider.P
 	return prov, pricing, ctxWin, nil
 }
 
-func (t *TaskTool) runSubSession(ctx context.Context, prompt string, subReg *tool.Registry, sink event.Sink, maxSteps int, prov provider.Provider, pricing *provider.Pricing, ctxWin int, sess *Session, childDepth int, recoveryTaskID, modelRef string, mutationObserver *checkpoint.MutationObserver, writeRoots *sandbox.WritableRootSet) (string, error) {
+func (t *TaskTool) runSubSession(ctx context.Context, prompt string, subReg *tool.Registry, sink event.Sink, maxSteps int, prov provider.Provider, pricing *provider.Pricing, ctxWin int, sess *Session, childDepth int, recoveryTaskID, modelRef string, mutationObserver *checkpoint.MutationObserver, writeRoots *sandbox.WritableRootSet, mailbox *subagentmailbox.Mailbox) (string, error) {
 	opts := t.subagentOptions(ctx, maxSteps, pricing, ctxWin, childDepth, recoveryTaskID, mutationObserver)
 	if writeRoots != nil {
 		opts.WriteRoots = writeRoots
 	}
+	opts.SubagentMailbox = mailbox
 	opts.ModelRef = modelRef
 	// Capture the pristine task before host framing is prepended: delivery
 	// intent classification must judge the task, not the wrapper.
@@ -1142,8 +1189,9 @@ func (t *TaskTool) runSubSession(ctx context.Context, prompt string, subReg *too
 	return RunSubAgentWithSession(ctx, prov, subReg, sess, prompt, opts, sink)
 }
 
-func (t *TaskTool) runReadOnlySubSession(ctx context.Context, prompt string, subReg *tool.Registry, sink event.Sink, maxSteps int, prov provider.Provider, pricing *provider.Pricing, ctxWin int, sess *Session, childDepth int, recoveryTaskID, modelRef string, mutationObserver *checkpoint.MutationObserver) (string, error) {
+func (t *TaskTool) runReadOnlySubSession(ctx context.Context, prompt string, subReg *tool.Registry, sink event.Sink, maxSteps int, prov provider.Provider, pricing *provider.Pricing, ctxWin int, sess *Session, childDepth int, recoveryTaskID, modelRef string, mutationObserver *checkpoint.MutationObserver, mailbox *subagentmailbox.Mailbox) (string, error) {
 	opts := t.subagentOptions(ctx, maxSteps, pricing, ctxWin, childDepth, recoveryTaskID, mutationObserver)
+	opts.SubagentMailbox = mailbox
 	opts.ModelRef = modelRef
 	// Capture the pristine task before host framing is prepended: delivery
 	// intent classification must judge the task, not the wrapper.

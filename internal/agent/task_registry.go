@@ -28,6 +28,9 @@ var subagentAlwaysHiddenTools = []string{
 	"set_session_title",
 	"install_skill",
 	"install_source",
+	// 任务616: messaging is parent-only. A sub-agent talks back through its
+	// final answer and complete_subtask, never through send_message.
+	"send_message",
 }
 
 var subagentJobTools = []string{
@@ -40,7 +43,7 @@ var readOnlySubagentWorkflowTools = []string{
 	"connect_tool_source",
 }
 
-const subagentToolBoundarySummary = "Recursive agent/skill tools are exposed only while max_subagent_depth leaves another delegation layer; unsupported background job tools (parallel_tasks, wait, bash_output, kill_shell) are excluded; bash is exposed as foreground-only inside subagents."
+const subagentToolBoundarySummary = "Recursive agent/skill tools are exposed only while max_subagent_depth leaves another delegation layer; unsupported background job tools (parallel_tasks, wait, bash_output, kill_shell) are excluded; the parent-only messaging tool (send_message) is never inherited; bash is exposed as foreground-only inside subagents."
 
 // Task 572 (484-a): appended to the summary only when the host cannot enforce
 // bash write roots. BindWritePaths then fail-closes and removes bash from

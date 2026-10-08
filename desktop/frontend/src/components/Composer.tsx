@@ -652,6 +652,7 @@ export function Composer({
   onCapsuleReadSubagent,
   onCapsuleDeleteSubagent,
   onCapsuleClearEndedSubagents,
+  onCapsuleSendSubagentMessage,
   onInvocationMetadataChange,
 }: {
   running: boolean;
@@ -808,6 +809,8 @@ export function Composer({
   // Task 558 delete surface for the ended sub-agents directory.
   onCapsuleDeleteSubagent?: (sessionPath: string, ref: string) => Promise<void>;
   onCapsuleClearEndedSubagents?: (sessionPath: string) => Promise<number>;
+  // 任务616: persist-first message send into a sub-agent's mailbox.
+  onCapsuleSendSubagentMessage?: (sessionPath: string, ref: string, summary: string, text: string) => Promise<import("../lib/types").SubagentSendReceiptView>;
 }) {
   const { t, locale } = useI18n();
   const { showToast } = useToast();
@@ -5479,6 +5482,7 @@ export function Composer({
                   onReadSubagent={onCapsuleReadSubagent}
                   onDeleteSubagent={onCapsuleDeleteSubagent}
                   onClearEndedSubagents={onCapsuleClearEndedSubagents}
+                  onSendMessage={onCapsuleSendSubagentMessage}
                 />
               </div>
             )}

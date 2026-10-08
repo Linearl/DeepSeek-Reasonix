@@ -107,6 +107,16 @@ func RunSubAgentWithSession(ctx context.Context, prov provider.Provider, reg *to
 	opts.RequireVisibleFinal = true
 	sub := New(prov, reg, sess, opts, sink)
 	sub.SetPlanMode(planWorkflow)
+	// 任务616: this is the single construction boundary for every subagent
+	// loop, so the run's steer handle is published (and unpublished) exactly
+	// here. The handle stays live for the whole run — including the review
+	// nudge continuations below — and the deferred unpublish covers every
+	// return path and panic unwinding. Ephemeral runs (ref == "") publish
+	// nothing: their mailbox is nil.
+	if opts.SubagentMailbox != nil {
+		unpublish := opts.SubagentMailbox.Publish(sub.SteerItem)
+		defer unpublish()
+	}
 	if err := sub.Run(ctx, prompt); err != nil {
 		// Still merge any partial child evidence so parent gates see real writes.
 		mergeChildEvidence(ctx, sub)

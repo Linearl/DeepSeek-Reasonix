@@ -18,6 +18,7 @@ import (
 	"reasonix/internal/fileutil"
 	fileencoding "reasonix/internal/fileutil/encoding"
 	"reasonix/internal/store"
+	"reasonix/internal/subagentmailbox"
 	"reasonix/internal/tool"
 )
 
@@ -290,9 +291,11 @@ func DeleteSubagentArtifact(sessionDir, parentSession, ref string) error {
 }
 
 // removeSubagentArtifactFiles deletes one artifact's transcript, its sidecars,
-// and its metadata. Sub-agent saves are single-file today, but sidecars are
-// swept (event log, event index, …) so no earlier build's artifacts survive
-// the delete; files that are already gone are not an error.
+// its metadata, and its mailbox directory (任务616: pending and delivered
+// messages alike — the record is gone, not merely hidden). Sub-agent saves
+// are single-file today, but sidecars are swept (event log, event index, …)
+// so no earlier build's artifacts survive the delete; files that are already
+// gone are not an error.
 func removeSubagentArtifactFiles(artifact SubagentArtifact) error {
 	paths := []string{artifact.SessionPath, artifact.MetaPath}
 	paths = append(paths, store.SessionSidecarFiles(artifact.SessionPath)...)
@@ -301,6 +304,14 @@ func removeSubagentArtifactFiles(artifact SubagentArtifact) error {
 			continue
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	// 任务616: sweep the mailbox last so a failure above keeps the messages
+	// recoverable. RemoveAll on an absent directory is nil.
+	if artifact.Ref != "" && artifact.SessionPath != "" {
+		mailboxDir := filepath.Join(filepath.Dir(artifact.SessionPath), subagentmailbox.MailboxDirName(artifact.Ref))
+		if err := os.RemoveAll(mailboxDir); err != nil {
 			return err
 		}
 	}

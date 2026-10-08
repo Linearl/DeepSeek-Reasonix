@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"reasonix/internal/permission"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/skill"
+	"reasonix/internal/subagentmailbox"
 	"reasonix/internal/tool"
 	"reasonix/internal/tool/builtin"
 )
@@ -44,6 +46,11 @@ type SubagentArtifactView struct {
 	// disk. A meta can survive without its transcript after a crash; such
 	// entries are listed but not openable.
 	HasTranscript bool `json:"hasTranscript"`
+	// PendingMail counts messages waiting in the sub-agent's mailbox
+	// (任务616): persisted but not yet delivered to a running child. The
+	// capsule shows it as an undelivered badge; delivery happens on the next
+	// tool-round gap (running) or the next continue_from (parked).
+	PendingMail int `json:"pendingMail"`
 }
 
 // ListSubagentsByParent lists the persisted sub-agent artifacts owned by the
@@ -76,6 +83,10 @@ func (a *App) ListSubagentsByParent(sessionPath string) ([]SubagentArtifactView,
 		artifacts = artifacts[:listSubagentsViewLimit]
 	}
 	out := make([]SubagentArtifactView, 0, len(artifacts))
+	// 任务616: one hub re-used for every pending count; PendingCount is a
+	// stat on a directory that usually does not exist, so the extra per-ref
+	// cost is one failed ReadDir at most.
+	mailHub := &subagentmailbox.Hub{Dir: filepath.Join(dir, "subagents")}
 	for _, artifact := range artifacts {
 		_, statErr := os.Stat(artifact.SessionPath)
 		out = append(out, SubagentArtifactView{
@@ -89,6 +100,7 @@ func (a *App) ListSubagentsByParent(sessionPath string) ([]SubagentArtifactView,
 			Model:         artifact.Meta.Model,
 			ParentSession: artifact.Meta.ParentSession,
 			HasTranscript: statErr == nil,
+			PendingMail:   mailHub.PendingCount(artifact.Ref),
 		})
 	}
 	return out, nil

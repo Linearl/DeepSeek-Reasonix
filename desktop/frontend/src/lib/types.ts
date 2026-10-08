@@ -2054,6 +2054,19 @@ export interface SubagentArtifactView {
   model?: string;
   parentSession?: string;
   hasTranscript: boolean; // false = meta survived without its jsonl; not openable
+  // 任务616: messages persisted in the sub-agent's mailbox but not yet
+  // delivered (badge in the capsule directory; delivered at the next
+  // tool-round gap when running, or the next continue_from when parked).
+  pendingMail: number;
+}
+
+// SubagentSendReceiptView is the delivery outcome of one capsule mailbox send
+// (desktop/subagent_send_app.go): steered = injected mid-turn; queued = the
+// run is finishing, delivered on continue_from; parked = not running, kept
+// for a later continue_from; disabled = the messaging switch is off.
+export interface SubagentSendReceiptView {
+  messageId: string;
+  disposition: "steered" | "queued" | "parked" | "disabled";
 }
 
 export interface ActiveWorkView {

@@ -68,6 +68,7 @@ import (
 	"reasonix/internal/sessiontemp"
 	"reasonix/internal/skill"
 	"reasonix/internal/stats"
+	"reasonix/internal/subagentmailbox"
 	"reasonix/internal/taskmonitor"
 	"reasonix/internal/tool"
 	"reasonix/internal/tool/builtin"
@@ -1378,6 +1379,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	taskToolAdded := false
 	readOnlyTaskToolAdded := false
 	var taskTool *agent.TaskTool
+	// 任务616: the running-subagent message channel. The hub points at the
+	// same subagents dir the transcript store persists into (mailbox dirs are
+	// siblings of <ref>.jsonl / <ref>.meta.json). nil — the switch resolved
+	// off, or a headless build without a session dir — keeps send_message
+	// unregistered, publishes no steer handles, and drains no mailboxes.
+	var subagentMailboxHub *subagentmailbox.Hub
+	if cfg.SubagentMessagingEnabled() && strings.TrimSpace(sessionDir) != "" {
+		subagentMailboxHub = &subagentmailbox.Hub{Dir: filepath.Join(sessionDir, "subagents")}
+	}
 	// capRuntime is assigned after MCP specs load; closures capture the variable
 	// so task tools created later still receive the session-shared substrate.
 	var capRuntime *agent.MCPCapabilityRuntime
@@ -1462,6 +1472,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			WithBashSandboxEnforced(bashSandboxEnforced).
 			WithParallelWriterReadOnlyBash(cfg.Sandbox.ExperimentalParallelWriterReadOnlyBash).
 			WithCapabilityRuntime(capRuntime).
+			WithSubagentMailbox(subagentMailboxHub).
 			WithWriteRoots(writeRootSet)
 	}
 	addTaskTool := func() string {
@@ -1482,6 +1493,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(agent.NewParallelTasksTool(taskTool, reg))
 		reg.Add(agent.NewFleetTool(taskTool))
 		reg.Add(agent.NewSubagentResultTool(taskTool))
+		// 任务616: the parent-only messaging tool rides the same ablation and
+		// switch gates as the task tool itself (a run without delegation has
+		// nobody to message). Sub-agents never inherit it.
+		if subagentMailboxHub != nil {
+			reg.Add(agent.NewSendMessageTool(subagentMailboxHub))
+		}
 		return "enabled task."
 	}
 	addReadOnlyTaskTool := func() string {

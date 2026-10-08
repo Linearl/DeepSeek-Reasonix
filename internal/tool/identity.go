@@ -30,6 +30,7 @@ const (
 	HostReviewReport               = "review_report"
 	HostRunSkill                   = "run_skill"
 	HostSecurityReview             = "security_review"
+	HostSendMessage                = "send_message"
 	HostSessionReadStrategyReceipt = "session_read_strategy_receipt"
 	HostSessionToolResult          = "session_tool_result"
 	HostSetSessionTitle            = "set_session_title"
@@ -74,6 +75,7 @@ func KnownToolNames() []string {
 		HostReviewReport,
 		HostRunSkill,
 		HostSecurityReview,
+		HostSendMessage,
 		HostSessionReadStrategyReceipt,
 		HostSessionToolResult,
 		HostSetSessionTitle,

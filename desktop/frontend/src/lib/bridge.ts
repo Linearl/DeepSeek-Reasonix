@@ -94,6 +94,7 @@ import type {
   HooksSettingsView,
   JobView,
   SubagentArtifactView,
+  SubagentSendReceiptView,
   ActiveWorkView,
   BackgroundRuntimeView,
   JobCancelBatchView,
@@ -521,6 +522,9 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // at once (running invocations kept; resolves how many were removed).
   DeleteSubagentRecord(sessionPath: string, ref: string): Promise<void>;
   ClearEndedSubagents(sessionPath: string): Promise<number>;
+  // 任务616 capsule: persist-first message send into one sub-agent's mailbox,
+  // steered immediately when that sub-agent is running in this process.
+  SendSubagentMessage(sessionPath: string, ref: string, summary: string, text: string): Promise<SubagentSendReceiptView>;
 }
 
 export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
@@ -4296,6 +4300,11 @@ function makeMockApp(): AppBindings {
     async DeleteSubagentRecord() {},
     async ClearEndedSubagents() {
       return 0;
+    },
+    // 任务616 capsule: the browser dev mock has no mailbox either — every
+    // send reports disabled so the composer renders the switch-off notice.
+    async SendSubagentMessage() {
+      return { messageId: "", disposition: "disabled" };
     },
     async DeleteSession(path: string) {
       const i = sessions.findIndex((s) => s.path === path);
