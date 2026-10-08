@@ -44821,7 +44821,7 @@ body > .mermaid-diagram--fullscreen {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-elevated, var(--bg));
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow-2);
   overflow: auto;
 }
 .collab-group-panel__head {
@@ -44995,6 +44995,11 @@ body > .mermaid-diagram--fullscreen {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.collab-group-panel__channel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .collab-group-panel__channelhead {
   display: flex;
   align-items: center;
@@ -45072,6 +45077,10 @@ body > .mermaid-diagram--fullscreen {
 .collab-group-panel__note {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collab-group-panel__time {
+  color: var(--fg-faint);
   white-space: nowrap;
 }
 
