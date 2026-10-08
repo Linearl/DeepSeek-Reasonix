@@ -12,6 +12,13 @@ export interface StreamDeltaEntry {
 export interface StreamSegment {
   kind: "text" | "reasoning";
   delta: string;
+  // 任务657: seq of the last seq-carrying wire event coalesced into this
+  // segment (deltas within a frame arrive in ledger order, so the last one
+  // is the max). The reducer drops segments whose seq is already folded in,
+  // so a ledger re-projection interleaved with live deltas in one rAF frame
+  // cannot re-stream replayed deltas into the live bubble. Undefined for
+  // seq-less sources, which always apply (they bypass the projector).
+  seq?: number;
 }
 
 export interface TabStreamBatch {
@@ -38,8 +45,12 @@ export function coalesceStreamDeltas(batch: StreamDeltaEntry[]): TabStreamBatch[
       out.push({ tabId, segments });
     }
     const last = segments[segments.length - 1];
-    if (last && last.kind === kind) last.delta += delta;
-    else segments.push({ kind, delta });
+    if (last && last.kind === kind) {
+      last.delta += delta;
+      // Keep the max seq'd value: a trailing seq-less delta must not erase
+      // the seq the reducer needs to adjudicate a replay.
+      if (typeof e.seq === "number") last.seq = e.seq;
+    } else segments.push({ kind, delta, seq: e.seq });
   }
   return out;
 }

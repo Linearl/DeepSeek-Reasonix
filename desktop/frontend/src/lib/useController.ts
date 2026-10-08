@@ -597,6 +597,20 @@ export interface State extends ReadStatusHost {
   // Bounded set of context_maintenance operationIds already shown as notices
   // so reconnect/replay does not insert duplicate timeline cards.
   seenMaintenanceOps: string[];
+  // 任务657: highest turn-event seq already folded into this state. The
+  // backend ledger allocates strictly increasing per-epoch seqs, but a
+  // re-delivery still reaches the reducer: the checkpoint-reset repair
+  // rewinds the projector cursor and re-projects envelopes that were applied
+  // before the rewind, and non-projector sources (remote event pump, seq-less
+  // fallbacks) feed the same reducer directly. A seq <= this watermark is a
+  // replay of an already-applied event and must stay a no-op, or it
+  // re-enqueues ghost segments (task 645's duplicate-render shape). Reset to
+  // 0 whenever the seq namespace restarts: `reset` (new session) and
+  // `controller_rebuilt` (new runtime epoch). It deliberately SURVIVES
+  // `history_rebase` — a rebase retains the live tail that earlier seqs
+  // produced, so re-applying them after a rebase is duplication, not
+  // reconstruction.
+  appliedEventSeq: number;
   // Extension UI surfaces (stage 8b2). See the ExtensionStatusEntry block
   // above for the keying/lifecycle rules.
   extensionStatuses: Record<string, ExtensionStatusEntry>;
@@ -678,6 +692,7 @@ export const initialState: State = {
   contextPanelSeq: 0,
   usageSeq: 0,
   seenMaintenanceOps: [],
+  appliedEventSeq: 0,
   extensionStatuses: {},
   extensionNotifications: [],
   extensionGenerations: {},
@@ -2787,6 +2802,10 @@ export function reducer(s: State, a: Action): State {
         resolvedPromptId: undefined,
         promptArrivedId: undefined,
         promptArrivedAt: undefined,
+        // 任务657: a rebuilt runtime restarts its ledger seqs from 1, so the
+        // old epoch's watermark would silently swallow the new epoch's
+        // replayed events.
+        appliedEventSeq: 0,
         extensionStatuses: {},
         extensionForm: undefined,
         extensionNotifications: [],
@@ -2795,16 +2814,36 @@ export function reducer(s: State, a: Action): State {
     case "reset": return { ...initialState, meta: metaWithoutCanonicalTodos(s.meta), context: { used: 0, window: s.context.window, sessionTokens: 0, compactRatio: s.context.compactRatio }, balance: s.balance, effort: s.effort, jobs: s.jobs, hydrating: s.hydrating, hydrateReason: s.hydrateReason, hydrateError: s.hydrateError, hydrateHistoryLoaded: s.hydrateHistoryLoaded, hydratePlaceholderItems: s.hydratePlaceholderItems, backendActivationPending: s.backendActivationPending, sessionGen: s.sessionGen + 1, promptEpoch: s.promptEpoch + 1 };
     case "context_panel_refresh": return { ...s, contextPanelSeq: s.contextPanelSeq + 1 };
     case "event": {
+      // 任务657: reducer-level seq idempotency. The projector gates live
+      // events, but a ledger re-projection (cursor rewind after checkpoint
+      // reset) and non-projector sources re-deliver envelopes with seqs this
+      // state already folded in; re-applying them re-enqueues ghost segments.
+      // A valid seq at or below the watermark is adjudicated here as a no-op.
+      const seq = a.e.seq;
+      if (typeof seq === "number" && seq > 0 && seq <= s.appliedEventSeq) return s;
       const next = applyEvent(s, a.e, a.remote);
-      return next.items.length > s.items.length
-        ? { ...next, historyMutation: { seq: s.historyMutation.seq + 1, kind: "append" } }
-        : next;
+      const applied = typeof seq === "number" && seq > 0 ? { ...next, appliedEventSeq: seq } : next;
+      return applied.items.length > s.items.length
+        ? { ...applied, historyMutation: { seq: s.historyMutation.seq + 1, kind: "append" } }
+        : applied;
     }
     case "stream_batch": {
-      const next = applyStreamBatch(s, a.segments);
-      return next.items.length > s.items.length
-        ? { ...next, historyMutation: { seq: s.historyMutation.seq + 1, kind: "append" } }
-        : next;
+      // 任务657: same idempotency for coalesced deltas — each segment carries
+      // the seq of the wire event it was built from, and a replayed segment
+      // (ledger re-projection while live deltas interleave in one rAF frame)
+      // must not re-stream into the live bubble. Seq-less segments always
+      // apply: they bypass the projector by design.
+      const fresh = a.segments.filter((segment) => typeof segment.seq !== "number" || segment.seq <= 0 || segment.seq > s.appliedEventSeq);
+      if (fresh.length === 0) return s;
+      const next = applyStreamBatch(s, fresh);
+      let appliedEventSeq = s.appliedEventSeq;
+      for (const segment of fresh) {
+        if (typeof segment.seq === "number" && segment.seq > appliedEventSeq) appliedEventSeq = segment.seq;
+      }
+      const applied = appliedEventSeq === s.appliedEventSeq ? next : { ...next, appliedEventSeq };
+      return applied.items.length > s.items.length
+        ? { ...applied, historyMutation: { seq: s.historyMutation.seq + 1, kind: "append" } }
+        : applied;
     }
     default: return s;
   }
