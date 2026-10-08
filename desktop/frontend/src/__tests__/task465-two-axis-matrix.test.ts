@@ -153,13 +153,17 @@ assert.ok(composerSrc.includes("(planModeOn || goalModeOn)"), "徽章只承载�
 assert.ok(!composerSrc.includes('t("composer.taskModeAutopilot")</span>\n              </span>\n              {autopilotModeOn'), "执行方式菜单不再有 autopilot 项（其关闭路径已失效）");
 
 // ── 5. CSS 锚：四格网格 + 滑块四等分 + autopilot 专属橙（595 改色：465 时期
-//    沿用 yolo 红与 Yolo 档同色难区分，任务 595 换 --mode-autopilot-* 橙系）。
+//    沿用 yolo 红与 Yolo 档同色难区分，任务 595 换 --mode-autopilot-* 橙系；
+//    614 修色：原值亮度不足呈土黄，提饱和提亮 + 深色前景，双色值在此钉死）。
 const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
 assert.match(styles, /\.composer-modebar--approval\[data-autopilot="on"\]\s*\{\s*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\);/, "四格网格");
 assert.match(styles, /\.composer-modebar--approval\[data-autopilot="on"\] \.composer-modebar__thumb\s*\{\s*width:\s*calc\(\(100% - 4px\) \/ 4\);/, "滑块四等分");
 assert.match(styles, /\.composer-modebar--approval\[data-mode="autopilot"\]\s*\{\s*--composer-modebar-active-bg:\s*var\(--mode-autopilot-bg\);/, "autopilot 点亮用专属橙色系（595：与 yolo 红区分）");
 assert.doesNotMatch(styles, /\.composer-modebar--approval\[data-mode="autopilot"\]\s*\{[^}]*--mode-yolo-bg/, "autopilot 档不再借用 yolo 红");
 assert.match(styles, /\.composer-modebar\[data-mode="autopilot"\]\s*\{\s*--composer-modebar-index:\s*3;/, "滑块落到第 4 格");
+assert.match(styles, /--mode-autopilot-bg: #f97316;/, "614 修色：暗背景真橙（原 #cf6a1d 土黄）");
+assert.equal((styles.match(/--mode-autopilot-bg: #ea580c;/g) ?? []).length, 2, "614 修色：亮背景双色值锚（media+forced light 各一）");
+assert.doesNotMatch(styles, /--mode-autopilot-fg: #fff;/, "614 修色：白字在真橙上对比不足 3:1，前景必须深色");
 
 // ── 6. 留痕三语 + notice 映射（验收⑤/铁律：决策必须可见可查）。
 for (const [name, dict] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) {

@@ -206,6 +206,21 @@ labFlags.applyLabFlags({ tabModeTint: true, tabCompress: true });
   eq(palette.map(([name]) => name).join(","), "plan,goal,auto,yolo,autopilot", "styles.css 五档选择器齐全（顺序=文件序）");
   const values = palette.map(([, color]) => color);
   eq(new Set(values).size, values.length, "五档色值两两不同（色相区分度）");
+  // 任务614 语义色调钉：四档+goal 各自对位（plan=紫、autopilot=橙随
+  // --mode-autopilot-* 修色、auto=蓝=approval 确认档、yolo=红、goal=青），
+  // merge 换向/丢语义在此炸。
+  const byName = Object.fromEntries(palette) as Record<string, string>;
+  eq(byName.plan, "#7c3aed", "plan=紫（614 语义映射，紫归 plan）");
+  eq(byName.autopilot, "var(--mode-autopilot-bg)", "autopilot=橙（随 595/614 专属橙 token，明暗随主题）");
+  eq(byName.auto, "var(--mode-auto-bg)", "auto=蓝（approval 确认档）");
+  eq(byName.yolo, "var(--mode-yolo-bg)", "yolo=红（警示档）");
+  eq(byName.goal, "#0d9488", "goal=青（协作档补充）");
+  // 任务614 徽章拆分：plan/goal/auto 原共用 --plan 徽章类，plan 转紫后逐档对位。
+  const tabbar = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "components", "TabBar.tsx"), "utf8");
+  eq(tabbar.includes('tabbar__mode-badge--goal">goal'), true, "goal 徽章用 --goal 类（614 拆分）");
+  eq(tabbar.includes('tabbar__mode-badge--auto">auto'), true, "auto 徽章用 --auto 类（614 拆分）");
+  eq(css.includes(".tabbar__mode-badge--goal {"), true, "goal 徽章规则存在");
+  eq(css.includes(".tabbar__mode-badge--auto {"), true, "auto 徽章规则存在");
   // 任务504 段的三条背景规则存在（~30% 底色 + hover 加深 + active 混底）。
   eq(css.includes(".tabbar .tabbar__tab[data-mode-tint]:not(.tabbar__tab--active)"), true, "非活跃底色规则存在");
   eq(css.includes(".tabbar .tabbar__tab[data-mode-tint]:not(.tabbar__tab--active):hover"), true, "hover 加深规则存在");
