@@ -295,4 +295,84 @@ console.log("diagnostics settings page");
   });
 }
 
+// Task 624: zh locale renders localized issue sentences while the issue code
+// stays English, and the runtime-doctor section labels localize while the raw
+// backend dump is kept verbatim as an annotated technical value.
+{
+  installDom();
+  // Pref persistence lives in desktop config; detectLocale falls back to
+  // navigator.language, so emulate a Chinese UI environment here.
+  Object.defineProperty(window.navigator, "language", { configurable: true, value: "zh-CN" });
+
+  const zhReport = baseReport(false);
+  zhReport.issues = [
+    {
+      severity: "warning",
+      code: "skill.missing_description",
+      subsystem: "skills",
+      name: "nodesc",
+      message: "skill has no description frontmatter; index quality is reduced",
+      remediation: "Add a one-line description: field to the skill frontmatter",
+      settings_tab: "skills",
+    },
+  ];
+
+  const doctorReport = {
+    text: "runtime status: unavailable\n",
+    publishedGeneration: 7,
+    allowResume: true,
+    cleanRollback: false,
+    hasIrreversible: false,
+    noOpRebuilds: 1,
+    fullRebuilds: 2,
+    subgraphRebuilds: 3,
+    staleDrops: 4,
+    admissionRejected: 5,
+    runtimeOwnerFallbacks: 6,
+  };
+
+  window.go = {
+    main: {
+      App: {
+        CapabilityDiagnostics: async () => zhReport,
+        RuntimeDoctor: async () => doctorReport,
+        CrashPendingDiagnostics: async () => ({ count: 0, capacity: 50, retentionDays: 14, atCapacity: false }),
+      } as Partial<AppBindings> as AppBindings,
+    },
+  };
+
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("missing root");
+  const root = createRoot(rootEl);
+
+  await act(async () => {
+    root.render(
+      React.createElement(
+        LocaleProvider,
+        null,
+        React.createElement(DiagnosticsSettingsPage),
+      ),
+    );
+    await flush();
+  });
+
+  // Localized message + remediation under zh, with the English issue code intact.
+  await waitFor("zh issue copy", () => (rootEl.textContent || "").includes("技能缺少 description frontmatter"));
+  const zhText = rootEl.textContent || "";
+  ok(zhText.includes("skill.missing_description"), "issue code must stay English and copyable under zh");
+  ok(zhText.includes("在技能 frontmatter 中补一行"), "remediation must localize under zh");
+  ok(!zhText.includes("index quality is reduced"), "unlocalized backend sentence must not render under zh");
+
+  // Runtime doctor section: localized labels, verbatim raw dump below the caption.
+  await waitFor("zh runtime section", () => zhText.includes("扩展运行时（v2）"));
+  ok(zhText.includes("允许恢复"), "allow-resume label must localize under zh");
+  ok(zhText.includes("属主回退=6"), "runtime metric labels must localize under zh");
+  ok(zhText.includes("技术值，保留英文"), "raw dump caption must render under zh");
+  ok(zhText.includes("runtime status: unavailable"), "raw backend dump must stay verbatim (technical value)");
+
+  await act(async () => {
+    root.unmount();
+  });
+}
+
 console.log("diagnostics-settings: ok");
