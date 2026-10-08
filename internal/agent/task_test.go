@@ -103,6 +103,19 @@ func TestTaskToolCancelDuringStuckProviderReturnsPromptly(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 
+	// The contract under test: cancellation propagates through the sub-agent
+	// run and Execute surfaces context.Canceled instead of hanging on the
+	// never-yielding provider stream. The bound only exists to fail on a true
+	// hang (the 2026-06 regression where Run never returned), not to measure
+	// unwind speed — unlike the bare agent loop (TestCancelDuringStuckProvider-
+	// StreamReturnsPromptly), the TaskTool cancel path persists the cancelled
+	// sub-agent transcript synchronously before returning
+	// (RunProfileSpec -> resolveAmbiguousSubagentFailure -> SaveOutcome:
+	// branch meta + session snapshot + meta.json). Measured on Windows
+	// (task 615, 2026-10-08): that persistence costs ~350-500ms idle and up
+	// to ~7s under a 12-core busy-loop load, so the old 500ms bound failed
+	// purely on disk latency while cancellation itself propagated in 7-90ms.
+	// 10s still fails a real hang quickly while tolerating slow-disk hosts.
 	select {
 	case err := <-done:
 		if err == nil {
@@ -111,8 +124,8 @@ func TestTaskToolCancelDuringStuckProviderReturnsPromptly(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("Execute error = %v, want context cancellation", err)
 		}
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("TaskTool.Execute did not return promptly after cancellation")
+	case <-time.After(10 * time.Second):
+		t.Fatal("TaskTool.Execute did not return after cancellation (hang)")
 	}
 }
 
