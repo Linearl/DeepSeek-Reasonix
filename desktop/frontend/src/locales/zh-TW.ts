@@ -45,6 +45,7 @@ export const zhTW: Record<DictKey, string> = {
   "selection.quickAction.empty": "（無結果）",
   "selection.quickAction.truncated": "（選取文字過長，已截斷）",
   "selection.quickAction.failed": "請求失敗，請重試",
+  "selection.quickAction.unavailable": "選區已失效，請重新選擇",
   "common.cut": "剪下",
   "common.paste": "貼上",
   "common.selectAll": "全選",

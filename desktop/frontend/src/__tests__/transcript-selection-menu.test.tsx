@@ -705,6 +705,73 @@ console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 }
 
 {
+  // Task 514: a logical selection cleared between toolbar-open and the click
+  // used to return silently from runQuickAction — the click did nothing at
+  // all ("clicked, no floating window", the last silent path of the 369
+  // chain). The card must still open, in its error state, saying the
+  // selection is gone; the side-query bridge must not be called.
+  const dom = installDom();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    '<div class="transcript__row" data-row-key="row-a"><div class="msg__body" data-transcript-selectable="message">alpha</div></div>' +
+      '<div class="transcript__row" data-row-key="row-b"><div class="msg__body" data-transcript-selectable="message">bravo</div></div>',
+  );
+  const calls: Array<{ action: string; text: string; contextText: string }> = [];
+  const runner = async (action: string, text: string, contextText: string) => {
+    calls.push({ action, text, contextText });
+    return "RESULT:" + action;
+  };
+  const root = createRoot(document.getElementById("root") as HTMLElement);
+  await act(async () => {
+    root.render(
+      <LocaleProvider>
+        <TranscriptSelectionMenu
+          resetKey="tab-logical"
+          onAddToChat={() => {}}
+          onQuickAction={runner}
+          quickActionsEnabled
+        />
+      </LocaleProvider>,
+    );
+    await flushTimers();
+  });
+  transcriptSelectionStore.clear("test-reset");
+  transcriptSelectionStore.beginNative("tab-logical");
+  transcriptSelectionStore.promoteToLogical(
+    "tab-logical",
+    { rowKey: "row-a", textOffset: 1, affinity: "forward" },
+    { rowKey: "row-b", textOffset: 3, affinity: "forward" },
+    [
+      { rowKey: "row-a", sourceText: "alpha", contentRevision: 1, resolveText: async () => "alpha" },
+      { rowKey: "row-b", sourceText: "bravo", contentRevision: 1, resolveText: async () => "bravo" },
+    ],
+  );
+  transcriptSelectionStore.settleLogical();
+  await act(async () => { await flushTimers(); });
+  const translateBtn = ([...(transcriptActionHost()?.querySelectorAll("button") ?? [])] as HTMLButtonElement[])
+    .find((b) => b.textContent?.includes("Translate"));
+  ok(translateBtn != null, "logical selection exposes the translate quick action");
+  // Clear the snapshot and click in the same tick WITHOUT letting React
+  // flush in between: the handler still holds the now-stale action — the
+  // exact mid-flight race (act defers the re-render to the flush).
+  await act(async () => {
+    transcriptSelectionStore.clear("test-stale");
+    translateBtn?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await flushTimers();
+  });
+  const card = document.querySelector(".transcript-selection-result-card");
+  ok(card != null, "stale logical selection still opens the result card");
+  ok(card?.textContent?.includes("no longer available") === true, "card reports the unavailable selection");
+  eq(calls.length, 0, "no side-query call for a selection that no longer resolves");
+
+  await act(async () => {
+    transcriptSelectionStore.clear("test-cleanup");
+    root.unmount();
+  });
+  dom.window.close();
+}
+
+{
   // Task 525 visibility contract: jsdom has no layout engine, so the DOM
   // assertions above pass even if the card is never painted. Task 369
   // shipped the component with zero CSS for .transcript-selection-result-card
