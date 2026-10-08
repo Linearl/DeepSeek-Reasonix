@@ -10,7 +10,7 @@
 | 特性 | config 键 | 我们 | 说明 |
 |---|---|---|---|
 | 自动驾驶（autopilot） | `experimental_autopilot_ask_timeout` 等 | ✅ | 无人值守运行：超时高风险审批自动拒答并继续 |
-| 会话协作 | `experimental_session_collab` | ✅ | 跨会话消息/收件箱/派单——多会话协作的基础 |
+| 会话协作 | `experimental_session_collab` | ✅ | 跨会话消息/信件中心/派单——多会话协作的基础 |
 | 乐观写并行 | `optimistic_write`（agent 段） | ✅ | 子代理并行写入，多线效率关键（配 bash 守卫使用） |
 | Bash 重命令守护 | `experimental_bash_heavy_guard`（agent 段） | ✅ | 多会话并行时重型命令排队互斥，保护共享目录（与乐观写配套） |
 | 预算控制 / 压缩优化 / 消息合并 | `budget/compress/message-merge` 族 | ✅ | 长会话稳定性三件套 |
