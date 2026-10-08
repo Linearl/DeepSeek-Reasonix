@@ -51,6 +51,10 @@ type configSnapshot struct {
 	mu     sync.Mutex
 	cfg    *config.Config
 	loaded bool
+	// reloads counts completed full loads since the snapshot was created.
+	// Observability only (task 639 breakdown line distinguishes a warm hit
+	// from a load the read had to pay); guarded by mu like the rest.
+	reloads uint64
 	// sources and stamps are captured before the load, so a file replaced
 	// while it was being read no longer matches and forces a reload on the
 	// next call instead of serving a snapshot assembled from torn state.
@@ -99,7 +103,23 @@ func (s *configSnapshot) get(root string) (*config.Config, error) {
 		return nil, err
 	}
 	s.sources, s.stamps, s.cfg, s.loaded = sources, stamps, cfg, true
+	s.reloads++
 	return cfg, nil
+}
+
+// cfgSnapshotReloadCount reports how many full loads the root's snapshot has
+// performed (0 before the snapshot exists). Task 639: lets the effort read
+// breakdown distinguish a warm snapshot hit from a load paid on this read.
+func (a *App) cfgSnapshotReloadCount(root string) uint64 {
+	a.cfgSnapshotsMu.Lock()
+	snap := a.cfgSnapshots[filepath.Clean(root)]
+	a.cfgSnapshotsMu.Unlock()
+	if snap == nil {
+		return 0
+	}
+	snap.mu.Lock()
+	defer snap.mu.Unlock()
+	return snap.reloads
 }
 
 // configSnapshotSources mirrors loadForRoot's file selection for the sources

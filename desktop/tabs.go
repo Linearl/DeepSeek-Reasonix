@@ -104,6 +104,10 @@ type WorkspaceTab struct {
 	removed      bool       // set when the visible tab is pruned/closed before build completes
 	reconcileMu  sync.Mutex // serializes stale controller workspace repair for this tab
 	turnStartMu  sync.Mutex // serializes foreground turn admission for this tab
+	// reconcileMemo is the task-639 read-path fingerprint (tab_reconcile_memo.go):
+	// when it matches the live inputs the effort read skips the full
+	// session-binding reconcile. Guarded by App.mu; never persisted.
+	reconcileMemo tabReconcileMemoKey
 
 	ActivityStatus string // transient project-tree status for the in-flight turn
 
@@ -168,10 +172,10 @@ type WorkspaceTab struct {
 	// Task 544: the experimental ask auto-continue sub-option this tab runs
 	// with, fixed at toggle/creation time for the same reason.
 	autopilotAskAutoContinue bool
-	subagentPolicy             string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
-	disabledMCP                map[string]ServerView
-	mcpOrder                   []string
-	lastBuildResult            *boot.BuildResult // incremental extension reload
+	subagentPolicy           string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
+	disabledMCP              map[string]ServerView
+	mcpOrder                 []string
+	lastBuildResult          *boot.BuildResult // incremental extension reload
 
 	PinnedFiles              []string
 	pendingLegacyPinnedFiles []string // round-tripped until the session sidecar publishes
@@ -4475,6 +4479,29 @@ type sessionBinding struct {
 	meta          agent.BranchMeta
 }
 
+// slowSessionReconcileLogMs is the threshold under which the task-639
+// session-reconcile segment logs stay silent (matches slowTabSwitchLogMs):
+// reconcile runs on session open and rebind flows where a fast walk is
+// expected, and only the slow walks — the ones behind the effort read's
+// 1.2-1.4s switch-tab samples — belong in desktop.log.
+const slowSessionReconcileLogMs = 150
+
+// logSlowSessionReconcile attributes one slow reconcile to its expensive
+// phase: "path" (direct session-path binding), "resolve" (binding resolve)
+// or "apply" (binding apply). total is measured from reconcile entry so the
+// phases of one call sum into it.
+func (a *App) logSlowSessionReconcile(tab *WorkspaceTab, start time.Time, phase string, phaseMs time.Duration) {
+	total := time.Since(start)
+	if total.Milliseconds() < slowSessionReconcileLogMs {
+		return
+	}
+	slog.Info("desktop: session reconcile slow",
+		"tab", tab.ID,
+		"total_ms", total.Milliseconds(),
+		"phase", phase,
+		"phase_ms", phaseMs.Milliseconds())
+}
+
 func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool) {
 	if tab == nil {
 		return "", false
@@ -4489,8 +4516,15 @@ func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool
 	if current != tab {
 		return "", false
 	}
+	// Task 639: phase timers only — this reconcile is on the effort read
+	// path, and the slow log below is what turns a 1.2s sample into a named
+	// culprit (path branch, binding resolve, or binding apply).
+	reconcileStart := time.Now()
 	if path != "" {
-		if resolved, ok := a.reconcileTabWithSessionPath(tab, path); ok {
+		branchStart := time.Now()
+		resolved, ok := a.reconcileTabWithSessionPath(tab, path)
+		a.logSlowSessionReconcile(tab, reconcileStart, "path", time.Since(branchStart))
+		if ok {
 			return resolved, true
 		}
 	}
@@ -4501,8 +4535,11 @@ func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool
 	if path == "" {
 		return "", false
 	}
+	resolveStart := time.Now()
 	binding, ok := a.resolveSessionBinding(path)
+	resolveMs := time.Since(resolveStart)
 	if !ok {
+		a.logSlowSessionReconcile(tab, reconcileStart, "resolve", resolveMs)
 		return "", false
 	}
 	if scope == "project" && binding.scope != "project" && normalizeProjectRoot(workspaceRoot) != "" {
@@ -4510,7 +4547,10 @@ func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool
 			return "", false
 		}
 	}
+	applyStart := time.Now()
 	a.applySessionBindingToTab(tab, binding)
+	applyMs := time.Since(applyStart)
+	a.logSlowSessionReconcile(tab, reconcileStart, "apply", applyMs)
 	return binding.path, true
 }
 
@@ -4530,6 +4570,25 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 	if tab == nil || binding.path == "" {
 		return
 	}
+	// Task 639: segment timers for the slow-apply log below — admission_ms is
+	// the worktree-maintenance admission gate (project scope only), publish_ms
+	// the App.mu-held mutation span, save_ms the tabs-file write (deliberately
+	// outside App.mu, see the collect/write split at the save site).
+	applyStart := time.Now()
+	var admissionMs, publishMs, saveMs time.Duration
+	defer func() {
+		total := time.Since(applyStart)
+		if total.Milliseconds() < slowSessionReconcileLogMs {
+			return
+		}
+		slog.Info("desktop: session binding apply slow",
+			"tab", tab.ID,
+			"total_ms", total.Milliseconds(),
+			"admission_ms", admissionMs.Milliseconds(),
+			"publish_ms", publishMs.Milliseconds(),
+			"save_ms", saveMs.Milliseconds(),
+			"session", filepath.Base(binding.path))
+	}()
 	var terminalSessions []*terminalSession
 	reopenTerminalGate := false
 	scope := binding.scope
@@ -4545,7 +4604,9 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 		if workspaceRoot == "" {
 			return
 		}
+		admissionStart := time.Now()
 		releaseAdmission, err := a.beginChangedProjectRuntimeAdmission(tab, scope, workspaceRoot)
+		admissionMs = time.Since(admissionStart)
 		if err != nil {
 			return
 		}
@@ -4566,6 +4627,22 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 	}
 	pinnedState, preservePendingLegacy := pinnedContextStateForSessionBinding(tab, binding.path)
 
+	// Task 639: the tabs-file write moves OUT of the App.mu critical section.
+	// saveTabsLocked here wrote (MkdirAll + remote-tab reads + marshal +
+	// replace) while holding a.mu, so a disk stall — exactly what a concurrent
+	// controller build's IO pressure produces — held the app-wide tab lock for
+	// the write's full duration and stalled every other tab's state reads
+	// (the effort read's tabByID RLock included) behind it. Collect the
+	// snapshot under the lock, write after release: the tabsSaveMu +
+	// tabsLastWrittenVersion guard in saveTabsWrite discards the stale write
+	// if a newer save lands first (the same idiom remote_single_surface.go
+	// uses).
+	var saveDir string
+	var saveEntries []desktopTabEntry
+	var saveActive string
+	var saveVersion uint64
+	savePending := false
+	publishStart := time.Now()
 	a.mu.Lock()
 	current := a.tabs[tab.ID]
 	if current != nil && current != tab {
@@ -4616,10 +4693,17 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 		tab.TopicTitle = topicTitle
 	}
 	if changed && current == tab {
-		a.saveTabsLocked()
+		saveDir, saveEntries, saveActive, saveVersion = a.saveTabsCollectLocked()
+		savePending = true
 	}
 	sink := tab.sink
+	publishMs = time.Since(publishStart)
 	a.mu.Unlock()
+	if savePending {
+		saveStart := time.Now()
+		a.saveTabsWrite(saveDir, saveEntries, saveActive, saveVersion)
+		saveMs = time.Since(saveStart)
+	}
 	if workspaceChanged && a.workspaceHub != nil {
 		a.workspaceHub.reconcileRoots()
 	}
@@ -4759,27 +4843,57 @@ func (a *App) resolveSessionBinding(sessionPath string) (sessionBinding, bool) {
 	if sessionPath == "" {
 		return sessionBinding{}, false
 	}
-	for _, dir := range a.knownSessionDirs() {
+	// Task 639: split the walk into its disk costs so a slow resolve names its
+	// culprit — dirs_ms is knownSessionDirs (project registry reads), scan_ms
+	// the per-dir session path validation + sidecar loop, meta_ms the
+	// absolute-path branch-meta fallback. Logged only when the whole walk
+	// breached slowSessionReconcileLogMs.
+	resolveStart := time.Now()
+	dirsStart := time.Now()
+	dirs := a.knownSessionDirs()
+	dirsMs := time.Since(dirsStart)
+	scanStart := time.Now()
+	var scanMs, metaMs time.Duration
+	defer func() {
+		total := time.Since(resolveStart)
+		if total.Milliseconds() < slowSessionReconcileLogMs {
+			return
+		}
+		slog.Info("desktop: session binding resolve slow",
+			"dirs", len(dirs),
+			"dirs_ms", dirsMs.Milliseconds(),
+			"scan_ms", scanMs.Milliseconds(),
+			"meta_ms", metaMs.Milliseconds(),
+			"session", filepath.Base(sessionPath))
+	}()
+	for _, dir := range dirs {
 		if binding, ok := sessionBindingInDir(dir, sessionPath); ok {
+			scanMs = time.Since(scanStart)
 			return binding, true
 		}
 	}
+	scanMs = time.Since(scanStart)
 	if !filepath.IsAbs(sessionPath) {
 		return sessionBinding{}, false
 	}
+	metaStart := time.Now()
 	path, err := filepath.Abs(sessionPath)
 	if err != nil {
+		metaMs = time.Since(metaStart)
 		return sessionBinding{}, false
 	}
 	meta, ok, err := agent.LoadBranchMeta(path)
 	if err != nil || !ok {
+		metaMs = time.Since(metaStart)
 		return sessionBinding{}, false
 	}
 	for _, dir := range sessionBindingCandidateDirs(meta) {
 		if binding, ok := sessionBindingInDir(dir, path); ok {
+			metaMs = time.Since(metaStart)
 			return binding, true
 		}
 	}
+	metaMs = time.Since(metaStart)
 	return sessionBindingFromMeta(path, meta)
 }
 

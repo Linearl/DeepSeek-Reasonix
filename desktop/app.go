@@ -105,13 +105,17 @@ type App struct {
 	// Task 421: bounded effort re-fetch (see effort_fetch.go). effortCache
 	// holds the last completed EffortInfo per tab ID ("" = the active-tab
 	// form) so a read that blows the timeout serves this instead of stalling
-	// the switch-tab ancillary batch. Display data only. The stub and the
-	// limit override are test-only (catalogReconcileHook convention: set
-	// before concurrent calls, zero/nil in production).
+	// the switch-tab ancillary batch. Display data only. The stub, the
+	// limit override and reconcileReadProbe are test-only
+	// (catalogReconcileHook convention: set before concurrent calls,
+	// zero/nil in production). Task 639: reconcileReadProbe fires right
+	// before the effort read path runs a real session reconcile, so tests
+	// can count reconcile executions behind the tab memo.
 	effortReadStub          func(tabID string) EffortInfo
 	effortReadLimitOverride time.Duration
 	effortCacheMu           sync.Mutex
 	effortCache             map[string]effortCacheEntry
+	reconcileReadProbe      func(tabID string)
 
 	// Task 609: per-workspace-root config snapshots for the effort read path
 	// (see config_snapshot.go). Keys are cleaned roots; each snapshot reloads
@@ -7523,8 +7527,22 @@ func (a *App) runEffortCommandForTab(tabID, input string) {
 }
 
 func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, error) {
-	if tab := a.tabByID(tabID); tab != nil {
+	readStart := time.Now()
+	// Task 639: the session reconcile below is defensive healing with a full
+	// disk walk (project registry reads, per-dir session path validation,
+	// branch-meta sidecar loads). A settled tab re-derives the same binding
+	// on every read, so the read skips it while the tab memo
+	// (tab_reconcile_memo.go) still matches; any input that could move a
+	// binding invalidates the memo and the next read re-reconciles once.
+	var reconcileMs time.Duration
+	if tab := a.tabByID(tabID); tab != nil && !a.reconcileReadFreshFor(tab) {
+		if a.reconcileReadProbe != nil {
+			a.reconcileReadProbe(tab.ID)
+		}
+		reconcileStart := time.Now()
 		a.reconcileTabWithPinnedSessionMeta(tab)
+		reconcileMs = time.Since(reconcileStart)
+		a.storeTabReconcileRead(tab)
 	}
 	a.mu.RLock()
 	ref := ""
@@ -7541,13 +7559,17 @@ func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, e
 	// EffortForTab (431-1350ms, multi-second AV outliers per task 421). The
 	// snapshot reloads itself when the tracked config files change, so value
 	// freshness matches a fresh load.
+	reloadsBefore := a.cfgSnapshotReloadCount(workspaceRoot)
+	snapshotStart := time.Now()
 	cfg, err := a.cachedConfigForRoot(workspaceRoot)
+	snapshotMs := time.Since(snapshotStart)
 	if err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(ref) == "" {
 		ref = cfg.DefaultModel
 	}
+	resolveStart := time.Now()
 	config.NormalizeLegacyMimoCustomProvidersForRefs(cfg, ref)
 	resolved, _, ok := cfg.ResolveModelWithFallback(ref)
 	if !ok {
@@ -7557,9 +7579,17 @@ func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, e
 	if !ok {
 		return nil, fmt.Errorf("unknown model %q", resolved)
 	}
+	resolveMs := time.Since(resolveStart)
 	if effortOverride != nil {
 		entry.Effort = *effortOverride
 	}
+	// Task 639: answer "what is left of the read after the task-609 snapshot"
+	// from the log instead of from code reading. The capability mapping in
+	// effortForTabDirect is deliberately not a segment: it is pure in-memory
+	// table work, so any real cost shows up as total_ms exceeding the sum of
+	// the segments here.
+	logEffortReadBreakdown(tabID, time.Since(readStart), reconcileMs, snapshotMs, resolveMs,
+		a.cfgSnapshotReloadCount(workspaceRoot) != reloadsBefore)
 	return entry, nil
 }
 

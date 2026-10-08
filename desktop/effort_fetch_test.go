@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +49,32 @@ func newEffortFetchFixture(t *testing.T) *effortFetchFixture {
 
 func effortInfoFor(level string) EffortInfo {
 	return EffortInfo{Supported: true, Current: level, Levels: []string{"low", "high"}}
+}
+
+// TestEffortReadBreakdownLogThreshold gates the task-639 breakdown threshold
+// semantics: the log line is an evidence channel for slow reads, so it must
+// stay silent at 100ms and fire at 200ms — proving the threshold compares
+// milliseconds, not raw durations (a Duration-vs-untyped-const slip would
+// turn the gate into 150ns and log every warm read).
+func TestEffortReadBreakdownLogThreshold(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	logEffortReadBreakdown("tab_threshold", 100*time.Millisecond, 90*time.Millisecond, 10*time.Millisecond, 0, false)
+	if buf.Len() != 0 {
+		t.Fatalf("breakdown logged below threshold: %s", buf.String())
+	}
+
+	logEffortReadBreakdown("tab_threshold", 200*time.Millisecond, 190*time.Millisecond, 10*time.Millisecond, 0, false)
+	line := buf.String()
+	if !strings.Contains(line, "effort read breakdown") {
+		t.Fatalf("no breakdown line at/above threshold, got %q", line)
+	}
+	if !strings.Contains(line, `"reconcile_ms":190`) || !strings.Contains(line, `"snapshot_reloaded":false`) {
+		t.Fatalf("breakdown line missing segment fields: %s", line)
+	}
 }
 
 // waitForNotice asserts exactly one notice whose text contains all fragments

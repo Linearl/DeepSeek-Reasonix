@@ -29,6 +29,34 @@ import (
 // boot chain.
 const effortReadTimeout = 2 * time.Second
 
+// effortBreakdownLogMs is the threshold under which a task-639 effort read
+// breakdown is not worth a log line, matching slowTabSwitchLogMs: tab
+// switches happen constantly and the log should carry only the reads the user
+// experiences as slow. After the task-639 memo a warm read is two os.Stat
+// freshness checks plus in-memory resolution, so a line here means something
+// regressed (snapshot reload, registry change, or disk stall).
+const effortBreakdownLogMs = 150
+
+// logEffortReadBreakdown emits the task-639 segment split for one effort read
+// (see currentProviderEntryForTab): reconcile vs config snapshot vs model
+// resolve. The stage tag matches the frontend's switch-tab ancillary batch
+// name so a "switch-tab:ancillary effort" timing line pairs with the Go-side
+// breakdown of the same read. snapshotReloaded distinguishes a warm snapshot
+// hit (false) from a full LoadForRoot the read had to pay (true).
+func logEffortReadBreakdown(tabID string, total, reconcile, snapshot, resolve time.Duration, snapshotReloaded bool) {
+	if total.Milliseconds() < effortBreakdownLogMs {
+		return
+	}
+	slog.Info("desktop: effort read breakdown",
+		"tab", tabID,
+		"stage", "switch-tab:ancillary effort",
+		"total_ms", total.Milliseconds(),
+		"reconcile_ms", reconcile.Milliseconds(),
+		"snapshot_ms", snapshot.Milliseconds(),
+		"resolve_ms", resolve.Milliseconds(),
+		"snapshot_reloaded", snapshotReloaded)
+}
+
 // effortCacheEntry is the last completed effort read for one tab, kept so a
 // timed-out re-fetch can serve the previous value instead of blanking the
 // control. Value semantics only: the next successful read overwrites it, and
