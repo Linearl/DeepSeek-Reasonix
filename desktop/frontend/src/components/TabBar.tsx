@@ -162,8 +162,10 @@ function tabMode(tab: TabMeta): Mode {
  * 优先级（高→低）：autopilot > yolo > auto > goal > plan。审批档位压过
  * 协作档位——用户点名的四档（询问/自动/YOLO/autopilot）以审批为轴；
  * autopilot 恒含 yolo 审批，是最自主的状态故居首。一签一色，四档各自
- * 色相可辨：询问=无色（基线）、自动=蓝、YOLO=红、autopilot=紫；
- * goal=青、plan=琥珀为协作档补充。模式全文仍由 hover title 承接。
+ * 色相可辨：询问=无色（基线）、自动=蓝、YOLO=红、autopilot=橙；
+ * goal=青、plan=紫为协作档补充（任务 614 语义色调映射，与模式条对齐：
+ * autopilot 原紫让位给 plan，改随 --mode-autopilot-* 橙）。模式全文仍由
+ * hover title 承接。
  */
 export type TabModeTint = "autopilot" | "yolo" | "auto" | "goal" | "plan";
 
@@ -593,8 +595,8 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
               <span className="tabbar__tab-label">{displayTitle}</span>
               {tab.isolatedWorktree && <WorktreeBadge size={11} />}
               {badgesVisible && planMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">plan</span>}
-              {badgesVisible && goalMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">goal</span>}
-              {badgesVisible && toolApprovalMode === "auto" && <span className="tabbar__mode-badge tabbar__mode-badge--plan">auto</span>}
+              {badgesVisible && goalMode && <span className="tabbar__mode-badge tabbar__mode-badge--goal">goal</span>}
+              {badgesVisible && toolApprovalMode === "auto" && <span className="tabbar__mode-badge tabbar__mode-badge--auto">auto</span>}
               {badgesVisible && toolApprovalMode === "yolo" && <span className="tabbar__mode-badge tabbar__mode-badge--yolo">yolo</span>}
               <span
                 className="tabbar__tab-close"

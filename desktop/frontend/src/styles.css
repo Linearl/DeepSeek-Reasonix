@@ -211,12 +211,21 @@
   --pill-yolo-border: var(--danger);
   --pill-yolo-border-hover: color-mix(in srgb, var(--danger) 90%, var(--fg));
   --pill-yolo-fg: var(--danger-fg);
+  /* 任务 614 权限四档语义色调（此处为暗背景默认值；亮背景在下方两块覆写）：
+     approval/ask=蓝·确认、yolo=红·警示、autopilot=橙·自治（595/614）、
+     plan=紫·规划；自动(auto)=绿为既有安全档补充，不在四档映射内；goal=青
+     为协作档补充。五组色相互异，徽章/标签/tint 各消费面对位取用。 */
   --mode-auto-bg: #2f6de8;
   --mode-auto-border: #3978f0;
   --mode-auto-fg: #fff;
-  --mode-plan-bg: var(--accent-soft);
-  --mode-plan-border: color-mix(in srgb, var(--accent) 32%, var(--border));
-  --mode-plan-fg: var(--accent);
+  /* 任务 614 权限四档语义色调：plan=紫（原借 accent 蓝，与 approval 蓝撞色）。
+     goal=青为协作档补充（原与 plan 共用徽章类，plan 转紫后拆分）。 */
+  --mode-plan-bg: rgba(139, 92, 246, 0.16);
+  --mode-plan-border: color-mix(in srgb, #a78bfa 36%, var(--border));
+  --mode-plan-fg: #a78bfa;
+  --mode-goal-bg: rgba(20, 184, 166, 0.16);
+  --mode-goal-border: color-mix(in srgb, #2dd4bf 36%, var(--border));
+  --mode-goal-fg: #2dd4bf;
   --mode-yolo-bg: #f04b52;
   --mode-yolo-border: #ff6268;
   --mode-yolo-fg: #fff;
@@ -416,9 +425,13 @@
     --mode-auto-bg: #2f5fa8;
     --mode-auto-border: #386dbb;
     --mode-auto-fg: #fff;
-    --mode-plan-bg: var(--accent-soft);
-    --mode-plan-border: color-mix(in srgb, var(--accent) 32%, var(--border));
-    --mode-plan-fg: var(--accent);
+    /* 614：plan=紫 / goal=青（亮背景值，语义映射见根块注释）。 */
+    --mode-plan-bg: rgba(124, 58, 237, 0.1);
+    --mode-plan-border: color-mix(in srgb, #7c3aed 32%, var(--border));
+    --mode-plan-fg: #7c3aed;
+    --mode-goal-bg: rgba(13, 148, 136, 0.12);
+    --mode-goal-border: color-mix(in srgb, #0f766e 32%, var(--border));
+    --mode-goal-fg: #0f766e;
     --mode-yolo-bg: #e5484d;
     --mode-yolo-border: #ed5d62;
     --mode-yolo-fg: #fff;
@@ -495,9 +508,13 @@
   --mode-auto-bg: #2f5fa8;
   --mode-auto-border: #386dbb;
   --mode-auto-fg: #fff;
-  --mode-plan-bg: var(--accent-soft);
-  --mode-plan-border: color-mix(in srgb, var(--accent) 32%, var(--border));
-  --mode-plan-fg: var(--accent);
+  /* 614：plan=紫 / goal=青（亮背景值，语义映射见根块注释）。 */
+  --mode-plan-bg: rgba(124, 58, 237, 0.1);
+  --mode-plan-border: color-mix(in srgb, #7c3aed 32%, var(--border));
+  --mode-plan-fg: #7c3aed;
+  --mode-goal-bg: rgba(13, 148, 136, 0.12);
+  --mode-goal-border: color-mix(in srgb, #0f766e 32%, var(--border));
+  --mode-goal-fg: #0f766e;
   --mode-yolo-bg: #e5484d;
   --mode-yolo-border: #ed5d62;
   --mode-yolo-fg: #fff;
@@ -26603,9 +26620,21 @@ body > .mermaid-diagram--fullscreen {
   background: var(--mode-yolo-bg);
 }
 
+/* 任务 614 徽章语义色调拆分：approval/auto=蓝、plan=紫、goal=青——
+   原三档共用 --plan 徽章类（accent 蓝底），plan 转紫后逐档对位。 */
 .tabbar__mode-badge--plan {
   color: var(--mode-plan-fg);
   background: var(--mode-plan-bg);
+}
+
+.tabbar__mode-badge--goal {
+  color: var(--mode-goal-fg);
+  background: var(--mode-goal-bg);
+}
+
+.tabbar__mode-badge--auto {
+  color: var(--mode-auto-fg);
+  background: var(--mode-auto-bg);
 }
 
 .tabbar__spacer {
@@ -44553,16 +44582,17 @@ body > .mermaid-diagram--fullscreen {
    tabModeTintFor：autopilot > yolo > auto > goal > plan，ask+normal
    默认态不着色），本段把档位映射为 ~30% 低透明底色，代替 plan/goal/
    auto/yolo 文本徽章（四档审批各自色相可辨：询问=无色基线、自动=蓝、
-   YOLO=红、autopilot=紫；goal=青、plan=琥珀为协作档补充）。选择器
-   统一带 .tabbar 前缀补特异性：底色 (0,4,0) 压过基础/darwin/native-tabs/
-   theme-style 的 base 面（≤0,3,0），hover/active 与各消费面最高特异性
-   持平、按源顺序（本段在文件末尾）压过。开关关闭时 data-mode-tint 不
-   存在，以下规则全部不命中 = 逐字节等价旧行为（铁律 2）。 */
-.tabbar .tabbar__tab[data-mode-tint="plan"] { --tab-tint-color: #b45309; }
+   YOLO=红、autopilot=橙；goal=青、plan=紫为协作档补充——614 语义
+   映射：autopilot 紫→橙与模式条对齐，plan 琥珀→紫让紫归 plan）。
+   选择器统一带 .tabbar 前缀补特异性：底色 (0,4,0) 压过基础/darwin/
+   native-tabs/theme-style 的 base 面（≤0,3,0），hover/active 与各消费
+   面最高特异性持平、按源顺序（本段在文件末尾）压过。开关关闭时
+   data-mode-tint 不存在，以下规则全部不命中 = 逐字节等价旧行为（铁律 2）。 */
+.tabbar .tabbar__tab[data-mode-tint="plan"] { --tab-tint-color: #7c3aed; }
 .tabbar .tabbar__tab[data-mode-tint="goal"] { --tab-tint-color: #0d9488; }
 .tabbar .tabbar__tab[data-mode-tint="auto"] { --tab-tint-color: var(--mode-auto-bg); }
 .tabbar .tabbar__tab[data-mode-tint="yolo"] { --tab-tint-color: var(--mode-yolo-bg); }
-.tabbar .tabbar__tab[data-mode-tint="autopilot"] { --tab-tint-color: #7c3aed; }
+.tabbar .tabbar__tab[data-mode-tint="autopilot"] { --tab-tint-color: var(--mode-autopilot-bg); }
 
 .tabbar .tabbar__tab[data-mode-tint]:not(.tabbar__tab--active) {
   background: color-mix(in srgb, var(--tab-tint-color) 30%, transparent);
