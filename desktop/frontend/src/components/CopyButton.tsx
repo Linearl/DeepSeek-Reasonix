@@ -60,18 +60,29 @@ export function CopyButton({
   className,
   label,
   showInlineLabel = true,
+  disabled = false,
+  disabledLabel,
 }: {
   text?: string;
   getText?: () => string | Promise<string>;
   className?: string;
   label?: string;
   showInlineLabel?: boolean;
+  /** Task 630: keep the copy entry mounted on textless turns and explain the
+   * empty payload instead, so the row's buttons don't appear and vanish. */
+  disabled?: boolean;
+  /** Tooltip shown while disabled (the reason nothing can be copied). */
+  disabledLabel?: string;
 }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<number | null>(null);
   const actionLabel = label ?? t("msg.copy");
-  const stateLabel = copied ? t("msg.copied") : actionLabel;
+  const stateLabel = disabled
+    ? (disabledLabel ?? actionLabel)
+    : copied
+      ? t("msg.copied")
+      : actionLabel;
 
   useEffect(() => {
     return () => {
@@ -80,6 +91,7 @@ export function CopyButton({
   }, []);
 
   const copy = async () => {
+    if (disabled) return;
     try {
       const value = getText ? await getText() : text ?? "";
       void writeClipboardText(value).catch(() => {});
@@ -101,8 +113,9 @@ export function CopyButton({
         className ?? "",
       ].filter(Boolean).join(" ")}
       onClick={copy}
+      disabled={disabled}
       aria-label={stateLabel}
-      title={actionLabel}
+      title={stateLabel}
       type="button"
     >
       {copied ? <Check size={13} /> : <Copy size={13} />}

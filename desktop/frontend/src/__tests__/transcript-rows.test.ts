@@ -296,6 +296,59 @@ const keys = (rows: TranscriptRow[]) => rows.map((row) => row.key).join(",");
   eq(action?.kind === "turn-actions" ? action.text : "missing", "", "checkpoint-only actions carry no empty copy payload");
 }
 
+{
+  // Task 630: a stream-interrupted turn (model connection failed) settles with
+  // no assistant text but a warn strip. The copy payload falls back to that
+  // diagnosis so the row mounts and the copy button carries real content —
+  // instead of a row where fork/rewind exist and copy silently vanished.
+  const interruptText = "最近一次模型连接失败：未知传输故障。如果反复出现，请检查供应商网关或网络代理设置。";
+  const models = buildTurnModels([
+    { kind: "user", id: "u-interrupt", text: "continue the task" },
+    { kind: "assistant", id: "a-interrupt", text: "", reasoning: "", streaming: false },
+    { kind: "notice", id: "n-interrupt", level: "warn", text: interruptText },
+  ]);
+  eq(models[0]?.actionText, interruptText, "stream-interrupted turn copies the warn diagnosis as its copy payload");
+
+  const rows = buildTranscriptRows(models, {
+    ...rowOptions(EMPTY_FOLDS),
+    turnForUser: (item: Extract<Item, { kind: "user" }>) => (item.id === "u-interrupt" ? 0 : undefined),
+  });
+  const action = rows.find((row) => row.kind === "turn-actions");
+  ok(Boolean(action), "stream-interrupted turn mounts the turn-actions row without needing a checkpoint");
+  eq(action?.kind === "turn-actions" ? action.text : "missing", interruptText, "the mounted copy entry carries the diagnosis text verbatim");
+}
+
+{
+  // The fallback never mixes notices into a turn that has real assistant
+  // output — copy stays the final markdown text.
+  const models = buildTurnModels([
+    { kind: "user", id: "u-answer", text: "ask" },
+    { kind: "notice", id: "n-answer", level: "warn", text: "careful warning" },
+    { kind: "assistant", id: "a-answer", text: "final answer", reasoning: "", streaming: false },
+  ]);
+  eq(models[0]?.actionText, "final answer", "a turn with assistant output keeps copy as the final text only");
+}
+
+{
+  // A warn notice with detail copies both lines, so the diagnosis survives.
+  const models = buildTurnModels([
+    { kind: "user", id: "u-detail", text: "go" },
+    { kind: "notice", id: "n-detail", level: "warn", text: "provider error", detail: "HTTP 402 quota exceeded" },
+  ]);
+  eq(models[0]?.actionText, "provider error\nHTTP 402 quota exceeded", "warn notice detail joins the copy payload");
+}
+
+{
+  // Info notices (steers, cancelled-turn hints) never leak into the copy
+  // payload of an otherwise textless turn.
+  const models = buildTurnModels([
+    { kind: "user", id: "u-info", text: "go" },
+    { kind: "notice", id: "n-info", level: "info", text: "↪ steer text" },
+    { kind: "notice", id: "n-info-cancelled", level: "info", text: "已取消该轮" },
+  ]);
+  eq(models[0]?.actionText, "", "info-only textless turns keep an empty copy payload (disabled button with reason)");
+}
+
 // ── Fold reconciliation ───────────────────────────────────────────────────────
 
 {

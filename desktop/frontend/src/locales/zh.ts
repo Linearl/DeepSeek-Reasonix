@@ -4111,6 +4111,7 @@ export const zh: Record<DictKey, string> = {
   "msg.foldCollapse": "收起",
   "turnActions.summary": "压缩",
   "turnActions.rewind": "回溯",
+  "turnActions.copyEmpty": "该回合没有文本可复制",
   "transcript.jumpToBottom": "跳到底部",
   "markdown.tableExpandAll": "展开全部 {n} 行",
   "markdown.tableCollapse": "收起表格",

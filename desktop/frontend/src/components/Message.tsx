@@ -842,6 +842,14 @@ export function TurnActions({
     return tipLabel ? <Tooltip key={scope} label={tipLabel} side="top" block fill>{button}</Tooltip> : button;
   };
   const forkDisabledReason = canAct ? actionDisabledReason("fork") : "";
+  // Task 630: the copy entry gates differently from fork/rewind. canAct asks
+  // "is there a checkpoint to fork/rewind to"; the row itself only mounts for
+  // settled turns that carry copyable text (assistant output, or the warn
+  // diagnosis fallback in buildTurnModels) or a checkpoint. So the copy button
+  // always renders inside a mounted row — a textless payload disables it with
+  // an explicit reason instead of silently vanishing from an otherwise
+  // identical action row.
+  const hasCopyText = text.trim() !== "";
   const toggleMenu = (menu: TurnActionMenu) => {
     setConfirmScope(null);
     onOpenMenu?.(openMenu === menu ? null : menu);
@@ -853,7 +861,12 @@ export function TurnActions({
   };
   return (
     <div className={`turn-actions${openMenu ? " turn-actions--open" : ""}${hoverMenus ? " turn-actions--hover-menu" : ""}`}>
-      {text.trim() && <CopyButton text={text} label={t("msg.copy")} />}
+      <CopyButton
+        text={hasCopyText ? text : undefined}
+        disabled={!hasCopyText}
+        disabledLabel={t("turnActions.copyEmpty")}
+        label={t("msg.copy")}
+      />
       {canAct && (
         <>
           <div

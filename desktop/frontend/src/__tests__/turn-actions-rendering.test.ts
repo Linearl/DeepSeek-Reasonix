@@ -32,8 +32,15 @@ ok(
 );
 
 ok(
-  messageSource.includes("text.trim() && <CopyButton text={text} label={t(\"msg.copy\")} />"),
-  "empty interrupted turns do not render a misleading empty copy action",
+  messageSource.includes('disabled={!hasCopyText}') &&
+    messageSource.includes('disabledLabel={t("turnActions.copyEmpty")}') &&
+    messageSource.includes("const hasCopyText = text.trim() !== \"\";"),
+  "task 630: the copy entry stays mounted on empty turns, disabled with an explicit reason",
+);
+
+ok(
+  !messageSource.includes("text.trim() && <CopyButton text={text} label={t(\"msg.copy\")} />"),
+  "task 630: an interrupted turn no longer loses the copy button while fork/rewind stay visible",
 );
 
 const creationTranscriptRule = styles.match(
