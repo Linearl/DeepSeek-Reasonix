@@ -195,13 +195,22 @@ func (c *Controller) fireWakeTurn() {
 	c.mu.Unlock()
 
 	parent := c.parentSessionID()
+	// Task 394: an autopilot session's wake round is a batch round opener —
+	// it carries the compact batch-context header when the dial is on. The
+	// header is a PREFIX, so IsBackgroundJobWakeTurnContent (a Contains check
+	// on the fixed prompt) still recognizes the turn; non-autopilot sessions
+	// get the prompt byte-for-byte as before.
+	wakePrompt := backgroundWakeTurnPrompt
+	if header := c.autopilotBatchContextHeader(); header != "" {
+		wakePrompt = header + "\n\n" + wakePrompt
+	}
 	admitted := c.runGuarded(func(ctx context.Context) error {
 		// Task 299 fence: bound inside the closure over the guard's fresh ctx
 		// (idempotent). The wake turn runs unattended — it must never reach the
 		// orchestrator with an unbound barrier.
 		ctx = c.withRecoveryFenceBindings(ctx)
 		return newTurnOrchestrator(c).runSyntheticTurnWithRawDisplay(
-			ctx, backgroundWakeTurnPrompt, backgroundWakeTurnPrompt, backgroundWakeTurnDisplay)
+			ctx, wakePrompt, wakePrompt, backgroundWakeTurnDisplay)
 	})
 	switch admitted {
 	case turnStarted:
