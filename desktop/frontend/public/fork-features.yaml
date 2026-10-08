@@ -71,9 +71,9 @@ groups:
     features:
       - id: sandboxSwitches
         icon: "🔐"
-        title: 沙箱页开关群
-        desc: 乐观并行、快捷指令、完全访问、写目录授权集中在沙箱页。
-        how: 设置 → 沙箱与权限。
+        title: 沙箱与工作区
+        desc: Bash 沙箱模式、网络放行、工作区根与可写根集中在一页；沙箱只界定“能写到哪”，不自动批准命令。
+        how: 设置 → 安全与控制 → 沙箱。
 
 # 任务 563 — lab picks wall copy (xlsx 表B「实验室特性-档位与图墙-20261006」
 # 第 6/7 列逐字收录；which picks exist is decided in code — lib/experimentTiers
