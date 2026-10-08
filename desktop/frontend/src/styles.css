@@ -24532,6 +24532,33 @@ body > .mermaid-diagram--fullscreen {
   color: #8a8aa3;
   font-size: 12px;
 }
+.crash-overlay__analyze,
+.performance-report__analyze {
+  padding: 6px 12px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background: #2a2a40;
+  color: inherit;
+}
+.crash-overlay__analyze[disabled],
+.performance-report__analyze[disabled] {
+  opacity: 0.65;
+}
+.crash-overlay__analysis,
+.performance-report__analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #ffd28a;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.crash-overlay__analysis span:last-child,
+.performance-report__analysis span:last-child {
+  display: flex;
+  gap: 8px;
+}
 
 #performance-report-prompt {
   position: fixed;

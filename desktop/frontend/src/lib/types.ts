@@ -1773,6 +1773,18 @@ export interface CrashPendingDiagnosticsReport {
   atCapacity: boolean;
 }
 
+/** One-click analysis prerequisite probes from App.CrashAnalysisAvailability
+ * (task 617 route B). Each failed flag maps to one distinct user notice;
+ * StartCrashAnalysis re-checks all of them before starting. */
+export interface CrashAnalysisAvailabilityReport {
+  sourceReady: boolean;
+  sourceDir?: string;
+  ghAuthenticated: boolean;
+  ghCheckDetail?: string;
+  workspaceReady: boolean;
+  ready: boolean;
+}
+
 /** Extension runtime doctor report from App.RuntimeDoctor. */
 export interface RuntimeDoctorReport {
   text: string;
