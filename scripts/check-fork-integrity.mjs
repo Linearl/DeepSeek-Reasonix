@@ -1362,15 +1362,18 @@ const CHECKS = [
   { feature: "598 截断 10 秒三语 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["偵測到滑鼠操作後 10 秒截斷"] },
   { feature: "598 截断 10 秒三语 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["Cut 10 seconds after pointer activity"] },
 
-  // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役，表A 46 项）──
+  // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役；621 修正计数 46→48）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },
   { feature: "任务562 门禁测试（新增实验项不标档位⇒失败 + 表A 计数钉）", file: "internal/config/render_lab_tiers_test.go", patterns: ["TestLabRenderKeysAllTaggedWithTier", "TestLabFeatureTierCountsMatchTableA", "门禁失败（任务562）"] },
-  { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 10", "LAB_WALL_PICKS", "railTiersFor"] },
-  { feature: "任务562 徽章组件（纯展示）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "lab-tier-badge--"] },
+  { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 12", "LAB_WALL_PICKS", "railTiersFor"] },
+  { feature: "任务562 徽章组件（纯展示；621 加档位 tooltip）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "LAB_TIER_DESC_KEYS", "title={t(LAB_TIER_DESC_KEYS[tier])}", "lab-tier-badge--"] },
   { feature: "任务562 设置页 rail+成员开关接线", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["railTiersFor(feature.id).map((tier) => (", "labLabel(\"autopilot\"", "labLabel(\"modelCapabilityFilter\""] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/20/10/1", "identical feature ids", "registers agree on every tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/20/12/1", "config-only exemption", "retired-display exemption", "agree on every shared tier"] },
+  // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
+  { feature: "任务621 徽章只挂主控开关行（pane 每特性恰一枚：去重 monitoring/budgetControl/compressOpt/messageMerge 兄弟行 + 补挂 tabModeTint）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.coldCacheCompact\")}", "label={t(\"settings.collabGuidanceMerge\")}", "label={t(\"settings.perfMonitor\")}", "labLabel(\"tabModeTint\""] },
+  { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },
   // 任务 468：高速模型 UI 接线（318 收尾）。三处缺口各一道锚：render 渲染行
   // （缺了 = 手写配置被保存抹掉）、provider 级 setter、弹框勾选草稿链。
   { feature: "468 render 渲染行（full + project delta 双路径）", file: "internal/config/render.go", patterns: ["high_speed_models = %s", "len(p.HighSpeedModels) > 0"] },
