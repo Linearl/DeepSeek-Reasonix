@@ -1718,6 +1718,8 @@ function statusBarItemLabel(id: StatusBarItemId, t: ReturnType<typeof useT>): st
       return t("status.costLabel");
     case "balance":
       return t("status.balanceLabel");
+    case "mcp":
+      return t("settings.statusBarItem.mcp");
   }
 }
 

@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
+import { Activity, CircleAlert, CircleDollarSign, CircleGauge, Database, FileOutput, Folder, Gauge, GitBranch, HardDrive, Layers, Percent, Puzzle, RefreshCw, RotateCw, Server, Settings, Square, Unplug, Wallet, Zap } from "lucide-react";
 import { labFlagEnabled } from "../lib/labFlags";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { RemoteConnectionErrorDialog } from "./RemoteConnectionErrorDialog";
 import { Tooltip } from "./Tooltip";
 import { contextWindowPercentages } from "../lib/contextWindow";
 import { useI18n, type Translator } from "../lib/i18n";
+import { summarizeMcpServers, type McpStatusSummary } from "../lib/mcpStatus";
 import { formatMoneyLocalized } from "../lib/money";
 import { normalizeStatusBarItems, type StatusBarItemId } from "../lib/statusBarItems";
 import { appendRateBand, rateBandLabel } from "../lib/costRateBand";
 import { isRemoteDegradedWarning, isRemoteHostKeyMismatch, isRemoteTerminalFailure, remoteConnectionErrorSummaryKey } from "../lib/remoteErrors";
 import type { ExtensionStatusEntry } from "../lib/useController";
 import { type BackgroundRuntimeView, type BalanceInfo, type ContextInfo, type JobView, type RemoteConnectionStatus, type RemoteHostView, type UsageSourceStats, type WireUsage } from "../lib/types";
+import { useMcpStatusStore } from "../store/mcpStatus";
 import { useRemoteStore } from "../store/remote";
 
 type StatusBarLabelStyle = "icon" | "text";
@@ -188,6 +190,7 @@ export function StatusBar({
   onManageRemote,
   onOpenRemote,
   onOpenRemoteWorkspace,
+  onOpenMcp,
   remoteHosts = [],
   remoteStatuses = {},
   jobs = [],
@@ -227,6 +230,8 @@ export function StatusBar({
   onRestartUpdate?: () => void;
   onOpenRemote?: (hostId: string) => void;
   onOpenRemoteWorkspace?: (host: RemoteHostView) => void;
+  // Task 559: opens the MCP management page when the failed-MCP chip is clicked.
+  onOpenMcp?: () => void;
   remoteHosts?: RemoteHostView[];
   remoteStatuses?: Record<string, RemoteConnectionStatus>;
   jobs?: JobView[];
@@ -294,6 +299,11 @@ export function StatusBar({
   const hasCacheTokens = typeof cacheHit === "number" || typeof cacheMiss === "number";
   const metricLabelStyle = labelStyle === "text" ? "text" : "icon";
   const visibleItems = normalizeStatusBarItems(items);
+  // Task 559: the MCP chip renders only while the fleet is not fully settled.
+  // The null must happen at this record level — an element is always truthy, so
+  // a null returned INSIDE the component would still leave an empty wrapper.
+  const mcpServers = useMcpStatusStore((state) => state.servers);
+  const mcpSummary = summarizeMcpServers(mcpServers);
   const cacheTooltip = sourceCacheTooltip(t, t("status.cacheTitle"), context);
   const avgCacheTooltip = sourceCacheTooltip(t, t("status.cacheAvgTitle"), context);
   const itemRenderers: Record<StatusBarItemId, ReactNode> = {
@@ -424,6 +434,7 @@ export function StatusBar({
         </span>
       </Tooltip>
     ),
+    mcp: mcpSummary.state === "hidden" ? null : <McpStatusBarItem summary={mcpSummary} onOpen={onOpenMcp} />,
   };
   const renderedItems = visibleItems
     .map((id) => ({ id, node: itemRenderers[id] }))
@@ -522,6 +533,51 @@ function ExtensionStatusBarChips({ statuses }: { statuses: ExtensionStatusEntry[
         );
       })}
     </>
+  );
+}
+
+// Task 559: MCP connection chip body — mounted only while the fleet is not
+// fully settled: a spinner with "连接中 n/N" while servers are connecting, a
+// clickable ⚠ "MCP 失败 m" entry when any failed. Whether to render at all is
+// decided in StatusBar's item record (hidden when everything is connected).
+function McpStatusBarItem({ summary, onOpen }: { summary: McpStatusSummary & { state: "connecting" | "failed" }; onOpen?: () => void }) {
+  const { t } = useI18n();
+  const refresh = useMcpStatusStore((state) => state.refresh);
+  // Controlled refresh: a fixed cadence only while the chip is visible
+  // (connecting polls faster than a failed fleet). Nothing polls per
+  // conversation turn; the store additionally floors overlapping re-reads.
+  const pollMs = summary.state === "connecting" ? 2500 : 10000;
+  useEffect(() => {
+    void refresh();
+    const id = window.setInterval(() => void refresh(), pollMs);
+    return () => window.clearInterval(id);
+  }, [pollMs, refresh]);
+  if (summary.state === "failed") {
+    const title = t("status.mcpFailedTitle");
+    return (
+      <Tooltip label={title} className="statusbar__metric">
+        <button
+          type="button"
+          className="stat statusbar__mcp statusbar__mcp--failed"
+          onClick={onOpen}
+          disabled={!onOpen}
+          aria-label={title}
+          title={title}
+        >
+          <CircleAlert size={12} aria-hidden="true" />
+          <b>{t("status.mcpFailed", { count: summary.failed })}</b>
+        </button>
+      </Tooltip>
+    );
+  }
+  const connectingTitle = t("status.mcpConnectingTitle", { connected: summary.connected, total: summary.total });
+  return (
+    <Tooltip label={connectingTitle} className="statusbar__metric">
+      <span className="stat statusbar__mcp" title={connectingTitle}>
+        <RefreshCw size={12} aria-hidden="true" className="statusbar__mcp-spinner" />
+        <b>{t("status.mcpConnecting", { connecting: summary.connecting, total: summary.total })}</b>
+      </span>
+    </Tooltip>
   );
 }
 

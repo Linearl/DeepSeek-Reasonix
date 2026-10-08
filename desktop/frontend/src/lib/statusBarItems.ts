@@ -13,6 +13,10 @@ export const STATUS_BAR_ITEM_IDS = [
   "compact",
   "cost",
   "balance",
+  // Task 559: MCP connection state joins the managed items. Appended so saved
+  // preference lists keep their order; the chip itself stays hidden while the
+  // MCP fleet is fully settled, so a default-on entry adds no standing noise.
+  "mcp",
 ] as const;
 
 export type StatusBarItemId = typeof STATUS_BAR_ITEM_IDS[number];

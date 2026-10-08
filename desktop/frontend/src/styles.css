@@ -9793,6 +9793,47 @@ body > .mermaid-diagram--fullscreen {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Task 559: MCP connection chip — a plain read-only span while connecting, a
+   clickable button when the fleet has failures. */
+.statusbar__mcp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+.statusbar__mcp b {
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+button.statusbar__mcp {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+}
+button.statusbar__mcp:hover,
+button.statusbar__mcp:focus-visible {
+  color: var(--warn);
+}
+.statusbar__mcp--failed,
+.statusbar__mcp--failed b {
+  color: var(--warn);
+}
+.statusbar__mcp-spinner {
+  color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .statusbar__mcp-spinner {
+    animation: none;
+  }
+}
 .jobs-popover {
   width: min(360px, calc(100vw - 16px));
   padding: 8px;

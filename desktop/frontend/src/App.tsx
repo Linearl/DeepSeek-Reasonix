@@ -5947,6 +5947,7 @@ export default function App() {
             onConnectRemote={connectAndOpenRemoteWorkspace}
             onDisconnectRemote={(hostId) => void app.DisconnectRemoteHost(hostId).catch(() => {})}
             onManageRemote={() => setSettingsTarget("remote")}
+            onOpenMcp={() => setSettingsTarget("mcp")}
             onOpenRemote={requestRemoteExplorer}
             onOpenRemoteWorkspace={openRemoteWorkspaceFromStatus}
             remoteHosts={remoteHosts}
