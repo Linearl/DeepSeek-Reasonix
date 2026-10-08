@@ -9,10 +9,12 @@
 //  ③ M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
 //     fullAccess / optimisticParallel each still has its own rail entry and
 //     its own pane branch;
-//  ④ the rail carries exactly 36 entries in 7 groups
-//     (6/7/14/1/1/1/6); the 11 folded member ids are gone from the union,
-//     and task 504 adds tabModeTint to the ui group (36th entry).
-//     the features array and the pane branches.
+//  ④ the rail carries exactly 36 entries in 8 groups
+//     (6/6/14/1/1/1/6/1 — 任务 517 merges the M1 autonomousRunGuard card and
+//     the standalone eventWaitRecheck entry into the single-key
+//     safetyCostControl card, so efficiency drops 7→6); the 11 folded member
+//     ids are gone from the union, and task 504 adds tabModeTint to the ui
+//     group. the features array and the pane branches.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -49,27 +51,26 @@ ok(
 ok(panel.includes('labelKey: "settings.labGroup.automation"') && panel.includes('labelKey: "settings.labGroup.infra"'),
   "new groups carry locale label keys");
 
-// ① rail census: exactly 37 feature entries, 6/7/14/1/1/1/6/1 per group
-// (任务 603 adds the single tool-opt entry after the 561 audit table).
+// ① rail census: exactly 36 feature entries, 6/6/14/1/1/1/6/1 per group
+// (任务 603 adds the single tool-opt entry; 任务 517 folds the M1 card and
+// eventWaitRecheck into safetyCostControl — automation stays 6, efficiency 7→6).
 {
   const entries = [...panel.matchAll(/\{ id: "([a-zA-Z]+)", group: "([a-z-]+)",/g)];
   const groups: Record<string, number> = {};
   for (const [, , g] of entries) groups[g] = (groups[g] ?? 0) + 1;
-  ok(entries.length === 37, `rail carries exactly 37 entries (got ${entries.length})`);
-  ok(groups["automation"] === 6 && groups["efficiency"] === 7 && groups["ui"] === 14 &&
+  ok(entries.length === 36, `rail carries exactly 36 entries (got ${entries.length})`);
+  ok(groups["automation"] === 6 && groups["efficiency"] === 6 && groups["ui"] === 14 &&
      groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 1 && groups["infra"] === 6 &&
      groups["tool-opt"] === 1,
-    `group counts are 6/7/13/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 6/6/14/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
   const ids = entries.map(([, id]) => id);
   ok(new Set(ids).size === ids.length, "no duplicate rail ids");
 }
 
 // ② merged cards — per-member read+write independence.
+// 任务 517：M1 autonomousRunGuard 卡不复存在——B1/B2/B3 合并为单键卡
+// safetyCostControl（键级合并，非入口级），卡内唯一可写面是总开关。
 const families: Array<{ id: string; endMarker: string; members: Array<{ label: string; field: string; setter: string }> }> = [
-  { id: "autonomousRunGuard", endMarker: '{selected === "sessionCollab" && (', members: [
-    { label: "M1 autonomousIdleTerminate", field: "s.experimentalAutonomousIdleTerminate", setter: "app.SetExperimentalAutonomousIdleTerminate(on)" },
-    { label: "M1 loopStreakNote", field: "s.experimentalLoopStreakNote", setter: "app.SetExperimentalLoopStreakNote(on)" },
-  ] },
   { id: "modelStrategy", endMarker: '{selected === "contextGovernance" && (', members: [
     { label: "M2 highSpeedModel", field: "s.experimentalHighSpeedModel", setter: "app.SetExperimentalHighSpeedModel(on)" },
   ] },
@@ -151,13 +152,15 @@ for (const id of [
   "subagentPanel", "subagentDetail", "subagentPolicy", "subagentTps",
   "cdpDebugPort", "lifecycleNoiseGate", "restartUpdate", "feedback",
   "sessionStorage", "eventsRotation",
+  // 任务 517：eventWaitRecheck 并入 safetyCostControl，autonomousRunGuard 卡消亡。
+  "eventWaitRecheck",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);
   ok(!panel.includes(`{selected === "${id}" &&`), `pane drops the folded ${id} branch`);
 }
 for (const id of [
-  "autonomousRunGuard", "modelStrategy", "contextGovernance", "subagentSuite",
+  "safetyCostControl", "modelStrategy", "contextGovernance", "subagentSuite",
   "devDebug", "updateFeedback", "sessionStore",
 ]) {
   ok(panel.includes(`| "${id}"`), `union gains the family id ${id}`);
@@ -167,8 +170,8 @@ for (const id of [
 //    panel (render-table discipline — a setter without a call site would be a
 //    silent lost-save).
 for (const setter of [
-  "app.SetExperimentalAutonomousIdleTerminate(on)",
-  "app.SetExperimentalLoopStreakNote(on)",
+  // 任务 517：B1/B2/B3 三个旧 setter 撤销，写路径并入 SetExperimentalSafetyCostControl。
+  "app.SetExperimentalSafetyCostControl(on)",
   "app.SetExperimentalHighSpeedModel(on)",
   "app.SetExperimentalCompactionParallel(on)",
   "app.SetExperimentalContextBudget(on)",

@@ -40,15 +40,9 @@ var labMirrorCases = []struct {
 	{"experimental_heap_high_profile", "experimental_heap_high_profile",
 		func(c *Config) *bool { return &c.Agent.ExperimentalHeapHighProfile },
 		func(c *Config) *bool { return &c.Desktop.ExperimentalHeapHighProfile }},
-	{"experimental_autonomous_idle_terminate", "experimental_autonomous_idle_terminate",
-		func(c *Config) *bool { return &c.Agent.ExperimentalAutonomousIdleTerminate },
-		func(c *Config) *bool { return &c.Desktop.ExperimentalAutonomousIdleTerminate }},
-	{"experimental_loop_streak_note", "experimental_loop_streak_note",
-		func(c *Config) *bool { return &c.Agent.ExperimentalLoopStreakNote },
-		func(c *Config) *bool { return &c.Desktop.ExperimentalLoopStreakNote }},
-	{"experimental_event_wait_recheck", "experimental_event_wait_recheck",
-		func(c *Config) *bool { return &c.Agent.ExperimentalEventWaitRecheck },
-		func(c *Config) *bool { return &c.Desktop.ExperimentalEventWaitRecheck }},
+	// 任务 517：B1/B2/B3 三个镜像键已随合并迁入 experimental_safety_cost_control
+	// （fold → migrateSafetyCostControlMerge），不再作为独立镜像用例——
+	// 迁移语义由 safety_cost_control_merge_test.go 覆盖。
 	{"experimental_orphan_handling", "experimental_orphan_handling",
 		func(c *Config) *bool { return &c.Agent.ExperimentalOrphanHandling },
 		func(c *Config) *bool { return &c.Desktop.ExperimentalOrphanHandling }},
@@ -294,15 +288,8 @@ func TestLabMirrorSettersSingleWrite(t *testing.T) {
 		{"SetExperimentalHeapHighProfile", c.SetExperimentalHeapHighProfile,
 			func() bool { return c.Agent.ExperimentalHeapHighProfile },
 			func() bool { return c.Desktop.ExperimentalHeapHighProfile }},
-		{"SetExperimentalAutonomousIdleTerminate", c.SetExperimentalAutonomousIdleTerminate,
-			func() bool { return c.Agent.ExperimentalAutonomousIdleTerminate },
-			func() bool { return c.Desktop.ExperimentalAutonomousIdleTerminate }},
-		{"SetExperimentalLoopStreakNote", c.SetExperimentalLoopStreakNote,
-			func() bool { return c.Agent.ExperimentalLoopStreakNote },
-			func() bool { return c.Desktop.ExperimentalLoopStreakNote }},
-		{"SetExperimentalEventWaitRecheck", c.SetExperimentalEventWaitRecheck,
-			func() bool { return c.Agent.ExperimentalEventWaitRecheck },
-			func() bool { return c.Desktop.ExperimentalEventWaitRecheck }},
+		// 任务 517：B1/B2/B3 三个 setter 撤销，写路径并入 SetExperimentalSafetyCostControl
+		// （safety_cost_control_merge_test.go 覆盖）。
 		{"SetExperimentalOrphanHandling", c.SetExperimentalOrphanHandling,
 			func() bool { return c.Agent.ExperimentalOrphanHandling },
 			func() bool { return c.Desktop.ExperimentalOrphanHandling }},

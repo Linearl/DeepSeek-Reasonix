@@ -1162,9 +1162,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   HeapBreakdownPath(): Promise<string>;
   // Task 19: multi-session collaboration tools (experimental).
   SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
-  SetExperimentalAutonomousIdleTerminate(enabled: boolean): Promise<void>;
-  SetExperimentalLoopStreakNote(enabled: boolean): Promise<void>;
-  SetExperimentalEventWaitRecheck(enabled: boolean): Promise<void>;
+  // 任务 517: merged safety/cost switch (one knob for task-244 B1/B2/B3).
+  SetExperimentalSafetyCostControl(enabled: boolean): Promise<void>;
   // Task 449: the merged orphan switch (folds task 244 B5 lease reclaim +
   // B4 recovery sweep). The two pre-449 setters stay declared because the
   // generated bindings still export them; both delegate to the merged key.
@@ -5712,9 +5711,7 @@ function makeMockApp(): AppBindings {
     },
     async HeapBreakdownPath() { return ""; },
     async SetExperimentalSessionCollab() {},
-    async SetExperimentalAutonomousIdleTerminate() {},
-    async SetExperimentalLoopStreakNote() {},
-    async SetExperimentalEventWaitRecheck() {},
+    async SetExperimentalSafetyCostControl() {},
     async SetExperimentalOrphanHandling() {},
     async SetExperimentalOrphanLeaseReclaim() {},
     async SetExperimentalRecoveryOrphanSweep() {},

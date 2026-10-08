@@ -180,12 +180,9 @@ export interface SettingsView {
   coldCacheCompactIdleMinutes?: number;
   // Task 19: multi-session collaboration experiment.
   experimentalSessionCollab?: boolean;
-  // Task 244 B1: heartbeat idle-streak burn guard.
-  experimentalAutonomousIdleTerminate?: boolean;
-  // Task 244 B2: bounded neutral Continue. note on repeated text loops.
-  experimentalLoopStreakNote?: boolean;
-  // Task 244 B3: event_wait return-time recheck.
-  experimentalEventWaitRecheck?: boolean;
+  // 任务 517: merged safety/cost switch (one「安全 / 成本控制」knob for the
+  // task-244 B1/B2/B3 guards).
+  experimentalSafetyCostControl?: boolean;
   // Task 449: merged orphan switch (folds task 244 B5 lease reclaim + B4
   // recovery sweep into one key).
   experimentalOrphanHandling?: boolean;

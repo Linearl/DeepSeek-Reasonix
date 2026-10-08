@@ -363,6 +363,20 @@ const CHECKS = [
   { feature: "任务449 实验室孤儿开关合并（新键渲染）", file: "internal/config/render.go", patterns: ["experimental_orphan_handling"] },
   { feature: "任务449 实验室孤儿开关合并（旧键迁移）", file: "internal/config/load.go", patterns: ["migrateOrphanHandlingMerge"] },
   { feature: "任务449 实验室孤儿开关合并（实验室单条 UI）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["orphanHandling", "SetExperimentalOrphanHandling"] },
+  // ── 任务 517：「安全 / 成本控制」三开关合并（2026-10-09）────────────
+  // B1/B2/B3 合并为单键 experimental_safety_cost_control（449 先例）：
+  // legacy 键降 read-only 仍渲染（迁移后读 false），迁移 union 语义任一
+  // legacy true ⇒ 合并键开；三个运行时门（B1 心跳/B2 循环/B3 事件复查）
+  // 全部读合并键。丢任一半边即报警。
+  { feature: "任务517 安全/成本控制合并键（配置字段）", file: "internal/config/config.go", patterns: ["experimental_safety_cost_control", "migrateSafetyCostControlMerge"] },
+  { feature: "任务517 安全/成本控制合并键（union 迁移）", file: "internal/config/load.go", patterns: ["func migrateSafetyCostControlMerge", "migrateSafetyCostControlMerge(cfg)"] },
+  { feature: "任务517 安全/成本控制合并键（渲染面 + legacy 三行）", file: "internal/config/render.go", patterns: ["experimental_safety_cost_control = %v", "legacy key, migrated into experimental_safety_cost_control (task 517)"] },
+  { feature: "任务517 三个运行时门读合并键（B1 心跳/B2 循环/B3 事件复查）", file: "internal/boot/boot.go", patterns: ["LoopStreakNote:     cfg.Agent.ExperimentalSafetyCostControl", "EventWaitRecheck:  cfg.Agent.ExperimentalSafetyCostControl"] },
+  { feature: "任务517 B1 心跳门读合并键（call-time 评估）", file: "desktop/app.go", patterns: ["cfg.Agent.ExperimentalSafetyCostControl"] },
+  { feature: "任务517 实验室单卡 UI（总开关+三子态行）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["safetyCostControl", "SetExperimentalSafetyCostControl", "settings.safetyCostControl.memberState"] },
+  { feature: "任务517 档位注册表单键化（48→46）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["safetyCostControl: \"optional\""] },
+  { feature: "任务517 三语文案（总开关+子项说明）", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"settings.safetyCostControl\": \"安全 / 成本控制\"", "settings.safetyCostControlHint"] },
+  { feature: "任务517 迁移语义测试", file: "internal/config/safety_cost_control_merge_test.go", patterns: ["TestSafetyCostControlMergeFoldsLegacyAgentTrues", "TestSafetyCostControlAllOffStaysOff"] },
   { feature: "任务244 B6 工具并发分级表文档化", file: "internal/agent/execute_batch.go", patterns: ["task 244 B6", "admission table", "no FIFO queue"] },
   { feature: "任务244 B7 心跳等待阈值推导注释", file: "desktop/heartbeat.go", patterns: ["task 244 B7: threshold-derivation note", "43,120"] },
   { feature: "任务244 B7 heldBy 方向语义注释", file: "internal/servepool/servepool.go", patterns: ["never route into a corpse", "experimental_orphan_lease_reclaim"] },
@@ -1028,7 +1042,7 @@ const CHECKS = [
   // 缺一，开关就「看得见配置改不了」或「改了读不回」。
   { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅；任务561 misc→infra）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "{ id: \"baseProcess\", group: \"infra\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
   { feature: "S1 开关桥接线（接口声明+mock 桩）", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["SetExperimentalBaseProcess(enabled: boolean): Promise<void>;", "async SetExperimentalBaseProcess() {}"] },
-  { feature: "S1 开关 Go 侧读写链（setter+视图字段）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess"] },
+  { feature: "S1 开关 Go 侧读写链（setter+视图字段；517 合并键收窄对齐列后锚随 gofmt 对齐更新）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:       cfg.Agent.ExperimentalBaseProcess"] },
   // ── 任务 451：history 慢分相打点 + planner/尾读缓存（2026-10-02）──────
   // 打点件是验收基建（phases 一行可 grep 重建）；A 缓存三道闸（校验命中 /
   // 写侧失效 / 单飞+上限）与 C 单飞都要在 merge 后存活，否则 planner-turns
@@ -1428,7 +1442,7 @@ const CHECKS = [
   { feature: "任务562 设置页 rail+成员开关接线", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["railTiersFor(feature.id).map((tier) => (", "labLabel(\"autopilot\"", "labLabel(\"modelCapabilityFilter\""] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/20/12/1", "config-only exemption", "retired-display exemption", "agree on every shared tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数 15/18/12/1）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/18/12/1", "config-only exemption", "retired-display exemption", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（pane 每特性恰一枚：去重 monitoring/budgetControl/compressOpt/messageMerge 兄弟行 + 补挂 tabModeTint）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.coldCacheCompact\")}", "label={t(\"settings.collabGuidanceMerge\")}", "label={t(\"settings.perfMonitor\")}", "labLabel(\"tabModeTint\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },

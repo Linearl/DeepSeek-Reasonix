@@ -133,8 +133,9 @@ console.log("\ntask 563 lab picks wall");
   const grown = { ...EXPERIMENT_FEATURE_TIERS, demoFutureSwitch: "recommended" } as
     Readonly<Record<TierFeatureId | "demoFutureSwitch", LabTier>>;
   // 任务 603 grew the register to 47 (toolOptimizations); 任务 621 added
-  // tabModeTint (504, Go-side tier all along) → 48; +1 simulated = 49.
-  ok(Object.keys(grown).length === 49 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
+  // tabModeTint (504, Go-side tier all along) → 48; 任务 517 merged the three
+  // B-group ids into safetyCostControl → 46; +1 simulated = 47.
+  ok(Object.keys(grown).length === 47 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
     "simulated new tier item is absent from LAB_WALL_PICKS");
   ok(LAB_WALL_PICKS.every((id) => Object.prototype.hasOwnProperty.call(EXPERIMENT_FEATURE_TIERS, id)),
     "every wall pick is a registered tier item (no orphans)");

@@ -2530,12 +2530,8 @@ export interface DesktopStartupSettingsView {
   experimentalDream?: boolean;
   /** multi-session collaboration experiment (task 19); off unless the user opts in. */
   experimentalSessionCollab?: boolean;
-  /** heartbeat idle-streak burn guard (task 244 B1); off unless the user opts in. */
-  experimentalAutonomousIdleTerminate?: boolean;
-  /** bounded neutral Continue. note on repeated text loops (task 244 B2); off unless the user opts in. */
-  experimentalLoopStreakNote?: boolean;
-  /** event_wait return-time recheck (task 244 B3); off unless the user opts in. */
-  experimentalEventWaitRecheck?: boolean;
+  /** merged safety/cost switch (task 517; one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards); off unless the user opts in. */
+  experimentalSafetyCostControl?: boolean;
   /** merged orphan switch (task 449; folds task 244 B5 lease reclaim + B4 recovery sweep); off unless the user opts in. */
   experimentalOrphanHandling?: boolean;
   /** Task 363A: reuse the runtime assembly across same-config tabs instead of full rebuild; off unless the user opts in. */

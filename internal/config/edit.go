@@ -1214,29 +1214,19 @@ func (c *Config) SetExperimentalSessionCollab(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalAutonomousIdleTerminate toggles the heartbeat idle-streak
-// self-terminate guard (task 244 B1). Single-writes the [agent] key
-// (task 473); the [desktop] mirror is retired and only cleared here.
-func (c *Config) SetExperimentalAutonomousIdleTerminate(enabled bool) error {
-	c.Agent.ExperimentalAutonomousIdleTerminate = enabled
+// SetExperimentalSafetyCostControl toggles the merged unattended-safety
+// switch (task 517): one「安全 / 成本控制」knob for all three task-244 B-group
+// guards (B1 heartbeat idle self-terminate, B2 loop neutral continue note,
+// B3 event-wait return-time recheck). Single-writes the [agent] key; the
+// legacy B1/B2/B3 keys and their retired [desktop] mirrors are only cleared
+// here, so a save never resurrects a folded legacy true.
+func (c *Config) SetExperimentalSafetyCostControl(enabled bool) error {
+	c.Agent.ExperimentalSafetyCostControl = enabled
+	c.Agent.ExperimentalAutonomousIdleTerminate = false
+	c.Agent.ExperimentalLoopStreakNote = false
+	c.Agent.ExperimentalEventWaitRecheck = false
 	c.Desktop.ExperimentalAutonomousIdleTerminate = false
-	return nil
-}
-
-// SetExperimentalLoopStreakNote toggles the neutral Continue. streak note
-// (task 244 B2). Single-writes the [agent] key (task 473); the [desktop]
-// mirror is retired and only cleared here.
-func (c *Config) SetExperimentalLoopStreakNote(enabled bool) error {
-	c.Agent.ExperimentalLoopStreakNote = enabled
 	c.Desktop.ExperimentalLoopStreakNote = false
-	return nil
-}
-
-// SetExperimentalEventWaitRecheck toggles event_wait's return-time recheck
-// (task 244 B3). Single-writes the [agent] key (task 473); the [desktop]
-// mirror is retired and only cleared here.
-func (c *Config) SetExperimentalEventWaitRecheck(enabled bool) error {
-	c.Agent.ExperimentalEventWaitRecheck = enabled
 	c.Desktop.ExperimentalEventWaitRecheck = false
 	return nil
 }

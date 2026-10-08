@@ -27,8 +27,9 @@ export type TierFeatureId =
   | "fullAccess"
   | "optimisticParallel"
   | "dream"
-  | "autonomousIdleTerminate"
-  | "loopStreakNote"
+  // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
+  // loopStreakNote 与 standalone eventWaitRecheck 三个表A id → 一个 id）。
+  | "safetyCostControl"
   | "subagentPolicy"
   | "budgetControl"
   | "compressOpt"
@@ -37,7 +38,6 @@ export type TierFeatureId =
   | "highSpeedModel"
   | "compactionParallel"
   | "traceAsState"
-  | "eventWaitRecheck"
   | "outputStyle"
   | "cacheTuning"
   | "tabCompress"
@@ -73,16 +73,15 @@ export type TierFeatureId =
   | "toolOptimizations";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
-  // ── automation（自动化，8 项）────────────────────────────────
+  // ── automation（自动化，7 项；任务 517 B1+B2 并入 safetyCostControl）──
   autopilot: "recommended",
   sessionCollab: "recommended",
   fullAccess: "recommended",
   optimisticParallel: "recommended",
   dream: "optional",
-  autonomousIdleTerminate: "optional",
-  loopStreakNote: "optional",
+  safetyCostControl: "optional",
   subagentPolicy: "unstable",
-  // ── efficiency（提效，10 项）─────────────────────────────────
+  // ── efficiency（提效，9 项；任务 517 B3 并入 safetyCostControl）─────
   budgetControl: "recommended",
   compressOpt: "recommended",
   messageMerge: "recommended",
@@ -90,7 +89,6 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   highSpeedModel: "optional",
   compactionParallel: "optional",
   traceAsState: "optional",
-  eventWaitRecheck: "optional",
   outputStyle: "optional",
   cacheTuning: "optional",
   // ── ui（界面，15 项）────────────────────────────────────────
@@ -135,21 +133,23 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
- * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 20 / 未稳定 12 / 已退役 1.
+ * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 18 / 未稳定 12 / 已退役 1.
  * (任务 621 修正：原钉 46 项未收 toolOptimizations（603）与 tabModeTint（504，
- * Go 侧一直有档），漏收使实验室页出现无徽章特性。) */
+ * Go 侧一直有档），漏收使实验室页出现无徽章特性。任务 517：B1/B2/B3（可选×3）
+ * 合并为 safetyCostControl（可选×1），可选 20→18、总数 48→46。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
-  optional: 20,
+  optional: 18,
   unstable: 12,
   retired: 1,
 };
 
 /** 任务 561 merged rail cards (card id → its 表A member ids). Standalone rail
  * entries badge themselves; merged cards badge every distinct member tier so
- * all 46 features stay visible on the 35-entry rail. */
+ * all 表A features stay visible on the rail. 任务 517：M1 autonomousRunGuard
+ * 卡与 standalone eventWaitRecheck 并入单键卡 safetyCostControl（键级合并，
+ * 无成员表——该卡自己就是一个表A id，徽章自挂）。 */
 export const LAB_RAIL_ENTRY_MEMBERS: Readonly<Record<string, readonly TierFeatureId[]>> = {
-  autonomousRunGuard: ["autonomousIdleTerminate", "loopStreakNote"],
   contextGovernance: ["compactionParallel", "budgetControl", "compressOpt", "cacheTuning"],
   modelStrategy: ["highSpeedModel", "modelCapabilityFilter"],
   subagentSuite: ["subagentPanel", "subagentDetail", "subagentPolicy", "subagentTps"],

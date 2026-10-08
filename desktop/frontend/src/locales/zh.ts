@@ -2129,7 +2129,6 @@ export const zh: Record<DictKey, string> = {
   // 任务 604：详情弹窗「设置位置」提示行前缀（路径段落复用既有键，不入本表）。
   "settings.labPicks.settingsPath": "设置位置：",
   // 任务 561：合并卡（合入口不合键——成员开关仍各自独立保存）。
-  "settings.autonomousRunGuard": "自主运行防护",
   "settings.modelStrategy": "模型策略",
   "settings.contextGovernance": "上下文治理",
   "settings.subagentSuite": "子代理",
@@ -2543,8 +2542,13 @@ export const zh: Record<DictKey, string> = {
 "settings.detachedIdleReleaseHint": "关闭标签页转入后台的会话，完成当前轮次且闲置超过此分钟数后释放其运行时（会话文件保留，重新打开即重载）。0 = 从不释放。默认关闭；改后对下一次释放判定生效。",
 "settings.goMemLimit": "Go 软内存上限（task 308-O3）",
 "settings.goMemLimitHint": "以 MB 为单位设置 Go 运行时软内存上限（debug.SetMemoryLimit）：堆接近上限时运行时会更积极地回收并把内存归还系统，抑制 heapSys 只涨不降。0 = 不设上限。默认关闭；改后即刻生效。",
+"settings.safetyCostControl": "安全 / 成本控制",
+"settings.safetyCostControlHint": "无人值守下的安全与成本保护总开关：一次控制三项——心跳空转自终止（防空转烧钱）、循环中性继续注记（防循环卡死）、等待返回前复查（防丢唤醒卡死）。开=三项全开，关=三项全关；旧配置中任一项曾开启会自动并入为开。心跳项即时生效，其余需重启。",
+"settings.safetyCostControl.on": "开",
+"settings.safetyCostControl.off": "关",
+"settings.safetyCostControl.memberState": "状态：{value}（随总开关同开同关）",
 "settings.autonomousIdleTerminate": "心跳空转自终止",
-"settings.autonomousIdleTerminateHint": "预留：心跳任务连续 3 次运行后会话仍无真实记录时自动禁用（防无人值守烧钱）。守卫逻辑已备但尚未接入运行路径——当前开启无效果。默认关闭。",
+"settings.autonomousIdleTerminateHint": "心跳任务连续 3 次运行仍无真实会话记录时自动禁用该任务（防无人值守空转烧钱）。每次运行前即时读取，开关即时生效。默认关闭。",
 "settings.autonomousIdleTerminate.on": "开",
 "settings.autonomousIdleTerminate.off": "关",
 "settings.loopStreakNote": "循环中性继续注记",

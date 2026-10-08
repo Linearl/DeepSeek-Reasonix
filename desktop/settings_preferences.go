@@ -560,22 +560,12 @@ func (a *App) SetExperimentalDream(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDream(enabled) })
 }
 
-// SetExperimentalAutonomousIdleTerminate toggles heartbeat's idle-streak burn
-// guard (task 244 B1). Read at call time by the engine — no restart needed.
-func (a *App) SetExperimentalAutonomousIdleTerminate(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutonomousIdleTerminate(enabled) })
-}
-
-// SetExperimentalLoopStreakNote toggles the neutral Continue. streak note
-// (task 244 B2). Runtime flag rides Options — sessions rebuild on restart.
-func (a *App) SetExperimentalLoopStreakNote(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalLoopStreakNote(enabled) })
-}
-
-// SetExperimentalEventWaitRecheck toggles event_wait's return-time recheck
-// (task 244 B3). Registered with the tool set — sessions rebuild on restart.
-func (a *App) SetExperimentalEventWaitRecheck(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalEventWaitRecheck(enabled) })
+// SetExperimentalSafetyCostControl toggles the merged unattended-safety
+// switch (task 517): one「安全 / 成本控制」knob for the task-244 B1/B2/B3
+// guards. B1 reads the saved switch at call time (no restart); B2/B3 ride
+// boot snapshots — sessions rebuild on restart.
+func (a *App) SetExperimentalSafetyCostControl(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSafetyCostControl(enabled) })
 }
 
 // SetExperimentalOrphanHandling toggles the merged orphan switch (task 449):

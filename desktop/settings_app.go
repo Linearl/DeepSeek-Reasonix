@@ -474,12 +474,11 @@ type SettingsView struct {
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
 	ExperimentalRuntimeReuse   bool `json:"experimentalRuntimeReuse"`
-	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
-	ExperimentalAutonomousIdleTerminate bool   `json:"experimentalAutonomousIdleTerminate"`
-	ExperimentalLoopStreakNote          bool   `json:"experimentalLoopStreakNote"`
-	ExperimentalEventWaitRecheck        bool   `json:"experimentalEventWaitRecheck"`
-	CollabInboxMerge                    string `json:"collabInboxMerge"`
-	CollabGuidanceMerge                 bool   `json:"collabGuidanceMerge"`
+	// Task 517: merged safety/cost switch (settings-view mirror of [agent];
+	// one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards).
+	ExperimentalSafetyCostControl bool   `json:"experimentalSafetyCostControl"`
+	CollabInboxMerge              string `json:"collabInboxMerge"`
+	CollabGuidanceMerge           bool   `json:"collabGuidanceMerge"`
 	// Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
 	SessionCollabAllowDelete       bool `json:"sessionCollabAllowDelete"`
 	SessionCollabAllowRequireReply bool `json:"sessionCollabAllowRequireReply"`
@@ -700,10 +699,9 @@ type DesktopStartupSettingsView struct {
 	// B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
 	ExperimentalRuntimeReuse   bool `json:"experimentalRuntimeReuse"`
-	// Task 244 B1/B2/B3: settings-view mirrors of the [agent] runtime flags.
-	ExperimentalAutonomousIdleTerminate bool `json:"experimentalAutonomousIdleTerminate"`
-	ExperimentalLoopStreakNote          bool `json:"experimentalLoopStreakNote"`
-	ExperimentalEventWaitRecheck        bool `json:"experimentalEventWaitRecheck"`
+	// Task 517: merged safety/cost switch (mirror of [agent]; one「安全 / 成本
+	// 控制」knob for the task-244 B1/B2/B3 guards).
+	ExperimentalSafetyCostControl bool `json:"experimentalSafetyCostControl"`
 	// CollabInboxMerge exposes the inbox drain merge tri-state (task 221):
 	// off | same_sender | all. The runtime value lives on [agent].
 	CollabInboxMerge string `json:"collabInboxMerge"`
@@ -1459,9 +1457,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalToolOptimizations = cfg.Agent.ExperimentalToolOptimizations
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Agent.ExperimentalDream
-		view.ExperimentalAutonomousIdleTerminate = cfg.Agent.ExperimentalAutonomousIdleTerminate
-		view.ExperimentalLoopStreakNote = cfg.Agent.ExperimentalLoopStreakNote
-		view.ExperimentalEventWaitRecheck = cfg.Agent.ExperimentalEventWaitRecheck
+		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
+		view.ExperimentalSafetyCostControl = cfg.Agent.ExperimentalSafetyCostControl
 		view.ExperimentalOrphanHandling = cfg.Agent.ExperimentalOrphanHandling
 
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
@@ -1631,15 +1628,14 @@ func (a *App) Settings() SettingsView {
 		PreapproveSessionStores:            cfg.Agent.PreapproveManagedStores,
 		PreapproveBashEscape:               cfg.Agent.PreapproveManagedBashEscape,
 		// Task 192: residency policy readback.
-		ExperimentalActiveTabResident:       cfg.Agent.ExperimentalActiveTabResident,
-		ExperimentalFullAccess:              cfg.Agent.ExperimentalFullAccess,
-		ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess,
-		ExperimentalToolOptimizations:       cfg.Agent.ExperimentalToolOptimizations,
-		ExperimentalTraceAsState:            cfg.Agent.TraceAsState,
-		ExperimentalDream:                   cfg.Agent.ExperimentalDream,
-		ExperimentalAutonomousIdleTerminate: cfg.Agent.ExperimentalAutonomousIdleTerminate,
-		ExperimentalLoopStreakNote:          cfg.Agent.ExperimentalLoopStreakNote,
-		ExperimentalEventWaitRecheck:        cfg.Agent.ExperimentalEventWaitRecheck,
+		ExperimentalActiveTabResident: cfg.Agent.ExperimentalActiveTabResident,
+		ExperimentalFullAccess:        cfg.Agent.ExperimentalFullAccess,
+		ExperimentalBaseProcess:       cfg.Agent.ExperimentalBaseProcess,
+		ExperimentalToolOptimizations: cfg.Agent.ExperimentalToolOptimizations,
+		ExperimentalTraceAsState:      cfg.Agent.TraceAsState,
+		ExperimentalDream:             cfg.Agent.ExperimentalDream,
+		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
+		ExperimentalSafetyCostControl: cfg.Agent.ExperimentalSafetyCostControl,
 		// Task 163: usage card switch readback.
 		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
 		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).

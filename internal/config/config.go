@@ -1884,23 +1884,24 @@ type AgentConfig struct {
 	// is byte-identical to the pre-369 surface.
 	ExperimentalSelectionActions bool `toml:"experimental_selection_actions"`
 
-	// ExperimentalAutonomousIdleTerminate lets a heartbeat task disable itself
-	// after three consecutive runs that produced no conversation history
-	// (task 244 B1; MiMo sentinel three-idle self-terminate). Off by default:
-	// an unattended burn-guard must stay opt-in (fork rule 2).
+	// ExperimentalSafetyCostControl is the single merged unattended-safety
+	// switch (task 517): one user-understandable「安全 / 成本控制」knob gating
+	// all three task-244 B-group guards —
+	//   B1 heartbeat idle self-terminate (unattended burn guard),
+	//   B2 loop neutral "Continue." note (loop-stall guard), and
+	//   B3 event_wait return-time recheck (lost-wakeup guard).
+	// Off by default (fork rule 2): with the switch off every gate reads
+	// false — byte-identical to the pre-517 all-off baseline.
+	ExperimentalSafetyCostControl bool `toml:"experimental_safety_cost_control"`
+	// ExperimentalAutonomousIdleTerminate / ExperimentalLoopStreakNote /
+	// ExperimentalEventWaitRecheck are the legacy task-244 B1/B2/B3 keys,
+	// kept READ-ONLY so old configs still load.
+	// migrateSafetyCostControlMerge folds any legacy true into
+	// ExperimentalSafetyCostControl at load and clears them, so the next save
+	// carries only the merged key (task 517; task 449 precedent).
 	ExperimentalAutonomousIdleTerminate bool `toml:"experimental_autonomous_idle_terminate"`
-	// ExperimentalLoopStreakNote replaces the second text-repeat pause with a
-	// bounded, neutral "Continue." host note when the assistant loops
-	// (task 244 B2; detection stays with the task-110 repeat guard, clipping
-	// stays in the existing fold/compaction channels). Off by default: the
-	// current nudge-then-pause contract is untouched (fork rule 2).
-	ExperimentalLoopStreakNote bool `toml:"experimental_loop_streak_note"`
-	// ExperimentalEventWaitRecheck re-evaluates the checker once more right
-	// before event_wait returns, exposing a judged-vs-returned window race as
-	// recheckSatisfied (task 244 B3; the bind/snapshot compensation pattern
-	// ported ahead of an event-bus migration). Off by default: the return
-	// shape stays byte-identical (fork rule 2).
-	ExperimentalEventWaitRecheck bool `toml:"experimental_event_wait_recheck"`
+	ExperimentalLoopStreakNote          bool `toml:"experimental_loop_streak_note"`
+	ExperimentalEventWaitRecheck        bool `toml:"experimental_event_wait_recheck"`
 
 	// ExperimentalOrphanHandling is the single merged orphan switch (task 449):
 	// it gates BOTH halves of the task-244 orphan flow — reclaiming a session

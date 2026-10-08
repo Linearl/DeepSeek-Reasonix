@@ -1800,7 +1800,6 @@ type ExperimentFeatureId =
   // Task 561 merged family cards — the merge is entry/card level only: every
   // member switch below keeps its own config key and its own setter (task
   // 427/318.5 precedent). Family map:
-  //   autonomousRunGuard = M1 自动化族   (autonomousIdleTerminate + loopStreakNote)
   //   modelStrategy      = M2 模型策略族 (highSpeedModel + retired
   //                        modelCapabilityFilter shown read-only inside the card)
   //   contextGovernance  = M3 压缩/预算族 (compactionParallel + budgetControl +
@@ -1810,6 +1809,8 @@ type ExperimentFeatureId =
   //   devDebug           = M5 开发调试族 (cdpDebugPort + lifecycleNoiseGate)
   //   updateFeedback     = M6 更新/反馈族 (restartUpdate + feedback)
   //   sessionStore       = M7 会话存储族 (sessionStorage + eventsRotation)
+  //   （任务 517：M1 autonomousRunGuard 与 standalone eventWaitRecheck 已并入
+  //   单键卡 safetyCostControl——不是入口级合并，是配置键级合并。）
   // M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
   // fullAccess / optimisticParallel.
   | "autopilot"
@@ -1828,8 +1829,6 @@ type ExperimentFeatureId =
   | "localServer"
   | "pathRules"
   | "traceAsState"
-  // Task 244 B3 (batch 1 of the MiMo-inspired experiment switches).
-  | "eventWaitRecheck"
   | "dream"
   | "autoLoadOlder"
   | "sessionCollab"
@@ -1862,8 +1861,13 @@ type ExperimentFeatureId =
   | "baseProcess"
   // Task 439: built-in zcode task bus (embedded loopback bus MCP host).
   | "zcodeTaskBus"
-  // Task 561: the seven merged family-card ids.
-  | "autonomousRunGuard"
+  // 任务 517:「安全 / 成本控制」— the task-244 B1/B2/B3 guards merge into ONE
+  // config key (experimental_safety_cost_control): the 561 autonomousRunGuard
+  // family card and the standalone eventWaitRecheck entry fold into this
+  // single-switch card.
+  | "safetyCostControl"
+  // Task 561: the merged family-card ids (M1 autonomousRunGuard was absorbed
+  // by safetyCostControl in task 517).
   | "modelStrategy"
   | "contextGovernance"
   | "subagentSuite"
@@ -2045,10 +2049,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // `on` here means optimistic ON = safety check OFF, default off).
     { id: "optimisticParallel", group: "automation", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
     { id: "dream", group: "automation", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
-    // Task 561 M1 自动化族: one card for the two autonomous-run guards — the
-    // light reads either switch; each switch keeps its own setter below
-    // (81/123 lost-save rule).
-    { id: "autonomousRunGuard", group: "automation", label: t("settings.autonomousRunGuard"), on: Boolean(s.experimentalAutonomousIdleTerminate) || Boolean(s.experimentalLoopStreakNote) },
+    // 任务 517:「安全 / 成本控制」— the 561 M1 autonomousRunGuard card and the
+    // standalone eventWaitRecheck entry fold into ONE single-key card
+    // (experimental_safety_cost_control gates all three B-group guards).
+    { id: "safetyCostControl", group: "automation", label: t("settings.safetyCostControl"), on: Boolean(s.experimentalSafetyCostControl) },
     // ── efficiency（提效，10 项）──────────────────────────────────
     // Task 561 M3 压缩/预算族: the four context/cache governance entries
     // (compactionParallel + budgetControl + compressOpt + cacheTuning) fold
@@ -2063,7 +2067,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // Task 262: quick commands move here from the general page.
     { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
     { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
-    { id: "eventWaitRecheck", group: "efficiency", label: t("settings.eventWaitRecheck"), on: Boolean(s.experimentalEventWaitRecheck) },
     // Task 385a: 回答风格 (output style) — 提效类, efficiency group; render
     // table: a missing entry would silently drop the save, 81/123 lesson.
     // The light also reads a configured style: it stays discoverable after
@@ -3172,68 +3175,45 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-          {/* Task 561 M1 自动化族: the two autonomous-run guards fold into ONE card —
-              each switch saves through its own setter (config keys unchanged;
-              81/123 lost-save rule). */}
-          {selected === "autonomousRunGuard" && (
+          {/* 任务 517:「安全 / 成本控制」— one switch for all three task-244
+              B-group guards (this absorbs the 561 M1 autonomousRunGuard card
+              and the standalone eventWaitRecheck entry; the config side is a
+              key-level merge into experimental_safety_cost_control, task 449
+              precedent). The three member rows are read-only STATE rows —
+              每个子项状态可见（随总开关同开同关），不可单独写。 */}
+          {selected === "safetyCostControl" && (
             <>
-              <>
-                <SettingsField label={labLabel("autonomousIdleTerminate", t("settings.autonomousIdleTerminate"))} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />}>
-                  <SettingsOptions layout="field" className="set-seg">
-                    {[false, true].map((on) => (
-                      <button
-                        key={String(on)}
-                        className={`set-seg__btn${Boolean(s.experimentalAutonomousIdleTerminate) === on ? " set-seg__btn--on" : ""}`}
-                        disabled={busy}
-                        onClick={() => void apply(async () => {
-                          await app.SetExperimentalAutonomousIdleTerminate(on);
-                        })}
-                      >
-                        {t(on ? "settings.autonomousIdleTerminate.on" : "settings.autonomousIdleTerminate.off")}
-                      </button>
-                    ))}
-                  </SettingsOptions>
-                </SettingsField>
-              </>
-              <>
-                <SettingsField label={labLabel("loopStreakNote", t("settings.loopStreakNote"))} hint={t("settings.loopStreakNoteHint")} icon={<Sparkles size={18} />}>
-                  <SettingsOptions layout="field" className="set-seg">
-                    {[false, true].map((on) => (
-                      <button
-                        key={String(on)}
-                        className={`set-seg__btn${Boolean(s.experimentalLoopStreakNote) === on ? " set-seg__btn--on" : ""}`}
-                        disabled={busy}
-                        onClick={() => void apply(async () => {
-                          await app.SetExperimentalLoopStreakNote(on);
-                          setRestartNeeded(true);
-                        })}
-                      >
-                        {t(on ? "settings.loopStreakNote.on" : "settings.loopStreakNote.off")}
-                      </button>
-                    ))}
-                  </SettingsOptions>
-                </SettingsField>
-              </>
-            </>
-          )}
-          {selected === "eventWaitRecheck" && (
-            <>
-              <SettingsField label={labLabel("eventWaitRecheck", t("settings.eventWaitRecheck"))} hint={t("settings.eventWaitRecheckHint")} icon={<Sparkles size={18} />}>
+              <SettingsField label={labLabel("safetyCostControl", t("settings.safetyCostControl"))} hint={t("settings.safetyCostControlHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
                       key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalEventWaitRecheck) === on ? " set-seg__btn--on" : ""}`}
+                      className={`set-seg__btn${Boolean(s.experimentalSafetyCostControl) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
                       onClick={() => void apply(async () => {
-                        await app.SetExperimentalEventWaitRecheck(on);
+                        await app.SetExperimentalSafetyCostControl(on);
                         setRestartNeeded(true);
                       })}
                     >
-                      {t(on ? "settings.eventWaitRecheck.on" : "settings.eventWaitRecheck.off")}
+                      {t(on ? "settings.safetyCostControl.on" : "settings.safetyCostControl.off")}
                     </button>
                   ))}
                 </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.autonomousIdleTerminate")} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />} stacked>
+                <p className="settings-field__hint-line">
+                  {t("settings.safetyCostControl.memberState", { value: t(Boolean(s.experimentalSafetyCostControl) ? "settings.autonomousIdleTerminate.on" : "settings.autonomousIdleTerminate.off") })}
+                </p>
+              </SettingsField>
+              <SettingsField label={t("settings.loopStreakNote")} hint={t("settings.loopStreakNoteHint")} icon={<Sparkles size={18} />} stacked>
+                <p className="settings-field__hint-line">
+                  {t("settings.safetyCostControl.memberState", { value: t(Boolean(s.experimentalSafetyCostControl) ? "settings.loopStreakNote.on" : "settings.loopStreakNote.off") })}
+                </p>
+              </SettingsField>
+              <SettingsField label={t("settings.eventWaitRecheck")} hint={t("settings.eventWaitRecheckHint")} icon={<Sparkles size={18} />} stacked>
+                <p className="settings-field__hint-line">
+                  {t("settings.safetyCostControl.memberState", { value: t(Boolean(s.experimentalSafetyCostControl) ? "settings.eventWaitRecheck.on" : "settings.eventWaitRecheck.off") })}
+                </p>
               </SettingsField>
             </>
           )}
