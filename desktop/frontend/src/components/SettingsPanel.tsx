@@ -2750,11 +2750,19 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     ["todos", "workspace.todosTab"],
                     ["artifacts", "workspace.artifactsTab"],
                     ["references", "workspace.referencesTab"],
+                    // 任务620：子代理标签的显隐从「子代理族」卡移进这面墙，与其余
+                    // 侧栏标签同处配置；它另有前置开关「子代理面板」——面板未开启
+                    // 时此项置灰不可勾选（依赖联动），下方提示指认要开的开关。
+                    ["subagents", "workspace.subagentsTab"],
                   ] as const).map(([tabId, labelKey]) => {
                     // Task 259: the visibility checkboxes live under the todo-sidebar
                     // switch; with it off they stay visible and readable but disabled,
                     // with a hint naming the switch to flip (task 253's lesson).
-                    const locked = busy || !Boolean(s.experimentalTodoSidebar);
+                    // 任务620：subagents 行还要过「子代理面板」这道前置——两道闸任
+                    // 一关闭即置灰，提示行分别指认各自的开关。
+                    const locked = busy
+                      || !Boolean(s.experimentalTodoSidebar)
+                      || (tabId === "subagents" && !Boolean(s.experimentalSubagentPanel));
                     const on = !isDockTabHidden(tabId);
                     // Keep at least one RENDERABLE tab visible (audit-2 minor c):
                     // gated-off tabs — remote with no hosts, overview in creation —
@@ -2780,6 +2788,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   })}
                   {!Boolean(s.experimentalTodoSidebar) && (
                     <div className="set-gates__hint">{t("settings.dockTabsDisabledHint")}</div>
+                  )}
+                  {!Boolean(s.experimentalSubagentPanel) && (
+                    <div className="set-gates__hint">{t("settings.subagentPanelTabDisabledHint")}</div>
                   )}
                 </div>
               </SettingsField>
@@ -2811,31 +2822,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     ))}
                   </SettingsOptions>
                 </SettingsField>
-                <SettingsField
-                  label={t("workspace.subagentsTab")}
-                  hint={Boolean(s.experimentalSubagentPanel) ? t("settings.dockTabVisibilityHint") : t("settings.subagentPanelTabDisabledHint")}
-                  icon={<Sparkles size={18} />}
-                >
-                  <div className="set-gates">
-                    <label className={`set-gates__item${busy || !Boolean(s.experimentalSubagentPanel) ? " set-gates__item--locked" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={!isDockTabHidden("subagents")}
-                        disabled={busy || !Boolean(s.experimentalSubagentPanel) || isLastRenderableVisibleTab("subagents", {
-                          todoSidebar: Boolean(s.experimentalTodoSidebar),
-                          subagentsPanel: Boolean(s.experimentalSubagentPanel),
-                          remoteAvailable,
-                          creation: desktopLayoutStyle === "creation",
-                        })}
-                        onChange={(event) => setDockTabHidden("subagents", !event.target.checked)}
-                      />
-                      <span className="set-gates__label">{t("workspace.subagentsTab")}</span>
-                    </label>
-                    {!Boolean(s.experimentalSubagentPanel) && (
-                      <div className="set-gates__hint">{t("settings.subagentPanelTabDisabledHint")}</div>
-                    )}
-                  </div>
-                </SettingsField>
+                {/* 任务620：「子代理」标签显隐 checkbox 已移入「侧栏增强」卡的
+                    「侧栏标签显示」墙（与其余侧栏标签同墙配置、同一套置灰联动），
+                    此处不再重复渲染——面板开关本身保留在本卡首位。 */}
               </>
               <SettingsField label={labLabel("subagentDetail", t("settings.subagentDetail"))} hint={t("settings.subagentDetailHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">

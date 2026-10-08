@@ -127,6 +127,14 @@ const bindings: CollabInboxBindings = {
     snapshot = { ...snapshot, revision: "7.0.0", settings: { ...snapshot.settings, cleanupRule: rule } };
     return snapshot;
   },
+  async CleanCollabMailNow() {
+    calls.push({ name: "CleanCollabMailNow", args: [] });
+    // 任务620：模拟「已删除会话的残留信」被清理——按当前规则移除后带回新快照。
+    const entries = snapshot.entries.filter((e) => e.from !== "sc_gone");
+    const removed = snapshot.entries.length - entries.length;
+    snapshot = { ...snapshot, revision: "8.0.0", entries, total: entries.length };
+    return { removed, snapshot };
+  },
 };
 
 // 任务461-P4: an injectable addressable roster backs the from/to dropdowns —
@@ -299,6 +307,29 @@ await act(async () => {
   cleanupSelect.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
 });
 assert.deepEqual(calls.find((c) => c.name === "SetCollabMailCleanupRule")?.args, ["both"], "cleanup rule switch reaches the backend");
+
+// 任务620：立即清理——按钮触发 CleanCollabMailNow（与面板打开同一套写侧维护，
+// 去节流），返回的移除数成为就地反馈，清理后的新快照直接接管列表。
+{
+  snapshot = {
+    ...snapshot,
+    entries: [...fixtureEntries, entry({ id: "m_gone", from: "sc_gone", preview: "stale mail from a deleted session" })],
+    total: fixtureEntries.length + 1,
+  };
+  await act(async () => {
+    Array.from(panel!.querySelectorAll<HTMLButtonElement>("button"))
+      .find((b) => b.textContent === "Clean now")!
+      .click();
+  });
+  assert.equal(calls.some((c) => c.name === "CleanCollabMailNow"), true, "the clean-now button goes through the binding");
+  assert.match(document.body.textContent ?? "", /Cleaned 1/, "the removed count renders as the click feedback");
+  assert.match(document.body.textContent ?? "", /Snapshot 8\.0\.0/, "clean-now returns the NEW snapshot to the footer");
+  assert.equal(
+    document.body.textContent?.includes("stale mail from a deleted session"),
+    false,
+    "the cleaned-up entry leaves the list",
+  );
+}
 
 // 对话链视图（g）。
 const chainToggle = Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__state"))

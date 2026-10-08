@@ -232,5 +232,37 @@ func (a *App) SetCollabMailCleanupRule(rule string) (collinboxSnapshot, error) {
 	return collabInboxStore().SetCleanupRule(collabInboxCtx(), rule)
 }
 
+// CleanCollabMailNow runs one cleanup pass immediately (任务 620 立即清理):
+// the same write-side maintenance a panel open applies — the retention window
+// prunes by age and the session-deletion cleanup rule prunes by session
+// existence, both under one lock hold — minus the 任务511 five-minute sweep
+// throttle, because the button is the explicit "clean now" trigger. Returns
+// how many messages were physically removed plus a fresh default-view
+// snapshot (the same page the panel's own read renders) so the list converges
+// in one round trip.
+func (a *App) CleanCollabMailNow() (CollabInboxCleanResult, error) {
+	store := collabInboxStore()
+	removed, err := store.ApplyRetention(collabInboxCtx())
+	if err != nil {
+		return CollabInboxCleanResult{Removed: removed}, err
+	}
+	snap, lerr := store.List(collabInboxCtx(), collabinbox.Query{
+		Bucket: collabinbox.BucketAll,
+		State:  collabinbox.StateAll,
+		Order:  "desc",
+		Limit:  100, // the panel's own default page size
+		Viewer: a.collabInboxViewer(),
+	}, false)
+	return CollabInboxCleanResult{Removed: removed, Snapshot: snap}, lerr
+}
+
+// CollabInboxCleanResult carries the 「立即清理」 outcome (任务 620): how many
+// messages the pass physically removed (both maintenance halves combined)
+// plus the fresh default-view snapshot.
+type CollabInboxCleanResult struct {
+	Removed  int                  `json:"removed"`
+	Snapshot collabinbox.Snapshot `json:"snapshot"`
+}
+
 // collinboxSnapshot pins the wire type name for the Wails bindings.
 type collinboxSnapshot = collabinbox.Snapshot

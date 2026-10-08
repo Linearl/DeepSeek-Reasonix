@@ -20449,6 +20449,11 @@ body > .mermaid-diagram--fullscreen {
   min-width: 0;
   cursor: pointer;
 }
+/* 任务620：门槛勾选项的 hover 反馈——可点击项标签随悬停亮起（fg-dim → fg），
+   与 .collab-card__toggle:hover 同构；锁定项保持静默（253 可读性裁定）。 */
+.set-gates__item:not(.set-gates__item--locked):hover .set-gates__label {
+  color: var(--fg);
+}
 .set-gates__item input[type="checkbox"] {
   width: 15px;
   height: 15px;
@@ -44306,6 +44311,13 @@ body > .mermaid-diagram--fullscreen {
   font-size: 11px;
   color: var(--fg-faint);
 }
+/* 任务620：立即清理的一次性反馈（已清理 N 封 / 没有可清理的信件），
+   弱化前景、随头行内联，数秒后由组件侧定时移除。 */
+.collab-inbox-panel__cleannote {
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
 .collab-inbox-panel__buckets,
 .collab-inbox-panel__states {
   display: flex;
@@ -44342,6 +44354,13 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg);
   color: var(--fg);
   font-size: 12px;
+  transition: border-color 0.12s, background 0.12s;
+}
+/* 任务620：发信方/收信方下拉的 hover 反馈——悬停时边框与底色用按钮 hover
+   token 亮起（与 .chip:hover 同构），让「我正指着哪个选择器」可感知。 */
+.collab-inbox-panel__filter:hover {
+  border-color: var(--button-border-hover);
+  background: var(--button-bg-hover);
 }
 .collab-inbox-panel__viewtoggle {
   display: flex;

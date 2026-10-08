@@ -428,6 +428,12 @@ export interface CollabMailChainsView {
   chains: CollabMailChainView[];
 }
 
+/** 任务 620: 立即清理的结果（desktop.CollabInboxCleanResult）——物理移除数 + 清理后的默认视图快照。 */
+export interface CollabInboxCleanNowView {
+  removed: number;
+  snapshot: CollabMailSnapshotView;
+}
+
 interface NativeConfirmRequest {
   title: string;
   message: string;
@@ -1146,6 +1152,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetCollabMailRetention(retention: string): Promise<CollabMailSnapshotView>;
   /** 任务 464: 会话删除语义四选一（never|sender|receiver|both），设置即生效。 */
   SetCollabMailCleanupRule(rule: string): Promise<CollabMailSnapshotView>;
+  /** 任务 620: 立即清理——按当前保留期与清理规则立即执行一次清理，返回物理移除数与新快照。 */
+  CleanCollabMailNow(): Promise<CollabInboxCleanNowView>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -5656,6 +5664,13 @@ function makeMockApp(): AppBindings {
     },
     async SetCollabMailCleanupRule(rule: string) {
       return { revision: "0.0.0", settings: { retention: "7d", cleanupRule: rule }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async CleanCollabMailNow() {
+      // dev shell has no mailbox — an honest "nothing to clean" result
+      return {
+        removed: 0,
+        snapshot: { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] },
+      };
     },
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
