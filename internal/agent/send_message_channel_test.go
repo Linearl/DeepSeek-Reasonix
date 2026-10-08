@@ -50,13 +50,24 @@ func TestRunSubAgentWithSessionPublishesHandleConsumesMailboxAndUnpublishes(t *t
 	)
 	sess := NewSession("sys")
 
+	// Matrix 2 also demands the visible Steer event on the sink chain.
+	steerSeen := make(chan string, 1)
+	sink := event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Steer {
+			select {
+			case steerSeen <- e.Text:
+			default:
+			}
+		}
+	})
+
 	done := make(chan error, 1)
 	go func() {
 		_, err := RunSubAgentWithSession(context.Background(), mp, reg, sess, "run the probe", Options{
 			MaxSteps:        4,
 			SubagentDepth:   1,
 			SubagentMailbox: mb,
-		}, event.Discard)
+		}, sink)
 		done <- err
 	}()
 
@@ -86,6 +97,16 @@ func TestRunSubAgentWithSessionPublishesHandleConsumesMailboxAndUnpublishes(t *t
 
 	if err := <-done; err != nil {
 		t.Fatalf("subagent run failed: %v", err)
+	}
+
+	// The visible Steer event rode the sink (matrix 2: live visibility path).
+	select {
+	case text := <-steerSeen:
+		if !strings.Contains(text, "Prefer reading the file before writing.") {
+			t.Fatalf("Steer event text = %q", text)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no event.Steer emitted for the consumed mailbox message")
 	}
 
 	// The handle is gone once the run returns (defer unpublish, panic-safe).
