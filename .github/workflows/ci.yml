@@ -855,6 +855,12 @@ jobs:
       - name: repo standards
         run: go run ./tools/repolint
 
+      # 任务 392：模块注册表结构门禁（依赖方向/testutil 隔离/internal 禁环/禁深导入）。
+      # 存量登记在 architecture-baseline.json，这里只挡新增违规；与 repolint 等既有
+      # 防线的分工见 architecture-policy.json 的 _division-of-labor。
+      - name: architecture registry check
+        run: node scripts/check-architecture.mjs
+
       - name: wails version pin
         run: |
           bash scripts/check-wails-pin.sh
@@ -900,7 +906,7 @@ jobs:
             .github/workflows/docs-impact.yml \
             .github/workflows/transcript-native-smoke.yml \
             .github/workflows/ci.yml
-          node --test scripts/desktop-release-artifacts.test.mjs scripts/ci-workflow.test.mjs
+          node --test scripts/desktop-release-artifacts.test.mjs scripts/ci-workflow.test.mjs scripts/check-architecture.test.mjs
           bash scripts/release-workflows.test.sh
           node scripts/check-single-release-public-contract.mjs
 
