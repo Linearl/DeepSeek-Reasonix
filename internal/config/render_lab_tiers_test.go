@@ -85,6 +85,7 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalCascadeApproval = true
 	c.Agent.ExperimentalFallbackModel = true
 	c.Agent.ExperimentalCollabBackgroundDelivery = true
+	c.Agent.ExperimentalGeneralPurposeSubagent = true // 任务 632：豁免键，门禁要求仍被渲染
 	return c
 }
 
