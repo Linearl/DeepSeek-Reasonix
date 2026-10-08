@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -1356,6 +1357,52 @@ func CascadeApprovalLive() bool {
 		return false
 	}
 	return cfg.Agent.ExperimentalCascadeApproval
+}
+
+// DefaultPendingCardTTL is the built-in card expiry (task 408): a pending card
+// whose decision point died with a restart still closes as timeout after half
+// an hour instead of accumulating forever.
+const DefaultPendingCardTTL = 30 * time.Minute
+
+// SetExperimentalPendingCards toggles the task-408 durable pending-decision
+// card queue (default off).
+func (c *Config) SetExperimentalPendingCards(enabled bool) error {
+	c.Agent.ExperimentalPendingCards = enabled
+	return nil
+}
+
+// SetPendingCardTTLMinutes stores the card expiry in minutes (0 = built-in
+// default; explicit values clamped to 1..7 days so a fat-fingered value can
+// neither expire instantly nor pin cards for a year).
+func (c *Config) SetPendingCardTTLMinutes(minutes int) error {
+	if minutes == 0 {
+		c.Agent.PendingCardTTLMinutes = 0
+		return nil
+	}
+	if minutes < 1 || minutes > 7*24*60 {
+		return fmt.Errorf("pending_card_ttl_minutes %d: must be 0 (default) or between 1 and %d", minutes, 7*24*60)
+	}
+	c.Agent.PendingCardTTLMinutes = minutes
+	return nil
+}
+
+// PendingCardsLive resolves the task-408 switch and its TTL. Read per call
+// (mirroring CascadeApprovalLive) so a settings change applies to newly
+// arriving prompts without a restart. ttl is the built-in default unless an
+// explicit value is configured.
+func PendingCardsLive() (enabled bool, ttl time.Duration) {
+	cfg, err := Load()
+	if err != nil || cfg == nil {
+		return false, 0
+	}
+	if !cfg.Agent.ExperimentalPendingCards {
+		return false, 0
+	}
+	ttl = DefaultPendingCardTTL
+	if cfg.Agent.PendingCardTTLMinutes > 0 {
+		ttl = time.Duration(cfg.Agent.PendingCardTTLMinutes) * time.Minute
+	}
+	return true, ttl
 }
 
 // SetExperimentalColdCacheCompact toggles the task-297 cold-cache pass

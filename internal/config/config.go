@@ -1773,6 +1773,19 @@ type AgentConfig struct {
 	// default (iron rule 2); the settings-panel checkbox lands with the 173
 	// panel, so config.toml is the switch for now.
 	ExperimentalCascadeApproval bool `toml:"experimental_cascade_approval"`
+	// ExperimentalPendingCards enables task 408 (异步决策点回访): every
+	// approval/ask prompt a run reaches is also recorded in a durable
+	// per-session card queue ({session, time, summary, context pointer}), so
+	// decisions made while the user was away survive turn scroll and restarts,
+	// with a pending-count surface ("N 个待你决定") and explicit
+	// resolved/timeout/withdrawn closure. Off by default (iron rule 2): it
+	// changes no approval semantics (yolo/auto/autopilot tiers untouched) —
+	// the queue is user-level bookkeeping on top.
+	ExperimentalPendingCards bool `toml:"experimental_pending_cards"`
+	// PendingCardTTLMinutes bounds how long a pending card stays pending
+	// before the expiry sweep marks it timeout (0 = built-in 30 minutes).
+	// Only meaningful while ExperimentalPendingCards is on.
+	PendingCardTTLMinutes int `toml:"pending_card_ttl_minutes"`
 	// ExperimentalFallbackModel enables task 242: when the primary model fails
 	// with a quota-class error after the sampling retry budget, the turn
 	// switches to FallbackModel instead of dying. Off by default (iron rule 2)

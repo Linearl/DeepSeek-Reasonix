@@ -107,24 +107,25 @@ var labFeatureTiers = []labFeatureTier{
 // labNonFeatureKeys：渲染表里存在、但不属于表A 46 项的实验室族键（豁免门禁，
 // 逐键给理由；键消亡后应从此清单移除）。
 var labNonFeatureKeys = map[string]string{
-	"experimental_preapprove_managed":        "task 231/364 域：入口并入 autopilot 卡，非表A 46 项，不挂档位",
-	"experimental_cascade_approval":          "task 225：派遣审批回投任务源，实验室 tab 无入口",
-	"experimental_fallback_model":            "task 242：额度耗尽切 fallback_model，实验室 tab 无入口",
-	"experimental_collab_background_delivery": "task 224：协作投递后台化，实验室 tab 无入口",
-	"experimental_bash_heavy_guard":          "task 575：bash 重命令写守卫（写并发保护，optimistic_write 家族伴生开关，实验室 tab 无入口）",
+	"experimental_preapprove_managed":            "task 231/364 域：入口并入 autopilot 卡，非表A 46 项，不挂档位",
+	"experimental_cascade_approval":              "task 225：派遣审批回投任务源，实验室 tab 无入口",
+	"experimental_fallback_model":                "task 242：额度耗尽切 fallback_model，实验室 tab 无入口",
+	"experimental_collab_background_delivery":    "task 224：协作投递后台化，实验室 tab 无入口",
+	"experimental_bash_heavy_guard":              "task 575：bash 重命令写守卫（写并发保护，optimistic_write 家族伴生开关，实验室 tab 无入口）",
 	"experimental_parallel_writer_readonly_bash": "task 573：并行 writer 只读 bash 回退（写隔离伴生开关，write_paths 象限自证能力，实验室 tab 无入口）",
+	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
 // （连同 experimental_* 一起纳入门禁扫描范围）。
 var labSpecialKeys = map[string]bool{
-	"autopilot":            true,
-	"optimistic_write":     true,
-	"session_storage":      true,
-	"events_auto_rotation": true,
-	"collab_inbox_merge":   true,
+	"autopilot":             true,
+	"optimistic_write":      true,
+	"session_storage":       true,
+	"events_auto_rotation":  true,
+	"collab_inbox_merge":    true,
 	"collab_guidance_merge": true,
-	"trace_as_state":       true,
+	"trace_as_state":        true,
 }
 
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
@@ -665,6 +666,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// hand-added line vanish on the next config rewrite (task 321's lesson).
 	fmt.Fprintf(&b, "session_collab_delete_unread_gate = %v   # task 509: delete_session refuses while the target has unconsumed inbox mail (queued≠read; default off)\n", c.Agent.SessionCollabDeleteUnreadGate)
 	fmt.Fprintf(&b, "experimental_cascade_approval = %v   # task 225: forward a dispatched session's approvals to its task source (off by default)\n", c.Agent.ExperimentalCascadeApproval)
+	// 任务 408: durable pending-decision cards. Rendered unconditionally like
+	// the gates above — omit-on-default would let a hand-added line vanish on
+	// the next config rewrite (task 321's lesson).
+	fmt.Fprintf(&b, "experimental_pending_cards = %v   # task 408: record every approval/ask decision point in a durable per-session card queue with resolved/timeout/withdrawn closure (off by default)\n", c.Agent.ExperimentalPendingCards)
+	fmt.Fprintf(&b, "pending_card_ttl_minutes = %d   # task 408: minutes before a pending card expires to timeout (0 = built-in 30; used only when the switch above is on)\n", c.Agent.PendingCardTTLMinutes)
 	fmt.Fprintf(&b, "experimental_fallback_model = %v   # task 242: switch to fallback_model after quota-class exhaustion (off by default)\n", c.Agent.ExperimentalFallbackModel)
 	fmt.Fprintf(&b, "fallback_model = %q   # task 242: provider/model pair used when the primary is quota-exhausted (empty = keep primary)\n", c.Agent.FallbackModel)
 	fmt.Fprintf(&b, "experimental_high_speed_model = %v   # task 318.1: allow the high-speed model lane for highSpeedModels (off by default)\n", c.Agent.ExperimentalHighSpeedModel)
