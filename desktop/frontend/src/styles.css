@@ -44302,6 +44302,13 @@ body > .mermaid-diagram--fullscreen {
   font-size: 11px;
   color: var(--fg-faint);
 }
+/* 任务620：立即清理的一次性反馈（已清理 N 封 / 没有可清理的信件），
+   弱化前景、随头行内联，数秒后由组件侧定时移除。 */
+.collab-inbox-panel__cleannote {
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
 .collab-inbox-panel__buckets,
 .collab-inbox-panel__states {
   display: flex;

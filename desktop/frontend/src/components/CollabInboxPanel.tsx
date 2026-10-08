@@ -82,6 +82,9 @@ export type CollabMailChains = {
   chains: CollabMailChain[];
 };
 
+/** 任务 620：立即清理的结果——物理移除数 + 清理后的默认视图快照。 */
+export type CollabInboxCleanResult = { removed: number; snapshot: CollabMailSnapshot };
+
 export type CollabInboxBindings = {
   ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean, order: string): Promise<CollabMailSnapshot>;
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChains>;
@@ -93,6 +96,8 @@ export type CollabInboxBindings = {
   SetCollabMailRetention(retention: string): Promise<CollabMailSnapshot>;
   /** 任务 464：会话删除语义四选一，设置即生效并返回新快照。 */
   SetCollabMailCleanupRule(rule: string): Promise<CollabMailSnapshot>;
+  /** 任务 620：立即清理——按当前保留期与清理规则执行一次清理，返回移除数与新快照。 */
+  CleanCollabMailNow(): Promise<CollabInboxCleanResult>;
 };
 
 /** 任务461-P4: one ListAddressableSessions row — the addressable roster that
@@ -260,6 +265,13 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   // loadError = 最近一次读取失败（显式报错 + 重试按钮，绝不渲染成空态）。
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // 任务620（立即清理）：一次点击的反馈文案（已清理 N 封 / 没有可清理的信件），
+  // 定时消失；计时器随面板卸载回收，绝不存活到组件外。
+  const [cleanNote, setCleanNote] = useState<string | null>(null);
+  const cleanNoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (cleanNoteTimer.current !== null) clearTimeout(cleanNoteTimer.current);
+  }, []);
 
   useEffect(() => onCollabInboxOpenChange((next) => setOpen(next)), []);
 
@@ -406,6 +418,24 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
     }
   };
 
+  // 任务620（立即清理）：与面板打开路径同一套写侧维护（保留期 + 清理规则，
+  // 去任务511节流），后端一并带回清理后的新快照——失败保留旧快照并留痕。
+  const cleanNow = async () => {
+    setBusy(true);
+    try {
+      const result = await b.CleanCollabMailNow();
+      setSnapshot(result.snapshot);
+      setView("list");
+      setCleanNote(t(result.removed > 0 ? "collabInbox.cleaned" : "collabInbox.cleanNothing", { n: result.removed }));
+      if (cleanNoteTimer.current !== null) clearTimeout(cleanNoteTimer.current);
+      cleanNoteTimer.current = setTimeout(() => setCleanNote(null), 6000);
+    } catch (err) {
+      reportFrontendLog("collab-inbox", "clean now failed", String(err), "warn");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const rows: CollabMailEntry[] = snapshot?.entries ?? [];
 
   // 任务587（失败态与空态分离）：四个展示位互斥——
@@ -446,6 +476,17 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
               ))}
             </select>
           </label>
+          {/* 任务 620：立即清理——选完规则后手动触发一次批量清理，反馈就地可见。 */}
+          <button
+            type="button"
+            className="btn btn--secondary btn--small"
+            title={t("collabInbox.cleanNowHint")}
+            disabled={busy}
+            onClick={() => void cleanNow()}
+          >
+            {t("collabInbox.cleanNow")}
+          </button>
+          {cleanNote && <span className="collab-inbox-panel__cleannote">{cleanNote}</span>}
           {rows.some((entry) => !entry.read) && (
             <button
               type="button"
