@@ -16,6 +16,8 @@ export interface WireContextMaintenance {
   projectionVersion?: number;
   cacheBreak?: boolean;
   reason?: string;
+  /** Task 633: a failed summary refresh after an earlier round already installed the fold — the compaction is kept. */
+  foldInstalled?: boolean;
 }
 
 export interface ContextMaintenanceReceipt extends WireContextMaintenance {
@@ -83,9 +85,15 @@ export function formatContextMaintenanceNotice(m: WireContextMaintenance, t: Tra
         ? t("context.maintenanceTruncatedSummary")
         : t("context.maintenanceAppliedSummary");
     case "blocked":
+      // Task 633: blocked/failed receipts back off automatic maintenance for the
+      // current generation only — a changed view or a later turn retries, and a
+      // truncation rescue may still follow. They are never a final give-up, so
+      // the copy must not read as one.
       return t("context.maintenanceBlockedSummary");
     case "failed":
-      return t("context.maintenanceFailedSummary");
+      return m.foldInstalled
+        ? t("context.maintenanceRefreshFailedSummary")
+        : t("context.maintenanceFailedSummary");
     default:
       break;
   }

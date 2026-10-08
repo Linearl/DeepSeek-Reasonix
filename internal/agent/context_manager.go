@@ -299,7 +299,7 @@ func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash str
 		"status", status, "trigger", policy.Trigger, "fold_installed", foldInstalled,
 		"model_ref", a.destinationModelRef(),
 		"transient_stream", summaryTransientRetryable(err), "err", err)
-	a.recordContextMaintenanceOutcome(inputHash, policy.Trigger, "summary", status, reason)
+	a.recordContextMaintenanceOutcome(inputHash, policy.Trigger, "summary", status, reason, foldInstalled)
 	// Task 307: a candidate at or above the physical ceiling would be rejected
 	// again with the very same oversized projection, so waiting for the view
 	// itself to cross the ceiling (rescueOrFail's below-hard path) only lets

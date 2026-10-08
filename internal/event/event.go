@@ -488,6 +488,11 @@ type ContextMaintenance struct {
 	ProjectionVersion   uint64 `json:"projectionVersion,omitempty"`
 	CacheBreak          bool   `json:"cacheBreak,omitempty"`
 	Reason              string `json:"reason,omitempty"`
+	// FoldInstalled marks a failed/blocked summary refresh that follows an
+	// already-installed fold in the same maintenance pass: the compaction is
+	// kept, only the refresh is missing. Clients must not render this state as
+	// the compaction failing (task 633).
+	FoldInstalled bool `json:"foldInstalled,omitempty"`
 }
 
 // GuardianResult carries the outcome of a guardian sub-agent safety review.

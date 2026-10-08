@@ -95,6 +95,27 @@ func TestToWireContextMaintenanceJSON(t *testing.T) {
 			t.Fatalf("context maintenance JSON = %s, want %s", b, want)
 		}
 	}
+
+	// Task 633: a failed refresh on a kept fold carries fold_installed, while
+	// ordinary receipts omit the field so old frontends see nothing new.
+	w = ToWire(event.Event{Kind: event.ContextMaintenanceEvent, Maintenance: &event.ContextMaintenance{
+		Status: "failed", Action: "summary", FoldInstalled: true,
+	}})
+	if b, err = json.Marshal(w); err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"foldInstalled":true`) {
+		t.Fatalf("context maintenance JSON = %s, want foldInstalled propagated", b)
+	}
+	w = ToWire(event.Event{Kind: event.ContextMaintenanceEvent, Maintenance: &event.ContextMaintenance{
+		Status: "blocked", Action: "summary",
+	}})
+	if b, err = json.Marshal(w); err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), "foldInstalled") {
+		t.Fatalf("context maintenance JSON = %s, foldInstalled must be omitted when false", b)
+	}
 }
 
 func TestToWireNoticeCarriesCode(t *testing.T) {

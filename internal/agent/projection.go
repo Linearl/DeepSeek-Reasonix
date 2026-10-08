@@ -108,7 +108,12 @@ type ContextMaintenanceReceipt struct {
 	CacheBreak          bool      `json:"cache_break,omitempty"`
 	Reason              string    `json:"reason,omitempty"`
 	BlockedInputHash    string    `json:"blocked_input_hash,omitempty"`
-	CreatedAt           time.Time `json:"created_at,omitempty"`
+	// FoldInstalled marks a failed/blocked summary refresh that follows an
+	// already-installed fold in the same maintenance pass (task 303): the
+	// compaction is kept and only the refresh is missing. The desktop renders
+	// this state as "short view kept", not as the compaction failing (task 633).
+	FoldInstalled bool      `json:"fold_installed,omitempty"`
+	CreatedAt     time.Time `json:"created_at,omitempty"`
 }
 
 // CompactionOutcome reports whether compactToProjection installed a projection.
