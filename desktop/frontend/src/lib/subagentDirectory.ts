@@ -34,6 +34,12 @@ export type SubagentDirectoryEntry = {
   running: boolean;
   phase?: SubagentPhase;
   status: ToolStatus;
+  /** 任务440: the child's persisted transcript ref, when one is known —
+   *  running entries latch it from the progress preview stream, ended entries
+   *  from the result's subagent outcome. The dock live view reads the
+   *  transcript through it; undefined (ephemeral run, ref never seen) keeps
+   *  the entry preview-only. */
+  ref?: string;
 };
 
 export type SubagentDirectory = {
@@ -62,6 +68,7 @@ export function buildSubagentDirectory(items: readonly Item[] | undefined): Suba
       running: entryRunning(item),
       phase: item.subagentProgress?.phase,
       status: item.status,
+      ref: item.subagentProgress?.ref || item.subagentOutcome?.[0] || undefined,
     };
     (entry.running ? running : ended).push(entry);
   }
