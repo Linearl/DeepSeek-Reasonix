@@ -3412,6 +3412,8 @@ export const zhTW: Record<DictKey, string> = {
   "tabBar.closeInactiveTabs": "關閉非活躍標籤頁",
   "tabBar.closeTabsToRight": "關閉右側標籤頁",
   "tabBar.stopAndCloseTab": "停止任務並關閉",
+  // 任務 619：背景分頁惰性恢復的「未載入」佔位徽標
+  "tabBar.notLoaded": "未載入",
   "composer.splitTargetPrimary": "傳送到左欄",
   "composer.splitTargetSecondary": "傳送到右欄",
   "composer.splitTargetBoth": "同時傳送到兩欄",

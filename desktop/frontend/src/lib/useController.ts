@@ -8,7 +8,7 @@ import { asArray } from "./array";
 import { createControllerModelCommands } from "./controllerModelCommands";
 import { compactArchivedToolItems } from "./archivedToolItems";
 import { addBreadcrumb } from "./breadcrumbs";
-import { app, onEvent, onReady, onRuntimeRebuilt, onTabMeta, onTopicActivation } from "./bridge";
+import { app, onEvent, onReady, onRuntimeRebuilt, onTabMeta, onTabsRestored, onTopicActivation } from "./bridge";
 import { invalidateCache } from "./composerHistory";
 import { formatInboxCancelError } from "./inboxError";
 import { missingQueuedGuidanceBubbles } from "./inboxSurfaceReconcile";
@@ -849,6 +849,12 @@ const STALE_PROMPT_RECONCILE_MS = 150;
 const PROMPT_FENCE_RECONCILE_MS = 300;
 const STARTUP_READY_META_RECONCILE_MS = 250;
 const STARTUP_READY_META_RECONCILE_ATTEMPTS = 60;
+// 任务 619 ①: startup tab-skeleton poll. The mount probe races
+// restoreOrBuildTabs; losing it used to mean no retry until the first
+// agent:ready (a full controller build). 120ms×250 = 30s ceiling: far beyond
+// any measured migration tail, while each tick is one cheap ListTabs call.
+const STARTUP_TAB_POLL_INTERVAL_MS = 120;
+const STARTUP_TAB_POLL_MAX_ATTEMPTS = 250;
 
 function historyFingerprintMatchesMeta(history: { revision: number; revisionKnown?: boolean; digest?: string }, meta: Meta): boolean {
   const expectedDigest = (meta.sessionDigest ?? "").trim();
@@ -4322,7 +4328,27 @@ export function useController() {
       dispatchTo(tabId, { type: "meta", meta });
     });
 
-    void syncActiveTabFromBackend(false, true);
+    // 任务 619 ①: the mount probe races restoreOrBuildTabs — the backend may
+    // still be inside its config migrations when ListTabs runs, returning an
+    // empty list with no retry until the first agent:ready (a full controller
+    // build: mcp/tool-discovery, measured 21-38s under contention). That race
+    // loss is the whole "tab bar appears late" startup. Poll until the
+    // skeleton is published (bounded; every tick is a cheap ListTabs), then
+    // the "tabs:restored" event below trims the residual poll interval.
+    void (async () => {
+      for (let attempt = 0; attempt < STARTUP_TAB_POLL_MAX_ATTEMPTS; attempt += 1) {
+        const activated = await syncActiveTabFromBackend(false, true);
+        if (activated !== undefined) return;
+        await new Promise((resolve) => window.setTimeout(resolve, STARTUP_TAB_POLL_INTERVAL_MS));
+      }
+    })();
+    // 任务 619 ①: the backend fires "tabs:restored" the moment the persisted
+    // skeleton is published — earlier than any agent:ready (no controller
+    // build involved). Same refresh the ready listener does; the
+    // fire-before-subscribe race is covered by the poll above.
+    const offTabsRestored = onTabsRestored(() => {
+      void syncActiveTabFromBackend(false, true, { preserveCachedHistory: true });
+    });
     // The event subscription is live now, so ask the backend to re-emit any
     // approval/ask prompt that was already blocking a tab before this load —
     // otherwise a session left mid-confirmation shows "waiting" with no modal
@@ -4348,6 +4374,7 @@ export function useController() {
       offRebuilt();
       offTopicActivation();
       offTabMeta();
+      offTabsRestored();
     };
   }, [dispatchTo, handleTopicActivationEvent, loadSessionDataForTab, refreshBalanceForTab, refreshCheckpoints, refreshMetaForTab, schedulePromptFenceReconcile, syncActiveTabFromBackend, turnEventProjector]);
 

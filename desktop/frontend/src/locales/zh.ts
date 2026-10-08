@@ -74,6 +74,8 @@ export const zh: Record<DictKey, string> = {
   "tabBar.closeInactiveTabs": "关闭非活跃标签页",
   "tabBar.closeTabsToRight": "关闭右侧标签页",
   "tabBar.stopAndCloseTab": "停止任务并关闭",
+  // 任务 619：后台 tab 惰性恢复的「未加载」占位徽标
+  "tabBar.notLoaded": "未加载",
   "composer.splitTargetPrimary": "发送到左栏",
   "composer.splitTargetSecondary": "发送到右栏",
   "composer.splitTargetBoth": "同时发送到两栏",

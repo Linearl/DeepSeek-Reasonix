@@ -83,6 +83,10 @@ func (a *App) SetActiveTab(tabID string) error {
 	}
 	a.activeTabID = tabID
 	next := a.tabs[tabID]
+	// 任务 619 ②: activating a lazy restored tab kicks its controller build.
+	// Startup only builds the previously-active (and autopilot) tabs; the rest
+	// stay published skeletons. A click is the load trigger.
+	kickLazyBuild := lazyTabNeedsBuildLocked(next)
 	// A direct click supersedes pending publication without cancelling its
 	// build: the tab stays open, and selecting that same tab keeps it alive.
 	supersededReq, supersededTab := a.supersedePendingTopicActivationLocked(tabID, false)
@@ -103,6 +107,9 @@ func (a *App) SetActiveTab(tabID string) error {
 	}
 	if supersededReq != "" {
 		a.emitTopicActivation(TopicActivationEvent{RequestID: supersededReq, TabID: supersededTab, Phase: topicActivationPhaseCancelled})
+	}
+	if kickLazyBuild {
+		a.startTabControllerBuild(next)
 	}
 	a.kickDeferredRebuildRetry()
 	return nil

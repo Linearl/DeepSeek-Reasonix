@@ -890,9 +890,16 @@ func backgroundRestoreShouldMaximise(goos string, wasMaximised bool) bool {
 	return wasMaximised && !backgroundCloseUsesApplicationHide(goos)
 }
 
+// tabsRestoredEvent tells the frontend the persisted tab list (desktop-tabs.json)
+// has been published and ListTabs now carries every restored tab's title — long
+// before any controller build finishes. 任务 619: the tab bar renders from this
+// skeleton instead of waiting for the first agent:ready.
+const tabsRestoredEvent = "tabs:restored"
+
 // restoreOrBuildTabs restores the tabs from the last session, or creates a
 // default Global tab on first launch.
 func (a *App) restoreOrBuildTabs() {
+	restoreStartedAt := time.Now()
 	defer a.recoverToPending("restoreOrBuildTabs")
 	// Unblock startup work gated on the restore (recovery GC) no matter how
 	// this returns — including the recover path above.
@@ -1026,17 +1033,32 @@ func (a *App) restoreOrBuildTabs() {
 		}
 		a.saveTabsLocked()
 		a.mu.Unlock()
-		// Task 405 Q2: throttle the startup build storm and build the active
-		// tab first. Restoring N tabs fires N concurrent full boot.Builds;
-		// same-key builds drag each other's mcp/tool-discovery stages out to
-		// 21-38s spikes (2026-09-30 diagnosis: 4-way interleave measured
-		// mcp=21.3s×4). A 2-slot semaphore keeps 2 builds in flight — a
-		// resource guard, not a behavior change — while ordering puts the
-		// tab the user is looking at first. Background tabs are never
-		// dropped: they simply start as slots free up.
+		// 任务 619 ①: the skeleton is fully published — every restored tab is in
+		// a.tabs with its sidecar title and the active id is settled. Tell the
+		// frontend NOW so the tab bar renders from ListTabs without waiting for
+		// any controller build. The frontend also polls as a backstop for the
+		// emit-before-subscribe race (the webview may still be loading); the
+		// event only trims up to one poll interval of latency.
+		if a.ctx != nil {
+			a.runtimeEvents.Emit(a.ctx, tabsRestoredEvent)
+		}
+		slog.Info("desktop: startup tab skeleton published",
+			"tabs", len(toBuild),
+			"active", a.activeTabID,
+			"elapsed_ms", time.Since(restoreStartedAt).Milliseconds())
+		// 任务 619 ②: foreground-first, lazy background. Task 405 Q2 already
+		// ordered the active tab first and throttled the storm (2-slot
+		// semaphore; 4-way same-key builds measured mcp=21.3s×4). This goes one
+		// step further: only the tab the user is looking at — plus tabs that
+		// must resume unattended work (autopilot) — builds at startup. The rest
+		// stay published skeletons ("未加载"): their transcript is still
+		// readable cold via HistorySliceForTab's ctrl==nil path, and clicking a
+		// skeleton tab kicks its build from SetActiveTab. This keeps the
+		// foreground build off the mcp/tool-discovery contention that made
+		// background restores drag the whole startup out.
 		restored := orderTabsActiveFirst(toBuild, a.activeTabID)
 		sem := make(chan struct{}, startupBootConcurrency)
-		for _, tab := range restored {
+		for _, tab := range startupBuildSet(restored) {
 			a.startTabControllerBuildThrottled(tab, sem)
 		}
 		return
