@@ -14,6 +14,8 @@ export interface RuntimeState {
   cancellable: boolean;
   backgroundJobs: number;
   activity: string;
+  // 任务408 异步决策点回访：持久待批卡片数（"N 个待你决定"）。开关关时恒 0/缺省。
+  pendingCards?: number;
 }
 export interface RuntimeSession {
   tabId: string;

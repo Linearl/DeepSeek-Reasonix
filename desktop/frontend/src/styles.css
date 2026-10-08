@@ -7988,6 +7988,26 @@ body > .mermaid-diagram--fullscreen {
   overflow-y: auto;
 }
 
+/* ── 任务408 待批卡片回归汇总标记（决策点挂起计数，点击补发卡片） ── */
+.pending-cards-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: var(--maxw);
+  margin: 0 auto 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.pending-cards-badge:hover {
+  color: var(--fg);
+}
+
 /* ── undo-rewind banner (above composer after a rewind) ─────────────── */
 .undo-rewind {
   display: flex;
