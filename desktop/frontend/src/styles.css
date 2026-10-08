@@ -44338,6 +44338,13 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg);
   color: var(--fg);
   font-size: 12px;
+  transition: border-color 0.12s, background 0.12s;
+}
+/* 任务620：发信方/收信方下拉的 hover 反馈——悬停时边框与底色用按钮 hover
+   token 亮起（与 .chip:hover 同构），让「我正指着哪个选择器」可感知。 */
+.collab-inbox-panel__filter:hover {
+  border-color: var(--button-border-hover);
+  background: var(--button-bg-hover);
 }
 .collab-inbox-panel__viewtoggle {
   display: flex;
