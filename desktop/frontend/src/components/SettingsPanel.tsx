@@ -9977,12 +9977,16 @@ function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: b
             <SessionWriteRootsSection t={t} busy={busy} />
           </div>
           <div className="sandbox-write-roots__col">
+            {/* 任务 634：项目写目录列改走项目级 scoped IPC（写项目 reasonix.toml
+                的 [sandbox].allow_write 并热更 live 基线），与列提示文案一致。
+                此前经 SetSandbox 写用户级 config.toml：会话忙时被重建 gate 整单
+                拒绝（x 删除/添加看起来无效），项目配置遮蔽时改动也到不了运行时。 */}
             <RuleList
               list="allow_write"
               rules={sb.allowWrite}
               busy={busy}
-              onAdd={async (d) => { await set({ allowWrite: [...sb.allowWrite, d] }); }}
-              onRemove={async (d) => { await set({ allowWrite: sb.allowWrite.filter((x) => x !== d) }); }}
+              onAdd={async (d) => { await apply(() => app.AddAuthorizedWriteDirForTab("", 0, d)); }}
+              onRemove={async (d) => { await apply(() => app.RemoveAuthorizedWriteDirForTab("", 0, d)); }}
             />
             <p className="sandbox-write-roots__col-hint">{t("settings.projectWriteRootsHint")}</p>
           </div>
