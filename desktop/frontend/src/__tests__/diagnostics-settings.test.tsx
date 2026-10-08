@@ -306,26 +306,6 @@ console.log("diagnostics settings page");
 
   const zhReport = baseReport(false);
   zhReport.issues = [
-
-// Task 625: same-code issues must cluster into one expandable row with an
-// inline goto-settings action on both the cluster row and each detail row.
-{
-  installDom();
-  window.localStorage.setItem("reasonix-lang", "en");
-
-  const clusterNavigations: SettingsTab[] = [];
-  const clusterReport = baseReport(false);
-  clusterReport.summary.warnings = 3;
-  clusterReport.summary.infos = 2;
-  clusterReport.issues = [
-    {
-      severity: "error",
-      code: "mcp.command_not_found",
-      subsystem: "mcp",
-      name: "demo-mcp",
-      message: "command missing",
-      settings_tab: "mcp",
-    },
     {
       severity: "warning",
       code: "skill.missing_description",
@@ -357,7 +337,79 @@ console.log("diagnostics settings page");
         CapabilityDiagnostics: async () => zhReport,
         RuntimeDoctor: async () => doctorReport,
         CrashPendingDiagnostics: async () => ({ count: 0, capacity: 50, retentionDays: 14, atCapacity: false }),
+      } as Partial<AppBindings> as AppBindings,
+    },
+  };
 
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("missing root");
+  const root = createRoot(rootEl);
+
+  await act(async () => {
+    root.render(
+      React.createElement(
+        LocaleProvider,
+        null,
+        React.createElement(DiagnosticsSettingsPage),
+      ),
+    );
+    await flush();
+  });
+
+  // Localized message + remediation under zh, with the English issue code intact.
+  // Task 625 grouped same-code issues into collapsed clusters — expand the
+  // cluster first so the nested localized copy is rendered before asserting.
+  await waitFor("zh cluster row", () => (rootEl.textContent || "").includes("skill.missing_description"));
+  {
+    const toggleBtn = rootEl.querySelector<HTMLButtonElement>(".diag-issue-cluster__toggle");
+    if (!toggleBtn) throw new Error("cluster toggle not found");
+    await act(async () => {
+      toggleBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await flush();
+    });
+  }
+  await waitFor("zh issue copy", () => (rootEl.textContent || "").includes("技能缺少 description frontmatter"));
+  const zhText = rootEl.textContent || "";
+  ok(zhText.includes("skill.missing_description"), "issue code must stay English and copyable under zh");
+  ok(zhText.includes("在技能 frontmatter 中补一行"), "remediation must localize under zh");
+  ok(!zhText.includes("index quality is reduced"), "unlocalized backend sentence must not render under zh");
+
+  // Runtime doctor section: localized labels, verbatim raw dump below the caption.
+  await waitFor("zh runtime section", () => zhText.includes("扩展运行时（v2）"));
+  ok(zhText.includes("允许恢复"), "allow-resume label must localize under zh");
+  ok(zhText.includes("属主回退=6"), "runtime metric labels must localize under zh");
+  ok(zhText.includes("技术值，保留英文"), "raw dump caption must render under zh");
+  ok(zhText.includes("runtime status: unavailable"), "raw backend dump must stay verbatim (technical value)");
+
+  await act(async () => {
+    root.unmount();
+  });
+}
+
+console.log("diagnostics-settings: ok");
+// Task 625: same-code issues must cluster into one expandable row with an
+// inline goto-settings action on both the cluster row and each detail row.
+{
+  installDom();
+  window.localStorage.setItem("reasonix-lang", "en");
+
+  const clusterNavigations: SettingsTab[] = [];
+  const clusterReport = baseReport(false);
+  clusterReport.summary.warnings = 3;
+  clusterReport.summary.infos = 2;
+  clusterReport.issues = [
+    {
+      severity: "error",
+      code: "mcp.command_not_found",
+      subsystem: "mcp",
+      name: "demo-mcp",
+      message: "command missing",
+      settings_tab: "mcp",
+    },
+    {
+      severity: "warning",
+      code: "skill.missing_description",
+      subsystem: "skills",
       name: "nodesc-a",
       source: "<workspace>/.reasonix/skills/nodesc-a/SKILL.md",
       message: "no description",
@@ -423,20 +475,6 @@ console.log("diagnostics settings page");
     );
     await flush();
   });
-
-  // Localized message + remediation under zh, with the English issue code intact.
-  await waitFor("zh issue copy", () => (rootEl.textContent || "").includes("技能缺少 description frontmatter"));
-  const zhText = rootEl.textContent || "";
-  ok(zhText.includes("skill.missing_description"), "issue code must stay English and copyable under zh");
-  ok(zhText.includes("在技能 frontmatter 中补一行"), "remediation must localize under zh");
-  ok(!zhText.includes("index quality is reduced"), "unlocalized backend sentence must not render under zh");
-
-  // Runtime doctor section: localized labels, verbatim raw dump below the caption.
-  await waitFor("zh runtime section", () => zhText.includes("扩展运行时（v2）"));
-  ok(zhText.includes("允许恢复"), "allow-resume label must localize under zh");
-  ok(zhText.includes("属主回退=6"), "runtime metric labels must localize under zh");
-  ok(zhText.includes("技术值，保留英文"), "raw dump caption must render under zh");
-  ok(zhText.includes("runtime status: unavailable"), "raw backend dump must stay verbatim (technical value)");
 
   await waitFor("cluster report", () => (rootEl.textContent || "").includes("skill.missing_description"));
 
@@ -533,4 +571,3 @@ console.log("diagnostics settings page");
   });
 }
 
-console.log("diagnostics-settings: ok");
