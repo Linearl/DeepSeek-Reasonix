@@ -24,6 +24,7 @@ func TestWindowsDesktopCommandsUseProcConstructors(t *testing.T) {
 		"../internal/desktoplauncher/",
 		"../internal/notify/",
 		"../internal/proc/",
+		"../internal/sentinel/", // 607: exit secret scanner runs git via exec — infrastructure, not a user-visible launch
 	}
 	windowsBuild := build.Default
 	windowsBuild.GOOS = "windows"
