@@ -244,7 +244,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// together. Writing the flag without the limit used to lose both: this renderer
 		// writes a fixed set of keys, so an unlisted one was dropped and the settings
 		// switch flipped straight back to off.
-		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue || c.Desktop.ExperimentalAutopilotGuardAutocreate {
+		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue || c.Desktop.ExperimentalAutopilotGuardAutocreate || c.AutopilotBatchContextLevel() != "" || strings.TrimSpace(c.Desktop.AutopilotBatchPlan) != "" {
 			fmt.Fprintf(&b, "autopilot = %v   # desktop: start new sessions unattended (requires autopilot_max_runtime)\n", c.Desktop.Autopilot)
 			if runtime := strings.TrimSpace(c.Desktop.AutopilotMaxRuntime); runtime != "" {
 				fmt.Fprintf(&b, "autopilot_max_runtime = %q   # desktop: wall-clock bound for an unattended run, e.g. 8h\n", runtime)
@@ -281,6 +281,15 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			// whenever it is on, even with the timeout pair absent.
 			if c.Desktop.ExperimentalAutopilotAskAutoContinue {
 				fmt.Fprintf(&b, "experimental_autopilot_ask_auto_continue = %v   # desktop: a turn that stops right after an ask was answered is resumed once with the recorded decision (task 544)\n", c.Desktop.ExperimentalAutopilotAskAutoContinue)
+			}
+			// Task 394: batch-round context injection rides the same block.
+			// Off (the default) writes nothing — an untouched config stays
+			// byte-identical; the plan path renders only while set.
+			if level := c.AutopilotBatchContextLevel(); level != "" {
+				fmt.Fprintf(&b, "experimental_autopilot_batch_context = %q   # desktop: unattended rounds carry a compact batch-context header: minimal (batch id + chain tail + open threads) | full (adds conventions and acceptance reminders); off/absent = no injection (task 394)\n", level)
+			}
+			if plan := strings.TrimSpace(c.Desktop.AutopilotBatchPlan); plan != "" {
+				fmt.Fprintf(&b, "autopilot_batch_plan = %q   # desktop: batch plan file whose reasonix-batch-manifest section feeds the header (task 394)\n", plan)
 			}
 		}
 		fmt.Fprintf(&b, "check_updates = %v   # desktop: check for new versions on startup\n", c.DesktopCheckUpdates())

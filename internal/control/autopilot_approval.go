@@ -211,20 +211,10 @@ func (c *Controller) autopilotProxyContext() string {
 		}
 		content := strings.TrimSpace(string(raw))
 		const manifestCap = 4096
-		if len(content) > manifestCap {
-			// Truncate OLDEST first: keep the tail (latest entries), cut at a
-			// line boundary so no entry is half-presented.
-			lines := strings.Split(content, "\n")
-			kept := 0
-			total := 0
-			start := len(lines)
-			for start > 0 && total <= manifestCap {
-				start--
-				total += len(lines[start]) + 1
-				kept++
-			}
-			content = "… (older entries truncated)\n" + strings.Join(lines[start+1:], "\n")
-		}
+		// Truncate OLDEST first: keep the tail (latest entries), cut at a
+		// line boundary so no entry is half-presented. Shared with the
+		// task-394 batch-context header.
+		content = truncateOldestFirst(content, manifestCap)
 		b.WriteString("PROXY MANIFEST (natural-language allow/deny list; follow it when judging this request):\n" + content + "\n")
 	}
 	return b.String()

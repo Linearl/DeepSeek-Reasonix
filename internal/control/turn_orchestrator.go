@@ -531,6 +531,13 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 				c.noticeDetail(res.interceptNotice, intercept)
 			}
 		}
+		// Task 394: an unattended (autopilot) round that continues a batch
+		// carries the compact batch-context header — batch id, the previous
+		// round's chain tail, open threads. Empty header (dial off, or an
+		// attended session) leaves the input byte-for-byte as before.
+		if header := c.autopilotBatchContextHeader(); header != "" {
+			turn = header + "\n\n" + turn
+		}
 		admitted, err := o.runGoalContinuationTurnWithRawDisplay(ctx, turn, turn, "", res)
 		if err != nil {
 			if ctx.Err() != nil {
