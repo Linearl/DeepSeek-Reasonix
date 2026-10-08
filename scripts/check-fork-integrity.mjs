@@ -683,7 +683,9 @@ const CHECKS = [
   // wide shell 持有宽度（900px+视口兜底）、内容块填充不设内层下限、行内
   // 内容列可收缩（min-width:0 防超长无空格内容把行撑出横向滚动条）。
   { feature: "任务278 快捷指令弹窗宽度链", file: "desktop/frontend/src/styles.css", patterns: ["settings-quick-commands--wide {\n  width: 100%;", "settings-quick-commands__row > textarea.mem-input {\n  flex: 2 1 52%;", "任务 278 防反弹"] },
-  { feature: "任务278 wide 弹窗外壳（900px+视口兜底）", file: "desktop/frontend/src/components/ProviderAccessSettings.css", patterns: [".provider-dialog--wide { width: min(900px, calc(100vw - 32px)); }"] },
+  // 任务656：外壳 900px→1100px（视口兜底 min(..., 100vw-32px) 不变，278 的
+  // 「视口兜底」语义原样保留，只放大默认宽度）。
+  { feature: "任务278+656 wide 弹窗外壳（1100px+视口兜底）", file: "desktop/frontend/src/components/ProviderAccessSettings.css", patterns: [".provider-dialog--wide { width: min(1100px, calc(100vw - 32px)); }"] },
   // 任务 323：multi_edit 引导——正文裁决是描述改文案（不放 AGENTS.md/技能）：
   // multi_edit 前置 WHEN TO USE 触发句、edit_file 尾部互引，加中文触发词
   // （172 惯例）。锚点锁双侧指路，merge 静默丢任一侧即报。

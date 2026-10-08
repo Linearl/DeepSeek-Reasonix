@@ -1,7 +1,7 @@
 // Run: npx --no-install tsx src/__tests__/quick-commands-dialog-width.test.tsx
 //
 // 任务 278 验收：「管理快捷指令」弹窗宽度链——
-//  1) 管理弹窗走 ProviderDialog 的 wide 变体（900px shell，调用点传 wide）；
+//  1) 管理弹窗走 ProviderDialog 的 wide 变体（调用点传 wide）；
 //  2) wide shell 宽度 = min(900px, 100vw - 32px)：常见条目（开关钮+标题输入+
 //     内容列）一行放下，窄屏（<1280px）被视口宽兜住不溢出；
 //  3) 行内 flex 子项可收缩（textarea min-width:0），超长无空格内容不会把行
@@ -9,6 +9,13 @@
 //  4) 新增/编辑表单与管理列表同弹窗（同一 wide shell 覆盖）。
 // 注：核心加宽修复为 3ccd3d2b9（2026-09-24 已在树），本测试钉住宽度链防
 // 上游 merge 顶掉。
+//
+// 任务 656 验收：弹窗两方向加大——
+//  5) wide shell 900px → 1100px（指令名列与内容列加宽，常规内容不截断；
+//     100vw - 32px 视口兜底不变，响应式不回归）；
+//  6) 列表竖直上限 60vh → calc(100dvh - 160px)（贴住 shell 的
+//     100dvh - 48px 上限，滚动兜底只在超屏长列表时触发）；
+//  7) 内容列 textarea 默认 3 行（rows=3），更多正文开箱可见。
 
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
@@ -85,7 +92,7 @@ async function renderDialog(wide: boolean) {
   return root;
 }
 
-console.log("\n任务 278 快捷指令弹窗宽度链");
+console.log("\n任务 278 + 656 快捷指令弹窗宽度链");
 
 // 1) wide 变体类名真实渲染（默认调用方不受影响）。
 {
@@ -117,16 +124,20 @@ console.log("\n任务 278 快捷指令弹窗宽度链");
   const panelSrc = read("components/SettingsPanel.tsx");
   const dialogSrc = read("components/ProviderDialog.tsx");
 
-  ok(/\{[^{}]*width:\s*min\(900px,\s*calc\(100vw - 32px\)\)/.test(shellCss.split(".provider-dialog--wide")[1] ?? ""),
-    "wide shell = min(900px, 100vw-32px): rows fit on one line, narrow viewports capped");
+  ok(/\{[^{}]*width:\s*min\(1100px,\s*calc\(100vw - 32px\)\)/.test(shellCss.split(".provider-dialog--wide")[1] ?? ""),
+    "wide shell = min(1100px, 100vw-32px) [656]: rows fit on one line, narrow viewports capped");
   ok(/settings-quick-commands--wide\s*\{[^{}]*width:\s*100%/.test(stylesCss),
     "quick-commands content fills the wide shell (no inner width floor to fight it)");
+  ok(/\.settings-quick-commands--panel\s*\{[^{}]*max-height:\s*calc\(100dvh - 160px\)/.test(stylesCss),
+    "panel grows vertically to the shell limit (100dvh-160px), scroll stays as fallback [656]");
   ok(/settings-quick-commands__row > textarea\.mem-input\s*\{[^{}]*min-width:\s*0/.test(stylesCss),
     "row content column is shrinkable (min-width:0) so long tokens cannot reintroduce h-scroll");
   ok(/ProviderDialog title=\{t\("settings\.quickCommandsManage"\)\}[\s\S]{0,80}?wide>/.test(panelSrc.replace(/\n\s*/g, " ")),
     "manage dialog passes wide (add/edit form lives in the same dialog)");
   ok(dialogSrc.includes("wide?: boolean"),
     "ProviderDialog keeps the opt-in wide prop (default callers untouched)");
+  ok(/value=\{entry\.text\}[\s\S]{0,60}rows=\{3\}/.test(panelSrc.replace(/\s+/g, " ")),
+    "manage-row content textarea defaults to 3 visible lines [656]");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

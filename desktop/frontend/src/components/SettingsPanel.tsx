@@ -10562,7 +10562,7 @@ function QuickCommandsManager({ s, busy, apply }: { s: SettingsView; busy: boole
                   <textarea
                     className="mem-input"
                     value={entry.text}
-                    rows={2}
+                    rows={3}
                     placeholder={t("settings.quickCommandsTextPlaceholder")}
                     disabled={busy}
                     onChange={(e) => {
