@@ -59,7 +59,7 @@ func (a *Agent) ContextMaintenanceSnapshot() ContextMaintenanceSnapshot {
 	checkpointState := a.sess.checkpointState
 	a.sess.compactionMu.Unlock()
 	visible := canonical
-	valid := projectionValid(state, canonical, a.currentPromptCacheKey())
+	valid := projectionValid(state, canonical)
 	if valid {
 		if projected := modelVisibleFromProjection(state.Projection, canonical); len(projected) > 0 {
 			visible = projected

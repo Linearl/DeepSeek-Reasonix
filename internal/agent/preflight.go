@@ -33,12 +33,61 @@ func (a *Agent) modelVisibleMessages() []provider.Message {
 	a.sess.compactionMu.Lock()
 	st := a.sess.compactionState
 	a.sess.compactionMu.Unlock()
-	if projectionValid(st, msgs, a.currentPromptCacheKey()) {
+	if projectionValid(st, msgs) {
+		// 任务638: a lineage-key change (model hot switch) must not invalidate
+		// the fold — finalize the namespace rebind on the wire path so the view
+		// stays projected and the destination's cache namespace takes over.
+		a.rebindProjectionLineage(st, msgs)
 		if visible := modelVisibleFromProjection(st.Projection, msgs); len(visible) > 0 {
 			return visible
 		}
 	}
 	return msgs
+}
+
+// rebindProjectionLineage follows a lineage-key change (任务638 model hot
+// switch): when the projection body still matches the canonical covered
+// prefix, the state's cache namespace is rewritten to the current destination
+// key and the sidecar is republished — the runtime counterpart of
+// LoadProjectionSidecar's key-change fallback, so both entry points share one
+// policy. The strong reasoning-replay overlay is cleared with the namespace:
+// its repair cutoff is indexed against the old model's thinking wire shape,
+// while the projection body itself (model-agnostic) stays.
+func (a *Agent) rebindProjectionLineage(st CompactionState, msgs []provider.Message) {
+	if len(st.Projection.Messages) == 0 {
+		return
+	}
+	key := a.currentPromptCacheKey()
+	if key == "" {
+		return
+	}
+	// Cheap gate first: the common (unchanged lineage) case is a string
+	// compare; the covered-prefix hash only runs when the key actually moved.
+	if normalized, ok := lineageKeyCompatible(st.PromptCacheKey, key); ok && normalized == st.PromptCacheKey {
+		return
+	}
+	if !projectionContentValid(st, msgs) {
+		// Real content drift: the invalidation flow owns the drop — a rebind
+		// must never resurrect a stale fold.
+		return
+	}
+	a.sess.compactionMu.Lock()
+	// Re-check under the lock: a concurrent writer may have replaced the state
+	// (new projection generation) between the snapshot and now.
+	if a.sess.compactionState.Projection.ProjectionVersion != st.Projection.ProjectionVersion {
+		a.sess.compactionMu.Unlock()
+		return
+	}
+	a.sess.compactionState.PromptCacheKey = key
+	err := a.persistCompactionStateLocked()
+	a.sess.compactionMu.Unlock()
+	// The overlay is thinking-format specific; the projected history is not.
+	a.sess.clearReasoningReplayStrongProjection()
+	if err != nil {
+		slog.Warn("agent: persist rebound projection lineage", "err", err)
+	}
+	slog.Info("agent: context projection rebound to current lineage",
+		"writer", SessionWriterID(), "projection_version", st.Projection.ProjectionVersion)
 }
 
 func (a *Agent) currentProjectionVersion() uint64 {
@@ -67,7 +116,9 @@ func (a *Agent) currentPromptCacheKeyLocked() string {
 }
 
 // InvalidateProjection drops the in-memory and on-disk projection after
-// lineage-changing operations (rewind, branch, fork, system/model change).
+// lineage-changing operations (rewind, branch, fork). 任务638: a model change
+// is not on this list — it rebinds the cache namespace (rebindProjectionLineage)
+// and keeps a content-valid projection.
 func (a *Agent) InvalidateProjection() {
 	a.invalidateProjection("explicit")
 }
@@ -172,7 +223,7 @@ func (a *Agent) InvalidateProjectionIfStale() {
 	st := a.sess.compactionState
 	if len(st.Projection.Messages) > 0 && a.sess.conversation != nil {
 		msgs, _ := a.sess.conversation.snapshotMessagesVersion()
-		if projectionValid(st, msgs, a.currentPromptCacheKeyLocked()) {
+		if projectionValid(st, msgs) {
 			a.sess.compactionMu.Unlock()
 			return
 		}
@@ -266,7 +317,7 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 	if !projectionContentValid(st, msgs) && migrateLegacyCoveredPrefixHash(&st, msgs, preRepair) {
 		needsNormalization = true
 	}
-	valid := len(st.Projection.Messages) > 0 && projectionValid(st, msgs, key)
+	valid := len(st.Projection.Messages) > 0 && projectionValid(st, msgs)
 	if !valid && len(st.Projection.Messages) > 0 {
 		// Keep blocked receipts / telemetry; drop unusable projection body.
 		st.Projection = ContextProjection{}

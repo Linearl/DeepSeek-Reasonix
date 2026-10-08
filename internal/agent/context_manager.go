@@ -482,16 +482,19 @@ func (a *Agent) observeProjectionFallback(est int) {
 	}
 	msgs, _ := a.sess.conversation.snapshotMessagesVersion()
 	key := a.currentPromptCacheKeyLocked()
+	if projectionContentValid(st, msgs) {
+		// 任务638: a lineage-key change rebinds the cache namespace; it is not a
+		// view fallback, so a content-valid projection stays quiet. Re-arm the
+		// throttle so a later episode warns on its first check.
+		a.sess.compaction.fallbackWarnAt = time.Time{}
+		return
+	}
+	// Content drift: name whether the lineage key also moved.
 	if key != "" {
 		if _, ok := lineageKeyCompatible(st.PromptCacheKey, key); !ok {
 			a.warnProjectionFallback("lineage_key_mismatch", st, est, window)
 			return
 		}
-	}
-	if projectionContentValid(st, msgs) {
-		// Valid projection: re-arm so a later episode warns on its first check.
-		a.sess.compaction.fallbackWarnAt = time.Time{}
-		return
 	}
 	a.warnProjectionFallback("content_mismatch", st, est, window)
 }

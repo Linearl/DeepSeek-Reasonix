@@ -33,18 +33,18 @@ func TestProjectionValidRejectsEditedPrefix(t *testing.T) {
 			CoveredPrefixHash: coveredPrefixHash(msgs, 3),
 		},
 	}
-	if !projectionValid(st, msgs, "ws|sess|model") {
+	if !projectionValid(st, msgs) {
 		t.Fatal("expected valid projection for matching prefix")
 	}
 	// Append-only growth still valid.
 	grown := append(append([]provider.Message(nil), msgs...), provider.Message{Role: provider.RoleAssistant, Content: "more"})
-	if !projectionValid(st, grown, "ws|sess|model") {
+	if !projectionValid(st, grown) {
 		t.Fatal("append-only growth should keep projection valid")
 	}
 	// Prefix edit invalidates.
 	edited := append([]provider.Message(nil), msgs...)
 	edited[1].Content = "task-EDITED"
-	if projectionValid(st, edited, "ws|sess|model") {
+	if projectionValid(st, edited) {
 		t.Fatal("edited covered prefix must invalidate projection")
 	}
 }
@@ -71,13 +71,13 @@ func TestProjectionSurvivesDynamicSystemRefresh(t *testing.T) {
 		},
 	}
 
-	if !projectionValid(st, canonical, key) {
+	if !projectionValid(st, canonical) {
 		t.Fatal("matching projection should be valid")
 	}
 
 	refreshed := append([]provider.Message(nil), canonical...)
 	refreshed[0].Content = "system-v2"
-	if !projectionValid(st, refreshed, key) {
+	if !projectionValid(st, refreshed) {
 		t.Fatal("dynamic system-only refresh invalidated the projection")
 	}
 	visible := modelVisibleFromProjection(st.Projection, refreshed)
@@ -90,7 +90,7 @@ func TestProjectionSurvivesDynamicSystemRefresh(t *testing.T) {
 
 	edited := append([]provider.Message(nil), refreshed...)
 	edited[1].Content = "different task"
-	if projectionValid(st, edited, key) {
+	if projectionValid(st, edited) {
 		t.Fatal("covered user edit was mistaken for a system-only refresh")
 	}
 }
@@ -138,7 +138,10 @@ func TestLoadProjectionSidecarRestoresAfterDynamicSystemRefresh(t *testing.T) {
 	}
 }
 
-func TestProjectionValidRejectsCacheKeyMismatch(t *testing.T) {
+// 任务638: validity is content-authoritative. A lineage-key change (model hot
+// switch) must NOT invalidate a projection whose covered prefix still matches;
+// real content drift and missing hashes still fail closed regardless of keys.
+func TestProjectionValidKeyChangeKeepsContentValidProjection(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
 		{Role: provider.RoleUser, Content: "task"},
@@ -154,21 +157,27 @@ func TestProjectionValidRejectsCacheKeyMismatch(t *testing.T) {
 			TranscriptVersion: 1,
 		},
 	}
-	if projectionValid(st, msgs, "ws|sess|model-b") {
-		t.Fatal("model/lineage key mismatch must invalidate projection")
+	// Model hot switch: key a -> b keeps a content-valid projection (rebind,
+	// not invalidate — the runtime twin of the LoadProjectionSidecar fallback).
+	if !projectionValid(st, msgs) {
+		t.Fatal("lineage key change must not invalidate a content-valid projection")
 	}
-	if !projectionValid(st, msgs, "ws|sess|model-a") {
-		t.Fatal("matching key should be valid")
-	}
-	// Fail closed: blank stored key is rejected when current key is known.
+	// Blank stored key with a known current lineage: the sidecar path rebinds
+	// these on load, so validity must agree (content decides).
 	st.PromptCacheKey = ""
-	if projectionValid(st, msgs, "ws|sess|model-a") {
-		t.Fatal("missing sidecar cache key must invalidate when lineage is known")
+	if !projectionValid(st, msgs) {
+		t.Fatal("blank stored key must not invalidate a content-valid projection")
+	}
+	// Real content drift fails closed no matter which key is stored.
+	edited := append([]provider.Message(nil), msgs...)
+	edited[1].Content = "task-EDITED"
+	st.PromptCacheKey = "ws|sess|model-a"
+	if projectionValid(st, edited) {
+		t.Fatal("edited covered prefix must invalidate projection")
 	}
 	// Missing prefix hash is always rejected.
-	st.PromptCacheKey = "ws|sess|model-a"
 	st.Projection.CoveredPrefixHash = ""
-	if projectionValid(st, msgs, "ws|sess|model-a") {
+	if projectionValid(st, msgs) {
 		t.Fatal("missing CoveredPrefixHash must invalidate projection")
 	}
 }
@@ -578,7 +587,7 @@ func TestCompactInstallsCoveredPrefixHash(t *testing.T) {
 		t.Fatalf("PromptCacheKey = %q", st.PromptCacheKey)
 	}
 	msgs, _ := sess.snapshotMessagesVersion()
-	if !projectionValid(st, msgs, st.PromptCacheKey) {
+	if !projectionValid(st, msgs) {
 		t.Fatal("fresh projection should validate")
 	}
 }
