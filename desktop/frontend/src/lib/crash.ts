@@ -738,7 +738,11 @@ function analyzeButton(
       return;
     }
     if (!report.ghAuthenticated) {
-      note.textContent = t("crash.analyzeNoGh");
+      // Task 643: the backend detail tells not-found apart from an auth
+      // failure (the 2026-10-08 false alarm was a PATH-only miss reported as
+      // "not authenticated"); surface it verbatim under the localized notice.
+      const detail = typeof report.ghCheckDetail === "string" ? report.ghCheckDetail.trim() : "";
+      note.textContent = detail ? `${t("crash.analyzeNoGh")}\n${detail}` : t("crash.analyzeNoGh");
       return;
     }
     paintAnalysisConfirmation(note, payload, className);

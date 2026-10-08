@@ -4616,7 +4616,7 @@ export const en = {
   "crash.analyze": "Analyze",
   "crash.analyzeChecking": "Checking prerequisites…",
   "crash.analyzeNoSource": "No local source detected: root-cause analysis needs the Reasonix fork source (diagnostics carry symptoms only). Prepare the source locally first, or use Copy to report manually.",
-  "crash.analyzeNoGh": "No authenticated GitHub CLI detected: submitting the issue requires GitHub auth. Run gh auth login first, or use Copy to report manually.",
+  "crash.analyzeNoGh": "No authenticated GitHub CLI detected: submitting the issue requires GitHub auth. If the detail below says gh was not found, install the GitHub CLI first; otherwise run gh auth login. Or use Copy to report manually.",
   "crash.analyzeNoWorkspace": "No live session is available to host the analysis (workspace not ready) — use Copy to report manually.",
   "crash.analyzeConfirm": "One-click analysis starts a fresh YOLO session that really runs an agent turn to analyze and submit the issue; it consumes token quota.",
   "crash.analyzeConfirmGo": "Start analysis",

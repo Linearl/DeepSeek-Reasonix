@@ -17,6 +17,7 @@ type Availability = {
   ghAuthenticated: boolean;
   workspaceReady: boolean;
   ready: boolean;
+  ghCheckDetail?: string;
 };
 
 const allReady: Availability = { sourceReady: true, ghAuthenticated: true, workspaceReady: true, ready: true };
@@ -92,6 +93,32 @@ availability = { ...allReady, ghAuthenticated: false, ready: false };
 await clickAnalyze(overlay);
 ok(note(overlay).includes("No authenticated GitHub CLI detected"), "gh not authenticated shows the auth notice");
 ok(startCalls.length === 0, "gh not authenticated does not start the analysis");
+
+// Task 643: the backend GhCheckDetail must surface verbatim so a not-found
+// (stale process PATH) is distinguishable from a real auth failure.
+availability = {
+  ...allReady,
+  ghAuthenticated: false,
+  ready: false,
+  ghCheckDetail: "gh CLI not found on PATH or in known install locations",
+};
+await clickAnalyze(overlay);
+ok(note(overlay).includes("No authenticated GitHub CLI detected"), "generic auth notice still leads when detail exists");
+ok(note(overlay).includes("gh CLI not found on PATH or in known install locations"), "gh check detail is surfaced under the notice");
+ok(startCalls.length === 0, "gh not found does not start the analysis");
+
+// Task 643: gh found via a fallback location but auth OK — analyze stays
+// available (the analysis session runs gh from the user's shell, whose PATH
+// is fine); only the spend confirmation may gate it.
+availability = {
+  ...allReady,
+  ghAuthenticated: true,
+  ready: true,
+  ghCheckDetail: "gh found outside PATH at C:\\Program Files\\GitHub CLI\\gh.exe (this process inherited an outdated PATH); auth OK",
+};
+await clickAnalyze(overlay);
+ok(note(overlay).includes("consumes token quota"), "fallback gh discovery still reaches the spend confirmation");
+ok(startCalls.length === 0, "fallback discovery alone does not start the analysis");
 
 // Workspace not ready — B must not start.
 availability = { ...allReady, workspaceReady: false, ready: false };
