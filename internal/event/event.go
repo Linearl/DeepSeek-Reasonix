@@ -153,6 +153,16 @@ const (
 	// emits PromptAnswered instead. Appended last to keep the Kind values
 	// before it wire-stable; older clients ignore unknown kinds.
 	PromptClosed
+	// UserInput announces that a durable queue item was consumed as the input
+	// of a newly admitted turn (task 580). Text carries the display text the
+	// session transcript persists for that user message and ItemID the durable
+	// inbox item id. Interactive composer submissions do not emit it — those
+	// rows are rendered optimistically by the frontend — so a frontend can
+	// append the user row the moment an externally triggered turn (collab
+	// mail, idle-turn bridge, bot/ACP RunInboxTurn) starts instead of waiting
+	// for a history reload. Appended last to keep the Kind values before it
+	// wire-stable; older clients ignore unknown kinds.
+	UserInput
 	KindCount // Follows all real event kinds.
 )
 
