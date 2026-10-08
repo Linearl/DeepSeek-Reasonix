@@ -9,20 +9,24 @@ import (
 // effortReadTimeout caps one synchronous effort re-fetch: the read behind the
 // EffortForTab binding that the frontend awaits in the switch-tab ancillary
 // batch (useController.ts "ancillary effort"). Task 421 field telemetry (n=7,
-// 2026-09-30): the fetch is normally 431-1350ms (p99 ~1.4s) but is bimodal,
-// with 7.6s/14.8s outliers, because every read walks currentProviderEntryForTab
-// - a full config.LoadForRoot disk load (including on-disk migration) plus a
-// session-binding reconcile. On Windows an antivirus scan can stall those
-// reads for seconds; without a cap the whole tab switch waits on a sidebar
-// value.
+// 2026-09-30): the fetch was normally 431-1350ms (p99 ~1.4s) but bimodal, with
+// 7.6s/14.8s outliers, because every read walked a full config.LoadForRoot
+// disk load (including on-disk migration) plus a session-binding reconcile.
+// Task 609 moved the read onto the per-root config snapshot
+// (config_snapshot.go), so warm reads no longer pay a full load; the cap
+// stays as the bound on whatever disk work remains (first load per root,
+// reload after a config change, the session reconcile). On Windows an
+// antivirus scan can still stall those reads for seconds; without a cap the
+// whole tab switch waits on a sidebar value.
 //
 // 2s rationale: ~1.4x the observed p99, so a healthy read is virtually never
 // cut off, while a bad sample is bounded at the cap instead of running 7-15s.
 // Deliberately not a user-facing knob - no existing effort config surface
 // carries timings - but a package-level constant the tests can bypass through
-// effortReadLimitOverride on App. The root fix (per-request effort, boot-chain
-// removal of the per-read config load) belongs to task 148; this is the
-// fetch-path stopgap and does not touch the boot chain.
+// effortReadLimitOverride on App. Task 148 (per-request effort) removed the
+// switch-path rebuild and task 609 removed the read-path full config load;
+// this fetch-path cap remains the last-resort bound and does not touch the
+// boot chain.
 const effortReadTimeout = 2 * time.Second
 
 // effortCacheEntry is the last completed effort read for one tab, kept so a

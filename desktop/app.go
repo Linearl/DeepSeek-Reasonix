@@ -113,6 +113,14 @@ type App struct {
 	effortCacheMu           sync.Mutex
 	effortCache             map[string]effortCacheEntry
 
+	// Task 609: per-workspace-root config snapshots for the effort read path
+	// (see config_snapshot.go). Keys are cleaned roots; each snapshot reloads
+	// itself only when the tracked config files' mtime/size fingerprints
+	// change, so warm reads never pay a full config load. Read-path cache
+	// only — writes keep going through applyConfigChange / LoadForEdit*.
+	cfgSnapshotsMu sync.Mutex
+	cfgSnapshots   map[string]*configSnapshot
+
 	// sessionCatalog is a disposable, asynchronously opened projection of
 	// authoritative session sidecars. Project-shell APIs must tolerate nil here:
 	// opening, migration, repair, and corruption recovery never gate the UI.
@@ -6944,10 +6952,10 @@ func (a *App) Effort() EffortInfo {
 }
 
 // effortForTabDirect is the unbounded effort read: provider entry resolution
-// (a full config disk load plus session-binding reconcile per call) followed
-// by capability mapping. Task 421 bounds it behind EffortForTab in
-// effort_fetch.go; binding surfaces must go through EffortForTab so a stalled
-// read cannot hang a tab switch.
+// (per-root config snapshot plus session-binding reconcile per call; a full
+// disk load before task 609) followed by capability mapping. Task 421 bounds
+// it behind EffortForTab in effort_fetch.go; binding surfaces must go through
+// EffortForTab so a stalled read cannot hang a tab switch.
 func (a *App) effortForTabDirect(tabID string) EffortInfo {
 	entry, err := a.currentProviderEntryForTab(tabID)
 	if err != nil {
@@ -7411,7 +7419,12 @@ func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, e
 		effortOverride = cloneStringPtr(tab.effort)
 	}
 	a.mu.RUnlock()
-	cfg, err := config.LoadForRoot(workspaceRoot)
+	// Task 609: resolve against the per-root config snapshot instead of a
+	// full LoadForRoot per call — this line was the read-side hot path behind
+	// EffortForTab (431-1350ms, multi-second AV outliers per task 421). The
+	// snapshot reloads itself when the tracked config files change, so value
+	// freshness matches a fresh load.
+	cfg, err := a.cachedConfigForRoot(workspaceRoot)
 	if err != nil {
 		return nil, err
 	}
