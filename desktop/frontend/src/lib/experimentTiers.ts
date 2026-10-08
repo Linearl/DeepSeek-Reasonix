@@ -10,6 +10,8 @@
 // 用户口径：推荐 = 核心特性，不开启会有体验缺口；可选 = 非核心，不开启只
 // 小幅影响；未稳定 = 开发测试中，开启可能不稳定；已退役 = 开关已退役。
 
+import type { DictKey } from "./i18n";
+
 export type LabTier = "recommended" | "optional" | "unstable" | "retired";
 
 /** Badge display order: strongest first. */
@@ -172,6 +174,37 @@ export const LAB_WALL_PICKS = [
 
 /** The 16 pick ids, narrowed from the tuple. */
 export type LabWallPickId = (typeof LAB_WALL_PICKS)[number];
+
+/** 任务 604 — 图墙详情弹窗「设置位置」。wall pick → 实验室 rail 位置（两组标签
+ * 键：[组, 卡]）。与 LAB_WALL_PICKS / LAB_RAIL_ENTRY_MEMBERS 同源同文件——561 式
+ * 分组重组时在同一处同步，不会出现「rail 改了、提示没改」的双源漂移。卡标签键
+ * 与 SettingsPanel features 渲染表的条目一致；561 合并卡成员（restartUpdate →
+ * updateFeedback、budgetControl / compressOpt → contextGovernance、subagentPanel
+ * → subagentSuite）指向合并卡本身（卡内即各成员独立开关）。两组键都是 DictKey
+ * 字面量：typo 是编译错，不是空路径。不在表内的 pick（纯展示特性，无实验室
+ * 开关）⇒ 弹窗不显示设置位置行。 */
+export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, readonly [DictKey, DictKey]>>> = {
+  // ── automation（自动化）──────────────────────────────────────
+  autopilot: ["settings.labGroup.automation", "settings.autopilot"],
+  sessionCollab: ["settings.labGroup.automation", "settings.sessionCollab"],
+  fullAccess: ["settings.labGroup.automation", "settings.fullAccess"],
+  // ── efficiency（提效）────────────────────────────────────────
+  budgetControl: ["settings.labGroup.efficiency", "settings.contextGovernance"],
+  compressOpt: ["settings.labGroup.efficiency", "settings.contextGovernance"],
+  messageMerge: ["settings.labGroup.efficiency", "settings.messageMerge"],
+  // ── ui（界面）───────────────────────────────────────────────
+  sessionWall: ["settings.labGroup.ui", "settings.sessionWall"],
+  tabCompress: ["settings.labGroup.ui", "settings.tabCompress"],
+  todoSidebar: ["settings.labGroup.ui", "settings.todoSidebar"],
+  promptHistoryPicker: ["settings.labGroup.ui", "settings.promptHistoryPicker"],
+  restartUpdate: ["settings.labGroup.ui", "settings.updateFeedback"],
+  splitView: ["settings.labGroup.ui", "settings.splitView"],
+  subagentPanel: ["settings.labGroup.ui", "settings.subagentSuite"],
+  selectionActions: ["settings.labGroup.ui", "settings.selectionActions"],
+  completionSummary: ["settings.labGroup.ui", "settings.completionSummary"],
+  // ── observability（可观测性）─────────────────────────────────
+  monitoring: ["settings.labGroup.observability", "settings.monitoring"],
+};
 
 export function isTierFeatureId(id: string): id is TierFeatureId {
   return Object.prototype.hasOwnProperty.call(EXPERIMENT_FEATURE_TIERS, id);

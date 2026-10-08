@@ -21,10 +21,13 @@ interface LabPickDetailDialogProps {
   /** 表B copy (effect col 6 / detail col 7); null ⇒ lines degrade out, the
    * dialog still opens with title + tier + live state. */
   copy: LabPickCopy | null;
+  /** 任务 604 — 设置位置提示（已翻译段落，如 设置 → 实验室 → 界面 → 会话图墙）。
+   * null / 空 ⇒ 整行不渲染：纯展示特性（无实验室开关）没有可指的路径。 */
+  settingsPath?: readonly string[] | null;
   onClose: () => void;
 }
 
-export default function LabPickDetailDialog({ t, title, tier, on, suggest, copy, onClose }: LabPickDetailDialogProps) {
+export default function LabPickDetailDialog({ t, title, tier, on, suggest, copy, settingsPath, onClose }: LabPickDetailDialogProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -69,6 +72,17 @@ export default function LabPickDetailDialog({ t, title, tier, on, suggest, copy,
           {suggest ? <div className="lab-pick-dialog__suggest">{t("settings.labPicks.suggest")}</div> : null}
           {copy?.effect ? <p className="lab-pick-dialog__effect">{copy.effect}</p> : null}
           {copy?.detail ? <p className="lab-pick-dialog__detail">{copy.detail}</p> : null}
+          {settingsPath && settingsPath.length > 0 ? (
+            <div className="lab-pick-dialog__path">
+              <span className="lab-pick-dialog__path-label">{t("settings.labPicks.settingsPath")}</span>
+              {settingsPath.map((seg, i) => (
+                <span key={seg} className="lab-pick-dialog__path-seg">
+                  {i > 0 ? <span className="lab-pick-dialog__path-arrow" aria-hidden="true">→</span> : null}
+                  {seg}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>,

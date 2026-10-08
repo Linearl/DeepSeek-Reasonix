@@ -1385,6 +1385,12 @@ const CHECKS = [
   { feature: "任务509 boot 接线（boot 快照，翻转重启生效）", file: "internal/boot/boot.go", patterns: ["DeleteUnreadGate: cfg.Agent.SessionCollabDeleteUnreadGate"] },
   { feature: "任务509 验收测试（门关放行不回退/未读拒 confirm/dry-run 上报/Ack 消费放行/无信箱放行/核验失败拒）", file: "internal/agent/session_collab_delete_unread_gate_test.go", patterns: ["TestDeleteSessionGateOffKeepsLegacyBehavior", "TestDeleteSessionGateRefusesUnconsumedConfirm", "TestDeleteSessionGateDryRunReportsUnconsumed", "TestDeleteSessionGatePassesWhenConsumed", "TestDeleteSessionGateFailsClosedOnUnreadableInbox"] },
   { feature: "任务509 config 往返测试（默认关 + 无条件渲染 + 显式 TOML）", file: "internal/config/session_collab_delete_unread_gate_test.go", patterns: ["TestSessionCollabDeleteUnreadGateDefaultsOff", "TestRenderSessionCollabDeleteUnreadGate"] },
+  // ── 任务604 图墙详情弹窗「设置位置」提示（562 注册表旁映射 + 无路径不渲染）──
+  { feature: "任务604 设置位置映射（挂 562 注册表：组+卡 DictKey 标签键，与 rail 同源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_SETTINGS_LOCATION", "Partial<Record<LabWallPickId, readonly [DictKey, DictKey]>>"] },
+  { feature: "任务604 弹窗设置位置行（可选 prop，无路径整行不渲染）", file: "desktop/frontend/src/components/LabPickDetailDialog.tsx", patterns: ["settingsPath?: readonly string[] | null", "lab-pick-dialog__path", "{settingsPath && settingsPath.length > 0 ? ("] },
+  { feature: "任务604 图墙接线（设置 → 实验室 → 组 → 卡 四段路径，段落全复用既有键）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["function settingsPathFor", "t(\"settings.tab.experimental\")", "settingsPath={settingsPathFor(t, openPick)}"] },
+  { feature: "任务604 设置位置行 CSS（merge 丢块高发区）", file: "desktop/frontend/src/styles.css", patterns: [".lab-pick-dialog__path {", ".lab-pick-dialog__path-label {", ".lab-pick-dialog__path-arrow {"] },
+  { feature: "任务604 验收测试（抽 3 项路径逐字 + rail 真源逐项锚定 + 三语 + 无路径不显示）", file: "desktop/frontend/src/__tests__/task604-lab-picks-settings-path.test.ts", patterns: ["设置 → 实验室 → 界面 → 会话图墙", "every location names an existing features render table entry (rail truth)", "simulated pure-display pick has no location entry"] },
 ];
 
 let failed = 0;
