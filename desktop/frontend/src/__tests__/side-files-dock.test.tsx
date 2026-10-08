@@ -1,10 +1,12 @@
 // Run: tsx src/__tests__/side-files-dock.test.tsx
 // Task 260: the two session side-files dock tabs (artifacts = write path,
 // references = read path) behind the same experimental sidebar family switch
-// as the todos tab (task 259).
+// as the todos tab (task 259). Task 629 revised the aggregation: modified
+// files are artifacts too.
 //
 // Contract under test:
-// - SideFilesDockPanel: one variant per tab, same task-114 aggregation,
+// - SideFilesDockPanel: one variant per tab, the task-114 aggregation as
+//   revised by task 629,
 //   friendly empty state, references tab keeps the inject-into-composer action;
 // - dockModeWithinSidebarGates: todos/artifacts/references fall back to files
 //   while the switch is off; every other mode passes through; switch on = no
@@ -71,12 +73,13 @@ function renderPanel(variant: "artifacts" | "references", items: readonly unknow
 
 console.log("\nside-files dock tabs (task 260)");
 
-// 1. Artifacts tab: write path only.
+// 1. Artifacts tab: the write path — creates AND modifications (task 629).
 {
   const markup = renderPanel("artifacts", [WRITE, EDIT, READ, BASH]);
   eq(markup.includes("out.txt"), true, "artifacts: lists the written file");
+  eq(markup.includes("app.ts"), true, "artifacts: lists the modified file (task 629)");
   eq(markup.includes("in.txt"), false, "artifacts: does not list read files");
-  eq(markup.includes("1 produced"), true, "artifacts: count meta shows 1");
+  eq(markup.includes("2 produced"), true, "artifacts: count meta shows 2");
   eq(markup.includes("No session file activity yet"), false, "artifacts: no empty state when a write exists");
 }
 {
@@ -84,13 +87,13 @@ console.log("\nside-files dock tabs (task 260)");
   eq(markup.includes("No session file activity yet"), true, "artifacts: empty state when nothing was written");
 }
 
-// 2. References tab: read path (reads + modifications the session opened).
+// 2. References tab: the read path (task 629 moved modifications to artifacts).
 {
   const markup = renderPanel("references", [WRITE, EDIT, READ, BASH], () => {});
   eq(markup.includes("in.txt"), true, "references: lists the read file");
-  eq(markup.includes("app.ts"), true, "references: lists the modified file (task 114 semantics)");
+  eq(markup.includes("app.ts"), false, "references: modified file moved to artifacts (task 629)");
   eq(markup.includes("out.txt"), false, "references: does not list written files");
-  eq(markup.includes("2 read"), true, "references: count meta shows 2");
+  eq(markup.includes("1 read"), true, "references: count meta shows 1");
   eq(markup.includes("Add references to message"), true, "references: offers the inject action");
 }
 {
@@ -110,10 +113,11 @@ console.log("\nside-files dock tabs (task 260)");
   const HYD_MOVE = { kind: "tool", name: "move_file", args: "", subject: "C:/proj/old.txt -> C:/proj/new.txt" };
   const art = renderPanel("artifacts", [HYD_WRITE, HYD_READ, HYD_EDIT]);
   eq(art.includes("out.txt"), true, "hydrated: write_file subject path lands in artifacts");
-  eq(art.includes("in.txt") || art.includes("app.ts"), false, "hydrated: read/edit subjects stay out of artifacts");
+  eq(art.includes("app.ts"), true, "hydrated: edit_file subject path lands in artifacts (task 629)");
+  eq(art.includes("in.txt"), false, "hydrated: read subjects stay out of artifacts");
   const refs = renderPanel("references", [HYD_READ, HYD_EDIT, HYD_WRITE]);
   eq(refs.includes("in.txt"), true, "hydrated: read_file subject path lands in references");
-  eq(refs.includes("app.ts"), true, "hydrated: edit_file subject path lands in references");
+  eq(refs.includes("app.ts"), false, "hydrated: edit subject moved to artifacts (task 629)");
   eq(refs.includes("out.txt"), false, "hydrated: write subject stays out of references");
   const movedRefs = renderPanel("references", [HYD_MOVE]);
   eq(movedRefs.includes("old.txt"), true, "hydrated: move_file subject source lands in references");
@@ -128,6 +132,10 @@ console.log("\nside-files dock tabs (task 260)");
   // Non-path subjects (bash command, grep pattern) never leak into the lists.
   const NOISE = { kind: "tool", name: "bash", args: "", subject: "pnpm build" };
   eq(renderPanel("artifacts", [NOISE]).includes("pnpm build"), false, "hydrated: bash subject does not leak into artifacts");
+  // Task 629: a hydrated whitelist-external writer with no args/subject still
+  // lands via its persisted fileDiff header.
+  const HYD_DIFF = { kind: "tool", name: "future_writer", args: "", fileDiff: { diff: "--- a/nb/report.md\n+++ b/nb/report.md\n", added: 2, removed: 1 } };
+  eq(renderPanel("artifacts", [HYD_DIFF]).includes("nb/report.md"), true, "hydrated: fileDiff header path lands in artifacts (task 629)");
 }
 
 // 3. Inject action payload (interactive).

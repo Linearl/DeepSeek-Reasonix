@@ -57,7 +57,7 @@ const t: Translator = ((key: string, vars?: Record<string, string | number>) => 
   console.log("  PASS  turn edit list collapse + header");
 }
 
-// --- 114 ---
+// --- 114 (revised by 629: modified files are artifacts too) ---
 {
   const { artifacts, references } = collectSessionSideFiles([
     { kind: "user", },
@@ -65,13 +65,73 @@ const t: Translator = ((key: string, vars?: Record<string, string | number>) => 
     { kind: "tool", name: "read_file", args: JSON.stringify({ path: "src/a.ts" }) },
     { kind: "tool", name: "write_file", args: JSON.stringify({ path: "out/new.md" }) },
     { kind: "tool", name: "edit_file", args: JSON.stringify({ path: "src/a.ts" }) },
+    { kind: "tool", name: "multi_edit", args: JSON.stringify({ path: "src/b.ts", edits: [] }) },
+    { kind: "tool", name: "move_file", args: JSON.stringify({ source_path: "old.txt", destination_path: "new.txt" }) },
     { kind: "tool", name: "bash", args: JSON.stringify({ command: "ls" }) },
   ] as never);
-  assert.deepEqual(artifacts.map((f) => f.path), ["out/new.md"], "only creates are artifacts");
-  assert.deepEqual(references.map((f) => f.path), ["src/a.ts"], "reads and modifies are references, deduped");
+  // Creates and modifies are artifacts, deduped by path (src/a.ts was both
+  // read and edited — one entry, first writer wins as `via`).
+  assert.deepEqual(
+    artifacts.map((f) => f.path),
+    ["out/new.md", "src/a.ts", "src/b.ts", "new.txt"],
+    "creates and modifies are artifacts, deduped",
+  );
+  assert.deepEqual(
+    artifacts.map((f) => f.via),
+    ["write_file", "edit_file", "multi_edit", "move_file"],
+    "via keeps the first writer per path",
+  );
+  assert.deepEqual(
+    references.map((f) => f.path),
+    ["src/a.ts", "old.txt"],
+    "reads stay references; move_file's renamed-away source stays a reference",
+  );
 
   const prompt = formatReferenceListForPrompt(references);
   assert.match(prompt, /src\/a\.ts/, "prompt lists reference paths");
   assert.equal(formatReferenceListForPrompt([]), "", "empty refs produce no prompt");
   console.log("  PASS  session side files artifacts vs references");
+}
+
+// --- 629: fileDiff branch — a previewed diff proves a write even for tools
+// outside the whitelists; the path comes from the unified-diff header. ---
+{
+  const { artifacts, references } = collectSessionSideFiles([
+    {
+      kind: "tool",
+      name: "future_writer",
+      args: "",
+      fileDiff: { diff: "--- a/gen/report.md\n+++ b/gen/report.md\n@@ -0,0 +1 @@\n+hi\n", added: 1, removed: 0 },
+    },
+    // A diff whose render was omitted (too large) carries no header — the
+    // path is unknown, so it stays out rather than being guessed.
+    {
+      kind: "tool",
+      name: "future_writer_big",
+      args: "",
+      fileDiff: { diff: "(diff omitted: change too large to render — +9000 / -1 lines)", added: 9000, removed: 1 },
+    },
+    // bash never carries a fileDiff today, and stays out even if one appears.
+    { kind: "tool", name: "bash", args: "", fileDiff: { diff: "--- a/x\n+++ b/x\n", added: 1, removed: 0 } },
+    // Reads never produce a fileDiff (read-only tools skip the preview), and
+    // the branch must not pull them anywhere.
+    { kind: "tool", name: "read_file", args: JSON.stringify({ path: "src/in.ts" }) },
+  ] as never);
+  assert.deepEqual(
+    artifacts.map((f) => f.path),
+    ["gen/report.md"],
+    "fileDiff header path lands in artifacts; omitted-header and bash stay out",
+  );
+  assert.deepEqual(references.map((f) => f.path), ["src/in.ts"], "fileDiff branch never touches references");
+  console.log("  PASS  session side files fileDiff branch (629)");
+}
+
+// --- 629: a hydrated write_file whose args are archived is rescued by its
+// persisted fileDiff header when the subject is missing too. ---
+{
+  const { artifacts } = collectSessionSideFiles([
+    { kind: "tool", name: "write_file", args: "", fileDiff: { diff: "--- a/rescued.md\n+++ b/rescued.md\n@@\n+x\n", added: 1, removed: 0 } },
+  ] as never);
+  assert.deepEqual(artifacts.map((f) => f.path), ["rescued.md"], "fileDiff rescues a hydrated write without args/subject");
+  console.log("  PASS  session side files fileDiff hydration rescue (629)");
 }
