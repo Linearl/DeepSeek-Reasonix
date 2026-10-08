@@ -247,4 +247,52 @@ console.log("diagnostics settings page");
   });
 }
 
+{
+  installDom();
+  window.localStorage.setItem("reasonix-lang", "en");
+
+  window.go = {
+    main: {
+      App: {
+        CapabilityDiagnostics: async () => baseReport(false),
+        CrashPendingDiagnostics: async () => ({
+          count: 10,
+          capacity: 10,
+          retentionDays: 14,
+          oldestAt: "2026-10-07T01:25:00Z",
+          newestAt: "2026-10-08T01:32:00Z",
+          atCapacity: true,
+        }),
+      } as Partial<AppBindings> as AppBindings,
+    },
+  };
+
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("missing root");
+  const root = createRoot(rootEl);
+
+  await act(async () => {
+    root.render(
+      React.createElement(
+        LocaleProvider,
+        null,
+        React.createElement(DiagnosticsSettingsPage),
+      ),
+    );
+    await flush();
+  });
+
+  // Task 618: the crash-pending queue must be visible in the diagnostics page,
+  // with the cap warning when uploads stay failing.
+  await waitFor("crash pending section", () => (rootEl.textContent || "").includes("Crash report local queue"));
+  const text = rootEl.textContent || "";
+  ok(text.includes("10 pending"), "pending count renders with capacity context");
+  ok(text.includes("queue is full"), "at-capacity warning renders");
+  ok(Boolean(rootEl.querySelector('[data-testid="crash-pending-diagnostics"]')), "crash pending section is testable");
+
+  await act(async () => {
+    root.unmount();
+  });
+}
+
 console.log("diagnostics-settings: ok");
