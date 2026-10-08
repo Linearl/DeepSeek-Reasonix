@@ -1760,6 +1760,31 @@ export interface MemoryView {
 // SettingsTab is the top-level navigation item in the Settings Centre modal.
 export type SettingsTab = "general" | "models" | "model-stats" | "providers" | "bots" | "mcp" | "remote" | "localserver" | "skills" | "subagents" | "plugins" | "experimental" | "memory" | "hooks" | "diagnostics" | "shortcuts" | "permissions" | "sandbox" | "network" | "appearance" | "storage" | "updates";
 
+/** Crash-pending queue state from App.CrashPendingDiagnostics (task 618).
+ * AtCapacity means the queue hit its cap — expected only while uploads keep
+ * failing (e.g. the 2026-10-08 upstream 503), so the UI uses it as the
+ * "uploads are stuck" hint. */
+export interface CrashPendingDiagnosticsReport {
+  count: number;
+  capacity: number;
+  retentionDays: number;
+  oldestAt?: string;
+  newestAt?: string;
+  atCapacity: boolean;
+}
+
+/** One-click analysis prerequisite probes from App.CrashAnalysisAvailability
+ * (task 617 route B). Each failed flag maps to one distinct user notice;
+ * StartCrashAnalysis re-checks all of them before starting. */
+export interface CrashAnalysisAvailabilityReport {
+  sourceReady: boolean;
+  sourceDir?: string;
+  ghAuthenticated: boolean;
+  ghCheckDetail?: string;
+  workspaceReady: boolean;
+  ready: boolean;
+}
+
 /** Extension runtime doctor report from App.RuntimeDoctor. */
 export interface RuntimeDoctorReport {
   text: string;

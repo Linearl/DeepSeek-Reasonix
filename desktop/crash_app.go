@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"runtime"
@@ -322,10 +323,17 @@ func postCrashReport(ctx context.Context, c *http.Client, endpoint string, r cra
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.Do(req)
 	if err != nil {
+		// Task 618: a failed report used to vanish — postCrashReport only
+		// returned the error and no caller logged it, so a dead upstream (503
+		// storage unavailable, 2026-10-08) left zero trace in desktop.log while
+		// crash-pending kept growing. Warn with endpoint + status so the failure
+		// is greppable.
+		slog.Warn("desktop: crash report upload failed", "endpoint", endpoint, "kind", r.Kind, "err", err)
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
+		slog.Warn("desktop: crash report upload rejected", "endpoint", endpoint, "kind", r.Kind, "status", resp.Status)
 		return fmt.Errorf("crash endpoint returned %s", resp.Status)
 	}
 	return nil

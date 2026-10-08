@@ -58,6 +58,8 @@ import type {
   BotSettingsView,
   CapabilitiesView,
   CapabilityDiagnosticsReport,
+  CrashAnalysisAvailabilityReport,
+  CrashPendingDiagnosticsReport,
   RuntimeDoctorReport,
   CheckpointMeta,
   CommandInfo,
@@ -1252,6 +1254,15 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Crash overlay "Send report" (desktop/crash_app.go): scrubs user paths, attaches
   // version/os/arch, POSTs to the collection endpoint. Only ever sent on user click.
   ReportCrash(kind: string, detail: string): Promise<void>;
+  // Task 618: diagnostics-settings view of the local crash-pending queue so a
+  // stuck upstream (count pinned at capacity) is visible to the user.
+  CrashPendingDiagnostics(): Promise<CrashPendingDiagnosticsReport>;
+  // Task 617 route B: one-click analysis. Availability probes the three
+  // prerequisites (source checkout / gh auth / live workspace) without side
+  // effects; StartCrashAnalysis rotates the active tab to a fresh YOLO session
+  // and submits the analysis instruction. Returns a short summary on success.
+  CrashAnalysisAvailability(): Promise<CrashAnalysisAvailabilityReport>;
+  StartCrashAnalysis(kind: string, detail: string): Promise<string>;
   RecordUIPerf(signals: Record<string, string>): Promise<void>;
   ListTabs(): Promise<TabMeta[]>;
   OpenProjectTab(workspaceRoot: string, topicID: string): Promise<TabMeta>;
@@ -6302,6 +6313,9 @@ function makeMockApp(): AppBindings {
       return "";
     },
     async ReportCrash() { await delay(300); },
+    async CrashPendingDiagnostics() { return { count: 0, capacity: 10, retentionDays: 14, atCapacity: false }; },
+    async CrashAnalysisAvailability() { return { sourceReady: false, ghAuthenticated: false, workspaceReady: false, ready: false }; },
+    async StartCrashAnalysis() { throw new Error("one-click analysis is unavailable in the browser mock"); },
     async RecordUIPerf() {},
     // Tab management mocks.
     async ListTabs() {

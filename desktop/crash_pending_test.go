@@ -475,3 +475,70 @@ func TestWritePendingReportPrunesKnownReportsWithoutDeletingFutureSchema(t *test
 		t.Fatalf("pending reports = %d, want bounded queue of %d", got, maxPendingCrashes)
 	}
 }
+
+func TestPrunePendingCrashQueueAgesOutStaleFilesRegardlessOfSchema(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+	if err := os.MkdirAll(pendingCrashDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A future-schema file the cap loop would never select: only aging can
+	// evict it, which is the point of task 618 while the upstream is down.
+	stalePath := filepath.Join(pendingCrashDir(), "000-stale-future.json")
+	staleReport := `{"schemaVersion":99,"futureField":"stale"}`
+	if err := os.WriteFile(stalePath, []byte(staleReport), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Now().Add(-pendingCrashRetention - time.Hour)
+	if err := os.Chtimes(stalePath, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	freshPath := filepath.Join(pendingCrashDir(), "001-fresh-future.json")
+	freshReport := `{"schemaVersion":99,"futureField":"fresh"}`
+	if err := os.WriteFile(freshPath, []byte(freshReport), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if !writePendingReport(baseCrashReport("crash"), false) {
+		t.Fatal("writePendingReport failed")
+	}
+
+	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
+		t.Fatalf("stale future-schema file survived aging: %v", err)
+	}
+	body, err := os.ReadFile(freshPath)
+	if err != nil || !bytes.Contains(body, []byte(`"futureField":"fresh"`)) {
+		t.Fatalf("fresh future-schema file was aged out: body=%s err=%v", body, err)
+	}
+}
+
+func TestCrashPendingDiagnosticsReportsQueueState(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	before := NewApp().CrashPendingDiagnostics()
+	if before.Count != 0 || before.AtCapacity {
+		t.Fatalf("empty queue report wrong: %+v", before)
+	}
+	if before.Capacity != maxPendingCrashes {
+		t.Fatalf("capacity = %d, want %d", before.Capacity, maxPendingCrashes)
+	}
+	if before.RetentionDays != int(pendingCrashRetention/(24*time.Hour)) {
+		t.Fatalf("retentionDays = %d, want %d", before.RetentionDays, int(pendingCrashRetention/(24*time.Hour)))
+	}
+
+	writePendingCrash("diag", "boom", []byte("stack"))
+	after := NewApp().CrashPendingDiagnostics()
+	if after.Count != 1 {
+		t.Fatalf("count = %d, want 1", after.Count)
+	}
+	if after.AtCapacity {
+		t.Fatalf("single report must not read as at-capacity: %+v", after)
+	}
+	if _, err := time.Parse(time.RFC3339, after.OldestAt); err != nil {
+		t.Fatalf("oldestAt not RFC3339 (%q): %v", after.OldestAt, err)
+	}
+	if _, err := time.Parse(time.RFC3339, after.NewestAt); err != nil {
+		t.Fatalf("newestAt not RFC3339 (%q): %v", after.NewestAt, err)
+	}
+}

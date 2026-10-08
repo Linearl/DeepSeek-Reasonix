@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Clipboard, Loader2, RefreshCw } from "lucide
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import { useI18n, useT, type Locale } from "../lib/i18n";
-import type { CapabilityDiagnosticsReport, CapabilityIssue, RuntimeDoctorReport, SettingsTab } from "../lib/types";
+import type { CapabilityDiagnosticsReport, CapabilityIssue, CrashPendingDiagnosticsReport, RuntimeDoctorReport, SettingsTab } from "../lib/types";
 import { FrontendDiagnosticsControl } from "./FrontendDiagnosticsControl";
 
 const FRONTEND_COPY: Record<Locale, { title: string; hint: string }> = {
@@ -31,6 +31,7 @@ export function DiagnosticsSettingsPage({
   const frontendCopy = FRONTEND_COPY[locale];
   const [report, setReport] = useState<CapabilityDiagnosticsReport | null>(null);
   const [runtimeDoctor, setRuntimeDoctor] = useState<RuntimeDoctorReport | null>(null);
+  const [crashPending, setCrashPending] = useState<CrashPendingDiagnosticsReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeRuntime, setIncludeRuntime] = useState(false);
@@ -60,15 +61,25 @@ export function DiagnosticsSettingsPage({
       } catch {
         doctor = null;
       }
+      // Task 618: local crash-pending queue state. Kept non-fatal — an older
+      // backend without the binding must not break the whole page.
+      let pending: CrashPendingDiagnosticsReport | null = null;
+      try {
+        pending = await app.CrashPendingDiagnostics();
+      } catch {
+        pending = null;
+      }
       // Last-request-wins: ignore stale responses after rapid refresh/toggle.
       if (seq !== loadSeq.current) return;
       setReport(next);
       setRuntimeDoctor(doctor);
+      setCrashPending(pending);
     } catch (err) {
       if (seq !== loadSeq.current) return;
       setError(err instanceof Error ? err.message : String(err));
       setReport(null);
       setRuntimeDoctor(null);
+      setCrashPending(null);
     } finally {
       if (seq === loadSeq.current) {
         setLoading(false);
@@ -134,6 +145,38 @@ export function DiagnosticsSettingsPage({
       </div>
 
       <p className="diag-page__hint">{t("diag.hint")}</p>
+
+      {crashPending && (
+        <section className="diag-section" data-testid="crash-pending-diagnostics">
+          <div className="diag-section__body">
+            <div className="diag-frontend-recording__copy">
+              <strong>{t("diag.crashPending.title")}</strong>
+              {crashPending.count === 0 ? (
+                <span>{t("diag.crashPending.empty")}</span>
+              ) : (
+                <span>
+                  {t("diag.crashPending.summary", {
+                    count: crashPending.count,
+                    capacity: crashPending.capacity,
+                    retention: crashPending.retentionDays,
+                  })}
+                  {crashPending.oldestAt
+                    ? ` · ${t("diag.crashPending.range", {
+                        oldest: formatCrashPendingTime(crashPending.oldestAt, locale),
+                        newest: formatCrashPendingTime(crashPending.newestAt ?? crashPending.oldestAt, locale),
+                      })}`
+                    : ""}
+                </span>
+              )}
+            </div>
+            {crashPending.atCapacity && (
+              <p className="settings-error" role="alert">
+                {t("diag.crashPending.atCapacity", { count: crashPending.count, capacity: crashPending.capacity })}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="diag-section diag-section--frontend" data-testid="frontend-diagnostics-settings">
         <div className="diag-section__body diag-section__body--frontend">
@@ -339,6 +382,16 @@ export function DiagnosticsSettingsPage({
       )}
     </div>
   );
+}
+
+function formatCrashPendingTime(iso: string, locale: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
+  try {
+    return at.toLocaleString(locale);
+  } catch {
+    return at.toISOString();
+  }
 }
 
 function normalizeDiagnosticsReport(report: CapabilityDiagnosticsReport): CapabilityDiagnosticsReport {

@@ -7,6 +7,8 @@ import { app } from "./bridge";
 import { t } from "./i18n";
 import { sessionPipelineDiagnostics, type SessionPipelineDiagnostics } from "./sessionDiagnostics";
 import { isWailsRuntimeOnlyCrashEvent } from "./wailsRuntimeCrash";
+import { buildCrashIssueSkeleton } from "./crashIssue";
+import type { CrashAnalysisAvailabilityReport } from "./types";
 declare const __BUILD_COMMIT__: string;
 declare const __BUILD_CHANNEL__: string;
 
@@ -699,6 +701,83 @@ function sendButton(
 
 const COPY_FEEDBACK_MS = 2_000;
 
+// Task 617 route B: one-click analyze. The click runs the three prerequisite
+// probes (source checkout / gh auth / live workspace) and only proceeds to a
+// spend confirmation when all hard prerequisites pass — each failure paints its
+// own distinct notice into `note` and route B stops, pointing at route A
+// (Copy). Like the send button, both bindings are resolved at click time off
+// window.go so the overlay keeps working when the rest of the app is broken.
+function analyzeButton(
+  payload: CrashPayload,
+  className: string,
+  note: HTMLDivElement,
+): HTMLButtonElement | null {
+  const probe = window.go?.main?.App?.CrashAnalysisAvailability;
+  const start = window.go?.main?.App?.StartCrashAnalysis;
+  if (!probe || !start) return null;
+  const analyze = document.createElement("button");
+  analyze.className = className;
+  analyze.textContent = t("crash.analyze");
+  analyze.onclick = async () => {
+    analyze.disabled = true;
+    analyze.textContent = t("crash.analyzeChecking");
+    let report: CrashAnalysisAvailabilityReport | null = null;
+    try {
+      report = await probe();
+    } catch {
+      report = null;
+    }
+    analyze.disabled = false;
+    analyze.textContent = t("crash.analyze");
+    if (!report || !report.workspaceReady) {
+      note.textContent = t("crash.analyzeNoWorkspace");
+      return;
+    }
+    if (!report.sourceReady) {
+      note.textContent = t("crash.analyzeNoSource");
+      return;
+    }
+    if (!report.ghAuthenticated) {
+      note.textContent = t("crash.analyzeNoGh");
+      return;
+    }
+    paintAnalysisConfirmation(note, payload, className);
+  };
+  return analyze;
+}
+
+// Prerequisite 2 is an explicit notice, not a gate: the analysis really runs an
+// agent turn, so it only starts after the user confirms the spend.
+function paintAnalysisConfirmation(note: HTMLDivElement, payload: CrashPayload, className: string) {
+  const start = window.go?.main?.App?.StartCrashAnalysis;
+  if (!start) return;
+  const text = document.createElement("span");
+  text.textContent = t("crash.analyzeConfirm");
+  const actions = document.createElement("span");
+  const go = document.createElement("button");
+  go.className = className;
+  go.textContent = t("crash.analyzeConfirmGo");
+  const cancel = document.createElement("button");
+  cancel.className = className;
+  cancel.textContent = t("crash.analyzeCancel");
+  actions.append(go, cancel);
+  go.onclick = async () => {
+    go.disabled = true;
+    cancel.disabled = true;
+    note.textContent = t("crash.analyzeStarting");
+    try {
+      const summary = await start(payload.kind, JSON.stringify(payload));
+      note.textContent = `${t("crash.analyzeStarted")}\n${summary}`;
+    } catch (err) {
+      note.textContent = `${t("crash.analyzeFailed")}\n${err instanceof Error ? err.message : String(err)}`;
+    }
+  };
+  cancel.onclick = () => {
+    note.textContent = "";
+  };
+  note.replaceChildren(text, actions);
+}
+
 function copyButton(text: string, className: string): HTMLButtonElement {
   const copy = document.createElement("button");
   copy.className = className;
@@ -742,7 +821,13 @@ function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnap
   const actions = document.createElement("div");
   actions.className = "performance-report__actions";
   const send = sendButton(payload, "performance-report__send", () => markPerfReported(payload.label));
-  const copy = copyButton(payload.message, "performance-report__copy");
+  // Task 617 route A: copy a paste-ready GitHub issue skeleton, not the bare
+  // diagnostic text — the upstream endpoint is down (618) and this is the
+  // zero-dependency feedback path.
+  const copy = copyButton(buildCrashIssueSkeleton(payload), "performance-report__copy");
+  const analysisNote = document.createElement("div");
+  analysisNote.className = "performance-report__analysis";
+  const analyze = analyzeButton(payload, "performance-report__analyze", analysisNote);
   const dismiss = document.createElement("button");
   dismiss.className = "performance-report__dismiss";
   dismiss.textContent = t("performanceReport.dismiss");
@@ -751,11 +836,16 @@ function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnap
     host?.remove();
   };
   if (send) actions.append(send);
-  actions.append(copy, dismiss);
+  actions.append(copy);
+  if (analyze) actions.append(analyze);
+  actions.append(dismiss);
   const note = document.createElement("div");
   note.className = "performance-report__note";
   note.textContent = t("performanceReport.privacyNote");
-  host.replaceChildren(title, body, actions, note);
+  const children = [title, body, actions];
+  if (analyze) children.push(analysisNote);
+  children.push(note);
+  host.replaceChildren(...children);
 }
 
 export function paintCrashOverlay(payload: CrashPayload) {
@@ -771,16 +861,25 @@ export function paintCrashOverlay(payload: CrashPayload) {
   const body = document.createElement("pre");
   body.className = "crash-overlay__body";
   body.textContent = payload.message;
-  const copy = copyButton(payload.message, "crash-overlay__copy");
+  // Task 617 route A: copy a paste-ready GitHub issue skeleton (title,
+  // sectioned body, repo link, labels) instead of the bare diagnostic text.
+  const copy = copyButton(buildCrashIssueSkeleton(payload), "crash-overlay__copy");
   const actions = document.createElement("div");
   actions.className = "crash-overlay__actions";
   const send = sendButton(payload);
+  const analysisNote = document.createElement("div");
+  analysisNote.className = "crash-overlay__analysis";
+  const analyze = analyzeButton(payload, "crash-overlay__analyze", analysisNote);
   if (send) actions.append(send);
   actions.append(copy);
+  if (analyze) actions.append(analyze);
   const note = document.createElement("div");
   note.className = "crash-overlay__note";
   note.textContent = t("crash.privacyNote");
-  host.replaceChildren(title, body, actions, ...(send ? [note] : []));
+  const children = [title, body, actions];
+  if (analyze) children.push(analysisNote);
+  if (send) children.push(note);
+  host.replaceChildren(...children);
 }
 
 export function reportCrash(label: string, err: unknown, extra?: string) {

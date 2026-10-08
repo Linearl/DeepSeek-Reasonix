@@ -25,13 +25,14 @@ import (
 // desktop.telemetry opt-out as the launch ping.
 
 const (
-	pendingCrashFile     = "crash-pending.json" // legacy single-report path
-	pendingCrashQueueDir = "crash-pending"
-	maxPendingCrashes    = 10
-	currentCrashSchema   = 3
-	crashLedgerFile      = "crash-upload-ledger-v1.json"
-	maxCrashLedger       = 512
-	crashLedgerRetention = 180 * 24 * time.Hour
+	pendingCrashFile      = "crash-pending.json" // legacy single-report path
+	pendingCrashQueueDir  = "crash-pending"
+	maxPendingCrashes     = 10
+	currentCrashSchema    = 3
+	crashLedgerFile       = "crash-upload-ledger-v1.json"
+	maxCrashLedger        = 512
+	crashLedgerRetention  = 180 * 24 * time.Hour
+	pendingCrashRetention = 14 * 24 * time.Hour
 )
 
 var (
@@ -109,7 +110,7 @@ func writePendingReport(report crashReport, overwrite bool) bool {
 }
 
 func prunePendingCrashQueue(writtenPath string) bool {
-	paths := pendingCrashQueuePaths()
+	paths := ageOutPendingCrashes(pendingCrashQueuePaths())
 	for len(paths) > maxPendingCrashes {
 		victim := -1
 		for index, candidate := range paths {
@@ -130,6 +131,28 @@ func prunePendingCrashQueue(writtenPath string) bool {
 	}
 	_, err := os.Stat(writtenPath)
 	return err == nil
+}
+
+// ageOutPendingCrashes removes queue files older than pendingCrashRetention and
+// returns the survivors (task 618). Without this the queue could only shrink via
+// the schema-based cap loop above, which never selects future-schema victims —
+// so while the upstream endpoint is down, files a preview build wrote would sit
+// on disk forever. Aging applies regardless of schema; a file written within the
+// window is never touched.
+func ageOutPendingCrashes(paths []string) []string {
+	if len(paths) == 0 {
+		return paths
+	}
+	cutoff := time.Now().Add(-pendingCrashRetention)
+	kept := paths[:0]
+	for _, path := range paths {
+		if info, err := os.Stat(path); err == nil && info.ModTime().Before(cutoff) {
+			_ = os.Remove(path)
+			continue
+		}
+		kept = append(kept, path)
+	}
+	return kept
 }
 
 type crashUploadLedger struct {
@@ -212,6 +235,49 @@ func removeAllPendingCrashes() {
 	_ = os.Remove(fatalCrashCoveredPath())
 	_ = os.Remove(crashLedgerPath())
 	_ = os.Remove(crashLedgerPath() + ".lock")
+}
+
+// CrashPendingDiagnosticsReport is the diagnostics-settings view of the local
+// crash-pending queue (task 618). AtCapacity means the queue hit its cap — with
+// a healthy upstream that is a coincidence, but an upstream outage keeps it
+// pinned there, so the UI uses it as the "uploads are failing" hint.
+type CrashPendingDiagnosticsReport struct {
+	Count         int    `json:"count"`
+	Capacity      int    `json:"capacity"`
+	RetentionDays int    `json:"retentionDays"`
+	OldestAt      string `json:"oldestAt,omitempty"`
+	NewestAt      string `json:"newestAt,omitempty"`
+	AtCapacity    bool   `json:"atCapacity"`
+}
+
+// CrashPendingDiagnostics reports the local pending-crash queue state for the
+// diagnostics settings page. Read-only: nothing here mutates the queue.
+func (a *App) CrashPendingDiagnostics() CrashPendingDiagnosticsReport {
+	report := CrashPendingDiagnosticsReport{
+		Count:         len(pendingCrashPaths()),
+		Capacity:      maxPendingCrashes,
+		RetentionDays: int(pendingCrashRetention / (24 * time.Hour)),
+		AtCapacity:    false,
+	}
+	var oldest, newest time.Time
+	for _, path := range pendingCrashQueuePaths() {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if oldest.IsZero() || info.ModTime().Before(oldest) {
+			oldest = info.ModTime()
+		}
+		if newest.IsZero() || info.ModTime().After(newest) {
+			newest = info.ModTime()
+		}
+	}
+	if !oldest.IsZero() {
+		report.OldestAt = oldest.UTC().Format(time.RFC3339)
+		report.NewestAt = newest.UTC().Format(time.RFC3339)
+	}
+	report.AtCapacity = report.Count >= maxPendingCrashes
+	return report
 }
 
 func (a *App) goSafe(site string, fn func()) {
