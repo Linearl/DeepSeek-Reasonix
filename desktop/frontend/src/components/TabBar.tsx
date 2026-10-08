@@ -526,12 +526,23 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
           const planMode = collaborationMode === "plan";
           const goalMode = collaborationMode === "goal";
           const toolApprovalMode = normalizeToolApprovalMode(tab.toolApprovalMode, mode);
+          // 任务 619 ②: a restored-but-not-yet-built tab (lazy background
+          // restore) shows a "未加载" badge. Only the previously-active and
+          // autopilot tabs build at startup now; the rest load on click. The
+          // visible tabs (active + split secondary) are excluded — they are
+          // either already loading with their own transcript placeholder or
+          // fully built.
+          const notLoaded = !tab.ready
+            && tab.runtime?.phase === "starting"
+            && tab.id !== resolvedActiveTabId
+            && tab.id !== splitTabId;
           const stateTitle = [
             tab.running ? "Running" : "",
             planMode ? "Plan" : "",
             goalMode ? "Goal" : "",
             toolApprovalMode === "auto" ? "Auto approve" : "",
             toolApprovalMode === "yolo" ? "YOLO approval" : "",
+            notLoaded ? t("tabBar.notLoaded") : "",
           ].filter(Boolean).join(" · ");
           const annotatedTitle = stateTitle ? `${stateTitle} · ${fullTitle}` : fullTitle;
           // 任务 504：开关开启时按色调阶梯取本签档位；关闭（或默认态
@@ -591,6 +602,11 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
                 />
               )}
               <span className="tabbar__tab-label">{displayTitle}</span>
+              {/* 任务 619 ②: load-state badge, independent of the 506 mode-badge
+                  gate (badgesVisible only opens under compression) — the user
+                  must see it at any width. Still yields at tier 3 (84-100px),
+                  where the hover title carries it instead. */}
+              {notLoaded && compressTier < 3 && <span className="tabbar__mode-badge tabbar__mode-badge--plan">{t("tabBar.notLoaded")}</span>}
               {tab.isolatedWorktree && <WorktreeBadge size={11} />}
               {badgesVisible && planMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">plan</span>}
               {badgesVisible && goalMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">goal</span>}

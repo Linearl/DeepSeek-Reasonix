@@ -1670,6 +1670,18 @@ export function onProjectTreeChanged(cb: () => void): () => void {
   return () => {};
 }
 
+// 任务 619: the backend emits "tabs:restored" once the persisted tab skeleton
+// (desktop-tabs.json) is published — ListTabs then carries every restored
+// tab's title, long before any controller build finishes. The frontend uses
+// it to render the tab bar immediately instead of waiting for agent:ready.
+// No dev-mock fire: in mock mode the tab list is already static.
+export function onTabsRestored(cb: () => void): () => void {
+  if (realApp() && typeof window !== "undefined" && window.runtime) {
+    return window.runtime.EventsOn("tabs:restored", () => cb());
+  }
+  return () => {};
+}
+
 // onTopicActivation subscribes to the "topic:activation" channel carrying the
 // lifecycle of ticketed StartTopicActivation requests (starting/ready/failed/
 // cancelled). Returns an unsubscribe.
