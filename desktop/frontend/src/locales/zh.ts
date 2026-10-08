@@ -1577,7 +1577,7 @@ export const zh: Record<DictKey, string> = {
   "recovery.cleanupConfirm": "{count} 个已被完整版本覆盖的副本可以移到回收站；含独有内容或正在使用的版本会保留。",
   "recovery.cleanupResult": "已移动 {moved} 个；占用 {busy} 个；保留 {kept} 个。",
   "recovery.previewCleanup": "检查可安全清理项",
-  "recovery.noticeConcurrentWriter": "另一个 Reasonix 窗口或进程也在向这个会话写入，其内容已保留为单独版本；可在“查看版本”中切换。",
+  "recovery.noticeConcurrentWriter": "另一个 Reasonix 窗口或进程也在向这个会话写入，其内容已保留为单独版本；可在历史面板选中该会话后，用“查看版本”切换。",
   "recovery.noticeConcurrentDualTab": "这个会话在本窗口的两个标签页中同时打开，两边都写入了内容；多出的部分已保留为单独版本，请关闭其中一个标签页后再继续。",
   "settings.recoveryCopiesDualOpen": "该会话正在本窗口的两个标签页中打开，已暂停合并——请先关闭其中一个标签页（解决双写入）再重新合并。",
   "recovery.noticeAlsoOpen": "这个会话也在另一个 Reasonix 实例中打开。双方都可能保存；发生冲突时会分出恢复副本。",

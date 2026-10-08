@@ -1252,7 +1252,7 @@ export const zhTW: Record<DictKey, string> = {
   "recovery.cleanupConfirm": "{count} 個已被完整版本覆蓋的副本可以移到垃圾桶；含獨有內容或正在使用的版本會保留。",
   "recovery.cleanupResult": "已移動 {moved} 個；佔用 {busy} 個；保留 {kept} 個。",
   "recovery.previewCleanup": "檢查可安全清理項",
-  "recovery.noticeConcurrentWriter": "另一個 Reasonix 視窗或程序也在寫入這個會話，其內容已保留為單獨版本；可在「查看版本」中切換。",
+  "recovery.noticeConcurrentWriter": "另一個 Reasonix 視窗或程序也在寫入這個會話，其內容已保留為單獨版本；可在歷史面板選中該會話後，用「查看版本」切換。",
   "recovery.noticeConcurrentDualTab": "這個會話在本視窗的兩個分頁中同時開啟，兩邊都寫入了內容；多出的部分已保留為單獨版本，請關閉其中一個分頁後再繼續。",
   "settings.recoveryCopiesDualOpen": "該會話正在本視窗的兩個分頁中開啟，已暫停合併——請先關閉其中一個分頁（解決雙寫入）再重新合併。",
   "recovery.noticeAlsoOpen": "這個會話也在另一個 Reasonix 實例中開啟。雙方都可能儲存；發生衝突時會分出還原副本。",

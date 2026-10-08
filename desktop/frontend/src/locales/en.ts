@@ -1577,7 +1577,7 @@ export const en = {
   "recovery.cleanupConfirm": "{count} covered versions can be moved to Trash. Versions with unique content or that are in use will be kept.",
   "recovery.cleanupResult": "Moved {moved}; busy {busy}; kept {kept}.",
   "recovery.previewCleanup": "Review safe cleanup",
-  "recovery.noticeConcurrentWriter": "Another Reasonix window or process added to this conversation. Its content is kept as a separate version; use View versions to switch.",
+  "recovery.noticeConcurrentWriter": "Another Reasonix window or process added to this conversation. Its content is kept as a separate version; select the conversation in the history panel and use View versions to switch.",
   "recovery.noticeConcurrentDualTab": "This conversation is open in two tabs of this window and both wrote to it; the extra content is kept as a separate version — close one tab before continuing.",
   "settings.recoveryCopiesDualOpen": "This conversation is open in two tabs of this window — merging is paused. Close one tab (resolve the dual writer) and run the merge again.",
   "recovery.noticeAlsoOpen": "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.",
