@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ChevronDown, ChevronRight, Clipboard, Loader2, RefreshCw } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
-import { useI18n, useT, type Locale } from "../lib/i18n";
+import { useI18n, useT, type DictKey, type Locale, type Translator } from "../lib/i18n";
 import type { CapabilityDiagnosticsReport, CapabilityIssue, CrashPendingDiagnosticsReport, RuntimeDoctorReport, SettingsTab } from "../lib/types";
 import { FrontendDiagnosticsControl } from "./FrontendDiagnosticsControl";
 
@@ -224,30 +224,31 @@ export function DiagnosticsSettingsPage({
             <section className="diag-section">
               <button type="button" className="diag-section__header" onClick={() => toggle("runtime")}>
                 {open.runtime ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                <span>Extension runtime (v2)</span>
+                <span>{t("diag.runtime.title")}</span>
               </button>
               {open.runtime && (
                 <div className="diag-section__body">
                   <div className="diag-summary">
                     <div className="diag-summary__item">
                       <strong>{runtimeDoctor.publishedGeneration}</strong>
-                      <span>generation</span>
+                      <span>{t("diag.runtime.generation")}</span>
                     </div>
                     <div className="diag-summary__item">
-                      <strong>{runtimeDoctor.allowResume ? "yes" : "no"}</strong>
-                      <span>allow resume</span>
+                      <strong>{runtimeDoctor.allowResume ? t("diag.yes") : t("diag.no")}</strong>
+                      <span>{t("diag.runtime.allowResume")}</span>
                     </div>
                     <div className="diag-summary__item">
-                      <strong>{runtimeDoctor.cleanRollback ? "yes" : "no"}</strong>
-                      <span>clean rollback</span>
+                      <strong>{runtimeDoctor.cleanRollback ? t("diag.yes") : t("diag.no")}</strong>
+                      <span>{t("diag.runtime.cleanRollback")}</span>
                     </div>
                     <div className="diag-summary__meta">
                       <span>
-                        no-op={runtimeDoctor.noOpRebuilds} subgraph={runtimeDoctor.subgraphRebuilds} full={runtimeDoctor.fullRebuilds}{" "}
-                        staleDrops={runtimeDoctor.staleDrops} admitReject={runtimeDoctor.admissionRejected} ownerFallbacks={runtimeDoctor.runtimeOwnerFallbacks}
+                        {t("diag.runtime.metric.noOp")}={runtimeDoctor.noOpRebuilds} {t("diag.runtime.metric.subgraph")}={runtimeDoctor.subgraphRebuilds} {t("diag.runtime.metric.full")}={runtimeDoctor.fullRebuilds}{" "}
+                        {t("diag.runtime.metric.staleDrops")}={runtimeDoctor.staleDrops} {t("diag.runtime.metric.admitReject")}={runtimeDoctor.admissionRejected} {t("diag.runtime.metric.ownerFallbacks")}={runtimeDoctor.runtimeOwnerFallbacks}
                       </span>
                     </div>
                   </div>
+                  <p className="diag-page__hint">{t("diag.runtime.rawNote")}</p>
                   <pre className="diag-path" style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>
                     {runtimeDoctor.text}
                   </pre>
@@ -268,22 +269,25 @@ export function DiagnosticsSettingsPage({
                   issuesBySeverity[sev].length === 0 ? null : (
                     <div key={sev} className={`diag-issue-group diag-issue-group--${sev}`}>
                       <h4>{t(`diag.severity.${sev}` as "diag.severity.error")}</h4>
-                      {issuesBySeverity[sev].map((issue, idx) => (
-                        <article key={`${issue.code}-${issue.name ?? ""}-${idx}`} className="diag-issue">
-                          <header>
-                            <code>{issue.code}</code>
-                            {issue.name ? <span className="diag-issue__name">{issue.name}</span> : null}
-                          </header>
-                          <p className="diag-issue__msg">{issue.message}</p>
-                          {issue.source ? <p className="diag-path">{issue.source}</p> : null}
-                          {issue.remediation ? <p className="diag-issue__fix">{issue.remediation}</p> : null}
-                          {issue.settings_tab && onNavigate ? (
-                            <button type="button" className="btn btn--secondary btn--small" onClick={() => goSettings(issue.settings_tab)}>
-                              {t("diag.gotoSettings")}
-                            </button>
-                          ) : null}
-                        </article>
-                      ))}
+                  {issuesBySeverity[sev].map((issue, idx) => {
+                    const copy = localizeIssue(issue, t);
+                    return (
+                      <article key={`${issue.code}-${issue.name ?? ""}-${idx}`} className="diag-issue">
+                        <header>
+                          <code>{issue.code}</code>
+                          {issue.name ? <span className="diag-issue__name">{issue.name}</span> : null}
+                        </header>
+                        <p className="diag-issue__msg">{copy.message}</p>
+                        {issue.source ? <p className="diag-path">{issue.source}</p> : null}
+                        {copy.remediation ? <p className="diag-issue__fix">{copy.remediation}</p> : null}
+                        {issue.settings_tab && onNavigate ? (
+                          <button type="button" className="btn btn--secondary btn--small" onClick={() => goSettings(issue.settings_tab)}>
+                            {t("diag.gotoSettings")}
+                          </button>
+                        ) : null}
+                      </article>
+                    );
+                  })}
                     </div>
                   ),
                 )}
@@ -382,6 +386,115 @@ export function DiagnosticsSettingsPage({
       )}
     </div>
   );
+}
+
+// Task 624: localize capability-issue sentences by issue code (option B — the
+// code itself stays English for search/upstream parity). When the backend
+// message matches the known template (regex with named groups), it renders from
+// locale keys; {detail} keeps the verbatim technical tail (paths, sanitized
+// errors). Arbitrary backend texts (instruction.* notes, matcher errors, plugin
+// compatibility warnings, sanitized stderr) have no stable template: the
+// message stays verbatim as a technical value, while their fixed remediation
+// still localizes. Unknown codes fall back to the original backend text.
+type IssueCopy = {
+  msg?: DictKey;
+  rem?: DictKey;
+  re?: RegExp;
+  // English reason suffix → locale key, for the shared allowed-tools template.
+  reason?: Record<string, DictKey>;
+};
+
+const TOOL_REF_RE = /^skill "(?<skill>[^"]+)" allowed-tools reference "(?<ref>[^"]*)" (?<reason>.+)$/;
+
+const TOOL_REF_REASONS: Record<string, DictKey> = {
+  "has invalid glob syntax": "diag.issue.skill.toolRef.reason.glob",
+  "has an incomplete or invalid MCP reference": "diag.issue.skill.toolRef.reason.mcpRef",
+  "matches multiple MCP tools; use a qualified reference": "diag.issue.skill.toolRef.reason.ambiguous",
+  "is unverified by the offline inventory; resolve it in the target session": "diag.issue.skill.toolRef.reason.unverified",
+  "is not a known tool identity": "diag.issue.skill.toolRef.reason.unknown",
+};
+
+const toolRefCopy: IssueCopy = { msg: "diag.issue.skill.toolRef.msg", rem: "diag.issue.skill.toolRef.rem", re: TOOL_REF_RE, reason: TOOL_REF_REASONS };
+
+const ISSUE_COPY: Record<string, IssueCopy> = {
+  "config.load_failed": {
+    msg: "diag.issue.config.load_failed.msg", rem: "diag.issue.config.load_failed.rem",
+    re: /^failed to load configuration: (?<detail>.+)$/s,
+  },
+  "mcp.runtime_unavailable": { msg: "diag.issue.mcp.runtime_unavailable.msg", rem: "diag.issue.mcp.runtime_unavailable.rem" },
+  "instruction.placeholder": { rem: "diag.issue.instruction.rem" }, // dynamic codes: instruction.<diagnostic.Code>
+  "skill.missing_description": { msg: "diag.issue.skill.missing_description.msg", rem: "diag.issue.skill.missing_description.rem" },
+  "skill.shadowed": {
+    msg: "diag.issue.skill.shadowed.msg", rem: "diag.issue.skill.shadowed.rem",
+    re: /^skill is shadowed by a higher-priority winner at (?<detail>.+)$/,
+  },
+  "skill.disabled": { msg: "diag.issue.skill.disabled.msg", rem: "diag.issue.skill.disabled.rem" },
+  "skill.mcp_dependency_missing": {
+    msg: "diag.issue.skill.mcp_dependency_missing.msg", rem: toolRefCopy.rem,
+    re: /^skill "(?<skill>[^"]+)" requires (?<dep>\S+) but that MCP server is not configured$/,
+  },
+  "skill.mcp_dependency_failed": {
+    msg: "diag.issue.skill.mcp_dependency_failed.msg", rem: toolRefCopy.rem,
+    re: /^skill "(?<skill>[^"]+)" requires (?<dep>\S+) which is host-failed: (?<detail>.+)$/s,
+  },
+  "skill.tool_reference_invalid": toolRefCopy,
+  "skill.tool_reference_ambiguous": toolRefCopy,
+  "skill.tool_reference_unverified": toolRefCopy,
+  "skill.tool_reference_unknown": toolRefCopy,
+  "command.shadowed": {
+    msg: "diag.issue.command.shadowed.msg", rem: "diag.issue.command.shadowed.rem",
+    re: /^command is overridden by later directory winner at (?<detail>.+)$/,
+  },
+  "command.read_failed": { msg: "diag.issue.command.read_failed.msg", rem: "diag.issue.command.read_failed.rem" },
+  "hook.malformed_settings": { msg: "diag.issue.hook.malformed_settings.msg", rem: "diag.issue.hook.malformed_settings.rem" },
+  "hook.missing_command": { msg: "diag.issue.hook.missing_command.msg", rem: "diag.issue.hook.missing_command.rem" },
+  "hook.missing_context_file": { msg: "diag.issue.hook.missing_context_file.msg", rem: "diag.issue.hook.missing_context_file.rem" },
+  "hook.invalid_matcher": { rem: "diag.issue.hook.invalid_matcher.rem" },
+  "hook.unknown_event": { msg: "diag.issue.hook.unknown_event.msg", rem: "diag.issue.hook.unknown_event.rem" },
+  "hook.shell_unavailable": { rem: "diag.issue.hook.shell_unavailable.rem" },
+  "plugin.state_read_failed": { msg: "diag.issue.plugin.state_read_failed.msg", rem: "diag.issue.plugin.state_read_failed.rem" },
+  "plugin.missing_root": { msg: "diag.issue.plugin.missing_root.msg", rem: "diag.issue.plugin.missing_root.rem" },
+  "plugin.invalid_manifest": {
+    msg: "diag.issue.plugin.invalid_manifest.msg", rem: "diag.issue.plugin.invalid_manifest.rem",
+    re: /^plugin package manifest is invalid: (?<detail>.+)$/s,
+  },
+  "plugin.compatibility": { rem: "diag.issue.plugin.compatibility.rem" },
+  "mcp.invalid_transport": {
+    msg: "diag.issue.mcp.invalid_transport.msg", rem: "diag.issue.mcp.invalid_transport.rem",
+    re: /^unsupported MCP transport (?<detail>.+)$/,
+  },
+  "mcp.missing_command": { msg: "diag.issue.mcp.missing_command.msg", rem: "diag.issue.mcp.missing_command.rem" },
+  "mcp.command_not_found": { msg: "diag.issue.mcp.command_not_found.msg", rem: "diag.issue.mcp.command_not_found.rem" },
+  "mcp.missing_url": { msg: "diag.issue.mcp.missing_url.msg", rem: "diag.issue.mcp.missing_url.rem" },
+  "mcp.no_tools": { msg: "diag.issue.mcp.no_tools.msg", rem: "diag.issue.mcp.no_tools.rem" },
+  "mcp.start_failed": {
+    msg: "diag.issue.mcp.start_failed.msg", rem: "diag.issue.mcp.start_failed.rem",
+    re: /^MCP server failed in the current session: (?<detail>.+)$/s,
+  },
+};
+
+function localizeIssue(issue: CapabilityIssue, t: Translator): { message: string; remediation?: string } {
+  const copy = ISSUE_COPY[issue.code] ?? (issue.code.startsWith("instruction.") ? ISSUE_COPY["instruction.placeholder"] : undefined);
+  let message = issue.message;
+  if (copy?.msg) {
+    let localized: string | null = null;
+    if (!copy.re) {
+      localized = t(copy.msg);
+    } else {
+      const m = copy.re.exec(issue.message);
+      if (m?.groups) {
+        if (copy.reason) {
+          const reasonKey = copy.reason[m.groups.reason ?? ""];
+          if (reasonKey) localized = t(copy.msg, { ...m.groups, reason: t(reasonKey) });
+        } else {
+          localized = t(copy.msg, m.groups);
+        }
+      }
+    }
+    if (localized !== null) message = localized;
+  }
+  const remediation = copy?.rem ? t(copy.rem) : issue.remediation;
+  return { message, remediation };
 }
 
 function formatCrashPendingTime(iso: string, locale: string): string {
