@@ -1724,7 +1724,12 @@ func (c *Controller) prepareInvocationTurn(input string, requests []InvocationRe
 
 	parts := make([]string, 0, len(inline)+1)
 	for _, sk := range inline {
-		parts = append(parts, c.skills.render(sk, ""))
+		// Task 402 (upstream #11145/#11149): composer chips are a mid-message
+		// skill invocation channel that already preserves the surrounding text
+		// as the user's input. Render through the same pinned form as the
+		// run_skill tool and the typed "/name args" path (task 395) so all
+		// three entry points produce byte-identical products.
+		parts = append(parts, c.skills.renderPinned(sk, ""))
 	}
 	if strings.TrimSpace(input) != "" {
 		parts = append(parts, input)
