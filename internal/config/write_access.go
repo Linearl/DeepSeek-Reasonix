@@ -247,6 +247,69 @@ func SetGlobalWriteAccess(allowGlobal []string) error {
 	return writeConfigFileResolved(resolved, body, configFilePerm(path))
 }
 
+// SetUserAllowWrite rewrites the user-level [sandbox] allow_write list in the
+// user config.toml (replacement write, so removals are supported). It backs the
+// desktop write-directory panel's project column for entries that live at the
+// user level (task 634): when the project reasonix.toml does not define
+// [sandbox] allow_write, the merged view shows the user list, and removing an
+// entry must rewrite the file that owns it — a project-file rewrite alone left
+// the chip in place ("x 点击无效").
+func SetUserAllowWrite(allowWrite []string) error {
+	path := UserConfigPath()
+	if path == "" {
+		return fmt.Errorf("set user allow_write: user config path unavailable")
+	}
+	unlock, err := LockConfigFileEdits(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	resolved, exists, err := statConfigPath(path)
+	if err != nil {
+		return err
+	}
+	var raw []byte
+	if exists {
+		raw, err = fileencoding.ReadFileUTF8(resolved)
+		if err != nil {
+			return err
+		}
+	}
+	body := string(raw)
+
+	home, _ := os.UserHomeDir()
+	var normalized []string
+	for _, dir := range allowWrite {
+		formatted := sandbox.FormatConfigWritePath(strings.TrimSpace(dir), home)
+		if formatted == "" {
+			continue
+		}
+		if writeRootCovered(normalized, formatted, home) {
+			continue
+		}
+		normalized = append(normalized, formatted)
+	}
+
+	if body == "" {
+		if len(normalized) == 0 {
+			return nil // nothing to persist; do not create a config file for an empty list
+		}
+		body = "[sandbox]\nallow_write = " + renderStringArray(normalized) + "\n"
+	} else {
+		body = upsertTOMLSectionKey(body, "sandbox", "allow_write", "allow_write = "+renderStringArray(normalized))
+	}
+
+	var candidate Config
+	if _, err := toml.Decode(body, &candidate); err != nil {
+		return fmt.Errorf("set user allow_write: validate updated config: %w", err)
+	}
+	if !slices.Equal(candidate.Sandbox.AllowWrite, normalized) {
+		return fmt.Errorf("set user allow_write: validate updated allow_write: got %v, want %v", candidate.Sandbox.AllowWrite, normalized)
+	}
+	return writeConfigFileResolved(resolved, body, configFilePerm(path))
+}
+
 func coveredPermissionRule(existing []string, candidate string) string {
 	for _, item := range existing {
 		if permission.RuleCoversString(item, candidate) {
