@@ -1305,6 +1305,16 @@ const CHECKS = [
   { feature: "任务578 窗口控制 min/max 变体 hover（--close 红色 hover 已随上游在位）", file: "desktop/frontend/src/styles.css", patterns: [".windows-window-control--minimize:hover,", ".windows-window-control--maximize:hover,"] },
   { feature: "任务578 防复发 check-class-contract.mjs（四断言：类名差集/Tailwind 专项/硬编码色/豁免）", file: "desktop/frontend/scripts/check-class-contract.mjs", patterns: ["BASELINE_WHITELIST", "TAILWIND_EXEMPT_FILES", "HARDCOLOR_WHITELIST", "--self-test", "--emit-baseline"] },
   { feature: "任务578 防复发接线（进 check-all-parallel 并行组）", file: "desktop/frontend/scripts/check-all-parallel.mjs", patterns: ["check:class-contract"] },
+  // ── 任务426 工具安全元数据单一真源 + 权限判定单点收敛 ──
+  { feature: "426 安全元数据单一事实源（builtinSafety 登记表 + SafetyOf/SafetyOfName 唯一读取点，自研定论见头注释）", file: "internal/tool/safety.go", patterns: ["var builtinSafety = map[string]SafetySpec{", "func SafetyOfName(name string) SafetySpec", "func SafetyOf(t Tool) SafetySpec"] },
+  { feature: "426 契约守卫（清单缺登记即红 + 与收敛前三份散落清单逐字面等价）", file: "internal/tool/safety_contract_test.go", patterns: ["TestBuiltinSafetyMetadataContract", "TestSafetyMetadataEquivalenceWithLegacyLists", "TestSafetyOfFallbackDerivation"] },
+  { feature: "426 权限面改接（IsFileMutationTool 读元数据，不再自持名单）", file: "internal/permission/permission.go", patterns: ["tool.SafetyOfName(toolName).FileMutation"] },
+  { feature: "426 并发分组改接（barrier 五名名单元数据化，分类器优先序保留）", file: "internal/agent/execute_batch.go", patterns: ["spec.ReadOnly && spec.ConcurrentSafe"] },
+  { feature: "426 模式姿态单点（approvalModeFallback 三处 switch 收敛 + 兜底重放单实现）", file: "internal/control/approval.go", patterns: ["func approvalModeFallback(mode string) (permission.Decision, bool)", "func (a *approvalManager) policyAllowsUnderWriterFallbackLocked"] },
+  { feature: "426 矩阵逐态测试（headless 16 格 + 交互旁路 + fresh/autopilot/sentinel 底线）", file: "internal/control/approval_mode_matrix_test.go", patterns: ["TestMatrixHeadlessGate", "TestMatrixInteractiveBypassShortcut", "TestMatrixSentinelFenceSurvivesEveryMode"] },
+  { feature: "426 三处消费者同步断言（并发分组/权限规则面/UI 事件字段与同一 spec 相等）", file: "internal/agent/safety_consumers_sync_test.go", patterns: ["TestSafetyConsumersStayInSyncWithMetadata", "TestClassifierToolsKeepPriorityOverStaticMetadata"] },
+  { feature: "426 sentinel 镜像同步守护（生产依赖面不变，测试侧对表）", file: "internal/sentinel/forbidden_sync_test.go", patterns: ["TestFileMutationMirrorMatchesSafetyMetadata"] },
+  { feature: "426 UI 透出（eventwire 风险字段镜像）", file: "internal/eventwire/tool.go", patterns: ["json:\"riskLevel,omitempty\"", "json:\"destructive,omitempty\""] },
 ];
 
 let failed = 0;
