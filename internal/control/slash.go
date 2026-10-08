@@ -555,7 +555,7 @@ func (c *Controller) modelListText() string {
 		return "model: " + err.Error()
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, i18n.M.ListModelsHeaderFmt+"\n", c.label)
+	fmt.Fprintf(&b, i18n.M.ListModelsHeaderFmt+"\n", c.activeLabel())
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
 		if !p.Configured() {
@@ -575,7 +575,7 @@ func (c *Controller) providerListText() string {
 		return "provider: " + err.Error()
 	}
 	curProvider := ""
-	if parts := strings.Fields(c.label); len(parts) > 0 {
+	if parts := strings.Fields(c.activeLabel()); len(parts) > 0 {
 		curProvider = parts[0]
 	}
 	var b strings.Builder

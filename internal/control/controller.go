@@ -170,7 +170,11 @@ type Controller struct {
 
 	label                   string
 	modelRef                string
-	visionModel             string
+	// modelIdentitySwap is the task-602 hot-switch rebind of the identity
+	// fields above (SetModelIdentity); the active* accessors prefer it per
+	// field. Written rarely (an explicit switch), read on every status path.
+	modelIdentitySwap atomic.Pointer[controllerModelIdentity]
+	visionModel       string
 	visionProviderResolver  func(string) (provider.Provider, error)
 	visionModelSelector     func(string, string) (string, bool)
 	modelCapabilityResolver func(*config.ProviderEntry) config.ResolvedModelCapability
@@ -1207,13 +1211,78 @@ func (c *Controller) SetSessionEffortOverride(level string) bool {
 
 // SetSessionModelOverride arms a session-scoped model override on the running
 // agent (no rebuild; task 148) and reports acceptance; false means the caller
-// must fall back to the rebuild path (cross-family targets, recovery forks,
-// hosts without a resolver seam). Mirrors SetSessionEffortOverride.
-func (c *Controller) SetSessionModelOverride(ref string) bool {
+// must fall back to the rebuild path (unresolvable targets, recovery forks,
+// hosts without a resolver seam). Mirrors SetSessionEffortOverride; task 602
+// carried the entry-derived extras so a hot switch rebinds pricing and the
+// window scalars exactly as a rebuild would.
+func (c *Controller) SetSessionModelOverride(ref string, extras agent.ModelOverrideExtras) bool {
 	if c.executor == nil {
 		return false
 	}
-	return c.executor.SetSessionModelOverride(ref)
+	return c.executor.SetSessionModelOverride(ref, extras)
+}
+
+// controllerModelIdentity is the model-identity surface a hot model switch
+// rebinds (task 602). A full rebuild derives every field from the new entry;
+// the fast path rebinds them atomically through SetModelIdentity, and the
+// active* accessors fall back to the construction identity per zero field.
+type controllerModelIdentity struct {
+	modelRef   string
+	label      string
+	balanceURL string
+	balanceKey string
+	// imageInput rebinds the frozen image-input gate; nil keeps the
+	// construction snapshot.
+	imageInput *bool
+}
+
+// SetModelIdentity atomically rebinds the construction-time model identity:
+// the canonical ref (cache TTL, listing projections, vision resolution), the
+// human label (future branch file names), the wallet-balance endpoint, and
+// the frozen image-input gate. Zero/nil fields keep the construction value.
+func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput *bool) {
+	c.modelIdentitySwap.Store(&controllerModelIdentity{
+		modelRef:   strings.TrimSpace(ref),
+		label:      strings.TrimSpace(label),
+		balanceURL: balanceURL,
+		balanceKey: balanceKey,
+		imageInput: imageInput,
+	})
+}
+
+// activeModelRef returns the canonical provider/model ref serving the session.
+func (c *Controller) activeModelRef() string {
+	if id := c.modelIdentitySwap.Load(); id != nil && id.modelRef != "" {
+		return id.modelRef
+	}
+	return c.modelRef
+}
+
+// activeLabel returns the human-readable model label.
+func (c *Controller) activeLabel() string {
+	if id := c.modelIdentitySwap.Load(); id != nil && id.label != "" {
+		return id.label
+	}
+	return c.label
+}
+
+// activeBalance returns the wallet-balance endpoint of the active provider.
+func (c *Controller) activeBalance() (url, key string) {
+	if id := c.modelIdentitySwap.Load(); id != nil {
+		if id.balanceURL != "" || id.balanceKey != "" {
+			return id.balanceURL, id.balanceKey
+		}
+	}
+	return c.balanceURL, c.balanceKey
+}
+
+// activeImageInput returns the frozen image-input gate, falling back to the
+// construction snapshot when the swap carries none.
+func (c *Controller) activeImageInput() *bool {
+	if id := c.modelIdentitySwap.Load(); id != nil && id.imageInput != nil {
+		return id.imageInput
+	}
+	return c.frozenImageInput
 }
 
 func (c *Controller) markEditedForNewUser(startMessages int, original string) {
@@ -3557,7 +3626,7 @@ func (c *Controller) NewSession() error {
 	c.extensionSessionEvent(extension.PointSessionEnd, dispatch.PhaseEnd, oldPath)
 	freshPath := oldPath
 	if c.sessionDir != "" {
-		freshPath = agent.NewSessionPath(c.sessionDir, c.label)
+		freshPath = agent.NewSessionPath(c.sessionDir, c.activeLabel())
 	}
 	freshSession := agent.NewSession(c.basePrompt())
 	commitTransition, err := c.prepareSessionTransition(freshPath, "new", freshSession)
@@ -3656,7 +3725,7 @@ func (c *Controller) ClearSession() error {
 	}
 	freshPath := oldPath
 	if c.sessionDir != "" {
-		freshPath = agent.NewSessionPath(c.sessionDir, c.label)
+		freshPath = agent.NewSessionPath(c.sessionDir, c.activeLabel())
 	}
 	freshSession := agent.NewSession(c.basePrompt())
 	commitTransition, err := c.prepareSessionTransition(freshPath, "clear", freshSession)
@@ -3984,7 +4053,7 @@ func (c *Controller) cacheColdAfter() time.Duration {
 	if err != nil {
 		return 24 * time.Hour
 	}
-	ref := c.modelRef
+	ref := c.activeModelRef()
 	if ref == "" {
 		ref = cfg.DefaultModel
 	}
@@ -4067,7 +4136,7 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 
 	c.mu.Lock()
 	path := c.sessionPath
-	modelRef := c.modelRef
+	modelRef := c.activeModelRef()
 	c.mu.Unlock()
 	if c.executor == nil {
 		return false, nil
@@ -5034,12 +5103,15 @@ func (c *Controller) Todos() []evidence.TodoItem {
 // provider declares no balance_url — so a caller treats "not configured" and
 // "fetched" the same and just omits the readout when nil.
 func (c *Controller) Balance(ctx context.Context) (*billing.Balance, error) {
-	if strings.TrimSpace(c.balanceURL) == "" {
+	// Task 602: the endpoint follows the active provider, so a hot model
+	// switch queries the destination's wallet, not the construction one.
+	url, key := c.activeBalance()
+	if strings.TrimSpace(url) == "" {
 		return nil, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	return billing.FetchWithClient(ctx, c.balanceClient, c.balanceURL, c.balanceKey)
+	return billing.FetchWithClient(ctx, c.balanceClient, url, key)
 }
 
 // Host returns the running MCP host (nil when no plugins), for frontends that
@@ -5541,10 +5613,10 @@ func (c *Controller) UnregisterMCPServerTools(name string) bool {
 }
 
 // Label returns the human-readable model label, e.g. "deepseek-flash".
-func (c *Controller) Label() string { return c.label }
+func (c *Controller) Label() string { return c.activeLabel() }
 
 // ModelRef returns the canonical provider/model reference for the session.
-func (c *Controller) ModelRef() string { return c.modelRef }
+func (c *Controller) ModelRef() string { return c.activeModelRef() }
 
 // WorkspaceRoot returns the workspace root for this controller's session
 // (the directory that file-writers and @-references are scoped to).
@@ -5552,10 +5624,10 @@ func (c *Controller) ModelRef() string { return c.modelRef }
 func (c *Controller) WorkspaceRoot() string { return c.workspaceRoot }
 
 func (c *Controller) imageInputEnabled() bool {
-	if c.frozenImageInput != nil {
-		return *c.frozenImageInput
+	if img := c.activeImageInput(); img != nil {
+		return *img
 	}
-	ref := c.modelRef
+	ref := c.activeModelRef()
 	cfg, err := config.LoadForRoot(c.workspaceRoot)
 	if err == nil && ref == "" {
 		ref = cfg.DefaultModel
@@ -5581,10 +5653,14 @@ func (c *Controller) ImageInputEnabled() bool { return c.imageInputEnabled() }
 // Legacy/custom controllers without a frozen boot snapshot use the existing
 // background metadata fallback instead.
 func (c *Controller) ImageInputSnapshot() (enabled, fallback, available bool) {
-	if c == nil || c.frozenImageInput == nil {
+	if c == nil {
 		return false, false, false
 	}
-	return *c.frozenImageInput, c.visionModel != "", true
+	img := c.activeImageInput()
+	if img == nil {
+		return false, false, false
+	}
+	return *img, c.visionModel != "", true
 }
 
 // ImageCapabilityChanged lets desktop refresh an idle runtime before admission.

@@ -75,7 +75,7 @@ func (c *Controller) forkNamedReady(turn int, name string, switchToFork bool, ki
 	sess := agent.NewSession("")
 	sess.Messages = forked
 
-	newPath := agent.NewSessionPath(c.sessionDir, c.label)
+	newPath := agent.NewSessionPath(c.sessionDir, c.activeLabel())
 	if err := sess.SaveIfAbsent(newPath); err != nil {
 		return "", c.rewindFail(err)
 	}
@@ -167,7 +167,7 @@ func (c *Controller) Branch(name string) (string, error) {
 	sess := agent.NewSession("")
 	sess.Messages = branched
 
-	newPath := agent.NewSessionPath(c.sessionDir, c.label)
+	newPath := agent.NewSessionPath(c.sessionDir, c.activeLabel())
 	if err := sess.SaveIfAbsent(newPath); err != nil {
 		return "", c.rewindFail(err)
 	}

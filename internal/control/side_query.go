@@ -74,7 +74,7 @@ func (c *Controller) SideQuery(ctx context.Context, kind SideQueryKind, text, co
 	}
 	c.mu.Lock()
 	resolver := c.providerResolver
-	ref := strings.TrimSpace(c.modelRef)
+	ref := strings.TrimSpace(c.activeModelRef())
 	c.mu.Unlock()
 	if resolver == nil {
 		return "", fmt.Errorf("side query: no provider resolver available")
