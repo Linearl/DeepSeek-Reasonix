@@ -3,8 +3,10 @@ package control
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
+	"reasonix/internal/event"
 	"reasonix/internal/jobs"
 )
 
@@ -56,6 +58,10 @@ type jobWakeState struct {
 	wokenJobs        map[string]struct{} // per-job dedupe: one wake contribution per job, ever
 	budget           []time.Time         // admitted wake turns inside the rolling window
 	lastWakeAdmitted time.Time
+	// yieldNoticed dedupes the user-facing yield notice (让位提示)：每次让位只
+	// 发一条「将自动续轮」提示，下一批被接受的完成将其复位，让位提示不刷屏
+	// 也不被永久吞掉。
+	yieldNoticed bool
 }
 
 // initBackgroundJobWake snapshots the boot options and, when enabled,
@@ -97,6 +103,8 @@ func (c *Controller) noteJobCompletionForWake(sessionID, jobID string, st jobs.S
 		c.wake.wokenJobs = map[string]struct{}{}
 	}
 	c.wake.wokenJobs[jobID] = struct{}{}
+	// 新完成的批次重新获得一次让位提示资格：上一批的提示已随重踢/真实轮消化。
+	c.wake.yieldNoticed = false
 	c.scheduleWakeTurnLocked()
 }
 
@@ -146,13 +154,13 @@ func (c *Controller) fireWakeTurn() {
 	// 让位 (design requirement c): a live or finishing turn keeps the gate; the
 	// notes stay queued and the finish hook re-kicks when the gate reopens.
 	if c.Running() {
-		slog.Info("control: background job wake yielded", "reason", "turn_running")
+		c.noticeWakeYield("turn_running")
 		return
 	}
 	// 让位: pending user work (parked turns, unapplied steer, queued durable
 	// inbox items) always wins; the next real turn drains the notes itself.
 	if c.hasPendingUserWork() {
-		slog.Info("control: background job wake yielded", "reason", "pending_user_work")
+		c.noticeWakeYield("pending_user_work")
 		return
 	}
 
@@ -200,12 +208,36 @@ func (c *Controller) fireWakeTurn() {
 		c.mu.Lock()
 		c.wake.budget = append(c.wake.budget, time.Now())
 		c.wake.lastWakeAdmitted = time.Now()
+		c.wake.yieldNoticed = false
 		c.mu.Unlock()
 		slog.Info("control: background job wake admitted", "session", parent, "auto_turn", true)
 	default:
 		slog.Info("control: background job wake degraded", "reason", "admission_refused",
 			"outcome", wakeAdmissionOutcome(admitted))
 	}
+}
+
+// noticeWakeYield records the yield (让位) log line and, once per arriving
+// completion batch, emits the user-facing 「将自动续轮」 notice so a user
+// watching an in-flight turn knows the finished result will be picked up
+// automatically (task 553 前端提示：让位时的提示). The flag resets on the next
+// accepted completion and on admission, so the hint can never spam nor be
+// permanently swallowed. Emit runs outside c.mu; sinks are concurrency-safe.
+func (c *Controller) noticeWakeYield(reason string) {
+	c.mu.Lock()
+	first := !c.wake.yieldNoticed
+	c.wake.yieldNoticed = true
+	c.mu.Unlock()
+	slog.Info("control: background job wake yielded", "reason", reason)
+	if !first {
+		return
+	}
+	c.sink.Emit(event.Event{
+		Kind:  event.Notice,
+		Code:  event.NoticeCodeBackgroundJobWakeYielded,
+		Level: event.LevelInfo,
+		Text:  "后台任务已完成；等当前回合结束后将自动续轮处理其结果",
+	})
 }
 
 func wakeAdmissionOutcome(r admissionResult) string {
@@ -244,6 +276,20 @@ func (c *Controller) shutdownBackgroundJobWake() {
 	}
 }
 
+// BackgroundWakeTurnMarker is the transcript label for an automatic
+// background-job wake turn (task 553). Host transcript projections use it to
+// render the wake turn as a labeled auto-continuation row instead of quoting
+// the model-facing prompt.
+const BackgroundWakeTurnMarker = "〔自动续轮〕后台任务已完成"
+
+// IsBackgroundJobWakeTurnContent reports whether a persisted user-role message
+// carries the task-553 wake turn input (the marker-bearing synthetic prompt).
+// Host projections call it before the generic host-guidance fallback so the
+// auto turn is labeled rather than quoted.
+func IsBackgroundJobWakeTurnContent(content string) bool {
+	return strings.Contains(content, backgroundWakeTurnPrompt)
+}
+
 // backgroundWakeTurnPrompt is the model-facing body of an automatic wake turn.
 // The <background-jobs> block (drained completion summaries) is prepended by
 // compose(); the prompt tells the model what the turn is and bounds its
@@ -251,10 +297,11 @@ func (c *Controller) shutdownBackgroundJobWake() {
 // the transcript (design requirement f).
 const backgroundWakeTurnPrompt = "Automatic background-job wake turn: background job(s) you started finished while the session was idle. Their completion summaries are in the <background-jobs> block above. Continue the work that depended on those results, report anything the user must decide, and avoid starting new background jobs unless the original request still requires them."
 
-// backgroundWakeTurnDisplay marks the turn in host UIs as automatic (not
-// user-typed). It rides recordDisplayForNewUser; the persisted provider input
-// additionally carries backgroundWakeTurnPrompt itself.
-const backgroundWakeTurnDisplay = "〔自动续轮〕后台任务已完成"
+// backgroundWakeTurnDisplay is the turn's display label, single-sourced from
+// BackgroundWakeTurnMarker. recordDisplayForNewUser never records it (host
+// messages are not user-authored turns); the visible labeling lives in the
+// host transcript projections, which match on IsBackgroundJobWakeTurnContent.
+const backgroundWakeTurnDisplay = BackgroundWakeTurnMarker
 
 // windowSeconds/maxTurnsPerWindow/throttleSeconds resolve the configured
 // values against the defaults so the guards never see zero knobs.
