@@ -1,0 +1,26 @@
+{
+ "eventId": "webview2fixturedeadbeefdeadbeefdeadbeef",
+ "dedupKey": "1111111111111111111111111111111111111111111111111111111111111111",
+ "kind": "crash",
+ "version": "1.38.3-20260924-1042",
+ "os": "windows",
+ "arch": "amd64",
+ "message": "[windows.webview2.process_failed]\n\nNetwork Service utility exited exit=1",
+ "device": {
+  "osVersion": "Windows 10.0 build 26200",
+  "osBuild": 26200,
+  "osRevision": 9457,
+  "cpu": "fixture",
+  "cores": 16,
+  "ramGb": 32
+ },
+ "schemaVersion": 3,
+ "source": "webview",
+ "label": "windows.webview2.process_failed",
+ "errorType": "WebView2ProcessFailed",
+ "errorMessage": "A WebView2 child process exited unexpectedly.",
+ "topFrame": "webview2.utility_process",
+ "fingerprintHint": "windows.webview2.process_failed.windows",
+ "channel": "stable",
+ "occurredAt": "2026-09-24T05:42:00.0000000Z"
+}

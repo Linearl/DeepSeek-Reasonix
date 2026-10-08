@@ -1,0 +1,3 @@
+panic: fixture non-empty fatal log (positive sample)
+goroutine 1 [running]:
+reasonix/desktop.(*App).shutdown()

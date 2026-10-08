@@ -1,0 +1,26 @@
+{
+ "eventId": "shutting_down2026092008050000000deadbeef",
+ "dedupKey": "0000000000000000000000000000000000000000000000000000000000000000",
+ "kind": "crash",
+ "version": "1.38.3-20260920-1005",
+ "os": "windows",
+ "arch": "amd64",
+ "message": "[desktop.abnormal_exit.v2]\n\nReasonix found a per-process lifecycle record whose desktop process was no longer running.\n\n--- lifecycle context ---\nphase: shutting_down\nprevious version: 1.38.3-20260920-1005\nprevious channel: stable\nstarted at: 2026-09-19T10:00:00.0000000Z\nlast phase update: 2026-09-20T08:05:00.0000000Z",
+ "device": {
+  "osVersion": "Windows 10.0 build 26200",
+  "osBuild": 26200,
+  "osRevision": 9457,
+  "cpu": "fixture",
+  "cores": 16,
+  "ramGb": 32
+ },
+ "schemaVersion": 3,
+ "source": "native.lifecycle",
+ "label": "desktop.abnormal_exit.v2",
+ "errorType": "AbnormalDesktopExit",
+ "errorMessage": "A per-process lifecycle record remained after its desktop process stopped.",
+ "topFrame": "desktop.lifecycle.v2.shutdown",
+ "fingerprintHint": "desktop.abnormal_exit.v2.windows.shutdown",
+ "channel": "stable",
+ "occurredAt": "2026-09-20T08:05:00.0000000Z"
+}
