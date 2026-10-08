@@ -4,6 +4,7 @@ import { mockProviderTemplate, mockPreset, mockBundlePreset, mockKimiAPIModels, 
 // @ts-ignore generated locally; fresh checkouts use the disabled drift check below.
 import type * as GeneratedApp from "../../wailsjs/go/main/App";
 import type { InvocationRequest } from "./invocationDisplay";
+import type { PlanUsageResult } from "./planUsage";
 import type { FollowupBindings } from "./pendingFollowup";
 import type { OutputStyleListView, QuickCommandEntry, ZcodeTaskBusStatusView } from "./settingsViewTypes";
 import { addBreadcrumb } from "./breadcrumbs";
@@ -1004,6 +1005,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // is allow-listed host-side; off (the default) never reaches either call.
   SetExperimentalOpenCodeGoUsage(enabled: boolean): Promise<void>;
   GetOpenCodeGoUsage(baseUrl: string): Promise<{ tiers: { window: string; percent: number | null; resetsAt: string }[]; note: string }>;
+  // Task 287: provider plan usage (coding/token plan quota). No args — the Go
+  // side resolves the first plan-capable provider from config; unsupported
+  // providers return supported:false with zero network I/O.
+  GetProviderPlanUsage(): Promise<PlanUsageResult>;
   SetExperimentalQuestionSearch(enabled: boolean): Promise<void>;
   SetExperimentalSubagentTps(enabled: boolean): Promise<void>;
   SetExperimentalCompletionSummary(enabled: boolean): Promise<void>;
@@ -5549,6 +5554,8 @@ function makeMockApp(): AppBindings {
     async SetExperimentalActiveTabResident() {},
     async SetExperimentalOpenCodeGoUsage() {},
     async GetOpenCodeGoUsage() { return { tiers: [], note: "no-key" }; },
+    // Task 287: unsupported in the browser mock — plan surfaces stay hidden.
+    async GetProviderPlanUsage() { return { supported: false, provider: "", region: "", windows: [], note: "unsupported", queriedAt: 0 }; },
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
     async SetExperimentalCDPDebugPort() {},

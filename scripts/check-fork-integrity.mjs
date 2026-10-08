@@ -38,6 +38,11 @@ const CHECKS = [
   // ── 前端 TS ─────────────────────────────────────────────────────
   { feature: "task 163 OpenCode Go 用量查询（后端）", file: "desktop/opencode_go_usage.go", patterns: ["isOfficialOpenCodeGoBase", "no-subscription", "Bearer ", "parseOpenCodeGoUsage"] },
   { feature: "task 163 OpenCode Go 用量卡（前端）", file: "desktop/frontend/src/components/SettingsOpenCodeGoUsageCard.tsx", patterns: ["GetOpenCodeGoUsage", "opencode-go-usage__row", "resetCountdown"] },
+  { feature: "task 287 Plan 用量查询（后端 GLM/Kimi/MiniMax）", file: "desktop/plan_usage.go", patterns: ["GetProviderPlanUsage", "parseZhipuPlanUsage", "parseKimiPlanUsage", "parseMinimaxPlanUsage", "no-key"] },
+  { feature: "task 287 Plan 用量显示位（概览卡+statusBar 项+轮询 store）", file: "desktop/frontend/src/store/planUsage.ts", patterns: ["PLAN_USAGE_POLL_MS", "ensurePlanUsagePolling", "usePlanUsageStore"] },
+  { feature: "task 287 Plan 用量概览卡", file: "desktop/frontend/src/components/PlanUsageCard.tsx", patterns: ["plan-usage__row", "planFiveHourExhausted", "planUsageNoteText"] },
+  { feature: "task 287 statusBar plan 显示项注册", file: "desktop/frontend/src/lib/statusBarItems.ts", patterns: ["\"plan\""] },
+  { feature: "task 287 Plan 用量三语", file: "desktop/frontend/src/locales/zh.ts", patterns: ["planUsage.title", "planUsage.exhausted", "status.planLabel"] },
   { feature: "task 280 乐观并行（实验室改名迁址，同键取反绑定；任务561 归 automation 组）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["optimisticParallel", "SetOptimisticWrite(e.target.checked)", "group: \"automation\""] },
   { feature: "task 192 驻留豁免开关（store 策略）", file: "desktop/frontend/src/lib/transcriptStore.ts", patterns: ["setResidentPolicy", "shouldRetainOnSwitch", "ResidentExemptLimit", "noteResidentBudgetOver"] },
   { feature: "#9221 颜色筛选 TSX", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["colorFilter", "renderColorFilterControl", "project-tree__action-btn"] },

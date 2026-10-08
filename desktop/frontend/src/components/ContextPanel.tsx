@@ -11,6 +11,7 @@ import { appendRateBand, normalizeRateBand, rateBandLabel, type DisplayRateBand 
 import type { BalanceInfo, ContextInfo, ContextPanelInfo, UsageSourceStats, WireUsage } from "../lib/types";
 import { contextSessionCache } from "../lib/contextSessionCache";
 import { ContextBudgetCard, resolveContextBudget } from "./ContextBudgetCard";
+import { PlanUsageCard } from "./PlanUsageCard";
 import type { Item } from "../lib/useController";
 import { contextWindowStatus, formatCacheHitRate } from "../lib/contextPanelUtils";
 import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
@@ -696,6 +697,9 @@ export function ContextPanel({
               </div>
             </div><ContextBudgetCard budget={resolveContextBudget(context, info)} t={t} />
           </section>
+          {/* Task 287: provider plan usage — hidden entirely when the config
+              has no plan-capable provider (the card itself renders null). */}
+          <PlanUsageCard />
           <Suspense fallback={null}>
             <McpListLayers items={items} t={t} />
           </Suspense>
