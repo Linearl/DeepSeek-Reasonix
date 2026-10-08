@@ -37,6 +37,21 @@ const (
 	StateUncertain     InboxState = "uncertain"
 )
 
+// BlockReason values that park a row for user review instead of marking it
+// applied residue. Recovery's settled drop (task 263/641) keeps these rows:
+// their content did not durably reach the transcript, so a settled mail
+// delivery is not evidence the instruction was applied. Any other Uncertain
+// row whose source mail was delivered settles as residue.
+const (
+	// BlockReasonSteerUnapplied parks an accepted steer that left the agent
+	// queue without being injected (Controller.onInboxUnappliedSteer).
+	BlockReasonSteerUnapplied = "steer accepted but unapplied before turn exit"
+	// BlockReasonTranscriptNotDurable parks items whose turn completed but the
+	// transcript snapshot did not become durable (task 585's keep half —
+	// nothing silently drops when the application receipt itself is lost).
+	BlockReasonTranscriptNotDurable = "turn completed but transcript snapshot failed"
+)
+
 // Disposition reports how an admission attempt settled.
 type Disposition string
 
