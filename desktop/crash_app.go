@@ -66,31 +66,35 @@ type crashBreadcrumb struct {
 }
 
 type crashReport struct {
-	EventID         string                `json:"eventId,omitempty"`
-	DedupKey        string                `json:"dedupKey,omitempty"`
-	InstallID       string                `json:"installId,omitempty"`
-	Kind            string                `json:"kind"`
-	Version         string                `json:"version"`
-	OS              string                `json:"os"`
-	Arch            string                `json:"arch"`
-	Message         string                `json:"message"`
-	Device          deviceInfo            `json:"device"`
-	SchemaVersion   int                   `json:"schemaVersion,omitempty"`
-	Source          string                `json:"source,omitempty"`
-	Label           string                `json:"label,omitempty"`
-	ErrorType       string                `json:"errorType,omitempty"`
-	ErrorMessage    string                `json:"errorMessage,omitempty"`
-	Stack           string                `json:"stack,omitempty"`
-	ComponentStack  string                `json:"componentStack,omitempty"`
-	TopFrame        string                `json:"topFrame,omitempty"`
-	FingerprintHint string                `json:"fingerprintHint,omitempty"`
-	BuildCommit     string                `json:"buildCommit,omitempty"`
-	Channel         string                `json:"channel,omitempty"`
-	Language        string                `json:"language,omitempty"`
-	View            string                `json:"view,omitempty"`
-	Breadcrumbs     []crashBreadcrumb     `json:"breadcrumbs,omitempty"`
-	OccurredAt      string                `json:"occurredAt,omitempty"`
-	WebRuntime      *webRuntimeDiagnostic `json:"webRuntime,omitempty"`
+	EventID         string     `json:"eventId,omitempty"`
+	DedupKey        string     `json:"dedupKey,omitempty"`
+	InstallID       string     `json:"installId,omitempty"`
+	Kind            string     `json:"kind"`
+	Version         string     `json:"version"`
+	OS              string     `json:"os"`
+	Arch            string     `json:"arch"`
+	Message         string     `json:"message"`
+	Device          deviceInfo `json:"device"`
+	SchemaVersion   int        `json:"schemaVersion,omitempty"`
+	Source          string     `json:"source,omitempty"`
+	Label           string     `json:"label,omitempty"`
+	ErrorType       string     `json:"errorType,omitempty"`
+	ErrorMessage    string     `json:"errorMessage,omitempty"`
+	Stack           string     `json:"stack,omitempty"`
+	ComponentStack  string     `json:"componentStack,omitempty"`
+	TopFrame        string     `json:"topFrame,omitempty"`
+	FingerprintHint string     `json:"fingerprintHint,omitempty"`
+	// TestMock marks a lab-simulated report (task 642): the report travelled the
+	// real pipeline end to end, but the receiving end must be able to tell it
+	// apart from a real failure. Real crash paths never set it.
+	TestMock    bool                  `json:"testMock,omitempty"`
+	BuildCommit string                `json:"buildCommit,omitempty"`
+	Channel     string                `json:"channel,omitempty"`
+	Language    string                `json:"language,omitempty"`
+	View        string                `json:"view,omitempty"`
+	Breadcrumbs []crashBreadcrumb     `json:"breadcrumbs,omitempty"`
+	OccurredAt  string                `json:"occurredAt,omitempty"`
+	WebRuntime  *webRuntimeDiagnostic `json:"webRuntime,omitempty"`
 	// WebView2 is retained only so pending reports written by preview builds can
 	// still be decoded and forwarded after upgrade. New reports use WebRuntime.
 	WebView2 *webView2Diagnostic `json:"webview2,omitempty"`
@@ -108,6 +112,7 @@ type frontendCrashPayload struct {
 	ComponentStack  string            `json:"componentStack"`
 	TopFrame        string            `json:"topFrame"`
 	FingerprintHint string            `json:"fingerprintHint"`
+	TestMock        bool              `json:"testMock,omitempty"`
 	BuildCommit     string            `json:"buildCommit"`
 	Channel         string            `json:"channel"`
 	Language        string            `json:"language"`
@@ -261,6 +266,7 @@ func crashReportFromDetail(kind, detail string) (crashReport, error) {
 		r.ComponentStack = sanitizeCrashText(payload.ComponentStack, maxCrashStackBytes)
 		r.TopFrame = sanitizeCrashText(payload.TopFrame, 300)
 		r.FingerprintHint = sanitizeCrashText(payload.FingerprintHint, 300)
+		r.TestMock = payload.TestMock
 		r.BuildCommit = sanitizeCrashField(payload.BuildCommit, 64)
 		r.Channel = sanitizeCrashField(payload.Channel, 32)
 		r.Language = sanitizeCrashField(payload.Language, 64)
