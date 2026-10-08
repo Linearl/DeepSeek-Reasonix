@@ -46,7 +46,7 @@ func governorExit(sample evidence.OutcomeSample) bool {
 // experiment arm, toggles the per-request depth override.
 func (a *Agent) applyGovernor(sample *evidence.OutcomeSample) {
 	sample.GovernorEligible = governorTrigger(*sample, a.turn.lastReasoning)
-	if provider.PreferredReasoning(a.svc.prov, governorEffort) == "" {
+	if provider.PreferredReasoning(a.providerForRequest(), governorEffort) == "" {
 		a.task.governor.engaged = false
 		return
 	}

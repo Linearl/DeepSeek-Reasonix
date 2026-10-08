@@ -13,7 +13,7 @@ const minSummaryOutputTokens = 512
 // shared windows reserve one quarter for a useful briefing without crowding
 // every fold out of the prompt budget.
 func (a *Agent) summaryOutputBudget() int {
-	if contextBudgetPolicyOf(a.svc.prov).WindowMode == provider.ContextWindowIndependent {
+	if contextBudgetPolicyOf(a.providerForRequest()).WindowMode == provider.ContextWindowIndependent {
 		return summaryOutputMaxTokens
 	}
 	window := a.effectiveContextWindow()

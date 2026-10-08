@@ -12,7 +12,7 @@ func (a *Agent) preserveRawReasoning(reasoning, signature, reasoningID, reasonin
 	if signature != "" || reasoningID != "" || reasoningStatus != "" {
 		return true
 	}
-	return provider.RequiresAssistantReasoningReplay(a.svc.prov, provider.Message{
+	return provider.RequiresAssistantReasoningReplay(a.providerForRequest(), provider.Message{
 		Role: provider.RoleAssistant, ReasoningContent: reasoning, ToolCalls: calls, ServerSearch: searches,
 	})
 }
@@ -54,7 +54,9 @@ func (a *Agent) emitReasoningReplayAttemptOutcome(id string, attempt int, err er
 }
 
 func (a *Agent) reasoningReplayIssue(result streamedTurn) ReasoningReplayFailure {
-	decision := provider.DecideReasoningReplay(a.svc.prov, result.assistantMessage(), result.reasoningComplete)
+	// Task 602: the replay decision follows the request destination.
+	dest := a.providerForRequest()
+	decision := provider.DecideReasoningReplay(dest, result.assistantMessage(), result.reasoningComplete)
 	if decision == provider.ReplayDirect || decision == provider.ReplayCompatible {
 		return ""
 	}
@@ -67,7 +69,7 @@ func (a *Agent) reasoningReplayIssue(result streamedTurn) ReasoningReplayFailure
 	if decision == provider.ReplayReject {
 		return ReasoningReplayIncomplete
 	}
-	if !provider.HasReplayableReasoning(a.svc.prov, result.assistantMessage()) {
+	if !provider.HasReplayableReasoning(dest, result.assistantMessage()) {
 		return ReasoningReplayMissing
 	}
 	return ""
@@ -94,7 +96,7 @@ func (a *Agent) finishUnreplayableReasoning(result streamedTurn, sink *deferredS
 	// Empty can replace reasoning the provider never emitted, never reasoning
 	// truncated by the client limit: preserved-thinking protocols require the
 	// returned content to remain complete and unchanged.
-	allowsEmptyReasoning := issue == ReasoningReplayMissing && provider.AllowsEmptyReasoningFallback(a.svc.prov)
+	allowsEmptyReasoning := issue == ReasoningReplayMissing && provider.AllowsEmptyReasoningFallback(a.providerForRequest())
 	if len(result.calls) > 0 && !allowsEmptyReasoning {
 		sink.Discard()
 		event.RecordProtocolRecovery(a.svc.sink, event.ProtocolRecoveryAudit{Kind: event.ProtocolRecoveryClientToolRejected})
@@ -118,7 +120,7 @@ func (a *Agent) finishUnreplayableReasoning(result streamedTurn, sink *deferredS
 		event.RecordProtocolRecovery(a.svc.sink, event.ProtocolRecoveryAudit{Kind: event.ProtocolRecoveryServerSearchSalvaged})
 		return result
 	}
-	if provider.RequiresReasoningRoundTrip(a.svc.prov) && !allowsEmptyReasoning {
+	if provider.RequiresReasoningRoundTrip(a.providerForRequest()) && !allowsEmptyReasoning {
 		sink.Discard()
 		result.err = &ReasoningReplayError{Kind: issue}
 		return result
@@ -132,7 +134,7 @@ func (a *Agent) finishUnreplayableReasoning(result streamedTurn, sink *deferredS
 // CanReplayAssistantMessage lets the controller apply the provider-specific
 // half of interrupted-turn validation without exposing the provider itself.
 func (a *Agent) CanReplayAssistantMessage(m provider.Message) bool {
-	return a == nil || provider.CanReplayAssistantMessage(a.svc.prov, m)
+	return a == nil || provider.CanReplayAssistantMessage(a.providerForRequest(), m)
 }
 
 // ensureUnreplayableHistoryRecovery installs one existing-format LocalOnly
@@ -147,8 +149,12 @@ func (a *Agent) ensureUnreplayableHistoryRecovery() {
 	msgs := a.sess.conversation.Snapshot()
 	latestBad := -1
 	recovery := &provider.InterruptedTurnRecovery{Pending: true}
+	// Task 602: replay validation follows the request destination — a hot
+	// switch must re-validate the history against the protocol that will
+	// receive it, not the one that produced it.
+	replayProv := a.providerForRequest()
 	for i, m := range msgs {
-		if m.Role != provider.RoleAssistant || provider.CanReplayAssistantMessage(a.svc.prov, m) {
+		if m.Role != provider.RoleAssistant || provider.CanReplayAssistantMessage(replayProv, m) {
 			continue
 		}
 		latestBad = i

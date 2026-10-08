@@ -284,7 +284,7 @@ func (a *Agent) pinnedPrefixLen(msgs []provider.Message) int {
 // of the model window and keeping tool-call/result groups balanced.
 func (a *Agent) planCompaction(msgs []provider.Message, min int, force bool) (head, start int, ok bool) {
 	head = a.pinnedPrefixLen(msgs)
-	if a.contextWindow > 0 {
+	if a.destinationContextWindow() > 0 {
 		budget := a.recentTailBudget()
 		if force {
 			if half := estimateMessagesTokens(modelInputMessages(msgs)) / 2; half > 0 && half < budget {
@@ -451,7 +451,7 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 	defer func() {
 		usage = provider.UsageWithRequestAttemptCount(ctx, usage)
 		if usage != nil && (usage.TotalTokens > 0 || usage.RequestCount > 0) {
-			a.svc.sink.Emit(event.Event{Kind: event.Usage, ModelRef: a.modelRef, Usage: usage, Pricing: a.svc.pricing, UsageSource: event.UsageSourceCompaction})
+			a.svc.sink.Emit(event.Event{Kind: event.Usage, ModelRef: a.destinationModelRef(), Usage: usage, Pricing: a.destinationPricing(), UsageSource: event.UsageSourceCompaction})
 		}
 	}()
 	defer trackPublishedHostStream(ctx, cancel)()

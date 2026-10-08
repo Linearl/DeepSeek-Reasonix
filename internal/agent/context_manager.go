@@ -124,7 +124,7 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 		InputTokens:       est,
 		ProjectionVersion: a.currentProjectionVersion(),
 	}
-	if a.contextWindow <= 0 || len(visible) == 0 {
+	if a.effectiveContextWindow() <= 0 || len(visible) == 0 {
 		return prepared, nil
 	}
 	fold := a.compactTrigger()
@@ -397,7 +397,7 @@ func (a *Agent) estimatedVisibleRequestTokens(visible []provider.Message) int {
 	return a.estimatedRequestTokens(provider.Request{
 		Messages:    msgs,
 		Tools:       tools,
-		MaxTokens:   a.maxOutputTokens,
+		MaxTokens:   a.destinationMaxOutputTokens(),
 		Temperature: provider.OptionalTemperature(a.temperature),
 	})
 }

@@ -690,7 +690,7 @@ func (a *Agent) withTurnPreferences(input string) string {
 		}
 	}
 	input = WithReasoningLanguage(input, lang)
-	input = WithExecSpeedMode(input, a.modelRef, a.highSpeedModels)
+	input = WithExecSpeedMode(input, a.destinationModelRef(), a.destinationHighSpeedModels())
 	// #9520: the budget line rides every turn so the model can plan against
 	// the real limit instead of guessing; kept last so it lands outermost.
 	return a.WithContextBudget(input)

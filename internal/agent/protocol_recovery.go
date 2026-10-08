@@ -69,7 +69,9 @@ func protocolDigest(v any) string {
 }
 
 func (a *Agent) protocolRecoveryScope() string {
-	return protocolDigest([]string{a.SessionPath(), provider.MissingToolCallReasoningWarningFingerprint(a.svc.prov)})
+	// Task 602: the fingerprint follows the request destination, so recovery
+	// state earned under one protocol never suppresses recovery under another.
+	return protocolDigest([]string{a.SessionPath(), provider.MissingToolCallReasoningWarningFingerprint(a.providerForRequest())})
 }
 
 func (a *Agent) latestProtocolRecord() (provider.ProtocolRecoveryRecord, bool) {

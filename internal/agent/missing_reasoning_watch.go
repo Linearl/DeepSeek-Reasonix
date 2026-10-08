@@ -36,22 +36,25 @@ func (a *Agent) observeMissingToolCallReasoning(calls []provider.ToolCall, reaso
 // provider-executed tool activity while preserving its persisted incident and
 // anti-flapping behavior.
 func (a *Agent) observeMissingAssistantReasoning(message provider.Message, complete bool) (missing, shouldRetry bool) {
-	if provider.AllowsEmptyReasoningFallback(a.svc.prov) || !provider.RequiresAssistantReasoningReplay(a.svc.prov, message) {
+	// Task 602: the whole watch follows the request destination — a hot switch
+	// moves the reasoning contract to the protocol the requests now reach.
+	dest := a.providerForRequest()
+	if provider.AllowsEmptyReasoningFallback(dest) || !provider.RequiresAssistantReasoningReplay(dest, message) {
 		return false, false
 	}
-	decision := provider.DecideReasoningReplay(a.svc.prov, message, complete)
+	decision := provider.DecideReasoningReplay(dest, message, complete)
 	replayable := decision == provider.ReplayDirect || decision == provider.ReplayCompatible
 	// Strict contracts retain their incident across manual continuation.
-	if !provider.WarnOnMissingToolCallReasoning(a.svc.prov) {
+	if !provider.WarnOnMissingToolCallReasoning(dest) {
 		if replayable {
-			a.recordHealthyAssistantReasoning(provider.MissingToolCallReasoningWarningFingerprint(a.svc.prov), time.Now())
+			a.recordHealthyAssistantReasoning(provider.MissingToolCallReasoningWarningFingerprint(dest), time.Now())
 		}
-		if !replayable && !provider.AllowsEmptyReasoningFallback(a.svc.prov) {
+		if !replayable && !provider.AllowsEmptyReasoningFallback(dest) {
 			return true, a.claimMissingReasoningIncident(time.Now())
 		}
 		return false, false
 	}
-	fingerprint := provider.MissingToolCallReasoningWarningFingerprint(a.svc.prov)
+	fingerprint := provider.MissingToolCallReasoningWarningFingerprint(dest)
 	observedAt := time.Now()
 	if replayable {
 		a.recordHealthyAssistantReasoning(fingerprint, observedAt)
@@ -139,7 +142,7 @@ func (a *Agent) resolveHealthyAssistantReasoning(fingerprint string, observedAt 
 func (a *Agent) claimMissingReasoningIncident(observedAt time.Time) bool {
 	a.sess.missingReasoning.healthyStreak = 0
 	if s := a.svc.warnState; s != nil {
-		fingerprint := provider.MissingToolCallReasoningWarningFingerprint(a.svc.prov)
+		fingerprint := provider.MissingToolCallReasoningWarningFingerprint(a.providerForRequest())
 		claimed := s.claimAt(fingerprint, observedAt)
 		a.sess.missingReasoning.active = true
 		a.sess.missingReasoning.stateRecorded = true

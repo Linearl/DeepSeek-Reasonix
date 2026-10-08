@@ -15,32 +15,63 @@ import (
 // override carries a fully constructed provider resolved from the session
 // resolver, and request freezing captures it for the round.
 //
-// Only same-family switches (provider.Name equal, e.g. mimo/a → mimo/b) are
-// accepted. The request-shaping surfaces that stay read from the construction
-// provider — reasoning replay policy, projection, window mode, tool-call
-// reasoning — are protocol-scoped, and one provider entry family shares one
-// endpoint protocol, so they remain valid across the family's models.
-// Cross-family targets decline here and the caller keeps its build+swap
+// Task 602 lifts the task-148 same-family gate: every request-shaping surface
+// (reasoning replay, projection, window mode, tool-call reasoning, native
+// tool search) reads the destination through providerForRequest(), so a
+// cross-family destination sees exactly the protocol behavior a rebuild would
+// derive — the override IS a fully constructed adapter from the boot resolver.
+// The same holds for the entry-derived scalars a rebuild would rebind:
+// pricing, context window, output budget, the high-speed lane, and the
+// billable model ref ride the override struct and are read through the
+// effective* accessors. Protocol-scoped prompt text (the official
+// DeepSeek-V4-Pro persona, baked into the session's system prompt) has no
+// override seam — hosts gate that boundary themselves and keep their
+// build+swap fallback for it.
+//
+// Targets the resolver cannot resolve, resolver-less hosts, and recovery-
+// forked sessions still decline here and the caller keeps its build+swap
 // fallback, which re-derives every surface exactly as before.
 
+// ModelOverrideExtras carries the entry-derived scalars a rebuild would
+// rebind alongside the provider (task 602). Zero fields keep the
+// construction-time values — correct for same-family switches, conservative
+// for cross-family callers that have no entry at hand.
+type ModelOverrideExtras struct {
+	// Pricing prices the destination's usage into money (task budget).
+	Pricing *provider.Pricing
+	// ContextWindow is the destination's token window (0 = keep).
+	ContextWindow int
+	// MaxOutputTokens is the destination's output cap (0 = keep).
+	MaxOutputTokens int
+	// HighSpeedModels is the destination's high-speed lane allowlist
+	// (nil = keep; the boot gate ExperimentalHighSpeedModel already folded).
+	HighSpeedModels []string
+}
+
 // sessionModelOverride is the effective request destination: a resolved
-// provider plus the canonical ref it serves. Stored through atomic.Value —
-// written rarely (an explicit switch), read on every request, following the
+// provider, the canonical ref it serves, and the entry-derived scalars that
+// follow the destination. Stored through atomic.Value — written rarely (an
+// explicit switch), read on every request, following the
 // sessionEffortOverride/responseLanguage precedent.
 type sessionModelOverride struct {
-	ref  string
-	prov provider.Provider
+	ref             string
+	prov            provider.Provider
+	pricing         *provider.Pricing
+	contextWindow   int
+	maxOutputTokens int
+	highSpeedModels []string
 }
 
 // SetSessionModelOverride stores a session-scoped model override and reports
 // whether the running agent can serve the next request from the new model
 // without a rebuild. An empty ref clears the override and always succeeds. A
-// non-empty ref is accepted only when (a) the construction-time resolver seam
-// is wired, (b) the ref resolves into a live provider, and (c) the resolved
-// provider stays in the running provider's family (same Name) — returning
-// false tells the caller to fall back to the rebuild path instead of arming a
-// destination the request-shaping surfaces cannot vouch for.
-func (a *Agent) SetSessionModelOverride(ref string) bool {
+// non-empty ref is accepted when (a) the construction-time resolver seam
+// is wired and (b) the ref resolves into a live provider — the family gate
+// task 148 held is lifted by task 602 because every protocol-scoped read and
+// every entry-derived scalar now follows the destination. Returning false
+// tells the caller to fall back to the rebuild path instead of arming a
+// destination the session cannot vouch for.
+func (a *Agent) SetSessionModelOverride(ref string, extras ModelOverrideExtras) bool {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		a.sessionModel.Store((*sessionModelOverride)(nil))
@@ -77,13 +108,18 @@ func (a *Agent) SetSessionModelOverride(ref string) bool {
 		slog.Info("agent: model override declined", "reason", "resolve-failed", "ref", ref, "err", err.Error())
 		return false
 	}
-	if a.svc.prov != nil && prov.Name() != a.svc.prov.Name() {
-		// Task 148: cross-family targets keep the rebuild path, which re-derives
-		// the protocol-bound shaping surfaces the fast path leaves in place.
-		slog.Info("agent: model override declined", "reason", "provider-family-mismatch", "ref", ref, "running", a.svc.prov.Name(), "incoming", prov.Name())
-		return false
-	}
-	a.sessionModel.Store(&sessionModelOverride{ref: ref, prov: prov})
+	// Task 602: no family gate — the destination is a fully constructed
+	// adapter from the boot resolver and every destination-scoped surface
+	// (protocol shaping, wire, scalars) reads through providerForRequest and
+	// the effective* accessors, matching what a rebuild would derive.
+	a.sessionModel.Store(&sessionModelOverride{
+		ref:             ref,
+		prov:            prov,
+		pricing:         extras.Pricing,
+		contextWindow:   extras.ContextWindow,
+		maxOutputTokens: extras.MaxOutputTokens,
+		highSpeedModels: extras.HighSpeedModels,
+	})
 	slog.Info("agent: model override accepted", "ref", ref)
 	return true
 }
@@ -113,4 +149,53 @@ func (a *Agent) providerForRequest() provider.Provider {
 		return o.prov
 	}
 	return a.svc.prov
+}
+
+// destinationModelRef returns the billable model ref serving the next request:
+// the armed override's ref when set, else the construction ref (task 602).
+// Usage events, prompt-cache keys, and budget state keys read through here so
+// a hot switch attributes to the model the requests actually reach.
+func (a *Agent) destinationModelRef() string {
+	if o := a.sessionModelValue(); o != nil && o.ref != "" {
+		return o.ref
+	}
+	return a.modelRef
+}
+
+// destinationPricing returns the destination's pricing (task 602); nil keeps
+// the construction pricing (which may itself be nil — hosts without a schedule).
+func (a *Agent) destinationPricing() *provider.Pricing {
+	if o := a.sessionModelValue(); o != nil && o.pricing != nil {
+		return o.pricing
+	}
+	return a.svc.pricing
+}
+
+// destinationContextWindow returns the destination's declared token window; 0
+// keeps the construction window (0 meaning unknown — sizing falls back to
+// learned state). The learned-window composition lives in
+// effectiveContextWindow, which takes this as its configured input.
+func (a *Agent) destinationContextWindow() int {
+	if o := a.sessionModelValue(); o != nil && o.contextWindow > 0 {
+		return o.contextWindow
+	}
+	return a.contextWindow
+}
+
+// destinationMaxOutputTokens returns the destination's output cap; 0 keeps the
+// construction cap (0 meaning unset — request shaping then omits MaxTokens).
+func (a *Agent) destinationMaxOutputTokens() int {
+	if o := a.sessionModelValue(); o != nil && o.maxOutputTokens > 0 {
+		return o.maxOutputTokens
+	}
+	return a.maxOutputTokens
+}
+
+// destinationHighSpeedModels returns the destination's high-speed lane
+// allowlist; nil keeps the construction allowlist.
+func (a *Agent) destinationHighSpeedModels() []string {
+	if o := a.sessionModelValue(); o != nil && o.highSpeedModels != nil {
+		return o.highSpeedModels
+	}
+	return a.highSpeedModels
 }

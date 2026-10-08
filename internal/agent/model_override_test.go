@@ -11,7 +11,8 @@ import (
 )
 
 // namedFakeProvider carries a configurable provider family name so tests can
-// exercise the same-family gate (Name equality) of the model override.
+// exercise cross-family destinations of the model override (task 602 lifted
+// the task-148 same-family gate).
 type namedFakeProvider struct {
 	fakeProvider
 	name string
@@ -40,7 +41,7 @@ func (r *fakeModelResolver) Resolve(sel provider.Selection) (provider.Provider, 
 	return nil, fmt.Errorf("unknown model %q", sel.Ref)
 }
 
-func TestSetSessionModelOverrideFamilyGate(t *testing.T) {
+func TestSetSessionModelOverrideAcceptsCrossFamily(t *testing.T) {
 	home := &namedFakeProvider{name: "fake"}
 	alt := &namedFakeProvider{name: "fake", fakeProvider: fakeProvider{reply: "alt"}}
 	other := &namedFakeProvider{name: "other"}
@@ -48,10 +49,11 @@ func TestSetSessionModelOverrideFamilyGate(t *testing.T) {
 		"fake/a":  alt,
 		"other/b": other,
 	}}
-	a := New(home, nil, NewSession("s"), Options{ModelResolver: resolver}, event.Discard)
+	price := &provider.Pricing{}
+	a := New(home, nil, NewSession("s"), Options{ModelResolver: resolver, ContextWindow: 128_000, MaxOutputTokens: 8_192}, event.Discard)
 
 	// Same-family target arms: the destination flips and the ref is observable.
-	if !a.SetSessionModelOverride("fake/a") {
+	if !a.SetSessionModelOverride("fake/a", ModelOverrideExtras{}) {
 		t.Fatal("same-family override rejected")
 	}
 	if got := a.providerForRequest(); got != provider.Provider(alt) {
@@ -61,16 +63,55 @@ func TestSetSessionModelOverrideFamilyGate(t *testing.T) {
 		t.Fatalf("override ref = %q, want fake/a", got)
 	}
 
-	// Cross-family target declines and leaves the armed destination intact.
-	if a.SetSessionModelOverride("other/b") {
-		t.Fatal("cross-family override accepted")
+	// Task 602: cross-family targets arm too — the destination is a fully
+	// constructed adapter and every destination-scoped surface follows it.
+	if !a.SetSessionModelOverride("other/b", ModelOverrideExtras{Pricing: price, ContextWindow: 256_000, MaxOutputTokens: 16_384, HighSpeedModels: []string{"other/b"}}) {
+		t.Fatal("cross-family override rejected; task 602 lifted the family gate")
 	}
-	if got := a.providerForRequest(); got != provider.Provider(alt) {
-		t.Fatal("declined cross-family switch disturbed the armed destination")
+	if got := a.providerForRequest(); got != provider.Provider(other) {
+		t.Fatal("destination did not flip to the cross-family provider")
+	}
+	if got := a.sessionModelOverrideRef(); got != "other/b" {
+		t.Fatalf("override ref = %q, want other/b", got)
+	}
+	// The entry-derived scalars follow the destination.
+	if got := a.destinationModelRef(); got != "other/b" {
+		t.Fatalf("destinationModelRef = %q, want other/b", got)
+	}
+	if got := a.destinationPricing(); got != price {
+		t.Fatal("destinationPricing did not follow the override extras")
+	}
+	if got := a.destinationContextWindow(); got != 256_000 {
+		t.Fatalf("destinationContextWindow = %d, want 256000", got)
+	}
+	if got := a.destinationMaxOutputTokens(); got != 16_384 {
+		t.Fatalf("destinationMaxOutputTokens = %d, want 16384", got)
+	}
+	if got := a.destinationHighSpeedModels(); len(got) != 1 || got[0] != "other/b" {
+		t.Fatalf("destinationHighSpeedModels = %v, want [other/b]", got)
+	}
+	// The learned-window composition takes the destination as configured input.
+	if got := a.effectiveContextWindow(); got != 256_000 {
+		t.Fatalf("effectiveContextWindow = %d, want 256000 (destination as configured input)", got)
 	}
 
-	// Clearing always succeeds and restores the construction provider.
-	if !a.SetSessionModelOverride("") {
+	// Zero extras keep the construction scalars (same-family callers without
+	// an entry at hand stay conservative).
+	if !a.SetSessionModelOverride("fake/a", ModelOverrideExtras{}) {
+		t.Fatal("same-family override with zero extras rejected")
+	}
+	if got := a.destinationPricing(); got != nil {
+		t.Fatalf("destinationPricing with zero extras = %v, want nil (construction)", got)
+	}
+	if got := a.destinationContextWindow(); got != 128_000 {
+		t.Fatalf("destinationContextWindow with zero extras = %d, want 128000", got)
+	}
+	if got := a.destinationMaxOutputTokens(); got != 8_192 {
+		t.Fatalf("destinationMaxOutputTokens with zero extras = %d, want 8192", got)
+	}
+
+	// Clearing always succeeds and restores the construction destination.
+	if !a.SetSessionModelOverride("", ModelOverrideExtras{}) {
 		t.Fatal("clearing the override must always succeed")
 	}
 	if got := a.providerForRequest(); got != provider.Provider(home) {
@@ -79,10 +120,13 @@ func TestSetSessionModelOverrideFamilyGate(t *testing.T) {
 	if got := a.sessionModelOverrideRef(); got != "" {
 		t.Fatalf("override ref after clear = %q, want empty", got)
 	}
+	if got := a.destinationModelRef(); got != "" {
+		t.Fatalf("destinationModelRef after clear = %q, want construction (empty opts)", got)
+	}
 
 	// Resolve failures decline instead of arming a dead destination.
 	resolver.err = fmt.Errorf("catalog unavailable")
-	if a.SetSessionModelOverride("fake/a") {
+	if a.SetSessionModelOverride("fake/a", ModelOverrideExtras{}) {
 		t.Fatal("resolve failure accepted")
 	}
 	if got := a.providerForRequest(); got != provider.Provider(home) {
@@ -92,7 +136,7 @@ func TestSetSessionModelOverrideFamilyGate(t *testing.T) {
 
 func TestSetSessionModelOverrideWithoutResolverSeam(t *testing.T) {
 	a := New(&fakeProvider{}, nil, NewSession("s"), Options{}, event.Discard)
-	if a.SetSessionModelOverride("fake/a") {
+	if a.SetSessionModelOverride("fake/a", ModelOverrideExtras{}) {
 		t.Fatal("override accepted without a resolver seam")
 	}
 	if got := a.sessionModelOverrideRef(); got != "" {
@@ -110,7 +154,7 @@ func TestSetSessionModelOverrideRecoveryForkDeclined(t *testing.T) {
 		t.Fatalf("save branch meta: %v", err)
 	}
 	a.sess.path = path
-	if a.SetSessionModelOverride("fake/a") {
+	if a.SetSessionModelOverride("fake/a", ModelOverrideExtras{}) {
 		t.Fatal("recovery-forked session accepted a model override; reanchor semantics live on the rebuild path")
 	}
 	if got := a.providerForRequest(); got == nil {
@@ -127,7 +171,7 @@ func TestSetSessionModelOverrideCarriesSessionEffort(t *testing.T) {
 	if !a.SetSessionEffortOverride("max") {
 		t.Fatal("set session effort")
 	}
-	if !a.SetSessionModelOverride("fake/a") {
+	if !a.SetSessionModelOverride("fake/a", ModelOverrideExtras{}) {
 		t.Fatal("same-family override rejected")
 	}
 	if resolver.last.Ref != "fake/a" {
@@ -148,7 +192,7 @@ func TestSamplingRequestDestinationSticksAcrossOverrideFlip(t *testing.T) {
 	// A switch landing after the freeze must not re-route the frozen round:
 	// the destination was captured at freeze, mirroring EffortOverride riding
 	// inside the frozen payload.
-	if !a.SetSessionModelOverride("fake/next") {
+	if !a.SetSessionModelOverride("fake/next", ModelOverrideExtras{}) {
 		t.Fatal("arm override")
 	}
 	if got := frozen.destination(a); got != provider.Provider(captured) {
@@ -159,7 +203,7 @@ func TestSamplingRequestDestinationSticksAcrossOverrideFlip(t *testing.T) {
 	if got := unfrozen.destination(a); got == nil || got == provider.Provider(a.svc.prov) && got != a.providerForRequest() {
 		t.Fatal("unfrozen request did not follow the effective destination")
 	}
-	if !a.SetSessionModelOverride("") {
+	if !a.SetSessionModelOverride("", ModelOverrideExtras{}) {
 		t.Fatal("clear override")
 	}
 	if got := unfrozen.destination(a); got != provider.Provider(a.svc.prov) {
@@ -202,7 +246,7 @@ func TestEffortVocabularyProbeFollowsModelDestination(t *testing.T) {
 	if !a.SetSessionEffortOverride("max") {
 		t.Fatal("base provider vocabulary rejected a listed level")
 	}
-	if !a.SetSessionModelOverride("fake/plain") {
+	if !a.SetSessionModelOverride("fake/plain", ModelOverrideExtras{}) {
 		t.Fatal("same-family override rejected")
 	}
 	if a.SetSessionEffortOverride("low") {
@@ -212,3 +256,37 @@ func TestEffortVocabularyProbeFollowsModelDestination(t *testing.T) {
 		t.Fatalf("override after declined level = %q, want max", got)
 	}
 }
+
+// TestReplaySensitivityFollowsDestination pins the task-602 protocol-scoped
+// conversion: the sampling-attempt buffering decision probes the destination's
+// reasoning contract, so a hot switch to a protocol that owns its reasoning
+// keeps streaming live instead of inheriting the construction provider's
+// buffering.
+func TestReplaySensitivityFollowsDestination(t *testing.T) {
+	resolver := &fakeModelResolver{providers: map[string]provider.Provider{
+		"other/b": &namedFakeProvider{name: "other"},
+	}}
+	a := New(&reasoningSensitiveProvider{}, nil, NewSession("s"), Options{ModelResolver: resolver}, event.Discard)
+	if buffered, _ := a.samplingAttemptSinks(); buffered == nil {
+		t.Fatal("replay-sensitive construction provider did not buffer the stream sink")
+	}
+	if !a.SetSessionModelOverride("other/b", ModelOverrideExtras{}) {
+		t.Fatal("cross-family override rejected")
+	}
+	if buffered, _ := a.samplingAttemptSinks(); buffered != nil {
+		t.Fatal("destination followed the construction provider's replay sensitivity after a hot switch")
+	}
+}
+
+// reasoningSensitiveProvider advertises the strict reasoning contract
+// (tool-call reasoning + round trip, no empty fallback) the buffering branch
+// keys on.
+type reasoningSensitiveProvider struct {
+	fakeProvider
+}
+
+func (p *reasoningSensitiveProvider) Name() string { return "strict" }
+
+func (p *reasoningSensitiveProvider) RequiresToolCallReasoning() bool { return true }
+
+func (p *reasoningSensitiveProvider) RequiresReasoningRoundTrip() bool { return true }

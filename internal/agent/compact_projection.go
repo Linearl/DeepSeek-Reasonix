@@ -668,7 +668,7 @@ func (a *Agent) logCompactionMissAttribution(trigger string, tele CompactionTele
 		"trigger", trigger,
 		"attribution", compactionMissAttribution(tele, gap, hadError),
 		"error_gap_ms", gapMs,
-		"model_ref", a.modelRef,
+		"model_ref", a.destinationModelRef(),
 		"input_tokens", tele.InputTokens,
 		"cache_miss_tokens", tele.CacheMissTokens,
 		"source_tokens", sourceTokens)
@@ -765,7 +765,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		return CompactionNoop, nil
 	}
 	fixedPrefixTokens := a.estimatedVisibleRequestTokens(msgs[:head])
-	if a.contextWindow > 0 && fixedPrefixTokens >= a.compactTrigger() {
+	if a.destinationContextWindow() > 0 && fixedPrefixTokens >= a.compactTrigger() {
 		return CompactionNoop, fmt.Errorf("%w: fixed prefix (%d tokens) already exceeds trigger (%d)", errCheckpointRejected, fixedPrefixTokens, a.compactTrigger())
 	}
 

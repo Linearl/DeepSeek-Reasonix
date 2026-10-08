@@ -33,8 +33,12 @@ func (a *Agent) samplingAttemptSinks() (*deferredStreamSink, event.Sink) {
 	// Buffer when missing reasoning can reject or replace the attempt. Protocols
 	// that adopt an empty fallback without retry must keep streaming live because
 	// their first response always wins.
-	replaySensitive := provider.RequiresToolCallReasoning(a.svc.prov) || provider.RequiresReasoningRoundTrip(a.svc.prov)
-	if replaySensitive && !provider.AllowsEmptyReasoningFallback(a.svc.prov) {
+	// Task 602: the replay-sensitivity probes follow the request destination —
+	// a cross-family hot switch must not inherit the construction provider's
+	// reasoning protocol.
+	dest := a.providerForRequest()
+	replaySensitive := provider.RequiresToolCallReasoning(dest) || provider.RequiresReasoningRoundTrip(dest)
+	if replaySensitive && !provider.AllowsEmptyReasoningFallback(dest) {
 		streamSink := newReasoningAwareStreamSink(a.svc.sink)
 		return streamSink, streamSink
 	}
