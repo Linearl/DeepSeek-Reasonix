@@ -2425,9 +2425,16 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 				if activate {
 					a.activeTabID = tab.ID
 				}
+				// 任务 619 ②: a reused skeleton tab (lazy restore, no
+				// controller yet) builds on this open — same trigger a direct
+				// tab click gets from SetActiveTab.
+				kickLazy := lazyTabNeedsBuildLocked(tab)
 				meta := a.tabMeta(tab, tab.ID == a.activeTabID)
 				a.saveTabsLocked()
 				a.mu.Unlock()
+				if kickLazy {
+					a.startTabControllerBuild(tab)
+				}
 				return enrichTabMeta(meta), nil
 			}
 		}
@@ -2439,10 +2446,17 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 				a.activeTabID = tab.ID
 			}
 			sameSession := targetKey == "" || sessionRuntimeKey(tab.currentSessionPath()) == targetKey
+			// 任务 619 ②: same trigger as above — a skeleton tab reused
+			// through the sidebar/topic path builds here; the rebind branch
+			// below rebuilds on its own, so only the no-op/return paths kick.
+			kickLazy := lazyTabNeedsBuildLocked(tab)
 			meta := a.tabMeta(tab, tab.ID == a.activeTabID)
 			a.saveTabsLocked()
 			a.mu.Unlock()
 			if sameSession || a.skipContinuationRebind(tab, sessionPath) {
+				if kickLazy {
+					a.startTabControllerBuild(tab)
+				}
 				return enrichTabMeta(meta), nil
 			}
 			if err := a.rebindTabToSessionPath(tab, sessionPath); err != nil {
@@ -3732,6 +3746,40 @@ func orderTabsActiveFirst(tabs []*WorkspaceTab, activeTabID string) []*Workspace
 		}
 	}
 	return append(ordered, rest...)
+}
+
+// startupBuildSet returns the subset of restored tabs (already active-first
+// ordered) whose controller builds at startup — 任务 619 ②. The first entry
+// (the previously-active tab the user is looking at) always builds; an
+// autopilot tab builds too because its unattended run resumes across the
+// restart (task 49/465 restore gates re-check yolo inside the build). Every
+// other tab stays a published skeleton: listed with its sidecar title, no
+// controller, transcript still readable cold; SetActiveTab builds it on
+// click.
+func startupBuildSet(restored []*WorkspaceTab) []*WorkspaceTab {
+	selected := make([]*WorkspaceTab, 0, 1)
+	foregroundDone := false
+	for _, tab := range restored {
+		if tab == nil {
+			continue
+		}
+		if !foregroundDone || tab.autopilot {
+			selected = append(selected, tab)
+			foregroundDone = true
+		}
+	}
+	return selected
+}
+
+// lazyTabNeedsBuildLocked reports whether a restored skeleton tab (published
+// without a controller — 任务 619 ②) still needs its build kicked. Guards:
+// a build already in flight (buildCancel covers the queued and running
+// generation) is left alone; a tab with a recorded StartupErr keeps its
+// explicit retry surface instead of silently rebuilding. The caller holds
+// a.mu.
+func lazyTabNeedsBuildLocked(tab *WorkspaceTab) bool {
+	return tab != nil && tab.Ctrl == nil &&
+		tab.buildCancel == nil && strings.TrimSpace(tab.StartupErr) == ""
 }
 
 // buildSlot is the throttled-build semaphore handle. A nil slot (non-startup
