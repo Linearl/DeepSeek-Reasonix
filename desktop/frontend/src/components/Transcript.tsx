@@ -108,6 +108,8 @@ export type TranscriptProps = {
   onOpenChanges?: (summary?: WireCompletionSummary) => void;
   onConsolidateRecovery?: () => void;
   onOpenVerification?: (summary: WireCompletionSummary) => void;
+  /** Task 658: the concurrent-writer notice's inline route into the version dialog. */
+  onViewVersions?: () => void;
   onEditPrompt?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
   /** 任务461-P3: one-click resend for a failed submission (same channel as onEditPrompt). */
   onResendPrompt?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
@@ -150,7 +152,7 @@ export function Transcript(props: TranscriptProps) {
   const {
     items, live: liveProp, liveStore, tabId, geometrySessionKey, footerHeight = 0,
     onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification, onConsolidateRecovery,
-    onEditPrompt, onResendPrompt, onRewind, checkpoints = EMPTY_CHECKPOINTS, actionPending = false,
+    onViewVersions, onEditPrompt, onResendPrompt, onRewind, checkpoints = EMPTY_CHECKPOINTS, actionPending = false,
     rewindDisabled = false, running = false, questionNavigator = true,
     questionSearchOpen = false, onCloseQuestionSearch,
     findOpen = false, onCloseFind, findPulse = 0,
@@ -457,7 +459,7 @@ export function Transcript(props: TranscriptProps) {
     rewindDisabled, actionHoverMenus, turnStartAt, lastTurn,
     onFoldToggle: handleFoldToggle, onReasoningManualOpen: handleReasoningManualOpen,
     onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification, onConsolidateRecovery,
-    onEditPrompt, onResendPrompt, onRewind,
+    onViewVersions, onEditPrompt, onResendPrompt, onRewind,
   });
 
   const jumpToLoadedQuestion = useTranscriptCommand((question: QuestionAnchor) => {

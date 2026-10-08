@@ -14,6 +14,7 @@ import { useDeferredClose } from "../lib/useMountTransition";
 import { ModalCloseButton } from "./ModalCloseButton";
 import { HistoryFilterSelect } from "./HistoryFilterSelect";
 import { normalizeRecoveryLineageView, userVisibleRecoveryVersions } from "../lib/sessionRecoveryVersions";
+import { requestTopicVersionsForSession } from "../lib/sessionRecoveryVersionHostBridge";
 
 type HistoryScopeFilter = "all" | "project" | "global";
 type HistoryStatusFilter = "all" | "current" | "open";
@@ -713,7 +714,7 @@ export function HistoryPanel({
                 ) : previewItems.length === 0 ? (
                   <div className="mem-empty">{tr("history.previewEmpty")}</div>
                 ) : (
-                  <Transcript items={previewItems} onPrompt={() => {}} questionNavigator={false} rewindDisabled />
+                  <Transcript items={previewItems} onPrompt={() => {}} onViewVersions={() => requestTopicVersionsForSession(selectedSession)} questionNavigator={false} rewindDisabled />
                 )}
               </div>
               </>

@@ -36,6 +36,7 @@ export function useTranscriptRowRenderer({
   onOpenChanges,
   onConsolidateRecovery,
   onOpenVerification,
+  onViewVersions,
   onEditPrompt,
   onResendPrompt,
   onRewind,
@@ -58,6 +59,8 @@ export function useTranscriptRowRenderer({
   onOpenChanges?: (summary?: WireCompletionSummary) => void;
   onConsolidateRecovery?: () => void;
   onOpenVerification?: (summary: WireCompletionSummary) => void;
+  /** Task 658: the concurrent-writer notice's inline route into the version dialog. */
+  onViewVersions?: () => void;
   onEditPrompt?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
   /** 任务461-P3: one-click resend for a failed submission (same channel as onEditPrompt). */
   onResendPrompt?: (turn: number, displayText: string, submitText?: string) => boolean | void | Promise<boolean | void>;
@@ -114,7 +117,10 @@ export function useTranscriptRowRenderer({
             // continuation prompt into the composer so the user drives the
             // next round by hand (same onPrompt shape as delivery continue).
             : row.item.action === "manual_continue" ? () => onPrompt(t("notice.retryExhaustedContinuePrompt"))
-              : row.item.code === "session_recovery_forked" && onConsolidateRecovery ? () => onConsolidateRecovery() : undefined;
+              : row.item.code === "session_recovery_forked" && onConsolidateRecovery ? () => onConsolidateRecovery()
+                // Task 658: opens the same version dialog as the history
+                // panel's View versions button, via the topic fixed entry.
+                : row.item.action === "view_versions" && onViewVersions ? onViewVersions : undefined;
         return <NoticeCard
           item={row.item} actionDisabled={running && row.item.action !== "open_changes"} onAction={action}
           onOpenVerification={row.item.variant === "completion" ? onOpenVerification : undefined}
@@ -138,7 +144,7 @@ export function useTranscriptRowRenderer({
   }, [
     actionHoverMenus, actionPending, checkpointsByTurn, creationMode, lastTurn,
     onAcceptDelivery, onDeliveryContinue, onEditPrompt, onFoldToggle, onOpenChanges, onResendPrompt,
-    onOpenVerification, onPrompt, onReasoningManualOpen, onRewind, openAction,
+    onOpenVerification, onPrompt, onReasoningManualOpen, onRewind, onViewVersions, openAction,
     rewindDisabled, running, subcallsByParent, t, tabId, turnStartAt,
   ]);
 }

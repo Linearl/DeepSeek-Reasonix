@@ -162,7 +162,7 @@ import { useSidebarImOwner } from "./app-runtime/useSidebarImHooks";
 import { loadCachedAppearance, loadCachedLayoutStyle, saveCachedAppearance, saveCachedLayoutStyle } from "./lib/layoutPreferences";
 import { runWorktreeMergeLifecycle } from "./lib/worktreeMergeLifecycle";
 import { showWorktreeCleanupNotice } from "./lib/worktreeCleanupNotice";
-import { requestSessionVersions } from "./lib/sessionRecoveryVersionHostBridge";
+import { requestSessionVersions, requestTopicVersionsForSession } from "./lib/sessionRecoveryVersionHostBridge";
 import type { WorkspaceVerificationRevealRequest } from "./components/WorkspacePanel";
 import type { StructuredInvocationSubmit } from "./lib/invocationDisplay";
 import type { RewindUndoState } from "./lib/rewindTypes";
@@ -5232,6 +5232,7 @@ export default function App() {
                         });
                       }}
                       onOpenVerification={openTurnVerification}
+                      onViewVersions={() => requestTopicVersionsForSession(tabMetas.find((tab) => tab.id === (visibleTranscriptTabId ?? activeTabId)) ?? activeTab)}
                       onEditPrompt={handleEditPrompt}
                       onResendPrompt={handleEditPrompt}
                       onRewind={handleMessageAction}
@@ -5304,6 +5305,7 @@ export default function App() {
                               tabId={splitTabId}
                               geometrySessionKey={`tab:${splitTabId}`}
                               onPrompt={handleTranscriptPrompt}
+                              onViewVersions={() => requestTopicVersionsForSession(tabMetas.find((tab) => tab.id === splitTabId))}
                               questionNavigator={false}
                             />
                           </div>

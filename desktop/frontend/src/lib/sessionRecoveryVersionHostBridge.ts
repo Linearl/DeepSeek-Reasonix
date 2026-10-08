@@ -50,3 +50,18 @@ export function bindTopicVersionInspector(next: TopicVersionInspector): () => vo
     if (topicInspector === next) topicInspector = undefined;
   };
 }
+
+// Task 658: the concurrent-writer notice's inline button knows the session it
+// belongs to only through the transcript mount point (TabMeta / SessionMeta
+// shaped fields), so the topic key is assembled here instead of at each mount.
+// No-op when the session has no topic id (blank or file tabs).
+export function requestTopicVersionsForSession(session: { scope?: string; workspaceRoot?: string; topicId?: string; path?: string; sessionPath?: string } | null | undefined) {
+  const path = session?.path ?? session?.sessionPath;
+  if (!session?.topicId) return;
+  requestTopicVersions({
+    scope: session.scope || "global",
+    workspaceRoot: session.workspaceRoot || undefined,
+    topicId: session.topicId,
+    path,
+  });
+}

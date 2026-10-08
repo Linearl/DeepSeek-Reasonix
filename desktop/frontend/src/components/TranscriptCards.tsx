@@ -2,7 +2,7 @@
 // decision receipts, and compaction cards.
 
 import { useState } from "react";
-import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, Info, TriangleAlert } from "lucide-react";
+import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, GitBranch, Info, TriangleAlert } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { CompactionItem, NoticeItem } from "../lib/transcriptRows";
 import type { WireCompletionSummary } from "../lib/types";
@@ -71,7 +71,7 @@ function DecisionReceiptLine({ receipt }: { receipt: NonNullable<NoticeItem["dec
 export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUndoCode, actionDisabled = false }: { item: NoticeItem; onAction?: () => void; onAccept?: () => void; onOpenVerification?: (summary: WireCompletionSummary) => void; onUndoCode?: (turn: number) => void; actionDisabled?: boolean }) {
   const t = useT();
   const StatusIcon = item.level === "warn" ? TriangleAlert : Info;
-  const ActionIcon = item.action === "open_changes" ? FileSearch : CirclePlay;
+  const ActionIcon = item.action === "view_versions" ? GitBranch : item.action === "open_changes" ? FileSearch : CirclePlay;
   const showVerification = item.variant === "completion" && Boolean(item.completionSummary && onOpenVerification);
   const result = item.variant === "completion" ? item.completionSummary : undefined;
   // 任务524: the turn-result notice must not squat on the conversation
@@ -89,7 +89,7 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
       {item.action && onAction ? (
         <button className="btn btn--primary btn--small" type="button" onClick={onAction} disabled={actionDisabled}>
           <ActionIcon size={13} aria-hidden="true" />
-          <span>{item.action === "manual_continue" ? t("notice.manualContinue") : item.action === "recover_context" ? t("notice.protocolRecoveryAction") : item.action === "open_changes" ? t("notice.completionViewChanges") : t("notice.deliveryIncompleteContinue")}</span>
+          <span>{item.action === "manual_continue" ? t("notice.manualContinue") : item.action === "recover_context" ? t("notice.protocolRecoveryAction") : item.action === "open_changes" ? t("notice.completionViewChanges") : item.action === "view_versions" ? t("recovery.inspectLineage") : t("notice.deliveryIncompleteContinue")}</span>
         </button>
       ) : null}
       {showVerification ? (
