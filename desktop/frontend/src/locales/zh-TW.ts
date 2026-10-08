@@ -3672,6 +3672,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.contentQuickCommands": "快捷指令",
   "composer.contentQuickCommandsSearch": "搜尋快捷指令",
   "composer.contentQuickCommandsEmpty": "還沒有快捷指令。可在 設定 → 一般 → 快捷指令 中新增。",
+  "composer.contentQuickCommandsAdd": "新增快捷指令",
   "composer.quickCommandsBangHint": "在輸入框開頭輸入 !! 可隨時喚起此列表",
   "composer.contentUseCommandsDesc": "瀏覽可用命令和技能",
   "composer.contentUseCommandsEmptyOnly": "輸入框為空時可用——命令會構成整條訊息",

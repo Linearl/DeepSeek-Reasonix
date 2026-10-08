@@ -994,6 +994,21 @@ export default function App() {
     setQuickCommands,
   } = useTabNavigationOwner();
 
+  // Task 656: the composer quick-command picker can create a snippet in place.
+  // The picker only renders while the experimental gate is on, so the mirror
+  // here holds the full stored list (disabled entries included) — append to it,
+  // persist, then mirror so the picker shows the new entry without waiting for
+  // a full settings reload. The next settings read reconciles authoritatively.
+  const addQuickCommandFromComposer = useCallback(async (title: string, text: string) => {
+    const next = [...quickCommands, { title, text, enabled: true }];
+    try {
+      await app.SetQuickCommands(next);
+      setQuickCommands(next);
+    } catch (e) {
+      console.warn("addQuickCommand failed", e);
+    }
+  }, [quickCommands, setQuickCommands]);
+
   // Autopilot is opt-in: its mode only appears in the composer once the
   // preference is on, so nobody lands in an unattended run by accident.
   const autopilotEnabled = useAppLifecycleStore((s) => s.autopilotEnabled);
@@ -5542,6 +5557,7 @@ export default function App() {
               historyPickerEnabled={promptHistoryPickerEnabled}
               autopilotEnabled={autopilotEnabled}
               onInsertQuickCommand={insertQuickCommand}
+              onAddQuickCommand={addQuickCommandFromComposer}
               turnPhase={state.turnPhase}
               goal={goal}
               goalStatus={state.meta?.goalStatus}

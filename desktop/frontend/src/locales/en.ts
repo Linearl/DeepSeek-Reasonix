@@ -953,6 +953,7 @@ export const en = {
   "composer.contentQuickCommands": "Quick commands",
   "composer.contentQuickCommandsSearch": "Search quick commands",
   "composer.contentQuickCommandsEmpty": "No quick commands yet - add some in Settings > General > Quick commands.",
+  "composer.contentQuickCommandsAdd": "Add quick command",
   "composer.quickCommandsBangHint": "Type !! at the start of the input to open this list",
   "composer.contentUseCommandsDesc": "Browse available commands and skills",
   "composer.contentUseCommandsEmptyOnly": "Available when the input is empty — commands replace the whole message",
