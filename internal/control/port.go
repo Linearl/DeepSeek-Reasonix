@@ -174,6 +174,11 @@ type SessionHistory interface {
 	ForkNamed(turn int, name string) (string, error)
 	ForkSession(turn int, name string) (string, error)
 	Branch(name string) (string, error)
+	// BranchToFile branches at the current tip into a separate session file
+	// even when the live log is schema-2 and Branch would take an in-log head
+	// (task 540): remote surfaces list and resume sessions by path, so the
+	// serve child-session spawn needs a distinct file to switch back to.
+	BranchToFile(name string) (string, error)
 	Branches() ([]agent.BranchInfo, error)
 	BranchTreeText() string
 	CurrentBranchID() string

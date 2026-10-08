@@ -122,3 +122,49 @@ func TestServeSectionDefaultsRoundTrip(t *testing.T) {
 		t.Fatalf("default render invented [serve] config: %+v", decoded.Serve)
 	}
 }
+
+// 任务540：experimental_gc_child_session 默认关（铁律 2）——Default 零值，
+// 且默认渲染只以注释示例出现（不是活键），关闭态的配置文件语义与 540 之前逐字一致。
+func TestGCChildSessionDefaultsOffAndRendersAsComment(t *testing.T) {
+	c := Default()
+	if c.Serve.ExperimentalGCChildSession {
+		t.Fatal("experimental_gc_child_session must default to false (iron rule 2)")
+	}
+	rendered := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(rendered, "# experimental_gc_child_session = false") {
+		t.Fatalf("default render missing the commented example:\n%s", rendered)
+	}
+	for _, line := range strings.Split(rendered, "\n") {
+		if strings.HasPrefix(line, "experimental_gc_child_session") {
+			t.Fatalf("default render emitted a live key (must stay a comment while off):\n%s", line)
+		}
+	}
+}
+
+// 任务540：显式开启后渲染活键并 round-trip。
+func TestGCChildSessionExplicitOnRendersAndRoundTrips(t *testing.T) {
+	c := Default()
+	c.Serve.ExperimentalGCChildSession = true
+	rendered := RenderTOMLForScope(c, RenderScopeUser)
+	if !strings.Contains(rendered, "experimental_gc_child_session = true") {
+		t.Fatalf("explicit-on render missing the live key:\n%s", rendered)
+	}
+	var decoded Config
+	if _, err := toml.Decode(rendered, &decoded); err != nil {
+		t.Fatalf("rendered user config does not parse: %v\n---\n%s", err, rendered)
+	}
+	if !decoded.Serve.ExperimentalGCChildSession {
+		t.Fatal("round trip lost experimental_gc_child_session = true")
+	}
+}
+
+// 任务540：toml 直接解析该键。
+func TestGCChildSessionParsesFromTOML(t *testing.T) {
+	cfg := Default()
+	if _, err := toml.Decode("[serve]\nexperimental_gc_child_session = true\n", cfg); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !cfg.Serve.ExperimentalGCChildSession {
+		t.Fatal("toml key experimental_gc_child_session = true did not decode")
+	}
+}

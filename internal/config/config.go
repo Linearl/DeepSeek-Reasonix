@@ -1071,6 +1071,19 @@ type ServeConfig struct {
 	// assignments. Independent of BusMCP: mail to the worker contact can
 	// come from Reasonix sessions just as well. Off by default.
 	BusWorker BusWorkerConfig `toml:"bus_worker"`
+	// ExperimentalGCChildSession is the task-540 lab switch: when on, the
+	// GrandCouncil remote client may spawn a child session derived from the
+	// conversation it is driving (POST /spawn-child-session), and GET
+	// /capabilities advertises the "child-session" capability so the client
+	// can show its entry. The child starts as a full copy of the current
+	// conversation in its own session file; the foreground (and the session
+	// lease, through the same single rebind path /new and /fork use) moves to
+	// it, while the source session keeps its transcript and stays resumable
+	// from the session list. The zero value (off) keeps every route and
+	// capability byte-for-byte as it was (铁律 2): the route is not mounted
+	// and the capability is not advertised. Applies on restart, like every
+	// boot-resolved serve switch.
+	ExperimentalGCChildSession bool `toml:"experimental_gc_child_session"`
 }
 
 // BusMCPConfig is the [serve.bus_mcp] table. See [ServeConfig.BusMCP].

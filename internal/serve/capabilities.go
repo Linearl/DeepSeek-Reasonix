@@ -44,9 +44,16 @@ type capabilitiesResponse struct {
 }
 
 func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
+	caps := Capabilities()
+	// 任务540: the child-session capability is advertised only while the lab
+	// switch is on — the off state reports exactly the static declaration, and
+	// a client that never sees the capability never shows its derive entry.
+	if s.gcChildSession {
+		caps = append(caps, "child-session")
+	}
 	writeJSON(w, capabilitiesResponse{
 		Protocol:     serveProtocolVersion,
 		MinProtocol:  serveProtocolVersion,
-		Capabilities: Capabilities(),
+		Capabilities: caps,
 	})
 }

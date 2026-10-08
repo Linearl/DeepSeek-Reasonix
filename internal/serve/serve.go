@@ -135,6 +135,11 @@ type Server struct {
 	// (zcodebridgeinject.go) prefers nudge targets whose session workspace
 	// matches it. Nil until the first successful bridge connect.
 	zcodeBridgeWorkspace atomic.Pointer[string]
+	// gcChildSession is the task-540 lab switch (experimental_gc_child_session,
+	// boot-resolved): when on, POST /spawn-child-session is mounted and GET
+	// /capabilities advertises "child-session" so the GrandCouncil client can
+	// show its derive entry. Off keeps both absent — the fail-closed default.
+	gcChildSession bool
 }
 
 // SetControllerBuildOptions records the process-local options used to build
@@ -154,15 +159,16 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		bc = NewBroadcaster()
 	}
 	s := &Server{
-		ctrl:        ctrl,
-		bc:          bc,
-		titles:      newTitleCache(ctrl.SessionDir()),
-		titleSem:    make(chan struct{}, 2),
-		auth:        newAuthGate(serveCfg),
-		detached:    map[string]*detachedSession{},
-		tags:        map[*control.Controller]*sessionTagSink{},
-		leaseOwners: map[*control.Controller]*control.SessionLeaseKeeper{},
-		mirrored:    map[string]mirroredSession{},
+		ctrl:           ctrl,
+		bc:             bc,
+		titles:         newTitleCache(ctrl.SessionDir()),
+		titleSem:       make(chan struct{}, 2),
+		auth:           newAuthGate(serveCfg),
+		detached:       map[string]*detachedSession{},
+		tags:           map[*control.Controller]*sessionTagSink{},
+		leaseOwners:    map[*control.Controller]*control.SessionLeaseKeeper{},
+		mirrored:       map[string]mirroredSession{},
+		gcChildSession: serveCfg.ExperimentalGCChildSession,
 	}
 	bc.SetCurrentSession(agent.CanonicalSessionPath(ctrl.SessionPath()))
 	if cfg, err := config.Load(); err == nil {
@@ -701,6 +707,11 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("POST /takeover-session", s.takeoverSession)
 	mux.HandleFunc("POST /heartbeat", s.heartbeat)
 	mux.HandleFunc("POST /release-device", s.releaseDevice)
+	// 任务540: fail-closed mounting — the route exists only while the lab
+	// switch is on, so the off state answers 404 exactly as before.
+	if s.gcChildSession {
+		mux.HandleFunc("POST /spawn-child-session", s.spawnChildSession)
+	}
 	return logMiddleware(securityHeaders(gzipMiddleware(s.auth.middleware(s.hostGuard(csrfGuard(mux))))))
 }
 
