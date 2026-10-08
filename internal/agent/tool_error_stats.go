@@ -127,11 +127,17 @@ func (a *Agent) persistToolErrorStatsLocked() {
 }
 
 // ToolErrorStatsSnapshot returns a copy of the current counters for display
-// or the CLI aggregator. It contains only tool names and counts.
+// or the CLI aggregator. It contains only tool names and counts. Reading
+// before the first recorded outcome is a normal empty snapshot, not a nil
+// deref: the record path lazily creates a.toolStats, so the read path must
+// not assume it exists (task 252 — found by the parallel-recording test).
 func (a *Agent) ToolErrorStatsSnapshot() map[string]toolErrorCount {
 	a.toolStatsMu.Lock()
 	defer a.toolStatsMu.Unlock()
-	out := make(map[string]toolErrorCount, len(a.toolStats.Tools))
+	out := map[string]toolErrorCount{}
+	if a.toolStats == nil {
+		return out
+	}
 	for k, v := range a.toolStats.Tools {
 		out[k] = v
 	}

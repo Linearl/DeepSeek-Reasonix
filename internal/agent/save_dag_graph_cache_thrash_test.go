@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -76,6 +78,52 @@ func runInterleavedSequence(putPath, otherPath string, rounds int) (hits, misses
 	}
 	hits, misses, evictions = SessionGraphCacheStats()
 	return hits - hits0, misses - misses0, evictions - evictions0
+}
+
+// TestSessionGraphCacheConcurrentAccess pins the process-wide cache's
+// concurrency contract (task 252): saves from parallel Session objects and
+// loads from UI goroutines all hit this one map, so Put/Get/Invalidate plus
+// the stats readers must coexist under sessionGraphCacheMu without a
+// `fatal error: concurrent map writes`. The capacity keeps the working set
+// bounded while goroutines contend over overlapping keys, so replacement
+// accounting and LRU eviction run under the same contention.
+func TestSessionGraphCacheConcurrentAccess(t *testing.T) {
+	t.Cleanup(func() {
+		SetSessionGraphCacheCapacity(sessionGraphCacheCapacityDefault)
+		resetGraphCacheForTest()
+	})
+	SetSessionGraphCacheCapacity(4)
+	resetGraphCacheForTest()
+
+	const goroutines = 16
+	const rounds = 100
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < rounds; i++ {
+				// i%4 overlaps keys across goroutines so Puts replace each
+				// other's entries while the LRU evicts under the same lock.
+				path := fmt.Sprintf("C:/sessions/wt252-%d-%d.events.jsonl", g, i%4)
+				st := &sessionDAGState{path: path, size: int64(1 + i%7)}
+				sessionGraphCachePut(path, st)
+				if got := sessionGraphCacheGet(path); got != nil && got.path != path {
+					t.Errorf("Get returned state for %q, want %q", got.path, path)
+				}
+				if i%10 == 0 {
+					InvalidateSessionGraph(path)
+				}
+				SessionGraphCacheStats()
+				SessionGraphCacheByteStats()
+			}
+		}(g)
+	}
+	wg.Wait()
+	_, _, _, entries, _ := SessionGraphCacheByteStats()
+	if entries > 4 {
+		t.Fatalf("cache holds %d entries after concurrent churn, want <= capacity 4", entries)
+	}
 }
 
 // resetGraphCacheForTest empties the map under the cache lock; counters are
