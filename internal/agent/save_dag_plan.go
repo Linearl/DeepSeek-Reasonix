@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"os"
 	"time"
 
 	"reasonix/internal/provider"
@@ -21,7 +22,13 @@ type dagWritePlan struct {
 	// 203): external/local/unknown via classifyHeadDivergence. Empty unless
 	// the plan forked.
 	divergenceClass string
-	renames         map[string]string
+	// otherPID/otherHostname/unknownReason carry the competing writer's
+	// registered identity (task 646) onto the HeadEvent, so the notice layer
+	// can log who it was and, for unknown, which record was missing.
+	otherPID      int
+	otherHostname string
+	unknownReason string
+	renames       map[string]string
 }
 
 // dagDiff describes how the in-memory transcript departs from the persisted
@@ -93,6 +100,13 @@ func (s *Session) planDAGWrite(path string, st *sessionDAGState, msgs []provider
 
 	diff := diffDAGTranscript(view.persisted, msgs, mode)
 	plan := &dagWritePlan{head: head, appendFrom: -1, renames: diff.adopted}
+	// Task 646: register this process's writer identity before the fork is
+	// classified, so a log whose registry lacks our pid (written by a previous
+	// runtime, or by a build that stamped no identity entry) stops turning
+	// in-process races into "another window or process" warnings.
+	if entry, ok := st.writerIdentityGapEntry(now); ok {
+		plan.entries = append(plan.entries, entry)
+	}
 	parent, err := plan.moveHead(path, st, view, diff, msgs, owned, truncatedLocally, mode, now)
 	if err != nil {
 		return nil, err
@@ -174,7 +188,12 @@ func (p *dagWritePlan) moveHead(path string, st *sessionDAGState, view dagHeadVi
 		// Task 203: attribute the competing writer where the fork is decided —
 		// the writer registry is live here, and the notice phrasing downstream
 		// must not guess between "another window" and an in-process writer.
-		p.divergenceClass = classifyHeadDivergence(st, p.otherWriter)
+		// Task 646: carry the registry's identity (pid/hostname) and, for
+		// unknown, which record was missing onto the plan -> HeadEvent.
+		p.divergenceClass, p.unknownReason = classifyHeadDivergenceReason(st, p.otherWriter)
+		if w := st.writers[p.otherWriter]; w != nil {
+			p.otherPID, p.otherHostname = w.pid, w.hostname
+		}
 		parent := view.parentFor(diff.k)
 		p.entries = append(p.entries, sessionDAGEntry{Type: sessionDAGTypeFork, Head: view.id, NewHead: p.head, From: parent, Kind: HeadKindConcurrent, At: now})
 		return parent, nil
@@ -250,6 +269,8 @@ func (p *dagWritePlan) addAppends(st *sessionDAGState, msgs []provider.Message, 
 	return nil
 }
 
+// rewindCause maps a save mode (and whether content was edited) onto the
+// rewind cause recorded in the log.
 func rewindCause(mode sessionSaveMode, contentEdit bool) string {
 	switch {
 	case contentEdit:
@@ -259,6 +280,39 @@ func rewindCause(mode sessionSaveMode, contentEdit bool) string {
 	default:
 		return "truncate"
 	}
+}
+
+// writerIdentityGapEntry reports a writer entry that registers this process's
+// identity, when the replayed registry has no pid for this writer id (task
+// 646). A log extended by a runtime that never wrote an identity entry —
+// created by a previous incarnation of the app, or by a build predating the
+// pid/hostname stamps — leaves the record with pid 0; every in-process
+// concurrent fork (two Session objects on one log: delivery channel, snapshot
+// projection, a second tab) then classifies unknown and the user is told
+// another window or process is writing. Appending the entry closes that gap
+// once per log; updating the in-memory registry makes this very save's
+// classification correct too. ok is false when the registry already knows us.
+func (st *sessionDAGState) writerIdentityGapEntry(now time.Time) (sessionDAGEntry, bool) {
+	id := SessionWriterID()
+	st.mu.RLock()
+	w := st.writers[id]
+	st.mu.RUnlock()
+	if w != nil && w.pid != 0 {
+		return sessionDAGEntry{}, false
+	}
+	host, _ := os.Hostname()
+	e := sessionDAGEntry{Type: sessionDAGTypeWriter, Writer: id, PID: os.Getpid(), Hostname: host, At: now}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	cur := st.writers[id]
+	if cur == nil {
+		cur = &sessionDAGWriter{id: id}
+		st.writers[id] = cur
+	}
+	if cur.pid == 0 {
+		cur.pid, cur.hostname = e.PID, e.Hostname
+	}
+	return e, true
 }
 
 // messagesWireEqual reports whether two versions of a message would reach a

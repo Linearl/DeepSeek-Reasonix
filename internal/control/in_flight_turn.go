@@ -342,6 +342,14 @@ func (c *Controller) emitHeadEvents() {
 					"path", c.SessionPath(), "other_writer", ev.OtherWriter, "head", ev.HeadID)
 				continue
 			}
+			// Task 646: before the user-facing warning, log who the competing
+			// writer was — id/pid/hostname when the registry knows it, and for
+			// the unknown class which identity record was missing — so a
+			// single-instance warning can be attributed after the fact.
+			slog.Warn("session: concurrent head fork by an out-of-process or unattributable writer",
+				"path", c.SessionPath(), "class", ev.Class,
+				"other_writer", ev.OtherWriter, "other_pid", ev.OtherPID, "other_hostname", ev.OtherHostname,
+				"unknown_reason", ev.UnknownReason, "head", ev.HeadID)
 			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionConcurrentWriter,
 				"another Reasonix window or process added to this conversation; its content is kept as a separate version"))
 		case agent.HeadEventMultipleRecentHeads:

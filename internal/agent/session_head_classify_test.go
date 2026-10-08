@@ -41,3 +41,36 @@ func TestHeadDivergenceClassification(t *testing.T) {
 		t.Errorf("nil state classify = %q, want %q", got, HeadDivergenceUnknown)
 	}
 }
+
+// TestHeadDivergenceUnknownReasons pins task 646's missing-identity causes:
+// each unknown class must name which record was missing so the
+// concurrent-writer log can be attributed from the log alone.
+func TestHeadDivergenceUnknownReasons(t *testing.T) {
+	host, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := &sessionDAGState{writers: map[string]*sessionDAGWriter{
+		"no-pid": {id: "no-pid", hostname: host},
+		"local":  {id: "local", pid: os.Getpid(), hostname: host},
+	}}
+	cases := []struct {
+		name       string
+		state      *sessionDAGState
+		writer     string
+		wantClass  string
+		wantReason string
+	}{
+		{"nil state", nil, "w", HeadDivergenceUnknown, "no_replay_state"},
+		{"empty writer id", st, "", HeadDivergenceUnknown, "no_writer_id"},
+		{"writer never registered", st, "ghost", HeadDivergenceUnknown, "writer_unregistered"},
+		{"identity record without pid", st, "no-pid", HeadDivergenceUnknown, "pid_missing"},
+		{"registered local writer", st, "local", HeadDivergenceLocal, ""},
+	}
+	for _, tc := range cases {
+		class, reason := classifyHeadDivergenceReason(tc.state, tc.writer)
+		if class != tc.wantClass || reason != tc.wantReason {
+			t.Errorf("%s: classifyReason(%q) = (%q, %q), want (%q, %q)", tc.name, tc.writer, class, reason, tc.wantClass, tc.wantReason)
+		}
+	}
+}
