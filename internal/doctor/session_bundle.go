@@ -313,7 +313,7 @@ func existingSessionPath(ref string) (string, bool) {
 func sessionBundleBranchID(ref string) string {
 	ref = strings.Trim(strings.TrimSpace(ref), `"'`)
 	base := filepath.Base(ref)
-	for _, suffix := range []string{".jsonl.meta", ".jsonl", ".meta", ".json"} {
+	for _, suffix := range []string{store.SessionMetaFileSuffix, store.SessionTranscriptSuffix, ".meta", ".json"} {
 		base = strings.TrimSuffix(base, suffix)
 	}
 	return strings.TrimSpace(base)

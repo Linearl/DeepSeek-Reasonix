@@ -29,12 +29,9 @@ import (
 )
 
 const (
-	cleanupPendingExt             = ".cleanup-pending.json"
-	maxRecoveryParentStemBytes    = 80
-	sessionLockSidecarSuffix      = ".jsonl.lock"
-	sessionLeaseLockSidecarSuffix = ".jsonl.lease.lock"
-	sessionLeaseInfoSidecarSuffix = ".jsonl.lease.json"
-	guardianSidecarSuffix         = ".guardian.jsonl"
+	cleanupPendingExt          = ".cleanup-pending.json"
+	maxRecoveryParentStemBytes = 80
+	guardianSidecarSuffix      = ".guardian.jsonl"
 	// nameMaxBytes is the single-component filename limit shared by the
 	// filesystems Reasonix targets (APFS, ext4, NTFS all cap at 255).
 	nameMaxBytes = 255
@@ -1902,18 +1899,18 @@ func ReconcileSessionSidecars(dir string) error {
 		name := e.Name()
 		sidecarPath := filepath.Join(dir, name)
 		switch {
-		case strings.HasSuffix(name, sessionLeaseInfoSidecarSuffix):
-			base := filepath.Join(dir, strings.TrimSuffix(name, ".lease.json"))
+		case strings.HasSuffix(name, store.SessionLeaseInfoSuffix):
+			base := filepath.Join(dir, strings.TrimSuffix(name, store.SessionLeaseInfoSuffix))
 			if err := removeStaleSessionLeaseInfoSidecar(base, sidecarPath); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", sidecarPath, err))
 			}
-		case strings.HasSuffix(name, sessionLeaseLockSidecarSuffix):
-			base := filepath.Join(dir, strings.TrimSuffix(name, ".lease.lock"))
+		case strings.HasSuffix(name, store.SessionLeaseLockSuffix):
+			base := filepath.Join(dir, strings.TrimSuffix(name, store.SessionLeaseLockSuffix))
 			if err := removeStaleSessionLeaseLockSidecar(base, sidecarPath); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", sidecarPath, err))
 			}
-		case strings.HasSuffix(name, sessionLockSidecarSuffix):
-			base := filepath.Join(dir, strings.TrimSuffix(name, ".lock"))
+		case strings.HasSuffix(name, store.SessionLockFileSuffix):
+			base := filepath.Join(dir, strings.TrimSuffix(name, store.SessionLockFileSuffix))
 			if err := removeStaleSessionLockSidecar(base, sidecarPath); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", sidecarPath, err))
 			}
@@ -1967,7 +1964,7 @@ func removeStaleSessionLeaseInfoSidecar(basePath, sidecarPath string) error {
 	if sessionLeaseHeldLocally(basePath) {
 		return nil
 	}
-	lockPath := basePath + ".lease.lock"
+	lockPath := store.SessionLeaseLock(basePath)
 	if _, err := os.Stat(lockPath); err == nil {
 		unlock, err := tryLockSessionLeaseFile(basePath)
 		if err != nil {
@@ -2004,12 +2001,12 @@ func sessionLeaseHeldLocally(path string) bool {
 // within the filesystem's per-component limit; past it, no process can hold
 // (or ever have held) the file lock, because the lock file cannot be created.
 func sessionLockSidecarFits(basePath string) bool {
-	return len(filepath.Base(basePath))+len(".lock") <= nameMaxBytes
+	return len(filepath.Base(store.SessionLockFile(basePath))) <= nameMaxBytes
 }
 
 // sessionLeaseSidecarFits is the lease-file analogue of sessionLockSidecarFits.
 func sessionLeaseSidecarFits(basePath string) bool {
-	return len(filepath.Base(basePath))+len(".lease.lock") <= nameMaxBytes
+	return len(filepath.Base(store.SessionLeaseLock(basePath))) <= nameMaxBytes
 }
 
 // reconcileOverlongSessionFilenames renames transcripts whose basenames grew
@@ -2120,7 +2117,7 @@ func renameOverlongSession(oldPath string) (string, error) {
 	// Retire the old disposable lease sidecars: any holder was ruled out
 	// above, and nothing keeps these files open, so a plain remove is safe.
 	if sessionLeaseSidecarFits(oldPath) {
-		for _, stale := range []string{oldPath + ".lease.lock", oldPath + ".lease.json"} {
+		for _, stale := range []string{store.SessionLeaseLock(oldPath), store.SessionLeaseInfo(oldPath)} {
 			if err := os.Remove(stale); err != nil && !os.IsNotExist(err) {
 				errs = append(errs, err)
 			}

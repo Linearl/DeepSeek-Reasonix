@@ -176,6 +176,8 @@ func TestGhSuccessDetailExplainsFallbackDiscovery(t *testing.T) {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("fallback success detail missing %q, got %q", want, detail)
 		}
+	}
+}
 
 // Task 642: a mock payload's analysis run must announce the simulation so the
 // submitted issue is labeled mock/test instead of triaged as a real failure.

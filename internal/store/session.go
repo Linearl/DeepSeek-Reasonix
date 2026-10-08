@@ -16,16 +16,39 @@ package store
 
 import "strings"
 
+// Suffix spellings of the session persistence layout (X6 pattern J, task 475).
+// store is the only place allowed to spell these literals; every constructor
+// below is written in terms of them so a constant and the layout it names
+// cannot drift apart, and classification outside store must reference the
+// constants instead of re-spelling the suffix (source-asserted by
+// TestSessionPathSpellingsSingleSource in this package).
+const (
+	SessionTranscriptSuffix       = ".jsonl"
+	SessionEventLogSuffix         = ".events.jsonl"
+	SessionEventLogDamagedSuffix  = SessionEventLogSuffix + ".damaged"
+	SessionEventLogRotatingSuffix = SessionEventLogSuffix + ".rotating"
+	SessionTurnEventLogSuffix     = ".turns.jsonl"
+	SessionConflictLogSuffix      = ".conflicts.jsonl"
+	SessionEventIndexSuffix       = ".event-index.json"
+	SessionDisplayIndexSuffix     = ".display-index.json"
+	// SessionMetaFileSuffix is the full classification tail of SessionMeta
+	// (which appends ".meta" to the whole transcript path, historical layout).
+	SessionMetaFileSuffix  = SessionTranscriptSuffix + ".meta"
+	SessionLockFileSuffix  = SessionTranscriptSuffix + ".lock"
+	SessionLeaseLockSuffix = SessionTranscriptSuffix + ".lease.lock"
+	SessionLeaseInfoSuffix = SessionTranscriptSuffix + ".lease.json"
+)
+
 // IsSessionTranscriptName reports whether name is a primary session transcript
 // file. Append-only event logs and guardian sidecars also end in .jsonl, so
 // callers that discover sessions by directory scan must use this helper instead
 // of filepath.Ext.
 func IsSessionTranscriptName(name string) bool {
 	name = strings.TrimSpace(name)
-	return strings.HasSuffix(name, ".jsonl") &&
-		!strings.HasSuffix(name, ".events.jsonl") &&
-		!strings.HasSuffix(name, ".turns.jsonl") &&
-		!strings.HasSuffix(name, ".conflicts.jsonl") &&
+	return strings.HasSuffix(name, SessionTranscriptSuffix) &&
+		!strings.HasSuffix(name, SessionEventLogSuffix) &&
+		!strings.HasSuffix(name, SessionTurnEventLogSuffix) &&
+		!strings.HasSuffix(name, SessionConflictLogSuffix) &&
 		!strings.HasSuffix(name, ".guardian.jsonl")
 }
 
@@ -91,7 +114,7 @@ func SessionEventLog(sessionPath string) string {
 	if sessionPath == "" {
 		return ""
 	}
-	return sessionStem(sessionPath) + ".events.jsonl"
+	return sessionStem(sessionPath) + SessionEventLogSuffix
 }
 
 // SessionEventLogDamaged is the salvage sidecar for event-log bytes that tail
@@ -103,7 +126,7 @@ func SessionEventLogDamaged(sessionPath string) string {
 	if sessionPath == "" {
 		return ""
 	}
-	return SessionEventLog(sessionPath) + ".damaged"
+	return sessionStem(sessionPath) + SessionEventLogDamagedSuffix
 }
 
 // SessionEventLogRotating marks a schema-2 log whose rotation is between
@@ -113,7 +136,44 @@ func SessionEventLogRotating(sessionPath string) string {
 	if sessionPath == "" {
 		return ""
 	}
-	return SessionEventLog(sessionPath) + ".rotating"
+	return sessionStem(sessionPath) + SessionEventLogRotatingSuffix
+}
+
+// IsSessionEventLogName reports whether name — a base filename or a full path —
+// is a session's primary event log (<id>.events.jsonl). The .damaged/.rotating
+// siblings end in other tails and are classified with their own constants.
+// Scan-side classification belongs here so the family shape lives in one place
+// (X6 pattern J, task 475).
+func IsSessionEventLogName(name string) bool {
+	return strings.HasSuffix(name, SessionEventLogSuffix)
+}
+
+// ResolveSessionEventLog is the read-side half of the write/read path
+// convention: a reader may be handed either accepted shape — the transcript
+// path (<id>.jsonl) or an already-resolved event-log path (<id>.events.jsonl,
+// e.g. the path a sessionDAGState carries) — and normalizes it here instead of
+// re-spelling the suffix branch. Applying SessionEventLog to a resolved path
+// would yield "x.events.events.jsonl", which stats as missing and silently
+// reported size zero (task 104: the adaptive budget became a no-op for every
+// caller holding a resolved path).
+func ResolveSessionEventLog(sessionPathOrLog string) string {
+	p := strings.TrimSpace(sessionPathOrLog)
+	if p == "" || strings.HasSuffix(p, SessionEventLogSuffix) {
+		return p
+	}
+	return SessionEventLog(p)
+}
+
+// SessionTranscriptFromEventLog is the inverse of SessionEventLog for a
+// resolved log path: it recovers the owning transcript path (<id>.jsonl).
+// Anything that is not an event log — a transcript itself, a .damaged salvage,
+// an empty string — reports "".
+func SessionTranscriptFromEventLog(logPath string) string {
+	p := strings.TrimSpace(logPath)
+	if !strings.HasSuffix(p, SessionEventLogSuffix) {
+		return ""
+	}
+	return strings.TrimSuffix(p, SessionEventLogSuffix) + SessionTranscriptSuffix
 }
 
 // SessionTurnEventLog is the append-only local runtime lifecycle ledger
@@ -123,7 +183,7 @@ func SessionTurnEventLog(sessionPath string) string {
 	if sessionPath == "" {
 		return ""
 	}
-	return sessionStem(sessionPath) + ".turns.jsonl"
+	return sessionStem(sessionPath) + SessionTurnEventLogSuffix
 }
 
 // SessionTurnEventLogDamaged preserves a corrupt/torn ledger tail before the
@@ -142,7 +202,7 @@ func SessionEventIndex(sessionPath string) string {
 	if sessionPath == "" {
 		return ""
 	}
-	return sessionStem(sessionPath) + ".event-index.json"
+	return sessionStem(sessionPath) + SessionEventIndexSuffix
 }
 
 // SessionDisplayIndex is the paging sidecar for the transcript
@@ -153,7 +213,7 @@ func SessionDisplayIndex(sessionPath string) string {
 	if sessionPath == "" {
 		return ""
 	}
-	return sessionStem(sessionPath) + ".display-index.json"
+	return sessionStem(sessionPath) + SessionDisplayIndexSuffix
 }
 
 // SessionConflictLog is the append-only diagnostic log for snapshot conflict
@@ -163,7 +223,7 @@ func SessionConflictLog(sessionPath string) string {
 	if sessionPath == "" {
 		return ""
 	}
-	return sessionStem(sessionPath) + ".conflicts.jsonl"
+	return sessionStem(sessionPath) + SessionConflictLogSuffix
 }
 
 // SessionLockFile is the advisory save lock (<id>.jsonl.lock).

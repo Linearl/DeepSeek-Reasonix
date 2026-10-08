@@ -432,7 +432,7 @@ func ReclaimableRecoveryBranches(dir string, now time.Time, grace time.Duration)
 	}
 	var out []string
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") || strings.HasSuffix(e.Name(), ".events.jsonl") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), store.SessionTranscriptSuffix) || strings.HasSuffix(e.Name(), store.SessionEventLogSuffix) {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
@@ -592,10 +592,10 @@ func trashCoveredRecoveryBranch(path, parentDir string, requireIdle, force bool)
 	// The conflicts sidecar shares the copy's stem; without this check a forced
 	// sweep would happily archive it as if it were a transcript, and the copy
 	// list would offer it as a merge candidate.
-	if !strings.HasSuffix(key, ".jsonl") ||
-		strings.HasSuffix(key, ".events.jsonl") ||
-		strings.HasSuffix(key, ".turns.jsonl") ||
-		strings.HasSuffix(key, ".conflicts.jsonl") {
+	if !strings.HasSuffix(key, store.SessionTranscriptSuffix) ||
+		strings.HasSuffix(key, store.SessionEventLogSuffix) ||
+		strings.HasSuffix(key, store.SessionTurnEventLogSuffix) ||
+		strings.HasSuffix(key, store.SessionConflictLogSuffix) {
 		return fmt.Errorf("invalid recovery session path")
 	}
 
@@ -910,7 +910,7 @@ func clearRecoveryTrashPending(itemDir string) error {
 
 func validRecoveryTrashKey(key string) bool {
 	return key != "" && filepath.Base(key) == key && key != "." && key != ".." &&
-		strings.HasSuffix(key, ".jsonl") && !strings.HasSuffix(key, ".events.jsonl")
+		strings.HasSuffix(key, store.SessionTranscriptSuffix) && !strings.HasSuffix(key, store.SessionEventLogSuffix)
 }
 
 func reserveRecoveryTrashItemDir(dir, key string) (string, string, error) {

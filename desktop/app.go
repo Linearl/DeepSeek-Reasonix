@@ -4448,10 +4448,17 @@ func historyProviderMessagesWithPersistedTimes(msgs []provider.Message, sessionP
 	if !needsPersistedTime {
 		return msgs
 	}
+	tr := beginSilentLoader("history_time_backfill", sessionPath)
 	users, err := agent.LoadSessionUserMessages(sessionPath)
-	if err != nil || len(users) == 0 {
+	if err != nil {
+		tr.finish(err, -1)
 		return msgs
 	}
+	if len(users) == 0 {
+		tr.finish(nil, 0)
+		return msgs
+	}
+	tr.finish(nil, len(users))
 	out := append([]provider.Message(nil), msgs...)
 	userIndex := 0
 	for i := range out {
@@ -4513,14 +4520,14 @@ func (a *App) HistoryPageForTab(tabID string, beforeTurn, limit int) HistoryPage
 			if v4 := c.SessionV4(); v4 != nil {
 				if v4Msgs, hit := v4.HistoryMessages(context.Background(), path); hit {
 					msgs = v4Msgs
-				} else if loaded, err := agent.LoadSession(path); err == nil && loaded != nil {
-					msgs = loaded.Snapshot()
+				} else if loaded, ok := silentLoadSessionSnapshot("history_page_v4_fallback", path); ok {
+					msgs = loaded
 				}
-			} else if loaded, err := agent.LoadSession(path); err == nil && loaded != nil {
-				msgs = loaded.Snapshot()
+			} else if loaded, ok := silentLoadSessionSnapshot("history_page_v4_fallback", path); ok {
+				msgs = loaded
 			}
-		} else if loaded, err := agent.LoadSession(path); err == nil && loaded != nil {
-			msgs = loaded.Snapshot()
+		} else if loaded, ok := silentLoadSessionSnapshot("history_page_v4_fallback", path); ok {
+			msgs = loaded
 		}
 	}
 	page := historyPageFromProviderMessages(

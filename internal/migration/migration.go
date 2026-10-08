@@ -11,6 +11,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/event"
+	"reasonix/internal/store"
 )
 
 // SessionImport records one legacy session source that contributed sessions.
@@ -564,8 +565,8 @@ func dirLooksLikeLegacySessionDir(dir string) bool {
 }
 
 func legacySessionArtifactName(name string) bool {
-	return strings.HasSuffix(name, ".events.jsonl") ||
-		strings.HasSuffix(name, ".jsonl") ||
+	return strings.HasSuffix(name, store.SessionEventLogSuffix) ||
+		strings.HasSuffix(name, store.SessionTranscriptSuffix) ||
 		strings.HasSuffix(name, ".jsonl.bak")
 }
 

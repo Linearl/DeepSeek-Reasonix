@@ -99,8 +99,8 @@ func sessionDirMigrationSignature(dir string) (string, error) {
 
 func migrationSignatureArtifact(name string) bool {
 	return store.IsSessionTranscriptName(name) ||
-		strings.HasSuffix(name, ".events.jsonl") ||
-		strings.HasSuffix(name, ".jsonl.meta")
+		store.IsSessionEventLogName(name) ||
+		strings.HasSuffix(name, store.SessionMetaFileSuffix)
 }
 
 // migrationArtifactSignature (task 195) covers exactly what the migration and
@@ -125,13 +125,13 @@ func migrationSignatureArtifact(name string) bool {
 // fields, which move with the rewrite's own metadata, and the old form's
 // per-turn invalidation is exactly the cost task 195 removes.
 func migrationArtifactSignature(path, name string) (string, error) {
-	if strings.HasSuffix(name, ".events.jsonl") {
+	if store.IsSessionEventLogName(name) {
 		if _, err := os.Stat(path); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("%q\tevents", name), nil
 	}
-	if strings.HasSuffix(name, ".jsonl.meta") {
+	if strings.HasSuffix(name, store.SessionMetaFileSuffix) {
 		projection, err := migrationMetaProjection(path)
 		if err != nil {
 			return "", err

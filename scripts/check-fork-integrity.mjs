@@ -295,6 +295,11 @@ const CHECKS = [
   { feature: "任务298 open 汇合点接线（分相耗时标记）", file: "desktop/tabs.go", patterns: ["beginOpenSessionTrace", "tr.mark(\"tabLock\")", "tr.mark(\"sessionCreate\")"] },
   { feature: "任务298 超限 WARN 限频门 + 元凶指认 + 处置联动", file: "desktop/perf_monitor.go", patterns: ["perfWarnGate", "topEventsFileUnder", "EventsAutoRotationSnapshot"] },
 
+  // ── 任务 475（2026-10-09）：写读路径形态收口（X6 模式 J）+ 静默 loader 观测（X6 模式 E）──
+  { feature: "475 store 后缀常量单一来源（路径构造权威）", file: "internal/store/session.go", patterns: ["SessionEventLogSuffix", "ResolveSessionEventLog", "SessionTranscriptFromEventLog"] },
+  { feature: "475 source-level 断言（字面量禁令+白名单）", file: "internal/store/session_path_spellings_test.go", patterns: ["TestSessionPathSpellingsSingleSource", "legacy v0.x foreign-layout importer"] },
+  { feature: "475 静默 loader 打点出口（callpoint 标记 + 阈值）", file: "desktop/silent_loader_trace.go", patterns: ["desktop: silent loader failed", "desktop: silent loader slow", "REASONIX_SILENT_LOADER_TRACE"] },
+
   // ── 任务 285：会话信息面 agent 工具（分组/版本谱系/结构化 meta）──
   { feature: "任务285 agent 侧三工具（info/versions/adopt）", file: "internal/agent/session_info_tools.go", patterns: ["func NewGetSessionInfoTool", "func NewListSessionVersionsTool", "func NewAdoptSessionVersionTool"] },
   { feature: "任务285 目录行分组字段+group 过滤", file: "internal/agent/session_collab_tools.go", patterns: ["directoryPageFiltered", "SessionGroup func(topicID string)"] },

@@ -5454,10 +5454,13 @@ func topicTitleUserTurnsFromSession(path string) []string {
 	// Event-log aware: decoding the .jsonl checkpoint directly would stop
 	// seeing user turns after the first save, silently disabling the ≥3-turn
 	// title upgrade.
+	tr := beginSilentLoader("topic_title_from_session", path)
 	msgs, err := agent.LoadSessionUserMessages(path)
 	if err != nil {
+		tr.finish(err, -1)
 		return nil
 	}
+	tr.finish(nil, len(msgs))
 	var users []string
 	for _, msg := range msgs {
 		// Host-injected synthetic turns (readiness nudges, recovery retries) and
@@ -8997,7 +9000,7 @@ func topicSessionDirSnapshot(dir string) ([]topicSessionFileSignature, []string,
 			continue
 		}
 		isSession := store.IsSessionTranscriptName(name)
-		isMeta := strings.HasSuffix(name, ".jsonl.meta")
+		isMeta := strings.HasSuffix(name, store.SessionMetaFileSuffix)
 		if !isSession && !isMeta {
 			continue
 		}

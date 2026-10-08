@@ -1393,8 +1393,14 @@ func historyWindowWithPersistedTimes(msgs []provider.Message, sessionPath string
 // ordinal alignment is also what makes it fragile for windows that are not the
 // newest page, which the id-keyed tail read avoids entirely.
 func historyWindowWithPersistedTimesFullLookup(msgs []provider.Message, sessionPath string, userOffset int) []provider.Message {
+	tr := beginSilentLoader("history_time_overlay_full_lookup", sessionPath)
 	users, err := agent.LoadSessionUserMessages(sessionPath)
-	if err != nil || len(users) <= userOffset {
+	if err != nil {
+		tr.finish(err, -1)
+		return msgs
+	}
+	tr.finish(nil, len(users))
+	if len(users) <= userOffset {
 		return msgs
 	}
 	out := append([]provider.Message(nil), msgs...)
