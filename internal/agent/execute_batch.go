@@ -554,9 +554,11 @@ func (a *Agent) toolCallBatches(calls []provider.ToolCall) []toolCallBatch {
 //     plain ReadOnly tool without dynamic resolution; contiguous members share
 //     one batch (maxParallel slots in runParallel).
 //   - barrier: the evidence-ledger tools (complete_step, todo_write, wait,
-//     bash_output) plus compress; receipts must land in provider order, so
-//     each is its own serial batch. use_capability joins them because it may
-//     resolve to a real MCP writer (the CallResolver short-circuit below).
+//     bash_output, compress — registered ConcurrentSafe=false in
+//     internal/tool's safety table, the task-426 single source); receipts must
+//     land in provider order, so each is its own serial batch. use_capability
+//     joins them because it may resolve to a real MCP writer (the
+//     CallResolver short-circuit below).
 //   - writer: anything not ReadOnly, task included; serial batches whose
 //     exclusion is owned by write claims/coordination
 //     (tool_write_coordination.go), not by this table.
@@ -587,10 +589,6 @@ func partitionToolCalls(r *tool.Registry, calls []provider.ToolCall) []toolCallB
 }
 
 func parallelisableCall(r *tool.Registry, call provider.ToolCall) bool {
-	switch call.Name {
-	case "complete_step", "todo_write", "wait", "bash_output", "compress":
-		return false
-	}
 	target, _, ambiguous := r.ResolveCall(call.Name)
 	if target == nil || len(ambiguous) != 0 {
 		return false
@@ -602,7 +600,12 @@ func parallelisableCall(r *tool.Registry, call provider.ToolCall) bool {
 	if _, dynamic := target.(tool.CallResolver); dynamic {
 		return false
 	}
-	return target.ReadOnly()
+	// 任务 426 单一事实源：证据台账 barrier 名单（complete_step / todo_write /
+	// wait / bash_output / compress）不再在此硬编码，改读 SafetySpec 的
+	// ConcurrentSafe=false（名单本身由 internal/tool 的契约测试守卫并钉死与
+	// 原名单等价）。表外动态工具的推导兜底与原 target.ReadOnly() 逐位一致。
+	spec := tool.SafetyOf(target)
+	return spec.ReadOnly && spec.ConcurrentSafe
 }
 
 // parallelStragglerGrace bounds how long a cancelled parallel segment waits for

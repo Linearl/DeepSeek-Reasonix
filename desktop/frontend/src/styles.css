@@ -7615,6 +7615,16 @@ body > .mermaid-diagram--fullscreen {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Task-426 destructive badge: the tool's registered safety metadata surfaced
+   on the card header. Danger color follows the theme token so theme packs
+   keep working. */
+.tool__risk-badge {
+  flex: 0 0 auto;
+  color: var(--danger, #d64545);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+}
 .tool__profile {
   font-family: var(--font-code-family);
   font-size: var(--font-caption);

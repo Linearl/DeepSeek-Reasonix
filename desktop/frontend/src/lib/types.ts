@@ -122,6 +122,9 @@ export interface WireTool {
   output?: string;
   err?: string;
   readOnly: boolean;
+  /** Registered static safety metadata (task 426 single source); absent for dynamic tools. */
+  riskLevel?: "low" | "medium" | "high";
+  destructive?: boolean;
   truncated?: boolean;
   durationMs?: number;
   partial?: boolean; // an early dispatch (name only) — a full one with args follows

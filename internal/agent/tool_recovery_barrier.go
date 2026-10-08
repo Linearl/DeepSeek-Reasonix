@@ -8,7 +8,19 @@ import (
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
+	"reasonix/internal/tool"
 )
+
+// applySafetyMeta stamps the tool's registered static safety metadata onto a
+// tool event for frontend display (task 426: the UI consumer of the same
+// single source that drives concurrency grouping and permission matching).
+// Unregistered dynamic tools (MCP, capability proxies) stay zero-valued by
+// design; the contract test in internal/tool pins the registered set.
+func applySafetyMeta(ev *event.Tool, name string) {
+	spec := tool.SafetyOfName(name)
+	ev.RiskLevel = string(spec.RiskLevel)
+	ev.Destructive = spec.Destructive
+}
 
 func (a *Agent) emitToolStarted(c provider.ToolCall) error {
 	readOnly := false
@@ -16,6 +28,7 @@ func (a *Agent) emitToolStarted(c provider.ToolCall) error {
 		readOnly = t.ReadOnly()
 	}
 	ev := event.Tool{ID: c.ID, Name: c.Name, ReadOnly: readOnly, RunState: provider.ToolRunStarted}
+	applySafetyMeta(&ev, c.Name)
 	if c.Recovery != nil {
 		ev.ReadOnly = c.Recovery.ReadOnly
 		ev.AttemptID = c.Recovery.Identity.AttemptID

@@ -19,6 +19,8 @@ type Tool struct {
 	Output            string                `json:"output,omitempty" externalizable:"true"`
 	Err               string                `json:"err,omitempty" externalizable:"true"`
 	ReadOnly          bool                  `json:"readOnly"`
+	RiskLevel         string                `json:"riskLevel,omitempty"`
+	Destructive       bool                  `json:"destructive,omitempty"`
 	Truncated         bool                  `json:"truncated,omitempty"`
 	DurationMs        int64                 `json:"durationMs,omitempty"`
 	StartedAt         int64                 `json:"startedAt,omitempty"` // unix ms; zero when the call never ran
@@ -47,6 +49,7 @@ func toWireTool(in event.Tool) *Tool {
 		ResolvedName: in.ResolvedName, CapabilityID: in.CapabilityID,
 		Output: in.Output, Err: in.Err,
 		ReadOnly: in.ReadOnly, Truncated: in.Truncated,
+		RiskLevel: in.RiskLevel, Destructive: in.Destructive,
 		Verifying:  in.Verifying,
 		DurationMs: in.DurationMs, Partial: in.Partial,
 		StartedAt: in.StartedAt, EndedAt: in.EndedAt,
