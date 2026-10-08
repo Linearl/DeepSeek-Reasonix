@@ -432,6 +432,11 @@ type Agent struct {
 	// unwrittenResolve is the resolve watermark a failed state write still owes.
 	// It outlives the conversation, which is why it is not in sessionRuntime.
 	unwrittenResolve unwrittenResolve
+	// compactionLive (任务 556) meters the in-flight compaction pass so the
+	// frontend sees live tokens/throughput instead of a static placeholder.
+	// Active only between the CompactionStarted emit and the pass's deferred
+	// stop; see compact_live.go. Zero value is ready.
+	compactionLive compactionLiveMeter
 	// lastExplicitFoldAt is when the model last folded the context on its own. A
 	// fold rewrites the prompt prefix, so it invalidates the cache for every later
 	// turn; the interval keeps a model from folding its way through a session

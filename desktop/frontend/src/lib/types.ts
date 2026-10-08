@@ -92,6 +92,11 @@ export interface WireCompaction {
   archive?: string; // done: archive path, if any
   done?: number; // progress: fragments summarized so far
   total?: number; // progress: total fragments in the chunked pass
+  // 任务 556: compaction_progress-only live readout — backend-estimated
+  // summarizer output tokens (chars÷4, same ratio as the run-strip fallback)
+  // and cumulative tokens/second since the pass began. 0/absent = hide.
+  tokens?: number;
+  tokensPerSec?: number;
 }
 export interface WireProfile {
   model?: string;

@@ -427,6 +427,12 @@ func (a *Agent) summarizeExtractChunks(ctx context.Context, chunks [][]provider.
 func (a *Agent) extractFragmentResilient(ctx context.Context, chunk []provider.Message, instructions, mergeInstructions string, report func(grown bool), run *chunkedSummaryRun, reserveAfter int) (string, error) {
 	res, err := run.summarize(ctx, chunk, instructions, reserveAfter)
 	if err == nil {
+		// 任务 556: a leaf fragment finished — advance done/total. The #9082
+		// callback documented this leg ("report(false) marks one leaf
+		// fragment summarized") but never called it, so the live N/M stayed
+		// at done=0 for the whole pass. Splits already report(true); leaves
+		// report here, so done converges to total.
+		report(false)
 		return strings.TrimSpace(res.Text), nil
 	}
 	leftChunk, rightChunk, splittable := splitExtractFragment(chunk)

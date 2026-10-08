@@ -482,6 +482,13 @@ type Compaction struct {
 	Archive  string // Done: path the dropped originals were archived to ("" if none)
 	Done     int    // Progress: fragments summarized so far
 	Total    int    // Progress: total fragments in the chunked pass
+	// Tokens/TokensPerSec are Progress-only (任务 556): the live summarizer
+	// output estimate and cumulative throughput since the pass began. Tokens is
+	// a chars÷4 estimate aligned with the frontend run-strip fallback, not the
+	// provider-reported usage that lands in CompactionTelemetry on Done. 0
+	// means "not emitted yet" — frontends hide the readout until nonzero.
+	Tokens       int // Progress: estimated summarizer output tokens so far
+	TokensPerSec int // Progress: cumulative tokens/second since the pass began
 }
 
 // ContextMaintenance is the typed wire-safe receipt for snip/prune/noop/

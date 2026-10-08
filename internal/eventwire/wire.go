@@ -143,6 +143,7 @@ func ToWire(e event.Event) Event {
 			Trigger: e.Compaction.Trigger, Messages: e.Compaction.Messages,
 			Summary: e.Compaction.Summary, Archive: e.Compaction.Archive,
 			Done: e.Compaction.Done, Total: e.Compaction.Total,
+			Tokens: e.Compaction.Tokens, TokensPerSec: e.Compaction.TokensPerSec,
 		}
 	case event.ContextMaintenanceEvent:
 		if m := e.Maintenance; m != nil {
@@ -299,6 +300,11 @@ type Compaction struct {
 	Archive  string `json:"archive,omitempty" externalizable:"true"`
 	Done     int    `json:"done,omitempty"`
 	Total    int    `json:"total,omitempty"`
+	// 任务 556: compaction_progress-only live readout (estimated output tokens
+	// and cumulative tokens/second). omitempty keeps Started/Done payloads
+	// byte-identical to the pre-556 wire shape.
+	Tokens       int `json:"tokens,omitempty"`
+	TokensPerSec int `json:"tokensPerSec,omitempty"`
 }
 
 // AskOption is one JSON-formatted choice in a structured ask request.

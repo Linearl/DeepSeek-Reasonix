@@ -4795,6 +4795,8 @@ export const zh: Record<DictKey, string> = {
   "mock.changedFile1Path": "docs/dev-standard.md",
   "mock.changedFile2Path": ".reasonix/project.md",
   "compaction.progress": "分块压缩中 {done}/{total}",
+  // 任务 556: 压缩进行中的实时读数（run-strip 同款观感）
+  "compaction.liveReadout": "{tokens} tokens · {tps} tokens/s",
   "composer.subagentPolicyTrigger": "子代理委派",
   "composer.quickCommandsTitle": "快捷指令",
   "heartbeat.fieldModelOverride": "模型覆盖",

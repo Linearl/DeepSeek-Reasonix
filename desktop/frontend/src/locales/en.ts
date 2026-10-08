@@ -4797,6 +4797,8 @@ export const en = {
   "mock.changedFile1Path": "docs/dev-standard.md",
   "mock.changedFile2Path": ".reasonix/project.md",
   "compaction.progress": "Compacting chunk {done}/{total}",
+  // 任务 556: live compaction readout (run-strip look)
+  "compaction.liveReadout": "{tokens} tokens · {tps} tokens/s",
   "composer.subagentPolicyTrigger": "Sub-agent delegation",
   "composer.quickCommandsTitle": "Quick commands",
   "heartbeat.fieldModelOverride": "Model override",

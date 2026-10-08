@@ -180,6 +180,17 @@ const CHECKS = [
   { feature: "#9567 接管钉尾（已按上游 kernel 适配）", file: "desktop/frontend/src/components/Transcript.tsx", patterns: ["Fork (#9567)", "setScrollMode(\"tail-follow\")"] },
   { feature: "#9521 TPS chip", file: "desktop/frontend/src/components/ToolCard.tsx", patterns: ["tok/s"] },
   { feature: "#9521 TPS 状态字段", file: "desktop/frontend/src/lib/useController.ts", patterns: ["tokensPerSec"] },
+  // 任务 556：压缩实时读数（meter/事件/前端渲染三段都锁——历史教训：#9082 的
+  // CompactionProgress 发射器在 session_extract.go 迁址重构中被静默丢成 nil
+  // 回调，前端读数卡死为静态「压缩中」数月无人察觉，故逐文件登记）。
+  { feature: "任务556 压缩实时读数 meter（后端）", file: "internal/agent/compact_live.go", patterns: ["compactionLiveMeter", "compactionLiveEmitInterval", "emitCompactionLiveProgress"] },
+  { feature: "任务556 摘要流挂点", file: "internal/agent/compact.go", patterns: ["compactionLiveAddOutput"] },
+  { feature: "任务556 压缩窗口 begin/stop + 折叠进度回调", file: "internal/agent/compact_projection.go", patterns: ["compactionLiveBegin(trigger)", "compactionLiveFoldProgress(done, total)"] },
+  { feature: "任务556 折叠片段完成计数（report(false) 补齐）", file: "internal/agent/session_extract.go", patterns: ["report(false)"] },
+  { feature: "任务556 wire 字段", file: "internal/eventwire/wire.go", patterns: ["TokensPerSec int `json:\"tokensPerSec,omitempty\"`"] },
+  { feature: "任务556 前端 reducer", file: "desktop/frontend/src/lib/useController.ts", patterns: ["case \"compaction_progress\":"] },
+  { feature: "任务556 折叠头读数", file: "desktop/frontend/src/components/ProcessFoldHeader.tsx", patterns: ["compaction.liveReadout", "formatTokens(liveTokens)"] },
+  { feature: "任务556 三语", file: "desktop/frontend/src/locales/zh.ts", patterns: ["compaction.liveReadout"] },
   { feature: "#9468 reload fallback", file: "desktop/frontend/src/lib/useController.ts", patterns: ["loadOlderHistory"] },
   // 任务533（wt-533-panel-ux，2026-10-07）：前台子代理/组卡的结果事件即权威
   // 终态——终态进度事件丢失/乱序时卡片不再永久挂「运行中」；后台
