@@ -68,7 +68,11 @@ ok(/任务 626[\s\S]{0,400}labFilter/.test(panel), "filter-state header policy d
   }
   const sticky = bodies.find((b) => b.includes("position: sticky;"));
   ok(Boolean(sticky), "a .experimental-lab__group-title rule declares position: sticky");
-  ok(Boolean(sticky?.includes("top: 0;") && sticky?.includes("background: var(--bg);") && sticky?.includes("z-index: 1;")), "sticky header pins at top with an opaque background + stacking order");
+  // 基线预存红修复（43eacd1b3）：z-index 已 token 化为 --z-app-content（同一
+  // 层级），钉随实现更新——钉「非零层级」而不是裸字面量。
+  ok(Boolean(sticky?.includes("top: 0;") && sticky?.includes("background: var(--bg);") &&
+    /z-index:\s*(1|var\(--z-app-content\));/.test(sticky ?? "")),
+    "sticky header pins at top with an opaque background + stacking order");
   // Cascade guard: the sticky (opaque) rule must come AFTER the toggle base
   // that declares background: transparent, or rows print through the header.
   const toggleIdx = styles.indexOf(".experimental-lab__group-toggle {");
