@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"reasonix/internal/event"
 	"reasonix/internal/sessioninbox"
 )
 
@@ -43,6 +44,7 @@ func (c *Controller) RunInboxTurn(ctx context.Context, id string) error {
 		c.inbox.mu.Lock()
 		c.inbox.trackActive(id)
 		c.inbox.mu.Unlock()
+		c.emitInboxUserInput(id, firstNonEmptyStr(env.DisplayText, env.SubmitText))
 		return nil
 	}, run)
 }
@@ -69,13 +71,32 @@ func (c *Controller) prepareInboxRun(env sessioninbox.PromptEnvelope) (func(cont
 	}, "", nil
 }
 
+// emitInboxUserInput announces a consumed inbox item as the input of a newly
+// admitted turn (task 580). The wire protocol has no other user-message
+// channel — composer submissions render their row optimistically and history
+// reloads only happen on hydrate — so without this event an externally
+// triggered turn (collab mail, idle-turn bridge, bot/ACP) starts with no user
+// row on the transcript. Best-effort by contract: a nil/empty sink or blank
+// display must never fail the admission that is already reserved.
+func (c *Controller) emitInboxUserInput(itemID, display string) {
+	if c == nil || strings.TrimSpace(display) == "" {
+		return
+	}
+	c.sink.Emit(event.Event{Kind: event.UserInput, Text: display, ItemID: itemID})
+}
+
 // submitPreparedInboxTurn starts an already-classified inbox envelope without
 // interpreting slash commands, shell shortcuts, or @references a second time.
-func (c *Controller) submitPreparedInboxTurn(itemID string, run func(context.Context) error) admissionResult {
+// display is the envelope's user-visible text (task 580): once admission
+// succeeds it is announced to frontends as a UserInput event so the consumed
+// message renders as a user row immediately instead of waiting for a history
+// reload.
+func (c *Controller) submitPreparedInboxTurn(itemID, display string, run func(context.Context) error) admissionResult {
 	return c.runGuardedInbox(run, func() {
 		c.inbox.mu.Lock()
 		c.inbox.trackActive(itemID)
 		c.inbox.mu.Unlock()
+		c.emitInboxUserInput(itemID, display)
 	})
 }
 

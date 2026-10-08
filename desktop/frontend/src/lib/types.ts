@@ -51,7 +51,9 @@ export type EventKind =
   | "completion_summary"
   | "read_status"
   | "tool_started"
-  | "provider_unreachable";
+  | "provider_unreachable"
+  /** 任务580: durable inbox item consumed as a new turn's input (Text=display text, itemId=inbox item id). */
+  | "user_input";
 export type StreamAttemptAction = "begin" | "discard" | "commit";
 export type TurnStatus = "queued" | "in_progress" | "waiting_user" | "cancelling" | "completed" | "interrupted" | "failed" | "protocol_failed" | "recovery_required";
 export interface TurnEventEnvelope {

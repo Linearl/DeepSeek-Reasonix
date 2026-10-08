@@ -593,6 +593,7 @@ var kindNames = map[event.Kind]string{
 	event.ReadStatus:              "read_status",
 	event.ToolStarted:             "tool_started",
 	event.PromptClosed:            "prompt_closed",
+	event.UserInput:               "user_input",
 }
 
 // ContextMaintenance is the JSON form of event.ContextMaintenance.

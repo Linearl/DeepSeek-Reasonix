@@ -438,6 +438,12 @@ const CHECKS = [
   // 退回「拒收无痕 / 卡死无定位」。
   { feature: "任务581 用户手发提交 running/finishing 门 park 不丢（Submit 族直提路径）", file: "internal/control/controller.go", patterns: ["every function below admits user-authored text", "user-authored input parks behind a running turn"] },
   { feature: "任务581 desktop 提交受理链分段留痕（四段计时，阈值 2s Warn）", file: "desktop/turn_submission_app.go", patterns: ["timedSubmitStage", "submitAdmissionSlowWarn", "submit admission stage slow"] },
+  // 任务 580：消息边界渲染信号链。两个锚点按链路登记——inbox 项被消费为新轮输入时
+  // 广播 UserInput（wire 协议唯一「用户消息进会话」通道；退回无事件会重现「消费后
+  // 正文无用户行」）、切回 resident 快路径先对 meta fingerprint 核对新鲜度（退回无
+  // 核对会重现「切出切回零拉取零 reconcile 不刷新」）。少任何一个都会退回 580 双症状。
+  { feature: "任务580 inbox 开轮消费广播 UserInput（守卫+同步两路径共用）", file: "internal/control/inbox_run.go", patterns: ["func (c *Controller) emitInboxUserInput", "Kind: event.UserInput", "c.emitInboxUserInput(itemID, display)", "c.emitInboxUserInput(id, firstNonEmptyStr(env.DisplayText, env.SubmitText))"] },
+  { feature: "任务580 切回 resident 先核 meta fingerprint 再决定零拉取", file: "desktop/frontend/src/lib/useController.ts", patterns: ["residentStale = !residentSurfaceFresh(resident, freshMeta)", "if (residentStale) skipHistory = false"] },
   { feature: "任务388 autopilot 代批上下文感知：两档 scope+自然语言 manifest（tail-kept 有界）", file: "internal/control/autopilot_approval.go", patterns: ["autopilotProxyContext", "PROXY SCOPE: level 1", "PROXY SCOPE: level 2", "PROXY MANIFEST"] },
   // 任务 433：recovery fence 无副作用工具白名单。三个锚点按链路登记——
   // 白名单表本体（bash 走 shellsafe 只读判定，fail closed）、中断即判未生效

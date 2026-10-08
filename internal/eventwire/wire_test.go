@@ -190,6 +190,29 @@ func TestKindNamesComplete(t *testing.T) {
 	}
 }
 
+// 任务580: UserInput announces a consumed inbox item as a new turn's input.
+// Text (display text) and ItemID (durable item id) must cross the wire as-is,
+// and the kind must NOT be treated as a prompt event (no promptId correlation —
+// that switch is reserved for ask/approval/mcp/prompt lifecycle kinds).
+func TestUserInputWireCarriesTextAndItemID(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.UserInput, Text: "跨会话消息正文", ItemID: "item-9", TurnID: "turn-1"})
+	if w.Kind != "user_input" {
+		t.Fatalf("wire kind = %q, want user_input", w.Kind)
+	}
+	if w.Text != "跨会话消息正文" {
+		t.Fatalf("wire text = %q", w.Text)
+	}
+	if w.ItemID != "item-9" {
+		t.Fatalf("wire itemId = %q, want item-9", w.ItemID)
+	}
+	if w.PromptID != "" {
+		t.Fatalf("user_input must not become a prompt event, promptId = %q", w.PromptID)
+	}
+	if w.TurnID != "turn-1" {
+		t.Fatalf("wire turnId = %q", w.TurnID)
+	}
+}
+
 func TestDesktopWireEventKindTypeCoversSharedKinds(t *testing.T) {
 	ts := readDesktopTypes(t)
 	for k := range event.KindCount {
