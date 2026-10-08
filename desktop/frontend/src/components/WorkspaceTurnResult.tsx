@@ -64,7 +64,7 @@ export const WorkspaceTurnResult = forwardRef<HTMLElement, {
         <button className="btn btn--small" aria-pressed={view === "changes"} onClick={() => setView("changes")}>{t("completion.turnDiff")}</button>
         <button className="btn btn--small" aria-pressed={view === "checks"} onClick={() => setView("checks")}>{t("completion.panelTitle")}</button>
       </div>
-      <button className="btn btn--small" onClick={onAllChanges}>{t("completion.allChanges")}</button>
+      <button className="btn btn--secondary btn--small" onClick={onAllChanges}>{t("completion.allChanges")}</button>
     </header>
     {turn !== undefined && <p className="workspace-turn-result__label">{t("completion.turnLabel", { count: turn + 1 })}</p>}
     {view === "checks" ? <WorkspaceTurnVerification summary={summary} qualityFloor={qualityFloor} tabId={tabId} sessionPath={sessionPath} /> : <>

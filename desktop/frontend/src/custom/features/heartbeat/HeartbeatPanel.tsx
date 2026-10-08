@@ -460,7 +460,7 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
   return (
     <ManagementPageShell active={active} onBack={onBack} title={t("heartbeat.heroTitle")} description={t("heartbeat.heroSubtitle")}
       actions={<><button className="btn btn--small" disabled={loading} onClick={() => void loadTasks()}>{m("refresh")}</button><button className="btn btn--primary btn--small" onClick={() => void handleAdd()}><Plus size={14} />{t("heartbeat.addTask")}</button></>}>
-    {loadError && <div className="management-notice" role="alert">{m("loadFailed")}<button className="btn btn--small" onClick={() => void loadTasks()}>{m("retry")}</button></div>}
+    {loadError && <div className="management-notice" role="alert">{m("loadFailed")}<button className="btn btn--secondary btn--small" onClick={() => void loadTasks()}>{m("retry")}</button></div>}
     {operationError && <div className="management-notice" role="alert">{m("operationFailed")}</div>}
     <div className="heartbeat-page" data-detail={detailOpen}>
       <div className={`heartbeat-split${detailOpen ? " heartbeat-split--detail-open" : ""}`}>
@@ -932,7 +932,7 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
           {/* ── Right column: detail / editor (ChatGPT-style, opens on task click) ── */}
           {detailOpen && (
             <div className="heartbeat-split__right">
-              <button className="btn btn--small management-list-back" onClick={() => setDetailOpen(false)}>{m("listBack")}</button>
+              <button className="btn btn--secondary btn--small management-list-back" onClick={() => setDetailOpen(false)}>{m("listBack")}</button>
               {editing && ((searchQuery && !editing.title.toLowerCase().includes(searchQuery.toLowerCase())) || (statusFilter === "enabled" && !editing.enabled) || (statusFilter === "disabled" && editing.enabled) || (scopeFilter !== "all" && (editing.scope === "project" ? editing.workspaceRoot : "global") !== scopeFilter)) && <div className="management-notice">{m("filteredDetail")}<button className="btn btn--small" onClick={() => { setSearchQuery(""); setScopeFilter("all"); setStatusFilter("all"); }}>{m("clearFilters")}</button></div>}
               {editing ? (
                 <TaskEditor key={editing.id} task={entries[editing.id]?.baseline ?? editing} onSave={handleSaveEdit}

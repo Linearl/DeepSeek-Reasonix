@@ -74,13 +74,13 @@ function RepairCard({ message, guidance, busy, reloadSession }: {
         <>
           <div className="shell-support__repair-command">
             <code>{guidance.command}</code>
-            <CopyButton text={guidance.command} className="btn btn--small" label={t("settings.shellCopyCommand")} />
+            <CopyButton text={guidance.command} className="btn btn--secondary btn--small" label={t("settings.shellCopyCommand")} />
           </div>
           <div className="shell-support__repair-safety">{t("settings.shellRepairCommandHint")}</div>
         </>
       )}
       <div className="shell-support__actions">
-        <button type="button" className="btn btn--small" disabled={busy} onClick={reloadSession}>
+        <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={reloadSession}>
           <RefreshCw size={13} aria-hidden="true" />
           <span>{t("settings.shellRepairReload")}</span>
         </button>
@@ -155,7 +155,7 @@ export function ShellInterpreterFields({
         <div className="settings-readonly-field">
           {effectiveShellLabel(String(sb.resolvedShell || sb.shell || ""), t)}
           {sb.shellReloadRequired && (
-            <button type="button" className="btn btn--small set-shell-reload" disabled={busy} onClick={reloadSession}>
+            <button type="button" className="btn btn--secondary btn--small set-shell-reload" disabled={busy} onClick={reloadSession}>
               <RefreshCw size={13} aria-hidden="true" />
               <span>{t("settings.shellReloadNow")}</span>
             </button>
@@ -175,7 +175,7 @@ export function ShellInterpreterFields({
                   <ExternalLink size={14} aria-hidden="true" />
                   <span>{t("settings.shellInstallManualLink")}</span>
                 </button>
-                <button type="button" className="btn btn--small" disabled={busy} onClick={reloadSession}>
+                <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={reloadSession}>
                   <RefreshCw size={13} aria-hidden="true" />
                   <span>{t("settings.shellRepairReload")}</span>
                 </button>

@@ -87,19 +87,19 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
   const actionsRow = showActions ? (
     <div className="notice-line__actions">
       {item.action && onAction ? (
-        <button className="btn btn--small" type="button" onClick={onAction} disabled={actionDisabled}>
+        <button className="btn btn--primary btn--small" type="button" onClick={onAction} disabled={actionDisabled}>
           <ActionIcon size={13} aria-hidden="true" />
           <span>{item.action === "manual_continue" ? t("notice.manualContinue") : item.action === "recover_context" ? t("notice.protocolRecoveryAction") : item.action === "open_changes" ? t("notice.completionViewChanges") : t("notice.deliveryIncompleteContinue")}</span>
         </button>
       ) : null}
       {showVerification ? (
-        <button className="btn btn--small" type="button" onClick={() => item.completionSummary && onOpenVerification?.(item.completionSummary)}>
+        <button className="btn btn--secondary btn--small" type="button" onClick={() => item.completionSummary && onOpenVerification?.(item.completionSummary)}>
           <ClipboardCheck size={13} aria-hidden="true" />
           <span>{t("notice.completionViewVerification")}</span>
         </button>
       ) : null}
       {onAccept ? (
-        <button className="btn btn--small" type="button" onClick={onAccept}>
+        <button className="btn btn--primary btn--small" type="button" onClick={onAccept}>
           <CheckCheck size={13} aria-hidden="true" />
           <span>{t("notice.deliveryIncompleteAccept")}</span>
         </button>

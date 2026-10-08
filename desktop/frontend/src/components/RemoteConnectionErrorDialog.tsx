@@ -80,7 +80,7 @@ export function RemoteConnectionErrorDialog({
             {t("remote.error.close")}
           </button>
           {onManage && (
-            <button className="btn" onClick={() => { onClose(); onManage(); }}>
+            <button className="btn btn--secondary" onClick={() => { onClose(); onManage(); }}>
               {t("remote.error.manage")}
             </button>
           )}

@@ -40,7 +40,7 @@ export function TurnEditList({ diff, turn, onReview, onUndoCode, undoDisabled }:
         <span className="turn-edit-list__summary">{turnEditListHeader(model, t)}</span>
         <div className="turn-edit-list__actions">
           {onReview && (
-            <button type="button" className="btn btn--small" onClick={onReview}>
+            <button type="button" className="btn btn--secondary btn--small" onClick={onReview}>
               <Eye size={13} aria-hidden="true" />
               <span>{t("turnEdit.review")}</span>
             </button>

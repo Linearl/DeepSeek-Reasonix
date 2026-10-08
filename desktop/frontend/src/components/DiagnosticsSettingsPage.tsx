@@ -122,11 +122,11 @@ export function DiagnosticsSettingsPage({
           <span>{t("diag.includeRuntime")}</span>
         </label>
         <div className="diag-page__actions">
-          <button type="button" className="btn btn--ghost" onClick={() => void load(includeRuntime)} disabled={loading}>
+          <button type="button" className="btn btn--secondary" onClick={() => void load(includeRuntime)} disabled={loading}>
             {loading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
             <span>{t("diag.refresh")}</span>
           </button>
-          <button type="button" className="btn btn--ghost" onClick={() => void copyJSON()} disabled={!report}>
+          <button type="button" className="btn btn--secondary" onClick={() => void copyJSON()} disabled={!report}>
             <Clipboard size={14} />
             <span>{copied ? t("diag.copied") : t("diag.copyJson")}</span>
           </button>
@@ -235,7 +235,7 @@ export function DiagnosticsSettingsPage({
                           {issue.source ? <p className="diag-path">{issue.source}</p> : null}
                           {issue.remediation ? <p className="diag-issue__fix">{issue.remediation}</p> : null}
                           {issue.settings_tab && onNavigate ? (
-                            <button type="button" className="btn btn--ghost btn--small" onClick={() => goSettings(issue.settings_tab)}>
+                            <button type="button" className="btn btn--secondary btn--small" onClick={() => goSettings(issue.settings_tab)}>
                               {t("diag.gotoSettings")}
                             </button>
                           ) : null}

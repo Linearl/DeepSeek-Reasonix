@@ -69,7 +69,7 @@ export function NewGroupPanel({
           aria-label={t("projectGroup.createNew")}
           onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
         />
-        <button type="button" className="btn btn--small" onClick={confirm}>
+        <button type="button" className="btn btn--primary btn--small" onClick={confirm}>
           {t("projectGroup.createConfirm")}
         </button>
       </div>

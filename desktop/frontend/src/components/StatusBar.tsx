@@ -628,7 +628,7 @@ function JobsStatusBarChip({
                   <div className="jobs-popover__runtime-header">
                     <strong>{runtime.title || t("runtime.unknownTask")}</strong>
                     {onRevealRuntime && (
-                      <button type="button" className="btn btn--small" onClick={() => void onRevealRuntime(runtime.tabId)}>
+                      <button type="button" className="btn btn--secondary btn--small" onClick={() => void onRevealRuntime(runtime.tabId)}>
                         {t("status.jobOpenTask")}
                       </button>
                     )}
@@ -656,7 +656,7 @@ function JobsStatusBarChip({
                       </span>
                       <button
                         type="button"
-                        className="btn btn--small jobs-popover__stop"
+                        className="btn btn--primary btn--small jobs-popover__stop"
                         disabled={pending || !canStop}
                         onClick={() => void stop(runtime.tabId, job.id)}
                       >
@@ -821,7 +821,7 @@ function RemoteStatusBarChip({
                       <div className="remote-switcher__error-actions">
                         <button
                           type="button"
-                          className="btn btn--small"
+                          className="btn btn--secondary btn--small"
                           onClick={() => {
                             setOpen(false);
                             setDetailHostId(host.id);
@@ -831,7 +831,7 @@ function RemoteStatusBarChip({
                         </button>
                         <button
                           type="button"
-                          className="btn btn--small"
+                          className="btn btn--secondary btn--small"
                           onClick={() => {
                             setOpen(false);
                             onManage?.();

@@ -136,14 +136,14 @@ export function SubagentsSettingsPage({ s, onUseInChat }: { s: SettingsView; onU
             onChange={(e) => setQuery(e.target.value)}
           />
           <button
-            className="btn btn--small"
+            className="btn btn--primary btn--small"
             type="button"
             disabled={busy}
             onClick={() => { setEditingSkill(null); setAdding(true); }}
           >
             {t("subagents.new")}
           </button>
-          <button className="btn btn--small" type="button" disabled={busy} onClick={() => void mutate(() => app.RefreshSkills())}>
+          <button className="btn btn--secondary btn--small" type="button" disabled={busy} onClick={() => void mutate(() => app.RefreshSkills())}>
             {t("caps.refreshSkills")}
           </button>
         </div>
@@ -254,7 +254,7 @@ function SubagentInvocation({ name, onUseInChat }: { name: string; onUseInChat: 
         <code>{example}</code>
         <CopyButton text={example} label={t("subagents.copyInvocation")} className="subagents-invocation__copy" />
       </div>
-      <button className="btn btn--small" type="button" onClick={() => onUseInChat(command)}>
+      <button className="btn btn--secondary btn--small" type="button" onClick={() => onUseInChat(command)}>
         {t("subagents.useInChat")}
       </button>
     </div>
@@ -352,7 +352,7 @@ function BuiltinSubagentRow({
         </div>
         <div className="subagents-builtin-overrides__status">
           {overridden ? (
-            <button className="btn btn--small subagents-reset-override" type="button" disabled={busy} onClick={onReset}>
+            <button className="btn btn--secondary btn--small subagents-reset-override" type="button" disabled={busy} onClick={onReset}>
               <span className="subagents-reset-override__state">{t("subagents.overridden")}</span>
               <span aria-hidden="true">·</span>
               <span>{t("subagents.resetOverride")}</span>
@@ -408,7 +408,7 @@ function CustomSubagentRow({
           </Tooltip>
         ) : (
           <span className="subagents-row-actions">
-            <button className="btn btn--small" type="button" disabled={busy} onClick={() => onEdit?.()}>
+            <button className="btn btn--secondary btn--small" type="button" disabled={busy} onClick={() => onEdit?.()}>
               {t("common.edit")}
             </button>
             <InlineConfirmButton
@@ -689,7 +689,7 @@ function SubagentProfileForm({
           onChange={(e) => setTryTask(e.target.value)}
         />
         <button
-          className="btn btn--small"
+          className="btn btn--primary btn--small"
           type="button"
           onClick={() => (tryRunning ? void app.CancelTrySubagentProfile() : void runTry())}
           disabled={!tryRunning && (!promptReady || tryTask.trim() === "")}

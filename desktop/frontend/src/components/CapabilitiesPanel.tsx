@@ -204,7 +204,7 @@ export function CapabilitiesPanel({
               <section className="mem-section">
                 <div className="cap-mcp-toolbar cap-mcp-toolbar--drawer">
                   {!adding && (
-                    <button className="btn btn--small" disabled={busy} onClick={() => setAdding(true)}>
+                    <button className="btn btn--primary btn--small" disabled={busy} onClick={() => setAdding(true)}>
                       {t("caps.addServer")}
                     </button>
                   )}
@@ -230,7 +230,7 @@ export function CapabilitiesPanel({
                     <div className="cap-server-section__head settings-toolbar">
                       <div className="cap-server-section__title">{t("caps.availableServers")}</div>
                       <button
-                        className="btn btn--small"
+                        className="btn btn--primary btn--small"
                         disabled={busy || retryableActiveServerNames.length === 0}
                         type="button"
                         onClick={() => void mutate(() => Promise.allSettled(retryableActiveServerNames.map((name) => app.ReconnectMCPServer(name))))}
@@ -483,11 +483,11 @@ function SkillSources({
         <>
           <div className="cap-sources__manage">
             <div className="cap-sources__manage-actions">
-              <button className="btn btn--small" disabled={busy} onClick={onRefresh}>
+              <button className="btn btn--secondary btn--small" disabled={busy} onClick={onRefresh}>
                 <RefreshCw aria-hidden size={13} />
                 {t("caps.refreshSkills")}
               </button>
-              <button className="btn btn--small" disabled={busy} onClick={onAdd}>
+              <button className="btn btn--secondary btn--small" disabled={busy} onClick={onAdd}>
                 <Plus aria-hidden size={13} />
                 {t("caps.addSkillFolder")}
               </button>
@@ -761,11 +761,11 @@ function FailedServersNotice({
           <button className="btn btn--small" disabled={busy} type="button" onClick={() => setDetailsOpen((v) => !v)} aria-expanded={detailsOpen}>
             {detailsOpen ? t("caps.hideFailureDetails") : t("caps.showFailureDetails")}
           </button>
-          <button className="btn btn--small" disabled={busy || retryNames.length === 0} type="button" onClick={() => onRetryMany(retryNames)}>
+          <button className="btn btn--primary btn--small" disabled={busy || retryNames.length === 0} type="button" onClick={() => onRetryMany(retryNames)}>
             {t("caps.retryAll")}
           </button>
           {removableFailures.length > 0 && (
-            <button className="btn btn--small" disabled={busy} type="button" onClick={() => setBulkOpen((v) => !v)} aria-expanded={bulkOpen}>
+            <button className="btn btn--secondary btn--small" disabled={busy} type="button" onClick={() => setBulkOpen((v) => !v)} aria-expanded={bulkOpen}>
               {t("caps.bulkActions")}
             </button>
           )}
@@ -808,7 +808,7 @@ function FailedServersNotice({
                 </div>
               </div>
               <div className="cap-failure__actions">
-                <button className="btn btn--small" disabled={busy} onClick={handlePrimaryAction}>
+                <button className="btn btn--primary btn--small" disabled={busy} onClick={handlePrimaryAction}>
                   {actionLabel}
                 </button>
                 {canClearAuth(s) && (
@@ -838,7 +838,7 @@ function FailedServersNotice({
                 <div className="cap-failure__logbox">
                   <div className="cap-failure__logbar">
                     <span>{t("caps.rawLog")}</span>
-                    <button className="btn btn--small" onClick={() => void navigator.clipboard?.writeText(error)}>
+                    <button className="btn btn--secondary btn--small" onClick={() => void navigator.clipboard?.writeText(error)}>
                       {t("caps.copyLog")}
                     </button>
                   </div>
@@ -939,7 +939,7 @@ function ServerRow({
           </div>
           <div className="cap-row__actions">
             {lifecycle.showRetryInRow ? (
-              <button className="btn btn--small" disabled={busy} onClick={handlePrimaryAction}>
+              <button className="btn btn--primary btn--small" disabled={busy} onClick={handlePrimaryAction}>
                 {actionLabel}
               </button>
             ) : (
@@ -1073,12 +1073,12 @@ function ServerDetails({
       </div>
       <div className="cap-detail-actions">
         {canConnectNow && (
-          <button className="btn btn--small" disabled={busy} onClick={onConnectNow}>
+          <button className="btn btn--primary btn--small" disabled={busy} onClick={onConnectNow}>
             {t("caps.connectNow")}
           </button>
         )}
         {canReconnect && (
-          <button className="btn btn--small" disabled={busy} onClick={onReconnect}>
+          <button className="btn btn--primary btn--small" disabled={busy} onClick={onReconnect}>
             {t("caps.reconnect")}
           </button>
         )}
@@ -1098,7 +1098,7 @@ function ServerDetails({
         )}
         {canEditConfig && (
           <>
-            <button className="btn btn--small" disabled={busy} onClick={onEdit}>
+            <button className="btn btn--secondary btn--small" disabled={busy} onClick={onEdit}>
               {t("caps.editConfig")}
             </button>
             <InlineConfirmButton
@@ -1808,7 +1808,7 @@ export function PluginsSettingsPage() {
 			{notice && !err && <div className="banner banner--success">{notice}</div>}
 			<div className="settings-toolbar">
               <div><strong>{t("caps.installedPlugins")}</strong>{plugins && plugins.length > 0 && <div className="drawer__summary">{summary}</div>}</div>
-              <div className="settings-toolbar__actions"><button className="btn btn--small" disabled={actionBusy} onClick={() => void reload()}>{t("caps.pluginRefresh")}</button>
+              <div className="settings-toolbar__actions"><button className="btn btn--secondary btn--small" disabled={actionBusy} onClick={() => void reload()}>{t("caps.pluginRefresh")}</button>
               <button className="btn btn--primary" aria-expanded={installOpen} aria-controls="settings-plugin-install" disabled={actionBusy} onClick={() => setInstallOpen(!installOpen)}>{installOpen ? t("common.cancel") : t("caps.pluginInstall")}</button></div>
             </div>
             <div id="settings-plugin-install" hidden={!installOpen}>
@@ -1841,7 +1841,7 @@ export function PluginsSettingsPage() {
 					{installMode === "local" ? (
 						<div className="cap-plugin-fields cap-plugin-fields--local">
 							<div className="cap-plugin-folder-field">
-								<button className="btn btn--small" disabled={actionBusy} type="button" onClick={pickPluginFolder}>
+								<button className="btn btn--secondary btn--small" disabled={actionBusy} type="button" onClick={pickPluginFolder}>
 									{t("caps.pluginChooseLocalFolder")}
 								</button>
 								<div
@@ -1892,7 +1892,7 @@ export function PluginsSettingsPage() {
 						)}
 					</div>
 					<div className="cap-plugin-installer__actions">
-						<button className="btn btn--small" type="button" disabled={!canPlan} onClick={previewInstall}>
+						<button className="btn btn--secondary btn--small" type="button" disabled={!canPlan} onClick={previewInstall}>
 							{t("caps.pluginPreview")}
 						</button>
 						<button className="btn btn--primary btn--small" type="button" disabled={!canPlan} onClick={install}>
@@ -2106,10 +2106,10 @@ function PluginRow({
 						<div className="cap-source__warning" key={`${plugin.name}-warning-${idx}`}>{warning}</div>
 					))}
 					<div className="cap-detail-actions">
-						<button className="btn btn--small" disabled={busy} type="button" onClick={onUpdate}>
+						<button className="btn btn--primary btn--small" disabled={busy} type="button" onClick={onUpdate}>
 							{t("caps.pluginUpdate")}
 						</button>
-						<button className="btn btn--small" disabled={busy} type="button" onClick={onDoctor}>
+						<button className="btn btn--secondary btn--small" disabled={busy} type="button" onClick={onDoctor}>
 							{t("caps.pluginDoctor")}
 						</button>
 						<InlineConfirmButton
@@ -2545,7 +2545,7 @@ function MCPSettingsServerRow({
 					/>
 				)}
 				{lifecycle.showRetryInRow ? (
-					<button className="btn btn--small" disabled={busy} type="button" onClick={handlePrimaryAction}>
+					<button className="btn btn--primary btn--small" disabled={busy} type="button" onClick={handlePrimaryAction}>
 						{actionLabel}
 					</button>
 				) : !server.managedByPlugin ? (
@@ -3157,7 +3157,7 @@ export function MCPServersSettingsPage() {
 									<RefreshCw aria-hidden size={15} />
 								</button>
 							</Tooltip>
-							<button className="btn btn--small" disabled={actionBusy} type="button" onClick={openMarketplace}>
+							<button className="btn btn--secondary btn--small" disabled={actionBusy} type="button" onClick={openMarketplace}>
 								<Search aria-hidden size={14} />
 								{t("caps.browseRegistry")}
 							</button>
@@ -3212,7 +3212,7 @@ export function MCPServersSettingsPage() {
 					<form className="cap-mcp-search cap-mcp-search--action" onSubmit={(event) => { event.preventDefault(); void browseMarketplace(); }}>
 						<Search aria-hidden size={15} />
 						<input type="search" value={marketplaceQuery} onInput={(event) => setMarketplaceQuery(event.currentTarget.value)} placeholder={t("caps.searchRegistry")} />
-						<button className="btn btn--small" disabled={busy} type="submit">{t("caps.search")}</button>
+						<button className="btn btn--secondary btn--small" disabled={busy} type="submit">{t("caps.search")}</button>
 					</form>
 					{marketplace?.warning && <div className="banner" role="status">{t("caps.registryCached")} {marketplace.warning}</div>}
 					{busy && marketplace === null && <div className="mem-empty">{t("caps.loading")}</div>}

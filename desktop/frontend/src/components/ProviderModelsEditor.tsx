@@ -83,8 +83,8 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
   };
   return <section className="provider-models-editor">
     <div className="provider-models-editor__head"><strong>{t("settings.modelList")}</strong><div>
-      <button type="button" className="btn btn--small" disabled={disabled || fetching || !canFetch} onClick={() => void fetchModels()}><RefreshCw size={14} className={fetching ? "provider-spinning" : undefined} />{t(fetching ? "settings.fetchingModels" : "settings.fetchModels")}</button>
-      <button type="button" className="btn btn--small" disabled={disabled} onClick={() => openEditor()}><Plus size={14} />{t("providerUI.manualAdd")}</button>
+      <button type="button" className="btn btn--secondary btn--small" disabled={disabled || fetching || !canFetch} onClick={() => void fetchModels()}><RefreshCw size={14} className={fetching ? "provider-spinning" : undefined} />{t(fetching ? "settings.fetchingModels" : "settings.fetchModels")}</button>
+      <button type="button" className="btn btn--secondary btn--small" disabled={disabled} onClick={() => openEditor()}><Plus size={14} />{t("providerUI.manualAdd")}</button>
     </div></div>
     {!editor && error && <p role="alert" className="provider-fetch-status provider-fetch-status--warn">{error}</p>}
     {!provider.models.length && <p className="provider-models-editor__empty">{t("providerUI.emptyModels")}</p>}

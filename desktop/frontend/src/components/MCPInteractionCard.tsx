@@ -106,7 +106,7 @@ export function MCPInteractionCard({
               <button type="button" className="btn btn--small" onClick={() => onAnswer(interaction.id, "cancel")} disabled={busy}>
                 {t("mcp.interaction.cancel")}
               </button>
-              <button type="button" className="btn btn--small" onClick={openLink} disabled={busy || !interaction.url}>
+              <button type="button" className="btn btn--secondary btn--small" onClick={openLink} disabled={busy || !interaction.url}>
                 {t("mcp.interaction.openUrl", { host: targetHost || t("mcp.interaction.link") })}
               </button>
               <button type="button" className="btn btn--small btn--primary" onClick={() => onAnswer(interaction.id, "accept")} disabled={busy}>

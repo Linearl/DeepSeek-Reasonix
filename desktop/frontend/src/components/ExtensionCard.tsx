@@ -77,7 +77,7 @@ export function ExtensionCard({ item, tabId }: { item: ExtensionItem; tabId?: st
             <button
               key={action.actionId}
               type="button"
-              className="btn btn--small"
+              className="btn btn--secondary btn--small"
               disabled={busyAction !== null}
               onClick={() => void invoke(action.actionId)}
             >

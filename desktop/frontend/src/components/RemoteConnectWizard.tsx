@@ -662,7 +662,7 @@ export function RemoteConnectWizard({
                       {connectErr}
                     </div>
                     <div className="remote-wizard__connecting-actions">
-                      <button type="button" className="btn btn--small" onClick={() => setStep("config")}>
+                      <button type="button" className="btn btn--secondary btn--small" onClick={() => setStep("config")}>
                         {t("remoteWizard.backToEdit")}
                       </button>
                       <button type="button" className="btn btn--small btn--primary" onClick={() => void connect(hostId, startPath, host)}>
@@ -694,10 +694,10 @@ export function RemoteConnectWizard({
                     placeholder={t("remoteWizard.path")}
                     onChange={(event) => setWorkspace(event.target.value)}
                   />
-                  <button type="button" className="btn btn--small" disabled={busy || !workspace.trim()} onClick={() => void openDir(hostId, workspace.trim() || "~")}>
+                  <button type="button" className="btn btn--secondary btn--small" disabled={busy || !workspace.trim()} onClick={() => void openDir(hostId, workspace.trim() || "~")}>
                     {t("remoteWizard.go")}
                   </button>
-                  <button type="button" className="btn btn--small" disabled={busy} onClick={() => setShowHidden((value) => !value)}>
+                  <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => setShowHidden((value) => !value)}>
                     {t(showHidden ? "remoteWizard.toggleHiddenOn" : "remoteWizard.toggleHidden")}
                   </button>
                 </div>
@@ -773,7 +773,7 @@ export function RemoteConnectWizard({
           )}
           <div className="modal__actions remote-wizard__actions">
             {step !== "config" ? (
-              <button type="button" className="btn btn--small" disabled={busy} onClick={() => setStep("config")}>
+              <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => setStep("config")}>
                 {t("remoteWizard.back")}
               </button>
             ) : null}

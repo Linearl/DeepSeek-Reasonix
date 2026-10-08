@@ -149,7 +149,7 @@ export function PerfMemorySection({ busy, apply }: { busy: boolean; apply: Apply
                 </button>
               ))}
             </SettingsOptions>
-            <button type="button" className="btn btn--small" disabled={busy} onClick={() => void loadSeries(windowMinutes)}>
+            <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => void loadSeries(windowMinutes)}>
               {t("settings.perfMonitor.chartRefresh")}
             </button>
           </span>
@@ -195,7 +195,7 @@ export function PerfMemorySection({ busy, apply }: { busy: boolean; apply: Apply
       <div className="perf-memory-section__block">
         <div className="perf-memory-section__head">
           <span className="settings-field__hint-line">{t("settings.perfMonitor.heapPieTitle")}</span>
-          <button type="button" className="btn btn--sm" disabled={busy} onClick={sampleHeap}>
+          <button type="button" className="btn btn--secondary btn--sm" disabled={busy} onClick={sampleHeap}>
             {t("settings.perfHeap.sampleAndChart")}
           </button>
         </div>

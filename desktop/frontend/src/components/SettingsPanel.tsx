@@ -502,7 +502,7 @@ export function SettingsPanel({
             {needsSettings && settingsLoadFailed && (
               <div className="banner banner--error settings-load-error" role="alert">
                 <span>{t("settings.loadFailed")}</span>
-                <button className="btn btn--small" type="button" onClick={() => void reload()}>{t("common.retry")}</button>
+                <button className="btn btn--secondary btn--small" type="button" onClick={() => void reload()}>{t("common.retry")}</button>
               </div>
             )}
             {needsSettings && err && <div className="banner banner--error">{err}</div>}
@@ -512,7 +512,7 @@ export function SettingsPanel({
                 <span>{t(modelApplication.application === "pending" ? "settings.models.savedPending" : "settings.models.savedApplyFailed")}</span>
                 {modelApplication.issues.map((issue, index) => <span key={`${issue.code}:${index}`}>{issue.message}</span>)}
                 {modelApplication.targets.filter(target => target.application === "failed").map(target => (
-                  <button className="btn btn--small" key={target.tabId} type="button" onClick={() => void pageApply(() => app.RetryModelSettingsApplication(target.tabId))}>{t("settings.models.applyRetry")}{target.title ? ` · ${target.title}` : ""}</button>
+                  <button className="btn btn--secondary btn--small" key={target.tabId} type="button" onClick={() => void pageApply(() => app.RetryModelSettingsApplication(target.tabId))}>{t("settings.models.applyRetry")}{target.title ? ` · ${target.title}` : ""}</button>
                 ))}
               </div>
             )}
@@ -2300,7 +2300,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <span>{t("settings.restartRequired")}</span>
               <button
                 type="button"
-                className="btn btn--sm settings-restart-banner__action"
+                className="btn btn--primary btn--sm settings-restart-banner__action"
                 disabled={busy}
                 onClick={() => void apply(() => app.RestartDesktop())}
               >
@@ -2508,7 +2508,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 <SettingsField label={t("settings.feedbackOpen")} hint={t("settings.feedbackOpenHint")} icon={<Sparkles size={18} />}>
                   <button
                     type="button"
-                    className="btn btn--small"
+                    className="btn btn--secondary btn--small"
                     disabled={busy || !Boolean(s.experimentalFeedback)}
                     onClick={() => setFeedbackOpen(true)}
                   >
@@ -2566,7 +2566,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <SettingsField label={t("settings.sessionMonitorOpen")} hint={t("settings.sessionMonitorOpenHint")} icon={<Sparkles size={18} />}>
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className="btn btn--secondary btn--small"
                   disabled={busy || !Boolean(s.experimentalSessionMonitor)}
                   onClick={() => setSessionMonitorOpen(true)}
                 >
@@ -2605,7 +2605,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <SettingsField label={t("settings.perfMonitor.heap")} hint={t("settings.perfMonitor.heapHint")} icon={<Sparkles size={18} />}>
                 <button
                   type="button"
-                  className="btn btn--sm"
+                  className="btn btn--secondary btn--sm"
                   disabled={busy}
                   onClick={() => void apply(async () => {
                     await app.SaveHeapProfile();
@@ -3032,7 +3032,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <SettingsField label={t("settings.dreamCreateTask")} hint={t("settings.dreamCreateTaskHint")} icon={<Sparkles size={18} />}>
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className="btn btn--secondary btn--small"
                   disabled={busy || !Boolean(s.experimentalDream)}
                   onClick={() => void apply(async () => {
                     const created = await app.CreateDreamHeartbeatTask();
@@ -3430,7 +3430,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <SettingsField label={t("settings.collabInbox")} hint={t("settings.collabInboxHint")} icon={<Sparkles size={18} />}>
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className="btn btn--secondary btn--small"
                   disabled={busy}
                   onClick={() => setCollabInboxOpen(true)}
                 >
@@ -3474,7 +3474,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <SettingsField label={t("settings.sessionCollabRoster")} hint={t("settings.sessionCollabRosterHint")} icon={<Sparkles size={18} />}>
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className="btn btn--secondary btn--small"
                   disabled={busy || !Boolean(s.experimentalSessionCollab)}
                   onClick={() => void reloadSessionCollabRoster()}
                 >
@@ -5682,7 +5682,7 @@ function BotsSection({ s, busy, apply, initialFocus }: BotsSectionProps) {
           <div className="bot-detail-card__desc">{t("settings.botAutoSaveHint")}</div>
         </div>
         <div className="bot-detail-card__actions">
-          <button type="button" className="btn btn--small" disabled={busy || !dingtalkConfigured || dingtalkTesting} onClick={() => void testDingtalkBot()}>
+          <button type="button" className="btn btn--secondary btn--small" disabled={busy || !dingtalkConfigured || dingtalkTesting} onClick={() => void testDingtalkBot()}>
             {dingtalkTesting ? t("settings.botTesting") : t("settings.botTest")}
           </button>
         </div>
@@ -5884,11 +5884,11 @@ function BotsSection({ s, busy, apply, initialFocus }: BotsSectionProps) {
           <div className="bot-detail-card__desc">{t("settings.botAutoSaveHint")}</div>
         </div>
         <div className="bot-detail-card__actions">
-          <button type="button" className="btn btn--small" disabled={busy} onClick={() => void diagnoseConnection(selectedConnection.id)}>
+          <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => void diagnoseConnection(selectedConnection.id)}>
             {t("settings.botDiagnose")}
           </button>
           {(selectedConnection.provider === "feishu" || selectedConnection.provider === "weixin") ? (
-            <button type="button" className="btn btn--small" disabled={busy || !selectedConnectionRemote} onClick={() => void testConnection(selectedConnection)}>
+            <button type="button" className="btn btn--secondary btn--small" disabled={busy || !selectedConnectionRemote} onClick={() => void testConnection(selectedConnection)}>
               {t("settings.botTest")}
             </button>
           ) : null}
@@ -7150,7 +7150,7 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
                   onPick={(ref) => void apply(() => saveModelSettings(s, {kind: "preference", field: "search", ref: ref}))} />
                 {(s.webSearchModelStatus === "invalid" || Boolean(s.webSearchModel && s.webSearchModel !== "auto" && !(s.webSearchModels ?? []).includes(s.webSearchModel))) && <p role="status" className="web-search-assignment-hint">{t("settings.webSearchModelUnavailable")} {s.webSearchModelReason}</p>}
                 {s.webSearchModelOverridden && <p className="web-search-assignment-hint">{t("settings.webSearchModelOverride", { model: s.effectiveWebSearchModel || t("common.auto") })}</p>}
-                {(s.webSearchModels ?? []).length === 0 && <p className="web-search-assignment-hint">{t("settings.webSearchModelEmpty")} {onOpenProviders && <button type="button" className="btn btn--small" onClick={onOpenProviders}>{t("settings.webSearchModelConnections")}</button>}</p>}
+                {(s.webSearchModels ?? []).length === 0 && <p className="web-search-assignment-hint">{t("settings.webSearchModelEmpty")} {onOpenProviders && <button type="button" className="btn btn--secondary btn--small" onClick={onOpenProviders}>{t("settings.webSearchModelConnections")}</button>}</p>}
               </div>
               <span className="model-assignment-connection">{!s.webSearchModel || s.webSearchModel === "auto" ? t("settings.webSearchModelAutomatic") : providerViewLabel(s.providers.find(p => p.name === s.webSearchModel?.split("/")[0]), s.webSearchModel.split("/")[0])}</span>
             </SettingsField>
@@ -7801,7 +7801,7 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
       title={t("settings.providerAccess")}
       description={t("settings.providerAccessHint")}
       actions={
-        <button className="btn btn--small" disabled={busy || adding !== null} onClick={() => setAdding("official")}>
+        <button className="btn btn--secondary btn--small" disabled={busy || adding !== null} onClick={() => setAdding("official")}>
           {t("settings.addProvider")}
         </button>
       }
@@ -7816,10 +7816,10 @@ export function ProvidersSection({ s, busy, apply, onboarding, onOnboardingCompl
             <strong>{t("settings.providerAccessEmptyTitle")}</strong>
             <span>{t("settings.providerAccessEmptyHint")}</span>
             <div className="provider-empty__actions">
-              <button type="button" className="btn btn--small" disabled={busy} onClick={() => setAdding("official")}>
+              <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => setAdding("official")}>
                 {t("settings.addProvider.officialChoice")}
               </button>
-              <button type="button" className="btn btn--small" disabled={busy} onClick={() => setAdding("custom")}>
+              <button type="button" className="btn btn--secondary btn--small" disabled={busy} onClick={() => setAdding("custom")}>
                 {t("settings.addProvider.customChoice")}
               </button>
             </div>
@@ -8165,14 +8165,14 @@ export function ProviderAccessCard({
             <span>{p.name}</span>
             <span>{p.models.join(", ") || t("common.none")}</span>
             <button
-              className="btn btn--small provider-profile-row__refresh"
+              className="btn btn--secondary btn--small provider-profile-row__refresh"
               disabled={busy || fetching || !p.baseUrl || !providerIsConfigured(p)}
               onClick={() => onRefresh(p)}
             >
               {fetching ? t("settings.fetchingModels") : t("settings.fetchModels")}
             </button>
             <button
-              className="btn btn--small provider-profile-row__configure"
+              className="btn btn--secondary btn--small provider-profile-row__configure"
               disabled={busy}
               aria-expanded={profileExpanded}
               onClick={() => profileExpanded ? onCancelEdit() : onEdit(p.name)}
@@ -8202,7 +8202,7 @@ export function ProviderAccessCard({
           {onCopy && <button type="button" className="btn provider-icon-action" disabled={busy} onClick={onCopy} title={t("settings.connections.copy")} aria-label={t("settings.connections.copy")}><Files size={17} /></button>}
           {editableProvider && !isOpenCodeGoConnection && !detail && (
             <button
-              className="btn btn--small"
+              className="btn btn--secondary btn--small"
               disabled={busy}
               aria-expanded={primaryProviderExpanded}
               onClick={() => primaryProviderExpanded ? onCancelEdit() : onEdit(editableProvider.name)}
@@ -8212,7 +8212,7 @@ export function ProviderAccessCard({
           )}
           {editableProvider && group.providers.length === 1 && !detail && (
             <button
-              className="btn btn--small"
+              className="btn btn--secondary btn--small"
               disabled={busy || fetching || !editableProvider.baseUrl || !group.configured}
               onClick={() => onRefresh(editableProvider)}
             >
@@ -8888,8 +8888,8 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
           <details className="provider-key-compact__more">
             <summary className="btn provider-icon-action" title={t("settings.themeGallery.moreActions")} aria-label={t("settings.themeGallery.moreActions")}><MoreHorizontal size={17} /></summary>
             <div className="provider-key-compact__menu">
-              <button type="button" className="btn" disabled={disabled || selectedModels.length === candidates.length} onClick={onSelectAll}>{t("settings.selectAllModels")}</button>
-              <button type="button" className="btn" disabled={disabled || selectedModels.length === 0} onClick={onClear}>{t("settings.clearModelSelection")}</button>
+              <button type="button" className="btn btn--secondary" disabled={disabled || selectedModels.length === candidates.length} onClick={onSelectAll}>{t("settings.selectAllModels")}</button>
+              <button type="button" className="btn btn--secondary" disabled={disabled || selectedModels.length === 0} onClick={onClear}>{t("settings.clearModelSelection")}</button>
             </div>
           </details>
         </div>
@@ -9419,7 +9419,7 @@ export function ProviderEditor({
       </SettingsSelect>
       {endpointMismatch.mismatch && <div role="alert" className="banner banner--warning">
         <span>{t("settings.providerProtocolMismatch")}</span>
-        {endpointMismatch.recommendedUrl && <button type="button" className="btn btn--small" title={endpointMismatch.recommendedUrl} onClick={() => setRequestUrl(endpointMismatch.recommendedUrl)}>{t("settings.compactRatioApply")}</button>}
+        {endpointMismatch.recommendedUrl && <button type="button" className="btn btn--secondary btn--small" title={endpointMismatch.recommendedUrl} onClick={() => setRequestUrl(endpointMismatch.recommendedUrl)}>{t("settings.compactRatioApply")}</button>}
       </div>}
       </div>
       <div className="provider-key-single">
@@ -9449,7 +9449,7 @@ export function ProviderEditor({
       <ProviderEditorModelPicker
         actions={<>
         <button type="button" className="btn provider-icon-action" title={t("settings.fetchModels")} aria-label={t(fetchingModels ? "settings.fetchingModels" : "settings.fetchModels")} disabled={busy || fetchingModels || !canFetch || extraBodyInvalid} onClick={() => void fetchModels()}>{fetchingModels ? <Loader2 size={17} /> : <RefreshCw size={17} />}</button>
-        <button className="btn btn--small" disabled={busy || fetchingModels} onClick={() => setModelDialog("")}>{t("settings.models.add")}</button>
+        <button className="btn btn--secondary btn--small" disabled={busy || fetchingModels} onClick={() => setModelDialog("")}>{t("settings.models.add")}</button>
         </>}
         candidates={modelCandidateNames}
         selectedModels={modelNames}
@@ -9585,7 +9585,7 @@ function RuleList({
             if (e.key === "Enter") add();
           }}
         />
-        <button className="btn btn--small" disabled={busy || !draft.trim()} onClick={add}>
+        <button className="btn btn--secondary btn--small" disabled={busy || !draft.trim()} onClick={add}>
           {t("common.add")}
         </button>
       </div>
@@ -9742,7 +9742,7 @@ function HooksSection({ onChanged }: { onChanged: (settings?: SettingsView | nul
               <code className="hooks-path-display__value" title={view?.path || t("settings.hooksPathUnavailable")}>
                 {view?.path || t("settings.hooksPathUnavailable")}
               </code>
-              <button className="btn btn--small" disabled={busy || !view?.path} onClick={() => void copyHooksPath()}>{t("settings.hooksPathCopy")}</button>
+              <button className="btn btn--secondary btn--small" disabled={busy || !view?.path} onClick={() => void copyHooksPath()}>{t("settings.hooksPathCopy")}</button>
             </div>
             {pathMessage && <div className="hooks-path-display__message">{pathMessage}</div>}
           </div>
@@ -9761,9 +9761,9 @@ function HooksSection({ onChanged }: { onChanged: (settings?: SettingsView | nul
                 <div className="set-rules__hint">{t("settings.hooksJsonHint")}</div>
               </div>
               <div className="hooks-json-panel__actions">
-                <button className="btn btn--small" disabled={busy} onClick={() => void copyHooksJSON()}>{t("settings.hooksJsonCopy")}</button>
-                <button className="btn btn--small" disabled={busy} onClick={() => void pasteHooksJSON()}>{t("settings.hooksJsonPaste")}</button>
-                <button className="btn btn--small" disabled={busy || !jsonText.trim()} onClick={() => formatHooksEditorJSON()}>{t("settings.hooksJsonApply")}</button>
+                <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void copyHooksJSON()}>{t("settings.hooksJsonCopy")}</button>
+                <button className="btn btn--secondary btn--small" disabled={busy} onClick={() => void pasteHooksJSON()}>{t("settings.hooksJsonPaste")}</button>
+                <button className="btn btn--secondary btn--small" disabled={busy || !jsonText.trim()} onClick={() => formatHooksEditorJSON()}>{t("settings.hooksJsonApply")}</button>
               </div>
             </div>
             <textarea
@@ -9917,7 +9917,7 @@ function SandboxSection({ s, busy, apply, windows }: SectionProps & { windows: b
       description={t("settings.sandboxBoundaryHint")}
       actions={
         <Tooltip label={t("settings.reloadSessionConfigHint")}>
-          <button className="btn btn--small" disabled={busy} title={t("settings.reloadSessionConfigHint")} onClick={() => void reloadSession()}>
+          <button className="btn btn--secondary btn--small" disabled={busy} title={t("settings.reloadSessionConfigHint")} onClick={() => void reloadSession()}>
             <RefreshCw size={14} aria-hidden="true" />
             <span>{t("settings.reloadSessionConfig")}</span>
           </button>
@@ -10086,7 +10086,7 @@ function SessionWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; bus
             onChange={(e) => setPath(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
           />
-          <button className="btn btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
+          <button className="btn btn--secondary btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
             {t("settings.addSessionWriteRoot")}
           </button>
         </div>
@@ -10161,10 +10161,10 @@ function GlobalWriteRootsSection({ t, busy }: { t: ReturnType<typeof useT>; busy
           onChange={(e) => setPath(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") void add(); }}
         />
-        <button className="btn btn--small" type="button" disabled={busy} onClick={() => void pick()}>
+        <button className="btn btn--secondary btn--small" type="button" disabled={busy} onClick={() => void pick()}>
           {t("settings.browseGlobalWriteRoot")}
         </button>
-        <button className="btn btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
+        <button className="btn btn--secondary btn--small" type="button" disabled={busy || !String(path || "").trim()} onClick={() => void add()}>
           {t("settings.addGlobalWriteRoot")}
         </button>
       </div>
@@ -10494,7 +10494,7 @@ function QuickCommandsManager({ s, busy, apply }: { s: SettingsView; busy: boole
       <div className="settings-quick-commands">
         <button
           type="button"
-          className="btn btn--small"
+          className="btn btn--secondary btn--small"
           disabled={busy}
           onClick={() => { setQuery(""); setOpen(true); }}
         >
@@ -10552,7 +10552,7 @@ function QuickCommandsManager({ s, busy, apply }: { s: SettingsView; busy: boole
                   />
                   <button
                     type="button"
-                    className="btn btn--small"
+                    className="btn btn--secondary btn--small"
                     disabled={busy || draft !== null}
                     title={t("settings.quickCommandsEdit")}
                     onClick={() => setDraft({ title: entry.title, text: entry.text, editingIndex: index })}
@@ -10624,7 +10624,7 @@ function QuickCommandsManager({ s, busy, apply }: { s: SettingsView; busy: boole
             )}
             <button
               type="button"
-              className="btn btn--small"
+              className="btn btn--secondary btn--small"
               disabled={busy || draft !== null}
               onClick={() => setDraft({ title: "", text: "" })}
             >

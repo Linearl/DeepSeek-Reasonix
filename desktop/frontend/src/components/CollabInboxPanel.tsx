@@ -449,7 +449,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
           {rows.some((entry) => !entry.read) && (
             <button
               type="button"
-              className="btn btn--small"
+              className="btn btn--secondary btn--small"
               disabled={busy}
               onClick={() => void act(() => b.MarkCollabMailRead(rows.filter((entry) => !entry.read).map((entry) => entry.id)))}
             >
@@ -557,7 +557,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
         {loadError && !viewEmpty && (
           <div className="collab-inbox-panel__errorstrip" role="alert">
             <span>{t("collabInbox.error.stale")}</span>
-            <button type="button" className="btn btn--small" onClick={() => void refresh()}>
+            <button type="button" className="btn btn--secondary btn--small" onClick={() => void refresh()}>
               {t("collabInbox.retry")}
             </button>
           </div>
@@ -568,7 +568,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
           <div className="collab-inbox-panel__error" role="alert">
             <span className="collab-inbox-panel__error-label">{t("collabInbox.error")}</span>
             <span className="collab-inbox-panel__error-detail" title={loadError}>{loadError}</span>
-            <button type="button" className="btn btn--small" onClick={() => void refresh()}>
+            <button type="button" className="btn btn--secondary btn--small" onClick={() => void refresh()}>
               {t("collabInbox.retry")}
             </button>
           </div>
@@ -631,7 +631,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
                 {entry.bucket === "approval" && !entry.decidedBy && !entry.dismissed && (
                   <button
                     type="button"
-                    className="btn btn--small"
+                    className="btn btn--primary btn--small"
                     disabled={busy}
                     onClick={() => void act(() => b.MarkCollabMailDecided(entry.id, "human"))}
                   >
@@ -641,7 +641,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
                 {!entry.dismissed ? (
                   <button
                     type="button"
-                    className="btn btn--small"
+                    className="btn btn--secondary btn--small"
                     disabled={busy}
                     onClick={() => void act(() => b.DismissCollabMail([entry.id]))}
                   >
@@ -650,7 +650,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
                 ) : (
                   <button
                     type="button"
-                    className="btn btn--small"
+                    className="btn btn--secondary btn--small"
                     disabled={busy}
                     onClick={() => void act(() => b.UndismissCollabMail([entry.id]))}
                   >

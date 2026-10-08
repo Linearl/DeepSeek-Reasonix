@@ -71,7 +71,7 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   const prefix = (showOlderRow || showLoadOlder) && (
     <div className="transcript__header">
       {showLoadOlder && (
-        <button type="button" className="btn btn--small chat-older" onClick={onLoadOlder}>
+        <button type="button" className="btn btn--secondary btn--small chat-older" onClick={onLoadOlder}>
           <span>{t("chat.loadOlder")}</span>
         </button>
       )}
@@ -81,7 +81,7 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
             ? <><Loader2 className="transcript__older-spinner" size={14} aria-hidden="true" /><span>{t("common.loading")}</span></>
             : olderHistoryExhausted
               ? <span>{t("transcript.noMoreEarlier")}</span>
-              : <><span>{t("transcript.loadEarlierFailed")}{olderHistoryError ? ` (${olderHistoryError})` : ""}</span><button type="button" className="btn btn--small" onClick={onRetryOlderHistory}><RotateCcw size={14} /><span>{t("common.retry")}</span></button></>}
+              : <><span>{t("transcript.loadEarlierFailed")}{olderHistoryError ? ` (${olderHistoryError})` : ""}</span><button type="button" className="btn btn--secondary btn--small" onClick={onRetryOlderHistory}><RotateCcw size={14} /><span>{t("common.retry")}</span></button></>}
         </div>
       )}
     </div>

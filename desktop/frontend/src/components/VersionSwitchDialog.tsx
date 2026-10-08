@@ -157,7 +157,7 @@ export function VersionSwitchDialog({ open, versions, switching, deleting, error
         <div style={{ opacity: 0.7, fontSize: "0.85em", margin: "4px 0 10px" }}>{t("status.versionSwitchFirewallNote")}</div>
         <div className="modal__actions reasonix-confirm-dialog__actions">
           <button className="btn btn--small" type="button" onClick={onClose}>{t("common.cancel")}</button>
-          <button className="btn btn--small" type="button" disabled={Boolean(switching)} onClick={onPublishStaging}>
+          <button className="btn btn--primary btn--small" type="button" disabled={Boolean(switching)} onClick={onPublishStaging}>
             {t("status.versionSwitchPublishStaging")}
           </button>
         </div>

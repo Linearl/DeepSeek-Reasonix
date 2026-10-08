@@ -41,7 +41,7 @@ export function ProviderConnections({ groups, presets, revealedProvider, hidden,
         </button>;})}
         {!connections.length && <p className="muted">{t("settings.connections.noResults")}</p>}
       </div>
-      <button className="btn" disabled={busy} onClick={onAdd}>{t("settings.addProvider")}</button>
+      <button className="btn btn--primary" disabled={busy} onClick={onAdd}>{t("settings.addProvider")}</button>
     </nav>
     <div className="provider-connections__detail">
       <button className="btn btn--small provider-connections__back" onClick={() => setMobileDetail(false)}>{t("settings.connections.back")}</button>

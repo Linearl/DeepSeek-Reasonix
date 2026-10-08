@@ -122,7 +122,7 @@ export function FeedbackPanel() {
       <div className="feedback-panel__head">
         <span className="feedback-panel__title">{t("feedbackInbox.title")}</span>
         <div className="feedback-panel__actions">
-          <button type="button" className="btn btn--small" onClick={() => void openFolder()}>
+          <button type="button" className="btn btn--secondary btn--small" onClick={() => void openFolder()}>
             {t("feedbackInbox.openDir")}
           </button>
           <button type="button" className="btn btn--small" disabled={busy || entries.length === 0} onClick={() => void clear()}>

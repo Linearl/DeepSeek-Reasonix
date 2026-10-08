@@ -131,7 +131,7 @@ function ArchivedMemoryList({
                       <div className="mem-fact__actions">
                         <span className="mem-hint mem-hint--inline">{t("memory.restoreArchivedHint")}</span>
                         <button
-                          className="btn btn--small"
+                          className="btn btn--secondary btn--small"
                           type="button"
                           disabled={busy}
                           onClick={() => void onRestore(f)}
@@ -702,7 +702,7 @@ export function MemoryPanel({
                       <span className={`mem-doc__tag badge--${d.scope}`}>{memoryScopeLabel(d.scope, t)}</span>
                       {!editing && (
                         <button
-                          className="btn btn--small"
+                          className="btn btn--secondary btn--small"
                           onClick={() => startEdit(d.path, d.body)}
                         >
                           {t("common.edit")}
@@ -1411,7 +1411,7 @@ export function MemorySettingsPage() {
 														<strong>{t("memory.revision", { revision: revision.revision || 1 })}</strong>
 														<span>{formatMemoryTime(revision.updatedAt || revision.createdAt)}</span>
 													</div>
-													<button className="btn btn--small" type="button" disabled={busy} onClick={() => void restoreRevision(f, revision.revision || 1)}>
+													<button className="btn btn--secondary btn--small" type="button" disabled={busy} onClick={() => void restoreRevision(f, revision.revision || 1)}>
 														<ArchiveRestore size={13} />{t("memory.restoreRevision")}
 													</button>
 												</div>
@@ -1472,7 +1472,7 @@ export function MemorySettingsPage() {
 					</div>
 					<div className="mem-section__actions">
 						<button
-							className="btn btn--small"
+							className="btn btn--secondary btn--small"
 							type="button"
 							disabled={suggestionBusy || busy}
 							onClick={() => void refreshSuggestions()}
@@ -1737,7 +1737,7 @@ export function MemorySettingsPage() {
 					</div>
 					<div className="mem-section__actions">
 						<button
-							className="btn btn--small"
+							className="btn btn--secondary btn--small"
 							type="button"
 							disabled={busy}
 							onClick={() => setShowAdd((v) => !v)}
@@ -1835,7 +1835,7 @@ export function MemorySettingsPage() {
 									<span className={"mem-doc__tag badge--" + d.scope}>{memoryScopeLabel(d.scope, t)}</span>
 									{!editing && (
 									<button
-										className="btn btn--small"
+										className="btn btn--secondary btn--small"
 										onClick={() => startEdit(d.path, d.body)}
 									>
 										<Pencil size={13} />

@@ -61,7 +61,7 @@ export function InboxRecoveryBanner({
           {` — ${body}`}
         </span>
         <span className="banner__spacer" />
-        <button className="btn btn--small" type="button" disabled={busy} onClick={onReview}>
+        <button className="btn btn--secondary btn--small" type="button" disabled={busy} onClick={onReview}>
           {review}
         </button>
         <button className="btn btn--primary btn--small" type="button" disabled={disabled || busy} onClick={() => void setPaused(false)}>
