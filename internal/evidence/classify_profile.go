@@ -23,7 +23,15 @@ func ClassifyEffect(in EffectInput) EffectProfile {
 	switch name {
 	case "ask", "todo_write", "complete_step", "bash_output", "wait":
 		return readOnlyProfile(nil, ReasonReadOnly)
-	case "remember", "forget", "set_session_title", "kill_shell":
+	// restart_update (task 472): every action writes outside the workspace —
+	// list_versions/restart are read/no-op on disk, set_target only stages in
+	// memory, and execute/restart move the install pointer under versions/
+	// (install root, not workspace). Classifying it host-state keeps the full
+	// permission gate (StateMutation stays true) while skipping the whole-
+	// workspace write lease, the checkpoint barrier, and preimage capture that
+	// a default writerProfile would pull in — the 55.4s silent-wait incident
+	// face. Same precedent as kill_shell.
+	case "remember", "forget", "set_session_title", "kill_shell", "restart_update":
 		return EffectProfile{Known: true, HostState: true, Reason: ReasonHostState}
 	}
 	profile := writerProfile(in)
