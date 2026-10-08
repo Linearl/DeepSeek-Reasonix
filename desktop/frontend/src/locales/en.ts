@@ -2122,7 +2122,6 @@ export const en = {
   "settings.labPicks.settingsPath": "Settings location:",
   // Task 561: merged family cards (entry-level merge only — every member
   // switch still saves through its own setter).
-  "settings.autonomousRunGuard": "Autonomous-run guards",
   "settings.modelStrategy": "Model strategy",
   "settings.contextGovernance": "Context governance",
   "settings.subagentSuite": "Subagents",
@@ -2535,8 +2534,13 @@ export const en = {
 "settings.detachedIdleReleaseHint": "A backgrounded session (tab closed) that has finished its turn and been idle for this many minutes gets its runtime released; session files stay on disk and reopening reloads normally. 0 = never release. Off by default; applies to the next release check.",
 "settings.goMemLimit": "Go soft memory limit (task 308-O3)",
 "settings.goMemLimitHint": "Sets the Go runtime soft memory limit in MB (debug.SetMemoryLimit): as the heap approaches the limit the runtime collects and returns memory to the OS more aggressively, countering heapSys that only ever grows. 0 = unbounded. Off by default; takes effect immediately.",
+"settings.safetyCostControl": "Safety / Cost Control",
+"settings.safetyCostControlHint": "One master switch for the unattended safety & cost guards: heartbeat idle self-terminate (anti-spin burn guard), loop neutral continue note (anti loop stall), and wait return-time recheck (anti lost wakeup). On = all three on, off = all three off; a legacy config with any of them on merges to on. The heartbeat guard applies immediately, the others after a restart.",
+"settings.safetyCostControl.on": "On",
+"settings.safetyCostControl.off": "Off",
+"settings.safetyCostControl.memberState": "State: {value} (follows the master switch)",
 "settings.autonomousIdleTerminate": "Heartbeat idle self-terminate",
-"settings.autonomousIdleTerminateHint": "Reserved: would disable a heartbeat task after 3 consecutive runs whose conversation never produced real history (burn guard against unattended spinning). The guard exists but is not wired into the run path yet — enabling this switch currently has no effect. Off by default.",
+"settings.autonomousIdleTerminateHint": "A heartbeat task auto-disables after 3 consecutive runs with no real conversation history (unattended anti-spin burn guard). Read at every run — toggling applies immediately. Off by default.",
 "settings.autonomousIdleTerminate.on": "On",
 "settings.autonomousIdleTerminate.off": "Off",
 "settings.loopStreakNote": "Loop neutral continue note",

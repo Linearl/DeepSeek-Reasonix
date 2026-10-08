@@ -84,11 +84,14 @@ console.log("\ntask 564 A-level copy fixes + retired-key read-only retention");
     ok(!/Enables the agent/.test(hint), `${name} feedbackHint drops the enable claim`);
   }
 
-  // autonomousIdleTerminate: reserved, not wired.
+  // autonomousIdleTerminate: wired since the call-time evaluation (S4) — the
+  // copy must say so. 任务 517 refreshed the stale "not wired" claim: the
+  // guard reads the switch at every run, so honest copy states immediate
+  // effect and the old reserved/no-effect wording is banned.
   for (const [name, src] of pairs) {
     const hint = src.match(/"settings\.autonomousIdleTerminateHint": "([^"]+)"/)?.[1] ?? "";
-    ok(/not wired|尚未接入|尚未接入/.test(hint), `${name} idleTerminateHint says the guard is not wired`);
-    ok(!/takes effect immediately|开启即刻生效|開啟即時生效/.test(hint), `${name} idleTerminateHint drops the immediate-effect claim`);
+    ok(/applies immediately|即时生效|即時生效/.test(hint), `${name} idleTerminateHint states the immediate effect`);
+    ok(!/not wired|尚未接入|currently has no effect|当前开启无效果|目前開啟無效果/.test(hint), `${name} idleTerminateHint drops the stale not-wired claim`);
   }
 
   // baseProcess: hosting NOT DONE — no savings promised.

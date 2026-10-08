@@ -1,7 +1,7 @@
 // Run: npx tsx src/__tests__/task562-experiment-tiers.test.ts
 // 任务 562 acceptance harness (lab three-tier badges):
-//  ① the tier register mirrors xlsx 表A exactly — 推荐 15 / 可选 20 /
-//     未稳定 10 / 已退役 1 = 46 (acceptance ④);
+//  ① the tier register mirrors xlsx 表A exactly — 推荐 15 / 可选 18 /
+//     未稳定 12 / 已退役 1 = 46 (acceptance ④; 任务 517 合并后口径);
 //  ② the wall picks are the 16 curated 表B W1 items, every pick carries a
 //     tier (12 recommended + 4 optional) (acceptance ② data half);
 //  ③ the frontend register and the Go labFeatureTiers registry in
@@ -44,11 +44,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 621 修正：562 原钉 15/20/10/1=46，漏收 toolOptimizations（任务 603，
   // 已在 562 合入后追加）与 tabModeTint（任务 504，Go 侧一直有档）——未稳定
   // 10→12、总数 46→48，两侧（Go labFeatureTiers）同源对齐。
-  ok(counts.recommended === 15 && counts.optional === 20 && counts.unstable === 12 && counts.retired === 1,
-    `register counts are 15/20/12/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 48, `register holds exactly 48 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 20 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 15/20/12/1");
+  // 任务 517：B1/B2/B3（可选×3）合并为 safetyCostControl（可选×1）——
+  // 可选 20→18、总数 48→46，两侧同源对齐。
+  ok(counts.recommended === 15 && counts.optional === 18 && counts.unstable === 12 && counts.retired === 1,
+    `register counts are 15/18/12/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 46, `register holds exactly 46 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 18 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 15/18/12/1");
 }
 
 // ② wall picks (表B W1).
@@ -74,7 +76,7 @@ console.log("\ntask 562 lab three-tier badges");
   for (const m of goSrc.matchAll(/\{"([a-zA-Z]+)", LabTier([A-Za-z]+), \[/g)) {
     goTiers[m[1]] = m[2].toLowerCase();
   }
-  ok(Object.keys(goTiers).length === 48, `Go registry parses to 48 entries (got ${Object.keys(goTiers).length})`);
+  ok(Object.keys(goTiers).length === 46, `Go registry parses to 46 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -94,15 +96,18 @@ console.log("\ntask 562 lab three-tier badges");
 // themselves; unknown ids stay clean.
 {
   const members = Object.values(LAB_RAIL_ENTRY_MEMBERS).flat();
-  ok(members.length === 18, `merged cards carry 18 member features (got ${members.length})`);
+  ok(members.length === 16, `merged cards carry 16 member features (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
-  ok(covered.size === 48, "rail entries cover all 48 features");
+  ok(covered.size === 46, "rail entries cover all 46 features");
   const gov = railTiersFor("contextGovernance");
   ok(gov[0] === "recommended" && gov[1] === "optional" && gov.length === 2, `contextGovernance shows [推荐, 可选] (got ${JSON.stringify(gov)})`);
   ok(JSON.stringify(railTiersFor("autopilot")) === JSON.stringify(["recommended"]), "standalone entry badges itself");
   ok(railTiersFor("preapproveManagedPaths").length === 0, "non-表A id (task-364 domain) shows no badge");
   ok(railTiersFor("modelStrategy").includes("retired"), "retired member surfaces on the modelStrategy card");
+  // 任务 517：safetyCostControl 是单键卡（无成员表）——自己作为表A id 挂徽章。
+  ok(JSON.stringify(railTiersFor("safetyCostControl")) === JSON.stringify(["optional"]),
+    `safetyCostControl badges itself as optional (got ${JSON.stringify(railTiersFor("safetyCostControl"))})`);
 }
 
 // ⑤ pane wiring in SettingsPanel (46/46) + rail render site.
