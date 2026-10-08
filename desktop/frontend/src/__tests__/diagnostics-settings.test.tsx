@@ -306,6 +306,26 @@ console.log("diagnostics settings page");
 
   const zhReport = baseReport(false);
   zhReport.issues = [
+
+// Task 625: same-code issues must cluster into one expandable row with an
+// inline goto-settings action on both the cluster row and each detail row.
+{
+  installDom();
+  window.localStorage.setItem("reasonix-lang", "en");
+
+  const clusterNavigations: SettingsTab[] = [];
+  const clusterReport = baseReport(false);
+  clusterReport.summary.warnings = 3;
+  clusterReport.summary.infos = 2;
+  clusterReport.issues = [
+    {
+      severity: "error",
+      code: "mcp.command_not_found",
+      subsystem: "mcp",
+      name: "demo-mcp",
+      message: "command missing",
+      settings_tab: "mcp",
+    },
     {
       severity: "warning",
       code: "skill.missing_description",
@@ -337,6 +357,50 @@ console.log("diagnostics settings page");
         CapabilityDiagnostics: async () => zhReport,
         RuntimeDoctor: async () => doctorReport,
         CrashPendingDiagnostics: async () => ({ count: 0, capacity: 50, retentionDays: 14, atCapacity: false }),
+
+      name: "nodesc-a",
+      source: "<workspace>/.reasonix/skills/nodesc-a/SKILL.md",
+      message: "no description",
+      settings_tab: "skills",
+    },
+    {
+      severity: "warning",
+      code: "skill.missing_description",
+      subsystem: "skills",
+      name: "nodesc-b",
+      source: "<workspace>/.reasonix/skills/nodesc-b/SKILL.md",
+      message: "no description",
+      settings_tab: "skills",
+    },
+    {
+      severity: "warning",
+      code: "instruction.orphan",
+      subsystem: "instructions",
+      name: "orphan",
+      message: "orphan import",
+      settings_tab: "memory",
+    },
+    {
+      severity: "info",
+      code: "skill.shadowed",
+      subsystem: "skills",
+      name: "shadow-a",
+      message: "shadowed",
+      settings_tab: "skills",
+    },
+    {
+      severity: "info",
+      code: "mcp.runtime_unavailable",
+      subsystem: "mcp",
+      name: "runtime",
+      message: "runtime unavailable",
+    },
+  ];
+
+  window.go = {
+    main: {
+      App: {
+        CapabilityDiagnostics: async () => clusterReport,
       } as Partial<AppBindings> as AppBindings,
     },
   };
@@ -350,7 +414,11 @@ console.log("diagnostics settings page");
       React.createElement(
         LocaleProvider,
         null,
-        React.createElement(DiagnosticsSettingsPage),
+        React.createElement(DiagnosticsSettingsPage, {
+          onNavigate: (tab: SettingsTab) => {
+            clusterNavigations.push(tab);
+          },
+        }),
       ),
     );
     await flush();
@@ -369,6 +437,96 @@ console.log("diagnostics settings page");
   ok(zhText.includes("属主回退=6"), "runtime metric labels must localize under zh");
   ok(zhText.includes("技术值，保留英文"), "raw dump caption must render under zh");
   ok(zhText.includes("runtime status: unavailable"), "raw backend dump must stay verbatim (technical value)");
+
+  await waitFor("cluster report", () => (rootEl.textContent || "").includes("skill.missing_description"));
+
+  // Acceptance 1+5: header shows total items AND issue-type count, plus the
+  // info-level scope note (6 items over 5 codes, 2 of them info).
+  const headerText = rootEl.textContent || "";
+  ok(headerText.includes("Issues (6"), `issues header must show total count, got: ${headerText.slice(0, 200)}`);
+  ok(headerText.includes("5 types"), "issues header must show issue-type count");
+  ok(headerText.includes("incl. 2 info-level"), "issues header must clarify the info-level scope");
+  ok(
+    headerText.includes("Warnings (3 · 2 types)"),
+    "severity group header must show item count and cluster count",
+  );
+
+  // Acceptance 3: explicit sort — severity groups, then count desc, then code asc.
+  const codeOrder = Array.from(rootEl.querySelectorAll(".diag-issue-cluster__toggle code")).map(
+    (el) => el.textContent || "",
+  );
+  ok(
+    JSON.stringify(codeOrder) ===
+      JSON.stringify([
+        "mcp.command_not_found",
+        "skill.missing_description",
+        "instruction.orphan",
+        "mcp.runtime_unavailable",
+        "skill.shadowed",
+      ]),
+    `cluster rows must sort by count desc then code asc, got ${JSON.stringify(codeOrder)}`,
+  );
+
+  // Collapsed: 25-to-1 style cluster row shows the multiplier, details hidden.
+  ok((rootEl.textContent || "").includes("× 2"), "cluster row must show the ×N multiplier");
+  const nodescPathVisibleCollapsed = (rootEl.textContent || "").includes("nodesc-a/SKILL.md");
+  ok(!nodescPathVisibleCollapsed, "detail paths must stay hidden while the cluster is collapsed");
+
+  // Acceptance 4: goto-settings reachable on the collapsed cluster row.
+  const clusterGoto = Array.from(rootEl.querySelectorAll(".diag-issue-cluster__row button")).find((b) =>
+    (b.textContent || "").includes("Open settings"),
+  );
+  ok(clusterGoto, "cluster row must expose a goto-settings action");
+  const gotoButtonsCollapsed = rootEl.querySelectorAll(".diag-issue-cluster__row .diag-issue__goto").length;
+  ok(gotoButtonsCollapsed === 4, `exactly 4 cluster goto buttons (no settings_tab on one cluster), got ${gotoButtonsCollapsed}`);
+  ok(
+    rootEl.querySelectorAll(".diag-issue .diag-issue__goto").length === 0,
+    "detail goto buttons must not render while collapsed",
+  );
+
+  // Expand the skill.missing_description cluster.
+  const clusterToggle = Array.from(rootEl.querySelectorAll(".diag-issue-cluster__toggle")).find((b) =>
+    (b.textContent || "").includes("skill.missing_description"),
+  );
+  ok(clusterToggle, "cluster toggle must exist");
+  await act(async () => {
+    clusterToggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+  });
+  const expandedText = rootEl.textContent || "";
+  ok(expandedText.includes("nodesc-a/SKILL.md"), "expanded cluster must show each detail path (nodesc-a)");
+  ok(expandedText.includes("nodesc-b/SKILL.md"), "expanded cluster must show each detail path (nodesc-b)");
+  ok(
+    rootEl.querySelectorAll(".diag-issue .diag-issue__goto").length === 2,
+    "each detail row must expose an inline goto-settings button",
+  );
+  ok(
+    clusterToggle!.getAttribute("aria-expanded") === "true",
+    "cluster toggle must report expanded state after click",
+  );
+
+  // Acceptance 2+4: cluster goto navigates once to the shared settings tab.
+  const warningClusterGoto = Array.from(rootEl.querySelectorAll(".diag-issue-cluster__row .diag-issue__goto")).find(
+    (b) => (b.closest(".diag-issue-cluster")?.textContent || "").includes("skill.missing_description"),
+  );
+  ok(warningClusterGoto, "warning cluster goto button must exist");
+  await act(async () => {
+    warningClusterGoto!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+  });
+  ok(clusterNavigations.includes("skills"), `cluster goto must navigate to skills, got ${JSON.stringify(clusterNavigations)}`);
+
+  // Detail-row goto (small inline button, not full width) also navigates.
+  const detailGoto = rootEl.querySelector(".diag-issue .diag-issue__goto") as HTMLButtonElement | null;
+  ok(detailGoto, "detail goto button must exist");
+  await act(async () => {
+    detailGoto!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+  });
+  ok(
+    clusterNavigations.filter((tab) => tab === "skills").length >= 2,
+    `detail goto must navigate to skills too, got ${JSON.stringify(clusterNavigations)}`,
+  );
 
   await act(async () => {
     root.unmount();

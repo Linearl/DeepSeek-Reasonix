@@ -2196,6 +2196,8 @@ export const zh: Record<DictKey, string> = {
   "diag.severity.warning": "警告",
   "diag.severity.info": "信息",
   "diag.gotoSettings": "前往设置",
+  "diag.issueTypes": "类",
+  "diag.issuesScope": "含信息级 {count} 条",
   "diag.instructions": "指令文件",
   "diag.skills": "技能",
   "diag.commands": "命令",

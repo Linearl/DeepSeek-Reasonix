@@ -3891,6 +3891,8 @@ export const zhTW: Record<DictKey, string> = {
   "diag.severity.warning": "警告",
   "diag.severity.info": "資訊",
   "diag.gotoSettings": "前往設定",
+  "diag.issueTypes": "類",
+  "diag.issuesScope": "含資訊級 {count} 條",
   "diag.instructions": "指令檔案",
   "diag.skills": "技能",
   "diag.commands": "命令",

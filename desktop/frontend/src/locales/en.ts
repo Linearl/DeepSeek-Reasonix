@@ -2198,6 +2198,8 @@ export const en = {
   "diag.severity.warning": "Warnings",
   "diag.severity.info": "Info",
   "diag.gotoSettings": "Open settings",
+  "diag.issueTypes": "types",
+  "diag.issuesScope": "incl. {count} info-level",
   "diag.instructions": "Instructions",
   "diag.skills": "Skills",
   "diag.commands": "Commands",

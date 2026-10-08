@@ -39624,6 +39624,70 @@ body > .mermaid-diagram--fullscreen {
 .diag-issue__fix {
   color: var(--text-muted, #888);
 }
+/* Task 625: same-code issue cluster row (collapsed summary + expandable details). */
+.diag-issues-scope {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted, #888);
+}
+.diag-issue-cluster {
+  border: 1px solid var(--border, rgba(127,127,127,.2));
+  border-radius: 8px;
+  padding: 4px 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.diag-issue-cluster + .diag-issue-cluster {
+  margin-top: 6px;
+}
+.diag-issue-cluster__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.diag-issue-cluster__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+  text-align: left;
+}
+.diag-issue-cluster__toggle code {
+  overflow-wrap: anywhere;
+}
+.diag-issue-cluster__toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.diag-issue-cluster__count {
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+.diag-issue-cluster__details {
+  margin: 2px 0 6px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.diag-issue--nested header {
+  justify-content: flex-start;
+}
+/* Goto button stays a small inline control pinned to its row's right edge, never full-width. */
+.diag-issue__goto {
+  align-self: flex-start;
+  margin-left: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .diag-path {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;

@@ -100,6 +100,35 @@ export function DiagnosticsSettingsPage({
     return groups;
   }, [report]);
 
+  // Task 625: cluster same-code issues so e.g. 25x skill.missing_description
+  // collapses into one row. Sort order (explicit, stable): severity group
+  // error > warning > info; within a group, count descending, then code
+  // ascending; details inside a cluster keep the backend order.
+  const issuesByCode = useMemo(() => {
+    const result: Record<string, Array<{ code: string; issues: CapabilityIssue[] }>> = {
+      error: [],
+      warning: [],
+      info: [],
+    };
+    for (const sev of ["error", "warning", "info"] as const) {
+      const byCode = new Map<string, CapabilityIssue[]>();
+      for (const issue of issuesBySeverity[sev]) {
+        const list = byCode.get(issue.code);
+        if (list) list.push(issue);
+        else byCode.set(issue.code, [issue]);
+      }
+      result[sev] = Array.from(byCode.entries())
+        .map(([code, list]) => ({ code, issues: list }))
+        .sort((a, b) => b.issues.length - a.issues.length || a.code.localeCompare(b.code));
+    }
+    return result;
+  }, [issuesBySeverity]);
+
+  const issueTypeCount = useMemo(
+    () => new Set((report?.issues ?? []).map((issue) => issue.code)).size,
+    [report],
+  );
+
   const copyJSON = async () => {
     if (!report) return;
     try {
@@ -260,7 +289,12 @@ export function DiagnosticsSettingsPage({
           <section className="diag-section">
             <button type="button" className="diag-section__header" onClick={() => toggle("issues")}>
               {open.issues ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              <span>{t("diag.issues")} ({report.issues.length})</span>
+              <span>
+                {t("diag.issues")} ({report.issues.length} · {issueTypeCount} {t("diag.issueTypes")})
+              </span>
+              <span className="diag-issues-scope">
+                {t("diag.issuesScope", { count: report.summary.infos })}
+              </span>
             </button>
             {open.issues && (
               <div className="diag-section__body">
@@ -268,26 +302,66 @@ export function DiagnosticsSettingsPage({
                 {(["error", "warning", "info"] as const).map((sev) =>
                   issuesBySeverity[sev].length === 0 ? null : (
                     <div key={sev} className={`diag-issue-group diag-issue-group--${sev}`}>
-                      <h4>{t(`diag.severity.${sev}` as "diag.severity.error")}</h4>
-                  {issuesBySeverity[sev].map((issue, idx) => {
-                    const copy = localizeIssue(issue, t);
-                    return (
-                      <article key={`${issue.code}-${issue.name ?? ""}-${idx}`} className="diag-issue">
-                        <header>
-                          <code>{issue.code}</code>
-                          {issue.name ? <span className="diag-issue__name">{issue.name}</span> : null}
-                        </header>
-                        <p className="diag-issue__msg">{copy.message}</p>
-                        {issue.source ? <p className="diag-path">{issue.source}</p> : null}
-                        {copy.remediation ? <p className="diag-issue__fix">{copy.remediation}</p> : null}
-                        {issue.settings_tab && onNavigate ? (
-                          <button type="button" className="btn btn--secondary btn--small" onClick={() => goSettings(issue.settings_tab)}>
-                            {t("diag.gotoSettings")}
-                          </button>
-                        ) : null}
-                      </article>
-                    );
-                  })}
+                      <h4>
+                        {t(`diag.severity.${sev}` as "diag.severity.error")} ({issuesBySeverity[sev].length} ·{" "}
+                        {issuesByCode[sev].length} {t("diag.issueTypes")})
+                      </h4>
+                      {issuesByCode[sev].map((cluster) => {
+                        const clusterKey = `issue:${sev}:${cluster.code}`;
+                        const clusterOpen = !!open[clusterKey];
+                        const settingsTab = cluster.issues.find((issue) => issue.settings_tab)?.settings_tab;
+                        return (
+                          <div key={cluster.code} className="diag-issue-cluster">
+                            <div className="diag-issue-cluster__row">
+                              <button
+                                type="button"
+                                className="diag-issue-cluster__toggle"
+                                onClick={() => toggle(clusterKey)}
+                                aria-expanded={clusterOpen}
+                              >
+                                {clusterOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                <code>{cluster.code}</code>
+                                <span className="diag-issue-cluster__count">× {cluster.issues.length}</span>
+                              </button>
+                              {settingsTab && onNavigate ? (
+                                <button
+                                  type="button"
+                                  className="btn btn--secondary btn--small diag-issue__goto"
+                                  onClick={() => goSettings(settingsTab)}
+                                >
+                                  {t("diag.gotoSettings")}
+                                </button>
+                              ) : null}
+                            </div>
+                            {clusterOpen && (
+                              <div className="diag-issue-cluster__details">
+                                {cluster.issues.map((issue, idx) => {
+                                  const copy = localizeIssue(issue, t);
+                                  return (
+                                  <article key={`${issue.code}-${issue.name ?? ""}-${idx}`} className="diag-issue diag-issue--nested">
+                                    <header>
+                                      {issue.name ? <span className="diag-issue__name">{issue.name}</span> : null}
+                                      {issue.settings_tab && onNavigate ? (
+                                        <button
+                                          type="button"
+                                          className="btn btn--secondary btn--small diag-issue__goto"
+                                          onClick={() => goSettings(issue.settings_tab)}
+                                        >
+                                          {t("diag.gotoSettings")}
+                                        </button>
+                                      ) : null}
+                                    </header>
+                                    <p className="diag-issue__msg">{copy.message}</p>
+                                    {issue.source ? <p className="diag-path">{issue.source}</p> : null}
+                                    {copy.remediation ? <p className="diag-issue__fix">{copy.remediation}</p> : null}
+                                  </article>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ),
                 )}
