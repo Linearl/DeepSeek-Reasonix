@@ -4,12 +4,21 @@ import type { HistoryMessage, WireFinalReadiness, WireDecisionReceipt } from "./
 import type { Item } from "./useController";
 import { readPauseItem } from "./readPause";
 
+// Task 658: the concurrent-writer notice used to be plain text pointing at a
+// manual route (history panel → select the conversation → View versions). The
+// inline button opens the same version dialog directly, so the notice carries
+// its own action instead of only describing one.
+function inlineActionForCode(code?: string): "view_versions" | undefined {
+  return code === "session_concurrent_writer" ? "view_versions" : undefined;
+}
+
 export function appendNoticeItem(items: Item[], seq: number, id: string, level: "info" | "warn", rawText: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt): { items: Item[]; seq: number } {
   if (quietTranscriptNoticeKey(rawText, code)) return { items, seq };
   const text = localizedNoticeText(rawText, code);
   if (quietTranscriptNoticeKey(text, code)) return { items, seq };
   const trimmedDetail = detail?.trim();
-  return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(code ? { code } : {}), ...(decisionReceipt ? { decisionReceipt } : {}) }], seq: seq + 1 };
+  const inlineAction = inlineActionForCode(code);
+  return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(code ? { code } : {}), ...(decisionReceipt ? { decisionReceipt } : {}), ...(inlineAction ? { action: inlineAction } : {}) }], seq: seq + 1 };
 }
 
 export function errorMessage(err: unknown): string {
@@ -193,6 +202,8 @@ export function historyNoticeItems(m: HistoryMessage, id: string): Item[] {
   const text = localizedNoticeText(m.content, m.code);
   if (quietTranscriptNoticeKey(text, m.code)) return [];
   const detail = m.detail?.trim();
+  const inlineAction = inlineActionForCode(m.code);
   return [{ kind: "notice", id, level: m.level === "warn" ? "warn" : "info", text,
-    ...(detail ? { detail } : {}), ...(m.decisionReceipt ? { decisionReceipt: m.decisionReceipt } : {}) }];
+    ...(detail ? { detail } : {}), ...(m.decisionReceipt ? { decisionReceipt: m.decisionReceipt } : {}),
+    ...(inlineAction ? { action: inlineAction } : {}) }];
 }

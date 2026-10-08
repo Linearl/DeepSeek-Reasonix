@@ -6,6 +6,7 @@ import type { State } from "../lib/useController";
 import type { TabMeta } from "../lib/types";
 import type { RemoteSessionApi } from "../lib/useRemoteSession";
 import type { Translator } from "../lib/i18n";
+import { requestTopicVersionsForSession } from "../lib/sessionRecoveryVersionHostBridge";
 import type { useAppRuntimeAdapter } from "../app-runtime/useAppRuntimeAdapter";
 import type { useNavigationSurface } from "../lib/useNavigationSurface";
 import type { useAppShellStores } from "../app-runtime/useAppShellStores";
@@ -353,6 +354,7 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
               onAcceptDelivery: session.controlCommands.handleAcceptDelivery,
               onOpenChanges: session.turnVerificationCommands.openTurnChanges,
               onOpenVerification: session.turnVerificationCommands.openTurnVerification,
+              onViewVersions: () => requestTopicVersionsForSession(activeTab),
               onEditPrompt: session.sessionUndo.handleEditPrompt,
               onResendPrompt: session.sessionUndo.handleEditPrompt,
               onRewind: session.sessionUndo.handleMessageAction,
