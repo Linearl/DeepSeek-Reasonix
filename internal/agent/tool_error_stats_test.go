@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -111,5 +112,86 @@ func TestToolErrorStatsInMemorySessionSkipsFile(t *testing.T) {
 	a.recordToolErrorStats("read_file", toolOutcome{output: "ok"})
 	if a.toolErrorStatsPath() != "" {
 		t.Fatal("in-memory session must not produce a sidecar path")
+	}
+}
+
+// TestToolErrorStatsParallelRecording pins the task 252 crash surface (审查-2,
+// 2026-09-22): recordToolErrorStats runs on parallel tool goroutines, so the
+// Tools map write was a live `fatal error: concurrent map writes` until
+// toolStatsMu landed (2026-09-30). Parallel recording plus a concurrent
+// snapshot reader must produce exact totals — a regression to unguarded access
+// fatal-crashes the whole test binary instead of failing an assertion.
+func TestToolErrorStatsParallelRecording(t *testing.T) {
+	// In-memory session: the sidecar write holds the same mutex, so skipping
+	// the file keeps this test focused on the map invariant.
+	a := &Agent{}
+	a.sess.path = ""
+
+	const writers = 16
+	const perWriter = 200
+	var wg sync.WaitGroup
+	// Each writer tallies the outcomes it recorded, so the final assertion
+	// compares exact totals without relying on the rotation's distribution.
+	totals := make([]struct{ plain, soft, hard int }, writers)
+	for g := 0; g < writers; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < perWriter; i++ {
+				switch (g + i) % 3 {
+				case 0:
+					a.recordToolErrorStats("read_file", toolOutcome{output: "ok"})
+					totals[g].plain++
+				case 1:
+					a.recordToolErrorStats("bash", toolOutcome{errMsg: "spawn failed"})
+					totals[g].soft++
+				case 2:
+					a.recordToolErrorStats("use_capability", toolOutcome{blocked: true, output: "blocked: schema"})
+					totals[g].hard++
+				}
+			}
+		}(g)
+	}
+	// A concurrent reader mirrors what a UI/status poller does mid-turn; the
+	// snapshot takes the same mutex and must never observe a torn map.
+	stop := make(chan struct{})
+	var readerDone sync.WaitGroup
+	readerDone.Add(1)
+	go func() {
+		defer readerDone.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = a.ToolErrorStatsSnapshot()
+			}
+		}
+	}()
+	wg.Wait()
+	close(stop)
+	readerDone.Wait()
+
+	got := a.ToolErrorStatsSnapshot()
+	if len(got) != 3 {
+		t.Fatalf("tracked %d tools, want 3: %+v", len(got), got)
+	}
+	var wantPlain, wantSoft, wantHard int
+	for _, c := range totals {
+		wantPlain += c.plain
+		wantSoft += c.soft
+		wantHard += c.hard
+	}
+	if have := got["read_file"]; have.Calls != wantPlain || have.HardErrors != 0 || have.SoftErrors != 0 {
+		t.Fatalf("read_file = %+v, want %d plain calls", have, wantPlain)
+	}
+	if have := got["bash"]; have.Calls != wantSoft || have.SoftErrors != wantSoft || have.HardErrors != 0 {
+		t.Fatalf("bash = %+v, want %d soft-error calls", have, wantSoft)
+	}
+	if have := got["use_capability"]; have.Calls != wantHard || have.HardErrors != wantHard || have.SoftErrors != 0 {
+		t.Fatalf("use_capability = %+v, want %d hard-error calls", have, wantHard)
+	}
+	if wantPlain+wantSoft+wantHard != writers*perWriter {
+		t.Fatalf("tally %d+%d+%d != %d recorded calls", wantPlain, wantSoft, wantHard, writers*perWriter)
 	}
 }
