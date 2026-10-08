@@ -2022,7 +2022,10 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const m = e.maintenance;
       if (!m || m.status === "noop") return s;
       if (!isNewMaintenanceOperation(s.seenMaintenanceOps, m.operationId)) return s;
-      const next = appendNoticeToState(s, m.status === "failed" ? "warn" : "info", formatContextMaintenanceNotice(m, t), m.reason);
+      // Task 633: a failed refresh with the fold kept is a safe state (compaction
+      // live, refresh retryable) — informational, not a warning.
+      const level = m.status === "failed" && !m.foldInstalled ? "warn" : "info";
+      const next = appendNoticeToState(s, level, formatContextMaintenanceNotice(m, t), m.reason);
       return { ...next, seenMaintenanceOps: rememberMaintenanceOperation(s.seenMaintenanceOps, m.operationId) };
     }
     case "phase":

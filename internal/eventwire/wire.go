@@ -152,7 +152,7 @@ func ToWire(e event.Event) Event {
 				ResultTokens: m.ResultTokens, SavedTokens: m.SavedTokens,
 				AffectedToolResults: m.AffectedToolResults,
 				ProjectionVersion:   m.ProjectionVersion, CacheBreak: m.CacheBreak,
-				Reason: m.Reason,
+				Reason: m.Reason, FoldInstalled: m.FoldInstalled,
 			}
 		}
 	case event.GuardianAssessment:
@@ -608,6 +608,7 @@ type ContextMaintenance struct {
 	ProjectionVersion   uint64 `json:"projectionVersion,omitempty"`
 	CacheBreak          bool   `json:"cacheBreak,omitempty"`
 	Reason              string `json:"reason,omitempty"`
+	FoldInstalled       bool   `json:"foldInstalled,omitempty"`
 }
 
 // ExtensionSurface is the JSON form of an event.ExtensionSurfacePayload.

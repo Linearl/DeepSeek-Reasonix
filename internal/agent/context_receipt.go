@@ -75,19 +75,22 @@ func (a *Agent) emitContextMaintenance(r *ContextMaintenanceReceipt) {
 		Status: r.Status, Action: r.Action, Trigger: r.Trigger, OperationID: r.OperationID,
 		InputTokens: r.InputTokens, ResultTokens: r.ResultTokens, SavedTokens: r.SavedTokens,
 		AffectedToolResults: r.AffectedToolResults, ProjectionVersion: r.ProjectionVersion,
-		CacheBreak: r.CacheBreak, Reason: r.Reason,
+		CacheBreak: r.CacheBreak, Reason: r.Reason, FoldInstalled: r.FoldInstalled,
 	}})
 }
 
 // recordContextMaintenanceBlocked persists a generation-scoped blocked receipt.
 func (a *Agent) recordContextMaintenanceBlocked(inputHash, trigger, action, reason string) {
-	a.recordContextMaintenanceOutcome(inputHash, trigger, action, "blocked", reason)
+	a.recordContextMaintenanceOutcome(inputHash, trigger, action, "blocked", reason, false)
 }
 
 // recordContextMaintenanceOutcome records blocked or failed for the current
 // generation. Automatic Prepare will not re-enter summary until the generation
 // advances (successful install, manual compress, or lineage change).
-func (a *Agent) recordContextMaintenanceOutcome(inputHash, trigger, action, status, reason string) {
+// foldInstalled reports that an earlier ladder round of the same pass already
+// installed a fold (task 303), so the failure is a missing summary refresh on a
+// kept compaction, not the compaction itself failing.
+func (a *Agent) recordContextMaintenanceOutcome(inputHash, trigger, action, status, reason string, foldInstalled bool) {
 	if a == nil || a.sess.conversation == nil {
 		return
 	}
@@ -138,7 +141,7 @@ func (a *Agent) recordContextMaintenanceOutcome(inputHash, trigger, action, stat
 		OperationID: fmt.Sprintf("%s-%s-%d", status, action, state.Generation), Status: status, Action: action,
 		Trigger: trigger, SourceProjection: state.Projection.ProjectionVersion,
 		ProjectionVersion: state.Projection.ProjectionVersion, InputHash: inputHash,
-		InputTokens: inputTokens, BlockedInputHash: inputHash, Reason: reason, CreatedAt: now,
+		InputTokens: inputTokens, BlockedInputHash: inputHash, Reason: reason, FoldInstalled: foldInstalled, CreatedAt: now,
 	}
 	state.UpdatedAt = now
 	a.sess.compactionState = state
