@@ -46,7 +46,7 @@ import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
 import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydrateFailureDetail, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
-import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, hydratedHistoryApplyMode, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
+import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, hydratedHistoryApplyMode, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
 import { prefetchMruTabs, type PrefetchCandidate } from "./transcriptPrefetch";
 import { loadLastActiveTabId, saveLastActiveTabId } from "./layoutPreferences";
@@ -314,7 +314,7 @@ const HISTORY_PAGE_TURNS = 60;
 
 export type TurnPhaseName = "working" | "checking" | "verifying" | "reviewing" | string;
 export type Item =
-  | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number }
+  | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[] }
   | { kind: "phase"; id: string; text: string }
   | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string }
@@ -857,11 +857,9 @@ const STARTUP_TAB_POLL_INTERVAL_MS = 120;
 const STARTUP_TAB_POLL_MAX_ATTEMPTS = 250;
 
 function historyFingerprintMatchesMeta(history: { revision: number; revisionKnown?: boolean; digest?: string }, meta: Meta): boolean {
-  const expectedDigest = (meta.sessionDigest ?? "").trim();
-  if (expectedDigest && history.digest !== expectedDigest) return false;
-  const expectedRevision = meta.sessionRevision ?? 0;
-  if (expectedRevision > 0 && (!history.revisionKnown || history.revision !== expectedRevision)) return false;
-  return true;
+  // 任务580: canonical comparator moved to hydrateHistoryApply.fingerprintMatchesMeta
+  // (unit-tested there); this wrapper keeps the projection call sites' shape.
+  return fingerprintMatchesMeta(history, meta);
 }
 
 /** Mirrors Go backend's ReadOnly() hints. */
@@ -2096,6 +2094,25 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // the consume-time event must not double it.
       if (e.itemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === e.itemId)) return s;
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${e.text ?? ""}`, inboxItemId: e.itemId }] };
+    case "user_input": {
+      // 任务580: a durable inbox item just became a NEW turn's input. The wire
+      // protocol has no other user-message channel (composer submissions
+      // render their row optimistically and never emit this kind), so without
+      // appending here the transcript stays without the message until a
+      // history reload — the 2026-10-07 "到达不渲染" report. Idempotent on
+      // itemId: ClaimItem admits one turn per item and replays (mirror queue,
+      // turn-event replay) carry the same id. The turn lifecycle itself
+      // (running/timing) is turn_started's job, arriving right after.
+      const text = e.text ?? "";
+      if (!text.trim()) return s;
+      if (e.itemId && s.items.some((item) => item.kind === "user" && item.inboxItemId === e.itemId)) return s;
+      if (s.pendingUser !== undefined && s.pendingUser === text) return s;
+      return {
+        ...s,
+        seq: s.seq + 1,
+        items: [...s.items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: Date.now() }],
+      };
+    }
     case "approval_request": {
       if (s.cancelRequested) return s;
       // A delayed re-delivery of a prompt the user already answered locally
@@ -3311,6 +3328,27 @@ export function useController() {
         options.skipHistory ||
         (options.preserveCachedHistory && !resetSurface && hasReusableCachedTranscript(statesRef.current.get(tabId), sessionPath, sessionRevision, sessionDigest)),
       );
+      // 任务580 (switch-back freshness): the reuse branch above trusts the
+      // resident surface without asking whether the session grew while the tab
+      // was away — a background inbox turn consumed by the idle bridge, a
+      // collab message, any other writer. The 2026-10-07 report: the consumed
+      // message never showed up, and switching away and back kept serving the
+      // stale resident transcript with zero fetches and zero reconciles. Before
+      // committing to the fetch-free switch, compare the resident page
+      // fingerprint against a fresh branch-meta read (sidecar file — no
+      // history decode): a match keeps the fast path fast, a mismatch (or an
+      // unreadable meta — freshness then unprovable) drops back to the bounded
+      // latest-page fetch. Callers that asked for skipHistory explicitly keep
+      // their contract (reset-surface local-snapshot path).
+      let freshMeta: Meta | undefined;
+      let residentStale = false;
+      if (skipHistory && !options.skipHistory) {
+        const resident = statesRef.current.get(tabId);
+        freshMeta = await loadMetaForTab(tabId);
+        if (!sessionLoadCurrent(tabId, seq)) return;
+        residentStale = !residentSurfaceFresh(resident, freshMeta);
+        if (residentStale) skipHistory = false;
+      }
       // Task 123: record which branch decided, so the monitor board can answer
       // "did this switch reuse the cache" without guessing from timings.
       // Task 151 (B-level): when the resident cache was vetoed, log WHY —
@@ -3343,9 +3381,13 @@ export function useController() {
             // branch. Split at the judgement point so the 69% bucket becomes
             // attributable (which caller wants a rebuild vs which policy does).
             ? reset ? "reset" : "replace-surface"
-            : residentVeto
-              ? "cache-vetoed"
-              : "backend-fetch";
+            : residentStale
+              // 任务580: the resident copy was reusable but provably stale —
+              // the meta fingerprint moved while the tab was away.
+              ? "resident-stale"
+              : residentVeto
+                ? "cache-vetoed"
+                : "backend-fetch";
       noteHydrateDecision({
         tabId,
         sessionPath,
@@ -3417,8 +3459,13 @@ export function useController() {
           getTranscriptStore().loadLatest(tabId, sessionPath, {
             turns: HISTORY_PAGE_TURNS,
             preferResident: shouldPreferResidentHistory(resetSurface, options.preserveCachedHistory),
-            expectedRevision: sessionRevision,
-            expectedDigest: sessionDigest,
+            // 任务580: when the switch-back freshness check un-skipped this
+            // hydrate, expectedRevision/Digest carry the FRESH meta values —
+            // the caller's snapshot predates the append that made the resident
+            // stale, and binding the fetch to it would defeat the store's own
+            // resident-shortcut veto.
+            expectedRevision: freshMeta?.sessionRevision ?? sessionRevision,
+            expectedDigest: freshMeta?.sessionDigest ?? sessionDigest,
             // 任务 451 分相打点：loadLatest 内部（bridge 往返 / 记录换转）逐段
             // 上报，`<reason>:history/<phase>` 进入 desktop.log（>=150ms）与
             // summary 行，回答"history 这 1.4s 花在后端还是前端"。
@@ -3507,7 +3554,11 @@ export function useController() {
         addBreadcrumb("tab.hydrate", `ancillary skipped inactive ${reason} ${tabId}`);
         return;
       }
-      let meta = await loadTimed("meta", () => loadMetaForTab(tabId));
+      // 任务580: on the fetch-free switch the freshness check already read the
+      // meta this hydrate validated against — reuse it instead of a second
+      // MetaForTab round trip. A fetched page reloads meta as before (the page
+      // may have moved past the pre-fetch snapshot).
+      let meta = skipHistory && freshMeta !== undefined ? freshMeta : await loadTimed("meta", () => loadMetaForTab(tabId));
       if (!stillCurrent()) return;
       if (!stillVisible()) {
         addBreadcrumb("tab.hydrate", `meta ignored inactive ${reason} ${tabId}`);

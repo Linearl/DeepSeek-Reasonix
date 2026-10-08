@@ -133,6 +133,45 @@ export function shouldPreferResidentHistory(reset: boolean, preserveCachedHistor
   return !reset && preserveCachedHistory !== false;
 }
 
+// ── 任务580: switch-back freshness ───────────────────────────────────────────
+//
+// The switch-back reuse path (hasReusableCachedTranscript) serves the resident
+// surface with zero fetches; nothing in that path noticed the session growing
+// while the tab was away — a background inbox turn consumed by the idle
+// bridge, a collab message, any other writer (the 2026-10-07 "切回不刷新"
+// report: the consumed message never appeared, and switching away and back
+// kept serving the stale resident transcript). The gate below is the canonical
+// fingerprint comparison against a fresh branch-meta read (a sidecar file, not
+// a history decode): a match keeps the fast path fast; a mismatch — or an
+// unreadable meta / fingerprint-less resident, where freshness is unprovable —
+// sends the hydrate back to the bounded latest-page fetch.
+export function fingerprintMatchesMeta(
+  history: { revision: number; revisionKnown?: boolean; digest?: string },
+  meta: { sessionRevision?: number; sessionDigest?: string },
+): boolean {
+  const expectedDigest = (meta.sessionDigest ?? "").trim();
+  if (expectedDigest && (history.digest ?? "") !== expectedDigest) return false;
+  const expectedRevision = meta.sessionRevision ?? 0;
+  if (expectedRevision > 0 && (!history.revisionKnown || history.revision !== expectedRevision)) return false;
+  return true;
+}
+
+/** The resident tab surface's page fingerprint against fresh meta (任务580). */
+export function residentSurfaceFresh(
+  state: Pick<HydrateLiveState, "historyRevision" | "historyDigest"> | undefined,
+  meta: { sessionRevision?: number; sessionDigest?: string } | undefined,
+): boolean {
+  if (!state || !meta) return false;
+  return fingerprintMatchesMeta(
+    {
+      revision: state.historyRevision ?? 0,
+      revisionKnown: state.historyRevision !== undefined,
+      digest: state.historyDigest ?? "",
+    },
+    meta,
+  );
+}
+
 function sameHydrateFingerprint(state: HydrateLiveState | undefined, projection: HydrateProjection | undefined): boolean {
   if (!state || !projection) return false;
   const revision = projection.revision ?? 0;
