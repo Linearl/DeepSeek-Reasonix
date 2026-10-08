@@ -1262,6 +1262,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Crash overlay "Send report" (desktop/crash_app.go): scrubs user paths, attaches
   // version/os/arch, POSTs to the collection endpoint. Only ever sent on user click.
   ReportCrash(kind: string, detail: string): Promise<void>;
+  // Task 642 lab mock-crash drill (desktop/crash_mock.go): runs the synthetic
+  // report through the same real channel, queueing it in crash-pending on
+  // upload failure. Returns "uploaded" or "queued" so the UI can say which leg
+  // the drill exercised. Optional: absent on backends older than 642.
+  ReportMockCrash?(kind: string, detail: string): Promise<string>;
   // Task 618: diagnostics-settings view of the local crash-pending queue so a
   // stuck upstream (count pinned at capacity) is visible to the user.
   CrashPendingDiagnostics(): Promise<CrashPendingDiagnosticsReport>;
