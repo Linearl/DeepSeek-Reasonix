@@ -35,6 +35,19 @@ agent. It is the Reasonix analog of Claude Code's CLAUDE.md.
   channels (session lease, single-instance yield, launcher relaunch-wait,
   frontend send rejection) each have one in `*_test.go` pinning the wording.
   New silent channels are review findings, not acceptable shape.
+- Async hops must stay attributable (task 393): every new background task,
+  async worker, or cross-session path must carry an existing identity from the
+  chain — the canonical session key, the turn ledger's
+  sessionId/turnId/submissionId, a contact/topic id, or a `feature=` log
+  field — so its logs and artifacts answer "whose work is this". A hop that
+  cannot name its owner is an unobservable channel and a review finding, the
+  async sibling of a silent error path.
+- Match by identity, not path spelling (task 393): comparisons that decide
+  routing, binding, dedup, or cache reuse go through the identity keys —
+  `sessionRuntimeKey`, `pathidentity.Canonical`, `sameProjectRoot` — not raw
+  path strings. Raw equality is acceptable only where a mismatch fails closed
+  (admission fences); a path-derived cache key must carry a content or
+  generation guard (the DAG load cache is the pattern).
 - A mutex- or atomic-guarded struct is ratcheted on its **scalar** field count
   (`struct-state`), not its total: independent flags multiply into states no
   type records as legal. Fixing a boundary case by adding one more `bool` is
