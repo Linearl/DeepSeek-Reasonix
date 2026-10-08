@@ -55,13 +55,17 @@ func ensureWERLocalDumps() (string, error) {
 }
 
 // installWERLocalDumps is the startup wiring: log-and-continue, never fatal.
+// 任务 404 (2026-10-08): the HKCU face is best-effort only — the machine-level
+// verification proved WER dump collection does not honor per-user LocalDumps
+// keys (four probe crashes left zero dumps and zero WER events), so the line
+// names the exact elevated next step instead of implying full coverage.
 func installWERLocalDumps() {
 	folder, err := ensureWERLocalDumps()
 	if err != nil {
 		log.Printf("[crash] WER LocalDumps registration failed: %v", err)
 		return
 	}
-	log.Printf("[crash] WER LocalDumps registered for reasonix-desktop.exe (dumps → %s)", folder)
+	log.Printf("[crash] WER LocalDumps registered for reasonix-desktop.exe (HKCU best-effort; machine-wide dumps need one elevated step: reasonix-launcher localdumps ensure --machine; dumps → %s)", folder)
 }
 
 // readWERLocalDumpsFolder reads back the registered DumpFolder (task 188 tests).

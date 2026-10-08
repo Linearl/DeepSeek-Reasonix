@@ -1,5 +1,7 @@
 // Package desktoplauncher implements the permanent Reasonix desktop entry
-// point. It deliberately owns no crash-loop, rollback, or safe-mode policy.
+// point. It deliberately owns no crash-loop counting, rollback, or safe-mode
+// policy: the detach path (task 404) additionally keeps the launcher resident
+// for one abnormal-exit restart, and never goes beyond that one restart.
 package desktoplauncher
 
 import (
@@ -61,11 +63,18 @@ func Run(args []string, buildVersion string) int {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = installRoot
 	if DetachByDefault() {
+		// 任务 404：the packaged launcher's stderr is the silent channel —
+		// point the process (and the desktop child's early-boot fd 2) at the
+		// rolling launcher log first. Failure keeps the old silent behavior.
+		if logFile := installLauncherLog(); logFile != nil {
+			cmd.Stderr = logFile
+			defer logFile.Close()
+		}
 		if err := cmd.Start(); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1
 		}
-		return 0
+		return superviseDesktop(cmd, installRoot, desktopPath, args)
 	}
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError
@@ -201,6 +210,10 @@ func DetachByDefault() bool {
 	name := strings.ToLower(filepath.Base(exe))
 	return name == "reasonix-launcher.exe" || name == "reasonix.exe"
 }
+
+// detachByDefault is the test seam over DetachByDefault: Run's detach branches
+// (log redirection, resident supervision) are exercisable on every platform.
+var detachByDefault = DetachByDefault
 
 func usage() {
 	fmt.Println("usage: reasonix-launcher [args...]")

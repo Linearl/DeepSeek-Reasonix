@@ -16,10 +16,17 @@ import (
 var version = "dev"
 
 func main() {
+	if crashProbeRequested() {
+		crashProbeNow()
+		return
+	}
 	os.Exit(run(os.Args[1:]))
 }
 
 func run(args []string) int {
+	if len(args) > 0 && args[0] == "localdumps" {
+		return runLocaldumps(args[1:])
+	}
 	return desktoplauncher.Run(args, version)
 }
 
