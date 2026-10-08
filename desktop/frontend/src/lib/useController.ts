@@ -335,6 +335,9 @@ export type Item =
       name: string;
       args: string;
       readOnly: boolean;
+      /** Registered static safety metadata (task 426 single source); absent for dynamic tools. */
+      riskLevel?: "low" | "medium" | "high";
+      destructive?: boolean;
       resolvedName?: string;
       capabilityId?: string; subagentOutcome?: import("./subagentOutcome").SubagentOutcome;
       status: ToolStatus;
