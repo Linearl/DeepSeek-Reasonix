@@ -988,7 +988,7 @@ const CHECKS = [
   // 缺一，开关就「看得见配置改不了」或「改了读不回」。
   { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅；任务561 misc→infra）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "{ id: \"baseProcess\", group: \"infra\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
   { feature: "S1 开关桥接线（接口声明+mock 桩）", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["SetExperimentalBaseProcess(enabled: boolean): Promise<void>;", "async SetExperimentalBaseProcess() {}"] },
-  { feature: "S1 开关 Go 侧读写链（setter+视图字段）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:             cfg.Agent.ExperimentalBaseProcess"] },
+  { feature: "S1 开关 Go 侧读写链（setter+视图字段；517 合并键收窄对齐列后锚随 gofmt 对齐更新）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:       cfg.Agent.ExperimentalBaseProcess"] },
   // ── 任务 451：history 慢分相打点 + planner/尾读缓存（2026-10-02）──────
   // 打点件是验收基建（phases 一行可 grep 重建）；A 缓存三道闸（校验命中 /
   // 写侧失效 / 单飞+上限）与 C 单飞都要在 merge 后存活，否则 planner-turns
