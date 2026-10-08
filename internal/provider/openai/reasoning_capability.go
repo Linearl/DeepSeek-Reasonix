@@ -40,7 +40,25 @@ func ReasoningForConfig(cfg provider.Config) provider.ReasoningCapability {
 		}
 	case protocol == "" && IsOllamaCloud(cfg.BaseURL):
 		cap = provider.ReasoningOptions("", "none", "low", "medium", "high", "max")
-	case protocol == "openai" || (protocol == "" && IsMiMo(cfg.BaseURL)):
+	case protocol == "" && IsMiMo(cfg.BaseURL):
+		// Task 606: MiMo's reasoning_effort wire domain includes "none"
+		// (thinking off) — internal/config's normalizeMimoEffort folds
+		// none/disabled/off onto none and the value passes through to the wire
+		// verbatim. The capability used to omit it, so a stock entry armed a
+		// none override at the probe gate and had the very next request
+		// rejected by reasoning.Validate below (and a persisted effort=none
+		// failed New outright at configuredEffort). Listing none keeps the
+		// capability equal to the probe vocabulary (mimoRequestEffortVocabulary),
+		// so both gates accept it naturally instead of needing a per-gate fork
+		// exception like GLM's binary thinking clip. An explicit
+		// supported_efforts list still replaces this vocabulary via
+		// DeclaredReasoning — a declaration that excludes none stays authoritative.
+		cap = provider.ReasoningOptions("", "none", "low", "medium", "high")
+	case protocol == "openai":
+		// Generic OpenAI-compatible protocol with no known vendor effort
+		// scale: keep the three canonical levels. "none" stays out — a
+		// reasoning_effort of none is a MiMo vocabulary value, not a generic
+		// OpenAI-compatible one.
 		cap = provider.ReasoningOptions("", "low", "medium", "high")
 	default:
 		cap = provider.ReasoningOptions("")

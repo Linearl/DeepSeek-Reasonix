@@ -205,6 +205,25 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		default:
 			return nil, fmt.Errorf("openai: provider %q uses Ollama Cloud thinking; effort must be none, low, medium, high, or max", name)
 		}
+	case protocol == "" && IsMiMo(cfg.BaseURL) && effort != "":
+		// MiMo carries its own four-level reasoning_effort scale. The stored
+		// value arrives already folded (normalizeMimoEffort: none/disabled/off→
+		// none, minimal→low, xhigh/max/ultra→high), so the boot whitelist admits
+		// none/low/medium/high; an explicit supported_efforts list overrides,
+		// mirroring the generic case. Without this branch the generic OpenAI
+		// enum rejected none and a persisted effort=none failed New even though
+		// the resolved capability admits it (task 606's boot gate).
+		if hasExplicitEfforts {
+			if !supportsEffort(supportedEfforts, effort) {
+				return nil, fmt.Errorf("openai: provider %q: effort %q is not listed in supported_efforts: %v", name, effort, supportedEfforts)
+			}
+			break
+		}
+		switch effort {
+		case "none", "low", "medium", "high":
+		default:
+			return nil, fmt.Errorf("openai: provider %q uses MiMo thinking; effort must be none, low, medium, or high", name)
+		}
 	case effort != "":
 		if hasExplicitEfforts {
 			// Explicit endpoint metadata overrides the generic OpenAI enum and its

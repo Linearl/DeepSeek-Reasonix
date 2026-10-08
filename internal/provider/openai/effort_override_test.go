@@ -270,7 +270,7 @@ func TestEffortOverrideGLMDeclaredStrengthsReachWire(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("New declared low: %v", err)
 	}
 	ch, err := p.(*client).Stream(context.Background(), provider.Request{
 		Messages:       []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
@@ -280,5 +280,108 @@ func TestEffortOverrideGLMDeclaredStrengthsReachWire(t *testing.T) {
 		t.Fatalf("Stream declared low: %v", err)
 	}
 	for range ch {
+	}
+}
+
+// Task 606: "none" is a legal MiMo wire value — normalizeMimoEffort folds
+// none/disabled/off onto none and reasoning_effort passes through verbatim —
+// but the resolved capability omitted it, so the probe armed a none override
+// and the very next request died on UNSUPPORTED_REASONING_EFFORT; a persisted
+// effort=none also failed New outright at configuredEffort. The capability now
+// lists none, so both gates admit it and the override reaches the wire
+// verbatim; low/medium/high keep flowing unchanged.
+func TestEffortOverrideMiMoNoneReachesWire(t *testing.T) {
+	var mu sync.Mutex
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		mu.Lock()
+		bodies = append(bodies, body)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	base := provider.Config{
+		Name:    "mimo",
+		BaseURL: "https://api.xiaomimimo.com/v1",
+		Model:   "mimo-v2.5-pro",
+		APIKey:  "k",
+		Extra:   map[string]any{"request_url": srv.URL},
+	}
+	p, err := New(base)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c := p.(*client)
+
+	// The two gates that used to reject none (Stream's reasoning.Validate on
+	// the resolved capability, and configuredEffort at New construction) must
+	// both admit it now.
+	if err := c.reasoning.Validate(c.model, "none"); err != nil {
+		t.Fatalf("capability rejects none: %v", err)
+	}
+	bootCfg := base
+	bootCfg.Extra = map[string]any{"effort": "none"}
+	if _, err := New(bootCfg); err != nil {
+		t.Fatalf("New with persisted effort=none: %v", err)
+	}
+
+	for _, override := range []string{"none", "low", "medium", "high"} {
+		ch, err := c.Stream(context.Background(), provider.Request{
+			Messages:       []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
+			EffortOverride: override,
+		})
+		if err != nil {
+			var unsupported *provider.UnsupportedReasoningEffort
+			if errors.As(err, &unsupported) {
+				t.Fatalf("override %q rejected before I/O: %v", override, err)
+			}
+			t.Fatalf("Stream override %q: %v", override, err)
+		}
+		for range ch {
+		}
+		if got := c.buildRequest(provider.Request{EffortOverride: override}).ReasoningEffort; got != override {
+			t.Fatalf("override %q reasoning_effort = %q, want verbatim", override, got)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) != 4 {
+		t.Fatalf("server saw %d bodies, want 4", len(bodies))
+	}
+	if got := bodies[0]["reasoning_effort"]; got != "none" {
+		t.Fatalf("wire body reasoning_effort = %v, want none", got)
+	}
+}
+
+// Task 606 alignment: an explicit supported_efforts list keeps the probe face
+// for MiMo too (mirroring the GLM branch), and DeclaredReasoning replaces the
+// capability with that same list — a declaration that excludes none stays
+// authoritative at both gates, instead of the probe admitting a level the
+// next request rejects.
+func TestEffortOverrideMiMoDeclaredEffortsRuleBothGates(t *testing.T) {
+	p, err := New(provider.Config{
+		Name:    "mimo",
+		BaseURL: "https://api.xiaomimimo.com/v1",
+		Model:   "mimo-v2.5-pro",
+		APIKey:  "k",
+		Extra:   map[string]any{"supported_efforts": []string{"low", "medium", "high"}},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c := p.(*client)
+	if got := c.PerRequestEfforts(); !slices.Equal(got, []string{"low", "medium", "high"}) {
+		t.Fatalf("declared PerRequestEfforts = %v, want [low medium high]", got)
+	}
+	assertRejectedEffort(t, c, "none")
+	if err := c.reasoning.Validate(c.model, "none"); err == nil {
+		t.Fatal("capability must still reject none under an explicit declaration excluding it")
 	}
 }
