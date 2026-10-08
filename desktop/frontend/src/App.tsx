@@ -62,6 +62,7 @@ import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor"
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 import { CollabInboxPanel, setCollabInboxOpen, useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
+import { SessionWallBoundary } from "./components/SessionWallBoundary";
 import { effectiveSplitTier, loadSplitPreviewTier, persistSplitPreviewTier, splitPreviewTierFromPointer, SPLIT_PREVIEW_TIERS, setSplitPaneTitle, setSplitViewEnabled, type SplitPreviewTier } from "./lib/splitView";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./components/ContextMenu";
 import { reportFrontendLog } from "./lib/frontendLog";
@@ -292,7 +293,19 @@ const SideFilesDockPanel = lazy(() => import("./components/SessionSideFilesPanel
 const SubagentsDockPanel = lazy(() => import("./components/SubagentsDockPanel").then((module) => ({ default: module.SubagentsDockPanel })));
 // Task 505: the session graph wall is switch-gated (default off) and lazy —
 // the chunk only loads once the wall actually opens.
-const SessionWallPanel = lazy(() => import("./components/SessionWallPanel").then((module) => ({ default: module.SessionWallPanel })));
+// Task 627: the load is breadcrumb-logged (feature=sessionWall) so a packaged
+// chunk failure surfaces in desktop.log instead of an anonymous lazy rejection.
+const SessionWallPanel = lazy(() =>
+  import("./components/SessionWallPanel")
+    .then((module) => {
+      reportFrontendLog("sessionWall", "panel chunk loaded");
+      return { default: module.SessionWallPanel };
+    })
+    .catch((error: unknown) => {
+      reportFrontendLog("sessionWall", "panel chunk load failed", error instanceof Error ? `${error.name}: ${error.message}` : String(error));
+      throw error;
+    }),
+);
 const TerminalPanel = lazy(() => import("./components/TerminalPanel").then((module) => ({ default: module.TerminalPanel })));
 const TaskMonitorPanel = lazy(() => import("./components/TaskMonitorPanel").then((module) => ({ default: module.TaskMonitorPanel })));
 const WorkspacePanel = lazy(async () => {
@@ -1071,11 +1084,19 @@ export default function App() {
   const setTransientOverlayDismissSignal = useOverlayStore((s) => s.setTransientOverlayDismissSignal);
   // Task 505: the session wall joins the transient-overlay family — any
   // "dismiss transient overlays" pulse (e.g. the palette reopening) closes it.
+  // Task 627: the wall's palette entry provably fires, yet the packaged app
+  // never shows the wall — so every pulse that could kill it now leaves a
+  // desktop.log breadcrumb (feature=overlays) and the close names its trigger.
   const sessionWallSignalRef = useRef(transientOverlayDismissSignal);
+  const sessionWallOpenRef = useRef(false);
+  sessionWallOpenRef.current = sessionWallOpen;
   useEffect(() => {
     if (transientOverlayDismissSignal !== sessionWallSignalRef.current) {
       sessionWallSignalRef.current = transientOverlayDismissSignal;
-      setSessionWallOpen(false);
+      if (sessionWallOpenRef.current) {
+        reportFrontendLog("sessionWall", "closed by dismiss pulse", "the wall was open when a transient-overlay dismiss pulse landed");
+        setSessionWallOpen(false);
+      }
     }
   }, [transientOverlayDismissSignal]);
   // Platform comes from the shared chrome store, which owns the same value AppRuntime
@@ -1179,7 +1200,11 @@ export default function App() {
     };
   }, [activeTabId, state.running, splitState.secondaryTabId, tabMetas]);
 
-  const closeTransientOverlays = useCallback(() => {
+  // Task 627: the reason rides the breadcrumb — one line per user-visible
+  // transition (palette open, settings jump, …), so a log tail explains why
+  // transient surfaces (including the session wall) closed.
+  const closeTransientOverlays = useCallback((reason = "unspecified") => {
+    reportFrontendLog("overlays", "transient dismiss", reason);
     setTransientOverlayDismissSignal((signal) => signal + 1);
   }, []);
 
@@ -1200,14 +1225,14 @@ export default function App() {
   } = useSidebarImOwner(t);
 
   const openBotSettings = useCallback(() => {
-    closeTransientOverlays();
+    closeTransientOverlays("bots settings");
     setSidebarImDetailConnectionId("");
     setSettingsFocus(null);
     setSettingsTarget("bots");
   }, [closeTransientOverlays]);
 
   const openBotAllowlistSettings = useCallback((connectionId: string) => {
-    closeTransientOverlays();
+    closeTransientOverlays("bot allowlist settings");
     setSidebarImDetailConnectionId("");
     setSettingsFocus({ target: "bot-allowlist", connectionId });
     setSettingsTarget("bots");
@@ -1406,7 +1431,7 @@ export default function App() {
   useEffect(() => {
     if (typeof window === "undefined" || !window.runtime) return;
     return window.runtime.EventsOn("app:open-settings", () => {
-      closeTransientOverlays();
+      closeTransientOverlays("app:open-settings event");
       setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget);
     });
   }, [closeTransientOverlays]);
@@ -1654,7 +1679,7 @@ export default function App() {
   useEffect(() => {
     // Close composer menus/popovers when a decision takes over the footer.
     if (decisionSurface) {
-      closeTransientOverlays();
+      closeTransientOverlays("decision surface took over");
       prevDecisionSurfaceRef.current = decisionSurface;
       return;
     }
@@ -2168,7 +2193,7 @@ export default function App() {
       }
       if (trimmed === "/memory") {
         if (activeTabIdRef.current !== sourceTabId) return;
-        closeTransientOverlays();
+        closeTransientOverlays("slash /memory");
         setSettingsTarget("memory");
         return;
       }
@@ -2187,7 +2212,7 @@ export default function App() {
         : null;
       if (decisionMock === "workspace_conflict" || decisionMock === "mode_jobs" || decisionMock === "close_active" || decisionMock === "clear_context") {
         if (activeTabIdRef.current !== sourceTabId) return;
-        closeTransientOverlays();
+        closeTransientOverlays("decision mock");
         setWorkspaceConflict(null);
         setPendingClose(null);
         setClearContextPending(false);
@@ -2531,7 +2556,7 @@ export default function App() {
   }, []);
 
   const toggleSidebar = useCallback(() => {
-    closeTransientOverlays();
+    closeTransientOverlays("sidebar toggle");
     pulseSidebarToggle();
     anchorAppScrollToChat();
     const nextCollapsed = !sidebarCollapsed;
@@ -2575,7 +2600,7 @@ export default function App() {
   }, [creationCoerceWorkspaceRoot, desktopLayoutStyle, rightDockMode, setRightDockMode]);
 
   const setExpandedSidebarWidth = useCallback((width: number) => {
-    closeTransientOverlays();
+    closeTransientOverlays("sidebar resize");
     const next = sidebarWidthClamp(width);
     setSidebarWidth(next);
     saveSidebarWidth(next);
@@ -2587,7 +2612,7 @@ export default function App() {
       const layout = layoutRef.current;
       if (!layout) return;
       event.preventDefault();
-      closeTransientOverlays();
+      closeTransientOverlays("sidebar resize");
       setSidebarResizing(true);
       let nextWidth = sidebarWidth;
       const liveResize = createRafResizeUpdater({
@@ -2648,7 +2673,7 @@ export default function App() {
 
   const setSavedWorkspacePanelWidth = useCallback(
     (width: number) => {
-      closeTransientOverlays();
+      closeTransientOverlays("workspace panel resize");
       const next = rightDockTreeWidthClamp(width, workspacePanelAvailableWidth);
       setRightDockTreeWidth(next);
       saveRightDockTreeWidth(next);
@@ -2658,7 +2683,7 @@ export default function App() {
 
   const ensureWorkspacePanelWidth = useCallback(
     (width: number) => {
-      closeTransientOverlays();
+      closeTransientOverlays("workspace panel resize");
       if (rightDockMode === "context") return;
       const next = rightDockTreeWidthClamp(width, workspacePanelAvailableWidth);
       setRightDockTreeWidth(next);
@@ -2695,7 +2720,7 @@ export default function App() {
       if (!layout) return;
       event.preventDefault();
       workspacePanelResizeFinishRef.current?.();
-      closeTransientOverlays();
+      closeTransientOverlays("workspace panel resize");
       setWorkspacePanelResizing(true);
       const separator = event.currentTarget;
       const pointerId = event.pointerId;
@@ -2768,7 +2793,7 @@ export default function App() {
       const layout = layoutRef.current;
       if (!layout) return;
       event.preventDefault();
-      closeTransientOverlays();
+      closeTransientOverlays("terminal resize");
       const startY = event.clientY;
       const startHeight = terminalRenderHeight;
       let nextHeight = startHeight;
@@ -2826,7 +2851,7 @@ export default function App() {
 
   const openWorkspacePanel = useCallback(
     (mode: RightDockMode = rightDockMode) => {
-      closeTransientOverlays();
+      closeTransientOverlays("workspace panel open");
       if (mode === "context" || mode !== rightDockMode) {
         setWorkspacePreviewActive(false);
       }
@@ -2852,7 +2877,7 @@ export default function App() {
   );
 
   const closeWorkspacePanel = useCallback(() => {
-    closeTransientOverlays();
+    closeTransientOverlays("workspace panel close");
     if (!workspacePanelOpen) {
       return;
     }
@@ -3038,7 +3063,7 @@ export default function App() {
   const handleWorkspacePreviewModeChange = useCallback(
     (active: boolean) => {
       if (workspacePreviewActive === active) return;
-      closeTransientOverlays();
+      closeTransientOverlays("workspace preview mode");
       setWorkspacePreviewActive(active);
     },
     [closeTransientOverlays, workspacePreviewActive],
@@ -3140,7 +3165,7 @@ export default function App() {
   }, [beginNavigationSurface, enterChatViewForTabNavigation, isNavigationIntentCurrent, noteNavigationIntent, reassertVisibleTabAfterStaleNavigation, refreshTabMetas, settleNavigationSurface, showToast, switchTab]);
 
   const handleTabChange = useCallback((id: string) => {
-    closeTransientOverlays();
+    closeTransientOverlays("tab change");
     const selected = tabMetas.find((tab) => tab.id === id);
     setTabMetas((current) => current.map((tab) => ({ ...tab, active: tab.id === id })));
     void enqueueTabSwitch(id, selected);
@@ -3151,7 +3176,7 @@ export default function App() {
     id: string,
     policy: "keep_running" | "stop_and_close",
   ): Promise<boolean> => {
-    closeTransientOverlays();
+    closeTransientOverlays("tab close");
     // 任务 552:关闭前留快照——所有关闭路径(单个 ×/停止并关闭/批量关闭)都
     // 汇入本函数,关闭成功后进「最近关闭」栈,供概览面板重开。
     const closedTabSnapshot = tabMetas.find((tab) => tab.id === id);
@@ -3279,7 +3304,7 @@ export default function App() {
   }, [beginNavigationSurface, cancel, createIsolatedWorktree, isNavigationIntentCurrent, noteNavigationIntent, refreshTabMetas, settleNavigationSurface, showToast, state.meta?.cwd, state.meta?.workspacePath, state.meta?.workspaceRoot]);
 
   const handleTabsClose = useCallback(async (ids: string[], nextActiveTabId?: string) => {
-    closeTransientOverlays();
+    closeTransientOverlays("tabs close");
     const currentIds = tabMetas.map((tab) => tab.id);
     const targets = ids.filter((id, index) => currentIds.includes(id) && ids.indexOf(id) === index);
     if (targets.length === 0) return;
@@ -3790,12 +3815,12 @@ export default function App() {
   }, [activeTab?.readOnly, activeTabId, clearContextPending, controllerReady, hydratePlaceholderActive, sendToTab, state.approval, state.ask, state.items, state.messageAction, state.running, rewindForTabDetailed]);
 
   const openTrash = useCallback(async () => {
-    closeTransientOverlays();
+    closeTransientOverlays("trash page");
     setHistView(null);
     openPage({ kind: "trash" });
   }, [closeTransientOverlays, openPage]);
   const closeHistory = useCallback(() => {
-    closeTransientOverlays();
+    closeTransientOverlays("history close");
     setHistView(null);
   }, [closeTransientOverlays]);
   const refreshHistoryView = useCallback(async () => {
@@ -4059,7 +4084,7 @@ export default function App() {
   [enqueueNavigation]);
 
   const handleNewTab = useCallback(async () => {
-    closeTransientOverlays();
+    closeTransientOverlays("new tab");
     setSidebarImDetailConnectionId("");
     // B3: a New Session issued while a remote tab is active opens on that
     // remote workspace (mirror of useSessionNavigationCommands.handleNewTab;
@@ -4085,7 +4110,7 @@ export default function App() {
   }, []);
 
   const handleNewTabInWorkspace = useCallback(async (hint: LastSessionWorkspaceInfo) => {
-    closeTransientOverlays();
+    closeTransientOverlays("new tab in workspace");
     setSidebarImDetailConnectionId("");
     if (!hint.usable) {
       showToast(t("tabBar.lastCwdFallback", { path: hint.path }), "warn", { durationMs: 7000 });
@@ -4097,7 +4122,7 @@ export default function App() {
   }, [blankSessionTarget, closeTransientOverlays, openBlankSession, setSidebarImDetailConnectionId, showToast, t]);
 
   const handleOpenTopic = useCallback((scope: string, workspaceRoot: string, topicId: string, sessionPath?: string): Promise<void> => {
-    closeTransientOverlays();
+    closeTransientOverlays("open topic");
     setSidebarImDetailConnectionId("");
     return enqueueNavigation({ kind: "topic", scope, workspaceRoot, topicId, sessionPath });
   }, [closeTransientOverlays, enqueueNavigation]);
@@ -4160,7 +4185,7 @@ export default function App() {
   // recent sessions. Sessions are snapshotted on open so the list is stable
   // while the palette is up; extension actions follow the same snapshot rule.
   const openPalette = useCallback(async () => {
-    closeTransientOverlays();
+    closeTransientOverlays("palette open");
     setPaletteOpen(true);
     setPaletteSessions(await listSessions().catch(() => []));
     setPaletteExtensionActions(await app.ExtensionActions(activeTabIdRef.current ?? "").catch(() => []));
@@ -4173,7 +4198,7 @@ export default function App() {
   }, [openPalette]);
   useGlobalShortcut("app.newSession", () => void handleNewTab(), [handleNewTab]);
   useGlobalShortcut("settings.open", () => {
-    closeTransientOverlays();
+    closeTransientOverlays("settings shortcut");
     setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget);
   }, [closeTransientOverlays]);
   useGlobalShortcut("tab.close", () => {
@@ -4343,7 +4368,12 @@ export default function App() {
         icon: <LayoutGrid size={15} />,
         compact: true,
         keywords: ["session", "wall", "jump", "sessions", "跳转", "会话", "图墙"],
-        run: () => setSessionWallOpen(true),
+        run: () => {
+          // Task 627: entry provably fired — log it so a silent close right
+          // after this line is attributable in desktop.log.
+          reportFrontendLog("sessionWall", "open requested", "palette entry");
+          setSessionWallOpen(true);
+        },
       },
     );
     return [...cmdsWithWall, ...extensionItems, ...remoteItems, ...sessionItems];
@@ -4675,7 +4705,7 @@ export default function App() {
                   className="sidebar-feature-zone__item"
                   type="button"
                   onClick={() => {
-                    closeTransientOverlays();
+                    closeTransientOverlays("sidebar feature zone: skills");
                     setSettingsTarget("skills");
                   }}
                 >
@@ -4686,7 +4716,7 @@ export default function App() {
                   className="sidebar-feature-zone__item"
                   type="button"
                   onClick={() => {
-                    closeTransientOverlays();
+                    closeTransientOverlays("sidebar feature zone: memory");
                     setSettingsTarget("memory");
                   }}
                 >
@@ -4697,7 +4727,7 @@ export default function App() {
                   className="sidebar-feature-zone__item"
                   type="button"
                   onClick={() => {
-                    closeTransientOverlays();
+                    closeTransientOverlays("sidebar feature zone: bots");
                     setSettingsTarget("bots");
                   }}
                 >
@@ -4790,7 +4820,7 @@ export default function App() {
                     type="button"
                     onClick={(event) => {
                       event.currentTarget.focus({ preventScroll: true });
-                      closeTransientOverlays();
+                      closeTransientOverlays("sidebar settings button");
                       setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget);
                     }}
                   >
@@ -4844,7 +4874,7 @@ export default function App() {
                   className="sidebar__navitem"
                   onClick={(event) => {
                     event.currentTarget.focus({ preventScroll: true });
-                    closeTransientOverlays();
+                    closeTransientOverlays("sidebar settings nav");
                     setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget);
                   }}
                 >
@@ -5797,11 +5827,11 @@ export default function App() {
                     panelWidth={workspacePanelRenderWidth}
                     onClose={() => setWorkspacePanel(false)}
                     onToggleMaximized={() => {
-                      closeTransientOverlays();
+                      closeTransientOverlays("workspace panel maximize");
                       setWorkspacePanelMaximized((value) => !value);
                     }}
                     onWidthPreset={(percent) => {
-                      closeTransientOverlays();
+                      closeTransientOverlays("workspace panel width preset");
                       const next = rightDockTreeWidthClamp(
                         Math.round(workspacePanelAvailableWidth * (percent / 100)),
                         workspacePanelAvailableWidth,
@@ -5978,15 +6008,21 @@ export default function App() {
           palette entry (switch off → never opens, chunk never loads). */}
       {sessionWallOpen && (
         <Suspense fallback={null}>
-          <SessionWallPanel
-            open={sessionWallOpen}
-            load={listSessions}
-            onClose={() => setSessionWallOpen(false)}
-            onResume={(session) => {
-              setSessionWallOpen(false);
-              void onResumeSession(session);
-            }}
-          />
+          <SessionWallBoundary>
+            <SessionWallPanel
+              open={sessionWallOpen}
+              load={listSessions}
+              onClose={() => {
+                reportFrontendLog("sessionWall", "closed", "esc/backdrop/button");
+                setSessionWallOpen(false);
+              }}
+              onResume={(session) => {
+                reportFrontendLog("sessionWall", "closed", "card resume");
+                setSessionWallOpen(false);
+                void onResumeSession(session);
+              }}
+            />
+          </SessionWallBoundary>
         </Suspense>
       )}
 

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Search } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { useMountTransition } from "../lib/useMountTransition";
+import { reportFrontendLog } from "../lib/frontendLog";
 import { paletteSessionDisplayTitle, paletteSessionHint, sessionActivityTime } from "../lib/session";
 import { applySessionWallQuery, groupSessionsForWall, type SessionWallGroupMode } from "../lib/sessionWall";
 import type { SessionMeta } from "../lib/types";
@@ -48,6 +49,8 @@ export function SessionWallPanel({
 
   // (Re)load the session snapshot on every open edge; a failed load degrades
   // to the empty state rather than a dead panel.
+  // Task 627: both outcomes leave a desktop.log breadcrumb (feature=sessionWall)
+  // so "the wall opened but showed nothing" is separable from "never mounted".
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -57,11 +60,13 @@ export function SessionWallPanel({
         if (cancelled) return;
         setSessions(list);
         setLoaded(true);
+        reportFrontendLog("sessionWall", "panel loaded", `${list.length} sessions`);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled) return;
         setSessions([]);
         setLoaded(true);
+        reportFrontendLog("sessionWall", "session list load failed", error instanceof Error ? error.message : String(error));
       });
     return () => {
       cancelled = true;
