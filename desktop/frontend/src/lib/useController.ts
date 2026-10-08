@@ -1228,6 +1228,39 @@ function liveReasoningDurationMs(live?: LiveStream): number | undefined {
   return completedAt - live.reasoningStartedAt;
 }
 
+// 任务 645: a settlement (message event) whose text AND reasoning are
+// byte-equal to an already settled segment of the SAME turn is a re-delivery
+// — the turn-event ledger re-projects events after a projector cursor rewind,
+// and re-applying `message` used to append a ghost bubble carrying the whole
+// round again. The persisted rebuild renders one message per settlement, so
+// live converges the same way. The scan is bounded to the active turn (after
+// the last user item) and skips streaming segments — a genuinely in-flight
+// round settles through its own message event, and cross-turn coincidences
+// never fire the guard. Byte-equal text+reasoning in two consecutive rounds
+// of one turn would merge (not preserved as two rows); the text-repeat guard
+// upstream makes that shape unreachable in practice.
+export function findRedeliveredSettlement(
+  items: readonly Item[],
+  text: string,
+  reasoning: string,
+  excludeId: string | undefined,
+): Extract<Item, { kind: "assistant" }> | undefined {
+  let turnStart = 0;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (items[index].kind === "user") {
+      turnStart = index + 1;
+      break;
+    }
+  }
+  let match: Extract<Item, { kind: "assistant" }> | undefined;
+  for (let index = turnStart; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.kind !== "assistant" || item.id === excludeId || item.streaming) continue;
+    if (item.text === text && item.reasoning === reasoning) match = item;
+  }
+  return match;
+}
+
 // applyDeltaSegments folds ordered stream segments into the assistant's live
 // stream in one state transition. Assumes applyEvent's preamble already ran.
 function applyDeltaSegments(s: State, segments: StreamSegment[]): State {
@@ -1799,6 +1832,19 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       }
       const now = Date.now();
       const settled = endTurnModelActivity(s, now, true);
+      // 任务 645: converge a re-delivered settlement on the segment it
+      // duplicates instead of appending a ghost bubble after the turn's later
+      // segments (thought block rendered twice, answer split around the stats
+      // line). A replay-created duplicate segment — the re-streamed deltas
+      // allocated a fresh bubble before this event — is dropped in favor of
+      // the original; a pure re-delivery with no live segment settles nothing.
+      const redelivered = findRedeliveredSettlement(settled.items, text, reasoning, existingAssistant?.id);
+      if (redelivered) {
+        const items = existingAssistant && existingAssistant.id !== redelivered.id
+          ? settled.items.filter((it) => !(it.kind === "assistant" && it.id === existingAssistant.id))
+          : settled.items;
+        return { ...settled, items, live: undefined, currentAssistant: undefined, turnOutputCharsAtUsage: 0 };
+      }
       const active = ensureAssistant(settled);
       const id = active.currentAssistant!;
       const streamedChars = active.live?.id === id ? active.live.text.length + active.live.reasoning.length : 0;
