@@ -28,12 +28,12 @@
 // of merging.
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowLeft, Bot, ChevronDown, Sparkles, Square, TerminalSquare } from "lucide-react";
+import { Activity, ArrowLeft, Bot, ChevronDown, SendHorizontal, Sparkles, Square, TerminalSquare } from "lucide-react";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { InlineConfirmButton } from "./InlineConfirmButton";
 import { useT, type DictKey } from "../lib/i18n";
 import { historyMessagesToItems } from "../lib/useController";
-import type { BackgroundRuntimeView, HistoryMessage, JobView, SubagentArtifactView } from "../lib/types";
+import type { BackgroundRuntimeView, HistoryMessage, JobView, SubagentArtifactView, SubagentSendReceiptView } from "../lib/types";
 
 // Transcript loads lazily: the capsule only mounts it once a transcript is
 // actually opened, and the static import would drag the full transcript
@@ -154,6 +154,97 @@ interface CapsuleDetailState {
 
 const EMPTY_DETAIL: CapsuleDetailState = { loading: false, failed: false, messages: [] };
 
+// 任务616: the capsule's message composer for one sub-agent. Persist-first:
+// the backend writes the mailbox file before attempting the live steer, so
+// every receipt (steered / queued / parked) means the message is on disk;
+// disabled means the messaging switch is off and nothing was written.
+function CapsuleMailComposer({
+  sessionPath,
+  target,
+  onSendMessage,
+}: {
+  sessionPath?: string;
+  target: SubagentArtifactView;
+  onSendMessage?: (sessionPath: string, ref: string, summary: string, text: string) => Promise<SubagentSendReceiptView>;
+}) {
+  const t = useT();
+  const [summary, setSummary] = useState("");
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [receipt, setReceipt] = useState<SubagentSendReceiptView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const canSend = Boolean(onSendMessage && sessionPath && text.trim() && !sending);
+  const send = async () => {
+    if (!onSendMessage || !sessionPath || !text.trim() || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      const view = await onSendMessage(sessionPath, target.ref, summary.trim(), text.trim());
+      setReceipt(view);
+      if (view.disposition !== "disabled") setText("");
+      setSummary("");
+    } catch (e) {
+      setReceipt(null);
+      setError(String((e as Error)?.message ?? e));
+    } finally {
+      setSending(false);
+    }
+  };
+  const receiptKey: DictKey | null = receipt
+    ? receipt.disposition === "steered" ? "composer.capsuleMailSteered"
+    : receipt.disposition === "queued" ? "composer.capsuleMailQueued"
+    : receipt.disposition === "parked" ? "composer.capsuleMailParked"
+    : "composer.capsuleMailDisabled"
+    : null;
+  return (
+    <div className="capsule-panel__mail" data-capsule-mail-target={target.ref}>
+      <div className="capsule-panel__mail-row">
+        <input
+          type="text"
+          className="capsule-panel__mail-summary"
+          value={summary}
+          placeholder={t("composer.capsuleMailSummary")}
+          aria-label={t("composer.capsuleMailSummary")}
+          disabled={sending}
+          onChange={(e) => setSummary(e.target.value)}
+        />
+      </div>
+      <div className="capsule-panel__mail-row">
+        <textarea
+          className="capsule-panel__mail-text"
+          value={text}
+          rows={2}
+          placeholder={t("composer.capsuleMailPlaceholder")}
+          aria-label={t("composer.capsuleMailSend")}
+          disabled={sending}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <button
+          type="button"
+          className="capsule-panel__mail-send"
+          disabled={!canSend}
+          aria-label={t("composer.capsuleMailSend")}
+          title={t("composer.capsuleMailSend")}
+          onClick={() => void send()}
+        >
+          <SendHorizontal size={13} aria-hidden="true" />
+          <span>{sending ? t("composer.capsuleMailSending") : t("composer.capsuleMailSend")}</span>
+        </button>
+      </div>
+      {receiptKey && (
+        <div className="capsule-panel__mail-receipt" role="status" data-capsule-mail-disposition={receipt?.disposition}>
+          {t(receiptKey)}
+        </div>
+      )}
+      {error && (
+        <div className="capsule-panel__mail-receipt capsule-panel__mail-receipt--error" role="alert">
+          {t("composer.capsuleMailError")} {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CapsuleIndicator({
   jobs = [],
   runtimes = [],
@@ -164,6 +255,7 @@ export function CapsuleIndicator({
   onReadSubagent,
   onDeleteSubagent,
   onClearEndedSubagents,
+  onSendMessage,
 }: {
   jobs?: readonly JobView[];
   // Task 440: every process-local runtime's running jobs (visible and
@@ -191,12 +283,18 @@ export function CapsuleIndicator({
   // optimistic splice.
   onDeleteSubagent?: (sessionPath: string, ref: string) => Promise<void>;
   onClearEndedSubagents?: (sessionPath: string) => Promise<number>;
+  // 任务616: persist-first message send into one sub-agent's mailbox. The
+  // receipt carries the disposition the composer renders inline.
+  onSendMessage?: (sessionPath: string, ref: string, summary: string, text: string) => Promise<SubagentSendReceiptView>;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [stopping, setStopping] = useState<Set<string>>(() => new Set());
   const [now, setNow] = useState(() => Date.now());
   const [ended, setEnded] = useState<SubagentArtifactView[]>([]);
+  // 任务616: running artifact views (ref-bearing) so a live sub-agent is
+  // messageable from the same directory the ended ones live in.
+  const [runningArtifacts, setRunningArtifacts] = useState<SubagentArtifactView[]>([]);
   const [endedLoaded, setEndedLoaded] = useState(false);
   const [selected, setSelected] = useState<SubagentArtifactView | null>(null);
   const [detail, setDetail] = useState<CapsuleDetailState>(EMPTY_DETAIL);
@@ -256,11 +354,13 @@ export function CapsuleIndicator({
         // Still-running invocations belong to the live sections above, not
         // the ended directory; their transcripts are unfinished anyway.
         setEnded(views.filter((view) => view.status !== "running"));
+        setRunningArtifacts(views.filter((view) => view.status === "running"));
         setEndedLoaded(true);
       })
       .catch(() => {
         if (cancelled) return;
         setEnded([]);
+        setRunningArtifacts([]);
         setEndedLoaded(true);
       });
     return () => {
@@ -444,6 +544,11 @@ export function CapsuleIndicator({
             <small>{metaBits.join(" · ")}</small>
           </span>
           {view.outcome && <span className="capsule-panel__outcome">{view.outcome}</span>}
+          {view.pendingMail > 0 && (
+            <span className="capsule-panel__mail-badge" title={t("composer.capsuleMailPending", { n: view.pendingMail })}>
+              {t("composer.capsuleMailPending", { n: view.pendingMail })}
+            </span>
+          )}
         </button>
         {onDeleteSubagent && (
           <InlineConfirmButton
@@ -458,6 +563,34 @@ export function CapsuleIndicator({
       </div>
     );
   });
+
+  // 任务616: ref-bearing rows for this session's RUNNING sub-agents — the
+  // only targets a mid-turn message can reach. Same open affordance as the
+  // ended rows; the detail composer does the sending.
+  const runningArtifactRows = runningArtifacts.map((view) => (
+    <div className="capsule-panel__row capsule-panel__row--ended" key={view.ref} data-capsule-running-id={view.ref}>
+      <button
+        type="button"
+        className="capsule-panel__row-main"
+        disabled={!view.hasTranscript}
+        title={view.hasTranscript ? view.name || view.ref : t("composer.capsuleNotOpenable")}
+        onClick={() => openEnded(view)}
+      >
+        <span className="capsule-panel__row-icon" aria-hidden="true">
+          {view.kind === "skill" ? <Sparkles size={14} /> : <Bot size={14} />}
+        </span>
+        <span className="capsule-panel__copy">
+          <strong>{view.name || view.kind || view.ref}</strong>
+          <small>{[t("subagent.phase.running"), view.model, capsuleTimeLabel(view.createdAt)].filter(Boolean).join(" · ")}</small>
+        </span>
+        {view.pendingMail > 0 && (
+          <span className="capsule-panel__mail-badge" title={t("composer.capsuleMailPending", { n: view.pendingMail })}>
+            {t("composer.capsuleMailPending", { n: view.pendingMail })}
+          </span>
+        )}
+      </button>
+    </div>
+  ));
 
   const detailItems = useMemo(() => historyMessagesToItems(detail.messages, "capsule").items, [detail.messages]);
 
@@ -494,6 +627,9 @@ export function CapsuleIndicator({
                 </button>
                 <strong className="capsule-panel__detail-title">{selected.name || selected.ref}</strong>
               </header>
+              {onSendMessage && sessionPath && (
+                <CapsuleMailComposer sessionPath={sessionPath} target={selected} onSendMessage={onSendMessage} />
+              )}
               <div
                 className="capsule-panel__history"
                 data-capsule-history={selected.ref}
@@ -515,7 +651,7 @@ export function CapsuleIndicator({
           ) : (
             <>
               <header className="capsule-panel__header">{t("composer.capsuleTitle")}</header>
-              {hasRunning || ended.length > 0 ? (
+              {hasRunning || ended.length > 0 || runningArtifactRows.length > 0 ? (
                 <div className="capsule-panel__list">
                   {/* Task 440 ③: an open panel with nothing running states it
                       explicitly instead of silently shrinking to the ended
@@ -527,6 +663,12 @@ export function CapsuleIndicator({
                   )}
                   {renderRunningGroup(t("composer.capsuleAgents"), groups.agents, "agent")}
                   {renderRunningGroup(t("composer.capsuleCommands"), groups.commands, "terminal")}
+                  {runningArtifactRows.length > 0 && (
+                    <div className="capsule-panel__group" data-capsule-group="running-subagents">
+                      <div className="capsule-panel__group-title">{t("composer.capsuleMailRunning")}</div>
+                      {runningArtifactRows}
+                    </div>
+                  )}
                   {ended.length > 0 && (
                     <div className="capsule-panel__group" data-capsule-group="ended" data-capsule-ended-expanded={endedExpanded}>
                       {/* 任务 558 折叠规则：已结束目录默认折叠（failed/interrupted 也算已结束），

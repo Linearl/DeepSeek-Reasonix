@@ -1531,6 +1531,11 @@ export default function App() {
   // Task 558 capsule: delete surface for the ended sub-agents directory.
   const capsuleDeleteSubagent = useCallback((sessionPath: string, ref: string) => app.DeleteSubagentRecord(sessionPath, ref), []);
   const capsuleClearEndedSubagents = useCallback((sessionPath: string) => app.ClearEndedSubagents(sessionPath), []);
+  // 任务616 capsule: persist-first message send into a sub-agent's mailbox.
+  const capsuleSendSubagentMessage = useCallback(
+    (sessionPath: string, ref: string, summary: string, text: string) => app.SendSubagentMessage(sessionPath, ref, summary, text),
+    [],
+  );
   const composerSessionKey = useMemo(() => {
     return composerDraftKeyForTab(activeTab, activeTabId);
   }, [activeTab, activeTabId]);
@@ -5521,6 +5526,7 @@ export default function App() {
               onCapsuleReadSubagent={capsuleReadSubagent}
               onCapsuleDeleteSubagent={capsuleDeleteSubagent}
               onCapsuleClearEndedSubagents={capsuleClearEndedSubagents}
+              onCapsuleSendSubagentMessage={capsuleSendSubagentMessage}
               tabId={activeTabId} turnId={remoteSurfaceActive ? undefined : state.activeTurnId}
               effort={remoteSurfaceActive ? remoteSession.effort : state.effort}
               onSend={remoteSurfaceActive ? remoteComposerSend : handleComposerSend}

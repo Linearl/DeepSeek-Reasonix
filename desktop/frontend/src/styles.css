@@ -44568,3 +44568,85 @@ body > .mermaid-diagram--fullscreen {
 .tabbar .tabbar__tab--active[data-mode-tint] {
   background: color-mix(in srgb, var(--tab-tint-color) 30%, var(--chat-bg));
 }
+
+/* 任务616: capsule mailbox composer — the send face under a sub-agent's
+   transcript detail, plus the undelivered badge on directory rows. */
+.capsule-panel__mail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+}
+.capsule-panel__mail-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.capsule-panel__mail-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  color: var(--fg);
+  font-size: var(--font-status, 11px);
+}
+.capsule-panel__mail-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: vertical;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  color: var(--fg);
+  font-size: var(--font-status, 11px);
+  font-family: inherit;
+}
+.capsule-panel__mail-send {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: var(--font-status, 11px);
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.capsule-panel__mail-send:hover:not(:disabled),
+.capsule-panel__mail-send:focus-visible {
+  outline: none;
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+.capsule-panel__mail-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.capsule-panel__mail-receipt {
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--fg-faint);
+  font-size: var(--font-status, 11px);
+}
+.capsule-panel__mail-receipt--error {
+  color: var(--danger, #c0392b);
+}
+.capsule-panel__mail-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  background: var(--bg-soft);
+  font-size: var(--font-status, 11px);
+  white-space: nowrap;
+}
