@@ -401,6 +401,15 @@ func (t *WorkspaceTab) releaseSessionLeaseQuietly() {
 	t.sessionLeaseMu.Lock()
 	old := t.sessionLease
 	t.sessionLease = nil
+	// Task 611: clear the runtime key like every other release path
+	// (releaseSessionLease / releaseSessionLeaseForKey) — this is the single
+	// convergence point that stops the takeover-request watcher and syncs the
+	// 485 leak-sweeper tracker. Skipping it leaked one 3s os.Stat poller per
+	// quiet-released tab for the rest of the process lifetime (a long-lived
+	// desktop process only grows; in the test binary the leaked pollers were
+	// the "leftover watcher" population every full-package goroutine dump
+	// pointed at — 327/439/611 dumps alike).
+	t.storeSessionLeaseRuntimeKey("")
 	t.sessionLeaseMu.Unlock()
 	if old != nil {
 		old.Release()
