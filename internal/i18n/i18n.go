@@ -104,6 +104,7 @@ type Messages struct {
 	ChatThinking                           string // live reasoning marker label, e.g. "thinking…"
 	ChatThoughtForFmt                      string // collapsed reasoning summary, "%d" = elapsed s
 	ChatStatusThinkingFmt                  string // "%s thinking… (%ds · <cancel hint>)" — %s = spinner, %d = elapsed s
+	ChatStatusFirstWaitHint                string // task 370: appended when no model output yet past the soft threshold — explains the silent first-token wait
 	TurnPhaseWorking                       string // host turn_phase label: working
 	ReadStatusReadingFmt                   string // read status: reading a file
 	ReadStatusCoveredFmt                   string // read status: covered lines
@@ -304,8 +305,8 @@ type Messages struct {
 	CmdModel            string // /model
 	CmdStatus           string // /status
 	CmdWorkMode         string // /work-mode
-	CmdSubagentPolicy    string // /subagent-policy
-	SubagentPolicySet    string // {policy} applied to subsequent turns
+	CmdSubagentPolicy   string // /subagent-policy
+	SubagentPolicySet   string // {policy} applied to subsequent turns
 	CmdDocs             string // /docs
 	CmdMemory           string // /memory
 	CmdMigrate          string // /migrate

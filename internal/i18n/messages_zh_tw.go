@@ -82,6 +82,7 @@ var ChineseTraditional = Messages{
 	ChatThinking:                           "思考中…",
 	ChatThoughtForFmt:                      "思考了 %d 秒",
 	ChatStatusThinkingFmt:                  "%s 思考中… (%d 秒 · Esc 取消)",
+	ChatStatusFirstWaitHint:                "首回應未到——超長會話出首個字可能要等幾分鐘",
 	TurnPhaseWorking:                       "工作中",
 	ReadStatusReadingFmt:                   "正在讀取 %s",
 	ReadStatusCoveredFmt:                   "正在讀取 %s · 已涵蓋 %s 行",
@@ -293,22 +294,22 @@ var ChineseTraditional = Messages{
 	ShellExecTimeoutFmt: "Shell 命令逾時（>%s）",
 	ShellModeHint:       "Enter 執行 Shell · Esc 取消 · 點擊輸出展開",
 
-	CmdNew:              "清空上下文並儲存歷史",
-	CmdCls:              "清除畫面（保留 LLM 上下文）",
-	CmdCompact:          "壓縮上下文",
-	CmdExtract:          "提取要點到新會話",
-	CmdContinueChecks:   "繼續已暫停的任務收尾檢查",
-	CmdContext:          "檢視上下文視窗、閾值與上次維護結果",
-	CmdRewind:           "回滾到更早的一輪",
-	CmdTree:             "檢視對話分支樹",
-	CmdBranch:           "建立對話分支",
-	CmdSwitchBranch:     "切換對話分支",
-	CmdResume:           "恢復已儲存的會話",
-	CmdModel:            "切換模型",
-	CmdStatus:           "顯示工作階段狀態",
-	CmdSubagentPolicy:    "子代理委派檔位：/subagent-policy <light|balanced|aggressive>（瞬態，按輪生效）",
-	SubagentPolicySet:    "子代理檔位：%s（對後續回合生效，不持久化）",
-	CmdWorkMode:         "會話質量底線：standard / delivery",	CmdDocs:             "搜尋與目前版本匹配的內建文件",
+	CmdNew:            "清空上下文並儲存歷史",
+	CmdCls:            "清除畫面（保留 LLM 上下文）",
+	CmdCompact:        "壓縮上下文",
+	CmdExtract:        "提取要點到新會話",
+	CmdContinueChecks: "繼續已暫停的任務收尾檢查",
+	CmdContext:        "檢視上下文視窗、閾值與上次維護結果",
+	CmdRewind:         "回滾到更早的一輪",
+	CmdTree:           "檢視對話分支樹",
+	CmdBranch:         "建立對話分支",
+	CmdSwitchBranch:   "切換對話分支",
+	CmdResume:         "恢復已儲存的會話",
+	CmdModel:          "切換模型",
+	CmdStatus:         "顯示工作階段狀態",
+	CmdSubagentPolicy: "子代理委派檔位：/subagent-policy <light|balanced|aggressive>（瞬態，按輪生效）",
+	SubagentPolicySet: "子代理檔位：%s（對後續回合生效，不持久化）",
+	CmdWorkMode:       "會話質量底線：standard / delivery", CmdDocs: "搜尋與目前版本匹配的內建文件",
 	CmdMemory:           "檢視指令、記憶與復原狀態",
 	CmdMigrate:          "重試舊資料遷移",
 	CmdRemember:         "儲存一條記憶",
@@ -576,6 +577,7 @@ var ChineseTraditional = Messages{
   reasonix init                                         查看如何產生專案記憶（AGENTS.md）
   reasonix doctor [--json]                              輸出脫敏的本機診斷資訊
   reasonix doctor session <branch-id> [--zip] [--out PATH]  匯出會話衝突診斷 zip
+  reasonix doctor responsiveness <branch-id> [--watch DURATION] [--json]  判定無回應會話：卡死還是慢
   reasonix session list --json [--dir PATH]             為機器客戶列出脫敏會話
   reasonix session show|status <machine-session-id> --json [--dir PATH]  查詢單一脫敏會話
   reasonix session recovery [<machine-session-id>] --json [--dir PATH]  查詢脫敏復原狀態

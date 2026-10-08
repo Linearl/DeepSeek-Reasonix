@@ -86,6 +86,7 @@ var Chinese = Messages{
 	ChatThinking:                           "思考中…",
 	ChatThoughtForFmt:                      "思考了 %d 秒",
 	ChatStatusThinkingFmt:                  "%s 思考中… (%d 秒 · Esc 取消)",
+	ChatStatusFirstWaitHint:                "首响应未到——超长会话出首个字可能要等几分钟",
 	TurnPhaseWorking:                       "工作中",
 	ReadStatusReadingFmt:                   "正在读取 %s",
 	ReadStatusCoveredFmt:                   "正在读取 %s · 已覆盖 %s 行",
@@ -303,24 +304,24 @@ var Chinese = Messages{
 	ShellExecTimeoutFmt: "Shell 命令超时（>%s）",
 	ShellModeHint:       "Enter 执行 Shell · Esc 取消 · 点击输出展开",
 
-	CmdNew:              "开启新会话并保存历史",
-	CmdClear:            "丢弃当前上下文",
-	CmdCls:              "清屏（保留 LLM 上下文）",
-	CmdCompact:          "压缩上下文",
-	CmdExtract:          "提取要点到新会话",
-	CmdContinueChecks:   "继续已暂停的任务收尾检查",
-	CmdContext:          "查看上下文窗口、阈值与上次维护结果",
-	CmdRewind:           "回滚到更早的一轮",
-	CmdTree:             "查看对话分支树",
-	CmdBranch:           "创建对话分支",
-	CmdSwitchBranch:     "切换对话分支",
-	CmdResume:           "恢复已保存的会话",
-	CmdRename:           "重命名会话",
-	CmdModel:            "切换模型",
-	CmdStatus:           "显示会话状态",
-	CmdSubagentPolicy:    "子代理委派档位：/subagent-policy <light|balanced|aggressive>（瞬态，按轮生效）",
-	SubagentPolicySet:    "子代理档位：%s（对后续回合生效，不持久化）",
-	CmdWorkMode:         "会话质量底线：standard / delivery",	CmdDocs:             "搜索与当前版本匹配的内置文档",
+	CmdNew:            "开启新会话并保存历史",
+	CmdClear:          "丢弃当前上下文",
+	CmdCls:            "清屏（保留 LLM 上下文）",
+	CmdCompact:        "压缩上下文",
+	CmdExtract:        "提取要点到新会话",
+	CmdContinueChecks: "继续已暂停的任务收尾检查",
+	CmdContext:        "查看上下文窗口、阈值与上次维护结果",
+	CmdRewind:         "回滚到更早的一轮",
+	CmdTree:           "查看对话分支树",
+	CmdBranch:         "创建对话分支",
+	CmdSwitchBranch:   "切换对话分支",
+	CmdResume:         "恢复已保存的会话",
+	CmdRename:         "重命名会话",
+	CmdModel:          "切换模型",
+	CmdStatus:         "显示会话状态",
+	CmdSubagentPolicy: "子代理委派档位：/subagent-policy <light|balanced|aggressive>（瞬态，按轮生效）",
+	SubagentPolicySet: "子代理档位：%s（对后续回合生效，不持久化）",
+	CmdWorkMode:       "会话质量底线：standard / delivery", CmdDocs: "搜索与当前版本匹配的内置文档",
 	CmdMemory:           "查看指令、记忆与恢复状态",
 	CmdMigrate:          "重试旧数据迁移",
 	CmdGoal:             "设置或清除当前目标",
@@ -636,6 +637,7 @@ var Chinese = Messages{
   reasonix init                                         查看如何生成项目记忆（AGENTS.md）
   reasonix doctor [--json]                              输出脱敏的本地诊断信息
   reasonix doctor session <branch-id> [--zip] [--out PATH]  导出会话冲突诊断 zip
+  reasonix doctor responsiveness <branch-id> [--watch DURATION] [--json]  判定无响应会话：卡死还是慢
   reasonix session list --json [--dir PATH]             为机器客户端列出脱敏会话
   reasonix session show|status <machine-session-id> --json [--dir PATH]  查询单个脱敏会话
   reasonix session recovery [<machine-session-id>] --json [--dir PATH]  查询脱敏恢复状态

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
@@ -65,6 +66,9 @@ func doctorCommand(args []string, version string) int {
 	}
 	if len(args) > 0 && args[0] == "billing" {
 		return doctorBillingCommand(args[1:])
+	}
+	if len(args) > 0 && args[0] == "responsiveness" {
+		return doctorResponsivenessCommand(args[1:])
 	}
 	if len(args) > 0 && args[0] == "repair" {
 		return doctorRepairCommand(args[1:])
@@ -292,6 +296,75 @@ func doctorRedactSessionsCommand(args []string) int {
 	if len(res.Errors) > 0 {
 		return 1
 	}
+	return 0
+}
+
+// doctorResponsivenessCommand answers "stuck or slow?" for one session from
+// durable files only (task 370). Read-only: it never repairs the ledger it
+// reads — the runtime repairs on next open. --watch re-samples so the third
+// criterion (does a silent session recover?) is one command instead of a
+// manual re-run later.
+func doctorResponsivenessCommand(args []string) int {
+	fs := flag.NewFlagSet("doctor responsiveness", flag.ContinueOnError)
+	jsonOut := fs.Bool("json", false, "print the responsiveness report as JSON")
+	watch := fs.Duration("watch", 0, "re-sample for this long (e.g. 2m) and report whether the ledger advances")
+	if code, ok := parseCommandFlags(fs, args); !ok {
+		return code
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "usage: reasonix doctor responsiveness <branch-id-or-path> [--watch DURATION] [--json]")
+		return 2
+	}
+	report, err := doctor.CollectResponsiveness(fs.Arg(0), time.Now())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	if *watch > 0 {
+		interval := *watch / 12
+		if interval > 15*time.Second {
+			interval = 15 * time.Second
+		}
+		if interval < time.Second {
+			interval = time.Second
+		}
+		baseSeq, baseSize := report.LatestSequence, report.LedgerSize
+		baseVerdict := report.Verdict
+		deadline := time.Now().Add(*watch)
+		for time.Now().Before(deadline) {
+			time.Sleep(interval)
+			report, err = doctor.CollectResponsiveness(fs.Arg(0), time.Now())
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 1
+			}
+			if report.LatestSequence != baseSeq || report.LedgerSize != baseSize {
+				break
+			}
+		}
+		advanced := report.LatestSequence != baseSeq || report.LedgerSize != baseSize
+		if !*jsonOut {
+			progress := "no progress"
+			if advanced {
+				progress = "advanced"
+			}
+			fmt.Printf("watch: sequence %d -> %d, ledger %d -> %d bytes (%s)\n",
+				baseSeq, report.LatestSequence, baseSize, report.LedgerSize, progress)
+			fmt.Printf("watch: verdict %s -> %s\n", baseVerdict, report.Verdict)
+		}
+	}
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(report); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+	fmt.Print(doctor.RenderResponsivenessText(report, time.Now()))
+	// exit 1 only for states a human asked about and should act on now;
+	// "slow but alive" is not a failure.
 	return 0
 }
 
