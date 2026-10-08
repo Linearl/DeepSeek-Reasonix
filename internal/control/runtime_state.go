@@ -103,6 +103,10 @@ func (c *Controller) refreshRuntimeState(e event.Event) {
 	next.Running = running || finishing
 	next.CancelRequested = cancelling
 	next.PendingPrompt = c.approval.hasPending()
+	// 任务 408: durable pending-decision cards awaiting the user ("N 个待你
+	// 决定"). 0 while the experimental switch is off (pendingDecisionCount
+	// checks the live switch first).
+	next.PendingCards = c.pendingDecisionCount()
 	next.Cancellable = !finishing && (running || next.PendingPrompt || cancelling)
 	// 任务461-P7: the stop escalation mirror (level + countdown deadline).
 	next.StopLevel = stopLevel

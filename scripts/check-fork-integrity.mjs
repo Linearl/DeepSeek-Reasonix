@@ -1501,6 +1501,12 @@ const CHECKS = [
   { feature: "426 三处消费者同步断言（并发分组/权限规则面/UI 事件字段与同一 spec 相等）", file: "internal/agent/safety_consumers_sync_test.go", patterns: ["TestSafetyConsumersStayInSyncWithMetadata", "TestClassifierToolsKeepPriorityOverStaticMetadata"] },
   { feature: "426 sentinel 镜像同步守护（生产依赖面不变，测试侧对表）", file: "internal/sentinel/forbidden_sync_test.go", patterns: ["TestFileMutationMirrorMatchesSafetyMetadata"] },
   { feature: "426 UI 透出（eventwire 风险字段镜像）", file: "internal/eventwire/tool.go", patterns: ["json:\"riskLevel,omitempty\"", "json:\"destructive,omitempty\""] },
+  // ── 任务408 异步决策点回访（待批卡片；默认关，机制级登记）──
+  { feature: "408 持久卡片队列（三态闭环 + TTL 超时 + 容量封顶 + 损坏自愈）", file: "internal/pendingcards/pendingcards.go", patterns: ["StateResolved", "StateTimeout", "StateWithdrawn", "func (q *Queue) SweepExpired", "DefaultMaxCards"] },
+  { feature: "408 决策点接线（ask/审批/写目录三路入队 + 三路超时结算 + 批完结算）", file: "internal/control/pending_cards.go", patterns: ["func (c *Controller) notePendingCard", "func (c *Controller) expirePendingCard", "func (c *Controller) WithdrawPendingCardChecked", "func (c *Controller) PendingDecisionCards"] },
+  { feature: "408 默认关等价与三态回归测试", file: "internal/control/pending_cards_test.go", patterns: ["TestPendingCardsOffKeepsLegacyBehavior", "TestPendingCardWithdrawAsk", "TestPendingCardTimeoutClosesCard", "TestPendingCardsSurviveRestartAndSweepExpired"] },
+  { feature: "408 配置开关与 TTL（无条件渲染行 + 隔离 home 开关测试）", file: "internal/config/config.go", patterns: ["experimental_pending_cards", "pending_card_ttl_minutes"] },
+  { feature: "408 运行态计数面（badge 数据源，开关关恒 0）", file: "internal/event/runtime_state.go", patterns: ["PendingCards int `json:\"pendingCards,omitempty\"`"] },
 ];
 
 let failed = 0;

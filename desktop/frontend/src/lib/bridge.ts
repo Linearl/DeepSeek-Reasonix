@@ -758,6 +758,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ReplayPendingPromptIdentitiesForTab?(tabID: string): Promise<Array<{ promptId: string; turnId: string; runtimeEpoch?: string; kind: string }>>;
   ReplayPendingPrompts(): Promise<void>;
   ReplayPendingPromptsForTab(tabID: string): Promise<void>;
+  // 任务408 异步决策点回访：持久待批卡片（回归汇总 + 撤回臂）。
+  PendingDecisionCardsForTab?(tabID: string): Promise<Array<{ id: string; kind: string; summary: string; turnId?: string; createdAt: string; state: string; outcome?: string }>>;
+  WithdrawPendingCardForTab?(tabID: string, promptID: string): Promise<void>;
   SetPlanMode(on: boolean): Promise<void>;
   SetMode(mode: string): Promise<void>;
   // Returns auto-allowed prompt ids; unlisted prompts remain pending (#6432).
@@ -4105,6 +4108,9 @@ function makeMockApp(): AppBindings {
         },
         async ReplayPendingPrompts() {},
         async ReplayPendingPromptsForTab(_tabID) {},
+        // 任务408 mock：无持久队列，恒空 + 撤回 no-op。
+        async PendingDecisionCardsForTab(_tabID) { return []; },
+        async WithdrawPendingCardForTab(_tabID, _promptID) {},
         async ConfirmAction(req) {
           void req;
           return false;

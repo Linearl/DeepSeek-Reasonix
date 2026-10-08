@@ -59,6 +59,7 @@ import { OPEN_CONTEXT_OVERVIEW_EVENT, contextOverviewTarget } from "./lib/contex
 import { RemoteNavigationContext, type RemoteNavigationCommand } from "./lib/remoteNavigationCommands";
 import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
+import { replayPendingPromptsForActiveTab } from "./lib/promptReplay";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 import { CollabInboxPanel, setCollabInboxOpen, useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
@@ -75,6 +76,7 @@ import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { TodoPanel } from "./components/TodoPanel";
+import { PendingCardsBadge } from "./components/PendingCardsBadge";
 import { ApprovalModal } from "./components/ApprovalModal";
 import { AskCard } from "./components/AskCard";
 import { ClearContextCard } from "./components/ClearContextCard";
@@ -5377,6 +5379,12 @@ export default function App() {
                 pendingPrompt={state.pendingPrompt}
                 onDismiss={dismissTodos}
                 archive={todoArchive}
+              />
+            )}
+            {!runtimeTransitioning && (
+              <PendingCardsBadge
+                tabId={activeTabId}
+                onClick={() => replayPendingPromptsForActiveTab(activeTabId)}
               />
             )}
             {!runtimeTransitioning && rewindState && (
