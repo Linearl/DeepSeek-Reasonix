@@ -743,6 +743,10 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 	// 任务616: the mailbox is keyed by this run's own ref. Ephemeral runs
 	// (empty ref) get nil and publish nothing.
 	mailbox := t.mailboxForRun(run)
+	// 任务440: stamp the persisted transcript ref onto the progress preview
+	// stream so the frontend can bind the live card to the on-disk transcript
+	// (the dock live view reads through the ref). Empty for ephemeral runs.
+	trk.setRef(run.Ref)
 	lifecyclePhase := "child_created"
 	if strings.TrimSpace(spec.Context.ContinueFrom) != "" || strings.TrimSpace(spec.Context.ForkFrom) != "" {
 		lifecyclePhase = "child_resume"

@@ -418,6 +418,77 @@ func TestSubagentProgressFlushPrecedesTerminal(t *testing.T) {
 	}
 }
 
+// 任务440: the tracker learns the persisted transcript ref only after the run
+// is prepared — the first queued/running status may already have fired with an
+// empty ref. Every later preview/status event must then carry the ref so the
+// frontend can bind the live card to the on-disk transcript.
+func TestSubagentProgressCarriesTranscriptRef(t *testing.T) {
+	clock := newFakeProgressClock(time.Unix(0, 0))
+	ch := make(chan event.Event, 64)
+	trk := newTestTracker(t, clock, chanSink{ch: ch}, "child-1")
+
+	trk.running()
+	first := waitEvent(t, ch, "running status before the ref is known")
+	if first.Tool.Name != event.SubagentProgressStatusName || first.Tool.SubagentRef != "" {
+		t.Fatalf("pre-ref status = %+v, want a running status with an empty ref", first.Tool)
+	}
+
+	trk.setRef("sa_20261008_000000_abcdef")
+	if got := trk.merger.refs["child-1"]; got != "sa_20261008_000000_abcdef" {
+		t.Fatalf("merger ref = %q, want the registered ref", got)
+	}
+
+	// A merged status event (through the flusher's emit path) carries the ref.
+	trk.setPhase(subagentPhaseReasoning)
+	clock.Advance(subagentProgressMergeWindow)
+	merged := waitEvent(t, ch, "merged status event with ref")
+	if merged.Tool.Output != string(subagentPhaseReasoning) || merged.Tool.SubagentRef != "sa_20261008_000000_abcdef" {
+		t.Fatalf("merged status = %+v, want reasoning with the ref", merged.Tool)
+	}
+
+	// A preview channel event carries it too; the slot is due one merge window
+	// after the merged status send, which only fires when the fake clock moves.
+	trk.wrap().Emit(event.Event{Kind: event.Reasoning, Text: "thinking"})
+	clock.Advance(subagentProgressMergeWindow)
+	var preview event.Event
+	for {
+		preview = waitEvent(t, ch, "reasoning preview event")
+		if preview.Tool.Name == event.SubagentProgressReasoningName {
+			break
+		}
+	}
+	if preview.Tool.SubagentRef != "sa_20261008_000000_abcdef" {
+		t.Fatalf("preview ref = %q, want the registered ref", preview.Tool.SubagentRef)
+	}
+
+	// The terminal status keeps the ref (flushChild emits before dropping the
+	// per-child state).
+	trk.finish(nil, nil)
+	terminal := waitEvent(t, ch, "terminal status event")
+	if terminal.Tool.Output != string(subagentPhaseCompleted) || terminal.Tool.SubagentRef != "sa_20261008_000000_abcdef" {
+		t.Fatalf("terminal = %+v, want completed with the ref", terminal.Tool)
+	}
+}
+
+// 任务440: an empty ref (ephemeral run, no persisted transcript) must never
+// overwrite a registered ref and must leave the field empty on the wire.
+func TestSubagentProgressEmptyRefIgnored(t *testing.T) {
+	clock := newFakeProgressClock(time.Unix(0, 0))
+	ch := make(chan event.Event, 64)
+	trk := newTestTracker(t, clock, chanSink{ch: ch}, "child-1")
+	trk.setRef("")
+	trk.running()
+	first := waitEvent(t, ch, "running status")
+	if first.Tool.SubagentRef != "" {
+		t.Fatalf("ephemeral status ref = %q, want empty", first.Tool.SubagentRef)
+	}
+	trk.setRef("sa_real_ref")
+	trk.setRef("")
+	if got := trk.merger.refs["child-1"]; got != "sa_real_ref" {
+		t.Fatalf("merger ref = %q, want the ref kept after an empty setRef", got)
+	}
+}
+
 func TestSubagentProgressLateEventsIgnoredAfterTerminal(t *testing.T) {
 	clock := newFakeProgressClock(time.Unix(0, 0))
 	ch := make(chan event.Event, 64)
@@ -658,6 +729,54 @@ func TestRunProfileSpecEmitsSubagentProgress(t *testing.T) {
 		if n := len(rec.kinds(kind)); n != 0 {
 			t.Fatalf("parent received %d %v events from a sub-agent run", n, kind)
 		}
+	}
+}
+
+// 任务440: with a persisted parent session the prepared run owns a transcript
+// ref, and the progress stream must carry it so the frontend can bind the
+// live card to the on-disk transcript (the dock live view reads through it).
+func TestRunProfileSpecProgressCarriesSubagentRef(t *testing.T) {
+	rec := &recordSink{}
+	ctx := withCallContext(context.Background(), "task-1", rec, nil, false)
+	ctx = WithParentSession(ctx, "sess-440")
+	task := newTestTaskTool(t, reasoningTextProvider{}, tool.NewRegistry(), "sys", "", "", nil)
+
+	out, err := task.RunProfileSpec(ctx, ProfileExecSpec{
+		Task: TaskSpec{Objective: "do the thing"}, Grant: CapabilityGrant{AllowNoTools: true},
+		Worker: WorkerSpec{Kind: "task", Name: "task", SystemPrompt: "sys"},
+	})
+	if err != nil {
+		t.Fatalf("RunProfileSpec: %v", err)
+	}
+	if !strings.Contains(out, "final answer") {
+		t.Fatalf("result = %q, want the child's final answer", out)
+	}
+
+	progresses := rec.kinds(event.ToolProgress)
+	if len(progresses) == 0 {
+		t.Fatal("RunProfileSpec emitted no progress events")
+	}
+	var ref string
+	for _, e := range progresses {
+		if e.Tool.SubagentRef != "" {
+			ref = e.Tool.SubagentRef
+			break
+		}
+	}
+	if !validSubagentRef(ref) {
+		t.Fatalf("no progress event carried a valid subagent ref (last seen %q)", ref)
+	}
+	terminal := 0
+	for _, e := range progresses {
+		if progressName(e) == event.SubagentProgressStatusName && progressOutput(e) == string(subagentPhaseCompleted) {
+			terminal++
+			if e.Tool.SubagentRef != ref {
+				t.Fatalf("terminal ref = %q, want the stream's ref %q", e.Tool.SubagentRef, ref)
+			}
+		}
+	}
+	if terminal != 1 {
+		t.Fatalf("completed terminal count = %d, want exactly one", terminal)
 	}
 }
 
