@@ -73,6 +73,9 @@ func skillSubagentRegistry(
 		return agent.ReadOnlySubagentToolRegistryForDepthWithRuntime(parent, sk.AllowedTools, childDepth, maxDepth, runtime), nil
 	}
 	reg := agent.SubagentToolRegistryForDepthWithRuntime(parent, sk.AllowedTools, childDepth, maxDepth, runtime)
+	// Task 632: profile denylist applies to the run_skill entry too, so both
+	// delegation paths enforce the same tool boundary for the same profile.
+	reg = agent.StripProfileDisallowedTools(sk.Name, reg)
 	return agent.BindChildWriteRoots(reg, writeRoots, agent.WritePathSet{})
 }
 

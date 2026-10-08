@@ -840,7 +840,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		skillStore = skill.New(skill.Options{
 			ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(),
 			PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(),
-			DisabledNames: collabDisabledSkillNames(cfg), MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr,
+			DisabledNames: collabDisabledSkillNames(cfg), DisableBuiltinNames: featureGatedBuiltinNames(cfg),
+			MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr,
 		})
 		skillStore.ConfigureInvocationPolicy("", nil)
 		skills = skillStore.List()
@@ -3723,6 +3724,18 @@ func collabDisabledSkillNames(cfg *config.Config) []string {
 		return names
 	}
 	return append(append([]string(nil), names...), "collab-secretary")
+}
+
+// featureGatedBuiltinNames hides shipped built-ins whose feature switch is off
+// (task 632). Unlike DisabledNames this never touches a user-authored skill
+// sharing the name, so the off state keeps every existing surface — index,
+// run_skill, task profile= — byte-identical. The allSkillStore inventory keeps
+// listing gated built-ins: they exist in code, the switch only gates dispatch.
+func featureGatedBuiltinNames(cfg *config.Config) []string {
+	if cfg.Agent.ExperimentalGeneralPurposeSubagent {
+		return nil
+	}
+	return []string{skill.GeneralPurposeProfileName}
 }
 
 // sessionCollabEnabled reports whether multi-session collaboration is on. Either
