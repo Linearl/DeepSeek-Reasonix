@@ -174,7 +174,17 @@ export function TranscriptSelectionMenu({
     const text = selection.kind === "native"
       ? selection.text
       : await resolveLogical(selection);
-    if (!text) return;
+    if (!text) {
+      // Task 514: a selection that no longer resolves (logical snapshot
+      // cleared or superseded between toolbar-open and the click) used to
+      // end here silently — the click did nothing at all ("clicked, no
+      // floating window", the last silent path of the 369 chain). Every
+      // quick-action click must land in a visible card; fail visibly.
+      setQuickAction(kind);
+      setQuickError(true);
+      setQuickResult(t("selection.quickAction.unavailable"));
+      return;
+    }
     const truncated = text.length > QUICK_TEXT_CAP;
     const body = truncated ? text.slice(0, QUICK_TEXT_CAP) : text;
     // Neighbor context: the selection's own row text already rides in `body`;

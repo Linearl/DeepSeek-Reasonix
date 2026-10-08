@@ -44,6 +44,7 @@ export const en = {
   "selection.quickAction.empty": "(no result)",
   "selection.quickAction.truncated": "(selection was too long and has been truncated)",
   "selection.quickAction.failed": "Request failed, please retry",
+  "selection.quickAction.unavailable": "Selection is no longer available — select the text again",
   "common.cut": "Cut",
   "common.paste": "Paste",
   "common.selectAll": "Select all",
