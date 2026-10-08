@@ -2397,9 +2397,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   </div>
                 </SettingsField>
               </>
-              // Task 254: the agent-facing half of the restart-and-update lab. The
-              // restart_update tool registers at boot only, so saving sets
-              // restartNeeded — the same signal that raises the restart banner.
+              {/* Task 254: the agent-facing half of the restart-and-update lab. The
+                  restart_update tool registers at boot only, so saving sets
+                  restartNeeded — the same signal that raises the restart banner. */}
               <SettingsField label={t("settings.autonomousUpdate")} hint={t("settings.autonomousUpdateHint")} icon={<RefreshCw size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
@@ -2417,10 +2417,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              // Task 254 (user ruling): the auto-resume scope dial. Unlike the
-              // tool toggle this takes effect live — execute reads it when it
-              // fires and restore reads it when the new process boots — so no
-              // restartNeeded here.
+              {/* Task 254 (user ruling): the auto-resume scope dial. Unlike the
+                  tool toggle this takes effect live — execute reads it when it
+                  fires and restore reads it when the new process boots — so no
+                  restartNeeded here. */}
               <SettingsField label={t("settings.autonomousUpdateResume")} hint={t("settings.autonomousUpdateResumeHint")} icon={<RefreshCw size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {(["off", "goal_autopilot", "all"] as const).map((mode) => (
@@ -2435,8 +2435,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              // Task 277: update-complete chime. The one-shot gate lives in the
-              // frontend (last-chimed version), so the flip applies immediately.
+              {/* Task 277: update-complete chime. The one-shot gate lives in the
+                  frontend (last-chimed version), so the flip applies immediately. */}
               <SettingsField label={t("settings.updateChime")} hint={t("settings.updateChimeHint")} icon={<Volume2 size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
@@ -4168,9 +4168,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               keeps its own setter (81/123 lost-save rule). */}
           {selected === "devDebug" && (
             <>
-              // Task 342: WebView2 CDP debug endpoint. The WebView2 browser
-              // environment is created once at startup, so a flip needs a
-              // restart — same banner pattern as the full-access boot snapshot.
+              {/* Task 342: WebView2 CDP debug endpoint. The WebView2 browser
+                  environment is created once at startup, so a flip needs a
+                  restart — same banner pattern as the full-access boot snapshot. */}
               <SettingsField label={labLabel("cdpDebugPort", t("settings.cdpDebugPort"))} hint={t("settings.cdpDebugPortHint")} icon={<Terminal size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
@@ -4188,9 +4188,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              // Task 377: crash-report lifecycle noise triage. Startup
-              // diagnostics read the gate once per process, so the flip lands on
-              // restart — same boot-snapshot rule as the CDP endpoint above.
+              {/* Task 377: crash-report lifecycle noise triage. Startup
+                  diagnostics read the gate once per process, so the flip lands on
+                  restart — same boot-snapshot rule as the CDP endpoint above. */}
               <SettingsField label={labLabel("lifecycleNoiseGate", t("settings.lifecycleNoiseGate"))} hint={t("settings.lifecycleNoiseGateHint")} icon={<Volume2 size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
