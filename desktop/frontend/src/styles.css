@@ -29016,6 +29016,14 @@ button.statusbar__mcp:focus-visible {
   gap: 10px;
 }
 
+/* 任务440: the dock detail's live transcript container — a flex child of the
+   detail column; the shared Transcript styles itself, the container only
+   guards against wide-content overflow inside the dock body. */
+.subagents-panel__live {
+  min-width: 0;
+  overflow-y: auto;
+}
+
 .subagents-panel__detailview-head {
   display: flex;
 }

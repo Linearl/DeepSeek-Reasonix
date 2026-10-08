@@ -369,5 +369,40 @@ console.log("\nsubagent progress reducer");
   eq(toolById(s, "g-3").status, "done", "background fleet settles only on its terminal");
 }
 
+// --- 任务440: progress events latch the transcript ref; directory exposes it
+
+{
+  const { buildSubagentDirectory } = await import("../lib/subagentDirectory");
+  let s = initialState;
+
+  // A running child whose progress stream carries the ref (the first events
+  // may not — the latch keeps the last non-empty value).
+  s = dispatch(s, { id: "live-1", name: "task", args: "{}", readOnly: true });
+  s = progress(s, progressTool("live-1", SUBAGENT_PROGRESS_STATUS, "running"));
+  eq(toolById(s, "live-1").subagentProgress?.ref, undefined, "pre-ref progress leaves ref unset");
+  s = progress(s, progressTool("live-1", SUBAGENT_PROGRESS_REASONING, "child works", { subagentRef: "sa_20261008_000000_abc" }));
+  eq(toolById(s, "live-1").subagentProgress?.ref, "sa_20261008_000000_abc", "carried ref latched onto the preview");
+  s = progress(s, progressTool("live-1", SUBAGENT_PROGRESS_TEXT, "more work"));
+  eq(toolById(s, "live-1").subagentProgress?.ref, "sa_20261008_000000_abc", "ref survives ref-less follow-up events");
+
+  // The dock directory exposes the latched ref on the running entry.
+  let dir = buildSubagentDirectory(s.items);
+  eq(dir.running.length, 1, "live child listed as running");
+  eq(dir.running[0]?.ref, "sa_20261008_000000_abc", "running entry exposes the latched ref");
+
+  // After the result settles, the ended entry falls back to the outcome ref.
+  s = result(s, { id: "live-1", name: "task", readOnly: true, output: "done", subagentRef: "sa_20261008_000000_abc", subagentStatus: "completed" });
+  dir = buildSubagentDirectory(s.items);
+  eq(dir.ended.length, 1, "settled child moved to ended");
+  eq(dir.ended[0]?.ref, "sa_20261008_000000_abc", "ended entry exposes the outcome ref");
+
+  // An ephemeral run (no ref anywhere) stays preview-only: ref stays unset.
+  s = dispatch(s, { id: "live-2", name: "task", args: "{}", readOnly: true });
+  s = progress(s, progressTool("live-2", SUBAGENT_PROGRESS_STATUS, "running"));
+  s = progress(s, progressTool("live-2", SUBAGENT_PROGRESS_REASONING, "no transcript here"));
+  dir = buildSubagentDirectory(s.items);
+  eq(dir.running.find((entry) => entry.item.id === "live-2")?.ref, undefined, "ref-less child stays preview-only");
+}
+
 console.log(`\nsubagent progress: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

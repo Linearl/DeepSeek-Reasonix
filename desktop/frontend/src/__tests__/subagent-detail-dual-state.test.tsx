@@ -46,6 +46,7 @@ const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
 
 import type { Item } from "../lib/useController";
+import type { HistoryMessage } from "../lib/types";
 
 type ToolItem = Extract<Item, { kind: "tool" }>;
 
@@ -259,6 +260,159 @@ async function mountPanel(props: Record<string, unknown>) {
   eq(panel.container.querySelector(".subagents-panel__detailview") === null, true,
     "gate: repeated clicks never render the detail view");
   await panel.unmount();
+}
+
+// 8. 任务440: the detail view streams the child's actual work process — when
+//    the entry carries a persisted transcript ref and the App injected the
+//    read bridge, the preview blocks are replaced by the live transcript; a
+//    ref-less entry stays byte-for-byte the 507 preview; a read failure
+//    surfaces the failed state instead of an empty pane.
+{
+  const flush = async (ms = 20) => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    });
+  };
+
+  // Drive the live poll deterministically: capture the interval callback and
+  // its cadence instead of waiting on real timers.
+  const realSetInterval = window.setInterval.bind(window);
+  const realClearInterval = window.clearInterval.bind(window);
+  let poll: (() => void) | null = null;
+  let pollMs = 0;
+  let pollCleared = false;
+  (window as { setInterval: unknown }).setInterval = ((fn: () => void, ms: number) => {
+    poll = fn;
+    pollMs = ms;
+    return 440 as unknown as number;
+  }) as typeof window.setInterval;
+  (window as { clearInterval: unknown }).clearInterval = (() => {
+    pollCleared = true;
+  }) as typeof window.clearInterval;
+
+  const readCalls: Array<[string, string]> = [];
+  let readResult: Promise<HistoryMessage[]> = Promise.resolve([]);
+  const onReadSubagent = (sessionPath: string, ref: string) => {
+    readCalls.push([sessionPath, ref]);
+    return readResult;
+  };
+
+  const runningWithRef = subagentTool({
+    id: "s-live",
+    status: "running",
+    startedAt: 10_000,
+    subagentProgress: {
+      phase: "responding",
+      reasoning: "先查目录",
+      text: "",
+      notice: "",
+      lastActivityAt: 11_000,
+      truncated: false,
+      startedAt: 10_000,
+      ref: "sa_live_440",
+    },
+  });
+  const liveDirectory = buildSubagentDirectory([runningWithRef]);
+
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(LocaleProvider, null, createElement(SubagentsDockPanel, {
+      directory: liveDirectory,
+      detailEnabled: true,
+      sessionPath: "dock-parent.jsonl",
+      onReadSubagent,
+    })));
+  });
+  await flush();
+
+  // Open the running entry: the live container replaces the preview blocks,
+  // the first read fires with the session path + child ref, and the running
+  // child schedules the 2s poll.
+  await act(async () => {
+    (container.querySelector(".subagents-panel__row") as HTMLButtonElement).click();
+  });
+  await flush();
+  const liveEl = container.querySelector(".subagents-panel__live") as HTMLElement | null;
+  eq(liveEl !== null, true, "live: a ref-bearing running entry renders the live container");
+  eq(container.querySelectorAll(".subagents-panel__detailview-text").length, 0,
+    "live: the truncated preview blocks give way to the live view");
+  eq(readCalls.length >= 1 && readCalls[0][0] === "dock-parent.jsonl" && readCalls[0][1] === "sa_live_440", true,
+    "live: the read carries the session path and the child ref");
+  eq(pollMs, 2000, "live: a running child polls at the 2s cadence");
+
+  // A resolved poll with content reaches the ready state.
+  readResult = Promise.resolve([
+    { role: "user", content: "child prompt" },
+    { role: "assistant", content: "child working" },
+  ] as HistoryMessage[]);
+  await act(async () => {
+    poll?.();
+    await flush();
+  });
+  eq((container.querySelector(".subagents-panel__live") as HTMLElement).getAttribute("data-subagents-live"), "running",
+    "live: the container keeps marking the child as running");
+  eq((container.querySelector(".subagents-panel__live") as HTMLElement).getAttribute("data-subagents-live-state"), "ready",
+    "live: resolved content reaches the ready state");
+
+  // A rejected poll surfaces the failed state instead of a blank pane.
+  readResult = Promise.reject(new Error("transcript read boom"));
+  await act(async () => {
+    poll?.();
+    await flush();
+  });
+  eq((container.querySelector(".subagents-panel__live") as HTMLElement).getAttribute("data-subagents-live-state"), "failed",
+    "live: a failed read reaches the failed state");
+  eq((container.querySelector(".subagents-panel__live") as HTMLElement).textContent!.length > 0, true,
+    "live: the failed state carries user-readable copy");
+
+  await act(async () => { root.unmount(); });
+  container.remove();
+  eq(pollCleared, true, "live: unmount clears the running poll");
+
+  // A ref-less running entry (ephemeral run) keeps the 507 preview blocks.
+  const reflessRunning = subagentTool({
+    id: "s-preview",
+    status: "running",
+    startedAt: 12_000,
+    subagentProgress: {
+      phase: "responding",
+      reasoning: "预览内容",
+      text: "",
+      notice: "",
+      lastActivityAt: 12_500,
+      truncated: false,
+      startedAt: 12_000,
+    },
+  });
+  const reflessDirectory = buildSubagentDirectory([reflessRunning]);
+  const reflessContainer = document.createElement("div");
+  document.body.appendChild(reflessContainer);
+  const reflessRoot = createRoot(reflessContainer);
+  readCalls.length = 0;
+  await act(async () => {
+    reflessRoot.render(createElement(LocaleProvider, null, createElement(SubagentsDockPanel, {
+      directory: reflessDirectory,
+      detailEnabled: true,
+      sessionPath: "dock-parent.jsonl",
+      onReadSubagent,
+    })));
+  });
+  await act(async () => {
+    (reflessContainer.querySelector(".subagents-panel__row") as HTMLButtonElement).click();
+  });
+  await flush();
+  eq(reflessContainer.querySelector(".subagents-panel__live") === null, true,
+    "live: a ref-less entry keeps the preview-only fallback");
+  eq(reflessContainer.querySelectorAll(".subagents-panel__detailview-text").length >= 1, true,
+    "live: the ref-less entry still shows its preview blocks");
+  eq(readCalls.length, 0, "live: a ref-less entry never fires a transcript read");
+  await act(async () => { reflessRoot.unmount(); });
+  reflessContainer.remove();
+
+  (window as { setInterval: unknown }).setInterval = realSetInterval;
+  (window as { clearInterval: unknown }).clearInterval = realClearInterval;
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

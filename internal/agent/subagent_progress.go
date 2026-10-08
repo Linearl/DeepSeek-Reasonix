@@ -152,6 +152,14 @@ type subagentProgressMerger struct {
 	order  []string // child IDs in registration order, for round-robin
 	rr     int      // rotating scan start for fairness
 
+	// refs maps a child call ID to its persisted sub-agent transcript ref
+	// (task 440). Filled once the run is prepared — after the first
+	// queued/running status may already have fired — and stamped onto every
+	// preview event so the frontend can bind the live card to the on-disk
+	// transcript and stream it (the dock live view reads through the ref).
+	// Ephemeral runs have no ref and simply never populate the map.
+	refs map[string]string
+
 	tokens     float64 // preview budget: subagentProgressGroupEventsPerSec
 	lastRefill time.Time
 
@@ -175,6 +183,7 @@ func newSubagentProgressMerger(clock progressClock, sink event.Sink, groupParent
 		groupParentID:    groupParentID,
 		slots:            make(map[string]map[subagentProgressChannel]*progressSlot),
 		status:           make(map[string]*progressStatusSlot),
+		refs:             make(map[string]string),
 		tokens:           subagentProgressGroupBurst,
 		lastRefill:       now,
 		wake:             make(chan struct{}, 1),
@@ -202,11 +211,28 @@ func (m *subagentProgressMerger) Close() {
 	m.wg.Wait()
 }
 
+// setChildRef records the child's persisted transcript ref (task 440). Empty
+// refs (ephemeral runs) are ignored so a later non-empty registration can
+// never be overwritten. Called from the run-owning goroutine after the run is
+// prepared; read under the merger lock by both emit sites.
+func (m *subagentProgressMerger) setChildRef(childID, ref string) {
+	if childID == "" || ref == "" {
+		return
+	}
+	m.mu.Lock()
+	m.refs[childID] = ref
+	m.mu.Unlock()
+}
+
+func (m *subagentProgressMerger) childRefLocked(childID string) string {
+	return m.refs[childID]
+}
+
 // directStatus sends a status event immediately (bypassing the merge slot and
 // group budget) and records the send on the child's status slot so the next
 // transition still merges for the 250ms window after this send. Used for the
 // guaranteed-first states (queued/running); terminal events go through
-// flushChild instead.
+// flushChild.
 func (m *subagentProgressMerger) directStatus(childID string, phase subagentProgressPhase) {
 	m.mu.Lock()
 	st := m.status[childID]
@@ -218,6 +244,7 @@ func (m *subagentProgressMerger) directStatus(childID string, phase subagentProg
 	st.lastSend = m.clock.Now()
 	st.dirty = false
 	st.phase = phase
+	ref := m.childRefLocked(childID)
 	m.mu.Unlock()
 	parentID := m.groupParentID
 	if parentID == childID {
@@ -228,6 +255,7 @@ func (m *subagentProgressMerger) directStatus(childID string, phase subagentProg
 		Tool: event.Tool{
 			ID: childID, Name: event.SubagentProgressStatusName,
 			ParentID: parentID, Output: string(phase),
+			SubagentRef: ref,
 		},
 	})
 }
@@ -328,6 +356,7 @@ func (m *subagentProgressMerger) flushChild(childID string, terminal subagentPro
 	// tracker's own done flag, and the flusher has nothing left to wake for.
 	delete(m.status, childID)
 	delete(m.slots, childID)
+	delete(m.refs, childID)
 	delete(m.truncatedPending, childID)
 	m.removeOrderLocked(childID)
 }
@@ -501,6 +530,7 @@ func (m *subagentProgressMerger) emitToolProgressLocked(childID, name, output st
 		Tool: event.Tool{
 			ID: childID, Name: name, ParentID: parentID,
 			Output: output, Truncated: truncated, DurationMs: durationMs,
+			SubagentRef: m.refs[childID],
 		},
 	})
 }
@@ -653,6 +683,20 @@ func (t *subagentProgressTracker) queued() {
 
 func (t *subagentProgressTracker) running() {
 	t.emitStatusDirect(subagentPhaseRunning)
+}
+
+// setRef binds the child's persisted transcript ref (task 440). Called once
+// the run is prepared — after queued/running may already have fired — so the
+// very first status events can legitimately carry an empty ref; every later
+// preview/status event then carries it, and the frontend latches the last
+// non-empty value onto the card.
+func (t *subagentProgressTracker) setRef(ref string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.done {
+		return
+	}
+	t.merger.setChildRef(t.childID, ref)
 }
 
 func (t *subagentProgressTracker) emitStatusDirect(p subagentProgressPhase) {

@@ -172,6 +172,12 @@ export type SubagentProgress = {
   durationMs?: number;
   startedAt: number;
   tokensPerSec?: number; // fork #9521: TPS heartbeat for streaming output
+  // 任务440: the child's persisted transcript ref, stamped onto progress
+  // events once the backend run is prepared (the first queued/running events
+  // can legitimately arrive without it — latch the last non-empty value).
+  // In-memory only like the rest of the preview; the dock live view reads the
+  // transcript through it.
+  ref?: string;
 };
 export function isSubagentProgressName(name: string | undefined): boolean {
   return !!name && name.startsWith(SUBAGENT_PROGRESS_PREFIX);
@@ -225,6 +231,9 @@ function applySubagentProgress(s: State, t: WireTool): State {
   const it = next[idx];
   if (it.kind !== "tool" || !it.subagentProgress) return s;
   const sp: SubagentProgress = { ...it.subagentProgress, lastActivityAt: Date.now() };
+  // 任务440: latch the transcript ref the moment a progress event carries it —
+  // the binding outlives the individual event and feeds the dock live view.
+  if (t.subagentRef) sp.ref = t.subagentRef;
   switch (t.name) {
     case SUBAGENT_PROGRESS_STATUS: {
       const phase = t.output ?? "";
