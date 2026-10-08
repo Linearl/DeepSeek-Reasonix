@@ -2249,7 +2249,7 @@ export const en = {
   "diag.issue.hook.missing_command.rem": "Set command or contextFile for the hook entry",
   "diag.issue.hook.missing_context_file.msg": "Hook contextFile is missing or unreadable",
   "diag.issue.hook.missing_context_file.rem": "Create a readable regular context file or fix the path in the hook entry",
-  "diag.issue.hook.invalid_matcher.rem": "Use an anchored regex (or empty/*); remember matchers are fully anchored",
+  "diag.issue.hook.invalid_matcher.rem": "Use an anchored regex (or leave empty); remember matchers are fully anchored",
   "diag.issue.hook.unknown_event.msg": "Hook event is not one of the 11 supported events",
   "diag.issue.hook.unknown_event.rem": "Use a supported event name from the hooks documentation",
   "diag.issue.hook.shell_unavailable.rem": "Install Git for Windows, or configure [tools.shell] prefer=\"bash\" and path to a usable bash.exe, then re-run doctor capabilities",
