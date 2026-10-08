@@ -154,6 +154,10 @@ func (a *App) AddAuthorizedWriteDir(scope int, dir string) error {
 // AddAuthorizedWriteDirForTab adds a writable directory at the given scope,
 // targeting the picked session's controller when tabID is set (#9623); an
 // empty tabID keeps the active-tab behavior.
+//
+// 任务 634：项目级（scope 0）在有活动控制器时走控制器路径——持久化进项目
+// reasonix.toml 与 live 基线热授权一起落（此前只写配置，新目录要等会话重建
+// 才生效）；无控制器时退回直接写配置。
 func (a *App) AddAuthorizedWriteDirForTab(tabID string, scope int, dir string) error {
 	if a == nil {
 		return fmt.Errorf("no active app")
@@ -186,6 +190,9 @@ func (a *App) AddAuthorizedWriteDirForTab(tabID string, scope int, dir string) e
 	if root == "" {
 		return fmt.Errorf("no active workspace")
 	}
+	if c, err := a.sessionWriteDirsController(tabID); err == nil {
+		return c.AddAuthorizedWriteDir(sandbox.ApprovalScopeProject, dir)
+	}
 	path := projectConfigPathForWriteAccess(root)
 	project := []string{dir}
 	if cfg, err := config.LoadForRootReadOnly(root); err == nil && cfg != nil {
@@ -205,6 +212,12 @@ func (a *App) RemoveAuthorizedWriteDir(scope int, dir string) error {
 
 // RemoveAuthorizedWriteDirForTab removes a writable directory at the given
 // scope, targeting the picked session's controller when tabID is set (#9623).
+//
+// 任务 634：项目级移除两级都要落——条目写在项目 reasonix.toml 时走控制器路径
+// （持久化与 live 基线移除一起生效，task 157.A 口径）；条目只写在用户级
+// [sandbox] allow_write 时（项目文件未定义该键，merged 视图显示的就是用户级
+// 列表），只重写项目文件移不掉它，面板上表现为「x 点击无效」。控制器不在时
+// 退回直接写项目配置。
 func (a *App) RemoveAuthorizedWriteDirForTab(tabID string, scope int, dir string) error {
 	if a == nil {
 		return fmt.Errorf("no active app")
@@ -235,17 +248,51 @@ func (a *App) RemoveAuthorizedWriteDirForTab(tabID string, scope int, dir string
 	if root == "" {
 		return fmt.Errorf("no active workspace")
 	}
-	path := projectConfigPathForWriteAccess(root)
-	kept := []string{}
-	if cfg, err := config.LoadForRootReadOnly(root); err == nil && cfg != nil {
-		for _, p := range cfg.AllowWriteRoots() {
-			if writeDirEqual(p, dir) {
-				continue
+	if c, err := a.sessionWriteDirsController(tabID); err == nil {
+		if err := c.RemoveAuthorizedWriteDir(sandbox.ApprovalScopeProject, dir); err != nil {
+			return err
+		}
+	} else {
+		path := projectConfigPathForWriteAccess(root)
+		kept := []string{}
+		if cfg, err := config.LoadForRootReadOnly(root); err == nil && cfg != nil {
+			for _, p := range cfg.AllowWriteRoots() {
+				if writeDirEqual(p, dir) {
+					continue
+				}
+				kept = append(kept, p)
 			}
-			kept = append(kept, p)
+		}
+		if err := config.SetProjectWriteAccess(path, kept, ""); err != nil {
+			return err
 		}
 	}
-	return config.SetProjectWriteAccess(path, kept, "")
+	return removeUserAllowWriteDir(dir)
+}
+
+// removeUserAllowWriteDir drops dir from the user-level [sandbox] allow_write
+// when it is present there (task 634: the panel's project column must remove
+// the entry from whichever level owns it). No-op when the entry is absent or
+// the user config cannot be read.
+func removeUserAllowWriteDir(dir string) error {
+	uc, err := config.LoadUserConfigReadOnly()
+	if err != nil || uc == nil {
+		return nil // best-effort: project-level removal already landed above
+	}
+	before := nonNilSlice(uc.AllowWriteRoots())
+	kept := make([]string, 0, len(before))
+	removed := false
+	for _, p := range before {
+		if writeDirEqual(p, dir) {
+			removed = true
+			continue
+		}
+		kept = append(kept, p)
+	}
+	if !removed {
+		return nil
+	}
+	return config.SetUserAllowWrite(kept)
 }
 
 // AddGlobalWriteDir adds a user-global common directory (Settings → Permissions

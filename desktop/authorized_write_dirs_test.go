@@ -1,9 +1,12 @@
 package main
 
 import (
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"reasonix/internal/config"
 	"reasonix/internal/control"
 )
 
@@ -83,4 +86,97 @@ func TestRemoveAuthorizedWriteDirForTabUnknownSessionFailsClosed(t *testing.T) {
 	if err := app.AddAuthorizedWriteDirForTab("booting", 1, "C:/tmp"); err == nil {
 		t.Fatal("AddAuthorizedWriteDirForTab on a controller-less tab = nil error, want failure")
 	}
+}
+
+// 任务 634：项目写目录列移除条目时两级都要落——条目在用户级 [sandbox]
+// allow_write（项目文件未定义该键，merged 视图显示的就是用户级列表）时，
+// 只重写项目文件移不掉它，面板上表现为「x 点击无效」。
+func TestRemoveAuthorizedWriteDirDropsUserLevelEntryWithoutController(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	keep := filepath.Join(home, "keep")
+	drop := filepath.Join(home, "drop")
+	for _, dir := range []string{keep, drop} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userCfg := filepath.Join(home, "config.toml")
+	body := "[sandbox]\nallow_write = " + renderStringArrayForTest([]string{keep, drop}) + "\n"
+	if err := os.WriteFile(userCfg, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws := t.TempDir() // 无项目 reasonix.toml 的工作区
+
+	app := &App{tabs: map[string]*WorkspaceTab{"t": {ID: "t", WorkspaceRoot: ws}}, activeTabID: "t"}
+	if err := app.RemoveAuthorizedWriteDirForTab("", 0, drop); err != nil {
+		t.Fatalf("RemoveAuthorizedWriteDirForTab: %v", err)
+	}
+
+	cfg, err := config.LoadUserConfigReadOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.AllowWriteRoots()
+	if len(got) != 1 || !sameConfigPath(got[0], keep) {
+		t.Fatalf("user allow_write after removal = %v, want only %s", got, keep)
+	}
+	for _, p := range got {
+		if sameConfigPath(p, drop) {
+			t.Fatalf("dropped entry %s still present in user config", drop)
+		}
+	}
+}
+
+// 项目文件定义了 allow_write 时，移除改写项目文件，用户级不受牵连。
+func TestRemoveAuthorizedWriteDirKeepsUserLevelWhenProjectDefines(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	userDir := filepath.Join(home, "user-level")
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[sandbox]\nallow_write = "+renderStringArrayForTest([]string{userDir})+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws := t.TempDir()
+	projectDir := filepath.Join(ws, "project-level")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	projectCfg := filepath.Join(ws, "reasonix.toml")
+	if err := os.WriteFile(projectCfg, []byte("[sandbox]\nallow_write = "+renderStringArrayForTest([]string{projectDir})+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{tabs: map[string]*WorkspaceTab{"t": {ID: "t", WorkspaceRoot: ws}}, activeTabID: "t"}
+	if err := app.RemoveAuthorizedWriteDirForTab("", 0, projectDir); err != nil {
+		t.Fatalf("RemoveAuthorizedWriteDirForTab: %v", err)
+	}
+
+	cfg, err := config.LoadForRootReadOnly(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range cfg.AllowWriteRoots() {
+		if sameConfigPath(p, projectDir) {
+			t.Fatalf("project entry %s still present after removal", projectDir)
+		}
+	}
+	userAfter, err := config.LoadUserConfigReadOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	userGot := userAfter.AllowWriteRoots()
+	if len(userGot) != 1 || !sameConfigPath(userGot[0], userDir) {
+		t.Fatalf("user allow_write must stay untouched, got %v", userGot)
+	}
+}
+
+func renderStringArrayForTest(items []string) string {
+	quoted := make([]string, 0, len(items))
+	for _, item := range items {
+		quoted = append(quoted, strconv.Quote(item))
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }

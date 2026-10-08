@@ -144,7 +144,11 @@ func shellInstallActionViewForGOOS(goos string) *ShellInstallActionView {
 // resolvedShell is what a reload would pick from the current config and
 // machine state. They can diverge after a manual repair or an unreloaded config
 // edit, so the surface shows both plus an explicit reload button.
-func (a *App) sandboxViewFor(cfg *config.Config, ctrl control.SessionAPI, writeRoots []string, effectiveWorkspaceRoot string) SandboxView {
+//
+// allowWrite 是任务 634 的运行时同源列表（merged allow_write：项目遮蔽 +
+// 用户级条目），由调用方算好传入——面板项目写目录列编辑的就是这份列表，
+// 显示用户级列表会让「x 删除」看起来无效。
+func (a *App) sandboxViewFor(cfg *config.Config, ctrl control.SessionAPI, writeRoots []string, effectiveWorkspaceRoot string, allowWrite []string) SandboxView {
 	shell := cfg.Tools.Shell.Prefer
 	if shell == "" {
 		shell = "auto"
@@ -158,7 +162,7 @@ func (a *App) sandboxViewFor(cfg *config.Config, ctrl control.SessionAPI, writeR
 	}
 	return SandboxView{
 		Bash: cfg.BashMode(), Network: cfg.Sandbox.Network,
-		WorkspaceRoot: cfg.Sandbox.WorkspaceRoot, AllowWrite: nonNil(cfg.Sandbox.AllowWrite),
+		WorkspaceRoot: cfg.Sandbox.WorkspaceRoot, AllowWrite: nonNil(allowWrite),
 		OptimisticWrite:       cfg.Sandbox.OptimisticWrite,
 		EffectiveWorkspaceRoot: effectiveWorkspaceRoot, EffectiveWriteRoots: nonNil(writeRoots),
 		Shell: shell, EffectiveShell: sandboxEffectiveShellView(bound),
