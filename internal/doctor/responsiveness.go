@@ -101,8 +101,8 @@ func CollectResponsiveness(sessionRef string, now time.Time) (ResponsivenessRepo
 	if err != nil {
 		return ResponsivenessReport{}, err
 	}
-	if trimmed := strings.TrimSuffix(path, ".turns.jsonl"); trimmed != path {
-		return readResponsiveness(trimmed+".jsonl", path, now), nil
+	if trimmed := strings.TrimSuffix(path, store.SessionTurnEventLogSuffix); trimmed != path {
+		return readResponsiveness(trimmed+store.SessionTranscriptSuffix, path, now), nil
 	}
 	return readResponsiveness(path, store.SessionTurnEventLog(path), now), nil
 }

@@ -375,8 +375,8 @@ func collectSessions(dir string) SessionsReport {
 		// log/index; counting only checkpoints would under-report usage.
 		name := filepath.Base(path)
 		if !store.IsSessionTranscriptName(name) &&
-			!strings.HasSuffix(name, ".events.jsonl") &&
-			!strings.HasSuffix(name, ".event-index.json") {
+			!store.IsSessionEventLogName(name) &&
+			!strings.HasSuffix(name, store.SessionEventIndexSuffix) {
 			return nil
 		}
 		if info, statErr := d.Info(); statErr == nil {
@@ -400,7 +400,7 @@ type recoveryLifecycleRecord struct {
 func collectRecoveryLifecycle(dir string) RecoveryLifecycleReport {
 	report := RecoveryLifecycleReport{}
 	_ = filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil || entry.IsDir() || !strings.HasSuffix(entry.Name(), ".conflicts.jsonl") {
+		if walkErr != nil || entry.IsDir() || !strings.HasSuffix(entry.Name(), store.SessionConflictLogSuffix) {
 			return nil
 		}
 		file, err := os.Open(path)

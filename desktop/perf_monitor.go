@@ -16,6 +16,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/store"
 )
 
 // Host performance monitor (task 184).
@@ -429,7 +430,7 @@ func topEventsFileUnder(memoryRoot string) (string, int64) {
 			return nil
 		}
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".events.jsonl") || strings.Contains(name, "-recovery-") {
+		if !store.IsSessionEventLogName(name) || strings.Contains(name, "-recovery-") {
 			return nil
 		}
 		info, statErr := entry.Info()
@@ -613,7 +614,7 @@ func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) 
 			return nil
 		}
 		total += info.Size()
-		if strings.HasSuffix(name, ".events.jsonl") {
+		if store.IsSessionEventLogName(name) {
 			events += info.Size()
 		}
 		return nil
@@ -668,8 +669,8 @@ func defaultPerfMonitorPaths() []string {
 		filepath.Join(config.SessionStoreDir(), ".recovery-cache", "*", "recovery-v1.bolt"),
 		filepath.Join(memoryRoot, desktopLogDirName, desktopLogSubDir, "*.log"),
 		filepath.Join(memoryRoot, "projects", "*", "sessions", "*.jsonl"),
-		filepath.Join(memoryRoot, "projects", "*", "sessions", "*.events.jsonl"),
-		filepath.Join(memoryRoot, "projects", "*", "sessions", "*.turns.jsonl"),
+		filepath.Join(memoryRoot, "projects", "*", "sessions", "*"+store.SessionEventLogSuffix),
+		filepath.Join(memoryRoot, "projects", "*", "sessions", "*"+store.SessionTurnEventLogSuffix),
 	}
 }
 

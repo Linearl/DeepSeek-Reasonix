@@ -307,9 +307,11 @@ func SessionEventIndexPath(sessionPath string) string {
 
 // sessionEventLogSize reports the size of the event log for a session. Callers pass either
 // shape of path: the session path, or the already-resolved log path that sessionDAGState
-// carries as st.path. The suffix decides which - store.SessionEventLog appends
-// ".events.jsonl" unconditionally, so applying it to "x.events.jsonl" yields
-// "x.events.events.jsonl", which stats as missing and reported zero.
+// carries as st.path. Since task 475 the either-shape normalization lives in
+// store.ResolveSessionEventLog; before that, the inline suffix branch here was
+// the incident site - store.SessionEventLog appends its suffix unconditionally,
+// so applying it to "x.events.jsonl" yielded "x.events.events.jsonl", which
+// stats as missing and reported zero.
 //
 // That zero was not harmless. limitsForSessionLog reads a non-positive size as "nothing to
 // size against", so it kept the default budget and the adaptive allowance silently became a
@@ -323,10 +325,10 @@ func sessionEventLogSize(sessionPath string) int64 {
 	if sessionPath == "" {
 		return 0
 	}
-	path := sessionPath
-	if !strings.HasSuffix(path, ".events.jsonl") {
-		path = store.SessionEventLog(path)
-	}
+	// 任务 475（X6 模式 J）：两种入参形态（会话路径 / 已解析事件日志路径）统一
+	// 在 store.ResolveSessionEventLog 归一——这里的后缀分支就是 task 104 事故
+	// （x.events.events.jsonl 计出 0）的原发地，现已收口。
+	path := store.ResolveSessionEventLog(sessionPath)
 	if path == "" {
 		return 0
 	}
