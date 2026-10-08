@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"reasonix/internal/proc"
 	"reasonix/internal/tool"
@@ -107,7 +108,12 @@ func RunForeground(ctx context.Context, req Request) Result {
 	var writers []io.Writer
 	writers = append(writers, collector.combined, collector.tail)
 	if req.Progress != nil {
-		writers = append(writers, newProgressWriter(req.Progress, progressOutputMaxBytes, progressOutputTruncated))
+		pw := newProgressWriter(req.Progress, progressOutputMaxBytes, progressOutputTruncated)
+		writers = append(writers, pw)
+		// Upstream #11327: release the held partial line once the child exits, so
+		// the tail of a code-page character split across pipe reads is decoded
+		// rather than dangling in the pending buffer forever.
+		defer pw.Flush()
 	}
 	// Stdout and Stderr must stay the *same* writer value: os/exec then hands the
 	// child a single pipe, so the two streams interleave in the order the child
@@ -342,8 +348,13 @@ type progressWriter struct {
 	emit      func(string)
 	limit     int
 	forwarded int
+	accepted  int
 	marker    string
 	truncated bool
+	// pending holds bytes not yet safe to decode: a line without its newline,
+	// or the tail of a multi-byte character split across pipe reads (upstream
+	// #11327 — decoding those bytes eagerly recorded U+FFFD permanently).
+	pending []byte
 }
 
 func newProgressWriter(emit func(string), limit int, marker string) *progressWriter {
@@ -359,17 +370,99 @@ func (w *progressWriter) Write(p []byte) (int, error) {
 	if w.emit == nil || w.truncated {
 		return len(p), nil
 	}
-	remaining := max(0, w.limit-w.forwarded)
+	// The cap counts accepted raw child bytes; the decoded text emitted for
+	// them can be longer (GBK 2 bytes → UTF-8 3 per char), so emitDecoded
+	// clips against forwarded separately.
+	remaining := max(0, w.limit-w.accepted)
 	forward := min(len(p), remaining)
 	if forward > 0 {
-		w.emit(string(p[:forward]))
-		w.forwarded += forward
+		w.accepted += forward
+		w.writeDecoded(p[:forward])
 	}
-	if forward < len(p) {
-		w.truncated = true
-		if w.marker != "" {
-			w.emit(w.marker)
-		}
+	if forward < len(p) && !w.truncated {
+		w.flushPending()
+		w.truncate()
 	}
 	return len(p), nil
+}
+
+// Flush releases the last partial line after the child exits. Until then,
+// non-ASCII bytes stay buffered so a code-page character split across pipe
+// reads is not mistaken for invalid UTF-8 and permanently recorded as a
+// replacement rune.
+func (w *progressWriter) Flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.truncated {
+		w.flushPending()
+	}
+}
+
+func (w *progressWriter) writeDecoded(p []byte) {
+	w.pending = append(w.pending, p...)
+	for !w.truncated {
+		// '\n' never occurs inside a UTF-8 / GBK / GB18030 multi-byte sequence,
+		// so a line boundary is always a safe decode point.
+		end := bytes.IndexByte(w.pending, '\n')
+		if end < 0 {
+			break
+		}
+		w.emitDecoded(w.pending[:end+1])
+		w.pending = w.pending[end+1:]
+	}
+	if w.truncated {
+		w.pending = nil
+		return
+	}
+	// ASCII has the same meaning in UTF-8 and the Windows code pages. Forward
+	// it immediately so progress without a newline (dots, prompts) stays live.
+	safe := 0
+	for safe < len(w.pending) && w.pending[safe] < utf8.RuneSelf {
+		safe++
+	}
+	if safe > 0 {
+		w.emitDecoded(w.pending[:safe])
+		w.pending = w.pending[safe:]
+	}
+}
+
+func (w *progressWriter) flushPending() {
+	if len(w.pending) > 0 {
+		w.emitDecoded(w.pending)
+		w.pending = nil
+	}
+}
+
+// emitDecoded decodes one buffered segment through the same code-page cascade
+// as the final combined output, so live progress and the finished result never
+// disagree about how a byte sequence reads. Overflowing the emit budget clips
+// at a UTF-8 rune boundary rather than mid-character.
+func (w *progressWriter) emitDecoded(data []byte) {
+	decoded := decodeConsoleOutput(string(data))
+	remaining := max(0, w.limit-w.forwarded)
+	clipped := len(decoded) > remaining
+	if clipped {
+		end := remaining
+		for end > 0 && !utf8.RuneStart(decoded[end]) {
+			end--
+		}
+		decoded = decoded[:end]
+	}
+	if decoded != "" {
+		w.forwarded += len(decoded)
+		w.emit(decoded)
+	}
+	if clipped {
+		w.truncate()
+	}
+}
+
+func (w *progressWriter) truncate() {
+	if w.truncated {
+		return
+	}
+	w.truncated = true
+	if w.marker != "" {
+		w.emit(w.marker)
+	}
 }
