@@ -32,6 +32,8 @@ var uploadSignals = map[string]bool{
 	"client_version": true, "settings_language": true, "cli_mode": true,
 	"cli_permission_mode": true, "cli_session_mode": true,
 	"cli_turn_latency": true, "cli_exit": true,
+	// Task 370: bucketed first-response latency (TTFT-equivalent).
+	"cli_first_response_latency":    true,
 	"completion_validation_outcome": true, "completion_validation_latency": true,
 	"completion_validation_error": true, "completion_validation_attempt": true,
 	"completion_evaluator_finish_reason": true, "completion_evaluator_cache_hit": true,

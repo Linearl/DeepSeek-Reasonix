@@ -112,10 +112,14 @@ func (r *Reporter) append(counts map[string]int) {
 
 type sink struct {
 	event.AuditForwarder
-	inner          event.Sink
+	inner event.Sink
+	// reporter, counts, started: per-turn counters flushed at TurnDone.
+	// firstOutput (task 370): arrival of the turn's first model-driven output;
+	// zero until then. It is the TTFT-equivalent the telemetry surface lacked.
 	reporter       *Reporter
 	counts         map[string]int
 	started        time.Time
+	firstOutput    time.Time
 	hasText        bool
 	emptyFinalSeen bool
 }
@@ -130,17 +134,37 @@ func (s *sink) RecordProtocolRecovery(a event.ProtocolRecoveryAudit) {
 	event.RecordProtocolRecovery(s.inner, a)
 }
 
+// markFirstOutput stamps the first reasoning/text/tool activity of the turn.
+// Tool activity counts: a model that goes straight to a tool answered just as
+// surely as one that streamed text — both bound the prefill+first-token wait.
+func (s *sink) markFirstOutput() {
+	if s.firstOutput.IsZero() {
+		s.firstOutput = time.Now()
+	}
+}
+
 func (s *sink) observe(e event.Event) {
 	switch e.Kind {
 	case event.TurnStarted:
 		s.started = time.Now()
+		s.firstOutput = time.Time{}
 		s.hasText = false
 		s.emptyFinalSeen = false
 		add(s.counts, "turns", "count", 1)
+	case event.Reasoning:
+		if e.Text != "" {
+			s.hasText = true
+			s.markFirstOutput()
+		}
 	case event.Text:
 		if e.Text != "" {
 			s.hasText = true
+			s.markFirstOutput()
 		}
+	case event.ToolDispatch:
+		s.markFirstOutput()
+	case event.ToolStarted:
+		s.markFirstOutput()
 	case event.Message:
 		if e.Text != "" {
 			s.hasText = true
@@ -172,9 +196,16 @@ func (s *sink) observe(e event.Event) {
 		if !s.started.IsZero() {
 			add(s.counts, "cli_turn_latency", latencyBucket(time.Since(s.started)), 1)
 		}
+		// Task 370: first-response latency (TTFT-equivalent) as a bucketed,
+		// content-free counter. Turns that produced no output at all record
+		// nothing here — cli_turn_latency already covers them.
+		if !s.firstOutput.IsZero() && !s.started.IsZero() {
+			add(s.counts, "cli_first_response_latency", latencyBucket(s.firstOutput.Sub(s.started)), 1)
+		}
 		s.reporter.append(s.counts)
 		s.counts = map[string]int{}
 		s.started = time.Time{}
+		s.firstOutput = time.Time{}
 		s.hasText = false
 		s.emptyFinalSeen = false
 	}
