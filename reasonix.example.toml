@@ -139,6 +139,13 @@ mcp_call_timeout_seconds = 300   # default MCP call safety cap; per-plugin/tool 
 
 [tools.background_jobs]
 stalled_warning_seconds = 900   # heads-up once per background job after this many quiet seconds; a quiet job is not necessarily stuck; 0 disables
+# 任务553 idle-session wake（默认关，铁律 2）：本会话拥有的后台 job 完成且会话
+# 空闲时，自动注入一轮续轮让模型接手结果。预算三键只在开启后生效，约束
+# 「唤醒→再派→再唤醒」的自驱链（滚动窗口轮数 / 窗口 / 最小间隔）。
+# wake_idle_session = false
+# wake_max_turns_per_window = 3
+# wake_window_seconds = 600
+# wake_throttle_seconds = 60
 
 # Sandbox confinement bounds the blast radius of tool calls. Writers may only
 # modify workspace_root (empty = current directory) plus allow_write. forbid_read

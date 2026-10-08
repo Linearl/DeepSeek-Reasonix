@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/control"
 	"reasonix/internal/provider"
 )
 
@@ -24,6 +25,13 @@ import (
 func hostGuidanceRows(m provider.Message) ([]HistoryMessage, bool) {
 	if !agent.IsHostGeneratedUserMessage(m) || agent.IsHostProtocolMessage(m) {
 		return nil, false
+	}
+	// 任务553: the background-job wake turn is labeled, not quoted. Its
+	// model-facing body is an English instruction wrapped around a transient
+	// summary block — quoting it would leak both; the marker row keeps the
+	// auto turn visible and attributable (自动轮的视觉区分).
+	if control.IsBackgroundJobWakeTurnContent(m.Content) {
+		return []HistoryMessage{{Role: "notice", Content: "↪ " + control.BackgroundWakeTurnMarker}}, true
 	}
 	text := strings.TrimSpace(agent.StripTransientUserBlocks(m.Content))
 	if text == "" {

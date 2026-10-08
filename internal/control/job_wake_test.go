@@ -112,6 +112,11 @@ func (p *wakeGateProvider) userTextAt(i int) string {
 
 func newWakeTestController(t *testing.T, prov provider.Provider, wake BackgroundJobWakeOptions) (*Controller, *jobs.Manager, string) {
 	t.Helper()
+	return newWakeTestControllerWithSink(t, prov, wake, nil)
+}
+
+func newWakeTestControllerWithSink(t *testing.T, prov provider.Provider, wake BackgroundJobWakeOptions, sink event.Sink) (*Controller, *jobs.Manager, string) {
+	t.Helper()
 	reg := tool.NewRegistry()
 	reg.Add(fakeControlTool{name: "read_file"})
 	ag := agent.New(prov, reg, agent.NewSession("sys"), agent.Options{}, event.Discard)
@@ -123,6 +128,7 @@ func newWakeTestController(t *testing.T, prov provider.Provider, wake Background
 		Executor:          ag,
 		Jobs:              jm,
 		SessionPath:       path,
+		Sink:              sink,
 		BackgroundJobWake: wake,
 	})
 	t.Cleanup(c.Close)
@@ -131,6 +137,30 @@ func newWakeTestController(t *testing.T, prov provider.Provider, wake Background
 	c.wake.coalesceWindow = 30 * time.Millisecond
 	c.mu.Unlock()
 	return c, jm, path
+}
+
+// wakeEventSink records emitted events so tests can count notices by code.
+type wakeEventSink struct {
+	mu     sync.Mutex
+	events []event.Event
+}
+
+func (s *wakeEventSink) Emit(e event.Event) {
+	s.mu.Lock()
+	s.events = append(s.events, e)
+	s.mu.Unlock()
+}
+
+func (s *wakeEventSink) noticeCount(code string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, e := range s.events {
+		if e.Kind == event.Notice && e.Code == code {
+			n++
+		}
+	}
+	return n
 }
 
 func startDoneJob(t *testing.T, jm *jobs.Manager, session, label string, body func(context.Context, io.Writer) (string, error)) string {
@@ -380,6 +410,56 @@ func TestBackgroundWakeDisabledKeepsLegacyBehavior(t *testing.T) {
 		t.Fatalf("legacy drain lost the summary:\n%s", got)
 	}
 	waitIdle(t, c)
+}
+
+// 验收③附带（任务内容4 让位提示）：turn 在途时完成 job → 让位且恰好发一条
+// 「将自动续轮」提示；同一批完成不重复刷；下一批完成重新获得提示；重踢续轮
+// 准入后提示数不再增长。
+func TestBackgroundWakeYieldNoticeOncePerCompletionBatch(t *testing.T) {
+	logs := captureSlog(t)
+	prov := newWakeGateProvider()
+	sink := &wakeEventSink{}
+	c, jm, path := newWakeTestControllerWithSink(t, prov, BackgroundJobWakeOptions{Enabled: true}, sink)
+	session := agent.BranchID(path)
+
+	go c.Submit("long user task")
+	<-prov.entered // 用户 turn 已在模型流中
+
+	startDoneJob(t, jm, session, "yield-one", func(_ context.Context, _ io.Writer) (string, error) {
+		return "first while busy", nil
+	})
+	waitForWakeCondition(t, "the first yield notice", func() bool {
+		return sink.noticeCount(event.NoticeCodeBackgroundJobWakeYielded) >= 1
+	})
+	// 合并窗(30ms)+余量：同一批完成只允许一条提示。
+	time.Sleep(200 * time.Millisecond)
+	if got := sink.noticeCount(event.NoticeCodeBackgroundJobWakeYielded); got != 1 {
+		t.Fatalf("yield notice emitted %d time(s) for one completion batch, want 1", got)
+	}
+	if !strings.Contains(logs(), "background job wake yielded") ||
+		!strings.Contains(logs(), "reason=turn_running") {
+		t.Fatalf("yield log line missing:\n%s", logs())
+	}
+
+	// 第二批完成 → 复位后的提示恰好再发一条。
+	startDoneJob(t, jm, session, "yield-two", func(_ context.Context, _ io.Writer) (string, error) {
+		return "second while busy", nil
+	})
+	waitForWakeCondition(t, "the second yield notice", func() bool {
+		return sink.noticeCount(event.NoticeCodeBackgroundJobWakeYielded) >= 2
+	})
+	time.Sleep(150 * time.Millisecond)
+	if got := sink.noticeCount(event.NoticeCodeBackgroundJobWakeYielded); got != 2 {
+		t.Fatalf("yield notice emitted %d time(s) for two completion batches, want 2", got)
+	}
+
+	// 释放用户 turn → finish 钩子重踢 → 续轮准入；提示数封顶不再涨。
+	close(prov.release)
+	waitForWakeCondition(t, "the post-finish wake turn", func() bool { return prov.count() >= 2 })
+	waitIdle(t, c)
+	if got := sink.noticeCount(event.NoticeCodeBackgroundJobWakeYielded); got != 2 {
+		t.Fatalf("yield notice grew to %d after admission, want it capped at 2", got)
+	}
 }
 
 // 边界 a：跨会话隔离——共享 Manager 下，A 会话的完成只唤醒 A。

@@ -61,3 +61,12 @@ const (
 	// reply reminder into the conversation.
 	NoticeCodeCollabReplyNudge = "collab_reply_nudge"
 )
+
+// 任务553: wake-yield code lives in its own block so the wire-stable table
+// above keeps its alignment history intact.
+const (
+	// NoticeCodeBackgroundJobWakeYielded: a completion wakeup yielded to
+	// in-flight or queued user work; the queued summaries ride the next real
+	// turn or the automatic re-kick once the gate reopens.
+	NoticeCodeBackgroundJobWakeYielded = "background_job_wake_yielded"
+)
