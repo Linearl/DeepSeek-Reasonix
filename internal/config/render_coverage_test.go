@@ -39,6 +39,11 @@ var desktopRenderOmissions = map[string]string{
 	// on; off/absent = autopilot never creates guard tasks (byte-identical
 	// config for a user who never touched the switch).
 	"experimental_autopilot_guard_autocreate": "task 547: rendered inside the autopilot block, only when the guard auto-creation opt-in is on",
+	// Task 394: rendered inside the autopilot block only once the dial leaves
+	// its default; off/absent = no injection and a byte-identical config. The
+	// plan path renders only while set.
+	"experimental_autopilot_batch_context": "task 394: rendered inside the autopilot block, only when the injection dial is minimal/full",
+	"autopilot_batch_plan":                 "task 394: rendered inside the autopilot block, only when the plan path is set",
 	// Task 551: the B9 gate is removed; the legacy key is READ-ONLY for load
 	// compatibility and deliberately never written back (a stale true is inert
 	// and vanishes on the next save).

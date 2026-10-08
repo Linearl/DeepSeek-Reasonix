@@ -286,6 +286,22 @@ type DesktopConfig struct {
 	// it watches has been quiet with no new work (task 326):
 	// disable (default) | standby | destroy.
 	AutopilotGuardQuiescent string `toml:"autopilot_guard_quiescent"`
+	// ExperimentalAutopilotBatchContext is the task-394 batch-round context
+	// dial (铁律 2 default off): "" / "off" injects nothing — every round
+	// opens byte-for-byte as before; "minimal" makes an unattended (autopilot)
+	// round that opens a new batch round carry a compact header with the batch
+	// id, the previous round's hash-chain tail, and the open threads; "full"
+	// additionally carries the plan file's conventions and acceptance
+	// reminders plus the plan path pointer. Attended sessions are never
+	// touched in any state.
+	ExperimentalAutopilotBatchContext string `toml:"experimental_autopilot_batch_context"`
+	// AutopilotBatchPlan points at the batch plan file whose
+	// reasonix-batch-manifest section (batch id / open / in-flight / done,
+	// entries annotated with @thread ids) feeds the header. Empty = no plan
+	// file: the header degrades to the in-process chain tail only. The file
+	// is read at injection time and never cached — no new state storage
+	// (task 394).
+	AutopilotBatchPlan string `toml:"autopilot_batch_plan"`
 	// MaxCachedTabs bounds how many tab states the frontend keeps resident
 	// (task 161). Under the workbench single-surface layout a switch used to
 	// prune every other tab's cached state, so each switch back re-parsed the

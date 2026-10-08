@@ -788,6 +788,43 @@ func (c *Config) SetExperimentalAutopilotGuardAutocreate(enabled bool) error {
 	return nil
 }
 
+// AutopilotBatchContextLevel returns the normalized task-394 batch-context
+// injection level: "" for off (the default, and the read for a nil config or
+// any unrecognized value — a typo must never silently turn injection on),
+// "minimal", or "full".
+func (c *Config) AutopilotBatchContextLevel() string {
+	if c == nil {
+		return ""
+	}
+	switch c.Desktop.ExperimentalAutopilotBatchContext {
+	case "minimal", "full":
+		return c.Desktop.ExperimentalAutopilotBatchContext
+	default:
+		return ""
+	}
+}
+
+// SetExperimentalAutopilotBatchContext sets the task-394 injection level. Only
+// the three known values are accepted so a typo cannot silently enable
+// injection (or silently widen minimal to full).
+func (c *Config) SetExperimentalAutopilotBatchContext(level string) error {
+	switch level {
+	case "off", "minimal", "full":
+		c.Desktop.ExperimentalAutopilotBatchContext = level
+		return nil
+	default:
+		return fmt.Errorf("experimental_autopilot_batch_context must be off, minimal, or full (got %q)", level)
+	}
+}
+
+// SetAutopilotBatchPlan sets the task-394 batch plan file path. Empty clears
+// the override; readability is checked at injection time, not here, so a
+// not-yet-created plan file is a valid configuration.
+func (c *Config) SetAutopilotBatchPlan(path string) error {
+	c.Desktop.AutopilotBatchPlan = strings.TrimSpace(path)
+	return nil
+}
+
 // AutopilotAskWaitDefaultSeconds is the task-477 ask-timeout sub-option's wait
 // when the switch is on but desktop.autopilot_ask_wait_seconds is unset (user
 // ruling 2026-10-05: default 15s).
