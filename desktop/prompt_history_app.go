@@ -352,10 +352,13 @@ func collectEventLogUserPrompts(path string, info os.FileInfo, resolveUserConten
 	if logInfo, err := os.Stat(logPath); err != nil || logInfo.IsDir() || logInfo.Size() == 0 {
 		return false, nil
 	}
+	tr := beginSilentLoader("prompt_history_event_log", path)
 	users, err := agent.LoadSessionUserMessages(path)
 	if err != nil {
+		tr.finish(err, -1)
 		return true, err
 	}
+	tr.finish(nil, len(users))
 	fallbackAt := promptHistoryFallbackMillis(path, info)
 	turn := 0
 	for _, user := range users {

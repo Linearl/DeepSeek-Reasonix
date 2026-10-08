@@ -74,11 +74,14 @@ func (a *App) historyHitFromCandidate(
 			catalog.EnqueueExisting(context.Background(), candidate.SessionPath)
 			return HistorySearchHit{}, false
 		}
+		tr := beginSilentLoader("history_search_collect", candidate.SessionPath)
 		session, loadErr := agent.LoadSession(candidate.SessionPath)
 		if loadErr != nil {
+			tr.finish(loadErr, -1)
 			return HistorySearchHit{}, false
 		}
 		messages = session.Snapshot()
+		tr.finish(nil, len(messages))
 		loaded[candidate.SessionPath] = messages
 	}
 	text, ok := desktopHistoryText(messages, candidate)

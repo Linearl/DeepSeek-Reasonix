@@ -94,7 +94,12 @@ func resumeWithFreshSystemPrompt(ctrl interface {
 		logSystemPromptSwap(persisted, fresh, path)
 		next := withFreshSystemPrompt(messages, fresh)
 		if path != "" {
-			if loaded, err := agent.LoadSession(path); err == nil && loaded != nil {
+			tr := beginSilentLoader("session_prompt_resume", path)
+			loaded, err := agent.LoadSession(path)
+			if err != nil || loaded == nil {
+				tr.finish(err, -1)
+			} else {
+				tr.finish(nil, loaded.Len())
 				if resumed, ok := loaded.CloneWithMessagesIfCompatible(next); ok {
 					noteLegacyPinnedSystemMigration(resumed, persisted, fresh)
 					ctrl.Resume(resumed, path)

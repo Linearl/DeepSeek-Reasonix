@@ -204,10 +204,13 @@ func loadSuggestionSessions(dir string, limit int) []suggestionSession {
 		if len(out) >= limit {
 			break
 		}
+		tr := beginSilentLoader("memory_suggestions", info.Path)
 		loaded, err := agent.LoadSession(info.Path)
 		if err != nil {
+			tr.finish(err, -1)
 			continue
 		}
+		tr.finish(nil, loaded.Len())
 		out = append(out, suggestionSession{
 			Path:     info.Path,
 			ID:       strings.TrimSuffix(filepath.Base(info.Path), filepath.Ext(info.Path)),
