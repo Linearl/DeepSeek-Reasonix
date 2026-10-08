@@ -2100,6 +2100,8 @@ export const en = {
   "settings.labGroup.infra": "Infrastructure",
   "settings.labGroup.toolOpt": "Tool optimizations",
   "settings.labGroup.onCount": "{n} on",
+  // 任务 626: rail group-header total badge (same labGroupTotals source as the chips).
+  "settings.labGroup.itemCount": "{n} items",
   "settings.labTier.recommended": "Recommended",
   "settings.labTier.optional": "Optional",
   "settings.labTier.unstable": "Unstable",

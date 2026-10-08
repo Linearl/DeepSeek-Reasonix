@@ -2125,6 +2125,17 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     { id: "toolOptimizations", group: "tool-opt", label: t("settings.toolOptimizations"), on: Boolean(s.experimentalToolOptimizations) },
   ];
 
+  // 任务 626: single-source per-group totals — the filter chips AND the rail
+  // group-header badges read this ONE map, so 「rail header count = chip
+  // count」 is structural rather than coincidental. Recomputed from the SAME
+  // `features` render table on every settings update, never hardcoded
+  // (task 563 lesson). Filter-state policy (unchanged): with labFilter set to
+  // a group, the rail renders that group only (the `filtered` guard below);
+  // its header still renders and sticks — fixed behavior, by design.
+  const labGroupTotals = Object.fromEntries(
+    labGroups.map((g) => [g.key, features.filter((f) => f.group === g.key).length]),
+  ) as Record<LabGroupKey, number>;
+
   // 任务 562: pane-side tier badge — wrap a 表A feature's label with its tier
   // pill. `id` is typed as TierFeatureId, so a badge can never reference a
   // feature outside the 46-item register (preapproveManagedPaths, task-364
@@ -2218,7 +2229,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {t("settings.labGroup.all")}<span className="experimental-lab__chip-n">{features.length}</span>
             </button>
             {labGroups.map((g) => {
-              const n = features.filter((f) => f.group === g.key).length;
+              // 任务 626: the chip count reads labGroupTotals — the same source
+              // the rail group-header badge reads, so the two never disagree.
+              const n = labGroupTotals[g.key];
               if (n === 0) return null;
               return (
                 <button
@@ -2267,6 +2280,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   >
                     <span className="experimental-lab__group-arrow" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
                     <span className="experimental-lab__group-name">{t(g.labelKey)}</span>
+                    {/* 任务 626: total-items badge rides BEFORE the on-count
+                        badge — totals share the chips' labGroupTotals source;
+                        the on-count badge stays (task 359 contract + test). */}
+                    <span className="experimental-lab__group-count experimental-lab__group-count--total">{t("settings.labGroup.itemCount", { n: labGroupTotals[g.key] })}</span>
                     <span className="experimental-lab__group-count">{t("settings.labGroup.onCount", { n: onCount })}</span>
                   </button>
                   {expanded ? items.map((feature) => (

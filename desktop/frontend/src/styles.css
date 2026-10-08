@@ -3994,6 +3994,17 @@ a[href] {
 .experimental-lab__group-toggle:hover { background: color-mix(in srgb, var(--bg-elev) 70%, transparent); }
 .experimental-lab__group-arrow { width: 12px; flex-shrink: 0; font-size: 11px; color: var(--fg-faint); }
 .experimental-lab__group-name { flex: 1; min-width: 0; }
+/* 任务 626: group headers stick to the top of the rail's own scroll box (see
+   .experimental-rail) and get pushed off by the next group header. Declared
+   AFTER .experimental-lab__group-toggle so this opaque background wins the
+   cascade — the toggle base is transparent, and rows would print through a
+   translucent sticky header. Hover highlight (0,2,0) still wins on hover. */
+.experimental-lab__group-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+}
 .experimental-lab__group-count {
   font-size: 11px;
   font-weight: 600;
@@ -4003,6 +4014,12 @@ a[href] {
   padding: 1px 7px;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+/* 任务 626: the total-items badge beside the on-count one — neutral tone so
+   the accent stays reserved for the enabled count. */
+.experimental-lab__group-count--total {
+  color: var(--fg-faint);
+  background: color-mix(in srgb, var(--fg-faint) 12%, transparent);
 }
 
 /* Task 359 (Q1-A): intro banner row (collapsed by default) above the chips. */
@@ -4389,6 +4406,16 @@ a[href] {
   z-index: var(--z-inline-sticky);
   background: var(--bg);
   padding: 6px 0 8px;
+  /* 任务 626: the rail is its own sticky-scroll host for the group headers.
+     The rail itself is pinned (task 353), so a header sticky against the page
+     scroll container would never move; with the rail as an internal scroll
+     container the headers stick to the rail top and get pushed off by the
+     next group. The cap also fixes a super-tall rail being unreachable at
+     the bottom. 300px ≈ page chrome (titlebar + back row + content padding)
+     + lab top (intro + order switch + chips). */
+  max-height: max(240px, calc(100dvh - 300px));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .experimental-rail__item {
   display: flex;
@@ -4449,6 +4476,14 @@ a[href] {
     position: static;
     flex-direction: row;
     flex-wrap: wrap;
+    /* 任务 626: the narrow-screen rail is a horizontal wrap with no internal
+       scroll — a height cap or sticky headers would only misbehave here. */
+    max-height: none;
+    overflow: visible;
+  }
+  /* 任务 626: headers flow inline on narrow screens, nothing to stick to. */
+  .experimental-lab__group-title {
+    position: static;
   }
 }
 /* Task 282: lab "Fork features" intro — pure display cards, no controls. */

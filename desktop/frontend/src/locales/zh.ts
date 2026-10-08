@@ -2101,6 +2101,8 @@ export const zh: Record<DictKey, string> = {
   "settings.labGroup.infra": "基础设施",
   "settings.labGroup.toolOpt": "工具优化",
   "settings.labGroup.onCount": "{n} 开",
+  // 任务 626: 组头项数徽章（与筛选 chips 同源 labGroupTotals）。
+  "settings.labGroup.itemCount": "{n} 项",
   "settings.labTier.recommended": "推荐",
   "settings.labTier.optional": "可选",
   "settings.labTier.unstable": "未稳定",
