@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -86,6 +88,32 @@ func TestPostCrashReportRejectedStatus(t *testing.T) {
 	err := postCrashReport(context.Background(), srv.Client(), srv.URL, crashReport{Kind: "crash"})
 	if err == nil || !strings.Contains(err.Error(), "429") {
 		t.Fatalf("want 429 error, got %v", err)
+	}
+}
+
+// Task 618: a rejected upload must leave a greppable warn carrying the endpoint
+// and HTTP status — the 2026-10-08 upstream 503 used to fail with zero trace in
+// desktop.log.
+func TestPostCrashReportFailureLogsEndpointAndStatus(t *testing.T) {
+	var buf bytes.Buffer
+	handler := slog.NewTextHandler(&buf, nil)
+	oldDefault := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	defer slog.SetDefault(oldDefault)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	if err := postCrashReport(context.Background(), srv.Client(), srv.URL, crashReport{Kind: "crash"}); err == nil {
+		t.Fatal("want a 503 error")
+	}
+	out := buf.String()
+	for _, want := range []string{"level=WARN", "crash report upload rejected", "endpoint=" + srv.URL, "status=", "503"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("log output missing %q:\n%s", want, out)
+		}
 	}
 }
 
