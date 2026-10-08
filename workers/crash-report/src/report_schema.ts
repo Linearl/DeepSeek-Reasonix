@@ -58,6 +58,10 @@ export const Report = z.object({
   componentStack: z.string().max(16 * 1024).optional(),
   topFrame: z.string().max(300).optional(),
   fingerprintHint: z.string().max(300).optional(),
+  // Task 642: lab mock-crash drill marker. The flag must be part of the schema
+  // (not an ignored unknown key) so it survives into storage and the drill can
+  // be told apart from a real failure on the dashboard.
+  testMock: z.boolean().optional(),
   buildCommit: z.string().max(64).optional(),
   channel: z.string().max(32).optional(),
   language: z.string().max(64).optional(),

@@ -1527,6 +1527,24 @@ func (a *App) BuildTime() string {
 	return buildTime
 }
 
+// mergedSandboxWriteRoots computes the Settings panel's project write-directory
+// list and the effective write roots the same way boot does (task 634): the
+// merged config (project reasonix.toml shadows the user config for
+// [sandbox] allow_write) plus the user-global allow dirs injected into the
+// baseline. userCfg is the read-only user config already loaded for the view
+// and doubles as the fallback when the merged load fails.
+func (a *App) mergedSandboxWriteRoots(userCfg *config.Config, root string) (allowWrite, effectiveRoots []string) {
+	cfg := userCfg
+	if root != "" {
+		if merged, err := config.LoadForRootReadOnly(root); err == nil && merged != nil {
+			cfg = merged
+		}
+	}
+	allowWrite = nonNilSlice(cfg.AllowWriteRoots())
+	effectiveRoots = appendUniq(cfg.WriteRootsForRoot(root), cfg.GlobalAllowRoots())
+	return allowWrite, effectiveRoots
+}
+
 // Settings returns the current configuration for the Settings panel.
 func (a *App) Settings() SettingsView {
 	cfg, cfgPath, err := a.loadDesktopUserConfigForView()
@@ -1534,7 +1552,13 @@ func (a *App) Settings() SettingsView {
 		return a.defaultSettingsView()
 	}
 	root := a.activeWorkspaceRoot()
-	writeRoots := cfg.WriteRootsForRoot(root)
+	// 任务 634：写目录面板的项目列与「实际可写根」必须显示运行时真正生效的
+	// 列表。此前两处都从用户级配置计算——项目 reasonix.toml 定义
+	// [sandbox] allow_write 时整表遮蔽用户级，且 boot 还会把全局 allow 目录
+	// 注入基线（boot.go appendUniquePaths(cfg.GlobalAllowRoots())），面板
+	// 因此显示失真（用户加了全局允许目录也看不见）。这里按 boot 同源读
+	// merged 配置；读不到时退回用户级（无项目配置时两者本就一致）。
+	allowWrite, writeRoots := a.mergedSandboxWriteRoots(cfg, root)
 	effectiveWorkspaceRoot := ""
 	if len(writeRoots) > 0 {
 		effectiveWorkspaceRoot = writeRoots[0]
@@ -1683,7 +1707,7 @@ func (a *App) Settings() SettingsView {
 			Ask:   nonNil(cfg.Permissions.Ask),
 			Deny:  nonNil(cfg.Permissions.Deny),
 		},
-		Sandbox: a.sandboxViewFor(cfg, ctrl, writeRoots, effectiveWorkspaceRoot),
+		Sandbox: a.sandboxViewFor(cfg, ctrl, writeRoots, effectiveWorkspaceRoot, allowWrite),
 		Network: NetworkView{
 			ProxyMode: cfg.NetworkProxyMode(),
 			ProxyURL:  cfg.Network.ProxyURL,
@@ -3806,13 +3830,20 @@ func (a *App) ReloadSettings() error {
 	return nil
 }
 
-// SetSandbox updates the bash sandbox mode, network egress, and write roots.
+// SetSandbox updates the bash sandbox mode, network egress, and workspace root.
+//
+// 任务 634：allowWrite 参数保留（Wails 桥签名不变）但不再持久化。此前它把
+// 面板传入的列表写进用户级 config.toml 的 [sandbox] allow_write，而运行时
+// 读的是 merged 配置——项目 reasonix.toml 定义该键时整表遮蔽用户级，面板
+// 改动既到不了运行时，也会把项目条目静默提升进用户级（其他工作区被放大授权）。
+// 项目写目录列已改走 AddAuthorizedWriteDirForTab / RemoveAuthorizedWriteDirForTab
+// （scope 0）：写它声明的层级（项目文件）并热更 live 基线，会话忙时也可用。
 func (a *App) SetSandbox(bash string, network bool, workspaceRoot string, allowWrite []string, shell string) error {
+	_ = allowWrite
 	return a.applyConfigChange(func(c *config.Config) error {
 		c.Sandbox.Bash = bash
 		c.Sandbox.Network = network
 		c.Sandbox.WorkspaceRoot = strings.TrimSpace(workspaceRoot)
-		c.Sandbox.AllowWrite = trimList(allowWrite)
 		c.Tools.Shell.Prefer = strings.TrimSpace(shell)
 		return nil
 	})

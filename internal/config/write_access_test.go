@@ -105,3 +105,99 @@ func TestSetProjectWriteAccessReplacesListAndRemoves(t *testing.T) {
 		t.Fatalf("expected empty allow_write, got %v", reloaded.AllowWriteRoots())
 	}
 }
+
+// 任务 634：桌面端项目写目录列的移除要能落到用户级 [sandbox] allow_write——
+// 项目 reasonix.toml 未定义该键时，merged 视图显示的就是用户级列表，只重写
+// 项目文件移不掉条目（面板上表现为「x 点击无效」）。
+func TestSetUserAllowWriteReplacesListAndRemoves(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	a := filepath.Join(home, "vault-a")
+	b := filepath.Join(home, "vault-b")
+	for _, dir := range []string{a, b} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfgPath := filepath.Join(home, "config.toml")
+	body := "[sandbox]\nbash = \"enforce\"\nallow_write = " + renderStringArray([]string{a, b}) + "\n"
+	if err := os.WriteFile(cfgPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 移除一个条目：其余保持、bash 键不动。
+	if err := SetUserAllowWrite([]string{a}); err != nil {
+		t.Fatalf("SetUserAllowWrite remove: %v", err)
+	}
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.AllowWriteRoots()
+	if len(got) != 1 || got[0] != a {
+		t.Fatalf("AllowWriteRoots after removal = %v, want [%s]", got, a)
+	}
+	if cfg.Sandbox.Bash != "enforce" {
+		t.Fatalf("unrelated sandbox keys must survive, got bash=%q", cfg.Sandbox.Bash)
+	}
+
+	// 清空：显式空表落盘（替换写支持移除）。
+	if err := SetUserAllowWrite(nil); err != nil {
+		t.Fatalf("SetUserAllowWrite clear: %v", err)
+	}
+	cfg, err = LoadUserConfigReadOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.AllowWriteRoots()) != 0 {
+		t.Fatalf("AllowWriteRoots after clear = %v, want empty", cfg.AllowWriteRoots())
+	}
+}
+
+func TestSetUserAllowWriteDeduplicatesUnderAncestor(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	parent := filepath.Join(home, "parent")
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetUserAllowWrite([]string{parent, filepath.Join(parent, "child")}); err != nil {
+		t.Fatalf("SetUserAllowWrite: %v", err)
+	}
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.AllowWriteRoots()
+	if len(got) != 1 || got[0] != parent {
+		t.Fatalf("AllowWriteRoots = %v, want collapsed to [%s]", got, parent)
+	}
+}
+
+func TestSetUserAllowWriteCreatesConfigOnlyWhenNeeded(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("REASONIX_HOME", home)
+	// 无配置文件 + 空列表：不落盘、不建文件。
+	if err := SetUserAllowWrite(nil); err != nil {
+		t.Fatalf("SetUserAllowWrite no-op: %v", err)
+	}
+	if _, err := os.Stat(UserConfigPath()); !os.IsNotExist(err) {
+		t.Fatalf("empty list must not create a user config, stat err=%v", err)
+	}
+	// 无配置文件 + 有条目：创建仅含 [sandbox] allow_write 的最小配置。
+	dir := filepath.Join(home, "created")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetUserAllowWrite([]string{dir}); err != nil {
+		t.Fatalf("SetUserAllowWrite create: %v", err)
+	}
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.AllowWriteRoots()
+	if len(got) != 1 || got[0] != dir {
+		t.Fatalf("AllowWriteRoots = %v, want [%s]", got, dir)
+	}
+}

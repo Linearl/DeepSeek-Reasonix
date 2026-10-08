@@ -56,7 +56,7 @@ export type PerformanceSnapshot = {
 
 export type CrashPayload = {
   schemaVersion: 2;
-  source: "frontend" | "frontend.react" | "frontend.global" | "frontend.performance" | "bot.runtime";
+  source: "frontend" | "frontend.react" | "frontend.global" | "frontend.performance" | "frontend.mock" | "bot.runtime";
   kind: CrashKind;
   label: string;
   message: string;
@@ -69,6 +69,10 @@ export type CrashPayload = {
   // It is deliberately restricted to build/view/breadcrumb categories and never
   // contains breadcrumb messages, tab IDs, paths, or user content.
   fingerprintHint?: string;
+  // Task 642: lab-simulated reports only. The flag travels the whole real
+  // pipeline (own channel / pending queue / issue skeleton / analysis
+  // instruction) so the receiving end can tell the drill from a real failure.
+  testMock?: boolean;
   buildCommit: string;
   channel: string;
   language: string;
@@ -675,23 +679,27 @@ function sendButton(
   payload: CrashPayload,
   className = "crash-overlay__send",
   onSent?: () => void,
+  mock = false,
 ): HTMLButtonElement | null {
   // Resolved at click time via window.go, not the bridge module: this overlay must
   // stay usable even when the rest of the app (and its imports) is broken.
-  const report = window.go?.main?.App?.ReportCrash;
+  // Task 642: mock reports take the ReportMockCrash binding, which runs the same
+  // real channel and queues the report on upload failure like a native panic.
+  const app = window.go?.main?.App;
+  const report = mock ? app?.ReportMockCrash : app?.ReportCrash;
   if (!report) return null;
   const send = document.createElement("button");
   send.className = className;
-  send.textContent = t("crash.send");
+  send.textContent = t(mock ? "crash.mockSend" : "crash.send");
   send.onclick = async () => {
     send.disabled = true;
     send.textContent = t("crash.sending");
     try {
-      await report(payload.kind, JSON.stringify(payload));
-      send.textContent = t("crash.sent");
+      const status = await report(payload.kind, JSON.stringify(payload));
+      send.textContent = mock ? t(status === "queued" ? "crash.mockQueued" : "crash.mockSent") : t("crash.sent");
       onSent?.();
     } catch (err) {
-      send.textContent = t("crash.sendFailed");
+      send.textContent = mock ? t("crash.mockSendFailed") : t("crash.sendFailed");
       send.title = err instanceof Error ? err.message : String(err);
       send.disabled = false;
     }
@@ -852,7 +860,8 @@ function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnap
   host.replaceChildren(...children);
 }
 
-export function paintCrashOverlay(payload: CrashPayload) {
+export function paintCrashOverlay(payload: CrashPayload, options?: { mock?: boolean }) {
+  const mock = options?.mock === true;
   let host = document.getElementById("crash-overlay");
   if (!host) {
     host = document.createElement("div");
@@ -862,6 +871,23 @@ export function paintCrashOverlay(payload: CrashPayload) {
   const title = document.createElement("div");
   title.className = "crash-overlay__title";
   title.textContent = t("crash.title");
+  if (mock) {
+    // Task 642 anti-misreport marking: the lab drill must never be readable as
+    // a real failure, so the badge rides on the title itself.
+    const badge = document.createElement("span");
+    badge.className = "crash-overlay__mock-badge";
+    badge.textContent = t("crash.mockBadge");
+    title.appendChild(document.createTextNode(" "));
+    title.appendChild(badge);
+  }
+  const banner = mock
+    ? (() => {
+        const el = document.createElement("div");
+        el.className = "crash-overlay__mock-banner";
+        el.textContent = t("crash.mockBanner");
+        return el;
+      })()
+    : null;
   const body = document.createElement("pre");
   body.className = "crash-overlay__body";
   body.textContent = payload.message;
@@ -870,7 +896,7 @@ export function paintCrashOverlay(payload: CrashPayload) {
   const copy = copyButton(buildCrashIssueSkeleton(payload), "crash-overlay__copy");
   const actions = document.createElement("div");
   actions.className = "crash-overlay__actions";
-  const send = sendButton(payload);
+  const send = sendButton(payload, undefined, undefined, mock);
   const analysisNote = document.createElement("div");
   analysisNote.className = "crash-overlay__analysis";
   const analyze = analyzeButton(payload, "crash-overlay__analyze", analysisNote);
@@ -879,8 +905,10 @@ export function paintCrashOverlay(payload: CrashPayload) {
   if (analyze) actions.append(analyze);
   const note = document.createElement("div");
   note.className = "crash-overlay__note";
-  note.textContent = t("crash.privacyNote");
-  const children = [title, body, actions];
+  note.textContent = t(mock ? "crash.mockNote" : "crash.privacyNote");
+  const children: HTMLElement[] = [title];
+  if (banner) children.push(banner);
+  children.push(body, actions);
   if (analyze) children.push(analysisNote);
   if (send) children.push(note);
   host.replaceChildren(...children);

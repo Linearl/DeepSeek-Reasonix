@@ -24601,6 +24601,25 @@ body > .mermaid-diagram--fullscreen {
   color: #8a8aa3;
   font-size: 12px;
 }
+/* 任务 642: 模拟崩溃演练的防误报标注（横幅 + 标题徽章）—— 沿用 --warn 警戒
+   色系（crash-overlay 兜底面深底上的琥珀高亮），透明底走 color-mix。 */
+.crash-overlay__mock-banner {
+  padding: 8px 12px;
+  border: 1px dashed var(--warn);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--warn);
+  font-size: 12.5px;
+}
+.crash-overlay__mock-badge {
+  padding: 1px 8px;
+  border: 1px solid var(--warn);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 20%, transparent);
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 700;
+}
 .crash-overlay__analyze,
 .performance-report__analyze {
   padding: 6px 12px;

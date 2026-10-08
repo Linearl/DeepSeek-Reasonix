@@ -98,16 +98,22 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 		return "", fmt.Errorf("could not start a fresh session for the analysis (%v) — use the Copy button to report manually", err)
 	}
 	a.SetModeForTab("", "yolo")
-	instruction := buildCrashAnalysisInstruction(dir, string(payload))
+	instruction := buildCrashAnalysisInstruction(dir, string(payload), r.TestMock)
 	if err := a.SubmitToTab("", instruction); err != nil {
 		return "", fmt.Errorf("could not submit the analysis instruction (%v) — use the Copy button to report manually", err)
 	}
 	return fmt.Sprintf("YOLO analysis session started; it will analyze the diagnostic against %s and submit an issue to %s via gh-issue-submit.", dir, crashAnalysisRepo), nil
 }
 
-func buildCrashAnalysisInstruction(sourceDir, payload string) string {
+func buildCrashAnalysisInstruction(sourceDir, payload string, testMock bool) string {
 	var b strings.Builder
 	b.WriteString("请分析以下 Reasonix 桌面端诊断报告，定位根因并提交 issue。\n\n")
+	if testMock {
+		// Task 642: the lab mock entry reuses this chain, so the analysis run
+		// must know the diagnostic is simulated — it is a pipeline drill, not a
+		// real failure, and the submitted issue has to say so.
+		b.WriteString("注意：这是一条测试/mock 报告（实验室「模拟崩溃测试」入口生成），用于验证上报链路，不是真实故障。issue 请在标题与正文明确标注 mock/test，不要当成真实故障归类。\n\n")
+	}
 	b.WriteString("要求：\n")
 	b.WriteString(fmt.Sprintf("1. 调用 gh-issue-submit 技能，分析该诊断的根因，提交 issue 到 %s，附复现线索与 file:line。\n", crashAnalysisRepo))
 	b.WriteString(fmt.Sprintf("2. 本地 fork 源码位于 %s ，优先在其中定位相关代码路径，给出具体文件与行号。\n", sourceDir))

@@ -480,6 +480,8 @@ type SeverityInput = {
   topFrame: string;
   channel?: string;
   recovery?: string;
+  // Task 642: lab mock-crash drill marker.
+  testMock?: boolean;
 };
 
 const RESIZE_OBSERVER_NOTICE_RE = /^ResizeObserver loop (?:limit exceeded|completed with undelivered notifications\.?)$/;
@@ -526,6 +528,9 @@ function severityForKind(kind: string): string {
 }
 
 export function severityForReport(input: SeverityInput): string {
+  // Task 642: a lab mock drill must never outrank a real failure, no matter
+  // what kind its payload carries.
+  if (input.testMock === true) return "low";
   if (isDevelopmentReport(input) || isOpaqueScriptErrorReport(input) || isKnownNonCrashDiagnostic(input)) return "low";
   if ((input.source === "web.runtime.native" || input.source === "webview2.process.native") && input.recovery === "reload_succeeded") return "low";
   if ((input.source === "web.runtime.native" || input.source === "webview2.process.native") && input.kind === "exception") return "high";
@@ -596,7 +601,7 @@ async function prepareCrashEvent(r: ReportPayload, keepD1Sample: boolean): Promi
     webRuntime,
     webview2,
   };
-  const fingerprintBasis = (
+  const rawFingerprintBasis = (
     report.source === "web.runtime.native" || report.source === "webview2.process.native"
   ) && webRuntime
     ? nativeWebRuntimeFingerprintBasis(webRuntime)
@@ -612,6 +617,10 @@ async function prepareCrashEvent(r: ReportPayload, keepD1Sample: boolean): Promi
         fingerprintHint,
       })
       : normalizeForFingerprint(report.kind, message);
+  // Task 642: namespace mock drills away from real crash groups — even a mock
+  // whose payload mimics a real report must never inflate that group's count.
+  const fingerprintBasis = report.testMock === true ? `mock
+${rawFingerprintBasis}` : rawFingerprintBasis;
   const severityInput = {
     kind: report.kind,
     version: report.version,
@@ -622,6 +631,7 @@ async function prepareCrashEvent(r: ReportPayload, keepD1Sample: boolean): Promi
     topFrame,
     channel: report.channel ?? "",
     recovery: webRuntime?.recovery,
+    testMock: report.testMock === true,
   };
   const development = isDevelopmentReport(severityInput);
   return {
@@ -662,6 +672,7 @@ async function projectCrashEvent(env: Env, event: StoredCrashEvent): Promise<voi
     topFrame,
     channel,
     recovery: webRuntime?.recovery,
+    testMock: r.testMock === true,
   });
   const prior = await env.DB.prepare("SELECT status FROM groups WHERE fingerprint = ?1")
     .bind(event.fingerprint)
@@ -701,8 +712,8 @@ async function projectCrashEvent(env: Env, event: StoredCrashEvent): Promise<voi
       `INSERT INTO reports (
          fingerprint, kind, version, os, arch, message, device, created_at,
          source, label, error_type, error_message, top_frame, build_commit, channel,
-         language, view, breadcrumbs, component_stack, stack, occurred_at, webview2, web_runtime
-       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)`,
+         language, view, breadcrumbs, component_stack, stack, occurred_at, webview2, web_runtime, test_mock
+       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)`,
     ).bind(
       event.fingerprint, r.kind, r.version, r.os, r.arch, message,
       JSON.stringify(r.device ?? {}), event.receivedAt, source, label, errorType, errorMessage,
@@ -710,6 +721,7 @@ async function projectCrashEvent(env: Env, event: StoredCrashEvent): Promise<voi
       JSON.stringify(r.breadcrumbs ?? []), r.componentStack ?? "", r.stack ?? "",
       r.occurredAt ?? "", webview2 ? JSON.stringify(webview2) : "",
       webRuntime ? JSON.stringify(webRuntime) : "",
+      r.testMock ? 1 : 0,
     ));
   }
   statements.push(...reportAggregateStatements(env.DB, r, event.fingerprint, channel, webRuntime));

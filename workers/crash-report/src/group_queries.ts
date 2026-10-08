@@ -9,7 +9,7 @@ import {
 const REPORT_COLUMNS = `
   id, version, os, arch, message, device, created_at, source, label, error_type, error_message,
   top_frame, build_commit, channel, language, view, breadcrumbs, component_stack, stack,
-  occurred_at, webview2, web_runtime`;
+  occurred_at, webview2, web_runtime, test_mock`;
 
 // Keep the detail page bounded even when a group has a large lifetime count.
 // The first retained sample preserves the earliest context; the latest samples

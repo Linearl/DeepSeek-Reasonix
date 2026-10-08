@@ -68,7 +68,7 @@ func TestSandboxViewAlwaysSerializesOptimisticWrite(t *testing.T) {
 	a := &App{}
 	cfg := &config.Config{}
 	cfg.Sandbox.OptimisticWrite = true
-	view := a.sandboxViewFor(cfg, nil, nil, "")
+	view := a.sandboxViewFor(cfg, nil, nil, "", nil)
 	raw, err := json.Marshal(view)
 	if err != nil {
 		t.Fatal(err)

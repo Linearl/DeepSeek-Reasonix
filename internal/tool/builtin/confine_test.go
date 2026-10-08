@@ -604,3 +604,97 @@ func TestConfineReadFiltersPlainGlobMatches(t *testing.T) {
 		t.Fatalf("glob leaked forbidden paths:\n%s", out)
 	}
 }
+
+// 任务 634：yolo（experimental_full_access，task 257）逐态矩阵。预检层
+// （agent.applyWriteAccess）与控制器门（WritableRootSet.Missing）都按
+// unbounded 放行，但写工具的 effectiveWriteRoots 此前返回静态基线列表，
+// confine 检查把 yolo 会话拦在 workspace 边界内（外部反馈 634 问题①：
+// 写 D:\Obsidian-Valut 被拦；存量基线未含新增的全局 allow 目录时，
+// 问题②的「全局允许目录不生效」同源于此缺口）。
+func TestWriteFileYoloFullAccessStateMatrix(t *testing.T) {
+	ws := t.TempDir()  // workspace 根
+	ext := t.TempDir() // 模拟 D:\Obsidian-Valut：workspace 外的允许目录
+	outside := filepath.Join(ext, "t634.txt")
+	writeArgs := func(t *testing.T, path string) json.RawMessage {
+		t.Helper()
+		raw, err := json.Marshal(map[string]string{"path": path, "content": "t634"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+
+	t.Run("yolo_off_no_extra_allow_blocks", func(t *testing.T) {
+		set := sandbox.NewWritableRootSet([]string{ws})
+		w := writeFile{roots: realRoots([]string{ws}), rootSet: set}
+		if _, err := w.Execute(context.Background(), writeArgs(t, outside)); err == nil {
+			t.Fatal("非 yolo 且无 allow_write：workspace 外写入必须被拦")
+		}
+	})
+
+	t.Run("yolo_off_global_allow_dir_passes", func(t *testing.T) {
+		// boot 把 [sandbox] allow_global 注入基线（boot.go appendUniquePaths(cfg.GlobalAllowRoots())）：
+		// 非 yolo 会话写全局允许目录应当通过。
+		set := sandbox.NewWritableRootSet([]string{ws, ext})
+		w := writeFile{roots: realRoots([]string{ws, ext}), rootSet: set}
+		if _, err := w.Execute(context.Background(), writeArgs(t, outside)); err != nil {
+			t.Fatalf("非 yolo + 全局 allow 目录（基线含 ext）应放行: %v", err)
+		}
+	})
+
+	t.Run("yolo_on_stale_baseline_passes", func(t *testing.T) {
+		// 634 问题①：yolo 开启且基线未含目标目录（存量会话基线落后于配置）时，
+		// 写工具必须按 unbounded 放行，而不是被静态基线拦住。
+		set := sandbox.NewWritableRootSet([]string{ws})
+		set.SetUnbounded(true)
+		w := writeFile{roots: realRoots([]string{ws}), rootSet: set}
+		if _, err := w.Execute(context.Background(), writeArgs(t, outside)); err != nil {
+			t.Fatalf("yolo 下写基线外目录应放行（预检层已放行，写工具不得二次拦截）: %v", err)
+		}
+		if _, err := os.Stat(outside); err != nil {
+			t.Fatalf("yolo 放行后文件应已落盘: %v", err)
+		}
+	})
+
+	t.Run("yolo_on_with_allow_dir_passes", func(t *testing.T) {
+		set := sandbox.NewWritableRootSet([]string{ws, ext})
+		set.SetUnbounded(true)
+		w := writeFile{roots: realRoots([]string{ws, ext}), rootSet: set}
+		if _, err := w.Execute(context.Background(), writeArgs(t, outside)); err != nil {
+			t.Fatalf("yolo + allow 目录应放行: %v", err)
+		}
+	})
+
+	t.Run("yolo_on_keeps_session_data_guard", func(t *testing.T) {
+		// boot 注释明确的边界：yolo 不豁免 Reasonix 自有会话存储
+		// （「session-data guard and ProtectedWriteRoots stay in place」）。
+		home := isolateBuiltinTestUserState(t)
+		stateRoot := filepath.Join(home, "state")
+		if err := os.MkdirAll(filepath.Join(stateRoot, "sessions"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		set := sandbox.NewWritableRootSet([]string{ws})
+		set.SetUnbounded(true)
+		w := writeFile{roots: realRoots([]string{ws}), rootSet: set, guard: NewSessionDataGuard(stateRoot, nil)}
+		target := filepath.Join(stateRoot, "sessions", "s1.jsonl")
+		if _, err := w.Execute(context.Background(), writeArgs(t, target)); err == nil {
+			t.Fatal("yolo 下写 Reasonix 会话存储仍必须被 session-data guard 拦截")
+		}
+	})
+
+	t.Run("yolo_on_preview_path_passes", func(t *testing.T) {
+		// 证据/预览路径（confinePreview）走同一个 effectiveWriteRoots 单点，
+		// yolo 下不得在预检阶段被静态基线拦住。
+		set := sandbox.NewWritableRootSet([]string{ws})
+		set.SetUnbounded(true)
+		w := writeFile{roots: realRoots([]string{ws}), rootSet: set}
+		absent := filepath.Join(ext, "absent-t634.txt")
+		info, err := w.DeclareEvidenceTarget(context.Background(), writeArgs(t, absent))
+		if err != nil {
+			t.Fatalf("yolo 下预览基线外新文件应放行: %v", err)
+		}
+		if !info.Absent {
+			t.Fatal("预览目标不存在时应报告 Absent")
+		}
+	})
+}
