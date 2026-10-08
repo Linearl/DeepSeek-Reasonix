@@ -299,12 +299,21 @@ export function buildTurnModels(
     // Task 630: a stream-interrupted turn often settles with NO assistant text
     // (the empty assistant item is dropped at finalize), which used to blank
     // the whole turn-actions copy entry exactly when the user needs it most.
-    // Fall back to the turn's warn notices — the same diagnosis the warning
-    // strip shows — so the copy payload names the failure. Turns with real
+    // Fall back to the turn's notices — the same text the strips show — so the
+    // copy payload names what the turn actually produced. Turns with real
     // assistant output never pick this up: copy stays the final markdown text.
+    // Task 648: the fallback must cover more than warn strips — info-level
+    // system receipts (cross-session degradation, delivery pauses,
+    // concurrent-writer cards, cancelled-turn hints) can be a turn's ONLY
+    // content, and the warn-only filter left those turns with neither payload
+    // nor checkpoint, so the whole action row vanished. Steers stay excluded
+    // (the user's own words, copyable on their own card), and so do completion
+    // cards and host-recovery guidance (not turn output; the latter is dropped
+    // from display entirely, so copying it would surface invisible text).
     if (actionText.trim() === "") {
       for (const item of model.turnItems) {
-        if (item.kind !== "notice" || item.level !== "warn" || !item.text.trim()) continue;
+        if (item.kind !== "notice" || !item.text.trim()) continue;
+        if (isSteerNoticeText(item.text) || item.variant === "completion" || isHostRecoveryGuidance(item.text)) continue;
         const detail = item.detail?.trim();
         actionText = appendTurnActionCopyText(actionText, detail ? `${item.text.trim()}\n${detail}` : item.text.trim());
       }
