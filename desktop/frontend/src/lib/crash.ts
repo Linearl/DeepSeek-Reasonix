@@ -7,6 +7,7 @@ import { app } from "./bridge";
 import { t } from "./i18n";
 import { sessionPipelineDiagnostics, type SessionPipelineDiagnostics } from "./sessionDiagnostics";
 import { isWailsRuntimeOnlyCrashEvent } from "./wailsRuntimeCrash";
+import { buildCrashIssueSkeleton } from "./crashIssue";
 declare const __BUILD_COMMIT__: string;
 declare const __BUILD_CHANNEL__: string;
 
@@ -742,7 +743,10 @@ function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnap
   const actions = document.createElement("div");
   actions.className = "performance-report__actions";
   const send = sendButton(payload, "performance-report__send", () => markPerfReported(payload.label));
-  const copy = copyButton(payload.message, "performance-report__copy");
+  // Task 617 route A: copy a paste-ready GitHub issue skeleton, not the bare
+  // diagnostic text — the upstream endpoint is down (618) and this is the
+  // zero-dependency feedback path.
+  const copy = copyButton(buildCrashIssueSkeleton(payload), "performance-report__copy");
   const dismiss = document.createElement("button");
   dismiss.className = "performance-report__dismiss";
   dismiss.textContent = t("performanceReport.dismiss");
@@ -771,7 +775,9 @@ export function paintCrashOverlay(payload: CrashPayload) {
   const body = document.createElement("pre");
   body.className = "crash-overlay__body";
   body.textContent = payload.message;
-  const copy = copyButton(payload.message, "crash-overlay__copy");
+  // Task 617 route A: copy a paste-ready GitHub issue skeleton (title,
+  // sectioned body, repo link, labels) instead of the bare diagnostic text.
+  const copy = copyButton(buildCrashIssueSkeleton(payload), "crash-overlay__copy");
   const actions = document.createElement("div");
   actions.className = "crash-overlay__actions";
   const send = sendButton(payload);
