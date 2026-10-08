@@ -96,6 +96,12 @@ type chatTUI struct {
 	runStart              time.Time
 	elapsed               int
 	elapsedTickGeneration uint64
+	// gotOutput (task 370): true once the turn's first model output (reasoning,
+	// text, tool dispatch) arrived. Drives the long-first-wait hint — silence
+	// before the first token is the prefill/first-thinking phase and can take
+	// minutes on a filling window, which without the hint is
+	// indistinguishable from a hang (the task-370 incident).
+	gotOutput bool
 	// Recovery state is cleared by progress or completion.
 	retryAttempt int
 	retryMax     int
@@ -1810,6 +1816,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.runStart = time.Now()
 				m.elapsed = 0
 				m.turnTokens = 0
+				m.gotOutput = false
 				m.pendingRestore = line
 				m.bubbleStartIdx = len(m.transcript)
 				m.commitLine("")
@@ -3256,6 +3263,12 @@ func (m chatTUI) cancelRequested() bool {
 	return m.ctrl.CancelRequested()
 }
 
+// firstResponseHintSecs (task 370): when a turn has produced no model output
+// for this long, the working line gains a one-line expectation hint. A filling
+// window can legitimately spend minutes in prefill + first-round thinking; the
+// hint turns that silence from "looks hung" into "known slow phase".
+const firstResponseHintSecs = 90
+
 func (m chatTUI) runningWorkingLine(cancelRequested, styled bool) string {
 	if m.state != tuiRunning {
 		return ""
@@ -3280,6 +3293,11 @@ func (m chatTUI) runningWorkingLine(cancelRequested, styled bool) string {
 			working = fmt.Sprintf("  %s %s · %ds", m.spinner.View(), phaseLabel, m.elapsed)
 		} else {
 			working = fmt.Sprintf("  "+i18n.M.ChatStatusThinkingFmt, m.spinner.View(), m.elapsed)
+		}
+		// Task 370: before the first model output lands, silence and a hang
+		// look identical. Past the soft threshold, say what the silence is.
+		if !m.gotOutput && m.elapsed >= firstResponseHintSecs {
+			working += " · " + i18n.M.ChatStatusFirstWaitHint
 		}
 	}
 	if m.turnTokens > 0 {

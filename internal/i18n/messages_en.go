@@ -85,6 +85,7 @@ var English = Messages{
 	ChatThinking:                           "thinking…",
 	ChatThoughtForFmt:                      "thought for %ds",
 	ChatStatusThinkingFmt:                  "%s thinking… (%ds · Esc cancels)",
+	ChatStatusFirstWaitHint:                "no first response yet — long sessions can spend minutes before the first token",
 	TurnPhaseWorking:                       "working",
 	ReadStatusReadingFmt:                   "reading %s",
 	ReadStatusCoveredFmt:                   "reading %s · lines %s",
@@ -302,24 +303,24 @@ var English = Messages{
 	ShellExecTimeoutFmt: "shell command timed out (> %s)",
 	ShellModeHint:       "Enter runs shell · Esc cancels · click output to expand",
 
-	CmdNew:              "start new session; save transcript",
-	CmdClear:            "discard current context",
-	CmdCls:              "clear screen only (keep LLM context)",
-	CmdCompact:          "compact context",
-	CmdExtract:          "extract highlights into a new session",
-	CmdContinueChecks:   "continue a paused final-readiness check",
-	CmdContext:          "show context window, thresholds, and last maintenance",
-	CmdRewind:           "rewind to an earlier turn",
-	CmdTree:             "show conversation branches",
-	CmdBranch:           "create a conversation branch",
-	CmdSwitchBranch:     "switch conversation branch",
-	CmdResume:           "resume a saved session",
-	CmdRename:           "rename a session",
-	CmdModel:            "switch model",
-	CmdStatus:           "show session status",
-	CmdSubagentPolicy:    "sub-agent delegation tier: /subagent-policy <light|balanced|aggressive> (transient, per-turn)",
-	SubagentPolicySet:    "sub-agent policy: %s (applies to subsequent turns, not persisted)",
-	CmdWorkMode:         "session quality floor: standard or delivery",	CmdDocs:             "search version-matched embedded documentation",
+	CmdNew:            "start new session; save transcript",
+	CmdClear:          "discard current context",
+	CmdCls:            "clear screen only (keep LLM context)",
+	CmdCompact:        "compact context",
+	CmdExtract:        "extract highlights into a new session",
+	CmdContinueChecks: "continue a paused final-readiness check",
+	CmdContext:        "show context window, thresholds, and last maintenance",
+	CmdRewind:         "rewind to an earlier turn",
+	CmdTree:           "show conversation branches",
+	CmdBranch:         "create a conversation branch",
+	CmdSwitchBranch:   "switch conversation branch",
+	CmdResume:         "resume a saved session",
+	CmdRename:         "rename a session",
+	CmdModel:          "switch model",
+	CmdStatus:         "show session status",
+	CmdSubagentPolicy: "sub-agent delegation tier: /subagent-policy <light|balanced|aggressive> (transient, per-turn)",
+	SubagentPolicySet: "sub-agent policy: %s (applies to subsequent turns, not persisted)",
+	CmdWorkMode:       "session quality floor: standard or delivery", CmdDocs: "search version-matched embedded documentation",
 	CmdMemory:           "inspect instructions, memory, and recovery",
 	CmdMigrate:          "retry legacy data migration",
 	CmdGoal:             "set or clear the active goal",
@@ -635,6 +636,7 @@ Usage:
   reasonix init                                         show how to generate project memory (AGENTS.md)
   reasonix doctor [--json]                              print redacted local diagnostics
   reasonix doctor session <branch-id> [--zip] [--out PATH]  export a session conflict diagnostic zip
+  reasonix doctor responsiveness <branch-id> [--watch DURATION] [--json]  judge one unresponsive session: stuck or slow
   reasonix session list --json [--dir PATH]             list redacted sessions for machine clients
   reasonix session show|status <machine-session-id> --json [--dir PATH]  query one redacted session
   reasonix session recovery [<machine-session-id>] --json [--dir PATH]  query redacted recovery state

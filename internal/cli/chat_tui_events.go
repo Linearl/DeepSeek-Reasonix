@@ -61,6 +61,7 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 }
 
 func (m *chatTUI) ingestReasoning(e event.Event) {
+	m.gotOutput = true
 	if m.nativeScrollback {
 		if !m.reasoningNative {
 			m.thinkStart = time.Now()
@@ -85,6 +86,7 @@ func (m *chatTUI) ingestReasoning(e event.Event) {
 }
 
 func (m *chatTUI) ingestText(e event.Event) {
+	m.gotOutput = true
 	m.commitReasoningBeforeAnswer()
 	m.pending.WriteString(e.Text)
 	m.streamAnswer()
@@ -110,6 +112,7 @@ func (m *chatTUI) ingestToolDispatch(e event.Event) {
 	if e.Tool.Partial || e.Tool.Refreshed {
 		return
 	}
+	m.gotOutput = true
 	m.finalizeStreamed()
 	switch e.Tool.Name {
 	case "todo_write":
