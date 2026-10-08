@@ -111,13 +111,13 @@ export function SideFilesDockPanel({ items, variant, onInjectReferences }: {
           <p className="side-files__empty">{t("sideFiles.empty")}</p>
         ) : (
           <details className="side-files__group" open>
-            <summary title={t("sideFiles.referencesHint")}>
+            <summary title={t("sideFiles.artifactsHint")}>
               <span>
-                <FileText size={13} aria-hidden="true" /> {t("sideFiles.references")}
+                <FilePlus2 size={13} aria-hidden="true" /> {t("sideFiles.artifacts")}
               </span>
-              <span className="side-files__meta">{t("sideFiles.referencesMeta", { count: references.length })}</span>
+              <span className="side-files__meta">{t("sideFiles.artifactsMeta", { count: artifacts.length })}</span>
             </summary>
-            <FileList files={references} />
+            <FileList files={artifacts} />
           </details>
         )}
       </div>
