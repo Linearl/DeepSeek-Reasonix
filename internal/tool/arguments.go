@@ -37,6 +37,16 @@ type CapabilityArgumentProvider interface {
 	CapabilityArguments(capabilityID string) (CapabilityArgumentContract, bool)
 }
 
+// CapabilityArgumentIndexer produces the argument contracts of every
+// capability a provider can serve in one call. Catalog-wide consumers
+// (use_capability action=search) use it instead of one CapabilityArguments
+// call per entry: task 660 measured that per-entry lookups re-ran the
+// provider's backing discovery for every entry and turned one local search
+// into hundreds of full scans.
+type CapabilityArgumentIndexer interface {
+	CapabilityArgumentsIndex() map[string]CapabilityArgumentContract
+}
+
 // ArgumentViolation is a value-free description of one invalid argument. It
 // intentionally contains schema expectations, never the supplied value.
 type ArgumentViolation struct {

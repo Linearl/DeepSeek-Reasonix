@@ -2,8 +2,10 @@ package agent
 
 import (
 	"encoding/json"
+	"log/slog"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"reasonix/internal/capability"
@@ -24,7 +26,10 @@ type capabilitySearchResult struct {
 
 // searchCapabilities ranks the in-memory catalog and schema cache only. It is
 // deliberately incapable of starting an MCP server or issuing tools/list.
+// Segment timing rides slog.Debug (task 660) so a slow search can be
+// decomposed in the field without changing results.
 func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string, int, error) {
+	started := time.Now()
 	if limit == 0 {
 		limit = 5
 	}
@@ -32,15 +37,27 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 	queryNorm := normalizeSearchText(query)
 	queryTokens := searchTokens(query)
 	cat := t.currentCatalog()
+	catalogMs := time.Since(started).Milliseconds()
+
+	mcpStarted := time.Now()
 	mcpSchemas := t.mcpSearchSchemaIndex()
+	mcpIndexMs := time.Since(mcpStarted).Milliseconds()
+
+	contractsStarted := time.Now()
+	skillContracts := t.skillContractIndex()
+	skillIndexMs := time.Since(contractsStarted).Milliseconds()
+
+	scanStarted := time.Now()
+	scored := 0
 	results := make([]capabilitySearchResult, 0, len(cat.Entries))
 	for _, entry := range cat.Entries {
-		arguments, schemaText := t.capabilitySchemaSearchData(entry, mcpSchemas)
+		arguments, schemaText := t.capabilitySchemaSearchData(entry, mcpSchemas, skillContracts)
 		document := strings.Join([]string{entry.ID, entry.Name, entry.Source, entry.ToolName, entry.Description, schemaText}, " ")
 		score := capabilitySearchScore(entry, document, queryNorm, queryTokens)
 		if score == 0 {
 			continue
 		}
+		scored++
 		results = append(results, capabilitySearchResult{
 			CapabilityID: entry.ID,
 			Kind:         string(entry.Kind),
@@ -52,6 +69,9 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 			score:        score,
 		})
 	}
+	scanMs := time.Since(scanStarted).Milliseconds()
+
+	marshalStarted := time.Now()
 	sort.Slice(results, func(i, j int) bool {
 		if results[i].score != results[j].score {
 			return results[i].score > results[j].score
@@ -71,7 +91,43 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 		Note:    "Local catalog search only; no MCP process, network request, or tools/list call was made. Inspect one exact capability_id before calling when its argument contract is unfamiliar.",
 	}
 	b, err := json.MarshalIndent(payload, "", "  ")
+	slog.Debug("agent: use_capability search segment timing",
+		"query", query,
+		"catalog_entries", len(cat.Entries),
+		"catalog_ms", catalogMs,
+		"mcp_index_ms", mcpIndexMs,
+		"skill_index_ms", skillIndexMs,
+		"scan_ms", scanMs,
+		"scored", scored,
+		"marshal_ms", time.Since(marshalStarted).Milliseconds(),
+		"total_ms", time.Since(started).Milliseconds(),
+	)
 	return string(b), len(results), err
+}
+
+// skillContractIndex resolves every skill argument contract with ONE provider
+// round trip (task 660). Scoring used to call capabilityArgumentContract per
+// catalog entry before the score check, and each call re-ran the skill store's
+// full disk scan — a 216-skill root turned one local search into ~217 scans.
+// The walk order matches capabilityArgumentContract so the same provider wins;
+// a provider without batch support falls back to the legacy per-entry lookup.
+func (t *UseCapabilityTool) skillContractIndex() map[string]tool.CapabilityArgumentContract {
+	if t.registry == nil {
+		return nil
+	}
+	for _, name := range []string{"run_skill", "read_only_skill", "read_skill"} {
+		target, ok := t.registry.Get(name)
+		if !ok {
+			continue
+		}
+		if indexer, ok := target.(tool.CapabilityArgumentIndexer); ok {
+			return indexer.CapabilityArgumentsIndex()
+		}
+		if _, ok := target.(tool.CapabilityArgumentProvider); ok {
+			return nil
+		}
+	}
+	return nil
 }
 
 func capabilitySearchScore(entry capability.Entry, document, queryNorm string, queryTokens []string) int {
@@ -107,7 +163,7 @@ func capabilitySearchScore(entry capability.Entry, document, queryNorm string, q
 	return score
 }
 
-func (t *UseCapabilityTool) capabilitySchemaSearchData(entry capability.Entry, mcpSchemas map[string]plugin.CachedTool) ([]string, string) {
+func (t *UseCapabilityTool) capabilitySchemaSearchData(entry capability.Entry, mcpSchemas map[string]plugin.CachedTool, skillContracts map[string]tool.CapabilityArgumentContract) ([]string, string) {
 	var schema json.RawMessage
 	if entry.Kind == capability.KindMCPTool {
 		server, raw, err := parseMCPCapabilityID(entry.ID)
@@ -117,7 +173,11 @@ func (t *UseCapabilityTool) capabilitySchemaSearchData(entry capability.Entry, m
 			}
 		}
 	} else if strings.HasPrefix(entry.ID, "skill:") {
-		if contract, ok := t.capabilityArgumentContract(entry.ID); ok {
+		if skillContracts != nil {
+			if contract, ok := skillContracts[strings.TrimPrefix(entry.ID, "skill:")]; ok {
+				schema = contract.Schema
+			}
+		} else if contract, ok := t.capabilityArgumentContract(entry.ID); ok {
 			schema = contract.Schema
 		}
 	} else if t.registry != nil {
