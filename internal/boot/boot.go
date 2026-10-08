@@ -3766,6 +3766,9 @@ Tools:
   Newest first, limit (default 200). Live conversations only; pass archived=true for retired
   history. query filters by keyword (part of a name works). sent=true returns YOUR OWN
   outgoing log — check it after a batch dispatch to catch a misdirected send.
+  include_stats=true adds per-row eventsBytes / turns / lastActivityAt (task 508): one call
+  sizes sessions up for a rotation audit — primary event-log bytes only, sidecars excluded,
+  still no transcript content.
 - get_session_status(targets?) — check whether peers are busy before assigning work
   (running / queued / idle / unknown). No arguments sweeps every addressable session.
 - talk_to_session(to, message, ...) — message another session. ` + "`to`" + ` accepts
