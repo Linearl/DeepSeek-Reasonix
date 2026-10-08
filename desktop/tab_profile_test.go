@@ -50,10 +50,11 @@ func TestSetEffortForTabIsTabLocal(t *testing.T) {
 	if err := app.SetEffortForTab(tabA.ID, "max"); err != nil {
 		t.Fatalf("SetEffortForTab: %v", err)
 	}
-	if got := app.EffortForTab(tabA.ID).Current; got != "max" {
+	// Task 611: deterministic oracle (same read path, no 2s wall-clock cap).
+	if got := effortDirectRead(app, tabA.ID).Current; got != "max" {
 		t.Fatalf("tab A effort = %q, want max", got)
 	}
-	if got := app.EffortForTab(tabB.ID).Current; got != "auto" {
+	if got := effortDirectRead(app, tabB.ID).Current; got != "auto" {
 		t.Fatalf("tab B effort = %q, want auto", got)
 	}
 	if tabB.effort != nil {
@@ -89,7 +90,8 @@ effort = "max"
 	app.activeTabID = tab.ID
 	defer tab.Ctrl.Close()
 
-	got := app.EffortForTab(tab.ID)
+	// Task 611: deterministic oracle (same read path, no 2s wall-clock cap).
+	got := effortDirectRead(app, tab.ID)
 	if !got.Supported || got.Current != "max" {
 		t.Fatalf("EffortForTab project config = %+v, want supported max", got)
 	}
@@ -118,7 +120,8 @@ api_key_env = "PROJECT_API_KEY"
 	app.activeTabID = tab.ID
 	defer tab.Ctrl.Close()
 
-	got := app.EffortForTab(tab.ID)
+	// Task 611: deterministic oracle (same read path, no 2s wall-clock cap).
+	got := effortDirectRead(app, tab.ID)
 	if !got.Supported || got.Current != "auto" || got.Default != "high" {
 		t.Fatalf("EffortForTab model registry = %+v, want supported auto/high", got)
 	}

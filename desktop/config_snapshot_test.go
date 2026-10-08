@@ -67,15 +67,29 @@ func newSnapshotEffortFixture(t *testing.T, cfg *config.Config) (*App, *Workspac
 	return app, tab, &loads
 }
 
+// effortDirectRead is the deterministic value oracle for effort read tests:
+// the exact read path EffortForTab drives (effortReadCompute →
+// effortForTabDirect; the stub is nil) minus the 2s wall-clock cap. Task 611:
+// three effort-domain tests flaked in a single loaded -count=3 round because
+// the cap fired and its fallback blanked the assertion — value assertions
+// must not ride a wall-clock bound. The cap and its cached/default fallback
+// stay covered by the stub-based task-421 contract tests, which are
+// deterministic by construction.
+func effortDirectRead(app *App, tabID string) EffortInfo {
+	return app.effortForTabDirect(tabID)
+}
+
 // TestEffortForTabWarmReadsDoNotReloadConfig is the task-609 acceptance gate:
 // the first read on a root may pay one full config load, but every warm read
 // afterwards must be served from the per-root snapshot — zero LoadForRoot
 // calls — because that per-call full load (with on-disk migration) was the
-// multi-second "effort read timed out" source task 421 capped.
+// multi-second "effort read timed out" source task 421 capped. Reads go
+// through effortDirectRead: the gate is about load counting, not about the
+// 421 cap (task 611).
 func TestEffortForTabWarmReadsDoNotReloadConfig(t *testing.T) {
 	app, tab, loads := newSnapshotEffortFixture(t, snapshotTestConfig("low", "high"))
 
-	got := app.EffortForTab(tab.ID)
+	got := effortDirectRead(app, tab.ID)
 	if !got.Supported {
 		t.Fatalf("prime read not supported: %+v", got)
 	}
@@ -93,7 +107,7 @@ func TestEffortForTabWarmReadsDoNotReloadConfig(t *testing.T) {
 	// Warm reads: the snapshot serves them all; a single reload here would
 	// mean the read path still pays the full load task 609 removes.
 	for i := 0; i < 10; i++ {
-		got := app.EffortForTab(tab.ID)
+		got := effortDirectRead(app, tab.ID)
 		if !got.Supported || got.Current != "auto" {
 			t.Fatalf("warm read %d = %+v, want supported auto", i, got)
 		}
@@ -108,7 +122,7 @@ func TestEffortForTabWarmReadsDoNotReloadConfig(t *testing.T) {
 // reload happens exactly once, then the new value is the served one.
 func TestEffortForTabReflectsConfigChangeImmediately(t *testing.T) {
 	app, tab, loads := newSnapshotEffortFixture(t, snapshotTestConfig("low", "high"))
-	if got := app.EffortForTab(tab.ID); !got.Supported {
+	if got := effortDirectRead(app, tab.ID); !got.Supported {
 		t.Fatalf("prime read not supported: %+v", got)
 	}
 	primed := loads.Load()
@@ -116,7 +130,7 @@ func TestEffortForTabReflectsConfigChangeImmediately(t *testing.T) {
 	if err := snapshotTestConfig("high", "max").SaveTo(config.UserConfigPath()); err != nil {
 		t.Fatalf("rewrite config: %v", err)
 	}
-	got := app.EffortForTab(tab.ID)
+	got := effortDirectRead(app, tab.ID)
 	if want := []string{"auto", "high", "max"}; len(got.Levels) != 3 || got.Levels[1] != want[1] || got.Levels[2] != want[2] {
 		t.Fatalf("levels after config change = %v, want %v", got.Levels, want)
 	}
@@ -126,7 +140,7 @@ func TestEffortForTabReflectsConfigChangeImmediately(t *testing.T) {
 
 	// The rewritten value is now the cached one; warm reads keep serving it
 	// without touching the disk again.
-	if got := app.EffortForTab(tab.ID); len(got.Levels) != 3 || got.Levels[1] != "high" {
+	if got := effortDirectRead(app, tab.ID); len(got.Levels) != 3 || got.Levels[1] != "high" {
 		t.Fatalf("warm read after change = %+v, want rewritten vocabulary", got)
 	}
 	if now := loads.Load(); now != primed+1 {
@@ -201,11 +215,13 @@ func TestConfigSnapshotInvalidatedByProjectTOMLChange(t *testing.T) {
 // with the notice — the snapshot must not have removed the safety net.
 func TestEffortForTabFallbackStillBoundedAfterSnapshot(t *testing.T) {
 	app, tab, _ := newSnapshotEffortFixture(t, snapshotTestConfig("low", "high"))
-	// Prime under the production cap: the first real read pays the one full
-	// config load the snapshot exists for, which can exceed a shortened cap.
-	if got := app.EffortForTab(tab.ID); got.Current != "auto" {
-		t.Fatalf("prime read current = %q, want auto", got.Current)
-	}
+	// Prime the cache the same way the production read goroutine does
+	// (storeEffortCache with the real snapshot value). Task 611: priming via
+	// a plain EffortForTab call races its own 2s cap on a loaded machine and
+	// could leave the cache empty when the stubbed read below fires; the
+	// direct read plus the production store makes the primed state a fact
+	// instead of a timing outcome.
+	app.storeEffortCache(tab.ID, effortDirectRead(app, tab.ID))
 
 	// From here the read source is artificially stalled; the caller must be
 	// served within the (shortened) cap from the primed cache, with notice.
