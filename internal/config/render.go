@@ -113,6 +113,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_collab_background_delivery": "task 224：协作投递后台化，实验室 tab 无入口",
 	"experimental_bash_heavy_guard":          "task 575：bash 重命令写守卫（写并发保护，optimistic_write 家族伴生开关，实验室 tab 无入口）",
 	"experimental_parallel_writer_readonly_bash": "task 573：并行 writer 只读 bash 回退（写隔离伴生开关，write_paths 象限自证能力，实验室 tab 无入口）",
+	"experimental_gc_child_session":          "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
@@ -1956,6 +1957,15 @@ func renderServeConfig(b *strings.Builder, c *Config, scope RenderScope) {
 		b.WriteString("behind_proxy = true   # trusted reverse proxy in front; X-Forwarded-* headers are honored\n")
 	} else {
 		b.WriteString("# behind_proxy = false   # set true only behind a trusted reverse proxy\n")
+	}
+	// 任务540: GC child session — default off (iron rule 2). Boot-resolved:
+	// the flip mounts POST /spawn-child-session and advertises the
+	// "child-session" capability to the GrandCouncil client on the next
+	// restart.
+	if c.Serve.ExperimentalGCChildSession {
+		b.WriteString("experimental_gc_child_session = true   # GrandCouncil may spawn a child session derived from the one it is driving; the source session stays resumable\n")
+	} else {
+		b.WriteString("# experimental_gc_child_session = false   # opt-in; lets the GrandCouncil client spawn a derived child session\n")
 	}
 	b.WriteString("\n")
 
