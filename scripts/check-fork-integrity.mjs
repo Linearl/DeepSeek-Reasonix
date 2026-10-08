@@ -1413,6 +1413,14 @@ const CHECKS = [
   { feature: "任务553 desktop 转录投影——唤醒轮标注为自动续轮（不引用模型面 prompt），非 wake 指引走原路径", file: "desktop/history_host_guidance.go", patterns: ["IsBackgroundJobWakeTurnContent", "BackgroundWakeTurnMarker"] },
   { feature: "任务553 让位提示与投影标注的验收测试", file: "internal/control/job_wake_test.go", patterns: ["TestBackgroundWakeYieldNoticeOncePerCompletionBatch"] },
   { feature: "任务553 desktop 投影验收测试（标注行不泄漏 prompt；非 wake 回归）", file: "desktop/history_host_guidance_wake_test.go", patterns: ["TestHistoryHostGuidanceLabelsBackgroundWakeTurn"] },
+  // ── 任务540 GC 派生子会话（serve 域实验开关，默认关）──
+  { feature: "任务540 config 开关（[serve] 段铁律 2 默认关；lab 门禁豁免登记）", file: "internal/config/config.go", patterns: ["ExperimentalGCChildSession bool `toml:\"experimental_gc_child_session\"`"] },
+  { feature: "任务540 render 注释示例形式（显式开才发射活键）", file: "internal/config/render.go", patterns: ["experimental_gc_child_session = true", "# experimental_gc_child_session = false", "\"experimental_gc_child_session\":"] },
+  { feature: "任务540 control 文件分支（schema-2 也产独立文件；Branch 行为零变化）", file: "internal/control/branch_ops.go", patterns: ["func (c *Controller) BranchToFile", "func (c *Controller) branchTip", "if !forceFile"] },
+  { feature: "任务540 serve 端点（bindMu+切换围栏+mirrored 拒绝+单一租约 rebind+SessionChanged 广播）", file: "internal/serve/spawn_child_session.go", patterns: ["func (s *Server) spawnChildSession", "s.ctl().BranchToFile", "s.rebindSessionLease", "rejectMirroredForegroundLocked"] },
+  { feature: "任务540 fail-closed 挂载与能力宣告（关=不挂路由+不宣告，与 540 前 mux 应答逐字一致）", file: "internal/serve/serve.go", patterns: ["if s.gcChildSession"] },
+  { feature: "任务540 capabilities 条件追加 child-session", file: "internal/serve/capabilities.go", patterns: ["s.gcChildSession", "\"child-session\""] },
+  { feature: "任务540 验收测试（关闭态零行为/开态派生+租约跟随+源可回切）", file: "internal/serve/spawn_child_session_test.go", patterns: ["TestSpawnChildSessionDisabledIsZeroBehavior", "TestSpawnChildSessionDerivesResumableChild"] },
   // ── 任务509 归档前置门（软开关默认关）：delete_session 在目标收件箱还有
   // queued≠已读 条目时拒绝归档——tl 509 验收② 的「无未消费消息前置检查」
   // 落进进程内归档路径（workspace plan 脚本之外的第二道）。逐机制锚定，
