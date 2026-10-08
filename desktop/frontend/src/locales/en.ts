@@ -106,7 +106,7 @@ export const en = {
   // sidebar
   "sidebar.conversations": "Chats",
   "sidebar.trash": "Trash",
-  "sidebar.collabInbox": "Cross-session inbox",
+  "sidebar.collabInbox": "Mail Center",
   "sidebar.memorySkills": "Memory & Skills",
   "sidebar.workspace": "Workspace",
   "sidebar.changeWorkspace": "Change",
@@ -2864,7 +2864,7 @@ export const en = {
 "settings.cdpDebugPort.off": "Off",
 // Task 439: built-in zcode task bus (lab, infrastructure group).
 "settings.zcodeTaskBus": "zcode task bus (experimental)",
-"settings.zcodeTaskBusHint": "When on, the desktop hosts the task-bus MCP endpoint itself at boot (127.0.0.1:8787/mcp), replacing the external reasonix serve + vbs resident process. The role table is the existing [serve.bus_mcp] section (written by reasonix bus enroll), so the zcode-side config stays unchanged. Bus mail, task cards and hook events work as before; the cross-session inbox panel remains the mailbox entry. The switch is read once at startup — restart to apply. Off (default) starts no listener and keeps network behavior byte-for-byte unchanged.",
+"settings.zcodeTaskBusHint": "When on, the desktop hosts the task-bus MCP endpoint itself at boot (127.0.0.1:8787/mcp), replacing the external reasonix serve + vbs resident process. The role table is the existing [serve.bus_mcp] section (written by reasonix bus enroll), so the zcode-side config stays unchanged. Bus mail, task cards and hook events work as before; the Mail Center panel remains the mailbox entry. The switch is read once at startup — restart to apply. Off (default) starts no listener and keeps network behavior byte-for-byte unchanged.",
 "settings.zcodeTaskBus.on": "On",
 "settings.zcodeTaskBus.off": "Off",
 "settings.zcodeTaskBus.running": "Bus running: ",
@@ -4903,12 +4903,12 @@ export const en = {
 "sessionMonitor.recentEvictions": "Recent evictions",
 "sessionMonitor.stageRow": "{stage} · {ms} ms",
   "collabInbox.channel": "Group channel",
-  "collabInbox.title": "Cross-session inbox",
+  "collabInbox.title": "Mail Center",
   "collabInbox.close": "Close",
   "collabInbox.empty": "No mail yet",
-  "collabInbox.degraded": "Inbox temporarily unavailable (lock busy)",
+  "collabInbox.degraded": "Mail Center temporarily unavailable (lock busy)",
   "collabInbox.loading": "Loading mail…",
-  "collabInbox.error": "Couldn't load the inbox",
+  "collabInbox.error": "Couldn't load the Mail Center",
   "collabInbox.error.stale": "Last refresh failed — showing the previous result",
   "collabInbox.retry": "Retry",
   "collabInbox.retention": "Retention",
@@ -4954,9 +4954,9 @@ export const en = {
   "collabInbox.rounds": "{n} rounds",
   "collabInbox.revision": "Snapshot {rev}",
   "collabInbox.note": "Only delivered mail shows; dismissals survive restart",
-  "settings.collabInbox": "Cross-session inbox",
+  "settings.collabInbox": "Mail Center",
   "settings.collabInboxHint": "Mail history query, five-bucket views and retention (task 320)",
-  "settings.collabInbox.open": "Open inbox",
+  "settings.collabInbox.open": "Open Mail Center",
 };
 
 export type DictKey = keyof typeof en;
