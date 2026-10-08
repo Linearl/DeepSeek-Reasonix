@@ -95,6 +95,7 @@ const CHECKS = [
   // 任务620（UI 三小修）：立即清理按钮与子代理标签移墙均为 fork 侧接缝，
   // 上游无此面，合并静默回退即丢功能，逐条锚定。
   { feature: "任务620 收件箱立即清理（按钮直通 ApplyRetention，免 511 节流，回传新快照）", file: "desktop/collab_inbox_app.go", patterns: ["func (a *App) CleanCollabMailNow(", "store.ApplyRetention(collabInboxCtx())"] },
+  { feature: "任务620 子代理标签显隐移侧栏增强墙（子代理面板前置置灰联动）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["[\"subagents\", \"workspace.subagentsTab\"]", "tabId === \"subagents\" && !Boolean(s.experimentalSubagentPanel)"] },
   // 任务461 P8（收件箱重入污染）：投递层幂等与消费层折叠均为 fork 侧行为修复，
   // 与上游共享文件可能被合并静默回退，逐条锚定。
   { feature: "任务461-P8 投递层重发幂等（同 from+to+内容窗内返原 id）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["dedupeResend", "resendDedupWindowDefault", "resendDedupWindowSystem"] },

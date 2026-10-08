@@ -20445,6 +20445,11 @@ body > .mermaid-diagram--fullscreen {
   min-width: 0;
   cursor: pointer;
 }
+/* 任务620：门槛勾选项的 hover 反馈——可点击项标签随悬停亮起（fg-dim → fg），
+   与 .collab-card__toggle:hover 同构；锁定项保持静默（253 可读性裁定）。 */
+.set-gates__item:not(.set-gates__item--locked):hover .set-gates__label {
+  color: var(--fg);
+}
 .set-gates__item input[type="checkbox"] {
   width: 15px;
   height: 15px;
