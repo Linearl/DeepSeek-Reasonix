@@ -378,7 +378,7 @@ const CHECKS = [
   { feature: "任务517 安全/成本控制合并键（配置字段）", file: "internal/config/config.go", patterns: ["experimental_safety_cost_control", "migrateSafetyCostControlMerge"] },
   { feature: "任务517 安全/成本控制合并键（union 迁移）", file: "internal/config/load.go", patterns: ["func migrateSafetyCostControlMerge", "migrateSafetyCostControlMerge(cfg)"] },
   { feature: "任务517 安全/成本控制合并键（渲染面 + legacy 三行）", file: "internal/config/render.go", patterns: ["experimental_safety_cost_control = %v", "legacy key, migrated into experimental_safety_cost_control (task 517)"] },
-  { feature: "任务517 三个运行时门读合并键（B1 心跳/B2 循环/B3 事件复查）", file: "internal/boot/boot.go", patterns: ["LoopStreakNote:     cfg.Agent.ExperimentalSafetyCostControl", "EventWaitRecheck:  cfg.Agent.ExperimentalSafetyCostControl"] },
+  { feature: "任务517 三个运行时门读合并键（B1 心跳/B2 循环/B3 事件复查）", file: "internal/boot/boot.go", patterns: ["LoopStreakNote: cfg.Agent.ExperimentalSafetyCostControl", "EventWaitRecheck: cfg.Agent.ExperimentalSafetyCostControl"] },
   { feature: "任务517 B1 心跳门读合并键（call-time 评估）", file: "desktop/app.go", patterns: ["cfg.Agent.ExperimentalSafetyCostControl"] },
   { feature: "任务517 实验室单卡 UI（总开关+三子态行）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["safetyCostControl", "SetExperimentalSafetyCostControl", "settings.safetyCostControl.memberState"] },
   { feature: "任务517 档位注册表单键化（48→46）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["safetyCostControl: \"optional\""] },
