@@ -108,5 +108,20 @@ ok(ledger.includes("import type { Item } from \"./useController\""), "the ledger
 ok(runtimeView.includes("trajectory: {") && runtimeView.includes("enabled: boolean"), "the gate travels as explicit props");
 ok(chatPane.includes("trajectory?:"), "the slot is optional — transcript renders unchanged when absent");
 
+// ⑦ Inspector (③): click-to-open local panel with honest degrade — timing
+//    rows only when measured, usage note for assistant/tool records.
+ok(trajView.includes("function TrajectoryInspector("), "the inspector lives in the lazy trajectory chunk");
+ok(trajView.includes("role=\"dialog\"") && trajView.includes("trajectory.inspector.close"), "the inspector is a dismissible dialog");
+ok(trajView.includes("trajectory.inspector.usageNA") && /record\.kind === "assistant" \|\| record\.kind === "tool"/.test(trajView),
+  "the token-usage degrade note shows on assistant/tool records only");
+ok(trajView.includes("record.ttftMs != null") && trajView.includes("record.durationMs != null"),
+  "timing rows render only from measured fields (no invented numbers)");
+ok(trajView.includes("inspectorSections(record, item, t)") || trajView.includes("inspectorSections("),
+  "inspector sections derive from the record + its source item");
+ok(trajView.includes("traj-row--selected") && trajView.includes("onSelect(record.id)"),
+  "ledger rows select on click/Enter with a selected state");
+ok(trajView.includes("item?.kind === \"tool\" ? item.args : undefined") || trajView.includes("item.args"),
+  "tool input surfaces args in the inspector");
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (!failed) process.stdout.write("task 704 trajectory view mount contract: OK\n");

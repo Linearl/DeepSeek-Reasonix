@@ -181,3 +181,118 @@
     display: none;
   }
 }
+
+/* ── 记录检查器（③）：台账右侧本地面板，覆盖其上，不动台账 DOM ── */
+
+.traj {
+  position: relative;
+}
+
+.traj-inspector {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 46%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border-left: 1px solid var(--border-soft);
+}
+
+.traj-inspector__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.traj-inspector__title {
+  font-weight: var(--font-weight-strong);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traj-inspector__close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 5px;
+}
+
+.traj-inspector__close:hover {
+  color: var(--text);
+  background: var(--sidebar-hover);
+}
+
+.traj-inspector__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.traj-inspector__usage {
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--text-2);
+  font-size: var(--text-2xs);
+}
+
+.traj-inspector__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.traj-inspector__label {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-3);
+}
+
+.traj-inspector__body {
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.traj-row--selected {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
+}
+
+/* 窄窗：检查器转为整宽面板。 */
+@media (max-width: 860px) {
+  .traj-inspector {
+    width: 100%;
+    border-left: none;
+  }
+}
+
