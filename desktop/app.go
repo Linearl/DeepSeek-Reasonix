@@ -935,6 +935,20 @@ func backgroundRestoreShouldMaximise(goos string, wasMaximised bool) bool {
 // skeleton instead of waiting for the first agent:ready.
 const tabsRestoredEvent = "tabs:restored"
 
+// tabBackendActivatedEvent tells the frontend the backend opened AND activated
+// a tab outside any frontend navigation (today: the one-click analysis family,
+// task 688). Without it the tab bar learns the new tab from turn events while
+// the content area keeps rendering the previously active tab — the "new
+// session tab exists but the conversation never follows" divergence. The
+// payload mirrors TopicActivationEvent's shape: {tabId, reason}.
+const tabBackendActivatedEvent = "tab:backend-activated"
+
+// BackendTabActivatedEvent is the payload of tabBackendActivatedEvent.
+type BackendTabActivatedEvent struct {
+	TabID  string `json:"tabId"`
+	Reason string `json:"reason"`
+}
+
 // restoreOrBuildTabs restores the tabs from the last session, or creates a
 // default Global tab on first launch.
 func (a *App) restoreOrBuildTabs() {

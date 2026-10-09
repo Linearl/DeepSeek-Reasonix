@@ -203,6 +203,12 @@ func crashAnalysisSummary(dir string) string {
 // openCrashAnalysisSession creates the Global-scope conversation hosting a
 // one-click analysis run and waits for its tab controller. It returns the ID
 // of the tab the analysis instruction must be submitted to.
+//
+// Task 688: the tab open/activation here happens entirely on the backend — no
+// frontend navigation carries it, so the webview would keep rendering the
+// previously active tab while the tab bar shows the new one. The
+// tab:backend-activated event hands the activation to the frontend, which
+// follows it with the same navigation a tab click takes.
 func (a *App) openCrashAnalysisSession(kind string) (string, error) {
 	topic, err := a.CreateTopic("global", "", crashAnalysisTopicTitle(kind))
 	if err != nil {
@@ -212,6 +218,10 @@ func (a *App) openCrashAnalysisSession(kind string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("could not open the analysis tab (%v) — use the Copy button to report manually", err)
 	}
+	a.emitRuntimeEvent(tabBackendActivatedEvent, BackendTabActivatedEvent{
+		TabID:  tabMeta.ID,
+		Reason: "analysis",
+	})
 	if a.awaitAnalysisController(tabMeta.ID) == nil {
 		return "", fmt.Errorf("the analysis workspace did not become ready in time — use the Copy button to report manually")
 	}

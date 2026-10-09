@@ -1387,11 +1387,13 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 618: diagnostics-settings view of the local crash-pending queue so a
   // stuck upstream (count pinned at capacity) is visible to the user.
   CrashPendingDiagnostics(): Promise<CrashPendingDiagnosticsReport>;
-  // Task 617 route B: one-click analysis. Availability probes the three
-  // prerequisites (source checkout / gh auth / live workspace) without side
-  // effects; StartCrashAnalysis opens a fresh Global-scope tab (task 672: the
-  // analysis never files under the active project) and submits the analysis
-  // instruction there. Returns a short summary on success.
+  // Task 617 route B: one-click analysis. Availability probes the route-B
+  // prerequisites (source checkout / gh auth) without side effects;
+  // workspaceReady is informational only (task 687: the analysis self-hosts in
+  // a fresh Global-scope tab — task 672: it never files under the active
+  // project — so no live workspace is required). StartCrashAnalysis opens that
+  // tab and submits the analysis instruction there. Returns a short summary on
+  // success.
   CrashAnalysisAvailability(): Promise<CrashAnalysisAvailabilityReport>;
   StartCrashAnalysis(kind: string, detail: string): Promise<string>;
   // Task 663 gap ①/⑥: the hang face of the same analysis family. Availability
@@ -1835,6 +1837,28 @@ export function onProjectTreeChanged(cb: () => void): () => void {
 export function onTabsRestored(cb: () => void): () => void {
   if (realApp() && typeof window !== "undefined" && window.runtime) {
     return window.runtime.EventsOn("tabs:restored", () => cb());
+  }
+  return () => {};
+}
+
+// Task 688: the backend emits "tab:backend-activated" when it opens AND
+// activates a tab outside any frontend navigation (today: the one-click
+// analysis family). The frontend follows it with the same navigation a tab
+// click takes, so the content area moves to the new tab instead of staying on
+// the previous conversation.
+export interface BackendTabActivatedEvent {
+  tabId: string;
+  reason: string;
+}
+
+export function onBackendTabActivated(cb: (event: BackendTabActivatedEvent) => void): () => void {
+  if (realApp() && typeof window !== "undefined" && window.runtime) {
+    return window.runtime.EventsOn("tab:backend-activated", (payload?: unknown) => {
+      if (payload && typeof payload === "object") {
+        const event = payload as BackendTabActivatedEvent;
+        if (typeof event.tabId === "string" && event.tabId) cb(event);
+      }
+    });
   }
   return () => {};
 }
