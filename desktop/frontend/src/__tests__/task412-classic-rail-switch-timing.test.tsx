@@ -56,7 +56,9 @@ console.log("\ntask 412 classic rail + switch timing");
   // classic (the v1520 complaint): utility-row present, vertical nav items gone
   const classic = render({});
   ok(classic.includes("sidebar__utility-row"), "classic bottom rail uses .sidebar__utility-row (workbench layout synced)");
-  ok((classic.match(/sidebar__utility-button/g) || []).length >= 3, "classic rail carries three icon-only utility buttons");
+  // 452L: 收件站/群聊键同步后为 5 位（回收站→信件中心→群聊→自动化→设置），
+  // 断言下限随规格从 3 升 5（active 标记类名会多计一次匹配，阈值取 >= 保持宽松）。
+  ok((classic.match(/sidebar__utility-button/g) || []).length >= 5, "classic rail carries five icon-only utility buttons (452L sync: trash/inbox/group/automation/settings)");
   ok(!classic.includes("sidebar__navitem--search") && !/sidebar__navitem/.test(classic), "classic no longer renders the vertical NavButton list");
   ok(classic.includes("sidebar__utility-button--active"), "classic scheduler button carries the automation-active marker");
   ok(classic.includes("sidebar__nav--footer"), "classic rail sits in the footer nav slot (same slot as workbench)");
@@ -64,7 +66,7 @@ console.log("\ntask 412 classic rail + switch timing");
   // workbench unchanged (regression face) — utility-row still there, now with
   // the active marker too (shared marker, deliberate alignment).
   const workbench = render({ workbench: true });
-  ok((workbench.match(/sidebar__utility-button/g) || []).length >= 3, "workbench rail unchanged (three utility buttons)");
+  ok((workbench.match(/sidebar__utility-button/g) || []).length >= 5, "workbench rail unchanged (five utility buttons after 452L sync)");
   ok(workbench.includes("sidebar__utility-button--active"), "workbench scheduler button carries the same active marker");
 
   // creation keeps its nav rows (zero regression for the third layout)
@@ -77,8 +79,8 @@ console.log("\ntask 412 classic rail + switch timing");
   const css = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
   const classicRule = css.match(/\.sidebar:not\(\.sidebar--workbench\) \.sidebar__nav--footer \.sidebar__utility-row\s*\{[^}]*\}/);
   // 任务 320 UI 规格（20261002）：行内加入收件箱（邮箱图标）→ 3 列扩为 4 列；
-  // 群聊（349/409）图标后续并排，届时同步扩列。
-  ok(!!classicRule && /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/.test(classicRule![0]), "classic CSS: utility-row grid mirrors workbench (4 equal columns after task 320 inbox)");
+  // 任务 409（20261009）群聊键并排 → 5 列；452L 兑现 409 遗漏的「届时同步扩列」。
+  ok(!!classicRule && /grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/.test(classicRule![0]), "classic CSS: utility-row grid mirrors workbench (5 equal columns after task 409 group icon, 452L column fix)");
   ok(/\.sidebar:not\(\.sidebar--workbench\) \.sidebar__utility-button\s*\{[^}]*justify-content:\s*center/.test(css), "classic CSS: utility buttons mirror the workbench icon-button shape");
   ok(/\.sidebar \.sidebar__utility-button--active\s*\{[^}]*var\(--accent\)/.test(css), "active marker styled with accent tokens (theme-token only)");
 }
