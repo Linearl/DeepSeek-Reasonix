@@ -37,11 +37,17 @@ func TestWithExecSpeedMode(t *testing.T) {
 	}
 	// Marked model: leading transient block injected.
 	got := WithExecSpeedMode("hello", "mimo-v2.5-pro-ultraspeed", []string{"mimo-v2.5-pro-ultraspeed"})
-	if !strings.HasPrefix(got, "<exec-speed-mode>high</exec-speed-mode>") {
+	if !strings.HasPrefix(got, "<exec-speed-mode>high") {
 		t.Fatalf("marked model should inject exec-speed-mode block; got %q", got)
 	}
 	if !strings.Contains(got, "run_in_background") {
 		t.Fatalf("block should carry the run_in_background strategy; got %q", got)
+	}
+	// The whole directive must live INSIDE the element: an early revision put
+	// the close tag before the directive text, leaving it as naked prose the
+	// strip paths never removed and the steer-replay walk tripped on (664).
+	if last := strings.LastIndex(got, "high TPS."); last < 0 || last > strings.Index(got, "</exec-speed-mode>") {
+		t.Fatalf("directive text must sit inside the exec-speed-mode element; got %q", got)
 	}
 	if !strings.HasSuffix(got, "hello") {
 		t.Fatalf("block should prefix, not replace, content; got %q", got)

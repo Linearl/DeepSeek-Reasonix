@@ -30,6 +30,7 @@ var TransientUserBlockTags = []string{
 	"subagent-policy",
 	"exec-speed-mode",
 	"context-state",
+	"current-time",
 	// The boot snapshot the host prepends to a session's first user turn
 	// (task 200): environment, workspace, memory index, skill catalog. It is
 	// machine context for the model, not conversation, and used to surface as

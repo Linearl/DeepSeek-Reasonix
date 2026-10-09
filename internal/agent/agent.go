@@ -681,6 +681,10 @@ func (a *Agent) withTurnPreferences(input string) string {
 	if a == nil {
 		return input
 	}
+	// Task 664: the clock anchor rides innermost — closest to the user text —
+	// so the established outer order of the other blocks is untouched and the
+	// timestamp stays immediately visible after the block cluster.
+	input = WithCurrentTime(input, time.Now())
 	responseLang := "auto"
 	if v := a.responseLanguage.Load(); v != nil {
 		if s, ok := v.(string); ok {
@@ -802,11 +806,15 @@ func SteerText(content string) (string, bool) {
 
 // trimLeadingSteerWrapper removes one leading transient preference block that
 // withTurnPreferences may have placed ahead of the steer prefix. It reports
-// false when content does not start with such a block.
+// false when content does not start with such a block. It walks the shared
+// TransientUserBlockTags registry rather than a list of its own — a private
+// list missing a tag the wrapper actually injects (current-time rides every
+// turn; exec-speed-mode and context-state ride gated ones) reads the block as
+// user prose and breaks steer recognition for exactly those turns.
 func trimLeadingSteerWrapper(content string) (string, bool) {
 	s := strings.TrimLeft(content, " \t\r\n")
-	for _, tag := range []string{"response-language", "reasoning-language"} {
-		if !strings.HasPrefix(s, "<"+tag+">") {
+	for _, tag := range TransientUserBlockTags {
+		if !hasOpenTag(s, tag) {
 			continue
 		}
 		if rest, ok := trimLeadingTransientBlock(s, tag); ok {

@@ -39,20 +39,22 @@ func isHighSpeedConfigured(modelRef string, highSpeedModels []string) bool {
 	return false
 }
 
-// ExecSpeedModeBlock returns a self-contained "<exec-speed-mode>high</exec-speed-mode>"
+// ExecSpeedModeBlock returns a self-contained "<exec-speed-mode>…</exec-speed-mode>"
 // guidance block, or "" when modelRef is not marked high-speed. The block
-// carries the full execution-strategy directive inline so the model sees the
-// policy every round without needing a static system-prompt section.
+// carries the full execution-strategy directive INSIDE the element: a close
+// tag ahead of the directive text (a shape an early revision shipped) leaves
+// the directive as naked prose — strip/preview paths remove only the tagged
+// part, and the steer-replay walk stops at the dangling text.
 func ExecSpeedModeBlock(modelRef string, highSpeedModels []string) string {
 	if !isHighSpeedConfigured(modelRef, highSpeedModels) {
 		return ""
 	}
-	return "<" + execSpeedModeTag + ">high</" + execSpeedModeTag + ">\n" +
+	return "<" + execSpeedModeTag + ">high\n" +
 		"High-throughput model: tool-call latency now dominates round time, so waiting dismisses most of the speed gain. Adjust execution strategy:\n" +
 		"- Merge independent operations into the same round (parallel tool calls).\n" +
 		"- Dispatch slow operations (tests/build/network) with run_in_background=true instead of waiting synchronously.\n" +
 		"- After dispatching, immediately advance independent work; poll the result via bash_output/wait only when you need it.\n" +
-		"- Re-plan more often: fine-grained planning is cheap at high TPS."
+		"- Re-plan more often: fine-grained planning is cheap at high TPS.</" + execSpeedModeTag + ">"
 }
 
 // WithExecSpeedMode prefixes content with the transient high-speed-model block

@@ -269,8 +269,14 @@ func TestCoordinatorSkipsPlannerForTrivialTurn(t *testing.T) {
 	if planner.lastReq.Messages != nil {
 		t.Error("planner should not be called for a skipped turn")
 	}
-	if got := lastUser(exec.lastReq); !strings.HasPrefix(got, "what does this function do?") || strings.Contains(got, "<execution-policy") {
-		t.Errorf("executor saw %q, want the raw input without execution-policy or plan handoff", got)
+	// Task 664: the turn now leads with the transient current-time anchor;
+	// strip it before asserting the provider-visible framing.
+	bare, ok := trimLeadingTransientBlock(lastUser(exec.lastReq), "current-time")
+	if !ok {
+		t.Fatalf("user turn should lead with the current-time anchor, got %q", lastUser(exec.lastReq))
+	}
+	if !strings.HasPrefix(bare, "what does this function do?") || strings.Contains(bare, "<execution-policy") {
+		t.Errorf("executor saw %q, want the raw input without execution-policy or plan handoff", bare)
 	}
 	if n := len(plannerSess.Messages); n != 1 { // just the system message
 		t.Errorf("planner session has %d messages, want 1 (untouched)", n)
