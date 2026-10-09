@@ -214,7 +214,18 @@ func (s *Store) loadOrInitLocked() error {
 	if man.RunID != "" && man.RunID != s.runID {
 		for i := range man.Items {
 			switch man.Items[i].State {
-			case StateRunning, StateSteerAccepted:
+			case StateSteerAccepted:
+				// Task 589b: the run id changes with every process, so THIS
+				// branch — not the recovery pass's in-flight face — is what a
+				// kill between steer accept and steer consume actually hits.
+				// Park it reviewable with the graceful path's reason, or the
+				// next settled pass drops it as delivered residue (the 570
+				// delivery receipt predates the accept).
+				man.Items[i].State = StateUncertain
+				man.Items[i].BlockReason = BlockReasonSteerUnapplied
+				man.Items[i].UpdatedAt = time.Now().UTC()
+				recovered++
+			case StateRunning:
 				man.Items[i].State = StateUncertain
 				man.Items[i].UpdatedAt = time.Now().UTC()
 				recovered++
