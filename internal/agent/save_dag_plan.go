@@ -28,7 +28,10 @@ type dagWritePlan struct {
 	otherPID      int
 	otherHostname string
 	unknownReason string
-	renames       map[string]string
+	// forkFrom records the fork point a concurrent fork branched from (任务
+	// 669); shutdownHeadBatch reuses it when its own batch forks.
+	forkFrom string
+	renames  map[string]string
 }
 
 // dagDiff describes how the in-memory transcript departs from the persisted
@@ -99,7 +102,10 @@ func (s *Session) planDAGWrite(path string, st *sessionDAGState, msgs []provider
 	owned := ref.HeadID == head && ref.LeafID == view.head.leaf
 
 	diff := diffDAGTranscript(view.persisted, msgs, mode)
-	plan := &dagWritePlan{head: head, appendFrom: -1, renames: diff.adopted}
+	// forkFrom is the tip of the head this save extends: the fork point every
+	// fork entry this plan produces records (任务669), even when the forked
+	// transcript shares no prefix with the persisted chain.
+	plan := &dagWritePlan{head: head, appendFrom: -1, renames: diff.adopted, forkFrom: view.head.leaf}
 	// Task 646: register this process's writer identity before the fork is
 	// classified, so a log whose registry lacks our pid (written by a previous
 	// runtime, or by a build that stamped no identity entry) stops turning
@@ -195,7 +201,18 @@ func (p *dagWritePlan) moveHead(path string, st *sessionDAGState, view dagHeadVi
 			p.otherPID, p.otherHostname = w.pid, w.hostname
 		}
 		parent := view.parentFor(diff.k)
-		p.entries = append(p.entries, sessionDAGEntry{Type: sessionDAGTypeFork, Head: view.id, NewHead: p.head, From: parent, Kind: HeadKindConcurrent, At: now})
+		// 任务669: a transcript sharing nothing with the persisted chain
+		// (diff.k == 0 — a rebuilt prefix, a host snapshot re-open) forks with
+		// parent == "" and dropped the from field with it; the 2026-10-08
+		// 日常杂务 fork then shipped without a from, the new head's leaf
+		// started empty on replay, and nothing before the fork was reachable
+		// again. The fork still happened at the old head's tip, so record that
+		// tip (plan.forkFrom) as the fork point.
+		from := parent
+		if from == "" {
+			from = p.forkFrom
+		}
+		p.entries = append(p.entries, sessionDAGEntry{Type: sessionDAGTypeFork, Head: view.id, NewHead: p.head, From: from, Kind: HeadKindConcurrent, At: now})
 		return parent, nil
 	}
 	return view.head.leaf, nil

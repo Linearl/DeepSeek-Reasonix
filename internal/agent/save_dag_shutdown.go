@@ -141,6 +141,12 @@ func shutdownHeadBatch(plan *dagWritePlan, pending []sessionDAGEntry, now time.T
 		return append(plan.entries, pending...)
 	}
 	oldHead, newHead := plan.head, NewHeadID()
+	// 任务669: the batch's fork point is the first appended message's parent;
+	// when the plan carries no such parent (an empty old head) fall back to the
+	// plan's recorded tip so the fork entry keeps a from whenever one exists.
+	if from == "" {
+		from = plan.forkFrom
+	}
 	out := make([]sessionDAGEntry, 0, len(plan.entries)+len(pending)+1)
 	out = append(out, sessionDAGEntry{Type: sessionDAGTypeFork, Head: oldHead, NewHead: newHead, From: from, Kind: HeadKindConcurrent, At: now})
 	for _, e := range plan.entries {
