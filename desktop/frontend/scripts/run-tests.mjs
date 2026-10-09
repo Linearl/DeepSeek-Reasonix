@@ -69,6 +69,19 @@ const OWNED_ELSEWHERE = new Map(Object.entries({
 }));
 
 const keepGoing = process.argv.includes("--keep-going");
+
+// Per-suite wall-clock ceiling. Some suites print all their assertions and
+// then never exit (timer/jsdom handles surviving under multi-layer output
+// redirection), which would block this sequential runner on spawnSync
+// forever. This is the same 10-minute ceiling run-ci-tests.mjs applies, and
+// the approach was proven on exactly this failure mode by 634's resumer
+// (hang suites get ETIMEDOUT/SIGTERM-killed instead of stalling the run).
+// Set REASONIX_TEST_SUITE_TIMEOUT_MS to override; 0 disables the ceiling.
+const suiteTimeoutMs = Number(process.env.REASONIX_TEST_SUITE_TIMEOUT_MS ?? 10 * 60 * 1000);
+if (!Number.isFinite(suiteTimeoutMs) || suiteTimeoutMs < 0) {
+  console.error("run-tests: REASONIX_TEST_SUITE_TIMEOUT_MS must be a non-negative number of milliseconds (0 disables)");
+  process.exit(1);
+}
 const files = readdirSync(TESTS_DIR)
   .filter((name) => /\.test\.tsx?$/.test(name))
   .sort();
@@ -96,20 +109,29 @@ for (const name of suites) {
   // Node's built-in navigator.language follows the machine's ICU locale, and
   // suites assert English UI strings.
   const env = { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" };
-  const result = spawnSync(process.execPath, [tsxCli, ...assetArgs, path], { stdio: "inherit", env });
+  const result = spawnSync(process.execPath, [tsxCli, ...assetArgs, path], {
+    stdio: "inherit",
+    env,
+    timeout: suiteTimeoutMs > 0 ? suiteTimeoutMs : undefined,
+  });
   if (result.error) console.error(`run-tests: spawn failed for ${path}: ${result.error.message}`);
+  // spawnSync sets error code ETIMEDOUT only for its own timeout kill, so
+  // external kills are not miscounted as suite timeouts.
+  const timedOut = result.error?.code === "ETIMEDOUT";
+  if (timedOut) console.error(`run-tests: ${path} exceeded ${suiteTimeoutMs}ms and was killed (process did not exit)`);
   if (result.status !== 0) {
     if (!keepGoing) {
-      console.error(`\nrun-tests: FAILED at ${path}`);
+      console.error(`\nrun-tests: ${timedOut ? "TIMED OUT" : "FAILED"} at ${path}`);
       process.exit(result.status ?? 1);
     }
-    failures.push(name);
+    failures.push({ name, timedOut });
   }
 }
 
 if (failures.length > 0) {
-  console.error(`\nrun-tests: ${failures.length}/${suites.length} suites failed:`);
-  for (const name of failures) console.error(`  FAIL ${name}`);
+  const timedOutCount = failures.filter((failure) => failure.timedOut).length;
+  console.error(`\nrun-tests: ${failures.length}/${suites.length} suites failed (${timedOutCount} timed out):`);
+  for (const { name, timedOut } of failures) console.error(`  ${timedOut ? "TIMEOUT" : "FAIL"} ${name}`);
   process.exit(1);
 }
 console.log(`\nrun-tests: all ${suites.length} suites passed`);
