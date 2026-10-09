@@ -36,7 +36,9 @@ import (
 // mail waits. Delivery is at-least-once *for tabs that are open*: a message is
 // acked only after it reached the target's inbox, and a redelivery reuses the
 // message id as the inbox idempotency key, so a retry cannot duplicate a turn.
-const sessionCollabPumpInterval = 4 * time.Second
+// 任务 599：周期从 sessioncollab.DeliveryPumpIntervalMS 推导——talk_to_session
+// 返回体的 retryAfterMs 建议复查间隔与本 ticker 同源，编译期保证不漂移。
+const sessionCollabPumpInterval = time.Duration(sessioncollab.DeliveryPumpIntervalMS) * time.Millisecond
 
 // Task 485 P2: per-contact retry backoff for failed delivery passes. A
 // refused pass is NOT acked, so without backoff the pump retried it every

@@ -47,6 +47,17 @@ const (
 	ReceiptOpenRetryExhausted = "open_retry_exhausted"
 )
 
+// 任务 599：投递泵的建议轮询节奏（毫秒），单一事实源。
+//
+// desktop 泵的 ticker（约 4 秒一轮，投递定局的节奏）与 talk_to_session 返回体
+// 的 retryAfterMs 字段共用此常量：泵侧用 time.Duration(DeliveryPumpIntervalMS)
+// * time.Millisecond 推导 ticker 周期，工具侧直接写进返回体，调用方据此安排
+// get_message_status 的复查时机。放在本包是因为 desktop（main 包）与
+// internal/agent 双方都已依赖 sessioncollab，而两者互相不可依赖——这里唯一定义，
+// 任何一侧改节奏都会在编译期把另一侧一起带走，杜绝「字段说 4 秒、泵实际 5 秒」
+// 的漂移误读（本字段的存在意义就是降低误读率，值错了比没有更糟）。
+const DeliveryPumpIntervalMS = 4000
+
 // ValidDeliveryReceiptOutcome reports whether s is part of the outcome
 // vocabulary above. The store refuses to persist anything else, so the query
 // tool never has to guess what an unknown outcome means.
