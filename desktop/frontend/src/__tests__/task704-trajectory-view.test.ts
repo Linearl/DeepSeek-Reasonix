@@ -160,6 +160,21 @@ const trajCss = fs.readFileSync(path.join(frontendRoot, "src/components/Trajecto
 ok(trajCss.includes("content-visibility: auto") && trajCss.includes("contain-intrinsic-size"),
   "offscreen rows skip layout/paint via content-visibility (virtualization生效)");
 
+// ⑩ Live-tree wiring: App.tsx is the mounted tree (the app-shell AppRuntime
+//    decomposition is the unmounted legacy — B3 注释), so the switch and the
+//    surface MUST live there or the feature ships invisible (build-checked).
+const appTsx = fs.readFileSync(path.join(frontendRoot, "src/App.tsx"), "utf8");
+ok(appTsx.includes('const TrajectoryView = lazy(() => import("./components/TrajectoryView")'),
+  "the live tree lazy-loads the trajectory surface");
+ok(appTsx.includes("useState(labFlagEnabled(\"trajectoryView\"))") && appTsx.includes("setSurfaceViewTab(activeTabId ?? \"\")") && appTsx.includes("useSurfaceView()"),
+  "the live tree owns the flag subscription + per-tab view store");
+ok(/trajectoryViewEnabled && Boolean\(activeTabId\) && !activeTab\?\.remote && !sidebarImDetailConnection && \(\n\s*<TopicbarSurfaceSwitch \/>/.test(appTsx),
+  "the live topicbar gates the switch on the flag + local session");
+ok(appTsx.includes("{primaryTrajectory ?? (<Transcript"), "the primary pane branches transcript|trajectory");
+ok(appTsx.includes('key={visibleTranscriptTabId}') && appTsx.includes("onLoadOlderHistory={handleLoadOlderHistory}"),
+  "the live surface remounts per session and rides the existing controller paging");
+
+
 
 
 console.log(`\n${passed} passed, ${failed} failed`);

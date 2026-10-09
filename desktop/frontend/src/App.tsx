@@ -94,6 +94,11 @@ const WorktreeMergeModal = lazy(() => import("./components/WorktreeMergeModal").
 // tree (unmounted since a141c4aa1/e0a092e6c), leaving the mounted App's main
 // region on the local Transcript for remote tabs. Restore the eb4ea9c45 mount.
 const RemoteSessionSurface = lazy(() => import("./components/RemoteSessionSurface").then((module) => ({ default: module.RemoteSessionSurface })));
+// 任务 704: the trajectory surface is a lab-gated lazy chunk — with the switch
+// off (default, 铁律 2) it costs the startup bundle nothing.
+const TrajectoryView = lazy(() => import("./components/TrajectoryView").then((module) => ({ default: module.TrajectoryView })));
+import { TopicbarSurfaceSwitch } from "./app-shell/TopicbarSurfaceSwitch";
+import { setSurfaceViewTab, useSurfaceView } from "./lib/trajectoryViewPreference";
 /** Footer decision surface kinds. Runtime blockers are explicit recovery choices. */
 import { StatusBar } from "./components/StatusBar";
 import { RemoteHostKeyDialog } from "./components/RemoteHostKeyDialog";
@@ -818,6 +823,12 @@ export default function App() {
   // (default) renders the utility row exactly as before task 409.
   const [collabGroupEntryEnabled, setCollabGroupEntryEnabled] = useState(labFlagEnabled("collabGroupView"));
   useEffect(() => onLabFlagsChange(() => setCollabGroupEntryEnabled(labFlagEnabled("collabGroupView"))), []);
+  // 任务 704: the trajectory view rides the lab-flag snapshot (铁律 2 default
+  // off) and the per-session surface selection re-points at every tab change.
+  const [trajectoryViewEnabled, setTrajectoryViewEnabled] = useState(labFlagEnabled("trajectoryView"));
+  useEffect(() => onLabFlagsChange(() => setTrajectoryViewEnabled(labFlagEnabled("trajectoryView"))), []);
+  useEffect(() => { setSurfaceViewTab(activeTabId ?? ""); }, [activeTabId]);
+  const surfaceView = useSurfaceView();
   const [sessionWallOpen, setSessionWallOpen] = useState(false);
   // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
   // global shortcut can't double-fire in split view; pulse re-selects the
@@ -4664,6 +4675,26 @@ export default function App() {
   // behind its own style flag so classic/workbench remain unchanged.
   const appChromeHidden = sidebarWorkbench || sidebarCreation;
   const workbenchChromeHidden = sidebarWorkbench;
+  // 任务 704: the trajectory surface replaces the primary transcript while the
+  // lab switch is on and this session's persisted view is "trajectory" — local
+  // sessions only (一期), same gate as the topicbar switch.
+  const trajectorySurfaceActive = trajectoryViewEnabled && surfaceView === "trajectory"
+    && !activeTab?.remote && !sidebarImDetailConnection;
+  const primaryTrajectory = trajectorySurfaceActive ? (
+    <Suspense fallback={null}>
+      <TrajectoryView
+        key={visibleTranscriptTabId}
+        items={visibleTranscriptItems}
+        running={state.running || rewindCommitting}
+        hydrating={runtimeTransitioning || transcriptHydrating}
+        hasOlderHistory={!runtimeTransitioning && state.historyHasOlder && !rewindState}
+        loadingOlderHistory={state.historyOlderLoading}
+        olderHistoryExhausted={state.historyOlderExhausted}
+        onLoadOlderHistory={handleLoadOlderHistory}
+        t={t}
+      />
+    </Suspense>
+  ) : null;
   const sidebarClassName = [
     "sidebar",
     sidebarCollapsed ? "sidebar--collapsed" : "",
@@ -5118,6 +5149,11 @@ export default function App() {
               )}
             </div>
             <div className="topicbar__spacer" />
+            {/* 任务 704: 转录|轨迹 view switch — between the spacer and the
+                actions stack; local sessions only (一期). */}
+            {trajectoryViewEnabled && Boolean(activeTabId) && !activeTab?.remote && !sidebarImDetailConnection && (
+              <TopicbarSurfaceSwitch />
+            )}
             <div className="topicbar__actions">
               <Tooltip label={`${t("shortcuts.action.commandPalette")} ${commandPaletteShortcut}`}>
                 <button
@@ -5301,7 +5337,7 @@ export default function App() {
                       style={splitTabId ? ({ "--split-preview-ratio": splitPreviewTier } as CSSProperties) : undefined}
                     >
                       <div className="transcript-split__pane transcript-split__pane--primary">
-                                        <Transcript
+                                        {primaryTrajectory ?? (<Transcript
                       items={visibleTranscriptItems}
                       live={runtimeTransitioning ? undefined : state.live}
                       liveStore={liveStore}
@@ -5364,7 +5400,7 @@ export default function App() {
                       olderHistoryExhausted={state.historyOlderExhausted}
                       onLoadOlderHistory={handleLoadOlderHistory}
                       invocationMetadata={visibleTranscriptTabId ? invocationMetadataByTab[visibleTranscriptTabId] : undefined}
-                    />
+                    />)}
                       </div>
                       {/* Secondary pane (task 70). Only the per-pane props are passed:
                           everything else on TranscriptProps has a default, and the
