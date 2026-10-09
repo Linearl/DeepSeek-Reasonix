@@ -32,7 +32,10 @@ func (a *App) populateWebSearchSettings(v *SettingsView, cfg *config.Config, roo
 	effective := cfg
 	path := config.SourcePathForRoot(root)
 	if !config.IsUserConfigPath(path) && config.ConfigFileDefinesWebSearchModel(path) {
-		if loaded, err := config.LoadForRootReadOnly(root); err == nil {
+		// Task 693: display-only merged read — the credential-free variant keeps
+		// Settings() from force-repinning global credentials into the process
+		// environment (model resolution here never needs provider API keys).
+		if loaded, err := config.LoadForRootWithoutCredentialsReadOnly(root); err == nil {
 			effective = loaded
 			v.WebSearchModelOverridden = true
 		}
