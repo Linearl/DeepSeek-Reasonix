@@ -2938,6 +2938,11 @@ export const en = {
 "settings.sessionCollabAutoFoldHint": "Collapses over-long cross-session messages into a summary bar (sender + first line + expand button) so long mails stop flooding the transcript. Off by default - with it off every cross-session message renders in full, exactly as before; with it on messages past the threshold (about 8 lines) fold, and Expand always reveals the full text. Display only: bodies still reach the model context, and changes apply immediately.",
 "settings.sessionCollabAutoFold.on": "On",
 "settings.sessionCollabAutoFold.off": "Off",
+// 任务 704: trajectory view (lab, ui group; default off = transcript only).
+"settings.trajectoryView": "Trajectory view",
+"settings.trajectoryViewHint": "Adds a transcript | trajectory switch to the session title bar. The trajectory view projects the session event stream into an observability ledger: user/assistant/tool/compaction records in time order, plus a timing overview and a record inspector. Pure projection - read-only over existing session data, no storage changes; turning it off falls back to the plain transcript with no data loss. Off by default; changes apply immediately.",
+"settings.trajectoryView.on": "On",
+"settings.trajectoryView.off": "Off",
 "settings.outputStyle.selector": "Style",
 "settings.outputStyle.selectorHint": "Five built-ins — explanatory / learning / concise / proactive plus Default (no injection) — and custom .md files from the output-styles directories. Selecting writes [agent] output_style in reasonix.toml and rebuilds the current session immediately; during a running turn it applies when the turn finishes.",
 "settings.outputStyle.searchPlaceholder": "Search styles",

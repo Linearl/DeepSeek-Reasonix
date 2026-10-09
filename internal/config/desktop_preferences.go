@@ -108,6 +108,13 @@ type DesktopConfig struct {
 	// feature existed. Pure display preference — message bodies are never
 	// truncated or mutated, only visually collapsed.
 	ExperimentalSessionCollabAutoFold bool `toml:"experimental_session_collab_auto_fold"`
+	// ExperimentalTrajectoryView exposes the topicbar "transcript | trajectory"
+	// view switch and the DSH-style trajectory surface (task 704). It ships off
+	// per 铁律 2: with it off the topicbar renders exactly the pre-704 layout
+	// and the trajectory view is unreachable — the transcript path is untouched.
+	// Pure projection preference: the view only consumes the existing read
+	// projections (no storage reads, no backend writes; 597 调研纪律).
+	ExperimentalTrajectoryView bool `toml:"experimental_trajectory_view"`
 	// Task 473: the [desktop] boolean mirrors of [agent] lab switches are
 	// retired. These fields are READ-ONLY legacy inputs: migrateLabMirrorKeysToAgent
 	// folds any leftover true into the [agent] key at load and the setters only

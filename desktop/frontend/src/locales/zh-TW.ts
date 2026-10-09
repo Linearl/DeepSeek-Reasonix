@@ -4168,6 +4168,11 @@ export const zhTW: Record<DictKey, string> = {
 "settings.sessionCollabAutoFoldHint": "把超長的跨工作階段訊息摺疊成摘要條（傳送方 + 首行 + 展開按鈕），解決長訊息洗版。預設關閉——關閉時所有跨工作階段訊息全量顯示，與引入本選項前完全一致；開啟後超過門檻（約 8 行）的訊息摺疊，點「展開」隨時看全文。僅影響顯示，訊息內容照常進入上下文，即時生效。",
 "settings.sessionCollabAutoFold.on": "開",
 "settings.sessionCollabAutoFold.off": "關",
+// 任務 704：軌跡視圖（實驗室，介面組；預設關=僅轉錄）。
+"settings.trajectoryView": "軌跡視圖",
+"settings.trajectoryViewHint": "在工作階段標題列加「轉錄 | 軌跡」切換。軌跡視圖把工作階段事件流投影成可觀測性台帳：使用者/助理/工具/壓縮記錄按時間排列，附時間線總覽與記錄檢查器。純投影視圖——唯讀現有工作階段資料，不動儲存；關閉後回落純轉錄，資料無損。預設關閉，變更即時生效。",
+"settings.trajectoryView.on": "開",
+"settings.trajectoryView.off": "關",
 "settings.outputStyle.selector": "選擇風格",
 "settings.outputStyle.selectorHint": "內建 explanatory / learning / concise / proactive 與預設（不注入）共五種，另有 output-styles 目錄裡的自訂 .md 檔案。選擇即寫入 reasonix.toml [agent] output_style 並立即重建當前工作階段生效；正在執行任務時則本輪結束後自動套用。",
 "settings.outputStyle.searchPlaceholder": "搜尋風格",

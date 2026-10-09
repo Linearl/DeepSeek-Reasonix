@@ -2935,6 +2935,11 @@ export const zh: Record<DictKey, string> = {
 "settings.sessionCollabAutoFoldHint": "把超长的跨会话消息折叠成摘要条（发送方 + 首行 + 展开按钮），解决长消息刷屏。默认关闭——关闭时所有跨会话消息全量展示，与引入本选项前完全一致；开启后超过阈值（约 8 行）的跨会话消息折叠，点击「展开」随时看全文。仅影响显示，消息内容照常进入上下文，即时生效。",
 "settings.sessionCollabAutoFold.on": "开",
 "settings.sessionCollabAutoFold.off": "关",
+// 任务 704：轨迹视图（实验室，界面组；默认关=仅转录）。
+"settings.trajectoryView": "轨迹视图",
+"settings.trajectoryViewHint": "在会话标题栏加「转录 | 轨迹」切换。轨迹视图把会话事件流投影成可观测性台账：用户/助手/工具/压缩记录按时间排列，附时间线总览与记录检查器。纯投影视图——只读现有会话数据，不动存储；关闭后回落纯转录，数据无损。默认关闭，改动即时生效。",
+"settings.trajectoryView.on": "开",
+"settings.trajectoryView.off": "关",
 "settings.outputStyle.selector": "选择风格",
 "settings.outputStyle.selectorHint": "内置 explanatory / learning / concise / proactive 与默认（不注入）共五种，另有 output-styles 目录里的自定义 .md 文件。选择即写入 reasonix.toml [agent] output_style 并立即重建当前会话生效；正在执行任务时则本轮结束后自动应用。",
 "settings.outputStyle.searchPlaceholder": "搜索风格",

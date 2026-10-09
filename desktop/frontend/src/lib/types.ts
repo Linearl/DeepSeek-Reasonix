@@ -2510,6 +2510,8 @@ export interface DesktopStartupSettingsView {
   experimentalCollabGroupView?: boolean;
   /** Cross-session message auto-fold (task 705): collapse over-long collab messages into a summary bar; off = render in full. */
   experimentalSessionCollabAutoFold?: boolean;
+  /** Trajectory view switch (task 704): gates the topicbar transcript|trajectory switch and the trajectory surface; off = transcript only. */
+  experimentalTrajectoryView?: boolean;
   /** Feedback inbox experiment switch (task 121); off unless the user opts in. */
   experimentalFeedback?: boolean;
   /** Feedback touchpoint dial (task 172); off unless the user opts in; boot snapshot. */

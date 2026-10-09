@@ -67,11 +67,15 @@ var labFeatureTiers = []labFeatureTier{
 	{"traceAsState", LabTierOptional, []string{"trace_as_state"}}, // 任务 473 单键化：[desktop] 旧拼写已退役
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
-	{"collabGroupView", LabTierUnstable, []string{"experimental_collab_group_view"}}, // 任务 677：群聊入口开关（409 交付漏挂铁律 2 开关，用户定档未稳定）
+	{"collabGroupView", LabTierUnstable, []string{"experimental_collab_group_view"}},                            // 任务 677：群聊入口开关（409 交付漏挂铁律 2 开关，用户定档未稳定）
 	// 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关归提效
 	// 组（同 messageMerge 的跨会话展示族先例）；档位按 550 口径建议可选。
 	{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}},
 	// ── ui（界面，15 项）────────────────────────────────────────
+	// 任务 704：轨迹视图（DSH 同款可观测性视图，纯前端投影）。展示类开关按
+	// 550 口径定档可选——不开启时标题栏与转录视图与引入前完全一致（铁律 2，
+	// 默认关）。
+	{"trajectoryView", LabTierOptional, []string{"experimental_trajectory_view"}},
 	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
 	{"todoSidebar", LabTierRecommended, []string{"experimental_todo_sidebar"}},
 	{"promptHistoryPicker", LabTierRecommended, []string{"experimental_prompt_history_picker"}},
@@ -118,9 +122,9 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_collab_background_delivery":    "task 224：协作投递后台化，实验室 tab 无入口",
 	"experimental_bash_heavy_guard":              "task 575：bash 重命令写守卫（写并发保护，optimistic_write 家族伴生开关，实验室 tab 无入口）",
 	"experimental_parallel_writer_readonly_bash": "task 573：并行 writer 只读 bash 回退（写隔离伴生开关，write_paths 象限自证能力，实验室 tab 无入口）",
-	"experimental_gc_child_session":          "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
+	"experimental_gc_child_session":              "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
-	"experimental_general_purpose_subagent":  "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
+	"experimental_general_purpose_subagent":      "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
@@ -345,6 +349,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 705: fixed-key-set rule (same as above) — the fold switch must
 		// survive every settings save.
 		fmt.Fprintf(&b, "experimental_session_collab_auto_fold = %v   # desktop: fold over-long cross-session messages into a summary bar (task 705; off = render in full)\n", c.Desktop.ExperimentalSessionCollabAutoFold)
+		// Task 704: fixed-key-set rule (same as above) — the trajectory view
+		// switch must survive every settings save.
+		fmt.Fprintf(&b, "experimental_trajectory_view = %v   # desktop: topicbar transcript|trajectory view switch + trajectory surface (task 704; off = transcript only)\n", c.Desktop.ExperimentalTrajectoryView)
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)
 		// Task 172: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the touchpoint switch would flip itself back off.

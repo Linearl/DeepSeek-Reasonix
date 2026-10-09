@@ -74,7 +74,9 @@ export type TierFeatureId =
   // 任务 677: 群聊入口开关（409 视图交付漏挂铁律 2 开关，未稳定档默认关）。
   | "collabGroupView"
   // 任务 705: 超长跨会话消息自动折叠（默认关=全量展示，可选档）。
-  | "sessionCollabAutoFold";
+  | "sessionCollabAutoFold"
+  // 任务 704: 轨迹视图开关（DSH 同款可观测性视图，纯前端投影，默认关=仅转录，可选档）。
+  | "trajectoryView";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -101,6 +103,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关按 550
   // 口径定档可选——不开启只影响长消息的阅读密度，不动任何协作行为。
   sessionCollabAutoFold: "optional",
+  // 任务 704：轨迹视图（DSH 同款可观测性视图，纯前端投影）。展示类开关按
+  // 550 口径定档可选——不开启时标题栏与转录视图与引入前完全一致（铁律 2，
+  // 默认关）。
+  trajectoryView: "optional",
   // ── ui（界面，15 项）────────────────────────────────────────
   tabCompress: "recommended",
   todoSidebar: "recommended",
@@ -143,16 +149,17 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
- * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 19 / 未稳定 13 / 已退役 1.
+ * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 20 / 未稳定 13 / 已退役 1.
  * (任务 621 修正：原钉 46 项未收 toolOptimizations（603）与 tabModeTint（504，
  * Go 侧一直有档），漏收使实验室页出现无徽章特性。任务 517：B1/B2/B3（可选×3）
  * 合并为 safetyCostControl（可选×1），可选 20→18、总数 48→46。任务 677：
  * collabGroupView（群聊入口开关，409 交付漏挂铁律 2 开关，未稳定）入表，
  * 未稳定 12→13、总数 46→47。任务 705：sessionCollabAutoFold（超长跨会话
- * 消息自动折叠，默认关）入表，可选 18→19、总数 47→48。) */
+ * 消息自动折叠，默认关）入表，可选 18→19、总数 47→48。任务 704：
+ * trajectoryView（轨迹视图，默认关）入表，可选 19→20、总数 48→49。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
-  optional: 19,
+  optional: 20,
   unstable: 13,
   retired: 1,
 };

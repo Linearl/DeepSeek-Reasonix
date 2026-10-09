@@ -1882,7 +1882,9 @@ type ExperimentFeatureId =
   | "collabGroupView"
   // 任务 705: auto-fold over-long cross-session messages (optional tier,
   // default off = render in full).
-  | "sessionCollabAutoFold";
+  | "sessionCollabAutoFold"
+  // 任务 704: trajectory view switch (optional tier, default off = transcript only).
+  | "trajectoryView";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -2095,6 +2097,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // ── ui（界面，15 项）─────────────────────────────────────────
     // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
     { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
+    // 任务 704：轨迹视图（DSH 同款可观测性视图，纯前端投影）。render
+    // table: a missing entry would silently drop the save, 81/123 lesson.
+    { id: "trajectoryView", group: "ui", label: t("settings.trajectoryView"), on: Boolean(s.experimentalTrajectoryView) },
     // 任务 651：标签权限指示三档（徽章 | 关闭 | 背景色）——非默认档
     // （关闭或背景色）都点亮入口灯，提示当前观感与默认不同。
     { id: "tabModeTint", group: "ui", label: t("settings.tabModeTint"), on: (s.tabPermissionIndicator ?? "badge") !== "badge" },
@@ -2816,6 +2821,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   >
                     {t(on ? "settings.sessionCollabAutoFold.on" : "settings.sessionCollabAutoFold.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "trajectoryView" && (
+            <SettingsField label={labLabel("trajectoryView", t("settings.trajectoryView"))} hint={t("settings.trajectoryViewHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalTrajectoryView) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalTrajectoryView(on);
+                    })}
+                  >
+                    {t(on ? "settings.trajectoryView.on" : "settings.trajectoryView.off")}
                   </button>
                 ))}
               </SettingsOptions>
