@@ -4728,6 +4728,18 @@ export const zh: Record<DictKey, string> = {
   "crash.analyzeStarting": "正在启动分析会话…",
   "crash.analyzeStarted": "已启动 YOLO 分析会话 —— 分析完成后 issue 链接会出现在该会话中。",
   "crash.analyzeFailed": "启动分析失败，可改用「复制」手动反馈。",
+  // 任务 663：分析进度可见 + 一键重启；卡顿入口与遗留崩溃报告入口复用上方的确认/取消/失败文案。
+  "crash.analyzeRunning": "分析运行中…",
+  "crash.analyzeDone": "分析完成——结论（issue 链接或根因分析）已发送到该分析会话。",
+  "crash.restart": "重启 Reasonix",
+  "crash.restartConfirm": "重启会关闭并重新打开 Reasonix；运行中的对话会被安全中断，重启后自动续跑。",
+  "crash.restartGo": "确认重启",
+  "crash.restarting": "正在重启 Reasonix…",
+  "crash.restartFailed": "重启失败",
+  "hangPrompt.title": "会话疑似卡死",
+  "hangPrompt.intro": "当前会话的对话长时间无进展（doctor responsiveness 判定卡顿）。可以对它运行同一套一键分析。",
+  "pendingCrash.title": "检测到上次运行遗留的崩溃报告",
+  "pendingCrash.intro": "上次运行在退出前捕获了一次崩溃。除了静默上报，现在可以对它一键分析。",
   // 任务 642：实验室模拟崩溃演练 —— 每个界面都重复 test/mock 标注，模拟报告不会被误读（或误分类）为真实故障。
   "crash.mockBadge": "模拟",
   "crash.mockBanner": "这是一条模拟测试报告（实验室-开发调试 → 模拟崩溃测试生成），不是真实故障。发送、复制与一键分析均走真实管道。",

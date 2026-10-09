@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 )
 
@@ -27,6 +29,10 @@ import (
 // fallback whenever any prerequisite here fails.
 
 const crashAnalysisRepo = "Linearl/DeepSeek-Reasonix"
+
+// ghAuthenticatedProbe is the test seam over ghAuthenticated: the analysis
+// entry points must be provable without a real `gh auth status` (task 663).
+var ghAuthenticatedProbe = ghAuthenticated
 
 type CrashAnalysisAvailabilityReport struct {
 	// SourceReady: a local reasonix fork checkout was detected. Root-cause
@@ -48,7 +54,7 @@ type CrashAnalysisAvailabilityReport struct {
 // gh auth).
 func (a *App) CrashAnalysisAvailability() CrashAnalysisAvailabilityReport {
 	dir := detectCrashAnalysisSourceDir()
-	ghOK, ghDetail := ghAuthenticated()
+	ghOK, ghDetail := ghAuthenticatedProbe()
 	report := CrashAnalysisAvailabilityReport{
 		SourceReady:     dir != "",
 		SourceDir:       dir,
@@ -67,12 +73,17 @@ func (a *App) CrashAnalysisAvailability() CrashAnalysisAvailabilityReport {
 // StartCrashAnalysis performs route B end to end and returns a short summary of
 // what was started. Every prerequisite is re-checked here so the binding stays
 // safe even if the frontend's earlier availability probe went stale.
+//
+// Task 663: every milestone is logged (the 2026-10-09 click left no trace in
+// desktop.log and the user could not tell started from silently dead), the new
+// session is named 崩溃分析-<时间> so it is identifiable in the tab/topic list,
+// and the run is registered for CrashAnalysisProgress polling.
 func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 	dir := detectCrashAnalysisSourceDir()
 	if dir == "" {
 		return "", fmt.Errorf("no local reasonix source detected — root-cause analysis needs the fork checkout; use the Copy button to report manually")
 	}
-	if ok, ghDetail := ghAuthenticated(); !ok {
+	if ok, ghDetail := ghAuthenticatedProbe(); !ok {
 		hint := strings.TrimSpace(ghDetail)
 		if hint == "" {
 			hint = "gh auth status failed"
@@ -97,22 +108,73 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 	if err := a.NewSessionForTab(""); err != nil {
 		return "", fmt.Errorf("could not start a fresh session for the analysis (%v) — use the Copy button to report manually", err)
 	}
+	sessionPath, sessionDir := a.activeSessionLocation()
+	title := crashAnalysisSessionTitle("崩溃分析", r.TestMock)
+	if sessionPath != "" {
+		// Task 663 ⑤: name the session so the analysis is identifiable in the
+		// tab list ("新的会话" is how the 2026-10-09 run got lost). Best-effort:
+		// a rename failure must not kill the analysis itself.
+		if renameErr := agent.RenameSession(sessionPath, title); renameErr != nil {
+			slog.Warn("crash-analysis: session rename failed (analysis continues)", "err", renameErr)
+		} else if titleErr := a.onSessionTitleChanged(sessionDir, sessionPath, title); titleErr != nil {
+			slog.Warn("crash-analysis: session title projection failed (analysis continues)", "err", titleErr)
+		}
+	}
 	a.SetModeForTab("", "yolo")
 	instruction := buildCrashAnalysisInstruction(dir, string(payload), r.TestMock)
 	if err := a.SubmitToTab("", instruction); err != nil {
 		return "", fmt.Errorf("could not submit the analysis instruction (%v) — use the Copy button to report manually", err)
 	}
-	return fmt.Sprintf("YOLO analysis session started; it will analyze the diagnostic against %s and submit an issue to %s via gh-issue-submit.", dir, crashAnalysisRepo), nil
+	a.beginCrashAnalysisRun(sessionPath)
+	slog.Info("crash-analysis: started", "kind", r.Kind, "testMock", r.TestMock,
+		"session", scrubUserPaths(sessionPath), "title", title, "sourceDir", scrubUserPaths(dir))
+	return fmt.Sprintf("YOLO 分析会话已启动并命名为「%s」（%s）；分析将对照 %s 定位根因，并提交 issue 到 %s。结论（issue 链接或根因分析）会发送到该会话。",
+		title, scrubUserPaths(sessionPath), dir, crashAnalysisRepo), nil
+}
+
+// activeSessionLocation returns the active tab's session path and dir, "" when
+// the workspace has no live session. Read-only helper for the analysis entries.
+func (a *App) activeSessionLocation() (string, string) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	tab := a.activeTabLocked()
+	if tab == nil || a.tabIsReadOnly(tab) || tab.Ctrl == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(tab.Ctrl.SessionPath()), strings.TrimSpace(tab.Ctrl.SessionDir())
+}
+
+// crashAnalysisSessionTitle builds the task-663 session name: <base>-<时间>,
+// with an explicit -测试 marker for lab mock drills so a drill is never
+// readable as a real failure in the tab list either.
+func crashAnalysisSessionTitle(base string, testMock bool) string {
+	name := base
+	if testMock {
+		name += "-测试"
+	}
+	return name + "-" + time.Now().Format("20060102-150405")
 }
 
 func buildCrashAnalysisInstruction(sourceDir, payload string, testMock bool) string {
-	var b strings.Builder
-	b.WriteString("请分析以下 Reasonix 桌面端诊断报告，定位根因并提交 issue。\n\n")
+	notice := ""
 	if testMock {
 		// Task 642: the lab mock entry reuses this chain, so the analysis run
 		// must know the diagnostic is simulated — it is a pipeline drill, not a
 		// real failure, and the submitted issue has to say so.
-		b.WriteString("注意：这是一条测试/mock 报告（实验室「模拟崩溃测试」入口生成），用于验证上报链路，不是真实故障。issue 请在标题与正文明确标注 mock/test，不要当成真实故障归类。\n\n")
+		notice = "注意：这是一条测试/mock 报告（实验室「模拟崩溃测试」入口生成），用于验证上报链路，不是真实故障。issue 请在标题与正文明确标注 mock/test，不要当成真实故障归类。"
+	}
+	return buildAnalysisInstruction(sourceDir, payload, notice)
+}
+
+// buildAnalysisInstruction is the shared contract of the one-click analysis
+// family (task 663): notice carries the per-entry framing (mock drill, hang
+// triage) ahead of the shared requirements.
+func buildAnalysisInstruction(sourceDir, payload, notice string) string {
+	var b strings.Builder
+	b.WriteString("请分析以下 Reasonix 桌面端诊断报告，定位根因并提交 issue。\n\n")
+	if notice != "" {
+		b.WriteString(notice)
+		b.WriteString("\n\n")
 	}
 	b.WriteString("要求：\n")
 	b.WriteString(fmt.Sprintf("1. 调用 gh-issue-submit 技能，分析该诊断的根因，提交 issue 到 %s，附复现线索与 file:line。\n", crashAnalysisRepo))
@@ -127,8 +189,9 @@ func buildCrashAnalysisInstruction(sourceDir, payload string, testMock bool) str
 // detectCrashAnalysisSourceDir probes the known fork checkout locations and
 // returns the first one that actually looks like the reasonix source tree.
 // Detection failure is the normal "source not downloaded" case: route B stops
-// and the UI points at route A.
-func detectCrashAnalysisSourceDir() string {
+// and the UI points at route A. Var so tests can point the analysis entries at
+// a fixture checkout (task 663).
+var detectCrashAnalysisSourceDir = func() string {
 	candidates := []string{
 		// The workspace layout on this machine: the global workspace (sibling of
 		// the app's own user dir) hosts local repo checkouts under github-repo/.
@@ -261,4 +324,118 @@ func filterEnv(environ []string, names ...string) []string {
 		kept = append(kept, entry)
 	}
 	return kept
+}
+
+// ── task 663 ②: analysis run tracking ───────────────────────────────────────
+// The 2026-10-09 incident: the user clicked one-click analyze, could not tell
+// whether anything started (no visible progress, no completion), and killed it
+// early. beginCrashAnalysisRun registers the hosting session after a successful
+// start; CrashAnalysisProgress is the read model the frontend polls. The state
+// machine itself (observeCrashAnalysisRun) is pure and unit-tested; the App
+// method only feeds it the tab's live RuntimeStatus.
+
+type crashAnalysisRun struct {
+	sessionPath string
+	startedAt   time.Time
+	seenRunning bool
+	done        bool
+	doneAt      time.Time
+}
+
+// crashAnalysisTurnObs is one observation of the hosting tab's turn state.
+type crashAnalysisTurnObs struct {
+	found    bool // a live tab still hosts the session
+	running  bool // its runtime reports a running turn
+	terminal bool // the current turn settled in a terminal state
+}
+
+// observeCrashAnalysisRun folds an observation into the run state. Done fires
+// when the turn settled (terminal status, or running→not-running after the run
+// was seen streaming), or when the hosting tab is gone — an analysis whose tab
+// died cannot progress anymore.
+func observeCrashAnalysisRun(run *crashAnalysisRun, obs crashAnalysisTurnObs, now time.Time) {
+	if run.done {
+		return
+	}
+	if !obs.found {
+		run.done, run.doneAt = true, now
+		return
+	}
+	if obs.running {
+		run.seenRunning = true
+		return
+	}
+	if obs.terminal || run.seenRunning {
+		run.done, run.doneAt = true, now
+	}
+}
+
+// beginCrashAnalysisRun registers the session hosting a fresh analysis run.
+func (a *App) beginCrashAnalysisRun(sessionPath string) {
+	if sessionPath == "" {
+		return
+	}
+	a.crashAnalysisMu.Lock()
+	a.crashAnalysisRun = &crashAnalysisRun{sessionPath: sessionPath, startedAt: time.Now()}
+	a.crashAnalysisMu.Unlock()
+}
+
+// CrashAnalysisProgressReport is the read model for the analysis progress
+// poller. Active=false means nothing is being tracked (no run started in this
+// process yet); Done means the analysis turn settled (or its tab disappeared).
+type CrashAnalysisProgressReport struct {
+	Active      bool   `json:"active"`
+	SessionPath string `json:"sessionPath,omitempty"` // user paths scrubbed
+	StartedAt   string `json:"startedAt,omitempty"`
+	Running     bool   `json:"running"`
+	Done        bool   `json:"done"`
+	DoneAt      string `json:"doneAt,omitempty"`
+}
+
+// CrashAnalysisProgress reports the tracked analysis run's live state.
+func (a *App) CrashAnalysisProgress() CrashAnalysisProgressReport {
+	a.crashAnalysisMu.Lock()
+	run := a.crashAnalysisRun
+	a.crashAnalysisMu.Unlock()
+	if run == nil {
+		return CrashAnalysisProgressReport{Active: false}
+	}
+	now := time.Now()
+	obs := a.observeAnalysisSession(run.sessionPath)
+	a.crashAnalysisMu.Lock()
+	observeCrashAnalysisRun(run, obs, now)
+	report := CrashAnalysisProgressReport{
+		Active:      true,
+		SessionPath: scrubUserPaths(run.sessionPath),
+		StartedAt:   run.startedAt.UTC().Format(time.RFC3339),
+		Running:     obs.running,
+		Done:        run.done,
+	}
+	if !run.doneAt.IsZero() {
+		report.DoneAt = run.doneAt.UTC().Format(time.RFC3339)
+	}
+	a.crashAnalysisMu.Unlock()
+	return report
+}
+
+// observeAnalysisSession finds the tab hosting sessionPath and reads its turn
+// state. Read-only; a missing tab reads as found=false.
+func (a *App) observeAnalysisSession(sessionPath string) crashAnalysisTurnObs {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, tab := range a.runtimeTabsLocked() {
+		if tab == nil || tab.Ctrl == nil {
+			continue
+		}
+		if strings.TrimSpace(tab.Ctrl.SessionPath()) != sessionPath {
+			continue
+		}
+		status := tab.Ctrl.RuntimeStatus()
+		return crashAnalysisTurnObs{
+			found:    true,
+			running:  status.Running,
+			terminal: status.Status != "" && status.Status.Terminal(),
+		}
+	}
+	return crashAnalysisTurnObs{found: false}
 }

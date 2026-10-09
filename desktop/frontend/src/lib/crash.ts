@@ -715,14 +715,18 @@ const COPY_FEEDBACK_MS = 2_000;
 // own distinct notice into `note` and route B stops, pointing at route A
 // (Copy). Like the send button, both bindings are resolved at click time off
 // window.go so the overlay keeps working when the rest of the app is broken.
-function analyzeButton(
-  payload: CrashPayload,
+//
+// Task 663: the gates are shared by the whole analysis family — the hang entry
+// (StartHangAnalysis) and the startup pending-crash entry (StartCrashAnalysis
+// with a queued payload) pass their own start thunk, so there is one gate
+// order, one spend confirmation and one progress/completion face everywhere.
+export function analyzeEntryButton(
   className: string,
   note: HTMLDivElement,
+  onStart: () => Promise<string>,
 ): HTMLButtonElement | null {
   const probe = window.go?.main?.App?.CrashAnalysisAvailability;
-  const start = window.go?.main?.App?.StartCrashAnalysis;
-  if (!probe || !start) return null;
+  if (!probe) return null;
   const analyze = document.createElement("button");
   analyze.className = className;
   analyze.textContent = t("crash.analyze");
@@ -753,16 +757,24 @@ function analyzeButton(
       note.textContent = detail ? `${t("crash.analyzeNoGh")}\n${detail}` : t("crash.analyzeNoGh");
       return;
     }
-    paintAnalysisConfirmation(note, payload, className);
+    paintAnalysisSpendConfirm(note, className, onStart);
   };
   return analyze;
 }
 
+function analyzeButton(
+  payload: CrashPayload,
+  className: string,
+  note: HTMLDivElement,
+): HTMLButtonElement | null {
+  const start = window.go?.main?.App?.StartCrashAnalysis;
+  if (!start) return null;
+  return analyzeEntryButton(className, note, () => start(payload.kind, JSON.stringify(payload)));
+}
+
 // Prerequisite 2 is an explicit notice, not a gate: the analysis really runs an
 // agent turn, so it only starts after the user confirms the spend.
-function paintAnalysisConfirmation(note: HTMLDivElement, payload: CrashPayload, className: string) {
-  const start = window.go?.main?.App?.StartCrashAnalysis;
-  if (!start) return;
+function paintAnalysisSpendConfirm(note: HTMLDivElement, className: string, onStart: () => Promise<string>) {
   const text = document.createElement("span");
   text.textContent = t("crash.analyzeConfirm");
   const actions = document.createElement("span");
@@ -778,8 +790,11 @@ function paintAnalysisConfirmation(note: HTMLDivElement, payload: CrashPayload, 
     cancel.disabled = true;
     note.textContent = t("crash.analyzeStarting");
     try {
-      const summary = await start(payload.kind, JSON.stringify(payload));
-      note.textContent = `${t("crash.analyzeStarted")}\n${summary}`;
+      const summary = await onStart();
+      // Task 663 ②: a started analysis must stay visible — the note switches
+      // to the live progress face (running elapsed / done) instead of a
+      // one-shot line the user cannot tell from a dead click.
+      paintAnalysisProgress(note, className, summary);
     } catch (err) {
       note.textContent = `${t("crash.analyzeFailed")}\n${err instanceof Error ? err.message : String(err)}`;
     }
@@ -788,6 +803,90 @@ function paintAnalysisConfirmation(note: HTMLDivElement, payload: CrashPayload, 
     note.textContent = "";
   };
   note.replaceChildren(text, actions);
+}
+
+// Task 663 ②: the progress face. Polls CrashAnalysisProgress while the note is
+// attached; the polling backend state machine classifies done (turn settled,
+// terminal status, or hosting tab gone), so a fast failure can never read as
+// an endless "running". The restart button (gap ③) rides along from the start
+// — the analysis conclusion usually wants an app restart to take effect.
+function paintAnalysisProgress(note: HTMLDivElement, className: string, summary: string) {
+  const started = document.createElement("span");
+  started.textContent = `${t("crash.analyzeStarted")}\n${summary}`;
+  const status = document.createElement("span");
+  status.textContent = t("crash.analyzeRunning");
+  const actions = document.createElement("span");
+  const restart = restartButton(className, note);
+  if (restart) actions.append(restart);
+  note.replaceChildren(started, status, actions);
+
+  const startedAtMs = Date.now();
+  const progress = window.go?.main?.App?.CrashAnalysisProgress;
+  if (!progress) return; // older backend: keep the static started face
+  const formatElapsed = (secs: number) =>
+    `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  const timer = window.setInterval(async () => {
+    if (!note.isConnected) {
+      window.clearInterval(timer);
+      return;
+    }
+    try {
+      const state = await progress();
+      if (!state?.active) return;
+      if (state.done) {
+        window.clearInterval(timer);
+        status.textContent = t("crash.analyzeDone");
+        return;
+      }
+      const secs = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
+      status.textContent = `${t("crash.analyzeRunning")} ${formatElapsed(secs)}`;
+    } catch {
+      // Keep the last painted state; a single failed poll is not a failure.
+    }
+  }, 3_000);
+}
+
+// Task 663 ③: the restart face of the analysis family, riding the restart
+// pipeline (App.RestartDesktop → restartActiveVersionExempt: grace window,
+// cancel-with-resume-marker, launcher handoff). Resolved at click time like
+// every overlay binding. The confirm is painted into `note` — a plain restart
+// interrupts running conversations, so it must never fire from one click.
+export function restartButton(className: string, note: HTMLDivElement): HTMLButtonElement | null {
+  const restart = window.go?.main?.App?.RestartDesktop;
+  if (!restart) return null;
+  const button = document.createElement("button");
+  button.className = className;
+  button.textContent = t("crash.restart");
+  button.onclick = () => {
+    const text = document.createElement("span");
+    text.textContent = t("crash.restartConfirm");
+    const actions = document.createElement("span");
+    const go = document.createElement("button");
+    go.className = className;
+    go.textContent = t("crash.restartGo");
+    const cancel = document.createElement("button");
+    cancel.className = className;
+    cancel.textContent = t("crash.analyzeCancel");
+    actions.append(go, cancel);
+    go.onclick = async () => {
+      go.disabled = true;
+      cancel.disabled = true;
+      note.textContent = t("crash.restarting");
+      try {
+        await restart();
+        // The process quits shortly after; keep the notice as-is.
+      } catch (err) {
+        // Explicit failure (e.g. a portable build has no launcher): the note
+        // names it instead of a dead button.
+        note.textContent = `${t("crash.restartFailed")}\n${err instanceof Error ? err.message : String(err)}`;
+      }
+    };
+    cancel.onclick = () => {
+      note.textContent = "";
+    };
+    note.replaceChildren(text, actions);
+  };
+  return button;
 }
 
 function copyButton(text: string, className: string): HTMLButtonElement {

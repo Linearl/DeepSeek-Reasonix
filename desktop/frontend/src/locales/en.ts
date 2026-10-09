@@ -4729,6 +4729,19 @@ export const en = {
   "crash.analyzeStarting": "Starting the analysis session…",
   "crash.analyzeStarted": "YOLO analysis session started — the issue link will appear in that session once the analysis completes.",
   "crash.analyzeFailed": "Failed to start the analysis — use Copy to report manually.",
+  // Task 663: analysis progress visibility + restart; hang entry and
+  // pending-crash entry reuse the analyze confirm/cancel/failed keys above.
+  "crash.analyzeRunning": "Analysis running…",
+  "crash.analyzeDone": "Analysis finished — the conclusion (issue link or root-cause notes) has been posted into that session.",
+  "crash.restart": "Restart Reasonix",
+  "crash.restartConfirm": "Restarting closes and reopens Reasonix; running conversations are interrupted safely and auto-resume after the relaunch.",
+  "crash.restartGo": "Restart now",
+  "crash.restarting": "Restarting Reasonix…",
+  "crash.restartFailed": "Restart failed",
+  "hangPrompt.title": "Session may be stuck",
+  "hangPrompt.intro": "The active session's open turn has made no progress (doctor responsiveness verdict: hang). You can run the same one-click analysis on it.",
+  "pendingCrash.title": "Crash report left from the previous run",
+  "pendingCrash.intro": "The previous run captured a panic before it died. Analyze it now instead of letting it ship silently.",
   // Task 642: lab mock-crash drill — every surface repeats the test/mock marking
   // so a simulated report can never be read (or triaged) as a real failure.
   "crash.mockBadge": "MOCK",

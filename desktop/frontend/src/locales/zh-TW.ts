@@ -4778,6 +4778,18 @@ export const zhTW: Record<DictKey, string> = {
   "crash.analyzeStarting": "正在啟動分析工作階段…",
   "crash.analyzeStarted": "已啟動 YOLO 分析工作階段 —— 分析完成後 issue 連結會出現在該工作階段中。",
   "crash.analyzeFailed": "啟動分析失敗，可改用「複製」手動回饋。",
+  // 任務 663：分析進度可見 + 一鍵重啟；卡頓入口與遺留當機報告入口複用上方的確認/取消/失敗文案。
+  "crash.analyzeRunning": "分析執行中…",
+  "crash.analyzeDone": "分析完成——結論（issue 連結或根因分析）已傳送到該分析工作階段。",
+  "crash.restart": "重新啟動 Reasonix",
+  "crash.restartConfirm": "重啟會關閉並重新開啟 Reasonix；執行中的對話會被安全中斷，重啟後自動續跑。",
+  "crash.restartGo": "確認重啟",
+  "crash.restarting": "正在重新啟動 Reasonix…",
+  "crash.restartFailed": "重啟失敗",
+  "hangPrompt.title": "工作階段疑似卡死",
+  "hangPrompt.intro": "目前工作階段的對話長時間無進展（doctor responsiveness 判定卡頓）。可以對它執行同一套一鍵分析。",
+  "pendingCrash.title": "偵測到上次執行遺留的當機報告",
+  "pendingCrash.intro": "上次執行在結束前擷取了一次崩潰。除了靜默上報，現在可以對它一鍵分析。",
   // 任務 642：實驗室模擬崩潰演練 —— 每個介面都重複 test/mock 標註，模擬報告不會被誤讀（或誤分類）為真實故障。
   "crash.mockBadge": "模擬",
   "crash.mockBanner": "這是一條模擬測試報告（實驗室-開發除錯 → 模擬崩潰測試產生），不是真實故障。傳送、複製與一鍵分析均走真實管道。",

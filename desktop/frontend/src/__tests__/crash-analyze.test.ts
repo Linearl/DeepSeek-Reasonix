@@ -2,6 +2,9 @@
 // Task 617 route B: the analyze button runs the three prerequisite gates in
 // order, shows one distinct notice per failure (and never starts), and only
 // starts the YOLO session after the explicit spend confirmation.
+// Task 663: a started analysis switches to the live progress face (running →
+// done via CrashAnalysisProgress) and carries the restart button (③), whose
+// click paints an explicit confirm before RestartDesktop fires.
 
 import { JSDOM } from "jsdom";
 
@@ -23,6 +26,9 @@ type Availability = {
 const allReady: Availability = { sourceReady: true, ghAuthenticated: true, workspaceReady: true, ready: true };
 let availability: Availability | null = { ...allReady };
 let startCalls: string[] = [];
+let restartCalls = 0;
+// Task 663 ②: the progress read model the poller folds into the note.
+let progressState: { active: boolean; running: boolean; done: boolean } = { active: false, running: false, done: false };
 
 function installAnalyzeBindings() {
   (window as unknown as { go?: unknown }).go = {
@@ -33,6 +39,10 @@ function installAnalyzeBindings() {
         StartCrashAnalysis: async (kind: string, detail: string) => {
           startCalls.push(JSON.stringify({ kind, detail }));
           return "YOLO analysis session started";
+        },
+        CrashAnalysisProgress: async () => ({ ...progressState }),
+        RestartDesktop: async () => {
+          restartCalls += 1;
         },
       },
     },
@@ -129,6 +139,11 @@ ok(startCalls.length === 0, "no live workspace does not start the analysis");
 // All prerequisites pass — the spend confirmation (prerequisite 2) gates the
 // actual start.
 availability = { ...allReady };
+// Task 663 ②: speed the progress poller up (10ms) so the running→done fold is
+// observable without waiting the production 3s cadence.
+const realSetInterval = window.setInterval.bind(window);
+(window as unknown as { setInterval: typeof window.setInterval }).setInterval = ((fn: () => void) =>
+  realSetInterval(fn, 10)) as typeof window.setInterval;
 await clickAnalyze(overlay);
 ok(note(overlay).includes("consumes token quota"), "spend confirmation is shown before starting");
 ok(startCalls.length === 0, "confirmation alone does not start the analysis");
@@ -141,6 +156,32 @@ ok(startCalls.length === 1, "confirming starts exactly one analysis session");
 ok(startCalls[0]?.includes('"kind":"crash"'), "the started session carries the diagnostic kind");
 ok(startCalls[0]?.includes("renderer fault"), "the started session carries the diagnostic payload");
 ok(note(overlay).includes("YOLO analysis session started"), "the note reports the started session");
+
+// Task 663 ②: the note switches to the live progress face instead of a
+// one-shot line — running while the backend says running…
+progressState = { active: true, running: true, done: false };
+await new Promise((resolve) => setTimeout(resolve, 40));
+ok(note(overlay).includes("Analysis running"), "the note polls into the running face");
+
+// …and folds to done when the backend run finishes (turn settled).
+progressState = { active: true, running: false, done: true };
+await new Promise((resolve) => setTimeout(resolve, 40));
+ok(note(overlay).includes("Analysis finished"), "the note folds to the done face");
+
+// Task 663 ③: the restart button rides the progress face; a click paints the
+// explicit confirm, and only the confirm fires RestartDesktop.
+const restart = overlay.querySelector(".crash-overlay__analysis button") as HTMLButtonElement;
+ok(restart?.textContent === "Restart Reasonix", "the progress face carries the restart button");
+restart.click();
+await tick();
+ok(note(overlay).includes("auto-resume"), "restart click paints the explicit confirm first");
+ok(restartCalls === 0, "the confirm alone does not restart");
+const restartGo = overlay.querySelector(".crash-overlay__analysis button") as HTMLButtonElement;
+restartGo.click();
+await tick();
+await tick();
+ok(restartCalls === 1, "confirming the restart fires exactly one RestartDesktop");
+ok(note(overlay).includes("Restarting Reasonix"), "the note reports the restart in flight");
 
 overlay.remove();
 clearBindings();

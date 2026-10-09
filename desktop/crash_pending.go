@@ -369,3 +369,118 @@ func (a *App) flushPendingCrash() {
 	}
 	_ = os.Remove(pendingCrashDir())
 }
+
+// ── task 663 gap ④: pending-crash analysis entry ────────────────────────────
+// A Go panic kills the process, so the crash overlay and the "rotate the tab"
+// pipeline can never run for a real crash — the report only exists as a
+// pending queue file for the NEXT launch. Until now that launch shipped it
+// silently (telemetry) or dropped it (telemetry off). snapshotPendingCrashFor
+// Analysis captures the queue BEFORE flushPendingCrash runs, and
+// PendingCrashSnapshot exposes the copy so the frontend can offer one-click
+// analysis of the previous run's panic at startup instead of silent shipping.
+
+// maxPendingCrashAnalysisReports caps the snapshot the frontend is offered:
+// analyzing the newest handful covers the actionable case; the queue cap is 10.
+const maxPendingCrashAnalysisReports = 3
+
+// PendingCrashSnapshotReport is the startup read model for the analysis entry.
+// Reports are the payload JSONs (schema-2 frontend shape, newest first) ready
+// to hand to StartCrashAnalysis verbatim.
+type PendingCrashSnapshotReport struct {
+	Count   int      `json:"count"`
+	Reports []string `json:"reports,omitempty"`
+}
+
+// pendingReportToAnalysisPayload maps a queued crashReport into the schema-2
+// frontend payload JSON that StartCrashAnalysis parses structurally. Queued
+// reports may carry any schema ≤ currentCrashSchema (writePendingCrash writes
+// 2, the startup/webview diagnostic writers write 3); the fields that matter
+// for analysis are the same either way.
+func pendingReportToAnalysisPayload(r crashReport) (string, error) {
+	payload := frontendCrashPayload{
+		SchemaVersion: 2,
+		Kind:          r.Kind,
+		Source:        r.Source,
+		Label:         r.Label,
+		Message:       r.Message,
+		ErrorType:     r.ErrorType,
+		ErrorMessage:  r.ErrorMessage,
+		Stack:         r.Stack,
+		ComponentStack: r.ComponentStack,
+		TopFrame:       r.TopFrame,
+		FingerprintHint: r.FingerprintHint,
+		TestMock:       r.TestMock,
+		BuildCommit:    r.BuildCommit,
+		Channel:        r.Channel,
+		Language:       r.Language,
+		View:           r.View,
+		Breadcrumbs:    r.Breadcrumbs,
+		OccurredAt:     r.OccurredAt,
+	}
+	if _, ok := normalizeReportKind(payload.Kind); !ok {
+		payload.Kind = "crash"
+	}
+	if payload.Source == "" {
+		payload.Source = "go"
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// pendingCrashAnalysisPayloads reads the queue newest-first and returns the
+// schema-2 analysis payloads for up to maxPendingCrashAnalysisReports reports.
+// Files beyond the current schema are skipped (flushPendingCrash skips them
+// too); unreadable or unparseable files are skipped, never fatal.
+func pendingCrashAnalysisPayloads(paths []string) []string {
+	out := make([]string, 0, maxPendingCrashAnalysisReports)
+	for i := len(paths) - 1; i >= 0 && len(out) < maxPendingCrashAnalysisReports; i-- {
+		body, err := readFileUTF8(paths[i])
+		if err != nil {
+			continue
+		}
+		var r crashReport
+		if json.Unmarshal(body, &r) != nil || r.SchemaVersion > currentCrashSchema {
+			continue
+		}
+		payload, err := pendingReportToAnalysisPayload(r)
+		if err != nil {
+			continue
+		}
+		out = append(out, payload)
+	}
+	return out
+}
+
+// snapshotPendingCrashForAnalysis captures the pending queue into memory.
+// Called from startup BEFORE flushPendingCrash: the flush ships (telemetry on)
+// or drops (telemetry off) the files either way, and the analysis entry must
+// survive both.
+func (a *App) snapshotPendingCrashForAnalysis() {
+	paths := pendingCrashPaths()
+	if len(paths) == 0 {
+		return
+	}
+	payloads := pendingCrashAnalysisPayloads(paths)
+	a.crashAnalysisMu.Lock()
+	a.pendingCrashReports = payloads
+	a.crashAnalysisMu.Unlock()
+}
+
+// PendingCrashSnapshot reports the boot-time snapshot; when this process never
+// snapshotted (dev flows, tests, or a report written after boot), it falls
+// back to reading the live queue.
+func (a *App) PendingCrashSnapshot() PendingCrashSnapshotReport {
+	a.crashAnalysisMu.Lock()
+	stored := a.pendingCrashReports
+	a.crashAnalysisMu.Unlock()
+	if len(stored) == 0 {
+		stored = pendingCrashAnalysisPayloads(pendingCrashPaths())
+	}
+	return PendingCrashSnapshotReport{
+		Count:   len(pendingCrashPaths()),
+		Reports: stored,
+	}
+}
