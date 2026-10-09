@@ -1454,7 +1454,7 @@ const CHECKS = [
   { feature: "598 公开构建摇除马里奥（define 折叠守卫，修 512 摇除失守）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["if (typeof __CHIME_LOCAL_ASSETS__ === \"undefined\") return null;", "if (!__CHIME_LOCAL_ASSETS__) return null;"] },
   { feature: "598 截断 10 秒三语 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["最长播放 10 秒"] },
   { feature: "598 截断 10 秒三语 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["最長播放 10 秒"] },
-  { feature: "598 截断 10 秒三语 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["plays for up to 10 seconds"] },
+  { feature: "598 截断 10 秒三语 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["Plays for at most 10 seconds"] },
 
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役；621 修正计数 46→48）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },
