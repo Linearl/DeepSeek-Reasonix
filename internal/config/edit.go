@@ -649,6 +649,38 @@ func (c *Config) SetUpdateChime(enabled bool) error {
 	return nil
 }
 
+// SetDesktopForkNotice toggles the fork first-launch notice switch (task 670).
+// Default on (user ruling 20261009 — pure UI notice, 铁律 2 not applicable).
+// Re-enabling also clears the 「下次不提醒」 preference: the lab switch is the
+// only UI path back from a stored mute, so ON must mean the notice actually
+// comes back on the next version swap.
+func (c *Config) SetDesktopForkNotice(enabled bool) error {
+	on := enabled
+	c.Desktop.ForkNotice = &on
+	if enabled {
+		c.Desktop.ForkNoticeMuted = false
+	}
+	return nil
+}
+
+// SetDesktopForkNoticeMuted stores the dialog's 「下次不提醒」 answer (task
+// 670). A user preference, not an experimental switch: once stored, the
+// notice stays down across future version swaps until the lab switch is
+// toggled off and back on (SetDesktopForkNotice(true) clears it).
+func (c *Config) SetDesktopForkNoticeMuted(muted bool) error {
+	c.Desktop.ForkNoticeMuted = muted
+	return nil
+}
+
+// AcknowledgeForkNoticeVersion records which version tree the fork notice
+// last fired for (task 670). Written when the dialog is raised — before the
+// user touches anything — so the same version never prompts twice, however
+// the dialog was closed (same write-before-show shape as the task-277 chime).
+func (c *Config) AcknowledgeForkNoticeVersion(version string) error {
+	c.Desktop.ForkNoticeLastVersion = strings.TrimSpace(version)
+	return nil
+}
+
 // SetUpdateChimeTune picks the update-chime melody (task 512). Only the two
 // known values are accepted so a typo cannot silently flip the tune.
 func (c *Config) SetUpdateChimeTune(tune string) error {
