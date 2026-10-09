@@ -89,7 +89,8 @@ import { SettingsField, SettingsSection } from "./SettingsForm";
 import { SettingsOpenCodeGoUsageCard } from "./SettingsOpenCodeGoUsageCard";
 // 任务 562: lab three-tier badges — the tier source is lib/experimentTiers
 // (display mirror of the Go labFeatureTiers register in internal/config/render.go,
-// xlsx 表A 46 items). The rail, every pane switch and the ForkFeaturesIntroDialog
+// xlsx 表A 47 items as of 任务 677). The rail, every pane switch and the
+// ForkFeaturesIntroDialog
 // picks wall read the SAME map — two views, one source.
 import { EXPERIMENT_FEATURE_TIERS, LAB_WALL_PICKS, railTiersFor, type TierFeatureId } from "../lib/experimentTiers";
 // 任务 563: the picks wall reads its live on/off states through this context
@@ -1875,7 +1876,10 @@ type ExperimentFeatureId =
   | "updateFeedback"
   | "sessionStore"
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
-  | "toolOptimizations";
+  | "toolOptimizations"
+  // 任务 677: sidebar group-chat entry switch (the task-409 view landed
+  // without its lab switch; unstable tier, default off).
+  | "collabGroupView";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -1911,8 +1915,9 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // 任务 561: the lab regroups into 7 domains — efficiency splits out
   // automation, misc renames to infra, debug splits into observability +
   // dev-debug. Membership follows the 2026-10-06 audit table (46 items,
-  // 8/10/15/2/2/2/7).
-  // 任务 603: adds the 工具优化 group after the 561 audit-table seven.
+  // 8/10/15/2/2/2/7). 任务 603: adds the 工具优化 group after the 561
+  // audit-table seven. 任务 677: collabGroupView joins efficiency
+  // (47 items, 8/11/15/2/2/2/7).
   type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra" | "tool-opt";
   // Task 257: turning full access ON passes one danger confirmation first —
   // the same one-shot gate shape as Claude Code / MiMo's yolo mode. Turning
@@ -2036,7 +2041,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // must keep its own `on` read and its own setter wiring in the pane (81/123
   // lost-save rule). Group membership follows the 2026-10-06 audit table
   // (46 items: automation 8 / efficiency 10 / ui 15 / observability 2 /
-  // dev-debug 2 / storage 2 / infra 7).
+  // dev-debug 2 / storage 2 / infra 7). 任务 677: collabGroupView joins
+  // efficiency (47 items: efficiency 11).
   const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean; group: LabGroupKey }> = [
     // ── automation（自动化，8 项）──────────────────────────────────
     { id: "autopilot", group: "automation", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
@@ -2072,6 +2078,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // The light also reads a configured style: it stays discoverable after
     // the panel is closed, same shape as the storage entries below.
     { id: "outputStyle", group: "efficiency", label: t("settings.outputStyle"), on: Boolean(s.experimentalOutputStyleUI) || (s.outputStyle ?? "") !== "" },
+    // 任务 677: 群聊入口开关（409 视图交付漏挂铁律 2 开关）——默认关=侧栏
+    // 工具行不渲染群聊图标；render table: a missing entry would silently
+    // drop the save, 81/123 lesson.
+    { id: "collabGroupView", group: "efficiency", label: t("settings.collabGroupView"), on: Boolean(s.experimentalCollabGroupView) },
     // ── ui（界面，15 项）─────────────────────────────────────────
     // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
     { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
@@ -2760,6 +2770,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   >
                     {t(on ? "settings.splitView.on" : "settings.splitView.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "collabGroupView" && (
+            <SettingsField label={labLabel("collabGroupView", t("settings.collabGroupView"))} hint={t("settings.collabGroupViewHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalCollabGroupView) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalCollabGroupView(on);
+                    })}
+                  >
+                    {t(on ? "settings.collabGroupView.on" : "settings.collabGroupView.off")}
                   </button>
                 ))}
               </SettingsOptions>

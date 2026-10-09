@@ -2921,6 +2921,11 @@ export const zh: Record<DictKey, string> = {
 "settings.outputStyleLabHint": "选择折入 system prompt 的回答风格（Output Style）。开关仅控制本面板的选择器显示；切换后当前会话立即重建生效（正在执行的任务不会被打断，本轮结束后自动应用）。仅影响主会话，子会话不带风格。默认关闭。",
 "settings.outputStyle.on": "开",
 "settings.outputStyle.off": "关",
+// 任务 677：群聊入口开关（实验室，提效组；409 视图交付漏挂铁律 2 开关）。
+"settings.collabGroupView": "群聊",
+"settings.collabGroupViewHint": "侧栏左下角图标行里的群聊入口（群聊式多 Agent 协作视图）。实验特性，默认关闭——关闭时侧栏与引入群聊前完全一致；开启后入口图标出现，点击即可打开群聊视图。",
+"settings.collabGroupView.on": "开",
+"settings.collabGroupView.off": "关",
 "settings.outputStyle.selector": "选择风格",
 "settings.outputStyle.selectorHint": "内置 explanatory / learning / concise / proactive 与默认（不注入）共五种，另有 output-styles 目录里的自定义 .md 文件。选择即写入 reasonix.toml [agent] output_style 并立即重建当前会话生效；正在执行任务时则本轮结束后自动应用。",
 "settings.outputStyle.searchPlaceholder": "搜索风格",

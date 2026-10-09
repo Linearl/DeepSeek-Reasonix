@@ -97,6 +97,11 @@ type DesktopConfig struct {
 	// ships off: with it off the tab context menu looks exactly as it did before the
 	// split existed (zero regression), and the split stays an opt-in experiment.
 	ExperimentalSplitView bool `toml:"experimental_split_view"`
+	// ExperimentalCollabGroupView gates the sidebar group-chat entry (task 409
+	// view, task 677 switch). It ships off per 铁律 2: with it off the sidebar
+	// utility row renders exactly the pre-409 four-icon layout, and the panel
+	// becomes unreachable — the 409 deliverable itself is untouched.
+	ExperimentalCollabGroupView bool `toml:"experimental_collab_group_view"`
 	// Task 473: the [desktop] boolean mirrors of [agent] lab switches are
 	// retired. These fields are READ-ONLY legacy inputs: migrateLabMirrorKeysToAgent
 	// folds any leftover true into the [agent] key at load and the setters only

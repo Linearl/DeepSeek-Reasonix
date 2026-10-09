@@ -70,7 +70,9 @@ export type TierFeatureId =
   | "orphanHandling"
   | "localServer"
   // 任务 603:「工具优化」族首件 (edit readBack + evidence gate linkage).
-  | "toolOptimizations";
+  | "toolOptimizations"
+  // 任务 677: 群聊入口开关（409 视图交付漏挂铁律 2 开关，未稳定档默认关）。
+  | "collabGroupView";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，7 项；任务 517 B1+B2 并入 safetyCostControl）──
@@ -91,6 +93,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   traceAsState: "optional",
   outputStyle: "optional",
   cacheTuning: "optional",
+  // 任务 677：群聊入口开关（409 交付漏挂开关，用户定档未稳定、默认关）。
+  collabGroupView: "unstable",
   // ── ui（界面，15 项）────────────────────────────────────────
   tabCompress: "recommended",
   todoSidebar: "recommended",
@@ -133,14 +137,16 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
- * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 18 / 未稳定 12 / 已退役 1.
+ * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 18 / 未稳定 13 / 已退役 1.
  * (任务 621 修正：原钉 46 项未收 toolOptimizations（603）与 tabModeTint（504，
  * Go 侧一直有档），漏收使实验室页出现无徽章特性。任务 517：B1/B2/B3（可选×3）
- * 合并为 safetyCostControl（可选×1），可选 20→18、总数 48→46。) */
+ * 合并为 safetyCostControl（可选×1），可选 20→18、总数 48→46。任务 677：
+ * collabGroupView（群聊入口开关，409 交付漏挂铁律 2 开关，未稳定）入表，
+ * 未稳定 12→13、总数 46→47。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
   optional: 18,
-  unstable: 12,
+  unstable: 13,
   retired: 1,
 };
 

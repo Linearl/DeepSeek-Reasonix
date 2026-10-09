@@ -56,7 +56,7 @@ var labFeatureTiers = []labFeatureTier{
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
 	{"safetyCostControl", LabTierOptional, []string{"experimental_safety_cost_control", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
 	{"subagentPolicy", LabTierUnstable, []string{"experimental_subagent_policy"}},
-	// ── efficiency（提效，9 项；任务 517 B3 并入 safetyCostControl）─────
+	// ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl）─────
 	{"budgetControl", LabTierRecommended, []string{"experimental_context_budget", "experimental_research_budget"}},
 	{"compressOpt", LabTierRecommended, []string{"experimental_proactive_compact", "experimental_cold_cache_compact"}},
 	{"messageMerge", LabTierRecommended, []string{"collab_inbox_merge", "collab_guidance_merge"}},
@@ -66,6 +66,7 @@ var labFeatureTiers = []labFeatureTier{
 	{"traceAsState", LabTierOptional, []string{"trace_as_state"}}, // 任务 473 单键化：[desktop] 旧拼写已退役
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
+	{"collabGroupView", LabTierUnstable, []string{"experimental_collab_group_view"}},                            // 任务 677：群聊入口开关（409 视图交付漏挂铁律 2 开关，用户定档未稳定）
 	// ── ui（界面，15 项）────────────────────────────────────────
 	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
 	{"todoSidebar", LabTierRecommended, []string{"experimental_todo_sidebar"}},
@@ -334,6 +335,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "fork_notice_last_version = %q   # desktop: version tree the fork notice last fired for (task 670)\n", c.Desktop.ForkNoticeLastVersion)
 		fmt.Fprintf(&b, "experimental_session_monitor = %v   # desktop: left-rail session monitor board (task 123)\n", c.Desktop.ExperimentalSessionMonitor)
 		fmt.Fprintf(&b, "experimental_split_view = %v   # desktop: tab-bar split view (task 70-1)\n", c.Desktop.ExperimentalSplitView)
+		// Task 677: fixed-key-set rule — an unlisted key would be dropped on
+		// every save and the group-chat switch would flip itself back off.
+		fmt.Fprintf(&b, "experimental_collab_group_view = %v   # desktop: sidebar group-chat entry (task 409 view, task 677 switch)\n", c.Desktop.ExperimentalCollabGroupView)
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)
 		// Task 172: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the touchpoint switch would flip itself back off.

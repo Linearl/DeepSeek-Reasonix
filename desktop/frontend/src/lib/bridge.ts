@@ -1078,6 +1078,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSessionMonitor(enabled: boolean): Promise<void>;
   // Task 70-1: tab-bar split view (experimental).
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
+  // Task 677: sidebar group-chat entry switch (experimental; pure frontend gate).
+  SetExperimentalCollabGroupView(enabled: boolean): Promise<void>;
   // Task 259: right-dock todo tab + tab visibility/wrap settings (experimental; boot snapshot).
   SetExperimentalTodoSidebar(enabled: boolean): Promise<void>;
   // Task 495: right-dock subagent tab + default-collapsed ended subagent cards
@@ -5669,6 +5671,7 @@ function makeMockApp(): AppBindings {
     async ResolveTakeoverDecision() { return false; },
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
+    async SetExperimentalCollabGroupView() {},
     async SetExperimentalTodoSidebar() {},
     async SetExperimentalSubagentPanel() {},
     async SetExperimentalSessionWall() {},

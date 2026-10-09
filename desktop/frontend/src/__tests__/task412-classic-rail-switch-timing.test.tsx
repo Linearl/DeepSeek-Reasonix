@@ -78,9 +78,10 @@ console.log("\ntask 412 classic rail + switch timing");
 {
   const css = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
   const classicRule = css.match(/\.sidebar:not\(\.sidebar--workbench\) \.sidebar__nav--footer \.sidebar__utility-row\s*\{[^}]*\}/);
-  // 任务 320 UI 规格（20261002）：行内加入收件箱（邮箱图标）→ 3 列扩为 4 列；
-  // 任务 409（20261009）群聊键并排 → 5 列；452L 兑现 409 遗漏的「届时同步扩列」。
-  ok(!!classicRule && /grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/.test(classicRule![0]), "classic CSS: utility-row grid mirrors workbench (5 equal columns after task 409 group icon, 452L column fix)");
+  // 任务 320 UI 规格（20261002）：行内加入收件箱（邮箱图标）；任务 409 群聊入行。
+  // 任务 684：列数不再写死——自动列（列数=按钮数），增删图标免改 CSS 恒单行
+  // 等距（写死 repeat(N) 忘同步扩列即折行，656b 修的 4+1 两行正是失配案例）。
+  ok(!!classicRule && /grid-auto-flow:\s*column/.test(classicRule![0]) && /grid-auto-columns:\s*minmax\(0,\s*1fr\)/.test(classicRule![0]), "classic CSS: utility-row grid mirrors workbench (adaptive one-row auto columns after task 684)");
   ok(/\.sidebar:not\(\.sidebar--workbench\) \.sidebar__utility-button\s*\{[^}]*justify-content:\s*center/.test(css), "classic CSS: utility buttons mirror the workbench icon-button shape");
   ok(/\.sidebar \.sidebar__utility-button--active\s*\{[^}]*var\(--accent\)/.test(css), "active marker styled with accent tokens (theme-token only)");
 }

@@ -2923,6 +2923,12 @@ export const en = {
 "settings.outputStyleLabHint": "Pick an output style folded into the system prompt. The switch only controls whether this panel's selector shows; switching rebuilds the current session so it applies immediately (a running turn is never interrupted — the change lands when the turn finishes). Main sessions only — sub-sessions never carry a style. Off by default.",
 "settings.outputStyle.on": "On",
 "settings.outputStyle.off": "Off",
+// Task 677: group-chat entry switch (lab, efficiency group; the task-409 view
+// shipped without its lab switch).
+"settings.collabGroupView": "Group chat",
+"settings.collabGroupViewHint": "The group-chat entry in the sidebar's bottom utility row (the multi-agent group-chat collaboration view). Experimental, off by default - with it off the sidebar looks exactly as it did before group chat existed; with it on the entry icon appears and opens the view.",
+"settings.collabGroupView.on": "On",
+"settings.collabGroupView.off": "Off",
 "settings.outputStyle.selector": "Style",
 "settings.outputStyle.selectorHint": "Five built-ins — explanatory / learning / concise / proactive plus Default (no injection) — and custom .md files from the output-styles directories. Selecting writes [agent] output_style in reasonix.toml and rebuilds the current session immediately; during a running turn it applies when the turn finishes.",
 "settings.outputStyle.searchPlaceholder": "Search styles",

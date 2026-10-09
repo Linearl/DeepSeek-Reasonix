@@ -952,6 +952,15 @@ func (c *Config) SetExperimentalSplitView(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalCollabGroupView toggles the sidebar group-chat entry (task 677:
+// the task-409 group-chat view entered without its lab switch). Pure frontend
+// gate: the sidebar reads the flag from the settings snapshot, so a flip is
+// visible without a restart.
+func (c *Config) SetExperimentalCollabGroupView(enabled bool) error {
+	c.Desktop.ExperimentalCollabGroupView = enabled
+	return nil
+}
+
 // SetExperimentalFeedback toggles the agent submit_feedback tool and the desktop
 // feedback inbox panel (task 121). Opt-in: feedback is a local product-inbox
 // experiment, not part of the default tool surface or settings chrome.

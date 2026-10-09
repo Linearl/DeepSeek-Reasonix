@@ -1,15 +1,15 @@
 // Run: npx tsx src/__tests__/task562-experiment-tiers.test.ts
 // 任务 562 acceptance harness (lab three-tier badges):
 //  ① the tier register mirrors xlsx 表A exactly — 推荐 15 / 可选 18 /
-//     未稳定 12 / 已退役 1 = 46 (acceptance ④; 任务 517 合并后口径);
+//     未稳定 13 / 已退役 1 = 47 (acceptance ④; 任务 677 群聊入口入表后口径);
 //  ② the wall picks are the 16 curated 表B W1 items, every pick carries a
 //     tier (12 recommended + 4 optional) (acceptance ② data half);
 //  ③ the frontend register and the Go labFeatureTiers registry in
 //     internal/config/render.go agree item by item — two sides, one source;
 //  ④ rail wiring: every rail entry renders badges; merged cards cover all
-//     46 member features; non-表A ids (preapproveManagedPaths) get none;
+//     47 member features; non-表A ids (preapproveManagedPaths) get none;
 //  ⑤ pane wiring: every 表A feature's switch label is wrapped in labLabel
-//     (or the standalone usage card), i.e. 46/46 pane badges;
+//     (or the standalone usage card), i.e. 47/47 pane badges;
 //  ⑥ locale keys exist in all three dialects.
 
 import { readFileSync } from "node:fs";
@@ -46,11 +46,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 10→12、总数 46→48，两侧（Go labFeatureTiers）同源对齐。
   // 任务 517：B1/B2/B3（可选×3）合并为 safetyCostControl（可选×1）——
   // 可选 20→18、总数 48→46，两侧同源对齐。
-  ok(counts.recommended === 15 && counts.optional === 18 && counts.unstable === 12 && counts.retired === 1,
-    `register counts are 15/18/12/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 46, `register holds exactly 46 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 18 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 15/18/12/1");
+  // 任务 677：collabGroupView（群聊入口开关，409 交付漏挂铁律 2 开关）入表
+  // ——未稳定 12→13、总数 46→47，两侧同源对齐。
+  ok(counts.recommended === 15 && counts.optional === 18 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 15/18/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 47, `register holds exactly 47 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 18 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 15/18/13/1");
 }
 
 // ② wall picks (表B W1).
@@ -76,7 +78,7 @@ console.log("\ntask 562 lab three-tier badges");
   for (const m of goSrc.matchAll(/\{"([a-zA-Z]+)", LabTier([A-Za-z]+), \[/g)) {
     goTiers[m[1]] = m[2].toLowerCase();
   }
-  ok(Object.keys(goTiers).length === 46, `Go registry parses to 46 entries (got ${Object.keys(goTiers).length})`);
+  ok(Object.keys(goTiers).length === 47, `Go registry parses to 47 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -99,7 +101,7 @@ console.log("\ntask 562 lab three-tier badges");
   ok(members.length === 16, `merged cards carry 16 member features (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
-  ok(covered.size === 46, "rail entries cover all 46 features");
+  ok(covered.size === 47, "rail entries cover all 47 features");
   const gov = railTiersFor("contextGovernance");
   ok(gov[0] === "recommended" && gov[1] === "optional" && gov.length === 2, `contextGovernance shows [推荐, 可选] (got ${JSON.stringify(gov)})`);
   ok(JSON.stringify(railTiersFor("autopilot")) === JSON.stringify(["recommended"]), "standalone entry badges itself");

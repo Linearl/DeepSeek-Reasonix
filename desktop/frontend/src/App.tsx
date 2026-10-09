@@ -813,6 +813,10 @@ export default function App() {
   // costs the startup bundle nothing.
   const [sessionWallEnabled, setSessionWallEnabled] = useState(labFlagEnabled("sessionWall"));
   useEffect(() => onLabFlagsChange(() => setSessionWallEnabled(labFlagEnabled("sessionWall"))), []);
+  // 任务 677: the group-chat entry rides the same lab-flag snapshot — off
+  // (default) renders the utility row exactly as before task 409.
+  const [collabGroupEntryEnabled, setCollabGroupEntryEnabled] = useState(labFlagEnabled("collabGroupView"));
+  useEffect(() => onLabFlagsChange(() => setCollabGroupEntryEnabled(labFlagEnabled("collabGroupView"))), []);
   const [sessionWallOpen, setSessionWallOpen] = useState(false);
   // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
   // global shortcut can't double-fire in split view; pulse re-selects the
@@ -1347,7 +1351,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1402,6 +1406,9 @@ export default function App() {
         // 任务 507: subagent detail view (plan A on / plan C off);
         // default-false, re-applied on every settings save.
         subagentDetail: settings.experimentalSubagentDetail ?? false,
+        // 任务 677: sidebar group-chat entry (default-false — 铁律 2, the 409
+        // view shipped without its lab switch); re-applied on settings save.
+        collabGroupView: settings.experimentalCollabGroupView ?? false,
       });
       // 任务 651: tab permission indicator three-mode setting (badge | off |
       // background) — the server resolves the legacy 504 tint bool; re-applied
@@ -4871,7 +4878,10 @@ export default function App() {
                   </button>
                 </Tooltip>
                 {/* 任务 409：群聊式协作视图并排此行（回收站 → 信件中心 → 群聊 →
-                    自动化 → 设置），兑现 320 UI 规格里预留的群聊图标位。 */}
+                    自动化 → 设置），兑现 320 UI 规格里预留的群聊图标位。
+                    任务 677：入口挂实验室开关（实验室 → 提效 → 群聊，未稳定档
+                    默认关）——关=不渲染本按钮，工具行恢复 409 前的四图标布局。 */}
+                {collabGroupEntryEnabled && (
                 <Tooltip label={t("sidebar.collabGroup")} fill side="top">
                   <button
                     className="sidebar__utility-button"
@@ -4882,6 +4892,7 @@ export default function App() {
                     <span className="sr-only">{t("sidebar.collabGroup")}</span>
                   </button>
                 </Tooltip>
+                )}
                 <Tooltip label={t("heartbeat.scheduler")} fill side="top">
                   <button
                     className="sidebar__utility-button"
