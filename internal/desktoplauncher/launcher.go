@@ -15,6 +15,7 @@ import (
 
 	"reasonix/internal/appidentity"
 	"reasonix/internal/installlayout"
+	"reasonix/internal/proc"
 )
 
 // Run resolves the active desktop, performs the one-time legacy handoff when
@@ -144,7 +145,10 @@ func runLegacyMigratorIfNeeded(installRoot string) error {
 		return fmt.Errorf("legacy migrator is not a regular file")
 	}
 
-	cmd := exec.Command(migratorPath, "--install-root", installRoot, "--no-relaunch")
+	// The packaged launcher is -H windowsgui (no console): spawning the
+	// console-subsystem migrator bare would pop a visible conhost for the
+	// migration. HideWindow suppresses it (no-op off Windows).
+	cmd := proc.Command(migratorPath, "--install-root", installRoot, "--no-relaunch")
 	cmd.Dir = installRoot
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {

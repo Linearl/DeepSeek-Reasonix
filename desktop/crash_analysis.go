@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/proc"
 )
 
 // crash_analysis.go is task 617 route B: "one-click analyze" from the crash /
@@ -235,7 +236,9 @@ func ghAuthenticated() (bool, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, gh, "auth", "status")
+	// proc.CommandContext hides the console window on Windows: this gh pre-flight
+	// runs as a background check inside the desktop app (no console expected).
+	cmd := proc.CommandContext(ctx, gh, "auth", "status")
 	cmd.Env = filterEnv(os.Environ(), "GITHUB_TOKEN", "GH_TOKEN")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

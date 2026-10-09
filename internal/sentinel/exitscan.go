@@ -28,6 +28,8 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+
+	"reasonix/internal/proc"
 )
 
 const (
@@ -125,7 +127,10 @@ func gitContent(dir string, gitArgs ...string) string {
 	if err != nil {
 		return ""
 	}
-	cmd := exec.Command(git, append([]string{"-C", dir}, gitArgs...)...)
+	// proc.Command sets HideWindow + CREATE_NO_WINDOW on Windows: this plumbing
+	// runs per guarded operation inside the agent process (a GUI host has no
+	// console to inherit), so a bare spawn would flash a conhost per tool call.
+	cmd := proc.Command(git, append([]string{"-C", dir}, gitArgs...)...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = nil // plumbing noise is irrelevant; failure = skip scan
