@@ -123,5 +123,23 @@ ok(trajView.includes("traj-row--selected") && trajView.includes("onSelect(record
 ok(trajView.includes("item?.kind === \"tool\" ? item.args : undefined") || trajView.includes("item.args"),
   "tool input surfaces args in the inspector");
 
+// ⑧ Timeline overview (②): fixed bar above the ledger, drag-select focuses
+//    (out-of-range rows dim), click/right-click clears, running records draw
+//    start markers only.
+const timelineLib = fs.readFileSync(path.join(frontendRoot, "src/lib/trajectoryTimeline.ts"), "utf8");
+ok(trajView.includes("<TrajectoryTimelineBar") && trajView.includes("buildTrajectoryTimeline(ledger.records)"),
+  "the view mounts the timeline bar over the ledger");
+ok(timelineLib.includes("running: boolean"),
+  "timeline module exposes running on spans (marker rendering keys off it)");
+ok(trajView.includes("pointerRangeToDomain") && trajView.includes("recordIdsInFocus"),
+  "drag selection maps fractions onto the domain and focuses ledger records");
+ok(trajView.includes("onFocus(null)"), "plain click / right-click clears the focus range (DSH 同款)");
+ok(trajView.includes("traj-row--dimmed") && trajView.includes("dimmed={focusIds != null && !focusIds.has(record.id)}"),
+  "out-of-focus ledger rows dim (anchor-less records never focus)");
+ok(trajView.includes("traj-timeline__ttft") && trajView.includes("span.ttftFraction"),
+  "assistant spans split TTFT/decode when live-only TTFT data exists");
+ok(timelineLib.includes("PADDING_FRACTION") && timelineLib.includes("if (t1 <= t0) t1 = t0 + 1;"), "domain stays padded and non-degenerate");
+
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (!failed) process.stdout.write("task 704 trajectory view mount contract: OK\n");

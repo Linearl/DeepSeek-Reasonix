@@ -288,6 +288,108 @@
   outline: none;
 }
 
+/* 拖选聚焦（②）：区间外台账行降透明。 */
+.traj-row--dimmed {
+  opacity: 0.3;
+}
+
+/* ── 时间线总览（②）：台账上方固定条，start/duration 左右投影 ── */
+
+.traj-timeline {
+  position: relative;
+  flex: none;
+  height: 34px;
+  margin: 0 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background:
+    linear-gradient(to right, var(--border-soft), var(--border-soft)) 0 50% / 100% 1px no-repeat;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.traj-timeline__span {
+  position: absolute;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  min-width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+  overflow: hidden;
+}
+
+.traj-timeline__span--user {
+  background: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+.traj-timeline__span--assistant {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.traj-timeline__span--tool {
+  background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+}
+
+.traj-timeline__span--compaction {
+  background: color-mix(in srgb, var(--warn) 60%, transparent);
+}
+
+.traj-timeline__span--running {
+  min-width: 4px;
+  background: transparent;
+  border: 1px dashed var(--accent);
+}
+
+.traj-timeline__ttft {
+  display: block;
+  height: 100%;
+  background: color-mix(in srgb, var(--accent) 90%, var(--fg));
+}
+
+.traj-timeline__marker {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: var(--fg-faint);
+}
+
+.traj-timeline__marker--assistant {
+  background: var(--accent);
+}
+
+.traj-timeline__marker--compaction {
+  background: var(--warn);
+}
+
+.traj-timeline__marker--failed,
+.traj-timeline__span--failed {
+  background: var(--err);
+}
+
+.traj-timeline__focus,
+.traj-timeline__drag {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.traj-timeline__focus {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.traj-timeline__drag {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  border: 1px dashed var(--fg-faint);
+}
+
+
 /* 窄窗：检查器转为整宽面板。 */
 @media (max-width: 860px) {
   .traj-inspector {

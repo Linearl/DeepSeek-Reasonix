@@ -1,10 +1,10 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { X } from "lucide-react";
 import type { Item } from "../lib/useController";
 import type { Translator } from "../lib/i18n";
 import type { DictKey } from "../lib/i18n";
 import { buildTrajectoryLedger, trajectorySummary, type TrajectoryKind, type TrajectoryRecord } from "../lib/trajectoryLedger";
-import { formatTrajectoryClock, formatTrajectoryDuration } from "../lib/trajectoryTimeline";
+import { buildTrajectoryTimeline, formatTrajectoryClock, formatTrajectoryDuration, pointerRangeToDomain, recordIdsInFocus, type TrajectoryTimelineModel } from "../lib/trajectoryTimeline";
 import "./TrajectoryView.css";
 
 // 任务 704 — 轨迹视图（DSH 同款可观测性视图，A 路线）。
@@ -30,7 +30,7 @@ const KIND_LABEL_KEYS: Record<TrajectoryKind, DictKey> = {
   phase: "trajectory.kind.phase",
 };
 
-function TrajectoryRow({ record, selected, onSelect, t }: { record: TrajectoryRecord; selected: boolean; onSelect: (id: string) => void; t: Translator }) {
+function TrajectoryRow({ record, selected, dimmed, onSelect, t }: { record: TrajectoryRecord; selected: boolean; dimmed: boolean; onSelect: (id: string) => void; t: Translator }) {
   const classes = [
     "traj-row",
     `traj-row--${record.kind}`,
@@ -39,6 +39,7 @@ function TrajectoryRow({ record, selected, onSelect, t }: { record: TrajectoryRe
     record.failed ? "traj-row--failed" : "",
     record.running ? "traj-row--running" : "",
     selected ? "traj-row--selected" : "",
+    dimmed ? "traj-row--dimmed" : "",
   ].filter(Boolean).join(" ");
   const turnChip = record.turnStart
     ? <span className="traj-row__turn">T{record.turnLabel ?? record.turn}</span>
@@ -104,6 +105,127 @@ function inspectorSections(record: TrajectoryRecord, item: Item | undefined): In
   return sections;
 }
 
+/** Drag threshold (px) separating a click-to-clear from a drag-to-select. */
+const DRAG_THRESHOLD_PX = 3;
+
+/** The timeline overview (②): a fixed bar projecting every anchored record's
+ * start/duration onto one time domain (DSH 同款). Drag a range to focus the
+ * ledger on that period; click to clear. Span titles carry the precise clock
+ * + duration; running records draw a start marker only — never a duration. */
+function TrajectoryTimelineBar({ model, focus, onFocus, t }: {
+  model: TrajectoryTimelineModel;
+  focus: TrajectoryTimelineModel["focus"];
+  onFocus: (focus: TrajectoryTimelineModel["focus"]) => void;
+  t: Translator;
+}) {
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRef = useRef<number | null>(null);
+  const [dragPreview, setDragPreview] = useState<{ start: number; end: number } | null>(null);
+
+  const fractionAt = (clientX: number): number => {
+    const node = barRef.current;
+    if (!node) return 0;
+    const rect = node.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0) {
+      onFocus(null); // right-click clears (DSH 同款)
+      return;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStartRef.current = event.clientX;
+    const fraction = fractionAt(event.clientX);
+    setDragPreview({ start: fraction, end: fraction });
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (dragStartRef.current == null) return;
+    if (Math.abs(event.clientX - dragStartRef.current) < DRAG_THRESHOLD_PX) return;
+    const startFraction = fractionAt(dragStartRef.current);
+    const fraction = fractionAt(event.clientX);
+    setDragPreview({
+      start: Math.min(startFraction, fraction),
+      end: Math.max(startFraction, fraction),
+    });
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const origin = dragStartRef.current;
+    dragStartRef.current = null;
+    setDragPreview((current) => {
+      const preview = current;
+      if (origin == null) return null;
+      if (!preview || Math.abs(event.clientX - origin) < DRAG_THRESHOLD_PX) {
+        onFocus(null); // plain click clears the focus range
+        return null;
+      }
+      onFocus(pointerRangeToDomain(preview.start, preview.end, model));
+      return null;
+    });
+  };
+
+  const spanTitle = (span: { start: number; width: number; kind: TrajectoryKind; running: boolean; ttftFraction?: number }): string => {
+    const at = model.t0 + span.start * (model.t1 - model.t0);
+    const parts = [formatTrajectoryClock(Math.round(at))];
+    if (span.width > 0) {
+      parts.push(formatTrajectoryDuration(Math.round(span.width * (model.t1 - model.t0))));
+    }
+    if (span.ttftFraction != null) {
+      parts.push(`TTFT ${formatTrajectoryDuration(Math.round(span.ttftFraction * span.width * (model.t1 - model.t0)))}`);
+    }
+    if (span.running) parts.push(t("trajectory.running"));
+    return parts.join(" · ");
+  };
+
+  const domain = model.t1 - model.t0;
+  const focusLeft = focus ? ((focus.start - model.t0) / domain) * 100 : 0;
+  const focusWidth = focus ? ((focus.end - focus.start) / domain) * 100 : 0;
+
+  return (
+    <div
+      ref={barRef}
+      className="traj-timeline"
+      role="img"
+      aria-label={t("trajectory.timeline.label")}
+      title={t("trajectory.timeline.hint")}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      {model.spans.map((span) => (
+        <span
+          key={span.recordId}
+          className={`traj-timeline__span traj-timeline__span--${span.kind}${span.running ? " traj-timeline__span--running" : ""}${span.failed ? " traj-timeline__span--failed" : ""}`}
+          style={{ left: `${span.start * 100}%`, width: `${Math.max(0.4, span.width * 100)}%` }}
+          title={spanTitle(span)}
+        >
+          {span.ttftFraction != null && (
+            <span className="traj-timeline__ttft" style={{ width: `${span.ttftFraction * 100}%` }} />
+          )}
+        </span>
+      ))}
+      {model.markers.map((marker) => (
+        <span
+          key={marker.recordId}
+          className={`traj-timeline__marker traj-timeline__marker--${marker.kind}${marker.failed ? " traj-timeline__marker--failed" : ""}`}
+          style={{ left: `${marker.start * 100}%` }}
+          title={spanTitle(marker)}
+        />
+      ))}
+      {focus && <span className="traj-timeline__focus" style={{ left: `${focusLeft}%`, width: `${Math.max(0.4, focusWidth)}%` }} />}
+      {dragPreview && dragPreview.end - dragPreview.start > 0.001 && (
+        <span
+          className="traj-timeline__drag"
+          style={{ left: `${dragPreview.start * 100}%`, width: `${(dragPreview.end - dragPreview.start) * 100}%` }}
+        />
+      )}
+    </div>
+  );
+}
+
 /** The record inspector (③): a local side panel over the ledger. Timing rows
  * degrade honestly — absent duration/TTFT/token usage render as the shared
  * "not recorded" note instead of invented numbers. */
@@ -150,7 +272,9 @@ function TrajectoryInspector({ record, item, onClose, t }: { record: TrajectoryR
 export function TrajectoryView({ items, running, hydrating, t }: TrajectoryViewProps) {
   const ledger = useMemo(() => buildTrajectoryLedger(items), [items]);
   const summary = useMemo(() => trajectorySummary(ledger), [ledger]);
+  const timeline = useMemo(() => buildTrajectoryTimeline(ledger.records), [ledger.records]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focus, setFocus] = useState<TrajectoryTimelineModel["focus"]>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
 
@@ -169,6 +293,11 @@ export function TrajectoryView({ items, running, hydrating, t }: TrajectoryViewP
 
   const selectedItem = selectedId != null ? items.find((item) => item.id === selectedId) : undefined;
   const selectedRecord = selectedId != null ? ledger.records.find((record) => record.id === selectedId) : undefined;
+  // 拖选聚焦（DSH 同款）：区间外的台账行降透明；无锚记录永不落在区间内。
+  const focusIds = useMemo(
+    () => (focus && ledger ? recordIdsInFocus(ledger.records, focus) : null),
+    [focus, ledger],
+  );
 
   const body = hydrating
     ? <div className="traj__placeholder">{t("common.loading")}</div>
@@ -178,6 +307,7 @@ export function TrajectoryView({ items, running, hydrating, t }: TrajectoryViewP
         <ol className="traj__ledger">
           {ledger.records.map((record) => (
             <TrajectoryRow key={record.id} record={record} selected={record.id === selectedId}
+              dimmed={focusIds != null && !focusIds.has(record.id)}
               onSelect={setSelectedId} t={t} />
           ))}
         </ol>
@@ -192,8 +322,8 @@ export function TrajectoryView({ items, running, hydrating, t }: TrajectoryViewP
         </span>
         {running && <span className="traj__live-dot" aria-hidden="true" title={t("trajectory.running")} />}
       </div>
+      {timeline && <TrajectoryTimelineBar model={timeline} focus={focus} onFocus={setFocus} t={t} />}
       <div className="traj__scroll" ref={scrollRef} onScroll={handleScroll}>
-        {/* slice 5: the timeline overview bar mounts here (sticky header). */}
         {body}
       </div>
       {selectedRecord && <TrajectoryInspector record={selectedRecord} item={selectedItem} onClose={() => setSelectedId(null)} t={t} />}
