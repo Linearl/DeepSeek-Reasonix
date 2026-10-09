@@ -449,8 +449,18 @@ func (st *sessionDAGState) applyHeadMarker(e sessionDAGEntry, offset int64) bool
 		if kind == "" {
 			kind = HeadKindFork
 		}
+		// 任务669: concurrent forks written before the from fix can carry no
+		// from; the parent head's tip is the fork point they branched from, so
+		// derive it for the lineage (versions UI, rotation re-emit). leaf keeps
+		// e.From semantics exactly: the appended messages of such a fork hang
+		// from their own roots, and aliasing the parent chain here would flip
+		// the next save into a rewind instead of an append.
+		forkFrom := e.From
+		if forkFrom == "" && kind == HeadKindConcurrent && parent.leaf != "" {
+			forkFrom = parent.leaf
+		}
 		st.heads[e.NewHead] = &sessionDAGHead{
-			id: e.NewHead, kind: kind, name: e.Name, parentHead: parent.id, forkFrom: e.From,
+			id: e.NewHead, kind: kind, name: e.Name, parentHead: parent.id, forkFrom: forkFrom,
 			writer: e.Writer, leaf: e.From, system: parent.system,
 			createdAt: e.At, lastActivity: e.At, lastOffset: offset,
 		}
