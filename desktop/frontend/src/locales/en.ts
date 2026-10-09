@@ -4729,27 +4729,23 @@ export const en = {
   "context.durationSeconds": "{seconds}s",
   "context.durationMinutesSeconds": "{minutes}m {seconds}s",
 
-  // crash page
-  "crash.title": "Reasonix hit an error — send us the report, or copy it",
+  // crash page (task 674: unusable "Send report" removed; collapse + issue-tracker deep link added)
+  "crash.title": "Reasonix hit an error — analyze the root cause, or copy it",
   "crash.copy": "Copy",
   "crash.copied": "Copied",
   "crash.copyFailed": "Copy failed — select the report text and copy manually",
-  "crash.send": "Send report",
+  "crash.copyOpensTracker": "After a successful copy the GitHub issue page opens automatically — paste and submit",
   "crash.sending": "Sending…",
-  "crash.sent": "Sent — thanks!",
-  "crash.sendFailed": "Send failed — use Copy instead",
   "crash.privacyNote": "The report contains only the error text above (user names in paths removed) plus app version and OS.",
   "crash.analyze": "Analyze",
   "crash.analyzeChecking": "Checking prerequisites…",
-  "crash.analyzeNoSource": "No local source detected: root-cause analysis needs the Reasonix fork source (diagnostics carry symptoms only). Prepare the source locally first, or use Copy to report manually.",
+  "crash.analyzeCloning": "Local source not ready — cloning the repository automatically, then starting the analysis…",
   "crash.analyzeNoGh": "No authenticated GitHub CLI detected: submitting the issue requires GitHub auth. If the detail below says gh was not found, install the GitHub CLI first; otherwise run gh auth login. Or use Copy to report manually.",
   "crash.analyzeNoWorkspace": "No live session is available to host the analysis (workspace not ready) — use Copy to report manually.",
-  "crash.analyzeConfirm": "One-click analysis starts a fresh YOLO session that really runs an agent turn to analyze and submit the issue; it consumes token quota.",
-  "crash.analyzeConfirmGo": "Start analysis",
-  "crash.analyzeCancel": "Cancel",
   "crash.analyzeStarting": "Starting the analysis session…",
   "crash.analyzeStarted": "YOLO analysis session started — the issue link will appear in that session once the analysis completes.",
   "crash.analyzeFailed": "Failed to start the analysis — use Copy to report manually.",
+  "crash.analyzeCancel": "Cancel",
   // Task 663: analysis progress visibility + restart; hang entry and
   // pending-crash entry reuse the analyze confirm/cancel/failed keys above.
   "crash.analyzeRunning": "Analysis running…",
@@ -4763,6 +4759,8 @@ export const en = {
   "hangPrompt.intro": "The active session's open turn has made no progress (doctor responsiveness verdict: hang). You can run the same one-click analysis on it.",
   "pendingCrash.title": "Crash report left from the previous run",
   "pendingCrash.intro": "The previous run captured a panic before it died. Analyze it now instead of letting it ship silently.",
+  "crash.collapse": "Collapse",
+  "crash.expand": "Expand error report",
   // Task 642: lab mock-crash drill — every surface repeats the test/mock marking
   // so a simulated report can never be read (or triaged) as a real failure.
   "crash.mockBadge": "MOCK",
@@ -4777,6 +4775,8 @@ export const en = {
   "settings.mockCrashRun": "Run mock crash drill",
   "performanceReport.title": "Reasonix noticed a responsiveness issue",
   "performanceReport.dismiss": "Dismiss",
+  "performanceReport.collapse": "Collapse",
+  "performanceReport.expand": "Expand responsiveness report",
   "performanceReport.privacyNote": "Before upload, the desktop scrubber removes paths and secrets. The diagnostic is intended to contain timing, memory, network state, sampled app function names, recent breadcrumbs, app version, and OS.",
 
   // mock / demo seed data (browser dev only)

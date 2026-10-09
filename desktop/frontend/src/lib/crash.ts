@@ -684,31 +684,78 @@ export function opaqueScriptFingerprintHint(
   return clip(`build:${buildCommit.slice(0, 16)}|view:${view}|cats:${categories || "none"}`, 300);
 }
 
-function sendButton(
+// Task 674: route A now ends on the issue tracker itself — copy the skeleton,
+// then the browser opens the fork's issue list so the paste-and-submit loop is
+// one step shorter. Plain constant (not config): same repo as the backend's
+// crashAnalysisRepo route-B target.
+const ISSUE_TRACKER_URL = "https://github.com/Linearl/DeepSeek-Reasonix/issues";
+
+// Task 674: open the issue tracker in the system browser without importing the
+// bridge module — the last-resort faces must stay usable when the rest of the
+// app (and its imports) is broken, so the runtime binding is resolved at call
+// time, same philosophy as the window.go bindings below.
+export function openIssueTracker(url = ISSUE_TRACKER_URL): void {
+  try {
+    if (typeof window !== "undefined" && window.runtime?.BrowserOpenURL) {
+      window.runtime.BrowserOpenURL(url);
+    } else if (typeof window !== "undefined") {
+      window.open(url, "_blank", "noopener");
+    }
+  } catch {
+    // Opening the browser must never throw into the global crash handler.
+  }
+}
+
+// Task 674: collapse/expand for the last-resort faces. While an analysis runs
+// the face must not block ongoing work: collapsing only toggles a CSS class on
+// the host — every child stays in the DOM (display:none via CSS), so the exact
+// content (including an in-flight analysis note) is restored on expand, and the
+// collapsed capsule sits clear of the composer input area.
+function collapseFaceToggle(collapseLabel: string, expandLabel: string): HTMLButtonElement {
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "crash-collapse-toggle";
+  const sync = () => {
+    const collapsed = toggle.parentElement?.classList.contains("crash-face--collapsed") ?? false;
+    toggle.textContent = collapsed ? expandLabel : collapseLabel;
+    toggle.title = collapsed ? expandLabel : collapseLabel;
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  };
+  toggle.onclick = () => {
+    toggle.parentElement?.classList.toggle("crash-face--collapsed");
+    sync();
+  };
+  sync();
+  return toggle;
+}
+
+// Task 642: the lab mock drill keeps its send button — ReportMockCrash runs the
+// same real channel and queues the report on upload failure like a native
+// panic, so the lab can verify the report channel end to end. The real faces
+// dropped their send buttons in task 674: the upstream upload endpoint is down
+// (618), and a button that cannot complete its job must not sit in the way of
+// the useful ones.
+function mockSendButton(
   payload: CrashPayload,
   className = "crash-overlay__send",
   onSent?: () => void,
-  mock = false,
 ): HTMLButtonElement | null {
   // Resolved at click time via window.go, not the bridge module: this overlay must
   // stay usable even when the rest of the app (and its imports) is broken.
-  // Task 642: mock reports take the ReportMockCrash binding, which runs the same
-  // real channel and queues the report on upload failure like a native panic.
-  const app = window.go?.main?.App;
-  const report = mock ? app?.ReportMockCrash : app?.ReportCrash;
+  const report = window.go?.main?.App?.ReportMockCrash;
   if (!report) return null;
   const send = document.createElement("button");
   send.className = className;
-  send.textContent = t(mock ? "crash.mockSend" : "crash.send");
+  send.textContent = t("crash.mockSend");
   send.onclick = async () => {
     send.disabled = true;
     send.textContent = t("crash.sending");
     try {
       const status = await report(payload.kind, JSON.stringify(payload));
-      send.textContent = mock ? t(status === "queued" ? "crash.mockQueued" : "crash.mockSent") : t("crash.sent");
+      send.textContent = t(status === "queued" ? "crash.mockQueued" : "crash.mockSent");
       onSent?.();
     } catch (err) {
-      send.textContent = mock ? t("crash.mockSendFailed") : t("crash.sendFailed");
+      send.textContent = t("crash.mockSendFailed");
       send.title = err instanceof Error ? err.message : String(err);
       send.disabled = false;
     }
@@ -718,21 +765,42 @@ function sendButton(
 
 const COPY_FEEDBACK_MS = 2_000;
 
-// Task 617 route B: one-click analyze. The click runs the three prerequisite
-// probes (source checkout / gh auth / live workspace) and only proceeds to a
-// spend confirmation when all hard prerequisites pass — each failure paints its
-// own distinct notice into `note` and route B stops, pointing at route A
-// (Copy). Like the send button, both bindings are resolved at click time off
-// window.go so the overlay keeps working when the rest of the app is broken.
-//
-// Task 663: the gates are shared by the whole analysis family — the hang entry
-// (StartHangAnalysis) and the startup pending-crash entry (StartCrashAnalysis
-// with a queued payload) pass their own start thunk, so there is one gate
-// order, one spend confirmation and one progress/completion face everywhere.
+// Task 617 route B: one-click analyze. The click runs the prerequisite probes
+// (gh auth / live workspace) and — per the task 674 interaction spec — starts
+// the analysis immediately when they pass, with no second confirmation click.
+// A missing source checkout is no longer a hard gate either: the backend clones
+// the fork repo automatically before hosting the analysis. Each hard failure
+// still paints its own distinct notice into `note` and route B stops, pointing
+// at route A (Copy). Like the send button, both bindings are resolved at click
+// time off window.go so the overlay keeps working when the rest of the app is
+// broken. Task 663: one gate order and one progress/completion face are shared
+// by the whole analysis family (hang entry, pending-crash entry, performance
+// prompt) — every caller goes through the single analyzeButton below.
+function analyzeButton(
+  payload: CrashPayload,
+  className: string,
+  note: HTMLDivElement,
+  onStarted?: () => void,
+): HTMLButtonElement | null {
+  return analyzeEntryButton(
+    className,
+    note,
+    () => {
+      const start = window.go?.main?.App?.StartCrashAnalysis;
+      if (!start) return Promise.reject(new Error("StartCrashAnalysis unavailable"));
+      return start(payload.kind, JSON.stringify(payload));
+    },
+    onStarted,
+  );
+}
+
+// Task 663 shared entry (hang face rides this too): one gate order, one
+// progress face. Task 674 semantics: no spend confirmation, auto-clone notice.
 export function analyzeEntryButton(
   className: string,
   note: HTMLDivElement,
   onStart: () => Promise<string>,
+  onStarted?: () => void,
 ): HTMLButtonElement | null {
   const probe = window.go?.main?.App?.CrashAnalysisAvailability;
   if (!probe) return null;
@@ -754,10 +822,6 @@ export function analyzeEntryButton(
       note.textContent = t("crash.analyzeNoWorkspace");
       return;
     }
-    if (!report.sourceReady) {
-      note.textContent = t("crash.analyzeNoSource");
-      return;
-    }
     if (!report.ghAuthenticated) {
       // Task 643: the backend detail tells not-found apart from an auth
       // failure (the 2026-10-08 false alarm was a PATH-only miss reported as
@@ -766,52 +830,37 @@ export function analyzeEntryButton(
       note.textContent = detail ? `${t("crash.analyzeNoGh")}\n${detail}` : t("crash.analyzeNoGh");
       return;
     }
-    paintAnalysisSpendConfirm(note, className, onStart);
-  };
-  return analyze;
-}
-
-function analyzeButton(
-  payload: CrashPayload,
-  className: string,
-  note: HTMLDivElement,
-): HTMLButtonElement | null {
-  const start = window.go?.main?.App?.StartCrashAnalysis;
-  if (!start) return null;
-  return analyzeEntryButton(className, note, () => start(payload.kind, JSON.stringify(payload)));
-}
-
-// Prerequisite 2 is an explicit notice, not a gate: the analysis really runs an
-// agent turn, so it only starts after the user confirms the spend.
-function paintAnalysisSpendConfirm(note: HTMLDivElement, className: string, onStart: () => Promise<string>) {
-  const text = document.createElement("span");
-  text.textContent = t("crash.analyzeConfirm");
-  const actions = document.createElement("span");
-  const go = document.createElement("button");
-  go.className = className;
-  go.textContent = t("crash.analyzeConfirmGo");
-  const cancel = document.createElement("button");
-  cancel.className = className;
-  cancel.textContent = t("crash.analyzeCancel");
-  actions.append(go, cancel);
-  go.onclick = async () => {
-    go.disabled = true;
-    cancel.disabled = true;
-    note.textContent = t("crash.analyzeStarting");
+    // Task 674: no spend confirmation and no source gate — the backend clones
+    // the fork checkout when it is missing, so say what is about to happen and
+    // go. The start summary (which reports the clone) lands in the same note.
+    // The button stays disabled for the whole start (the clone can take a
+    // while) so an impatient second click cannot spawn two analysis sessions.
+    analyze.disabled = true;
+    if (!report.sourceReady) {
+      analyze.textContent = t("crash.analyzeCloning");
+      note.textContent = t("crash.analyzeCloning");
+    } else {
+      analyze.textContent = t("crash.analyzeStarting");
+      note.textContent = t("crash.analyzeStarting");
+    }
     try {
       const summary = await onStart();
       // Task 663 ②: a started analysis must stay visible — the note switches
       // to the live progress face (running elapsed / done) instead of a
-      // one-shot line the user cannot tell from a dead click.
+      // one-shot line the user cannot tell from a dead click. (Kept under the
+      // task 674 start semantics: no spend confirmation, auto-clone notice.)
       paintAnalysisProgress(note, className, summary);
+      // Task 674: starting the analysis counts as handling the label — the
+      // performance prompt must not re-surface for the same jank fingerprint.
+      onStarted?.();
     } catch (err) {
       note.textContent = `${t("crash.analyzeFailed")}\n${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      analyze.disabled = false;
+      analyze.textContent = t("crash.analyze");
     }
   };
-  cancel.onclick = () => {
-    note.textContent = "";
-  };
-  note.replaceChildren(text, actions);
+  return analyze;
 }
 
 // Task 663 ②: the progress face. Polls CrashAnalysisProgress while the note is
@@ -902,6 +951,7 @@ function copyButton(text: string, className: string): HTMLButtonElement {
   const copy = document.createElement("button");
   copy.className = className;
   copy.textContent = t("crash.copy");
+  copy.title = t("crash.copyOpensTracker");
   copy.onclick = async () => {
     copy.disabled = true;
     let copied = false;
@@ -916,6 +966,7 @@ function copyButton(text: string, className: string): HTMLButtonElement {
     } finally {
       copy.textContent = copied ? t("crash.copied") : t("crash.copyFailed");
       copy.disabled = false;
+      if (copied) openIssueTracker();
       window.setTimeout(() => {
         copy.textContent = t("crash.copy");
       }, COPY_FEEDBACK_MS);
@@ -940,14 +991,19 @@ function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnap
   body.textContent = formatPerformanceContext(snapshot);
   const actions = document.createElement("div");
   actions.className = "performance-report__actions";
-  const send = sendButton(payload, "performance-report__send", () => markPerfReported(payload.label));
+  // Task 674 button layout: [一键分析][复制][关闭] — analyze takes the slot the
+  // unusable "发送报告" button used to hold, and the send button is gone from
+  // the real face entirely (the upstream upload endpoint is down, 618; the lab
+  // mock face keeps its drill button via paintCrashOverlay).
   // Task 617 route A: copy a paste-ready GitHub issue skeleton, not the bare
   // diagnostic text — the upstream endpoint is down (618) and this is the
   // zero-dependency feedback path.
   const copy = copyButton(buildCrashIssueSkeleton(payload), "performance-report__copy");
   const analysisNote = document.createElement("div");
   analysisNote.className = "performance-report__analysis";
-  const analyze = analyzeButton(payload, "performance-report__analyze", analysisNote);
+  const analyze = analyzeButton(payload, "performance-report__analyze", analysisNote, () =>
+    markPerfReported(payload.label),
+  );
   const dismiss = document.createElement("button");
   dismiss.className = "performance-report__dismiss";
   dismiss.textContent = t("performanceReport.dismiss");
@@ -955,9 +1011,8 @@ function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnap
     dismissedPerfLabels.add(payload.label);
     host?.remove();
   };
-  if (send) actions.append(send);
-  actions.append(copy);
   if (analyze) actions.append(analyze);
+  actions.append(copy);
   actions.append(dismiss);
   const note = document.createElement("div");
   note.className = "performance-report__note";
@@ -966,6 +1021,9 @@ function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnap
   if (analyze) children.push(analysisNote);
   children.push(note);
   host.replaceChildren(...children);
+  // Task 674: collapse to a capsule so the prompt stops covering the composer
+  // while the analysis runs; expanding restores the exact content.
+  host.appendChild(collapseFaceToggle(t("performanceReport.collapse"), t("performanceReport.expand")));
 }
 
 export function paintCrashOverlay(payload: CrashPayload, options?: { mock?: boolean }) {
@@ -1004,13 +1062,19 @@ export function paintCrashOverlay(payload: CrashPayload, options?: { mock?: bool
   const copy = copyButton(buildCrashIssueSkeleton(payload), "crash-overlay__copy");
   const actions = document.createElement("div");
   actions.className = "crash-overlay__actions";
-  const send = sendButton(payload, undefined, undefined, mock);
+  // Task 674: the real face loses the "发送报告" button entirely (the upstream
+  // upload endpoint is down, 618, and a button that cannot do its job only
+  // blocks the useful ones). The lab drill face keeps its send button — it is
+  // the 642 end-to-end pipeline check and is never visible outside the lab.
+  const send = mock ? mockSendButton(payload) : null;
   const analysisNote = document.createElement("div");
   analysisNote.className = "crash-overlay__analysis";
   const analyze = analyzeButton(payload, "crash-overlay__analyze", analysisNote);
+  // Task 674 layout: analyze takes the first slot (where the unusable send
+  // used to sit), copy follows; the mock drill face keeps send in front.
   if (send) actions.append(send);
-  actions.append(copy);
   if (analyze) actions.append(analyze);
+  actions.append(copy);
   const note = document.createElement("div");
   note.className = "crash-overlay__note";
   note.textContent = t(mock ? "crash.mockNote" : "crash.privacyNote");
@@ -1018,12 +1082,25 @@ export function paintCrashOverlay(payload: CrashPayload, options?: { mock?: bool
   if (banner) children.push(banner);
   children.push(body, actions);
   if (analyze) children.push(analysisNote);
-  if (send) children.push(note);
+  children.push(note);
   host.replaceChildren(...children);
+  // Task 674: the overlay is a full-window modal, so while an analysis runs it
+  // must be collapsible the same way as the performance prompt — CSS-only
+  // class toggle, content preserved, capsule clear of the composer.
+  host.appendChild(collapseFaceToggle(t("crash.collapse"), t("crash.expand")));
 }
 
 export function reportCrash(label: string, err: unknown, extra?: string) {
   paintCrashOverlay(buildCrashPayload(label, err, extra));
+}
+
+/** Test seam: paint the performance prompt directly — the monitor path is
+ * threshold-gated (long-task counts, cooldowns), which no suite should wait
+ * on. Task 674 pins the collapsed/expanded round-trip and the button layout
+ * on this face. */
+export function paintPerformancePromptForTest(payload: CrashPayload, snapshot: PerformanceSnapshot): HTMLElement {
+  paintPerformancePrompt(payload, snapshot);
+  return document.getElementById("performance-report-prompt") as HTMLElement;
 }
 
 type GlobalCrashEventLike = Pick<Event, "defaultPrevented"> & {
