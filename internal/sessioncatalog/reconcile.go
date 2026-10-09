@@ -690,7 +690,10 @@ func Inspect(ctx context.Context, path string) (Status, error) {
 	_ = db.QueryRowContext(ctx, `SELECT revision FROM catalog_state WHERE id=1`).Scan(&status.Revision)
 	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_sessions`).Scan(&status.Indexed)
 	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_sessions WHERE turns_state='unknown'`).Scan(&status.RepairPending)
-	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_sessions WHERE turns_state='unknown' AND repair_state IN ('pending','active')`).Scan(&status.RepairActive)
+	// Task 671: busy-parked rows (repair_error_kind='busy') wait in pending
+	// without counting as active repair work, matching refreshCounts.
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_sessions WHERE turns_state='unknown'
+		AND repair_state IN ('pending','active') AND repair_error_kind<>'busy'`).Scan(&status.RepairActive)
 	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_sessions WHERE turns_state='unknown' AND repair_state='deferred'`).Scan(&status.RepairDeferred)
 	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM catalog_sessions WHERE turns_state='unknown' AND repair_state='blocked'`).Scan(&status.RepairBlocked)
 	_ = db.QueryRowContext(ctx, `SELECT COALESCE(MIN(repair_retry_at),0) FROM catalog_sessions WHERE turns_state='unknown' AND repair_state='deferred'`).Scan(&status.NextRepairAt)
