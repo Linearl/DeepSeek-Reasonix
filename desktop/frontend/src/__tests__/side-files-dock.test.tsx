@@ -148,6 +148,39 @@ console.log("\nside-files dock tabs (task 260)");
   eq(renderPanel("artifacts", [HYD_DIFF]).includes("nb/report.md"), true, "hydrated: fileDiff header path lands in artifacts (task 629)");
 }
 
+// 2c. Task 452 audit: the live path loses data to the mid-session compaction.
+// compactArchivedToolItems truncates any args over 200 chars the moment a tool
+// result lands, and live items carry no subject — so a bash command longer than
+// the cap loses its redirect targets (no fileDiff fallback for bash), and the
+// entry visibly vanishes from the artifacts tab after running. The compaction
+// must stamp the durable subject from the FULL args BEFORE truncating — the
+// same collapsed shape the host persists (desktop/app.go historyToolSubject) —
+// so a compacted live item feeds the aggregators exactly like a hydrated one.
+{
+  const { compactArchivedToolItems } = await import("../lib/archivedToolItems");
+  const longCommand = "cd " + "a".repeat(180) + " && configure --all --the --things --here && echo run > build/out.txt";
+  const longBash = { kind: "tool", id: "sb1", name: "bash", args: JSON.stringify({ command: longCommand }), readOnly: false, status: "done" };
+  const compactedBash = compactArchivedToolItems([longBash] as never) as Array<{ args: string; subject?: string }>;
+  eq(compactedBash[0].args.length < longBash.args.length, true, "compaction: over-cap args are truncated");
+  eq(compactedBash[0].subject === longCommand, true, "compaction: subject stamped from full args before truncation");
+  const artFromCompacted = renderPanel("artifacts", compactedBash);
+  eq(artFromCompacted.includes("build/out.txt"), true, "compaction: bash redirect target survives compaction via stamped subject");
+  eq(artFromCompacted.includes("configure --all"), false, "compaction: bash command text itself never leaks");
+  // A long write_file is double-covered (fileDiff fallback exists), but the
+  // stamped subject must still be the path, not a truncated JSON fragment.
+  const longWrite = { kind: "tool", id: "sw1", name: "write_file", args: JSON.stringify({ path: "C:/proj/gen/data.json", content: "x".repeat(400) }), readOnly: false, status: "done" };
+  const compactedWrite = compactArchivedToolItems([longWrite] as never) as Array<{ subject?: string }>;
+  eq(compactedWrite[0].subject === "C:/proj/gen/data.json", true, "compaction: write_file subject stamped as the path");
+  // Already-subjected items (hydrated) keep their host-stamped subject.
+  const hydrated = { kind: "tool", id: "sh1", name: "read_file", args: "", subject: "C:/proj/in.txt", readOnly: true, status: "done" };
+  const compactedHydrated = compactArchivedToolItems([hydrated] as never) as Array<{ subject?: string }>;
+  eq(compactedHydrated[0].subject === "C:/proj/in.txt", true, "compaction: existing hydrated subject is preserved");
+  // Running items are untouched — no truncation, no stamp (args still stream).
+  const running = { kind: "tool", id: "sr1", name: "bash", args: JSON.stringify({ command: "sleep 5" }), readOnly: false, status: "running" };
+  const untouched = compactArchivedToolItems([running] as never) as Array<{ args: string; subject?: string }>;
+  eq(untouched[0].args === running.args && untouched[0].subject === undefined, true, "compaction: running items untouched");
+}
+
 // 3. Inject action payload (interactive).
 {
   let injected = "";
