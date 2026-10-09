@@ -200,4 +200,21 @@ func TestHideWindowImplementationIntact(t *testing.T) {
 	if !strings.Contains(string(exitscan), "proc.Command(") {
 		t.Error("sentinel/exitscan.go gitContent no longer spawns via proc.Command")
 	}
+	// The three surfaces task 679 names explicitly — MCP stdio plugins, hooks,
+	// and the bash tool — must stay on the hidden constructors. This chain is
+	// what made a codegraph MCP (re)spawn flash a conhost per launch.
+	pinnedSurfaces := map[string]string{
+		filepath.Join("..", "plugin", "transport_stdio.go"): "proc.CommandContext(",
+		filepath.Join("..", "hook", "hook.go"):              "proc.CommandContext(",
+		filepath.Join("..", "tool", "builtin", "bash.go"):   "proc.CommandContext(",
+	}
+	for file, want := range pinnedSurfaces {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		if !strings.Contains(string(src), want) {
+			t.Errorf("%s no longer spawns via %s — the hidden-constructor rule regressed on a task-679 surface", file, want)
+		}
+	}
 }
