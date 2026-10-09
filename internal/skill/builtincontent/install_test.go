@@ -16,10 +16,10 @@ func TestInstallToUserDirWritesShippedPlaybooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallToUserDir: %v", err)
 	}
-	if len(res.Installed) != 9 {
-		t.Fatalf("installed = %v, want nine playbooks", res.Installed)
+	if len(res.Installed) != 12 {
+		t.Fatalf("installed = %v, want twelve playbooks", res.Installed)
 	}
-	for _, name := range []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-parallel-dev", "ll-fork-guide", "ll-update"} {
+	for _, name := range []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-dev", "ll-iteration-audit-fix", "ll-iteration-review", "ll-zcode-collaboration", "ll-fork-guide", "ll-update"} {
 		path := filepath.Join(dir, name, "SKILL.md")
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -49,8 +49,17 @@ func TestInstallToUserDirWritesShippedPlaybooks(t *testing.T) {
 	if len(res2.Installed) != 0 {
 		t.Fatalf("second pass should install nothing, got %v", res2.Installed)
 	}
-	if len(res2.Skipped) != 9 {
-		t.Fatalf("second pass skipped = %v, want all nine", res2.Skipped)
+	if len(res2.Skipped) != 12 {
+		t.Fatalf("second pass skipped = %v, want all twelve", res2.Skipped)
+	}
+	// Task 708: sidecar files (templates/scripts/references) must materialize
+	// with the skill — a SKILL.md-only copy ships broken references.
+	sidecar, err := os.ReadFile(filepath.Join(dir, "ll-iteration-dev", "templates", "role-dev.md"))
+	if err != nil || !strings.Contains(string(sidecar), "身份卡") {
+		t.Fatalf("ll-iteration-dev sidecar not materialized: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "ll-update", "scripts", "switch-version.sh")); err != nil {
+		t.Fatalf("ll-update switch-version.sh not materialized: %v", err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "deep-research", "SKILL.md"))
 	if !strings.Contains(string(raw), "Customized.") {
@@ -125,7 +134,7 @@ func TestInstallMigratesRenamedSkills(t *testing.T) {
 			t.Fatalf("old skill dir %s still present", old)
 		}
 	}
-	for _, want := range []string{"ll-fork-guide", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-parallel-dev"} {
+	for _, want := range []string{"ll-fork-guide", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-dev"} {
 		if _, err := os.Stat(filepath.Join(dir, want, "SKILL.md")); err != nil {
 			t.Fatalf("replacement %s not installed: %v", want, err)
 		}
