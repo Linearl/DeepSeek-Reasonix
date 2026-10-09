@@ -4761,6 +4761,7 @@ export const en = {
   "pendingCrash.intro": "The previous run captured a panic before it died. Analyze it now instead of letting it ship silently.",
   "crash.collapse": "Collapse",
   "crash.expand": "Expand error report",
+  "pendingCrash.previewNote": "Panic summary captured by the previous run (kept verbatim):",
   // Task 642: lab mock-crash drill — every surface repeats the test/mock marking
   // so a simulated report can never be read (or triaged) as a real failure.
   "crash.mockBadge": "MOCK",
