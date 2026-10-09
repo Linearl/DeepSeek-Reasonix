@@ -246,5 +246,101 @@ console.log("\nsubagent panel dock (task 495)");
   container.remove();
 }
 
+// 7. 任务495 剩余项 (已结束可见性): ref recovery from persisted output text,
+//    the persisted-directory merge, and the tab count label.
+{
+  const { mergeEndedSubagentRecords, subagentsTabLabel } = await import("../lib/subagentDirectory");
+  type View = import("../lib/types").SubagentArtifactView;
+  const view = (overrides: Partial<View>): View => ({
+    ref: "sub-x", createdAt: 1_000, updatedAt: 2_000, status: "completed",
+    hasTranscript: true, pendingMail: 0, ...overrides,
+  });
+
+  // Ref recovery: a hydrated card (no live ref fields) recovers its ref from
+  // the persisted tool result text — this is what makes post-restart dedupe
+  // and the plan-A live read possible.
+  const hydrated = subagentTool({
+    id: "h-ref", name: "explore", status: "done",
+    output: "Subagent reference: sub-abc\nSubagent outcome: status=completed retryable=false\n…",
+  });
+  const dir = buildSubagentDirectory([hydrated]);
+  eq(dir.ended.length, 1, "recovery: hydrated subagent card enters the ended section");
+  eq(dir.ended[0]?.ref, "sub-abc", "recovery: ref recovered from the persisted output text");
+
+  // Merge: transcript entry wins on ref collision; unknown refs append;
+  // still-running records never enter the ended list.
+  const transcriptEnded = subagentTool({
+    id: "m-live", status: "done", startedAt: 9_000, subject: "转录中的已结束",
+    subagentProgress: { phase: "completed", reasoning: "", text: "", notice: "", lastActivityAt: 9_000, truncated: false, startedAt: 9_000 },
+    output: "Subagent reference: sub-live\nSubagent outcome: status=completed retryable=false\n…",
+  });
+  const base = buildSubagentDirectory([transcriptEnded]);
+  const merged = mergeEndedSubagentRecords(base, [
+    view({ ref: "sub-live", status: "completed" }),            // duplicate → dropped
+    view({ ref: "sub-only", status: "completed", name: "档案子代理", outcome: "归档结果", createdAt: 5_000, updatedAt: 8_000 }),
+    view({ ref: "sub-fail", status: "failed", name: "失败子代理", createdAt: 6_000, updatedAt: 6_500 }),
+    view({ ref: "sub-run", status: "running", name: "仍在运行", createdAt: 7_000, updatedAt: 7_500 }),
+  ]);
+  eq(merged.ended.length, 3, "merge: transcript(1) + persisted-only(2), duplicate and running dropped");
+  eq(merged.ended.map((entry) => entry.item.id).join(","), "m-live,persisted:sub-fail,persisted:sub-only",
+    "merge: newest first across both sources (9000 > 6000 > 5000)");
+  const only = merged.ended.find((entry) => entry.ref === "sub-only");
+  ok(only !== undefined, "merge: persisted-only entry present");
+  eq(only?.item.subject, "档案子代理", "merge: row title from the sidecar name");
+  eq(only?.item.summary, "归档结果", "merge: inline summary from the sidecar outcome");
+  eq(only?.status, "done", "merge: completed → done status mapping");
+  eq(only?.item.durationMs, 3_000, "merge: duration from sidecar timestamps");
+  eq(merged.ended.find((entry) => entry.ref === "sub-fail")?.status, "error", "merge: failed → error status mapping");
+  eq(mergeEndedSubagentRecords(base, []), base, "merge: empty views return the input directory untouched");
+  const runningOnly = mergeEndedSubagentRecords(base, [view({ ref: "sub-run2", status: "running" })]);
+  eq(runningOnly.ended.length, 1, "merge: running-only views leave the ended list unchanged");
+
+  // Tab label: the ended count rides the entry label.
+  eq(subagentsTabLabel("子代理", 0), "子代理", "tab label: zero ended keeps the bare label");
+  eq(subagentsTabLabel("Subagents", 12), "Subagents · 12", "tab label: ended count joins the label");
+}
+
+// 8. 任务495 剩余项: the panel pulls the persisted directory and renders it;
+//    the empty state carries the usage-guide line.
+{
+  type View = import("../lib/types").SubagentArtifactView;
+  const persistedView: View = {
+    ref: "sub-persisted", createdAt: 3_000, updatedAt: 4_000, status: "completed",
+    outcome: "归档的最终结果", name: "重启后的子代理", hasTranscript: true, pendingMail: 0,
+  };
+  const listPersisted = async () => [persistedView];
+
+  // Static markup (effects never run): the empty state shows BOTH the bare
+  // line and the usage guide — the "不知道怎么用" answer lives here.
+  const emptyMarkup = renderToStaticMarkup(createElement(LocaleProvider, null,
+    createElement(SubagentsDockPanel, { directory: { running: [], ended: [] }, sessionPath: "C:/s.jsonl", onListPersisted: listPersisted })));
+  eq((emptyMarkup.match(/subagents-panel__empty/g) ?? []).length >= 2, true, "guide: empty state renders the usage-guide line");
+  eq(emptyMarkup.includes("subagents-panel__row"), false, "guide: no rows before the persisted load resolves");
+
+  // Live DOM: the persisted record lands as a row after the load resolves.
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(LocaleProvider, null,
+      createElement(SubagentsDockPanel, { directory: { running: [], ended: [] }, sessionPath: "C:/s.jsonl", onListPersisted: listPersisted })));
+  });
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  eq(document.querySelectorAll(".subagents-panel__row").length, 1, "persisted: the sidecar record renders as an ended row");
+  eq((document.querySelectorAll(".subagents-panel__section-title").length ?? 0), 2, "persisted: both section headings render");
+  ok(document.querySelector(".subagents-panel__row-title")?.textContent?.includes("重启后的子代理") === true,
+    "persisted: row title from the sidecar name");
+  // Session switch (empty path): the directory empties instead of leaking the
+  // previous session's records.
+  await act(async () => {
+    root.render(createElement(LocaleProvider, null,
+      createElement(SubagentsDockPanel, { directory: { running: [], ended: [] }, sessionPath: "", onListPersisted: listPersisted })));
+  });
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  eq(document.querySelectorAll(".subagents-panel__row").length, 0, "persisted: empty session path keeps the directory empty");
+  await act(async () => { root.unmount(); });
+  container.remove();
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
