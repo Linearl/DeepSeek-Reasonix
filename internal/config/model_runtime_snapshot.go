@@ -76,11 +76,17 @@ func (c *Config) ModelRuntimeFingerprint(model string) string {
 		Planner, Vision, Search, Guardian, Recovery, Subagent, Effort string
 		SubagentModels, SubagentEfforts                               map[string]string
 		Depth, Concurrency, Writers                                   int
+		// 任务 707: the compaction destination is boot-snapshot state on the
+		// agent, so a switch/target change must mark running tabs pending and
+		// re-apply before their next run (the model-preference family contract).
+		CompactModelEnabled bool
+		CompactModel        string
 	}{model, providers, c.Desktop.ProviderAccess,
 		c.Agent.PlannerModel, c.Agent.VisionModel, c.Agent.WebSearchModel,
 		c.Agent.GuardianModel, c.Agent.RecoveryModel, c.Agent.SubagentModel,
 		c.Agent.SubagentEffort, c.Agent.SubagentModels, c.Agent.SubagentEfforts,
-		c.Agent.MaxSubagentDepth, c.Agent.MaxSubagentConcurrency, c.Agent.MaxParallelWriters})
+		c.Agent.MaxSubagentDepth, c.Agent.MaxSubagentConcurrency, c.Agent.MaxParallelWriters,
+		c.Agent.ExperimentalCompactModel, c.Agent.CompactModel})
 	if err != nil {
 		return ""
 	}

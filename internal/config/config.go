@@ -1823,6 +1823,27 @@ type AgentConfig struct {
 	// create_collab_session approver convention). Empty = the switch is on but
 	// no target is configured, which keeps the primary behavior.
 	FallbackModel string `toml:"fallback_model"`
+	// ExperimentalCompactModel enables task 707: when the session context
+	// crosses the compaction threshold, the summary request is served by
+	// CompactModel instead of the conversation model — compaction digests are
+	// long outputs, so an economic model cuts that cost. Off by default
+	// (iron rule 2): off keeps every summary on the conversation model,
+	// byte-for-byte today's behavior.
+	ExperimentalCompactModel bool `toml:"experimental_compact_model"`
+	// CompactModel is the provider/model pair serving summary requests while
+	// ExperimentalCompactModel is on (task 707; e.g. an economic MiniMax M3).
+	// Written as "provider/model"; a bare model id is rejected by
+	// SetCompactModel so identity stays unambiguous (the task-242 convention).
+	// Empty = the switch is on but no target is configured, which keeps the
+	// conversation model. The ref must resolve through the provider the
+	// resolver already knows; an unresolvable ref falls back to the
+	// conversation model per request (never blocks compaction). The summary's
+	// safety caps and chunking keep sizing against the conversation model's
+	// window — only the serving destination switches, and the installed
+	// projection stays valid across later model switches (task 638 semantics:
+	// validity is content-hash based, the lineage key follows the
+	// conversation model).
+	CompactModel string `toml:"compact_model"`
 	// Task 318.1: allow the high-speed model lane (exec-speed prompt injection
 	// for the configured highSpeedModels list, task-sibling of the lab page).
 	// Off by default (iron rule 2) — off means the list is ignored even when
