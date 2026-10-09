@@ -102,7 +102,18 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 	if err := a.SubmitToTab("", instruction); err != nil {
 		return "", fmt.Errorf("could not submit the analysis instruction (%v) — use the Copy button to report manually", err)
 	}
-	return fmt.Sprintf("YOLO analysis session started; it will analyze the diagnostic against %s and submit an issue to %s via gh-issue-submit.", dir, crashAnalysisRepo), nil
+	return crashAnalysisSummary(dir), nil
+}
+
+// crashAnalysisSummary is the detail line the frontend appends under the
+// localized "analysis started" notice (task 673). It was hardcoded English,
+// so the zh popup read as a garbled half-translated blob and the raw Windows
+// path transcribed as "github-repo.reasonix" (separators visually lost).
+// Chinese matches every other Go-side string of this surface (the instruction
+// template), and the phrasing complements the notice instead of repeating it:
+// the notice already says the session started and where the issue link lands.
+func crashAnalysisSummary(dir string) string {
+	return fmt.Sprintf("分析将对照本地源码 %s 定位根因，并提交 issue 到 %s。", dir, crashAnalysisRepo)
 }
 
 func buildCrashAnalysisInstruction(sourceDir, payload string, testMock bool) string {
