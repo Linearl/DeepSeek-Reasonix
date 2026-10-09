@@ -193,16 +193,42 @@ assert.deepEqual(lastList?.args[0], "approval", "clicking the approvals tab quer
 
 // 任务462: 列表行的路由行显示双方会话名（名单里查得到的 id 用名字），
 // 完整 contact_id 降级为 hover（title 属性），不丢失。
+// 任务649 ②：箭头两侧补「发信方/收信方」标签词（默认 en 语言包 → Sender/Recipient），
+// 谁发谁收一眼可辨。
 const routeSpans = Array.from(panel!.querySelectorAll(".collab-inbox-panel__row .collab-inbox-panel__route"));
 assert.ok(routeSpans.length >= 1, "at least one list row renders a route line");
 assert.match(
   routeSpans[0].textContent ?? "",
-  /Alice · 调研 → 主对话/,
-  "the list route shows BOTH conversation names",
+  /Sender Alice · 调研 → Recipient 主对话/,
+  "the list route labels BOTH sides with sender/recipient tag words",
 );
+assert.equal(routeSpans[0].querySelectorAll(".collab-inbox-panel__routelabel").length, 2,
+  "both tag words render as styled label spans");
 assert.doesNotMatch(routeSpans[0].textContent ?? "", /sc_alice/, "the raw sender contact_id is replaced by the name in visible text");
 assert.match(routeSpans[0].getAttribute("title") ?? "", /contact_id=sc_alice/, "hover keeps the full sender contact_id");
 assert.match(routeSpans[0].getAttribute("title") ?? "", /contact_id=sc_main/, "hover keeps the full recipient contact_id");
+
+// 任务649 ②：from/to 下拉带可见标签（label 包裹，文案同 sender/recipient 键）。
+const filterWraps = Array.from(panel!.querySelectorAll(".collab-inbox-panel__filterwrap"));
+assert.equal(filterWraps.length, 2, "both filter dropdowns carry a visible label");
+assert.equal(filterWraps[0].querySelector("span")?.textContent, "Sender", "the sender dropdown's label word renders");
+assert.equal(filterWraps[1].querySelector("span")?.textContent, "Recipient", "the recipient dropdown's label word renders");
+
+// 任务649 ①：排序/视图分段控件上移到头行 actions（与保留期/会话删除时同行），
+// 不再留在 filters 行。
+assert.ok(
+  panel!.querySelector(".collab-inbox-panel__actions .collab-inbox-panel__ordertoggle"),
+  "the date-sort segmented control lives in the head actions row",
+);
+assert.ok(
+  panel!.querySelector(".collab-inbox-panel__actions .collab-inbox-panel__viewtoggle"),
+  "the view segmented control lives in the head actions row",
+);
+assert.ok(
+  !panel!.querySelector(".collab-inbox-panel__filters .collab-inbox-panel__ordertoggle")
+    && !panel!.querySelector(".collab-inbox-panel__filters .collab-inbox-panel__viewtoggle"),
+  "the filters row no longer hosts the sort/view controls",
+);
 
 // 任务461-P4: from/to 过滤是下拉 —— 选项=会话名（值=contact_id），hover 标题
 // 是「项目 › 分组 › 会话名 › contact_id」，顶部「全部」= 不过滤；选中即透传后端。

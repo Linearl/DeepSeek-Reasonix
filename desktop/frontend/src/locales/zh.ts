@@ -4978,6 +4978,11 @@ export const zh: Record<DictKey, string> = {
   "collabInbox.state.mine": "我发起的",
   "collabInbox.state.decided": "已裁决",
   "collabInbox.from": "发信方过滤",
+  // 任务 649 ②：收发双方标签词——列表行与 from/to 下拉的可见文字说明。
+  "collabInbox.senderLabel": "发信方",
+  "collabInbox.recipientLabel": "收信方",
+  // 任务 649 ①：视图分段控件的组标签（aria）。
+  "collabInbox.viewGroup": "视图形式",
   "collabInbox.hover.global": "全局",
   "collabInbox.to": "收信方过滤",
   "collabInbox.view.list": "列表",
