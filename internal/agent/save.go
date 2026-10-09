@@ -1898,19 +1898,24 @@ func ReconcileSessionSidecars(dir string) error {
 		}
 		name := e.Name()
 		sidecarPath := filepath.Join(dir, name)
+		// The lease/lock family appends to the full transcript path
+		// (<id>.jsonl.lease.lock), so the reverse parse must strip only the
+		// bare sidecar tail and keep .jsonl. The store *Suffix constants are
+		// the full on-disk spellings; using them here would strip .jsonl too
+		// and send stale-sidecar cleanup at a phantom path (task 680).
 		switch {
 		case strings.HasSuffix(name, store.SessionLeaseInfoSuffix):
-			base := filepath.Join(dir, strings.TrimSuffix(name, store.SessionLeaseInfoSuffix))
+			base := filepath.Join(dir, strings.TrimSuffix(name, ".lease.json"))
 			if err := removeStaleSessionLeaseInfoSidecar(base, sidecarPath); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", sidecarPath, err))
 			}
 		case strings.HasSuffix(name, store.SessionLeaseLockSuffix):
-			base := filepath.Join(dir, strings.TrimSuffix(name, store.SessionLeaseLockSuffix))
+			base := filepath.Join(dir, strings.TrimSuffix(name, ".lease.lock"))
 			if err := removeStaleSessionLeaseLockSidecar(base, sidecarPath); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", sidecarPath, err))
 			}
 		case strings.HasSuffix(name, store.SessionLockFileSuffix):
-			base := filepath.Join(dir, strings.TrimSuffix(name, store.SessionLockFileSuffix))
+			base := filepath.Join(dir, strings.TrimSuffix(name, ".lock"))
 			if err := removeStaleSessionLockSidecar(base, sidecarPath); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", sidecarPath, err))
 			}
