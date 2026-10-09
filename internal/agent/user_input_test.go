@@ -41,8 +41,14 @@ func TestRunPersistsRawUserInputSeparatelyFromProviderContext(t *testing.T) {
 	if len(stored) < 2 {
 		t.Fatalf("stored messages = %d, want system and user", len(stored))
 	}
-	if got := stored[1].Content; !strings.HasPrefix(got, composed) || strings.Contains(got, "<execution-policy") {
-		t.Fatalf("stored provider content = %q, want composed %q without execution-policy", got, composed)
+	// Task 664: the turn leads with the transient current-time anchor; strip
+	// that one block and the rest must equal the composed text exactly.
+	bare, ok := trimLeadingTransientBlock(stored[1].Content, "current-time")
+	if !ok {
+		t.Fatalf("stored provider content = %q, want a leading current-time anchor", stored[1].Content)
+	}
+	if bare != composed {
+		t.Fatalf("stored provider content = %q, want anchor + composed %q", bare, composed)
 	}
 	if got := stored[1].RawContent; got != raw {
 		t.Fatalf("stored raw content = %q, want raw %q", got, raw)
@@ -53,8 +59,9 @@ func TestRunPersistsRawUserInputSeparatelyFromProviderContext(t *testing.T) {
 	if stored[1].ProviderContent != "" {
 		t.Fatalf("stored transitional provider content was not cleared: %+v", stored[1])
 	}
-	if len(prov.request.Messages) < 2 || !strings.HasPrefix(prov.request.Messages[1].Content, composed) {
-		t.Fatalf("provider request did not receive composed context: %+v", prov.request.Messages)
+	reqBare, ok := trimLeadingTransientBlock(prov.request.Messages[1].Content, "current-time")
+	if len(prov.request.Messages) < 2 || !ok || reqBare != composed {
+		t.Fatalf("provider request did not receive anchor + composed context: %+v", prov.request.Messages)
 	}
 	if prov.request.Messages[1].RawContent != "" || prov.request.Messages[1].ProviderContent != "" || prov.request.Messages[1].Origin != "" {
 		t.Fatalf("provider request leaked display metadata: %+v", prov.request.Messages[1])
@@ -70,8 +77,8 @@ func TestRunPersistsRawUserInputSeparatelyFromProviderContext(t *testing.T) {
 	if err := json.Unmarshal(encoded, &legacy); err != nil {
 		t.Fatalf("decode with previous-release shape: %v", err)
 	}
-	if !strings.HasPrefix(legacy.Content, composed) || strings.Contains(legacy.Content, "<execution-policy") {
-		t.Fatalf("stored content = %q, want composed prefix without execution-policy", legacy.Content)
+	if legacy.Content != stored[1].Content {
+		t.Fatalf("previous-release decode = %q, want the stored content verbatim %q", legacy.Content, stored[1].Content)
 	}
 
 	if receipt := a.CompletionReceipt(); receipt != nil && len(receipt.Gaps) > 0 {
