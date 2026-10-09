@@ -11,7 +11,7 @@ metadata:
 
 ## 机制（为什么是这样）
 
-- **安装根目录**：含 `current.json` 与 `versions/` 的那一层（默认从正在运行的 reasonix-desktop 进程路径推断；本机为 `C:/Users/yinji/AppData/Local/Programs/Reasonix`）。注意：目录名若含特殊字符（如中文顿号）是合法的，写命令时引号包裹即可。
+- **安装根目录**：含 `current.json` 与 `versions/` 的那一层（默认从正在运行的 reasonix-desktop 进程路径推断；默认安装位置 `%LOCALAPPDATA%/Programs/Reasonix`）。注意：目录名若含特殊字符（如中文顿号）是合法的，写命令时引号包裹即可。
 - **版本目录**：`<根目录>/versions/<版本名>/`，必需成员恰好三个 —— `reasonix-desktop.exe`、`reasonix-cli.exe`、`reasonix-update-helper.exe`。缺 `reasonix-cli.exe` 会被判 `UNHEALTHY` 并拒绝切换（切过去会让 servepool 返回 503）。
 - **切换 = 只改指针**：当前版本记录在 `<根目录>/current.json` 的 `activeVersion` / `activeDir`。切换只改这个文件并重启应用，不复制二进制、不删旧版本。
 - **前提开关**：`%APPDATA%\reasonix\config.toml` 里 `experimental_restart_update = true` 且 `experimental_autonomous_update = true`（两者都是"仅写配置"类开关，可随时改）。关着的话 `set_target` / `execute` 会被拒。`restart`（纯重启，见下节）不需要 `experimental_restart_update`——它不触碰安装，只要 `experimental_autonomous_update`（工具注册开关）开着即可。

@@ -135,7 +135,7 @@ runas: inline
 **命令**（每次 §4b 巡检时顺手跑；**用绝对路径**，技能加载后 cwd 不保证在技能目录）：
 
 ```bash
-python "C:\Users\yinji\AppData\Roaming\reasonix\skills\ll-iteration-dev\scripts\session_violation_scan.py" --session <管理会话名或 jsonl 路径>
+python "%APPDATA%\reasonix\skills\ll-iteration-dev\scripts\session_violation_scan.py" --session <管理会话名或 jsonl 路径>
 ```
 
 **判据**：会话 jsonl 的 `role:"assistant"` 记录里，每个 tool_call 带 **`tool_recovery.read_only`**（**应用自己算的**）：
