@@ -150,7 +150,7 @@ func cliCompletionRootSpec() cliCompletionSpec {
 			completionFlag("--base", cliCompletionStaticValue),
 			help,
 		}),
-		completionSpec("tool-stats", []cliCompletionFlag{help}),
+		completionSpec("tool-stats", []cliCompletionFlag{completionFlag("--json", cliCompletionNoValue), help}),
 		completionSpec("acp", []cliCompletionFlag{
 			model,
 			completionFlag("--planner", cliCompletionStaticValue, "auto", "off"),
