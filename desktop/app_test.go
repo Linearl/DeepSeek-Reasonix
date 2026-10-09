@@ -10410,6 +10410,14 @@ tier = "lazy"
 }
 
 func TestSetMCPServerTierRejectsBackgroundJobsBeforeSavingConfig(t *testing.T) {
+	// 673L 断言修正（2026-10-09）：原断言要求夹具里的 legacy 行 tier = "lazy"
+	// 原样保留，但它活不过夹具搭建——newBackgroundJobController→control.New 的
+	// 引导装载会执行既定的 on-disk legacy tier 迁移（migrateLegacyMCPTiersFile
+	// 抹掉 plugins 下所有 tier 行，不限 lazy），原断言在被测调用之前就已被破坏。
+	// 被测保证本身完好（探针实证）：SetMCPServerTier 守卫先拒后存、文件零改动。
+	// 现断言改为与夹具搭建后的基线字节一致——若守卫失效先存盘，
+	// UpsertPluginInSourceForRoot 会把 updated.Tier="background" 序列化进文件，
+	// 字节比对即红；被拒调用则应零落盘。
 	isolateDesktopUserDirs(t)
 	dir := robustTempDir(t)
 	t.Chdir(dir)
@@ -10427,6 +10435,10 @@ tier = "lazy"
 
 	app := NewApp()
 	app.setTestCtrl(newBackgroundJobController(t, "mcp-tier-job"), "")
+	baseline, baselineErr := os.ReadFile(config.UserConfigPath())
+	if baselineErr != nil {
+		t.Fatalf("read baseline config: %v", baselineErr)
+	}
 
 	err := app.SetMCPServerTier("broken", "background")
 	if err == nil || !strings.Contains(err.Error(), "stop background jobs") {
@@ -10436,8 +10448,8 @@ tier = "lazy"
 	if readErr != nil {
 		t.Fatalf("read config: %v", readErr)
 	}
-	if !strings.Contains(string(data), `tier = "lazy"`) {
-		t.Fatalf("plugin config changed after rejected tier update:\n%s", data)
+	if string(data) != string(baseline) {
+		t.Fatalf("plugin config changed after rejected tier update:\nbaseline:\n%s\ngot:\n%s", baseline, data)
 	}
 }
 
