@@ -2449,7 +2449,7 @@ export const zh: Record<DictKey, string> = {
 "settings.autonomousUpdateResume.goal_autopilot": "仅 goal/autopilot",
 "settings.autonomousUpdateResume.all": "全部",
 "settings.updateChime": "更新完成提示音",
-"settings.updateChimeHint": "更新后新版本首次启动时播放提示音；仅播放一次，再次启动不重复。检测到鼠标操作后 10 秒截断。",
+"settings.updateChimeHint": "更新后新版本首次启动时播放提示音；仅播放一次，再次启动不重复。最长播放 10 秒，期间检测到鼠标移动会立即停止。",
 "settings.updateChime.on": "开",
 "settings.updateChime.off": "关",
 "settings.updateChimeTune": "提示音曲目",

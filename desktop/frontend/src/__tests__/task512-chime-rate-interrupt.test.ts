@@ -1,12 +1,12 @@
-// Task 512 acceptance (update chime: 1.25× rate + interaction cut + tune dial):
+// Task 512 acceptance (update chime: 1.25× rate + tune dial) as amended by
+// task 678 (user-finalized cut semantics):
 //  1. 1.25× playback — the decoded buffer source's playbackRate is 1.25;
-//  2. interaction cut — the first qualifying mousemove/click starts a 10 s
-//     countdown (task 598; was 3 s), after which the chime fades out over
-//     200 ms and stops; the document-level listeners live only for this
-//     playback and are detached on countdown-arm, natural end and cut alike;
-//  3. move threshold — a mousemove only arms the countdown once per-event
-//     travel exceeds UPDATE_CHIME_MOVE_THRESHOLD_PX (brushing the mouse is
-//     ignored); any click always arms;
+//  2. 10 s hard cap — a cut timer armed at playback start fades the chime out
+//     over 200 ms after UPDATE_CHIME_MAX_PLAY_MS even with nobody around
+//     (task 678 inverts the old task-512/598 "play on 10 s after interaction");
+//  3. presence cut — any mousemove (first event, no travel threshold) or any
+//     click cuts immediately: fade scheduled, hard-cap timer cleared, and the
+//     document-level listeners detached; they live only for this playback;
 //  4. tune dial — "nokia" fetches the bundled Nokia wav; "mario" in a local
 //     build fetches the guarded asset; "mario" in a public build falls back to
 //     Nokia (Nintendo asset compiled out — copyright ruling, option A);
@@ -25,9 +25,8 @@ import {
   setMarioAssetLoaderForTests,
   setChimeLocalAssetsForTests,
   UPDATE_CHIME_PLAYBACK_RATE,
-  UPDATE_CHIME_INTERRUPT_DELAY_MS,
+  UPDATE_CHIME_MAX_PLAY_MS,
   UPDATE_CHIME_FADE_OUT_S,
-  UPDATE_CHIME_MOVE_THRESHOLD_PX,
 } from "../lib/sound";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -53,6 +52,15 @@ const docListeners = new Map<string, Set<(event: MouseEvent) => void>>();
 };
 function listenerCount(type: string): number {
   return docListeners.get(type)?.size ?? 0;
+}
+// Task 678 arms pointermove/mousemove/click together; every detach path must
+// close all three.
+const CHIME_LISTENER_TYPES = ["pointermove", "mousemove", "click"] as const;
+function allListenersArmed(): boolean {
+  return CHIME_LISTENER_TYPES.every((type) => listenerCount(type) === 1);
+}
+function allListenersDetached(): boolean {
+  return CHIME_LISTENER_TYPES.every((type) => listenerCount(type) === 0);
 }
 function emitMouse(type: string, x: number, y: number): void {
   const event = { type, clientX: x, clientY: y } as unknown as MouseEvent;
@@ -143,69 +151,92 @@ function teardown(): void {
   ok(source.playbackRate.value === UPDATE_CHIME_PLAYBACK_RATE, `playbackRate = ${source.playbackRate.value} (want ${UPDATE_CHIME_PLAYBACK_RATE})`);
   ok(events.includes("start"), "buffer source started");
   ok(fetchedUrls[0] === "./sounds/nokia-tune.wav", "nokia tune fetched from the bundled public wav");
-  ok(listenerCount("mousemove") === 1 && listenerCount("click") === 1, "listening window: mousemove + click armed during playback");
+  ok(allListenersArmed(), "listening window: pointermove + mousemove + click armed during playback");
   teardown();
 }
 
-// ── 2. interaction cut (acceptance ②) ────────────────────────────────────────
+// ── 2. 10 s hard cap armed at playback start (acceptance ②, task 678) ────────
 {
   teardown();
   const events: string[] = [];
   const { ctx, source } = makeFakeCtx(events, 0.7);
   await playUpdateChimeSound(0.7, "nokia", () => ctx);
 
-  // A small travel (hand brushing the mouse) must NOT arm the countdown.
-  emitMouse("mousemove", 100, 100);
-  emitMouse("mousemove", 105, 103); // travel ≈ 5.8px < 12px threshold
-  ok(listenerCount("mousemove") === 1 && listenerCount("click") === 1, "sub-threshold mousemove does not arm the cut");
-  ok(![...pendingTimers.values()].some((t) => t.delay === UPDATE_CHIME_INTERRUPT_DELAY_MS), "no countdown armed yet");
+  // The cap exists before anybody touches the mouse.
+  const capsAtStart = [...pendingTimers.values()].filter((t) => t.delay === UPDATE_CHIME_MAX_PLAY_MS);
+  ok(capsAtStart.length === 1, `hard cap armed at playback start (${UPDATE_CHIME_MAX_PLAY_MS}ms)`);
+  ok(events.every((e) => !e.startsWith("stop:")), "cut not fired before the cap elapses");
 
-  // A qualifying mousemove (≥ threshold) arms the 3 s countdown and detaches
-  // the listeners immediately.
-  emitMouse("mousemove", 130, 118); // travel ≈ 32px ≥ 12px
-  ok(listenerCount("mousemove") === 0 && listenerCount("click") === 0, "first qualifying mousemove detaches the listening window");
-  ok(events.every((e) => !e.startsWith("stop:")), "cut not fired before the delay elapses");
+  // Cap elapsed: fade out over 200 ms, then stop. (The ctx-close timer at 2 s
+  // has its own delay and is not part of the cap.)
+  const fired = fireTimersWithDelay(UPDATE_CHIME_MAX_PLAY_MS);
+  ok(fired === 1, "exactly one hard-cap timer fired");
+  ok(events.includes(`cancel:5`) && events.includes("set:0.7@5") && events.includes(`ramp:0@${5 + UPDATE_CHIME_FADE_OUT_S}`), `fade-out scheduled over ${UPDATE_CHIME_FADE_OUT_S}s (no hard stop)`);
+  ok(events.includes(`stop:${5 + UPDATE_CHIME_FADE_OUT_S}`), `source stopped at +${UPDATE_CHIME_FADE_OUT_S}s`);
+  ok(allListenersDetached(), "cap cut detaches the listening window");
+  ok(source.onended !== null, "onended handler present (natural-end cleanup path)");
 
   // Later events cannot restart anything (listeners are gone).
   emitMouse("mousemove", 500, 500);
   emitMouse("click", 500, 500);
-
-  // 3 s later: fade out over 200 ms, then stop. (The ctx-close timer at 2 s
-  // has its own delay and is not part of the countdown.)
-  const fired = fireTimersWithDelay(UPDATE_CHIME_INTERRUPT_DELAY_MS);
-  ok(fired === 1, "exactly one countdown timer fired");
-  ok(events.includes(`cancel:5`) && events.includes("set:0.7@5") && events.includes(`ramp:0@${5 + UPDATE_CHIME_FADE_OUT_S}`), `fade-out scheduled over ${UPDATE_CHIME_FADE_OUT_S}s (no hard stop)`);
-  ok(events.includes(`stop:${5 + UPDATE_CHIME_FADE_OUT_S}`), `source stopped at +${UPDATE_CHIME_FADE_OUT_S}s`);
-  ok(source.onended !== null, "onended handler present (natural-end cleanup path)");
+  ok(events.filter((e) => e.startsWith("stop:")).length === 1, "no second stop scheduled after the cut");
 
   // The stop's onended detach is idempotent.
   source.onended?.();
-  ok(listenerCount("mousemove") === 0 && listenerCount("click") === 0, "post-cut onended keeps the window closed");
+  ok(allListenersDetached(), "post-cut onended keeps the window closed");
   teardown();
 }
 
-// ── 3. any click arms the cut without a threshold ────────────────────────────
+// ── 3. presence cut: first mousemove / any click stops immediately (task 678) ─
+{
+  teardown();
+  const events: string[] = [];
+  const { ctx } = makeFakeCtx(events, 0.7);
+  await playUpdateChimeSound(0.7, "nokia", () => ctx);
+
+  // The very first mousemove — no travel threshold, no second event needed —
+  // is a presence signal: cut now, not after a delay.
+  emitMouse("mousemove", 100, 100);
+  ok(events.includes(`cancel:5`) && events.includes("set:0.7@5") && events.includes(`ramp:0@${5 + UPDATE_CHIME_FADE_OUT_S}`), "first mousemove schedules the fade immediately (no travel threshold)");
+  ok(events.includes(`stop:${5 + UPDATE_CHIME_FADE_OUT_S}`), "mousemove cut stops the source with the same fade");
+  ok(allListenersDetached(), "presence cut detaches the listening window");
+  ok(![...pendingTimers.values()].some((t) => t.delay === UPDATE_CHIME_MAX_PLAY_MS), "hard-cap timer cleared by the presence cut");
+  teardown();
+}
+{
+  // pointermove-only cut (touch/pen input never fires a mousemove): same path.
+  teardown();
+  const events: string[] = [];
+  const { ctx } = makeFakeCtx(events, 0.7);
+  await playUpdateChimeSound(0.7, "nokia", () => ctx);
+  emitMouse("pointermove", 30, 40);
+  ok(events.includes(`stop:${5 + UPDATE_CHIME_FADE_OUT_S}`), "pointermove cut stops the source with the same fade");
+  ok(allListenersDetached(), "pointermove cut detaches the listening window");
+  ok(![...pendingTimers.values()].some((t) => t.delay === UPDATE_CHIME_MAX_PLAY_MS), "hard-cap timer cleared by the pointermove cut");
+  teardown();
+}
 {
   teardown();
   const events: string[] = [];
   const { ctx } = makeFakeCtx(events, 0.7);
   await playUpdateChimeSound(0.7, "nokia", () => ctx);
   emitMouse("click", 42, 42);
-  ok(listenerCount("mousemove") === 0 && listenerCount("click") === 0, "any click arms the cut (no threshold on click)");
-  const armed = [...pendingTimers.values()].some((t) => t.delay === UPDATE_CHIME_INTERRUPT_DELAY_MS);
-  ok(armed, `countdown armed at ${UPDATE_CHIME_INTERRUPT_DELAY_MS}ms`);
+  ok(allListenersDetached(), "any click cuts immediately");
+  ok(events.includes(`stop:${5 + UPDATE_CHIME_FADE_OUT_S}`), "click path schedules the same fade");
+  ok(![...pendingTimers.values()].some((t) => t.delay === UPDATE_CHIME_MAX_PLAY_MS), "hard-cap timer cleared by the click cut");
   teardown();
 }
 
-// ── 4. natural end detaches the listening window ─────────────────────────────
+// ── 4. natural end detaches the listening window and disarms the cap ─────────
 {
   teardown();
   const events: string[] = [];
   const { ctx, source } = makeFakeCtx(events, 0.7);
   await playUpdateChimeSound(0.7, "nokia", () => ctx);
   source.onended?.();
-  ok(listenerCount("mousemove") === 0 && listenerCount("click") === 0, "natural end detaches the listeners");
-  ok(pendingTimers.size <= 1, "no stray countdown after natural end (only the ctx-close timer may remain)");
+  ok(allListenersDetached(), "natural end detaches the listeners");
+  ok(![...pendingTimers.values()].some((t) => t.delay === UPDATE_CHIME_MAX_PLAY_MS), "hard-cap timer cleared on natural end");
+  ok(pendingTimers.size <= 1, "no stray cut timer after natural end (only the ctx-close timer may remain)");
   teardown();
 }
 
@@ -246,8 +277,8 @@ function teardown(): void {
 
   const sound = read("../lib/sound.ts");
   ok(sound.includes("src.playbackRate.value = UPDATE_CHIME_PLAYBACK_RATE;"), "sound: buffer source carries the playback rate");
-  ok(sound.includes("setTimeout(startFade, UPDATE_CHIME_INTERRUPT_DELAY_MS)"), "sound: countdown arms the cut");
-  ok(sound.includes("document.removeEventListener(\"mousemove\", onInteract)") && sound.includes("document.removeEventListener(\"click\", onInteract)"), "sound: listening window is always detached");
+  ok(sound.includes("}, UPDATE_CHIME_MAX_PLAY_MS);"), "sound: the hard cap is armed at playback start (task 678)");
+  ok(sound.includes("document.removeEventListener(\"pointermove\", onUserPresent)") && sound.includes("document.removeEventListener(\"mousemove\", onUserPresent)") && sound.includes("document.removeEventListener(\"click\", onUserPresent)"), "sound: listening window is always detached");
   const guardIdx = sound.indexOf("if (!chimeLocalAssetsEnabled()) return Promise.resolve(null);");
   const loaderCallIdx = sound.indexOf("return marioAssetUrlLoader();");
   const importIdx = sound.indexOf("../assets/sounds/mario-theme.wav?url");

@@ -237,17 +237,13 @@ export function normalizeUpdateChimeTune(value: unknown): UpdateChimeTune {
 
 /** Task 512: the chime plays at 1.25× so it reads as a prompt, not a concert. */
 export const UPDATE_CHIME_PLAYBACK_RATE = 1.25;
-/** Task 512: after the first qualifying pointer interaction the chime plays on
- *  for 10 more seconds and is then cut (task 598 raised it from 3 s — 3 s kept
- *  cutting the melody off while the user was merely passing by). */
-export const UPDATE_CHIME_INTERRUPT_DELAY_MS = 10000;
+/** Task 678 (user-finalized semantics, inverting task 512/598): the chime has
+ *  a 10 s hard cap counted from playback start — with nobody around it is cut
+ *  after 10 s regardless of how long the decoded buffer is. */
+export const UPDATE_CHIME_MAX_PLAY_MS = 10000;
 /** Task 512: the cut is a short fade instead of a hard stop — an aborted
  *  buffer otherwise ends with an audible click/pop. */
 export const UPDATE_CHIME_FADE_OUT_S = 0.2;
-/** Task 512: a mousemove arms the countdown only once per-event travel exceeds
- *  this threshold, so brushing/tapping the mouse does not kill the chime; any
- *  click always does. */
-export const UPDATE_CHIME_MOVE_THRESHOLD_PX = 12;
 
 // Nintendo owns the Mario theme (task 512 copyright ruling, option A): the
 // asset is loaded through a build-time-guarded dynamic import. The
@@ -328,9 +324,11 @@ export type UpdateChimePlayOptions = {
 };
 
 /**
- * Play the update chime buffer at 1.25× with the interaction cut armed:
- * document-level mousemove/click listeners exist only while this playback
- * lives — natural end or cut detaches them immediately. Output rides the same
+ * Play the update chime buffer at 1.25× with the task-678 cut armed: a 10 s
+ * hard cap counts from playback start, and any document-level
+ * pointermove/mousemove/click cuts the chime immediately (movement means the user is present — no
+ * need to play it out). The listeners exist only while this playback lives —
+ * natural end or cut detaches them immediately. Output rides the same
  * AudioContext → default-output path as every notification chime (system mute
  * applies). Load failure keeps the old fail-open-to-synth fallback.
  * Exported for the task-512 tests (they need a awaitable, seam-injected run).
@@ -360,17 +358,16 @@ function playUpdateChimeBuffer(ctx: AudioContext, buffer: AudioBuffer, volume: n
   src.connect(gain);
   gain.connect(ctx.destination);
 
-  let countdownArmed = false;  // an interaction started the 10 s countdown
-  let fadeStarted = false;     // the fade ramp has been scheduled
-  let countdownTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastMove: { x: number; y: number } | null = null;
+  let fadeStarted = false;  // the fade ramp has been scheduled
+  let cutTimer: ReturnType<typeof setTimeout> | null = null;
 
   // detach closes the listening window; safe to call from every path.
   const detach = () => {
-    document.removeEventListener("mousemove", onInteract);
-    document.removeEventListener("click", onInteract);
-    if (countdownTimer !== null) clearTimeout(countdownTimer);
-    countdownTimer = null;
+    document.removeEventListener("pointermove", onUserPresent);
+    document.removeEventListener("mousemove", onUserPresent);
+    document.removeEventListener("click", onUserPresent);
+    if (cutTimer !== null) clearTimeout(cutTimer);
+    cutTimer = null;
   };
 
   const startFade = () => {
@@ -389,29 +386,29 @@ function playUpdateChimeBuffer(ctx: AudioContext, buffer: AudioBuffer, volume: n
   // Natural end — or the fade-stop firing onended — closes the window.
   src.onended = () => detach();
 
-  const armCountdown = () => {
-    if (countdownArmed) return;
-    countdownArmed = true;
-    // First qualifying interaction starts the countdown; the listeners come
-    // off right away so later events can neither restart nor extend the 10 s.
+  // Task 678: any pointer/mouse movement or click means someone is at the
+  // machine — cut right away instead of playing on. No travel threshold: the
+  // first movement event itself is the presence signal (the task-512 12 px
+  // threshold existed to keep the chime alive under the old "play on after
+  // interaction" semantics and is meaningless here). pointermove is listed
+  // alongside mousemove so touch/pen input counts too; for a plain mouse the
+  // browser fires both per move and the first hit detaches all listeners, so
+  // there is no double-cut path.
+  const onUserPresent = () => {
     detach();
-    countdownTimer = setTimeout(startFade, UPDATE_CHIME_INTERRUPT_DELAY_MS);
+    startFade();
   };
 
-  const onInteract = (event: MouseEvent) => {
-    if (countdownArmed || fadeStarted) return;
-    if (event.type === "mousemove") {
-      const previous = lastMove;
-      lastMove = { x: event.clientX, y: event.clientY };
-      if (!previous) return;
-      const travel = Math.hypot(event.clientX - previous.x, event.clientY - previous.y);
-      if (travel < UPDATE_CHIME_MOVE_THRESHOLD_PX) return;
-    }
-    armCountdown();
-  };
+  document.addEventListener("pointermove", onUserPresent, { passive: true });
+  document.addEventListener("mousemove", onUserPresent, { passive: true });
+  document.addEventListener("click", onUserPresent, { passive: true });
 
-  document.addEventListener("mousemove", onInteract, { passive: true });
-  document.addEventListener("click", onInteract, { passive: true });
+  // Task 678: the hard cap is armed at playback start, not by an interaction —
+  // even with nobody around the chime stops after UPDATE_CHIME_MAX_PLAY_MS.
+  cutTimer = setTimeout(() => {
+    detach();
+    startFade();
+  }, UPDATE_CHIME_MAX_PLAY_MS);
 
   src.start();
 }
