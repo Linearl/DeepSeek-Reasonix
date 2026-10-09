@@ -243,9 +243,24 @@ func loadForRoot(root string, opts loadForRootOptions) (*Config, error) {
 	// current config is authoritative even when it is empty; reading the legacy
 	// source again would resurrect servers the user removed from current config.
 	if !mcpGlobalMigrationComplete() {
-		cfg.mergeMCPJSON(loadLegacyMCP(legacyConfigPath()))
+		// Task 371 (B4): an unreadable or malformed legacy file used to be
+		// indistinguishable from "no legacy servers", silently dropping every
+		// v0.x MCP server. Match the .mcp.json contract above: warn through
+		// loadWarnings, never block startup.
+		legacyEntries, legacyErr := loadLegacyMCP(legacyConfigPath())
+		if legacyErr != nil {
+			cfg.addLoadWarning(fmt.Sprintf("legacy %s is invalid (%v); MCP servers from that file are ignored", legacyConfigPath(), legacyErr))
+		}
+		cfg.mergeMCPJSON(legacyEntries)
 	}
-	_ = mergeInstalledPluginPackages(cfg, root)
+	// Task 371 (B1): mergeInstalledPluginPackages reports skipped/invalid
+	// plugin packages (bad package JSON, in-package MCP name collisions) as
+	// warnings — they used to be discarded here, so a plugin could be installed
+	// yet contribute nothing with zero feedback. Route them through the same
+	// loadWarnings channel every other config fallback uses.
+	for _, warning := range mergeInstalledPluginPackages(cfg, root) {
+		cfg.addLoadWarning(warning)
+	}
 	if err := normalizeLoadedConfig(cfg); err != nil {
 		return nil, err
 	}

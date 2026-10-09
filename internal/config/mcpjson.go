@@ -111,17 +111,22 @@ func legacyConfigPath() string {
 // MCP servers as PluginEntry values — both the canonical mcpServers map and the
 // older `mcp` string list (mcpServers wins on a name collision, matching v0.x;
 // servers listed in mcpDisabled are skipped) — so upgrading from v0.x keeps MCP
-// servers working without rewriting them as [[plugins]]. Absent or malformed →
-// nil: a stale legacy file must never block startup, and it is the
+// servers working without rewriting them as [[plugins]]. An absent file →
+// (nil, nil): a stale legacy file must never block startup, and it is the
 // lowest-priority source anyway (the v2 config and .mcp.json win on a name
-// collision — see Load).
-func loadLegacyMCP(path string) []PluginEntry {
+// collision — see Load). A file that exists but cannot be read or parsed →
+// (nil, error): the caller surfaces it through loadWarnings instead of letting
+// the servers vanish silently (task 371 B4).
+func loadLegacyMCP(path string) ([]PluginEntry, error) {
 	if path == "" {
-		return nil
+		return nil, nil
 	}
 	b, err := fileencoding.ReadFileUTF8(path)
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	var doc struct {
 		MCP         []string                     `json:"mcp"`
@@ -130,7 +135,7 @@ func loadLegacyMCP(path string) []PluginEntry {
 		MCPDisabled []string                     `json:"mcpDisabled"`
 	}
 	if err := json.Unmarshal(b, &doc); err != nil {
-		return nil
+		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	disabled := make(map[string]bool, len(doc.MCPDisabled))
 	for _, n := range doc.MCPDisabled {
@@ -161,7 +166,7 @@ func loadLegacyMCP(path string) []PluginEntry {
 	for i := range entries {
 		entries[i].Source = MCPSourceLegacyUser
 	}
-	return entries
+	return entries, nil
 }
 
 var legacyMCPSpecName = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_-]*)=(.*)$`)
