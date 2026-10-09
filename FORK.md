@@ -87,10 +87,11 @@ git ls-tree -r --name-only upstream/main-v2 -- <目标路径>/ | grep -i <关键
 |---|---|
 | **只读轮次预算加倍** | `extend_research_budget` 工具：软预算触发收敛后可 10→20→40→80（每 turn ≤3 次，时间闸门同步加倍） |
 | **每轮上下文预算行** | 每轮注入 `<context-budget>41k/128k (32%)</context-budget>`；临近阈值时提示把关键决策写进项目文档 |
+| **每轮当前时间锚** | 每轮 user 消息头部注入 `<current-time>…</current-time>`（RFC3339+星期），长会话/隔夜会话不再靠历史推算时间（664）；缓存尾段追加、不碰稳定前缀 |
 | **路径作用域规则** | `.reasonix/rules/**/*.md` + `paths:` frontmatter，按工作区实际文件清单过滤后折进系统提示；项目规则遮蔽同名用户规则 |
 | **乐观并发写入** | 写工具可选 `expected` 基线参数，内容不匹配即 stale-content 拒绝，替代整工作区串行锁 |
 | **子代理委派档位** | `/subagent-policy` 以 transient block 注入，零重建、零持久化 |
-| **高速模型执行模式** | 勾选「高速模型」后每轮注入 `<exec-speed-mode>high</exec-speed-mode>` |
+| **高速模型执行模式** | 勾选「高速模型」后每轮注入 `<exec-speed-mode>high …指令…</exec-speed-mode>`（指令整体在元素内，664 修正闭合标签位置） |
 | **分片压缩并行化** | 分块压缩片段走有界 worker pool（此前串行），超窗时半切递归 |
 | **任务完成摘要** | 后台作业完成通知携带结果摘要（400 字符、CJK 安全、单行化） |
 | **hook 作用域** | `HookConfig.AppliesTo`：`main` 跳过子代理、`subagent` 仅子代理（修「`match:*` hook 冻结子代理全部工具」缺陷） |
