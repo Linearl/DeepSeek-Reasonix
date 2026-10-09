@@ -104,10 +104,11 @@ type WorkspaceTab struct {
 	removed      bool       // set when the visible tab is pruned/closed before build completes
 	reconcileMu  sync.Mutex // serializes stale controller workspace repair for this tab
 	turnStartMu  sync.Mutex // serializes foreground turn admission for this tab
-	// reconcileMemo is the task-639 read-path fingerprint (tab_reconcile_memo.go):
-	// when it matches the live inputs the effort read skips the full
-	// session-binding reconcile. Guarded by App.mu; never persisted.
-	reconcileMemo tabReconcileMemoKey
+	// reconcileMemo is the task-639 fingerprint (tab_reconcile_memo.go),
+	// task 691 extended to every reconcileTabWithPinnedSessionMeta caller:
+	// when it matches the live inputs the reconcile is skipped and its stored
+	// (path, ok) outcome served. Guarded by App.mu; never persisted.
+	reconcileMemo tabReconcileMemo
 
 	ActivityStatus string // transient project-tree status for the in-flight turn
 
@@ -4525,6 +4526,20 @@ func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool
 	if current != tab {
 		return "", false
 	}
+	// Task 691: the task-639 memo now gates EVERY caller, not just the effort
+	// read. One tab switch was firing 30-70 full reconciles through the other
+	// callers (reconciledSessionPathForTab, activeSessionDir, memory/settings
+	// reads) — each a confirmed-nothing re-derivation of a settled binding,
+	// ~150-250ms under disk pressure, stacking into the switch-tab ancillary
+	// and meta legs. A fresh memo serves the stored (path, ok) outcome; any
+	// input that could move a binding busts it and the next call re-reconciles
+	// once (tab_reconcile_memo.go for the freshness contract).
+	if memoPath, memoOK, fresh := a.tabReconcileMemoResultFor(tab); fresh {
+		return memoPath, memoOK
+	}
+	if a.reconcileReadProbe != nil {
+		a.reconcileReadProbe(tab.ID)
+	}
 	// Task 639: phase timers only — this reconcile is on the effort read
 	// path, and the slow log below is what turns a 1.2s sample into a named
 	// culprit (path branch, binding resolve, or binding apply).
@@ -4534,14 +4549,17 @@ func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool
 		resolved, ok := a.reconcileTabWithSessionPath(tab, path)
 		a.logSlowSessionReconcile(tab, reconcileStart, "path", time.Since(branchStart))
 		if ok {
+			a.storeTabReconcileResult(tab, resolved, true)
 			return resolved, true
 		}
 	}
 	if ctrl == nil {
+		a.storeTabReconcileResult(tab, "", false)
 		return "", false
 	}
 	path = strings.TrimSpace(ctrl.SessionPath())
 	if path == "" {
+		a.storeTabReconcileResult(tab, "", false)
 		return "", false
 	}
 	resolveStart := time.Now()
@@ -4549,10 +4567,12 @@ func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool
 	resolveMs := time.Since(resolveStart)
 	if !ok {
 		a.logSlowSessionReconcile(tab, reconcileStart, "resolve", resolveMs)
+		a.storeTabReconcileResult(tab, "", false)
 		return "", false
 	}
 	if scope == "project" && binding.scope != "project" && normalizeProjectRoot(workspaceRoot) != "" {
 		if root, ok := safeControllerWorkspaceRoot(ctrl); ok && sameProjectRoot(root, workspaceRoot) {
+			a.storeTabReconcileResult(tab, "", false)
 			return "", false
 		}
 	}
@@ -4560,6 +4580,7 @@ func (a *App) reconcileTabWithPinnedSessionMeta(tab *WorkspaceTab) (string, bool
 	a.applySessionBindingToTab(tab, binding)
 	applyMs := time.Since(applyStart)
 	a.logSlowSessionReconcile(tab, reconcileStart, "apply", applyMs)
+	a.storeTabReconcileResult(tab, binding.path, true)
 	return binding.path, true
 }
 
@@ -4847,22 +4868,23 @@ func describeSessionBindingWorkspace(scope, workspaceRoot string) string {
 	return "global workspace"
 }
 
-func (a *App) resolveSessionBinding(sessionPath string) (sessionBinding, bool) {
-	sessionPath = strings.TrimSpace(sessionPath)
-	if sessionPath == "" {
-		return sessionBinding{}, false
-	}
-	// Task 639: split the walk into its disk costs so a slow resolve names its
-	// culprit — dirs_ms is knownSessionDirs (project registry reads), scan_ms
-	// the per-dir session path validation + sidecar loop, meta_ms the
-	// absolute-path branch-meta fallback. Logged only when the whole walk
-	// breached slowSessionReconcileLogMs.
+// resolveSessionBindingWalk is the uncached session-binding walk behind the
+// task-691 cache (binding_resolve_cache.go). Same disk shape the task-639
+// timers named — dirs_ms is knownSessionDirs (project registry reads),
+// scan_ms the per-dir session path validation + sidecar loop, meta_ms the
+// absolute-path branch-meta fallback — plus probe recording: every file path
+// whose existence or content decided the outcome is stamped, and that list is
+// the cache entry's freshness contract. Logged only when the whole walk
+// breached slowSessionReconcileLogMs.
+func (a *App) resolveSessionBindingWalk(sessionPath string) (sessionBinding, bool, []bindingFileStamp) {
 	resolveStart := time.Now()
 	dirsStart := time.Now()
 	dirs := a.knownSessionDirs()
 	dirsMs := time.Since(dirsStart)
 	scanStart := time.Now()
 	var scanMs, metaMs time.Duration
+	var probed []bindingFileStamp
+	record := func(path string) { probed = bindingWalkProbe(probed, path) }
 	defer func() {
 		total := time.Since(resolveStart)
 		if total.Milliseconds() < slowSessionReconcileLogMs {
@@ -4876,34 +4898,37 @@ func (a *App) resolveSessionBinding(sessionPath string) (sessionBinding, bool) {
 			"session", filepath.Base(sessionPath))
 	}()
 	for _, dir := range dirs {
-		if binding, ok := sessionBindingInDir(dir, sessionPath); ok {
+		if binding, ok := sessionBindingInDirTracked(dir, sessionPath, record); ok {
 			scanMs = time.Since(scanStart)
-			return binding, true
+			return binding, true, bindingRecordMeta(probed, binding.path)
 		}
 	}
 	scanMs = time.Since(scanStart)
 	if !filepath.IsAbs(sessionPath) {
-		return sessionBinding{}, false
+		return sessionBinding{}, false, probed
 	}
 	metaStart := time.Now()
 	path, err := filepath.Abs(sessionPath)
 	if err != nil {
 		metaMs = time.Since(metaStart)
-		return sessionBinding{}, false
+		return sessionBinding{}, false, probed
 	}
+	record(path)
+	probed = bindingRecordMeta(probed, path)
 	meta, ok, err := agent.LoadBranchMeta(path)
 	if err != nil || !ok {
 		metaMs = time.Since(metaStart)
-		return sessionBinding{}, false
+		return sessionBinding{}, false, probed
 	}
 	for _, dir := range sessionBindingCandidateDirs(meta) {
-		if binding, ok := sessionBindingInDir(dir, path); ok {
+		if binding, ok := sessionBindingInDirTracked(dir, path, record); ok {
 			metaMs = time.Since(metaStart)
-			return binding, true
+			return binding, true, bindingRecordMeta(probed, binding.path)
 		}
 	}
 	metaMs = time.Since(metaStart)
-	return sessionBindingFromMeta(path, meta)
+	binding, ok := sessionBindingFromMeta(path, meta)
+	return binding, ok, probed
 }
 
 func sessionBindingCandidateDirs(meta agent.BranchMeta) []string {

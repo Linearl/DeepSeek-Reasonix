@@ -134,6 +134,16 @@ type App struct {
 	cfgSnapshotsMu sync.Mutex
 	cfgSnapshots   map[string]*configSnapshot
 
+	// Task 691: memoized session-binding resolves (see
+	// binding_resolve_cache.go). One tab switch used to fire 30-70 full
+	// session-directory walks (knownSessionDirs + per-dir validation +
+	// branch-meta sidecar reads); the cache serves repeat/concurrent callers
+	// while every stamped input — registry files, tab-derived dirs, probed
+	// session files and sidecars — still fingerprints unchanged, and
+	// single-flights the walkers racing on the same path. walkHook is
+	// test-only (set before concurrent calls, nil in production).
+	bindingResolve bindingResolveCache
+
 	// sessionCatalog is a disposable, asynchronously opened projection of
 	// authoritative session sidecars. Project-shell APIs must tolerate nil here:
 	// opening, migration, repair, and corruption recovery never gate the UI.
@@ -7588,22 +7598,15 @@ func (a *App) runEffortCommandForTab(tabID, input string) {
 
 func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, error) {
 	readStart := time.Now()
-	// Task 639: the session reconcile below is defensive healing with a full
-	// disk walk (project registry reads, per-dir session path validation,
-	// branch-meta sidecar loads). A settled tab re-derives the same binding
-	// on every read, so the read skips it while the tab memo
-	// (tab_reconcile_memo.go) still matches; any input that could move a
-	// binding invalidates the memo and the next read re-reconciles once.
-	var reconcileMs time.Duration
-	if tab := a.tabByID(tabID); tab != nil && !a.reconcileReadFreshFor(tab) {
-		if a.reconcileReadProbe != nil {
-			a.reconcileReadProbe(tab.ID)
-		}
-		reconcileStart := time.Now()
-		a.reconcileTabWithPinnedSessionMeta(tab)
-		reconcileMs = time.Since(reconcileStart)
-		a.storeTabReconcileRead(tab)
-	}
+	// Task 639/691: the session reconcile below is defensive healing with a
+	// full disk walk (project registry reads, per-dir session path
+	// validation, branch-meta sidecar loads). A settled tab re-derives the
+	// same binding on every read, so reconcileTabWithPinnedSessionMeta itself
+	// now serves the memoized outcome (tab_reconcile_memo.go) and only walks
+	// when an input that could move a binding changed.
+	reconcileStart := time.Now()
+	a.reconcileTabWithPinnedSessionMeta(a.tabByID(tabID))
+	reconcileMs := time.Since(reconcileStart)
 	a.mu.RLock()
 	ref := ""
 	workspaceRoot := ""
