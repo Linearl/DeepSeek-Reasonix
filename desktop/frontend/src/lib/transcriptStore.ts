@@ -320,6 +320,7 @@ function convertRecord(
       content: m.content,
       reasoning: m.reasoning,
       workDurationMs: m.workDurationMs,
+      createdAt: m.createdAt,
       memoryCitations: memoryCitations.length > 0 ? memoryCitations : undefined,
       serverSearch: m.serverSearch,
     }));
