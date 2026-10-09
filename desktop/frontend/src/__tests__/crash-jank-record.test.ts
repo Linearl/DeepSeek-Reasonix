@@ -78,12 +78,18 @@ console.log("\ncrash jank record (task 360)");
   // Wiring guards: the recorder must run BEFORE the prompt gate (cooldown /
   // hidden / handled labels still land a record), go through the optional
   // binding, and have a Go sink writing logs/perf/jank-*.jsonl.
+  // Task 692 (issue #37): the prompt path must also REUSE the sink's frame
+  // collection — two paths each consuming the singleton profiler is exactly
+  // the race that emptied the reported payload's frames.
   const testDir = dirname(fileURLToPath(import.meta.url));
   const crashSource = readFileSync(resolve(testDir, "../lib/crash.ts"), "utf8");
-  const gateIndex = crashSource.indexOf("if (!shouldPromptForPerformance(now, label)) return;");
-  const recordIndex = crashSource.indexOf("recordJankEvent(reason, label, currentLagMs);");
-  ok(gateIndex > 0 && recordIndex > 0 && recordIndex < gateIndex, "recording happens before the prompt gate");
+  const dueIndex = crashSource.indexOf("const recordDue = jankRecordingDue(label, now);");
+  const promptGateIndex = crashSource.indexOf("const promptDue = shouldPromptForPerformance(now, label);");
+  ok(dueIndex > 0 && promptGateIndex > 0 && dueIndex < promptGateIndex, "recording decision happens before the prompt gate");
+  ok(crashSource.includes("if (recordDue) writeJankRecord(label, snapshot, suppressed, now);"), "record write is gated on its own throttle, not on the prompt gate");
   ok(crashSource.includes("app.ReportJankRecord?.(JSON.stringify(record))?.catch(() => {})"), "record goes through the optional binding (older backends drop it)");
+  const collectCalls = crashSource.split("collectLongTaskFrames(").length - 1; // definition + one call site
+  ok(collectCalls === 2, "one frame collection per trigger (jank sink and prompt share it — issue #37 profiler contention)");
   const bridgeSource = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
   ok(bridgeSource.includes("ReportJankRecord?(record: string): Promise<void>;"), "AppBindings declares the optional jank binding");
   const goSource = readFileSync(resolve(testDir, "../../../../desktop/jank_log.go"), "utf8");
