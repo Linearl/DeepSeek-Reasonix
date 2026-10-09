@@ -369,10 +369,12 @@ func trashSessionMatchesLive(sessionPath, trashPath string) (bool, error) {
 		}
 		return false, err
 	}
-	// Compare decoded transcripts, not .jsonl bytes: the checkpoint only
-	// changes at checkpoints, so two byte-identical .jsonl files can hide
-	// diverged event logs — and treating them as duplicates would delete the
-	// live session's newer history.
+	// Compare decoded transcripts, not .jsonl bytes: the .jsonl file is only
+	// a checkpoint cache and can lag the authoritative event log (legacy
+	// schema-1 sessions, a save whose non-fatal checkpoint write failed, a
+	// crash between the log append and the checkpoint refresh), so two
+	// byte-identical checkpoints can hide diverged event logs — and treating
+	// them as duplicates would delete the live session's newer history.
 	return agent.SessionsShareContent(sessionPath, trashPath)
 }
 
