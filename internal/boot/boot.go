@@ -2249,10 +2249,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// Task 202: batch progress events (not busy/idle metadata - that is
 		// what get_session_status answers). Read-only and messaging-independent.
 		reg.Add(agent.NewReadCollabStatusTool(collab))
-		// Task 320 b: the SQL-shaped history query over the same unified mail
-		// table the inbox panel shows. Read-only + hard-capped limit, so it
-		// registers unconditionally beside the other read verbs.
-		reg.Add(agent.NewQueryCollabMailTool(collab))
+		// Task 320 b / task 689: the SQL-shaped history query registers as the
+		// deprecated alias of mailbox(action=query) — the old constructor stays
+		// in agent for tests and direct callers (task 174 pattern).
+		reg.Add(agent.NewQueryCollabMailAliasTool(collab))
 		// Task 349: the channel tools (0928 拍板 tool set + 20261002 取消消息
 		// 增量) — list/read/send/cancel over the chat-channel entity; send
 		// expands to task-309 mailbox singles, never a second delivery path.
@@ -2265,11 +2265,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// 的 queued 只是入队回执；注入/降级/拒绝由投递泵异步定局并写入回执
 		// 存储，发送方从这里读回真实结局。读类工具，随协作工具集注册。
 		reg.Add(agent.NewGetMessageStatusTool(collab))
-		// 任务 570 (c2)：会话读自己跨会话信箱的只读通道（不 Claim 不 Ack，
-		// 不写游标——泵/drain_inbox 的单消费者设计不受影响，消费权利仍由
-		// experimental_collab_background_delivery 的 boot 门决定）。降级/拒绝
-		// 系统回执由此第一次对发送方可见。
-		reg.Add(agent.NewPeekOwnInboxTool(collab))
+		// 任务 570 (c2) / task 689: 只读自读信箱注册为 mailbox(action=peek) 的
+		// 淡化别名（不 Claim 不 Ack，不写游标——泵/drain 的单消费者设计不受
+		// 影响）。降级/拒绝系统回执由此第一次对发送方可见。
+		reg.Add(agent.NewPeekOwnInboxAliasTool(collab))
 		// Task 284: cross-session subscriptions (the push half). Registered
 		// ONLY under task 230's experimental_event_trigger switch — 284 is
 		// the persistent form of the same engine family, so one switch
@@ -2288,23 +2287,31 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		if cfg.Agent.ExperimentalSessionControl {
 			reg.Add(agent.NewSessionControlTool(collab))
 		}
-		// Task 235: the receive half of the collab mailbox. Pure pull into a
-		// tool result (D1) — settle=true claims+acks, settle=false peeks.
-		// Block2 M-a (mutual exclusion, per the M4 user ruling "consumed
+		// Task 235 / 689: the receive half of the collab mailbox. Pure pull
+		// into a tool result (D1) — settle=true claims+acks, settle=false
+		// peeks. Block2 M-a (mutual exclusion, per the M4 user ruling "consumed
 		// exclusively by the agent's drain_inbox tool"): MailStore has exactly
 		// one consumer at a time. With experimental_collab_background_delivery
-		// ON the host pump skips delivery entirely and drain_inbox pulls; with
-		// it OFF the host pump delivers (runCollabDelivery) and drain_inbox is
-		// NOT registered — the pump's two-phase Claim→Ack would otherwise
-		// double-consume the same batch against drain's same-lock Claim+Ack
-		// (audit M-a). Registration is boot-time: a switch flip applies on
-		// restart. Consumption rights follow the switch.
+		// ON the host pump skips delivery entirely and the drain face pulls;
+		// with it OFF the host pump delivers (runCollabDelivery) and neither
+		// mailbox(action=drain) nor its alias is executable — the pump's
+		// two-phase Claim→Ack would otherwise double-consume the same batch
+		// (audit M-a). Task 689 folds the three mailbox tools into one
+		// mailbox(action=peek|drain|query) entry: the merged tool registers
+		// unconditionally (peek/query are read-only views) while the drain
+		// ACTION re-checks the boot decision at call time, so consumption
+		// rights keep following the switch. Registration is boot-time: a switch
+		// flip applies on restart.
 		drainInboxRegistered := collabDrainInboxEnabled(&cfg.Agent)
 		// minor-1 (audit-2): publish the same decision the desktop pump gate
 		// reads, so registration and pump-skip resolve from one boot snapshot.
 		PublishCollabDrainInboxGate(drainInboxRegistered)
+		reg.Add(agent.NewMailboxTool(collab, drainInboxRegistered))
 		if drainInboxRegistered {
-			reg.Add(agent.NewDrainInboxTool(collab))
+			// Deprecated alias (task 689): old name forwards to
+			// mailbox(action=drain); the gate decides visibility exactly as it
+			// decided the old drain_inbox registration.
+			reg.Add(agent.NewDrainInboxAliasTool(collab, drainInboxRegistered))
 		}
 		// Task 173 ⑤: read_session_tail reads another session's transcript, so
 		// the panel keeps it unregistered until allowed — the model must not
