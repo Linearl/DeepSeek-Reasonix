@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +89,16 @@ func (a *App) ListThemePacks() ([]ThemePackView, error) {
 	for _, id := range ids {
 		m, err := loadUserThemeManifest(id)
 		if err != nil {
+			// Task 371 (B6): a corrupt pack used to vanish from the list with
+			// zero feedback, so a re-import looked like a silent no-op. Keep a
+			// visible placeholder (still deletable via its real id).
+			slog.Warn("desktop: user theme pack failed to load; listing broken placeholder", "id", id, "err", err)
+			out = append(out, ThemePackView{
+				ID:          id,
+				Name:        id + " (broken)",
+				Kind:        themeKindUser,
+				Description: fmt.Sprintf("This theme pack failed to load and cannot be applied: %v. Delete it and re-import a fixed copy.", err),
+			})
 			continue
 		}
 		bgURL := ""
@@ -101,7 +112,24 @@ func (a *App) ListThemePacks() ([]ThemePackView, error) {
 		out = append(out, manifestToView(m, themeKindUser, activeID == id, bgURL, "", taskURL))
 	}
 	// Plugin themes come last: read-only, resolved live from enabled plugins.
-	pluginThemes, _ := discoverPluginThemes()
+	pluginThemes, pluginWarnings := discoverPluginThemes()
+	// Task 371 (B5): discovery warnings reach each surviving view through
+	// pluginThemeView, but a plugin whose EVERY theme was skipped has no view
+	// to ride on and its warnings used to vanish. Log the uncovered ones so a
+	// broken plugin pack is diagnosable from the log alone.
+	if len(pluginWarnings) > 0 {
+		covered := map[string]bool{}
+		for _, pt := range pluginThemes {
+			for _, w := range pt.warnings {
+				covered[w] = true
+			}
+		}
+		for _, w := range pluginWarnings {
+			if !covered[w] {
+				slog.Warn("desktop: plugin theme skipped during discovery (no view carries this warning)", "warning", w)
+			}
+		}
+	}
 	for _, pt := range pluginThemes {
 		out = append(out, pluginThemeView(pt, activeID == pt.id))
 	}
@@ -123,7 +151,16 @@ func (a *App) GetActiveThemePack() (ThemeActiveView, error) {
 		if isPluginThemeID(st.ActiveThemeID) {
 			return view, nil
 		}
-		// Broken or migrated-away pointer: clear so the next launch is clean.
+		// Task 371 (B2): a pointer at a user pack that is still on disk but
+		// corrupt used to be wiped here — the only record of the user's choice
+		// was destroyed and could never be restored. Preserve it like the
+		// plugin contract above and say why the pack did not load.
+		if userThemeExists(st.ActiveThemeID) {
+			slog.Warn("desktop: active theme pack exists but failed to load; pointer preserved", "theme", st.ActiveThemeID)
+			return view, fmt.Errorf("active theme %q is present but could not be loaded; the pointer is kept — fix or re-import the pack, or pick another theme", st.ActiveThemeID)
+		}
+		// Pointer at a theme that no longer exists (deleted/retired): clear so
+		// the next launch is clean.
 		st.ActiveThemeID = ""
 		_ = saveThemeDesktopState(st)
 		return view, nil
@@ -139,6 +176,9 @@ func (a *App) GetActiveThemePack() (ThemeActiveView, error) {
 			// Lost the race with a plugin change: same preserve contract.
 			return view, nil
 		}
+		// Task 371 (B2): the silent wipe here covered retired ids that still
+		// resolve as official; say so instead of degrading invisibly.
+		slog.Warn("desktop: active theme pack failed to load; pointer cleared", "theme", activeID, "err", err)
 		st.ActiveThemeID = ""
 		_ = saveThemeDesktopState(st)
 		return view, nil
@@ -170,6 +210,12 @@ func (a *App) GetThemeExperience() (ThemeExperienceView, error) {
 		if isPluginThemeID(st.ActiveThemeID) {
 			return view, nil
 		}
+		// Task 371 (B2): same corrupt-pack contract as GetActiveThemePack —
+		// keep the pointer, surface the failure.
+		if userThemeExists(st.ActiveThemeID) {
+			slog.Warn("desktop: active theme pack exists but failed to load; pointer preserved", "theme", st.ActiveThemeID)
+			return view, fmt.Errorf("active theme %q is present but could not be loaded; the pointer is kept — fix or re-import the pack, or pick another theme", st.ActiveThemeID)
+		}
 		st.ActiveThemeID = ""
 		_ = saveThemeDesktopState(st)
 		return view, nil
@@ -182,6 +228,7 @@ func (a *App) GetThemeExperience() (ThemeExperienceView, error) {
 		if isPluginThemeID(activeID) {
 			return view, nil
 		}
+		slog.Warn("desktop: active theme pack failed to load; pointer cleared", "theme", activeID, "err", err)
 		st.ActiveThemeID = ""
 		_ = saveThemeDesktopState(st)
 		return view, nil
@@ -335,11 +382,20 @@ func (a *App) migrateThemeDesktopStateLocked() ThemeDesktopState {
 		st.ActiveThemeID = ""
 		changed = true
 	} else if id != "" && !isPluginThemeID(id) && resolveActiveThemeID(st) == "" {
-		// Missing / corrupt official or user pack — clear pointer only. Plugin
-		// pointers are never auto-cleared: they survive a missing/disabled
-		// plugin so a reinstall restores the theme.
-		st.ActiveThemeID = ""
-		changed = true
+		// Task 371 (B2): distinguish "pack gone" from "pack present but
+		// corrupt". A corrupt pack keeps its pointer — it is the only record
+		// of the user's choice, and re-importing the same id restores it.
+		// This migrate path used to persist the wipe immediately, which is
+		// what made a broken pack unrecoverable. Pointers whose pack is truly
+		// gone are still cleared. Plugin pointers are never auto-cleared:
+		// they survive a missing/disabled plugin so a reinstall restores the
+		// theme.
+		if userThemeExists(id) {
+			slog.Warn("desktop: active theme pack exists but its manifest is unreadable; pointer preserved", "theme", id)
+		} else {
+			st.ActiveThemeID = ""
+			changed = true
+		}
 	}
 	if st.SchemaVersion != themeStateSchemaVer {
 		st.SchemaVersion = themeStateSchemaVer

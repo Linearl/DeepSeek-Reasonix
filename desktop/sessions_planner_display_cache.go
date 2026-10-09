@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,13 +137,25 @@ func loadCachedSessionPlannerDisplays(dir string) sessionPlannerDisplayMap {
 
 // readSessionPlannerDisplaysUnchecked 保持原 loadSessionPlannerDisplays 的
 // 容错语义：读失败或解析失败都回空 map，不向上报错。
+// readSessionPlannerDisplaysUnchecked 是冷路径的裸读。任务 371 (B7)：读失
+// 败/解析失败仍回非 nil 空 map（451 契约不变），但「存在却损坏」不再无声——
+// 先备份再告警，防止下一次写把损坏文件当空基线覆盖掉全部展示名。
 func readSessionPlannerDisplaysUnchecked(path string) sessionPlannerDisplayMap {
 	m := sessionPlannerDisplayMap{}
 	b, err := plannerDisplayReadFile(path)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("desktop: failed to read planner display sidecar; falling back to raw titles", "path", path, "err", err)
+		}
 		return m
 	}
-	_ = json.Unmarshal(b, &m)
+	if err := json.Unmarshal(b, &m); err != nil {
+		if bakErr := backupCorruptJSONFile(path, b, 0o600); bakErr != nil {
+			slog.Error("desktop: planner display sidecar corrupt AND backup failed; next save wipes remaining names", "path", path, "err", err, "backupErr", bakErr)
+		} else {
+			slog.Warn("desktop: planner display sidecar corrupt; corrupt copy backed up", "path", path, "backup", path+".corrupt", "err", err)
+		}
+	}
 	return m
 }
 
