@@ -522,6 +522,55 @@ func TestCrossProcessRecoveryPauses(t *testing.T) {
 	}
 }
 
+// Task 589b: a kill between steer accept and steer consume leaves the row in
+// StateSteerAccepted, and the run id changes with every process — so this
+// loadOrInit branch, not the recovery pass's in-flight face, is the deletion
+// path the seconds-level window actually feeds. The rewrite must park the row
+// reviewable (unapplied-steer reason) instead of leaving it reason-less for
+// the next settled pass to drop as delivered residue.
+func TestCrossProcessRecoveryParksAcceptedSteerAsUnapplied(t *testing.T) {
+	dir := t.TempDir()
+	session := filepath.Join(dir, "s.jsonl")
+	_ = os.WriteFile(session, []byte("{}\n"), 0o644)
+	s, err := Open(session, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := s.Enqueue(EnqueueRequest{
+		Envelope:    PromptEnvelope{SubmitText: "killed mid-steer"},
+		Source:      "collab:contact-x",
+		Idempotency: "collab:msg_accepted_kill",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetState(rec.ItemID, StateSteerAccepted, ""); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	// Simulate the next process: rewrite the manifest run id (Open always
+	// stamps a fresh ProcessRunID, so a real restart trips the same branch).
+	manPath := filepath.Join(store.SessionInboxDir(session), "manifest.json")
+	data, _ := os.ReadFile(manPath)
+	data = []byte(strings.Replace(string(data), ProcessRunID(), "other-run-id-0000", 1))
+	_ = os.WriteFile(manPath, data, 0o600)
+
+	s2, err := Open(session, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	snap := s2.Snapshot()
+	if len(snap.Items) != 1 {
+		t.Fatalf("want the accepted steer preserved, got %+v", snap.Items)
+	}
+	item := snap.Items[0]
+	if item.State != StateUncertain || item.BlockReason != BlockReasonSteerUnapplied {
+		t.Fatalf("rewritten accepted steer = (%v, %q), want (uncertain, %q)", item.State, item.BlockReason, BlockReasonSteerUnapplied)
+	}
+}
+
 func TestPreviewDoesNotMaterializeHugeBody(t *testing.T) {
 	huge := strings.Repeat("x", 1<<20)
 	p := PreviewText(huge, 40)

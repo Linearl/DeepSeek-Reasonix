@@ -45,6 +45,15 @@ func (s *Store) RecoverOrphanedInFlight(ownedIDs []string) (int, error) {
 // boundary, so the row is applied residue by definition — rewriting it to
 // Uncertain is what resurrected already-applied composer guidance as pending
 // work after every restart.
+//
+// Task 589b: acceptance is not injection. StateSteerAccepted never settles:
+// between the durable accept (TrySteerInboxItem's SetState) and the durable
+// consume (the loader's MarkSteerConsumed, at the next tool-round gap) sits a
+// tool-call-length window, and a kill inside it leaves a row whose delivery
+// receipt was written long before the accept — the probe's evidence cannot
+// distinguish this face. The row is parked as unapplied-steer review work
+// instead (same BlockReason the graceful turn-exit path uses), so it survives
+// every later settled pass until the user dispositions it.
 func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settledBy func(InboxItemMeta) bool) (int, error) {
 	if s == nil {
 		return 0, ErrClosed
@@ -67,6 +76,13 @@ func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settle
 		// also matched Queued/Blocked rows, whose mail cursor is settled at
 		// DELIVERY time — with a live probe that deleted real pending work.
 		if settledBy == nil || !(inFlight(m) || m.State == StateUncertain) {
+			return false
+		}
+		// Task 589b: accepted-but-uninjected has no injection evidence — the
+		// delivery receipt predates the accept, so settledBy(m) is true with
+		// near-certainty for collab rows and cannot stand in for "reached a
+		// turn". Never settle the accepted state itself.
+		if m.State == StateSteerAccepted {
 			return false
 		}
 		// Task 585/641: review parks keep the row even when the mail was
@@ -146,8 +162,18 @@ func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settle
 			// idempotence (0 after the first pass); pending residue is counted
 			// into RecoveredN below instead.
 			if inFlight(item) {
+				// Task 589b: an accepted steer orphaned mid-window parks with
+				// the same reason the graceful unapplied-steer path uses
+				// (Controller.onInboxUnappliedSteer), so later recovery passes
+				// keep it via the park exemption instead of settling it as
+				// delivered residue on their very next run.
+				wasAccepted := item.State == StateSteerAccepted
 				item.State = StateUncertain
-				item.BlockReason = "in-flight owner is no longer active"
+				if wasAccepted {
+					item.BlockReason = BlockReasonSteerUnapplied
+				} else {
+					item.BlockReason = "in-flight owner is no longer active"
+				}
 				item.UpdatedAt = now
 				recovered++
 			}

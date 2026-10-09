@@ -321,6 +321,72 @@ func TestRecoverKeepsReviewParksFromSettledDrop(t *testing.T) {
 	}
 }
 
+// Task 589b: a steer accepted into the agent queue but not yet consumed sits a
+// tool-call away from its injection point (the loader's MarkSteerConsumed at
+// the next tool-round gap). A kill inside that window leaves an admitted row
+// whose 570 delivery receipt was written at pump delivery — long BEFORE the
+// accept — so the settled probe answers true and cannot stand in for "reached
+// a turn". The accepted state must never settle: the row parks as unapplied-
+// steer review work, and the park survives every later settled pass.
+func TestRecoverKeepsAcceptedUninjectedSteerFromSettledDrop(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "s.jsonl"), Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	rec, err := s.Enqueue(EnqueueRequest{
+		Envelope:    PromptEnvelope{SubmitText: "steer killed between accept and inject"},
+		Source:      "collab:contact-x",
+		Idempotency: "collab:msg_accepted_kill",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetState(rec.ItemID, StateSteerAccepted, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	probe := func(m InboxItemMeta) bool {
+		_, ok := strings.CutPrefix(m.Idempotency, "collab:")
+		return ok // the mail was delivered (and receipted) before the accept
+	}
+	first, err := s.RecoverOrphanedInFlightOwnedBy(func(string) bool { return false }, probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != 1 {
+		t.Fatalf("first pass recovered = %d, want 1 (the accepted steer parks, not drops)", first)
+	}
+	snap := s.Snapshot()
+	var item *InboxItemMeta
+	for i := range snap.Items {
+		if snap.Items[i].ID == rec.ItemID {
+			item = &snap.Items[i]
+		}
+	}
+	if item == nil {
+		t.Fatal("accepted-uninjected steer was dropped by the settled pass — the 589b loss face")
+	}
+	if item.State != StateUncertain || item.BlockReason != BlockReasonSteerUnapplied {
+		t.Fatalf("parked steer = (%v, %q), want (uncertain, %q)", item.State, item.BlockReason, BlockReasonSteerUnapplied)
+	}
+
+	// A later pass (the controller re-runs recovery on every open and every
+	// orphaned-steer read) must keep the park via the review-park exemption.
+	if _, err := s.RecoverOrphanedInFlightOwnedBy(func(string) bool { return false }, probe); err != nil {
+		t.Fatal(err)
+	}
+	snap = s.Snapshot()
+	if len(snap.Items) != 1 || snap.Items[0].ID != rec.ItemID ||
+		snap.Items[0].State != StateUncertain || snap.Items[0].BlockReason != BlockReasonSteerUnapplied {
+		t.Fatalf("second pass lost the park: %+v", snap.Items)
+	}
+	if !snap.Paused || snap.RecoveredN != 1 {
+		t.Fatalf("recovery metadata = %+v, want paused with the park counted as live pending work", snap)
+	}
+}
+
 // Task 641 acceptance, end to end at the store boundary: after a
 // cross-process restart (loadOrInit rewrote in-flight rows to Uncertain), a
 // collab row whose source mail was delivered drops as residue, while a row
