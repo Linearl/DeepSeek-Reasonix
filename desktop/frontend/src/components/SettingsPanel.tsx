@@ -2035,25 +2035,29 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // 任务 561: the features array is the lab render table — every entry below
   // must keep its own `on` read and its own setter wiring in the pane (81/123
   // lost-save rule). Group membership follows the 2026-10-06 audit table
-  // (46 items: automation 8 / efficiency 10 / ui 15 / observability 2 /
-  // dev-debug 2 / storage 2 / infra 7).
+  // (46 items: automation 7 / efficiency 11 / ui 15 / observability 2 /
+  // dev-debug 2 / storage 2 / infra 7; task 650 moved optimisticParallel
+  // from automation to efficiency — less write-lock waiting is an
+  // efficiency gain, not an autonomy switch).
   const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean; group: LabGroupKey }> = [
-    // ── automation（自动化，8 项）──────────────────────────────────
+    // ── automation（自动化，7 项）──────────────────────────────────
     { id: "autopilot", group: "automation", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
     { id: "sessionCollab", group: "automation", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
     // Task 257: full access (yolo) — it widens permissions to cut approvals.
     // Task 364/561: a permission-shape switch, re-homed beside the other
     // autonomy switches (task 561 audit table).
     { id: "fullAccess", group: "automation", label: t("settings.fullAccess"), on: Boolean(s.experimentalFullAccess) },
-    // Task 280: re-homed from the permissions area (task 280; inverted bind —
-    // `on` here means optimistic ON = safety check OFF, default off).
-    { id: "optimisticParallel", group: "automation", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
     { id: "dream", group: "automation", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
     // 任务 517:「安全 / 成本控制」— the 561 M1 autonomousRunGuard card and the
     // standalone eventWaitRecheck entry fold into ONE single-key card
     // (experimental_safety_cost_control gates all three B-group guards).
     { id: "safetyCostControl", group: "automation", label: t("settings.safetyCostControl"), on: Boolean(s.experimentalSafetyCostControl) },
-    // ── efficiency（提效，10 项）──────────────────────────────────
+    // ── efficiency（提效，11 项）──────────────────────────────────
+    // Task 280: re-homed from the permissions area (upright bind — `on` means
+    // optimistic ON = safety check OFF, default off). Task 650: and from the
+    // automation group to efficiency — the switch buys parallel-write
+    // throughput (skip the write-lock wait), not autonomy.
+    { id: "optimisticParallel", group: "efficiency", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
     // Task 561 M3 压缩/预算族: the four context/cache governance entries
     // (compactionParallel + budgetControl + compressOpt + cacheTuning) fold
     // into ONE card — the light reads any of the six underlying switches;

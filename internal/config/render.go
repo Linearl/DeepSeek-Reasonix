@@ -46,17 +46,18 @@ type labFeatureTier struct {
 }
 
 var labFeatureTiers = []labFeatureTier{
-	// ── automation（自动化，7 项；任务 517 B1+B2 并入 safetyCostControl）──
+	// ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
 	{"autopilot", LabTierRecommended, []string{"autopilot", "experimental_autopilot_ask_timeout"}}, // ask-timeout 为 task 477 家族子键
 	{"sessionCollab", LabTierRecommended, []string{"experimental_session_collab"}},
 	{"fullAccess", LabTierRecommended, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
-	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write"}},
 	{"dream", LabTierOptional, []string{"experimental_dream"}},
 	// 任务 517：B1/B2/B3 三开关合并为「安全 / 成本控制」单键；三个 legacy 键
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
 	{"safetyCostControl", LabTierOptional, []string{"experimental_safety_cost_control", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
 	{"subagentPolicy", LabTierUnstable, []string{"experimental_subagent_policy"}},
-	// ── efficiency（提效，9 项；任务 517 B3 并入 safetyCostControl）─────
+	// ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl；────
+	//    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
+	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write"}},
 	{"budgetControl", LabTierRecommended, []string{"experimental_context_budget", "experimental_research_budget"}},
 	{"compressOpt", LabTierRecommended, []string{"experimental_proactive_compact", "experimental_cold_cache_compact"}},
 	{"messageMerge", LabTierRecommended, []string{"collab_inbox_merge", "collab_guidance_merge"}},

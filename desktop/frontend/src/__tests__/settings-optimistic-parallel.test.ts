@@ -7,6 +7,9 @@
 // losslessly), and all three locales ship the new pair with the old one gone.
 // Task 650 — the detail checkbox became a two-segment capsule control
 // (Off | On) in the permission-tier switch style; binding stays upright.
+// Task 650 also moved the lab entry from the automation group to efficiency
+// (less write-lock waiting is an efficiency gain, not autonomy); the config
+// key and semantics are untouched.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -36,8 +39,10 @@ const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
 // ── old entry removed, new entry present (no double入口) ────────────────────
 ok(!panelRaw.includes("settings.optimisticWrite"), "the permissions-area entry no longer references the old label key");
-ok(panel.includes('{ id: "optimisticParallel", group: "automation",'),
-  "the lab entry lives in the efficiency group (render table)");
+ok(panel.includes('{ id: "optimisticParallel", group: "efficiency",'),
+  "the lab entry lives in the efficiency group (render table, task 650)");
+ok(!panel.includes('{ id: "optimisticParallel", group: "automation",'),
+  "the automation group no longer lists the entry (task 650)");
 ok(panel.includes('| "optimisticParallel"'), "the detail union includes the id");
 
 // ── segmented-control binding: reads the field upright (On=乐观, task 650) ──
@@ -78,7 +83,7 @@ for (const [name, table] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) 
   ok(!table.includes('"settings.optimisticWriteHint"'), `${name} dropped the old hint key`);
 }
 
-assert.ok(passed >= 31, `expected at least 31 checks, got ${passed}`);
+assert.ok(passed >= 32, `expected at least 32 checks, got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 // ── Task 374fix: read-back chain pinned at the Go source ──────────────────
 {
