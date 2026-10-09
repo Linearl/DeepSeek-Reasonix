@@ -19,6 +19,7 @@ import type { InvocationMetadataMap } from "../lib/invocationDisplay";
 import { useT } from "../lib/i18n";
 import { acquireMarkdownWorkerClient, releaseMarkdownWorkerClient } from "../lib/markdownWorkerClient";
 import { onSessionExperienceWillChange, useSessionExperience } from "../lib/sessionExperience";
+import { onToolGroupingWillChange, useToolGroupingEnabled } from "../lib/toolGroupingPreference";
 import { cachedSubcallsByParent, cachedTranscriptRowBlocks, cachedTurnModels } from "../lib/transcriptDerivedCache";
 import {
   allWorkProcessesCollapsed,
@@ -173,6 +174,7 @@ export function Transcript(props: TranscriptProps) {
   const viewportRef = useRef<TranscriptViewportHandle>(null);
   const committedSurfaceRef = useRef("");
   const experience = useSessionExperience();
+  const toolGrouping = useToolGroupingEnabled();
   const liveFlags = useMemo<TranscriptLiveFlags>(() => live?.id ? {
     id: live.id,
     hasAnswerText: Boolean(live.text.trim()),
@@ -192,7 +194,7 @@ export function Transcript(props: TranscriptProps) {
     beginGesture, beginStructural, scrollElement, scrollToBottom, scheduleTailSync, safeMode, scrollRef, setScrollMode, writeOffset, jumpToBlock, onScroll, endGesture, commitViewportGeometry, onWheelCapture, isAtBottom, intent, onTouchStartCapture, onTouchEndCapture, onKeyDownCapture, onPointerDownCapture, beginAnchorRestore,
   } = useTranscriptKernel({
     sessionKey: surfaceKey,
-    geometryRevision: `${contentRevision}:${footerHeight}:${experience}:${historyMutation?.seq ?? 0}`,
+    geometryRevision: `${contentRevision}:${footerHeight}:${experience}:${toolGrouping}:${historyMutation?.seq ?? 0}`,
     // Fork (task 160): switch-gated scroll trigger. Reading through a ref keeps the
     // callback stable across renders while `requestOlder` is declared below.
     autoLoadOlderAtTop: autoLoadOlder ? () => requestOlderAtTopRef.current?.() : undefined,
@@ -216,6 +218,10 @@ export function Transcript(props: TranscriptProps) {
     setFolds(readTranscriptFoldOverrides(resolvedSessionKey, segmentStates));
   }, [resolvedSessionKey, segmentStates]);
   useEffect(() => onSessionExperienceWillChange(() => {
+    beginStructural("display-change");
+  }), [beginStructural]);
+  // 任务 668：分组开关切换增删行、改变几何，提交前同样开启结构性事务。
+  useEffect(() => onToolGroupingWillChange(() => {
     beginStructural("display-change");
   }), [beginStructural]);
   useEffect(() => {
@@ -261,7 +267,8 @@ export function Transcript(props: TranscriptProps) {
     turnForUser,
     hasCheckpointForTurn: (turn) => checkpointsByTurn.has(turn),
     subcallsByParent,
-  }, [checkpointsByTurn, creationMode, experience, folds, subcallsByParent, turnForUser]);
+    toolGroupingEnabled: toolGrouping,
+  }, [checkpointsByTurn, creationMode, experience, folds, subcallsByParent, toolGrouping, turnForUser]);
   const projection = useMemo(() => projectTranscriptTimeline(blocks, hasOlderHistory), [blocks, hasOlderHistory]);
   const renderMode = transcriptRenderMode(projection.completedBlocks.length, safeMode);
   const allRows = useMemo(() => blocks.flatMap((block) => block.rows), [blocks]);
