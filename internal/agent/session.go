@@ -112,6 +112,20 @@ func (s *Session) TailTruncated() bool {
 	return s.tailTruncated
 }
 
+// EventLogDamaged reports whether the source event log held rows the loader
+// could not decode (salvaged to the .damaged sidecar). 任务 229 G6: the
+// export-transcript contract surfaces this as a terminal marker so script
+// consumers know the normalized stream is a repair-surviving view; the
+// loader keeps the per-row bytes internal instead of a second parser.
+func (s *Session) EventLogDamaged() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.eventLogDamaged
+}
+
 func (s *Session) Add(m provider.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

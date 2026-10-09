@@ -40,10 +40,9 @@ func runClaimCheck(args []string) int {
 		return 2
 	}
 	fmt.Println(string(blob))
-	if result.Verdict == claimcheck.Confirmed {
-		return 0
-	}
-	return 1
+	// 任务 229 G1: the exit decision rides the shared verdict contract
+	// (CONFIRMED -> 0, everything else -> 1) — same behaviour, one vocabulary.
+	return verdictExitCode(string(result.Verdict))
 }
 
 // validateClaimCheckInput rejects obviously unusable invocations up front so
