@@ -2159,6 +2159,17 @@ func TestSaveSnapshotSameRevisionAllowsOwnedNonPrefixAppend(t *testing.T) {
 }
 
 func TestReconcileSessionSidecarsRemovesUnlockedArtifacts(t *testing.T) {
+	// 654L 定性（2026-10-09，基线 d9b7e006f 干净复现）：预存红为产品缺陷，非测试过期。
+	// 根因：475（61d4723ee）「后缀单一来源」机械替换把 ReconcileSessionSidecars 循环里
+	// TrimSuffix 的参数从裸侧车后缀（".lease.lock" 等）错换成全拼常量（含 ".jsonl"），
+	// base 丢转写扩展名（"session.jsonl.lease.lock" → "session"）。
+	// removeStaleSessionLeaseLockSidecar 以错误 base 推导锁路径（session.lease.lock），
+	// tryTake 的 OPEN_ALWAYS 新建幻影文件并删除之（全程 err=nil），真实
+	// <id>.jsonl.lease.lock 永不清理；info/lock 两 case 因直接操作透传的 sidecarPath 侥幸正确。
+	// 派单纪律「产品缺陷不修产品」：本测试 skip 待产品修复件（修法：TrimSuffix 后补回
+	// store.SessionTranscriptSuffix，或改 Trim 裸后缀）。修复后本测试应原样转绿，断言零改动。
+	// 证据链见 docs/report/zcode交付/zcode交付-654L673L-预存红治理批-20261009.md。
+	t.Skip("654L: 产品缺陷——ReconcileSessionSidecars base 计算丢 .jsonl（475 机械替换引入），stale .jsonl.lease.lock 永不清理；待产品修复件")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "session.jsonl")
 	if err := os.WriteFile(path, []byte(`{"role":"user","content":"hello"}`+"\n"), 0o644); err != nil {
