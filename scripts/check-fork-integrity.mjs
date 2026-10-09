@@ -1531,6 +1531,18 @@ const CHECKS = [
   { feature: "408 默认关等价与三态回归测试", file: "internal/control/pending_cards_test.go", patterns: ["TestPendingCardsOffKeepsLegacyBehavior", "TestPendingCardWithdrawAsk", "TestPendingCardTimeoutClosesCard", "TestPendingCardsSurviveRestartAndSweepExpired"] },
   { feature: "408 配置开关与 TTL（无条件渲染行 + 隔离 home 开关测试）", file: "internal/config/config.go", patterns: ["experimental_pending_cards", "pending_card_ttl_minutes"] },
   { feature: "408 运行态计数面（badge 数据源，开关关恒 0）", file: "internal/event/runtime_state.go", patterns: ["PendingCards int `json:\"pendingCards,omitempty\"`"] },
+  // ── 任务663 一键分析产品化：卡顿支持/进度可见/重启按钮/真崩溃入口 + ⑤命名 ⑥一等公民 ──
+  // 锚点锁整条分析家族：Go 侧 hang 门（doctor 判定触发器）与 pending-crash
+  // 启动快照（真崩溃唯一入口）、进度状态机、会话命名；前端三个入口共用的
+  // 门控/进度/重启面。丢任何一环 = 对应场景退回「点击无响应/静默上报」。
+  { feature: "663 Go hang 门控+同管道（①⑥）", file: "desktop/crash_analysis_hang.go", patterns: ["func responsivenessVerdictIsHang", "func (a *App) StartHangAnalysis", "func buildHangAnalysisInstruction", "ResponsivenessSilenceAfter"] },
+  { feature: "663 Go 进度跟踪+会话命名（②⑤）", file: "desktop/crash_analysis.go", patterns: ["func observeCrashAnalysisRun", "func (a *App) CrashAnalysisProgress", "func crashAnalysisSessionTitle", "crash-analysis: started"] },
+  { feature: "663 Go pending-crash 启动快照（④）", file: "desktop/crash_pending.go", patterns: ["func (a *App) snapshotPendingCrashForAnalysis", "func (a *App) PendingCrashSnapshot", "func pendingReportToAnalysisPayload"] },
+  { feature: "663 启动接线（快照先于 flush）", file: "desktop/app.go", patterns: ["a.snapshotPendingCrashForAnalysis()"] },
+  { feature: "663 前端进度面+重启按钮（②③）", file: "desktop/frontend/src/lib/crash.ts", patterns: ["function paintAnalysisProgress", "export function restartButton", "export function analyzeEntryButton"] },
+  { feature: "663 前端 hang 入口（⑥）", file: "desktop/frontend/src/lib/hangPrompt.ts", patterns: ["export function shouldSurfaceHangPrompt", "export function installHangAnalysisWatch"] },
+  { feature: "663 前端 pending-crash 入口（④）", file: "desktop/frontend/src/lib/pendingCrashEntry.ts", patterns: ["export function installPendingCrashAnalysisEntry", "export function shouldSurfacePendingCrash"] },
+  { feature: "663 验收测试（hang 门/状态机/快照/进度/重启）", file: "desktop/crash_analysis_hang_test.go", patterns: ["TestResponsivenessVerdictIsHang", "TestObserveCrashAnalysisRunStateMachine", "TestStartHangAnalysisRefusesWithoutSourceExplicitly"] },
 ];
 
 let failed = 0;

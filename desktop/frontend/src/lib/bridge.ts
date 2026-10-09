@@ -60,7 +60,10 @@ import type {
   CapabilitiesView,
   CapabilityDiagnosticsReport,
   CrashAnalysisAvailabilityReport,
+  CrashAnalysisProgressReport,
   CrashPendingDiagnosticsReport,
+  HangAnalysisAvailabilityReport,
+  PendingCrashSnapshotReport,
   RuntimeDoctorReport,
   CheckpointMeta,
   CommandInfo,
@@ -1391,6 +1394,17 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // instruction there. Returns a short summary on success.
   CrashAnalysisAvailability(): Promise<CrashAnalysisAvailabilityReport>;
   StartCrashAnalysis(kind: string, detail: string): Promise<string>;
+  // Task 663 gap ①/⑥: the hang face of the same analysis family. Availability
+  // probes the active session's doctor responsiveness verdict; Start refuses
+  // explicitly unless the verdict is a hang state.
+  HangAnalysisAvailability(): Promise<HangAnalysisAvailabilityReport>;
+  StartHangAnalysis(): Promise<string>;
+  // Task 663 gap ②: progress read model for the analysis poller (the overlay
+  // notes poll this while an analysis runs and paint the completion).
+  CrashAnalysisProgress(): Promise<CrashAnalysisProgressReport>;
+  // Task 663 gap ④: the boot-time pending-crash snapshot behind the startup
+  // analysis entry (survives flushPendingCrash shipping or dropping the files).
+  PendingCrashSnapshot(): Promise<PendingCrashSnapshotReport>;
   RecordUIPerf(signals: Record<string, string>): Promise<void>;
   ListTabs(): Promise<TabMeta[]>;
   OpenProjectTab(workspaceRoot: string, topicID: string): Promise<TabMeta>;
@@ -6473,6 +6487,10 @@ function makeMockApp(): AppBindings {
     async CrashPendingDiagnostics() { return { count: 0, capacity: 10, retentionDays: 14, atCapacity: false }; },
     async CrashAnalysisAvailability() { return { sourceReady: false, ghAuthenticated: false, workspaceReady: false, ready: false }; },
     async StartCrashAnalysis() { throw new Error("one-click analysis is unavailable in the browser mock"); },
+    async HangAnalysisAvailability() { return { verdict: "unknown", hung: false, ready: false }; },
+    async StartHangAnalysis() { throw new Error("hang analysis is unavailable in the browser mock"); },
+    async CrashAnalysisProgress() { return { active: false, running: false, done: false }; },
+    async PendingCrashSnapshot() { return { count: 0 }; },
     async RecordUIPerf() {},
     // Tab management mocks.
     async ListTabs() {

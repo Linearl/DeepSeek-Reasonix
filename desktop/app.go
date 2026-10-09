@@ -102,6 +102,15 @@ type App struct {
 	autonomousMu      sync.Mutex
 	autonomousPending pendingUpdateTarget
 
+	// crashAnalysisMu guards the task-663 one-click analysis state: which
+	// session hosts the running analysis (CrashAnalysisProgress read model)
+	// and the boot-time pending-crash snapshot that survives flushPendingCrash
+	// shipping or dropping the queue files. Low-frequency UI state; its own
+	// mutex so it never waits behind the tab lock.
+	crashAnalysisMu     sync.Mutex
+	crashAnalysisRun    *crashAnalysisRun
+	pendingCrashReports []string
+
 	// Task 421: bounded effort re-fetch (see effort_fetch.go). effortCache
 	// holds the last completed EffortInfo per tab ID ("" = the active-tab
 	// form) so a read that blows the timeout serves this instead of stalling
@@ -739,6 +748,11 @@ func (a *App) startup(ctx context.Context) {
 	a.goSafe("refreshBotRuntime", a.refreshBotRuntime)
 	a.goSafe("sendStartupPing", a.sendStartupPing)
 	a.goSafe("flushMetrics", a.flushMetrics)
+	// Task 663 gap ④: capture the pending-crash queue BEFORE the flush ships
+	// (telemetry on) or drops (telemetry off) it, so the startup one-click
+	// analysis entry can offer the previous run's Go panic instead of silent
+	// shipping. Synchronous on purpose: it must win the race it exists for.
+	a.snapshotPendingCrashForAnalysis()
 	a.goSafe("flushPendingCrash", a.flushPendingCrash)
 	// After restoreOrBuildTabs is launched: the GC's first sweep waits on
 	// tabsRestored so it never observes the pre-restore empty tab map.

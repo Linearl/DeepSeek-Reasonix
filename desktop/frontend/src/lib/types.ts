@@ -1792,6 +1792,39 @@ export interface CrashAnalysisAvailabilityReport {
   ready: boolean;
 }
 
+/** Task 663 gap ①/⑥: hang-side probe from App.HangAnalysisAvailability. The
+ * verdict is the doctor responsiveness classification (task 370); `hung` is
+ * the backend's explicit gate (silent, or first_response_wait past the
+ * silence threshold) so the UI never re-implements the state machine. */
+export interface HangAnalysisAvailabilityReport {
+  sessionPath?: string;
+  verdict: string;
+  detail?: string;
+  hung: boolean;
+  ready: boolean;
+}
+
+/** Task 663 gap ②: read model for the analysis progress poller
+ * (App.CrashAnalysisProgress). Active=false before the first analysis run of
+ * this process; done means the analysis turn settled or its hosting tab is
+ * gone. */
+export interface CrashAnalysisProgressReport {
+  active: boolean;
+  sessionPath?: string;
+  startedAt?: string;
+  running: boolean;
+  done: boolean;
+  doneAt?: string;
+}
+
+/** Task 663 gap ④: the boot-time pending-crash snapshot behind the startup
+ * analysis entry (App.PendingCrashSnapshot). Reports are schema-2 payload
+ * JSONs (newest first) ready to hand to StartCrashAnalysis verbatim. */
+export interface PendingCrashSnapshotReport {
+  count: number;
+  reports?: string[];
+}
+
 /** Extension runtime doctor report from App.RuntimeDoctor. */
 export interface RuntimeDoctorReport {
   text: string;

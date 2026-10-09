@@ -9,6 +9,8 @@ import { installWailsNonFileDragErrorSuppression } from "./lib/bridge";
 import { installBreadcrumbConsoleHook } from "./lib/breadcrumbs";
 import { installMessageSelectionCopy } from "./lib/messageSelectionCopy";
 import { installPerfDebugHook } from "./lib/perfDebug";
+import { installHangAnalysisWatch } from "./lib/hangPrompt";
+import { installPendingCrashAnalysisEntry } from "./lib/pendingCrashEntry";
 import { LocaleProvider, preloadDetectedLocale } from "./lib/i18n";
 import { ToastProvider } from "./lib/toast";
 import { initFontFamily } from "./lib/fontFamily";
@@ -25,6 +27,11 @@ installGlobalCrashHandlers();
 installBreadcrumbConsoleHook();
 installPerformancePressureMonitor();
 installPerfDebugHook();
+// Task 663: the hang watch (doctor-responsiveness trigger) and the startup
+// entry for the previous run's real crash report join the same boot block —
+// both are optional-binding no-ops in the browser mock.
+installHangAnalysisWatch();
+installPendingCrashAnalysisEntry();
 
 // Apply the saved appearance (auto/light/dark) before the first paint.
 function initTypographyPlatform() {
