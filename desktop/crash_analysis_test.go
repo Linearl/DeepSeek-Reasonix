@@ -199,3 +199,51 @@ func TestBuildCrashAnalysisInstructionMarksMockPayload(t *testing.T) {
 		t.Fatalf("non-mock instruction must not carry the simulation notice:\n%s", plain)
 	}
 }
+
+// ── task 673: the popup's appended summary must not read as a garbled translation ──
+
+// The 2026-10-09 install feedback: the zh popup showed the localized "started"
+// notice followed by this summary hardcoded in English, which read as a
+// mistranslation and mangled the Windows path ("github-repo.reasonix"). The
+// summary must speak Chinese like the rest of this surface's Go-side copy, and
+// the source path must keep its real separators (filepath.Join output, never a
+// re-concatenation that could eat a backslash).
+func TestCrashAnalysisSummaryIsChineseWithPathSeparatorsIntact(t *testing.T) {
+	dir := `C:\Users\_\AppData\Roaming\reasonix\global-workspace\github-repo\reasonix`
+	summary := crashAnalysisSummary(dir)
+	for _, want := range []string{
+		"分析将对照本地源码",
+		dir, // verbatim: separators intact, nothing re-joined or scrubbed
+		"定位根因",
+		crashAnalysisRepo,
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary missing %q:\n%s", want, summary)
+		}
+	}
+	// The garbled-translation complaint: no English sentence may ride along —
+	// the path, the repo constant and the fixed term "issue" are the only
+	// Latin runs allowed.
+	trimmed := strings.ReplaceAll(summary, crashAnalysisRepo, "")
+	trimmed = strings.ReplaceAll(trimmed, dir, "")
+	trimmed = strings.ReplaceAll(trimmed, "issue", "")
+	for _, r := range trimmed {
+		if r < 0x80 && r != ' ' {
+			t.Fatalf("summary carries unexpected ASCII beyond the path and repo: %q", summary)
+		}
+	}
+}
+
+// The instruction the analysis session receives quotes the same source dir;
+// the visible template must render it with real separators too (the same
+// complaint targeted this path as "github-repo.reasonix").
+func TestBuildCrashAnalysisInstructionKeepsPathSeparators(t *testing.T) {
+	dir := `C:\Users\_\AppData\Roaming\reasonix\global-workspace\github-repo\reasonix`
+	instruction := buildCrashAnalysisInstruction(dir, `{"kind":"crash"}`, false)
+	if !strings.Contains(instruction, dir) {
+		t.Fatalf("instruction must carry the source path verbatim (separators intact):\n%s", instruction)
+	}
+	if strings.Contains(instruction, "github-repo.reasonix") {
+		t.Fatalf("instruction must not mangle the path separators:\n%s", instruction)
+	}
+}
