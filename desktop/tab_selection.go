@@ -112,6 +112,9 @@ func (a *App) SetActiveTab(tabID string) error {
 		a.startTabControllerBuild(next)
 	}
 	a.kickDeferredRebuildRetry()
+	// 任务 451 方案 B：切换是预取候选变化的事件（新活跃 tab 让位出候选、
+	// 旧活跃 tab 若无 runtime 则成为冷候选），kick 一轮防抖预取。
+	a.kickHistoryIdlePrefetch()
 	return nil
 }
 
