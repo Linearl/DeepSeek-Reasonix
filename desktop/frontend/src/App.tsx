@@ -1,6 +1,8 @@
 import { ManagementSurface } from "./components/ManagementSurface";
 import { useConfirmDialog } from "./components/ConfirmDialog";
 import { VersionSwitchDialog, type VersionEntry } from "./components/VersionSwitchDialog";
+import { ForkNoticeDialog } from "./components/ForkNoticeDialog";
+import type { ForkNoticeState } from "./lib/bridge";
 import { batchClosePolicy } from "./lib/tabClosePolicy";
 import { useManagementWorkspace } from "./lib/useManagementWorkspace";
 import { loadSplitState, persistSplitState, type SplitState } from "./lib/splitView";
@@ -872,6 +874,28 @@ export default function App() {
   const setSettingsTarget = useAppNavigationStore((s) => s.setSettingsTarget);
   const settingsFocus = useAppNavigationStore((s) => s.settingsFocus);
   const setSettingsFocus = useAppNavigationStore((s) => s.setSettingsFocus);
+  // Task 670: fork first-launch notice — same launch window as the chime
+  // gate. The Go side owns the gate (switch + mute + version record); the
+  // dialog is raised when it says so, and the version is acknowledged
+  // immediately (write-before-show) so this launch never prompts twice no
+  // matter how the dialog is closed.
+  const [forkNotice, setForkNotice] = useState<ForkNoticeState | null>(null);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const state = await app.GetForkNoticeState();
+        if (state.shouldShow) {
+          setForkNotice(state);
+          void app.AcknowledgeForkNotice(state.version).catch(() => { /* dialog still shows; retried never */ });
+        }
+      } catch { /* never block startup */ }
+    })();
+  }, []);
+  const closeForkNotice = useCallback(() => setForkNotice(null), []);
+  const openLabFromForkNotice = useCallback(() => {
+    setForkNotice(null);
+    openPage({ kind: "settings", tab: "experimental" });
+  }, [openPage]);
   // Task 40: seed from the synchronous first-paint cache so a classic-layout
   // user never sees workbench flash before the async settings chain lands.
   // The cached value is advisory only - applyDesktopPreferences overwrites it
@@ -6067,6 +6091,18 @@ export default function App() {
 
       <RemoteHostKeyDialog />
       <RemoteSecretDialog />
+
+      {/* Task 670: fork first-launch notice (10s countdown auto-close). */}
+      <ForkNoticeDialog
+        open={forkNotice !== null}
+        version={forkNotice?.version ?? ""}
+        onClose={closeForkNotice}
+        onOpenLab={openLabFromForkNotice}
+        onDismissForever={() => {
+          void app.DismissForkNoticeForever().catch(() => { /* best effort */ });
+          closeForkNotice();
+        }}
+      />
 
       <CommandPalette
         open={paletteOpen}

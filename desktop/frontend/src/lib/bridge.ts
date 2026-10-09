@@ -370,6 +370,14 @@ export interface VersionEntry {
   modTimeUnix: number;
 }
 
+/** ForkNoticeState from desktop/fork_notice.go: the first-launch notice gate (task 670). */
+export interface ForkNoticeState {
+  shouldShow: boolean;
+  version: string;
+  enabled: boolean;
+  muted: boolean;
+}
+
 /** Task 320: one row of the unified cross-session mail table (collabinbox.Entry). */
 export interface CollabMailEntryView {
   id: string;
@@ -999,6 +1007,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   MemorySuggestionsForTab(tabID: string): Promise<MemorySuggestionsView>;
   AcceptMemorySuggestionForTab(tabID: string, suggestion: MemorySuggestion): Promise<string>;
   AcceptSkillSuggestionForTab(tabID: string, suggestion: SkillSuggestion): Promise<string>;
+  // Task 670: fork first-launch notice — pin the version the dialog fired for
+  // (write-before-show), so the same tree never prompts twice.
+  AcknowledgeForkNotice(version: string): Promise<void>;
+  // Task 670: the resolved notice gate for this launch (switch + mute + version).
+  GetForkNoticeState(): Promise<ForkNoticeState>;
   Remember(scope: string, note: string): Promise<string>;
   RememberForTab(tabID: string, scope: string, note: string): Promise<string>;
   Forget(name: string): Promise<void>;
@@ -1235,6 +1248,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 320 遗留 #1：图标行未读徽标的只读计数（不应用保留期，零副作用）。
   CountUnreadCollabMail(): Promise<number>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
+  // Task 670: 「下次不提醒」 — persist the mute across future version swaps.
+  DismissForkNoticeForever(): Promise<void>;
   // 任务 461 P8 ③：批量已读——折叠条目结算整个重复簇，返回新快照。
   MarkCollabMailRead(ids: string[]): Promise<CollabMailSnapshotView>;
   UndismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
@@ -1321,6 +1336,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   PickThemeBackground(): Promise<string>;
   SetDesktopLayoutStyle(style: string): Promise<void>;
   SetDesktopZoomFactor(factor: number): Promise<void>;
+  // Task 670: the lab switch (default on per user ruling); re-enabling clears the mute.
+  SetDesktopForkNotice(enabled: boolean): Promise<void>;
   GetDesktopZoomFactor(): Promise<number>;
   RestartApplication(): Promise<void>;
   ReportDesktopWebViewReady(): Promise<void>;
@@ -5734,6 +5751,11 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSelectionActions() {},
     async SetExperimentalComposerDraft() {},
     async SetExperimentalAutoLoadOlder() {},
+    // Task 670 mocks: dev shell has no versioned install, so the gate stays silent.
+    async GetForkNoticeState() { return { shouldShow: false, version: "", enabled: true, muted: false }; },
+    async AcknowledgeForkNotice(_version: string) {},
+    async DismissForkNoticeForever() {},
+    async SetDesktopForkNotice(_enabled: boolean) {},
     async SetCollabInboxMerge() {},
     async SetCollabGuidanceMerge() {},
     async ListAddressableSessions() { return []; },
