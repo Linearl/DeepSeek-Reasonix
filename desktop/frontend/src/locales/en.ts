@@ -4763,6 +4763,7 @@ export const en = {
   "hangPrompt.intro": "The active session's open turn has made no progress (doctor responsiveness verdict: hang). You can run the same one-click analysis on it.",
   "pendingCrash.title": "Crash report left from the previous run",
   "pendingCrash.intro": "The previous run captured a panic before it died. Analyze it now instead of letting it ship silently.",
+  "pendingCrash.previewNote": "Panic summary captured by the previous run (kept verbatim):",
   // Task 642: lab mock-crash drill — every surface repeats the test/mock marking
   // so a simulated report can never be read (or triaged) as a real failure.
   "crash.mockBadge": "MOCK",

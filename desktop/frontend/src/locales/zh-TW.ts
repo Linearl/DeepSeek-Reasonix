@@ -4810,6 +4810,7 @@ export const zhTW: Record<DictKey, string> = {
   "hangPrompt.intro": "目前工作階段的對話長時間無進展（doctor responsiveness 判定卡頓）。可以對它執行同一套一鍵分析。",
   "pendingCrash.title": "偵測到上次執行遺留的當機報告",
   "pendingCrash.intro": "上次執行在結束前擷取了一次崩潰。除了靜默上報，現在可以對它一鍵分析。",
+  "pendingCrash.previewNote": "以下為上次執行擷取的 panic 原文摘要（技術原文保留，供根因分析）：",
   // 任務 642：實驗室模擬崩潰演練 —— 每個介面都重複 test/mock 標註，模擬報告不會被誤讀（或誤分類）為真實故障。
   "crash.mockBadge": "模擬",
   "crash.mockBanner": "這是一條模擬測試報告（實驗室-開發除錯 → 模擬崩潰測試產生），不是真實故障。傳送、複製與一鍵分析均走真實管道。",

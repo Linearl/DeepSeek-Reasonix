@@ -4760,6 +4760,7 @@ export const zh: Record<DictKey, string> = {
   "hangPrompt.intro": "当前会话的对话长时间无进展（doctor responsiveness 判定卡顿）。可以对它运行同一套一键分析。",
   "pendingCrash.title": "检测到上次运行遗留的崩溃报告",
   "pendingCrash.intro": "上次运行在退出前捕获了一次崩溃。除了静默上报，现在可以对它一键分析。",
+  "pendingCrash.previewNote": "以下为上次运行捕获的 panic 原文摘要（技术原文保留，供根因分析）：",
   // 任务 642：实验室模拟崩溃演练 —— 每个界面都重复 test/mock 标注，模拟报告不会被误读（或误分类）为真实故障。
   "crash.mockBadge": "模拟",
   "crash.mockBanner": "这是一条模拟测试报告（实验室-开发调试 → 模拟崩溃测试生成），不是真实故障。发送、复制与一键分析均走真实管道。",

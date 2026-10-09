@@ -97,6 +97,12 @@ let host = document.getElementById("pending-crash-entry");
 ok(host !== null, "the banner mounts at startup");
 ok(host?.querySelector(".pending-crash__title")?.textContent?.includes("（1）") === true, "the banner names the report count");
 ok(host?.querySelector(".pending-crash__body")?.textContent?.includes("scheduler.tick") === true, "the banner previews the newest payload");
+ok(
+  (host?.querySelector(".pending-crash__body")?.previousElementSibling?.textContent ?? "").includes(
+    "Panic summary captured by the previous run (kept verbatim)",
+  ),
+  "the verbatim panic block carries a caption line (task 695)",
+);
 
 const analyze = host?.querySelector(".pending-crash__analyze") as HTMLButtonElement;
 analyze.click();
@@ -130,6 +136,14 @@ ok(
 ok(
   host?.querySelector(".pending-crash__dismiss")?.textContent === "关闭",
   "the dismiss button re-renders localized instead of freezing in English",
+);
+ok(
+  (host?.querySelector(".pending-crash__body")?.previousElementSibling?.textContent ?? "").includes("技术原文保留"),
+  "the panic caption re-renders localized while the verbatim block stays original (task 695)",
+);
+ok(
+  host?.querySelector(".pending-crash__body")?.textContent?.includes("scheduler.tick") === true,
+  "the panic preview itself stays verbatim across a locale flip",
 );
 
 // Dismiss persists for the run: a second install does not re-paint.

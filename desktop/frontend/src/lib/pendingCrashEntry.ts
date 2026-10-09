@@ -93,6 +93,15 @@ function renderPendingCrashBanner(host: HTMLElement, report: PendingCrashSnapsho
   const children: HTMLElement[] = [title, intro];
   const preview = pendingCrashPreview(report);
   if (preview) {
+    // Task 695: the panic line itself is backend-log verbatim (translating it
+    // would corrupt the technical evidence), so it ships with a localized
+    // caption saying exactly that — the zh face of the banner then has no bare
+    // English block. Rides the intro class: same family look as the hang
+    // prompt, zero CSS delta (ratchet stays untouched).
+    const previewNote = document.createElement("div");
+    previewNote.className = "pending-crash__intro";
+    previewNote.textContent = tt("pendingCrash.previewNote");
+    children.push(previewNote);
     const body = document.createElement("pre");
     body.className = "pending-crash__body";
     body.textContent = preview;
