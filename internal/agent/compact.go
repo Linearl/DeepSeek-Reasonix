@@ -444,14 +444,19 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 
 // runSummaryRequest admits, sends, and drains one summary request.
 // Named returns so defer can attach RequestCount and still return usage.
+// 任务 707: the serving destination is compactionDestination() — the armed
+// economic model when it resolves, else the conversation destination exactly
+// as before. Admission and the output budget above stay sized against the
+// conversation model (the fold plan is independent of who writes the digest).
 func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (summary string, usage *provider.Usage, err error) {
+	summaryDest := a.compactionDestination()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	ctx = provider.WithRequestAttemptCounter(ctx)
 	defer func() {
 		usage = provider.UsageWithRequestAttemptCount(ctx, usage)
 		if usage != nil && (usage.TotalTokens > 0 || usage.RequestCount > 0) {
-			a.svc.sink.Emit(event.Event{Kind: event.Usage, ModelRef: a.destinationModelRef(), Usage: usage, Pricing: a.destinationPricing(), UsageSource: event.UsageSourceCompaction})
+			a.svc.sink.Emit(event.Event{Kind: event.Usage, ModelRef: summaryDest.ref, Usage: usage, Pricing: summaryDest.pricing, UsageSource: event.UsageSourceCompaction})
 		}
 	}()
 	defer trackPublishedHostStream(ctx, cancel)()
@@ -464,7 +469,7 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 	if req.MaxTokens < 256 {
 		return "", usage, fmt.Errorf("summary output budget too small (%d tokens)", req.MaxTokens)
 	}
-	dest := a.providerForRequest()
+	dest := summaryDest.prov
 	if dest == nil {
 		return "", usage, fmt.Errorf("summary unavailable")
 	}

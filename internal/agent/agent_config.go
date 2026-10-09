@@ -1,6 +1,9 @@
 package agent
 
-import "reasonix/internal/tool"
+import (
+	"reasonix/internal/provider"
+	"reasonix/internal/tool"
+)
 
 // agentConfig is everything New fixes for an Agent's lifetime; nothing writes
 // it afterwards, which agent_config_test.go enforces. Embedded rather than
@@ -13,6 +16,14 @@ type agentConfig struct {
 	// short contexts, and self-directed folds carry guards. Off by default -- every
 	// path it touches must behave exactly as before when it is off.
 	traceAsState bool
+	// compactModel is the armed economic-compaction target (task 707): the
+	// boot-resolved "provider/model" ref serving summary requests while the
+	// lab switch is on. Empty (the default) keeps every summary on the
+	// conversation destination — see compact_model.go for the scope contract.
+	compactModel string
+	// compactModelPricing prices the compact model's usage events; nil keeps
+	// the events unpriced (same contract as the construction pricing).
+	compactModelPricing *provider.Pricing
 	// restartUpdater publishes a staged build and relaunches the app (task 81).
 	// Bound by the host; nil in a host that cannot swap its own install, which
 	// is what makes the tool report itself unavailable rather than half-fail.

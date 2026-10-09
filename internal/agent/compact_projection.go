@@ -720,9 +720,13 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 	// status-400 aimed at the projection-era model left the input hash parked
 	// with no alternative exit. modelRefRetried bounds that escape hatch to one
 	// retry, mirroring the 429 lane's wait-once discipline.
+	// 任务707: the compared ref is the SUMMARY destination (summaryDestinationRef)
+	// — with an armed compact model the serving ref is stable across attempts,
+	// so a conversation-model switch no longer reads as "destination changed"
+	// and cannot trigger a blind resend of a deterministic 400.
 	modelRefRetried := false
 	for attempt := 0; ; attempt++ {
-		attemptRef := a.destinationModelRef()
+		attemptRef := a.summaryDestinationRef()
 		if req.allowChunked {
 			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 		} else {
@@ -738,7 +742,7 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 				if modelRefRetried {
 					slog.Info("agent: summary request succeeded after model-ref retry",
 						"attempts", attempt+1, "trigger", trigger,
-						"model_ref", a.destinationModelRef(),
+						"model_ref", a.summaryDestinationRef(),
 						"source_tokens", sourceTokens,
 						"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
 				} else {
@@ -758,7 +762,7 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 		// When the ref is unchanged the same 400 would fire again, so no blind
 		// duplicate spend; the failure then parks as before.
 		if !modelRefRetried && summaryModelRejected(err) {
-			if ref := a.destinationModelRef(); ref != attemptRef {
+			if ref := a.summaryDestinationRef(); ref != attemptRef {
 				modelRefRetried = true
 				slog.Warn("agent: summary request rejected — retrying once on the current model",
 					"trigger", trigger, "failed_ref", attemptRef, "current_ref", ref, "err", err)
