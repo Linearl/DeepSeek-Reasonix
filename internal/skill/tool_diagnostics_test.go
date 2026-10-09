@@ -64,6 +64,32 @@ func TestToolReferenceDiagnostics(t *testing.T) {
 	}
 }
 
+// Task 652: with MCP servers configured, a bare reference that matches no
+// offline identity may still name a runtime-served MCP tool, so it classifies
+// as unverified (info) instead of unknown (warning); without MCP the strict
+// unknown warning is preserved.
+func TestToolReferenceUnknownDependsOnConfiguredMCPServers(t *testing.T) {
+	for _, tc := range []struct {
+		name                 string
+		mcpServersConfigured bool
+		wantCode             string
+		wantSeverity         string
+	}{
+		{"no_mcp_keeps_unknown", false, "skill.tool_reference_unknown", "warning"},
+		{"mcp_configured_downgrades_to_unverified", true, "skill.tool_reference_unverified", "info"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := CheckToolReferences([]Skill{{Name: "example", AllowedTools: []string{"typo_read_file"}}}, ToolReferenceOptions{
+				Known:                tool.KnownToolNames(),
+				MCPServersConfigured: tc.mcpServersConfigured,
+			})
+			if len(d) != 1 || d[0].Code != tc.wantCode || d[0].Severity != tc.wantSeverity {
+				t.Fatalf("got %+v, want %s/%s", d, tc.wantCode, tc.wantSeverity)
+			}
+		})
+	}
+}
+
 func TestBuiltinSkillReferencesAndMCPRequirements(t *testing.T) {
 	store := DiagnosticStore(t.TempDir(), t.TempDir(), t.TempDir(), config.Default())
 	if len(store.List()) == 0 {

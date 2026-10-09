@@ -3948,7 +3948,7 @@ export const zhTW: Record<DictKey, string> = {
   "diag.issue.skill.mcp_dependency_missing.msg": "技能 {skill} 依賴 {dep}，但該 MCP 伺服器未設定",
   "diag.issue.skill.mcp_dependency_failed.msg": "技能 {skill} 依賴 {dep}，但該伺服器啟動失敗：{detail}",
   "diag.issue.skill.toolRef.msg": "技能 {skill} 的 allowed-tools 引用 {ref} {reason}",
-  "diag.issue.skill.toolRef.rem": "對照目標工作階段的工具清單核對引用；離線識別不能證明執行時可用",
+  "diag.issue.skill.toolRef.rem": "勾選「包含目前工作階段執行狀態」後重新整理核對；請改用 Reasonix 工具名或限定 MCP 引用（mcp__伺服器__工具）；裸 MCP 工具名僅插件包技能可用，Claude Code 工具名（Read 等）不被識別",
   "diag.issue.skill.toolRef.reason.glob": "glob 語法無效",
   "diag.issue.skill.toolRef.reason.mcpRef": "是不完整或無效的 MCP 引用",
   "diag.issue.skill.toolRef.reason.ambiguous": "匹配到多個 MCP 工具；請改用限定引用",

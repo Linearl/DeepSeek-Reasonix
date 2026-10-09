@@ -2250,7 +2250,7 @@ export const en = {
   "diag.issue.skill.mcp_dependency_missing.msg": "Skill {skill} requires {dep}, but that MCP server is not configured",
   "diag.issue.skill.mcp_dependency_failed.msg": "Skill {skill} requires {dep}, which is host-failed: {detail}",
   "diag.issue.skill.toolRef.msg": "Skill {skill} allowed-tools reference {ref} {reason}",
-  "diag.issue.skill.toolRef.rem": "Check the reference against the target session's tool inventory; offline recognition does not establish runtime availability",
+  "diag.issue.skill.toolRef.rem": "Tick Include current session runtime and refresh to verify; use Reasonix tool names or qualified MCP references (mcp__<server>__<tool>); bare MCP names bind only for plugin-packaged skills; Claude Code names (Read/Write/Edit) are not recognized",
   "diag.issue.skill.toolRef.reason.glob": "has invalid glob syntax",
   "diag.issue.skill.toolRef.reason.mcpRef": "has an incomplete or invalid MCP reference",
   "diag.issue.skill.toolRef.reason.ambiguous": "matches multiple MCP tools; use a qualified reference",

@@ -218,8 +218,9 @@ func Collect(opts Options) Report {
 	// Skill / MCP capability health (optional diagnostics; never fail doctor).
 	if skStore := skill.DiagnosticStore(cwd, "", "", cfg); skStore != nil {
 		report.Warnings = append(report.Warnings, CollectSkillHealthWarnings(SkillHealthOptions{
-			Skills:  skStore.List(),
-			Plugins: cfg.Plugins,
+			Skills:               skStore.List(),
+			Plugins:              cfg.Plugins,
+			MCPServersConfigured: len(cfg.Plugins) > 0,
 		})...)
 	}
 	report.Sessions.Dir = redactHome(report.Sessions.Dir)
