@@ -620,5 +620,50 @@ const keys = (rows: TranscriptRow[]) => rows.map((row) => row.key).join(",");
   ok(rows.every((row) => estimateTranscriptRowSize(row) > 0), "every row kind has a positive size estimate");
 }
 
+// ── 任务 668: tool-grouping user toggle ───────────────────────────────────────
+
+{
+  // Grouping off flattens the same fixture that produced tool-batch + cards:
+  // every tool renders as its own row, no group/batch rows anywhere.
+  const models = buildTurnModels(fixture);
+  const foldKey = models[0].segments[0].key;
+  const folds = foldMapWithToggle(EMPTY_FOLDS, foldKey, false);
+  const rows = buildTranscriptRows(models, { ...rowOptions(folds, "expanded"), toolGroupingEnabled: false });
+  ok(!rows.some((row) => row.kind === "tool-batch"), "grouping off emits no read-only batch rows");
+  ok(!rows.some((row) => row.kind === "tool-group"), "grouping off emits no tool-group rows");
+  eq(rows.filter((row) => row.kind === "tool").map((row) => (row as { item: { id: string } }).item.id).join(","), "t1,t2,t3", "grouping off keeps every tool a standalone card");
+}
+
+{
+  // Consecutive successful shells that would form a shell group stay flat.
+  const models = buildTurnModels([
+    { kind: "user", id: "u-shell-flat", text: "run checks" },
+    { kind: "tool", id: "shell-a", name: "bash", args: "{}", readOnly: false, status: "done" },
+    { kind: "tool", id: "shell-b", name: "bash", args: "{}", readOnly: false, status: "done" },
+    { kind: "assistant", id: "a-shell-flat", text: "done", reasoning: "", streaming: false },
+  ]);
+  const rows = buildTranscriptRows(models, { ...rowOptions(EMPTY_FOLDS, "expanded"), toolGroupingEnabled: false });
+  ok(!rows.some((row) => row.kind === "tool-group"), "grouping off never groups consecutive shells");
+  ok(rows.some((row) => row.kind === "tool" && row.item.id === "shell-a") && rows.some((row) => row.kind === "tool" && row.item.id === "shell-b"), "both shells stay standalone cards");
+}
+
+{
+  // Creation mode with grouping off: groupable tools render as plain cards.
+  const models = buildTurnModels(fixture);
+  const rows = buildTranscriptRows(models, { ...rowOptions(EMPTY_FOLDS, "expanded"), creationMode: true, toolGroupingEnabled: false });
+  ok(!rows.some((row) => row.kind === "tool-group"), "creation mode respects the grouping toggle");
+  eq(rows.filter((row) => row.kind === "tool").length, 3, "creation mode flat mode still shows every tool card");
+}
+
+{
+  // Omitted option keeps the grouped status quo (existing blocks above assert
+  // the same fixtures group; this one pins the default explicitly).
+  const models = buildTurnModels(fixture);
+  const foldKey = models[0].segments[0].key;
+  const folds = foldMapWithToggle(EMPTY_FOLDS, foldKey, false);
+  const rows = buildTranscriptRows(models, rowOptions(folds, "expanded"));
+  ok(rows.some((row) => row.kind === "tool-batch"), "omitting the toggle keeps read-only batching (default on)");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

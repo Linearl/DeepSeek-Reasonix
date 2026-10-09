@@ -661,12 +661,15 @@ export function userRowKey(itemId: string): string {
 }
 
 /** Body rows of one expanded process fold: read-only batches, creation tool
- *  groups, single tool cards, phases, info notices, compactions, reasoning. */
+ *  groups, single tool cards, phases, info notices, compactions, reasoning.
+ *  `groupingEnabled` is the task-668 user toggle: false renders every tool as
+ *  its own card (render layer only — the call layer is untouched either way). */
 function processBodyRows(
   segment: SegmentModel,
   creationMode: boolean,
   sessionExperience: SessionExperience,
   subcallsByParent: ReadonlyMap<string, readonly ToolItem[]>,
+  groupingEnabled: boolean,
 ): TranscriptRowWithLayout[] {
   const rows: TranscriptRowWithLayout[] = [];
   let roBatch: ToolItem[] = [];
@@ -700,7 +703,7 @@ function processBodyRows(
     toolBatchKind = null;
   };
   for (const it of segment.displayItems) {
-    if (creationMode && it.kind === "tool" && isCreationGroupableTool(it as ToolItem)) {
+    if (creationMode && groupingEnabled && it.kind === "tool" && isCreationGroupableTool(it as ToolItem)) {
       const kind = toolGroupKind(it as ToolItem);
       if (kind) {
         if (toolBatchKind && toolBatchKind !== kind) flushToolBatch();
@@ -715,6 +718,7 @@ function processBodyRows(
     }
     if (
       !creationMode
+      && groupingEnabled
       && it.kind === "tool"
       && it.status === "done"
       && !it.fileDiff
@@ -726,7 +730,7 @@ function processBodyRows(
       continue;
     }
     if (it.kind === "tool") flushToolBatch();
-    if (!creationMode && it.kind === "tool" && it.status !== "running" && isBatchedReadOnlyTool(it.name, it.readOnly)) {
+    if (!creationMode && groupingEnabled && it.kind === "tool" && it.status !== "running" && isBatchedReadOnlyTool(it.name, it.readOnly)) {
       roBatch.push(it as ToolItem);
       continue;
     }
@@ -787,6 +791,9 @@ export interface BuildRowsOptions {
   hasCheckpointForTurn?: (turn: number) => boolean;
   reasoningDisplayMode?: ResolvedReasoningDisplayMode;
   subcallsByParent?: ReadonlyMap<string, readonly ToolItem[]>;
+  /** 任务 668 消息流工具分组用户开关：false = 连续同类工具不聚合，逐条平铺。
+   * 纯渲染层偏好，缺省 true 维持既有分组行为。 */
+  toolGroupingEnabled?: boolean;
 }
 
 function numericRevision(value: string): number { return Number.parseInt(stableStringHash(value), 36) >>> 0; }
@@ -802,6 +809,7 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
   // Transcript always supplies the canonical sessionExperience.
   const renderExperience = options.sessionExperience ?? "standard";
   const subcallsByParent = options.subcallsByParent ?? new Map<string, readonly ToolItem[]>();
+  const groupingEnabled = options.toolGroupingEnabled ?? true;
   for (let modelIndex = models.length - 1; modelIndex >= 0; modelIndex -= 1) {
     const model = models[modelIndex];
     const modelRows: TranscriptRowWithLayout[] = [];
@@ -816,7 +824,7 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
       if (segment.displayItems.length > 0) {
         const open = options.folds.get(segment.key)?.open ?? defaultFoldOpen(segment, foldExperience);
         modelRows.push({ kind: "process-header", key: `ph:${segment.key}`, segment, open, layoutVariant: "static" });
-        if (open) modelRows.push(...processBodyRows(segment, options.creationMode, renderExperience, subcallsByParent));
+        if (open) modelRows.push(...processBodyRows(segment, options.creationMode, renderExperience, subcallsByParent, groupingEnabled));
       }
       for (const item of segment.outsideItems) {
         if (item.kind === "extension") {

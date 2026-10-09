@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { SessionExperienceSettings } from "../components/SessionExperienceSettings";
 import { LocaleProvider } from "../lib/i18n";
 import { getSessionExperience } from "../lib/sessionExperience";
+import { getToolGroupingEnabled } from "../lib/toolGroupingPreference";
 import type { SettingsView } from "../lib/types";
 
 const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost" });
@@ -38,30 +39,50 @@ function SettingsHost() {
   return <SessionExperienceSettings snapshot={snapshot} busy={busy} apply={apply} />;
 }
 const root = createRoot(document.getElementById("root")!);
-const buttons = () => [...document.querySelectorAll<HTMLButtonElement>("[role=radio]")];
+// The section hosts the three-mode session experience group plus the task-668
+// tool-grouping toggle, so queries are scoped to each radiogroup's aria-label
+// instead of every radio on the page. (The old page-wide `[role=radio]` query
+// was written for a two-mode era and has been red since 简洁 landed.)
+const radiosIn = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(
+  `[role=radiogroup][aria-label="${label}"] > [role=radio]`)];
+const buttons = () => radiosIn("Session experience");
+const groupingButtons = () => radiosIn("Message stream tool grouping");
 try {
   await act(async () => root.render(<LocaleProvider><SettingsHost /></LocaleProvider>));
-  assert.equal(buttons().length, 2);
-  assert.equal(buttons()[0].getAttribute("aria-checked"), "true");
-  await act(async () => buttons()[1].click());
+  assert.equal(buttons().length, 3, "concise/standard/deep all render as mode options");
+  assert.equal(buttons()[1].getAttribute("aria-checked"), "true");
+  await act(async () => buttons()[2].click());
   assert.equal(getSessionExperience(), "deep");
   assert.ok(buttons().every(button => button.disabled));
   await act(async () => { release(); await completion; });
-  assert.equal(buttons()[1].getAttribute("aria-checked"), "true");
+  assert.equal(buttons()[2].getAttribute("aria-checked"), "true");
+
+  // 任务 668：工具分组开关——纯前端偏好，无后端写入、无 busy 门控，即点即生效。
+  assert.equal(groupingButtons().length, 2);
+  assert.equal(getToolGroupingEnabled(), true, "empty storage defaults to grouping on (status quo)");
+  assert.equal(groupingButtons()[1].getAttribute("aria-checked"), "true");
+  await act(async () => groupingButtons()[0].click());
+  assert.equal(getToolGroupingEnabled(), false, "clicking Off flips the store synchronously");
+  assert.equal(localStorage.getItem("reasonix-tool-grouping"), "off");
+  assert.equal(groupingButtons()[0].getAttribute("aria-checked"), "true");
+  assert.ok(buttons().every(button => !button.disabled), "grouping toggle never gates the backend-backed mode buttons");
+  await act(async () => groupingButtons()[1].click());
+  assert.equal(getToolGroupingEnabled(), true);
+  assert.equal(localStorage.getItem("reasonix-tool-grouping"), "on");
 
   failed = true;
   await act(async () => buttons()[0].click());
-  assert.equal(getSessionExperience(), "standard");
+  assert.equal(getSessionExperience(), "concise");
   await act(async () => { release(); await completion; });
   assert.equal(getSessionExperience(), "deep", "failed write reloads even when backend returns the same previous value");
-  assert.equal(buttons()[1].getAttribute("aria-checked"), "true");
-  assert.deepEqual(writes, ["deep", "standard"]);
+  assert.equal(buttons()[2].getAttribute("aria-checked"), "true");
+  assert.deepEqual(writes, ["deep", "concise"]);
 
   backend = { ...backend, sessionExperience: undefined };
   await act(async () => reload());
   assert.equal(getSessionExperience(), "standard");
-  assert.equal(buttons()[0].getAttribute("aria-checked"), "true");
-  assert.equal(buttons()[0].tabIndex, 0, "both segment buttons remain keyboard reachable");
-  assert.equal(buttons()[1].tabIndex, 0);
-  console.log("session experience controls: success, failure snapshot, busy state, legacy backend and keyboard reachability passed");
+  assert.equal(buttons()[1].getAttribute("aria-checked"), "true");
+  assert.equal(buttons()[0].tabIndex, 0, "all segment buttons remain keyboard reachable");
+  assert.equal(buttons()[2].tabIndex, 0);
+  console.log("session experience controls: success, failure snapshot, busy state, legacy backend, tool grouping toggle and keyboard reachability passed");
 } finally { await act(async () => root.unmount()); dom.window.close(); }

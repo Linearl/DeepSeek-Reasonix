@@ -28,7 +28,10 @@ function check(value: boolean, message: string): void {
 console.log("\nsession experience");
 localStorage.clear();
 localStorage.setItem("reasonix-session-experience", "deep");
-check(getSessionExperience() === "standard", "startup ignores stale localStorage before the backend snapshot");
+// 任务 269 A3：水合前兼容镜像即权威（源码 getSessionExperience 注释原文），启动/
+// 恢复窗口按用户真实档位渲染而不是假定 standard。旧断言「启动忽略镜像」是 A3
+// 改语义时漏改的预存红（668 定向跑相关子集时发现，基线同红），对齐到既定语义。
+check(getSessionExperience() === "deep", "startup honors the compatibility mirror before the backend snapshot");
 hydrateSessionExperience("invalid");
 check(getSessionExperience() === "standard", "invalid startup values normalize to standard");
 check(resolveWorkProcessPresentation("standard").keepExpandedAfterCompletion === false, "standard collapses completed work");
