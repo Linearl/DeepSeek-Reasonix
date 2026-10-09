@@ -1549,10 +1549,17 @@ func (a *App) BuildTime() string {
 // [sandbox] allow_write) plus the user-global allow dirs injected into the
 // baseline. userCfg is the read-only user config already loaded for the view
 // and doubles as the fallback when the merged load fails.
+//
+// Task 693: the merged load must be the credential-free variant. This is a
+// display-only path (sandbox write roots); loading credentials here would
+// force-repin global credentials into the process environment via the
+// Credentials-source dotenv loader, overwriting the workspace .env values the
+// runtime already pinned, and would break the ForView "Credentials are not
+// loaded" contract.
 func (a *App) mergedSandboxWriteRoots(userCfg *config.Config, root string) (allowWrite, effectiveRoots []string) {
 	cfg := userCfg
 	if root != "" {
-		if merged, err := config.LoadForRootReadOnly(root); err == nil && merged != nil {
+		if merged, err := config.LoadForRootWithoutCredentialsReadOnly(root); err == nil && merged != nil {
 			cfg = merged
 		}
 	}
