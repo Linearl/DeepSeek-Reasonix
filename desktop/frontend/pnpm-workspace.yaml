@@ -5,3 +5,8 @@ overrides:
   dompurify: 3.4.16
   mdast-util-gfm-autolink-literal: 2.0.0
   undici: 7.29.1
+  # 699 security bumps: dependabot #91/#90/#89 (MCP OAuth credential scoping,
+  # katex prototype pollution, source-map-js event-loop DoS).
+  '@modelcontextprotocol/client': 2.2.0
+  katex: 0.18.9
+  source-map-js: 1.2.2
