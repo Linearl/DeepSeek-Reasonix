@@ -283,15 +283,30 @@ func TestTrashSessionMatchesLiveSeesEventLogDivergence(t *testing.T) {
 		t.Fatal("identical live/trash reported as different")
 	}
 
-	// The live session keeps chatting: growth lands in the event log only, so
-	// the two .jsonl checkpoints stay byte-identical. Byte comparison would
-	// call this a duplicate and delete the live session's newer history.
+	// The live session keeps chatting. The schema-1 writer landed this growth
+	// in the event log only, so both .jsonl checkpoints stayed byte-identical;
+	// the schema-2 writer also refreshes the checkpoint cache on every save,
+	// so the stale-anchor state is restored explicitly instead of assumed: a
+	// crash between the log append and the checkpoint refresh, a save whose
+	// non-fatal checkpoint write failed ("keeping save after display
+	// read-model write failure"), or an older build that never advanced the
+	// cache all leave the anchor behind the authoritative log. Byte comparison
+	// would call this a duplicate and delete the live session's newer history.
+	liveAnchor, err := os.ReadFile(live)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "newer work"})
 	if err := s.SaveSnapshot(live); err != nil {
 		t.Fatalf("SaveSnapshot diverge: %v", err)
 	}
-	liveAnchor, _ := os.ReadFile(live)
-	trashAnchor, _ := os.ReadFile(trashPath)
+	if err := os.WriteFile(live, liveAnchor, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	trashAnchor, err := os.ReadFile(trashPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(liveAnchor) != string(trashAnchor) {
 		// Task 371 (C3): this precondition failing means the byte-compare
 		// trap this test exists to pin is no longer constructible — skipping
