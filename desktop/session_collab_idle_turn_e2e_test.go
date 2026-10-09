@@ -36,7 +36,14 @@ type idleTurnE2E struct {
 
 func newIdleTurnE2E(t *testing.T) *idleTurnE2E {
 	t.Helper()
-	dir := t.TempDir()
+	return newIdleTurnE2EAt(t, t.TempDir())
+}
+
+// newIdleTurnE2EAt builds the harness on an existing directory — the 任务709
+// reopen scenario stands a second controller on the SAME session path to
+// reproduce what a stale session's runtime looks like after a restart.
+func newIdleTurnE2EAt(t *testing.T, dir string) *idleTurnE2E {
+	t.Helper()
 	e := &idleTurnE2E{
 		mail: sessioncollab.NewMailStoreWithHopLimit(dir, 8),
 	}
@@ -130,10 +137,17 @@ func (e *idleTurnE2E) deliverSteer(t *testing.T, from, to, body string) (bool, s
 }
 
 // sweepBridge runs the real bridge logic over one target view built from the
-// controller's live snapshot — the same flattening sweepIdleInboxTurns does.
+// controller's live snapshot — the same flattening sweepIdleInboxTurns does,
+// 任务709 起含暂停来源（用户暂停/自动暂停）与唤醒 seam。
 func (e *idleTurnE2E) sweepBridge(b *idleTurnBridge, contactID string, at time.Time) {
 	view := idleTurnTargetView{contactID: contactID}
 	snap := e.ctrl.InboxSnapshot()
+	view.paused = snap.Paused && snap.UserPaused
+	view.autoPaused = snap.Paused && !snap.UserPaused
+	view.resume = func() error {
+		_, err := e.ctrl.ResumeInboxAutoPause()
+		return err
+	}
 	for _, item := range snap.Items {
 		if item.State == sessioninbox.StateQueued {
 			view.queuedID = item.ID
@@ -223,5 +237,123 @@ func TestIdleTurnEndToEndExplicitFollowupOpensTurn(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if got := e.snapshotInputs(); len(got) != 1 {
 		t.Fatalf("no duplicate turns allowed, inputs = %v", got)
+	}
+}
+
+// 任务709 验收主场景（708 实测复现）：长期闲置（stale）会话——上一轮 turn 被
+// 进程结束打断（更新重启/强杀），重开时恢复把在飞孤儿改写为 Uncertain 并
+// 「自动暂停」收件箱（非用户意志）→ 新协作投递落箱 queued_followup → 修复前：
+// 桥把 paused 一律当用户持有，永久静默，等人工唤醒；修复后：桥在开轮前原子
+// 解除自动暂停并消费新投递；Uncertain 孤儿留在待检视架子上不被打扰。
+func TestIdleTurnEndToEndAutoPausedStaleSessionOpensTurn(t *testing.T) {
+	dir := t.TempDir()
+	sessionPath := filepath.Join(dir, "session.jsonl")
+
+	// 第一段生命周期：一条 turn 在飞时进程结束——落一条 StateRunning 在飞孤儿。
+	orphanStore, err := sessioninbox.Open(sessionPath, sessioninbox.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	orphan, err := orphanStore.Enqueue(sessioninbox.EnqueueRequest{
+		Intent:      sessioninbox.IntentFollowup,
+		Envelope:    sessioninbox.PromptEnvelope{DisplayText: "709 在飞孤儿：被进程结束打断的上一轮", SubmitText: "orphan"},
+		Idempotency: "collab:orphan-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orphanStore.ClaimItem(orphan.ItemID); err != nil {
+		t.Fatal(err)
+	}
+	orphanStore.Close()
+
+	// 第二段生命周期：同一路径重开（= stale 会话被投递时现场站起的 runtime）。
+	e := newIdleTurnE2EAt(t, dir)
+	b := newIdleTurnBridge()
+	snap := e.ctrl.InboxSnapshot()
+	if !snap.Paused || snap.UserPaused || !snap.Recovered {
+		t.Fatalf("stale reopen must carry an AUTOMATIC recovery pause (Paused && !UserPaused && Recovered), got %+v", snap)
+	}
+
+	const fresh = "709 新投递：stale 会话必须分钟级被消费"
+	steered, itemID, mailID := e.deliverSteer(t, "c-sender", "c-target", fresh)
+	if steered {
+		t.Fatal("paused target cannot take a steer — it must degrade")
+	}
+	if itemID == "" {
+		t.Fatal("degraded steer must keep a durable inbox item")
+	}
+	// 708 现场钉住：落库结局就是 queued_followup（修复前的静默绿灯）。
+	if r, ok := e.mail.DeliveryReceipt(mailID); !ok || r.Outcome != sessioncollab.ReceiptQueuedFollowup {
+		t.Fatalf("stale-session delivery receipt = %+v, want queued_followup", r)
+	}
+
+	// 桥两拍内唤醒 + 消费新投递。
+	base := time.Now()
+	e.sweepBridge(b, "c-target", base)
+	e.sweepBridge(b, "c-target", base.Add(sessionCollabIdleTurnDelay+4*time.Second))
+
+	got := e.waitForInputs(t, 1)
+	if len(got) != 1 || !strings.Contains(got[0], fresh) {
+		t.Fatalf("the fresh delivery must be consumed after the wake, got %v", got)
+	}
+	if snap := e.ctrl.InboxSnapshot(); snap.Paused {
+		t.Fatalf("wake must clear the automatic pause, snapshot = %+v", snap)
+	}
+	// Uncertain 孤儿留在架子上待人工检视——唤醒不得把它卷进任何轮。
+	snap = e.ctrl.InboxSnapshot()
+	if len(snap.Items) != 1 || snap.Items[0].ID != orphan.ItemID || snap.Items[0].State != sessioninbox.StateUncertain {
+		t.Fatalf("recovered orphan must stay shelved for review, snapshot = %+v", snap)
+	}
+	e.sweepBridge(b, "c-target", base.Add(3*sessionCollabIdleTurnDelay))
+	time.Sleep(50 * time.Millisecond)
+	if got := e.snapshotInputs(); len(got) != 1 {
+		t.Fatalf("exactly one turn expected (shelved orphan untouched), got %v", got)
+	}
+}
+
+// 任务709 边界回归：用户显式暂停（queue panel / SetInboxPaused）依旧绝对
+// 静默——即便有新投递与排队工作，桥也不越。暂停是用户意志。
+func TestIdleTurnEndToEndUserPausedInboxStaysUntouched(t *testing.T) {
+	e := newIdleTurnE2E(t)
+	b := newIdleTurnBridge()
+	const leftover = "709 用户持有：暂停中的遗留项"
+	if _, err := e.ctrl.EnqueueInbox(control.InboxRequest{
+		Intent: sessioninbox.IntentFollowup, Display: leftover, Raw: leftover, Submit: leftover,
+		Source: "collab:c-sender", Idempotency: "collab:userpause-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 用户显式暂停（走人入口，留 UserPaused 来源）。
+	if err := e.ctrl.SetInboxPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	if snap := e.ctrl.InboxSnapshot(); !snap.Paused || !snap.UserPaused {
+		t.Fatalf("explicit pause must carry user provenance: %+v", snap)
+	}
+	// 系统侧唤醒原语对用户暂停必须是 no-op。
+	if resumed, err := e.ctrl.ResumeInboxAutoPause(); err != nil || resumed {
+		t.Fatalf("ResumeInboxAutoPause must refuse a user pause, got %v, %v", resumed, err)
+	}
+
+	const fresh = "709 用户暂停期间到达的投递"
+	steered, _, mailID := e.deliverSteer(t, "c-sender", "c-target", fresh)
+	if steered {
+		t.Fatal("paused target cannot take a steer")
+	}
+	if r, ok := e.mail.DeliveryReceipt(mailID); !ok || r.Outcome != sessioncollab.ReceiptQueuedFollowup {
+		t.Fatalf("delivery receipt = %+v, want queued_followup", r)
+	}
+
+	base := time.Now()
+	for step := 0; step < 4; step++ {
+		e.sweepBridge(b, "c-target", base.Add(time.Duration(step)*(sessionCollabIdleTurnDelay+4*time.Second)))
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := e.snapshotInputs(); len(got) != 0 {
+		t.Fatalf("a user-held queue must never be auto-opened, inputs = %v", got)
+	}
+	if snap := e.ctrl.InboxSnapshot(); !snap.Paused || !snap.UserPaused || len(snap.Items) != 2 {
+		t.Fatalf("user pause must hold with both items intact: %+v", snap)
 	}
 }
