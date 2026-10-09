@@ -3699,8 +3699,19 @@ export function useController() {
       // ones on every switch. Visibility is still enforced before dispatching
       // results (below), not before fetching, so a background tab only skips
       // the dispatch, not the fetch it already paid for.
+      // Task 363 ⑥: the effort leg is the can-send input of the composite —
+      // time it on its own so the e2e line below can pair hydrate vs ancillary
+      // attribution (the other three legs already report their own timings).
+      let effortLegMs = 0;
       const [effort, jobs, context, checkpoints] = await Promise.all([
-        loadAncillary("effort", () => app.EffortForTab(tabId)),
+        loadAncillary("effort", async () => {
+          const effortLegStartedAt = Date.now();
+          try {
+            return await app.EffortForTab(tabId);
+          } finally {
+            effortLegMs = Date.now() - effortLegStartedAt;
+          }
+        }),
         loadAncillary("jobs", () => app.JobsForTab(tabId)),
         loadAncillary("context", () => app.ContextUsageForTab(tabId)),
         loadAncillary("checkpoints", () => app.CheckpointsForTab(tabId)),
@@ -3709,6 +3720,22 @@ export function useController() {
       if (effort !== undefined) dispatchTo(tabId, { type: "effort", effort });
       if (jobs !== undefined) dispatchTo(tabId, { type: "jobs", jobs: asArray(jobs) });
       if (context !== undefined) dispatchTo(tabId, { type: "context", context });
+      // Task 363 ⑥ end-to-end caliber: one number for "open a history topic
+      // until a message can be sent" — hydrate (history read+apply) plus the
+      // ancillary batch whose effort leg feeds the composer control. The
+      // acceptance line is <2s; the stage-table entry feeds the monitor board
+      // and the dedicated log line is unconditional because topic opens are
+      // user-rare (same reasoning as the hydrate summary). Other hydrate
+      // reasons keep their existing per-stage reporting only.
+      if (reason === "open-topic") {
+        const e2eMs = Date.now() - hydrateStartedAt;
+        reportStageTiming(tabId, "open-topic:e2e", e2eMs);
+        reportFrontendLog(
+          "tab-switch",
+          "open-topic e2e",
+          `tab=${tabId} seq=${currentSwitchSeq(tabId)} e2e=${Math.round(e2eMs)}ms hydrate=${Math.round(hydrateElapsed)}ms ancillary=${Math.round(Date.now() - ancillaryStartedAt)}ms effort=${Math.round(effortLegMs)}ms`,
+        );
+      }
       // Signal ContextPanel to re-fetch now that ancillary data (context,
       // effort, jobs) has landed. Without this, the right-side panel keeps
       // stale RequestCount / ElapsedMs / SessionCost from before a session
