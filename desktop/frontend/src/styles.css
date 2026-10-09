@@ -34792,9 +34792,9 @@ button.statusbar__mcp:focus-visible {
 
 .sidebar--workbench .sidebar__utility-row {
   display: grid;
-  /* 任务 320 UI 规格（20261002）：回收站/信件中心/自动化/设置 = 4 列同排；
-     任务 409 群聊入行（兑现 320 预留位）→ 656b 同步扩为 5 列
-     （回收站/信件中心/群聊/自动化/设置）。644：收件箱改名信件中心。 */
+  /* 任务 320 UI 规格（20261002）起步 4 列；任务 409（20261009）群聊键并排后
+     为 5 列同排（回收站→信件中心→群聊→自动化→设置）。452L 兑现「届时同步
+     扩列」欠账——409 当时加键未扩列，第 5 键（设置）实际掉行。 */
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
 }
@@ -34833,8 +34833,8 @@ button.statusbar__mcp:focus-visible {
    because --sidebar-workbench-* are scoped to .sidebar--workbench. */
 .sidebar:not(.sidebar--workbench) .sidebar__nav--footer .sidebar__utility-row {
   display: grid;
-  /* 任务 320 UI 规格（20261002）：classic 同排 4 列；
-     任务 409 群聊入行 → 656b 同步扩为 5 列（回收站/信件中心/群聊/自动化/设置）。 */
+  /* 任务 320 起步 4 列；任务 409 群聊键并排后 classic 同排 5 列（452L 同步扩列，
+     与 workbench 保持一致：回收站→信件中心→群聊→自动化→设置）。 */
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   --wails-draggable: no-drag;
