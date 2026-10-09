@@ -13,16 +13,16 @@ import (
 	"time"
 
 	"reasonix/internal/config"
-	"reasonix/internal/proc"
-)
+	"reasonix/internal/proc"	"reasonix/internal/control")
 
 // crash_analysis.go is task 617 route B: "one-click analyze" from the crash /
-// performance prompt. It reuses the existing session surface — rotate the
-// active tab to a fresh session, switch it to YOLO, and submit an initial
-// instruction that carries the sanitized diagnostic payload and asks the agent
-// to run the gh-issue-submit skill and report the issue link back into the
-// session. No new network endpoint is introduced; the only side effects are a
-// local gh auth probe and the user-approved session itself.
+// performance prompt. It reuses the existing session surface — open a fresh
+// Global-scope conversation (task 672: never under the active tab's project),
+// switch it to YOLO, and submit an initial instruction that carries the
+// sanitized diagnostic payload and asks the agent to run the gh-issue-submit
+// skill and report the issue link back into the session. No new network
+// endpoint is introduced; the only side effects are a local gh auth probe and
+// the user-approved session itself.
 //
 // Route A (copy a paste-ready issue skeleton) stays the zero-dependency
 // fallback whenever any prerequisite here fails.
@@ -38,18 +38,39 @@ type CrashAnalysisAvailabilityReport struct {
 	// the libs-side keyring convention) reports a usable GitHub identity.
 	GhAuthenticated bool   `json:"ghAuthenticated"`
 	GhCheckDetail   string `json:"ghCheckDetail,omitempty"`
-	// WorkspaceReady: the active tab has a live session to host the analysis.
+	// WorkspaceReady: the app has a live writable tab. The analysis itself is
+	// hosted in a fresh Global tab (task 672), so this stays a readiness proxy
+	// for the session surface, not the analysis host.
 	WorkspaceReady bool `json:"workspaceReady"`
 	Ready          bool `json:"ready"`
 }
+
+// Task 672 seams: the gates and the final submission are indirected so tests
+// can drive StartCrashAnalysis end to end without a real fork checkout, gh
+// identity, or model runtime (same pattern as ghFallbackLocationDirs below).
+var (
+	crashAnalysisSourceDir = detectCrashAnalysisSourceDir
+	crashAnalysisGhAuth    = ghAuthenticated
+	crashAnalysisSubmit    = func(a *App, tabID, instruction string) error {
+		return a.SubmitToTab(tabID, instruction)
+	}
+)
+
+// crashAnalysisControllerWaitTimeout bounds the wait for the freshly opened
+// analysis tab's controller (the build runs in a goroutine, so the tab exists
+// before its runtime does — heartbeatControllerWaitTimeout is the same idea
+// for heartbeat runs). A var so tests can shorten it.
+var crashAnalysisControllerWaitTimeout = 60 * time.Second
+
+const crashAnalysisControllerPollInterval = 50 * time.Millisecond
 
 // CrashAnalysisAvailability runs the three route-B prerequisite checks without
 // starting anything. The frontend gates the one-click flow on this report and
 // shows one distinct notice per failed check (missing source / spend warning /
 // gh auth).
 func (a *App) CrashAnalysisAvailability() CrashAnalysisAvailabilityReport {
-	dir := detectCrashAnalysisSourceDir()
-	ghOK, ghDetail := ghAuthenticated()
+	dir := crashAnalysisSourceDir()
+	ghOK, ghDetail := crashAnalysisGhAuth()
 	report := CrashAnalysisAvailabilityReport{
 		SourceReady:     dir != "",
 		SourceDir:       dir,
@@ -69,11 +90,11 @@ func (a *App) CrashAnalysisAvailability() CrashAnalysisAvailabilityReport {
 // what was started. Every prerequisite is re-checked here so the binding stays
 // safe even if the frontend's earlier availability probe went stale.
 func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
-	dir := detectCrashAnalysisSourceDir()
+	dir := crashAnalysisSourceDir()
 	if dir == "" {
 		return "", fmt.Errorf("no local reasonix source detected — root-cause analysis needs the fork checkout; use the Copy button to report manually")
 	}
-	if ok, ghDetail := ghAuthenticated(); !ok {
+	if ok, ghDetail := crashAnalysisGhAuth(); !ok {
 		hint := strings.TrimSpace(ghDetail)
 		if hint == "" {
 			hint = "gh auth status failed"
@@ -93,14 +114,23 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 		return "", err
 	}
 
-	// Rotate the active tab to a fresh session, force YOLO so the analysis run
-	// is not interrupted by approval prompts, then submit the instruction.
-	if err := a.NewSessionForTab(""); err != nil {
-		return "", fmt.Errorf("could not start a fresh session for the analysis (%v) — use the Copy button to report manually", err)
+	// Task 672: the analysis conversation is hosted under the built-in Global
+	// scope, never under the active tab's project. The route used to rotate the
+	// active tab (NewSessionForTab("")), which filed the fresh topic under
+	// whichever project the user had open — a 2026-10-09 run landed inside
+	// video_comprehension. The analysis is a system-level diagnosis and belongs
+	// to no user project, so it takes the same path heartbeat runs do:
+	// CreateTopic(global) → open a global tab → wait for its controller. The
+	// user's open project gains nothing; the sidebar lists the run under Global.
+	tabID, err := a.openCrashAnalysisSession(r.Kind)
+	if err != nil {
+		return "", err
 	}
-	a.SetModeForTab("", "yolo")
+	// Force YOLO so the analysis run is not interrupted by approval prompts,
+	// then submit the instruction.
+	a.SetModeForTab(tabID, "yolo")
 	instruction := buildCrashAnalysisInstruction(dir, string(payload), r.TestMock)
-	if err := a.SubmitToTab("", instruction); err != nil {
+	if err := crashAnalysisSubmit(a, tabID, instruction); err != nil {
 		return "", fmt.Errorf("could not submit the analysis instruction (%v) — use the Copy button to report manually", err)
 	}
 	return crashAnalysisSummary(dir), nil
@@ -115,6 +145,70 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 // the notice already says the session started and where the issue link lands.
 func crashAnalysisSummary(dir string) string {
 	return fmt.Sprintf("分析将对照本地源码 %s 定位根因，并提交 issue 到 %s。", dir, crashAnalysisRepo)
+
+// openCrashAnalysisSession creates the Global-scope conversation hosting a
+// one-click analysis run and waits for its tab controller. It returns the ID
+// of the tab the analysis instruction must be submitted to.
+func (a *App) openCrashAnalysisSession(kind string) (string, error) {
+	topic, err := a.CreateTopic("global", "", crashAnalysisTopicTitle(kind))
+	if err != nil {
+		return "", fmt.Errorf("could not create the analysis conversation under Global (%v) — use the Copy button to report manually", err)
+	}
+	tabMeta, err := a.openGlobalTab(topic.ID)
+	if err != nil {
+		return "", fmt.Errorf("could not open the analysis tab (%v) — use the Copy button to report manually", err)
+	}
+	if a.awaitAnalysisController(tabMeta.ID) == nil {
+		return "", fmt.Errorf("the analysis workspace did not become ready in time — use the Copy button to report manually")
+	}
+	return tabMeta.ID, nil
+}
+
+// crashAnalysisTopicTitle names the sidebar row the analysis files under, so
+// the run is recognizable in the Global folder at a glance.
+func crashAnalysisTopicTitle(kind string) string {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return "一键分析"
+	}
+	return "一键分析：" + kind
+}
+
+// awaitAnalysisController waits for the analysis tab's controller, mirroring
+// the heartbeat engine's wait: the controller may still be building when the
+// tab-open returns, so the wait follows the build's completion signal instead
+// of a fixed sleep, and gives up on the configured bound.
+func (a *App) awaitAnalysisController(tabID string) control.SessionAPI {
+	deadline := time.NewTimer(crashAnalysisControllerWaitTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(crashAnalysisControllerPollInterval)
+	defer ticker.Stop()
+	for {
+		if ctrl := a.ctrlByTabID(tabID); ctrl != nil {
+			return ctrl
+		}
+		buildDone := a.tabBuildDone(tabID)
+		if buildDone == nil {
+			// No build in flight: either the controller is already published
+			// (checked above) or the build failed. Keep polling so a build that
+			// starts a moment later is not missed, but never past the deadline.
+			select {
+			case <-deadline.C:
+				return nil
+			case <-ticker.C:
+			}
+			continue
+		}
+		select {
+		case <-deadline.C:
+			return nil
+		case <-buildDone:
+			// Re-check on the next round: the build may have failed, leaving
+			// the controller nil.
+		case <-ticker.C:
+		}
+	}
+
 }
 
 func buildCrashAnalysisInstruction(sourceDir, payload string, testMock bool) string {

@@ -1386,8 +1386,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   CrashPendingDiagnostics(): Promise<CrashPendingDiagnosticsReport>;
   // Task 617 route B: one-click analysis. Availability probes the three
   // prerequisites (source checkout / gh auth / live workspace) without side
-  // effects; StartCrashAnalysis rotates the active tab to a fresh YOLO session
-  // and submits the analysis instruction. Returns a short summary on success.
+  // effects; StartCrashAnalysis opens a fresh Global-scope tab (task 672: the
+  // analysis never files under the active project) and submits the analysis
+  // instruction there. Returns a short summary on success.
   CrashAnalysisAvailability(): Promise<CrashAnalysisAvailabilityReport>;
   StartCrashAnalysis(kind: string, detail: string): Promise<string>;
   RecordUIPerf(signals: Record<string, string>): Promise<void>;

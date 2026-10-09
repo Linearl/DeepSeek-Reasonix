@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"reasonix/internal/control"
 )
 
 func TestIsReasonixSourceDirAcceptsRealCheckoutShape(t *testing.T) {
@@ -230,6 +235,150 @@ func TestCrashAnalysisSummaryIsChineseWithPathSeparatorsIntact(t *testing.T) {
 	for _, r := range trimmed {
 		if r < 0x80 && r != ' ' {
 			t.Fatalf("summary carries unexpected ASCII beyond the path and repo: %q", summary)
+
+// ── 任务 672：一键分析会话归属 Global ──────────────────────────────────────
+
+// crashAnalysisCtrlStub extends the heartbeat controller stub with SetMode,
+// which the crash flow's YOLO switch applies (the heartbeat flow never calls
+// it, so the heartbeat stub leaves the embedded nil interface to panic).
+type crashAnalysisCtrlStub struct {
+	heartbeatExecuteTaskCtrlStub
+	modes []string
+}
+
+func (s *crashAnalysisCtrlStub) SetMode(plan, yolo bool) {
+	s.modes = append(s.modes, fmt.Sprintf("plan=%v,yolo=%v", plan, yolo))
+}
+
+// TestStartCrashAnalysisHostsSessionInGlobalNotActiveProject pins task 672:
+// triggering one-click analyze while a project tab is active must file the
+// analysis conversation under the built-in Global scope — never under the open
+// project (the 2026-10-09 run landed inside video_comprehension) — and must
+// leave the user's project roster and open tab untouched.
+func TestStartCrashAnalysisHostsSessionInGlobalNotActiveProject(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	// The user is working inside a project when the crash prompt's analyze
+	// button fires; that project must gain nothing from the analysis.
+	projectRoot := t.TempDir()
+	if err := addProject(projectRoot, "video_comprehension"); err != nil {
+		t.Fatalf("add project: %v", err)
+	}
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+	app.runtimeEvents.emit = func(context.Context, string, ...any) {}
+	app.mu.Lock()
+	// The user tab already has a live runtime; without a controller here the
+	// stub publisher below would grab this tab instead of the analysis tab.
+	app.tabs["tab-user"] = &WorkspaceTab{ID: "tab-user", Scope: "project", WorkspaceRoot: projectRoot,
+		TopicID: "topic-user", TopicTitle: "user work", Ctrl: &heartbeatExecuteTaskCtrlStub{}, Ready: true}
+	app.tabOrder = []string{"tab-user"}
+	app.activeTabID = "tab-user"
+	app.mu.Unlock()
+
+	// Hermetic gates and a recorded submission: the analysis proceeds without a
+	// real fork checkout, gh probe, or model turn.
+	sourceDir := t.TempDir()
+	origSource, origGh, origSubmit := crashAnalysisSourceDir, crashAnalysisGhAuth, crashAnalysisSubmit
+	crashAnalysisSourceDir = func() string { return sourceDir }
+	crashAnalysisGhAuth = func() (bool, string) { return true, "" }
+	submittedTab := make(chan string, 1)
+	var submittedInstruction string
+	crashAnalysisSubmit = func(a *App, tabID, instruction string) error {
+		submittedInstruction = instruction
+		submittedTab <- tabID
+		return nil
+	}
+	t.Cleanup(func() {
+		crashAnalysisSourceDir, crashAnalysisGhAuth, crashAnalysisSubmit = origSource, origGh, origSubmit
+	})
+
+	// The analysis tab's controller builds in a goroutine; publish a stub the
+	// same way the heartbeat cold-boot tests fake a cold boot.
+	ctrl := &crashAnalysisCtrlStub{}
+	tabIDCh := publishControllerAfterDelay(t, app, ctrl, 30*time.Millisecond)
+	origWait := crashAnalysisControllerWaitTimeout
+	crashAnalysisControllerWaitTimeout = 10 * time.Second
+	t.Cleanup(func() { crashAnalysisControllerWaitTimeout = origWait })
+
+	summary, err := app.StartCrashAnalysis("crash", "panic: boom")
+	if err != nil {
+		t.Fatalf("StartCrashAnalysis: %v", err)
+	}
+	if !strings.Contains(summary, "Global") {
+		t.Fatalf("summary = %q, want it to name the Global host", summary)
+	}
+
+	hostedID := <-tabIDCh
+	if got := <-submittedTab; got != hostedID {
+		t.Fatalf("instruction submitted to tab %q, want the analysis tab %q", got, hostedID)
+	}
+	if !strings.Contains(submittedInstruction, "gh-issue-submit") {
+		t.Fatalf("instruction lost the analysis contract: %.200s", submittedInstruction)
+	}
+
+	app.mu.RLock()
+	tab := app.tabs[hostedID]
+	var scope, root, topicID, sessionPath, tabMode, approvalMode string
+	if tab != nil {
+		scope, root, topicID, sessionPath = tab.Scope, tab.WorkspaceRoot, tab.TopicID, tab.SessionPath
+		tabMode, approvalMode = tab.mode, tab.toolApprovalMode
+	}
+	userTopic := ""
+	if userTab := app.tabs["tab-user"]; userTab != nil {
+		userTopic = userTab.TopicID
+	}
+	app.mu.RUnlock()
+	if tab == nil {
+		t.Fatal("the analysis tab vanished")
+	}
+	if scope != "global" {
+		t.Fatalf("analysis tab scope = %q, want global (task 672)", scope)
+	}
+	// A global tab carries one of the host's own directories as its root (the
+	// open chain resolves the global workspace root into WorkspaceRoot); the
+	// sidebar strips builtin roots, so this is what keeps the run out of every
+	// project list.
+	if root == "" || !isBuiltinWorkspaceRoot(root) {
+		t.Fatalf("analysis tab workspace root = %q, want a builtin (host-owned) root", root)
+	}
+	if sessionPath == "" {
+		t.Fatal("analysis tab has no session path")
+	}
+	if wantDir := desktopSessionDir(globalWorkspaceRoot()); !sameDesktopPath(filepath.Dir(sessionPath), wantDir) {
+		t.Fatalf("analysis session %q lives outside the global session dir %q", sessionPath, wantDir)
+	}
+	if tabMode != "yolo" || approvalMode != control.ToolApprovalYolo {
+		t.Fatalf("analysis tab mode/approval = %q/%q, want yolo on both", tabMode, approvalMode)
+	}
+	if userTopic != "topic-user" {
+		t.Fatalf("active project tab topic changed to %q — the flow must not touch the user's open tab", userTopic)
+	}
+	if topicID == "" || topicID == "topic-user" {
+		t.Fatalf("analysis topic id = %q, want a fresh topic distinct from the user's", topicID)
+	}
+
+	// Sidebar index: the conversation is listed under Global, and the open
+	// project's topic roster gained nothing.
+	projects := loadProjectsFile()
+	globalHit := false
+	for _, id := range projects.GlobalTopics {
+		if id == topicID {
+			globalHit = true
+		}
+	}
+	if !globalHit {
+		t.Fatalf("analysis topic %q missing from GlobalTopics = %v", topicID, projects.GlobalTopics)
+	}
+	for _, project := range projects.Projects {
+		if !sameProjectRoot(project.Root, projectRoot) {
+			continue
+		}
+		for _, id := range project.Topics {
+			if id == topicID {
+				t.Fatalf("analysis topic %q leaked into project %q topics = %v", topicID, project.Root, project.Topics)
+			}
 		}
 	}
 }
@@ -245,5 +394,48 @@ func TestBuildCrashAnalysisInstructionKeepsPathSeparators(t *testing.T) {
 	}
 	if strings.Contains(instruction, "github-repo.reasonix") {
 		t.Fatalf("instruction must not mangle the path separators:\n%s", instruction)
+
+// TestCrashAnalysisSessionOpenTimesOutWithoutController pins the bound: a tab
+// whose controller never arrives fails the analysis start with the explicit
+// not-ready error (which points at the manual Copy route) instead of hanging
+// the binding forever.
+func TestCrashAnalysisSessionOpenTimesOutWithoutController(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+	app.runtimeEvents.emit = func(context.Context, string, ...any) {}
+
+	origWait := crashAnalysisControllerWaitTimeout
+	crashAnalysisControllerWaitTimeout = 250 * time.Millisecond
+	t.Cleanup(func() { crashAnalysisControllerWaitTimeout = origWait })
+
+	// A controller that arrives only after an hour: the wait must give up on
+	// its own bound instead of waiting for it.
+	ctrl := &heartbeatExecuteTaskCtrlStub{}
+	publishControllerAfterDelay(t, app, ctrl, time.Hour)
+
+	start := time.Now()
+	_, err := app.openCrashAnalysisSession("crash")
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("openCrashAnalysisSession succeeded without a controller")
+	}
+	if !strings.Contains(err.Error(), "did not become ready") {
+		t.Fatalf("error = %v, want the explicit not-ready message", err)
+	}
+	if elapsed > 30*time.Second {
+		t.Fatalf("wait took %s, want it bounded by %s", elapsed, crashAnalysisControllerWaitTimeout)
+	}
+}
+
+// TestCrashAnalysisTopicTitleCarriesKind keeps the Global sidebar row
+// recognizable at a glance.
+func TestCrashAnalysisTopicTitleCarriesKind(t *testing.T) {
+	if got := crashAnalysisTopicTitle("performance"); got != "一键分析：performance" {
+		t.Fatalf("crashAnalysisTopicTitle = %q", got)
+	}
+	if got := crashAnalysisTopicTitle("  "); got != "一键分析" {
+		t.Fatalf("blank kind title = %q", got)
 	}
 }
