@@ -4154,6 +4154,11 @@ export const zhTW: Record<DictKey, string> = {
 "settings.outputStyleLabHint": "選擇折入 system prompt 的回答風格（Output Style）。開關僅控制本面板的選擇器顯示；切換後當前工作階段立即重建生效（正在執行的任務不會被打斷，本輪結束後自動套用）。僅影響主要工作階段，子工作階段不帶風格。預設關閉。",
 "settings.outputStyle.on": "開",
 "settings.outputStyle.off": "關",
+// 任務 677：群聊入口開關（實驗室，提效組；409 視圖交付漏掛鐵律 2 開關）。
+"settings.collabGroupView": "群聊",
+"settings.collabGroupViewHint": "側欄左下角圖示列裡的群聊入口（群聊式多 Agent 協作視圖）。實驗特性，預設關閉——關閉時側欄與引入群聊前完全一致；開啟後入口圖示出現，點擊即可開啟群聊視圖。",
+"settings.collabGroupView.on": "開",
+"settings.collabGroupView.off": "關",
 "settings.outputStyle.selector": "選擇風格",
 "settings.outputStyle.selectorHint": "內建 explanatory / learning / concise / proactive 與預設（不注入）共五種，另有 output-styles 目錄裡的自訂 .md 檔案。選擇即寫入 reasonix.toml [agent] output_style 並立即重建當前工作階段生效；正在執行任務時則本輪結束後自動套用。",
 "settings.outputStyle.searchPlaceholder": "搜尋風格",

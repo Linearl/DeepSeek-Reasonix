@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabGroupView";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -26,6 +26,10 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // (inline preview expansion + widen affordance), on = plan A (row click
   // opens the read-only in-dock detail view with a back button).
   subagentDetail: false,
+  // 任务 677: the sidebar group-chat entry ships off (铁律 2 — the task-409
+  // view landed without its lab switch). With it off the utility row renders
+  // exactly the pre-409 four-icon layout; a flip applies on settings save.
+  collabGroupView: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -54,7 +58,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabGroupView=${flags.collabGroupView}`,
   );
   for (const listener of listeners) listener();
 }

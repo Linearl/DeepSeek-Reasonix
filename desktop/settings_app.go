@@ -369,6 +369,10 @@ type SettingsView struct {
 	UpdateChimeTune            string `json:"updateChimeTune"`
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
+	// ExperimentalCollabGroupView gates the sidebar group-chat entry (task 677);
+	// rendered in both views or the lab switch reads permanently off (the
+	// 2026-09-15 lesson, task 81/123).
+	ExperimentalCollabGroupView bool   `json:"experimentalCollabGroupView"`
 	SessionStorage             string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
@@ -604,6 +608,10 @@ type DesktopStartupSettingsView struct {
 	UpdateChimeTune            string `json:"updateChimeTune"`
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
+	// ExperimentalCollabGroupView gates the sidebar group-chat entry (task 677);
+	// rendered in both views or the lab switch reads permanently off (the
+	// 2026-09-15 lesson, task 81/123).
+	ExperimentalCollabGroupView bool   `json:"experimentalCollabGroupView"`
 	SessionStorage             string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
@@ -1417,6 +1425,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.UpdateChimeTune = cfg.UpdateChimeTuneMode()
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
+		// Task 677: group-chat entry readback (boot snapshot).
+		view.ExperimentalCollabGroupView = cfg.Desktop.ExperimentalCollabGroupView
 		view.SessionStorage = config.SessionStorageMode(cfg)
 		view.SessionStorageEffective = a.sessionStorageBootMode(view.SessionStorage)
 		view.SessionStorageRestartPending = view.SessionStorageEffective != view.SessionStorage
@@ -1597,6 +1607,7 @@ func (a *App) Settings() SettingsView {
 		UpdateChimeTune:                 cfg.UpdateChimeTuneMode(),
 		ExperimentalSessionMonitor:      cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:           cfg.Desktop.ExperimentalSplitView,
+		ExperimentalCollabGroupView:     cfg.Desktop.ExperimentalCollabGroupView, // task 677 group-chat entry
 		SessionStorage:                  storageMode,
 		SessionStorageEffective:         storageEffective,
 		SessionStorageRestartPending:    storageEffective != storageMode,

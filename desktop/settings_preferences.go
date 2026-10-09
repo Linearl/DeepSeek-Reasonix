@@ -312,6 +312,12 @@ func (a *App) SetExperimentalSplitView(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSplitView(enabled) })
 }
 
+// SetExperimentalCollabGroupView toggles the sidebar group-chat entry (task 677):
+// with it off the sidebar utility row keeps the pre-409 four-icon layout.
+func (a *App) SetExperimentalCollabGroupView(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCollabGroupView(enabled) })
+}
+
 // SetExperimentalFeedback toggles the agent submit_feedback tool surface and the
 // desktop feedback inbox panel (task 121).
 func (a *App) SetExperimentalFeedback(enabled bool) error {

@@ -2504,6 +2504,8 @@ export interface DesktopStartupSettingsView {
   experimentalSessionMonitor?: boolean;
   /** Split-view experiment switch (task 70-1); off unless the user opts in. */
   experimentalSplitView?: boolean;
+  /** Group-chat entry switch (task 677): gates the sidebar utility-row icon; off unless the user opts in. */
+  experimentalCollabGroupView?: boolean;
   /** Feedback inbox experiment switch (task 121); off unless the user opts in. */
   experimentalFeedback?: boolean;
   /** Feedback touchpoint dial (task 172); off unless the user opts in; boot snapshot. */
