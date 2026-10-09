@@ -372,7 +372,11 @@ type SettingsView struct {
 	// ExperimentalCollabGroupView gates the sidebar group-chat entry (task 677);
 	// rendered in both views or the lab switch reads permanently off (the
 	// 2026-09-15 lesson, task 81/123).
-	ExperimentalCollabGroupView bool   `json:"experimentalCollabGroupView"`
+	ExperimentalCollabGroupView bool `json:"experimentalCollabGroupView"`
+	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
+	// into a summary bar (task 705); rendered in both views for the same
+	// permanently-off lesson.
+	ExperimentalSessionCollabAutoFold bool `json:"experimentalSessionCollabAutoFold"`
 	SessionStorage             string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
@@ -611,7 +615,11 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalCollabGroupView gates the sidebar group-chat entry (task 677);
 	// rendered in both views or the lab switch reads permanently off (the
 	// 2026-09-15 lesson, task 81/123).
-	ExperimentalCollabGroupView bool   `json:"experimentalCollabGroupView"`
+	ExperimentalCollabGroupView bool `json:"experimentalCollabGroupView"`
+	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
+	// into a summary bar (task 705); rendered in both views for the same
+	// permanently-off lesson.
+	ExperimentalSessionCollabAutoFold bool `json:"experimentalSessionCollabAutoFold"`
 	SessionStorage             string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
@@ -1427,6 +1435,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
 		// Task 677: group-chat entry readback (boot snapshot).
 		view.ExperimentalCollabGroupView = cfg.Desktop.ExperimentalCollabGroupView
+		// Task 705: cross-session message auto-fold readback.
+		view.ExperimentalSessionCollabAutoFold = cfg.Desktop.ExperimentalSessionCollabAutoFold
 		view.SessionStorage = config.SessionStorageMode(cfg)
 		view.SessionStorageEffective = a.sessionStorageBootMode(view.SessionStorage)
 		view.SessionStorageRestartPending = view.SessionStorageEffective != view.SessionStorage

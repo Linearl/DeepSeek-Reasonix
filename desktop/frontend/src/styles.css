@@ -5609,6 +5609,61 @@ a[href] {
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* 任务 705: auto-fold summary bar for over-long cross-session messages —
+   sender + first line + expand toggle. Display-only: the full body stays in
+   the model context and the expanded view; fold is purely visual. */
+.im-source-card__text--folded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.im-source-card__fold-sender {
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg-soft) 72%, var(--bg-elev));
+  color: var(--fg-dim);
+  font-size: 12px;
+  font-weight: 650;
+}
+.im-source-card__preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.88;
+}
+.im-source-card__fold-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  padding: 2px 6px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.im-source-card__fold-toggle:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.im-source-card__fold-toggle svg {
+  transition: transform var(--dur-fast);
+}
+.im-source-card__fold-toggle[data-expanded="true"] svg {
+  transform: rotate(180deg);
+}
 .im-source-card__meta {
   display: flex;
   flex-wrap: wrap;

@@ -102,6 +102,12 @@ type DesktopConfig struct {
 	// utility row renders exactly the pre-409 four-icon layout, and the panel
 	// becomes unreachable — the 409 deliverable itself is untouched.
 	ExperimentalCollabGroupView bool `toml:"experimental_collab_group_view"`
+	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
+	// in the transcript into a summary bar (task 705). It ships off per 铁律 2:
+	// off = every cross-session message renders in full, exactly as before the
+	// feature existed. Pure display preference — message bodies are never
+	// truncated or mutated, only visually collapsed.
+	ExperimentalSessionCollabAutoFold bool `toml:"experimental_session_collab_auto_fold"`
 	// Task 473: the [desktop] boolean mirrors of [agent] lab switches are
 	// retired. These fields are READ-ONLY legacy inputs: migrateLabMirrorKeysToAgent
 	// folds any leftover true into the [agent] key at load and the setters only

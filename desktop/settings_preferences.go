@@ -318,6 +318,13 @@ func (a *App) SetExperimentalCollabGroupView(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCollabGroupView(enabled) })
 }
 
+// SetExperimentalSessionCollabAutoFold toggles the transcript fold for
+// over-long cross-session messages (task 705): off (default) renders every
+// cross-session message in full.
+func (a *App) SetExperimentalSessionCollabAutoFold(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollabAutoFold(enabled) })
+}
+
 // SetExperimentalFeedback toggles the agent submit_feedback tool surface and the
 // desktop feedback inbox panel (task 121).
 func (a *App) SetExperimentalFeedback(enabled bool) error {

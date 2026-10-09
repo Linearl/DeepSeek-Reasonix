@@ -1879,7 +1879,10 @@ type ExperimentFeatureId =
   | "toolOptimizations"
   // 任务 677: sidebar group-chat entry switch (the task-409 view landed
   // without its lab switch; unstable tier, default off).
-  | "collabGroupView";
+  | "collabGroupView"
+  // 任务 705: auto-fold over-long cross-session messages (optional tier,
+  // default off = render in full).
+  | "sessionCollabAutoFold";
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -2058,7 +2061,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // standalone eventWaitRecheck entry fold into ONE single-key card
     // (experimental_safety_cost_control gates all three B-group guards).
     { id: "safetyCostControl", group: "automation", label: t("settings.safetyCostControl"), on: Boolean(s.experimentalSafetyCostControl) },
-    // ── efficiency（提效，11 项）──────────────────────────────────
+    // ── efficiency（提效，12 项；任务 705 增 sessionCollabAutoFold）──
     // Task 280: re-homed from the permissions area (upright bind — `on` means
     // optimistic ON = safety check OFF, default off). Task 650: and from the
     // automation group to efficiency — the switch buys parallel-write
@@ -2086,6 +2089,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // 工具行不渲染群聊图标；render table: a missing entry would silently
     // drop the save, 81/123 lesson.
     { id: "collabGroupView", group: "efficiency", label: t("settings.collabGroupView"), on: Boolean(s.experimentalCollabGroupView) },
+    // 任务 705: 超长跨会话消息自动折叠（默认关=全量展示）。render table: a
+    // missing entry would silently drop the save, 81/123 lesson.
+    { id: "sessionCollabAutoFold", group: "efficiency", label: t("settings.sessionCollabAutoFold"), on: Boolean(s.experimentalSessionCollabAutoFold) },
     // ── ui（界面，15 项）─────────────────────────────────────────
     // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
     { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
@@ -2792,6 +2798,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   >
                     {t(on ? "settings.collabGroupView.on" : "settings.collabGroupView.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "sessionCollabAutoFold" && (
+            <SettingsField label={labLabel("sessionCollabAutoFold", t("settings.sessionCollabAutoFold"))} hint={t("settings.sessionCollabAutoFoldHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalSessionCollabAutoFold) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalSessionCollabAutoFold(on);
+                    })}
+                  >
+                    {t(on ? "settings.sessionCollabAutoFold.on" : "settings.sessionCollabAutoFold.off")}
                   </button>
                 ))}
               </SettingsOptions>
