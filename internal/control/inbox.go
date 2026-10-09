@@ -67,6 +67,11 @@ type Inbox interface {
 	// Task 300: unpause without dispatching pending work — recovery hand-offs
 	// (the auto-resume) must not replay leftover inbox content into the turn.
 	SetInboxPausedPassive(paused bool) error
+	// 任务709: clear a pause that no human set (crash recovery / reopen
+	// backlog / error guards); a user-held pause is returned untouched. The
+	// desktop idle-turn bridge wakes stale sessions through this instead of
+	// silently skipping every paused target.
+	ResumeInboxAutoPause() (bool, error)
 	RetryInboxItem(id string) error
 	RefreshInboxReferences(id string) error
 	TrySubmitInboxItem(id string) (sessioninbox.InboxReceipt, error)
@@ -666,12 +671,18 @@ func (c *Controller) SetInboxPausedPassive(paused bool) error {
 	return c.setInboxPaused(paused, false)
 }
 
+// setInboxPaused is the explicit human/host pause-resume entry (desktop queue
+// panel, /queue, serve & bot endpoints). 任务709: it records USER provenance on
+// the durable pause so the desktop idle-turn bridge can keep its hands off a
+// queue a person is holding while still waking the automatic pauses a restart
+// leaves behind. Automatic pause paths call the store directly and never set
+// this bit.
 func (c *Controller) setInboxPaused(paused, dispatch bool) error {
 	st, err := c.ensureInbox()
 	if err != nil {
 		return err
 	}
-	if err := st.SetPaused(paused); err != nil {
+	if err := st.SetUserPaused(paused); err != nil {
 		return err
 	}
 	if paused {
@@ -681,6 +692,22 @@ func (c *Controller) setInboxPaused(paused, dispatch bool) error {
 		c.maybeDispatchInbox()
 	}
 	return nil
+}
+
+// ResumeInboxAutoPause clears a pause that no human set (crash recovery,
+// reopen with backlog, error guards) and reports whether a pause was actually
+// cleared. 任务709: the idle-turn bridge's wake primitive — a stale session
+// whose inbox was auto-paused on stand-up must not hold freshly delivered
+// collab work hostage until a human walks by. A user-held pause returns
+// (false, nil) untouched: 暂停是用户意志，桥不越。Unlike SetInboxPaused(false)
+// this does NOT kick the internal dispatcher — the bridge opens the turn
+// itself, so the wake stays single-owner and budget-guarded.
+func (c *Controller) ResumeInboxAutoPause() (bool, error) {
+	st, err := c.ensureInbox()
+	if err != nil {
+		return false, err
+	}
+	return st.ResumeAutoPause()
 }
 
 func (c *Controller) RetryInboxItem(id string) error {
