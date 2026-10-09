@@ -1,15 +1,28 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"log/slog"
+	"time"
+)
 
 // SetActiveTab switches the frontend's active tab. Restored remote shells
 // reconnect only when activated.
 func (a *App) SetActiveTab(tabID string) error {
+	start := time.Now()
+	var path string
+	var snapshotMs, saveMs int64
+	// Task 692 (issue #37): the backend half of a tab switch had no timing at
+	// all — the frontend stage probes (ReportTabSwitchTiming) only cover the
+	// WebView side, so a 1050ms SetActiveTab left zero trace in desktop.log.
+	// Registered before the lock so the slow log fires after the unlock defer.
+	defer func() { logSlowSetActiveTab(start, tabID, path, snapshotMs, saveMs) }()
 	a.tabSelectionMu.Lock()
 	defer a.tabSelectionMu.Unlock()
 
 	a.remoteTabMu.Lock()
 	if _, isRemote := a.remoteTabs[tabID]; isRemote {
+		path = "remote"
 		switchingFromLocal := a.remoteTabLayout.activeID == ""
 		a.remoteTabMu.Unlock()
 		if switchingFromLocal {
@@ -43,7 +56,9 @@ func (a *App) SetActiveTab(tabID string) error {
 			// not remain on an inferred connecting placeholder.
 			a.emitRemoteTabState(tabID, terminalState, terminalErr)
 		}
+		segStart := time.Now()
 		a.saveTabsFromRemote()
+		saveMs = time.Since(segStart).Milliseconds()
 		return nil
 	}
 	a.remoteTabMu.Unlock()
@@ -55,18 +70,24 @@ func (a *App) SetActiveTab(tabID string) error {
 		return fmt.Errorf("tab %q not found", tabID)
 	}
 	if alreadyActive {
+		path = "same-active"
 		a.remoteTabMu.Lock()
 		a.remoteTabLayout.activeID = ""
 		a.remoteTabMu.Unlock()
+		segStart := time.Now()
 		a.saveTabsFromRemote()
+		saveMs = time.Since(segStart).Milliseconds()
 		return nil
 	}
 	a.mu.RLock()
 	active := a.tabs[a.activeTabID]
 	a.mu.RUnlock()
+	path = "local"
+	segStart := time.Now()
 	if err := a.snapshotTabForSwitch(active); err != nil {
 		return err
 	}
+	snapshotMs = time.Since(segStart).Milliseconds()
 
 	a.mu.Lock()
 	if _, ok := a.tabs[tabID]; !ok {
@@ -98,7 +119,9 @@ func (a *App) SetActiveTab(tabID string) error {
 
 	// I/O outside the lock — disk writes can block for hundreds of ms on
 	// Windows when antivirus or the search indexer briefly locks the file.
+	segStart = time.Now()
 	a.saveTabsWrite(dir, entries, activeID, version)
+	saveMs = time.Since(segStart).Milliseconds()
 	if active != nil {
 		active.clearRuntimeDisplayCurrency()
 	}
@@ -113,6 +136,25 @@ func (a *App) SetActiveTab(tabID string) error {
 	}
 	a.kickDeferredRebuildRetry()
 	return nil
+}
+
+// logSlowSetActiveTab is the backend half of the tab-switch timing family
+// (tab_timing.go): the frontend stage probes only cover the WebView side, so
+// the 1050ms SetActiveTab behind issue #37 had no desktop.log trace to answer
+// with. Threshold matches slowTabSwitchLogMs — switches happen constantly and
+// only the ones the user experiences as slow are worth a line — and the
+// snapshot/save segments name the two known-expensive I/O points (session
+// snapshot, tabs write) so the log attributes the latency instead of just
+// counting it.
+func logSlowSetActiveTab(start time.Time, tabID, path string, snapshotMs, saveMs int64) {
+	total := time.Since(start)
+	if total.Milliseconds() < slowTabSwitchLogMs {
+		return
+	}
+	slog.Info("desktop: SetActiveTab slow",
+		"tab", tabID, "path", path,
+		"total_ms", total.Milliseconds(),
+		"snapshot_ms", snapshotMs, "save_ms", saveMs)
 }
 
 // snapshotTabForSwitch is the SetActiveTab form of snapshotTabForAction. A tab

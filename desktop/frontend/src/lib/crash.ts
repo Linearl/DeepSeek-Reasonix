@@ -519,6 +519,15 @@ export function shouldPromptForLongTasks(summary: { count: number; totalMs: numb
   return summary.maxMs >= LONG_TASK_PROMPT_MS || (summary.count >= 3 && summary.totalMs >= LONG_TASK_TOTAL_PROMPT_MS);
 }
 
+// Task 692 (issue #36): the trigger reason must carry the cumulative window,
+// not just the max. "long task 507ms" reads as one 507ms stall, but the report
+// it names actually fired on the cumulative branch (26 tasks / total 3050ms in
+// the 60s window) — the prefix stays "long task" so the pressure label mapping
+// in performanceLabelForReason is unchanged.
+export function formatLongTaskReason(summary: { count: number; totalMs: number; maxMs: number }): string {
+  return `long task ${summary.count} in ${LONG_TASK_WINDOW_MS / 1000}s, max ${fmtNumber(summary.maxMs)}ms, total ${fmtNumber(summary.totalMs)}ms`;
+}
+
 export function shouldPromptForEventLoopLag(
   samples: readonly number[],
   longTask?: { count: number; totalMs: number; maxMs: number },
@@ -1151,38 +1160,6 @@ export function buildJankRecord(
   };
 }
 
-function recordJankEvent(reason: string, label: string, currentLagMs: number): void {
-  try {
-    const now = Date.now();
-    if (!jankRecordingDue(label, now)) {
-      jankSuppressedByLabel.set(label, (jankSuppressedByLabel.get(label) ?? 0) + 1);
-      return;
-    }
-    jankLastWriteByLabel.set(label, now);
-    const suppressed = jankSuppressedByLabel.get(label) ?? 0;
-    jankSuppressedByLabel.set(label, 0);
-    const snapshot = performanceSnapshot(reason, currentLagMs);
-    // Same attribution windows as the prompt path: every recorded long task,
-    // plus the lag spike itself for event-loop reports.
-    const windows = [...longTasks];
-    if (currentLagMs > 0) {
-      const nowMs = performance.now();
-      windows.push({ startMs: Math.max(0, nowMs - currentLagMs), durationMs: currentLagMs });
-    }
-    void collectLongTaskFrames(windows)
-      .then((frames) => {
-        if (frames.length) snapshot.longTaskFrames = frames;
-        const record = buildJankRecord(label, snapshot, snapshotBreadcrumbs(), suppressed, new Date(now).toISOString());
-        // Optional binding: older backends drop it silently; diagnostics must
-        // never break the trigger path.
-        void app.ReportJankRecord?.(JSON.stringify(record))?.catch(() => {});
-      })
-      .catch(() => {});
-  } catch {
-    // Never let the recorder throw into the trigger path.
-  }
-}
-
 function shouldPromptForPerformance(now: number, label: string): boolean {
   const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
   const focused = typeof document === "undefined" || document.hasFocus?.() !== false;
@@ -1195,26 +1172,63 @@ function promptPerformanceReport(reason: string, currentLagMs = 0): void {
   // Task 360: 落盘走自己的节流（每 label 60s，被抑制的触发并入下一条的
   // suppressedSinceLast），在弹窗门控之前——弹窗被冷却/隐藏压住时事件照样
   // 有本地档，事后排障不再依赖用户点「发送报告」。
-  recordJankEvent(reason, label, currentLagMs);
-  if (!shouldPromptForPerformance(now, label)) return;
-  lastPerformancePromptAt = now;
-  addBreadcrumb("performance", reason);
-  const snapshot = performanceSnapshot(reason, currentLagMs);
-  if (!activeProfiler) {
-    paintPerformancePrompt(buildPerformancePayload(snapshot), snapshot);
-    return;
+  const recordDue = jankRecordingDue(label, now);
+  let suppressed = 0;
+  if (recordDue) {
+    jankLastWriteByLabel.set(label, now);
+    suppressed = jankSuppressedByLabel.get(label) ?? 0;
+    jankSuppressedByLabel.set(label, 0);
+  } else {
+    jankSuppressedByLabel.set(label, (jankSuppressedByLabel.get(label) ?? 0) + 1);
   }
-  // Attribute samples to the blocked spans: every recorded long task, plus the lag
-  // spike itself for event-loop reports (profiler timestamps share performance.now()'s origin).
+  const promptDue = shouldPromptForPerformance(now, label);
+  if (!recordDue && !promptDue) return;
+  if (promptDue) {
+    lastPerformancePromptAt = now;
+    addBreadcrumb("performance", reason);
+  }
+  const snapshot = performanceSnapshot(reason, currentLagMs);
+  // Attribution windows shared by both paths: every recorded long task, plus
+  // the lag spike itself for event-loop reports (profiler timestamps share
+  // performance.now()'s origin).
   const windows = [...longTasks];
   if (currentLagMs > 0) {
     const nowMs = performance.now();
     windows.push({ startMs: Math.max(0, nowMs - currentLagMs), durationMs: currentLagMs });
   }
-  void collectLongTaskFrames(windows).then((frames) => {
-    if (frames.length) snapshot.longTaskFrames = frames;
-    paintPerformancePrompt(buildPerformancePayload(snapshot), snapshot);
-  });
+  if (!activeProfiler) {
+    // Task 692: no self-profiling in this WebView — both paths finish
+    // synchronously with empty frames (same face as before the shared
+    // collection below).
+    if (recordDue) writeJankRecord(label, snapshot, suppressed, now);
+    if (promptDue) paintPerformancePrompt(buildPerformancePayload(snapshot), snapshot);
+    return;
+  }
+  // Task 692 (issue #37): the jank sink and the prompt each used to consume
+  // the module-level singleton profiler. The sink went first and nulled
+  // activeProfiler, so the prompt path saw null and gave up — the local
+  // archive kept its sampled frames while the reported payload lost all of
+  // them. One trigger now collects once and shares the frames.
+  void collectLongTaskFrames(windows)
+    .then((frames) => {
+      if (frames.length) snapshot.longTaskFrames = frames;
+      if (recordDue) writeJankRecord(label, snapshot, suppressed, now);
+      if (promptDue) paintPerformancePrompt(buildPerformancePayload(snapshot), snapshot);
+    })
+    .catch(() => {});
+}
+
+// writeJankRecord is the disk sink half of promptPerformanceReport. Kept
+// fault-isolated: a failing record must never take the prompt down with it.
+function writeJankRecord(label: string, snapshot: PerformanceSnapshot, suppressed: number, nowMs: number): void {
+  try {
+    const record = buildJankRecord(label, snapshot, snapshotBreadcrumbs(), suppressed, new Date(nowMs).toISOString());
+    // Optional binding: older backends drop it silently; diagnostics must
+    // never break the trigger path.
+    void app.ReportJankRecord?.(JSON.stringify(record))?.catch(() => {});
+  } catch {
+    // Never let the recorder throw into the trigger path.
+  }
 }
 
 function maybePromptForHeapPressure(): void {
@@ -1250,7 +1264,7 @@ export function installPerformancePressureMonitor() {
     const summary = longTaskSummary();
     if (!summary) return;
     if (shouldPromptForLongTasks(summary)) {
-      promptPerformanceReport(`long task ${fmtNumber(summary.maxMs)}ms`);
+      promptPerformanceReport(formatLongTaskReason(summary));
     }
   };
 
