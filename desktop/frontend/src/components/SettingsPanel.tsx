@@ -2098,8 +2098,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // Task 163: usage card entry (render table — same 81/123 lost-save rule).
     { id: "opencodeGoUsage", group: "ui", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
     // Task 561 M6 更新/反馈族: restartUpdate + feedback fold into ONE card —
-    // the light reads either switch; each keeps its own setter (81/123).
-    { id: "updateFeedback", group: "ui", label: t("settings.updateFeedback"), on: Boolean(s.experimentalRestartUpdate) || Boolean(s.experimentalFeedback) },
+    // the light reads any of the switches; each keeps its own setter (81/123).
+    // Task 670: the fork first-launch notice joins the card (default on).
+    { id: "updateFeedback", group: "ui", label: t("settings.updateFeedback"), on: Boolean(s.experimentalRestartUpdate) || Boolean(s.experimentalFeedback) || Boolean(s.forkNotice) },
     // ── observability（可观测性，2 项）────────────────────────────
     // Task 318.5: one lab entry for both monitors — the entry light is on when
     // either switch is on; the page keeps two independent switches.
@@ -2380,6 +2381,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               427/318.5 merge precedent). */}
           {selected === "updateFeedback" && (
             <>
+              {/* Task 670: the fork first-launch notice switch. Default ON per
+                  user ruling (pure UI notice, 铁律 2 not applicable); a live
+                  config flip, no restart. Re-enabling also clears the dialog's
+                  「下次不提醒」 mute, so ON means the notice really comes back. */}
+              <SettingsField label={t("settings.forkNotice")} hint={t("settings.forkNoticeHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.forkNotice) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetDesktopForkNotice(on))}
+                    >
+                      {t(on ? "settings.forkNotice.on" : "settings.forkNotice.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               <SettingsField label={labLabel("restartUpdate", t("settings.restartUpdate"))} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (

@@ -74,6 +74,21 @@ type DesktopConfig struct {
 	// values to "nokia"; the frontend additionally falls back from "mario" to
 	// "nokia" in public builds, where the Nintendo-owned asset is compiled out.
 	UpdateChimeTune string `toml:"update_chime_tune"`
+	// ForkNotice gates the "you are on the fork build" first-launch dialog
+	// (task 670, user instruction 20261009). It ships ON by explicit user
+	// ruling: a pure UI notice with no behaviour change, so the 铁律 2 default
+	// does not apply (same nil-means-on shape as task 265 — absent = on, so
+	// configs written before the switch existed keep the notice).
+	ForkNotice *bool `toml:"fork_notice"`
+	// ForkNoticeMuted is the dialog's 「下次不提醒」 user preference (task
+	// 670). NOT an experimental switch — it is a stored user answer: once
+	// true, future version swaps never raise the fork notice again until the
+	// user turns the fork-notice switch off and back on (which clears it).
+	ForkNoticeMuted bool `toml:"fork_notice_muted"`
+	// ForkNoticeLastVersion records the version tree the notice last fired
+	// for (task 670). The first launch after a swap shows the dialog; the
+	// same version never shows it twice, no matter how the dialog was closed.
+	ForkNoticeLastVersion string `toml:"fork_notice_last_version"`
 	// ExperimentalSessionMonitor exposes the left-rail "session monitor" board
 	// (task 123). It ships off: the board is a diagnostics surface for cache
 	// residency and switch cost, so it stays behind an explicit opt-in.
@@ -395,6 +410,21 @@ func (c *Config) DesktopSubagentTpsEnabled() bool {
 // renders on the desktop transcript (task 265). Nil means on.
 func (c *Config) DesktopCompletionSummaryEnabled() bool {
 	return c == nil || c.Desktop.ExperimentalCompletionSummary == nil || *c.Desktop.ExperimentalCompletionSummary
+}
+
+// DesktopForkNoticeEnabled reports whether the fork first-launch notice may
+// render (task 670). Nil means on: the notice is the feature's default per
+// explicit user ruling, so a config written before the switch existed keeps
+// it. Flipping the switch off and back on also clears the muted preference —
+// a re-enable is an explicit ask to see the notice again.
+func (c *Config) DesktopForkNoticeEnabled() bool {
+	if c == nil {
+		return false
+	}
+	if c.Desktop.ForkNotice != nil {
+		return *c.Desktop.ForkNotice
+	}
+	return true
 }
 
 // FeedbackNudgeEnabled reports whether the host may append feedback-inbox

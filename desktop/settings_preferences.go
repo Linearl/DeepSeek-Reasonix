@@ -208,6 +208,14 @@ func (a *App) SetUpdateChimeTune(tune string) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetUpdateChimeTune(tune) })
 }
 
+// SetDesktopForkNotice toggles the fork first-launch notice switch (task 670;
+// default on per user ruling). A pure frontend gate, so this is a live config
+// flip; re-enabling also clears the 「下次不提醒」 mute (the switch is the only
+// UI path back from a stored mute).
+func (a *App) SetDesktopForkNotice(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopForkNotice(enabled) })
+}
+
 // SetExperimentalFullAccess toggles the full-access (yolo) lab switch
 // (task 257). Boot resolves it into the writable-root set and the bash spec,
 // so the flip applies on the next restart — the settings pane says so.

@@ -326,6 +326,12 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// save. Normalized (empty/unknown reads nokia); the frontend falls back
 		// from mario to nokia in public builds (Nintendo asset compiled out).
 		fmt.Fprintf(&b, "update_chime_tune = %q   # desktop: update-chime melody: nokia | mario (task 512)\n", c.UpdateChimeTuneMode())
+		// Task 670: fixed-key-set rule — unlisted fork-notice keys would be
+		// dropped on every save, silently re-arming the dialog (muted lost)
+		// or re-prompting the same version (last-version lost).
+		fmt.Fprintf(&b, "fork_notice = %v   # desktop: fork first-launch notice dialog, on by default (task 670, user ruling)\n", c.DesktopForkNoticeEnabled())
+		fmt.Fprintf(&b, "fork_notice_muted = %v   # desktop: fork notice 「下次不提醒」 user preference (task 670)\n", c.Desktop.ForkNoticeMuted)
+		fmt.Fprintf(&b, "fork_notice_last_version = %q   # desktop: version tree the fork notice last fired for (task 670)\n", c.Desktop.ForkNoticeLastVersion)
 		fmt.Fprintf(&b, "experimental_session_monitor = %v   # desktop: left-rail session monitor board (task 123)\n", c.Desktop.ExperimentalSessionMonitor)
 		fmt.Fprintf(&b, "experimental_split_view = %v   # desktop: tab-bar split view (task 70-1)\n", c.Desktop.ExperimentalSplitView)
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)

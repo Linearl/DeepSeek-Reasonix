@@ -95,6 +95,8 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   { id: "updateFeedback", endMarker: '{selected === "baseProcess" && (', members: [
     { label: "M6 restartUpdate", field: "s.experimentalRestartUpdate", setter: "app.SetExperimentalRestartUpdate(on)" },
     { label: "M6 feedback", field: "s.experimentalFeedback", setter: "app.SetExperimentalFeedback(on)" },
+    // 任务 670: fork 首启提示（默认开，用户裁决）入卡，独立开关独立 setter。
+    { label: "670 forkNotice", field: "s.forkNotice", setter: "app.SetDesktopForkNotice(on)" },
   ] },
   { id: "sessionStore", endMarker: '{selected === "splitView" && (', members: [
     { label: "M7 sessionStorage", field: "storageMode === mode", setter: "app.SetSessionStorage(mode)" },

@@ -354,6 +354,9 @@ type SettingsView struct {
 	// this view; carrying them only on DesktopStartupSettingsView left both switches
 	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
 	ExperimentalRestartUpdate bool `json:"experimentalRestartUpdate"`
+	// Task 670: the fork first-launch notice switch, resolved (nil-means-on
+	// collapsed). The lab 「更新与反馈」 card reads it; default on per user ruling.
+	ForkNotice bool `json:"forkNotice"`
 	// Task 381: fast-switch staging directory override; empty = the default
 	// staging directory under the install root. A missing directory surfaces
 	// as a named error on the restart-and-update path (never silent).
@@ -588,6 +591,9 @@ type DesktopStartupSettingsView struct {
 	StatusBarItems               []string        `json:"statusBarItems"`
 	// ExperimentalRestartUpdate exposes the "restart and update" button (task 81).
 	ExperimentalRestartUpdate bool `json:"experimentalRestartUpdate"`
+	// Task 670: the fork first-launch notice switch, resolved (nil-means-on
+	// collapsed). Startup reads it from this view; default on per user ruling.
+	ForkNotice bool `json:"forkNotice"`
 	// ExperimentalAutonomousUpdate exposes the agent-facing restart_update tool toggle (task 254).
 	ExperimentalAutonomousUpdate bool `json:"experimentalAutonomousUpdate"`
 	// AutonomousUpdateResume is the auto-resume scope dial (task 254): off | goal_autopilot | all.
@@ -1404,6 +1410,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ConfigWarnings = cfg.LoadWarnings()
 		view.ConfigPath = config.UserConfigPath()
 		view.ExperimentalRestartUpdate = cfg.Desktop.ExperimentalRestartUpdate
+		view.ForkNotice = cfg.DesktopForkNoticeEnabled()
 		view.ExperimentalAutonomousUpdate = cfg.Desktop.ExperimentalAutonomousUpdate
 		view.AutonomousUpdateResume = cfg.AutonomousUpdateResumeMode()
 		view.UpdateChime = cfg.Desktop.UpdateChime
@@ -1581,6 +1588,7 @@ func (a *App) Settings() SettingsView {
 		AutopilotGuardQuiescent:              cfg.AutopilotGuardQuiescentPolicy(),
 		// The Settings panel reads these switches from this view (see the struct note).
 		ExperimentalRestartUpdate: cfg.Desktop.ExperimentalRestartUpdate,
+		ForkNotice:                cfg.DesktopForkNoticeEnabled(),
 		StagingDir:                strings.TrimSpace(cfg.Desktop.StagingDir),
 
 		ExperimentalAutonomousUpdate:    cfg.Desktop.ExperimentalAutonomousUpdate,

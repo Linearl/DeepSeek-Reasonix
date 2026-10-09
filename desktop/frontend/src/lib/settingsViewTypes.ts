@@ -23,6 +23,8 @@ export interface SettingsView {
   autopilotGuardQuiescent?: string;
   // Task 81: exposes the restart-and-update action. Same preference restart_and_update reads.
   experimentalRestartUpdate?: boolean;
+  // Task 670: fork first-launch notice switch, resolved (nil-means-on; default on per user ruling).
+  forkNotice?: boolean;
   /** Task 381: fast-switch staging directory override; empty = the default. */
   stagingDir?: string;
   // Task 254: registers the agent-facing restart_update tool (boot snapshot).

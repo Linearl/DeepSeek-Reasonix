@@ -2456,6 +2456,8 @@ export type { ModelSettingsChange, ModelSettingsResult } from "./modelSettingsTy
 export interface DesktopStartupSettingsView {
   /** Restart-and-update experiment switch (task 81); off unless the user opts in. */
   experimentalRestartUpdate?: boolean;
+  /** Fork first-launch notice switch (task 670), resolved; default on per user ruling. */
+  forkNotice?: boolean;
   /** Agent-facing restart_update tool switch (task 254); off unless the user opts in; boot snapshot. */
   experimentalAutonomousUpdate?: boolean;
   /** Auto-resume scope after an update restart (task 254): off | goal_autopilot | all. */
