@@ -45,6 +45,7 @@ import {
 import { applyReadStatusEvent, type ReadStatusHost } from "./readStatus";
 import { upsertReadPause } from "./readPause";
 import { applyHydrateErrorState, hydrateFailureDetail, hydratePlaceholderItems as resolveHydratePlaceholders } from "./hydrateErrorState";
+import { HISTORY_AUTO_RETRY_LIMIT, runBoundedAutoRetry } from "./historyAutoRetry";
 import { isHostRecoveryGuidance } from "./hostRecoverySteer";
 import { activeTabHydrationPlan, canAdoptUnboundLiveSurface, countSameIdDuplicates, duplicateLiveItemIds, explainReusableCache, fingerprintMatchesMeta, hasResidentSnapshotForEmptySurface, hasReusableCachedTranscript, hydratedHistoryApplyMode, residentSurfaceFresh, retainedLiveTail, sameSessionHydrateIdentity, sameSessionPlaceholderItems, shouldPreferResidentHistory, type HydrateSurfacePolicy } from "./hydrateHistoryApply";
 import { effectiveMaxResidentSessions } from "./resourceBudgets";
@@ -3574,25 +3575,40 @@ export function useController() {
         : undefined;
       if (skipHistory && surfaceEmptyAtHydrate && projection === undefined) skipHistory = false;
       if (!skipHistory && projection === undefined) {
-        projection = await loadTimed("history", () =>
-          // Resident LRU only when the caller keeps cache; reset/no-cache re-fetch.
-          getTranscriptStore().loadLatest(tabId, sessionPath, {
-            turns: HISTORY_PAGE_TURNS,
-            preferResident: shouldPreferResidentHistory(resetSurface, options.preserveCachedHistory),
-            // 任务580: when the switch-back freshness check un-skipped this
-            // hydrate, expectedRevision/Digest carry the FRESH meta values —
-            // the caller's snapshot predates the append that made the resident
-            // stale, and binding the fetch to it would defeat the store's own
-            // resident-shortcut veto.
-            expectedRevision: freshMeta?.sessionRevision ?? sessionRevision,
-            expectedDigest: freshMeta?.sessionDigest ?? sessionDigest,
-            // 任务 451 分相打点：loadLatest 内部（bridge 往返 / 记录换转）逐段
-            // 上报，`<reason>:history/<phase>` 进入 desktop.log（>=150ms）与
-            // summary 行，回答"history 这 1.4s 花在后端还是前端"。
-            onPhase: (phase, ms) => reportStageTiming(tabId, `${reason}:history/${phase}`, ms),
-          }),
-          (err) => { historyLoadCause = err; },
-        );
+        // 任务676: the read landing while a writer holds the session files
+        // (busy/lock contention — 671's root on the read side) is transient;
+        // a manual retry always succeeded, so give the read a BOUNDED silent
+        // auto-retry (500ms × 3) before giving up. Any successful attempt
+        // heals without a banner; only a fully exhausted budget falls through
+        // to the manual-retry banner below. Each retry re-checks stillCurrent
+        // so a tab the user already left neither retries nor reports failure.
+        const attemptHistoryLoad = () =>
+          loadTimed("history", () =>
+            // Resident LRU only when the caller keeps cache; reset/no-cache re-fetch.
+            getTranscriptStore().loadLatest(tabId, sessionPath, {
+              turns: HISTORY_PAGE_TURNS,
+              preferResident: shouldPreferResidentHistory(resetSurface, options.preserveCachedHistory),
+              // 任务580: when the switch-back freshness check un-skipped this
+              // hydrate, expectedRevision/Digest carry the FRESH meta values —
+              // the caller's snapshot predates the append that made the resident
+              // stale, and binding the fetch to it would defeat the store's own
+              // resident-shortcut veto.
+              expectedRevision: freshMeta?.sessionRevision ?? sessionRevision,
+              expectedDigest: freshMeta?.sessionDigest ?? sessionDigest,
+              // 任务 451 分相打点：loadLatest 内部（bridge 往返 / 记录换转）逐段
+              // 上报，`<reason>:history/<phase>` 进入 desktop.log（>=150ms）与
+              // summary 行，回答"history 这 1.4s 花在后端还是前端"。
+              onPhase: (phase, ms) => reportStageTiming(tabId, `${reason}:history/${phase}`, ms),
+            }),
+            (err) => { historyLoadCause = err; },
+          );
+        projection = await runBoundedAutoRetry(attemptHistoryLoad, {
+          shouldContinue: stillCurrent,
+          onRetry: (n) => {
+            addBreadcrumb("tab.hydrate", `history auto-retry ${n}/${HISTORY_AUTO_RETRY_LIMIT} ${tabId}`);
+            reportFrontendLog("history-paging", "history auto-retry", `tab=${tabId} attempt=${n} cause=${errorMessage(historyLoadCause)}`, "info");
+          },
+        });
         // Task 268 (6.2): the hot switch-tab path only had one `switch-tab:history`
         // blob — the 54 slow events could not tell bridge round trip from store
         // application. Same split Task 196 built for resume-session: read is the
