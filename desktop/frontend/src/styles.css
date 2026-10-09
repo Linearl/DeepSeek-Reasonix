@@ -29482,29 +29482,34 @@ button.statusbar__mcp:focus-visible {
     linear-gradient(180deg, color-mix(in srgb, var(--err) 6%, var(--bg)) 0%, var(--bg) 100%);
 }
 
+/* 任务665: the row may wrap in a narrow card — badges keep their full text
+   and the right-aligned used/window figure yields (drops below) instead of
+   the status label being clipped mid-glyph. */
 .context-panel__capacity-top {
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px 10px;
 }
 
 /* 任务549: status pill + projection-stale badge grouped on the left so the
-   right-aligned used/window figure stays a single flex child. */
+   right-aligned used/window figure stays a single flex child.
+   任务665: the flag group never shrinks or clips — labels render whole. */
 .context-panel__capacity-flags {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  max-width: 100%;
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
 
 .context-panel__projection-stale {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  overflow: hidden;
   padding: 3px 8px;
   border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent);
   border-radius: 999px;
@@ -29513,7 +29518,6 @@ button.statusbar__mcp:focus-visible {
   font-size: 12px;
   font-weight: 650;
   line-height: 1;
-  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: help;
 }
@@ -29521,6 +29525,7 @@ button.statusbar__mcp:focus-visible {
 .context-panel__capacity-top strong {
   min-width: 0;
   overflow: hidden;
+  margin-left: auto;
   color: var(--fg);
   text-align: right;
   font-size: 14.5px;
@@ -29531,13 +29536,15 @@ button.statusbar__mcp:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/* 任务665: no max-width/overflow clip on the status badge —「即将压缩」and
+   its translations always render in full; max-width:100% is only an overflow
+   guard for a pathologically long label. */
 .context-panel__capacity-status {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   min-height: 22px;
-  max-width: 58%;
-  overflow: hidden;
+  max-width: 100%;
   padding: 3px 8px;
   border: 1px solid color-mix(in srgb, var(--ok) 20%, transparent);
   border-radius: 999px;
@@ -29546,7 +29553,6 @@ button.statusbar__mcp:focus-visible {
   font-size: 12px;
   font-weight: 650;
   line-height: 1;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
