@@ -84,6 +84,12 @@ func (a *App) shutdownBody() {
 	defer func() {
 		flushCtx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 		defer cancel()
+		// Task 653: drain whatever tab snapshots are still queued before the
+		// process exits — since App.startup the desktop-tabs.json write runs
+		// on the tabsSaveQueue flusher, and a pending snapshot would otherwise
+		// be lost to exit. Bounded like stats.Flush; the shutdown watchdog
+		// bounds the teardown either way.
+		a.flushQueuedTabsSave(250 * time.Millisecond)
 		_ = stats.Flush(flushCtx, config.StatsDir())
 		_ = flushDesktopDerivedCatalogs(flushCtx)
 	}()

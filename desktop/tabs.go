@@ -5568,9 +5568,19 @@ func desktopConfigDir() string {
 	return config.ReasonixHomeDir()
 }
 
+// saveTabsLocked persists the tab snapshot. Task 653: it no longer performs
+// disk IO under App.mu — every one of its ~50 call sites (per-tab setters,
+// open/close/switch, controller build publication, session recovery/takeover,
+// turn admission) used to run MkdirAll + remote-tab reads + marshal + file
+// replace inside the caller's a.mu critical section, so a disk stall held the
+// app-wide tab lock for the write's full duration (639's root cause, fixed
+// there at one site by hand). The snapshot is collected under the lock and
+// handed to the tabsSaveQueue: coalesced background single-flight write once
+// App.startup started the flusher, exact pre-653 synchronous write before
+// that (tests, boot window). See tabs_save_queue.go.
 func (a *App) saveTabsLocked() {
 	dir, entries, activeID, version := a.saveTabsCollectLocked()
-	a.saveTabsWrite(dir, entries, activeID, version)
+	a.tabsSaveQueue.enqueue(a, dir, entries, activeID, version)
 }
 
 // saveTabsCollectLocked gathers the tab-snapshot data under the caller's lock
