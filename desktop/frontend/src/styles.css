@@ -34793,9 +34793,14 @@ button.statusbar__mcp:focus-visible {
 .sidebar--workbench .sidebar__utility-row {
   display: grid;
   /* 任务 320 UI 规格（20261002）：回收站/信件中心/自动化/设置 = 4 列同排；
-     任务 409 群聊入行（兑现 320 预留位）→ 656b 同步扩为 5 列
-     （回收站/信件中心/群聊/自动化/设置）。644：收件箱改名信件中心。 */
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+     任务 409 群聊入行（兑现 320 预留位）。644：收件箱改名信件中心。
+     任务 684（20261009）：列数写死（repeat(4)/(5)）每次图标增减都要同步扩列，
+     忘改即折行（656b 修的 4+1 两行正是 5 按钮 4 列失配）。改为自动列：
+     grid-auto-flow: column + grid-auto-columns: minmax(0, 1fr) —— 列数=按钮数，
+     增删图标免改 CSS 恒单行等距；窄宽下按钮 min-width:0 压缩、图标
+     flex:0 0 auto，只缩间距/按钮不折行。 */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 6px;
 }
 
@@ -34833,9 +34838,12 @@ button.statusbar__mcp:focus-visible {
    because --sidebar-workbench-* are scoped to .sidebar--workbench. */
 .sidebar:not(.sidebar--workbench) .sidebar__nav--footer .sidebar__utility-row {
   display: grid;
-  /* 任务 320 UI 规格（20261002）：classic 同排 4 列；
-     任务 409 群聊入行 → 656b 同步扩为 5 列（回收站/信件中心/群聊/自动化/设置）。 */
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* 任务 320 UI 规格（20261002）：classic 同排；任务 409 群聊入行。
+     任务 684（20261009）：与 workbench 规则同改自动列（列数=按钮数，增删
+     图标免改 CSS 恒单行等距，窄宽压缩不折行）——两处必须同步，失配即折行
+     （656b 教训）。 */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 6px;
   --wails-draggable: no-drag;
 }

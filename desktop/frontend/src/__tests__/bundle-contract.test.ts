@@ -108,10 +108,12 @@ ok(
   "Trash and existing session search remain available",
 );
 ok(
-  // 656b：工具行现状 = 5 位（任务 320 收件箱入行扩 4 列、409 群聊入行扩 5 列；
-  // 原「三工具位」断言自 320 起过期，409/649 交付报备为预存红，本片对齐）。
-  /\.sidebar--workbench\s+\.sidebar__utility-row\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s.test(stylesSource),
-  "Workbench footer distributes its five utility actions evenly",
+  // 684：工具行 = 自动列网格（grid-auto-flow: column + minmax(0,1fr)）——
+  // 列数=按钮数，增删图标免改 CSS 恒单行等距（写死 repeat(N) 每次增删都要
+  // 同步扩列，忘改即折行，656b 修的 4+1 两行正是失配案例）。任务 409 后
+  // 现状 5 键（回收站/信件中心/群聊/自动化/设置）。
+  /\.sidebar--workbench\s+\.sidebar__utility-row\s*\{[^}]*grid-auto-flow:\s*column[^}]*grid-auto-columns:\s*minmax\(0,\s*1fr\)/s.test(stylesSource),
+  "Workbench footer distributes its utility actions evenly on one adaptive row",
 );
 ok(
   /\.app--creation\s+\.sidebar__nav,\s*:root\[data-theme-style\]\s+\.app--creation\s+\.sidebar__nav\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s.test(stylesSource),
