@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/github-script@v9
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
         with:
           script: |
             const AREA = ['agent','mcp','config','updater','provider','desktop','tui','skills','rendering'];
@@ -58,14 +58,14 @@ jobs:
 
             let labels = [];
             try {
-              const res = await fetch('https://api.deepseek.com/chat/completions', {
+              const res = await fetch('https://api.xiaomimimo.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
-                  'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+                  'Authorization': `Bearer ${process.env.MIMO_API_KEY}`,
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                  model: 'deepseek-chat',
+                  model: 'mimo-v2.6-flash',
                   temperature: 0,
                   response_format: { type: 'json_object' },
                   messages: [
@@ -75,7 +75,7 @@ jobs:
                 }),
               });
               if (!res.ok) {
-                core.warning(`DeepSeek API ${res.status}: ${await res.text()}`);
+                core.warning(`MiMo API ${res.status}: ${await res.text()}`);
                 return;
               }
               const data = await res.json();
