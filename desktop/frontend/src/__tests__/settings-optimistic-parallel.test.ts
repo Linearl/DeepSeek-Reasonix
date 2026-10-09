@@ -2,9 +2,14 @@
 //
 // Task 280 — "parallel-write safety check" re-homed into the lab as
 // "optimistic parallel writes": the permissions-area entry is gone, the lab
-// entry reads `sandbox.optimistic_write` upright (checkbox = optimistic),
+// entry reads `sandbox.optimistic_write` upright (On = optimistic),
 // the underlying key never changed (old configs load as-is and roll back
 // losslessly), and all three locales ship the new pair with the old one gone.
+// Task 650 — the detail checkbox became a two-segment capsule control
+// (Off | On) in the permission-tier switch style; binding stays upright.
+// Task 650 also moved the lab entry from the automation group to efficiency
+// (less write-lock waiting is an efficiency gain, not autonomy); the config
+// key and semantics are untouched.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -34,17 +39,23 @@ const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
 // ── old entry removed, new entry present (no double入口) ────────────────────
 ok(!panelRaw.includes("settings.optimisticWrite"), "the permissions-area entry no longer references the old label key");
-ok(panel.includes('{ id: "optimisticParallel", group: "automation",'),
-  "the lab entry lives in the efficiency group (render table)");
+ok(panel.includes('{ id: "optimisticParallel", group: "efficiency",'),
+  "the lab entry lives in the efficiency group (render table, task 650)");
+ok(!panel.includes('{ id: "optimisticParallel", group: "automation",'),
+  "the automation group no longer lists the entry (task 650)");
 ok(panel.includes('| "optimisticParallel"'), "the detail union includes the id");
 
-// ── inverted binding: checkbox reads the field upright (勾=乐观) ────────────
-ok(panel.includes("checked={Boolean(s.sandbox?.optimisticWrite)}"),
-  "the detail checkbox binds the field upright (checked = optimistic on)");
-ok(panel.includes("onChange={(e) => void apply(() => app.SetOptimisticWrite(e.target.checked))}"),
-  "the setter receives the raw checked value (no double negation)");
-ok(!panelRaw.includes("checked={!s.sandbox?.optimisticWrite}"),
-  "the old inverted binding is gone");
+// ── segmented-control binding: reads the field upright (On=乐观, task 650) ──
+ok(panel.includes('className={`set-seg__btn${Boolean(s.sandbox?.optimisticWrite) === on ? " set-seg__btn--on" : ""}`}'),
+  "the detail capsule control binds the field upright (On segment = optimistic on)");
+ok(panel.includes("onClick={() => void apply(() => app.SetOptimisticWrite(on))}"),
+  "the setter receives the segment value directly (no double negation)");
+ok(panel.includes('{t(on ? "settings.optimisticParallel.on" : "settings.optimisticParallel.off")}'),
+  "the segments are labelled via the optimisticParallel.on/off keys");
+ok(!panelRaw.includes("checked={Boolean(s.sandbox?.optimisticWrite)}"),
+  "the old checkbox binding is gone");
+ok(!panelRaw.includes('onChange={(e) => void apply(() => app.SetOptimisticWrite(e.target.checked))}'),
+  "the old checkbox onChange is gone");
 ok(panel.includes("on: Boolean(s.sandbox?.optimisticWrite)"),
   "the lab list entry's on-state mirrors the field (default false = off = safety check on)");
 
@@ -66,11 +77,13 @@ ok(bootGo.includes("subagentScheduler.SetOptimistic(cfg.Sandbox.OptimisticWrite)
 for (const [name, table] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) {
   ok(table.includes('"settings.optimisticParallel"'), `${name} ships settings.optimisticParallel`);
   ok(table.includes('"settings.optimisticParallelHint"'), `${name} ships settings.optimisticParallelHint`);
+  ok(table.includes('"settings.optimisticParallel.on"'), `${name} ships settings.optimisticParallel.on`);
+  ok(table.includes('"settings.optimisticParallel.off"'), `${name} ships settings.optimisticParallel.off`);
   ok(!table.includes('"settings.optimisticWrite"'), `${name} dropped the old settings.optimisticWrite key`);
   ok(!table.includes('"settings.optimisticWriteHint"'), `${name} dropped the old hint key`);
 }
 
-assert.ok(passed >= 18, `expected at least 18 checks, got ${passed}`);
+assert.ok(passed >= 32, `expected at least 32 checks, got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 // ── Task 374fix: read-back chain pinned at the Go source ──────────────────
 {

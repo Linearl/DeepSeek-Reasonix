@@ -75,15 +75,16 @@ export type TierFeatureId =
   | "collabGroupView";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
-  // ── automation（自动化，7 项；任务 517 B1+B2 并入 safetyCostControl）──
+  // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
   autopilot: "recommended",
   sessionCollab: "recommended",
   fullAccess: "recommended",
-  optimisticParallel: "recommended",
   dream: "optional",
   safetyCostControl: "optional",
   subagentPolicy: "unstable",
-  // ── efficiency（提效，9 项；任务 517 B3 并入 safetyCostControl）─────
+  // ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl；────
+  //    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
+  optimisticParallel: "recommended",
   budgetControl: "recommended",
   compressOpt: "recommended",
   messageMerge: "recommended",
