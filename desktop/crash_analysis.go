@@ -68,9 +68,12 @@ func (a *App) CrashAnalysisAvailability() CrashAnalysisAvailabilityReport {
 // what was started. Every prerequisite is re-checked here so the binding stays
 // safe even if the frontend's earlier availability probe went stale.
 func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
-	dir := detectCrashAnalysisSourceDir()
-	if dir == "" {
-		return "", fmt.Errorf("no local reasonix source detected — root-cause analysis needs the fork checkout; use the Copy button to report manually")
+	// Task 674: a missing source checkout is no longer a hard stop — the fork
+	// repo is cloned automatically (shallow) into the standard workspace
+	// location so the one-click flow really is one click end to end.
+	dir, cloned, err := ensureCrashAnalysisSource()
+	if err != nil {
+		return "", fmt.Errorf("%v — use the Copy button to report manually", err)
 	}
 	if ok, ghDetail := ghAuthenticated(); !ok {
 		hint := strings.TrimSpace(ghDetail)
@@ -102,7 +105,11 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 	if err := a.SubmitToTab("", instruction); err != nil {
 		return "", fmt.Errorf("could not submit the analysis instruction (%v) — use the Copy button to report manually", err)
 	}
-	return fmt.Sprintf("YOLO analysis session started; it will analyze the diagnostic against %s and submit an issue to %s via gh-issue-submit.", dir, crashAnalysisRepo), nil
+	cloneNote := ""
+	if cloned {
+		cloneNote = " (source was cloned automatically)"
+	}
+	return fmt.Sprintf("YOLO analysis session started%s; it will analyze the diagnostic against %s and submit an issue to %s via gh-issue-submit.", cloneNote, dir, crashAnalysisRepo), nil
 }
 
 func buildCrashAnalysisInstruction(sourceDir, payload string, testMock bool) string {
@@ -126,13 +133,13 @@ func buildCrashAnalysisInstruction(sourceDir, payload string, testMock bool) str
 
 // detectCrashAnalysisSourceDir probes the known fork checkout locations and
 // returns the first one that actually looks like the reasonix source tree.
-// Detection failure is the normal "source not downloaded" case: route B stops
-// and the UI points at route A.
+// Detection failure is the normal "source not downloaded" case: since task 674
+// the caller clones automatically instead of stopping at route A.
 func detectCrashAnalysisSourceDir() string {
 	candidates := []string{
 		// The workspace layout on this machine: the global workspace (sibling of
 		// the app's own user dir) hosts local repo checkouts under github-repo/.
-		filepath.Join(config.MemoryUserDir(), "global-workspace", "github-repo", "reasonix"),
+		crashAnalysisSourceDirCandidate(),
 	}
 	for _, dir := range candidates {
 		if isReasonixSourceDir(dir) {
@@ -140,6 +147,66 @@ func detectCrashAnalysisSourceDir() string {
 		}
 	}
 	return ""
+}
+
+// crashAnalysisSourceDirCandidate is the one canonical analysis location —
+// what detectCrashAnalysisSourceDir probes and what ensureCrashAnalysisSource
+// clones into.
+func crashAnalysisSourceDirCandidate() string {
+	return filepath.Join(config.MemoryUserDir(), "global-workspace", "github-repo", "reasonix")
+}
+
+// ghCloneArgs keeps the exact gh invocation in one testable place: a shallow
+// clone is enough for file:line root-cause work and keeps the first-run
+// one-click analysis fast.
+func ghCloneArgs(repo, dir string) []string {
+	return []string{"repo", "clone", repo, dir, "--", "--depth", "1"}
+}
+
+// Task 674: one-click must stay one click when the fork checkout is missing.
+// The clone target is the same candidate detectCrashAnalysisSourceDir probes,
+// so a successful clone is found by every later call. Refusals are explicit:
+// an existing directory that is not a reasonix checkout is never touched
+// (removing user data is not this function's job), and a clone that fails
+// validation is reported with gh's output for manual recovery. cloned=true
+// lets the caller say "source was cloned automatically" in its summary.
+func ensureCrashAnalysisSource() (dir string, cloned bool, err error) {
+	if dir := detectCrashAnalysisSourceDir(); dir != "" {
+		return dir, false, nil
+	}
+	dir = crashAnalysisSourceDirCandidate()
+	if _, statErr := os.Stat(dir); statErr == nil {
+		return "", false, fmt.Errorf("source directory exists but is not a reasonix checkout (%s) — move or remove it, then retry; or use the Copy button to report manually", dir)
+	}
+	ghPath, _, found := resolveGhExecutable()
+	if !found {
+		return "", false, fmt.Errorf("cannot clone %s: gh CLI not found on PATH or in known install locations; use the Copy button to report manually", crashAnalysisRepo)
+	}
+	parent := filepath.Dir(dir)
+	if mkErr := os.MkdirAll(parent, 0o755); mkErr != nil {
+		return "", false, fmt.Errorf("could not create the clone parent directory %s (%v)", parent, mkErr)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, ghPath, ghCloneArgs(crashAnalysisRepo, dir)...)
+	// Same env convention as the gh probes: token vars stripped so gh resolves
+	// the keyring-stored identity.
+	cmd.Env = filterEnv(os.Environ(), "GITHUB_TOKEN", "GH_TOKEN")
+	out, cloneErr := cmd.CombinedOutput()
+	if cloneErr != nil {
+		detail := strings.TrimSpace(string(out))
+		if ctx.Err() != nil {
+			detail = strings.TrimSpace(detail + "\nclone timed out after 10m")
+		}
+		if detail == "" {
+			detail = cloneErr.Error()
+		}
+		return "", false, fmt.Errorf("cloning %s failed: %s", crashAnalysisRepo, detail)
+	}
+	if !isReasonixSourceDir(dir) {
+		return "", false, fmt.Errorf("cloned %s but %s does not look like a reasonix checkout — remove it and retry; or use the Copy button to report manually", crashAnalysisRepo, dir)
+	}
+	return dir, true, nil
 }
 
 func isReasonixSourceDir(dir string) bool {

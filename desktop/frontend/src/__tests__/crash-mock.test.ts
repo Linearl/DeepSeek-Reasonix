@@ -136,11 +136,11 @@ console.log("\nreal crash overlay stays unmarked");
   ok(!host.querySelector(".crash-overlay__mock-badge"), "no MOCK badge on a real crash overlay");
   realCalls.length = 0;
   mockCalls.length = 0;
-  const send = host.querySelector(".crash-overlay__send") as HTMLButtonElement;
-  send.click();
-  await tick();
-  await tick();
-  ok(realCalls.length === 1 && mockCalls.length === 0, "real overlay send rides ReportCrash, not ReportMockCrash");
+  // Task 674: the real face dropped its send button entirely — the upload
+  // endpoint is down (618), so the real face must not offer it (and must not
+  // call ReportCrash from anywhere).
+  ok(!host.querySelector(".crash-overlay__send"), "real overlay has no send button (task 674)");
+  ok(realCalls.length === 0 && mockCalls.length === 0, "no send path fired on the real overlay");
 }
 
 console.log("\nmock send without the binding hides the button");

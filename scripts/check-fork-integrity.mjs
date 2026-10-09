@@ -34,6 +34,14 @@ const CHECKS = [
   { feature: "#9221 颜色筛选锚点", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__color-filter {\n  position: relative;"] },
   { feature: "heartbeat 编辑器样式", file: "desktop/frontend/src/custom/features/heartbeat/heartbeat.css", patterns: [".heartbeat-editor__model-override", ".heartbeat-editor__input"] },
   { feature: "任务149 悬停预览富文本卡 CSS", file: "desktop/frontend/src/styles.css", patterns: [".jump-preview-title", ".jump-preview-body", ".jump-preview-tool"] },
+  // 任务 674（弹窗折叠/收起 + 发送报告移除 + 一键分析直达）：折叠是 CSS 类切换
+  // （DOM 保留），上游 merge 若丢 crash-collapse-toggle/crash-face--collapsed 任一端
+  // 折叠即失效；send 的移除与 mock 面保留由 crash-mock/crash-analyze 测试把守。
+  { feature: "任务674 折叠机制 CSS（两面共用）", file: "desktop/frontend/src/styles.css", patterns: [".crash-collapse-toggle", ".crash-face--collapsed > :not(.crash-collapse-toggle)", "#crash-overlay.crash-face--collapsed"] },
+  { feature: "任务674 折叠/无确认一键分析前端", file: "desktop/frontend/src/lib/crash.ts", patterns: ["collapseFaceToggle", "ISSUE_TRACKER_URL", "openIssueTracker", "crash.analyzeCloning"] },
+  { feature: "任务674 折叠往返测试", file: "desktop/frontend/src/__tests__/crash-collapse.test.ts", patterns: ["round trip restores identical content", "analyze sits in the old send slot (first action)"] },
+  { feature: "任务674 一键分析自动 clone（后端）", file: "desktop/crash_analysis.go", patterns: ["ensureCrashAnalysisSource", "ghCloneArgs", "crashAnalysisSourceDirCandidate"] },
+  { feature: "任务674 自动 clone 测试", file: "desktop/crash_analysis_clone_test.go", patterns: ["TestEnsureCrashAnalysisSourceRefusesNonCheckoutDir", "TestGhCloneArgsIsShallowRepoClone"] },
 
   // ── 前端 TS ─────────────────────────────────────────────────────
   { feature: "task 163 OpenCode Go 用量查询（后端）", file: "desktop/opencode_go_usage.go", patterns: ["isOfficialOpenCodeGoBase", "no-subscription", "Bearer ", "parseOpenCodeGoUsage"] },

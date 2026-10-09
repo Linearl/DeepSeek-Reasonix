@@ -24867,7 +24867,6 @@ button.statusbar__mcp:focus-visible {
   gap: 8px;
 }
 .performance-report__copy,
-.performance-report__send,
 .performance-report__dismiss {
   min-height: 30px;
   padding: 5px 10px;
@@ -24877,18 +24876,55 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   font-size: 12px;
 }
-.performance-report__send {
-  border-color: color-mix(in srgb, var(--accent) 68%, var(--border));
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-.performance-report__send[disabled] {
-  opacity: 0.7;
-}
+/* 任务 674: 真实面的「发送报告」按钮已移除（.performance-report__send 样式随之清掉）；
+   mock 演练面保留的发送按钮沿用 .crash-overlay__send。 */
 .performance-report__note {
   color: var(--fg-faint);
   font-size: 11.5px;
   line-height: 1.35;
+}
+
+/* 任务 674: 弹窗折叠/收起 —— 仅切换 host 上的 crash-face--collapsed 类，
+   子元素全部保留在 DOM（display:none），展开即完整还原（含分析中的提示行）；
+   折叠态缩成右下角胶囊，不再遮挡输入区。两个兜底面共用同一套类。 */
+.crash-collapse-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--button-bg);
+  color: var(--fg);
+  font-size: 11.5px;
+}
+.crash-overlay__title {
+  padding-right: 84px;
+}
+.performance-report__title {
+  padding-right: 60px;
+}
+#performance-report-prompt.crash-face--collapsed {
+  width: auto;
+  gap: 0;
+  padding: 6px 10px;
+}
+#performance-report-prompt.crash-face--collapsed > :not(.crash-collapse-toggle),
+#crash-overlay.crash-face--collapsed > :not(.crash-collapse-toggle) {
+  display: none;
+}
+.crash-face--collapsed .crash-collapse-toggle {
+  position: static;
+}
+#crash-overlay.crash-face--collapsed {
+  inset: auto;
+  right: 18px;
+  bottom: 18px;
+  gap: 0;
+  padding: 6px 10px;
+  background: transparent;
+  overflow: visible;
 }
 
 @media (max-width: 560px) {

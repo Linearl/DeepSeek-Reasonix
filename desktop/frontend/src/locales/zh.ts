@@ -4707,27 +4707,24 @@ export const zh: Record<DictKey, string> = {
   "context.durationSeconds": "{seconds}秒",
   "context.durationMinutesSeconds": "{minutes}分{seconds}秒",
 
-  // 崩溃兜底页
-  "crash.title": "Reasonix 遇到错误 —— 可以一键发送报告，或复制后反馈",
+  // 崩溃兜底页（任务 674：移除不可用的「发送报告」；新增折叠与 issue 区直达）
+  "crash.title": "Reasonix 遇到错误 —— 可一键分析根因，或复制后反馈",
   "crash.copy": "复制",
   "crash.copied": "已复制",
   "crash.copyFailed": "复制失败 —— 请手动选择上方文本复制",
-  "crash.send": "发送报告",
+  "crash.copyOpensTracker": "复制成功后自动打开 GitHub issue 页，粘贴补充即可提交",
   "crash.sending": "发送中…",
-  "crash.sent": "已发送，谢谢！",
-  "crash.sendFailed": "发送失败 —— 请改用复制",
   "crash.privacyNote": "报告仅包含上方错误文本（路径中的用户名已移除）以及应用版本和操作系统。",
   "crash.analyze": "一键分析",
   "crash.analyzeChecking": "检查前置条件…",
-  "crash.analyzeNoSource": "未检测到本地源码：根因分析需要 Reasonix fork 源码（诊断只有症状）。请先在本机准备源码，或改用「复制」手动反馈。",
+  "crash.analyzeCloning": "本地源码未就绪 —— 正在自动克隆仓库并启动分析…",
   "crash.analyzeNoGh": "未检测到已认证的 GitHub CLI：提交 issue 需要 GitHub 认证。若下方详情显示未找到 gh，请先安装 GitHub CLI；否则请运行 gh auth login。也可改用「复制」手动反馈。",
   "crash.analyzeNoWorkspace": "当前没有可用会话承载分析（工作区未就绪），请改用「复制」手动反馈。",
-  "crash.analyzeConfirm": "一键分析会新建一个 YOLO 会话、真实运行一轮 agent 分析并提交 issue，会消耗 token 额度。",
-  "crash.analyzeConfirmGo": "开始分析",
-  "crash.analyzeCancel": "取消",
   "crash.analyzeStarting": "正在启动分析会话…",
   "crash.analyzeStarted": "已启动 YOLO 分析会话 —— 分析完成后 issue 链接会出现在该会话中。",
   "crash.analyzeFailed": "启动分析失败，可改用「复制」手动反馈。",
+  "crash.collapse": "收起",
+  "crash.expand": "展开错误报告",
   // 任务 642：实验室模拟崩溃演练 —— 每个界面都重复 test/mock 标注，模拟报告不会被误读（或误分类）为真实故障。
   "crash.mockBadge": "模拟",
   "crash.mockBanner": "这是一条模拟测试报告（实验室-开发调试 → 模拟崩溃测试生成），不是真实故障。发送、复制与一键分析均走真实管道。",
@@ -4741,6 +4738,8 @@ export const zh: Record<DictKey, string> = {
   "settings.mockCrashRun": "模拟一次崩溃（测试）",
   "performanceReport.title": "Reasonix 检测到响应卡顿",
   "performanceReport.dismiss": "关闭",
+  "performanceReport.collapse": "收起",
+  "performanceReport.expand": "展开卡顿报告",
   "performanceReport.privacyNote": "上传前桌面端会移除路径与密钥；诊断信息只用于记录耗时、内存、网络状态、采样到的应用函数名、近期 breadcrumbs、应用版本和操作系统。",
 
   // 模拟/演示种子数据（仅浏览器开发模式）
