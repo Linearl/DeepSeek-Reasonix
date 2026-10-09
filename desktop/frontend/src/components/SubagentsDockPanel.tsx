@@ -16,9 +16,11 @@ import { subjectOf } from "../lib/tools";
 import type { HistoryMessage } from "../lib/types";
 import {
   SUBAGENT_DIRECTORY_PAGE_SIZE,
+  mergeEndedSubagentRecords,
   type SubagentDirectory,
   type SubagentDirectoryEntry,
 } from "../lib/subagentDirectory";
+import type { SubagentArtifactView } from "../lib/types";
 
 // 任务440: the dock detail's live transcript loads lazily — the same pattern
 // as the capsule detail, and the chunk is already in the bundle (main
@@ -301,6 +303,7 @@ export function SubagentsDockPanel({
   onToggleWide,
   sessionPath,
   onReadSubagent,
+  onListPersisted,
 }: {
   directory: SubagentDirectory;
   /** Task 507 plan-A gate: row clicks open the read-only detail view. */
@@ -318,6 +321,12 @@ export function SubagentsDockPanel({
    *  with the same callback the capsule detail uses. Without it the live
    *  view stays off and rows render the preview blocks. */
   onReadSubagent?: (sessionPath: string, ref: string) => Promise<HistoryMessage[]>;
+  /** 任务495 剩余项: the persisted ended directory (desktop
+   *  ListSubagentsByParent — the sidecar records survive restart, compaction
+   *  and archived outputs). Merged into the ended section; without it the
+   *  panel stays the transcript-only projection (the 备用视图 passes nothing,
+   *  byte-for-byte the 495 body there). */
+  onListPersisted?: (sessionPath: string) => Promise<SubagentArtifactView[]>;
 }) {
   const t = useT();
   // Task 495 ④: reveal the ended list 20 rows at a time (zcode's PAGE_SIZE).
@@ -328,7 +337,36 @@ export function SubagentsDockPanel({
   // persisted, so a restart lands back on the list (语义诚实: the preview
   // content itself is memory-only).
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const ended = directory.ended;
+  // 任务495 剩余项: the persisted sidecar records for this session. Reloads
+  // on session switch and whenever the transcript's ended count moves (a
+  // just-finished child writes its sidecar at completion — the same refresh
+  // shape the capsule directory uses). A failure simply yields no extras.
+  const [persisted, setPersisted] = useState<readonly SubagentArtifactView[]>([]);
+  const endedCountKey = directory.ended.length;
+  useEffect(() => {
+    if (!onListPersisted || !sessionPath) {
+      setPersisted([]);
+      return;
+    }
+    let cancelled = false;
+    onListPersisted(sessionPath)
+      .then((views) => {
+        if (!cancelled) setPersisted(views);
+      })
+      .catch(() => {
+        if (!cancelled) setPersisted([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onListPersisted, sessionPath, endedCountKey]);
+  // 任务495 剩余项: the ended section is transcript ∪ persisted, transcript
+  // entries winning on ref collisions (they carry the richer live state).
+  const mergedEnded = useMemo(
+    () => mergeEndedSubagentRecords(directory, persisted),
+    [directory, persisted],
+  );
+  const ended = mergedEnded.ended;
   const visibleEnded = ended.slice(0, revealed);
   const hiddenEnded = ended.length - visibleEnded.length;
   const empty = directory.running.length === 0 && ended.length === 0;
@@ -354,7 +392,12 @@ export function SubagentsDockPanel({
   if (empty) {
     return (
       <div className="subagents-panel" aria-label={t("workspace.subagentsTab")}>
+        {/* 任务495 剩余项 (用法引导): the bare "no subagents" line could not
+            answer "怎么用 / 只能看活跃么" — the guide line states where rows
+            come from, the two sections, the click-to-expand interaction and
+            restart persistence. Same faint-text class, no new CSS. */}
         <p className="subagents-panel__empty">{t("subagentPanel.empty")}</p>
+        <p className="subagents-panel__empty">{t("subagentPanel.emptyGuide")}</p>
       </div>
     );
   }

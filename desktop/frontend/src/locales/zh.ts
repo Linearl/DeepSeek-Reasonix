@@ -2716,6 +2716,7 @@ export const zh: Record<DictKey, string> = {
 "settings.sessionWall.off": "关",
 "workspace.subagentsTab": "子代理",
 "subagentPanel.empty": "当前会话暂无子代理",
+"subagentPanel.emptyGuide": "主对话派发子任务（task、explore 等）时产生：运行中实时刷新，结束后归入下方「已结束」列表，重启后仍保留；点击行展开摘要，已结束每页 20 条。",
 "subagentPanel.runningEmpty": "暂无运行中的子代理",
 "subagentPanel.ended": "已结束",
 "subagentPanel.endedEmpty": "暂无已结束的子代理",

@@ -2716,6 +2716,7 @@ export const en = {
 "settings.sessionWall.off": "Off",
 "workspace.subagentsTab": "Subagents",
 "subagentPanel.empty": "No subagents in this session",
+"subagentPanel.emptyGuide": "Subagents appear when the main conversation dispatches subtasks (task, explore, ...): running ones refresh live, ended ones move to the list below and survive a restart; click a row to expand its summary, 20 per page.",
 "subagentPanel.runningEmpty": "No running subagents",
 "subagentPanel.ended": "Ended",
 "subagentPanel.endedEmpty": "No ended subagents",
