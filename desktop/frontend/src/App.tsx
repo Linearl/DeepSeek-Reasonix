@@ -43,7 +43,7 @@ import {
   Check,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
-import { buildSubagentDirectory } from "./lib/subagentDirectory";
+import { buildSubagentDirectory, subagentsTabLabel } from "./lib/subagentDirectory";
 import { insertSessionWallEntry } from "./lib/sessionWall";
 import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
@@ -5803,7 +5803,9 @@ export default function App() {
                     onClick={() => openRightDockMode("subagents")}
                   >
                     <Bot size={13} />
-                    <span className="workbench-dock__tab-label">{t("workspace.subagentsTab")}</span>
+                    {/* 任务495 剩余项: the ended count rides the label so ended
+                       content is visible at the entry before opening the tab. */}
+                    <span className="workbench-dock__tab-label">{subagentsTabLabel(t("workspace.subagentsTab"), subagentDirectory.ended.length)}</span>
                   </button>
                 )}
               </div>
@@ -5853,6 +5855,12 @@ export default function App() {
                        session path scopes the reads to the active tab. */
                     sessionPath={(activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim()}
                     onReadSubagent={capsuleReadSubagent}
+                    /* 任务495 剩余项: the persisted ended directory (same
+                       bridge the capsule uses) merges into the ended section —
+                       ended subagents stay listed across restart and
+                       compaction, not only while their transcript card
+                       survives in memory. */
+                    onListPersisted={capsuleListSubagents}
                   />
                 </Suspense>
               ) : effectiveRightDockMode === "remote" ? (
