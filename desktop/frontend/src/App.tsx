@@ -5978,6 +5978,10 @@ export default function App() {
             context={state.context}
             usage={state.usage}
             balance={state.balance}
+            // Task 666: the plan usage readout follows this tab's current
+            // model — an empty id would fall back to the app's active tab in
+            // Go, but an explicit id re-queries immediately on tab switch.
+            tabId={activeTabId}
             running={state.running || rewindCommitting}
             jobs={state.jobs}
             restartUpdateAvailable={restartUpdateEnabled}

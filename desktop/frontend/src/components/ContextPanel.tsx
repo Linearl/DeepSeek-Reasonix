@@ -697,9 +697,10 @@ export function ContextPanel({
               </div>
             </div><ContextBudgetCard budget={resolveContextBudget(context, info)} t={t} />
           </section>
-          {/* Task 287: provider plan usage — hidden entirely when the config
-              has no plan-capable provider (the card itself renders null). */}
-          <PlanUsageCard />
+          {/* Task 287: provider plan usage. Task 666: hidden entirely unless
+              the tab's CURRENT model resolves to a plan-capable provider (the
+              Go side answers unsupported for anything else). */}
+          <PlanUsageCard tabId={tabId} />
           <Suspense fallback={null}>
             <McpListLayers items={items} t={t} />
           </Suspense>

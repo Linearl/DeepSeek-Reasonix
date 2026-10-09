@@ -203,6 +203,7 @@ export function StatusBar({
   onCancelRuntimeJob,
   onRevealRuntime,
   extensionStatuses = [],
+  tabId,
 }: {
   context: ContextInfo;
   usage?: WireUsage;
@@ -247,6 +248,9 @@ export function StatusBar({
   onRevealRuntime?: (tabID: string) => Promise<void>;
   // Extension-published status surfaces (stage 8b2), one per surface key.
   extensionStatuses?: ExtensionStatusEntry[];
+  // Task 666: the visible tab — the plan usage poll targets its current
+  // model so the quota shown always belongs to the provider actually in use.
+  tabId?: string;
 }) {
   const { locale, t } = useI18n();
   const pct = context.window > 0 ? contextWindowPercentages(context.used, context.window).raw : null;
@@ -290,13 +294,18 @@ export function StatusBar({
       ? `${t("status.balanceTitle")}: ${balance.detail}`
       : t("status.balanceTitle"))
     : t("status.balanceTitle");
-  // Task 287: plan usage readout — provider-scoped global store, started from
-  // the first mounted surface (the status bar is always mounted). A provider
-  // without plan support renders nothing: hidden, never an error.
+  // Task 287: plan usage readout — global store polling the VISIBLE tab's
+  // current provider (task 666), started from the first mounted surface (the
+  // status bar is always mounted). A non-plan current model renders nothing:
+  // hidden, never an error.
   const planView = usePlanUsageStore((s) => s.view);
+  const reportPlanUsageTab = usePlanUsageStore((s) => s.reportTab);
   useEffect(() => {
     ensurePlanUsagePolling();
   }, []);
+  useEffect(() => {
+    reportPlanUsageTab(tabId);
+  }, [reportPlanUsageTab, tabId]);
   const planWindows = planView?.supported
     ? planView.windows.filter((w) => typeof w.percent === "number")
     : [];

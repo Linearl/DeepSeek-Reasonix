@@ -1091,10 +1091,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // is allow-listed host-side; off (the default) never reaches either call.
   SetExperimentalOpenCodeGoUsage(enabled: boolean): Promise<void>;
   GetOpenCodeGoUsage(baseUrl: string): Promise<{ tiers: { window: string; percent: number | null; resetsAt: string }[]; note: string }>;
-  // Task 287: provider plan usage (coding/token plan quota). No args — the Go
-  // side resolves the first plan-capable provider from config; unsupported
-  // providers return supported:false with zero network I/O.
-  GetProviderPlanUsage(): Promise<PlanUsageResult>;
+  // Task 287: provider plan usage (coding/token plan quota). Task 666: the
+  // arg is the visible tab's id — the Go side resolves the provider behind
+  // that tab's CURRENT model (multi-key brands each query their own quota);
+  // anything not plan-capable returns supported:false with zero network I/O.
+  GetProviderPlanUsage(tabID?: string): Promise<PlanUsageResult>;
   SetExperimentalQuestionSearch(enabled: boolean): Promise<void>;
   SetExperimentalSubagentTps(enabled: boolean): Promise<void>;
   SetExperimentalCompletionSummary(enabled: boolean): Promise<void>;
@@ -5651,7 +5652,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalOpenCodeGoUsage() {},
     async GetOpenCodeGoUsage() { return { tiers: [], note: "no-key" }; },
     // Task 287: unsupported in the browser mock — plan surfaces stay hidden.
-    async GetProviderPlanUsage() { return { supported: false, provider: "", region: "", windows: [], note: "unsupported", queriedAt: 0 }; },
+    async GetProviderPlanUsage(_tabID?: string) { return { supported: false, provider: "", region: "", windows: [], note: "unsupported", queriedAt: 0 }; },
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
     async SetExperimentalCDPDebugPort() {},

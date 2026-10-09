@@ -12,22 +12,31 @@ import { resetCountdown } from "../lib/opencodeGoUsage";
 import { ensurePlanUsagePolling, usePlanUsageStore } from "../store/planUsage";
 
 // Task 287 — the plan-usage block of the right-dock overview (显示位 a).
+// Task 666 — display condition: the card renders only while the tab's CURRENT
+// model resolves to a plan-capable provider (the Go side answers unsupported
+// for anything else); the quota shown is that provider's own key.
 //
-// Data lives in the global plan-usage store (provider-scoped, polled every
-// 60s); this card is a pure view over it. A provider without plan support
-// renders nothing at all — hidden, never an error (task 287 fallback rule).
-// The refresh button is the manual refresh path alongside the polling.
+// Data lives in the global plan-usage store (polled every 60s against the
+// visible tab); this card is a pure view over it, reporting its tab so a
+// switch re-queries immediately. An unsupported answer renders nothing at
+// all — hidden, never an error (task 287 fallback rule). The refresh button
+// is the manual refresh path alongside the polling.
 
-export function PlanUsageCard() {
+export function PlanUsageCard({ tabId }: { tabId?: string }) {
   const { t } = useI18n();
   const view = usePlanUsageStore((s) => s.view);
   const loading = usePlanUsageStore((s) => s.loading);
   const refresh = usePlanUsageStore((s) => s.refresh);
+  const reportTab = usePlanUsageStore((s) => s.reportTab);
 
-  // Start the shared poll from the first mounted surface (idempotent).
+  // Start the shared poll from the first mounted surface (idempotent) and
+  // target it at this tab — the store re-queries when the tab changes.
   useEffect(() => {
     ensurePlanUsagePolling();
   }, []);
+  useEffect(() => {
+    reportTab(tabId);
+  }, [reportTab, tabId]);
 
   // The countdown lines re-render every 30s off the same fetched resetsAt
   // values (same cadence as the OpenCode Go card).

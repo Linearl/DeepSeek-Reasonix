@@ -1,10 +1,13 @@
 // Run: tsx src/__tests__/plan-usage-card.test.tsx
 //
 // Task 287 — render the right-dock overview plan card against the wire states
-// the store can hold: unsupported (hidden entirely — the fallback rule),
+// the store can hold: unsupported (hidden entirely — the fallback rule; since
+// task 666 this is also the "current model is not plan-capable" state),
 // no-key (setup note, no crash), a normal two-window payload (bars + percents
 // + countdown), and the exhausted state (warning line + critical tone).
-// Zero skips: every state must render without throwing.
+// Task 666 — the query targets the visible tab: the bridge call carries the
+// reported tab id and a tab switch re-queries with the new tab. Zero skips:
+// every state must render without throwing.
 
 import assert from "node:assert/strict";
 import React, { act } from "react";
@@ -25,12 +28,14 @@ Object.assign(globalThis, {
 });
 
 let queries = 0;
+let seenTabs: (string | undefined)[] = [];
 Object.assign(window, {
   go: {
     main: {
       App: {
-        GetProviderPlanUsage: async () => {
+        GetProviderPlanUsage: async (tabID?: string) => {
           queries += 1;
+          seenTabs.push(tabID);
           return { supported: false, windows: [], note: "unsupported", queriedAt: 0 };
         },
       },
@@ -51,7 +56,7 @@ function ok(condition: unknown, label: string) {
   }
 }
 
-async function renderCard(state: PlanUsageResult | null) {
+async function renderCard(state: PlanUsageResult | null, tabId?: string) {
   usePlanUsageStore.setState({ view: state, loading: false });
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -59,7 +64,7 @@ async function renderCard(state: PlanUsageResult | null) {
   await act(async () => {
     root.render(
       <LocaleProvider>
-        <PlanUsageCard />
+        <PlanUsageCard tabId={tabId} />
       </LocaleProvider>,
     );
   });
@@ -93,9 +98,11 @@ const clean: PlanUsageResult = {
 };
 
 // Unsupported: hidden entirely (task 287 fallback rule — never an error).
+// Since task 666 the backend returns this whenever the tab's CURRENT model is
+// not plan-capable, so this state IS the display condition's hidden branch.
 {
   const r = await renderCard({ supported: false, provider: "", region: "", windows: [], note: "unsupported", queriedAt: 0 });
-  ok(r.card === null, "unsupported provider renders nothing");
+  ok(r.card === null, "unsupported (current model not plan-capable) renders nothing");
   await r.dispose();
 }
 
@@ -153,6 +160,40 @@ const clean: PlanUsageResult = {
   });
   ok(queries > before, "refresh button issues a bridge call");
   await r.dispose();
+}
+
+// Task 666: the query targets the visible tab, and a tab switch re-queries
+// with the new tab — the surfaces must never show the previous tab's quota.
+{
+  seenTabs = [];
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root: Root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <LocaleProvider>
+        <PlanUsageCard tabId="tab-a" />
+      </LocaleProvider>,
+    );
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  ok(seenTabs.includes("tab-a"), "the bridge call carries the visible tab id");
+  await act(async () => {
+    root.render(
+      <LocaleProvider>
+        <PlanUsageCard tabId="tab-b" />
+      </LocaleProvider>,
+    );
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  ok(seenTabs.includes("tab-b"), "a tab switch re-queries with the new tab");
+  ok(seenTabs[seenTabs.length - 1] === "tab-b", "the latest query targets the newest tab");
+  await act(async () => root.unmount());
+  container.remove();
 }
 
 stopPlanUsagePollingForTest();
