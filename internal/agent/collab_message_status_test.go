@@ -202,6 +202,30 @@ func TestTalkToSessionReturnStaysAdditive(t *testing.T) {
 	}
 }
 
+// 任务 599：返回体必须带建议复查间隔 retryAfterMs，且取值与投递泵节奏常量
+// 同源（不是硬编码的魔法数）——字段的存在意义是让调用方按泵的定局节奏安排
+// get_message_status 复查，值与泵脱钩就失去意义甚至误导。
+func TestTalkToSessionReturnCarriesRetryAfterMs(t *testing.T) {
+	env := newStatusTestEnv(t)
+	cfg := statusToolCfg(env, env.fromID)
+	tool := NewTalkToSessionTool(cfg)
+	out, err := tool.Execute(context.Background(), json.RawMessage(`{"to":"`+env.toID+`","message":"hi"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(out), &body); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := body["retryAfterMs"].(float64)
+	if !ok {
+		t.Fatalf("retryAfterMs must be a number in the return body: %s", out)
+	}
+	if int(got) != sessioncollab.DeliveryPumpIntervalMS {
+		t.Fatalf("retryAfterMs=%d must equal the pump cadence constant (%d ms) — a diverged value misleads the caller", int(got), sessioncollab.DeliveryPumpIntervalMS)
+	}
+}
+
 // 面板开关降级 steer：同步可知的部分 disposition 必须出现在返回体里。
 func TestTalkToSessionShowsPanelDegradation(t *testing.T) {
 	env := newStatusTestEnv(t)

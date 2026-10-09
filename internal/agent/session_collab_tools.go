@@ -1115,6 +1115,11 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// 语义与取值不变（回归由既有测试钉住）。
 	payload["deliveryOutcome"] = "pending"
 	payload["deliveryOutcomeNote"] = "queued 只代表消息已进入持久信箱；是否注入当轮/降级排队/被拒绝由投递泵异步定局（约 4 秒一轮）。用 get_message_status(message_id=\"" + msg.ID + "\") 查询终态（injected/queued_followup/refused_*/failed_retrying）；用 peek_own_inbox 查看落进你自己信箱的系统回执（降级/拒绝通知）。pending 不是成功回执。"
+	// 任务 599：建议复查间隔（毫秒），与宿主投递泵的定局节奏同源
+	// （sessioncollab.DeliveryPumpIntervalMS，desktop ticker 从它推导）——
+	// 调用方照这个间隔用 get_message_status 复查，第一次复查就有真结果的
+	// 概率最大，不必凭感觉立即轮询或等太久。
+	payload["retryAfterMs"] = sessioncollab.DeliveryPumpIntervalMS
 	if steerDegradedByPanel {
 		payload["deliveryDegradedByPanel"] = true
 		payload["deliveryOutcomeNote"] = "你请求的 delivery=steer 因面板开关未开启（session_collab_allow_steer）已按 followup 排队投递——这是本次调用同步可知的事实；后续终态查询方式同上（" + payload["deliveryOutcomeNote"].(string) + "）"
