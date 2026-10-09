@@ -31,19 +31,24 @@ import (
 // ForegroundSubagentView is one running foreground sub-agent for the desktop
 // contract. Title is the owning tab's display title (empty when the tab is
 // unknown, e.g. a rebound runtime); the frontend shows it as the row origin.
+// ParentToolCallID (任务 667) is the dispatch-batch key: children of one
+// parallel dispatch share it. The capsule UI ignores it; get_session_status's
+// work detail surfaces it as "batch".
 type ForegroundSubagentView struct {
-	TabID     string `json:"tabId"`
-	Title     string `json:"title,omitempty"`
-	Ref       string `json:"ref"`
-	Name      string `json:"name,omitempty"`
-	StartedAt int64  `json:"startedAt"` // unix milliseconds
+	TabID            string `json:"tabId"`
+	Title            string `json:"title,omitempty"`
+	Ref              string `json:"ref"`
+	Name             string `json:"name,omitempty"`
+	StartedAt        int64  `json:"startedAt"` // unix milliseconds
+	ParentToolCallID string `json:"parentToolCallId,omitempty"`
 }
 
 // foregroundSubagentEntry is the registry record for one running foreground
 // sub-agent, keyed by ref within its tab's set.
 type foregroundSubagentEntry struct {
-	name      string
-	startedAt int64 // unix milliseconds
+	name             string
+	startedAt        int64 // unix milliseconds
+	parentToolCallID string
 }
 
 // foregroundLifecycleAlivePhases are the lifecycle phases that mean "this ref
@@ -93,7 +98,7 @@ func (a *App) noteSubagentLifecycle(tabID string, info event.SubagentLifecycleIn
 			refs = make(map[string]foregroundSubagentEntry)
 			a.foregroundSubagents[tabID] = refs
 		}
-		refs[info.Ref] = foregroundSubagentEntry{name: info.Skill, startedAt: startedAt}
+		refs[info.Ref] = foregroundSubagentEntry{name: info.Skill, startedAt: startedAt, parentToolCallID: info.ParentToolCallID}
 		a.foregroundSubagentsMu.Unlock()
 	case foregroundLifecycleTerminalPhases[info.Phase]:
 		a.removeForegroundSubagent(tabID, info.Ref)
@@ -206,11 +211,12 @@ func (a *App) RunningSubagents() []ForegroundSubagentView {
 	out := make([]ForegroundSubagentView, 0, len(stagedEntries))
 	for _, item := range stagedEntries {
 		out = append(out, ForegroundSubagentView{
-			TabID:     item.tabID,
-			Title:     titles[item.tabID],
-			Ref:       item.ref,
-			Name:      item.entry.name,
-			StartedAt: item.entry.startedAt,
+			TabID:            item.tabID,
+			Title:            titles[item.tabID],
+			Ref:              item.ref,
+			Name:             item.entry.name,
+			StartedAt:        item.entry.startedAt,
+			ParentToolCallID: item.entry.parentToolCallID,
 		})
 	}
 	// Deterministic order: start time, then tab, then ref — map iteration is

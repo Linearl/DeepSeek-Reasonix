@@ -2704,6 +2704,7 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		OnSessionTitleChanged:    a.onSessionTitleChanged,
 		OnCreateCollabSession:    a.createCollabSession,
 		OnSessionStatus:          a.collabSessionStatus,
+		OnSessionWorkDetail:      a.collabSessionWorkDetail,
 		OnSessionInfo:            a.collabSessionInfo,
 		OnSessionGroup:           a.collabSessionGroup,
 		OnSessionGroupMatch:      a.collabSessionGroupMatch,

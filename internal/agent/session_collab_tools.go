@@ -73,6 +73,15 @@ type SessionCollabConfig struct {
 	// (other process, runtime not stood up) — the tool must report unknown
 	// rather than guess an idle. Nil makes every state unknown.
 	SessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
+	// SessionWorkDetail (任务 667), when set, answers one contact's runtime
+	// work detail: the background-job rows the desktop running panel (task 440)
+	// renders plus the running-foreground-subagent rows the capsule badge
+	// (task 557) counts — the tool face of that same runtime state layer, no
+	// new state. Only consulted when the caller passes
+	// include_tasks_and_subagents; nil on hosts without the probe, which
+	// answers known=false instead of a guessed empty set. Rows carry
+	// labels/refs/timestamps only, never transcript content.
+	SessionWorkDetail SessionWorkDetailFunc
 	// Task 243 A2: turn-scoped dispatch echo. Injected by boot as agent method
 	// values (executor exists before the collab literal); nil in direct unit
 	// construction, which omits the echo field entirely.
@@ -361,11 +370,11 @@ type getSessionStatusTool struct{ cfg SessionCollabConfig }
 func (getSessionStatusTool) Name() string { return "get_session_status" }
 
 func (getSessionStatusTool) Description() string {
-	return "Check whether collaboration peers are busy before assigning work (task 218). Without arguments returns every addressable live session; pass targets (mixed contact_id / topic_id / exact title) to query one or many in one call. Each record is lightweight structured metadata — running/idle/queued/unknown state, last activity, unread inbox count — never transcript content; unmatched targets are reported explicitly. state=unknown means THIS process cannot see the session's runtime — never that it is idle or dead; before treating it as idle check lastActivity and read the target's inbox.jsonl tail. Strictly read-only. Experimental."
+	return "Check whether collaboration peers are busy before assigning work (task 218). Without arguments returns every addressable live session; pass targets (mixed contact_id / topic_id / exact title) to query one or many in one call. Each record is lightweight structured metadata — running/idle/queued/unknown state, last activity, unread inbox count — never transcript content; unmatched targets are reported explicitly. state=unknown means THIS process cannot see the session's runtime — never that it is idle or dead; before treating it as idle check lastActivity and read the target's inbox.jsonl tail. Pass include_tasks_and_subagents=true (任务 667) to add each session's background-job rows and running-foreground-subagent rows — the same runtime state the desktop running panel and capsule badge show — so you can verify how many dispatched children are still active instead of guessing. Strictly read-only. Experimental."
 }
 
 func (getSessionStatusTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"targets":{"type":"array","items":{"type":"string"},"description":"Sessions to query: contact_id, topic_id, or exact title, mixed freely. Omit for every addressable live session."}},"required":[]}`)
+	return json.RawMessage(`{"type":"object","properties":{"targets":{"type":"array","items":{"type":"string"},"description":"Sessions to query: contact_id, topic_id, or exact title, mixed freely. Omit for every addressable live session."},"include_tasks_and_subagents":{"type":"boolean","description":"Opt-in (default false): attach each session's work detail — background job rows and running foreground sub-agent rows (name/duration/status/batch). Off keeps the answer at the lightweight busy/idle metadata only."}},"required":[]}`)
 }
 
 func (getSessionStatusTool) ReadOnly() bool { return true }
@@ -510,12 +519,27 @@ func collabStatusRecords(cfg SessionCollabConfig, targets []string) (records []m
 func (t getSessionStatusTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Targets []string `json:"targets"`
+		// 任务 667: opt-in detail. False (the zero value) keeps the answer
+		// byte-identical to the pre-667 shape — the enrichment below runs only
+		// when the caller explicitly asks for it.
+		IncludeTasksAndSubagents bool `json:"include_tasks_and_subagents"`
 	}
 	if len(args) > 0 {
 		_ = json.Unmarshal(args, &p)
 	}
 
 	records, unmatched, liveTotal := collabStatusRecords(t.cfg, p.Targets)
+	if p.IncludeTasksAndSubagents {
+		// 任务 667: per-record work detail, resolved by the record's contactId
+		// through the same host probe that powers the busy/idle judgement's
+		// sibling callbacks — cross-session queries get the detail for free
+		// because targets resolution already keyed the records by contact.
+		nowMS := time.Now().UnixMilli()
+		for _, record := range records {
+			contactID, _ := record["contactId"].(string)
+			record["workDetail"] = sessionWorkDetailSection(t.cfg.SessionWorkDetail, contactID, nowMS)
+		}
+	}
 	out, _ := json.Marshal(map[string]any{
 		"returned": len(records),
 		// Task 228 audit m5: "total" is the whole addressable live directory

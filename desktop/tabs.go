@@ -4173,6 +4173,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		OnSessionTitleChanged:      a.onSessionTitleChanged,
 		OnCreateCollabSession:      a.createCollabSession,
 		OnSessionStatus:            a.collabSessionStatus,
+		OnSessionWorkDetail:        a.collabSessionWorkDetail,
 		OnSessionInfo:              a.collabSessionInfo,
 		// 任务 454: 补接任务 285 三个宿主探针 + 分组成员归属探针。此处是
 		// tab 会话的初始构建路径，漏接导致新会话里 list_addressable_sessions
