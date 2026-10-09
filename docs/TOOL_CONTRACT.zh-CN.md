@@ -11,7 +11,7 @@
 | 工具 | Read-only | 说明 |
 | --- | --- | --- |
 | `bash` | false | 执行 shell 命令并返回 stdout/stderr。构建、测试、git、包管理器等使用它；读写查找文件优先使用专用工具。 |
-| `bash_output` | true | 读取后台 `bash` 或 `task` job 自上次读取后的新增输出和状态。 |
+| `bash_output` | true | 读取后台 `bash` 或 `task` job 自上次读取后的新增输出和状态。不阻塞。等待家族选用：本工具是自身后台任务的非阻塞增量读；`wait` 是阻塞收全量的收集器；等协作对端条件用 `event_wait`；发信等单个回复用 `talk_to_session(wait=true)`；信箱读写用 `mailbox`。 |
 | `code_index` | true | 轻量内置代码符号索引；优先使用 `lsp_*` 或代码图 MCP，缺失时用它兜底。 |
 | `complete_step` | true | 用证据记录已批准计划中一个步骤的完成情况。 |
 | `compress` | true | 压缩当前模型可见对话中选定的范围，不删除可见历史。仅在用户明确要求压缩上下文时使用；锚点必须是某条真实用户消息中唯一、精确的原文片段。 |
@@ -30,7 +30,7 @@
 | `todo_write` | true | 记录并更新当前工作的结构化任务清单。小改动优先用 `ops`（按 step_id 做 replace/insert/delete/move，先调用 todo_read）；只有整体重写才发送完整的 `todos`。用于规划多步工作并展示进度：同一时刻只保留一个 in_progress，并在每项完成的当下就置为 completed（不要攒着一起改）。单步的琐碎任务可跳过。条目另可携带 `owner`（归属哪个执行者）与 `running`（并行执行者正在处理）——仅作协同元数据，永远不改变状态、也不参与串行校验。 |
 | `tool_recovery` | true | 读取恢复闸门：哪些此前的工具调用留下了未确认的外部效果、以及其中某一次当前处于什么状态（`action` = `list` / `inspect`）。在被 `recovery_required` 拦下后使用它，就能准确说出"卡在什么上"而不是靠猜。只读：它绝不确认、拒绝或重试任何效果——只有用户能解除闸门。 |
 | `view_image` | true | 按路径读取本地 PNG、JPEG、GIF 或 WebP，通过结构化图片通道交给视觉模型。最大 3 MiB、4000 万像素，沿用读取权限。 |
-| `wait` | true | 等待后台 job 完成并返回最终输出。 |
+| `wait` | true | 等待后台 job 完成并返回最终输出。等待家族选用：本工具是自身后台任务的阻塞全量读；`bash_output` 是非阻塞增量替代；等协作对端条件用 `event_wait`；发信等单个回复用 `talk_to_session(wait=true)`；信箱读写用 `mailbox`。 |
 | `web_fetch` | true | 通过 HTTP/HTTPS 获取 URL 文本内容。 |
 | `write_file` | false | 写入文件内容，必要时创建父目录。 |
 
