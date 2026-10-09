@@ -5,6 +5,7 @@ import {
   buildCrashPayload,
   buildPerformancePayload,
   formatLongTaskAttribution,
+  formatLongTaskReason,
   formatPerformanceContext,
   globalCrashReportReason,
   isOpaqueScriptErrorEvent,
@@ -221,6 +222,19 @@ eq(
 );
 eq(shouldPromptForLongTasks({ count: 16, totalMs: 3_100, maxMs: 237 }), true, "prompts past the 3s cumulative budget");
 eq(shouldPromptForLongTasks({ count: 2, totalMs: 3_100, maxMs: 790 }), false, "cumulative path needs at least 3 tasks");
+// Task 692 (issue #36): the trigger reason carries the cumulative window — a
+// bare "long task 507ms" read as one 507ms stall while the real trigger was 26
+// tasks totalling 3050ms in the 60s window.
+eq(
+  formatLongTaskReason({ count: 26, totalMs: 3_050, maxMs: 507 }),
+  "long task 26 in 60s, max 507ms, total 3050ms",
+  "long task reason carries count/max/total over the window",
+);
+eq(
+  performanceLabelForReason(formatLongTaskReason({ count: 3, totalMs: 3_100, maxMs: 237 })),
+  "performance.longtask",
+  "cumulative reason keeps the performance.longtask label mapping",
+);
 eq(shouldPromptForEventLoopLag([6_007]), false, "ignores an isolated lag spike without long-task evidence");
 eq(shouldPromptForEventLoopLag([1_350, 1_420]), true, "prompts on consecutive lag samples");
 eq(

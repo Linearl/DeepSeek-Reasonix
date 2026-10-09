@@ -519,6 +519,15 @@ export function shouldPromptForLongTasks(summary: { count: number; totalMs: numb
   return summary.maxMs >= LONG_TASK_PROMPT_MS || (summary.count >= 3 && summary.totalMs >= LONG_TASK_TOTAL_PROMPT_MS);
 }
 
+// Task 692 (issue #36): the trigger reason must carry the cumulative window,
+// not just the max. "long task 507ms" reads as one 507ms stall, but the report
+// it names actually fired on the cumulative branch (26 tasks / total 3050ms in
+// the 60s window) — the prefix stays "long task" so the pressure label mapping
+// in performanceLabelForReason is unchanged.
+export function formatLongTaskReason(summary: { count: number; totalMs: number; maxMs: number }): string {
+  return `long task ${summary.count} in ${LONG_TASK_WINDOW_MS / 1000}s, max ${fmtNumber(summary.maxMs)}ms, total ${fmtNumber(summary.totalMs)}ms`;
+}
+
 export function shouldPromptForEventLoopLag(
   samples: readonly number[],
   longTask?: { count: number; totalMs: number; maxMs: number },
@@ -1250,7 +1259,7 @@ export function installPerformancePressureMonitor() {
     const summary = longTaskSummary();
     if (!summary) return;
     if (shouldPromptForLongTasks(summary)) {
-      promptPerformanceReport(`long task ${fmtNumber(summary.maxMs)}ms`);
+      promptPerformanceReport(formatLongTaskReason(summary));
     }
   };
 
