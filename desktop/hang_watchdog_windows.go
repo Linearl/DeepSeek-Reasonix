@@ -3,6 +3,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"syscall"
@@ -32,6 +34,12 @@ var (
 	enumWindowsCallback        = syscall.NewCallback(enumCurrentProcessTopLevelWindow)
 )
 
+func init() {
+	// Windows has a live message-loop probe, so the watchdog re-checks the
+	// window before judging a stale heartbeat (issue #38).
+	probeMainThread = probeWindowsMainThread
+}
+
 func mainThreadWatchdogSupported() bool { return true }
 
 func startNativeMainThreadHeartbeat(intervalMS uint64) {
@@ -59,9 +67,27 @@ func startNativeMainThreadHeartbeat(intervalMS uint64) {
 				hwnd := currentProcessTopLevelWindow()
 				// Window creation can lag OnStartup. Treat absence as
 				// inconclusive instead of manufacturing a startup hang.
-				if hwnd == 0 || windowMessageLoopResponsive(hwnd, interval) {
+				if hwnd == 0 {
+					recordMainThreadProbeOutcome(mainThreadProbeResult{
+						Status: mainThreadProbeInconclusive,
+						Detail: "heartbeat: no current-process top-level window yet",
+						At:     now,
+					})
+					recordMainThreadHeartbeat(now)
+					continue
+				}
+				detail, responsive := windowMessageLoopResponsiveDetail(hwnd, interval)
+				status := mainThreadProbeHung
+				if responsive {
+					status = mainThreadProbeResponsive
 					recordMainThreadHeartbeat(now)
 				}
+				recordMainThreadProbeOutcome(mainThreadProbeResult{
+					Status:   status,
+					Detail:   detail,
+					Duration: time.Since(now),
+					At:       now,
+				})
 			}
 		}
 	}()
@@ -112,10 +138,37 @@ func windowClassName(hwnd uintptr) string {
 	return windows.UTF16ToString(name[:n])
 }
 
-func windowMessageLoopResponsive(hwnd uintptr, timeout time.Duration) bool {
+// probeWindowsMainThread synchronously asks the current process's top-level
+// wailsWindow whether its message loop still answers. Runs on the watchdog
+// goroutine — it may wait up to mainThreadProbeTimeout without ever blocking
+// the UI thread. This is the check that separates a suspend artifact (window
+// answers the moment the process resumes) from a real hang (issue #38).
+func probeWindowsMainThread() mainThreadProbeResult {
+	start := time.Now()
+	hwnd := currentProcessTopLevelWindow()
+	if hwnd == 0 {
+		return mainThreadProbeResult{
+			Status:   mainThreadProbeInconclusive,
+			Detail:   "no current-process top-level wailsWindow (window absent)",
+			Duration: time.Since(start),
+		}
+	}
+	detail, responsive := windowMessageLoopResponsiveDetail(hwnd, mainThreadProbeTimeout)
+	status := mainThreadProbeHung
+	if responsive {
+		status = mainThreadProbeResponsive
+	}
+	return mainThreadProbeResult{
+		Status:   status,
+		Detail:   detail,
+		Duration: time.Since(start),
+	}
+}
+
+func windowMessageLoopResponsiveDetail(hwnd uintptr, timeout time.Duration) (string, bool) {
 	timeoutMS := max(timeout.Milliseconds(), 250)
 	var result uintptr
-	ok, _, _ := sendMessageTimeoutProc.Call(
+	ok, _, callErr := sendMessageTimeoutProc.Call(
 		hwnd,
 		wmNull,
 		0,
@@ -124,5 +177,28 @@ func windowMessageLoopResponsive(hwnd uintptr, timeout time.Duration) bool {
 		uintptr(timeoutMS),
 		uintptr(unsafe.Pointer(&result)),
 	)
-	return ok != 0
+	if ok != 0 {
+		return fmt.Sprintf("SendMessageTimeoutW(WM_NULL) answered within %dms", timeoutMS), true
+	}
+	return classifySendMessageTimeoutFailure(callErr, timeoutMS), false
+}
+
+// classifySendMessageTimeoutFailure keeps the failure shapes distinguishable in
+// the hang report (issue #38): a timeout means the message loop really stopped
+// answering, an invalid handle means the window went away (inconclusive at
+// best), and a failure without an error code is the SMTO_ABORTIFHUNG abort for
+// a thread the OS already considers hung.
+func classifySendMessageTimeoutFailure(callErr error, timeoutMS int64) string {
+	var errno syscall.Errno
+	if errors.As(callErr, &errno) {
+		switch errno {
+		case windows.ERROR_TIMEOUT:
+			return fmt.Sprintf("SendMessageTimeoutW(WM_NULL) timed out after %dms", timeoutMS)
+		case windows.ERROR_INVALID_HANDLE:
+			return "SendMessageTimeoutW(WM_NULL) failed: invalid window handle"
+		default:
+			return fmt.Sprintf("SendMessageTimeoutW(WM_NULL) failed: %v", errno)
+		}
+	}
+	return "SendMessageTimeoutW(WM_NULL) failed without an error code (SMTO_ABORTIFHUNG abort: window thread flagged hung)"
 }
