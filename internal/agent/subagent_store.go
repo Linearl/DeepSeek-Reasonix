@@ -357,16 +357,44 @@ func (s *SubagentStore) CleanupStaleRunning() (int, error) {
 		refs        []string
 	}
 	parents := map[string]*staleParent{}
+	// Task 363 (boot 治理·并发解锁): collect the valid refs first, then load
+	// their metadata under a bounded worker pool. The reads are independent
+	// and read-only, but on a cold first touch each file can cost tens of
+	// milliseconds (Windows AV / cold cache measured ~20ms/file on a real
+	// store: 46 meta files ≈ 0.7-1.0s serialized) and this scan runs on every
+	// boot inside the boot agent:tools stage. Aggregation below stays in
+	// ReadDir order, so the first fatal I/O error and the resulting parents
+	// map are exactly what the serialized loop produced.
+	var refs []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".meta.json") {
 			continue
 		}
 		ref := strings.TrimSuffix(entry.Name(), ".meta.json")
-		if !validSubagentRef(ref) {
-			continue
+		if validSubagentRef(ref) {
+			refs = append(refs, ref)
 		}
-		meta, err := s.LoadMeta(ref)
-		if err != nil {
+	}
+	metas := make([]SubagentMeta, len(refs))
+	metaErrs := make([]error, len(refs))
+	const metaScanWorkers = 8
+	workers := metaScanWorkers
+	if workers > len(refs) {
+		workers = len(refs)
+	}
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := w; i < len(refs); i += workers {
+				metas[i], metaErrs[i] = s.LoadMeta(refs[i])
+			}
+		}(w)
+	}
+	wg.Wait()
+	for i, ref := range refs {
+		if err := metaErrs[i]; err != nil {
 			// A corrupt metadata file (truncated write, killed process) must
 			// not abort startup. Skip all content decode failures, including
 			// errors from custom field decoders such as time.Time, while genuine
@@ -376,6 +404,7 @@ func (s *SubagentStore) CleanupStaleRunning() (int, error) {
 			}
 			return 0, err
 		}
+		meta := metas[i]
 		if meta.Status != SubagentRunning {
 			continue
 		}

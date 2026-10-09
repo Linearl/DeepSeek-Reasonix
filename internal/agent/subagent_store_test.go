@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -1047,4 +1048,72 @@ func prepareCompletedSubagentForLineageTest(t *testing.T, parentSession string) 
 	}
 	run.Release()
 	return sessionDir, store, run.Ref, spec
+}
+
+// TestSubagentStoreCleanupStaleRunningWideScanEquivalence is the task-363
+// 并发解锁 contract: the bounded-parallel meta scan must produce exactly the
+// serialized outcome — running metas across many parents all marked
+// interrupted, completed metas untouched, corrupt metas skipped, and the
+// cleaned count exact. 40 valid refs push the scan through the worker pool
+// (more refs than workers).
+func TestSubagentStoreCleanupStaleRunningWideScanEquivalence(t *testing.T) {
+	store := NewSubagentStore(t.TempDir())
+	spec := testSubagentSpec(t, "review")
+
+	// One running meta (the serialized tests' baseline shape) plus 40
+	// completed metas written directly, plus 3 corrupt files. The completed
+	// metas need a valid ref shape only — the scan just reads status.
+	run, err := store.PrepareFresh(spec)
+	if err != nil {
+		t.Fatalf("PrepareFresh: %v", err)
+	}
+	if err := store.MarkRunning(run); err != nil {
+		t.Fatalf("MarkRunning: %v", err)
+	}
+	runningRef := run.Ref
+	run.Release()
+
+	for i := 0; i < 40; i++ {
+		ref := fmt.Sprintf("sa_done_%02d", i)
+		meta := map[string]any{
+			"ref": ref, "status": "completed", "parentSession": "parent.jsonl",
+			"createdAt": time.Now().UTC().Format(time.RFC3339), "updatedAt": time.Now().UTC().Format(time.RFC3339),
+		}
+		data, err := json.Marshal(meta)
+		if err != nil {
+			t.Fatalf("marshal meta %d: %v", i, err)
+		}
+		if err := os.WriteFile(filepath.Join(store.dir, ref+".meta.json"), data, 0o600); err != nil {
+			t.Fatalf("write meta %d: %v", i, err)
+		}
+	}
+	for i, corrupt := range []string{`{"status":"running"`, "", `{"createdAt":"not-a-time"}`} {
+		if err := os.WriteFile(filepath.Join(store.dir, fmt.Sprintf("sa_corrupt_%d", i)+".meta.json"), []byte(corrupt), 0o600); err != nil {
+			t.Fatalf("write corrupt meta %d: %v", i, err)
+		}
+	}
+
+	cleaned, err := store.CleanupStaleRunning()
+	if err != nil {
+		t.Fatalf("CleanupStaleRunning: %v", err)
+	}
+	if cleaned != 1 {
+		t.Fatalf("cleaned = %d, want 1 (only the running meta; completed untouched, corrupt skipped)", cleaned)
+	}
+	meta, err := store.LoadMeta(runningRef)
+	if err != nil {
+		t.Fatalf("LoadMeta: %v", err)
+	}
+	if meta.Status != SubagentInterrupted {
+		t.Fatalf("status = %q, want interrupted", meta.Status)
+	}
+	for i := 0; i < 40; i++ {
+		done, err := store.LoadMeta(fmt.Sprintf("sa_done_%02d", i))
+		if err != nil {
+			t.Fatalf("LoadMeta done_%02d: %v", i, err)
+		}
+		if done.Status != SubagentCompleted {
+			t.Fatalf("done_%02d status = %q, want completed (cleanup must not touch it)", i, done.Status)
+		}
+	}
 }

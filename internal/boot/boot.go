@@ -1188,6 +1188,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	registerEnabledMCP(configSpecs)
 	mcpSpecsMs := time.Since(specsStart).Milliseconds()
 	bootTime.mark("mcp")
+	// Task 363 ⑦: the agent:tools stage is the current wall-clock leader in
+	// field desktop.log (1.1-1.9s floor on fast cold boots, 15.9s worst
+	// sample) and the stage-timings line cannot say which face is slow. The
+	// sub-timers below decompose the segment into named faces, summarized by
+	// the "boot: agent:tools stage" line at the mark — same pattern as the
+	// "boot: mcp stage" line above. Observation only.
+	agentToolsStart := time.Now()
 	// Task 334: the reuse proof the bench reads — a rebuild with an unchanged
 	// MCP config and a shared host must log connect_fresh=0; any connect here
 	// names a reuse miss (host/key/spec) instead of inferring it later.
@@ -1567,6 +1574,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	addDocsTool()
 	addSessionTools()
 	addMemoryTools()
+	agentToolsPrepMs := time.Since(agentToolsStart).Milliseconds()
 
 	// Task 115 dream/distill: experimental memory curation, off by default.
 	// Both tools only read project sessions and write project memory / a
@@ -1800,10 +1808,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		return &event.Profile{Model: model, Effort: effort}
 	}
 	var cmds []command.Command
+	var agentToolsCommandsMs int64
 	if opts.ReuseAssembly != nil && shouldReuseDiscovery(opts.PreviousPlan) {
 		cmds = opts.ReuseAssembly.Commands
 	} else {
+		commandsLoadStart := time.Now()
 		cmds, _ = command.LoadRoots(config.CommandRootsForRoot(root)...)
+		agentToolsCommandsMs = time.Since(commandsLoadStart).Milliseconds()
 	}
 	slashCommandAdded := false
 	slashCommandIncludesSkills := false
@@ -1941,6 +1952,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	} else {
 		addSlashCommandTool(false)
 	}
+	// Skill/command faces closed: the skill runners above are closures (no I/O
+	// here), the disk faces are hook.Load (prep) and command.LoadRoots
+	// (commands_ms) plus the slash/skill tool registrations.
+	agentToolsSkillsMs := time.Since(agentToolsStart).Milliseconds() - agentToolsPrepMs
 
 	// Session-shared MCP runtime: Host, specs, and connection snapshots. Each
 	// agent gets its own use_capability frontend (ledger/audit isolation) while
@@ -2018,6 +2033,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		_, missing := catalog.RequiresReady(requires)
 		return missing
 	})
+	// Capability face closed: spec inventory + cached-schema reads + the
+	// capability runtime construction (in-memory; the lazy MCP connects live
+	// in the mcp stage / first use).
+	agentToolsCapabilityMs := time.Since(agentToolsStart).Milliseconds() - agentToolsSkillsMs - agentToolsPrepMs
 
 	// S1b resident-base client (design §10): one Start per build, consumed by
 	// the executor (base-toolcall gate), the controller (tool-catalog gate)
@@ -2076,9 +2095,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		WriteWorkspaceRoot: root,
 		OptimisticWrite:    cfg.Sandbox.OptimisticWrite,
 		// Task 575: heavy bash commands take the write lease under optimistic_write.
-		BashHeavyGuard:     cfg.Sandbox.ExperimentalBashHeavyGuard,
+		BashHeavyGuard: cfg.Sandbox.ExperimentalBashHeavyGuard,
 		// Task 517: the B2 gate rides the merged safety/cost switch.
-		LoopStreakNote:     cfg.Agent.ExperimentalSafetyCostControl,
+		LoopStreakNote: cfg.Agent.ExperimentalSafetyCostControl,
 		// Task 172: feedback touchpoints — FeedbackNudgeEnabled ANDs the nudge
 		// dial with the parent feedback switch, so the agent sees one dial that
 		// already respects the parent-wins rule. Boot snapshot: restart to apply.
@@ -2197,9 +2216,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// actionable refusals that name the panel switch.
 			AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
 			// Task 517: the B3 gate rides the merged safety/cost switch.
-			EventWaitRecheck:  cfg.Agent.ExperimentalSafetyCostControl,
-			AllowSteer:        cfg.Agent.SessionCollabAllowSteer,
-			DailySendLimit:    cfg.Agent.SessionCollabDailySendLimit,
+			EventWaitRecheck: cfg.Agent.ExperimentalSafetyCostControl,
+			AllowSteer:       cfg.Agent.SessionCollabAllowSteer,
+			DailySendLimit:   cfg.Agent.SessionCollabDailySendLimit,
 		}
 		// Task 174: the tool family is consolidated — search folded into the
 		// list tool's query, the sync twin folded into talk's wait, and the
@@ -2331,6 +2350,20 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// registration face above vs the runner/executor construction below. Same
 	// greppable summary, two finer segments; observation only.
 	bootTime.mark("agent:tools")
+	// Task 363 ⑦: emit the agent:tools decomposition (see agentToolsStart).
+	// Sub-tiles are cumulative-since-start differences, so each face is its
+	// own wall clock and the sum stays ≤ stage_ms (the mark closes the whole
+	// segment). session-monitor's stage-timings parsing reads only the
+	// summary line, which keeps its shape (one more key=value pair here).
+	agentToolsExecutorMs := time.Since(agentToolsStart).Milliseconds() -
+		agentToolsCapabilityMs - agentToolsSkillsMs - agentToolsPrepMs
+	slog.Info("boot: agent:tools stage",
+		"prep_ms", agentToolsPrepMs,
+		"commands_ms", agentToolsCommandsMs,
+		"skills_ms", agentToolsSkillsMs,
+		"capability_ms", agentToolsCapabilityMs,
+		"executor_ms", agentToolsExecutorMs,
+		"stage_ms", bootTime.stageMs("agent:tools"))
 	var runner agent.Runner = executor
 	label := entry.Model
 	// Two-model collaboration: a distinct planner_model wraps the executor in a
@@ -2400,12 +2433,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	imageSnapshot := config.ModelCapabilitySnapshot(cfg, modelCapabilities)
 	ctrlOpts := control.Options{
-		ModelSettingsRevision:      cfg.ModelRuntimeFingerprint(modelRef),
-		ModelSettingsCurrent:       runtimeModelSettingsReader(root, modelName, modelRef, opts.ModelSettings),
-		FrozenImageInput:           &imageEnabled,
-		ImageCapabilityChanged:     runtimeImageCapabilityReader(root, modelName, imageSnapshot, opts.ModelSettings),
-		TaskBudget:                 taskBudgetFromConfig(cfg),
-		GoalTokenBudget:            cfg.Agent.GoalTokenBudget,
+		ModelSettingsRevision:  cfg.ModelRuntimeFingerprint(modelRef),
+		ModelSettingsCurrent:   runtimeModelSettingsReader(root, modelName, modelRef, opts.ModelSettings),
+		FrozenImageInput:       &imageEnabled,
+		ImageCapabilityChanged: runtimeImageCapabilityReader(root, modelName, imageSnapshot, opts.ModelSettings),
+		TaskBudget:             taskBudgetFromConfig(cfg),
+		GoalTokenBudget:        cfg.Agent.GoalTokenBudget,
 		// 任务553: idle-session wake on owned background-job completion. Iron
 		// rule 2: master switch default off; budget knobs boot-snapshot here.
 		BackgroundJobWake: control.BackgroundJobWakeOptions{
@@ -2532,12 +2565,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		},
 		// Task 225: the host resolves the task-source parent's Ask channel for
 		// a dispatched session's approval prompts (contact-bound grant, 24h).
-		OnCascadeDelegate:   opts.OnCascadeDelegate,
-		OnFallbackSwitch:    opts.OnFallbackSwitch,
-		SessionRecoveryMeta: opts.SessionRecoveryMeta,
-		OnSessionRecovered:  opts.OnSessionRecovered,
-		OnSessionTransition: opts.OnSessionTransition,
-		BeforeInboxDispatch: opts.BeforeInboxDispatch,
+		OnCascadeDelegate:        opts.OnCascadeDelegate,
+		OnFallbackSwitch:         opts.OnFallbackSwitch,
+		SessionRecoveryMeta:      opts.SessionRecoveryMeta,
+		OnSessionRecovered:       opts.OnSessionRecovered,
+		OnSessionTransition:      opts.OnSessionTransition,
+		BeforeInboxDispatch:      opts.BeforeInboxDispatch,
 		OnInboxDispatchExhausted: opts.OnInboxDispatchExhausted,
 		// The merged catalog lets frontends enumerate sidecar providers.
 		ProviderResolver:  extensionResolver,
