@@ -3527,7 +3527,14 @@ export function useController() {
       noteBeginSwitch(tabId);
       ensureTranscriptSubscription(tabId);
       dispatchTo(tabId, { type: "hydrate_start", reason, placeholderItems: resolveHydratePlaceholders(options.placeholderItems) });
-      if (resetSurface && !deferResetUntilHistory && stillCurrent()) dispatchTo(tabId, { type: "reset" });
+      if (resetSurface && !deferResetUntilHistory && stillCurrent()) {
+        // 任务675: a surface reset invalidates the projector cursor with it —
+        // a backend turn that is already live (session rebind, one-click
+        // analysis) must be replayed from the ledger floor onto the fresh
+        // surface, not continue appending to events the wipe just discarded.
+        turnEventProjector.release(tabId);
+        dispatchTo(tabId, { type: "reset" });
+      }
       const requiresVisibleTab = reason === "startup" || reason === "switch-tab" || reason === "open-topic";
       const stillVisible = () => !requiresVisibleTab || activeTabIdRef.current === tabId;
       const foregroundTurnActive = (): boolean => {
@@ -3615,7 +3622,12 @@ export function useController() {
       const applyMode = hydratedHistoryApplyMode(skipHistory, projection !== undefined, foregroundTurnActive(), statesRef.current.get(tabId), applyProj);
       if (projection !== undefined && applyMode !== "skip") {
         const historyApplyStartedAt = Date.now();
-        if (deferResetUntilHistory && stillCurrent() && !foregroundTurnActive()) dispatchTo(tabId, { type: "reset" });
+        if (deferResetUntilHistory && stillCurrent() && !foregroundTurnActive()) {
+          // 任务675: same cursor/surface co-invalidation as the immediate reset
+          // branch above — see the release note there.
+          turnEventProjector.release(tabId);
+          dispatchTo(tabId, { type: "reset" });
+        }
         const page = {
           items: projection.items,
           startTurn: projection.startTurn,
@@ -3815,7 +3827,7 @@ export function useController() {
         sessionLoadInFlight.current.delete(tabId);
       }
     }
-  }, [bumpSessionLoadSeq, cancelHydrateCurrent, dispatchTo, loadMetaForTab, refreshBalanceForTab, reconcileQueuedGuidanceForTab, sessionLoadCurrent]);
+  }, [bumpSessionLoadSeq, cancelHydrateCurrent, dispatchTo, loadMetaForTab, refreshBalanceForTab, reconcileQueuedGuidanceForTab, sessionLoadCurrent, turnEventProjector]);
 
   const resetTurnEventProjection = useCallback(async (tabId: string, replay: TurnEventReplayView): Promise<boolean> => {
     const state = statesRef.current.get(tabId);
@@ -4134,7 +4146,14 @@ export function useController() {
     const foregroundRunning = foregroundRunningFromRuntimeMeta(tab);
     const runtimeEpoch = tab.runtime?.epoch;
     const latestEventSeq = tab.turnEventSeq ?? 0;
-    turnEventProjector.observeRuntime(tabId, runtimeEpoch, latestEventSeq, tab.turnReplayAfterSeq, foregroundRunning && Boolean(tab.turnId));
+    // 任务675: the Go meta marshals TurnReplayAfter with omitempty, so a live
+    // FIRST turn (replayAfter = turnStartSeq-1 = 0) arrives as undefined and
+    // used to seed the projector cursor at `latest` — every head event below
+    // it (turn_started, the first settled segments) silently skipped, with the
+    // back-fill self-sealed behind latest == projected. A turn id on the
+    // snapshot means the floor is real: reconstruct the omitted zero.
+    const replayAfterSeq = tab.turnId ? (tab.turnReplayAfterSeq ?? 0) : tab.turnReplayAfterSeq;
+    turnEventProjector.observeRuntime(tabId, runtimeEpoch, latestEventSeq, replayAfterSeq, foregroundRunning && Boolean(tab.turnId));
     // Will the reducer reject this as a snapshot that predates the live prompt?
     // Computed on pre-dispatch state so we can schedule an authoritative
     // refetch when a stale idle snapshot is ignored.
