@@ -235,6 +235,9 @@ func TestCrashAnalysisSummaryIsChineseWithPathSeparatorsIntact(t *testing.T) {
 	for _, r := range trimmed {
 		if r < 0x80 && r != ' ' {
 			t.Fatalf("summary carries unexpected ASCII beyond the path and repo: %q", summary)
+		}
+	}
+}
 
 // ── 任务 672：一键分析会话归属 Global ──────────────────────────────────────
 
@@ -394,6 +397,8 @@ func TestBuildCrashAnalysisInstructionKeepsPathSeparators(t *testing.T) {
 	}
 	if strings.Contains(instruction, "github-repo.reasonix") {
 		t.Fatalf("instruction must not mangle the path separators:\n%s", instruction)
+	}
+}
 
 // TestCrashAnalysisSessionOpenTimesOutWithoutController pins the bound: a tab
 // whose controller never arrives fails the analysis start with the explicit

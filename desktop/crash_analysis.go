@@ -15,7 +15,9 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
-	"reasonix/internal/proc"	"reasonix/internal/control")
+	"reasonix/internal/control"
+	"reasonix/internal/proc"
+)
 
 // crash_analysis.go is task 617 route B: "one-click analyze" from the crash /
 // performance prompt. It reuses the existing session surface — open a fresh
@@ -75,13 +77,8 @@ const crashAnalysisControllerPollInterval = 50 * time.Millisecond
 // shows one distinct notice per failed check (missing source / spend warning /
 // gh auth).
 func (a *App) CrashAnalysisAvailability() CrashAnalysisAvailabilityReport {
-<<<<<<< HEAD
 	dir := crashAnalysisSourceDir()
 	ghOK, ghDetail := crashAnalysisGhAuth()
-=======
-	dir := detectCrashAnalysisSourceDir()
-	ghOK, ghDetail := ghAuthenticatedProbe()
->>>>>>> wt-663
 	report := CrashAnalysisAvailabilityReport{
 		SourceReady:     dir != "",
 		SourceDir:       dir,
@@ -110,11 +107,7 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 	if dir == "" {
 		return "", fmt.Errorf("no local reasonix source detected — root-cause analysis needs the fork checkout; use the Copy button to report manually")
 	}
-<<<<<<< HEAD
 	if ok, ghDetail := crashAnalysisGhAuth(); !ok {
-=======
-	if ok, ghDetail := ghAuthenticatedProbe(); !ok {
->>>>>>> wt-663
 		hint := strings.TrimSpace(ghDetail)
 		if hint == "" {
 			hint = "gh auth status failed"
@@ -146,12 +139,7 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-<<<<<<< HEAD
-	// Force YOLO so the analysis run is not interrupted by approval prompts,
-	// then submit the instruction.
-	a.SetModeForTab(tabID, "yolo")
-=======
-	sessionPath, sessionDir := a.activeSessionLocation()
+	sessionPath, sessionDir := a.activeSessionLocation() // 663 ⑤ rides the 672 Global flow: the global tab is active now
 	title := crashAnalysisSessionTitle("崩溃分析", r.TestMock)
 	if sessionPath != "" {
 		// Task 663 ⑤: name the session so the analysis is identifiable in the
@@ -163,25 +151,47 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 			slog.Warn("crash-analysis: session title projection failed (analysis continues)", "err", titleErr)
 		}
 	}
-	a.SetModeForTab("", "yolo")
->>>>>>> wt-663
+	a.SetModeForTab(tabID, "yolo")
 	instruction := buildCrashAnalysisInstruction(dir, string(payload), r.TestMock)
 	if err := crashAnalysisSubmit(a, tabID, instruction); err != nil {
 		return "", fmt.Errorf("could not submit the analysis instruction (%v) — use the Copy button to report manually", err)
 	}
-<<<<<<< HEAD
-	return crashAnalysisSummary(dir), nil
+	a.beginCrashAnalysisRun(sessionPath)
+	slog.Info("crash-analysis: started", "kind", r.Kind, "testMock", r.TestMock,
+		"session", scrubUserPaths(sessionPath), "title", title, "sourceDir", scrubUserPaths(dir))
+	return fmt.Sprintf("YOLO 分析会话已启动并命名为「%s」（%s）；分析将对照 %s 定位根因，并提交 issue 到 %s。结论（issue 链接或根因分析）会发送到该会话。",
+		title, scrubUserPaths(sessionPath), scrubUserPaths(dir), crashAnalysisRepo), nil
 }
 
 // crashAnalysisSummary is the detail line the frontend appends under the
-// localized "analysis started" notice (task 673). It was hardcoded English,
-// so the zh popup read as a garbled half-translated blob and the raw Windows
-// path transcribed as "github-repo.reasonix" (separators visually lost).
-// Chinese matches every other Go-side string of this surface (the instruction
-// template), and the phrasing complements the notice instead of repeating it:
-// the notice already says the session started and where the issue link lands.
+// localized "analysis started" notice (task 673). Kept for the 673 e2e test;
+// the 663 productized return inlines its content with session naming.
+// activeSessionLocation returns the active tab's session path and dir, "" when
+// the workspace has no live session. Read-only helper for the analysis entries.
+func (a *App) activeSessionLocation() (string, string) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	tab := a.activeTabLocked()
+	if tab == nil || a.tabIsReadOnly(tab) || tab.Ctrl == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(tab.Ctrl.SessionPath()), strings.TrimSpace(tab.Ctrl.SessionDir())
+}
+
+// crashAnalysisSessionTitle builds the task-663 session name: <base>-<时间>,
+// with an explicit -测试 marker for lab mock drills so a drill is never
+// readable as a real failure in the tab list either.
+func crashAnalysisSessionTitle(base string, testMock bool) string {
+	name := base
+	if testMock {
+		name += "-测试"
+	}
+	return name + "-" + time.Now().Format("20060102-150405")
+}
+
 func crashAnalysisSummary(dir string) string {
-	return fmt.Sprintf("分析将对照本地源码 %s 定位根因，并提交 issue 到 %s。", dir, crashAnalysisRepo)
+	return fmt.Sprintf("分析将对照本地源码 %s 定位根因，并提交 issue 到 %s。", scrubUserPaths(dir), crashAnalysisRepo)
+}
 
 // openCrashAnalysisSession creates the Global-scope conversation hosting a
 // one-click analysis run and waits for its tab controller. It returns the ID
@@ -246,36 +256,6 @@ func (a *App) awaitAnalysisController(tabID string) control.SessionAPI {
 		}
 	}
 
-=======
-	a.beginCrashAnalysisRun(sessionPath)
-	slog.Info("crash-analysis: started", "kind", r.Kind, "testMock", r.TestMock,
-		"session", scrubUserPaths(sessionPath), "title", title, "sourceDir", scrubUserPaths(dir))
-	return fmt.Sprintf("YOLO 分析会话已启动并命名为「%s」（%s）；分析将对照 %s 定位根因，并提交 issue 到 %s。结论（issue 链接或根因分析）会发送到该会话。",
-		title, scrubUserPaths(sessionPath), dir, crashAnalysisRepo), nil
-}
-
-// activeSessionLocation returns the active tab's session path and dir, "" when
-// the workspace has no live session. Read-only helper for the analysis entries.
-func (a *App) activeSessionLocation() (string, string) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	tab := a.activeTabLocked()
-	if tab == nil || a.tabIsReadOnly(tab) || tab.Ctrl == nil {
-		return "", ""
-	}
-	return strings.TrimSpace(tab.Ctrl.SessionPath()), strings.TrimSpace(tab.Ctrl.SessionDir())
-}
-
-// crashAnalysisSessionTitle builds the task-663 session name: <base>-<时间>,
-// with an explicit -测试 marker for lab mock drills so a drill is never
-// readable as a real failure in the tab list either.
-func crashAnalysisSessionTitle(base string, testMock bool) string {
-	name := base
-	if testMock {
-		name += "-测试"
-	}
-	return name + "-" + time.Now().Format("20060102-150405")
->>>>>>> wt-663
 }
 
 func buildCrashAnalysisInstruction(sourceDir, payload string, testMock bool) string {
