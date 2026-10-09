@@ -623,7 +623,7 @@ const CHECKS = [
   { feature: "任务570 c1 get_message_status 查询工具（双方可查+pending 不假绿）", file: "internal/agent/collab_message_status_tool.go", patterns: ["NewGetMessageStatusTool", "get_message_status", "receiptStatusSemantics"] },
   { feature: "任务570 c2 peek_own_inbox 只读自读信箱（不 Claim 不写游标）", file: "internal/agent/collab_inbox_peek_tool.go", patterns: ["NewPeekOwnInboxTool", "peek_own_inbox", "peekInboxPreview"] },
   { feature: "任务570 c2 自读信箱的一次锁定读口（行+游标单次读，只读）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) InboxWithCursor"] },
-  { feature: "任务570 两工具注册（协作工具集内无条件）", file: "internal/boot/boot.go", patterns: ["agent.NewGetMessageStatusTool(collab)", "agent.NewPeekOwnInboxTool(collab)"] },
+  { feature: "任务570 两工具注册（协作工具集内无条件）", file: "internal/boot/boot.go", patterns: ["agent.NewGetMessageStatusTool(collab)", "agent.NewPeekOwnInboxAliasTool(collab)"] },
   { feature: "任务570 talk_to_session 增量字段（deliveryOutcome=pending+面板降级可见）", file: "internal/agent/session_collab_tools.go", patterns: ["deliveryOutcome", "steerDegradedByPanel", "deliveryDegradedByPanel"] },
   // ── 任务 152：todo 树状任务系统（2026-09-30）────────────────────
   // schema/校验在 evidence（树状状态机 + 终态 + 层级 ID），工具面在 builtin/todo，
@@ -810,7 +810,7 @@ const CHECKS = [
   { feature: "任务320 收件箱索引核心（五桶/保留/revision）", file: "internal/collabinbox/collabinbox.go", patterns: ["func (s *Store) List(", "BucketAutomation", "ApplyRetention", "revisionOf"] },
   { feature: "任务320 传输层 History+PruneInbox+Kind", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) History", "PruneInbox", "Kind string"] },
   { feature: "任务320 query_collab_mail 只读查询工具", file: "internal/agent/query_collab_mail_tool.go", patterns: ["query_collab_mail", "applyRetention=false"] },
-  { feature: "任务320 查询工具 boot 注册", file: "internal/boot/boot.go", patterns: ["NewQueryCollabMailTool(collab)"] },
+  { feature: "任务320 查询工具 boot 注册", file: "internal/boot/boot.go", patterns: ["NewQueryCollabMailAliasTool(collab)"] },
   { feature: "任务320 Wails 收件箱面", file: "desktop/collab_inbox_app.go", patterns: ["func (a *App) ListCollabMail(", "MarkCollabMailDecided", "SetCollabMailRetention"] },
   { feature: "任务320 收件箱面板组件", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__bucket", "SetCollabMailRetention", "ListCollabMailChains"] },
   { feature: "任务320 收件箱三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.title", "collabInbox.bucket.approval"] },
@@ -1439,7 +1439,7 @@ const CHECKS = [
   { feature: "任务560 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"sessionRecovery.loadingIndex\": \"Reading session index…\""] },
 
   // ── 任务 512 提示音速率/截断/曲目 ──────────────────────────────────────
-  { feature: "512 1.25× 速率 + 截断常量（598：3s 改 10s）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE = 1.25", "UPDATE_CHIME_INTERRUPT_DELAY_MS = 10000", "UPDATE_CHIME_FADE_OUT_S = 0.2", "UPDATE_CHIME_MOVE_THRESHOLD_PX = 12"] },
+  { feature: "512 1.25× 速率 + 截断常量（598：3s 改 10s）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE = 1.25", "UPDATE_CHIME_MAX_PLAY_MS = 10000", "UPDATE_CHIME_FADE_OUT_S = 0.2", "pointermove is listed"] },
   { feature: "512 马里奥资产版权守卫（公开构建条件导入）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["__CHIME_LOCAL_ASSETS__", "../assets/sounds/mario-theme.wav?url"] },
   { feature: "512 曲目下拉（公开构建仅 Nokia）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["SetUpdateChimeTune(value)", "settings.updateChimeTune"] },
   { feature: "512 曲目配置字段+归一化（Go）", file: "internal/config/desktop_preferences.go", patterns: ["update_chime_tune"] },
@@ -1447,24 +1447,24 @@ const CHECKS = [
   { feature: "512 三语文案 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"settings.updateChimeTune\": \"提示音曲目\"", "\"settings.updateChimeTune.mario\": \"超级马里奥\""] },
   { feature: "512 三语文案 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["\"settings.updateChimeTune\": \"提示音曲目\"", "\"settings.updateChimeTune.mario\": \"超級瑪利歐\""] },
   { feature: "512 三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"settings.updateChimeTune\": \"Chime melody\"", "\"settings.updateChimeTune.mario\": \"Super Mario\""] },
-  { feature: "512 速率/截断测试存续", file: "desktop/frontend/src/__tests__/task512-chime-rate-interrupt.test.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE", "UPDATE_CHIME_INTERRUPT_DELAY_MS"] },
+  { feature: "512 速率/截断测试存续", file: "desktop/frontend/src/__tests__/task512-chime-rate-interrupt.test.ts", patterns: ["UPDATE_CHIME_PLAYBACK_RATE", "UPDATE_CHIME_MAX_PLAY_MS"] },
 
   // ── 任务 598 提示音收尾（马里奥本地构建判定 + 截断 10s）───────────────
   { feature: "598 本地构建启用马里奥资产（build-local-installer 导出 env，默认 1）", file: "scripts/build-local-installer.sh", patterns: ["REASONIX_CHIME_LOCAL_ASSETS:-1"] },
   { feature: "598 公开构建摇除马里奥（define 折叠守卫，修 512 摇除失守）", file: "desktop/frontend/src/lib/sound.ts", patterns: ["if (typeof __CHIME_LOCAL_ASSETS__ === \"undefined\") return null;", "if (!__CHIME_LOCAL_ASSETS__) return null;"] },
-  { feature: "598 截断 10 秒三语 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["检测到鼠标操作后 10 秒截断"] },
-  { feature: "598 截断 10 秒三语 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["偵測到滑鼠操作後 10 秒截斷"] },
-  { feature: "598 截断 10 秒三语 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["Cut 10 seconds after pointer activity"] },
+  { feature: "598 截断 10 秒三语 zh", file: "desktop/frontend/src/locales/zh.ts", patterns: ["最长播放 10 秒"] },
+  { feature: "598 截断 10 秒三语 zh-TW", file: "desktop/frontend/src/locales/zh-TW.ts", patterns: ["最長播放 10 秒"] },
+  { feature: "598 截断 10 秒三语 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["plays for up to 10 seconds"] },
 
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役；621 修正计数 46→48）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },
   { feature: "任务562 门禁测试（新增实验项不标档位⇒失败 + 表A 计数钉）", file: "internal/config/render_lab_tiers_test.go", patterns: ["TestLabRenderKeysAllTaggedWithTier", "TestLabFeatureTierCountsMatchTableA", "门禁失败（任务562）"] },
-  { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 12", "LAB_WALL_PICKS", "railTiersFor"] },
+  { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 13", "LAB_WALL_PICKS", "railTiersFor"] },
   { feature: "任务562 徽章组件（纯展示；621 加档位 tooltip）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "LAB_TIER_DESC_KEYS", "title={t(LAB_TIER_DESC_KEYS[tier])}", "lab-tier-badge--"] },
   { feature: "任务562 设置页 rail+成员开关接线", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["railTiersFor(feature.id).map((tier) => (", "labLabel(\"autopilot\"", "labLabel(\"modelCapabilityFilter\""] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数 15/18/12/1）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/18/12/1", "config-only exemption", "retired-display exemption", "agree on every shared tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数 15/18/12/1）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["15/18/13/1", "config-only exemption", "retired-display exemption", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（pane 每特性恰一枚：去重 monitoring/budgetControl/compressOpt/messageMerge 兄弟行 + 补挂 tabModeTint）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.coldCacheCompact\")}", "label={t(\"settings.collabGuidanceMerge\")}", "label={t(\"settings.perfMonitor\")}", "labLabel(\"tabModeTint\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },
