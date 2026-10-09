@@ -631,11 +631,17 @@ func (a *App) listProjectTopics(req ProjectTopicPageRequest) (ProjectTopicPage, 
 // rendered the stale catalog order — the root cause of drag-reorder
 // "auto-reset" and startup misorder that self-healed a moment later
 // (2026-09-01 定判). json is the authoritative order source; the catalog only
-// supplies item data. Explicit non-manual sort modes (updated etc.) opt out,
-// and cursored pages keep the catalog's keyset split.
+// supplies item data. Cursored pages keep the catalog's keyset split.
+//
+// 698: sortMode no longer opts out. The SQL path already treats the manual
+// flag as primary (sort_order ASC with activity only breaking ties), but the
+// old mode gate ("manual" or empty only) made this fallback dead code in
+// production — the frontend always sends "created", "updated", or "color",
+// never "manual". Inside every sync window (drag refresh, activity-event
+// re-pull, startup before the first metadata sync) the stale catalog order
+// won again and dragged order appeared to snap back.
 func (a *App) applyManualOrderFallback(req ProjectTopicPageRequest, page ProjectTopicPage) ProjectTopicPage {
-	mode := strings.TrimSpace(req.SortMode)
-	if (mode != "" && mode != "manual") || strings.TrimSpace(req.Cursor) != "" || len(page.Items) < 2 {
+	if strings.TrimSpace(req.Cursor) != "" || len(page.Items) < 2 {
 		return page
 	}
 	f := loadProjectsFile()

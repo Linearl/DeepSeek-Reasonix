@@ -22,10 +22,13 @@ assert.deepEqual(
   "indexing",
   "rebuilding preserves known progress and never offers another rebuild",
 );
-assert.deepEqual(
+// Task 550 ①: the legacy aggregate repairPending field no longer maps to a
+// repair banner — without the precise repairActive counter the notice stays
+// null (a missing counter must read as "nothing repairing", not invent work).
+assert.equal(
   sessionCatalogNotice(status({ repairPending: 1, canRebuild: true })),
-  "repair-active",
-  "older backends map their aggregate repair backlog to active repair",
+  null,
+  "legacy repairPending alone must not resurrect a repair banner (task 550)",
 );
 assert.equal(
   sessionCatalogNotice(status({ repairPending: 3, repairActive: 0, repairDeferred: 3, repairBlocked: 0 })),
