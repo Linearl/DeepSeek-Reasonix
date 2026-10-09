@@ -6,10 +6,10 @@ runas: inline
 
 # 迭代收口（阶段 1/3）：反馈 → 分析 → 需求初稿
 
-> **回路位置**：本技能 = 阶段 1（感知与初稿）→ [[ll-iteration-plan]]（排序与范围）→ [[ll-iteration-parallel-dev]]（执行与发版）。
-> **边界（硬）**：本技能**只产出初稿到候选池**。不写正式任务、不改代码、不出包、不动 `01-总表.md`。
+> **回路位置**：本技能 = 阶段 1（感知与初稿）→ [[ll-iteration-plan]]（排序与范围）→ [[ll-iteration-dev]]（执行与发版）。
+> **边界（硬）**：本技能**只产出初稿到候选池**。不写正式任务（不调 `tl add`）、不改代码、不出包、不动 tasklist 权威库。
 > 正式任务必须经**人工确认**后按第 5 步走「确认→入库」路径。
-> 本技能为**本地技能**：不需要跨会话协作即可运行（区别于阶段 3 的 [[ll-iteration-parallel-dev]]）。
+> 本技能为**本地技能**：不需要跨会话协作即可运行（区别于阶段 3 的 [[ll-iteration-dev]]）。
 
 ---
 
@@ -29,10 +29,10 @@ runas: inline
 
 | # | 源 | 位置 | 判据 |
 |---|---|---|---|
-| 1 | **意见箱** | `%APPDATA%\reasonix\feedback-inbox\feedback-*.md` | 主目录下的即为**未消纳**；**跳过 `archived/` 子目录**（已处理项都在里面）；`analysis-*.md` 是产出不是输入。**机器草稿人审门（344-A）**：`origin: signal-scan` 且 `confirmed: false` 的草稿**不是输入**——不分析不立候选，只在收尾摘要记「待确认 N 条」；`confirmed: true` 的机器草稿按普通候选处理（签名/证据字段直接沿用） |
-| 2 | **崩溃残留** | `%APPDATA%\reasonix\crash-pending\`、`crash-fatal\` | **判据已固化为脚本（344-A）**：优先跑 `python scripts/feedback_signal_scan.py`（仓内 scripts/）消费其产出草稿，不在本技能里自行定判据；脚本不可用时才退回原始扫法——目录内有新文件（非空）即报警；读里面的摘要/日志片段 |
-| 3 | **性能告警** | `%APPDATA%\reasonix\logs\desktop\desktop.log` | 同上：优先消费 signal-scan 脚本产出的 `fp:desktop.log:perf-threshold:*` 草稿（已按 metric 聚合）；脚本不可用时才退回——全新 `perf monitor threshold` 按 metric 聚成一条候选，别每 3 秒一条 |
-| 4 | **tasklist 状态** | `docs/tasklist/`（`python scripts/tasklist_db.py sql "..."`） | `watching` 到期该复看、`partial` 有剩余项、`blocked` 的外部条件可能已解 |
+| 1 | **意见箱** | `%APPDATA%\reasonix\feedback-inbox\feedback-*.md` | 主目录下的即为**未消纳**；**跳过 `archived/` 子目录**（已处理项都在里面）；`analysis-*.md` 是产出不是输入。**机器草稿人审门（344-A）**：`origin: signal-scan` 且 `confirmed: false` 的草稿**不是输入**——不分析不立候选，只在收尾摘要记「待确认 N 条」；`confirmed: true` 的按普通候选处理 |
+| 2 | **崩溃残留** | `%APPDATA%\reasonix\crash-pending\`、`crash-fatal\` | **先跑 `python scripts/feedback_signal_scan.py`（任务 344-A，dry-run 默认）**——已知噪音（abnormal_exit.v2 lifecycle 残留、0 字节 fatal log、webview2 挂观察）由脚本白名单拦下，草稿产出与人审门也由脚本管；本技能**只消费其输出**（`--write` 后落进意见箱的 `origin: signal-scan` 草稿），不再自己扫目录下「新文件即报警」 |
+| 3 | **性能告警** | `%APPDATA%\reasonix\logs\desktop\desktop.log` | 全新 `perf monitor threshold`（metrics：workingSetMb / eventsMb / storeMb / v4OperationMb）——按 metric 聚成一条候选，别每 3 秒一条 |
+| 4 | **tasklist 状态** | `docs/tasklist/`（`python scripts/tl.py list --status watching partial blocked`；旧 `tasklist_db.py` 已废弃） | `watching` 到期该复看、`partial` 有剩余项、`blocked` 的外部条件可能已解 |
 | 5 | **上游动向** | `gh api` 查 esengine/DeepSeek-Reasonix 新 issue/PR | 涉及 fork 魔改面（classic 布局、协作工具、实验开关、v4 存储）才立候选；其余只记录不立项 |
 
 **扫法提示**：
@@ -44,7 +44,7 @@ runas: inline
 
 ## 2. 分析：每条候选都要过三问
 
-1. **是真问题还是已知/已修？** —— 查 `tasklist_db.py sql`（同主题任务）+ `git log --oneline -20`（近期是否已修）；引用包版本的反馈要核对后续包是否已修。已修待实测 vs 新缺口 要分开写。
+1. **是真问题还是已知/已修？** —— 查 `tl.py search <关键词>`（同主题任务）+ `git log --oneline -20`（近期是否已修）；引用包版本的反馈要核对后续包是否已修。已修待实测 vs 新缺口 要分开写。
 2. **影响面多大？** —— 排序参考：阻塞日常 > 数据安全/丢失 > 高频摩擦 > 体验改进 > 内部整洁。写清"谁受影响、多大、是否阻塞"。
 3. **证据够不够立初稿？** —— 够：现象 + 时间戳/日志片段/截图路径/复现命令。不够：条目仍要记（状态写「证据不足」+ 还缺什么），但不进阶段 2 排序。
 
@@ -63,25 +63,14 @@ runas: inline
 
 ---
 
-## 2.6 信号签名聚类（任务 344-C，每轮巡检收尾前必做）
+## 2.6 同签名聚类（任务 344-C，每轮巡检对本轮涉及条目执行）
 
-> 候选与意见箱条目可能带 `fingerprint:` 签名字段（signal-scan 草稿必有，
-> 格式 `fp:<source>:<error_type>:<pattern>:<规则版本>`）。同签名 = 同根因，
-> 不该散落多条各拍各的优先级。
+对候选池中带 `签名：fp:...` 的条目（含本轮新增）按签名分组计数：
 
-**做法**：本轮扫出的全部候选（含已入池的待确认条目）按 `fingerprint` 分组；没有签名字段的条目不参与聚类（人写条目不强求签名）。
-
-对每个 **同签名 ≥2 条** 的组，产出一条「**建议合并组**」写入收尾摘要：
-
-```
-建议合并组 <fingerprint>：N 条（<编号列表>，时间跨度 X~Y）——建议并成一条，
-频次 N 次纳入优先级理由（高频/跨日持续 → 升半级），影响面取组内最大。
-```
-
-**硬边界（三条）**：
-1. **只建议，不执行**——合并动作必须人确认后由人/收取方执行，本技能**零条目被自动删除或自动改写**（保留决策轨迹）；
-2. 频次只作为**建议优先级的理由**写进条目，不直接改 4 态状态枚举；
-3. `superseded-by:` 非空的条目在聚类清单里**折叠**（一行带指针，不展开分析）——被取代的旧态不进组、不计数。
+- 频次与影响面**写入优先级判据输入**：同签名 ≥2 条 = 反复缺口（优先级上调参考），单条 = 偶发（常规判据）；
+- 同签名多条时输出**「建议合并组」**：列出组内条目号 + 各自一句话 + 建议保留哪条为主体——**只建议，由人确认后手工合并**（合并时被并条目写 `superseded-by` 指向主体，原条目保留不删）；
+- **全程零条目被自动删除/改写**——本步只产出建议文本（写进收尾摘要或 analysis 文档），保留决策轨迹（同 tasklist 三清单哲学）。
+- 无签名的旧条目不强行补签（按文本相似度的人工合并走原第 4 步「与已有候选重复」路径，不混用）。
 
 ---
 
@@ -91,18 +80,18 @@ runas: inline
 ### C-YYYYMMDD-NN 一句话标题
 - 来源：feedback-YYYYMMDD-HHMMSS / perf 告警 / 用户对话 / 上游 issue#NNNN
 - 现象与证据：<时间戳 + 日志片段 + 截图路径 + 复现命令>
+- 签名：fp:<source>:<error_type>:<pattern>:<规则版本>（可缺省；机器草稿转候选时**必须保留**其 fingerprint，人写条目可比照书写——聚类与 supersede 都按它判同）
 - 影响面：<谁受影响 / 多大 / 是否阻塞日常>
 - 建议优先级：P0-P2 + 一句理由
 - 预估：S/M/L（改动面）
 - 关联：任务 NNN / 记忆条目 / 上游 issue
+- superseded-by：<任务号 / 新条目号>（可缺省；修复确认后由人写入，指向取代它的去处）
 - 状态：待确认 ｜ 已确认 → 任务 NNN ｜ 已拒绝（理由）｜ 冷置（超 30 天）
-- superseded-by：<取代它的候选编号/任务 NNN/文件名>（**可缺省**，任务 344-B；
-  只有确实被取代时才写。状态枚举保持上面 4 态不动，本字段是附加行不是状态）
 ```
 
 编号 `C-YYYYMMDD-NN`：按天递增，同日从 01 起。
 
-> ⚠️ **绝不要**在候选池里用 `## 任务 N` 标题格式——`tasklist_db.py scan` 会把它当正式任务入库，污染权威源。
+> ⚠️ **绝不要**在候选池里用 `## 任务 N` 标题格式——`tl.py import-md` 等 md 导入会把它当正式任务入库，污染权威源。
 
 ---
 
@@ -113,13 +102,14 @@ runas: inline
 | 真是新问题 | 立候选（第 3 步） |
 | 与已有候选重复 | 合并到较早那条，补证据，注明"（合并自 X）" |
 | 已是已知任务/已修 | **不立**，但要在收尾摘要里说明"X 已由任务 NNN/提交 sha 覆盖"，并在源文件标记 |
-| 旧条目已被取代（344-B） | 给旧条目补一行 `superseded-by: <新候选编号/任务 NNN>`（只加行不改正文不删条目）；带该字段的条目此后在清单与聚类中折叠 |
 | 无可执行价值 | 记「已拒绝 + 理由」（短，一行），避免下轮重复分析 |
 | 证据不足 | 立候选但标「证据不足」，写清还缺什么 |
 
 **源文件归档**：意见箱条目处理完后 `mv` 进 `feedback-inbox/archived/`（**目录即状态**；若文件名带旧 `-已转入tasklist` 后缀，一并去掉）；**未处理的留在主目录不动**。归档时在正文首行追加一行 `> 已转入任务 NNN · YYYY-MM-DD`，便于回查去重。
 
 **冷置**：候选池里超过 30 天仍未确认的条目 → 状态改「冷置」，并在后续巡检输出里折叠（不删除、不重复报告）。
+
+**supersede 折叠（任务 344-B）**：带 `superseded-by:` 字段的条目在巡检输出里**折叠为一行指针**（`C-xxx → 已被 <值> 取代`），不重复分析、不占排序位；字段可缺省，无字段的旧条目行为不变（schema 兼容）。
 
 ---
 
@@ -129,12 +119,12 @@ runas: inline
 
 ```bash
 cd docs/tasklist
-python scripts/next-task-id.py                 # 取号即占坑（防多会话撞号）
-# → 写正式正文到对应领域文件（保留候选池里的证据链 + 补 file:line 与可证伪验收）
-# → 01-总表.md 加登记行
-python scripts/tasklist_db.py scan             # 重建派生索引（必跑）
-python scripts/tasklist_db.py sql "SELECT num,status,title FROM tasks WHERE num=N"   # 逐个校验
-git add <显式路径> && git commit -m "tl: ..."   # 内层仓库，禁止 add -A
+python scripts/tl.py next                      # 取号即占坑（防多会话撞号）
+# → 正式正文入库（保留候选池里的证据链 + 补 file:line 与可证伪验收）：
+python scripts/tl.py add "<标题>" --num N --domain "<领域>" --prio P<N>   # 用 next 占的号（--num 显式指定，避免与自动取号不一致；add 无 --body-file）
+python scripts/tl.py edit N --body-file <正文文件>   # 长正文用 edit 补（推荐，避免 shell 转义）
+python scripts/tl.py show N                    # 逐个校验（DB 即权威源，无需重建索引）
+git add <显式路径> && git commit -m "tl: ..."   # 内层仓库，禁止 add -A（或 `tl commit -m`）
 ```
 
 入库后把候选池该条状态改为 `已确认 → 任务 NNN`。
@@ -157,16 +147,16 @@ git add <显式路径> && git commit -m "tl: ..."   # 内层仓库，禁止 add 
 ## 收尾报告（对话输出，一行）
 
 ```
-迭代巡检 YYYY-MM-DD HH:MM ｜ 新增候选 N 条（P0 x / P1 y / P2 z）｜ 已拒绝 K 条 ｜ 待确认机器草稿 M 条 ｜ 建议合并组 G 组 ｜ 滞留/异常：<一句话>
+迭代巡检 YYYY-MM-DD HH:MM ｜ 新增候选 N 条（P0 x / P1 y / P2 z）｜ 建议合并组 G 组 ｜ 已拒绝 K 条 ｜ 滞留/异常：<一句话>
 ```
 
-新增为 0 时只输出：`迭代巡检 <时间>：无新增候选。`
+新增为 0 且无合并组建议时只输出：`迭代巡检 <时间>：无新增候选。`
 
 ---
 
 ## 关联
 
-- [[ll-iteration-plan]]（阶段 2：排序与范围）｜ [[ll-iteration-parallel-dev]]（阶段 3：执行与发版，**依赖跨会话协作**）
+- [[ll-iteration-plan]]（阶段 2：排序与范围）｜ [[ll-iteration-dev]]（阶段 3：执行与发版，**依赖跨会话协作**）
 - [[collect_issues]]（意见箱的既有专用技能；本技能覆盖更广，两者对源 1 的处理一致）
 - 候选池：`docs/tasklist/16-需求候选池.md`
 - 方案文档：`docs/自主迭代-执行层缺口分析与落地方案-20260920.md`

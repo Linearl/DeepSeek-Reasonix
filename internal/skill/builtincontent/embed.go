@@ -22,10 +22,12 @@ import (
 //go:embed gh-issue-submit/SKILL.md
 //go:embed gh-issue-triage/SKILL.md
 //go:embed ll-iteration-intake/SKILL.md
-//go:embed ll-iteration-plan/SKILL.md
-//go:embed ll-iteration-parallel-dev/SKILL.md
-//go:embed ll-update/SKILL.md
-//go:embed ll-update/scripts/switch-version.sh
+//go:embed ll-iteration-plan
+//go:embed ll-iteration-dev
+//go:embed ll-iteration-audit-fix
+//go:embed ll-iteration-review
+//go:embed ll-zcode-collaboration
+//go:embed ll-update
 var files embed.FS
 
 // SkillMarkdown is one embedded skill file after frontmatter split.

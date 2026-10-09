@@ -28,7 +28,10 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 		"gh-issue-triage",
 		"ll-iteration-intake",
 		"ll-iteration-plan",
-		"ll-iteration-parallel-dev",
+		"ll-iteration-dev",
+		"ll-iteration-audit-fix",
+		"ll-iteration-review",
+		"ll-zcode-collaboration",
 		"ll-update",
 	} {
 		sk, ok := byName[want]

@@ -2,6 +2,7 @@ package builtincontent
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -10,30 +11,26 @@ import (
 )
 
 // ShippedPlaybookNames are the playbooks that ship in the binary (task 116)
-// and get materialized as editable user-dir copies. The ll-iteration trio
-// (task 206-era release prep, 2026-09-21) joins them: intake/plan are local,
-// parallel-dev requires the cross-session collaboration switch to be on.
+// and get materialized as editable user-dir copies. The ll-iteration family
+// (task 206-era release prep, 2026-09-21; expanded task 708, 2026-10-10):
+// intake/plan/dev/audit-fix/review are local, zcode-collaboration and
+// parallel worktree dev require the cross-session collaboration switch.
+// ll-iteration-parallel-dev was retired in favor of ll-iteration-dev (708).
 // ll-fork-guide replaces the builtin-only reasonix-fork-guide (task 430);
 // ll-update ships with scripts/switch-version.sh (task 430).
-var ShippedPlaybookNames = []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-parallel-dev", "ll-fork-guide", "ll-update"}
+var ShippedPlaybookNames = []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-dev", "ll-iteration-audit-fix", "ll-iteration-review", "ll-zcode-collaboration", "ll-fork-guide", "ll-update"}
 
 // renamedSkills maps retired user-dir skill names to their shipped replacement
-// (task 430). On install, an old-name directory whose replacement is missing is
-// removed so the replacement gets materialized on the same pass. When both are
-// present the old directory is left alone — the replacement already works and
-// the residue is the user's to keep or delete.
+// (task 430; parallel-worktree-dev re-pointed to ll-iteration-dev by task 708).
+// On install, an old-name directory whose replacement is missing is removed so
+// the replacement gets materialized on the same pass. When both are present the
+// old directory is left alone — the replacement already works and the residue
+// is the user's to keep or delete.
 var renamedSkills = map[string]string{
 	"reasonix-fork-guide":   "ll-fork-guide",
 	"iteration-intake":      "ll-iteration-intake",
 	"iteration-planning":    "ll-iteration-plan",
-	"parallel-worktree-dev": "ll-iteration-parallel-dev",
-}
-
-// extraFiles lists skill-relative files (besides SKILL.md) that ship inside a
-// skill and must be materialized alongside it. They are written only when the
-// skill itself is installed, so an existing user copy is never touched.
-var extraFiles = map[string][]string{
-	"ll-update": {"scripts/switch-version.sh"},
+	"parallel-worktree-dev": "ll-iteration-dev",
 }
 
 // InstallResult reports one InstallToUserDir pass.
@@ -87,19 +84,30 @@ func InstallToUserDir(destDir string) (InstallResult, error) {
 		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
 			return result, err
 		}
-		for _, rel := range extraFiles[name] {
-			// embed.FS uses slash-separated paths regardless of host OS.
-			raw, err := files.ReadFile(path.Join(name, rel))
+		// Materialize every other file shipped inside this skill's embedded
+		// subtree (templates/, scripts/, references/): the SKILL.md body
+		// references them, so a copy with only SKILL.md ships a broken skill
+		// (task 708 — ll-iteration-dev's role cards, plan's SVG template).
+		walkErr := fs.WalkDir(files, name, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return result, fmt.Errorf("embedded extra file %s/%s: %w", name, rel, err)
+				return err
 			}
+			if d.IsDir() || p == path.Join(name, "SKILL.md") {
+				return nil
+			}
+			raw, err := files.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			rel := strings.TrimPrefix(p, name+"/")
 			extraPath := filepath.Join(destDir, name, filepath.FromSlash(rel))
 			if err := os.MkdirAll(filepath.Dir(extraPath), 0o755); err != nil {
-				return result, err
+				return err
 			}
-			if err := os.WriteFile(extraPath, raw, 0o644); err != nil {
-				return result, err
-			}
+			return os.WriteFile(extraPath, raw, 0o644)
+		})
+		if walkErr != nil {
+			return result, fmt.Errorf("materialize skill %s extras: %w", name, walkErr)
 		}
 		result.Installed = append(result.Installed, name)
 	}
