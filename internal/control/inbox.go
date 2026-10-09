@@ -74,6 +74,9 @@ type Inbox interface {
 	TrySteerInboxItem(id string) (sessioninbox.InboxReceipt, error)
 	TryEnqueueAndSteer(req InboxRequest) (sessioninbox.InboxReceipt, error)
 	TryEnqueueFollowup(req InboxRequest) (sessioninbox.InboxReceipt, error)
+	// 任务 229 G3: the single guidance-injection entry — steer-first with the
+	// durable fallback, fixed source/priority/text grammar. See guidance.go.
+	InjectGuidance(req GuidanceRequest) (sessioninbox.InboxReceipt, error)
 }
 
 // Compile-time port satisfaction.
