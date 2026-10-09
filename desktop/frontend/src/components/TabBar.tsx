@@ -482,11 +482,14 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   const compressStyle = compressTier > 0
     ? ({ "--tabbar-tab-width": `${TAB_COMPRESS_TIERS[compressTier - 1].widthPx}px` } as CSSProperties)
     : undefined;
-  // tier 3（100px 档）起文本徽章不再渲染：宽度不足时徽章会挤掉标题，
-  // 模式信息由 hover title（stateTitle）完整承接。任务 651 background 档
-  // 底色代替徽章（「代替」语义：可着色的档位集合 ⊇ 徽章集合），off 档
-  // 徽章一并隐藏；badge（默认）档不参与本判据，徽章路径逐字不变。
-  const badgesVisible = compressTier > 0 && compressTier < 3 && permIndicator === "badge";
+  // 任务 506 判据修正（697 回归）：只有压缩 tier 3（100px 档）起文本徽章
+  // 才让位 hover title（宽度不足徽章挤标题）——原 `compressTier > 0` 前置
+  // 门禁把 tier 0（压缩开关关闭的默认装机态，或 ≤8 签放得下）的徽章一并
+  // 灭掉，判据口径过宽；651 装机实测暴露为「背景色档切回徽章档后徽章不
+  // 渲染」（background 档底色不依赖压缩档，切回徽章档徽章却回不来）。
+  // 任务 651 三档语义：badge 档渲染徽章、background 档底色代替徽章（可
+  // 着色档位集合 ⊇ 徽章集合）、off 档徽章一并隐藏。
+  const badgesVisible = permIndicator === "badge" && compressTier < 3;
 
   // 任务546：菜单项文案与路径副标题；失效态在标签上直说（将用默认目录），
   // 选择后的回落与提示由挂载点的 onNewTabInWorkspace 处理。

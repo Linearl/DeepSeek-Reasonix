@@ -140,9 +140,10 @@ eq(tabModeTintFor("goal", "yolo"), "yolo", "审批档压过协作档：goal+yolo
 eq(tabModeTintFor("plan", "yolo"), "yolo", "审批档压过协作档：plan+yolo → yolo");
 eq(tabModeTintFor("goal", "auto"), "auto", "审批档压过协作档：goal+auto → auto");
 
-// 2. 验收③（A/B·默认档 badge）：快照缺省——任何模式都不写 data-mode-tint，
-//    徽章渲染走旧路径逐字一致（506 落地后的旧路径：压缩关时 tier=0、
-//    徽章本就不渲染，故全签 0 个；压缩开时的旧徽章路径见第 4 组翻回态）。
+// 2. 验收③（A/B·默认档 badge）：快照缺省——任何模式都不写 data-mode-tint；
+//    徽章档徽章照常渲染（697 修复点：tier 0=压缩开关关闭的默认装机态，
+//    徽章渲染不依赖压缩档——506 的 `compressTier > 0` 前置门禁曾把该态
+//    徽章全灭，651 装机实测回归即此，徽章档各态徽章计数见 4b 往返组）。
 labFlags.applyLabFlags({});
 labFlags.applyTabPermissionIndicator(undefined);
 {
@@ -154,7 +155,7 @@ labFlags.applyTabPermissionIndicator(undefined);
     makeTab({}),
   ]);
   eq(tintAttributes().length, 0, "默认 badge 档：全签无 data-mode-tint 属性（零行为）");
-  eq(badgeCount(), 0, "默认 badge 档：徽章走旧路径（压缩关 tier=0，0 个=旧渲染）");
+  eq(badgeCount(), 4, "默认 badge 档：tier 0 徽章渲染恢复（yolo/plan/auto/yolo 共 4 个，697 修复点）");
   await view.unmount();
 }
 
@@ -194,6 +195,41 @@ labFlags.applyTabPermissionIndicator("background");
   eq(badgeCount(), 0, "off 档：徽章一并隐藏（0 个，506 tier 1 仍开）");
   await act(async () => { labFlags.applyTabPermissionIndicator("badge"); });
   eq(badgeCount(), 9, "off 翻回 badge 档：徽章恢复（三档往返完整）");
+  await view.unmount();
+}
+labFlags.applyLabFlags({});
+
+// 4b. 任务 697 回归用例（用户实测场景）：tabCompress 关（默认装机态，
+//     tier 0）——「徽章→背景色→徽章」三档往返即时生效。回归现场：背景色
+//     档底色不依赖压缩档（有底色），切回徽章档徽章却因 tier 0 前置门禁
+//     回不来，tab 只剩状态圆点。修复后徽章档各态徽章立即恢复。
+labFlags.applyLabFlags({ tabCompress: false });
+labFlags.applyTabPermissionIndicator("badge");
+{
+  const view = await renderTabBar([makeTab({ toolApprovalMode: "yolo" }), makeTab({ toolApprovalMode: "auto" })]);
+  eq(view.bar().getAttribute("data-tab-tier"), null, "697 往返：压缩关 tier 0（默认装机态）");
+  eq(badgeCount(), 2, "697 往返：badge 档徽章渲染（yolo+auto 共 2 个）");
+  await act(async () => { labFlags.applyTabPermissionIndicator("background"); });
+  eq(badgeCount(), 0, "697 往返：切背景色档徽章让位底色（0 个）");
+  eq(tintAttributes().join(","), "yolo,auto", "697 往返：背景色档两签各写档位");
+  await act(async () => { labFlags.applyTabPermissionIndicator("badge"); });
+  eq(badgeCount(), 2, "697 往返：翻回徽章档徽章立即恢复（用户实测回归点）");
+  eq(tintAttributes().length, 0, "697 往返：翻回徽章档无 data-mode-tint 残留");
+  await act(async () => { labFlags.applyTabPermissionIndicator("off"); });
+  eq(badgeCount(), 0, "697 往返：关闭档徽章一并隐藏");
+  await act(async () => { labFlags.applyTabPermissionIndicator("badge"); });
+  eq(badgeCount(), 2, "697 往返：三档来回切即时生效（关闭档翻回徽章档仍恢复）");
+  await view.unmount();
+}
+
+// 4c. 506 语义保持：压缩 tier 3（17 签，100px 档）badge 档徽章仍让位
+//     hover title——697 修正只放开 tier 0/1/2，不得把 tier 3 一并放开。
+labFlags.applyLabFlags({ tabCompress: true });
+labFlags.applyTabPermissionIndicator("badge");
+{
+  const view = await renderTabBar(Array.from({ length: 17 }, () => makeTab({ toolApprovalMode: "yolo" })));
+  eq(view.bar().getAttribute("data-tab-tier"), "3", "506 语义：17 签 tier 3 生效");
+  eq(badgeCount(), 0, "506 语义：tier 3 badge 档徽章仍隐藏（宽度不足让位 hover title）");
   await view.unmount();
 }
 labFlags.applyLabFlags({});
