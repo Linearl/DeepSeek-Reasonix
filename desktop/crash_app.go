@@ -234,11 +234,23 @@ func nativeResourceContext() string {
 	}, "\n")
 }
 
+// appendNativeResourceContext is idempotent via nativeRuntimeContextMarker
+// (defined with the hang template that also embeds the context): issue #38
+// shipped payloads with two segments — one from the template, one re-appended
+// on a round-trip through this function — whose regressed gc counter made the
+// report look like it came from two runs.
 func appendNativeResourceContext(kind, message string) string {
 	if kind != "performance" {
 		return message
 	}
-	return sanitizeCrashText(message+"\n\n--- native runtime context ---\n"+nativeResourceContext(), maxCrashDetailBytes)
+	if strings.Contains(message, nativeRuntimeContextMarker) {
+		// The message already carries a native runtime context (native
+		// template or an earlier pass). Never stack a second one: NumGC is
+		// monotonic, so a second segment from another instant reads as a
+		// counter regression and poisons the analysis.
+		return message
+	}
+	return sanitizeCrashText(message+"\n\n"+nativeRuntimeContextMarker+"\n"+nativeResourceContext(), maxCrashDetailBytes)
 }
 
 func crashReportFromDetail(kind, detail string) (crashReport, error) {

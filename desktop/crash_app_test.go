@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestScrubUserPaths(t *testing.T) {
@@ -236,5 +238,59 @@ func TestCrashReportFromBotDetail(t *testing.T) {
 	}
 	if strings.Contains(r.Message, "--- native runtime context ---") {
 		t.Fatalf("bot report should not include performance runtime context: %q", r.Message)
+	}
+}
+
+// TestAppendNativeResourceContextIsIdempotent is acceptance e (issue #38,
+// task 696): a performance message that already embeds the native runtime
+// context — the hang template does — must never grow a second segment whose
+// regressed gc counter would read as a second run.
+func TestAppendNativeResourceContextIsIdempotent(t *testing.T) {
+	first := appendNativeResourceContext("performance", "hello")
+	if got := strings.Count(first, nativeRuntimeContextMarker); got != 1 {
+		t.Fatalf("first append marker count = %d, want 1:\n%s", got, first)
+	}
+	second := appendNativeResourceContext("performance", first)
+	if second != first {
+		t.Fatalf("second append must be a no-op:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+	if other := appendNativeResourceContext("crash", "hello"); other != "hello" {
+		t.Fatalf("non-performance kinds must be untouched, got %q", other)
+	}
+
+	// The hang template already embeds the context; a round-trip through the
+	// frontend report path must not stack a second one.
+	last := time.Now()
+	hangMsg := mainThreadHangReport(16*time.Second, last, last.Add(16*time.Second), mainThreadProbeResult{Status: mainThreadProbeHung, Detail: "x"}).Message
+	roundTrip := appendNativeResourceContext("performance", hangMsg)
+	if got := strings.Count(roundTrip, nativeRuntimeContextMarker); got != 1 {
+		t.Fatalf("hang message round-trip marker count = %d, want 1:\n%s", got, roundTrip)
+	}
+}
+
+// TestCrashReportFromDetailKeepsSingleNativeContext drives the real frontend
+// entry (acceptance e): a schema-2 performance payload whose message already
+// carries the context survives without a duplicate segment.
+func TestCrashReportFromDetailKeepsSingleNativeContext(t *testing.T) {
+	message := fmt.Sprintf("[windows.ui_thread.hang]\n\nsome body\n\n%s\ngc cycles: 1902", nativeRuntimeContextMarker)
+	payload, err := json.Marshal(frontendCrashPayload{
+		SchemaVersion: 2,
+		Kind:          "performance",
+		Source:        "native.watchdog",
+		Label:         "windows.ui_thread.hang",
+		Message:       message,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := crashReportFromDetail("performance", string(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(r.Message, nativeRuntimeContextMarker); got != 1 {
+		t.Fatalf("native runtime context marker count = %d, want 1:\n%s", got, r.Message)
+	}
+	if !strings.Contains(r.Message, "gc cycles: 1902") {
+		t.Fatalf("original context segment must survive verbatim:\n%s", r.Message)
 	}
 }

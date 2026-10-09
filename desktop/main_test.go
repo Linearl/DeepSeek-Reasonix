@@ -88,6 +88,14 @@ func TestMain(m *testing.M) {
 		}
 		runCrashTest(mode)
 	}
+	// Task 696: the suspend/resume acceptance re-executes this same test
+	// binary as a child running the real watchdog (see
+	// hang_suspend_experiment_test.go). Run the child branch before the
+	// scratch-dir isolation below so the child inherits the parent-pinned
+	// REASONIX_STATE_HOME the parent inspects afterwards.
+	if scenario := hangSuspendChildScenario(); scenario != "" {
+		os.Exit(runHangSuspendChildScenario(scenario))
+	}
 	dir, err := os.MkdirTemp("", "reasonix-desktop-test")
 	if err != nil {
 		os.Exit(1)
