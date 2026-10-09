@@ -238,6 +238,18 @@ CREATE INDEX IF NOT EXISTS idx_catalog_heads_activity ON catalog_heads(path_key,
 DELETE FROM catalog_directories;
 `
 
+// v13 reclassifies rows the pre-671 repair loop put into deferred with
+// error_kind='busy'. Writer contention was misread as damage there: the row
+// raised the deferred "retry later" notice and backed off exponentially even
+// though the source was healthy. They return to pending (due immediately)
+// with their scan-time health, and the new disposition parks future busy
+// outcomes in pending directly.
+const migrationV13 = `
+UPDATE catalog_sessions SET repair_state='pending',repair_attempts=0,repair_retry_at=0,
+    repair_error_kind='',health='ok'
+WHERE turns_state='unknown' AND repair_state='deferred' AND repair_error_kind='busy';
+`
+
 func sessionMigrations() []projectiondb.Migration {
 	return []projectiondb.Migration{
 		{Version: 1, Apply: func(ctx context.Context, tx *sql.Tx) error {
@@ -286,6 +298,10 @@ func sessionMigrations() []projectiondb.Migration {
 		}},
 		{Version: 12, Apply: func(ctx context.Context, tx *sql.Tx) error {
 			_, err := tx.ExecContext(ctx, migrationV12)
+			return err
+		}},
+		{Version: 13, Apply: func(ctx context.Context, tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, migrationV13)
 			return err
 		}},
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"maps"
 	"runtime"
 	"strings"
@@ -13,6 +14,17 @@ import (
 )
 
 const repairWakeKey = "session-catalog-repair-wake"
+
+// repairBusyErrorKind marks rows parked by a busy repair outcome. The kind is
+// diagnostic only (doctor/status error kinds); parked rows are excluded from
+// the active repair count so temporary writer contention never raises a UI
+// repair notice (task 671).
+const repairBusyErrorKind = "busy"
+
+// repairBusyRetryDelay is the fixed wait before the next busy retry. Unlike
+// the deferred backoff it never grows: a foreground writer usually finishes
+// within seconds, and the wave should converge right after it stops.
+const repairBusyRetryDelay = 30 * time.Second
 
 const repairClaimSQL = `UPDATE catalog_sessions SET repair_state='active',repair_attempts=?,
 	repair_retry_at=?,repair_error_kind='' WHERE path_key=? AND turns_state='unknown'
@@ -33,6 +45,16 @@ const repairDeferredSQL = `UPDATE catalog_sessions SET health=?,repair_state=?,r
 	WHERE path_key=? AND turns_state='unknown' AND repair_state='active' AND repair_attempts=?
 	AND repair_retry_at=? AND repair_source_fingerprint=?`
 
+// repairWaitSQL parks a busy outcome back in the pending queue (task 671).
+// Unlike the deferred update it never touches health, preview, or turns: a
+// writer holding the session locks is transient contention, not damage, so
+// the row keeps its previous certified projection and the deferred counter
+// that drives the "retry later" notice stays at zero.
+const repairWaitSQL = `UPDATE catalog_sessions SET repair_state='pending',repair_attempts=?,repair_retry_at=?,
+	repair_error_kind=?,content_fingerprint=?,meta_fingerprint=?,repair_source_fingerprint=?,repair_engine_version=?
+	WHERE path_key=? AND turns_state='unknown' AND repair_state='active' AND repair_attempts=?
+	AND repair_retry_at=? AND repair_source_fingerprint=?`
+
 type repairItem struct {
 	path              string
 	pathKey           string
@@ -43,6 +65,7 @@ type repairItem struct {
 	state             string
 	retryAt           int64
 	sourceFingerprint string
+	errorKind         string
 }
 
 type repairOutcome struct {
@@ -55,6 +78,7 @@ type repairBatchStatements struct {
 	reset    *sql.Stmt
 	complete *sql.Stmt
 	deferred *sql.Stmt
+	wait     *sql.Stmt
 }
 
 func prepareRepairBatchStatements(ctx context.Context, tx *sql.Tx) (repairBatchStatements, error) {
@@ -71,11 +95,15 @@ func prepareRepairBatchStatements(ctx context.Context, tx *sql.Tx) (repairBatchS
 		statements.close()
 		return statements, err
 	}
+	if statements.wait, err = tx.PrepareContext(ctx, repairWaitSQL); err != nil {
+		statements.close()
+		return statements, err
+	}
 	return statements, nil
 }
 
 func (s repairBatchStatements) close() {
-	for _, statement := range []*sql.Stmt{s.reset, s.complete, s.deferred} {
+	for _, statement := range []*sql.Stmt{s.reset, s.complete, s.deferred, s.wait} {
 		if statement != nil {
 			_ = statement.Close()
 		}
@@ -228,7 +256,7 @@ func (c *Catalog) claimDueRepairs(ctx context.Context, limit int) ([]repairItem,
 	}
 	now := c.opts.Now()
 	rows, err := tx.QueryContext(ctx, `SELECT path,path_key,directory,scope,workspace_root,workspace_root_key,topic_id,
-		repair_attempts,repair_state,repair_retry_at,repair_source_fingerprint
+		repair_attempts,repair_state,repair_retry_at,repair_source_fingerprint,repair_error_kind
 		FROM catalog_sessions WHERE turns_state='unknown'
 		AND repair_state IN ('pending','deferred','active') AND repair_retry_at<=?
 		ORDER BY repair_retry_at ASC,last_activity_at DESC,path_key ASC LIMIT ?`, now.UnixMilli(), limit)
@@ -241,7 +269,7 @@ func (c *Catalog) claimDueRepairs(ctx context.Context, limit int) ([]repairItem,
 		var item repairItem
 		if err := rows.Scan(&item.path, &item.pathKey, &item.target.Path, &item.target.Scope,
 			&item.target.WorkspaceRoot, &item.workspaceRootKey, &item.topicID, &item.attempts, &item.state,
-			&item.retryAt, &item.sourceFingerprint); err != nil {
+			&item.retryAt, &item.sourceFingerprint, &item.errorKind); err != nil {
 			_ = rows.Close()
 			_ = tx.Rollback()
 			return nil, err
@@ -266,6 +294,12 @@ func (c *Catalog) claimDueRepairs(ctx context.Context, limit int) ([]repairItem,
 			return nil, err
 		}
 		if ok {
+			if item.state == "deferred" {
+				// Task 671 retry node: a deferred row is being re-attempted.
+				slog.Info("sessioncatalog: catalog repair deferred retry",
+					"feature", "catalog-repair", "path", item.path,
+					"kind", item.errorKind, "attempts", item.attempts)
+			}
 			claimed = append(claimed, claimedItem)
 		}
 	}
@@ -369,12 +403,22 @@ func (c *Catalog) applyGuardedRepairBatch(ctx context.Context, outcomes []repair
 		}
 		state, attempts, retryAt, errorKind, health := repairDisposition(outcome, c.opts.Now())
 		var updateResult sql.Result
-		if state == "complete" {
+		switch {
+		case state == "complete":
 			updateResult, err = statements.complete.ExecContext(ctx,
 				outcome.result.Preview, outcome.result.Turns, contentFingerprint, metaFingerprint,
 				sourceFingerprint, repairEngineVersion, outcome.item.pathKey, outcome.item.attempts,
 				outcome.item.retryAt, outcome.item.sourceFingerprint)
-		} else {
+		case state == "pending" && errorKind == repairBusyErrorKind:
+			// Task 671: busy is transient writer contention, not damage. Park
+			// the row in pending with a fixed short retry; the certified
+			// projection columns and health stay untouched, so no deferred
+			// count and no repair notice can be raised from this outcome.
+			updateResult, err = statements.wait.ExecContext(ctx,
+				attempts, retryAt, errorKind, contentFingerprint, metaFingerprint,
+				sourceFingerprint, repairEngineVersion, outcome.item.pathKey, outcome.item.attempts,
+				outcome.item.retryAt, outcome.item.sourceFingerprint)
+		default:
 			updateResult, err = statements.deferred.ExecContext(ctx, health, state, attempts, retryAt, errorKind,
 				contentFingerprint, metaFingerprint, sourceFingerprint, repairEngineVersion, outcome.item.pathKey,
 				outcome.item.attempts, outcome.item.retryAt, outcome.item.sourceFingerprint)
@@ -390,6 +434,7 @@ func (c *Catalog) applyGuardedRepairBatch(ctx context.Context, outcomes []repair
 			continue
 		}
 		mutated++
+		logRepairDisposition(outcome, state, errorKind, attempts, retryAt)
 		if state == "complete" {
 			committedDirty[queuePathKey(outcome.item.target.Path)] = outcome.item.target
 		}
@@ -451,14 +496,39 @@ func repairDisposition(outcome repairOutcome, now time.Time) (state string, atte
 			return "deferred", outcome.item.attempts, now.Add(30 * time.Second).UnixMilli(), "source_changed", HealthDegraded
 		}
 	}
+	// Task 671: busy is a writer holding the session locks (transient), not a
+	// parse failure. Park the row in pending with a fixed short retry instead
+	// of deferred: the catalog keeps its previous projection/health, the
+	// deferred counter stays at zero, and the next wave retries automatically.
+	if errors.Is(outcome.err, agent.ErrSessionListingRepairBusy) {
+		return "pending", outcome.item.attempts, now.Add(repairBusyRetryDelay).UnixMilli(), repairBusyErrorKind, HealthOK
+	}
 	attempts = outcome.item.attempts + 1
 	errorKind = "io"
-	if errors.Is(outcome.err, agent.ErrSessionListingRepairBusy) {
-		errorKind = "busy"
-	} else if errors.Is(outcome.err, context.DeadlineExceeded) {
+	if errors.Is(outcome.err, context.DeadlineExceeded) {
 		errorKind = "timeout"
 	}
 	return "deferred", attempts, now.Add(repairBackoff(attempts)).UnixMilli(), errorKind, HealthDegraded
+}
+
+// logRepairDisposition is the task 671 observability triple around deferred:
+// enter (first time a row lands in deferred), recover (deferred row finally
+// repaired), plus the debug-level busy park. All nodes carry the
+// feature=catalog-repair tag so they can be filtered as one stream.
+func logRepairDisposition(outcome repairOutcome, state string, errorKind string, attempts int, retryAt int64) {
+	switch {
+	case state == "complete" && outcome.item.state == "deferred":
+		slog.Info("sessioncatalog: catalog repair recovered from deferred",
+			"feature", "catalog-repair", "path", outcome.item.path,
+			"turns", outcome.result.Turns, "attempts", outcome.item.attempts)
+	case state == "pending" && errorKind == repairBusyErrorKind:
+		slog.Debug("sessioncatalog: catalog repair busy parked for next wave",
+			"feature", "catalog-repair", "path", outcome.item.path, "retryAtMs", retryAt)
+	case state == "deferred" && outcome.item.state != "deferred":
+		slog.Warn("sessioncatalog: catalog repair deferred enter",
+			"feature", "catalog-repair", "path", outcome.item.path,
+			"kind", errorKind, "attempts", attempts, "retryAtMs", retryAt)
+	}
 }
 
 func repairBackoff(attempts int) time.Duration {

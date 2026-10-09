@@ -207,6 +207,9 @@ func (c *Catalog) refreshCounts(ctx context.Context) {
 	var indexed, pending, total, physical, logical, groups, branches, diverged, cleanup int64
 	var active, deferred, blocked int64
 	var nextRepair sql.NullInt64
+	// Task 671: rows parked by a busy repair outcome (repair_error_kind='busy')
+	// wait in pending for the next wave without surfacing as active repair
+	// work, so transient writer contention never raises a repair notice.
 	err := c.db.QueryRowContext(ctx, `SELECT
 		COUNT(*),
 		COALESCE(SUM(CASE WHEN turns_state='unknown' THEN 1 ELSE 0 END),0),
@@ -217,7 +220,8 @@ func (c *Catalog) refreshCounts(ctx context.Context) {
 		COALESCE(SUM(CASE WHEN recovered=1 AND missing_since=0 THEN 1 ELSE 0 END),0),
 		COALESCE(SUM(CASE WHEN recovered=1 AND recovery_role='diverged' AND missing_since=0 THEN 1 ELSE 0 END),0),
 		COALESCE(SUM(CASE WHEN recovered=1 AND recovery_role='covered_copy' AND missing_since=0 THEN 1 ELSE 0 END),0),
-		COALESCE(SUM(CASE WHEN turns_state='unknown' AND repair_state IN ('pending','active') THEN 1 ELSE 0 END),0),
+		COALESCE(SUM(CASE WHEN turns_state='unknown' AND repair_state IN ('pending','active')
+			AND repair_error_kind<>'busy' THEN 1 ELSE 0 END),0),
 		COALESCE(SUM(CASE WHEN turns_state='unknown' AND repair_state='deferred' THEN 1 ELSE 0 END),0),
 		COALESCE(SUM(CASE WHEN turns_state='unknown' AND repair_state='blocked' THEN 1 ELSE 0 END),0),
 		MIN(CASE WHEN turns_state='unknown' AND repair_state='deferred' THEN repair_retry_at END)

@@ -33,8 +33,11 @@ func TestRepairBackoffPersistsAndSourceChangesResetIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	retryAt := time.Now().Add(17 * time.Minute).UnixMilli()
+	// error_kind must not be "busy": since task 671 the V13 migration (and the
+	// busy disposition) reclassifies deferred+busy rows to pending on reopen,
+	// and this test exercises deferred source-change resets, not busy parking.
 	if _, err := catalog.db.ExecContext(ctx, `UPDATE catalog_sessions SET repair_state='deferred',repair_attempts=4,
-		repair_retry_at=?,repair_error_kind='busy',repair_engine_version=? WHERE path_key=?`, retryAt, repairEngineVersion, catalog.pathKey(path)); err != nil {
+		repair_retry_at=?,repair_error_kind='io',repair_engine_version=? WHERE path_key=?`, retryAt, repairEngineVersion, catalog.pathKey(path)); err != nil {
 		t.Fatal(err)
 	}
 	if err := catalog.Close(ctx); err != nil {
