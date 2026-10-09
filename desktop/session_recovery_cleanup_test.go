@@ -283,29 +283,30 @@ func TestTrashSessionMatchesLiveSeesEventLogDivergence(t *testing.T) {
 		t.Fatal("identical live/trash reported as different")
 	}
 
-	// The live session keeps chatting, and the save keeps the .jsonl
-	// compatibility checkpoint in sync with the log (the display read model
-	// advances the anchor in place since v1.24.1), so growing the session
-	// alone never leaves two byte-identical checkpoints behind. The disk
-	// state the byte-compare trap needs is still real: a crash between the
-	// event-log append and the checkpoint advance, or a trash item older
-	// than the live file's last checkpoint refresh, holds a checkpoint from
-	// moment N while the authoritative log has moved past it. Build that
-	// state directly: roll the live anchor back to the snapshot-time bytes
-	// and keep the newer history in the log.
+	// The live session keeps chatting. The schema-1 writer landed this growth
+	// in the event log only, so both .jsonl checkpoints stayed byte-identical;
+	// the schema-2 writer also refreshes the checkpoint cache on every save,
+	// so the stale-anchor state is restored explicitly instead of assumed: a
+	// crash between the log append and the checkpoint refresh, a save whose
+	// non-fatal checkpoint write failed ("keeping save after display
+	// read-model write failure"), or an older build that never advanced the
+	// cache all leave the anchor behind the authoritative log. Byte comparison
+	// would call this a duplicate and delete the live session's newer history.
+	liveAnchor, err := os.ReadFile(live)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "newer work"})
 	if err := s.SaveSnapshot(live); err != nil {
 		t.Fatalf("SaveSnapshot diverge: %v", err)
 	}
-	staleAnchor, err := os.ReadFile(trashPath)
+	if err := os.WriteFile(live, liveAnchor, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	trashAnchor, err := os.ReadFile(trashPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(live, staleAnchor, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	liveAnchor, _ := os.ReadFile(live)
-	trashAnchor, _ := os.ReadFile(trashPath)
 	if string(liveAnchor) != string(trashAnchor) {
 		// The construction wrote these bytes itself, so inequality means the
 		// test is broken, not the guard (305 discipline: abort loudly).
