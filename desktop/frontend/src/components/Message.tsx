@@ -245,7 +245,8 @@ function formatMessageTime(date: Date): string {
 // lib/messageFold.ts so light consumers (task 446) can reuse it without
 // pulling this module's full graph; re-exported here to keep the 436 surface
 // (and its integrity anchors) where callers already expect it.
-import { USER_MSG_FOLD_LINE_THRESHOLD, estimateUserMessageLines } from "../lib/messageFold";
+import { COLLAB_MSG_FOLD_LINE_THRESHOLD, USER_MSG_FOLD_LINE_THRESHOLD, estimateUserMessageLines, firstDisplayLine } from "../lib/messageFold";
+import { useCollabDisplayStore } from "../store/collabDisplay";
 export {
   USER_MSG_FOLD_LINE_THRESHOLD,
   USER_MSG_FOLD_CLAMP_HEIGHT_PX,
@@ -311,6 +312,15 @@ export function UserMessage({
   const foldCandidate = !imSource && !mergedMessage && estimateUserMessageLines(displayText) >= USER_MSG_FOLD_LINE_THRESHOLD;
   const [foldExpanded, setFoldExpanded] = useState(false);
   const foldActive = foldCandidate && !foldExpanded;
+  // 任务 705: with the lab switch on, an over-long cross-session message
+  // collapses into a summary bar (sender + first line + expand toggle). Off
+  // (default) = the card renders exactly as before; display-only either way.
+  const collabAutoFold = useCollabDisplayStore((state) => state.autoFold);
+  const collabFoldCandidate =
+    isCollabSource && collabAutoFold && estimateUserMessageLines(displayText) >= COLLAB_MSG_FOLD_LINE_THRESHOLD;
+  const [collabFoldExpanded, setCollabFoldExpanded] = useState(false);
+  const collabFoldActive = collabFoldCandidate && !collabFoldExpanded;
+  const collabPreviewLine = useMemo(() => (collabFoldCandidate ? firstDisplayLine(displayText) : ""), [collabFoldCandidate, displayText]);
   // Task 234: upstream renamed the parsed list to `parsedAttachments` (its
   // render half moved into MessageAttachments); the edit-state draft seeds
   // from the same list.
@@ -573,7 +583,41 @@ export function UserMessage({
               <MessageSquare size={14} />
               <span>{t("msg.fromIm", { source: sourceLabel })}</span>
             </div>
-            {displayText && <div className="im-source-card__text">{displayText}</div>}
+            {displayText && (
+              collabFoldActive ? (
+                // 任务 705: summary bar — sender + first line + expand toggle.
+                // The full body stays in context and reappears on expand.
+                <div className="im-source-card__text im-source-card__text--folded">
+                  {imSource.sender && <span className="im-source-card__fold-sender">{collabLabel(imSource.sender)}</span>}
+                  <span className="im-source-card__preview">{collabPreviewLine}</span>
+                  <button
+                    type="button"
+                    className="im-source-card__fold-toggle"
+                    aria-expanded={false}
+                    onClick={() => setCollabFoldExpanded(true)}
+                  >
+                    <ChevronDown size={13} />
+                    {t("msg.collabFoldExpand")}
+                  </button>
+                </div>
+              ) : (
+                <div className="im-source-card__text">
+                  {displayText}
+                  {collabFoldCandidate && collabFoldExpanded && (
+                    <button
+                      type="button"
+                      className="im-source-card__fold-toggle"
+                      aria-expanded={true}
+                      data-expanded="true"
+                      onClick={() => setCollabFoldExpanded(false)}
+                    >
+                      <ChevronDown size={13} />
+                      {t("msg.collabFoldCollapse")}
+                    </button>
+                  )}
+                </div>
+              )
+            )}
             {(imSource.sender || imSource.chat) && (
               <div
                 className="im-source-card__meta"

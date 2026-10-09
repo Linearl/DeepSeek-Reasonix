@@ -371,10 +371,12 @@ function buildPackOverlayCSS(pack: ThemePackView): string {
   const darkTokens = pack.tokens?.dark || {};
   const light = joinDecls(
     tokensToDecls(lightTokens),
+    gradDecls(lightTokens),
     codeReadabilityDecls(deriveCodeReadabilityPalette("light", pack.baseStyle, lightTokens)),
   );
   const dark = joinDecls(
     tokensToDecls(darkTokens),
+    gradDecls(darkTokens),
     codeReadabilityDecls(deriveCodeReadabilityPalette("dark", pack.baseStyle, darkTokens)),
   );
   const recipes = recipeDecls(pack.recipes);
@@ -415,6 +417,17 @@ function buildPackOverlayCSS(pack: ThemePackView): string {
 
 function joinDecls(...groups: string[]): string {
   return groups.filter(Boolean).join(";");
+}
+
+// Task 706: the direction sheets hardcode --grad per baseStyle (e.g. slate's
+// blue gradient), and TOKEN_TO_CSS has no --grad entry — so a pack that only
+// overrides accent left accent-following surfaces split: the sidebar logo
+// (var(--accent)) went pack-green while the 新建会话 CTA (var(--grad)) kept
+// the baseStyle blue. Re-derive the gradient from the pack accent, riding the
+// same selector chunks so it wins exactly the way the token overrides do.
+function gradDecls(tokens?: Record<string, string>): string {
+  if (!tokens || !isSafeHex(tokens.accent ?? "")) return "";
+  return "--grad:linear-gradient(120deg, var(--accent), var(--accent-strong))";
 }
 
 function tokensToDecls(tokens?: Record<string, string>): string {

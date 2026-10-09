@@ -67,7 +67,10 @@ var labFeatureTiers = []labFeatureTier{
 	{"traceAsState", LabTierOptional, []string{"trace_as_state"}}, // 任务 473 单键化：[desktop] 旧拼写已退役
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
-	{"collabGroupView", LabTierUnstable, []string{"experimental_collab_group_view"}},                            // 任务 677：群聊入口开关（409 视图交付漏挂铁律 2 开关，用户定档未稳定）
+	{"collabGroupView", LabTierUnstable, []string{"experimental_collab_group_view"}}, // 任务 677：群聊入口开关（409 交付漏挂铁律 2 开关，用户定档未稳定）
+	// 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关归提效
+	// 组（同 messageMerge 的跨会话展示族先例）；档位按 550 口径建议可选。
+	{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}},
 	// ── ui（界面，15 项）────────────────────────────────────────
 	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
 	{"todoSidebar", LabTierRecommended, []string{"experimental_todo_sidebar"}},
@@ -339,6 +342,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 677: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the group-chat switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_collab_group_view = %v   # desktop: sidebar group-chat entry (task 409 view, task 677 switch)\n", c.Desktop.ExperimentalCollabGroupView)
+		// Task 705: fixed-key-set rule (same as above) — the fold switch must
+		// survive every settings save.
+		fmt.Fprintf(&b, "experimental_session_collab_auto_fold = %v   # desktop: fold over-long cross-session messages into a summary bar (task 705; off = render in full)\n", c.Desktop.ExperimentalSessionCollabAutoFold)
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)
 		// Task 172: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the touchpoint switch would flip itself back off.

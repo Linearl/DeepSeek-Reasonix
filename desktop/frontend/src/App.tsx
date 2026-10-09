@@ -281,6 +281,7 @@ import type { AppDecisionSurfaceKind } from "./app-runtime/decisionSurfaceProjec
 import { browserPlatformOverride } from "./lib/desktopPlatform";
 import { markAppearanceReady, setAutopilotEnabled, useAppLifecycleStore } from "./store/appLifecycle";
 import { setStatusBarItems, setStatusBarStyle, useShellPrefsStore } from "./store/shellPrefs";
+import { setCollabAutoFold } from "./store/collabDisplay";
 import { useInvocationMetadata } from "./app-runtime/useInvocationMetadata";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
@@ -1351,7 +1352,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalSessionCollabAutoFold?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1419,6 +1420,10 @@ export default function App() {
       reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)} subagentPanel=${Boolean(settings.experimentalSubagentPanel)} historyPicker=${Boolean(settings.experimentalPromptHistoryPicker)} subagentDetail=${Boolean(settings.experimentalSubagentDetail)}`);
       setStartupUpdateChecksEnabled(settings.checkUpdates !== false);
       setStatusBarStyle(settings.statusBarStyle === "text" ? "text" : "icon");
+      // 任务 705: cross-session message auto-fold — written once per settings
+      // load, read by the transcript renderer (collabDisplay store, 铁律 2
+      // default off = render in full); re-applied on every settings save.
+      setCollabAutoFold(settings.experimentalSessionCollabAutoFold);
       // Task 262: with the quick-commands gate off the composer menu hides by
       // serving an empty list — the stored snippets themselves are untouched.
       setQuickCommands(settings.experimentalQuickCommands === true ? settings.quickCommands ?? [] : []);

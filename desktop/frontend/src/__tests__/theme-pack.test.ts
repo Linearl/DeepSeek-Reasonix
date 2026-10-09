@@ -289,6 +289,23 @@ ok(styleText("reasonix-theme-pack-overlay").includes("--code-bg:#101115"), "inje
 ok(styleText("reasonix-theme-pack-overlay").includes("--hl-comment:"), "injects contrast-checked syntax roles");
 ok(styleText("reasonix-theme-pack-overlay").includes("--r:14px"), "applies round corners recipe");
 
+// Task 706: a pack that overrides accent must also re-derive --grad. The
+// direction sheets hardcode --grad per baseStyle (slate ships a blue gradient),
+// so before this fix the sidebar 新建会话 CTA stayed baseStyle-blue under
+// accent-override packs (e.g. Sage Breeze) while the logo went pack-green.
+const gradDecl = "--grad:linear-gradient(120deg, var(--accent), var(--accent-strong))";
+const overlayCss = styleText("reasonix-theme-pack-overlay");
+ok(overlayCss.includes(gradDecl), "task 706: pack overlay re-derives --grad from accent");
+ok(overlayCss.split(gradDecl).length - 1 === 4, "task 706: --grad re-derived across dark/light/auto chunks");
+
+applyThemePack(draftPackView({
+  id: "accentless-pack",
+  name: "Accentless",
+  baseStyle: "slate",
+  tokens: { dark: { fg: "#ffffff" } },
+}));
+ok(!styleText("reasonix-theme-pack-overlay").includes("--grad:"), "task 706: no --grad re-derivation when the pack sets no accent");
+
 const twoSceneDraft = draftPackView({
   ...draft,
   taskBackground: { focusX: 0.8, focusY: 0.3, safeArea: "right", opacity: 0.35, overlayStrength: 0.7, paneOpacity: 0.68 },

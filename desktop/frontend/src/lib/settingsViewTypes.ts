@@ -41,6 +41,8 @@ export interface SettingsView {
   experimentalSplitView?: boolean;
   // Task 677: gates the sidebar group-chat entry (experimental).
   experimentalCollabGroupView?: boolean;
+  // Task 705: folds over-long cross-session messages into a summary bar (experimental; off = render in full).
+  experimentalSessionCollabAutoFold?: boolean;
   // Conversation store mode in use (task 155): "v3_only" | "dual_write_read_v3" |
   // "dual_write_read_v4" | "v4_only"; switched from Settings > Experimental.
   sessionStorage?: string;

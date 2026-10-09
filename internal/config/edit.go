@@ -961,6 +961,14 @@ func (c *Config) SetExperimentalCollabGroupView(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSessionCollabAutoFold folds over-long cross-session messages
+// into a summary bar (task 705). Pure display preference: off (default) keeps
+// the transcript rendering every cross-session message in full.
+func (c *Config) SetExperimentalSessionCollabAutoFold(enabled bool) error {
+	c.Desktop.ExperimentalSessionCollabAutoFold = enabled
+	return nil
+}
+
 // SetExperimentalFeedback toggles the agent submit_feedback tool and the desktop
 // feedback inbox panel (task 121). Opt-in: feedback is a local product-inbox
 // experiment, not part of the default tool surface or settings chrome.
