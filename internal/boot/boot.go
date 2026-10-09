@@ -240,6 +240,13 @@ type Options struct {
 	// backlog (degraded steers included). Nil leaves every reported state
 	// unknown — honest, never a guessed idle.
 	OnSessionStatus func(contactID string) (running bool, lastTurnAtMS int64, pending int, known bool)
+	// OnSessionWorkDetail (任务 667) exposes one contact's runtime work detail
+	// — the background-job rows and running-foreground-subagent rows the
+	// desktop running panel (task 440) and capsule badge (task 557) already
+	// render — to get_session_status's opt-in include_tasks_and_subagents
+	// flag. Nil keeps that flag answering known=false (CLI/tests), never a
+	// guessed empty set.
+	OnSessionWorkDetail agent.SessionWorkDetailFunc
 	// OnSessionInfo (task 274 ①) exposes a contact's current model to the
 	// collaboration directory: modelRef as the switcher shows it, provider as
 	// its catalog prefix. Nil omits the fields from every row (CLI/tests).
@@ -2195,6 +2202,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// Task 218: the host answers running/idle from its own controllers;
 			// nil (CLI, tests) keeps every state unknown instead of a guess.
 			SessionStatus: opts.OnSessionStatus,
+			// 任务 667: opt-in work detail behind include_tasks_and_subagents —
+			// the 440-panel/557-capsule runtime rows as a tool face; nil (CLI,
+			// tests) answers known=false instead of a guessed empty set.
+			SessionWorkDetail: opts.OnSessionWorkDetail,
 			// Task 243 A2: turn-scoped dispatch echo — agent method values
 			// (executor exists above; call-time reads keep it turn-accurate).
 			RecordDispatch:   executor.RecordDispatch,

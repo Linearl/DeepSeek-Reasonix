@@ -1283,6 +1283,18 @@ const CHECKS = [
   { feature: "508 sessioncollab 侧 Turns 透传（ScanDirMeta 拷贝）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["Turns:          info.Turns,"] },
   { feature: "508 行为钉（门控默认关=零键/开=对账读数/缺失文件=0）", file: "internal/agent/session_collab_stats_test.go", patterns: ["TestListAddressableSessionsStatsOffByDefault", "TestListAddressableSessionsStatsOnDemand", "TestListAddressableSessionsStatsMissingEventLog"] },
 
+  // 任务667（wt-667，2026-10-09）：get_session_status 的 include_tasks_and_subagents
+  // 可选门控（默认 false 零回归）。数据源纪律=440 面板/557 胶囊同一运行时状态层，
+  // 宿主探针在 CLI/测试为 nil 时诚实 known=false 不伪装空集。merge 若顶掉门控，
+  // AI 派单后无法自查活跃子代理数（zcode 9 路误判复发）且无编译错误——锚定
+  // 参数行、明细渲染、desktop 同源读取、boot 接线与零回归行为钉。
+  { feature: "667 include_tasks_and_subagents 门控参数（默认 false 零回归）", file: "internal/agent/session_collab_tools.go", patterns: ["IncludeTasksAndSubagents bool `json:\"include_tasks_and_subagents\"`", "record[\"workDetail\"] = sessionWorkDetailSection"] },
+  { feature: "667 workDetail 明细渲染（任务行+子代理行，durationMs/batch，诚实 known=false）", file: "internal/agent/session_work_detail.go", patterns: ["func sessionWorkDetailSection", "len(subagents) is the live active count", "this host did not wire a runtime work-detail probe"] },
+  { feature: "667 desktop 同源读取（ctrl.Jobs 跳 interrupted=440 口径 + RunningSubagents 按 tab 过滤=557 口径）", file: "desktop/session_work_detail.go", patterns: ["func (a *App) collabSessionWorkDetail", "job.Status == \"interrupted\"", "a.RunningSubagents()"] },
+  { feature: "667 boot 探针接线（Options.OnSessionWorkDetail → collab 配置）", file: "internal/boot/boot.go", patterns: ["OnSessionWorkDetail agent.SessionWorkDetailFunc", "SessionWorkDetail: opts.OnSessionWorkDetail"] },
+  { feature: "667 行为钉（无参黄金字节零回归/跨会话明细/无探针与运行时不可见 known=false）", file: "internal/agent/session_status_work_detail_test.go", patterns: ["TestGetSessionStatus667NoFlagByteIdentical", "TestGetSessionStatus667WorkDetailEnrichment", "TestGetSessionStatus667WorkDetailWithoutProbe", "TestGetSessionStatus667WorkDetailRuntimeInvisible"] },
+  { feature: "667 与 440/557 面板同源对账钉（逐行一致+批次键透传+detached 可达）", file: "desktop/session_work_detail_test.go", patterns: ["TestCollabSessionWorkDetailSameSourceAsPanels", "ParentToolCallID: \"call_9\"", "sc_detached"] },
+
   // ── 任务499（wt-499-memory-fix）──────────────────────────────────
   // 桌面版内存膨胀（10-05 现场 14.6GB heap）的持有链两环：graph cache 无字节
   // 上限 + 全仓无失效点。字节上限（总 2048MiB / 单体 1024MiB，账目=st.size）
