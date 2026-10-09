@@ -149,12 +149,22 @@ ok(startCalls[0]?.includes('"kind":"crash"'), "the started session carries the d
 ok(startCalls[0]?.includes("renderer fault"), "the started session carries the diagnostic payload");
 ok(note(overlay).includes("YOLO analysis session started"), "the note reports the started session");
 
-// Workspace not ready — B must not start.
+// Workspace not ready — task 687: no longer a gate; under the 674 semantics
+// (no confirmation) it starts directly. The analysis self-hosts in a fresh
+// Global tab (task 672) with nothing open / no project expanded (the
+// 2026-10-09 17:55 refusal).
 startCalls = [];
 availability = { ...allReady, workspaceReady: false, ready: false };
 await clickAnalyze(overlay);
-ok(note(overlay).includes("No live session"), "no live workspace shows the workspace notice");
-ok(startCalls.length === 0, "no live workspace does not start the analysis");
+ok(note(overlay).includes("consumes token quota"), "no live workspace still reaches the spend confirmation (task 687)");
+ok(startCalls.length === 0, "no live workspace alone does not start the analysis");
+
+// A failed availability probe (backend threw / binding vanished) still stops
+// route B with the workspace notice — the only remaining consumer of that face.
+availability = null;
+await clickAnalyze(overlay);
+ok(note(overlay).includes("No live session"), "a failed probe shows the fallback notice");
+ok(startCalls.length === 0, "a failed probe does not start the analysis");
 
 // A failed start paints the failure notice and re-arms the button. The button
 // resolves its bindings at creation time, so the throwing binding must be in

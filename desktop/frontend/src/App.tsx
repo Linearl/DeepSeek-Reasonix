@@ -71,7 +71,7 @@ import { SessionWallBoundary } from "./components/SessionWallBoundary";
 import { effectiveSplitTier, loadSplitPreviewTier, persistSplitPreviewTier, splitPreviewTierFromPointer, SPLIT_PREVIEW_TIERS, setSplitPaneTitle, setSplitViewEnabled, type SplitPreviewTier } from "./lib/splitView";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./components/ContextMenu";
 import { reportFrontendLog } from "./lib/frontendLog";
-import { app, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
+import { app, onBackendTabActivated, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
 import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
@@ -3244,6 +3244,27 @@ export default function App() {
     void enqueueTabSwitch(id, selected);
     setTabRevealSignal((signal) => signal + 1);
   }, [closeTransientOverlays, enqueueTabSwitch, tabMetas]);
+
+  // Task 688: the backend can open AND activate a tab entirely on its side —
+  // today the one-click analysis family (task 672 Global flow). No frontend
+  // navigation carries that activation: the ready event is guarded away, turn
+  // events only refresh tab metadata, so the tab bar shows the new tab while
+  // the content area keeps rendering the previous conversation (and the new
+  // tab's own events fence against a never-bound meta). Follow the activation
+  // with the same navigation a tab click takes: refresh metadata (so the
+  // switch gets a real optimistic meta with the session identity), then ride
+  // enqueueTabSwitch — the same last-click-wins scheduler, so this can never
+  // race a user switch concurrently.
+  useEffect(() => onBackendTabActivated((event) => {
+    void (async () => {
+      const tabs = await refreshTabMetas(undefined, { afterMutation: true }).catch(() => [] as TabMeta[]);
+      if (!tabs.some((tab) => tab.id === event.tabId)) return;
+      closeTransientOverlays("backend tab activation");
+      setTabMetas((current) => current.map((tab) => ({ ...tab, active: tab.id === event.tabId })));
+      void enqueueTabSwitch(event.tabId, tabs.find((tab) => tab.id === event.tabId));
+      setTabRevealSignal((signal) => signal + 1);
+    })();
+  }), [closeTransientOverlays, enqueueTabSwitch, refreshTabMetas]);
 
   const finishTabClose = useCallback(async (
     id: string,

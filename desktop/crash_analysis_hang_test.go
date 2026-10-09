@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -307,5 +308,171 @@ func TestCrashAnalysisProgressTracksBegunRun(t *testing.T) {
 	}
 	if report.StartedAt == "" || report.DoneAt == "" {
 		t.Error("progress must carry the start and done times")
+	}
+}
+
+// ── task 687: the hang entry lands Global, same as the crash entry ──────────
+
+// hangProbeCtrlStub gives the active-tab session a path so the doctor
+// responsiveness probe (which the hang gate inherently requires — something
+// must be hung to analyze) can run against a stubbed verdict.
+type hangProbeCtrlStub struct {
+	heartbeatExecuteTaskCtrlStub
+	sessionPath string
+}
+
+func (s *hangProbeCtrlStub) SessionPath() string { return s.sessionPath }
+
+// TestStartHangAnalysisHostsSessionInGlobalNotActiveProject pins task 687: the
+// hang entry of the one-click analysis family must host its conversation under
+// the built-in Global scope (task 672 parity with the crash entry) — never
+// rotate the hung session's tab in place, and never file the run under the open
+// project. It also pins the tab:backend-activated activation event (task 688):
+// the backend opened the tab outside any frontend navigation, so without the
+// event the webview would keep rendering the previous conversation.
+func TestStartHangAnalysisHostsSessionInGlobalNotActiveProject(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	// The user is working inside a project when the hang prompt's analyze
+	// button fires; that project must gain nothing from the analysis, and the
+	// hung session's tab must survive untouched.
+	projectRoot := t.TempDir()
+	if err := addProject(projectRoot, "fork_dev"); err != nil {
+		t.Fatalf("add project: %v", err)
+	}
+	hungSession := filepath.Join("C:", "hung", "session.jsonl")
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+	var activatedEvent *BackendTabActivatedEvent
+	app.runtimeEvents.emit = func(_ context.Context, name string, args ...any) {
+		if name != tabBackendActivatedEvent || len(args) == 0 {
+			return
+		}
+		if event, ok := args[0].(BackendTabActivatedEvent); ok {
+			activatedEvent = &event
+		}
+	}
+	app.mu.Lock()
+	app.tabs["tab-user"] = &WorkspaceTab{ID: "tab-user", Scope: "project", WorkspaceRoot: projectRoot,
+		TopicID: "topic-user", TopicTitle: "user work", Ctrl: &hangProbeCtrlStub{sessionPath: hungSession}, Ready: true}
+	app.tabOrder = []string{"tab-user"}
+	app.activeTabID = "tab-user"
+	app.mu.Unlock()
+
+	// Hermetic gates: source + gh identity + a doctor verdict the hang gate
+	// accepts, and a recorded submission instead of a real model turn.
+	stubCrashAnalysisSourceDir(t, fixtureReasonixSourceDir(t))
+	stubGhProbe(t, true, "")
+	origCollect, origNow := hangResponsivenessCollect, hangNow
+	hangResponsivenessCollect = func(string, time.Time) (doctor.ResponsivenessReport, error) {
+		return hangReportForVerdict("silent", 0), nil
+	}
+	hangNow = func() time.Time { return time.Now() }
+	t.Cleanup(func() { hangResponsivenessCollect, hangNow = origCollect, origNow })
+
+	sourceDir := t.TempDir()
+	origSource, origGh, origSubmit := crashAnalysisSourceDir, crashAnalysisGhAuth, crashAnalysisSubmit
+	crashAnalysisSourceDir = func() string { return sourceDir }
+	crashAnalysisGhAuth = func() (bool, string) { return true, "" }
+	submittedTab := make(chan string, 1)
+	var submittedInstruction string
+	crashAnalysisSubmit = func(a *App, tabID, instruction string) error {
+		submittedInstruction = instruction
+		submittedTab <- tabID
+		return nil
+	}
+	t.Cleanup(func() {
+		crashAnalysisSourceDir, crashAnalysisGhAuth, crashAnalysisSubmit = origSource, origGh, origSubmit
+	})
+
+	// The analysis tab's controller builds in a goroutine; publish a stub the
+	// same way the 672 crash-entry test fakes a cold boot.
+	ctrl := &crashAnalysisCtrlStub{}
+	tabIDCh := publishControllerAfterDelay(t, app, ctrl, 30*time.Millisecond)
+	origWait := crashAnalysisControllerWaitTimeout
+	crashAnalysisControllerWaitTimeout = 10 * time.Second
+	t.Cleanup(func() { crashAnalysisControllerWaitTimeout = origWait })
+
+	summary, err := app.StartHangAnalysis()
+	if err != nil {
+		t.Fatalf("StartHangAnalysis: %v", err)
+	}
+	if !strings.Contains(summary, "Global") {
+		t.Fatalf("summary = %q, want it to name the Global host", summary)
+	}
+
+	hostedID := <-tabIDCh
+	if got := <-submittedTab; got != hostedID {
+		t.Fatalf("instruction submitted to tab %q, want the analysis tab %q", got, hostedID)
+	}
+	if !strings.Contains(submittedInstruction, "卡顿") {
+		t.Fatalf("hang instruction lost the hang framing: %.200s", submittedInstruction)
+	}
+	// Task 688: the backend-side activation must reach the frontend.
+	if activatedEvent == nil {
+		t.Fatalf("%s event not emitted — the webview would never follow the analysis tab", tabBackendActivatedEvent)
+	}
+	if activatedEvent.TabID != hostedID || activatedEvent.Reason != "analysis" {
+		t.Fatalf("activation event = %+v, want tab %q reason %q", activatedEvent, hostedID, "analysis")
+	}
+
+	app.mu.RLock()
+	tab := app.tabs[hostedID]
+	var scope, root, topicID, sessionPath string
+	if tab != nil {
+		scope, root, topicID, sessionPath = tab.Scope, tab.WorkspaceRoot, tab.TopicID, tab.SessionPath
+	}
+	userTopic := ""
+	if userTab := app.tabs["tab-user"]; userTab != nil {
+		userTopic = userTab.TopicID
+		if userTab.Ctrl != nil && userTab.Ctrl.SessionPath() != hungSession {
+			t.Errorf("the hung session's tab was rotated in place to %q — the hang analysis must not touch the user's tab", userTab.Ctrl.SessionPath())
+		}
+	}
+	app.mu.RUnlock()
+	if tab == nil {
+		t.Fatal("the analysis tab vanished")
+	}
+	if scope != "global" {
+		t.Fatalf("analysis tab scope = %q, want global (task 687)", scope)
+	}
+	if root == "" || !isBuiltinWorkspaceRoot(root) {
+		t.Fatalf("analysis tab workspace root = %q, want a builtin (host-owned) root", root)
+	}
+	if sessionPath == "" {
+		t.Fatal("analysis tab has no session path")
+	}
+	if wantDir := desktopSessionDir(globalWorkspaceRoot()); !sameDesktopPath(filepath.Dir(sessionPath), wantDir) {
+		t.Fatalf("analysis session %q lives outside the global session dir %q", sessionPath, wantDir)
+	}
+	if userTopic != "topic-user" {
+		t.Fatalf("active project tab topic changed to %q — the flow must not touch the user's open tab", userTopic)
+	}
+	if topicID == "" || topicID == "topic-user" {
+		t.Fatalf("analysis topic id = %q, want a fresh topic distinct from the user's", topicID)
+	}
+
+	// Sidebar index: the conversation is listed under Global, and the open
+	// project's topic roster gained nothing.
+	projects := loadProjectsFile()
+	globalHit := false
+	for _, id := range projects.GlobalTopics {
+		if id == topicID {
+			globalHit = true
+		}
+	}
+	if !globalHit {
+		t.Fatalf("analysis topic %q missing from GlobalTopics = %v", topicID, projects.GlobalTopics)
+	}
+	for _, project := range projects.Projects {
+		if !sameProjectRoot(project.Root, projectRoot) {
+			continue
+		}
+		for _, id := range project.Topics {
+			if id == topicID {
+				t.Fatalf("analysis topic %q leaked into project %q topics = %v", topicID, project.Root, project.Topics)
+			}
+		}
 	}
 }

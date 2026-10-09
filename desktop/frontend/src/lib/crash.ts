@@ -769,13 +769,16 @@ const COPY_FEEDBACK_MS = 2_000;
 // (gh auth / live workspace) and — per the task 674 interaction spec — starts
 // the analysis immediately when they pass, with no second confirmation click.
 // A missing source checkout is no longer a hard gate either: the backend clones
-// the fork repo automatically before hosting the analysis. Each hard failure
-// still paints its own distinct notice into `note` and route B stops, pointing
-// at route A (Copy). Like the send button, both bindings are resolved at click
-// time off window.go so the overlay keeps working when the rest of the app is
-// broken. Task 663: one gate order and one progress/completion face are shared
-// by the whole analysis family (hang entry, pending-crash entry, performance
-// prompt) — every caller goes through the single analyzeButton below.
+// the fork repo automatically before hosting the analysis. Task 687: the
+// live-workspace check is gone too — the analysis self-hosts in a fresh Global
+// tab (task 672), so it starts with nothing open and no project expanded.
+// Each hard failure still paints its own distinct notice into `note` and route
+// B stops, pointing at route A (Copy). Like the send button, both bindings are
+// resolved at click time off window.go so the overlay keeps working when the
+// rest of the app is broken. Task 663: one gate order and one
+// progress/completion face are shared by the whole analysis family (hang
+// entry, pending-crash entry, performance prompt) — every caller goes through
+// the shared analyzeEntryButton below.
 function analyzeButton(
   payload: CrashPayload,
   className: string,
@@ -794,8 +797,6 @@ function analyzeButton(
   );
 }
 
-// Task 663 shared entry (hang face rides this too): one gate order, one
-// progress face. Task 674 semantics: no spend confirmation, auto-clone notice.
 export function analyzeEntryButton(
   className: string,
   note: HTMLDivElement,
@@ -818,7 +819,7 @@ export function analyzeEntryButton(
     }
     analyze.disabled = false;
     analyze.textContent = t("crash.analyze");
-    if (!report || !report.workspaceReady) {
+    if (!report) {
       note.textContent = t("crash.analyzeNoWorkspace");
       return;
     }

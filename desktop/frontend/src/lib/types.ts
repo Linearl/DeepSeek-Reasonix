@@ -1782,7 +1782,9 @@ export interface CrashPendingDiagnosticsReport {
 
 /** One-click analysis prerequisite probes from App.CrashAnalysisAvailability
  * (task 617 route B). Each failed flag maps to one distinct user notice;
- * StartCrashAnalysis re-checks all of them before starting. */
+ * StartCrashAnalysis re-checks all of them before starting. Task 687:
+ * workspaceReady is informational only — the analysis self-hosts in a fresh
+ * Global tab, so it no longer gates the flow. */
 export interface CrashAnalysisAvailabilityReport {
   sourceReady: boolean;
   sourceDir?: string;
