@@ -998,15 +998,18 @@ func (c *Config) SetExperimentalSubagentDetail(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalTabModeTint toggles the tab mode tint (task 504): the strip
-// paints a low-opacity (~30%) per-mode background instead of the
-// plan/goal/auto/yolo text badges — ladder autopilot > yolo > auto > goal >
-// plan, ask+normal stays untinted, hover keeps the full annotated title.
-// Opt-in: with it off no tint attribute is written and the badge rendering is
-// byte-identical. Pure frontend gate: the settings save re-applies the boot
+// SetTabPermissionIndicator stores the tab permission indicator setting
+// (task 651): "badge" keeps the plan/goal/auto/yolo text badges, "off" hides
+// the per-tab permission indicator, "background" paints a low-opacity (10%)
+// per-mode tab background instead of the badges. The ladder autopilot >
+// yolo > auto > goal > plan, ask+normal stays untinted, hover keeps the full
+// annotated title. Pure frontend gate: the settings save re-applies the boot
 // snapshot, so a change is visible without a restart.
-func (c *Config) SetExperimentalTabModeTint(enabled bool) error {
-	c.Desktop.ExperimentalTabModeTint = enabled
+func (c *Config) SetTabPermissionIndicator(mode string) error {
+	if !TabPermissionIndicatorValid(mode) {
+		return fmt.Errorf("tab_permission_indicator: unknown mode %q (want badge | off | background)", mode)
+	}
+	c.Desktop.TabPermissionIndicator = mode
 	return nil
 }
 

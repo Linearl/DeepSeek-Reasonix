@@ -400,10 +400,11 @@ type SettingsView struct {
 	// back); off keeps the inline preview + widen affordance; the settings
 	// save re-applies the snapshot, no restart needed.
 	ExperimentalSubagentDetail bool `json:"experimentalSubagentDetail"`
-	// Task 504: tab mode tint (low-opacity per-mode background instead of the
-	// plan/goal/auto/yolo badges); the settings save re-applies the snapshot,
-	// no restart needed.
-	ExperimentalTabModeTint bool `json:"experimentalTabModeTint"`
+	// Task 651: tab permission indicator three-mode setting (badge | off |
+	// background); the settings save re-applies the snapshot, no restart
+	// needed. Resolved server-side: a legacy experimental_tab_mode_tint = true
+	// reads back as "background" until the new key is written.
+	TabPermissionIndicator string `json:"tabPermissionIndicator"`
 	// Task 265 lab intake: nil-means-on switches resolved server-side.
 	ExperimentalCompactionParallel bool `json:"experimentalCompactionParallel"`
 	ExperimentalContextBudget      bool `json:"experimentalContextBudget"`
@@ -628,10 +629,10 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalSubagentDetail gates the subagent detail view (task 507);
 	// the frontend re-applies it on settings save, no restart needed.
 	ExperimentalSubagentDetail bool `json:"experimentalSubagentDetail"`
-	// ExperimentalTabModeTint gates the tab mode tint (task 504): low-opacity
-	// per-mode tab background instead of the plan/goal/auto/yolo badges; the
-	// frontend re-applies it on settings save, no restart needed.
-	ExperimentalTabModeTint bool `json:"experimentalTabModeTint"`
+	// TabPermissionIndicator is the resolved tab permission indicator setting
+	// (task 651): badge (default) | off | background. The frontend re-applies
+	// it on settings save, no restart needed.
+	TabPermissionIndicator string `json:"tabPermissionIndicator"`
 	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
 	// Loopback-only random port, boot snapshot — restart to apply.
 	ExperimentalCDPDebugPort bool `json:"experimentalCDPDebugPort"`
@@ -1422,8 +1423,9 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalTabCompress = cfg.Desktop.ExperimentalTabCompress
 		// Task 507: subagent detail view readback.
 		view.ExperimentalSubagentDetail = cfg.Desktop.ExperimentalSubagentDetail
-		// Task 504: tab mode tint readback.
-		view.ExperimentalTabModeTint = cfg.Desktop.ExperimentalTabModeTint
+		// Task 651: tab permission indicator readback (resolved — legacy
+		// experimental_tab_mode_tint folds in server-side).
+		view.TabPermissionIndicator = cfg.TabPermissionIndicatorResolved()
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		view.ExperimentalCompactionParallel = cfg.CompactionParallelEnabled()
 		view.ExperimentalContextBudget = cfg.ContextBudgetEnabled()
@@ -1603,8 +1605,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalTabCompress: cfg.Desktop.ExperimentalTabCompress,
 		// Task 507: subagent detail view readback.
 		ExperimentalSubagentDetail: cfg.Desktop.ExperimentalSubagentDetail,
-		// Task 504: tab mode tint readback.
-		ExperimentalTabModeTint: cfg.Desktop.ExperimentalTabModeTint,
+		// Task 651: tab permission indicator readback (resolved).
+		TabPermissionIndicator: cfg.TabPermissionIndicatorResolved(),
 		// Task 265 lab intake: nil-means-on switches resolved here.
 		ExperimentalCompactionParallel: cfg.CompactionParallelEnabled(),
 		ExperimentalContextBudget:      cfg.ContextBudgetEnabled(),

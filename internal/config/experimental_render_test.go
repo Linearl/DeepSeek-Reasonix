@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -189,43 +190,72 @@ func TestTask507SubagentDetailRoundTrip(t *testing.T) {
 	}
 }
 
-// 任务504: tab mode tint is a plain default-off desktop bool (低透明度模式
-// 底色代替 plan/goal/auto/yolo 文本徽章). An untouched config must render
-// false (ships off, 铁律 2), enabling must render true, and flipping back off
-// must stay recorded — same fixed-key-set round trip as the 506/507 siblings.
-func TestTask504TabModeTintRoundTrip(t *testing.T) {
+// 任务651: the tab permission indicator is a three-mode desktop string
+// (badge | off | background; 徽章/关闭/背景色, default badge). An untouched
+// config must render "badge" plus the legacy 504 bool (still rendered, 449
+// precedent), every mode must survive the render, and an invalid mode must be
+// rejected — same fixed-key-set round trip as the 506/507 siblings.
+func TestTask651TabPermissionIndicatorRoundTrip(t *testing.T) {
 	out := RenderTOMLForScope(&Config{}, RenderScopeUser)
+	if !strings.Contains(out, "tab_permission_indicator = \"badge\"") {
+		t.Fatalf("tab permission indicator ships badge: missing default render: %s", out)
+	}
 	if !strings.Contains(out, "experimental_tab_mode_tint = false") {
-		t.Fatalf("tab mode tint ships off: missing false render\n---\n%s", out)
+		t.Fatalf("legacy 504 key must stay rendered (449 precedent): %s", out)
 	}
 	// The task-506/507 sibling keys must stay rendered too — inserting the new
 	// line must not displace its neighbours.
 	if !strings.Contains(out, "experimental_tab_compress = false") {
-		t.Fatalf("rendering the 504 key displaced the 506 compress key\n---\n%s", out)
+		t.Fatalf("rendering the 651 key displaced the 506 compress key: %s", out)
 	}
 	if !strings.Contains(out, "experimental_subagent_detail = false") {
-		t.Fatalf("rendering the 504 key displaced the 507 detail key\n---\n%s", out)
+		t.Fatalf("rendering the 651 key displaced the 507 detail key: %s", out)
 	}
 
-	on := &Config{}
-	if err := on.SetExperimentalTabModeTint(true); err != nil {
-		t.Fatalf("set tab mode tint: %v", err)
-	}
-	if !on.Desktop.ExperimentalTabModeTint {
-		t.Fatal("the setter must flip the desktop field")
-	}
-	out = RenderTOMLForScope(on, RenderScopeUser)
-	if !strings.Contains(out, "experimental_tab_mode_tint = true") {
-		t.Fatalf("enable must render true\n---\n%s", out)
+	for _, mode := range []string{"badge", "off", "background"} {
+		cfg := &Config{}
+		if err := cfg.SetTabPermissionIndicator(mode); err != nil {
+			t.Fatalf("set tab permission indicator %q: %v", mode, err)
+		}
+		if got := cfg.TabPermissionIndicatorResolved(); got != mode {
+			t.Fatalf("resolved mode after set %q: got %q", mode, got)
+		}
+		out = RenderTOMLForScope(cfg, RenderScopeUser)
+		if !strings.Contains(out, fmt.Sprintf("tab_permission_indicator = %q", mode)) {
+			t.Fatalf("mode %q must survive the render: %s", mode, out)
+		}
 	}
 
-	off := &Config{}
-	if err := off.SetExperimentalTabModeTint(false); err != nil {
-		t.Fatalf("set tab mode tint off: %v", err)
+	bad := &Config{}
+	if err := bad.SetTabPermissionIndicator("hue"); err == nil {
+		t.Fatal("an unknown mode must be rejected by the setter")
 	}
-	out = RenderTOMLForScope(off, RenderScopeUser)
-	if !strings.Contains(out, "experimental_tab_mode_tint = false") {
-		t.Fatalf("explicit off must survive the render\n---\n%s", out)
+}
+
+// 任务651 legacy alias: a pre-651 config carrying only
+// experimental_tab_mode_tint = true must resolve to "background" (and render
+// the resolved new key so the state survives a re-save), while an explicit
+// valid new key wins over the legacy bool. The default stays "badge".
+func TestTask651TabPermissionIndicatorLegacyAlias(t *testing.T) {
+	legacy := &Config{Desktop: DesktopConfig{ExperimentalTabModeTint: true}}
+	if got := legacy.TabPermissionIndicatorResolved(); got != "background" {
+		t.Fatalf("legacy 504 true must resolve to background, got %q", got)
+	}
+	out := RenderTOMLForScope(legacy, RenderScopeUser)
+	if !strings.Contains(out, "tab_permission_indicator = \"background\"") {
+		t.Fatalf("resolved value must render so a re-save keeps the state: %s", out)
+	}
+
+	explicit := &Config{Desktop: DesktopConfig{ExperimentalTabModeTint: true, TabPermissionIndicator: "off"}}
+	if got := explicit.TabPermissionIndicatorResolved(); got != "off" {
+		t.Fatalf("an explicit valid new key must win over the legacy bool, got %q", got)
+	}
+
+	if got := (&Config{}).TabPermissionIndicatorResolved(); got != "badge" {
+		t.Fatalf("default must stay badge, got %q", got)
+	}
+	if got := (&Config{Desktop: DesktopConfig{TabPermissionIndicator: "hue"}}).TabPermissionIndicatorResolved(); got != "badge" {
+		t.Fatalf("an unknown value must fall back to badge, got %q", got)
 	}
 }
 

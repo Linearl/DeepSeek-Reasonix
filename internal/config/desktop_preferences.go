@@ -165,16 +165,26 @@ type DesktopConfig struct {
 	// dock width. It ships off (铁律 2). Pure frontend gate: the settings save
 	// re-applies the boot snapshot, so a change is visible without a restart.
 	ExperimentalSubagentDetail bool `toml:"experimental_subagent_detail"`
-	// ExperimentalTabModeTint gates the tab mode tint (task 504): with it on
-	// the tab strip paints a low-opacity (~30%) per-mode background instead of
-	// the plan/goal/auto/yolo text badges — the ladder is autopilot (violet) >
-	// yolo (red) > auto (blue) > goal (teal) > plan (amber), ask+normal stays
-	// untinted, and hovering keeps the full annotated title. It ships off
-	// (铁律 2): with it off no data-mode-tint attribute is written, so every
-	// tint CSS rule misses and the badge rendering is byte-identical. Pure
-	// frontend gate: the settings save re-applies the boot snapshot, so a
-	// change is visible without a restart.
+	// ExperimentalTabModeTint is the task-504 tab-mode-tint switch, retired to
+	// a legacy alias by task 651: it only applies while the replacement
+	// TabPermissionIndicator key is still empty (true = "background", false or
+	// absent = "badge"), so pre-651 configs keep their exact behaviour across
+	// upgrades. The settings UI writes only the new key; this one stays
+	// rendered (449 precedent) so an older binary reading a new config still
+	// sees its state.
 	ExperimentalTabModeTint bool `toml:"experimental_tab_mode_tint"`
+	// TabPermissionIndicator selects how a tab announces its permission tier
+	// (task 651): "badge" (default) keeps the plan/goal/auto/yolo text badges,
+	// "off" hides the per-tab permission indicator entirely, "background"
+	// paints a low-opacity (10%) per-mode tab background instead of the badges
+	// — same per-tier authoritative colour tokens as the badges (614 palette:
+	// autopilot orange > yolo red > auto blue > goal teal > plan purple),
+	// ask+normal stays untinted, and hovering keeps the full annotated title.
+	// Empty (or any unknown value) resolves to "badge" with the legacy
+	// experimental_tab_mode_tint bool still honoured — see
+	// TabPermissionIndicatorResolved. Pure frontend gate: the settings save
+	// re-applies the boot snapshot, so a change is visible without a restart.
+	TabPermissionIndicator string `toml:"tab_permission_indicator"`
 	// Task 265 (lab intake): three render-surface features ship ON via
 	// nil-means-on pointers — existing behaviour getting an off switch, so the
 	// default must not regress anyone. Each is a pure frontend gate.
@@ -393,6 +403,29 @@ func (c *Config) DesktopCompletionSummaryEnabled() bool {
 // so a stray sub-switch can never resurrect the surface it lives under.
 func (c *Config) FeedbackNudgeEnabled() bool {
 	return c != nil && c.Desktop.ExperimentalFeedback && c.Desktop.ExperimentalFeedbackNudge
+}
+
+// TabPermissionIndicatorValid reports whether mode is one of the three
+// explicit tab permission indicator settings (task 651): "badge", "off" or
+// "background".
+func TabPermissionIndicatorValid(mode string) bool {
+	return mode == "badge" || mode == "off" || mode == "background"
+}
+
+// TabPermissionIndicatorResolved normalizes the tab permission indicator
+// setting (task 651) to one of "badge" | "off" | "background". An explicit
+// valid TabPermissionIndicator wins; an empty (or invalid) one falls back to
+// the legacy task-504 experimental_tab_mode_tint bool (true = "background")
+// and finally to "badge", so pre-651 configs keep their exact behaviour and
+// the settings default stays "badge" (lightest look per the task brief).
+func (c *Config) TabPermissionIndicatorResolved() string {
+	if c != nil && TabPermissionIndicatorValid(c.Desktop.TabPermissionIndicator) {
+		return c.Desktop.TabPermissionIndicator
+	}
+	if c != nil && c.Desktop.ExperimentalTabModeTint {
+		return "background"
+	}
+	return "badge"
 }
 
 // QuickCommandEntry is one quick-command snippet. Title is the menu label, Text

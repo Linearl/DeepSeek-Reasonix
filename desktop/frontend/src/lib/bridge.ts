@@ -1074,8 +1074,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalPromptHistoryPicker(enabled: boolean): Promise<void>;
   // Task 506: tab-strip adaptive compression (tiered width once >8 tabs; re-applied on settings save).
   SetExperimentalTabCompress(enabled: boolean): Promise<void>;
-  // Task 504: tab mode tint (low-opacity per-mode tab background instead of mode badges; re-applied on settings save).
-  SetExperimentalTabModeTint(enabled: boolean): Promise<void>;
+  // Task 651: tab permission indicator three-mode setting (badge | off |
+  // background; re-applied on settings save).
+  SetTabPermissionIndicator(mode: string): Promise<void>;
   // Task 507: subagent detail view (row click → read-only in-dock detail + back; re-applied on settings save).
   SetExperimentalSubagentDetail(enabled: boolean): Promise<void>;
   // Task 265 lab intake: nil-means-on switches (experimental; boot snapshot).
@@ -5640,7 +5641,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionWall() {},
     async SetExperimentalPromptHistoryPicker() {},
     async SetExperimentalTabCompress() {},
-    async SetExperimentalTabModeTint() {},
+    async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},
     async SetExperimentalCompactionParallel() {},
     async SetExperimentalContextBudget() {},
