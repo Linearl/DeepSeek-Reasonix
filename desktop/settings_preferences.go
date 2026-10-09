@@ -270,6 +270,22 @@ func (a *App) SetFallbackModel(model string) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetFallbackModel(model) })
 }
 
+// SetExperimentalCompactModel toggles 任务 707's economic-compaction switch
+// (iron rule 2: off by default — off keeps every summary on the conversation
+// model). Boot snapshot + model-settings fingerprint: a change re-applies at
+// the next run like the other model preferences.
+func (a *App) SetExperimentalCompactModel(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCompactModel(enabled) })
+}
+
+// SetCompactModel writes the 任务 707 compression target ("provider/model";
+// bare model ids are rejected by the config setter so identity stays
+// unambiguous). Empty clears the target (switch may stay on, which then keeps
+// the conversation model).
+func (a *App) SetCompactModel(model string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetCompactModel(model) })
+}
+
 // SetSessionCollabGates writes the task-173 collaboration panel gates in one
 // call, so the panel cannot half-apply (settings → 实验特性 → 跨会话通信).
 func (a *App) SetSessionCollabGates(allowDelete, allowRequireReply, allowReadTail, allowCreate, allowSteer bool, dailySendLimit int) error {

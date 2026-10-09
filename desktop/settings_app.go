@@ -512,6 +512,9 @@ type SettingsView struct {
 	// Task 242: fallback model switch + target (model-preference companion).
 	ExperimentalFallbackModel bool   `json:"experimentalFallbackModel"`
 	FallbackModel             string `json:"fallbackModel"`
+	// 任务 707: compact model switch + target (model-preference companion).
+	ExperimentalCompactModel bool   `json:"experimentalCompactModel"`
+	CompactModel             string `json:"compactModel"`
 	// Task 318: lab internal optimizations (three switches default off).
 	ExperimentalHighSpeedModel      bool `json:"experimentalHighSpeedModel"`
 	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
@@ -752,6 +755,9 @@ type DesktopStartupSettingsView struct {
 	// Task 242: fallback model switch + target.
 	ExperimentalFallbackModel bool   `json:"experimentalFallbackModel"`
 	FallbackModel             string `json:"fallbackModel"`
+	// 任务 707: compact model switch + target.
+	ExperimentalCompactModel bool   `json:"experimentalCompactModel"`
+	CompactModel             string `json:"compactModel"`
 	// Task 318: lab internal optimizations (three switches default off).
 	ExperimentalHighSpeedModel      bool `json:"experimentalHighSpeedModel"`
 	ExperimentalProactiveCompact    bool `json:"experimentalProactiveCompact"`
@@ -1709,6 +1715,9 @@ func (a *App) Settings() SettingsView {
 		// Task 242: fallback model switch + provider/model target.
 		ExperimentalFallbackModel: cfg.Agent.ExperimentalFallbackModel,
 		FallbackModel:             cfg.Agent.FallbackModel,
+		// 任务 707: compact model switch + provider/model target.
+		ExperimentalCompactModel: cfg.Agent.ExperimentalCompactModel,
+		CompactModel:             cfg.Agent.CompactModel,
 		// Task 318: lab internal optimizations (three switches default off).
 		ExperimentalHighSpeedModel:      cfg.Agent.ExperimentalHighSpeedModel,
 		ExperimentalProactiveCompact:    cfg.Agent.ExperimentalProactiveCompact,
