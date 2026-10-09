@@ -17,7 +17,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260724.1",
     "typescript": "^5.8.0",
-    "vitest": "^3.2.0",
+    "vitest": "^4.1.11",
     "wrangler": "^4.114.0"
   },
   "overrides": {
@@ -25,7 +25,9 @@
   },
   "pnpm": {
     "overrides": {
-      "undici": "7.29.0"
+      "sharp": "0.35.5",
+      "source-map-js": "1.2.2",
+      "undici": "7.29.1"
     }
   }
 }
