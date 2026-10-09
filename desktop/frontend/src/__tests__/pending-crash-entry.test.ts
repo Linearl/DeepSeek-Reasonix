@@ -11,6 +11,7 @@ globalThis.window = dom.window as unknown as Window & typeof globalThis;
 globalThis.document = dom.window.document;
 globalThis.CustomEvent = dom.window.CustomEvent;
 globalThis.Event = dom.window.Event;
+globalThis.MutationObserver = dom.window.MutationObserver;
 globalThis.sessionStorage = dom.window.sessionStorage;
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 
@@ -112,11 +113,33 @@ ok(startCalls.length === 1, "confirming starts exactly one analysis");
 ok(startCalls[0]?.[0] === "crash", "the started analysis carries the crash kind");
 ok(startCalls[0]?.[1] === newestPayload, "the queued payload travels to StartCrashAnalysis verbatim");
 
+// Task 694: the banner paints before LocaleProvider settles the locale at boot
+// (imperative DOM, painted once), so it must re-render when <html lang> flips.
+// zh rides the real lazy-loaded dictionary via preloadLocale — the same path
+// the provider uses — so this exercises the exact boot race end to end.
+const { preloadLocale } = await import("../lib/i18n");
+await preloadLocale("zh");
+document.documentElement.lang = "zh-CN";
+await tick();
+await tick();
+host = document.getElementById("pending-crash-entry");
+ok(
+  host?.querySelector(".pending-crash__title")?.textContent === "检测到上次运行遗留的崩溃报告（1）",
+  "a locale flip re-renders the banner title in the settled locale",
+);
+ok(
+  host?.querySelector(".pending-crash__dismiss")?.textContent === "关闭",
+  "the dismiss button re-renders localized instead of freezing in English",
+);
+
 // Dismiss persists for the run: a second install does not re-paint.
 const dismiss = host?.querySelector(".pending-crash__dismiss") as HTMLButtonElement;
 dismiss.click();
 ok(document.getElementById("pending-crash-entry") === null, "dismiss removes the banner");
 ok(pendingCrashDismissedThisRun(), "dismiss persists in sessionStorage");
+document.documentElement.lang = "zh-TW";
+await tick();
+ok(document.getElementById("pending-crash-entry") === null, "a locale flip does not resurrect a dismissed banner");
 installPendingCrashAnalysisEntry();
 await tick();
 ok(document.getElementById("pending-crash-entry") === null, "a dismissed run does not re-paint");

@@ -115,6 +115,14 @@ export function getLocale(): Locale {
 
 export type Translator = (key: DictKey, vars?: Record<string, string | number>) => string;
 
+// Task 694: explicit-locale translator for imperative DOM surfaces that track
+// the applied locale via <html lang> (the provider writes it on every locale
+// application) instead of the module mirror — a repaint triggered by the
+// attribute flip must not re-read a mirror that can lag the flip.
+export function tFor(locale: Locale): Translator {
+  return (key, vars) => translate(locale, key, vars);
+}
+
 interface I18nValue {
   locale: Locale;
   pref: LangPref;
