@@ -2134,6 +2134,7 @@ export interface ForegroundSubagentView {
   ref: string;
   name?: string; // skill/worker name; the row falls back to the ref
   startedAt: number; // unix milliseconds
+  parentToolCallId?: string; // dispatch-batch key shared by one parallel call (task 667; capsule UI ignores it)
 }
 
 export interface WorkspaceConflictView {
