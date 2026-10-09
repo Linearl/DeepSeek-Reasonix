@@ -6,7 +6,7 @@ import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
-import { sessionCatalogNotice } from "../lib/sessionCatalogPresentation";
+import { createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
 import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
 import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeBodyState, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
@@ -2560,16 +2560,26 @@ export function ProjectTree({
   topicIndexRef.current = 0;
   visibleTopicsCollectorRef.current = [];
   const catalogNotice = sessionCatalogNotice(catalogStatus);
-  const catalogNoticeText = catalogNotice === "indexing"
+  // 703: repair waves claim their rows for a few hundred ms; a status poll
+  // landing inside a wave must not paint "正在修复历史记录"/"历史记录稍后重试"
+  // for a blink. The gate requires the repair condition to hold 2s before the
+  // banner appears; startup-facing notices pass through immediately.
+  const repairNoticeGateRef = useRef(createRepairNoticeGate());
+  const [visibleCatalogNotice, setVisibleCatalogNotice] = useState<SessionCatalogNotice | null>(() => repairNoticeGateRef.current(catalogNotice));
+  useEffect(() => {
+    const next = repairNoticeGateRef.current(catalogNotice);
+    setVisibleCatalogNotice((current) => (current === next ? current : next));
+  }, [catalogNotice]);
+  const catalogNoticeText = visibleCatalogNotice === "indexing"
     ? (catalogStatus.total <= 0 ? t("projectTree.indexing")
       : t("projectTree.indexingProgress", { done: catalogStatus.indexed, total: catalogStatus.total }))
-    : catalogNotice === "repair-active"
+    : visibleCatalogNotice === "repair-active"
       // Task 550 ①: the banner only shows when repairActive > 0, so the count
       // reads the same precise field — no legacy repairPending fallback.
       ? t("projectTree.repairActive", { count: catalogStatus.repairActive ?? 0 })
-      : catalogNotice === "repair-deferred"
+      : visibleCatalogNotice === "repair-deferred"
         ? t("projectTree.repairDeferred")
-        : catalogNotice === "repair-blocked"
+        : visibleCatalogNotice === "repair-blocked"
           ? t("projectTree.repairBlocked", { count: catalogStatus.repairBlocked ?? 0 })
           : `${t("projectTree.indexing")} — ${t("task.state.failed")}`;
 
@@ -2586,10 +2596,10 @@ export function ProjectTree({
           />
         </label>
       )}
-      {catalogNotice && (
+      {visibleCatalogNotice && (
         <div className="project-tree__catalog-progress" role="status">
           <span>{catalogNoticeText}</span>
-          {catalogNotice === "rebuild" && (
+          {visibleCatalogNotice === "rebuild" && (
             <button type="button" className="project-tree__catalog-rebuild" onClick={() => void rebuildSessionCatalog()}>
               {t("projectTree.rebuildCatalog")}
             </button>
