@@ -1381,15 +1381,18 @@ const CHECKS = [
   { feature: "567 占位三语文案 en", file: "desktop/frontend/src/locales/en.ts", patterns: ["\"tool.askWaiting\": \"waiting for your answer…\""] },
   { feature: "567 占位态测试存续", file: "desktop/frontend/src/__tests__/tool-card-ask-pending.test.tsx", patterns: ["pending ask card shows the waiting placeholder", "pending ask card does not render the raw args JSON"] },
 
-  // ── 任务504（wt-504-tab-visual，2026-10-07）──────────────────────
-  // 对话标签模式色调：~30% 低透明底色代替 plan/goal/auto/yolo 文本徽章
-  // （experimental_tab_mode_tint 默认关）。merge 若顶掉阶梯纯函数或 CSS
-  // 映射段，开关打开后标签静默退回「无徽章无底色」（506 压缩档起徽章本
-  // 就不渲染，无编译错误）——锚定阶梯纯函数与写入点、CSS 五档映射与
-  // ~30% 底色、开关门与色板映射测试、配置键渲染行。
+  // ── 任务504→651（wt-651，2026-10-09）─────────────────────────────
+  // 对话标签权限指示三档（651：badge | off | background，默认 badge；
+  // 504 布尔键 experimental_tab_mode_tint 退役为 legacy 别名）。背景色档
+  // 10% 低透明底色代替 plan/goal/auto/yolo 文本徽章，且与徽章统一权威
+  // 色 token（651 追加）。merge 若顶掉阶梯纯函数或 CSS 映射段，background
+  // 档下标签静默退回「无徽章无底色」（506 压缩档起徽章本就不渲染，无编
+  // 译错误）——锚定阶梯纯函数与写入点、CSS 五档映射与色源统一、三档
+  // 开关门与色板映射测试、新旧配置键渲染行。
   { feature: "504 色调阶梯纯函数（审批档压过协作档，autopilot 居首）", file: "desktop/frontend/src/components/TabBar.tsx", patterns: ["export type TabModeTint", "export function tabModeTintFor", "data-mode-tint={modeTint ?? undefined}"] },
-  { feature: "504 CSS 五档映射与 ~30% 底色（开关关=属性不存在零匹配）", file: "desktop/frontend/src/styles.css", patterns: [".tabbar .tabbar__tab[data-mode-tint=\"yolo\"] { --tab-tint-color: var(--mode-yolo-bg); }", ".tabbar .tabbar__tab[data-mode-tint]:not(.tabbar__tab--active)"] },
-  { feature: "504 开关门（lab 模块，默认关）", file: "desktop/frontend/src/lib/labFlags.ts", patterns: ["tabModeTint: false"] },
+  { feature: "504 CSS 五档映射与低透明底色（badge/off 档=属性不存在零匹配）", file: "desktop/frontend/src/styles.css", patterns: [".tabbar .tabbar__tab[data-mode-tint=\"yolo\"] { --tab-tint-color: var(--mode-yolo-bg); }", ".tabbar .tabbar__tab[data-mode-tint]:not(.tabbar__tab--active)"] },
+  { feature: "651 三档开关门（badge|off|background，默认 badge；504 布尔门退役）", file: "desktop/frontend/src/lib/labFlags.ts", patterns: ["normalizeTabPermissionIndicator", "applyTabPermissionIndicator", "badge"] },
+  { feature: "651 色源统一（tint 与徽章同 token，禁裸色值）", file: "desktop/frontend/src/styles.css", patterns: [".tabbar .tabbar__tab[data-mode-tint=\"plan\"] { --tab-tint-color: var(--mode-plan-fg); }", ".tabbar .tabbar__tab[data-mode-tint=\"goal\"] { --tab-tint-color: var(--mode-goal-fg); }"] },
   { feature: "504 四档映射与色板测试（两两不同色）", file: "desktop/frontend/src/__tests__/tabbar-tab-mode-tint.test.tsx", patterns: ["tabModeTintFor(\"autopilot\", \"yolo\")", "五档色值两两不同"] },
   { feature: "504 配置键渲染行（fixed-key-set 规则）", file: "internal/config/render.go", patterns: ["experimental_tab_mode_tint"] },
 

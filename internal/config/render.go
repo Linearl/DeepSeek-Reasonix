@@ -95,8 +95,8 @@ var labFeatureTiers = []labFeatureTier{
 	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
 	{"baseProcess", LabTierUnstable, []string{"experimental_base_process"}},
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
-	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}}, // 任务 545：会话 cwd 跟随，默认关新实验
-	{"tabModeTint", LabTierUnstable, []string{"experimental_tab_mode_tint"}},           // 任务 504：标签模式色调，默认关新实验
+	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
+	{"tabModeTint", LabTierUnstable, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
@@ -128,6 +128,9 @@ var labSpecialKeys = map[string]bool{
 	"collab_inbox_merge":    true,
 	"collab_guidance_merge": true,
 	"trace_as_state":        true,
+	// 任务 651：tab 权限指示三档键（无 experimental_ 前缀的实验室特性键，
+	// 随 tabModeTint 档位族登记）。
+	"tab_permission_indicator": true,
 }
 
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
@@ -346,9 +349,17 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 507: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123 lesson).
 		fmt.Fprintf(&b, "experimental_subagent_detail = %v   # desktop: subagent dock row click opens the read-only detail view; off keeps the inline preview + widen affordance (task 507; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSubagentDetail)
+		// Task 651: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the setting would flip itself back (81/123 lesson).
+		// The resolved indicator renders so the saved value round-trips even
+		// when it came from the legacy alias below.
+		fmt.Fprintf(&b, "tab_permission_indicator = %q   # desktop: how a tab announces its permission tier — badge (default) | off | background (10%% tint, same colour tokens as the badges) (task 651; settings save re-applies, no restart)\n", c.TabPermissionIndicatorResolved())
 		// Task 504: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123 lesson).
-		fmt.Fprintf(&b, "experimental_tab_mode_tint = %v   # desktop: low-opacity per-mode tab background instead of plan/goal/auto/yolo badges (task 504; settings save re-applies, no restart)\n", c.Desktop.ExperimentalTabModeTint)
+		// Legacy alias since 651: only read while tab_permission_indicator is
+		// unset, still rendered (449 precedent) so an older binary reading
+		// this file keeps its state instead of a stale off.
+		fmt.Fprintf(&b, "experimental_tab_mode_tint = %v   # desktop: legacy key (task 504), superseded by tab_permission_indicator (task 651; only read while the new key is empty)\n", c.Desktop.ExperimentalTabModeTint)
 		// Task 265 lab intake: render-surface features, nil-means-on pointers.
 		fmt.Fprintf(&b, "experimental_question_search = %v   # desktop: topic-bar search-my-questions entry (task 265; boot snapshot)\n", c.DesktopQuestionSearchEnabled())
 		fmt.Fprintf(&b, "experimental_subagent_tps = %v   # desktop: ~N tok/s readouts on sub-agent cards and the job table (task 265; boot snapshot)\n", c.DesktopSubagentTpsEnabled())

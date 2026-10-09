@@ -363,13 +363,15 @@ func (a *App) SetExperimentalSubagentDetail(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSubagentDetail(enabled) })
 }
 
-// SetExperimentalTabModeTint toggles the tab mode tint (task 504): the strip
-// paints a low-opacity (~30%) per-mode background instead of the
-// plan/goal/auto/yolo text badges, hover keeps the full annotated title. The
+// SetTabPermissionIndicator stores the tab permission indicator setting
+// (task 651): "badge" keeps the plan/goal/auto/yolo text badges, "off" hides
+// the per-tab permission indicator, "background" paints a low-opacity (10%)
+// per-mode tab background instead of the badges; the background face shares
+// the badge colour tokens so one tier never shows two different hues. The
 // frontend re-applies the snapshot on settings save, so the change is visible
 // without a restart.
-func (a *App) SetExperimentalTabModeTint(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTabModeTint(enabled) })
+func (a *App) SetTabPermissionIndicator(mode string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetTabPermissionIndicator(mode) })
 }
 
 // Task 262 install-fix: the Wails exposure layer for the intake batch was

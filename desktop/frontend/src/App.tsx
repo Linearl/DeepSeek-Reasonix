@@ -45,7 +45,7 @@ import {
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { buildSubagentDirectory } from "./lib/subagentDirectory";
 import { insertSessionWallEntry } from "./lib/sessionWall";
-import { applyLabFlags, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
+import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
 import { useWailsResizeFix } from "./lib/useWailsResizeFix";
@@ -1323,7 +1323,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; experimentalTabModeTint?: boolean; experimentalSubagentDetail?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1375,13 +1375,14 @@ export default function App() {
         // Task 506: tab-strip adaptive compression (tiered width once >8 tabs,
         // floor 84px); default-false, re-applied on every settings save.
         tabCompress: settings.experimentalTabCompress ?? false,
-        // 任务 504: tab mode tint (~30% per-mode tab background instead of the
-        // plan/goal/auto/yolo badges); default-false, re-applied on every save.
-        tabModeTint: settings.experimentalTabModeTint ?? false,
         // 任务 507: subagent detail view (plan A on / plan C off);
         // default-false, re-applied on every settings save.
         subagentDetail: settings.experimentalSubagentDetail ?? false,
       });
+      // 任务 651: tab permission indicator three-mode setting (badge | off |
+      // background) — the server resolves the legacy 504 tint bool; re-applied
+      // on every settings save, no restart.
+      applyTabPermissionIndicator(settings.tabPermissionIndicator);
       // One line per startup so a missing rail entry can be traced from desktop.log
       // instead of guessed at (the switches read back correctly in config.toml).
       reportFrontendLog("desktop-prefs", "experiment flags", `restartUpdate=${Boolean(settings.experimentalRestartUpdate)} sessionMonitor=${Boolean(settings.experimentalSessionMonitor)} splitView=${Boolean(settings.experimentalSplitView)} feedback=${Boolean(settings.experimentalFeedback)} todoSidebar=${Boolean(settings.experimentalTodoSidebar)} subagentPanel=${Boolean(settings.experimentalSubagentPanel)} historyPicker=${Boolean(settings.experimentalPromptHistoryPicker)} subagentDetail=${Boolean(settings.experimentalSubagentDetail)}`);

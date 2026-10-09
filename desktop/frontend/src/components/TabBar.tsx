@@ -15,7 +15,7 @@ import { selectCloseInactiveIds, selectCloseOtherIds, selectCloseRightIds } from
 // wt-zcode-288：标签页右键「全部已读」——读档/写档与未读判定统一走 readActivity 存档。
 import { markTabsAllRead } from "../lib/readActivity";
 // 任务 506：标签栏自适应压缩开关（experimental_tab_compress，默认关）。
-import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
+import { labFlagEnabled, onLabFlagsChange, tabPermissionIndicatorMode } from "../lib/labFlags";
 
 interface TabBarProps {
   tabs: TabMeta[];
@@ -157,7 +157,8 @@ function tabMode(tab: TabMeta): Mode {
 /**
  * 任务 504 色调阶梯（纯函数）：给定协作模式与审批模式，返回该标签的
  * 模式色调档位（写在 data-mode-tint 上，由 styles.css 的任务504 独立段
- * 映射为 ~30% 低透明底色）；null = 不着色（ask + normal 默认态）。
+ * 映射为低透明底色——651 起降为 10%）；null = 不着色（ask + normal 默认
+ * 态）。仅任务 651 background 档消费本函数。
  *
  * 优先级（高→低）：autopilot > yolo > auto > goal > plan。审批档位压过
  * 协作档位——用户点名的四档（询问/自动/YOLO/autopilot）以审批为轴；
@@ -193,12 +194,12 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   // 关闭时 tier 恒为 0，不注入任何行内样式。
   const [tabCompressEnabled, setTabCompressEnabled] = useState(labFlagEnabled("tabCompress"));
   useEffect(() => onLabFlagsChange(() => setTabCompressEnabled(labFlagEnabled("tabCompress"))), []);
-  // 任务 504：模式色调开关（experimental_tab_mode_tint，默认关）。开启时
-  // 标签以 ~30% 低透明模式底色代替 plan/goal/auto/yolo 文本徽章（同走
-  // lab 模块门，设置保存即重放快照）；关闭时不写 data-mode-tint，徽章
-  // 渲染与旧路径逐字一致（铁律 2 零行为）。
-  const [tabModeTintEnabled, setTabModeTintEnabled] = useState(labFlagEnabled("tabModeTint"));
-  useEffect(() => onLabFlagsChange(() => setTabModeTintEnabled(labFlagEnabled("tabModeTint"))), []);
+  // 任务 651：标签权限指示三档（badge | off | background，默认 badge）。
+  // background 档以 10% 低透明模式底色代替 plan/goal/auto/yolo 文本徽章，
+  // off 档连徽章一并隐藏，badge 档徽章渲染与旧路径逐字一致；服务端把
+  // 504 legacy bool 解析进同一设置，设置保存即重放快照，无需重启。
+  const [permIndicator, setPermIndicator] = useState(tabPermissionIndicatorMode);
+  useEffect(() => onLabFlagsChange(() => setPermIndicator(tabPermissionIndicatorMode())), []);
   // 任务 506 溢出驱动：测量标签条可用宽度（0=测量不可用，档位退回数量
   // 分档参考）。useLayoutEffect 在首帧绘制前完成首次测量，避免先按回退
   // 档位画一帧再跳档的闪动；窗口/面板尺寸变化由 ResizeObserver 跟随。
@@ -482,10 +483,10 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     ? ({ "--tabbar-tab-width": `${TAB_COMPRESS_TIERS[compressTier - 1].widthPx}px` } as CSSProperties)
     : undefined;
   // tier 3（100px 档）起文本徽章不再渲染：宽度不足时徽章会挤掉标题，
-  // 模式信息由 hover title（stateTitle）完整承接。任务 504 开启时底色
-  // 代替徽章（「代替」语义：可着色的档位集合 ⊇ 徽章集合），徽章一律
-  // 不渲染；关闭时不参与本判据，徽章路径逐字不变。
-  const badgesVisible = compressTier > 0 && compressTier < 3 && !tabModeTintEnabled;
+  // 模式信息由 hover title（stateTitle）完整承接。任务 651 background 档
+  // 底色代替徽章（「代替」语义：可着色的档位集合 ⊇ 徽章集合），off 档
+  // 徽章一并隐藏；badge（默认）档不参与本判据，徽章路径逐字不变。
+  const badgesVisible = compressTier > 0 && compressTier < 3 && permIndicator === "badge";
 
   // 任务546：菜单项文案与路径副标题；失效态在标签上直说（将用默认目录），
   // 选择后的回落与提示由挂载点的 onNewTabInWorkspace 处理。
@@ -547,9 +548,9 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
             notLoaded ? t("tabBar.notLoaded") : "",
           ].filter(Boolean).join(" · ");
           const annotatedTitle = stateTitle ? `${stateTitle} · ${fullTitle}` : fullTitle;
-          // 任务 504：开关开启时按色调阶梯取本签档位；关闭（或默认态
-          // ask+normal）恒为 null → 不写 data-mode-tint，样式零匹配。
-          const modeTint = tabModeTintEnabled ? tabModeTintFor(collaborationMode, toolApprovalMode) : null;
+          // 任务 651：background 档按色调阶梯取本签档位；badge/off 档（或
+          // 默认态 ask+normal）恒为 null → 不写 data-mode-tint，样式零匹配。
+          const modeTint = permIndicator === "background" ? tabModeTintFor(collaborationMode, toolApprovalMode) : null;
           return (
             <Fragment key={tab.id}>
               {splitTabId === tab.id && <span className="tabbar__split-divider" aria-hidden="true" />}
