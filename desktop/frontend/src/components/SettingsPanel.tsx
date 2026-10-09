@@ -3500,15 +3500,21 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           )}
           {selected === "optimisticParallel" && (
             <SettingsField label={labLabel("optimisticParallel", t("settings.optimisticParallel"))} hint={t("settings.optimisticParallelHint")} icon={<Sparkles size={18} />}>
-              <label className="set-check set-check--inline">
-                <input
-                  type="checkbox"
-                  checked={Boolean(s.sandbox?.optimisticWrite)}
-                  disabled={busy}
-                  onChange={(e) => void apply(() => app.SetOptimisticWrite(e.target.checked))}
-                />
-                {t("settings.optimisticParallel")}
-              </label>
+              {/* Task 650: the checkbox became a two-segment capsule control
+                  (Off | On) matching the permission-tier switch style; the
+                  binding still reads the field upright (On = optimistic). */}
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.sandbox?.optimisticWrite) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetOptimisticWrite(on))}
+                  >
+                    {t(on ? "settings.optimisticParallel.on" : "settings.optimisticParallel.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
             </SettingsField>
           )}
           {selected === "autopilot" && (
