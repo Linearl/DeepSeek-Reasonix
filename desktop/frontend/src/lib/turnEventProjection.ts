@@ -60,7 +60,17 @@ export class TurnEventProjector {
     this.repairByTab.delete(tabId);
   }
 
-  observeRuntime(tabId: string, runtimeEpoch: string | undefined, latest: number, replayAfter: number | undefined, active: boolean) {
+  // `replayAfter` is the backend's durable floor of events this webview has not
+  // provably seen (Ledger.ProjectionCursor: turnStartSeq-1 while a turn is
+  // live, latest once terminal/compacted). 任务675: seeding a fresh cursor at
+  // `latest` when that floor is known is SELF-SEALING — the seed jumps past
+  // turn-head events that were never delivered (session rebind while the
+  // backend turn already runs, the one-click-analysis shape), and every later
+  // observeRuntime sees latest == projected so the `latest > projected`
+  // back-fill can never fire again. The floor outranks the active flag: an
+  // idle session's floor IS latest (terminal/compacted), so trusting it costs
+  // no replay on the paths the active gate used to protect.
+  observeRuntime(tabId: string, runtimeEpoch: string | undefined, latest: number, replayAfter: number | undefined, _active = false) {
     if (runtimeEpoch && runtimeEpoch !== this.epochByTab.get(tabId)) {
       this.generationByTab.set(tabId, (this.generationByTab.get(tabId) ?? 0) + 1);
       this.epochByTab.set(tabId, runtimeEpoch);
@@ -71,7 +81,7 @@ export class TurnEventProjector {
     }
     let projected = this.sequenceByTab.get(tabId);
     if (projected === undefined) {
-      projected = active ? Math.min(replayAfter ?? latest, latest) : latest;
+      projected = Math.min(replayAfter ?? latest, latest);
       this.sequenceByTab.set(tabId, projected);
     }
     if (latest > projected) this.requestReplay(tabId, projected, runtimeEpoch);
