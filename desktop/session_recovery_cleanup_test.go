@@ -283,21 +283,33 @@ func TestTrashSessionMatchesLiveSeesEventLogDivergence(t *testing.T) {
 		t.Fatal("identical live/trash reported as different")
 	}
 
-	// The live session keeps chatting: growth lands in the event log only, so
-	// the two .jsonl checkpoints stay byte-identical. Byte comparison would
-	// call this a duplicate and delete the live session's newer history.
+	// The live session keeps chatting, and the save keeps the .jsonl
+	// compatibility checkpoint in sync with the log (the display read model
+	// advances the anchor in place since v1.24.1), so growing the session
+	// alone never leaves two byte-identical checkpoints behind. The disk
+	// state the byte-compare trap needs is still real: a crash between the
+	// event-log append and the checkpoint advance, or a trash item older
+	// than the live file's last checkpoint refresh, holds a checkpoint from
+	// moment N while the authoritative log has moved past it. Build that
+	// state directly: roll the live anchor back to the snapshot-time bytes
+	// and keep the newer history in the log.
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "newer work"})
 	if err := s.SaveSnapshot(live); err != nil {
 		t.Fatalf("SaveSnapshot diverge: %v", err)
 	}
+	staleAnchor, err := os.ReadFile(trashPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(live, staleAnchor, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	liveAnchor, _ := os.ReadFile(live)
 	trashAnchor, _ := os.ReadFile(trashPath)
 	if string(liveAnchor) != string(trashAnchor) {
-		// Task 371 (C3): this precondition failing means the byte-compare
-		// trap this test exists to pin is no longer constructible — skipping
-		// would let the data-loss guard silently lose coverage. The test's
-		// own construction broke, so abort loudly (305 discipline).
-		t.Fatal("checkpoints diverged on disk; byte-compare trap not reproducible here — test construction is broken, not skippable")
+		// The construction wrote these bytes itself, so inequality means the
+		// test is broken, not the guard (305 discipline: abort loudly).
+		t.Fatal("checkpoint rollback did not reproduce the byte-identical anchors — test construction is broken")
 	}
 	same, err = trashSessionMatchesLive(live, trashPath)
 	if err != nil {
