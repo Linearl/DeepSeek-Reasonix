@@ -4973,6 +4973,11 @@ export const zhTW: Record<DictKey, string> = {
   "collabInbox.state.mine": "我發起的",
   "collabInbox.state.decided": "已裁決",
   "collabInbox.from": "發信方過濾",
+  // 任務 649 ②：收發雙方標籤詞——列表行與 from/to 下拉的可見文字說明。
+  "collabInbox.senderLabel": "發信方",
+  "collabInbox.recipientLabel": "收信方",
+  // 任務 649 ①：視圖分段控制項的組標籤（aria）。
+  "collabInbox.viewGroup": "視圖形式",
   "collabInbox.hover.global": "全域",
   "collabInbox.to": "收信方過濾",
   "collabInbox.view.list": "列表",

@@ -497,6 +497,38 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
               {t("collabInbox.markAllRead")}
             </button>
           )}
+          {/* 任务 649 ①：排序/视图分段控件上移到头行（与保留期/会话删除时
+              同行），样式改胶囊分段（参照设置-权限档位的 .set-seg 分段语言），
+              窄宽度时在 actions 内换行而不再独占一行。 */}
+          <div className="collab-inbox-panel__ordertoggle" role="group" aria-label={t("collabInbox.sortByDate")}>
+            {ORDERS.map((name) => (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={order === name}
+                className={`collab-inbox-panel__state${order === name ? " collab-inbox-panel__state--on" : ""}`}
+                onClick={() => setOrder(name)}
+              >
+                {t(`collabInbox.order.${name}` as "collabInbox.order.desc")}
+              </button>
+            ))}
+          </div>
+          <div className="collab-inbox-panel__viewtoggle" role="group" aria-label={t("collabInbox.viewGroup")}>
+            <button
+              type="button"
+              className={`collab-inbox-panel__state${view === "list" ? " collab-inbox-panel__state--on" : ""}`}
+              onClick={() => setView("list")}
+            >
+              {t("collabInbox.view.list")}
+            </button>
+            <button
+              type="button"
+              className={`collab-inbox-panel__state${view === "chains" ? " collab-inbox-panel__state--on" : ""}`}
+              onClick={() => setView("chains")}
+            >
+              {t("collabInbox.view.chains")}
+            </button>
+          </div>
           <button type="button" className="btn btn--small" onClick={() => setCollabInboxOpen(false)}>
             {t("collabInbox.close")}
           </button>
@@ -536,52 +568,31 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
       <div className="collab-inbox-panel__filters">
         {/* 任务461-P4: from/to 过滤改下拉 —— 选项=会话名（值=contact_id，与后端
             精确匹配口径一致），hover 显示 项目 › 分组 › 会话名 › contact_id，
-            顶部「全部」= 不过滤。消除「不知填会话名还是 id」的误导。 */}
-        <select
-          className="collab-inbox-panel__filter"
-          aria-label={t("collabInbox.from")}
-          value={from}
-          onChange={(event) => setFrom(event.target.value)}
-        >
-          {renderFilterOptions()}
-        </select>
-        <select
-          className="collab-inbox-panel__filter"
-          aria-label={t("collabInbox.to")}
-          value={to}
-          onChange={(event) => setTo(event.target.value)}
-        >
-          {renderFilterOptions()}
-        </select>
-        <div className="collab-inbox-panel__ordertoggle" role="group" aria-label={t("collabInbox.sortByDate")}>
-          {ORDERS.map((name) => (
-            <button
-              key={name}
-              type="button"
-              aria-pressed={order === name}
-              className={`collab-inbox-panel__state${order === name ? " collab-inbox-panel__state--on" : ""}`}
-              onClick={() => setOrder(name)}
-            >
-              {t(`collabInbox.order.${name}` as "collabInbox.order.desc")}
-            </button>
-          ))}
-        </div>
-        <div className="collab-inbox-panel__viewtoggle">
-          <button
-            type="button"
-            className={`collab-inbox-panel__state${view === "list" ? " collab-inbox-panel__state--on" : ""}`}
-            onClick={() => setView("list")}
+            顶部「全部」= 不过滤。消除「不知填会话名还是 id」的误导。
+            任务 649 ②：下拉左侧补「发信方/收信方」可见标签词（此前只有会话名，
+            左右两个下拉无文字说明，用户截图实证分不清哪边是发信方）。 */}
+        <label className="collab-inbox-panel__filterwrap">
+          <span>{t("collabInbox.senderLabel")}</span>
+          <select
+            className="collab-inbox-panel__filter"
+            aria-label={t("collabInbox.from")}
+            value={from}
+            onChange={(event) => setFrom(event.target.value)}
           >
-            {t("collabInbox.view.list")}
-          </button>
-          <button
-            type="button"
-            className={`collab-inbox-panel__state${view === "chains" ? " collab-inbox-panel__state--on" : ""}`}
-            onClick={() => setView("chains")}
+            {renderFilterOptions()}
+          </select>
+        </label>
+        <label className="collab-inbox-panel__filterwrap">
+          <span>{t("collabInbox.recipientLabel")}</span>
+          <select
+            className="collab-inbox-panel__filter"
+            aria-label={t("collabInbox.to")}
+            value={to}
+            onChange={(event) => setTo(event.target.value)}
           >
-            {t("collabInbox.view.chains")}
-          </button>
-        </div>
+            {renderFilterOptions()}
+          </select>
+        </label>
         <label className="collab-inbox-panel__showdismissed">
           <input
             type="checkbox"
@@ -642,12 +653,18 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
                   </span>
                 )}
                 {/* 任务462: 双方显示会话名（查不到降级截短 id），完整
-                    contact_id 保留在 hover 里。 */}
+                    contact_id 保留在 hover 里。
+                    任务 649 ②：补「发信方/收信方」标签词——箭头两侧只有会话名
+                    时分不清谁发谁收（用户截图实证），横向空间足够，就地标注。 */}
                 <span
                   className="collab-inbox-panel__route"
-                  title={`${contactHoverLabel(contactDisplayName(entry.from), entry.from)} → ${contactHoverLabel(contactDisplayName(entry.to, entry.toTitle), entry.to)}`}
+                  title={`${t("collabInbox.senderLabel")} ${contactHoverLabel(contactDisplayName(entry.from), entry.from)} → ${t("collabInbox.recipientLabel")} ${contactHoverLabel(contactDisplayName(entry.to, entry.toTitle), entry.to)}`}
                 >
-                  {contactDisplayName(entry.from)} → {contactDisplayName(entry.to, entry.toTitle)}
+                  <span className="collab-inbox-panel__routelabel">{t("collabInbox.senderLabel")}</span>
+                  {" "}{contactDisplayName(entry.from)}
+                  {" → "}
+                  <span className="collab-inbox-panel__routelabel">{t("collabInbox.recipientLabel")}</span>
+                  {" "}{contactDisplayName(entry.to, entry.toTitle)}
                 </span>
                 <span className="collab-inbox-panel__time">{formatTime(entry.at)}</span>
                 <span className={`collab-inbox-panel__read${entry.read ? " collab-inbox-panel__read--on" : ""}`}>

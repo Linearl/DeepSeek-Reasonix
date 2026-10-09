@@ -4980,6 +4980,11 @@ export const en = {
   "collabInbox.state.mine": "Started by me",
   "collabInbox.state.decided": "Decided",
   "collabInbox.from": "Filter by sender",
+  // Task 649 ②: sender/recipient tag words for the list row and the from/to selects.
+  "collabInbox.senderLabel": "Sender",
+  "collabInbox.recipientLabel": "Recipient",
+  // Task 649 ①: group label (aria) for the view segmented control.
+  "collabInbox.viewGroup": "View",
   "collabInbox.hover.global": "Global",
   "collabInbox.to": "Filter by recipient",
   "collabInbox.view.list": "List",

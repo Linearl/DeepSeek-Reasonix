@@ -101,6 +101,12 @@ const CHECKS = [
   // 上游无此面，合并静默回退即丢功能，逐条锚定。
   { feature: "任务620 收件箱立即清理（按钮直通 ApplyRetention，免 511 节流，回传新快照）", file: "desktop/collab_inbox_app.go", patterns: ["func (a *App) CleanCollabMailNow(", "store.ApplyRetention(collabInboxCtx())"] },
   { feature: "任务620 子代理标签显隐移侧栏增强墙（子代理面板前置置灰联动）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["[\"subagents\", \"workspace.subagentsTab\"]", "tabId === \"subagents\" && !Boolean(s.experimentalSubagentPanel)"] },
+  // 任务649（收件箱改进包）：分段控件上移+胶囊分段 / 收发双方标签词 / 行 hover
+  // 均为 fork 侧 UI 面，合并静默回退即复发「交付了但看不见」，逐条锚定。
+  { feature: "任务649 排序/视图分段控件上移头行（与保留期/清理规则同行）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__actions", "collab-inbox-panel__ordertoggle", "collab-inbox-panel__viewtoggle", "collabInbox.viewGroup"] },
+  { feature: "任务649 胶囊分段样式（999px 拼合 + accent-soft 激活）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__ordertoggle,\n.collab-inbox-panel__viewtoggle", "border-radius: 999px;"] },
+  { feature: "任务649 收发双方标签词（列表行 routelabel + 下拉 filterwrap）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__routelabel", ".collab-inbox-panel__filterwrap"] },
+  { feature: "任务649 行 hover 高亮（620 件1 遗漏的行级规则）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__row:hover {\n  border-color: var(--button-border-hover);\n  background: var(--button-bg-hover);\n}"] },
   // 任务461 P8（收件箱重入污染）：投递层幂等与消费层折叠均为 fork 侧行为修复，
   // 与上游共享文件可能被合并静默回退，逐条锚定。
   { feature: "任务461-P8 投递层重发幂等（同 from+to+内容窗内返原 id）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["dedupeResend", "resendDedupWindowDefault", "resendDedupWindowSystem"] },

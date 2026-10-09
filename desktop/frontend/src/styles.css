@@ -44630,6 +44630,8 @@ button.statusbar__mcp:focus-visible {
 .collab-inbox-panel__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .collab-inbox-panel__retention {
@@ -44690,14 +44692,44 @@ button.statusbar__mcp:focus-visible {
   border-color: var(--button-border-hover);
   background: var(--button-bg-hover);
 }
-.collab-inbox-panel__viewtoggle {
+/* 任务 649 ②：from/to 下拉的可见标签词（「发信方/收信方」）——此前只有
+   aria 文案，肉眼分不清左右两个下拉谁是发信方。布局沿用保留期标签的形态。 */
+.collab-inbox-panel__filterwrap {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 170px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
 }
-/* Date sort toggle (task 320 a): same chip row shape as the view toggle. */
-.collab-inbox-panel__ordertoggle {
-  display: flex;
-  gap: 6px;
+/* 任务 649 ①：排序/视图分段控件上移头行后改胶囊分段——参照设置-权限档位
+   .set-seg 的分段语言（容器描边 + 按钮拼合 + 激活 accent-soft 反白），
+   999px 为刻意的胶囊档；窄宽度在 actions 内换行，不再独占一行。 */
+.collab-inbox-panel__ordertoggle,
+.collab-inbox-panel__viewtoggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.collab-inbox-panel__ordertoggle .collab-inbox-panel__state,
+.collab-inbox-panel__viewtoggle .collab-inbox-panel__state {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  white-space: nowrap;
+}
+.collab-inbox-panel__ordertoggle .collab-inbox-panel__state + .collab-inbox-panel__state,
+.collab-inbox-panel__viewtoggle .collab-inbox-panel__state + .collab-inbox-panel__state {
+  border-left: 1px solid var(--border);
+}
+.collab-inbox-panel__ordertoggle .collab-inbox-panel__state--on,
+.collab-inbox-panel__viewtoggle .collab-inbox-panel__state--on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--font-weight-strong);
 }
 .collab-inbox-panel__showdismissed {
   display: flex;
@@ -44765,12 +44797,27 @@ button.statusbar__mcp:focus-visible {
 .collab-inbox-panel__row--dismissed {
   opacity: 0.55;
 }
+/* 任务 649 ③：行 hover 高亮——620 件1 只落了 from/to 下拉的 hover，行本身
+   从未有过 hover 规则（装机实测「未见效果」的定位结论：实现遗漏，非选择器
+   未命中）。悬停行边框与底色用按钮 hover token 亮起，与 __filter:hover 同构。 */
+.collab-inbox-panel__row:hover {
+  border-color: var(--button-border-hover);
+  background: var(--button-bg-hover);
+}
 .collab-inbox-panel__meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
   font-size: 11px;
+  color: var(--fg-faint);
+}
+/* 任务 649 ②：路由行「发信方/收信方」标签词 vs 会话名的两级灰——标签更弱、
+   会话名略亮，扫一眼先看到名字。 */
+.collab-inbox-panel__route {
+  color: var(--fg-dim);
+}
+.collab-inbox-panel__routelabel {
   color: var(--fg-faint);
 }
 .collab-inbox-panel__bucketbadge {
