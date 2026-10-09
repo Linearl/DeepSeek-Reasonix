@@ -60,6 +60,26 @@ func seedPlanUsageConfig(t *testing.T, entries string) {
 	}
 }
 
+// seedPlanUsageTab registers a local tab whose current model is the given ref
+// so GetProviderPlanUsage can attribute the query to the provider actually in
+// use (task 666 display condition: the surfaces follow the current model).
+func seedPlanUsageTab(t *testing.T, app *App, modelRef string) string {
+	t.Helper()
+	const id = "tab-plan-usage"
+	app.mu.Lock()
+	if app.tabs == nil {
+		app.tabs = map[string]*WorkspaceTab{}
+	}
+	app.tabs[id] = &WorkspaceTab{ID: id, model: modelRef}
+	app.mu.Unlock()
+	t.Cleanup(func() {
+		app.mu.Lock()
+		delete(app.tabs, id)
+		app.mu.Unlock()
+	})
+	return id
+}
+
 func TestPlanUsageTargetForEntry(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -107,35 +127,104 @@ func TestPlanUsageTargetForEntry(t *testing.T) {
 	}
 }
 
-// TestResolvePlanUsageTargetOrder locks the selection order: config order
-// decides, the first plan-capable entry with a resolvable key wins, and a
-// keyless plan entry does not shadow a later configured one.
-func TestResolvePlanUsageTargetOrder(t *testing.T) {
+// TestPlanUsageTargetForCurrentModel locks the task-666 selection contract:
+// the model ref picks the entry — two same-brand keys stay independent — and
+// a model whose provider is not plan-capable never resolves to a target.
+func TestPlanUsageTargetForCurrentModel(t *testing.T) {
 	resolve := func(mapping map[string]string) func(string) (string, bool) {
 		return func(env string) (string, bool) {
 			v, ok := mapping[env]
 			return v, ok
 		}
 	}
-	glm := config.ProviderEntry{Name: "glm-coding-plan-cn", PresetID: "glm-coding-plan-cn", BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4", APIKeyEnv: "GLM_PLAN_API_KEY"}
-	kimi := config.ProviderEntry{Name: "kimi-coding-plan", PresetID: "kimi-coding-plan", BaseURL: "https://api.kimi.com/coding/", APIKeyEnv: "KIMI_CODING_API_KEY"}
-	deepseek := config.ProviderEntry{Name: "deepseek-chat", PresetID: "deepseek-chat", BaseURL: "https://api.deepseek.com/v1", APIKeyEnv: "DEEPSEEK_API_KEY"}
+	glmA := config.ProviderEntry{Name: "glm-plan-a", PresetID: "glm-coding-plan-cn", BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4", APIKeyEnv: "GLM_PLAN_A_KEY", Model: "glm-4.6"}
+	glmB := config.ProviderEntry{Name: "glm-plan-b", PresetID: "zai-coding-plan-global", BaseURL: "https://api.z.ai/api/coding/paas/v4", APIKeyEnv: "GLM_PLAN_B_KEY", Model: "glm-4.7"}
+	kimi := config.ProviderEntry{Name: "kimi-coding-plan", PresetID: "kimi-coding-plan", BaseURL: "https://api.kimi.com/coding/", APIKeyEnv: "KIMI_CODING_API_KEY", Model: "kimi-coding"}
+	deepseek := config.ProviderEntry{Name: "deepseek-chat", PresetID: "deepseek-chat", BaseURL: "https://api.deepseek.com/v1", APIKeyEnv: "DEEPSEEK_API_KEY", Model: "deepseek-chat"}
+	all := []config.ProviderEntry{deepseek, glmA, glmB, kimi}
+	keys := resolve(map[string]string{"GLM_PLAN_A_KEY": "sk-a", "GLM_PLAN_B_KEY": "sk-b", "KIMI_CODING_API_KEY": "sk-kimi", "DEEPSEEK_API_KEY": "sk-ds"})
 
-	t.Run("first configured plan provider wins", func(t *testing.T) {
-		target, key, ok := resolvePlanUsageTarget([]config.ProviderEntry{deepseek, kimi, glm}, resolve(map[string]string{"GLM_PLAN_API_KEY": "sk-glm", "KIMI_CODING_API_KEY": "sk-kimi"}))
-		if !ok || key != "sk-kimi" || target.family != "kimi" {
-			t.Fatalf("got %+v key %q ok %v, want the first configured plan entry (kimi)", target, key, ok)
+	t.Run("the ref's provider wins — second GLM key queries its own quota", func(t *testing.T) {
+		target, key, ok := planUsageTargetForCurrentModel(all, "glm-plan-b/glm-4.7", keys)
+		if !ok || key != "sk-b" || target.keyEnv != "GLM_PLAN_B_KEY" || target.provider != "GLM" {
+			t.Fatalf("got %+v key %q ok %v, want the glm-plan-b entry with its own key", target, key, ok)
+		}
+		if !strings.Contains(target.endpoint, "api.z.ai") {
+			t.Fatalf("endpoint = %q, want the glm-plan-b global route", target.endpoint)
 		}
 	})
-	t.Run("keyless first entry falls through to the next", func(t *testing.T) {
-		target, key, ok := resolvePlanUsageTarget([]config.ProviderEntry{glm, kimi}, resolve(map[string]string{"KIMI_CODING_API_KEY": "sk-kimi"}))
-		if !ok || key != "sk-kimi" || target.family != "kimi" {
-			t.Fatalf("got %+v key %q ok %v, want kimi after the keyless glm entry", target, key, ok)
+	t.Run("the first configured entry is NOT a default fallback", func(t *testing.T) {
+		// deepseek sits first in config order; only a deepseek ref may pick it.
+		if _, _, ok := planUsageTargetForCurrentModel(all, "deepseek-chat/deepseek-chat", keys); ok {
+			t.Fatalf("a deepseek current model must not resolve to a plan target")
+		}
+		target, key, ok := planUsageTargetForCurrentModel(all, "glm-plan-a/glm-4.6", keys)
+		if !ok || key != "sk-a" || target.keyEnv != "GLM_PLAN_A_KEY" {
+			t.Fatalf("got %+v key %q ok %v, want the glm-plan-a entry with its own key", target, key, ok)
 		}
 	})
-	t.Run("no plan entry at all", func(t *testing.T) {
-		if _, _, ok := resolvePlanUsageTarget([]config.ProviderEntry{deepseek}, resolve(map[string]string{"DEEPSEEK_API_KEY": "sk"})); ok {
-			t.Fatalf("deepseek must not resolve as a plan target")
+	t.Run("kimi coding ref resolves its own family", func(t *testing.T) {
+		target, key, ok := planUsageTargetForCurrentModel(all, "kimi-coding-plan/kimi-coding", keys)
+		if !ok || key != "sk-kimi" || target.family != "kimi" {
+			t.Fatalf("got %+v key %q ok %v, want the kimi entry", target, key, ok)
+		}
+	})
+	t.Run("plan-capable entry without a key still resolves (setup note path)", func(t *testing.T) {
+		target, key, ok := planUsageTargetForCurrentModel([]config.ProviderEntry{glmA}, "glm-plan-a/glm-4.6", resolve(nil))
+		if !ok || key != "" || target.keyEnv != "GLM_PLAN_A_KEY" {
+			t.Fatalf("got %+v key %q ok %v, want ok with an empty key", target, key, ok)
+		}
+	})
+	t.Run("unknown ref and empty ref resolve nowhere", func(t *testing.T) {
+		if _, _, ok := planUsageTargetForCurrentModel(all, "ghost/nope", keys); ok {
+			t.Fatalf("an unknown ref must not resolve")
+		}
+		if _, _, ok := planUsageTargetForCurrentModel(all, "  ", keys); ok {
+			t.Fatalf("an empty ref must not resolve")
+		}
+	})
+}
+
+// TestPlanUsageTargetForCurrentModelKimiMiniMaxMultiKey is task 666 point 3
+// (the "same check for the Kimi/MiniMax channels" clause): those families go
+// through the SAME provider-based resolution, so two same-brand entries are
+// independent keys and only the entry behind the current model ref may answer
+// — no cross-key quota bleed, and a deepseek ref never picks any of them.
+func TestPlanUsageTargetForCurrentModelKimiMiniMaxMultiKey(t *testing.T) {
+	resolve := func(mapping map[string]string) func(string) (string, bool) {
+		return func(env string) (string, bool) {
+			v, ok := mapping[env]
+			return v, ok
+		}
+	}
+	kimiA := config.ProviderEntry{Name: "kimi-a", PresetID: "kimi-coding-plan", BaseURL: "https://api.kimi.com/coding/", APIKeyEnv: "KIMI_A_KEY", Model: "kimi-for-coding"}
+	kimiB := config.ProviderEntry{Name: "kimi-b", PresetID: "kimi-coding-plan", BaseURL: "https://api.kimi.com/coding/", APIKeyEnv: "KIMI_B_KEY", Model: "kimi-for-coding"}
+	mmA := config.ProviderEntry{Name: "minimax-cn", PresetID: "minimax-cn-api", BaseURL: "https://api.minimaxi.com/v1", APIKeyEnv: "MM_CN_KEY", Model: "MiniMax-M2"}
+	mmB := config.ProviderEntry{Name: "minimax-global", PresetID: "minimax-global-api", BaseURL: "https://api.minimax.io/v1", APIKeyEnv: "MM_GL_KEY", Model: "MiniMax-M2"}
+	deepseek := config.ProviderEntry{Name: "deepseek", PresetID: "deepseek-chat", BaseURL: "https://api.deepseek.com/v1", APIKeyEnv: "DEEPSEEK_KEY", Model: "deepseek-chat"}
+	all := []config.ProviderEntry{deepseek, kimiA, kimiB, mmA, mmB}
+	keys := resolve(map[string]string{
+		"KIMI_A_KEY": "sk-kimi-a", "KIMI_B_KEY": "sk-kimi-b",
+		"MM_CN_KEY": "sk-mm-cn", "MM_GL_KEY": "sk-mm-gl",
+		"DEEPSEEK_KEY": "sk-ds",
+	})
+
+	t.Run("two kimi entries are independent keys", func(t *testing.T) {
+		target, key, ok := planUsageTargetForCurrentModel(all, "kimi-b/kimi-for-coding", keys)
+		if !ok || key != "sk-kimi-b" || target.keyEnv != "KIMI_B_KEY" || target.family != "kimi" {
+			t.Fatalf("got %+v key %q ok %v, want the kimi-b entry with its own key", target, key, ok)
+		}
+		if _, _, ok := planUsageTargetForCurrentModel(all, "deepseek/deepseek-chat", keys); ok {
+			t.Fatalf("a deepseek current model must not resolve to a kimi/minimax plan target")
+		}
+	})
+	t.Run("two minimax regions are independent keys", func(t *testing.T) {
+		target, key, ok := planUsageTargetForCurrentModel(all, "minimax-global/MiniMax-M2", keys)
+		if !ok || key != "sk-mm-gl" || target.keyEnv != "MM_GL_KEY" || target.family != "minimax" {
+			t.Fatalf("got %+v key %q ok %v, want the minimax-global entry with its own key", target, key, ok)
+		}
+		if !strings.Contains(target.endpoint, "api.minimax.io") {
+			t.Fatalf("endpoint = %q, want the minimax-global route", target.endpoint)
 		}
 	})
 }
@@ -156,7 +245,8 @@ api_key_env = "MY_DEEPSEEK_KEY"
 	defer restore()
 
 	app := &App{}
-	view, err := app.GetProviderPlanUsage()
+	id := seedPlanUsageTab(t, app, "deepseek/deepseek-chat")
+	view, err := app.GetProviderPlanUsage(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,6 +255,155 @@ api_key_env = "MY_DEEPSEEK_KEY"
 	}
 	if *hits != 0 {
 		t.Fatalf("hits = %d, want 0 (unsupported must short-circuit before I/O)", *hits)
+	}
+}
+
+// TestGetProviderPlanUsageNonPlanModelHides locks the task-666 display
+// condition: the surfaces show only while the CURRENT model's provider is
+// plan-capable — a GLM provider in the config must not leak its quota into a
+// deepseek tab.
+func TestGetProviderPlanUsageNonPlanModelHides(t *testing.T) {
+	isolatePlanUsageEnvironment(t)
+	seedPlanUsageConfig(t, `
+[[providers]]
+name = "glm-coding-plan-cn"
+kind = "openai"
+preset_id = "glm-coding-plan-cn"
+base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+api_key_env = "GLM_PLAN_API_KEY"
+model = "glm-4.6"
+
+[[providers]]
+name = "deepseek"
+kind = "openai"
+base_url = "https://api.deepseek.com/v1"
+api_key_env = "MY_DEEPSEEK_KEY"
+model = "deepseek-chat"
+`)
+	t.Setenv("GLM_PLAN_API_KEY", "sk-glm")
+	t.Setenv("MY_DEEPSEEK_KEY", "sk-ds")
+	hits, restore := withPlanEndpoint(t, &zhipuCnQuotaBase, func(http.ResponseWriter, *http.Request) {
+		t.Error("a non-plan current model must not reach the network")
+	})
+	defer restore()
+
+	app := &App{}
+	id := seedPlanUsageTab(t, app, "deepseek/deepseek-chat")
+	view, err := app.GetProviderPlanUsage(id)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if view.Supported || view.Note != "unsupported" {
+		t.Fatalf("view = %+v, want unsupported while a deepseek model is current", view)
+	}
+	if *hits != 0 {
+		t.Fatalf("hits = %d, want 0", *hits)
+	}
+	// Switching the same tab back to the GLM model re-arms the surfaces —
+	// the display follows the model, not the config order.
+	restore()
+	glHits, restoreGL := withPlanEndpoint(t, &zhipuCnQuotaBase, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"success":true,"data":{"limits":[{"type":"TOKENS_LIMIT","percentage":5,"unit":3}]}}`)
+	})
+	defer restoreGL()
+	glID := seedPlanUsageTab(t, app, "glm-coding-plan-cn/glm-4.6")
+	view, err = app.GetProviderPlanUsage(glID)
+	if err != nil || !view.Supported || view.Note != "" {
+		t.Fatalf("view = %+v err = %v, want a clean success for the GLM current model", view, err)
+	}
+	if *glHits != 1 {
+		t.Fatalf("glHits = %d, want 1", *glHits)
+	}
+}
+
+func TestGetProviderPlanUsageWithoutCurrentModelHides(t *testing.T) {
+	isolatePlanUsageEnvironment(t)
+	seedPlanUsageConfig(t, `
+[[providers]]
+name = "glm-coding-plan-cn"
+kind = "openai"
+preset_id = "glm-coding-plan-cn"
+base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+api_key_env = "GLM_PLAN_API_KEY"
+model = "glm-4.6"
+`)
+	t.Setenv("GLM_PLAN_API_KEY", "sk-glm")
+	hits, restore := withPlanEndpoint(t, &zhipuCnQuotaBase, func(http.ResponseWriter, *http.Request) {
+		t.Error("no current model must not reach the network")
+	})
+	defer restore()
+
+	app := &App{}
+	if view, err := app.GetProviderPlanUsage("tab-that-does-not-exist"); err != nil || view.Supported {
+		t.Fatalf("view = %+v err = %v, want unsupported without a tab", view, err)
+	}
+	id := seedPlanUsageTab(t, app, "")
+	if view, err := app.GetProviderPlanUsage(id); err != nil || view.Supported {
+		t.Fatalf("view = %+v err = %v, want unsupported with an empty current model", view, err)
+	}
+	if *hits != 0 {
+		t.Fatalf("hits = %d, want 0", *hits)
+	}
+}
+
+// TestGetProviderPlanUsageMultiKeyFollowsCurrentModel is the task-666
+// multi-key acceptance: two GLM CP entries are independent keys/quotas, and
+// the query must hit the entry the tab's current model names — with its key,
+// on its own regional endpoint.
+func TestGetProviderPlanUsageMultiKeyFollowsCurrentModel(t *testing.T) {
+	isolatePlanUsageEnvironment(t)
+	seedPlanUsageConfig(t, `
+[[providers]]
+name = "glm-plan-a"
+kind = "openai"
+preset_id = "glm-coding-plan-cn"
+base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+api_key_env = "GLM_PLAN_A_KEY"
+model = "glm-4.6"
+
+[[providers]]
+name = "glm-plan-b"
+kind = "openai"
+preset_id = "zai-coding-plan-global"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+api_key_env = "GLM_PLAN_B_KEY"
+model = "glm-4.7"
+`)
+	t.Setenv("GLM_PLAN_A_KEY", "sk-key-A")
+	t.Setenv("GLM_PLAN_B_KEY", "sk-key-B")
+
+	cnHits, restoreCN := withPlanEndpoint(t, &zhipuCnQuotaBase, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("the CN endpoint must not be queried for the glm-plan-b model, got key %q", r.Header.Get("Authorization"))
+	})
+	glHits, restoreGL := withPlanEndpoint(t, &zhipuGlQuotaBase, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "sk-key-B" {
+			t.Errorf("Authorization = %q, want glm-plan-b's own key", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"success":true,"data":{"limits":[{"type":"TOKENS_LIMIT","percentage":21,"unit":3}]}}`)
+	})
+	defer restoreCN()
+	defer restoreGL()
+
+	app := &App{}
+	id := seedPlanUsageTab(t, app, "glm-plan-b/glm-4.7")
+	view, err := app.GetProviderPlanUsage(id)
+	if err != nil || view.Note != "" {
+		t.Fatalf("view = %+v err = %v, want a clean success for glm-plan-b", view, err)
+	}
+	if view.Provider != "GLM" {
+		t.Fatalf("provider = %q, want GLM", view.Provider)
+	}
+	if *cnHits != 0 || *glHits != 1 {
+		t.Fatalf("hits cn=%d gl=%d, want the query on the glm-plan-b endpoint only", *cnHits, *glHits)
+	}
+	byWindow := map[string]PlanUsageWindow{}
+	for _, w := range view.Windows {
+		byWindow[w.Window] = w
+	}
+	if five := byWindow["five_hour"]; five.Percent == nil || *five.Percent != 21 {
+		t.Errorf("five_hour = %+v, want glm-plan-b's own 21%% window", five)
 	}
 }
 
@@ -177,6 +416,7 @@ kind = "openai"
 preset_id = "glm-coding-plan-cn"
 base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
 api_key_env = "GLM_PLAN_API_KEY"
+model = "glm-4.6"
 `)
 	// No GLM_PLAN_API_KEY anywhere: env unset, credential store empty.
 	hits, restore := withPlanEndpoint(t, &zhipuCnQuotaBase, func(http.ResponseWriter, *http.Request) {
@@ -185,7 +425,8 @@ api_key_env = "GLM_PLAN_API_KEY"
 	defer restore()
 
 	app := &App{}
-	view, err := app.GetProviderPlanUsage()
+	id := seedPlanUsageTab(t, app, "glm-coding-plan-cn/glm-4.6")
+	view, err := app.GetProviderPlanUsage(id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -209,8 +450,10 @@ kind = "openai"
 preset_id = "glm-coding-plan-cn"
 base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
 api_key_env = "GLM_PLAN_API_KEY"
+model = "glm-4.6"
 `)
 	t.Setenv("GLM_PLAN_API_KEY", "test-key")
+	const glmRef = "glm-coding-plan-cn/glm-4.6"
 
 	t.Run("raw key header and unit windows", func(t *testing.T) {
 		hits, restore := withPlanEndpoint(t, &zhipuCnQuotaBase, func(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +477,8 @@ api_key_env = "GLM_PLAN_API_KEY"
 		defer restore()
 
 		app := &App{}
-		view, err := app.GetProviderPlanUsage()
+		id := seedPlanUsageTab(t, app, glmRef)
+		view, err := app.GetProviderPlanUsage(id)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -278,7 +522,8 @@ api_key_env = "GLM_PLAN_API_KEY"
 		})
 		defer restore()
 		app := &App{}
-		view, _ := app.GetProviderPlanUsage()
+		id := seedPlanUsageTab(t, app, glmRef)
+		view, _ := app.GetProviderPlanUsage(id)
 		byWindow := map[string]PlanUsageWindow{}
 		for _, w := range view.Windows {
 			byWindow[w.Window] = w
@@ -297,7 +542,8 @@ api_key_env = "GLM_PLAN_API_KEY"
 		})
 		defer restore()
 		app := &App{}
-		view, err := app.GetProviderPlanUsage()
+		id := seedPlanUsageTab(t, app, glmRef)
+		view, err := app.GetProviderPlanUsage(id)
 		if err != nil {
 			t.Fatalf("business errors must not surface as Go errors: %v", err)
 		}
@@ -312,7 +558,8 @@ api_key_env = "GLM_PLAN_API_KEY"
 		})
 		defer restore()
 		app := &App{}
-		view, _ := app.GetProviderPlanUsage()
+		id := seedPlanUsageTab(t, app, glmRef)
+		view, _ := app.GetProviderPlanUsage(id)
 		if view.Note != "auth-failed" {
 			t.Fatalf("note = %q, want auth-failed", view.Note)
 		}
@@ -328,6 +575,7 @@ kind = "anthropic"
 preset_id = "kimi-coding-plan"
 base_url = "https://api.kimi.com/coding/"
 api_key_env = "KIMI_CODING_API_KEY"
+model = "kimi-for-coding"
 `)
 	t.Setenv("KIMI_CODING_API_KEY", "test-kimi")
 
@@ -343,7 +591,8 @@ api_key_env = "KIMI_CODING_API_KEY"
 	defer restore()
 
 	app := &App{}
-	view, err := app.GetProviderPlanUsage()
+	id := seedPlanUsageTab(t, app, "kimi-coding-plan/kimi-for-coding")
+	view, err := app.GetProviderPlanUsage(id)
 	if err != nil || view.Note != "" {
 		t.Fatalf("view = %+v err = %v, want a clean success", view, err)
 	}
@@ -377,6 +626,7 @@ kind = "openai"
 preset_id = "minimax-cn-api"
 base_url = "https://api.minimaxi.com/v1"
 api_key_env = "MINIMAX_API_KEY"
+model = "MiniMax-M2"
 `)
 	t.Setenv("MINIMAX_API_KEY", "test-mm")
 
@@ -396,7 +646,8 @@ api_key_env = "MINIMAX_API_KEY"
 	defer restore()
 
 	app := &App{}
-	view, err := app.GetProviderPlanUsage()
+	id := seedPlanUsageTab(t, app, "minimax-cn-api/MiniMax-M2")
+	view, err := app.GetProviderPlanUsage(id)
 	if err != nil || view.Note != "" {
 		t.Fatalf("view = %+v err = %v, want a clean success", view, err)
 	}
@@ -426,7 +677,8 @@ api_key_env = "MINIMAX_API_KEY"
 		})
 		defer restore()
 		app := &App{}
-		view, _ := app.GetProviderPlanUsage()
+		id := seedPlanUsageTab(t, app, "minimax-cn-api/MiniMax-M2")
+		view, _ := app.GetProviderPlanUsage(id)
 		if len(view.Windows) != 1 || view.Windows[0].Window != "five_hour" {
 			t.Fatalf("windows = %+v, want five_hour only", view.Windows)
 		}
@@ -438,7 +690,8 @@ api_key_env = "MINIMAX_API_KEY"
 		})
 		defer restore()
 		app := &App{}
-		view, err := app.GetProviderPlanUsage()
+		id := seedPlanUsageTab(t, app, "minimax-cn-api/MiniMax-M2")
+		view, err := app.GetProviderPlanUsage(id)
 		if err != nil {
 			t.Fatalf("business errors must not surface as Go errors: %v", err)
 		}
@@ -463,6 +716,7 @@ kind = "openai"
 preset_id = "glm-coding-plan-cn"
 base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
 api_key_env = "GLM_PLAN_API_KEY"
+model = "glm-4.6"
 `)
 	variants := []struct {
 		name    string
@@ -477,6 +731,7 @@ api_key_env = "GLM_PLAN_API_KEY"
 		{"api-error", "k", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, `{"success":false,"msg":"no"}`) }, "api-error"},
 	}
 	app := &App{}
+	planTab := seedPlanUsageTab(t, app, "glm-coding-plan-cn/glm-4.6")
 	checked := 0
 	for _, v := range variants {
 		t.Setenv("GLM_PLAN_API_KEY", v.key)
@@ -488,7 +743,7 @@ api_key_env = "GLM_PLAN_API_KEY"
 				t.Errorf("%s must not reach the network", v.name)
 			})
 		}
-		view, _ := app.GetProviderPlanUsage()
+		view, _ := app.GetProviderPlanUsage(planTab)
 		restore()
 		if view.Note != v.want {
 			t.Fatalf("%s: note = %q, want %q", v.name, view.Note, v.want)
@@ -508,7 +763,7 @@ api_key_env = "GLM_PLAN_API_KEY"
 	t.Setenv("GLM_PLAN_API_KEY", "k")
 	previous := zhipuCnQuotaBase
 	zhipuCnQuotaBase = "http://127.0.0.1:1"
-	view, err := app.GetProviderPlanUsage()
+	view, err := app.GetProviderPlanUsage(planTab)
 	zhipuCnQuotaBase = previous
 	if err == nil || view.Note != "network" {
 		t.Fatalf("network: note = %q err %v, want network+error", view.Note, err)
@@ -536,6 +791,7 @@ kind = "openai"
 preset_id = "glm-coding-plan-cn"
 base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
 api_key_env = "GLM_PLAN_API_KEY"
+model = "glm-4.6"
 `)
 	t.Setenv("GLM_PLAN_API_KEY", sentinel)
 
@@ -549,7 +805,8 @@ api_key_env = "GLM_PLAN_API_KEY"
 	defer restore()
 
 	app := &App{}
-	view, err := app.GetProviderPlanUsage()
+	id := seedPlanUsageTab(t, app, "glm-coding-plan-cn/glm-4.6")
+	view, err := app.GetProviderPlanUsage(id)
 	if err != nil || view.Note != "" {
 		t.Fatalf("view = %+v err = %v, want a clean success", view, err)
 	}

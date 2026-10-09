@@ -1,10 +1,13 @@
 package main
 
 // Task 287 — Provider plan usage query (coding plan / token plan quota).
+// Task 666 — the query follows the tab's CURRENT model: the ref resolves to
+// one provider entry (multi-key brands each query their own quota) and a
+// non-plan provider resolves to unsupported so the display surfaces hide.
 //
 // Reference implementation: cc-switch src-tauri/src/services/coding_plan.rs.
 // One generic query surface for every plan-capable provider configured in the
-// user's provider list; the first matching entry wins. Providers ported in
+// user's provider list; the entry behind the tab's current model wins. Providers ported in
 // this batch, with the contracts cc-switch taught:
 //
 //   智谱 GLM / Z.AI (BrandID "zai") — quota endpoint lives on the SAME host as
@@ -199,67 +202,102 @@ func planUsageTargetForEntry(e *config.ProviderEntry) (planUsageTarget, bool) {
 	return target, true
 }
 
-// resolvePlanUsageKey walks the provider list in config order and returns the
-// first plan-capable entry with its resolved key. The resolve func maps an env
-// name to its value; it is injected so the chain stays pure under test — the
-// App wrapper checks process env first (explicit overrides) then the global
-// credential resolver, and the value never reaches logs, notes, or the wire.
-func resolvePlanUsageTarget(entries []config.ProviderEntry, resolve func(env string) (string, bool)) (planUsageTarget, string, bool) {
-	for i := range entries {
-		entry := &entries[i]
-		target, ok := planUsageTargetForEntry(entry)
-		if !ok {
-			continue
+// activePlanUsageContext resolves the provider list, workspace root and the
+// CURRENT model ref of the queried tab (task 666: the quota display follows
+// the provider actually in use, so two same-brand keys stay independent and
+// a non-plan model hides the surfaces). ok=false means the tab's model cannot
+// be attributed locally — no tab yet, empty model, or a remote-served surface
+// whose keys do not live on this machine — and the display must hide.
+func (a *App) activePlanUsageContext(tabID string) ([]config.ProviderEntry, string, string, bool) {
+	if cur, isRemote := a.remoteTabCurrentModel(tabID); isRemote {
+		// A credential-proxied remote tab resolves models from the LOCAL
+		// config (the keys live here), so its quota stays queryable; a
+		// remote-served catalog is not — the remote host holds the keys.
+		if !a.remoteTabLocalProxy(tabID) {
+			return nil, "", "", false
 		}
-		if value, set := resolve(target.keyEnv); set {
-			if key := strings.TrimSpace(value); key != "" {
-				return target, key, true
-			}
+		cfg, _, err := a.loadDesktopUserConfigForView()
+		if err != nil || cfg == nil {
+			return nil, "", "", false
 		}
+		return cfg.Providers, a.activeWorkspaceRoot(), strings.TrimSpace(cur), true
 	}
-	return planUsageTarget{}, "", false
+	a.mu.RLock()
+	var curModel, root string
+	if tab := a.tabByIDLocked(tabID); tab != nil {
+		curModel = strings.TrimSpace(tab.model)
+		root = tab.WorkspaceRoot
+	}
+	a.mu.RUnlock()
+	if curModel == "" {
+		return nil, "", "", false
+	}
+	cfg, _, err := a.loadDesktopUserConfigForViewForRoot(root)
+	if err != nil || cfg == nil {
+		return nil, "", "", false
+	}
+	return cfg.Providers, root, curModel, true
 }
 
-// planUsageKeyResolver wires the pure chain to this app's config and global
-// credential resolver: process env wins (explicit override, also the tests'
-// zero-config path), then the credential store the user already configured
-// the connection key in. Config load failures degrade to unsupported — the
-// query is a nice-to-have and never worth surfacing an error for.
-func (a *App) planUsageKeyResolver() ([]config.ProviderEntry, func(env string) (string, bool), bool) {
-	cfg, _, err := a.loadDesktopUserConfigForView()
-	if err != nil || cfg == nil {
-		return nil, nil, false
+// planUsageTargetForCurrentModel resolves the plan-usage query target for one
+// concrete model ref (task 666). The ref resolves through the same
+// ResolveModel path as the model picker's "current" marking, so the card
+// always follows the entry the picker highlights — two same-brand entries
+// ("GLM-A/…" and "GLM-B/…") are independent keys and each queries its own
+// quota. ok=false means the current model's provider is not plan-capable (or
+// the ref resolves nowhere): the display surfaces hide instead of showing
+// another provider's quota. An empty key with ok=true means plan-capable but
+// unresolvable key — the caller emits the setup note.
+func planUsageTargetForCurrentModel(entries []config.ProviderEntry, curModel string, resolve func(env string) (string, bool)) (planUsageTarget, string, bool) {
+	if strings.TrimSpace(curModel) == "" {
+		return planUsageTarget{}, "", false
 	}
-	resolver := config.NewCredentialResolverForRoot(a.activeWorkspaceRoot())
-	return cfg.Providers, func(env string) (string, bool) {
+	cfg := &config.Config{Providers: entries}
+	entry, found := cfg.ResolveModel(strings.TrimSpace(curModel))
+	if !found || entry == nil {
+		return planUsageTarget{}, "", false
+	}
+	target, ok := planUsageTargetForEntry(entry)
+	if !ok {
+		return planUsageTarget{}, "", false
+	}
+	if value, set := resolve(target.keyEnv); set {
+		if key := strings.TrimSpace(value); key != "" {
+			return target, key, true
+		}
+	}
+	return target, "", true
+}
+
+// GetProviderPlanUsage queries the quota of the provider the tab's CURRENT
+// model resolves to, for the status bar and the right-dock overview (tasks
+// 287 + 666). The model must resolve to a plan-capable entry — anything else
+// returns unsupported with zero I/O so the surfaces hide; a plan-capable
+// entry without a resolvable key returns the no-key setup note, also with
+// zero I/O. Display surfaces hide on both instead of erroring.
+func (a *App) GetProviderPlanUsage(tabID string) (PlanUsageView, error) {
+	entries, root, curModel, ok := a.activePlanUsageContext(tabID)
+	if !ok {
+		return planUsageView(false, "unsupported"), nil
+	}
+	// Process env wins (explicit override, also the tests' zero-config path),
+	// then the credential store the user already configured the connection
+	// key in — resolved for the tab's own workspace root. The value never
+	// reaches logs, notes, or the wire.
+	resolver := config.NewCredentialResolverForRoot(root)
+	resolve := func(env string) (string, bool) {
 		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
 			return v, true
 		}
 		res := resolver.ResolveGlobalFirst(env)
 		return res.Value, res.Set
-	}, true
-}
-
-// GetProviderPlanUsage queries the first plan-capable provider's quota for
-// the status bar and the right-dock overview (task 287). No plan provider
-// configured → unsupported with zero I/O; no key → no-key with zero I/O.
-// Display surfaces hide on both instead of erroring.
-func (a *App) GetProviderPlanUsage() (PlanUsageView, error) {
-	entries, resolve, ok := a.planUsageKeyResolver()
-	if !ok {
+	}
+	target, key, planCapable := planUsageTargetForCurrentModel(entries, curModel, resolve)
+	if !planCapable {
 		return planUsageView(false, "unsupported"), nil
 	}
-	target, key, found := resolvePlanUsageTarget(entries, resolve)
-	if !found {
-		// A plan-family entry without any resolvable key still counts as
-		// supported so the overview can show the setup note; no entry at all
-		// means the feature is invisible.
-		for i := range entries {
-			if hinted, ok := planUsageTargetForEntry(&entries[i]); ok {
-				return PlanUsageView{Supported: true, Provider: hinted.provider, Region: hinted.region, Windows: []PlanUsageWindow{}, Note: "no-key", QueriedAt: time.Now().UnixMilli()}, nil
-			}
-		}
-		return planUsageView(false, "unsupported"), nil
+	if key == "" {
+		return PlanUsageView{Supported: true, Provider: target.provider, Region: target.region, Windows: []PlanUsageWindow{}, Note: "no-key", QueriedAt: time.Now().UnixMilli()}, nil
 	}
 	windows, note, err := queryPlanUsage(target, key)
 	if err != nil {

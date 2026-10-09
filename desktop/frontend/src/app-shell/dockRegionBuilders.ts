@@ -192,6 +192,8 @@ export function buildBottomRegionsProps(input: {
       onOpenRemoteWorkspace: status.onOpenRemoteWorkspace,
       remoteHosts: status.remoteHosts,
       remoteStatuses: status.remoteStatuses,
+      // Task 666: the plan usage surfaces target the visible tab's current model.
+      tabId: input.tabId,
     } : undefined,
   };
 }
