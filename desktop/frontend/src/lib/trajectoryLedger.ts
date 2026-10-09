@@ -101,6 +101,7 @@ export function buildTrajectoryLedger(items: Item[]): TrajectoryLedger {
           ...base,
           kind: "user",
           turn,
+          step: 0,
           turnLabel,
           turnStart: true,
           at,

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useEffect, useMemo, useRef, useState } from "react";
 import { useRuntimeStateSync } from "./lib/useRuntimeState";
 import { useCommittedCommand } from "./lib/useCommittedCommand";
 import { openExternal } from "./lib/bridge";
@@ -8,6 +8,8 @@ import { useGoalActionHandler } from "./lib/goalAction";
 import { useActiveRemoteSession } from "./lib/useRemoteSession";
 import { useWarmTerminalPanel } from "./lib/useWarmTerminalPanel";
 import { setReasoningDisplayPending } from "./lib/reasoningDisplayPreference";
+import { labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
+import { setSurfaceViewTab, useSurfaceView } from "./lib/trajectoryViewPreference";
 import type { RestorableToolApprovalMode } from "./lib/toolApprovalMode";
 import type { ComposerProfile, UserPlanModeIntents } from "./lib/composerProfile";
 import type { TabMeta } from "./lib/types";
@@ -100,6 +102,13 @@ export function AppRuntime() {
   const composerFileRefRefreshKey = `${dockRefreshKey}:${fileRefRefreshKey}`;
   const [projectRevision, setProjectRevision] = useState(0);
 
+  // 任务 704: the trajectory view rides the lab-flag snapshot (铁律 2 default
+  // off) and the per-session surface selection re-points at every tab change.
+  const [trajectoryViewEnabled, setTrajectoryViewEnabled] = useState(labFlagEnabled("trajectoryView"));
+  useEffect(() => onLabFlagsChange(() => setTrajectoryViewEnabled(labFlagEnabled("trajectoryView"))), []);
+  useEffect(() => { setSurfaceViewTab(activeTabId ?? ""); }, [activeTabId]);
+  const surfaceView = useSurfaceView();
+
   const session = useAppSessionComposition({
     runtime,
     t,
@@ -158,6 +167,7 @@ export function AppRuntime() {
         projectRevision, dockRefreshKey, composerFileRefRefreshKey, refreshComposerFileRefs,
         terminalContentVisible, terminalFitEnabled, prefetchTerminalPanel,
       }}
+      trajectory={{ enabled: trajectoryViewEnabled, surface: surfaceView }}
     />
   );
 }

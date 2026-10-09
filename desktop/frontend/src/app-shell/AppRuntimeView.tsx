@@ -22,6 +22,8 @@ import { ThemeBackground } from "../components/ThemeBackground";
 import { AppChrome } from "../components/AppChrome";
 import { SidebarRegion } from "./SidebarRegion";
 import { TopicbarRegion } from "./TopicbarRegion";
+import { TopicbarSurfaceSwitch } from "./TopicbarSurfaceSwitch";
+import type { SessionSurfaceView } from "../lib/trajectoryViewPreference";
 import { buildTopicbarView, TopicbarActionsStack } from "./TopicbarActionsStack";
 import { DockToggleButton } from "./DockToggleButton";
 import { SessionStatusBanners } from "./SessionStatusBanners";
@@ -83,6 +85,12 @@ export type AppRuntimeViewProps = {
     terminalFitEnabled: boolean;
     prefetchTerminalPanel: () => void;
   };
+  /** 任务 704: trajectory view gate (lab switch) + the persisted per-session
+   * surface view. Ownership stays in AppRuntime (composition root). */
+  trajectory: {
+    enabled: boolean;
+    surface: SessionSurfaceView;
+  };
 };
 
 /**
@@ -91,7 +99,7 @@ export type AppRuntimeViewProps = {
  * beyond value memoization live here; ownership stays in the compositions.
  */
 export function AppRuntimeView(props: AppRuntimeViewProps) {
-  const { core, shell, session, navigation, runtime, local } = props;
+  const { core, shell, session, navigation, runtime, local, trajectory } = props;
   const { state, activeTab, activeTabId, t, locale } = core;
   const { sidebarWorkbench, sidebarCreation, windowsFramelessChrome, managementActive, mainWindowMaximised } = shell;
   const {
@@ -282,6 +290,11 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
             setTitleDraft: navigation.projectTopicCommands.setTopicTitleDraft, commitRename: navigation.projectTopicCommands.commitActiveTopicRename, cancelRename: navigation.projectTopicCommands.cancelActiveTopicRename,
             startRename: navigation.projectTopicCommands.startActiveTopicRename, openWorktree: navigation.worktreeMergeCommands.openWorktreeMerge,
           }}>
+            {/* 任务 704: 转录|轨迹 view switch — topicbar children slot between
+                the spacer and the actions stack; local sessions only (一期). */}
+            {trajectory.enabled && Boolean(activeTabId) && !activeTab?.remote && !sidebarImDetailConnection && (
+              <TopicbarSurfaceSwitch />
+            )}
             <TopicbarActionsStack
               t={t}
               paletteShortcut={navigation.commandPaletteShortcut}
@@ -346,6 +359,12 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
               emptyHero: session.transcript.emptyHero,
               availability: session.transcript.availability,
               rewind: { stateActive: session.sessionUndo.rewindState != null, committing: session.sessionUndo.rewindCommitting, signal: session.sessionUndo.rewindSignal },
+              trajectory: trajectory.enabled && trajectory.surface === "trajectory" && !activeTab?.remote && !sidebarImDetailConnection ? {
+                items: session.transcript.visibleTranscriptItems,
+                running: visibleRuntimeState.running,
+                hydrating: session.transcript.transcriptHydrating,
+                t,
+              } : null,
             }}
             onRetryHistory={() => runtime.sessionActions.retrySessionHistory(activeTabId)}
             commands={{

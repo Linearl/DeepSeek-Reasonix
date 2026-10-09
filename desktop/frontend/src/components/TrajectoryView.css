@@ -1,0 +1,183 @@
+/* 任务 704 — 轨迹视图样式。随 TrajectoryView 懒加载 chunk 出包，不进
+   app-shell 启动预算。全主题 token（零裸值），布局沿用 chat-pane 结构：
+   .traj 填满 main 区域，头部汇总条 + 滚动台账。 */
+
+.traj {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--chat-bg);
+  color: var(--text);
+}
+
+.traj__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+.traj__head-title {
+  font-weight: var(--font-weight-strong);
+  color: var(--text-2);
+}
+
+.traj__head-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traj__live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+.traj__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.traj__empty,
+.traj__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.traj__ledger {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 24px;
+}
+
+/* Ledger row: [time | kind(+turn chip) | name | preview | badges] */
+.traj-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 14px 3px 10px;
+  border-left: 2px solid transparent;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  /* 长历史窗口化（slice 6）的渲染护栏：视口外行跳过布局/绘制。 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 28px;
+}
+
+.traj-row--turn-start {
+  margin-top: 6px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.traj-row:first-child {
+  margin-top: 0;
+  border-top: none;
+}
+
+.traj-row--nested {
+  padding-left: 34px;
+}
+
+.traj-row__time {
+  flex: none;
+  min-width: 58px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.traj-row__kind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+}
+
+.traj-row__turn {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.traj-row__name {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+
+.traj-row__preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+.traj-row__badge {
+  flex: none;
+  font-size: var(--text-2xs);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.traj-row__badge--running {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.traj-row__badge--error {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+}
+
+.traj-row--failed {
+  border-left-color: var(--err);
+}
+
+.traj-row--running {
+  border-left-color: var(--accent);
+}
+
+.traj-row--user {
+  border-left-color: var(--border);
+}
+
+.traj-row--assistant {
+  border-left-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.traj-row--tool {
+  border-left-color: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+}
+
+.traj-row--compaction {
+  border-left-color: var(--warn);
+}
+
+/* 窄窗：时间列隐藏，预览让位（退化为 kind+name+preview 三列）。 */
+@media (max-width: 860px) {
+  .traj-row__time {
+    display: none;
+  }
+}

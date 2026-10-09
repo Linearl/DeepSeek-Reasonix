@@ -11,6 +11,9 @@ import type { SessionAvailability } from "../lib/sessionAvailability";
 
 const RemoteSessionSurface = lazy(() => import("../components/RemoteSessionSurface").then((module) => ({ default: module.RemoteSessionSurface })));
 const SidebarImConnectionDetail = lazy(() => import("./SidebarImConnectionDetail").then((module) => ({ default: module.SidebarImConnectionDetail })));
+// 任务 704: the trajectory surface is a lab-gated lazy chunk — with the
+// switch off it costs the startup bundle nothing.
+const TrajectoryView = lazy(() => import("../components/TrajectoryView").then((module) => ({ default: module.TrajectoryView })));
 
 export type ChatPaneTranscriptInput = {
   state: State;
@@ -36,6 +39,16 @@ export type ChatPaneTranscriptInput = {
     committing: boolean;
     signal: TranscriptProps["rewindSignal"];
   };
+  /** 任务 704: when present (lab switch on + view=trajectory, local sessions
+   * only), the trajectory surface replaces the transcript inside the same
+   * navigation wrapper — the transcript stays the default and turning the
+   * view off falls back to it with zero data loss. */
+  trajectory?: {
+    items: TranscriptProps["items"];
+    running: boolean;
+    hydrating: boolean;
+    t: Translator;
+  } | null;
 };
 
 export type ChatPaneRegionProps = {
@@ -112,7 +125,12 @@ export function ChatPaneRegion(props: ChatPaneRegionProps) {
                 (node as HTMLElement & { inert?: boolean }).inert = transitioning;
               }}
             >
-              {recoveringEmpty ? <SessionRecoveryPlaceholder availability={transcript.availability} /> : <Transcript
+              {recoveringEmpty ? <SessionRecoveryPlaceholder availability={transcript.availability} /> : transcript.trajectory ? <Suspense fallback={null}><TrajectoryView
+                items={transcript.trajectory.items}
+                running={transcript.trajectory.running}
+                hydrating={transcript.trajectory.hydrating}
+                t={transcript.trajectory.t}
+              /></Suspense> : <Transcript
                 items={transcript.items}
                 live={transitioning ? undefined : state.live}
                 liveStore={transcript.liveStore}
