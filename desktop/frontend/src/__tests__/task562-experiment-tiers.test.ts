@@ -1,15 +1,15 @@
 // Run: npx tsx src/__tests__/task562-experiment-tiers.test.ts
 // 任务 562 acceptance harness (lab three-tier badges):
-//  ① the tier register mirrors xlsx 表A exactly — 推荐 15 / 可选 19 /
-//     未稳定 13 / 已退役 1 = 48 (acceptance ④; 任务 705 折叠开关入表后口径);
+//  ① the tier register mirrors xlsx 表A exactly — 推荐 15 / 可选 20 /
+//     未稳定 13 / 已退役 1 = 49 (acceptance ④; 任务 707 压缩模型指定入表后口径);
 //  ② the wall picks are the 16 curated 表B W1 items, every pick carries a
 //     tier (12 recommended + 4 optional) (acceptance ② data half);
 //  ③ the frontend register and the Go labFeatureTiers registry in
 //     internal/config/render.go agree item by item — two sides, one source;
 //  ④ rail wiring: every rail entry renders badges; merged cards cover all
-//     47 member features; non-表A ids (preapproveManagedPaths) get none;
+//     48 member features; non-表A ids (preapproveManagedPaths) get none;
 //  ⑤ pane wiring: every 表A feature's switch label is wrapped in labLabel
-//     (or the standalone usage card), i.e. 47/47 pane badges;
+//     (or the standalone usage card), i.e. 48/48 pane badges;
 //  ⑥ locale keys exist in all three dialects.
 
 import { readFileSync } from "node:fs";
@@ -50,11 +50,13 @@ console.log("\ntask 562 lab three-tier badges");
   // ——未稳定 12→13、总数 46→47，两侧同源对齐。
   // 任务 705：sessionCollabAutoFold（超长跨会话消息自动折叠，默认关）按可选
   // 档入表——可选 18→19、总数 47→48，两侧同源对齐。
-  ok(counts.recommended === 15 && counts.optional === 19 && counts.unstable === 13 && counts.retired === 1,
-    `register counts are 15/19/13/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 48, `register holds exactly 48 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 19 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 15/19/13/1");
+  // 任务 707：compactModel（压缩模型指定，默认关）按任务书建议可选档入表
+  // ——可选 19→20、总数 48→49，两侧同源对齐。
+  ok(counts.recommended === 15 && counts.optional === 20 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 15/20/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 49, `register holds exactly 49 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 20 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 15/20/13/1");
 }
 
 // ② wall picks (表B W1).
@@ -80,7 +82,7 @@ console.log("\ntask 562 lab three-tier badges");
   for (const m of goSrc.matchAll(/\{"([a-zA-Z]+)", LabTier([A-Za-z]+), \[/g)) {
     goTiers[m[1]] = m[2].toLowerCase();
   }
-  ok(Object.keys(goTiers).length === 48, `Go registry parses to 48 entries (got ${Object.keys(goTiers).length})`);
+  ok(Object.keys(goTiers).length === 49, `Go registry parses to 49 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -100,10 +102,10 @@ console.log("\ntask 562 lab three-tier badges");
 // themselves; unknown ids stay clean.
 {
   const members = Object.values(LAB_RAIL_ENTRY_MEMBERS).flat();
-  ok(members.length === 16, `merged cards carry 16 member features (got ${members.length})`);
+  ok(members.length === 17, `merged cards carry 17 member features (任务 707 compactModel 随上下文治理卡入成员表) (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
-  ok(covered.size === 48, "rail entries cover all 48 features");
+  ok(covered.size === 49, "rail entries cover all 49 features");
   const gov = railTiersFor("contextGovernance");
   ok(gov[0] === "recommended" && gov[1] === "optional" && gov.length === 2, `contextGovernance shows [推荐, 可选] (got ${JSON.stringify(gov)})`);
   ok(JSON.stringify(railTiersFor("autopilot")) === JSON.stringify(["recommended"]), "standalone entry badges itself");

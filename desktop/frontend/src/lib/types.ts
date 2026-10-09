@@ -2609,6 +2609,9 @@ export interface DesktopStartupSettingsView {
   // Task 242: quota fallback switch + provider/model target.
   experimentalFallbackModel?: boolean;
   fallbackModel?: string;
+  // 任务 707: economic compaction switch + provider/model target.
+  experimentalCompactModel?: boolean;
+  compactModel?: string;
   // Task 318: lab internal optimizations (three switches default off).
   experimentalHighSpeedModel?: boolean;
   experimentalProactiveCompact?: boolean;
