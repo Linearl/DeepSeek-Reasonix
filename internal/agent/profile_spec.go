@@ -25,8 +25,8 @@ type ProfileDefinition struct {
 	// call manual profiles; automatic discovery still respects the index.
 	Invocation string
 	// NamedBuiltin is true for the built-in explore/research/review/
-	// security-review profiles. Their body is still the full system prompt
-	// (no implicit concise default), matching custom profiles.
+	// security-review/general-purpose profiles. Their body is still the full
+	// system prompt (no implicit concise default), matching custom profiles.
 	NamedBuiltin bool
 }
 
@@ -255,7 +255,8 @@ func cleanToolList(names []string) []string {
 // NamedBuiltinProfile reports whether name is a built-in named subagent profile.
 func NamedBuiltinProfile(name string) bool {
 	switch strings.TrimSpace(name) {
-	case "explore", "research", "review", "security-review", "security_review":
+	case "explore", "research", "review", "security-review", "security_review",
+		skill.GeneralPurposeProfileName:
 		return true
 	default:
 		return false

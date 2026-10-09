@@ -85,6 +85,7 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalFallbackModel = true
 	c.Agent.ExperimentalCollabBackgroundDelivery = true
 	c.Serve.ExperimentalGCChildSession = true // 任务 540：豁免键，serve 域开关
+	c.Agent.ExperimentalGeneralPurposeSubagent = true // 任务 632：豁免键，门禁要求仍被渲染
 	return c
 }
 

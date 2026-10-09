@@ -2,7 +2,12 @@ package agent
 
 import "strings"
 
-func FormatSubagentRunResult(answer string, run *SubagentRun, failed bool) string {
+// FormatSubagentRunResult renders the sub-agent result the parent model reads:
+// status, transcript reference, optional usage footer, then the final answer.
+// notes (task 632 usage line) ride between the reference guidance and the
+// answer, and only for persisted runs — an ephemeral run (empty Ref) keeps its
+// exact historical bare-answer shape.
+func FormatSubagentRunResult(answer string, run *SubagentRun, failed bool, notes ...string) string {
 	answer = GuardSubagentHostDecisionText(answer)
 	if run == nil || run.Ref == "" {
 		return answer
@@ -20,6 +25,11 @@ func FormatSubagentRunResult(answer string, run *SubagentRun, failed bool) strin
 	out := FormatSubagentOutcome(SubagentOutcome{Ref: run.Ref, Status: SubagentOutcomeCompleted})
 	if guidance != "" {
 		out += "\n\n" + guidance
+	}
+	for _, note := range notes {
+		if note = strings.TrimSpace(note); note != "" {
+			out += "\n\n" + note
+		}
 	}
 	if answer != "" {
 		out += "\n\nFinal answer:\n" + answer

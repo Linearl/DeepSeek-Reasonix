@@ -142,8 +142,14 @@ type Options struct {
 	PluginAgentPaths map[string][]string // plugin roots whose flat Markdown files are Claude agents
 	ExcludedPaths    []string
 	DisabledNames    []string
-	MaxDepth         int
-	DisableBuiltins  bool // suppress shipped built-ins (test-only knob)
+	// DisableBuiltinNames hides named SHIPPED built-ins only (task 632). Unlike
+	// DisabledNames it never hides a user-authored skill that happens to share
+	// the name, so an experiment can gate a built-in without changing the
+	// behavior of existing user files. Boot passes the gated built-in names
+	// while the owning feature switch is off.
+	DisableBuiltinNames []string
+	MaxDepth            int
+	DisableBuiltins     bool // suppress shipped built-ins (test-only knob)
 	// DisableDiscovery returns an empty store without probing project, custom,
 	// global, plugin, or built-in skill sources. It is a test-only isolation knob.
 	DisableDiscovery bool
@@ -163,6 +169,7 @@ type Store struct {
 	pluginAgentPaths map[string][]string
 	excludedPaths    map[string]bool
 	disabled         map[string]bool
+	disabledBuiltins map[string]bool
 	maxDepth         int
 	disableBuiltins  bool
 	disableDiscovery bool
@@ -221,6 +228,7 @@ func New(opts Options) *Store {
 		pluginAgentPaths: pluginAgentPaths,
 		excludedPaths:    excluded,
 		disabled:         disabledNameSet(opts.DisabledNames),
+		disabledBuiltins: disabledNameSet(opts.DisableBuiltinNames),
 		maxDepth:         normalizeMaxDepth(opts.MaxDepth),
 		disableBuiltins:  opts.DisableBuiltins,
 		disableDiscovery: opts.DisableDiscovery,
@@ -614,9 +622,10 @@ func (s *Store) discoveredSkills() []Skill {
 	}
 	if !s.disableBuiltins {
 		for _, sk := range builtinSkills() {
-			if !s.disabledName(sk.Name) {
-				out = append(out, sk)
+			if s.disabledName(sk.Name) || s.disabledBuiltins[config.SkillNameKey(sk.Name)] {
+				continue
 			}
+			out = append(out, sk)
 		}
 	}
 	return out

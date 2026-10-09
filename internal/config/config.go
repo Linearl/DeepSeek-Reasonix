@@ -1611,6 +1611,18 @@ type AgentConfig struct {
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.
 	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// ExperimentalGeneralPurposeSubagent exposes the built-in general-purpose
+	// writer profile (task 632): task profile="general-purpose" / run_skill
+	// dispatch a writer subagent whose system prompt teaches multi-step
+	// implement-verify-report work. Off by default — a writer-capable profile
+	// widens the permission surface, so the fork's default-off experiment rule
+	// applies and the dispatch gate stays the existing write_paths claim +
+	// sandbox + approval chain. Off leaves the byte-identical surface: the
+	// built-in is absent from the skill index and "general-purpose" resolves
+	// like any unknown profile, while a user-authored skill of the same name is
+	// untouched (the gate hides only the shipped built-in). Applies on restart
+	// (boot snapshot), like every boot-resolved switch.
+	ExperimentalGeneralPurposeSubagent bool `toml:"experimental_general_purpose_subagent"`
 	// Task 265 (lab intake): the three fork-only agent-behaviour features below
 	// ship ON via nil-means-on pointers — they are existing behaviour being
 	// given an off switch, not new behaviour, so the default must not regress

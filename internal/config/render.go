@@ -115,6 +115,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_parallel_writer_readonly_bash": "task 573：并行 writer 只读 bash 回退（写隔离伴生开关，write_paths 象限自证能力，实验室 tab 无入口）",
 	"experimental_gc_child_session":          "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
+	"experimental_general_purpose_subagent":  "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
@@ -571,6 +572,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// the desktop experimental_* switches: omit-on-off springs back to true).
 	fmt.Fprintf(&b, "experimental_dream = %v   # task 115: enable dream/distill memory-curation tools\n", c.Agent.ExperimentalDream)
 	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
+	// Task 632: explicit render — omit-on-off would silently spring a saved-on
+	// switch back off on the next render (81/123 lost-save lesson).
+	fmt.Fprintf(&b, "experimental_general_purpose_subagent = %v   # task 632: expose the built-in general-purpose writer profile (task profile=\"general-purpose\"; off = absent from the skill index, restart to apply)\n", c.Agent.ExperimentalGeneralPurposeSubagent)
 	// Task 265 lab intake: existing behaviour given an off switch, so the
 	// pointers render through their nil-means-on helpers (an absent key and an
 	// explicit true render identically, and turning one off stays recorded).
