@@ -363,6 +363,10 @@ export function AppRuntimeView(props: AppRuntimeViewProps) {
                 items: session.transcript.visibleTranscriptItems,
                 running: visibleRuntimeState.running,
                 hydrating: session.transcript.transcriptHydrating,
+                hasOlderHistory: state.historyHasOlder && session.sessionUndo.rewindState == null,
+                loadingOlderHistory: state.historyOlderLoading,
+                olderHistoryExhausted: state.historyOlderExhausted,
+                onLoadOlderHistory: session.transcript.handleLoadOlderHistory,
                 t,
               } : null,
             }}

@@ -2968,6 +2968,8 @@ export const en = {
 "trajectory.inspector.usageNA": "Usage: not recorded for past sessions",
 "trajectory.timeline.label": "Timing overview",
 "trajectory.timeline.hint": "Drag a range to focus the ledger; click to clear",
+"trajectory.loadOlder.window": "Show {count} earlier records",
+"trajectory.loadOlder.history": "Load earlier session history",
 "settings.outputStyle.selector": "Style",
 "settings.outputStyle.selectorHint": "Five built-ins — explanatory / learning / concise / proactive plus Default (no injection) — and custom .md files from the output-styles directories. Selecting writes [agent] output_style in reasonix.toml and rebuilds the current session immediately; during a running turn it applies when the turn finishes.",
 "settings.outputStyle.searchPlaceholder": "Search styles",

@@ -389,6 +389,37 @@
   border: 1px dashed var(--fg-faint);
 }
 
+/* ── 长历史（⑤）：窗口化加载控件（视图窗口 → 后端分页两段式） ── */
+
+.traj__load-older-row {
+  display: flex;
+  justify-content: center;
+  padding: 8px 14px;
+}
+
+.traj__load-older {
+  border: 1px solid var(--border-soft);
+  background: var(--bg-soft);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--text-2xs);
+  padding: 3px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.traj__load-older:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--sidebar-hover);
+}
+
+.traj__load-older:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+
 
 /* 窄窗：检查器转为整宽面板。 */
 @media (max-width: 860px) {

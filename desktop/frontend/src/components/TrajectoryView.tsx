@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { X } from "lucide-react";
-import type { Item } from "../lib/useController";
+import type { HistoryLoadTrigger, Item } from "../lib/useController";
 import type { Translator } from "../lib/i18n";
 import type { DictKey } from "../lib/i18n";
 import { buildTrajectoryLedger, trajectorySummary, type TrajectoryKind, type TrajectoryRecord } from "../lib/trajectoryLedger";
@@ -18,8 +18,19 @@ export type TrajectoryViewProps = {
   items: Item[];
   running?: boolean;
   hydrating?: boolean;
+  /** 任务 704 ⑤: controller history paging — the view window shows the tail;
+   * the button chain walks backwards (view window first, backend pages next). */
+  hasOlderHistory?: boolean;
+  loadingOlderHistory?: boolean;
+  olderHistoryExhausted?: boolean;
+  onLoadOlderHistory?: (targetTurn?: number, trigger?: HistoryLoadTrigger) => boolean | Promise<boolean>;
   t: Translator;
 };
+
+/** Initial rendered window (turns) + per-expand step. DSH keeps a 50-node
+ * virtual window; 12 turns bounds the DOM while content-visibility keeps
+ * offscreen rows cheap. */
+const WINDOW_TURNS = 12;
 
 const KIND_LABEL_KEYS: Record<TrajectoryKind, DictKey> = {
   user: "trajectory.kind.user",
@@ -269,21 +280,40 @@ function TrajectoryInspector({ record, item, onClose, t }: { record: TrajectoryR
  * projection. Tail-anchored on mount (DSH: open at the latest record); the
  * reader stays pinned only while at the bottom, so scrolling up is stable.
  */
-export function TrajectoryView({ items, running, hydrating, t }: TrajectoryViewProps) {
+export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loadingOlderHistory, olderHistoryExhausted, onLoadOlderHistory, t }: TrajectoryViewProps) {
   const ledger = useMemo(() => buildTrajectoryLedger(items), [items]);
   const summary = useMemo(() => trajectorySummary(ledger), [ledger]);
-  const timeline = useMemo(() => buildTrajectoryTimeline(ledger.records), [ledger.records]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focus, setFocus] = useState<TrajectoryTimelineModel["focus"]>(null);
+  const [windowTurns, setWindowTurns] = useState(WINDOW_TURNS);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinnedRef = useRef(true);
+  const anchorHeightRef = useRef<number | null>(null);
+
+  // ⑤ 长历史窗口化: render only the tail window (last WINDOW_TURNS turns).
+  // Records arrive in turn order, so the cut is a plain turn threshold.
+  const windowedRecords = useMemo(() => {
+    if (windowTurns >= ledger.turnCount) return ledger.records;
+    const minTurn = ledger.turnCount - windowTurns + 1;
+    return ledger.records.filter((record) => record.turn >= minTurn);
+  }, [ledger, windowTurns]);
+  const hiddenCount = ledger.records.length - windowedRecords.length;
+  const timeline = useMemo(() => buildTrajectoryTimeline(windowedRecords), [windowedRecords]);
 
   // Tail anchor: re-pin to the newest record while the reader sits at the
-  // bottom (mount, new records, streaming growth). Scrolling up unpins.
+  // bottom (mount, new records, streaming growth). Scrolling up unpins. When
+  // a window expand prepends content, restore the reader's position instead
+  // (anchor to the previous scrollHeight).
   useLayoutEffect(() => {
     const node = scrollRef.current;
-    if (node && pinnedRef.current) node.scrollTop = node.scrollHeight;
-  }, [ledger, running]);
+    if (!node) return;
+    if (anchorHeightRef.current != null) {
+      node.scrollTop += node.scrollHeight - anchorHeightRef.current;
+      anchorHeightRef.current = null;
+    } else if (pinnedRef.current) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }, [ledger, windowTurns, running]);
 
   const handleScroll = (): void => {
     const node = scrollRef.current;
@@ -291,12 +321,26 @@ export function TrajectoryView({ items, running, hydrating, t }: TrajectoryViewP
     pinnedRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
   };
 
+  const expandWindow = (): void => {
+    anchorHeightRef.current = scrollRef.current?.scrollHeight ?? null;
+    setWindowTurns((turns) => turns + WINDOW_TURNS);
+  };
+
+  const loadOlderFromBackend = (): void => {
+    if (!hasOlderHistory || loadingOlderHistory) return;
+    // Keep the current window covering the whole feed so freshly paged-in
+    // turns render immediately instead of hiding behind the tail window.
+    anchorHeightRef.current = scrollRef.current?.scrollHeight ?? null;
+    setWindowTurns((turns) => turns + WINDOW_TURNS);
+    void onLoadOlderHistory?.(undefined, "viewport-user");
+  };
+
   const selectedItem = selectedId != null ? items.find((item) => item.id === selectedId) : undefined;
   const selectedRecord = selectedId != null ? ledger.records.find((record) => record.id === selectedId) : undefined;
   // 拖选聚焦（DSH 同款）：区间外的台账行降透明；无锚记录永不落在区间内。
   const focusIds = useMemo(
-    () => (focus && ledger ? recordIdsInFocus(ledger.records, focus) : null),
-    [focus, ledger],
+    () => (focus && ledger ? recordIdsInFocus(windowedRecords, focus) : null),
+    [focus, windowedRecords],
   );
 
   const body = hydrating
@@ -305,7 +349,21 @@ export function TrajectoryView({ items, running, hydrating, t }: TrajectoryViewP
       ? <div className="traj__empty">{t("trajectory.empty")}</div>
       : (
         <ol className="traj__ledger">
-          {ledger.records.map((record) => (
+          {hiddenCount > 0 && (
+            <li className="traj__load-older-row">
+              <button type="button" className="traj__load-older" onClick={expandWindow}>
+                {t("trajectory.loadOlder.window", { count: hiddenCount })}
+              </button>
+            </li>
+          )}
+          {hiddenCount === 0 && hasOlderHistory && !olderHistoryExhausted && (
+            <li className="traj__load-older-row">
+              <button type="button" className="traj__load-older" disabled={loadingOlderHistory} onClick={loadOlderFromBackend}>
+                {loadingOlderHistory ? t("common.loading") : t("trajectory.loadOlder.history")}
+              </button>
+            </li>
+          )}
+          {windowedRecords.map((record) => (
             <TrajectoryRow key={record.id} record={record} selected={record.id === selectedId}
               dimmed={focusIds != null && !focusIds.has(record.id)}
               onSelect={setSelectedId} t={t} />

@@ -47,6 +47,10 @@ export type ChatPaneTranscriptInput = {
     items: TranscriptProps["items"];
     running: boolean;
     hydrating: boolean;
+    hasOlderHistory: boolean;
+    loadingOlderHistory: boolean;
+    olderHistoryExhausted: boolean;
+    onLoadOlderHistory: TranscriptProps["onLoadOlderHistory"];
     t: Translator;
   } | null;
 };
@@ -126,9 +130,14 @@ export function ChatPaneRegion(props: ChatPaneRegionProps) {
               }}
             >
               {recoveringEmpty ? <SessionRecoveryPlaceholder availability={transcript.availability} /> : transcript.trajectory ? <Suspense fallback={null}><TrajectoryView
+                key={transcript.tabId}
                 items={transcript.trajectory.items}
                 running={transcript.trajectory.running}
                 hydrating={transcript.trajectory.hydrating}
+                hasOlderHistory={transcript.trajectory.hasOlderHistory}
+                loadingOlderHistory={transcript.trajectory.loadingOlderHistory}
+                olderHistoryExhausted={transcript.trajectory.olderHistoryExhausted}
+                onLoadOlderHistory={transcript.trajectory.onLoadOlderHistory}
                 t={transcript.trajectory.t}
               /></Suspense> : <Transcript
                 items={transcript.items}

@@ -4198,6 +4198,8 @@ export const zhTW: Record<DictKey, string> = {
 "trajectory.inspector.usageNA": "用量：歷史工作階段未落盤，暫不可用",
 "trajectory.timeline.label": "時間線總覽",
 "trajectory.timeline.hint": "拖選區間聚焦台帳，點擊清除",
+"trajectory.loadOlder.window": "顯示更早 {count} 條記錄",
+"trajectory.loadOlder.history": "載入更早工作階段歷史",
 "settings.outputStyle.selector": "選擇風格",
 "settings.outputStyle.selectorHint": "內建 explanatory / learning / concise / proactive 與預設（不注入）共五種，另有 output-styles 目錄裡的自訂 .md 檔案。選擇即寫入 reasonix.toml [agent] output_style 並立即重建當前工作階段生效；正在執行任務時則本輪結束後自動套用。",
 "settings.outputStyle.searchPlaceholder": "搜尋風格",

@@ -127,8 +127,8 @@ ok(trajView.includes("item?.kind === \"tool\" ? item.args : undefined") || trajV
 //    (out-of-range rows dim), click/right-click clears, running records draw
 //    start markers only.
 const timelineLib = fs.readFileSync(path.join(frontendRoot, "src/lib/trajectoryTimeline.ts"), "utf8");
-ok(trajView.includes("<TrajectoryTimelineBar") && trajView.includes("buildTrajectoryTimeline(ledger.records)"),
-  "the view mounts the timeline bar over the ledger");
+ok(trajView.includes("<TrajectoryTimelineBar") && trajView.includes("buildTrajectoryTimeline(windowedRecords)"),
+  "the view mounts the timeline bar over the loaded window (DOM bounded)");
 ok(timelineLib.includes("running: boolean"),
   "timeline module exposes running on spans (marker rendering keys off it)");
 ok(trajView.includes("pointerRangeToDomain") && trajView.includes("recordIdsInFocus"),
@@ -139,6 +139,27 @@ ok(trajView.includes("traj-row--dimmed") && trajView.includes("dimmed={focusIds 
 ok(trajView.includes("traj-timeline__ttft") && trajView.includes("span.ttftFraction"),
   "assistant spans split TTFT/decode when live-only TTFT data exists");
 ok(timelineLib.includes("PADDING_FRACTION") && timelineLib.includes("if (t1 <= t0) t1 = t0 + 1;"), "domain stays padded and non-degenerate");
+
+// ⑨ Long history (⑤): tail window + two-stage load-earlier (view window,
+//    then controller paging) with scroll anchoring; per-session remount.
+ok(trajView.includes("const WINDOW_TURNS = 12;"), "the view window starts bounded (12 turns)");
+ok(trajView.includes("ledger.records.filter((record) => record.turn >= minTurn)"),
+  "the rendered window keeps the tail turns only");
+ok(trajView.includes("trajectory.loadOlder.window") && trajView.includes("trajectory.loadOlder.history"),
+  "two-stage load-earlier controls: window expand then backend paging");
+ok(trajView.includes("anchorHeightRef") && trajView.includes("node.scrollTop += node.scrollHeight - anchorHeightRef.current"),
+  "window expands restore the reader position (scroll anchoring)");
+ok(trajView.includes('key={transcript.tabId}') || chatPane.includes("key={transcript.tabId}"),
+  "the trajectory surface remounts per session tab (fresh window/selection)");
+ok(chatPane.includes("olderHistoryExhausted={transcript.trajectory.olderHistoryExhausted}") &&
+  runtimeView.includes("olderHistoryExhausted: state.historyOlderExhausted"),
+  "controller paging state reaches the view (historyHasOlder/loading/exhausted)");
+ok(runtimeView.includes("onLoadOlderHistory: session.transcript.handleLoadOlderHistory"),
+  "backend paging rides the existing controller command (no storage reads)");
+const trajCss = fs.readFileSync(path.join(frontendRoot, "src/components/TrajectoryView.css"), "utf8");
+ok(trajCss.includes("content-visibility: auto") && trajCss.includes("contain-intrinsic-size"),
+  "offscreen rows skip layout/paint via content-visibility (virtualization生效)");
+
 
 
 console.log(`\n${passed} passed, ${failed} failed`);

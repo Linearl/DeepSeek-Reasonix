@@ -2965,6 +2965,8 @@ export const zh: Record<DictKey, string> = {
 "trajectory.inspector.usageNA": "用量：历史会话未落盘，暂不可用",
 "trajectory.timeline.label": "时间线总览",
 "trajectory.timeline.hint": "拖选区间聚焦台账，点击清除",
+"trajectory.loadOlder.window": "显示更早 {count} 条记录",
+"trajectory.loadOlder.history": "加载更早会话历史",
 "settings.outputStyle.selector": "选择风格",
 "settings.outputStyle.selectorHint": "内置 explanatory / learning / concise / proactive 与默认（不注入）共五种，另有 output-styles 目录里的自定义 .md 文件。选择即写入 reasonix.toml [agent] output_style 并立即重建当前会话生效；正在执行任务时则本轮结束后自动应用。",
 "settings.outputStyle.searchPlaceholder": "搜索风格",
