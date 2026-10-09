@@ -318,7 +318,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		}
 		// Task 277: same fixed-key-set rule — a missing line would flip the
 		// switch back to off on the next save (the 81/123 lesson).
-		fmt.Fprintf(&b, "update_chime = %v   # desktop: play the ~3s update-complete chime on the first launch after a version swap (task 277)\n", c.Desktop.UpdateChime)
+		fmt.Fprintf(&b, "update_chime = %v   # desktop: play the update-complete chime on the first launch after a version swap (task 277; 10 s hard cap, cut on mouse movement — task 678)\n", c.Desktop.UpdateChime)
 		// Task 512: same rule — an unlisted tune would reset to nokia on every
 		// save. Normalized (empty/unknown reads nokia); the frontend falls back
 		// from mario to nokia in public builds (Nintendo asset compiled out).
