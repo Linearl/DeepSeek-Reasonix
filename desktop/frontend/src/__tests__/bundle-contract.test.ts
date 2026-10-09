@@ -108,8 +108,10 @@ ok(
   "Trash and existing session search remain available",
 );
 ok(
-  /\.sidebar--workbench\s+\.sidebar__utility-row\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s.test(stylesSource),
-  "Workbench footer distributes its three utility actions evenly",
+  // 656b：工具行现状 = 5 位（任务 320 收件箱入行扩 4 列、409 群聊入行扩 5 列；
+  // 原「三工具位」断言自 320 起过期，409/649 交付报备为预存红，本片对齐）。
+  /\.sidebar--workbench\s+\.sidebar__utility-row\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s.test(stylesSource),
+  "Workbench footer distributes its five utility actions evenly",
 );
 ok(
   /\.app--creation\s+\.sidebar__nav,\s*:root\[data-theme-style\]\s+\.app--creation\s+\.sidebar__nav\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s.test(stylesSource),
