@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"reasonix/internal/fileutil"
@@ -362,12 +363,15 @@ func sessionEventIndexNearCap(sessionPath string) bool {
 // exactly, and "auto" applies the configured factor plus the optional MiB cap
 // (OR). path is only attributed in the off-mode WARN so the skip is
 // diagnosable per session (review finding, 2026-09-28).
+// 任务 373 R4 备料：两条跳过 WARN 走按路径限频（warnRotateSkipOnce）——auto
+// cap 之下「fold 不回本」的会话（live 内容本身超 cap，瘦身救不了）每次保存
+// 都命中同一条 WARN，2026-10-10 实测单日 847 行、峰值 20 行/分钟。
 func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 	cfg := currentEventsRotation()
 	switch cfg.mode {
 	case eventsRotationOff:
 		if eventsLogAboveFactor(logSize, contentBytes, float64(sessionEventLogCompactFactor)) {
-			slog.Warn("session: oversized event log left in place (events auto rotation off)",
+			warnRotateSkipOnce(path, "session: oversized event log left in place (events auto rotation off)",
 				"path", path, "logSize", logSize, "contentBytes", contentBytes)
 		}
 		return false
@@ -384,7 +388,7 @@ func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 			// slimming entries still force the fold, and the storage inventory
 			// keeps flagging the log as over its cap.
 			if contentBytes*2 >= logSize {
-				slog.Warn("session: oversized event log left in place (fold would not shrink it)",
+				warnRotateSkipOnce(path, "session: oversized event log left in place (fold would not shrink it)",
 					"path", path, "logSize", logSize, "contentBytes", contentBytes, "capMB", cfg.capMB)
 				return false
 			}
@@ -394,6 +398,57 @@ func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 	default: // manual: today's built-in gate
 		return eventsLogAboveFactor(logSize, contentBytes, float64(sessionEventLogCompactFactor))
 	}
+}
+
+// 任务 373 R4 备料：over-size 跳过 WARN 的限频（键=路径+文案）。瘦不动的会话
+// （live 超 cap、fold 不回本）每逢保存必命中同一条 WARN，重复条目不携带任何
+// 新信息，反而把 desktop.log 里真正的新事件淹没——限频不是静音：首次必发，
+// 冷却期内同键只累计抑制数，下次发出时随行带出（304 纪律：抑制了多久、多少
+// 条，有据可查，与桌面侧 perfWarnGate 同一语义）。文案入键：换文案（如轮换
+// 模式变更）视为新信息，各得一次首警。
+const (
+	eventsRotateWarnCooldown = 15 * time.Minute
+	// 路径数以会话数为上界，4096 只是防御性帽：万一被病态调用方撑大，整体
+	// 重置（代价是冷却状态清零、至多一波重发），不做逐条淘汰猜测。
+	eventsRotateWarnMaxPaths = 4096
+)
+
+var (
+	eventsRotateWarnMu   sync.Mutex
+	eventsRotateWarnMemo = make(map[string]eventsRotateWarnState)
+)
+
+type eventsRotateWarnState struct {
+	lastAt     time.Time
+	suppressed int
+}
+
+// warnRotateSkipOnce emits msg for path at most once per cooldown window;
+// suppressed repeats are counted and carried into the next emission. The
+// cooldown key is (path, msg): identical repeats carry no new information and
+// are what the gate exists for, while a different message on the same session
+// (a rotation-mode change) is new information and gets its own first emission.
+func warnRotateSkipOnce(path, msg string, fields ...any) {
+	key := path + "\x00" + msg
+	now := time.Now()
+	eventsRotateWarnMu.Lock()
+	if len(eventsRotateWarnMemo) >= eventsRotateWarnMaxPaths {
+		eventsRotateWarnMemo = make(map[string]eventsRotateWarnState)
+	}
+	memo := eventsRotateWarnMemo[key]
+	if now.Sub(memo.lastAt) < eventsRotateWarnCooldown {
+		memo.suppressed++
+		eventsRotateWarnMemo[key] = memo
+		eventsRotateWarnMu.Unlock()
+		return
+	}
+	suppressed := memo.suppressed
+	eventsRotateWarnMemo[key] = eventsRotateWarnState{lastAt: now}
+	eventsRotateWarnMu.Unlock()
+	if suppressed > 0 {
+		fields = append(fields, "suppressed", int64(suppressed))
+	}
+	slog.Warn(msg, fields...)
 }
 
 // sessionEventReplay is the result of a tolerant event-log replay: the
