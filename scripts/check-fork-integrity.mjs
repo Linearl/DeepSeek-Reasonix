@@ -52,7 +52,7 @@ const CHECKS = [
   { feature: "task 287 Plan 用量概览卡", file: "desktop/frontend/src/components/PlanUsageCard.tsx", patterns: ["plan-usage__row", "planFiveHourExhausted", "planUsageNoteText"] },
   { feature: "task 287 statusBar plan 显示项注册", file: "desktop/frontend/src/lib/statusBarItems.ts", patterns: ["\"plan\""] },
   { feature: "task 287 Plan 用量三语", file: "desktop/frontend/src/locales/zh.ts", patterns: ["planUsage.title", "planUsage.exhausted", "status.planLabel"] },
-  { feature: "task 280 乐观并行（实验室改名迁址，同键取反绑定；任务561 归 automation 组）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["optimisticParallel", "SetOptimisticWrite(e.target.checked)", "group: \"automation\""] },
+  { feature: "task 280 乐观并行（实验室改名迁址，同键取反绑定；任务561 归 automation 组）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["optimisticParallel", "app.SetOptimisticWrite(on)", "group: \"automation\""] },
   { feature: "task 192 驻留豁免开关（store 策略）", file: "desktop/frontend/src/lib/transcriptStore.ts", patterns: ["setResidentPolicy", "shouldRetainOnSwitch", "ResidentExemptLimit", "noteResidentBudgetOver"] },
   { feature: "#9221 颜色筛选 TSX", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["colorFilter", "renderColorFilterControl", "project-tree__action-btn"] },
   { feature: "#9222 分组 TSX + 持久化（上游等价实现）", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["ProjectTreeGroupRows", "useProjectTreeOrganization", "persistSessionGroupCollapsed"] },
