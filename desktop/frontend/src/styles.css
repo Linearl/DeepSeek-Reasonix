@@ -3495,6 +3495,10 @@ a[href] {
 }
 .transcript-shell {
   position: relative;
+  /* 任务 690：把内缩变量提升到 shell，使绝对定位的 .tool-recovery-panel
+     （.transcript 的兄弟节点）也能读到同一内缩并与正文行/ composer 同步
+     收窄（见下方 max-width: 820px 断点）。 */
+  --transcript-inline-pad: 32px;
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
@@ -24668,8 +24672,11 @@ button.statusbar__mcp:focus-visible {
   .topbar__actions {
     display: flex;
   }
-  .transcript {
+  .transcript,
+  .transcript-shell {
     --transcript-inline-pad: 16px;
+  }
+  .transcript {
     padding: 18px 0 28px;
   }
   .jump-bar {

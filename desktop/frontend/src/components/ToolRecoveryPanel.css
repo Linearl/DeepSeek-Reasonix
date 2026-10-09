@@ -1,7 +1,18 @@
 .tool-recovery-panel {
   position: absolute;
-  inset-inline: 24px;
+  /* 任务 690：宽度三方对齐。正文行（.transcript__row 内缩
+     var(--transcript-inline-pad) + 子元素 max-width var(--maxw)）和
+     composer（.footer 同款内缩 + .composer-wrap max-width var(--maxw)）
+     的内容宽度都是 min(var(--maxw), 容器宽 - 2×内缩) 居中；本面板此前
+     用 inset-inline: 24px 无封顶，两端与它们对不上。改为两端 0 + auto
+     外边距居中，宽度先吃满（减等效内缩）再由 --maxw 封顶。变量在
+     .transcript-shell（本面板的包含块）上定义，窄屏断点同步收窄。 */
+  inset-inline: 0;
   bottom: 12px;
+  width: calc(100% - 2 * var(--transcript-inline-pad, 32px));
+  max-width: var(--maxw);
+  margin-inline: auto;
+  margin-block: 0;
   z-index: var(--z-inline-sticky);
   max-height: min(60vh, 480px);
   overflow: auto;
@@ -9,7 +20,6 @@
   border: 1px solid currentColor;
   border-radius: 8px;
   padding: 12px 16px;
-  margin: 0;
 }
 .tool-recovery-panel > details { width: 100%; }
 .tool-recovery-panel summary { cursor: pointer; }
