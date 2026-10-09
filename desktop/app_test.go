@@ -1405,11 +1405,13 @@ func TestSettingsShowsGlobalCredentialWithoutMutatingWorkspaceEnv(t *testing.T) 
 	// 与 loadDotEnvForRoot「workspace .env 不写进程环境」（多工作区凭据互不泄漏）。
 	// Settings 展示路径本应用内存态 resolver（ResolveGlobalFirst 只读文件不钉 env）。
 	// 引入点：任务 634（c7968b57f）为 merged 沙箱读选择了带凭据的装载变体。
-	// 派单纪律「产品缺陷不修产品」：本测试 skip 待产品修复件（修法建议：为
-	// mergedSandboxWriteRoots 提供不带凭据的 LoadForRootReadOnly 变体，凭据装载
-	// 仅保留给真正喂 runtime 的路径）。修复后本测试应原样转绿，断言零改动。
-	// 证据链见 docs/report/zcode交付/zcode交付-680-Sidecars修复-673L-20261009.md。
-	t.Skip("673L: 产品缺陷——Settings 展示路径经 634 mergedSandboxWriteRoots→LoadForRootReadOnly 把全局凭据重钉进进程环境，覆盖工作区 .env 值；待产品修复件")
+	// 修复（任务 693，wt-693）：Settings() 展示路径两处 merged 装载
+	// （mergedSandboxWriteRoots 与 populateWebSearchSettings）改用不带凭据的
+	// LoadForRootWithoutCredentialsReadOnly，凭据装载仅保留给真正喂 runtime 的
+	// 路径；展示层 provider 凭据状态继续走内存态 ResolveGlobalFirst。本测试
+	// 去 skip 后断言零改动原样转绿（-count=3）。
+	// 证据链见 docs/report/zcode交付/zcode交付-680-Sidecars修复-673L-20261009.md
+	// 与 docs/report/zcode交付/zcode交付-693-凭据重钉修复-20261009.md。
 	isolateDesktopUserDirs(t)
 
 	project := robustTempDir(t)
