@@ -16,6 +16,10 @@ type SkillHealthOptions struct {
 	Tools    []tool.ContractEntry
 	Bindings []tool.MCPBinding
 	Plugins  []config.PluginEntry
+	// MCPServersConfigured keeps doctor warnings aligned with capdiag's
+	// tool-reference classification (task 652): with MCP servers configured,
+	// bare unknown references are unverified (info-grade), not unknown.
+	MCPServersConfigured bool
 	// FailedServers maps MCP server name → host-proven failure reason.
 	FailedServers map[string]string
 	// CacheMismatch lists MCP servers whose schema cache fingerprint mismatched.
@@ -25,7 +29,12 @@ type SkillHealthOptions struct {
 // CollectSkillHealthWarnings returns human-readable skill/MCP health warnings.
 func CollectSkillHealthWarnings(opts SkillHealthOptions) []string {
 	var out []string
-	for _, diagnostic := range skill.CheckToolReferences(opts.Skills, skill.ToolReferenceOptions{Known: tool.KnownToolNames(), Registered: opts.Tools, Bindings: opts.Bindings}) {
+	for _, diagnostic := range skill.CheckToolReferences(opts.Skills, skill.ToolReferenceOptions{
+		Known:                tool.KnownToolNames(),
+		Registered:           opts.Tools,
+		Bindings:             opts.Bindings,
+		MCPServersConfigured: opts.MCPServersConfigured,
+	}) {
 		out = append(out, diagnostic.Message)
 	}
 	for _, d := range skill.CheckMCPRequirements(opts.Skills, opts.Plugins, opts.FailedServers) {

@@ -9,7 +9,11 @@ import (
 
 func skillToolIssues(store *skill.Store, cfg *config.Config, mcp MCPReport, sanitize func(string) string) []Issue {
 	var issues []Issue
-	opts := skill.ToolReferenceOptions{Known: tool.KnownToolNames(), Bindings: mcp.bindings}
+	opts := skill.ToolReferenceOptions{
+		Known:                tool.KnownToolNames(),
+		Bindings:             mcp.bindings,
+		MCPServersConfigured: len(mcp.Servers) > 0,
+	}
 	failed := map[string]string{}
 	for _, server := range mcp.Servers {
 		if server.RuntimeStatus == "failed" {

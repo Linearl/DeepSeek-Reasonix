@@ -14,6 +14,15 @@ type ToolReferenceOptions struct {
 	Known      []string
 	Registered []tool.ContractEntry
 	Bindings   []tool.MCPBinding
+	// MCPServersConfigured marks a target environment where MCP servers are
+	// configured (task 652). A bare reference that matches no offline identity
+	// there may still name a tool served at runtime, so it is classified
+	// tool_reference_unverified (info) instead of tool_reference_unknown
+	// (warning): the offline inventory structurally cannot decide, and the
+	// warning would never clear even after the server is verified working.
+	// Zero value keeps the strict unknown classification (session-side checks
+	// with an authoritative inventory, and environments without MCP).
+	MCPServersConfigured bool
 }
 
 // ToolReferenceDiagnostic describes a reference without granting any permission.
@@ -46,7 +55,7 @@ func CheckToolReferences(skills []Skill, opts ToolReferenceOptions) []ToolRefere
 			if ref == "" {
 				continue
 			}
-			code, severity, reason := checkToolReference(ref, names, bindings)
+			code, severity, reason := checkToolReference(ref, names, bindings, opts.MCPServersConfigured)
 			if code != "" {
 				out = append(out, ToolReferenceDiagnostic{sk.Name, ref, code, severity,
 					fmt.Sprintf("skill %q allowed-tools reference %q %s", sk.Name, ref, reason)})
@@ -56,7 +65,7 @@ func CheckToolReferences(skills []Skill, opts ToolReferenceOptions) []ToolRefere
 	return out
 }
 
-func checkToolReference(ref string, names map[string]bool, bindings []tool.MCPBinding) (string, string, string) {
+func checkToolReference(ref string, names map[string]bool, bindings []tool.MCPBinding, mcpServersConfigured bool) (string, string, string) {
 	pattern := strings.ContainsAny(ref, "*?[")
 	if pattern {
 		if _, err := path.Match(ref, ""); err != nil {
@@ -96,6 +105,12 @@ func checkToolReference(ref string, names map[string]bool, bindings []tool.MCPBi
 		return "skill.tool_reference_ambiguous", "warning", "matches multiple MCP tools; use a qualified reference"
 	}
 	if pattern || dynamicToolReference(ref) {
+		return "skill.tool_reference_unverified", "info", "is unverified by the offline inventory; resolve it in the target session"
+	}
+	// Task 652: with MCP servers configured, a bare unknown name may be served
+	// at runtime — report the honest "offline cannot decide" classification
+	// instead of a warning that no offline refresh can ever clear.
+	if mcpServersConfigured {
 		return "skill.tool_reference_unverified", "info", "is unverified by the offline inventory; resolve it in the target session"
 	}
 	return "skill.tool_reference_unknown", "warning", "is not a known tool identity"
