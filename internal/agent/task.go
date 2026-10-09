@@ -839,7 +839,7 @@ func (t *TaskTool) RunProfileSpec(ctx context.Context, spec ProfileExecSpec) (re
 			return result, runErr
 		}
 		emitSubagentLifecycle(parentSink, "child_completed", parentID, spec.Worker.Name, usageModelRef, effortRef, run, &SubagentOutcome{Status: SubagentOutcomeCompleted, FinalAnswer: answer}, BackgroundOwnedLifecycle(ctx))
-		return FormatSubagentRunResult(answer, run, false), nil
+		return FormatSubagentRunResult(answer, run, false, formatSubagentUsageLine(trk.usageSummary())), nil
 	}
 	return GuardSubagentHostDecisionText(answer), nil
 }
