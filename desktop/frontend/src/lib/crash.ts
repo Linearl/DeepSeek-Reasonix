@@ -709,12 +709,18 @@ function sendButton(
 
 const COPY_FEEDBACK_MS = 2_000;
 
-// Task 617 route B: one-click analyze. The click runs the three prerequisite
-// probes (source checkout / gh auth / live workspace) and only proceeds to a
-// spend confirmation when all hard prerequisites pass — each failure paints its
-// own distinct notice into `note` and route B stops, pointing at route A
-// (Copy). Like the send button, both bindings are resolved at click time off
-// window.go so the overlay keeps working when the rest of the app is broken.
+// Task 617 route B: one-click analyze. The click runs the prerequisite probes
+// (source checkout / gh auth) and only proceeds to a spend confirmation when
+// the hard prerequisites pass — each failure paints its own distinct notice
+// into `note` and route B stops, pointing at route A (Copy). Like the send
+// button, both bindings are resolved at click time off window.go so the
+// overlay keeps working when the rest of the app is broken.
+//
+// Task 687: the live-workspace check is gone. The analysis self-hosts in a
+// fresh Global tab (task 672), so it must start with nothing open / no project
+// expanded — the old `workspaceReady` hard gate is exactly what refused the
+// 2026-10-09 17:55 click until the user expanded a project. The report still
+// carries workspaceReady as informational state.
 //
 // Task 663: the gates are shared by the whole analysis family — the hang entry
 // (StartHangAnalysis) and the startup pending-crash entry (StartCrashAnalysis
@@ -741,7 +747,7 @@ export function analyzeEntryButton(
     }
     analyze.disabled = false;
     analyze.textContent = t("crash.analyze");
-    if (!report || !report.workspaceReady) {
+    if (!report) {
       note.textContent = t("crash.analyzeNoWorkspace");
       return;
     }

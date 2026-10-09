@@ -46,11 +46,15 @@ type CrashAnalysisAvailabilityReport struct {
 	// the libs-side keyring convention) reports a usable GitHub identity.
 	GhAuthenticated bool   `json:"ghAuthenticated"`
 	GhCheckDetail   string `json:"ghCheckDetail,omitempty"`
-	// WorkspaceReady: the app has a live writable tab. The analysis itself is
-	// hosted in a fresh Global tab (task 672), so this stays a readiness proxy
-	// for the session surface, not the analysis host.
+	// WorkspaceReady: informational only — whether the app happens to have a
+	// live writable tab right now. Task 687: it no longer gates route B, because
+	// the analysis self-hosts in a fresh Global tab (task 672) and must start
+	// even when nothing is open / no project is expanded (the 2026-10-09 17:55
+	// report: one-click analyze refused until the user expanded a project).
 	WorkspaceReady bool `json:"workspaceReady"`
-	Ready          bool `json:"ready"`
+	// Ready: route-B viability — source checkout plus gh identity. The analysis
+	// conversation no longer depends on any pre-existing workspace (task 687).
+	Ready bool `json:"ready"`
 }
 
 // Task 672 seams: the gates and the final submission are indirected so tests
@@ -72,10 +76,13 @@ var crashAnalysisControllerWaitTimeout = 60 * time.Second
 
 const crashAnalysisControllerPollInterval = 50 * time.Millisecond
 
-// CrashAnalysisAvailability runs the three route-B prerequisite checks without
+// CrashAnalysisAvailability runs the route-B prerequisite checks without
 // starting anything. The frontend gates the one-click flow on this report and
 // shows one distinct notice per failed check (missing source / spend warning /
-// gh auth).
+// gh auth). Task 687: the live-workspace check is no longer a prerequisite —
+// the analysis self-hosts in a fresh Global tab, so it starts with nothing
+// open / no project expanded; WorkspaceReady stays in the report as
+// informational state only.
 func (a *App) CrashAnalysisAvailability() CrashAnalysisAvailabilityReport {
 	dir := crashAnalysisSourceDir()
 	ghOK, ghDetail := crashAnalysisGhAuth()
@@ -90,7 +97,7 @@ func (a *App) CrashAnalysisAvailability() CrashAnalysisAvailabilityReport {
 	live := tab != nil && !a.tabIsReadOnly(tab) && tab.Ctrl != nil
 	a.mu.RUnlock()
 	report.WorkspaceReady = live
-	report.Ready = report.SourceReady && report.GhAuthenticated && report.WorkspaceReady
+	report.Ready = report.SourceReady && report.GhAuthenticated
 	return report
 }
 

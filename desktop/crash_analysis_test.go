@@ -444,3 +444,32 @@ func TestCrashAnalysisTopicTitleCarriesKind(t *testing.T) {
 		t.Fatalf("blank kind title = %q", got)
 	}
 }
+
+// TestCrashAnalysisAvailabilityNoLongerGatesOnWorkspace pins task 687: with
+// nothing open (no project expanded, no live tab), route B still reads ready —
+// the analysis self-hosts in a fresh Global tab (task 672), so a live workspace
+// is not its prerequisite. WorkspaceReady keeps reporting the honest live-tab
+// state as informational only; the 2026-10-09 17:55 report was exactly this
+// gate refusing the click until the user expanded a project.
+func TestCrashAnalysisAvailabilityNoLongerGatesOnWorkspace(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	origSource, origGh := crashAnalysisSourceDir, crashAnalysisGhAuth
+	crashAnalysisSourceDir = func() string { return `C:\src\reasonix` }
+	crashAnalysisGhAuth = func() (bool, string) { return true, "" }
+	t.Cleanup(func() { crashAnalysisSourceDir, crashAnalysisGhAuth = origSource, origGh })
+
+	report := app.CrashAnalysisAvailability()
+	if !report.Ready {
+		t.Fatalf("route B must be ready with no live tab (the analysis self-hosts): %+v", report)
+	}
+	if report.WorkspaceReady {
+		t.Fatalf("WorkspaceReady must stay honest about the no-tab state: %+v", report)
+	}
+
+	// The gh gate still works: without an identity route B is not ready.
+	crashAnalysisGhAuth = func() (bool, string) { return false, "gh auth status failed" }
+	if report := app.CrashAnalysisAvailability(); report.Ready {
+		t.Fatalf("missing gh identity must keep route B not ready: %+v", report)
+	}
+}

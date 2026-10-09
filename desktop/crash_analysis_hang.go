@@ -27,10 +27,10 @@ import (
 // residue the watchdog cannot classify: a stalled wait outside the stream or a
 // dead runtime — exactly the states doctor responsiveness calls silent.
 //
-// The pipeline is the crash one byte for byte (fresh named session → YOLO →
-// instruction with a sanitized payload → gh-issue-submit), only the framing
-// notice and the payload source differ, so there is one analysis family, not
-// two.
+// The pipeline is the crash one byte for byte (fresh Global-scope named session
+// → YOLO → instruction with a sanitized payload → gh-issue-submit, task 687),
+// only the framing notice and the payload source differ, so there is one
+// analysis family, not two.
 
 // Test seams: the doctor collector reads real files; tests point it at
 // fixtures and pin the clock.
@@ -147,10 +147,18 @@ func (a *App) StartHangAnalysis() (string, error) {
 		return "", err
 	}
 
-	if err := a.NewSessionForTab(""); err != nil {
-		return "", fmt.Errorf("could not start a fresh session for the analysis (%v) — use the Copy button to report manually", err)
+	// Task 687: the analysis conversation is hosted under the built-in Global
+	// scope, same as the crash entry (task 672). The route used to rotate the
+	// active tab in place (NewSessionForTab("")), which both filed the fresh
+	// topic under the hung session's project and required a live tab before the
+	// flow could even start. The shared openCrashAnalysisSession path removes
+	// both couplings: the hang analysis lands under Global, and the flow only
+	// needs the (inherently live) hung session for the verdict probe above.
+	tabID, err := a.openCrashAnalysisSession("卡顿")
+	if err != nil {
+		return "", err
 	}
-	sessionPath, sessionDir := a.activeSessionLocation()
+	sessionPath, sessionDir := a.activeSessionLocation() // the global analysis tab is active now
 	title := crashAnalysisSessionTitle("卡顿分析", false)
 	if sessionPath != "" {
 		if renameErr := agent.RenameSession(sessionPath, title); renameErr != nil {
@@ -159,15 +167,15 @@ func (a *App) StartHangAnalysis() (string, error) {
 			slog.Warn("hang-analysis: session title projection failed (analysis continues)", "err", titleErr)
 		}
 	}
-	a.SetModeForTab("", "yolo")
+	a.SetModeForTab(tabID, "yolo")
 	instruction := buildHangAnalysisInstruction(dir, payload)
-	if err := a.SubmitToTab("", instruction); err != nil {
+	if err := crashAnalysisSubmit(a, tabID, instruction); err != nil {
 		return "", fmt.Errorf("could not submit the analysis instruction (%v) — use the Copy button to report manually", err)
 	}
 	a.beginCrashAnalysisRun(sessionPath)
 	slog.Info("hang-analysis: started", "verdict", collected.Verdict,
 		"session", scrubUserPaths(sessionPath), "title", title, "analyzed", scrubUserPaths(path))
-	return fmt.Sprintf("YOLO 卡顿分析会话已启动并命名为「%s」（%s）；分析对象是会话 %s（doctor 判定：%s）。结论会发送到该分析会话。",
+	return fmt.Sprintf("YOLO 卡顿分析会话已在 Global 下启动并命名为「%s」（%s）；分析对象是会话 %s（doctor 判定：%s）。结论会发送到该分析会话。",
 		title, scrubUserPaths(sessionPath), scrubUserPaths(path), collected.Verdict), nil
 }
 
@@ -189,9 +197,9 @@ func hangAnalysisPayload(report doctor.ResponsivenessReport, now time.Time) (str
 		ErrorType:     "SessionUnresponsive",
 		ErrorMessage: fmt.Sprintf("Session turn is unresponsive (doctor verdict: %s). %s",
 			report.Verdict, strings.TrimSpace(report.Detail)),
-		TopFrame:   "doctor.responsiveness:" + report.Verdict,
+		TopFrame:    "doctor.responsiveness:" + report.Verdict,
 		BuildCommit: version,
-		OccurredAt: now.UTC().Format(time.RFC3339),
+		OccurredAt:  now.UTC().Format(time.RFC3339),
 	}
 	out, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {

@@ -130,11 +130,20 @@ await clickAnalyze(overlay);
 ok(note(overlay).includes("consumes token quota"), "fallback gh discovery still reaches the spend confirmation");
 ok(startCalls.length === 0, "fallback discovery alone does not start the analysis");
 
-// Workspace not ready — B must not start.
+// Workspace not ready — task 687: no longer a gate. The analysis self-hosts in
+// a fresh Global tab (task 672), so route B must reach the spend confirmation
+// with nothing open / no project expanded (the 2026-10-09 17:55 refusal).
 availability = { ...allReady, workspaceReady: false, ready: false };
 await clickAnalyze(overlay);
-ok(note(overlay).includes("No live session"), "no live workspace shows the workspace notice");
-ok(startCalls.length === 0, "no live workspace does not start the analysis");
+ok(note(overlay).includes("consumes token quota"), "no live workspace still reaches the spend confirmation (task 687)");
+ok(startCalls.length === 0, "no live workspace alone does not start the analysis");
+
+// A failed availability probe (backend threw / binding vanished) still stops
+// route B with the workspace notice — the only remaining consumer of that face.
+availability = null;
+await clickAnalyze(overlay);
+ok(note(overlay).includes("No live session"), "a failed probe shows the fallback notice");
+ok(startCalls.length === 0, "a failed probe does not start the analysis");
 
 // All prerequisites pass — the spend confirmation (prerequisite 2) gates the
 // actual start.
