@@ -9,7 +9,7 @@
 //  ③ M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
 //     fullAccess / optimisticParallel each still has its own rail entry and
 //     its own pane branch;
-//  ④ the rail carries exactly 36 entries in 8 groups
+//  ④ the rail carries exactly 37 entries in 9 groups
 //     (5/7/14/1/1/1/6/1 — 任务 517 merges the M1 autonomousRunGuard card and
 //     the standalone eventWaitRecheck entry into the single-key
 //     safetyCostControl card; 任务 650 moves optimisticParallel from
@@ -53,7 +53,10 @@ ok(
 ok(panel.includes('labelKey: "settings.labGroup.automation"') && panel.includes('labelKey: "settings.labGroup.infra"'),
   "new groups carry locale label keys");
 
-// ① rail census: exactly 36 feature entries, 5/7/14/1/1/1/6/1 per group
+// ① rail census: exactly 37 feature entries, 5/8/14/1/1/1/6/1 per group
+// (任务 677 collabGroupView joined efficiency post-670 — the old 6/6 split
+// was stale by then; 任务 650 then moved optimisticParallel automation→
+// efficiency, landing at automation 5 / efficiency 8.)
 // (任务 603 adds the single tool-opt entry; 任务 517 folds the M1 card and
 // eventWaitRecheck into safetyCostControl; 任务 650 moves optimisticParallel
 // automation→efficiency — automation 6→5, efficiency 6→7).
@@ -61,11 +64,11 @@ ok(panel.includes('labelKey: "settings.labGroup.automation"') && panel.includes(
   const entries = [...panel.matchAll(/\{ id: "([a-zA-Z]+)", group: "([a-z-]+)",/g)];
   const groups: Record<string, number> = {};
   for (const [, , g] of entries) groups[g] = (groups[g] ?? 0) + 1;
-  ok(entries.length === 36, `rail carries exactly 36 entries (got ${entries.length})`);
-  ok(groups["automation"] === 5 && groups["efficiency"] === 7 && groups["ui"] === 14 &&
+  ok(entries.length === 37, `rail carries exactly 37 entries (got ${entries.length})`);
+  ok(groups["automation"] === 5 && groups["efficiency"] === 8 && groups["ui"] === 14 &&
      groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 1 && groups["infra"] === 6 &&
      groups["tool-opt"] === 1,
-    `group counts are 5/7/14/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 5/8/14/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
   const ids = entries.map(([, id]) => id);
   ok(new Set(ids).size === ids.length, "no duplicate rail ids");
 }
