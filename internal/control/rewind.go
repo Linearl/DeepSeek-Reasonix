@@ -60,7 +60,16 @@ func (a conversationApplier) ApplyConversationTruncate(boundary int, forward []b
 	// prefix; a tail-only rewind keeps the covered prefix byte-identical.
 	c.executor.InvalidateProjectionIfStale()
 	if err := c.SnapshotRewrite(); err != nil {
-		_ = a.RestoreConversation(forward)
+		// Task 371 (A4): the rollback used to be fire-and-forget. When it also
+		// fails, memory and disk have diverged and the caller only ever saw
+		// the persist error — log the rollback failure and surface both.
+		if restoreErr := a.RestoreConversation(forward); restoreErr != nil {
+			slog.Error("control: rewind persist failed AND rollback failed; conversation state diverged", "err", err, "rollbackErr", restoreErr)
+			return errors.Join(
+				fmt.Errorf("persist conversation after rewind: %w", err),
+				fmt.Errorf("rollback after failed rewind: %w", restoreErr),
+			)
+		}
 		return fmt.Errorf("persist conversation after rewind: %w", err)
 	}
 	return nil
