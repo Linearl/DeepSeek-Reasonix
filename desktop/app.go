@@ -346,6 +346,12 @@ type App struct {
 	tabsSaveMu             sync.Mutex
 	tabsSaveVersion        uint64 // protected by mu; assigned when collecting a snapshot
 	tabsLastWrittenVersion uint64 // protected by tabsSaveMu
+	// tabsSaveQueue (task 653) defers the desktop-tabs.json write out of the
+	// App.mu critical section: saveTabsLocked collects under the lock and
+	// enqueues; one flusher goroutine (started by App.startup) coalesces and
+	// writes. Before the flusher starts, enqueues fall back to the pre-653
+	// synchronous write. See tabs_save_queue.go.
+	tabsSaveQueue tabsSaveQueue
 
 	forceQuit           atomic.Bool
 	backgroundMaximised atomic.Bool
@@ -599,6 +605,11 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	installSystemQuitHook()
+	// Task 653: from here on this process owns local tabs — start the
+	// desktop-tabs.json flusher so saveTabsLocked enqueues instead of writing
+	// under App.mu. The remote web-window child returned above and keeps the
+	// synchronous fallback (it has no tabs to save anyway).
+	a.startTabsSaveFlusher()
 	// Task 211 P2: clear shadow project roots (registry entries pointing into the
 	// app's own session storage) before anything reads the project tree.
 	pruneShadowProjectRoots()
