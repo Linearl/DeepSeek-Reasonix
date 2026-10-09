@@ -998,6 +998,28 @@ function backendStatusFromRuntimeMeta(meta: RuntimeMetaSnapshot): Extract<Action
 
 // ---- reducer helpers (unchanged logic) ----
 
+// 645b: tab 状态 LRU 的驱逐选择（纯函数，单测钉死）。在位驻留策略开启时，
+// releaseTranscriptState 的 Task-192 守卫会整包保留带 live/active pin 的
+// tab（后台正在跑轮的 tab）——LRU 若只删它的 React state，同一条守卫会让
+// 订阅+投影器+store 继续活着，dispatchTo 的 getOrCreateState 再给轮内
+// live delta 静默重建一个无历史的空壳 state。这里把守卫同款谓词前置：
+// 会被保留的 tab 直接不进驱逐名单（对齐 transcript store 自身的 running
+// pin 不驱逐原则）。窗口语义不变：最新 limit-1 个非活跃 tab + 活跃 tab
+// 存活，窗口外的非 pin tab 按最久未活跃先驱逐。
+export function selectTabStateLruEvictions(
+  ids: string[],
+  lastActiveAt: (tabId: string) => number | undefined,
+  limit: number,
+  isRetained: (tabId: string) => boolean,
+): { id: string; lastActive: number }[] {
+  if (limit <= 0) return [];
+  return ids
+    .map((id) => ({ id, lastActive: lastActiveAt(id) ?? 0 }))
+    .sort((a, b) => b.lastActive - a.lastActive)
+    .slice(limit - 1)
+    .filter((entry) => !isRetained(entry.id));
+}
+
 export function historyMessagesToItems(messages: HistoryMessage[], idPrefix: string, startSeq = 0): { items: Item[]; seq: number } {
   const resultByID = new Map<string, HistoryMessage>();
   for (const m of messages) {
@@ -2487,10 +2509,28 @@ export function reducer(s: State, a: Action): State {
     case "backend_status": {
       const incomingEpoch = a.runtimeEpoch?.trim();
       const storedEpoch = s.runtimeStatusEpoch?.trim();
-      if (runtimeStatusSnapshotIsStale(s, a)) return s;
+      // 645b: 快照自己揭示 epoch 变更时，657 事件水位线必须同点归零。投影器在
+      // 同一触发上清游标（observeRuntime，先于本 dispatch）并从活跃轮起点重播种
+      // （replayAfter=turnStartSeq-1），重放事件带的是新 epoch 的小 seq；水位线若
+      // 还背着旧 epoch 的高位 seq，会把整段重放拦掉而游标已消费这些 seq——活跃轮
+      // live tail 丢失且无重放重触发（runtime:rebuilt 推送与状态快照分属 sink FIFO
+      // 与 Wails 调用两条通道，快照先到的竞态真实存在）。此处归零与
+      // controller_rebuilt 的归零幂等，两种到达序都收敛。
+      // 归零与快照采纳解耦：predates 三闸拒收的只是快照的时效字段，而投影器清游标
+      // 已经在同一触发上发生了——拒收若连带丢掉归零，重放照样被旧水位线吞掉。故
+      // 归零提到闸前，拒收路径带归零返回；epoch 未变时 epochZeroed 恒等于 s，
+      // 既有拒收语义（引用相等）逐字节不变。
+      const epochChanged = Boolean(incomingEpoch && storedEpoch && incomingEpoch !== storedEpoch);
+      const epochZeroed = epochChanged && s.appliedEventSeq !== 0 ? { ...s, appliedEventSeq: 0 } : s;
+      if (runtimeStatusSnapshotIsStale(s, a)) return epochZeroed;
       // Reject snapshots that began before newer prompt or turn lifecycle evidence.
-      if (runtimeSnapshotPredatesPrompt(s, a.snapshotAt) || snapshotPredatesTurnLifecycle(s.turnLifecycleObservedAt, a.snapshotAt)) return s;
-      const runtimeStatus = { runtimeStatusEpoch: incomingEpoch ?? storedEpoch, runtimeStatusSeq: a.turnEventSeq ?? s.runtimeStatusSeq, runtimeStatusSnapshotAt: a.snapshotAt };
+      if (runtimeSnapshotPredatesPrompt(s, a.snapshotAt) || snapshotPredatesTurnLifecycle(s.turnLifecycleObservedAt, a.snapshotAt)) return epochZeroed;
+      const runtimeStatus = {
+        runtimeStatusEpoch: incomingEpoch ?? storedEpoch,
+        runtimeStatusSeq: a.turnEventSeq ?? s.runtimeStatusSeq,
+        runtimeStatusSnapshotAt: a.snapshotAt,
+        ...(epochChanged ? { appliedEventSeq: 0 } : {}),
+      };
       const pendingPrompt = Boolean(a.pendingPrompt);
       const backgroundJobs = Math.max(0, a.backgroundJobs ?? s.backgroundJobs ?? 0);
       const cancelRequested = Boolean(a.cancelRequested);
@@ -2504,7 +2544,8 @@ export function reducer(s: State, a: Action): State {
       // A retry event is newer evidence of foreground activity than an idle
       // snapshot whose fetch started earlier. Keep the turn cancellable until
       // a snapshot started after the retry confirms that it is actually idle.
-      if (!foregroundRunning && runtimeSnapshotPredatesRetry(s, a.snapshotAt)) return s;
+      // 645b: 同上——本拒收也发生在投影器清游标之后，epoch 变更的归零必须随行。
+      if (!foregroundRunning && runtimeSnapshotPredatesRetry(s, a.snapshotAt)) return epochZeroed;
       const cancellable = foregroundRunning;
       const clearsRetry = !foregroundRunning && s.retry !== undefined;
       if (
@@ -3243,13 +3284,18 @@ export function useController() {
     });
     transcriptSubscriptions.current.set(tabId, unsubscribe);
   }, [dispatchTo]);
-  const releaseTranscriptState = useCallback((tabId: string) => {
+  const releaseTranscriptState = useCallback((tabId: string, opts?: { force?: boolean }) => {
     // Task 192: with the residency policy on, an active/running tab keeps its
     // whole live state across a switch-away — subscriptions, projector and
     // store stay, so switching back is a zero-reload return (the 1.34 feel).
-    // Off falls through to the exact release below (zero regression), and a
-    // closing/cleared tab never reaches this guard (its pin is already gone).
-    if (getTranscriptStore().shouldRetainOnSwitch(tabId)) {
+    // Off falls through to the exact release below (zero regression).
+    // 645b: 驻留是「切走保留」语义，关闭是终态——closeTab 在删 React state 之后
+    // 调用本函数，此刻 active/live pin 尚未清（noteActiveTab/evictTab 都在其后），
+    // 守卫若命中会留下「state 没了而订阅+投影器游标+store 还活着」的半释放：
+    // keep_running 的后台事件经 getOrCreateState 重建无历史空壳，残留游标还会把
+    // 复用同 id 新 tab 的小 seq 事件当重复丢弃（本文件 3290 行即注明 id 会复用）。
+    // 关闭路径 force 全量释放，让「closing never reaches this guard」成为构造事实。
+    if (!opts?.force && getTranscriptStore().shouldRetainOnSwitch(tabId)) {
       noteStageTiming(tabId, "switch-out:retained", performance.now());
       return;
     }
@@ -6095,14 +6141,14 @@ export function useController() {
     // LRU over tab **activation** recency: the newest `maxCachedTabs` states
     // survive (default 12; 0 = unlimited, [desktop].max_cached_tabs), only the
     // oldest beyond that get the full release. The active tab always survives.
-    const others: { id: string; lastActive: number }[] = [];
-    for (const id of Array.from(statesRef.current.keys())) {
-      if (id === tabId) continue;
-      others.push({ id, lastActive: tabLastActiveAt.current.get(id) ?? 0 });
-    }
-    const limit = effectiveMaxResidentSessions();
-    others.sort((a, b) => b.lastActive - a.lastActive);
-    for (const entry of limit > 0 ? others.slice(limit - 1) : []) {
+    // 645b: 驱逐名单经 selectTabStateLruEvictions 生成——会被 Task-192 守卫
+    // 保留的 tab（驻留开启 + live/active pin）不再只被删掉 React state。
+    for (const entry of selectTabStateLruEvictions(
+      Array.from(statesRef.current.keys()).filter((id) => id !== tabId),
+      (id) => tabLastActiveAt.current.get(id),
+      effectiveMaxResidentSessions(),
+      (id) => getTranscriptStore().shouldRetainOnSwitch(id),
+    )) {
       // Task 196: name this eviction. Until now a tab losing its state here only
       // surfaced later as `resident items empty` on the next switch, which said
       // the cache was cold but never what made it cold. residentSessions here
@@ -6135,7 +6181,8 @@ export function useController() {
       invalidateProviderStateForTab(tabId);
       disposeComposerProfileState(tabId);
       statesRef.current.delete(tabId);
-      releaseTranscriptState(tabId);
+      // 645b: 关闭是终态，force 全量释放（见 releaseTranscriptState 注释）。
+      releaseTranscriptState(tabId, { force: true });
       notifyLiveListeners(tabId);
       bump();
       if (tabId === activeTabId) await syncActiveTabFromBackend(false);
