@@ -209,6 +209,11 @@ func (s *Store) MoveItem(id string, toIndex int) error {
 }
 
 // SetPaused toggles the recovery/inspection pause flag.
+//
+// 任务709: this is the AUTOMATIC pause entry — crash recovery, reopen with
+// backlog (PauseIfPending), blocked references, transcript trouble all land
+// here and never mark the pause as user-held. Only SetUserPaused records a
+// human decision.
 func (s *Store) SetPaused(paused bool) error {
 	if s == nil {
 		return ErrClosed
@@ -237,6 +242,76 @@ func (s *Store) SetPaused(paused bool) error {
 	}
 	s.notifyLocked(s.snapshotLocked())
 	return nil
+}
+
+// SetUserPaused is the explicit human pause/resume entry (desktop queue
+// panel, /queue command, bot & serve endpoints — everything that funnels
+// through Controller.SetInboxPaused). 任务709: the provenance bit is what lets
+// the desktop idle-turn bridge tell "user holds this queue" apart from the
+// automatic pauses a restart/reopen leaves behind — the latter must not hold
+// freshly delivered collab work hostage.
+func (s *Store) SetUserPaused(paused bool) error {
+	if s == nil {
+		return ErrClosed
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	release, err := s.beginDiskTransactionLocked()
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := s.mutableLocked(); err != nil {
+		return err
+	}
+	if s.man.Paused == paused && s.man.UserPaused == paused {
+		return nil
+	}
+	next := s.man.clone()
+	next.Paused = paused
+	next.UserPaused = paused
+	if !paused {
+		next.Recovered = false
+		next.RecoveredN = 0
+	}
+	if err := s.commitManifestLocked(next); err != nil {
+		return err
+	}
+	s.notifyLocked(s.snapshotLocked())
+	return nil
+}
+
+// ResumeAutoPause clears a pause that no human set (recovery, reopen backlog,
+// error guards) and reports whether it did. A user-held pause is untouchable:
+// 暂停是用户意志，系统侧（空闲开轮桥等）不越。任务709: the check and the
+// commit share the manifest lock, so a user pausing between the bridge's
+// snapshot and its wake cannot be overridden.
+func (s *Store) ResumeAutoPause() (bool, error) {
+	if s == nil {
+		return false, ErrClosed
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	release, err := s.beginDiskTransactionLocked()
+	if err != nil {
+		return false, err
+	}
+	defer release()
+	if err := s.mutableLocked(); err != nil {
+		return false, err
+	}
+	if !s.man.Paused || s.man.UserPaused {
+		return false, nil
+	}
+	next := s.man.clone()
+	next.Paused = false
+	next.Recovered = false
+	next.RecoveredN = 0
+	if err := s.commitManifestLocked(next); err != nil {
+		return false, err
+	}
+	s.notifyLocked(s.snapshotLocked())
+	return true, nil
 }
 
 // PauseIfPending pauses dispatch only when the inbox still contains work.
@@ -592,6 +667,7 @@ func clearPauseIfEmpty(m *manifest) {
 		return
 	}
 	m.Paused = false
+	m.UserPaused = false
 	m.Recovered = false
 	m.RecoveredN = 0
 }

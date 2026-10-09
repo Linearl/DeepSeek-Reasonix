@@ -337,6 +337,7 @@ func (s *Store) snapshotFromManifestLocked(m *manifest, readonly bool) InboxSnap
 		SchemaVersion: m.SchemaVersion,
 		Revision:      m.Revision,
 		Paused:        m.Paused,
+		UserPaused:    m.UserPaused,
 		Recovered:     m.Recovered,
 		RecoveredN:    m.RecoveredN,
 		Readonly:      readonly,
