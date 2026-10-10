@@ -10,7 +10,7 @@
 // every state must render without throwing.
 
 import assert from "node:assert/strict";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { PlanUsageCard } from "../components/PlanUsageCard";

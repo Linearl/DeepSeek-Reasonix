@@ -1,5 +1,5 @@
 import { JSDOM } from "jsdom";
-import React, { act, useState } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import assert from "node:assert/strict";
 import { ProviderConnections } from "../components/ProviderConnections";

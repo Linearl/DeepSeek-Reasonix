@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/write-access-decision.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ApprovalModal } from "../components/ApprovalModal";

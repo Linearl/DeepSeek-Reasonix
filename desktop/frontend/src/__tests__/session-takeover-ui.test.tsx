@@ -1,6 +1,6 @@
 // Run: tsx src/__tests__/session-takeover-ui.test.tsx
 
-import React from "react";
+
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import type { AppBindings } from "../lib/bridge";

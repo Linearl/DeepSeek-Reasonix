@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import React, { act, StrictMode, useLayoutEffect } from "react";
+import { act, StrictMode, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { useRecoverableErrorToasts } from "../app-runtime/useAppEffectHosts";

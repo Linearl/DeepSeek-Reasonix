@@ -11,7 +11,7 @@
 // including the katex stylesheet — resolve under tsx.
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { createServer } from "vite";
 import type { MarkdownBlock, MarkdownParseResult } from "../lib/markdownPipeline";

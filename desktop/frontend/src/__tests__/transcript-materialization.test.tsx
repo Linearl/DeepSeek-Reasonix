@@ -1,4 +1,4 @@
-import React, { act, useState, type ComponentType, type ReactNode } from "react";
+import { act, useState, type ComponentType, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createTranscriptHarness } from "./transcript-dom-harness";
 import { TranscriptKernel, type LogicalAnchor, type TranscriptViewportSnapshot } from "../lib/transcriptKernel";

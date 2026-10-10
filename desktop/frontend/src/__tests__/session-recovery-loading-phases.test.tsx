@@ -6,7 +6,7 @@
 // ⑤ 远程连接类加载不受影响（不轮询阶段名）。
 import assert from "node:assert/strict";
 import { register } from "node:module";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { SessionRecoveryBanner } from "../components/SessionRecoveryBanner";

@@ -11,7 +11,7 @@
 // Run: npx tsx src/__tests__/task279-provider-disable.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

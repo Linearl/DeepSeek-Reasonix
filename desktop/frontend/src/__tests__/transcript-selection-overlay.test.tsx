@@ -1,7 +1,7 @@
 // Run: node --import tsx src/__tests__/transcript-selection-overlay.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { TranscriptSelectionOverlay } from "../components/TranscriptSelectionOverlay";

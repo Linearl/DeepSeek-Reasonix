@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/wails-resize-fix.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useWailsResizeFix } from "../lib/useWailsResizeFix";

@@ -1,4 +1,4 @@
-import React, { StrictMode, Suspense, startTransition } from "react";
+import { StrictMode, Suspense, startTransition } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";

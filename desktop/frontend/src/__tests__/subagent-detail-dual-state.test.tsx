@@ -41,7 +41,7 @@ const labFlags = await import("../lib/labFlags");
 const { buildSubagentDirectory } = await import("../lib/subagentDirectory");
 const { SubagentsDockPanel } = await import("../components/SubagentsDockPanel");
 const { LocaleProvider } = await import("../lib/i18n");
-const React = await import("react");
+await import("react");
 const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
 

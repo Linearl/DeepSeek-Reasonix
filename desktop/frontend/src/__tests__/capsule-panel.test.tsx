@@ -10,7 +10,7 @@
 // the running identity); closed panels still never poll in the background.
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { readFileSync } from "node:fs";

@@ -11,7 +11,7 @@ window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventLi
 window.scrollTo = () => {};
 const settings = baseSettings("standard");
 (window as unknown as { go: unknown }).go = { main: { App: { Settings: async () => settings, FetchAllProviderModels: async () => ({}) } } };
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { useManagementWorkspace } = await import("../lib/useManagementWorkspace");
 const { useAppNavigationStore } = await import("../store/appNavigation");

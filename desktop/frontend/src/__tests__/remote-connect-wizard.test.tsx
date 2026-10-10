@@ -1,6 +1,6 @@
 // Run: tsx src/__tests__/remote-connect-wizard.test.tsx
 
-import React from "react";
+
 import { RemoteNavigationHarness } from "./helpers/RemoteNavigationHarness";
 import { JSDOM } from "jsdom";
 import { act } from "react";

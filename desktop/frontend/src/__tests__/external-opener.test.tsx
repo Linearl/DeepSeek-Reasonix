@@ -2,7 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ExternalOpener, shouldMountExternalOpener, type ExternalOpenerBridge } from "../components/ExternalOpener";

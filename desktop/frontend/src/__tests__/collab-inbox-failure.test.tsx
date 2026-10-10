@@ -24,7 +24,7 @@ Object.assign(globalThis, {
 });
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
 
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { CollabInboxPanel, setCollabInboxOpen, collabInboxRetryDelaysMs } = await import("../components/CollabInboxPanel");
 const { peekFrontendLogRing, drainFrontendLogRing } = await import("../lib/frontendLog");

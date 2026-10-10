@@ -1,5 +1,5 @@
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { ProjectTreeChangedV2 } from "../lib/sessionCatalogTypes";
 import type { SessionRecoveryEvent } from "../lib/types";

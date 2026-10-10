@@ -3,7 +3,7 @@
 // render as data attributes/classes; closed bar (null) renders neither.
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });

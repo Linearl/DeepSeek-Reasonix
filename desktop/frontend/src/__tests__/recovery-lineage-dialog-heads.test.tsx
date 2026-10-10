@@ -53,7 +53,7 @@ window.go = {
 
 // React must see the jsdom globals when it loads, or its change-event support
 // probe fails and typing never reaches onChange.
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { RecoveryLineageDialog } = await import("../components/RecoveryLineageDialog");
 const { LocaleProvider } = await import("../lib/i18n");

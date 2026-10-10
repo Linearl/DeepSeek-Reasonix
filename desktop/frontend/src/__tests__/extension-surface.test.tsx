@@ -4,7 +4,7 @@
 
 import { JSDOM } from "jsdom";
 import { registerHooks } from "node:module";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 

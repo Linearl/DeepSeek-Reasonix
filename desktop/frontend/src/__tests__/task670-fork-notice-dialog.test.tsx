@@ -12,7 +12,7 @@
 //      lab tab — the Go side pins the state machine, fork_notice_test.go).
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ForkNoticeDialog } from "../components/ForkNoticeDialog";

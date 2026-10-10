@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/external-opener-preference-sync.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ExternalOpener, type ExternalOpenerBridge } from "../components/ExternalOpener";

@@ -7,7 +7,7 @@
 // after the swap — nothing is ever truncated.
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import HljsCode from "../components/editors/HljsCode";
 import { IDLE_HIGHLIGHT_MIN_BYTES, MAX_HIGHLIGHT_BYTES } from "../lib/highlight";

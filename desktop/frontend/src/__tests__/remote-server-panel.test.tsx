@@ -4,7 +4,7 @@
 // "Open Remote Web" entry, Serve progress states, the workspace home-directory
 // fallback, and the fixed remote-provider hint.
 
-import React from "react";
+
 import { JSDOM } from "jsdom";
 
 import type { AppBindings } from "../lib/bridge";

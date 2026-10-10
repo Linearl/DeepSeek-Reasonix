@@ -15,7 +15,7 @@
 // compositionstart/compositionend Events reach them directly.
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { Composer } from "../components/Composer";

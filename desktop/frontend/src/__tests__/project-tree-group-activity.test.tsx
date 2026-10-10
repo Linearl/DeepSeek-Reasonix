@@ -11,7 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import React, { StrictMode, useState } from "react";
+import { StrictMode, useState } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ProjectTreeGroupRows, useProjectTreeOrganization } from "../components/ProjectTreeOrganization";

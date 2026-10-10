@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { managementDom } from "../test-support/managementDom";
 import type { HeartbeatTask } from "../custom/features/heartbeat/heartbeat.types";
 const dom = managementDom();
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { LocaleProvider } = await import("../lib/i18n");
 const { HeartbeatView } = await import("../custom/features/heartbeat/HeartbeatPanel");

@@ -1,6 +1,6 @@
 // Run: tsx src/__tests__/remote-secret-dialog.test.tsx
 
-import React from "react";
+
 import { JSDOM } from "jsdom";
 import { act } from "react";
 

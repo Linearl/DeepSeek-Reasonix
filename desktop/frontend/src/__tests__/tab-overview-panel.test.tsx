@@ -29,7 +29,7 @@ Object.defineProperty(globalThis.window, "matchMedia", {
   value: () => ({ matches: false, media: "", addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false, onchange: null }),
 });
 
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const reactDomClient = await import("react-dom/client");
 const { createRoot } = reactDomClient;
 type Root = Awaited<ReturnType<typeof createRoot>>;

@@ -2,7 +2,7 @@
 
 import { JSDOM } from "jsdom";
 import { registerHooks } from "node:module";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { WORKSPACE_TURN_VERIFICATION_ID, WorkspacePanel } from "../components/WorkspacePanel";
 import { WorkspaceTurnResult } from "../components/WorkspaceTurnResult";

@@ -11,7 +11,7 @@
 //   4. the right dock's overview stays reachable through 「更多 >」.
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ContextWindowRing } from "../components/ContextWindowRing";

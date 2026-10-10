@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/native-motion.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { useRef } from "react";
+import { useRef } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { CSS_EASE_OUT } from "../lib/motion";

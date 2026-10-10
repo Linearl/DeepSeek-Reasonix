@@ -2,7 +2,7 @@ import { settingsOptionValues } from "./settingsSelectTestUtils";
 // Run: tsx src/__tests__/provider-editor-model-picker.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import type { ProviderView } from "../lib/types";
 

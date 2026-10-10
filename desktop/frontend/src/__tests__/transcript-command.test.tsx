@@ -1,4 +1,4 @@
-import React, { act, Suspense, startTransition } from "react";
+import { act, Suspense, startTransition } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import assert from "node:assert/strict";

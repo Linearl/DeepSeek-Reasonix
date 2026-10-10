@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import React, { act, type ComponentProps } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { TopicbarActionsRegion } from "../app-shell/TopicbarActionsRegion";

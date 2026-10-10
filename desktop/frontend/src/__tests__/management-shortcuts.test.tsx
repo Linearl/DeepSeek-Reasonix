@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { managementDom } from "../test-support/managementDom";
 const dom = managementDom();
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { useGlobalShortcut, resolvedShortcutCombo, detectShortcutPlatform } = await import("../lib/keyboardShortcuts");
 const { useAppNavigationStore: navigation } = await import("../store/appNavigation");

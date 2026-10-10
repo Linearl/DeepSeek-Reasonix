@@ -1,5 +1,5 @@
 import { JSDOM } from 'jsdom';
-import React, { act } from 'react';
+import { act } from 'react';
 import assert from 'node:assert/strict';
 // Run: tsx src/__tests__/task468-high-speed-model.test.tsx
 // Task 468: the model dialog's high-speed checkbox rides the editor draft and

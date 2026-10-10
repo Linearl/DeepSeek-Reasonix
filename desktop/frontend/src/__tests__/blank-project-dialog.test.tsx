@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import type { AppBindings } from "../lib/bridge";
 
 let passed = 0;

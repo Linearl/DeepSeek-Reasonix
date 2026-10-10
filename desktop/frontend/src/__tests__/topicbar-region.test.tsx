@@ -5,7 +5,7 @@ import type { TopicbarView } from "../app-shell/TopicbarRegion";
 const dom = new JSDOM("<div id='root'></div>", { pretendToBeVisual: true });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
   KeyboardEvent: dom.window.KeyboardEvent, IS_REACT_ACT_ENVIRONMENT: true });
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { TopicbarRegion } = await import("../app-shell/TopicbarRegion");
 const { LocaleProvider } = await import("../lib/i18n");
