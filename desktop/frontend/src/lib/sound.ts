@@ -166,12 +166,69 @@ function playSynthAttention(ctx: AudioContext, outputVolume: number): void {
   playSynthNote(ctx, ctx.destination, 1318.5, 0.09, 0.22, outputVolume * 0.34);
 }
 
+// ── Shared AudioContext singleton (issue #41) ────────────────────────────────
+
+// Every chime used to build a fresh AudioContext and close it on a timer; the
+// per-play construction was the top longtask frame (issue #41, 43 samples).
+// One context is now created lazily and reused: acquire() cancels a pending
+// idle suspend and re-resumes — resume() on a running context resolves
+// immediately, so calling it on every acquire also collapses the race where a
+// just-fired suspend would swallow the next chime. release() schedules the
+// suspend only once no playback is left. The context is never closed again.
+
+let sharedCtx: AudioContext | null = null;
+let activePlays = 0;
+let idleSuspendTimer: ReturnType<typeof setTimeout> | null = null;
+
+function acquireAudioContext(): AudioContext {
+  if (idleSuspendTimer !== null) {
+    clearTimeout(idleSuspendTimer);
+    idleSuspendTimer = null;
+  }
+  if (!sharedCtx) sharedCtx = new AudioContext();
+  if (typeof sharedCtx.resume === "function") {
+    void sharedCtx.resume().catch(() => { /* ignore */ });
+  }
+  activePlays += 1;
+  return sharedCtx;
+}
+
+function releaseAudioContext(idleMs: number): void {
+  activePlays = Math.max(0, activePlays - 1);
+  if (activePlays > 0) return;
+  if (idleSuspendTimer !== null) clearTimeout(idleSuspendTimer);
+  idleSuspendTimer = setTimeout(() => {
+    idleSuspendTimer = null;
+    // Only a running context needs the idle suspend; bare-node test doubles
+    // without `state` are skipped the same way.
+    if (sharedCtx && activePlays === 0 && sharedCtx.state === "running" && typeof sharedCtx.suspend === "function") {
+      void sharedCtx.suspend().catch(() => { /* ignore */ });
+    }
+  }, idleMs);
+}
+
+/** Test seam: drop the shared AudioContext so a test starts from a cold
+ *  singleton. Production code never calls this. */
+export function resetSharedAudioContextForTests(): void {
+  if (idleSuspendTimer !== null) {
+    clearTimeout(idleSuspendTimer);
+    idleSuspendTimer = null;
+  }
+  sharedCtx = null;
+  activePlays = 0;
+}
+
 // ── Play helpers ─────────────────────────────────────────────────────────────
 
 async function playWav(pref: WavSoundPref, volume: number, fallback: (ctx: AudioContext, outputVolume: number) => void): Promise<void> {
   const url = soundFilePath(pref);
   if (!url) return;
-  const ctx = new AudioContext();
+  let ctx: AudioContext;
+  try {
+    ctx = acquireAudioContext();
+  } catch {
+    return; // no audio device: stay silent
+  }
   try {
     const buf = await loadBuffer(ctx, url);
     if (buf) {
@@ -182,7 +239,7 @@ async function playWav(pref: WavSoundPref, volume: number, fallback: (ctx: Audio
   } catch {
     fallback(ctx, volume);
   }
-  setTimeout(() => ctx.close(), 2000);
+  releaseAudioContext(2000);
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -194,9 +251,9 @@ export function playSuccessChime(): void {
   if (volume <= 0) return;
   if (pref === "synth") {
     try {
-      const ctx = new AudioContext();
+      const ctx = acquireAudioContext();
       playSynthSuccess(ctx, volume);
-      setTimeout(() => ctx.close(), 600);
+      releaseAudioContext(600);
     } catch { /* silent */ }
   } else {
     void playWav(pref, volume, playSynthSuccess);
@@ -210,9 +267,9 @@ export function playAttentionChime(): void {
   if (volume <= 0) return;
   if (pref === "synth") {
     try {
-      const ctx = new AudioContext();
+      const ctx = acquireAudioContext();
       playSynthAttention(ctx, volume);
-      setTimeout(() => ctx.close(), 500);
+      releaseAudioContext(500);
     } catch { /* silent */ }
   } else {
     void playWav(pref, volume, playSynthAttention);
