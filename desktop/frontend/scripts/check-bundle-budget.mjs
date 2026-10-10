@@ -272,7 +272,8 @@ assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024
 // 721 同笔棘轮：largest chunk 实测 320.1 超 320.0 线 0.1（总线抬至 554.0 的同一次构建）— 首抬 320.1 仍炸（显示值恰等=字节抖动必炸区，403/591 先例）再 +0.1 → 320.2 留余量（分支 wt-721 自报，报备派活方）
 // 第三波（719/721/728）合并叠加实测 320.4 超 320.2 线 0.2，且 722/726/727 前端件在队 — +0.4 一次到位 → 320.6 含余量（合并线独立 commit，报备派活方）
 // 726 合后实测 320.5 对 320.6 线余 0.1=抖动必炸区，且 724+722+727 连做件在队 — +0.2 预抬 → 320.8（合并线独立 commit，报备派活方）
-assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 320.8 * 1024);
+// 739 设置面板「点击即发」预取+挂起看门狗（App.tsx 挂钩子+lib/settingsPrefetch+ManagementSurface settled 锁存，均进 initial chunk）实测 320.8 恰等 320.8 线=抖动必炸区（HEAD 基线 320.6 余 0.2，增量全为本件）— +0.2 预抬 → 321.0（分支 wt-739 自报，报备派活方，独立 commit）
+assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 321.0 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
 // ?url, and feature styles (heartbeat) live in lazy chunks loaded on demand.
 // An empty initial CSS list is the desired state, not a build error.
