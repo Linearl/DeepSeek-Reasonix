@@ -112,14 +112,20 @@ type crashReport struct {
 	// TestMock marks a lab-simulated report (task 642): the report travelled the
 	// real pipeline end to end, but the receiving end must be able to tell it
 	// apart from a real failure. Real crash paths never set it.
-	TestMock    bool                  `json:"testMock,omitempty"`
-	BuildCommit string                `json:"buildCommit,omitempty"`
-	Channel     string                `json:"channel,omitempty"`
-	Language    string                `json:"language,omitempty"`
-	View        string                `json:"view,omitempty"`
-	Breadcrumbs []crashBreadcrumb     `json:"breadcrumbs,omitempty"`
-	OccurredAt  string                `json:"occurredAt,omitempty"`
-	WebRuntime  *webRuntimeDiagnostic `json:"webRuntime,omitempty"`
+	TestMock    bool              `json:"testMock,omitempty"`
+	BuildCommit string            `json:"buildCommit,omitempty"`
+	Channel     string            `json:"channel,omitempty"`
+	Language    string            `json:"language,omitempty"`
+	View        string            `json:"view,omitempty"`
+	Breadcrumbs []crashBreadcrumb `json:"breadcrumbs,omitempty"`
+	OccurredAt  string            `json:"occurredAt,omitempty"`
+	// Task 736 (issue #39): attribution fields for abnormal-exit reports —
+	// the dead desktop's PID and its last recorded lifecycle phase. Additive
+	// and omitempty, so pending payloads written by older builds decode
+	// unchanged and the ingest schema stays backward compatible.
+	ProcessPID int                   `json:"processPid,omitempty"`
+	ExitPhase  string                `json:"exitPhase,omitempty"`
+	WebRuntime *webRuntimeDiagnostic `json:"webRuntime,omitempty"`
 	// WebView2 is retained only so pending reports written by preview builds can
 	// still be decoded and forwarded after upgrade. New reports use WebRuntime.
 	WebView2 *webView2Diagnostic `json:"webview2,omitempty"`

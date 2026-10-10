@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -180,6 +181,54 @@ func TestDesktopLifecycleReportUsesCurrentLifecycleNamespace(t *testing.T) {
 	}
 	if report.FingerprintHint != "desktop.abnormal_exit.v2."+runtime.GOOS+".healthy" {
 		t.Fatalf("fingerprint = %q", report.FingerprintHint)
+	}
+}
+
+// Task 736 (issue #39): the report body must carry the three attribution
+// fields — occurredAt = actual death moment (launcher-observed), the dead
+// process's PID, and the exit phase — so a crash report from the same run
+// closes the attribution loop. Without launcher evidence occurredAt falls
+// back to the discovery moment and says so in the message.
+func TestDesktopLifecycleReportCarriesAttributionFields(t *testing.T) {
+	observed := desktopLifecycleReport(desktopLifecycleObservation{
+		Version: "v1.23.0", Channel: "stable", Phase: "healthy",
+		StartedAt: "2026-08-10T01:00:00Z", UpdatedAt: "2026-08-10T02:00:00Z",
+		PID: 4242, DetectedAt: "2026-10-10T10:00:00Z",
+		DeathAt: "2026-10-10T09:30:00.123456789Z", ExitCode: -1,
+	})
+	if observed.ProcessPID != 4242 || observed.ExitPhase != "healthy" {
+		t.Fatalf("attribution fields = pid=%d phase=%q", observed.ProcessPID, observed.ExitPhase)
+	}
+	if observed.OccurredAt != "2026-10-10T09:30:00.123456789Z" {
+		t.Fatalf("occurredAt = %q, want the launcher-observed death moment", observed.OccurredAt)
+	}
+	for _, want := range []string{"pid: 4242", "death observed: 2026-10-10T09:30:00.123456789Z (launcher, exit code -1)", "discovered at: 2026-10-10T10:00:00Z"} {
+		if !strings.Contains(observed.Message, want) {
+			t.Fatalf("message missing %q in %q", want, observed.Message)
+		}
+	}
+	body, err := json.Marshal(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"processPid":4242`, `"exitPhase":"healthy"`, `"occurredAt":"2026-10-10T09:30:00.123456789Z"`} {
+		if !strings.Contains(string(body), key) {
+			t.Fatalf("payload missing %s in %s", key, body)
+		}
+	}
+
+	without := desktopLifecycleReport(desktopLifecycleObservation{
+		Version: "v1.23.0", Phase: "wedged", PID: 4243,
+		DetectedAt: "2026-10-10T10:00:00Z",
+	})
+	if without.OccurredAt != "2026-10-10T10:00:00Z" {
+		t.Fatalf("fallback occurredAt = %q, want the discovery moment", without.OccurredAt)
+	}
+	if strings.Contains(without.Message, "death observed") {
+		t.Fatalf("fallback message claims launcher evidence: %q", without.Message)
+	}
+	if !strings.Contains(without.Message, "discovered at: 2026-10-10T10:00:00Z") {
+		t.Fatalf("fallback message misses the discovery bound: %q", without.Message)
 	}
 }
 

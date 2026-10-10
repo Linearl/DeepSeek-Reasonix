@@ -2,6 +2,7 @@ package desktoplauncher
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -233,5 +234,65 @@ func TestBuildRestartCommandResolution(t *testing.T) {
 	}
 	if cmd.Dir != root {
 		t.Fatalf("restart dir = %q, want %q", cmd.Dir, root)
+	}
+}
+
+// Task 736 (issue #39): an abnormal death must leave the consume-once record
+// the next desktop instance uses to attribute occurredAt/exit code; a clean
+// exit (code 0) must leave nothing behind.
+func TestSuperviseWritesAbnormalExitRecord(t *testing.T) {
+	shrinkBackoff(t)
+	isolateDesktopLogMirror(t)
+	recordPath := filepath.Join(t.TempDir(), "lifecycle", "last-abnormal-exit.json")
+	oldPath := abnormalExitRecordPath
+	abnormalExitRecordPath = func() string { return recordPath }
+	t.Cleanup(func() { abnormalExitRecordPath = oldPath })
+
+	logPath := filepath.Join(t.TempDir(), "gen.log")
+	gen1 := helperCommand(t, logPath, "3")
+	if err := gen1.Start(); err != nil {
+		t.Fatalf("start helper: %v", err)
+	}
+	before := time.Now().UTC()
+	if got := supervise(gen1, func() (*exec.Cmd, error) {
+		return startedHelper(t, logPath, "0"), nil
+	}); got != 0 {
+		t.Fatalf("supervise = %d, want 0", got)
+	}
+
+	body, err := os.ReadFile(recordPath)
+	if err != nil {
+		t.Fatalf("abnormal-exit record missing: %v", err)
+	}
+	var record abnormalExitRecord
+	if err := json.Unmarshal(body, &record); err != nil {
+		t.Fatalf("record not decodable: %v", err)
+	}
+	if record.SchemaVersion != 1 || record.PID <= 0 || record.ExitCode != 3 {
+		t.Fatalf("record = %+v", record)
+	}
+	exitedAt, err := time.Parse(time.RFC3339Nano, record.ExitedAt)
+	if err != nil {
+		t.Fatalf("exitedAt %q not RFC3339Nano: %v", record.ExitedAt, err)
+	}
+	if exitedAt.Before(before.Add(-time.Second)) || exitedAt.After(time.Now().UTC().Add(time.Second)) {
+		t.Fatalf("exitedAt %s outside the supervise window", record.ExitedAt)
+	}
+
+	// A clean generation must not write (or leave) a record.
+	if err := os.Remove(recordPath); err != nil {
+		t.Fatal(err)
+	}
+	genClean := helperCommand(t, logPath, "0")
+	if err := genClean.Start(); err != nil {
+		t.Fatalf("start clean helper: %v", err)
+	}
+	if got := supervise(genClean, func() (*exec.Cmd, error) {
+		return nil, fmt.Errorf("restart must never be attempted on a clean exit")
+	}); got != 0 {
+		t.Fatalf("clean supervise = %d, want 0", got)
+	}
+	if _, err := os.Stat(recordPath); !os.IsNotExist(err) {
+		t.Fatalf("clean exit wrote an abnormal-exit record: %v", err)
 	}
 }

@@ -43,6 +43,15 @@ type desktopLifecycleObservation struct {
 	Phase     string
 	StartedAt string
 	UpdatedAt string
+	// Task 736 (issue #39): attribution evidence. PID identifies the dead
+	// desktop; DetectedAt is the moment this instance proved the process dead
+	// (death-time upper bound). DeathAt/ExitCode are filled from the
+	// launcher's consume-once record when its PID matches — the launcher is
+	// the only witness of the actual death moment.
+	PID        int
+	DetectedAt string
+	DeathAt    string
+	ExitCode   int
 }
 
 type desktopLifecycleRuntime struct {
@@ -374,10 +383,78 @@ func (t *desktopLifecycleTracker) consumePrevious(emit bool) []desktopLifecycleO
 		observations = append(observations, desktopLifecycleObservation{
 			Version: state.Version, Channel: state.Channel, Phase: state.Phase,
 			StartedAt: state.StartedAt, UpdatedAt: state.UpdatedAt,
+			PID: state.PID, DetectedAt: now.Format(time.RFC3339Nano),
 		})
 	}
+	t.applyLauncherDeathEvidence(observations)
 	t.pruneRecords()
 	return observations
+}
+
+// launcherDeathEvidence is the consume-once record the resident launcher
+// writes when a supervised desktop exits abnormally (task 736, issue #39).
+// The JSON mirrors the writer in internal/desktoplauncher — keep both in
+// lockstep.
+type launcherDeathEvidence struct {
+	SchemaVersion int    `json:"schemaVersion"`
+	PID           int    `json:"pid"`
+	ExitCode      int    `json:"exitCode"`
+	ExitedAt      string `json:"exitedAt"` // RFC3339Nano, launcher clock
+}
+
+const (
+	launcherDeathEvidenceSchema   = 1
+	launcherDeathEvidenceFileName = "last-abnormal-exit.json"
+	// A no-match record must not survive to misattribute a reused PID; a week
+	// comfortably covers every restart flow and matches the prune cadence of
+	// the lifecycle records themselves.
+	launcherDeathEvidenceRetention = 7 * 24 * time.Hour
+)
+
+func (t *desktopLifecycleTracker) launcherEvidencePath() string {
+	if t == nil || t.dir == "" {
+		return ""
+	}
+	return filepath.Join(t.dir, launcherDeathEvidenceFileName)
+}
+
+// applyLauncherDeathEvidence joins the launcher's death record into the dead
+// lifecycle observations: an exact PID match upgrades the report's occurredAt
+// from "last phase write" to the observed death moment and carries the exit
+// code. Consume-once on match; unmatched records are kept until the retention
+// sweep so a reporting attempt interrupted before upload can retry on the
+// next start, and a stale record can never misattribute a reused PID.
+func (t *desktopLifecycleTracker) applyLauncherDeathEvidence(observations []desktopLifecycleObservation) {
+	path := t.launcherEvidencePath()
+	if path == "" {
+		return
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var record launcherDeathEvidence
+	if json.Unmarshal(body, &record) != nil || record.SchemaVersion != launcherDeathEvidenceSchema ||
+		record.PID <= 0 || record.ExitedAt == "" {
+		// Not a record this build understands: preserve it verbatim so a
+		// newer writer's evidence is never consumed or pruned by an older
+		// reader (same future-format rule as the lifecycle records).
+		return
+	}
+	if exitedAt, parseErr := time.Parse(time.RFC3339Nano, record.ExitedAt); parseErr != nil ||
+		t.now().Sub(exitedAt) > launcherDeathEvidenceRetention {
+		_ = os.Remove(path)
+		return
+	}
+	for i := range observations {
+		if observations[i].PID != record.PID {
+			continue
+		}
+		observations[i].DeathAt = record.ExitedAt
+		observations[i].ExitCode = record.ExitCode
+		_ = os.Remove(path)
+		return
+	}
 }
 
 // readClaimedLifecycleState re-reads a just-claimed record. Winning the rename

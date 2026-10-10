@@ -75,6 +75,10 @@ func supervise(gen1 *exec.Cmd, restart func() (*exec.Cmd, error)) int {
 	code := exitCodeOf(gen1)
 	slog.Warn("launcher: desktop exited abnormally; restarting once after backoff",
 		"pid", gen1.Process.Pid, "exit", code, "backoff", watchdogRestartDelay.String())
+	// Task 736 (issue #39): persist the death observation so the next desktop
+	// instance can report occurredAt=actual death moment + exit code instead
+	// of the lifecycle record's stale last-phase-write timestamp.
+	writeAbnormalExitRecord(gen1.Process.Pid, code, time.Now())
 	// Channel 3 (task 304) precedent: the launcher's slog dies with the GUI
 	// process unless the same line lands in the desktop rolling log, where the
 	// incident readers actually look. Failure is logged nowhere and hurts
@@ -101,9 +105,11 @@ func supervise(gen1 *exec.Cmd, restart func() (*exec.Cmd, error)) int {
 	}
 	if waitErr != nil {
 		// The one-restart budget is spent. Record and leave the scene alone.
+		gen2Code := exitCodeOf(gen2)
+		writeAbnormalExitRecord(pid, gen2Code, time.Now())
 		slog.Warn("launcher: restarted desktop exited abnormally; restart budget spent, not restarting again",
-			"pid", pid, "exit", exitCodeOf(gen2))
-		return exitCodeOf(gen2)
+			"pid", pid, "exit", gen2Code)
+		return gen2Code
 	}
 	return 0
 }
