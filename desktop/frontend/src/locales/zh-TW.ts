@@ -1642,7 +1642,6 @@ export const zhTW: Record<DictKey, string> = {
   "settings.tab.experimental": "實驗室",
   "settings.experimentalIntro": "實驗室",
   "settings.experimentalIntroHint": "新能力在此先行：預設關閉、逐檔灰度、可隨時回退。",
-  "settings.labGroup.all": "全部",
   "settings.labGroup.automation": "自動化",
   "settings.labGroup.efficiency": "提效",
   "settings.labGroup.ui": "介面",

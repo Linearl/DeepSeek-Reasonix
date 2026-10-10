@@ -2108,7 +2108,6 @@ export const zh: Record<DictKey, string> = {
   "settings.tab.experimental": "实验室",
   "settings.experimentalIntro": "实验室",
   "settings.experimentalIntroHint": "新能力在此先行：默认关闭、逐档灰度、可随时回退。",
-  "settings.labGroup.all": "全部",
   "settings.labGroup.automation": "自动化",
   "settings.labGroup.efficiency": "提效",
   "settings.labGroup.ui": "界面",

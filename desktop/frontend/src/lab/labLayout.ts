@@ -156,6 +156,32 @@ export function labEntries(layout: LabLayoutData): Array<{ entry: LabLayoutEntry
   return layout.groups.flatMap((group) => group.entries.map((entry) => ({ entry, group: group.key })));
 }
 
+/** 任务 764 — 设置搜索覆盖实验室条目：把自然语言查询对到布局里的一个卡片。
+ * 匹配面 = 卡片 label（翻译后）+ 卡内成员 label + 卡片 id；命中成员时返回
+ * 成员所在的卡片 id（成员没有独立 pane，父卡才是可打开面）。查组名不返回
+ * 卡片（组级命中由 rail 目录 toc 跳转承接）。纯函数，布局序优先（同词多中
+ * 取 rail 靠前者）。查无命中或空查询返回 null——调用方回退默认行为。 */
+export function findLabEntryIdByQuery(
+  layout: LabLayoutData,
+  query: string,
+  translate: (key: DictKey) => string,
+): string | null {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) return null;
+  const labelOf = (key: DictKey): string => translate(key).toLocaleLowerCase();
+  for (const { entry } of labEntries(layout)) {
+    if (labelOf(entry.labelKey).includes(normalized) || entry.id.toLocaleLowerCase().includes(normalized)) {
+      return entry.id;
+    }
+    for (const member of entry.members ?? []) {
+      if (labelOf(member.labelKey).includes(normalized) || member.id.toLocaleLowerCase().includes(normalized)) {
+        return entry.id;
+      }
+    }
+  }
+  return null;
+}
+
 export function findLabEntry(layout: LabLayoutData, id: string): LabLayoutEntry | undefined {
   for (const group of layout.groups) {
     const hit = group.entries.find((entry) => entry.id === id);
