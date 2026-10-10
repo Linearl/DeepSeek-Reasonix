@@ -28681,6 +28681,26 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
 }
 
+/* Task 720: submenu rows carry the expand chevron; the first label span keeps
+   flex:1, so the arrow only needs to stop growing and sit at the row end. */
+.context-menu__item--submenu > .context-menu__submenu-arrow {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.context-menu__item:not(:disabled):hover > .context-menu__submenu-arrow,
+.context-menu__item:not(:disabled):focus-visible > .context-menu__submenu-arrow {
+  color: var(--fg);
+}
+
+/* Task 720: leaves of an expanded submenu row indent one step inside the same
+   menu (the section expands in place — the menu itself scrolls). */
+.context-menu__item--nested {
+  padding-left: 22px;
+}
+
 .context-menu--composer-input .context-menu__item {
   padding: 0 12px;
 }
