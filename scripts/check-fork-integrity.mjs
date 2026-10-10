@@ -112,7 +112,7 @@ const CHECKS = [
   { feature: "任务620 子代理标签显隐移侧栏增强墙（子代理面板前置置灰联动）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["[\"subagents\", \"workspace.subagentsTab\"]", "tabId === \"subagents\" && !Boolean(s.experimentalSubagentPanel)"] },
   // 任务649（收件箱改进包）：分段控件上移+胶囊分段 / 收发双方标签词 / 行 hover
   // 均为 fork 侧 UI 面，合并静默回退即复发「交付了但看不见」，逐条锚定。
-  { feature: "任务649 排序/视图分段控件上移头行（与保留期/清理规则同行）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__actions", "collab-inbox-panel__ordertoggle", "collab-inbox-panel__viewtoggle", "collabInbox.viewGroup"] },
+  { feature: "任务649 排序/视图分段控件（716 定稿重排后落位视图工具条行，原头行 actions 容器拆解；649① 语义保留）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__toolbar", "collab-inbox-panel__ordertoggle", "collab-inbox-panel__viewtoggle", "collabInbox.viewGroup"] },
   { feature: "任务649 胶囊分段样式（999px 拼合 + accent-soft 激活）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__ordertoggle,\n.collab-inbox-panel__viewtoggle", "border-radius: 999px;"] },
   { feature: "任务649 收发双方标签词（列表行 routelabel + 下拉 filterwrap）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__routelabel", ".collab-inbox-panel__filterwrap"] },
   { feature: "任务649 行 hover 高亮（620 件1 遗漏的行级规则）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__row:hover {\n  border-color: var(--button-border-hover);\n  background: var(--button-bg-hover);\n}"] },
