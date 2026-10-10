@@ -51,6 +51,20 @@ export function projectTreeTopicPageIsFresh(
   return projectTreeRevisionIsFresh(revisions[projectKey] ?? 0, incomingRevision);
 }
 
+// 741: only user-visible page loads may flip a folder's pagination indicator
+// ("load more" ↔ "indexing history"). project-tree:changed-v2 rides every
+// catalog revision bump — it keeps arriving while any session is active — so
+// a background first-page reload onto a resident page must leave the
+// indicator untouched; only an explicit append (the user's own click) or a
+// first load with no resident page (the skeleton) may flip it. A resident
+// page record always exists after the folder's first completed load.
+export function projectTreePageLoadFlipsIndicator(
+  pageState: { loading: boolean } | undefined,
+  append: boolean,
+): boolean {
+  return append || !pageState;
+}
+
 // Project shells come from desktop-projects.json and are valid even when the
 // disposable catalog still reports revision 0. Catalog revision only gates
 // topic pages and non-empty tree refreshes after the first shell is painted.

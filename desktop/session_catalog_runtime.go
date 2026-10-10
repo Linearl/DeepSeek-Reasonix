@@ -62,6 +62,51 @@ func catalogRuntimeStatus(activity string, runtimeStatus control.RuntimeStatus) 
 	return status
 }
 
+// applyCatalogFiledIdentity is the 740 attribution authority gate: a runtime
+// snapshot's (scope, workspaceRoot, topicID) is only the tab's opinion about
+// where a conversation lives, while the catalog filing is where the ordinary
+// tree actually renders the row. When the two disagree, the tab's copy used to
+// be merged into the Global runtime-only rows while the catalog kept the
+// canonical row under its project group — the same conversation painted twice
+// (both with a live dot), and the Global copy flickering as runtime events and
+// catalog page reloads alternated. The catalog filing wins; the tab keeps its
+// opinion only while the catalog does not know the session yet (a tab is
+// authoritative for its own existence, same rule as withLiveTopics). The
+// lookup is one indexed GetSession per snapshot; this runs on every runtime
+// event and page request, so no disk-IO fallback (desktop-projects.json) is
+// consulted here — the metadata-fallback window is transient and its own page
+// builder dedupes runtime rows by topic id.
+func (a *App) applyCatalogFiledIdentity(snapshots []catalogRuntimeSnapshot) {
+	if len(snapshots) == 0 {
+		return
+	}
+	catalog := a.sessionCatalog.Load()
+	if catalog == nil {
+		return
+	}
+	ctx, cancel := a.catalogReadContext()
+	defer cancel()
+	for i := range snapshots {
+		path := strings.TrimSpace(snapshots[i].sessionPath)
+		if path == "" {
+			continue
+		}
+		record, found, err := catalog.GetSession(ctx, path)
+		if err != nil || !found {
+			continue
+		}
+		filed := strings.TrimSpace(record.LogicalTopicID)
+		if filed == "" {
+			continue
+		}
+		scope, root := normalizeDesktopTopicScope(record.Scope, record.WorkspaceRoot)
+		if snapshots[i].scope == scope && snapshots[i].workspaceRoot == root && snapshots[i].topicID == filed {
+			continue
+		}
+		snapshots[i].scope, snapshots[i].workspaceRoot, snapshots[i].topicID = scope, root, filed
+	}
+}
+
 func (a *App) catalogRuntimeOverlays() (map[string]catalogRuntimeOverlay, map[string]catalogRuntimeOverlay) {
 	topics := map[string]catalogRuntimeOverlay{}
 	sessions := map[string]catalogRuntimeOverlay{}

@@ -178,6 +178,11 @@ func (a *App) GetRuntimeStateSnapshot() RuntimeStateProjection {
 			catalog = append(catalog, entry)
 		}
 	}
+	// 740: the runtime topic grouping must use the catalog filing, not the
+	// tab's own scope opinion, so the frontend projection merges the live
+	// status into the canonical row instead of injecting a second one under
+	// Global. Sessions above keep the raw tab scope for their own consumers.
+	a.applyCatalogFiledIdentity(catalog)
 	next.Topics = a.projectTreeRuntimeTopics(catalog)
 	a.remoteTabMu.Lock()
 	for _, tab := range a.remoteTabs {

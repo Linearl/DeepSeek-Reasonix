@@ -81,6 +81,11 @@ func (a *App) catalogRuntimeSnapshots() []catalogRuntimeSnapshot {
 		collect(tab, false)
 	}
 	a.mu.RUnlock()
+	// 740: re-attribute each snapshot to the catalog filing after the lock is
+	// released (the catalog read takes its own lock, so it must never join the
+	// App.mu lock order) so every consumer — runtime overlays, runtime-only
+	// page merges, and the runtime snapshot grouping — sees one identity.
+	a.applyCatalogFiledIdentity(snapshots)
 	return snapshots
 }
 
