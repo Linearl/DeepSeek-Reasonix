@@ -3594,8 +3594,9 @@ export default function App() {
   // Go watcher (9s, matching serve's poll) resolves as a refusal, so the
   // dialog itself stays purely manual with explicit allow/deny.
   // Task 539: the deadline note used to be a static line — the dialog now
-  // runs a real 9s countdown on the 拒绝 button and resolves false at zero,
-  // matching the Go gate's refusal instead of the user reading a frozen "9".
+  // runs a real 30s countdown on the 拒绝 button and resolves false at zero,
+  // matching the Go gate's refusal. Accepting no longer interrupts the
+  // running turn: the desktop yields once the reply finishes (539 route A).
   const { confirm: confirmTakeover, dialog: takeoverDialog } = useConfirmDialog();
   useEffect(() => {
     if (typeof window === "undefined" || !window.runtime) return;
@@ -3608,16 +3609,16 @@ export default function App() {
           <span>
             设备 <b>{d.from || "远程客户端"}</b> 请求接管会话控制权。
             <br />
-            影响范围：接管后本机会话进入只读（重启不会残留），下一条本地消息可重新获取控制权；若当前正在生成，
-            <b>接受会先中断本轮回复</b>再交权。
+            影响范围：接受后<b>当前回复会继续跑完</b>，跑完后自动完成移交，期间本会话不能发送新消息或回退；
+            移交完成后本机会话进入只读（重启不会残留），重新获取控制权走收回流程。
             <br />
             倒计时结束未作处理将自动拒绝该请求。
           </span>
         ),
-        confirmLabel: "允许接管",
+        confirmLabel: "允许接管（不打断当前回复）",
         cancelLabel: "拒绝",
         tone: "danger",
-        autoCancelAfterMs: 9000,
+        autoCancelAfterMs: 30000,
       });
       try {
         await app.ResolveTakeoverDecision(d.marker, accept);
@@ -3626,6 +3627,38 @@ export default function App() {
       }
     });
   }, [confirmTakeover]);
+
+  // Task 539: yield lifecycle banner — 让渡中（sticky until settled）、移交完成、
+  // 让渡取消、强制接管。The Go side emits app:takeover-yield {kind, path, detail}.
+  const [takeoverYieldNotice, setTakeoverYieldNotice] = useState<{
+    kind: string;
+    path: string;
+    detail: string;
+    at: number;
+  } | null>(null);
+  const takeoverYieldNoticeRef = useRef<{ kind: string; path: string; detail: string; at: number } | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.runtime) return;
+    return window.runtime.EventsOn("app:takeover-yield", (data: unknown) => {
+      const d = (data ?? {}) as { kind?: string; path?: string; detail?: string };
+      if (!d.kind) return;
+      const notice = { kind: d.kind, path: d.path || "", detail: d.detail || "", at: Date.now() };
+      takeoverYieldNoticeRef.current = notice;
+      setTakeoverYieldNotice(notice);
+    });
+  }, []);
+  useEffect(() => {
+    if (!takeoverYieldNotice) return;
+    // 让渡中 sticky; terminal notices self-clear.
+    if (takeoverYieldNotice.kind === "yielding") return;
+    const timer = window.setTimeout(() => {
+      // Only clear if no newer notice arrived while the timer ran.
+      if (takeoverYieldNoticeRef.current === takeoverYieldNotice) {
+        setTakeoverYieldNotice(null);
+      }
+    }, 12000);
+    return () => window.clearTimeout(timer);
+  }, [takeoverYieldNotice]);
 
   // Task 210: version picker behind the status-bar restart button. The list
   // comes from the engine (versions/ directory); a failed read — e.g. a dev
@@ -6325,6 +6358,38 @@ export default function App() {
       )}
       {restartUpdateDialog}
       {takeoverDialog}
+      {takeoverYieldNotice && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 2147483000,
+            maxWidth: 520,
+            padding: "8px 14px",
+            borderRadius: 8,
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: "#fff",
+            background:
+              takeoverYieldNotice.kind === "rollback"
+                ? "rgba(180,83,9,0.92)"
+                : takeoverYieldNotice.kind === "forced"
+                  ? "rgba(153,27,27,0.92)"
+                  : "rgba(30,58,138,0.92)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+            pointerEvents: "none",
+          }}
+        >
+          {takeoverYieldNotice.kind === "yielding" && "远程接管已接受：当前回复跑完后自动移交，期间本会话暂不能发送新消息或回退"}
+          {takeoverYieldNotice.kind === "yielded" && "会话已移交给远程设备接管"}
+          {takeoverYieldNotice.kind === "rollback" &&
+            `接管让渡已取消（${takeoverYieldNotice.detail || "等待超时或请求已撤回"}），本机恢复正常控制`}
+          {takeoverYieldNotice.kind === "forced" &&
+            `远程设备已强制接管${takeoverYieldNotice.detail ? "：" + takeoverYieldNotice.detail : "，本地回合被中断"}`}
+        </div>
+      )}
       <VersionSwitchDialog
         open={versionSwitch.open}
         versions={versionSwitch.versions}

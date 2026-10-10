@@ -14,6 +14,7 @@ package main
 // phone with an explicit verdict either way.
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,12 +22,15 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/servepool"
 )
 
-// gatewayTakeoverPromptTimeout matches the marker watcher's 9s window (and
-// serve's own takeover poll): an unanswered prompt resolves as a refusal.
-const gatewayTakeoverPromptTimeout = 9 * time.Second
+// gatewayTakeoverPromptTimeout matches the marker watcher's prompt window and
+// the 539 T2 yield window: the user can read the notice at leisure because
+// accepting no longer interrupts the running turn. An unanswered prompt
+// resolves as a refusal.
+const gatewayTakeoverPromptTimeout = agent.SessionTakeoverYieldWindow
 
 // gatewayTakeoverPromptTimeoutForTest lets tests shrink the blocking window.
 var gatewayTakeoverPromptTimeoutForTest = gatewayTakeoverPromptTimeout
@@ -44,12 +48,21 @@ func (a *App) installServePoolTakeoverGate(gw *servepool.Gateway) {
 //   - unknown session path: pass through so the serve answers honestly (404);
 //   - no prompt sink (headless/test): pass through, matching the marker
 //     watcher's historical immediate yield;
-//   - accept: yield every tab holding the session (interrupt a running turn
-//     first, release the lease) so the forwarded acquire succeeds;
+//   - forced request (GC's double-gated force button): no desktop prompt —
+//     the running turn is cancelled (T3) and the yield machine starts; the
+//     desktop user is told via a runtime event banner;
+//   - accept: the holding tabs ENTER THE YIELDING STATE (539: the lease is
+//     kept until the turn finishes; the forwarded serve request 202s and
+//     polls), so allow returns immediately without waiting;
 //   - reject / timeout: deny with an explicit 409 message.
 func (a *App) servePoolTakeoverGate(req servepool.TakeoverGateRequest) (bool, int, string) {
 	path := a.resolveGatewayTakeoverSessionPath(req.ProjectRoot, req.SessionName)
 	if path == "" {
+		return true, 0, ""
+	}
+	if req.Force {
+		slog.Info("desktop: gateway FORCED takeover request", "path", path, "from", req.From)
+		a.yieldTabsToGatewayTakeover(path, true)
 		return true, 0, ""
 	}
 	takeoverBridgeMu.Lock()
@@ -74,12 +87,12 @@ func (a *App) servePoolTakeoverGate(req servepool.TakeoverGateRequest) (bool, in
 			return false, http.StatusConflict, "takeover rejected by the desktop user; this device keeps local control"
 		}
 		slog.Info("desktop: gateway takeover accepted by user", "path", path)
-		a.yieldTabsToGatewayTakeover(path)
+		a.yieldTabsToGatewayTakeover(path, false)
 		return true, 0, ""
 	case <-time.After(timeout):
 		unregisterTakeoverPending(marker)
 		slog.Info("desktop: gateway takeover prompt timed out, refusing", "path", path)
-		return false, http.StatusConflict, "takeover request timed out (no desktop response within 9s); the session stays under local control"
+		return false, http.StatusConflict, fmt.Sprintf("takeover request timed out (no desktop response within %s); the session stays under local control", gatewayTakeoverPromptTimeout)
 	}
 }
 
@@ -115,10 +128,15 @@ func (a *App) resolveGatewayTakeoverSessionPath(projectRoot, sessionName string)
 }
 
 // yieldTabsToGatewayTakeover performs the accept side for a gateway-gated
-// takeover: every tab holding the session yields exactly like the marker
-// watcher's accept path (interrupt a running turn first, release the lease,
-// keep the persisted ReadOnly untouched). No marker file is involved here.
-func (a *App) yieldTabsToGatewayTakeover(path string) {
+// takeover: every tab holding the session enters the yielding state (539 —
+// the lease is KEPT until the tab's turn finishes, then released with a
+// handoff reservation; the persisted ReadOnly stays untouched). With
+// force=true the running turn is cancelled first (remote forced takeover,
+// T3) and the desktop user is notified — the double confirmation gate lives
+// on the GC side. The marker file is discovered by the yield machine once
+// the forwarded serve request writes it. Non-blocking: the gateway forwards
+// immediately and the serve answers 202 + polls for the yield.
+func (a *App) yieldTabsToGatewayTakeover(path string, force bool) {
 	key := sessionRuntimeKey(path)
 	a.mu.Lock()
 	tabs := make([]*WorkspaceTab, 0, 2)
@@ -129,8 +147,11 @@ func (a *App) yieldTabsToGatewayTakeover(path string) {
 	}
 	a.mu.Unlock()
 	for _, tab := range tabs {
-		// The synthetic bridge marker is not a file path; the yield's
-		// os.Remove on it is a harmless no-op.
-		tab.yieldSessionLeaseToTakeover(path, "", true)
+		if force && tab.hasActiveRuntimeWork() && tab.Ctrl != nil {
+			slog.Info("desktop: forced takeover, cancelling active turn", "path", path, "tab", tab.ID)
+			tab.Ctrl.Cancel()
+			notifyTakeoverYield("forced", path, "远程设备已强制接管，本地回合被中断")
+		}
+		beginSessionYieldToTakeover(tab, path, "", force)
 	}
 }

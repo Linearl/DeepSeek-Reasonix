@@ -923,16 +923,19 @@ func (s *Server) externalReadView(session string) (string, []provider.Message, b
 // selector. Local-owned sessions (mirrored or foreign-held) report takenOver;
 // Serve-owned sessions report takenOver=false so a spectator client clears its
 // read-only pin after reclaim or when the session returns to the foreground.
+// Task 539: both branches carry the takeover-poll fields (takeoverPending,
+// plus takeoverStatus/takeoverMessage on a terminal failure) so a remote
+// client can follow a 202 takeover to its terminal state via this endpoint.
 func (s *Server) statusViewForPath(path string, held bool) map[string]any {
 	if held {
-		return s.externalStatusView(path)
+		return s.decorateTakeoverStatus(path, s.externalStatusView(path))
 	}
 	running := false
 	cur := s.ctl()
 	if cur != nil && agent.CanonicalSessionPath(cur.SessionPath()) == agent.CanonicalSessionPath(path) {
 		running = controllerHasActiveRuntimeWork(cur)
 	}
-	return map[string]any{
+	view := map[string]any{
 		"label":            s.ctl().Label(),
 		"running":          running,
 		"plan":             false,
@@ -946,6 +949,7 @@ func (s *Server) statusViewForPath(path string, held bool) map[string]any {
 		"sessionName":      strings.TrimSuffix(filepath.Base(path), ".jsonl"),
 		"sessionPath":      agent.CanonicalSessionPath(path),
 	}
+	return s.decorateTakeoverStatus(path, view)
 }
 
 // externalStatusView renders the status payload for a session a local runtime

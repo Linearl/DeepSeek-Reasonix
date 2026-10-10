@@ -32,6 +32,10 @@ type Gateway struct {
 	// the project serve (task 249). The desktop installs a prompt-backed gate;
 	// nil keeps the historical pass-through.
 	takeoverGate TakeoverGateFunc
+	// inboxGate intercepts POST /p/<id>/inbox/items carrying a session
+	// selector (task 539): a desktop-held session's guided messages route
+	// into the holding tab's controller. nil keeps the plain forward.
+	inboxGate InboxGateFunc
 }
 
 // VirtualSource is the inline handler bundle for a virtual project.
@@ -70,12 +74,15 @@ func (g *Gateway) SetVirtualSource(id string, src VirtualSource) {
 
 // TakeoverGateRequest is one intercepted remote takeover call (task 249).
 // ProjectRoot lets the gate resolve the session name against the right
-// project's session directory.
+// project's session directory. Force marks the remote forced takeover
+// (task 539: GC's double-gated force button — the desktop skips its prompt,
+// cancels the running turn and yields).
 type TakeoverGateRequest struct {
 	ProjectID   string
 	ProjectRoot string
 	SessionName string
 	From        string
+	Force       bool
 }
 
 // TakeoverGateFunc decides whether a remote takeover request may proceed to
@@ -248,6 +255,13 @@ func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Task 539: route guided messages for desktop-held sessions into the
+	// holding tab (the serve would only answer with the fence 409).
+	if r.Method == http.MethodPost && tail == "inbox/items" && g.inboxGate != nil {
+		if g.gateInbox(w, r, id) {
+			return
+		}
+	}
 	if err := g.mgr.Open(id); err != nil {
 		writeJSONStatus(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 		return
@@ -365,8 +379,9 @@ func (g *Gateway) gateTakeover(w http.ResponseWriter, r *http.Request, id string
 		return false
 	}
 	var body struct {
-		Name string `json:"name"`
-		From string `json:"from"`
+		Name  string `json:"name"`
+		From  string `json:"from"`
+		Force bool   `json:"force"`
 	}
 	// Best effort: the gate decides on whatever parsed; a malformed name
 	// falls through to the serve's own validation (404/400).
@@ -376,6 +391,7 @@ func (g *Gateway) gateTakeover(w http.ResponseWriter, r *http.Request, id string
 		ProjectRoot: g.mgr.Root(id),
 		SessionName: strings.TrimSpace(body.Name),
 		From:        strings.TrimSpace(body.From),
+		Force:       body.Force,
 	})
 	if !allow {
 		if status == 0 {
@@ -388,6 +404,52 @@ func (g *Gateway) gateTakeover(w http.ResponseWriter, r *http.Request, id string
 		return false
 	}
 	r.Body = io.NopCloser(bytes.NewReader(raw))
+	return true
+}
+
+// gateInbox runs the inbox gate for POST /p/<id>/inbox/items. Returns true
+// when the response has already been written by the gate. A request without
+// a session selector (query or body) forwards untouched — the serve inbox is
+// foreground-scoped by design.
+func (g *Gateway) gateInbox(w http.ResponseWriter, r *http.Request, id string) bool {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
+	_ = r.Body.Close()
+	if err != nil {
+		http.Error(w, "read inbox body: "+err.Error(), http.StatusBadRequest)
+		return true
+	}
+	var body struct {
+		Session string `json:"session"`
+		Intent  string `json:"intent"`
+	}
+	_ = json.Unmarshal(raw, &body)
+	session := strings.TrimSpace(r.URL.Query().Get("session"))
+	if session == "" {
+		session = strings.TrimSpace(body.Session)
+	}
+	if session == "" {
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		return false
+	}
+	handled, status, contentType, payload := g.inboxGate(InboxGateRequest{
+		ProjectID:   id,
+		ProjectRoot: g.mgr.Root(id),
+		SessionName: session,
+		Intent:      body.Intent,
+		Body:        raw,
+	})
+	if !handled {
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		return false
+	}
+	if status == 0 {
+		status = http.StatusAccepted
+	}
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(payload)
 	return true
 }
 
