@@ -83,7 +83,7 @@ const autopilotAbnormalResumePrompt = "Your previous turn stopped abnormally bef
 // Notice codes for the two user-visible outcomes (wire-stable, registered in
 // internal/event/notice_codes.go; frontends localize by code).
 const (
-	noticeCodeAutopilotResumeFired    = event.NoticeCodeAutopilotResumeFired
+	noticeCodeAutopilotResumeFired     = event.NoticeCodeAutopilotResumeFired
 	noticeCodeAutopilotResumeExhausted = event.NoticeCodeAutopilotResumeExhausted
 )
 
@@ -372,8 +372,8 @@ func (w *autopilotResumeWatchdog) fire(tabID, reason string) {
 		log.Printf("[autopilot-resume] resume submit for tab %s refused: %v (reason %s)", tabID, secrets.RedactError(submitErr), reason)
 		return
 	}
-		w.mu.Unlock()
-	}
+	w.mu.Unlock()
+}
 
 // escalateStuckInboxForTab is the App-facing S2 adapter called from the 579
 // bridge's exhaustion hook. It gates on the master switch before touching the

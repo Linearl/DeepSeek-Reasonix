@@ -109,8 +109,8 @@ type Server struct {
 	// clients can poll a 202 takeover to its terminal state.
 	takeoverMu       sync.Mutex
 	takeoverAttempts map[string]*takeoverAttempt
-	tagsMu        sync.Mutex
-	tags          map[*control.Controller]*sessionTagSink
+	tagsMu           sync.Mutex
+	tags             map[*control.Controller]*sessionTagSink
 	// Remote-client (GrandCouncil) device lease (task 36 Phase 2): deviceID
 	// → liveness with the session set it touched. A device that stops
 	// beating for heartbeatExpiry loses its whole lease and the desktop

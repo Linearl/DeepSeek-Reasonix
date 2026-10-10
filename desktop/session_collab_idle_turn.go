@@ -79,7 +79,7 @@ type idleTurnTargetView struct {
 	// contacts). 任务731 S2: when this item's opening budget is spent, the
 	// autopilot abnormal-stop watchdog escalates a session-level wake
 	// through it (see autopilot_resume.go).
-	tabID     string
+	tabID string
 	// activeTab marks the currently focused visible tab: the user may be about
 	// to type there, so the bridge never opens a turn (边界 2).
 	activeTab bool
