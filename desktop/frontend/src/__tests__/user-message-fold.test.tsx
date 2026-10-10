@@ -5,6 +5,7 @@
 
 import { JSDOM } from "jsdom";
 
+import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { UserMessage, estimateUserMessageLines, USER_MSG_FOLD_LINE_THRESHOLD } from "../components/Message";

@@ -1,6 +1,6 @@
 import { Loader2, RotateCcw } from "lucide-react";
-import { forwardRef, lazy, Suspense, useImperativeHandle, useLayoutEffect, useState, type ReactNode } from "react";
-import { estimateTranscriptRowSize, type TranscriptRow } from "../lib/transcriptRows";
+import { forwardRef, lazy, Suspense, useImperativeHandle, useLayoutEffect, useState } from "react";
+import { estimateTranscriptRowSize } from "../lib/transcriptRows";
 import { canRequestOlderHistory } from "../lib/historyOlderGates";
 import type { LogicalAnchor, TranscriptKernel } from "../lib/transcriptKernel";
 import type { TimelineBlock, TimelineProjection, TranscriptRenderMode } from "../lib/transcriptTimeline";
@@ -32,7 +32,6 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   mode: TranscriptRenderMode;
   tabId?: string;
   scrollElement: HTMLDivElement | null;
-  renderRow: (row: TranscriptRow) => ReactNode;
   loadingOlderHistory: boolean;
   olderHistoryError?: string;
   olderHistoryExhausted?: boolean;
@@ -45,7 +44,7 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   protectedBlockKeys?: ReadonlySet<string>;
   running: boolean;
   turnStartAt?: number;
-}>(function TranscriptViewport({ projection, mode, tabId, scrollElement, renderRow,
+}>(function TranscriptViewport({ projection, mode, tabId, scrollElement,
   loadingOlderHistory, olderHistoryError, olderHistoryExhausted, onRetryOlderHistory, onLoadOlder, onGeometryWillChange,
   onGeometryChange, kernel, protectedBlockKeys = new Set(),
   running, turnStartAt,
@@ -88,7 +87,9 @@ export const TranscriptViewport = forwardRef<TranscriptViewportHandle, {
   );
   const activeStatus = running && projection.activeBlock && projection.activeBlock.rows.length <= 1
     ? <ActiveTurnStatus turnStartAt={turnStartAt} /> : undefined;
-  const shared = { tabId, scrollElement, renderRow, onGeometryWillChange, onGeometryChange, kernel, prefix, activeStatus };
+  // Task 735: renderRow travels by context (see TranscriptRowRendererContext);
+  // threading it through props kept busting every block/row memo.
+  const shared = { tabId, scrollElement, onGeometryWillChange, onGeometryChange, kernel, prefix, activeStatus };
   const renderSelectionOverlay = (revision: string) => <TranscriptSelectionOverlay tabId={tabId ?? ""} scrollElement={scrollElement} virtualRevision={revision} />;
   const full = <TranscriptProjectionView {...shared} mode="full" completedCount={projection.completedBlocks.length}
     revision={projection.completedBlocks.map((block) => block.measurementRevision).join("|") + projection.activeBlock?.measurementRevision}

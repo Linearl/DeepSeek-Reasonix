@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
+import * as React from "react";
 import { StrictMode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

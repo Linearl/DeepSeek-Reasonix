@@ -74,6 +74,7 @@ import { InvocationMetadataContext } from "./Message";
 import { LiveStreamContext } from "./LiveStreamContext";
 import { MarkdownImageTabContext } from "./MarkdownImageContext";
 import { TranscriptLayoutIntentProvider, TranscriptScrollWriteProvider } from "./TranscriptLayoutIntentContext";
+import { TranscriptRowRendererProvider } from "./TranscriptRowRendererContext";
 import { TranscriptViewport, type TranscriptViewportHandle } from "./TranscriptViewport";
 import { Welcome } from "./Welcome";
 import { useTranscriptRowRenderer } from "./useTranscriptRowRenderer";
@@ -647,6 +648,9 @@ export function Transcript(props: TranscriptProps) {
     <TranscriptLayoutIntentProvider value={() => { beginStructural("display-change"); }}>
     <TranscriptScrollWriteProvider value={writeOffset}>
     <TranscriptFindContext.Provider value={findHighlight}>
+      {/* Task 735: renderRow travels by context so the memoized blocks/rows
+          stop re-rendering on every renderer identity change. */}
+      <TranscriptRowRendererProvider renderRow={renderRow}>
       <div className="transcript-shell" aria-busy={loadingOlderHistory || undefined} data-protected-blocks={protectedBlockKeys.size}>
         {tabId && <Suspense fallback={null}><ToolRecoveryPanel key={resolvedSessionKey} tabId={tabId} sessionKey={resolvedSessionKey} running={running} refreshKey={items.length} /></Suspense>}
         {empty ? (
@@ -684,7 +688,6 @@ export function Transcript(props: TranscriptProps) {
                 mode={renderMode}
                 tabId={tabId}
                 scrollElement={scrollElement}
-                renderRow={renderRow}
                 loadingOlderHistory={loadingOlderHistory}
                 olderHistoryError={olderHistoryError}
                 olderHistoryExhausted={olderHistoryExhausted}
@@ -736,6 +739,7 @@ export function Transcript(props: TranscriptProps) {
         {!empty && <button type="button" className="transcript__jump-bottom" hidden={!jumpBottomVisible} onClick={() => { endStaleGesture(); scrollToBottom(); }} aria-label={t("transcript.jumpToBottom")} title={t("transcript.jumpToBottom")}><ArrowDown size={18} strokeWidth={2.2} aria-hidden="true" /></button>}
         {FrontendDiagnosticsPanel && <Suspense fallback={null}><FrontendDiagnosticsPanel scrollElement={scrollElement} totalRows={allRows.length} /></Suspense>}
       </div>
+      </TranscriptRowRendererProvider>
     </TranscriptFindContext.Provider>
     </TranscriptScrollWriteProvider>
     </TranscriptLayoutIntentProvider>

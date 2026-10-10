@@ -12,6 +12,7 @@
 
 import { JSDOM } from "jsdom";
 
+import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { UserMessage } from "../components/Message";
