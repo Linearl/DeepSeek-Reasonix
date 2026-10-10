@@ -1,14 +1,14 @@
-// Task 626 acceptance (lab rail grouped segments + sticky group headers):
-//  ①  "all" view renders per-group segments, each with a header carrying the
-//      group name AND its item total (header total badge, 任务 626);
+// Task 626 acceptance (lab rail grouped segments + sticky group headers),
+// amended by task 764 (chips removed per the dedup ruling):
+//  ①  per-group segments each with a header carrying the group name AND its
+//      item total (header total badge, 任务 626);
 //  ②  headers stick while scrolling and get pushed off by the next group —
 //      the rail is its own sticky-scroll host (max-height + overflow-y) and
 //      the header is position: sticky with an opaque background;
-//  ③  left-rail filter behavior unchanged; the filtered-state header policy
-//      (active group only, header still rendered and stuck) is fixed in a
-//      comment at the labGroupTotals source;
-//  ④  header group name/count share ONE source with the chips
-//      (labGroupTotals) — structural equality, not coincidence;
+//  ③  (764) the top filter chips are GONE — no labFilter, no filter guard;
+//      the rail always renders every group;
+//  ④  (764) labGroupTotals stays single-source; the group-header badge is
+//      now its only reader;
 //  ⑤  three-language key settings.labGroup.itemCount present with {n}.
 //
 // Run: npx tsx src/__tests__/task626-lab-group-headers.test.tsx
@@ -31,14 +31,16 @@ const styles = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.u
 
 console.log("\ntask 626 lab group headers");
 
-// ④ + ③: one totals map feeds BOTH the chips and the rail group headers.
+// ④ + ③: one totals map feeds the rail group headers. 任务 764（用户 0325
+// 裁决）：顶部筛选 chips（原第二读点）已随双入口去重删除，组头徽章成为
+// 唯一读点——单源性质不变，只是读者少了一处。
 ok(panel.includes("const labGroupTotals = useMemo(") && panel.includes("Object.fromEntries("),
-  "labGroupTotals map exists (single source for chips + headers; 任务722 memo 化，源仍单一路径)");
+  "labGroupTotals map exists (single source; 任务722 memo 化，源仍单一路径)");
 {
   const readers = panel.match(/labGroupTotals\[g\.key\]/g) ?? [];
-  ok(readers.length >= 2, `both chips and group header read labGroupTotals (got ${readers.length} read sites)`);
+  ok(readers.length === 1, `exactly ONE reader left: the group header badge (764 removed the chips reader; got ${readers.length})`);
 }
-ok(panel.includes("const n = labGroupTotals[g.key];"), "chip count reads labGroupTotals (no private recount)");
+ok(!panel.includes("experimental-lab__chip") && !panel.includes("setLabFilter"), "764: filter chips gone (no chip class, no filter state)");
 ok(panel.includes('t("settings.labGroup.itemCount", { n: labGroupTotals[g.key] })'), "group header badge renders the itemCount key from labGroupTotals");
 
 // ①: header carries name + total; the task 359 on-count badge stays.
@@ -46,9 +48,11 @@ ok(panel.includes('className="experimental-lab__group-count experimental-lab__gr
 ok(panel.includes('t("settings.labGroup.onCount", { n: onCount })'), "on-count badge kept (task 359 contract intact)");
 ok(panel.includes('id={`lab-group-${g.key}`}'), "header keeps its jump anchor id (task 359 toc intact)");
 
-// ③: filter behavior unchanged + policy comment pinned at the source.
-ok(panel.includes('labFilter === "all" || labFilter === g.key'), "rail filter guard unchanged (chips stay mutually exclusive, zero behavior drift)");
-ok(/任务 626[\s\S]{0,400}labFilter/.test(panel), "filter-state header policy documented at the labGroupTotals source");
+// ③ (764 修订): the labFilter filter guard is GONE — rail always renders every
+// group (collapsible headers remain the focusing tool); the removal is pinned
+// so the filter cannot silently come back as a second entry point.
+ok(!panel.includes('labFilter === "all" || labFilter === g.key') && panel.includes("features.filter((f) => f.group === g.key)"),
+  "rail renders per-group segments with no filter guard (764 removed labFilter)");
 
 // ②: sticky — the rail is the scroll host, the header sticks inside it.
 {

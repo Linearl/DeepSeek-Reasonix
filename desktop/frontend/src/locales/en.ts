@@ -2107,7 +2107,6 @@ export const en = {
   "settings.tab.experimental": "Lab",
   "settings.experimentalIntro": "Lab",
   "settings.experimentalIntroHint": "New capabilities ship here first: off by default, staged rollouts, revert anytime.",
-  "settings.labGroup.all": "All",
   "settings.labGroup.automation": "Automation",
   "settings.labGroup.efficiency": "Efficiency",
   "settings.labGroup.ui": "UI",

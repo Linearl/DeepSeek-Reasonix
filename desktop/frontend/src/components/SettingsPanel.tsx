@@ -98,7 +98,7 @@ import { EXPERIMENT_FEATURE_TIERS, LAB_WALL_PICKS, type TierFeatureId } from "..
 // ordering) resolves from lab-layout.yaml through the yaml mechanism; the
 // built-in default is the safety-net fallback (missing/corrupt yaml). Tier
 // badges ride the resolved layout, not a separate members map.
-import { labEntries, labEntryBadgeTiers, labEntryLightOn, resolveLabLayout } from "../lab/labLayout";
+import { findLabEntryIdByQuery, labEntries, labEntryBadgeTiers, labEntryLightOn, resolveLabLayout } from "../lab/labLayout";
 import labLayoutYaml from "../lab/lab-layout.yaml?raw";
 import { LAB_GROUP_KEYS, type LabGroupKey } from "../lab/labLayoutTypes";
 // 任务 563: the picks wall reads its live on/off states through this context
@@ -478,7 +478,18 @@ export function SettingsPanel({
     }
   }, [t]);
 
-  const selectTab = (next: SettingsTab) => { setTab(next); onNavigate?.(next); };
+  // 任务 764：设置搜索覆盖实验室——从搜索点进实验室页时把命中的条目带给
+  // ExperimentalSection（预选 + 展开所在组 + 滚动到可见），「搜『心跳任务
+  // 后台化』能到达该条目」。非实验室页或未命中时清空（零行为）。
+  const [pendingLabEntry, setPendingLabEntry] = useState<ExperimentFeatureId | null>(null);
+  const selectTab = (next: SettingsTab, query?: string) => {
+    setPendingLabEntry(
+      next === "experimental" && query?.trim()
+        ? (findLabEntryIdByQuery(LAB_LAYOUT_FOR_SEARCH, query, t) as ExperimentFeatureId | null)
+        : null,
+    );
+    setTab(next); onNavigate?.(next);
+  };
 
   // Task 147: scope busy to this page and hand its sections a page-bound apply, so
   // a save in flight here no longer freezes the other settings pages.
@@ -493,6 +504,18 @@ export function SettingsPanel({
   // (the "设置加载失败" banner is gated on needsSettings).
   const needsSettings = tab === "general" || tab === "models" || tab === "providers" || tab === "model-stats" || tab === "bots" || tab === "subagents" || tab === "network" || tab === "permissions" || tab === "sandbox" || tab === "appearance" || tab === "updates" || tab === "experimental";
   const lazySettingsPageFallback = <div className="empty">{t("settings.loading")}</div>;
+  // 任务 764：实验室搜索词表 = 全部组名 + 卡片名 + 成员名（翻译后）+ id，
+  // 与 rail 同源布局派生（LAB_LAYOUT_FOR_SEARCH）；新增 lab 条目/成员改
+  // lab-layout.yaml 即自动可搜，无需维护第二份清单。
+  const labSearchTerms = useMemo(() => {
+    const parts: string[] = [];
+    for (const group of LAB_LAYOUT_FOR_SEARCH.groups) parts.push(t(group.labelKey));
+    for (const { entry } of labEntries(LAB_LAYOUT_FOR_SEARCH)) {
+      parts.push(t(entry.labelKey), entry.id);
+      for (const member of entry.members ?? []) parts.push(t(member.labelKey), member.id);
+    }
+    return parts.join(" ");
+  }, [t]);
   const settingsNavigationItems = useMemo(() => SETTINGS_NAV_TABS
     // Task 130: the local-server page stays hidden until the experiment is on.
     .filter((id) => id !== "localserver" || Boolean(s?.experimentalLocalServer))
@@ -504,8 +527,10 @@ export function SettingsPanel({
       "settings.desktopLayoutStyle", "settings.language", "settings.currency", "settings.sessionExperience",
       "settings.closeBehavior",
       "settings.defaultToolApprovalMode", "settings.sound", "settings.statusBarStyle", "settings.statusBarItems",
-    ].map((key) => t(key as DictKey)).join(" ") : "",
-  })), [s, t]);
+    ].map((key) => t(key as DictKey)).join(" ")
+      // 任务 764：实验室条目进入设置搜索面（搜「心跳任务后台化」命中实验室）。
+      : id === "experimental" ? labSearchTerms : "",
+  })), [s, t, labSearchTerms]);
 
   return (
     <ManagementPageShell title={t("settings.title")} className="settings-screen" onBack={requestClose} contentRef={settingsContentRef}
@@ -533,7 +558,7 @@ export function SettingsPanel({
             ) : (
               <>
                 {tab === "general" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><GeneralSection s={s} busy={pageBusy} apply={pageApply} agentRunning={agentRunning} /></SettingsPageShell>}
-                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={pageBusy} apply={pageApply} />}
+                {tab === "experimental" && s && <ExperimentalSection key={tab} s={s} busy={pageBusy} apply={pageApply} focusEntry={pendingLabEntry} />}
                 {(tab === "models" || tab === "providers" || tab === "model-stats") && s && <SettingsPageShell key="model-pages" s={s} tab={tab} busy={pageBusy} apply={pageApply}><ModelsSection onOpenProviders={() => selectTab("providers")} s={s} busy={pageBusy} apply={pageApply} backgroundApply={backgroundApply} onboarding={initialFocus?.target === "model-access" && initialFocus.onboarding} onOnboardingComplete={onClose} subtab={tab === "providers" ? "access" : tab === "model-stats" ? "stats" : "usage"} /></SettingsPageShell>}
                 {tab === "bots" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><BotsSection s={s} busy={pageBusy} apply={pageApply} initialFocus={initialFocus} /></SettingsPageShell>}
                 {tab === "mcp" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><MCPServersSettingsPage /></Suspense></SettingsPageShell>}
@@ -1940,7 +1965,13 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "toolOptimizations",
 ]);
 
-function ExperimentalSection({ s, busy, apply }: SectionProps) {
+// 任务 764：设置搜索覆盖实验室——rail 用什么布局，搜索词表就用什么布局。
+// 同一 yaml 常量 + 同一 pane 白名单 resolve（yaml 损坏时同样整体回退内置
+// 默认），搜索视图与 rail 永不漂移。resolveLabLayout 纯函数，模块级解析
+// 一次（dev 模式改 yaml ?raw 热加载会重建模块，行为与组件内 useMemo 一致）。
+const LAB_LAYOUT_FOR_SEARCH = resolveLabLayout(labLayoutYaml, { allowedEntryIds: LAB_PANE_IDS }).layout;
+
+function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps & { focusEntry?: ExperimentFeatureId | null }) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
@@ -1993,7 +2024,8 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
 // Task 561: the default selection follows the first rail entry (autopilot;
 // the old default restartUpdate folded into the updateFeedback card).
 const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
-  const [labFilter, setLabFilter] = useState<LabGroupKey | "all">("all");
+  // 任务 764：随顶部筛选 chips 删除，labFilter 过滤态一并移除——rail 恒显
+  // 全部组（组内条目仍受折叠控制），导航由分组目录 toc 承接。
   // Task 385a: the 回答风格 selector payload loads on demand — only while its
   // lab entry is open, and again after every save that can change the active
   // style or the discovered files (apply() reloads s, which re-fires this).
@@ -2058,7 +2090,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // is a pure display preference (localStorage, no experimental_* chain — it
   // never touches switch semantics or persistence, task 359 / rule 2).
   const [introOpen, setIntroOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<LabGroupKey>>(() => new Set());
+  // 任务 764：搜索直达（focusEntry）时目标组直接展开挂载；无直达时维持
+  // 359 契约——全部组默认折叠。
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<LabGroupKey>>(() => {
+    if (!focusEntry) return new Set<LabGroupKey>();
+    const group = labEntries(labLayoutResolved.layout).find(({ entry }) => entry.id === focusEntry)?.group;
+    return group ? new Set<LabGroupKey>([group]) : new Set<LabGroupKey>();
+  });
   const [enabledFirst, setEnabledFirst] = useState<boolean>(
     () => {
       try { return globalThis.localStorage?.getItem("reasonix.lab.enabledFirst") === "1"; } catch { return false; }
@@ -2077,6 +2115,19 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
       document.getElementById(`lab-group-${key}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
     });
   };
+  // 任务 764：搜索直达——设置导航搜索命中实验室条目后点进来，预选该条目、
+  // 确保所在组展开并把 rail 行滚入视野；右侧 pane 随 selected 同步出卡。
+  // 无 focusEntry 时 effect 空转（默认选中仍是 autopilot，359 契约不变）。
+  useEffect(() => {
+    if (!focusEntry) return;
+    setSelected(focusEntry);
+    const group = labEntries(labLayoutResolved.layout).find(({ entry }) => entry.id === focusEntry)?.group;
+    if (!group) return;
+    setExpandedGroups((prev) => (prev.has(group) ? prev : new Set(prev).add(group)));
+    requestAnimationFrame(() => {
+      document.getElementById(`lab-entry-${focusEntry}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }, [focusEntry, labLayoutResolved]);
   const setEnabledFirstPref = (on: boolean) => {
     setEnabledFirst(on);
     try { globalThis.localStorage?.setItem("reasonix.lab.enabledFirst", on ? "1" : "0"); } catch { /* private mode: session-only */ }
@@ -2127,13 +2178,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     [labLayoutResolved, s, t],
   );
 
-  // 任务 626: single-source per-group totals — the filter chips AND the rail
-  // group-header badges read this ONE map, so 「rail header count = chip
-  // count」 is structural rather than coincidental. Recomputed from the SAME
-  // `features` render table on every settings update, never hardcoded
-  // (task 563 lesson). Filter-state policy (unchanged): with labFilter set to
-  // a group, the rail renders that group only (the `filtered` guard below);
-  // its header still renders and sticks — fixed behavior, by design.
+  // 任务 626: single-source per-group totals — the rail group-header badges
+  // read this ONE map (recomputed on every settings update, never hardcoded,
+  // task 563 lesson). 任务 764：顶部筛选 chips（原第二读点）已按双入口去重
+  // 裁决删除，组头徽章成为唯一读点——单源性质不变，只是读者少了一处。
   const labGroupTotals = useMemo(
     () =>
       Object.fromEntries(
@@ -2239,32 +2287,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <span>{t(enabledFirst ? "settings.lab.enabledFirst.on" : "settings.lab.enabledFirst.off")}</span>
             </button>
           </div>
-          <div className="experimental-lab__chips" role="tablist" aria-label={t("settings.experimentalIntro")}>
-            <button
-              key="all"
-              type="button"
-              className={`experimental-lab__chip${labFilter === "all" ? " experimental-lab__chip--active" : ""}`}
-              onClick={() => setLabFilter("all")}
-            >
-              {t("settings.labGroup.all")}<span className="experimental-lab__chip-n">{features.length}</span>
-            </button>
-            {labGroups.map((g) => {
-              // 任务 626: the chip count reads labGroupTotals — the same source
-              // the rail group-header badge reads, so the two never disagree.
-              const n = labGroupTotals[g.key];
-              if (n === 0) return null;
-              return (
-                <button
-                  key={g.key}
-                  type="button"
-                  className={`experimental-lab__chip${labFilter === g.key ? " experimental-lab__chip--active" : ""}`}
-                  onClick={() => setLabFilter(g.key)}
-                >
-                  {t(g.labelKey)}<span className="experimental-lab__chip-n">{n}</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* 任务 764（用户 0325 裁决）：顶部带计数筛选 chips 已删除——它与
+              下方 rail 内的分组目录 toc 视觉几乎相同（同款 999px 胶囊），目标
+              层面重复（都是「去某个组」），且计数与 rail 组头徽章重复（626
+              单源）。历史注（359→2331 行）：本页此前已删过一次双入口，速览
+              卡引入的第二组同样按此口径去重。保留 toc（跳转+自动展开，导航
+              能力更强）；组仍可经组标题折叠，聚焦能力不丢。 */}
           <nav className="experimental-rail" aria-label={t("settings.experimentalIntro")}>
             {/* Task 359 (Q2③): sticky group directory — jump scrolls the rail
                 to the group and auto-expands it (user-annotated requirement). */}
@@ -2281,7 +2309,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               ))}
             </div>
             {labGroups.map((g) => {
-              const filtered = features.filter((f) => f.group === g.key && (labFilter === "all" || labFilter === g.key));
+              const filtered = features.filter((f) => f.group === g.key);
               if (filtered.length === 0) return null;
               // Task 359 (③): display order only — enabled items first when the
               // top switch is on, source order when off. Stable sort keeps the
@@ -2310,6 +2338,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     <button
                       key={feature.id}
                       type="button"
+                      id={`lab-entry-${feature.id}`}
                       className={`experimental-rail__item${selected === feature.id ? " experimental-rail__item--active" : ""}${feature.on ? "" : " experimental-rail__item--off"}`}
                       aria-current={selected === feature.id ? "true" : undefined}
                       onClick={() => setSelected(feature.id)}

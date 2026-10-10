@@ -63,7 +63,9 @@ export function SettingsNavigation({
 }: {
   items: SettingsNavigationItem[];
   activeTab: SettingsTab;
-  onSelect: (tab: SettingsTab) => void;
+  /* 任务 764：点击时带上当前查询词——宿主可据此把「搜索命中实验室条目」
+   * 解析为直达预选（非空才传语义，无查询时为 undefined，旧签名兼容）。 */
+  onSelect: (tab: SettingsTab, query?: string) => void;
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
@@ -112,7 +114,7 @@ export function SettingsNavigation({
                     className={`settings-center__navitem${activeTab === id ? " settings-center__navitem--active" : ""}`}
                     aria-current={activeTab === id ? "page" : undefined}
                     title={item.meta ? `${item.label} · ${item.meta}` : item.label}
-                    onClick={() => onSelect(id)}
+                    onClick={() => onSelect(id, query)}
                   >
                     <span className="settings-center__navitem-main">
                       {settingsTabIcon(id)}
