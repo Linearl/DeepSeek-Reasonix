@@ -62,7 +62,7 @@ func (c *Controller) forkNamedReady(turn int, name string, switchToFork bool, ki
 
 	// Persist the current conversation first so the branch point survives, then
 	// seed a fresh session with the messages up to the fork and switch to it.
-	if err := c.Snapshot(); err != nil {
+	if err := c.SnapshotDurable(); err != nil {
 		slog.Warn("controller: pre-fork snapshot", "err", err)
 	}
 	parentPath := c.SessionPath()
@@ -168,7 +168,7 @@ func (c *Controller) branchTip(name string, forceFile bool) (string, error) {
 	if !c.executor.Session().HasContent() {
 		return "", c.rewindFail(fmt.Errorf("nothing to branch yet"))
 	}
-	if err := c.Snapshot(); err != nil {
+	if err := c.SnapshotDurable(); err != nil {
 		return "", c.rewindFail(err)
 	}
 	if !forceFile {
@@ -228,7 +228,7 @@ func (c *Controller) Branches() ([]agent.BranchInfo, error) {
 	if c.sessionDir == "" {
 		return nil, fmt.Errorf("session persistence is disabled")
 	}
-	if err := c.Snapshot(); err != nil {
+	if err := c.SnapshotDurable(); err != nil {
 		return nil, err
 	}
 	branches, err := agent.ListBranches(c.sessionDir)
@@ -343,7 +343,7 @@ func branchDisplayName(b agent.BranchInfo) string {
 // boundary and this controller moves onto it without changing session path;
 // checkpoint turns past the boundary stay hidden by CheckpointHasBoundary.
 func (c *Controller) forkHeadReady(sess *agent.Session, turn, boundary int, name, kind string) (string, error) {
-	if err := c.Snapshot(); err != nil {
+	if err := c.SnapshotDurable(); err != nil {
 		slog.Warn("controller: pre-fork snapshot", "err", err)
 	}
 	path := c.SessionPath()
