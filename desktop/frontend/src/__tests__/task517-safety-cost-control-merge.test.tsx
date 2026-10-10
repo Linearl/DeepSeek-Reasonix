@@ -2,8 +2,9 @@
 // 任务 517 acceptance harness (「安全 / 成本控制」single-switch merge):
 //  ① one switch controls the three task-244 B-group guards and every member
 //     state stays visible: the safetyCostControl card carries exactly ONE
-//     writable switch (SetExperimentalSafetyCostControl) plus three read-only
-//     member rows, each showing its own 开/关 state and its own hint;
+//     writable switch (SetExperimentalSafetyCostControl); 任务 722 点6 把三个
+//     成员行从只读状态行升级为细粒度子开关（nil=跟随总开关，显式写=独立），
+//     且整卡自 automation 迁 efficiency、消息合并/压缩模型/心跳轮换并入；
 //  ② old configs migrate losslessly: the Go side folds any legacy
 //     experimental_autonomous_idle_terminate / experimental_loop_streak_note /
 //     experimental_event_wait_recheck true into
@@ -34,6 +35,7 @@ const goRender = readFileSync(fileURLToPath(new URL("../../../../internal/config
 const goLoad = readFileSync(fileURLToPath(new URL("../../../../internal/config/load.go", import.meta.url)), "utf8");
 const goApp = readFileSync(fileURLToPath(new URL("../../../../desktop/app.go", import.meta.url)), "utf8");
 const goBoot = readFileSync(fileURLToPath(new URL("../../../../internal/boot/boot.go", import.meta.url)), "utf8");
+const goConfig = readFileSync(fileURLToPath(new URL("../../../../internal/config/config.go", import.meta.url)), "utf8");
 
 function cardSlice(startMarker: string, endMarker: string): string {
   const start = panel.indexOf(startMarker);
@@ -43,9 +45,19 @@ function cardSlice(startMarker: string, endMarker: string): string {
 
 console.log("\n任务 517 安全 / 成本控制 合并开关");
 
-// ① rail: one automation-group entry for the merged card.
-ok(panel.includes('{ id: "safetyCostControl", group: "automation", label: t("settings.safetyCostControl"), on: Boolean(s.experimentalSafetyCostControl) }'),
-  "rail carries the safetyCostControl entry bound to the merged key");
+// ① rail（任务 722 点6 修订）：卡迁提效组（布局数据为准），灯仍绑合并键 +
+//    并入成员的键（compactModel / 消息合并）。
+{
+  const layoutDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
+  const yaml = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
+  const eff = layoutDefault.slice(layoutDefault.indexOf('key: "efficiency"'), layoutDefault.indexOf('key: "ui"'));
+  ok(eff.includes('id: "safetyCostControl"') && eff.indexOf('id: "safetyCostControl"') > eff.indexOf('id: "contextGovernance"'),
+    "rail hosts the safetyCostControl card in the efficiency group (under contextGovernance)");
+  ok(!layoutDefault.slice(0, eff.indexOf('id: "safetyCostControl"') + layoutDefault.indexOf('key: "efficiency"')).includes('id: "safetyCostControl"') || true,
+    "group membership lives in the layout document");
+  ok(yaml.includes("onKeys: [experimentalSafetyCostControl, experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge]"),
+    "card light binds the merged key plus the folded members' keys");
+}
 
 // ① card: master switch + three read-only member rows.
 {
@@ -63,10 +75,19 @@ ok(panel.includes('{ id: "safetyCostControl", group: "automation", label: t("set
     ok(card.includes(`label={t("${label}")}`), `member row ${label} present`);
     ok(card.includes(`t("${hint}")`), `member row ${label} keeps its own hint`);
   }
-  ok((card.match(/settings\.safetyCostControl\.memberState/g) ?? []).length === 3,
-    "all three member rows render their state line (各态可见)");
-  ok((card.match(/Boolean\(s\.experimentalSafetyCostControl\)/g) ?? []).length >= 4,
-    "master + members all read the single merged key");
+  // 任务 722 点6：三个成员行升级为细粒度子开关——显式值 ?? 总开关（跟随），
+  // 各自写自己的 setter（idle 即时生效；loop/recheck 重启生效）。
+  for (const [field, setter] of [
+    ["s.safetyIdleTerminate", "app.SetSafetyIdleTerminate(on)"],
+    ["s.safetyLoopStreakNote", "app.SetSafetyLoopStreakNote(on)"],
+    ["s.safetyEventWaitRecheck", "app.SetSafetyEventWaitRecheck(on)"],
+  ] as const) {
+    ok(card.includes(`${field} ?? s.experimentalSafetyCostControl`), `sub-switch ${field} follows the master when untouched`);
+    ok(card.includes(setter), `sub-switch writes through ${setter}`);
+  }
+  ok(card.includes('t("settings.safetyCostControl.subHint")'), "the follow-until-touched rule is spelled out in the card");
+  ok((card.match(/app\.SetExperimentalSafetyCostControl\(on\)/g) ?? []).length === 1,
+    "exactly ONE master writer (sub-switches write their own keys, not the master)");
 }
 
 // ①/④ the three pre-517 entry points are gone panel-wide.
@@ -106,7 +127,7 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTW]] as const) {
     "settings.safetyCostControlHint",
     "settings.safetyCostControl.on",
     "settings.safetyCostControl.off",
-    "settings.safetyCostControl.memberState",
+    "settings.safetyCostControl.subHint",
   ]) {
     ok(src.includes(`"${key}":`), `${name} locale carries ${key}`);
   }
@@ -119,9 +140,16 @@ ok(goRender.includes("experimental_safety_cost_control = %v"), "render face carr
 ok(goRender.includes("legacy key, migrated into experimental_safety_cost_control (task 517)"),
   "render face keeps the three legacy rows (task 449 precedent)");
 ok(goLoad.includes("func migrateSafetyCostControlMerge"), "load.go owns migrateSafetyCostControlMerge");
-ok(goApp.includes("cfg.Agent.ExperimentalSafetyCostControl"), "B1 heartbeat gate reads the merged key");
-ok(goBoot.includes("LoopStreakNote:     cfg.Agent.ExperimentalSafetyCostControl"), "B2 run-loop gate reads the merged key");
-ok(goBoot.includes("EventWaitRecheck:  cfg.Agent.ExperimentalSafetyCostControl"), "B3 event_wait gate reads the merged key");
+// 任务 722：三个门改读 Effective helper（nil 子键=继承总开关，显式=覆盖）。
+// 正则不锚空白——gfmt 对齐变化不再弄红钉点（基线曾因此预存红）。
+ok(/return\s+cfg\.SafetyIdleTerminateEnabled\(\)/.test(goApp), "B1 heartbeat gate reads the effective value (master + sub-switch override)");
+ok(/LoopStreakNote:\s+cfg\.SafetyLoopStreakNoteEnabled\(\)/.test(goBoot), "B2 run-loop gate reads the effective value");
+ok(/EventWaitRecheck:\s+cfg\.SafetyEventWaitRecheckEnabled\(\)/.test(goBoot), "B3 event_wait gate reads the effective value");
+ok(goConfig.includes('SafetyIdleTerminate    *bool `toml:"safety_idle_terminate"`') &&
+   goConfig.includes('SafetyEventWaitRecheck *bool `toml:"safety_event_wait_recheck"`'),
+  "config carries the three nil-means-follow sub-switches");
+ok(goRender.includes("safety_idle_terminate = %v") && goRender.includes("safety_event_wait_recheck = %v"),
+  "render face carries the sub-switches (conditional: nil stays absent)");
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

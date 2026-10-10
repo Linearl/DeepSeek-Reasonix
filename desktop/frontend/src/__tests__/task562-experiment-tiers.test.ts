@@ -18,13 +18,15 @@ import {
   EXPERIMENT_FEATURE_TIERS,
   LAB_TIER_COUNTS,
   LAB_TIER_ORDER,
-  LAB_RAIL_ENTRY_MEMBERS,
   LAB_WALL_PICKS,
-  railTiersFor,
   isTierFeatureId,
   type LabTier,
   type TierFeatureId,
 } from "../lib/experimentTiers";
+// 任务 722/724：合并卡成员表移交实验室布局数据（yaml 化内置默认），rail
+// 徽章与成员覆盖从布局数据读（lib/experimentTiers 只保留档位注册表）。
+import { LAB_LAYOUT_DEFAULT_DATA } from "../lab/labLayoutDefault";
+import { findLabLayoutDefaultRegisterDrift, railTiersForDefault } from "../lab/labLayout";
 
 let passed = 0;
 let failed = 0;
@@ -54,11 +56,16 @@ console.log("\ntask 562 lab three-tier badges");
   // ——可选 19→20、总数 48→49，两侧同源对齐。
   // 任务 704：trajectoryView（轨迹视图，默认关）按可选档入表——可选
   // 20→21、总数 49→50，两侧同源对齐。
-  ok(counts.recommended === 15 && counts.optional === 21 && counts.unstable === 13 && counts.retired === 1,
-    `register counts are 15/20/13/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 50, `register holds exactly 50 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 21 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 15/20/13/1");
+  // 任务 727：heartbeatRotation（心跳会话轮换，桥接 JSON 键）按可选档入表
+  // ——可选 21→22、总数 50→51。
+  ok(counts.recommended === 15 && counts.optional === 22 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 15/22/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 51, `register holds exactly 51 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 22 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 15/22/13/1");
+  // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
+  ok(findLabLayoutDefaultRegisterDrift().length === 0,
+    `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
 }
 
 // ② wall picks (表B W1).
@@ -74,10 +81,11 @@ console.log("\ntask 562 lab three-tier badges");
 }
 
 // ③ frontend register ↔ Go registry (render.go) agreement.
-// 任务 621 口径：两侧各留一个显式豁免——Go 独有 sessionCwdFollow（任务 545，
-// 纯 TOML 配置特性，无 desktop 绑定、无设置页渲染面，无处挂徽章）；前端独有
-// modelCapabilityFilter（已退役只读展示行，Go 渲染表已移除该键，473/562 域）。
-// 除这两个显式豁免外逐项一致。
+// 任务 621/722/727 口径：两侧各留显式豁免——Go 独有 sessionCwdFollow（任务
+// 545，纯 TOML 配置特性，无 desktop 绑定、无设置页渲染面，无处挂徽章）；前端
+// 独有 modelCapabilityFilter（已退役只读展示行，Go 渲染表已移除该键，473/562
+// 域）与 heartbeatRotation（任务 727，桥接 heartbeat-rotation.json 的 enabled，
+// 不落 config.toml，无 Go 渲染表条目）。除这些显式豁免外逐项一致。
 {
   const goSrc = readFileSync(fileURLToPath(new URL("../../../../internal/config/render.go", import.meta.url)), "utf8");
   const goTiers: Record<string, string> = {};
@@ -91,8 +99,8 @@ console.log("\ntask 562 lab three-tier badges");
   const feOnly = feIds.filter((id) => !goIds.includes(id));
   ok(JSON.stringify(goOnly) === JSON.stringify(["sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
-  ok(JSON.stringify(feOnly) === JSON.stringify(["modelCapabilityFilter"]),
-    `frontend-only ids are exactly the retired-display exemption (got ${JSON.stringify(feOnly)})`);
+  ok(JSON.stringify(feOnly) === JSON.stringify(["heartbeatRotation", "modelCapabilityFilter"]),
+    `frontend-only ids are exactly the display/json-bridge exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
     if (id in goTiers && goTiers[id] !== EXPERIMENT_FEATURE_TIERS[id as TierFeatureId]) mismatch += 1;
@@ -103,20 +111,28 @@ console.log("\ntask 562 lab three-tier badges");
 // ④ rail wiring: merged cards cover their members; standalone entries badge
 // themselves; unknown ids stay clean.
 {
-  const members = Object.values(LAB_RAIL_ENTRY_MEMBERS).flat();
-  ok(members.length === 17, `merged cards carry 17 member features (任务 707 compactModel 随上下文治理卡入成员表) (got ${members.length})`);
+  const members = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g) => g.entries.flatMap((e) => e.members?.map((m) => m.id) ?? []));
+  // 任务 722：sessionCollabAutoFold 并入 sessionCollab、compactModel +
+  // messageMerge 并入 safetyCostControl、727 heartbeatRotation 入卡——
+  // 成员总数 17→19；点2 modelStrategy 成员表去掉 modelCapabilityFilter。
+  ok(members.length === 19, `merged cards carry 19 member features (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
-  // 任务 704：trajectoryView 入表，覆盖数 49→50。
-  ok(covered.size === 50, "rail entries cover all 50 features");
-  const gov = railTiersFor("contextGovernance");
+  // 任务 704：trajectoryView 入表 → 50；任务 727 heartbeatRotation → 51。
+  ok(covered.size === 51, "rail entries cover all 51 features");
+  const gov = railTiersForDefault("contextGovernance");
   ok(gov[0] === "recommended" && gov[1] === "optional" && gov.length === 2, `contextGovernance shows [推荐, 可选] (got ${JSON.stringify(gov)})`);
-  ok(JSON.stringify(railTiersFor("autopilot")) === JSON.stringify(["recommended"]), "standalone entry badges itself");
-  ok(railTiersFor("preapproveManagedPaths").length === 0, "non-表A id (task-364 domain) shows no badge");
-  ok(railTiersFor("modelStrategy").includes("retired"), "retired member surfaces on the modelStrategy card");
-  // 任务 517：safetyCostControl 是单键卡（无成员表）——自己作为表A id 挂徽章。
-  ok(JSON.stringify(railTiersFor("safetyCostControl")) === JSON.stringify(["optional"]),
-    `safetyCostControl badges itself as optional (got ${JSON.stringify(railTiersFor("safetyCostControl"))})`);
+  ok(JSON.stringify(railTiersForDefault("autopilot")) === JSON.stringify(["recommended"]), "standalone entry badges itself");
+  ok(railTiersForDefault("preapproveManagedPaths").length === 0, "non-表A id (task-364 domain) shows no badge");
+  // 任务 722 点2：「已退役」徽章自模型策略卡移除——只余 highSpeedModel 的可选档。
+  ok(!railTiersForDefault("modelStrategy").includes("retired") && JSON.stringify(railTiersForDefault("modelStrategy")) === JSON.stringify(["optional"]),
+    `modelStrategy drops the retired badge (got ${JSON.stringify(railTiersForDefault("modelStrategy"))})`);
+  // 任务 722 点5/6：compactModel（可选）与 messageMerge（推荐）并入安全/成本控制卡。
+  ok(JSON.stringify(railTiersForDefault("safetyCostControl")) === JSON.stringify(["recommended", "optional"]),
+    `safetyCostControl shows [推荐, 可选] after the 722 folds (got ${JSON.stringify(railTiersForDefault("safetyCostControl"))})`);
+  // 任务 722 点3：sessionCollab 卡多出折叠子项的可选档徽章。
+  ok(JSON.stringify(railTiersForDefault("sessionCollab")) === JSON.stringify(["recommended", "optional"]),
+    `sessionCollab covers its auto-fold member (got ${JSON.stringify(railTiersForDefault("sessionCollab"))})`);
 }
 
 // ⑤ pane wiring in SettingsPanel (46/46) + rail render site.
@@ -125,10 +141,12 @@ console.log("\ntask 562 lab three-tier badges");
   const wrapped = new Set([...panel.matchAll(/labLabel\("([a-zA-Z]+)"/g)].map((m) => m[1]));
   const missing: string[] = [];
   for (const id of Object.keys(EXPERIMENT_FEATURE_TIERS) as TierFeatureId[]) {
-    if (id !== "opencodeGoUsage" && !wrapped.has(id)) missing.push(id);
+    // opencodeGoUsage：独立用量卡自带徽章；modelCapabilityFilter：任务 722
+    // 点2 移除「已退役」徽章（只读展示行保留，无徽章）。
+    if (id !== "opencodeGoUsage" && id !== "modelCapabilityFilter" && !wrapped.has(id)) missing.push(id);
   }
   ok(missing.length === 0, `pane labels wrap every non-card id in SettingsPanel + the usage card covers opencodeGoUsage (missing: ${JSON.stringify(missing)})`);
-  ok(panel.includes("railTiersFor(feature.id).map((tier) => ("), "rail rows render tier badges");
+  ok(panel.includes("labEntryBadgeTiers(labLayoutResolved.layout, feature.id).map((tier) => ("), "rail rows render tier badges from the resolved layout");
   const card = readFileSync(fileURLToPath(new URL("../components/SettingsOpenCodeGoUsageCard.tsx", import.meta.url)), "utf8");
   ok(card.includes("EXPERIMENT_FEATURE_TIERS.opencodeGoUsage"), "opencodeGoUsage card badges its title");
 }

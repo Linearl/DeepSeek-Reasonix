@@ -32,7 +32,8 @@ const styles = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.u
 console.log("\ntask 626 lab group headers");
 
 // ④ + ③: one totals map feeds BOTH the chips and the rail group headers.
-ok(panel.includes("const labGroupTotals = Object.fromEntries("), "labGroupTotals map exists (single source for chips + headers)");
+ok(panel.includes("const labGroupTotals = useMemo(") && panel.includes("Object.fromEntries("),
+  "labGroupTotals map exists (single source for chips + headers; 任务722 memo 化，源仍单一路径)");
 {
   const readers = panel.match(/labGroupTotals\[g\.key\]/g) ?? [];
   ok(readers.length >= 2, `both chips and group header read labGroupTotals (got ${readers.length} read sites)`);

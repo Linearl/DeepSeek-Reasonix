@@ -46,6 +46,10 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
   for (const id of Object.keys(EXPERIMENT_FEATURE_TIERS) as TierFeatureId[]) {
     const n = counts.get(id) ?? 0;
     if (id === "opencodeGoUsage") {
+      // 独立用量卡自带徽章，pane 内不重复挂。
+      if (n !== 0) dupes.push(`${id}×${n}`);
+    } else if (id === "modelCapabilityFilter") {
+      // 任务 722 点2：「已退役」徽章移除（rail 成员表 + 卡内只读行都不挂）。
       if (n !== 0) dupes.push(`${id}×${n}`);
     } else if (n === 0) missing.push(id);
     else if (n > 1) dupes.push(`${id}×${n}`);
@@ -86,7 +90,8 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
   const badBare = bare.filter((s) => !panel.includes(s));
   ok(missingBadge.length === 0, `master switch rows keep their badges (missing: ${JSON.stringify(missingBadge)})`);
   ok(badBare.length === 0, `sibling/dial rows render bare labels (violations: ${JSON.stringify(badBare)})`);
-  ok(panel.includes('railTiersFor(feature.id).map((tier) => ('), "rail rows keep their tier badges (non-regression)");
+  ok(panel.includes("labEntryBadgeTiers(labLayoutResolved.layout, feature.id).map((tier) => ("),
+    "rail rows keep their tier badges (non-regression; 任务724 徽章改由布局数据驱动)");
 }
 
 // ③ the 「（实验）」 marker is gone from all three locales.
