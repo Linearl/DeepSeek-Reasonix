@@ -43,7 +43,7 @@ jobs:
     if: contains(github.event.pull_request.labels.*.name, 'ai-review')
     env: # job-level so it propagates INTO the composite action (step-level env does not cross the `uses:` boundary; first trial runs 401'd against api.anthropic.com)
       ANTHROPIC_BASE_URL: https://api.xiaomimimo.com/anthropic # MiMo Anthropic-compatible endpoint (user-confirmed 2026-10-10)
-      ANTHROPIC_MODEL: mimo-v2.6-pro
+      ANTHROPIC_MODEL: mimo-v2.6-flash # flash per user call 2026-10-10 (cheaper for trial; bump back to pro if finding quality disappoints)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -54,9 +54,9 @@ jobs:
         uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda # main, 2026-10-08
         env:
           ANTHROPIC_BASE_URL: https://api.xiaomimimo.com/anthropic # MiMo Anthropic-compatible endpoint (user-confirmed 2026-10-10); replaces direct Anthropic API
-          ANTHROPIC_MODEL: mimo-v2.6-pro
+          ANTHROPIC_MODEL: mimo-v2.6-flash
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }} # holds the MIMO_API_KEY value (user decision 2026-10-10)
-          claude-model: mimo-v2.6-pro # main audit model (upstream validate/filters still hardcode claude-3-5-haiku; those 400s are non-blocking, main audit uses this)
+          claude-model: mimo-v2.6-flash # main audit model (flash per user call 2026-10-10; upstream validate/filters still hardcode claude-3-5-haiku, those 400s are non-blocking)
           comment-pr: "true" # findings land as PR comments for triage
           upload-results: "true" # review JSON artifact for noise-rate analysis
