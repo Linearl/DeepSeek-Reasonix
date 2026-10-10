@@ -106,6 +106,20 @@ type DeferredStructuralTransaction = {
 
 const TRANSACTION_TTL_MS = 1_000;
 const BOTTOM_THRESHOLD_PX = 4;
+// Task 753 (root cause 2): an anchored restore that would move the viewport
+// further than this (or one viewport height, whichever is larger) is a yank,
+// not a correction - the reader's anchored block drifted (large collapse or
+// expansion above/at the anchor) and re-applying the stale anchor teleports
+// the view back to e.g. the last user message.
+const ANCHOR_DRIFT_MIN_PX = 320;
+
+/** Task 753: current viewport facts for the anchor-drift guard in
+ * correctAnchor. Absent - the correction keeps its pre-753 behavior. */
+export type AnchorCorrectionViewport = {
+  scrollTop: number;
+  clientHeight: number;
+  visibleBlocks: readonly TranscriptVisibleBlock[];
+};
 
 function defaultClock(): TranscriptKernelClock {
   return {
@@ -149,6 +163,10 @@ export class TranscriptKernel {
   private safeModeValue = false;
   private writeTop: number | null = null;
   private nativeGestureTimer: ReturnType<typeof setTimeout> | null = null;
+  // Task 753: the block this kernel last aligned the viewport to, and the
+  // top it had at that moment. Same key + a large top delta at correction
+  // time = the anchored block drifted and the stale restore must be refused.
+  private alignedAnchor: { key: string; top: number } | null = null;
 
   constructor(options: { clock?: TranscriptKernelClock; emit?: (event: TranscriptKernelEvent) => void } = {}) {
     this.clock = options.clock ?? defaultClock();
@@ -176,6 +194,7 @@ export class TranscriptKernel {
     this.clearNativeGestureLease();
     this.cancelActive("surface-detached");
     this.deferredStructural = null;
+    this.alignedAnchor = null;
     if (this.tailFrame !== null) this.clock.cancelAnimationFrame(this.tailFrame);
     this.tailFrame = null;
     this.generationValue += 1;
@@ -197,6 +216,9 @@ export class TranscriptKernel {
     this.writeTop = null;
     this.anomalyCount = 0;
     this.safeModeValue = false;
+    // A restored anchor has never been aligned against THIS surface's
+    // geometry - its first correction is a legitimate restore, not a drift.
+    this.alignedAnchor = null;
     this.anchorValue = this.anchors.get(session) ?? { kind: "tail" };
     this.intentValue = this.anchorValue.kind === "tail" ? "tail" : "reader";
     return { generation: this.generationValue, anchor: this.anchorValue };
@@ -344,7 +366,11 @@ export class TranscriptKernel {
     return true;
   }
 
-  correctAnchor(transaction: ScrollTransaction, blockTop: (blockKey: string) => number | undefined): boolean {
+  correctAnchor(
+    transaction: ScrollTransaction,
+    blockTop: (blockKey: string) => number | undefined,
+    viewport?: AnchorCorrectionViewport,
+  ): boolean {
     const active = this.active;
     if (!active || active.transaction.id !== transaction.id || transaction.generation !== this.generationValue) return false;
     if (this.userGesture || active.transaction.kind === "selection") return false;
@@ -361,12 +387,36 @@ export class TranscriptKernel {
       this.finish(transaction.id, "cancelled", "anchor-missing");
       return false;
     }
+    // Task 753 (root cause 2): the anchored block is allowed to move between
+    // alignments, but if it moved further than a viewport from where this
+    // kernel last aligned it, re-applying the anchor is a teleport back to a
+    // message the reader left long ago ("jumps to my message, never follows
+    // the bottom"). Refuse the restore, re-anchor to the block the reader is
+    // actually looking at, and keep the current pixels. A first alignment
+    // (no alignedAnchor / different key - fresh capture, explicit jump,
+    // surface restore) is always legitimate and stays exempt.
+    if (viewport && this.alignedAnchor && this.alignedAnchor.key === active.anchor.blockKey) {
+      const target = top + active.anchor.offsetPx;
+      if (Math.abs(target - viewport.scrollTop) > Math.max(ANCHOR_DRIFT_MIN_PX, viewport.clientHeight)) {
+        const first = viewport.visibleBlocks.find((block) => block.bottom > viewport.scrollTop + 0.5);
+        this.alignedAnchor = null;
+        if (first) {
+          const replacement: LogicalAnchor = { kind: "block", blockKey: first.key, offsetPx: viewport.scrollTop - first.top };
+          this.anchorValue = replacement;
+          this.anchors.set(this.session, replacement);
+        }
+        this.finish(transaction.id, "cancelled", "anchor-drift");
+        return false;
+      }
+    }
     const owner: TranscriptScrollOwner = active.transaction.kind === "jump" ? "question-jump"
       : active.transaction.kind === "prepend" ? "history-prepend"
         : active.transaction.kind === "display-change" ? "display-change"
           : active.transaction.kind === "composer-resize" ? "composer-resize"
             : "restore";
-    return this.writeAndFinish(active, owner, top + active.anchor.offsetPx);
+    const written = this.writeAndFinish(active, owner, top + active.anchor.offsetPx);
+    if (written) this.alignedAnchor = { key: active.anchor.blockKey, top };
+    return written;
   }
 
   // offsetPx (task 399): row-level find jumps land mid-block; the default 0
@@ -483,6 +533,14 @@ export class TranscriptKernel {
           if (this.active === active) this.finish(active.transaction.id, "committed", "committed");
         });
       } else this.finish(active.transaction.id, "committed", "committed");
+    } else if (result.reason === "native-clamp") {
+      // Task 753 (root cause 2): the native scroller clamped this frame (the
+      // viewport physically cannot reach the requested offset right now).
+      // Holding the transaction for the full TTL blocked every follow-up
+      // correction - tail follow visibly detached for up to a second during
+      // collapse animations. Finish immediately so the next geometry pass can
+      // retry with fresh geometry.
+      this.finish(active.transaction.id, "cancelled", "native-clamp");
     }
     return result.accepted;
   }

@@ -1001,13 +1001,10 @@ export function TurnActions({
 export const AssistantMessage = memo(function AssistantMessage({
   item,
   defaultExpanded = false,
-  expandWhileStreaming = false,
   creationMode = false,
 }: {
   item: AssistantItem;
   defaultExpanded?: boolean;
-  /** false in compact mode: completed steps fold away, so auto-open + fold reads as flicker. */
-  expandWhileStreaming?: boolean;
   creationMode?: boolean;
 }) {
   const presentation = useWorkProcessPresentation();
@@ -1015,12 +1012,16 @@ export const AssistantMessage = memo(function AssistantMessage({
   const hasFootnotes = Boolean(item.searchSources?.length);
   const processOnly = Boolean(item.reasoning) && !hasText && !hasFootnotes;
   const processWithText = Boolean(item.reasoning) && (hasText || hasFootnotes);
-  const reasoningFallback = <div className="reasoning reasoning--loading" data-expanded={defaultExpanded || presentation.keepExpandedAfterCompletion || (item.streaming && (presentation.showWhileRunning || expandWhileStreaming)) ? "" : undefined} aria-hidden />;
+  // Task 753 (R4 hardening): the expandWhileStreaming caller bypass is gone -
+  // the streaming-expand decision lives in the presentation alone, and
+  // defaultExpanded defers to concise (mirrors AssistantReasoningPanel).
+  const startExpanded = defaultExpanded && presentation.experience !== "concise";
+  const reasoningFallback = <div className="reasoning reasoning--loading" data-expanded={startExpanded || presentation.keepExpandedAfterCompletion || (item.streaming && presentation.showWhileRunning) ? "" : undefined} aria-hidden />;
   return (
     <div className={`msg msg--assistant${processOnly ? " msg--process-only" : ""}${processWithText ? " msg--process-with-text" : ""}`} data-history-restore={item.id.startsWith("h") ? "" : undefined} data-entrance={item.id}>
       {item.reasoning && (
         <Suspense fallback={reasoningFallback}>
-          <AssistantReasoningPanel item={item} defaultExpanded={defaultExpanded} expandWhileStreaming={expandWhileStreaming} />
+          <AssistantReasoningPanel item={item} defaultExpanded={defaultExpanded} />
         </Suspense>
       )}
       {(hasText || hasFootnotes) && (

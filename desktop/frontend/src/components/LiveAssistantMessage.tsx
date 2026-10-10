@@ -36,7 +36,9 @@ export const LiveAssistantMessage = memo(function LiveAssistantMessage({
   const displayItem = report ? { ...shown, text: report.body || shown.text } : shown;
   return (
     <>
-      <AssistantMessage item={displayItem} defaultExpanded={false} expandWhileStreaming={false} creationMode={creationMode} />
+      {/* Task 753 (R4 hardening): expandWhileStreaming removed - the bypass prop
+          was always false here and is no longer accepted. */}
+      <AssistantMessage item={displayItem} defaultExpanded={false} creationMode={creationMode} />
       {report ? <CompletionReportCard fields={report.fields} id={`${item.id}-report`} /> : null}
     </>
   );

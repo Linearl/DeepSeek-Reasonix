@@ -19,18 +19,23 @@ function reasoningDurationLabel(durationMs: number | undefined, t: ReturnType<ty
 export function AssistantReasoningPanel({
   item,
   defaultExpanded,
-  expandWhileStreaming,
 }: {
   item: AssistantItem;
   defaultExpanded: boolean;
-  expandWhileStreaming: boolean;
 }) {
   const t = useT();
   const presentation = useWorkProcessPresentation();
   const running = item.streaming && !item.reasoningComplete;
-  const followsWhileStreaming = presentation.showWhileRunning || expandWhileStreaming;
+  // Task 753 (R4 hardening): there is no caller-side bypass anymore. The old
+  // `showWhileRunning || expandWhileStreaming` let any future caller silently
+  // override the concise tier; production always passed false (dead path with
+  // live foot-gun potential), so the prop is gone and concise semantics are
+  // decided by the presentation alone.
+  const followsWhileStreaming = presentation.showWhileRunning;
   const keepExpanded = presentation.keepExpandedAfterCompletion;
-  const [open, setOpen] = useState(defaultExpanded || keepExpanded || (followsWhileStreaming && item.streaming));
+  // A caller-hinted defaultExpanded must not outrank concise either.
+  const startExpanded = defaultExpanded && presentation.experience !== "concise";
+  const [open, setOpen] = useState(startExpanded || keepExpanded || (followsWhileStreaming && item.streaming));
   const bodyRef = useRef<HTMLDivElement>(null);
   const userOverridden = useRef(false);
   const previousStreaming = useRef(item.streaming);
@@ -47,15 +52,15 @@ export function AssistantReasoningPanel({
     previousExperience.current = presentation.experience;
     if (modeChanged) {
       userOverridden.current = false;
-      setOpen(defaultExpanded || keepExpanded || (followsWhileStreaming && item.streaming));
+      setOpen(startExpanded || keepExpanded || (followsWhileStreaming && item.streaming));
     } else if (item.streaming) {
       if (!wasStreaming) userOverridden.current = false;
-      if (defaultExpanded || keepExpanded) setOpen(true);
+      if (startExpanded || keepExpanded) setOpen(true);
       else if (!userOverridden.current && followsWhileStreaming) setOpen(true);
     } else if ((complete && !wasComplete) || wasStreaming) {
-      if (!defaultExpanded && !keepExpanded && !userOverridden.current) setOpen(false);
+      if (!startExpanded && !keepExpanded && !userOverridden.current) setOpen(false);
     }
-  }, [defaultExpanded, followsWhileStreaming, keepExpanded, item.reasoningComplete, item.streaming, presentation.experience]);
+  }, [followsWhileStreaming, keepExpanded, item.reasoningComplete, item.streaming, presentation.experience, startExpanded]);
 
   const toggle = () => {
     userOverridden.current = true;
