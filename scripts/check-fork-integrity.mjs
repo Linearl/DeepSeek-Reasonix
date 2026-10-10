@@ -52,7 +52,7 @@ const CHECKS = [
   { feature: "task 287 Plan 用量概览卡", file: "desktop/frontend/src/components/PlanUsageCard.tsx", patterns: ["plan-usage__row", "planFiveHourExhausted", "planUsageNoteText"] },
   { feature: "task 287 statusBar plan 显示项注册", file: "desktop/frontend/src/lib/statusBarItems.ts", patterns: ["\"plan\""] },
   { feature: "task 287 Plan 用量三语", file: "desktop/frontend/src/locales/zh.ts", patterns: ["planUsage.title", "planUsage.exhausted", "status.planLabel"] },
-  { feature: "task 280 乐观并行（实验室改名迁址，同键取反绑定；任务561 归 automation 组）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["optimisticParallel", "app.SetOptimisticWrite(on)", "group: \"automation\""] },
+  { feature: "task 280 乐观并行（实验室改名迁址，同键取反绑定；722 yaml 化后分组归 lab-layout.yaml，540 定稿 efficiency 组）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["optimisticParallel", "app.SetOptimisticWrite(on)", "| \"optimisticParallel\""] },
   { feature: "task 192 驻留豁免开关（store 策略）", file: "desktop/frontend/src/lib/transcriptStore.ts", patterns: ["setResidentPolicy", "shouldRetainOnSwitch", "ResidentExemptLimit", "noteResidentBudgetOver"] },
   { feature: "#9221 颜色筛选 TSX", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["colorFilter", "renderColorFilterControl", "project-tree__action-btn"] },
   { feature: "#9222 分组 TSX + 持久化（上游等价实现）", file: "desktop/frontend/src/components/ProjectTreeOrganization.tsx", patterns: ["ProjectTreeGroupRows", "useProjectTreeOrganization", "persistSessionGroupCollapsed"] },
@@ -386,9 +386,9 @@ const CHECKS = [
   { feature: "任务517 安全/成本控制合并键（配置字段）", file: "internal/config/config.go", patterns: ["experimental_safety_cost_control", "migrateSafetyCostControlMerge"] },
   { feature: "任务517 安全/成本控制合并键（union 迁移）", file: "internal/config/load.go", patterns: ["func migrateSafetyCostControlMerge", "migrateSafetyCostControlMerge(cfg)"] },
   { feature: "任务517 安全/成本控制合并键（渲染面 + legacy 三行）", file: "internal/config/render.go", patterns: ["experimental_safety_cost_control = %v", "legacy key, migrated into experimental_safety_cost_control (task 517)"] },
-  { feature: "任务517 三个运行时门读合并键（B1 心跳/B2 循环/B3 事件复查）", file: "internal/boot/boot.go", patterns: ["LoopStreakNote: cfg.Agent.ExperimentalSafetyCostControl", "EventWaitRecheck: cfg.Agent.ExperimentalSafetyCostControl"] },
-  { feature: "任务517 B1 心跳门读合并键（call-time 评估）", file: "desktop/app.go", patterns: ["cfg.Agent.ExperimentalSafetyCostControl"] },
-  { feature: "任务517 实验室单卡 UI（总开关+三子态行）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["safetyCostControl", "SetExperimentalSafetyCostControl", "settings.safetyCostControl.memberState"] },
+  { feature: "任务517 三个运行时门读合并键（B1 心跳/B2 循环/B3 事件复查）", file: "internal/boot/boot.go", patterns: ["cfg.SafetyLoopStreakNoteEnabled()", "cfg.SafetyEventWaitRecheckEnabled()"] },
+  { feature: "任务517 B1 心跳门读合并键（call-time 评估）", file: "desktop/app.go", patterns: ["cfg.SafetyIdleTerminateEnabled()"] },
+  { feature: "任务517 实验室单卡 UI（总开关+三子态行）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["safetyCostControl", "SetExperimentalSafetyCostControl", "selected === \"safetyCostControl\""] },
   { feature: "任务517 档位注册表单键化（48→46）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["safetyCostControl: \"optional\""] },
   { feature: "任务517 三语文案（总开关+子项说明）", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"settings.safetyCostControl\": \"安全 / 成本控制\"", "settings.safetyCostControlHint"] },
   { feature: "任务517 迁移语义测试", file: "internal/config/safety_cost_control_merge_test.go", patterns: ["TestSafetyCostControlMergeFoldsLegacyAgentTrues", "TestSafetyCostControlAllOffStaysOff"] },
@@ -438,11 +438,11 @@ const CHECKS = [
   { feature: "wails 版本号", file: "desktop/wails.json", patterns: ["1.38.3"] },
   // 任务561 M7：eventsRotation 并入 sessionStore 卡，灯改为双成员 OR——
   // 轮转模式语义原样保留在 OR 的右支（manual/auto 点亮仅 off 置灰）。
-  { feature: "任务362 修复会话菜单入口=开关态（任务561 后随 sessionStore 卡灯）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["on: (s.sessionStorage ?? \"v3_only\") !== \"v3_only\" || (s.eventsAutoRotation ?? \"manual\") !== \"off\""] },
+  { feature: "任务362 修复会话菜单入口=开关态（722 yaml 化后 onKeys 迁 lab-layout.yaml，sessionStore 卡灯）", file: "desktop/frontend/src/lab/lab-layout.yaml", patterns: ["onKeys: [sessionStorageNonDefault, eventsRotationNonDefault]"] },
   // 任务564：A 级文案修正 + 退役键只读保留（551 范式 UI 侧）。
   // pathRules 零消费点退役：rail 行保留、面板只读展示、全面板零 setter——
   // 三者缺一，「看得见却改不动」或「又变回死开关」都算 merge 丢块。
-  { feature: "任务564 pathRules 退役只读（rail 保留+零 setter+retired 键）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["{ id: \"pathRules\", group: \"infra\"", "t(\"settings.pathRules.retired\")", "t(\"settings.pathRules.value\""] },
+  { feature: "任务564 pathRules 退役只读（rail 保留+零 setter+retired 键）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"pathRules\"", "t(\"settings.pathRules.retired\")", "t(\"settings.pathRules.value\""] },
   { feature: "任务564 opencodeGoUsage 关闭态零网络（后端开关门控）", file: "desktop/opencode_go_usage.go", patterns: ["openCodeGoUsageSwitchOn", "cfg.Agent.ExperimentalOpenCodeGoUsage"] },
   { feature: "任务564 守卫测试（A 级文案↔代码对照 + 退役只读负断言）", file: "desktop/frontend/src/__tests__/task564-a-copy.test.tsx", patterns: ["task 551 paradigm", "SetExperimentalPathRules", "always available|始终可用|始終可用"] },
   { feature: "任务365 级联审批断链：create 首信即挂 grant（C5）+ 15s 超时再评转父（C6）", file: "desktop/session_collab.go", patterns: ["Task 365 C5", "registerCascadeGrant(item.ContactID, from)"] },
@@ -1057,7 +1057,7 @@ const CHECKS = [
   // ── S1 开关 UI 入口（任务 450 并入小件：experimental_base_process 实验室控件）──
   // 开关注册（S1a）已进 render 表但没有 UI 面，用户无法打开开关；四处接线
   // 缺一，开关就「看得见配置改不了」或「改了读不回」。
-  { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅；任务561 misc→infra）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "{ id: \"baseProcess\", group: \"infra\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
+  { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅；任务561 misc→infra）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "labLabel(\"baseProcess\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
   { feature: "S1 开关桥接线（接口声明+mock 桩）", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["SetExperimentalBaseProcess(enabled: boolean): Promise<void>;", "async SetExperimentalBaseProcess() {}"] },
   { feature: "S1 开关 Go 侧读写链（setter+视图字段；517 合并键收窄对齐列后锚随 gofmt 对齐更新）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:       cfg.Agent.ExperimentalBaseProcess"] },
   // ── 任务 451：history 慢分相打点 + planner/尾读缓存（2026-10-02）──────
@@ -1480,12 +1480,12 @@ const CHECKS = [
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役；621 修正计数 46→48）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },
   { feature: "任务562 门禁测试（新增实验项不标档位⇒失败 + 表A 计数钉）", file: "internal/config/render_lab_tiers_test.go", patterns: ["TestLabRenderKeysAllTaggedWithTier", "TestLabFeatureTierCountsMatchTableA", "门禁失败（任务562）"] },
-  { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 13", "LAB_WALL_PICKS", "railTiersFor"] },
+  { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 13", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
   { feature: "任务562 徽章组件（纯展示；621 加档位 tooltip）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "LAB_TIER_DESC_KEYS", "title={t(LAB_TIER_DESC_KEYS[tier])}", "lab-tier-badge--"] },
-  { feature: "任务562 设置页 rail+成员开关接线", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["railTiersFor(feature.id).map((tier) => (", "labLabel(\"autopilot\"", "labLabel(\"modelCapabilityFilter\""] },
+  { feature: "任务562 设置页 rail+成员开关接线", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["labEntryBadgeTiers", "labLabel(\"autopilot\"", "settings.modelCapabilityFilter.retired"] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数口径现 15/21/13/1（705→707→704 演进后 optional 21、总数 50））", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.optional === 21 && counts.unstable === 13", "config-only exemption", "retired-display exemption", "agree on every shared tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数口径现 15/22/13/1（722 yaml 化+727 登记后 optional 22、前端总数 51 / Go 50，双豁免 heartbeatRotation+modelCapabilityFilter））", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.optional === 22 && counts.unstable === 13", "config-only exemption", "display/json-bridge exemptions", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（pane 每特性恰一枚：去重 monitoring/budgetControl/compressOpt/messageMerge 兄弟行 + 补挂 tabModeTint）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.coldCacheCompact\")}", "label={t(\"settings.collabGuidanceMerge\")}", "label={t(\"settings.perfMonitor\")}", "labLabel(\"tabModeTint\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },
@@ -1547,7 +1547,7 @@ const CHECKS = [
   { feature: "任务604 弹窗设置位置行（可选 prop，无路径整行不渲染）", file: "desktop/frontend/src/components/LabPickDetailDialog.tsx", patterns: ["settingsPath?: readonly string[] | null", "lab-pick-dialog__path", "{settingsPath && settingsPath.length > 0 ? ("] },
   { feature: "任务604 图墙接线（设置 → 实验室 → 组 → 卡 四段路径，段落全复用既有键）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["function settingsPathFor", "t(\"settings.tab.experimental\")", "settingsPath={settingsPathFor(t, openPick)}"] },
   { feature: "任务604 设置位置行 CSS（merge 丢块高发区）", file: "desktop/frontend/src/styles.css", patterns: [".lab-pick-dialog__path {", ".lab-pick-dialog__path-label {", ".lab-pick-dialog__path-arrow {"] },
-  { feature: "任务604 验收测试（抽 3 项路径逐字 + rail 真源逐项锚定 + 三语 + 无路径不显示）", file: "desktop/frontend/src/__tests__/task604-lab-picks-settings-path.test.ts", patterns: ["设置 → 实验室 → 界面 → 会话图墙", "every location names an existing features render table entry (rail truth)", "simulated pure-display pick has no location entry"] },
+  { feature: "任务604 验收测试（抽 3 项路径逐字 + rail 真源逐项锚定 + 三语 + 无路径不显示）", file: "desktop/frontend/src/__tests__/task604-lab-picks-settings-path.test.ts", patterns: ["设置 → 实验室 → 界面 → 会话图墙", "every location names an existing layout entry (rail truth; 任务722 布局数据为准)", "simulated pure-display pick has no location entry"] },
   // ── 任务426 工具安全元数据单一真源 + 权限判定单点收敛 ──
   { feature: "426 安全元数据单一事实源（builtinSafety 登记表 + SafetyOf/SafetyOfName 唯一读取点，自研定论见头注释）", file: "internal/tool/safety.go", patterns: ["var builtinSafety = map[string]SafetySpec{", "func SafetyOfName(name string) SafetySpec", "func SafetyOf(t Tool) SafetySpec"] },
   { feature: "426 契约守卫（清单缺登记即红 + 与收敛前三份散落清单逐字面等价）", file: "internal/tool/safety_contract_test.go", patterns: ["TestBuiltinSafetyMetadataContract", "TestSafetyMetadataEquivalenceWithLegacyLists", "TestSafetyOfFallbackDerivation"] },
