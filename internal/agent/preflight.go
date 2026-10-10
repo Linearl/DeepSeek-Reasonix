@@ -23,13 +23,19 @@ var ErrCompactionRequired = errors.New("context exceeds provider limit and compa
 var ErrNoFoldableRegion = errors.New("context is above the maintenance threshold but no foldable region remains")
 
 // modelVisibleMessages returns the provider-bound message list: a valid
-// projection plus any post-projection appends, otherwise the full canonical
-// transcript. LocalOnly stripping still happens in prepareSamplingRequest.
+// projection plus any post-projection appends, otherwise a view over the full
+// canonical transcript. LocalOnly stripping still happens in
+// prepareSamplingRequest.
+//
+// 任务719: an unusable projection no longer serves the raw canonical transcript
+// unconditionally — once it outgrows the hard input ceiling the view degrades
+// to a bounded recent-tail window (boundedTailView), so the request cannot
+// overflow the window while compaction rebuilds the projection.
 func (a *Agent) modelVisibleMessages() []provider.Message {
 	if a == nil || a.sess.conversation == nil {
 		return nil
 	}
-	msgs, _ := a.sess.conversation.snapshotMessagesVersion()
+	msgs, version := a.sess.conversation.snapshotMessagesVersion()
 	a.sess.compactionMu.Lock()
 	st := a.sess.compactionState
 	a.sess.compactionMu.Unlock()
@@ -39,10 +45,13 @@ func (a *Agent) modelVisibleMessages() []provider.Message {
 		// stays projected and the destination's cache namespace takes over.
 		a.rebindProjectionLineage(st, msgs)
 		if visible := modelVisibleFromProjection(st.Projection, msgs); len(visible) > 0 {
+			// 任务719: the projection is authoritative again — forget the
+			// degraded-window evaluation so a later episode starts fresh.
+			a.sess.tailView.clear()
 			return visible
 		}
 	}
-	return msgs
+	return a.boundedTailView(msgs, version)
 }
 
 // rebindProjectionLineage follows a lineage-key change (任务638 model hot
