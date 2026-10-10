@@ -989,14 +989,18 @@ func New(opts Options) *Controller {
 	c.rebindCheckpoints(opts.SessionPath)
 	c.setActiveJobSession(opts.SessionPath)
 	c.initBackgroundJobWake(opts.BackgroundJobWake)
-	c.rebindInbox()
 	// Observe Steer / unapplied-steer for durable inbox state transitions.
 	// Must wrap both the controller sink and the executor sink: agent.Steer
 	// emits on the executor path, TurnDone on the controller path.
+	// 748 race-B: this wrap MUST land before rebindInbox — the inbox OnChange
+	// callback (bindInboxStoreNotifications) and rebind's recovered-notice
+	// goroutine read c.sink from the sessioninbox pump goroutine, so
+	// registering them ahead of the final wrap let those reads race this write.
 	c.sink = &inboxEventSink{inner: newTurnEventSink(c.sink, c), c: c}
 	if c.executor != nil {
 		c.executor.SetSink(c.sink)
 	}
+	c.rebindInbox()
 	cmdsInit := opts.Commands
 	c.commands.Store(&cmdsInit)
 	if c.executor != nil {
