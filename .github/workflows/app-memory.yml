@@ -62,7 +62,18 @@ jobs:
           node-version: "24"
           cache: pnpm
           cache-dependency-path: desktop/frontend/pnpm-lock.yaml
+      - uses: actions/setup-go@v7 # wails generate module needs the Go toolchain; without it fresh checkouts lack gitignored wailsjs -> ~70 phantom TS7006 in pnpm build (tl 744 correction, audit 737)
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install Wails CLI
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$(cat "$GITHUB_WORKSPACE/.wails-version")"
       - run: pnpm install --frozen-lockfile
+      - name: Generate wailsjs bindings
+        working-directory: desktop
+        run: wails generate module
       - run: node --test bench/app-memory-shards.test.mjs bench/app-memory-paths.test.mjs bench/app-memory-timing.test.mjs
       - run: pnpm build
       - run: node bench/app-memory-prepare.mjs "$RUNNER_TEMP/app-memory-build"
