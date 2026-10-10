@@ -60,10 +60,14 @@ func TestCompactionPrepareCannotExpandAutomaticSummaryPastWindow(t *testing.T) {
 				}
 			})
 
-			// The oversized replacement is never sent; over the ceiling the
-			// truncation rescue then stands in for the rejected summary.
+			// The oversized replacement is never sent. 任务719: over the
+			// ceiling the bounded tail view first degrades the provider-visible
+			// request under the hard ceiling, so the lossy truncation rescue
+			// loses its premise — the summary-budget rejection stays visible as
+			// the blocked receipt while the turn still leaves with an
+			// admissible view.
 			if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
-				t.Fatalf("pressure maintenance error = %v, want the truncation rescue after the rejection", err)
+				t.Fatalf("pressure maintenance error = %v, want the rejection absorbed with an admissible view", err)
 			}
 			if len(prov.requests) != 0 {
 				t.Fatalf("summary requests = %d, want none for an oversized extension replacement", len(prov.requests))
@@ -71,8 +75,11 @@ func TestCompactionPrepareCannotExpandAutomaticSummaryPastWindow(t *testing.T) {
 			if rejected == nil || !strings.Contains(rejected.Reason, "prepared summary request") {
 				t.Fatalf("blocked receipt = %+v, want the final summary-budget rejection", rejected)
 			}
-			if receipt := a.sess.compactionState.LastReceipt; receipt == nil || receipt.Action != maintenanceActionTruncate {
-				t.Fatalf("receipt = %+v, want the truncation rescue installed", receipt)
+			if got := a.estimatedVisibleRequestTokens(a.modelVisibleMessages()); got >= a.hardInputCeiling() {
+				t.Fatalf("visible view = %d tokens, want the bounded tail window under the ceiling %d", got, a.hardInputCeiling())
+			}
+			if receipt := a.sess.compactionState.LastReceipt; receipt == nil || receipt.Status != "blocked" {
+				t.Fatalf("receipt = %+v, want the blocked summary-budget rejection kept", receipt)
 			}
 		})
 	}
