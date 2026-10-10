@@ -183,11 +183,22 @@ func (a *App) handleTabSessionTransition(tab *WorkspaceTab) func(control.Session
 	}
 }
 
+// takeoverPromptTimeout bounds one desktop prompt. It aligns with the 539
+// T2 window (SessionTakeoverYieldWindow): the user can watch the notice at
+// leisure because accepting no longer interrupts the running turn. Serve's
+// takeover poll waits the same window for the yield.
+var takeoverPromptTimeout = agent.SessionTakeoverYieldWindow
+
+// takeoverPromptTimeoutForTest lets tests shrink the blocking window.
+var takeoverPromptTimeoutForTest = takeoverPromptTimeout
+
 // startTakeoverRequestWatcher polls for a remote takeover request marker
 // (<session>.takeover-request, written by the serve takeover endpoint) while
-// this tab holds the session lease. When a request arrives the tab yields:
-// the lease is released (so the serve-side acquire succeeds), the tab flips
-// to read-only, and the tree metadata refresh tells the frontend.
+// this tab holds the session lease. When a request arrives the tab prompts;
+// on accept (or headless) the tab ENTERS THE YIELDING STATE (539 route A):
+// the lease is kept, the running turn finishes, then the lease is released
+// with a handoff reservation and the marker flips to the yielded ack. The
+// tab never cancels the turn here — only a forced request does (T3).
 func (t *WorkspaceTab) startTakeoverRequestWatcher(path string) {
 	if t == nil || t.takeoverWatchStop != nil {
 		return
@@ -207,22 +218,49 @@ func (t *WorkspaceTab) startTakeoverRequestWatcher(path string) {
 				if _, err := os.Stat(marker); err != nil {
 					continue
 				}
-				from := ""
-				if raw, rerr := os.ReadFile(marker); rerr == nil {
-					from = strings.TrimSpace(string(raw))
+				raw, rerr := os.ReadFile(marker)
+				if rerr != nil {
+					continue
 				}
+				state := agent.ParseTakeoverMarker(string(raw))
+				switch state.Kind {
+				case agent.TakeoverMarkerKindForced:
+					// Remote forced takeover (GC's double-gated button) in the
+					// direct-serve topology: no desktop prompt — cancel and
+					// yield (T3). The machine cancels the running turn.
+					slog.Info("desktop: forced takeover request detected, yielding without prompt", "marker", marker)
+					beginSessionYieldToTakeover(t, path, marker, true)
+					return
+				case agent.TakeoverMarkerKindPending, agent.TakeoverMarkerKindYielded:
+					// A takeover already in flight (the gateway gate accepted
+					// it, or this very tab's yield machine published the ack):
+					// never double-prompt.
+					continue
+				case agent.TakeoverMarkerKindRequest:
+					if sessionYieldActiveForTab(t) {
+						// Our own yield machine is about to rewrite this
+						// marker to pending; don't race it with a prompt.
+						continue
+					}
+				default:
+					continue
+				}
+				from := state.TargetWriterID
 				takeoverBridgeMu.Lock()
 				sink := takeoverPromptSink
 				takeoverBridgeMu.Unlock()
 				if sink == nil {
-					// Headless: historical behavior — yield without a prompt.
+					// Headless: no prompt, but the yield still honors the
+					// running turn (539: headless skips the dialog, not the
+					// wait).
 					slog.Info("desktop: takeover request detected, yielding (no prompt sink)", "marker", marker)
-					t.yieldSessionLeaseToTakeover(path, marker, false)
+					beginSessionYieldToTakeover(t, path, marker, false)
 					return
 				}
 				slog.Info("desktop: takeover request detected, prompting user", "marker", marker, "from", from)
 				reply := registerTakeoverPending(marker)
 				sink(takeoverDecisionReq{Marker: marker, Path: path, From: from, Reply: reply})
+				promptTimeout := takeoverPromptTimeoutForTest
 				select {
 				case accept := <-reply:
 					unregisterTakeoverPending(marker)
@@ -231,11 +269,12 @@ func (t *WorkspaceTab) startTakeoverRequestWatcher(path string) {
 						_ = os.Remove(marker)
 						continue // tab keeps its lease; keep watching
 					}
-					t.yieldSessionLeaseToTakeover(path, marker, true)
+					beginSessionYieldToTakeover(t, path, marker, false)
 					return
-				case <-time.After(9 * time.Second):
-					// Serve's own takeover poll times out at 9s with 409, so
-					// an unanswered prompt must resolve as a refusal.
+				case <-time.After(promptTimeout):
+					// Serve's takeover poll waits T2 for a PENDING yield; a
+					// never-answered prompt must resolve as a refusal so the
+					// remote side is not strung along.
 					unregisterTakeoverPending(marker)
 					slog.Info("desktop: takeover prompt timed out, refusing", "marker", marker)
 					_ = os.Remove(marker)
@@ -315,31 +354,11 @@ func unregisterTakeoverPending(marker string) {
 	takeoverBridgeMu.Unlock()
 }
 
-// yieldSessionLeaseToTakeover performs an accepted handoff: interrupt a
-// running turn first (handoffMode=interrupt — never cut a mid-write), then
-// release the lease so the serve-side acquire succeeds. ReadOnly is
-// deliberately not flipped: it persists in desktop-tabs.json and would lock
-// the tab out of writing across restarts; releasing the lease is enough and
-// the next local message reacquires it cleanly.
-func (t *WorkspaceTab) yieldSessionLeaseToTakeover(path, marker string, interrupt bool) {
-	if interrupt && t.hasActiveRuntimeWork() && t.Ctrl != nil {
-		slog.Info("desktop: cancelling active turn before yield (handoffMode=interrupt)", "path", path)
-		t.Ctrl.Cancel()
-		deadline := time.Now().Add(3 * time.Second)
-		for time.Now().Before(deadline) && t.hasActiveRuntimeWork() {
-			time.Sleep(100 * time.Millisecond)
-		}
-	}
-	t.sessionLeaseMu.Lock()
-	old := t.sessionLease
-	t.sessionLease = nil
-	t.sessionLeaseMu.Unlock()
-	if old != nil {
-		old.Release()
-	}
-	_ = os.Remove(marker)
-	slog.Info("desktop: session yielded to remote takeover", "path", path)
-}
+// yieldSessionLeaseToTakeover was the interrupt-style handoff (cancel the
+// turn, wait ≤3s, release immediately). Task 539 replaced it with the
+// yielding state machine in session_yielding.go: the lease is kept until the
+// turn finishes, then released with a handoff reservation — see
+// beginSessionYieldToTakeover.
 
 // ResolveTakeoverDecision is the frontend's answer to an app:takeover-request
 // prompt (task 36 Phase 1). A stale or duplicate answer returns false and
@@ -380,6 +399,11 @@ func (a *App) registerRemoteWriteAuthorityHook() {
 
 // releaseAllTabSessionLeases walks every tab and drops its session lease.
 // Leases reacquire on the next local message; nothing persisted changes.
+// Task 539 fuse (W3 same-disease path): this hook fires after the serve
+// acquired — the turn is normally long gone — but if a tab still has live
+// runtime work (residual T3 window, future callers), cancel it explicitly
+// and tell the user instead of releasing under a running turn (its queued
+// saves would Stale-reject as lost writes).
 func (a *App) releaseAllTabSessionLeases() {
 	a.mu.Lock()
 	tabs := make([]*WorkspaceTab, 0, len(a.tabs))
@@ -388,6 +412,12 @@ func (a *App) releaseAllTabSessionLeases() {
 	}
 	a.mu.Unlock()
 	for _, tab := range tabs {
+		if tab.hasActiveRuntimeWork() && tab.Ctrl != nil {
+			path := tab.currentSessionPath()
+			slog.Info("desktop: remote device holds write authority, cancelling active turn before lease release", "tab", tab.ID, "path", path)
+			tab.Ctrl.Cancel()
+			notifyTakeoverYield("forced", path, "远程设备已持有写权，本地回合被中断")
+		}
 		tab.releaseSessionLeaseQuietly()
 	}
 }

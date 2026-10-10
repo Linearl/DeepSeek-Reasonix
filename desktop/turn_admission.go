@@ -78,6 +78,12 @@ func (a *App) beginRuntimeTurn(tabID string, reclaim, detached bool, submissionI
 		if a.tabIsReadOnly(tab) {
 			return nil, nil, readOnlyChannelErr()
 		}
+		// Task 539: a session yielding to a remote takeover must not start
+		// new turns — the yield completes only when the runtime drains, so a
+		// new turn here would defer the takeover indefinitely.
+		if sessionYieldActiveForTab(tab) {
+			return nil, nil, errTabYieldingToTakeover
+		}
 		if err := a.workspaceRuntimeAdmissionErr(tab, ctrl); err != nil {
 			return nil, nil, err
 		}
@@ -95,6 +101,10 @@ func (a *App) beginRuntimeTurn(tabID string, reclaim, detached bool, submissionI
 		if a.tabIsReadOnly(tab) {
 			abort()
 			return nil, nil, readOnlyChannelErr()
+		}
+		if sessionYieldActiveForTab(tab) {
+			abort()
+			return nil, nil, errTabYieldingToTakeover
 		}
 		if reclaim && a.botBridge != nil {
 			a.botBridge.reclaimFromDesktop(tab.ID)

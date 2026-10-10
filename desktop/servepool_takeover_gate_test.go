@@ -64,6 +64,13 @@ func TestGatewayTakeoverGateAcceptYieldsLease(t *testing.T) {
 	}
 	f.tab.sessionLease = lease
 	f.tab.storeSessionLeaseRuntimeKey(sessionRuntimeKey(f.path))
+	// The forwarded serve request writes the plain marker right after the
+	// gate allows; pre-write it so the yield machine discovers the target
+	// writer and completes with a handoff reservation (the normal path when
+	// the desktop turn is still running at accept time).
+	if err := os.WriteFile(agent.TakeoverRequestMarkerPath(f.path), []byte(agent.SessionWriterID()), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
 		f.prompts = append(f.prompts, req)
@@ -83,10 +90,66 @@ func TestGatewayTakeoverGateAcceptYieldsLease(t *testing.T) {
 	if len(f.prompts) != 1 {
 		t.Fatalf("prompts = %d, want 1", len(f.prompts))
 	}
-	// The lease must be released so the forwarded serve-side acquire
-	// succeeds — that is what makes GC's write mode effective.
-	if _, err := agent.TryAcquireSessionLease(f.path); err != nil {
-		t.Fatalf("lease not released after accept: %v", err)
+	// 539 route A: the tab enters the yielding state and — with no runtime
+	// work — drains and releases the lease asynchronously. The handoff
+	// reservation is published for the serve writer, so the serve poll's
+	// WithHandoff consume must succeed.
+	if !waitForSessionYieldIdle(f.tab, 5*time.Second) {
+		t.Fatal("yield machine never finished")
+	}
+	if !lease.Released() {
+		t.Fatal("lease not released after the yield completed")
+	}
+	raw, err := os.ReadFile(agent.TakeoverRequestMarkerPath(f.path))
+	if err != nil {
+		t.Fatalf("yielded marker not written: %v", err)
+	}
+	state := agent.ParseTakeoverMarker(string(raw))
+	if state.Kind != agent.TakeoverMarkerKindYielded || state.WriterID == "" || state.HandoffID == "" {
+		t.Fatalf("marker state = %+v, want yielded ack with consume ids", state)
+	}
+	if _, err := agent.TryAcquireSessionLeaseWithHandoff(f.path, state.WriterID, state.HandoffID); err != nil {
+		t.Fatalf("reservation not consumable (serve acquire would fail): %v", err)
+	}
+}
+
+func TestGatewayTakeoverGateForcedSkipsPromptAndCancels(t *testing.T) {
+	f := newGatewayTakeoverFixture(t)
+	lease, err := agent.TryAcquireSessionLease(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.tab.sessionLease = lease
+	f.tab.storeSessionLeaseRuntimeKey(sessionRuntimeKey(f.path))
+	if err := os.WriteFile(agent.TakeoverRequestMarkerPath(f.path), []byte(agent.SessionWriterID()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	forced := f.request()
+	forced.Force = true
+	var forcedNotices []string
+	RegisterTakeoverYieldNotifier(func(kind, path, detail string) {
+		if kind == "forced" {
+			forcedNotices = append(forcedNotices, path)
+		}
+	})
+	t.Cleanup(func() { RegisterTakeoverYieldNotifier(nil) })
+
+	allow, status, _ := f.app.servePoolTakeoverGate(forced)
+	if !allow || status != 0 {
+		t.Fatalf("forced gate = (%v, %d), want allow", allow, status)
+	}
+	if len(f.prompts) != 0 {
+		t.Fatalf("prompts = %d, want 0 (force skips the desktop prompt)", len(f.prompts))
+	}
+	if !waitForSessionYieldIdle(f.tab, 5*time.Second) {
+		t.Fatal("forced yield never finished")
+	}
+	if !lease.Released() {
+		t.Fatal("forced yield did not release the lease")
+	}
+	if len(forcedNotices) == 0 {
+		t.Fatal("no forced-takeover notice emitted")
 	}
 }
 

@@ -13,6 +13,11 @@ func (a *App) CommitRewindForTab(tabID, planID string, turn int, scope string) R
 	if a.tabIsReadOnly(tab) {
 		return RewindResultView{OK: false, Error: readOnlyChannelErr().Error()}
 	}
+	// Task 539: a rewind during a takeover yield would restart runtime work
+	// and stall the handoff; the yield window is short, so refuse it.
+	if sessionYieldActiveForTab(tab) {
+		return RewindResultView{OK: false, Error: errTabYieldingToTakeover.Error()}
+	}
 	if ctrl == nil {
 		return RewindResultView{OK: false, Error: "no controller"}
 	}

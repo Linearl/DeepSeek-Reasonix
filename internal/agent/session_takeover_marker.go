@@ -13,6 +13,9 @@ import (
 // turn still running" from "lease released, reservation published":
 //
 //	<serveWriterID>                        request live (serve wrote it; desktop deciding)
+//	forced:<serveWriterID>                 remote forced takeover (GC double-gated):
+//	                                       desktop skips its prompt, cancels the
+//	                                       running turn and yields (T3)
 //	pending:<serveWriterID>                desktop accepted; yield waits for the turn to end
 //	yielded:<desktopWriterID>:<handoffID>  lease released with a handoff reservation
 //	                                       for the serve writer; consume via
@@ -26,13 +29,18 @@ import (
 const (
 	// TakeoverMarkerPendingPrefix marks an accepted-but-still-running yield.
 	TakeoverMarkerPendingPrefix = "pending:"
+	// TakeoverMarkerForcedPrefix marks a remote forced takeover (GC's
+	// double-gated force button): the desktop yields without its own prompt
+	// and cancels the running turn first (T3).
+	TakeoverMarkerForcedPrefix = "forced:"
 	// TakeoverMarkerYieldedPrefix marks a completed yield; the rest of the
 	// content is "<desktopWriterID>:<handoffID>" for the WithHandoff consume.
 	TakeoverMarkerYieldedPrefix = "yielded:"
 
-	// TakeoverMarkerKindRequest / Pending / Yielded / Unknown are the parse
-	// outcomes of ParseTakeoverMarker.
+	// TakeoverMarkerKindRequest / Forced / Pending / Yielded / Unknown are
+	// the parse outcomes of ParseTakeoverMarker.
 	TakeoverMarkerKindRequest = "request"
+	TakeoverMarkerKindForced  = "forced"
 	TakeoverMarkerKindPending = "pending"
 	TakeoverMarkerKindYielded = "yielded"
 	TakeoverMarkerKindUnknown = "unknown"
@@ -58,6 +66,11 @@ func TakeoverRequestMarkerPath(sessionPath string) string {
 // the serve writer the lease is being yielded to.
 func FormatTakeoverMarkerPending(targetWriterID string) string {
 	return TakeoverMarkerPendingPrefix + strings.TrimSpace(targetWriterID)
+}
+
+// FormatTakeoverMarkerForced renders the remote forced-takeover request.
+func FormatTakeoverMarkerForced(targetWriterID string) string {
+	return TakeoverMarkerForcedPrefix + strings.TrimSpace(targetWriterID)
 }
 
 // FormatTakeoverMarkerYielded renders the yield-ack state. writerID is the
@@ -87,6 +100,9 @@ func ParseTakeoverMarker(raw string) TakeoverMarkerState {
 	case strings.HasPrefix(s, TakeoverMarkerPendingPrefix):
 		target := strings.TrimSpace(strings.TrimPrefix(s, TakeoverMarkerPendingPrefix))
 		return TakeoverMarkerState{Kind: TakeoverMarkerKindPending, TargetWriterID: target}
+	case strings.HasPrefix(s, TakeoverMarkerForcedPrefix):
+		target := strings.TrimSpace(strings.TrimPrefix(s, TakeoverMarkerForcedPrefix))
+		return TakeoverMarkerState{Kind: TakeoverMarkerKindForced, TargetWriterID: target}
 	case strings.HasPrefix(s, TakeoverMarkerYieldedPrefix):
 		rest := strings.SplitN(strings.TrimPrefix(s, TakeoverMarkerYieldedPrefix), ":", 2)
 		state := TakeoverMarkerState{Kind: TakeoverMarkerKindYielded}

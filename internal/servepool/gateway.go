@@ -70,12 +70,15 @@ func (g *Gateway) SetVirtualSource(id string, src VirtualSource) {
 
 // TakeoverGateRequest is one intercepted remote takeover call (task 249).
 // ProjectRoot lets the gate resolve the session name against the right
-// project's session directory.
+// project's session directory. Force marks the remote forced takeover
+// (task 539: GC's double-gated force button — the desktop skips its prompt,
+// cancels the running turn and yields).
 type TakeoverGateRequest struct {
 	ProjectID   string
 	ProjectRoot string
 	SessionName string
 	From        string
+	Force       bool
 }
 
 // TakeoverGateFunc decides whether a remote takeover request may proceed to
@@ -365,8 +368,9 @@ func (g *Gateway) gateTakeover(w http.ResponseWriter, r *http.Request, id string
 		return false
 	}
 	var body struct {
-		Name string `json:"name"`
-		From string `json:"from"`
+		Name  string `json:"name"`
+		From  string `json:"from"`
+		Force bool   `json:"force"`
 	}
 	// Best effort: the gate decides on whatever parsed; a malformed name
 	// falls through to the serve's own validation (404/400).
@@ -376,6 +380,7 @@ func (g *Gateway) gateTakeover(w http.ResponseWriter, r *http.Request, id string
 		ProjectRoot: g.mgr.Root(id),
 		SessionName: strings.TrimSpace(body.Name),
 		From:        strings.TrimSpace(body.From),
+		Force:       body.Force,
 	})
 	if !allow {
 		if status == 0 {

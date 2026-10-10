@@ -1998,8 +1998,9 @@ func (s *Server) releaseSession(w http.ResponseWriter, r *http.Request) {
 // path is loaded through the controller so subsequent submits target it.
 func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
-		From string `json:"from,omitempty"`
+		Name  string `json:"name"`
+		From  string `json:"from,omitempty"`
+		Force bool   `json:"force,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
@@ -2032,7 +2033,14 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		// state. The old synchronous 409 "holder did not yield" is gone with
 		// the interrupt-style protocol it described.
 		marker := agent.TakeoverRequestMarkerPath(abs)
-		_ = os.WriteFile(marker, []byte(agent.SessionWriterID()), 0o600)
+		// A forced request tells the desktop to skip its prompt and cancel
+		// the running turn (T3) — the double confirmation gate lives on the
+		// remote client (GC) side.
+		markerContent := agent.SessionWriterID()
+		if body.Force {
+			markerContent = agent.FormatTakeoverMarkerForced(agent.SessionWriterID())
+		}
+		_ = os.WriteFile(marker, []byte(markerContent), 0o600)
 		s.recordTakeoverState(abs, takeoverStatePending, "")
 		go s.pollTakeoverYield(abs, marker, strings.TrimSpace(body.From))
 		w.Header().Set("Content-Type", "application/json")

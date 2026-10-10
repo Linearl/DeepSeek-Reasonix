@@ -539,12 +539,21 @@ func NewApp() *App {
 	// Task 36 Phase 1: remote takeover requests prompt the user instead of
 	// yielding silently. The sink owns the wails context at emit time.
 	// Task 36 Phase 2: observe serve's device lease for runtime read-only.
+	// Task 539: yield lifecycle notices (yielding / yielded / rollback /
+	// forced) reach the frontend as runtime events.
 	a.registerRemoteWriteAuthorityHook()
 	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
 		runtimeEventsEmitFallback(a.ctx, "app:takeover-request", map[string]string{
 			"marker": req.Marker,
 			"path":   req.Path,
 			"from":   req.From,
+		})
+	})
+	RegisterTakeoverYieldNotifier(func(kind, path, detail string) {
+		runtimeEventsEmitFallback(a.ctx, "app:takeover-yield", map[string]string{
+			"kind":   kind,
+			"path":   path,
+			"detail": detail,
 		})
 	})
 	a.desktopShell.trayState = "probing"
