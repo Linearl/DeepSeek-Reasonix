@@ -629,16 +629,36 @@ func historyDerivedSourceKey(sessionPath string, src *historySliceSource) string
 	return fmt.Sprintf("%s|%t|%d|%s|%d", agent.CanonicalSessionPath(sessionPath), src.revKnown, src.revision, src.digest, src.total)
 }
 
-// coldHistorySlice pages a session file with no running controller. It never
-// loads the whole session: a valid on-disk display index + byte-offset reads
-// serve the window; a missing/stale/corrupt index is rebuilt by streaming
-// scan (constant memory) and the first page is served from the scan result.
+// coldHistorySlice pages a session file with no running controller. 任务 451
+// 方案 B：最新页形状的请求先查暖缓存（idle 预取与首次冷读的写入面），命中
+// 一次 stat 即回；未命中走原有冷读路径，成功页回写缓存。其余语义（错误、
+// Stale、跳页/手动参数）全部原样透传。
 func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest, tr *historySliceTrace) (HistorySlice, error) {
 	sessionPath, _, err := validateSessionPath(sessionDir, path)
 	if err != nil {
 		return emptyHistorySlice(), err
 	}
+	if slice, ok := lookupHistoryWarmPage(sessionPath, req); ok {
+		tr.markSource("warm")
+		// 切片按值拷出，改 Source 不影响缓存内的共享条目；前端与打点
+		// 两侧都把这次读认作 warm 命中。
+		slice.Source = "warm"
+		return slice, nil
+	}
+	slice, err := a.coldHistorySliceRead(sessionDir, sessionPath, req, tr)
+	if err == nil {
+		storeHistoryWarmPage(sessionPath, req, slice)
+	}
+	return slice, err
+}
+
+// coldHistorySliceRead is the uncached cold read: a valid on-disk display
+// index + byte-offset reads serve the window; a missing/stale/corrupt index is
+// rebuilt by streaming scan (constant memory) and the first page is served
+// from the scan result.
+func (a *App) coldHistorySliceRead(sessionDir, sessionPath string, req HistorySliceRequest, tr *historySliceTrace) (HistorySlice, error) {
 	var info os.FileInfo
+	var err error
 	tr.run("cold-validate", func() {
 		info, err = os.Stat(sessionPath)
 	})

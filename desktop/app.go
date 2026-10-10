@@ -328,13 +328,16 @@ type App struct {
 	deferredRebuild deferredRebuildState
 
 	// historySliceMu guards the windowed-history background bookkeeping:
-	// single-flight display-index rebuilds for live sessions and the startup
-	// index-migration worker's cancel handle. Never held while calling
+	// single-flight display-index rebuilds for live sessions, the startup
+	// index-migration worker's cancel handle, and the idle-prefetch worker's
+	// kick channel + cancel handle (任务 451 方案 B). Never held while calling
 	// controller or session methods.
 	historySliceMu              sync.Mutex
 	historyIndexRebuilds        map[string]chan struct{}
 	historyIndexMigrationCancel context.CancelFunc
 	historyDerived              historyDerivedCache
+	historyIdlePrefetchKick     chan struct{}
+	historyIdlePrefetchCancel   context.CancelFunc
 
 	// detachedSessions keeps live session runtimes whose visible tab was closed.
 	// It is process-local by design: shutdown closes every detached controller.
@@ -647,6 +650,7 @@ func (a *App) startup(ctx context.Context) {
 	a.startTray()
 	a.enableDeferredRebuildRetry()
 	a.startHistoryIndexMigration()
+	a.startHistoryIdlePrefetch()
 	// Task 333: forward the event-log rotation gate into the agent's save path.
 	// The agent layer cannot import config (layering), so the host pushes the
 	// normalized settings once at boot and again on every settings change.

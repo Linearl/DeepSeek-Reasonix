@@ -1066,6 +1066,17 @@ const CHECKS = [
   { feature: "任务451 A：planner 侧车缓存（mtime+size 校验+单飞+上限）", file: "desktop/sessions_planner_display_cache.go", patterns: ["loadCachedSessionPlannerDisplays", "plannerDisplayCacheMaxEntries", "plannerDisplayCacheInflight"] },
   { feature: "任务451 A：写侧失效（save/remove 双出口清条目）", file: "desktop/sessions.go", patterns: ["invalidateSessionPlannerDisplayCache(dir)"] },
   { feature: "任务451 C：尾读缓存单飞（inflight 共享冷读）", file: "desktop/history_time_overlay.go", patterns: ["historyTimeOverlayInflight", "delete(historyTimeOverlayCache.inflight, cacheKey)"] },
+  // 任务451 B（2026-10-09）：history 最新页暖缓存 + idle 预取——冷读常态
+  // 0.8-2.2s 的 page-cut 大头按会话身份整页存住（stat 校验+LRU 8+只缓存
+  // 最新页形状）；预取循环只在 startup 武装、前台轮/构建中一律让路。
+  { feature: "任务451 B：history 最新页暖缓存（stat 身份校验+LRU+最新页形状闸）", file: "desktop/history_warm_page.go", patterns: ["lookupHistoryWarmPage", "storeHistoryWarmPage", "historyWarmPageReqShape", "historyWarmPageMaxEntries"] },
+  { feature: "任务451 B：idle 预取循环（startup 武装+前台让路+冷候选轮）", file: "desktop/history_idle_prefetch.go", patterns: ["startHistoryIdlePrefetch", "historyIdlePrefetchRound", "historyIdlePrefetchTurns", "anyTabRuntimeWork"] },
+  // 任务451 B 续做（2026-10-10）：最新页 turns 跨端常量一致锚。预取页只有与
+  // 切换流程请求同形才会被暖缓存命中；前端任一侧把 60 改了而不同步后端，
+  // 预取形状静默失配、缓存全 miss 回冷读（无正确性问题但优化静默失效）。
+  { feature: "任务451 B：turns 跨端一致锚·后端预取（=60）", file: "desktop/history_idle_prefetch.go", patterns: ["historyIdlePrefetchTurns = 60"] },
+  { feature: "任务451 B：turns 跨端一致锚·前端 useController（=60）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["const HISTORY_PAGE_TURNS = 60"] },
+  { feature: "任务451 B：turns 跨端一致锚·前端 historyPaging（=60）", file: "desktop/frontend/src/lib/historyPaging.ts", patterns: ["const HISTORY_PAGE_TURNS = 60"] },
 
   // 任务456（20261003 P1 用户直令）：desktop 重启恢复链自死锁——自家 UI 与自家后台
   // 运行时互不认识（租约同进程持有但 attach 被拒），接管只扫 serve 报「no resident

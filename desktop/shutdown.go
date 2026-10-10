@@ -99,6 +99,7 @@ func (a *App) shutdownBody() {
 	// remote tabs instead of waiting out the stale-mirror timeout.
 	a.stopTakeoverMirrors()
 	a.stopHistoryIndexMigration()
+	a.stopHistoryIdlePrefetch()
 	a.stopMainThreadWatchdog()
 	if a.heartbeat != nil {
 		a.heartbeat.Stop()

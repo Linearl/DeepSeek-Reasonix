@@ -2408,6 +2408,9 @@ func (a *App) openGlobalTabInactive(topicID string) (TabMeta, error) {
 func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionPath string, activate bool) (meta TabMeta, err error) {
 	tr := beginOpenSessionTrace(scope, workspaceRoot, topicID, sessionPath)
 	defer func() { tr.finish(err) }()
+	// 任务 451 方案 B：开话题是预取候选变化的事件（被开的会话离开候选、
+	// 其余冷 tab 仍待预取），kick 一轮防抖预取；失败路径 kick 是空转无害。
+	defer a.kickHistoryIdlePrefetch()
 
 	// Task 186: the sidebar never carries a project node for one of the host's own
 	// directories, so a project-scope open pointed at one is a global-scope open —
