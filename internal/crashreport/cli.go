@@ -401,8 +401,23 @@ func sanitizeText(value string, max int) string {
 	value = jwtPattern.ReplaceAllString(value, "[redacted-jwt]")
 	value = explicitKeyPattern.ReplaceAllString(value, "[redacted-key]")
 	value = longHexPattern.ReplaceAllString(value, "[redacted-hex]")
-	value = longBase64Pattern.ReplaceAllString(value, "[redacted-token]")
-	value = longBase64URLPattern.ReplaceAllString(value, "[redacted-token]")
+	// Task 735 (issue #43): pure-letter runs of base64-alphabet characters are
+	// source identifiers (e.g. React's commitPassiveUnmountEffectsInsideOfDeletedTree),
+	// not encodings — the digit/plus/slash trait check keeps real tokens redacted
+	// while frame names survive into the report. Mirrors desktop's
+	// looksLikeEncodedToken (crash_app.go).
+	value = longBase64Pattern.ReplaceAllStringFunc(value, func(match string) string {
+		if strings.ContainsAny(match, "0123456789+/") {
+			return "[redacted-token]"
+		}
+		return match
+	})
+	value = longBase64URLPattern.ReplaceAllStringFunc(value, func(match string) string {
+		if strings.ContainsAny(match, "0123456789") {
+			return "[redacted-token]"
+		}
+		return match
+	})
 	return clip(strings.TrimSpace(value), max)
 }
 

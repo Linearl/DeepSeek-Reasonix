@@ -335,8 +335,14 @@ export function scrubSensitiveText(input: string): string {
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted-jwt]")
     .replace(/\b(?:sk|rk)-(?:proj-)?[A-Za-z0-9_-]{16,}\b/g, "[redacted-key]")
     .replace(/\b[0-9a-fA-F]{32,}\b/g, "[redacted-hex]")
-    .replace(/[A-Za-z0-9+/]{40,}={0,2}/g, "[redacted-token]")
-    .replace(/\b[A-Za-z0-9_-]{48,}\b/g, "[redacted-token]");
+    // Task 735 (issue #43): a long base64-alphabet run without any digit is a
+    // source identifier (React's commitPassiveUnmountEffectsInsideOfDeletedTree
+    // used to read "[redacted-token]_begin"), not an encoding — real encodings
+    // of binary data carry digits/+/= with probability ~1-(26/64)^len. Frame
+    // names therefore survive; real tokens stay redacted. Mirrors the Go sites
+    // (desktop/crash_app.go, internal/crashreport/cli.go).
+    .replace(/[A-Za-z0-9+/]{40,}={0,2}/g, (m) => (/[0-9+/]/.test(m) ? "[redacted-token]" : m))
+    .replace(/\b[A-Za-z0-9_-]{48,}\b/g, (m) => (/[0-9]/.test(m) ? "[redacted-token]" : m));
 }
 
 function normalizeStackFrame(frame: string): string {

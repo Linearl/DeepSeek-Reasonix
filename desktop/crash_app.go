@@ -41,6 +41,21 @@ var (
 	longBase64URLPattern  = regexp.MustCompile(`\b[A-Za-z0-9_-]{48,}\b`)
 )
 
+// looksLikeEncodedToken applies the issue #43 frame-name allowance (task 735):
+// a 40+/48+ character run of base64-alphabet characters is only treated as an
+// encoded secret when it carries at least one digit (+ "/" or "+" for the
+// standard alphabet). Real encodings of binary data essentially always do —
+// a no-digit run has probability ~(26/64)^len — while source identifiers are
+// the opposite: `commitPassiveUnmountEffectsInsideOfDeletedTree` is 46 plain
+// letters and used to be swallowed into "[redacted-token]_begin", erasing the
+// top frames of every long-task report. Pure-letter runs now pass through.
+func looksLikeEncodedToken(standardAlphabet bool, value string) bool {
+	if standardAlphabet {
+		return strings.ContainsAny(value, "0123456789+/")
+	}
+	return strings.ContainsAny(value, "0123456789")
+}
+
 func scrubUserPaths(s string) string {
 	return userPathSegment.ReplaceAllString(s, "${1}_")
 }
@@ -54,8 +69,18 @@ func scrubSensitiveText(s string) string {
 	s = jwtPattern.ReplaceAllString(s, "[redacted-jwt]")
 	s = explicitKeyPattern.ReplaceAllString(s, "[redacted-key]")
 	s = longHexPattern.ReplaceAllString(s, "[redacted-hex]")
-	s = longBase64Pattern.ReplaceAllString(s, "[redacted-token]")
-	s = longBase64URLPattern.ReplaceAllString(s, "[redacted-token]")
+	s = longBase64Pattern.ReplaceAllStringFunc(s, func(match string) string {
+		if looksLikeEncodedToken(true, match) {
+			return "[redacted-token]"
+		}
+		return match
+	})
+	s = longBase64URLPattern.ReplaceAllStringFunc(s, func(match string) string {
+		if looksLikeEncodedToken(false, match) {
+			return "[redacted-token]"
+		}
+		return match
+	})
 	return s
 }
 
