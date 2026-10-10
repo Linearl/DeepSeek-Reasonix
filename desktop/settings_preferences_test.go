@@ -119,6 +119,43 @@ func TestSetTabPermissionIndicatorPersistsAndReadsBack(t *testing.T) {
 	}
 }
 
+// 任务 705（铁律 2 双态开关，759 补钉）：App 层 setter 落盘、启动视图与设置
+// 视图都必须把保存后的开关值读回来。705 落地时只映射了启动视图——设置面板
+// 读 Settings() 拿到 Go 零值，开关在 config=true、折叠功能已生效的情况下仍
+// 永远显示「关」（81/123 两视图教训重演，用户可感知缺陷 task 759）。
+func TestSetExperimentalSessionCollabAutoFoldPersistsAndReadsBack(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := &App{}
+
+	if err := app.SetExperimentalSessionCollabAutoFold(true); err != nil {
+		t.Fatalf("SetExperimentalSessionCollabAutoFold(true): %v", err)
+	}
+	cfg, err := config.LoadForEditReadOnlyStrict(config.UserConfigPath())
+	if err != nil {
+		t.Fatalf("load saved user config: %v", err)
+	}
+	if !cfg.Desktop.ExperimentalSessionCollabAutoFold {
+		t.Fatal("saved user config must carry experimental_session_collab_auto_fold = true")
+	}
+	if boot := app.DesktopStartupSettings(); !boot.ExperimentalSessionCollabAutoFold {
+		t.Fatal("DesktopStartupSettings view must read back the saved switch")
+	}
+	if view := app.Settings(); !view.ExperimentalSessionCollabAutoFold {
+		t.Fatal("Settings view must read back the saved switch (panel value source)")
+	}
+
+	if err := app.SetExperimentalSessionCollabAutoFold(false); err != nil {
+		t.Fatalf("SetExperimentalSessionCollabAutoFold(false): %v", err)
+	}
+	cfg, err = config.LoadForEditReadOnlyStrict(config.UserConfigPath())
+	if err != nil {
+		t.Fatalf("reload user config after flip off: %v", err)
+	}
+	if cfg.Desktop.ExperimentalSessionCollabAutoFold {
+		t.Fatal("flipping the switch back off must persist (never spring back on)")
+	}
+}
+
 // 任务 507（铁律 2 双态开关）：App 层 setter 落盘、启动视图与设置视图都必须
 // 把保存后的开关值读回来——配置层往返由 internal/config 的 render 测试钉住，
 // 这里钉 Wails 暴露面与两个视图映射面。
