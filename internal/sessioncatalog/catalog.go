@@ -471,7 +471,17 @@ func (c *Catalog) recomputeTopic(ctx context.Context, tx *sql.Tx, key TopicKey) 
              ELSE 'ok' END
 	  FROM catalog_sessions WHERE scope=? AND workspace_root_key=? AND topic_id=?
 	ON CONFLICT(scope,workspace_root_key,topic_id) DO UPDATE SET
-		title=excluded.title, turns=excluded.turns, turns_state=excluded.turns_state,
+		-- Task 718: the registry (desktopTopicState via SyncMetadata) is the
+		-- single title authority for topics it claims (metadata_present=1). A
+		-- session upsert must not re-derive the title from branch-meta
+		-- topic_title/preview: branch meta lags the registry inside the
+		-- rename/auto-title window (and is empty for preview fallback), so every
+		-- persist/reconcile used to flip the sidebar name back to a stale value
+		-- until the next 30s metadata tick healed it, then flipped again.
+		-- Catalog-only topics (metadata_present=0, e.g. written by an older CLI)
+		-- keep the session-derived title — it is their only source.
+		title=CASE WHEN catalog_topics.metadata_present=1 THEN catalog_topics.title ELSE excluded.title END,
+		turns=excluded.turns, turns_state=excluded.turns_state,
         created_at=excluded.created_at, last_activity_at=excluded.last_activity_at,
         recovery_state=excluded.recovery_state,
         recovery_branch_count=excluded.recovery_branch_count,
