@@ -155,7 +155,39 @@ labFlags.applyTabPermissionIndicator(undefined);
     makeTab({}),
   ]);
   eq(tintAttributes().length, 0, "默认 badge 档：全签无 data-mode-tint 属性（零行为）");
-  eq(badgeCount(), 4, "默认 badge 档：tier 0 徽章渲染恢复（yolo/plan/auto/yolo 共 4 个，697 修复点）");
+  eq(badgeCount(), 4, "默认 badge 档：tier 0 徽章渲染恢复（yolo/plan/auto/autopilot 共 4 个，697 修复点）");
+  // 任务 711：autopilot 档徽章显橙压过 yolo——原错显红 yolo（用户实测
+  // 截图：composer「Auto…」而 tab 徽章 yolo 红；wire 值由 Go 侧 711 修复
+  // 供给，前端压过方向与 tabModeTintFor 阶梯同序）。
+  eq(document.querySelectorAll(".tabbar__mode-badge--autopilot").length, 1, "autopilot 档显 autopilot 徽章（橙）");
+  eq(document.querySelectorAll(".tabbar__mode-badge--yolo").length, 1, "yolo 徽章仅纯 yolo 档（autopilot 档不再错显）");
+  await view.unmount();
+}
+
+// 2b. 任务 711 验收：badge 档四档（询问/自动/YOLO/autopilot）+ goal/plan
+//     逐一正确——autopilot 显橙压过 yolo（原错显红），hover title 补
+//     Autopilot 状态。
+labFlags.applyLabFlags({});
+labFlags.applyTabPermissionIndicator(undefined);
+{
+  const view = await renderTabBar([
+    makeTab({}),
+    makeTab({ toolApprovalMode: "auto" }),
+    makeTab({ toolApprovalMode: "yolo" }),
+    makeTab({ collaborationMode: "autopilot", toolApprovalMode: "yolo" }),
+    makeTab({ collaborationMode: "plan" }),
+    makeTab({ collaborationMode: "goal" }),
+  ]);
+  const badgeCls = (name: string) => document.querySelectorAll(`.tabbar__mode-badge--${name}`).length;
+  eq(badgeCls("autopilot"), 1, "711 badge 档：autopilot 档显 autopilot 徽章（橙）");
+  eq(badgeCls("yolo"), 1, "711 badge 档：纯 yolo 档显 yolo 徽章（红），autopilot 档不再错显");
+  eq(badgeCls("auto"), 1, "711 badge 档：auto 档显 auto 徽章（蓝）");
+  eq(badgeCls("plan"), 1, "711 badge 档：plan 档显 plan 徽章（紫）");
+  eq(badgeCls("goal"), 1, "711 badge 档：goal 档显 goal 徽章（青）");
+  eq(badgeCount(), 5, "711 badge 档：询问档无徽章（6 签 5 徽章）");
+  const tabTitles = Array.from(document.querySelectorAll(".tabbar__tab")).map((n) => (n as HTMLElement).getAttribute("title") ?? "");
+  eq(tabTitles[0].includes("Autopilot"), false, "711：询问档 title 无 Autopilot");
+  eq(tabTitles[3].includes("Autopilot") && tabTitles[3].includes("YOLO approval"), true, "711：autopilot 档 title 含 Autopilot 状态（YOLO approval 照旧留痕）");
   await view.unmount();
 }
 

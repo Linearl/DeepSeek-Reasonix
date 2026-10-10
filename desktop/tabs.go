@@ -8071,6 +8071,18 @@ func currentTabCollaborationMode(tab *WorkspaceTab) string {
 	if strings.TrimSpace(currentTabGoal(tab)) != "" && currentTabGoalStatus(tab) == control.GoalStatusRunning {
 		return "goal"
 	}
+	// 任务 711: this helper feeds the tab-strip TabMeta (ListTabs and the tab
+	// events), and it used to be structurally incapable of saying "autopilot" —
+	// the same X4 断点 B hole the composer path fixed in
+	// tabRuntimeSnapshot.collaborationMode. An autopilot tab therefore reported
+	// "normal" on the wire while the composer reported "autopilot" (the two
+	// readers are NOT the same source), so the tab badge fell through to
+	// toolApprovalMode=yolo (autopilot implies yolo) and showed red YOLO
+	// instead of orange autopilot. Precedence mirrors the snapshot form:
+	// plan > running goal > autopilot > normal.
+	if tab.autopilot {
+		return "autopilot"
+	}
 	return "normal"
 }
 

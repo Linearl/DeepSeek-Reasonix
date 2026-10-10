@@ -27181,6 +27181,14 @@ button.statusbar__mcp:focus-visible {
   background: var(--mode-auto-bg);
 }
 
+/* 任务 711：autopilot 档徽章（橙，随 595/614 专属橙 token——与
+   data-mode-tint="autopilot" 的 tint 色同源，651 色源统一口径；
+   autopilot 压过 yolo 徽章，方向与 504 色调阶梯一致）。 */
+.tabbar__mode-badge--autopilot {
+  color: var(--mode-autopilot-fg);
+  background: var(--mode-autopilot-bg);
+}
+
 .tabbar__spacer {
   flex: 1 1 auto;
   min-width: 12px;

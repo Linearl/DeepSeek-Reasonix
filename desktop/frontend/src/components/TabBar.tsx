@@ -546,6 +546,9 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
             tab.running ? "Running" : "",
             planMode ? "Plan" : "",
             goalMode ? "Goal" : "",
+            // 任务 711：autopilot 状态进 hover title（原缺——autopilot 档此前
+            // 只能看到「YOLO approval」，档位本身不可见）。
+            collaborationMode === "autopilot" ? "Autopilot" : "",
             toolApprovalMode === "auto" ? "Auto approve" : "",
             toolApprovalMode === "yolo" ? "YOLO approval" : "",
             notLoaded ? t("tabBar.notLoaded") : "",
@@ -617,7 +620,13 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
               {badgesVisible && planMode && <span className="tabbar__mode-badge tabbar__mode-badge--plan">plan</span>}
               {badgesVisible && goalMode && <span className="tabbar__mode-badge tabbar__mode-badge--goal">goal</span>}
               {badgesVisible && toolApprovalMode === "auto" && <span className="tabbar__mode-badge tabbar__mode-badge--auto">auto</span>}
-              {badgesVisible && toolApprovalMode === "yolo" && <span className="tabbar__mode-badge tabbar__mode-badge--yolo">yolo</span>}
+              {/* 任务 711：autopilot 档显橙「autopilot」徽章并压过 yolo——
+                  此前无 autopilot 分支，而 Go 侧 tab 快照 collaborationMode
+                  恒为 normal（currentTabCollaborationMode 缺分支，711 修复），
+                  autopilot 恒含 yolo 审批 → 徽章落到 yolo 红（用户实测截图）。
+                  压过方向与 tabModeTintFor 阶梯（504）同序。 */}
+              {badgesVisible && collaborationMode === "autopilot" && <span className="tabbar__mode-badge tabbar__mode-badge--autopilot">autopilot</span>}
+              {badgesVisible && toolApprovalMode === "yolo" && collaborationMode !== "autopilot" && <span className="tabbar__mode-badge tabbar__mode-badge--yolo">yolo</span>}
               <span
                 className="tabbar__tab-close"
                 onClick={(e) => {
