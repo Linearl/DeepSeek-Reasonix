@@ -610,7 +610,7 @@ const CHECKS = [
   { feature: "任务549 失效观测（带原因的结构化丢弃日志）", file: "internal/agent/preflight.go", patterns: ["func (a *Agent) invalidateProjection(reason string)", "agent: context projection invalidated", "agent: context projection not restored"] },
   { feature: "任务549 失效即重建（kick 门控+单飞）", file: "internal/agent/preflight.go", patterns: ["func (a *Agent) kickProjectionRebuild", "a.sess.rebuildPending.CompareAndSwap(false, true)", "projectionRebuildTimeout"] },
   { feature: "任务549 content_edit rewind 触发者字段", file: "internal/agent/save_dag_plan.go", patterns: ["Writer: SessionWriterID()"] },
-  { feature: "任务549 面板失效标注（后端字段）", file: "internal/agent/context_status.go", patterns: ["ProjectionValid bool"] },
+  { feature: "任务549 面板失效标注（后端字段；742 波 gofmt 对齐后三空格形态）", file: "internal/agent/context_status.go", patterns: ["ProjectionValid   bool"] },
   { feature: "任务549 桌面桥接 projectionValid", file: "desktop/context_maintenance.go", patterns: ["json:\"projectionValid\""] },
   { feature: "任务549 面板主读数 projected+失效徽标", file: "desktop/frontend/src/components/ContextPanel.tsx", patterns: ["context-panel__projection-stale", "context?.maintenance?.projectedTokens ?? 0"] },
   { feature: "任务549 失效标注三语文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["context.projectionInvalid", "context.projectionInvalidTitle"] },
@@ -1485,7 +1485,7 @@ const CHECKS = [
   { feature: "任务562 设置页 rail+成员开关接线", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["labEntryBadgeTiers", "labLabel(\"autopilot\"", "settings.modelCapabilityFilter.retired"] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数口径现 15/22/13/1（722 yaml 化+727 登记后 optional 22、前端总数 51 / Go 50，双豁免 heartbeatRotation+modelCapabilityFilter））", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.optional === 22 && counts.unstable === 13", "config-only exemption", "display/json-bridge exemptions", "agree on every shared tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数口径现 15/24/13/1（742 实验室标签页管理后 optional 24、前端总数 53 / Go 51，三豁免 heartbeatRotation+modelCapabilityFilter+container））", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.optional === 24 && counts.unstable === 13", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（pane 每特性恰一枚：去重 monitoring/budgetControl/compressOpt/messageMerge 兄弟行 + 补挂 tabModeTint）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.coldCacheCompact\")}", "label={t(\"settings.collabGuidanceMerge\")}", "label={t(\"settings.perfMonitor\")}", "labLabel(\"tabModeTint\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },
