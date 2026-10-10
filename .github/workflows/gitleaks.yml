@@ -1,0 +1,60 @@
+# gitleaks secret scanning (task 219 P0 CI rollout).
+#
+# Rules come from the repo-root .gitleaks.toml — the same file the local gate
+# (scripts/gitleaks-check.sh) reads, so local and CI cannot drift. The
+# allowlist in that file carries only findings individually inspected during
+# the 2026-09-22 baseline (9701 commits, zero alerts after allowlist);
+# extend it only with entries backed by an inspected example, never to
+# silence a rule wholesale. Baseline details: docs/GITLEAKS-CI.md.
+#
+# Deliberate design choices (see docs/GITLEAKS-CI.md for the full list):
+# - No workflow-level paths-ignore: secrets can live in any file type
+#   (Markdown reports are a classic leak vector), and per-run cost is a
+#   few minutes of a hosted runner. Path-based filtering stays in the
+#   audited allowlist, not the trigger.
+# - gitleaks-action@v3: v2 runs on Node 20, which GitHub stopped executing
+#   on 2026-09-16 — the v2 snippet in the pre-landing plan doc is obsolete.
+# - fetch-depth: 0 is required: an incremental clone would miss secrets in
+#   history (that is exactly the class of leak this job exists for).
+# - Report artifact: gitleaks-action uploads gitleaks-report.sarif when a
+#   run finds leaks (GITLEAKS_ENABLE_UPLOAD_ARTIFACT); clean runs have no
+#   artifact by design, the job summary is the record there.
+# - GITLEAKS_LICENSE is only needed if this repo moves under an
+#   organization account (personal accounts are free); add it as a secret
+#   at that point, not before.
+
+name: gitleaks
+
+on:
+  pull_request:
+  push:
+    branches: [main-v2-stable]
+  # Weekly full-history sweep of the default branch: automates the
+  # "monthly manual scripts/gitleaks-check.sh full" backstop from the plan
+  # doc. Public repo, hosted runner — negligible cost.
+  schedule:
+    - cron: "17 20 * * 1" # Mondays 20:17 UTC (off the top of the hour)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitleaks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+          GITLEAKS_ENABLE_SUMMARY: "true"
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # org accounts only
