@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"reasonix/internal/config"
 	"reasonix/internal/fileutil"
 	fileencoding "reasonix/internal/fileutil/encoding"
 )
@@ -28,20 +26,12 @@ type HeartbeatRotationStatusView struct {
 	Err     string `json:"err"`
 }
 
-func heartbeatRotationPath() string {
-	dir := config.MemoryUserDir()
-	if dir == "" {
-		dir = "."
-	}
-	return filepath.Join(dir, "heartbeat-rotation.json")
-}
-
 // readHeartbeatRotationEnabled returns the effective enabled flag plus a
 // diagnostic error string (empty = healthy read). Missing file/field reads
 // as the task-500 built-in default (true); a corrupt file also reads as the
 // default but reports why.
 func readHeartbeatRotationEnabled() (bool, string) {
-	path := heartbeatRotationPath()
+	path := heartbeatRotationConfigPath()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -63,7 +53,7 @@ func readHeartbeatRotationEnabled() (bool, string) {
 // HeartbeatRotationStatus is the settings-card read binding.
 func (a *App) HeartbeatRotationStatus() HeartbeatRotationStatusView {
 	enabled, readErr := readHeartbeatRotationEnabled()
-	return HeartbeatRotationStatusView{Enabled: enabled, Path: heartbeatRotationPath(), Err: readErr}
+	return HeartbeatRotationStatusView{Enabled: enabled, Path: heartbeatRotationConfigPath(), Err: readErr}
 }
 
 // SetHeartbeatRotationEnabled flips the enabled field in heartbeat-rotation.json
@@ -72,8 +62,8 @@ func (a *App) HeartbeatRotationStatus() HeartbeatRotationStatusView {
 // default shape. Takes effect on the engine's next scheduling tick that reads
 // the file; the lab card notes this in its hint.
 func (a *App) SetHeartbeatRotationEnabled(enabled bool) error {
-	path := heartbeatRotationPath()
-	doc := map[string]any{"schemaVersion": 1}
+	path := heartbeatRotationConfigPath()
+	doc := map[string]any{"schemaVersion": heartbeatRotationSchemaVersion}
 	if data, err := os.ReadFile(path); err == nil {
 		var existing map[string]any
 		if err := json.Unmarshal(fileencoding.DecodeToUTF8(data), &existing); err == nil && existing != nil {
@@ -86,10 +76,5 @@ func (a *App) SetHeartbeatRotationEnabled(enabled bool) error {
 		return err
 	}
 	b = append(b, '\n')
-	if dir := filepath.Dir(path); dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-	}
 	return fileutil.AtomicWriteFile(path, b, 0o644)
 }
