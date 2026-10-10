@@ -15,6 +15,12 @@ import (
 // self-healed away. The contract is one logical topic row: both runtime
 // projection entries must collapse the window copies instead of expanding
 // them, and the open record owns the representative session path.
+// Task 757 narrowed the collapse (user decision, reversing the 04b8d02ef
+// "test is stale" adjudication, per audit report 94 方案 A): only the
+// controller-less copy stays collapsed — the active record still owns the
+// single row here because it is the only controller-holding record. Active
+// sessions with their own controllers each get their own row (see
+// tabs_runtime_status_test.go).
 func TestRuntimeTopicProjectionCollapsesWindowCopies(t *testing.T) {
 	app := NewApp()
 	freshPath := "/sessions/20260928-042815.686047-fresh.jsonl"
@@ -58,14 +64,82 @@ func TestRuntimeTopicProjectionCollapsesWindowCopies(t *testing.T) {
 	}
 }
 
-// TestRuntimeTopicProjectionEmitsNoSessionChildRows is the source-level guard
-// (task 352, following the task 299 dynamic-scan paradigm): the collapse above
-// is one deleted code block away from regrowing, so the guard scans the
-// package instead of trusting the fixture. It dynamically locates the
-// runtimeProjectTopicNodes builder body and asserts it never appends
-// session-kind children, with floors so a broken scan fails loud instead of
-// green — plus a call-site floor keeping both production entries wired.
-func TestRuntimeTopicProjectionEmitsNoSessionChildRows(t *testing.T) {
+// Task 757 (user decision, audit report 94 方案 A): the collapse only covers
+// controller-less copies. When a topic holds TWO controller-holding active
+// sessions plus a stale copy, the actives each get their own row and the stale
+// copy must neither become a third row nor leak its leftover activity status
+// onto the neutral parent — the 352 noise scenario must not regress in its
+// multi-active form either.
+func TestRuntimeTopicProjectionKeepsControllerlessCopiesCollapsedBesideActiveRows(t *testing.T) {
+	app := NewApp()
+	freshPath := "/sessions/20260928-042815.686047-fresh.jsonl"
+	secondPath := "/sessions/20260928-050000.000000-second.jsonl"
+	stalePath := "/sessions/20260928-031402.112233-origin.jsonl"
+	app.tabs["live"] = &WorkspaceTab{
+		ID: "live", Scope: "global", TopicID: "topic-window",
+		TopicTitle: "专家团复查", SessionPath: freshPath,
+		Ctrl: &activationStubController{sessionPath: freshPath},
+	}
+	app.tabs["second"] = &WorkspaceTab{
+		ID: "second", Scope: "global", TopicID: "topic-window",
+		TopicTitle: "专家团复查", SessionPath: secondPath,
+		Ctrl: &activationStubController{sessionPath: secondPath},
+	}
+	app.detachedSessions["stale"] = &WorkspaceTab{
+		Scope: "global", TopicID: "topic-window",
+		TopicTitle: "专家团复查", SessionPath: stalePath,
+		ActivityStatus: topicStatusWaitingConfirmation,
+	}
+
+	snapshot := app.GetProjectTreeRuntimeSnapshot()
+	if len(snapshot.Topics) != 1 {
+		t.Fatalf("runtime snapshot topics = %d, want 1 logical row", len(snapshot.Topics))
+	}
+	node := snapshot.Topics[0].Node
+	if len(node.Children) != 2 {
+		t.Fatalf("active sessions emitted %d child rows (%#v), want exactly the two controller-holding ones", len(node.Children), node.Children)
+	}
+	for _, child := range node.Children {
+		if sessionRuntimeKey(child.SessionPath) == sessionRuntimeKey(stalePath) {
+			t.Fatalf("controller-less copy %s expanded as a session row: %#v", stalePath, node.Children)
+		}
+		if !child.Running || child.Status != topicStatusThinking {
+			t.Fatalf("active session row %s = running:%v status:%q, want running/thinking", child.SessionPath, child.Running, child.Status)
+		}
+	}
+	// The stale copy carries a leftover waiting_confirmation: the parent stays
+	// neutral in the multi-active form (statuses live on the child rows).
+	if node.Status != "" || node.Running {
+		t.Fatalf("parent merged child/stale runtime statuses: %+v", node)
+	}
+	if !node.Open {
+		t.Fatalf("parent open = false, want the open tabs aggregated up")
+	}
+
+	// One contract, every entry: the catalog-merge path splits the actives and
+	// keeps the copy collapsed identically.
+	nodes := app.runtimeOnlyProjectTopics("global", "")
+	if len(nodes) != 1 {
+		t.Fatalf("catalog-merge entry = %d rows, want 1 logical row", len(nodes))
+	}
+	if len(nodes[0].Children) != 2 {
+		t.Fatalf("catalog-merge entry children = %d (%#v), want the 2 active session rows", len(nodes[0].Children), nodes[0].Children)
+	}
+}
+
+// TestRuntimeTopicProjectionCollapsesOnlyControllerlessCopies is the
+// source-level guard for the narrowed 352/757 contract (following the task 299
+// dynamic-scan paradigm): the runtime projection collapses ONLY the
+// controller-less window copies, while controller-holding active sessions each
+// emit their own child row (the split contract in tabs_runtime_status_test.go).
+// The scan dynamically locates the runtimeProjectTopicNodes builder body and
+// asserts the narrowing structure — the grouping by controller ownership, the
+// multi-active split threshold, child emission from the active-only loop, and
+// exactly one emission site — so the contract can neither regrow into "never
+// split" (352 over-generalization) nor loosen into "expand everything" (the
+// stem-row noise), with floors so a broken scan fails loud instead of green,
+// plus a call-site floor keeping both production entries wired.
+func TestRuntimeTopicProjectionCollapsesOnlyControllerlessCopies(t *testing.T) {
 	pattern := filepath.Join("*.go")
 	files, err := filepath.Glob(pattern)
 	if err != nil {
@@ -107,8 +181,23 @@ func TestRuntimeTopicProjectionEmitsNoSessionChildRows(t *testing.T) {
 				t.Fatalf("builder body floor failed: %s missing %q — the scan pattern went stale, fix the guard", file, anchor)
 			}
 		}
-		if strings.Contains(rest, "node.Children = append(") {
-			t.Fatalf("task 352 regression: runtimeProjectTopicNodes emits per-session child rows again (file stems + \"previously\" meta return); merge copies into the parent row instead")
+		// 757 narrowing: the grouping by controller ownership must be present,
+		// the multi-active split threshold intact, and child rows emitted from
+		// the active-only loop.
+		for _, anchor := range []string{"session.ctrl != nil", "len(active) >= 2", "for _, session := range active"} {
+			if !strings.Contains(rest, anchor) {
+				t.Fatalf("task 757 narrowing failed: %s missing %q — the controller-less collapse regrew into never-split or the split loosened; fix the builder", file, anchor)
+			}
+		}
+		// Exactly one child-emission site, and it sits inside the active-only
+		// loop: any additional site can expand controller-less copies as stem
+		// rows again.
+		if appends := strings.Count(rest, "node.Children = append("); appends != 1 {
+			t.Fatalf("task 757 regression: %d child-emission sites in runtimeProjectTopicNodes, want exactly 1 (the active-only loop)", appends)
+		}
+		appendIdx := strings.Index(rest, "node.Children = append(")
+		if idx := strings.Index(rest, "for _, session := range active"); idx < 0 || idx > appendIdx {
+			t.Fatalf("task 757 regression: child rows are no longer emitted from the active-only loop — controller-less copies would expand as stem rows again")
 		}
 	}
 	if !builderFound {

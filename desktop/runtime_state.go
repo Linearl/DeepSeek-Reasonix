@@ -59,6 +59,13 @@ func (a *App) localRuntimeBindingsLocked() map[localRuntimeBindingKey]localRunti
 			view: RuntimeSessionState{TabID: tab.ID, Scope: tab.Scope, WorkspaceRoot: tab.WorkspaceRoot,
 				TopicID: tab.TopicID, SessionPath: tab.SessionPath, SessionGeneration: tab.SessionGeneration, Open: open, Freshness: "synced"},
 			catalog: catalogRuntimeSnapshot{scope: tab.Scope, workspaceRoot: tab.WorkspaceRoot, topicID: tab.TopicID, sessionPath: tab.SessionPath,
+				// 757: the projection builder groups by controller ownership
+				// (controller-less copies stay collapsed), so the binding must
+				// carry the same ctrl pointer the catalogRuntimeSnapshots path
+				// already provides — otherwise every runtime-snapshot record
+				// reads as a stale copy and the active-session split never
+				// reaches the frontend projection.
+				ctrl:     tab.Ctrl,
 				activity: tab.ActivityStatus, topicTitle: tab.TopicTitle, topicTitleSource: tab.topicTitleSource, open: open}}
 	}
 	for key, tab := range a.tabs {

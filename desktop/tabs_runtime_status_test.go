@@ -61,6 +61,11 @@ func TestProjectTreeShowsDetachedRuntimeStatus(t *testing.T) {
 	waitNotRunning(t, ctrl)
 }
 
+// 任务 757 终裁（用户拍板，方向反转 04b8d02ef 的「测试过时」裁决，采审计线
+// 94 报告方案 A）：本合同恢复为现行语义——同 topic 的多个活跃运行时会话（各
+// 自持有控制器，detached 运行时亦然）拆成 per-session 子行、各持状态，父行
+// 运行状态中性（2026-06 dc11dc67e 时代语义）。无控制器的陈旧副本仍折叠进唯
+// 一逻辑行，不展开为 stem 行（352 收窄合同，见 project_tree_window_copies_test.go）。
 func TestProjectTreeSplitsMultipleRuntimeSessionsInSameTopic(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	dir := desktopSessionDir(globalTabWorkspaceRoot())
