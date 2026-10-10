@@ -36,12 +36,27 @@ func protocolHistory(messages []provider.Message) []provider.Message {
 		if m.Role == provider.RoleUser && m.Origin == provider.MessageOriginHost {
 			continue
 		}
+		// 748: transient per-turn blocks (current-time, task 664) ride the
+		// stored user turn when a failure offers the recovery record, but the
+		// interrupted-turn cleanup rewrites that message to the stripped form
+		// (StripComposePrefixes) before the token is ever checked. Fingerprint
+		// the stable form so the pending record survives the rewrite instead of
+		// failing the history gate on decoration bytes alone.
+		if m.Role == provider.RoleUser {
+			m.Content = StripTransientUserBlocks(m.Content)
+		}
 		out = append(out, m)
 	}
 	out = append([]provider.Message(nil), provider.ModelMessages(out)...)
 	for i := range out {
 		out[i].CreatedAt = 0
 		out[i].WorkDurationMs = 0
+		// 748: the interrupted-turn cleanup edits the kept user turn, and that
+		// content-edit save renames the message (dagWritePlan.addAppends mints a
+		// fresh id for a re-appended edit). Transcript identity is storage
+		// metadata, not conversation content — exclude it so the fingerprint
+		// compares what the recovery actually validates: the visible exchange.
+		out[i].ID = ""
 	}
 	return out
 }
