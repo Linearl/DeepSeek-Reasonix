@@ -607,3 +607,88 @@ func messagesHaveConversationContent(messages []provider.Message) bool {
 	}
 	return false
 }
+
+// SetAutoApproveTools toggles YOLO/full-access tool auto-approval:
+// approval-gated tool calls run without asking, while ask questions and plan
+// approvals still wait for the user. Runtime-only — not written to config.
+func (a *App) SetAutoApproveTools(on bool) {
+	if on {
+		a.SetToolApprovalModeForTab("", control.ToolApprovalYolo)
+		return
+	}
+	a.SetToolApprovalModeForTab("", control.ToolApprovalAsk)
+}
+
+// SetBypass is the legacy Wails binding for SetAutoApproveTools.
+func (a *App) SetBypass(on bool) {
+	a.SetAutoApproveTools(on)
+}
+
+func (a *App) SetToolApprovalMode(mode string) {
+	a.SetToolApprovalModeForTab("", mode)
+}
+
+// SetToolApprovalModeForTab returns the pending approval prompt ids the
+// switch auto-allowed (see SetModeForTab).
+func (a *App) SetToolApprovalModeForTab(tabID, mode string) []string {
+	return a.setToolApprovalModeForTabInner(tabID, mode, false)
+}
+
+// SetApprovalTierForTab is the task-595 four-tier single-select on the
+// approval-posture axis: ask|auto|yolo|autopilot, one click lands the axis
+// exactly on the picked tier. Picking any of the three attended tiers while autopilot holds also leaves autopilot in the same call — on the mode bar the yolo tier is plain yolo, not an autopilot alias — while picking the autopilot tier delegates to the task-465 engagement (auto-assumes yolo). The plan/goal axis rides along untouched. Programmatic writers that must keep (autopilot, yolo) coherent keep using SetToolApprovalModeForTab.
+func (a *App) SetApprovalTierForTab(tabID, tier string) []string {
+	if strings.ToLower(strings.TrimSpace(tier)) == "autopilot" {
+		a.SetCollaborationModeForTab(tabID, "autopilot")
+		return nil
+	}
+	return a.setToolApprovalModeForTabInner(tabID, tier, true)
+}
+
+func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelect bool) []string {
+	tab := a.tabByID(tabID)
+	if tab == nil {
+		return nil
+	}
+	tab.turnStartMu.Lock()
+	defer tab.turnStartMu.Unlock()
+	mode = normalizeToolApprovalMode(mode)
+	plan := tabModeHasPlan(a.tabRuntimeSnapshot(tab).currentMode())
+	a.mu.Lock()
+	if a.tabs[tab.ID] != tab {
+		a.mu.Unlock()
+		return nil
+	}
+	tab.toolApprovalMode = mode
+	tab.mode = tabModeFromAxes(plan, mode == control.ToolApprovalYolo)
+	// Task 325 reverse linkage (fail-closed): autopilot on + approval leaving
+	// yolo must not persist, and blocking the approval switch here would also
+	// trap heartbeat runs that legitimately set their task's mode — so the unattended flag is the side that yields. The live controller keeps its built-in autopilot posture until the next rebuild, but its approval mode is updated below in the same call, so no build accepts the combination. Task 595: the composer tier path additionally treats a yolo pick under a holding autopilot as leaving the tier (single-select bar).
+	autopilotClosed := closeAutopilotForOffYolo(tab, mode)
+	// tierYoloLeave marks the deliberate yolo-pick leave: no surprise notice
+	// (the mode bar moving is the feedback), guard cleanup still runs.
+	tierYoloLeave := false
+	if !autopilotClosed && tierSingleSelect {
+		tierYoloLeave = closeAutopilotForTier(tab)
+		autopilotClosed = tierYoloLeave
+	}
+	ctrl := tab.Ctrl
+	tabIDForSave := tab.ID
+	guardTopic := strings.TrimSpace(tab.TopicID)
+	a.mu.Unlock()
+	if autopilotClosed && !tierYoloLeave {
+		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
+	}
+	if autopilotClosed {
+		// Task 326: symmetric cleanup — once autopilot is off there is no
+		// session left for the guard to watch.
+		a.clearAutopilotGuard(guardTopic)
+	}
+	drained := applyTabToolApprovalModeToController(ctrl, mode)
+	a.mu.Lock()
+	if a.tabs[tabIDForSave] == tab {
+		a.saveTabsLocked()
+	}
+	a.mu.Unlock()
+	return drained
+}

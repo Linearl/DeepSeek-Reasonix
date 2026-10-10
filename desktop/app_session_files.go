@@ -3,9 +3,11 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
@@ -326,6 +328,7 @@ func channelDisplayName(provider, domain string) string {
 	}
 }
 
+// RestoreSession moves a trashed session back into the saved-session list.
 func (a *App) RestoreSession(path string) error {
 	return friendlySessionFileError(a.restoreSession(path))
 }
@@ -500,4 +503,150 @@ func (a *App) onSessionTitleChanged(dir, sessionPath, title string) error {
 	a.invalidatePromptHistoryCache()
 	a.emitProjectTreeChangedForSessionDirs(dir)
 	return nil
+}
+
+// ResumeSession snapshots the current conversation, then loads the session at
+// path and continues it on the active tab. The model and working folder are
+// unchanged; only the transcript is swapped. Returns the resumed messages for
+// the frontend to render.
+func (a *App) ResumeSession(path string) ([]HistoryMessage, error) {
+	return a.ResumeSessionForTab("", path)
+}
+
+func (a *App) ResumeSessionPage(path string, limit int) (HistoryPage, error) {
+	return a.ResumeSessionPageForTab("", path, limit)
+}
+
+func (a *App) ResumeSessionPageForTab(tabID, path string, limit int) (HistoryPage, error) {
+	return a.resumeSessionPageForTab(tabID, path, limit)
+}
+
+// ResumeSessionForTab is the tab-scoped form of ResumeSession. A saved session
+// path is a runtime identity, so changing to a different path must replace the
+// tab's controller binding rather than mutating the current controller in place.
+func (a *App) ResumeSessionForTab(tabID, path string) ([]HistoryMessage, error) {
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if tab == nil || ctrl == nil {
+		return []HistoryMessage{}, fmt.Errorf("tab is not ready")
+	}
+	if continued := a.continuePathForOpen(path); continued != "" {
+		path = continued
+	}
+	sessionPath, _, err := validateSessionPath(controllerSessionDir(ctrl), path)
+	if err != nil {
+		return nil, err
+	}
+	if sessionRuntimeKey(tab.currentSessionPath()) == sessionRuntimeKey(sessionPath) {
+		a.mu.RLock()
+		takeoverSpectator := a.tabs[tab.ID] == tab && tab.Takeover.Spectator
+		a.mu.RUnlock()
+		if takeoverSpectator {
+			return nil, fmt.Errorf("session is held by the remote side; use TakeoverSession to reclaim it")
+		}
+		a.setTabReadOnly(tab.ID, false)
+		// A read-only transcript explicitly reopened for writing re-announces
+		// itself so a resident Serve can mirror and later reclaim it.
+		a.attachTakeoverMirror(tab.ID, sessionPath)
+		go a.adoptSessionFromLocalServe(tab.ID, sessionPath)
+		return a.HistoryForTab(tabID), nil
+	}
+	// Task 196 second round: switching tabs also resumes through here, and the
+	// user reports slow switching *out of* a long session - so both directions
+	// need the same decomposition as resumeSessionPageForTab.
+	resumeStart := time.Now()
+	loaded, err := loadResumableSession(sessionPath)
+	loadMs := time.Since(resumeStart).Milliseconds()
+	if err != nil {
+		slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+			"load_ms", loadMs, "rebind_ms", int64(0), "history_ms", int64(0),
+			"total_ms", time.Since(resumeStart).Milliseconds(), "error", err.Error())
+		return nil, err
+	}
+
+	rebindStart := time.Now()
+	if err := a.rebindTabToLoadedSessionPath(tab, sessionPath, loaded); err != nil {
+		slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+			"load_ms", loadMs, "rebind_ms", time.Since(rebindStart).Milliseconds(), "history_ms", int64(0),
+			"total_ms", time.Since(resumeStart).Milliseconds(), "error", err.Error())
+		return nil, err
+	}
+	rebindMs := time.Since(rebindStart).Milliseconds()
+	a.setTabReadOnly(tab.ID, false)
+	a.attachTakeoverMirror(tab.ID, sessionPath)
+	go a.adoptSessionFromLocalServe(tab.ID, sessionPath)
+	historyStart := time.Now()
+	messages := a.HistoryForTab(tabID)
+	slog.Info("desktop: resume session stages", "tab", tabID, "path", sessionPath,
+		"load_ms", loadMs, "rebind_ms", rebindMs, "history_ms", time.Since(historyStart).Milliseconds(),
+		"total_ms", time.Since(resumeStart).Milliseconds())
+	return messages, nil
+}
+
+// validateChannelSessionPath 校验 bot/channel 会话路径：channel 会话可能位于
+// 当前 controller 的 session dir（project scope）或全局 session dir
+// （global scope），单 tab 无法同时覆盖两者，因此都放行。
+func validateChannelSessionPath(ctrlDir, path string) (string, string, error) {
+	if p, b, err := validateSessionPath(ctrlDir, path); err == nil {
+		return p, b, nil
+	}
+	if globalDir := config.SessionDir(); globalDir != "" && globalDir != ctrlDir {
+		if p, b, err := validateSessionPath(globalDir, path); err == nil {
+			return p, b, nil
+		}
+	}
+	return validateSessionPath(ctrlDir, path)
+}
+
+func (a *App) OpenChannelSessionForTab(tabID, path string) ([]HistoryMessage, error) {
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if tab == nil || ctrl == nil {
+		return []HistoryMessage{}, fmt.Errorf("tab is not ready")
+	}
+	sessionPath, _, err := validateChannelSessionPath(controllerSessionDir(ctrl), path)
+	if err != nil {
+		return nil, err
+	}
+	loaded, err := loadResumableSession(sessionPath)
+	if err != nil {
+		return nil, err
+	}
+	if sessionRuntimeKey(tab.currentSessionPath()) != sessionRuntimeKey(sessionPath) {
+		if err := a.rebindTabToLoadedSessionPath(tab, sessionPath, loaded); err != nil {
+			return nil, err
+		}
+	}
+	a.setTabReadOnly(tab.ID, true)
+	return a.HistoryForTab(tab.ID), nil
+}
+
+func (a *App) OpenChannelSessionPageForTab(tabID, path string, limit int) (HistoryPage, error) {
+	tab, ctrl := a.tabAndCtrlByID(tabID)
+	if tab == nil || ctrl == nil {
+		return HistoryPage{}, fmt.Errorf("tab is not ready")
+	}
+	sessionPath, _, err := validateChannelSessionPath(controllerSessionDir(ctrl), path)
+	if err != nil {
+		return HistoryPage{}, err
+	}
+	loaded, err := loadResumableSession(sessionPath)
+	if err != nil {
+		return HistoryPage{}, err
+	}
+	if sessionRuntimeKey(tab.currentSessionPath()) != sessionRuntimeKey(sessionPath) {
+		if err := a.rebindTabToLoadedSessionPath(tab, sessionPath, loaded); err != nil {
+			return HistoryPage{}, err
+		}
+	}
+	a.setTabReadOnly(tab.ID, true)
+	return a.HistoryPageForTab(tab.ID, 0, limit), nil
+}
+
+// PreviewSession reads a saved session for display only. It does not snapshot or
+// swap the active controller, so the history drawer can call it while a turn runs.
+func (a *App) PreviewSession(path string) ([]HistoryMessage, error) {
+	sessionDir, sessionPath, err := a.sessionDirForPath(path)
+	if err != nil {
+		return nil, err
+	}
+	return previewSessionMessages(sessionDir, sessionPath)
 }
