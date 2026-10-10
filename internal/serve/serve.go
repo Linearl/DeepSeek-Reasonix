@@ -104,6 +104,11 @@ type Server struct {
 	leaseOwners   map[*control.Controller]*control.SessionLeaseKeeper
 	detachedMu    sync.Mutex
 	detached      map[string]*detachedSession
+	// Task 539: lifecycle states of pending/recent takeover attempts, keyed
+	// by canonical session path. Read by the ?session= status view so remote
+	// clients can poll a 202 takeover to its terminal state.
+	takeoverMu       sync.Mutex
+	takeoverAttempts map[string]*takeoverAttempt
 	tagsMu        sync.Mutex
 	tags          map[*control.Controller]*sessionTagSink
 	// Remote-client (GrandCouncil) device lease (task 36 Phase 2): deviceID
@@ -2014,50 +2019,38 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
-	yielded := false
 	lease, err := agent.TryAcquireSessionLeaseWithHandoff(abs, strings.TrimSpace(body.From), fmt.Sprintf("%s-takeover-%d", agent.SessionWriterID(), time.Now().UnixNano()))
 	if err != nil {
-		// Cross-runtime takeover: ask the current holder to yield, then poll
-		// for the handover. The desktop watches the marker file, releases its
-		// lease (flipping its tab to read-only), and this acquire succeeds —
-		// the user-authorized explicit takeover path. Without a holder
-		// response within the window the request surfaces as 409.
-		marker := strings.TrimSuffix(abs, ".jsonl") + ".takeover-request"
+		// Cross-runtime takeover (539 route A, "take over without
+		// interrupting"): ask the current holder to yield. The desktop accepts
+		// through the gateway gate / marker watcher but KEEPS its lease until
+		// its running turn finishes, so the handover can take up to
+		// SessionTakeoverYieldWindow — far beyond any remote client's HTTP
+		// timeout. Reply 202 immediately and finish the acquisition in the
+		// background; the remote client polls GET /status?session=<name>
+		// (takeoverPending / takenOver / takeoverMessage) to the terminal
+		// state. The old synchronous 409 "holder did not yield" is gone with
+		// the interrupt-style protocol it described.
+		marker := agent.TakeoverRequestMarkerPath(abs)
 		_ = os.WriteFile(marker, []byte(agent.SessionWriterID()), 0o600)
-		deadline := time.Now().Add(9 * time.Second)
-		for time.Now().Before(deadline) {
-			time.Sleep(700 * time.Millisecond)
-			if retry, acquireErr := agent.TryAcquireSessionLease(abs); acquireErr == nil {
-				_ = os.Remove(marker)
-				retry.Release()
-				yielded = true
-				break
-			}
-		}
-		if !yielded {
-			http.Error(w, control.SessionInUseMessage(err)+` (takeover requested; holder did not yield)`, http.StatusConflict)
-			return
-		}
-		// The holder yielded: fall through to the normal acquire/rebind path
-		// below, which now succeeds.
-		lease, err = agent.TryAcquireSessionLease(abs)
-		if err != nil {
-			http.Error(w, control.SessionInUseMessage(err), http.StatusConflict)
-			return
-		}
+		s.recordTakeoverState(abs, takeoverStatePending, "")
+		go s.pollTakeoverYield(abs, marker, strings.TrimSpace(body.From))
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":            takeoverStatePending,
+			"session":           name,
+			"pollWindowSeconds": int(agent.SessionTakeoverYieldWindow / time.Second),
+		})
+		return
 	}
 	// Point the controller at the acquired session so /submit and /history
 	// operate on it. Rebind releases any lease this runtime previously held.
 	if err := s.leases.Rebind(abs); err != nil {
 		lease.Release()
-		// After an explicit takeover the holder has already yielded (the
-		// marker protocol above) — the takeover itself succeeded even if
-		// this runtime's lease bookkeeping could not rebind; the next write
-		// path acquires cleanly. Only a plain handoff consume fails here.
-		if yielded {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+		// A plain handoff consume failed on this runtime's lease
+		// bookkeeping; the next write path acquires cleanly.
 		http.Error(w, control.SessionInUseMessage(err), http.StatusConflict)
 		return
 	}
