@@ -27,6 +27,24 @@ export function buildIdentity(frontendDir) {
   };
 }
 
+// 任务 751：lifecycle probe 只在 AppRuntime 渲染时发布（appLifecycleProbe.ts 的
+// createAppRenderToken 是全仓唯一发布点），而 AppRuntime 至今未接入渲染树（孤独
+// AppRuntime 家族，见 app-browser.mjs 的同现象 NOTICE 处理）。probe 缺席时 bench
+// 用此占位快照降级：heap/DOM 证据照常采集与判漂移，lifecycle 计数器档位标为未
+// 发布；调用方经 lifecycleProbePublished 向 stdout 与 report.json 声明档位，而
+// 不是直接 throw（CI 实测 run 38043636852：旧代码 9.5 秒退出、零数据 FAIL）。
+// AppRuntime 未来接入渲染树后 probe 自动出现，断言自动重新武装，无需配置开关。
+export const ABSENT_LIFECYCLE_PROBE = Object.freeze({
+  published: false,
+  committedRenders: 0,
+  liveRenderTokens: 0,
+  liveRenderTokenIds: Object.freeze([]),
+  activeOperations: 0,
+  activeSubscriptions: 0,
+  invariantViolations: 0,
+  overflow: false,
+});
+
 // IDs, not count deltas: an increasing population can hide behind simultaneous GC.
 export function retainedCohorts(samples) {
   const firstSeen = new Map();
