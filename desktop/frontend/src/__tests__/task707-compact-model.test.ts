@@ -44,21 +44,26 @@ const goAgentCompact = fs.readFileSync(path.join(repoRoot, "internal/agent/compa
 
 console.log("\n任务 707 compact model: persistence + render + runtime contract");
 
-// 1. Lab surface: the switch lives in the contextGovernance card (compressOpt
-//    block, below the proactive-compact cooldown), wraps a tier label, and
-//    lights the card when on.
+// 1. Lab surface（任务 722 点5 修订）：开关自上下文治理卡迁入「安全 / 成本
+//    控制」卡（消息合并同卡）——setter 与配置键不变，纯 UI 归位。灯引用随迁
+//    （yaml onKeys 含 experimentalCompactModel）。
+{
+  const layoutDefault = fs.readFileSync(path.join(frontendRoot, "src/lab/labLayoutDefault.ts"), "utf8");
+  const yaml = fs.readFileSync(path.join(frontendRoot, "src/lab/lab-layout.yaml"), "utf8");
+  const safety = layoutDefault.slice(layoutDefault.indexOf('id: "safetyCostControl"'), layoutDefault.indexOf('id: "modelStrategy"'));
+  ok(safety.includes('id: "compactModel"') && safety.includes('tier: "optional"'),
+    "layout default hosts compactModel inside the safetyCostControl card");
+  const yamlSafety = yaml.slice(yaml.indexOf("id: safetyCostControl"), yaml.indexOf("id: modelStrategy"));
+  ok(yamlSafety.includes("onKeys: [experimentalSafetyCostControl, experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge]"),
+    "safetyCostControl card light covers the moved compactModel key");
+  const gov = layoutDefault.slice(layoutDefault.indexOf('id: "contextGovernance"'), layoutDefault.indexOf('id: "safetyCostControl"'));
+  ok(!gov.includes('"compactModel"'), "contextGovernance no longer holds compactModel (键引用同步移走)");
+}
 ok(
   panel.includes('labLabel("compactModel", t("settings.compactModel"))') &&
-    panel.includes("app.SetExperimentalCompactModel(on)"),
-  "contextGovernance card renders the compactModel switch through its setter",
-);
-ok(
-  /coldCacheCompact\.idleHours[\s\S]{0,1200}labLabel\("compactModel"/.test(panel),
-  "the switch sits below the proactive-compact cooldown block (任务书「下方」)",
-);
-ok(
-  panel.includes('Boolean(s.experimentalCompactModel) || Boolean(s.experimentalCacheTuning)'),
-  "contextGovernance card lights when the compact-model switch is on",
+    panel.includes("app.SetExperimentalCompactModel(on)") &&
+    panel.indexOf('labLabel("compactModel"') > panel.indexOf('{selected === "safetyCostControl" && ('),
+  "safetyCostControl card renders the compactModel switch through its setter",
 );
 ok(
   panel.includes("!Boolean(s.experimentalCompactModel)") && panel.includes('t("settings.compactModel.inactiveHint")'),
@@ -113,8 +118,14 @@ ok(goAgentCompact.includes("summaryDest := a.compactionDestination()") && goAgen
 //    19→20 / 48→49; the rail card covers it as a merged member.
 ok(tiers.includes('| "compactModel"') && tiers.includes('compactModel: "optional"'), "frontend tier registry: compactModel = optional");
 ok(goRender.includes('{"compactModel", LabTierOptional, []string{"experimental_compact_model", "compact_model"}}'), "Go labFeatureTiers: compactModel = optional with both render keys");
-ok(tiers.includes("optional: 20,"), "LAB_TIER_COUNTS optional 19→20 (总数 48→49)");
-ok(tiers.includes('"compressOpt", "compactModel", "cacheTuning"'), "contextGovernance rail card lists compactModel as a member");
+ok(tiers.includes("optional: 22,"), "LAB_TIER_COUNTS optional 19→20→21→22（707→704→727 推进）");
+// 任务 722 点5：compactModel 成员随卡迁登记（safetyCostControl 成员表）。
+{
+  const layoutDefault = fs.readFileSync(path.join(frontendRoot, "src/lab/labLayoutDefault.ts"), "utf8");
+  const safety = layoutDefault.slice(layoutDefault.indexOf('id: "safetyCostControl"'), layoutDefault.indexOf('id: "modelStrategy"'));
+  ok(safety.includes('{ id: "compactModel", labelKey: "settings.compactModel", tier: "optional" }'),
+    "safetyCostControl rail card lists compactModel as a member");
+}
 
 // 7. Locales: all three languages carry the full key set.
 for (const [name, dict] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {

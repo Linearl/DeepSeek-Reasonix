@@ -9,14 +9,13 @@
 //  ③ M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
 //     fullAccess / optimisticParallel each still has its own rail entry and
 //     its own pane branch;
-//  ④ the rail carries exactly 37 entries in 9 groups
-//     (5/7/14/1/1/1/6/1 — 任务 517 merges the M1 autonomousRunGuard card and
-//     the standalone eventWaitRecheck entry into the single-key
-//     safetyCostControl card; 任务 650 moves optimisticParallel from
-//     automation to efficiency, so automation drops 6→5 and efficiency
-//     gains it back 6→7); the 11 folded member
-//     ids are gone from the union, and task 504 adds tabModeTint to the ui
-//     group. the features array and the pane branches.
+//  ④ the rail carries exactly 37 entries in 8 groups — 任务 722 后为
+//     4/8/15/1/1/1/6/1（safetyCostControl 自 automation 迁 efficiency 并吸收
+//     messageMerge；sessionCollabAutoFold 并入 sessionCollab；727
+//     heartbeatRotation 以成员入 safetyCostControl，不占 rail 入口）。
+//     任务 722/724：render table 移交布局默认数据（labLayoutDefault.ts），
+//     分组/成员/徽章/排序由 lab-layout.yaml（校验回退默认）驱动——本测试的
+//     分组断言读布局数据与 yaml，卡片独立性断言仍读 SettingsPanel 源。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -38,39 +37,62 @@ function cardSlice(startMarker: string, endMarker: string): string {
 
 console.log("\ntask 561 lab regroup + merged cards");
 
-// ① 7-group structure (+ 任务 603「工具优化」appended after the audit table).
-ok(
-  panel.includes('type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra" | "tool-opt";'),
-  "LabGroupKey is the 7 audit-table groups + the 603 tool-opt group",
-);
+// ① 8-group structure（任务 722/724 修订）：组受控词表在 labLayoutTypes，
+//    组序/组键/组标签键全部来自布局文档（yaml 与内置默认一致）。
 {
-  const order = [
-    '"automation"', '"efficiency"', '"ui"', '"observability"', '"dev-debug"', '"storage"', '"infra"', '"tool-opt"',
-  ].map((k) => panel.indexOf(`key: ${k}`));
-  ok(order.every((i) => i >= 0) && [...order].sort((a, b) => a - b).every((v, i) => v === order[i]),
-    "labGroups renders in the audit-table order (rail order)");
+  const yaml = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
+  const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
+  const keys = [
+    "automation", "efficiency", "ui", "observability", "dev-debug", "storage", "infra", "tool-opt",
+  ];
+  const yamlOrder = keys.map((k) => yaml.indexOf(`key: ${k}`));
+  ok(yamlOrder.every((i) => i >= 0) && [...yamlOrder].sort((a, b) => a - b).every((v, i) => v === yamlOrder[i]),
+    "lab-layout.yaml carries the 8 groups in the audit-table order (rail order)");
+  for (const [key, labelKey] of [
+    ["automation", "settings.labGroup.automation"],
+    ["tool-opt", "settings.labGroup.toolOpt"],
+    ["dev-debug", "settings.labGroup.devDebug"],
+  ] as const) {
+    const block = yaml.slice(yaml.indexOf(`key: ${key}`));
+    ok(block.includes(`labelKey: ${labelKey}`), `group ${key} carries locale label key ${labelKey}`);
+  }
+  const defOrder = keys.map((k) => labDefault.indexOf(`key: "${k}"`));
+  ok(defOrder.every((i) => i >= 0) && [...defOrder].sort((a, b) => a - b).every((v, i) => v === defOrder[i]),
+    "built-in default layout mirrors the same group order (fallback = same face)");
 }
-ok(panel.includes('labelKey: "settings.labGroup.automation"') && panel.includes('labelKey: "settings.labGroup.infra"'),
-  "new groups carry locale label keys");
 
-// ① rail census: exactly 37 feature entries, 5/8/14/1/1/1/6/1 per group
-// (任务 677 collabGroupView joined efficiency post-670 — the old 6/6 split
-// was stale by then; 任务 650 then moved optimisticParallel automation→
-// efficiency, landing at automation 5 / efficiency 8.)
-// (任务 603 adds the single tool-opt entry; 任务 517 folds the M1 card and
-// eventWaitRecheck into safetyCostControl; 任务 650 moves optimisticParallel
-// automation→efficiency — automation 6→5, efficiency 6→7).
+// ① rail census（任务 722 修订）：恰好 37 个 rail 入口，组分布
+// 4/8/15/1/1/1/6/1（safetyCostControl 迓提效并吸收 messageMerge 入口；
+// sessionCollabAutoFold 并入 sessionCollab——两入口消失；其余组不动）。
+// 数据源 = 布局默认数据 + yaml（两份必须同构）。
 {
-  const entries = [...panel.matchAll(/\{ id: "([a-zA-Z]+)", group: "([a-z-]+)",/g)];
+  // 直接导入布局数据模块数真数据（比源码正则稳）。
+  const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
+  const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
+  ok(defEntries.length === 37, `default layout carries exactly 37 rail entries (got ${defEntries.length})`);
+  // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
+  const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
+  const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
+  ok(defEntries.length === yamlEntries.length && defEntries.every((id, i) => id === yamlEntries[i]),
+    `yaml and built-in default list the same entries in the same order (yaml ${yamlEntries.length})`);
   const groups: Record<string, number> = {};
-  for (const [, , g] of entries) groups[g] = (groups[g] ?? 0) + 1;
-  ok(entries.length === 37, `rail carries exactly 37 entries (got ${entries.length})`);
-  ok(groups["automation"] === 5 && groups["efficiency"] === 8 && groups["ui"] === 14 &&
+  for (const g of LAB_LAYOUT_DEFAULT_DATA.groups) groups[(g as { key: string }).key] = g.entries.length;
+  ok(groups["automation"] === 4 && groups["efficiency"] === 8 && groups["ui"] === 15 &&
      groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 1 && groups["infra"] === 6 &&
      groups["tool-opt"] === 1,
-    `group counts are 5/8/14/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
-  const ids = entries.map(([, id]) => id);
-  ok(new Set(ids).size === ids.length, "no duplicate rail ids");
+    `group counts are 4/8/15/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
+  ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
+  // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
+  // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
+  const eff = LAB_LAYOUT_DEFAULT_DATA.groups.find((g: { key: string }) => g.key === "efficiency");
+  const safety = eff!.entries.find((e: { id: string }) => e.id === "safetyCostControl");
+  const memberIds = (safety!.members ?? []).map((m: { id: string }) => m.id);
+  ok(["messageMerge", "compactModel", "heartbeatRotation"].every((x) => memberIds.includes(x)),
+    "safetyCostControl members carry messageMerge + compactModel + heartbeatRotation (722 点5/6 + 727)");
+  const collab = LAB_LAYOUT_DEFAULT_DATA.groups.find((g: { key: string }) => g.key === "automation")!
+    .entries.find((e: { id: string }) => e.id === "sessionCollab");
+  ok((collab!.members ?? []).some((m: { id: string }) => m.id === "sessionCollabAutoFold"),
+    "sessionCollab hosts the auto-fold member (722 点3)");
 }
 
 // ② merged cards — per-member read+write independence.
@@ -141,16 +163,21 @@ for (const family of families) {
   ok(!panel.includes("app.SetExperimentalModelCapabilityFilter("), "retired key has NO setter call anywhere (read-only)");
 }
 
-// ③ M8 standalone entries.
-for (const [id, pane] of [
-  ["autopilot", '{selected === "autopilot" && ('],
-  ["sessionCollab", '{selected === "sessionCollab" && ('],
-  ["monitoring", '{selected === "monitoring" && ('],
-  ["fullAccess", '{selected === "fullAccess" && ('],
-  ["optimisticParallel", '{selected === "optimisticParallel" && ('],
-] as const) {
-  ok(panel.includes(`{ id: "${id}", group: "`), `M8 ${id} keeps its own rail entry`);
-  ok(panel.includes(pane), `M8 ${id} keeps its own pane branch`);
+// ③ M8 standalone entries（任务 722/724 修订）：rail 入口断言读布局默认
+// 数据（入口 id + 自有 onKeys），pane 分支断言仍读 SettingsPanel。
+{
+  const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
+  const entryIds = new Set(LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id)));
+  for (const [id, pane] of [
+    ["autopilot", '{selected === "autopilot" && ('],
+    ["sessionCollab", '{selected === "sessionCollab" && ('],
+    ["monitoring", '{selected === "monitoring" && ('],
+    ["fullAccess", '{selected === "fullAccess" && ('],
+    ["optimisticParallel", '{selected === "optimisticParallel" && ('],
+  ] as const) {
+    ok(entryIds.has(id), `M8 ${id} keeps its own rail entry`);
+    ok(panel.includes(pane), `M8 ${id} keeps its own pane branch`);
+  }
 }
 
 // ④ folded member ids are gone from union + features array + pane branches.
@@ -162,6 +189,10 @@ for (const id of [
   "sessionStorage", "eventsRotation",
   // 任务 517：eventWaitRecheck 并入 safetyCostControl，autonomousRunGuard 卡消亡。
   "eventWaitRecheck",
+  // 任务 722：messageMerge 并入安全/成本控制卡；sessionCollabAutoFold 并入
+  // 跨会话协作卡——两个独立入口/pane/union id 摘除（成员行+成员徽章承载）。
+  "messageMerge",
+  "sessionCollabAutoFold",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);

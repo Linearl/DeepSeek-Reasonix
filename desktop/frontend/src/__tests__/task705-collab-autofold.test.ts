@@ -46,17 +46,30 @@ const goRender = fs.readFileSync(path.join(repoRoot, "internal/config/render.go"
 
 console.log("\n任务 705 cross-session auto-fold: persistence + render contract");
 
-// 1. Lab render table: the entry exists in the efficiency group and its light
-//    reads the boot-snapshot switch.
+// 1. Lab render table（任务 722 点3 修订）：不再有独立 rail 入口/独立 pane——
+//    折叠开关并入「跨会话协作」卡作为子项（布局默认数据的成员登记），配置键
+//    与 setter 不变（纯 UI 归位，同 650 模式）。
 ok(
-  panel.includes('{ id: "sessionCollabAutoFold", group: "efficiency", label: t("settings.sessionCollabAutoFold"), on: Boolean(s.experimentalSessionCollabAutoFold) }'),
-  "lab rail hosts the sessionCollabAutoFold entry in the efficiency group",
+  !panel.includes('{ id: "sessionCollabAutoFold", group:') && !panel.includes('selected === "sessionCollabAutoFold" && ('),
+  "no standalone rail entry / pane branch after the 722 fold",
 );
+{
+  const layoutDefault = fs.readFileSync(path.join(frontendRoot, "src/lab/labLayoutDefault.ts"), "utf8");
+  const yaml = fs.readFileSync(path.join(frontendRoot, "src/lab/lab-layout.yaml"), "utf8");
+  const collabBlock = layoutDefault.slice(layoutDefault.indexOf('id: "sessionCollab"'), layoutDefault.indexOf('id: "fullAccess"'));
+  ok(collabBlock.includes('id: "sessionCollabAutoFold"') && collabBlock.includes('tier: "optional"'),
+    "layout default hosts sessionCollabAutoFold as a sessionCollab card member");
+  const yamlCollab = yaml.slice(yaml.indexOf("id: sessionCollab"), yaml.indexOf("id: fullAccess"));
+  ok(yamlCollab.includes("id: sessionCollabAutoFold") && yamlCollab.includes("tier: optional"),
+    "lab-layout.yaml hosts sessionCollabAutoFold as a sessionCollab card member");
+}
 
-// 2. Detail pane wires the toggle to the backend setter (round-trip write path).
+// 2. Detail pane wires the toggle to the backend setter (round-trip write path;
+//    the row now lives inside the sessionCollab card).
 ok(
-  panel.includes('selected === "sessionCollabAutoFold" && (') && panel.includes("app.SetExperimentalSessionCollabAutoFold(on)"),
-  "detail card persists through SetExperimentalSessionCollabAutoFold",
+  panel.includes("app.SetExperimentalSessionCollabAutoFold(on)") &&
+    panel.indexOf('labLabel("sessionCollabAutoFold"') > panel.indexOf('selected === "sessionCollab" && ('),
+  "sessionCollab card hosts the auto-fold row persisting through SetExperimentalSessionCollabAutoFold",
 );
 
 // 3. Bridge contract: declared in the AppBindings interface and stubbed in the dev mock.
@@ -81,7 +94,7 @@ ok(settingsPrefs.includes("func (a *App) SetExperimentalSessionCollabAutoFold(en
 // 5. Tier registration: optional (550 口径), mirrored on both sides, counts moved 18→19 / 47→48.
 ok(tiers.includes('| "sessionCollabAutoFold"') && tiers.includes('sessionCollabAutoFold: "optional"'), "frontend tier registry: sessionCollabAutoFold = optional");
 ok(goRender.includes('{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}}'), "Go labFeatureTiers: sessionCollabAutoFold = optional");
-ok(tiers.includes("optional: 19,"), "LAB_TIER_COUNTS optional 18→19 (总数 47→48)");
+ok(tiers.includes("optional: 22,"), "LAB_TIER_COUNTS optional 19→20→21→22（707→704→727 推进）");
 
 // 6. Settings feed: App writes the store once per settings load (and on save).
 ok(

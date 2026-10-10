@@ -614,6 +614,25 @@ func (a *App) SetExperimentalSafetyCostControl(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSafetyCostControl(enabled) })
 }
 
+// SetSafetyIdleTerminate writes the B1 sub-switch override (task 722).
+// Effective at the next heartbeat run — the B1 gate reads the saved config at
+// call time, so no restart is needed.
+func (a *App) SetSafetyIdleTerminate(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetSafetyIdleTerminate(enabled) })
+}
+
+// SetSafetyLoopStreakNote writes the B2 sub-switch override (task 722).
+// B2 rides the boot snapshot — sessions pick it up on restart.
+func (a *App) SetSafetyLoopStreakNote(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetSafetyLoopStreakNote(enabled) })
+}
+
+// SetSafetyEventWaitRecheck writes the B3 sub-switch override (task 722).
+// B3 rides the boot snapshot — sessions pick it up on restart.
+func (a *App) SetSafetyEventWaitRecheck(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetSafetyEventWaitRecheck(enabled) })
+}
+
 // SetExperimentalOrphanHandling toggles the merged orphan switch (task 449):
 // both the lease reclaim (task 244 B5) and the recovery-store sweep (B4)
 // follow this one key. Read at call time — no restart needed.

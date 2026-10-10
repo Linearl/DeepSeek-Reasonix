@@ -1,0 +1,279 @@
+# 任务 722/724 — 实验室布局第一版定义（lab-layout.yaml）。
+#
+# 这是 724 yaml 化机制的第一个真实数据：分组树 / 配置键引用 / 徽章档位 /
+# 排序全部由本文件描述；内容与 src/lab/labLayoutDefault.ts（内置默认 =
+# 安全网回退值）同构同值。
+#
+# 规则（724 硬约束）：
+#   - labelKey 必须是字典里存在的 locale 键（禁止内联文案，三语不回归）；
+#   - onKeys 只能引用 src/lab/labLightKeys.ts 注册表里的 id（配置键语义
+#     零变化，判亮规则收拢在谓词里）；
+#   - entry.id 必须在 SettingsPanel 的 pane 白名单里；member.id 必须在
+#     档位注册表（lib/experimentTiers.ts）里且必填 tier；
+#   - 任何一行不合规则 ⇒ 整份文件作废，回退内置默认布局（不白屏）；
+#   - dev 模式改本文件保存即热加载生效（vite ?raw 监听）。
+#
+# 内容 = 现状全量设置分组 + 任务 722 六点调整 + 任务 727 登记：
+#   点1 备用模型行迁「模型策略」卡（行级，SettingsPanel）；
+#   点2 modelStrategy 不再挂「已退役」徽章（成员表无 modelCapabilityFilter）；
+#   点3 自动折叠跨会话消息并为 sessionCollab 卡子项；
+#   点5 compactModel 并入 safetyCostControl 卡；
+#   点6 messageMerge 并入 safetyCostControl，整卡自 automation 迁 efficiency；
+#   727 heartbeatRotation 登记（桥接 heartbeat-rotation.json 的 enabled，
+#       默认开，故不参与卡片灯 onKeys）。
+
+version: 1
+groups:
+  # ── 自动化（4 项）────────────────────────────────────────────
+  - key: automation
+    labelKey: settings.labGroup.automation
+    entries:
+      - id: autopilot
+        labelKey: settings.autopilot
+        tier: recommended
+        onKeys: [autopilot]
+      - id: sessionCollab
+        labelKey: settings.sessionCollab
+        tier: recommended
+        onKeys: [experimentalSessionCollab]
+        members:
+          # 任务 722 点3：跨会话协作的展示子项。
+          - id: sessionCollabAutoFold
+            labelKey: settings.sessionCollabAutoFold
+            tier: optional
+      - id: fullAccess
+        labelKey: settings.fullAccess
+        tier: recommended
+        onKeys: [experimentalFullAccess]
+      - id: dream
+        labelKey: settings.dream
+        tier: optional
+        onKeys: [experimentalDream]
+
+  # ── 提效（8 项；任务 722：安全/成本控制卡迁入本组）────────────
+  - key: efficiency
+    labelKey: settings.labGroup.efficiency
+    entries:
+      - id: optimisticParallel
+        labelKey: settings.optimisticParallel
+        tier: recommended
+        onKeys: [optimisticWrite]
+      - id: contextGovernance
+        labelKey: settings.contextGovernance
+        # 任务 722 点5：compactModel 迁出（键引用同步移走）。
+        onKeys: [experimentalCompactionParallel, experimentalContextBudget, experimentalResearchBudget, experimentalProactiveCompact, experimentalColdCacheCompact, experimentalCacheTuning]
+        members:
+          - id: compactionParallel
+            labelKey: settings.compactionParallel
+            tier: optional
+          - id: budgetControl
+            labelKey: settings.contextBudget
+            tier: recommended
+          - id: compressOpt
+            labelKey: settings.proactiveCompact
+            tier: recommended
+          - id: cacheTuning
+            labelKey: settings.cacheTuning
+            tier: optional
+      - id: safetyCostControl
+        labelKey: settings.safetyCostControl
+        tier: optional
+        # 灯=家族任一非默认；heartbeatRotation 默认开，不参与（见文件头）。
+        onKeys: [experimentalSafetyCostControl, experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge]
+        members:
+          # 任务 722 点5：指定压缩模型（707）。
+          - id: compactModel
+            labelKey: settings.compactModel
+            tier: optional
+          # 任务 722 点6：消息合并。
+          - id: messageMerge
+            labelKey: settings.messageMerge
+            tier: recommended
+          # 任务 727：心跳会话轮换。
+          - id: heartbeatRotation
+            labelKey: settings.heartbeatRotation
+            tier: optional
+      - id: modelStrategy
+        labelKey: settings.modelStrategy
+        # 任务 722 点2：成员表无 modelCapabilityFilter——「已退役」徽章移除。
+        onKeys: [experimentalHighSpeedModel]
+        members:
+          - id: highSpeedModel
+            labelKey: settings.highSpeedModel
+            tier: optional
+      - id: quickCommands
+        labelKey: settings.quickCommands
+        tier: recommended
+        onKeys: [experimentalQuickCommands]
+      - id: traceAsState
+        labelKey: settings.traceAsState
+        tier: optional
+        onKeys: [experimentalTraceAsState]
+      - id: outputStyle
+        labelKey: settings.outputStyle
+        tier: optional
+        onKeys: [experimentalOutputStyleUI, outputStyleActive]
+      - id: collabGroupView
+        labelKey: settings.collabGroupView
+        tier: unstable
+        onKeys: [experimentalCollabGroupView]
+
+  # ── 界面（15 项）────────────────────────────────────────────
+  - key: ui
+    labelKey: settings.labGroup.ui
+    entries:
+      - id: tabCompress
+        labelKey: settings.tabCompress
+        tier: recommended
+        onKeys: [experimentalTabCompress]
+      - id: trajectoryView
+        labelKey: settings.trajectoryView
+        tier: optional
+        onKeys: [experimentalTrajectoryView]
+      - id: tabModeTint
+        labelKey: settings.tabModeTint
+        tier: unstable
+        onKeys: [tabModeTintNonDefault]
+      - id: todoSidebar
+        labelKey: settings.todoSidebar
+        tier: recommended
+        onKeys: [experimentalTodoSidebar]
+      - id: promptHistoryPicker
+        labelKey: settings.promptHistoryPicker
+        tier: recommended
+        onKeys: [experimentalPromptHistoryPicker]
+      - id: sessionWall
+        labelKey: settings.sessionWall
+        tier: recommended
+        onKeys: [experimentalSessionWall]
+      - id: subagentSuite
+        labelKey: settings.subagentSuite
+        onKeys: [experimentalSubagentPanel, experimentalSubagentDetail, experimentalSubagentPolicy, experimentalSubagentTps]
+        members:
+          - id: subagentPanel
+            labelKey: settings.subagentPanel
+            tier: optional
+          - id: subagentDetail
+            labelKey: settings.subagentDetail
+            tier: optional
+          - id: subagentPolicy
+            labelKey: settings.subagentPolicy
+            tier: unstable
+          - id: subagentTps
+            labelKey: settings.subagentTps
+            tier: optional
+      - id: completionSummary
+        labelKey: settings.completionSummary
+        tier: optional
+        onKeys: [experimentalCompletionSummary]
+      - id: autoLoadOlder
+        labelKey: settings.autoLoadOlder
+        tier: optional
+        onKeys: [experimentalAutoLoadOlder]
+      - id: splitView
+        labelKey: settings.splitView
+        tier: optional
+        onKeys: [experimentalSplitView]
+      - id: draftPersistence
+        labelKey: settings.draftPersistence
+        tier: optional
+        onKeys: [experimentalComposerDraft]
+      - id: selectionActions
+        labelKey: settings.selectionActions
+        tier: optional
+        onKeys: [experimentalSelectionActions]
+      - id: questionSearch
+        labelKey: settings.questionSearch
+        tier: recommended
+        onKeys: [experimentalQuestionSearch]
+      - id: opencodeGoUsage
+        labelKey: settings.opencodeGoUsage
+        tier: unstable
+        onKeys: [experimentalOpenCodeGoUsage]
+      - id: updateFeedback
+        labelKey: settings.updateFeedback
+        onKeys: [experimentalRestartUpdate, experimentalFeedback, forkNotice]
+        members:
+          - id: restartUpdate
+            labelKey: settings.restartUpdate
+            tier: recommended
+          - id: feedback
+            labelKey: settings.feedback
+            tier: optional
+
+  # ── 可观测性（1 项）─────────────────────────────────────────
+  - key: observability
+    labelKey: settings.labGroup.observability
+    entries:
+      - id: monitoring
+        labelKey: settings.monitoring
+        tier: recommended
+        onKeys: [experimentalSessionMonitor, experimentalPerfMonitor]
+
+  # ── 开发调试（1 项）─────────────────────────────────────────
+  - key: dev-debug
+    labelKey: settings.labGroup.devDebug
+    entries:
+      - id: devDebug
+        labelKey: settings.devDebug
+        onKeys: [experimentalCDPDebugPort, experimentalLifecycleNoiseGate]
+        members:
+          - id: cdpDebugPort
+            labelKey: settings.cdpDebugPort
+            tier: unstable
+          - id: lifecycleNoiseGate
+            labelKey: settings.lifecycleNoiseGate
+            tier: unstable
+
+  # ── 存储（1 项）────────────────────────────────────────────
+  - key: storage
+    labelKey: settings.labGroup.storage
+    entries:
+      - id: sessionStore
+        labelKey: settings.sessionStore
+        onKeys: [sessionStorageNonDefault, eventsRotationNonDefault]
+        members:
+          - id: sessionStorage
+            labelKey: settings.sessionStorage
+            tier: unstable
+          - id: eventsRotation
+            labelKey: settings.eventsRotation
+            tier: optional
+
+  # ── 基础设施（6 项）────────────────────────────────────────
+  - key: infra
+    labelKey: settings.labGroup.infra
+    entries:
+      - id: runtimeReuse
+        labelKey: settings.runtimeReuse
+        tier: optional
+        onKeys: [experimentalRuntimeReuse]
+      - id: baseProcess
+        labelKey: settings.baseProcess
+        tier: unstable
+        onKeys: [experimentalBaseProcess]
+      - id: zcodeTaskBus
+        labelKey: settings.zcodeTaskBus
+        tier: unstable
+        onKeys: [experimentalZcodeTaskBus]
+      - id: pathRules
+        labelKey: settings.pathRules
+        tier: unstable
+        onKeys: [experimentalPathRules]
+      - id: orphanHandling
+        labelKey: settings.orphanHandling
+        tier: unstable
+        onKeys: [experimentalOrphanHandling]
+      - id: localServer
+        labelKey: settings.localServer
+        tier: unstable
+        onKeys: [experimentalLocalServer]
+
+  # ── 工具优化（1 项）────────────────────────────────────────
+  - key: tool-opt
+    labelKey: settings.labGroup.toolOpt
+    entries:
+      - id: toolOptimizations
+        labelKey: settings.toolOptimizations
+        tier: unstable
+        onKeys: [experimentalToolOptimizations]

@@ -195,6 +195,11 @@ export interface SettingsView {
   // 任务 517: merged safety/cost switch (one「安全 / 成本控制」knob for the
   // task-244 B1/B2/B3 guards).
   experimentalSafetyCostControl?: boolean;
+  // 任务 722: fine-grained sub-switch overrides. null/absent = follow the
+  // master; an explicit value wins over it (开总关子 / 关总开子).
+  safetyIdleTerminate?: boolean | null;
+  safetyLoopStreakNote?: boolean | null;
+  safetyEventWaitRecheck?: boolean | null;
   // Task 449: merged orphan switch (folds task 244 B5 lease reclaim + B4
   // recovery sweep into one key).
   experimentalOrphanHandling?: boolean;

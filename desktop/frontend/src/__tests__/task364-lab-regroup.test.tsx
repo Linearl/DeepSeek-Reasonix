@@ -32,7 +32,11 @@ console.log("\ntask 364 lab regroup");
 ok(!panel.includes('{ id: "preapproveManagedPaths", group:'), "rail has no preapprove entry (feature removed from the array)");
 ok(!panel.includes('{selected === "preapproveManagedPaths" &&'), "no standalone pane branch for preapprove (single entry)");
 // Task 561: the audit table re-homes autopilot into the automation group.
-ok(panel.includes('id: "autopilot", group: "automation"'), "autopilot stays put as the automation-group merge target");
+// 任务 722/724：render table 移交布局默认数据（src/lab/labLayoutDefault.ts），
+// 断言改读布局数据源（panel 不再内联 features 数组）。
+const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
+ok(/id: "autopilot", labelKey: "settings.autopilot"/.test(labDefault) && labDefault.indexOf('key: "automation"') < labDefault.indexOf('id: "autopilot"'),
+  "autopilot stays put as the automation-group merge target");
 
 // ① sub-block inside the autopilot card, full anatomy preserved.
 {
@@ -50,9 +54,9 @@ ok(panel.includes('id: "autopilot", group: "automation"'), "autopilot stays put 
 
 // ② full access re-homed.
 {
-  const m = panel.match(/\{ id: "fullAccess", group: "([a-z]+)"/);
-  // Task 561: full access re-homes to automation (permission-shape switch beside the autonomy entries).
-  ok(Boolean(m) && m![1] === "automation", `full access group = automation (got ${m ? m[1] : "missing"})`);
+  // 任务 722/724：fullAccess 的组归属在布局默认数据里（automation 组成员）。
+  const autoBlock = labDefault.slice(labDefault.indexOf('key: "automation"'), labDefault.indexOf('key: "efficiency"'));
+  ok(autoBlock.includes('id: "fullAccess"'), `full access group = automation (got ${autoBlock.includes('id: "fullAccess"') ? "automation" : "missing"})`);
 }
 
 // ③ zero behaviour by scope: the moved block still uses the same bridge
@@ -71,7 +75,7 @@ ok(!panel.includes("SetExperimentalFullAccess") === false, "full-access switch w
 // ④ remaining render-table entries all still present (no silent drop).
 {
   const ids = ["autopilot", "dream", "sessionCollab", "fullAccess", "splitView", "todoSidebar"];
-  const missing = ids.filter((id) => !panel.includes(`id: "${id}"`));
+  const missing = ids.filter((id) => !labDefault.includes(`id: "${id}"`));
   ok(missing.length === 0, `render-table entries intact (missing: ${missing.join(", ") || "none"})`);
 }
 

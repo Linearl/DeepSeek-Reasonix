@@ -92,7 +92,14 @@ import { SettingsOpenCodeGoUsageCard } from "./SettingsOpenCodeGoUsageCard";
 // xlsx 表A 47 items as of 任务 677). The rail, every pane switch and the
 // ForkFeaturesIntroDialog
 // picks wall read the SAME map — two views, one source.
-import { EXPERIMENT_FEATURE_TIERS, LAB_WALL_PICKS, railTiersFor, type TierFeatureId } from "../lib/experimentTiers";
+import { EXPERIMENT_FEATURE_TIERS, LAB_WALL_PICKS, type TierFeatureId } from "../lib/experimentTiers";
+// 任务 722/724: the lab page structure (groups / entries / member badges /
+// ordering) resolves from lab-layout.yaml through the yaml mechanism; the
+// built-in default is the safety-net fallback (missing/corrupt yaml). Tier
+// badges ride the resolved layout, not a separate members map.
+import { labEntries, labEntryBadgeTiers, labEntryLightOn, resolveLabLayout } from "../lab/labLayout";
+import labLayoutYaml from "../lab/lab-layout.yaml?raw";
+import { LAB_GROUP_KEYS, type LabGroupKey } from "../lab/labLayoutTypes";
 // 任务 563: the picks wall reads its live on/off states through this context
 // (provided below, derived from the `features` render table) — props would
 // rewrite the dialog mount JSX that guard suites pin byte-for-byte.
@@ -1837,7 +1844,9 @@ type ExperimentFeatureId =
   | "orphanHandling"
   // Task 363A: runtime assembly reuse pool.
   | "runtimeReuse"
-  | "messageMerge"
+  // 任务 722：messageMerge 并入 safetyCostControl 卡（成员，无独立 pane）；
+  // sessionCollabAutoFold 并入 sessionCollab 卡（成员，无独立 pane）——两个
+  // id 从 pane union 摘除，卡片行/徽章走布局数据的成员登记。
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
   // Task 163: OpenCode Go subscription usage card.
   | "quickCommands"
@@ -1880,11 +1889,51 @@ type ExperimentFeatureId =
   // 任务 677: sidebar group-chat entry switch (the task-409 view landed
   // without its lab switch; unstable tier, default off).
   | "collabGroupView"
-  // 任务 705: auto-fold over-long cross-session messages (optional tier,
-  // default off = render in full).
-  | "sessionCollabAutoFold"
   // 任务 704: trajectory view switch (optional tier, default off = transcript only).
   | "trajectoryView";
+
+// 任务 724：pane 白名单——布局文档（yaml/默认）里的 entry.id 必须在此登记
+// （一个 id 一个可点开的卡片分支）；yaml 引用白名单外的 id ⇒ 整份回退默认
+// （防半份数据渲染/白屏）。37 个 id 与 722 后的布局一一对应。
+const LAB_PANE_IDS: ReadonlySet<string> = new Set([
+  "autopilot",
+  "sessionCollab",
+  "fullAccess",
+  "dream",
+  "optimisticParallel",
+  "contextGovernance",
+  "safetyCostControl",
+  "modelStrategy",
+  "quickCommands",
+  "traceAsState",
+  "outputStyle",
+  "collabGroupView",
+  "tabCompress",
+  "trajectoryView",
+  "tabModeTint",
+  "todoSidebar",
+  "promptHistoryPicker",
+  "sessionWall",
+  "subagentSuite",
+  "completionSummary",
+  "autoLoadOlder",
+  "splitView",
+  "draftPersistence",
+  "selectionActions",
+  "questionSearch",
+  "opencodeGoUsage",
+  "updateFeedback",
+  "monitoring",
+  "devDebug",
+  "sessionStore",
+  "runtimeReuse",
+  "baseProcess",
+  "zcodeTaskBus",
+  "pathRules",
+  "orphanHandling",
+  "localServer",
+  "toolOptimizations",
+]);
 
 function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -1917,13 +1966,20 @@ function ExperimentalSection({ s, busy, apply }: SectionProps) {
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
-  // 任务 561: the lab regroups into 7 domains — efficiency splits out
-  // automation, misc renames to infra, debug splits into observability +
-  // dev-debug. Membership follows the 2026-10-06 audit table (46 items,
-  // 8/10/15/2/2/2/7). 任务 603: adds the 工具优化 group after the 561
-  // audit-table seven. 任务 677: collabGroupView joins efficiency
-  // (47 items, 8/11/15/2/2/2/7).
-  type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra" | "tool-opt";
+  // 任务 722/724：布局数据驱动——分组树/成员徽章/排序/卡片灯引用全部来自
+  // lab-layout.yaml（校验失败回退内置默认，安全网不白屏）。dev 模式改 yaml
+  // 保存即热加载（vite ?raw 模块失效→刷新），无需重启。memo 化：解析一次，
+  // 渲染表随 s 变化重算（性能附录②③——进实验室页不逐开关拉配置，读走
+  // app.Settings() 单次快照，灯在本地谓词表上算）。
+  const labLayoutResolved = useMemo(
+    () => resolveLabLayout(labLayoutYaml, { allowedEntryIds: LAB_PANE_IDS }),
+    [],
+  );
+  useEffect(() => {
+    if (labLayoutResolved.source === "default" && labLayoutResolved.warnings.length > 0) {
+      console.warn("[lab-layout]", ...labLayoutResolved.warnings);
+    }
+  }, [labLayoutResolved]);
   // Task 257: turning full access ON passes one danger confirmation first —
   // the same one-shot gate shape as Claude Code / MiMo's yolo mode. Turning
   // it OFF never asks.
@@ -1961,6 +2017,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // entry is open, and again after every apply() (which reloads s). The
   // card renders the serve 状态灯 and the enrolled roles from it.
   const [zcodeBusStatus, setZcodeBusStatus] = useState<Awaited<ReturnType<typeof app.ZcodeTaskBusStatus>> | null>(null);
+  // 任务 727：心跳会话轮换状态按需加载——只在安全/成本控制卡打开时读一次
+  // heartbeat-rotation.json（单一事实源桥接，无第二开关）。
+  const [hbRotation, setHbRotation] = useState<Awaited<ReturnType<typeof app.HeartbeatRotationStatus>> | null>(null);
+  useEffect(() => {
+    if (selected !== "safetyCostControl") return undefined;
+    let alive = true;
+    void app.HeartbeatRotationStatus()
+      .then((view) => {
+        if (alive) setHbRotation(view);
+      })
+      .catch(() => {
+        if (alive) setHbRotation(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selected]);
   useEffect(() => {
     if (selected !== "zcodeTaskBus") return undefined;
     let alive = true;
@@ -2030,135 +2103,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     }
   }, []);
 
-  // 任务 561（用户裁定 2026-10-06）：实验室分组重划为 7 组——组顺序即 rail 渲染顺序。
-  const labGroups = [
-    { key: "automation", labelKey: "settings.labGroup.automation" },
-    { key: "efficiency", labelKey: "settings.labGroup.efficiency" },
-    { key: "ui", labelKey: "settings.labGroup.ui" },
-    { key: "observability", labelKey: "settings.labGroup.observability" },
-    { key: "dev-debug", labelKey: "settings.labGroup.devDebug" },
-    { key: "storage", labelKey: "settings.labGroup.storage" },
-    { key: "infra", labelKey: "settings.labGroup.infra" },
-    // 任务 603:「工具优化」— agent-facing tool upgrades hang here as one family.
-    { key: "tool-opt", labelKey: "settings.labGroup.toolOpt" },
-  ] as const;
-  // 任务 561: the features array is the lab render table — every entry below
-  // must keep its own `on` read and its own setter wiring in the pane (81/123
-  // lost-save rule). Group membership follows the 2026-10-06 audit table
-  // (47 items: automation 7 / efficiency 12 / ui 15 / observability 2 /
-  // dev-debug 2 / storage 2 / infra 7). 任务 677: collabGroupView joins
-  // efficiency. Task 650: optimisticParallel moved from automation to
-  // efficiency — less write-lock waiting is an efficiency gain, not an
-  // autonomy switch.
-  const features: Array<{ id: ExperimentFeatureId; label: string; on: boolean; group: LabGroupKey }> = [
-    // ── automation（自动化，7 项）──────────────────────────────────
-    { id: "autopilot", group: "automation", label: t("settings.autopilot"), on: Boolean(s.autopilot) },
-    { id: "sessionCollab", group: "automation", label: t("settings.sessionCollab"), on: Boolean(s.experimentalSessionCollab) },
-    // Task 257: full access (yolo) — it widens permissions to cut approvals.
-    // Task 364/561: a permission-shape switch, re-homed beside the other
-    // autonomy switches (task 561 audit table).
-    { id: "fullAccess", group: "automation", label: t("settings.fullAccess"), on: Boolean(s.experimentalFullAccess) },
-    { id: "dream", group: "automation", label: t("settings.dream"), on: Boolean(s.experimentalDream) },
-    // 任务 517:「安全 / 成本控制」— the 561 M1 autonomousRunGuard card and the
-    // standalone eventWaitRecheck entry fold into ONE single-key card
-    // (experimental_safety_cost_control gates all three B-group guards).
-    { id: "safetyCostControl", group: "automation", label: t("settings.safetyCostControl"), on: Boolean(s.experimentalSafetyCostControl) },
-    // ── efficiency（提效，12 项；任务 705 增 sessionCollabAutoFold）──
-    // Task 280: re-homed from the permissions area (upright bind — `on` means
-    // optimistic ON = safety check OFF, default off). Task 650: and from the
-    // automation group to efficiency — the switch buys parallel-write
-    // throughput (skip the write-lock wait), not autonomy.
-    { id: "optimisticParallel", group: "efficiency", label: t("settings.optimisticParallel"), on: Boolean(s.sandbox?.optimisticWrite) },
-    // Task 561 M3 压缩/预算族: the four context/cache governance entries
-    // (compactionParallel + budgetControl + compressOpt + cacheTuning) fold
-    // into ONE card — the light reads any of the six underlying switches;
-    // every switch keeps its own setter in the card (81/123 lost-save rule).
-    { id: "contextGovernance", group: "efficiency", label: t("settings.contextGovernance"), on: Boolean(s.experimentalCompactionParallel) || Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget) || Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) || Boolean(s.experimentalCompactModel) || Boolean(s.experimentalCacheTuning) },
-    // Task 561 M2 模型策略族: highSpeedModel keeps its writable switch;
-    // modelCapabilityFilter (retired, task 551/564 domain) renders read-only
-    // inside the card — no setter call, the stored value only displays.
-    { id: "modelStrategy", group: "efficiency", label: t("settings.modelStrategy"), on: Boolean(s.experimentalHighSpeedModel) },
-    { id: "messageMerge", group: "efficiency", label: t("settings.messageMerge"), on: (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge) },
-    // Task 262: quick commands move here from the general page.
-    { id: "quickCommands", group: "efficiency", label: t("settings.quickCommands"), on: Boolean(s.experimentalQuickCommands) },
-    { id: "traceAsState", group: "efficiency", label: t("settings.traceAsState"), on: Boolean(s.experimentalTraceAsState) },
-    // Task 385a: 回答风格 (output style) — 提效类, efficiency group; render
-    // table: a missing entry would silently drop the save, 81/123 lesson.
-    // The light also reads a configured style: it stays discoverable after
-    // the panel is closed, same shape as the storage entries below.
-    { id: "outputStyle", group: "efficiency", label: t("settings.outputStyle"), on: Boolean(s.experimentalOutputStyleUI) || (s.outputStyle ?? "") !== "" },
-    // 任务 677: 群聊入口开关（409 视图交付漏挂铁律 2 开关）——默认关=侧栏
-    // 工具行不渲染群聊图标；render table: a missing entry would silently
-    // drop the save, 81/123 lesson.
-    { id: "collabGroupView", group: "efficiency", label: t("settings.collabGroupView"), on: Boolean(s.experimentalCollabGroupView) },
-    // 任务 705: 超长跨会话消息自动折叠（默认关=全量展示）。render table: a
-    // missing entry would silently drop the save, 81/123 lesson.
-    { id: "sessionCollabAutoFold", group: "efficiency", label: t("settings.sessionCollabAutoFold"), on: Boolean(s.experimentalSessionCollabAutoFold) },
-    // ── ui（界面，15 项）─────────────────────────────────────────
-    // 任务 506：标签栏自适应压缩（>8 个标签逐级降宽，下限 84px）。
-    { id: "tabCompress", group: "ui", label: t("settings.tabCompress"), on: Boolean(s.experimentalTabCompress) },
-    // 任务 704：轨迹视图（DSH 同款可观测性视图，纯前端投影）。render
-    // table: a missing entry would silently drop the save, 81/123 lesson.
-    { id: "trajectoryView", group: "ui", label: t("settings.trajectoryView"), on: Boolean(s.experimentalTrajectoryView) },
-    // 任务 651：标签权限指示三档（徽章 | 关闭 | 背景色）——非默认档
-    // （关闭或背景色）都点亮入口灯，提示当前观感与默认不同。
-    { id: "tabModeTint", group: "ui", label: t("settings.tabModeTint"), on: (s.tabPermissionIndicator ?? "badge") !== "badge" },
-    { id: "todoSidebar", group: "ui", label: t("settings.todoSidebar"), on: Boolean(s.experimentalTodoSidebar) },
-    // Task 261: composer history picker + narrowed ArrowUp (upstream #10425).
-    { id: "promptHistoryPicker", group: "ui", label: t("settings.promptHistoryPicker"), on: Boolean(s.experimentalPromptHistoryPicker) },
-    // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
-    { id: "sessionWall", group: "ui", label: t("settings.sessionWall"), on: Boolean(s.experimentalSessionWall) },
-    // Task 561 M4 子代理族: panel + detail + policy + tps fold into ONE card
-    // (members used to sit in ui / automation / observability) — the light
-    // reads any of the four switches; each keeps its own setter (81/123).
-    { id: "subagentSuite", group: "ui", label: t("settings.subagentSuite"), on: Boolean(s.experimentalSubagentPanel) || Boolean(s.experimentalSubagentDetail) || Boolean(s.experimentalSubagentPolicy) || Boolean(s.experimentalSubagentTps) },
-    // Task 318.4: completion summary moves from debug to the ui group.
-    { id: "completionSummary", group: "ui", label: t("settings.completionSummary"), on: Boolean(s.experimentalCompletionSummary) },
-    { id: "autoLoadOlder", group: "ui", label: t("settings.autoLoadOlder"), on: Boolean(s.experimentalAutoLoadOlder) },
-    { id: "splitView", group: "ui", label: t("settings.splitView"), on: Boolean(s.experimentalSplitView) },
-    // Task 318.3: draft persistence light reads the new switch (default off).
-    { id: "draftPersistence", group: "ui", label: t("settings.draftPersistence"), on: Boolean(s.experimentalComposerDraft) },
-    { id: "selectionActions", group: "ui", label: t("settings.selectionActions"), on: Boolean(s.experimentalSelectionActions) },
-    { id: "questionSearch", group: "ui", label: t("settings.questionSearch"), on: Boolean(s.experimentalQuestionSearch) },
-    // Task 163: usage card entry (render table — same 81/123 lost-save rule).
-    { id: "opencodeGoUsage", group: "ui", label: t("settings.opencodeGoUsage"), on: Boolean(s.experimentalOpenCodeGoUsage) },
-    // Task 561 M6 更新/反馈族: restartUpdate + feedback fold into ONE card —
-    // the light reads any of the switches; each keeps its own setter (81/123).
-    // Task 670: the fork first-launch notice joins the card (default on).
-    { id: "updateFeedback", group: "ui", label: t("settings.updateFeedback"), on: Boolean(s.experimentalRestartUpdate) || Boolean(s.experimentalFeedback) || Boolean(s.forkNotice) },
-    // ── observability（可观测性，2 项）────────────────────────────
-    // Task 318.5: one lab entry for both monitors — the entry light is on when
-    // either switch is on; the page keeps two independent switches.
-    { id: "monitoring", group: "observability", label: t("settings.monitoring"), on: Boolean(s.experimentalSessionMonitor) || Boolean(s.experimentalPerfMonitor) },
-    // ── dev-debug（开发调试，2 项）────────────────────────────────
-    // Task 561 M5 开发调试族: cdpDebugPort + lifecycleNoiseGate fold into ONE
-    // card — the light reads either switch; each keeps its own setter.
-    { id: "devDebug", group: "dev-debug", label: t("settings.devDebug"), on: Boolean(s.experimentalCDPDebugPort) || Boolean(s.experimentalLifecycleNoiseGate) },
-    // ── storage（存储，2 项）─────────────────────────────────────
-    // Task 561 M7 会话存储族: sessionStorage + eventsRotation fold into ONE
-    // card — the light reads either non-default value; each keeps its own
-    // setter (81/123 lost-save rule).
-    { id: "sessionStore", group: "storage", label: t("settings.sessionStore"), on: (s.sessionStorage ?? "v3_only") !== "v3_only" || (s.eventsAutoRotation ?? "manual") !== "off" },
-    // ── infra（基础设施，7 项）───────────────────────────────────
-    // Task 363A: runtime assembly reuse pool.
-    { id: "runtimeReuse", group: "infra", label: t("settings.runtimeReuse"), on: Boolean(s.experimentalRuntimeReuse) },
-    // S1: resident base subprocess (infrastructure switch; infra beside the
-    // other infrastructure entries). Render table: a missing entry would
-    // silently drop the save, 81/123 lesson.
-    { id: "baseProcess", group: "infra", label: t("settings.baseProcess"), on: Boolean(s.experimentalBaseProcess) },
-    // Task 439: built-in zcode task bus (infra beside the infrastructure
-    // entries). Render table: a missing entry would silently drop the save,
-    // 81/123 lesson.
-    { id: "zcodeTaskBus", group: "infra", label: t("settings.zcodeTaskBus"), on: Boolean(s.experimentalZcodeTaskBus) },
-    { id: "pathRules", group: "infra", label: t("settings.pathRules"), on: Boolean(s.experimentalPathRules) },
-    // Task 449: the task-244 B5 lease reclaim + B4 recovery sweep are one
-    // switch now — the entry light reads the single merged key.
-    { id: "orphanHandling", group: "infra", label: t("settings.orphanHandling"), on: Boolean(s.experimentalOrphanHandling) },
-    { id: "localServer", group: "infra", label: t("settings.localServer"), on: Boolean(s.experimentalLocalServer) },
-    // ── tool-opt（工具优化，1 项）─────────────────────────────────
-    // 任务 603: edit readBack + evidence gate linkage (family switch).
-    { id: "toolOptimizations", group: "tool-opt", label: t("settings.toolOptimizations"), on: Boolean(s.experimentalToolOptimizations) },
-  ];
+  // 任务 722/724：组顺序即布局文档顺序（yaml groups 数组序 = rail 渲染序）。
+  const labGroups = useMemo(
+    () => labLayoutResolved.layout.groups.map((group) => ({ key: group.key, labelKey: group.labelKey })),
+    [labLayoutResolved],
+  );
+  // Render table（任务 561 惯例延续）：从布局文档派生——每项自带灯读数
+  // （labLightKeys 谓词）与卡内各自的 setter 接线（81/123 丢存铁律）。
+  // 分组计数（626 单源）与 rail 徽章（labEntryBadgeTiers）都吃同一份布局。
+  const features = useMemo(
+    () =>
+      labEntries(labLayoutResolved.layout).map(({ entry, group }) => ({
+        id: entry.id as ExperimentFeatureId,
+        group,
+        label: t(entry.labelKey),
+        on: labEntryLightOn(entry, s),
+      })),
+    [labLayoutResolved, s, t],
+  );
 
   // 任务 626: single-source per-group totals — the filter chips AND the rail
   // group-header badges read this ONE map, so 「rail header count = chip
@@ -2167,9 +2129,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // (task 563 lesson). Filter-state policy (unchanged): with labFilter set to
   // a group, the rail renders that group only (the `filtered` guard below);
   // its header still renders and sticks — fixed behavior, by design.
-  const labGroupTotals = Object.fromEntries(
-    labGroups.map((g) => [g.key, features.filter((f) => f.group === g.key).length]),
-  ) as Record<LabGroupKey, number>;
+  const labGroupTotals = useMemo(
+    () =>
+      Object.fromEntries(
+        (LAB_GROUP_KEYS as readonly LabGroupKey[]).map((g) => [g, features.filter((f) => f.group === g).length]),
+      ) as Record<LabGroupKey, number>,
+    [features],
+  );
 
   // 任务 562: pane-side tier badge — wrap a 表A feature's label with its tier
   // pill. `id` is typed as TierFeatureId, so a badge can never reference a
@@ -2192,7 +2158,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // OWN keys, never the merged light: the merged `on` is an OR of siblings,
   // so it would leak a sibling's state into this member's card
   // (restartUpdate ≠ feedback, budgetControl ≠ cacheTuning, …).
-  const labWallOnById = (() => {
+  const labWallOnById = useMemo(() => {
     const map: Record<string, boolean> = {};
     for (const pick of LAB_WALL_PICKS) {
       const direct = features.find((f) => f.id === pick);
@@ -2210,12 +2176,17 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
         case "subagentPanel":
           map[pick] = Boolean(s.experimentalSubagentPanel);
           break;
+        case "messageMerge":
+          // 任务 722：messageMerge 并入 safetyCostControl 卡后不再是 rail
+          // 条目——墙灯读它自己的键（563 教训：成员永远读自己的键，不读卡灯）。
+          map[pick] = (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge);
+          break;
         default:
           map[pick] = false;
       }
     }
     return map;
-  })();
+  }, [features, s]);
 
   return (
     <LabWallOnContext.Provider value={labWallOnById}>
@@ -2335,10 +2306,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     >
                       <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : ""}`} aria-hidden="true" />
                       <span className="experimental-rail__label">{feature.label}</span>
-                      {/* 任务 562: tier pills ride the row's right edge. Standalone
-                          表A entries show their own tier; merged cards show every
-                          distinct member tier, so all 46 stay visible on the rail. */}
-                      {railTiersFor(feature.id).map((tier) => (
+                      {/* 任务 562/724: tier pills ride the row's right edge, sourced
+                          from the resolved layout (own tier + member tiers). */}
+                      {labEntryBadgeTiers(labLayoutResolved.layout, feature.id).map((tier) => (
                         <TierBadge key={tier} tier={tier} translator={t} />
                       ))}
                     </button>
@@ -2808,24 +2778,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "sessionCollabAutoFold" && (
-            <SettingsField label={labLabel("sessionCollabAutoFold", t("settings.sessionCollabAutoFold"))} hint={t("settings.sessionCollabAutoFoldHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalSessionCollabAutoFold) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalSessionCollabAutoFold(on);
-                    })}
-                  >
-                    {t(on ? "settings.sessionCollabAutoFold.on" : "settings.sessionCollabAutoFold.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
           {selected === "trajectoryView" && (
             <SettingsField label={labLabel("trajectoryView", t("settings.trajectoryView"))} hint={t("settings.trajectoryViewHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
@@ -3195,47 +3147,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
-                    {selected === "messageMerge" && (
-            <>
-              <SettingsField label={labLabel("messageMerge", t("settings.collabInboxMerge"))} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {(["off", "same_sender", "all"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      className={`set-seg__btn${(s.collabInboxMerge || "off") === mode ? "set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetCollabInboxMerge(mode);
-                      })}
-                    >
-                      {t(`settings.collabInboxMerge.${mode}`)}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 任务 621：collabGuidanceMerge 是 messageMerge 的附属开关——徽章只在
-                  主控开关行（collabInboxMerge），附属行不重复挂。 */}
-              <SettingsField label={t("settings.collabGuidanceMerge")} hint={t("settings.collabGuidanceMergeHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.collabGuidanceMerge) === on ? "set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetCollabGuidanceMerge(on);
-                        setCollabGuidanceMergeEnabled(on);
-                      })}
-                    >
-                      {t(on ? "settings.collabGuidanceMerge.on" : "settings.collabGuidanceMerge.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-            </>
-          )}
-
-
           {selected === "orphanHandling" && (
             <>
               <SettingsField label={labLabel("orphanHandling", t("settings.orphanHandling"))} hint={t("settings.orphanHandlingHint")} icon={<Sparkles size={18} />}>
@@ -3283,6 +3194,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               key-level merge into experimental_safety_cost_control, task 449
               precedent). The three member rows are read-only STATE rows —
               每个子项状态可见（随总开关同开同关），不可单独写。 */}
+          {/* 任务 517+722:「安全 / 成本控制」——总开关保留（键
+              experimental_safety_cost_control 不变），三个 B 组守护从只读状态行
+              升级为细粒度子开关（722 点6）：未拨动过=跟随总开关（nil，配置里
+              不落盘，旧配置行为逐位不变），拨动后写显式子键、独立生效。
+              任务 722 点5/点6：指定压缩模型与消息合并的行迁入本卡；任务 727：
+              心跳会话轮换开关桥接 heartbeat-rotation.json 的 enabled。 */}
           {selected === "safetyCostControl" && (
             <>
               <SettingsField label={labLabel("safetyCostControl", t("settings.safetyCostControl"))} hint={t("settings.safetyCostControlHint")} icon={<Sparkles size={18} />}>
@@ -3302,20 +3219,133 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={t("settings.autonomousIdleTerminate")} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />} stacked>
-                <p className="settings-field__hint-line">
-                  {t("settings.safetyCostControl.memberState", { value: t(Boolean(s.experimentalSafetyCostControl) ? "settings.autonomousIdleTerminate.on" : "settings.autonomousIdleTerminate.off") })}
-                </p>
+              <p className="settings-field__hint-line">{t("settings.safetyCostControl.subHint")}</p>
+              <SettingsField label={t("settings.autonomousIdleTerminate")} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${(s.safetyIdleTerminate ?? s.experimentalSafetyCostControl) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetSafetyIdleTerminate(on);
+                      })}
+                    >
+                      {t(on ? "settings.autonomousIdleTerminate.on" : "settings.autonomousIdleTerminate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
               </SettingsField>
-              <SettingsField label={t("settings.loopStreakNote")} hint={t("settings.loopStreakNoteHint")} icon={<Sparkles size={18} />} stacked>
-                <p className="settings-field__hint-line">
-                  {t("settings.safetyCostControl.memberState", { value: t(Boolean(s.experimentalSafetyCostControl) ? "settings.loopStreakNote.on" : "settings.loopStreakNote.off") })}
-                </p>
+              <SettingsField label={t("settings.loopStreakNote")} hint={t("settings.loopStreakNoteHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${(s.safetyLoopStreakNote ?? s.experimentalSafetyCostControl) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetSafetyLoopStreakNote(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.loopStreakNote.on" : "settings.loopStreakNote.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
               </SettingsField>
-              <SettingsField label={t("settings.eventWaitRecheck")} hint={t("settings.eventWaitRecheckHint")} icon={<Sparkles size={18} />} stacked>
-                <p className="settings-field__hint-line">
-                  {t("settings.safetyCostControl.memberState", { value: t(Boolean(s.experimentalSafetyCostControl) ? "settings.eventWaitRecheck.on" : "settings.eventWaitRecheck.off") })}
-                </p>
+              <SettingsField label={t("settings.eventWaitRecheck")} hint={t("settings.eventWaitRecheckHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${(s.safetyEventWaitRecheck ?? s.experimentalSafetyCostControl) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetSafetyEventWaitRecheck(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.eventWaitRecheck.on" : "settings.eventWaitRecheck.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* 任务 727：心跳会话轮换——直接桥接 heartbeat-rotation.json 的
+                  enabled 字段（缺文件=内置默认开；改后随引擎下一个调度周期生效）。 */}
+              <SettingsField label={labLabel("heartbeatRotation", t("settings.heartbeatRotation"))} hint={t("settings.heartbeatRotationHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${(hbRotation?.enabled ?? true) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy || hbRotation == null}
+                      onClick={() => void apply(async () => {
+                        await app.SetHeartbeatRotationEnabled(on);
+                        try {
+                          setHbRotation(await app.HeartbeatRotationStatus());
+                        } catch {
+                          setHbRotation(null);
+                        }
+                      })}
+                    >
+                      {t(on ? "settings.heartbeatRotation.on" : "settings.heartbeatRotation.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* 任务 722 点5：指定压缩模型（707 交付项）自上下文治理卡迁入；
+                  配置键 experimental_compact_model / compact_model 不变。 */}
+              <SettingsField label={labLabel("compactModel", t("settings.compactModel"))} hint={t("settings.compactModelHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalCompactModel) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalCompactModel(on))}
+                    >
+                      {t(on ? "settings.compactModel.on" : "settings.compactModel.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {!Boolean(s.experimentalCompactModel) && (
+                <p className="settings-field__hint-line">{t("settings.compactModel.inactiveHint")}</p>
+              )}
+              {/* 任务 722 点6：消息合并自独立入口并入本卡（键 collab_inbox_merge /
+                  collab_guidance_merge 不变）。徽章只在主控开关行（621 口径）。 */}
+              <SettingsField label={labLabel("messageMerge", t("settings.collabInboxMerge"))} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["off", "same_sender", "all"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.collabInboxMerge || "off") === mode ? "set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetCollabInboxMerge(mode);
+                      })}
+                    >
+                      {t(`settings.collabInboxMerge.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.collabGuidanceMerge")} hint={t("settings.collabGuidanceMergeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.collabGuidanceMerge) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetCollabGuidanceMerge(on);
+                        setCollabGuidanceMergeEnabled(on);
+                      })}
+                    >
+                      {t(on ? "settings.collabGuidanceMerge.on" : "settings.collabGuidanceMerge.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
               </SettingsField>
             </>
           )}
@@ -3476,6 +3506,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   })}
                 />
               </SettingsField>
+              {/* 任务 722 点3：自动折叠跨会话消息并为跨会话协作子项（配置键
+                  experimental_session_collab_auto_fold 不变，纯 UI 归位）。 */}
+              <SettingsField label={labLabel("sessionCollabAutoFold", t("settings.sessionCollabAutoFold"))} hint={t("settings.sessionCollabAutoFoldHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSessionCollabAutoFold) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalSessionCollabAutoFold(on);
+                      })}
+                    >
+                      {t(on ? "settings.sessionCollabAutoFold.on" : "settings.sessionCollabAutoFold.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* Task 309: mailbox defaults for talk_to_session. */}
               <SettingsField label={t("settings.sessionCollabMailDefaults")} hint={t("settings.sessionCollabMailDefaultsHint")} icon={<Sparkles size={18} />}>
                 <div className="set-gates">
@@ -3509,7 +3557,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     />
                     <span className="set-gates__label">{t("settings.sessionCollabMailReceipt")}</span>
                   </label>
-                  <label className="set-gates__item">
+                  {/* 任务 722 点4：标签放左、下拉框放右（--wide 整行跨双列），
+                      半列宽下「下拉框在左+标签在右」会把标签文本截断。 */}
+                  <label className="set-gates__item set-gates__item--wide">
+                    <span className="set-gates__label">{t("settings.sessionCollabDefaultDelivery")}</span>
                     <select
                       value={s.sessionCollabDefaultDelivery ?? "steer"}
                       disabled={busy}
@@ -3524,7 +3575,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       <option value="steer">{t("settings.sessionCollabDefaultDeliverySteer")}</option>
                       <option value="followup">{t("settings.sessionCollabDefaultDeliveryFollowup")}</option>
                     </select>
-                    <span className="set-gates__label">{t("settings.sessionCollabDefaultDelivery")}</span>
                   </label>
                 </div>
               </SettingsField>
@@ -3553,23 +3603,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       })}
                     >
                       {t(on ? "settings.cascadeApproval.on" : "settings.cascadeApproval.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* Task 242: quota fallback switch (iron rule 2: off by default). */}
-              <SettingsField label={t("settings.fallbackModelSwitch")} hint={t("settings.fallbackModelSwitchHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalFallbackModel) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalFallbackModel(on);
-                      })}
-                    >
-                      {t(on ? "settings.fallbackModelSwitch.on" : "settings.fallbackModelSwitch.off")}
                     </button>
                   ))}
                 </SettingsOptions>
@@ -3880,9 +3913,30 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 722 点1：备用模型自跨会话协作卡迁入「提效-模型策略」
+                  （键 experimental_fallback_model 不变；模型目标行仍在
+                  「设置 → 模型 → 模型偏好」）。 */}
+              <SettingsField label={t("settings.fallbackModelSwitch")} hint={t("settings.fallbackModelSwitchHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalFallbackModel) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalFallbackModel(on);
+                      })}
+                    >
+                      {t(on ? "settings.fallbackModelSwitch.on" : "settings.fallbackModelSwitch.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* Task 551/564: retired key — read-only display only (task 561
                   M2 keeps it visible without a setter; 564 owns the copy). */}
-              <SettingsField label={labLabel("modelCapabilityFilter", t("settings.modelCapabilityFilter"))} hint={t("settings.modelCapabilityFilter.retired")} icon={<Sparkles size={18} />} stacked>
+              {/* 任务 722 点2：已退役徽章移除（rail 成员表与卡内行都不再挂
+                  「已退役」档位徽章）——行本体保留只读展示（564 口径）。 */}
+              <SettingsField label={t("settings.modelCapabilityFilter")} hint={t("settings.modelCapabilityFilter.retired")} icon={<Sparkles size={18} />} stacked>
                 <p className="settings-field__hint-line">
                   {t("settings.modelCapabilityFilter.value", { value: t(Boolean(s.experimentalModelCapabilityFilter) ? "settings.modelCapabilityFilter.on" : "settings.modelCapabilityFilter.off") })}
                 </p>
@@ -4027,27 +4081,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   />
                   <span> h</span>
                 </SettingsField>
-                {/* 任务 707：压缩模型指定（经济模型压缩）——compressOpt 组末尾、
-                    主动压缩冷却下方。默认关（铁律 2）：关时压缩仍走对话模型。
-                    选定模型在「模型偏好」区出现（下方 fallbackModel 行先例），
-                    改动经 model-settings 指纹在下一轮运行前重应用。 */}
-                <SettingsField label={labLabel("compactModel", t("settings.compactModel"))} hint={t("settings.compactModelHint")} icon={<Sparkles size={18} />}>
-                  <SettingsOptions layout="field" className="set-seg">
-                    {[false, true].map((on) => (
-                      <button
-                        key={String(on)}
-                        className={`set-seg__btn${Boolean(s.experimentalCompactModel) === on ? " set-seg__btn--on" : ""}`}
-                        disabled={busy}
-                        onClick={() => void apply(() => app.SetExperimentalCompactModel(on))}
-                      >
-                        {t(on ? "settings.compactModel.on" : "settings.compactModel.off")}
-                      </button>
-                    ))}
-                  </SettingsOptions>
-                </SettingsField>
-                {!Boolean(s.experimentalCompactModel) && (
-                  <p className="settings-field__hint-line">{t("settings.compactModel.inactiveHint")}</p>
-                )}
               </>
               <>
                 <SettingsField label={labLabel("cacheTuning", t("settings.cacheTuning"))} hint={t("settings.cacheTuningHint")} icon={<FolderLock size={18} />}>

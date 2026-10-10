@@ -42,18 +42,25 @@ console.log("\ntask 604 lab picks settings-location hint");
     `sampled restartUpdate (561 merged member) resolves to 更新与反馈 card (got ${path("restartUpdate")})`);
   ok(path("budgetControl") === "设置 → 实验室 → 提效 → 上下文治理",
     `sampled budgetControl (561 merged member) resolves to 上下文治理 card (got ${path("budgetControl")})`);
-  // Cross-source accuracy: every map entry must name a REAL rail entry — the
-  // features render table line `{ id: "<card>", group: "<group>", label:
-  // t("<cardKey>") }` must exist verbatim in SettingsPanel.
-  const panelLines = panelSource.split("\n");
+  // Cross-source accuracy: every map entry must name a REAL rail entry —
+  // 任务 722/724 起 render table 就是实验室布局默认数据（src/lab/
+  // labLayoutDefault.ts）：卡 id 必须落在所指组的块内，labelKey 与卡键一致。
+  const layoutSource = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
   let anchored = true;
   for (const [pick, [groupKey, cardKey]] of Object.entries(LAB_SETTINGS_LOCATION)) {
     const card = cardKey.slice("settings.".length);
     const group = groupKey.slice("settings.labGroup.".length);
-    const line = panelLines.find((l) => l.includes(`id: "${card}", group: "${group}"`));
-    if (!line || !line.includes(`label: t("${cardKey}")`)) { anchored = false; process.stdout.write(`    drift: ${pick} → ${group}/${card}\n`); }
+    const groupStart = layoutSource.indexOf(`key: "${group}"`);
+    const groupEnd = layoutSource.indexOf('key: "', groupStart + 1);
+    const block = layoutSource.slice(groupStart, groupEnd > groupStart ? groupEnd : undefined);
+    const entryAt = block.indexOf(`id: "${card}"`);
+    const entryText = entryAt >= 0 ? block.slice(entryAt, entryAt + 240) : "";
+    if (entryAt < 0 || !entryText.includes(`labelKey: "${cardKey}"`)) {
+      anchored = false;
+      process.stdout.write(`    drift: ${pick} → ${group}/${card}\n`);
+    }
   }
-  ok(anchored, "every location names an existing features render table entry (rail truth)");
+  ok(anchored, "every location names an existing layout entry (rail truth; 任务722 布局数据为准)");
 }
 
 // ② full coverage of current picks, nothing outside the pick list.

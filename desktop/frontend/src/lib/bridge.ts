@@ -1190,6 +1190,13 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
   // 任务 517: merged safety/cost switch (one knob for task-244 B1/B2/B3).
   SetExperimentalSafetyCostControl(enabled: boolean): Promise<void>;
+  // 任务 722: fine-grained safety/cost sub-switch overrides (nil = follow master).
+  SetSafetyIdleTerminate(enabled: boolean): Promise<void>;
+  SetSafetyLoopStreakNote(enabled: boolean): Promise<void>;
+  SetSafetyEventWaitRecheck(enabled: boolean): Promise<void>;
+  // 任务 727: heartbeat session rotation — bridge heartbeat-rotation.json enabled.
+  HeartbeatRotationStatus(): Promise<{ enabled: boolean; path: string; err: string }>;
+  SetHeartbeatRotationEnabled(enabled: boolean): Promise<void>;
   // Task 449: the merged orphan switch (folds task 244 B5 lease reclaim +
   // B4 recovery sweep). The two pre-449 setters stay declared because the
   // generated bindings still export them; both delegate to the merged key.
@@ -5784,6 +5791,11 @@ function makeMockApp(): AppBindings {
     async HeapBreakdownPath() { return ""; },
     async SetExperimentalSessionCollab() {},
     async SetExperimentalSafetyCostControl() {},
+    async SetSafetyIdleTerminate() {},
+    async SetSafetyLoopStreakNote() {},
+    async SetSafetyEventWaitRecheck() {},
+    async HeartbeatRotationStatus() { return { enabled: true, path: "", err: "" }; },
+    async SetHeartbeatRotationEnabled() {},
     async SetExperimentalOrphanHandling() {},
     async SetExperimentalOrphanLeaseReclaim() {},
     async SetExperimentalRecoveryOrphanSweep() {},

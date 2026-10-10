@@ -53,7 +53,8 @@ var labFeatureTiers = []labFeatureTier{
 	{"dream", LabTierOptional, []string{"experimental_dream"}},
 	// 任务 517：B1/B2/B3 三开关合并为「安全 / 成本控制」单键；三个 legacy 键
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
-	{"safetyCostControl", LabTierOptional, []string{"experimental_safety_cost_control", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
+	// 任务 722：三个细粒度子开关（条件渲染，nil=跟随总开关不落盘）同归本卡。
+	{"safetyCostControl", LabTierOptional, []string{"experimental_safety_cost_control", "safety_idle_terminate", "safety_loop_streak_note", "safety_event_wait_recheck", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
 	{"subagentPolicy", LabTierUnstable, []string{"experimental_subagent_policy"}},
 	// ── efficiency（提效，11 项；任务 517 B3 并入 safetyCostControl；────
 	//    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
@@ -143,6 +144,11 @@ var labSpecialKeys = map[string]bool{
 	// 任务 707：compact_model 是压缩模型指定的偏好键（无 experimental_ 前缀的
 	// 实验室特性键，随 compactModel 档位族登记）。
 	"compact_model": true,
+	// 任务 722：安全/成本控制三个细粒度子开关（无 experimental_ 前缀的实验室
+	// 特性键，随 safetyCostControl 档位族登记；条件渲染——nil=跟随总开关不落盘）。
+	"safety_idle_terminate":   true,
+	"safety_loop_streak_note": true,
+	"safety_event_wait_recheck": true,
 	// 任务 651：tab 权限指示三档键（无 experimental_ 前缀的实验室特性键，
 	// 随 tabModeTint 档位族登记）。
 	"tab_permission_indicator": true,
@@ -669,6 +675,22 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # task 244 B1: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalAutonomousIdleTerminate)
 	fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # task 244 B2: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalLoopStreakNote)
 	fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # task 244 B3: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalEventWaitRecheck)
+
+	// Task 722: the fine-grained safety/cost sub-switches render CONDITIONALLY
+	// — nil means "follow experimental_safety_cost_control" and must stay
+	// absent from the file. An unconditional false line would silently convert
+	// every follower into an explicit off on the next save (the 81/123
+	// lost-save lesson, inverted): flipping the master on would then leave the
+	// guards off despite the user never touching a sub-switch.
+	if c.Agent.SafetyIdleTerminate != nil {
+		fmt.Fprintf(&b, "safety_idle_terminate = %v   # task 722: B1 sub-switch override (absent = follow experimental_safety_cost_control)\n", *c.Agent.SafetyIdleTerminate)
+	}
+	if c.Agent.SafetyLoopStreakNote != nil {
+		fmt.Fprintf(&b, "safety_loop_streak_note = %v   # task 722: B2 sub-switch override (absent = follow experimental_safety_cost_control)\n", *c.Agent.SafetyLoopStreakNote)
+	}
+	if c.Agent.SafetyEventWaitRecheck != nil {
+		fmt.Fprintf(&b, "safety_event_wait_recheck = %v   # task 722: B3 sub-switch override (absent = follow experimental_safety_cost_control)\n", *c.Agent.SafetyEventWaitRecheck)
+	}
 
 	fmt.Fprintf(&b, "experimental_orphan_handling = %v   # task 449: merged orphan switch — B5 reclaim a session lease whose recorded owner process is dead (live foreign owners still respected) + B4 settle recovery-store operations past the covered durable sequence at open\n", c.Agent.ExperimentalOrphanHandling)
 
