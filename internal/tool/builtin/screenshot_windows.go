@@ -108,7 +108,7 @@ func captureWindowScreenshot(outputPath, titleSubstring string) (w, h int, title
 		hdcMem,
 		uintptr(unsafe.Pointer(&bmi)),
 		dibRGBColors,
-		uintptr(unsafe.Pointer(&bitsPtr)),
+		uintptr(unsafe.Pointer(&bits)),
 		0,
 		0,
 	)
