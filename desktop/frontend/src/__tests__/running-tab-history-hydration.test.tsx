@@ -143,10 +143,20 @@ function currentTabs(): TabMeta[] {
   });
 }
 
+// 任务726: per-tab slice fingerprint so the resident-stale chain (meta revision
+// vs the resident page's historyRevision) is exercisable.
+const sliceRevisionByTab = new Map<string, number>();
+
 function historyFor(tabID: string): HistoryMessage[] {
   if (tabID === "tab-r") return [userMessage("history R 1"), userMessage("history R 2")];
   if (tabID === "tab-s") return [userMessage("history S")];
   if (tabID === "tab-i") return [userMessage("history I")];
+  if (tabID === "tab-f") return sliceRevisionByTab.get("tab-f") === 12
+    ? [userMessage("history F 1"), userMessage("history F 2")]
+    : [userMessage("history F 1")];
+  if (tabID === "tab-g") return sliceRevisionByTab.get("tab-g") === 6
+    ? [userMessage("history G"), { role: "assistant", content: "streamed G turn" } as HistoryMessage]
+    : [userMessage("history G")];
   return [userMessage("cached A")];
 }
 
@@ -176,7 +186,7 @@ window.go = {
         return { messages, startTurn: 0, endTurn: turns, totalTurns: turns, hasOlder: false };
       },
       HistorySliceForTab: async (tabID: string, req: HistorySliceRequest) =>
-        historySliceFromMessages(tabID, historyFor(tabID), req),
+        historySliceFromMessages(tabID, historyFor(tabID), req, { revision: sliceRevisionByTab.get(tabID) ?? 0 }),
       HistoryCheckpointTurnsForTab: async () => [],
       ReplayPendingPrompts: async () => {},
       SetActiveTab: async (tabID: string) => {
@@ -285,6 +295,108 @@ ok(
 ok(
   !(controller?.state.items.some((item) => item.kind === "assistant" && item.text === "resumed row without history") ?? false),
   "the stale row is replaced by the fetched page instead of standing in for history",
+);
+
+// Fourth door, 2026-10-10 (task 726, 调研-1): a session the user already
+// hydrated goes live in the BACKGROUND (idle→steer→auto turn) and the session
+// grows past the resident page. The caller-side skip fast path fired
+// `history fetch skipped reason=local-snapshot scope=switch-tab` on every
+// open (desktop.log 12:00:45 / 12:01:58 / 12:02:38) — zero fetch, zero
+// fresh-meta check — and the transcript stayed on the pre-turn surface until
+// the projector caught up on its own minutes later. A live-turn target must
+// not take the caller fast path: the 580 freshness gate decides, a stale
+// resident falls through to the bounded fetch, and the newer page REBASES
+// (live tail retained) instead of being discarded by the legacy live-turn
+// "skip".
+tabsById.set("tab-f", tabMeta("tab-f", { sessionRevision: 10 }));
+sliceRevisionByTab.set("tab-f", 10);
+await act(async () => {
+  void controller?.switchTab("tab-f", { ...tabsById.get("tab-f")! });
+  await flushPromises();
+});
+await settle();
+
+eq(controller?.activeTabId, "tab-f", "switching to the idle research session activates its tab");
+ok(
+  controller?.state.items.some((item) => item.kind === "user" && item.text === "history F 1") ?? false,
+  "the research session hydrates its pre-turn history",
+);
+eq(controller?.state.historyRevision, 10, "the resident page records its fingerprint");
+
+// The steer dispatch starts a turn in the background and the session grows.
+// ListTabs truthfully reports the tab running from here on (the incident's
+// "调研对话看起来开始工作").
+await act(async () => {
+  runningTabs.add("tab-f");
+  tabsById.set("tab-f", { ...tabsById.get("tab-f")!, sessionRevision: 12 });
+  sliceRevisionByTab.set("tab-f", 12);
+});
+await act(async () => {
+  void controller?.switchTab("tab-a", { ...tabA });
+  await flushPromises();
+});
+await settle();
+await act(async () => {
+  void controller?.switchTab("tab-f", { ...tabsById.get("tab-f")!, running: true, cancellable: true });
+  await flushPromises();
+});
+await settle();
+
+eq(controller?.activeTabId, "tab-f", "reopening the now-running session activates its tab");
+ok(
+  controller?.state.items.some((item) => item.kind === "user" && item.text === "history F 2") ?? false,
+  "a live-turn reopen must not serve the stale resident page: the grown history lands (726)",
+);
+ok(
+  controller?.state.items.some((item) => item.kind === "user" && item.text === "history F 1") ?? false,
+  "the rebased page keeps the pre-turn rows",
+);
+eq(controller?.state.historyRevision, 12, "the rebase records the fetched fingerprint");
+eq(controller?.state.running, true, "the live turn keeps its running status");
+
+// Fifth door (matrix: just-ended turn): the turn ran while the tab was
+// resident, its rows were delivered live, and the user switches back after
+// turn_done — the resident surface must render both the persisted history and
+// the completed turn without any rollback.
+tabsById.set("tab-g", tabMeta("tab-g", { sessionRevision: 5 }));
+sliceRevisionByTab.set("tab-g", 5);
+await act(async () => {
+  void controller?.switchTab("tab-g", { ...tabsById.get("tab-g")! });
+  await flushPromises();
+});
+await settle();
+await act(async () => {
+  void controller?.switchTab("tab-a", { ...tabA });
+  await flushPromises();
+});
+await settle();
+await act(async () => {
+  for (const handler of eventHandlers) {
+    handler({ kind: "turn_started", tabId: "tab-g" } as WireEvent);
+    handler({ kind: "text", tabId: "tab-g", text: "streamed G turn" } as WireEvent);
+    handler({ kind: "turn_done", tabId: "tab-g" } as WireEvent);
+  }
+  await flushPromises();
+});
+// The turn's commit is what advances the session fingerprint (mirrors the
+// events.jsonl growth the main dialog verified in the incident).
+await act(async () => {
+  tabsById.set("tab-g", { ...tabsById.get("tab-g")!, sessionRevision: 6 });
+  sliceRevisionByTab.set("tab-g", 6);
+});
+await act(async () => {
+  void controller?.switchTab("tab-g", { ...tabsById.get("tab-g")! });
+  await flushPromises();
+});
+await settle();
+
+ok(
+  controller?.state.items.some((item) => item.kind === "user" && item.text === "history G") ?? false,
+  "a just-ended session still shows its persisted history on switch-back",
+);
+ok(
+  controller?.state.items.some((item) => item.kind === "assistant" && item.text === "streamed G turn") ?? false,
+  "a just-ended session keeps the turn rows the live delivery already applied",
 );
 
 await act(async () => {

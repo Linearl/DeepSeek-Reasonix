@@ -50,6 +50,27 @@ ok(
   mode(false, true, true, { running: true, historyTotalTurns: 3, items: [{ kind: "user" }] }) === "skip",
   "an already-hydrated running transcript is left alone",
 );
+// 任务726 (2026-10-10 调研-1): a live turn over a resident page the fetch just
+// proved stale must REBASE — the legacy skip assumed the resident page covers
+// the fetched one, which a background turn (idle→steer→auto-open) invalidates.
+// The page landed in the bit bucket and the transcript stayed on the pre-turn
+// surface until the projector caught up on its own.
+ok(
+  mode(false, true, true, { running: true, historyTotalTurns: 3, historyRevision: 10, items: [{ kind: "user" }] }, { items: [{ kind: "user" }], revision: 12 }) === "rebase",
+  "a live turn over a provably older resident page rebases onto the fetched page (726)",
+);
+ok(
+  mode(false, true, true, { running: true, historyTotalTurns: 3, historyRevision: 12, items: [{ kind: "user" }] }, { items: [{ kind: "user" }], revision: 12 }) === "skip",
+  "a live turn over a same-revision resident page keeps the zero-cost skip",
+);
+ok(
+  mode(false, true, true, { running: true, historyTotalTurns: 3, historyRevision: 15, items: [{ kind: "user" }] }, { items: [{ kind: "user" }], revision: 12 }) === "skip",
+  "a fetched page older than the resident page never rolls the transcript back",
+);
+ok(
+  mode(false, true, true, { running: true, historyTotalTurns: 3, items: [{ kind: "user" }] }, { items: [{ kind: "user" }], revision: 12 }) === "skip",
+  "an unrevisioned resident page keeps the legacy skip (no ordering proof)",
+);
 ok(
   hasCachedLiveTurn({
     running: true,
