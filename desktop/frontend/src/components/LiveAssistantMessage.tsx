@@ -8,9 +8,14 @@ import { LiveStreamContext } from "./LiveStreamContext";
 export const LiveAssistantMessage = memo(function LiveAssistantMessage({
   item,
   creationMode = false,
+  explicitFold,
+  onExplicitFoldChange,
 }: {
   item: AssistantItem;
   creationMode?: boolean;
+  /** 任务 765: persisted user fold intent for the embedded reasoning panel. */
+  explicitFold?: boolean;
+  onExplicitFoldChange?: (open: boolean) => void;
 }) {
   const live = useContext(LiveStreamContext);
   const streamingLive = Boolean(live && live.id === item.id);
@@ -38,7 +43,10 @@ export const LiveAssistantMessage = memo(function LiveAssistantMessage({
     <>
       {/* Task 753 (R4 hardening): expandWhileStreaming removed - the bypass prop
           was always false here and is no longer accepted. */}
-      <AssistantMessage item={displayItem} defaultExpanded={false} creationMode={creationMode} />
+      <AssistantMessage
+        item={displayItem} defaultExpanded={false} creationMode={creationMode}
+        explicitFold={explicitFold} onExplicitFoldChange={onExplicitFoldChange}
+      />
       {report ? <CompletionReportCard fields={report.fields} id={`${item.id}-report`} /> : null}
     </>
   );

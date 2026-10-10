@@ -19,15 +19,21 @@ function reasoningDurationLabel(durationMs: number | undefined, t: ReturnType<ty
 export function AssistantReasoningPanel({
   item,
   defaultExpanded,
+  explicitFold,
+  onExplicitFoldChange,
 }: {
   item: AssistantItem;
   defaultExpanded: boolean;
+  /** 任务 765: the user's persisted fold intent for this panel, if any.
+   * Outranks every derived initial state and survives remounts. */
+  explicitFold?: boolean;
+  onExplicitFoldChange?: (open: boolean) => void;
 }) {
   const t = useT();
   const presentation = useWorkProcessPresentation();
   const running = item.streaming && !item.reasoningComplete;
   // Task 753 (R4 hardening): there is no caller-side bypass anymore. The old
-  // `showWhileRunning || expandWhileStreaming` let any future caller silently
+  // `showWhileStreaming || expandWhileStreaming` let any future caller silently
   // override the concise tier; production always passed false (dead path with
   // live foot-gun potential), so the prop is gone and concise semantics are
   // decided by the presentation alone.
@@ -35,9 +41,15 @@ export function AssistantReasoningPanel({
   const keepExpanded = presentation.keepExpandedAfterCompletion;
   // A caller-hinted defaultExpanded must not outrank concise either.
   const startExpanded = defaultExpanded && presentation.experience !== "concise";
-  const [open, setOpen] = useState(startExpanded || keepExpanded || (followsWhileStreaming && item.streaming));
+  const [open, setOpen] = useState(explicitFold ?? (startExpanded || keepExpanded || (followsWhileStreaming && item.streaming)));
   const bodyRef = useRef<HTMLDivElement>(null);
-  const userOverridden = useRef(false);
+  // 任务 765: the ref dies with the instance; seed it from the persisted
+  // intent so the streaming auto-expand branch cannot override the user's
+  // choice after a remount (virtualization, tab switch and back, live→history
+  // handoff). A fresh streaming cycle keeps honoring it too: the intent is
+  // the user's explicit word about this panel, streaming must not flip it.
+  const hasPersistedIntent = explicitFold !== undefined;
+  const userOverridden = useRef(hasPersistedIntent);
   const previousStreaming = useRef(item.streaming);
   const previousComplete = useRef(item.reasoningComplete ?? false);
   const previousExperience = useRef(presentation.experience);
@@ -54,7 +66,10 @@ export function AssistantReasoningPanel({
       userOverridden.current = false;
       setOpen(startExpanded || keepExpanded || (followsWhileStreaming && item.streaming));
     } else if (item.streaming) {
-      if (!wasStreaming) userOverridden.current = false;
+      // 任务 765: a fresh streaming cycle clears a session-local toggle, but a
+      // persisted intent (survived a remount) stays — streaming updates must
+      // not overturn what the user explicitly chose for this panel.
+      if (!wasStreaming) userOverridden.current = hasPersistedIntent;
       if (startExpanded || keepExpanded) setOpen(true);
       else if (!userOverridden.current && followsWhileStreaming) setOpen(true);
     } else if ((complete && !wasComplete) || wasStreaming) {
@@ -64,6 +79,7 @@ export function AssistantReasoningPanel({
 
   const toggle = () => {
     userOverridden.current = true;
+    onExplicitFoldChange?.(!open);
     setOpen((value) => !value);
   };
   useCollapseAnimation(bodyRef, open);
