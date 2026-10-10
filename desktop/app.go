@@ -126,10 +126,14 @@ type App struct {
 	// session hosts the running analysis (CrashAnalysisProgress read model)
 	// and the boot-time pending-crash snapshot that survives flushPendingCrash
 	// shipping or dropping the queue files. Low-frequency UI state; its own
-	// mutex so it never waits behind the tab lock.
-	crashAnalysisMu     sync.Mutex
-	crashAnalysisRun    *crashAnalysisRun
-	pendingCrashReports []string
+	// mutex so it never waits behind the tab lock. pendingCrashSnapshotTaken
+	// (task 763) marks that startup DID snapshot, even when nothing fresh
+	// surfaced — it keeps the read-model fallback from resurrecting the
+	// watermark-suppressed backlog.
+	crashAnalysisMu           sync.Mutex
+	crashAnalysisRun          *crashAnalysisRun
+	pendingCrashReports       []string
+	pendingCrashSnapshotTaken bool
 
 	// Task 421: bounded effort re-fetch (see effort_fetch.go). effortCache
 	// holds the last completed EffortInfo per tab ID ("" = the active-tab
@@ -175,6 +179,13 @@ type App struct {
 	catalogRebuild     *sessionCatalogRebuildFlight
 	catalogRebuilding  atomic.Bool
 	shuttingDown       atomic.Bool
+	// updateRestartExit (task 763) records that THIS process is exiting to hand
+	// off to an update-family relaunch (publish / switch / updater / restart
+	// tool). Past the swap commit, running version ≠ active install is the
+	// design — the shutdown retire-superseded check must not treat it as an
+	// anomaly (see shutdown.go). Same commit-point discipline as the 461-P2
+	// marker: set only where the marker is written.
+	updateRestartExit atomic.Bool
 	// topicIndexWriteFailures counts best-effort topic-index writes that
 	// failed (task 550 ①): a swallowed error here used to produce a session
 	// whose tab and sidebar could disagree with the persisted index with no

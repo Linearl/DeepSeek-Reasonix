@@ -170,6 +170,10 @@ func (a *App) restartAndUpdateExempt(sourceDir, version, callerSession string) (
 	// record it so the next launch's auto-resume family may fire (a plain
 	// RestartDesktop deliberately writes no marker).
 	writeUpdateRestartMarker("publish", version)
+	// 任务763: same commit point — this process exits as an update restart, so
+	// the shutdown retire-superseded check (running ≠ active is the design
+	// here) defers to the relaunched version instead of WARNing.
+	a.updateRestartExit.Store(true)
 
 	slog.Info("restart: publish committed; relaunching", "version", version)
 	if err := restartStartLauncher(filepath.Join(installRoot, launcherName), os.Getpid()); err != nil {
@@ -540,6 +544,10 @@ func (a *App) restartActiveVersionExempt(callerSession, markerReason string) (re
 			version = ptr.ActiveVersion
 		}
 		writeUpdateRestartMarker(markerReason, version)
+		// 任务763: an armed marker means an update-family exit — arm the
+		// shutdown retire-superseded exemption the same way (763 注：该检查
+		// 交由重启后的新版本进程执行)。
+		a.updateRestartExit.Store(true)
 	}
 	if err := restartStartLauncher(launcherPath, os.Getpid()); err != nil {
 		slog.Error("restart: launcher start failed", "err", err)

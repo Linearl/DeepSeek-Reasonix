@@ -372,6 +372,9 @@ func (a *App) installDebUpdate(requestID string, meta *cachedUpdate) error {
 	// 任务461-P2: the official update channel's relaunch is an update restart —
 	// record it before shutdown so the next launch's auto-resume gate opens.
 	writeUpdateRestartMarker("updater", meta.Version)
+	// 任务763: same commit point — arm the shutdown retire-superseded
+	// exemption (running ≠ active is the design past the swap).
+	a.updateRestartExit.Store(true)
 	a.shutdown(a.ctx)
 	_ = relaunchThroughLauncher()
 	os.Exit(0)
@@ -445,6 +448,9 @@ func (a *App) installPortableUpdate(requestID string, meta *cachedUpdate, data [
 	// version (helper-driven on Windows/macOS, direct on Linux) — an update
 	// restart. Record it before shutdown so the next launch's resume gate opens.
 	writeUpdateRestartMarker("updater", meta.Version)
+	// 任务763: same commit point — arm the shutdown retire-superseded
+	// exemption (running ≠ active is the design past the swap).
+	a.updateRestartExit.Store(true)
 
 	// Persist the conversation and stop subprocesses before handing off (same as
 	// shutdown). On Linux the binary is now replaced, so relaunch it; on Windows and

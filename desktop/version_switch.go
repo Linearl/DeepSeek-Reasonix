@@ -225,6 +225,9 @@ func (a *App) switchToVersionExempt(version, callerSession string) (string, erro
 	// 任务461-P2: the pointer swap committed — this relaunch continues an
 	// update (rollback counts). Record it for the next launch's resume gate.
 	writeUpdateRestartMarker("switch", version)
+	// 任务763: same commit point — arm the shutdown retire-superseded
+	// exemption (running ≠ active is the design past the swap).
+	a.updateRestartExit.Store(true)
 
 	launcherPath := filepath.Join(installRoot, installlayout.LauncherBinaryName())
 	if info, statErr := os.Lstat(launcherPath); statErr != nil || !info.Mode().IsRegular() {
