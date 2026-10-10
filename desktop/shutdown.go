@@ -193,12 +193,34 @@ func (a *App) shutdownBody() {
 		if err := a.commitPendingUpdateHealth(); err != nil {
 			slog.Warn("desktop: commit healthy update during shutdown", "err", err)
 		}
-		if archived, err := archiveSupersededPendingUpdateAfterReady(); err != nil {
-			slog.Warn("desktop: retire superseded update during shutdown", "err", err)
-		} else if archived {
-			slog.Info("desktop: archived superseded update transaction during shutdown")
-		}
+		a.retireSupersededDuringShutdown()
 		// Independent last-known-good config snapshot after a successful UI session.
 		_ = repair.RecordHealthyConfig(version)
+	}
+}
+
+// shutdownRetireSuperseded is a seam for tests (task 763): shutdownBody's
+// retire-superseded call, indirected like restartQuit/versionSwitchQuit.
+var shutdownRetireSuperseded = archiveSupersededPendingUpdateAfterReady
+
+// retireSupersededDuringShutdown runs the shutdown-face retire-superseded
+// check — unless this process is exiting as an update restart. Task 763 (21.5
+// 装机实测): past the swap commit the active install IS the version being
+// switched to, so "active install version X does not match running version Y"
+// fails by design on every update restart, and the WARN landed in the exact
+// log window users grep after an update — it read as a crash misjudgment.
+// The freshly relaunched version re-runs the same check against the settled
+// install in completeFrontendStartup, where a mismatch IS a real anomaly.
+// Normal quits keep today's behavior (including the WARN for a genuine
+// mismatch, e.g. a manual downgrade).
+func (a *App) retireSupersededDuringShutdown() {
+	if a.updateRestartExit.Load() {
+		slog.Info("desktop: update-restart exit; retire-superseded check deferred to the relaunched version")
+		return
+	}
+	if archived, err := shutdownRetireSuperseded(); err != nil {
+		slog.Warn("desktop: retire superseded update during shutdown", "err", err)
+	} else if archived {
+		slog.Info("desktop: archived superseded update transaction during shutdown")
 	}
 }
