@@ -46,6 +46,7 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalActiveTabResident = true
 	// ui
 	c.Desktop.ExperimentalTabCompress = true
+	c.Desktop.ExperimentalHeartbeatBackground = true // 任务 742：心跳任务后台化（可选档）
 	c.Desktop.ExperimentalTodoSidebar = true
 	c.Desktop.ExperimentalPromptHistoryPicker = true
 	c.Desktop.ExperimentalRestartUpdate = true
@@ -180,7 +181,7 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 15 / 可选 21 / 未稳定 14 / 已退役 0 = 50.
+// register must stay exactly 推荐 15 / 可选 22 / 未稳定 14 / 已退役 0 = 51.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
@@ -191,8 +192,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// （compactModel，压缩模型指定，默认关）按任务书建议可选档入表
 		// （19→20、48→49）。
 		// （19→20、48→49）。任务 704（trajectoryView，轨迹视图，默认关）按
-		// 可选档入表（20→21、49→50）。
-		LabTierOptional: 21,
+		// 可选档入表（20→21、49→50）。任务 742（heartbeatBackground，心跳
+		// 任务后台化，默认关）按 550 口径可选档入表（21→22、50→51）。
+		LabTierOptional: 22,
 		// 任务 545（sessionCwdFollow）+ 任务 504（tabModeTint）为 562 表A 快照后
 		// 新增的默认关实验项，按未稳定档登记；任务 551 将 B9
 		// （modelCapabilityFilter）退役移出表A——xlsx 侧待同步。
@@ -221,7 +223,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 50 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 50", len(labFeatureTiers))
+	if len(labFeatureTiers) != 51 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 51", len(labFeatureTiers))
 	}
 }

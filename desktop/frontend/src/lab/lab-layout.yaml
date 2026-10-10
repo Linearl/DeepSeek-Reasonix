@@ -13,18 +13,23 @@
 #   - 任何一行不合规则 ⇒ 整份文件作废，回退内置默认布局（不白屏）；
 #   - dev 模式改本文件保存即热加载生效（vite ?raw 监听）。
 #
-# 内容 = 现状全量设置分组 + 任务 722 六点调整 + 任务 727 登记：
+# 内容 = 现状全量设置分组 + 任务 722 六点调整 + 任务 727 登记 + 任务 742：
 #   点1 备用模型行迁「模型策略」卡（行级，SettingsPanel）；
 #   点2 modelStrategy 不再挂「已退役」徽章（成员表无 modelCapabilityFilter）；
 #   点3 自动折叠跨会话消息并为 sessionCollab 卡子项；
 #   点5 compactModel 并入 safetyCostControl 卡；
 #   点6 messageMerge 并入 safetyCostControl，整卡自 automation 迁 efficiency；
 #   727 heartbeatRotation 登记（桥接 heartbeat-rotation.json 的 enabled，
-#       默认开，故不参与卡片灯 onKeys）。
+#       默认开，故不参与卡片灯 onKeys）；
+#   742 tabCompress + tabModeTint 两个独立条目合并为「标签页管理」单卡。
+#       条目级合并（561/722 先例）：两键各留各的 setter 与语义，卡内行级
+#       仍挂各自徽章；配置键零变化，已存偏好升级后原样生效；
+#   742 heartbeatBackground「心跳任务后台化」登记（automation 组独立卡，
+#       默认关，可选项）。
 
 version: 1
 groups:
-  # ── 自动化（4 项）────────────────────────────────────────────
+  # ── 自动化（5 项；任务 742 增心跳任务后台化）──────────────────
   - key: automation
     labelKey: settings.labGroup.automation
     entries:
@@ -49,6 +54,12 @@ groups:
         labelKey: settings.dream
         tier: optional
         onKeys: [experimentalDream]
+      # 任务 742：心跳任务后台化——开启后心跳触发不进标签栏（264 detached
+      # 语义，提交成功后 park）。默认关=现状一致。
+      - id: heartbeatBackground
+        labelKey: settings.heartbeatBackground
+        tier: optional
+        onKeys: [experimentalHeartbeatBackground]
 
   # ── 提效（8 项；任务 722：安全/成本控制卡迁入本组）────────────
   - key: efficiency
@@ -118,22 +129,23 @@ groups:
         tier: unstable
         onKeys: [experimentalCollabGroupView]
 
-  # ── 界面（15 项）────────────────────────────────────────────
+  # ── 界面（14 项；任务 742：tab 二开关合并为「标签页管理」）────
   - key: ui
     labelKey: settings.labGroup.ui
     entries:
-      - id: tabCompress
-        labelKey: settings.tabCompress
-        tier: recommended
-        onKeys: [experimentalTabCompress]
+      # 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离默认档；
+      # 卡徽章可选。卡内两行各自读自己的键、写自己的 setter：
+      #   行1 标签栏自适应压缩（experimental_tab_compress，506）；
+      #   行2 标签权限指示（tab_permission_indicator 三档，651）。
+      # 已存偏好零迁移：两键原样保留，升级后行为不突变。
+      - id: tabManagement
+        labelKey: settings.tabManagement
+        tier: optional
+        onKeys: [experimentalTabCompress, tabModeTintNonDefault]
       - id: trajectoryView
         labelKey: settings.trajectoryView
         tier: optional
         onKeys: [experimentalTrajectoryView]
-      - id: tabModeTint
-        labelKey: settings.tabModeTint
-        tier: unstable
-        onKeys: [tabModeTintNonDefault]
       - id: todoSidebar
         labelKey: settings.todoSidebar
         tier: recommended

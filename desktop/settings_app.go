@@ -411,6 +411,9 @@ type SettingsView struct {
 	// Task 506: tab-strip adaptive compression (tiered width once >8 tabs);
 	// the settings save re-applies the snapshot, no restart needed.
 	ExperimentalTabCompress bool `json:"experimentalTabCompress"`
+	// Task 742: heartbeat background mode (default false); the engine reads
+	// the switch at call time, so the next scheduled run applies it.
+	ExperimentalHeartbeatBackground bool `json:"experimentalHeartbeatBackground"`
 	// Task 507: subagent detail view (row click → read-only in-dock detail +
 	// back); off keeps the inline preview + widen affordance; the settings
 	// save re-applies the snapshot, no restart needed.
@@ -665,6 +668,9 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTabCompress gates the tab-strip adaptive compression (task
 	// 506); the frontend re-applies it on settings save, no restart needed.
 	ExperimentalTabCompress bool `json:"experimentalTabCompress"`
+	// ExperimentalHeartbeatBackground is the heartbeat background mode (task
+	// 742, default false); the engine reads the switch at call time.
+	ExperimentalHeartbeatBackground bool `json:"experimentalHeartbeatBackground"`
 	// ExperimentalSubagentDetail gates the subagent detail view (task 507);
 	// the frontend re-applies it on settings save, no restart needed.
 	ExperimentalSubagentDetail bool `json:"experimentalSubagentDetail"`
@@ -1475,6 +1481,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalPromptHistoryPicker = cfg.Desktop.ExperimentalPromptHistoryPicker
 		// Task 506: tab-strip adaptive compression readback.
 		view.ExperimentalTabCompress = cfg.Desktop.ExperimentalTabCompress
+		// Task 742: heartbeat background mode readback.
+		view.ExperimentalHeartbeatBackground = cfg.Desktop.ExperimentalHeartbeatBackground
 		// Task 507: subagent detail view readback.
 		view.ExperimentalSubagentDetail = cfg.Desktop.ExperimentalSubagentDetail
 		// Task 651: tab permission indicator readback (resolved — legacy
@@ -1679,6 +1687,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
 		// Task 506: tab-strip adaptive compression readback.
 		ExperimentalTabCompress: cfg.Desktop.ExperimentalTabCompress,
+		// Task 742: heartbeat background mode readback.
+		ExperimentalHeartbeatBackground: cfg.Desktop.ExperimentalHeartbeatBackground,
 		// Task 507: subagent detail view readback.
 		ExperimentalSubagentDetail: cfg.Desktop.ExperimentalSubagentDetail,
 		// Task 651: tab permission indicator readback (resolved).

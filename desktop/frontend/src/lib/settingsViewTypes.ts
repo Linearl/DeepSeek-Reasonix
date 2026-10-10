@@ -71,6 +71,9 @@ export interface SettingsView {
   experimentalPromptHistoryPicker?: boolean;
   // Task 506: tab-strip adaptive compression (tiered width once >8 tabs).
   experimentalTabCompress?: boolean;
+  // 任务 742: heartbeat background mode (runs park their tab detached after
+  // submit; default off). The engine reads the switch at call time.
+  experimentalHeartbeatBackground?: boolean;
   // Task 507: subagent detail view (row click → read-only in-dock detail + back).
   experimentalSubagentDetail?: boolean;
   // Task 651: tab permission indicator (badge | off | background), resolved server-side

@@ -81,7 +81,14 @@ export type TierFeatureId =
   | "trajectoryView"
   // 任务 727: 心跳会话轮换开关（桥接 heartbeat-rotation.json 的 enabled，
   // 不落 config.toml——前端独有注册项，无 Go 渲染表条目）。
-  | "heartbeatRotation";
+  | "heartbeatRotation"
+  // 任务 742: 「标签页管理」合并卡（506 自适应压缩 + 651 权限指示的条目级
+  // 合并容器）。纯前端 rail 卡 id——没有自有配置键，卡内两行各写各的键；
+  // Go 渲染表无条目（562 测试 ③ 的前端独有豁免）。
+  | "tabManagement"
+  // 任务 742: 心跳任务后台化（默认关；开启后心跳触发不进标签栏，复用
+  // 264 detached 语义）。落 config.toml，Go 渲染表同档登记。
+  | "heartbeatBackground";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -157,6 +164,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
   // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
   heartbeatRotation: "optional",
+  // 任务 742：「标签页管理」合并卡（条目级合并 506+651）。合并是入口层
+  // 组织，不降级任何成员特性（tabCompress 仍推荐、tabModeTint 仍未稳定，
+  // 见各自条目）；容器卡本身按任务书定可选档。
+  tabManagement: "optional",
+  // 任务 742：心跳任务后台化（默认关）。按 550 口径定可选——不开启不影响
+  // 任何调度行为，只是心跳会话照旧出现在标签栏。
+  heartbeatBackground: "optional",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
@@ -170,10 +184,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * （压缩模型指定，默认关，可选档）入表，可选 19→20、总数 48→49。
  * trajectoryView（轨迹视图，默认关）入表，可选 20→21、总数 49→50。
  * 任务 727：heartbeatRotation（心跳会话轮换，桥接 JSON 键）入表，可选
- * 21→22、总数 50→51。) */
+ * 21→22、总数 50→51。任务 742：tabManagement（标签页管理合并卡，纯前端
+ * 容器 id）与 heartbeatBackground（心跳任务后台化，默认关）入表，可选
+ * 22→24、总数 51→53。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
-  optional: 22,
+  optional: 24,
   unstable: 13,
   retired: 1,
 };
@@ -229,7 +245,8 @@ export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, reado
   messageMerge: ["settings.labGroup.efficiency", "settings.safetyCostControl"],
   // ── ui（界面）───────────────────────────────────────────────
   sessionWall: ["settings.labGroup.ui", "settings.sessionWall"],
-  tabCompress: ["settings.labGroup.ui", "settings.tabCompress"],
+  // 任务 742：自适应压缩并入「标签页管理」卡——设置位置指到新卡。
+  tabCompress: ["settings.labGroup.ui", "settings.tabManagement"],
   todoSidebar: ["settings.labGroup.ui", "settings.todoSidebar"],
   promptHistoryPicker: ["settings.labGroup.ui", "settings.promptHistoryPicker"],
   restartUpdate: ["settings.labGroup.ui", "settings.updateFeedback"],

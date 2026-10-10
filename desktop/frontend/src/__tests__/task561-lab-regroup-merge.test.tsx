@@ -12,7 +12,9 @@
 //  ④ the rail carries exactly 37 entries in 8 groups — 任务 722 后为
 //     4/8/15/1/1/1/6/1（safetyCostControl 自 automation 迁 efficiency 并吸收
 //     messageMerge；sessionCollabAutoFold 并入 sessionCollab；727
-//     heartbeatRotation 以成员入 safetyCostControl，不占 rail 入口）。
+//     heartbeatRotation 以成员入 safetyCostControl，不占 rail 入口）；
+//     任务 742 后为 5/8/14/1/1/1/6/1（automation 增 heartbeatBackground，
+//     ui 组 tab 二开关合并为 tabManagement——一增一减总数不变）。
 //     任务 722/724：render table 移交布局默认数据（labLayoutDefault.ts），
 //     分组/成员/徽章/排序由 lab-layout.yaml（校验回退默认）驱动——本测试的
 //     分组断言读布局数据与 yaml，卡片独立性断言仍读 SettingsPanel 源。
@@ -61,9 +63,11 @@ console.log("\ntask 561 lab regroup + merged cards");
     "built-in default layout mirrors the same group order (fallback = same face)");
 }
 
-// ① rail census（任务 722 修订）：恰好 37 个 rail 入口，组分布
-// 4/8/15/1/1/1/6/1（safetyCostControl 迓提效并吸收 messageMerge 入口；
-// sessionCollabAutoFold 并入 sessionCollab——两入口消失；其余组不动）。
+// ① rail census（任务 742 修订）：恰好 37 个 rail 入口，组分布
+// 5/8/14/1/1/1/6/1（742：automation 增 heartbeatBackground 入口；ui 组
+// tabCompress+tabModeTint 合并为 tabManagement 单入口——一增一减总数不变；
+// 722：safetyCostControl 迁提效并吸收 messageMerge 入口；
+// sessionCollabAutoFold 并入 sessionCollab）。
 // 数据源 = 布局默认数据 + yaml（两份必须同构）。
 {
   // 直接导入布局数据模块数真数据（比源码正则稳）。
@@ -77,10 +81,12 @@ console.log("\ntask 561 lab regroup + merged cards");
     `yaml and built-in default list the same entries in the same order (yaml ${yamlEntries.length})`);
   const groups: Record<string, number> = {};
   for (const g of LAB_LAYOUT_DEFAULT_DATA.groups) groups[(g as { key: string }).key] = g.entries.length;
-  ok(groups["automation"] === 4 && groups["efficiency"] === 8 && groups["ui"] === 15 &&
+  // 任务 742：automation 4→5（heartbeatBackground）、ui 15→14（tab 二开关
+  // 合并为 tabManagement）——一增一减，总数仍 37。
+  ok(groups["automation"] === 5 && groups["efficiency"] === 8 && groups["ui"] === 14 &&
      groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 1 && groups["infra"] === 6 &&
      groups["tool-opt"] === 1,
-    `group counts are 4/8/15/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 5/8/14/1/1/1/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -110,7 +116,9 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
     { label: "M3 coldCacheCompact", field: "s.experimentalColdCacheCompact", setter: "app.SetExperimentalColdCacheCompact(on)" },
     { label: "M3 cacheTuning", field: "s.experimentalCacheTuning", setter: "app.SetExperimentalCacheTuning(on)" },
   ] },
-  { id: "subagentSuite", endMarker: '{selected === "tabCompress" && (', members: [
+  // 任务 742：tabCompress pane 退役并入 tabManagement 合并卡——endMarker
+  // 随迁到新卡（旧 marker 不存在会让 cardSlice 返回空、测试假红/假绿）。
+  { id: "subagentSuite", endMarker: '{selected === "tabManagement" && (', members: [
     { label: "M4 subagentPanel", field: "s.experimentalSubagentPanel", setter: "app.SetExperimentalSubagentPanel(on)" },
     { label: "M4 subagentDetail", field: "s.experimentalSubagentDetail", setter: "app.SetExperimentalSubagentDetail(on)" },
     { label: "M4 subagentPolicy", field: "s.experimentalSubagentPolicy", setter: "app.SetExperimentalSubagentPolicy(on)" },

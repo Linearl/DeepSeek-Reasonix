@@ -398,6 +398,15 @@ func (a *App) SetExperimentalTabCompress(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTabCompress(enabled) })
 }
 
+// SetExperimentalHeartbeatBackground toggles the heartbeat background mode
+// (task 742): scheduled runs park their tab detached (task 264 semantics)
+// after a successful submit so nothing appears in the tab strip. The engine
+// reads the switch at call time, so the next scheduled run applies the change
+// without a restart.
+func (a *App) SetExperimentalHeartbeatBackground(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalHeartbeatBackground(enabled) })
+}
+
 // SetExperimentalSubagentDetail toggles the subagent detail view (task 507):
 // a dock row click opens the read-only in-dock detail view with a back
 // button; off keeps the inline preview expansion plus the widen affordance.

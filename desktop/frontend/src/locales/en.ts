@@ -2728,6 +2728,16 @@ export const en = {
 "settings.tabModeTint.badge": "Badge",
 "settings.tabModeTint.off": "Off",
 "settings.tabModeTint.background": "Background",
+// 任务 742: merged tab-management card (entry-level merge of tabCompress +
+// tabModeTint — both member rows keep their own keys above).
+"settings.tabManagement": "Tab management",
+"settings.tabManagementHint": "One card for the two tab-strip experiments: adaptive compression (task 506) and the permission indicator (task 651). Entry-level merge only — each row keeps its own switch, its own saved preference and its own tier badge; existing settings keep working exactly as before, nothing is migrated or reset. Both apply immediately on save, no restart.",
+"settings.tabManagement.subHint": "Two independent switches below — each keeps its own semantics and default; untouched preferences carry over as-is.",
+// 任务 742: heartbeat background mode (default off = pre-742 visible-tab behaviour).
+"settings.heartbeatBackground": "Heartbeat background mode",
+"settings.heartbeatBackgroundHint": "Keeps scheduled heartbeat runs out of the tab strip: a run opens its topic in the background, submits the prompt, then parks the conversation as a detached session (task 264 semantics) — the turn keeps running and nothing stays in the tab bar. A topic you opened yourself is never parked; bot-channel forwarding keeps working while detached, and the next run brings the session back automatically. Experimental, off by default — with it off every run keeps the previous behaviour (the topic tab stays visible in the strip). Applies to the next scheduled run after you save, no restart.",
+"settings.heartbeatBackground.on": "On",
+"settings.heartbeatBackground.off": "Off",
 "settings.subagentDetail": "Subagent detail view",
 "settings.subagentDetailHint": "Controls what clicking a row in the right-dock Subagents panel does (experimental dual state, off by default). Off keeps the fallback: a row click expands the inline preview in place, plus a Widen preview / Restore width button that widens the dock in one click (dragging and double-click reset are unaffected). On is the enhanced form: a row click switches the dock body to a full read-only detail view with a Back button; the dock keeps its remembered width, and the detail offers no input of any kind - viewing only. Applies immediately on save, no restart.",
 "settings.subagentDetail.on": "On",

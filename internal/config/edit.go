@@ -1071,6 +1071,17 @@ func (c *Config) SetTabPermissionIndicator(mode string) error {
 	return nil
 }
 
+// SetExperimentalHeartbeatBackground toggles the heartbeat background mode
+// (task 742): scheduled runs open their topic inactive and park the tab into
+// the detached-session pool (task 264 semantics) after a successful submit, so
+// the tab strip stays clean. Opt-in, default off: with it off every run keeps
+// the exact pre-742 visible-tab behaviour. The engine reads the switch at call
+// time, so a change applies to the next run without a restart.
+func (c *Config) SetExperimentalHeartbeatBackground(enabled bool) error {
+	c.Desktop.ExperimentalHeartbeatBackground = enabled
+	return nil
+}
+
 // SetExperimentalCompactionParallel toggles the parallel chunked-compaction
 // fragments (task 265). It ships on (existing behaviour given an off switch);
 // off falls back to the upstream serial summarizer.

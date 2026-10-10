@@ -1833,10 +1833,12 @@ type ExperimentFeatureId =
   // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
   | "sessionWall"
   | "promptHistoryPicker"
-  // 任务 506: tab-strip adaptive compression (tiered tab width once >8 tabs).
-  | "tabCompress"
-  // 任务 504: tab mode tint (low-opacity per-mode tab background instead of badges).
-  | "tabModeTint"
+  // 任务 742: tabCompress（506）+ tabModeTint（504/651）的独立 pane 退役——
+  // 两行并入 tabManagement 合并卡（条目级合并，键语义/setter 零变化）。
+  | "tabManagement"
+  // 任务 742: heartbeat background mode（心跳触发不进标签栏，264 detached
+  // 语义；默认关 = 原 742 前可见标签行为逐位不变）。
+  | "heartbeatBackground"
   | "localServer"
   | "pathRules"
   | "traceAsState"
@@ -1911,9 +1913,9 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "traceAsState",
   "outputStyle",
   "collabGroupView",
-  "tabCompress",
+  "tabManagement",
+  "heartbeatBackground",
   "trajectoryView",
-  "tabModeTint",
   "todoSidebar",
   "promptHistoryPicker",
   "sessionWall",
@@ -2183,6 +2185,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           // 任务 722：messageMerge 并入 safetyCostControl 卡后不再是 rail
           // 条目——墙灯读它自己的键（563 教训：成员永远读自己的键，不读卡灯）。
           map[pick] = (s.collabInboxMerge || "off") !== "off" || Boolean(s.collabGuidanceMerge);
+          break;
+        case "tabCompress":
+          // 任务 742：自适应压缩并入 tabManagement 合并卡后不再是 rail
+          // 条目——墙灯同 563 教训读它自己的键，不读合并卡灯。
+          map[pick] = Boolean(s.experimentalTabCompress);
           break;
         default:
           map[pick] = false;
@@ -2981,46 +2988,72 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "tabCompress" && (
-            <SettingsField label={labLabel("tabCompress", t("settings.tabCompress"))} hint={t("settings.tabCompressHint")} icon={<Sparkles size={18} />}>
+          {/* 任务 742：标签页管理（合并卡）——506 标签栏自适应压缩 + 651
+              标签权限指示的条目级合并。两行各读各的键、各写各的 setter
+              （81/123 丢存铁律）；行级徽章保留（621 每特性一枚），容器卡
+              徽章挂在主标签上。已存偏好零迁移：两键原样保留。 */}
+          {selected === "tabManagement" && (
+            <>
+              <SettingsField label={labLabel("tabManagement", t("settings.tabManagement"))} hint={t("settings.tabManagementHint")} icon={<Sparkles size={18} />} stacked>
+                <p className="settings-field__hint-line">{t("settings.tabManagement.subHint")}</p>
+              </SettingsField>
+              <SettingsField label={labLabel("tabCompress", t("settings.tabCompress"))} hint={t("settings.tabCompressHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalTabCompress) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // 任务 506：纯前端门——设置保存后的 onChanged 会重放
+                        // 快照（applyLabFlags），标签栏即时换档，无需重启。
+                        await app.SetExperimentalTabCompress(on);
+                      })}
+                    >
+                      {t(on ? "settings.tabCompress.on" : "settings.tabCompress.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={labLabel("tabModeTint", t("settings.tabModeTint"))} hint={t("settings.tabModeTintHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {(["badge", "off", "background"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`set-seg__btn${(s.tabPermissionIndicator ?? "badge") === mode ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // 任务 651：纯前端门——设置保存后的 onChanged 会重放
+                        // 快照（applyTabPermissionIndicator），标签栏即时换档，
+                        // 无需重启。
+                        await app.SetTabPermissionIndicator(mode);
+                      })}
+                    >
+                      {t(`settings.tabModeTint.${mode}`)}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
+          {/* 任务 742：心跳任务后台化（默认关=742 前行为逐位不变）。开启后
+              心跳触发不进标签栏——Go 侧复用 264 detached 语义，提交成功后
+              park；下一次运行经 prefer-live 打开自动提升回条。 */}
+          {selected === "heartbeatBackground" && (
+            <SettingsField label={labLabel("heartbeatBackground", t("settings.heartbeatBackground"))} hint={t("settings.heartbeatBackgroundHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
                     key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalTabCompress) === on ? " set-seg__btn--on" : ""}`}
+                    className={`set-seg__btn${Boolean(s.experimentalHeartbeatBackground) === on ? " set-seg__btn--on" : ""}`}
                     disabled={busy}
                     onClick={() => void apply(async () => {
-                      // 任务 506：纯前端门——设置保存后的 onChanged 会重放
-                      // 快照（applyLabFlags），标签栏即时换档，无需重启。
-                      await app.SetExperimentalTabCompress(on);
+                      // Call-time gate（244 B1 S4 先例）：引擎每次运行现读
+                      // 配置，保存后下一次调度即生效，无需重启。
+                      await app.SetExperimentalHeartbeatBackground(on);
                     })}
                   >
-                    {t(on ? "settings.tabCompress.on" : "settings.tabCompress.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {/* 任务 621：tabModeTint 在 Go 侧一直有档（unstable），前端注册表
-              漏收导致渲染无徽章——补挂主控开关行徽章。任务 651：504 的
-              布尔开关升级为三档（徽章 | 关闭 | 背景色），背景色档与徽章档
-              同源 614 色 token（10% 低透明底）。 */}
-          {selected === "tabModeTint" && (
-              <SettingsField label={labLabel("tabModeTint", t("settings.tabModeTint"))} hint={t("settings.tabModeTintHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {(["badge", "off", "background"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    className={`set-seg__btn${(s.tabPermissionIndicator ?? "badge") === mode ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      // 任务 651：纯前端门——设置保存后的 onChanged 会重放
-                      // 快照（applyTabPermissionIndicator），标签栏即时换档，
-                      // 无需重启。
-                      await app.SetTabPermissionIndicator(mode);
-                    })}
-                  >
-                    {t(`settings.tabModeTint.${mode}`)}
+                    {t(on ? "settings.heartbeatBackground.on" : "settings.heartbeatBackground.off")}
                   </button>
                 ))}
               </SettingsOptions>

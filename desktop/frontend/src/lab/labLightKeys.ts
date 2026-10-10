@@ -34,6 +34,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalOutputStyleUI: (s: SettingsView) => Boolean(s.experimentalOutputStyleUI),
   experimentalCollabGroupView: (s: SettingsView) => Boolean(s.experimentalCollabGroupView),
   experimentalTabCompress: (s: SettingsView) => Boolean(s.experimentalTabCompress),
+  // 任务 742：心跳任务后台化（默认关；开启后心跳触发不进标签栏）。
+  experimentalHeartbeatBackground: (s: SettingsView) => Boolean(s.experimentalHeartbeatBackground),
   experimentalTrajectoryView: (s: SettingsView) => Boolean(s.experimentalTrajectoryView),
   experimentalTodoSidebar: (s: SettingsView) => Boolean(s.experimentalTodoSidebar),
   experimentalPromptHistoryPicker: (s: SettingsView) => Boolean(s.experimentalPromptHistoryPicker),

@@ -81,6 +81,10 @@ var labFeatureTiers = []labFeatureTier{
 	// 默认关）。
 	{"trajectoryView", LabTierOptional, []string{"experimental_trajectory_view"}},
 	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
+	// 任务 742：心跳任务后台化（默认关）。开启后心跳触发不进标签栏（复用 264
+	// detached 语义，提交成功后 park）；档位按 550 口径可选——不开启不影响
+	// 任何调度行为，只是标签栏照旧出现会话。
+	{"heartbeatBackground", LabTierOptional, []string{"experimental_heartbeat_background"}},
 	{"todoSidebar", LabTierRecommended, []string{"experimental_todo_sidebar"}},
 	{"promptHistoryPicker", LabTierRecommended, []string{"experimental_prompt_history_picker"}},
 	{"restartUpdate", LabTierRecommended, []string{"experimental_restart_update", "experimental_autonomous_update"}}, // autonomous_update 为 task 254 家族子键
@@ -382,6 +386,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 506: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123 lesson).
 		fmt.Fprintf(&b, "experimental_tab_compress = %v   # desktop: tiered tab-width reduction once >8 tabs are open, floor 84px (task 506; settings save re-applies, no restart)\n", c.Desktop.ExperimentalTabCompress)
+		// Task 742: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123 lesson).
+		fmt.Fprintf(&b, "experimental_heartbeat_background = %v   # desktop: heartbeat runs park their tab detached (task 264 semantics) after submit so nothing appears in the tab strip (task 742; default off = pre-742 visible-tab behaviour; engine reads at call time, next run applies)\n", c.Desktop.ExperimentalHeartbeatBackground)
 		// Task 507: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123 lesson).
 		fmt.Fprintf(&b, "experimental_subagent_detail = %v   # desktop: subagent dock row click opens the read-only detail view; off keeps the inline preview + widen affordance (task 507; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSubagentDetail)

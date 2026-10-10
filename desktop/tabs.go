@@ -2852,6 +2852,46 @@ func (a *App) awaitRuntimeThenPark(tabID string) {
 	}
 }
 
+// heartbeatTopicTabVisible reports whether the topic already has a tab in the
+// visible strip (task 742). Background mode never parks such a tab: a session
+// the user opened themselves keeps running in place exactly like the baseline;
+// only tabs a heartbeat run opened (or promoted back from its own previous
+// detached run) go back to the pool after the submit. Detached entries are not
+// visible by definition, so a parked runtime re-parks on the next run.
+func (a *App) heartbeatTopicTabVisible(scope, workspaceRoot, topicID string) bool {
+	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	for _, tab := range a.tabs {
+		if tab != nil && tabMatchesTopicTarget(tab, scope, workspaceRoot, topicID) {
+			return true
+		}
+	}
+	return false
+}
+
+// openHeartbeatTabInactive is the task-742 background-mode open path: the same
+// scope resolution and activate=false contract as openProjectTabInactive /
+// openGlobalTabInactive, but routed through openTopicTabPreferLiveActivation
+// so a runtime parked detached by a previous run promotes back into the strip
+// (one controller per session) instead of double-building over the session
+// lease the detached tab still holds.
+func (a *App) openHeartbeatTabInactive(scope, workspaceRoot, topicID string) (TabMeta, error) {
+	if scope == "project" && workspaceRoot != "" {
+		if abs, err := filepath.Abs(workspaceRoot); err == nil {
+			workspaceRoot = abs
+		}
+		sessionPath, _ := a.findTopicSessionForTarget("project", workspaceRoot, topicID)
+		return a.openTopicTabPreferLiveActivation("project", workspaceRoot, topicID, sessionPath, false)
+	}
+	globalRoot := globalWorkspaceRoot()
+	if err := os.MkdirAll(globalRoot, 0o755); err != nil {
+		return TabMeta{}, fmt.Errorf("create global workspace: %w", err)
+	}
+	sessionPath, _ := a.findTopicSessionForTarget("global", "", topicID)
+	return a.openTopicTabPreferLiveActivation("global", "", topicID, sessionPath, false)
+}
+
 // ActivateTopic opens a topic into the single visible conversation surface used
 // by layouts without a tab strip. It delegates the actual open/reuse behavior to
 // the classic tab path, then prunes every non-active visible tab so historical

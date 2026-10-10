@@ -2117,6 +2117,16 @@ export const zhTW: Record<DictKey, string> = {
 "settings.tabModeTint.badge": "徽章",
 "settings.tabModeTint.off": "關閉",
 "settings.tabModeTint.background": "背景色",
+// 任務 742：標籤頁管理合併卡（tabCompress + tabModeTint 的條目級合併，
+// 兩行成員開關沿用上方各自的鍵）。
+"settings.tabManagement": "標籤頁管理",
+"settings.tabManagementHint": "標籤欄兩個實驗特性的合併卡：自適應壓縮（任務 506）與權限指示（任務 651）。僅入口層合併——卡內兩行各自保留獨立開關、已存偏好與檔位徽章，舊設定原樣生效，不做任何遷移或重置。兩項儲存後立即生效、無需重啟。",
+"settings.tabManagement.subHint": "卡內為兩個獨立開關——各留各的語義與預設值，未動過的偏好原樣沿用。",
+// 任務 742：心跳任務背景化（預設關 = 742 前的可見標籤行為）。
+"settings.heartbeatBackground": "心跳任務背景化",
+"settings.heartbeatBackgroundHint": "讓心跳排程任務不佔用標籤欄：執行在背景開啟對應話題、提交提示詞後把會話轉入背景駐留（任務 264 detached 語義）——回合繼續跑完，標籤欄不留新標籤。你自己開啟過的話題永遠不會被收起；背景駐留期間機器人通道轉發照常運作，下一次執行會自動接回。實驗特性，預設關閉——關閉時每次執行保持原行為（話題標籤照常留在標籤欄）。儲存後對下一次排程執行生效，無需重啟。",
+"settings.heartbeatBackground.on": "開",
+"settings.heartbeatBackground.off": "關",
 "settings.subagentDetail": "子代理詳情視圖",
 "settings.subagentDetailHint": "控制右欄「子代理」面板裡點擊一行的行為（雙態實驗特性，預設關閉）：關閉時為保底形態——點擊行在面板內展開內聯預覽，另加「加寬預覽 / 還原寬度」按鈕可一鍵把右欄調寬（拖曳調寬與雙擊復位不受影響）；開啟時為增強形態——點擊行切換到右欄內整頁唯讀詳情（含「返回列表」按鈕），寬度沿用右欄記憶寬度，詳情不提供任何輸入框、僅供查看。儲存後立即生效，無需重啟。",
 "settings.subagentDetail.on": "開",
