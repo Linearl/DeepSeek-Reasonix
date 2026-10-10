@@ -1,11 +1,14 @@
-// Run: npx --no-install tsx src/__tests__/composer-content-menu-add-quick-command.test.tsx
+// Run: npx --no-install tsx src/__tests__/composer-content-menu-manage-quick-command.test.tsx
 //
-// 任务 656 验收：输入框「添加内容 → 搜索快捷指令」列表底部新增「添加快捷指令」
-// 入口项，点击直达新增流程（内联表单，实现顺方案）——
-//  1) 入口固定在列表底部（最后一个 menuitem），无 onAddQuickCommand 通道时不渲染；
-//  2) 点击后内联表单替换列表（弹层保持紧凑），标题必填（空标题保存禁用）；
-//  3) 保存回调携带 (title, text)，表单收起、搜索词清空、列表恢复可见；
-//  4) 搜索无匹配时入口仍在（正是「还没存、想加一条」的场景），取消可返回列表。
+// 任务 721 验收：输入框「添加内容 → 快捷指令」列表底部「添加快捷指令」入口
+// 点击后呼出共享的「管理快捷指令」面板（QuickCommandsManagerDialog，与设置
+// 入口同一实现）——656 的 picker 内嵌小表单方案已回退移除——
+//  1) 入口固定在列表底部（最后一条 menuitem），无 onManageQuickCommands 通道
+//     时不渲染；
+//  2) 点击回调 onManageQuickCommands 恰好一次，且 picker 收起（回到一级内容
+//     菜单），任何内嵌表单（标题/正文/保存/取消）都不再出现；
+//  3) 搜索无匹配时入口仍在（正是「还没存、想加一条」的场景）；
+//  4) 选择片段的插入通道不受影响。
 
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
@@ -139,17 +142,21 @@ async function main() {
   if (!rootEl) throw new Error("missing root");
   const root = createRoot(rootEl);
 
-  console.log("\n任务 656 搜索快捷指令列表底部「添加快捷指令」入口");
+  console.log("\n任务 721 picker「添加快捷指令」入口呼出管理面板（内嵌表单已回退）");
 
   const menuItems = () => [...document.querySelectorAll<HTMLButtonElement>("[role=\"menuitem\"]")];
   const itemWithTitle = (label: string) => menuItems().find((node) => (node.textContent ?? "").includes(label));
+  const draftFormGone = () =>
+    !document.querySelector(".composer-content-menu__draft") &&
+    ![...document.querySelectorAll("input.mem-input, textarea.mem-input")].some((node) =>
+      (node as HTMLElement).closest(".composer-content-menu__draft") !== null);
 
   {
     const picked: string[] = [];
-    const added: Array<{ title: string; text: string }> = [];
+    let managed = 0;
     await renderActions(root, {
       onChooseQuickCommand: (text) => picked.push(text),
-      onAddQuickCommand: (title, text) => added.push({ title, text }),
+      onManageQuickCommands: () => { managed += 1; },
     });
     await settle(() => (document.getElementById("root")?.textContent ?? "").includes("快捷指令"), "content menu rendered");
 
@@ -166,52 +173,38 @@ async function main() {
     ok((menuItems()[menuItems().length - 1]?.classList.contains("composer-content-menu__add")) === true,
       "add entry carries the composer-content-menu__add class");
 
-    // 3) 点击直达新增流程：内联表单替换列表，标题必填。
+    // 3) 点击呼出管理面板通道：回调一次、picker 收起、内嵌表单不存在。
     await act(async () => { addEntry!.click(); await flushTimers(); });
-    const titleInput = document.querySelector<HTMLInputElement>(".composer-content-menu__draft input.mem-input");
-    const textArea = document.querySelector<HTMLTextAreaElement>(".composer-content-menu__draft textarea.mem-input");
-    ok(Boolean(titleInput) && Boolean(textArea), "inline create form (title + text) replaces the list");
-    eq(document.querySelector(".composer-access-menu__section")?.textContent?.includes("片段A"), false,
-      "snippet list hidden while the form is open");
-    eq(document.activeElement, titleInput, "title input is autofocused");
-    const saveBtn = [...document.querySelectorAll<HTMLButtonElement>(".composer-content-menu__draft-actions .btn")]
-      .find((node) => (node.textContent ?? "") === "保存");
-    const cancelBtn = [...document.querySelectorAll<HTMLButtonElement>(".composer-content-menu__draft-actions .btn")]
-      .find((node) => (node.textContent ?? "") === "取消");
-    ok(Boolean(saveBtn) && Boolean(cancelBtn), "save + cancel actions render");
-    ok(Boolean(saveBtn?.disabled), "save is disabled while the title is empty");
+    eq(managed, 1, "click fires onManageQuickCommands exactly once");
+    eq(picked.length, 0, "opening the manager does NOT trigger the insert channel");
+    ok(!document.querySelector(".composer-content-menu__search"), "picker closes after handing over to the manager");
+    ok((document.getElementById("root")?.textContent ?? "").includes("添加内容"),
+      "popover is back on the top-level content menu");
+    ok(draftFormGone(), "no inline create form remains anywhere (656 form removed)");
 
-    await act(async () => {
-      typeInto(titleInput!, "新指令");
-      typeInto(textArea!, "新指令正文");
-      await flushTimers();
+    // 4) 选择片段的插入通道不受影响。
+    await act(async () => { itemWithTitle("快捷指令")!.click(); await flushTimers(); });
+    const snippet = itemWithTitle("片段A");
+    ok(Boolean(snippet), "snippet list still reachable");
+    await act(async () => { snippet!.click(); await flushTimers(); });
+    eq(picked.length, 1, "choosing a snippet fires the insert channel once");
+    eq(picked[0], "片段A正文", "insert channel receives the snippet text");
+    eq(managed, 1, "choosing a snippet does not open the manager");
+
+    // 5) 搜索无匹配时入口仍在，呼出行为一致。
+    await renderActions(root, {
+      onChooseQuickCommand: (text) => picked.push(text),
+      onManageQuickCommands: () => { managed += 1; },
     });
-    ok(!saveBtn!.disabled, "save enables once the title is filled");
-    await act(async () => { saveBtn!.click(); await flushTimers(); });
-
-    // 4) 保存回调携带 (title, text)，表单收起、列表恢复、搜索词清空。
-    eq(added.length, 1, "save fires onAddQuickCommand exactly once");
-    eq(added[0]?.title, "新指令", "onAddQuickCommand receives the trimmed title");
-    eq(added[0]?.text, "新指令正文", "onAddQuickCommand receives the text");
-    eq(picked.length, 0, "saving does NOT trigger the insert channel");
-    ok(!document.querySelector(".composer-content-menu__draft"), "form closes after save");
+    await settle(() => Boolean(itemWithTitle("快捷指令")), "content menu re-rendered");
+    await act(async () => { itemWithTitle("快捷指令")!.click(); await flushTimers(); });
     const search = document.querySelector<HTMLInputElement>(".composer-content-menu__search");
-    eq(search?.value, "", "search query cleared after save");
-    eq(document.querySelector(".composer-access-menu__section")?.textContent?.includes("片段A"), true,
-      "snippet list visible again after save");
-
-    // 5) 搜索无匹配时入口仍在，取消可返回列表。
     await act(async () => { typeInto(search!, "zzz-无匹配"); await flushTimers(); });
     const addAfterSearch = itemWithTitle("添加快捷指令");
     ok(Boolean(addAfterSearch), "add entry survives a no-match search");
     await act(async () => { addAfterSearch!.click(); await flushTimers(); });
-    ok(Boolean(document.querySelector(".composer-content-menu__draft")), "create form reachable from no-match state");
-    const cancelBtn2 = [...document.querySelectorAll<HTMLButtonElement>(".composer-content-menu__draft-actions .btn")]
-      .find((node) => (node.textContent ?? "") === "取消");
-    await act(async () => { cancelBtn2!.click(); await flushTimers(); });
-    eq((document.querySelector<HTMLInputElement>(".composer-content-menu__search"))?.value, "zzz-无匹配",
-      "cancel keeps the search query");
-    ok(!document.querySelector(".composer-content-menu__draft"), "cancel closes the form");
+    eq(managed, 2, "manager channel fires from the no-match state too");
+    ok(draftFormGone(), "no inline form from the no-match state either");
 
     await act(async () => {
       root.unmount();
@@ -220,7 +213,7 @@ async function main() {
     dom.window.close();
   }
 
-  // 6) 无 onAddQuickCommand 通道（上层未接线）时入口不渲染，列表行为不变。
+  // 6) 无 onManageQuickCommands 通道（上层未接线）时入口不渲染，列表行为不变。
   {
     const dom2 = new JSDOM("<!doctype html><html><body><div id=\"root2\"></div></body></html>", {
       pretendToBeVisual: true,
@@ -248,7 +241,7 @@ async function main() {
     const pickerEntry = [...document.querySelectorAll<HTMLButtonElement>("[role=\"menuitem\"]")]
       .find((node) => (node.textContent ?? "").includes("快捷指令"));
     await act(async () => { pickerEntry!.click(); await flushTimers(); });
-    eq(itemWithTitle("添加快捷指令"), undefined, "no add entry without the onAddQuickCommand channel");
+    eq(itemWithTitle("添加快捷指令"), undefined, "no add entry without the onManageQuickCommands channel");
     ok(itemWithTitle("片段A") !== undefined, "picker list unaffected without the channel");
     await act(async () => {
       root2.unmount();

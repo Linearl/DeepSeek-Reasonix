@@ -594,7 +594,7 @@ export function Composer({
   quickCommands,
   historyPickerEnabled = false,
   onInsertQuickCommand,
-  onAddQuickCommand,
+  onManageQuickCommands,
   autopilotEnabled = false,
   autopilotOn = false,
   insertRequest,
@@ -722,9 +722,9 @@ export function Composer({
   historyPickerEnabled?: boolean;
   autopilotEnabled?: boolean; // offered only once the preference is on
   onInsertQuickCommand?: (text: string) => void;
-  // Task 656: create-a-snippet channel for the content menu's picker — the
-  // owner persists the full stored list plus the new entry and mirrors it.
-  onAddQuickCommand?: (title: string, text: string) => void;
+  // Task 721: the content menu's picker bottom entry opens the shared
+  // quick-command manager dialog (owner controls the open state).
+  onManageQuickCommands?: () => void;
   insertRequest?: ComposerInsertRequest | null;
   selectedTextRequest?: SelectedTextInsertRequest | null;
   disabled?: boolean;
@@ -4829,7 +4829,7 @@ export function Composer({
             closeIntentMenu();
             requestActiveDraftFrame(focusComposerInput);
           } : undefined}
-          onAddQuickCommand={onAddQuickCommand}
+          onManageQuickCommands={onManageQuickCommands}
         />
         <div
           className="composer-access-menu__section"

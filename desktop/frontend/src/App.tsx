@@ -77,6 +77,8 @@ import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-musi
 import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
+import { QuickCommandsManagerDialog } from "./components/QuickCommandsManagerDialog";
+import type { QuickCommandEntry } from "./lib/settingsViewTypes";
 import { TodoPanel } from "./components/TodoPanel";
 import { PendingCardsBadge } from "./components/PendingCardsBadge";
 import { ApprovalModal } from "./components/ApprovalModal";
@@ -1039,20 +1041,20 @@ export default function App() {
     setQuickCommands,
   } = useTabNavigationOwner();
 
-  // Task 656: the composer quick-command picker can create a snippet in place.
-  // The picker only renders while the experimental gate is on, so the mirror
-  // here holds the full stored list (disabled entries included) — append to it,
-  // persist, then mirror so the picker shows the new entry without waiting for
-  // a full settings reload. The next settings read reconciles authoritatively.
-  const addQuickCommandFromComposer = useCallback(async (title: string, text: string) => {
-    const next = [...quickCommands, { title, text, enabled: true }];
+  // Task 721: the composer picker's bottom entry opens the shared quick-command
+  // manager dialog (same implementation as the settings entry). The mirror here
+  // holds the full stored list (disabled entries included) — the dialog edits
+  // it and this callback persists the full next list, then mirrors it so the
+  // picker reflects changes without waiting for a full settings reload.
+  const [quickCommandsManagerOpen, setQuickCommandsManagerOpen] = useState(false);
+  const saveQuickCommandsFromComposer = useCallback(async (next: QuickCommandEntry[]) => {
     try {
       await app.SetQuickCommands(next);
       setQuickCommands(next);
     } catch (e) {
-      console.warn("addQuickCommand failed", e);
+      console.warn("saveQuickCommands failed", e);
     }
-  }, [quickCommands, setQuickCommands]);
+  }, [setQuickCommands]);
 
   // Autopilot is opt-in: its mode only appears in the composer once the
   // preference is on, so nobody lands in an unattended run by accident.
@@ -5694,7 +5696,7 @@ export default function App() {
               historyPickerEnabled={promptHistoryPickerEnabled}
               autopilotEnabled={autopilotEnabled}
               onInsertQuickCommand={insertQuickCommand}
-              onAddQuickCommand={addQuickCommandFromComposer}
+              onManageQuickCommands={() => setQuickCommandsManagerOpen(true)}
               turnPhase={state.turnPhase}
               goal={goal}
               goalStatus={state.meta?.goalStatus}
@@ -5794,6 +5796,17 @@ export default function App() {
             onPointerDown={startWorkspacePanelResize}
             onKeyDown={resizeWorkspacePanelWithKeyboard}
             onDoubleClick={() => setSavedWorkspacePanelWidth(workspacePanelResetWidth)}
+          />
+        )}
+
+        {/* Task 721: the composer picker's bottom "add" entry opens the same
+            manager dialog the settings entry uses — one implementation. */}
+        {quickCommandsManagerOpen && (
+          <QuickCommandsManagerDialog
+            entries={quickCommands}
+            busy={false}
+            save={saveQuickCommandsFromComposer}
+            onClose={() => setQuickCommandsManagerOpen(false)}
           />
         )}
 
