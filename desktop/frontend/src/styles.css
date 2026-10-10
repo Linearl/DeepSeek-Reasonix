@@ -4946,6 +4946,31 @@ a[href] {
   word-break: break-word;
   white-space: pre-wrap;
 }
+/* 任务723: deferred steer placeholder — collapsed status row, click to expand. */
+.steer-line__bubble--deferred {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: right;
+}
+.steer-line__status {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.steer-line__text--summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.steer-line__chevron {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.steer-line__bubble--open .steer-line__chevron {
+  transform: rotate(90deg);
+}
 
 /* ── ReadOnly batch (parent fold for read/search tools) ────────────── */
 .readonly-batch {

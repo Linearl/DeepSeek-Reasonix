@@ -327,7 +327,7 @@ export type Item =
   | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; createdAt?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[] }
   | { kind: "phase"; id: string; text: string }
-  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string }
+  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean }
   | {
       kind: "compaction";
       id: string;
@@ -2174,10 +2174,19 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       if (!text.trim()) return s;
       if (e.itemId && s.items.some((item) => item.kind === "user" && item.inboxItemId === e.itemId)) return s;
       if (s.pendingUser !== undefined && s.pendingUser === text) return s;
+      // 任务723: a receipt-time steer bubble (guidance_bubble / consume-time
+      // steer, same inboxItemId) whose message just became THIS turn's input
+      // must stop rendering as a full ↪ bubble — the user row below is the
+      // entity now, and the older row downgrades to the collapsed
+      // "sent · handled next turn" placeholder. Keyed by inboxItemId, never
+      // by text (same text from different items is legal — 580 case 5).
+      const items = e.itemId
+        ? s.items.map((item) => item.kind === "notice" && item.inboxItemId === e.itemId && !item.steerDeferred ? { ...item, steerDeferred: true } : item)
+        : s.items;
       return {
         ...s,
         seq: s.seq + 1,
-        items: [...s.items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: Date.now() }],
+        items: [...items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: Date.now() }],
       };
     }
     case "approval_request": {

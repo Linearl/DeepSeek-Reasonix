@@ -4287,6 +4287,7 @@ export const en = {
   "transcript.toolCount": "{n} tools",
   "transcript.thoughtCount": "{n} thoughts",
   "transcript.steer": "Mid-turn steer",
+  "transcript.steerDeferred": "Sent · queued for the next turn",
   "transcript.working": "Working",
   "transcript.workingDuration": "Working {duration}",
   "transcript.worked": "Worked",

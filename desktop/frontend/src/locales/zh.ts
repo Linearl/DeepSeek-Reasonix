@@ -4285,6 +4285,7 @@ export const zh: Record<DictKey, string> = {
   "transcript.toolCount": "{n} 个工具",
   "transcript.thoughtCount": "{n} 段思考",
   "transcript.steer": "中途引导",
+  "transcript.steerDeferred": "已发出 · 待下一轮处理",
   "transcript.working": "工作中",
   "transcript.workingDuration": "工作中 {duration}",
   "transcript.worked": "已工作",
