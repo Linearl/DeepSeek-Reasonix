@@ -478,7 +478,11 @@ type App struct {
 	// sessionCollab is the task 19 delivery pump: it moves talk_to_session
 	// mailbox messages into the target tab's inbox. Nil until startup.
 	sessionCollab *sessionCollabPump
-	lifecycle     desktopLifecycleRuntime
+	// autopilotResume is the 任务731 abnormal-stop auto-resume watchdog
+	// (579 家族第三形态): event-driven bounded continuation for unattended
+	// sessions. Nil until startup; every entry point is nil-safe.
+	autopilotResume *autopilotResumeWatchdog
+	lifecycle       desktopLifecycleRuntime
 	// diagnosticsOwner is acquired before Wails starts so Linux's OnStartup
 	// ordering cannot let a second-instance handoff create lifecycle evidence.
 	diagnosticsOwner        bool
@@ -753,6 +757,11 @@ func (a *App) startup(ctx context.Context) {
 
 	a.sessionCollab = newSessionCollabPump(a)
 	a.sessionCollab.Start()
+	// 任务731: the abnormal-stop auto-resume watchdog rides the same startup
+	// edge. It is purely event-driven (no ticker of its own): the S1 tap
+	// lives in tabEventSink.Emit, the S2 escalation in the 579 bridge's
+	// exhaustion hook.
+	a.autopilotResume = newAutopilotResumeWatchdog(a)
 
 	a.mu.Lock()
 	a.tabsRestored = make(chan struct{})

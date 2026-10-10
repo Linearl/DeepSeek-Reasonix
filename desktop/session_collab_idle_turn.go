@@ -75,6 +75,11 @@ const idleTurnMaxAttempts = 3
 // as collabDelivery).
 type idleTurnTargetView struct {
 	contactID string
+	// tabID is the desktop tab backing this target (empty for runtime-only
+	// contacts). 任务731 S2: when this item's opening budget is spent, the
+	// autopilot abnormal-stop watchdog escalates a session-level wake
+	// through it (see autopilot_resume.go).
+	tabID     string
 	// activeTab marks the currently focused visible tab: the user may be about
 	// to type there, so the bridge never opens a turn (边界 2).
 	activeTab bool
@@ -376,7 +381,7 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 		if t.ctrl == nil {
 			continue
 		}
-		view := idleTurnTargetView{contactID: t.contactID, activeTab: t.activeTab}
+		view := idleTurnTargetView{contactID: t.contactID, tabID: t.tabID, activeTab: t.activeTab}
 		view.running = t.ctrl.RuntimeStatus().Running
 		snap := t.ctrl.InboxSnapshot()
 		// 任务709: pause provenance — only a user-held pause mutes the bridge;
@@ -398,7 +403,20 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 			}
 		}
 		view.run = t.ctrl.RunInboxTurn
-		view.exhausted = p.recordIdleTurnExhausted
+		exhausted := p.recordIdleTurnExhausted
+		if t.tabID != "" {
+			// 任务731 S2 (收信后异常态无法开轮的合并线形态): the bridge has
+			// spent its opening budget on this queue head — escalate one
+			// session-level wake through the autopilot watchdog. The
+			// watchdog re-checks the autopilot master switch at fire time,
+			// so non-autopilot targets stay exactly as today (receipt only).
+			tabID := t.tabID
+			exhausted = func(contactID, itemID, collabMsgID, collabMailTo, source string, attempts int, lastErr error) {
+				p.recordIdleTurnExhausted(contactID, itemID, collabMsgID, collabMailTo, source, attempts, lastErr)
+				p.app.escalateStuckInboxForTab(tabID, attempts, lastErr)
+			}
+		}
+		view.exhausted = exhausted
 		targets = append(targets, view)
 	}
 	p.idleTurns.sweepTargets(targets, now)

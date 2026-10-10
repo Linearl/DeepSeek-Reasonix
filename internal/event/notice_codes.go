@@ -60,6 +60,10 @@ const (
 	// require_reply cross-session mail and the host injected one visible
 	// reply reminder into the conversation.
 	NoticeCodeCollabReplyNudge = "collab_reply_nudge"
+	// 任务731 异常态自动续轮（579 家族第三形态）：一次续轮注入的用户可见
+	// 留痕，与连续续轮预算用尽后的停止告警。
+	NoticeCodeAutopilotResumeFired     = "autopilot_resume_fired"
+	NoticeCodeAutopilotResumeExhausted = "autopilot_resume_exhausted"
 )
 
 // 任务553: wake-yield code lives in its own block so the wire-stable table

@@ -1523,6 +1523,16 @@ func (s *tabEventSink) Emit(e event.Event) {
 			s.recordDisplay(e)
 			s.flushDisplay(e.TurnID, e.Cancelled)
 		}
+		// 任务731: the abnormal-stop auto-resume watchdog consumes the same
+		// in-process turn plane (signal matrix in autopilot_resume.go). The
+		// tap only classifies and schedules — real work runs on the
+		// watchdog's own timer goroutine, never on the Emit path.
+		switch e.Kind {
+		case event.TurnStarted:
+			app.observeAutopilotResumeTurnStarted(tabID)
+		case event.TurnDone:
+			app.observeAutopilotResumeTurnDone(tabID, e)
+		}
 		if m := app.metrics.Load(); m != nil {
 			m.observe(e)
 			persistMetricsEvent(app, m, tabID, e)
