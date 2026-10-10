@@ -62,7 +62,7 @@ export function useHistoryCatalog({
     }
     if (page) {
       setCatalogSessions((current) => append
-        ? [...current, ...page.items.filter((item) => !current.some((existing) => existing.path === item.path))]
+        ? [...current, ...page.items.filter((item: SessionMeta) => !current.some((existing) => existing.path === item.path))]
         : page.items);
       setNextSessionCursor(page.nextCursor || "");
     } else if (!append) {

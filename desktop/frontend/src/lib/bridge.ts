@@ -4053,10 +4053,12 @@ function makeMockApp(): AppBindings {
             maxBytes: 64 * 1024 * 1024,
           };
         },
-        async EnqueueInboxFollowup(_tabID, _display, _submit, _idempotency) {
+        async EnqueueInboxFollowup(_tabID: string, _display: string, _submit: string, _idempotency: string) {
           return { itemId: `mock-${Date.now()}`, disposition: "queued_followup", position: 1, paused: false };
         },
-        async EnqueueInboxFollowupWithInvocations(_tabID, _display, _submit, _invocations, _idempotency) {
+        // _invocations uses the wire shape of generated InvocationRequest (kind: string);
+        // the local union-typed alias would fail contravariance against typeof GeneratedApp.
+        async EnqueueInboxFollowupWithInvocations(_tabID: string, _display: string, _submit: string, _invocations: Array<{ name: string; kind: string; offset: number }>, _idempotency: string) {
           return { itemId: `mock-invocation-${Date.now()}`, disposition: "queued_followup", position: 1, paused: false };
         },
         async EnqueueInboxSteer(_tabID, display, submit, _idempotency) {
