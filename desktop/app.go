@@ -741,7 +741,8 @@ func (a *App) startup(ctx context.Context) {
 			return false
 		}
 		// Task 517: the B1 gate rides the merged safety/cost switch.
-		return cfg.Agent.ExperimentalSafetyCostControl
+		// Task 722: fine-grained sub-switch override (nil = inherit the master).
+		return cfg.SafetyIdleTerminateEnabled()
 	}
 	a.heartbeat.Start()
 	// Expose the scheduler's admin surface to agent tools (task 201). The

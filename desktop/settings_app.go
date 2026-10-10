@@ -493,8 +493,14 @@ type SettingsView struct {
 	// Task 517: merged safety/cost switch (settings-view mirror of [agent];
 	// one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards).
 	ExperimentalSafetyCostControl bool   `json:"experimentalSafetyCostControl"`
-	CollabInboxMerge              string `json:"collabInboxMerge"`
-	CollabGuidanceMerge           bool   `json:"collabGuidanceMerge"`
+	// Task 722: fine-grained sub-switch overrides. nil (= JSON null) means
+	// "follow the master", so the UI can render the effective value while
+	// still distinguishing an untouched follower from an explicit choice.
+	SafetyIdleTerminate   *bool `json:"safetyIdleTerminate"`
+	SafetyLoopStreakNote  *bool `json:"safetyLoopStreakNote"`
+	SafetyEventWaitRecheck *bool `json:"safetyEventWaitRecheck"`
+	CollabInboxMerge      string `json:"collabInboxMerge"`
+	CollabGuidanceMerge   bool   `json:"collabGuidanceMerge"`
 	// Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
 	SessionCollabAllowDelete       bool `json:"sessionCollabAllowDelete"`
 	SessionCollabAllowRequireReply bool `json:"sessionCollabAllowRequireReply"`
@@ -736,6 +742,11 @@ type DesktopStartupSettingsView struct {
 	// Task 517: merged safety/cost switch (mirror of [agent]; one「安全 / 成本
 	// 控制」knob for the task-244 B1/B2/B3 guards).
 	ExperimentalSafetyCostControl bool `json:"experimentalSafetyCostControl"`
+	// Task 722: fine-grained sub-switch overrides (nil = JSON null = follow
+	// the master; both-views lesson applies to the override face too).
+	SafetyIdleTerminate    *bool `json:"safetyIdleTerminate"`
+	SafetyLoopStreakNote   *bool `json:"safetyLoopStreakNote"`
+	SafetyEventWaitRecheck *bool `json:"safetyEventWaitRecheck"`
 	// CollabInboxMerge exposes the inbox drain merge tri-state (task 221):
 	// off | same_sender | all. The runtime value lives on [agent].
 	CollabInboxMerge string `json:"collabInboxMerge"`
@@ -1504,6 +1515,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalDream = cfg.Agent.ExperimentalDream
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
 		view.ExperimentalSafetyCostControl = cfg.Agent.ExperimentalSafetyCostControl
+		// Task 722: sub-switch override readback (nil stays nil = inherit).
+		view.SafetyIdleTerminate = cfg.Agent.SafetyIdleTerminate
+		view.SafetyLoopStreakNote = cfg.Agent.SafetyLoopStreakNote
+		view.SafetyEventWaitRecheck = cfg.Agent.SafetyEventWaitRecheck
 		view.ExperimentalOrphanHandling = cfg.Agent.ExperimentalOrphanHandling
 
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
@@ -1691,6 +1706,10 @@ func (a *App) Settings() SettingsView {
 		ExperimentalDream:             cfg.Agent.ExperimentalDream,
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
 		ExperimentalSafetyCostControl: cfg.Agent.ExperimentalSafetyCostControl,
+		// Task 722: sub-switch override readback (nil stays nil = inherit).
+		SafetyIdleTerminate:   cfg.Agent.SafetyIdleTerminate,
+		SafetyLoopStreakNote:  cfg.Agent.SafetyLoopStreakNote,
+		SafetyEventWaitRecheck: cfg.Agent.SafetyEventWaitRecheck,
 		// Task 163: usage card switch readback.
 		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
 		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).

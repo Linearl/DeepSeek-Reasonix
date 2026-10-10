@@ -2112,7 +2112,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// Task 575: heavy bash commands take the write lease under optimistic_write.
 		BashHeavyGuard: cfg.Sandbox.ExperimentalBashHeavyGuard,
 		// Task 517: the B2 gate rides the merged safety/cost switch.
-		LoopStreakNote: cfg.Agent.ExperimentalSafetyCostControl,
+		// Task 722: fine-grained sub-switch override (nil = inherit the master).
+		LoopStreakNote: cfg.SafetyLoopStreakNoteEnabled(),
 		// Task 172: feedback touchpoints — FeedbackNudgeEnabled ANDs the nudge
 		// dial with the parent feedback switch, so the agent sees one dial that
 		// already respects the parent-wins rule. Boot snapshot: restart to apply.
@@ -2235,7 +2236,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// actionable refusals that name the panel switch.
 			AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
 			// Task 517: the B3 gate rides the merged safety/cost switch.
-			EventWaitRecheck: cfg.Agent.ExperimentalSafetyCostControl,
+			// Task 722: fine-grained sub-switch override (nil = inherit the master).
+			EventWaitRecheck: cfg.SafetyEventWaitRecheckEnabled(),
 			AllowSteer:       cfg.Agent.SessionCollabAllowSteer,
 			DailySendLimit:   cfg.Agent.SessionCollabDailySendLimit,
 		}

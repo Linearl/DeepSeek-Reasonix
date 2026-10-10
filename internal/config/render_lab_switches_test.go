@@ -24,6 +24,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Sandbox.OptimisticWrite = true            // optimisticParallel (M8 standalone)
 	orig.Agent.ExperimentalDream = true            // dream
 	orig.Agent.ExperimentalSafetyCostControl = true       // 任务 517 合并键（B1/B2/B3）
+	// 任务 722：细粒度子开关显式覆盖往返（true/false 各半，nil 键不落盘）。
+	orig.Agent.SafetyIdleTerminate = boolPtr(true)
+	orig.Agent.SafetyLoopStreakNote = boolPtr(false)
+	orig.Agent.SafetyEventWaitRecheck = boolPtr(true)
 	orig.Agent.ExperimentalSubagentPolicy = boolPtr(true) // M4 (*bool, nil means on)
 
 	// efficiency（提效）
@@ -116,6 +120,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_auto_load_older = true",
 		"experimental_perf_monitor = true",
 		"experimental_safety_cost_control = true",
+		// 任务 722：子开关条件渲染——非 nil 才落盘，true/false 逐键往返。
+		"safety_idle_terminate = true",
+		"safety_loop_streak_note = false",
+		"safety_event_wait_recheck = true",
 		// 任务 517：legacy B1/B2/B3 键保持渲染（迁移后读 false），旧配置往返面不缩。
 		"experimental_autonomous_idle_terminate = false",
 		"experimental_loop_streak_note = false",
@@ -174,6 +182,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"agent.experimental_full_access":         got.Agent.ExperimentalFullAccess,
 		"agent.experimental_dream":               got.Agent.ExperimentalDream,
 		"agent.experimental_safety_cost_control": got.Agent.ExperimentalSafetyCostControl,
+		"agent.safety_idle_terminate":            got.Agent.SafetyIdleTerminate != nil && *got.Agent.SafetyIdleTerminate,
+		"agent.safety_loop_streak_note":          got.Agent.SafetyLoopStreakNote != nil && !*got.Agent.SafetyLoopStreakNote,
+		"agent.safety_event_wait_recheck":        got.Agent.SafetyEventWaitRecheck != nil && *got.Agent.SafetyEventWaitRecheck,
 		"agent.experimental_proactive_compact":   got.Agent.ExperimentalProactiveCompact,
 		"agent.experimental_cold_cache_compact":  got.Agent.ExperimentalColdCacheCompact,
 		"agent.experimental_high_speed_model":    got.Agent.ExperimentalHighSpeedModel,

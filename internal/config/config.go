@@ -1936,6 +1936,19 @@ type AgentConfig struct {
 	ExperimentalLoopStreakNote          bool `toml:"experimental_loop_streak_note"`
 	ExperimentalEventWaitRecheck        bool `toml:"experimental_event_wait_recheck"`
 
+	// SafetyIdleTerminate / SafetyLoopStreakNote / SafetyEventWaitRecheck are
+	// the task-722 fine-grained sub-switches under the merged safety/cost
+	// master: one per B-group guard, each an explicit override. nil (the
+	// default — the key is absent from config.toml) means "follow
+	// experimental_safety_cost_control", so pre-722 configs keep their exact
+	// behaviour and the master switch stays the one-knob control. A non-nil
+	// value wins over the master, which is what makes 开总关子 / 关总开子
+	// expressible. The Effective helpers below are the ONLY read path —
+	// reading the raw fields directly would silently skip the inherit.
+	SafetyIdleTerminate    *bool `toml:"safety_idle_terminate"`
+	SafetyLoopStreakNote   *bool `toml:"safety_loop_streak_note"`
+	SafetyEventWaitRecheck *bool `toml:"safety_event_wait_recheck"`
+
 	// ExperimentalOrphanHandling is the single merged orphan switch (task 449):
 	// it gates BOTH halves of the task-244 orphan flow — reclaiming a session
 	// lease whose recorded owner PID is dead (B5: crash leftover; a live

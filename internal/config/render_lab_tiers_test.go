@@ -22,7 +22,12 @@ func allLabSwitchesOn() *Config {
 	c.Sandbox.ExperimentalParallelWriterReadOnlyBash = true // task 573：豁免键，门禁要求仍被渲染
 	c.Agent.ExperimentalDream = true
 	// 任务 517：B1/B2/B3 合并为单键，legacy 键渲染面保持（迁移后读 false）。
+	// 任务 722：细粒度子开关置非 nil——条件渲染的键在 all-on 夹具下必须
+	// 真的被渲染表发射（反向门禁）。
 	c.Agent.ExperimentalSafetyCostControl = true
+	c.Agent.SafetyIdleTerminate = boolPtr(true)
+	c.Agent.SafetyLoopStreakNote = boolPtr(true)
+	c.Agent.SafetyEventWaitRecheck = boolPtr(true)
 	c.Agent.ExperimentalSubagentPolicy = boolPtr(true)
 	// efficiency
 	c.Agent.ExperimentalContextBudget = boolPtr(true)

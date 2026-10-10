@@ -1292,6 +1292,54 @@ func (c *Config) SetExperimentalSafetyCostControl(enabled bool) error {
 	return nil
 }
 
+// SafetyIdleTerminateEnabled reports the effective B1 gate (task 722): an
+// explicit safety_idle_terminate sub-switch wins; an absent key inherits the
+// merged master, so pre-722 configs read exactly experimental_safety_cost_control.
+func (c *Config) SafetyIdleTerminateEnabled() bool {
+	if c.Agent.SafetyIdleTerminate != nil {
+		return *c.Agent.SafetyIdleTerminate
+	}
+	return c.Agent.ExperimentalSafetyCostControl
+}
+
+// SafetyLoopStreakNoteEnabled reports the effective B2 gate (task 722);
+// nil sub-switch inherits the merged master.
+func (c *Config) SafetyLoopStreakNoteEnabled() bool {
+	if c.Agent.SafetyLoopStreakNote != nil {
+		return *c.Agent.SafetyLoopStreakNote
+	}
+	return c.Agent.ExperimentalSafetyCostControl
+}
+
+// SafetyEventWaitRecheckEnabled reports the effective B3 gate (task 722);
+// nil sub-switch inherits the merged master.
+func (c *Config) SafetyEventWaitRecheckEnabled() bool {
+	if c.Agent.SafetyEventWaitRecheck != nil {
+		return *c.Agent.SafetyEventWaitRecheck
+	}
+	return c.Agent.ExperimentalSafetyCostControl
+}
+
+// SetSafetyIdleTerminate writes the B1 sub-switch explicitly (task 722). The
+// value is an override: once written it no longer follows the master. Clearing
+// back to "follow" is a hand-edit of config.toml (delete the line).
+func (c *Config) SetSafetyIdleTerminate(enabled bool) error {
+	c.Agent.SafetyIdleTerminate = &enabled
+	return nil
+}
+
+// SetSafetyLoopStreakNote writes the B2 sub-switch explicitly (task 722).
+func (c *Config) SetSafetyLoopStreakNote(enabled bool) error {
+	c.Agent.SafetyLoopStreakNote = &enabled
+	return nil
+}
+
+// SetSafetyEventWaitRecheck writes the B3 sub-switch explicitly (task 722).
+func (c *Config) SetSafetyEventWaitRecheck(enabled bool) error {
+	c.Agent.SafetyEventWaitRecheck = &enabled
+	return nil
+}
+
 // SetExperimentalOrphanHandling toggles the merged orphan switch (task 449):
 // both the task-244 B5 lease reclaim and the B4 recovery-store sweep follow
 // this one key. Single-writes the [agent] key (task 473); the [desktop]
