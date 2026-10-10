@@ -130,6 +130,13 @@ func TestAutopilotCollaborationModeMatrix(t *testing.T) {
 		if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "autopilot" {
 			t.Fatalf("mode %q: collaboration mode = %q, want autopilot (applied)", mode, got)
 		}
+		// 任务 711: the tab-strip wire value (ListTabs TabMeta, fed by
+		// currentTabCollaborationMode) must report autopilot too — it used to
+		// be structurally incapable of it, so the tab badge fell through to
+		// toolApprovalMode=yolo and showed red YOLO instead of orange.
+		if got := currentTabCollaborationMode(tab); got != "autopilot" {
+			t.Fatalf("mode %q: tab-strip collaboration mode = %q, want autopilot (711)", mode, got)
+		}
 		if mode == control.ToolApprovalYolo {
 			// Straight yolo entry is not an assumption — no decision record.
 			if len(*codes) > 0 {
@@ -164,6 +171,11 @@ func TestAutopilotTierPreservesTaskDimension(t *testing.T) {
 	}
 	if got := app.tabRuntimeSnapshot(tab).collaborationMode(); got != "goal" {
 		t.Fatalf("view = %q, want goal (label precedence goal>autopilot; raw flag is the first axis)", got)
+	}
+	// 任务 711: the tab-strip helper mirrors the same precedence (goal wins
+	// over the bare autopilot flag).
+	if got := currentTabCollaborationMode(tab); got != "goal" {
+		t.Fatalf("tab-strip view = %q, want goal (711 helper mirrors snapshot precedence)", got)
 	}
 	// dim-2 switches must not clear the first axis.
 	for _, dim2 := range []string{"goal", "plan", "normal"} {
