@@ -22,3 +22,14 @@ func uiDriverType(string, string) (string, error) {
 func uiDriverKey(string, uint16, []uint16) (string, error) {
 	return "", fmt.Errorf("ui_interact is only implemented on Windows (task 233 batch 2)")
 }
+
+// Virtual-key constants referenced by the cross-platform ui_interact body
+// (modifiers assembly). Non-Windows platforms never reach the driver (the
+// stubs above fail explicitly), so the values are placeholders that only
+// satisfy compilation; the Windows constants in ui_interact_windows.go are
+// the real ones.
+const (
+	uiVKShift   = 0x10
+	uiVKControl = 0x11
+	uiVKMenu    = 0x12
+)
