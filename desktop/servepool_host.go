@@ -306,11 +306,18 @@ func (a *App) GatewayToken() string {
 // release its lease on topicID so the desktop can take the session back.
 // Used by the sidebar context menu ("请求获取所有权") while a session is
 // held by a remote client. A not-spawned project holds nothing: no-op.
+// The pool id is resolved from the root (task 661), not recomputed from the
+// basename: with collision disambiguation a same-basename project's id
+// carries a short-hash suffix, and a recomputed basename would route the
+// release to the wrong (first-registered) project.
 func (a *App) RequestOwnershipFromRemote(workspaceRoot, topicID string) error {
 	if a == nil || a.servePool == nil {
 		return nil // gateway disabled: nothing is held remotely
 	}
-	slug := servepool.WorkspaceSlug(workspaceRoot)
+	slug := a.servePool.IDForRoot(workspaceRoot)
+	if slug == "" {
+		return nil // root not in the pool: no remote lease to release
+	}
 	port := a.servePool.Port(slug)
 	if port == 0 {
 		return nil // serve not spawned: no remote lease to release

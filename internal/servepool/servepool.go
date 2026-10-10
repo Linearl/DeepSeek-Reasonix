@@ -9,12 +9,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log"
 	"log/slog"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -194,8 +196,14 @@ func resolveServeBinary(self string) string {
 	return self
 }
 
-// WorkspaceSlug mirrors config.WorkspaceSlug: the flat directory name used
-// as the stable project id (avoids importing internal/config into the pool).
+// WorkspaceSlug returns the pool's base project id for a workspace root: the
+// path's basename, falling back to "workspace" for drive roots. It does NOT
+// mirror config.WorkspaceSlug (the full-path disk directory name) — the two
+// serve different domains: pool ids key the gateway URL space, config slugs
+// key on-disk state. This function historically claimed to mirror it while
+// taking only the basename, which silently collapsed same-basename projects
+// onto one pool id (task 661); non-colliding ids are still bit-identical to
+// that pre-661 behavior, and collisions are disambiguated in addProjectLocked.
 func WorkspaceSlug(root string) string {
 	root = filepath.Clean(root)
 	base := filepath.Base(root)
@@ -205,14 +213,76 @@ func WorkspaceSlug(root string) string {
 	return base
 }
 
-func (m *Manager) addProjectLocked(root string) {
+// slugHash returns the first n hex chars (n <= 16) of the FNV-1a hash of the
+// full workspace path, case-folded on Windows (same fold as
+// config.WorkspaceSlug: different case spellings of one path must hash
+// alike). Used only to disambiguate pool-id collisions.
+func slugHash(root string, n int) string {
+	p := root
+	if runtime.GOOS == "windows" {
+		p = strings.ToLower(p)
+	}
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(p))
+	return fmt.Sprintf("%016x", h.Sum64())[:n]
+}
+
+// disambiguatedSlug appends a short path hash to base until the candidate id
+// is free (task 661). The hash width widens 6 -> 8 -> ... -> 16 hex chars for
+// the vanishing case of prefix collisions, and a numeric counter terminates
+// the loop in the pathological all-taken case: taken is pool membership (a
+// finite map), so some counter value is always free. Deterministic in
+// (base, root, taken): the same pool contents always mint the same id, so
+// ids are stable across restarts with a stable registration order.
+func disambiguatedSlug(base, root string, taken func(string) bool) string {
+	for n := 6; n <= 16; n += 2 {
+		candidate := base + "-" + slugHash(root, n)
+		if !taken(candidate) {
+			return candidate
+		}
+	}
+	h6 := slugHash(root, 6)
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s-%s-%d", base, h6, i)
+		if !taken(candidate) {
+			return candidate
+		}
+	}
+}
+
+// sameRoot reports whether two cleaned workspace roots denote the same
+// directory, case-insensitively on Windows (mirrors the desktop registry's
+// sameProjectRoot dedupe, which allows both roots to be registered but never
+// the same root twice).
+func sameRoot(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+// addProjectLocked registers root and returns its pool id ("" for an empty
+// root). Collision rule (task 661): a root already in the pool keeps its
+// existing id — RefreshProjects must never rename a project under live
+// clients — while a NEW root whose basename slug is taken by a DIFFERENT
+// root gets base + "-" + short-hash instead of the old silent drop, so
+// D:\work\pp and E:\play\pp coexist as two separately routable projects.
+func (m *Manager) addProjectLocked(root string) string {
 	root = filepath.Clean(root)
 	if root == "" {
-		return
+		return ""
+	}
+	for id, p := range m.projects {
+		if sameRoot(p.root, root) {
+			return id
+		}
 	}
 	id := WorkspaceSlug(root)
-	if _, ok := m.projects[id]; ok {
-		return
+	if _, taken := m.projects[id]; taken {
+		id = disambiguatedSlug(id, root, func(candidate string) bool {
+			_, busy := m.projects[candidate]
+			return busy
+		})
 	}
 	color := ""
 	if m.cfg.ProjectColors != nil {
@@ -223,6 +293,7 @@ func (m *Manager) addProjectLocked(root string) {
 		group = m.cfg.ProjectGroups[root]
 	}
 	m.projects[id] = &project{state: "stopped", root: root, id: id, color: color, group: group}
+	return id
 }
 
 // RefreshProjects replaces the project list, preserving running instances
@@ -236,8 +307,9 @@ func (m *Manager) RefreshProjects(roots []string) {
 		if r == "" {
 			continue
 		}
-		seen[WorkspaceSlug(r)] = true
-		m.addProjectLocked(r)
+		if id := m.addProjectLocked(r); id != "" {
+			seen[id] = true
+		}
 	}
 	for id, p := range m.projects {
 		if !seen[id] && p.state == "stopped" {
@@ -344,6 +416,24 @@ func (m *Manager) Root(id string) string {
 	defer m.mu.Unlock()
 	if p, ok := m.projects[id]; ok {
 		return p.root
+	}
+	return ""
+}
+
+// IDForRoot returns the pool id registered for the given workspace root
+// ("" when the root is not in the pool). Callers that start from a root —
+// desktop's RequestOwnershipFromRemote — must route through this instead of
+// re-deriving WorkspaceSlug: with collision disambiguation (task 661) the id
+// is not always the plain basename, and a recomputed basename would hit the
+// first-come project.
+func (m *Manager) IDForRoot(root string) string {
+	root = filepath.Clean(root)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, p := range m.projects {
+		if sameRoot(p.root, root) {
+			return id
+		}
 	}
 	return ""
 }
