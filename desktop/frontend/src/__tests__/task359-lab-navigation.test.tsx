@@ -36,15 +36,19 @@ ok(panel.includes("{introOpen ? <ForkFeaturesIntroDialog t={t} onClose={() => se
 {
   const calls = panel.match(/<ForkFeaturesIntro/g) ?? [];
   ok(calls.length === 1, `exactly ONE ForkFeaturesIntro mount point (got ${calls.length}) — no double entry`);
+  // 任务 764（用户 0325 裁决）：顶部带计数筛选 chips 已删除（与 toc 双入口
+  // 去重，保下面那组）；intro 入口仍在 rail 目录之上（顶部横幅位置）。
   const idx = panel.indexOf("<ForkFeaturesIntro");
-  const chipsIdx = panel.indexOf('experimental-lab__chips');
+  const tocIdx = panel.indexOf('experimental-rail__toc');
   const navIdx = panel.indexOf("</nav>");
-  ok(idx > 0 && idx < chipsIdx && chipsIdx < navIdx, "mount sits above the chips (top banner position)");
+  ok(idx > 0 && idx < tocIdx && tocIdx < navIdx, "mount sits above the rail toc (top banner position)");
+  ok(!panel.includes("experimental-lab__chip"), "top filter chips removed (764: one chip row left on the page — the toc)");
 }
 ok(!/<input\b|<select\b|type="checkbox"|type="radio"/.test(intro), "ForkFeaturesIntro itself still has no form controls (task 282 contract)");
 
 // Q2①: groups collapsed by default + header toggle with count.
-ok(/useState<ReadonlySet<LabGroupKey>>\(\(\) => new Set\(\)\)/.test(panel), "expandedGroups starts EMPTY = every group collapsed by default");
+// 任务 764：初始化器多了搜索直达分支——无 focusEntry 时仍空集（契约不变）。
+ok(/useState<ReadonlySet<LabGroupKey>>\(\(\) => \{\s*if \(!focusEntry\) return new Set<LabGroupKey>\(\);/.test(panel), "expandedGroups starts EMPTY without a focus entry = every group collapsed by default");
 ok(panel.includes("aria-expanded={expanded}"), "group header is a real toggle (aria-expanded)");
 ok(panel.includes("const expanded = expandedGroups.has(g.key);") && panel.includes("{expanded ? items.map((feature)"), "items render only while the group is expanded");
 ok(panel.includes('t("settings.labGroup.onCount"') && panel.includes("const onCount ="), "group header shows the enabled count via the onCount key");
