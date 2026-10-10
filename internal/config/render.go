@@ -65,6 +65,9 @@ var labFeatureTiers = []labFeatureTier{
 	{"highSpeedModel", LabTierOptional, []string{"experimental_high_speed_model"}},
 	{"compactionParallel", LabTierOptional, []string{"experimental_compaction_parallel"}},
 	{"traceAsState", LabTierOptional, []string{"trace_as_state"}}, // 任务 473 单键化：[desktop] 旧拼写已退役
+	// 任务 707：压缩模型指定（经济模型压缩）。上下文治理卡内 compressOpt 下方；
+	// 档位按任务书建议可选——不开启不影响体验，只影响成本。
+	{"compactModel", LabTierOptional, []string{"experimental_compact_model", "compact_model"}},
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
 	{"collabGroupView", LabTierUnstable, []string{"experimental_collab_group_view"}}, // 任务 677：群聊入口开关（409 交付漏挂铁律 2 开关，用户定档未稳定）
@@ -133,6 +136,9 @@ var labSpecialKeys = map[string]bool{
 	"collab_inbox_merge":    true,
 	"collab_guidance_merge": true,
 	"trace_as_state":        true,
+	// 任务 707：compact_model 是压缩模型指定的偏好键（无 experimental_ 前缀的
+	// 实验室特性键，随 compactModel 档位族登记）。
+	"compact_model": true,
 	// 任务 651：tab 权限指示三档键（无 experimental_ 前缀的实验室特性键，
 	// 随 tabModeTint 档位族登记）。
 	"tab_permission_indicator": true,
@@ -714,6 +720,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "pending_card_ttl_minutes = %d   # task 408: minutes before a pending card expires to timeout (0 = built-in 30; used only when the switch above is on)\n", c.Agent.PendingCardTTLMinutes)
 	fmt.Fprintf(&b, "experimental_fallback_model = %v   # task 242: switch to fallback_model after quota-class exhaustion (off by default)\n", c.Agent.ExperimentalFallbackModel)
 	fmt.Fprintf(&b, "fallback_model = %q   # task 242: provider/model pair used when the primary is quota-exhausted (empty = keep primary)\n", c.Agent.FallbackModel)
+	// 任务 707: fixed-key-set rule — the switch and its target render
+	// unconditionally; an unlisted key would be dropped on every settings save
+	// and the switch would flip straight back to off (81/123 lost-save lesson).
+	fmt.Fprintf(&b, "experimental_compact_model = %v   # task 707: serve compaction summaries with compact_model instead of the conversation model (off by default)\n", c.Agent.ExperimentalCompactModel)
+	fmt.Fprintf(&b, "compact_model = %q   # task 707: provider/model pair serving summary requests while the switch above is on (empty = keep the conversation model)\n", c.Agent.CompactModel)
 	fmt.Fprintf(&b, "experimental_high_speed_model = %v   # task 318.1: allow the high-speed model lane for highSpeedModels (off by default)\n", c.Agent.ExperimentalHighSpeedModel)
 	fmt.Fprintf(&b, "experimental_proactive_compact = %v   # task 318.2: use proactive_compact_cooldown_minutes instead of the hard-coded 10min fold cooldown (off by default)\n", c.Agent.ExperimentalProactiveCompact)
 	fmt.Fprintf(&b, "proactive_compact_cooldown_minutes = %d   # task 318.2: model-driven fold cooldown in minutes (default 10; used only when the switch above is on)\n", c.Agent.ProactiveCompactCooldownMinutes)

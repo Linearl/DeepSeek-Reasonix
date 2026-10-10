@@ -172,6 +172,9 @@ export interface SettingsView {
   // Task 242: quota fallback switch + provider/model target.
   experimentalFallbackModel?: boolean;
   fallbackModel?: string;
+  // 任务 707: economic compaction switch + provider/model target.
+  experimentalCompactModel?: boolean;
+  compactModel?: string;
   // Task 318: lab internal optimizations (three switches default off).
   experimentalHighSpeedModel?: boolean;
   /** Task 561 M2: retired key (task 551/564) — read-only display inside the modelStrategy card, never written. */

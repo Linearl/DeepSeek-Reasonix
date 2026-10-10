@@ -399,6 +399,11 @@ type Agent struct {
 	// sessionModel holds the per-request model destination override (task 148,
 	// model_override.go): *sessionModelOverride when armed, nil otherwise.
 	sessionModel atomic.Value
+	// compactModelDestination caches the resolved task-707 compaction
+	// destination (compact_model.go): *summaryDestination after the first
+	// successful resolve of Options.CompactModel, nil until then (failed
+	// resolves are not cached — each summary retries the seam).
+	compactModelDestination atomic.Value
 
 	requireVisibleFinal bool // internal callers require final Content
 	continuationPolicy  ContinuationPolicy
@@ -1079,6 +1084,17 @@ type Options struct {
 	// the only model switch. Boot wires the same resolver (and proxy, inside
 	// it) that built the agent's own provider.
 	ModelResolver provider.Resolver
+	// CompactModel arms the economic-compaction destination (task 707): the
+	// boot-resolved "provider/model" ref (config.CompactModelLive — already
+	// switch-gated) that serves summary requests instead of the conversation
+	// model. Empty (the default) keeps every summary on the conversation
+	// destination, byte-for-byte the pre-707 behavior. A ref that fails to
+	// resolve falls back per request — compaction never blocks on it.
+	CompactModel string
+	// CompactModelPricing prices the compact model's usage events (task 707);
+	// nil keeps those events unpriced. The boot assembly derives it from the
+	// same provider entry that resolves the ref.
+	CompactModelPricing *provider.Pricing
 	// HighSpeedModels lists the models of this agent's provider that the user
 	// explicitly marked as high-throughput (Model panel checkbox). When ModelRef
 	// matches one, each user turn is prefixed with the exec-speed-mode transient
@@ -1441,6 +1457,8 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			maxSubagentDepth:           maxSubagentDepth,
 			autopilot:                  opts.Autopilot,
 			traceAsState:               opts.TraceAsState,
+			compactModel:               strings.TrimSpace(opts.CompactModel),
+			compactModelPricing:        opts.CompactModelPricing,
 			restartUpdater:             opts.RestartUpdater,
 			autonomousUpdateController: opts.AutonomousUpdateController,
 			contextWindow:              opts.ContextWindow,

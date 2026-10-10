@@ -1623,6 +1623,43 @@ func FallbackModelLive() string {
 	return strings.TrimSpace(cfg.Agent.FallbackModel)
 }
 
+// SetExperimentalCompactModel toggles task 707's economic-compaction switch
+// (iron rule 2: default off — off keeps every summary on the conversation
+// model, byte-for-byte today's behavior).
+func (c *Config) SetExperimentalCompactModel(enabled bool) error {
+	c.Agent.ExperimentalCompactModel = enabled
+	return nil
+}
+
+// SetCompactModel stores the task-707 compression target ("provider/model").
+// A bare model id is rejected: without the provider half the identity is
+// ambiguous across connections (the task-242 SetFallbackModel convention).
+// Empty clears the target (switch may stay on, which then keeps the
+// conversation model).
+func (c *Config) SetCompactModel(model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		c.Agent.CompactModel = ""
+		return nil
+	}
+	provider, id, ok := strings.Cut(model, "/")
+	if !ok || strings.TrimSpace(provider) == "" || strings.TrimSpace(id) == "" || strings.Contains(id, "/") {
+		return fmt.Errorf("compact model must be \"provider/model\", got %q", model)
+	}
+	c.Agent.CompactModel = strings.TrimSpace(provider) + "/" + strings.TrimSpace(id)
+	return nil
+}
+
+// CompactModelLive resolves task 707's current switch+target in one shot:
+// "" when the switch is off or no target is configured — callers treat "" as
+// "serve summaries with the conversation model".
+func (c *Config) CompactModelLive() string {
+	if c == nil || !c.Agent.ExperimentalCompactModel {
+		return ""
+	}
+	return strings.TrimSpace(c.Agent.CompactModel)
+}
+
 // NormalizeCollabInboxMerge clamps a merge mode into the legal tri-state
 // (task 221). Anything unknown reads as "off", so a hand-edited config can
 // never arm a mode the dispatcher does not implement.

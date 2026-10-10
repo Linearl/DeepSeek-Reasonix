@@ -1216,6 +1216,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 242: quota fallback switch + provider/model target.
   SetExperimentalFallbackModel(enabled: boolean): Promise<void>;
   SetFallbackModel(model: string): Promise<void>;
+  // 任务 707: economic compaction switch + provider/model target.
+  SetExperimentalCompactModel(enabled: boolean): Promise<void>;
+  SetCompactModel(model: string): Promise<void>;
   // Task 318: lab internal optimizations (three switches + cooldown minutes).
   SetExperimentalHighSpeedModel(enabled: boolean): Promise<void>;
   // Task 468: provider-level high-speed mark (ProviderView.highSpeedModels).
@@ -5790,6 +5793,8 @@ function makeMockApp(): AppBindings {
     async SetExperimentalCascadeApproval() {},
     async SetExperimentalFallbackModel() {},
     async SetFallbackModel() {},
+    async SetExperimentalCompactModel() {},
+    async SetCompactModel() {},
     async SetExperimentalHighSpeedModel() {},
     async SetProviderModelHighSpeed() {},
     async SetExperimentalProactiveCompact() {},

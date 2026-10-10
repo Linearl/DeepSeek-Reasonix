@@ -2084,6 +2084,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// model switch constructs byte-identical adapter state to a full
 		// rebuild. Nil resolver (never here) keeps the override declining.
 		ModelResolver: resolveModelResolver(effectiveResolver, cfg, proxySpec),
+		// Task 707: the economic-compaction destination. CompactModelLive is
+		// switch-gated ("" keeps every summary on the conversation model) and
+		// the pricing rides the same provider entry that resolves the ref, so
+		// the compaction usage events bill the model that actually served them.
+		// Boot snapshot + model-settings fingerprint: a change re-applies at
+		// the next run like the other model preferences.
+		CompactModel:       compactModelDestinationFromConfig(cfg),
+		CompactModelPricing: compactModelPricingFromConfig(cfg),
 		// Task 318.1: the high-speed lane only arms when the experiment is on
 		// (iron rule 2, default off — the configured list is ignored otherwise).
 		// Boot-time read: flipping the setting applies from the next start,
@@ -3808,6 +3816,29 @@ func highSpeedModelsFromConfig(cfg *config.Config, models []string) []string {
 		return nil
 	}
 	return models
+}
+
+// compactModelDestinationFromConfig resolves the task-707 compaction target:
+// the switch-gated "provider/model" ref, empty when the lab switch is off or
+// no target is configured (the agent then keeps the conversation model).
+func compactModelDestinationFromConfig(cfg *config.Config) string {
+	return cfg.CompactModelLive()
+}
+
+// compactModelPricingFromConfig prices the task-707 compaction target's usage
+// events from the same provider entry that resolves the ref. A nil result
+// (switch off, ref unknown to the provider table) keeps the events unpriced —
+// the agent-side fallback logs and serves summaries with the conversation
+// model either way.
+func compactModelPricingFromConfig(cfg *config.Config) *provider.Pricing {
+	ref := cfg.CompactModelLive()
+	if ref == "" {
+		return nil
+	}
+	if entry, ok := cfg.ResolveModel(ref); ok {
+		return entry.Price
+	}
+	return nil
 }
 
 // HighSpeedModelsFor is the exported face of highSpeedModelsFromConfig for the

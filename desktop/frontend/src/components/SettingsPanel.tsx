@@ -2071,7 +2071,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     // (compactionParallel + budgetControl + compressOpt + cacheTuning) fold
     // into ONE card — the light reads any of the six underlying switches;
     // every switch keeps its own setter in the card (81/123 lost-save rule).
-    { id: "contextGovernance", group: "efficiency", label: t("settings.contextGovernance"), on: Boolean(s.experimentalCompactionParallel) || Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget) || Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) || Boolean(s.experimentalCacheTuning) },
+    { id: "contextGovernance", group: "efficiency", label: t("settings.contextGovernance"), on: Boolean(s.experimentalCompactionParallel) || Boolean(s.experimentalContextBudget) || Boolean(s.experimentalResearchBudget) || Boolean(s.experimentalProactiveCompact) || Boolean(s.experimentalColdCacheCompact) || Boolean(s.experimentalCompactModel) || Boolean(s.experimentalCacheTuning) },
     // Task 561 M2 模型策略族: highSpeedModel keeps its writable switch;
     // modelCapabilityFilter (retired, task 551/564 domain) renders read-only
     // inside the card — no setter call, the stored value only displays.
@@ -4004,6 +4004,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   />
                   <span> h</span>
                 </SettingsField>
+                {/* 任务 707：压缩模型指定（经济模型压缩）——compressOpt 组末尾、
+                    主动压缩冷却下方。默认关（铁律 2）：关时压缩仍走对话模型。
+                    选定模型在「模型偏好」区出现（下方 fallbackModel 行先例），
+                    改动经 model-settings 指纹在下一轮运行前重应用。 */}
+                <SettingsField label={labLabel("compactModel", t("settings.compactModel"))} hint={t("settings.compactModelHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalCompactModel) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalCompactModel(on))}
+                      >
+                        {t(on ? "settings.compactModel.on" : "settings.compactModel.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                {!Boolean(s.experimentalCompactModel) && (
+                  <p className="settings-field__hint-line">{t("settings.compactModel.inactiveHint")}</p>
+                )}
               </>
               <>
                 <SettingsField label={labLabel("cacheTuning", t("settings.cacheTuning"))} hint={t("settings.cacheTuningHint")} icon={<FolderLock size={18} />}>
@@ -7272,6 +7293,24 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
                   ariaLabel={t("settings.fallbackModel")}
                   autoOptionLabel={t("settings.fallbackModel.none")}
                   onPick={(ref) => void apply(async () => { await app.SetFallbackModel(ref); })}
+                />
+              </SettingsField>
+            )}
+
+            {/* 任务 707: the compression target — shown only while the lab
+                switch is on (same companion shape as the fallback row above).
+                An empty pick clears the target; the switch then keeps the
+                conversation model for compaction. */}
+            {Boolean(s.experimentalCompactModel) && (
+              <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.compactModelPreference")} text={t("settings.compactModelPreferenceHelp")} />}>
+                <ModelPicker
+                  s={s}
+                  refs={refs}
+                  value={s.compactModel || ""}
+                  disabled={busy}
+                  ariaLabel={t("settings.compactModelPreference")}
+                  autoOptionLabel={t("settings.compactModelPreference.none")}
+                  onPick={(ref) => void apply(async () => { await app.SetCompactModel(ref); })}
                 />
               </SettingsField>
             )}

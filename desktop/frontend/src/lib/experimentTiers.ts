@@ -17,8 +17,8 @@ export type LabTier = "recommended" | "optional" | "unstable" | "retired";
 /** Badge display order: strongest first. */
 export const LAB_TIER_ORDER: readonly LabTier[] = ["recommended", "optional", "unstable", "retired"];
 
-/** Every 表A feature id (48 items as of 任务 705 — the register mirrors the Go
- * labFeatureTiers registry; see the LAB_TIER_COUNTS note for the two items
+/** Every 表A feature id (49 items as of 任务 707 — the register mirrors the Go
+ * labFeatureTiers registry; see the LAB_TIER_COUNTS note for the items
  * 562's original 46 missed). The union is the type-level gate: a badge
  * can only ever reference a feature that carries a tier. */
 export type TierFeatureId =
@@ -74,7 +74,9 @@ export type TierFeatureId =
   // 任务 677: 群聊入口开关（409 视图交付漏挂铁律 2 开关，未稳定档默认关）。
   | "collabGroupView"
   // 任务 705: 超长跨会话消息自动折叠（默认关=全量展示，可选档）。
-  | "sessionCollabAutoFold";
+  | "sessionCollabAutoFold"
+  // 任务 707: 压缩模型指定（经济模型压缩，默认关，可选档）。
+  | "compactModel";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -101,6 +103,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关按 550
   // 口径定档可选——不开启只影响长消息的阅读密度，不动任何协作行为。
   sessionCollabAutoFold: "optional",
+  // 任务 707：压缩模型指定（上下文治理卡 compressOpt 下方，默认关）。按任务
+  // 书建议定档可选——不开启不影响体验，只影响压缩成本。
+  compactModel: "optional",
   // ── ui（界面，15 项）────────────────────────────────────────
   tabCompress: "recommended",
   todoSidebar: "recommended",
@@ -143,16 +148,17 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
- * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 19 / 未稳定 13 / 已退役 1.
+ * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 20 / 未稳定 13 / 已退役 1.
  * (任务 621 修正：原钉 46 项未收 toolOptimizations（603）与 tabModeTint（504，
  * Go 侧一直有档），漏收使实验室页出现无徽章特性。任务 517：B1/B2/B3（可选×3）
  * 合并为 safetyCostControl（可选×1），可选 20→18、总数 48→46。任务 677：
  * collabGroupView（群聊入口开关，409 交付漏挂铁律 2 开关，未稳定）入表，
  * 未稳定 12→13、总数 46→47。任务 705：sessionCollabAutoFold（超长跨会话
- * 消息自动折叠，默认关）入表，可选 18→19、总数 47→48。) */
+ * 消息自动折叠，默认关）入表，可选 18→19、总数 47→48。任务 707：compactModel
+ * （压缩模型指定，默认关，可选档）入表，可选 19→20、总数 48→49。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
-  optional: 19,
+  optional: 20,
   unstable: 13,
   retired: 1,
 };
@@ -163,7 +169,9 @@ export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
  * 卡与 standalone eventWaitRecheck 并入单键卡 safetyCostControl（键级合并，
  * 无成员表——该卡自己就是一个表A id，徽章自挂）。 */
 export const LAB_RAIL_ENTRY_MEMBERS: Readonly<Record<string, readonly TierFeatureId[]>> = {
-  contextGovernance: ["compactionParallel", "budgetControl", "compressOpt", "cacheTuning"],
+  // 任务 707：compactModel（压缩模型指定）开关落在上下文治理卡内 compressOpt
+  // 下方，随卡登记成员——合并卡的徽章覆盖全部表A成员。
+  contextGovernance: ["compactionParallel", "budgetControl", "compressOpt", "compactModel", "cacheTuning"],
   modelStrategy: ["highSpeedModel", "modelCapabilityFilter"],
   subagentSuite: ["subagentPanel", "subagentDetail", "subagentPolicy", "subagentTps"],
   updateFeedback: ["restartUpdate", "feedback"],
