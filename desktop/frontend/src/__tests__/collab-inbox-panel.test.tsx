@@ -214,21 +214,52 @@ assert.equal(filterWraps.length, 2, "both filter dropdowns carry a visible label
 assert.equal(filterWraps[0].querySelector("span")?.textContent, "Sender", "the sender dropdown's label word renders");
 assert.equal(filterWraps[1].querySelector("span")?.textContent, "Recipient", "the recipient dropdown's label word renders");
 
-// 任务649 ①：排序/视图分段控件上移到头行 actions（与保留期/会话删除时同行），
-// 不再留在 filters 行。
+// 任务649 ①+任务716 ③：排序/视图分段控件落位视图工具条（716 定稿第三位；
+// 649 时曾在头行 actions），不再留在 filters 行。
 assert.ok(
-  panel!.querySelector(".collab-inbox-panel__actions .collab-inbox-panel__ordertoggle"),
-  "the date-sort segmented control lives in the head actions row",
+  panel!.querySelector(".collab-inbox-panel__toolbar .collab-inbox-panel__ordertoggle"),
+  "the date-sort segmented control lives in the view toolbar row",
 );
 assert.ok(
-  panel!.querySelector(".collab-inbox-panel__actions .collab-inbox-panel__viewtoggle"),
-  "the view segmented control lives in the head actions row",
+  panel!.querySelector(".collab-inbox-panel__toolbar .collab-inbox-panel__viewtoggle"),
+  "the view segmented control lives in the view toolbar row",
 );
 assert.ok(
   !panel!.querySelector(".collab-inbox-panel__filters .collab-inbox-panel__ordertoggle")
     && !panel!.querySelector(".collab-inbox-panel__filters .collab-inbox-panel__viewtoggle"),
   "the filters row no longer hosts the sort/view controls",
 );
+
+// 任务716（用户拖拽定稿）：面板四区块自上而下 = 头部 → 维护行 → 视图工具条
+// → 桶过滤；头部只剩标题+关闭（无副标题），维护行收纳保留期/清理条件/立即清理。
+{
+  const suffixes = ["head", "maint", "toolbar", "buckets"];
+  const indexes = suffixes.map((suffix) => {
+    const el = panel!.querySelector(`.collab-inbox-panel__${suffix}`);
+    return el ? Array.from(panel!.children).indexOf(el) : -1;
+  });
+  assert.ok(
+    indexes.every((idx) => idx >= 0),
+    "all four fixed blocks render",
+  );
+  assert.deepEqual(
+    [...indexes].sort((a, b) => a - b),
+    indexes,
+    "the four blocks stack in the dragged-final order head → maint → toolbar → buckets",
+  );
+  assert.equal(
+    panel!.querySelectorAll(".collab-inbox-panel__head span").length,
+    1,
+    "the head renders only the title span — no subtitle (716 ③)",
+  );
+  const maintSelects = panel!.querySelectorAll(".collab-inbox-panel__maint select");
+  assert.equal(maintSelects.length, 2, "the maintenance row hosts both the retention and cleanup selects");
+  assert.ok(
+    Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__maint button"))
+      .some((btn) => btn.textContent === "Clean now"),
+    "the clean-now button lives in the maintenance row",
+  );
+}
 
 // 任务461-P4: from/to 过滤是下拉 —— 选项=会话名（值=contact_id），hover 标题
 // 是「项目 › 分组 › 会话名 › contact_id」，顶部「全部」= 不过滤；选中即透传后端。
@@ -448,8 +479,9 @@ assert.match(p8Panel!.textContent ?? "", /×9/, "the folded cluster renders a ×
 
 // 一键批量已读：把当前视图未读条目的 id 集合发到后端；折叠条目只带 primary
 // id，整簇展开由 Go 侧 MarkRead 完成（此处钉「未读集合到达后端」这一接缝）。
+// 任务716 ③：按钮落位视图工具条。
 await act(async () => {
-  Array.from(p8Panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__actions button"))
+  Array.from(p8Panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__toolbar button"))
     .find((b) => b.textContent === "Mark all read")!
     .click();
 });
