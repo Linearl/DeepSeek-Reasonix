@@ -39,6 +39,11 @@ import {
   writeTranscriptFoldOverride,
 } from "../lib/transcriptFoldOverrides";
 import {
+  clearReasoningFoldOverrides,
+  readReasoningFoldOverride,
+  writeReasoningFoldOverride,
+} from "../lib/reasoningFoldOverrides";
+import {
   clearWorkProcessFoldState,
   publishWorkProcessFoldState,
 } from "../lib/workProcessFoldState";
@@ -227,12 +232,26 @@ export function Transcript(props: TranscriptProps) {
   useEffect(() => {
     const preferenceChanged = experienceRef.current !== experience;
     experienceRef.current = experience;
+    // 任务 765: a tier switch re-baselines the reasoning panels too — the old
+    // tier's manual open/closed choices must not leak into the new semantics
+    // (same contract as the fold-map reconcile clearing userOverridden below).
+    if (preferenceChanged) clearReasoningFoldOverrides(resolvedSessionKey);
     setFolds((previous) => {
       const next = reconcileFoldEntries(previous, segmentStates, experience, preferenceChanged);
       if (next) replaceTranscriptFoldOverrides(resolvedSessionKey, next);
       return next ?? previous;
     });
   }, [experience, resolvedSessionKey, segmentStates]);
+
+  // 任务 765: the user's per-panel reasoning fold intent. Deliberately NOT
+  // React state: the toggling panel flips its own local open state for the
+  // immediate paint, the table only serves FUTURE mounts (virtualization
+  // remount, tab switch and back, live→history handoff), so a plain
+  // module-level table read inside a stable callback is enough.
+  const reasoningFoldIntent = useCallback((itemId: string) => readReasoningFoldOverride(resolvedSessionKey, itemId), [resolvedSessionKey]);
+  const onReasoningFoldIntent = useCallback((itemId: string, open: boolean) => {
+    writeReasoningFoldOverride(resolvedSessionKey, itemId, open);
+  }, [resolvedSessionKey]);
 
   // 任务 463：「收起/展开全部工作过程」按钮是双向开关，方向必须跟随真实折叠
   // 状态——这里把「当前是否全折叠」按 tabId 上报给共享 store，composer 据此
@@ -465,6 +484,7 @@ export function Transcript(props: TranscriptProps) {
     tabId, checkpoints, subcallsByParent, creationMode, running, actionPending,
     rewindDisabled, actionHoverMenus, turnStartAt, lastTurn,
     onFoldToggle: handleFoldToggle, onReasoningManualOpen: handleReasoningManualOpen,
+    reasoningFoldIntent, onReasoningFoldIntent,
     onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification, onConsolidateRecovery,
     onViewVersions, onEditPrompt, onResendPrompt, onRewind,
   });

@@ -16,10 +16,18 @@ export function InlineAssistantReasoning({
   item,
   autoFollowActive,
   onManualOpen,
+  explicitFold,
+  onExplicitFoldChange,
 }: {
   item: AssistantItem;
   autoFollowActive?: boolean;
   onManualOpen?: () => void;
+  /** 任务 765: the user's persisted fold intent for this panel, if any.
+   * When present it outranks the tier-derived initial state so a remount
+   * (virtualization, surface rebuild, live→history handoff) reopens exactly
+   * where the user left it instead of re-deriving from the presentation. */
+  explicitFold?: boolean;
+  onExplicitFoldChange?: (open: boolean) => void;
 }) {
   const t = useT();
   const beginUserResize = useTranscriptUserResizeIntent();
@@ -28,8 +36,10 @@ export function InlineAssistantReasoning({
   const shown = live?.id === item.id ? { reasoning: live.reasoning, streaming: true, reasoningComplete: live.reasoningComplete } : item;
   const running = shown.streaming && !shown.reasoningComplete;
   const followActive = autoFollowActive ?? shown.streaming;
-  const [open, setOpen] = useState(presentation.keepExpandedAfterCompletion || (presentation.showWhileRunning && followActive));
-  const userOverridden = useRef(false);
+  const [open, setOpen] = useState(explicitFold ?? (presentation.keepExpandedAfterCompletion || (presentation.showWhileRunning && followActive)));
+  // The ref dies with the instance; seeding it from the persisted intent keeps
+  // the auto-expand branches from overriding the user's choice after a remount.
+  const userOverridden = useRef(explicitFold !== undefined);
   const previousRunning = useRef(running);
   const previousFollowActive = useRef(followActive);
   const previousExperience = useRef(presentation.experience);
@@ -53,9 +63,10 @@ export function InlineAssistantReasoning({
   const toggle = useCallback(() => {
     beginUserResize();
     userOverridden.current = true;
+    onExplicitFoldChange?.(!open);
     if (!open) onManualOpen?.();
     setOpen(!open);
-  }, [beginUserResize, onManualOpen, open]);
+  }, [beginUserResize, onExplicitFoldChange, onManualOpen, open]);
   const reasoning = shown.reasoning.trim();
   const [reasoningScrollRef, onReasoningScroll] = useReasoningScrollFollow(shown.reasoning, open && running);
   if (!reasoning) return null;

@@ -30,6 +30,8 @@ export function useTranscriptRowRenderer({
   lastTurn,
   onFoldToggle,
   onReasoningManualOpen,
+  reasoningFoldIntent,
+  onReasoningFoldIntent,
   onPrompt,
   onDeliveryContinue,
   onAcceptDelivery,
@@ -53,6 +55,10 @@ export function useTranscriptRowRenderer({
   lastTurn: number | undefined;
   onFoldToggle: (segmentKey: string, open: boolean) => void;
   onReasoningManualOpen: (segmentKey: string) => void;
+  /** 任务 765: persisted user fold intent for one reasoning panel (undefined =
+   * the user never touched it; tier semantics decide). */
+  reasoningFoldIntent: (itemId: string) => boolean | undefined;
+  onReasoningFoldIntent: (itemId: string, open: boolean) => void;
   onPrompt: (text: string) => void;
   onDeliveryContinue?: () => void;
   onAcceptDelivery?: () => void;
@@ -99,6 +105,8 @@ export function useTranscriptRowRenderer({
       />;
       case "reasoning": return <div className="turn-collapse__body"><InlineAssistantReasoning
         item={row.item} autoFollowActive={row.autoFollowActive}
+        explicitFold={reasoningFoldIntent(row.item.id)}
+        onExplicitFoldChange={(open) => onReasoningFoldIntent(row.item.id, open)}
         onManualOpen={() => onReasoningManualOpen(row.segmentKey)}
       /></div>;
       case "tool": return <div className="turn-collapse__body"><ToolCard item={row.item} subcalls={subcallsByParent.get(row.item.id)} tabId={tabId} /></div>;
@@ -107,7 +115,11 @@ export function useTranscriptRowRenderer({
       case "phase": return <div className="turn-collapse__body"><PhaseCard id={row.item.id} text={row.item.text} /></div>;
       case "process-notice": return <div className="turn-collapse__body"><NoticeCard item={row.item} /></div>;
       case "compaction": return <div className="turn-collapse__body"><CompactionCard item={row.item} /></div>;
-      case "answer": return <LiveAssistantMessage item={assistantAnswerOnly(row.item)} creationMode={creationMode} />;
+      case "answer": return <LiveAssistantMessage
+        item={assistantAnswerOnly(row.item)} creationMode={creationMode}
+        explicitFold={reasoningFoldIntent(row.item.id)}
+        onExplicitFoldChange={(open) => onReasoningFoldIntent(row.item.id, open)}
+      />;
       case "notice": {
         // 任务723: a steer bubble whose inboxItemId materialized as a turn's
         // user row renders as the collapsed deferred placeholder.
@@ -145,8 +157,8 @@ export function useTranscriptRowRenderer({
     }
   }, [
     actionHoverMenus, actionPending, checkpointsByTurn, creationMode, lastTurn,
-    onAcceptDelivery, onDeliveryContinue, onEditPrompt, onFoldToggle, onOpenChanges, onResendPrompt,
+    onAcceptDelivery, onDeliveryContinue, onEditPrompt, onFoldToggle, onOpenChanges, onReasoningFoldIntent, onResendPrompt,
     onOpenVerification, onPrompt, onReasoningManualOpen, onRewind, onViewVersions, openAction,
-    rewindDisabled, running, subcallsByParent, t, tabId, turnStartAt,
+    reasoningFoldIntent, rewindDisabled, running, subcallsByParent, t, tabId, turnStartAt,
   ]);
 }

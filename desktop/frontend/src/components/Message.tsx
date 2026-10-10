@@ -996,10 +996,15 @@ export const AssistantMessage = memo(function AssistantMessage({
   item,
   defaultExpanded = false,
   creationMode = false,
+  explicitFold,
+  onExplicitFoldChange,
 }: {
   item: AssistantItem;
   defaultExpanded?: boolean;
   creationMode?: boolean;
+  /** 任务 765: persisted user fold intent for the reasoning panel. */
+  explicitFold?: boolean;
+  onExplicitFoldChange?: (open: boolean) => void;
 }) {
   const presentation = useWorkProcessPresentation();
   const hasText = item.streaming || item.text.trim() !== "";
@@ -1015,7 +1020,10 @@ export const AssistantMessage = memo(function AssistantMessage({
     <div className={`msg msg--assistant${processOnly ? " msg--process-only" : ""}${processWithText ? " msg--process-with-text" : ""}`} data-history-restore={item.id.startsWith("h") ? "" : undefined} data-entrance={item.id}>
       {item.reasoning && (
         <Suspense fallback={reasoningFallback}>
-          <AssistantReasoningPanel item={item} defaultExpanded={defaultExpanded} />
+          <AssistantReasoningPanel
+            item={item} defaultExpanded={defaultExpanded}
+            explicitFold={explicitFold} onExplicitFoldChange={onExplicitFoldChange}
+          />
         </Suspense>
       )}
       {(hasText || hasFootnotes) && (
