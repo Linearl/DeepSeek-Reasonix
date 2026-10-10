@@ -162,6 +162,10 @@ type perfMonitor struct {
 	// 冷却（否则震荡波形每采样间隔抓一份，防风暴形同虚设）。
 	heapHighPeakTier int64
 	lastHeapHighAt   time.Time
+
+	// 任务 373 R4: events 增长速率追踪（warnEventsGrowth）。仅在采样循环
+	// goroutine 上读写，与 warnGate / heapHigh 同一纪律，不加锁。
+	growth eventsGrowthTracker
 }
 
 // perfWarnGate 决定同一 metric 的超限 WARN 何时再发：首次必发；之后仅当
@@ -385,6 +389,40 @@ func (m *perfMonitor) warnThresholdsAt(sample perfSample, now time.Time) {
 	if float64(sample.V4OperationBytes)/(1<<20) > perfMonitorWarnV4OpsMB {
 		warn("v4OperationMb", float64(sample.V4OperationBytes)/(1<<20), perfMonitorWarnV4OpsMB)
 	}
+	m.warnEventsGrowth(sample, now)
+}
+
+// warnEventsGrowth 是任务 373 的速率预警分支：events 总量在窗口内以超阈斜率
+// 单调增长时告警（水位线 eventsMb 之外的一条早期线——09-29 复发面正是水位
+// 停在同级而膨胀已在进行）。复用 perfWarnGate 限频（metric
+// eventsGrowthMbPerH 独立记账），告警带元凶文件与处置通道（eventsMbContext），
+// 「在涨的是谁、下一步做什么」一条日志可读。判定三重门见常量块注释。仅在
+// 采样循环 goroutine 上调用（tracker 状态不加锁，与 warnGate 同一纪律）。
+func (m *perfMonitor) warnEventsGrowth(sample perfSample, now time.Time) {
+	rate, net, span, ok := m.growth.observe(now, sample.EventsMB)
+	if !ok || rate < perfMonitorWarnEventsGrowthMBPH || net < eventsGrowthMinNetMB {
+		return
+	}
+	if m.warnGate == nil {
+		m.warnGate = newPerfWarnGate()
+	}
+	allowed, suppressed, sinceMinutes := m.warnGate.allow("eventsGrowthMbPerH", rate, now)
+	if !allowed {
+		return
+	}
+	fields := []any{
+		"metric", "eventsGrowthMbPerH",
+		"value", rate,
+		"limit", perfMonitorWarnEventsGrowthMBPH,
+		"netMb", net,
+		"windowMinutes", int64(span.Minutes()),
+		"eventsMb", sample.EventsMB,
+	}
+	if suppressed > 0 {
+		fields = append(fields, "suppressed", suppressed, "sinceMinutes", int64(sinceMinutes))
+	}
+	fields = append(fields, m.eventsMbContext()...)
+	slog.Warn("desktop: perf monitor threshold", fields...)
 }
 
 // eventsMbContext 组装 eventsMb 超限告警的追加字段：最大的 live events 文件
@@ -549,6 +587,72 @@ const (
 	perfMonitorWarnStoreMB      = 2048
 	perfMonitorWarnV4OpsMB      = 256
 )
+
+// 任务 373 R4 备料：events 增长速率预警。绝对水位（eventsMb>512）只报告
+// 「已经大了」，09-29 的复发面是速率——1.07GB 瘦回后以 20MB/h 单调爬回
+// 1.19GB，水位长期停在同级而膨胀已在进行。速率线在水位告警之外补一条早期
+// 预警：斜率超 20MB/h（373 工作项 3 的判据）即告警，不等超限。防误报三重
+// 门：斜率看 15 分钟稀疏窗（逐样本差分会把 walk 抖动当斜率）、窗内净增长
+// 不足 5MB 不算（同因）、窗口未满 5 分钟不开口（样本太少）。
+const (
+	perfMonitorWarnEventsGrowthMBPH = 20 // MB/h，373 任务书判据
+	eventsGrowthWindow              = 15 * time.Minute
+	eventsGrowthPointSpacing        = time.Minute
+	eventsGrowthMinSpan             = 5 * time.Minute
+	eventsGrowthMinNetMB            = 5.0
+)
+
+// eventsGrowthPoint is one sparse (time, eventsMb) reading inside the growth
+// window. Points sit at least eventsGrowthPointSpacing apart: per-sample
+// deltas are dominated by walk jitter against files being written mid-scan,
+// and a slope needs readings too far apart to share that noise.
+type eventsGrowthPoint struct {
+	at       time.Time
+	eventsMB float64
+}
+
+// eventsGrowthTracker keeps the trailing eventsGrowthWindow of sparse readings
+// and turns them into a growth rate. Not goroutine-safe on purpose: it is read
+// and written only on the sampler loop goroutine (sampleAndWrite), like
+// warnGate and the heap-high tier state before it.
+type eventsGrowthTracker struct {
+	points []eventsGrowthPoint
+}
+
+// observe records a reading and reports the slope over the retained window.
+// rateMBPH is MB/hour (positive = growth), netMB the window's net change and
+// span the time between the oldest and newest retained points. ok=false means
+// the window is not yet long enough to speak about a rate; the reading is
+// still recorded, so a caller that keeps observing eventually crosses the
+// minimum span.
+func (t *eventsGrowthTracker) observe(now time.Time, eventsMB float64) (rateMBPH, netMB float64, span time.Duration, ok bool) {
+	if n := len(t.points); n > 0 && now.Sub(t.points[n-1].at) < eventsGrowthPointSpacing {
+		// Fold sub-spacing readings into the newest point: the slope must see
+		// the freshest value without growing one entry per sample.
+		t.points[n-1] = eventsGrowthPoint{at: now, eventsMB: eventsMB}
+	} else {
+		t.points = append(t.points, eventsGrowthPoint{at: now, eventsMB: eventsMB})
+	}
+	// Drop points that fell out of the window, always keeping the newest one.
+	cutoff := now.Add(-eventsGrowthWindow)
+	drop := 0
+	for drop < len(t.points)-1 && t.points[drop].at.Before(cutoff) {
+		drop++
+	}
+	t.points = t.points[drop:]
+
+	if len(t.points) < 2 {
+		return 0, 0, 0, false
+	}
+	first, last := t.points[0], t.points[len(t.points)-1]
+	span = last.at.Sub(first.at)
+	if span < eventsGrowthMinSpan {
+		return 0, 0, span, false
+	}
+	netMB = last.eventsMB - first.eventsMB
+	rateMBPH = netMB / span.Hours()
+	return rateMBPH, netMB, span, true
+}
 
 // collectTotals walks the two session roots once per sample. The event logs are
 // counted separately because they are the append-only files that grow with every

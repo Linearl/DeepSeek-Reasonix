@@ -33,6 +33,15 @@ type SessionEventsEntry struct {
 	// disables the per-row repair and shows the state so "which of these is
 	// safe to fix" is answered before the click, not after the skip.
 	Busy bool `json:"busy"`
+	// 任务 373 R4 备料：处置可观测两字段。ReclaimBytes 是 fold 的回收上限
+	// （events − live，向下取 0）——「修这条能拿回多少」在点击之前可读，处置
+	// 排序不必再靠 events 总大小猜。LiveOverCap 标记 live 内容本身超 auto
+	// cap 的会话：fold 后的 log（≈live）仍超 cap，修复不可能把它修到 cap 之
+	// 下——面板可据此把「修复无效」类与「修复有收益」类分开（2026-10-10 实测
+	// 两类并存：头部 116MB/3.1x 未超 4x 因子，而 95-111MB 档多为此类，正是
+	// fold-no-shrink WARN 刷屏的来源）。
+	ReclaimBytes int64 `json:"reclaimBytes"`
+	LiveOverCap  bool  `json:"liveOverCap"`
 }
 
 // SessionEventsInventoryView is the statistic card's data: every session in
@@ -80,6 +89,19 @@ func eventsRotationJudgment() (factor float64, capMB int64) {
 		return config.EventsRotationFactorDefault, 0
 	}
 	return eventsRotationJudgmentFrom(cfg)
+}
+
+// sessionEventsEntryJudgment fills the derived observability fields of one
+// inventory row (任务 373 R4 备料): the best-case fold reclaim and the
+// repair-futile mark. Pure arithmetic on already-statted sizes plus the view's
+// judgment thresholds, factored out so tests can pin the semantics without a
+// live session catalog.
+func sessionEventsEntryJudgment(entry *SessionEventsEntry, mode string, capMB int64) {
+	if entry.EventsBytes > entry.LiveBytes {
+		entry.ReclaimBytes = entry.EventsBytes - entry.LiveBytes
+	}
+	entry.LiveOverCap = mode == config.EventsAutoRotationAuto && capMB > 0 &&
+		entry.LiveBytes > capMB<<20
 }
 
 // SessionEventsInventory lists the active directory's sessions with their
@@ -130,6 +152,7 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 			Open:        meta.Open,
 			Busy:        busy,
 		}
+		sessionEventsEntryJudgment(&entry, mode, capMB)
 		if entry.OverLimit {
 			view.OverCount++
 		}
