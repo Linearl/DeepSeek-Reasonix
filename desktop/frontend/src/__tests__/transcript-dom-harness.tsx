@@ -362,6 +362,11 @@ export async function createTranscriptHarness(options: TranscriptHarnessOptions 
       // even though every assertion completed.
       await new Promise((resolve) => setTimeout(resolve, 100));
       await server.close();
+      // pretendToBeVisual keeps a requestAnimationFrame timer alive inside
+      // jsdom; without closing the window the node process never drains and
+      // CI kills the run with EXIT=124 even after every check passed (task
+      // 761). A harness is done once close() runs.
+      dom.window.close();
     },
     loadModule: <T,>(path: string) => server.ssrLoadModule(path) as Promise<T>,
   };

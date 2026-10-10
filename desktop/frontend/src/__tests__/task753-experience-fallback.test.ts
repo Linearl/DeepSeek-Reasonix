@@ -50,42 +50,50 @@ console.log("\ntask 753-1: experience fallback never rewrites the persisted tier
   const harness = await createTranscriptHarness({
     storage: { "reasonix-session-experience": "concise" },
   });
-  const sessionExperience = await harness.loadModule<{
-    getSessionExperience: () => string;
-    hydrateSessionExperience: (v: unknown) => void;
-    isSessionExperienceHydrated: () => boolean;
-    markSessionExperienceHydratedFromMirror: () => string;
-    resolveWorkProcessPresentation: (v: string) => { showWhileRunning: boolean };
-  }>("/src/lib/sessionExperience.ts");
+  try {
+    const sessionExperience = await harness.loadModule<{
+      getSessionExperience: () => string;
+      hydrateSessionExperience: (v: unknown) => void;
+      isSessionExperienceHydrated: () => boolean;
+      markSessionExperienceHydratedFromMirror: () => string;
+      resolveWorkProcessPresentation: (v: string) => { showWhileRunning: boolean };
+    }>("/src/lib/sessionExperience.ts");
 
-  ok(sessionExperience.isSessionExperienceHydrated() === false, "starts un-hydrated");
-  const tier = sessionExperience.markSessionExperienceHydratedFromMirror();
-  ok(tier === "concise", "AC1: fallback keeps the mirrored concise tier");
-  ok(sessionExperience.getSessionExperience() === "concise", "AC1: effective tier stays concise after the fallback");
-  ok(sessionExperience.resolveWorkProcessPresentation(sessionExperience.getSessionExperience()).showWhileRunning === false,
-    "AC1: concise semantics (no live expansion) hold after the fallback");
-  ok(localStorage().getItem("reasonix-session-experience") === "concise", "AC1: the canonical mirror key is NOT rewritten");
-  ok(localStorage().getItem("reasonix-display-mode") === null && localStorage().getItem("reasonix-process-fold") === null && localStorage().getItem("reasonix-reasoning-summary") === null,
-    "AC1: no compatibility mirror keys are invented by the fallback");
-  // AC3: the snapshot finally arrives and agrees (concise). The effective tier
-  // never changed across the whole failure window, so no reasoning panel sees
-  // a modeChanged flip and no geometry consumer sees a fold flip.
-  sessionExperience.hydrateSessionExperience("concise");
-  ok(sessionExperience.getSessionExperience() === "concise", "AC3: the late agreeing snapshot changes nothing");
+    ok(sessionExperience.isSessionExperienceHydrated() === false, "starts un-hydrated");
+    const tier = sessionExperience.markSessionExperienceHydratedFromMirror();
+    ok(tier === "concise", "AC1: fallback keeps the mirrored concise tier");
+    ok(sessionExperience.getSessionExperience() === "concise", "AC1: effective tier stays concise after the fallback");
+    ok(sessionExperience.resolveWorkProcessPresentation(sessionExperience.getSessionExperience()).showWhileRunning === false,
+      "AC1: concise semantics (no live expansion) hold after the fallback");
+    ok(localStorage().getItem("reasonix-session-experience") === "concise", "AC1: the canonical mirror key is NOT rewritten");
+    ok(localStorage().getItem("reasonix-display-mode") === null && localStorage().getItem("reasonix-process-fold") === null && localStorage().getItem("reasonix-reasoning-summary") === null,
+      "AC1: no compatibility mirror keys are invented by the fallback");
+    // AC3: the snapshot finally arrives and agrees (concise). The effective tier
+    // never changed across the whole failure window, so no reasoning panel sees
+    // a modeChanged flip and no geometry consumer sees a fold flip.
+    sessionExperience.hydrateSessionExperience("concise");
+    ok(sessionExperience.getSessionExperience() === "concise", "AC3: the late agreeing snapshot changes nothing");
+  } finally {
+    await harness.close();
+  }
 }
 
 // AC1b: no mirror at all (first install / privacy mode / previously erased).
 {
   const harness = await createTranscriptHarness({});
-  const sessionExperience = await harness.loadModule<{
-    getSessionExperience: () => string;
-    markSessionExperienceHydratedFromMirror: () => string;
-  }>("/src/lib/sessionExperience.ts");
-  const tier = sessionExperience.markSessionExperienceHydratedFromMirror();
-  ok(tier === "standard" && sessionExperience.getSessionExperience() === "standard",
-    "AC1b: missing mirror falls back to the safe default");
-  ok(localStorage().getItem("reasonix-session-experience") === null,
-    "AC1b: the fallback does not invent a persisted value");
+  try {
+    const sessionExperience = await harness.loadModule<{
+      getSessionExperience: () => string;
+      markSessionExperienceHydratedFromMirror: () => string;
+    }>("/src/lib/sessionExperience.ts");
+    const tier = sessionExperience.markSessionExperienceHydratedFromMirror();
+    ok(tier === "standard" && sessionExperience.getSessionExperience() === "standard",
+      "AC1b: missing mirror falls back to the safe default");
+    ok(localStorage().getItem("reasonix-session-experience") === null,
+      "AC1b: the fallback does not invent a persisted value");
+  } finally {
+    await harness.close();
+  }
 }
 
 // AC2: the snapshot adapter must not treat an ABSENT field as "standard",
@@ -94,27 +102,31 @@ console.log("\ntask 753-1: experience fallback never rewrites the persisted tier
   const harness = await createTranscriptHarness({
     storage: { "reasonix-session-experience": "concise" },
   });
-  const sessionExperience = await harness.loadModule<{
-    getSessionExperience: () => string;
-    isSessionExperienceHydrated: () => boolean;
-  }>("/src/lib/sessionExperience.ts");
-  const adapter = await harness.loadModule<{
-    applyPreferencesAppearance: (settings: Record<string, unknown>) => unknown;
-  }>("/src/app-runtime/desktopPreferencesAdapter.ts");
+  try {
+    const sessionExperience = await harness.loadModule<{
+      getSessionExperience: () => string;
+      isSessionExperienceHydrated: () => boolean;
+    }>("/src/lib/sessionExperience.ts");
+    const adapter = await harness.loadModule<{
+      applyPreferencesAppearance: (settings: Record<string, unknown>) => unknown;
+    }>("/src/app-runtime/desktopPreferencesAdapter.ts");
 
-  adapter.applyPreferencesAppearance({ desktopTheme: "system", desktopLayoutStyle: "workbench", sessionExperience: undefined });
-  ok(sessionExperience.isSessionExperienceHydrated() === false, "AC2: an absent snapshot field leaves the module un-hydrated");
-  ok(sessionExperience.getSessionExperience() === "concise", "AC2: the mirror stays authoritative when the field is absent");
-  ok(localStorage().getItem("reasonix-session-experience") === "concise",
-    "AC2: an absent snapshot field does not overwrite the mirror");
+    adapter.applyPreferencesAppearance({ desktopTheme: "system", desktopLayoutStyle: "workbench", sessionExperience: undefined });
+    ok(sessionExperience.isSessionExperienceHydrated() === false, "AC2: an absent snapshot field leaves the module un-hydrated");
+    ok(sessionExperience.getSessionExperience() === "concise", "AC2: the mirror stays authoritative when the field is absent");
+    ok(localStorage().getItem("reasonix-session-experience") === "concise",
+      "AC2: an absent snapshot field does not overwrite the mirror");
 
-  adapter.applyPreferencesAppearance({ desktopTheme: "system", desktopLayoutStyle: "workbench", sessionExperience: "deep" });
-  ok(sessionExperience.getSessionExperience() === "deep", "AC2: an explicit snapshot value still applies");
-  ok(localStorage().getItem("reasonix-session-experience") === "deep",
-    "AC2: an explicit snapshot value rewrites the mirror (authoritative path)");
+    adapter.applyPreferencesAppearance({ desktopTheme: "system", desktopLayoutStyle: "workbench", sessionExperience: "deep" });
+    ok(sessionExperience.getSessionExperience() === "deep", "AC2: an explicit snapshot value still applies");
+    ok(localStorage().getItem("reasonix-session-experience") === "deep",
+      "AC2: an explicit snapshot value rewrites the mirror (authoritative path)");
+  } finally {
+    await harness.close();
+  }
 }
 
 if (failed > 0) {
-  throw new Error(`${failed} task 753-1 checks failed`);
+  process.exit(1);
 }
 console.log(`  ${passed} checks passed`);
