@@ -234,6 +234,93 @@ func TestStreamProviderRequestRoutesToDestination(t *testing.T) {
 	}
 }
 
+// TestDestinationMaxOutputTokensClampsCrossProviderSwitch reproduces task 752:
+// deepseek configured with the 384K ceiling, then the session hot-switches to a
+// mimo-class gateway whose entry carries no max_output_tokens. The old "0 =
+// keep" fallback leaked the construction cap (384000 — a number that describes
+// deepseek, not the destination) onto the next request, and mimo rejected it
+// with HTTP 400 (max_tokens is too large ... at most 131072). The cross-route
+// override must omit MaxTokens instead; admission (unknown-gateway policy,
+// Max=0) must leave that omission untouched. The mimo provider stub carries
+// exactly the metadata the real gateway exposes: none.
+func TestDestinationMaxOutputTokensClampsCrossProviderSwitch(t *testing.T) {
+	home := &namedFakeProvider{name: "deepseek"}
+	mimo := &namedFakeProvider{name: "mimo"}
+	resolver := &fakeModelResolver{providers: map[string]provider.Provider{
+		"mimo/m1":     mimo,
+		"deepseek/d2": home,
+	}}
+	a := New(home, nil, NewSession("s"), Options{
+		ModelResolver: resolver, ContextWindow: 128_000, MaxOutputTokens: 384_000,
+	}, event.Discard)
+
+	// (1) Cross-provider fallback switch with zero extras: the construction cap
+	// must not ride along — omit (0), never 384000.
+	if !a.SetSessionModelOverride("mimo/m1", ModelOverrideExtras{}) {
+		t.Fatal("cross-provider override rejected")
+	}
+	if got := a.destinationMaxOutputTokens(); got != 0 {
+		t.Fatalf("destinationMaxOutputTokens after cross-provider switch = %d, want 0 (omit; the 384000 construction cap describes deepseek, not mimo)", got)
+	}
+	// End-to-end at request level: admission must leave the omitted value
+	// omitted (unknown-gateway policy has no ceiling to clamp with, and the
+	// OmitWhenSafe mode sends nothing when the user asked for nothing).
+	prepared, err := a.prepareSamplingRequest(context.Background())
+	if err != nil {
+		t.Fatalf("prepareSamplingRequest: %v", err)
+	}
+	if prepared.req.MaxTokens != 0 {
+		t.Fatalf("fallback-switched request MaxTokens = %d, want 0 (omitted on the wire, server default applies)", prepared.req.MaxTokens)
+	}
+
+	// (2) An explicitly configured destination cap still wins — user config is
+	// never rewritten, only the unconfigured leak is stopped.
+	if !a.SetSessionModelOverride("mimo/m1", ModelOverrideExtras{MaxOutputTokens: 65_536}) {
+		t.Fatal("cross-provider override with explicit cap rejected")
+	}
+	if got := a.destinationMaxOutputTokens(); got != 65_536 {
+		t.Fatalf("destinationMaxOutputTokens with explicit extras = %d, want 65536", got)
+	}
+
+	// (3) Same-provider switch with zero extras keeps the construction cap —
+	// the "0 = keep" contract for callers without an entry at hand is intact.
+	if !a.SetSessionModelOverride("deepseek/d2", ModelOverrideExtras{}) {
+		t.Fatal("same-provider override rejected")
+	}
+	if got := a.destinationMaxOutputTokens(); got != 384_000 {
+		t.Fatalf("destinationMaxOutputTokens on same-provider switch = %d, want 384000 (keep semantics preserved)", got)
+	}
+
+	// (4) Clearing the override restores the construction cap.
+	if !a.SetSessionModelOverride("", ModelOverrideExtras{}) {
+		t.Fatal("clearing the override must always succeed")
+	}
+	if got := a.destinationMaxOutputTokens(); got != 384_000 {
+		t.Fatalf("destinationMaxOutputTokens after clear = %d, want 384000", got)
+	}
+}
+
+// TestDestinationMaxOutputTokensCrossProviderUnknownRoute covers the defensive
+// edges of the route comparison: a resolver that hands back a nameless adapter
+// (or a construction agent without a provider) must not inherit the
+// construction cap either — omit is the only safe reading of "no metadata".
+func TestDestinationMaxOutputTokensCrossProviderUnknownRoute(t *testing.T) {
+	home := &namedFakeProvider{name: "deepseek"}
+	nameless := &namedFakeProvider{name: ""}
+	resolver := &fakeModelResolver{providers: map[string]provider.Provider{
+		"mimo/m1": nameless,
+	}}
+	a := New(home, nil, NewSession("s"), Options{
+		ModelResolver: resolver, ContextWindow: 128_000, MaxOutputTokens: 384_000,
+	}, event.Discard)
+	if !a.SetSessionModelOverride("mimo/m1", ModelOverrideExtras{}) {
+		t.Fatal("override rejected")
+	}
+	if got := a.destinationMaxOutputTokens(); got != 0 {
+		t.Fatalf("destinationMaxOutputTokens with nameless destination = %d, want 0 (omit)", got)
+	}
+}
+
 // TestEffortVocabularyProbeFollowsModelDestination pins the task-148 change to
 // SetSessionEffortOverride: after a model override arms, the per-request depth
 // vocabulary is probed on the destination the requests actually reach, not on
