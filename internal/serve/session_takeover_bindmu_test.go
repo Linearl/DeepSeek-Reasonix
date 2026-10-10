@@ -120,3 +120,34 @@ func TestTakeoverSessionRebindWaitsForBindMu(t *testing.T) {
 		t.Fatal("takeoverSession did not finish after bindMu was released")
 	}
 }
+
+// Task 760: the synchronous takeover path must actually reach its 204. The
+// probe lease from TryAcquireSessionLeaseWithHandoff registers this process
+// as the session's owner (and keeps the OS lease lock), so rebinding while
+// the probe is still held makes Rebind's plain acquire self-conflict — the
+// endpoint answered 409 on every synchronous success (consuming the
+// reservation on the way) and the 204 was structurally unreachable.
+// Releasing the probe first — the same sequence the background poll's
+// success path uses — lets Rebind acquire cleanly and bind the keeper onto
+// the taken-over session.
+func TestTakeoverSessionSyncSucceedsAfterProbeRelease(t *testing.T) {
+	server, _, target := newTakeoverPendingFixture(t)
+
+	// Same seam as the bindMu test: a pre-published reservation matching the
+	// synchronous probe's id reaches the success path deterministically.
+	orig := newTakeoverHandoffID
+	newTakeoverHandoffID = func() string { return "test-sync-success" }
+	t.Cleanup(func() { newTakeoverHandoffID = orig })
+	publishTestYield(t, target, "test-sync-success", "")
+
+	rec := httptest.NewRecorder()
+	server.takeoverSession(rec, httptest.NewRequest(http.MethodPost, "/takeover-session",
+		strings.NewReader(`{"name":"target","from":"`+agent.SessionWriterID()+`"}`)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("synchronous takeover = %d (body %q), want 204 — the probe lease must be released before Rebind (task 760)", rec.Code, rec.Body.String())
+	}
+	lease := server.leases.Lease()
+	if lease == nil || agent.CanonicalSessionPath(lease.Path()) != agent.CanonicalSessionPath(target) {
+		t.Fatalf("keeper lease = %v, want bound to the taken-over session after a synchronous 204", lease)
+	}
+}

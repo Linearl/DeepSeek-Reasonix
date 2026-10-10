@@ -2058,29 +2058,37 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Point the controller at the acquired session so /submit and /history
-	// operate on it. Rebind releases any lease this runtime previously held.
-	// Task 747: hold bindMu for the rebind — releaseSession's serialization
-	// comment lists /takeover-session among the bindMu endpoints, but this was
-	// the one session-switch endpoint rebinds without it, so a concurrent
-	// /release-session handoff, /resume, or submit admission could cross the
-	// lease/controller swap in two different binding epochs. Only the rebind
-	// transaction goes under the mutex (the acquire above is the slow part and
-	// stays outside, matching the handoffLocked pattern in
-	// session_ownership.go); notifyRemoteWriteAuthority stays outside too —
-	// the desktop hook takes its own app mutex and must never observe a
-	// bindMu-held serve mid-handler.
+	// operate on it. Task 747: hold bindMu across the swap — releaseSession's
+	// serialization comment lists /takeover-session among the bindMu
+	// endpoints, but this was the one session-switch endpoint rebinds without
+	// it, so a concurrent /release-session handoff, /resume, or submit
+	// admission could cross the lease/controller swap in two different
+	// binding epochs. The acquire above is the slow part and stays outside
+	// (matching the handoffLocked pattern in session_ownership.go);
+	// notifyRemoteWriteAuthority stays outside too — the desktop hook takes
+	// its own app mutex and must never observe a bindMu-held serve
+	// mid-handler.
+	//
+	// Task 760: the probe lease must be released BEFORE Rebind. Rebind's
+	// plain acquire self-conflicts with the probe's still-registered owner
+	// entry (agent.sessionLeaseOwners LoadOrStore) — and the probe also
+	// still holds the OS lease lock — so the old rebind-then-release order
+	// answered 409 on every synchronous success and the 204 was structurally
+	// unreachable (while consuming the reservation on the way). This is the
+	// same release→rebind sequence the background poll's success path uses;
+	// releasing under bindMu closes the window where another acquirer could
+	// grab the just-consumed session between release and rebind.
 	s.bindMu.Lock()
+	lease.Release()
 	if err := s.leases.Rebind(abs); err != nil {
 		s.bindMu.Unlock()
-		lease.Release()
-		// A plain handoff consume failed on this runtime's lease
-		// bookkeeping; the next write path acquires cleanly.
+		// The reservation is consumed and the acquire lost a genuine race in
+		// the release window (or this runtime's lease bookkeeping is wedged);
+		// the next write path acquires cleanly.
 		http.Error(w, control.SessionInUseMessage(err), http.StatusConflict)
 		return
 	}
 	s.bindMu.Unlock()
-	// Rebind re-acquired its own lease; release the probe lease we took.
-	lease.Release()
 	// Task 36 Phase 2: the remote device now holds write authority — flip the
 	// desktop's runtime read-only observer on (from may be empty for older
 	// clients; the hook treats it as an anonymous device).
