@@ -67,6 +67,9 @@ func (a *App) startServePool(ctx context.Context) {
 	// desktop user before the request reaches the pooled serve — the marker
 	// watcher alone only covers the lease-conflict path.
 	a.installServePoolTakeoverGate(gw)
+	// Task 539: guided messages for desktop-held sessions (yielding window)
+	// inject into the holding tab's controller.
+	a.installServePoolInboxGate(gw)
 	port := gatewayPort()
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
