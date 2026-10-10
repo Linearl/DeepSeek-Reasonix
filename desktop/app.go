@@ -744,6 +744,16 @@ func (a *App) startup(ctx context.Context) {
 		// Task 722: fine-grained sub-switch override (nil = inherit the master).
 		return cfg.SafetyIdleTerminateEnabled()
 	}
+	// Task 742: same call-time contract — the background gate reads the saved
+	// switch on every run, so toggling it in settings applies to the next
+	// scheduled run without a restart. Missing config = off.
+	a.heartbeat.heartbeatBackground = func() bool {
+		cfg, err := config.Load()
+		if err != nil {
+			return false
+		}
+		return cfg.Desktop.ExperimentalHeartbeatBackground
+	}
 	a.heartbeat.Start()
 	// Expose the scheduler's admin surface to agent tools (task 201). The
 	// adapter keeps the engine as the single source of truth for validation

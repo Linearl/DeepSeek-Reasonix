@@ -218,6 +218,16 @@ type DesktopConfig struct {
 	// TabPermissionIndicatorResolved. Pure frontend gate: the settings save
 	// re-applies the boot snapshot, so a change is visible without a restart.
 	TabPermissionIndicator string `toml:"tab_permission_indicator"`
+	// ExperimentalHeartbeatBackground keeps scheduled heartbeat runs out of the
+	// tab strip (task 742): with it on, a run opens its topic inactive, submits
+	// the prompt, then parks the tab into the detached-session pool (task 264
+	// semantics — the runtime keeps running, nothing appears in the tab bar);
+	// a topic the user already has open is left alone. It ships off (铁律 2):
+	// with it off every run keeps the exact pre-742 behaviour (the tab stays
+	// visible in the strip). The heartbeat engine reads the switch at call time
+	// (task 244 B1 S4 precedent), so a settings toggle applies to the next run
+	// without a restart.
+	ExperimentalHeartbeatBackground bool `toml:"experimental_heartbeat_background"`
 	// Task 265 (lab intake): three render-surface features ship ON via
 	// nil-means-on pointers — existing behaviour getting an off switch, so the
 	// default must not regress anyone. Each is a pure frontend gate.

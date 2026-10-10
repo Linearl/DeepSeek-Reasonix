@@ -212,6 +212,12 @@ type HeartbeatEngine struct {
 	// next run without a restart). Nil = always off.
 	idleTerminate func() bool
 
+	// heartbeatBackground reads experimental_heartbeat_background at call time
+	// (task 742, same S4 contract as idleTerminate): a run opens its topic,
+	// submits, then parks the tab detached (task 264 semantics). Nil = always
+	// off, which keeps the baseline visible-tab behaviour byte-for-byte.
+	heartbeatBackground func() bool
+
 	// Task 500 (reuse-session rotation): the engine-owned state sidecar cache
 	// and an injectable stats resolver. rotationStats nil = real filesystem
 	// resolution via the topic-session index; tests override it to keep the
@@ -510,6 +516,13 @@ func heartbeatReuseMode(t HeartbeatTask) bool {
 	return t.ReuseSession
 }
 
+// heartbeatBackgroundOn evaluates the task-742 background gate. Nil gate
+// (tests, engines built without the app wiring) reads as off — the zero-value
+// contract keeps every existing caller on the baseline path.
+func (e *HeartbeatEngine) heartbeatBackgroundOn() bool {
+	return e != nil && e.heartbeatBackground != nil && e.heartbeatBackground()
+}
+
 // heartbeatFreshConversationMode reports whether a run spawns a fresh topic.
 // Off while reuse mode is active — the pending-topic in-flight guard is a
 // fresh-conversation mechanism and must never latch onto a bound conversation.
@@ -674,11 +687,24 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 		return e.spendRunBudget(t)
 	}
 
+	// Task 742: background mode. The gate is read at call time (task 244 B1
+	// S4 precedent — a settings toggle applies to the next run), and the
+	// visible-before snapshot must precede the open so a tab the USER opened
+	// is never yanked out of the strip after the run; only tabs the run
+	// itself opened (or promoted back from a previous detached run) park.
+	background := e.heartbeatBackgroundOn()
+	visibleBefore := background && e.app.heartbeatTopicTabVisible(scope, workspaceRoot, topicID)
+
 	// Open the tab for the topic (creates one if needed) without changing the
-	// user's active tab or active workspace pointer.
+	// user's active tab or active workspace pointer. Background mode routes
+	// through the prefer-live open so a runtime parked detached by a previous
+	// run promotes back into the strip (one controller per session) instead of
+	// double-building over the lease the detached tab still holds.
 	var tabMeta TabMeta
 	var err error
-	if scope == "project" && workspaceRoot != "" {
+	if background {
+		tabMeta, err = e.app.openHeartbeatTabInactive(scope, workspaceRoot, topicID)
+	} else if scope == "project" && workspaceRoot != "" {
 		tabMeta, err = e.app.openProjectTabInactive(workspaceRoot, topicID)
 	} else {
 		tabMeta, err = e.app.openGlobalTabInactive(topicID)
@@ -724,6 +750,15 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 			delete(e.pendingTopics, t.ID)
 		}
 		e.mu.Unlock()
+		// Task 742: the previous run finished and this run moves on to a fresh
+		// topic — if the done conversation was only promoted for this check,
+		// park it back so the strip stays clean. A tab the user has open stays
+		// (visibleBefore), exactly like the baseline behaviour.
+		if background && !visibleBefore {
+			if err := e.app.parkTabAsDetached(tabMeta.ID); err != nil {
+				log.Printf("[heartbeat] background re-park for %q: %s (tab stays visible)", t.Title, secrets.RedactError(err))
+			}
+		}
 		return e.executeTaskOwned(t)
 	}
 
@@ -813,6 +848,21 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 		// rotationPromptOverride); nothing further to do.
 	case rotationPromptBootstrap:
 		e.rotationBootstrapDelivered(t.ID)
+	}
+
+	// Task 742: background mode — the prompt is in, so the run's tab goes back
+	// out of the strip: parkTabAsDetached moves the SAME runtime into the
+	// detached pool (task 264 semantics), the turn keeps running, the sink
+	// keeps forwarding (bot channels stay live), and the next run promotes the
+	// runtime back through the prefer-live open. Parking is best-effort (the
+	// 264 ruling): on failure the tab stays visible and the run still counts.
+	// A tab the user had open never parks (visibleBefore).
+	if background && !visibleBefore {
+		if err := e.app.parkTabAsDetached(tabMeta.ID); err != nil {
+			log.Printf("[heartbeat] background park for %q: %s (tab stays visible)", t.Title, secrets.RedactError(err))
+		} else {
+			log.Printf("[heartbeat] task %q run parked detached (background mode)", t.Title)
+		}
 	}
 
 	// After a successful submit, keep the topic as an in-flight guard. The next
