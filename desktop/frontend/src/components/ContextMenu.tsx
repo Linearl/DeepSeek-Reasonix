@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -23,6 +23,20 @@ export type ContextMenuItem =
   | {
       type: "separator";
       key: string;
+    }
+  // Task 720: a second-level section rendered inline under its row (click
+  // expands or collapses it; the menu scrolls — no floating panel, so no
+  // positioning or clamping code). One level is all the sidebar needs ("move
+  // to group"); deeper nesting renders disabled. Selecting an expanded leaf
+  // closes the whole menu, so callers building items away from the menu state
+  // (organization.topicMenuItems) need no close callback.
+  | {
+      type: "submenu";
+      key: string;
+      icon?: ReactNode;
+      label: ReactNode;
+      disabled?: boolean;
+      items: ContextMenuItem[];
     };
 
 const EDGE_GAP = 8;
@@ -68,6 +82,7 @@ export function ContextMenu({
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<ContextMenuPoint | null>(point);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     if (!open || !point) return;
@@ -120,7 +135,10 @@ export function ContextMenu({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setExpanded(null);
+      return;
+    }
     const closeOnOutsidePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Node && menuRef.current?.contains(target)) return;
@@ -142,6 +160,62 @@ export function ContextMenu({
 
   if (!open || !point) return null;
 
+  const renderItem = (item: ContextMenuItem, nested: boolean) => {
+    if (item.type === "separator") {
+      return <div key={item.key} className="context-menu__separator" role="separator" />;
+    }
+    if (item.type === "submenu") {
+      const active = expanded === item.key;
+      // Inside an expanded section deeper nesting stays disabled — one level
+      // is the deal.
+      const unusable = item.disabled || item.items.length === 0 || nested;
+      return (
+        <Fragment key={item.key}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={unusable}
+            className="context-menu__item context-menu__item--submenu"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (unusable) return;
+              setExpanded((current) => current === item.key ? null : item.key);
+            }}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+            <span className="context-menu__submenu-arrow" aria-hidden="true">{active ? "▾" : "▸"}</span>
+          </button>
+          {active && item.items.map((leaf) => renderItem(leaf, true))}
+        </Fragment>
+      );
+    }
+    return (
+      <button
+        key={item.key}
+        type="button"
+        role="menuitem"
+        disabled={item.disabled}
+        className={`context-menu__item${nested ? " context-menu__item--nested" : ""}${item.danger ? " context-menu__item--danger" : ""}${item.variant ? ` context-menu__item--${item.variant}` : ""}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (item.disabled) return;
+          item.onSelect();
+          // An expanded leaf has no path back to the opener's menu state, so
+          // the menu closes itself; top-level rows keep the caller-owned close.
+          if (nested) {
+            setExpanded(null);
+            onClose();
+          }
+        }}
+      >
+        {item.icon}
+        <span>{item.label}</span>
+        {item.shortcut && <span className="context-menu__shortcut">{item.shortcut}</span>}
+      </button>
+    );
+  };
+
   return createPortal(
     <div
       ref={menuRef}
@@ -160,28 +234,7 @@ export function ContextMenu({
         event.stopPropagation();
       }}
     >
-      {items.map((item) => {
-        if (item.type === "separator") {
-          return <div key={item.key} className="context-menu__separator" role="separator" />;
-        }
-        return (
-          <button
-            key={item.key}
-            type="button"
-            role="menuitem"
-            disabled={item.disabled}
-            className={`context-menu__item${item.danger ? " context-menu__item--danger" : ""}${item.variant ? ` context-menu__item--${item.variant}` : ""}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (!item.disabled) item.onSelect();
-            }}
-          >
-            {item.icon}
-            <span>{item.label}</span>
-            {item.shortcut && <span className="context-menu__shortcut">{item.shortcut}</span>}
-          </button>
-        );
-      })}
+      {items.map((item) => renderItem(item, false))}
     </div>,
     document.body,
   );

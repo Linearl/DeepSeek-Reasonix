@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { manualTopicOrder, projectTreeFolderHasActiveRuntime, reorderedTopicIDs } from "../components/ProjectTreeOrganization";
+import { manualTopicOrder, moveTopicInRoster, projectTreeFolderHasActiveRuntime, reorderedTopicIDs } from "../components/ProjectTreeOrganization";
 import type { ProjectNode } from "../lib/types";
 
 const tree: ProjectNode[] = [
@@ -21,6 +21,21 @@ assert.equal(reorderedTopicIDs([{ ...tree[0]!, children: [...tree[0]!.children!,
 
 assert.equal(manualTopicOrder({ key: "a", kind: "topic", label: "A", sortOrder: -1 }, { key: "b", kind: "topic", label: "B" }), 0);
 assert.ok(manualTopicOrder({ key: "a", kind: "topic", label: "A", sortOrder: 1 }, { key: "b", kind: "topic", label: "B", sortOrder: 2 }) < 0);
+
+// Task 720: the shared move closure — the topic leaves every group it is
+// listed in and joins the target (single-group constraint, task 170).
+assert.deepEqual(
+  moveTopicInRoster([
+    { id: "a", title: "A", topicIds: ["t"] },
+    { id: "b", title: "B", topicIds: ["other", "t"] },
+    { id: "c", title: "C", topicIds: [] },
+  ], "t", "c"),
+  [
+    { id: "a", title: "A", topicIds: [] },
+    { id: "b", title: "B", topicIds: ["other"] },
+    { id: "c", title: "C", topicIds: ["t"] },
+  ],
+);
 assert.equal(projectTreeFolderHasActiveRuntime({ key: "folder", kind: "project", label: "Folder", children: [
   { key: "active", kind: "topic", label: "Active", status: "thinking" },
 ]}), true);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
-import { CheckCheck, Eraser, FolderMinus, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { CheckCheck, Eraser, FolderInput, FolderMinus, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
@@ -85,6 +85,17 @@ export function reorderedTopicIDs(
 
 type TopicRowDragProps = Pick<HTMLAttributes<HTMLDivElement>, "draggable" | "onDragStart" | "onDragOver" | "onDragLeave" | "onDrop" | "onDragEnd">;
 
+// Task 720: the one move semantics for a topic — leave every group it is listed
+// in and join the target (the roster's single-group constraint, task 170). Both
+// entry points run this same closure, a drag drop onto a group header and the
+// topic context menu's "move to group", so the two cannot diverge.
+export function moveTopicInRoster(groups: SessionGroup[], topicID: string, groupID: string): SessionGroup[] {
+  return groups.map((group) => {
+    const withoutTopic = (group.topicIds ?? []).filter((id) => id !== topicID);
+    return group.id === groupID ? { ...group, topicIds: [...withoutTopic, topicID] } : { ...group, topicIds: withoutTopic };
+  });
+}
+
 export interface ProjectTreeOrganizationController {
   topicRow(node: ProjectNode, disabled: boolean): { className: string; props: TopicRowDragProps };
   topicMenuItems(node: ProjectNode, t: Translator): ContextMenuItem[];
@@ -107,6 +118,12 @@ export interface ProjectTreeOrganizationController {
   dissolveGroup(key: string, id: string): void;
   canDropTopicInto(key: string): boolean;
   dropTopicInto(key: string, groupID: string): void;
+  /** moveTopicToGroup files a topic into an existing group from the topic
+   * context menu (task 720). Same mutation as a drag drop — the topic leaves
+   * every other group and joins the target — persisted through the same
+   * SaveSessionGroupsVersioned CAS chain, so the two entry points can never
+   * fight over the roster (task 170's single-group constraint). */
+  moveTopicToGroup(key: string, topicID: string, groupID: string): void;
 }
 
 export function useProjectTreeOrganization({
@@ -299,12 +316,43 @@ export function useProjectTreeOrganization({
     mutateGroups(key, (groups) => groups.map((group) => ({ ...group, topicIds: (group.topicIds ?? []).filter((id) => id !== topicID) })));
   }, [mutateGroups]);
 
+  const moveTopicIntoGroup = useCallback((key: string, topicID: string, groupID: string) => {
+    if (!topicID || !groupID) return;
+    // The target may have been dissolved between the menu render and the
+    // click; leave the roster alone rather than round-tripping a no-op save.
+    if (!(groupsRef.current[key] ?? []).some((group) => group.id === groupID)) return;
+    mutateGroups(key, (groups) => moveTopicInRoster(groups, topicID, groupID));
+  }, [mutateGroups]);
+
   return {
     topicRow,
     topicMenuItems(node, t) {
       const topicID = node.topicId;
-      if (!topicID || !(groupsRef.current[projectTreeOrganizationKey(node)] ?? []).some((group) => group.topicIds?.includes(topicID))) return [];
-      return [{ key: "remove-from-group", icon: <FolderMinus size={13} />, label: t("projectTree.removeFromGroup"), onSelect: () => removeTopicFromGroups(node) }];
+      if (!topicID) return [];
+      const key = projectTreeOrganizationKey(node);
+      const groups = groupsRef.current[key] ?? [];
+      const ownGroups = new Set(groups.filter((group) => group.topicIds?.includes(topicID)).map((group) => group.id));
+      return [
+        // Task 720: right-click move — a flyout listing every group of this
+        // workspace; picking one runs the same full-roster move as a drag
+        // drop. The group the topic already sits in is disabled, and the
+        // standalone "remove from group" row (task 144) stays the way out.
+        ...(groups.length > 0 ? [{
+          type: "submenu" as const,
+          key: "move-to-group",
+          icon: <FolderInput size={13} />,
+          label: t("projectTree.moveToGroup"),
+          items: groups.map((group): ContextMenuItem => ({
+            key: `move:${group.id}`,
+            label: group.title,
+            disabled: ownGroups.has(group.id),
+            onSelect: () => moveTopicIntoGroup(key, topicID, group.id),
+          })),
+        }] : []),
+        ...(ownGroups.size > 0
+          ? [{ key: "remove-from-group", icon: <FolderMinus size={13} />, label: t("projectTree.removeFromGroup"), onSelect: () => removeTopicFromGroups(node) }]
+          : []),
+      ];
     },
     createGroup(folder, title) {
       const key = projectTreeOrganizationKey(folder);
@@ -360,12 +408,10 @@ export function useProjectTreeOrganization({
     dropTopicInto(key, groupID) {
       const topicID = dragTopicID;
       if (!topicID) return;
-      mutateGroups(key, (groups) => groups.map((group) => {
-        const withoutTopic = (group.topicIds ?? []).filter((id) => id !== topicID);
-        return group.id === groupID ? { ...group, topicIds: [...withoutTopic, topicID] } : { ...group, topicIds: withoutTopic };
-      }));
+      mutateGroups(key, (groups) => moveTopicInRoster(groups, topicID, groupID));
       clearTopicDrag();
     },
+    moveTopicToGroup: moveTopicIntoGroup,
   };
 }
 
