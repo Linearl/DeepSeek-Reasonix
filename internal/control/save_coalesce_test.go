@@ -14,6 +14,7 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
+	"reasonix/internal/store"
 )
 
 func osStat(path string) (os.FileInfo, error) { return os.Stat(path) }
@@ -103,6 +104,11 @@ func TestSnapshotGateNeverSkipsPendingRewrite(t *testing.T) {
 	path := filepath.Join(dir, "session.jsonl")
 	c := New(Options{Executor: exec, SessionDir: dir, SessionPath: path, Sink: event.Discard})
 
+	// 任务 748: the gate only arms for a path whose file still exists, so the
+	// rewrite-valve scenario seeds a real transcript first.
+	if err := c.SnapshotDurable(); err != nil {
+		t.Fatalf("seed snapshot: %v", err)
+	}
 	c.recordDurableSnapshot(c.SessionPath(), time.Now())
 	if !c.snapshotSaveRecentlyDurable(c.SessionPath()) {
 		t.Fatal("fresh durable record must arm the gate")
@@ -125,6 +131,61 @@ func TestSnapshotGateIsPathScoped(t *testing.T) {
 	c.recordDurableSnapshot(filepath.Join(dir, "other.jsonl"), time.Now())
 	if c.snapshotSaveRecentlyDurable(c.SessionPath()) {
 		t.Fatal("a record for another path must not arm this path's gate")
+	}
+}
+
+// 任务 748: the gate's "at most one gap stale" argument collapses when the
+// session file vanished externally (the save is also what detects the removal
+// and forks recovery) or when turn markers are queued but not yet persisted
+// (they are the schema-2 crash contract the skip itself leans on).
+func TestSnapshotGateNeverSkipsRemovedFileOrPendingMarkers(t *testing.T) {
+	oldGap := snapshotSaveMinGap.Load()
+	snapshotSaveMinGap.Store(int64(time.Hour))
+	defer snapshotSaveMinGap.Store(oldGap)
+
+	dir := t.TempDir()
+	sess := agent.NewSession("sys")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "t748 seed"})
+	exec := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
+	path := filepath.Join(dir, "session.jsonl")
+	c := New(Options{Executor: exec, SessionDir: dir, SessionPath: path, Sink: event.Discard})
+	if err := c.Snapshot(); err != nil {
+		t.Fatalf("seed snapshot: %v", err)
+	}
+	c.recordDurableSnapshot(path, time.Now())
+	if !c.snapshotSaveRecentlyDurable(path) {
+		t.Fatal("fresh durable record must arm the gate")
+	}
+
+	// Pending turn markers: the gate must not skip the save that would carry
+	// them into the log.
+	if !exec.Session().QueueTurnBegin("t748-marker", true) {
+		t.Fatal("session must be schema 2 after its first save")
+	}
+	if !exec.Session().HasPendingTurnMarkers() {
+		t.Fatal("queued marker must report pending")
+	}
+	if c.snapshotSaveRecentlyDurable(path) {
+		t.Fatal("gate skipped with pending turn markers")
+	}
+
+	// External removal: the gate must fall through so the save detects the
+	// removal and forks the stable recovery branch. Persist first so the
+	// queued marker from the previous step does not pin the valve.
+	if err := c.SnapshotDurable(); err != nil {
+		t.Fatalf("persist markers: %v", err)
+	}
+	c.recordDurableSnapshot(path, time.Now())
+	if !c.snapshotSaveRecentlyDurable(path) {
+		t.Fatal("gate must re-arm after the marker flush")
+	}
+	for _, artifact := range append([]string{path}, store.SessionSidecarFiles(path)...) {
+		if artifact != "" {
+			_ = os.Remove(artifact)
+		}
+	}
+	if c.snapshotSaveRecentlyDurable(path) {
+		t.Fatal("gate skipped with the session file removed externally")
 	}
 }
 

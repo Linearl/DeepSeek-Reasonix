@@ -21,6 +21,14 @@ func (a *Agent) preserveRawReasoning(reasoning, signature, reasoningID, reasonin
 // message at the original repair boundary. It deliberately ignores durable UI fields,
 // matching the same wire-visible fields used by the context projection hash.
 func reasoningReplayMessageFingerprint(message provider.Message) string {
+	// 748: transient per-turn blocks (current-time, task 664) decorate the
+	// request-side user turn when an anchor is minted, but the interrupted-turn
+	// cleanup later strips them from the stored message the recovery request is
+	// rebuilt from. Fingerprint the stable form on both sides so the anchor
+	// survives that rewrite; the clock anchor is not part of the task text.
+	if message.Role == provider.RoleUser {
+		message.Content = StripTransientUserBlocks(message.Content)
+	}
 	return providerVisibleFingerprint(provider.ModelMessages([]provider.Message{message}))
 }
 

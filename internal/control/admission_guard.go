@@ -145,8 +145,12 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 			return turnDroppedRunning
 		}
 		c.parkedTurns = append(c.parkedTurns, body)
+		// 748 race-A: len must be evaluated while holding c.mu — evaluating it
+		// in the slog call below (after Unlock) races with finishGuardedTurn's
+		// locked write to c.parkedTurns.
+		parked := len(c.parkedTurns)
 		c.mu.Unlock()
-		slog.Info("control: submit parked behind finishing turn", "parked", len(c.parkedTurns))
+		slog.Info("control: submit parked behind finishing turn", "parked", parked)
 		return turnParked
 	}
 	ctx, cancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
