@@ -48,8 +48,14 @@ import (
 //     本就退出投递（drain_inbox 是唯一消费者），桥随 sweep 门整体停用，两条消费
 //     模式不叠加。579 移除的是本桥自己的开关，这条互斥守卫原样保留。
 //
-// 另一处保守约束：inbox 处于 paused（用户显式持有队列，如恢复横幅）时绝不开轮
-// ——暂停是用户意志，桥不越。
+// 另一处保守约束（任务709 细化）：inbox 处于 paused 时——
+//   - 用户显式暂停（UserPaused）：绝不开轮——暂停是用户意志，桥不越；
+//   - 自动暂停（重启恢复 / 重开带遗留队列 / 错误防护，Paused&&!UserPaused）：
+//     桥在开轮前先解除该暂停再开轮。579 之前的实现把一切 paused 都当用户
+//     持有，长期闲置（stale）会话在重开时被自动暂停后，新投递的协作消息
+//     永远静默（708 派单实测 10+ 分钟不开轮，人工唤醒才消费）——盲区即此。
+//     自动暂停不是用户意志，且只有存在可认领的排队工作（queuedID != ""）
+//     时桥才会走到唤醒，纯待人工检视的架子（Uncertain）不会被打扰。
 
 // sessionCollabIdleTurnDelay is the idle window N of the task-569 bridge. The
 // task book prescribes 30-60s; 45s sits in the middle: below it the bridge can
@@ -73,8 +79,18 @@ type idleTurnTargetView struct {
 	// to type there, so the bridge never opens a turn (边界 2).
 	activeTab bool
 	running   bool
-	// paused mirrors the inbox snapshot: a paused queue is user-held state.
-	paused   bool
+	// 任务709: paused now means USER-held only (snap.Paused && snap.UserPaused)
+	// — a queue a person is holding, never opened. autoPaused marks the
+	// automatic pauses a restart/reopen leaves behind (snap.Paused &&
+	// !snap.UserPaused): the bridge clears one before opening so a stale
+	// session's fresh delivery is not held hostage (708 实测盲区).
+	paused     bool
+	autoPaused bool
+	// resume clears the automatic pause (Controller.ResumeInboxAutoPause).
+	// A user pause that lands between the snapshot and the wake wins: the
+	// store-level check is atomic. Tests inject a stub; nil + autoPaused would
+	// be a wiring bug, so the sweep treats it as a persistent failure.
+	resume   func() error
 	queuedID string // FIFO head queued item, "" when none
 	// 任务309 receipt coordinates + collab source of the queued head, so a
 	// spent budget can answer the sender through get_message_status (570).
@@ -205,12 +221,17 @@ func (b *idleTurnBridge) advanceHead(contactID, itemID string) bool {
 }
 
 // idleTurnRaceError classifies the "someone else won" outcomes: the item is
-// gone, owned by another admission path, or blocked by materialization — none
-// of them is a bridge failure, and none may burn the opening budget.
+// gone, owned by another admission path, blocked by materialization, or the
+// queue got paused again — ErrPaused is the 任务709 edge where a user pause
+// lands between the bridge's snapshot and its wake (the atomic store-level
+// check let the resume through as a no-op, the claim then answers ErrPaused).
+// A queue a human just took over is not a bridge failure and must not burn
+// the opening budget.
 func idleTurnRaceError(err error) bool {
 	return errors.Is(err, control.ErrTurnRunning) ||
 		errors.Is(err, sessioninbox.ErrNotFound) ||
-		errors.Is(err, sessioninbox.ErrInvalidState)
+		errors.Is(err, sessioninbox.ErrInvalidState) ||
+		errors.Is(err, sessioninbox.ErrPaused)
 }
 
 // recordOpeningFailure books one persistent failure against the head item's
@@ -252,6 +273,9 @@ func (b *idleTurnBridge) sweepTargets(targets []idleTurnTargetView, now time.Tim
 		if target.activeTab || target.contactID == "" {
 			continue
 		}
+		// 任务709：paused 只指用户显式持有（UserPaused）；自动暂停（重启恢复/
+		// 重开遗留）不算——那种队列走下面的唤醒路径，stale 会话的新投递不再
+		// 静默搁浅。
 		if target.running || target.paused || target.queuedID == "" {
 			continue
 		}
@@ -273,8 +297,25 @@ func (b *idleTurnBridge) sweepTargets(targets []idleTurnTargetView, now time.Tim
 		id := target.queuedID
 		contact := target.contactID
 		run := target.run
+		resume := target.resume
+		autoPaused := target.autoPaused
 		safego.Go("sessioncollab.idle-turn", func() {
 			defer b.clearInFlight(contact)
+			if autoPaused {
+				// 任务709：开轮前解除自动暂停。失败按持续性失败计 strike
+				//（预算护住，不形成热循环）；用户在快照与唤醒之间恰好暂停的
+				// 竞态由 store 层原子判定接住（resume 返回 false，无错）。
+				if resume == nil {
+					b.recordOpeningFailure(target, id, errors.New("auto-paused target has no resume seam"))
+					return
+				}
+				if err := resume(); err != nil {
+					log.Printf("[session-collab] idle-turn bridge: auto-pause resume failed for contact %s item %s: %v", contact, id, err)
+					b.recordOpeningFailure(target, id, err)
+					return
+				}
+				log.Printf("[session-collab] idle-turn bridge: cleared automatic inbox pause for contact %s before opening (stale session wake, 709)", contact)
+			}
 			log.Printf("[session-collab] idle-turn bridge: opening turn for contact %s (inbox item %s, idle %s ≥ N=%s)",
 				contact, id, idle.Round(time.Second), sessionCollabIdleTurnDelay)
 			err := run(context.Background(), id)
@@ -338,7 +379,15 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 		view := idleTurnTargetView{contactID: t.contactID, activeTab: t.activeTab}
 		view.running = t.ctrl.RuntimeStatus().Running
 		snap := t.ctrl.InboxSnapshot()
-		view.paused = snap.Paused
+		// 任务709: pause provenance — only a user-held pause mutes the bridge;
+		// an automatic pause (restart recovery / reopen backlog) becomes a
+		// wake at open time. paused and autoPaused are mutually exclusive.
+		view.paused = snap.Paused && snap.UserPaused
+		view.autoPaused = snap.Paused && !snap.UserPaused
+		view.resume = func() error {
+			_, err := t.ctrl.ResumeInboxAutoPause()
+			return err
+		}
 		for _, item := range snap.Items {
 			if item.State == sessioninbox.StateQueued {
 				view.queuedID = item.ID

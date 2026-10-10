@@ -28,10 +28,17 @@ type manifest struct {
 	Revision      int64             `json:"revision"`
 	RunID         string            `json:"runId,omitempty"`
 	Paused        bool              `json:"paused"`
-	Recovered     bool              `json:"recovered"`
-	RecoveredN    int               `json:"recoveredCount,omitempty"`
-	Items         []InboxItemMeta   `json:"items"`
-	Idempotency   map[string]string `json:"idempotency,omitempty"` // key -> itemID
+	// 任务709: pause provenance. UserPaused=true means a human set this pause
+	// (queue panel / /queue / bot-serve endpoints); every automatic pause
+	// (crash recovery, reopen with backlog, error guards) leaves it false, so
+	// consumers can tell "user holds this queue" from "a restart left it
+	// paused". Old manifests without the field decode as false = automatic,
+	// which is the wake-eligible side of the 任务709 fix.
+	UserPaused bool              `json:"userPaused,omitempty"`
+	Recovered  bool              `json:"recovered"`
+	RecoveredN int               `json:"recoveredCount,omitempty"`
+	Items      []InboxItemMeta   `json:"items"`
+	Idempotency map[string]string `json:"idempotency,omitempty"` // key -> itemID
 	// IdempotencyHashes fingerprints the original client request, excluding
 	// enqueue-time reference materialization. It covers both live items and
 	// aliases created by collect mode.

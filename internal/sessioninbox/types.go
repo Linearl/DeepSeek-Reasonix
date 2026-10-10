@@ -213,13 +213,17 @@ type InboxSnapshot struct {
 	SchemaVersion int             `json:"schemaVersion"`
 	Revision      int64           `json:"revision"`
 	Paused        bool            `json:"paused"`
-	Recovered     bool            `json:"recovered"`
-	RecoveredN    int             `json:"recoveredCount,omitempty"`
-	Readonly      bool            `json:"readonly,omitempty"`
-	RunID         string          `json:"runId,omitempty"`
-	SessionPath   string          `json:"sessionPath,omitempty"`
-	Items         []InboxItemMeta `json:"items"`
-	Capacity      Capacity        `json:"capacity"`
+	// 任务709: true only when a human set the current pause. Paused&&!UserPaused
+	// is an automatic pause (restart recovery / reopen backlog / error guard)
+	// — the state the desktop idle-turn bridge may wake.
+	UserPaused bool            `json:"userPaused,omitempty"`
+	Recovered  bool            `json:"recovered"`
+	RecoveredN int             `json:"recoveredCount,omitempty"`
+	Readonly   bool            `json:"readonly,omitempty"`
+	RunID      string          `json:"runId,omitempty"`
+	SessionPath string         `json:"sessionPath,omitempty"`
+	Items      []InboxItemMeta `json:"items"`
+	Capacity   Capacity        `json:"capacity"`
 }
 
 // InboxReceipt is returned after a durable enqueue or admission attempt.
