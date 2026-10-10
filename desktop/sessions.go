@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -875,14 +876,37 @@ func messageDisplayKey(content string) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
+// loadSessionDisplays reads the display sidecar. Task 371 (B7): the write path
+// reports a corrupt sidecar strictly, but the read path used to swallow the
+// same corruption and hand back an empty map — display names silently reverted
+// to raw prompts and the next read-modify-write persisted the loss. A corrupt
+// file is now backed up before any later save overwrites it, and said so.
 func loadSessionDisplays(dir string) sessionDisplayMap {
 	m := sessionDisplayMap{}
-	b, err := readFileUTF8(sessionDisplayPath(dir))
+	path := sessionDisplayPath(dir)
+	b, err := readFileUTF8(path)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("desktop: failed to read session display sidecar; falling back to raw titles", "path", path, "err", err)
+		}
 		return m
 	}
-	_ = json.Unmarshal(b, &m)
+	if err := json.Unmarshal(b, &m); err != nil {
+		if bakErr := backupCorruptJSONFile(path, b, 0o600); bakErr != nil {
+			slog.Error("desktop: session display sidecar corrupt AND backup failed; next save wipes remaining names", "path", path, "err", err, "backupErr", bakErr)
+		} else {
+			slog.Warn("desktop: session display sidecar corrupt; corrupt copy backed up", "path", path, "backup", path+".corrupt", "err", err)
+		}
+	}
 	return m
+}
+
+// backupCorruptJSONFile preserves unreadable JSON beside itself (best effort)
+// before a later write replaces it. Shared by the B3/B7/B8 read paths; callers
+// pass the same mode the live file is written with.
+func backupCorruptJSONFile(path string, data []byte, mode os.FileMode) error {
+	_ = os.Remove(path + ".corrupt")
+	return os.WriteFile(path+".corrupt", data, mode)
 }
 
 func sessionPlannerDisplayPath(dir string) string {

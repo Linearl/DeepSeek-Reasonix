@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -54,9 +56,26 @@ func loadRemotePrefs() remotePrefs {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("remote prefs: read failed; remote pins/titles start empty", "path", path, "err", err)
+		}
 		return p
 	}
-	_ = json.Unmarshal(data, &p)
+	if err := json.Unmarshal(data, &p); err != nil {
+		// Task 371 (B8): a corrupt file used to decode to the zero value and
+		// the next save rewrote it — pins/titles gone AND CredentialProxySecret
+		// regenerated, which silently revokes every distributed per-host token.
+		// Back the corrupt bytes up and say what was lost.
+		if bakErr := backupCorruptJSONFile(path, data, 0o600); bakErr != nil {
+			slog.Error("remote prefs: corrupt AND backup failed; next save destroys the only copy", "path", path, "err", err, "backupErr", bakErr)
+		} else {
+			slog.Warn("remote prefs: corrupt; corrupt copy backed up — pins/titles lost and the credential-proxy secret will be regenerated (distributed per-host tokens are revoked)", "path", path, "backup", path+".corrupt", "err", err)
+		}
+		p = remotePrefs{
+			LastWorkspaceByHost: map[string]string{},
+			SessionTitles:       map[string]string{},
+		}
+	}
 	if p.LastWorkspaceByHost == nil {
 		p.LastWorkspaceByHost = map[string]string{}
 	}

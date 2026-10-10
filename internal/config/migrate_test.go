@@ -368,8 +368,8 @@ func TestMCPMigrationMarkerMakesCurrentConfigAuthoritativeAfterRemoval(t *testin
 			t.Fatalf("removed MCP was resurrected from legacy config: %+v", loaded.Plugins)
 		}
 	}
-	if got := loadLegacyMCP(src); len(got) != 0 {
-		t.Fatalf("an older runtime would resurrect the removed legacy MCP: %+v", got)
+	if got, err := loadLegacyMCP(src); err != nil || len(got) != 0 {
+		t.Fatalf("an older runtime would resurrect the removed legacy MCP: err=%v got=%+v", err, got)
 	}
 	legacyRaw, err := os.ReadFile(src)
 	if err != nil {

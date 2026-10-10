@@ -821,7 +821,10 @@ func TestLoadLegacyMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := loadLegacyMCP(path)
+	got, err := loadLegacyMCP(path)
+	if err != nil {
+		t.Fatalf("loadLegacyMCP: %v", err)
+	}
 	// "old" is in mcpDisabled and dropped; github + remote remain, name-sorted.
 	if len(got) != 2 {
 		t.Fatalf("got %d entries, want 2: %+v", len(got), got)
@@ -852,7 +855,10 @@ func TestLoadLegacyMCP(t *testing.T) {
 	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got = loadLegacyMCP(path)
+	got, err = loadLegacyMCP(path)
+	if err != nil {
+		t.Fatalf("loadLegacyMCP (string list): %v", err)
+	}
 	byName := map[string]PluginEntry{}
 	for _, e := range got {
 		byName[e.Name] = e
@@ -876,19 +882,21 @@ func TestLoadLegacyMCP(t *testing.T) {
 		t.Errorf("disabled entry should be skipped, got %d: %+v", len(got), got)
 	}
 
-	// Absent, malformed, and empty paths must not error — just yield nil, so a
-	// stale legacy file can never block startup.
-	if got := loadLegacyMCP(filepath.Join(dir, "nope.json")); got != nil {
-		t.Errorf("absent file: got %+v, want nil", got)
+	// Absent and empty paths must not error — they yield (nil, nil), so a
+	// missing legacy file can never block startup. A malformed file yields
+	// (nil, err): the Load path turns that into a loadWarning (task 371 B4)
+	// instead of letting the servers vanish silently.
+	if got, err := loadLegacyMCP(filepath.Join(dir, "nope.json")); got != nil || err != nil {
+		t.Errorf("absent file: got %+v, err %v; want nil, nil", got, err)
 	}
 	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := loadLegacyMCP(path); got != nil {
-		t.Errorf("malformed file: got %+v, want nil", got)
+	if got, err := loadLegacyMCP(path); got != nil || err == nil {
+		t.Errorf("malformed file: got %+v, err %v; want nil, non-nil", got, err)
 	}
-	if got := loadLegacyMCP(""); got != nil {
-		t.Errorf("empty path: got %+v, want nil", got)
+	if got, err := loadLegacyMCP(""); got != nil || err != nil {
+		t.Errorf("empty path: got %+v, err %v; want nil, nil", got, err)
 	}
 }
 

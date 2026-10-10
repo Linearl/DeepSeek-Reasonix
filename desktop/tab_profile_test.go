@@ -252,6 +252,33 @@ func TestLoadTabsFileDecodesLegacyTokenModes(t *testing.T) {
 	}
 }
 
+// Task 371 (B3): a corrupt desktop-tabs.json used to read as "no tabs" and the
+// very next save overwrote the file — the only copy was destroyed. The corrupt
+// bytes must land in a .corrupt backup first.
+func TestLoadTabsFileCorruptBacksUpBytes(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	dir := desktopConfigDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, tabsFileName)
+	body := `{"tabs":[{"id":"precious"}],"activeTab":"precious"`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := loadTabsFile()
+	if len(got.Tabs) != 0 {
+		t.Fatalf("corrupt tabs file should read empty, got %+v", got.Tabs)
+	}
+	bak, err := os.ReadFile(path + ".corrupt")
+	if err != nil {
+		t.Fatalf("corrupt tabs file must be backed up: %v", err)
+	}
+	if string(bak) != body {
+		t.Fatalf("backup content = %q, want original bytes", bak)
+	}
+}
+
 // TestSaveTabsPersistsYoloMode is the regression for #3517: yolo used to be
 // dropped on save, so relaunching reverted to normal. It now round-trips through
 // the real saveTabsLocked/loadTabsFile path.

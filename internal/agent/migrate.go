@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -296,7 +298,11 @@ func migrateLegacySessionsWithMarkers(srcDir, globalDest, marker, jsonlMarker st
 	if hadArtifactFailure {
 		return imported, nil
 	}
-	writeImportMarkers(globalDest, marker, legacyImportMarker, legacyEventsHomeImportMarker, legacyEventsConfigImportMarker, jsonlMarker)
+	// Task 371 (A5): a marker write failure must surface — swallowing it here
+	// made the import look stamped while the next boot silently re-ran it.
+	if err := writeImportMarkers(globalDest, marker, legacyImportMarker, legacyEventsHomeImportMarker, legacyEventsConfigImportMarker, jsonlMarker); err != nil {
+		return imported, err
+	}
 	return imported, nil
 }
 
@@ -678,6 +684,10 @@ func linkFileNoReplace(src, dst string) error {
 // recordImportedTitle stores the legacy summary as the session's display title
 // in the dir's .titles.json — the same map the desktop sidebar reads
 // (desktop/sessions.go). Existing titles are never overwritten.
+//
+// Task 371 (A5): write failures used to vanish silently — a full disk made the
+// migration look successful while titles disappeared and the next boot re-ran
+// the whole import. Failures now log with the path.
 func recordImportedTitle(destDir, base, summary string) {
 	if summary == "" {
 		return
@@ -685,7 +695,16 @@ func recordImportedTitle(destDir, base, summary string) {
 	path := filepath.Join(destDir, ".titles.json")
 	titles := map[string]string{}
 	if b, err := fileencoding.ReadFileUTF8(path); err == nil {
-		_ = json.Unmarshal(b, &titles)
+		if json.Unmarshal(b, &titles) != nil {
+			// A corrupt index would be replaced by a single-entry map below,
+			// silently dropping every other title. Back the corrupt bytes up
+			// first and say so.
+			if bakErr := backupCorruptTitlesIndex(path, b); bakErr != nil {
+				slog.Warn("agent: legacy title index unreadable AND backup failed", "path", path, "err", bakErr)
+			} else {
+				slog.Warn("agent: legacy title index unreadable; corrupt copy backed up", "path", path, "backup", path+".corrupt")
+			}
+		}
 	}
 	key := base + ".jsonl"
 	if titles[key] != "" {
@@ -694,13 +713,24 @@ func recordImportedTitle(destDir, base, summary string) {
 	titles[key] = summary
 	b, err := json.MarshalIndent(titles, "", "  ")
 	if err != nil {
+		slog.Warn("agent: legacy title index encode failed", "path", path, "err", err)
 		return
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+		slog.Warn("agent: legacy title index write failed; imported titles will be missing until re-import", "path", path, "err", err)
 		return
 	}
-	_ = os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		slog.Warn("agent: legacy title index publish failed", "path", path, "err", err)
+	}
+}
+
+// backupCorruptTitlesIndex preserves an unreadable .titles.json beside itself
+// (best effort) before recordImportedTitle replaces it.
+func backupCorruptTitlesIndex(path string, data []byte) error {
+	_ = os.Remove(path + ".corrupt")
+	return os.WriteFile(path+".corrupt", data, 0o644)
 }
 
 func importMarkerExists(destDir, marker string) bool {
@@ -711,12 +741,17 @@ func importMarkerExists(destDir, marker string) bool {
 	return err == nil
 }
 
-func writeImportMarkers(destDir string, markers ...string) {
+// writeImportMarkers stamps the one-time import markers. Task 371 (A5): a
+// failed marker write used to be swallowed, so the import marker existed only
+// in the caller's mind — the next boot silently re-ran the whole migration.
+// Failures are joined and returned; callers decide whether to propagate.
+func writeImportMarkers(destDir string, markers ...string) error {
 	if strings.TrimSpace(destDir) == "" {
-		return
+		return nil
 	}
+	var writeErrs []error
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return
+		return fmt.Errorf("import markers: mkdir %s: %w", destDir, err)
 	}
 	seen := map[string]bool{}
 	for _, marker := range markers {
@@ -725,8 +760,12 @@ func writeImportMarkers(destDir string, markers ...string) {
 			continue
 		}
 		seen[marker] = true
-		_ = os.WriteFile(filepath.Join(destDir, marker), nil, 0o644)
+		if err := os.WriteFile(filepath.Join(destDir, marker), nil, 0o644); err != nil {
+			slog.Warn("agent: import marker write failed; migration will re-run next boot", "path", filepath.Join(destDir, marker), "err", err)
+			writeErrs = append(writeErrs, fmt.Errorf("write marker %s: %w", marker, err))
+		}
 	}
+	return errors.Join(writeErrs...)
 }
 
 // rehomeStrandedSessions copies project-scoped sessions that were written into

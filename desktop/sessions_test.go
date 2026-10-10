@@ -1517,6 +1517,28 @@ func TestRecordSessionDisplaySkipsNoop(t *testing.T) {
 	}
 }
 
+// Task 371 (B7): a corrupt display sidecar must not look like "no names" —
+// the bytes are backed up before any later read-modify-write treats the file
+// as an empty baseline and wipes every display name.
+func TestLoadSessionDisplaysCorruptBacksUpBytes(t *testing.T) {
+	dir := t.TempDir()
+	path := sessionDisplayPath(dir)
+	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := loadSessionDisplays(dir)
+	if len(got) != 0 {
+		t.Fatalf("corrupt sidecar should read empty, got %#v", got)
+	}
+	bak, err := os.ReadFile(path + ".corrupt")
+	if err != nil {
+		t.Fatalf("corrupt bytes must be backed up: %v", err)
+	}
+	if string(bak) != "{not json" {
+		t.Fatalf("backup content = %q, want original bytes", bak)
+	}
+}
+
 func TestRecordSessionDisplaySerializesConcurrentTabs(t *testing.T) {
 	dir := t.TempDir()
 	const tabs = 32

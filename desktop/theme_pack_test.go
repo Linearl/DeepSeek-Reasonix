@@ -561,6 +561,38 @@ func TestCorruptActiveThemeFallsBack(t *testing.T) {
 	}
 }
 
+// Task 371 (B2): a corrupt-but-present user pack must NOT have its pointer
+// wiped — the pointer is the only record of the user's choice. Contract:
+// preserve it on disk and surface a visible error instead.
+func TestCorruptActiveThemePackPreservesPointer(t *testing.T) {
+	// Theme state and user themes resolve through MemoryUserDir, which follows
+	// REASONIX_STATE_HOME (pinned package-wide by TestMain), NOT REASONIX_HOME —
+	// isolate that or the corrupt fixture poisons the shared scratch dir.
+	t.Setenv("REASONIX_STATE_HOME", t.TempDir())
+	app := NewApp()
+
+	id := "corruptpack"
+	if err := os.MkdirAll(filepath.Join(themesRootDir(), id), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(themeManifestPath(id), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveThemeDesktopState(ThemeDesktopState{SchemaVersion: 1, ActiveThemeID: id}); err != nil {
+		t.Fatal(err)
+	}
+	active, err := app.GetActiveThemePack()
+	if err == nil {
+		t.Fatal("corrupt active pack must surface a visible error")
+	}
+	if active.Pack != nil {
+		t.Fatalf("expected nil pack, got %+v", active.Pack)
+	}
+	if st := loadThemeDesktopState(); st.ActiveThemeID != id {
+		t.Fatalf("pointer must be preserved on disk, got %q", st.ActiveThemeID)
+	}
+}
+
 func TestListThemePacksIncludesBuiltins(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)

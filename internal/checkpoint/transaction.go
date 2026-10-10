@@ -1210,7 +1210,10 @@ func (s *Store) recoverTransactions(applier ConversationApplier) []string {
 			tx.State = TxAborted
 			tx.Error = "abandoned prepared transaction on recovery"
 			tx.UpdatedAt = time.Now()
-			_ = s.persistTransaction(&tx)
+			if persistErr := s.persistTransaction(&tx); persistErr != nil {
+				slog.Error("checkpoint: crash-recovery persist failed; transaction will retry on next startup", "tx", tx.ID, "state", tx.State, "err", persistErr)
+				notes = append(notes, fmt.Sprintf("persist %s: %v", tx.ID, persistErr))
+			}
 			notes = append(notes, fmt.Sprintf("aborted prepared %s", tx.ID))
 		case TxCommitting:
 			needsConversation := tx.Scope == RewindConversation || tx.Scope == RewindBoth
@@ -1234,7 +1237,10 @@ func (s *Store) recoverTransactions(applier ConversationApplier) []string {
 					notes = append(notes, fmt.Sprintf("conversation recovery %s pending: %v", tx.ID, restoreErr))
 					tx.Error = fmt.Sprintf("crash recovery conversation compensation pending: %v", restoreErr)
 					tx.UpdatedAt = time.Now()
-					_ = s.persistTransaction(&tx)
+					if persistErr := s.persistTransaction(&tx); persistErr != nil {
+						slog.Error("checkpoint: crash-recovery persist failed; transaction will retry on next startup", "tx", tx.ID, "state", tx.State, "err", persistErr)
+						notes = append(notes, fmt.Sprintf("persist %s: %v", tx.ID, persistErr))
+					}
 					continue
 				}
 			}
@@ -1247,13 +1253,19 @@ func (s *Store) recoverTransactions(applier ConversationApplier) []string {
 				notes = append(notes, fmt.Sprintf("compensate %s: %v", tx.ID, err))
 				tx.Error = fmt.Sprintf("crash recovery compensation pending: %v", err)
 				tx.UpdatedAt = time.Now()
-				_ = s.persistTransaction(&tx)
+				if persistErr := s.persistTransaction(&tx); persistErr != nil {
+					slog.Error("checkpoint: crash-recovery persist failed; transaction will retry on next startup", "tx", tx.ID, "state", tx.State, "err", persistErr)
+					notes = append(notes, fmt.Sprintf("persist %s: %v", tx.ID, persistErr))
+				}
 			} else {
 				notes = append(notes, fmt.Sprintf("compensated committing %s", tx.ID))
 				tx.State = TxAborted
 				tx.Error = "compensated after crash during commit"
 				tx.UpdatedAt = time.Now()
-				_ = s.persistTransaction(&tx)
+				if persistErr := s.persistTransaction(&tx); persistErr != nil {
+					slog.Error("checkpoint: crash-recovery persist failed; transaction will retry on next startup", "tx", tx.ID, "state", tx.State, "err", persistErr)
+					notes = append(notes, fmt.Sprintf("persist %s: %v", tx.ID, persistErr))
+				}
 			}
 		case TxCommitted:
 			if tx.Kind == "undo" || undoneParents[tx.ID] {

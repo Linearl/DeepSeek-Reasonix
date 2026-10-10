@@ -167,12 +167,19 @@ func TestCompactionPausesWhenWindowTooSmall(t *testing.T) {
 			blocked++
 		}
 	})
-	// First turn may fail with a typed overflow/blocked error once protected
-	// content cannot form a safe checkpoint. It must not start many summaries.
-	_ = a.Run(context.Background(), "turn 0: keep going")
-	_ = a.Run(context.Background(), "turn 1: keep going")
+	// Either turn may fail with a typed overflow/blocked error once protected
+	// content cannot form a safe checkpoint — that is expected, so the errors
+	// are captured for diagnostics instead of failing the test (the loop guard
+	// below is the assertion; task 371 E3). A run where compaction never even
+	// attempts a summary is a construction failure: the window (1600) is far
+	// below the tool blob, so started==0 means the premise is lost.
+	turn0Err := a.Run(context.Background(), "turn 0: keep going")
+	turn1Err := a.Run(context.Background(), "turn 1: keep going")
+	if started == 0 {
+		t.Fatalf("compaction never attempted (started=0, turn0Err=%v, turn1Err=%v) — premise lost, loop guard untested", turn0Err, turn1Err)
+	}
 	if started > 2 {
-		t.Fatalf("summary transactions started = %d, want ≤2 (no multi-span / retry loop)", started)
+		t.Fatalf("summary transactions started = %d, want ≤2 (no multi-span / retry loop); turn0Err=%v, turn1Err=%v", started, turn0Err, turn1Err)
 	}
 	if blocked == 0 && a.currentProjectionVersion() == 0 {
 		// Either a durable block or a successful install is fine; looping is not.

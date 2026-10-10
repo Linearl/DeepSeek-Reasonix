@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -97,13 +99,18 @@ func DetectWorktreeMergeConflicts(ctx context.Context, items []WorktreeRef) ([]W
 // overlappingChangedFiles returns the sorted intersection of files each branch
 // changed relative to their merge base. A missing merge base (unrelated
 // histories) reports no overlap: those branches cannot auto-merge anyway and
-// the existing merge inspection owns that failure.
+// the existing merge inspection owns that failure. Task 371 (D2): any OTHER
+// merge-base failure — corrupt objects, permissions, probe timeout — now
+// propagates instead of masquerading as "no overlap", which used to disable
+// the merge-conflict preflight for the whole pair without a trace.
 func overlappingChangedFiles(ctx context.Context, rootA, headA, rootB, headB string) ([]string, error) {
-	base, err := gitOutput(ctx, rootA, "merge-base", headA, headB)
-	if err != nil || strings.TrimSpace(base) == "" {
+	base, found, err := gitMergeBase(ctx, rootA, headA, headB)
+	if err != nil {
+		return nil, err
+	}
+	if !found || base == "" {
 		return nil, nil
 	}
-	base = strings.TrimSpace(base)
 	filesA, err := changedFilesSince(ctx, rootA, base, headA)
 	if err != nil {
 		return nil, err
@@ -145,6 +152,38 @@ func sameGitCommonDir(a, b string) bool {
 		return true
 	}
 	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+// gitMergeBase resolves the merge base of two heads. found is false only for
+// git's specific "no common ancestor" outcome (exit 1 with an empty stderr);
+// every other failure — bad objects, corrupt refs, permissions, probe timeout
+// — is a real error, because reporting it as "no merge base" would silently
+// disable overlap detection for the pair (task 371 D2).
+func gitMergeBase(ctx context.Context, dir, headA, headB string) (base string, found bool, err error) {
+	probeCtx, cancel := context.WithTimeout(ctx, fleetGitProbeTimeout)
+	defer cancel()
+	cmd := proc.CommandContext(probeCtx, "git", "merge-base", headA, headB)
+	cmd.Dir = dir
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if runErr := cmd.Run(); runErr != nil {
+		if probeCtx.Err() != nil {
+			// Killed by the probe timeout: a real degradation, never "no base".
+			return "", false, fmt.Errorf("git merge-base %s %s: %w", headA, headB, probeCtx.Err())
+		}
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) && exitErr.ExitCode() == 1 && strings.TrimSpace(stderr.String()) == "" {
+			// Unrelated histories: git exits 1 with no output — no overlap is
+			// possible and the merge inspection owns that failure.
+			return "", false, nil
+		}
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return "", false, fmt.Errorf("git merge-base %s %s: %w: %s", headA, headB, runErr, msg)
+		}
+		return "", false, fmt.Errorf("git merge-base %s %s: %w", headA, headB, runErr)
+	}
+	return strings.TrimSpace(stdout.String()), true, nil
 }
 
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {

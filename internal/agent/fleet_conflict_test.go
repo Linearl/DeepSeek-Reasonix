@@ -22,6 +22,21 @@ func gitMust(t *testing.T, dir string, args ...string) {
 	}
 }
 
+func gitOutMust(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // setupConflictWorktrees creates a repo with two linked worktrees that both
 // change the same file relative to their merge base.
 func setupConflictWorktrees(t *testing.T) (root, wtA, wtB string) {
@@ -156,5 +171,54 @@ func TestFleetPlanValidateOrderedWorktreeConflictsAllowed(t *testing.T) {
 	}
 	if err := plan.validateConcurrentWorktreeConflicts(context.Background(), items); err != nil {
 		t.Fatalf("ordered tasks may share files: %v", err)
+	}
+}
+
+// Task 371 (D2): unrelated histories are the ONLY benign merge-base failure —
+// git exits 1 with empty stderr, and overlap stays "none" without an error.
+func TestOverlappingChangedFilesUnrelatedHistoriesIsBenign(t *testing.T) {
+	root := t.TempDir()
+	gitMust(t, root, "init", "-b", "main")
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitMust(t, root, "add", ".")
+	gitMust(t, root, "commit", "-m", "a")
+	headA := gitOutMust(t, root, "rev-parse", "HEAD")
+
+	// Orphan history: no common ancestor with main.
+	gitMust(t, root, "checkout", "--orphan", "isolated")
+	if err := os.WriteFile(filepath.Join(root, "b.txt"), []byte("b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitMust(t, root, "add", ".")
+	gitMust(t, root, "commit", "-m", "b")
+	headB := gitOutMust(t, root, "rev-parse", "HEAD")
+
+	files, err := overlappingChangedFiles(context.Background(), root, headA, root, headB)
+	if err != nil {
+		t.Fatalf("unrelated histories must stay benign: %v", err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("files = %v, want none", files)
+	}
+}
+
+// Task 371 (D2): a merge-base failure that is NOT "no common ancestor" (here a
+// nonexistent head object) must surface instead of masquerading as "no
+// overlap" — that silent degrade used to disable the preflight for the pair.
+func TestOverlappingChangedFilesBrokenHeadErrors(t *testing.T) {
+	root := t.TempDir()
+	gitMust(t, root, "init", "-b", "main")
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitMust(t, root, "add", ".")
+	gitMust(t, root, "commit", "-m", "a")
+	headA := gitOutMust(t, root, "rev-parse", "HEAD")
+
+	files, err := overlappingChangedFiles(context.Background(), root, headA, root, "0000000000000000000000000000000000000000")
+	if err == nil {
+		t.Fatalf("broken head must error, got files=%v", files)
 	}
 }

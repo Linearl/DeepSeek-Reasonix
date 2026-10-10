@@ -5726,14 +5726,29 @@ func (a *App) removeTabOrderLocked(tabID string) {
 	a.tabOrder = next
 }
 
+// loadTabsFile reads the persisted tab snapshot. Task 371 (B3): an unreadable
+// or corrupt file used to be indistinguishable from "no tabs" — the very next
+// save then overwrote the file with an empty snapshot and every tab layout /
+// session binding was gone for good. A corrupt file is now backed up beside
+// itself before that happens and the loss is logged.
 func loadTabsFile() desktopTabsFile {
 	path := filepath.Join(desktopConfigDir(), tabsFileName)
 	b, err := readFileUTF8(path)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Warn("desktop: failed to read tabs file; starting with empty tab layout", "path", path, "err", err)
+		}
 		return desktopTabsFile{}
 	}
 	var f desktopTabsFile
-	_ = json.Unmarshal(b, &f)
+	if err := json.Unmarshal(b, &f); err != nil {
+		if bakErr := backupCorruptJSONFile(path, b, 0o644); bakErr != nil {
+			slog.Error("desktop: tabs file corrupt AND backup failed; next save destroys the only copy", "path", path, "err", err, "backupErr", bakErr)
+		} else {
+			slog.Error("desktop: tabs file corrupt; corrupt copy backed up, starting with empty tab layout", "path", path, "backup", path+".corrupt", "err", err)
+		}
+		return desktopTabsFile{}
+	}
 	return f
 }
 
