@@ -2727,6 +2727,16 @@ export const zh: Record<DictKey, string> = {
 "settings.tabModeTint.badge": "徽章",
 "settings.tabModeTint.off": "关闭",
 "settings.tabModeTint.background": "背景色",
+// 任务 742：标签页管理合并卡（tabCompress + tabModeTint 的条目级合并，
+// 两行成员开关沿用上方各自的键）。
+"settings.tabManagement": "标签页管理",
+"settings.tabManagementHint": "标签栏两个实验特性的合并卡：自适应压缩（任务 506）与权限指示（任务 651）。仅入口层合并——卡内两行各自保留独立开关、已存偏好与档位徽章，旧设置原样生效，不做任何迁移或重置。两项保存后立即生效、无需重启。",
+"settings.tabManagement.subHint": "卡内为两个独立开关——各留各的语义与默认值，未动过的偏好原样沿用。",
+// 任务 742：心跳任务后台化（默认关 = 742 前的可见标签行为）。
+"settings.heartbeatBackground": "心跳任务后台化",
+"settings.heartbeatBackgroundHint": "让心跳计划任务不占用标签栏：运行在后台打开对应话题、提交提示词后把会话转入后台驻留（任务 264 detached 语义）——回合继续跑完，标签栏不留新标签。你自己打开过的话题永远不会被收起；后台驻留期间机器人通道转发照常工作，下一次运行会自动接回。实验特性，默认关闭——关闭时每次运行保持原行为（话题标签照常留在标签栏）。保存后对下一次计划运行生效，无需重启。",
+"settings.heartbeatBackground.on": "开",
+"settings.heartbeatBackground.off": "关",
 "settings.subagentDetail": "子代理详情视图",
 "settings.subagentDetailHint": "控制右栏「子代理」面板里点击一行的行为（双态实验特性，默认关闭）：关闭时为保底形态——点击行在面板内展开内联预览，另加「加宽预览 / 还原宽度」按钮可一键把右栏调宽（拖拽调宽与双击复位不受影响）；开启时为增强形态——点击行切换到右栏内整页只读详情（含「返回列表」按钮），宽度沿用右栏记忆宽度，详情不提供任何输入框、仅供查看。保存后立即生效，无需重启。",
 "settings.subagentDetail.on": "开",

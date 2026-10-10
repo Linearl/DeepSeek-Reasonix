@@ -1,7 +1,8 @@
 // Run: npx tsx src/__tests__/task562-experiment-tiers.test.ts
 // 任务 562 acceptance harness (lab three-tier badges):
-//  ① the tier register mirrors xlsx 表A exactly — 推荐 15 / 可选 20 /
-//     未稳定 13 / 已退役 1 = 49 (acceptance ④; 任务 707 压缩模型指定入表后口径);
+//  ① the tier register mirrors xlsx 表A exactly — 推荐 15 / 可选 24 /
+//     未稳定 13 / 已退役 1 = 53 (acceptance ④; 任务 742 合并卡容器+心跳后台化
+//     入表后口径);
 //  ② the wall picks are the 16 curated 表B W1 items, every pick carries a
 //     tier (12 recommended + 4 optional) (acceptance ② data half);
 //  ③ the frontend register and the Go labFeatureTiers registry in
@@ -58,11 +59,14 @@ console.log("\ntask 562 lab three-tier badges");
   // 20→21、总数 49→50，两侧同源对齐。
   // 任务 727：heartbeatRotation（心跳会话轮换，桥接 JSON 键）按可选档入表
   // ——可选 21→22、总数 50→51。
-  ok(counts.recommended === 15 && counts.optional === 22 && counts.unstable === 13 && counts.retired === 1,
-    `register counts are 15/22/13/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 51, `register holds exactly 51 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 22 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 15/22/13/1");
+  // 任务 742：tabManagement（标签页管理合并卡，纯前端容器 id，无配置键）与
+  // heartbeatBackground（心跳任务后台化，默认关）按可选档入表——可选
+  // 22→24、总数 51→53（Go 渲染表只收 heartbeatBackground → 51）。
+  ok(counts.recommended === 15 && counts.optional === 24 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 15/24/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 53, `register holds exactly 53 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 24 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 15/24/13/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -81,26 +85,28 @@ console.log("\ntask 562 lab three-tier badges");
 }
 
 // ③ frontend register ↔ Go registry (render.go) agreement.
-// 任务 621/722/727 口径：两侧各留显式豁免——Go 独有 sessionCwdFollow（任务
+// 任务 621/722/727/742 口径：两侧各留显式豁免——Go 独有 sessionCwdFollow（任务
 // 545，纯 TOML 配置特性，无 desktop 绑定、无设置页渲染面，无处挂徽章）；前端
 // 独有 modelCapabilityFilter（已退役只读展示行，Go 渲染表已移除该键，473/562
-// 域）与 heartbeatRotation（任务 727，桥接 heartbeat-rotation.json 的 enabled，
-// 不落 config.toml，无 Go 渲染表条目）。除这些显式豁免外逐项一致。
+// 域）、heartbeatRotation（任务 727，桥接 heartbeat-rotation.json 的 enabled，
+// 不落 config.toml，无 Go 渲染表条目）与 tabManagement（任务 742，标签页管理
+// 合并卡的纯前端容器 id，卡内两行各写各的配置键，容器自身无键）。除这些显式
+// 豁免外逐项一致。
 {
   const goSrc = readFileSync(fileURLToPath(new URL("../../../../internal/config/render.go", import.meta.url)), "utf8");
   const goTiers: Record<string, string> = {};
   for (const m of goSrc.matchAll(/\{"([a-zA-Z]+)", LabTier([A-Za-z]+), \[/g)) {
     goTiers[m[1]] = m[2].toLowerCase();
   }
-  ok(Object.keys(goTiers).length === 50, `Go registry parses to 50 entries (got ${Object.keys(goTiers).length})`);
+  ok(Object.keys(goTiers).length === 51, `Go registry parses to 51 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
   const feOnly = feIds.filter((id) => !goIds.includes(id));
   ok(JSON.stringify(goOnly) === JSON.stringify(["sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
-  ok(JSON.stringify(feOnly) === JSON.stringify(["heartbeatRotation", "modelCapabilityFilter"]),
-    `frontend-only ids are exactly the display/json-bridge exemptions (got ${JSON.stringify(feOnly)})`);
+  ok(JSON.stringify(feOnly) === JSON.stringify(["heartbeatRotation", "modelCapabilityFilter", "tabManagement"]),
+    `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
     if (id in goTiers && goTiers[id] !== EXPERIMENT_FEATURE_TIERS[id as TierFeatureId]) mismatch += 1;
@@ -118,8 +124,9 @@ console.log("\ntask 562 lab three-tier badges");
   ok(members.length === 19, `merged cards carry 19 member features (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
-  // 任务 704：trajectoryView 入表 → 50；任务 727 heartbeatRotation → 51。
-  ok(covered.size === 51, "rail entries cover all 51 features");
+  // 任务 704：trajectoryView 入表 → 50；任务 727 heartbeatRotation → 51；
+  // 任务 742 tabManagement + heartbeatBackground → 53。
+  ok(covered.size === 53, "rail entries cover all 53 features");
   const gov = railTiersForDefault("contextGovernance");
   ok(gov[0] === "recommended" && gov[1] === "optional" && gov.length === 2, `contextGovernance shows [推荐, 可选] (got ${JSON.stringify(gov)})`);
   ok(JSON.stringify(railTiersForDefault("autopilot")) === JSON.stringify(["recommended"]), "standalone entry badges itself");

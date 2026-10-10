@@ -42,6 +42,10 @@ const goConfig = fs.readFileSync(path.join(repoRoot, "internal/config/desktop_pr
 const goEdit = fs.readFileSync(path.join(repoRoot, "internal/config/edit.go"), "utf8");
 const goRender = fs.readFileSync(path.join(repoRoot, "internal/config/render.go"), "utf8");
 const goTierTest = fs.readFileSync(path.join(repoRoot, "internal/config/render_lab_tiers_test.go"), "utf8");
+// 任务 742 修复预存红：724 起 rail 布局由 lab-layout.yaml + 内置默认数据驱动，
+// SettingsPanel 不再硬编码 render table——trajectoryView 的布局锚随迁两文件。
+const labDefaultLayout = fs.readFileSync(path.join(frontendRoot, "src/lab/labLayoutDefault.ts"), "utf8");
+const labYaml = fs.readFileSync(path.join(frontendRoot, "src/lab/lab-layout.yaml"), "utf8");
 
 console.log("\n任务 704 trajectory view: lab switch persistence + default-off contract");
 
@@ -61,8 +65,10 @@ ok(goRender.includes('fmt.Fprintf(&b, "experimental_trajectory_view = %v'),
 // 3. Tier register (Go side): trajectoryView registered, optional tier.
 ok(/\{"trajectoryView", LabTierOptional, \[\]string\{"experimental_trajectory_view"\}\}/.test(goRender),
   "Go labFeatureTiers registers trajectoryView as optional");
-ok(goTierTest.includes("LabTierOptional: 21") && goTierTest.includes("len(labFeatureTiers) != 50"),
-  "Go tier-count test bumped to optional 21 / total 50");
+// 计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 22/51，
+// Go 侧只收 heartbeatBackground、不收纯前端容器 tabManagement）。
+ok(goTierTest.includes("LabTierOptional: 22") && goTierTest.includes("len(labFeatureTiers) != 51"),
+  "Go tier-count test bumped to optional 22 / total 51 (742 口径)");
 
 // 4. Both settings views carry the field (81/123: a view that omits it would
 //    read permanently off) and the boot snapshot fills it.
@@ -95,18 +101,26 @@ ok(appTsx.includes("trajectoryView: settings.experimentalTrajectoryView ?? false
 ok(appTsx.includes("experimentalTrajectoryView?: boolean"),
   "App applyDesktopPreferences accepts experimentalTrajectoryView");
 
-// 7. Lab render table entry + detail card (81/123 lost-save rule).
-ok(panel.includes('{ id: "trajectoryView", group: "ui", label: t("settings.trajectoryView"), on: Boolean(s.experimentalTrajectoryView) }'),
-  "lab render table has the trajectoryView entry in the ui group");
+// 7. Lab rail entry + detail card (81/123 lost-save rule).
+// 任务 742 修复预存红：724 起 render table 移交 lab-layout.yaml + 内置默认
+// 数据，SettingsPanel 不再硬编码条目——布局锚改为钉两份数据源。
+ok(labDefaultLayout.includes('{ id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional", onKeys: ["experimentalTrajectoryView"] }'),
+  "built-in default layout has the trajectoryView entry in the ui group (724 数据源)");
+ok(labYaml.includes("- id: trajectoryView") && labYaml.includes("labelKey: settings.trajectoryView"),
+  "lab-layout.yaml carries the trajectoryView entry (724 数据源)");
 ok(panel.includes('| "trajectoryView"'), "ExperimentFeatureId union includes trajectoryView");
 ok(panel.includes('selected === "trajectoryView"') &&
   panel.includes("app.SetExperimentalTrajectoryView(on)"),
   "detail card wires the setter");
-ok(/\| "trajectoryView"\n  \? LabTier/.test(tiers) || tiers.includes('| "trajectoryView";'),
+// 成员行在 union 中部（后随注释行），行尾分号可有可无——按行锚定，不再
+// 锁死「union 最后一位」的旧形态（727 插入 heartbeatRotation 后位移）。
+ok(/^\s*\| "trajectoryView";?\s*$/m.test(tiers),
   "TierFeatureId union includes trajectoryView");
 ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajectoryView is optional");
-ok(/recommended: 15,\s*\n\s*optional: 21,/.test(tiers),
-  "LAB_TIER_COUNTS bumped to optional 21");
+// 计数 pin 随每次表A 变更步进（704 落地时 21；727 → 22；742 → 24，含
+// tabManagement 容器 + heartbeatBackground 两个可选档）。
+ok(/recommended: 15,\s*\n\s*optional: 24,/.test(tiers),
+  "LAB_TIER_COUNTS bumped to optional 24 (742 口径)");
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -119,9 +133,10 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 
 // 9. experimentTiers test counts moved with the register (the 562 harness
 //    pins the distribution — a silent mismatch would fail CI elsewhere).
+//    计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 24/53）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 21") && tierTest.includes("length === 50"),
-  "task562 test pins the 50-entry register");
+ok(tierTest.includes("counts.optional === 24") && tierTest.includes("length === 53"),
+  "task562 test pins the 53-entry register (742 口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");

@@ -2526,6 +2526,8 @@ export interface DesktopStartupSettingsView {
   experimentalPromptHistoryPicker?: boolean;
   /** Tab-strip adaptive compression (task 506); off by default; tiered tab width once >8 tabs. */
   experimentalTabCompress?: boolean;
+  /** 心跳任务后台化（任务 742）；默认关；开启后心跳触发不进标签栏（264 detached 语义）。 */
+  experimentalHeartbeatBackground?: boolean;
   /** Subagent detail view (task 507); off = inline preview + widen affordance, on = read-only in-dock detail view. */
   experimentalSubagentDetail?: boolean;
   /** Tab permission indicator (task 651): badge (default) | off | background — resolved server-side, legacy 504 tint bool folds in. */

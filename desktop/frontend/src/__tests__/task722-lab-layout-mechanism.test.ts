@@ -66,9 +66,11 @@ const paneIds = new Set<string>();
   ok(r2.source === "default", "unsupported version falls back");
   const r3 = resolveLabLayout(yamlText.replace("experimentalTabCompress", "experimentalTabCompressTypo"), { allowedEntryIds: paneIds });
   ok(r3.source === "default", "unknown light-key reference falls back");
-  const r4 = resolveLabLayout(yamlText.replace("id: tabCompress", "id: notAPaneBranch"), { allowedEntryIds: paneIds });
+  // 任务 742：tabCompress/tabModeTint 条目合并为 tabManagement——安全网
+  // needle 随迁到新卡 id（needle 不存在时 replace 是 no-op，测试会假绿）。
+  const r4 = resolveLabLayout(yamlText.replace("id: tabManagement", "id: notAPaneBranch"), { allowedEntryIds: paneIds });
   ok(r4.source === "default", "entry id outside the pane whitelist falls back");
-  const r5 = resolveLabLayout(yamlText.replace("labelKey: settings.tabCompress", "labelKey: settings.noSuchKey"), { allowedEntryIds: paneIds });
+  const r5 = resolveLabLayout(yamlText.replace("labelKey: settings.tabManagement", "labelKey: settings.noSuchKey"), { allowedEntryIds: paneIds });
   ok(r5.source === "default", "labelKey outside the dictionary falls back (文案必须走 locale 键)");
   // 回退结果与内置默认逐位一致——不白屏、不半渲染。
   ok(r1.layout === LAB_LAYOUT_DEFAULT_DATA && r3.layout === LAB_LAYOUT_DEFAULT_DATA,
@@ -156,9 +158,10 @@ items:
   ]) ok(bridge.includes(b), `bridge wire: ${b}`);
   // Go 双视图（81/123 both-views lesson）。
   const settingsApp = readFileSync(`${repoRoot}/desktop/settings_app.go`, "utf8");
-  ok((settingsApp.match(/SafetyIdleTerminate\s+\*bool `json:"safetyIdleTerminate"`/g) ?? []).length === 2,
+  // \s+ 容忍 gofmt 的字段对齐空格（锁死单空格会在 gofmt -w 后假红，742 实测）。
+  ok((settingsApp.match(/SafetyIdleTerminate\s+\*bool\s+`json:"safetyIdleTerminate"`/g) ?? []).length === 2,
     "both Go settings views carry safetyIdleTerminate (JSON null = inherit)");
-  ok((settingsApp.match(/SafetyEventWaitRecheck\s+\*bool `json:"safetyEventWaitRecheck"`/g) ?? []).length === 2,
+  ok((settingsApp.match(/SafetyEventWaitRecheck\s+\*bool\s+`json:"safetyEventWaitRecheck"`/g) ?? []).length === 2,
     "both Go settings views carry safetyEventWaitRecheck");
   // 卡内行：跟随读数 + 独立 setter。
   ok(panel.includes("s.safetyIdleTerminate ?? s.experimentalSafetyCostControl") &&

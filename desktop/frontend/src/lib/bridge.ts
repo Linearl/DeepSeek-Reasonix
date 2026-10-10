@@ -1098,6 +1098,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalPromptHistoryPicker(enabled: boolean): Promise<void>;
   // Task 506: tab-strip adaptive compression (tiered width once >8 tabs; re-applied on settings save).
   SetExperimentalTabCompress(enabled: boolean): Promise<void>;
+  // 任务 742: heartbeat background mode (runs park their tab detached after
+  // submit; call-time gate, next scheduled run applies it).
+  SetExperimentalHeartbeatBackground(enabled: boolean): Promise<void>;
   // Task 651: tab permission indicator three-mode setting (badge | off |
   // background; re-applied on settings save).
   SetTabPermissionIndicator(mode: string): Promise<void>;

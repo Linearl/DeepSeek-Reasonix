@@ -6,7 +6,7 @@
 //  ② 编译期门禁——成员 id 用 TierFeatureId 字面量类型、组 key 用
 //     LabGroupKey 字面量、labelKey 用 DictKey 字面量，写错是编译错不是运行时。
 //
-// 内容 = 现状全量设置分组 + 任务 722 六点调整：
+// 内容 = 现状全量设置分组 + 任务 722 六点调整 + 727 登记 + 任务 742：
 //   点1 备用模型行迁「提效-模型策略」卡（行级迁移在 SettingsPanel，本文件
 //       只登记卡片结构）；
 //   点2 modelStrategy 成员去掉 modelCapabilityFilter（已退役徽章不再上 rail；
@@ -16,7 +16,10 @@
 //   点6 messageMerge 并入 safetyCostControl；safetyCostControl 整卡自
 //       automation 迁 efficiency，排 contextGovernance 之后；
 //   727 heartbeatRotation 登记为 safetyCostControl 成员（桥接
-//       heartbeat-rotation.json，不参与卡片灯——默认开，参与会让卡常亮）。
+//       heartbeat-rotation.json，不参与卡片灯——默认开，参与会让卡常亮）；
+//   742 tabCompress + tabModeTint 合并为「标签页管理」单卡（条目级合并，
+//       两键语义/setter 不变，行级徽章保留在 SettingsPanel）；新增
+//       heartbeatBackground（automation 独立卡，默认关，可选）。
 
 import type { DictKey } from "../locales/en";
 import type { LabTier, TierFeatureId } from "../lib/experimentTiers";
@@ -59,6 +62,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         },
         { id: "fullAccess", labelKey: "settings.fullAccess", tier: "recommended", onKeys: ["experimentalFullAccess"] },
         { id: "dream", labelKey: "settings.dream", tier: "optional", onKeys: ["experimentalDream"] },
+        // 任务 742：心跳任务后台化——开启后心跳触发不进标签栏（264 detached
+        // 语义，提交成功后 park）。默认关=现状一致。
+        { id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional", onKeys: ["experimentalHeartbeatBackground"] },
       ],
     },
     {
@@ -132,9 +138,11 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "ui",
       labelKey: "settings.labGroup.ui",
       entries: [
-        { id: "tabCompress", labelKey: "settings.tabCompress", tier: "recommended", onKeys: ["experimentalTabCompress"] },
+        // 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离
+        // 默认档；卡徽章可选。卡内两行各自读自己的键、写自己的 setter
+        // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。
+        { id: "tabManagement", labelKey: "settings.tabManagement", tier: "optional", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] },
         { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional", onKeys: ["experimentalTrajectoryView"] },
-        { id: "tabModeTint", labelKey: "settings.tabModeTint", tier: "unstable", onKeys: ["tabModeTintNonDefault"] },
         { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },
         { id: "promptHistoryPicker", labelKey: "settings.promptHistoryPicker", tier: "recommended", onKeys: ["experimentalPromptHistoryPicker"] },
         { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended", onKeys: ["experimentalSessionWall"] },
