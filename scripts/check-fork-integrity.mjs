@@ -755,7 +755,9 @@ const CHECKS = [
   { feature: "任务278 快捷指令弹窗宽度链", file: "desktop/frontend/src/styles.css", patterns: ["settings-quick-commands--wide {\n  width: 100%;", "settings-quick-commands__row > textarea.mem-input {\n  flex: 2 1 52%;", "任务 278 防反弹"] },
   // 任务656：外壳 900px→1100px（视口兜底 min(..., 100vw-32px) 不变，278 的
   // 「视口兜底」语义原样保留，只放大默认宽度）。
-  { feature: "任务278+656 wide 弹窗外壳（1100px+视口兜底）", file: "desktop/frontend/src/components/ProviderAccessSettings.css", patterns: [".provider-dialog--wide { width: min(1100px, calc(100vw - 32px)); }"] },
+  // 任务721：width 单写从未真正生效——同元素 .modal 的 max-width:440px 恒钳制
+  // （max-width 胜 width，与级联顺序/特异性无关），须 width+max-width 双写。
+  { feature: "任务278+656+721 wide 弹窗外壳（1100px 双写+视口兜底）", file: "desktop/frontend/src/components/ProviderAccessSettings.css", patterns: ["width: min(1100px, calc(100vw - 32px));\n  max-width: min(1100px, calc(100vw - 32px));"] },
   // 任务 323：multi_edit 引导——正文裁决是描述改文案（不放 AGENTS.md/技能）：
   // multi_edit 前置 WHEN TO USE 触发句、edit_file 尾部互引，加中文触发词
   // （172 惯例）。锚点锁双侧指路，merge 静默丢任一侧即报。

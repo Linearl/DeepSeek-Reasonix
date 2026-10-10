@@ -16,6 +16,13 @@
 //  6) 列表竖直上限 60vh → calc(100dvh - 160px)（贴住 shell 的
 //     100dvh - 48px 上限，滚动兜底只在超屏长列表时触发）；
 //  7) 内容列 textarea 默认 3 行（rows=3），更多正文开箱可见。
+//
+// 任务 721 验收：656 装机无效归因——外壳元素同时挂 .modal（max-width: 440px，
+// styles.css）与 .provider-dialog--wide（仅 width）。max-width 钳制与级联顺序/
+// 特异性无关，used width = min(width, max-width) ⇒ 278 的 900px 与 656 的
+// 1100px 从未真正渲染（恒 440px），源码锚点全绿但装机不变。修法同 .rc-modal /
+// .reasonix-confirm-dialog--wide 先例：width 与 max-width 双写。
+//  8) .provider-dialog--wide 必须双写 max-width: min(1100px, 100vw-32px)。
 
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
@@ -126,6 +133,8 @@ console.log("\n任务 278 + 656 快捷指令弹窗宽度链");
 
   ok(/\{[^{}]*width:\s*min\(1100px,\s*calc\(100vw - 32px\)\)/.test(shellCss.split(".provider-dialog--wide")[1] ?? ""),
     "wide shell = min(1100px, 100vw-32px) [656]: rows fit on one line, narrow viewports capped");
+  ok(/\{[^{}]*width:\s*min\(1100px,\s*calc\(100vw - 32px\)\)[^{}]*max-width:\s*min\(1100px,\s*calc\(100vw - 32px\)\)/.test(shellCss.split(".provider-dialog--wide")[1] ?? ""),
+    "wide shell also overrides max-width [721]: the shared .modal caps max-width at 440px, width alone never rendered past it");
   ok(/settings-quick-commands--wide\s*\{[^{}]*width:\s*100%/.test(stylesCss),
     "quick-commands content fills the wide shell (no inner width floor to fight it)");
   ok(/\.settings-quick-commands--panel\s*\{[^{}]*max-height:\s*calc\(100dvh - 160px\)/.test(stylesCss),
