@@ -627,6 +627,50 @@ func (e *HeartbeatEngine) resolveHeartbeatTopic(t HeartbeatTask, scope, workspac
 // desktop reads it to file them under the heartbeat group automatically.
 const heartbeatTopicOrigin = "heartbeat"
 
+// heartbeatTitlePrefix is the title convention every scheduler-created
+// conversation carries ("Heartbeat: <task title>", heartbeat.go's run title;
+// rotation successors keep it). The 755 origin restore keys off it so a user
+// named conversation is never re-filed by inference.
+const heartbeatTitlePrefix = "Heartbeat: "
+
+// sessionRepairTopicTitle sanitizes the title the tab-build index repair feeds
+// into the topic registry (task 755). The workspace label is not a
+// conversation name: a tab restored from a tabs file written before the 755
+// fix can still carry it, and the repair used to persist it as a manual
+// (authoritative) title on every controller build.
+func sessionRepairTopicTitle(title string) string {
+	if strings.TrimSpace(title) == globalWorkspaceTabLabel {
+		return defaultTopicTitle
+	}
+	return title
+}
+
+// restoreHeartbeatTopicOrigin re-stamps the automation origin when a rebuilt
+// topic carries the scheduler's title convention but lost its stamp — its
+// topic state was rebuilt without the AutoMeta that died with it (the 755
+// archive-failure family: 归档失败遗留的空 global 会话). Heartbeat
+// conversations are global-scope by construction, so a project-scope index is
+// skipped; fileHeartbeatTopics still leaves topics the user filed elsewhere by
+// hand alone, so the re-stamp never undoes a manual move.
+func restoreHeartbeatTopicOrigin(scope, topicID, title string) {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" || strings.TrimSpace(scope) == "project" {
+		return
+	}
+	if !strings.HasPrefix(strings.TrimSpace(title), heartbeatTitlePrefix) {
+		return
+	}
+	// The topic-state store keys global scope by the empty root (the same
+	// normalization ensureTopicIndexedState applies), and the filing collector
+	// snapshots that key.
+	if raw, err := desktopTopicState.autoMetaRaw("", topicID); err == nil && topicOriginIsHeartbeat(raw) {
+		return // stamp intact, nothing to restore
+	}
+	if err := desktopTopicState.markTopicOrigin("", topicID, heartbeatTopicOrigin, ""); err != nil {
+		log.Printf("[heartbeat] restore origin(%q): %v", topicID, err)
+	}
+}
+
 func heartbeatTaskByID(tasks []HeartbeatTask, id string) *HeartbeatTask {
 	for i := range tasks {
 		if tasks[i].ID == id {

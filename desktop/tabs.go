@@ -2580,6 +2580,32 @@ func (a *App) OpenTopicSession(scope, workspaceRoot, topicID, sessionPath string
 	return a.openTopicSession(scope, workspaceRoot, topicID, sessionPath)
 }
 
+// sessionBindingScopeForOpen corrects a session open's scope opinion against
+// the session's own binding (task 754). The tree row / request carries the
+// scope of the node the user clicked; the session binding is the authority on
+// where the session lives (the 740 vocabulary). A global open of a
+// project-bound session used to build a global tab first, then the binding
+// apply moved it to the project and warned "switched tab from global
+// workspace" — a false alarm for a plain open, because the switch was the
+// open's own doing. Resolving the binding before the tab is born creates it in
+// the session's home workspace and the notice stays reserved for genuine
+// background heals. Returns the corrected scope and root, plus the binding's
+// topic id for opens that carry none.
+func (a *App) sessionBindingScopeForOpen(scope, sessionPath string) (string, string, string) {
+	if strings.TrimSpace(scope) == "project" || strings.TrimSpace(sessionPath) == "" {
+		return scope, "", ""
+	}
+	binding, ok := a.resolveSessionBinding(sessionPath)
+	if !ok || binding.scope != "project" {
+		return scope, "", ""
+	}
+	root := normalizeProjectRoot(binding.workspaceRoot)
+	if root == "" {
+		return scope, "", ""
+	}
+	return "project", root, strings.TrimSpace(binding.topicID)
+}
+
 func (a *App) openTopicSession(scope, workspaceRoot, topicID, sessionPath string) (TabMeta, error) {
 	scope = strings.TrimSpace(scope)
 	if scope != "project" {
@@ -2595,6 +2621,17 @@ func (a *App) openTopicSession(scope, workspaceRoot, topicID, sessionPath string
 	_, validPath, err := a.sessionDirForPath(sessionPath)
 	if err != nil {
 		return TabMeta{}, err
+	}
+	if scope != "project" {
+		// Task 754: a project-bound session opened from a global context lands
+		// in its project directly — no global tab detour, no switch warning.
+		if correctedScope, correctedRoot, bindingTopicID := a.sessionBindingScopeForOpen(scope, validPath); correctedScope == "project" {
+			scope = correctedScope
+			workspaceRoot = correctedRoot
+			if strings.TrimSpace(topicID) == "" {
+				topicID = bindingTopicID
+			}
+		}
 	}
 	return a.openTopicTab(scope, workspaceRoot, topicID, validPath)
 }
@@ -2617,6 +2654,18 @@ func (a *App) openTopicSessionInactive(scope, workspaceRoot, topicID, sessionPat
 	_, validPath, err := a.sessionDirForPath(sessionPath)
 	if err != nil {
 		return TabMeta{}, err
+	}
+	if scope != "project" {
+		// Task 754: same binding-scope correction as the active open — a
+		// background open must not spawn a global tab the reconcile then
+		// re-files under the project.
+		if correctedScope, correctedRoot, bindingTopicID := a.sessionBindingScopeForOpen(scope, validPath); correctedScope == "project" {
+			scope = correctedScope
+			workspaceRoot = correctedRoot
+			if strings.TrimSpace(topicID) == "" {
+				topicID = bindingTopicID
+			}
+		}
 	}
 	return a.openTopicTabPreferLiveActivation(scope, workspaceRoot, topicID, validPath, false)
 }
@@ -4571,7 +4620,15 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 			indexTopicTitle := tab.TopicTitle
 			a.mu.RUnlock()
 			if indexTopicID != "" {
+				// Task 755: the repair write used to feed the tab's display
+				// title straight into the registry — a tab restored with the
+				// workspace label re-pinned it as a manual title on every
+				// build. Sanitize first, and give a rebuilt heartbeat topic
+				// its origin stamp back so the 定时任务 filing finds it again
+				// (the stamp died with the lost topic state).
+				indexTopicTitle = sessionRepairTopicTitle(indexTopicTitle)
 				if err := ensureTopicIndexed(indexScope, indexRoot, indexTopicID, indexTopicTitle, loadTopicTitleSource(topicTitleRoot(indexScope, indexRoot), indexTopicID)); err == nil {
+					restoreHeartbeatTopicOrigin(indexScope, indexTopicID, indexTopicTitle)
 					a.emitProjectTreeChangedForSessionDirs(ctrl.SessionDir())
 				}
 			}
@@ -4858,10 +4915,10 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 		workspaceRoot = globalTabWorkspaceRoot()
 	}
 	topicID := strings.TrimSpace(binding.topicID)
-	topicTitle := strings.TrimSpace(binding.topicTitle)
-	if topicTitle == "" && topicID != "" {
-		topicTitle = topicTitleForTab(scope, workspaceRoot, topicID)
-	}
+	// Task 755: authority order + workspace-label guard — the sidecar title
+	// alone let a pinned "Global" label (the old display fallback) keep
+	// re-branding the tab on every binding apply.
+	topicTitle := sessionBindingDisplayTitle(scope, workspaceRoot, topicID, binding.topicTitle)
 	topicSource := ""
 	if topicID != "" {
 		topicSource = loadTopicTitleSource(topicTitleRoot(scope, workspaceRoot), topicID)
@@ -5668,7 +5725,10 @@ func topicTitleFallbackForOpen(workspaceRoot, topicID, sessionPath string) (stri
 	if storedTitle == "" {
 		dir := filepath.Dir(sessionPath)
 		if meta, ok, err := agent.LoadBranchMeta(sessionPath); err == nil && ok {
-			if title := storedSessionTopicTitle(dir, sessionPath, meta); title != "" {
+			// Task 755: a sidecar topic title of exactly the workspace label is
+			// the corruption shape (the old display fallback pinned by a save),
+			// not a name — never promote it into the registry as manual.
+			if title := storedSessionTopicTitle(dir, sessionPath, meta); title != "" && title != globalWorkspaceTabLabel {
 				return title, topicTitleSourceManual, true
 			}
 		} else if title := topicTitleFromText(loadSessionTitles(dir)[filepath.Base(sessionPath)]); title != "" {
@@ -6937,13 +6997,47 @@ func topicCreatedAtForTree(createdAts map[string]int64, topicID string) int64 {
 	return topicIDCreatedAt(topicID)
 }
 
+// globalWorkspaceTabLabel is the workspace surface's own name: the default
+// Global tab (no conversation bound) shows it. Task 755 pinned down that it is
+// a workspace label, never a conversation name — the old global-scope title
+// fallback leaked it into pinned session meta and the index repair, which
+// permanently renamed heartbeat conversations "Global".
+const globalWorkspaceTabLabel = "Global"
+
 func topicTitleForTab(scope, workspaceRoot, topicID string) string {
 	titleRoot := topicTitleRoot(scope, workspaceRoot)
 	if title := strings.TrimSpace(loadTopicTitle(titleRoot, topicID)); title != "" {
 		return title
 	}
-	if scope == "global" {
-		return "Global"
+	// Task 755: only a topic-less surface wears the workspace label. A tab
+	// bound to a concrete topic falls back to the same default title a
+	// project-scope topic gets — the old "Global" fallback for global scope is
+	// exactly how conversations got renamed "Global" once their registry entry
+	// went missing.
+	if strings.TrimSpace(topicID) == "" {
+		return globalWorkspaceTabLabel
+	}
+	return defaultTopicTitle
+}
+
+// sessionBindingDisplayTitle resolves the name a session-bound tab carries.
+//
+// Task 718 made the topic-title registry the authority for a conversation's
+// name; the session sidecar's topic_title is a tab-opinion cache that a save
+// can pin stale, so it only fills a registry gap. Task 755 adds the corruption
+// guard: a title of exactly the workspace label is the shape the old display
+// fallback leaked into persisted stores, so it reads as absent and the next
+// source in the chain fills the gap. Order: registry → sidecar → topic-bound
+// default.
+func sessionBindingDisplayTitle(scope, workspaceRoot, topicID, sidecarTitle string) string {
+	if title := strings.TrimSpace(loadTopicTitle(topicTitleRoot(scope, workspaceRoot), topicID)); title != "" && title != globalWorkspaceTabLabel {
+		return title
+	}
+	if title := strings.TrimSpace(sidecarTitle); title != "" && title != globalWorkspaceTabLabel {
+		return title
+	}
+	if strings.TrimSpace(topicID) == "" {
+		return globalWorkspaceTabLabel
 	}
 	return defaultTopicTitle
 }
