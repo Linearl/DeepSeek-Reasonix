@@ -78,7 +78,10 @@ export type TierFeatureId =
   // 任务 707: 压缩模型指定（经济模型压缩，默认关，可选档）。
   | "compactModel"
   // 任务 704: 轨迹视图开关（DSH 同款可观测性视图，纯前端投影，默认关=仅转录，可选档）。
-  | "trajectoryView";
+  | "trajectoryView"
+  // 任务 727: 心跳会话轮换开关（桥接 heartbeat-rotation.json 的 enabled，
+  // 不落 config.toml——前端独有注册项，无 Go 渲染表条目）。
+  | "heartbeatRotation";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -151,6 +154,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   localServer: "unstable",
   // ── tool-opt（工具优化，1 项）────────────────────────────────
   toolOptimizations: "unstable",
+  // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
+  // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
+  heartbeatRotation: "optional",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
@@ -162,29 +168,20 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 未稳定 12→13、总数 46→47。任务 705：sessionCollabAutoFold（超长跨会话
  * 消息自动折叠，默认关）入表，可选 18→19、总数 47→48。任务 707：compactModel
  * （压缩模型指定，默认关，可选档）入表，可选 19→20、总数 48→49。
- * trajectoryView（轨迹视图，默认关）入表，可选 20→21、总数 49→50。) */
+ * trajectoryView（轨迹视图，默认关）入表，可选 20→21、总数 49→50。
+ * 任务 727：heartbeatRotation（心跳会话轮换，桥接 JSON 键）入表，可选
+ * 21→22、总数 50→51。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
-  optional: 21,
+  optional: 22,
   unstable: 13,
   retired: 1,
 };
 
-/** 任务 561 merged rail cards (card id → its 表A member ids). Standalone rail
- * entries badge themselves; merged cards badge every distinct member tier so
- * all 表A features stay visible on the rail. 任务 517：M1 autonomousRunGuard
- * 卡与 standalone eventWaitRecheck 并入单键卡 safetyCostControl（键级合并，
- * 无成员表——该卡自己就是一个表A id，徽章自挂）。 */
-export const LAB_RAIL_ENTRY_MEMBERS: Readonly<Record<string, readonly TierFeatureId[]>> = {
-  // 任务 707：compactModel（压缩模型指定）开关落在上下文治理卡内 compressOpt
-  // 下方，随卡登记成员——合并卡的徽章覆盖全部表A成员。
-  contextGovernance: ["compactionParallel", "budgetControl", "compressOpt", "compactModel", "cacheTuning"],
-  modelStrategy: ["highSpeedModel", "modelCapabilityFilter"],
-  subagentSuite: ["subagentPanel", "subagentDetail", "subagentPolicy", "subagentTps"],
-  updateFeedback: ["restartUpdate", "feedback"],
-  devDebug: ["cdpDebugPort", "lifecycleNoiseGate"],
-  sessionStore: ["sessionStorage", "eventsRotation"],
-};
+// 任务 722/724：合并卡的成员表（card id → 表A member ids）移交实验室布局
+// 数据（src/lab/labLayoutDefault.ts，yaml 化的内置默认）——徽章档位、分组
+// 归属、排序都从同一份布局数据来，不再双源维护。本文件保留档位注册表、
+// 图墙清单与墙位图。
 
 /** 任务 563 图墙收录清单（xlsx 表B W1：推荐 12 + 可选 4 = 16 项）。562 先
  * 挂档位徽章；卡片三要素/详情弹窗/建议开启角标由 563 落地。生长规则：新增
@@ -228,7 +225,8 @@ export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, reado
   // ── efficiency（提效）────────────────────────────────────────
   budgetControl: ["settings.labGroup.efficiency", "settings.contextGovernance"],
   compressOpt: ["settings.labGroup.efficiency", "settings.contextGovernance"],
-  messageMerge: ["settings.labGroup.efficiency", "settings.messageMerge"],
+  // 任务 722：消息合并并入「安全 / 成本控制」卡（卡随 722 归提效组）。
+  messageMerge: ["settings.labGroup.efficiency", "settings.safetyCostControl"],
   // ── ui（界面）───────────────────────────────────────────────
   sessionWall: ["settings.labGroup.ui", "settings.sessionWall"],
   tabCompress: ["settings.labGroup.ui", "settings.tabCompress"],
@@ -245,14 +243,6 @@ export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, reado
 
 export function isTierFeatureId(id: string): id is TierFeatureId {
   return Object.prototype.hasOwnProperty.call(EXPERIMENT_FEATURE_TIERS, id);
-}
-
-/** Distinct tiers a rail entry should display, in badge order. Merged cards
- * show every distinct member tier; standalone 表A entries show their own;
- * non-表A entries (preapproveManagedPaths, task-364 domain) show none. */
-export function railTiersFor(entryId: string): LabTier[] {
-  const members = LAB_RAIL_ENTRY_MEMBERS[entryId] ?? (isTierFeatureId(entryId) ? [entryId] : []);
-  return LAB_TIER_ORDER.filter((tier) => members.some((m) => EXPERIMENT_FEATURE_TIERS[m] === tier));
 }
 
 /** 任务 563 — 「建议开启」badge rule (xlsx 表B W4): ONLY a recommended-tier

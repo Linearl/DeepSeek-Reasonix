@@ -20741,6 +20741,17 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 任务722 点4：邮箱化默认「默认投递通道」行——整行跨双列（标签在左、
+   下拉框推到行右），替代半列宽里 select+label 的截断排布。 */
+.set-gates__item--wide {
+  grid-column: 1 / -1;
+}
+.set-gates__item--wide .set-gates__label {
+  flex: 0 1 auto;
+}
+.set-gates__item--wide select {
+  margin-left: auto;
+}
 .set-gates__item--locked {
   cursor: default;
 }

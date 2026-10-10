@@ -2576,6 +2576,10 @@ export interface DesktopStartupSettingsView {
   experimentalSessionCollab?: boolean;
   /** merged safety/cost switch (task 517; one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards); off unless the user opts in. */
   experimentalSafetyCostControl?: boolean;
+  /** 任务 722: fine-grained sub-switch overrides (null = follow the master). */
+  safetyIdleTerminate?: boolean | null;
+  safetyLoopStreakNote?: boolean | null;
+  safetyEventWaitRecheck?: boolean | null;
   /** merged orphan switch (task 449; folds task 244 B5 lease reclaim + B4 recovery sweep); off unless the user opts in. */
   experimentalOrphanHandling?: boolean;
   /** Task 363A: reuse the runtime assembly across same-config tabs instead of full rebuild; off unless the user opts in. */
