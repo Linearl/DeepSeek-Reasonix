@@ -7567,7 +7567,15 @@ func (a *App) requestProjectTreeCatalogRefresh() {
 
 // emitProjectTreeChangedForSessionDirs schedules only the affected catalog
 // directories. It never scans synchronously on the mutation or UI goroutine.
+// Task 718: it also pushes the registry projection (titles, pins, membership)
+// into the catalog. Callers mutate desktop-projects.json / topic state before
+// calling this (rename, auto-title, first-turn indexing, archive moves); without
+// the push, a freshly written registry title only reached the sidebar on the
+// next 30s metadata tick, while the reconcile below re-derived the topic title
+// from lagging branch meta — the stale-name window task 718 removes. The sync
+// is async, bounded (5s), and idempotent, so redundant pushes are cheap.
 func (a *App) emitProjectTreeChangedForSessionDirs(dirs ...string) {
+	a.requestSessionCatalogMetadataSync()
 	for _, dir := range dirs {
 		a.requestSessionCatalogReconcile(dir)
 	}
