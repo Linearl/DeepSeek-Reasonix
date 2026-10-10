@@ -2041,8 +2041,12 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 			markerContent = agent.FormatTakeoverMarkerForced(agent.SessionWriterID())
 		}
 		_ = os.WriteFile(marker, []byte(markerContent), 0o600)
-		s.recordTakeoverState(abs, takeoverStatePending, "")
-		go s.pollTakeoverYield(abs, marker, strings.TrimSpace(body.From))
+		// Single-flight: a pending takeover for this session keeps its own
+		// background poll; a duplicate request shares its terminal state.
+		spawn := s.beginTakeoverAttempt(abs)
+		if spawn {
+			go s.pollTakeoverYield(abs, marker, strings.TrimSpace(body.From))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Retry-After", "5")
 		w.WriteHeader(http.StatusAccepted)

@@ -94,6 +94,26 @@ func (s *Server) takeoverStatusFor(path string) (pending, failed bool, message s
 	}
 }
 
+// beginTakeoverAttempt registers a new pending attempt and reports whether
+// the caller should spawn the background poll. A session with an attempt
+// already in flight is single-flight: the second request gets the same 202
+// and shares the first poll's terminal state (the marker protocol is
+// single-file, so concurrent polls would race its content and overwrite each
+// other's outcome records).
+func (s *Server) beginTakeoverAttempt(path string) bool {
+	key := agent.CanonicalSessionPath(path)
+	s.takeoverMu.Lock()
+	defer s.takeoverMu.Unlock()
+	if s.takeoverAttempts == nil {
+		s.takeoverAttempts = map[string]*takeoverAttempt{}
+	}
+	if att, ok := s.takeoverAttempts[key]; ok && att.state == takeoverStatePending {
+		return false
+	}
+	s.takeoverAttempts[key] = &takeoverAttempt{state: takeoverStatePending, updatedAt: time.Now()}
+	return true
+}
+
 // decorateTakeoverStatus adds the takeover polling fields to a ?session=
 // status view. Safe on any view map; only a recorded attempt adds keys.
 func (s *Server) decorateTakeoverStatus(path string, view map[string]any) map[string]any {
