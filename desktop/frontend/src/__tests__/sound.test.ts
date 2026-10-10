@@ -11,6 +11,7 @@ import {
   normalizeNotificationVolume,
   playAttentionChime,
   playSuccessChime,
+  resetSharedAudioContextForTests,
   setAttentionPreference,
   setNotificationVolume,
   setSuccessPreference,
@@ -145,6 +146,83 @@ Object.defineProperty(globalThis, "localStorage", {
   eq(shouldPlayAttentionChimeForEvent({ kind: "ask_request", tabId: "tab-b", ask: { id: "1" } }, seen), false, "other tab's keys survive a scoped clear");
   clearAttentionChimeKeys(seen);
   eq(shouldPlayAttentionChimeForEvent({ kind: "ask_request", tabId: "tab-b", ask: { id: "1" } }, seen), true, "tab-less ready clears every key");
+}
+
+{
+  // Issue #41 / task 733: the notification chimes must reuse ONE AudioContext.
+  // Every play used to build a fresh context (the longtask top frame); now the
+  // singleton is created once, re-resumed per play, suspended after the idle
+  // delay, and never closed.
+  const priorAudioContext = globalThis.AudioContext;
+  const priorFetch = globalThis.fetch;
+  let constructed = 0;
+  let resumeCalls = 0;
+  let suspendCalls = 0;
+  let closeCalls = 0;
+  const startedSources: unknown[] = [];
+  class CountingAudioContext {
+    state = "running";
+    destination = {};
+    constructor() { constructed += 1; }
+    createOscillator() {
+      return {
+        type: "sine",
+        frequency: { setValueAtTime() {} },
+        connect() {},
+        start() {},
+        stop() {},
+      };
+    }
+    createGain() {
+      return {
+        gain: {
+          setValueAtTime() {},
+          linearRampToValueAtTime() {},
+          exponentialRampToValueAtTime() {},
+        },
+        connect() {},
+      };
+    }
+    createBufferSource() {
+      return {
+        buffer: null,
+        connect() {},
+        start() { startedSources.push(1); },
+      };
+    }
+    decodeAudioData() { return Promise.resolve({ duration: 1 }); }
+    resume() { resumeCalls += 1; this.state = "running"; return Promise.resolve(); }
+    suspend() { suspendCalls += 1; this.state = "suspended"; return Promise.resolve(); }
+    close() { closeCalls += 1; }
+  }
+  Object.defineProperty(globalThis, "AudioContext", { configurable: true, value: CountingAudioContext });
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  resetSharedAudioContextForTests();
+  setSuccessPreference("synth");
+  setAttentionPreference("synth");
+  setNotificationVolume(70);
+  playSuccessChime();
+  playAttentionChime();
+  playSuccessChime();
+  eq(constructed, 1, "three consecutive notifications build exactly one AudioContext");
+  await sleep(800);
+  eq(suspendCalls, 1, "the shared context is suspended once after the plays go idle");
+  eq(closeCalls, 0, "the shared context is never closed");
+  playSuccessChime();
+  eq(constructed, 1, "a chime after the idle suspend still reuses the singleton");
+  eq(resumeCalls >= 1, true, "acquiring a suspended context resumes it before playback");
+
+  setSuccessPreference("positive");
+  globalThis.fetch = (async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })) as typeof fetch;
+  playSuccessChime();
+  await sleep(60);
+  eq(startedSources.length, 1, "the wav path starts its buffer source on the shared context");
+  eq(constructed, 1, "the wav path does not build a second AudioContext");
+  setSuccessPreference("synth");
+
+  Object.defineProperty(globalThis, "AudioContext", { configurable: true, value: priorAudioContext });
+  globalThis.fetch = priorFetch;
 }
 
 if (failed) {
