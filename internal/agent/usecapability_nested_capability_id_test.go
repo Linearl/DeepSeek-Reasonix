@@ -118,6 +118,9 @@ func TestUseCapabilityMissingCapabilityIDStillFails(t *testing.T) {
 	if !strings.Contains(err.Error(), "capability_id is required for action=call") {
 		t.Fatalf("error = %v, want the missing-id error", err)
 	}
+	if !strings.Contains(err.Error(), "capability_id must be a top-level field, not inside arguments") {
+		t.Fatalf("error = %v, want the R3 top-level placement hint", err)
+	}
 	if got := audit.Snapshot().Arguments.SelfHealed; got != 0 {
 		t.Fatalf("SelfHealed = %d, want 0 for a genuinely missing id", got)
 	}

@@ -235,7 +235,10 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 					return healed, nil
 				}
 			}
-			return tool.ResolvedCall{}, capabilityInputErrorf("capability_id is required for action=call")
+			// Task 728 R3: name the expected placement so one round of
+			// feedback corrects the nesting (725 observed the same bad shape
+			// retried four times inside one turn without it).
+			return tool.ResolvedCall{}, capabilityInputErrorf("capability_id is required for action=call; capability_id must be a top-level field, not inside arguments")
 		}
 		if id == sessionToolResultCapabilityID || id == sessionReadStrategyReceiptCapabilityID {
 			return t.resolveSessionCapability(id, p.Arguments, base)
