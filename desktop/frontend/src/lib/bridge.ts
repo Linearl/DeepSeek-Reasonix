@@ -181,6 +181,8 @@ export interface SessionEventsEntry {
   overLimit: boolean;
   open: boolean;
   busy: boolean;
+  reclaimBytes: number;
+  liveOverCap: boolean;
 }
 
 export interface SessionEventsInventoryView {
