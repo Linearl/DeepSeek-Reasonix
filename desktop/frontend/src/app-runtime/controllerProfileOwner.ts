@@ -62,27 +62,37 @@ export async function executeControllerModel(input: ControllerProfileInput & {
   return authority.ownsUI();
 }
 
-/** Visible tab strip projection: committed order plus profile display fields. */
+/** Visible tab strip projection: committed order plus profile display fields.
+ *  任务 730: `running` is the tab-strip activity MARKER, not the backend
+ *  ActiveWork flag. A session paused on a pending prompt waits on the user —
+ *  exactly what the project tree's amber「待确认」pill already says — so the
+ *  strip must not spin for it: tab and tree show the same conclusion at the
+ *  same moment. The visible tab's live composer state wins over the (possibly
+ *  stale) ListTabs snapshot. */
 export function projectVisibleTabs(input: {
   tabs: readonly TabMeta[];
   orderIds: readonly string[];
   profiles: Readonly<Record<string, ComposerProfile>>;
   visibleTabId: string | undefined;
   running: boolean;
+  pendingPrompt?: boolean;
 }) {
   const byId = new Map(input.tabs.map((tab) => [tab.id, tab]));
   const ordered = input.orderIds.map((id) => byId.get(id)).filter((tab): tab is TabMeta => Boolean(tab));
   const missing = input.tabs.filter((tab) => !input.orderIds.includes(tab.id));
   return [...ordered, ...missing].map((tab) => {
     const profile = input.profiles[tab.id] ?? composerProfileFromTab(tab);
+    const active = tab.id === input.visibleTabId;
+    const waiting = active ? Boolean(input.pendingPrompt) : Boolean(tab.pendingPrompt);
     return {
       ...tab,
-      running: tab.id === input.visibleTabId ? tab.running || input.running : tab.running,
+      running: (active ? tab.running || input.running : tab.running) && !waiting,
+      pendingPrompt: active ? waiting : tab.pendingPrompt,
       mode: composerProfileMode(profile),
       collaborationMode: displayedComposerProfileCollaborationMode(profile),
       toolApprovalMode: profile.toolApprovalMode,
       goal: profile.goal,
-      active: tab.id === input.visibleTabId,
+      active,
     };
   });
 }

@@ -239,11 +239,16 @@ func (a *App) reapStaleTopicActivityStatus(now time.Time) {
 	a.emitProjectTreeRuntimeChangedWithLegacy()
 }
 
-// reconcileTabActivityStatus clears a live spinner status the session's
-// controller does not corroborate — a TurnDone missed while the session was
-// detached would otherwise spin forever after reopen. The controller query
-// takes the controller's own lock, so it runs outside App.mu (the same lock
-// order rule as catalogRuntimeSnapshots).
+// reconcileTabActivityStatus clears an event-driven status the session's
+// controller does not corroborate on open. Two families: a live spinner whose
+// TurnDone was missed while the session was detached (would spin forever after
+// reopen), and — task 730 — a waiting_confirmation whose prompt no longer
+// exists (the resolution/TurnDone event was lost the same way, leaving a
+// "待确认" badge over a finished conversation). waiting_confirmation still
+// waits on the USER, so the silence-based TTL watchdog must never reap it; the
+// controller corroboration here is the only sanctioned clear. The controller
+// query takes the controller's own lock, so it runs outside App.mu (the same
+// lock order rule as catalogRuntimeSnapshots).
 func (a *App) reconcileTabActivityStatus(tab *WorkspaceTab) bool {
 	if a == nil || tab == nil {
 		return false
@@ -252,7 +257,16 @@ func (a *App) reconcileTabActivityStatus(tab *WorkspaceTab) bool {
 	status := tab.ActivityStatus
 	ctrl := tab.Ctrl
 	a.mu.RUnlock()
-	if ctrl == nil || !liveTopicActivityStatus(status) || ctrl.Running() {
+	if ctrl == nil {
+		return false
+	}
+	stale := false
+	if liveTopicActivityStatus(status) {
+		stale = !ctrl.Running()
+	} else if status == topicStatusWaitingConfirmation {
+		stale = !ctrl.PendingPrompt()
+	}
+	if !stale {
 		return false
 	}
 	a.mu.Lock()

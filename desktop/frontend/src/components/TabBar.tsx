@@ -542,8 +542,15 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
             && tab.runtime?.phase === "starting"
             && tab.id !== resolvedActiveTabId
             && tab.id !== splitTabId;
+          // 任务 730: a pending-prompt tab is waiting on the user, not running —
+          // the strip projection already skips it; the marker classes re-guard
+          // here so spinner and「待确认」can never coexist, and the hover title
+          // names the waiting state with the same wording the tree pill uses.
+          const waitingConfirmation = Boolean(tab.pendingPrompt);
+          const runningMarker = tab.running && !waitingConfirmation;
           const stateTitle = [
-            tab.running ? "Running" : "",
+            runningMarker ? "Running" : "",
+            waitingConfirmation ? t("projectTree.status.waitingConfirmation") : "",
             planMode ? "Plan" : "",
             goalMode ? "Goal" : "",
             // 任务 711：autopilot 状态进 hover title（原缺——autopilot 档此前
@@ -572,7 +579,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
               className={[
                 "tabbar__tab",
                 tab.id === resolvedActiveTabId ? "tabbar__tab--active" : "",
-                tab.running ? "tabbar__tab--running" : "",
+                runningMarker ? "tabbar__tab--running" : "",
                 toolApprovalMode === "yolo" ? "tabbar__tab--yolo" : "",
                 draggingTabId === tab.id ? "tabbar__tab--dragging" : "",
                 dropTarget?.id === tab.id ? `tabbar__tab--drop-${dropTarget.side}` : "",
@@ -606,7 +613,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
                 <span
                   className={[
                     "tabbar__status",
-                    tab.running ? "tabbar__status--running" : "",
+                    runningMarker ? "tabbar__status--running" : "",
                   ].filter(Boolean).join(" ")}
                 />
               )}

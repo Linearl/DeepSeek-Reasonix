@@ -5,36 +5,25 @@
 // the block can leave App.tsx without changing any behaviour.
 import { useMemo } from "react";
 import type { TabMeta } from "../lib/types";
-import {
-  composerProfileFromTab,
-  composerProfileMode,
-  displayedComposerProfileCollaborationMode,
-  type ComposerProfile,
-} from "../lib/composerProfile";
+import type { ComposerProfile } from "../lib/composerProfile";
+import { projectVisibleTabs } from "./controllerProfileOwner";
 
 export function useVisibleTabs(input: {
   tabMetas: TabMeta[];
   tabOrderIds: string[];
   composerProfilesByTab: Record<string, ComposerProfile>;
   running: boolean;
+  pendingPrompt?: boolean;
   visibleTabId?: string;
 }) {
-  const { tabMetas, tabOrderIds, composerProfilesByTab, running, visibleTabId } = input;
-  return useMemo(() => {
-    const byId = new Map(tabMetas.map((tab) => [tab.id, tab]));
-    const ordered = tabOrderIds.map((id) => byId.get(id)).filter((tab): tab is TabMeta => Boolean(tab));
-    const missing = tabMetas.filter((tab) => !tabOrderIds.includes(tab.id));
-    return [...ordered, ...missing].map((tab) => {
-      const profile = composerProfilesByTab[tab.id] ?? composerProfileFromTab(tab);
-      return {
-        ...tab,
-        running: tab.id === visibleTabId ? tab.running || running : tab.running,
-        mode: composerProfileMode(profile),
-        collaborationMode: displayedComposerProfileCollaborationMode(profile),
-        toolApprovalMode: profile.toolApprovalMode,
-        goal: profile.goal,
-        active: tab.id === visibleTabId,
-      };
-    });
-  }, [composerProfilesByTab, running, tabMetas, tabOrderIds, visibleTabId]);
+  const { tabMetas, tabOrderIds, composerProfilesByTab, running, pendingPrompt, visibleTabId } = input;
+  return useMemo(
+    // 任务 730: single shared projection (waiting-on-prompt is not running) —
+    // the hook used to duplicate it and the two copies could drift.
+    () => projectVisibleTabs({
+      tabs: tabMetas, orderIds: tabOrderIds, profiles: composerProfilesByTab,
+      visibleTabId, running, pendingPrompt,
+    }),
+    [composerProfilesByTab, pendingPrompt, running, tabMetas, tabOrderIds, visibleTabId],
+  );
 }
