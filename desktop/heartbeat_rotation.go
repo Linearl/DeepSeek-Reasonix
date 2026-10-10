@@ -66,6 +66,7 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/fileutil"
+	"reasonix/internal/store"
 )
 
 // ── Threshold config (heartbeat-rotation.json) ──────────────────────────────
@@ -333,7 +334,7 @@ func (e *HeartbeatEngine) heartbeatSessionStatsForTopic(topicID string) (heartbe
 			stats.Turns = meta.Turns
 		}
 	}
-	if st, err := os.Stat(strings.TrimSuffix(newest.path, filepath.Ext(newest.path)) + ".events.jsonl"); err == nil {
+	if st, err := os.Stat(store.SessionEventLog(newest.path)); err == nil {
 		stats.EventsBytes = st.Size()
 	}
 	// Age prefers the topic id timestamp; the session file birth date is not
