@@ -109,7 +109,9 @@ export function useTranscriptRowRenderer({
       case "compaction": return <div className="turn-collapse__body"><CompactionCard item={row.item} /></div>;
       case "answer": return <LiveAssistantMessage item={assistantAnswerOnly(row.item)} creationMode={creationMode} />;
       case "notice": {
-        if (isSteerNoticeText(row.item.text)) return <SteerCard id={row.item.id} text={row.item.text} />;
+        // 任务723: a steer bubble whose inboxItemId materialized as a turn's
+        // user row renders as the collapsed deferred placeholder.
+        if (isSteerNoticeText(row.item.text)) return <SteerCard id={row.item.id} text={row.item.text} deferred={row.item.steerDeferred === true} />;
         const action = row.item.action === "continue_delivery"
           ? (onDeliveryContinue ?? (() => onPrompt(t("notice.deliveryIncompleteContinuePrompt"))))
           : row.item.action === "open_changes" && onOpenChanges ? () => onOpenChanges(row.item.completionSummary)
