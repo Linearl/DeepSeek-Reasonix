@@ -21,7 +21,12 @@ export function applyPreferencesAppearance(settings: DesktopPreferencesSnapshot)
   applyTerminalThemePreference(settings.desktopTerminalTheme);
   applyConversationWidth(settings.conversationWidth);
   applyLayoutStyleDefaults(layoutStyleFromSnapshot(settings.desktopLayoutStyle));
-  hydrateSessionExperience(settings.sessionExperience);
+  // Task 753 (R2): a snapshot WITHOUT the field (older backend, migration
+  // window) must not normalize to "standard" and overwrite the localStorage
+  // mirror that is still the startup authority. Only an explicitly present
+  // value is authoritative; absence keeps the mirror (and the un-hydrated
+  // mirror path in getSessionExperience) in charge.
+  if (settings.sessionExperience != null) hydrateSessionExperience(settings.sessionExperience);
   hydrateReasoningDisplayMode(settings.sessionExperience === "deep" ? "expanded" : "auto", settings.sessionExperience === "deep");
   return normalizeLangPref(settings.desktopLanguage);
 }

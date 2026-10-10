@@ -89,6 +89,25 @@ export function hydrateSessionExperience(value: unknown): void {
   emitCompatibilitySignals(next);
 }
 
+/** Task 753 (root cause 1): startup-sync failure fallback. Marks the module
+ * hydrated with the value that is ALREADY in effect - the compatibility
+ * mirror while un-hydrated (getSessionExperience), which also covers the
+ * no-mirror case with the safe default - WITHOUT touching any persisted key.
+ * The old fallback hydrateSessionExperience("standard") physically erased a
+ * stored "concise" tier (writeCompatibilityMirrors), so one failed
+ * DesktopStartupSettings call downgraded the user until the next successful
+ * snapshot: reasoning panels live-expanded, folds flipped, and every geometry
+ * consumer re-committed (the 753 blur/jump amplifier). A failed sync changes
+ * no preference and no mirror, in memory or on disk. */
+export function markSessionExperienceHydratedFromMirror(): SessionExperience {
+  const next = getSessionExperience();
+  hydrated = true;
+  current = next;
+  emit();
+  emitCompatibilitySignals(next);
+  return next;
+}
+
 export function applySessionExperience(value: SessionExperience): void {
   const next = normalize(value);
   hydrated = true;

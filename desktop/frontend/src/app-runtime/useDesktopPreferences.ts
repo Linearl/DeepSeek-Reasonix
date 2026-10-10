@@ -5,7 +5,8 @@ import { useConfigLoadWarnings } from "../lib/useConfigLoadWarnings";
 import { useI18n, useT } from "../lib/i18n";
 import { DEFAULT_STATUS_BAR_ITEMS, normalizeStatusBarItems } from "../lib/statusBarItems";
 import { hydrateReasoningDisplayMode, setReasoningDisplayPending } from "../lib/reasoningDisplayPreference";
-import { hydrateSessionExperience } from "../lib/sessionExperience";
+import { markSessionExperienceHydratedFromMirror } from "../lib/sessionExperience";
+import { recordFrontendDiagnostic } from "../lib/frontendDiagnosticBridge";
 import { setSessionMonitorEnabled } from "../lib/sessionMonitor";
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
@@ -61,8 +62,16 @@ export function useDesktopPreferences() {
   const failed = useCommittedCommand((error: unknown) => {
     setStartupFailed(true);
     if (!snapshot) {
-      hydrateSessionExperience("standard");
+      // Task 753 (root cause 1): a failed startup sync must not rewrite the
+      // persisted tier. The old literal-standard hydrate overwrote the
+      // localStorage mirror, so one failed DesktopStartupSettings call
+      // physically downgraded a concise user to standard (reasoning panels
+      // live-expanding, fold flips, geometry churn) until the next successful
+      // snapshot. Mark hydrated from the mirror instead - memory only, the
+      // stored preference stays authoritative for the retry.
+      markSessionExperienceHydratedFromMirror();
       hydrateReasoningDisplayMode("auto", false);
+      recordFrontendDiagnostic("preferences", "hydrate.fallbackMirror");
     }
     console.warn("desktop preferences sync failed", error);
   });
