@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -235,6 +236,10 @@ func removeAllPendingCrashes() {
 	_ = os.Remove(fatalCrashCoveredPath())
 	_ = os.Remove(crashLedgerPath())
 	_ = os.Remove(crashLedgerPath() + ".lock")
+	// Task 763: the watermark names files this call just wiped; a stale mark
+	// could never suppress a fresh report (new names sort higher), but a reset
+	// keeps "no queue = nothing seen" literally true.
+	_ = os.Remove(crashPromptWatermarkPath())
 }
 
 // CrashPendingDiagnosticsReport is the diagnostics-settings view of the local
@@ -454,33 +459,138 @@ func pendingCrashAnalysisPayloads(paths []string) []string {
 	return out
 }
 
+// ── task 763: seen-watermark for the startup analysis entry ─────────────────
+// 21.5 装机实测（2026-10-11 03:08 更新重启）：上游 crash 端点 10-08 起 503，
+// crash-pending 队列积压无法清空，而本入口只要 count>0 就弹「上次运行崩溃」
+// ——于是每次启动（含每次更新重启）都重弹积压旧报告，更新重启被用户读成
+// 「被误判为崩溃」。实证：03:08 重启本身全链干净（旧进程 shutdown teardown
+// complete、lifecycle 记录已清、本次重启零新报告），弹的全是 10-08~10-10 积压。
+//
+// 修法：启动快照只面呈「比上次已面呈更新」的报告（文件名水位）；积压旧报告
+// 不再重弹，但仍在上传（flushPendingCrash 不变）与设置页诊断
+// （CrashPendingDiagnostics 不变）可见。真崩溃写入新文件 > 水位 → 照常弹。
+// 失败方向：水位读不到 = 全部面呈（与旧行为一致）；水位写不进 = 下次重弹
+// （吵而不丢）。
+
+// crashPromptWatermarkFile records the newest queue filename the analysis
+// entry has already surfaced. Queue filenames are time-sortable
+// (UnixNano-pid-seq), so "name > watermark" is the fresh-evidence test.
+const crashPromptWatermarkFile = "crash-prompt-watermark.json"
+
+type crashPromptWatermark struct {
+	NewestSeen string `json:"newestSeen"`
+}
+
+func crashPromptWatermarkPath() string {
+	return filepath.Join(config.MemoryUserDir(), "diagnostics", crashPromptWatermarkFile)
+}
+
+// loadCrashPromptWatermark returns the newest already-surfaced queue filename,
+// "" when none (first boot) or on any read failure — both fail open to the
+// old surface-everything behavior.
+func loadCrashPromptWatermark() string {
+	body, err := os.ReadFile(crashPromptWatermarkPath())
+	if err != nil {
+		return ""
+	}
+	var mark crashPromptWatermark
+	if json.Unmarshal(body, &mark) != nil {
+		slog.Warn("desktop: crash prompt watermark unreadable; surfacing the whole queue")
+		return ""
+	}
+	return mark.NewestSeen
+}
+
+// saveCrashPromptWatermark records the newest surfaced queue filename.
+// Best-effort: a failure means the next launch re-surfaces the same reports —
+// noisy, never lossy — so it only warns.
+func saveCrashPromptWatermark(newestSeen string) {
+	if newestSeen == "" {
+		return
+	}
+	body, err := json.Marshal(crashPromptWatermark{NewestSeen: newestSeen})
+	if err != nil {
+		slog.Warn("desktop: crash prompt watermark marshal failed", "err", err)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(crashPromptWatermarkPath()), 0o700); err != nil {
+		slog.Warn("desktop: crash prompt watermark write failed", "err", err)
+		return
+	}
+	if err := fileutil.AtomicWriteFile(crashPromptWatermarkPath(), body, 0o600); err != nil {
+		slog.Warn("desktop: crash prompt watermark write failed", "err", err)
+	}
+}
+
+// freshPendingCrashPathsForPrompt splits the queue into reports the analysis
+// entry has not surfaced yet. The legacy single crash-pending.json (written by
+// pre-queue builds) predates the naming scheme and always counts as fresh —
+// at most one file of unexamined evidence.
+func freshPendingCrashPathsForPrompt(paths []string, seen string) []string {
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if filepath.Base(path) == pendingCrashFile || filepath.Base(path) > seen {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// newestPendingCrashQueueName returns the lexically newest queue-dir filename
+// (the watermark advance target), "" when the queue holds only the legacy file.
+func newestPendingCrashQueueName(paths []string) string {
+	newest := ""
+	for _, path := range paths {
+		name := filepath.Base(path)
+		if name == pendingCrashFile {
+			continue
+		}
+		if name > newest {
+			newest = name
+		}
+	}
+	return newest
+}
+
 // snapshotPendingCrashForAnalysis captures the pending queue into memory.
 // Called from startup BEFORE flushPendingCrash: the flush ships (telemetry on)
 // or drops (telemetry off) the files either way, and the analysis entry must
-// survive both.
+// survive both. Task 763: only reports newer than the seen-watermark are
+// surfaced; a snapshot with nothing fresh still counts as taken, so the
+// frontend fallback cannot resurrect the suppressed backlog.
 func (a *App) snapshotPendingCrashForAnalysis() {
+	a.crashAnalysisMu.Lock()
+	a.pendingCrashSnapshotTaken = true
+	a.crashAnalysisMu.Unlock()
+
 	paths := pendingCrashPaths()
 	if len(paths) == 0 {
 		return
 	}
-	payloads := pendingCrashAnalysisPayloads(paths)
+	fresh := freshPendingCrashPathsForPrompt(paths, loadCrashPromptWatermark())
+	payloads := pendingCrashAnalysisPayloads(fresh)
 	a.crashAnalysisMu.Lock()
 	a.pendingCrashReports = payloads
 	a.crashAnalysisMu.Unlock()
+	saveCrashPromptWatermark(newestPendingCrashQueueName(paths))
 }
 
-// PendingCrashSnapshot reports the boot-time snapshot; when this process never
-// snapshotted (dev flows, tests, or a report written after boot), it falls
-// back to reading the live queue.
+// PendingCrashSnapshot reports the boot-time snapshot. Count/Reports carry the
+// FRESH evidence only (task 763): the frontend banner keys off count>0, so
+// counting the suppressed backlog here would re-surface it every launch. The
+// full queue stays visible via CrashPendingDiagnostics. When this process
+// never snapshotted (dev flows, tests, or a report written after boot), it
+// falls back to reading the live queue — today's behavior, unfiltered.
 func (a *App) PendingCrashSnapshot() PendingCrashSnapshotReport {
 	a.crashAnalysisMu.Lock()
 	stored := a.pendingCrashReports
+	snapshotted := a.pendingCrashSnapshotTaken
 	a.crashAnalysisMu.Unlock()
-	if len(stored) == 0 {
+	if !snapshotted {
 		stored = pendingCrashAnalysisPayloads(pendingCrashPaths())
 	}
 	return PendingCrashSnapshotReport{
-		Count:   len(pendingCrashPaths()),
+		Count:   len(stored),
 		Reports: stored,
 	}
 }
