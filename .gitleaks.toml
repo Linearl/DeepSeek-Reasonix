@@ -14,6 +14,12 @@
 #   - reasonix-serve-caps-*: the serve capability revision string in
 #     internal/remote/bootstrap/launch.go — a wire-contract version label,
 #     not a credential.
+#   - task669-broken-fork-sample.jsonl, session1x/** (added at the
+#     2026-10-08 re-check): mock session-recording fixtures whose
+#     ToolCallRecord entries carry IdempotencyKey — generated as
+#     recoveryDigest(keyJSON) (internal/agent/tool_recovery_records.go),
+#     an internal dedup receipt, not a credential. The session1x files
+#     were deleted again after ac30722a7 and exist only in history.
 #
 # New secrets in real sources still trip the default rules. Re-run the full
 # scan after changing this file:
@@ -23,7 +29,7 @@
 useDefault = true
 
 [allowlist]
-description = "task 219 P0 baseline: inspected false positives (2026-09-22)"
+description = "task 219 P0 baseline: inspected false positives (2026-09-22, extended 2026-10-08)"
 paths = [
   '''_test\.go$''',
   '''\.test\.tsx?$''',
@@ -31,6 +37,8 @@ paths = [
   '''^crates/reasonix-render/tests/''',
   '''^workers/crash-report/src/.*\.test\.ts$''',
   '''^src/config\.ts$''',
+  '''^internal/agent/testdata/task669-broken-fork-sample\.jsonl$''',
+  '''^internal/assembly/boot/testdata/session1x/''',
 ]
 regexes = [
   '''reasonix-serve-caps-''',
