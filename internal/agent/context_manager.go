@@ -161,7 +161,11 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 		return prepared, nil
 	}
 	// One user trigger. Overflow is a one-shot physical recovery path only.
-	forceFold := policy.Force || policy.Trigger == CompactionTriggerManual || policy.Trigger == CompactionTriggerOverflow || est >= hard
+	// 任务719: a degraded tail view sits below the fold trigger by design, so
+	// without this flag the bounded window would suppress the very compaction
+	// that rebuilds the projection — the fold is forced while the view is the
+	// rolling tail.
+	forceFold := policy.Force || policy.Trigger == CompactionTriggerManual || policy.Trigger == CompactionTriggerOverflow || est >= hard || a.sess.tailView.active()
 	if est < fold && !forceFold {
 		return prepared, nil
 	}

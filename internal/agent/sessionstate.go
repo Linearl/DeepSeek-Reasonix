@@ -52,6 +52,14 @@ type sessionRuntime struct {
 	compactionState CompactionState
 	cacheState      string // legacy resume telemetry; never provider-visible
 
+	// tailView caches the bounded recent-tail view (task 719): while the
+	// projection is invalid or missing AND the canonical transcript outgrows the
+	// hard input ceiling, the model-visible view degrades to this rolling tail
+	// instead of the full canonical transcript, so no request exceeds the window
+	// while compaction rebuilds. Cached per transcript version — the view is a
+	// pure function of the immutable canonical snapshot.
+	tailView tailViewState
+
 	// path and checkpointState are rebound by preflight when a transcript is
 	// bound, so reset leaves them to their owner rather than blanking them.
 	path            string // bound transcript path for projection sidecars
@@ -95,6 +103,9 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.compaction.failedTurn.Store(0)
 	r.compaction.lastTurn.Store(0)
 	r.rebuildPending.Store(false)
+	// 任务719: a new conversation starts unbounded — the tail view belongs to
+	// the replaced lineage's degraded window.
+	r.tailView = tailViewState{}
 }
 
 // clearReasoningReplayStrongProjection drops the process-local repair overlay.
