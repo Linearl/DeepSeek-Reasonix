@@ -96,16 +96,20 @@ func captureWindowScreenshot(outputPath, titleSubstring string) (w, h int, title
 		planes:   1,
 		bitCount: 32,
 	}}
-	var bits uintptr
+	// bitsPtr stays a real unsafe.Pointer (not a uintptr field) so the GC sees
+	// the DIB surface and go vet unsafeptr stays clean: the pointer comes back
+	// from CreateDIBSection through this out-param and is only ever re-typed,
+	// never round-tripped through an integer.
+	var bitsPtr unsafe.Pointer
 	hbmp, _, callErr := procCreateDIBSection.Call(
 		hdcMem,
 		uintptr(unsafe.Pointer(&bmi)),
 		dibRGBColors,
-		uintptr(unsafe.Pointer(&bits)),
+		uintptr(unsafe.Pointer(&bitsPtr)),
 		0,
 		0,
 	)
-	if hbmp == 0 || bits == 0 {
+	if hbmp == 0 || bitsPtr == nil {
 		return 0, 0, "", fmt.Errorf("CreateDIBSection failed: %v", callErr)
 	}
 	defer procDeleteObject.Call(hbmp)
@@ -117,7 +121,7 @@ func captureWindowScreenshot(outputPath, titleSubstring string) (w, h int, title
 	}
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	pixels := unsafe.Slice((*uint8)(unsafe.Pointer(bits)), w*h*4)
+	pixels := unsafe.Slice((*uint8)(bitsPtr), w*h*4)
 	for y := 0; y < h; y++ {
 		src := pixels[y*w*4 : (y+1)*w*4]
 		dst := img.Pix[y*img.Stride : (y+1)*img.Stride]
