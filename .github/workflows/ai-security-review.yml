@@ -1,0 +1,55 @@
+# AI security review trial (task 219 P1) — anthropics/claude-code-security-review.
+#
+# TRIAL DRAFT — lives on branch wt-219; pushing it to origin needs user
+# confirmation (task 219 branch discipline). Trial protocol, metrics and
+# kill criteria: docs/AI-REVIEW-TRIAL.md.
+#
+# Opt-in gate: the job only runs on PRs carrying the `ai-review` label, so
+# the trial does not add cost or noise to every PR. During the trial, label
+# a PR with `ai-review` to request a review; remove the label / close the
+# PR to end it. After the trial verdict, widen (drop the gate) or delete
+# this file (rollback = removing this one file).
+#
+# Prerequisite (user step, not automated here): create repo secret
+# ANTHROPIC_API_KEY (a Claude API key with Claude Code enabled). Until the
+# secret exists the job fails on labeled PRs only — unlabeled PRs are
+# unaffected.
+#
+# Known limitations accepted for the trial:
+# - Pinned to main-branch SHA 0c6a49f1 (the project publishes no release
+#   tags); re-pin deliberately when updating.
+# - The action is not hardened against prompt injection from PR content
+#   (upstream README). Fine while only our own branches open PRs; revisit
+#   before ever letting external contributors trigger it.
+
+name: ai-security-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-security-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-review:
+    name: claude security review (trial)
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'ai-review')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Security Review
+        uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda # main, 2026-10-08
+        with:
+          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          comment-pr: "true" # findings land as PR comments for triage
+          upload-results: "true" # review JSON artifact for noise-rate analysis
