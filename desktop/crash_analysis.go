@@ -363,7 +363,11 @@ func ghCloneArgs(repo, dir string) []string {
 // validation is reported with gh's output for manual recovery. cloned=true
 // lets the caller say "source was cloned automatically" in its summary.
 func ensureCrashAnalysisSource() (dir string, cloned bool, err error) {
-	if dir := detectCrashAnalysisSourceDir(); dir != "" {
+	// Read through the task-672 seam var (not detectCrashAnalysisSourceDir
+	// directly): the var IS the indirection tests stub, and by default it wraps
+	// detect — so runtime behavior is unchanged while the auto-clone fallback
+	// stays hermetic under tests.
+	if dir := crashAnalysisSourceDir(); dir != "" {
 		return dir, false, nil
 	}
 	dir = crashAnalysisSourceDirCandidate()
@@ -380,7 +384,9 @@ func ensureCrashAnalysisSource() (dir string, cloned bool, err error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, ghPath, ghCloneArgs(crashAnalysisRepo, dir)...)
+	// proc.CommandContext: desktop-side background clone must stay console-hidden
+	// on Windows and route through the shared spawn governance (proc family).
+	cmd := proc.CommandContext(ctx, ghPath, ghCloneArgs(crashAnalysisRepo, dir)...)
 	// Same env convention as the gh probes: token vars stripped so gh resolves
 	// the keyring-stored identity.
 	cmd.Env = filterEnv(os.Environ(), "GITHUB_TOKEN", "GH_TOKEN")

@@ -217,8 +217,13 @@ func TestSwitchModelContinuesRecoveryPathAfterSnapshotConflict(t *testing.T) {
 		t.Fatalf("save external recovery transcript change: %v", err)
 	}
 	built.Executor().Session().Add(provider.Message{Role: provider.RoleUser, Content: "local third"})
-	if err := built.Snapshot(); err != nil {
-		t.Fatalf("Snapshot rebuilt controller after divergence: %v", err)
+	// 任务 710: Snapshot is the redundant-saver entry and may coalesce behind
+	// the durable write this controller just landed, which would swallow the
+	// forced divergence before the conflict detector ever sees it. This save is
+	// deliberately mutation-bearing, so it goes through the uncoalesced
+	// SnapshotDurable form.
+	if err := built.SnapshotDurable(); err != nil {
+		t.Fatalf("SnapshotDurable rebuilt controller after divergence: %v", err)
 	}
 	secondRecoveryPath := built.SessionPath()
 	if secondRecoveryPath == recoveryPath || !strings.Contains(filepath.Base(secondRecoveryPath), "-recovery-") {

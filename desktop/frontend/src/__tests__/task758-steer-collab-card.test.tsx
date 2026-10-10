@@ -136,7 +136,15 @@ console.log("\ntask758 steer collab card");
 
   const renderSteer = async (text: string, deferred: boolean) => {
     await act(async () => {
-      root.render(<LocaleProvider><SteerCard id="s758" text={text} deferred={deferred} /></LocaleProvider>);
+      // Element held in a React-typed binding: tsx runs this file with the
+      // classic JSX transform (React must stay imported), while the typecheck
+      // config's automatic runtime would otherwise flag the import unused.
+      const tree: React.ReactElement = (
+        <LocaleProvider>
+          <SteerCard id="s758" text={text} deferred={deferred} />
+        </LocaleProvider>
+      );
+      root.render(tree);
     });
   };
 

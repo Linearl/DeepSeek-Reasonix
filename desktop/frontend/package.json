@@ -26,7 +26,7 @@
     "test:settings-browser": "node bench/settings-layout.mjs",
     "test:settings-responsive": "tsx src/__tests__/settings-responsive-layout.test.ts",
     "test:stream": "tsx src/__tests__/raf-batch.test.ts && tsx src/__tests__/stream-delta-batch.test.ts && tsx src/__tests__/use-controller-stream-progress.test.ts",
-    "test:motion": "node scripts/check-motion-ci-contract.mjs && node scripts/check-waapi-contract.mjs --self-test && tsx src/__tests__/native-motion.test.tsx && tsx src/__tests__/approval-animation.test.tsx",
+    "test:motion": "node scripts/check-motion-ci-contract.mjs && node scripts/check-waapi-contract.mjs --self-test && tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/native-motion.test.tsx && tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/approval-animation.test.tsx",
     "test:motion-browser": "PLAYWRIGHT_BROWSERS_PATH=.pw-browsers node bench/approval-animation.mjs",
     "test:theme-browser": "PLAYWRIGHT_BROWSERS_PATH=.pw-browsers node bench/theme-surface-contract.mjs",
     "test:diagnostics": "tsx src/__tests__/diagnostics-settings.test.tsx",

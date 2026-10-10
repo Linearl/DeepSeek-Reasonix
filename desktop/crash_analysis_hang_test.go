@@ -206,11 +206,29 @@ func TestObserveCrashAnalysisRunStateMachine(t *testing.T) {
 
 // ── task 663 ②: explicit failures at the entry gates ─────────────────────────
 
+// stubCrashAnalysisSourceDir hides any real fork checkout from both resolution
+// paths the crash/hang entries use: the task-672 seam var (read by
+// CrashAnalysisAvailability and the task-674 ensureCrashAnalysisSource clone
+// fallback) and the raw detect fn (read by StartHangAnalysis).
 func stubCrashAnalysisSourceDir(t *testing.T, dir string) {
 	t.Helper()
+	origVar := crashAnalysisSourceDir
+	crashAnalysisSourceDir = func() string { return dir }
+	t.Cleanup(func() { crashAnalysisSourceDir = origVar })
 	orig := detectCrashAnalysisSourceDir
 	detectCrashAnalysisSourceDir = func() string { return dir }
 	t.Cleanup(func() { detectCrashAnalysisSourceDir = orig })
+}
+
+// stubGhUnavailable makes the gh resolution fail closed the same way a machine
+// without any gh install does, so the task-674 clone fallback refuses
+// hermetically instead of reaching for the network.
+func stubGhUnavailable(t *testing.T) {
+	t.Helper()
+	origFallbacks := ghFallbackLocationDirs
+	ghFallbackLocationDirs = func() []string { return nil }
+	t.Cleanup(func() { ghFallbackLocationDirs = origFallbacks })
+	t.Setenv("PATH", "")
 }
 
 func stubGhProbe(t *testing.T, ok bool, detail string) {
@@ -238,13 +256,19 @@ func fixtureReasonixSourceDir(t *testing.T) string {
 // The 2026-10-09 incident face: a click that starts nothing must say so in the
 // returned error instead of vanishing (the frontend paints it verbatim).
 func TestStartCrashAnalysisRefusesWithoutSourceExplicitly(t *testing.T) {
+	// 任务 674: a missing fork checkout no longer refuses outright — the entry
+	// falls back to an automatic gh clone. With the source hidden AND gh made
+	// unavailable, that fallback must still refuse explicitly (no silent death,
+	// no network reach) and keep pointing at the manual Copy path.
 	stubCrashAnalysisSourceDir(t, "")
+	stubGhUnavailable(t)
+	t.Setenv("REASONIX_STATE_HOME", t.TempDir())
 	app := NewApp()
 	_, err := app.StartCrashAnalysis("crash", `{"kind":"crash","message":"boom"}`)
 	if err == nil {
-		t.Fatal("missing source must refuse the analysis")
+		t.Fatal("missing source with no gh must refuse the analysis")
 	}
-	for _, want := range []string{"no local reasonix source detected", "Copy button"} {
+	for _, want := range []string{"cannot clone", "gh CLI not found", "Copy button"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error missing %q: %v", want, err)
 		}

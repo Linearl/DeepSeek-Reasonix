@@ -18,7 +18,6 @@ import {
   type TranscriptKernelClock,
   type TranscriptKernelEvent,
   type TranscriptVisibleBlock,
-  type TranscriptViewportSnapshot,
   type TranscriptWriteRequest,
 } from "../lib/transcriptKernel";
 
