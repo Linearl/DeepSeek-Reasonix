@@ -147,10 +147,15 @@ function noticeItems(state: typeof initialState) {
     && /<MergedMessageBody merged=\{mergedMessage\} \/>/.test(message),
     "a merged injection renders MergedMessageBody inside the user bubble");
 
-  // Regressions: shelf buttons stay as they were (batch / reorder / merge-next).
+  // Regressions: shelf capabilities stay as they were (batch send / reorder /
+  // merge-next). Task 441 (bc055ba45, 2026-10-01) intentionally replaced the
+  // ↑/↓ arrow buttons with the six-dot drag handle (task 729: the pre-existing
+  // red here), so the reorder pin follows the drag wiring — the shared movable
+  // gate plus the onDrop → onMove call — not the removed arrow shape.
   ok(/onClick=\{\(\) => onSend\(item\)\}/.test(shelf), "the per-row send button still calls onSend directly");
-  ok(/onBatchSend\(batchSendable\)/.test(shelf) && /onMove\?\.\(item, index - 1\)/.test(shelf),
-    "batch send and reorder arrows are untouched");
+  ok(/onBatchSend\(batchSendable\)/.test(shelf) && /const movable = Boolean\(onMove\)/.test(shelf)
+    && /if \(from >= 0 && onMove\) onMove\(items\[from\], index\)/.test(shelf),
+    "batch send and drag reorder are untouched (task 441 arrows→drag handle)");
   ok(/onMergeNext\(item\)/.test(shelf), "merge-next button is untouched");
 
   // The steer event dedupe lives in the reducer, not the caller.

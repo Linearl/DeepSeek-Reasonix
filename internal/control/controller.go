@@ -3047,9 +3047,14 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			log.Printf("[cascade-approval] hop limit reached (%d); keeping prompt local (task 225)", agent.MaxCascadeHops())
 		} else if delegate, source, ok := c.onCascadeDelegate(c.SessionPath()); ok && delegate != nil {
 			log.Printf("[cascade-approval] forwarding %d prompt(s) to task source %s (task 225)", len(questions), source)
+			// Task 732 (issue #40): the bounded wait can run the full
+			// DefaultAutopilotAskWait with no local ask record, which the
+			// doctor read as a hang. Stamp the wait window into the ledger.
+			c.markCascadeWaitBegin(source, len(questions))
 			delegateCtx, cancelDelegate := context.WithTimeout(ctx, DefaultAutopilotAskWait)
 			answers, err := delegate.Ask(agent.WithCascadeHop(delegateCtx), questions)
 			cancelDelegate()
+			c.markCascadeWaitEnd()
 			if err != nil {
 				log.Printf("[cascade-approval] delegate %s failed (%v); falling back to the local prompt", source, err)
 			} else {
@@ -6605,9 +6610,14 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 					{Label: "Deny", Description: "refuse and let the model find another way"},
 				},
 			}
+			// Task 732 (issue #40): same ledger stamp as the Ask path — the
+			// delegated approval wait is bounded the same way and would read
+			// as a hang in the doctor otherwise.
+			c.markCascadeWaitBegin(source, 1)
 			delegateCtx, cancelDelegate := context.WithTimeout(ctx, DefaultAutopilotAskWait)
 			answers, err := delegate.Ask(agent.WithCascadeHop(delegateCtx), []event.AskQuestion{question})
 			cancelDelegate()
+			c.markCascadeWaitEnd()
 			if err != nil || len(answers) != 1 {
 				reasonText := "no answer"
 				if err != nil {
