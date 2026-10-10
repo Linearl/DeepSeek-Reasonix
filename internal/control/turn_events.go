@@ -429,6 +429,56 @@ func (c *Controller) emitTurnStatus(status event.TurnStatus, turnID string) {
 	c.sink.Emit(event.Event{Kind: event.TurnStatusChanged, Status: status, TurnID: turnID})
 }
 
+// markCascadeWaitBegin stamps the delegated wait (the task-225 cascade) into
+// the turn ledger — and deliberately NOT into the live event stream. Task
+// 732, fork issue #40: a forwarded ask blocks the child's open turn for up to
+// DefaultAutopilotAskWait without emitting a local ask (that would
+// double-prompt), so the ledger used to sit silent and the doctor
+// responsiveness reader classified the bounded wait as a hang — the "silent"
+// verdict is the hang-analysis trigger. The waiting_user record fixes the
+// durable truth: the doctor checks waiting_user before its silence window, so
+// the wait reads as "waiting_user" (not stuck) instead of a false hang. The
+// flip bypasses publish on purpose: on the live stream a waiting_user flips
+// the composer and tab to "待确认" with no panel to answer (the controller
+// holds no pending prompt during the delegated wait) — exactly the stale
+// waiting state task 730 just taught the UI to distrust. The one notice IS
+// published: it is the visible audit line that keeps a waiting_user record
+// without a local ask explainable in the transcript.
+func (c *Controller) markCascadeWaitBegin(source string, questions int) {
+	if ledger := c.turnEventLedger(); ledger != nil {
+		c.appendCascadeWaitStatus(ledger, event.TurnWaitingUser)
+	}
+	c.sink.Emit(event.Event{
+		Kind:  event.Notice,
+		Level: event.LevelInfo,
+		Code:  "cascade_ask_wait",
+		Text:  fmt.Sprintf("cascade · %d prompt(s) forwarded to task source %s — the turn waits for the source's decision (bounded); not stuck", questions, source),
+	})
+}
+
+// markCascadeWaitEnd restores the turn to in_progress once the delegate
+// answered or gave up. When the delegate failed, the fall-through local prompt
+// immediately re-emits its own request (waiting_user again); when it
+// succeeded the turn really is streaming again.
+func (c *Controller) markCascadeWaitEnd() {
+	if ledger := c.turnEventLedger(); ledger != nil {
+		c.appendCascadeWaitStatus(ledger, event.TurnInProgress)
+	}
+}
+
+// appendCascadeWaitStatus writes one turn_status record straight to the
+// ledger, skipping the live publish. Append carries the ledger's own guards:
+// no active turn is a no-op, a terminal turn drops the record, and
+// nextTurnStatus clamps (a turn that started cancelling during the wait stays
+// cancelling), so a turn that ended while the delegate was blocked cannot be
+// corrupted. A rejected stamp is logged, never failed hard: a diagnostic
+// stamp must not kill the turn it describes.
+func (c *Controller) appendCascadeWaitStatus(ledger *turnevent.Ledger, status event.TurnStatus) {
+	if _, _, err := ledger.Append(event.Event{Kind: event.TurnStatusChanged, Status: status}, status); err != nil {
+		slog.Warn("controller: cascade wait ledger stamp rejected", "err", err)
+	}
+}
+
 // emitTurnEventChecked reaches the lifecycle sink below the inbox observer so
 // admission can fail closed on disk errors instead of starting an unledgered
 // provider request. Lifecycle events do not participate in inbox notice logic.

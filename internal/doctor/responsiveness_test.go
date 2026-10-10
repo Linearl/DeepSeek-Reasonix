@@ -261,3 +261,42 @@ func TestResponsivenessAcceptsLedgerPathDirectly(t *testing.T) {
 		t.Fatalf("active = %+v, want turn_o", report.Active)
 	}
 }
+
+// Task 732 (fork issue #40): an ask forwarded to the task source (the task-225
+// cascade) blocks the child's open turn for up to DefaultAutopilotAskWait
+// without an ask_request of its own. The fixed controller stamps the wait
+// window as turn_status(waiting_user) plus a naming notice; the doctor must
+// classify that shape as waiting_user — never as the silent hang the unmarked
+// shape used to produce.
+func TestResponsivenessCascadeWaitIsNotAHang(t *testing.T) {
+	sessionPath, now := responsivenessFixture(t)
+	ledgerPath := store.SessionTurnEventLog(sessionPath)
+	start := now.Add(-30 * time.Minute)
+	waitBegin := now.Add(-9 * time.Minute)
+	base := []turnevent.Envelope{
+		env("turn_c", 1, "turn_started", event.TurnInProgress, start, nil),
+		env("turn_c", 2, "reasoning", event.TurnInProgress, start.Add(4*time.Second), func(r *turnevent.Envelope) { r.Event.Text = "…" }),
+		env("turn_c", 3, "tool_dispatch", event.TurnInProgress, waitBegin, nil),
+	}
+
+	// The ask-forward wait as the fixed controller records it: ledger silent
+	// since the wait began, but the turn is stamped waiting_user.
+	marked := append(append([]turnevent.Envelope{}, base...),
+		env("turn_c", 4, "turn_status", event.TurnWaitingUser, waitBegin.Add(time.Second), nil),
+		env("turn_c", 5, "notice", event.TurnWaitingUser, waitBegin.Add(time.Second), func(r *turnevent.Envelope) {
+			r.Event.Text = "cascade · 1 prompt(s) forwarded to task source src-contact — the turn waits for the source's decision (bounded); not stuck"
+		}))
+	writeLedger(t, ledgerPath, marked, "")
+	report := readResponsiveness(sessionPath, ledgerPath, now)
+	if report.Verdict != "waiting_user" {
+		t.Fatalf("verdict = %q, want waiting_user for the marked cascade wait (detail: %s)", report.Verdict, report.Detail)
+	}
+
+	// The same session without the wait stamp is the issue-#40 misreport:
+	// silence past the stream-watchdog window read as a hang.
+	writeLedger(t, ledgerPath, base, "")
+	report = readResponsiveness(sessionPath, ledgerPath, now)
+	if report.Verdict != "silent" {
+		t.Fatalf("verdict = %q, want silent for the unmarked shape (the negative control)", report.Verdict)
+	}
+}
