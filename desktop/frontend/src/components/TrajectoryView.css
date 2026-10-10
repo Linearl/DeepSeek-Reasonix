@@ -1,0 +1,431 @@
+/* 任务 704 — 轨迹视图样式。随 TrajectoryView 懒加载 chunk 出包，不进
+   app-shell 启动预算。全主题 token（零裸值），布局沿用 chat-pane 结构：
+   .traj 填满 main 区域，头部汇总条 + 滚动台账。 */
+
+.traj {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--chat-bg);
+  color: var(--text);
+}
+
+.traj__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+.traj__head-title {
+  font-weight: var(--font-weight-strong);
+  color: var(--text-2);
+}
+
+.traj__head-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traj__live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+.traj__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.traj__empty,
+.traj__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.traj__ledger {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 24px;
+}
+
+/* Ledger row: [time | kind(+turn chip) | name | preview | badges] */
+.traj-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 14px 3px 10px;
+  border-left: 2px solid transparent;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  /* 长历史窗口化（slice 6）的渲染护栏：视口外行跳过布局/绘制。 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 28px;
+}
+
+.traj-row--turn-start {
+  margin-top: 6px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.traj-row:first-child {
+  margin-top: 0;
+  border-top: none;
+}
+
+.traj-row--nested {
+  padding-left: 34px;
+}
+
+.traj-row__time {
+  flex: none;
+  min-width: 58px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.traj-row__kind {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-2xs);
+  color: var(--text-2);
+}
+
+.traj-row__turn {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.traj-row__name {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+
+.traj-row__preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+.traj-row__badge {
+  flex: none;
+  font-size: var(--text-2xs);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.traj-row__badge--running {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.traj-row__badge--error {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+}
+
+.traj-row--failed {
+  border-left-color: var(--err);
+}
+
+.traj-row--running {
+  border-left-color: var(--accent);
+}
+
+.traj-row--user {
+  border-left-color: var(--border);
+}
+
+.traj-row--assistant {
+  border-left-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.traj-row--tool {
+  border-left-color: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+}
+
+.traj-row--compaction {
+  border-left-color: var(--warn);
+}
+
+/* 窄窗：时间列隐藏，预览让位（退化为 kind+name+preview 三列）。 */
+@media (max-width: 860px) {
+  .traj-row__time {
+    display: none;
+  }
+}
+
+/* ── 记录检查器（③）：台账右侧本地面板，覆盖其上，不动台账 DOM ── */
+
+.traj {
+  position: relative;
+}
+
+.traj-inspector {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 46%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border-left: 1px solid var(--border-soft);
+}
+
+.traj-inspector__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.traj-inspector__title {
+  font-weight: var(--font-weight-strong);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traj-inspector__close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 5px;
+}
+
+.traj-inspector__close:hover {
+  color: var(--text);
+  background: var(--sidebar-hover);
+}
+
+.traj-inspector__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.traj-inspector__usage {
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--text-2);
+  font-size: var(--text-2xs);
+}
+
+.traj-inspector__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.traj-inspector__label {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-3);
+}
+
+.traj-inspector__body {
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.traj-row--selected {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
+}
+
+/* 拖选聚焦（②）：区间外台账行降透明。 */
+.traj-row--dimmed {
+  opacity: 0.3;
+}
+
+/* ── 时间线总览（②）：台账上方固定条，start/duration 左右投影 ── */
+
+.traj-timeline {
+  position: relative;
+  flex: none;
+  height: 34px;
+  margin: 0 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background:
+    linear-gradient(to right, var(--border-soft), var(--border-soft)) 0 50% / 100% 1px no-repeat;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.traj-timeline__span {
+  position: absolute;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  min-width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+  overflow: hidden;
+}
+
+.traj-timeline__span--user {
+  background: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+.traj-timeline__span--assistant {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.traj-timeline__span--tool {
+  background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+}
+
+.traj-timeline__span--compaction {
+  background: color-mix(in srgb, var(--warn) 60%, transparent);
+}
+
+.traj-timeline__span--running {
+  min-width: 4px;
+  background: transparent;
+  border: 1px dashed var(--accent);
+}
+
+.traj-timeline__ttft {
+  display: block;
+  height: 100%;
+  background: color-mix(in srgb, var(--accent) 90%, var(--fg));
+}
+
+.traj-timeline__marker {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: var(--fg-faint);
+}
+
+.traj-timeline__marker--assistant {
+  background: var(--accent);
+}
+
+.traj-timeline__marker--compaction {
+  background: var(--warn);
+}
+
+.traj-timeline__marker--failed,
+.traj-timeline__span--failed {
+  background: var(--err);
+}
+
+.traj-timeline__focus,
+.traj-timeline__drag {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.traj-timeline__focus {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.traj-timeline__drag {
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  border: 1px dashed var(--fg-faint);
+}
+
+/* ── 长历史（⑤）：窗口化加载控件（视图窗口 → 后端分页两段式） ── */
+
+.traj__load-older-row {
+  display: flex;
+  justify-content: center;
+  padding: 8px 14px;
+}
+
+.traj__load-older {
+  border: 1px solid var(--border-soft);
+  background: var(--bg-soft);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--text-2xs);
+  padding: 3px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.traj__load-older:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--sidebar-hover);
+}
+
+.traj__load-older:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+
+
+/* 窄窗：检查器转为整宽面板。 */
+@media (max-width: 860px) {
+  .traj-inspector {
+    width: 100%;
+    border-left: none;
+  }
+}
+

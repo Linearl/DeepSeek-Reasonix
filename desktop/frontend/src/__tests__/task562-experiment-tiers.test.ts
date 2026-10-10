@@ -52,10 +52,12 @@ console.log("\ntask 562 lab three-tier badges");
   // 档入表——可选 18→19、总数 47→48，两侧同源对齐。
   // 任务 707：compactModel（压缩模型指定，默认关）按任务书建议可选档入表
   // ——可选 19→20、总数 48→49，两侧同源对齐。
-  ok(counts.recommended === 15 && counts.optional === 20 && counts.unstable === 13 && counts.retired === 1,
+  // 任务 704：trajectoryView（轨迹视图，默认关）按可选档入表——可选
+  // 20→21、总数 49→50，两侧同源对齐。
+  ok(counts.recommended === 15 && counts.optional === 21 && counts.unstable === 13 && counts.retired === 1,
     `register counts are 15/20/13/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 49, `register holds exactly 49 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 20 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 50, `register holds exactly 50 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 21 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
     "LAB_TIER_COUNTS pins 15/20/13/1");
 }
 
@@ -82,7 +84,7 @@ console.log("\ntask 562 lab three-tier badges");
   for (const m of goSrc.matchAll(/\{"([a-zA-Z]+)", LabTier([A-Za-z]+), \[/g)) {
     goTiers[m[1]] = m[2].toLowerCase();
   }
-  ok(Object.keys(goTiers).length === 49, `Go registry parses to 49 entries (got ${Object.keys(goTiers).length})`);
+  ok(Object.keys(goTiers).length === 50, `Go registry parses to 50 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -105,7 +107,8 @@ console.log("\ntask 562 lab three-tier badges");
   ok(members.length === 17, `merged cards carry 17 member features (任务 707 compactModel 随上下文治理卡入成员表) (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
-  ok(covered.size === 49, "rail entries cover all 49 features");
+  // 任务 704：trajectoryView 入表，覆盖数 49→50。
+  ok(covered.size === 50, "rail entries cover all 50 features");
   const gov = railTiersFor("contextGovernance");
   ok(gov[0] === "recommended" && gov[1] === "optional" && gov.length === 2, `contextGovernance shows [推荐, 可选] (got ${JSON.stringify(gov)})`);
   ok(JSON.stringify(railTiersFor("autopilot")) === JSON.stringify(["recommended"]), "standalone entry badges itself");

@@ -43,6 +43,8 @@ export interface SettingsView {
   experimentalCollabGroupView?: boolean;
   // Task 705: folds over-long cross-session messages into a summary bar (experimental; off = render in full).
   experimentalSessionCollabAutoFold?: boolean;
+  // Task 704: gates the topicbar transcript|trajectory switch and the trajectory surface (experimental; off = transcript only).
+  experimentalTrajectoryView?: boolean;
   // Conversation store mode in use (task 155): "v3_only" | "dual_write_read_v3" |
   // "dual_write_read_v4" | "v4_only"; switched from Settings > Experimental.
   sessionStorage?: string;

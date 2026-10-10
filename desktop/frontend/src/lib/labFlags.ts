@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabGroupView";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabGroupView" | "trajectoryView";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -30,6 +30,10 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // view landed without its lab switch). With it off the utility row renders
   // exactly the pre-409 four-icon layout; a flip applies on settings save.
   collabGroupView: false,
+  // 任务 704: the trajectory view ships off (铁律 2). With it off the topicbar
+  // renders exactly the pre-704 layout and the transcript is the only surface;
+  // a flip applies on settings save (no restart).
+  trajectoryView: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -58,7 +62,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabGroupView=${flags.collabGroupView}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabGroupView=${flags.collabGroupView} trajectoryView=${flags.trajectoryView}`,
   );
   for (const listener of listeners) listener();
 }

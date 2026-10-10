@@ -44,6 +44,10 @@ const ALLOWED_RAW_SCROLLTOP = new Set([
   "components/WorkspacePanel.tsx",
   "components/editors/LineNumberCode.tsx",
   "custom/features/heartbeat/HeartbeatPanel.tsx",
+  // components/TrajectoryView.tsx: the trajectory ledger's own scroller
+  // (task 704) — an independent surface beside the transcript, never the
+  // transcript viewport itself.
+  "components/TrajectoryView.tsx",
 ]);
 const IMPERATIVE_SCROLL_RE = /\.scroll(?:To|By)\s*\(|\.scrollTo(?:Offset|Index)\s*\(/;
 const RAW_SCROLLTOP_WRITE_RE = /\.scrollTop\s*=(?!=)/;

@@ -969,6 +969,15 @@ func (c *Config) SetExperimentalSessionCollabAutoFold(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalTrajectoryView toggles the topicbar "transcript | trajectory"
+// view switch and the trajectory surface (task 704). Pure frontend gate: the
+// shell reads the flag from the settings snapshot, so a flip is visible
+// without a restart; with it off the transcript renders exactly as before.
+func (c *Config) SetExperimentalTrajectoryView(enabled bool) error {
+	c.Desktop.ExperimentalTrajectoryView = enabled
+	return nil
+}
+
 // SetExperimentalFeedback toggles the agent submit_feedback tool and the desktop
 // feedback inbox panel (task 121). Opt-in: feedback is a local product-inbox
 // experiment, not part of the default tool surface or settings chrome.

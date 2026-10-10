@@ -175,7 +175,7 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 15 / 可选 20 / 未稳定 14 / 已退役 0 = 49.
+// register must stay exactly 推荐 15 / 可选 21 / 未稳定 14 / 已退役 0 = 50.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
@@ -185,7 +185,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// 会话消息自动折叠，默认关）按可选档入表（18→19、47→48）。任务 707
 		// （compactModel，压缩模型指定，默认关）按任务书建议可选档入表
 		// （19→20、48→49）。
-		LabTierOptional: 20,
+		// （19→20、48→49）。任务 704（trajectoryView，轨迹视图，默认关）按
+		// 可选档入表（20→21、49→50）。
+		LabTierOptional: 21,
 		// 任务 545（sessionCwdFollow）+ 任务 504（tabModeTint）为 562 表A 快照后
 		// 新增的默认关实验项，按未稳定档登记；任务 551 将 B9
 		// （modelCapabilityFilter）退役移出表A——xlsx 侧待同步。
@@ -214,7 +216,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 49 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 49", len(labFeatureTiers))
+	if len(labFeatureTiers) != 50 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 50", len(labFeatureTiers))
 	}
 }

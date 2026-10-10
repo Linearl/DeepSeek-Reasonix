@@ -76,7 +76,9 @@ export type TierFeatureId =
   // 任务 705: 超长跨会话消息自动折叠（默认关=全量展示，可选档）。
   | "sessionCollabAutoFold"
   // 任务 707: 压缩模型指定（经济模型压缩，默认关，可选档）。
-  | "compactModel";
+  | "compactModel"
+  // 任务 704: 轨迹视图开关（DSH 同款可观测性视图，纯前端投影，默认关=仅转录，可选档）。
+  | "trajectoryView";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -106,6 +108,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 707：压缩模型指定（上下文治理卡 compressOpt 下方，默认关）。按任务
   // 书建议定档可选——不开启不影响体验，只影响压缩成本。
   compactModel: "optional",
+  // 任务 704：轨迹视图（DSH 同款可观测性视图，纯前端投影）。展示类开关按
+  // 550 口径定档可选——不开启时标题栏与转录视图与引入前完全一致（铁律 2，
+  // 默认关）。
+  trajectoryView: "optional",
   // ── ui（界面，15 项）────────────────────────────────────────
   tabCompress: "recommended",
   todoSidebar: "recommended",
@@ -155,10 +161,11 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * collabGroupView（群聊入口开关，409 交付漏挂铁律 2 开关，未稳定）入表，
  * 未稳定 12→13、总数 46→47。任务 705：sessionCollabAutoFold（超长跨会话
  * 消息自动折叠，默认关）入表，可选 18→19、总数 47→48。任务 707：compactModel
- * （压缩模型指定，默认关，可选档）入表，可选 19→20、总数 48→49。) */
+ * （压缩模型指定，默认关，可选档）入表，可选 19→20、总数 48→49。
+ * trajectoryView（轨迹视图，默认关）入表，可选 20→21、总数 49→50。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
-  optional: 20,
+  optional: 21,
   unstable: 13,
   retired: 1,
 };

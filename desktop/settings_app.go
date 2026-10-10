@@ -377,6 +377,10 @@ type SettingsView struct {
 	// into a summary bar (task 705); rendered in both views for the same
 	// permanently-off lesson.
 	ExperimentalSessionCollabAutoFold bool `json:"experimentalSessionCollabAutoFold"`
+	// ExperimentalTrajectoryView gates the topicbar "transcript | trajectory"
+	// view switch (task 704); rendered in both views for the same
+	// permanently-off lesson.
+	ExperimentalTrajectoryView bool   `json:"experimentalTrajectoryView"`
 	SessionStorage             string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
@@ -623,6 +627,10 @@ type DesktopStartupSettingsView struct {
 	// into a summary bar (task 705); rendered in both views for the same
 	// permanently-off lesson.
 	ExperimentalSessionCollabAutoFold bool `json:"experimentalSessionCollabAutoFold"`
+	// ExperimentalTrajectoryView gates the topicbar "transcript | trajectory"
+	// view switch (task 704); rendered in both views for the same
+	// permanently-off lesson.
+	ExperimentalTrajectoryView bool   `json:"experimentalTrajectoryView"`
 	SessionStorage             string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
@@ -1443,6 +1451,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalCollabGroupView = cfg.Desktop.ExperimentalCollabGroupView
 		// Task 705: cross-session message auto-fold readback.
 		view.ExperimentalSessionCollabAutoFold = cfg.Desktop.ExperimentalSessionCollabAutoFold
+		// Task 704: trajectory view switch readback (boot snapshot).
+		view.ExperimentalTrajectoryView = cfg.Desktop.ExperimentalTrajectoryView
 		view.SessionStorage = config.SessionStorageMode(cfg)
 		view.SessionStorageEffective = a.sessionStorageBootMode(view.SessionStorage)
 		view.SessionStorageRestartPending = view.SessionStorageEffective != view.SessionStorage
@@ -1631,6 +1641,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSessionMonitor:      cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:           cfg.Desktop.ExperimentalSplitView,
 		ExperimentalCollabGroupView:     cfg.Desktop.ExperimentalCollabGroupView, // task 677 group-chat entry
+		ExperimentalTrajectoryView:      cfg.Desktop.ExperimentalTrajectoryView,  // task 704 trajectory view switch
 		SessionStorage:                  storageMode,
 		SessionStorageEffective:         storageEffective,
 		SessionStorageRestartPending:    storageEffective != storageMode,

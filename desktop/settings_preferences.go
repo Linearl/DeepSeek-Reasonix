@@ -341,6 +341,13 @@ func (a *App) SetExperimentalSessionCollabAutoFold(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollabAutoFold(enabled) })
 }
 
+// SetExperimentalTrajectoryView toggles the topicbar "transcript | trajectory"
+// view switch and the trajectory surface (task 704): off (default) keeps the
+// transcript as the only surface, exactly as before the feature existed.
+func (a *App) SetExperimentalTrajectoryView(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTrajectoryView(enabled) })
+}
+
 // SetExperimentalFeedback toggles the agent submit_feedback tool surface and the
 // desktop feedback inbox panel (task 121).
 func (a *App) SetExperimentalFeedback(enabled bool) error {

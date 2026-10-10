@@ -1082,6 +1082,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalCollabGroupView(enabled: boolean): Promise<void>;
   // Task 705: cross-session message auto-fold switch (experimental; pure display pref).
   SetExperimentalSessionCollabAutoFold(enabled: boolean): Promise<void>;
+  // Task 704: trajectory view switch (experimental; pure frontend gate).
+  SetExperimentalTrajectoryView(enabled: boolean): Promise<void>;
   // Task 259: right-dock todo tab + tab visibility/wrap settings (experimental; boot snapshot).
   SetExperimentalTodoSidebar(enabled: boolean): Promise<void>;
   // Task 495: right-dock subagent tab + default-collapsed ended subagent cards
@@ -5702,6 +5704,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSplitView() {},
     async SetExperimentalCollabGroupView() {},
     async SetExperimentalSessionCollabAutoFold() {},
+    async SetExperimentalTrajectoryView() {},
     async SetExperimentalTodoSidebar() {},
     async SetExperimentalSubagentPanel() {},
     async SetExperimentalSessionWall() {},

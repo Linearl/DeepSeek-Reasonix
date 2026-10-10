@@ -38,7 +38,7 @@ export function historySearchSources(
 
 export function historySearchAndAnswer(
   id: string,
-  m: { content: string; reasoning?: string; workDurationMs?: number; memoryCitations?: Extract<Item, { kind: "assistant" }>["memoryCitations"]; serverSearch?: { id?: string; query?: string; sources_status?: "available" | "not_provided"; results?: { title?: string; url?: string }[] }[] },
+  m: { content: string; reasoning?: string; workDurationMs?: number; createdAt?: number; memoryCitations?: Extract<Item, { kind: "assistant" }>["memoryCitations"]; serverSearch?: { id?: string; query?: string; sources_status?: "available" | "not_provided"; results?: { title?: string; url?: string }[] }[] },
 ): Item[] {
   const out: Item[] = historySearchCards(m.serverSearch);
   const searchSources = historySearchSources(m.serverSearch);
@@ -50,6 +50,10 @@ export function historySearchAndAnswer(
       reasoning: m.reasoning ?? "",
       streaming: false,
       workDurationMs: m.workDurationMs,
+      // 任务 704: trajectory timeline anchor. The wire already carries
+      // CreatedAt for every message; conditional spread keeps pre-704 item
+      // shapes byte-identical when the field is absent.
+      ...(m.createdAt != null ? { createdAt: m.createdAt } : {}),
       memoryCitations: m.memoryCitations,
       searchSources,
     });
