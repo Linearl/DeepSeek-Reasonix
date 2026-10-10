@@ -2020,7 +2020,7 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
-	lease, err := agent.TryAcquireSessionLeaseWithHandoff(abs, strings.TrimSpace(body.From), fmt.Sprintf("%s-takeover-%d", agent.SessionWriterID(), time.Now().UnixNano()))
+	lease, err := agent.TryAcquireSessionLeaseWithHandoff(abs, strings.TrimSpace(body.From), newTakeoverHandoffID())
 	if err != nil {
 		// Cross-runtime takeover (539 route A, "take over without
 		// interrupting"): ask the current holder to yield. The desktop accepts
@@ -2059,13 +2059,26 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// Point the controller at the acquired session so /submit and /history
 	// operate on it. Rebind releases any lease this runtime previously held.
+	// Task 747: hold bindMu for the rebind — releaseSession's serialization
+	// comment lists /takeover-session among the bindMu endpoints, but this was
+	// the one session-switch endpoint rebinds without it, so a concurrent
+	// /release-session handoff, /resume, or submit admission could cross the
+	// lease/controller swap in two different binding epochs. Only the rebind
+	// transaction goes under the mutex (the acquire above is the slow part and
+	// stays outside, matching the handoffLocked pattern in
+	// session_ownership.go); notifyRemoteWriteAuthority stays outside too —
+	// the desktop hook takes its own app mutex and must never observe a
+	// bindMu-held serve mid-handler.
+	s.bindMu.Lock()
 	if err := s.leases.Rebind(abs); err != nil {
+		s.bindMu.Unlock()
 		lease.Release()
 		// A plain handoff consume failed on this runtime's lease
 		// bookkeeping; the next write path acquires cleanly.
 		http.Error(w, control.SessionInUseMessage(err), http.StatusConflict)
 		return
 	}
+	s.bindMu.Unlock()
 	// Rebind re-acquired its own lease; release the probe lease we took.
 	lease.Release()
 	// Task 36 Phase 2: the remote device now holds write authority — flip the
@@ -2073,6 +2086,14 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 	// clients; the hook treats it as an anonymous device).
 	notifyRemoteWriteAuthority(strings.TrimSpace(body.From), true)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// newTakeoverHandoffID mints the reservation id the synchronous takeover
+// probe consumes. Package var (same seam as takeoverPollInterval) so tests
+// can pre-publish a matching reservation and reach the synchronous path
+// deterministically; production behavior is the time-seeded id.
+var newTakeoverHandoffID = func() string {
+	return fmt.Sprintf("%s-takeover-%d", agent.SessionWriterID(), time.Now().UnixNano())
 }
 
 func finishSessionDestroy(destroy control.SessionDestroyHandle) jobs.TeardownResult {

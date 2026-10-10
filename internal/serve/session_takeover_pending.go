@@ -146,7 +146,16 @@ func (s *Server) pollTakeoverYield(abs, marker, from string) {
 				slog.Warn("serve: takeover acquired but lease keeper unavailable", "path", abs)
 				return
 			}
-			if err := s.leases.Rebind(abs); err != nil {
+			// Task 747: same bindMu epoch as the synchronous takeover path —
+			// this rebind swaps the lease/controller binding a concurrent
+			// /resume, /release-session, or submit admission is validating
+			// under the same mutex. The lock hold is bounded (Try-style
+			// acquire + bookkeeping, no waiting), and no bindMu holder ever
+			// waits on this background poll, so the handoff cannot deadlock.
+			s.bindMu.Lock()
+			err := s.leases.Rebind(abs)
+			s.bindMu.Unlock()
+			if err != nil {
 				// The takeover itself succeeded (lease acquired + released);
 				// the next write path acquires cleanly — same reasoning as
 				// the synchronous handler's `yielded` fallback.

@@ -90,10 +90,17 @@ func TestTakeoverSessionPendingUntilDesktopYields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The background poll consumes the reservation and completes.
+	// The background poll consumes the reservation and completes. Marker
+	// removal precedes the keeper rebind inside the poll, so "marker gone"
+	// alone is not readiness — wait for the rebind to land too, or this test
+	// flakes on the observation window (observed ~30% on Windows even before
+	// task 747's lock widened it by an uncontended mutex).
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := os.Stat(marker); err != nil {
+		_, statErr := os.Stat(marker)
+		lease := server.leases.Lease()
+		if os.IsNotExist(statErr) && lease != nil &&
+			agent.CanonicalSessionPath(lease.Path()) == agent.CanonicalSessionPath(target) {
 			break
 		}
 		if time.Now().After(deadline) {
