@@ -112,6 +112,19 @@ func (s *Session) takePendingMarkers() []sessionDAGEntry {
 	return pending
 }
 
+// HasPendingTurnMarkers reports whether turn markers are queued but not yet
+// persisted. 任务 748: the redundant-saver coalesce gate must never skip a
+// save while markers are pending — they are the schema-2 crash contract
+// (#3772), and a skipped save leaves the open-turn marker memory-only.
+func (s *Session) HasPendingTurnMarkers() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.head.pending) > 0
+}
+
 // requeuePendingMarkers puts markers back after a failed append so the next
 // save carries them.
 func (s *Session) requeuePendingMarkers(pending []sessionDAGEntry) {

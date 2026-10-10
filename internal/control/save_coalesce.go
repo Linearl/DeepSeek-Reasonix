@@ -25,6 +25,7 @@ package control
 // boundary.
 
 import (
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -62,6 +63,15 @@ func (c *Controller) recordDurableSnapshot(path string, at time.Time) {
 // rewrite check runs against the live session — a pending compaction/rewrite
 // must land regardless of recency, because the transcript the disk holds is
 // not the shape the memory holds.
+//
+// 任务 748: two facts defeat the "at most one gap stale" argument outright,
+// so they disable the skip:
+//   - the session file vanished externally — the skipped save is then not
+//     one gap stale but infinitely stale, and the save is also the only
+//     place that detects the removal and forks the stable recovery branch;
+//   - turn markers are queued but not yet persisted — they are the schema-2
+//     crash contract (#3772) the skip itself leans on, and leaving them
+//     memory-only removes the very coverage the gap window claims.
 func (c *Controller) snapshotSaveRecentlyDurable(path string) bool {
 	if c == nil || path == "" {
 		return false
@@ -76,7 +86,17 @@ func (c *Controller) snapshotSaveRecentlyDurable(path string) bool {
 	if !recorded || at.IsZero() || time.Since(at) >= gap {
 		return false
 	}
-	if c.executor != nil && c.executor.Session() != nil && c.executor.Session().NeedsRewriteSave() {
+	if c.executor != nil && c.executor.Session() != nil {
+		if c.executor.Session().NeedsRewriteSave() {
+			return false
+		}
+		if c.executor.Session().HasPendingTurnMarkers() {
+			return false
+		}
+	}
+	if _, err := os.Stat(path); err != nil {
+		// Missing or unreadable: let the real save run so external removal is
+		// detected and recovered instead of coalesced away.
 		return false
 	}
 	return true
