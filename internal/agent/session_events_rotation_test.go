@@ -25,9 +25,15 @@ func gateJudges(log, content int64) bool {
 }
 
 // resetEventsRotation restores the zero-value default for the next test.
+// 任务 710: also clears the fold-warn rate limiter, whose per-path state is
+// package-global and would otherwise leak a suppression from one test into
+// the next WARN assertion.
 func resetEventsRotation(t *testing.T) {
 	t.Helper()
 	eventsRotationStore.Store(nil)
+	foldNoShrinkWarn.mu.Lock()
+	foldNoShrinkWarn.lastSize = map[string]int64{}
+	foldNoShrinkWarn.mu.Unlock()
 	t.Cleanup(func() { eventsRotationStore.Store(nil) })
 }
 

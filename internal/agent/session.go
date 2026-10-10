@@ -21,6 +21,12 @@ type Session struct {
 	// Task 357: milliseconds the last save spent waiting for the two save
 	// locks; surfaced by the "save phases" line for 196-family attribution.
 	lastSaveLockWaitMs atomic.Int64
+	// 任务 710: wall-clock milliseconds the last observed save took (begin to
+	// end, locks included). The controller's mid-turn autosave reads it to
+	// back its tick interval off on sessions whose per-save IO cost is high,
+	// so a 96MB event log cannot turn a 30s durability nicety into a
+	// continuous disk-saturation loop (fork开发-新5, 2026-10-10).
+	lastSaveDurationMs atomic.Int64
 
 	cacheSessionID          string // ephemeral transport identity; never model-visible or persisted
 	mu                      sync.RWMutex
