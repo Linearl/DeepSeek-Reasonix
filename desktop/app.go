@@ -1254,7 +1254,7 @@ func (a *App) snapshotAllTabs() {
 	tabs := a.runtimeTabsLocked()
 	a.mu.RUnlock()
 	for _, t := range tabs {
-		if err := a.snapshotTab(t); err != nil {
+		if err := a.snapshotTabDurable(t); err != nil {
 			slog.Warn("desktop: snapshot all tabs failed", "tab", t.ID, "err", err)
 		}
 	}
@@ -1453,6 +1453,16 @@ func readOnlyChannelErr() error {
 	return fmt.Errorf("channel session is read-only")
 }
 
+// ctrlDurableSnapshot snapshots a SessionAPI with the action/teardown
+// semantics (always writes, never coalesces), falling back to the plain
+// Snapshot for controllers that predate the 任务 710 gate.
+func ctrlDurableSnapshot(ctrl control.SessionAPI) error {
+	if d, ok := ctrl.(interface{ SnapshotDurable() error }); ok {
+		return d.SnapshotDurable()
+	}
+	return ctrl.Snapshot()
+}
+
 func (a *App) snapshotTab(tab *WorkspaceTab) error {
 	if tab == nil {
 		return nil
@@ -1464,11 +1474,39 @@ func (a *App) snapshotTab(tab *WorkspaceTab) error {
 	if readOnly || ctrl == nil {
 		return nil
 	}
+	// 任务 710: background/redundant fan-out saves (TurnDone autosave, switch
+	// follow-ups) coalesce behind a fresh durable save so a large session
+	// cannot multiply a seconds-per-save cost across the whole saver fan.
+	return ctrl.Snapshot()
+}
+
+// durableSnapshotController is the optional capability for action-time and
+// teardown saves: those must land a real write even when a durable snapshot
+// just landed, because the caller is about to mutate, rebind, or discard the
+// controller state the transcript is about to outlive.
+type durableSnapshotController interface{ SnapshotDurable() error }
+
+func (a *App) snapshotTabDurable(tab *WorkspaceTab) error {
+	if tab == nil {
+		return nil
+	}
+	a.mu.RLock()
+	readOnly := tab.ReadOnly
+	ctrl := tab.Ctrl
+	a.mu.RUnlock()
+	if readOnly || ctrl == nil {
+		return nil
+	}
+	if d, ok := ctrl.(durableSnapshotController); ok {
+		return d.SnapshotDurable()
+	}
 	return ctrl.Snapshot()
 }
 
 func (a *App) snapshotTabForAction(tab *WorkspaceTab, action string) error {
-	if err := a.snapshotTab(tab); err != nil {
+	// 任务 710: action boundaries are pre-mutation (model/effort rebind,
+	// session switch) — always durable, never coalesced.
+	if err := a.snapshotTabDurable(tab); err != nil {
 		a.reportTabSnapshotError(tab, action, err)
 		if strings.TrimSpace(action) == "" {
 			return fmt.Errorf("save current session: %w", err)
@@ -1575,7 +1613,7 @@ func (a *App) ensureTabControllerWorkspace(tab *WorkspaceTab) error {
 	if rootMatches && dirMatches && sessionMatches {
 		return nil
 	}
-	if err := ctrl.Snapshot(); err != nil {
+	if err := ctrlDurableSnapshot(ctrl); err != nil {
 		return err
 	}
 	ctrl.Close()
@@ -2931,7 +2969,7 @@ func (a *App) prepareRemovedSessionRuntimes(removed []removedSessionRuntime) err
 		if item.readOnly {
 			continue
 		}
-		if err := item.ctrl.Snapshot(); err != nil {
+		if err := ctrlDurableSnapshot(item.ctrl); err != nil {
 			if !errors.Is(err, agent.ErrSessionSnapshotConflict) {
 				return err
 			}
@@ -4213,7 +4251,7 @@ func (a *App) RemoveWorkspace(dir string) error {
 		for _, candidate := range candidates {
 			id, tab := candidate.id, candidate.tab
 			snapshotted[id] = tab
-			if err := a.snapshotTab(tab); err != nil {
+			if err := a.snapshotTabDurable(tab); err != nil {
 				slog.Warn("desktop: snapshot before removing workspace failed", "tab", id, "workspace", dir, "err", err)
 				return fmt.Errorf("save current session before removing workspace: %w", err)
 			}

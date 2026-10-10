@@ -422,6 +422,11 @@ type Controller struct {
 	// Not reentrant — never call snapshot (or anything that snapshots, such as
 	// recoverInterruptedTurn or maybeColdResumePrune) while holding it.
 	snapshotMu sync.Mutex
+	// 任务 710: coalesces redundant snapshot-mode saves. Redundant savers
+	// (desktop TurnDone autosave, action-time snapshotTab) consult the gate
+	// before queueing behind a full save; durability-boundary callers (turn
+	// end, shutdown, forced rewrite) bypass it and keep the record fresh.
+	saveCoalesce saveCoalesceState
 	// turn counts model turns this session, passed to hooks in their payload.
 	turn       int
 	turnEvents turnEventState
@@ -3632,7 +3637,10 @@ func (c *Controller) NewSession() error {
 	// rotation (or process teardown) and race cleanup of the old session.
 	oldPath := c.SessionPath()
 	c.flushRecoveryPersistence(oldPath)
-	if err := c.Snapshot(); err != nil {
+	// 任务 710: uncoalesced on purpose. This snapshot is the old session's
+	// final checkpoint before the path rotates away — a gate skip here would
+	// strand the freshest tail on a path nothing will ever save again.
+	if err := c.snapshot(false, false, false); err != nil {
 		return err
 	}
 	// session.rotate: the session_policy owner rules on the rotation before
@@ -4089,7 +4097,27 @@ func (c *Controller) cacheColdAfter() time.Duration {
 // interaction). Returns errNoSessionPath when there IS content but no resolved
 // path, so a misconfigured deployment surfaces instead of dropping data.
 // Called after every turn so a crash loses at most one in-flight prompt.
+//
+// 任务 710: this is the redundant-saver entry (desktop TurnDone autosave,
+// action-time snapshotTab, branch/serve maintenance). When a durable snapshot
+// for this path just landed, it coalesces: the durability boundaries (turn
+// end, shutdown, forced rewrite) do not come through here, so the crash
+// window widens by at most one snapshotSaveMinGap — the same #3772 contract
+// the mid-turn ticker already accepts.
 func (c *Controller) Snapshot() error {
+	if c.snapshotSaveRecentlyDurable(c.SessionPath()) {
+		return nil
+	}
+	return c.snapshot(false, false, false)
+}
+
+// SnapshotDurable is the uncoalesced Snapshot: it always attempts the write
+// and is for action-time and teardown boundaries that must not lean on the
+// redundancy gate — pre-mutation saves (branch/fork/delete/model rebind),
+// tab close, and workspace removal. 任务 710: the gate exists for the
+// TurnDone/background fan-out; anything that is about to mutate or discard
+// controller state persists first, deliberately.
+func (c *Controller) SnapshotDurable() error {
 	return c.snapshot(false, false, false)
 }
 
@@ -4290,6 +4318,9 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 			logSessionV4Bridge(syncErr, "snapshot-sync", path)
 		}
 	}
+	// 任务 710: a durable snapshot just landed for path — record it so the
+	// redundant-saver gate (Snapshot) can coalesce behind this write.
+	c.recordDurableSnapshot(path, time.Now())
 	c.extensionSessionPayloadEvent(extension.PointSessionSave, savePayload)
 	return transcriptDurable, nil
 }

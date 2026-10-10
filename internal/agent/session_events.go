@@ -363,9 +363,17 @@ func sessionEventIndexNearCap(sessionPath string) bool {
 // exactly, and "auto" applies the configured factor plus the optional MiB cap
 // (OR). path is only attributed in the off-mode WARN so the skip is
 // diagnosable per session (review finding, 2026-09-28).
-// 任务 373 R4 备料：两条跳过 WARN 走按路径限频（warnRotateSkipOnce）——auto
-// cap 之下「fold 不回本」的会话（live 内容本身超 cap，瘦身救不了）每次保存
-// 都命中同一条 WARN，2026-10-10 实测单日 847 行、峰值 20 行/分钟。
+// 任务 373 R4 备料：跳过 WARN 的按路径限频（warnRotateSkipOnce，现用于
+// off 模式跳过条目）。auto cap 之下「fold 不回本」的会话（live 内容本身超
+// cap，瘦身救不了）每次保存都命中同一条 WARN，2026-10-10 实测单日 847 行、
+// 峰值 20 行/分钟——该条已由 710 的 size-regime 限频接管（下段）。
+//
+// 任务 710: the "fold would not shrink it" WARN used to fire on every full
+// save — 847 lines over 7.4h on fork开发-新5 — turning a one-time diagnosis
+// into log noise on top of the IO storm. The condition is a property of the
+// log/content size pair, not of the save: warn once per size regime instead
+// (re-warn when the log grows ≥10% past the last warned size), and carry the
+// remediation in the message so the operator has an exit, not just a verdict.
 func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 	cfg := currentEventsRotation()
 	switch cfg.mode {
@@ -388,8 +396,7 @@ func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 			// slimming entries still force the fold, and the storage inventory
 			// keeps flagging the log as over its cap.
 			if contentBytes*2 >= logSize {
-				warnRotateSkipOnce(path, "session: oversized event log left in place (fold would not shrink it)",
-					"path", path, "logSize", logSize, "contentBytes", contentBytes, "capMB", cfg.capMB)
+				warnFoldWouldNotShrink(path, logSize, contentBytes, cfg.capMB)
 				return false
 			}
 			return true
@@ -449,6 +456,44 @@ func warnRotateSkipOnce(path, msg string, fields ...any) {
 		fields = append(fields, "suppressed", int64(suppressed))
 	}
 	slog.Warn(msg, fields...)
+}
+
+// foldNoShrinkWarnState is the per-path rate limiter for the "fold would not
+// shrink it" WARN. The guard map is bounded: sessions are few, and when the
+// bound is hit the oldest entry is dropped — a re-warned stale session is a
+// cosmetic cost, an unbounded map is a leak.
+type foldNoShrinkWarnState struct {
+	mu       sync.Mutex
+	lastSize map[string]int64
+}
+
+var foldNoShrinkWarn = foldNoShrinkWarnState{lastSize: map[string]int64{}}
+
+// foldNoShrinkReWarnGrowth is the log growth fraction that re-arms the WARN:
+// below it the condition is unchanged, so repeating it every save would only
+// repeat the storm's log noise (847× on the 710 incident session).
+const foldNoShrinkReWarnGrowth = 1.10
+
+func warnFoldWouldNotShrink(path string, logSize, contentBytes, capMB int64) {
+	foldNoShrinkWarn.mu.Lock()
+	last, seen := foldNoShrinkWarn.lastSize[path]
+	if seen && float64(logSize) < float64(last)*foldNoShrinkReWarnGrowth {
+		foldNoShrinkWarn.mu.Unlock()
+		return
+	}
+	if len(foldNoShrinkWarn.lastSize) > 64 {
+		foldNoShrinkWarn.lastSize = map[string]int64{path: logSize}
+	} else {
+		foldNoShrinkWarn.lastSize[path] = logSize
+	}
+	foldNoShrinkWarn.mu.Unlock()
+	// The message text up to the closing paren is a grep contract (task 339
+	// rescue tests and on-device log triage key on "fold would not shrink it");
+	// the remediation rides in structured attrs, not in the prefix.
+	slog.Warn("session: oversized event log left in place (fold would not shrink it)",
+		"path", path, "logSize", logSize, "contentBytes", contentBytes, "capMB", capMB,
+		"reason", "live transcript itself is at least half the log size, so folding history cannot get under the cap",
+		"remedy", "compact/redact the transcript (SaveRewriteCompact path), archive to a new session, or raise events rotation capMB")
 }
 
 // sessionEventReplay is the result of a tolerant event-log replay: the

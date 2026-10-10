@@ -3343,7 +3343,7 @@ func (a *App) closeTabRuntime(tabID string, allowDetach bool) error {
 	// snapshot recovery can re-enter App and acquire a.mu. sessionRemovalMu keeps
 	// DeleteSession/topic/workspace removal from trashing the same files while
 	// this save is in flight.
-	if err := a.snapshotTab(tab); err != nil {
+	if err := a.snapshotTabDurable(tab); err != nil {
 		slog.Warn("desktop: snapshot before closing tab failed", "tab", tabID, "err", err)
 		return fmt.Errorf("save current session before closing tab: %w", err)
 	}
@@ -3490,7 +3490,7 @@ func (a *App) keepOnlyVisibleTab(tabID string) (TabMeta, error) {
 		for _, candidate := range candidates {
 			id, tab := candidate.id, candidate.tab
 			snapshotted[id] = tab
-			if err := a.snapshotTab(tab); err != nil {
+			if err := a.snapshotTabDurable(tab); err != nil {
 				slog.Warn("desktop: snapshot before pruning hidden tab failed", "tab", id, "err", err)
 				return TabMeta{}, fmt.Errorf("save current session before switching tabs: %w", err)
 			}
@@ -3578,7 +3578,7 @@ func (a *App) removeVisibleTabRuntimeAdmissionHeld(tab *WorkspaceTab) {
 	if tab == nil {
 		return
 	}
-	if err := a.snapshotTab(tab); err != nil {
+	if err := a.snapshotTabDurable(tab); err != nil {
 		slog.Warn("desktop: snapshot before removing visible tab runtime failed", "tab", tab.ID, "err", err)
 	}
 	discardPath, discardTransientBlank := a.transientBlankSessionArtifactPath(tab)

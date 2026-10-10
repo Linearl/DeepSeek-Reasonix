@@ -34,6 +34,18 @@ func (s *Session) SetPersistObserver(observer SessionPersistObserver) {
 	s.mu.Unlock()
 }
 
+// LastSaveDurationMs reports the wall-clock milliseconds the most recent
+// observed save took, or 0 when this session has never saved. 任务 710: the
+// controller's mid-turn autosave uses it as the measured per-save IO cost and
+// widens its interval on sessions where a save is expensive, so the save
+// cadence follows the session's real cost instead of a fixed tick.
+func (s *Session) LastSaveDurationMs() int64 {
+	if s == nil {
+		return 0
+	}
+	return s.lastSaveDurationMs.Load()
+}
+
 func (s *Session) notifyPersisted(path string, rewrite bool, appendFrom int) {
 	if s == nil {
 		return
@@ -101,7 +113,13 @@ func (s *Session) saveObservedAfterUpgrade(path string, mode sessionSaveMode, do
 	s.mu.RUnlock()
 	slog.Info("session: save begin", "path", canonicalSessionSavePath(path), "messages", saveMessages, "mode", mode)
 	defer func() {
-		slog.Info("session: save end", "path", canonicalSessionSavePath(path), "ms", time.Since(saveStart).Milliseconds())
+		took := time.Since(saveStart)
+		// 任务 710: expose the measured per-save cost so callers can back off
+		// instead of multiplying a heavy save by a fixed cadence.
+		if s != nil {
+			s.lastSaveDurationMs.Store(took.Milliseconds())
+		}
+		slog.Info("session: save end", "path", canonicalSessionSavePath(path), "ms", took.Milliseconds())
 	}()
 	appendFrom := -1
 	if mode == sessionSaveSnapshot {

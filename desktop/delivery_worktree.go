@@ -358,7 +358,7 @@ func (a *App) CloseMergedWorktreeTab(request CloseMergedWorktreeTabRequest) (Clo
 }
 
 func (a *App) snapshotMergedWorktreeCloseTab(tab *WorkspaceTab) error {
-	if err := a.snapshotTab(tab); err != nil {
+	if err := a.snapshotTabDurable(tab); err != nil {
 		return fmt.Errorf("save worktree session before closing: %w", err)
 	}
 	if err := a.saveTabSessionMetaForCurrentSession(tab); err != nil {
