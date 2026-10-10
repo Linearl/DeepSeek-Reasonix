@@ -3,7 +3,7 @@
 // publish, the item registry wiring, and the chip's render states.
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { StatusBar } from "../components/StatusBar";

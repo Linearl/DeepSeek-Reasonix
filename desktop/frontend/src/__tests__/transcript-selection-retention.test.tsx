@@ -1,7 +1,7 @@
 // Run: node --import tsx src/__tests__/transcript-selection-retention.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { useTranscriptSelectionRetention } from "../lib/useTranscriptSelectionRetention";

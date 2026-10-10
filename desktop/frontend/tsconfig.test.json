@@ -1,8 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
   },
-  "include": ["src/__tests__/**/*.ts", "bench/transcript-layout.tsx", "vite-env.d.ts"],
+  "include": ["src/__tests__/**/*.ts", "src/__tests__/**/*.tsx", "bench/transcript-layout.tsx", "vite-env.d.ts"],
   "exclude": []
 }

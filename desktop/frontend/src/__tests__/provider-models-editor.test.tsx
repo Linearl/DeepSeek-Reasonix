@@ -8,7 +8,7 @@ import type { ProviderView, ProviderModelCapabilityView } from "../lib/types";
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: "http://localhost", pretendToBeVisual: true });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Node: dom.window.Node, localStorage: dom.window.localStorage, IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { LocaleProvider } = await import("../lib/i18n");
 const { ProviderModelsEditor } = await import("../components/ProviderModelsEditor");

@@ -2,7 +2,7 @@ import { selectSettingsValue } from "./settingsSelectTestUtils";
 // Run: tsx src/__tests__/settings-refresh-snapshot.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import {

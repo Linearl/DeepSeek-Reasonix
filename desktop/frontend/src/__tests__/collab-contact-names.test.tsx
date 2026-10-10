@@ -11,7 +11,7 @@
 // 查询时点现读，所以「改名后同步」收敛于 TTL 窗口/聚焦/面板打开。
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { UserMessage } from "../components/Message";

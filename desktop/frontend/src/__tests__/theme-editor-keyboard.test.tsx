@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/theme-editor-keyboard.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ThemeGallery } from "../components/ThemeGallery";
 import { LocaleProvider } from "../lib/i18n";

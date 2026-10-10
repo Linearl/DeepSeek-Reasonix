@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/open-topic-coalescing.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act, useCallback, useRef } from "react";
+import { act, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { enqueueNavigationRequest, enqueueOpenTopicRequest, type PendingOpenTopicRequest } from "../lib/openTopicCoalescing";
 

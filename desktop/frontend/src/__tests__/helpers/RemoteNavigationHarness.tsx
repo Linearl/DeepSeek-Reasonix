@@ -1,4 +1,4 @@
-import React, { useRef, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useDesktopNavigation } from "../../app-runtime/useDesktopNavigation";
 import { RemoteNavigationContext } from "../../lib/remoteNavigationCommands";
 import { app } from "../../lib/bridge";

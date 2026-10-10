@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attributeRetention, BASELINE_NOT_SETTLED_REASON, evidenceIntegrity, retainedCohorts, screeningBlockers, summarizeHeap, TRANSIENT_EXCURSION_REASON } from "./app-memory-evidence.mjs";
+import { ABSENT_LIFECYCLE_PROBE, attributeRetention, BASELINE_NOT_SETTLED_REASON, evidenceIntegrity, retainedCohorts, screeningBlockers, summarizeHeap, TRANSIENT_EXCURSION_REASON } from "./app-memory-evidence.mjs";
 
 const sample = (ids, roundTrips) => ({ phase: "full", roundTrips, lifecycle: {
   liveRenderTokenIds: ids, liveRenderTokens: ids.length,
@@ -152,4 +152,26 @@ test("native objects are not automatically detached DOM", () => {
   heap.snapshot.meta.node_fields[4] = "unknown";
   assert.equal(summarizeHeap(heap).detachednessAvailable, false);
   assert.deepEqual(summarizeHeap(heap).detached, {});
+});
+
+test("absent-probe degradation keeps the evidence pipeline computable (task 751)", () => {
+  // CI 实测（run 38043636852）：probe 缺席时旧代码在采集任何读数前 throw，
+  // 三 shard 零数据 FAIL。降级契约：占位快照必须通过完整性校验、产出空 cohort、
+  // attribution 只剩离线职责——聚合器（app-memory-shards.mjs aggregateShards）
+  // 的硬性检查在降级档位下因此可满足，而不是 shard 绿聚合红。
+  assert.equal(Object.isFrozen(ABSENT_LIFECYCLE_PROBE), true);
+  assert.equal(ABSENT_LIFECYCLE_PROBE.published, false);
+  const degraded = Array.from({ length: 4 }, (_, index) => ({
+    phase: index === 0 ? "baseline" : "full", roundTrips: index * 32,
+    lifecycle: ABSENT_LIFECYCLE_PROBE, dom: { nodes: 6024, jsEventListeners: 512 },
+    lifecycleProbePublished: false,
+  }));
+  assert.equal(evidenceIntegrity(degraded), true);
+  assert.deepEqual(retainedCohorts(degraded).at(-1), {
+    phase: "full", roundTrips: 96, survivorsFromBaseline: [], retainedPostBaseline: [],
+  });
+  const attribution = attributeRetention(degraded);
+  assert.equal(attribution.status, "needs-attribution");
+  assert.deepEqual(screeningBlockers(attribution.reasons), []);
+  assert.equal(degraded.every(s => s.lifecycle.activeOperations === 0), true, "aggregateShards hard check stays derivable");
 });

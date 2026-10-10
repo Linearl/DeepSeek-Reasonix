@@ -6,7 +6,7 @@
 // close so a stale expansion cannot leak into the next open.
 
 import { JSDOM } from "jsdom";
-import React, { StrictMode } from "react";
+import { StrictMode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ContextMenu, type ContextMenuItem } from "../components/ContextMenu";

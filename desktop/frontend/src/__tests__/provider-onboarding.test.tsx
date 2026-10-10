@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import React from 'react';
+
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ProvidersSection } from '../components/SettingsPanel';
 import { LocaleProvider } from '../lib/i18n';

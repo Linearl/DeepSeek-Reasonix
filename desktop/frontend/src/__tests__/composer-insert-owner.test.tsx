@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { useComposerInsertOwner, type ComposerInsertOwnerInput } from "../app-runtime/useComposerInsert";

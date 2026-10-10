@@ -4,7 +4,7 @@
 // layer only — the full text must stay in the DOM in both states.
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { UserMessage, estimateUserMessageLines, USER_MSG_FOLD_LINE_THRESHOLD } from "../components/Message";

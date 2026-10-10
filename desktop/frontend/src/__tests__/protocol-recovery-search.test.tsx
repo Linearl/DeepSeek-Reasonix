@@ -1,6 +1,6 @@
 import { partitionTurnItems } from "../lib/transcriptRows";
 import assert from "node:assert/strict";
-import React from "react";
+
 import { LocaleProvider } from "../lib/i18n";
 import { renderToStaticMarkup } from "react-dom/server";
 import { historyMessagesToItems, initialState, reducer } from "../lib/useController";

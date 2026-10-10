@@ -5,7 +5,7 @@
 // nested scroller. Small tables stay plain document-flow markup.
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { createComponents } from "../components/markdownComponents";
 import {

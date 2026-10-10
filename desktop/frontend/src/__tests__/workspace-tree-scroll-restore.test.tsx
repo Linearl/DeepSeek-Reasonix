@@ -2,7 +2,7 @@
 // zk-ge CLAIM.TREE.008: 切换 dock 标签（组件 unmount/remount）后文件树滚动位置恢复
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";

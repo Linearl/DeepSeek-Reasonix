@@ -1,6 +1,6 @@
 // Run: tsx src/__tests__/notification-volume-slider.test.tsx
 
-import React, { act } from "react";
+import { act } from "react";
 import { JSDOM } from "jsdom";
 
 let passed = 0;

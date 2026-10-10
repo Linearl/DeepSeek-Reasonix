@@ -4,7 +4,7 @@
 // (issue #6868 caret jump-to-end after skill/plugin invocation tags).
 
 import { JSDOM } from "jsdom";
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import {

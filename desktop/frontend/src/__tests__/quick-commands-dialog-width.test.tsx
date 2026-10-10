@@ -25,7 +25,7 @@
 //  8) .provider-dialog--wide 必须双写 max-width: min(1100px, 100vw-32px)。
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

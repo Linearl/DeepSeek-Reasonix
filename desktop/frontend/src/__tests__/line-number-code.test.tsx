@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/line-number-code.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { CodeViewer } from "../components/CodeViewer";
 import LineNumberCode, {
   findCodeMatches,

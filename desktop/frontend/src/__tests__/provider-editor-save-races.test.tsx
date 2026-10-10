@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import type { ProviderView } from "../lib/types";
 
 const dom = new JSDOM('<div id="root"></div>', {url:"http://localhost",pretendToBeVisual:true});

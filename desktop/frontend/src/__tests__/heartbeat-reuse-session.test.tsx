@@ -7,7 +7,7 @@
 // badge in the task list.
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { HeartbeatView, TaskEditor } from "../custom/features/heartbeat/HeartbeatPanel";
 import type { HeartbeatTask } from "../custom/features/heartbeat/heartbeat.types";

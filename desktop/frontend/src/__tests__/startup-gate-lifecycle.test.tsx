@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import React, { act, StrictMode } from "react";
+import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { StartupGateLifecycle } from "../app-runtime/StartupGateLifecycle";

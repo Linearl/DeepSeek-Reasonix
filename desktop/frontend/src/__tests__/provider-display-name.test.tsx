@@ -1,5 +1,5 @@
 import {JSDOM} from 'jsdom';
-import React,{act} from 'react';
+import {act} from 'react';
 
 import assert from 'node:assert/strict';
 

@@ -13,7 +13,7 @@
 
 import { JSDOM } from "jsdom";
 import { registerHooks } from "node:module";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 
 // TranscriptCards pulls transitive CSS imports; tsx has no asset loader, so

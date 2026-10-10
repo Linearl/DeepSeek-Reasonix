@@ -8,7 +8,7 @@
 // Alt+拖拽跨层、父组活跃点继承、右键菜单嵌套项、渲染顺序（子组在父块内）。
 
 import { JSDOM } from "jsdom";
-import React, { StrictMode } from "react";
+import { StrictMode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ProjectTreeGroupRows, useProjectTreeOrganization } from "../components/ProjectTreeOrganization";

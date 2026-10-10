@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import React, { act } from "react";
+import { act } from "react";
 import { JSDOM } from "jsdom";
 import { createRoot } from "react-dom/client";
 

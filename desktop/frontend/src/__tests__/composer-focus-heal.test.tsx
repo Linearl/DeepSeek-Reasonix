@@ -9,7 +9,7 @@
 //     reportFrontendLog 的 4MB 滚动通道）。
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

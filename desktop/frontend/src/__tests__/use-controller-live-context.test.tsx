@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/use-controller-live-context.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act, useCallback, useSyncExternalStore } from "react";
+import { act, useCallback, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { ContextPanel } from "../components/ContextPanel";
 import { StatusBar } from "../components/StatusBar";

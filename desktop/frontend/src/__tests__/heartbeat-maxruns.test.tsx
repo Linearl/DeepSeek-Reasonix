@@ -85,7 +85,7 @@ Object.assign(window, {
 // polyfill and silently swallows the `input` event a controlled input needs.
 // The heartbeat suites use static imports, which is fine for clicks but not
 // for typing — hence the dynamic imports below.
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { HeartbeatView, TaskEditor } = await import("../custom/features/heartbeat/HeartbeatPanel");
 const { LocaleProvider } = await import("../lib/i18n");

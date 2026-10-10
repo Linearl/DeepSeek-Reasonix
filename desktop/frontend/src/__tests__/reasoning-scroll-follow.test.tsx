@@ -2,7 +2,7 @@
 
 import { JSDOM } from "jsdom";
 import { readFileSync } from "node:fs";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { useReasoningScrollFollow } from "../lib/useReasoningScrollFollow";
 

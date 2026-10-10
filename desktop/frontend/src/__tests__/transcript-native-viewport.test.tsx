@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { useNativeViewportSnapshot } from "../lib/useTranscriptNativeViewport";
 
 const dom = new JSDOM('<div id="root"></div><div id="scroller"></div>');

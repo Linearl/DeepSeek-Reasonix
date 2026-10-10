@@ -45,7 +45,7 @@ function ok(value: boolean, label: string) {
 const wall = await import("../lib/sessionWall");
 const { SessionWallPanel } = await import("../components/SessionWallPanel");
 const { LocaleProvider } = await import("../lib/i18n");
-const React = await import("react");
+await import("react");
 const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
 import type { SessionMeta } from "../lib/types";

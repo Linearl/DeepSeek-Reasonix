@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/remote-tab-opened.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act, useRef, useState } from "react";
+import { act, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { __emitMockRemoteTab, __emitMockRemoteTabOpened, __emitMockRemoteTabUpdated, app } from "../lib/bridge";
 import type { TabMeta } from "../lib/types";

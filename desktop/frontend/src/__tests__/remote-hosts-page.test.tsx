@@ -1,7 +1,7 @@
 import { selectSettingsValue } from "./settingsSelectTestUtils";
 // Run: tsx src/__tests__/remote-hosts-page.test.tsx
 
-import React from "react";
+
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ModelsSection } from "../components/SettingsPanel";
 import { LocaleProvider } from "../lib/i18n";

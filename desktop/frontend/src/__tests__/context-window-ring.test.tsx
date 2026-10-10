@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/context-window-ring.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ContextWindowRing } from "../components/ContextWindowRing";

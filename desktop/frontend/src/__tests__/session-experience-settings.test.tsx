@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import React, { act, useState } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { SessionExperienceSettings } from "../components/SessionExperienceSettings";

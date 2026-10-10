@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/composer-image-capability.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { Composer } from "../components/Composer";

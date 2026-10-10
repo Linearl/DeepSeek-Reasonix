@@ -1,6 +1,6 @@
 import { JSDOM } from "jsdom";
 import { registerHooks } from "node:module";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { WorkspacePanel } from "../components/WorkspacePanel";
 import type { AppBindings } from "../lib/bridge";

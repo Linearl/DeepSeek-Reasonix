@@ -1,6 +1,6 @@
 // Run: tsx src/__tests__/remote-error-ux.test.tsx
 
-import React from "react";
+
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";

@@ -46,7 +46,7 @@ const { WorkspaceDockRegion } = await import("../app-shell/WorkspaceDockRegion")
 const dockTabs = await import("../lib/dockTabs");
 const { TodoPanel } = await import("../components/TodoPanel");
 const { LocaleProvider } = await import("../lib/i18n");
-const React = await import("react");
+await import("react");
 const { createRoot } = await import("react-dom/client");
 const { flushSync } = await import("react-dom");
 const { act } = await import("react");

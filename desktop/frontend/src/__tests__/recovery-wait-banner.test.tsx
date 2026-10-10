@@ -5,7 +5,7 @@
 // small run-strip status line keeps working; short retries render no banner.
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { Composer } from "../components/Composer";

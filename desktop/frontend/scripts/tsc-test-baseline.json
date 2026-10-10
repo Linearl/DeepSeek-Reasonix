@@ -1,0 +1,566 @@
+{
+  "_meta": {
+    "note": "任务 745：tsconfig.test.json 补 **/*.tsx 后的存量类型诊断一次性登记（含 .ts 面 71 条，即 desktop-frontend CI 既有失败原因）。本文件由 scripts/tsc-test-gate.mjs 比对：名单外新诊断即红；无自动刷新通道，条目只减不增——还清后人工删除对应 file+code 行。已知盲区：同文件同错误码的新增诊断会被基线吸收（以层级换低噪声）。",
+    "generated": "2026-10-10",
+    "commit": "c04c3fa53",
+    "pairs": 227,
+    "diagnostics": 472
+  },
+  "entries": {
+    "bench/transcript-layout.tsx": [
+      "TS2307",
+      "TS2739"
+    ],
+    "src/__tests__/activate-topic-stale.test.tsx": [
+      "TS18048"
+    ],
+    "src/__tests__/approval-modal-file-reference.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/automation-regions.test.tsx": [
+      "TS2739"
+    ],
+    "src/__tests__/capsule-panel.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/collab-contact-names.test.tsx": [
+      "TS2300"
+    ],
+    "src/__tests__/collab-inbox-degraded.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/collab-inbox-failure.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/collab-inbox-panel.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/completion-summary-ui.test.tsx": [
+      "TS1360",
+      "TS2345"
+    ],
+    "src/__tests__/composer-content-menu-running.test.tsx": [
+      "TS2322",
+      "TS2345"
+    ],
+    "src/__tests__/composer-context-menu-clipboard.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-draft-persistence.test.ts": [
+      "TS2339"
+    ],
+    "src/__tests__/composer-effort-menu.test.tsx": [
+      "TS2322",
+      "TS2741"
+    ],
+    "src/__tests__/composer-focus-heal.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-goal-toggle.test.tsx": [
+      "TS18047",
+      "TS2322"
+    ],
+    "src/__tests__/composer-guidance-batch.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/composer-guidance-collapse.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/composer-guidance-merge-next-availability.test.tsx": [
+      "TS2300"
+    ],
+    "src/__tests__/composer-guidance-unread.test.tsx": [
+      "TS2300"
+    ],
+    "src/__tests__/composer-image-capability.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-ime-probe.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-ime.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-inbox-interleaving.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-inbox-recovery.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-insert-commands.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/composer-insert-owner.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/composer-quick-command-bang.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-run-strip.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-session-draft.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-source-operations.test.tsx": [
+      "TS2345",
+      "TS7053"
+    ],
+    "src/__tests__/composer-stop-unknown.test.tsx": [
+      "TS2322",
+      "TS6133",
+      "TS6192"
+    ],
+    "src/__tests__/composerInboxHarness.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/context-panel-capacity.test.tsx": [
+      "TS2304",
+      "TS2345"
+    ],
+    "src/__tests__/context-panel-session-info.test.tsx": [
+      "TS2353",
+      "TS2741"
+    ],
+    "src/__tests__/context-window-ring.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/crash-collapse.test.ts": [
+      "TS2345"
+    ],
+    "src/__tests__/crash-jank-record.test.ts": [
+      "TS2459"
+    ],
+    "src/__tests__/crash-mock.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/decision-footer-lifecycle.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/decision-surface.test.tsx": [
+      "TS2345"
+    ],
+    "src/__tests__/delivery-parked-turn-done.test.ts": [
+      "TS2339"
+    ],
+    "src/__tests__/desktop-close-behavior-hint.test.tsx": [
+      "TS7017"
+    ],
+    "src/__tests__/desktop-navigation-lifecycle.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/desktop-preferences-lifecycle.test.tsx": [
+      "TS2352",
+      "TS2532",
+      "TS2769"
+    ],
+    "src/__tests__/effort-switcher.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/external-opener.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/fold-toggle-button.test.tsx": [
+      "TS2322",
+      "TS2769"
+    ],
+    "src/__tests__/goal-activation-tab-routing.test.tsx": [
+      "TS18048"
+    ],
+    "src/__tests__/heartbeat-editor.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/heartbeat-maxruns.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/heartbeat-reuse-session.test.tsx": [
+      "TS2339",
+      "TS6133"
+    ],
+    "src/__tests__/helpers/RemoteNavigationHarness.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/helpers/remoteRuntimeReconciliationCases.tsx": [
+      "TS2532"
+    ],
+    "src/__tests__/history-failure-detail.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/history-merge-dedup.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/history-older-exhausted.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/hydrate-resident-snapshot.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/inbox-dedup.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/interrupted-turn-provider-error.test.ts": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/line-number-code.test.tsx": [
+      "TS2339",
+      "TS2349"
+    ],
+    "src/__tests__/local-path-click-e2e.test.tsx": [
+      "TS2769"
+    ],
+    "src/__tests__/markdown-history.test.tsx": [
+      "TS18047",
+      "TS2322"
+    ],
+    "src/__tests__/markdown-idle-highlight.test.tsx": [
+      "TS18047"
+    ],
+    "src/__tests__/mcp-interaction.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/mermaid-rendering.test.tsx": [
+      "TS2349"
+    ],
+    "src/__tests__/model-switcher-refresh.test.tsx": [
+      "TS2367"
+    ],
+    "src/__tests__/new-session-load-race.test.tsx": [
+      "TS18048",
+      "TS2339",
+      "TS7006"
+    ],
+    "src/__tests__/pending-prompt-stale-status.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/pinned-files.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/plan-usage-card.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/plan-usage.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/project-tree-group-activity.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/project-tree-group-count.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/project-tree-group-drag.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/project-tree-group-hierarchy.test.tsx": [
+      "TS2345"
+    ],
+    "src/__tests__/project-tree-organization-races.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/prompt-history-picker.test.tsx": [
+      "TS2322",
+      "TS2769"
+    ],
+    "src/__tests__/provider-access-card.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/provider-connections.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/provider-display-name.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/provider-editor-compact.test.tsx": [
+      "TS18048"
+    ],
+    "src/__tests__/provider-editor-model-picker.test.tsx": [
+      "TS2304",
+      "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/provider-editor-save-races.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/provider-image-input.test.tsx": [
+      "TS2322",
+      "TS2741"
+    ],
+    "src/__tests__/provider-onboarding.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/ready-meta-reconcile.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/recovery-wait-banner.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/remote-composer-presentation.test.tsx": [
+      "TS2322",
+      "TS2352"
+    ],
+    "src/__tests__/remote-connect-wizard.test.tsx": [
+      "TS2304",
+      "TS2352"
+    ],
+    "src/__tests__/remote-session-surface.test.tsx": [
+      "TS18048",
+      "TS2339"
+    ],
+    "src/__tests__/remote-switch-from-local.test.tsx": [
+      "TS2352",
+      "TS2353"
+    ],
+    "src/__tests__/remote-tab-opened.test.tsx": [
+      "TS2739"
+    ],
+    "src/__tests__/resource-governance.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/rich-composer-selection.test.tsx": [
+      "TS2339",
+      "TS2741",
+      "TS6133"
+    ],
+    "src/__tests__/send-failed.test.ts": [
+      "TS2339"
+    ],
+    "src/__tests__/session-monitor.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/session-recovery-version-host-lifecycle.test.tsx": [
+      "TS2367",
+      "TS2740"
+    ],
+    "src/__tests__/session-recovery.test.tsx": [
+      "TS2322",
+      "TS2739"
+    ],
+    "src/__tests__/session-takeover-ui.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/session-undo-lifecycle.test.tsx": [
+      "TS2339",
+      "TS2345",
+      "TS2459"
+    ],
+    "src/__tests__/session-wall.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/settings-cdp-debug-port.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/settings-refresh-snapshot.test.tsx": [
+      "TS18048",
+      "TS2322",
+      "TS2352",
+      "TS2559",
+      "TS2739",
+      "TS2741",
+      "TS6196"
+    ],
+    "src/__tests__/settings-zcode-task-bus.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/shell-support-install.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/side-files-dock.test.tsx": [
+      "TS2769"
+    ],
+    "src/__tests__/sound.test.ts": [
+      "TS2352"
+    ],
+    "src/__tests__/statusbar-workspace.test.tsx": [
+      "TS2739"
+    ],
+    "src/__tests__/stop-button.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/subagent-panel-dock.test.tsx": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/tab-close-policy.test.tsx": [
+      "TS2339",
+      "TS6133"
+    ],
+    "src/__tests__/tab-overview-panel.test.tsx": [
+      "TS2339",
+      "TS6196"
+    ],
+    "src/__tests__/tab-switch-hydration.test.tsx": [
+      "TS18048",
+      "TS2322"
+    ],
+    "src/__tests__/tab-switch-session-rebind.test.tsx": [
+      "TS18048",
+      "TS2322"
+    ],
+    "src/__tests__/task152-todo-tree.test.ts": [
+      "TS2345"
+    ],
+    "src/__tests__/task258-message-presentation.test.ts": [
+      "TS2741"
+    ],
+    "src/__tests__/task282-fork-features-intro.test.tsx": [
+      "TS18046",
+      "TS2322"
+    ],
+    "src/__tests__/task383-layout-consistency.test.tsx": [
+      "TS2339",
+      "TS6133"
+    ],
+    "src/__tests__/task441-guidance-drag-handle.test.tsx": [
+      "TS2300"
+    ],
+    "src/__tests__/task442-context-gauge-popup.test.tsx": [
+      "TS2322",
+      "TS2741"
+    ],
+    "src/__tests__/task465-two-axis-matrix.test.ts": [
+      "TS2322",
+      "TS2345"
+    ],
+    "src/__tests__/task466-guidance-select-all.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/task469-fence-reconcile-harness.test.tsx": [
+      "TS2339",
+      "TS2352"
+    ],
+    "src/__tests__/task523-append-only-paging.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task561-lab-regroup-merge.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/task603-tool-optimizations.test.ts": [
+      "TS2305",
+      "TS6133"
+    ],
+    "src/__tests__/task604-lab-picks-settings-path.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task621-lab-tier-badges.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task670-fork-notice-dialog.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/task704-trajectory-ledger.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task704-trajectory-switch.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task704-trajectory-view.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task722-lab-layout-mechanism.test.ts": [
+      "TS18047",
+      "TS2339"
+    ],
+    "src/__tests__/terminal-panel-commands.test.tsx": [
+      "TS2739"
+    ],
+    "src/__tests__/theme-editor-keyboard.test.tsx": [
+      "TS2740"
+    ],
+    "src/__tests__/theme-pack.test.ts": [
+      "TS2345"
+    ],
+    "src/__tests__/todo-sidebar-dock.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tool-recovery-panel-turn-end-cleanup.test.tsx": [
+      "TS2353"
+    ],
+    "src/__tests__/transcript-find-bar.test.tsx": [
+      "TS17001",
+      "TS2339"
+    ],
+    "src/__tests__/transcript-find.test.ts": [
+      "TS2339"
+    ],
+    "src/__tests__/transcript-kernel.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/transcript-materialization.test.tsx": [
+      "TS2339",
+      "TS2454"
+    ],
+    "src/__tests__/transcript-residency.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/transcript-rows.test.ts": [
+      "TS2304"
+    ],
+    "src/__tests__/transcript-selection-retention.test.tsx": [
+      "TS2322",
+      "TS2339",
+      "TS2790"
+    ],
+    "src/__tests__/transcript-store-recent-active.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/transcript-store-resident-policy.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/transcript-viewport.test.tsx": [
+      "TS2304"
+    ],
+    "src/__tests__/turn-result-notice-collapse.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/turn-running-degrade.test.tsx": [
+      "TS2352",
+      "TS2459",
+      "TS2724"
+    ],
+    "src/__tests__/turn-verification-commands.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/updater-shared-state.test.tsx": [
+      "TS18048",
+      "TS2339"
+    ],
+    "src/__tests__/usage-stats-panel.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/use-controller-cancel-reconcile.test.tsx": [
+      "TS2345",
+      "TS2554"
+    ],
+    "src/__tests__/use-controller-identity-retry.test.tsx": [
+      "TS2345",
+      "TS6133",
+      "TS6196"
+    ],
+    "src/__tests__/use-controller-live-context.test.tsx": [
+      "TS2722"
+    ],
+    "src/__tests__/use-controller-send-fallback.test.tsx": [
+      "TS2322",
+      "TS2339"
+    ],
+    "src/__tests__/use-controller-stale-turn-watchdog.test.tsx": [
+      "TS2345"
+    ],
+    "src/__tests__/user-message-fold.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/web-search-model-settings.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/work-status-running-duration.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/workspace-path-copy.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/workspace-turn-verification.test.tsx": [
+      "TS2322",
+      "TS6133"
+    ]
+  }
+}

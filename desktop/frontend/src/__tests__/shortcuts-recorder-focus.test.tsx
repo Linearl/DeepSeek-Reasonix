@@ -7,7 +7,7 @@
 // reproduce the WebKit flow exactly.
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 

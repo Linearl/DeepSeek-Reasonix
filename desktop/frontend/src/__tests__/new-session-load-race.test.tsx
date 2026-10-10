@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/new-session-load-race.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { initialState, reducer, useController, type Item } from "../lib/useController";
 import type { NavigationResult } from "../lib/navigationSurfaceTransition";

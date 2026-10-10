@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/workspace-context-menu.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { WorkspacePanel } from "../components/WorkspacePanel";

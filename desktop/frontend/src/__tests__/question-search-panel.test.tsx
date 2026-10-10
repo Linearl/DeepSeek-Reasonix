@@ -1,6 +1,6 @@
 // Run: tsx src/__tests__/question-search-panel.test.tsx
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QuestionSearchPanel, filterQuestions } from "../components/QuestionSearchPanel";
 import { LocaleProvider } from "../lib/i18n";

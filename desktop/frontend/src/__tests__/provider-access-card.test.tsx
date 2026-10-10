@@ -3,7 +3,7 @@ import catalogData from "../lib/providerCatalog.generated.json";
 // Run: tsx src/__tests__/provider-access-card.test.tsx
 
 import { JSDOM } from "jsdom";
-import React from "react";
+
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import {

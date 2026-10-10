@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/use-controller-send-fallback.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { AppBindings } from "../lib/bridge";
 import { LocaleProvider, preloadLocale, useI18n } from "../lib/i18n";

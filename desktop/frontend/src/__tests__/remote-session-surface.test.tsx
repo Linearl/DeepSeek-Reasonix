@@ -1,4 +1,4 @@
-import React, { act } from "react";
+import { act } from "react";
 import { RemoteNavigationHarness } from "./helpers/RemoteNavigationHarness";
 import { JSDOM } from "jsdom";
 import type { AppBindings } from "../lib/bridge";

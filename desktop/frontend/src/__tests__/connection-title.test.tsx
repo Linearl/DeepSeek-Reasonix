@@ -1,5 +1,5 @@
 import {JSDOM} from 'jsdom';
-import React,{act} from 'react';
+import {act} from 'react';
 import assert from 'node:assert/strict';
 import {LocaleProvider} from '../lib/i18n';
 const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost',pretendToBeVisual:true});

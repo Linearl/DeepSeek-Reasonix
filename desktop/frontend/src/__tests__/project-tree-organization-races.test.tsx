@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/project-tree-organization-races.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { StrictMode } from "react";
+import { StrictMode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useProjectTreeOrganization, type ProjectTreeOrganizationController } from "../components/ProjectTreeOrganization";

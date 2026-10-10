@@ -11,7 +11,7 @@
 //  4) 选择片段的插入通道不受影响。
 
 import { JSDOM } from "jsdom";
-import React, { act } from "react";
+import { act } from "react";
 import { ComposerContentMenuActions } from "../components/ComposerContentMenuActions";
 import { LocaleProvider } from "../lib/i18n";
 

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ABSENT_LIFECYCLE_PROBE } from "./app-memory-evidence.mjs";
 import { aggregateShards, completeShard, MEMORY_PROTOCOL, MEMORY_FIXTURES } from "./app-memory-shards.mjs";
 const identity = { sourceSHA: "a".repeat(40), trackedDiffSHA256: "clean-diff", untrackedSourceSHA256: "clean-untracked", buildSHA256: "shared-build", node: "v24", platform: "linux", arch: "x64", sourceStatus: "" };
 const manifest = { identity, protocol: MEMORY_PROTOCOL, executionId: "123:1" };
@@ -18,6 +19,25 @@ function report(id) {
       checks: { evidenceIntegrity: true, instrumentedOperationsReleased: true, noPageErrors: true }, metrics: { pageErrors: [] } }] };
 }
 const aggregate = reports => aggregateShards(reports, manifest, identity.sourceSHA);
+
+test("absent lifecycle probe degrades the tier without breaking shard or aggregate (task 751)", () => {
+  // 三处一致性钉死：bench 降级（ABSENT_LIFECYCLE_PROBE）后，completeShard 与
+  // aggregateShards 依旧可判 SHARD_PASS/PASS——漏改任何一处就会出现
+  // shard 绿而聚合器红的割裂（96 号报告的 CI 实测正是旧版 throw 造成的零数据 FAIL）。
+  const degraded = (id) => {
+    const shard = report(id);
+    for (const sample of shard.processes[0].samples) {
+      sample.lifecycle = { ...ABSENT_LIFECYCLE_PROBE, liveRenderTokenIds: [], liveRenderTokens: 0 };
+      sample.lifecycleProbePublished = false;
+    }
+    shard.processes[0].lifecycleProbePublished = false;
+    return shard;
+  };
+  assert.equal(completeShard(degraded(1)), true);
+  const result = aggregate([degraded(1), degraded(2), degraded(3)]);
+  assert.equal(result.verdict, "PASS");
+  assert.ok(result.processes.every(run => run.lifecycleProbePublished === false));
+});
 test("three independent full shards preserve the complete protocol and offline attribution", () => {
   const result = aggregate([report(3), report(1), report(2)]);
   assert.equal(result.verdict, "PASS"); assert.equal(result.protocolComplete, true);

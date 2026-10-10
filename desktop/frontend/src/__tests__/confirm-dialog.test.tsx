@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/confirm-dialog.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { useState } from "react";
+import { useState } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { useConfirmDialog } from "../components/ConfirmDialog";

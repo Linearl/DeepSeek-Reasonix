@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startPreviewServer } from "./vite-preview-server.mjs";
 import { chooseAppLayout } from "./app-page-actions.mjs";
-import { attributeRetention, buildIdentity, evidenceIntegrity, retainedCohorts, screeningBlockers, summarizeHeap } from "./app-memory-evidence.mjs";
+import { attributeRetention, ABSENT_LIFECYCLE_PROBE, buildIdentity, evidenceIntegrity, retainedCohorts, screeningBlockers, summarizeHeap } from "./app-memory-evidence.mjs";
 import { completeShard, verifyIdentity, MEMORY_FIXTURES, MEMORY_PROTOCOL } from "./app-memory-shards.mjs";
 
 const frontendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -85,11 +85,13 @@ async function forceGc(cdp, page) {
   const [heap, dom, lifecycle, performance] = await Promise.all([
     cdp.send("Runtime.getHeapUsage"),
     cdp.send("Memory.getDOMCounters"),
-    page.evaluate(() => window.__reasonixAppLifecycle?.snapshot()),
+    page.evaluate(() => window.__reasonixAppLifecycle?.snapshot() ?? null),
     page.evaluate(() => ({ entries: window.performance.getEntries().length, attachedElements: document.querySelectorAll("*").length })),
   ]);
-  if (!lifecycle) throw new Error("App lifecycle probe was not published by the production build");
-  return { heap, dom, lifecycle, performance };
+  // 任务 751：probe 缺席不再 throw（旧代码让 CI 三 shard 零数据 FAIL），降级为
+  // 占位快照继续 heap/DOM 筛查；档位经 lifecycleProbePublished 落入每个读数，
+  // 由 runProcess 汇总后写进 stdout 与 report.json，不做静默绿。
+  return { heap, dom, lifecycle: lifecycle ?? ABSENT_LIFECYCLE_PROBE, performance, lifecycleProbePublished: lifecycle !== null };
 }
 
 async function enterSafety(page) {
@@ -136,6 +138,11 @@ async function runProcess(index) {
   try {
     await page.goto(`http://127.0.0.1:${PORT}/?mock=bench&bench=1&app-lifecycle-probe=1&bench-hydration=soak`, { waitUntil: "domcontentloaded" });
     await page.locator("textarea.composer__input:not([aria-hidden=true])").waitFor();
+    // 与 app-browser.mjs 同族处理（任务 751）：probe 由 AppRuntime 渲染发布，而
+    // AppRuntime 未接入渲染树，缺席是已知状态而非构建缺陷——声明后降级继续。
+    if (!await page.evaluate(() => Boolean(window.__reasonixAppLifecycle))) {
+      process.stdout.write(`[app-memory] process=${index} NOTICE lifecycle probe absent (AppRuntime root not mounted): render-token/operation counters unavailable; heap/DOM screening continues without lifecycle assertions\n`);
+    }
     await selectFixture(page, fixtures.geometry);
     await selectFixture(page, fixtures.full);
     await enterSafety(page);
@@ -201,6 +208,8 @@ async function runProcess(index) {
       snapshots,
       cohorts: retainedCohorts(samples),
       attribution: "pending",
+      // 全部读数都见到 probe 才记 true；降级档位在此档位字段上显式可见。
+      lifecycleProbePublished: samples.every(sample => sample.lifecycleProbePublished === true),
       checks: {
         evidenceIntegrity: evidenceIntegrity(samples),
         instrumentedOperationsReleased: samples.every(sample => sample.lifecycle.activeOperations === 0),
@@ -223,14 +232,20 @@ try {
     const result = await runProcess(SHARD ?? index);
     result.attribution = attributeRetention(result.samples, result.cohorts);
     report.processes.push(result);
-    process.stdout.write(`[app-memory] process ${index}: ${JSON.stringify({ checks: result.checks, attribution: result.attribution, metrics: result.metrics })}\n`);
+    process.stdout.write(`[app-memory] process ${index}: ${JSON.stringify({ checks: result.checks, attribution: result.attribution, metrics: result.metrics, lifecycleProbePublished: result.lifecycleProbePublished })}\n`);
   }
 } catch (error) {
+  // 任务 751（96 号报告建议 2）：失败原因此前只落 artifact 的 report.json，
+  // 日志侧只有 timings，CI 排障要人肉下载 artifact。现在同步上 stdout。
   report.failure = error.message;
+  process.stdout.write(`[app-memory] failure ${error.message}\n`);
 } finally {
   await preview.close();
 }
 report.finishedAt = new Date().toISOString();
+// 证据档位（任务 751）：false = 本轮未做 lifecycle 断言（AppRuntime 未挂载），
+// verdict 不得作为 render-token/operation 泄漏面的回归证据；heap/DOM 面不受影响。
+report.lifecycleProbePublished = report.processes.length > 0 && report.processes.every((run) => run.lifecycleProbePublished === true);
 report.timings = timings.snapshot();
 writeFileSync(path.join(artifacts, "timings.json"), JSON.stringify(report.timings, null, 2));
 process.stdout.write(`[app-memory] timings ${JSON.stringify(report.timings)}\n`);

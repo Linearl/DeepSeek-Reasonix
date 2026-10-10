@@ -26,7 +26,7 @@ const fireTimers = (ms: number) => {
   return due.length;
 };
 
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { ManagementSurface } = await import("../components/ManagementSurface");
 const { LocaleProvider } = await import("../lib/i18n");

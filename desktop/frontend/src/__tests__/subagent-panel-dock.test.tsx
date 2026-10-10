@@ -56,7 +56,7 @@ const dockTabs = await import("../lib/dockTabs");
 const { buildSubagentDirectory, SUBAGENT_DIRECTORY_PAGE_SIZE } = await import("../lib/subagentDirectory");
 const { SubagentsDockPanel } = await import("../components/SubagentsDockPanel");
 const { LocaleProvider } = await import("../lib/i18n");
-const React = await import("react");
+await import("react");
 const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
 

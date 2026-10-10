@@ -143,7 +143,7 @@ eq(localPathFromHref(undefined), null, "undefined href is not local");
 
 console.log("\nremark plugin via react-markdown render");
 
-import React from "react";
+
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { renderToStaticMarkup } from "react-dom/server";
 

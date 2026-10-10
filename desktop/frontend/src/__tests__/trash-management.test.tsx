@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { managementDom } from "../test-support/managementDom";
 import type { SessionMeta } from "../lib/types";
 const dom = managementDom();
-const { default: React, act } = await import("react");
+const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { LocaleProvider } = await import("../lib/i18n");
 const { TrashPage } = await import("../components/TrashPage");

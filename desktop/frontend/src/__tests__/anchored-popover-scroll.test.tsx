@@ -1,7 +1,7 @@
 // Run: tsx src/__tests__/anchored-popover-scroll.test.tsx
 
 import { JSDOM } from "jsdom";
-import React, { useRef } from "react";
+import { useRef } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { AnchoredPopover } from "../components/AnchoredPopover";
