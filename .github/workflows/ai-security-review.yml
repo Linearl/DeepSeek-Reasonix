@@ -49,7 +49,10 @@ jobs:
 
       - name: Claude Code Security Review
         uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda # main, 2026-10-08
+        env:
+          ANTHROPIC_BASE_URL: https://api.xiaomimimo.com/anthropic # MiMo Anthropic-compatible endpoint (user-confirmed 2026-10-10); replaces direct Anthropic API
+          ANTHROPIC_MODEL: mimo-v2.6-pro
         with:
-          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }} # holds the MIMO_API_KEY value (user decision 2026-10-10)
           comment-pr: "true" # findings land as PR comments for triage
           upload-results: "true" # review JSON artifact for noise-rate analysis
