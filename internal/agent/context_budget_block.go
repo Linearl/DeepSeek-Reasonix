@@ -2,8 +2,8 @@ package agent
 
 import (
 	"fmt"
-	"strings"
 	"log/slog"
+	"strings"
 )
 
 // contextBudgetTag is the per-turn transient block carrying the context

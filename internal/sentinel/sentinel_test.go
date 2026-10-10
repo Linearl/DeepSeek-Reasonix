@@ -72,8 +72,8 @@ func TestForcePushProtectedRules(t *testing.T) {
 			"git push --force origin HEAD:main",
 			"git push --force origin main:main",
 			"git push --force upstream main",
-			"git push --force",             // bare: target unknowable
-			"git push -f origin",           // remote only: target unknowable
+			"git push --force",                       // bare: target unknowable
+			"git push -f origin",                     // remote only: target unknowable
 			"git push --force origin feature-x:main", // dst side protected
 			"git push --force origin +main",          // + prefix on protected refspec
 			"git add . && git commit -m x && git push --force origin main",
@@ -170,9 +170,9 @@ func TestExfilCredentialsRules(t *testing.T) {
 		}
 
 		legal := []string{
-			"cat .env",                                        // reading is N1's business, not the exfil rule
-			"grep API_KEY .env",                               // ditto
-			"scp ~/.ssh/id_rsa.pub host:backup",               // public half
+			"cat .env",                          // reading is N1's business, not the exfil rule
+			"grep API_KEY .env",                 // ditto
+			"scp ~/.ssh/id_rsa.pub host:backup", // public half
 			"scp report.pdf host:docs",
 			"curl https://api.example.com/v1 -d '{\"name\":\"x\"}'",
 			"curl https://cdn.example.com/artifacts.zip -o out.zip",

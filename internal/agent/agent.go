@@ -2406,11 +2406,11 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			// working instead of a stall. executeBatch emits the full dispatch
 			// (with args) once the call completes; the frontend merges by ID.
 			if tc := chunk.ToolCall; tc != nil {
-					partialCalls = upsertPartialToolCall(partialCalls, *tc)
-					ev := event.Tool{ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, AttemptID: attemptID}
-					applySafetyMeta(&ev, tc.Name)
-					sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
-				}
+				partialCalls = upsertPartialToolCall(partialCalls, *tc)
+				ev := event.Tool{ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, AttemptID: attemptID}
+				applySafetyMeta(&ev, tc.Name)
+				sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
+			}
 		case provider.ChunkToolCallArgsDelta:
 			partialToolStarted = true
 			// Liveness ticks while a large argument payload streams: re-emit the
@@ -2421,12 +2421,12 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 				maxArgChars = chunk.ArgChars
 			}
 			if tc := chunk.ToolCall; tc != nil && time.Since(lastArgProgress) >= 250*time.Millisecond {
-					partialCalls = upsertPartialToolCall(partialCalls, *tc)
-					lastArgProgress = time.Now()
-					ev := event.Tool{ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, ArgChars: chunk.ArgChars, AttemptID: attemptID}
-					applySafetyMeta(&ev, tc.Name)
-					sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
-				}
+				partialCalls = upsertPartialToolCall(partialCalls, *tc)
+				lastArgProgress = time.Now()
+				ev := event.Tool{ID: tc.ID, Name: tc.Name, ReadOnly: a.toolReadOnly(tc.Name), Partial: true, ArgChars: chunk.ArgChars, AttemptID: attemptID}
+				applySafetyMeta(&ev, tc.Name)
+				sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
+			}
 		case provider.ChunkToolCall:
 			partialToolStarted = true
 			if chunk.ToolCall != nil {

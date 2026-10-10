@@ -263,7 +263,7 @@ func TestMimoEffortEightLevelVocabulary(t *testing.T) {
 // provider entry does not explicitly set reasoning_protocol.
 func TestMimoEffortAutoDetected(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
+		name    string
 		baseURL string
 	}{
 		{"public API", "https://api.xiaomimimo.com/v1"},
@@ -438,7 +438,7 @@ func TestNormalizeEffortZhipu(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"auto", ""}, // auto == leave to provider default == empty
+		{"auto", ""},        // auto == leave to provider default == empty
 		{"enabled", "auto"}, // legacy "thinking on, no strength" → auto
 		{"disabled", "disabled"},
 		{"ENABLED", "auto"}, // case-insensitive → legacy auto

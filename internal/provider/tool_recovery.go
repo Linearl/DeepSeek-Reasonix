@@ -106,11 +106,11 @@ func RecordToolRecovery(r *InterruptedTurnRecovery, call InterruptedToolSummary,
 // provider-excluded handoff for an unfinished turn. It contains bounded facts;
 // raw partial reasoning remains local for display.
 type InterruptedTurnRecovery struct {
-	TurnID                  string                   `json:"turn_id,omitempty"`
-	AttemptID               string                   `json:"attempt_id,omitempty"`
-	Cause                   string                   `json:"cause,omitempty"`
-	TerminalStatus          string                   `json:"terminalStatus,omitempty"` // failed | interrupted; absent preserves legacy display
-	FailureDiagnostic       *FailureDiagnostic       `json:"failureDiagnostic,omitempty"`
+	TurnID            string             `json:"turn_id,omitempty"`
+	AttemptID         string             `json:"attempt_id,omitempty"`
+	Cause             string             `json:"cause,omitempty"`
+	TerminalStatus    string             `json:"terminalStatus,omitempty"` // failed | interrupted; absent preserves legacy display
+	FailureDiagnostic *FailureDiagnostic `json:"failureDiagnostic,omitempty"`
 	// FailureSummary is the bounded, credential-scrubbed terminal error text
 	// (task 340, upstream #10778). The diagnostic classifies the failure
 	// safely but intentionally carries no message; without the summary a

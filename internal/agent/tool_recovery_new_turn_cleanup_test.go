@@ -20,7 +20,7 @@ import (
 )
 
 // interruptedRecord builds the record shape the user actually saw
-//（「bash · 结果未知（已记录）」）: an interrupted call that no automatic
+// （「bash · 结果未知（已记录）」）: an interrupted call that no automatic
 // path has judged yet.
 func interruptedRecord(t *testing.T, attempt, canonicalTool, args string, state provider.ToolRunState, readOnly bool) provider.ToolCall {
 	t.Helper()

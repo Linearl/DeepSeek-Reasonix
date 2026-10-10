@@ -1564,18 +1564,18 @@ func (m *Manager) loadSessionArtifacts(parentSession, sessionPath, dir string) {
 		if err != nil || strings.TrimSpace(meta.ID) == "" {
 			continue
 		}
-			id := strings.TrimSpace(meta.ID)
-			// The id is untrusted-at-load: it was read from JSON persisted on
-			// disk and is joined into artifact paths below. Reuse the #6932
-			// segment validator so a tampered or foreign meta can never steer
-			// a loaded artifact path outside dir. Like unreadable metas,
-			// invalid ones are skipped without registering a job.
-			if err := validatePathSegment(id, "job id"); err != nil {
-				continue
-			}
-			if seq := maxJobSeq(id); seq > maxSeq {
-				maxSeq = seq
-			}
+		id := strings.TrimSpace(meta.ID)
+		// The id is untrusted-at-load: it was read from JSON persisted on
+		// disk and is joined into artifact paths below. Reuse the #6932
+		// segment validator so a tampered or foreign meta can never steer
+		// a loaded artifact path outside dir. Like unreadable metas,
+		// invalid ones are skipped without registering a job.
+		if err := validatePathSegment(id, "job id"); err != nil {
+			continue
+		}
+		if seq := maxJobSeq(id); seq > maxSeq {
+			maxSeq = seq
+		}
 		// A persisted Running record may belong to another manager in this
 		// process or to another Reasonix process entirely. Only the runtime that
 		// owns the session lease may repair an abandoned record as Interrupted.

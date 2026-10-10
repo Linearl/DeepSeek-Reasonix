@@ -335,7 +335,6 @@ func (a *Agent) collabStatusEvent(event, summary string, needsDecision bool) {
 	AppendCollabStatusEvent(a.collabStatusPath, collabStatusSessionID(a.sess.path, ""), "", event, summary, needsDecision)
 }
 
-
 // collabStatusSessionID picks the identity stamped into status events:
 // the contact id when known, otherwise the session file's base name.
 func collabStatusSessionID(sessionPath, contactID string) string {

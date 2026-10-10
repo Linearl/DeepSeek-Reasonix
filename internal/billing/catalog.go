@@ -9,9 +9,9 @@ const (
 	ScheduleDeepSeekV4August2026 = "deepseek-v4-2026-08-17"
 	// ScheduleDeepSeekV4Flash2026September is the 2026-09-10 Flash price cut.
 	ScheduleDeepSeekV4Flash2026September = "deepseek-v4-2026-09-10"
-	RateBandPeak                 = "peak"
-	RateBandOffPeak              = "off_peak"
-	RateBandMixed                = "mixed"
+	RateBandPeak                         = "peak"
+	RateBandOffPeak                      = "off_peak"
+	RateBandMixed                        = "mixed"
 )
 
 var deepSeekV4August2026EffectiveAt = time.Date(2026, time.August, 16, 16, 0, 0, 0, time.UTC)

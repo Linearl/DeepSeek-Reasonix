@@ -149,11 +149,11 @@ type Entry struct {
 	// sender+recipient+body within duplicateFoldWindow): the cluster shows as
 	// ONE entry carrying the number of copies. 0/1 = no duplicates; MarkRead
 	// settles the whole cluster from this entry's id alone.
-	DuplicateCount int `json:"duplicateCount,omitempty"`
-	DecidedBy string `json:"decidedBy,omitempty"`
-	DecidedAt int64  `json:"decidedAt,omitempty"`
-	PendingMe bool   `json:"pendingMe,omitempty"`
-	Mine      bool   `json:"mine,omitempty"`
+	DuplicateCount int    `json:"duplicateCount,omitempty"`
+	DecidedBy      string `json:"decidedBy,omitempty"`
+	DecidedAt      int64  `json:"decidedAt,omitempty"`
+	PendingMe      bool   `json:"pendingMe,omitempty"`
+	Mine           bool   `json:"mine,omitempty"`
 }
 
 // Settings is the persisted panel configuration (task 320 c/f + 任务 464).

@@ -2090,7 +2090,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// the compaction usage events bill the model that actually served them.
 		// Boot snapshot + model-settings fingerprint: a change re-applies at
 		// the next run like the other model preferences.
-		CompactModel:       compactModelDestinationFromConfig(cfg),
+		CompactModel:        compactModelDestinationFromConfig(cfg),
 		CompactModelPricing: compactModelPricingFromConfig(cfg),
 		// Task 318.1: the high-speed lane only arms when the experiment is on
 		// (iron rule 2, default off — the configured list is ignored otherwise).

@@ -24,8 +24,8 @@ import (
 // switch — 284 is the persistent form of the same engine family, so one
 // switch governs both, no new switch).
 type subscribeSessionTool struct {
-	cfg    SessionCollabConfig
-	svc    *SubscribeService
+	cfg     SessionCollabConfig
+	svc     *SubscribeService
 	resolve func(to string) (contactID, sessionPath string, archived bool, err error)
 }
 

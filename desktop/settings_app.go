@@ -492,15 +492,15 @@ type SettingsView struct {
 	ExperimentalRuntimeReuse   bool `json:"experimentalRuntimeReuse"`
 	// Task 517: merged safety/cost switch (settings-view mirror of [agent];
 	// one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards).
-	ExperimentalSafetyCostControl bool   `json:"experimentalSafetyCostControl"`
+	ExperimentalSafetyCostControl bool `json:"experimentalSafetyCostControl"`
 	// Task 722: fine-grained sub-switch overrides. nil (= JSON null) means
 	// "follow the master", so the UI can render the effective value while
 	// still distinguishing an untouched follower from an explicit choice.
-	SafetyIdleTerminate   *bool `json:"safetyIdleTerminate"`
-	SafetyLoopStreakNote  *bool `json:"safetyLoopStreakNote"`
-	SafetyEventWaitRecheck *bool `json:"safetyEventWaitRecheck"`
-	CollabInboxMerge      string `json:"collabInboxMerge"`
-	CollabGuidanceMerge   bool   `json:"collabGuidanceMerge"`
+	SafetyIdleTerminate    *bool  `json:"safetyIdleTerminate"`
+	SafetyLoopStreakNote   *bool  `json:"safetyLoopStreakNote"`
+	SafetyEventWaitRecheck *bool  `json:"safetyEventWaitRecheck"`
+	CollabInboxMerge       string `json:"collabInboxMerge"`
+	CollabGuidanceMerge    bool   `json:"collabGuidanceMerge"`
 	// Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
 	SessionCollabAllowDelete       bool `json:"sessionCollabAllowDelete"`
 	SessionCollabAllowRequireReply bool `json:"sessionCollabAllowRequireReply"`
@@ -1707,8 +1707,8 @@ func (a *App) Settings() SettingsView {
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
 		ExperimentalSafetyCostControl: cfg.Agent.ExperimentalSafetyCostControl,
 		// Task 722: sub-switch override readback (nil stays nil = inherit).
-		SafetyIdleTerminate:   cfg.Agent.SafetyIdleTerminate,
-		SafetyLoopStreakNote:  cfg.Agent.SafetyLoopStreakNote,
+		SafetyIdleTerminate:    cfg.Agent.SafetyIdleTerminate,
+		SafetyLoopStreakNote:   cfg.Agent.SafetyLoopStreakNote,
 		SafetyEventWaitRecheck: cfg.Agent.SafetyEventWaitRecheck,
 		// Task 163: usage card switch readback.
 		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,

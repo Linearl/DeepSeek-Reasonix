@@ -183,7 +183,10 @@ func TestSetModelAppliesWhenIdle(t *testing.T) {
 // Acceptance ④: the directory resolution is the permission boundary.
 func TestBareOrUnknownTargetIsRefused(t *testing.T) {
 	tool, _ := newControlTool(t, SessionControlHooks{
-		Stop: func(string) (bool, bool, bool, error) { t.Fatal("hook must not run for an unresolved target"); return false, false, false, nil },
+		Stop: func(string) (bool, bool, bool, error) {
+			t.Fatal("hook must not run for an unresolved target")
+			return false, false, false, nil
+		},
 		SetModel: func(string, string) (bool, bool, bool, string, error) {
 			t.Fatal("hook must not run for an unresolved target")
 			return false, false, false, "", nil

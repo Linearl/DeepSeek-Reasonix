@@ -396,7 +396,6 @@ func TestSpliceFreshSystemPrompt(t *testing.T) {
 	})
 }
 
-
 func TestBuildWiresMemorySystemReload(t *testing.T) {
 	isolateConfigHome(t)
 	dir := robustTempDir(t)

@@ -146,8 +146,8 @@ var labSpecialKeys = map[string]bool{
 	"compact_model": true,
 	// 任务 722：安全/成本控制三个细粒度子开关（无 experimental_ 前缀的实验室
 	// 特性键，随 safetyCostControl 档位族登记；条件渲染——nil=跟随总开关不落盘）。
-	"safety_idle_terminate":   true,
-	"safety_loop_streak_note": true,
+	"safety_idle_terminate":     true,
+	"safety_loop_streak_note":   true,
 	"safety_event_wait_recheck": true,
 	// 任务 651：tab 权限指示三档键（无 experimental_ 前缀的实验室特性键，
 	// 随 tabModeTint 档位族登记）。

@@ -26,7 +26,7 @@ const DefaultTextRepeatThreshold = 24
 
 // DefaultTextConsecutiveMinBlock / Threshold detect periodic repeats.
 const (
-	DefaultTextConsecutiveMinBlock = 8
+	DefaultTextConsecutiveMinBlock  = 8
 	DefaultTextConsecutiveThreshold = 4
 	// textRepeatMinDistinct requires several distinct tokens in the repeated
 	// block so a trivial token cannot false-positive (mimocode minDistinct=3).

@@ -163,7 +163,7 @@ func (a *App) sandboxViewFor(cfg *config.Config, ctrl control.SessionAPI, writeR
 	return SandboxView{
 		Bash: cfg.BashMode(), Network: cfg.Sandbox.Network,
 		WorkspaceRoot: cfg.Sandbox.WorkspaceRoot, AllowWrite: nonNil(allowWrite),
-		OptimisticWrite:       cfg.Sandbox.OptimisticWrite,
+		OptimisticWrite:        cfg.Sandbox.OptimisticWrite,
 		EffectiveWorkspaceRoot: effectiveWorkspaceRoot, EffectiveWriteRoots: nonNil(writeRoots),
 		Shell: shell, EffectiveShell: sandboxEffectiveShellView(bound),
 		ResolvedShell:       sandboxEffectiveShellView(resolved),

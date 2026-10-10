@@ -39,9 +39,9 @@ type RecoveryChainView struct {
 // RecoveryChainSet is the answer to "which chains exist for this conversation",
 // with the longest one marked so the panel can recommend it.
 type RecoveryChainSet struct {
-	MainPath string              `json:"mainPath"`
-	MainLabel string             `json:"mainLabel"`
-	Chains   []RecoveryChainView `json:"chains"`
+	MainPath  string              `json:"mainPath"`
+	MainLabel string              `json:"mainLabel"`
+	Chains    []RecoveryChainView `json:"chains"`
 	// Longest is the path+head of the chain with the most messages. Ties prefer
 	// the main transcript, then the most recent activity, so the recommendation
 	// is stable rather than dependent on directory order.

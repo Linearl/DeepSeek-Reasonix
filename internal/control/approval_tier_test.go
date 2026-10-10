@@ -14,13 +14,13 @@ import (
 
 func TestNormalizeApprovalTier(t *testing.T) {
 	cases := map[string]string{
-		"":           ApprovalTierGuardian,
-		"guardian":   ApprovalTierGuardian,
-		"GUARDIAN":   ApprovalTierGuardian,
-		"parent":     ApprovalTierParent,
-		" Parent ":   ApprovalTierParent,
-		"human":      ApprovalTierHuman,
-		"nonsense":   ApprovalTierGuardian,
+		"":             ApprovalTierGuardian,
+		"guardian":     ApprovalTierGuardian,
+		"GUARDIAN":     ApprovalTierGuardian,
+		"parent":       ApprovalTierParent,
+		" Parent ":     ApprovalTierParent,
+		"human":        ApprovalTierHuman,
+		"nonsense":     ApprovalTierGuardian,
 		"self-approve": ApprovalTierGuardian,
 	}
 	for raw, want := range cases {

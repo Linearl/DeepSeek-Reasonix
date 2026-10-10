@@ -20,8 +20,8 @@ func capabilityInputErrorf(format string, args ...any) error {
 }
 
 type useCapabilityArgs struct {
-	Action       string          `json:"action"`
-	CapabilityID string          `json:"capability_id"`
+	Action       string `json:"action"`
+	CapabilityID string `json:"capability_id"`
 	// CapabilityIDs lets action=decline dismiss several unrelated capabilities
 	// in one call (fork: the per-turn capability route can list dozens of
 	// candidates, and declining them one call at a time burns the turn).

@@ -106,8 +106,8 @@ func TestListAddressableSessionsIsMetadataOnlyAndPaged(t *testing.T) {
 		}
 	}
 	tool := NewListAddressableSessionsTool(SessionCollabConfig{
-		Enabled:     true,
-		SessionDir:  dir,
+		Enabled:       true,
+		SessionDir:    dir,
 		WorkspaceRoot: dir,
 	})
 	out, err := tool.Execute(nil, []byte(`{"limit":2}`))

@@ -89,12 +89,12 @@ func TestToolGapInjectsQueuedGuidanceWithinOneCycle(t *testing.T) {
 
 	dir := t.TempDir()
 	c := New(Options{
-		Runner:     ag,
-		Executor:   ag,
-		SessionDir: dir,
+		Runner:      ag,
+		Executor:    ag,
+		SessionDir:  dir,
 		SessionPath: dir + "/p9.session.jsonl",
-		Label:      "p9",
-		Sink:       event.Discard,
+		Label:       "p9",
+		Sink:        event.Discard,
 	})
 	t.Cleanup(c.Close)
 

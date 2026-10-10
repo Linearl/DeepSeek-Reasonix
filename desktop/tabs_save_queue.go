@@ -58,7 +58,7 @@ type tabsSaveQueue struct {
 	// handed-off snapshot; flushQueuedTabsSave waits for quiescence
 	// (!hasSnap && !inFlight).
 	inFlight   bool
-	sinceFlush uint64 // enqueues coalesced into the current/next flush
+	sinceFlush uint64        // enqueues coalesced into the current/next flush
 	drained    chan struct{} // created per waiter, closed at quiescence
 
 	// Test-only hooks (catalogReconcileHook convention: set before the

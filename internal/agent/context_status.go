@@ -12,16 +12,16 @@ type ContextMaintenanceSnapshot struct {
 	// figure equals the canonical one — the fallback view — and a frontend can
 	// label the readout instead of presenting a full-transcript size as normal
 	// usage.
-	ProjectionValid bool
-	SummaryTokens   int
-	LastSavedTokens int
-	SnipTrigger     int
-	FoldTrigger     int
-	ForceTrigger    int
-	TriggerTokens   int
-	CheckpointState string
-	HardInputCeiling int
-	Headroom         int
+	ProjectionValid   bool
+	SummaryTokens     int
+	LastSavedTokens   int
+	SnipTrigger       int
+	FoldTrigger       int
+	ForceTrigger      int
+	TriggerTokens     int
+	CheckpointState   string
+	HardInputCeiling  int
+	Headroom          int
 	ProjectionVersion uint64
 	Blocked           bool
 	LastReceipt       *ContextMaintenanceReceipt

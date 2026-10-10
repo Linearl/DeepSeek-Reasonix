@@ -26,7 +26,7 @@ import (
 type ErrKind string
 
 const (
-	KindTerminal4xx  ErrKind = "terminal_4xx"  // a 4xx the provider will refuse again (except 408/429)
+	KindTerminal4xx  ErrKind = "terminal_4xx"   // a 4xx the provider will refuse again (except 408/429)
 	KindRateLimit    ErrKind = "rate_limit_429" // 429: its own lane — fast-retried, never waited out here
 	KindTransient5xx ErrKind = "transient_5xx"  // 5xx: budgeted transient
 	KindNetwork      ErrKind = "network"        // connect/reset/EOF/deadline: budgeted transient

@@ -54,12 +54,12 @@ func (w createWorktree) Execute(ctx context.Context, args json.RawMessage) (stri
 		return "", err
 	}
 	out, err := json.MarshalIndent(map[string]any{
-		"workspaceRoot":  result.WorkspaceRoot,
-		"worktreeRoot":   result.WorktreeRoot,
-		"sourceRoot":     result.SourceRoot,
-		"branch":         result.Branch,
-		"head":           result.Head,
-		"sourceDirty":    result.SourceDirty,
+		"workspaceRoot": result.WorkspaceRoot,
+		"worktreeRoot":  result.WorktreeRoot,
+		"sourceRoot":    result.SourceRoot,
+		"branch":        result.Branch,
+		"head":          result.Head,
+		"sourceDirty":   result.SourceDirty,
 	}, "", "  ")
 	if err != nil {
 		return "", err
@@ -167,12 +167,12 @@ func (mergeWorktreeBack) ReadOnly() bool { return false }
 
 func (w mergeWorktreeBack) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		WorkspaceRoot             string `json:"workspace_root"`
-		ExpectedTargetBranch      string `json:"expected_target_branch"`
-		ExpectedTargetHead        string `json:"expected_target_head"`
-		ExpectedWorktreeHead      string `json:"expected_worktree_head"`
+		WorkspaceRoot              string `json:"workspace_root"`
+		ExpectedTargetBranch       string `json:"expected_target_branch"`
+		ExpectedTargetHead         string `json:"expected_target_head"`
+		ExpectedWorktreeHead       string `json:"expected_worktree_head"`
 		ExpectedWorktreeStateToken string `json:"expected_worktree_state_token"`
-		AutoCommitDirty           bool   `json:"auto_commit_dirty"`
+		AutoCommitDirty            bool   `json:"auto_commit_dirty"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)

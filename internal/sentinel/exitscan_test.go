@@ -35,9 +35,9 @@ func TestSecretShapeDetection(t *testing.T) {
 
 	clean := []string{
 		"fix: add GITHUB_TOKEN support to the importer",
-		"API_KEY=${VAULT_KEY}",      // indirection, not a value
-		"API_KEY=",                  // empty value
-		"password: hunter2",         // too short
+		"API_KEY=${VAULT_KEY}", // indirection, not a value
+		"API_KEY=",             // empty value
+		"password: hunter2",    // too short
 		"DOC: describes API_KEY semantics without a value",
 		"const maxRetries = 12",
 		"docs/api-keys.md explains rotation",

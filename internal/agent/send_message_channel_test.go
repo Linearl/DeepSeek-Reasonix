@@ -266,4 +266,3 @@ func TestSendMessageToolValidationAndDisabledChannel(t *testing.T) {
 		t.Fatalf("nil-hub send error = %v, want the disabled-channel error", err)
 	}
 }
-

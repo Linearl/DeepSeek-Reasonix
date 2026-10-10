@@ -186,7 +186,7 @@ func logTailWhitespaceOnly(logPath string, from, to int64) bool {
 // size on every write, and same-size rewrites rotate the header generation —
 // the pair (size, head window) catches both cheaply.
 type sessionLogIdentity struct {
-	Size      int64
+	Size       int64
 	HeadDigest string
 }
 

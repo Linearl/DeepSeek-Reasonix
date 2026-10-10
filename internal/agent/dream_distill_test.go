@@ -202,11 +202,11 @@ func TestRunDistillNominatesRepeatedWorkflows(t *testing.T) {
 	writeSession(t, sessions, "s1.jsonl", lineA, lineB, lineA, lineB)
 	writeSession(t, sessions, "s2.jsonl", lineA, lineB)
 	cfg := DreamDistillConfig{
-		Enabled:         true,
-		SessionDir:      sessions,
-		Memory:          store,
-		WorkspaceRoot:   t.TempDir(),
-		DistillMinHits:  3,
+		Enabled:        true,
+		SessionDir:     sessions,
+		Memory:         store,
+		WorkspaceRoot:  t.TempDir(),
+		DistillMinHits: 3,
 	}
 	report, err := RunDistill(cfg)
 	if err != nil {

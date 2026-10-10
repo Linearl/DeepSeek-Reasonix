@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
+	"log/slog"
 	"reasonix/internal/agent"
 	"reasonix/internal/store"
-	"log/slog"
 )
 
 type sessionListEntry struct {

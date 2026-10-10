@@ -8,7 +8,7 @@ import (
 
 // Tool is the JSON form of an event.Tool.
 type Tool struct {
-	Diagnostic        json.RawMessage `json:"diagnostic,omitempty"`
+	Diagnostic        json.RawMessage       `json:"diagnostic,omitempty"`
 	RunState          provider.ToolRunState `json:"runState,omitempty"`
 	Verifying         bool                  `json:"verifying,omitempty"`
 	ID                string                `json:"id,omitempty"`

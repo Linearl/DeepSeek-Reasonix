@@ -35,8 +35,8 @@ func TestReviewUnattendedApprovalCascadesToSourceBeforeTierRefusal(t *testing.T)
 	sink := &noticeSink{}
 	decided := false
 	c := &Controller{
-		sink:              sink,
-		approvalTier:      ApprovalTierHuman,
+		sink:         sink,
+		approvalTier: ApprovalTierHuman,
 		onCascadeDelegate: stubDelegate(func(q []event.AskQuestion) ([]event.AskAnswer, error) {
 			decided = true
 			if len(q) != 1 || q[0].Prompt == "" {

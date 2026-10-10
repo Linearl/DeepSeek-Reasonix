@@ -89,25 +89,25 @@ type ContextProjection struct {
 // context maintenance transaction. Transcript content is intentionally not
 // included; hashes and counts are sufficient for dedupe and diagnostics.
 type ContextMaintenanceReceipt struct {
-	OperationID         string    `json:"operation_id,omitempty"`
-	Status              string    `json:"status,omitempty"` // planned|applied|noop|blocked|failed
-	Action              string    `json:"action,omitempty"` // snip|prune|summary|truncate|native_tool_clear|noop
-	Trigger             string    `json:"trigger,omitempty"`
-	SourceProjection    uint64    `json:"source_projection,omitempty"`
-	ProjectionVersion   uint64    `json:"projection_version,omitempty"`
-	CoveredCount        int       `json:"covered_count,omitempty"`
-	CoveredPrefixHash   string    `json:"covered_prefix_hash,omitempty"`
-	InputHash           string    `json:"input_hash,omitempty"`
-	OutputHash          string    `json:"output_hash,omitempty"`
-	InputTokens         int       `json:"input_tokens,omitempty"`
-	ResultTokens        int       `json:"result_tokens,omitempty"`
-	SavedTokens         int       `json:"saved_tokens,omitempty"`
-	AffectedToolResults int       `json:"affected_tool_results,omitempty"`
-	SummaryHash         string    `json:"summary_hash,omitempty"`
-	Archive             string    `json:"archive,omitempty"`
-	CacheBreak          bool      `json:"cache_break,omitempty"`
-	Reason              string    `json:"reason,omitempty"`
-	BlockedInputHash    string    `json:"blocked_input_hash,omitempty"`
+	OperationID         string `json:"operation_id,omitempty"`
+	Status              string `json:"status,omitempty"` // planned|applied|noop|blocked|failed
+	Action              string `json:"action,omitempty"` // snip|prune|summary|truncate|native_tool_clear|noop
+	Trigger             string `json:"trigger,omitempty"`
+	SourceProjection    uint64 `json:"source_projection,omitempty"`
+	ProjectionVersion   uint64 `json:"projection_version,omitempty"`
+	CoveredCount        int    `json:"covered_count,omitempty"`
+	CoveredPrefixHash   string `json:"covered_prefix_hash,omitempty"`
+	InputHash           string `json:"input_hash,omitempty"`
+	OutputHash          string `json:"output_hash,omitempty"`
+	InputTokens         int    `json:"input_tokens,omitempty"`
+	ResultTokens        int    `json:"result_tokens,omitempty"`
+	SavedTokens         int    `json:"saved_tokens,omitempty"`
+	AffectedToolResults int    `json:"affected_tool_results,omitempty"`
+	SummaryHash         string `json:"summary_hash,omitempty"`
+	Archive             string `json:"archive,omitempty"`
+	CacheBreak          bool   `json:"cache_break,omitempty"`
+	Reason              string `json:"reason,omitempty"`
+	BlockedInputHash    string `json:"blocked_input_hash,omitempty"`
 	// FoldInstalled marks a failed/blocked summary refresh that follows an
 	// already-installed fold in the same maintenance pass (task 303): the
 	// compaction is kept and only the refresh is missing. The desktop renders

@@ -22,7 +22,7 @@ type backgroundRuntimeController struct {
 	closed     bool
 }
 
-func (c *backgroundRuntimeController) SubagentPolicy() string { return "" }
+func (c *backgroundRuntimeController) SubagentPolicy() string               { return "" }
 func (c *backgroundRuntimeController) RuntimeStatus() control.RuntimeStatus { return c.status }
 func (c *backgroundRuntimeController) Jobs() []jobs.View {
 	return append([]jobs.View(nil), c.jobs...)

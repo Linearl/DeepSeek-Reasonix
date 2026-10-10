@@ -216,7 +216,7 @@ func TestGetSessionInfoSelfTargetFromMeta(t *testing.T) {
 func TestListSessionVersionsProbeLifecycle(t *testing.T) {
 	cfg, refs := infoFixture(t)
 
-	if _, err := NewListSessionVersionsTool(cfg).Execute(t.Context(), []byte(`{"target":"` + refs.contact + `"}`)); err == nil ||
+	if _, err := NewListSessionVersionsTool(cfg).Execute(t.Context(), []byte(`{"target":"`+refs.contact+`"}`)); err == nil ||
 		!strings.Contains(err.Error(), "does not expose the recovery lineage") {
 		t.Fatalf("nil probe err = %v, want the actionable refusal", err)
 	}
@@ -224,7 +224,7 @@ func TestListSessionVersionsProbeLifecycle(t *testing.T) {
 	cfg.SessionVersions = func(scope, root, topic, sessionPath string) ([]SessionVersionInfo, bool) {
 		return nil, false
 	}
-	if _, err := NewListSessionVersionsTool(cfg).Execute(t.Context(), []byte(`{"target":"` + refs.contact + `"}`)); err == nil ||
+	if _, err := NewListSessionVersionsTool(cfg).Execute(t.Context(), []byte(`{"target":"`+refs.contact+`"}`)); err == nil ||
 		!strings.Contains(err.Error(), refs.topic) {
 		t.Fatalf("no-lineage err = %v, want it to name the topic", err)
 	}
@@ -236,7 +236,7 @@ func TestListSessionVersionsProbeLifecycle(t *testing.T) {
 		}
 		return []SessionVersionInfo{member}, true
 	}
-	raw, err := NewListSessionVersionsTool(cfg).Execute(t.Context(), []byte(`{"target":"` + refs.contact + `"}`))
+	raw, err := NewListSessionVersionsTool(cfg).Execute(t.Context(), []byte(`{"target":"`+refs.contact+`"}`))
 	if err != nil {
 		t.Fatalf("list versions: %v", err)
 	}

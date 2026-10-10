@@ -7,12 +7,12 @@ import (
 
 func TestDefaultApprovalTierNormalizes(t *testing.T) {
 	cases := map[string]string{
-		"":           "guardian",
-		"guardian":   "guardian",
-		"parent":     "parent",
-		"Parent":     "parent",
-		"human":      "human",
-		"nonsense":   "guardian",
+		"":         "guardian",
+		"guardian": "guardian",
+		"parent":   "parent",
+		"Parent":   "parent",
+		"human":    "human",
+		"nonsense": "guardian",
 	}
 	for raw, want := range cases {
 		c := &Config{}

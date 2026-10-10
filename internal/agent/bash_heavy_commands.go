@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"reasonix/internal/shellsafe"
 	"reasonix/internal/shellparse"
+	"reasonix/internal/shellsafe"
 )
 
 // 任务 575：bash「重命令独占」声明（方案 C）。
@@ -79,9 +79,9 @@ var bashHeavySubcommandHeads = map[string]map[string]bool{
 	"cargo": setOf("build", "check", "test", "bench", "run", "install", "uninstall",
 		"add", "remove", "update", "clean", "vendor", "package", "publish", "doc", "fix"),
 	// Python。pip download/wheel 会向工作区落文件。
-	"pip":    setOf("install", "uninstall", "download", "wheel"),
-	"pip3":   setOf("install", "uninstall", "download", "wheel"),
-	"uv":     setOf("sync", "lock", "add", "remove", "install", "uninstall", "venv",
+	"pip":  setOf("install", "uninstall", "download", "wheel"),
+	"pip3": setOf("install", "uninstall", "download", "wheel"),
+	"uv": setOf("sync", "lock", "add", "remove", "install", "uninstall", "venv",
 		"build", "run", "pip"),
 	"poetry": setOf("install", "add", "remove", "update", "lock", "build", "run"),
 	// .NET / JVM 之外的 PHP。

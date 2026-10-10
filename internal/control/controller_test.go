@@ -5428,7 +5428,6 @@ func TestCacheColdAfterFailureFallsBackTo24h(t *testing.T) {
 	}
 }
 
-
 // TestComposeSubagentPolicyInjection pins the #9004 transient injection: the
 // tier rides the user turn ahead of the plan-mode marker content, and the
 // light tier (default) leaves the composed text byte-identical.
@@ -5454,4 +5453,3 @@ func TestComposeSubagentPolicyInjection(t *testing.T) {
 		t.Fatalf("default must not inject: %q", got)
 	}
 }
-

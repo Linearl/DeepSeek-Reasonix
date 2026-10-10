@@ -8,11 +8,11 @@ import (
 // fence (task 51 backend). ratio is size/limit clamped to [0, 2]; callers warn
 // at >= 0.90 so a user can compact before inbox delivery starts failing.
 type SessionReplayBudget struct {
-	Path   string `json:"path"`
-	Size   int64  `json:"size"`
-	Limit  int64  `json:"limit"`
+	Path   string  `json:"path"`
+	Size   int64   `json:"size"`
+	Limit  int64   `json:"limit"`
 	Ratio  float64 `json:"ratio"`
-	Exists bool   `json:"exists"`
+	Exists bool    `json:"exists"`
 }
 
 // SessionReplayBudgetFor measures one session event log against the adaptive

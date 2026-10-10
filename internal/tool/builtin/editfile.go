@@ -21,12 +21,12 @@ func init() { tool.RegisterBuiltin(editFile{}) }
 // fresh read evidence; the zero value keeps the tool byte-identical to the
 // pre-family surface.
 type editFile struct {
-	roots   []string
-	rootSet *sandbox.WritableRootSet
-	guard   SessionDataGuard
-	managed ManagedConfigPaths
-	workDir string
-	overlay FileOverlay
+	roots    []string
+	rootSet  *sandbox.WritableRootSet
+	guard    SessionDataGuard
+	managed  ManagedConfigPaths
+	workDir  string
+	overlay  FileOverlay
 	readBack bool
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 // benchUserDir 在临时目录里摆出 StoreFor 期望的布局并写入 n 条事实
-//（中英混合正文，近似真实记忆池），返回 (userDir, cwd) 供 memory.Load 直接发现。
+// （中英混合正文，近似真实记忆池），返回 (userDir, cwd) 供 memory.Load 直接发现。
 func benchUserDir(b *testing.B, n int) (string, string) {
 	b.Helper()
 	root := b.TempDir()
@@ -47,7 +47,7 @@ func BenchmarkBuildRecallIndex(b *testing.B) {
 }
 
 // BenchmarkLoadMemorySet 度量一次完整 memory.Load。改造前含索引构建
-//（≈ BenchmarkBuildRecallIndex 的量），改造后只剩发现——boot/压缩重建/每次
+// （≈ BenchmarkBuildRecallIndex 的量），改造后只剩发现——boot/压缩重建/每次
 // 记忆写入路径的分配以此为凭下降。
 func BenchmarkLoadMemorySet(b *testing.B) {
 	userDir, cwd := benchUserDir(b, 200)

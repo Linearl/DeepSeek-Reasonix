@@ -24,9 +24,9 @@ type DreamDistillConfig struct {
 	WorkspaceRoot   string
 	SessionDir      string
 	Memory          memory.Store
-	DreamWindowDays int  // default 7
-	DistillMinHits  int  // default 3
-	DistillDays     int  // default 30
+	DreamWindowDays int // default 7
+	DistillMinHits  int // default 3
+	DistillDays     int // default 30
 }
 
 func (c DreamDistillConfig) dreamWindow() time.Duration {
@@ -395,13 +395,13 @@ func workflowLikeSequence(names []string) bool {
 
 // DreamReport is what one dream pass produces.
 type DreamReport struct {
-	WindowDays   int      `json:"windowDays"`
-	Sessions     int      `json:"sessions"`
-	Candidates   int      `json:"candidates"`
-	Saved        int      `json:"saved"`
-	SkippedDupe  int      `json:"skippedDuplicate"`
-	SavedNames   []string `json:"savedNames,omitempty"`
-	SampleLines  []string `json:"sampleLines,omitempty"`
+	WindowDays  int      `json:"windowDays"`
+	Sessions    int      `json:"sessions"`
+	Candidates  int      `json:"candidates"`
+	Saved       int      `json:"saved"`
+	SkippedDupe int      `json:"skippedDuplicate"`
+	SavedNames  []string `json:"savedNames,omitempty"`
+	SampleLines []string `json:"sampleLines,omitempty"`
 }
 
 // RunDream scans recent project sessions for preference-shaped user lines,

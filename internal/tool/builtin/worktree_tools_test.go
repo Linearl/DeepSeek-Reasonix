@@ -56,9 +56,9 @@ func TestCreateAndInspectWorktreeTools(t *testing.T) {
 		t.Fatalf("inspect_worktree_merge: %v", err)
 	}
 	var inspection struct {
-		Available bool     `json:"available"`
-		CanMerge  bool     `json:"canMerge"`
-		Blockers  []any    `json:"blockers"`
+		Available     bool     `json:"available"`
+		CanMerge      bool     `json:"canMerge"`
+		Blockers      []any    `json:"blockers"`
 		ConflictFiles []string `json:"conflictFiles"`
 	}
 	if err := json.Unmarshal([]byte(inspected), &inspection); err != nil {
@@ -81,12 +81,12 @@ func TestCreateAndInspectWorktreeTools(t *testing.T) {
 		t.Fatalf("prepare_worktree_merge: %v", err)
 	}
 	var prepared struct {
-		CanMerge               bool   `json:"canMerge"`
-		TargetBranch           string `json:"targetBranch"`
-		TargetHead             string `json:"targetHead"`
-		WorktreeHead           string `json:"worktreeHead"`
-		WorktreeStateToken     string `json:"worktreeStateToken"`
-		HasConflicts           bool   `json:"hasConflicts"`
+		CanMerge           bool   `json:"canMerge"`
+		TargetBranch       string `json:"targetBranch"`
+		TargetHead         string `json:"targetHead"`
+		WorktreeHead       string `json:"worktreeHead"`
+		WorktreeStateToken string `json:"worktreeStateToken"`
+		HasConflicts       bool   `json:"hasConflicts"`
 	}
 	if err := json.Unmarshal([]byte(preparedRaw), &prepared); err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestCreateAndInspectWorktreeTools(t *testing.T) {
 		t.Fatalf("merge_worktree_back: %v", err)
 	}
 	var merged struct {
-		Merged bool `json:"merged"`
+		Merged bool   `json:"merged"`
 		Error  string `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(mergedRaw), &merged); err != nil {

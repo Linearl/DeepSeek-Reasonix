@@ -397,7 +397,6 @@ func TestMoveTopicToGroupCreatesMissingGroup(t *testing.T) {
 	}
 }
 
-
 // Task 350: session group hierarchy (parent pointers).
 func TestSessionGroupParentAdditiveMigration(t *testing.T) {
 	// Old flat JSON (no parent field) still unmarshals; the new field stays empty.

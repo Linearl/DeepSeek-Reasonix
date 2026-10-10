@@ -18,7 +18,7 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalFullAccess = true
 	c.Desktop.ExperimentalParallelFullAccess = true
 	c.Sandbox.OptimisticWrite = true
-	c.Sandbox.ExperimentalBashHeavyGuard = true // task 575：豁免键，门禁要求仍被渲染
+	c.Sandbox.ExperimentalBashHeavyGuard = true             // task 575：豁免键，门禁要求仍被渲染
 	c.Sandbox.ExperimentalParallelWriterReadOnlyBash = true // task 573：豁免键，门禁要求仍被渲染
 	c.Agent.ExperimentalDream = true
 	// 任务 517：B1/B2/B3 合并为单键，legacy 键渲染面保持（迁移后读 false）。
@@ -93,7 +93,7 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalCompactModel = true
 	c.Agent.CompactModel = "minimax/m3"
 	c.Agent.ExperimentalCollabBackgroundDelivery = true
-	c.Serve.ExperimentalGCChildSession = true // 任务 540：豁免键，serve 域开关
+	c.Serve.ExperimentalGCChildSession = true         // 任务 540：豁免键，serve 域开关
 	c.Agent.ExperimentalGeneralPurposeSubagent = true // 任务 632：豁免键，门禁要求仍被渲染
 	return c
 }

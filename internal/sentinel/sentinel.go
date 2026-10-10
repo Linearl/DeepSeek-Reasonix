@@ -6,9 +6,9 @@
 // 操作」。两条底线都零模型参与（纯规则 + 确定性的 git 管道命令），不调用任何
 // LLM；zero_model_test.go 在源码层面钉住这一约束。
 //
-//	1. 硬禁区清单（hard-forbidden）：默认开。保护性机制不是功能，铁律 2。
-//	2. 出口 secret 扫描（exit-scan）：默认关（实验开关起步）。外发内容在
-//	   离开本机前做 secret 形态扫描，命中即阻断本次操作。
+//  1. 硬禁区清单（hard-forbidden）：默认开。保护性机制不是功能，铁律 2。
+//  2. 出口 secret 扫描（exit-scan）：默认关（实验开关起步）。外发内容在
+//     离开本机前做 secret 形态扫描，命中即阻断本次操作。
 //
 // 两者都由 agent 执行链的固定前置检查调用（internal/agent/execute_one.go，
 // 在 Auto Guard、MCP 信任快路径与普通审批门之前），因此没有任何审批分支
@@ -119,9 +119,9 @@ func SetProtectedPaths(paths []string) {
 // file audit (slog lines still fire).
 func SetAuditPath(path string) { auditPath.Store(normalizePath(path)) }
 
-func hardForbidden() bool   { return hardForbiddenEnabled.Load() }
-func exitScan() bool        { return exitScanEnabled.Load() }
-func auditFile() string     { return auditPath.Load().(string) }
+func hardForbidden() bool { return hardForbiddenEnabled.Load() }
+func exitScan() bool      { return exitScanEnabled.Load() }
+func auditFile() string   { return auditPath.Load().(string) }
 func ruleDisabled(id string) bool {
 	for _, r := range disabledRules.Load().([]string) {
 		if r == id {

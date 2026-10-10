@@ -18,12 +18,12 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig := Default()
 
 	// automation（自动化）
-	orig.Desktop.Autopilot = true                  // autopilot (M8 standalone)
-	orig.Agent.ExperimentalSessionCollab = true    // sessionCollab (M8 standalone)
-	orig.Agent.ExperimentalFullAccess = true       // fullAccess (M8 standalone)
-	orig.Sandbox.OptimisticWrite = true            // optimisticParallel (M8 standalone)
-	orig.Agent.ExperimentalDream = true            // dream
-	orig.Agent.ExperimentalSafetyCostControl = true       // 任务 517 合并键（B1/B2/B3）
+	orig.Desktop.Autopilot = true                   // autopilot (M8 standalone)
+	orig.Agent.ExperimentalSessionCollab = true     // sessionCollab (M8 standalone)
+	orig.Agent.ExperimentalFullAccess = true        // fullAccess (M8 standalone)
+	orig.Sandbox.OptimisticWrite = true             // optimisticParallel (M8 standalone)
+	orig.Agent.ExperimentalDream = true             // dream
+	orig.Agent.ExperimentalSafetyCostControl = true // 任务 517 合并键（B1/B2/B3）
 	// 任务 722：细粒度子开关显式覆盖往返（true/false 各半，nil 键不落盘）。
 	orig.Agent.SafetyIdleTerminate = boolPtr(true)
 	orig.Agent.SafetyLoopStreakNote = boolPtr(false)
@@ -45,27 +45,27 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalOutputStyleUI = true             // outputStyle
 
 	// ui（界面）
-	orig.Desktop.ExperimentalTabCompress = true         // tabCompress
-	orig.Desktop.ExperimentalTodoSidebar = true         // todoSidebar
-	orig.Desktop.ExperimentalPromptHistoryPicker = true // promptHistoryPicker
-	orig.Desktop.ExperimentalSessionWall = true         // sessionWall
-	orig.Desktop.ExperimentalSubagentPanel = true       // M4
-	orig.Desktop.ExperimentalSubagentDetail = true      // M4
+	orig.Desktop.ExperimentalTabCompress = true                // tabCompress
+	orig.Desktop.ExperimentalTodoSidebar = true                // todoSidebar
+	orig.Desktop.ExperimentalPromptHistoryPicker = true        // promptHistoryPicker
+	orig.Desktop.ExperimentalSessionWall = true                // sessionWall
+	orig.Desktop.ExperimentalSubagentPanel = true              // M4
+	orig.Desktop.ExperimentalSubagentDetail = true             // M4
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
-	orig.Agent.ExperimentalAutoLoadOlder = true         // autoLoadOlder ([agent] authoritative after task 473)
-	orig.Desktop.ExperimentalSplitView = true           // splitView
-	orig.Agent.ExperimentalComposerDraft = true         // draftPersistence
-	orig.Agent.ExperimentalSelectionActions = true      // selectionActions
-	orig.Desktop.ExperimentalQuestionSearch = boolPtr(true) // questionSearch (*bool, nil means on)
-	orig.Agent.ExperimentalOpenCodeGoUsage = true       // opencodeGoUsage
-	orig.Desktop.ExperimentalRestartUpdate = true       // M6
-	orig.Desktop.ExperimentalFeedback = true            // M6
+	orig.Agent.ExperimentalAutoLoadOlder = true                // autoLoadOlder ([agent] authoritative after task 473)
+	orig.Desktop.ExperimentalSplitView = true                  // splitView
+	orig.Agent.ExperimentalComposerDraft = true                // draftPersistence
+	orig.Agent.ExperimentalSelectionActions = true             // selectionActions
+	orig.Desktop.ExperimentalQuestionSearch = boolPtr(true)    // questionSearch (*bool, nil means on)
+	orig.Agent.ExperimentalOpenCodeGoUsage = true              // opencodeGoUsage
+	orig.Desktop.ExperimentalRestartUpdate = true              // M6
+	orig.Desktop.ExperimentalFeedback = true                   // M6
 
 	// observability（可观测性）/ dev-debug（开发调试）
-	orig.Desktop.ExperimentalSessionMonitor = true   // monitoring (M8 standalone, member 1)
-	orig.Agent.ExperimentalPerfMonitor = true        // monitoring (M8 standalone, member 2)
-	orig.Agent.ExperimentalPerfMonitor = true        // monitoring ([agent] authoritative after task 473)
-	orig.Desktop.ExperimentalCDPDebugPort = true     // M5
+	orig.Desktop.ExperimentalSessionMonitor = true     // monitoring (M8 standalone, member 1)
+	orig.Agent.ExperimentalPerfMonitor = true          // monitoring (M8 standalone, member 2)
+	orig.Agent.ExperimentalPerfMonitor = true          // monitoring ([agent] authoritative after task 473)
+	orig.Desktop.ExperimentalCDPDebugPort = true       // M5
 	orig.Desktop.ExperimentalLifecycleNoiseGate = true // M5
 
 	// storage（存储）
@@ -73,12 +73,12 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.EventsAutoRotation = "auto"           // M7 (eventsRotation)
 
 	// infra（基础设施）
-	orig.Agent.ExperimentalRuntimeReuse = true          // runtimeReuse
-	orig.Agent.ExperimentalBaseProcess = true           // baseProcess
-	orig.Desktop.ExperimentalZcodeTaskBus = true        // zcodeTaskBus
-	orig.Desktop.ExperimentalPathRules = true           // pathRules
-	orig.Agent.ExperimentalOrphanHandling = true        // orphanHandling
-	orig.Desktop.ExperimentalLocalServer = true         // localServer
+	orig.Agent.ExperimentalRuntimeReuse = true            // runtimeReuse
+	orig.Agent.ExperimentalBaseProcess = true             // baseProcess
+	orig.Desktop.ExperimentalZcodeTaskBus = true          // zcodeTaskBus
+	orig.Desktop.ExperimentalPathRules = true             // pathRules
+	orig.Agent.ExperimentalOrphanHandling = true          // orphanHandling
+	orig.Desktop.ExperimentalLocalServer = true           // localServer
 	orig.Desktop.ExperimentalModelCapabilityFilter = true // modelCapabilityFilter (retired, read-only in M2)
 
 	rendered := RenderTOML(orig)
@@ -178,43 +178,43 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		t.Error("trace_as_state (agent, post-473 single key) did not round-trip")
 	}
 	for name, ok := range map[string]bool{
-		"agent.experimental_session_collab":      got.Agent.ExperimentalSessionCollab,
-		"agent.experimental_full_access":         got.Agent.ExperimentalFullAccess,
-		"agent.experimental_dream":               got.Agent.ExperimentalDream,
-		"agent.experimental_safety_cost_control": got.Agent.ExperimentalSafetyCostControl,
-		"agent.safety_idle_terminate":            got.Agent.SafetyIdleTerminate != nil && *got.Agent.SafetyIdleTerminate,
-		"agent.safety_loop_streak_note":          got.Agent.SafetyLoopStreakNote != nil && !*got.Agent.SafetyLoopStreakNote,
-		"agent.safety_event_wait_recheck":        got.Agent.SafetyEventWaitRecheck != nil && *got.Agent.SafetyEventWaitRecheck,
-		"agent.experimental_proactive_compact":   got.Agent.ExperimentalProactiveCompact,
-		"agent.experimental_cold_cache_compact":  got.Agent.ExperimentalColdCacheCompact,
-		"agent.experimental_high_speed_model":    got.Agent.ExperimentalHighSpeedModel,
-		"agent.experimental_composer_draft":      got.Agent.ExperimentalComposerDraft,
-		"agent.experimental_selection_actions":   got.Agent.ExperimentalSelectionActions,
-		"agent.experimental_opencode_go_usage":   got.Agent.ExperimentalOpenCodeGoUsage,
-		"agent.experimental_runtime_reuse":       got.Agent.ExperimentalRuntimeReuse,
-		"agent.experimental_base_process":        got.Agent.ExperimentalBaseProcess,
-		"agent.experimental_orphan_handling":     got.Agent.ExperimentalOrphanHandling,
-		"desktop.experimental_cache_tuning":      got.Desktop.ExperimentalCacheTuning,
-		"desktop.experimental_quick_commands":    got.Desktop.ExperimentalQuickCommands,
-		"desktop.experimental_output_style_ui":   got.Desktop.ExperimentalOutputStyleUI,
-		"desktop.experimental_tab_compress":      got.Desktop.ExperimentalTabCompress,
-		"desktop.experimental_todo_sidebar":      got.Desktop.ExperimentalTodoSidebar,
+		"agent.experimental_session_collab":          got.Agent.ExperimentalSessionCollab,
+		"agent.experimental_full_access":             got.Agent.ExperimentalFullAccess,
+		"agent.experimental_dream":                   got.Agent.ExperimentalDream,
+		"agent.experimental_safety_cost_control":     got.Agent.ExperimentalSafetyCostControl,
+		"agent.safety_idle_terminate":                got.Agent.SafetyIdleTerminate != nil && *got.Agent.SafetyIdleTerminate,
+		"agent.safety_loop_streak_note":              got.Agent.SafetyLoopStreakNote != nil && !*got.Agent.SafetyLoopStreakNote,
+		"agent.safety_event_wait_recheck":            got.Agent.SafetyEventWaitRecheck != nil && *got.Agent.SafetyEventWaitRecheck,
+		"agent.experimental_proactive_compact":       got.Agent.ExperimentalProactiveCompact,
+		"agent.experimental_cold_cache_compact":      got.Agent.ExperimentalColdCacheCompact,
+		"agent.experimental_high_speed_model":        got.Agent.ExperimentalHighSpeedModel,
+		"agent.experimental_composer_draft":          got.Agent.ExperimentalComposerDraft,
+		"agent.experimental_selection_actions":       got.Agent.ExperimentalSelectionActions,
+		"agent.experimental_opencode_go_usage":       got.Agent.ExperimentalOpenCodeGoUsage,
+		"agent.experimental_runtime_reuse":           got.Agent.ExperimentalRuntimeReuse,
+		"agent.experimental_base_process":            got.Agent.ExperimentalBaseProcess,
+		"agent.experimental_orphan_handling":         got.Agent.ExperimentalOrphanHandling,
+		"desktop.experimental_cache_tuning":          got.Desktop.ExperimentalCacheTuning,
+		"desktop.experimental_quick_commands":        got.Desktop.ExperimentalQuickCommands,
+		"desktop.experimental_output_style_ui":       got.Desktop.ExperimentalOutputStyleUI,
+		"desktop.experimental_tab_compress":          got.Desktop.ExperimentalTabCompress,
+		"desktop.experimental_todo_sidebar":          got.Desktop.ExperimentalTodoSidebar,
 		"desktop.experimental_prompt_history_picker": got.Desktop.ExperimentalPromptHistoryPicker,
-		"desktop.experimental_session_wall":      got.Desktop.ExperimentalSessionWall,
-		"desktop.experimental_subagent_panel":    got.Desktop.ExperimentalSubagentPanel,
-		"desktop.experimental_subagent_detail":   got.Desktop.ExperimentalSubagentDetail,
+		"desktop.experimental_session_wall":          got.Desktop.ExperimentalSessionWall,
+		"desktop.experimental_subagent_panel":        got.Desktop.ExperimentalSubagentPanel,
+		"desktop.experimental_subagent_detail":       got.Desktop.ExperimentalSubagentDetail,
 		// (retired from render — task 473 single-key fold.)
-		"desktop.experimental_split_view":        got.Desktop.ExperimentalSplitView,
-		"desktop.experimental_session_monitor":   got.Desktop.ExperimentalSessionMonitor,
-		"agent.experimental_perf_monitor":        got.Agent.ExperimentalPerfMonitor,
+		"desktop.experimental_split_view":      got.Desktop.ExperimentalSplitView,
+		"desktop.experimental_session_monitor": got.Desktop.ExperimentalSessionMonitor,
+		"agent.experimental_perf_monitor":      got.Agent.ExperimentalPerfMonitor,
 		// (retired from render — task 473 single-key fold.)
-		"desktop.experimental_restart_update":    got.Desktop.ExperimentalRestartUpdate,
-		"desktop.experimental_feedback":          got.Desktop.ExperimentalFeedback,
-		"desktop.experimental_cdp_debug_port":    got.Desktop.ExperimentalCDPDebugPort,
+		"desktop.experimental_restart_update":       got.Desktop.ExperimentalRestartUpdate,
+		"desktop.experimental_feedback":             got.Desktop.ExperimentalFeedback,
+		"desktop.experimental_cdp_debug_port":       got.Desktop.ExperimentalCDPDebugPort,
 		"desktop.experimental_lifecycle_noise_gate": got.Desktop.ExperimentalLifecycleNoiseGate,
-		"desktop.experimental_zcode_task_bus":    got.Desktop.ExperimentalZcodeTaskBus,
-		"desktop.experimental_path_rules":        got.Desktop.ExperimentalPathRules,
-		"desktop.experimental_local_server":      got.Desktop.ExperimentalLocalServer,
+		"desktop.experimental_zcode_task_bus":       got.Desktop.ExperimentalZcodeTaskBus,
+		"desktop.experimental_path_rules":           got.Desktop.ExperimentalPathRules,
+		"desktop.experimental_local_server":         got.Desktop.ExperimentalLocalServer,
 		// (desktop.experimental_model_capability_filter retired from render — task 551.)
 	} {
 		if !ok {
@@ -223,11 +223,11 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	}
 	// Nil-means-on switches: the pointer must come back set to true.
 	for name, ptr := range map[string]*bool{
-		"agent.experimental_subagent_policy": got.Agent.ExperimentalSubagentPolicy,
-		"agent.experimental_compaction_parallel": got.Agent.ExperimentalCompactionParallel,
-		"agent.experimental_context_budget":  got.Agent.ExperimentalContextBudget,
-		"agent.experimental_research_budget": got.Agent.ExperimentalResearchBudget,
-		"desktop.experimental_question_search": got.Desktop.ExperimentalQuestionSearch,
+		"agent.experimental_subagent_policy":      got.Agent.ExperimentalSubagentPolicy,
+		"agent.experimental_compaction_parallel":  got.Agent.ExperimentalCompactionParallel,
+		"agent.experimental_context_budget":       got.Agent.ExperimentalContextBudget,
+		"agent.experimental_research_budget":      got.Agent.ExperimentalResearchBudget,
+		"desktop.experimental_question_search":    got.Desktop.ExperimentalQuestionSearch,
 		"desktop.experimental_completion_summary": got.Desktop.ExperimentalCompletionSummary,
 	} {
 		if ptr == nil || !*ptr {

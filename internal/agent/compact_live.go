@@ -59,12 +59,12 @@ type compactionLiveMeter struct {
 	done, total int
 
 	// Throttle bookkeeping: last emitted snapshot + wall clock.
-	hasLastEmit    bool
-	lastEmit       time.Time
-	lastEmitChars  int
-	lastEmitDone   int
-	lastEmitTotal  int
-	emittedCount int // diagnostics/tests: total emissions this pass
+	hasLastEmit   bool
+	lastEmit      time.Time
+	lastEmitChars int
+	lastEmitDone  int
+	lastEmitTotal int
+	emittedCount  int // diagnostics/tests: total emissions this pass
 }
 
 func (m *compactionLiveMeter) clock() time.Time {

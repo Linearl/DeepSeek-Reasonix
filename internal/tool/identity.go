@@ -40,8 +40,8 @@ const (
 	// 任务482（fence 退役）: HostToolRecovery ("tool_recovery") is withdrawn —
 	// the fence it served no longer exists. KnownToolNames must not keep
 	// advertising a name with no implementation.
-	HostUseCapability              = "use_capability"
-	HostWebSearch                  = "web_search"
+	HostUseCapability = "use_capability"
+	HostWebSearch     = "web_search"
 )
 
 // KnownToolNames combines compile-time built-ins with host-managed identities.

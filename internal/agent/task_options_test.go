@@ -228,9 +228,9 @@ func assertTaskToolConfigEqual(t *testing.T, a, b *TaskTool) {
 // compaction, no context-state line, no budget extension).
 func TestSubagentOptionsInheritsLabBehaviours(t *testing.T) {
 	task := NewTaskToolWithOptions(TaskToolOptions{
-		Provider:          &mockProvider{name: "sub"},
-		ParentRegistry:    tool.NewRegistry(),
-		MaxSteps:          5,
+		Provider:           &mockProvider{name: "sub"},
+		ParentRegistry:     tool.NewRegistry(),
+		MaxSteps:           5,
 		CompactionParallel: true,
 		ContextBudget:      true,
 		ResearchBudget:     true,

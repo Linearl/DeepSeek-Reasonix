@@ -68,7 +68,7 @@ func TestDedupeRestoredTabEntriesKeepsFirstPerSession(t *testing.T) {
 	shared := `C:\sessions\fork-dev-2.jsonl`
 	entries := []desktopTabEntry{
 		{ID: "a", SessionPath: shared},
-		{ID: "b", SessionPath: ""},                 // blank tab: keep
+		{ID: "b", SessionPath: ""},                      // blank tab: keep
 		{ID: "c", SessionPath: strings.ToLower(shared)}, // case-folded duplicate on Windows
 		{ID: "d", SessionPath: `C:\sessions\other.jsonl`},
 		{ID: "e", SessionPath: shared}, // exact duplicate

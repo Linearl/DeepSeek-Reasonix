@@ -85,7 +85,7 @@ func TestSweepFailureDoesNotStampThrottle(t *testing.T) {
 }
 
 // presetRetentionForever 预置 retention=forever，让 sweep 无事可做
-//（失败注入不被保留期剪枝干扰）。
+// （失败注入不被保留期剪枝干扰）。
 func presetRetentionForever(store *Store) error {
 	st := store.loadState()
 	st.Retention = RetentionForever

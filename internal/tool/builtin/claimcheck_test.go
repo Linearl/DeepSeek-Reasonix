@@ -42,7 +42,7 @@ func TestClaimCheckToolVerdictShape(t *testing.T) {
 
 	// exists on an absent path → REFUTED.
 	out2, err := t0.Execute(context.Background(), json.RawMessage(
-		`{"claim":"exists","path":` + quoteJSON(filepath.Join(root, "ghost.txt")) + `}`))
+		`{"claim":"exists","path":`+quoteJSON(filepath.Join(root, "ghost.txt"))+`}`))
 	if err != nil {
 		t.Fatal(err)
 	}

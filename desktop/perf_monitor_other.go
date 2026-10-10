@@ -12,13 +12,13 @@ type procCounters struct {
 	Handles         uint32
 	// Threads mirrors the windows-only counter (task 182); the portable
 	// fallback never fills it (Available stays false).
-	Threads    uint32
-	ReadBytes  uint64
-	WriteBytes uint64
-	CPUSeconds float64
-	KernelSeconds   float64
-	UserSeconds     float64
-	Available       bool
+	Threads       uint32
+	ReadBytes     uint64
+	WriteBytes    uint64
+	CPUSeconds    float64
+	KernelSeconds float64
+	UserSeconds   float64
+	Available     bool
 }
 
 // readProcCounters is the portable fallback: the sampler still records Go

@@ -66,8 +66,8 @@ func q2IncidentSession(t *testing.T, rounds int, argBytes int) *Session {
 	for i := 0; i < rounds; i++ {
 		s.Add(provider.Message{Role: provider.RoleUser, Content: fmt.Sprintf("probe prompt %d with some body text to reach realistic sizes", i)})
 		s.Add(provider.Message{
-			Role:            provider.RoleAssistant,
-			Content:         fmt.Sprintf("round %d answer", i),
+			Role:             provider.RoleAssistant,
+			Content:          fmt.Sprintf("round %d answer", i),
 			ReasoningContent: fmt.Sprintf("reasoning blob %d: %s", i, string(make([]byte, 700))),
 			ToolCalls: []provider.ToolCall{{
 				ID:        fmt.Sprintf("call_%08d", i),

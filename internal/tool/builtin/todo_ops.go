@@ -12,10 +12,10 @@ import (
 // full list — never on the model's remembered copy alone.
 
 type todoOp struct {
-	Op           string    `json:"op"` // replace | insert | delete | move
-	StepID       string    `json:"step_id,omitempty"`
-	AfterStepID  string    `json:"after_step_id,omitempty"`
-	Item         *todoItem `json:"item,omitempty"`
+	Op          string    `json:"op"` // replace | insert | delete | move
+	StepID      string    `json:"step_id,omitempty"`
+	AfterStepID string    `json:"after_step_id,omitempty"`
+	Item        *todoItem `json:"item,omitempty"`
 }
 
 // applyTodoOps mutates a copy of baseline according to ops and returns the

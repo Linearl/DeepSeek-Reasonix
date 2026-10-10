@@ -108,19 +108,19 @@ func (w openIsolatedWorktreeProject) Execute(ctx context.Context, args json.RawM
 	}
 	name := strings.TrimSpace(p.ProjectName)
 	payload := map[string]any{
-		"projectName":    name,
-		"workspaceRoot":  created.WorkspaceRoot,
-		"worktreeRoot":   created.WorktreeRoot,
-		"sourceRoot":     created.SourceRoot,
-		"branch":         created.Branch,
-		"head":           created.Head,
-		"sourceDirty":    created.SourceDirty,
-		"writableRoot":   created.WorktreeRoot,
-		"writePaths":     []string{created.WorktreeRoot},
+		"projectName":          name,
+		"workspaceRoot":        created.WorkspaceRoot,
+		"worktreeRoot":         created.WorktreeRoot,
+		"sourceRoot":           created.SourceRoot,
+		"branch":               created.Branch,
+		"head":                 created.Head,
+		"sourceDirty":          created.SourceDirty,
+		"writableRoot":         created.WorktreeRoot,
+		"writePaths":           []string{created.WorktreeRoot},
 		"worktreeRootForFleet": created.WorktreeRoot,
-		"hostRegistered": hostRegistered,
-		"next": "Write files under worktreeRoot. For parallel sub-agents, declare write_paths/worktree_root pointing at this root. Merge back with prepare_worktree_merge then merge_worktree_back.",
-		"division": "open_isolated_worktree_project = create + once write auth + project registration (host permitting). create_worktree = allocation only.",
+		"hostRegistered":       hostRegistered,
+		"next":                 "Write files under worktreeRoot. For parallel sub-agents, declare write_paths/worktree_root pointing at this root. Merge back with prepare_worktree_merge then merge_worktree_back.",
+		"division":             "open_isolated_worktree_project = create + once write auth + project registration (host permitting). create_worktree = allocation only.",
 	}
 	out, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {

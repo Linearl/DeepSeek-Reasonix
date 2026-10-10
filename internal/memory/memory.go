@@ -170,7 +170,7 @@ func (s *Set) WriteDoc(path, body string) (string, error) {
 // to them do not rewrite the provider-cached system prefix.
 // 20261002 提示词调研：追加记忆写作质量指南（四类型+去重+不入库规则），
 // 引调研报告 §4.1 #2。remember 工具描述已有同向细则，这里是政策级强化
-//（与 zcode 同款的有意冗余）；召回通道此前有指导，写入质量此前没有。
+// （与 zcode 同款的有意冗余）；召回通道此前有指导，写入质量此前没有。
 func (s *Set) PolicyBlock() string {
 	if s == nil || (s.Store.Dir == "" && s.Store.GlobalDir == "" && len(s.PinnedGuidance) == 0 && strings.TrimSpace(s.Index) == "") {
 		return ""

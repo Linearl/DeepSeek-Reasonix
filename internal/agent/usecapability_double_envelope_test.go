@@ -163,10 +163,10 @@ func (*runSkillShapedTool) Execute(_ context.Context, _ json.RawMessage) (string
 
 func TestDetectDoubleEnvelopedArguments(t *testing.T) {
 	tests := []struct {
-		name    string
-		raw     string
-		want    string
-		wantOK  bool
+		name   string
+		raw    string
+		want   string
+		wantOK bool
 	}{
 		{name: "object envelope", raw: `{"arguments":{"a":1},"capability_id":"tool:ping"}`, want: `{"a":1}`, wantOK: true},
 		{name: "stringified envelope", raw: `"{\"arguments\":{\"a\":1},\"capability_id\":\"tool:ping\"}"`, want: `{"a":1}`, wantOK: true},

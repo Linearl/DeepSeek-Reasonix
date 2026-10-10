@@ -9,6 +9,7 @@ import (
 // pair above them lives on sessioninbox.FrozenContentRefs — a core (#10545)
 // addition this fork does not carry — and has no caller here, so it is
 // deliberately not brought over (dependency chain stopped on purpose).
+//
 //nolint:unused // The history export layer deduplicates its content closure with this key.
 func contentRefKey(ref sessioncontent.Ref) string {
 	return ref.Digest + ":" + itoa64(ref.Bytes) + ":" + ref.IndexDigest

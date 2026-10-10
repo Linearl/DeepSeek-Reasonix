@@ -244,7 +244,7 @@ type Profile struct {
 // Output/Err/Truncated are filled in. Args is the raw JSON arguments — a sink
 // compacts it for display.
 type Tool struct {
-	RunState provider.ToolRunState
+	RunState   provider.ToolRunState
 	Diagnostic json.RawMessage `json:"diagnostic,omitempty"`
 	// Verifying is emitted only once an authorized check actually enters execution.
 	Verifying bool
@@ -266,8 +266,8 @@ type Tool struct {
 	// Optional display metadata only; never enters provider requests.
 	RiskLevel   string
 	Destructive bool
-	Truncated   bool // ToolResult: Output was head+tailed before display/model
-	DurationMs   int64 // ToolResult: wall-clock execution time in milliseconds
+	Truncated   bool  // ToolResult: Output was head+tailed before display/model
+	DurationMs  int64 // ToolResult: wall-clock execution time in milliseconds
 	// StartedAt/EndedAt are unix-millisecond execution bounds (ToolResult).
 	// Zero when the call never ran (dependency-skipped, cancelled, synthetic).
 	StartedAt int64

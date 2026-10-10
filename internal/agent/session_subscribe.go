@@ -44,11 +44,11 @@ import (
 // loop, and it blocks on a wake channel while no subscription exists — zero
 // polling when nobody subscribed. Never one timer per subscription.
 const (
-	SubscribeStateChange  = "state_change"   // running/queued/idle flip (edge)
-	SubscribeToolError    = "tool_error"     // status stream: tool failure (273 family)
-	SubscribeBlockingWait = "blocking_wait"  // status stream: gate blocking a turn (283 family)
+	SubscribeStateChange   = "state_change"   // running/queued/idle flip (edge)
+	SubscribeToolError     = "tool_error"     // status stream: tool failure (273 family)
+	SubscribeBlockingWait  = "blocking_wait"  // status stream: gate blocking a turn (283 family)
 	SubscribeNeedsDecision = "needs_decision" // status stream: human decision required (283 family)
-	SubscribeStuck        = "stuck"          // running with no turn progress for stuck_after_s
+	SubscribeStuck         = "stuck"          // running with no turn progress for stuck_after_s
 	// SubscribeTurnAbnormalEnd (task 319) fires when the watched peer's turn
 	// reaches a NON-completed terminal state (failed/interrupted/
 	// recovery_required — the event.TurnStatus set): the peer died instead of
@@ -59,12 +59,12 @@ const (
 
 // subscribeEventKinds is the v1 whitelist: anomalies only, no arbitrary events.
 var subscribeEventKinds = map[string]bool{
-	SubscribeStateChange:      true,
-	SubscribeToolError:        true,
-	SubscribeBlockingWait:     true,
-	SubscribeNeedsDecision:    true,
-	SubscribeStuck:            true,
-	SubscribeTurnAbnormalEnd:  true,
+	SubscribeStateChange:     true,
+	SubscribeToolError:       true,
+	SubscribeBlockingWait:    true,
+	SubscribeNeedsDecision:   true,
+	SubscribeStuck:           true,
+	SubscribeTurnAbnormalEnd: true,
 }
 
 // SubscribeEventKinds returns the sorted v1 whitelist (tool schema help).

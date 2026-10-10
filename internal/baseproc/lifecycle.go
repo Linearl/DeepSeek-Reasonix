@@ -631,14 +631,14 @@ type ManagedClient struct {
 // 任务521 nil 防线：任何 nil 组合都不得 panic，且一律 fail-closed 回落
 // inline/本地路径。逐组合矩阵（inline = c.inline，各态指 manager 字段）：
 //
-//	 #  receiver  m       done   state          remote    返回
-//	 1  nil       —       —      —              —         (nil, errClientClosed)：无本地面可回落，错误向上传播
-//	 2  非 nil    nil     false  —              —         (inline, nil)：半构造视图回落本地（修复前 panic）
-//	 3  非 nil    nil     true   —              —         (nil, errClientClosed)
-//	 4  非 nil    非 nil  true   —              —         (nil, errClientClosed)
-//	 5  非 nil    非 nil  false  remote_ready   非 nil    (remote, nil)：正常远端
-//	 6  非 nil    非 nil  false  remote_ready   nil       (inline, nil)：markDead 竞态窗口，回落本地
-//	 7  非 nil    非 nil  false  其余任意态      任意      (inline, nil)
+//	#  receiver  m       done   state          remote    返回
+//	1  nil       —       —      —              —         (nil, errClientClosed)：无本地面可回落，错误向上传播
+//	2  非 nil    nil     false  —              —         (inline, nil)：半构造视图回落本地（修复前 panic）
+//	3  非 nil    nil     true   —              —         (nil, errClientClosed)
+//	4  非 nil    非 nil  true   —              —         (nil, errClientClosed)
+//	5  非 nil    非 nil  false  remote_ready   非 nil    (remote, nil)：正常远端
+//	6  非 nil    非 nil  false  remote_ready   nil       (inline, nil)：markDead 竞态窗口，回落本地
+//	7  非 nil    非 nil  false  其余任意态      任意      (inline, nil)
 //
 // 回落语义：inline 为值类型，装箱后接口恒非 nil——target() 绝不返回
 // (nil, nil)。零值 inline（Surface nil）的工具面答 ErrNotWired，消费方

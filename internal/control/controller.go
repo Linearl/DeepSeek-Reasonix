@@ -169,13 +169,13 @@ type Controller struct {
 	// one — sub-agents then keep whatever gate they were constructed with.
 	subagentGate *SharedHeadlessGate
 
-	label                   string
-	modelRef                string
+	label    string
+	modelRef string
 	// modelIdentitySwap is the task-602 hot-switch rebind of the identity
 	// fields above (SetModelIdentity); the active* accessors prefer it per
 	// field. Written rarely (an explicit switch), read on every status path.
-	modelIdentitySwap atomic.Pointer[controllerModelIdentity]
-	visionModel       string
+	modelIdentitySwap       atomic.Pointer[controllerModelIdentity]
+	visionModel             string
 	visionProviderResolver  func(string) (provider.Provider, error)
 	visionModelSelector     func(string, string) (string, bool)
 	modelCapabilityResolver func(*config.ProviderEntry) config.ResolvedModelCapability
@@ -2054,13 +2054,13 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 				}
 				return
 			}
-		c.runGuardedOrPark(func(ctx context.Context) error {
-			sent, err := docsCommandPrompt(ctx, query)
-			if err != nil {
-				return fmt.Errorf("docs: %w", err)
-			}
-			return runGoalLoop(ctx, sent, sent, display)
-		})
+			c.runGuardedOrPark(func(ctx context.Context) error {
+				sent, err := docsCommandPrompt(ctx, query)
+				if err != nil {
+					return fmt.Errorf("docs: %w", err)
+				}
+				return runGoalLoop(ctx, sent, sent, display)
+			})
 			return
 		}
 		// A custom command wins over a skill of the same name; both resolve to a

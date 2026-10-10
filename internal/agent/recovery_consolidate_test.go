@@ -335,8 +335,8 @@ func TestConsolidateNormalizesDirtyMainFirst(t *testing.T) {
 // promote must recover them onto the new main's head instead of leaving them
 // only in the archive.
 //
-//   main (losing) = [A, B, C, H]     winner = [C, D, E, F, G]
-//   result        = [A, B, C, D, E, F, G]   with H archived
+//	main (losing) = [A, B, C, H]     winner = [C, D, E, F, G]
+//	result        = [A, B, C, D, E, F, G]   with H archived
 func TestPromoteGraftsTheLosingChainsPrefix(t *testing.T) {
 	dir := t.TempDir()
 	mainPath := filepath.Join(dir, "model.jsonl")

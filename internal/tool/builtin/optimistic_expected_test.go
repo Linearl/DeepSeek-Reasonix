@@ -87,8 +87,8 @@ func TestMultiEditExpectedStaleRefuses(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "m.txt")
 	os.WriteFile(f, []byte("a\nb\n"), 0o644)
 	_, err := executeErr(t, multiEdit{}, map[string]any{
-		"path": f,
-		"edits": []map[string]any{{"old_string": "a", "new_string": "A"}},
+		"path":     f,
+		"edits":    []map[string]any{{"old_string": "a", "new_string": "A"}},
 		"expected": "unrelated-baseline",
 	})
 	if err == nil || !strings.Contains(err.Error(), "stale content") {

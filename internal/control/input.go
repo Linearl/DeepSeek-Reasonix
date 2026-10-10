@@ -6,13 +6,13 @@ import (
 	"strings"
 	"unicode"
 
+	"log/slog"
 	"reasonix/internal/ablation"
 	"reasonix/internal/agent"
 	"reasonix/internal/event"
 	"reasonix/internal/memory"
 	"reasonix/internal/planmode"
 	"reasonix/internal/skill"
-	"log/slog"
 )
 
 // InvocationRequest is an explicit user-selected Skill or Subagent entity.

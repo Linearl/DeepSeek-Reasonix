@@ -38,9 +38,9 @@ func Capabilities() []string {
 // decide compatibility before connecting: a host whose MinProtocol exceeds the
 // client's protocol offers nothing the client can safely use.
 type capabilitiesResponse struct {
-	Protocol      int      `json:"protocol"`
-	MinProtocol   int      `json:"minProtocol"`
-	Capabilities  []string `json:"capabilities"`
+	Protocol     int      `json:"protocol"`
+	MinProtocol  int      `json:"minProtocol"`
+	Capabilities []string `json:"capabilities"`
 }
 
 func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {

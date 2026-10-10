@@ -18,10 +18,10 @@ func TestCompactionSummaryDefaultsToConversationDestination(t *testing.T) {
 	sink := &recordSink{}
 	sess := foldableSessionOverForce(3)
 	a := New(home, nil, sess, Options{
-		ModelRef:    "fake/a",
-		Pricing:     pricing,
+		ModelRef:      "fake/a",
+		Pricing:       pricing,
 		ContextWindow: 5000,
-		ArchiveDir:  t.TempDir(),
+		ArchiveDir:    t.TempDir(),
 	}, sink)
 
 	summary, _, err := a.summarize(context.Background(), sess.Messages[1:], "")

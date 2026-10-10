@@ -136,8 +136,8 @@ func TestSessionBindingBlocksProjectsTreeShapes(t *testing.T) {
 	}
 	projectsTree := filepath.Join(base, "projects")
 	for _, root := range []string{
-		projectsTree,                                          // the tree root itself
-		filepath.Join(projectsTree, "orphan-slug"),            // an orphan slug dir
+		projectsTree, // the tree root itself
+		filepath.Join(projectsTree, "orphan-slug"),             // an orphan slug dir
 		filepath.Join(projectsTree, "orphan-slug", "sessions"), // the leaf the old table listed
 	} {
 		if !sessionBindingWorkspaceRootBlocked(root) {
