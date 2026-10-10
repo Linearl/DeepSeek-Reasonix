@@ -58,6 +58,9 @@ const noticeCodeKeys: Record<string, DictKey> = {
   autopilot_closed_off_yolo: "notice.autopilotClosedOffYolo",
   // 任务 465 两维矩阵：档位切换自动满足 yolo 前置的决策留痕（用户可见半）。 
   autopilot_assumed_yolo: "notice.autopilotAssumedYolo",
+  // 任务 731 异常态自动续轮：一次续轮注入留痕 + 连续预算用尽的停止告警。
+  autopilot_resume_fired: "notice.autopilotResumeFired",
+  autopilot_resume_exhausted: "notice.autopilotResumeExhausted",
 };
 
 const streamInterruptReasonCodeKeys: Record<string, DictKey> = {
