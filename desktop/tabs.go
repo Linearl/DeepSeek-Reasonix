@@ -2621,6 +2621,18 @@ func (a *App) openTopicSessionInactive(scope, workspaceRoot, topicID, sessionPat
 	return a.openTopicTabPreferLiveActivation(scope, workspaceRoot, topicID, validPath, false)
 }
 
+// errParkRuntimePending marks a park attempt that failed only because the
+// tab's controller build has not published yet (the open chain builds
+// asynchronously, so an immediate park loses that race by design — task 738).
+// The deferred-park waiter (deferParkUntilRuntime) resolves this state; it is
+// a timing signal, not a permanent refusal.
+var errParkRuntimePending = errors.New("runtime still building")
+
+// errParkTabInUse marks a park attempt refused because the tab carries user
+// intent: it is the active surface or a foreground turn is running. Leaving it
+// visible is the correct baseline outcome, not a failure.
+var errParkTabInUse = errors.New("tab is in use")
+
 // parkTabAsDetached removes a just-opened tab from the visible strip while its
 // runtime keeps running in detachedSessions (task 264, user final ruling:
 // background-woken sessions must not appear in the tab bar at all — not the
@@ -2631,6 +2643,12 @@ func (a *App) openTopicSessionInactive(scope, workspaceRoot, topicID, sessionPat
 // sink, and lease stay alive and detachSessionRuntime parks the same pointer
 // into the pool the collaboration drain already enumerates (its detached
 // branch, sessionCollabLiveTargets).
+//
+// 任务 738 护栏: the open chain may reuse a live tab (resolveOpenSessionPath
+// prefers the live runtime), so the parked candidate can be the tab the user
+// is looking at or one with a turn in flight — both must stay visible. The
+// immediate-park path never hits these fences (activate=false on a fresh
+// tab), so they only bite for the reuse and deferred-park paths.
 func (a *App) parkTabAsDetached(tabID string) error {
 	defer a.lockRuntimeMutation("park-detached")()
 	a.sessionRemovalMu.Lock()
@@ -2641,12 +2659,21 @@ func (a *App) parkTabAsDetached(tabID string) error {
 	// never a removed tab whose runtime is left unreachable.
 	a.mu.RLock()
 	tab := a.tabs[tabID]
+	inUse := tab != nil && a.activeTabID == tabID
+	if tab != nil && tab.Ctrl != nil {
+		if status := tab.Ctrl.RuntimeStatus(); status.Running || status.PendingPrompt {
+			inUse = true
+		}
+	}
 	a.mu.RUnlock()
 	if tab == nil {
 		return fmt.Errorf("tab %q not found", tabID)
 	}
 	if tab.Ctrl == nil {
-		return fmt.Errorf("tab %q has no runtime yet", tabID)
+		return fmt.Errorf("tab %q has no runtime yet: %w", tabID, errParkRuntimePending)
+	}
+	if inUse {
+		return fmt.Errorf("tab %q active or mid-turn: %w", tabID, errParkTabInUse)
 	}
 	if !a.detachSessionRuntime(tab) {
 		return fmt.Errorf("tab %q runtime has no session path; cannot park detached", tabID)
@@ -2691,18 +2718,138 @@ func (a *App) parkTabAsDetached(tabID string) error {
 // mail WITHOUT leaving a tab in the bar (task 264): build in the background
 // (activate=false), then park the entry as detached so the next drain pass
 // lands the message through the detached delivery branch.
+//
+// 任务 738: parking immediately after open used to lose the async-build race
+// on every drain pass — the controller publishes seconds later (cold restart
+// builds measured 3.2-4.6s in desktop.log, and a lease-blocked rebuild
+// stretches the nil-controller window to ~30s). The old fallback left the
+// shell tab in the bar and logged the same WARN on every pass while the tab
+// stayed an empty surface for the user. Now the pending case arms the bounded
+// deferred-park waiter instead: the tab leaves the bar the moment its runtime
+// publishes, and only genuine refusals keep the WARN.
 func (a *App) OpenTopicSessionDetached(scope, workspaceRoot, topicID, sessionPath string) (TabMeta, error) {
 	meta, err := a.openTopicSessionInactive(scope, workspaceRoot, topicID, sessionPath)
 	if err != nil {
 		return TabMeta{}, err
 	}
 	if err := a.parkTabAsDetached(meta.ID); err != nil {
-		// Parking is best-effort: the runtime exists (visible but inactive if
-		// parking failed), so the message still has a home — log and keep it.
-		slog.Warn("desktop: could not park collaboration stand-up detached; leaving it inactive in the tab bar", "tab", meta.ID, "err", err)
+		switch {
+		case errors.Is(err, errParkRuntimePending):
+			slog.Info("desktop: collab stand-up park deferred until the runtime publishes; tab stays visible meanwhile", "tab", meta.ID)
+			a.deferParkUntilRuntime(meta.ID)
+		case errors.Is(err, errParkTabInUse):
+			// The open chain reused a live tab the user is looking at or that
+			// is mid-turn: the visible-tab baseline is the correct outcome.
+			slog.Info("desktop: collab stand-up left visible; tab already in use", "tab", meta.ID)
+		default:
+			// Parking is best-effort: the runtime exists (visible but inactive if
+			// parking failed), so the message still has a home — log and keep it.
+			slog.Warn("desktop: could not park collaboration stand-up detached; leaving it inactive in the tab bar", "tab", meta.ID, "err", err)
+		}
 		return meta, nil
 	}
 	return meta, nil
+}
+
+// collabParkRuntimeWaitTimeout bounds one deferred-park wait (task 738).
+// Controller builds land in 3-5s cold (2026-10-10 desktop.log boot stage
+// totals), and the worst observed stand-up needed ~29s (lease-blocked rebuild
+// retrying every 2s); a minute covers that with margin. If the runtime lands
+// even later, the next drain pass re-arms the waiter. Var (not const) so the
+// 738 gate tests can shrink the window.
+var collabParkRuntimeWaitTimeout = time.Minute
+
+// collabParkRuntimePollInterval is the fallback cadence while the waiter has
+// no buildDone channel to wait on (build not started yet, or already
+// terminal). The buildDone close is the fast signal; the ticker only exists
+// so a build that starts a moment later is still seen before the deadline.
+var collabParkRuntimePollInterval = 200 * time.Millisecond
+
+// deferParkUntilRuntime arms the single per-tab waiter that parks the stand-up
+// tab as soon as its controller publishes (task 738). Duplicate arms while a
+// waiter is alive are no-ops, so the drain's per-pass retries cannot stack
+// waiters or multiply log lines.
+func (a *App) deferParkUntilRuntime(tabID string) {
+	a.mu.Lock()
+	if a.collabParkWaiters == nil {
+		a.collabParkWaiters = map[string]bool{}
+	}
+	if a.collabParkWaiters[tabID] {
+		a.mu.Unlock()
+		return
+	}
+	a.collabParkWaiters[tabID] = true
+	a.mu.Unlock()
+	go a.awaitRuntimeThenPark(tabID)
+}
+
+// awaitRuntimeThenPark waits (bounded) for the tab's controller build to
+// publish, then parks the tab detached — the task-264 ruling applied to the
+// timing race: a background-woken session must not linger in the bar just
+// because its park attempt ran before the build finished. The tab stays in
+// a.tabs (open reuse keeps finding it, so no duplicate builds) until the
+// runtime exists, preserving the "never a removed tab whose runtime is left
+// unreachable" invariant; user intent (activated tab, foreground turn)
+// cancels the deferred park instead.
+func (a *App) awaitRuntimeThenPark(tabID string) {
+	defer func() {
+		a.mu.Lock()
+		delete(a.collabParkWaiters, tabID)
+		a.mu.Unlock()
+	}()
+	deadline := time.NewTimer(collabParkRuntimeWaitTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(collabParkRuntimePollInterval)
+	defer ticker.Stop()
+	for {
+		if a.ctrlByTabID(tabID) != nil {
+			// Advisory in-use check (parkTabAsDetached re-fences under its own
+			// locks): a click or a landed message during the wait keeps the tab
+			// visible — user intent and live work outrank the background park.
+			a.mu.RLock()
+			tab := a.tabs[tabID]
+			inUse := a.activeTabID == tabID
+			if tab != nil && tab.Ctrl != nil {
+				if status := tab.Ctrl.RuntimeStatus(); status.Running || status.PendingPrompt {
+					inUse = true
+				}
+			}
+			a.mu.RUnlock()
+			if tab == nil {
+				return // closed while waiting — nothing to park
+			}
+			if inUse {
+				slog.Info("desktop: deferred collab park skipped; tab is in use, keeping it visible", "tab", tabID)
+				return
+			}
+			if err := a.parkTabAsDetached(tabID); err != nil {
+				if errors.Is(err, errParkRuntimePending) {
+					// The controller vanished between the check and the park
+					// (a rebind superseded the build): keep waiting.
+					continue
+				}
+				if errors.Is(err, errParkTabInUse) {
+					slog.Info("desktop: deferred collab park skipped; tab is in use, keeping it visible", "tab", tabID)
+					return
+				}
+				slog.Info("desktop: deferred collab park failed; leaving the tab visible in the tab bar", "tab", tabID, "err", err)
+				return
+			}
+			return // parkTabAsDetached logged the detached landing
+		}
+		// nil channel never fires: while no build is in flight only the ticker
+		// and the deadline advance the loop (same shape as awaitTabController).
+		buildDone := a.tabBuildDone(tabID)
+		select {
+		case <-deadline.C:
+			slog.Info("desktop: deferred collab park wait exhausted; leaving the tab inactive in the tab bar", "tab", tabID)
+			return
+		case <-buildDone:
+			// Re-check on the next round: the build may have failed or been
+			// superseded, leaving the controller nil.
+		case <-ticker.C:
+		}
+	}
 }
 
 // ActivateTopic opens a topic into the single visible conversation surface used
