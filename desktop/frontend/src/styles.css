@@ -4971,6 +4971,25 @@ a[href] {
 .steer-line__bubble--open .steer-line__chevron {
   transform: rotate(90deg);
 }
+/* 任务758: a cross-session message that arrived as a ↪ steer notice renders
+   the same im-source card as its user-row twin (Message.tsx). The card wears
+   the steer bubble's user-side chrome (same metrics as .steer-line__bubble /
+   .msg--user .msg__body) so it still reads as the user's message; the ↪ mark
+   in the card head keeps the steer provenance visible. */
+.im-source-card--steer {
+  max-width: 82%;
+  padding: 10px 16px;
+  border: 1px solid var(--chat-user-border);
+  border-radius: 14px;
+  background: var(--chat-user-bg);
+  box-shadow: var(--chat-user-shadow);
+  color: var(--chat-user-fg);
+}
+.im-source-card__steer-mark {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--fg-faint);
+}
 
 /* ── ReadOnly batch (parent fold for read/search tools) ────────────── */
 .readonly-batch {

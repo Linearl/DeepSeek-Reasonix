@@ -1,8 +1,8 @@
 // Small transcript row cards: phase lines, steer bubbles, notice cards with
 // decision receipts, and compaction cards.
 
-import { useState } from "react";
-import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, GitBranch, Info, TriangleAlert } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, GitBranch, Info, MessageSquare, TriangleAlert } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { CompactionItem, NoticeItem } from "../lib/transcriptRows";
 import type { WireCompletionSummary } from "../lib/types";
@@ -10,11 +10,62 @@ import { turnChangeText, turnCheckState, turnCheckText } from "../lib/turnResult
 import { TurnResultSummary } from "./TurnResultSummary";
 import { TurnEditList } from "./TurnEditList";
 import { STEER_NOTICE_PREFIX } from "../lib/useController";
+import { collabAsImSource, type CollabImSourceMessage } from "../lib/collabMessage";
+import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactNames";
 import { ProcessCompactIcon, ProcessPhaseIcon } from "./ProcessCard";
 import { useTranscriptUserResizeIntent } from "./TranscriptLayoutIntentContext";
 
 export function PhaseCard({ id, text }: { id: string; text: string }) {
   return <div className="phase" data-entrance={id}><ProcessPhaseIcon size={12} /><span>{text}</span></div>;
+}
+
+// 任务462: contact_id → 会话名 的显示解析（缓存有名字用名字，查不到降级
+// 截短 id，绝不空白；完整 id 留在 hover）。758 的 steer 卡片与 user row 卡
+// 共用同一解析管线。
+function useCollabLabel(): (contactId: string) => string {
+  const contactNames = useCollabContactNames();
+  return useCallback(
+    (contactId: string) => contactNames.get(contactId.trim()) || collabDisplayLabel(contactId),
+    [contactNames],
+  );
+}
+
+// 任务758: a cross-session delivery renders the same im-source card whichever
+// entity carried it into the transcript (user row in Message.tsx, ↪ steer
+// notice here) — one delivery text, one presentation. The ↪ mark rides the
+// card head so the steer provenance stays visible; hover keeps the raw
+// contact_ids (same contract as the user-row card).
+function SteerCollabCard({ source }: { source: CollabImSourceMessage }) {
+  const t = useT();
+  const collabLabel = useCollabLabel();
+  return (
+    <div className="im-source-card im-source-card--steer">
+      <div className="im-source-card__head" data-transcript-selection-ignore>
+        <MessageSquare size={14} />
+        <span>{t("msg.fromIm", { source: t("msg.fromCollab") })}</span>
+        <span className="im-source-card__steer-mark" title={t("transcript.steer")} aria-hidden="true">↪</span>
+      </div>
+      {source.text && <div className="im-source-card__text">{source.text}</div>}
+      {(source.sender || source.chat) && (
+        <div
+          className="im-source-card__meta"
+          data-transcript-selection-ignore
+          title={[source.sender, source.chat].filter(Boolean).map((id) => `contact_id=${id.trim()}`).join(" → ")}
+        >
+          <span>{t("msg.collabRoute", { from: collabLabel(source.sender), to: collabLabel(source.chat) })}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 任务758: the deferred placeholder's one-line summary for a collab body —
+// resolved route labels only, the raw `[跨会话消息] 来自 contact_id=…` header
+// (and any hop/metadata tail) stays out of the collapsed row.
+function SteerCollabRouteSummary({ source }: { source: CollabImSourceMessage }) {
+  const t = useT();
+  const collabLabel = useCollabLabel();
+  return <>{t("msg.collabRoute", { from: collabLabel(source.sender), to: collabLabel(source.chat) })}</>;
 }
 
 // A mid-turn steer is the user's own message, so it renders on the user side
@@ -27,11 +78,25 @@ export function PhaseCard({ id, text }: { id: string; text: string }) {
 // marks where the message was first received. Collapsed shows the status
 // label plus the body's first line; expanding reveals the full text. The
 // dedup key is the inboxItemId carried on the item, never the text.
+//
+// 任务758: a body in the cross-session delivery shape (collabAsImSource hit)
+// cardifies instead of rendering the raw text bubble — the exact same card a
+// user row shows for the same message. The deferred placeholder keeps the 723
+// semantics: collapsed route summary (no bare contact_id), expanding reveals
+// the card below the toggle.
 export function SteerCard({ id, text, deferred = false }: { id: string; text: string; deferred?: boolean }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
   const body = text.startsWith(STEER_NOTICE_PREFIX) ? text.slice(STEER_NOTICE_PREFIX.length) : text;
+  const collab = useMemo(() => collabAsImSource(body), [body]);
   if (!deferred) {
+    if (collab) {
+      return (
+        <div className="steer-line" data-entrance={id}>
+          <SteerCollabCard source={collab} />
+        </div>
+      );
+    }
     return (
       <div className="steer-line" data-entrance={id}>
         <div className="steer-line__bubble" title={t("transcript.steer")}>
@@ -53,11 +118,12 @@ export function SteerCard({ id, text, deferred = false }: { id: string; text: st
       >
         <span className="steer-line__icon" aria-hidden="true">↪</span>
         <span className="steer-line__status">{t("transcript.steerDeferred")}</span>
-        {expanded
-          ? <span className="steer-line__text">{body}</span>
-          : <span className="steer-line__text steer-line__text--summary">{firstLine}</span>}
+        <span className={`steer-line__text${collab || !expanded ? " steer-line__text--summary" : ""}`}>
+          {collab ? <SteerCollabRouteSummary source={collab} /> : expanded ? body : firstLine}
+        </span>
         <ChevronRight size={12} className="steer-line__chevron" aria-hidden="true" />
       </button>
+      {expanded && collab && <SteerCollabCard source={collab} />}
     </div>
   );
 }
