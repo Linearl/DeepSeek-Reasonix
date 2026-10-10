@@ -34,6 +34,7 @@ import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
+import { takeSettingsViewPrefetch } from "../lib/settingsPrefetch";
 import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionMonitor";
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
@@ -247,7 +248,9 @@ export function SettingsPanel({
     setSettingsLoadFailed(false);
     try {
       const [view, application] = await Promise.all([
-        app.Settings(),
+        // 任务 739：入口点击时已预发请求（lib/settingsPrefetch），挂载即消费；
+        // 无预取（保存后 reload / TTL 过期 / 预取失败已弃）则照旧现拉。
+        takeSettingsViewPrefetch() ?? app.Settings(),
         Promise.resolve().then(() => app.GetModelSettingsApplication()).catch(() => null),
       ]);
       const next = normalizeSettingsView(view);

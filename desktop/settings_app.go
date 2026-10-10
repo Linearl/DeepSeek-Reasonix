@@ -1611,6 +1611,14 @@ func (a *App) mergedSandboxWriteRoots(userCfg *config.Config, root string) (allo
 
 // Settings returns the current configuration for the Settings panel.
 func (a *App) Settings() SettingsView {
+	// 任务 739：设置面板此前在这条链路上零日志——「点了设置但一直加载中」时
+	// 无法从 desktop.log 区分「前端没发请求」还是「后端慢」。现在每次读取都
+	// 落一条耗时记录（含 err 提前返回），配合前端「点击即发」预取，下一例
+	// 可直接判读：点击后 <1s 有本行=请求已到后端且健康，问题在前端渲染侧。
+	started := time.Now()
+	defer func() {
+		slog.Info("desktop: settings view loaded", "ms", time.Since(started).Milliseconds())
+	}()
 	cfg, cfgPath, err := a.loadDesktopUserConfigForView()
 	if err != nil {
 		return a.defaultSettingsView()
