@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ExternalLink, FileText, FolderOpen, MessageSquarePlus, Pin, PinOff, TerminalSquare } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import type { PinnedFileInfo } from "../lib/pinnedContextBridge";
 import { useToast } from "../lib/toast";
 import {
   WORKSPACE_CONTEXT_MENU_FILE_HEIGHT,
@@ -42,7 +43,7 @@ export function WorkspaceTreeMenu({
     if (target.isDir || !workspaceTabId) return;
     let active = true;
     app.GetPinnedFilesForTab(workspaceTabId)
-      .then((files) => {
+      .then((files: PinnedFileInfo[]) => {
         if (!active || !Array.isArray(files)) return;
         const normalizedTarget = target.path.replace(/^[/\\]+/, "").replace(/\\/g, "/");
         const found = files.some(
