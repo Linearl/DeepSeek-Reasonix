@@ -1,7 +1,8 @@
 // Run: npx tsx src/__tests__/task620-ui-fixes.test.ts
 // 任务 620（UI 三小修）的接缝钉子——源码契约层（DOM 行为由
 // collab-inbox-panel.test.tsx 与 Go 侧 collab_inbox_clean_now_test.go 承担）：
-//  ① 收件箱「立即清理」：绑定在面板 seam 上、按钮渲染在头行、反馈就地可见；
+//  ① 收件箱「立即清理」：绑定在面板 seam 上、按钮渲染在维护行（716 重排后
+//     落位；620 时曾在头行）、反馈就地可见；
 //  ② 子代理标签显隐 checkbox 移入「侧栏增强」卡的侧栏标签显示墙，并挂
 //     「子代理面板」前置闸（未开启置灰不可勾选）；子代理族卡不再重复渲染；
 //  ③ hover 反馈：收件箱 from/to 下拉与 set-gates 勾选项各有一条 hover 规则；
@@ -30,11 +31,13 @@ function cardSlice(startMarker: string, endMarker: string): string {
 
 console.log("\ntask 620 UI 三小修（立即清理 / 子代理 checkbox 移墙 / hover）");
 
-// ① 立即清理：面板 seam 带绑定，头行带按钮，点击反馈就地渲染。
+// ① 立即清理：面板 seam 带绑定，维护行带按钮（716 布局），点击反馈就地渲染。
 ok(inbox.includes("CleanCollabMailNow(): Promise<CollabInboxCleanResult>;"),
   "inbox bindings expose CleanCollabMailNow");
-ok(inbox.includes('className="btn btn--secondary btn--small"') && inbox.includes('t("collabInbox.cleanNow")'),
-  "the clean-now button renders in the panel head actions");
+ok(inbox.includes('className="collab-inbox-panel__maint"')
+  && inbox.includes('className="btn btn--secondary btn--small collab-inbox-panel__cleannow"')
+  && inbox.includes('t("collabInbox.cleanNow")'),
+  "the clean-now button renders in the maintenance row (716 layout)");
 ok(inbox.includes("collabInbox.cleaned") && inbox.includes("collabInbox.cleanNothing"),
   "the clean-now click renders a removed-count feedback");
 
