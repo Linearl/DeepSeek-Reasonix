@@ -3018,6 +3018,15 @@ func (a *App) closeRemainingRemovedSessionRuntimesAfterDestroyAdmissionHeld(remo
 }
 
 func (a *App) closeRemovedSessionRuntime(item removedSessionRuntime, closed map[control.SessionAPI]bool, releasedTabs map[*WorkspaceTab]bool, afterDestroy bool) {
+	// Task 715 (714 复核 B4): this funnel is the one point every removal flow
+	// (delete, topic archive, collab delete) closes a removed session through —
+	// drop its replayed-graph cache entry here so a deleted or archived session
+	// stops pinning its DAG state. A session that survives only reloads on next
+	// open (the entry is a pure accelerator), so over-invalidation is safe.
+	if freed, ok := agent.InvalidateSessionGraph(item.sessionPath); ok {
+		slog.Info("desktop: invalidated dag graph cache on removed session runtime",
+			"path", item.sessionPath, "freed_bytes", freed)
+	}
 	if item.tab != nil {
 		if releasedTabs == nil || !releasedTabs[item.tab] {
 			if releasedTabs != nil {
