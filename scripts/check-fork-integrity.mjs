@@ -68,7 +68,7 @@ const CHECKS = [
   { feature: "任务186 项目表读写剥离（load/update 收口）", file: "desktop/tabs.go", patterns: ["stripBuiltinProjects(applyProjectOrganization(f, organization))", "saveProjectsFile(stripBuiltinProjects(f))", "normalizeWorkspaceScope(scope, workspaceRoot)"] },
   { feature: "任务186 注册表/工作区指针拒绝内置 root", file: "desktop/project_root_registration.go", patterns: ["isBuiltinWorkspaceRoot(workspaceRoot)"] },
   { feature: "任务186 工作区指针双向忽略内置 root", file: "desktop/workspace.go", patterns: ["isBuiltinWorkspaceRoot(dir)", "isBuiltinWorkspaceRoot(ws)"] },
-  { feature: "任务186 恢复标签页 scope 归一", file: "desktop/app.go", patterns: ["normalizeWorkspaceScope(entry.Scope, entry.WorkspaceRoot)"] },
+  { feature: "任务186 恢复标签页 scope 归一", file: "desktop/app_tabs.go", patterns: ["normalizeWorkspaceScope(entry.Scope, entry.WorkspaceRoot)"] },
   { feature: "任务186 前端渲染兜底过滤", file: "desktop/frontend/src/lib/projectTreePresentation.ts", patterns: ["projectTreeWithoutBuiltinWorkspaceNodes"] },
   { feature: "任务186 快照过滤接线", file: "desktop/frontend/src/components/ProjectTree.tsx", patterns: ["projectTreeWithoutBuiltinWorkspaceNodes(asArray(snapshot.projects))"] },
   { feature: "#9580 草稿持久化存储层", file: "desktop/frontend/src/lib/composerDraftPersistence.ts", patterns: ["composer:drafts:v1", "pagehide", "MAX_PERSISTED_BYTES"] },
@@ -142,7 +142,7 @@ const CHECKS = [
   { feature: "任务439 实验开关 experimental_zcode_task_bus（铁律2默认关）", file: "internal/config/desktop_preferences.go", patterns: ["ExperimentalZcodeTaskBus", "experimental_zcode_task_bus"] },
   { feature: "任务439 config 渲染表+设置器（81/123 丢存规则）", file: "internal/config/render.go", patterns: ["experimental_zcode_task_bus = %v"] },
   { feature: "任务439 内嵌 bus 宿主（开=8787 挂载，关=零行为）", file: "desktop/zcode_task_bus.go", patterns: ["startZcodeTaskBus", "closeZcodeTaskBus", "ZcodeTaskBusStatus", "POST /mcp", "POST /bus/events"] },
-  { feature: "任务439 桌面启动/关闭接线", file: "desktop/app.go", patterns: ["a.startZcodeTaskBus(cfg)"] },
+  { feature: "任务439 桌面启动/关闭接线", file: "desktop/app_lifecycle.go", patterns: ["a.startZcodeTaskBus(cfg)"] },
   { feature: "任务439 关停接线", file: "desktop/shutdown.go", patterns: ["a.closeZcodeTaskBus()"] },
   { feature: "任务439 前端实验室卡+状态/角色可视化", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["selected === \"zcodeTaskBus\"", "app.SetExperimentalZcodeTaskBus(on)", "app.ZcodeTaskBusStatus()"] },
   { feature: "任务439 前端契约测试", file: "desktop/frontend/src/__tests__/settings-zcode-task-bus.test.ts", patterns: ["lab rail hosts the zcodeTaskBus entry", "flag-off path returns before any network work"] },
@@ -355,7 +355,7 @@ const CHECKS = [
   { feature: "任务187 截断标记与会话克隆传递", file: "internal/agent/session.go", patterns: ["func (s *Session) TailTruncated", "tailTruncated:           s.tailTruncated"] },
   { feature: "任务187 Save 入口升级", file: "internal/agent/session_persist_observer.go", patterns: ["upgradeTruncatedTranscriptForWrite(path)"] },
   { feature: "任务187 重放失败负缓存", file: "internal/agent/session_replay_guard.go", patterns: ["func rememberSessionReplayRefusal", "func cachedSessionReplayRefusal", "sessionReplayRefusalLimit"] },
-  { feature: "任务187 desktop hydrate 接线", file: "desktop/app.go", patterns: ["agent.LoadSessionTail(sessionPath)"] },
+  { feature: "任务187 desktop hydrate 接线", file: "desktop/app_session_rebind.go", patterns: ["agent.LoadSessionTail(sessionPath)"] },
 
   // ── 任务 184：host 性能监控 + heap profile（2026-09-19）───────────
   { feature: "任务184 监控开关与配置字段", file: "internal/config/config.go", patterns: ["experimental_perf_monitor", "perf_monitor_interval_seconds", "perf_monitor_retention_hours"] },
@@ -366,7 +366,7 @@ const CHECKS = [
   { feature: "任务244 B3 等待返回前复查开关", file: "internal/config/config.go", patterns: ["experimental_event_wait_recheck"] },
   { feature: "任务244 B3 等待返回前复查逻辑", file: "internal/agent/event_wait_tool.go", patterns: ["eventWaitRecheckValue", "recheckSatisfied"] },
   { feature: "任务244 B5 孤儿租约收编开关", file: "internal/config/config.go", patterns: ["experimental_orphan_lease_reclaim"] },
-  { feature: "任务244 B5 孤儿租约收编逻辑", file: "desktop/app.go", patterns: ["leaseReclaimDecision", "experimentalOrphanLeaseReclaim"] },
+  { feature: "任务244 B5 孤儿租约收编逻辑", file: "desktop/app_lease.go", patterns: ["leaseReclaimDecision", "experimentalOrphanLeaseReclaim"] },
   { feature: "任务244 B4 恢复孤儿清扫开关", file: "internal/config/config.go", patterns: ["experimental_recovery_orphan_sweep"] },
   { feature: "任务244 B4 恢复孤儿清扫逻辑", file: "internal/session/recovery_store.go", patterns: ["SetOrphanSweepProbe", "settled orphan recovery operations"] },
   { feature: "任务P15 引导队列重入·恢复层（无主 steer_consumed=已应用残留，恢复即清理）", file: "internal/sessioninbox/recovery.go", patterns: ["item.State == StateSteerConsumed || isSettled(item)"] },
@@ -387,7 +387,7 @@ const CHECKS = [
   { feature: "任务517 安全/成本控制合并键（union 迁移）", file: "internal/config/load.go", patterns: ["func migrateSafetyCostControlMerge", "migrateSafetyCostControlMerge(cfg)"] },
   { feature: "任务517 安全/成本控制合并键（渲染面 + legacy 三行）", file: "internal/config/render.go", patterns: ["experimental_safety_cost_control = %v", "legacy key, migrated into experimental_safety_cost_control (task 517)"] },
   { feature: "任务517 三个运行时门读合并键（B1 心跳/B2 循环/B3 事件复查）", file: "internal/boot/boot.go", patterns: ["cfg.SafetyLoopStreakNoteEnabled()", "cfg.SafetyEventWaitRecheckEnabled()"] },
-  { feature: "任务517 B1 心跳门读合并键（call-time 评估）", file: "desktop/app.go", patterns: ["cfg.SafetyIdleTerminateEnabled()"] },
+  { feature: "任务517 B1 心跳门读合并键（call-time 评估）", file: "desktop/app_lifecycle.go", patterns: ["cfg.SafetyIdleTerminateEnabled()"] },
   { feature: "任务517 实验室单卡 UI（总开关+三子态行）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["safetyCostControl", "SetExperimentalSafetyCostControl", "selected === \"safetyCostControl\""] },
   { feature: "任务517 档位注册表单键化（48→46）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["safetyCostControl: \"optional\""] },
   { feature: "任务517 三语文案（总开关+子项说明）", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"settings.safetyCostControl\": \"安全 / 成本控制\"", "settings.safetyCostControlHint"] },
@@ -504,7 +504,7 @@ const CHECKS = [
   // 直读函数不得被 binding 面直接调用。锚点锁「包装入口 + 上限常量 + 三态测试」，
   // 上游 merge 若把 EffortForTab 还原成直读（无上限），7-15s 坏样本会无声复发。
   { feature: "任务421 effort 补取超时上限+缓存兜底（入口包装）", file: "desktop/effort_fetch.go", patterns: ["effortReadTimeout = 2 * time.Second", "func (a *App) EffortForTab(tabID string) EffortInfo", "serving cached value"] },
-  { feature: "任务421 直读函数让位包装（app.go 不再直连 binding）", file: "desktop/app.go", patterns: ["func (a *App) effortForTabDirect(tabID string) EffortInfo"] },
+  { feature: "任务421 直读函数让位包装（app.go 不再直连 binding）", file: "desktop/app_effort.go", patterns: ["func (a *App) effortForTabDirect(tabID string) EffortInfo"] },
   { feature: "任务421 三态测试（超时兜底/冷缓存缺省/正常刷新）", file: "desktop/effort_fetch_test.go", patterns: ["TestEffortForTabTimeoutServesCachedValue", "TestEffortForTabTimeoutWithoutCacheServesDefault", "TestEffortForTabNormalReadRefreshesCache"] },
   // 任务148/334 切换不重建运行时链路（effort+model 并集）。锚点锁「同族目标切换零重建、
   // 活跃 turn 不拒绝、轮内不换线」：agent 侧两道覆盖门（effort 词表门 / model 同族门+目的地
@@ -515,11 +515,11 @@ const CHECKS = [
   // effort_fast_path_active_turn_test.go）；该文件未进主线，本块按本分支实际文件名
   // 携入并扩展 model 侧，后并线时二选一保留。
   { feature: "任务334 agent 侧 per-request effort 覆盖（词表门+请求侧读取+拒绝留痕）", file: "internal/agent/effort_override.go", patterns: ["func (a *Agent) SetSessionEffortOverride(level string) bool", "func (a *Agent) effortOverrideForRequest() string", "provider-not-effort-varying"] },
-  { feature: "任务334 desktop 侧 effort fast path 分派（fast-per-request 接缝）", file: "desktop/app.go", patterns: ["SetSessionEffortOverride(string) bool"] },
+  { feature: "任务334 desktop 侧 effort fast path 分派（fast-per-request 接缝）", file: "desktop/app_effort.go", patterns: ["SetSessionEffortOverride(string) bool"] },
   { feature: "任务148 agent 侧 per-request model 覆盖（602 演进：家族门移除，仅目的地读取+拒绝留痕）", file: "internal/agent/model_override.go", patterns: ["func (a *Agent) SetSessionModelOverride(ref string, extras ModelOverrideExtras) bool", "func (a *Agent) providerForRequest() provider.Provider"] },
   { feature: "任务148 请求冻结捕获目的地（切换轮间生效、轮内不换线）", file: "internal/agent/sampling_request.go", patterns: ["func (s samplingRequest) destination(a *Agent) provider.Provider", "dest := a.providerForRequest()"] },
   { feature: "任务148 boot resolver 接缝（快路径构造与全量重建同形）", file: "internal/boot/boot.go", patterns: ["ModelResolver: resolveModelResolver(effectiveResolver, cfg, proxySpec)"] },
-  { feature: "任务148 desktop 侧 model fast path 分派（SetSessionModelOverride 接缝）", file: "desktop/app.go", patterns: ["SetSessionModelOverride(string, agent.ModelOverrideExtras) bool", "func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string)"] },
+  { feature: "任务148 desktop 侧 model fast path 分派（SetSessionModelOverride 接缝）", file: "desktop/app_model.go", patterns: ["SetSessionModelOverride(string, agent.ModelOverrideExtras) bool", "func (a *App) resolveTabModelRef(tab *WorkspaceTab, workspaceRoot, name string)"] },
   { feature: "任务148 活跃 turn 钉子族（effort/model 快路径先于活跃工作守卫；602 演进为跨族放行）", file: "desktop/model_fast_path_active_turn_test.go", patterns: ["TestSetEffortForTabFastPathAheadOfActiveWorkGuard", "TestSetModelForTabFastPathAheadOfActiveWorkGuard"] },
   // 任务602 跨 provider 切模型热替换（148 同族门移除后的目的地全域跟随）。锚点锁四层机制：
   // ①agent 标量重绑——override 携带 entry 派生标量（pricing/窗口/输出上限/高速白名单），
@@ -534,8 +534,8 @@ const CHECKS = [
   { feature: "任务602 工具 schema 塑形目的地化（ SupportsTools/NativeToolSearch 按目的地）", file: "internal/agent/finalization.go", patterns: ["dest := a.providerForRequest()", "if !provider.SupportsTools(dest)"] },
   { feature: "任务602 窗口学习组合以目的地为配置输入（effectiveContextWindow 走 destinationContextWindow）", file: "internal/agent/output_budget.go", patterns: ["cfg := a.destinationContextWindow()"] },
   { feature: "任务602 control 身份原子重绑（SetModelIdentity+active* accessor 族）", file: "internal/control/controller.go", patterns: ["func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput *bool)", "func (c *Controller) activeModelRef() string", "func (c *Controller) activeBalance() (url, key string)"] },
-  { feature: "任务602 desktop persona 边界门（跨界退 Build+swap 回退）", file: "desktop/app.go", patterns: ["func modelSwitchPersonaBoundary(workspaceRoot, currentRef string, target *config.ProviderEntry) bool", "fallback-persona-boundary"] },
-  { feature: "任务602 desktop extras/identity 派生（镜像 boot 的标量折叠）", file: "desktop/app.go", patterns: ["func modelSwitchExtras(workspaceRoot, ref string, entry *config.ProviderEntry)", "boot.HighSpeedModelsFor(cfg, entry.HighSpeedModels)"] },
+  { feature: "任务602 desktop persona 边界门（跨界退 Build+swap 回退）", file: "desktop/app_model.go", patterns: ["func modelSwitchPersonaBoundary(workspaceRoot, currentRef string, target *config.ProviderEntry) bool", "fallback-persona-boundary"] },
+  { feature: "任务602 desktop extras/identity 派生（镜像 boot 的标量折叠）", file: "desktop/app_model.go", patterns: ["func modelSwitchExtras(workspaceRoot, ref string, entry *config.ProviderEntry)", "boot.HighSpeedModelsFor(cfg, entry.HighSpeedModels)"] },
   { feature: "任务602 跨族钉子族（活跃 turn 跨族快路径/身份重绑/persona 回退）", file: "desktop/model_fast_path_active_turn_test.go", patterns: ["TestSetModelForTabCrossProviderFastPathDuringActiveWork", "TestSetModelForTabCrossProviderRebindsControllerIdentity", "TestSetModelForTabPersonaBoundaryKeepsRebuildFallback"] },
   // 任务601 GLM 接入 per-request effort（334 词表门的 GLM 补全）。锚点锁两个机制：
   // ①探针词表——GLM 无显式 supported_efforts 时 PerRequestEfforts 必须等于
@@ -722,7 +722,7 @@ const CHECKS = [
     "secrets.RedactError(err)",
     "FailureSummary:          failureSummary",
   ] },
-  { feature: "任务340 历史 reload notice 携带失败摘要", file: "desktop/app.go", patterns: [
+  { feature: "任务340 历史 reload notice 携带失败摘要", file: "desktop/app_history.go", patterns: [
     "recovery.FailureSummary != \"\"",
     "detail += recovery.FailureSummary",
   ] },
@@ -922,7 +922,7 @@ const CHECKS = [
   // 锁三处——闸门本体、四个开启入口的接线、前端按码本地化。merge 丢掉接线
   // 会重新出现「autopilot 挂着但审批是 ask/auto」的无人值守中间态。
   { feature: "任务325 autopilot yolo 闸门（判定+反向联动+通知码）", file: "desktop/autopilot_gate.go", patterns: ["func autopilotGateAllowed", "func gateRestoredAutopilotDefaults", "func closeAutopilotForOffYolo", "\"autopilot_requires_yolo\"", "\"autopilot_closed_off_yolo\""] },
-  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477/544 起为六元组含 ask 超时对+自动续跑开关；465 起选择器档位以 effectiveApproval 自动满足 yolo 前置（assumed_yolo 记录决策），门仍在此落点）", file: "desktop/app.go", patterns: ["gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)", "gateRestoredAutopilotDefaults(autopilot, maxRuntime, approvalGrace, askEnabled, askWait, askAutoContinue, toolApprovalMode)", "gateRestoredAutopilotDefaults(prefOn, prefRuntime, prefGrace, prefAskEnabled, prefAskWait, prefAskAutoContinue, effectiveApproval)", "closeAutopilotForOffYolo(tab, mode)"] },
+  { feature: "任务325 开启入口接线（恢复/新标签/选择器/审批切换；477/544 起为六元组含 ask 超时对+自动续跑开关；465 起选择器档位以 effectiveApproval 自动满足 yolo 前置（assumed_yolo 记录决策），门仍在此落点）", file: "desktop/autopilot_gate.go", patterns: ["func gateRestoredAutopilotDefaults(on bool", "closeAutopilotForOffYolo("] },
   // 任务 544：ask 答复后自动续跑（实验子选项，默认关）。锁四处——控制层触发
   // 与排除集、每回合标记、boot 透传、desktop 六元组接线与设置面。merge 丢掉
   // 任何一环都会退回「答复后停等用户连发两次继续」的现场形态。
@@ -947,7 +947,7 @@ const CHECKS = [
   // 锁 ensure/对账/自关闭三件、两条 App 接线、权限隔离（守护不改会话审批——丢了它，
   // 守护每次运行都会把 owner 的审批改掉并触发 325 反向联动把 autopilot 关了）。
   { feature: "任务326 守护任务 ensure/对账/自关闭", file: "desktop/autopilot_guard.go", patterns: ["func (e *HeartbeatEngine) EnsureAutopilotGuard", "func (e *HeartbeatEngine) ReconcileAutopilotGuards", "func (e *HeartbeatEngine) evaluateAutopilotGuardClose", "const autopilotGuardIDPrefix"] },
-  { feature: "任务326 守护接线（边沿 ensure + 对称清理）", file: "desktop/app.go", patterns: ["a.ensureAutopilotGuard(guardOwner)", "a.clearAutopilotGuard(guardTopic)", "a.clearAutopilotGuard(guardOwner.TopicID)"] },
+  { feature: "任务326 守护接线（边沿 ensure + 对称清理）", file: "desktop/app_modes.go", patterns: ["a.ensureAutopilotGuard(guardOwner)", "a.clearAutopilotGuard(guardTopic)", "a.clearAutopilotGuard(guardOwner.TopicID)"] },
   { feature: "任务326 守护权限隔离（不改会话审批）", file: "desktop/heartbeat.go", patterns: ["if !isAutopilotGuardTask(t) {", "evaluateAutopilotGuardClose(t, guardQuiet)", "reconcileAutopilotGuardsCheap"] },
   { feature: "任务326 守护自关闭终态不被复活", file: "desktop/heartbeat_store.go", patterns: ["if isAutopilotGuardTask(tasks[i]) && !update.Enabled {", "tasks[i].IdleStreak = update.IdleStreak"] },
   { feature: "任务326 守护面板间隔与自关闭档位（setter）", file: "desktop/settings_app.go", patterns: ["SetDesktopAutopilotGuardInterval", "SetDesktopAutopilotGuardQuiescent"] },
@@ -1086,7 +1086,7 @@ const CHECKS = [
   // ③报错带 pid 存活检测与清理指引。合并丢了任一环，重启后同款死锁会复发。
   { feature: "456 ① 恢复去重+核销（拉起前清残留）", file: "desktop/session_lease_reconcile.go", patterns: ["func dedupeRestoredTabEntries", "func (a *App) reconcileRestoredSessionKeys", "reconcileRestoredSessionLeaseRecords"] },
   { feature: "456 ① 原语（锁空闲才核销，双源清理）", file: "internal/agent/session_lease.go", patterns: ["func ClearStaleSessionLeaseInfo"] },
-  { feature: "456 ① 僵尸豁免接线（reclaim 前释放僵尸持有者）", file: "desktop/app.go", patterns: ["releaseZombieSessionLeaseHoldersForKey(sessionRuntimeKey(path), tab)", "zombieLeaseHolderLocked(candidate, key)"] },
+  { feature: "456 ① 僵尸豁免接线（reclaim 前释放僵尸持有者）", file: "desktop/app_lease.go", patterns: ["releaseZombieSessionLeaseHoldersForKey(sessionRuntimeKey(path), tab)", "zombieLeaseHolderLocked(candidate, key)"] },
   { feature: "456 ② 接管本地租约回退（非 no resident serve）", file: "desktop/session_takeover.go", patterns: ["adoptLocalLeaseHeldSession(tab, path)", "desktop-local"] },
   { feature: "456 ③ pid 存活指引", file: "desktop/session_lease_reconcile.go", patterns: ["func localLeaseHolderGuidance", "taskkill /PID", "(dead)", "(alive)"] },
 
@@ -1186,7 +1186,7 @@ const CHECKS = [
   { feature: "X4 断点 A 初始构建补传 autopilot 三元组（477 起四/五元组含 ask 超时对）", file: "desktop/tabs.go", patterns: ["Autopilot:                  tab.autopilot", "AutopilotApprovalGrace:     tab.autopilotApprovalGrace", "AutopilotAskTimeoutEnabled: tab.autopilotAskTimeoutEnabled"] },
   { feature: "X4 断点 B 后端视图携带 autopilot", file: "desktop/tabs.go", patterns: ['if s.autopilot {\n\t\treturn "autopilot"'] },
   { feature: "X4 断点 B 前端 normalize 放行 autopilot", file: "desktop/frontend/src/lib/types.ts", patterns: ['mode === "autopilot"'] },
-  { feature: "X4 toggle 判据锚（preference/approval/applied 一行）", file: "desktop/app.go", patterns: ["desktop: autopilot toggle"] },
+  { feature: "X4 toggle 判据锚（preference/approval/applied 一行）", file: "desktop/app_modes.go", patterns: ["desktop: autopilot toggle"] },
 
   // ── P19（wt-zcode-p19r）──────────────────────────────────────────
   // drain_inbox 的 H1 层键是「会话转录路径」而非 contact id：上游若回退成传
@@ -1214,7 +1214,7 @@ const CHECKS = [
   { feature: "485 P1 agent 活动租约键快照", file: "internal/agent/session_lease.go", patterns: ["func SessionLeaseActiveOwnerKeys()"] },
   // collab 拒绝退避 + 自持文案：回退则拒绝日志风暴与「另一个窗口」误导复现。
   { feature: "485 P2 collab 拒绝重试退避", file: "desktop/session_collab.go", patterns: ["collabRetryDelay", "deferContactRetry", "p.drain(true)"] },
-  { feature: "485 P2 自持 busy 文案去误导", file: "desktop/app.go", patterns: ["already open in this Reasonix instance"] },
+  { feature: "485 P2 自持 busy 文案去误导", file: "desktop/app_lease.go", patterns: ["already open in this Reasonix instance"] },
   // ── 483（wt-483-optimistic-parallel）─────────────────────────────
   // optimistic_write 的子代理间半边（上游提案 #12052 对照实现）：两处 gate
   // 若被上游 merge 顶掉，双未声明 write_paths 的子代理重新互等串行（实测
@@ -1326,7 +1326,7 @@ const CHECKS = [
   { feature: "499 关会话即失效（InvalidateSessionGraph 导出）", file: "internal/agent/save_dag_graph_cache.go", patterns: ["func InvalidateSessionGraph(sessionPath string) (freedBytes int64, ok bool)", "func SessionGraphCacheInvalidations"] },
   { feature: "499 失效钩子三落点（关tab/detached释放/删会话）", file: "desktop/tabs.go", patterns: ["invalidated dag graph cache on tab close"] },
   { feature: "499 失效钩子 detached 释放", file: "desktop/detached_idle_release.go", patterns: ["invalidated dag graph cache on detached release"] },
-  { feature: "499 失效钩子删会话", file: "desktop/app.go", patterns: ["invalidated dag graph cache on session delete"] },
+  { feature: "499 失效钩子删会话", file: "desktop/app_session_delete.go", patterns: ["invalidated dag graph cache on session delete"] },
   { feature: "499 配置键字节上限双键+渲染", file: "internal/config/config.go", patterns: ["dag_graph_cache_max_mb", "dag_graph_cache_entry_max_mb"] },
 
   // 任务410 Sentinel 降维版（硬禁区底线+出口 secret 扫描，yolo 下也生效）。
@@ -1356,11 +1356,11 @@ const CHECKS = [
   // 缺口由模式条第四档承接；desktopTabEntry 补 autopilot 列，重启忠实保留。
   // merge 若顶掉任一环：档位静默失效 / 重启丢旗 / goal 被清——均无编译错误。
   { feature: "465 断点C desktopTabEntry autopilot 列（持久化+恢复写入）", file: "desktop/tabs_persistence_types.go", patterns: ["Autopilot bool `json:\"autopilot,omitempty\"`", "Autopilot:   tab.autopilot,"] },
-  { feature: "465 恢复路径双源+325 再过门", file: "desktop/app.go", patterns: ["if entry.Autopilot || tabSessionAutopilot(tab.SessionPath)", "gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)"] },
-  { feature: "465 档位自动满足 yolo+双留痕（slog assumed_yolo+notice）", file: "desktop/app.go", patterns: ["effectiveApproval = control.ToolApprovalYolo", "\"assumed_yolo\", assumedYolo", "NoticeCodeAutopilotAssumedYolo, autopilotAssumedYoloText"] },
-  { feature: "465 两维独立：dim-2 播种不清旗+守卫仅真实边触发", file: "desktop/app.go", patterns: ["autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace", "if autopilotOn && !wasAutopilot {"] },
+  { feature: "465 恢复路径双源+325 再过门", file: "desktop/app_tabs.go", patterns: ["if entry.Autopilot || tabSessionAutopilot(tab.SessionPath)", "gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)"] },
+  { feature: "465 档位自动满足 yolo+双留痕（slog assumed_yolo+notice）", file: "desktop/app_modes.go", patterns: ["effectiveApproval = control.ToolApprovalYolo", "\"assumed_yolo\", assumedYolo", "NoticeCodeAutopilotAssumedYolo, autopilotAssumedYoloText"] },
+  { feature: "465 两维独立：dim-2 播种不清旗+守卫仅真实边触发", file: "desktop/app_modes.go", patterns: ["autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace", "if autopilotOn && !wasAutopilot {"] },
   { feature: "465 门文件新 notice 码（决策记录）", file: "desktop/autopilot_gate.go", patterns: ["NoticeCodeAutopilotAssumedYolo = \"autopilot_assumed_yolo\"", "autopilotAssumedYoloText"] },
-  { feature: "465 wire 裸旗（Meta/TabMeta autopilot 字段+赋值）", file: "desktop/app.go", patterns: ["Autopilot      bool   `json:\"autopilot,omitempty\"`", "Autopilot:             snap.autopilot,"] },
+  { feature: "465 wire 裸旗（Meta/TabMeta autopilot 字段+赋值）", file: "desktop/app_tab_status.go", patterns: ["Autopilot      bool   `json:\"autopilot,omitempty\"`", "Autopilot:             snap.autopilot,"] },
   { feature: "465 TabMeta 裸旗赋值", file: "desktop/tabs.go", patterns: ["Autopilot:         tab.autopilot,"] },
   { feature: "465 profile 裸旗（两维底层状态同时在）", file: "desktop/frontend/src/lib/composerProfile.ts", patterns: ["autopilot: boolean", "function profileAutopilot(raw: boolean | undefined, label: CollaborationMode): boolean", "autopilot: profileAutopilot(meta.autopilot, collaborationMode)"] },
   { feature: "465 模式条第四档（按钮+滑块跟随裸旗）", file: "desktop/frontend/src/components/Composer.tsx", patterns: ["composer-modebar__item--autopilot", "data-mode={autopilotModeOn ? \"autopilot\" : toolApprovalMode}", "onClick={() => chooseTaskMode(\"autopilot\")}"] },
@@ -1394,7 +1394,7 @@ const CHECKS = [
   // 四个锚各护一条机制：merge 丢掉任何一条，「半持久化幽灵」就会复发——
   // 索引写失败重新被 `_ =` 吞掉（①）、三源失配重新不可查询（②）、可见性
   // 判据重新依赖时序/修复态（③）、横幅重新回退旧字段 repairPending（①）。
-  { feature: "550① 索引写失败不吞（计数+结构化日志，两处写入点）", file: "desktop/app.go", patterns: ["topicIndexWriteFailures.Add(1)", "new-session topic index write failed", "first-turn topic index write failed"] },
+  { feature: "550① 索引写失败不吞（计数+结构化日志，两处写入点）", file: "desktop/app_modes.go", patterns: ["topicIndexWriteFailures.Add(1)", "new-session topic index write failed", "first-turn topic index write failed"] },
   { feature: "550② 三源对账（tabs↔topic-state↔会话文件，失配可查询不自动删）", file: "desktop/topic_inventory.go", patterns: ["func (a *App) ReconcileTopicInventory", "func (a *App) GetTopicInventoryMismatches", "topicInventoryIndexTopicWithoutSessions"] },
   { feature: "550② 启动加载时对账接线", file: "desktop/session_catalog_lifecycle.go", patterns: ["logTopicInventorySummary(a.reconcileTopicInventory(ctx))"] },
   { feature: "550② catalog 零会话 tombstone 可分离读（对账依赖）", file: "internal/sessioncatalog/catalog.go", patterns: ["func (c *Catalog) GetTopicWithSessionCount"] },
@@ -1571,7 +1571,7 @@ const CHECKS = [
   { feature: "663 Go hang 门控+同管道（①⑥）", file: "desktop/crash_analysis_hang.go", patterns: ["func responsivenessVerdictIsHang", "func (a *App) StartHangAnalysis", "func buildHangAnalysisInstruction", "ResponsivenessSilenceAfter"] },
   { feature: "663 Go 进度跟踪+会话命名（②⑤）", file: "desktop/crash_analysis.go", patterns: ["func observeCrashAnalysisRun", "func (a *App) CrashAnalysisProgress", "func crashAnalysisSessionTitle", "crash-analysis: started"] },
   { feature: "663 Go pending-crash 启动快照（④）", file: "desktop/crash_pending.go", patterns: ["func (a *App) snapshotPendingCrashForAnalysis", "func (a *App) PendingCrashSnapshot", "func pendingReportToAnalysisPayload"] },
-  { feature: "663 启动接线（快照先于 flush）", file: "desktop/app.go", patterns: ["a.snapshotPendingCrashForAnalysis()"] },
+  { feature: "663 启动接线（快照先于 flush）", file: "desktop/app_lifecycle.go", patterns: ["a.snapshotPendingCrashForAnalysis()"] },
   { feature: "663 前端进度面+重启按钮（②③）", file: "desktop/frontend/src/lib/crash.ts", patterns: ["function paintAnalysisProgress", "export function restartButton", "export function analyzeEntryButton"] },
   { feature: "663 前端 hang 入口（⑥）", file: "desktop/frontend/src/lib/hangPrompt.ts", patterns: ["export function shouldSurfaceHangPrompt", "export function installHangAnalysisWatch"] },
   { feature: "663 前端 pending-crash 入口（④）", file: "desktop/frontend/src/lib/pendingCrashEntry.ts", patterns: ["export function installPendingCrashAnalysisEntry", "export function shouldSurfacePendingCrash"] },
