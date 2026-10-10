@@ -282,8 +282,10 @@ func (a *App) runtimeProjectTopicNodes(scope, workspaceRoot string, snapshots []
 		sessions := byTopic[topicID]
 		sort.Slice(sessions, func(i, j int) bool { return sessions[i].sessionPath < sessions[j].sessionPath })
 		kind := "topic"
+		sessionKind := "session"
 		if scope != "project" {
 			kind = "global_topic"
+			sessionKind = "global_session"
 		}
 		label := defaultTopicTitle
 		if strings.TrimSpace(sessions[0].topicTitle) != "" {
@@ -294,54 +296,97 @@ func (a *App) runtimeProjectTopicNodes(scope, workspaceRoot string, snapshots []
 			Root: workspaceRoot, TopicID: topicID, TurnsState: string(sessioncatalog.TurnsUnknown),
 			Health: string(sessioncatalog.HealthOK), Children: []ProjectNode{},
 		}
-		// Task 352: the ordinary tree is one logical row per topic — the same
-		// contract projectNodeFromCatalogTopic enforces for catalog rows.
-		// During the create/recover window a topic can hold two runtime
-		// records for one conversation; expanding them as per-session children
-		// painted raw file stems ("20260928-042815-…") with a "previously"
-		// meta line until recovery consolidated the copy. Every snapshot now
-		// aggregates onto the single logical row (an open snapshot wins the
-		// representative SessionPath, a running snapshot wins the status) and
-		// no session-kind child is ever emitted from the runtime path; the
-		// guard test keeps this contract from regrowing (see
-		// project_tree_window_copies_test.go).
-		sessionPath := ""
-		openPath := ""
-		idleStatus := ""
-		runningStatus := ""
+		// 757（用户拍板反转 04b8d02ef 的「测试过时」裁决，采审计线 94 报告方案 A）：
+		// 352 聚合按控制器持有收窄。session.ctrl 是唯一的所有权信号——持有控制
+		// 器的记录是「活跃使用中」的会话（open tab 与 detached 运行时皆然）；state
+		// 不作判据（无 ctrl 记录在 runtime 快照管线也会被填上合成 idle state）。
+		// 同 topic 的多个活跃会话各自成 session 子行、各持自己的状态（2026-06
+		// dc11dc67e 时代语义，TestProjectTreeSplitsMultipleRuntimeSessionsInSame-
+		// Topic 恢复为现行合同）；无控制器副本（创建/恢复窗口期 pre-consolidation
+		// copy，352 场景）仍折叠：存在活跃行时对父行零贡献——文件 stem 行是 352
+		// 修掉的用户可见噪音，不回归；仅纯副本 topic（无任何活跃记录）沿用全量
+		// 聚合自成一行。
+		active := make([]catalogRuntimeSnapshot, 0, len(sessions))
 		for _, session := range sessions {
-			status, running := catalogControllerStatus(session.ctrl, session.activity)
-			if session.state != nil {
-				status, running = catalogStateStatus(*session.state, session.activity)
-			}
-			if path := strings.TrimSpace(session.sessionPath); path != "" {
-				if sessionPath == "" {
-					sessionPath = path
-				}
-				if session.open && openPath == "" {
-					openPath = path
-				}
-			}
-			if session.open {
-				node.Open = true
-			}
-			if running {
-				node.Running = true
-				if runningStatus == "" {
-					runningStatus = status
-				}
-			} else if idleStatus == "" {
-				idleStatus = status
+			if session.ctrl != nil {
+				active = append(active, session)
 			}
 		}
-		if runningStatus != "" {
-			node.Status = runningStatus
+		if len(active) >= 2 {
+			for _, session := range active {
+				status, running := catalogControllerStatus(session.ctrl, session.activity)
+				if session.state != nil {
+					status, running = catalogStateStatus(*session.state, session.activity)
+				}
+				path := strings.TrimSpace(session.sessionPath)
+				sessionLabel := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+				if sessionLabel == "" || sessionLabel == "." {
+					sessionLabel = label
+				}
+				if session.open {
+					node.Open = true
+					if node.SessionPath == "" {
+						node.SessionPath = path
+					}
+				}
+				node.Children = append(node.Children, ProjectNode{
+					Key: projectSessionNodeKey(scope, path), Kind: sessionKind, Label: sessionLabel,
+					Root: workspaceRoot, TopicID: topicID, SessionPath: path,
+					Open: session.open, Running: running, Status: status,
+					TurnsState: string(sessioncatalog.TurnsUnknown), Health: string(sessioncatalog.HealthOK),
+					Children: []ProjectNode{},
+				})
+			}
+			if node.SessionPath == "" {
+				node.SessionPath = strings.TrimSpace(active[0].sessionPath)
+			}
+			// 父行运行状态保持中性：多活跃时状态看子行，父行不合并（拆行合同）。
 		} else {
-			node.Status = idleStatus
-		}
-		node.SessionPath = openPath
-		if node.SessionPath == "" {
-			node.SessionPath = sessionPath
+			// 单活跃或纯副本：聚合进唯一逻辑行（352 语义收窄——恰一个活跃记录时
+			// 副本零贡献，活跃权威，遗留 activity 不再覆盖活跃状态；纯副本 topic
+			// 沿用全量聚合保持行可见）。
+			contributors := sessions
+			if len(active) == 1 {
+				contributors = active
+			}
+			sessionPath := ""
+			openPath := ""
+			idleStatus := ""
+			runningStatus := ""
+			for _, session := range contributors {
+				status, running := catalogControllerStatus(session.ctrl, session.activity)
+				if session.state != nil {
+					status, running = catalogStateStatus(*session.state, session.activity)
+				}
+				if path := strings.TrimSpace(session.sessionPath); path != "" {
+					if sessionPath == "" {
+						sessionPath = path
+					}
+					if session.open && openPath == "" {
+						openPath = path
+					}
+				}
+				if session.open {
+					node.Open = true
+				}
+				if running {
+					node.Running = true
+					if runningStatus == "" {
+						runningStatus = status
+					}
+				} else if idleStatus == "" {
+					idleStatus = status
+				}
+			}
+			if runningStatus != "" {
+				node.Status = runningStatus
+			} else {
+				node.Status = idleStatus
+			}
+			node.SessionPath = openPath
+			if node.SessionPath == "" {
+				node.SessionPath = sessionPath
+			}
 		}
 		// Task 550 ③: one stable visibility rule for unnamed tabs. A
 		// default-titled idle topic with no transcript content renders only in
