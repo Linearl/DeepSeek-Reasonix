@@ -221,7 +221,24 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 		return base, nil
 	case "call":
 		if id == "" {
-			return tool.ResolvedCall{}, capabilityInputErrorf("capability_id is required for action=call")
+			// Task 728: the model may nest capability_id inside the arguments
+			// object (58 of the 59 observed call failures). Promote it once;
+			// the promoted form dispatches only when it satisfies the target
+			// schema, and otherwise the original missing-id error stands so
+			// the receipt stays precise (task 457 self-heal discipline).
+			if nestedID, inner, ok := promoteNestedCapabilityID(p.Arguments); ok {
+				healedBase := base
+				healedBase.CapabilityID = nestedID
+				if healed, herr := t.resolveCall(ctx, nestedID, inner, healedBase); herr == nil &&
+					targetAcceptsArguments(healed.Target, inner) {
+					t.noteArgumentSelfHeal(nestedID, "promoted a capability_id nested inside the arguments object to the envelope top level")
+					return healed, nil
+				}
+			}
+			// Task 728 R3: name the expected placement so one round of
+			// feedback corrects the nesting (725 observed the same bad shape
+			// retried four times inside one turn without it).
+			return tool.ResolvedCall{}, capabilityInputErrorf("capability_id is required for action=call; capability_id must be a top-level field, not inside arguments")
 		}
 		if id == sessionToolResultCapabilityID || id == sessionReadStrategyReceiptCapabilityID {
 			return t.resolveSessionCapability(id, p.Arguments, base)
