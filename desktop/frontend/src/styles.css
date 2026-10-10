@@ -44332,23 +44332,6 @@ button.statusbar__mcp:focus-visible {
   margin: 8px 10px;
 }
 
-/* Task 656: the inline create form the picker's bottom "add" entry opens. It
-   replaces the snippet list while open, mirroring the settings-manager draft
-   look so the same flow reads the same in both surfaces. */
-.composer-content-menu__draft {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 8px 10px;
-  padding: 8px;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-}
-.composer-content-menu__draft-actions {
-  display: flex;
-  gap: 6px;
-}
-
 /* One-line preview for menu items that carry a secondary line: a long snippet must
    not stretch the popover, the full text is still in the picker. */
 .composer-access-menu__hint {

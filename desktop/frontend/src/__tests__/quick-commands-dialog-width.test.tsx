@@ -16,6 +16,13 @@
 //  6) 列表竖直上限 60vh → calc(100dvh - 160px)（贴住 shell 的
 //     100dvh - 48px 上限，滚动兜底只在超屏长列表时触发）；
 //  7) 内容列 textarea 默认 3 行（rows=3），更多正文开箱可见。
+//
+// 任务 721 验收：656 装机无效归因——外壳元素同时挂 .modal（max-width: 440px，
+// styles.css）与 .provider-dialog--wide（仅 width）。max-width 钳制与级联顺序/
+// 特异性无关，used width = min(width, max-width) ⇒ 278 的 900px 与 656 的
+// 1100px 从未真正渲染（恒 440px），源码锚点全绿但装机不变。修法同 .rc-modal /
+// .reasonix-confirm-dialog--wide 先例：width 与 max-width 双写。
+//  8) .provider-dialog--wide 必须双写 max-width: min(1100px, 100vw-32px)。
 
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
@@ -121,22 +128,26 @@ console.log("\n任务 278 + 656 快捷指令弹窗宽度链");
   const read = (p: string) => readFileSync(here + "../" + p, "utf8").replace(/\r\n/g, "\n");
   const shellCss = read("components/ProviderAccessSettings.css");
   const stylesCss = read("styles.css");
-  const panelSrc = read("components/SettingsPanel.tsx");
+  // Task 721: the manager dialog body lives in its own shared component now
+  // (settings entry and composer picker both mount it).
+  const managerSrc = read("components/QuickCommandsManagerDialog.tsx");
   const dialogSrc = read("components/ProviderDialog.tsx");
 
   ok(/\{[^{}]*width:\s*min\(1100px,\s*calc\(100vw - 32px\)\)/.test(shellCss.split(".provider-dialog--wide")[1] ?? ""),
     "wide shell = min(1100px, 100vw-32px) [656]: rows fit on one line, narrow viewports capped");
+  ok(/\{[^{}]*width:\s*min\(1100px,\s*calc\(100vw - 32px\)\)[^{}]*max-width:\s*min\(1100px,\s*calc\(100vw - 32px\)\)/.test(shellCss.split(".provider-dialog--wide")[1] ?? ""),
+    "wide shell also overrides max-width [721]: the shared .modal caps max-width at 440px, width alone never rendered past it");
   ok(/settings-quick-commands--wide\s*\{[^{}]*width:\s*100%/.test(stylesCss),
     "quick-commands content fills the wide shell (no inner width floor to fight it)");
   ok(/\.settings-quick-commands--panel\s*\{[^{}]*max-height:\s*calc\(100dvh - 160px\)/.test(stylesCss),
     "panel grows vertically to the shell limit (100dvh-160px), scroll stays as fallback [656]");
   ok(/settings-quick-commands__row > textarea\.mem-input\s*\{[^{}]*min-width:\s*0/.test(stylesCss),
     "row content column is shrinkable (min-width:0) so long tokens cannot reintroduce h-scroll");
-  ok(/ProviderDialog title=\{t\("settings\.quickCommandsManage"\)\}[\s\S]{0,80}?wide>/.test(panelSrc.replace(/\n\s*/g, " ")),
-    "manage dialog passes wide (add/edit form lives in the same dialog)");
+  ok(/ProviderDialog title=\{t\("settings\.quickCommandsManage"\)\}[\s\S]{0,80}?wide>/.test(managerSrc.replace(/\n\s*/g, " ")),
+    "manage dialog passes wide (add/edit form lives in the same dialog) [721: shared component]");
   ok(dialogSrc.includes("wide?: boolean"),
     "ProviderDialog keeps the opt-in wide prop (default callers untouched)");
-  ok(/value=\{entry\.text\}[\s\S]{0,60}rows=\{3\}/.test(panelSrc.replace(/\s+/g, " ")),
+  ok(/value=\{entry\.text\}[\s\S]{0,60}rows=\{3\}/.test(managerSrc.replace(/\s+/g, " ")),
     "manage-row content textarea defaults to 3 visible lines [656]");
 }
 

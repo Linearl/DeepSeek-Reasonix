@@ -192,8 +192,17 @@
    Viewport cap keeps narrow screens from overflowing.
    Task 656: 900px still clipped real snippet titles (pre-release…) and left
    the content column cramped, so the wide shell grows to 1100px; the viewport
-   cap is untouched so narrow screens keep the same guarantee. */
-.provider-dialog--wide { width: min(1100px, calc(100vw - 32px)); }
+   cap is untouched so narrow screens keep the same guarantee.
+   Task 721: width alone never rendered past 440px — the element also carries
+   the generic .modal class whose max-width: 440px clamps every width
+   declaration (max-width wins over width regardless of cascade order or
+   specificity), so tasks 278 (900px) and 656 (1100px) were both silently
+   capped. Override max-width alongside width, same fix the .rc-modal and
+   .reasonix-confirm-dialog--wide blocks already document for this exact trap. */
+.provider-dialog--wide {
+  width: min(1100px, calc(100vw - 32px));
+  max-width: min(1100px, calc(100vw - 32px));
+}
 .provider-dialog > header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .provider-dialog h3 { margin: 0; font-size: 17px; }
 .provider-dialog footer { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
