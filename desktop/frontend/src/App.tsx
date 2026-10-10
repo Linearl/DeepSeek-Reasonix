@@ -6,7 +6,8 @@ import type { ForkNoticeState } from "./lib/bridge";
 import { batchClosePolicy } from "./lib/tabClosePolicy";
 import { useManagementWorkspace } from "./lib/useManagementWorkspace";
 import { loadSplitState, persistSplitState, type SplitState } from "./lib/splitView";
-import { useAppNavigationStore } from "./store/appNavigation";
+import { setSettingsOpenHook, useAppNavigationStore } from "./store/appNavigation";
+import { prefetchSettingsView } from "./lib/settingsPrefetch";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
 import { ShellExpandProvider, useShellExpand } from "./lib/shellExpand";
@@ -301,6 +302,14 @@ const SessionRecoveryVersionsHost = lazy(() => import("./components/SessionRecov
 const loadTrashPage = () => import("./components/TrashPage").then((module) => ({ default: module.TrashPage }));
 const loadAutomationPage = () => import("./custom/features/heartbeat/HeartbeatPanel").then((module) => ({ default: module.HeartbeatView }));
 const loadSettingsPage = () => import("./components/SettingsPanelEntry").then((module) => ({ default: module.SettingsPanel }));
+// 任务 739：设置数据请求「点击即发」。所有设置入口经 openPage({kind:"settings"})
+// 在点击的同步帧触发本钩子：请求立刻上线（后端 <1s 落日志），SettingsPanel
+// 分包也开始预取；主线程随后被长任务饿死时面板挂载仍能直接吃到就绪数据，
+// 而不是等挂载后才从零开始发请求（旧链路在 jank 下表现为「永远加载中」）。
+setSettingsOpenHook(() => {
+  prefetchSettingsView();
+  void loadSettingsPage();
+});
 const RemotePanel = lazy(() => import("./components/RemotePanel").then((module) => ({ default: module.RemotePanel })));
 // Task 260: the two session side-files dock tabs share one lazy chunk.
 const SideFilesDockPanel = lazy(() => import("./components/SessionSideFilesPanel").then((module) => ({ default: module.SideFilesDockPanel })));
