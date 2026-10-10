@@ -48,6 +48,14 @@ agent. It is the Reasonix analog of Claude Code's CLAUDE.md.
   path strings. Raw equality is acceptable only where a mismatch fails closed
   (admission fences); a path-derived cache key must carry a content or
   generation guard (the DAG load cache is the pattern).
+- Session-loading changes are reviewed against both load semantics (task 715):
+  a DAG-cache hit materializes the replayed state directly while a miss replays
+  the event log, so a loader change can be correct on one path and silently not
+  apply on the other. Any change to the load face — the guards in
+  `session_load_cache.go`, the replay itself, the `REASONIX_DAG_LOAD_CACHE`
+  kill switch — must state which semantics it touches; a budget or judgment
+  that differs per path pins both with tests (the 496 slice-6 records-budget
+  drift is the precedent).
 - A mutex- or atomic-guarded struct is ratcheted on its **scalar** field count
   (`struct-state`), not its total: independent flags multiply into states no
   type records as legal. Fixing a boundary case by adding one more `bool` is

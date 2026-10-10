@@ -44,6 +44,10 @@ func digestIsZero(digest [sha256.Size]byte) bool {
 //     which a single whole-transcript replace cannot express);
 //   - the ledger still records this runtime's baseline revision, and its
 //     content digest still describes the baseline content when both are known.
+//
+// Task 715 (714 复核 B2): the proof and the overwrite run under one branch-meta
+// lock, closing the check-vs-write TOCTOU window a concurrent writer could
+// otherwise slip a commit into.
 func (s *Session) rescueReplayLimitedEventLog(path string, msgs []provider.Message, digest [sha256.Size]byte, cause error) bool {
 	var limitErr *SessionReplayLimitError
 	if !errors.As(cause, &limitErr) {
@@ -58,6 +62,18 @@ func (s *Session) rescueReplayLimitedEventLog(path string, msgs []provider.Messa
 		return false
 	}
 	base := s.persistState(path)
+	// Task 715 (714 复核 B2): the ledger check and the whole-file overwrite below
+	// form one critical section under the same lock recordSessionContentRevision
+	// holds, so a concurrent writer's commit either lands before this re-read
+	// (the revision check then honestly declines) or after a write of proven-own
+	// content — never inside the decision.
+	unlock, err := LockSessionMetaPath(path)
+	if err != nil {
+		slog.Warn("session: replay-limited event log left in place (ledger lock unavailable)",
+			"path", path, "resource", limitErr.Resource, "value", limitErr.Value, "limit", limitErr.Limit, "err", err)
+		return false
+	}
+	defer unlock()
 	diskRevision, diskDigest, err := sessionContentRevision(path)
 	if err != nil || !base.ok || !base.revisionKnown || diskRevision != base.revision {
 		slog.Warn("session: replay-limited event log left in place (disk may hold newer turns)",

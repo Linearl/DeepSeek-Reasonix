@@ -1,6 +1,11 @@
 package store
 
 import (
+	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/printer"
+	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -118,5 +123,79 @@ func TestSessionPathSpellingsSingleSource(t *testing.T) {
 	}
 	for _, v := range violations {
 		t.Error(v)
+	}
+}
+
+// Task 715 (714 复核 B1)：方向 3 —— 用法面断言。方向 1/2 只覆盖「拼写面」
+// （常量逐字等于磁盘拼写 + 生产码禁手写字面量）；714 的注入实验实锤了缺口：
+// 把 sessionStem 的 TrimSuffix 参数错换成全拼常量 SessionLeaseLockSuffix
+// （680 同型错：裸后缀参数错换全拼常量）后，两个方向仍全绿——常量完全正确、
+// 被误用在裁剪参数上时防线静默。本测试补第三方向：store 包生产码里所有
+// strings.Trim*/Cut*/HasSuffix 调用的后缀参数必须逐字来自下方已知参数集；
+// 全拼家族常量（.jsonl.lock / .jsonl.lease.lock / .jsonl.meta 等）刻意不在
+// 集内，参数错换在此变红。新用法必须显式扩集并给一行理由（评审触点）。
+func TestSessionPathSuffixArgsFromKnownSet(t *testing.T) {
+	knownArgs := map[string]string{
+		`"/"`:                       "remote.go trailing-separator trim — a URL/path separator, not a session suffix",
+		`".jsonl"`:                  "sessionStem's bare transcript tail (pinned == SessionTranscriptSuffix by the constant direction above)",
+		`".guardian.jsonl"`:         "guardian sidecar classification in the authority file",
+		"SessionTranscriptSuffix":   "the bare transcript suffix",
+		"SessionEventLogSuffix":     "resolved event-log tail: classification and transcript recovery",
+		"SessionTurnEventLogSuffix": "turn-ledger classification",
+		"SessionConflictLogSuffix":  "conflict-log classification",
+	}
+	checked := map[string]bool{
+		"TrimPrefix": true, "TrimSuffix": true,
+		"CutPrefix": true, "CutSuffix": true,
+		"HasSuffix": true,
+	}
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	pkgDir := filepath.Dir(thisFile)
+	entries, err := os.ReadDir(pkgDir)
+	if err != nil {
+		t.Fatalf("read store package dir: %v", err)
+	}
+	fset := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, parseErr := parser.ParseFile(fset, filepath.Join(pkgDir, name), nil, 0)
+		if parseErr != nil {
+			t.Fatalf("parse %s: %v", name, parseErr)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, isCall := n.(*ast.CallExpr)
+			if !isCall {
+				return true
+			}
+			sel, isSelector := call.Fun.(*ast.SelectorExpr)
+			if !isSelector {
+				return true
+			}
+			pkg, isIdent := sel.X.(*ast.Ident)
+			if !isIdent || pkg.Name != "strings" || !checked[sel.Sel.Name] {
+				return true
+			}
+			pos := fset.Position(call.Pos())
+			if len(call.Args) != 2 {
+				t.Errorf("%s: strings.%s has %d args, want (s, suffix)", pos, sel.Sel.Name, len(call.Args))
+				return true
+			}
+			var buf bytes.Buffer
+			if printErr := printer.Fprint(&buf, fset, call.Args[1]); printErr != nil {
+				t.Fatalf("%s: print argument: %v", pos, printErr)
+			}
+			arg := buf.String()
+			if _, known := knownArgs[arg]; !known {
+				t.Errorf("%s: strings.%s argument %s is not in the known suffix-argument set (task 715 B1) — a full-spelling constant here is the 680 error shape; if this use is real, extend the set with a one-line reason", pos, sel.Sel.Name, arg)
+			}
+			return true
+		})
 	}
 }

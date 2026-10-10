@@ -43,6 +43,13 @@ func (a *App) deleteRecoveryCopy(path string) error {
 	if err := botruntime.ForgetAutoSessionMappingsForPath(sessionPath); err != nil {
 		slog.Warn("desktop: failed to clear auto bot session mapping", "err", err)
 	}
+	// Task 715 (714 复核 B4): this flow refuses open sessions, so it never
+	// passes through the runtime-removal funnel — drop the copy's cached
+	// replayed graph here, or a copy opened earlier keeps pinning its DAG state.
+	if freed, ok := agent.InvalidateSessionGraph(sessionPath); ok {
+		slog.Info("desktop: invalidated dag graph cache on recovery copy delete",
+			"path", sessionPath, "freed_bytes", freed)
+	}
 	a.removeSessionCatalogPath(sessionPath, "recovery_copy_deleted")
 	a.emitProjectTreeChangedForSessionDirs(dir)
 	a.invalidatePromptHistoryCache()
