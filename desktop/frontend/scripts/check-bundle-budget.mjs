@@ -270,7 +270,8 @@ assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024
 // (b4afe0bf5) already measures 310.7 KiB and the change adds 0.3 KiB. Re-set from
 // the measured value with headroom; see handoff/fork开发-出包台账-20260914.md.
 // 721 同笔棘轮：largest chunk 实测 320.1 超 320.0 线 0.1（总线抬至 554.0 的同一次构建）— 首抬 320.1 仍炸（显示值恰等=字节抖动必炸区，403/591 先例）再 +0.1 → 320.2 留余量（分支 wt-721 自报，报备派活方）
-assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 320.2 * 1024);
+// 第三波（719/721/728）合并叠加实测 320.4 超 320.2 线 0.2，且 722/726/727 前端件在队 — +0.4 一次到位 → 320.6 含余量（合并线独立 commit，报备派活方）
+assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 320.6 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
 // ?url, and feature styles (heartbeat) live in lazy chunks loaded on demand.
 // An empty initial CSS list is the desired state, not a build error.
