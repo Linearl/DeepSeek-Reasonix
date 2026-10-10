@@ -218,6 +218,62 @@ func (a *Agent) ResolveInterruptedByRestart() int {
 	return settled
 }
 
+// newTurnDismissalResolution marks a leftover interrupted-call record the run
+// loop settled because the user answered it by moving on (task 717): a new
+// user message started a turn, the turn ran to its end, and the record was
+// still pending — continuing the conversation is the dismissal gesture, so
+// the 「中断的工具调用记录」 fold-out must not outlive it. Like every other
+// resolution this is metadata only: the record keeps its facts (tool, digest,
+// timestamps) in the session, and PendingToolRecovery — the panel's input —
+// drops it. Source stays "user": the gesture was the user's new message, the
+// host only executed the settlement at the turn boundary. It is distinct from
+// dismissResolution (the 636 manual ✕) so session data can tell "user pressed
+// the button" from "user went on with the conversation".
+const newTurnDismissalResolution = "dismissed_by_new_turn"
+
+// ResolveInterruptedByNewTurn settles the records in prior (the pre-turn
+// pending snapshot taken in Run) that are STILL unresolved at turn end, and
+// returns how many were settled. Records already resolved mid-turn — the
+// side-effect-free whitelist, superseded retries, a manual 636 dismissal —
+// never reach here (they left PendingToolRecovery), and interruptions the
+// closing turn itself created are not in prior, so they stay visible for the
+// next turn to judge: the automatic face only ever retires records the user
+// had already seen before they chose to continue.
+func (a *Agent) ResolveInterruptedByNewTurn(prior []provider.ToolCallRecord) int {
+	if a == nil || a.sess.conversation == nil || len(prior) == 0 {
+		return 0
+	}
+	priorAttempts := make(map[string]bool, len(prior))
+	for _, r := range prior {
+		if r.Identity.AttemptID != "" {
+			priorAttempts[r.Identity.AttemptID] = true
+		}
+	}
+	settled := 0
+	for _, r := range a.PendingToolRecovery() {
+		if !priorAttempts[r.Identity.AttemptID] {
+			continue
+		}
+		resolved := r
+		resolved.State = provider.ToolRunNotStarted
+		resolved.Resolution = newTurnDismissalResolution
+		resolved.ResolutionSource = "user"
+		resolved.ResolvedAt = time.Now().UnixMilli()
+		if !a.sess.conversation.setToolRecoveryRecord(r.Identity.CallID, resolved) {
+			continue
+		}
+		settled++
+		slog.Info("agent: recovery fence released",
+			"session", a.recoveryLogSessionName(),
+			"source", "user",
+			"resolution", newTurnDismissalResolution,
+			"tool", r.Identity.CanonicalTool,
+			"wait_ms", resolved.ResolvedAt-r.StartedAt,
+			"fence_wait_ms", resolved.ResolvedAt-r.FinishedAt)
+	}
+	return settled
+}
+
 type recoveryRetryKey struct{}
 
 // RetryToolRecovery executes only stored arguments through the ordinary

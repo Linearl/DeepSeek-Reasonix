@@ -1639,6 +1639,17 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	// Task 406: remember a deadline-ended Run so the next beginRunTurn can log
 	// recovery-timeout-continued (see noteRunTimeout). Log-only.
 	defer func() { a.noteRunTimeout(runErr) }()
+	// Task 717（中断记录自动清理）: sending a new message is itself the user's
+	// answer to a leftover interrupted-call record — "ignore it, keep going".
+	// Snapshot what is pending before this turn begins; when the turn ends,
+	// settle exactly those records that are still pending, so the panel's
+	// fold-out cannot outlive the move-on. Interruptions this turn created are
+	// not in the snapshot and stay visible; mid-turn resolutions (whitelist,
+	// retry, manual dismiss) are skipped because only still-pending records
+	// settle. Run fully returns before the controller publishes running=false,
+	// so the panel's turn-end probe already sees the settled snapshot.
+	priorPending := a.PendingToolRecovery()
+	defer func() { a.ResolveInterruptedByNewTurn(priorPending) }()
 	if err := a.prepareProtocolRecovery(ctx); err != nil {
 		return err
 	}
