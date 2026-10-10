@@ -4829,7 +4829,14 @@ export function Composer({
             closeIntentMenu();
             requestActiveDraftFrame(focusComposerInput);
           } : undefined}
-          onManageQuickCommands={onManageQuickCommands}
+          // Task 721: handing over to the manager dialog closes the whole
+          // popover — the dialog is a portal above the composer, and leaving
+          // the menu open behind its backdrop would just be visual noise.
+          onManageQuickCommands={onManageQuickCommands ? () => {
+            setContentMenuOpen(false);
+            closeIntentMenu();
+            onManageQuickCommands();
+          } : undefined}
         />
         <div
           className="composer-access-menu__section"
