@@ -2,15 +2,15 @@
   "limits": {
     "banner": 27,
     "commented-code": 1,
-    "complexity": 2202,
-    "essay": 6684,
-    "file-size": 128784,
-    "function-size": 11685,
+    "complexity": 2132,
+    "essay": 6490,
+    "file-size": 121738,
+    "function-size": 11002,
     "layering": 1,
     "marker": 2,
-    "narrative": 97,
-    "struct-state": 164,
-    "test-file-size": 70393
+    "narrative": 95,
+    "struct-state": 143,
+    "test-file-size": 59720
   },
   "files": {
     "cmd/e2ebench/main.go": {
@@ -32,16 +32,7 @@
       "essay": 19
     },
     "desktop/app.go": {
-      "complexity": 70,
-      "essay": 203,
-      "file-size": 7046,
-      "function-size": 683,
-      "narrative": 2,
-      "struct-state": 21
-    },
-    "desktop/app_test.go": {
-      "essay": 35,
-      "test-file-size": 10673
+      "essay": 44
     },
     "desktop/ask_chain_reliability_test.go": {
       "essay": 5

@@ -120,8 +120,8 @@ func TestConsumeInitialRemoteWindowLaunchIsIdempotentAcrossDomReady(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &App{remoteWindowTicket: ticket}
-
+	a := &App{}
+	a.remoteWindowTicket = ticket
 	got, first, err := a.consumeInitialRemoteWindowLaunch()
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,6 @@ func TestConsumeInitialRemoteWindowLaunchIsIdempotentAcrossDomReady(t *testing.T
 	if _, err := os.Stat(filepath.Join(config.MemoryUserDir(), ticket)); !os.IsNotExist(err) {
 		t.Fatalf("initial ticket was not removed: %v", err)
 	}
-
 	got, first, err = a.consumeInitialRemoteWindowLaunch()
 	if err != nil {
 		t.Fatalf("repeated domReady returned an error: %v", err)
@@ -438,7 +437,8 @@ func TestRemoteWindowLifecycleSkipsPrimaryRuntime(t *testing.T) {
 }
 
 func TestRemoteWindowAssetMiddlewareDoesNotLoadPrimaryFrontend(t *testing.T) {
-	a := &App{remoteWindowTicket: remoteWindowTicketPrefix + "shell"}
+	a := &App{}
+	a.remoteWindowTicket = remoteWindowTicketPrefix + "shell"
 	nextCalled := false
 	h := a.remoteWindowAssetMiddleware()(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		nextCalled = true
