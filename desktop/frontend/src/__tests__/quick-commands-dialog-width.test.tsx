@@ -128,7 +128,9 @@ console.log("\n任务 278 + 656 快捷指令弹窗宽度链");
   const read = (p: string) => readFileSync(here + "../" + p, "utf8").replace(/\r\n/g, "\n");
   const shellCss = read("components/ProviderAccessSettings.css");
   const stylesCss = read("styles.css");
-  const panelSrc = read("components/SettingsPanel.tsx");
+  // Task 721: the manager dialog body lives in its own shared component now
+  // (settings entry and composer picker both mount it).
+  const managerSrc = read("components/QuickCommandsManagerDialog.tsx");
   const dialogSrc = read("components/ProviderDialog.tsx");
 
   ok(/\{[^{}]*width:\s*min\(1100px,\s*calc\(100vw - 32px\)\)/.test(shellCss.split(".provider-dialog--wide")[1] ?? ""),
@@ -141,11 +143,11 @@ console.log("\n任务 278 + 656 快捷指令弹窗宽度链");
     "panel grows vertically to the shell limit (100dvh-160px), scroll stays as fallback [656]");
   ok(/settings-quick-commands__row > textarea\.mem-input\s*\{[^{}]*min-width:\s*0/.test(stylesCss),
     "row content column is shrinkable (min-width:0) so long tokens cannot reintroduce h-scroll");
-  ok(/ProviderDialog title=\{t\("settings\.quickCommandsManage"\)\}[\s\S]{0,80}?wide>/.test(panelSrc.replace(/\n\s*/g, " ")),
-    "manage dialog passes wide (add/edit form lives in the same dialog)");
+  ok(/ProviderDialog title=\{t\("settings\.quickCommandsManage"\)\}[\s\S]{0,80}?wide>/.test(managerSrc.replace(/\n\s*/g, " ")),
+    "manage dialog passes wide (add/edit form lives in the same dialog) [721: shared component]");
   ok(dialogSrc.includes("wide?: boolean"),
     "ProviderDialog keeps the opt-in wide prop (default callers untouched)");
-  ok(/value=\{entry\.text\}[\s\S]{0,60}rows=\{3\}/.test(panelSrc.replace(/\s+/g, " ")),
+  ok(/value=\{entry\.text\}[\s\S]{0,60}rows=\{3\}/.test(managerSrc.replace(/\s+/g, " ")),
     "manage-row content textarea defaults to 3 visible lines [656]");
 }
 
