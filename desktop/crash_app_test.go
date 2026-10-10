@@ -51,6 +51,24 @@ func TestScrubSensitiveText(t *testing.T) {
 	}
 }
 
+// Task 735 (issue #43): long pure-letter identifiers are code, not encodings —
+// the long-task top-frame list must survive scrubbing, while digit-carrying
+// base64 tokens stay redacted.
+func TestScrubSensitiveTextKeepsFrameNames(t *testing.T) {
+	const reactFrame = "commitPassiveUnmountEffectsInsideOfDeletedTree_begin"
+	const snakeFrame = "commit_passive_unmount_effects_inside_of_deleted_tree_begin"
+	realToken := "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkw"
+	got := scrubSensitiveText("long task top frames:\n  7x " + reactFrame + "\n  2x " + snakeFrame + "\n  1x " + realToken)
+	for _, want := range []string{"7x " + reactFrame, "2x " + snakeFrame, "1x [redacted-token]"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("scrubSensitiveText() = %q, want it to contain %q", got, want)
+		}
+	}
+	if strings.Contains(got, "[redacted-token]_begin") {
+		t.Fatalf("frame name swallowed by token scrub: %q", got)
+	}
+}
+
 func TestPostCrashReport(t *testing.T) {
 	var got crashReport
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

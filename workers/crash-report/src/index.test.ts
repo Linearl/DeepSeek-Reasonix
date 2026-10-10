@@ -14,6 +14,7 @@ import {
   severityForReport,
   maxSeverity,
   nativeWebRuntimeFingerprintBasis,
+  scrubSensitiveText,
   telemetryTableNames,
 } from "./index";
 import type { Env } from "./env";
@@ -28,6 +29,27 @@ const base = {
   errorMessage: "boom",
   topFrame: "at render (assets/index.js:1:2)",
 };
+
+// Task 735 (issue #43): long pure-letter identifiers are code, not encodings —
+// frame names survive scrubSensitiveText; digit-carrying tokens stay redacted.
+describe("scrubSensitiveText frame-name allowance", () => {
+  const reactFrame = "commitPassiveUnmountEffectsInsideOfDeletedTree_begin";
+  const snakeFrame = "commit_passive_unmount_effects_inside_of_deleted_tree_begin";
+  const realToken = "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkw";
+
+  it("keeps long identifier frames readable", () => {
+    const got = scrubSensitiveText(`long task top frames:\n  7x ${reactFrame}\n  2x ${snakeFrame}`);
+    expect(got).toContain(`7x ${reactFrame}`);
+    expect(got).toContain(`2x ${snakeFrame}`);
+    expect(got).not.toContain("[redacted-token]_begin");
+  });
+
+  it("still redacts digit-carrying base64 tokens", () => {
+    const got = scrubSensitiveText(`token ${realToken}`);
+    expect(got).toContain("[redacted-token]");
+    expect(got).not.toContain(realToken);
+  });
+});
 
 describe("metrics compatibility", () => {
   it("defaults old ping and metrics payloads to desktop", () => {

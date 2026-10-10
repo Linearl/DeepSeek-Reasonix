@@ -1,4 +1,4 @@
-import { memo, useEffect, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, type CSSProperties } from "react";
 import { getTranscriptStore } from "../lib/transcriptStore";
 import {
   historyEntryIdForRow,
@@ -9,15 +9,14 @@ import {
 import { transcriptRowLayoutVariant } from "../lib/transcriptRowGeometry";
 import type { TimelineBlock } from "../lib/transcriptTimeline";
 import { useTranscriptFindHighlight } from "./TranscriptFindContext";
+import { useTranscriptRowRendererFn } from "./TranscriptRowRendererContext";
 
 const TranscriptRowView = memo(function TranscriptRowView({
   row,
   tabId,
-  children,
 }: {
   row: TranscriptRow;
   tabId?: string;
-  children: ReactNode;
 }) {
   const entryId = historyEntryIdForRow(row);
   const estimate = estimateTranscriptRowSize(row);
@@ -31,6 +30,11 @@ const TranscriptRowView = memo(function TranscriptRowView({
   useEffect(() => {
     if (entryId) getTranscriptStore().requestEntryFullContent(tabId, entryId);
   }, [entryId, tabId]);
+  // Task 735: the row content builds here, behind the memo gate — building it
+  // eagerly as a children prop used to defeat this memo on every renderer
+  // identity change (each row's component tree was rebuilt even when the row
+  // data was untouched).
+  const content = useTranscriptRowRendererFn()(row);
   return (
     <div
       className={`transcript__row${findHit ? " transcript__row--find" : ""}${findActive ? " transcript__row--find-active" : ""}`}
@@ -42,7 +46,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
       data-transcript-layout-variant={transcriptRowLayoutVariant(row)}
       style={{ "--transcript-row-estimate": `${estimate}px` } as CSSProperties}
     >
-      {children}
+      {content}
     </div>
   );
 });
@@ -50,12 +54,10 @@ const TranscriptRowView = memo(function TranscriptRowView({
 export const TranscriptBlockView = memo(function TranscriptBlockView({
   block,
   tabId,
-  renderRow,
   placement,
 }: {
   block: TimelineBlock;
   tabId?: string;
-  renderRow: (row: TranscriptRow) => ReactNode;
   placement?: { index: number; top: number };
 }) {
   return (
@@ -69,9 +71,7 @@ export const TranscriptBlockView = memo(function TranscriptBlockView({
       data-transcript-measurement-revision={block.measurementRevision}
     >
       {block.rows.map((row) => (
-        <TranscriptRowView key={row.key} row={row} tabId={tabId}>
-          {renderRow(row)}
-        </TranscriptRowView>
+        <TranscriptRowView key={row.key} row={row} tabId={tabId} />
       ))}
     </div>
   );

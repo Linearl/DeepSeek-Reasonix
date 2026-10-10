@@ -226,3 +226,21 @@ func TestSanitizingLimitPreservesUTF8(t *testing.T) {
 		t.Fatalf("sanitized text bytes=%d valid=%v", len(got), utf8.ValidString(got))
 	}
 }
+
+// Task 735 (issue #43): long pure-letter identifiers are code, not encodings —
+// frame names must survive sanitizeText into the report, while digit-carrying
+// base64 tokens stay redacted.
+func TestSanitizeTextKeepsFrameNames(t *testing.T) {
+	const reactFrame = "commitPassiveUnmountEffectsInsideOfDeletedTree_begin"
+	const snakeFrame = "commit_passive_unmount_effects_inside_of_deleted_tree_begin"
+	realToken := "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkw"
+	got := sanitizeText("long task top frames:\n  7x "+reactFrame+"\n  2x "+snakeFrame+"\n  1x "+realToken, 4096)
+	for _, want := range []string{"7x " + reactFrame, "2x " + snakeFrame, "1x [redacted-token]"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("sanitizeText() = %q, want it to contain %q", got, want)
+		}
+	}
+	if strings.Contains(got, "[redacted-token]_begin") {
+		t.Fatalf("frame name swallowed by token scrub: %q", got)
+	}
+}

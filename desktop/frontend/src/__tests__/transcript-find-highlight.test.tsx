@@ -3,6 +3,7 @@
 // render as data attributes/classes; closed bar (null) renders neither.
 
 import { JSDOM } from "jsdom";
+import * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -19,6 +20,7 @@ if (!("navigator" in globalThis)) {
 
 import { TranscriptBlockView } from "../components/TranscriptBlockView";
 import { TranscriptFindContext } from "../components/TranscriptFindContext";
+import { TranscriptRowRendererProvider } from "../components/TranscriptRowRendererContext";
 import type { TranscriptRow } from "../lib/transcriptRows";
 import type { TimelineBlock } from "../lib/transcriptTimeline";
 import type { TranscriptFindHighlight } from "../lib/transcriptFind";
@@ -56,7 +58,9 @@ async function render(find: TranscriptFindHighlight) {
   await act(async () => {
     root.render(
       <TranscriptFindContext.Provider value={find}>
-        <TranscriptBlockView block={block} renderRow={(row) => <span>{row.kind}</span>} />
+        <TranscriptRowRendererProvider renderRow={(row) => <span>{row.kind}</span>}>
+          <TranscriptBlockView block={block} />
+        </TranscriptRowRendererProvider>
       </TranscriptFindContext.Provider>,
     );
   });

@@ -98,21 +98,38 @@ update transition: %s`,
 
 func desktopLifecycleReport(previous desktopLifecycleObservation) crashReport {
 	phase := metricBucket(previous.Phase)
+	// Task 736 (issue #39): occurredAt used to be the record's last phase
+	// write — "healthy" stamped seconds after startup, hours before the death
+	// it claimed to timestamp. The launcher-observed death moment is the
+	// actual value; without it, the discovery moment is the honest bound
+	// (death happened no later than this) and the message says so.
+	occurredAt := previous.DeathAt
+	deathLine := ""
+	if occurredAt == "" {
+		occurredAt = previous.DetectedAt
+	} else {
+		deathLine = fmt.Sprintf("\ndeath observed: %s (launcher, exit code %d)", previous.DeathAt, previous.ExitCode)
+	}
 	message := fmt.Sprintf(`[desktop.abnormal_exit.v2]
 
 Reasonix found a per-process lifecycle record whose desktop process was no longer running.
 
 --- lifecycle context ---
 phase: %s
+pid: %d%s
 previous version: %s
 previous channel: %s
 started at: %s
-last phase update: %s`,
+last phase update: %s
+discovered at: %s`,
 		phase,
+		previous.PID,
+		deathLine,
 		sanitizeCrashField(previous.Version, 64),
 		sanitizeCrashField(previous.Channel, 32),
 		sanitizeCrashField(previous.StartedAt, 64),
 		sanitizeCrashField(previous.UpdatedAt, 64),
+		sanitizeCrashField(previous.DetectedAt, 64),
 	)
 	report := baseCrashReport("crash")
 	report.SchemaVersion = 3
@@ -122,7 +139,9 @@ last phase update: %s`,
 	report.ErrorMessage = "A per-process lifecycle record remained after its desktop process stopped."
 	report.TopFrame = "desktop.lifecycle.v2." + phase
 	report.FingerprintHint = "desktop.abnormal_exit.v2." + runtime.GOOS + "." + phase
-	report.OccurredAt = sanitizeCrashField(previous.UpdatedAt, 64)
+	report.OccurredAt = sanitizeCrashField(occurredAt, 64)
+	report.ProcessPID = previous.PID
+	report.ExitPhase = previous.Phase
 	report.Message = sanitizeCrashText(message, maxCrashDetailBytes)
 	return report
 }

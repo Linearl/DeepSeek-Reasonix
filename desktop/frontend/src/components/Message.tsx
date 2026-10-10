@@ -247,7 +247,12 @@ export {
   estimateUserMessageLines,
 } from "../lib/messageFold";
 
-export function UserMessage({
+// Task 735 (issue #43): memoized like its sibling AssistantMessage — a user
+// row re-render runs a chain of parsers (im-source, selected-text context,
+// merged-message, attachment refs, line estimates) that showed up directly in
+// the delete-topic 958ms long-task profile. Props are primitives plus the two
+// stable renderer callbacks, so the memo actually holds.
+export const UserMessage = memo(function UserMessage({
   text,
   submitText,
   failed,
@@ -765,7 +770,7 @@ export function UserMessage({
       )}
     </div>
   );
-}
+});
 
 export function TurnActions({
   text,

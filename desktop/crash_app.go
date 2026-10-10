@@ -41,6 +41,21 @@ var (
 	longBase64URLPattern  = regexp.MustCompile(`\b[A-Za-z0-9_-]{48,}\b`)
 )
 
+// looksLikeEncodedToken applies the issue #43 frame-name allowance (task 735):
+// a 40+/48+ character run of base64-alphabet characters is only treated as an
+// encoded secret when it carries at least one digit (+ "/" or "+" for the
+// standard alphabet). Real encodings of binary data essentially always do —
+// a no-digit run has probability ~(26/64)^len — while source identifiers are
+// the opposite: `commitPassiveUnmountEffectsInsideOfDeletedTree` is 46 plain
+// letters and used to be swallowed into "[redacted-token]_begin", erasing the
+// top frames of every long-task report. Pure-letter runs now pass through.
+func looksLikeEncodedToken(standardAlphabet bool, value string) bool {
+	if standardAlphabet {
+		return strings.ContainsAny(value, "0123456789+/")
+	}
+	return strings.ContainsAny(value, "0123456789")
+}
+
 func scrubUserPaths(s string) string {
 	return userPathSegment.ReplaceAllString(s, "${1}_")
 }
@@ -54,8 +69,18 @@ func scrubSensitiveText(s string) string {
 	s = jwtPattern.ReplaceAllString(s, "[redacted-jwt]")
 	s = explicitKeyPattern.ReplaceAllString(s, "[redacted-key]")
 	s = longHexPattern.ReplaceAllString(s, "[redacted-hex]")
-	s = longBase64Pattern.ReplaceAllString(s, "[redacted-token]")
-	s = longBase64URLPattern.ReplaceAllString(s, "[redacted-token]")
+	s = longBase64Pattern.ReplaceAllStringFunc(s, func(match string) string {
+		if looksLikeEncodedToken(true, match) {
+			return "[redacted-token]"
+		}
+		return match
+	})
+	s = longBase64URLPattern.ReplaceAllStringFunc(s, func(match string) string {
+		if looksLikeEncodedToken(false, match) {
+			return "[redacted-token]"
+		}
+		return match
+	})
 	return s
 }
 
@@ -87,14 +112,20 @@ type crashReport struct {
 	// TestMock marks a lab-simulated report (task 642): the report travelled the
 	// real pipeline end to end, but the receiving end must be able to tell it
 	// apart from a real failure. Real crash paths never set it.
-	TestMock    bool                  `json:"testMock,omitempty"`
-	BuildCommit string                `json:"buildCommit,omitempty"`
-	Channel     string                `json:"channel,omitempty"`
-	Language    string                `json:"language,omitempty"`
-	View        string                `json:"view,omitempty"`
-	Breadcrumbs []crashBreadcrumb     `json:"breadcrumbs,omitempty"`
-	OccurredAt  string                `json:"occurredAt,omitempty"`
-	WebRuntime  *webRuntimeDiagnostic `json:"webRuntime,omitempty"`
+	TestMock    bool              `json:"testMock,omitempty"`
+	BuildCommit string            `json:"buildCommit,omitempty"`
+	Channel     string            `json:"channel,omitempty"`
+	Language    string            `json:"language,omitempty"`
+	View        string            `json:"view,omitempty"`
+	Breadcrumbs []crashBreadcrumb `json:"breadcrumbs,omitempty"`
+	OccurredAt  string            `json:"occurredAt,omitempty"`
+	// Task 736 (issue #39): attribution fields for abnormal-exit reports —
+	// the dead desktop's PID and its last recorded lifecycle phase. Additive
+	// and omitempty, so pending payloads written by older builds decode
+	// unchanged and the ingest schema stays backward compatible.
+	ProcessPID int                   `json:"processPid,omitempty"`
+	ExitPhase  string                `json:"exitPhase,omitempty"`
+	WebRuntime *webRuntimeDiagnostic `json:"webRuntime,omitempty"`
 	// WebView2 is retained only so pending reports written by preview builds can
 	// still be decoded and forwarded after upgrade. New reports use WebRuntime.
 	WebView2 *webView2Diagnostic `json:"webview2,omitempty"`
