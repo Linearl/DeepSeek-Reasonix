@@ -50,15 +50,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Debug endpoint probe (does runner reach MiMo with this key?)
-        run: |
-          echo "BASE_URL=${ANTHROPIC_BASE_URL:-UNSET}"
-          CODE=$(curl -sS -m 20 -o /tmp/probe_out.json -w "%{http_code}" "${ANTHROPIC_BASE_URL}/v1/messages" \
-            -H "x-api-key: ${{ secrets.ANTHROPIC_API_KEY }}" \
-            -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-            -d '{"model":"mimo-v2.6-flash","max_tokens":8,"messages":[{"role":"user","content":"reply ok"}]}')
-          echo "HTTP $CODE"
-          head -c 300 /tmp/probe_out.json; echo
       - name: Claude Code Security Review
         uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda # main, 2026-10-08
         env:
@@ -66,5 +57,6 @@ jobs:
           ANTHROPIC_MODEL: mimo-v2.6-pro
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }} # holds the MIMO_API_KEY value (user decision 2026-10-10)
+          claude-model: mimo-v2.6-pro # main audit model (upstream validate/filters still hardcode claude-3-5-haiku; those 400s are non-blocking, main audit uses this)
           comment-pr: "true" # findings land as PR comments for triage
           upload-results: "true" # review JSON artifact for noise-rate analysis
