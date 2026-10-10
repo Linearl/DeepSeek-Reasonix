@@ -327,6 +327,12 @@ type App struct {
 	// could not refresh because the session lease was held by another process.
 	deferredRebuild deferredRebuildState
 
+	// collabParkWaiters tracks the per-tab deferred-park goroutines (task 738):
+	// collaboration stand-up tabs whose park attempt raced the async controller
+	// build. The waiter parks the tab once the runtime publishes; entries are
+	// added and removed under a.mu and never persisted.
+	collabParkWaiters map[string]bool
+
 	// historySliceMu guards the windowed-history background bookkeeping:
 	// single-flight display-index rebuilds for live sessions, the startup
 	// index-migration worker's cancel handle, and the idle-prefetch worker's
