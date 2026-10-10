@@ -193,7 +193,14 @@ export function useTranscriptKernel({
       const transaction = kernel.activeTransaction ?? (kernel.intent === "tail" ? kernel.begin("tail-sync", { kind: "tail" }) : null);
       let synced = false;
       if (transaction && element && (transaction.kind !== "prepend" || !prependAwaitingGeometryRef.current)) {
-        synced = kernel.correctAnchor(transaction, (key) => blockTop(element, key));
+        // Task 753 (root cause 2): hand the correction the current viewport
+        // facts so the kernel can refuse a drifted-anchor restore instead of
+        // teleporting the reader back to a block they left long ago.
+        synced = kernel.correctAnchor(transaction, (key) => blockTop(element, key), geometry ? {
+          scrollTop: geometry.scrollTop,
+          clientHeight: geometry.clientHeight,
+          visibleBlocks: geometry.visibleBlocks,
+        } : undefined);
       }
       // Task 267 (R2): tail-sync is the guarded subsidy for streaming growth,
       // but when the gate above rejects it (gesture held, priority loss,
@@ -315,12 +322,20 @@ export function useTranscriptKernel({
     const element = scrollElement;
     if (!element) return;
     const onWheel = (event: WheelEvent) => {
-      if (event.deltaY >= 0) return;
-      requestOlderAtTop();
+      // Task 753 (root cause 2): the NATIVE wheel channel is also a gesture
+      // lease entry. Some WebView engines never deliver the React
+      // onWheelCapture delegate (the jsdom mirror of the same gap), so wheel
+      // scrolling stayed gesture-less and observeNativeScroll ignored the
+      // real displacement - the reader could not leave the bottom, or lost
+      // the lease mid-scroll and the next geometry commit yanked the view.
+      // Renew-only: intent is still derived from the actual displacement in
+      // observeNativeScroll, never from the wheel event itself.
+      if (event.deltaY !== 0) renewGestureLease();
+      if (event.deltaY < 0) requestOlderAtTop();
     };
     element.addEventListener("wheel", onWheel, { passive: true });
     return () => element.removeEventListener("wheel", onWheel);
-  }, [requestOlderAtTop, scrollElement]);
+  }, [renewGestureLease, requestOlderAtTop, scrollElement]);
 
   const onPointerDownCapture = useCallback((event: { clientX: number; pointerType?: string }) => {
     // Touch has its own start/end stream. Its compatibility pointerup must
