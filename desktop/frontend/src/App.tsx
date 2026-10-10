@@ -1860,6 +1860,7 @@ export default function App() {
     tabOrderIds,
     composerProfilesByTab,
     running: state.running,
+    pendingPrompt: state.pendingPrompt,
     visibleTabId,
   });
 

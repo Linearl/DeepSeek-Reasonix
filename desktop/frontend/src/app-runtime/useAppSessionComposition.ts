@@ -371,8 +371,10 @@ export function useAppSessionComposition(input: AppSessionCompositionInput) {
   const extensionStatusList = useMemo(() => Object.values(state.extensionStatuses ?? {}), [state.extensionStatuses]);
   const visibleTabId = activeTabId;
   const visibleTabs = useMemo(() => projectVisibleTabs({
-    tabs: tabMetas, orderIds: tabOrderIds, profiles: composerProfilesByTab, visibleTabId, running: state.running,
-  }), [composerProfilesByTab, state.running, tabMetas, tabOrderIds, visibleTabId]);
+    tabs: tabMetas, orderIds: tabOrderIds, profiles: composerProfilesByTab, visibleTabId,
+    // 任务 730: the visible tab's live pendingPrompt feeds the strip marker.
+    running: state.running, pendingPrompt: state.pendingPrompt,
+  }), [composerProfilesByTab, state.pendingPrompt, state.running, tabMetas, tabOrderIds, visibleTabId]);
 
   useTabProjectionLifecycle({
     tabs: tabMetas, activeTabId, activeMeta: activeTab, meta: state.meta,
