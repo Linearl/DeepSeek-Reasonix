@@ -19,6 +19,86 @@ import (
 // scoped to a project workspace — and routes commands to the active tab. Events
 // flow the other way: each tab's controller emits to a tabEventSink that
 // forwards events tagged with tabId to the webview via runtime.EventsEmit.
+// sessionStoreState remembers the conversation-store mode (task 155) this
+// process started with: the settings view compares it against the configured
+// mode to flag a restart that is still pending, and the setter stamps the
+// audit log with it.
+type sessionStoreState struct {
+	sessionStorageModeMu    sync.Mutex
+	sessionStorageBootValue string
+	sessionStorageBootSet   bool
+}
+
+// topicActivationTicketState holds ticketed topic activation bookkeeping
+// (StartTopicActivation). Guarded by App.mu: activationGen bumps on every
+// activation-or-supersede so a background completion can tell whether it still
+// owns publication; the pending request/tab pair identifies the in-flight
+// ticketed activation whose completion may still prune and emit "ready".
+type topicActivationTicketState struct {
+	activationGen             uint64
+	latestActivationRequestID string
+	pendingActivationTabID    string
+}
+
+// diagnosticsState carries the pre-Wails diagnostics ownership flags and the
+// healthy-update identity captured before Wails starts. A process may commit
+// only the complete probationary transaction it actually booted from, never a
+// rewritten or later same-version retry.
+type diagnosticsState struct {
+	diagnosticsOwner           bool
+	diagnosticsOwnerRelease    func()
+	diagnosticsConfigLoaded    bool
+	diagnosticsTelemetry       bool
+	healthyUpdateCreatedAt     string
+	healthyUpdateTransactionID string
+}
+
+// remoteWindowState is the remote web-window child state: ticket/host-key pair
+// set from argv before Wails starts, the owner identity scoping child
+// single-instance locks, and the mutex serializing ticket consumption so a
+// handoff arriving before domReady cannot be overridden by the initial ticket.
+type remoteWindowState struct {
+	remoteWindowMu             sync.Mutex
+	remoteWindowTicket         string
+	remoteWindowHostKey        string
+	remoteWindowTicketConsumed bool
+	remoteWindowOwnerID        string
+	remoteWindowParentPID      int
+}
+
+// appUiState holds the process-wide UI flags flipped outside the tab registry:
+// forced quit, the last-known maximise state, the desktop locale, and whether
+// the tray finished starting.
+type appUiState struct {
+	forceQuit           atomic.Bool
+	backgroundMaximised atomic.Bool
+	desktopLocale       atomic.Int32
+	trayReady           bool
+}
+
+// gatewayState is the opt-in serve-pool gateway endpoint.
+type gatewayState struct {
+	gatewayAddr string
+	gatewayBind string
+}
+
+// tabsSaveState serializes writes to desktop-tabs.json and its fixed .tmp
+// path; the versions fence stale flushes (tabsSaveVersion is protected by
+// App.mu, tabsLastWrittenVersion by tabsSaveMu).
+type tabsSaveState struct {
+	tabsSaveMu             sync.Mutex
+	tabsSaveVersion        uint64
+	tabsLastWrittenVersion uint64
+}
+
+// updaterState guards the single native download/install operation. Checks are
+// read-only and may overlap; cache mutation and installation fail fast when
+// another updater operation is already active.
+type updaterState struct {
+	updaterOperationMu sync.Mutex
+	updaterOperationID string
+}
+
 type App struct {
 	ctx          context.Context
 	workspaceHub *workspaceChangeHub
@@ -28,13 +108,7 @@ type App struct {
 	// renames. It is never held by generic topic-state reads or other metadata.
 	topicTitleMutationMu sync.Mutex
 
-	// sessionStorageMode remembers the conversation-store mode (task 155) this
-	// process started with: the settings view compares it against the configured
-	// mode to flag a restart that is still pending, and the setter stamps the
-	// audit log with it.
-	sessionStorageModeMu    sync.Mutex
-	sessionStorageBootValue string
-	sessionStorageBootSet   bool
+	sessionStoreState
 
 	// bindingNoticeSeen records the task-211 binding-switch banner keys already
 	// shown in this process (audit-3 M2: per-process, not per-tab — reopening a
@@ -152,14 +226,7 @@ type App struct {
 	// a different active version than the one persisted as preferred.
 	sessionVersionActivationMu sync.Mutex
 
-	// Ticketed topic activation bookkeeping (StartTopicActivation). Guarded by
-	// mu. activationGen bumps on every activation-or-supersede so a background
-	// completion can tell whether it still owns publication; the pending
-	// request/tab pair identifies the in-flight ticketed activation whose
-	// completion may still prune and emit "ready".
-	activationGen             uint64
-	latestActivationRequestID string
-	pendingActivationTabID    string
+	topicActivationTicketState
 	// activationEventHook is test-only: when set it replaces the
 	// "topic:activation" runtime event emission so tests capture events
 	// synchronously. Set before starting concurrent work, never mutate after.
@@ -263,11 +330,7 @@ type App struct {
 	foregroundSubagentsMu sync.RWMutex
 	foregroundSubagents   map[string]map[string]foregroundSubagentEntry
 
-	// updaterOperationMu guards the single native download/install operation.
-	// Checks are read-only and may overlap; cache mutation and installation fail
-	// fast when another updater operation is already active.
-	updaterOperationMu sync.Mutex
-	updaterOperationID string
+	updaterState
 
 	// deferredRebuild tracks tabs whose settings were saved but whose runtime
 	// could not refresh because the session lease was held by another process.
@@ -316,10 +379,7 @@ type App struct {
 	extensionGeneration atomic.Uint64
 	extensionBuildMu    sync.RWMutex
 
-	// tabsSaveMu serializes writes to desktop-tabs.json and its fixed .tmp path.
-	tabsSaveMu             sync.Mutex
-	tabsSaveVersion        uint64 // protected by mu; assigned when collecting a snapshot
-	tabsLastWrittenVersion uint64 // protected by tabsSaveMu
+	tabsSaveState
 	// tabsSaveQueue (task 653) defers the desktop-tabs.json write out of the
 	// App.mu critical section: saveTabsLocked collects under the lock and
 	// enqueues; one flusher goroutine (started by App.startup) coalesces and
@@ -327,14 +387,11 @@ type App struct {
 	// synchronous write. See tabs_save_queue.go.
 	tabsSaveQueue tabsSaveQueue
 
-	forceQuit           atomic.Bool
-	backgroundMaximised atomic.Bool
-	desktopLocale       atomic.Int32
-	trayReady           bool
-	tray                *desktopTray
-	desktopShell        desktopShellRuntimeState
-	hangWatchdogMu      sync.Mutex
-	hangWatchdogCancel  context.CancelFunc
+	appUiState
+	tray               *desktopTray
+	desktopShell       desktopShellRuntimeState
+	hangWatchdogMu     sync.Mutex
+	hangWatchdogCancel context.CancelFunc
 
 	mediaTokens *mediaTokenStore
 	botInstalls map[string]*botInstallSession
@@ -371,8 +428,7 @@ type App struct {
 	remoteWindows *remoteWindowRegistry
 	servePool     *servepool.Manager
 	gatewaySrv    *http.Server
-	gatewayAddr   string
-	gatewayBind   string
+	gatewayState
 	// Task 439: the embedded zcode task bus (lab switch
 	// experimental_zcode_task_bus, 铁律 2 default off). Nil = not running,
 	// the only state a default install ever reaches.
@@ -398,24 +454,8 @@ type App struct {
 	// credProxy is the lazy app-wide key holder for local-proxy mode.
 	credProxyMu sync.Mutex
 	credProxy   *credentialProxy
-	// remoteWindowTicket/remoteWindowHostKey are set from argv before Wails
-	// starts in a child process. They gate the blank-shell middleware and the
-	// startup branches so the child never initializes local runtimes.
-	remoteWindowTicket  string
-	remoteWindowHostKey string
-	// remoteWindowOwnerID scopes child single-instance locks to one primary
-	// Desktop process. remoteWindowParentPID is set only in children and lets
-	// them exit when that owner (and therefore its SSH tunnel) disappears.
-	remoteWindowOwnerID   string
-	remoteWindowParentPID int
-	// remoteWindowMu serializes ticket consumption and navigation in a child
-	// process so a handoff arriving before domReady cannot be overridden by the
-	// initial ticket (or vice versa). remoteWindowTicketConsumed makes the
-	// initial handoff idempotent because WebKit fires OnDomReady again after the
-	// shell navigates to the remote Serve page.
-	remoteWindowMu             sync.Mutex
-	remoteWindowTicketConsumed bool
-	remoteWindow               *remoteWindowLaunch
+	remoteWindowState
+	remoteWindow *remoteWindowLaunch
 
 	// promptHistoryTape is a lazy, cursor-addressed view of prompt history. It
 	// stores session order and per-session parsed entries only after that session is
@@ -437,15 +477,7 @@ type App struct {
 	lifecycle       desktopLifecycleRuntime
 	// diagnosticsOwner is acquired before Wails starts so Linux's OnStartup
 	// ordering cannot let a second-instance handoff create lifecycle evidence.
-	diagnosticsOwner        bool
-	diagnosticsOwnerRelease func()
-	diagnosticsConfigLoaded bool
-	diagnosticsTelemetry    bool
-	// Healthy-update identity is captured before Wails starts. A process may
-	// commit only the complete probationary transaction it actually booted from,
-	// never a rewritten or later same-version retry.
-	healthyUpdateCreatedAt     string
-	healthyUpdateTransactionID string
+	diagnosticsState
 	// startupReady records that React rendered and the Wails bridge heartbeat
 	// succeeded. DOM navigation alone is not application health.
 	startupReady     atomic.Bool

@@ -60,7 +60,6 @@ func NewApp() *App {
 		botInstalls:          map[string]*botInstallSession{},
 		botRuntime:           newDesktopBotRuntime(),
 		remoteWindows:        newRemoteWindowRegistry(),
-		remoteWindowOwnerID:  newRemoteWindowOwnerID(),
 		topicState:           desktopTopicState,
 		worktreeReservations: worktreeRuntimeReservations{
 			cleanup: map[string]struct{}{},
@@ -85,6 +84,7 @@ func NewApp() *App {
 			"detail": detail,
 		})
 	})
+	a.remoteWindowOwnerID = newRemoteWindowOwnerID()
 	a.desktopShell.trayState = "probing"
 	a.webView2Recovery = newWebView2RecoveryCoordinator(a)
 	a.desktopShell.linuxRecovery = newLinuxWebKitRecoveryCoordinator(a)

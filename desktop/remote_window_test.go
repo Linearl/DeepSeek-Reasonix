@@ -120,7 +120,8 @@ func TestConsumeInitialRemoteWindowLaunchIsIdempotentAcrossDomReady(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &App{remoteWindowTicket: ticket}
+	a := &App{}
+	a.remoteWindowTicket = ticket
 
 	got, first, err := a.consumeInitialRemoteWindowLaunch()
 	if err != nil {
@@ -438,7 +439,8 @@ func TestRemoteWindowLifecycleSkipsPrimaryRuntime(t *testing.T) {
 }
 
 func TestRemoteWindowAssetMiddlewareDoesNotLoadPrimaryFrontend(t *testing.T) {
-	a := &App{remoteWindowTicket: remoteWindowTicketPrefix + "shell"}
+	a := &App{}
+	a.remoteWindowTicket = remoteWindowTicketPrefix + "shell"
 	nextCalled := false
 	h := a.remoteWindowAssetMiddleware()(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		nextCalled = true
