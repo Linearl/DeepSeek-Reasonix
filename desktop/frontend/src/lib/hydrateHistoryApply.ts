@@ -13,7 +13,7 @@ export type HydrateLiveState = {
   historyDigest?: string;
 };
 
-export type HydratedHistoryApplyMode = "replace" | "prepend" | "skip";
+export type HydratedHistoryApplyMode = "replace" | "prepend" | "rebase" | "skip";
 
 export type HydrateProjection = {
   items: ReadonlyArray<unknown>;
@@ -190,6 +190,20 @@ export function isStaleResidentProjection(
   return sameHydrateFingerprint(state, projection);
 }
 
+// 任务726 (2026-10-10 调研-1): the fetched page provably covers turns the
+// resident page does not have. Strictly-newer revision only — an equal or
+// unknown revision can never order the two pages, and a rollback (incoming <
+// resident) must stay "skip" so Retry/clear cannot rewind the transcript.
+export function projectionNewerThanResident(
+  state: HydrateLiveState | undefined,
+  projection: HydrateProjection | undefined,
+): boolean {
+  const resident = state?.historyRevision;
+  const incoming = projection?.revision;
+  return typeof resident === "number" && resident > 0
+    && typeof incoming === "number" && incoming > resident;
+}
+
 // A live turn is only "cached" once a history page has landed behind it.
 // Without that, a session opened mid-stream reports a cached turn, skips the
 // fetch, and streams over a blank transcript.
@@ -314,7 +328,16 @@ export function hydratedHistoryApplyMode(
   if (skipHistory) return "replace";
   if (!foregroundTurnActive) return isStaleResidentProjection(state, projection) ? "skip" : "replace";
   if ((state?.items.length ?? 0) === 0 && !hasCachedLiveTurn(state)) return "replace";
-  return (state?.historyTotalTurns ?? 0) === 0 ? "prepend" : "skip";
+  // 任务726 (2026-10-10 调研-1): a live turn over a resident page the fetch
+  // just proved stale (projection revision strictly newer than the surface's)
+  // must REBASE — the old "an already-hydrated running transcript is left
+  // alone" skip assumed the resident page covers the fetched one, which is
+  // exactly what a background turn (idle→steer→auto-open) invalidates: the
+  // fetch landed in the bit bucket and the transcript stayed on the pre-turn
+  // surface until the projector caught up on its own. history_rebase keeps
+  // the live tail and dedups it against the page (task 316 stable-id union).
+  if ((state?.historyTotalTurns ?? 0) === 0) return "prepend";
+  return projectionNewerThanResident(state, projection) ? "rebase" : "skip";
 }
 
 type SignatureItem = {

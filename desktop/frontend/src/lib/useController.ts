@@ -3653,9 +3653,22 @@ export function useController() {
           revision: projection.revisionKnown ? projection.revision : undefined,
           digest: projection.digest || undefined,
         };
-        dispatchTo(tabId, applyMode === "prepend"
-          ? { type: "history_prepend", ...page, removeIds: duplicateLiveItemIds(projection.items, statesRef.current.get(tabId)?.items ?? []) }
-          : { type: "history_replace", ...page });
+        if (applyMode === "prepend") {
+          dispatchTo(tabId, { type: "history_prepend", ...page, removeIds: duplicateLiveItemIds(projection.items, statesRef.current.get(tabId)?.items ?? []) });
+        } else if (applyMode === "rebase") {
+          // 任务726: 活动轮上的过时驻留页被更新页换底，live 尾部由 reducer 的
+          // 稳定 id 并集保留（task 316）。这条路径此前不存在——页被 "skip"
+          // 丢弃，transcript 停在 turn 前的表面直到投影器自己追平。
+          dispatchTo(tabId, { type: "history_rebase", ...page });
+          reportFrontendLog(
+            "history-paging",
+            "history rebase applied",
+            `tab=${tabId} seq=${currentSwitchSeq(tabId)} items=${projection.items.length} turns=${projection.startTurn}-${projection.endTurn}/${projection.totalTurns} revision=${projection.revisionKnown ? projection.revision : "-"} ms=${Date.now() - historyStartedAt}`,
+            "info",
+          );
+        } else {
+          dispatchTo(tabId, { type: "history_replace", ...page });
+        }
         noteStageTiming(tabId, "hydrate:apply", Date.now() - historyApplyStartedAt);
         addBreadcrumb(
           "tab.hydrate",
@@ -5782,6 +5795,13 @@ export function useController() {
     const targetSessionGeneration = optimisticTab?.sessionGeneration;
     const sameSession = sameSessionHydrateIdentity(targetIdentity, currentTargetIdentity);
     const optimisticStatus = optimisticTab ? backendStatusFromRuntimeMeta(optimisticTab) : undefined;
+    // 任务726 (2026-10-10 调研-1 事故)：目标会话的轮正在后台跑时，resident 表面
+    // 必然过时，而下面的调用方 skipHistory 是显式契约——loadSessionDataForTab 会
+    // 因此整体跳过任务580 的 meta 指纹对账与 676 有界重试（本例三次打开全部
+    // `history fetch skipped reason=local-snapshot scope=switch-tab`，零拉取零
+    // 对账，transcript 停在 turn 前的内容直到投影器自愈）。活动轮目标一律交还
+    // 共享 hydrate 链裁决：580 门判快、失守时有界拉取，落页由 rebase 模式承接。
+    const targetTurnLive = Boolean(optimisticStatus?.running);
     const adoptUnboundLiveSurface = canAdoptUnboundLiveSurface(targetIdentity, currentTargetIdentity, targetState, Boolean(optimisticStatus?.running), optimisticTab?.runtime?.epoch, runtimeEpochByTabRef.current.get(tabId));
     // A tab that already has transcript items is a local snapshot. Keep it
     // visible on switch-back even when metadata identity/fingerprint differs,
@@ -5919,11 +5939,12 @@ export function useController() {
           // unreachable for exactly the tabs it exists for - every switch back refetched, which
           // measured 2.0s in desktop.log (switch-tab:history 2025ms of a 2026ms total).
           // History rows are the ones carrying historyTurn; live rows never do.
-          skipHistory: (hasLocalItems && (hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest) ||
+          skipHistory: (!targetTurnLive && hasLocalItems && (hasReusableCachedTranscript(targetState, targetSessionPath, targetSessionRevision, targetSessionDigest) ||
             Boolean(targetState?.items?.some((item) => item.kind === "user" && item.historyTurn != null && item.historyTurn > 0)))) ||
             // Task 232: the previous reset emptied this surface while the LRU
             // still holds its projection - serve the local snapshot.
-            hasResidentSnapshotForEmptySurface(targetState, targetSessionPath),
+            // 任务726: 活动轮目标同样不走这条 peek 快路径（理由同上）。
+            (!targetTurnLive && hasResidentSnapshotForEmptySurface(targetState, targetSessionPath)),
           placeholderItems,
           surfacePolicy: preserveTargetSurface ? "preserve-current" : "replace-surface",
           preserveCachedHistory,
@@ -5988,7 +6009,9 @@ export function useController() {
     const sameSession = sameSessionHydrateIdentity(meta, prevState?.meta);
     const preserveCachedHistory = sameSession && hasReusableCachedTranscript(prevState, meta.sessionPath, meta.sessionRevision, meta.sessionDigest);
     // Task 232: reset-emptied surfaces reuse the LRU snapshot (local-snapshot).
-    const residentSnapshot = !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
+    // 任务726: 活动轮目标不走 peek——过时快照在轮内不会被后台 reconcile 修正，
+    // 交给共享 hydrate（580 门 + 有界拉取 + rebase 落页）。
+    const residentSnapshot = !foregroundRunningFromRuntimeMeta(meta) && !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
     setActiveTabId(meta.id);
     activeTabIdRef.current = meta.id;
     confirmBackendActiveTab(meta.id);
@@ -6017,7 +6040,9 @@ export function useController() {
     const sameSession = sameSessionHydrateIdentity(meta, prevState?.meta);
     const preserveCachedHistory = sameSession && hasReusableCachedTranscript(prevState, meta.sessionPath, meta.sessionRevision, meta.sessionDigest);
     // Task 232: reset-emptied surfaces reuse the LRU snapshot (local-snapshot).
-    const residentSnapshot = !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
+    // 任务726: 活动轮目标不走 peek——过时快照在轮内不会被后台 reconcile 修正，
+    // 交给共享 hydrate（580 门 + 有界拉取 + rebase 落页）。
+    const residentSnapshot = !foregroundRunningFromRuntimeMeta(meta) && !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
     setActiveTabId(meta.id);
     activeTabIdRef.current = meta.id;
     confirmBackendActiveTab(meta.id);
@@ -6046,7 +6071,9 @@ export function useController() {
     const sameSession = sameSessionHydrateIdentity(meta, prevState?.meta);
     const preserveCachedHistory = sameSession && hasReusableCachedTranscript(prevState, meta.sessionPath, meta.sessionRevision, meta.sessionDigest);
     // Task 232: reset-emptied surfaces reuse the LRU snapshot (local-snapshot).
-    const residentSnapshot = !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
+    // 任务726: 活动轮目标不走 peek——过时快照在轮内不会被后台 reconcile 修正，
+    // 交给共享 hydrate（580 门 + 有界拉取 + rebase 落页）。
+    const residentSnapshot = !foregroundRunningFromRuntimeMeta(meta) && !preserveCachedHistory && hasResidentSnapshotForEmptySurface(prevState, meta.sessionPath);
     setActiveTabId(meta.id);
     activeTabIdRef.current = meta.id;
     confirmBackendActiveTab(meta.id);
