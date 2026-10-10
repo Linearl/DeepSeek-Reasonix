@@ -112,7 +112,7 @@ const CHECKS = [
   { feature: "任务620 子代理标签显隐移侧栏增强墙（子代理面板前置置灰联动）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["[\"subagents\", \"workspace.subagentsTab\"]", "tabId === \"subagents\" && !Boolean(s.experimentalSubagentPanel)"] },
   // 任务649（收件箱改进包）：分段控件上移+胶囊分段 / 收发双方标签词 / 行 hover
   // 均为 fork 侧 UI 面，合并静默回退即复发「交付了但看不见」，逐条锚定。
-  { feature: "任务649 排序/视图分段控件上移头行（与保留期/清理规则同行）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__actions", "collab-inbox-panel__ordertoggle", "collab-inbox-panel__viewtoggle", "collabInbox.viewGroup"] },
+  { feature: "任务649 排序/视图分段控件（716 定稿重排后落位视图工具条行，原头行 actions 容器拆解；649① 语义保留）", file: "desktop/frontend/src/components/CollabInboxPanel.tsx", patterns: ["collab-inbox-panel__toolbar", "collab-inbox-panel__ordertoggle", "collab-inbox-panel__viewtoggle", "collabInbox.viewGroup"] },
   { feature: "任务649 胶囊分段样式（999px 拼合 + accent-soft 激活）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__ordertoggle,\n.collab-inbox-panel__viewtoggle", "border-radius: 999px;"] },
   { feature: "任务649 收发双方标签词（列表行 routelabel + 下拉 filterwrap）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__routelabel", ".collab-inbox-panel__filterwrap"] },
   { feature: "任务649 行 hover 高亮（620 件1 遗漏的行级规则）", file: "desktop/frontend/src/styles.css", patterns: [".collab-inbox-panel__row:hover {\n  border-color: var(--button-border-hover);\n  background: var(--button-bg-hover);\n}"] },
@@ -755,7 +755,9 @@ const CHECKS = [
   { feature: "任务278 快捷指令弹窗宽度链", file: "desktop/frontend/src/styles.css", patterns: ["settings-quick-commands--wide {\n  width: 100%;", "settings-quick-commands__row > textarea.mem-input {\n  flex: 2 1 52%;", "任务 278 防反弹"] },
   // 任务656：外壳 900px→1100px（视口兜底 min(..., 100vw-32px) 不变，278 的
   // 「视口兜底」语义原样保留，只放大默认宽度）。
-  { feature: "任务278+656 wide 弹窗外壳（1100px+视口兜底）", file: "desktop/frontend/src/components/ProviderAccessSettings.css", patterns: [".provider-dialog--wide { width: min(1100px, calc(100vw - 32px)); }"] },
+  // 任务721：width 单写从未真正生效——同元素 .modal 的 max-width:440px 恒钳制
+  // （max-width 胜 width，与级联顺序/特异性无关），须 width+max-width 双写。
+  { feature: "任务278+656+721 wide 弹窗外壳（1100px 双写+视口兜底）", file: "desktop/frontend/src/components/ProviderAccessSettings.css", patterns: ["width: min(1100px, calc(100vw - 32px));\n  max-width: min(1100px, calc(100vw - 32px));"] },
   // 任务 323：multi_edit 引导——正文裁决是描述改文案（不放 AGENTS.md/技能）：
   // multi_edit 前置 WHEN TO USE 触发句、edit_file 尾部互引，加中文触发词
   // （172 惯例）。锚点锁双侧指路，merge 静默丢任一侧即报。

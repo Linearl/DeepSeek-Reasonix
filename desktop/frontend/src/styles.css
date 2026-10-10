@@ -4946,6 +4946,31 @@ a[href] {
   word-break: break-word;
   white-space: pre-wrap;
 }
+/* 任务723: deferred steer placeholder — collapsed status row, click to expand. */
+.steer-line__bubble--deferred {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: right;
+}
+.steer-line__status {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.steer-line__text--summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.steer-line__chevron {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.steer-line__bubble--open .steer-line__chevron {
+  transform: rotate(90deg);
+}
 
 /* ── ReadOnly batch (parent fold for read/search tools) ────────────── */
 .readonly-batch {
@@ -44318,23 +44343,6 @@ button.statusbar__mcp:focus-visible {
   margin: 8px 10px;
 }
 
-/* Task 656: the inline create form the picker's bottom "add" entry opens. It
-   replaces the snippet list while open, mirroring the settings-manager draft
-   look so the same flow reads the same in both surfaces. */
-.composer-content-menu__draft {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 8px 10px;
-  padding: 8px;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-}
-.composer-content-menu__draft-actions {
-  display: flex;
-  gap: 6px;
-}
-
 /* One-line preview for menu items that carry a secondary line: a long snippet must
    not stretch the popover, the full text is still in the picker. */
 .composer-access-menu__hint {
@@ -44933,17 +44941,35 @@ button.statusbar__mcp:focus-visible {
   justify-content: space-between;
   gap: 8px;
 }
+/* 任务716 ①：标题横排——nowrap+不收缩，窄容器下不再被压缩成一字一行
+   （原布局六控件同行的挤压是竖排截断根因，716 分组后头部仅剩标题+关闭）。 */
 .collab-inbox-panel__title {
-  font-weight: 600;
-  font-size: 13px;
+  font-weight: var(--font-weight-strong);
+  font-size: 15px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.collab-inbox-panel__actions {
+/* 任务716 ②：维护行（定稿第二位，暖色警示底）——危险操作分组（保留期/
+   清理条件/立即清理）视觉降权但可达；warn token 调色跟随明暗主题。横向
+   出血到面板两缘，还原 v3 设计稿的整幅色带分段。 */
+.collab-inbox-panel__maint {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
+  margin: 0 -12px;
+  padding: 6px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, var(--bg-elevated, var(--bg)));
 }
+.collab-inbox-panel__maintlabel {
+  font-size: 11px;
+  font-weight: var(--font-weight-strong);
+  color: color-mix(in srgb, var(--warn) 78%, var(--fg));
+}
+/* 「标签词+下拉」通用形态（保留期/清理条件共用；中性弱化色供维护行外
+   复用，维护行内由上方 warn 覆盖规则接管）。 */
 .collab-inbox-panel__retention {
   display: flex;
   align-items: center;
@@ -44951,8 +44977,18 @@ button.statusbar__mcp:focus-visible {
   font-size: 11px;
   color: var(--fg-faint);
 }
+/* 维护行内的标签词随行底转 warn 调（覆盖 .collab-inbox-panel__retention 的
+   中性弱化色，类名保留以钉住「label+select」结构与既有测试选择器）。 */
+.collab-inbox-panel__maint .collab-inbox-panel__retention {
+  color: color-mix(in srgb, var(--warn) 74%, var(--fg));
+}
+/* 立即清理按钮：维护行内用 warn 描边（v3 设计稿 warn-btn 语言）。 */
+.collab-inbox-panel__cleannow {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+  color: color-mix(in srgb, var(--warn) 80%, var(--fg));
+}
 /* 任务620：立即清理的一次性反馈（已清理 N 封 / 没有可清理的信件），
-   弱化前景、随头行内联，数秒后由组件侧定时移除。 */
+   弱化前景、随维护行内联，数秒后由组件侧定时移除。 */
 .collab-inbox-panel__cleannote {
   font-size: 11px;
   color: var(--fg-dim);
@@ -45013,9 +45049,33 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-xs);
   color: var(--fg-faint);
 }
-/* 任务 649 ①：排序/视图分段控件上移头行后改胶囊分段——参照设置-权限档位
-   .set-seg 的分段语言（容器描边 + 按钮拼合 + 激活 accent-soft 反白），
-   999px 为刻意的胶囊档；窄宽度在 actions 内换行，不再独占一行。 */
+/* 任务716 ③：视图工具条（定稿第三位，灰底弱分区）——视图/排序分段 +
+   全部已读；横向出血与维护行同款整幅色带，底色用 bg-soft（比面板底
+   沉一档的中性灰，跟随明暗主题）。 */
+.collab-inbox-panel__toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 -12px;
+  padding: 4px 12px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+.collab-inbox-panel__tlabel {
+  font-size: 11px;
+  font-weight: var(--font-weight-strong);
+  color: var(--fg-faint);
+}
+.collab-inbox-panel__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+}
+/* 任务 649 ①+任务716 ③：排序/视图分段控件落位视图工具条（716 定稿第三
+   位；649 时曾在头行 actions），样式保持胶囊分段——参照设置-权限档位
+   .set-seg 的分段语言（容器描边 + 按钮拼合 + 激活 accent-soft 反白）。 */
 .collab-inbox-panel__ordertoggle,
 .collab-inbox-panel__viewtoggle {
   display: inline-flex;

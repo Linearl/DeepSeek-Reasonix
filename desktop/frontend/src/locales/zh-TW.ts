@@ -2982,6 +2982,7 @@ export const zhTW: Record<DictKey, string> = {
   "transcript.toolCount": "{n} 個工具",
   "transcript.thoughtCount": "{n} 段思考",
   "transcript.steer": "中途引導",
+  "transcript.steerDeferred": "已發出 · 待下一輪處理",
   "transcript.working": "工作中",
   "transcript.workingDuration": "工作中 {duration}",
   "transcript.worked": "已工作",
@@ -5045,11 +5046,14 @@ export const zhTW: Record<DictKey, string> = {
   "collabInbox.retention.30d": "30 天",
   "collabInbox.retention.90d": "90 天",
   "collabInbox.retention.forever": "永久",
-  "collabInbox.cleanupRule": "會話刪除時",
+  // 任務 716 ②：維護行組標籤；清理條件下拉更名（定稿①②：原「會話刪除時」
+  // 是場景描述不作前綴），選項去掉「…清理」後綴與定稿值「收信方刪除時」一致。
+  "collabInbox.maintLabel": "維護",
+  "collabInbox.cleanupRule": "清理條件",
   "collabInbox.cleanup.never": "不清理（預設）",
-  "collabInbox.cleanup.sender": "發信方刪除時清理",
-  "collabInbox.cleanup.receiver": "收信方刪除時清理",
-  "collabInbox.cleanup.both": "雙方都刪除時清理",
+  "collabInbox.cleanup.sender": "發信方刪除時",
+  "collabInbox.cleanup.receiver": "收信方刪除時",
+  "collabInbox.cleanup.both": "雙方都刪除時",
   "collabInbox.cleanNow": "立即清理",
   "collabInbox.cleanNowHint": "按當前保留期與清理規則立即執行一次清理",
   "collabInbox.cleaned": "已清理 {n} 封",
@@ -5069,6 +5073,9 @@ export const zhTW: Record<DictKey, string> = {
   "collabInbox.recipientLabel": "收信方",
   // 任務 649 ①：視圖分段控制項的組標籤（aria）。
   "collabInbox.viewGroup": "視圖形式",
+  // 任務 716 ③：視圖工具條的可見小標籤（v3 設計稿 tlabel）。
+  "collabInbox.viewLabel": "檢視",
+  "collabInbox.sortLabel": "排序",
   "collabInbox.hover.global": "全域",
   "collabInbox.to": "收信方過濾",
   "collabInbox.view.list": "列表",

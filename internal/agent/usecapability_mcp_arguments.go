@@ -248,6 +248,57 @@ func captureSpreadParameters(raw json.RawMessage, args *useCapabilityArgs) {
 	}
 }
 
+// promoteNestedCapabilityID recovers a capability_id the model nested inside
+// the arguments object instead of putting it on the envelope top level (task
+// 728: 58 of the 59 observed call failures had the shape {"action":"call",
+// "arguments":{"capability_id":...,"arguments":{...}}}). It returns the
+// promoted id and the candidate target arguments: the nested object minus
+// capability_id, with a lone remaining "arguments" member unwrapped one level
+// (that object is then a complete call envelope). A non-string or empty
+// nested capability_id never promotes. Detection is purely structural;
+// ResolveCall still gates the promoted form against the target schema and
+// falls back to the original missing-id error when it does not pass.
+func promoteNestedCapabilityID(raw json.RawMessage) (string, json.RawMessage, bool) {
+	if argumentsAbsent(raw) {
+		return "", nil, false
+	}
+	var object map[string]json.RawMessage
+	if json.Unmarshal(raw, &object) != nil || object == nil {
+		return "", nil, false
+	}
+	nested, exists := object["capability_id"]
+	if !exists {
+		return "", nil, false
+	}
+	var id string
+	if json.Unmarshal(nested, &id) != nil {
+		return "", nil, false
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", nil, false
+	}
+	remaining := make(map[string]json.RawMessage, len(object))
+	for key, value := range object {
+		if key != "capability_id" {
+			remaining[key] = value
+		}
+	}
+	if len(remaining) == 1 {
+		if lone, ok := remaining["arguments"]; ok {
+			if argumentsAbsent(lone) {
+				return id, json.RawMessage(`{}`), true
+			}
+			return id, json.RawMessage(append([]byte(nil), lone...)), true
+		}
+	}
+	merged, err := json.Marshal(remaining) // sorted keys, compacted values
+	if err != nil {
+		return "", nil, false
+	}
+	return id, merged, true
+}
+
 func parseUseCapabilityArgs(raw json.RawMessage) (useCapabilityArgs, string, string, error) {
 	var args useCapabilityArgs
 	if err := json.Unmarshal(raw, &args); err != nil {

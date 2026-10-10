@@ -448,93 +448,108 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
 
   return createPortal(
     <div className="collab-inbox-panel" role="dialog" aria-label={t("collabInbox.title")}>
+      {/* 任务716 ①（用户拖拽定稿）：头部=标题横排（nowrap 防窄容器竖排截断）+
+          关闭按钮右上角；副标题按定稿③不设。 */}
       <div className="collab-inbox-panel__head">
         <span className="collab-inbox-panel__title">{t("collabInbox.title")}</span>
-        <div className="collab-inbox-panel__actions">
-          <label className="collab-inbox-panel__retention">
-            <span>{t("collabInbox.retention")}</span>
-            <select
-              value={snapshot?.settings?.retention ?? "7d"}
-              disabled={busy}
-              onChange={(event) => void act(() => b.SetCollabMailRetention(event.target.value))}
+        <button type="button" className="btn btn--small" onClick={() => setCollabInboxOpen(false)}>
+          {t("collabInbox.close")}
+        </button>
+      </div>
+
+      {/* 任务716 ②（定稿第二位）：维护行——保留期 + 清理条件（定稿①②：原
+          「会话删除时」是场景描述不作下拉前缀，更名为「清理条件」）+ 立即清理，
+          暖色警示底让危险操作分组可达但不与浏览控件混杂。 */}
+      <div className="collab-inbox-panel__maint">
+        <span className="collab-inbox-panel__maintlabel">{t("collabInbox.maintLabel")}</span>
+        <label className="collab-inbox-panel__retention">
+          <span>{t("collabInbox.retention")}</span>
+          <select
+            value={snapshot?.settings?.retention ?? "7d"}
+            disabled={busy}
+            onChange={(event) => void act(() => b.SetCollabMailRetention(event.target.value))}
+          >
+            {RETENTIONS.map((r) => (
+              <option key={r} value={r}>{t(`collabInbox.retention.${r}` as "collabInbox.retention.7d")}</option>
+            ))}
+          </select>
+        </label>
+        {/* 任务 464：清理条件四选一，与保留期正交（716 更名后选项文案去掉
+            「…清理」后缀，与定稿「清理条件：收信方删除时」一致）。 */}
+        <label className="collab-inbox-panel__retention">
+          <span>{t("collabInbox.cleanupRule")}</span>
+          <select
+            value={snapshot?.settings?.cleanupRule ?? "never"}
+            disabled={busy}
+            onChange={(event) => void act(() => b.SetCollabMailCleanupRule(event.target.value))}
+          >
+            {CLEANUP_RULES.map((rule) => (
+              <option key={rule} value={rule}>{t(`collabInbox.cleanup.${rule}` as "collabInbox.cleanup.never")}</option>
+            ))}
+          </select>
+        </label>
+        {/* 任务 620：立即清理——选完规则后手动触发一次批量清理，反馈就地可见。 */}
+        <button
+          type="button"
+          className="btn btn--secondary btn--small collab-inbox-panel__cleannow"
+          title={t("collabInbox.cleanNowHint")}
+          disabled={busy}
+          onClick={() => void cleanNow()}
+        >
+          {t("collabInbox.cleanNow")}
+        </button>
+        {cleanNote && <span className="collab-inbox-panel__cleannote">{cleanNote}</span>}
+      </div>
+
+      {/* 任务716 ③（定稿第三位）：视图工具条——视图切换 + 排序切换（649 ①的
+          胶囊分段样式保留，落位从头行 actions 移到本条灰底工具条），全部已读
+          属批量浏览动作随行。 */}
+      <div className="collab-inbox-panel__toolbar">
+        <span className="collab-inbox-panel__tlabel">{t("collabInbox.viewLabel")}</span>
+        <div className="collab-inbox-panel__viewtoggle" role="group" aria-label={t("collabInbox.viewGroup")}>
+          <button
+            type="button"
+            className={`collab-inbox-panel__state${view === "list" ? " collab-inbox-panel__state--on" : ""}`}
+            onClick={() => setView("list")}
+          >
+            {t("collabInbox.view.list")}
+          </button>
+          <button
+            type="button"
+            className={`collab-inbox-panel__state${view === "chains" ? " collab-inbox-panel__state--on" : ""}`}
+            onClick={() => setView("chains")}
+          >
+            {t("collabInbox.view.chains")}
+          </button>
+        </div>
+        <span className="collab-inbox-panel__sep" aria-hidden="true" />
+        <span className="collab-inbox-panel__tlabel">{t("collabInbox.sortLabel")}</span>
+        <div className="collab-inbox-panel__ordertoggle" role="group" aria-label={t("collabInbox.sortByDate")}>
+          {ORDERS.map((name) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={order === name}
+              className={`collab-inbox-panel__state${order === name ? " collab-inbox-panel__state--on" : ""}`}
+              onClick={() => setOrder(name)}
             >
-              {RETENTIONS.map((r) => (
-                <option key={r} value={r}>{t(`collabInbox.retention.${r}` as "collabInbox.retention.7d")}</option>
-              ))}
-            </select>
-          </label>
-          {/* 任务 464：会话删除时的清理语义（四选一，与保留期正交）。 */}
-          <label className="collab-inbox-panel__retention">
-            <span>{t("collabInbox.cleanupRule")}</span>
-            <select
-              value={snapshot?.settings?.cleanupRule ?? "never"}
-              disabled={busy}
-              onChange={(event) => void act(() => b.SetCollabMailCleanupRule(event.target.value))}
-            >
-              {CLEANUP_RULES.map((rule) => (
-                <option key={rule} value={rule}>{t(`collabInbox.cleanup.${rule}` as "collabInbox.cleanup.never")}</option>
-              ))}
-            </select>
-          </label>
-          {/* 任务 620：立即清理——选完规则后手动触发一次批量清理，反馈就地可见。 */}
+              {t(`collabInbox.order.${name}` as "collabInbox.order.desc")}
+            </button>
+          ))}
+        </div>
+        {rows.some((entry) => !entry.read) && (
           <button
             type="button"
             className="btn btn--secondary btn--small"
-            title={t("collabInbox.cleanNowHint")}
             disabled={busy}
-            onClick={() => void cleanNow()}
+            onClick={() => void act(() => b.MarkCollabMailRead(rows.filter((entry) => !entry.read).map((entry) => entry.id)))}
           >
-            {t("collabInbox.cleanNow")}
+            {t("collabInbox.markAllRead")}
           </button>
-          {cleanNote && <span className="collab-inbox-panel__cleannote">{cleanNote}</span>}
-          {rows.some((entry) => !entry.read) && (
-            <button
-              type="button"
-              className="btn btn--secondary btn--small"
-              disabled={busy}
-              onClick={() => void act(() => b.MarkCollabMailRead(rows.filter((entry) => !entry.read).map((entry) => entry.id)))}
-            >
-              {t("collabInbox.markAllRead")}
-            </button>
-          )}
-          {/* 任务 649 ①：排序/视图分段控件上移到头行（与保留期/会话删除时
-              同行），样式改胶囊分段（参照设置-权限档位的 .set-seg 分段语言），
-              窄宽度时在 actions 内换行而不再独占一行。 */}
-          <div className="collab-inbox-panel__ordertoggle" role="group" aria-label={t("collabInbox.sortByDate")}>
-            {ORDERS.map((name) => (
-              <button
-                key={name}
-                type="button"
-                aria-pressed={order === name}
-                className={`collab-inbox-panel__state${order === name ? " collab-inbox-panel__state--on" : ""}`}
-                onClick={() => setOrder(name)}
-              >
-                {t(`collabInbox.order.${name}` as "collabInbox.order.desc")}
-              </button>
-            ))}
-          </div>
-          <div className="collab-inbox-panel__viewtoggle" role="group" aria-label={t("collabInbox.viewGroup")}>
-            <button
-              type="button"
-              className={`collab-inbox-panel__state${view === "list" ? " collab-inbox-panel__state--on" : ""}`}
-              onClick={() => setView("list")}
-            >
-              {t("collabInbox.view.list")}
-            </button>
-            <button
-              type="button"
-              className={`collab-inbox-panel__state${view === "chains" ? " collab-inbox-panel__state--on" : ""}`}
-              onClick={() => setView("chains")}
-            >
-              {t("collabInbox.view.chains")}
-            </button>
-          </div>
-          <button type="button" className="btn btn--small" onClick={() => setCollabInboxOpen(false)}>
-            {t("collabInbox.close")}
-          </button>
-        </div>
+        )}
       </div>
 
+      {/* 任务716 ④（定稿第四位）：桶过滤标签行。 */}
       <div className="collab-inbox-panel__buckets" role="tablist">
         {BUCKETS.map((name) => (
           <button

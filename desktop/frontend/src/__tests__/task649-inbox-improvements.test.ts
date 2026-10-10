@@ -1,8 +1,8 @@
 // Run: npx tsx src/__tests__/task649-inbox-improvements.test.ts
 // 任务 649（收件箱改进包）的接缝钉子——源码契约层（DOM 行为由
 // collab-inbox-panel.test.tsx 承担）：
-//  ① 排序/视图分段控件上移头行 actions（与保留期/会话删除时同行），样式改
-//     胶囊分段（参照设置-权限档位 .set-seg 的分段语言）；
+//  ① 排序/视图分段控件落位视图工具条（任务716 重排后的定稿第三位；649 时
+//     曾在头行 actions），样式保持胶囊分段（参照设置-权限档位 .set-seg）；
 //  ② 收发双方口径：列表行路由与 from/to 下拉都带「发信方/收信方」标签词；
 //  ③ 行 hover：.collab-inbox-panel__row 有一条 hover 高亮规则（620 件1 只落了
 //     下拉 hover，行本身实现遗漏——定位结论钉在这里，防再次「交付了但看不见」）；
@@ -30,11 +30,15 @@ function sliceBetween(source: string, startMarker: string, endMarker: string): s
 
 console.log("\ntask 649 收件箱改进包（分段控件上移 / 收发双方标签 / 行 hover）");
 
-// ① 排序/视图分段控件上移头行 + 胶囊分段样式。
+// ① 排序/视图分段控件落位视图工具条 + 胶囊分段样式（任务716 重排后位置）。
 {
-  const head = sliceBetween(inbox, 'className="collab-inbox-panel__head"', 'className="collab-inbox-panel__buckets"');
-  ok(head.includes('className="collab-inbox-panel__ordertoggle"') && head.includes('className="collab-inbox-panel__viewtoggle"'),
-    "the sort/view segmented controls live in the head (same row as retention/cleanup)");
+  const toolbar = sliceBetween(inbox, 'className="collab-inbox-panel__toolbar"', 'className="collab-inbox-panel__buckets"');
+  ok(toolbar.includes('className="collab-inbox-panel__ordertoggle"') && toolbar.includes('className="collab-inbox-panel__viewtoggle"'),
+    "the sort/view segmented controls live in the view toolbar (716 定稿第三位)");
+  const head = sliceBetween(inbox, 'className="collab-inbox-panel__head"', 'className="collab-inbox-panel__maint"');
+  ok(head.length > 0
+    && !head.includes("collab-inbox-panel__ordertoggle") && !head.includes("collab-inbox-panel__viewtoggle"),
+    "the head row carries only title + close (716 定稿第一位，无副标题)");
   const filters = sliceBetween(inbox, 'className="collab-inbox-panel__filters"', 'className="collab-inbox-panel__rows"');
   ok(!filters.includes("collab-inbox-panel__ordertoggle") && !filters.includes("collab-inbox-panel__viewtoggle"),
     "the filters row no longer hosts the sort/view controls");

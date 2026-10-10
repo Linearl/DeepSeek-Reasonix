@@ -611,7 +611,9 @@ function computeItemMeasurementVersion(item: Item): string {
       parts.push(String(item.text ?? ""));
       break;
     case "notice":
-      parts.push(String(item.text ?? ""), String(item.detail ?? ""), String(item.title ?? ""), String(item.level ?? ""), String(item.variant ?? ""), String(item.action ?? ""), String(item.recoveryId ?? ""), JSON.stringify(item.completionSummary ?? {}));
+      // 任务723: the deferred-steer placeholder has a different footprint than
+      // the full ↪ bubble — the flip must invalidate the cached row height.
+      parts.push(String(item.text ?? ""), String(item.detail ?? ""), String(item.title ?? ""), String(item.level ?? ""), String(item.variant ?? ""), String(item.action ?? ""), String(item.recoveryId ?? ""), item.steerDeferred ? "deferred" : "", JSON.stringify(item.completionSummary ?? {}));
       break;
     case "compaction":
       parts.push(item.pending ? "1" : "0", String(item.trigger ?? ""), String(item.messages ?? ""), String(item.summary ?? ""), String(item.archive ?? ""));

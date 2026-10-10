@@ -19,15 +19,45 @@ export function PhaseCard({ id, text }: { id: string; text: string }) {
 
 // A mid-turn steer is the user's own message, so it renders on the user side
 // of the transcript instead of disappearing into the work fold.
-export function SteerCard({ id, text }: { id: string; text: string }) {
+//
+// 任务723: when the same inboxItemId later arrives as a NEW turn's user_input
+// (the steer was injected-but-unconsumed / rejected-to-followup and the
+// dispatch pump admitted it as its own turn), the bubble downgrades to a
+// collapsed placeholder — the tail user row is the entity, this row only
+// marks where the message was first received. Collapsed shows the status
+// label plus the body's first line; expanding reveals the full text. The
+// dedup key is the inboxItemId carried on the item, never the text.
+export function SteerCard({ id, text, deferred = false }: { id: string; text: string; deferred?: boolean }) {
   const t = useT();
+  const [expanded, setExpanded] = useState(false);
   const body = text.startsWith(STEER_NOTICE_PREFIX) ? text.slice(STEER_NOTICE_PREFIX.length) : text;
+  if (!deferred) {
+    return (
+      <div className="steer-line" data-entrance={id}>
+        <div className="steer-line__bubble" title={t("transcript.steer")}>
+          <span className="steer-line__icon" aria-hidden="true">↪</span>
+          <span className="steer-line__text">{body}</span>
+        </div>
+      </div>
+    );
+  }
+  const firstLine = body.split("\n", 1)[0] ?? "";
   return (
     <div className="steer-line" data-entrance={id}>
-      <div className="steer-line__bubble" title={t("transcript.steer")}>
+      <button
+        type="button"
+        className={`steer-line__bubble steer-line__bubble--deferred${expanded ? " steer-line__bubble--open" : ""}`}
+        title={t("transcript.steerDeferred")}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((open) => !open)}
+      >
         <span className="steer-line__icon" aria-hidden="true">↪</span>
-        <span className="steer-line__text">{body}</span>
-      </div>
+        <span className="steer-line__status">{t("transcript.steerDeferred")}</span>
+        {expanded
+          ? <span className="steer-line__text">{body}</span>
+          : <span className="steer-line__text steer-line__text--summary">{firstLine}</span>}
+        <ChevronRight size={12} className="steer-line__chevron" aria-hidden="true" />
+      </button>
     </div>
   );
 }

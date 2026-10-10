@@ -211,6 +211,14 @@ type HeartbeatEngine struct {
 	// (task 244 B1, S4 call-time evaluation so a settings toggle applies to the
 	// next run without a restart). Nil = always off.
 	idleTerminate func() bool
+
+	// Task 500 (reuse-session rotation): the engine-owned state sidecar cache
+	// and an injectable stats resolver. rotationStats nil = real filesystem
+	// resolution via the topic-session index; tests override it to keep the
+	// state machine off the disk. Both guarded by mu like the rest of the
+	// engine.
+	rotationState *heartbeatRotationState
+	rotationStats rotationStatsResolver
 }
 
 type heartbeatPendingTopic struct {
@@ -297,6 +305,11 @@ func (e *HeartbeatEngine) tick() {
 	// short-circuits when there is neither an autopilot session nor a guard to
 	// check (the common case: one map scan, no disk read).
 	e.reconcileAutopilotGuardsCheap()
+	// Task 500: the reuse-session rotation sweep — advances in-flight handoff
+	// relays (marker checks) and, throttled, detects topics over the rotation
+	// thresholds. Gated cheap: with rotation disabled in its config or no
+	// eligible task in memory it costs one config read and one loop.
+	e.reconcileRotationsCheap()
 	e.mu.Lock()
 	tasks = append([]HeartbeatTask(nil), e.tasks...)
 	e.mu.Unlock()
@@ -777,11 +790,29 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 		}
 	}
 
+	// Task 500: a rotation wake carries the handoff instruction (or, for a
+	// successor's first run, the read-the-handoff bootstrap) instead of the
+	// task's own prompt. Evaluated after the idle checks — a rotation prompt,
+	// like any other, is only ever submitted to an idle conversation.
+	prompt := t.Prompt
+	var rotationKind rotationPromptKind
+	if override, kind := e.rotationPromptOverride(t); kind != rotationPromptNone {
+		prompt, rotationKind = override, kind
+	}
+
 	// Submit as a plain user turn so scheduled prompts cannot invoke desktop
 	// shell or slash-command handlers such as "!cmd", "/clear", or "/compact".
-	if !e.app.submitUserTurnToTabWithSink(tabMeta.ID, t.Prompt, botForwarder) {
+	if !e.app.submitUserTurnToTabWithSink(tabMeta.ID, prompt, botForwarder) {
 		log.Printf("[heartbeat] submit skipped for %q", t.Title)
+		e.rotationPromptSubmitFailed(t, rotationKind)
 		return t
+	}
+	switch rotationKind {
+	case rotationPromptHandoff:
+		// The carry already moved the topic to handoff_pending (CAS inside
+		// rotationPromptOverride); nothing further to do.
+	case rotationPromptBootstrap:
+		e.rotationBootstrapDelivered(t.ID)
 	}
 
 	// After a successful submit, keep the topic as an in-flight guard. The next

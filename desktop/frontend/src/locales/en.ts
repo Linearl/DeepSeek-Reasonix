@@ -4291,6 +4291,7 @@ export const en = {
   "transcript.toolCount": "{n} tools",
   "transcript.thoughtCount": "{n} thoughts",
   "transcript.steer": "Mid-turn steer",
+  "transcript.steerDeferred": "Sent · queued for the next turn",
   "transcript.working": "Working",
   "transcript.workingDuration": "Working {duration}",
   "transcript.worked": "Worked",
@@ -5053,11 +5054,15 @@ export const en = {
   "collabInbox.retention.30d": "30 days",
   "collabInbox.retention.90d": "90 days",
   "collabInbox.retention.forever": "Forever",
-  "collabInbox.cleanupRule": "On session delete",
+  // Task 716 ②: maintenance-row group label; the cleanup select is renamed
+  // (the old "On session delete" was a scenario description, not a picker
+  // name) and options drop the "Clean when…" suffix to read as conditions.
+  "collabInbox.maintLabel": "Maintenance",
+  "collabInbox.cleanupRule": "Cleanup condition",
   "collabInbox.cleanup.never": "Keep everything (default)",
-  "collabInbox.cleanup.sender": "Clean when sender deleted",
-  "collabInbox.cleanup.receiver": "Clean when recipient deleted",
-  "collabInbox.cleanup.both": "Clean when both deleted",
+  "collabInbox.cleanup.sender": "Sender deleted",
+  "collabInbox.cleanup.receiver": "Recipient deleted",
+  "collabInbox.cleanup.both": "Both deleted",
   "collabInbox.cleanNow": "Clean now",
   "collabInbox.cleanNowHint": "Run one cleanup pass now with the current retention and cleanup rule",
   "collabInbox.cleaned": "Cleaned {n}",
@@ -5077,6 +5082,9 @@ export const en = {
   "collabInbox.recipientLabel": "Recipient",
   // Task 649 ①: group label (aria) for the view segmented control.
   "collabInbox.viewGroup": "View",
+  // Task 716 ③: visible tlabels in the view toolbar (v3 mockup language).
+  "collabInbox.viewLabel": "View",
+  "collabInbox.sortLabel": "Sort",
   "collabInbox.hover.global": "Global",
   "collabInbox.to": "Filter by recipient",
   "collabInbox.view.list": "List",
