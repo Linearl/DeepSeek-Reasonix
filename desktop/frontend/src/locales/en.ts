@@ -1683,6 +1683,7 @@ export const en = {
   "projectTree.deleteGroupSessions": "Delete group and its sessions",
   "projectTree.deleteGroupSessionsConfirm": "This deletes {count} session(s) in this group and removes the group itself.",
   "projectTree.deleteGroupSessionsDetail": "Sessions go to the recycle path, so a mistake is still recoverable.",
+  "projectTree.moveToGroup": "Move to group",
   "projectTree.removeFromGroup": "Remove from group",
   "projectTree.pinTopic": "Pin conversation",
   "projectTree.unpinTopic": "Unpin conversation",

@@ -1683,6 +1683,7 @@ export const zh: Record<DictKey, string> = {
   "projectTree.deleteGroupSessions": "删除分组及其会话",
   "projectTree.deleteGroupSessionsConfirm": "将删除该分组下的 {count} 个会话，并移除分组本身。",
   "projectTree.deleteGroupSessionsDetail": "会话进入回收路径，误删仍可恢复。",
+  "projectTree.moveToGroup": "移动到分组",
   "projectTree.removeFromGroup": "移出分组",
   "projectTree.pinTopic": "置顶对话",
   "projectTree.unpinTopic": "取消置顶",
