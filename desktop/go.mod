@@ -2,7 +2,7 @@ module reasonix/desktop
 
 go 1.26.0
 
-toolchain go1.26.6
+toolchain go1.26.9
 
 // The desktop shell is a nested module so its CGO/WebKit build never touches the
 // CLI's CGO_ENABLED=0 single-static-binary guarantee. The replace lets it import
@@ -87,7 +87,7 @@ require (
 	github.com/yuin/goldmark v1.8.6 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	go.etcd.io/bbolt v1.5.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
