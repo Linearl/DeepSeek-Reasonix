@@ -41,6 +41,9 @@ jobs:
     name: claude security review (trial)
     runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'ai-review')
+    env: # job-level so it propagates INTO the composite action (step-level env does not cross the `uses:` boundary; first trial runs 401'd against api.anthropic.com)
+      ANTHROPIC_BASE_URL: https://api.xiaomimimo.com/anthropic # MiMo Anthropic-compatible endpoint (user-confirmed 2026-10-10)
+      ANTHROPIC_MODEL: mimo-v2.6-pro
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
