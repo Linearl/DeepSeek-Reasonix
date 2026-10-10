@@ -108,6 +108,21 @@ func (m *topicStateManager) snapshot(workspaceRoot string) (topicstate.Snapshot,
 	return scope.store.Snapshot(context.Background())
 }
 
+// autoMetaRaw returns one topic's raw AutoMeta blob (origin / auto-title
+// bookkeeping) for stamp checks. Task 755: the heartbeat origin restore reads
+// it to leave an intact stamp alone instead of rewriting it on every build.
+func (m *topicStateManager) autoMetaRaw(workspaceRoot, topicID string) (json.RawMessage, error) {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" {
+		return nil, nil
+	}
+	snap, err := m.snapshot(workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+	return snap.Records[topicID].AutoMeta, nil
+}
+
 func (m *topicStateManager) mutate(workspaceRoot string, mutation func(context.Context, *topicstate.Store) (topicstate.State, error), legacyFallback func() error) error {
 	scope := m.scope(workspaceRoot)
 	scope.mu.Lock()
