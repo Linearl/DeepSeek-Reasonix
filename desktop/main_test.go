@@ -58,16 +58,24 @@ func TestLifecycleDiagnosticsUsePreWailsOwnershipGate(t *testing.T) {
 		t.Fatal("main process must claim diagnostics ownership before Wails starts")
 	}
 
-	appSource, err := os.ReadFile("app.go")
+	// 任务 756: App.startup lives in app_lifecycle.go (lifecycle domain file).
+	appSource, err := os.ReadFile("app_lifecycle.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, afterStartup, ok := strings.Cut(string(appSource), "func (a *App) startup(ctx context.Context) {")
 	if !ok {
-		t.Fatal("app.go no longer contains App.startup")
+		t.Fatal("app_lifecycle.go no longer contains App.startup")
 	}
 	startupBody, _, ok := strings.Cut(afterStartup, "\n}")
-	if !ok || !strings.Contains(startupBody, "initializeLifecycleDiagnostics(a)") {
+	// 任务 756: startup delegates its process-wide hook wiring (including the
+	// lifecycle consumption) to startupRegisterProcessHelpers, called
+	// synchronously from startup — the ownership contract is unchanged.
+	if !ok || !strings.Contains(startupBody, "a.startupRegisterProcessHelpers()") {
+		t.Fatal("startup must keep the process-wide hook wiring on the Wails OnStartup path")
+	}
+	lifecycleSource := string(appSource) + "\n" + startupBody
+	if !strings.Contains(lifecycleSource, "initializeLifecycleDiagnostics(a)") {
 		t.Fatal("previous lifecycle consumption must remain owned by Wails OnStartup")
 	}
 }
