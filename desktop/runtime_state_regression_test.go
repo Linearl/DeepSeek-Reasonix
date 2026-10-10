@@ -28,14 +28,23 @@ func TestRuntimeStateCompletedTurnPublishesIdleProjectTree(t *testing.T) {
 	sink := &tabEventSink{tabID: "runtime-regression", app: app}
 	runner := &blockingRunner{started: make(chan struct{}), release: make(chan struct{})}
 	releaseRunner := sync.OnceFunc(func() { close(runner.release) })
+	// 任务 757 顺手清零：任务 550 ③ 的 blank 规则（1179cafce）把「默认标题 +
+	// 状态空 + 空白转录」的行收敛进 tab 栏，本测试的 tab 原先没有会话路径，完
+	// 成后恰好命中该规则、行从运行时快照消失（550 ③ 落地当日引入的基线预存红，
+	// 规则变更漏改本测试）。生产中 tab 必有真实会话路径，补一个带内容的会话文
+	// 件让 fixture 与生产对齐；测试原意（完成后 idle 状态不依赖 metadata 车道
+	// 发布到项目树）不变。
+	sessionDir := t.TempDir()
+	sessionPath := writeTopicSessionWithPrompt(t, sessionDir, "runtime-regression.jsonl", "runtime-regression-topic", "", "", "complete the isolated test turn", time.Now())
 	ctrl := control.New(control.Options{
-		Runner: runner, SessionDir: t.TempDir(), Label: "runtime regression", Sink: sink,
+		Runner: runner, SessionDir: sessionDir, SessionPath: sessionPath, Label: "runtime regression", Sink: sink,
 	})
 	defer ctrl.Close()
 	defer releaseRunner()
 	tab := &WorkspaceTab{
 		ID: sink.tabID, Scope: "global", TopicID: "runtime-regression-topic",
-		Ctrl: ctrl, Ready: true, sink: sink, disabledMCP: map[string]ServerView{},
+		SessionPath: sessionPath,
+		Ctrl:        ctrl, Ready: true, sink: sink, disabledMCP: map[string]ServerView{},
 	}
 	// Hold the independent metadata-save lane busy: runtime completion must
 	// not depend on an autosave/catalog refresh happening to repair its state.
