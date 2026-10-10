@@ -41,9 +41,6 @@ import (
 	"reasonix/internal/tool"
 )
 
-// sessionTempFromController returns the logical-session private temporary
-// directory manager for a same-session controller rebuild. Nil when the
-// controller is missing or is not a *control.Controller.
 // App is the Wails-bound application object: the desktop frontend's command
 // surface. Its exported methods (Submit/Cancel/Approve/…) are generated into JS
 // bindings. The app manages multiple WorkspaceTabs — each with its own controller

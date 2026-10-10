@@ -12,11 +12,6 @@ import (
 	"reasonix/internal/provider"
 )
 
-// sessionTempFromController returns the logical-session private temporary
-// directory manager for a same-session controller rebuild. Nil when the
-// controller is missing or is not a *control.Controller.
-// App is the Wails-bound application object: the desktop frontend's command
-
 // Approve answers a pending approval_request by ID: allow runs the call, session
 // also remembers the grant for the rest of the session.
 func (a *App) Approve(id string, allow, session, persist bool) {
@@ -319,10 +314,8 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 		return
 	}
 	// Task 465 two-axis matrix: plan/goal/normal are the SECOND axis and no
-	// longer touch the first (approval posture + autopilot flag) — the axes
-	// are independent, so a dim-2 switch seeds the autopilot fields from the
-	// tab's current values; only the "autopilot" tier and the 325 linkage
-	// rewrite them.
+	// longer touch the first (approval posture + autopilot flag): a dim-2
+	// switch seeds autopilot fields from the tab's current values.
 	autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace
 	autopilotAskEnabled, autopilotAskWait := tab.autopilotAskTimeoutEnabled, tab.autopilotAskWait
 	var autopilotAskAutoContinue bool
@@ -412,13 +405,9 @@ func (a *App) applyCollabModeEffects(tab *WorkspaceTab, tabIDForSave string, ctr
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotRequiresYolo, autopilotRequiresYoloText)
 	}
 	if assumedYolo && autopilotOn {
-		// Task 465 decision record, user-visible half: the tier switch moved
-		// approval to yolo by itself, so the user is told that happened (the
-		// slog line above is the desktop.log half). The live controller must
-		// carry the posture the tab now promises, or the current turn keeps
-		// stacking ask prompts under an unattended flag; drained ids have no
-		// return channel on this void wire call and plan/sandbox-escape cards
-		// never drain under yolo (#6432).
+		// Task 465 decision record (user-visible half): the tier switch moved
+		// approval to yolo by itself; the live controller must carry that
+		// posture or the turn stacks ask prompts (#6432: nothing drains).
 		a.noticeCodeForTab(tabIDForSave, event.LevelInfo, NoticeCodeAutopilotAssumedYolo, autopilotAssumedYoloText)
 		_ = applyTabToolApprovalModeToController(ctrl, control.ToolApprovalYolo)
 	}
@@ -562,11 +551,9 @@ func (a *App) assignFreshSessionTopic(tab *WorkspaceTab) {
 	} else {
 		workspaceRoot = normalizeProjectRoot(workspaceRoot)
 	}
-	// NewSession already rotated the runtime to a fresh session. If the sidebar
-	// topic index repair fails here, keep the session usable and let persisted
-	// session metadata repair the index later instead of surfacing a false
-	// "new session failed" error (task 550 ①: logged with the topic identity
-	// and counted, not silent).
+	// NewSession already rotated the runtime to a fresh session; if the sidebar
+	// topic index repair fails here, keep the session usable and let session
+	// metadata repair it later (task 550 ①: logged and counted, not silent).
 	if err := ensureTopicIndexedWithCreatedAt(scope, workspaceRoot, topicID, defaultTopicTitle, topicTitleSourceAuto, time.Now().UnixMilli()); err != nil {
 		a.topicIndexWriteFailures.Add(1)
 		slog.Warn("desktop: new-session topic index write failed; sidebar row waits for session metadata repair",

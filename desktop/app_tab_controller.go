@@ -13,7 +13,8 @@ import (
 )
 
 // sessionTempFromController returns the logical-session private temporary
-
+// directory manager for a same-session controller rebuild. Nil when the
+// controller is missing or is not a *control.Controller.
 func sessionTempFromController(ctrl control.SessionAPI) *sessiontemp.Manager {
 	c, ok := ctrl.(*control.Controller)
 	if !ok || c == nil {

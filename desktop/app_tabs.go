@@ -15,8 +15,6 @@ import (
 	"reasonix/internal/repair"
 )
 
-// sessionTempFromController returns the logical-session private temporary
-
 // restoreOrBuildTabs restores the tabs from the last session, or creates a
 // default Global tab on first launch.
 func (a *App) restoreOrBuildTabs() {
@@ -64,10 +62,9 @@ func (a *App) restoreOrBuildTabs() {
 	// Restore remote tabs as disconnected shells; activation performs the
 	// first network work so desktop startup remains offline-safe.
 	a.restoreRemoteTabShells(f)
-	// Task 456 ①: reconcile the persisted leftover records BEFORE any runtime
-	// is launched: collapse duplicates first, then retire stale lease records
-	// whose holder process is dead, so the fresh runtime starts against a clean
-	// record (live foreign holders and active handoff reservations untouched).
+	// Task 456 ①: reconcile persisted leftover records BEFORE any runtime
+	// launches: collapse duplicates, retire records whose holder process is
+	// dead (live foreign holders and handoff reservations stay untouched).
 	f.Tabs = dedupeRestoredTabEntries(f.Tabs)
 	a.reconcileRestoredSessionKeys(f.Tabs)
 	if len(f.Tabs) > 0 {
@@ -126,23 +123,17 @@ func (a *App) restorePersistedTabs(ctx context.Context, f desktopTabsFile) []*Wo
 			tab.qualityFloor = ""
 		}
 		tab.mode = persistedTabMode(entry.Mode)
-		// Validate the persisted goal against the session's goal-state
-		// sidecar: a typed /new or /clear rotates the session without passing
-		// App.NewSession/ClearSession, so entry.Goal can be stale. A stopped
-		// goal-state on the fresh path stops a restart from re-seeding the
-		// cleared goal; no sidecar keeps the persisted goal (legacy).
+		// Validate the persisted goal against the session's goal-state sidecar:
+		// a typed /new or /clear rotates the session without passing
+		// App.NewSession/ClearSession, so entry.Goal can be stale.
 		tab.goal = runningTabSessionGoal(strings.TrimSpace(entry.SessionPath), strings.TrimSpace(entry.Goal))
 		tab.toolApprovalMode = normalizeToolApprovalMode(entry.ToolApprovalMode)
 		if tab.toolApprovalMode == control.ToolApprovalAsk && tabModeHasAutoApproveTools(entry.Mode) {
 			tab.toolApprovalMode = control.ToolApprovalYolo
 		}
-		// Task 49 A2 + 465 (X4 断点 C): an unattended run continues across a
-		// restart. The tab entry column and the goal-state sidecar feed the
-		// flag, then the task-325 gate has the final say: a persisted
-		// unattended run may only come back under yolo. The sidecar decides
-		// whether THIS run was unattended; the preferences only supply the
-		// bound (the previous deadline died with the process; without a
-		// usable bound the run stays interactive).
+		// Task 49 A2 + 465 (X4 断点 C): the tab entry column and goal-state
+		// sidecar feed the unattended flag, then the task-325 gate has the
+		// final say: a persisted unattended run returns only under yolo.
 		if entry.Autopilot || tabSessionAutopilot(tab.SessionPath) {
 			if on, maxRuntime, grace, askEnabled, askWait, askAutoContinue := desktopAutopilotDefaults(); on {
 				tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace, tab.autopilotAskTimeoutEnabled, tab.autopilotAskWait, tab.autopilotAskAutoContinue = gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)
@@ -173,10 +164,9 @@ func (a *App) settleRestoredTabSkeleton(f desktopTabsFile, toBuild []*WorkspaceT
 	}
 	a.saveTabsLocked()
 	a.mu.Unlock()
-	// 任务 619 ①: the skeleton is fully published — every restored tab is in
-	// a.tabs and the active id is settled. Tell the frontend NOW so the tab bar
-	// renders from ListTabs; the frontend also polls as a backstop for the
-	// emit-before-subscribe race.
+	// 任务 619 ①: the skeleton is fully published — tell the frontend NOW so
+	// the tab bar renders from ListTabs; the frontend also polls as a backstop
+	// for the emit-before-subscribe race.
 	if a.ctx != nil {
 		a.runtimeEvents.Emit(a.ctx, tabsRestoredEvent)
 	}
@@ -184,11 +174,9 @@ func (a *App) settleRestoredTabSkeleton(f desktopTabsFile, toBuild []*WorkspaceT
 		"tabs", len(toBuild),
 		"active", a.activeTabID,
 		"elapsed_ms", time.Since(restoreStartedAt).Milliseconds())
-	// 任务 619 ②: foreground-first, lazy background (task 405 Q2 already
-	// ordered the active tab first and throttled the storm). Only the tab the
-	// user is looking at — plus tabs that must resume unattended work —
-	// builds at startup; the rest stay published skeletons whose transcript
-	// stays readable cold and whose build kicks from SetActiveTab.
+	// 任务 619 ②: foreground-first, lazy background (task 405 Q2 throttled
+	// the storm): only the visible tab plus unattended-resume tabs build at
+	// startup; the rest stay skeletons built on demand from SetActiveTab.
 	restored := orderTabsActiveFirst(toBuild, a.activeTabID)
 	sem := make(chan struct{}, startupBootConcurrency)
 	for _, tab := range startupBuildSet(restored) {
