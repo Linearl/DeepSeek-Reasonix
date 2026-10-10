@@ -35,7 +35,7 @@ func (a *App) keepOnlyRemoteVisibleTab(tabID string) (TabMeta, error) {
 		// recovery can re-enter App. sessionRemovalMu keeps destructive session
 		// operations away from the same files until the prune commits.
 		for _, candidate := range candidates {
-			if err := a.snapshotTab(candidate.tab); err != nil {
+			if err := a.snapshotTabDurable(candidate.tab); err != nil {
 				return TabMeta{}, nil, fmt.Errorf("save current session before switching tabs: %w", err)
 			}
 			if err := a.saveTabSessionMetaForCurrentSession(candidate.tab); err != nil {
