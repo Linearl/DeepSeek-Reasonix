@@ -2,9 +2,9 @@ name: App memory screening
 
 on:
   pull_request:
-    branches: [main-v2]
+    branches: [main-v2, main-v2-stable]
   push:
-    branches: [main-v2]
+    branches: [main-v2, main-v2-stable]
   workflow_dispatch:
 
 permissions:

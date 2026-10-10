@@ -2,7 +2,7 @@ name: Cache impact guard
 
 on:
   pull_request_target:
-    branches: [main-v2]
+    branches: [main-v2, main-v2-stable]
     types: [opened, synchronize, reopened, edited, ready_for_review]
     # The guard only cares about the prompt/tool surfaces listed in
     # scripts/check-cache-impact.sh; PRs confined to clearly unrelated paths

@@ -4,13 +4,13 @@ on:
   # Docs/release-notes/root-Markdown changes carry no analyzable code; the
   # weekly cron keeps the full scan cadence regardless.
   push:
-    branches: ["main-v2"]
+    branches: ["main-v2", "main-v2-stable"]
     paths-ignore:
       - 'docs/**'
       - 'release-notes/**'
       - '*.md'
   pull_request:
-    branches: ["main-v2"]
+    branches: ["main-v2", "main-v2-stable"]
     paths-ignore:
       - 'docs/**'
       - 'release-notes/**'
