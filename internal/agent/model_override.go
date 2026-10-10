@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"reasonix/internal/nilutil"
 	"reasonix/internal/provider"
 )
 
@@ -182,13 +183,36 @@ func (a *Agent) destinationContextWindow() int {
 	return a.contextWindow
 }
 
-// destinationMaxOutputTokens returns the destination's output cap; 0 keeps the
-// construction cap (0 meaning unset — request shaping then omits MaxTokens).
+// destinationMaxOutputTokens returns the destination's output cap. An override
+// cap wins; 0 keeps the construction cap — but only when the override stays on
+// the construction provider's route (task 752): a cross-provider hot switch
+// with an unconfigured destination must not ride the PREVIOUS provider's cap
+// (deepseek's 384000 got a mimo-class gateway 400 because the "0 = keep"
+// fallback leaked it onto a wire it no longer describes). Such requests omit
+// MaxTokens instead — OpenAI-compatible gateways apply their server default
+// ("0 = unset/omit" is the adapters' documented contract), and the Anthropic
+// adapter fills its own mandatory fallback at construction.
 func (a *Agent) destinationMaxOutputTokens() int {
-	if o := a.sessionModelValue(); o != nil && o.maxOutputTokens > 0 {
-		return o.maxOutputTokens
+	if o := a.sessionModelValue(); o != nil {
+		if o.maxOutputTokens > 0 {
+			return o.maxOutputTokens
+		}
+		if !sameProviderRoute(o.prov, a.svc.prov) {
+			return 0
+		}
 	}
 	return a.maxOutputTokens
+}
+
+// sameProviderRoute reports whether dst serves the same provider route the
+// construction scalars were derived from. Names are route-scoped (the boot
+// resolver builds one adapter per named entry), so name equality is the route
+// identity; a nil construction provider shares its route with nothing.
+func sameProviderRoute(dst, construction provider.Provider) bool {
+	if nilutil.IsNil(dst) || nilutil.IsNil(construction) {
+		return false
+	}
+	return strings.TrimSpace(dst.Name()) == strings.TrimSpace(construction.Name())
 }
 
 // destinationHighSpeedModels returns the destination's high-speed lane
