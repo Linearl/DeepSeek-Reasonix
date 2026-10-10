@@ -96,7 +96,14 @@ func captureWindowScreenshot(outputPath, titleSubstring string) (w, h int, title
 		planes:   1,
 		bitCount: 32,
 	}}
-	var bits uintptr
+	// bits receives CreateDIBSection's lpBits out-param: a pointer into
+	// GDI-allocated (non-Go) memory, so the GC never moves it and holding it
+	// as unsafe.Pointer is sound. Task 749 verdict: go vet's unsafeptr check
+	// has no way to prove out-param provenance (it only whitelists reflect
+	// headers / reflect.Value.Pointer / pointer arithmetic), so the value is
+	// kept in unsafe.Pointer form instead of round-tripping through uintptr,
+	// which the checker cannot verify.
+	var bits unsafe.Pointer
 	hbmp, _, callErr := procCreateDIBSection.Call(
 		hdcMem,
 		uintptr(unsafe.Pointer(&bmi)),
@@ -105,7 +112,7 @@ func captureWindowScreenshot(outputPath, titleSubstring string) (w, h int, title
 		0,
 		0,
 	)
-	if hbmp == 0 || bits == 0 {
+	if hbmp == 0 || bits == nil {
 		return 0, 0, "", fmt.Errorf("CreateDIBSection failed: %v", callErr)
 	}
 	defer procDeleteObject.Call(hbmp)
@@ -117,7 +124,10 @@ func captureWindowScreenshot(outputPath, titleSubstring string) (w, h int, title
 	}
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	pixels := unsafe.Slice((*uint8)(unsafe.Pointer(bits)), w*h*4)
+	// w*h*4 is exact for a top-down 32bpp DIB: rows are always dword-aligned,
+	// so there is no stride padding to account for. hbmp (owning the buffer)
+	// stays alive until the deferred DeleteObject after the loop.
+	pixels := unsafe.Slice((*uint8)(bits), w*h*4)
 	for y := 0; y < h; y++ {
 		src := pixels[y*w*4 : (y+1)*w*4]
 		dst := img.Pix[y*img.Stride : (y+1)*img.Stride]
