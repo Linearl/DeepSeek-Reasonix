@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/provider"
 )
@@ -204,6 +205,90 @@ func TestRescueDeclinesWithoutOwnershipProof(t *testing.T) {
 	}
 	if s.rescueReplayLimitedEventLog(dagPath, nil, [sha256.Size]byte{}, limitErr) {
 		t.Fatal("rescue must decline a DAG log")
+	}
+}
+
+// TestRescueRechecksRevisionUnderLedgerLock pins the task-715 TOCTOU closure:
+// a writer whose ledger commit lands while the rescue is deciding must be seen.
+// The test holds the branch-meta lock — the same lock
+// recordSessionContentRevision holds across its read-modify-write — so the
+// rescue cannot pass its ownership proof until the foreign commit is on the
+// sidecar; the re-read under the lock then must decline, leaving both the log
+// and the foreign revision untouched. Before the fix the rescue read the
+// ledger once with no lock and folded right past a commit it never observed.
+func TestRescueRechecksRevisionUnderLedgerLock(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v1")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "toctou.jsonl")
+
+	seed := provider.Message{ID: "m0", Role: provider.RoleUser, Content: "seed"}
+	s := NewSession("")
+	s.Add(seed)
+	if err := s.Save(path); err != nil {
+		t.Fatalf("baseline save: %v", err)
+	}
+	baseRevision, _, err := sessionContentRevision(path)
+	if err != nil || baseRevision <= 0 {
+		t.Fatalf("baseline ledger: revision=%d err=%v", baseRevision, err)
+	}
+	baseDigest, err := digestSessionMessages([]provider.Message{seed})
+	if err != nil {
+		t.Fatalf("digest baseline: %v", err)
+	}
+
+	// A small schema-1 log the rescue is asked to fold; three lines, so a fold
+	// would be visible as a one-line file. The digest is kept at the baseline:
+	// only the revision advances, so the decline below is the revision
+	// re-check's verdict, not the digest cross-check's.
+	fixture := strings.Join([]string{
+		`{"schema_version":1,"type":"replace","revision":1,"base_revision":0,"message_index":0,"messages":[{"id":"m0","role":"user","content":"seed"}],"content_digest":"stale"}`,
+		`{"schema_version":1,"type":"append","revision":2,"base_revision":1,"message_index":1,"messages":[]}`,
+		`{"schema_version":1,"type":"append","revision":3,"base_revision":2,"message_index":1,"messages":[]}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(SessionEventLogPath(path), []byte(fixture), 0o600); err != nil {
+		t.Fatalf("write fixture log: %v", err)
+	}
+
+	// The interleaved writer: hold the ledger lock, let the rescue block on it,
+	// commit the foreign revision through the unlocked primitives (the lock is
+	// already held here), then release and let the rescue re-read.
+	unlock, err := LockSessionMetaPath(path)
+	if err != nil {
+		t.Fatalf("hold ledger lock: %v", err)
+	}
+	rescued := make(chan bool, 1)
+	go func() {
+		rescued <- s.rescueReplayLimitedEventLog(path, nil, baseDigest,
+			&SessionReplayLimitError{Resource: "event_records", Value: 1, Limit: 0})
+	}()
+	time.Sleep(150 * time.Millisecond)
+	meta, ok, err := loadBranchMetaRetry(path)
+	if err != nil || !ok {
+		t.Fatalf("load meta under held lock: ok=%v err=%v", ok, err)
+	}
+	meta.Revision = baseRevision + 1
+	if err := saveBranchMeta(path, meta, false); err != nil {
+		t.Fatalf("simulate foreign commit: %v", err)
+	}
+	unlock()
+
+	select {
+	case rescuedOK := <-rescued:
+		if rescuedOK {
+			t.Fatal("rescue must decline once the ledger advanced under the lock")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("rescue did not return — it must not block past the released ledger lock")
+	}
+	data, err := os.ReadFile(SessionEventLogPath(path))
+	if err != nil {
+		t.Fatalf("read log after declined rescue: %v", err)
+	}
+	if got := strings.Count(string(data), "\n"); got != 3 {
+		t.Fatalf("declined rescue must leave the log untouched, lines=%d", got)
+	}
+	if revision, _, err := sessionContentRevision(path); err != nil || revision != baseRevision+1 {
+		t.Fatalf("foreign commit must survive the declined rescue: revision=%d err=%v", revision, err)
 	}
 }
 
