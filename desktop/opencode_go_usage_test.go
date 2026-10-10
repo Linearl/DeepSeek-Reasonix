@@ -488,6 +488,17 @@ func TestOpenCodeGoUsageKeyAndWireNeverLeakSecrets(t *testing.T) {
 	const sentinel = "sk-SENTINEL-task337-DO-NOT-LEAK"
 	t.Setenv("OPENCODE_GO_API_KEY", sentinel)
 
+	// 任务 564: the request itself is gated behind the task-163 lab switch.
+	// Isolate the user dirs and switch it on in the test-owned config, so the
+	// request fires hermetically regardless of what the developer's real
+	// config.toml happens to hold.
+	home := isolateDesktopUserDirs(t)
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	cfg.Agent.ExperimentalOpenCodeGoUsage = true
+	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("seed lab-switch config under %s: %v", home, err)
+	}
+
 	hits, restore := withUsageEndpoint(t, func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+sentinel {
 			t.Errorf("Authorization = %q, want the resolved key as Bearer", got)
