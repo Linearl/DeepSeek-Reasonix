@@ -1665,26 +1665,31 @@ func (a *App) Settings() SettingsView {
 		ForkNotice:                cfg.DesktopForkNoticeEnabled(),
 		StagingDir:                strings.TrimSpace(cfg.Desktop.StagingDir),
 
-		ExperimentalAutonomousUpdate:    cfg.Desktop.ExperimentalAutonomousUpdate,
-		AutonomousUpdateResume:          cfg.AutonomousUpdateResumeMode(),
-		UpdateChime:                     cfg.Desktop.UpdateChime,
-		UpdateChimeTune:                 cfg.UpdateChimeTuneMode(),
-		ExperimentalSessionMonitor:      cfg.Desktop.ExperimentalSessionMonitor,
-		ExperimentalSplitView:           cfg.Desktop.ExperimentalSplitView,
-		ExperimentalCollabGroupView:     cfg.Desktop.ExperimentalCollabGroupView, // task 677 group-chat entry
-		ExperimentalTrajectoryView:      cfg.Desktop.ExperimentalTrajectoryView,  // task 704 trajectory view switch
-		SessionStorage:                  storageMode,
-		SessionStorageEffective:         storageEffective,
-		SessionStorageRestartPending:    storageEffective != storageMode,
-		EventsAutoRotation:              config.EventsAutoRotationMode(cfg),
-		EventsRotationFactor:            config.EventsRotationFactor(cfg),
-		EventsRotationCapMB:             config.EventsRotationCapMB(cfg),
-		ExperimentalFeedback:            cfg.Desktop.ExperimentalFeedback,
-		ExperimentalFeedbackNudge:       cfg.Desktop.ExperimentalFeedbackNudge,
-		ExperimentalTodoSidebar:         cfg.Desktop.ExperimentalTodoSidebar,
-		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
-		ExperimentalSessionWall:         cfg.Desktop.ExperimentalSessionWall,
-		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
+		ExperimentalAutonomousUpdate: cfg.Desktop.ExperimentalAutonomousUpdate,
+		AutonomousUpdateResume:       cfg.AutonomousUpdateResumeMode(),
+		UpdateChime:                  cfg.Desktop.UpdateChime,
+		UpdateChimeTune:              cfg.UpdateChimeTuneMode(),
+		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
+		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
+		ExperimentalCollabGroupView:  cfg.Desktop.ExperimentalCollabGroupView, // task 677 group-chat entry
+		ExperimentalTrajectoryView:   cfg.Desktop.ExperimentalTrajectoryView,  // task 704 trajectory view switch
+		// Task 705, readback fixed by 759: the field was mapped only in
+		// DesktopStartupSettings, so the panel read the Go zero value and the
+		// switch rendered "off" even with the feature running (the 81/123
+		// two-view lesson, again).
+		ExperimentalSessionCollabAutoFold: cfg.Desktop.ExperimentalSessionCollabAutoFold,
+		SessionStorage:                    storageMode,
+		SessionStorageEffective:           storageEffective,
+		SessionStorageRestartPending:      storageEffective != storageMode,
+		EventsAutoRotation:                config.EventsAutoRotationMode(cfg),
+		EventsRotationFactor:              config.EventsRotationFactor(cfg),
+		EventsRotationCapMB:               config.EventsRotationCapMB(cfg),
+		ExperimentalFeedback:              cfg.Desktop.ExperimentalFeedback,
+		ExperimentalFeedbackNudge:         cfg.Desktop.ExperimentalFeedbackNudge,
+		ExperimentalTodoSidebar:           cfg.Desktop.ExperimentalTodoSidebar,
+		ExperimentalSubagentPanel:         cfg.Desktop.ExperimentalSubagentPanel,
+		ExperimentalSessionWall:           cfg.Desktop.ExperimentalSessionWall,
+		ExperimentalPromptHistoryPicker:   cfg.Desktop.ExperimentalPromptHistoryPicker,
 		// Task 506: tab-strip adaptive compression readback.
 		ExperimentalTabCompress: cfg.Desktop.ExperimentalTabCompress,
 		// Task 742: heartbeat background mode readback.
