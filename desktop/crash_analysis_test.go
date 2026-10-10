@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,7 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/agent"
+	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/event"
 )
 
 func TestIsReasonixSourceDirAcceptsRealCheckoutShape(t *testing.T) {
@@ -472,4 +476,90 @@ func TestCrashAnalysisAvailabilityNoLongerGatesOnWorkspace(t *testing.T) {
 	if report := app.CrashAnalysisAvailability(); report.Ready {
 		t.Fatalf("missing gh identity must keep route B not ready: %+v", report)
 	}
+}
+
+// ── 任务 734：一键分析首条 user 输入走可见流（issue #42）───────────────────
+
+// TestCrashAnalysisSubmitAnnouncesUserInputOnVisibleStream pins task 734: the
+// backend-driven analysis submission must announce its user row on the tab's
+// visible event stream (task 580's UserInput channel). The frontend hydrates
+// the fresh session strictly before the backend write lands (tab:backend-
+// activated → enqueueTabSwitch → hydrate, then awaitAnalysisController →
+// submit), and before this fix only the durable-inbox claim path emitted
+// UserInput — so the first user input stayed invisible until the next history
+// reload (fork issue #42, 2026-10-10).
+func TestCrashAnalysisSubmitAnnouncesUserInputOnVisibleStream(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := agent.NewSessionPath(dir, "test")
+	sess := agent.NewSession("sys")
+	exec := agent.New(nil, nil, sess, agent.Options{}, event.Discard)
+	runner := &appendingDesktopRunner{session: sess, started: make(chan string, 1)}
+	ctrl := control.New(control.Options{
+		Runner: runner, Executor: exec, Sink: event.Discard, SessionDir: dir,
+		SessionPath: path, Label: "test",
+	})
+	defer ctrl.Close()
+
+	app := NewApp()
+	app.setTestCtrl(ctrl, "deepseek/test")
+	// setTestCtrl leaves the production sink unbuilt; install one so the
+	// announcement has the same per-tab visible stream it rides in prod.
+	app.tabs["test"].sink = &tabEventSink{tabID: "test", app: app}
+
+	const instruction = "请对照诊断载荷定位根因，并提交 issue 后把链接发回本会话"
+	if err := crashAnalysisSubmit(app, "test", instruction); err != nil {
+		t.Fatalf("crashAnalysisSubmit: %v", err)
+	}
+	select {
+	case got := <-runner.started:
+		// The controller composes the raw input (reasoning-language preamble
+		// etc.), so pin the instruction as the submitted tail, not equality.
+		if !strings.HasSuffix(got, instruction) {
+			t.Fatalf("admitted turn input %q does not carry the analysis instruction", got)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the analysis turn was never admitted")
+	}
+
+	// The tab sink has no wails ctx in tests, so the wire envelope lands in
+	// the #9601 pending buffer — the same bytes setContext would flush.
+	tab := app.tabs["test"]
+	if tab == nil || tab.sink == nil {
+		t.Fatal("test tab and sink must exist")
+	}
+	tab.sink.mu.RLock()
+	buffered := append([]runtimeEventEnvelope(nil), tab.sink.pendingRuntimeEvents...)
+	tab.sink.mu.RUnlock()
+
+	var announced bool
+	for _, env := range buffered {
+		if env.name != eventChannel || len(env.payload) == 0 {
+			continue
+		}
+		wire, err := json.Marshal(env.payload[0])
+		if err != nil {
+			continue
+		}
+		var decoded struct {
+			Kind string `json:"kind"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(wire, &decoded) != nil {
+			continue
+		}
+		if decoded.Kind == "user_input" && decoded.Text == instruction {
+			announced = true
+		}
+	}
+	if !announced {
+		t.Fatalf("no user_input wire event carrying the instruction on %s (buffered=%d)", eventChannel, len(buffered))
+	}
+
+	// Best-effort contract: a missing tab or a blank display must never fail.
+	app.emitBackendSubmittedUserInput("tab-missing", instruction)
+	app.emitBackendSubmittedUserInput("test", "   ")
 }

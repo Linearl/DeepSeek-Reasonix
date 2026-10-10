@@ -177,6 +177,26 @@ func (a *App) RunShellForTab(tabID, command string) error {
 
 // SubmitDisplay runs input as a turn while recording a shorter UI-only display
 // string for the saved desktop transcript. The model still receives input.
+// emitBackendSubmittedUserInput announces a backend-driven direct submission's
+// user row on the tab's visible event stream (task 734, issue #42). The wire
+// protocol's only user-message channel is the UserInput event (task 580), and
+// today only the durable-inbox claim path emits it: composer submissions
+// render their row optimistically, but a backend caller (one-click analysis)
+// submits through SubmitToTab with no composer on the other end — the row
+// stayed invisible until the next history reload. Best-effort by the same
+// contract as the inbox emission: a missing tab or blank display must never
+// fail the submission that already succeeded.
+func (a *App) emitBackendSubmittedUserInput(tabID, display string) {
+	if a == nil || strings.TrimSpace(display) == "" {
+		return
+	}
+	tab, _ := a.tabAndCtrlByID(tabID)
+	if tab == nil {
+		return
+	}
+	tab.sink.Emit(event.Event{Kind: event.UserInput, Text: display})
+}
+
 func (a *App) SubmitDisplay(display, input string) error {
 	return a.SubmitDisplayToTab("", display, input)
 }

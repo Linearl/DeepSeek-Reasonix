@@ -64,7 +64,16 @@ var (
 	crashAnalysisSourceDir = detectCrashAnalysisSourceDir
 	crashAnalysisGhAuth    = ghAuthenticated
 	crashAnalysisSubmit    = func(a *App, tabID, instruction string) error {
-		return a.SubmitToTab(tabID, instruction)
+		if err := a.SubmitToTab(tabID, instruction); err != nil {
+			return err
+		}
+		// 任务734 (issue #42): the frontend hydrates the fresh analysis session
+		// on tab:backend-activated — strictly before this write lands — and the
+		// wire has no other user-message channel (task 580: only the inbox
+		// claim path emits UserInput), so the first user input never rendered
+		// until a history reload. Announce it on the same visible stream.
+		a.emitBackendSubmittedUserInput(tabID, instruction)
+		return nil
 	}
 )
 
