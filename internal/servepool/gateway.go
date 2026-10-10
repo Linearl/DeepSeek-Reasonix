@@ -22,7 +22,19 @@ import (
 type Gateway struct {
 	mgr   *Manager
 	token string
-	proxy map[string]*httputil.ReverseProxy
+	// proxyMu guards proxy: handleProxy runs one goroutine per request, and a
+	// concurrent map read/write is a fatal runtime error no recover can catch
+	// (task 746 — virtuals on the same struct carry virtualMu; proxy was the
+	// unguarded leftover).
+	proxyMu sync.Mutex
+	// proxy caches one ReverseProxy per project id, tagged with the port it
+	// targets. The target host is baked into the proxy at build time, so an
+	// entry whose port no longer matches the manager's current port (idle
+	// reclaim / crash respawn rebind a fresh 127.0.0.1:0 port) would 502
+	// forever against the dead port; proxyFor replaces such an entry on sight
+	// (task 746 — 4a878a447 fixed the manager-side half, this is the gateway
+	// half).
+	proxy map[string]*proxyEntry
 	// virtualSources carries the full inline contract (sessions + history +
 	// resume state) for virtual projects.
 	virtualMu  sync.Mutex
@@ -36,6 +48,13 @@ type Gateway struct {
 	// selector (task 539): a desktop-held session's guided messages route
 	// into the holding tab's controller. nil keeps the plain forward.
 	inboxGate InboxGateFunc
+}
+
+// proxyEntry is one cached reverse proxy tagged with the serve port it
+// targets; a mismatch against the manager's current port invalidates it.
+type proxyEntry struct {
+	port  int
+	proxy *httputil.ReverseProxy
 }
 
 // VirtualSource is the inline handler bundle for a virtual project.
@@ -59,7 +78,7 @@ func NewGateway(mgr *Manager, token string) *Gateway {
 	return &Gateway{
 		mgr:        mgr,
 		token:      token,
-		proxy:      map[string]*httputil.ReverseProxy{},
+		proxy:      map[string]*proxyEntry{},
 		virtuals:   map[string]*VirtualSource{},
 		virtualCur: map[string]string{},
 	}
@@ -454,10 +473,19 @@ func (g *Gateway) gateInbox(w http.ResponseWriter, r *http.Request, id string) b
 }
 
 // proxyFor is reached through handleProxy; gateTakeover re-exposes the
-// buffered body before the request is cloned for the proxy.
+// buffered body before the request is cloned for the proxy. It returns the
+// cached reverse proxy for id, rebuilding it whenever the manager's current
+// port differs from the cached entry's target (task 746: the old cache never
+// expired, so a serve respawned on a fresh port kept being proxied to its dead
+// predecessor — permanent 502 plus a pointless respawn per request). The map
+// access is serialized by proxyMu; handleProxy runs one goroutine per request
+// and an unsynchronized map write here was a fatal concurrent-map-write crash
+// away.
 func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
-	if p, ok := g.proxy[id]; ok {
-		return p
+	g.proxyMu.Lock()
+	defer g.proxyMu.Unlock()
+	if e, ok := g.proxy[id]; ok && e.port == port {
+		return e.proxy
 	}
 	target, _ := url.Parse("http://127.0.0.1:" + itoa(port))
 	p := httputil.NewSingleHostReverseProxy(target)
@@ -483,7 +511,7 @@ func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
 		g.mgr.Invalidate(id)
 		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": "upstream serve unreachable"})
 	}
-	g.proxy[id] = p
+	g.proxy[id] = &proxyEntry{port: port, proxy: p}
 	return p
 }
 
