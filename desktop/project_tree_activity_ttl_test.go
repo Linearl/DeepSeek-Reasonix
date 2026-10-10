@@ -104,15 +104,46 @@ func TestReconcileTabActivityStatus(t *testing.T) {
 		waitNotRunning(t, ctrl)
 	})
 
-	t.Run("ignores non-live statuses", func(t *testing.T) {
+	t.Run("clears stale waiting_confirmation when no prompt is pending", func(t *testing.T) {
+		// 任务 730: an event-driven 待确认 badge whose prompt is gone (the
+		// resolution/TurnDone was lost, e.g. while detached) must clear on the
+		// open-moment reconcile — the controller is the source of truth.
 		app := NewApp()
 		ctrl := control.New(control.Options{SessionDir: dir, SessionPath: path, Label: "idle", Sink: event.Discard})
 		defer ctrl.Close()
 		tab := newTab(ctrl)
 		tab.ActivityStatus = topicStatusWaitingConfirmation
 		app.tabs[tab.ID] = tab
+		if !app.reconcileTabActivityStatus(tab) {
+			t.Fatal("reconcile should clear the stale waiting_confirmation badge")
+		}
+		if tab.ActivityStatus != "" {
+			t.Fatalf("status after reconcile = %q, want cleared", tab.ActivityStatus)
+		}
+	})
+
+	t.Run("keeps waiting_confirmation while a prompt is pending", func(t *testing.T) {
+		app := NewApp()
+		ctrl := &pendingPromptSessionAPI{stubSessionAPI{}}
+		tab := newTab(ctrl)
+		tab.ActivityStatus = topicStatusWaitingConfirmation
+		app.tabs[tab.ID] = tab
 		if app.reconcileTabActivityStatus(tab) {
-			t.Fatal("reconcile must not touch waiting_confirmation")
+			t.Fatal("reconcile must not clear a corroborated waiting_confirmation badge")
+		}
+		if tab.ActivityStatus != topicStatusWaitingConfirmation {
+			t.Fatalf("status after reconcile = %q, want %q", tab.ActivityStatus, topicStatusWaitingConfirmation)
 		}
 	})
 }
+
+// pendingPromptSessionAPI fakes a controller holding an unanswered ask/approval
+// (task 730): only the two reconcile inputs are overridden; every other
+// SessionAPI call would panic, which is exactly the guard the shared
+// stubSessionAPI doc comment asks for.
+type pendingPromptSessionAPI struct {
+	stubSessionAPI
+}
+
+func (pendingPromptSessionAPI) Running() bool       { return false }
+func (pendingPromptSessionAPI) PendingPrompt() bool { return true }

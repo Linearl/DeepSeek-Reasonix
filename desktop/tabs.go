@@ -2451,6 +2451,12 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 				if kickLazy {
 					a.startTabControllerBuild(tab)
 				}
+				// 任务 730: reopening a session the user can see is the open
+				// moment — reconcile the event-driven project-tree badge against
+				// the controller (stale spinner, stale 待确认) and republish.
+				if a.reconcileTabActivityStatus(tab) {
+					a.emitProjectTreeRuntimeChangedWithLegacy()
+				}
 				return enrichTabMeta(meta), nil
 			}
 		}
@@ -2472,6 +2478,11 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 			if sameSession || a.skipContinuationRebind(tab, sessionPath) {
 				if kickLazy {
 					a.startTabControllerBuild(tab)
+				}
+				// 任务 730: same open-moment reconcile as the exact-path reuse
+				// branch above — the badge must match the controller on open.
+				if a.reconcileTabActivityStatus(tab) {
+					a.emitProjectTreeRuntimeChangedWithLegacy()
 				}
 				return enrichTabMeta(meta), nil
 			}
