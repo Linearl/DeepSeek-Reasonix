@@ -95,6 +95,14 @@ func (s *Store) idempotentAliasReplayLocked(key, requestHash, itemID string) (bo
 		if existingHash := s.man.IdempotencyHashes[key]; existingHash != "" && existingHash != requestHash {
 			return false, ErrIdempotencyConflict
 		}
+		// Platform redelivery while the bound item is still queued: same key,
+		// same item, same content — replay the current row untouched, exactly
+		// like the consumed-receipt branch below. Proceeding would merge the
+		// body a second time and duplicate the user's text
+		// (TestCollectAppendDeduplicatesPlatformRedelivery).
+		if existingID == itemID {
+			return true, nil
+		}
 		// Task 309 × 221: same content under a key that points at another
 		// item is the merge rebind (B's key aliased onto the surviving row)
 		// — allowed to proceed, not a conflict. Only a content change under
