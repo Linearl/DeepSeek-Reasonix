@@ -23,11 +23,11 @@ export function BlankProjectFlow({
 
   useEffect(() => {
     let cancelled = false;
-    void app.PickBlankProjectParent().then((parentDirectory) => {
+    void app.PickBlankProjectParent().then((parentDirectory: string) => {
       if (cancelled) return;
       if (parentDirectory) setDraft({ parentDirectory });
       else onCloseRef.current();
-    }).catch((err) => {
+    }).catch((err: unknown) => {
       if (cancelled) return;
       showToastRef.current(err instanceof Error ? err.message : String(err), "error");
       onCloseRef.current();

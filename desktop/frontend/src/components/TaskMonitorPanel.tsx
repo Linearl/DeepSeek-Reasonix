@@ -174,8 +174,8 @@ export function TaskMonitorPanel({
 			}
 			const page = await app.ListTaskPage({ scope, tabId: tabID, projectKey: "", states: [], query, cursor, limit: 50 });
 			if (seq !== requestSeq.current) return;
-			const decorated = (page.items ?? []).map((item) => ({ ...item.task, __projectKey: item.projectKey, __projectLabel: item.projectLabel, __catalogKey: `${item.projectKey}:${item.task.task_id}` }));
-			setTasks((current) => cursor ? [...current, ...decorated.filter((item) => !current.some((existing) => existing.__catalogKey === item.__catalogKey))] : decorated);
+			const decorated = (page.items ?? []).map((item: { projectKey: string; projectLabel: string; task: TaskSnapshot }) => ({ ...item.task, __projectKey: item.projectKey, __projectLabel: item.projectLabel, __catalogKey: `${item.projectKey}:${item.task.task_id}` }));
+			setTasks((current) => cursor ? [...current, ...decorated.filter((item: CatalogTask) => !current.some((existing) => existing.__catalogKey === item.__catalogKey))] : decorated);
 			setNextCursor(page.nextCursor || "");
 			setIndexProgress({ indexed: page.status.indexed, total: page.status.total, partial: page.partial });
     } catch (e) {
@@ -197,7 +197,7 @@ export function TaskMonitorPanel({
     });
     try {
       const cursor = eventCursors.current.get(taskID) ?? 0;
-			const events = hasTaskCatalogBinding()
+			const events: TaskEvent[] = hasTaskCatalogBinding()
 				? (await app.ListTaskEventPage({ projectKey: task.__projectKey, taskId: task.task_id, after: cursor, limit: 50 })).items ?? []
 				: await app.ListTaskEventsForTab(tabID, task.task_id, cursor);
       if (events.length > 0) {
