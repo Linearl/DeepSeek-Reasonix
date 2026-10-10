@@ -61,15 +61,12 @@ func TestProjectTreeShowsDetachedRuntimeStatus(t *testing.T) {
 	waitNotRunning(t, ctrl)
 }
 
-// 任务 757 裁决：本测试原名 TestProjectTreeSplitsMultipleRuntimeSessionsInSameTopic
-// （dc11dc67e，2026-06-14「sidebar sessions own runtimes」时代），要求同 topic 多
-// 运行时会话拆成 per-session 子行、父行中性。任务 352（3347f023b，2026-10-01，用户
-// 截图驱动）已定判普通树恒一逻辑行：runtime 路径与 catalog 路径同合同，多记录聚合
-// 到唯一逻辑行（任一 running→Running、running 态状态优先、open 记录取代表
-// SessionPath），文件 stem 子行是用户可见噪音，永不展开（守卫见
-// project_tree_window_copies_test.go）。352 落地时漏改本测试，形成基线预存红。
-// 本测试按 352 终态语义重写：名字即合同——多运行时会话合并，不拆分。
-func TestProjectTreeMergesMultipleRuntimeSessionsInSameTopic(t *testing.T) {
+// 任务 757 终裁（用户拍板，方向反转 04b8d02ef 的「测试过时」裁决，采审计线
+// 94 报告方案 A）：本合同恢复为现行语义——同 topic 的多个活跃运行时会话（各
+// 自持有控制器，detached 运行时亦然）拆成 per-session 子行、各持状态，父行
+// 运行状态中性（2026-06 dc11dc67e 时代语义）。无控制器的陈旧副本仍折叠进唯
+// 一逻辑行，不展开为 stem 行（352 收窄合同，见 project_tree_window_copies_test.go）。
+func TestProjectTreeSplitsMultipleRuntimeSessionsInSameTopic(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	dir := desktopSessionDir(globalTabWorkspaceRoot())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -146,19 +143,22 @@ func TestProjectTreeMergesMultipleRuntimeSessionsInSameTopic(t *testing.T) {
 	if len(nodes) != 1 || len(nodes[0].Children) != 1 {
 		t.Fatalf("project tree = %#v, want one global topic", nodes)
 	}
-	// 352 合同：同 topic 的多个运行时会话聚合为唯一逻辑行——任一 running 则行
-	// running；running 态状态优先，session-a 按路径排序在前，等待确认先展示；
-	// per-session 子行永不展开（文件 stem 行是 352 修掉的噪音，守卫见
-	// project_tree_window_copies_test.go）。
 	topic := nodes[0].Children[0]
-	if !topic.Running {
-		t.Fatalf("merged topic should aggregate child runtimes: %+v", topic)
+	if topic.Status != "" || topic.Running {
+		t.Fatalf("topic should not merge child runtime statuses: %+v", topic)
 	}
-	if topic.Status != topicStatusWaitingConfirmation {
-		t.Fatalf("merged topic status = %q, want waiting confirmation from the first running record", topic.Status)
+	if len(topic.Children) != 2 {
+		t.Fatalf("topic children = %#v, want two session runtime rows", topic.Children)
 	}
-	if len(topic.Children) != 0 {
-		t.Fatalf("topic children = %#v, want no per-session rows (task 352: runtime path never emits session children)", topic.Children)
+	statusByPath := map[string]string{}
+	for _, child := range topic.Children {
+		statusByPath[sessionRuntimeKey(child.SessionPath)] = child.Status
+	}
+	if statusByPath[sessionRuntimeKey(sessionA)] != topicStatusWaitingConfirmation {
+		t.Fatalf("session A status = %q, want waiting; children=%#v", statusByPath[sessionRuntimeKey(sessionA)], topic.Children)
+	}
+	if statusByPath[sessionRuntimeKey(sessionB)] != topicStatusThinking {
+		t.Fatalf("session B status = %q, want thinking; children=%#v", statusByPath[sessionRuntimeKey(sessionB)], topic.Children)
 	}
 
 	close(runnerA.release)
