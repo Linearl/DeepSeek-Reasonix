@@ -66,6 +66,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Install Linux build deps # wails generate module compiles cgo packages needing gtk/webkit2gtk headers + pkg-config (empirical: run 38043190652 failed on 'Package gtk+-3.0 was not found'; same as ci.yml:474-475)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dbus-daemon gcc libgtk-3-dev libwebkit2gtk-4.0-dev xvfb
       - name: Install Wails CLI
         run: |
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
