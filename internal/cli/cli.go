@@ -878,6 +878,9 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	noOpen := fs.Bool("no-open", false, "do not open the Web UI in the default browser")
 	pool := fs.Bool("pool", false, "run as a multi-project pool gateway (single entry for remote clients)")
 	poolAddr := fs.String("pool-addr", "0.0.0.0:8848", "pool gateway listen address")
+	// 任务 701（Web Remote）：托管桌面前端 Web 壳构建产物于 /web/ 前缀。
+	// 默认空 = 不挂载（逐字节零行为）；配置或 config [serve] web_dist 生效。
+	webDist := fs.String("web-dist", "", "host the desktop web shell build output from this directory under /web/ (default: [serve] web_dist)")
 	if code, ok := parseCommandFlags(fs, args); !ok {
 		return code
 	}
@@ -948,6 +951,9 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	}
 	if *behindProxy {
 		serveCfg.BehindProxy = true
+	}
+	if *webDist != "" {
+		serveCfg.WebDist = *webDist
 	}
 	mode, err := serve.NormalizeAuthMode(serveCfg.AuthMode)
 	if err != nil {

@@ -256,6 +256,17 @@ func tokenBootstrapPublicPath(r *http.Request) bool {
 	if r.URL.Path == "/" || r.URL.Path == "/assets/logo-wordmark.svg" {
 		return true
 	}
+	// 任务 701（Web Remote）：Web 壳（[serve] web_dist）的静态入口与构建
+	// 资产是惰性资源，不含会话数据；豁免它们让壳先加载，再由壳 JS 用 URL
+	// fragment 经 POST /auth/token 换取 HttpOnly cookie（与 / 的豁免同构）。
+	// 仅 /web、/web/ 与 /web/assets/ 前缀；其余 /web/ 路径与全部 API 照常
+	// 要求鉴权。
+	if r.URL.Path == "/web" || r.URL.Path == "/web/" {
+		return true
+	}
+	if rest := strings.TrimPrefix(r.URL.Path, "/web/"); rest != r.URL.Path && strings.HasPrefix(rest, "assets/") {
+		return true
+	}
 	// Only one non-empty session segment is an inert shell entry point; this
 	// prevents API-like paths from becoming public in token mode.
 	const prefix = "/sessions/"
