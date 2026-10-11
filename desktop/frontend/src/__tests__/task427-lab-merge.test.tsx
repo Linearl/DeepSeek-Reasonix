@@ -17,6 +17,10 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+// 722 起 rail 条目（分组归属 + 灯读数 onKeys）改由布局数据驱动、灯谓词在
+// labLightKeys、面板经 labEntryLightOn 派生——①③ 的锚点随机制迁移到同源数据。
+import { labEntries, labEntryLightOn } from "../lab/labLayout";
+import { LAB_LAYOUT_DEFAULT_DATA } from "../lab/labLayoutDefault";
 
 let passed = 0;
 let failed = 0;
@@ -34,7 +38,8 @@ const zhTW = src("../locales/zh-TW.ts");
 console.log("\ntask 427 lab merge (superseded by task 561 M3 contextGovernance)");
 
 // ① render table + union + pane branches move together.
-ok(panel.includes('{ id: "contextGovernance", group: "efficiency",'), "efficiency group carries the contextGovernance family entry");
+const familyEntry = labEntries(LAB_LAYOUT_DEFAULT_DATA).find(({ entry }) => entry.id === "contextGovernance");
+ok(familyEntry?.group === "efficiency", "efficiency group carries the contextGovernance family entry");
 ok(!panel.includes('{ id: "proactiveCompact", group:'), "no standalone proactiveCompact rail entry remains");
 ok(!panel.includes('{ id: "coldCacheCompact", group:'), "no standalone coldCacheCompact rail entry remains");
 ok(!panel.includes('{ id: "contextBudget", group:'), "no standalone contextBudget rail entry remains");
@@ -91,19 +96,28 @@ ok(panel.includes('{selected === "contextGovernance" && ('), "pane branch render
 
 // ③ family entry light reads the member switches (either on = discoverable).
 {
-  const m = panel.match(/\{ id: "contextGovernance"[^\n]*on: ([^}]+)\}/);
-  ok(Boolean(m), "contextGovernance entry light found");
-  const light = m?.[1] ?? "";
-  for (const key of [
-    "s.experimentalCompactionParallel",
-    "s.experimentalContextBudget",
-    "s.experimentalResearchBudget",
-    "s.experimentalProactiveCompact",
-    "s.experimentalColdCacheCompact",
-    "s.experimentalCacheTuning",
-  ]) {
-    ok(light.includes(`Boolean(${key})`), `light reads ${key}`);
+  ok(Boolean(familyEntry), "contextGovernance entry light found");
+  // 灯读数键 = 恰好六个成员开关（布局数据源，722 起 rail 灯读数即此表）。
+  const expected = [
+    "experimentalCompactionParallel",
+    "experimentalContextBudget",
+    "experimentalResearchBudget",
+    "experimentalProactiveCompact",
+    "experimentalColdCacheCompact",
+    "experimentalCacheTuning",
+  ];
+  ok(JSON.stringify(familyEntry?.entry.onKeys ?? []) === JSON.stringify(expected),
+    "family entry onKeys are exactly the six member switches");
+  // lightKeys 谓词逐键读原配置键（④ 的「原名读取」在灯侧同样成立）。
+  const lightKeysSrc = src("../lab/labLightKeys.ts");
+  for (const key of expected) {
+    ok(lightKeysSrc.includes(`${key}: (s: SettingsView) => Boolean(s.${key})`), `light reads s.${key}`);
   }
+  // either on = discoverable：labEntryLightOn 的 some 语义功能验证（全关不亮，
+  // 任一成员开即亮）。
+  const allOff = labEntryLightOn(familyEntry!.entry, {} as never);
+  const anyOn = labEntryLightOn(familyEntry!.entry, { experimentalColdCacheCompact: true } as never);
+  ok(allOff === false && anyOn === true, "either member on = discoverable (labEntryLightOn some-semantics)");
 }
 
 // ④ config compatibility: the six persisted keys are untouched (UI merge

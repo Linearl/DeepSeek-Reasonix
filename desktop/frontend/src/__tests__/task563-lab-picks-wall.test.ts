@@ -136,8 +136,9 @@ console.log("\ntask 563 lab picks wall");
   // tabModeTint (504, Go-side tier all along) → 48; 任务 517 merged the three
   // B-group ids into safetyCostControl → 46; 任务 705 → 48（折叠开关）；任务
   // 707 → 49（压缩模型指定）；任务 704 → 50（轨迹视图）；任务 727 → 51
-  // （heartbeatRotation）；+1 simulated = 52.
-  ok(Object.keys(grown).length === 52 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
+  // （heartbeatRotation）；任务 742 → 53（tabManagement + heartbeatBackground，
+  // 任务书指定 optional 档，562 双端同源测试已核非重复注册）；+1 simulated = 54.
+  ok(Object.keys(grown).length === 54 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
     "simulated new tier item is absent from LAB_WALL_PICKS");
   ok(LAB_WALL_PICKS.every((id) => Object.prototype.hasOwnProperty.call(EXPERIMENT_FEATURE_TIERS, id)),
     "every wall pick is a registered tier item (no orphans)");

@@ -33,7 +33,9 @@ const en = readFileSync(fileURLToPath(new URL("../locales/en.ts", import.meta.ur
 const zhTW = readFileSync(fileURLToPath(new URL("../locales/zh-TW.ts", import.meta.url)), "utf8");
 const goRender = readFileSync(fileURLToPath(new URL("../../../../internal/config/render.go", import.meta.url)), "utf8");
 const goLoad = readFileSync(fileURLToPath(new URL("../../../../internal/config/load.go", import.meta.url)), "utf8");
-const goApp = readFileSync(fileURLToPath(new URL("../../../../desktop/app.go", import.meta.url)), "utf8");
+// 756 拆块 1（e1fd627f5）把 lifecycle 域（含 B1 心跳门）自 app.go 挪入
+// app_lifecycle.go——读取路径随锚点迁移（778 收口）。
+const goLifecycle = readFileSync(fileURLToPath(new URL("../../../../desktop/app_lifecycle.go", import.meta.url)), "utf8");
 const goBoot = readFileSync(fileURLToPath(new URL("../../../../internal/boot/boot.go", import.meta.url)), "utf8");
 const goConfig = readFileSync(fileURLToPath(new URL("../../../../internal/config/config.go", import.meta.url)), "utf8");
 
@@ -142,7 +144,7 @@ ok(goRender.includes("legacy key, migrated into experimental_safety_cost_control
 ok(goLoad.includes("func migrateSafetyCostControlMerge"), "load.go owns migrateSafetyCostControlMerge");
 // 任务 722：三个门改读 Effective helper（nil 子键=继承总开关，显式=覆盖）。
 // 正则不锚空白——gfmt 对齐变化不再弄红钉点（基线曾因此预存红）。
-ok(/return\s+cfg\.SafetyIdleTerminateEnabled\(\)/.test(goApp), "B1 heartbeat gate reads the effective value (master + sub-switch override)");
+ok(/return\s+cfg\.SafetyIdleTerminateEnabled\(\)/.test(goLifecycle), "B1 heartbeat gate reads the effective value (master + sub-switch override)");
 ok(/LoopStreakNote:\s+cfg\.SafetyLoopStreakNoteEnabled\(\)/.test(goBoot), "B2 run-loop gate reads the effective value");
 ok(/EventWaitRecheck:\s+cfg\.SafetyEventWaitRecheckEnabled\(\)/.test(goBoot), "B3 event_wait gate reads the effective value");
 ok(goConfig.includes('SafetyIdleTerminate    *bool `toml:"safety_idle_terminate"`') &&
