@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 )
@@ -50,6 +51,81 @@ func TestSessionFileForNameRejectsTraversal(t *testing.T) {
 	}
 	if !strings.HasSuffix(abs, "legit.jsonl") {
 		t.Fatalf("legit name resolved to %q, want .jsonl suffix", abs)
+	}
+}
+
+func TestSessionFileForNameRejectsAbsoluteNames(t *testing.T) {
+	dir := t.TempDir()
+	// Absolute-path names (POSIX root, Windows drive-letter forms) must be
+	// rejected like traversal: they carry separators, and even a separator-
+	// free drive-relative name ("C:evil") must only ever resolve inside the
+	// session directory (task 779 guard, go/path-injection triage).
+	for _, name := range []string{"/etc/evil", "\\evil", `C:\evil`, "C:evil", "/abs/path"} {
+		_, abs, err := sessionFileForName(dir, name)
+		if strings.ContainsAny(name, `/\`) {
+			if err == nil {
+				t.Fatalf("sessionFileForName(%q) = %q, want rejection", name, abs)
+			}
+			continue
+		}
+		// Separator-free ("C:evil"): the resolver accepts it but the resolved
+		// path must still sit inside the session dir.
+		if err != nil {
+			t.Fatalf("sessionFileForName(%q): %v", name, err)
+		}
+		if !pathInsideDir(dir, abs) {
+			t.Fatalf("sessionFileForName(%q) resolved to %q: escaped the session dir", name, abs)
+		}
+	}
+	// The containment probe itself must refuse absolute escapes (both the
+	// session-side check and the marker-derivative argument in the takeover
+	// chain rest on it).
+	for _, outside := range []string{`C:\Windows\evil.jsonl`, "/etc/evil.jsonl"} {
+		if pathInsideDir(dir, outside) {
+			t.Fatalf("pathInsideDir(%q) = true for outside path %q", dir, outside)
+		}
+	}
+}
+
+func TestTakeoverMarkerPathStaysInsideSessionDir(t *testing.T) {
+	// Task 779 guard for the 539/579 takeover chain (go/path-injection):
+	// serve.go's os.WriteFile and pollTakeoverYield/tryTakeoverAcquire's
+	// os.Remove/os.ReadFile all operate on TakeoverRequestMarkerPath(abs).
+	// The derivation is a fixed-suffix rewrite of the containment-proven abs,
+	// so the marker must land in the very same session directory — this test
+	// pins that invariant so a future derivation change cannot silently
+	// reintroduce an escape.
+	dir := t.TempDir()
+	for _, name := range []string{"legit", "C:evil", "dot.dot"} {
+		absDir, abs, err := sessionFileForName(dir, name)
+		if err != nil {
+			t.Fatalf("sessionFileForName(%q): %v", name, err)
+		}
+		marker := agent.TakeoverRequestMarkerPath(abs)
+		if !pathInsideDir(absDir, marker) {
+			t.Fatalf("marker %q escaped session dir %q (session path %q)", marker, absDir, abs)
+		}
+		if filepath.Dir(marker) != filepath.Clean(absDir) {
+			t.Fatalf("marker %q not directly inside %q", marker, absDir)
+		}
+		if filepath.Ext(marker) != ".takeover-request" {
+			t.Fatalf("marker %q lost the .takeover-request suffix", marker)
+		}
+	}
+
+	// End-to-end: a traversal name must die at sessionFileForName and never
+	// reach the marker derivation — no marker file may materialize outside
+	// the session dir (complements TestTakeoverSessionRejectsTraversalName,
+	// which covers the HTTP handler path).
+	parent := filepath.Dir(dir)
+	for _, name := range []string{"../escape", "..\\escape", "../../escape"} {
+		_, _, err := sessionFileForName(dir, name)
+		if err == nil {
+			t.Fatalf("sessionFileForName(%q) accepted a traversal name", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(parent, "escape.jsonl.takeover-request")); err == nil {
+		t.Fatal("takeover marker materialized outside the session dir")
 	}
 }
 

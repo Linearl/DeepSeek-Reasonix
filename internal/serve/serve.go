@@ -2010,7 +2010,11 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 	// Resolve the transcript path with the same containment proof as
 	// /delete-session and /release-session: the name is remote input, so the
 	// resolved path must stay inside the session directory no matter what the
-	// request carried.
+	// request carried. CodeQL go/path-injection reports the os.Stat/lease
+	// uses of abs below as a flow-through of the request body; that is a
+	// modeling false positive — sessionFileForName re-proves containment
+	// structurally (pathInsideDir), and string-level name validation is not
+	// what keeps abs inside the dir (task 779).
 	_, abs, err := sessionFileForName(s.ctl().SessionDir(), name)
 	if err != nil {
 		http.Error(w, err.Error(), resolveSessionPathStatus(err))
@@ -2033,6 +2037,12 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		// state. The old synchronous 409 "holder did not yield" is gone with
 		// the interrupt-style protocol it described.
 		marker := agent.TakeoverRequestMarkerPath(abs)
+		// The marker derives from abs by a fixed-suffix rewrite (drop
+		// ".jsonl", append ".takeover-request"), so it lives in the same
+		// session directory as the already-contained abs — the os.WriteFile
+		// here inherits that containment proof (task 779 CodeQL triage). The
+		// marker CONTENT is local-only: agent.SessionWriterID() is minted in
+		// this process; the remote "from" field never enters it.
 		// A forced request tells the desktop to skip its prompt and cancel
 		// the running turn (T3) — the double confirmation gate lives on the
 		// remote client (GC) side.

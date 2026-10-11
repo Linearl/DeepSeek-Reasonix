@@ -131,6 +131,13 @@ func (s *Server) decorateTakeoverStatus(path string, view map[string]any) map[st
 // acquire → remove marker → rebind → notifyRemoteWriteAuthority. Terminal
 // outcomes are recorded for the /status pollers; the marker file is always
 // cleaned up so the desktop watcher never sees a stale request.
+//
+// Task 779 CodeQL triage: abs and marker arrive from takeoverSession, where
+// abs was containment-proven by sessionFileForName and marker is its
+// fixed-suffix sibling in the same directory, so the os.Remove/os.ReadFile
+// uses below stay inside the session directory by construction. The "from"
+// parameter (remote request body) never reaches a filesystem path — it only
+// feeds the desktop write-authority observer's log/UI payload.
 func (s *Server) pollTakeoverYield(abs, marker, from string) {
 	deadline := time.Now().Add(takeoverPollWindow)
 	for {
@@ -189,6 +196,13 @@ func (s *Server) pollTakeoverYield(abs, marker, from string) {
 // acquire refuses while an active reservation exists, so the consume is what
 // makes the post-yield tick succeed immediately instead of after the
 // reservation expiry.
+//
+// Task 779 CodeQL triage: marker is a contained path (same directory as the
+// containment-proven abs), so the os.ReadFile here is in-bounds. The parsed
+// marker CONTENT (WriterID/HandoffID — attacker-writable on a shared host)
+// never constructs a path: TryAcquireSessionLeaseWithHandoff compares them
+// as plain strings against the lease reservation record, and its MkdirAll
+// target is the canonical form of the already-contained abs.
 func tryTakeoverAcquire(abs, marker string) *agent.SessionLease {
 	if lease, err := agent.TryAcquireSessionLease(abs); err == nil {
 		return lease
