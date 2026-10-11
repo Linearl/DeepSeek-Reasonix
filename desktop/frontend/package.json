@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/check-all-parallel.mjs && tsc --noEmit --incremental && vite build && node scripts/check-bundle-budget.mjs",
+    "build:web": "vite build --config vite.web.config.ts",
+    "dev:web": "vite --config vite.web.config.ts",
     "check:bridge-tags": "node ../../scripts/check-bridge-json-tags.mjs ../..",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:comment-leak": "node scripts/check-comment-leak.mjs",

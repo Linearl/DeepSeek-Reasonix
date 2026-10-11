@@ -145,6 +145,10 @@ type Server struct {
 	// /capabilities advertises "child-session" so the GrandCouncil client can
 	// show its derive entry. Off keeps both absent — the fail-closed default.
 	gcChildSession bool
+	// webDist is the [serve] web_dist directory (task 701 Web Remote): the
+	// desktop web shell build output hosted under /web/. Empty (the default)
+	// mounts no /web route — byte-for-byte zero behavior change.
+	webDist string
 }
 
 // SetControllerBuildOptions records the process-local options used to build
@@ -174,6 +178,7 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		leaseOwners:    map[*control.Controller]*control.SessionLeaseKeeper{},
 		mirrored:       map[string]mirroredSession{},
 		gcChildSession: serveCfg.ExperimentalGCChildSession,
+		webDist:        serveCfg.WebDist,
 	}
 	bc.SetCurrentSession(agent.CanonicalSessionPath(ctrl.SessionPath()))
 	if cfg, err := config.Load(); err == nil {
@@ -717,6 +722,9 @@ func (s *Server) handler() http.Handler {
 	if s.gcChildSession {
 		mux.HandleFunc("POST /spawn-child-session", s.spawnChildSession)
 	}
+	// 任务 701（Web Remote）：web_dist 配置后才挂载 /web 静态托管；未配置
+	// 时 /web* 保持 404（零行为）。
+	s.mountWebDist(mux)
 	return logMiddleware(securityHeaders(gzipMiddleware(s.auth.middleware(s.hostGuard(csrfGuard(mux))))))
 }
 

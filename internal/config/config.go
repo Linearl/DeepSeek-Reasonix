@@ -1079,6 +1079,16 @@ type ServeConfig struct {
 	// assignments. Independent of BusMCP: mail to the worker contact can
 	// come from Reasonix sessions just as well. Off by default.
 	BusWorker BusWorkerConfig `toml:"bus_worker"`
+	// WebDist points at the desktop frontend web shell build output
+	// (desktop/frontend dist built with web.html as its entry). When set,
+	// serve hosts that shell under the /web/ prefix (task 701 Web Remote):
+	// a phone or tablet browser reaches the session list, message
+	// submission, and transcript through the same reasonix serve process.
+	// Empty (the default) mounts no /web route at all — byte-for-byte zero
+	// behavior change. Auth is never bypassed for the API: the shell itself
+	// bootstraps through the existing ?token= query or POST /auth/token
+	// fragment exchange, same as the embedded UI.
+	WebDist string `toml:"web_dist"`
 	// ExperimentalGCChildSession is the task-540 lab switch: when on, the
 	// GrandCouncil remote client may spawn a child session derived from the
 	// conversation it is driving (POST /spawn-child-session), and GET

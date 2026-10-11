@@ -88,3 +88,6 @@ site/.generated/
 
 # Committed pointer at REASONIX.md; overrides a global CLAUDE.md ignore rule.
 !/CLAUDE.md
+
+# 任务 701：Web 壳独立构建产物（vite.web.config.ts → dist-web）
+/desktop/frontend/dist-web/
