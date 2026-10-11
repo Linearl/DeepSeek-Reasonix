@@ -259,7 +259,11 @@ func workspaceIdentities(root string) (canonical, compatibility string, err erro
 func boundedGitWorktreeRoot(abs string) string {
 	type walkResult struct{ path string }
 	ch := make(chan walkResult, 1)
-	go func() { ch <- walkResult{gitWorktreeRootWalk(abs)} }()
+	// Local copy of the seam before spawning: a walker abandoned past the
+	// budget keeps running after a later test swapped/restored the package
+	// variable, and must never re-read the shared seam (task 762 -race fix).
+	walk := gitWorktreeRootWalk
+	go func() { ch <- walkResult{walk(abs)} }()
 	timer := time.NewTimer(identityResolveBudget)
 	defer timer.Stop()
 	select {
