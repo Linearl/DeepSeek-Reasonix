@@ -364,6 +364,14 @@ type Controller struct {
 	running           bool
 	finishing         bool // TurnDone is still being delivered; park a replacement turn
 	finishingBoundary turnFinishingBoundary
+	// finishingSince stamps when the current finishing window opened (任务796).
+	// A healthy TurnDone fan-out clears it within milliseconds; a fan-out that
+	// blocks forever leaves finishing=true with running=false — the "幽灵
+	// running" that makes RuntimeStatus().Running report busy to every idle
+	// observer (579 bridge skips the target, S1 sees no TurnDone event) while
+	// nothing actually runs. HealStuckFinishing consumes this stamp;
+	// RuntimeStatus publishes it for observability.
+	finishingSince time.Time
 	// subagentPolicy is the transient sub-agent delegation tier for
 	// subsequent turns (#9004); light (no guidance) is the default.
 	subagentPolicy agent.SubagentPolicy
@@ -480,11 +488,15 @@ type plannerSessionResetter interface {
 // distinguish a cancellable foreground turn from pending prompts and background
 // jobs.
 type RuntimeStatus struct {
-	Running         bool
-	PendingPrompt   bool
-	BackgroundJobs  int
-	CancelRequested bool
-	Cancellable     bool
+		Running         bool
+		// 任务796 observability: the raw TurnDone fan-out window, separate from
+		// the running||finishing merge above (see RuntimeStatus).
+		Finishing          bool
+		FinishingSinceUnix int64
+		PendingPrompt      bool
+		BackgroundJobs     int
+		CancelRequested    bool
+		Cancellable        bool
 	TurnID          string
 	Status          event.TurnStatus
 	TurnEventSeq    uint64
@@ -1415,6 +1427,11 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 	// not resurrect a finishing state after teardown.
 	c.finishing = !c.closed
 	c.finishingBoundary.begin(c.finishing)
+	if c.finishing {
+		c.finishingSince = time.Now()
+	} else {
+		c.finishingSince = time.Time{}
+	}
 	c.cancel = nil
 	c.forceCancel = nil
 	// 任务461-P7: the stop escalation state dies with its turn — the next stop
@@ -1436,7 +1453,20 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 	c.refreshRuntimeState(event.Event{})
 	defer func() {
 		c.mu.Lock()
+		// 任务796: the same stale-completion logic as the entry check above,
+		// but for a finisher that was stuck INSIDE the fan-out (e.g. Emit
+		// blocked) while HealStuckFinishing reopened the gate. Its deferred
+		// cleanup must neither clear the current window's finishing flag nor
+		// spawn a parked body over a live replacement turn — bail entirely.
+		if completion != nil && completion.generation != c.turnGeneration {
+			staleGen, current := completion.generation, c.turnGeneration
+			c.mu.Unlock()
+			slog.Warn("control: stale finisher cleanup skipped after gate heal",
+				"completion_generation", staleGen, "current_generation", current, "err", err)
+			return
+		}
 		c.finishing = false
+		c.finishingSince = time.Time{}
 		c.canceling = false
 		c.finishingBoundary.end()
 		if c.closed {
@@ -2630,6 +2660,8 @@ func (c *Controller) RuntimeStatus() RuntimeStatus {
 	c.mu.Lock()
 	running := c.running
 	active := running || c.finishing
+	finishing := c.finishing
+	finishingSince := c.finishingSince
 	canceling := c.canceling
 	stopLevel := c.stopLevel
 	stopDeadline := c.stopDeadline
@@ -2641,18 +2673,29 @@ func (c *Controller) RuntimeStatus() RuntimeStatus {
 	if !stopDeadline.IsZero() {
 		stopDeadlineUnix = stopDeadline.Unix()
 	}
+	var finishingSinceUnix int64
+	if !finishingSince.IsZero() {
+		finishingSinceUnix = finishingSince.Unix()
+	}
 	return RuntimeStatus{
 		Running:          active,
-		PendingPrompt:    pending,
-		BackgroundJobs:   backgroundJobs,
-		CancelRequested:  canceling,
-		Cancellable:      running || pending || canceling,
-		TurnID:           turnID,
-		Status:           status,
-		TurnEventSeq:     turnEventSeq,
-		ReplayAfterSeq:   replayAfterSeq,
-		StopLevel:        stopLevel,
-		StopDeadlineUnix: stopDeadlineUnix,
+		// 任务796 observability: Running merges running||finishing, so a wedged
+		// TurnDone fan-out (finishing-only leak) is invisible to every idle
+		// observer. Finishing/FinishingSinceUnix let the desktop bridge sweep
+		// log (and any future watchdog) tell "a turn is really running" from
+		// "the fan-out window never closed" and act on the difference.
+		Finishing:          finishing,
+		FinishingSinceUnix: finishingSinceUnix,
+		PendingPrompt:      pending,
+		BackgroundJobs:     backgroundJobs,
+		CancelRequested:    canceling,
+		Cancellable:        running || pending || canceling,
+		TurnID:             turnID,
+		Status:             status,
+		TurnEventSeq:       turnEventSeq,
+		ReplayAfterSeq:     replayAfterSeq,
+		StopLevel:          stopLevel,
+		StopDeadlineUnix:   stopDeadlineUnix,
 	}
 }
 
@@ -5836,6 +5879,7 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 		// foreground goroutine actually exits; clearing it here would report idle
 		// while tools and prompt waiters were still live.
 		c.finishing = false
+		c.finishingSince = time.Time{}
 		c.finishingBoundary.end()
 		if cancel != nil {
 			c.canceling = true
