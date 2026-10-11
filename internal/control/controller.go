@@ -1476,6 +1476,10 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 		}
 		if len(c.parkedTurns) == 0 {
 			c.mu.Unlock()
+			// 任务807: the gate just closed — reconcile window-era unowned
+			// claims before the kick below, so a stray whose claiming pipeline
+			// died requeues and is re-consumed in the same breath.
+			c.releaseUnownedInboxClaims("finish_close")
 			// No parked compatibility body: admit the next durable inbox item.
 			c.maybeDispatchInbox()
 			// 任务553: the gate just reopened — re-arm the idle-session wake in
@@ -1495,6 +1499,10 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 		c.running = true
 		c.canceling = false
 		c.mu.Unlock()
+		// 任务807: same reconciliation as the no-parked close — the drain keeps
+		// the gate busy, so a window-era stray would strand through every
+		// window until the final one without this pass.
+		c.releaseUnownedInboxClaims("finish_close_parked")
 		c.spawnGuardedTurn(ctx, cancel, next)
 		c.refreshRuntimeState(event.Event{})
 	}()

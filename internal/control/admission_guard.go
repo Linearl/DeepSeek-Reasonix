@@ -141,6 +141,10 @@ func (c *Controller) HealStuckFinishing(maxAge time.Duration) (healed bool, stal
 	slog.Warn("control: finishing window wedged — self-heal reopened the admission gate (任务796)",
 		"finishing_for", stalledFor, "threshold", maxAge, "generation", c.turnGeneration,
 		"action", "reset_stuck_finishing_and_rearm_inbox_dispatch")
+	// 任务807: the reopen boundary reconciles window-era unowned claims before
+	// re-arming dispatch — same pass as the normal close, so a stray whose
+	// claiming pipeline died during the wedge requeues instead of stranding.
+	c.releaseUnownedInboxClaims("heal_reopen")
 	c.refreshRuntimeState(event.Event{})
 	// Same re-arms the normal exit path performs: durable-host consumers get
 	// their dispatch pass; the desktop bridge re-opens on its own next sweep.
