@@ -4918,7 +4918,19 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 	// Task 755: authority order + workspace-label guard — the sidecar title
 	// alone let a pinned "Global" label (the old display fallback) keep
 	// re-branding the tab on every binding apply.
-	topicTitle := sessionBindingDisplayTitle(scope, workspaceRoot, topicID, binding.topicTitle)
+	// Task 791: the authority order serves topic-bound bindings only. A
+	// binding with no topic never derives — and so never writes — a title:
+	// sessionBindingDisplayTitle falls back to the workspace label for a
+	// topic-less binding, and writing that wiped whatever in-memory name the
+	// tab already carried (every reconcile that re-enters apply before the
+	// sidecar learns the topic — ClearSession's runtime rebuild among them —
+	// re-branded the tab "Global", the very shape 755 set out to kill). The
+	// workspace label for a topic-less surface stays topicTitleForTab's job
+	// at tab-build time.
+	topicTitle := ""
+	if topicID != "" {
+		topicTitle = sessionBindingDisplayTitle(scope, workspaceRoot, topicID, binding.topicTitle)
+	}
 	topicSource := ""
 	if topicID != "" {
 		topicSource = loadTopicTitleSource(topicTitleRoot(scope, workspaceRoot), topicID)
@@ -4986,7 +4998,13 @@ func (a *App) applySessionBindingToTab(tab *WorkspaceTab, binding sessionBinding
 		tab.TopicID = topicID
 		tab.topicTitleSource = topicSource
 	}
-	if topicTitle != "" {
+	// Task 791: fill-only-vacant. A real name already on the tab (set by the
+	// user or a flow before the sidecar caught up) is never overwritten; the
+	// write may only fill a vacant value. Vacant mirrors 755's reads-as-absent
+	// semantics — empty, exactly the workspace label, or a default title — so
+	// 755's pinned-label healing keeps working unchanged (it only ever fires
+	// for topic-bound bindings, where topicTitle is non-empty here).
+	if topicTitle != "" && bindingApplyFillsTabTitle(tab.TopicTitle) {
 		changed = changed || tab.TopicTitle != topicTitle
 		tab.TopicTitle = topicTitle
 	}
@@ -7040,6 +7058,19 @@ func sessionBindingDisplayTitle(scope, workspaceRoot, topicID, sidecarTitle stri
 		return globalWorkspaceTabLabel
 	}
 	return defaultTopicTitle
+}
+
+// bindingApplyFillsTabTitle reports whether the tab's current title is a
+// vacant value a binding apply may fill. Task 791: a real name already on
+// the tab is never overwritten — only the vacant shapes are, and those are
+// exactly the values 755 treats as absent: empty, the workspace label
+// itself, or a default conversation title.
+func bindingApplyFillsTabTitle(current string) bool {
+	current = strings.TrimSpace(current)
+	if current == "" || current == globalWorkspaceTabLabel {
+		return true
+	}
+	return isDefaultTopicTitle(current)
 }
 
 func topicTitleRoot(scope, workspaceRoot string) string {
