@@ -57,12 +57,13 @@ func TestListIncludesBuiltinsSorted(t *testing.T) {
 	}
 }
 
-// Task 385d: the built-in set reaches five, matching the CC lineup
-// (Default / Proactive / Explanatory / Learning / Concise). List sorts by
-// name, so the expectation doubles as an ordering pin.
-func TestBuiltinStyleSetIsFive(t *testing.T) {
+// Task 385d brought the set to five, matching the CC lineup (Default /
+// Proactive / Explanatory / Learning / Concise); task 770 adds dual-track,
+// the productized 双轨解释 convention, as the sixth. List sorts by name,
+// so the expectation doubles as an ordering pin.
+func TestBuiltinStyleSetIsSix(t *testing.T) {
 	got := List(nil)
-	want := []string{"concise", "default", "explanatory", "learning", "proactive"}
+	want := []string{"concise", "default", "dual-track", "explanatory", "learning", "proactive"}
 	if len(got) != len(want) {
 		t.Fatalf("want %d built-in styles, got %d: %+v", len(want), len(got), got)
 	}
@@ -133,11 +134,11 @@ func TestDefaultStyleListedButNeverInjects(t *testing.T) {
 	}
 }
 
-// Task 385d: custom dirs keep working with five built-ins present — a custom
-// file adds a sixth style, resolves, and the built-ins stay resolvable next
+// Task 385d: custom dirs keep working with the built-ins present — a custom
+// file adds one more style, resolves, and the built-ins stay resolvable next
 // to it (the override path itself is pinned by
 // TestCustomFileOverridesBuiltinAndParses).
-func TestCustomDirsStillWorkWithFiveBuiltins(t *testing.T) {
+func TestCustomDirsStillWorkWithBuiltins(t *testing.T) {
 	dir := t.TempDir()
 	md := "---\ndescription: persona from a custom dir\n---\nCustom body.\n"
 	if err := os.WriteFile(filepath.Join(dir, "persona.md"), []byte(md), 0o644); err != nil {
@@ -145,14 +146,14 @@ func TestCustomDirsStillWorkWithFiveBuiltins(t *testing.T) {
 	}
 
 	got := List([]string{dir})
-	if len(got) != 6 {
-		t.Fatalf("want 5 built-ins + 1 custom = 6, got %d: %+v", len(got), got)
+	if len(got) != 7 {
+		t.Fatalf("want 6 built-ins + 1 custom = 7, got %d: %+v", len(got), got)
 	}
 	st, ok := Resolve("persona", []string{dir})
 	if !ok || st.Builtin || st.Description != "persona from a custom dir" {
 		t.Errorf("custom style must resolve from its dir: %+v ok=%v", st, ok)
 	}
-	for _, name := range []string{"proactive", "explanatory", "learning", "concise"} {
+	for _, name := range []string{"proactive", "explanatory", "learning", "concise", "dual-track"} {
 		if _, ok := Resolve(name, []string{dir}); !ok {
 			t.Errorf("built-in %q must still resolve with a custom dir present", name)
 		}
