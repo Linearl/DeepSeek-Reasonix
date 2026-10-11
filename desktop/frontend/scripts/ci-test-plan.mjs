@@ -42,7 +42,10 @@ export function testPlan(scripts, discovered) {
   if (!discover) throw new Error("CI must include discovery of new frontend tests");
   for (const file of discovered.sort()) {
     const key = `src/__tests__/${file}`;
-    if (!explicit.has(key)) add(["tsx", "--import", "./scripts/css-stub-register.mjs", key]);
+    // Same runner face as every explicit invocation (768b ③): the main
+    // tsconfig.json excludes src/__tests__, so the tsx default would split
+    // JSX transpile behavior for exactly these files.
+    if (!explicit.has(key)) add(["tsx", "--tsconfig", "tsconfig.tsx-runner.json", "--import", "./scripts/css-stub-register.mjs", key]);
   }
   return [...explicit.values()];
 }
