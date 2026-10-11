@@ -308,6 +308,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       entries: [
         { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "optional", onKeys: ["experimentalRuntimeReuse"] },
         { id: "zcodeTaskBus", labelKey: "settings.zcodeTaskBus", tier: "unstable", onKeys: ["experimentalZcodeTaskBus"] },
+        // 任务 790：ACP 常驻监听（与 yaml 同序同值——回退安全网）。
+        { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable", onKeys: ["experimentalACPListen"] },
         { id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] },
         { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "unstable", onKeys: ["experimentalOrphanHandling"] },
         { id: "localServer", labelKey: "settings.localServer", tier: "unstable", onKeys: ["experimentalLocalServer"] },

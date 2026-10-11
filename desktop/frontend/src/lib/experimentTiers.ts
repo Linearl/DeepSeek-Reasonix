@@ -64,6 +64,8 @@ export type TierFeatureId =
   | "sessionStorage"
   | "runtimeReuse"
   | "zcodeTaskBus"
+  // 任务 790: ACP 常驻监听（loopback TCP，每连接独立 client 面，默认关）。
+  | "acpListen"
   | "modelCapabilityFilter"
   | "pathRules"
   | "orphanHandling"
@@ -172,9 +174,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── storage（存储，2 项）────────────────────────────────────
   eventsRotation: "optional",
   sessionStorage: "unstable",
-  // ── infra（基础设施，6 项；785 退役 S1 baseProcess 条目）──────
+  // ── infra（基础设施，7 项；785 退役 S1 baseProcess，790 增 acpListen）──────
   runtimeReuse: "optional",
   zcodeTaskBus: "unstable",
+  acpListen: "unstable",
   modelCapabilityFilter: "retired",
   pathRules: "unstable",
   orphanHandling: "unstable",
@@ -219,11 +222,11 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 总数 53→56。任务 783：可观测性组「用量监测」卡容器 + GLM Plan 用量子项
  * 入表（推荐×2），推荐 16→18、总数 56→58；同任务编辑读回（toolOptimizations）
  * 随 22.5 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。任务 785：
- * baseProcess（S1 常驻底座开关）随底座退役出表，未稳定 12→11、总数 58→57。） */
+ * baseProcess（S1 常驻底座开关）随底座退役出表，未稳定 12→11、总数 58→57。任务 790：acpListen（ACP 常驻监听，默认关）入表未稳定档，11→12、总数 57→58。） */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 19,
   optional: 26,
-  unstable: 11,
+  unstable: 12,
   retired: 1,
 };
 

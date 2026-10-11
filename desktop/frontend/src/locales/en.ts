@@ -2942,6 +2942,13 @@ export const en = {
 "settings.zcodeTaskBus.awaitRestart": "Enabled — takes effect after the desktop restarts.",
 "settings.zcodeTaskBus.roles": "Enrolled roles",
 "settings.zcodeTaskBusRolesHint": "Each role maps to the bus contact zcode-<role> (token pairing via reasonix bus enroll).",
+"settings.acpListen": "resident ACP listener",
+"settings.acpListenHint": "When on, the desktop hosts a resident ACP server at boot (loopback-only 127.0.0.1, port acp_listen_port, default 8790): external editors and other ACP clients connect straight to the port instead of spawning a reasonix acp process each time. Every connection is an independent client surface over the same protocol stack and persistence; a reconnect resumes via session/load. The switch is read once at startup — restart to apply. Off (default) starts no listener and keeps behavior byte-for-byte unchanged.",
+"settings.acpListen.on": "On",
+"settings.acpListen.off": "Off",
+"settings.acpListen.running": "listening on:",
+"settings.acpListen.notRunning": "not listening:",
+"settings.acpListen.awaitRestart": "Enabled — restart the desktop to apply.",
 // Task 385a: output style selector (lab, efficiency group).
 "settings.outputStyle": "Output style",
 "settings.outputStyleLabHint": "Pick an output style folded into the system prompt. The switch only controls whether this panel's selector shows; switching rebuilds the current session so it applies immediately (a running turn is never interrupted — the change lands when the turn finishes). Main sessions only — sub-sessions never carry a style. Off by default.",

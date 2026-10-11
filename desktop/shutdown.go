@@ -123,6 +123,10 @@ func (a *App) shutdownBody() {
 	// when the lab switch never armed it (the default).
 	a.closeZcodeTaskBus()
 	a.lifecycle.tracker.mark("closing_zcode_task_bus_done")
+	// Task 790: stop the resident ACP listener with the process. No-op when
+	// the lab switch never armed it (the default).
+	a.closeACPListener()
+	a.lifecycle.tracker.mark("closing_acp_listener_done")
 	a.stopTray()
 	// Terminal process shutdown is independent from controller teardown. Do it
 	// before acquiring runtime lifecycle locks so a slow PTY cannot delay while

@@ -6,7 +6,7 @@ import type * as GeneratedApp from "../../wailsjs/go/main/App";
 import type { InvocationRequest } from "./invocationDisplay";
 import type { PlanUsageResult } from "./planUsage";
 import type { FollowupBindings } from "./pendingFollowup";
-import type { OutputStyleListView, QuickCommandEntry, ZcodeTaskBusStatusView } from "./settingsViewTypes";
+import type { ACPListenStatusView, OutputStyleListView, QuickCommandEntry, ZcodeTaskBusStatusView } from "./settingsViewTypes";
 import { addBreadcrumb } from "./breadcrumbs";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
@@ -1134,6 +1134,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 439: built-in zcode task bus (lab switch; listener arms at boot).
   SetExperimentalZcodeTaskBus(enabled: boolean): Promise<void>;
   ZcodeTaskBusStatus(): Promise<ZcodeTaskBusStatusView>;
+  // Task 790: resident ACP listener (lab switch; listener arms at boot).
+  SetExperimentalACPListen(enabled: boolean): Promise<void>;
+  SetACPListenPort(port: number): Promise<void>;
+  ACPListenStatus(): Promise<ACPListenStatusView>;
   // Task 385a: lab 回答风格 — the UI gate, the persisted selection (validates
   // against outputstyle.List; unknown names reject), and the selector payload
   // (loadable styles + files that failed to load, surfaced never silent).
@@ -5749,6 +5753,11 @@ function makeMockApp(): AppBindings {
     async SetExperimentalZcodeTaskBus() {},
     async ZcodeTaskBusStatus() {
       return { enabled: false, running: false, addr: "", endpoint: "", roles: [] as string[], err: "" };
+    },
+    async SetExperimentalACPListen() {},
+    async SetACPListenPort() {},
+    async ACPListenStatus() {
+      return { enabled: false, port: 0, running: false, addr: "", err: "" };
     },
     async SetExperimentalOutputStyleUI() {},
     async SetOutputStyle() { return ""; },

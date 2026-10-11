@@ -190,6 +190,10 @@ func (a *App) startupStartLocalServices(ctx context.Context) {
 	// `reasonix serve`/vbs needed.
 	if cfg, err := config.Load(); err == nil {
 		a.startZcodeTaskBus(cfg)
+		// Task 790: resident ACP listener, opt-in via the lab switch (default
+		// off): external ACP clients connect over loopback TCP instead of
+		// spawning `reasonix acp`.
+		a.startACPListener(cfg)
 	}
 	a.startTray()
 	a.enableDeferredRebuildRetry()

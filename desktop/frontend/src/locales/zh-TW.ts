@@ -4176,6 +4176,13 @@ export const zhTW: Record<DictKey, string> = {
 "settings.zcodeTaskBus.awaitRestart": "已開啟，重啟桌面後生效。",
 "settings.zcodeTaskBus.roles": "已註冊角色",
 "settings.zcodeTaskBusRolesHint": "每個角色對應匯流排聯絡人 zcode-<角色>（token 配對見 reasonix bus enroll）。",
+"settings.acpListen": "ACP 常駐監聽",
+"settings.acpListenHint": "開啟後桌面啟動時在本程序內常駐 ACP server（僅監聽 127.0.0.1，連接埠 acp_listen_port 預設 8790），外部編輯器等 ACP client 直連連接埠即可，無需每次拉起 reasonix acp 程序。每個連線是獨立 client 面，工作階段經同一套協定堆疊與持久化，斷線重連可 session/load 恢復。開關在啟動時讀取一次，改動需重啟生效。預設關閉：不監聽任何連接埠，行為與沒有此功能的版本完全一致。",
+"settings.acpListen.on": "開",
+"settings.acpListen.off": "關",
+"settings.acpListen.running": "監聽中：",
+"settings.acpListen.notRunning": "未監聽：",
+"settings.acpListen.awaitRestart": "已開啟，重啟桌面後生效。",
 // 任務 385a：回答風格選擇器（實驗室，提效組）。
 "settings.outputStyle": "回答風格",
 "settings.outputStyleLabHint": "選擇折入 system prompt 的回答風格（Output Style）。開關僅控制本面板的選擇器顯示；切換後當前工作階段立即重建生效（正在執行的任務不會被打斷，本輪結束後自動套用）。僅影響主要工作階段，子工作階段不帶風格。預設關閉。",

@@ -1183,6 +1183,25 @@ func (c *Config) SetExperimentalZcodeTaskBus(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalACPListen toggles the task-790 resident ACP listener. It
+// ships off (铁律 2): the zero value starts no listener. The listener is
+// armed at desktop boot, so the flip applies on the next restart — the lab
+// card communicates that.
+func (c *Config) SetExperimentalACPListen(enabled bool) error {
+	c.Desktop.ExperimentalACPListen = enabled
+	return nil
+}
+
+// SetACPListenPort records the resident ACP listener's loopback port (task
+// 790). 0 keeps the 8790 default; the value is read once at desktop boot.
+func (c *Config) SetACPListenPort(port int) error {
+	if port < 0 || port > 65535 {
+		return fmt.Errorf("acp_listen_port: %d out of range 0-65535", port)
+	}
+	c.Desktop.ACPListenPort = port
+	return nil
+}
+
 // SetOutputStyle records the chosen output style in [agent] output_style (task
 // 385a). Empty and "default" both mean the unmodified system prompt, so
 // "default" is normalized to the empty string — one canonical on-disk value

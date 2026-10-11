@@ -420,6 +420,21 @@ type DesktopConfig struct {
 	// unchanged. The listener is armed at boot: a flip applies on the next
 	// restart, and the lab card says so.
 	ExperimentalZcodeTaskBus bool `toml:"experimental_zcode_task_bus"`
+	// ExperimentalACPListen is the task-790 lab switch for the resident ACP
+	// listener. It ships OFF (铁律 2): with the zero value the desktop starts
+	// no listener at all — no port bound, no goroutine, byte-for-byte the
+	// behaviour of a build without the feature; the stdio `reasonix acp`
+	// command stays the only ACP surface. When ON, the desktop arms a
+	// loopback-only TCP listener (127.0.0.1 is hardcoded; never exposed as a
+	// bind-to-any-interface option) and every accepted connection becomes an
+	// independent ACP client surface with the same protocol stack and session
+	// persistence as the stdio command. The listener is armed at boot: a flip
+	// applies on the next restart, and the lab card says so.
+	ExperimentalACPListen bool `toml:"experimental_acp_listen"`
+	// ACPListenPort is the TCP port the resident ACP listener binds on
+	// 127.0.0.1 when ExperimentalACPListen is on. 0 (the default) means 8790 —
+	// next to, but never colliding with, the task bus endpoint on 8787.
+	ACPListenPort int `toml:"acp_listen_port"`
 }
 
 // DesktopQuestionSearchEnabled reports whether the topic-bar question-search

@@ -9,7 +9,7 @@
 //  ③ M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
 //     fullAccess / optimisticParallel each still has its own rail entry and
 //     its own pane branch;
-//  ④ the rail carries exactly 34 entries in 8 groups — 任务 722 后为
+//  ④ the rail carries exactly 35 entries in 8 groups — 任务 722 后为
 //     4/8/15/1/1/1/6/1（safetyCostControl 自 automation 迁 efficiency 并吸收
 //     messageMerge；sessionCollabAutoFold 并入 sessionCollab；727
 //     heartbeatRotation 以成员入 safetyCostControl，不占 rail 入口）；
@@ -23,6 +23,7 @@
 //     GLM Plan 用量 + OpenCode Go 用量，opencodeGoUsage 独立 pane 退役为
 //     成员行）。
 //     任务 785 后为 5/8/9/2/1/3/5/1=34（baseProcess 条目随 S1 底座开关退役，infra 6→5）。
+//     任务 790 后为 5/8/9/2/1/3/6/1=35（acpListen ACP 常驻监听入 rail，infra 5→6）。
 //     任务 722/724：render table 移交布局默认数据（labLayoutDefault.ts），
 //     分组/成员/徽章/排序由 lab-layout.yaml（校验回退默认）驱动——本测试的
 //     分组断言读布局数据与 yaml，卡片独立性断言仍读 SettingsPanel 源。
@@ -80,12 +81,13 @@ console.log("\ntask 561 lab regroup + merged cards");
 // 两张 kind:param 参数卡；742：automation 增 heartbeatBackground 入口；
 // 722：safetyCostControl 迁提效并吸收 messageMerge 入口）。
 // 任务 785：baseProcess 随 S1 底座开关退役，infra 6→5 → 总数 34。
+// 任务 790：acpListen 入 rail，infra 5→6 → 总数 35。
 // 数据源 = 布局默认数据 + yaml（两份必须同构）。
 {
   // 直接导入布局数据模块数真数据（比源码正则稳）。
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
-  ok(defEntries.length === 34, `default layout carries exactly 34 rail entries (got ${defEntries.length})`);
+  ok(defEntries.length === 35, `default layout carries exactly 35 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -94,11 +96,11 @@ console.log("\ntask 561 lab regroup + merged cards");
   const groups: Record<string, number> = {};
   for (const g of LAB_LAYOUT_DEFAULT_DATA.groups) groups[(g as { key: string }).key] = g.entries.length;
   // 任务 783：observability 1→2（用量监测卡落组）。任务 785：baseProcess
-  // 退役，infra 6→5 → 总数 34。
+  // 退役，infra 6→5 → 总数 34。任务 790：acpListen 入 rail，infra 5→6 → 总数 35。
   ok(groups["automation"] === 5 && groups["efficiency"] === 8 && groups["ui"] === 9 &&
-     groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 5 &&
+     groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 6 &&
      groups["tool-opt"] === 1,
-    `group counts are 5/8/9/2/1/3/5/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 5/8/9/2/1/3/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。

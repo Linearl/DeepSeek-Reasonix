@@ -60,6 +60,7 @@ export const LAB_LIGHT_KEYS = {
   experimentalLifecycleNoiseGate: (s: SettingsView) => Boolean(s.experimentalLifecycleNoiseGate),
   experimentalRuntimeReuse: (s: SettingsView) => Boolean(s.experimentalRuntimeReuse),
   experimentalZcodeTaskBus: (s: SettingsView) => Boolean(s.experimentalZcodeTaskBus),
+  experimentalACPListen: (s: SettingsView) => Boolean(s.experimentalACPListen),
   experimentalPathRules: (s: SettingsView) => Boolean(s.experimentalPathRules),
   experimentalOrphanHandling: (s: SettingsView) => Boolean(s.experimentalOrphanHandling),
   experimentalLocalServer: (s: SettingsView) => Boolean(s.experimentalLocalServer),

@@ -76,11 +76,11 @@ console.log("\ntask 562 lab three-tier badges");
   // 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。
   // 任务 785：baseProcess（S1 常驻底座开关）随底座退役出表——未稳定
   // 12→11、总数 58→57（合并线依 Go 表A 12/50 同源实跑对齐）。
-  ok(counts.recommended === 19 && counts.optional === 26 && counts.unstable === 11 && counts.retired === 1,
-    `register counts are 19/26/11/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 57, `register holds exactly 57 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 11 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 19/26/11/1");
+  ok(counts.recommended === 19 && counts.optional === 26 && counts.unstable === 12 && counts.retired === 1,
+    `register counts are 19/26/12/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 58, `register holds exactly 58 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 19/26/12/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -112,7 +112,7 @@ console.log("\ntask 562 lab three-tier badges");
   for (const m of goSrc.matchAll(/\{"([a-zA-Z]+)", LabTier([A-Za-z]+), \[/g)) {
     goTiers[m[1]] = m[2].toLowerCase();
   }
-  ok(Object.keys(goTiers).length === 50, `Go registry parses to 50 entries (got ${Object.keys(goTiers).length})`);
+  ok(Object.keys(goTiers).length === 51, `Go registry parses to 51 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -144,7 +144,7 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 704：trajectoryView 入表 → 50；任务 727 heartbeatRotation → 51；
   // 任务 742 tabManagement + heartbeatBackground → 53；任务 782 三容器 → 56；
   // 任务 783 用量监测容器+子项 → 58；任务 785 baseProcess 退役 → 57。
-  ok(covered.size === 57, "rail entries cover all 57 features");
+  ok(covered.size === 58, "rail entries cover all 58 features");
 
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构

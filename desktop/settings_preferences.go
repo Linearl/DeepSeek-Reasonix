@@ -445,6 +445,19 @@ func (a *App) SetExperimentalZcodeTaskBus(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalZcodeTaskBus(enabled) })
 }
 
+// SetExperimentalACPListen toggles the resident ACP listener (task 790).
+// Ships off; the listener arms at desktop boot, so a flip needs a restart —
+// the lab card communicates that.
+func (a *App) SetExperimentalACPListen(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalACPListen(enabled) })
+}
+
+// SetACPListenPort records the resident ACP listener's loopback port (task
+// 790). Read once at desktop boot; 0 keeps the 8790 default.
+func (a *App) SetACPListenPort(port int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetACPListenPort(port) })
+}
+
 // SetExperimentalCompactionParallel toggles parallel chunked compaction (265).
 func (a *App) SetExperimentalCompactionParallel(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCompactionParallel(enabled) })
