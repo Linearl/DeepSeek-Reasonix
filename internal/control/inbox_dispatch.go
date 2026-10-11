@@ -177,6 +177,14 @@ func (c *Controller) dispatchInboxOnce() inboxDispatchResult {
 			// dropping the kick as idle — that silence was the 2026-10-07
 			// five-hour backlog.
 			c.inbox.mu.Lock()
+			// 任务808: fresh budget per stuck head. The retry bookkeeping is a
+			// single slot; without this reset a new head inherits the previous
+			// item's burned attempts — its first re-drive lands at the tail of
+			// someone else's backoff and the exhaustion report names it with
+			// attempts it never made (the 796 报告 §6.2 消费竞争的覆盖面).
+			if c.inbox.runtimeRetryItem.ID != meta.ID {
+				c.inbox.runtimeRetryAttempts = 0
+			}
 			c.inbox.runtimeRetryItem = meta
 			c.inbox.mu.Unlock()
 			slog.Warn("controller: inbox dispatch deferred, runtime unpublished (item stays queued; bounded retry armed)",
@@ -317,7 +325,30 @@ func (c *Controller) SetOnInboxDispatchExhausted(fn func(InboxDispatchExhausted)
 // is a no-op, the callback is a no-op on a closed inbox, and a successful or
 // empty dispatch stops and clears it — the goroutine/timer lifecycle always
 // terminates (交付纪律: 重试必须有终止条件).
+//
+// 任务808: single-consumer boundary against every other head consumer (the
+// desktop idle-turn bridge's RunInboxTurn, a manual retry, a drain merge).
+// The chain re-drives only the item it was pinned to, and only while that
+// item is still the unclaimed FIFO head: when the head moved between the
+// failed attempt and this arm — someone else claimed and consumed it —
+// re-driving would race the new owner, burn retries against finished work,
+// and the exhaustion report would name an item nobody is stuck on. The chain
+// stands down instead; a new stuck head re-arms a fresh chain with its own
+// budget (the pin change resets attempts in dispatchInboxOnce).
 func (c *Controller) scheduleInboxRuntimeRetry() {
+	c.inbox.mu.Lock()
+	pinned := c.inbox.runtimeRetryItem.ID
+	c.inbox.mu.Unlock()
+	if pinned != "" {
+		// Store read outside inbox.mu (nextInboxDispatchItem takes it
+		// internally). The pin is re-validated on every timer fire via the
+		// same head pick, so a TOCTOU here self-corrects on the next kick.
+		meta, ok, err := c.nextInboxDispatchItem()
+		if err != nil || !ok || meta.ID != pinned {
+			c.resetInboxRuntimeRetry()
+			return
+		}
+	}
 	c.inbox.mu.Lock()
 	if c.inbox.closed || c.inbox.runtimeRetryScheduled {
 		c.inbox.mu.Unlock()
