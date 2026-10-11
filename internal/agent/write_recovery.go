@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"reasonix/internal/event"
+	"reasonix/internal/evidence"
 	"reasonix/internal/provider"
+	"reasonix/internal/shellsafe"
 	"reasonix/internal/tool"
 )
 
@@ -86,8 +88,57 @@ func (a *Agent) verifyInterruptedWrites(ctx context.Context, r *provider.Interru
 	return r
 }
 
-func recoverPreviousUnknown(turn *turnRuntime, call provider.ToolCall, t tool.Tool) (toolOutcome, bool) {
+// recoveryReadOnlyBash reports whether a bash command is safe to re-run after
+// an interrupted turn. It reuses the two existing static, fail-closed
+// classifiers (unparseable shapes, real redirections, and expansions all count
+// as writes):
+//  1. the shellsafe permission-reader family (ls/grep/cat/git status/go vet —
+//     statically proven zero writes), and
+//  2. the evidence verification-command family (go test/pytest/npm test —
+//     they may refresh host build caches but leave workspace content alone,
+//     so a re-run has no durable side effect), minus the code-executing
+//     writers the verification list still accepts (cargo check/clippy,
+//     git diff --ext-diff), which stay blocked.
+//
+// This is a recovery-layer judgment, deliberately narrower than "auto-approve
+// a new command": it is only consulted when this call is byte-identical to the
+// interrupted one (writeRecoveryKey already matched).
+func recoveryReadOnlyBash(args json.RawMessage) bool {
+	command := bashCommandFromArgs(args)
+	if command == "" {
+		return false
+	}
+	effect := shellsafe.ClassifyBash(command)
+	if effect.IsPermissionReader() {
+		return true
+	}
+	if !evidence.IsVerificationCommand(command) {
+		return false
+	}
+	// The verification list also accepts families the permission layer bills
+	// as code-executing writers (cargo check/clippy run build.rs and write
+	// target/ artifacts; git diff --ext-diff runs an external helper). Those
+	// keep their write-class blocking: re-running them can durably change
+	// workspace state, so the fail-closed classification wins.
+	return !effect.ExecutesCode && (effect.Certainty != shellsafe.EffectKnown || effect.Writes == 0)
+}
+
+// recoveryReadOnlyCall reports whether the write-recovery gates should let the
+// call through: either the tool itself is read-only, or it is a bash command
+// whose static classification proves re-running has no durable side effect.
+// Write-class calls keep the existing blocking behavior unchanged.
+func recoveryReadOnlyCall(call provider.ToolCall, t tool.Tool) bool {
 	if t.ReadOnly() {
+		return true
+	}
+	if call.Name != "bash" {
+		return false
+	}
+	return recoveryReadOnlyBash(json.RawMessage(call.Arguments))
+}
+
+func recoverPreviousUnknown(turn *turnRuntime, call provider.ToolCall, t tool.Tool) (toolOutcome, bool) {
+	if recoveryReadOnlyCall(call, t) {
 		return toolOutcome{}, false
 	}
 	if _, exists := turn.unknownRecovery[writeRecoveryKey(call)]; !exists {
@@ -149,7 +200,7 @@ func checkRecordedWrite(ctx context.Context, t tool.Tool, call provider.ToolCall
 }
 
 func recoverPreviousWrite(ctx context.Context, turn *turnRuntime, call provider.ToolCall, t tool.Tool) (toolOutcome, bool) {
-	if previous, exists := turn.writeRecovery[writeRecoveryKey(call)]; exists && !t.ReadOnly() {
+	if previous, exists := turn.writeRecovery[writeRecoveryKey(call)]; exists && !recoveryReadOnlyCall(call, t) {
 		checks, satisfied := checkRecordedWrite(ctx, t, previous)
 		if satisfied {
 			return toolOutcome{output: "The previous file write postconditions are already satisfied; no write was repeated."}, true
