@@ -2894,6 +2894,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       })}
                     >
                       {t(`settings.sessionStorage.mode.${mode}`)}
+                      {/* 805: v3 is the fork's long-term recommendation — the
+                          same pill the lab tiers use, no new copy or CSS. */}
+                      {mode === "v3_only" ? <TierBadge tier="recommended" translator={t} /> : null}
                     </button>
                   ))}
                 </SettingsOptions>
