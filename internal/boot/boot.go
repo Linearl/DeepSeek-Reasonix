@@ -3133,8 +3133,12 @@ func boundedNearestGitRoot(start string) (string, bool) {
 		ok   bool
 	}
 	ch := make(chan walkResult, 1)
+	// Local copy of the seam before spawning: a walker abandoned past the
+	// budget keeps running after a later test swapped/restored the package
+	// variable, and must never re-read the shared seam (task 762 -race fix).
+	walk := gitRootWalk
 	go func() {
-		root, ok := gitRootWalk(start)
+		root, ok := walk(start)
 		ch <- walkResult{root, ok}
 	}()
 	timer := time.NewTimer(gitRootWalkBudget)
@@ -3228,8 +3232,12 @@ func boundedStat(path string) (fs.FileInfo, error) {
 		err  error
 	}
 	ch := make(chan statResult, 1)
+	// Local copy of the seam before spawning: a stat abandoned past the
+	// budget keeps running after a later test swapped/restored the package
+	// variable, and must never re-read the shared seam (task 762 -race fix).
+	stat := additionalDirStat
 	go func() {
-		info, err := additionalDirStat(path)
+		info, err := stat(path)
 		ch <- statResult{info, err}
 	}()
 	timer := time.NewTimer(additionalDirStatTimeout)

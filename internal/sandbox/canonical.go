@@ -144,11 +144,16 @@ func canonicalWalkBounded(abs string) string {
 	// Buffered: a walker that outlives the budget (e.g. an SMB reconnect)
 	// must never block on delivery.
 	ch := make(chan walkResult, 1)
+	// Capture the seam into a local before spawning: a walker abandoned past
+	// the timeout keeps running after a later test swapped/restored the
+	// package variable, and must never re-read the shared seam (the -race
+	// report on task 762 was exactly that cross-test race).
+	eval := canonicalEvalSymlinks
 	go func() {
 		tail := ""
 		cur := abs
 		for {
-			if real, err := canonicalEvalSymlinks(cur); err == nil {
+			if real, err := eval(cur); err == nil {
 				ch <- walkResult{filepath.Join(real, tail)}
 				return
 			}
