@@ -1,0 +1,85 @@
+# Reasonix fork 实验室选项参考配置（脱敏版，随 ll-fork-guide 内置）
+
+# 生成自 desktop/frontend/src/lab/lab-layout.yaml（2026-10-12，v1.38.3-20261012-0045）。
+# tier: recommended=推荐（不开有体验缺口）/ optional=可选（小幅影响）/ unstable=未稳定（默认关）。
+# 本文件只含开关键与档位，无任何个人数据；onKeys 取主开关（族开关略）。
+
+lab_flags:
+  autopilot:
+    switch: autopilot
+    tier: recommended
+  fullAccess:
+    switch: experimentalFullAccess
+    tier: recommended
+  monitoring:
+    switch: experimentalSessionMonitor
+    tier: recommended
+  optimisticParallel:
+    switch: optimisticWrite
+    tier: recommended
+  quickCommands:
+    switch: experimentalQuickCommands
+    tier: recommended
+  searchHistory:
+    switch: experimentalPromptHistoryPicker
+    tier: recommended
+  sessionWall:
+    switch: experimentalSessionWall
+    tier: recommended
+  todoSidebar:
+    switch: experimentalTodoSidebar
+    tier: recommended
+  toolOptimizations:
+    switch: experimentalToolOptimizations
+    tier: recommended
+  usageMonitoring:
+    switch: experimentalOpenCodeGoUsage
+    tier: recommended
+  acpListen:
+    switch: experimentalACPListen
+    tier: optional
+  completionSummary:
+    switch: experimentalCompletionSummary
+    tier: optional
+  dream:
+    switch: experimentalDream
+    tier: optional
+  heartbeatBackground:
+    switch: experimentalHeartbeatBackground
+    tier: optional
+  inputSelection:
+    switch: experimentalComposerDraft
+    tier: optional
+  outputStyle:
+    switch: experimentalOutputStyleUI
+    tier: optional
+  pathRules:
+    switch: experimentalPathRules
+    tier: optional
+  runtimeReuse:
+    switch: experimentalRuntimeReuse
+    tier: optional
+  safetyCostControl:
+    switch: experimentalSafetyCostControl
+    tier: optional
+  tabManagement:
+    switch: experimentalTabCompress
+    tier: optional
+  traceAsState:
+    switch: experimentalTraceAsState
+    tier: optional
+  viewLayout:
+    switch: experimentalSplitView
+    tier: optional
+  zcodeTaskBus:
+    switch: experimentalZcodeTaskBus
+    tier: optional
+  collabGroupView:
+    switch: experimentalCollabGroupView
+    tier: unstable
+  localServer:
+    switch: experimentalLocalServer
+    tier: unstable
+  orphanHandling:
+    switch: experimentalOrphanHandling
+    tier: unstable

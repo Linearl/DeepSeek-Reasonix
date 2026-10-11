@@ -2,7 +2,7 @@
 
 > **用途**：随 Release Notes 一起发布，供用户按需开启实验特性。
 > **三档定义**：**推荐** = 核心特性，不开启会有体验缺口；**可选** = 按需开启的增强；**未稳定** = 尝鲜，可能有副作用。
-> **「我们的值」**= fork 开发机实际运行配置（2026-10-07），供参考。
+> **「我们的值」**= fork 开发机实际运行配置（2026-10-11 按 22.5 版更新），供参考。
 > 开启位置：**设置 → 实验室**（对应 config.toml 的 `experimental_*` 键）。
 
 ## 一、推荐（建议开启）
@@ -15,10 +15,11 @@
 | Bash 重命令守护 | `experimental_bash_heavy_guard`（agent 段） | ✅ | 多会话并行时重型命令排队互斥，保护共享目录（与乐观写配套） |
 | 预算控制 / 压缩优化 / 消息合并 | `budget/compress/message-merge` 族 | ✅ | 长会话稳定性三件套 |
 | 快捷指令 | `experimental_quick_commands` | ✅ | 输入框 + 菜单快速插入常用文本片段 |
-| 标签自动压缩 | `experimental_tab_compress` | ✅ | >8 个标签自动分级收窄，不再挤爆标签栏 |
+| 标签页管理（压缩+着色合并卡） | `experimental_tab_compress` + `tab_mode_tint` | ✅/❌ | 742 合并卡：压缩推荐开；着色为观感实验按需 |
 | 待办侧栏 | `experimental_todo_sidebar` | ✅ | 待办列表右侧边栏化 |
 | 提示历史选择器 | `experimental_prompt_history_picker` | ✅ | composer 时钟图标翻历史输入 |
 | 会话图墙 | `experimental_session_wall` | ✅ | 一屏总览所有会话，点开即跳转 |
+| 轨迹视图 | `experimental_trajectory_view` | ✅ | 标题栏「转录\|轨迹」切换：事件流投影成可观测性台账（任务 704） |
 | 会话监视板 | `experimental_session_monitor` | ✅ | 左栏会话监视看板 |
 | 分栏视图 | `experimental_split_view` | ✅ | 标签栏分栏（40/50/60 三档） |
 | 反馈通道 | `experimental_feedback` | ✅ | 意见箱提交工具+面板 |
@@ -33,6 +34,11 @@
 | 子代理详情视图 | `experimental_subagent_detail` | ✅ | 点行开只读详情 |
 | 子代理 TPS 读数 | `experimental_subagent_tps` | ✅ | 子代理卡片显示 tok/s |
 | 完成摘要通知 | `experimental_completion_summary` | ✅ | 每轮结果通知卡 |
+| 心跳任务后台化 | `experimental_heartbeat_background` | ❌ | 心跳触发不进标签栏（742；适合标签栏拥挤者） |
+| 轨迹状态注入 | `experimental_trace_as_state` | ✅ | 先前轨迹前置注入，轨迹在前问题居中（655） |
+| ACP 双端接线 | `experimentalACPListen` | ❌ | 外部 ACP 客户端（编辑器插件）驱动会话时开启；徽章可选，用一段时间再评估是否转推荐（790） |
+| 编辑证据门宽松模式 | `experimentalLooseReadback` | ❌ | 文件编辑证据校验误拦时的逃生口；默认严格不建议常开（789） |
+| 外部协作总线 | `experimentalZcodeTaskBus` | ❌ | 外部 agent 接入信件/任务卡时开启（786） |
 | 提问搜索 | `experimental_question_search` | ✅ | 标题栏搜索我的提问 |
 | 回答风格 UI | `experimental_output_style_ui` | ✅ | 实验室「回答风格」设置节 |
 | 高速模型档 | （agent 段族） | ✅ | 模型高速档 ⚡ 徽标与总闸 |

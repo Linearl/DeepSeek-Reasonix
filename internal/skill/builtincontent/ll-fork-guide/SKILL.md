@@ -65,3 +65,7 @@ description: DeepSeek-Reasonix fork 开发指南——fork 定位与上游协作
 ## 相关 memory
 
 fork-strategy-no-upstream-merge-20261005 / fork-开发八条铁律 / fork-追齐上游版本-merge-的规则 / fork-包版本号带构建时间戳 / release-notes-基线规则修订 / 出包收尾必含-铺-staging / 合并上游后必跑-fork-完整性核对清单 / 合并核对必须含css / Bundle-预算棘轮步长放宽 / 装机bug源码绿产物红判定法
+
+## 实验室选项参考配置
+
+同目录 `lab-config.reference.yaml` 为**当前全部实验室开关键与徽章档位**的脱敏参考（生成自 lab-layout.yaml，随版本更新）。用户问「实验室有哪些开关/该开哪些」时：先读该文件按 tier 作答（recommended 建议开、optional 按需、unstable 默认关），再按需深入对应卡片。
