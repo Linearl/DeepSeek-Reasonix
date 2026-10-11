@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,21 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/session"
 )
+
+// bridgeSyncState remembers how much of one agent transcript the mapped v4
+// session already holds, so the next sync can append only the new tail instead
+// of re-projecting the whole transcript. Task 772: the pre-fix sync re-appended
+// the complete transcript on every durable save, which is the write
+// amplification that grew the real-world mirror to 13.3 GB in 13 hours
+// (2026-09-19 rollback, session-storage-changelog.jsonl) and got the dual
+// modes mothballed.
+type bridgeSyncState struct {
+	sessionID string
+	count     int
+	// digest of messages[:count] as last made durable in sessionID. count==0
+	// means nothing is durable yet (digest is then unused).
+	digest string
+}
 
 // SessionV4Bridge maintains an experimental v4 store when session_storage=v4.
 // Writes still originate from the agent transcript (execution remains on JSONL
@@ -33,7 +49,10 @@ type SessionV4Bridge struct {
 	rootKey  string
 	byAgent  map[string]string
 	bindings map[string]*session.ClientBinding
-	digests  map[string]string
+	// synced carries the incremental sync state (task 772). It replaces the
+	// old full-transcript digest map: unchanged transcripts still short-circuit,
+	// and a grown transcript now appends only its new tail.
+	synced map[string]bridgeSyncState
 	// readsV4 gates the read side of the four-mode switch (task 155): modes 2
 	// keep mirroring into v4 while history still comes from the legacy
 	// transcript. It is live-switchable because it only changes which copy a
@@ -138,7 +157,7 @@ func NewSessionV4Bridge(root string) (*SessionV4Bridge, error) {
 		rootKey:  v4BridgeRootKey(root),
 		byAgent:  map[string]string{},
 		bindings: map[string]*session.ClientBinding{},
-		digests:  map[string]string{},
+		synced:   map[string]bridgeSyncState{},
 	}
 	bridge.readsV4.Store(true)
 	registerV4BridgePeer(bridge)
@@ -244,7 +263,7 @@ func (b *SessionV4Bridge) BindFresh(ctx context.Context, sessionID string, seed 
 		key := filepath.Clean(agentPath)
 		b.mu.Lock()
 		b.byAgent[key] = runtime.Ref().SessionID
-		b.digests[key] = ""
+		delete(b.synced, key)
 		b.mu.Unlock()
 	}
 	// Release the create owner so Windows TempDir cleanup is not blocked;
@@ -271,7 +290,7 @@ func (b *SessionV4Bridge) ContinueLegacy(ctx context.Context, sourcePath, headID
 	}
 	b.mu.Lock()
 	b.byAgent[sourcePath] = result.TargetID
-	b.digests[sourcePath] = ""
+	delete(b.synced, sourcePath)
 	b.mu.Unlock()
 	// Drop the import owner immediately; Sync reopens on demand.
 	if err := b.service.Close(ctx, runtime.Ref()); err != nil {
@@ -334,8 +353,11 @@ func (b *SessionV4Bridge) ImportLegacy(ctx context.Context, sourcePath string) (
 	return result, nil
 }
 
-// SyncAgentTranscript projects the full agent transcript into the mapped v4
-// session using history/replace. Empty transcripts are skipped.
+// SyncAgentTranscript projects the agent transcript into the mapped v4
+// session. A transcript that grew since the last sync appends only its new
+// tail as message/complete events (task 772); everything else — compaction,
+// rewind, a forked transcript, a re-mapped import — falls back to a full
+// history/replace. Empty transcripts are skipped.
 func (b *SessionV4Bridge) SyncAgentTranscript(ctx context.Context, agentPath string, messages []provider.Message) error {
 	if b == nil || b.service == nil {
 		return nil
@@ -347,7 +369,8 @@ func (b *SessionV4Bridge) SyncAgentTranscript(ctx context.Context, agentPath str
 	digest := transcriptDigest(messages)
 
 	b.mu.Lock()
-	if b.digests[agentPath] == digest {
+	state := b.synced[agentPath]
+	if state.count == len(messages) && state.digest == digest {
 		b.mu.Unlock()
 		return nil
 	}
@@ -368,6 +391,42 @@ func (b *SessionV4Bridge) SyncAgentTranscript(ctx context.Context, agentPath str
 	// strand the v4 writer lease for the rest of the process (health debt:
 	// "session writer is owned by another runtime").
 	b.trackBinding(agentPath, binding)
+
+	// The incremental state only applies to the session it was recorded for: a
+	// re-mapped import (fresh migration target with its own frozen copy) or an
+	// unmapped path falls back to the full projection, which is one copy per
+	// generation instead of one per save.
+	if state.sessionID != runtime.Ref().SessionID {
+		state = bridgeSyncState{}
+	}
+	if err := b.appendTail(ctx, runtime, agentPath, state, messages, digest); err != nil {
+		return err
+	}
+
+	b.mu.Lock()
+	b.byAgent[agentPath] = runtime.Ref().SessionID
+	b.bindings[agentPath] = binding
+	b.synced[agentPath] = bridgeSyncState{
+		sessionID: runtime.Ref().SessionID,
+		count:     len(messages),
+		digest:    digest,
+	}
+	b.mu.Unlock()
+	return nil
+}
+
+// appendTail commits the transcript delta: a strict prefix-extension of the
+// already-synced head becomes message/complete events, anything else becomes a
+// history/replace of the full transcript. An operation-id collision (a crash
+// between the commit and the state update, with new content under the same id)
+// also falls back to the full projection.
+func (b *SessionV4Bridge) appendTail(ctx context.Context, runtime *session.Runtime, agentPath string, state bridgeSyncState, messages []provider.Message, digest string) error {
+	if state.count > 0 && state.count <= len(messages) && prefixTranscriptDigest(messages[:state.count]) == state.digest {
+		if done, err := b.appendMessageTail(ctx, runtime, state, messages, digest); done || err != nil {
+			return err
+		}
+		// done==false: operation conflict — fall through to the full replace.
+	}
 	payload, err := json.Marshal(map[string]any{"messages": messages})
 	if err != nil {
 		return err
@@ -385,13 +444,41 @@ func (b *SessionV4Bridge) SyncAgentTranscript(ctx context.Context, agentPath str
 	if _, err := runtime.Session().Flush(ctx); err != nil {
 		return err
 	}
-
-	b.mu.Lock()
-	b.byAgent[agentPath] = runtime.Ref().SessionID
-	b.bindings[agentPath] = binding
-	b.digests[agentPath] = digest
-	b.mu.Unlock()
 	return nil
+}
+
+// appendMessageTail appends messages beyond state.count as message/complete
+// events. done reports that the tail commit is durable (or that nothing needed
+// writing); false with a nil error means the operation id collided and the
+// caller must fall back to a full history/replace.
+func (b *SessionV4Bridge) appendMessageTail(ctx context.Context, runtime *session.Runtime, state bridgeSyncState, messages []provider.Message, digest string) (bool, error) {
+	tail := messages[state.count:]
+	events := make([]session.Event, 0, len(tail))
+	for _, message := range tail {
+		payload, err := json.Marshal(map[string]any{"message": message})
+		if err != nil {
+			return false, err
+		}
+		events = append(events, session.Event{Kind: "message/complete", Payload: payload})
+	}
+	op := "bridge-sync-tail:" + runtime.Ref().SessionID + ":" + strconv.Itoa(state.count) + ":" + digest[:16]
+	if _, err := runtime.Session().Append(ctx, session.Batch{OperationID: op, Events: events}); err != nil {
+		if errors.Is(err, session.ErrOperationConflict) {
+			return false, nil
+		}
+		return false, err
+	}
+	if _, err := runtime.Session().Flush(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// prefixTranscriptDigest digests a leading slice of the transcript. It matches
+// transcriptDigest on the same messages so the stored state can be compared
+// against a re-read transcript directly.
+func prefixTranscriptDigest(messages []provider.Message) string {
+	return transcriptDigest(messages)
 }
 
 // trackBinding records a client binding under agentPath so CloseAll can always
