@@ -16,9 +16,11 @@ import { fileURLToPath } from "node:url";
 import {
   EXPERIMENT_FEATURE_TIERS,
   isTierFeatureId,
-  railTiersFor,
   type TierFeatureId,
 } from "../lib/experimentTiers";
+// 722 起 rail 徽章档位改由 lab 布局数据驱动（railTiersFor 已删），等价物为
+// labLayout.railTiersForDefault（内置默认布局上的徽章档位，562 测试同源）。
+import { railTiersForDefault } from "../lab/labLayout";
 
 let passed = 0;
 let failed = 0;
@@ -33,18 +35,22 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
 {
   ok(isTierFeatureId("toolOptimizations"), "toolOptimizations is a registered TierFeatureId");
   ok(EXPERIMENT_FEATURE_TIERS.toolOptimizations === "unstable", "toolOptimizations badges as UNSTABLE (用户定档)");
-  const tiers = railTiersFor("toolOptimizations");
+  const tiers = railTiersForDefault("toolOptimizations");
   ok(tiers.length === 1 && tiers[0] === "unstable", `standalone rail entry shows [unstable] (got ${JSON.stringify(tiers)})`);
 }
 
-// ② SettingsPanel wiring.
+// ② SettingsPanel wiring（722 起 rail 分组/条目数据驱动：组词表在
+// labLayoutTypes，条目与其灯读数在 labLayoutDefault——锚点随机制迁移）。
 {
   const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
-  ok(panel.includes('type LabGroupKey = "automation" | "efficiency" | "ui" | "observability" | "dev-debug" | "storage" | "infra" | "tool-opt";'),
-    "LabGroupKey carries the tool-opt group");
-  ok(panel.includes('{ key: "tool-opt", labelKey: "settings.labGroup.toolOpt" }'), "labGroups renders the tool-opt entry");
-  ok(panel.includes('{ id: "toolOptimizations", group: "tool-opt", label: t("settings.toolOptimizations"), on: Boolean(s.experimentalToolOptimizations) }'),
+  const layoutTypes = readFileSync(fileURLToPath(new URL("../lab/labLayoutTypes.ts", import.meta.url)), "utf8");
+  const layoutDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
+  ok(layoutTypes.includes('"tool-opt"'), "LabGroupKey carries the tool-opt group");
+  ok(layoutDefault.includes('key: "tool-opt"') && layoutDefault.includes('labelKey: "settings.labGroup.toolOpt"'),
+    "labGroups renders the tool-opt entry");
+  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "unstable", onKeys: ["experimentalToolOptimizations"] }'),
     "rail entry reads its own switch (81/123 lost-save rule)");
+  ok(panel.includes("on: labEntryLightOn(entry, s)"), "panel derives each rail light from its own onKeys (81/123 lost-save rule)");
   ok(panel.includes('{selected === "toolOptimizations" && ('), "pane card located");
   ok(panel.includes('app.SetExperimentalToolOptimizations(on)'), "card writes through its own setter");
   ok(panel.includes('labLabel("toolOptimizations"'), "card label carries the tier badge");

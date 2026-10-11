@@ -33,7 +33,9 @@ const lightKeys = readFileSync(`${frontendRoot}/src/lab/labLightKeys.ts`, "utf8"
 const view = readFileSync(`${frontendRoot}/src/lib/settingsViewTypes.ts`, "utf8");
 const bridge = readFileSync(`${frontendRoot}/src/lib/bridge.ts`, "utf8");
 const goHeartbeat = readFileSync(`${repoRoot}/desktop/heartbeat.go`, "utf8");
-const goApp = readFileSync(`${repoRoot}/desktop/app.go`, "utf8");
+// 756 拆分后启动接线（heartbeatBackground 的 call-time 赋值）挪入 app_lifecycle.go
+// （6279a7bae 只迁了 Go 侧 integrity 锚，漏了本测试的读取路径，778 补齐）。
+const goLifecycle = readFileSync(`${repoRoot}/desktop/app_lifecycle.go`, "utf8");
 const goTabs = readFileSync(`${repoRoot}/desktop/tabs.go`, "utf8");
 const goSettingsApp = readFileSync(`${repoRoot}/desktop/settings_app.go`, "utf8");
 const goSettingsPrefs = readFileSync(`${repoRoot}/desktop/settings_preferences.go`, "utf8");
@@ -121,8 +123,8 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
   ok(goHeartbeat.includes("heartbeatBackground func() bool") &&
      goHeartbeat.includes("e != nil && e.heartbeatBackground != nil && e.heartbeatBackground()"),
     "engine gate field + nil-reads-off contract");
-  ok(goApp.includes("a.heartbeat.heartbeatBackground = func() bool {") &&
-     goApp.includes("cfg.Desktop.ExperimentalHeartbeatBackground"),
+  ok(goLifecycle.includes("a.heartbeat.heartbeatBackground = func() bool {") &&
+     goLifecycle.includes("cfg.Desktop.ExperimentalHeartbeatBackground"),
     "startup wires the call-time config gate");
   // park 路径：264 detached 语义 + 用户已开标签守卫。
   ok(goHeartbeat.includes("e.app.heartbeatTopicTabVisible(scope, workspaceRoot, topicID)") &&
