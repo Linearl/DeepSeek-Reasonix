@@ -98,6 +98,14 @@ for (const [name, owner] of OWNED_ELSEWHERE) {
 // extraction. CSS/layout correctness remains owned by syntax and browser gates.
 const assetArgs = ["--import", pathToFileURL(resolve(SCRIPTS_DIR, "css-stub-register.mjs")).href];
 
+// 768b ③: every discovered suite runs through tsconfig.tsx-runner.json (same
+// face test:motion has been explicit about since task 745). The main
+// tsconfig.json excludes src/__tests__, so without this flag tsx falls back
+// to esbuild's classic-JSX default for exactly the files it runs — the
+// two-transpile-runtimes split 745 fixed for one script, here closed for the
+// whole discovery family.
+const tsxArgs = ["--tsconfig", resolve("tsconfig.tsx-runner.json")];
+
 const suites = files.filter((name) => !OWNED_ELSEWHERE.has(name));
 console.log(`run-tests: ${suites.length} discovered suites (${OWNED_ELSEWHERE.size} owned by dedicated scripts)`);
 
@@ -109,7 +117,7 @@ for (const name of suites) {
   // Node's built-in navigator.language follows the machine's ICU locale, and
   // suites assert English UI strings.
   const env = { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" };
-  const result = spawnSync(process.execPath, [tsxCli, ...assetArgs, path], {
+  const result = spawnSync(process.execPath, [tsxCli, ...tsxArgs, ...assetArgs, path], {
     stdio: "inherit",
     env,
     timeout: suiteTimeoutMs > 0 ? suiteTimeoutMs : undefined,
