@@ -199,9 +199,9 @@ export function labEntryLightOn(entry: LabLayoutEntry, s: SettingsView): boolean
 }
 
 /** Distinct badge tiers of a rail entry (own tier + member tiers), in the
- * canonical badge order. Merged cards surface every distinct member tier;
- * standalone entries their own; entries without any tier (none today) none. */
-export function labEntryBadgeTiers(layout: LabLayoutData, entryId: string): LabTier[] {
+ * canonical badge order. 任务 774 起降为模块内聚合诊断面：rail 行只消费
+ * 下方 labEntryBadgeTier 的单枚最高档，不再渲染这份多枚清单。 */
+function labEntryBadgeTiers(layout: LabLayoutData, entryId: string): LabTier[] {
   const entry = findLabEntry(layout, entryId);
   if (!entry) return [];
   const tiers = new Set<LabTier>(entry.tier ? [entry.tier] : []);
@@ -209,7 +209,18 @@ export function labEntryBadgeTiers(layout: LabLayoutData, entryId: string): LabT
   return LAB_TIER_ORDER.filter((tier) => tiers.has(tier));
 }
 
-/** 任务 562 兼容面：内置默认布局上的徽章档位（测试与墙视图用）。 */
+/** 任务 774 — 卡头徽章聚合（设计稿《实验室布局可调设计》§4.3）：rail 行/
+ * 卡头只渲染一枚徽章 = max(卡 tier, 全部 members tier)。档位强弱序即
+ * LAB_TIER_ORDER（推荐 > 可选 > 未稳定 > 已退役，"strongest first"），
+ * 用户口径「有推荐和可选显示推荐」。成员自己的徽章不再重复出现在卡头——
+ * 它们保留在卡内详情行（labLabel 徽章面，展开详情才可见）。条目无任何
+ * 档位（非表A id）返回 null ⇒ 不渲染徽章。 */
+export function labEntryBadgeTier(layout: LabLayoutData, entryId: string): LabTier | null {
+  return labEntryBadgeTiers(layout, entryId)[0] ?? null;
+}
+
+/** 任务 562 兼容面：内置默认布局上的徽章档位。任务 774 后为测试专用
+ * 聚合诊断面（多枚去重清单）——rail 渲染已改走 labEntryBadgeTier 单枚。 */
 export function railTiersForDefault(entryId: string): LabTier[] {
   return labEntryBadgeTiers(LAB_LAYOUT_DEFAULT_DATA, entryId);
 }
