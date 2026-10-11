@@ -1,18 +1,18 @@
-// Run: tsx src/__tests__/settings-opencode-go-usage-card.test.tsx
+// Run: tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/settings-opencode-go-usage-card.test.tsx
 //
-// opencodefix — render the OpenCode Go usage card against the wire states the
-// settings pane can hand it: a null tiers payload (the Go nil slice that used
-// to marshal as "tiers": null and crash render with TypeError: null.find), an
-// empty array (no data), a normal three-window payload, plus crash isolation
-// and recovery behind the pane's ErrorBoundary (the fourth acceptance state).
-// Zero skips: every state must render without throwing.
+// 任务 800 — the settings-side OpenCode Go usage row is a plain member
+// switch: label/hint copy on the left, the on/off segment on the right (the
+// same layout as every other member row of a merged card). The in-card usage
+// detail (three window rows, refresh, degradation notes) is retired — the
+// right-dock sidebar card (783) is the authoritative display and owns the
+// 163 "switch off = zero requests" gate. Zero skips: every state must render
+// without throwing.
 
 import assert from "node:assert/strict";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { JSDOM } from "jsdom";
 import { SettingsOpenCodeGoUsageCard } from "../components/SettingsOpenCodeGoUsageCard";
-import { ErrorBoundary } from "../components/ErrorBoundary";
 import { LocaleProvider } from "../lib/i18n";
 
 const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost" });
@@ -24,7 +24,8 @@ Object.assign(globalThis, {
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 
-let payload: unknown;
+// 任务 800：设置卡内零网络——无论开关态，这里都不该有任何查询。
+// （163 门已整体移到侧栏卡 OpenCodeGoUsageSidebarCard。）
 let queries = 0;
 Object.assign(window, {
   go: {
@@ -32,7 +33,7 @@ Object.assign(window, {
       App: {
         GetOpenCodeGoUsage: async () => {
           queries += 1;
-          return payload;
+          return { tiers: [], note: "" };
         },
       },
     },
@@ -52,26 +53,27 @@ function ok(condition: unknown, label: string) {
   }
 }
 
-async function renderCard(state: { next: unknown; enabled?: boolean }) {
-  payload = state.next;
+async function renderCard(state: { enabled: boolean; busy?: boolean; onToggle?: (on: boolean) => void }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root: Root = createRoot(container);
   await act(async () => {
     root.render(
       <LocaleProvider>
-        <SettingsOpenCodeGoUsageCard enabled={state.enabled ?? true} busy={false} onToggle={() => {}} />
+        <SettingsOpenCodeGoUsageCard
+          enabled={state.enabled}
+          busy={state.busy ?? false}
+          onToggle={state.onToggle ?? (() => {})}
+        />
       </LocaleProvider>,
     );
   });
-  // Let the fetch effect's promise resolve into state.
-  await act(async () => {
-    await Promise.resolve();
-  });
   return {
-    card: container.querySelector('[data-testid="opencode-go-usage-card"]'),
-    rows: container.querySelectorAll("[data-window]"),
-    notes: container.querySelectorAll(".opencode-go-usage__note"),
+    field: container.querySelector(".settings-field"),
+    label: container.querySelector(".settings-field__label"),
+    hint: container.querySelector(".settings-field__hint"),
+    seg: container.querySelector(".set-seg"),
+    buttons: [...container.querySelectorAll<HTMLButtonElement>(".set-seg__btn")],
     dispose: async () => {
       await act(async () => root.unmount());
       container.remove();
@@ -79,118 +81,63 @@ async function renderCard(state: { next: unknown; enabled?: boolean }) {
   };
 }
 
-console.log("\nopencode-go usage card wire states");
+console.log("\nopencode-go settings usage row (task 800: plain member switch)");
 
-// 1. null tiers — the crash state (Go nil slice marshalled to JSON null).
+// 1. on state — copy left, switch right, current segment highlighted.
 {
-  const view = await renderCard({ next: { tiers: null, note: "no-key" } });
-  ok(view.card !== null, "null tiers: the enabled card body renders instead of throwing");
-  ok(view.rows.length === 0, `null tiers: no window rows render (${view.rows.length})`);
-  ok(view.notes.length === 1 && (view.notes[0].textContent ?? "").length > 0,
-    "null tiers: the degradation note renders as the placeholder");
-  ok(queries === 1, `null tiers: the card queried the endpoint once (${queries})`);
+  const view = await renderCard({ enabled: true });
+  ok(view.field !== null, "on: the settings field renders");
+  ok(view.label?.textContent?.includes("OpenCode Go") ?? false, "on: the label copy renders");
+  ok(view.hint !== null && (view.hint.textContent ?? "").length > 0, "on: the hint copy renders beside the switch");
+  ok(view.seg !== null && view.buttons.length === 2, "on: the on/off segment renders two buttons");
+  ok(view.buttons[1]?.classList.contains("set-seg__btn--on") ?? false, "on: the second segment (开) is highlighted");
+  // 明细 DOM 全量负断言——权威展示位在右侧边栏卡。
+  ok(container_negative(view), "on: no in-card detail DOM (no card body, no window rows, no refresh)");
+  ok(queries === 0, `on: zero network calls from the settings card (${queries})`);
   await view.dispose();
 }
 
-// 2. empty array — healthy wire with no window data (note empty branch).
+// container_negative: the retired detail surfaces must not render anywhere.
+function container_negative(view: Awaited<ReturnType<typeof renderCard>>) {
+  const container = view.field?.closest("body") ?? null;
+  if (container === null) return false;
+  return (
+    container.querySelector('[data-testid="opencode-go-usage-card"]') === null
+    && container.querySelector(".opencode-go-usage") === null
+    && container.querySelector("[data-window]") === null
+    && container.querySelector(".opencode-go-usage__refresh") === null
+  );
+}
+
+// 2. off state — same row, first segment highlighted, still zero queries.
 {
   const before = queries;
-  const view = await renderCard({ next: { tiers: [], note: "" } });
-  ok(view.card !== null, "empty tiers: the card body renders");
-  ok(view.rows.length === 0, `empty tiers: no window rows render (${view.rows.length})`);
-  ok(view.notes.length === 1 && (view.notes[0].textContent ?? "").length > 0,
-    "empty tiers: the empty-state note renders instead of a blank card");
-  ok(queries === before + 1, "empty tiers: the card queried the endpoint once");
+  const view = await renderCard({ enabled: false });
+  ok(view.field !== null, "off: the settings field still renders (switch row is always visible)");
+  ok(view.buttons[0]?.classList.contains("set-seg__btn--on") ?? false, "off: the first segment (关) is highlighted");
+  ok(queries === before, `off: zero network calls (${queries - before})`);
   await view.dispose();
 }
 
-// 3. normal three-window payload.
+// 3. toggle wiring — clicking a segment calls onToggle with that value; busy
+//    disables the segments (the setter stays the pane's apply() call).
 {
-  const before = queries;
-  const resetsAt = new Date(Date.now() + 3_600_000).toISOString();
+  const seen: boolean[] = [];
   const view = await renderCard({
-    next: {
-      tiers: [
-        { window: "rolling", percent: 12, resetsAt },
-        { window: "weekly", percent: 55, resetsAt },
-        { window: "monthly", percent: 80, resetsAt },
-      ],
-      note: "",
-    },
+    enabled: false,
+    onToggle: (on) => seen.push(on),
   });
-  ok(view.card !== null, "normal tiers: the card body renders");
-  ok(view.rows.length === 3, `normal tiers: three window rows render (${view.rows.length})`);
-  const windows = [...view.rows].map((row) => row.getAttribute("data-window"));
-  ok(JSON.stringify(windows) === JSON.stringify(["rolling", "weekly", "monthly"]),
-    `normal tiers: rows keep wire order (${windows.join(",")})`);
-  ok([...view.rows].some((row) => (row.textContent ?? "").includes("12%")),
-    "normal tiers: the percent cell renders");
-  ok(queries === before + 1, "normal tiers: the card queried the endpoint once");
+  await act(async () => {
+    view.buttons[1]?.click();
+  });
+  ok(JSON.stringify(seen) === "[true]", `clicking 开 forwards onToggle(true) (${JSON.stringify(seen)})`);
   await view.dispose();
+
+  const busyView = await renderCard({ enabled: true, busy: true });
+  ok(busyView.buttons.every((b) => b.disabled), "busy: both segments are disabled");
+  await busyView.dispose();
 }
 
-// 4. switch off issues no query at all (the zero-regression gate, now across
-//    a null payload as well).
-{
-  const before = queries;
-  const view = await renderCard({ next: { tiers: null, note: "no-key" }, enabled: false });
-  ok(view.card === null, "switch off: no card body renders");
-  ok(queries === before, `switch off: no endpoint query (${queries - before})`);
-  await view.dispose();
-}
-
-// 5. crash isolation + recovery (fourth acceptance state): a payload whose
-//    tiers accessor itself throws is a shape beyond even the Array.isArray
-//    guard. Rendered behind the pane's ErrorBoundary wiring (same structure
-//    SettingsPanel uses: sibling OUTSIDE the boundary, card inside), the
-//    crash must stay inside the card slot — settings siblings survive — and
-//    re-entering with healthy data must recover.
-{
-  const poisoned: { note: string; tiers?: unknown } = { note: "" };
-  Object.defineProperty(poisoned, "tiers", {
-    enumerable: true,
-    get() {
-      throw new Error("wire explosion: tiers accessor threw");
-    },
-  });
-  payload = poisoned;
-  queries = 0;
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  const originalConsoleError = console.error;
-  console.error = () => {}; // React logs caught render errors; keep output readable
-  try {
-    await act(async () => {
-      root.render(
-        <LocaleProvider>
-          <div data-testid="settings-sibling">settings shell survives</div>
-          <ErrorBoundary>
-            <SettingsOpenCodeGoUsageCard enabled busy={false} onToggle={() => {}} />
-          </ErrorBoundary>
-        </LocaleProvider>,
-      );
-    });
-  } finally {
-    console.error = originalConsoleError;
-  }
-  ok(container.querySelector('[data-testid="settings-sibling"]') !== null,
-    "crash isolation: settings siblings outside the boundary survive the card crash");
-  ok(container.querySelector('[data-testid="opencode-go-usage-card"]') === null,
-    "crash isolation: the card slot renders empty instead of taking the tree down");
-
-  // Recover: leave the pane and re-enter with healthy data (boundary state
-  // resets on remount, exactly like selected-pane switching in SettingsPanel).
-  await act(async () => root.unmount());
-  container.remove();
-  const recovered = await renderCard({
-    next: { tiers: [{ window: "rolling", percent: 7, resetsAt: new Date(Date.now() + 60_000).toISOString() }], note: "" },
-  });
-  ok(recovered.card !== null && recovered.rows.length === 1,
-    `recovery: re-entering the pane with healthy data renders the card again (${recovered.rows.length} row)`);
-  await recovered.dispose();
-}
-
-assert.ok(passed >= 18, `expected at least 18 checks (15 wire states + 3 crash-isolation/recovery), got ${passed}`);
+assert.ok(passed >= 10, `expected at least 10 checks, got ${passed}`);
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

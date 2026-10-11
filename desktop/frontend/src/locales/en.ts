@@ -2860,7 +2860,7 @@ export const en = {
 "settings.activeTabResident.on": "On",
 "settings.activeTabResident.off": "Off",
 "settings.opencodeGoUsage": "OpenCode Go usage",
-"settings.opencodeGoUsageHint": "Shows the subscription's three rolling windows — 5 hours, 7 days, and the subscription month — with reset countdowns. Queries GET /zen/go/v1/usage with Bearer auth only while this switch is on; off keeps the settings page and network behavior unchanged. OpenCode Zen (pay-as-you-go) has no usage API and is not covered.",
+"settings.opencodeGoUsageHint": "When on, the right-dock sidebar shows the subscription's three rolling windows — 5 hours, 7 days, and the subscription month — with reset countdowns. Queries GET /zen/go/v1/usage with Bearer auth only while this switch is on (details no longer render inside the card); off keeps the settings page and network behavior unchanged. OpenCode Zen (pay-as-you-go) has no usage API and is not covered.",
 "settings.opencodeGoUsage.on": "On",
 "settings.opencodeGoUsage.off": "Off",
 "settings.opencodeGoUsage.window.rolling": "5 hours",
