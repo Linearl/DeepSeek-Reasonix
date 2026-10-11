@@ -435,11 +435,35 @@ func pendingReportToAnalysisPayload(r crashReport) (string, error) {
 	return string(body), nil
 }
 
+// pendingReportPromptWorthy mirrors task 804: only reports the user must act
+// on reach the startup analysis banner. WebView2 frame/GPU/utility subprocess
+// failures (kind=performance, outcome=degraded — the diagnostics layer's
+// default classification) are routinely self-healed by the runtime and must
+// not present as "上次运行崩溃". The queue itself is untouched: the report
+// still flushes (telemetry) and stays queryable via CrashPendingDiagnostics —
+// this gate lives ONLY on the prompt surface (snapshotPendingCrashForAnalysis
+// and the un-snapshotted fallback in PendingCrashSnapshot).
+func pendingReportPromptWorthy(r crashReport) bool {
+	if r.Kind != "performance" {
+		return true
+	}
+	if r.WebRuntime == nil {
+		// performance without web-runtime context is not the WebView2
+		// degraded family this task targets; keep it surfaced (fail-open for
+		// unknown producers, fail-closed was never the goal here).
+		return true
+	}
+	return false
+}
+
 // pendingCrashAnalysisPayloads reads the queue newest-first and returns the
 // schema-2 analysis payloads for up to maxPendingCrashAnalysisReports reports.
 // Files beyond the current schema are skipped (flushPendingCrash skips them
 // too); unreadable or unparseable files are skipped, never fatal.
-func pendingCrashAnalysisPayloads(paths []string) []string {
+// promptOnly filters out reports that must not reach the startup banner
+// (task 804); pass false for diagnostics/analysis surfaces that must see the
+// full queue.
+func pendingCrashAnalysisPayloads(paths []string, promptOnly bool) []string {
 	out := make([]string, 0, maxPendingCrashAnalysisReports)
 	for i := len(paths) - 1; i >= 0 && len(out) < maxPendingCrashAnalysisReports; i-- {
 		body, err := readFileUTF8(paths[i])
@@ -448,6 +472,9 @@ func pendingCrashAnalysisPayloads(paths []string) []string {
 		}
 		var r crashReport
 		if json.Unmarshal(body, &r) != nil || r.SchemaVersion > currentCrashSchema {
+			continue
+		}
+		if promptOnly && !pendingReportPromptWorthy(r) {
 			continue
 		}
 		payload, err := pendingReportToAnalysisPayload(r)
@@ -568,7 +595,7 @@ func (a *App) snapshotPendingCrashForAnalysis() {
 		return
 	}
 	fresh := freshPendingCrashPathsForPrompt(paths, loadCrashPromptWatermark())
-	payloads := pendingCrashAnalysisPayloads(fresh)
+	payloads := pendingCrashAnalysisPayloads(fresh, true)
 	a.crashAnalysisMu.Lock()
 	a.pendingCrashReports = payloads
 	a.crashAnalysisMu.Unlock()
@@ -587,7 +614,7 @@ func (a *App) PendingCrashSnapshot() PendingCrashSnapshotReport {
 	snapshotted := a.pendingCrashSnapshotTaken
 	a.crashAnalysisMu.Unlock()
 	if !snapshotted {
-		stored = pendingCrashAnalysisPayloads(pendingCrashPaths())
+		stored = pendingCrashAnalysisPayloads(pendingCrashPaths(), true)
 	}
 	return PendingCrashSnapshotReport{
 		Count:   len(stored),
