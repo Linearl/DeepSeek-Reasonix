@@ -2,7 +2,7 @@
 
 > **用途**：随 Release Notes 一起发布，供用户按需开启实验特性。
 > **三档定义**：**推荐** = 核心特性，不开启会有体验缺口；**可选** = 按需开启的增强；**未稳定** = 尝鲜，可能有副作用。
-> **「我们的值」**= fork 开发机实际运行配置（2026-10-11 按 22.5 版更新），供参考。
+> **「我们的值」**= fork 开发机实际运行配置（2026-10-12 按 23.5 版 config.toml 实测对齐），供参考。
 > 开启位置：**设置 → 实验室**（对应 config.toml 的 `experimental_*` 键）。
 
 ## 一、推荐（建议开启）
@@ -34,7 +34,7 @@
 | 子代理详情视图 | `experimental_subagent_detail` | ✅ | 点行开只读详情 |
 | 子代理 TPS 读数 | `experimental_subagent_tps` | ✅ | 子代理卡片显示 tok/s |
 | 完成摘要通知 | `experimental_completion_summary` | ✅ | 每轮结果通知卡 |
-| 心跳任务后台化 | `experimental_heartbeat_background` | ❌ | 心跳触发不进标签栏（742；适合标签栏拥挤者） |
+| 心跳任务后台化 | `experimental_heartbeat_background` | ✅ | 心跳触发不进标签栏，标签栏不再被心跳会话挤占（742）——我们日常开着 |
 | 轨迹状态注入 | `experimental_trace_as_state` | ✅ | 先前轨迹前置注入，轨迹在前问题居中（655） |
 | ACP 双端接线 | `experimentalACPListen` | ❌ | 外部 ACP 客户端（编辑器插件）驱动会话时开启；徽章可选，用一段时间再评估是否转推荐（790） |
 | 编辑证据门宽松模式 | `experimentalLooseReadback` | ❌ | 文件编辑证据校验误拦时的逃生口；默认严格不建议常开（789） |
@@ -51,9 +51,9 @@
 | 特性 | config 键 | 我们 | 说明 |
 |---|---|---|---|
 | 子代理策略面板 | `experimental_subagent_policy` | ❌ | 子代理策略管理 UI，仍在打磨 |
-| 标签模式着色 | `experimental_tab_mode_tint` | ❌ | 低透明度模式底色代替徽章（观感实验） |
-| 反馈主动邀请 | `experimental_feedback_nudge` | ❌ | 完成后邀请反馈（易打扰） |
-| zcode 任务总线内置化 | `experimental_zcode_task_bus` | ❌ | 嵌入式总线 MCP（多机协同实验） |
+| 标签模式着色 | `experimental_tab_mode_tint` | ✅（经 651 新键） | 观感实验；651 起 tab_permission_indicator 三档替代，此键仅兼容读取 |
+| 反馈主动邀请 | `experimental_feedback_nudge` | ✅ | 完成后邀请反馈（我们开着用于积累意见箱；介意打扰可关） |
+| zcode 任务总线内置化 | `experimental_zcode_task_bus` | ❌ | 嵌入式总线 MCP（多机协同实验；已更名 externalCollabBus 定位，键名沿用零迁移） |
 | 路径规则引擎 | `experimental_path_rules` | ❌ | 结构化路径Scope 评估（实验） |
 | base_process 底座 | `experimental_base_process` | ❌ | 常驻子进程底座（S1 实验线） |
 | 生命周期噪音门 | `experimental_lifecycle_noise_gate` | ❌ | 干净关闭的崩溃报告降噪 |
