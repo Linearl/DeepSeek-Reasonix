@@ -2435,6 +2435,8 @@ export const zh: Record<DictKey, string> = {
   "settings.toolOptimizationsHint": "「工具优化」族：edit_file/multi_edit 支持 readBack 参数——编辑后自动返回编辑段落与相邻上下文（各 20 行），该读回内容同时作为文件的新读取证据，同文件连续编辑不再被 evidence gate 拦截（省掉「拦→重读→再改」循环）。关闭=与现版行为逐字节一致；开启需重启生效。",
   "settings.toolOptimizations.on": "开启",
   "settings.toolOptimizations.off": "关闭",
+"settings.editEvidenceRelaxed": "编辑证据门宽松模式",
+"settings.editEvidenceRelaxedHint": "放宽 edit_file 的读取证据校验：同轮内读取计入有效证据；悬置/过期证据不再连带拦截同目录的 bash 写操作（降级为警告）。默认关闭——关闭时与严格行为逐字节一致（任务 789）。",
   "settings.toolOptimizations.risk": "风险提示：gate 联动属行为变更（读取豁免），机制尚未长期验证。若出现误放行或误拦截，请先关闭本开关回退，再反馈问题。",
   "settings.stagingDir": "快速切换暂存目录",
   "settings.stagingDirHint": "「重启并更新」从该目录读取暂存的四件套（reasonix-desktop.exe / reasonix-cli.exe / reasonix-update-helper.exe / version.txt）。留空 = 默认安装目录下的 staging；目录不存在时重启并更新会明确报错并显示路径。",
@@ -2918,7 +2920,7 @@ export const zh: Record<DictKey, string> = {
 "settings.completionSummaryHint": "每轮结束自动出「本轮结果」回执：改了几个文件、增删多少行、检查通过/失败几项；质量可疑时变黄色警示。关闭只隐藏桌面通知，右侧详情入口与 CLI 回执不受影响。",
 "settings.completionSummary.on": "开",
 "settings.completionSummary.off": "关",
-"settings.quickCommandsLabHint": "在输入框 + 菜单提供自定义指令片段（需手动开启本开关）。开启后此处可管理片段；关闭则所有入口隐藏，已存片段保留。",
+"settings.quickCommandsLabHint": "在输入框 + 菜单提供自定义指令片段（需手动开启本开关）。开启后此处可管理片段；关闭则所有入口隐藏，已存片段保留。在输入框开头输入 !! 可随时唤起指令列表。",
 "settings.quickCommandsLab.on": "开",
 "settings.quickCommandsLab.off": "关",
 // 任务 342：WebView2 CDP 调试端口（实验室，调试组）。

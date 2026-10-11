@@ -1826,6 +1826,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.toolOptimizationsHint": "「工具最佳化」族：edit_file/multi_edit 支援 readBack 參數——編輯後自動返回編輯段落與相鄰上下文（各 20 行），該讀回內容同時作為檔案的新讀取證據，同檔案連續編輯不再被 evidence gate 攔截（省掉「攔→重讀→再改」循環）。關閉=與現版行為逐位元組一致；開啟需重新啟動生效。",
   "settings.toolOptimizations.on": "開啟",
   "settings.toolOptimizations.off": "關閉",
+"settings.editEvidenceRelaxed": "編輯證據門寬鬆模式",
+"settings.editEvidenceRelaxedHint": "放寬 edit_file 的讀取證據校驗：同輪內讀取計入有效證據；懸置/過期證據不再連帶攔截同目錄的 bash 寫操作（降級為警告）。預設關閉——關閉時與嚴格行為逐位元組一致（任務 789）。",
   "settings.toolOptimizations.risk": "風險提示：gate 聯動屬行為變更（讀取豁免），機制尚未長期驗證。若出現誤放行或誤攔截，請先關閉本開關回退，再回報問題。",
   "settings.stagingDir": "快速切換暫存目錄",
   "settings.stagingDirHint": "「重啟並更新」從該目錄讀取暫存的四件套（reasonix-desktop.exe / reasonix-cli.exe / reasonix-update-helper.exe / version.txt）。留空 = 預設安裝目錄下的 staging；目錄不存在時重啟並更新會明確報錯並顯示路徑。",
@@ -4154,7 +4156,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.completionSummaryHint": "每輪結束自動出「本輪結果」回執：改了幾個檔案、增刪多少行、檢查通過/失敗幾項；品質可疑時變黃色警示。關閉只隱藏桌面通知，右側詳情入口與 CLI 回執不受影響。",
 "settings.completionSummary.on": "開",
 "settings.completionSummary.off": "關",
-"settings.quickCommandsLabHint": "在輸入框 + 選單提供自訂指令片段（需手動開啟本開關）。開啟後此處可管理片段；關閉則所有入口隱藏，已存片段保留。",
+"settings.quickCommandsLabHint": "在輸入框 + 選單提供自訂指令片段（需手動開啟本開關）。開啟後此處可管理片段；關閉則所有入口隱藏，已存片段保留。在輸入框開頭輸入 !! 可隨時喚起指令列表。",
 "settings.quickCommandsLab.on": "開",
 "settings.quickCommandsLab.off": "關",
 // 任務 342：WebView2 CDP 除錯連接埠（實驗室，除錯組）。

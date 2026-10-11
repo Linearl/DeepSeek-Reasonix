@@ -318,7 +318,7 @@ groups:
         onKeys: [experimentalRuntimeReuse]
       - id: zcodeTaskBus
         labelKey: settings.zcodeTaskBus
-        tier: optional
+        tier: unstable
         onKeys: [experimentalZcodeTaskBus]
       # 任务 790：ACP 常驻监听（loopback TCP，每连接独立 client 面；默认关，
       # 重启生效）。
@@ -328,7 +328,7 @@ groups:
         onKeys: [experimentalACPListen]
       - id: pathRules
         labelKey: settings.pathRules
-        tier: optional
+        tier: unstable
         onKeys: [experimentalPathRules]
       - id: orphanHandling
         labelKey: settings.orphanHandling
@@ -348,3 +348,8 @@ groups:
         labelKey: settings.toolOptimizations
         tier: recommended
         onKeys: [experimentalToolOptimizations]
+        members:
+          # 任务 789：编辑证据门宽松模式（同轮读取计数+悬置证据不连带拦 bash）。
+          - id: editEvidenceRelaxed
+            labelKey: settings.editEvidenceRelaxed
+            tier: unstable

@@ -321,7 +321,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       entries: [
         // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
         // （注册表与 Go 渲染表同步升档；562 drift 检查钉两侧一致）。
-        { id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "recommended", onKeys: ["experimentalToolOptimizations"] },
+        { id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "recommended", onKeys: ["experimentalToolOptimizations"], members: [{ id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" }] },
       ],
     },
   ],

@@ -105,7 +105,10 @@ export type TierFeatureId =
   // Kimi 等 7+ 家）未来按需以成员身份扩展（布局 members 加行即可，Go 渲染
   // 表无条目，同 tabManagement 豁免）。
   | "usageMonitoring"
-  | "glmPlanUsage";
+  | "glmPlanUsage"
+  // 任务 789: 编辑证据门宽松模式（toolOptimizations 卡成员；默认关=严格
+  // 行为逐字节一致）。lab-layout.yaml members + 本表双登记（562 口径）。
+  | "editEvidenceRelaxed";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -178,6 +181,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   runtimeReuse: "optional",
   zcodeTaskBus: "unstable",
   acpListen: "unstable",
+  // 任务 789: 编辑证据门宽松模式（未稳定档默认关——放宽 evidence gate 属
+  // 行为变更；toolOptimizations 卡成员）。
+  editEvidenceRelaxed: "unstable",
   modelCapabilityFilter: "retired",
   pathRules: "unstable",
   orphanHandling: "unstable",

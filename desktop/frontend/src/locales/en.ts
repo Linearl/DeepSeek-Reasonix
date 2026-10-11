@@ -2437,6 +2437,8 @@ export const en = {
   "settings.toolOptimizationsHint": "Tool-optimization family: edit_file/multi_edit accept a readBack parameter — the result returns the edited region plus ±20 surrounding lines, and that window is filed as the file's fresh read evidence, so back-to-back edits on one file no longer trip the evidence gate (no more block → re-read → re-edit loop). Off keeps behavior byte-identical; on applies after a restart.",
   "settings.toolOptimizations.on": "On",
   "settings.toolOptimizations.off": "Off",
+"settings.editEvidenceRelaxed": "Relaxed edit evidence gate",
+"settings.editEvidenceRelaxedHint": "Relax edit_file read-evidence checks: same-turn reads count as valid evidence, and stale evidence no longer blocks bash writes in the same directory (downgraded to a warning). Default off — off matches strict behavior exactly (task 789).",
   "settings.toolOptimizations.risk": "Risk note: the gate linkage is a behavior change (read-evidence waiver) and is not battle-tested yet. If you see a wrong pass or a wrong block, switch this off first to roll back, then report the issue.",
   "settings.stagingDir": "Fast-switch staging directory",
   "settings.stagingDirHint": "Restart-and-update reads the four staged artifacts (reasonix-desktop.exe / reasonix-cli.exe / reasonix-update-helper.exe / version.txt) from this directory. Empty = the staging folder under the default install root; a missing directory surfaces as a named error on restart-and-update.",
