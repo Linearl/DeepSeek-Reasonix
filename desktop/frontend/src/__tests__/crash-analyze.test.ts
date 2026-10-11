@@ -152,15 +152,19 @@ ok(note(overlay).includes("YOLO analysis session started"), "the note reports th
 // Workspace not ready — task 687: no longer a gate; under the 674 semantics
 // (no confirmation) it starts directly. The analysis self-hosts in a fresh
 // Global tab (task 672) with nothing open / no project expanded (the
-// 2026-10-09 17:55 refusal).
+// 2026-10-09 17:55 refusal). The old assertions here still expected the
+// removed spend-confirmation face (768b ④: they predate the 674 no-confirm
+// shape — the suite comment already described the current semantics, the
+// assertions had not caught up).
 startCalls = [];
 availability = { ...allReady, workspaceReady: false, ready: false };
 await clickAnalyze(overlay);
-ok(note(overlay).includes("consumes token quota"), "no live workspace still reaches the spend confirmation (task 687)");
-ok(startCalls.length === 0, "no live workspace alone does not start the analysis");
+ok(startCalls.length === 1, "no live workspace still starts exactly one analysis (task 687: workspace is not a gate)");
+ok(note(overlay).includes("YOLO analysis session started"), "the started summary lands in the note without a live workspace");
 
 // A failed availability probe (backend threw / binding vanished) still stops
 // route B with the workspace notice — the only remaining consumer of that face.
+startCalls = [];
 availability = null;
 await clickAnalyze(overlay);
 ok(note(overlay).includes("No live session"), "a failed probe shows the fallback notice");
@@ -188,6 +192,20 @@ ok(!(overlay.querySelector(".crash-overlay__analyze") as HTMLButtonElement).disa
 
 // Task 663 ②: the note switches to the live progress face instead of a
 // one-shot line — running while the backend says running…
+// 768b ④: the progress face only exists on a *started* analysis (the start
+// success paints it; a failed start leaves the failure notice with no poller
+// and no restart button). The old assertions polled the failed-start overlay
+// above and never saw the face — restore the success binding first.
+(window as unknown as { go: { main: { App: { StartCrashAnalysis: (kind: string, detail: string) => Promise<string> } } } }).go.main.App.StartCrashAnalysis =
+  async (kind: string, detail: string) => {
+    startCalls.push(JSON.stringify({ kind, detail }));
+    return "YOLO analysis session started";
+  };
+overlay.remove();
+overlay = paintOverlay();
+await clickAnalyze(overlay);
+ok(note(overlay).includes("YOLO analysis session started"), "a started analysis paints the progress face with the summary");
+
 progressState = { active: true, running: true, done: false };
 await new Promise((resolve) => setTimeout(resolve, 40));
 ok(note(overlay).includes("Analysis running"), "the note polls into the running face");
