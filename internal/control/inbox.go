@@ -913,6 +913,51 @@ func (c *Controller) onInboxTurnDone() {
 	c.inbox.mu.Unlock()
 }
 
+// releaseUnownedInboxClaims is the 任务807 finishing-gate reconciliation. An
+// item enqueued while the TurnDone fan-out window was open can be claimed by
+// a dispatch pipeline that then dies before its turn ever runs (the pipeline
+// goroutine is abandoned or panics; a 796/303 generation bump goes stale).
+// What it leaves behind is durable StateRunning with no live owner:
+// invisible to NextQueued (which only admits queued items), unreachable by
+// the desktop bridge's queued-head scan, and stranded as `running:1` in the
+// 796 sweep summary — the 实测 §6.1 face — until a restart's recovery rewrites
+// it to Uncertain and pauses the queue (false human review for work whose
+// transcript never snapshotted, i.e. work that never ran).
+//
+// Both finishing-gate boundaries — the normal close (finishGuardedTurn) and
+// the 796 heal reopen (HealStuckFinishing) — run this pass right before their
+// dispatch kick: a window-era stray requeues and is consumed in the same
+// breath, with no pause and no review detour. This complements (never
+// replaces) the store-level RecoverOrphanedInFlightOwnedBy: that pass runs on
+// snapshot/open for cross-restart orphans and parks them Uncertain on
+// purpose; this pass runs in-process where "claimed, never tracked, never
+// ran" is provable.
+//
+// Race-safety: an item mid-admission is protected by admittingOwnership —
+// both claim paths (TrySubmitInboxItem, RunInboxTurn) track admission before
+// ClaimItem — so ownsItem holds across the claim-to-active gap and this pass
+// never releases a claim whose pipeline is alive.
+func (c *Controller) releaseUnownedInboxClaims(stage string) {
+	if c == nil {
+		return
+	}
+	st, err := c.ensureInbox()
+	if err != nil {
+		return
+	}
+	for _, item := range st.Snapshot().Items {
+		if item.State != sessioninbox.StateRunning || c.inbox.ownsItem(item.ID) {
+			continue
+		}
+		if err := st.SetState(item.ID, sessioninbox.StateQueued, ""); err != nil {
+			slog.Warn("controller: release unowned inbox claim", "stage", stage, "id", item.ID, "err", err)
+			continue
+		}
+		slog.Info("controller: released unowned inbox claim at finishing gate boundary (任务807)",
+			"stage", stage, "id", item.ID, "source", item.Source)
+	}
+}
+
 // onInboxUnappliedSteer keeps accepted-but-unapplied steers for inspection.
 func (c *Controller) onInboxUnappliedSteer(itemID string) {
 	if itemID == "" {
