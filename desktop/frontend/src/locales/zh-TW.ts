@@ -4094,7 +4094,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.activeTabResident.on": "開",
 "settings.activeTabResident.off": "關",
 "settings.opencodeGoUsage": "OpenCode Go 用量",
-"settings.opencodeGoUsageHint": "顯示訂閱的三個滾動視窗——5 小時 / 7 天 / 訂閱月——與重置倒數計時。僅開關開啟時以 Bearer 鑑權請求 GET /zen/go/v1/usage；關閉=設定頁與網路行為完全不變。OpenCode Zen 按量付費無用量介面，不覆蓋。",
+"settings.opencodeGoUsageHint": "開啟後由右側邊欄顯示訂閱的三個滾動視窗——5 小時 / 7 天 / 訂閱月——與重置倒數計時，僅開關開啟時以 Bearer 鑑權請求 GET /zen/go/v1/usage（明細不在卡內展示）；關閉=設定頁與網路行為完全不變。OpenCode Zen 按量付費無用量介面，不覆蓋。",
 "settings.opencodeGoUsage.on": "開",
 "settings.opencodeGoUsage.off": "關",
 "settings.opencodeGoUsage.window.rolling": "5 小時",

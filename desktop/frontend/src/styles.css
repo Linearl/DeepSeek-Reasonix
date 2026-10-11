@@ -18445,20 +18445,6 @@ button.statusbar__mcp:focus-visible {
   display: block;
 }
 
-/* Task 346: the OpenCode Go usage control stacks vertically - switch on its
-   own row, the three window rows as an aligned table, refresh flush right.
-   The default .settings-field__control is a flex ROW, which squeezed the
-   switch block and the 5h/7d/month rows into one line (0928 screenshot). */
-.settings-field--opencode-usage .settings-field__control {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-}
-.settings-field--opencode-usage .settings-field__control > .set-seg {
-  width: fit-content;
-}
-
 .settings-field--stacked .settings-field__control > * {
   max-width: 100%;
 }
@@ -20554,69 +20540,10 @@ button.statusbar__mcp:focus-visible {
     justify-self: start;
   }
 }
-/* Task 337 layout fix (user 0927 evening): the two-column settings-field
-   grid squeezed the switch and the status copy into the card's top-right
-   corner. Collapse this one field to a single column so the card reads
-   top-down: icon + title -> description -> switch -> status / three-window
-   data. Structure and CSS only — zero behavior change. The doubled class
-   raises specificity above SettingsPanel.css's
-   :where(.settings-center .settings-page[data-layout]) .settings-field
-   two-column rule, which loads later as component CSS. */
-.settings-field.settings-field--opencode-usage {
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-}
-/* Task 163: the OpenCode Go usage rows under the detail switch — three
-   window lines (label · percent · reset countdown) plus a refresh action
-   and the degradation note (tokens only). */
-.opencode-go-usage {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-}
-.opencode-go-usage__row {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  color: var(--fg-dim);
-  font-size: var(--font-control-small);
-}
-.opencode-go-usage__window {
-  min-width: 72px;
-  font-weight: 620;
-}
-.opencode-go-usage__percent {
-  min-width: 4ch;
-  color: var(--fg);
-  font-variant-numeric: tabular-nums;
-}
-.opencode-go-usage__reset {
-  margin-left: auto;
-  color: var(--fg-faint);
-  font-variant-numeric: tabular-nums;
-}
-.opencode-go-usage__note {
-  margin: 0;
-  color: var(--warn);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.opencode-go-usage__refresh {
-  align-self: flex-end;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--border-soft);
-  border-radius: 7px;
-  background: transparent;
-  color: var(--fg-dim);
-  font: inherit;
-  font-size: var(--font-control-small);
-  cursor: pointer;
-}
+/* 任务 800：OpenCode Go 设置卡明细退役（三窗口/刷新/降级提示）——
+   783 起右侧边栏卡是权威展示位，799 起按 plan family 门控；设置卡只留
+   开关行，走 settings-field 默认双列（说明左/开关右），346/337/163 三代
+   卡内专属布局规则随之删除。 */
 
 /* ─── 任务287：右侧概览 Plan 用量卡（ContextPanel 显示位） ───── */
 .plan-usage {

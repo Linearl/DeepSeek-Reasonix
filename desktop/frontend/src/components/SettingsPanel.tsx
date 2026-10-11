@@ -4405,16 +4405,20 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             </>
           )}
           {/* 任务 783：用量监测（可观测性组合并卡，742 先例）——GLM Plan
-              用量（已上线只读展示行）+ OpenCode Go 用量（开关+查询详情）。
-              成员行各归各键：GLM 行无键（provider 解析显示）；Go 行读写
-              experimentalOpenCodeGoUsage。侧栏显示在 ContextPanel 的
-              OpenCodeGoUsageSidebarCard（与 GLM 卡同体系同视觉）。coding
-              plan preset 家族未来按需加成员行（布局 members 即扩展点）。 */}
+              用量（已上线只读展示行）+ OpenCode Go 用量（开关行）。任务 800
+              两处布局清理：大项介绍从左列窄位（Tooltip 单行截断）扩展到右侧
+              大项介绍位（多行完整展示）；GLM 行同步去重——同一句 hint 原先
+              左列 + 右段渲染两遍，现只保留右侧介绍位一份。OpenCode Go 行改
+              标准「说明左/开关右」成员行，卡内明细退役（783 起侧栏卡是权威
+              展示位，799 起按 plan family 门控；查询与 163 零请求门全在侧栏）。
+              coding plan preset 家族未来按需加成员行（布局 members 即扩展点）。 */}
           {selected === "usageMonitoring" && (
             <>
-              <SettingsField label={labLabel("usageMonitoring", t("settings.usageMonitoring"))} hint={t("settings.usageMonitoringHint")} icon={<Activity size={18} />} stacked>{null}</SettingsField>
-              <SettingsField label={labLabel("glmPlanUsage", t("settings.glmPlanUsage"))} hint={t("settings.glmPlanUsageHint")} icon={<Activity size={18} />} stacked>
-                <p className="settings-field__hint-line">{t("settings.glmPlanUsageHint")}</p>
+              <SettingsField label={labLabel("usageMonitoring", t("settings.usageMonitoring"))} icon={<Activity size={18} />} stacked>
+                <p className="settings-field__hint">{t("settings.usageMonitoringHint")}</p>
+              </SettingsField>
+              <SettingsField label={labLabel("glmPlanUsage", t("settings.glmPlanUsage"))} icon={<Activity size={18} />} stacked>
+                <p className="settings-field__hint">{t("settings.glmPlanUsageHint")}</p>
               </SettingsField>
               <ErrorBoundary>
                 <SettingsOpenCodeGoUsageCard

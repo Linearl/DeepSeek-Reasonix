@@ -17,8 +17,9 @@ import {
 // 延伸到边栏——关 = 不渲染、零网络请求，铁律 2）。
 //
 // 数据面与 GLM 卡一致：60s 轮询（ensurePlanUsagePolling 同节奏）+ 手动刷新
-// + 30s 倒计时 tick。设置详情卡（SettingsOpenCodeGoUsageCard）保留原样：
-// 那边是开关管理位 + 手动查询，这里是持续显示。
+// + 30s 倒计时 tick。任务 800 起本卡是明细的权威展示位：设置卡
+// （SettingsOpenCodeGoUsageCard）只留开关管理位，卡内明细（三窗口/刷新/
+// 降级提示）退役到这里；799 起另有 plan family 门（family 不对连请求都不发）。
 
 const WINDOW_LABEL_KEY: Record<string, string> = {
   rolling: "settings.opencodeGoUsage.window.rolling",

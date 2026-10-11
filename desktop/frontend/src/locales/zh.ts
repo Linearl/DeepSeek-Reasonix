@@ -2858,7 +2858,7 @@ export const zh: Record<DictKey, string> = {
 "settings.activeTabResident.on": "开",
 "settings.activeTabResident.off": "关",
 "settings.opencodeGoUsage": "OpenCode Go 用量",
-"settings.opencodeGoUsageHint": "显示订阅的三个滚动窗口——5 小时 / 7 天 / 订阅月——与重置倒计时。仅开关开启时以 Bearer 鉴权请求 GET /zen/go/v1/usage；关闭=设置页与网络行为完全不变。OpenCode Zen 按量付费无用量接口，不覆盖。",
+"settings.opencodeGoUsageHint": "开启后由右侧边栏显示订阅的三个滚动窗口——5 小时 / 7 天 / 订阅月——与重置倒计时，仅开关开启时以 Bearer 鉴权请求 GET /zen/go/v1/usage（明细不在卡内展示）；关闭=设置页与网络行为完全不变。OpenCode Zen 按量付费无用量接口，不覆盖。",
 "settings.opencodeGoUsage.on": "开",
 "settings.opencodeGoUsage.off": "关",
 "settings.opencodeGoUsage.window.rolling": "5 小时",

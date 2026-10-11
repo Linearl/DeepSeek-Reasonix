@@ -45,7 +45,12 @@ const CHECKS = [
 
   // ── 前端 TS ─────────────────────────────────────────────────────
   { feature: "task 163 OpenCode Go 用量查询（后端）", file: "desktop/opencode_go_usage.go", patterns: ["isOfficialOpenCodeGoBase", "no-subscription", "Bearer ", "parseOpenCodeGoUsage"] },
-  { feature: "task 163 OpenCode Go 用量卡（前端）", file: "desktop/frontend/src/components/SettingsOpenCodeGoUsageCard.tsx", patterns: ["GetOpenCodeGoUsage", "opencode-go-usage__row", "resetCountdown"] },
+  // 任务 800：设置卡明细退役（开关行化），163 前端面拆两处——查询门+明细
+  // 渲染整体在侧栏卡（783 建卡，799 加 family 门），设置卡只留开关行；
+  // 原 SettingsOpenCodeGoUsageCard.tsx 单锚点（GetOpenCodeGoUsage/
+  // opencode-go-usage__row/resetCountdown）随之拆分迁移。
+  { feature: "task 163 OpenCode Go 用量明细（前端权威位=侧栏卡；任务 800 迁移）", file: "desktop/frontend/src/components/OpenCodeGoUsageSidebarCard.tsx", patterns: ["GetOpenCodeGoUsage", "plan-usage__row", "resetCountdown", "labFlagEnabled(\"opencodeGoUsage\")"] },
+  { feature: "task 163 OpenCode Go 用量开关行（前端设置卡；任务 800 明细退役）", file: "desktop/frontend/src/components/SettingsOpenCodeGoUsageCard.tsx", patterns: ["EXPERIMENT_FEATURE_TIERS.opencodeGoUsage", "settings.opencodeGoUsageHint", "set-seg__btn"] },
   { feature: "task 287 Plan 用量查询（后端 GLM/Kimi/MiniMax）", file: "desktop/plan_usage.go", patterns: ["GetProviderPlanUsage", "parseZhipuPlanUsage", "parseKimiPlanUsage", "parseMinimaxPlanUsage", "no-key"] },
   { feature: "task 666 Plan 用量跟随当前模型（显示条件=当前模型 plan-capable；多 key 各查各的额度）", file: "desktop/plan_usage.go", patterns: ["activePlanUsageContext", "planUsageTargetForCurrentModel"] },
   { feature: "task 287 Plan 用量显示位（概览卡+statusBar 项+轮询 store）", file: "desktop/frontend/src/store/planUsage.ts", patterns: ["PLAN_USAGE_POLL_MS", "ensurePlanUsagePolling", "usePlanUsageStore"] },
@@ -427,7 +432,10 @@ const CHECKS = [
   { feature: "任务347 view 报告图缓存生效容量（196fix2 契约读回）", file: "desktop/settings_app.go", patterns: ["DagGraphCacheCapacity:           config.DagGraphCacheCapacity(cfg)"] },
   { feature: "任务345 修复会话列表 会话名兜底+状态+繁忙禁用", file: "desktop/frontend/src/components/SessionEventsPanel.tsx", patterns: ["entry.busy", "statusBusy", "title={entry.path}"] },
   { feature: "任务345 Go 侧 display title 链+Busy 字段", file: "desktop/session_events_app.go", patterns: ["sessionEventsDisplayTitle", "Busy bool `json:\"busy\"`"] },
-  { feature: "任务346 用量卡 control 纵向分组（开关独行/三档对齐/刷新右对齐）", file: "desktop/frontend/src/styles.css", patterns: [".settings-field--opencode-usage .settings-field__control", "align-self: flex-end"] },
+  // 任务 800：346 的用量卡内纵向分组随明细退役**有意删除**（明细权威位=
+  // 右侧边栏卡，设置卡回归默认双列「说明左/开关右」）——锚点改钉共享
+  // settings-field 双列 grid（设置卡开关行与整个设置页骨架的共同依赖）。
+  { feature: "任务346→800 用量卡布局（346 纵向分组退役，共享双列 grid 承担）", file: "desktop/frontend/src/styles.css", patterns: ["grid-template-columns: minmax(180px, 260px) minmax(320px, 1fr)"] },
   { feature: "任务184 监控采样器与 heap profile", file: "desktop/perf_monitor.go", patterns: ["func (a *App) SaveHeapProfile", "func (m *perfMonitor) writeHeapProfile", "perf-sample-", "perfMonitorHeapKept"] },
   { feature: "任务184 窗口指标（Win32 计数器）", file: "desktop/perf_monitor_windows.go", patterns: ["GetProcessMemoryInfo", "GetProcessIoCounters"] },
   { feature: "任务184 session 常驻统计", file: "internal/session/stats.go", patterns: ["func (s *Service) OperationResidency", "func (s *Session) OperationResidency"] },
