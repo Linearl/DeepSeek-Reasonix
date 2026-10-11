@@ -195,6 +195,26 @@ function noticeItems(state: typeof initialState) {
 
   // Unknown snapshot → local event flow decides.
   ok(projectRunningState(s, { known: false }) === false, "an unknown runtime snapshot falls back to local state");
+
+  // ── 任务796 (第三形态渲染残留): the same-turn rejection is bounded. A
+  // backend whose TurnDone fan-out wedged reports its ONE finalized turn as
+  // running forever; past the grace window that snapshot IS the backend
+  // truth (healthy fan-outs are milliseconds) and must win, so the TodoPanel
+  // "继续" button cannot linger on a session that admits nothing. Both sides
+  // of the comparison run on promptEventClock (performance.now), NOT Date.now
+  // — turnLifecycleObservedAt is stamped with the relative clock.
+  {
+    const finalized = { ...s, turnLifecycleObservedAt: 1000 };
+    ok(projectRunningState(finalized, { known: true, running: true, state: { turnId: "t-1" } }, 1000 + 29_999) === false,
+      "within the grace window the same-turn running snapshot is still rejected (task-258 contract)");
+    ok(projectRunningState(finalized, { known: true, running: true, state: { turnId: "t-1" } }, 1000 + 30_000) === true,
+      "past the grace window a snapshot insisting on the finalized turn wins (wedged backend truth)");
+    ok(projectRunningState(finalized, { known: true, running: false, state: { turnId: "" } }, 1000 + 60_000) === false,
+      "an idle snapshot stays idle regardless of the grace window");
+    // No stamp (older callers / replayed rows) keeps the task-258 rejection.
+    ok(projectRunningState(s, { known: true, running: true, state: { turnId: "t-1" } }) === false,
+      "a finalize without a turnLifecycleObservedAt stamp keeps the unconditional rejection");
+  }
 }
 
 // ── 258b 追加件: MiMo 相1 吸收——4 态入口拒绝 + latch 自愈 ──────────────────
