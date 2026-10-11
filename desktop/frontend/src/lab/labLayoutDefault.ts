@@ -232,18 +232,22 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         },
         // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
         // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
+        // 任务 781：补 tier——闲置释放=recommended（rail 显推荐徽章）。
         {
           id: "idleReleaseMinutes",
           labelKey: "settings.detachedIdleRelease",
           kind: "param",
+          tier: "recommended",
           onKeys: [],
           fields: [{ id: "detachedIdleReleaseMinutes", input: "number" }],
         },
         // 任务 775：Go 软内存上限（308-O3）——参数卡（无开关）。
+        // 任务 781：补 tier——软内存上限=optional（rail 显可选徽章）。
         {
           id: "goMemLimit",
           labelKey: "settings.goMemLimit",
           kind: "param",
+          tier: "optional",
           onKeys: [],
           fields: [{ id: "goMemLimitMB", input: "number" }],
         },
