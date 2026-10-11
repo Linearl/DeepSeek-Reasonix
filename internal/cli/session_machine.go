@@ -92,6 +92,11 @@ func sessionCommand(args []string) int {
 	if len(args) > 0 && args[0] == "compact" {
 		return sessionCompactHuman(args[1:])
 	}
+	// Task 773: `session import-v5` is the same human-facing tier over the
+	// read-only upstream v5 importer (`sessions import-v5` shares it).
+	if len(args) > 0 && args[0] == "import-v5" {
+		return sessionsImportV5Command(args[1:])
+	}
 	return runSessionCommand(args, os.Stdout)
 }
 
