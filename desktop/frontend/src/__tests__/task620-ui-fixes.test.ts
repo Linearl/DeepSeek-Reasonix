@@ -50,7 +50,9 @@ ok(inbox.includes("collabInbox.cleaned") && inbox.includes("collabInbox.cleanNot
     "the subagents row carries its own subagent-panel precondition (grey-out linkage)");
   ok(sidebarCard.includes('t("settings.subagentPanelTabDisabledHint")'),
     "the wall names the switch to flip when the subagent panel is off");
-  const subagentCard = cardSlice('{selected === "subagentSuite" && (', '{selected === "tabCompress" && (');
+  // 742 合卡后 tabCompress 面板分支已并入 tabManagement，subagentSuite 的
+  // 下一分支变为 sessionWall——切片终点随分支序更新（778 收口）。
+  const subagentCard = cardSlice('{selected === "subagentSuite" && (', '{selected === "sessionWall" && (');
   ok(subagentCard.length > 0, "the subagent-suite card branch located");
   ok(!subagentCard.includes('isDockTabHidden("subagents")'),
     "the subagent-suite card no longer renders its own tab-visibility checkbox");

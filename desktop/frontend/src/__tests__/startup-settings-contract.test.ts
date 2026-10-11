@@ -205,8 +205,10 @@ ok(
   "legacy DeepSeek aliases remain grouped into one official provider card",
 );
 ok(
-  settingsSource.includes('className="btn btn--small provider-profile-row__refresh"') &&
-    settingsSource.includes('className="btn btn--small provider-profile-row__configure"') &&
+  // 591 按钮分级（3aba688b1）把这两个平级功能键机械降档加 btn--secondary，
+  // 本断言锚点随之更新；grid 窄屏落位意图不变。
+  settingsSource.includes('className="btn btn--secondary btn--small provider-profile-row__refresh"') &&
+    settingsSource.includes('className="btn btn--secondary btn--small provider-profile-row__configure"') &&
     stylesSource.includes('"profile-refresh profile-configure"') &&
     stylesSource.includes(".provider-profile-row__refresh") &&
     stylesSource.includes(".provider-profile-row__configure"),
