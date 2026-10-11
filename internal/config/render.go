@@ -108,11 +108,12 @@ var labFeatureTiers = []labFeatureTier{
 	// ── storage（存储，2 项）────────────────────────────────────
 	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation"}},
 	{"sessionStorage", LabTierUnstable, []string{"session_storage"}},
-	// ── infra（基础设施，7 项）──────────────────────────────────
+	// ── infra（基础设施，8 项）──────────────────────────────────
 	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
 	{"baseProcess", LabTierUnstable, []string{"experimental_base_process"}},
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
-	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
+	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}}, // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
+	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},     // 任务 545：会话 cwd 跟随，默认关新实验
 	{"tabModeTint", LabTierUnstable, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
@@ -156,6 +157,9 @@ var labSpecialKeys = map[string]bool{
 	// 任务 651：tab 权限指示三档键（无 experimental_ 前缀的实验室特性键，
 	// 随 tabModeTint 档位族登记）。
 	"tab_permission_indicator": true,
+	// 任务 790：ACP 常驻监听端口键（无 experimental_ 前缀的实验室特性键，
+	// 随 acpListen 档位族登记；0 = 默认 8790）。
+	"acp_listen_port": true,
 }
 
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
@@ -417,6 +421,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 439: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_zcode_task_bus = %v   # desktop: built-in zcode task bus (task 439; embedded 127.0.0.1:8787 bus MCP at boot, [serve.bus_mcp] role table; restart to apply)\n", c.Desktop.ExperimentalZcodeTaskBus)
+		// Task 790: fixed-key-set rule — an unlisted key would be dropped on
+		// every save and the lab switch would flip itself back off.
+		fmt.Fprintf(&b, "experimental_acp_listen = %v   # desktop: resident ACP listener (task 790; loopback-only TCP, one client surface per connection; restart to apply)\n", c.Desktop.ExperimentalACPListen)
+		fmt.Fprintf(&b, "acp_listen_port = %d   # desktop: resident ACP listener port on 127.0.0.1 (task 790; 0 = default 8790)\n", c.Desktop.ACPListenPort)
 		fmt.Fprintf(&b, "experimental_path_rules = %v   # desktop: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md, task 134)\n", c.Desktop.ExperimentalPathRules)
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
 		fmt.Fprintf(&b, "max_cached_tabs = %d   # desktop: resident tab-state limit for the LRU prune (0 = unlimited, task 161)\n", c.Desktop.MaxCachedTabs)

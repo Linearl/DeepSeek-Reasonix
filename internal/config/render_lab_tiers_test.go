@@ -201,7 +201,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// 任务 603（toolOptimizations，「工具优化」族首件）同为快照后新增，
 		// 用户定档未稳定。任务 677（collabGroupView，群聊入口开关，409 交付
 		// 漏挂铁律 2 开关）同为快照后新增，用户定档未稳定（46→47）。
-		LabTierUnstable: 14,
+		// 任务 790（acpListen，ACP 常驻监听，默认关）同为快照后新增，任务书
+		// 拍板未稳定档（14→15、51→52）。
+		LabTierUnstable: 15,
 		LabTierRetired:  0,
 	}
 	got := map[LabTier]int{}
@@ -223,7 +225,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 51 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 51", len(labFeatureTiers))
+	if len(labFeatureTiers) != 52 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 52", len(labFeatureTiers))
 	}
 }
