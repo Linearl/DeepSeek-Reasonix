@@ -29,6 +29,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -218,6 +219,16 @@ func backupV5Source(ctx context.Context, plan *V5Plan, backupRoot string) (strin
 		backupRoot = filepath.Dir(filepath.Dir(plan.SourceRoot))
 	}
 	backupDir := filepath.Join(backupRoot, "import-v5-backup-"+time.Now().UTC().Format("20060102-150405"))
+	// Same-second re-runs (or a restored tree) must not collide: probe for a
+	// free suffix instead of failing the run before anything was written.
+	probe := backupDir
+	for suffix := 2; ; suffix++ {
+		if _, err := os.Stat(probe); os.IsNotExist(err) {
+			break
+		}
+		probe = backupDir + "-" + strconv.Itoa(suffix)
+	}
+	backupDir = probe
 	if err := os.MkdirAll(backupDir, 0o700); err != nil {
 		return "", 0, 0, err
 	}
