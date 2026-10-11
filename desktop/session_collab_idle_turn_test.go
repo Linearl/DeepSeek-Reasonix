@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -417,5 +418,167 @@ func TestIdleTurnBridgeRunningObservationResetsBudget(t *testing.T) {
 	got := waitRunLog(t, log, idleTurnMaxAttempts+1)
 	if len(got) != idleTurnMaxAttempts+1 {
 		t.Fatalf("running observation must re-arm the budget, attempts = %v", got)
+	}
+}
+
+// 任务796：finishing-only 泄漏（第三形态）——桥的检测、自愈与打点。
+
+// TestIdleTurnBridgeHealsFinishingOnlyGate：finishing 卡住超阈值 + 有排队队首
+// ⇒ 桥调 heal 重开闸门（本拍不开轮），下一拍走正常开轮路径。
+func TestIdleTurnBridgeHealsFinishingOnlyGate(t *testing.T) {
+	b := newIdleTurnBridge()
+	log := &runLog{}
+	now := time.Now()
+
+	var healedCalls atomic.Int32
+	target := idleTurnIdleTarget("c1", log)
+	target.running = true // RuntimeStatus().Running 合并了 finishing
+	target.finishing = true
+	target.finishingFor = idleTurnFinishingStuckTimeout + time.Minute
+	target.heal = func() (bool, time.Duration) {
+		healedCalls.Add(1)
+		return true, idleTurnFinishingStuckTimeout + time.Minute
+	}
+
+	b.sweepTargets([]idleTurnTargetView{target}, now)
+	if healedCalls.Load() != 1 {
+		t.Fatalf("heal calls = %d, want 1", healedCalls.Load())
+	}
+	if got := waitRunLog(t, log, 0); len(got) != 0 {
+		t.Fatalf("the heal must not open a turn itself, got %v", got)
+	}
+
+	// 下一拍：闸门已开（running=false、finishing=false）。idle 时钟自 heal 后
+	// 重新起算（wedged 期间 running=true 一直在删时钟），满 45s 窗口才开轮。
+	target.running = false
+	target.finishing = false
+	b.sweepTargets([]idleTurnTargetView{target}, now.Add(4*time.Second))
+	b.sweepTargets([]idleTurnTargetView{target}, now.Add(4*time.Second+sessionCollabIdleTurnDelay))
+	got := waitRunLog(t, log, 1)
+	if len(got) != 1 || got[0] != "item-c1" {
+		t.Fatalf("next sweep must open the queued item, got %v", got)
+	}
+}
+
+// TestIdleTurnBridgeFinishingBelowThresholdSkips：finishing 未超阈值（活扇出
+// 或 drain 链正常流转）⇒ 不 heal、不开轮。
+func TestIdleTurnBridgeFinishingBelowThresholdSkips(t *testing.T) {
+	b := newIdleTurnBridge()
+	log := &runLog{}
+	now := time.Now()
+
+	var healedCalls atomic.Int32
+	target := idleTurnIdleTarget("c1", log)
+	target.running = true
+	target.finishing = true
+	target.finishingFor = idleTurnFinishingStuckTimeout - 10*time.Second
+	target.heal = func() (bool, time.Duration) {
+		healedCalls.Add(1)
+		return true, 0
+	}
+
+	b.sweepTargets([]idleTurnTargetView{target}, now)
+	if healedCalls.Load() != 0 {
+		t.Fatalf("heal must not fire below the threshold, calls = %d", healedCalls.Load())
+	}
+	if got := waitRunLog(t, log, 0); len(got) != 0 {
+		t.Fatalf("no turn may open while finishing, got %v", got)
+	}
+}
+
+// TestIdleTurnBridgeHealSeamNilStaysSkip：无 heal seam（接线缺失或纯观测模式）
+// ⇒ 维持 skip 行为，绝不开轮。
+func TestIdleTurnBridgeHealSeamNilStaysSkip(t *testing.T) {
+	b := newIdleTurnBridge()
+	log := &runLog{}
+	now := time.Now()
+
+	target := idleTurnIdleTarget("c1", log)
+	target.running = true
+	target.finishing = true
+	target.finishingFor = idleTurnFinishingStuckTimeout + time.Minute
+
+	b.sweepTargets([]idleTurnTargetView{target}, now)
+	b.sweepTargets([]idleTurnTargetView{target}, now.Add(sessionCollabIdleTurnDelay*2))
+	if got := waitRunLog(t, log, 0); len(got) != 0 {
+		t.Fatalf("nil heal seam must keep the target skipped, got %v", got)
+	}
+}
+
+// TestIdleTurnSweepLogRateLimited：同一 (contact, decision) 的打点在限频窗口内
+// 只记一次——4s pump tick 不刷屏。
+func TestIdleTurnSweepLogRateLimited(t *testing.T) {
+	b := newIdleTurnBridge()
+	now := time.Now()
+
+	target := idleTurnIdleTarget("c1", &runLog{})
+	target.activeTab = true // skip:active_tab，有队首 ⇒ 打点
+
+	b.sweepTargets([]idleTurnTargetView{target}, now)
+	b.sweepTargets([]idleTurnTargetView{target}, now.Add(4*time.Second))
+	b.sweepTargets([]idleTurnTargetView{target}, now.Add(8*time.Second))
+	b.mu.Lock()
+	logs := len(b.sweepLog)
+	stamp := b.sweepLog["c1\x00"+string(sweepSkipActiveTab)]
+	b.mu.Unlock()
+	if logs != 1 {
+		t.Fatalf("sweep log entries = %d, want 1 (rate limited per contact+decision)", logs)
+	}
+	if !stamp.Equal(now) {
+		t.Fatalf("first emit stamp = %v, want %v", stamp, now)
+	}
+	// 窗口过后允许再记。
+	b.sweepTargets([]idleTurnTargetView{target}, now.Add(idleTurnSweepLogInterval+time.Second))
+	b.mu.Lock()
+	logs = len(b.sweepLog)
+	second := b.sweepLog["c1\x00"+string(sweepSkipActiveTab)]
+	b.mu.Unlock()
+	if logs != 1 || !second.Equal(now.Add(idleTurnSweepLogInterval+time.Second)) {
+		t.Fatalf("after the window a new emit must replace the stamp (entries=%d stamp=%v)", logs, second)
+	}
+}
+
+// TestIdleTurnSweepLogSkipsQuietTargets：无队首且无滞留 item 的目标零打点
+//（空转会话每分钟一行是纯噪音）。
+func TestIdleTurnSweepLogSkipsQuietTargets(t *testing.T) {
+	b := newIdleTurnBridge()
+	now := time.Now()
+
+	quiet := idleTurnTargetView{contactID: "c1", itemsSummary: "none"}
+	running := idleTurnTargetView{contactID: "c2", itemsSummary: "none", running: true}
+	b.sweepTargets([]idleTurnTargetView{quiet, running}, now)
+	b.mu.Lock()
+	logs := len(b.sweepLog)
+	b.mu.Unlock()
+	if logs != 0 {
+		t.Fatalf("quiet targets must not log, entries = %d", logs)
+	}
+	// 有滞留 item（卡在 running 态，H4 形态）⇒ 打点可见。
+	stranded := idleTurnTargetView{contactID: "c3", itemsSummary: "running:1"}
+	b.sweepTargets([]idleTurnTargetView{stranded}, now)
+	b.mu.Lock()
+	_, ok := b.sweepLog["c3\x00"+string(sweepSkipNoHead)]
+	b.mu.Unlock()
+	if !ok {
+		t.Fatal("a stranded non-queued item must surface in the sweep log")
+	}
+}
+
+// TestSummarizeInboxItems：概要格式——空箱 none、同态计数、异态保序。
+func TestSummarizeInboxItems(t *testing.T) {
+	if got := summarizeInboxItems(nil); got != "none" {
+		t.Fatalf("empty = %q, want none", got)
+	}
+	mixed := []sessioninbox.InboxItemMeta{
+		{ID: "a", State: sessioninbox.StateQueued},
+		{ID: "b", State: sessioninbox.StateQueued},
+		{ID: "c", State: sessioninbox.StateRunning},
+	}
+	if got := summarizeInboxItems(mixed); got != "queued:2,running:1" {
+		t.Fatalf("mixed = %q, want queued:2,running:1", got)
+	}
+	stranded := []sessioninbox.InboxItemMeta{{ID: "x", State: sessioninbox.StateUncertain}}
+	if got := summarizeInboxItems(stranded); got != "uncertain:1" {
+		t.Fatalf("stranded = %q, want uncertain:1", got)
 	}
 }

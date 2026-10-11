@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -141,6 +142,20 @@ func (e *idleTurnE2E) deliverSteer(t *testing.T, from, to, body string) (bool, s
 // 任务709 起含暂停来源（用户暂停/自动暂停）与唤醒 seam。
 func (e *idleTurnE2E) sweepBridge(b *idleTurnBridge, contactID string, at time.Time) {
 	view := idleTurnTargetView{contactID: contactID}
+	// 任务796: the sweep adapter mirrors the production wiring in
+	// sweepIdleInboxTurns — the raw finishing window plus the live heal seam —
+	// so an e2e exercise of the wedged-fanout shape goes through the same
+	// code path the desktop pump would.
+	st := e.ctrl.RuntimeStatus()
+	view.running = st.Running
+	view.finishing = st.Finishing
+	if st.FinishingSinceUnix != 0 {
+		view.finishingFor = at.Sub(time.Unix(st.FinishingSinceUnix, 0))
+	}
+	ctrl := e.ctrl
+	view.heal = func() (bool, time.Duration) {
+		return ctrl.HealStuckFinishing(idleTurnFinishingStuckTimeout)
+	}
 	snap := e.ctrl.InboxSnapshot()
 	view.paused = snap.Paused && snap.UserPaused
 	view.autoPaused = snap.Paused && !snap.UserPaused
@@ -314,6 +329,115 @@ func TestIdleTurnEndToEndAutoPausedStaleSessionOpensTurn(t *testing.T) {
 
 // 任务709 边界回归：用户显式暂停（queue panel / SetInboxPaused）依旧绝对
 // 静默——即便有新投递与排队工作，桥也不越。暂停是用户意志。
+
+// 任务7996 e2e（第三形态：finishing-only 泄漏）：真实 Controller 的
+// TurnDone 扇出被阻塞（running=false + finishing=true 的幽灵 running）→
+// 桥视图经 RuntimeStatus 看到泄漏态、heal seam 接的是真控制器方法→
+// 阻塞解除后桥两拍正常消费排队 follow-up。阈值判定本身由
+// finishing_heal_test.go（同包，可注入时间戳）与桥层单测覆盖。
+func TestIdleTurnEndToEndWedgedFinishingObservableThenConsumed(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var first atomic.Int32
+	blockingSink := event.FuncSink(func(e event.Event) {
+		if e.Kind == event.TurnDone && first.Add(1) == 1 {
+			entered <- struct{}{}
+			<-release
+		}
+	})
+	dir := t.TempDir()
+	e := &idleTurnE2E{mail: sessioncollab.NewMailStoreWithHopLimit(dir, 8)}
+	e.ctrl = control.New(control.Options{
+		Runner: idleTurnRunner(func(input string) {
+			e.mu.Lock()
+			e.inputs = append(e.inputs, input)
+			e.mu.Unlock()
+		}),
+		Sink: blockingSink,
+		SessionDir:  dir,
+		SessionPath: filepath.Join(dir, "session.jsonl"),
+	})
+	t.Cleanup(func() { e.ctrl.Close() })
+	// detached runtime 死点（与 newIdleTurnE2EAt 同口径）：内建调度器对
+	// detached runtime 找不到 owner，投递降级为排队 follow-up——否则合并令
+	// 会被 controller 内建调度直接开轮消费（Disposition=started），桥就无事
+	// 可做了。
+	e.ctrl.SetBeforeInboxDispatch(func(*control.Controller) (func(), error) {
+		return nil, control.ErrInboxRuntimeUnpublished
+	})
+
+	// 入队一条 follow-up（待消费的合并令形态）。
+	const body = "796 验收：幽灵 running 解除后必须被消费"
+
+	// 真实构造泄漏态：一轮回合跑完、TurnDone 扇出卡在阻塞 sink 里。
+	// Send 走交互 admission 链（spawnGuardedTurn → finishGuardedTurn），
+	// Run 是同步 headless 路径不经扇出窗口——构造 finishing 泄漏必须用前者。
+	sendDone := make(chan struct{})
+	go func() { defer close(sendDone); e.ctrl.Send("warmup") }()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("turn done never reached the fan-out")
+	}
+
+	// 泄漏态观测：running（合并值）与 finishing 同时为真、时间戳在打点。
+	// 注意此刻不能入队——finishing 窗口期间入队的 follow-up 会被标成
+	// running 态挂在已结束的 turn 上（实测踩坑：onInboxTurnDone 已跑过、
+	// 无人把它放回 queued），那是另一条独立的缺陷面；本用例的排队形态
+	// 在完全空闲后建立。
+	st := e.ctrl.RuntimeStatus()
+	if !st.Running || !st.Finishing || st.FinishingSinceUnix == 0 {
+		t.Fatalf("wedged status = running:%v finishing:%v since:%d — the leak must be observable end to end",
+			st.Running, st.Finishing, st.FinishingSinceUnix)
+	}
+
+	// 桥一拍：视图读到 finishing + heal seam（真控制器方法）。
+	// 真实时间戳刚打点，未满阈值 ⇒ heal 返回 false 不误伤。
+	b := newIdleTurnBridge()
+	e.sweepBridge(b, "c-target", time.Now())
+	if healed, stalled := e.ctrl.HealStuckFinishing(idleTurnFinishingStuckTimeout); healed || stalled != 0 {
+		t.Fatalf("fresh window must not heal (healed=%v stalled=%v)", healed, stalled)
+	}
+
+	// 阻塞解除（对应真实场景的「卡点自行解除 / 人工介入后」）：
+	// 泄漏 fan-out 退出，闸门回到干净空闲。
+	close(release)
+	<-sendDone
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if s := e.ctrl.RuntimeStatus(); !s.Running && !s.Finishing {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// 干净空闲后投一条 steer（合并令形态）：detached 死点下降级为排队
+	// follow-up（570 回执可查），与验收①同一条原生投递路径——不走
+	// TryEnqueueFollowup，它降级时挂上的内建调度重试链会与桥竞争消费。
+	steered, itemID, mailID := e.deliverSteer(t, "c-sender", "c-target", body)
+	if steered {
+		t.Fatal("an idle target cannot take a steer — it must degrade")
+	}
+	if itemID == "" {
+		t.Fatal("degraded steer must keep a durable inbox item")
+	}
+	if r, ok := e.mail.DeliveryReceipt(mailID); !ok || r.Outcome != sessioncollab.ReceiptQueuedFollowup {
+		if ok {
+			t.Fatalf("degraded steer receipt = %+v, want queued_followup", r)
+		}
+		t.Fatal("degraded steer must leave a queryable delivery receipt")
+	}
+	base := time.Now()
+	e.sweepBridge(b, "c-target", base)
+	// 第二拍才是 idle 时钟的真正起算点（上一拍 running 刚翻 false），
+	// 故开轮拍需要再满一个 N 窗口。
+	e.sweepBridge(b, "c-target", base.Add(sessionCollabIdleTurnDelay+4*time.Second))
+	got := e.waitForInputs(t, 2)
+	if len(got) < 2 || !strings.Contains(got[1], body) {
+		t.Fatalf("the queued followup must be consumed after the wedge clears, got %v", got)
+	}
+}
+
 func TestIdleTurnEndToEndUserPausedInboxStaysUntouched(t *testing.T) {
 	e := newIdleTurnE2E(t)
 	b := newIdleTurnBridge()
