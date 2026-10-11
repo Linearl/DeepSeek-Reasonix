@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import process from "node:process";
 import { parseSimpleYaml, YamlParseError } from "../lab/parseSimpleYaml";
 import { LAB_LAYOUT_DEFAULT_DATA } from "../lab/labLayoutDefault";
-import { resolveLabLayout, railTiersForDefault } from "../lab/labLayout";
+import { labEntryBadgeTier, resolveLabLayout } from "../lab/labLayout";
 import { LAB_LIGHT_KEY_IDS } from "../lab/labLightKeys";
 import { LAB_GROUP_KEYS } from "../lab/labLayoutTypes";
 
@@ -184,8 +184,10 @@ items:
   const memberIds = LAB_LAYOUT_DEFAULT_DATA.groups
     .flatMap((g) => g.entries.flatMap((e) => e.members?.map((m) => m.id) ?? []));
   ok(memberIds.includes("heartbeatRotation"), "layout default registers heartbeatRotation as a safetyCostControl member");
-  ok(railTiersForDefault("safetyCostControl").join(",") === "recommended,optional",
-    "safetyCostControl rail badges cover the folded members");
+  // 任务 774 徽章聚合：卡头单枚最高档（推荐>可选>未稳定>已退役）——折叠
+  // 成员的徽章只在卡内详情行可见，不再重复上卡头。
+  ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "safetyCostControl") === "recommended",
+    "safetyCostControl rail badge aggregates to the single strongest tier");
   // 三语键。
   for (const locale of ["zh", "en", "zh-TW"]) {
     const dict = readFileSync(`${frontendRoot}/src/locales/${locale}.ts`, "utf8");

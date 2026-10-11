@@ -7,8 +7,10 @@
 //     tier (12 recommended + 4 optional) (acceptance ② data half);
 //  ③ the frontend register and the Go labFeatureTiers registry in
 //     internal/config/render.go agree item by item — two sides, one source;
-//  ④ rail wiring: every rail entry renders badges; merged cards cover all
-//     48 member features; non-表A ids (preapproveManagedPaths) get none;
+//  ④ rail wiring: every rail entry renders its SINGLE aggregated badge
+//     (任务 774 徽章聚合：卡头 = max(卡 tier, members tiers)，推荐>可选>
+//     未稳定>已退役；成员徽章只在卡内详情行可见); merged cards cover all
+//     member features; non-表A ids (preapproveManagedPaths) get none;
 //  ⑤ pane wiring: every 表A feature's switch label is wrapped in labLabel
 //     (or the standalone usage card), i.e. 48/48 pane badges;
 //  ⑥ locale keys exist in all three dialects.
@@ -26,8 +28,11 @@ import {
 } from "../lib/experimentTiers";
 // 任务 722/724：合并卡成员表移交实验室布局数据（yaml 化内置默认），rail
 // 徽章与成员覆盖从布局数据读（lib/experimentTiers 只保留档位注册表）。
+// 任务 774：rail 徽章聚合为单枚最高档（labEntryBadgeTier），多枚去重清单
+// 仅作测试诊断面（railTiersForDefault）。
 import { LAB_LAYOUT_DEFAULT_DATA } from "../lab/labLayoutDefault";
-import { findLabLayoutDefaultRegisterDrift, railTiersForDefault } from "../lab/labLayout";
+import type { LabLayoutData } from "../lab/labLayoutTypes";
+import { findLabLayoutDefaultRegisterDrift, labEntryBadgeTier, railTiersForDefault } from "../lab/labLayout";
 
 let passed = 0;
 let failed = 0;
@@ -127,19 +132,61 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 704：trajectoryView 入表 → 50；任务 727 heartbeatRotation → 51；
   // 任务 742 tabManagement + heartbeatBackground → 53。
   ok(covered.size === 53, "rail entries cover all 53 features");
-  const gov = railTiersForDefault("contextGovernance");
-  ok(gov[0] === "recommended" && gov[1] === "optional" && gov.length === 2, `contextGovernance shows [推荐, 可选] (got ${JSON.stringify(gov)})`);
-  ok(JSON.stringify(railTiersForDefault("autopilot")) === JSON.stringify(["recommended"]), "standalone entry badges itself");
-  ok(railTiersForDefault("preapproveManagedPaths").length === 0, "non-表A id (task-364 domain) shows no badge");
+  // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
+  // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
+  // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
+  // 子项档位——它们仍在布局里，只是不上卡头），labEntryBadgeTier 钉「卡头
+  // 输出」（单枚=清单首位）。合并卡的多档成员不再让卡头出现两枚徽章。
+  const agg = (id: string) => labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, id);
+  ok(JSON.stringify(railTiersForDefault("contextGovernance")) === JSON.stringify(["recommended", "optional"]) && agg("contextGovernance") === "recommended",
+    `contextGovernance: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("contextGovernance"))} → ${String(agg("contextGovernance"))})`);
+  ok(JSON.stringify(railTiersForDefault("autopilot")) === JSON.stringify(["recommended"]) && agg("autopilot") === "recommended", "standalone entry badges itself");
+  ok(railTiersForDefault("preapproveManagedPaths").length === 0 && agg("preapproveManagedPaths") === null, "non-表A id (task-364 domain) shows no badge");
   // 任务 722 点2：「已退役」徽章自模型策略卡移除——只余 highSpeedModel 的可选档。
-  ok(!railTiersForDefault("modelStrategy").includes("retired") && JSON.stringify(railTiersForDefault("modelStrategy")) === JSON.stringify(["optional"]),
+  ok(JSON.stringify(railTiersForDefault("modelStrategy")) === JSON.stringify(["optional"]) && agg("modelStrategy") === "optional",
     `modelStrategy drops the retired badge (got ${JSON.stringify(railTiersForDefault("modelStrategy"))})`);
-  // 任务 722 点5/6：compactModel（可选）与 messageMerge（推荐）并入安全/成本控制卡。
-  ok(JSON.stringify(railTiersForDefault("safetyCostControl")) === JSON.stringify(["recommended", "optional"]),
-    `safetyCostControl shows [推荐, 可选] after the 722 folds (got ${JSON.stringify(railTiersForDefault("safetyCostControl"))})`);
-  // 任务 722 点3：sessionCollab 卡多出折叠子项的可选档徽章。
-  ok(JSON.stringify(railTiersForDefault("sessionCollab")) === JSON.stringify(["recommended", "optional"]),
-    `sessionCollab covers its auto-fold member (got ${JSON.stringify(railTiersForDefault("sessionCollab"))})`);
+  // 任务 722 点5/6 + 774：compactModel（可选）/messageMerge（推荐）/心跳轮换
+  // （可选）并入后，卡头只聚合出推荐一枚。
+  ok(JSON.stringify(railTiersForDefault("safetyCostControl")) === JSON.stringify(["recommended", "optional"]) && agg("safetyCostControl") === "recommended",
+    `safetyCostControl: input [推荐,可选] aggregates to the single 推荐 badge after the 722 folds (got ${String(agg("safetyCostControl"))})`);
+  // 任务 722 点3 + 774 验收件①：跨会话协作卡（卡=推荐 + 折叠子项=可选）
+  // 卡头只显示「推荐」一枚，不再双徽章。
+  ok(JSON.stringify(railTiersForDefault("sessionCollab")) === JSON.stringify(["recommended", "optional"]) && agg("sessionCollab") === "recommended",
+    `sessionCollab shows exactly one 推荐 badge, its auto-fold member's 可选 stays in-card (got ${String(agg("sessionCollab"))})`);
+  // 任务 774 验收件②：子代理套件（无自有档，成员 可选×3+未稳定）按最高档
+  // 单枚——可选压过未稳定。
+  ok(JSON.stringify(railTiersForDefault("subagentSuite")) === JSON.stringify(["optional", "unstable"]) && agg("subagentSuite") === "optional",
+    `subagentSuite aggregates to the single 可选 badge over its unstable member (got ${String(agg("subagentSuite"))})`);
+  // 其余合并卡逐卡钉聚合终值（722 布局现值）。
+  ok(agg("updateFeedback") === "recommended", `updateFeedback aggregates to 推荐 (got ${String(agg("updateFeedback"))})`);
+  ok(agg("sessionStore") === "optional", `sessionStore aggregates to 可选 over its unstable member (got ${String(agg("sessionStore"))})`);
+  ok(agg("devDebug") === "unstable", `devDebug aggregates to 未稳定 (got ${String(agg("devDebug"))})`);
+  // 已退役垫底：合成布局钉「已退役」永不顶掉更强档位（默认布局已无 retired
+  // 成员卡——722 点2 移除；此规则由合成数据守护，防止未来回填时翻转）。
+  const synthetic: LabLayoutData = {
+    version: 1,
+    groups: [
+      {
+        key: "ui",
+        labelKey: "settings.labGroup.ui",
+        entries: [
+          {
+            id: "sessionWall",
+            labelKey: "settings.sessionWall",
+            tier: "optional",
+            onKeys: ["experimentalSessionWall"],
+            members: [
+              { id: "modelCapabilityFilter", labelKey: "settings.modelCapabilityFilter", tier: "retired" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  ok(labEntryBadgeTier(synthetic, "sessionWall") === "optional",
+    `retired never out-ranks a stronger tier (got ${String(labEntryBadgeTier(synthetic, "sessionWall"))})`);
+  ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "preapproveManagedPaths") === null,
+    "unknown id aggregates to no badge (null)");
 }
 
 // ⑤ pane wiring in SettingsPanel (46/46) + rail render site.
@@ -153,7 +200,13 @@ console.log("\ntask 562 lab three-tier badges");
     if (id !== "opencodeGoUsage" && id !== "modelCapabilityFilter" && !wrapped.has(id)) missing.push(id);
   }
   ok(missing.length === 0, `pane labels wrap every non-card id in SettingsPanel + the usage card covers opencodeGoUsage (missing: ${JSON.stringify(missing)})`);
-  ok(panel.includes("labEntryBadgeTiers(labLayoutResolved.layout, feature.id).map((tier) => ("), "rail rows render tier badges from the resolved layout");
+  // 任务 774：rail 行渲染单枚聚合徽章（features 表预解析 badgeTier），
+  // 多枚 .map 渲染必须消失——卡头不再出现两枚档位徽章。
+  ok(panel.includes("badgeTier: labEntryBadgeTier(labLayoutResolved.layout, entry.id)"),
+    "rail features table sources the aggregated badge tier from the resolved layout");
+  ok(panel.includes("{feature.badgeTier ? <TierBadge tier={feature.badgeTier} translator={t} /> : null}"),
+    "rail rows render exactly one aggregated tier badge");
+  ok(!panel.includes("labEntryBadgeTiers"), "the multi-badge rail mapping is gone from SettingsPanel");
   const card = readFileSync(fileURLToPath(new URL("../components/SettingsOpenCodeGoUsageCard.tsx", import.meta.url)), "utf8");
   ok(card.includes("EXPERIMENT_FEATURE_TIERS.opencodeGoUsage"), "opencodeGoUsage card badges its title");
 }
