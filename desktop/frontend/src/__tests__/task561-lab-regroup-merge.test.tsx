@@ -9,14 +9,16 @@
 //  ③ M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
 //     fullAccess / optimisticParallel each still has its own rail entry and
 //     its own pane branch;
-//  ④ the rail carries exactly 39 entries in 8 groups — 任务 722 后为
+//  ④ the rail carries exactly 40 entries in 8 groups — 任务 722 后为
 //     4/8/15/1/1/1/6/1（safetyCostControl 自 automation 迁 efficiency 并吸收
 //     messageMerge；sessionCollabAutoFold 并入 sessionCollab；727
 //     heartbeatRotation 以成员入 safetyCostControl，不占 rail 入口）；
 //     任务 742 后为 5/8/14/1/1/1/6/1（automation 增 heartbeatBackground，
 //     ui 组 tab 二开关合并为 tabManagement——一增一减总数不变）；
 //     任务 775 后为 5/8/14/1/1/3/6/1=39（存储组增两张 kind:param 参数卡：
-//     闲置释放 + 软内存上限，自跨会话协作卡硬编码行迁出）。
+//     闲置释放 + 软内存上限，自跨会话协作卡硬编码行迁出）；
+//     任务 790 后为 5/8/14/1/1/3/7/1=40（基础设施组增 acpListen：ACP 常驻
+//     监听，默认关）。
 //     任务 722/724：render table 移交布局默认数据（labLayoutDefault.ts），
 //     分组/成员/徽章/排序由 lab-layout.yaml（校验回退默认）驱动——本测试的
 //     分组断言读布局数据与 yaml，卡片独立性断言仍读 SettingsPanel 源。
@@ -65,9 +67,10 @@ console.log("\ntask 561 lab regroup + merged cards");
     "built-in default layout mirrors the same group order (fallback = same face)");
 }
 
-// ① rail census（任务 775 修订）：恰好 39 个 rail 入口，组分布
-// 5/8/14/1/1/3/6/1（775：存储组增 idleReleaseMinutes + goMemLimit 两张
-// kind:param 参数卡；742：automation 增 heartbeatBackground 入口；ui 组
+// ① rail census（任务 790 修订）：恰好 40 个 rail 入口，组分布
+// 5/8/14/1/1/3/7/1（790：基础设施组增 acpListen 入口；775：存储组增
+// idleReleaseMinutes + goMemLimit 两张 kind:param 参数卡；742：automation
+// 增 heartbeatBackground 入口；ui 组
 // tabCompress+tabModeTint 合并为 tabManagement 单入口——一增一减总数不变；
 // 722：safetyCostControl 迁提效并吸收 messageMerge 入口；
 // sessionCollabAutoFold 并入 sessionCollab）。
@@ -76,7 +79,7 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 直接导入布局数据模块数真数据（比源码正则稳）。
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
-  ok(defEntries.length === 39, `default layout carries exactly 39 rail entries (got ${defEntries.length})`);
+  ok(defEntries.length === 40, `default layout carries exactly 40 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -85,11 +88,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   const groups: Record<string, number> = {};
   for (const g of LAB_LAYOUT_DEFAULT_DATA.groups) groups[(g as { key: string }).key] = g.entries.length;
   // 任务 742：automation 4→5（heartbeatBackground）、ui 15→14（tab 二开关
-  // 合并为 tabManagement）——一增一减；775 存储组增两参数卡 → 总数 39。
+  // 合并为 tabManagement）——一增一减；775 存储组增两参数卡；790 基础设施
+  // 组增 acpListen → 总数 40。
   ok(groups["automation"] === 5 && groups["efficiency"] === 8 && groups["ui"] === 14 &&
-     groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 6 &&
+     groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 7 &&
      groups["tool-opt"] === 1,
-    `group counts are 5/8/14/1/1/3/6/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 5/8/14/1/1/3/7/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。

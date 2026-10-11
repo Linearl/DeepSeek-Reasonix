@@ -1904,6 +1904,9 @@ type ExperimentFeatureId =
   | "baseProcess"
   // Task 439: built-in zcode task bus (embedded loopback bus MCP host).
   | "zcodeTaskBus"
+  // 任务 790: resident ACP listener (loopback TCP, one client surface per
+  // connection; default off, restart to apply).
+  | "acpListen"
   // 任务 517:「安全 / 成本控制」— the task-244 B1/B2/B3 guards merge into ONE
   // config key (experimental_safety_cost_control): the 561 autonomousRunGuard
   // family card and the standalone eventWaitRecheck entry fold into this
@@ -1966,6 +1969,7 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "runtimeReuse",
   "baseProcess",
   "zcodeTaskBus",
+  "acpListen",
   "pathRules",
   "orphanHandling",
   "localServer",
@@ -2165,6 +2169,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // entry is open, and again after every apply() (which reloads s). The
   // card renders the serve 状态灯 and the enrolled roles from it.
   const [zcodeBusStatus, setZcodeBusStatus] = useState<Awaited<ReturnType<typeof app.ZcodeTaskBusStatus>> | null>(null);
+  // 任务 790: resident ACP listener live state for its lab card.
+  const [acpListenStatus, setACPListenStatus] = useState<Awaited<ReturnType<typeof app.ACPListenStatus>> | null>(null);
   // 任务 727：心跳会话轮换状态按需加载——只在安全/成本控制卡打开时读一次
   // heartbeat-rotation.json（单一事实源桥接，无第二开关）。
   const [hbRotation, setHbRotation] = useState<Awaited<ReturnType<typeof app.HeartbeatRotationStatus>> | null>(null);
@@ -2196,6 +2202,20 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
       alive = false;
     };
   }, [selected, s.experimentalZcodeTaskBus]);
+  useEffect(() => {
+    if (selected !== "acpListen") return undefined;
+    let alive = true;
+    void app.ACPListenStatus()
+      .then((st) => {
+        if (alive) setACPListenStatus(st);
+      })
+      .catch(() => {
+        if (alive) setACPListenStatus(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selected, s.experimentalACPListen]);
   // Task 359: lab navigation — collapsible groups, intro banner (collapsed by
   // default), and the "disabled sink" display-order switch. The order switch
   // is a pure display preference (localStorage, no experimental_* chain — it
@@ -4606,6 +4626,43 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   </ul>
                 </SettingsField>
               )}
+            </SettingsField>
+          )}
+          {selected === "acpListen" && (
+            // 任务 790: resident ACP listener. The listener arms at desktop
+            // boot, so a flip needs a restart — same banner pattern as the
+            // task bus. When on, the card doubles as the 状态灯: bound
+            // loopback address while running, bind failure, or the
+            // await-restart note. 127.0.0.1 is pinned in the host; the port
+            // (acp_listen_port, default 8790) is a config key, not a UI field.
+            <SettingsField
+              label={labLabel("acpListen", t("settings.acpListen"))}
+              hint={
+                acpListenStatus && acpListenStatus.err
+                  ? `${t("settings.acpListen.notRunning")} ${acpListenStatus.err}`
+                  : acpListenStatus && acpListenStatus.running
+                    ? `${t("settings.acpListen.running")} ${acpListenStatus.addr}`
+                    : Boolean(s.experimentalACPListen) && acpListenStatus && !acpListenStatus.running
+                      ? t("settings.acpListen.awaitRestart")
+                      : t("settings.acpListenHint")
+              }
+              icon={<Server size={18} />}
+            >
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalACPListen) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalACPListen(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.acpListen.on" : "settings.acpListen.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
             </SettingsField>
           )}
           {selected === "outputStyle" && (

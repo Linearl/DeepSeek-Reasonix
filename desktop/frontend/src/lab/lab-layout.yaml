@@ -290,6 +290,12 @@ groups:
         labelKey: settings.zcodeTaskBus
         tier: unstable
         onKeys: [experimentalZcodeTaskBus]
+      # 任务 790：ACP 常驻监听（loopback TCP，每连接独立 client 面；默认关，
+      # 重启生效）。
+      - id: acpListen
+        labelKey: settings.acpListen
+        tier: unstable
+        onKeys: [experimentalACPListen]
       - id: pathRules
         labelKey: settings.pathRules
         tier: unstable

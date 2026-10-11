@@ -65,6 +65,8 @@ export type TierFeatureId =
   | "runtimeReuse"
   | "baseProcess"
   | "zcodeTaskBus"
+  // 任务 790: ACP 常驻监听（loopback TCP，每连接独立 client 面，默认关）。
+  | "acpListen"
   | "modelCapabilityFilter"
   | "pathRules"
   | "orphanHandling"
@@ -151,10 +153,11 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── storage（存储，2 项）────────────────────────────────────
   eventsRotation: "optional",
   sessionStorage: "unstable",
-  // ── infra（基础设施，7 项）──────────────────────────────────
+  // ── infra（基础设施，8 项）──────────────────────────────────
   runtimeReuse: "optional",
   baseProcess: "unstable",
   zcodeTaskBus: "unstable",
+  acpListen: "unstable",
   modelCapabilityFilter: "retired",
   pathRules: "unstable",
   orphanHandling: "unstable",

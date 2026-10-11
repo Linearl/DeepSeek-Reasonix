@@ -95,6 +95,9 @@ export interface SettingsView {
   // Task 439: built-in zcode task bus (ships off; the listener arms at
   // desktop boot — restart to apply).
   experimentalZcodeTaskBus?: boolean;
+  // Task 790: resident ACP listener (ships off; the listener arms at desktop
+  // boot — restart to apply).
+  experimentalACPListen?: boolean;
   // Task 385a: lab 回答风格 gate (ships off) + the persisted [agent]
   // output_style the selector reads back ("" = default, no style).
   experimentalOutputStyleUI?: boolean;
@@ -297,5 +300,20 @@ export interface ZcodeTaskBusStatusView {
   /** Enrolled role names (sorted), from the [serve.bus_mcp] table. */
   roles: string[];
   /** Bind/construct failure surfaced to the card; empty when healthy. */
+  err: string;
+}
+
+// Task 790: live state of the resident ACP listener, reported by the desktop
+// App binding for the lab card.
+export interface ACPListenStatusView {
+  /** Config intent: the lab switch (a flip needs a restart to arm the listener). */
+  enabled: boolean;
+  /** The configured acp_listen_port (0 = the 8790 default). */
+  port: number;
+  /** Whether this process actually hosts the listener right now. */
+  running: boolean;
+  /** Actual bound loopback address (host:port), empty when not running. */
+  addr: string;
+  /** Bind failure surfaced to the card; empty when healthy. */
   err: string;
 }
