@@ -44,6 +44,17 @@ ok(panel.includes("settings.sessionStorage.risk."), "risk note is rendered");
 ok(panel.includes('t("settings.sessionStorage.restartPending"'), "restart-pending line is rendered");
 ok(panel.includes("sessionStorageRestartPending"), "restart-pending flag drives the banner");
 
+// 1b) 任务 805: the migration routes hang off the same card, two-step confirm,
+// with the stage buttons locked while a run is in flight.
+const section = readFileSync(resolve(testDir, "../components/SessionMigrationSection.tsx"), "utf8");
+ok(panel.includes("SessionMigrationSection"), "the storage card hosts the migration section");
+ok(panel.includes("migrationRunning"), "the panel locks stage buttons with the migration state");
+ok(section.includes("app.PlanSessionV4Backfill"), "v4 backfill plans first (dry-run default)");
+ok(section.includes("app.RunSessionV4Backfill"), "v4 backfill runs on the second click");
+ok(section.includes("app.SessionV5StoreAvailable"), "the v5 entry hides when no v5 store exists");
+ok(section.includes("app.PlanSessionV5Import") && section.includes("app.RunSessionV5Import"), "the v5 import rides the same confirm flow");
+ok(section.includes("MIGRATION_PROGRESS_EVENT") || section.includes("sessionStorageMigrationProgress"), "progress lines arrive via runtime events");
+
 // 2) The wire carries both the configured and the boot-effective mode.
 ok(viewTypes.includes("sessionStorageEffective"), "view carries the boot-effective mode");
 ok(viewTypes.includes("sessionStorageRestartPending"), "view carries the restart-pending flag");
@@ -58,6 +69,16 @@ for (const [name, dict] of Object.entries(locales)) {
   ok(dict.includes('"settings.sessionStorage.restartPending"'), `${name} has the restart-pending line`);
   ok(dict.includes("{{mode}}"), `${name} interpolates the effective mode in the restart line`);
   ok(dict.includes('"settings.sessionStorageHint"'), `${name} keeps the mode hint`);
+  for (const key of [
+    "settings.migration.action",
+    "settings.migration.planSummary",
+    "settings.migration.mode.incremental",
+    "settings.migration.mode.full",
+    "settings.migration.backupDone",
+    "settings.migration.restoreNote",
+  ]) {
+    ok(dict.includes(`"${key}"`), `${name} has the migration key ${key}`);
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);

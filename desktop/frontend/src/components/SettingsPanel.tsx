@@ -3,6 +3,7 @@ import { ModelSettingHelp } from "./ModelSettingHelp";
 import { SettingsOptions } from "./SettingsOptions";
 import { SettingsSelect } from "./SettingsSelect";
 import { SessionEventsPanel, type RotationMode } from "./SessionEventsPanel";
+import { SessionMigrationSection } from "./SessionMigrationSection";
 import { PerfMemorySection } from "./PerfMemorySection";
 import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerProtocol";
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
@@ -2267,6 +2268,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // Task 155: the configured store mode, normalized so every stage key stays a
   // literal (the dictionaries are typed by DictKey).
   const storageMode = asSessionStorageMode(s.sessionStorage);
+  // 任务 805: a running migration locks the stage buttons (the stores must not
+  // change sides mid-backfill); the section reports its phase up.
+  const [migrationRunning, setMigrationRunning] = useState(false);
   // Task 140: the rail shows backend snapshot state; the sidebar buttons read
   // module state. Sync them whenever the settings view reloads so 「开」 without
   // a re-toggle still reveals the rail buttons.
@@ -2886,7 +2890,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     <button
                       key={mode}
                       className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
+                      disabled={busy || migrationRunning}
                       onClick={() => void apply(async () => {
                         // Stage skipping is refused by the backend, so the stage
                         // banner below always describes the mode that is stored.
@@ -2894,6 +2898,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       })}
                     >
                       {t(`settings.sessionStorage.mode.${mode}`)}
+                      {/* 805: v3 is the fork's long-term recommendation — the
+                          same pill the lab tiers use, no new copy or CSS. */}
+                      {mode === "v3_only" ? <TierBadge tier="recommended" translator={t} /> : null}
                     </button>
                   ))}
                 </SettingsOptions>
@@ -2906,6 +2913,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   </p>
                 ) : null}
+                {/* 任务 805: the migration routes (v4 backfill + the 773 v5
+                    import) live in the same card, under the stage controls. */}
+                <SessionMigrationSection t={t} onRunningChange={setMigrationRunning} />
               </SettingsField>
               <SettingsField label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 {/* The backend normalizes the stored mode to off|manual|auto
