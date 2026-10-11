@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"reasonix/internal/config"
+	"reasonix/internal/outputstyle"
 )
 
 // writeOutputStyleFile drops one style .md under the isolated user home (the
@@ -23,12 +24,13 @@ func writeOutputStyleFile(t *testing.T, home, name, content string) {
 }
 
 // Compile-time pin, same discipline as labIntakeSwitches (task 262): the
-// frontend calls all three, so deleting any wrapper must fail the build
+// frontend calls all four, so deleting any wrapper must fail the build
 // instead of resurfacing as a dead selector behind a clicking switch.
 type outputStyleBindings interface {
 	SetExperimentalOutputStyleUI(bool) error
 	SetOutputStyle(string) (string, error)
 	ListOutputStyles() (OutputStyleListView, error)
+	GetOutputStylesDir() (string, error)
 }
 
 var _ outputStyleBindings = (*App)(nil)
@@ -175,5 +177,76 @@ func TestOutputStyleLabRoundTrip(t *testing.T) {
 	}
 	if got := app.Settings(); got.OutputStyle != "" {
 		t.Fatalf("default must clear the style, got %q", got.OutputStyle)
+	}
+}
+
+// TestOutputStyleOpenDir (task 770) pins the open-directory binding: with
+// nothing on disk the .reasonix/output-styles fallback is created so the
+// reveal lands on a real folder; an existing home convention dir wins over
+// the fallback; and among several existing dirs the highest-priority one
+// (.reasonix — the loader's later-wins order) wins.
+func TestOutputStyleOpenDir(t *testing.T) {
+	home := isolateDesktopUserDirs(t)
+	app := &App{}
+
+	// 1. Empty home: the fallback is created and returned.
+	dir, err := app.GetOutputStylesDir()
+	if err != nil {
+		t.Fatalf("GetOutputStylesDir: %v", err)
+	}
+	wantFallback := filepath.Join(home, ".reasonix", "output-styles")
+	if dir != wantFallback {
+		t.Fatalf("dir = %q, want created fallback %q", dir, wantFallback)
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		t.Fatalf("fallback must exist as a dir after the call: %v", err)
+	}
+
+	// 2. Only the low-priority .claude dir exists: it must win over the
+	// fallback, because that is where the user's custom styles actually live.
+	// The fallback from step 1 is dropped first so the priority walk faces a
+	// real choice instead of the dir it just created.
+	if err := os.RemoveAll(wantFallback); err != nil {
+		t.Fatal(err)
+	}
+	claude := filepath.Join(home, ".claude", "output-styles")
+	if err := os.MkdirAll(claude, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir, err = app.GetOutputStylesDir()
+	if err != nil {
+		t.Fatalf("GetOutputStylesDir after .claude: %v", err)
+	}
+	if dir != claude {
+		t.Fatalf("dir = %q, want existing .claude dir %q", dir, claude)
+	}
+
+	// 3. Both .claude and .reasonix exist: .reasonix wins (later-wins order).
+	if err := os.MkdirAll(wantFallback, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir, err = app.GetOutputStylesDir()
+	if err != nil {
+		t.Fatalf("GetOutputStylesDir with both dirs: %v", err)
+	}
+	if dir != wantFallback {
+		t.Fatalf("dir = %q, want highest-priority %q", dir, wantFallback)
+	}
+
+	// 4. The dual-track builtin (task 770) must resolve and apply as an
+	// augmentation of the coding prompt.
+	st, ok := outputstyle.Resolve("dual-track", outputstyle.Dirs())
+	if !ok {
+		t.Fatal("builtin dual-track must resolve")
+	}
+	if !st.Builtin || !st.KeepCoding {
+		t.Fatalf("dual-track must be a keep-coding builtin: %+v", st)
+	}
+	if !strings.Contains(st.Description, "通俗") || !strings.Contains(st.Body, "通俗版") {
+		t.Fatalf("dual-track text must carry the 双轨 contract: desc=%q body=%q", st.Description, st.Body)
+	}
+	got := outputstyle.Apply("base prompt", st)
+	if !strings.HasPrefix(got, "base prompt\n\n") {
+		t.Fatalf("dual-track must append to the base prompt, got %q", got)
 	}
 }

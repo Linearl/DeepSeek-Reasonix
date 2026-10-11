@@ -1142,6 +1142,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalOutputStyleUI(enabled: boolean): Promise<void>;
   SetOutputStyle(name: string): Promise<string>;
   ListOutputStyles(): Promise<OutputStyleListView>;
+  // Task 770: the user-level output-styles dir for the panel's open-directory
+  // action — highest-priority home convention dir that exists, else the
+  // .reasonix fallback created on demand; pair with RevealPath (FeedbackPanel
+  // 172 pattern; explorer starts detached, never blocks the UI).
+  GetOutputStylesDir(): Promise<string>;
   // Task 265: delegation-tier entry points (experimental; boot snapshot).
   SetExperimentalSubagentPolicy(enabled: boolean): Promise<void>;
   // Task 262: gates the whole quick-commands surface (experimental; boot snapshot).
@@ -5745,6 +5750,8 @@ function makeMockApp(): AppBindings {
     },
     async SetExperimentalOutputStyleUI() {},
     async SetOutputStyle() { return ""; },
+    // Browser mock: no real directory to reveal; the button still no-ops safely.
+    async GetOutputStylesDir() { return ""; },
     // Honest built-in-only payload: the dev shell discovers nothing on disk.
     async ListOutputStyles() {
       return {
