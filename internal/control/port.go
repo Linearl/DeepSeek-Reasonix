@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"time"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/billing"
@@ -90,6 +91,12 @@ type TurnControl interface {
 	Running() bool
 	CancelRequested() bool
 	RuntimeStatus() RuntimeStatus
+	// 任务796: reopen an admission gate wedged in the finishing-only window
+	// (a TurnDone fan-out that never returns keeps Running merged-true and
+	// every idle observer — the desktop idle-turn bridge first among them —
+	// skipping the target forever). The bridge sweep calls this with
+	// FinishingStuckTimeout; it returns (healed, wedged-for).
+	HealStuckFinishing(maxAge time.Duration) (healed bool, stalledFor time.Duration)
 	Turn() int
 	History() []provider.Message
 	ToolResult(toolID string) *ToolResultData

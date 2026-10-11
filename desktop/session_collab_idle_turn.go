@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -70,6 +71,21 @@ const sessionCollabIdleTurnDelay = 45 * time.Second
 // reported and suppressed until something changes (new head, contact ran).
 const idleTurnMaxAttempts = 3
 
+// idleTurnFinishingStuckTimeout is the 任务796 finishing-only leak threshold
+// the bridge feeds to Controller.HealStuckFinishing. A TurnDone fan-out is a
+// milliseconds-long window; when RuntimeStatus reports not-running but the
+// finishing flag has held longer than this, the finisher goroutine is wedged
+// inside Emit and the admission gate is shut forever (579 family shape 3:
+// 20261007 146 min / 20261011 75+ min silent queue stranding). 90s mirrors
+// control.FinishingStuckTimeout — twice Task 303's 45s running-stale bound,
+// conservative against slow-but-alive fan-outs.
+const idleTurnFinishingStuckTimeout = 90 * time.Second
+
+// idleTurnSweepLogInterval rate-limits the 任务796 sweep observability line
+// per (contact, decision): the pump ticks every 4s and a healthy idle target
+// waiting out its 45s window must not produce one log line per tick.
+const idleTurnSweepLogInterval = 60 * time.Second
+
 // idleTurnTargetView is one pump pass's view of a live collab target, flattened
 // so the sweep core is unit-testable without a desktop App (same seam pattern
 // as collabDelivery).
@@ -97,6 +113,11 @@ type idleTurnTargetView struct {
 	// be a wiring bug, so the sweep treats it as a persistent failure.
 	resume   func() error
 	queuedID string // FIFO head queued item, "" when none
+	// 任务796 observability: "state:count" summary of every durable inbox
+	// item, so a target with NO queued head can still be told apart — an
+	// empty inbox reads "none", a stranded running/uncertain item reads
+	// "running:1" and explains why the bridge sees no work.
+	itemsSummary string
 	// 任务309 receipt coordinates + collab source of the queued head, so a
 	// spent budget can answer the sender through get_message_status (570).
 	// Empty for local queue entries.
@@ -106,6 +127,17 @@ type idleTurnTargetView struct {
 	// run opens one inbox turn (the Bot/ACP RunInboxTurn path). Tests inject a
 	// stub; production asserts nothing — SessionAPI embeds Inbox.
 	run func(ctx context.Context, id string) error
+	// 任务796: finishing mirrors the TurnDone fan-out window (RuntimeStatus.
+	// Finishing). finishing-only (not running, finishing held past the leak
+	// threshold) is the third 579-family anomaly — a wedged fan-out keeps the
+	// admission gate shut while the bridge would otherwise read the target as
+	// merely busy. finishingFor is the observed window age.
+	finishing    bool
+	finishingFor time.Duration
+	// heal clears a wedged finishing window (Controller.HealStuckFinishing).
+	// Tests inject a stub; nil disables the heal and keeps the skip+log
+	// behaviour (observability without action).
+	heal func() (bool, time.Duration)
 	// exhausted fires once per stuck item when the 3-strike budget is spent.
 	// Production records a 570 receipt; tests collect. nil keeps log-only.
 	exhausted func(contactID, itemID, collabMsgID, collabMailTo, source string, attempts int, lastErr error)
@@ -125,6 +157,10 @@ type idleTurnBridge struct {
 	headItem   map[string]string
 	failCounts map[string]int
 	exhausted  map[string]bool
+	// idleTurnSweepLogKeys rate-limits the 任务796 sweep observability line:
+	// key = contactID + "\x00" + decision, value = last emit time. A target
+	// stuck in the same skip shape must not log one line per 4s pump tick.
+	sweepLog map[string]time.Time
 }
 
 func newIdleTurnBridge() *idleTurnBridge {
@@ -134,7 +170,53 @@ func newIdleTurnBridge() *idleTurnBridge {
 		headItem:   map[string]string{},
 		failCounts: map[string]int{},
 		exhausted:  map[string]bool{},
+		sweepLog:   map[string]time.Time{},
 	}
+}
+
+// sweepDecision is the 任务796 classification of what one bridge pass did
+// with a queued target. It is the observable answer to "why is this follow-up
+// not being consumed" — the 20261011 incident had no such trace and stayed
+// unexplained for 75+ minutes.
+type sweepDecision string
+
+const (
+	sweepOpened          sweepDecision = "opened"
+	sweepSkipActiveTab   sweepDecision = "skip:active_tab"
+	sweepSkipRunning     sweepDecision = "skip:running"
+	sweepHealedFinishing sweepDecision = "healed:finishing_only"
+	sweepSkipPausedUser  sweepDecision = "skip:paused_user"
+	sweepSkipNoHead      sweepDecision = "skip:no_queued_head"
+	sweepSkipBudget      sweepDecision = "skip:budget_exhausted"
+	sweepSkipWarming     sweepDecision = "skip:idle_warming"
+	sweepSkipInFlight    sweepDecision = "skip:in_flight"
+	sweepSkipNoRun       sweepDecision = "skip:no_run_seam"
+)
+
+// logSweepDecision emits the rate-limited observability line for one target's
+// evaluation. Pure formatting here; the rate-limit state lives on the bridge
+// so tests can assert on the produced lines directly.
+func (b *idleTurnBridge) logSweepDecision(target idleTurnTargetView, decision sweepDecision, idle time.Duration, tracked bool, now time.Time) {
+	if b == nil || target.contactID == "" {
+		return
+	}
+	b.mu.Lock()
+	key := target.contactID + "\x00" + string(decision)
+	if last, ok := b.sweepLog[key]; ok && now.Sub(last) < idleTurnSweepLogInterval {
+		b.mu.Unlock()
+		return
+	}
+	b.sweepLog[key] = now
+	b.mu.Unlock()
+	idleText := "untracked"
+	if tracked {
+		idleText = idle.Round(time.Second).String()
+	}
+	log.Printf("[idle-turn-sweep] contact=%s tab=%s decision=%s running=%v finishing=%v finishing_for=%s paused=user:%v/auto:%v active_tab=%v items=[%s] head=%s idle=%s in_flight=%v",
+		target.contactID, target.tabID, decision,
+		target.running, target.finishing, target.finishingFor.Round(time.Second),
+		target.paused, target.autoPaused, target.activeTab,
+		target.itemsSummary, target.queuedID, idleText, b.inFlightNow(target.contactID))
 }
 
 // idleTurnItemKey namespaces budget state to one (contact, head item) pair.
@@ -212,6 +294,16 @@ func (b *idleTurnBridge) clearInFlight(contactID string) {
 	delete(b.inFlight, contactID)
 }
 
+// inFlightNow snapshots the in-flight flag for the 任务796 sweep log line.
+func (b *idleTurnBridge) inFlightNow(contactID string) bool {
+	if b == nil || contactID == "" {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.inFlight[contactID]
+}
+
 // advanceHead re-keys the budget when a different message becomes the queue
 // head: a fresh message always gets a fresh budget, and the old head's spent
 // state cannot leak onto it. Returns whether the head is suppressed.
@@ -269,36 +361,82 @@ func (b *idleTurnBridge) recordOpeningFailure(target idleTurnTargetView, itemID 
 // tracks the idle clock for every target, then opens at most one turn per
 // eligible target. Purity stops at run(): each start goes out on its own
 // goroutine because RunInboxTurn is synchronous for the whole turn.
+//
+// 任务796: every queued target gets a classified, rate-limited observability
+// line ([idle-turn-sweep]) stating exactly which gate held it back, and the
+// finishing-only leak shape (wedged TurnDone fan-out, 579 family shape 3) is
+// healed through the controller seam instead of being skipped silently.
 func (b *idleTurnBridge) sweepTargets(targets []idleTurnTargetView, now time.Time) {
 	for _, target := range targets {
 		b.observeIdle(target.contactID, target.running, now)
 	}
 	for _, target := range targets {
+		idle, tracked := b.idleFor(target.contactID, now)
 		// 边界 2：active tab 是用户面前的会话，永不开轮。
 		if target.activeTab || target.contactID == "" {
+			if target.contactID != "" && target.queuedID != "" {
+				b.logSweepDecision(target, sweepSkipActiveTab, idle, tracked, now)
+			}
 			continue
+		}
+		// 任务796: a wedged TurnDone fan-out keeps RuntimeStatus().Running true
+		// (the merge includes finishing), so the target reads as merely busy to
+		// every check below and observeIdle never even starts its clock. The
+		// unambiguous leak shape is the finishing flag itself held past the
+		// threshold (a live FIFO drain re-stamps finishingSince each turn, so
+		// an old stamp means no drain is flowing). Heal — reopen the gate —
+		// and let the NEXT tick take the normal opening path; the heal never
+		// opens a turn itself.
+		if target.finishing && target.finishingFor >= idleTurnFinishingStuckTimeout && target.queuedID != "" && target.heal != nil {
+			healed, stuck := target.heal()
+			if healed {
+				b.logSweepDecision(target, sweepHealedFinishing, idle, tracked, now)
+				log.Printf("[session-collab] idle-turn bridge: healed finishing-only gate for contact %s (wedged %s ≥ %s, queued item %s re-arms next sweep)",
+					target.contactID, stuck.Round(time.Second), idleTurnFinishingStuckTimeout, target.queuedID)
+				continue
+			}
 		}
 		// 任务709：paused 只指用户显式持有（UserPaused）；自动暂停（重启恢复/
 		// 重开遗留）不算——那种队列走下面的唤醒路径，stale 会话的新投递不再
 		// 静默搁浅。
 		if target.running || target.paused || target.queuedID == "" {
+			decision := sweepSkipRunning
+			if !target.running {
+				if target.paused {
+					decision = sweepSkipPausedUser
+				} else {
+					decision = sweepSkipNoHead
+				}
+			}
+			// A genuinely empty inbox is the healthy no-head shape: logging it
+			// once a minute per target would be pure noise. Everything else —
+			// a queued head held back by running/pause, or stranded items in
+			// non-queued states (任务796 H4 shape) — is worth the trace.
+			noisy := target.queuedID != "" || target.itemsSummary != "" && target.itemsSummary != "none"
+			if noisy {
+				b.logSweepDecision(target, decision, idle, tracked, now)
+			}
 			continue
 		}
 		if target.run == nil {
+			b.logSweepDecision(target, sweepSkipNoRun, idle, tracked, now)
 			continue
 		}
 		// 任务579：预算用尽的队首不再自动重开（保留队列，等新队首/会话活动
 		// 复位预算），否则就是旧的「每 4s 无限重试」。
 		if b.advanceHead(target.contactID, target.queuedID) {
+			b.logSweepDecision(target, sweepSkipBudget, idle, tracked, now)
 			continue
 		}
-		idle, tracked := b.idleFor(target.contactID, now)
 		if !tracked || idle < sessionCollabIdleTurnDelay {
+			b.logSweepDecision(target, sweepSkipWarming, idle, tracked, now)
 			continue
 		}
 		if !b.markInFlight(target.contactID) {
+			b.logSweepDecision(target, sweepSkipInFlight, idle, tracked, now)
 			continue // previous bridge turn still running for this target
 		}
+		b.logSweepDecision(target, sweepOpened, idle, tracked, now)
 		id := target.queuedID
 		contact := target.contactID
 		run := target.run
@@ -365,6 +503,35 @@ func idleTurnSweepActive(backgroundDelivery bool) bool {
 	return !backgroundDelivery
 }
 
+// summarizeInboxItems renders the 任务796 durable-state summary for one
+// sweep log line: "state:count" pairs in first-seen order (small inboxes only,
+// capped to keep the line bounded), "none" for an empty inbox. It exists so a
+// target with no queued head can still be told apart — "queued:1" is the
+// healthy wait, "running:1" strands a claim (H4 shape), "uncertain:1" waits
+// for human review by design.
+func summarizeInboxItems(items []sessioninbox.InboxItemMeta) string {
+	if len(items) == 0 {
+		return "none"
+	}
+	order := make([]string, 0, 4)
+	counts := map[string]int{}
+	for i, item := range items {
+		if i >= 16 {
+			break
+		}
+		state := string(item.State)
+		if counts[state] == 0 {
+			order = append(order, state)
+		}
+		counts[state]++
+	}
+	parts := make([]string, 0, len(order))
+	for _, state := range order {
+		parts = append(parts, state+":"+strconv.Itoa(counts[state]))
+	}
+	return strings.Join(parts, ",")
+}
+
 // sweepIdleInboxTurns is the App-facing adapter: flatten the live collab
 // targets (visible non-active tabs + detached runtimes) and run one bridge
 // pass. Called from the pump's drainOnce so the bridge rides the existing 4s
@@ -382,7 +549,15 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 			continue
 		}
 		view := idleTurnTargetView{contactID: t.contactID, tabID: t.tabID, activeTab: t.activeTab}
-		view.running = t.ctrl.RuntimeStatus().Running
+		st := t.ctrl.RuntimeStatus()
+		view.running = st.Running
+		// 任务796: the raw TurnDone fan-out window and its age. RuntimeStatus.
+		// Running merges running||finishing, so a wedged fan-out is invisible
+		// in view.running — the sweep classifies the leak from these two.
+		view.finishing = st.Finishing
+		if st.FinishingSinceUnix != 0 {
+			view.finishingFor = now.Sub(time.Unix(st.FinishingSinceUnix, 0))
+		}
 		snap := t.ctrl.InboxSnapshot()
 		// 任务709: pause provenance — only a user-held pause mutes the bridge;
 		// an automatic pause (restart recovery / reopen backlog) becomes a
@@ -392,6 +567,12 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 		view.resume = func() error {
 			_, err := t.ctrl.ResumeInboxAutoPause()
 			return err
+		}
+		// 任务796: durable state summary for the sweep observability line.
+		view.itemsSummary = summarizeInboxItems(snap.Items)
+		ctrl := t.ctrl
+		view.heal = func() (bool, time.Duration) {
+			return ctrl.HealStuckFinishing(idleTurnFinishingStuckTimeout)
 		}
 		for _, item := range snap.Items {
 			if item.State == sessioninbox.StateQueued {

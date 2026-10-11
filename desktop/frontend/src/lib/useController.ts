@@ -110,9 +110,24 @@ import { reportFrontendLog } from "./frontendLog";
 // as running, locking the input after task_stopped. Accept the snapshot's
 // running=true only when it carries a turn id the local flow has not just
 // finalized; a local running turn always beats a pre-start idle snapshot.
+//
+// 任务796 (第三形态渲染残留): the same-turn rejection above had no expiry, so
+// a backend whose TurnDone fan-out wedged (finishing-only leak; the gate is
+// healed by the idle-turn bridge after 90s) kept reporting its one finalized
+// turn as running FOREVER while the local flow showed idle — the TodoPanel
+// "继续" button surfaced on a session that could not admit anything
+// (20261011 合并线: button visible, manual activation needed). The rejection
+// is now bounded: past STALE_RUNNING_SNAPSHOT_GRACE_MS after the local
+// finalize, a snapshot still insisting on the same turn id is no pre-TurnDone
+// push any more (healthy fan-outs are milliseconds; the 30s periodic sync is
+// the floor) — it IS the backend truth and wins. The caller re-evaluates once
+// per grace window (staleGuardTick); the backend heal re-opens real work.
+export const STALE_RUNNING_SNAPSHOT_GRACE_MS = 30_000;
+
 export function projectRunningState(
-  active: Pick<State, "running" | "lastTurnIdAtDone">,
+  active: Pick<State, "running" | "lastTurnIdAtDone" | "turnLifecycleObservedAt">,
   runtime: { known: boolean; running?: boolean; state?: { turnId?: string } | null },
+  nowMs: number = promptEventClock(),
 ): boolean {
   const local = Boolean(active.running);
   if (!runtime.known || runtime.running === undefined) return local;
@@ -120,9 +135,17 @@ export function projectRunningState(
   if (runtime.running && !local) {
     const snapshotTurnId = runtime.state?.turnId?.trim();
     // A running flag with no turn id contradicts itself; the same id as the
-    // turn that just finished is a pre-TurnDone push. Both read as stale.
+    // turn that just finished is a pre-TurnDone push — until the finalize is
+    // older than the grace window, when it reads as a wedged backend instead
+    // (任务796) and the snapshot wins.
     if (!snapshotTurnId) return local;
-    if (snapshotTurnId === active.lastTurnIdAtDone) return local;
+    if (snapshotTurnId === active.lastTurnIdAtDone) {
+      if (active.turnLifecycleObservedAt !== undefined
+        && nowMs - active.turnLifecycleObservedAt >= STALE_RUNNING_SNAPSHOT_GRACE_MS) {
+        return true;
+      }
+      return local;
+    }
     return true; // A genuinely newer turn whose turn_started has not arrived.
   }
   return local; // Local event flow is fresher than a pre-start idle snapshot.
@@ -6297,11 +6320,34 @@ export function useController() {
     } catch { /* ignore */ }
   }, []);
 
+  // 任务796: the same-turn snapshot rejection in projectRunningState is only
+  // bounded by wall time, and nothing else re-runs this memo once both the
+  // local flow and the (wedged) backend projection stop changing — without a
+  // re-evaluation tick the "继续" button残留 would outlive the grace window.
+  // When a rejection is active, re-evaluate once just past the grace window;
+  // any real state change re-arms or disarms this naturally.
+  const [staleGuardTick, setStaleGuardTick] = useState(0);
+  const staleGuardActive = useMemo(() => {
+    if (!runtimeState.known || runtimeState.running !== true || Boolean(activeState.running)) return false;
+    const snapshotTurnId = runtimeState.state?.turnId?.trim();
+    return Boolean(snapshotTurnId) && snapshotTurnId === activeState.lastTurnIdAtDone;
+  }, [runtimeState.known, runtimeState.running, runtimeState.state?.turnId, activeState.running, activeState.lastTurnIdAtDone]);
+  useEffect(() => {
+    if (!staleGuardActive) return;
+    const timer = window.setTimeout(
+      () => setStaleGuardTick(value => value + 1),
+      STALE_RUNNING_SNAPSHOT_GRACE_MS + 1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [staleGuardActive, activeState.lastTurnIdAtDone]);
+
   const projectedState = useMemo(() => {
     if (!runtimeState.known) return activeState;
+    void staleGuardTick; // re-evaluates the Date.now() read once per grace window (任务796).
     const projectedRunning = projectRunningState(activeState, runtimeState);
     return projectedRunning === activeState.running ? activeState : { ...activeState, running: projectedRunning };
-  }, [activeState, runtimeState.known, runtimeState.running, runtimeState.state?.turnId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- staleGuardTick intentionally forces the wall-clock re-read above.
+  }, [activeState, runtimeState.known, runtimeState.running, runtimeState.state?.turnId, staleGuardTick]);
   return {
     state: projectedState,
     // Read another tab's transcript without switching to it: the split view mounts

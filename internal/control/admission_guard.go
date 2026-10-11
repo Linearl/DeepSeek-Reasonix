@@ -16,6 +16,16 @@ import (
 // leaving running=true and silently dropping every later submit.
 const turnInterruptStaleTimeout = 45 * time.Second
 
+// FinishingStuckTimeout is the 任务796 bound on the TurnDone fan-out window:
+// a healthy fan-out (sink subscribers, runtime emit, receipt bookkeeping)
+// completes in well under a second, so a finishing-only window older than
+// this means the finisher goroutine is wedged inside Emit and will never run
+// its deferred cleanup — the gate stays shut (finishing=true, running=false)
+// while the inbox keeps queueing. The desktop idle-turn bridge (579) calls
+// HealStuckFinishing with this value from its 4s sweep; there is no internal
+// ticker, because a wedged fan-out produces no further events to hook.
+const FinishingStuckTimeout = 90 * time.Second
+
 // admissionResult classifies what runGuarded did with a turn body.
 type admissionResult int
 
@@ -85,6 +95,58 @@ func (c *Controller) selfHealStalledLocked(now time.Time) time.Duration {
 		"parked", len(c.parkedTurns), "generation", c.turnGeneration,
 		"action", "abandon_stalled_turn_and_admit_current_submit")
 	return stalledFor
+}
+
+// HealStuckFinishing is the 任务796 unattended-side sibling of the Task 303
+// self-heal: 303 recovers a RUNNING turn that ignored cancellation, but only
+// when a new submit arrives to run the check — an unattended session has no
+// submitter, and a fan-out wedged inside Emit produces no further events for
+// any internal hook. What it leaves behind is the third 579-family shape:
+// running=false + finishing=true forever, so RuntimeStatus().Running reports
+// busy, the desktop idle-turn bridge skips the target, and a queued follow-up
+// sits unconsumed (20261007 合并线 146 分钟 / 20261011 合并线 75+ 分钟实测).
+//
+// The heal only fires on the unambiguous leak shape — no running turn, no
+// parked bodies (a live FIFO drain keeps finishing true legitimately), window
+// older than maxAge — and does exactly what the wedged finisher's own defer
+// would have done, plus the generation bump that makes that finisher's late
+// cleanup skip the gate entirely (stale-finisher guard in finishGuardedTurn).
+// The caller (bridge sweep) re-evaluates on its next tick, so the queued item
+// flows through the normal 579 opening path — this method never opens a turn
+// itself.
+func (c *Controller) HealStuckFinishing(maxAge time.Duration) (healed bool, stalledFor time.Duration) {
+	if c == nil || maxAge <= 0 {
+		return false, 0
+	}
+	c.mu.Lock()
+	if c.closed || c.rotating || c.running || !c.finishing || len(c.parkedTurns) > 0 {
+		c.mu.Unlock()
+		return false, 0
+	}
+	now := time.Now()
+	if c.finishingSince.IsZero() || now.Sub(c.finishingSince) < maxAge {
+		c.mu.Unlock()
+		return false, 0
+	}
+	stalledFor = now.Sub(c.finishingSince)
+	c.turnGeneration++
+	c.finishing = false
+	c.finishingSince = time.Time{}
+	c.canceling = false
+	// The wedged finisher registered this boundary and will never reach its
+	// end(); close it here so asynchronous frontends waiting for the TurnDone
+	// delivery are released.
+	c.finishingBoundary.end()
+	c.mu.Unlock()
+	slog.Warn("control: finishing window wedged — self-heal reopened the admission gate (任务796)",
+		"finishing_for", stalledFor, "threshold", maxAge, "generation", c.turnGeneration,
+		"action", "reset_stuck_finishing_and_rearm_inbox_dispatch")
+	c.refreshRuntimeState(event.Event{})
+	// Same re-arms the normal exit path performs: durable-host consumers get
+	// their dispatch pass; the desktop bridge re-opens on its own next sweep.
+	c.maybeDispatchInbox()
+	c.wakeKickAfterTurnFinished()
+	return true, stalledFor
 }
 
 func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, parkWhileRunning, parkWhileFinishing bool, onStart func()) admissionResult {
