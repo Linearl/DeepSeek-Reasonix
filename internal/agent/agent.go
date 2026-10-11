@@ -1376,6 +1376,13 @@ type Options struct {
 	// ReadPipeline carries the internal read-pipeline rollout switches; both are
 	// off by default, fixed per run, and never enter provider bytes.
 	ReadPipeline ReadPipelineOptions
+	// EditEvidenceRelaxed lights the task-789 relaxed edit evidence gate:
+	// a read that already completed earlier in the same provider batch counts
+	// as valid edit evidence, and an outstanding read requirement no longer
+	// hard-blocks bash/shell writes (downgraded to a host-side warning). Off
+	// by default (铁律 2); off keeps every gate verdict byte-identical to the
+	// pre-789 baseline. Fixed for the run; never enters provider bytes.
+	EditEvidenceRelaxed bool
 }
 
 // New constructs an Agent. MaxSteps <= 0 means no cap — the run loop continues
@@ -1470,6 +1477,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			textRepeatThreshold:        opts.TextRepeatThreshold,
 			readCoordinatorShadow:      !opts.ReadPipeline.LegacyCoordinator,
 			legacyImplicitFullReads:    opts.ReadPipeline.LegacyImplicitFullReads,
+			editEvidenceRelaxed:        opts.EditEvidenceRelaxed,
 		},
 		sess: sessionRuntime{
 			conversation: session,

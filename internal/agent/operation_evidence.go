@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"reasonix/internal/evidence"
+	"reasonix/internal/event"
 	"reasonix/internal/provider"
 	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sandbox"
@@ -42,6 +44,21 @@ type evidenceCheck struct {
 // overwrite. Beyond it the check reports unsupported instead of scanning a huge
 // file on every write.
 const maxEvidenceReadPages = 16
+
+// evidenceObservationBoundary returns the observation boundary the write
+// evidence checks run against. Strict mode (the default) returns the frozen
+// batch boundary, so a read from the same provider batch never counts — the
+// pre-789 baseline, byte for byte. Relaxed mode (task 789) widens the check to
+// the ledger's current sequence, so a read that already completed earlier in
+// this same batch counts as valid evidence; a read the model has not received
+// yet (later in the batch) still cannot pay for an earlier write.
+func (a *Agent) evidenceObservationBoundary(ctx context.Context) uint64 {
+	frozen := observationBoundary(ctx, a.task.ledger.ObservationBoundary())
+	if a.editEvidenceRelaxed {
+		return a.task.ledger.ObservationBoundary()
+	}
+	return frozen
+}
 
 // checkOperationEvidence asks the real writer what it is about to replace and
 // verifies that the model has seen that exact content in this turn, before the
@@ -322,7 +339,7 @@ func (a *Agent) applyEvidenceGates(ctx context.Context, plan *toolCallPlan) (too
 		}
 		return toolOutcome{}, false
 	}
-	boundary := observationBoundary(ctx, a.task.ledger.ObservationBoundary())
+	boundary := a.evidenceObservationBoundary(ctx)
 	call := plan.call
 	if plan.evidenceName != "" {
 		call.Name, call.Arguments = plan.evidenceName, string(plan.evidenceArgs)
@@ -362,6 +379,15 @@ func (a *Agent) blockUndeclaredWriter(ctx context.Context, plan *toolCallPlan, c
 		outstanding = a.narrowToDeclaredShellWrites(call, outstanding)
 	}
 	if len(outstanding) == 0 || plan.readOnly {
+		return toolOutcome{}, false
+	}
+	// Task 789 relaxed mode: an outstanding (often frozen-strict) read
+	// requirement no longer hard-blocks a bash/shell write — "edit one line of
+	// a throwaway script" must not force a whole-file rewrite through
+	// write_file. The block degrades to a host-side warning; the hard gate on
+	// the dedicated file tools is unchanged.
+	if a.editEvidenceRelaxed && (call.Name == "bash" || call.Name == "shell") {
+		a.warnRelaxedShellWrite(call, outstanding)
 		return toolOutcome{}, false
 	}
 	msg := fmt.Sprintf("blocked: [evidence required] %s cannot declare which files it changes while a read-evidence requirement is outstanding (%s); use the exact file tool for those paths",
@@ -434,13 +460,17 @@ func (a *Agent) rebuildAuthorized(path string) bool {
 
 // preflightEvidenceBatch evaluates every writer's declared evidence once for
 // the batch. A blocked call is reported without ever starting, so a batch that
-// mixes a read with a write cannot let the read pay for the write.
+// mixes a read with a write cannot let the read pay for the write. Relaxed
+// mode (task 789) keeps the reconciliation and the memo but skips the verdict:
+// interception moves to the execution-time gate, where a read that already ran
+// earlier in this same batch can pay for the write — a batch without such a
+// read is still blocked there, with the identical diagnostic.
 func (a *Agent) preflightEvidenceBatch(ctx context.Context, calls []provider.ToolCall) map[int]toolOutcome {
 	blocked := map[int]toolOutcome{}
 	if a == nil || !a.reads.gates || a.task.ledger == nil || a.svc.tools == nil {
 		return blocked
 	}
-	boundary := observationBoundary(ctx, a.task.ledger.ObservationBoundary())
+	boundary := a.evidenceObservationBoundary(ctx)
 	a.outstandingReadEvidence(ctx, boundary)
 	for i, call := range calls {
 		resolved, _, ambiguous := a.svc.tools.ResolveCall(call.Name)
@@ -454,6 +484,9 @@ func (a *Agent) preflightEvidenceBatch(ctx context.Context, calls []provider.Too
 		check := a.checkOperationEvidence(ctx, call, resolved, boundary)
 		a.turn.evidenceBlocked.memoCheck(call, boundary, check)
 		if !check.Supported || check.Satisfied || check.NativeError != nil {
+			continue
+		}
+		if a.editEvidenceRelaxed {
 			continue
 		}
 		a.turn.evidenceBlocked.record(check, call, boundary)
@@ -488,6 +521,20 @@ func (a *Agent) blockedEvidenceOutcome(check evidenceCheck, call provider.ToolCa
 		msg += "\n" + recovery
 	}
 	return toolOutcome{output: msg, blocked: true, errMsg: firstLine(msg), diagnostic: d}
+}
+
+// warnRelaxedShellWrite records the downgraded block (task 789 relaxed mode)
+// as a host-side warning: a slog line plus a content-free audit counter. The
+// call itself proceeds — this never touches the model-visible output.
+func (a *Agent) warnRelaxedShellWrite(call provider.ToolCall, outstanding []string) {
+	operationID := evidence.OperationID(call.Name, json.RawMessage(call.Arguments))
+	slog.Warn("agent: relaxed evidence gate allowed a shell write with an outstanding read requirement (task 789)",
+		"tool", call.Name, "outstanding", len(outstanding))
+	event.RecordOperationAudit(a.svc.sink, evidence.OperationAudit{
+		Metric:      evidence.MetricEvidenceRelaxedShellWrite,
+		OperationID: operationID,
+		Tool:        call.Name,
+	})
 }
 
 func ownsAnchoredEvidence(target tool.Tool) bool {

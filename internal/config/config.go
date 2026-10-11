@@ -708,6 +708,14 @@ func (c *Config) ToolOptimizationsEnabled() bool {
 	return c != nil && c.Agent.ExperimentalToolOptimizations
 }
 
+// EditEvidenceRelaxedEnabled reports whether the task-789 relaxed edit
+// evidence gate is lit. Plain default-false bool: the zero value (and a nil
+// config) keeps every gate verdict byte-identical to the pre-789 baseline, so
+// any unreadable or absent value safely degrades to off.
+func (c *Config) EditEvidenceRelaxedEnabled() bool {
+	return c != nil && c.Agent.ExperimentalEditEvidenceRelaxed
+}
+
 // NormalizeCLIUpdateChannel returns the only public native CLI update channel.
 // The input remains accepted so older preview configurations keep loading.
 func NormalizeCLIUpdateChannel(_ string) string {
@@ -1704,6 +1712,16 @@ type AgentConfig struct {
 	// argument that still passes it is ignored — every tool output, gate
 	// verdict, and schema byte stays exactly as before the family existed.
 	ExperimentalToolOptimizations bool `toml:"experimental_tool_optimizations"`
+	// ExperimentalEditEvidenceRelaxed is the task-789 relaxed edit evidence
+	// gate ("工具优化" family companion). On: a read that already completed
+	// earlier in the same provider batch counts as valid edit evidence, and an
+	// outstanding read requirement no longer hard-blocks bash/shell writes
+	// (downgraded to a host-side warning). Off (default, 铁律 2): the gate is
+	// byte-identical to the pre-789 baseline — same-batch reads never count and
+	// opaque writers stay blocked. Only the Go-side switch ships in task 789;
+	// the lab-registry tier entry and the settings-page entry land in the
+	// unified registration window.
+	ExperimentalEditEvidenceRelaxed bool `toml:"experimental_edit_evidence_relaxed"`
 	// DagGraphCacheCapacity bounds the process-wide replayed-graph cache that
 	// saves reuse across Session instances (task 196fix2). 0 keeps the
 	// built-in default (3); the reader clamps outside 1..16 and the setter
