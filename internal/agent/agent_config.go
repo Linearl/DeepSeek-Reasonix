@@ -78,6 +78,10 @@ type agentConfig struct {
 	readCoordinatorShadow bool
 	// legacyImplicitFullReads restores the pre-intent read default for rollback.
 	legacyImplicitFullReads bool
+	// editEvidenceRelaxed is the task-789 relaxed edit evidence gate; see
+	// Options.EditEvidenceRelaxed. Off (the default) keeps every evidence-gate
+	// verdict byte-identical to the pre-789 baseline.
+	editEvidenceRelaxed bool
 }
 
 // ReadPipelineOptions carries the internal read-pipeline rollback switches. The

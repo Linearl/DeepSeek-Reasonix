@@ -88,6 +88,8 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalPreapproveManagedPaths = true
 	c.Agent.ExperimentalCascadeApproval = true
 	c.Agent.ExperimentalFallbackModel = true
+	// task 789：证据门宽松开关（默认关）。Go 侧先行，统一登记窗口前先走豁免。
+	c.Agent.ExperimentalEditEvidenceRelaxed = true
 	// 任务 707：压缩模型指定（上下文治理卡，可选档）。注册表 renderKeys 含
 	// compact_model（labSpecialKeys），两键都要被渲染表发射（反向门禁）。
 	c.Agent.ExperimentalCompactModel = true

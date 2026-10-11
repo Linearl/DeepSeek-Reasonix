@@ -11,6 +11,11 @@ const (
 	MetricVerificationUnclassified = "verification_unclassified_total"
 	MetricReadSourceChanged        = "read_source_changed_total"
 	MetricCompleteStepOptionalCall = "complete_step_optional_call_total"
+	// MetricEvidenceRelaxedShellWrite counts shell writes the task-789 relaxed
+	// evidence gate let through despite an outstanding read requirement (the
+	// strict gate would have blocked them). Only recorded while the relaxed
+	// switch is on, so the counter reads zero for every strict run.
+	MetricEvidenceRelaxedShellWrite = "evidence_relaxed_shell_write_total"
 )
 
 // OperationAudit is one content-free observation of an operation transition.

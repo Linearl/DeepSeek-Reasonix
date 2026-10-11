@@ -132,6 +132,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_gc_child_session":              "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
 	"experimental_general_purpose_subagent":      "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
+	"experimental_edit_evidence_relaxed":         "task 789：edit_file 证据门宽松开关（同批读取计数 + 悬置证据不拦 bash 写，默认关）；Go 侧先行，实验室 yaml 档位登记与设置页入口在统一登记窗口补（lab-layout.yaml 由并行代理持有，避免冲突）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
@@ -663,6 +664,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 603: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "experimental_tool_optimizations = %v   # task 603: 工具优化 family — edit_file/multi_edit accept readBack (edited snippet + context returned and filed as fresh read evidence); off keeps every schema/output byte identical (restart to apply)\n", c.Agent.ExperimentalToolOptimizations)
+	// Task 789: same explicit-render rule — the Go-side switch ships first; the
+	// lab tier entry and the settings-page entry land in the unified
+	// registration window (labNonFeatureKeys exemption carries the reason).
+	fmt.Fprintf(&b, "experimental_edit_evidence_relaxed = %v   # task 789: relaxed edit evidence gate — a read completed earlier in the same provider batch counts as edit evidence, and an outstanding read requirement no longer hard-blocks bash/shell writes (warning only); off keeps the gate byte-identical (restart to apply)\n", c.Agent.ExperimentalEditEvidenceRelaxed)
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 

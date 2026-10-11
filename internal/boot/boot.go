@@ -2143,6 +2143,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ReasoningLanguage:            config.ReasoningLanguageForEntry(entry, cfg.ReasoningLanguage()),
 		PlanModeReadOnlyCommands:     cfg.Agent.PlanModeReadOnlyCommands,
 		LegacyAnchorSafetyGate:       cfg.Agent.LegacyAnchorSafetyGate,
+		EditEvidenceRelaxed:          cfg.EditEvidenceRelaxedEnabled(), // task 789：证据门宽松开关，默认关
 		TextRepeatN:                  cfg.Agent.TextRepeatN,
 		TextRepeatThreshold:          cfg.Agent.TextRepeatThreshold,
 		StalledIntentNudge:           cfg.Agent.StalledIntentNudge,
