@@ -1923,7 +1923,11 @@ type ExperimentFeatureId =
   // without its lab switch; unstable tier, default off).
   | "collabGroupView"
   // 任务 704: trajectory view switch (optional tier, default off = transcript only).
-  | "trajectoryView";
+  | "trajectoryView"
+  // 任务 775: kind:param 参数卡 id——无硬编码 pane，pane 走通用参数渲染器
+  // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
+  | "idleReleaseMinutes"
+  | "goMemLimit";
 
 // 任务 724：pane 白名单——布局文档（yaml/默认）里的 entry.id 必须在此登记
 // （一个 id 一个可点开的卡片分支）；yaml 引用白名单外的 id ⇒ 整份回退默认
@@ -1966,6 +1970,11 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "orphanHandling",
   "localServer",
   "toolOptimizations",
+  // 任务 775：kind:param 参数卡 id——pane 由通用参数渲染器承接（无独立
+  // 硬编码分支）；登记进白名单与 feature 卡同一安全网语义（yaml 引用
+  // 白名单外 id ⇒ 整份回退默认）。
+  "idleReleaseMinutes",
+  "goMemLimit",
 ]);
 
 // 任务 764：设置搜索覆盖实验室——rail 用什么布局，搜索词表就用什么布局。
@@ -2080,10 +2089,8 @@ function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps & { fo
   // Task 204: the cross-session chain ceiling is a number the user can edit; the
   // config layer clamps it, so the box may hold an intermediate value while typing.
   const [hopLimit, setHopLimit] = useState<number>(s.sessionCollabHopLimit ?? 5);
-  // Task 308-O4: detached idle release threshold (minutes; 0 = never release).
-  const [detachedIdleRelease, setDetachedIdleRelease] = useState<number>(s.detachedIdleReleaseMinutes ?? 0);
-  // Task 308-O3: soft memory limit (MB; 0 = unbounded runtime).
-  const [goMemLimit, setGoMemLimit] = useState<number>(s.goMemLimitMB ?? 0);
+  // 任务 775：308-O4/O3 两参数的本地草稿态随硬编码行一并退役——值读写改走
+  // LabParamFieldsCard（组件内草稿态）+ labParamFields 注册表。
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
@@ -3551,34 +3558,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   })}
                 />
               </SettingsField>
-              {/* Task 308-O4: idle threshold for releasing detached runtimes. */}
-              <SettingsField label={t("settings.detachedIdleRelease")} hint={t("settings.detachedIdleReleaseHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={0}
-                  max={10080}
-                  value={detachedIdleRelease}
-                  disabled={busy}
-                  onChange={(event) => setDetachedIdleRelease(Number(event.target.value))}
-                  onBlur={() => void apply(async () => {
-                    await app.SetDetachedIdleReleaseMinutes(detachedIdleRelease);
-                  })}
-                />
-              </SettingsField>
-              {/* Task 308-O3: soft memory limit (debug.SetMemoryLimit), MB. */}
-              <SettingsField label={t("settings.goMemLimit")} hint={t("settings.goMemLimitHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={0}
-                  max={65536}
-                  value={goMemLimit}
-                  disabled={busy}
-                  onChange={(event) => setGoMemLimit(Number(event.target.value))}
-                  onBlur={() => void apply(async () => {
-                    await app.SetGoMemLimitMB(goMemLimit);
-                  })}
-                />
-              </SettingsField>
+              {/* Task 308-O4 / 308-O3（闲置释放、软内存上限）两参数行已于
+                  任务 775 迁出：登记为存储组 kind:param 参数卡（数据驱动
+                  渲染，走 LabParamFieldsCard；绑定在 labParamFields 注册表，
+                  配置键/setter 零变化）。 */}
               {/* Task 264: background-woken sessions stay out of the tab bar.
                   A regular live panel setting (unlike the task-224
                   consumption switch) — delivery is unchanged, only where the
