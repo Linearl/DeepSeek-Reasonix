@@ -158,7 +158,14 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sessionPath, sessionDir := a.activeSessionLocation() // 663 ⑤ rides the 672 Global flow: the global tab is active now
+	// 任务780: the rename target is pinned to the tab this flow just opened,
+	// never to "whichever tab happens to be active". The active tab is global
+	// mutable state (frontend SetActiveTab, tab closes, workspace switches) and
+	// the controller wait window below can be long; a 2026-10-11 run saw it
+	// flip back to the originating conversation, so 崩溃分析-<时间> landed in
+	// the initiator's branch-meta CustomTitle and the contact directory showed
+	// the analysis name on the wrong session.
+	sessionPath, sessionDir := a.sessionLocationForTab(tabID)
 	title := crashAnalysisSessionTitle("崩溃分析", r.TestMock)
 	if sessionPath != "" {
 		// Task 663 ⑤: name the session so the analysis is identifiable in the
@@ -189,12 +196,15 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 // crashAnalysisSummary is the detail line the frontend appends under the
 // localized "analysis started" notice (task 673). Kept for the 673 e2e test;
 // the 663 productized return inlines its content with session naming.
-// activeSessionLocation returns the active tab's session path and dir, "" when
-// the workspace has no live session. Read-only helper for the analysis entries.
-func (a *App) activeSessionLocation() (string, string) {
+// sessionLocationForTab returns the session path and dir bound to the given
+// tab's controller, "" when that tab has no live runtime. Task 780: the
+// one-click analysis family names sessions through this helper — the target
+// must be the tab the flow opened, not whatever tab is active by the time the
+// controller wait settles.
+func (a *App) sessionLocationForTab(tabID string) (string, string) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	tab := a.activeTabLocked()
+	tab := a.tabByIDLocked(tabID)
 	if tab == nil || a.tabIsReadOnly(tab) || tab.Ctrl == nil {
 		return "", ""
 	}

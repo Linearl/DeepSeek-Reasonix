@@ -94,6 +94,63 @@ func TestRenameCollabSessionFallsBackToTranscriptPath(t *testing.T) {
 	}
 }
 
+// 任务780: a session that carries a manual CustomTitle kept showing that title
+// in the contact directory after rename_session reported listingSynced=true —
+// RenameTopic only writes the topic-facing TopicTitle, while the directory
+// reads CustomTitle first. The rename must write the CustomTitle through, and
+// the reported previousTitle must be the title the directory actually showed.
+func TestRenameCollabSessionWritesThroughManualCustomTitle(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	root := t.TempDir()
+	if err := addProject(root, "Project"); err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp()
+	meta, err := app.CreateTopic("project", root, "Auto title")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := desktopSessionDir(root)
+	sessionPath, err := createEmptySessionFile(dir, "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.UpdateBranchMeta(sessionPath, false, func(m *agent.BranchMeta) error {
+		m.TopicID = meta.ID
+		m.TopicTitle = meta.Title
+		m.CustomTitle = "fork开发-新6"
+		m.Scope = "project"
+		m.WorkspaceRoot = root
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := app.renameCollabSession(meta.ID, sessionPath, "新标题")
+	if err != nil {
+		t.Fatalf("renameCollabSession: %v", err)
+	}
+	if !result.ListingSynced {
+		t.Fatalf("result = %#v", result)
+	}
+	if result.Previous != "fork开发-新6" {
+		t.Fatalf("previous title = %q, want the CustomTitle the directory showed (fork开发-新6)", result.Previous)
+	}
+	stored, ok, err := agent.LoadBranchMeta(sessionPath)
+	if err != nil || !ok {
+		t.Fatalf("branch meta: ok=%v err=%v", ok, err)
+	}
+	if stored.CustomTitle != "新标题" {
+		t.Fatalf("sidecar custom title = %q, want 新标题 written through (the directory reads CustomTitle first)", stored.CustomTitle)
+	}
+	if stored.TopicTitle != "新标题" {
+		t.Fatalf("sidecar topic title = %q, want 新标题", stored.TopicTitle)
+	}
+	if titles := loadTopicTitles(root); titles[meta.ID] != "新标题" {
+		t.Fatalf("topic-title store = %q, want 新标题", titles[meta.ID])
+	}
+}
+
 // move_topic_to_group must leave the session in exactly one group AND publish the
 // catalog metadata revision: the sidebar reloads its groups on that signal
 // (ProjectTree: reason "metadata"), so without it the moved row keeps showing up

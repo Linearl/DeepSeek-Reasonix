@@ -164,7 +164,9 @@ func (a *App) StartHangAnalysis() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sessionPath, sessionDir := a.activeSessionLocation() // the global analysis tab is active now
+	// 任务780: same pin as the crash entry — name the tab this flow opened,
+	// never whichever tab happens to be active when the controller wait settles.
+	sessionPath, sessionDir := a.sessionLocationForTab(tabID)
 	title := crashAnalysisSessionTitle("卡顿分析", false)
 	if sessionPath != "" {
 		if renameErr := agent.RenameSession(sessionPath, title); renameErr != nil {

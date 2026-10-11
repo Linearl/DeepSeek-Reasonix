@@ -390,6 +390,161 @@ func TestStartCrashAnalysisHostsSessionInGlobalNotActiveProject(t *testing.T) {
 	}
 }
 
+// crashAnalysisNamedCtrlStub is the analysis controller stub carrying the real
+// session paths a live controller reports, so the flow's rename block actually
+// runs (the plain stub returns "" and the block skips itself).
+type crashAnalysisNamedCtrlStub struct {
+	crashAnalysisCtrlStub
+	sessionPath string
+	sessionDir  string
+}
+
+func (s *crashAnalysisNamedCtrlStub) SessionPath() string { return s.sessionPath }
+
+func (s *crashAnalysisNamedCtrlStub) SessionDir() string { return s.sessionDir }
+
+// publishControllerAndStealActivation watches for the freshly opened analysis
+// tab, then — inside one lock section — flips a.activeTabID back to the
+// initiator's tab AND publishes the controller. That is the deterministic
+// replay of the 2026-10-11 race (任务780): the active tab is global mutable
+// state and the controller wait window is where foreign activation lands.
+func publishControllerAndStealActivation(t *testing.T, app *App, ctrl control.SessionAPI, activeTabID string) <-chan string {
+	t.Helper()
+	tabID := make(chan string, 1)
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	go func() {
+		for {
+			var (
+				target *WorkspaceTab
+				cancel context.CancelFunc
+			)
+			app.mu.Lock()
+			for _, tab := range app.tabs {
+				if tab == nil || tab.Ctrl != nil {
+					continue
+				}
+				tab.removed = true
+				target, cancel = tab, tab.buildCancel
+				break
+			}
+			app.mu.Unlock()
+			if target == nil {
+				select {
+				case <-time.After(5 * time.Millisecond):
+					continue
+				case <-stop:
+					return
+				}
+			}
+			if cancel != nil {
+				cancel()
+			}
+			select {
+			case <-time.After(30 * time.Millisecond):
+			case <-stop:
+				return
+			}
+			app.mu.Lock()
+			app.activeTabID = activeTabID
+			target.Ctrl = ctrl
+			target.Ready = true
+			target.StartupErr = ""
+			app.advanceSessionRuntimeEpochLocked(target)
+			app.mu.Unlock()
+			tabID <- target.ID
+			return
+		}
+	}()
+	return tabID
+}
+
+// TestStartCrashAnalysisNamesAnalysisSessionNotInitiator pins 任务780 bug A:
+// one-click analyze must name the analysis session it just opened, never
+// whichever tab is active when the controller wait settles. The 2026-10-11
+// run had the active tab flip back to the initiator mid-wait, so 崩溃分析-<时间>
+// landed in the initiator's CustomTitle and the contact directory showed the
+// analysis name on the wrong conversation. The rename target is pinned to the
+// opened tab's controller now, so the initiator's title survives the flip.
+func TestStartCrashAnalysisNamesAnalysisSessionNotInitiator(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+	app.runtimeEvents.emit = func(context.Context, string, ...any) {}
+
+	// The initiator's conversation: a real session file whose sidecar carries a
+	// manual CustomTitle — exactly the state the incident corrupted.
+	globalDir := desktopSessionDir(globalWorkspaceRoot())
+	initiatorPath, err := createEmptySessionFile(globalDir, "initiator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.UpdateBranchMeta(initiatorPath, false, func(m *agent.BranchMeta) error {
+		m.CustomTitle = "fork开发-新6"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	analysisPath, err := createEmptySessionFile(globalDir, "analysis")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	app.mu.Lock()
+	app.tabs["tab-user"] = &WorkspaceTab{ID: "tab-user", Scope: "global",
+		TopicID: "topic-user", TopicTitle: "fork开发-新6",
+		Ctrl: &crashAnalysisNamedCtrlStub{sessionPath: initiatorPath, sessionDir: globalDir}, Ready: true}
+	app.tabOrder = []string{"tab-user"}
+	app.activeTabID = "tab-user"
+	app.mu.Unlock()
+
+	sourceDir := t.TempDir()
+	origSource, origGh, origSubmit := crashAnalysisSourceDir, crashAnalysisGhAuth, crashAnalysisSubmit
+	crashAnalysisSourceDir = func() string { return sourceDir }
+	crashAnalysisGhAuth = func() (bool, string) { return true, "" }
+	submittedTab := make(chan string, 1)
+	crashAnalysisSubmit = func(a *App, tabID, instruction string) error {
+		submittedTab <- tabID
+		return nil
+	}
+	t.Cleanup(func() {
+		crashAnalysisSourceDir, crashAnalysisGhAuth, crashAnalysisSubmit = origSource, origGh, origSubmit
+	})
+
+	analysisCtrl := &crashAnalysisNamedCtrlStub{sessionPath: analysisPath, sessionDir: globalDir}
+	tabIDCh := publishControllerAndStealActivation(t, app, analysisCtrl, "tab-user")
+	origWait := crashAnalysisControllerWaitTimeout
+	crashAnalysisControllerWaitTimeout = 10 * time.Second
+	t.Cleanup(func() { crashAnalysisControllerWaitTimeout = origWait })
+
+	if _, err := app.StartCrashAnalysis("crash", "panic: boom"); err != nil {
+		t.Fatalf("StartCrashAnalysis: %v", err)
+	}
+	hostedID := <-tabIDCh
+	if got := <-submittedTab; got != hostedID {
+		t.Fatalf("instruction submitted to tab %q, want the analysis tab %q", got, hostedID)
+	}
+
+	// The initiator's manual title survives; the analysis session carries the
+	// 崩溃分析-<时间> name.
+	initiator, ok, err := agent.LoadBranchMeta(initiatorPath)
+	if err != nil || !ok {
+		t.Fatalf("initiator branch meta: ok=%v err=%v", ok, err)
+	}
+	if initiator.CustomTitle != "fork开发-新6" {
+		t.Fatalf("initiator CustomTitle = %q, want fork开发-新6 — the analysis name leaked into the originating session (bug A)", initiator.CustomTitle)
+	}
+	analysis, ok, err := agent.LoadBranchMeta(analysisPath)
+	if err != nil || !ok {
+		t.Fatalf("analysis branch meta: ok=%v err=%v", ok, err)
+	}
+	if !strings.HasPrefix(analysis.CustomTitle, "崩溃分析-") {
+		t.Fatalf("analysis CustomTitle = %q, want the 崩溃分析-<时间> prefix on the analysis session itself", analysis.CustomTitle)
+	}
+}
+
 // The instruction the analysis session receives quotes the same source dir;
 // the visible template must render it with real separators too (the same
 // complaint targeted this path as "github-repo.reasonix").
