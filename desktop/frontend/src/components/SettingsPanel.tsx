@@ -1900,8 +1900,6 @@ type ExperimentFeatureId =
   | "outputStyle"
   // Task 257: full access (yolo).
   | "fullAccess"
-  // S1: resident base subprocess (design 2026-09-30 §7 R4).
-  | "baseProcess"
   // Task 439: built-in zcode task bus (embedded loopback bus MCP host).
   | "zcodeTaskBus"
   // 任务 517:「安全 / 成本控制」— the task-244 B1/B2/B3 guards merge into ONE
@@ -1964,7 +1962,6 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "devDebug",
   "sessionStore",
   "runtimeReuse",
-  "baseProcess",
   "zcodeTaskBus",
   "pathRules",
   "orphanHandling",
@@ -2724,30 +2721,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </SettingsField>
               </>
             </>
-          )}
-          {selected === "baseProcess" && (
-            // S1: resident base subprocess (design 2026-09-30 §7 R4). Boot
-            // builds the base client section once per process, so the flip
-            // lands on restart — same boot-snapshot rule as the
-            // restart_update tool toggle above. Standalone block, deliberately
-            // separate from the surrounding cards (task 449 merge hygiene).
-            <SettingsField label={labLabel("baseProcess", t("settings.baseProcess"))} hint={t("settings.baseProcessHint")} icon={<Server size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalBaseProcess) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalBaseProcess(on);
-                      setRestartNeeded(true);
-                    })}
-                  >
-                    {t(on ? "settings.baseProcess.on" : "settings.baseProcess.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
           )}
                     {/* Task 318.5: one entry hosts both monitors. The two switches stay
               fully independent — enabling one never flips the other. */}

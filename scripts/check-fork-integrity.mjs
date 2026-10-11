@@ -917,7 +917,6 @@ const CHECKS = [
   { feature: "S1a base 协议 v1 定义", file: "internal/baseproc/protocol.go", patterns: ["ProtocolVersion = 1", "\"base.hello\"", "\"base.toolCall\"", "\"base.dying\"", "CodeVersionMismatch"] },
   { feature: "S1a base 双实现骨架与 R1 回退", file: "internal/baseproc/manager.go", patterns: ["boot: base fallback", "boot: base remote", "func Start(", "subprocessDial", "RunStdioServer"] },
   { feature: "S1a base serve 子命令接线", file: "internal/cli/base.go", patterns: ["base serve", "--stdio", "RunStdioServer"] },
-  { feature: "S1a experimental_base_process 开关", file: "internal/config/config.go", patterns: ["experimental_base_process"] },
   // 任务 325：autopilot 只能在 yolo 审批模式下开启（用户 2026-09-25 裁决）。
   // 锁三处——闸门本体、四个开启入口的接线、前端按码本地化。merge 丢掉接线
   // 会重新出现「autopilot 挂着但审批是 ask/auto」的无人值守中间态。
@@ -971,7 +970,10 @@ const CHECKS = [
   { feature: "S1b sink 适配器（ToolProgress 事件形状）", file: "internal/baseproc/sink.go", patterns: ["WithToolProgress", "ToolEventSink", "event.ToolProgress"] },
   { feature: "S1b 控制器工具目录闸", file: "internal/control/base_gate.go", patterns: ["baseCatalogEntries", "ModeRemote", "ErrNotWired"] },
   { feature: "S1b agent 工具调用闸", file: "internal/agent/base_toolcall.go", patterns: ["baseToolCall", "ModeRemote", "ErrNotWired"] },
-  { feature: "S1b boot 消费点（Start 接线）", file: "internal/boot/base_client.go", patterns: ["startBaseClient", "ExperimentalBaseProcess", "RegistrySurface"] },
+  // 任务 785（2026-10-11 用户拍板）：experimental_base_process 开关退役，
+  // boot 消费点硬编码 Enabled=false——锚「永不 spawn」语义（RegistrySurface
+  // 仍是 inline client 的工具面来源）。
+  { feature: "S1b boot 消费点（Start 接线；785 后恒 inline）", file: "internal/boot/base_client.go", patterns: ["startBaseClient", "Enabled:       false", "RegistrySurface"] },
   { feature: "S1b boot 消费点（注入与拆除）", file: "internal/boot/boot.go", patterns: ["startBaseClient(ctx, cfg, reg)", "_ = baseClient.Close()"] },
   // 任务 478：S1 消费面接线的桌面侧——D4 spawn 契约的另一半。baseproc 默认
   // spawn「当前可执行文件 base serve --stdio」，桌面 exe 不认这段 argv = 底座
@@ -1026,7 +1028,8 @@ const CHECKS = [
   // S1b 审计 note 的遗留：manager one-shot = N boot 各起一个子进程。掉一道，
   // 「常驻底座」就退回「每 tab 一个底座进程」，S1 的内存/启动收益全部落空。
   { feature: "S1c 每视图自带 inline 回退面", file: "internal/baseproc/lifecycle.go", patterns: ["func (m *Manager) Acquire(opts Options)", "inline InlineBaseClient", "One critical section decides remote vs inline"] },
-  { feature: "S1c boot 常驻单例（N boot → 1 子进程）", file: "internal/boot/base_client.go", patterns: ["func sharedBaseClient(", "baseproc.NewManager(ctx, opts)", "sharedBase = m"] },
+  // 任务 785（2026-10-11 用户拍板）：S1c boot 常驻单例锚随开关退役移除——
+  // sharedBaseClient 已删，boot 恒走 inline client（见上方 S1b Start 接线锚）。
 
   // ── 任务 450 重启宽限窗（方案 A：停心跳 → 宽限 10s → 到期 Cancel → 谁断谁续）────
   // 旧守卫是「任一他 tab 忙即拒」；宽限窗是重启族三入口（发布/回滚/普通重启）
@@ -1054,12 +1057,6 @@ const CHECKS = [
   { feature: "435 未入册显形（1545 防静默丢标记）", file: "desktop/restart_update.go", patterns: ["restartUnstagedMarker = \"未入册\"", "report.unstaged = append(report.unstaged, sp)", "interrupted but NOT staged for auto-resume"] },
   { feature: "435 调用者未入册工具面显形", file: "desktop/autonomous_update.go", patterns: ["callerStaged := a.stageAutonomousUpdateResume(callerSession)", "NOT staged for auto-resume"] },
 
-  // ── S1 开关 UI 入口（任务 450 并入小件：experimental_base_process 实验室控件）──
-  // 开关注册（S1a）已进 render 表但没有 UI 面，用户无法打开开关；四处接线
-  // 缺一，开关就「看得见配置改不了」或「改了读不回」。
-  { feature: "S1 开关实验室入口（rail 行+详情卡+重启横幅；任务561 misc→infra）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["| \"baseProcess\"", "labLabel(\"baseProcess\"", "selected === \"baseProcess\" && (", "app.SetExperimentalBaseProcess(on)"] },
-  { feature: "S1 开关桥接线（接口声明+mock 桩）", file: "desktop/frontend/src/lib/bridge.ts", patterns: ["SetExperimentalBaseProcess(enabled: boolean): Promise<void>;", "async SetExperimentalBaseProcess() {}"] },
-  { feature: "S1 开关 Go 侧读写链（setter+视图字段；517 合并键收窄对齐列后锚随 gofmt 对齐更新）", file: "desktop/settings_app.go", patterns: ["ExperimentalBaseProcess bool `json:\"experimentalBaseProcess\"`", "view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess", "ExperimentalBaseProcess:       cfg.Agent.ExperimentalBaseProcess"] },
   // ── 任务 451：history 慢分相打点 + planner/尾读缓存（2026-10-02）──────
   // 打点件是验收基建（phases 一行可 grep 重建）；A 缓存三道闸（校验命中 /
   // 写侧失效 / 单飞+上限）与 C 单飞都要在 merge 后存活，否则 planner-turns
@@ -1480,12 +1477,12 @@ const CHECKS = [
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役；621 修正计数 46→48）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },
   { feature: "任务562 门禁测试（新增实验项不标档位⇒失败 + 表A 计数钉）", file: "internal/config/render_lab_tiers_test.go", patterns: ["TestLabRenderKeysAllTaggedWithTier", "TestLabFeatureTierCountsMatchTableA", "门禁失败（任务562）"] },
-  { feature: "任务562 前端档位镜像（单一展示事实源）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 13", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
+  { feature: "任务562 前端档位镜像（单一展示事实源；785 后 unstable 12）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 12", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
   { feature: "任务562 徽章组件（纯展示；621 加档位 tooltip）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "LAB_TIER_DESC_KEYS", "title={t(LAB_TIER_DESC_KEYS[tier])}", "lab-tier-badge--"] },
   { feature: "任务562 设置页 rail+成员开关接线（774 徽章聚合后：rail 卡头单枚最高档 labEntryBadgeTier，成员 tiers 收进详情行）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["labEntryBadgeTier(labLayoutResolved.layout, entry.id)", "labLabel(\"autopilot\"", "settings.modelCapabilityFilter.retired"] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数口径现 15/24/13/1（742 实验室标签页管理后 optional 24、前端总数 53 / Go 51，三豁免 heartbeatRotation+modelCapabilityFilter+container））", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.optional === 24 && counts.unstable === 13", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 改为豁免式比对；517 计数口径现 15/24/12/1（742 optional 24；785 baseProcess 退役后 unstable 12、前端总数 52 / Go 50，三豁免 heartbeatRotation+modelCapabilityFilter+container））", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.optional === 24 && counts.unstable === 12", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（pane 每特性恰一枚：去重 monitoring/budgetControl/compressOpt/messageMerge 兄弟行 + 补挂 tabModeTint）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.coldCacheCompact\")}", "label={t(\"settings.collabGuidanceMerge\")}", "label={t(\"settings.perfMonitor\")}", "labLabel(\"tabModeTint\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },

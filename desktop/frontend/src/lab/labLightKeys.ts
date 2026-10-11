@@ -59,7 +59,6 @@ export const LAB_LIGHT_KEYS = {
   experimentalCDPDebugPort: (s: SettingsView) => Boolean(s.experimentalCDPDebugPort),
   experimentalLifecycleNoiseGate: (s: SettingsView) => Boolean(s.experimentalLifecycleNoiseGate),
   experimentalRuntimeReuse: (s: SettingsView) => Boolean(s.experimentalRuntimeReuse),
-  experimentalBaseProcess: (s: SettingsView) => Boolean(s.experimentalBaseProcess),
   experimentalZcodeTaskBus: (s: SettingsView) => Boolean(s.experimentalZcodeTaskBus),
   experimentalPathRules: (s: SettingsView) => Boolean(s.experimentalPathRules),
   experimentalOrphanHandling: (s: SettingsView) => Boolean(s.experimentalOrphanHandling),

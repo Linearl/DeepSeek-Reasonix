@@ -9,15 +9,11 @@ import (
 )
 
 // TestBuildWiresInlineBaseClientByDefault is the S1b boot 消费点对照测试：
-// the default build carries a live BaseClient whose mode is inline (the
-// switch ships off — R4), whose hello reports the tools capability because
-// boot attached the just-built registry as its surface, and whose catalog
-// answer is the same registry content the controller's gate serves locally.
-// 开关关=现行为，由「同一注册表、进程内回答」两个断言钉住。
-//
-// The Mode assertion also holds if someone flips the switch on a dev machine:
-// the test binary cannot serve `base serve --stdio`, so Start's R1 fallback
-// returns inline anyway.
+// the build carries a live BaseClient whose mode is inline (任务785 retired
+// the switch — inline is now the ONLY mode), whose hello reports the tools
+// capability because boot attached the just-built registry as its surface,
+// and whose catalog answer is the same registry content the controller's gate
+// serves locally. 开关已退役，「同一注册表、进程内回答」两个断言钉住现行为。
 func TestBuildWiresInlineBaseClientByDefault(t *testing.T) {
 	res, err := BuildRuntime(context.Background(), Options{})
 	if err != nil {

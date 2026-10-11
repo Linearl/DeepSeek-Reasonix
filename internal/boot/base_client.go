@@ -3,7 +3,6 @@ package boot
 import (
 	"context"
 	"runtime/debug"
-	"sync"
 
 	"reasonix/internal/baseproc"
 	"reasonix/internal/config"
@@ -15,61 +14,22 @@ import (
 // agent (base-toolcall gate), the controller (tool-catalog gate) and the
 // cleanup chain.
 //
-// With experimental_base_process=false (the default) it returns an inline
-// client with zero side effects (R1/R4) — no manager, no goroutine, the
-// pre-S1 behaviour byte for byte — and both gates then take their local
-// branch structurally (they check Mode). The inline client carries the
-// registry boot just built as its tool surface, so even the switch-on
-// spawn-fallback path answers tool queries with the same in-process objects
-// the pre-S1 path used.
-//
-// S1c: with the switch on, every build shares ONE process-wide Manager
-// instead of spawning its own subprocess (the S1b audit note "N boots = N
-// subprocesses"). The base is resident for the life of the process; a build
-// only acquires a view.
+// 任务 785（2026-10-11 用户拍板）：experimental_base_process 开关已退役，
+// 常驻底座子进程永不 spawn。Enabled 恒为 false，Start 每次都返回 bare
+// inline client（R1/R4：零副作用、pre-S1 行为逐字节一致），两个 gate
+// （base_toolcall / base_gate）结构性地走本地分支。baseproc 实现代码按
+// 最小退役档保留作废——它被主链路结构性 import（BaseClient 贯穿
+// boot→agent→control，pidalive 还被 collabinbox 使用），彻底摘除的风险
+// 大于留一段永不激活的 fail-closed 代码。
 func startBaseClient(ctx context.Context, cfg *config.Config, reg *tool.Registry) baseproc.BaseClient {
 	opts := baseproc.Options{
-		Enabled:       cfg.Agent.ExperimentalBaseProcess,
+		// 785: the switch is retired — never spawn the resident base.
+		Enabled:       false,
 		ServerVersion: baseServerVersion(),
 		Surface:       &baseproc.RegistrySurface{Reg: reg},
 	}
-	if !opts.Enabled {
-		// R4 default: the bare inline client, never a manager.
-		return baseproc.Start(ctx, opts)
-	}
-	return sharedBaseClient(ctx, opts)
-}
-
-// sharedBaseMu guards the process-wide manager handle. It is held while a
-// manager is created so concurrent builds converge on one spawn instead of
-// racing two of them.
-var (
-	sharedBaseMu sync.Mutex
-	sharedBase   *baseproc.Manager
-)
-
-// sharedBaseClient returns a view over the process-wide base manager,
-// creating it on first use (design §4's lazy spawn).
-//
-// The pool keeps its OWN reference for the whole process lifetime, so a view
-// closing never takes the resident base down: tabs come and go, the base does
-// not. The subprocess is reaped when the app exits — its stdin hits EOF and it
-// exits itself (decision D4's orphan path, tested in baseproc), or an explicit
-// base.shutdown does it (design §4).
-//
-// Each view carries the caller's own inline fallback surface: the subprocess
-// is shared, but the registry behind the fallback is per workspace root, and
-// answering another tab's catalog would be wrong (that is exactly the split
-// ManagedClient keeps).
-func sharedBaseClient(ctx context.Context, opts baseproc.Options) baseproc.BaseClient {
-	sharedBaseMu.Lock()
-	defer sharedBaseMu.Unlock()
-	if sharedBase == nil || sharedBase.Closed() {
-		m := baseproc.NewManager(ctx, opts)
-		m.Acquire(opts) // the pool's own, never-released reference
-		sharedBase = m
-	}
-	return sharedBase.Acquire(opts)
+	// R4 default: the bare inline client, never a manager.
+	return baseproc.Start(ctx, opts)
 }
 
 // baseServerVersion is the local build identity an inline hello reports. The

@@ -455,9 +455,6 @@ type SettingsView struct {
 	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
-	// ExperimentalBaseProcess is the S1 resident-base-subprocess lab switch
-	// (design 2026-09-30 §7 R4); boot snapshot, restart to apply.
-	ExperimentalBaseProcess bool `json:"experimentalBaseProcess"`
 	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
 	// (edit readBack + evidence gate linkage); boot snapshot, restart to apply.
 	ExperimentalToolOptimizations bool `json:"experimentalToolOptimizations"`
@@ -715,9 +712,6 @@ type DesktopStartupSettingsView struct {
 	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
-	// ExperimentalBaseProcess is the S1 resident-base-subprocess lab switch
-	// (design 2026-09-30 §7 R4); boot snapshot, restart to apply.
-	ExperimentalBaseProcess bool `json:"experimentalBaseProcess"`
 	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
 	// (edit readBack + evidence gate linkage); boot snapshot, restart to apply.
 	ExperimentalToolOptimizations bool `json:"experimentalToolOptimizations"`
@@ -1515,8 +1509,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// Task 163: usage card switch readback.
 		view.ExperimentalOpenCodeGoUsage = cfg.Agent.ExperimentalOpenCodeGoUsage
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
-		// S1: resident-base-subprocess switch readback (design §7 R4).
-		view.ExperimentalBaseProcess = cfg.Agent.ExperimentalBaseProcess
 		// Task 603: 工具优化 family readback.
 		view.ExperimentalToolOptimizations = cfg.Agent.ExperimentalToolOptimizations
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
@@ -1723,7 +1715,6 @@ func (a *App) Settings() SettingsView {
 		// Task 192: residency policy readback.
 		ExperimentalActiveTabResident: cfg.Agent.ExperimentalActiveTabResident,
 		ExperimentalFullAccess:        cfg.Agent.ExperimentalFullAccess,
-		ExperimentalBaseProcess:       cfg.Agent.ExperimentalBaseProcess,
 		ExperimentalToolOptimizations: cfg.Agent.ExperimentalToolOptimizations,
 		ExperimentalTraceAsState:      cfg.Agent.TraceAsState,
 		ExperimentalDream:             cfg.Agent.ExperimentalDream,

@@ -108,9 +108,8 @@ var labFeatureTiers = []labFeatureTier{
 	// ── storage（存储，2 项）────────────────────────────────────
 	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation"}},
 	{"sessionStorage", LabTierUnstable, []string{"session_storage"}},
-	// ── infra（基础设施，7 项）──────────────────────────────────
+	// ── infra（基础设施，6 项；785 退役 S1 baseProcess 条目）──────
 	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
-	{"baseProcess", LabTierUnstable, []string{"experimental_base_process"}},
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
 	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
 	{"tabModeTint", LabTierUnstable, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
@@ -651,10 +650,6 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 192: renders explicitly — omit-on-off would silently disable a
 	// saved-on residency policy on the next render (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "experimental_active_tab_resident = %v   # task 192: keep the active/running tab resident across switches (zero-reload), exemption capped at 2, overruns logged (restart to apply)\n", c.Agent.ExperimentalActiveTabResident)
-	// S1 底座常驻子进程（设计 2026-09-30 §7 R4）：explicit render — omit-on-off
-	// would silently spring a saved-on switch back off on the next render
-	// (81/123 lost-save lesson).
-	fmt.Fprintf(&b, "experimental_base_process = %v   # S1: resident base subprocess (off = pure inline, pre-S1 behaviour; on = remote preferred with inline fallback; consumer lands with S1b)\n", c.Agent.ExperimentalBaseProcess)
 	// Task 196fix2: explicit render — 0 keeps the built-in 3; an omitted line
 	// would let the next render drop a tuned value (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "dag_graph_cache_capacity = %d   # task 196: replayed-graph cache LRU capacity across saves (0 = built-in 3, range 1-16)\n", c.Agent.DagGraphCacheCapacity)

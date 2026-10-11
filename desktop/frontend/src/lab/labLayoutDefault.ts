@@ -252,9 +252,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
     {
       key: "infra",
       labelKey: "settings.labGroup.infra",
+      // 任务 785：baseProcess 条目已随 S1 底座开关退役移除。
       entries: [
         { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "optional", onKeys: ["experimentalRuntimeReuse"] },
-        { id: "baseProcess", labelKey: "settings.baseProcess", tier: "unstable", onKeys: ["experimentalBaseProcess"] },
         { id: "zcodeTaskBus", labelKey: "settings.zcodeTaskBus", tier: "unstable", onKeys: ["experimentalZcodeTaskBus"] },
         { id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] },
         { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "unstable", onKeys: ["experimentalOrphanHandling"] },

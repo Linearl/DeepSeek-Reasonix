@@ -2560,8 +2560,6 @@ export interface DesktopStartupSettingsView {
   experimentalOpenCodeGoUsage?: boolean;
   /** Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped; ships off; restart to apply. */
   experimentalFullAccess?: boolean;
-  /** S1: resident-base-subprocess switch (design 2026-09-30 §7 R4); ships off (pure inline); restart to apply. */
-  experimentalBaseProcess?: boolean;
   /** 任务 603: 工具优化 family (edit readBack + gate linkage); ships off; restart to apply. */
   experimentalToolOptimizations?: boolean;
   /** Task 377: lifecycle noise triage (crash-pending residue); boot snapshot; restart to apply. */

@@ -112,9 +112,6 @@ export interface SettingsView {
   experimentalOpenCodeGoUsage?: boolean;
   // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
   experimentalFullAccess?: boolean;
-  // S1: resident-base-subprocess switch (design 2026-09-30 §7 R4; ships off —
-  // the pure-inline baseline; restart to apply).
-  experimentalBaseProcess?: boolean;
   // 任务 603: 工具优化 family (edit readBack + evidence gate linkage; ships
   // off — byte-identical tool surface; restart to apply).
   experimentalToolOptimizations?: boolean;

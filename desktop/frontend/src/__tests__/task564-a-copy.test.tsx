@@ -14,8 +14,6 @@
 //       hint may not claim "enables the tool";
 //     - autonomousIdleTerminate: evaluateIdleStreak has no production call
 //       site (desktop/heartbeat.go), so the hint says reserved / not wired;
-//     - baseProcess: internal/baseproc/manager.go states the heavy-base
-//       hosting is NOT DONE, so no memory/startup savings are promised;
 //     - opencodeGoUsage keeps its "off keeps network behavior unchanged"
 //       promise — now backed by the task-564 backend gate
 //       (desktop/opencode_go_usage.go openCodeGoUsageSwitchOn);
@@ -92,13 +90,6 @@ console.log("\ntask 564 A-level copy fixes + retired-key read-only retention");
     const hint = src.match(/"settings\.autonomousIdleTerminateHint": "([^"]+)"/)?.[1] ?? "";
     ok(/applies immediately|即时生效|即時生效/.test(hint), `${name} idleTerminateHint states the immediate effect`);
     ok(!/not wired|尚未接入|currently has no effect|当前开启无效果|目前開啟無效果/.test(hint), `${name} idleTerminateHint drops the stale not-wired claim`);
-  }
-
-  // baseProcess: hosting NOT DONE — no savings promised.
-  for (const [name, src] of pairs) {
-    const hint = src.match(/"settings\.baseProcessHint": "([^"]+)"/)?.[1] ?? "";
-    ok(/not implemented yet|尚未实现|尚未實現/.test(hint), `${name} baseProcessHint states hosting is not implemented`);
-    ok(!/saving memory|lands with S1b|省内存、加速启动。.*S1a/.test(hint), `${name} baseProcessHint drops the savings/S1b promise`);
   }
 
   // pathRules: retired keys present, superseded hint keys gone.
