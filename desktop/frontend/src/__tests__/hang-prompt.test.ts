@@ -2,8 +2,10 @@
 // Task 663 gap ①/⑥: the hang watch surfaces the shared one-click analysis for
 // a stuck session. The surface decision is pure (backend-hung only, visible +
 // focused, not already showing, not cooling down from a dismissal), and the
-// painted prompt runs the same gates → spend confirm → StartHangAnalysis flow
-// as the crash overlay, with an explicit dismiss cooldown.
+// painted prompt runs the same gates → StartHangAnalysis flow as the crash
+// overlay (task 674: straight through, no spend confirmation), with an
+// explicit dismiss cooldown. Task 769: the prompt also carries the「复制」
+// escape hatch (copyButton + issue skeleton) its failure note names.
 
 import { JSDOM } from "jsdom";
 
@@ -70,28 +72,43 @@ ok(shouldSurfaceHangPrompt(hungReport, { hidden: false, unfocused: true, already
 ok(shouldSurfaceHangPrompt(hungReport, { hidden: false, unfocused: false, alreadyShowing: true, dismissedRecently: false }) === false, "an already-showing prompt does not re-surface");
 ok(shouldSurfaceHangPrompt(hungReport, { hidden: false, unfocused: false, alreadyShowing: false, dismissedRecently: true }) === false, "a cooled-down dismissal does not re-surface");
 
-// Painted prompt: the analyze button runs the shared gates → spend confirm →
-// StartHangAnalysis chain (no payload argument — the backend measures the
-// active session itself).
+// Painted prompt: the analyze button runs the shared gates → StartHangAnalysis
+// chain (task 674 semantics: no spend confirmation and no source gate — the
+// same straight-through flow as the crash/performance prompts; no payload
+// argument — the backend measures the active session itself).
 installBindings();
 paintHangPromptForTest(hungReport as never);
 let host = document.getElementById("hang-analysis-prompt");
 ok(host !== null, "the painted prompt mounts its host");
 ok(host?.querySelector(".hang-analysis__body")?.textContent?.includes("verdict: silent") === true, "the prompt names the verdict");
 
+// Task 769: the analyzeFailed note tells the user to fall back to「复制」, so
+// the prompt must paint the copy button unconditionally (674 three-slot layout).
+const copy = host?.querySelector(".hang-analysis__copy") as HTMLButtonElement;
+ok(copy !== null && copy.textContent === "Copy", "the prompt paints the copy button the failure note names");
+
 const analyze = host?.querySelector(".hang-analysis__analyze") as HTMLButtonElement;
 analyze.click();
 await tick();
 await tick();
-ok((host?.querySelector(".hang-analysis__note")?.textContent ?? "").includes("consumes token quota"), "the hang entry reaches the shared spend confirmation");
-ok(hangStartCalls === 0, "the confirmation alone does not start the hang analysis");
-
-const go = host?.querySelector(".hang-analysis__note button") as HTMLButtonElement;
-go.click();
-await tick();
-await tick();
-ok(hangStartCalls === 1, "confirming starts exactly one hang analysis");
+ok(hangStartCalls === 1, "a gated-and-ready backend starts the hang analysis straight away (674: no spend gate)");
 ok((host?.querySelector(".hang-analysis__note")?.textContent ?? "").includes("YOLO 卡顿分析会话已启动"), "the note reports the started hang analysis");
+
+// Task 769: copy puts the issue skeleton on the clipboard — the zero-dependency
+// feedback path the failure note points at, with the hang payload's own markers.
+let clipboardText = "";
+(window as unknown as { runtime: Record<string, unknown> }).runtime = {
+  ClipboardSetText: async (value: string) => {
+    clipboardText = value;
+    return true;
+  },
+  BrowserOpenURL: () => {},
+};
+copy.click();
+await tick();
+await tick();
+ok(clipboardText.includes("Issue target:") && clipboardText.includes("session.hang") && clipboardText.includes("doctor.responsiveness:silent"), "copy puts the hang issue skeleton on the clipboard");
+ok(clipboardText.includes("verdict: silent") && clipboardText.includes("ledger silent 8m"), "the skeleton carries the hang verdict and detail");
 
 // Dismiss removes the prompt and starts the cooldown.
 const dismiss = host?.querySelector(".hang-analysis__dismiss") as HTMLButtonElement;

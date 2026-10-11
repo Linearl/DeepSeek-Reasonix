@@ -25024,6 +25024,8 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
   gap: 8px;
 }
+/* 任务 769: hang 弹窗补「复制」按钮（674 三键布局对齐），样式并入 dismiss 同组。 */
+.hang-analysis__copy,
 .hang-analysis__dismiss,
 .pending-crash__dismiss {
   min-height: 30px;

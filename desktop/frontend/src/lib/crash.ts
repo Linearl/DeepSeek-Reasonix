@@ -56,7 +56,7 @@ export type PerformanceSnapshot = {
 
 export type CrashPayload = {
   schemaVersion: 2;
-  source: "frontend" | "frontend.react" | "frontend.global" | "frontend.performance" | "frontend.mock" | "bot.runtime";
+  source: "frontend" | "frontend.react" | "frontend.global" | "frontend.performance" | "frontend.hang" | "frontend.mock" | "bot.runtime";
   kind: CrashKind;
   label: string;
   message: string;
@@ -948,7 +948,9 @@ export function restartButton(className: string, note: HTMLDivElement): HTMLButt
   return button;
 }
 
-function copyButton(text: string, className: string): HTMLButtonElement {
+// Task 769: exported for the hang prompt — its analyzeFailed note names the
+//「复制」escape hatch, so the hang face must carry the same button (674 layout).
+export function copyButton(text: string, className: string): HTMLButtonElement {
   const copy = document.createElement("button");
   copy.className = className;
   copy.textContent = t("crash.copy");
