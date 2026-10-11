@@ -24,17 +24,23 @@
 import type { DictKey } from "../locales/en";
 import type { LabTier, TierFeatureId } from "../lib/experimentTiers";
 import type { LabLightKey } from "./labLightKeys";
+import type { LabParamInput } from "./labLayoutTypes";
+import type { LabParamFieldId } from "./labParamFields";
 import type { LabGroupKey, LabLayoutData } from "./labLayoutTypes";
 
 /** Compile-checked shape of the default data: group keys, labelKeys, light
  * key refs and member ids are literal-typed — a typo here is a tsc error,
- * not a silent runtime fallback. Structurally assignable to LabLayoutData. */
+ * not a silent runtime fallback. Structurally assignable to LabLayoutData.
+ * 任务 775：参数卡字段 id 用注册表键字面量（LabParamFieldId）、形态用
+ * LabParamInput——default 与注册表漂移是编译错。 */
 interface StrictLabLayoutEntry {
   id: string;
   labelKey: DictKey;
+  kind?: "param";
   tier?: LabTier;
   onKeys: LabLightKey[];
   members?: Array<{ id: TierFeatureId; labelKey: DictKey; tier: LabTier }>;
+  fields?: Array<{ id: LabParamFieldId; input: LabParamInput }>;
 }
 
 interface StrictLabLayout {

@@ -23,6 +23,21 @@ export interface LabLayoutMember {
   tier: LabTier;
 }
 
+/** 任务 775 — entry 种类：开关卡（默认，兼容现状）或无开关参数卡。 */
+export type LabEntryKind = "feature" | "param";
+
+/** 任务 775 — 参数字段的输入形态（覆盖现有参数控件四类；值语义收拢在
+ * labParamFields 注册表，yaml 只声明展示形态）。 */
+export type LabParamInput = "number" | "text" | "segment" | "checkbox";
+
+/** One field row inside a kind=param card (任务 775). */
+export interface LabLayoutParamField {
+  /** Binding id in the labParamFields registry — validated at resolve time. */
+  id: string;
+  /** Display shape; must equal the registry binding's input. */
+  input: LabParamInput;
+}
+
 /** One rail card entry: a clickable card whose pane branch lives in
  * SettingsPanel (id must be in the pane whitelist). */
 export interface LabLayoutEntry {
@@ -30,12 +45,16 @@ export interface LabLayoutEntry {
   id: string;
   /** i18n key of the rail label (validated against the dictionary). */
   labelKey: DictKey;
+  /** 缺省 = "feature"；"param" = 无开关参数卡（fields 驱动渲染，任务 775）。 */
+  kind?: LabEntryKind;
   /** Own tier; omitted on merged cards (their badges come from members). */
   tier?: LabTier;
   /** labLightKeys ids whose boolean OR lights the card. */
   onKeys: string[];
   /** Folded members (badges + in-card rows), in display order. */
   members?: LabLayoutMember[];
+  /** kind=param 专有：卡内字段行（validator 保证非空且引用已登记绑定）。 */
+  fields?: LabLayoutParamField[];
 }
 
 /** One rail group (任务 561 的 7 组 + 603 工具优化 = 8 个固定 key）。 */
