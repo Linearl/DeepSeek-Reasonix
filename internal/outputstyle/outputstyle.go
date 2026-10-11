@@ -29,9 +29,10 @@ type OutputStyle struct {
 	Path        string // file it loaded from ("" for built-ins)
 }
 
-// builtins are the always-available styles, listed alphabetically (task 385d:
-// the set reaches five so it matches Claude Code's default lineup —
-// Default / Proactive / Explanatory / Learning / Concise).
+// builtins are the always-available styles, listed alphabetically (task 385d
+// brought the set to five, matching Claude Code's default lineup —
+// Default / Proactive / Explanatory / Learning / Concise; task 770 adds
+// dual-track, the productized 双轨解释 convention, as the sixth).
 //
 // "default" is the no-style sentinel, kept visible in the list for parity
 // with CC while remaining inert everywhere else: Resolve refuses "" and
@@ -87,6 +88,20 @@ var builtins = []OutputStyle{
 		Builtin:     true,
 		Body: "Communication style — Concise: keep replies terse. No preamble or postamble, no restating " +
 			"the request. Prefer code and short bullet points over paragraphs; answer in the fewest words that are still clear.",
+	},
+	{
+		// Task 770: the 双轨解释 convention (mem-8e7c63b9) productized — the
+		// professional answer stays intact; the plain-language retelling is
+		// added ON TOP, never as a replacement.
+		Name:        "dual-track",
+		Description: "专业+通俗：技术解释双轨——先专业解释，再额外给一遍通俗版（类比/生活化场景）",
+		KeepCoding:  true,
+		Builtin:     true,
+		Body: "Communication style — Dual-track (专业+通俗): every technical explanation is delivered " +
+			"twice. 第一遍「专业版」：用准确的术语、机制与权衡讲清是什么、为什么、怎么选。第二遍「通俗版」：" +
+			"在专业版之后额外给一遍，用类比或生活化场景把同一件事重讲，让没有背景的读者也能懂。" +
+			"两遍各成一段（可用「专业版」「通俗版」小标题）；通俗版是叠加而非替代，绝不能挤掉专业版。" +
+			"一句话能说清的琐碎答复可省略双轨，直接作答。",
 	},
 }
 

@@ -803,7 +803,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if c.Agent.OutputStyle != "" {
 		fmt.Fprintf(&b, "output_style = %q   # persona/tone folded into the prompt\n", c.Agent.OutputStyle)
 	} else {
-		b.WriteString("# output_style = \"explanatory\"   # explanatory | learning | concise | custom; empty = default\n")
+		b.WriteString("# output_style = \"explanatory\"   # explanatory | learning | concise | proactive | dual-track | custom; empty = default\n")
 	}
 	b.WriteString("\n")
 

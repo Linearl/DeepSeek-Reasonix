@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"reasonix/internal/config"
@@ -81,6 +83,39 @@ func (a *App) ListOutputStyles() (OutputStyleListView, error) {
 		view.Issues = append(view.Issues, OutputStyleIssue{Path: is.Path, Name: is.Name, Reason: is.Reason})
 	}
 	return view, nil
+}
+
+// GetOutputStylesDir returns the user-level output-styles directory for the
+// style panel's "open directory" action (task 770): the highest-priority home
+// convention dir that already exists on disk, else the home
+// .reasonix/output-styles created on demand — so the reveal always lands on a
+// real folder the loader actually reads, even before the first custom .md
+// exists (GetFeedbackInboxPath pattern: create when missing). Project-relative
+// convention dirs are deliberately not candidates: they resolve against the
+// process working directory, which is no stable home for user styles.
+func (a *App) GetOutputStylesDir() (string, error) {
+	dirs := outputstyle.Dirs()
+	// Home entries are the absolute prefix of Dirs(); walk that prefix in
+	// reverse so the highest-priority home dir (.reasonix) wins when several
+	// exist, matching the loader's later-wins order. Relative project dirs
+	// are skipped, not a break: reverse iteration reaches them first.
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if !filepath.IsAbs(dirs[i]) {
+			continue // project-relative dir: not a candidate
+		}
+		if info, err := os.Stat(dirs[i]); err == nil && info.IsDir() {
+			return dirs[i], nil
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	fallback := filepath.Join(home, ".reasonix", "output-styles")
+	if err := os.MkdirAll(fallback, 0o755); err != nil {
+		return "", err
+	}
+	return fallback, nil
 }
 
 // SetOutputStyle persists the chosen style into [agent] output_style, then

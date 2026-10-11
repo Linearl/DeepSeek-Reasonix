@@ -148,6 +148,39 @@ ok(
   "config gate setter exists",
 );
 
+// 4b. Task 770 face 1: the open-directory entry. The panel button rides the
+// GetOutputStylesDir binding plus the existing RevealPath reveal (FeedbackPanel
+// 172 pattern) — deleting either side of the chain must fail this pin.
+ok(
+  outputStyleApp.includes("func (a *App) GetOutputStylesDir() (string, error)"),
+  "App.GetOutputStylesDir exists",
+);
+ok(
+  bridge.includes("GetOutputStylesDir(): Promise<string>;"),
+  "bridge declares GetOutputStylesDir",
+);
+ok(
+  bridge.includes("async GetOutputStylesDir()"),
+  "browser mock stubs GetOutputStylesDir",
+);
+ok(
+  panel.includes("app.GetOutputStylesDir()") && panel.includes("app.RevealPath(dir)"),
+  "panel wires open-dir through GetOutputStylesDir + RevealPath",
+);
+ok(
+  panel.includes('t("settings.outputStyle.openDir")'),
+  "panel renders the open-directory button",
+);
+
+// 4c. Task 770 face 2: the dual-track builtin (专业+通俗) joins the built-in
+// lineup — the selector lists it because ListReport includes every builtin.
+const outputStyleLoader = read(repoRoot, "internal", "outputstyle", "outputstyle.go");
+ok(
+  outputStyleLoader.includes('Name:        "dual-track"') &&
+    outputStyleLoader.includes("通俗版"),
+  "dual-track builtin exists with the 双轨 body",
+);
+
 // 5. Locale parity: all three languages carry the section keys (the bundle
 // check only runs on build; this pins the key set meanwhile).
 for (const loc of ["zh.ts", "en.ts", "zh-TW.ts"]) {
@@ -159,11 +192,15 @@ for (const loc of ["zh.ts", "en.ts", "zh-TW.ts"]) {
     "settings.outputStyle.selector",
     "settings.outputStyle.default",
     "settings.outputStyle.issues",
+    "settings.outputStyle.openDir",
   ]) {
     ok(text.includes(`"${key}"`), `${loc} carries ${key}`);
   }
+  // Task 770: the hint must reflect the six-style lineup, and the dual-track
+  // label must be present in every language.
+  ok(/dual-track/.test(text), `${loc} selectorHint lists dual-track`);
 }
 
-assert.ok(passed >= 30, `expected at least 30 assertions, got ${passed}`);
+assert.ok(passed >= 40, `expected at least 40 assertions, got ${passed}`);
 process.stdout.write(`\n${passed} passed\n`);
 if (process.exitCode) process.exit(1);

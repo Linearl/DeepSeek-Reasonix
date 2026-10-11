@@ -2050,6 +2050,19 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
       alive = false;
     };
   }, [selected, s.outputStyle, s.experimentalOutputStyleUI]);
+  // Task 770: open the user-level output-styles directory. The binding picks
+  // the highest-priority home convention dir that exists (or creates the
+  // .reasonix fallback); the reveal rides the existing RevealPath binding —
+  // explorer starts detached, so the click never blocks the UI (FeedbackPanel
+  // 172 pattern).
+  const openOutputStylesDir = async () => {
+    try {
+      const dir = await app.GetOutputStylesDir();
+      if (dir) await app.RevealPath(dir);
+    } catch (e) {
+      reportFrontendLog("settings", "output style open dir failed", String(e));
+    }
+  };
   // Task 439: the built-in bus status loads on demand — only while its lab
   // entry is open, and again after every apply() (which reloads s). The
   // card renders the serve 状态灯 and the enrolled roles from it.
@@ -4546,6 +4559,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                         })),
                       ]}
                     />
+                    <button
+                      type="button"
+                      className="btn btn--secondary btn--small"
+                      onClick={() => void openOutputStylesDir()}
+                    >
+                      {t("settings.outputStyle.openDir")}
+                    </button>
                   </SettingsField>
                   {outputStylesError && (
                     <div className="banner banner--error" role="alert">{outputStylesError}</div>
