@@ -1581,6 +1581,12 @@ const CHECKS = [
   { feature: "663 前端 hang 入口（⑥）", file: "desktop/frontend/src/lib/hangPrompt.ts", patterns: ["export function shouldSurfaceHangPrompt", "export function installHangAnalysisWatch"] },
   { feature: "663 前端 pending-crash 入口（④）", file: "desktop/frontend/src/lib/pendingCrashEntry.ts", patterns: ["export function installPendingCrashAnalysisEntry", "export function shouldSurfacePendingCrash"] },
   { feature: "663 验收测试（hang 门/状态机/快照/进度/重启）", file: "desktop/crash_analysis_hang_test.go", patterns: ["TestResponsivenessVerdictIsHang", "TestObserveCrashAnalysisRunStateMachine", "TestStartHangAnalysisRefusesWithoutSourceExplicitly"] },
+  { feature: "任务805 v4→v3 迁移器内核（双模式计划器）", file: "internal/session/v4import_plan.go", patterns: ["func PlanV4Import", "V4ImportModeIncremental", "func diffLegacyAgainstV4", "func bridgeSessionIDForPath"] },
+  { feature: "任务805 v4→v3 迁移器执行器（安全五件套）", file: "internal/session/v4import_migrate.go", patterns: ["func RunV4Import", "func backupV4ImportTargets", "func newV4ImportJournal", "func verifyV4ImportTarget", "SourceTreeFingerprint(ctx, plan.V4Root)"] },
+  { feature: "任务805 桌面迁移绑定（v4 回填 + 773 v5 导入面板对接）", file: "desktop/session_storage_migration_app.go", patterns: ["func (a *App) PlanSessionV4Backfill", "func (a *App) RunSessionV4Backfill", "func (a *App) PlanSessionV5Import", "func (a *App) RunSessionV5Import", "session.PlanV5Import"] },
+  { feature: "任务805 迁移 UI（两段确认+进度+反馈）", file: "desktop/frontend/src/components/SessionMigrationSection.tsx", patterns: ["app.PlanSessionV4Backfill", "app.RunSessionV4Backfill", "sessionStorageMigrationProgress", "settings.migration.backupDone"] },
+  { feature: "任务805 推荐档=v3（徽章+文案+档位锁）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ['mode === "v3_only" ? <TierBadge tier="recommended" translator={t} /> : null', "migrationRunning"] },
+
 ];
 
 let failed = 0;

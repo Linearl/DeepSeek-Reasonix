@@ -543,6 +543,52 @@ interface DesktopWindowState {
   y: number;
   maximised: boolean;
 }
+// 任务 805: the storage migration views (shared shape over the v4 backfill
+// and the v5 import; the panel renders both with one two-step confirm flow).
+export interface SessionStorageMigrationEntryView {
+  sessionId: string;
+  status: string;
+  reason?: string;
+  targetPath?: string;
+  mapping?: string;
+  fromCount?: number;
+  toCount?: number;
+  deltaCount?: number;
+  title?: string;
+}
+
+export interface SessionStorageMigrationPlanView {
+  kind: "v4-backfill" | "v5-import";
+  mode?: string;
+  sourceRoot: string;
+  v5StoreFound: boolean;
+  entries: SessionStorageMigrationEntryView[];
+  skipCount: number;
+  appendCount: number;
+  rebuildCount: number;
+  conflictCount: number;
+  failCount: number;
+  totalDeltaMessages: number;
+  generatedAt: string;
+}
+
+export interface SessionStorageMigrationReportView {
+  kind: "v4-backfill" | "v5-import";
+  verified: boolean;
+  sourceUnmoved: boolean;
+  backup: { dir?: string; files?: number; bytes?: number };
+  appendCount: number;
+  rebuildCount: number;
+  skipCount: number;
+  conflictCount: number;
+  failCount: number;
+  touchedFiles: number;
+  accounting: string;
+  losses: string[];
+  finishedAt: string;
+  entries?: SessionStorageMigrationEntryView[];
+}
+
 export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
   /** Task 36 Phase 1: answer an app:takeover-request prompt; false when stale. */
   ResolveTakeoverDecision(marker: string, accept: boolean): Promise<boolean>;
@@ -1158,6 +1204,13 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalQuickCommands(enabled: boolean): Promise<void>;
   /** Conversation store: "legacy" (default) or "v4" (experimental; needs a restart). */
   SetSessionStorage(mode: string): Promise<void>;
+  // 任务 805 storage migration: the plan is the first confirm step's payload,
+  // the run receipt doubles as the restore guidance (backup dir + losses).
+  PlanSessionV4Backfill(): Promise<SessionStorageMigrationPlanView>;
+  RunSessionV4Backfill(): Promise<SessionStorageMigrationReportView>;
+  SessionV5StoreAvailable(): Promise<boolean>;
+  PlanSessionV5Import(): Promise<SessionStorageMigrationPlanView>;
+  RunSessionV5Import(): Promise<SessionStorageMigrationReportView>;
   /**
    * Relaunch the desktop so boot-time settings take effect. Not the same as
    * RestartAndUpdate: this publishes nothing, it only reopens what is on disk.
@@ -5779,6 +5832,20 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSubagentPolicy() {},
     async SetExperimentalQuickCommands() {},
     async SetSessionStorage() {},
+    // Browser mock: nothing to migrate; the panel shows an empty plan.
+    async PlanSessionV4Backfill() {
+      return { kind: "v4-backfill", sourceRoot: "", v5StoreFound: false, entries: [], skipCount: 0, appendCount: 0, rebuildCount: 0, conflictCount: 0, failCount: 0, totalDeltaMessages: 0, generatedAt: new Date().toISOString() };
+    },
+    async RunSessionV4Backfill() {
+      return { kind: "v4-backfill", verified: true, sourceUnmoved: true, backup: {}, appendCount: 0, rebuildCount: 0, skipCount: 0, conflictCount: 0, failCount: 0, touchedFiles: 0, accounting: "mock", losses: [], finishedAt: new Date().toISOString() };
+    },
+    async SessionV5StoreAvailable() { return false; },
+    async PlanSessionV5Import() {
+      return { kind: "v5-import", sourceRoot: "", v5StoreFound: false, entries: [], skipCount: 0, appendCount: 0, rebuildCount: 0, conflictCount: 0, failCount: 0, totalDeltaMessages: 0, generatedAt: new Date().toISOString() };
+    },
+    async RunSessionV5Import() {
+      return { kind: "v5-import", verified: true, sourceUnmoved: true, backup: {}, appendCount: 0, rebuildCount: 0, skipCount: 0, conflictCount: 0, failCount: 0, touchedFiles: 0, accounting: "mock", losses: [], finishedAt: new Date().toISOString() };
+    },
     async RestartDesktop() {},
     async SetExperimentalFeedback() {},
     async SetExperimentalFeedbackNudge() {},
