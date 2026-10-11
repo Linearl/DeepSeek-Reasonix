@@ -8,8 +8,13 @@
 // gate calls hung.
 
 import { t } from "./i18n";
-import { analyzeEntryButton } from "./crash";
+import { analyzeEntryButton, copyButton, type CrashPayload } from "./crash";
+import { buildCrashIssueSkeleton } from "./crashIssue";
+import { snapshotBreadcrumbs } from "./breadcrumbs";
 import type { HangAnalysisAvailabilityReport } from "./types";
+
+declare const __BUILD_COMMIT__: string;
+declare const __BUILD_CHANNEL__: string;
 
 const HANG_WATCH_STARTUP_GRACE_MS = 60_000;
 const HANG_WATCH_POLL_MS = 90_000;
@@ -46,6 +51,35 @@ export function shouldSurfaceHangPrompt(
   return true;
 }
 
+// Task 769: the hang face shares the crash.analyzeFailed failure note, which
+// tells the user to fall back to「复制」— so the prompt must actually carry the
+// copy button (task 674's zero-dependency feedback path; the upstream upload
+// endpoint is down and the analysis start can fail on its own). The payload
+// mirrors the backend's hangAnalysisPayload field naming
+// (desktop/crash_analysis_hang.go: kind "performance" — a hang is a
+// responsiveness failure, not a crash; label "session.hang"; errorType
+// "SessionUnresponsive"; topFrame "doctor.responsiveness:<verdict>").
+function buildHangIssuePayload(report: HangAnalysisAvailabilityReport): CrashPayload {
+  const verdict = (report.verdict || "").trim() || "unknown";
+  const detail = typeof report.detail === "string" ? report.detail.trim() : "";
+  return {
+    schemaVersion: 2,
+    source: "frontend.hang",
+    kind: "performance",
+    label: "session.hang",
+    message: [`[session.hang]`, `verdict: ${verdict}`, detail].filter(Boolean).join("\n"),
+    errorType: "SessionUnresponsive",
+    errorMessage: `Session turn is unresponsive (doctor verdict: ${verdict}).${detail ? ` ${detail}` : ""}`,
+    topFrame: `doctor.responsiveness:${verdict}`,
+    buildCommit: typeof __BUILD_COMMIT__ === "string" ? __BUILD_COMMIT__ : "dev",
+    channel: typeof __BUILD_CHANNEL__ === "string" ? __BUILD_CHANNEL__ : "",
+    language: typeof navigator !== "undefined" ? navigator.language || "" : "",
+    view: "",
+    breadcrumbs: snapshotBreadcrumbs(),
+    occurredAt: new Date().toISOString(),
+  };
+}
+
 function paintHangPrompt(report: HangAnalysisAvailabilityReport): void {
   if (typeof document === "undefined") return;
   let host = document.getElementById("hang-analysis-prompt");
@@ -79,7 +113,12 @@ function paintHangPrompt(report: HangAnalysisAvailabilityReport): void {
     lastDismissedAt = Date.now();
     host?.remove();
   };
+  // Task 769 button layout: [一键分析][复制][关闭] — the same three-slot family
+  // as the performance prompt (crash.ts paintPerformancePrompt). Copy is
+  // unconditional: the analyzeFailed note names it, so it must always exist.
+  const copy = copyButton(buildCrashIssueSkeleton(buildHangIssuePayload(report)), "hang-analysis__copy");
   if (analyze) actions.append(analyze);
+  actions.append(copy);
   actions.append(dismiss);
   host.replaceChildren(title, intro, body, actions, analysisNote);
 }
