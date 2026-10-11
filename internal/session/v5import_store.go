@@ -101,7 +101,7 @@ type V5Session struct {
 // pool when the manifest names it. Any other contentRoot spelling is refused
 // so a manifest cannot point a read outside the store.
 func contentStoreForV5Session(dir, named string) (*sessioncontent.Store, error) {
-	root := filepath.Join(filepath.Dir(dir), sharedContentRoot)
+	root := filepath.Join(filepath.Dir(dir), ".content-v1")
 	if trimmed := strings.TrimSpace(named); trimmed != "" && trimmed != sharedContentRoot {
 		candidate := filepath.Clean(filepath.Join(dir, trimmed))
 		relative, relErr := filepath.Rel(dir, candidate)
