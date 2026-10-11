@@ -106,6 +106,23 @@ func detectDoubleEnvelopedArguments(raw json.RawMessage) (json.RawMessage, bool)
 	if !marker {
 		return nil, false
 	}
+	// Task 798 (2233 field report): a stringified inner value must itself be a
+	// complete call envelope. A stringified plain target-parameters object
+	// under {"action":"call"} used to trip this detector, and the validation
+	// guidance then told the model to unwrap a payload that was never an
+	// envelope — the retry was guaranteed to fail again. Verify the decoded
+	// object one level; pass the decoded object through so consumers gate
+	// against the target schema instead of the string.
+	if strings.HasPrefix(strings.TrimSpace(string(inner)), `"`) {
+		decoded, ok := unwrapStringifiedJSONObject(inner)
+		if !ok {
+			return nil, false
+		}
+		if _, ok := detectDoubleEnvelopedArguments(decoded); !ok {
+			return nil, false
+		}
+		return decoded, true
+	}
 	return json.RawMessage(append([]byte(nil), inner...)), true
 }
 

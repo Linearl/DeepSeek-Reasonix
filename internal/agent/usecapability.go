@@ -145,6 +145,22 @@ func declineResultText(ids []string, reason string) string {
 
 func (*UseCapabilityTool) ReadOnly() bool { return true }
 
+// capabilityPromotionNote is the model-visible correct-usage guidance appended
+// to a successful result whose capability_id was auto-promoted (task 798).
+// Wording is fixed: it names what the host did, the right shape, and that the
+// tolerance is not a contract (725 error-guidance precedent).
+const capabilityPromotionNote = "capability_id was auto-promoted from arguments — correct usage: pass capability_id as a top-level parameter, not inside arguments. Auto-promotion may be removed in future versions."
+
+// appendSelfHealNote attaches the resolver's model-visible heal note to a
+// successful target result. Host-side audit/WARN logging already happened at
+// resolve time; this is the copy the model actually reads.
+func appendSelfHealNote(result string, resolved tool.ResolvedCall) string {
+	if resolved.SelfHealNote == "" {
+		return result
+	}
+	return strings.TrimRight(result, "\n") + "\n" + resolved.SelfHealNote
+}
+
 func (*UseCapabilityTool) Schema() json.RawMessage {
 	// Stable schema — must not change across turns or when MCP connects.
 	// capability_id is optional only for action=list; inspect/call/decline still
@@ -231,6 +247,13 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 				healedBase.CapabilityID = nestedID
 				if healed, herr := t.resolveCall(ctx, nestedID, inner, healedBase); herr == nil &&
 					targetAcceptsArguments(healed.Target, inner) {
+					// Task 798: the heal must not be silent for the model — the
+					// audit counter and WARN log are host-side only. The note on
+					// the result teaches the correct envelope shape (725 error-
+					// guidance precedent) and covers all three nested members:
+					// the plain object shape (728), the stringified envelope,
+					// and the whole-envelope shape.
+					healed.SelfHealNote = capabilityPromotionNote
 					t.noteArgumentSelfHeal(nestedID, "promoted a capability_id nested inside the arguments object to the envelope top level")
 					return healed, nil
 				}
@@ -340,7 +363,7 @@ func (t *UseCapabilityTool) Execute(ctx context.Context, args json.RawMessage) (
 	if t.ledger != nil {
 		t.ledger.MarkSucceeded(resolved.CapabilityID)
 	}
-	return out, nil
+	return appendSelfHealNote(out, resolved), nil
 }
 
 func (t *UseCapabilityTool) resolveCall(ctx context.Context, id string, args json.RawMessage, base tool.ResolvedCall) (tool.ResolvedCall, error) {

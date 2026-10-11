@@ -101,7 +101,12 @@ func (p pathBoundCapabilityProxy) Execute(ctx context.Context, args json.RawMess
 	if resolved.Target == nil {
 		return "", fmt.Errorf("use_capability resolved no target")
 	}
-	return resolved.Target.Execute(ctx, resolved.Args)
+	out, err := resolved.Target.Execute(ctx, resolved.Args)
+	if err != nil {
+		return out, err
+	}
+	// Task 798: keep the auto-promotion note model-visible on this path too.
+	return appendSelfHealNote(out, resolved), nil
 }
 
 func (w pathBoundWriter) Name() string            { return w.inner.Name() }
