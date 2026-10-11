@@ -124,7 +124,13 @@ func (a *App) HangAnalysisAvailability() HangAnalysisAvailabilityReport {
 // prerequisite (source / gh / live workspace) and the verdict gate are
 // re-checked here so a stale frontend probe cannot analyze a healthy session.
 func (a *App) StartHangAnalysis() (string, error) {
-	dir := detectCrashAnalysisSourceDir()
+	// Read the source location through the task-672 seam var, not detect
+	// directly: by default the var wraps detect (runtime behavior unchanged),
+	// and tests stub the var alone — a raw detect read here was the leftover
+	// seam bypass from the task-674 auto-clone cleanup (768b ②), forcing the
+	// test helper to stub two resolution faces to keep the hang entries
+	// hermetic.
+	dir := crashAnalysisSourceDir()
 	if dir == "" {
 		return "", fmt.Errorf("no local reasonix source detected — root-cause analysis needs the fork checkout; use the Copy button to report manually")
 	}

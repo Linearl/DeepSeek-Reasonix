@@ -206,18 +206,17 @@ func TestObserveCrashAnalysisRunStateMachine(t *testing.T) {
 
 // ── task 663 ②: explicit failures at the entry gates ─────────────────────────
 
-// stubCrashAnalysisSourceDir hides any real fork checkout from both resolution
-// paths the crash/hang entries use: the task-672 seam var (read by
-// CrashAnalysisAvailability and the task-674 ensureCrashAnalysisSource clone
-// fallback) and the raw detect fn (read by StartHangAnalysis).
+// stubCrashAnalysisSourceDir hides any real fork checkout from every analysis
+// entry: crash availability, the task-674 auto-clone fallback, and the hang
+// entry all read the task-672 seam var (768b ② retired the hang entry's raw
+// detect read, so stubbing the var alone is the whole seam again — a future
+// direct detect read will fail these tests loudly instead of silently
+// escaping the stub).
 func stubCrashAnalysisSourceDir(t *testing.T, dir string) {
 	t.Helper()
 	origVar := crashAnalysisSourceDir
 	crashAnalysisSourceDir = func() string { return dir }
 	t.Cleanup(func() { crashAnalysisSourceDir = origVar })
-	orig := detectCrashAnalysisSourceDir
-	detectCrashAnalysisSourceDir = func() string { return dir }
-	t.Cleanup(func() { detectCrashAnalysisSourceDir = orig })
 }
 
 // stubGhUnavailable makes the gh resolution fail closed the same way a machine
