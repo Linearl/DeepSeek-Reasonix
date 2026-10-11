@@ -26,6 +26,11 @@
 #       仍挂各自徽章；配置键零变化，已存偏好升级后原样生效；
 #   742 heartbeatBackground「心跳任务后台化」登记（automation 组独立卡，
 #       默认关，可选项）。
+#   775 参数迁移基建（设计《实验室布局可调设计》§4.1/4.2，γ 渐进登记）：
+#       entry 新增 kind:param（无开关字段卡，fields 支持 number/text/segment/
+#       checkbox），字段值读写绑定收拢在 src/lab/labParamFields.ts；首批两参
+#       数迁「存储」组——后台会话闲置释放（308-O4）+ Go 软内存上限（308-O3），
+#       自跨会话协作卡硬编码行迁出（数据驱动渲染，配置键/setter 零变化）。
 
 version: 1
 groups:
@@ -237,7 +242,7 @@ groups:
             labelKey: settings.lifecycleNoiseGate
             tier: unstable
 
-  # ── 存储（1 项）────────────────────────────────────────────
+  # ── 存储（3 项；任务 775：闲置释放/内存上限两参数卡迁入）────────────
   - key: storage
     labelKey: settings.labGroup.storage
     entries:
@@ -251,6 +256,23 @@ groups:
           - id: eventsRotation
             labelKey: settings.eventsRotation
             tier: optional
+      # 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡。
+      # 无开关纯字段卡（分钟；0=从不释放）；字段绑定在 src/lab/labParamFields.ts
+      # （值语义收拢在代码，yaml 只描述结构与引用——724 硬约束同构延伸）。
+      - id: idleReleaseMinutes
+        labelKey: settings.detachedIdleRelease
+        kind: param
+        fields:
+          - id: detachedIdleReleaseMinutes
+            input: number
+      # 任务 775：Go 软内存上限（308-O3，debug.SetMemoryLimit，MB；0=不设限）
+      # ——参数卡（无开关）。
+      - id: goMemLimit
+        labelKey: settings.goMemLimit
+        kind: param
+        fields:
+          - id: goMemLimitMB
+            input: number
 
   # ── 基础设施（6 项）────────────────────────────────────────
   - key: infra

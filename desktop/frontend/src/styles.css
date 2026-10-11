@@ -4421,6 +4421,13 @@ a[href] {
   opacity: 1;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
+/* 任务 775: param cards have no switch — a hollow neutral dot stands in for
+   the on/off state dot (a param is never "off", so it never dims). */
+.experimental-rail__dot--param {
+  background: transparent;
+  border: 1.5px solid var(--fg-faint);
+  opacity: 0.6;
+}
 .experimental-rail__label {
   min-width: 0;
   overflow: hidden;

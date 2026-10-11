@@ -14,12 +14,17 @@ import { EXPERIMENT_FEATURE_TIERS, LAB_TIER_ORDER, type LabTier } from "../lib/e
 import type { SettingsView } from "../lib/settingsViewTypes";
 import { LAB_LAYOUT_DEFAULT_DATA } from "./labLayoutDefault";
 import { LAB_LIGHT_KEYS, LAB_LIGHT_KEY_IDS } from "./labLightKeys";
+import { LAB_PARAM_FIELD_IDS, LAB_PARAM_FIELDS } from "./labParamFields";
 import { parseSimpleYaml, YamlParseError } from "./parseSimpleYaml";
 import { LAB_GROUP_KEYS, type LabGroupKey, type LabLayoutData, type LabLayoutEntry } from "./labLayoutTypes";
 import type { DictKey } from "../locales/en";
 
 const LAB_TIER_VALUES: ReadonlySet<string> = new Set<string>(LAB_TIER_ORDER);
 const REGISTER_IDS: ReadonlySet<string> = new Set(Object.keys(EXPERIMENT_FEATURE_TIERS));
+/** 任务 775 — 合法 entry kind（缺省 = "feature"）。 */
+const LAB_ENTRY_KINDS: ReadonlySet<string> = new Set(["feature", "param"]);
+/** 任务 775 — 合法参数字段形态（四类；与注册表绑定逐字段核对一致性）。 */
+const LAB_PARAM_INPUTS: ReadonlySet<string> = new Set(["number", "text", "segment", "checkbox"]);
 
 export interface ResolvedLabLayout {
   layout: LabLayoutData;
@@ -96,6 +101,16 @@ function validateLayout(root: unknown, opts: ResolveLabLayoutOptions, warnings: 
       seenIds.add(id);
       checkLabelKey(rawEntry.labelKey, `entry "${id}".labelKey`, warnings);
 
+      // 任务 775 — kind：缺省 "feature"（兼容现状）；param = 无开关参数卡。
+      let kind: LabLayoutEntry["kind"];
+      if (rawEntry.kind != null) {
+        if (typeof rawEntry.kind !== "string" || !LAB_ENTRY_KINDS.has(rawEntry.kind)) {
+          fail(warnings, `entry "${id}".kind "${String(rawEntry.kind)}" is not a lab entry kind`);
+        }
+        kind = rawEntry.kind as LabLayoutEntry["kind"];
+      }
+      const isParam = (kind ?? "feature") === "param";
+
       let tier: LabTier | undefined;
       if (rawEntry.tier != null) {
         if (typeof rawEntry.tier !== "string" || !LAB_TIER_VALUES.has(rawEntry.tier)) {
@@ -104,11 +119,19 @@ function validateLayout(root: unknown, opts: ResolveLabLayoutOptions, warnings: 
         tier = rawEntry.tier as LabTier;
       }
 
-      const onKeys = checkOnKeys(rawEntry.onKeys, `entry "${id}"`, warnings);
+      // 任务 775 — feature 卡带 fields 是 schema 矛盾（fields 是参数卡专有）。
+      if (!isParam && rawEntry.fields != null) {
+        fail(warnings, `entry "${id}".fields is only valid on kind=param entries`);
+      }
+
+      // 任务 775 — onKeys 缺省视作空表（参数卡无开关，yaml 可省略该键）。
+      const onKeys = checkOnKeys(rawEntry.onKeys ?? [], `entry "${id}"`, warnings);
 
       let members: LabLayoutData["groups"][number]["entries"][number]["members"];
       const rawMembers = rawEntry.members;
       if (rawMembers != null) {
+        // 任务 775 — 参数卡不折叠成员（折叠面是 fields）。
+        if (isParam) fail(warnings, `entry "${id}".members is not valid on kind=param entries`);
         if (!Array.isArray(rawMembers)) fail(warnings, `entry "${id}".members must be a list`);
         members = rawMembers.map((rawMember, mi) => {
           if (!isPlainObject(rawMember)) fail(warnings, `entry "${id}" members[${mi}] must be a mapping`);
@@ -125,7 +148,32 @@ function validateLayout(root: unknown, opts: ResolveLabLayoutOptions, warnings: 
         });
       }
 
-      return { id, labelKey: rawEntry.labelKey as DictKey, tier, onKeys, members };
+      // 任务 775 — 参数卡字段：非空列表，逐字段对注册表核引用与形态一致性
+      // （值语义收拢在 labParamFields，yaml 引用未登记字段 ⇒ 整份回退）。
+      let fields: LabLayoutEntry["fields"];
+      const rawFields = rawEntry.fields;
+      if (rawFields != null) {
+        if (!Array.isArray(rawFields) || rawFields.length === 0) fail(warnings, `entry "${id}".fields must be a non-empty list`);
+        fields = rawFields.map((rawField, fi) => {
+          if (!isPlainObject(rawField)) fail(warnings, `entry "${id}" fields[${fi}] must be a mapping`);
+          const fieldId = rawField.id;
+          if (typeof fieldId !== "string" || fieldId === "") fail(warnings, `entry "${id}" fields[${fi}].id must be a non-empty string`);
+          if (!LAB_PARAM_FIELD_IDS.has(fieldId)) fail(warnings, `field "${fieldId}" is not in the param registry`);
+          if (typeof rawField.input !== "string" || !LAB_PARAM_INPUTS.has(rawField.input)) {
+            fail(warnings, `field "${fieldId}".input "${String(rawField.input)}" is not a param input kind`);
+          }
+          const binding = LAB_PARAM_FIELDS[fieldId];
+          if (binding && binding.input !== rawField.input) {
+            fail(warnings, `field "${fieldId}".input "${String(rawField.input)}" does not match the registry binding "${binding.input}"`);
+          }
+          return { id: fieldId, input: rawField.input as NonNullable<LabLayoutEntry["fields"]>[number]["input"] };
+        });
+      }
+      if (isParam && (!fields || fields.length === 0)) {
+        fail(warnings, `entry "${id}" is kind=param and must carry a non-empty fields list`);
+      }
+
+      return { id, labelKey: rawEntry.labelKey as DictKey, kind, tier, onKeys, members, fields };
     });
     return { key: key as LabGroupKey, labelKey: rawGroup.labelKey as DictKey, entries };
   });

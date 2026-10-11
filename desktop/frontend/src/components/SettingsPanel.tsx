@@ -98,9 +98,12 @@ import { EXPERIMENT_FEATURE_TIERS, LAB_WALL_PICKS, type TierFeatureId } from "..
 // ordering) resolves from lab-layout.yaml through the yaml mechanism; the
 // built-in default is the safety-net fallback (missing/corrupt yaml). Tier
 // badges ride the resolved layout, not a separate members map.
-import { findLabEntryIdByQuery, labEntries, labEntryBadgeTier, labEntryLightOn, resolveLabLayout } from "../lab/labLayout";
+import { findLabEntry, findLabEntryIdByQuery, labEntries, labEntryBadgeTier, labEntryLightOn, resolveLabLayout } from "../lab/labLayout";
 import labLayoutYaml from "../lab/lab-layout.yaml?raw";
-import { LAB_GROUP_KEYS, type LabGroupKey } from "../lab/labLayoutTypes";
+import { LAB_GROUP_KEYS, type LabGroupKey, type LabLayoutEntry } from "../lab/labLayoutTypes";
+// 任务 775: kind:param 参数卡的值语义层（yaml 只描述结构与引用，读取/写入
+// 绑定收拢在注册表——724 的 onKeys→labLightKeys 同构分层）。
+import { LAB_PARAM_FIELDS } from "../lab/labParamFields";
 // 任务 563: the picks wall reads its live on/off states through this context
 // (provided below, derived from the `features` render table) — props would
 // rewrite the dialog mount JSX that guard suites pin byte-for-byte.
@@ -1920,7 +1923,11 @@ type ExperimentFeatureId =
   // without its lab switch; unstable tier, default off).
   | "collabGroupView"
   // 任务 704: trajectory view switch (optional tier, default off = transcript only).
-  | "trajectoryView";
+  | "trajectoryView"
+  // 任务 775: kind:param 参数卡 id——无硬编码 pane，pane 走通用参数渲染器
+  // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
+  | "idleReleaseMinutes"
+  | "goMemLimit";
 
 // 任务 724：pane 白名单——布局文档（yaml/默认）里的 entry.id 必须在此登记
 // （一个 id 一个可点开的卡片分支）；yaml 引用白名单外的 id ⇒ 整份回退默认
@@ -1963,6 +1970,11 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "orphanHandling",
   "localServer",
   "toolOptimizations",
+  // 任务 775：kind:param 参数卡 id——pane 由通用参数渲染器承接（无独立
+  // 硬编码分支）；登记进白名单与 feature 卡同一安全网语义（yaml 引用
+  // 白名单外 id ⇒ 整份回退默认）。
+  "idleReleaseMinutes",
+  "goMemLimit",
 ]);
 
 // 任务 764：设置搜索覆盖实验室——rail 用什么布局，搜索词表就用什么布局。
@@ -1970,6 +1982,88 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
 // 默认），搜索视图与 rail 永不漂移。resolveLabLayout 纯函数，模块级解析
 // 一次（dev 模式改 yaml ?raw 热加载会重建模块，行为与组件内 useMemo 一致）。
 const LAB_LAYOUT_FOR_SEARCH = resolveLabLayout(labLayoutYaml, { allowedEntryIds: LAB_PANE_IDS }).layout;
+
+/** 任务 775 — kind:param 参数卡通用渲染：无开关，一行一字段，控件形态按
+ * field.input 分派（number/text/segment/checkbox），值读取与写入走
+ * labParamFields 注册表。渲染规则（设计 §4.2）：布局里已登记的参数卡走这
+ * 份数据渲染；未登记参数保持各硬编码分支兜底——渐进迁移，登记一张删一张。
+ * number/text 键入中持草稿、onBlur 落盘（与原硬编码参数行同款手感，配置层
+ * 自行钳制）；segment/checkbox 即点即存。行级徽章遵守 621 口径：卡头档位
+ * 徽章只出现在首字段行（至多一次）。 */
+function LabParamFieldsCard({ entry, s, busy, apply }: { entry: LabLayoutEntry; s: SettingsView; busy: boolean; apply: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const t = useT();
+  // number/text 的键入草稿（键=字段 id）：只在字段键入过时覆盖快照读数。
+  const [drafts, setDrafts] = useState<Record<string, string | number>>({});
+  return (
+    <>
+      {(entry.fields ?? []).map((field, index) => {
+        const binding = LAB_PARAM_FIELDS[field.id];
+        // resolver 已核过引用；防御式跳过（无绑定字段不渲染，不出空行）。
+        if (!binding) return null;
+        const label = (
+          <>
+            {t(binding.labelKey ?? entry.labelKey)}
+            {index === 0 && entry.tier ? <TierBadge tier={entry.tier} translator={t} /> : null}
+          </>
+        );
+        if (binding.input === "checkbox") {
+          return (
+            <SettingsField key={field.id} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
+              <input
+                type="checkbox"
+                checked={Boolean(binding.read(s))}
+                disabled={busy}
+                onChange={(event) => void apply(() => binding.write(event.target.checked))}
+              />
+            </SettingsField>
+          );
+        }
+        if (binding.input === "segment") {
+          return (
+            <SettingsField key={field.id} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {(binding.options ?? []).map((option) => (
+                  <button
+                    key={String(option.value)}
+                    type="button"
+                    className={`set-seg__btn${binding.read(s) === option.value ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => binding.write(option.value))}
+                  >
+                    {t(option.labelKey)}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          );
+        }
+        // number / text：草稿态 + onBlur 落盘。number 键入中间态（如 "-"）出
+        // NaN 时不落盘，保留草稿等继续键入（原硬编码行会直接把 NaN 送桥，
+        // 这里收口）。
+        const current = drafts[field.id] ?? binding.read(s);
+        return (
+          <SettingsField key={field.id} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
+            <input
+              type={binding.input}
+              min={binding.min}
+              max={binding.max}
+              value={current}
+              disabled={busy}
+              onChange={(event) => setDrafts((prev) => ({
+                ...prev,
+                [field.id]: binding.input === "number" ? Number(event.target.value) : event.target.value,
+              }))}
+              onBlur={() => {
+                if (binding.input === "number" && typeof current === "number" && Number.isNaN(current)) return;
+                void apply(async () => { await binding.write(current); });
+              }}
+            />
+          </SettingsField>
+        );
+      })}
+    </>
+  );
+}
 
 function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps & { focusEntry?: ExperimentFeatureId | null }) {
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
@@ -1995,10 +2089,8 @@ function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps & { fo
   // Task 204: the cross-session chain ceiling is a number the user can edit; the
   // config layer clamps it, so the box may hold an intermediate value while typing.
   const [hopLimit, setHopLimit] = useState<number>(s.sessionCollabHopLimit ?? 5);
-  // Task 308-O4: detached idle release threshold (minutes; 0 = never release).
-  const [detachedIdleRelease, setDetachedIdleRelease] = useState<number>(s.detachedIdleReleaseMinutes ?? 0);
-  // Task 308-O3: soft memory limit (MB; 0 = unbounded runtime).
-  const [goMemLimit, setGoMemLimit] = useState<number>(s.goMemLimitMB ?? 0);
+  // 任务 775：308-O4/O3 两参数的本地草稿态随硬编码行一并退役——值读写改走
+  // LabParamFieldsCard（组件内草稿态）+ labParamFields 注册表。
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
@@ -2024,6 +2116,12 @@ function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps & { fo
 // Task 561: the default selection follows the first rail entry (autopilot;
 // the old default restartUpdate folded into the updateFeedback card).
 const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
+  // 任务 775：当前选中条目的布局数据——kind:param 卡由此走通用数据渲染
+  // （LabParamFieldsCard），feature 卡仍走各 selected===id 硬编码分支。
+  const selectedEntry = useMemo(
+    () => findLabEntry(labLayoutResolved.layout, selected),
+    [labLayoutResolved, selected],
+  );
   // 任务 764：随顶部筛选 chips 删除，labFilter 过滤态一并移除——rail 恒显
   // 全部组（组内条目仍受折叠控制），导航由分组目录 toc 承接。
   // Task 385a: the 回答风格 selector payload loads on demand — only while its
@@ -2190,6 +2288,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
         // 任务 774：卡头徽章聚合为单枚最高档（max(卡, members)，推荐>可选
         // >未稳定>已退役）；成员徽章只在卡内详情行可见，不再上卡头。
         badgeTier: labEntryBadgeTier(labLayoutResolved.layout, entry.id),
+        // 任务 775：参数卡无开关——rail 呈现（空心态点/不参与 --off 变灰）
+        // 与 pane 分派（通用参数渲染）都以 kind 为准。
+        kind: entry.kind ?? ("feature" as const),
       })),
     [labLayoutResolved, s, t],
   );
@@ -2355,11 +2456,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       key={feature.id}
                       type="button"
                       id={`lab-entry-${feature.id}`}
-                      className={`experimental-rail__item${selected === feature.id ? " experimental-rail__item--active" : ""}${feature.on ? "" : " experimental-rail__item--off"}`}
+                      className={`experimental-rail__item${selected === feature.id ? " experimental-rail__item--active" : ""}${feature.on || feature.kind === "param" ? "" : " experimental-rail__item--off"}`}
                       aria-current={selected === feature.id ? "true" : undefined}
                       onClick={() => setSelected(feature.id)}
                     >
-                      <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : ""}`} aria-hidden="true" />
+                      {/* 任务 775：参数卡无开关——空心态点代替开/关状态点，
+                          且不参与 --off 变灰（参数卡不存在「关」态）。 */}
+                      <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : feature.kind === "param" ? " experimental-rail__dot--param" : ""}`} aria-hidden="true" />
                       <span className="experimental-rail__label">{feature.label}</span>
                       {/* 任务 774: the rail row (card head) renders exactly ONE
                           aggregated badge — max(own, members) by tier strength;
@@ -2389,6 +2492,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             </div>
           ) : null}
           {fullAccessDialog}
+          {/* 任务 775：kind:param 参数卡通用 pane——布局里已登记的参数卡走
+              这份数据渲染（字段形态按 field.input 分派，值读写走注册表）；
+              未登记参数仍走下方各硬编码分支兜底（渐进迁移，登记一张删一张）。 */}
+          {selectedEntry?.kind === "param" && (
+            <LabParamFieldsCard entry={selectedEntry} s={s} busy={busy} apply={apply} />
+          )}
           {selected === "fullAccess" && (
             <SettingsField label={labLabel("fullAccess", t("settings.fullAccess"))} hint={t("settings.fullAccessHint")} icon={<ShieldCheck size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
@@ -3464,34 +3573,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   })}
                 />
               </SettingsField>
-              {/* Task 308-O4: idle threshold for releasing detached runtimes. */}
-              <SettingsField label={t("settings.detachedIdleRelease")} hint={t("settings.detachedIdleReleaseHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={0}
-                  max={10080}
-                  value={detachedIdleRelease}
-                  disabled={busy}
-                  onChange={(event) => setDetachedIdleRelease(Number(event.target.value))}
-                  onBlur={() => void apply(async () => {
-                    await app.SetDetachedIdleReleaseMinutes(detachedIdleRelease);
-                  })}
-                />
-              </SettingsField>
-              {/* Task 308-O3: soft memory limit (debug.SetMemoryLimit), MB. */}
-              <SettingsField label={t("settings.goMemLimit")} hint={t("settings.goMemLimitHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={0}
-                  max={65536}
-                  value={goMemLimit}
-                  disabled={busy}
-                  onChange={(event) => setGoMemLimit(Number(event.target.value))}
-                  onBlur={() => void apply(async () => {
-                    await app.SetGoMemLimitMB(goMemLimit);
-                  })}
-                />
-              </SettingsField>
+              {/* Task 308-O4 / 308-O3（闲置释放、软内存上限）两参数行已于
+                  任务 775 迁出：登记为存储组 kind:param 参数卡（数据驱动
+                  渲染，走 LabParamFieldsCard；绑定在 labParamFields 注册表，
+                  配置键/setter 零变化）。 */}
               {/* Task 264: background-woken sessions stay out of the tab bar.
                   A regular live panel setting (unlike the task-224
                   consumption switch) — delivery is unchanged, only where the

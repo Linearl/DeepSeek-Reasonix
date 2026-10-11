@@ -20,21 +20,31 @@
 //   742 tabCompress + tabModeTint 合并为「标签页管理」单卡（条目级合并，
 //       两键语义/setter 不变，行级徽章保留在 SettingsPanel）；新增
 //       heartbeatBackground（automation 独立卡，默认关，可选）。
+//   775 参数迁移基建+首批迁移（设计《实验室布局可调设计》§4.1/4.2）：
+//       存储组登记 idleReleaseMinutes / goMemLimit 两张 kind:param 参数卡
+//       （后台会话闲置释放 308-O4 + Go 软内存上限 308-O3），自跨会话协作卡
+//       硬编码行迁出——数据驱动渲染，配置键/setter 零变化。
 
 import type { DictKey } from "../locales/en";
 import type { LabTier, TierFeatureId } from "../lib/experimentTiers";
 import type { LabLightKey } from "./labLightKeys";
+import type { LabParamInput } from "./labLayoutTypes";
+import type { LabParamFieldId } from "./labParamFields";
 import type { LabGroupKey, LabLayoutData } from "./labLayoutTypes";
 
 /** Compile-checked shape of the default data: group keys, labelKeys, light
  * key refs and member ids are literal-typed — a typo here is a tsc error,
- * not a silent runtime fallback. Structurally assignable to LabLayoutData. */
+ * not a silent runtime fallback. Structurally assignable to LabLayoutData.
+ * 任务 775：参数卡字段 id 用注册表键字面量（LabParamFieldId）、形态用
+ * LabParamInput——default 与注册表漂移是编译错。 */
 interface StrictLabLayoutEntry {
   id: string;
   labelKey: DictKey;
+  kind?: "param";
   tier?: LabTier;
   onKeys: LabLightKey[];
   members?: Array<{ id: TierFeatureId; labelKey: DictKey; tier: LabTier }>;
+  fields?: Array<{ id: LabParamFieldId; input: LabParamInput }>;
 }
 
 interface StrictLabLayout {
@@ -219,6 +229,23 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "sessionStorage", labelKey: "settings.sessionStorage", tier: "unstable" },
             { id: "eventsRotation", labelKey: "settings.eventsRotation", tier: "optional" },
           ],
+        },
+        // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
+        // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
+        {
+          id: "idleReleaseMinutes",
+          labelKey: "settings.detachedIdleRelease",
+          kind: "param",
+          onKeys: [],
+          fields: [{ id: "detachedIdleReleaseMinutes", input: "number" }],
+        },
+        // 任务 775：Go 软内存上限（308-O3）——参数卡（无开关）。
+        {
+          id: "goMemLimit",
+          labelKey: "settings.goMemLimit",
+          kind: "param",
+          onKeys: [],
+          fields: [{ id: "goMemLimitMB", input: "number" }],
         },
       ],
     },
