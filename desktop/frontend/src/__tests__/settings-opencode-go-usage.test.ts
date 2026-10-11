@@ -34,7 +34,15 @@ const zh = readFileSync(join(root, "locales/zh.ts"), "utf8");
 const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
 // ── render table + union + detail wiring ────────────────────────────────────
-ok(panel.includes('{ id: "opencodeGoUsage", group: "ui",'), "render table carries the entry (81/123)");
+{
+  // 722/724 后 rail 渲染表移交布局数据（源码字面量断言随之腐化）；783 后
+  // opencodeGoUsage 以成员身份在用量监测卡——布局数据断言钉它的位置。
+  const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
+  const obs = LAB_LAYOUT_DEFAULT_DATA.groups.find((g: { key: string }) => g.key === "observability");
+  const usage = obs!.entries.find((e: { id: string }) => e.id === "usageMonitoring");
+  ok((usage?.members ?? []).some((m: { id: string }) => m.id === "opencodeGoUsage"),
+    "render table (layout data) carries the entry as a usageMonitoring member (81/123)");
+}
 // Task 346 (0928 second-pass layout): the control stacks vertically - the
 // default flex-row control squeezed the switch and the three window rows
 // into one line. Pure CSS, asserted at the source level.
@@ -46,7 +54,8 @@ ok(
 ok(styles.includes(".settings-field--opencode-usage .settings-field__control > .set-seg") && styles.includes("width: fit-content"), "switch keeps its natural width on its own row");
 ok(styles.includes("min-width: 4ch") && styles.includes(".opencode-go-usage__percent"), "window percent column carries a fixed alignment slot");
 ok(styles.includes(".opencode-go-usage__refresh") && styles.includes("align-self: flex-end"), "refresh button sits flush right");
-ok(panel.includes('| "opencodeGoUsage"'), "the detail-card union includes the id");
+ok(panel.includes('{selected === "usageMonitoring" && (') && !panel.includes('| "opencodeGoUsage"'),
+  "任务 783：the standalone pane id is retired — the card lives inside the usageMonitoring merged card (member row, union id dropped)");
 ok(panel.includes("Boolean(s.experimentalOpenCodeGoUsage)") && panel.includes("<SettingsOpenCodeGoUsageCard"),
   "the detail card renders the component gated by the switch value");
 ok(bridge.includes("GetOpenCodeGoUsage(baseUrl: string): Promise<") && bridge.includes("SetExperimentalOpenCodeGoUsage(enabled: boolean): Promise<void>;"),

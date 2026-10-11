@@ -67,13 +67,20 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 742：tabManagement（标签页管理合并卡，纯前端容器 id，无配置键）与
   // heartbeatBackground（心跳任务后台化，默认关）按可选档入表——可选
   // 22→24、总数 51→53（Go 渲染表只收 heartbeatBackground → 51）。
-  // 任务 785：baseProcess（S1 常驻底座开关）随退役出表——未稳定 13→12、
-  // 总数 53→52（Go 渲染表 51→50，两侧同源对齐）。
-  ok(counts.recommended === 15 && counts.optional === 24 && counts.unstable === 12 && counts.retired === 1,
-    `register counts are 15/24/12/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 52, `register holds exactly 52 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 15 && LAB_TIER_COUNTS.optional === 24 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 15/24/12/1");
+  // 任务 782：界面组三张条目级合并卡容器 id 入表——searchHistory（三成员
+  // 两推荐一可选 → 推荐档）、inputSelection / viewLayout（全可选成员 →
+  // 可选档）——推荐 15→16、可选 24→26、总数 53→56（Go 渲染表无条目，
+  // 纯前端容器同 tabManagement 豁免 → Go 侧仍 51）。
+  // 任务 783：「用量监测」卡容器 + GLM Plan 用量子项入表（推荐×2）→
+  // 推荐 16→18、总数 56→58；同任务④编辑读回（toolOptimizations）随 22.5
+  // 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。
+  // 任务 785：baseProcess（S1 常驻底座开关）随底座退役出表——未稳定
+  // 12→11、总数 58→57（合并线依 Go 表A 12/50 同源实跑对齐）。
+  ok(counts.recommended === 19 && counts.optional === 26 && counts.unstable === 11 && counts.retired === 1,
+    `register counts are 19/26/11/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 57, `register holds exactly 57 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 11 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 19/26/11/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -112,7 +119,7 @@ console.log("\ntask 562 lab three-tier badges");
   const feOnly = feIds.filter((id) => !goIds.includes(id));
   ok(JSON.stringify(goOnly) === JSON.stringify(["sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
-  ok(JSON.stringify(feOnly) === JSON.stringify(["heartbeatRotation", "modelCapabilityFilter", "tabManagement"]),
+  ok(JSON.stringify(feOnly) === JSON.stringify(["glmPlanUsage", "heartbeatRotation", "inputSelection", "modelCapabilityFilter", "searchHistory", "tabManagement", "usageMonitoring", "viewLayout"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
@@ -128,13 +135,17 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 722：sessionCollabAutoFold 并入 sessionCollab、compactModel +
   // messageMerge 并入 safetyCostControl、727 heartbeatRotation 入卡——
   // 成员总数 17→19；点2 modelStrategy 成员表去掉 modelCapabilityFilter。
-  ok(members.length === 19, `merged cards carry 19 member features (got ${members.length})`);
+  // 任务 782：viewLayout(+2)、searchHistory(+3)、inputSelection(+2)——
+  // 成员总数 19→26。任务 783：用量监测卡 glmPlanUsage + opencodeGoUsage
+  // ——成员总数 26→28。
+  ok(members.length === 28, `merged cards carry 28 member features (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 704：trajectoryView 入表 → 50；任务 727 heartbeatRotation → 51；
-  // 任务 742 tabManagement + heartbeatBackground → 53；任务 785 baseProcess
-  // 退役 → 52。
-  ok(covered.size === 52, "rail entries cover all 52 features");
+  // 任务 742 tabManagement + heartbeatBackground → 53；任务 782 三容器 → 56；
+  // 任务 783 用量监测容器+子项 → 58；任务 785 baseProcess 退役 → 57。
+  ok(covered.size === 57, "rail entries cover all 57 features");
+
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
@@ -164,6 +175,19 @@ console.log("\ntask 562 lab three-tier badges");
   ok(agg("updateFeedback") === "recommended", `updateFeedback aggregates to 推荐 (got ${String(agg("updateFeedback"))})`);
   ok(agg("sessionStore") === "optional", `sessionStore aggregates to 可选 over its unstable member (got ${String(agg("sessionStore"))})`);
   ok(agg("devDebug") === "unstable", `devDebug aggregates to 未稳定 (got ${String(agg("devDebug"))})`);
+  // 任务 782：界面组三张合并卡逐卡钉聚合终值——容器徽章 = 成员最高档
+  // （searchHistory 三成员 [推荐,推荐,可选] → 推荐；viewLayout / inputSelection
+  // 全可选成员 → 可选）。
+  ok(JSON.stringify(railTiersForDefault("searchHistory")) === JSON.stringify(["recommended", "optional"]) && agg("searchHistory") === "recommended",
+    `searchHistory: input [推荐,推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("searchHistory"))} → ${String(agg("searchHistory"))})`);
+  ok(JSON.stringify(railTiersForDefault("viewLayout")) === JSON.stringify(["optional"]) && agg("viewLayout") === "optional",
+    `viewLayout: all-optional members aggregate to 可选 (got ${JSON.stringify(railTiersForDefault("viewLayout"))})`);
+  ok(JSON.stringify(railTiersForDefault("inputSelection")) === JSON.stringify(["optional"]) && agg("inputSelection") === "optional",
+    `inputSelection: all-optional members aggregate to 可选 (got ${JSON.stringify(railTiersForDefault("inputSelection"))})`);
+  // 任务 783：用量监测卡——GLM Plan 用量（推荐）+ OpenCode Go 用量（未稳定）
+  // 聚合出单枚推荐徽章。
+  ok(JSON.stringify(railTiersForDefault("usageMonitoring")) === JSON.stringify(["recommended", "unstable"]) && agg("usageMonitoring") === "recommended",
+    `usageMonitoring: input [推荐,未稳定] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("usageMonitoring"))} → ${String(agg("usageMonitoring"))})`);
   // 已退役垫底：合成布局钉「已退役」永不顶掉更强档位（默认布局已无 retired
   // 成员卡——722 点2 移除；此规则由合成数据守护，防止未来回填时翻转）。
   const synthetic: LabLayoutData = {

@@ -100,8 +100,8 @@ const paneIds = new Set<string>();
     "the panel imports the param binding registry");
   ok(paneIds.has("idleReleaseMinutes") && paneIds.has("goMemLimit"),
     "both param card ids are in the pane whitelist");
-  ok(panel.includes('| "idleReleaseMinutes"\n  | "goMemLimit";'),
-    "both param card ids are in the pane union");
+  ok(panel.includes('| "idleReleaseMinutes"\n  | "goMemLimit"') && panel.includes('| "usageMonitoring";'),
+    "both param card ids are in the pane union (783 appends usageMonitoring after them)");
 }
 
 // ── ① 机制安全网：参数卡引用越界 ⇒ 整份回退默认 ──

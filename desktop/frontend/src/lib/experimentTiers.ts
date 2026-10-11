@@ -87,7 +87,23 @@ export type TierFeatureId =
   | "tabManagement"
   // 任务 742: 心跳任务后台化（默认关；开启后心跳触发不进标签栏，复用
   // 264 detached 语义）。落 config.toml，Go 渲染表同档登记。
-  | "heartbeatBackground";
+  | "heartbeatBackground"
+  // 任务 782: 界面组三张条目级合并卡（742 tabManagement 先例）——
+  // searchHistory（检索与历史：promptHistoryPicker+questionSearch+autoLoadOlder）、
+  // inputSelection（输入与选区：draftPersistence+selectionActions）、
+  // viewLayout（视图布局：splitView+trajectoryView）。纯前端 rail 容器
+  // id——没有自有配置键，卡内各行各写各的键；Go 渲染表无条目（562 测试 ③
+  // 的前端独有豁免，同 tabManagement）。
+  | "searchHistory"
+  | "inputSelection"
+  | "viewLayout"
+  // 任务 783: 可观测性组「用量监测」合并卡容器 id（纯前端，无配置键）+
+  // GLM Plan 用量子项（PlanUsageCard 已上线、provider 解析显示，无开关——
+  // 展示行）。coding plan preset 家族（GLM CN / Z.AI Global / Qwen CN·Global /
+  // Kimi 等 7+ 家）未来按需以成员身份扩展（布局 members 加行即可，Go 渲染
+  // 表无条目，同 tabManagement 豁免）。
+  | "usageMonitoring"
+  | "glmPlanUsage";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -144,6 +160,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── observability（可观测性，2 项）───────────────────────────
   monitoring: "recommended",
   subagentTps: "optional",
+  // 任务 783：「用量监测」合并卡容器档 = 成员最高档（GLM Plan 用量=推荐、
+  // OpenCode Go 用量=未稳定 → 推荐）。coding plan 架构子项按需扩展。
+  usageMonitoring: "recommended",
+  // 任务 783：GLM Plan 用量子项（PlanUsageCard 已上线，287 provider 解析
+  // 显示、666 显示条件）——已上线能力按推荐档登记（无开关，展示行）。
+  glmPlanUsage: "recommended",
   // ── dev-debug（开发调试，2 项）───────────────────────────────
   cdpDebugPort: "unstable",
   lifecycleNoiseGate: "unstable",
@@ -158,7 +180,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   orphanHandling: "unstable",
   localServer: "unstable",
   // ── tool-opt（工具优化，1 项）────────────────────────────────
-  toolOptimizations: "unstable",
+  // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
+  // （Go 渲染表同步升档，562 两侧一致断言守护）。
+  toolOptimizations: "recommended",
   // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
   // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
   heartbeatRotation: "optional",
@@ -169,6 +193,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 742：心跳任务后台化（默认关）。按 550 口径定可选——不开启不影响
   // 任何调度行为，只是心跳会话照旧出现在标签栏。
   heartbeatBackground: "optional",
+  // 任务 782：界面组三张条目级合并卡的容器档 = 卡内成员最高档（774 聚合
+  // 语义同源：searchHistory 三成员 两推荐一可选 → 推荐；inputSelection /
+  // viewLayout 全可选成员 → 可选）。合并是入口层组织，不降级任何成员特性。
+  searchHistory: "recommended",
+  inputSelection: "optional",
+  viewLayout: "optional",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
@@ -184,12 +214,16 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 任务 727：heartbeatRotation（心跳会话轮换，桥接 JSON 键）入表，可选
  * 21→22、总数 50→51。任务 742：tabManagement（标签页管理合并卡，纯前端
  * 容器 id）与 heartbeatBackground（心跳任务后台化，默认关）入表，可选
- * 22→24、总数 51→53。任务 785：baseProcess（S1 常驻底座开关）随退役出表，
- * 未稳定 13→12、总数 53→52。) */
+ * 22→24、总数 51→53。任务 782：界面组三张合并卡容器 id 入表（searchHistory
+ * 推荐 + inputSelection / viewLayout 可选），推荐 15→16、可选 24→26、
+ * 总数 53→56。任务 783：可观测性组「用量监测」卡容器 + GLM Plan 用量子项
+ * 入表（推荐×2），推荐 16→18、总数 56→58；同任务编辑读回（toolOptimizations）
+ * 随 22.5 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。任务 785：
+ * baseProcess（S1 常驻底座开关）随底座退役出表，未稳定 12→11、总数 58→57。） */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  recommended: 15,
-  optional: 24,
-  unstable: 12,
+  recommended: 19,
+  optional: 26,
+  unstable: 11,
   retired: 1,
 };
 
@@ -247,11 +281,15 @@ export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, reado
   // 任务 742：自适应压缩并入「标签页管理」卡——设置位置指到新卡。
   tabCompress: ["settings.labGroup.ui", "settings.tabManagement"],
   todoSidebar: ["settings.labGroup.ui", "settings.todoSidebar"],
-  promptHistoryPicker: ["settings.labGroup.ui", "settings.promptHistoryPicker"],
+  // 任务 782：检索与历史合并卡——历史提问选择器成员的设置位置指到新卡
+  // （742 tabCompress → tabManagement 同款）。
+  promptHistoryPicker: ["settings.labGroup.ui", "settings.searchHistory"],
   restartUpdate: ["settings.labGroup.ui", "settings.updateFeedback"],
-  splitView: ["settings.labGroup.ui", "settings.splitView"],
+  // 任务 782：分栏并入「视图布局」卡——设置位置指到新卡。
+  splitView: ["settings.labGroup.ui", "settings.viewLayout"],
   subagentPanel: ["settings.labGroup.ui", "settings.subagentSuite"],
-  selectionActions: ["settings.labGroup.ui", "settings.selectionActions"],
+  // 任务 782：选区快捷操作并入「输入与选区」卡——设置位置指到新卡。
+  selectionActions: ["settings.labGroup.ui", "settings.inputSelection"],
   completionSummary: ["settings.labGroup.ui", "settings.completionSummary"],
   // ── observability（可观测性）─────────────────────────────────
   monitoring: ["settings.labGroup.observability", "settings.monitoring"],

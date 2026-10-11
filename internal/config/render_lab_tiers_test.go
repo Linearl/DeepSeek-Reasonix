@@ -180,11 +180,14 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 15 / 可选 22 / 未稳定 14 / 已退役 0 = 51.
+// register must stay exactly 推荐 16 / 可选 22 / 未稳定 12 / 已退役 0 = 50（任务 785 baseProcess 出表后）.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
-		LabTierRecommended: 15,
+		// 任务 783④：toolOptimizations（编辑读回 readBack）随 22.5 交付
+		// 转正，未稳定→推荐（前端注册表同步升档）——推荐 15→16、未稳定
+		// 14→13，总数不变 51。
+		LabTierRecommended: 16,
 		// 任务 517：B1/B2/B3（可选×3）合并为 safetyCostControl（可选×1），
 		// 可选 20→18、总数 48→46。任务 705（sessionCollabAutoFold，超长跨
 		// 会话消息自动折叠，默认关）按可选档入表（18→19、47→48）。任务 707
@@ -200,7 +203,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// 任务 603（toolOptimizations，「工具优化」族首件）同为快照后新增，
 		// 用户定档未稳定。任务 677（collabGroupView，群聊入口开关，409 交付
 		// 漏挂铁律 2 开关）同为快照后新增，用户定档未稳定（46→47）。
-		LabTierUnstable: 14,
+		// 任务 783④：toolOptimizations 转正（14→13）。任务 785：baseProcess
+		// （S1 常驻底座开关）随底座退役出表（13→12，总数 51→50）。
+		LabTierUnstable: 12,
 		LabTierRetired:  0,
 	}
 	got := map[LabTier]int{}
@@ -222,7 +227,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 51 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 51", len(labFeatureTiers))
+	if len(labFeatureTiers) != 50 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 50", len(labFeatureTiers))
 	}
 }

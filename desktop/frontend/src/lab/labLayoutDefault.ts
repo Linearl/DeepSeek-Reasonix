@@ -152,9 +152,32 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // 默认档；卡徽章可选。卡内两行各自读自己的键、写自己的 setter
         // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。
         { id: "tabManagement", labelKey: "settings.tabManagement", tier: "optional", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] },
-        { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional", onKeys: ["experimentalTrajectoryView"] },
+        // 任务 782：视图布局（合并卡，742 先例）——分栏 + 轨迹视图。容器档
+        // =成员最高档（可选）；卡内两行各读各键各写各 setter，配置键零变化。
+        {
+          id: "viewLayout",
+          labelKey: "settings.viewLayout",
+          tier: "optional",
+          onKeys: ["experimentalSplitView", "experimentalTrajectoryView"],
+          members: [
+            { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
+            { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
+          ],
+        },
         { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },
-        { id: "promptHistoryPicker", labelKey: "settings.promptHistoryPicker", tier: "recommended", onKeys: ["experimentalPromptHistoryPicker"] },
+        // 任务 782：检索与历史（合并卡）——历史提问选择器 + 搜索历史提问 +
+        // 自动加载更早消息。容器档 =成员最高档（推荐）。
+        {
+          id: "searchHistory",
+          labelKey: "settings.searchHistory",
+          tier: "recommended",
+          onKeys: ["experimentalPromptHistoryPicker", "experimentalQuestionSearch", "experimentalAutoLoadOlder"],
+          members: [
+            { id: "promptHistoryPicker", labelKey: "settings.promptHistoryPicker", tier: "recommended" },
+            { id: "questionSearch", labelKey: "settings.questionSearch", tier: "recommended" },
+            { id: "autoLoadOlder", labelKey: "settings.autoLoadOlder", tier: "optional" },
+          ],
+        },
         { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended", onKeys: ["experimentalSessionWall"] },
         {
           id: "subagentSuite",
@@ -172,13 +195,20 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "subagentTps", labelKey: "settings.subagentTps", tier: "optional" },
           ],
         },
+        // 任务 782 验收⑤：任务完成摘要保持独立（Go 用量迁出后无合并对象）。
         { id: "completionSummary", labelKey: "settings.completionSummary", tier: "optional", onKeys: ["experimentalCompletionSummary"] },
-        { id: "autoLoadOlder", labelKey: "settings.autoLoadOlder", tier: "optional", onKeys: ["experimentalAutoLoadOlder"] },
-        { id: "splitView", labelKey: "settings.splitView", tier: "optional", onKeys: ["experimentalSplitView"] },
-        { id: "draftPersistence", labelKey: "settings.draftPersistence", tier: "optional", onKeys: ["experimentalComposerDraft"] },
-        { id: "selectionActions", labelKey: "settings.selectionActions", tier: "optional", onKeys: ["experimentalSelectionActions"] },
-        { id: "questionSearch", labelKey: "settings.questionSearch", tier: "recommended", onKeys: ["experimentalQuestionSearch"] },
-        { id: "opencodeGoUsage", labelKey: "settings.opencodeGoUsage", tier: "unstable", onKeys: ["experimentalOpenCodeGoUsage"] },
+        // 任务 782：输入与选区（合并卡）——草稿持久化 + 选区快捷操作。容器
+        // 档 =成员最高档（可选）。
+        {
+          id: "inputSelection",
+          labelKey: "settings.inputSelection",
+          tier: "optional",
+          onKeys: ["experimentalComposerDraft", "experimentalSelectionActions"],
+          members: [
+            { id: "draftPersistence", labelKey: "settings.draftPersistence", tier: "optional" },
+            { id: "selectionActions", labelKey: "settings.selectionActions", tier: "optional" },
+          ],
+        },
         {
           id: "updateFeedback",
           labelKey: "settings.updateFeedback",
@@ -188,6 +218,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "feedback", labelKey: "settings.feedback", tier: "optional" },
           ],
         },
+        // 任务 782④：opencodeGoUsage 迁出界面组（→任务 783 可观测性组
+        // 「用量监测」卡成员；迁出瞬间 pane 分支保留，入口随 783 落卡恢复）。
       ],
     },
     {
@@ -199,6 +231,22 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.monitoring",
           tier: "recommended",
           onKeys: ["experimentalSessionMonitor", "experimentalPerfMonitor"],
+        },
+        // 任务 783：「用量监测」合并卡（coding plan 用量架构）——GLM Plan
+        // 用量（PlanUsageCard 已上线，provider 解析显示，无开关展示行）+
+        // OpenCode Go 用量（自界面组迁入，782④ 同一动作的落卡半程）。
+        // 扩展点：coding plan preset 家族（GLM CN / Z.AI Global / Qwen
+        // CN·Global / Kimi 等 7+ 家）未来按需在 members 加行即成一子项，
+        // 不改容器结构；卡灯 = OpenCode Go 开关（家族唯一非默认键）。
+        {
+          id: "usageMonitoring",
+          labelKey: "settings.usageMonitoring",
+          tier: "recommended",
+          onKeys: ["experimentalOpenCodeGoUsage"],
+          members: [
+            { id: "glmPlanUsage", labelKey: "settings.glmPlanUsage", tier: "recommended" },
+            { id: "opencodeGoUsage", labelKey: "settings.opencodeGoUsage", tier: "unstable" },
+          ],
         },
       ],
     },
@@ -232,18 +280,22 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         },
         // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
         // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
+        // 任务 781：补 tier——闲置释放=recommended（rail 显推荐徽章）。
         {
           id: "idleReleaseMinutes",
           labelKey: "settings.detachedIdleRelease",
           kind: "param",
+          tier: "recommended",
           onKeys: [],
           fields: [{ id: "detachedIdleReleaseMinutes", input: "number" }],
         },
         // 任务 775：Go 软内存上限（308-O3）——参数卡（无开关）。
+        // 任务 781：补 tier——软内存上限=optional（rail 显可选徽章）。
         {
           id: "goMemLimit",
           labelKey: "settings.goMemLimit",
           kind: "param",
+          tier: "optional",
           onKeys: [],
           fields: [{ id: "goMemLimitMB", input: "number" }],
         },
@@ -265,7 +317,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "tool-opt",
       labelKey: "settings.labGroup.toolOpt",
       entries: [
-        { id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "unstable", onKeys: ["experimentalToolOptimizations"] },
+        // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
+        // （注册表与 Go 渲染表同步升档；562 drift 检查钉两侧一致）。
+        { id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "recommended", onKeys: ["experimentalToolOptimizations"] },
       ],
     },
   ],
