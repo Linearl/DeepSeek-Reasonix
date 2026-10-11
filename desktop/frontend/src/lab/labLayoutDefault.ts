@@ -232,6 +232,22 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           tier: "recommended",
           onKeys: ["experimentalSessionMonitor", "experimentalPerfMonitor"],
         },
+        // 任务 783：「用量监测」合并卡（coding plan 用量架构）——GLM Plan
+        // 用量（PlanUsageCard 已上线，provider 解析显示，无开关展示行）+
+        // OpenCode Go 用量（自界面组迁入，782④ 同一动作的落卡半程）。
+        // 扩展点：coding plan preset 家族（GLM CN / Z.AI Global / Qwen
+        // CN·Global / Kimi 等 7+ 家）未来按需在 members 加行即成一子项，
+        // 不改容器结构；卡灯 = OpenCode Go 开关（家族唯一非默认键）。
+        {
+          id: "usageMonitoring",
+          labelKey: "settings.usageMonitoring",
+          tier: "recommended",
+          onKeys: ["experimentalOpenCodeGoUsage"],
+          members: [
+            { id: "glmPlanUsage", labelKey: "settings.glmPlanUsage", tier: "recommended" },
+            { id: "opencodeGoUsage", labelKey: "settings.opencodeGoUsage", tier: "unstable" },
+          ],
+        },
       ],
     },
     {
@@ -301,7 +317,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "tool-opt",
       labelKey: "settings.labGroup.toolOpt",
       entries: [
-        { id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "unstable", onKeys: ["experimentalToolOptimizations"] },
+        // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
+        // （注册表与 Go 渲染表同步升档；562 drift 检查钉两侧一致）。
+        { id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "recommended", onKeys: ["experimentalToolOptimizations"] },
       ],
     },
   ],

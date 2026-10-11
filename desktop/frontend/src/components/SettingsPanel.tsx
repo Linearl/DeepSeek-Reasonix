@@ -28,7 +28,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Check, FlaskConical, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Trash2, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Activity, Check, FlaskConical, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -1885,9 +1885,9 @@ type ExperimentFeatureId =
   // sessionCollabAutoFold 并入 sessionCollab 卡（成员，无独立 pane）——两个
   // id 从 pane union 摘除，卡片行/徽章走布局数据的成员登记。
   // Task 265 lab intake (9 fork features) + task 262 quick commands.
-  // Task 163: OpenCode Go subscription usage card.
+  // Task 163: OpenCode Go subscription usage card——任务 783：opencodeGoUsage
+  // 独立 pane 退役，作为「用量监测」卡成员行（union id 同步摘除，742 先例）。
   | "quickCommands"
-  | "opencodeGoUsage"
   // Task 231: managed-path pre-approval (master switch + four checkboxes).
   // Task 364 folded the entry into the autopilot card but the id stays in
   // this union (561 did NOT fold it — restored by the 561 follow-up after
@@ -1929,13 +1929,16 @@ type ExperimentFeatureId =
   // 任务 775: kind:param 参数卡 id——无硬编码 pane，pane 走通用参数渲染器
   // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
   | "idleReleaseMinutes"
-  | "goMemLimit";
+  | "goMemLimit"
+  // 任务 783：「用量监测」合并卡（可观测性组）——GLM Plan 用量 + OpenCode
+  // Go 用量（opencodeGoUsage 独立 pane 并入此卡，742 先例）。
+  | "usageMonitoring";
 
 // 任务 724：pane 白名单——布局文档（yaml/默认）里的 entry.id 必须在此登记
 // （一个 id 一个可点开的卡片分支）；yaml 引用白名单外的 id ⇒ 整份回退默认
-// （防半份数据渲染/白屏）。任务 782 后 33 个 id 与布局一一对应（722 后 37 →
-// 782 三张合并卡 -7 独立 pane +3 容器 id；opencodeGoUsage 迁出布局但 pane
-// id 保留——783 用量监测卡落卡时恢复入口）。
+// （防半份数据渲染/白屏）。任务 783 后仍 33 个 id（-opencodeGoUsage
+// +usageMonitoring）与布局一一对应（722 后 37 → 782 三张合并卡 -7 独立
+// pane +3 容器 id → 33）。
 const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "autopilot",
   "sessionCollab",
@@ -1958,7 +1961,7 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "subagentSuite",
   "completionSummary",
   "inputSelection",
-  "opencodeGoUsage",
+  "usageMonitoring",
   "updateFeedback",
   "monitoring",
   "devDebug",
@@ -4428,16 +4431,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </>
             </>
           )}
-          {/* Task 364: the managed-path pre-approval block moved into the
-              autopilot card (single entry — see the sub-block there). */}
-          {selected === "opencodeGoUsage" && (
-            <ErrorBoundary>
-              <SettingsOpenCodeGoUsageCard
-                enabled={Boolean(s.experimentalOpenCodeGoUsage)}
-                busy={busy}
-                onToggle={(on) => void apply(() => app.SetExperimentalOpenCodeGoUsage(on))}
-              />
-            </ErrorBoundary>
+          {/* 任务 783：用量监测（可观测性组合并卡，742 先例）——GLM Plan
+              用量（已上线只读展示行）+ OpenCode Go 用量（开关+查询详情）。
+              成员行各归各键：GLM 行无键（provider 解析显示）；Go 行读写
+              experimentalOpenCodeGoUsage。侧栏显示在 ContextPanel 的
+              OpenCodeGoUsageSidebarCard（与 GLM 卡同体系同视觉）。coding
+              plan preset 家族未来按需加成员行（布局 members 即扩展点）。 */}
+          {selected === "usageMonitoring" && (
+            <>
+              <SettingsField label={labLabel("usageMonitoring", t("settings.usageMonitoring"))} hint={t("settings.usageMonitoringHint")} icon={<Activity size={18} />} stacked>{null}</SettingsField>
+              <SettingsField label={labLabel("glmPlanUsage", t("settings.glmPlanUsage"))} hint={t("settings.glmPlanUsageHint")} icon={<Activity size={18} />} stacked>
+                <p className="settings-field__hint-line">{t("settings.glmPlanUsageHint")}</p>
+              </SettingsField>
+              <ErrorBoundary>
+                <SettingsOpenCodeGoUsageCard
+                  enabled={Boolean(s.experimentalOpenCodeGoUsage)}
+                  busy={busy}
+                  onToggle={(on) => void apply(() => app.SetExperimentalOpenCodeGoUsage(on))}
+                />
+              </ErrorBoundary>
+            </>
           )}
           {/* 任务 782：输入与选区（合并卡，742 先例）——草稿持久化 + 选区
               快捷操作条目级合并。两行各读各的键、各写各的 setter；行级徽章

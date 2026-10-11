@@ -97,7 +97,14 @@ export type TierFeatureId =
   // 的前端独有豁免，同 tabManagement）。
   | "searchHistory"
   | "inputSelection"
-  | "viewLayout";
+  | "viewLayout"
+  // 任务 783: 可观测性组「用量监测」合并卡容器 id（纯前端，无配置键）+
+  // GLM Plan 用量子项（PlanUsageCard 已上线、provider 解析显示，无开关——
+  // 展示行）。coding plan preset 家族（GLM CN / Z.AI Global / Qwen CN·Global /
+  // Kimi 等 7+ 家）未来按需以成员身份扩展（布局 members 加行即可，Go 渲染
+  // 表无条目，同 tabManagement 豁免）。
+  | "usageMonitoring"
+  | "glmPlanUsage";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -154,6 +161,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── observability（可观测性，2 项）───────────────────────────
   monitoring: "recommended",
   subagentTps: "optional",
+  // 任务 783：「用量监测」合并卡容器档 = 成员最高档（GLM Plan 用量=推荐、
+  // OpenCode Go 用量=未稳定 → 推荐）。coding plan 架构子项按需扩展。
+  usageMonitoring: "recommended",
+  // 任务 783：GLM Plan 用量子项（PlanUsageCard 已上线，287 provider 解析
+  // 显示、666 显示条件）——已上线能力按推荐档登记（无开关，展示行）。
+  glmPlanUsage: "recommended",
   // ── dev-debug（开发调试，2 项）───────────────────────────────
   cdpDebugPort: "unstable",
   lifecycleNoiseGate: "unstable",
@@ -169,7 +182,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   orphanHandling: "unstable",
   localServer: "unstable",
   // ── tool-opt（工具优化，1 项）────────────────────────────────
-  toolOptimizations: "unstable",
+  // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
+  // （Go 渲染表同步升档，562 两侧一致断言守护）。
+  toolOptimizations: "recommended",
   // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
   // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
   heartbeatRotation: "optional",
@@ -203,11 +218,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 容器 id）与 heartbeatBackground（心跳任务后台化，默认关）入表，可选
  * 22→24、总数 51→53。任务 782：界面组三张合并卡容器 id 入表（searchHistory
  * 推荐 + inputSelection / viewLayout 可选），推荐 15→16、可选 24→26、
- * 总数 53→56。） */
+ * 总数 53→56。任务 783：可观测性组「用量监测」卡容器 + GLM Plan 用量子项
+ * 入表（推荐×2），推荐 16→18、总数 56→58；同任务编辑读回（toolOptimizations）
+ * 随 22.5 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。） */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  recommended: 16,
+  recommended: 19,
   optional: 26,
-  unstable: 13,
+  unstable: 12,
   retired: 1,
 };
 

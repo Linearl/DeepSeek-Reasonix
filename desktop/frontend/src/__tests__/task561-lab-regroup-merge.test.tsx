@@ -9,7 +9,7 @@
 //  ③ M8 keeps standalone entries: autopilot / sessionCollab / monitoring /
 //     fullAccess / optimisticParallel each still has its own rail entry and
 //     its own pane branch;
-//  ④ the rail carries exactly 34 entries in 8 groups — 任务 722 后为
+//  ④ the rail carries exactly 35 entries in 8 groups — 任务 722 后为
 //     4/8/15/1/1/1/6/1（safetyCostControl 自 automation 迁 efficiency 并吸收
 //     messageMerge；sessionCollabAutoFold 并入 sessionCollab；727
 //     heartbeatRotation 以成员入 safetyCostControl，不占 rail 入口）；
@@ -17,8 +17,11 @@
 //     ui 组 tab 二开关合并为 tabManagement——一增一减总数不变）；
 //     任务 775 后为 5/8/14/1/1/3/6/1=39（存储组增两张 kind:param 参数卡）；
 //     任务 782 后为 5/8/9/1/1/3/6/1=34（界面组三张条目级合并卡：
-//     searchHistory/inputSelection/viewLayout 七独立入口并三卡净 -5；
-//     opencodeGoUsage 迁出界面组 → 783 可观测性组用量监测卡）。
+//     searchHistory/inputSelection/viewLayout 七独立入口并三卡 -5；
+//     opencodeGoUsage 迁出界面组 → 783 可观测性组用量监测卡）；
+//     任务 783 后为 5/8/9/2/1/3/6/1=35（可观测性组增「用量监测」卡：
+//     GLM Plan 用量 + OpenCode Go 用量，opencodeGoUsage 独立 pane 退役为
+//     成员行）。
 //     任务 722/724：render table 移交布局默认数据（labLayoutDefault.ts），
 //     分组/成员/徽章/排序由 lab-layout.yaml（校验回退默认）驱动——本测试的
 //     分组断言读布局数据与 yaml，卡片独立性断言仍读 SettingsPanel 源。
@@ -67,11 +70,12 @@ console.log("\ntask 561 lab regroup + merged cards");
     "built-in default layout mirrors the same group order (fallback = same face)");
 }
 
-// ① rail census（任务 782 修订）：恰好 34 个 rail 入口，组分布
-// 5/8/9/1/1/3/6/1（782：界面组 promptHistoryPicker+questionSearch+
-// autoLoadOlder 并为 searchHistory、draftPersistence+selectionActions 并为
-// inputSelection、splitView+trajectoryView 并为 viewLayout——七独立入口并
-// 三卡净 -5；opencodeGoUsage 迁出界面组待 783 落用量监测卡；775：存储组增
+// ① rail census（任务 783 修订）：恰好 35 个 rail 入口，组分布
+// 5/8/9/2/1/3/6/1（783：可观测性组增「用量监测」卡——GLM Plan 用量 +
+// OpenCode Go 用量，opencodeGoUsage 独立 pane 退役为成员行；782：界面组
+// promptHistoryPicker+questionSearch+autoLoadOlder 并为 searchHistory、
+// draftPersistence+selectionActions 并为 inputSelection、splitView+
+// trajectoryView 并为 viewLayout——七独立入口并三卡净 -5；775：存储组增
 // 两张 kind:param 参数卡；742：automation 增 heartbeatBackground 入口；
 // 722：safetyCostControl 迁提效并吸收 messageMerge 入口）。
 // 数据源 = 布局默认数据 + yaml（两份必须同构）。
@@ -79,7 +83,7 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 直接导入布局数据模块数真数据（比源码正则稳）。
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
-  ok(defEntries.length === 34, `default layout carries exactly 34 rail entries (got ${defEntries.length})`);
+  ok(defEntries.length === 35, `default layout carries exactly 35 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -87,11 +91,11 @@ console.log("\ntask 561 lab regroup + merged cards");
     `yaml and built-in default list the same entries in the same order (yaml ${yamlEntries.length})`);
   const groups: Record<string, number> = {};
   for (const g of LAB_LAYOUT_DEFAULT_DATA.groups) groups[(g as { key: string }).key] = g.entries.length;
-  // 任务 782：ui 14→9（三张合并卡 -7+3、opencodeGoUsage 迁出）→ 总数 34。
+  // 任务 783：observability 1→2（用量监测卡落组）→ 总数 35。
   ok(groups["automation"] === 5 && groups["efficiency"] === 8 && groups["ui"] === 9 &&
-     groups["observability"] === 1 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 6 &&
+     groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 6 &&
      groups["tool-opt"] === 1,
-    `group counts are 5/8/9/1/1/3/6/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 5/8/9/2/1/3/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -160,6 +164,12 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   { id: "inputSelection", endMarker: '{selected === "completionSummary" && (', members: [
     { label: "782 draftPersistence", field: "s.experimentalComposerDraft", setter: "app.SetExperimentalComposerDraft(on)" },
     { label: "782 selectionActions", field: "s.experimentalSelectionActions", setter: "app.SetExperimentalSelectionActions(on)" },
+  ] },
+  // 任务 783：用量监测卡——GLM Plan 行只读（无键）；Go 用量成员行经
+  // SettingsOpenCodeGoUsageCard 读自己的开关键、写自己的 setter。
+  { id: "usageMonitoring", endMarker: '{selected === "quickCommands" && (', members: [
+    { label: "783 opencodeGoUsage", field: "s.experimentalOpenCodeGoUsage", setter: "app.SetExperimentalOpenCodeGoUsage(on)" },
+    { label: "783 glmPlanUsage (read-only row)", field: "settings.glmPlanUsageHint", setter: "" },
   ] },
 ];
 
@@ -233,6 +243,9 @@ for (const id of [
   "autoLoadOlder",
   "draftPersistence",
   "selectionActions",
+  // 任务 783：opencodeGoUsage 独立入口/pane/union id 摘除（用量监测卡成员行
+  // 承载，SettingsOpenCodeGoUsageCard 整体搬入卡内）。
+  "opencodeGoUsage",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);
@@ -243,6 +256,8 @@ for (const id of [
   "devDebug", "updateFeedback", "sessionStore",
   // 任务 782：三张合并卡容器 id 进 union。
   "viewLayout", "searchHistory", "inputSelection",
+  // 任务 783：用量监测容器 id 进 union。
+  "usageMonitoring",
 ]) {
   ok(panel.includes(`| "${id}"`), `union gains the family id ${id}`);
 }

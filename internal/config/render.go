@@ -118,7 +118,7 @@ var labFeatureTiers = []labFeatureTier{
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
 	// ── tool-opt（工具优化，1 项）────────────────────────────────
-	{"toolOptimizations", LabTierUnstable, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动），用户定档未稳定
+	{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动）；任务 783④：编辑读回（readBack）随 22.5 交付转正，未稳定→推荐（前端注册表同步升档，562 两侧一致断言守护）
 }
 
 // labNonFeatureKeys：渲染表里存在、但不属于表A 46 项的实验室族键（豁免门禁，

@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabGroupView" | "trajectoryView";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabGroupView" | "trajectoryView" | "opencodeGoUsage";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -34,6 +34,10 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // renders exactly the pre-704 layout and the transcript is the only surface;
   // a flip applies on settings save (no restart).
   trajectoryView: false,
+  // 任务 783: OpenCode Go usage sidebar gate ships off (163 前端门 extended to
+  // the right-dock card — while off the card renders nothing and issues no
+  // network call); a flip applies on settings save (no restart).
+  opencodeGoUsage: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -62,7 +66,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabGroupView=${flags.collabGroupView} trajectoryView=${flags.trajectoryView}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabGroupView=${flags.collabGroupView} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage}`,
   );
   for (const listener of listeners) listener();
 }

@@ -12,6 +12,7 @@ import type { BalanceInfo, ContextInfo, ContextPanelInfo, UsageSourceStats, Wire
 import { contextSessionCache } from "../lib/contextSessionCache";
 import { ContextBudgetCard, resolveContextBudget } from "./ContextBudgetCard";
 import { PlanUsageCard } from "./PlanUsageCard";
+import { OpenCodeGoUsageSidebarCard } from "./OpenCodeGoUsageSidebarCard";
 import type { Item } from "../lib/useController";
 import { contextWindowStatus, formatCacheHitRate } from "../lib/contextPanelUtils";
 import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
@@ -701,6 +702,10 @@ export function ContextPanel({
               the tab's CURRENT model resolves to a plan-capable provider (the
               Go side answers unsupported for anything else). */}
           <PlanUsageCard tabId={tabId} />
+          {/* 任务 783: OpenCode Go usage rides the same PlanUsageCard 体系 —
+              rendered right below the GLM plan card with the same plan-usage
+              visual; its own lab switch gates it (off = no DOM, no fetch). */}
+          <OpenCodeGoUsageSidebarCard />
           <Suspense fallback={null}>
             <McpListLayers items={items} t={t} />
           </Suspense>
