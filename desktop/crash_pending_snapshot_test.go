@@ -20,7 +20,7 @@ func TestPendingCrashAnalysisPayloadsNewestFirstSchema2(t *testing.T) {
 	writePendingCrash("site-old", "boom-old", []byte("stack-old"))
 	writePendingCrash("site-new", "boom-new", []byte("stack-new"))
 
-	payloads := pendingCrashAnalysisPayloads(pendingCrashPaths())
+	payloads := pendingCrashAnalysisPayloads(pendingCrashPaths(), false)
 	if len(payloads) != 2 {
 		t.Fatalf("payloads = %d, want 2", len(payloads))
 	}
@@ -68,7 +68,7 @@ func TestPendingCrashAnalysisPayloadsAcceptsCurrentSchemaVariants(t *testing.T) 
 		t.Fatal("writePendingReport failed")
 	}
 
-	payloads := pendingCrashAnalysisPayloads(pendingCrashPaths())
+	payloads := pendingCrashAnalysisPayloads(pendingCrashPaths(), false)
 	if len(payloads) != 1 {
 		t.Fatalf("payloads = %d, want 1", len(payloads))
 	}
@@ -148,5 +148,113 @@ func TestPendingCrashSnapshotLiveFallback(t *testing.T) {
 	}
 	if len(snap.Reports) != 1 {
 		t.Fatalf("reports = %d, want 1", len(snap.Reports))
+	}
+}
+
+// ── task 804: degraded/performance events must not reach the startup banner ──
+
+// A WebView2 frame/GPU/utility subprocess failure (kind=performance with
+// web-runtime context) stays out of the prompt surface but remains on the
+// diagnostics surface (promptOnly=false) and on disk (flush untouched).
+func TestPendingCrashPromptSkipsPerformanceDegraded(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	degraded := baseCrashReport("performance")
+	degraded.SchemaVersion = currentCrashSchema
+	degraded.Source = "web.runtime.native"
+	degraded.Label = "windows.webview2.process_failed"
+	degraded.WebRuntime = &webRuntimeDiagnostic{
+		Engine:         "webview2",
+		Kind:           "utility_process_exited",
+		Reason:         "terminated",
+		RuntimeVersion: "1.0",
+		GPUMode:        "enabled",
+		Recovery:       "not_applicable",
+	}
+	if !writePendingReport(degraded, true) {
+		t.Fatal("writePendingReport failed")
+	}
+
+	if got := pendingCrashAnalysisPayloads(pendingCrashPaths(), true); len(got) != 0 {
+		t.Fatalf("prompt surface = %d payloads, want 0 (degraded must not banner)", len(got))
+	}
+	if got := pendingCrashAnalysisPayloads(pendingCrashPaths(), false); len(got) != 1 {
+		t.Fatalf("diagnostics surface = %d payloads, want 1 (queue stays queryable)", len(got))
+	}
+	if remaining := len(pendingCrashPaths()); remaining != 1 {
+		t.Fatalf("queue files = %d, want 1 (flush/diagnostics untouched)", remaining)
+	}
+}
+
+// kind=performance WITHOUT web-runtime context is not the WebView2 degraded
+// family — unknown producers keep surfacing (fail-open, gate stays narrow).
+func TestPendingCrashPromptKeepsPerformanceWithoutWebRuntime(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	bare := baseCrashReport("performance")
+	bare.SchemaVersion = currentCrashSchema
+	bare.Source = "go"
+	if !writePendingReport(bare, true) {
+		t.Fatal("writePendingReport failed")
+	}
+
+	if got := pendingCrashAnalysisPayloads(pendingCrashPaths(), true); len(got) != 1 {
+		t.Fatalf("prompt surface = %d payloads, want 1 (non-webview2 performance stays)", len(got))
+	}
+}
+
+// The real fatal path (kind=crash, browser process exited) still banners.
+func TestPendingCrashPromptKeepsCrashKind(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	fatal := baseCrashReport("crash")
+	fatal.SchemaVersion = currentCrashSchema
+	fatal.Source = "web.runtime.native"
+	fatal.WebRuntime = &webRuntimeDiagnostic{
+		Engine:         "webview2",
+		Kind:           "browser_process_exited",
+		Reason:         "terminated",
+		RuntimeVersion: "1.0",
+		GPUMode:        "enabled",
+		Recovery:       "not_applicable",
+	}
+	if !writePendingReport(fatal, true) {
+		t.Fatal("writePendingReport failed")
+	}
+
+	if got := pendingCrashAnalysisPayloads(pendingCrashPaths(), true); len(got) != 1 {
+		t.Fatalf("prompt surface = %d payloads, want 1 (kind=crash still banners)", len(got))
+	}
+}
+
+// End to end: the boot snapshot (fresh watermark path) filters degraded
+// events exactly like the fallback does.
+func TestPendingCrashSnapshotFiltersDegradedForPrompt(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	degraded := baseCrashReport("performance")
+	degraded.SchemaVersion = currentCrashSchema
+	degraded.Source = "web.runtime.native"
+	degraded.WebRuntime = &webRuntimeDiagnostic{
+		Engine:         "webview2",
+		Kind:           "gpu_process_exited",
+		Reason:         "terminated",
+		RuntimeVersion: "1.0",
+		GPUMode:        "enabled",
+		Recovery:       "not_applicable",
+	}
+	if !writePendingReport(degraded, true) {
+		t.Fatal("writePendingReport failed")
+	}
+
+	app := NewApp()
+	app.snapshotPendingCrashForAnalysis()
+	snap := app.PendingCrashSnapshot()
+	if snap.Count != 0 {
+		t.Fatalf("snapshot count = %d, want 0 (degraded must not banner on boot)", snap.Count)
 	}
 }
