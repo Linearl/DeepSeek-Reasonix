@@ -73,9 +73,8 @@ func allLabSwitchesOn() *Config {
 	// storage
 	c.SessionStorage = "dual_write_read_v4"
 	c.EventsAutoRotation = "auto"
-	// infra
+	// infra（785 退役 baseProcess 条目）
 	c.Agent.ExperimentalRuntimeReuse = true
-	c.Agent.ExperimentalBaseProcess = true
 	c.Desktop.ExperimentalZcodeTaskBus = true
 	c.Desktop.ExperimentalModelCapabilityFilter = true
 	c.Desktop.ExperimentalPathRules = true

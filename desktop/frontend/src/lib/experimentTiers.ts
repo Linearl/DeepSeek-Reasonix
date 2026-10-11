@@ -63,7 +63,6 @@ export type TierFeatureId =
   | "eventsRotation"
   | "sessionStorage"
   | "runtimeReuse"
-  | "baseProcess"
   | "zcodeTaskBus"
   | "modelCapabilityFilter"
   | "pathRules"
@@ -151,9 +150,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── storage（存储，2 项）────────────────────────────────────
   eventsRotation: "optional",
   sessionStorage: "unstable",
-  // ── infra（基础设施，7 项）──────────────────────────────────
+  // ── infra（基础设施，6 项；785 退役 S1 baseProcess 条目）──────
   runtimeReuse: "optional",
-  baseProcess: "unstable",
   zcodeTaskBus: "unstable",
   modelCapabilityFilter: "retired",
   pathRules: "unstable",
@@ -186,11 +184,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 任务 727：heartbeatRotation（心跳会话轮换，桥接 JSON 键）入表，可选
  * 21→22、总数 50→51。任务 742：tabManagement（标签页管理合并卡，纯前端
  * 容器 id）与 heartbeatBackground（心跳任务后台化，默认关）入表，可选
- * 22→24、总数 51→53。) */
+ * 22→24、总数 51→53。任务 785：baseProcess（S1 常驻底座开关）随退役出表，
+ * 未稳定 13→12、总数 53→52。) */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 15,
   optional: 24,
-  unstable: 13,
+  unstable: 12,
   retired: 1,
 };
 

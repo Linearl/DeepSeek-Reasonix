@@ -1067,9 +1067,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 257: the full-access (yolo) lab switch. Boot resolves it into the
   // writable-root set and the bash spec — the flip applies on the next restart.
   SetExperimentalFullAccess(enabled: boolean): Promise<void>;
-  // S1: the resident-base-subprocess lab switch (design 2026-09-30 §7 R4).
-  // Boot resolves it when the base client section is built — restart to apply.
-  SetExperimentalBaseProcess(enabled: boolean): Promise<void>;
   // 任务 603: the 工具优化 lab family (edit readBack + evidence gate
   // linkage). Boot lights the tool surface — restart to apply.
   SetExperimentalToolOptimizations(enabled: boolean): Promise<void>;
@@ -5715,7 +5712,6 @@ function makeMockApp(): AppBindings {
     async SetUpdateChime() {},
     async SetUpdateChimeTune() {},
     async SetExperimentalFullAccess() {},
-    async SetExperimentalBaseProcess() {},
     async SetExperimentalToolOptimizations() {},
     async SetAutonomousUpdateResume() {},
     async ResolveTakeoverDecision() { return false; },

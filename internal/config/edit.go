@@ -712,16 +712,6 @@ func (c *Config) SetExperimentalFullAccess(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalBaseProcess toggles the S1 resident-base-subprocess switch
-// (design 2026-09-30 §7 R4). Boot resolves it when the base client section is
-// built (internal/boot/base_client.go), so the flip applies on the next
-// restart — the settings pane says so. Off (the default) stays the guaranteed
-// pure-inline baseline.
-func (c *Config) SetExperimentalBaseProcess(enabled bool) error {
-	c.Agent.ExperimentalBaseProcess = enabled
-	return nil
-}
-
 // SetExperimentalToolOptimizations toggles the 工具优化 family (task 603):
 // edit_file/multi_edit accept readBack and file the returned window as read
 // evidence. Restart to apply — the boot assembly lights the tool surface.

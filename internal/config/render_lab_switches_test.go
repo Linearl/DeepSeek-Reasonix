@@ -72,9 +72,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.SessionStorage = "dual_write_read_v4" // M7 (sessionStorage)
 	orig.EventsAutoRotation = "auto"           // M7 (eventsRotation)
 
-	// infra（基础设施）
+	// infra（基础设施；785 退役 baseProcess 条目）
 	orig.Agent.ExperimentalRuntimeReuse = true            // runtimeReuse
-	orig.Agent.ExperimentalBaseProcess = true             // baseProcess
 	orig.Desktop.ExperimentalZcodeTaskBus = true          // zcodeTaskBus
 	orig.Desktop.ExperimentalPathRules = true             // pathRules
 	orig.Agent.ExperimentalOrphanHandling = true          // orphanHandling
@@ -143,7 +142,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_composer_draft = true",
 		"experimental_selection_actions = true",
 		"experimental_opencode_go_usage = true",
-		"experimental_base_process = true",
 	} {
 		if !strings.Contains(rendered, key) {
 			t.Errorf("render table lost %q — a settings save would silently drop it (81/123 lesson)\n---\n%s", key, rendered)
@@ -192,7 +190,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"agent.experimental_selection_actions":       got.Agent.ExperimentalSelectionActions,
 		"agent.experimental_opencode_go_usage":       got.Agent.ExperimentalOpenCodeGoUsage,
 		"agent.experimental_runtime_reuse":           got.Agent.ExperimentalRuntimeReuse,
-		"agent.experimental_base_process":            got.Agent.ExperimentalBaseProcess,
 		"agent.experimental_orphan_handling":         got.Agent.ExperimentalOrphanHandling,
 		"desktop.experimental_cache_tuning":          got.Desktop.ExperimentalCacheTuning,
 		"desktop.experimental_quick_commands":        got.Desktop.ExperimentalQuickCommands,

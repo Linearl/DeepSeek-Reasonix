@@ -274,7 +274,7 @@ groups:
           - id: goMemLimitMB
             input: number
 
-  # ── 基础设施（6 项）────────────────────────────────────────
+  # ── 基础设施（5 项；任务 785：baseProcess 条目随 S1 底座开关退役移除）──
   - key: infra
     labelKey: settings.labGroup.infra
     entries:
@@ -282,10 +282,6 @@ groups:
         labelKey: settings.runtimeReuse
         tier: optional
         onKeys: [experimentalRuntimeReuse]
-      - id: baseProcess
-        labelKey: settings.baseProcess
-        tier: unstable
-        onKeys: [experimentalBaseProcess]
       - id: zcodeTaskBus
         labelKey: settings.zcodeTaskBus
         tier: unstable
