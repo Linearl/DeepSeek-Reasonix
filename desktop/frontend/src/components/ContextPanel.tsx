@@ -704,8 +704,11 @@ export function ContextPanel({
           <PlanUsageCard tabId={tabId} />
           {/* 任务 783: OpenCode Go usage rides the same PlanUsageCard 体系 —
               rendered right below the GLM plan card with the same plan-usage
-              visual; its own lab switch gates it (off = no DOM, no fetch). */}
-          <OpenCodeGoUsageSidebarCard />
+              visual; its own lab switch gates it (off = no DOM, no fetch).
+              任务 799: it also follows the tab (and only shows when the tab's
+              CURRENT model resolves to the opencode-go family), mirroring the
+              PlanUsageCard's task-666 provider condition. */}
+          <OpenCodeGoUsageSidebarCard tabId={tabId} />
           <Suspense fallback={null}>
             <McpListLayers items={items} t={t} />
           </Suspense>

@@ -1121,6 +1121,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // that tab's CURRENT model (multi-key brands each query their own quota);
   // anything not plan-capable returns supported:false with zero network I/O.
   GetProviderPlanUsage(tabID?: string): Promise<PlanUsageResult>;
+  // Task 799: which plan family the visible tab's CURRENT model resolves to —
+  // "zhipu" | "kimi" | "minimax" | "opencode-go", or "" = none (zero I/O).
+  // Plan usage cards gate their DOM and polling on this per-family answer.
+  GetActivePlanFamily(tabID?: string): Promise<string>;
   SetExperimentalQuestionSearch(enabled: boolean): Promise<void>;
   SetExperimentalSubagentTps(enabled: boolean): Promise<void>;
   SetExperimentalCompletionSummary(enabled: boolean): Promise<void>;
@@ -5737,6 +5741,8 @@ function makeMockApp(): AppBindings {
     async GetOpenCodeGoUsage() { return { tiers: [], note: "no-key" }; },
     // Task 287: unsupported in the browser mock — plan surfaces stay hidden.
     async GetProviderPlanUsage(_tabID?: string) { return { supported: false, provider: "", region: "", windows: [], note: "unsupported", queriedAt: 0 }; },
+    // Task 799: no plan family in the browser mock — the OpenCode Go card stays hidden too.
+    async GetActivePlanFamily(_tabID?: string) { return ""; },
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
     async SetExperimentalCDPDebugPort() {},

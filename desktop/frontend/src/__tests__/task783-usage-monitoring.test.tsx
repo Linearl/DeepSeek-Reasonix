@@ -78,8 +78,8 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
   ok(!panel.includes('{selected === "opencodeGoUsage" && ('), "the standalone opencodeGoUsage pane branch is gone");
   ok(panel.includes("app.SetExperimentalOpenCodeGoUsage(on)"), "Go usage switch still saves through its own setter (零键变化)");
   const planIdx = contextPanel.indexOf("<PlanUsageCard tabId={tabId} />");
-  const goIdx = contextPanel.indexOf("<OpenCodeGoUsageSidebarCard />");
-  ok(planIdx >= 0 && goIdx > planIdx, "ContextPanel mounts the sidebar card right after PlanUsageCard");
+  const goIdx = contextPanel.indexOf("<OpenCodeGoUsageSidebarCard tabId={tabId} />");
+  ok(planIdx >= 0 && goIdx > planIdx, "ContextPanel mounts the sidebar card right after PlanUsageCard (tab-following, task 799)");
 
   // 渲染面三态：JSDOM + 桩桥。
   const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost" });
@@ -101,6 +101,9 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
             if (payload instanceof Error) throw payload;
             return payload;
           },
+          // 任务 799 桩：783 的渲染面场景假定活跃 provider 就是 opencode-go
+          // （provider 匹配门本身的分支覆盖在 task799 套里）。
+          GetActivePlanFamily: async () => "opencode-go",
         },
       },
     },
