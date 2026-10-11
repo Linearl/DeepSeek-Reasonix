@@ -90,8 +90,8 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
   const badBare = bare.filter((s) => !panel.includes(s));
   ok(missingBadge.length === 0, `master switch rows keep their badges (missing: ${JSON.stringify(missingBadge)})`);
   ok(badBare.length === 0, `sibling/dial rows render bare labels (violations: ${JSON.stringify(badBare)})`);
-  ok(panel.includes("labEntryBadgeTiers(labLayoutResolved.layout, feature.id).map((tier) => ("),
-    "rail rows keep their tier badges (non-regression; 任务724 徽章改由布局数据驱动)");
+  ok(panel.includes("{feature.badgeTier ? <TierBadge tier={feature.badgeTier} translator={t} /> : null}"),
+    "rail rows keep exactly ONE aggregated tier badge (non-regression; 任务774 徽章聚合：卡头单枚最高档，任务724 布局数据驱动)");
 }
 
 // ③ the 「（实验）」 marker is gone from all three locales.

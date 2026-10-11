@@ -98,7 +98,7 @@ import { EXPERIMENT_FEATURE_TIERS, LAB_WALL_PICKS, type TierFeatureId } from "..
 // ordering) resolves from lab-layout.yaml through the yaml mechanism; the
 // built-in default is the safety-net fallback (missing/corrupt yaml). Tier
 // badges ride the resolved layout, not a separate members map.
-import { findLabEntryIdByQuery, labEntries, labEntryBadgeTiers, labEntryLightOn, resolveLabLayout } from "../lab/labLayout";
+import { findLabEntryIdByQuery, labEntries, labEntryBadgeTier, labEntryLightOn, resolveLabLayout } from "../lab/labLayout";
 import labLayoutYaml from "../lab/lab-layout.yaml?raw";
 import { LAB_GROUP_KEYS, type LabGroupKey } from "../lab/labLayoutTypes";
 // 任务 563: the picks wall reads its live on/off states through this context
@@ -2179,7 +2179,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   );
   // Render table（任务 561 惯例延续）：从布局文档派生——每项自带灯读数
   // （labLightKeys 谓词）与卡内各自的 setter 接线（81/123 丢存铁律）。
-  // 分组计数（626 单源）与 rail 徽章（labEntryBadgeTiers）都吃同一份布局。
+  // 分组计数（626 单源）与 rail 徽章（labEntryBadgeTier）都吃同一份布局。
   const features = useMemo(
     () =>
       labEntries(labLayoutResolved.layout).map(({ entry, group }) => ({
@@ -2187,6 +2187,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
         group,
         label: t(entry.labelKey),
         on: labEntryLightOn(entry, s),
+        // 任务 774：卡头徽章聚合为单枚最高档（max(卡, members)，推荐>可选
+        // >未稳定>已退役）；成员徽章只在卡内详情行可见，不再上卡头。
+        badgeTier: labEntryBadgeTier(labLayoutResolved.layout, entry.id),
       })),
     [labLayoutResolved, s, t],
   );
@@ -2358,11 +2361,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     >
                       <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : ""}`} aria-hidden="true" />
                       <span className="experimental-rail__label">{feature.label}</span>
-                      {/* 任务 562/724: tier pills ride the row's right edge, sourced
-                          from the resolved layout (own tier + member tiers). */}
-                      {labEntryBadgeTiers(labLayoutResolved.layout, feature.id).map((tier) => (
-                        <TierBadge key={tier} tier={tier} translator={t} />
-                      ))}
+                      {/* 任务 774: the rail row (card head) renders exactly ONE
+                          aggregated badge — max(own, members) by tier strength;
+                          member badges stay on their in-card detail rows. */}
+                      {feature.badgeTier ? <TierBadge tier={feature.badgeTier} translator={t} /> : null}
                     </button>
                   )) : null}
                 </div>
