@@ -24,17 +24,22 @@ func sessionOrSessionsCommand(command string, args []string) int {
 
 func sessionsCommand(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix sessions <reindex|diagnose|cleanup> [--dir PATH] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: reasonix sessions <reindex|diagnose|cleanup|import-v5> [--dir PATH] [--json]")
 		return 2
 	}
 	switch args[0] {
+	case "import-v5":
+		// Task 773: read-only import of upstream Desktop v5 stores. Human
+		// facing like session compact: prints the dry-run plan or the
+		// per-session progress, --json swaps it for the structured report.
+		return sessionsImportV5Command(args[1:])
 	case "diagnose":
 		return sessionsRecoveryCommand(args[1:], false)
 	case "cleanup":
 		return sessionsRecoveryCommand(args[1:], true)
 	case "reindex":
 	default:
-		fmt.Fprintln(os.Stderr, "usage: reasonix sessions <reindex|diagnose|cleanup> [--dir PATH] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: reasonix sessions <reindex|diagnose|cleanup|import-v5> [--dir PATH] [--json]")
 		return 2
 	}
 	fs := flag.NewFlagSet("sessions reindex", flag.ContinueOnError)
