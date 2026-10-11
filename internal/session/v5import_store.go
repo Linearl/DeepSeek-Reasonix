@@ -451,6 +451,9 @@ func (s *V5Session) UpdatedAt() time.Time {
 // caller's context) so the post-import check can prove the source store was
 // not touched. Names and contents both feed the digest; WalkDir order is
 // lexical, so the result is stable across runs on an unchanged tree.
+// The .query-cache directory is excluded: it is a rebuildable read cache the
+// fork's own read path refreshes (a read-only open may grow it), so counting
+// it would fail honest read-only runs.
 func SourceTreeFingerprint(ctx context.Context, root string) (string, int, int64, error) {
 	var files int
 	var total int64
@@ -461,6 +464,9 @@ func SourceTreeFingerprint(ctx context.Context, root string) (string, int, int64
 		}
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if entry.IsDir() && entry.Name() == ".query-cache" {
+			return fs.SkipDir
 		}
 		if !entry.Type().IsRegular() {
 			return nil
