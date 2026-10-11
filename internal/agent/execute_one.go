@@ -744,6 +744,10 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 	}
 	body, truncMsg, original, readObserver := a.boundIncompleteReadAwareResult(plan, result)
 	body = appendReceiptCitation(body, receipt)
+	// Task 798: a resolver-repaired call (auto-promoted capability_id) must not
+	// self-heal silently — the correct-usage note rides the successful result
+	// the model reads, after hooks/receipts observed the raw target output.
+	body = appendSelfHealNote(body, plan.resolved)
 	out := toolOutcome{
 		runState: runState, output: body, images: images, visionSummary: visionSummary, truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
 		execution: execution, mcpApp: toProviderMCPApp(plan.mcpApp), recoveryGeneration: recoveryGen,

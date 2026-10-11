@@ -65,8 +65,12 @@ func (a *Agent) diagnoseCapabilityInputFailure(plan *toolCallPlan, err error) to
 		}
 		return a.argumentValidationFailure(plan, result)
 	}
+	// Task 798: attach the received envelope shape (top-level keys only,
+	// never values) so the model sees what actually arrived and corrects the
+	// packaging in one round — the same discipline as tasks 216 and 457.
+	output := fmt.Sprintf("error: %v\nReceived envelope shape: %s\nThe capability call was not executed. Correct the indicated input and retry; normal permission checks still apply.", err, describeActualArguments(json.RawMessage(plan.call.Arguments)))
 	return toolOutcome{
-		output: truncateValidationMessage(fmt.Sprintf("error: %v\nThe capability call was not executed. Correct the indicated input and retry; normal permission checks still apply.", err)),
+		output: truncateValidationMessage(output),
 		errMsg: firstLine(err.Error()),
 	}
 }

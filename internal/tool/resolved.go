@@ -40,6 +40,12 @@ type ResolvedCall struct {
 	Unavailable bool
 	// UnavailableReason is the host-proven failure detail.
 	UnavailableReason string
+	// SelfHealNote is a model-visible correct-usage note appended to the
+	// successful result when the resolver repaired a mispackaged call (task
+	// 798: self-healing must never be silent — the audit counter and WARN log
+	// are host-side only, so the note is what teaches the model the right
+	// envelope shape). Empty for untouched calls.
+	SelfHealNote string
 	// Commit applies a resolve-only state transition after the host has checked
 	// the resolved call. Proxy resolvers must not mutate host state before this
 	// callback runs: read-only agents may reject the action after resolution.

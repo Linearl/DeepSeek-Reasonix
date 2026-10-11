@@ -106,6 +106,23 @@ func detectDoubleEnvelopedArguments(raw json.RawMessage) (json.RawMessage, bool)
 	if !marker {
 		return nil, false
 	}
+	// Task 798 (2233 field report): a stringified inner value must itself be a
+	// complete call envelope. A stringified plain target-parameters object
+	// under {"action":"call"} used to trip this detector, and the validation
+	// guidance then told the model to unwrap a payload that was never an
+	// envelope — the retry was guaranteed to fail again. Verify the decoded
+	// object one level; pass the decoded object through so consumers gate
+	// against the target schema instead of the string.
+	if strings.HasPrefix(strings.TrimSpace(string(inner)), `"`) {
+		decoded, ok := unwrapStringifiedJSONObject(inner)
+		if !ok {
+			return nil, false
+		}
+		if _, ok := detectDoubleEnvelopedArguments(decoded); !ok {
+			return nil, false
+		}
+		return decoded, true
+	}
 	return json.RawMessage(append([]byte(nil), inner...)), true
 }
 
@@ -258,9 +275,23 @@ func captureSpreadParameters(raw json.RawMessage, args *useCapabilityArgs) {
 // nested capability_id never promotes. Detection is purely structural;
 // ResolveCall still gates the promoted form against the target schema and
 // falls back to the original missing-id error when it does not pass.
+//
+// Task 798 extends the same family to its stringified and whole-envelope
+// members: the arguments value may arrive as a JSON string wrapping the
+// nested envelope (the 457 stringified habit one level deeper), and the
+// promoted remainder may itself still be a complete call envelope (action
+// nested alongside capability_id) — that remainder is unwrapped once with the
+// task 212 detector instead of dispatching envelope keys as target parameters.
 func promoteNestedCapabilityID(raw json.RawMessage) (string, json.RawMessage, bool) {
 	if argumentsAbsent(raw) {
 		return "", nil, false
+	}
+	if strings.HasPrefix(strings.TrimSpace(string(raw)), `"`) {
+		unwrapped, ok := unwrapStringifiedJSONObject(raw)
+		if !ok {
+			return "", nil, false
+		}
+		raw = unwrapped
 	}
 	var object map[string]json.RawMessage
 	if json.Unmarshal(raw, &object) != nil || object == nil {
@@ -295,6 +326,13 @@ func promoteNestedCapabilityID(raw json.RawMessage) (string, json.RawMessage, bo
 	merged, err := json.Marshal(remaining) // sorted keys, compacted values
 	if err != nil {
 		return "", nil, false
+	}
+	// Task 798: when the remainder is still a complete call envelope (action
+	// nested next to the promoted capability_id), take its inner arguments one
+	// level (task 212 detector) instead of handing envelope keys to the target
+	// schema gate, which would only fail the promoted form.
+	if inner, ok := detectDoubleEnvelopedArguments(merged); ok {
+		return id, inner, true
 	}
 	return id, merged, true
 }
