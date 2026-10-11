@@ -1856,11 +1856,16 @@ type ExperimentFeatureId =
   // Task 318.5: session + performance monitoring merge into one lab entry
   // (the two underlying switches stay independent inside the page).
   | "monitoring"
-  | "splitView"
+  // 任务 782：视图布局合并卡（分栏 + 轨迹视图，条目级合并，742 先例）——
+  // splitView/trajectoryView 独立 pane 退役为卡内成员行（键/setter 零变化）。
+  | "viewLayout"
   | "todoSidebar"
   // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
   | "sessionWall"
-  | "promptHistoryPicker"
+  // 任务 782：检索与历史合并卡（历史提问选择器 + 搜索历史提问 + 自动加载
+  // 更早消息）——promptHistoryPicker/questionSearch/autoLoadOlder 独立 pane
+  // 退役为卡内成员行。
+  | "searchHistory"
   // 任务 742: tabCompress（506）+ tabModeTint（504/651）的独立 pane 退役——
   // 两行并入 tabManagement 合并卡（条目级合并，键语义/setter 零变化）。
   | "tabManagement"
@@ -1871,7 +1876,6 @@ type ExperimentFeatureId =
   | "pathRules"
   | "traceAsState"
   | "dream"
-  | "autoLoadOlder"
   | "sessionCollab"
   // Task 244 B4/B5, merged into one switch by task 449.
   | "orphanHandling"
@@ -1892,9 +1896,9 @@ type ExperimentFeatureId =
   // Task 280: the former permissions-area safety checkbox, re-homed here as
   // "optimistic parallel writes" (same underlying key, inverted checkbox).
   | "optimisticParallel"
-  | "draftPersistence"
-  | "selectionActions"
-  | "questionSearch"
+  // 任务 782：输入与选区合并卡（草稿持久化 + 选区快捷操作）——
+  // draftPersistence/selectionActions 独立 pane 退役为卡内成员行。
+  | "inputSelection"
   | "completionSummary"
   // Task 385a: lab 回答风格 (output style selector + persistence).
   | "outputStyle"
@@ -1922,8 +1926,6 @@ type ExperimentFeatureId =
   // 任务 677: sidebar group-chat entry switch (the task-409 view landed
   // without its lab switch; unstable tier, default off).
   | "collabGroupView"
-  // 任务 704: trajectory view switch (optional tier, default off = transcript only).
-  | "trajectoryView"
   // 任务 775: kind:param 参数卡 id——无硬编码 pane，pane 走通用参数渲染器
   // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
   | "idleReleaseMinutes"
@@ -1931,7 +1933,9 @@ type ExperimentFeatureId =
 
 // 任务 724：pane 白名单——布局文档（yaml/默认）里的 entry.id 必须在此登记
 // （一个 id 一个可点开的卡片分支）；yaml 引用白名单外的 id ⇒ 整份回退默认
-// （防半份数据渲染/白屏）。37 个 id 与 722 后的布局一一对应。
+// （防半份数据渲染/白屏）。任务 782 后 33 个 id 与布局一一对应（722 后 37 →
+// 782 三张合并卡 -7 独立 pane +3 容器 id；opencodeGoUsage 迁出布局但 pane
+// id 保留——783 用量监测卡落卡时恢复入口）。
 const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "autopilot",
   "sessionCollab",
@@ -1947,17 +1951,13 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "collabGroupView",
   "tabManagement",
   "heartbeatBackground",
-  "trajectoryView",
+  "viewLayout",
   "todoSidebar",
-  "promptHistoryPicker",
+  "searchHistory",
   "sessionWall",
   "subagentSuite",
   "completionSummary",
-  "autoLoadOlder",
-  "splitView",
-  "draftPersistence",
-  "selectionActions",
-  "questionSearch",
+  "inputSelection",
   "opencodeGoUsage",
   "updateFeedback",
   "monitoring",
@@ -2355,6 +2355,21 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           // 任务 742：自适应压缩并入 tabManagement 合并卡后不再是 rail
           // 条目——墙灯同 563 教训读它自己的键，不读合并卡灯。
           map[pick] = Boolean(s.experimentalTabCompress);
+          break;
+        case "promptHistoryPicker":
+          // 任务 782：历史提问选择器并入 searchHistory 合并卡后不再是 rail
+          // 条目——墙灯同 563 教训读它自己的键，不读合并卡灯。
+          map[pick] = Boolean(s.experimentalPromptHistoryPicker);
+          break;
+        case "splitView":
+          // 任务 782：分栏并入 viewLayout 合并卡后不再是 rail 条目——墙灯
+          // 读它自己的键。
+          map[pick] = Boolean(s.experimentalSplitView);
+          break;
+        case "selectionActions":
+          // 任务 782：选区快捷操作并入 inputSelection 合并卡后不再是 rail
+          // 条目——墙灯读它自己的键。
+          map[pick] = Boolean(s.experimentalSelectionActions);
           break;
         default:
           map[pick] = false;
@@ -2904,24 +2919,47 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-          {selected === "splitView" && (
-            <SettingsField label={labLabel("splitView", t("settings.splitView"))} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalSplitView) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalSplitView(on);
-                      setSplitViewEnabled(on);
-                    })}
-                  >
-                    {t(on ? "settings.splitView.on" : "settings.splitView.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+          {/* 任务 782：视图布局（合并卡，742 tabManagement 先例）——分栏 +
+              轨迹视图条目级合并。两行各读各的键、各写各的 setter（81/123
+              丢存铁律）；行级徽章经 labLabel 保留，rail 卡头聚合徽章取成员
+              最高档（可选）。已存偏好零迁移：两键原样保留。 */}
+          {selected === "viewLayout" && (
+            <>
+              <SettingsField label={labLabel("viewLayout", t("settings.viewLayout"))} hint={t("settings.viewLayoutHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField label={labLabel("splitView", t("settings.splitView"))} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSplitView) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalSplitView(on);
+                        setSplitViewEnabled(on);
+                      })}
+                    >
+                      {t(on ? "settings.splitView.on" : "settings.splitView.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={labLabel("trajectoryView", t("settings.trajectoryView"))} hint={t("settings.trajectoryViewHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalTrajectoryView) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalTrajectoryView(on);
+                      })}
+                    >
+                      {t(on ? "settings.trajectoryView.on" : "settings.trajectoryView.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
           )}
           {selected === "collabGroupView" && (
             <SettingsField label={labLabel("collabGroupView", t("settings.collabGroupView"))} hint={t("settings.collabGroupViewHint")} icon={<Sparkles size={18} />}>
@@ -2936,24 +2974,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   >
                     {t(on ? "settings.collabGroupView.on" : "settings.collabGroupView.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {selected === "trajectoryView" && (
-            <SettingsField label={labLabel("trajectoryView", t("settings.trajectoryView"))} hint={t("settings.trajectoryViewHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalTrajectoryView) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalTrajectoryView(on);
-                    })}
-                  >
-                    {t(on ? "settings.trajectoryView.on" : "settings.trajectoryView.off")}
                   </button>
                 ))}
               </SettingsOptions>
@@ -3212,27 +3232,68 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
-              {selected === "promptHistoryPicker" && (
-                <SettingsField label={labLabel("promptHistoryPicker", t("settings.promptHistoryPicker"))} hint={t("settings.promptHistoryPickerHint")} icon={<Sparkles size={18} />}>
-                  <SettingsOptions layout="field" className="set-seg">
-                    {[false, true].map((on) => (
-                      <button
-                        key={String(on)}
-                        className={`set-seg__btn${Boolean(s.experimentalPromptHistoryPicker) === on ? " set-seg__btn--on" : ""}`}
-                        disabled={busy}
-                        onClick={() => void apply(async () => {
-                          // Boot snapshot (task 261): the composer reads the flag
-                          // once at startup; saving raises the restart banner.
-                          await app.SetExperimentalPromptHistoryPicker(on);
-                          setRestartNeeded(true);
-                        })}
-                      >
-                        {t(on ? "settings.promptHistoryPicker.on" : "settings.promptHistoryPicker.off")}
-                      </button>
-                    ))}
-                  </SettingsOptions>
-                </SettingsField>
-              )}
+          {/* 任务 782：检索与历史（合并卡，742 先例）——历史提问选择器 +
+              搜索历史提问 + 自动加载更早消息条目级合并。三行各读各的键、
+              各写各的 setter；行级徽章经 labLabel 保留，rail 卡头聚合徽章
+              取成员最高档（推荐）。已存偏好零迁移：三键原样保留。 */}
+          {selected === "searchHistory" && (
+            <>
+              <SettingsField label={labLabel("searchHistory", t("settings.searchHistory"))} hint={t("settings.searchHistoryHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField label={labLabel("promptHistoryPicker", t("settings.promptHistoryPicker"))} hint={t("settings.promptHistoryPickerHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalPromptHistoryPicker) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // Boot snapshot (task 261): the composer reads the flag
+                        // once at startup; saving raises the restart banner.
+                        await app.SetExperimentalPromptHistoryPicker(on);
+                        setRestartNeeded(true);
+                      })}
+                    >
+                      {t(on ? "settings.promptHistoryPicker.on" : "settings.promptHistoryPicker.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={labLabel("questionSearch", t("settings.questionSearch"))} hint={t("settings.questionSearchHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalQuestionSearch) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalQuestionSearch(on))}
+                    >
+                      {t(on ? "settings.questionSearch.on" : "settings.questionSearch.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={labLabel("autoLoadOlder", t("settings.autoLoadOlder"))} hint={t("settings.autoLoadOlderHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutoLoadOlder) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalAutoLoadOlder(on);
+                        // The transcript reads this flag from a live store, so the switch
+                        // reaches already-open tabs without a restart; mirror it here for
+                        // the same reason the settings reload alone cannot.
+                        setAutoLoadOlderEnabled(on);
+                      })}
+                    >
+                      {t(on ? "settings.autoLoadOlder.on" : "settings.autoLoadOlder.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
+          )}
                     {selected === "localServer" && (
             <SettingsField label={labLabel("localServer", t("settings.localServer"))} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
@@ -3313,28 +3374,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </div>
               ) : null}
             </>
-          )}
-          {selected === "autoLoadOlder" && (
-            <SettingsField label={labLabel("autoLoadOlder", t("settings.autoLoadOlder"))} hint={t("settings.autoLoadOlderHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalAutoLoadOlder) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalAutoLoadOlder(on);
-                      // The transcript reads this flag from a live store, so the switch
-                      // reaches already-open tabs without a restart; mirror it here for
-                      // the same reason the settings reload alone cannot.
-                      setAutoLoadOlderEnabled(on);
-                    })}
-                  >
-                    {t(on ? "settings.autoLoadOlder.on" : "settings.autoLoadOlder.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
           )}
           {selected === "orphanHandling" && (
             <>
@@ -4400,63 +4439,51 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               />
             </ErrorBoundary>
           )}
-          {selected === "draftPersistence" && (
-            <SettingsField label={labLabel("draftPersistence", t("settings.draftPersistence"))} hint={t("settings.draftPersistenceHint")} icon={<Sparkles size={18} />}>
-              {/* Task 318.3: off (default) = runtime-memory-only drafts
-                  (pre-#9580 contract); the settings refresh feeds the live
-                  gate in composerDraftPersistence. */}
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalComposerDraft) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalComposerDraft(on);
-                    })}
-                  >
-                    {t(on ? "settings.draftPersistence.on" : "settings.draftPersistence.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-
-          {selected === "selectionActions" && (
-            <SettingsField label={labLabel("selectionActions", t("settings.selectionActions"))} hint={t("settings.selectionActionsHint")} icon={<Sparkles size={18} />}>
-              {/* Task 369: off (default) = the selection menu is exactly the
-                  pre-369 surface (fork rule 2). */}
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalSelectionActions) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalSelectionActions(on);
-                    })}
-                  >
-                    {t(on ? "settings.selectionActions.on" : "settings.selectionActions.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
-          {selected === "questionSearch" && (
-            <SettingsField label={labLabel("questionSearch", t("settings.questionSearch"))} hint={t("settings.questionSearchHint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalQuestionSearch) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalQuestionSearch(on))}
-                  >
-                    {t(on ? "settings.questionSearch.on" : "settings.questionSearch.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+          {/* 任务 782：输入与选区（合并卡，742 先例）——草稿持久化 + 选区
+              快捷操作条目级合并。两行各读各的键、各写各的 setter；行级徽章
+              经 labLabel 保留，rail 卡头聚合徽章取成员最高档（可选）。已存
+              偏好零迁移：两键原样保留。 */}
+          {selected === "inputSelection" && (
+            <>
+              <SettingsField label={labLabel("inputSelection", t("settings.inputSelection"))} hint={t("settings.inputSelectionHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField label={labLabel("draftPersistence", t("settings.draftPersistence"))} hint={t("settings.draftPersistenceHint")} icon={<Sparkles size={18} />}>
+                {/* Task 318.3: off (default) = runtime-memory-only drafts
+                    (pre-#9580 contract); the settings refresh feeds the live
+                    gate in composerDraftPersistence. */}
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalComposerDraft) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalComposerDraft(on);
+                      })}
+                    >
+                      {t(on ? "settings.draftPersistence.on" : "settings.draftPersistence.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={labLabel("selectionActions", t("settings.selectionActions"))} hint={t("settings.selectionActionsHint")} icon={<Sparkles size={18} />}>
+                {/* Task 369: off (default) = the selection menu is exactly the
+                    pre-369 surface (fork rule 2). */}
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSelectionActions) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalSelectionActions(on);
+                      })}
+                    >
+                      {t(on ? "settings.selectionActions.on" : "settings.selectionActions.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
           )}
                     {selected === "completionSummary" && (
             <SettingsField label={labLabel("completionSummary", t("settings.completionSummary"))} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
