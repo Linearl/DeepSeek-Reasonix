@@ -865,3 +865,118 @@ func parseAt(iso string) (bool, string, error) {
 	_, err := time.Parse(time.RFC3339, iso)
 	return err == nil, iso, err
 }
+
+// ── Task 799 — plan-family registry + GetActivePlanFamily (the display gate
+// the OpenCode Go sidebar card consumes). Locks: a GLM current model answers
+// "zhipu" (so the OpenCode Go card must hide), an opencode-go current model
+// answers "opencode-go", and every non-plan ref answers "" — all with zero
+// network I/O.
+
+func TestPlanFamilyForEntry(t *testing.T) {
+	cases := []struct {
+		name  string
+		entry config.ProviderEntry
+		want  string
+	}{
+		// The generic chain's families keep their host-checked answers.
+		{"zhipu coding plan cn", config.ProviderEntry{Name: "glm-coding-plan-cn", PresetID: "glm-coding-plan-cn", BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4", APIKeyEnv: "K"}, planFamilyZhipu},
+		{"kimi coding plan", config.ProviderEntry{Name: "kimi-coding-plan", PresetID: "kimi-coding-plan", BaseURL: "https://api.kimi.com/coding/", APIKeyEnv: "K"}, planFamilyKimi},
+		{"minimax cn", config.ProviderEntry{Name: "minimax-cn-api", PresetID: "minimax-cn-api", BaseURL: "https://api.minimaxi.com/v1", APIKeyEnv: "K"}, planFamilyMinimax},
+		{"zhipu brand on a foreign host is not zhipu", config.ProviderEntry{Name: "my-glm-relay", PresetID: "glm-coding-plan-cn", BaseURL: "https://relay.example.com/v1", APIKeyEnv: "K"}, ""},
+		// Every opencode-go wire format is the same subscription family.
+		{"opencode-go recommended", config.ProviderEntry{Name: "opencode-go", PresetID: "opencode-go-recommended", BaseURL: "https://opencode.ai/zen/go/v1", APIKeyEnv: "OPENCODE_GO_API_KEY"}, planFamilyOpenCodeGo},
+		{"opencode-go bare preset", config.ProviderEntry{Name: "opencode-go", PresetID: "opencode-go", BaseURL: "https://opencode.ai/zen/go/v1", APIKeyEnv: "OPENCODE_GO_API_KEY"}, planFamilyOpenCodeGo},
+		{"opencode-go anthropic route", config.ProviderEntry{Name: "opencode-go-anthropic", PresetID: "opencode-go-anthropic", BaseURL: "https://opencode.ai/zen/go/v1", APIKeyEnv: "OPENCODE_GO_API_KEY"}, planFamilyOpenCodeGo},
+		{"opencode-go responses route", config.ProviderEntry{Name: "opencode-go-responses", PresetID: "opencode-go-responses", Kind: "responses", BaseURL: "https://opencode.ai/zen/go/v1", APIKeyEnv: "OPENCODE_GO_API_KEY"}, planFamilyOpenCodeGo},
+		{"opencode-go deepseek variant", config.ProviderEntry{Name: "opencode-go-deepseek-anthropic", PresetID: "opencode-go-deepseek-anthropic", BaseURL: "https://opencode.ai/zen/go/v1", APIKeyEnv: "OPENCODE_GO_API_KEY"}, planFamilyOpenCodeGo},
+		// PresetID lost but the curated entry name still identifies it.
+		{"curated entry name identifies opencode-go without a preset id", config.ProviderEntry{Name: "opencode-go", BaseURL: "https://opencode.ai/zen/go/v1", APIKeyEnv: "OPENCODE_GO_API_KEY"}, planFamilyOpenCodeGo},
+		// OpenCode Zen is pay-as-you-go with no usage API — never the Go card.
+		{"opencode zen is not the go family", config.ProviderEntry{Name: "opencode-zen-anthropic", PresetID: "opencode-zen-anthropic", BaseURL: "https://opencode.ai/zen/v1", APIKeyEnv: "K"}, ""},
+		// Non-plan brands and uncataloged relays hide every usage surface.
+		{"deepseek is not a plan family", config.ProviderEntry{Name: "deepseek-chat", PresetID: "deepseek-chat", BaseURL: "https://api.deepseek.com/v1", APIKeyEnv: "K"}, ""},
+		{"uncataloged relay is not a plan family", config.ProviderEntry{Name: "my-relay", BaseURL: "https://opencode.ai/zen/go/v1", APIKeyEnv: "K"}, ""},
+	}
+	for _, tc := range cases {
+		if got := planFamilyForEntry(&tc.entry); got != tc.want {
+			t.Errorf("%s: family = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	if got := planFamilyForEntry(nil); got != "" {
+		t.Errorf("nil entry: family = %q, want empty", got)
+	}
+}
+
+// TestGetActivePlanFamily locks the task-799 display condition with both plan
+// providers configured: the CURRENT model's ref decides — a GLM ref answers
+// "zhipu" (the OpenCode Go card must hide on a GLM address, the user-reported
+// regression) and an opencode-go ref answers "opencode-go" (the card shows).
+// Everything else answers "" with zero I/O.
+func TestGetActivePlanFamily(t *testing.T) {
+	isolatePlanUsageEnvironment(t)
+	seedPlanUsageConfig(t, `
+[[providers]]
+name = "glm-coding-plan-cn"
+kind = "openai"
+preset_id = "glm-coding-plan-cn"
+base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
+api_key_env = "GLM_PLAN_API_KEY"
+model = "glm-4.6"
+
+[[providers]]
+name = "opencode-go"
+kind = "openai"
+preset_id = "opencode-go-recommended"
+base_url = "https://opencode.ai/zen/go/v1"
+api_key_env = "OPENCODE_GO_API_KEY"
+model = "glm-5.3"
+
+[[providers]]
+name = "deepseek"
+kind = "openai"
+base_url = "https://api.deepseek.com/v1"
+api_key_env = "MY_DEEPSEEK_KEY"
+model = "deepseek-chat"
+`)
+	hits, restore := withPlanEndpoint(t, &zhipuCnQuotaBase, func(http.ResponseWriter, *http.Request) {
+		t.Error("a family lookup is a config scan and must not reach the network")
+	})
+	defer restore()
+
+	app := &App{}
+	cases := []struct {
+		ref  string
+		want string
+	}{
+		{"glm-coding-plan-cn/glm-4.6", planFamilyZhipu},
+		{"opencode-go/glm-5.3", planFamilyOpenCodeGo},
+		{"deepseek/deepseek-chat", ""},
+		{"ghost/nope", ""},
+	}
+	for _, tc := range cases {
+		id := seedPlanUsageTab(t, app, tc.ref)
+		got, err := app.GetActivePlanFamily(id)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.ref, err)
+		}
+		if got != tc.want {
+			t.Errorf("current model %q: family = %q, want %q", tc.ref, got, tc.want)
+		}
+	}
+	if *hits != 0 {
+		t.Errorf("hits = %d, want 0 (family lookup is zero-I/O)", *hits)
+	}
+
+	// No tab, an empty current model, and an unknown tab all answer "" — every
+	// usage surface stays hidden.
+	if got, err := app.GetActivePlanFamily("tab-that-does-not-exist"); err != nil || got != "" {
+		t.Errorf("unknown tab: family = %q err %v, want empty", got, err)
+	}
+	if got, err := app.GetActivePlanFamily(""); err != nil || got != "" {
+		t.Errorf("no tab: family = %q err %v, want empty", got, err)
+	}
+	emptyModel := seedPlanUsageTab(t, app, "")
+	if got, err := app.GetActivePlanFamily(emptyModel); err != nil || got != "" {
+		t.Errorf("empty current model: family = %q err %v, want empty", got, err)
+	}
+}

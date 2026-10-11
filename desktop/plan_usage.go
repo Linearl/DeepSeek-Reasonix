@@ -119,9 +119,22 @@ func planUsageView(supported bool, note string) PlanUsageView {
 	return PlanUsageView{Supported: supported, Windows: []PlanUsageWindow{}, Note: note, QueriedAt: time.Now().UnixMilli()}
 }
 
+// Plan-usage family identifiers — the registry that decides which display
+// surface may show for the provider behind the visible tab's CURRENT model.
+// zhipu/kimi/minimax share the generic GetProviderPlanUsage query chain;
+// opencode-go keeps its task-163 endpoint and card. A new plan type joins by
+// adding an id here and a branch in planFamilyForEntry — the display gates
+// consume family ids, never brand if-else chains (task 799).
+const (
+	planFamilyZhipu      = "zhipu"
+	planFamilyKimi       = "kimi"
+	planFamilyMinimax    = "minimax"
+	planFamilyOpenCodeGo = "opencode-go"
+)
+
 // planUsageTarget is one resolved, plan-capable provider entry.
 type planUsageTarget struct {
-	family   string // "zhipu" | "kimi" | "minimax"
+	family   string // a planFamily* id
 	endpoint string
 	bearer   bool // zhipu takes the raw key; kimi/minimax take Bearer
 	provider string
@@ -165,7 +178,7 @@ func planUsageTargetForEntry(e *config.ProviderEntry) (planUsageTarget, bool) {
 		default:
 			return planUsageTarget{}, false
 		}
-		target.family = "zhipu"
+		target.family = planFamilyZhipu
 		target.provider = "GLM"
 	case "kimi":
 		// Only the coding-plan path carries a usage endpoint; the plain Kimi
@@ -176,7 +189,7 @@ func planUsageTargetForEntry(e *config.ProviderEntry) (planUsageTarget, bool) {
 		if presetID != "kimi-coding-plan" {
 			return planUsageTarget{}, false
 		}
-		target.family = "kimi"
+		target.family = planFamilyKimi
 		target.endpoint = kimiUsageEndpoint
 		target.bearer = true
 		target.provider = "Kimi For Coding"
@@ -189,7 +202,7 @@ func planUsageTargetForEntry(e *config.ProviderEntry) (planUsageTarget, bool) {
 		default:
 			return planUsageTarget{}, false
 		}
-		target.family = "minimax"
+		target.family = planFamilyMinimax
 		target.bearer = true
 		target.provider = "MiniMax"
 	default:
@@ -267,6 +280,45 @@ func planUsageTargetForCurrentModel(entries []config.ProviderEntry, curModel str
 		}
 	}
 	return target, "", true
+}
+
+// planFamilyForEntry resolves one provider entry to its plan family id — the
+// single registry every display gate consumes (task 799). The generic chain's
+// families come first (zhipu/kimi/minimax, host-checked); opencode-go matches
+// by catalog brand × product (every opencode-go wire format — recommended,
+// anthropic, responses, deepseek variants — is the same subscription), while
+// OpenCode Zen (product "zen", pay-as-you-go, no usage API) stays out. ""
+// means no plan family: every usage surface hides.
+func planFamilyForEntry(e *config.ProviderEntry) string {
+	if target, ok := planUsageTargetForEntry(e); ok {
+		return target.family
+	}
+	_, catalog, ok := config.CatalogForProviderEntry(e)
+	if ok && catalog.BrandID == "opencode" && catalog.Product == "go" {
+		return planFamilyOpenCodeGo
+	}
+	return ""
+}
+
+// GetActivePlanFamily reports which plan family the visible tab's CURRENT
+// model resolves to: a planFamily* id, or "" when the model resolves nowhere
+// or to a non-plan provider. Config-scan only, zero network I/O — the same
+// resolution contract as GetProviderPlanUsage's unsupported path (it shares
+// activePlanUsageContext, so remote-served tabs whose keys live elsewhere
+// answer "" too). Task 799: the OpenCode Go sidebar card gates both its DOM
+// and its polling on this answer, so a GLM address never shows an
+// OpenCode Go quota card and switching providers flips the card live.
+func (a *App) GetActivePlanFamily(tabID string) (string, error) {
+	entries, _, curModel, ok := a.activePlanUsageContext(tabID)
+	if !ok {
+		return "", nil
+	}
+	cfg := &config.Config{Providers: entries}
+	entry, found := cfg.ResolveModel(strings.TrimSpace(curModel))
+	if !found || entry == nil {
+		return "", nil
+	}
+	return planFamilyForEntry(entry), nil
 }
 
 // GetProviderPlanUsage queries the quota of the provider the tab's CURRENT
@@ -350,11 +402,11 @@ func queryPlanUsage(target planUsageTarget, key string) ([]PlanUsageWindow, stri
 		return nil, "parse", fmt.Errorf("read plan usage body: %w", err)
 	}
 	switch target.family {
-	case "zhipu":
+	case planFamilyZhipu:
 		return parseZhipuPlanUsage(body)
-	case "kimi":
+	case planFamilyKimi:
 		return parseKimiPlanUsage(body)
-	case "minimax":
+	case planFamilyMinimax:
 		return parseMinimaxPlanUsage(body)
 	default:
 		return nil, "unsupported", fmt.Errorf("unknown plan usage family %q", target.family)
