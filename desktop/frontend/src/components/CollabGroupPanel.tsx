@@ -1,9 +1,12 @@
 // 群聊式协作视图（task 409）：多 Agent 协作的用户观察窗——活跃协作会话聚合
-// 呈现（标题 / running|queued|idle|unknown 状态 / 当前任务卡 / 最近一条往来）
-// + 频道名册（349 实体）与每成员送达/已读标注。纯只读消费者：它显示的每个
-// 字节都来自既有存储（通讯录、共享忙闲判定、任务卡、已投递信件、频道实体），
-// 从不发明状态、从不写入（409 正文原则 4：与 Cue 的差异 = 观察窗，不制造
-// AI 互聊内容）。
+// 呈现（标题 / running|queued|idle|unknown 状态 / 当前任务卡 / 最近一条往来）。
+// 纯只读消费者：它显示的每个字节都来自既有存储（通讯录、共享忙闲判定、任务
+// 卡、已投递信件、频道实体），从不发明状态、从不写入（409 正文原则 4：与
+// Cue 的差异 = 观察窗，不制造 AI 互聊内容）。
+//
+// 任务 802（③入口整合）：本面板 = 会话（409 现状）+ 频道消息两个 tab；频道
+// 消息 tab 由 ChannelChatPanel 承载微信式真群聊（人类建群/发言/撤回/详情）。
+// 面板开关与入口保持 409/677 现状：关=入口按钮不渲染，零痕迹。
 //
 // 任务587 同款纪律（失败≠空态）：读取失败显式报错 + 重试 + 退避自动恢复，
 // 绝不渲染成「暂无协作」；catch 路径经 reportFrontendLog 落 console + ring
@@ -14,6 +17,7 @@ import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
+import { ChannelChatPanel, type ChannelChatBindings } from "./ChannelChatPanel";
 
 export type CollabViewCard = { id: string; title: string; status: string; updatedAt: number };
 
@@ -40,40 +44,9 @@ export type CollabViewSession = {
 
 export type CollabViewOverview = { sessions: CollabViewSession[]; generatedAt: number };
 
-export type CollabChannelSummary = {
-  id: string;
-  name: string;
-  topic?: string;
-  createdAt: number;
-  hourlyLimit: number;
-  members: string[];
-  messages: number;
-};
-
-export type CollabChannelFanoutCell = {
-  messageId: string;
-  member: string;
-  fanoutId: string;
-  state: string;
-  error?: string;
-  deliveredAt?: number;
-  readAt?: number;
-};
-
-export type CollabChannelMessage = {
-  id: string;
-  sender: string;
-  body: string;
-  at: number;
-  fanout?: CollabChannelFanoutCell[];
-};
-
-export type CollabChannelRead = { channel: CollabChannelSummary; messages: CollabChannelMessage[] };
-
-export type CollabGroupBindings = {
+/** 802：面板级注入缝 = 会话 tab 的总览读口 + 频道消息 tab 的聊天绑定面。 */
+export type CollabGroupBindings = ChannelChatBindings & {
   GetCollabViewOverview(): Promise<CollabViewOverview>;
-  ListCollabChannels(): Promise<CollabChannelSummary[]>;
-  ReadCollabChannel(ref: string, limit: number): Promise<CollabChannelRead>;
 };
 
 let panelOpen = false;
@@ -115,15 +88,8 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
   const [open, setOpen] = useState(panelOpen);
   const [tab, setTab] = useState<PanelTab>("sessions");
   const [overview, setOverview] = useState<CollabViewOverview | null>(null);
-  const [channels, setChannels] = useState<CollabChannelSummary[] | null>(null);
-  const [openChannel, setOpenChannel] = useState<string | null>(null);
-  const [channelView, setChannelView] = useState<CollabChannelRead | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // The expanded channel rides a ref so polling keeps it fresh WITHOUT making
-  // `refresh` a new identity on every toggle (a new refresh would re-run the
-  // open effect and double-fetch the whole overview on each channel toggle).
-  const openChannelRef = useRef<string | null>(null);
 
   useEffect(() => onCollabGroupOpenChange((next) => setOpen(next)), []);
 
@@ -151,6 +117,7 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
     }, delay);
   }, []);
 
+  // 802：会话 tab 只聚合总览；频道消息 tab 的拉取归 ChannelChatPanel 自管。
   const refresh = useCallback(async () => {
     setLoading(true);
     // the banner describes the LATEST attempt only — a fresh read retires the
@@ -158,17 +125,6 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
     setLoadError(null);
     try {
       setOverview(await b.GetCollabViewOverview());
-      const list = await b.ListCollabChannels();
-      setChannels(list);
-      // Keep an expanded channel's tail on the same refresh clock.
-      const expanded = openChannelRef.current;
-      if (expanded) {
-        try {
-          setChannelView(await b.ReadCollabChannel(expanded, 50));
-        } catch {
-          setChannelView(null);
-        }
-      }
       // success stops the recovery loop and resets its backoff.
       retryRef.current.attempt = 0;
       cancelRetry();
@@ -199,22 +155,6 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
 
   if (!open) return null;
 
-  const toggleChannel = async (id: string) => {
-    if (openChannel === id) {
-      setOpenChannel(null);
-      openChannelRef.current = null;
-      setChannelView(null);
-      return;
-    }
-    setOpenChannel(id);
-    openChannelRef.current = id;
-    try {
-      setChannelView(await b.ReadCollabChannel(id, 50));
-    } catch {
-      setChannelView(null);
-    }
-  };
-
   const sessions = overview?.sessions ?? [];
   const viewEmpty = sessions.length === 0;
   const stateLabel = (state: string) =>
@@ -223,14 +163,6 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
     t(`collabGroup.identity.${value}` as "collabGroup.identity.main");
   const cardStatusLabel = (status: string) =>
     t(`collabGroup.card.${status}` as "collabGroup.card.running");
-  // Per-recipient annotation (349: delivered/read are per member). delivered
-  // + read_at → 已读; delivered → 送达; anything else shows its state word.
-  const fanoutLabel = (cell: CollabChannelFanoutCell) => {
-    if (cell.state === "delivered") return cell.readAt ? t("collabGroup.read") : t("collabGroup.delivered");
-    if (cell.state === "queued") return t("collabGroup.fanQueued");
-    if (cell.state === "failed") return t("collabGroup.fanFailed");
-    return cell.state;
-  };
 
   return createPortal(
     <div className="collab-group-panel" role="dialog" aria-label={t("collabGroup.title")}>
@@ -333,61 +265,14 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
             </div>
           ))}
 
-        {tab === "channels" && (channels?.length ?? 0) === 0 && (
-          <div className="collab-group-panel__empty">
-            {loading ? t("collabGroup.loading") : t("collabGroup.emptyChannels")}
-          </div>
-        )}
-        {tab === "channels" &&
-          (channels ?? []).map((channel) => (
-            <div key={channel.id} className="collab-group-panel__channel">
-              <button
-                type="button"
-                className="collab-group-panel__channelhead"
-                aria-expanded={openChannel === channel.id}
-                onClick={() => void toggleChannel(channel.id)}
-              >
-                <span className="collab-group-panel__channelname">#{channel.name}</span>
-                <span className="collab-group-panel__channelcounts">
-                  {t("collabGroup.membersCount", { n: channel.members?.length ?? 0 })}
-                  {" · "}
-                  {t("collabGroup.messagesCount", { n: channel.messages })}
-                </span>
-              </button>
-              {openChannel === channel.id && (
-                <div className="collab-group-panel__channelbody">
-                  {(channelView?.messages?.length ?? 0) === 0 && (
-                    <div className="collab-group-panel__empty">{t("collabGroup.emptyChannelMessages")}</div>
-                  )}
-                  {(channelView?.messages ?? []).map((message) => (
-                    <div key={message.id} className="collab-group-panel__message">
-                      <div className="collab-group-panel__meta">
-                        <span className="collab-group-panel__sender">{message.sender}</span>
-                        <span className="collab-group-panel__time">{formatTime(message.at)}</span>
-                      </div>
-                      <div className="collab-group-panel__messagebody">{message.body}</div>
-                      {(message.fanout?.length ?? 0) > 0 && (
-                        <div className="collab-group-panel__fanout">
-                          {message.fanout!.map((cell) => (
-                            <span
-                              key={`${cell.messageId}:${cell.member}`}
-                              className={`collab-group-panel__fanoutcell collab-group-panel__fanoutcell--${cell.readAt ? "read" : cell.state}`}
-                            >
-                              {cell.member}·{fanoutLabel(cell)}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+        {/* 任务 802：频道消息 tab = 微信式真群聊（建群/发言/撤回/详情/邀请）。
+            自管拉取与退避；切走 tab 即卸载即停，关面板零成本（409 同款）。 */}
+        {tab === "channels" && <ChannelChatPanel bindings={b} />}
       </div>
 
       <div className="collab-group-panel__foot">
-        <span className="collab-group-panel__note">{t("collabGroup.note")}</span>
+        {/* 观察窗注（409 语义）只描述会话 tab；频道消息 tab 是可发言的真群聊。 */}
+        {tab === "sessions" && <span className="collab-group-panel__note">{t("collabGroup.note")}</span>}
         {overview?.generatedAt ? (
           <span className="collab-group-panel__time">{formatTime(overview.generatedAt)}</span>
         ) : null}
