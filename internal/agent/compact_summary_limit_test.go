@@ -198,7 +198,9 @@ func TestManualCompactOverCeilingRescuesWithoutRepeatingRequests(t *testing.T) {
 	prov := &denseTokenizerProvider{window: 20_000, alwaysOverflow: true}
 	sess := longASCIISession(30)
 	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 20_000, CompactRatio: 0.8}, event.Discard)
-	if est, hard := a.ContextUsedTokens(), a.hardInputCeiling(); est < hard {
+	// 任务822: the over-ceiling guard reads the canonical transcript — the
+	// 任务719 clamped tail view sits below the hard ceiling by design.
+	if est, hard := a.estimatedVisibleRequestTokens(provider.ModelMessages(sess.Messages)), a.hardInputCeiling(); est < hard {
 		t.Fatalf("fixture estimates %d tokens against a %d ceiling; it is not over it", est, hard)
 	}
 

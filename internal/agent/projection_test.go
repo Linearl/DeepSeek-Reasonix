@@ -743,7 +743,10 @@ func TestRunCompactsAfterFinalAnswer(t *testing.T) {
 	a := New(&fakeProvider{reply: "done"}, tool.NewRegistry(), sess,
 		Options{ContextWindow: window, CompactRatio: 0.85, RecentKeep: 2}, event.Discard)
 
-	if before := a.estimatedPromptTokens(a.modelVisibleMessages()); before < a.compactTrigger() {
+	// 任务822: the fixture guard reads the canonical transcript — since 任务719
+	// the model-visible view of an over-ceiling session is clamped to a bounded
+	// tail, and the clamped estimate sits below the fold trigger by design.
+	if before := a.estimatedPromptTokens(provider.ModelMessages(sess.Messages)); before < a.compactTrigger() {
 		t.Fatalf("fixture est=%d below fold trigger %d", before, a.compactTrigger())
 	}
 	if err := a.Run(context.Background(), "what's the status?"); err != nil {

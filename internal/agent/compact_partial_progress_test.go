@@ -56,7 +56,9 @@ func TestPartialFoldProgressConvergesOverCeiling(t *testing.T) {
 	prov := &denseTokenizerProvider{window: 20_000}
 	sess := longASCIISession(24)
 	a := New(prov, tool.NewRegistry(), sess, Options{ContextWindow: 20_000, CompactRatio: 0.8}, event.Discard)
-	source, hard := a.ContextUsedTokens(), a.hardInputCeiling()
+	// 任务822: the over-ceiling guard reads the canonical transcript — the
+	// 任务719 clamped tail view sits below the hard ceiling by design.
+	source, hard := canonicalEstimate(a, sess), a.hardInputCeiling()
 	if source < hard {
 		t.Fatalf("fixture estimates %d tokens, below the ceiling %d; add turns", source, hard)
 	}

@@ -11,6 +11,14 @@ import (
 // search_sessions must find a session by a fragment of its title even when it
 // would fall outside the first page of list_addressable_sessions.
 func TestSearchSessionsByTitleKeyword(t *testing.T) {
+	// 任务822: scanAddressable also sweeps the host-global directories
+	// (config.ArchiveDir, config.AllProjectSessionDirs, the workspace's
+	// project session dir), which on a developer machine carry live
+	// conversations — the search then matched real sessions (e.g.
+	// "崩溃分析-20261011", "fork 开发主对话") and the exclusive Total==1
+	// assertion failed on an otherwise clean fixture. Point the state root at
+	// a temp dir so every global sweep lands inside the sandbox.
+	t.Setenv("REASONIX_STATE_HOME", t.TempDir())
 	dir := t.TempDir()
 	// A file whose title we control, plus one we do not match.
 	hit := filepath.Join(dir, "hit.jsonl")

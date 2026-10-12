@@ -497,7 +497,7 @@ func TestSummaryNoopForceCarriesNoFoldableRegion(t *testing.T) {
 		&Session{Messages: []provider.Message{{Role: provider.RoleUser, Content: "task"}}},
 		Options{ContextWindow: 200}, event.Discard)
 
-	_, err := a.contextManager().summaryNoop(ContextPreparePolicy{Trigger: CompactionTriggerManual, Force: true}, "hash-424", 100000)
+	_, err := a.contextManager().summaryNoop(ContextPreparePolicy{Trigger: CompactionTriggerManual, Force: true}, "hash-424", 100000, a.maintenanceOccupancyEstimate())
 	if err == nil {
 		t.Fatal("expected an error from the force noop branch")
 	}
