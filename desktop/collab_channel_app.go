@@ -169,7 +169,8 @@ func (a *App) ChannelMessagesForHuman(ref string, sinceMs int64, limit int) (Col
 	}
 	out.Messages = make([]CollabChannelMessageView, 0, len(messages))
 	for _, m := range messages {
-		view := CollabChannelMessageView{ID: m.ID, Sender: m.Sender, Body: m.Body, At: m.At}
+		// 802: 墓碑时间随行透出（撤回渲染与导出核对都需要）。
+		view := CollabChannelMessageView{ID: m.ID, Sender: m.Sender, Body: m.Body, At: m.At, CancelledAt: m.CancelledAt}
 		// FanoutStates orders by (message at, member) — keep that order so the
 		// member annotation reads in the roster's own order.
 		view.Fanout = byMessage[m.ID]

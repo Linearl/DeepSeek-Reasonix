@@ -77,11 +77,14 @@ type CollabViewOverview struct {
 // delivery rows (349: delivered/read are per member and never merged — the
 // panel annotates each member's 送达/已读 from these rows).
 type CollabChannelMessageView struct {
-	ID     string                    `json:"id"`
-	Sender string                    `json:"sender"`
-	Body   string                    `json:"body"`
-	At     int64                     `json:"at"`
-	Fanout []collabchannel.FanoutRow `json:"fanout,omitempty"`
+	ID     string `json:"id"`
+	Sender string `json:"sender"`
+	Body   string `json:"body"`
+	At     int64  `json:"at"`
+	// 802: 取消墓碑时间（0=未撤回）。前端把 cancelledAt>0 的行渲染成
+	// 「已取消」而不是正文（349 Cancel 语义：墓碑保时间与发送方）。
+	CancelledAt int64                     `json:"cancelledAt,omitempty"`
+	Fanout      []collabchannel.FanoutRow `json:"fanout,omitempty"`
 }
 
 // CollabChannelReadView is one channel read: the channel header plus its
@@ -310,7 +313,7 @@ func (a *App) ReadCollabChannel(ref string, limit int) (CollabChannelReadView, e
 	}
 	out.Messages = make([]CollabChannelMessageView, 0, len(messages))
 	for _, m := range messages {
-		view := CollabChannelMessageView{ID: m.ID, Sender: m.Sender, Body: m.Body, At: m.At}
+		view := CollabChannelMessageView{ID: m.ID, Sender: m.Sender, Body: m.Body, At: m.At, CancelledAt: m.CancelledAt}
 		// FanoutStates orders by (message at, member) — keep that order so the
 		// member annotation reads in the roster's own order.
 		view.Fanout = byMessage[m.ID]
