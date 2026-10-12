@@ -115,6 +115,14 @@ type Approvals interface {
 	AnswerMCPInteraction(id, action string, content map[string]any)
 	AnswerQuestion(id string, answers []event.AskAnswer)
 	AnswerQuestionChecked(id string, answers []event.AskAnswer) error
+	// NotifyAskInteraction forwards the ask panel's first selection/typed edit
+	// (task 806 要素①): it stops the reversible-tier auto-decide timer. No-op
+	// for every prompt class without a timer.
+	NotifyAskInteraction(id string)
+	// NotifyAskActivity forwards panel hover (mousemove; task 844): it resets
+	// the reversible-tier auto-decide window, bounded by the controller's
+	// absolute hover budget. No-op for every prompt class without a timer.
+	NotifyAskActivity(id string)
 	// AnswerMCPInteractionChecked resolves an mcp_interaction prompt after its
 	// durable transition (serve /mcp-interaction, desktop bridge).
 	AnswerMCPInteractionChecked(id, action string, content map[string]any) error
