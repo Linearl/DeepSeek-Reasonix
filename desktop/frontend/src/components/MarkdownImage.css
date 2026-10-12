@@ -19,7 +19,7 @@
   border-radius: 6px;
   background: var(--bg-soft);
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .md-image-placeholder::before {

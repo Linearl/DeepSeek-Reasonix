@@ -3,13 +3,13 @@
 .perf-memory-section__block { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .perf-memory-section__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .perf-memory-section__actions { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.perf-memory-section__windows .set-seg__btn { padding: 2px 8px; font-size: 12px; }
+.perf-memory-section__windows .set-seg__btn { padding: 2px 8px; font-size: var(--text-sm); }
 .perf-memory-section__chart { width: 100%; height: 120px; display: block; }
-.perf-memory-section__axis { display: flex; justify-content: space-between; gap: 8px; color: var(--fg-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+.perf-memory-section__axis { display: flex; justify-content: space-between; gap: 8px; color: var(--fg-dim); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .perf-memory-section__pie-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .perf-memory-section__pie { width: 120px; height: 120px; flex-shrink: 0; }
 .perf-memory-section__legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
-.perf-memory-section__legend-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.perf-memory-section__legend-row { display: flex; align-items: center; gap: 8px; font-size: var(--text-md); }
 .perf-memory-section__swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 .perf-memory-section__legend-name { flex: 1; min-width: 0; color: var(--text); }
 .perf-memory-section__legend-value { color: var(--fg-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -17,7 +17,7 @@
 
 /* Task 355: Y axis (MB ticks) beside the WS curve + pie never clipped. */
 .perf-memory-section__chart-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
-.perf-memory-section__yaxis { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; min-width: 56px; color: var(--fg-dim); font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; padding: 2px 0; }
+.perf-memory-section__yaxis { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; min-width: 56px; color: var(--fg-dim); font-size: var(--text-xs); line-height: 1; font-variant-numeric: tabular-nums; padding: 2px 0; }
 .perf-memory-section__grid { stroke: var(--border-soft); stroke-dasharray: 3 4; opacity: 0.7; }
 /* Task 355 kept the pie's explicit size + xMidYMid meet (that is what fixed
    the left-edge clip: geometry r=50 around 60,60 stays in 10..110 of the

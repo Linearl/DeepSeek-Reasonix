@@ -344,7 +344,7 @@
 
 .usage-stats__donut-label {
   fill: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .usage-stats__model-list {

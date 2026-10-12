@@ -44,7 +44,7 @@
 .settings-select-menu__search input:focus-visible { outline: 1px solid var(--accent); }
 .settings-select-menu__list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
 .settings-select-menu__list:focus-visible { outline: none; }
-.settings-select-menu__group { padding: 4px 8px; line-height: 16px; color: var(--fg-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-select-menu__group { padding: 4px 8px; line-height: 16px; color: var(--fg-dim); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-select-menu__option { display: flex; align-items: center; justify-content: space-between; gap: 8px; box-sizing: border-box; height: 32px; padding: 0 8px; border-radius: 5px; cursor: pointer; }
 .settings-select-menu__option > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .settings-select-menu__option > svg { flex: 0 0 auto; color: var(--accent); }

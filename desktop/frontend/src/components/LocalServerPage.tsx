@@ -137,11 +137,11 @@ export function LocalServerPage() {
         .token-display:hover { border-color: color-mix(in srgb, var(--border, #888) 80%, transparent); }
         .token-display__text {
           font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-          font-size: 12px; letter-spacing: 0.06em; word-break: break-all;
+          font-size: var(--text-sm); letter-spacing: 0.06em; word-break: break-all;
           color: var(--text, #222); text-align: left;
         }
         .token-display__eye { font-size: 14px; opacity: .7; margin-left: 8px; flex: none; }
-        .settings-field__link { color: var(--link, #4a9eff); font-size: 13px; text-decoration: none; }
+        .settings-field__link { color: var(--link, #4a9eff); font-size: var(--text-md); text-decoration: none; }
         .settings-field__link:hover { text-decoration: underline; }
       `}</style>
       <div className="settings-section">

@@ -34,7 +34,7 @@
 .connection-title-editor { min-width: 0; max-width: 100%; }
 .connection-title-editor__row { display: flex; align-items: center; gap: 6px; }
 .connection-title-editor__row .mem-input { width: 220px; min-width: 0; }
-.connection-title-editor small { display: block; font-size: 12px; font-weight: normal; }
+.connection-title-editor small { display: block; font-size: var(--text-sm); font-weight: normal; }
 .provider-model-draft--inline .provider-model-draft__list { display: flex; flex-direction: column; }
 .provider-model-draft--inline .provider-model-draft__option { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; }
 .provider-model-draft--inline .provider-model-draft__model { flex: 1; min-width: 150px; }
@@ -107,7 +107,7 @@
 .provider-model-dialog .mem-input, .provider-model-dialog .mem-select { width: 100%; box-sizing: border-box; font-size: 14px; min-height: 40px; }
 .provider-model-dialog section label .mem-input { grid-column: 1 / -1; }
 .provider-model-dialog p, .provider-model-dialog small { color: var(--fg-faint); line-height: 1.5; }
-.provider-model-dialog p { margin: 8px 0 20px; font-size: 12px; }
+.provider-model-dialog p { margin: 8px 0 20px; font-size: var(--text-sm); }
 .provider-model-dialog details { margin-top: 24px; }
 .provider-model-dialog summary { cursor: pointer; margin-bottom: 12px; }
 .provider-model-dialog dl { margin: 0; }

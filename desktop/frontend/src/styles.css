@@ -2463,7 +2463,7 @@ a[href] {
   border: 0;
   border-radius: 12px;
   color: var(--accent-text);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   box-shadow: 0 6px 18px -6px var(--accent), var(--shadow-1);
   /* Logo, CTA icon, and search icon share the same content inset; CTA stays visually stronger. */
@@ -2519,7 +2519,7 @@ a[href] {
   gap: 9px;
   height: 28px;
   padding: 0 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .sidebar__section {
   flex: 1 1 auto;
@@ -2546,7 +2546,7 @@ a[href] {
   background: transparent;
   color: var(--fg-dim);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   padding: 0 10px;
   text-align: left;
 }
@@ -2569,7 +2569,7 @@ a[href] {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 .sidebar-im__icon-button {
@@ -2614,7 +2614,7 @@ a[href] {
   background: transparent;
   color: var(--fg-faint);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: left;
 }
 .sidebar-im__empty:hover {
@@ -2686,7 +2686,7 @@ a[href] {
   justify-content: center;
   border-radius: 7px;
   color: #fff;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 750;
 }
 .sidebar-im-row__platform--feishu {
@@ -2715,13 +2715,13 @@ a[href] {
 }
 .sidebar-im-row__main strong {
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
   line-height: 1.15;
 }
 .sidebar-im-row__main span {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.2;
 }
 .sidebar-im-row__status {
@@ -2931,12 +2931,12 @@ a[href] {
 }
 .topbar__title {
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 .topbar__model {
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3129,7 +3129,7 @@ a[href] {
   animation: spin 0.8s linear infinite;
 }
 .loading-screen__text {
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--fg-faint);
   letter-spacing: 0.3px;
 }
@@ -3191,7 +3191,7 @@ a[href] {
 }
 .bot-detail__summary-main > span {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
 }
 .bot-detail__summary-main h2 {
@@ -3217,7 +3217,7 @@ a[href] {
   border-radius: 999px;
   background: var(--bg-elev-2);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
   padding: 1px 7px;
 }
@@ -3267,14 +3267,14 @@ a[href] {
 .bot-detail__section-head span,
 .bot-detail__panel span {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 750;
 }
 .bot-detail__section-head strong {
   min-width: 0;
   overflow: hidden;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3293,7 +3293,7 @@ a[href] {
 }
 .bot-detail__facts span {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 750;
 }
 .bot-detail__facts strong,
@@ -3301,7 +3301,7 @@ a[href] {
   min-width: 0;
   overflow: hidden;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3314,7 +3314,7 @@ a[href] {
   background: var(--bg-elev-2);
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 4px 6px;
 }
 .bot-detail__access-grid {
@@ -3336,7 +3336,7 @@ a[href] {
   min-width: 0;
   overflow: hidden;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3350,7 +3350,7 @@ a[href] {
   background: var(--bg-elev-2);
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 4px 6px;
 }
 .bot-detail__access-status--ok {
@@ -3378,12 +3378,12 @@ a[href] {
 }
 .bot-detail__id-list em {
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-style: normal;
 }
 .bot-detail__panel strong {
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
   line-height: 1.5;
 }
@@ -3434,7 +3434,7 @@ a[href] {
 }
 .startup-splash__sub {
   margin-top: 9px;
-  font-size: 13px;
+  font-size: var(--text-md);
   letter-spacing: 0.05em;
   color: var(--fg-faint);
 }
@@ -3713,7 +3713,7 @@ a[href] {
   gap: 8px;
   min-height: 36px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .transcript__older-status .btn {
   flex-shrink: 0;
@@ -3831,7 +3831,7 @@ a[href] {
   gap: 8px;
   margin: auto;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .transcript__loading-icon {
   width: 16px;
@@ -3873,7 +3873,7 @@ a[href] {
   align-items: flex-start;
   gap: 6px;
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
   color: var(--fg-faint);
   border-radius: 6px;
@@ -3901,13 +3901,13 @@ a[href] {
 .sandbox-write-roots__title {
   color: var(--fg);
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-md);
   margin-bottom: 4px;
 }
 .sandbox-write-roots__hint {
   margin: 0 0 12px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .sandbox-write-roots__grid {
@@ -3924,7 +3924,7 @@ a[href] {
 .sandbox-write-roots__col-hint {
   margin: 0;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -3956,7 +3956,7 @@ a[href] {
   border-radius: 6px;
 }
 .experimental-lab__group-toggle:hover { background: color-mix(in srgb, var(--bg-elev) 70%, transparent); }
-.experimental-lab__group-arrow { width: 12px; flex-shrink: 0; font-size: 11px; color: var(--fg-faint); }
+.experimental-lab__group-arrow { width: 12px; flex-shrink: 0; font-size: var(--text-xs); color: var(--fg-faint); }
 .experimental-lab__group-name { flex: 1; min-width: 0; }
 /* 任务 626: group headers stick to the top of the rail's own scroll box (see
    .experimental-rail) and get pushed off by the next group header. Declared
@@ -3971,7 +3971,7 @@ a[href] {
   background: var(--bg);
 }
 .experimental-lab__group-count {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -4003,7 +4003,7 @@ a[href] {
   cursor: pointer;
 }
 .experimental-lab__intro-toggle:hover { background: var(--bg-elev); }
-.experimental-lab__intro-chevron { color: var(--fg-faint); font-size: 11px; }
+.experimental-lab__intro-chevron { color: var(--fg-faint); font-size: var(--text-xs); }
 .experimental-lab__intro-toggle--open { border-color: color-mix(in srgb, var(--accent) 35%, var(--border-soft)); }
 
 /* Task 359 (③): "disabled items last" display-order switch row. */
@@ -4017,7 +4017,7 @@ a[href] {
   border-radius: 999px;
   background: transparent;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 .experimental-lab__order-toggle:hover { background: color-mix(in srgb, var(--bg-elev) 70%, transparent); }
@@ -4117,7 +4117,7 @@ a[href] {
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -4132,7 +4132,7 @@ a[href] {
   margin-left: 6px;
   border-radius: 999px;
   border: 1px solid transparent;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   line-height: 16px;
   vertical-align: middle;
@@ -4195,7 +4195,7 @@ a[href] {
 }
 .lab-picks-wall__card-title {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4213,7 +4213,7 @@ a[href] {
 }
 .lab-picks-wall__card-effect {
   margin: 7px 0 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--fg);
   overflow: hidden;
@@ -4228,7 +4228,7 @@ a[href] {
   margin-top: 8px;
 }
 .lab-picks-wall__card-state {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint, #8a8f98);
 }
 .lab-picks-wall__card-state[data-on="true"] {
@@ -4236,7 +4236,7 @@ a[href] {
 }
 .lab-picks-wall__card-suggest {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--warn);
   border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
@@ -4295,7 +4295,7 @@ a[href] {
   padding: 14px 18px 18px;
 }
 .lab-pick-dialog__state {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-faint, #8a8f98);
 }
 .lab-pick-dialog__state[data-on="true"] {
@@ -4304,7 +4304,7 @@ a[href] {
 .lab-pick-dialog__suggest {
   display: inline-block;
   margin-top: 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--warn);
   border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
@@ -4319,7 +4319,7 @@ a[href] {
 }
 .lab-pick-dialog__detail {
   margin: 8px 0 0;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.6;
   color: var(--fg);
   white-space: pre-wrap;
@@ -4334,7 +4334,7 @@ a[href] {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--border-soft);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .lab-pick-dialog__path-label {
   color: var(--fg-faint, #8a8f98);
@@ -4482,7 +4482,7 @@ a[href] {
 }
 .experimental-intro__group-title {
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
   letter-spacing: 0.02em;
   padding: 12px 0 6px;
@@ -4508,7 +4508,7 @@ a[href] {
 .experimental-intro__card-title {
   margin: 0;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 .experimental-intro__card-desc {
@@ -4520,7 +4520,7 @@ a[href] {
 .experimental-intro__card-how {
   margin: 6px 0 0;
   color: var(--fg-faint, var(--fg-dim));
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 /* Task 112: structured completion hand-off card at the answer tail. */
@@ -4610,7 +4610,7 @@ a[href] {
   padding: 1px 6px;
   border-radius: 999px;
   border: 1px solid var(--border-soft);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--fg-faint);
 }
@@ -4663,7 +4663,7 @@ a[href] {
   border: 0;
   background: none;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 .collab-card__toggle:hover {
@@ -4725,7 +4725,7 @@ a[href] {
 .notice-line__decision-receipt code {
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .notice-line__decision-subject {
   min-width: 0;
@@ -4741,7 +4741,7 @@ a[href] {
   display: grid;
   gap: 8px;
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
   color: var(--fg-dim);
   background: color-mix(in srgb, var(--bg-soft) 76%, var(--bg-elev));
@@ -4766,7 +4766,7 @@ a[href] {
 .extension-card__plugin {
   margin-left: auto;
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
   border: 1px solid var(--border-soft);
   border-radius: 999px;
@@ -4813,7 +4813,7 @@ a[href] {
   gap: 6px;
 }
 .extension-card__result {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-dim);
 }
 .extension-card__result--error {
@@ -4857,7 +4857,7 @@ a[href] {
 .notice-line__summary-checks {
   flex: 0 0 auto;
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .notice-line__expanded {
   margin-top: 6px;
@@ -4871,7 +4871,7 @@ a[href] {
 .notice-line__details {
   margin-top: 4px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .notice-line__details summary {
@@ -5096,7 +5096,7 @@ a[href] {
   background: var(--bg-elev);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   pointer-events: none;
 }
@@ -5220,7 +5220,7 @@ a[href] {
 }
 .welcome kbd {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
@@ -5243,7 +5243,7 @@ a[href] {
   border: 1px solid var(--border-soft);
   color: var(--fg-dim);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   padding: 9px 13px;
   border-radius: 9px;
   transition: color 0.12s, border-color 0.12s, background 0.12s;
@@ -5269,7 +5269,7 @@ a[href] {
   }
   .welcome__tag {
     margin-top: 4px;
-    font-size: 13px;
+    font-size: var(--text-md);
   }
   .welcome__hints {
     margin-top: 12px;
@@ -5532,7 +5532,7 @@ a[href] {
 .rewind__menu-hint {
   padding: 5px 9px;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .rewind__menu-hint {
   color: var(--warn);
@@ -5553,12 +5553,12 @@ a[href] {
   border: none;
   color: var(--fg-dim);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 5px 9px;
 }
 .rewind__menu-meta {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .rewind__menu button:hover:not(:disabled),
 .rewind__menu button:focus-visible:not(:disabled) {
@@ -5606,7 +5606,7 @@ a[href] {
   align-items: center;
   gap: 7px;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
 }
 .im-source-card__head svg {
@@ -5639,7 +5639,7 @@ a[href] {
   border-radius: 7px;
   background: color-mix(in srgb, var(--bg-soft) 72%, var(--bg-elev));
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
 }
 .im-source-card__preview {
@@ -5660,7 +5660,7 @@ a[href] {
   background: transparent;
   color: var(--accent);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   cursor: pointer;
   transition: color var(--dur-fast), background var(--dur-fast);
@@ -5690,7 +5690,7 @@ a[href] {
   border-radius: 7px;
   background: color-mix(in srgb, var(--bg-soft) 72%, var(--bg-elev));
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 .msg--im-source .msg-attachments {
@@ -5866,7 +5866,7 @@ a[href] {
 .msg-merged__hint {
   flex: 0 0 auto;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .msg-merged__body {
   display: flex;
@@ -5883,7 +5883,7 @@ a[href] {
 }
 .msg-merged__segment-head {
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   word-break: break-word;
 }
 .msg-pasted-head {
@@ -6924,7 +6924,7 @@ button.reasoning-summary:focus-visible {
   border-radius: 6px;
   padding: 3px 7px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   transition: color 0.12s, border-color 0.12s, gap 0.12s;
 }
 .copybtn:hover:not(:disabled) {
@@ -7101,7 +7101,7 @@ button.reasoning-summary:focus-visible {
   background: transparent;
   color: var(--fg-faint);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   flex-shrink: 0;
 }
 .code-search__close:hover {
@@ -7158,7 +7158,7 @@ button.reasoning-summary:focus-visible {
   color: var(--fg-faint);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 0 3px;
   flex-shrink: 0;
 }
@@ -7209,7 +7209,7 @@ button.reasoning-summary:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7271,7 +7271,7 @@ button.reasoning-summary:focus-visible {
   min-height: 118px;
   padding: 24px 16px;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 .mermaid-diagram__spinner {
@@ -7356,7 +7356,7 @@ button.reasoning-summary:focus-visible {
   padding: 8px 12px;
   background: color-mix(in srgb, var(--err) 12%, transparent);
   color: var(--err);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 500;
 }
 
@@ -7375,7 +7375,7 @@ button.reasoning-summary:focus-visible {
 .mermaid-diagram__error-details {
   padding: 8px 12px 10px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .mermaid-diagram__error-details summary {
@@ -7390,7 +7390,7 @@ button.reasoning-summary:focus-visible {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -7509,7 +7509,7 @@ body > .mermaid-diagram--fullscreen {
 }
 .image-viewer__name {
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   max-width: 90vw;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7544,7 +7544,7 @@ body > .mermaid-diagram--fullscreen {
   border-radius: 6px;
   padding: 3px 7px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.25;
   transition: color 0.12s, border-color 0.12s, background 0.12s, gap 0.12s;
 }
@@ -7790,7 +7790,7 @@ body > .mermaid-diagram--fullscreen {
 .tool__risk-badge {
   flex: 0 0 auto;
   color: var(--danger, #d64545);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1;
   padding: 0 2px;
 }
@@ -8021,7 +8021,7 @@ body > .mermaid-diagram--fullscreen {
   margin: 8px 0;
   padding: 0 11px 10px 30px;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.65;
   white-space: pre-wrap;
 }
@@ -8033,7 +8033,7 @@ body > .mermaid-diagram--fullscreen {
   padding: 12px 16px;
   color: var(--fg-dim);
   font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -8106,7 +8106,7 @@ body > .mermaid-diagram--fullscreen {
 }
 .undo-rewind__files {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8119,7 +8119,7 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg-soft);
   color: var(--fg-dim);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s, color 0.12s;
 }
@@ -8208,7 +8208,7 @@ body > .mermaid-diagram--fullscreen {
   padding: 4px 14px 0;
   color: var(--accent);
   font-family: var(--sans);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .composer-card--waiting .composer-run-strip {
   /* inherited from the card border tint; no extra rule needed */
@@ -8376,7 +8376,7 @@ body > .mermaid-diagram--fullscreen {
   height: 26px;
   padding: 0 9px 4px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 .slashmenu__item {
@@ -8405,7 +8405,7 @@ body > .mermaid-diagram--fullscreen {
 }
 .slashmenu__name {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--accent);
   flex-shrink: 0;
 }
@@ -8502,7 +8502,7 @@ body > .mermaid-diagram--fullscreen {
   color: color-mix(in srgb, var(--invocation-color) 68%, var(--fg));
 }
 .invocation-display--message .invocation-display__name {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 620;
 }
 .invocation-display--message .invocation-display__source {
@@ -8538,7 +8538,7 @@ body > .mermaid-diagram--fullscreen {
   min-width: 0;
   overflow: hidden;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8724,7 +8724,7 @@ body > .mermaid-diagram--fullscreen {
   flex: 0 0 auto;
   margin-bottom: 6px;
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   white-space: nowrap;
 }
@@ -9451,7 +9451,7 @@ body > .mermaid-diagram--fullscreen {
   .composer-modebar__item {
     gap: 3px;
     padding-inline: 3px;
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
 
   .composer-modebar__item span {
@@ -9539,7 +9539,7 @@ body > .mermaid-diagram--fullscreen {
 .composer-access-menu__label {
   padding: 3px 8px 5px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
 }
 .composer-access-menu__item {
@@ -9716,7 +9716,7 @@ body > .mermaid-diagram--fullscreen {
 
 .composer-intent-menu__goal-runtime-line {
   display: block;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--fg-faint);
 }
@@ -10532,7 +10532,7 @@ button.statusbar__mcp:focus-visible {
   outline: none;
   color: var(--fg);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .modelsw__search-input::placeholder {
   color: var(--fg-faint);
@@ -10549,7 +10549,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-dim);
   font: inherit;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: left;
 }
 .modelsw__item:hover {
@@ -10588,7 +10588,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 6px;
   padding: 4px 9px 3px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
@@ -10937,7 +10937,7 @@ button.statusbar__mcp:focus-visible {
 }
 .prompt-shelf--todo .prompt-shelf__card--collapsed .prompt-shelf__heading,
 .prompt-shelf--todo .prompt-shelf__card--collapsed .prompt-shelf__meta {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .prompt-shelf--todo .prompt-shelf__card--collapsed .prompt-shelf__header-button {
   min-height: 26px;
@@ -11010,7 +11010,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-soft);
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   line-height: 1.2;
 }
@@ -11059,7 +11059,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-dim);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -11176,7 +11176,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   flex: 1;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .decision-confirm-bar__confirm {
@@ -11304,7 +11304,7 @@ button.statusbar__mcp:focus-visible {
   gap: 8px;
   align-items: baseline;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
 }
 .recovery-summary__action span {
@@ -11329,7 +11329,7 @@ button.statusbar__mcp:focus-visible {
 }
 .plan-change-delta__title {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
 }
 .plan-change-delta__group {
@@ -11347,7 +11347,7 @@ button.statusbar__mcp:focus-visible {
   gap: 5px;
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -11458,7 +11458,7 @@ button.statusbar__mcp:focus-visible {
 }
 .prompt-action__desc {
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .prompt-action-row {
@@ -11481,7 +11481,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 0 7px 7px 0;
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-soft));
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
 }
 .prompt-description-detail[hidden] {
@@ -11513,7 +11513,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-dim);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   line-height: 1.35;
 }
@@ -11548,7 +11548,7 @@ button.statusbar__mcp:focus-visible {
 .extension-form__row {
   display: grid;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--text-md);
   color: var(--fg);
 }
 .extension-form__row--check {
@@ -11558,7 +11558,7 @@ button.statusbar__mcp:focus-visible {
 }
 .extension-form__label {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .extension-form__input {
   box-sizing: border-box;
@@ -11593,7 +11593,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg);
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.45;
   padding: 9px 10px;
 }
@@ -11662,7 +11662,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 8px;
   background: color-mix(in srgb, var(--warning, #f59e0b) 8%, var(--bg-soft));
   color: color-mix(in srgb, var(--warning, #f59e0b) 62%, var(--fg));
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 
@@ -11716,12 +11716,12 @@ button.statusbar__mcp:focus-visible {
 
 .recovery-task-grant strong {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .recovery-task-grant small {
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
 }
 
@@ -11737,7 +11737,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 8px;
   background: color-mix(in srgb, var(--warning, #f59e0b) 10%, var(--bg-soft));
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .approval-subject {
@@ -11783,7 +11783,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-soft);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.25;
   padding: 5px 8px;
 }
@@ -11799,7 +11799,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 7px;
   color: var(--fg);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 6px 8px;
   box-sizing: border-box;
 }
@@ -11889,7 +11889,7 @@ button.statusbar__mcp:focus-visible {
 .prompt-shelf--compact .approval-subject {
   max-height: 118px;
   padding: 7px 9px;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .prompt-shelf--plan-approval .prompt-shelf__body {
   margin-top: 2px;
@@ -12090,7 +12090,7 @@ button.statusbar__mcp:focus-visible {
 .modal__plannote {
   margin: 0 0 16px;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
 }
 
@@ -12346,7 +12346,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -12408,7 +12408,7 @@ button.statusbar__mcp:focus-visible {
 .workspace-recent-menu__title {
   padding: 3px 6px 7px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 620;
 }
 .workspace-recent-menu__list {
@@ -12458,7 +12458,7 @@ button.statusbar__mcp:focus-visible {
 }
 .workspace-recent-menu__path {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .workspace-iconbtn {
   --wails-draggable: no-drag;
@@ -12611,7 +12611,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 7px;
   background: var(--bg-soft);
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .workspace-note--warning {
   background: color-mix(in srgb, var(--warn) 10%, var(--bg-soft));
@@ -12653,33 +12653,33 @@ button.statusbar__mcp:focus-visible {
 /* Task 113: turn-level edit list */
 .turn-edit-list { margin-top: 8px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg-soft); overflow: hidden; }
 .turn-edit-list__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border-soft); }
-.turn-edit-list__summary { font-size: 12px; font-weight: 600; color: var(--fg); }
+.turn-edit-list__summary { font-size: var(--text-sm); font-weight: 600; color: var(--fg); }
 .turn-edit-list__actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .turn-edit-list__files { list-style: none; margin: 0; padding: 0; }
-.turn-edit-list__file { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border-soft); font-size: 11px; }
+.turn-edit-list__file { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border-soft); font-size: var(--text-xs); }
 .turn-edit-list__file:last-child { border-bottom: 0; }
 .turn-edit-list__kind { color: var(--fg-dim); min-width: 2.5em; }
 .turn-edit-list__path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-family: var(--mono, ui-monospace, monospace); }
 .turn-edit-list__stat { white-space: nowrap; color: var(--fg-dim); }
-.turn-edit-list__more { display: flex; width: 100%; align-items: center; justify-content: center; gap: 4px; padding: 6px; border: 0; background: transparent; color: var(--fg-dim); font: inherit; font-size: 11px; cursor: pointer; }
+.turn-edit-list__more { display: flex; width: 100%; align-items: center; justify-content: center; gap: 4px; padding: 6px; border: 0; background: transparent; color: var(--fg-dim); font: inherit; font-size: var(--text-xs); cursor: pointer; }
 .turn-edit-list__more:hover { color: var(--fg); background: var(--bg); }
-.turn-edit-list__hint { margin: 0; padding: 0 10px 8px; color: var(--fg-dim); font-size: 11px; }
+.turn-edit-list__hint { margin: 0; padding: 0 10px 8px; color: var(--fg-dim); font-size: var(--text-xs); }
 
 /* Task 114: session artifacts & references */
 .side-files { display: grid; gap: 12px; padding: 12px; min-width: 0; }
 .side-files__group { border: 1px solid var(--border-soft); border-radius: 8px; overflow: hidden; }
-.side-files__group > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; background: var(--bg-soft); font-size: 12px; font-weight: 600; color: var(--fg); }
+.side-files__group > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; background: var(--bg-soft); font-size: var(--text-sm); font-weight: 600; color: var(--fg); }
 .side-files__group > summary::-webkit-details-marker { display: none; }
-.side-files__meta { font-weight: 400; color: var(--fg-dim); font-size: 11px; }
+.side-files__meta { font-weight: 400; color: var(--fg-dim); font-size: var(--text-xs); }
 .side-files__list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow: auto; }
-.side-files__item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--border-soft); font-size: 11px; color: var(--fg); }
+.side-files__item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--border-soft); font-size: var(--text-xs); color: var(--fg); }
 .side-files__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, ui-monospace, monospace); }
 .side-files__foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border-soft); }
-.side-files__empty { padding: 12px; color: var(--fg-dim); font-size: 12px; }
+.side-files__empty { padding: 12px; color: var(--fg-dim); font-size: var(--text-sm); }
 /* Task 260: dock-tab variant fills the dock body (the body clips overflow). */
 .workbench-dock__body > .side-files--dock { height: 100%; overflow: auto; }
 
-.workspace-turn-result { min-width: 0; padding: 16px; color: var(--fg); font-size: 12px; }
+.workspace-turn-result { min-width: 0; padding: 16px; color: var(--fg); font-size: var(--text-sm); }
 .workspace-turn-result__head, .workspace-turn-result__tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .workspace-turn-result__head { justify-content: space-between; }
 .workspace-turn-result__tabs [aria-pressed="true"] { background: var(--bg-soft); color: var(--accent); }
@@ -12760,7 +12760,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   color: var(--fg);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.35;
   overflow-wrap: anywhere;
   pointer-events: none;
@@ -12834,7 +12834,7 @@ button.statusbar__mcp:focus-visible {
 .tooltip .md pre {
   max-height: 240px;
   overflow: auto;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 /* past:chats hover preview (PR-C2). Inherits colors from the .tooltip container
 /* past:chats hover preview (PR-C2). Inherits colors from the .tooltip container
@@ -12861,14 +12861,14 @@ button.statusbar__mcp:focus-visible {
 }
 .past-chat-hover__meta {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 .past-chat-hover__path {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   word-break: break-all;
   max-height: 32px;
   overflow: hidden;
@@ -12876,7 +12876,7 @@ button.statusbar__mcp:focus-visible {
 .workspace-empty {
   padding: 18px 0;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .workspace-empty--error {
   color: var(--err);
@@ -12962,7 +12962,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 8px;
   background: var(--bg);
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 580;
 }
 .workspace-search {
@@ -13176,7 +13176,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-soft);
   color: var(--fg-faint);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1;
   cursor: pointer;
   opacity: 0;
@@ -13237,11 +13237,11 @@ button.statusbar__mcp:focus-visible {
 }
 .workspace-change__path {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .workspace-change__detail {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .workspace-change__meta {
   flex: 0 0 auto;
@@ -13257,7 +13257,7 @@ button.statusbar__mcp:focus-visible {
      interactive affordance in the row. */
   display: inline;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1;
 }
 .workspace-change__badge--git {
@@ -13287,7 +13287,7 @@ button.statusbar__mcp:focus-visible {
 .workspace-change-scope__title {
   flex: 1 1 auto;
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 620;
 }
 .workspace-change-scope__meta {
@@ -13353,7 +13353,7 @@ button.statusbar__mcp:focus-visible {
 .workspace-current-change__head > div > span {
   overflow: hidden;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -13362,7 +13362,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   gap: 7px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .workspace-current-change__added {
   color: var(--ok);
@@ -13396,7 +13396,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-faint);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: left;
 }
 .workspace-commit-history__toggle:hover,
@@ -13407,7 +13407,7 @@ button.statusbar__mcp:focus-visible {
 .workspace-commit-history__toggle small {
   margin-left: auto;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .workspace-commit-history--open .workspace-git-history__list {
   padding-top: 8px;
@@ -13433,7 +13433,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: left;
 }
 .workspace-git-history__head-top {
@@ -13461,7 +13461,7 @@ button.statusbar__mcp:focus-visible {
 }
 .workspace-git-history__author {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .workspace-git-history__date {
   color: var(--fg-faint);
@@ -13487,7 +13487,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 6px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-dim);
   background: transparent;
   border: none;
@@ -13695,7 +13695,7 @@ button.statusbar__mcp:focus-visible {
   padding: 28px 12px;
   text-align: center;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .palette__group + .palette__group {
   margin-top: 6px;
@@ -13834,7 +13834,7 @@ button.statusbar__mcp:focus-visible {
   gap: 16px;
   padding: 9px 16px;
   border-top: 1px solid var(--border);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 .palette__foot kbd {
@@ -13929,7 +13929,7 @@ button.statusbar__mcp:focus-visible {
 .session-wall__meta {
   flex: none;
   padding: 6px 16px 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 .session-wall__list {
@@ -13942,7 +13942,7 @@ button.statusbar__mcp:focus-visible {
   padding: 40px 12px;
   text-align: center;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .session-wall__group + .session-wall__group {
   margin-top: 10px;
@@ -13952,7 +13952,7 @@ button.statusbar__mcp:focus-visible {
   align-items: baseline;
   gap: 8px;
   padding: 8px 10px 5px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
   letter-spacing: 0.05em;
   color: var(--fg-faint);
@@ -14006,7 +14006,7 @@ button.statusbar__mcp:focus-visible {
   overflow-wrap: anywhere;
 }
 .session-wall__card-hint {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -14033,7 +14033,7 @@ button.statusbar__mcp:focus-visible {
   gap: 16px;
   padding: 9px 16px;
   border-top: 1px solid var(--border);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 .session-wall__foot kbd {
@@ -14125,7 +14125,7 @@ button.statusbar__mcp:focus-visible {
 .drawer__summary {
   margin-top: 3px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .drawer__actions {
   display: inline-flex;
@@ -14287,7 +14287,7 @@ button.statusbar__mcp:focus-visible {
 .mem-tab-select {
   width: 100%;
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
@@ -14387,7 +14387,7 @@ button.statusbar__mcp:focus-visible {
   margin-bottom: 10px;
 }
 .mem-section__title {
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-dim);
@@ -14450,7 +14450,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-soft);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: var(--mono);
   display: inline-flex;
   align-items: center;
@@ -14558,7 +14558,7 @@ button.statusbar__mcp:focus-visible {
   word-break: break-all;
 }
 .mem-empty {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-faint);
   padding: 8px 0;
 }
@@ -14582,7 +14582,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--accent);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .mem-empty__action:hover {
   text-decoration: underline;
@@ -14743,7 +14743,7 @@ button.statusbar__mcp:focus-visible {
 .mem-doc__path {
   min-width: 0;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -14755,7 +14755,7 @@ button.statusbar__mcp:focus-visible {
   border-top: 1px solid var(--border-soft);
   background: color-mix(in srgb, var(--bg) 54%, transparent);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-dim);
   white-space: pre-wrap;
   word-break: break-word;
@@ -14783,7 +14783,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 7px;
   color: var(--fg);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 8px;
   box-sizing: border-box;
 }
@@ -14875,7 +14875,7 @@ button.statusbar__mcp:focus-visible {
 }
 .mem-fact__title {
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
   color: var(--fg);
   overflow: hidden;
@@ -14948,7 +14948,7 @@ button.statusbar__mcp:focus-visible {
 }
 .mem-fact__desc {
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -14991,7 +14991,7 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--bg) 54%, transparent);
 }
 .mem-fact__body {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-dim);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -15072,7 +15072,7 @@ button.statusbar__mcp:focus-visible {
 .mem-recall-hit__head { display: flex; justify-content: space-between; gap: 12px; }
 .mem-recall-hit__head strong { color: var(--fg); font-size: var(--font-control-small); }
 .mem-recall-hit__head > span { color: var(--accent); font-family: var(--mono); font-size: var(--font-caption); }
-.mem-recall-hit p { margin: 8px 0 4px; color: var(--fg-dim); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+.mem-recall-hit p { margin: 8px 0 4px; color: var(--fg-dim); font-size: var(--text-sm); line-height: 1.5; white-space: pre-wrap; }
 .mem-recall-hit small { color: var(--fg-faint); font-size: var(--font-caption); }
 .mem-instruction-diagnostics {
   margin-bottom: 12px;
@@ -15095,7 +15095,7 @@ button.statusbar__mcp:focus-visible {
   border-top: 1px solid var(--border-soft);
   color: var(--fg-faint);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
   word-break: break-all;
 }
@@ -15216,7 +15216,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 7px;
   background: color-mix(in srgb, var(--bg-elev) 70%, transparent);
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -15358,7 +15358,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-dim);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: left;
   border-radius: 6px;
 }
@@ -15432,7 +15432,7 @@ button.statusbar__mcp:focus-visible {
 .cap-tool__name {
   color: var(--fg);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -15443,7 +15443,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 5px;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -15502,7 +15502,7 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-update-notice__title {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
   line-height: 1.25;
 }
@@ -15528,7 +15528,7 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-detail--select .mem-select {
   height: 30px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .cap-detail__label {
   color: var(--fg-faint);
@@ -15557,7 +15557,7 @@ button.statusbar__mcp:focus-visible {
 .cap-confirm-hint {
   flex-basis: 100%;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .cap-connection-mode {
@@ -15607,13 +15607,13 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-connection-option__label {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   line-height: 1.3;
 }
 .cap-connection-option__hint {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .cap-config-edit {
@@ -15631,7 +15631,7 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-edit-hint {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .cap-server-details .cap-tool-list {
@@ -16160,7 +16160,7 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-plugin-installer__title {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
   line-height: 1.35;
 }
@@ -16258,7 +16258,7 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-plugin-option-hint {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .cap-plugin-plan {
@@ -16279,19 +16279,19 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-plugin-plan__title {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
 }
 .cap-plugin-plan__meta,
 .cap-plugin-action__source {
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .cap-plugin-plan__warning {
   color: var(--warn);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -16301,7 +16301,7 @@ button.statusbar__mcp:focus-visible {
   overflow: auto;
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
@@ -16331,7 +16331,7 @@ button.statusbar__mcp:focus-visible {
   align-items: baseline;
   gap: 4px 8px;
   color: var(--fg);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -16343,7 +16343,7 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-plugin-runtime__risk {
   color: var(--err);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -16361,7 +16361,7 @@ button.statusbar__mcp:focus-visible {
 .cap-plugin-action__name {
   color: var(--fg);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
 }
 .cap-plugin-description {
@@ -16389,7 +16389,7 @@ button.statusbar__mcp:focus-visible {
 .cap-plugin-usage__empty,
 .cap-plugin-capability__hint {
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
 }
 .cap-plugin-capabilities {
@@ -16423,7 +16423,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   color: var(--fg);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -16432,7 +16432,7 @@ button.statusbar__mcp:focus-visible {
 .cap-plugin-capability__desc {
   margin-top: 2px;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -16453,7 +16453,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-dim);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .cap-tab:hover {
   color: var(--fg);
@@ -16579,7 +16579,7 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   min-width: 0;
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -16629,7 +16629,7 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
   gap: 5px 8px;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .cap-source-actions {
   display: flex;
@@ -16659,7 +16659,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   color: var(--fg);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -16686,7 +16686,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--accent);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 1px 0;
 }
 .cap-source-skills__more:hover,
@@ -16697,7 +16697,7 @@ button.statusbar__mcp:focus-visible {
 .cap-source__warning {
   margin-top: 5px;
   color: var(--warn);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .cap-failures {
@@ -16715,7 +16715,7 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-failures__title {
   color: var(--err);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 .cap-failures__hint {
@@ -16845,7 +16845,7 @@ button.statusbar__mcp:focus-visible {
   overflow: auto;
   color: var(--err);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -17083,7 +17083,7 @@ button.statusbar__mcp:focus-visible {
 .cap-skill-card__desc {
   margin: 6px 0 0 33px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.48;
   overflow: hidden;
   display: -webkit-box;
@@ -17104,7 +17104,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--accent);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
   line-height: 1.3;
   text-align: left;
@@ -17182,7 +17182,7 @@ button.statusbar__mcp:focus-visible {
   justify-content: flex-end;
   gap: 10px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .subagents-tool-grid__actions button {
   padding: 0;
@@ -17207,7 +17207,7 @@ button.statusbar__mcp:focus-visible {
   padding: 4px 8px;
   border-radius: 7px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 .subagents-tool-option:hover {
@@ -17224,7 +17224,7 @@ button.statusbar__mcp:focus-visible {
 }
 .subagents-tool-scope-row span {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
 }
 .subagents-form-back {
@@ -17234,7 +17234,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-faint);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 .subagents-form-back:hover {
@@ -17252,12 +17252,12 @@ button.statusbar__mcp:focus-visible {
 .subagents-field-error {
   margin-top: -4px;
   color: var(--err);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
 }
 .subagents-hint {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
 }
 .subagents-toolbar {
@@ -17360,7 +17360,7 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -17388,7 +17388,7 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--bg-soft) 76%, transparent);
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -17464,7 +17464,7 @@ button.statusbar__mcp:focus-visible {
   gap: 7px;
 }
 .cap-row__name {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 500;
 }
 .cap-row__transport {
@@ -17473,7 +17473,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
 }
 .cap-row__sub {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-dim);
   word-break: break-word;
 }
@@ -17485,7 +17485,7 @@ button.statusbar__mcp:focus-visible {
   gap: 6px;
 }
 .cap-row__pending {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
   color: var(--fg-faint);
 }
@@ -17583,7 +17583,7 @@ button.statusbar__mcp:focus-visible {
   cursor: pointer;
 }
 .topicbar__worktree-btn span {
-  font-size: 11px;
+  font-size: var(--text-xs);
   opacity: 0.9;
   text-decoration: underline dotted;
 }
@@ -17991,7 +17991,7 @@ button.statusbar__mcp:focus-visible {
   font: inherit;
 }
 .hist-item__preview {
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -18003,7 +18003,7 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: nowrap;
   gap: 6px;
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 .hist-item__metaspacer {
@@ -18058,7 +18058,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 @media (max-width: 760px) {
   .management-modal-backdrop {
@@ -18883,7 +18883,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -18925,7 +18925,7 @@ button.statusbar__mcp:focus-visible {
 .notification-volume-control output {
   min-width: 42px;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   line-height: 1;
@@ -19455,7 +19455,7 @@ button.statusbar__mcp:focus-visible {
   gap: 8px;
 }
 .prov-card__name {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
   color: var(--fg);
 }
@@ -19466,7 +19466,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   word-break: break-all;
 }
@@ -19934,7 +19934,7 @@ button.statusbar__mcp:focus-visible {
 }
 .cap-skill-policy__hint {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .provider-key-status {
@@ -20314,7 +20314,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev-2);
 }
 .set-rules__label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   margin-bottom: 5px;
   font-weight: 600;
@@ -20336,7 +20336,7 @@ button.statusbar__mcp:focus-visible {
   max-width: 100%;
   min-width: 0;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 3px 4px 3px 7px;
   background: var(--bg-elev);
   border: 1px solid var(--border);
@@ -20364,7 +20364,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-faint);
   padding: 0 2px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .set-rule .tooltip-trigger {
@@ -20495,7 +20495,7 @@ button.statusbar__mcp:focus-visible {
 .set-preapprove__warning {
   margin: 0;
   color: var(--warn);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .set-preapprove__row {
@@ -20633,13 +20633,13 @@ button.statusbar__mcp:focus-visible {
 .plan-usage__note {
   margin: 0;
   color: var(--warn);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .plan-usage__exhausted {
   margin: 0;
   color: var(--danger);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   font-weight: 620;
 }
@@ -21030,7 +21030,7 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -21096,7 +21096,7 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -21225,7 +21225,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-elev);
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 720;
   line-height: 1.15;
   padding: 4px 8px;
@@ -21352,7 +21352,7 @@ button.statusbar__mcp:focus-visible {
 .bot-channel-tab__text small {
   overflow: hidden;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -21430,7 +21430,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-elev-2);
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 800;
   line-height: 1;
 }
@@ -21496,7 +21496,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-elev-2);
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 800;
   line-height: 1;
 }
@@ -21513,7 +21513,7 @@ button.statusbar__mcp:focus-visible {
 .bot-step-chip__text strong {
   overflow: hidden;
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 740;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -21522,7 +21522,7 @@ button.statusbar__mcp:focus-visible {
 .bot-step-chip__text small {
   overflow: hidden;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -21547,7 +21547,7 @@ button.statusbar__mcp:focus-visible {
 }
 .bot-access-platform__name {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 780;
   line-height: 1.25;
 }
@@ -21734,7 +21734,7 @@ button.statusbar__mcp:focus-visible {
 }
 .bot-choice-card span {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .bot-pairing-row {
@@ -21761,7 +21761,7 @@ button.statusbar__mcp:focus-visible {
 }
 .bot-pairing-row span {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .bot-pairing-row .set-seg {
@@ -21867,7 +21867,7 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
 }
 .bot-phone-target strong {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 760;
   line-height: 1.25;
   white-space: nowrap;
@@ -21958,7 +21958,7 @@ button.statusbar__mcp:focus-visible {
 .bot-connect-target span {
   margin-top: 6px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .bot-connect-panel {
@@ -22034,7 +22034,7 @@ button.statusbar__mcp:focus-visible {
 }
 .bot-connect-panel__placeholder {
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .bot-connect-panel__body {
   display: grid;
@@ -22137,7 +22137,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-elev-2);
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
   padding: 5px 8px;
   white-space: nowrap;
@@ -22373,7 +22373,7 @@ button.statusbar__mcp:focus-visible {
 }
 .bot-connection-empty {
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .bot-connection-table {
   display: grid;
@@ -22488,7 +22488,7 @@ button.statusbar__mcp:focus-visible {
 }
 .bot-connection-row span {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .bot-connection-row code {
   display: block;
@@ -22499,20 +22499,20 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev-2);
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 3px 6px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .bot-connection-row em {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-style: normal;
 }
 .bot-connection-row__status {
   flex: 0 0 auto;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
 }
 .bot-connection-row__status--connected {
@@ -22619,7 +22619,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-elev-2);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 720;
   line-height: 1.1;
   padding: 3px 7px;
@@ -22735,7 +22735,7 @@ button.statusbar__mcp:focus-visible {
 }
 .bot-diagnostic-actions small {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 .bot-detail-section {
@@ -23079,7 +23079,7 @@ button.statusbar__mcp:focus-visible {
   white-space: nowrap;
 }
 .theme-card__zh {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--fg-dim);
   margin-left: 2px;
@@ -23753,7 +23753,7 @@ button.statusbar__mcp:focus-visible {
   grid-template-columns: auto 1fr;
   align-items: flex-start;
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
   padding-block: 2px;
 }
@@ -23766,7 +23766,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-soft);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
   white-space: nowrap;
 }
@@ -23828,7 +23828,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 4px;
   background: transparent;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
   cursor: pointer;
 }
@@ -23839,7 +23839,7 @@ button.statusbar__mcp:focus-visible {
 .todobar__code {
   margin-right: 4px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 .todobar__status--abandoned {
@@ -23873,7 +23873,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.4;
   cursor: pointer;
 }
@@ -23891,7 +23891,7 @@ button.statusbar__mcp:focus-visible {
 .todobar__archive-batch {
   display: grid;
   gap: 2px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .todobar__archive-batch-title {
   color: var(--fg-dim);
@@ -23936,7 +23936,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 6px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 620;
 }
 
@@ -23952,7 +23952,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 9px;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--fg);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
 }
 
@@ -23981,7 +23981,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 7px;
   background: transparent;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -24000,7 +24000,7 @@ button.statusbar__mcp:focus-visible {
   gap: 4px;
   margin-left: 4px;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -24023,7 +24023,7 @@ button.statusbar__mcp:focus-visible {
 
 .composer-guidance-batchbar__count {
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 620;
 }
 
@@ -24045,7 +24045,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-dim);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   line-height: 1;
   white-space: nowrap;
@@ -24144,7 +24144,7 @@ button.statusbar__mcp:focus-visible {
 .composer-guidance-item__text {
   min-width: 0;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 520;
   line-height: 1.35;
   overflow: hidden;
@@ -24232,7 +24232,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 560;
 }
 
@@ -24265,7 +24265,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   color: var(--fg-dim);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -24285,7 +24285,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev));
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   line-height: 1;
   white-space: nowrap;
@@ -24337,7 +24337,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-family: inherit;
   line-height: 1.3;
 }
@@ -24471,7 +24471,7 @@ button.statusbar__mcp:focus-visible {
 }
 .composer-context__meta {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.2;
 }
 .composer-context__remove-trigger,
@@ -24619,7 +24619,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-faint);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .composer__pasted-head button:hover {
   color: var(--fg);
@@ -24635,7 +24635,7 @@ button.statusbar__mcp:focus-visible {
   word-break: break-word;
   color: var(--fg-dim);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 
@@ -24788,7 +24788,7 @@ button.statusbar__mcp:focus-visible {
 }
 .crash-overlay__note {
   color: #8a8aa3;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 /* 任务 642: 模拟崩溃演练的防误报标注（横幅 + 标题徽章）—— 沿用 --warn 警戒
    色系（crash-overlay 兜底面深底上的琥珀高亮），透明底走 color-mix。 */
@@ -24806,7 +24806,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: color-mix(in srgb, var(--warn) 20%, transparent);
   color: var(--warn);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 700;
 }
 .crash-overlay__analyze,
@@ -24819,7 +24819,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: var(--button-bg);
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .crash-overlay__analyze[disabled],
 .performance-report__analyze[disabled],
@@ -24838,7 +24838,7 @@ button.statusbar__mcp:focus-visible {
   flex-direction: column;
   gap: 6px;
   color: var(--warn);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -24865,7 +24865,7 @@ button.statusbar__mcp:focus-visible {
   box-shadow: var(--shadow-2);
 }
 .performance-report__title {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 .performance-report__body {
@@ -24896,7 +24896,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: var(--button-bg);
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 /* 任务 674: 真实面的「发送报告」按钮已移除（.performance-report__send 样式随之清掉）；
    mock 演练面保留的发送按钮沿用 .crash-overlay__send。 */
@@ -24929,12 +24929,12 @@ button.statusbar__mcp:focus-visible {
 }
 .hang-analysis__title {
   color: var(--warn);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 .hang-analysis__intro {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .hang-analysis__body {
@@ -24968,7 +24968,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: var(--button-bg);
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .hang-analysis__note,
 .pending-crash__note {
@@ -24996,12 +24996,12 @@ button.statusbar__mcp:focus-visible {
 }
 .pending-crash__title {
   color: var(--accent);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 .pending-crash__intro {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .pending-crash__body {
@@ -25125,13 +25125,13 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
 }
 .onboarding__tag {
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.55;
   color: var(--fg-dim);
   margin-bottom: 6px;
 }
 .onboarding__label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--fg-dim);
   text-transform: uppercase;
@@ -25139,7 +25139,7 @@ button.statusbar__mcp:focus-visible {
 }
 .onboarding__input {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: var(--text-md);
   padding: 10px 12px;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -25157,7 +25157,7 @@ button.statusbar__mcp:focus-visible {
   cursor: not-allowed;
 }
 .onboarding__error {
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: #ff8b7a;
   background: rgba(255, 70, 70, 0.08);
@@ -25172,7 +25172,7 @@ button.statusbar__mcp:focus-visible {
   color: #1a0e08;
   border: none;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -25196,7 +25196,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 550;
   font-family: inherit;
   transition: background 120ms ease, border-color 120ms ease;
@@ -25225,7 +25225,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-dim);
   margin-top: 4px;
 }
@@ -25253,7 +25253,7 @@ button.statusbar__mcp:focus-visible {
   padding: 4px 0;
   margin-top: 2px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-family: inherit;
   text-align: center;
   transition: color 120ms ease;
@@ -25298,7 +25298,7 @@ button.statusbar__mcp:focus-visible {
   gap: 8px;
   padding: 5px 9px;
   border-bottom: 1px solid var(--border-soft);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .inline-diff__file {
   font-family: var(--mono);
@@ -25408,7 +25408,7 @@ button.statusbar__mcp:focus-visible {
   gap: 5px;
   width: 100%;
   padding: 5px 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   background: transparent;
   border: 0;
@@ -25440,7 +25440,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
   background: transparent;
   border: none;
@@ -26526,7 +26526,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: color-mix(in srgb, #0ea5e9 8%, transparent);
   color: color-mix(in srgb, #0284c7 76%, var(--fg-dim));
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 620;
   line-height: 1;
 }
@@ -26767,7 +26767,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-dim);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: left;
 }
 
@@ -26914,7 +26914,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: left;
 }
 
@@ -27235,14 +27235,14 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--text-xs);
   opacity: 0.75;
   direction: rtl;
   text-align: left;
 }
 
 .tabbar__newmenu-source {
-  font-size: 11px;
+  font-size: var(--text-xs);
   opacity: 0.6;
 }
 
@@ -27264,7 +27264,7 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--bg-elev) 60%, transparent);
   color: var(--fg-faint);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition:
     width 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
@@ -27416,7 +27416,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 .project-tree__search input::placeholder {
@@ -27431,7 +27431,7 @@ button.statusbar__mcp:focus-visible {
   min-height: 28px;
   padding: 2px var(--project-tree-edge-gap) 0 8px;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
   text-transform: none;
   letter-spacing: 0;
@@ -27584,7 +27584,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 5px;
   background: transparent;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
@@ -27620,7 +27620,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 5px;
   background: transparent;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
@@ -27710,7 +27710,7 @@ button.statusbar__mcp:focus-visible {
 
 .project-tree__hover-card-title {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 550;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -27718,12 +27718,12 @@ button.statusbar__mcp:focus-visible {
 
 .project-tree__hover-card-status {
   color: var(--accent);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .project-tree__hover-card-meta {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .project-tree__hover-card-project {
@@ -27731,7 +27731,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 5px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .project-tree__hover-card-project svg {
@@ -27751,7 +27751,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 5px;
   background: transparent;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   cursor: pointer;
   transition: color 0.12s;
@@ -27772,7 +27772,7 @@ button.statusbar__mcp:focus-visible {
   height: 26px;
   padding: 0 8px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   user-select: none;
 }
 
@@ -27835,7 +27835,7 @@ button.statusbar__mcp:focus-visible {
   min-height: 26px;
   padding: 6px 8px 2px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0;
@@ -27978,7 +27978,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   padding: 0 8px;
   outline: none;
 }
@@ -28015,7 +28015,7 @@ button.statusbar__mcp:focus-visible {
   padding-right: 8px;
   border-radius: var(--project-tree-row-radius);
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   cursor: default;
 }
 
@@ -28128,7 +28128,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -28244,7 +28244,7 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.2;
 }
 
@@ -28269,7 +28269,7 @@ button.statusbar__mcp:focus-visible {
   gap: 5px;
   margin-left: 6px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1;
   white-space: nowrap;
   transition: opacity var(--dur-fast);
@@ -28339,7 +28339,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-md);
   padding: 0 8px;
   outline: none;
 }
@@ -28410,7 +28410,7 @@ button.statusbar__mcp:focus-visible {
 
 /* Weaken topic time display */
 :root[data-theme-style] .sidebar--workbench .project-tree__topic-side {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: color-mix(in srgb, var(--fg-faint) 72%, transparent);
 }
 :root[data-theme-style] .sidebar--workbench .project-tree__topic-side--empty {
@@ -28560,7 +28560,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-dim);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: left;
   padding: 0 8px;
 }
@@ -28574,7 +28574,7 @@ button.statusbar__mcp:focus-visible {
   cursor: default;
   opacity: 1;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
 }
 
@@ -28586,7 +28586,7 @@ button.statusbar__mcp:focus-visible {
 .context-menu__shortcut {
   margin-left: 16px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: inherit;
   pointer-events: none;
 }
@@ -28684,7 +28684,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -28754,7 +28754,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -28845,7 +28845,7 @@ button.statusbar__mcp:focus-visible {
 .project-tree__empty {
   padding: 10px 12px;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 /* Task 403: first-read loading row. It takes the exact spot where rows will
@@ -28854,7 +28854,7 @@ button.statusbar__mcp:focus-visible {
 .project-tree__loading {
   padding: 10px 12px;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-style: italic;
 }
 
@@ -28864,13 +28864,13 @@ button.statusbar__mcp:focus-visible {
 	gap: 8px;
   padding: 4px 10px 6px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 
 .project-tree__empty--subtle {
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .project-tree__empty-state {
@@ -29134,7 +29134,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   justify-content: center;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 /* Task 495: right-dock subagent directory (running/ended sections, folded
@@ -29153,12 +29153,12 @@ button.statusbar__mcp:focus-visible {
 .subagents-panel__section-empty {
   padding: 6px 2px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .subagents-panel__section-title {
   margin: 0 0 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--fg-dim);
 }
@@ -29186,7 +29186,7 @@ button.statusbar__mcp:focus-visible {
   border: 0;
   cursor: pointer;
   text-align: left;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg);
 }
 
@@ -29233,7 +29233,7 @@ button.statusbar__mcp:focus-visible {
 
 .subagents-panel__detail-summary {
   margin: 0 0 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   overflow: hidden;
   display: -webkit-box;
@@ -29311,7 +29311,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -29325,7 +29325,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 7px;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg);
 }
 
@@ -29362,7 +29362,7 @@ button.statusbar__mcp:focus-visible {
 
 .subagents-panel__detailview-text {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -29438,7 +29438,7 @@ button.statusbar__mcp:focus-visible {
 .context-panel__mcp-empty {
   margin: 0;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -29452,7 +29452,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg);
 }
 
@@ -29473,7 +29473,7 @@ button.statusbar__mcp:focus-visible {
   margin: 0;
   min-width: 0;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.2;
   font-weight: 670;
 }
@@ -29513,7 +29513,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-dim);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 560;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -29567,7 +29567,7 @@ button.statusbar__mcp:focus-visible {
 .context-panel__donut-core span {
   margin-top: 6px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.25;
 }
 
@@ -29638,7 +29638,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: color-mix(in srgb, var(--warn) 11%, transparent);
   color: var(--warn);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   line-height: 1;
   white-space: nowrap;
@@ -29673,7 +29673,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: color-mix(in srgb, var(--ok) 10%, transparent);
   color: var(--ok);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   line-height: 1;
   white-space: nowrap;
@@ -29711,7 +29711,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg-elev);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 680;
   line-height: 1;
   text-overflow: ellipsis;
@@ -29746,7 +29746,7 @@ button.statusbar__mcp:focus-visible {
   gap: 10px;
   padding-top: 2px;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.2;
 }
 
@@ -29770,7 +29770,7 @@ button.statusbar__mcp:focus-visible {
 
 .context-panel__capacity-remaining span {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
@@ -29800,11 +29800,11 @@ button.statusbar__mcp:focus-visible {
 
 .context-panel__budget-grid span {
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .context-panel__budget-grid strong {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
@@ -29814,7 +29814,7 @@ button.statusbar__mcp:focus-visible {
 .context-panel__budget-recovery {
   margin: 8px 0 0;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -29834,7 +29834,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -29844,7 +29844,7 @@ button.statusbar__mcp:focus-visible {
 .context-panel__progress-head span {
   flex: 0 0 auto;
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 660;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -29915,7 +29915,7 @@ button.statusbar__mcp:focus-visible {
   padding: 7px 0;
   border-top: 1px solid var(--border-soft);
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.2;
 }
 
@@ -30035,7 +30035,7 @@ button.statusbar__mcp:focus-visible {
 .context-panel__breakdown-details summary {
   cursor: pointer;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 560;
   line-height: 1.25;
 }
@@ -30071,7 +30071,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 9px;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 .context-panel__legend-row strong,
@@ -30121,7 +30121,7 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .context-panel__metric strong {
@@ -30217,7 +30217,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -30267,14 +30267,14 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
 }
 
 .context-panel__source-overview-head span {
   flex: 0 0 auto;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .context-panel__source-sharebar {
@@ -30318,7 +30318,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 88%, var(--bg-soft));
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.25;
 }
 
@@ -30446,7 +30446,7 @@ button.statusbar__mcp:focus-visible {
   max-width: 100%;
   cursor: pointer;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.2;
 }
 
@@ -30521,14 +30521,14 @@ button.statusbar__mcp:focus-visible {
 
 .context-panel__type-overview-head strong {
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
 }
 
 .context-panel__type-overview-head span {
   flex: 0 0 auto;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .context-panel__type-sharebar {
@@ -30628,7 +30628,7 @@ button.statusbar__mcp:focus-visible {
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .workspace-branch-indicator > svg {
@@ -30645,7 +30645,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   cursor: pointer;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 1px 4px;
   border-radius: 3px;
 }
@@ -30713,7 +30713,7 @@ button.statusbar__mcp:focus-visible {
 .workspace-branch-menu__loading {
   padding: 10px 12px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: center;
 }
 
@@ -30728,7 +30728,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   cursor: pointer;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: left;
 }
 
@@ -31761,7 +31761,7 @@ button.statusbar__mcp:focus-visible {
 
 .tab-overview__group-title {
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--fg-dim);
 }
@@ -32246,7 +32246,7 @@ button.statusbar__mcp:focus-visible {
 
 :root[data-theme-style] .topicbar__subtitle {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 
@@ -32297,7 +32297,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 12px;
   background: color-mix(in srgb, var(--bg-soft) 82%, var(--bg-elev));
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 
@@ -32316,7 +32316,7 @@ button.statusbar__mcp:focus-visible {
 
 :root[data-theme-style] .project-tree__header-title {
   gap: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -32486,7 +32486,7 @@ button.statusbar__mcp:focus-visible {
 
 :root[data-theme-style] .project-tree__topic-meta {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 :root[data-theme-style] .project-tree__topic--active .project-tree__topic-label {
@@ -32715,7 +32715,7 @@ button.statusbar__mcp:focus-visible {
   gap: 14px;
   margin: 12px 0 22px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 :root[data-theme-style] .welcome__hints span {
@@ -32749,7 +32749,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 8px;
   background: var(--bg-elev);
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.45;
   text-align: left;
   box-shadow: var(--app-graphite-shadow);
@@ -33163,7 +33163,7 @@ button.statusbar__mcp:focus-visible {
 :root[data-theme-style] .management-modal__summary {
   color: var(--fg-faint);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 :root[data-theme-style] .history-toolbar {
@@ -33225,7 +33225,7 @@ button.statusbar__mcp:focus-visible {
 :root[data-theme-style] .hist-group__title {
   padding: 0 2px 8px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -33268,14 +33268,14 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-style] .history-preview__title {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
 }
 
 :root[data-theme-style] .history-preview__meta {
   color: var(--fg-faint);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 :root[data-theme-style] .history-preview__body .transcript {
@@ -33682,7 +33682,7 @@ button.statusbar__mcp:focus-visible {
   display: grid;
   place-items: center;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: center;
 }
 
@@ -33702,7 +33702,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-style] .workspace-current-file__name {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 650;
 }
 
@@ -33739,7 +33739,7 @@ button.statusbar__mcp:focus-visible {
   padding: 10px 14px;
   border: 0;
   background: transparent;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.7;
 }
 
@@ -34683,7 +34683,7 @@ button.statusbar__mcp:focus-visible {
   justify-content: flex-end;
   gap: 7px;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 520;
   line-height: 1;
   white-space: nowrap;
@@ -34895,7 +34895,7 @@ button.statusbar__mcp:focus-visible {
   padding: 0 12px;
   border-radius: 9px;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 500;
 }
 
@@ -34908,7 +34908,7 @@ button.statusbar__mcp:focus-visible {
 
 .sidebar--workbench .sidebar__nav--footer .sidebar-im__summary-status {
   max-width: 92px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 560;
 }
 
@@ -35252,7 +35252,7 @@ button.statusbar__mcp:focus-visible {
   color: inherit;
   padding: 0 9px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
   line-height: 1;
   cursor: pointer;
@@ -39581,7 +39581,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 5px;
   background: color-mix(in srgb, var(--fg) 8%, var(--sidebar-bg, var(--bg)));
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 520;
   line-height: 1;
   letter-spacing: 0.02em;
@@ -39937,7 +39937,7 @@ button.statusbar__mcp:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--text-md);
   min-width: 0;
 }
 .diag-page__actions {
@@ -39947,7 +39947,7 @@ button.statusbar__mcp:focus-visible {
 }
 .diag-page__hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted, #888);
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -39979,7 +39979,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted, #888);
   min-width: 0;
 }
@@ -40023,7 +40023,7 @@ button.statusbar__mcp:focus-visible {
 }
 .diag-frontend-recording__copy span {
   color: var(--text-muted, #888);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .diag-page .frontend-diagnostics--embedded {
@@ -40102,7 +40102,7 @@ button.statusbar__mcp:focus-visible {
 }
 .diag-issue-group h4 {
   margin: 8px 0 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
   letter-spacing: .04em;
   color: var(--text-muted, #888);
@@ -40129,7 +40129,7 @@ button.statusbar__mcp:focus-visible {
 .diag-issue__msg,
 .diag-issue__fix {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.4;
 }
 .diag-issue__fix {
@@ -40138,7 +40138,7 @@ button.statusbar__mcp:focus-visible {
 /* Task 625: same-code issue cluster row (collapsed summary + expandable details). */
 .diag-issues-scope {
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 400;
   color: var(--text-muted, #888);
 }
@@ -40201,7 +40201,7 @@ button.statusbar__mcp:focus-visible {
 }
 .diag-path {
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
   word-break: break-word;
   min-width: 0;
@@ -40211,7 +40211,7 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--text-md);
   min-width: 0;
 }
 .worktree-badge {
@@ -40922,7 +40922,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 .theme-lib-card__name {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -40930,7 +40930,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 .theme-lib-card__sub {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint, var(--text-3));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -40957,7 +40957,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 .theme-lib-card__actions .btn {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 6px;
   height: auto;
 }
@@ -40971,7 +40971,7 @@ button.statusbar__mcp:focus-visible {
 
 .theme-library__heading {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--fg-dim, var(--text-2));
   letter-spacing: 0.02em;
@@ -41001,7 +41001,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 .theme-lib-card__desc {
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.45;
   color: var(--fg-dim, var(--text-2));
   display: -webkit-box;
@@ -41908,7 +41908,7 @@ button.statusbar__mcp:focus-visible {
 .theme-preview-surface__logo {
   width: 28px; height: 28px; border-radius: min(var(--tp-radius, 8px), 10px);
   background: var(--tp-accent); color: var(--tp-accent-fg);
-  display: grid; place-items: center; font-weight: 700; font-size: 12px;
+  display: grid; place-items: center; font-weight: 700; font-size: var(--text-sm);
 }
 .theme-preview-surface__nav {
   height: 8px; border-radius: 4px;
@@ -42150,7 +42150,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 .theme-editor__label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-dim, var(--text-2));
   padding-top: 6px;
 }
@@ -42172,7 +42172,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 
@@ -42188,7 +42188,7 @@ button.statusbar__mcp:focus-visible {
 
 .theme-editor__color input[type="text"] {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 4px 6px;
   border-radius: 4px;
   border: 1px solid var(--border-soft);
@@ -42221,7 +42221,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 .theme-editor__warn {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--warn);
   background: color-mix(in srgb, var(--warn) 12%, transparent);
   border-radius: 6px;
@@ -43157,26 +43157,26 @@ button.statusbar__mcp:focus-visible {
 .taskmonitor-popover { position:absolute; top:calc(100% + 8px); right:0; width:min(440px, calc(100vw - 32px)); max-height:min(72vh, 680px); z-index:var(--z-dock); border:1px solid var(--border,#333); border-radius:10px; background:var(--overlay-surface-bg, var(--bg,#111)); box-shadow:0 14px 36px rgba(0,0,0,.42); overflow:hidden; }
 .taskmonitor { background:var(--bg,#111); }
 .taskmonitor--popover { max-height:inherit; background:transparent; }
-.taskmonitor__head { display:flex; align-items:center; gap:6px; width:100%; padding:8px 12px; font-size:13px; }
+.taskmonitor__head { display:flex; align-items:center; gap:6px; width:100%; padding:8px 12px; font-size: var(--text-md); }
 .taskmonitor__toggle,.taskmonitor__refresh,.taskmonitor__close { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; border-radius:6px; background:none; color:inherit; cursor:pointer; }
 .taskmonitor__toggle:hover,.taskmonitor__refresh:hover,.taskmonitor__close:hover,.taskmonitor__toggle:focus-visible,.taskmonitor__refresh:focus-visible,.taskmonitor__close:focus-visible { background:var(--bg-elev-2); outline:none; }
 .taskmonitor__title { flex:1; text-align:left; font-weight:600; }
-.taskmonitor__count { background:var(--muted,#555); color:#fff; border-radius:10px; padding:0 6px; font-size:11px; line-height:18px; }
+.taskmonitor__count { background:var(--muted,#555); color:#fff; border-radius:10px; padding:0 6px; font-size: var(--text-xs); line-height:18px; }
 .taskmonitor__body { max-height:360px; overflow-y:auto; }
 .taskmonitor--popover .taskmonitor__body { max-height:calc(min(72vh, 680px) - 44px); }
-.taskmonitor__category-title { padding:10px 16px 4px; color:var(--fg-dim,#aaa); font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
-.taskmonitor__state { display:flex; align-items:center; gap:8px; padding:16px; font-size:13px; color:var(--muted,#888); }
+.taskmonitor__category-title { padding:10px 16px 4px; color:var(--fg-dim,#aaa); font-size: var(--text-xs); font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
+.taskmonitor__state { display:flex; align-items:center; gap:8px; padding:16px; font-size: var(--text-md); color:var(--muted,#888); }
 .taskmonitor__state--error { color:#ef4444; }
 .taskmonitor__task { border-bottom:1px solid var(--border,#2a2a2a); }
 .taskmonitor__task-head { display:flex; align-items:center; }
-.taskmonitor__expand { display:flex; align-items:center; gap:6px; width:100%; min-height:32px; padding:6px 12px; background:none; border:0; color:inherit; cursor:pointer; font-size:12px; }
+.taskmonitor__expand { display:flex; align-items:center; gap:6px; width:100%; min-height:32px; padding:6px 12px; background:none; border:0; color:inherit; cursor:pointer; font-size: var(--text-sm); }
 .taskmonitor__expand:hover,.taskmonitor__expand:focus-visible { background:var(--bg-elev-2); outline:none; }
 .taskmonitor__dot { font-size:10px; width:14px; text-align:center; }
-.taskmonitor__id { font-family:monospace; font-size:11px; color:var(--muted,#888); }
+.taskmonitor__id { font-family:monospace; font-size: var(--text-xs); color:var(--muted,#888); }
 .taskmonitor__badge { font-size:10px; padding:1px 6px; border-radius:8px; font-weight:600; text-transform:uppercase; }
 .taskmonitor__runtime { display:inline-flex; align-items:center; gap:3px; font-size:10px; }
-.taskmonitor__time { margin-left:auto; font-size:11px; color:var(--muted,#666); }
-.taskmonitor__detail { padding:6px 12px 10px 32px; font-size:12px; }
+.taskmonitor__time { margin-left:auto; font-size: var(--text-xs); color:var(--muted,#666); }
+.taskmonitor__detail { padding:6px 12px 10px 32px; font-size: var(--text-sm); }
 .taskmonitor__detail dl { margin:0; display:grid; grid-template-columns:80px 1fr; gap:2px 8px; }
 .taskmonitor__detail dt { color:var(--muted,#888); }
 .taskmonitor__detail dd { margin:0; }
@@ -43369,7 +43369,7 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   line-height: 1;
   padding-left: 8px;
@@ -43576,7 +43576,7 @@ button.statusbar__mcp:focus-visible {
   padding: 4px 6px;
   border-radius: 6px;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 560;
   cursor: pointer;
   user-select: none;
@@ -43610,7 +43610,7 @@ button.statusbar__mcp:focus-visible {
 .project-tree__group-count {
   flex: none;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .project-tree__group-actions {
   display: flex;
@@ -43676,7 +43676,7 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .move-group__project {
   color: var(--fg-faint);
@@ -43699,7 +43699,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: left;
   cursor: pointer;
 }
@@ -43734,7 +43734,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: var(--accent);
-  font-size: 13px;
+  font-size: var(--text-md);
   text-align: left;
   cursor: pointer;
 }
@@ -43754,7 +43754,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 /* ── MCP Apps inline surface ─────────────────────────────────────────── */
@@ -43780,7 +43780,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -43825,7 +43825,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .question-search__results {
   flex: 1;
@@ -43847,7 +43847,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: transparent;
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.4;
   text-align: left;
   cursor: pointer;
@@ -43865,7 +43865,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 .question-search__text {
@@ -43881,13 +43881,13 @@ button.statusbar__mcp:focus-visible {
   padding: 18px 8px;
   text-align: center;
   color: var(--fg-faint);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .question-search__foot {
   padding: 6px 12px;
   border-top: 1px solid var(--border);
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 /* Task 399: transcript find bar — same top-center anchor family as the
    question search panel, clear of the right-edge jump bar. */
@@ -43920,7 +43920,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .transcript-find__input:focus {
   outline: none;
@@ -43931,7 +43931,7 @@ button.statusbar__mcp:focus-visible {
   min-width: 52px;
   padding: 0 4px;
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
   text-align: center;
   white-space: nowrap;
@@ -44006,15 +44006,15 @@ button.statusbar__mcp:focus-visible {
    absolute 定位面板），surface 规格类挂在 portal 容器上，本处只留按钮容器。 */
 .composer-history-picker { position: relative; display: flex; align-items: center; }
 .composer-history-menu.composer-menu-surface { width: min(460px, calc(100vw - 48px)); max-width: none; display: flex; flex-direction: column; gap: 6px; }
-.composer-history-menu__head { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: var(--fg-dim); }
+.composer-history-menu__head { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: var(--text-xs); font-weight: 600; color: var(--fg-dim); }
 .composer-history-menu__hint { margin-left: auto; font-weight: 400; font-size: 10px; }
 .composer-history-menu__list { display: flex; flex-direction: column; max-height: 280px; overflow: auto; outline: none; }
-.composer-history-menu__item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 12px; background: transparent; color: var(--fg); font-size: 12px; text-align: left; cursor: pointer; }
+.composer-history-menu__item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 12px; background: transparent; color: var(--fg); font-size: var(--text-sm); text-align: left; cursor: pointer; }
 .composer-history-menu__item:hover { background: var(--bg-soft); }
 .composer-history-menu__time { flex-shrink: 0; font-size: 10px; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
 .composer-history-menu__summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-history-menu__empty { padding: 10px 8px; font-size: 12px; color: var(--fg-dim); }
-.composer-history-menu__more { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 8px; border: 0; border-radius: 12px; background: transparent; color: var(--fg-dim); font-size: 11px; cursor: pointer; }
+.composer-history-menu__empty { padding: 10px 8px; font-size: var(--text-sm); color: var(--fg-dim); }
+.composer-history-menu__more { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 8px; border: 0; border-radius: 12px; background: transparent; color: var(--fg-dim); font-size: var(--text-xs); cursor: pointer; }
 .composer-history-menu__more:hover:not(:disabled) { background: var(--bg-soft); color: var(--fg); }
 .composer-history-menu__more:disabled { opacity: 0.6; cursor: default; }
 .composer-history-menu__more .spin { animation: spin 0.8s linear infinite; }
@@ -44249,7 +44249,7 @@ button.statusbar__mcp:focus-visible {
 
 .settings-quick-commands__empty {
   padding: 10px 2px;
-  font-size: 13px;
+  font-size: var(--text-md);
   opacity: 0.75;
 }
 
@@ -44338,7 +44338,7 @@ button.statusbar__mcp:focus-visible {
    .settings-error with the shared error styling. */
 .settings-error__detail {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   opacity: 0.75;
   word-break: break-word;
 }
@@ -44695,7 +44695,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 10px;
   background: var(--surface);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 .session-monitor__head {
@@ -44744,7 +44744,7 @@ button.statusbar__mcp:focus-visible {
 .session-monitor__path,
 .session-monitor__log-row {
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .session-monitor__metrics {
   display: flex;
@@ -44765,7 +44765,7 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
   gap: 2px 10px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .session-monitor__stage {
   font-variant-numeric: tabular-nums;
@@ -44801,7 +44801,7 @@ button.statusbar__mcp:focus-visible {
 }
 .feedback-panel__title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .feedback-panel__actions {
   display: flex;
@@ -44809,7 +44809,7 @@ button.statusbar__mcp:focus-visible {
 }
 .feedback-panel__empty {
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 8px 0;
 }
 .feedback-panel__rows {
@@ -44831,7 +44831,7 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 .feedback-panel__kind {
@@ -44845,7 +44845,7 @@ button.statusbar__mcp:focus-visible {
   font-size: 10px;
 }
 .feedback-panel__text {
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -44899,7 +44899,7 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--warn) 10%, var(--bg-elevated, var(--bg)));
 }
 .collab-inbox-panel__maintlabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: var(--font-weight-strong);
   color: color-mix(in srgb, var(--warn) 78%, var(--fg));
 }
@@ -44909,7 +44909,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 /* 维护行内的标签词随行底转 warn 调（覆盖 .collab-inbox-panel__retention 的
@@ -44925,7 +44925,7 @@ button.statusbar__mcp:focus-visible {
 /* 任务620：立即清理的一次性反馈（已清理 N 封 / 没有可清理的信件），
    弱化前景、随维护行内联，数秒后由组件侧定时移除。 */
 .collab-inbox-panel__cleannote {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   white-space: nowrap;
 }
@@ -44942,7 +44942,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 .collab-inbox-panel__bucket--on,
@@ -44964,7 +44964,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   transition: border-color 0.12s, background 0.12s;
 }
 /* 任务620：发信方/收信方下拉的 hover 反馈——悬停时边框与底色用按钮 hover
@@ -44999,7 +44999,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-soft);
 }
 .collab-inbox-panel__tlabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: var(--font-weight-strong);
   color: var(--fg-faint);
 }
@@ -45040,7 +45040,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 .collab-inbox-panel__rows {
@@ -45050,7 +45050,7 @@ button.statusbar__mcp:focus-visible {
 }
 .collab-inbox-panel__empty {
   color: var(--fg-faint);
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 8px 0;
 }
 /* 任务587 失败态与空态分离：读取失败显式报错（绝不渲染成「暂无信件」）。
@@ -45068,7 +45068,7 @@ button.statusbar__mcp:focus-visible {
 }
 .collab-inbox-panel__error-label {
   color: var(--danger);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 .collab-inbox-panel__error-detail {
@@ -45077,7 +45077,7 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .collab-inbox-panel__errorstrip {
   display: flex;
@@ -45088,7 +45088,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--danger);
   border-radius: 8px;
   color: var(--danger);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .collab-inbox-panel__row {
   display: flex;
@@ -45114,7 +45114,7 @@ button.statusbar__mcp:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 /* 任务 649 ②：路由行「发信方/收信方」标签词 vs 会话名的两级灰——标签更弱、
@@ -45162,7 +45162,7 @@ button.statusbar__mcp:focus-visible {
   font-weight: 600;
 }
 .collab-inbox-panel__preview {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg);
   word-break: break-word;
 }
@@ -45185,7 +45185,7 @@ button.statusbar__mcp:focus-visible {
   background: none;
   border: none;
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   text-align: left;
 }
@@ -45210,7 +45210,7 @@ button.statusbar__mcp:focus-visible {
 .collab-inbox-panel__chainentry {
   display: flex;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 .collab-inbox-panel__foot {
@@ -45253,7 +45253,7 @@ button.statusbar__mcp:focus-visible {
 }
 .collab-group-panel__title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .collab-group-panel__actions {
   display: flex;
@@ -45270,7 +45270,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 999px;
   background: var(--bg);
   color: var(--fg-dim);
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 .collab-group-panel__tab--on {
@@ -45285,7 +45285,7 @@ button.statusbar__mcp:focus-visible {
 .collab-group-panel__empty {
   padding: 18px 8px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-faint);
 }
 .collab-group-panel__error {
@@ -45298,11 +45298,11 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--warn, #c80) 8%, var(--bg));
 }
 .collab-group-panel__error-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 .collab-group-panel__error-detail {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   word-break: break-all;
   display: -webkit-box;
@@ -45319,7 +45319,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid color-mix(in srgb, var(--warn, #c80) 45%, var(--border));
   border-radius: 6px;
   background: color-mix(in srgb, var(--warn, #c80) 7%, var(--bg));
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 .collab-group-panel__session {
@@ -45355,7 +45355,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--warn, #c80);
 }
 .collab-group-panel__name {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -45378,7 +45378,7 @@ button.statusbar__mcp:focus-visible {
   white-space: nowrap;
 }
 .collab-group-panel__purpose {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -45389,7 +45389,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .collab-group-panel__cardstatus {
   padding: 1px 6px;
@@ -45410,7 +45410,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
 }
 .collab-group-panel__preview {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -45432,7 +45432,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 8px;
   background: var(--bg);
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   text-align: left;
 }
@@ -45458,12 +45458,12 @@ button.statusbar__mcp:focus-visible {
   gap: 2px;
 }
 .collab-group-panel__sender {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--fg-dim);
 }
 .collab-group-panel__messagebody {
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -45519,7 +45519,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-faint);
 }
 .channel-chat__list {
@@ -45541,7 +45541,7 @@ button.statusbar__mcp:focus-visible {
 }
 .channel-chat__listtitle {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .channel-chat__item {
   display: flex;
@@ -45564,7 +45564,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -45595,7 +45595,7 @@ button.statusbar__mcp:focus-visible {
   text-align: center;
 }
 .channel-chat__itempreview {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -45610,7 +45610,7 @@ button.statusbar__mcp:focus-visible {
 }
 .channel-chat__time {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
   align-self: flex-start;
 }
@@ -45639,10 +45639,10 @@ button.statusbar__mcp:focus-visible {
 }
 .channel-chat__chatname {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .channel-chat__chattopic {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -45650,7 +45650,7 @@ button.statusbar__mcp:focus-visible {
 }
 .channel-chat__chatmeta {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
   white-space: nowrap;
 }
@@ -45662,7 +45662,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid color-mix(in srgb, var(--warn, #c80) 55%, var(--border));
   border-radius: 8px;
   background: color-mix(in srgb, var(--warn, #c80) 8%, var(--bg));
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
   word-break: break-all;
 }
@@ -45711,7 +45711,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-elevated, var(--bg));
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -45756,7 +45756,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .channel-chat__send {
   flex-shrink: 0;
@@ -45783,14 +45783,14 @@ button.statusbar__mcp:focus-visible {
 }
 .channel-chat__detailtitle {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .channel-chat__detailowner {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 .channel-chat__detailtopic {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-faint);
 }
 .channel-chat__members {
@@ -45809,7 +45809,7 @@ button.statusbar__mcp:focus-visible {
 .channel-chat__membername {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -45830,7 +45830,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .channel-chat__invitecandidates {
   display: flex;
@@ -45844,7 +45844,7 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   gap: 6px;
   padding: 3px 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 .channel-chat__invitecandidatename {
@@ -45885,13 +45885,13 @@ button.statusbar__mcp:focus-visible {
 }
 .channel-chat__createtitle {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 .channel-chat__createfield {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 .channel-chat__createfield input {
@@ -45901,7 +45901,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .channel-chat__createactions {
   display: flex;
@@ -45911,7 +45911,7 @@ button.statusbar__mcp:focus-visible {
 .channel-chat__empty {
   padding: 14px 8px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--fg-faint);
 }
 .channel-chat__errorstrip {
@@ -45922,7 +45922,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid color-mix(in srgb, var(--warn, #c80) 55%, var(--border));
   border-radius: 8px;
   background: color-mix(in srgb, var(--warn, #c80) 8%, var(--bg));
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--fg-dim);
 }
 .channel-chat__menu {
@@ -45942,7 +45942,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: left;
   padding: 4px 8px;
   border-radius: 6px;
@@ -45997,7 +45997,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .provider-enabled-row__hint {
   flex: 1 1 240px;

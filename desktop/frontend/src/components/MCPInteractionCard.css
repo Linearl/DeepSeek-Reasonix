@@ -21,7 +21,7 @@
 
 .mcp-interaction-message {
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -48,7 +48,7 @@
   border-radius: 8px;
   background: var(--bg-soft);
   color: var(--fg-dim);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .mcp-interaction-url strong {
@@ -193,7 +193,7 @@
 .structured-form-option {
   color: var(--fg-dim);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 

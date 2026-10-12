@@ -56,7 +56,7 @@ function mermaidThemeVariables(theme: MermaidThemeName): Record<string, string |
     return {
       darkMode: true,
       background: "#111319",
-      fontSize: "13px",
+      fontSize: "var(--text-md)",
       fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       primaryColor: "#1f2937",
       primaryTextColor: "#f4f5f7",
@@ -98,7 +98,7 @@ function mermaidThemeVariables(theme: MermaidThemeName): Record<string, string |
   return {
     darkMode: false,
     background: "#ffffff",
-    fontSize: "13px",
+    fontSize: "var(--text-md)",
     fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     primaryColor: "#f8fafc",
     primaryTextColor: "#0f172a",
