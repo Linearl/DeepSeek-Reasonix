@@ -3,7 +3,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { asArray } from "../lib/array";
 import { app } from "../lib/bridge";
-import { contextWindowPercentages } from "../lib/contextWindow";
+import { contextWindowPercentages, capacityPinLayout } from "../lib/contextWindow";
 import { useI18n, type Locale, type Translator } from "../lib/i18n";
 import { formatMoneyLocalized } from "../lib/money";
 import { formatTokens, formatOptionalTokens } from "../lib/format";
@@ -591,8 +591,9 @@ export function ContextPanel({
   const windowLabel = formatTokens(windowTokens);
   const compactRemainingLabel = tokensUntilCompact > 0 ? formatTokens(tokensUntilCompact) : "0";
   const compactMarkerPct = Math.max(0, Math.min(100, compactPct));
-  const usageMarkerPct = Math.max(6, Math.min(94, usagePct));
-  const compactLabelPct = Math.max(6, Math.min(94, compactMarkerPct));
+  // 任务834: pin 位置与防重叠判定收敛进 capacityPinLayout——已用读数贴近
+  // 压缩阈值时阈值 pin 的文字标签让位（竖线 marker 仍在），已用百分比不遮。
+  const pinLayout = capacityPinLayout(usagePct, compactPct);
   const usageSummary = t("context.windowUsageSummary", { used: usedLabel, window: windowLabel, pct: rawUsagePct });
   const compactSummary = t("context.windowCompactRemaining", { used: usedLabel, window: windowLabel, tokens: compactRemainingLabel, pct: compactPct });
   const activeAnalysisView: UsageAnalysisView = showSourceUsageRows ? analysisView : "type";
@@ -677,12 +678,16 @@ export function ContextPanel({
                     </span>
                   )}
                 </span>
-                <strong>{usedLabel}/{windowLabel}</strong>
+                {/* 任务834: 极窄卡片下 used/window 仍保留 665 的 ellipsis 兜底，
+                    补 title 让被省略的完整读数悬停可见（与 aria 摘要同源）。 */}
+                <strong title={usageSummary}>{usedLabel}/{windowLabel}</strong>
               </div>
               <div className="context-panel__usage-progress context-panel__capacity-meter" aria-label={`${t(windowStatus.key)}. ${usageSummary}. ${compactSummary}`}>
                 <div className="context-panel__capacity-scale" aria-hidden="true">
-                  <span className="context-panel__capacity-pin context-panel__capacity-pin--used" style={{ left: `${usageMarkerPct}%` }}>{rawUsagePct}%</span>
-                  <span className="context-panel__capacity-pin context-panel__capacity-pin--compact" style={{ left: `${compactLabelPct}%` }}>{compactPct}%</span>
+                  <span className="context-panel__capacity-pin context-panel__capacity-pin--used" style={{ left: `${pinLayout.usagePct}%` }}>{rawUsagePct}%</span>
+                  {pinLayout.compactLabelVisible && (
+                    <span className="context-panel__capacity-pin context-panel__capacity-pin--compact" style={{ left: `${pinLayout.compactPct}%` }}>{compactPct}%</span>
+                  )}
                 </div>
                 <div className="context-panel__progress-track" aria-hidden="true">
                   <span className="context-panel__progress-fill" style={{ width: `${usagePct}%` }} />
