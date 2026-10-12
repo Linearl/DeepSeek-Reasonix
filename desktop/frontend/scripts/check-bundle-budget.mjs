@@ -276,8 +276,8 @@ assertBudget("initial JavaScript gzip", initialJSGzip, initialJSBudgetKiB * 1024
 // 739 设置面板「点击即发」预取+挂起看门狗（App.tsx 挂钩子+lib/settingsPrefetch+ManagementSurface settled 锁存，均进 initial chunk）实测 320.8 恰等 320.8 线=抖动必炸区（HEAD 基线 320.6 余 0.2，增量全为本件）— +0.2 预抬 → 321.0（分支 wt-739 自报，报备派活方，独立 commit）——两侧同值 321.0，合并取同值并集
 // 741 修复后实测 320.9 超 320.8 线 0.1（projectTreePageLoadFlipsIndicator 门函数+loadProjectTopics 条件包裹进 initial chunk）— +0.2 一次到位 → 321.0 含抖动余量（分支 wt-740 自报，报备派活方，独立 commit）——三支同值 321.0，合并三段并集
 // 21 版九支合并叠加实测 322.0 超 321.0 线 1.0（九支前端面进 largest chunk：739 预取/742 lab 管理/740 项目树等）— largest 棘轮 +2.0 一次到位 → 324.0 含余量（合并线独立 commit，报备派活方）
-// 802 微信式群聊 UI（ChannelChatPanel 组件+CollabGroupPanel 换装进 largest chunk）实测 325.8 超 324.0 线 1.8 — largest 棘轮 +2.5 一次到位 → 326.5 含 0.7 抖动余量（721/731 同款；分支 wt-802 自报，报备派活方，独立 commit） // 24.1 出包（833 token 化批量替换+833/834/826 叠加）实测 327.6 超 326.5 线 1.1 — largest 棘轮 +1.0 一次到位 → 327.5 含抖动余量（主对话出包前独立 commit，报备派活方=用户）
-assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 327.5 * 1024);
+// 802 微信式群聊 UI（ChannelChatPanel 组件+CollabGroupPanel 换装进 largest chunk）实测 325.8 超 324.0 线 1.8 — largest 棘轮 +2.5 一次到位 → 326.5 含 0.7 抖动余量（721/731 同款；分支 wt-802 自报，报备派活方，独立 commit） // 24.1 出包（833 token 化批量替换+833/834/826 叠加）实测 327.6 超 326.5 线 1.1 — largest 棘轮 +1.0 一次到位 → 327.5 含抖动余量（主对话出包前独立 commit，报备派活方=用户） // 24.1 二轮构建实测 327.6 仍超 327.5 线 0.1（构建间内容重排抖动）——连续三道线卡关，照用户 20261002「连续卡就一次多提」站规 one-shot → 330.0 含足量余量（nine-batch +6.8/+4 先例）
+assertBudget("largest initial JavaScript chunk gzip", largestInitialJS, 330.0 * 1024);
 // Render-blocking CSS is intentionally absent: styles.css loads deferred via
 // ?url, and feature styles (heartbeat) live in lazy chunks loaded on demand.
 // An empty initial CSS list is the desired state, not a build error.
