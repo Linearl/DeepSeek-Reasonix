@@ -16,6 +16,7 @@ import { DedupIndex, sha256 } from "../lib/attachDedup";
 import {
   loadPersistedComposerDraft, persistComposerDraft,
 } from "../lib/composerDraftPersistence";
+import { bareTabIdFromDraftKey, isSessionScopedDraftKey } from "../lib/composerDraftKey";
 import { app, onFilesDropped } from "../lib/bridge";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
@@ -346,6 +347,14 @@ function cloneComposerDraft(draft: ComposerDraft): ComposerDraft {
     pendingPaste: draft.pendingPaste,
     submitting: draft.submitting,
   };
+}
+
+// 任务 825：启动期草稿是否值得迁移——文本/粘贴块/附件任一非空才算用户输入。
+// 与持久化层 empty 判定口径一致（workspaceRefs/invocations 不参与）。
+function startupCarryIsNotEmpty(draft: ComposerDraft): boolean {
+  return Boolean(String(draft.text ?? "").trim())
+    || draft.pastedBlocks.length > 0
+    || draft.attachments.length > 0;
 }
 
 function attachmentDedupFromKeys(keys: Record<string, AttachmentDedupKey>): DedupIndex {
@@ -1019,6 +1028,9 @@ export function Composer({
   );
   const draftsBySessionRef = useRef<Record<string, ComposerDraft>>({});
   const activeDraftKeyRef = useRef(draftKey);
+  // 任务 825：启动窗口在未就绪 tab 上打的字、切走后按 tabId 暂存的草稿槽。
+  // 切回且该 tab 的 session key 尚无草稿时认领（见下方 key 切换 effect）。
+  const pendingStartupCarryByTabRef = useRef<Record<string, ComposerDraft>>({});
   const draftActivationEpochRef = useRef(0);
   // Split view (task 70, B): one composer, one text per target. The store is read at
   // switch time, so a prompt typed for the right pane does not follow the user back to
@@ -1405,6 +1417,8 @@ export function Composer({
   useLayoutEffect(() => {
     const previousKey = activeDraftKeyRef.current;
     if (previousKey === draftKey) return;
+    const currentTabId = tabId ?? "";
+    const previousTabId = bareTabIdFromDraftKey(previousKey);
     const previousSnapshot = snapshotComposerDraft();
     draftsBySessionRef.current[previousKey] = previousSnapshot;
     // Flush the outgoing draft immediately: the app may close before the
@@ -1421,23 +1435,53 @@ export function Composer({
     );
     activeDraftKeyRef.current = draftKey;
     setGuidanceDraftKey(draftKey);
+    // 任务 825 待认领槽：在未就绪 tab 上打了字却切去别的 tab（tabId 已指向
+    // 新 tab）时，把启动期草稿按 tabId 暂存，等该 tab hydrate 完成切回后认领。
+    // 只收 "tab\0<tabId>" 形态：裸 tabId 形态走上方同 tab 升级（tabId 未变），
+    // 不经槽。槽仅在下方认领 gate 通过时消费；残留条目随窗口生命周期结束。
+    if (
+      previousTabId !== null && previousTabId !== currentTabId
+      && previousKey.startsWith("tab\u0000")
+      && startupCarryIsNotEmpty(previousSnapshot)
+    ) {
+      pendingStartupCarryByTabRef.current[previousTabId] = cloneComposerDraft(previousSnapshot);
+    }
     // Startup window: the active tab (and therefore the key) is not known yet, so its
     // key is "". Anything typed then would stay under "" while the same session later
     // keeps a second draft - a restart then showed the early text first and the real
     // one a moment later. When the real key arrives empty, carry the draft across.
+    // 任务 825 同 tab key 升级：tab 壳先于 hydrate 恢复时启动期 key 是
+    // "tab\0<tabId>"（或裸 tabId）而非 ""，hydrate 完成后 key 切为 session-*——
+    // 同一个 tab 的 key 升级，新 key 草稿为空时把眼前草稿迁移过去并立即落盘。
+    // 原条件只覆盖 previousKey===""（壳未恢复），壳先恢复后不再命中，启动期
+    // 输入留在裸 tab key 下成孤儿（用户实测 24 版 1748：「刚启动的草稿和加载
+    // 完毕的草稿看起来是两个」）。
     const incomingMemory = draftsBySessionRef.current[draftKey];
     const incomingPersisted = incomingMemory ?? loadPersistedComposerDraft(draftKey);
     const draftIsEmpty = !incomingPersisted
       || (!String(incomingPersisted.text ?? "").trim()
         && (incomingPersisted.pastedBlocks?.length ?? 0) === 0
         && (incomingPersisted.attachments?.length ?? 0) === 0);
-    const carriedIsNotEmpty = Boolean(String(previousSnapshot.text ?? "").trim())
-      || previousSnapshot.pastedBlocks.length > 0
-      || previousSnapshot.attachments.length > 0;
-    if (previousKey === "" && draftKey !== "" && draftIsEmpty && carriedIsNotEmpty) {
+    const previousCarryNonEmpty = startupCarryIsNotEmpty(previousSnapshot);
+    const draftTargetTabId = bareTabIdFromDraftKey(draftKey);
+    const sameTabKeyChange = previousTabId !== null
+      && (previousTabId === currentTabId || draftTargetTabId === previousTabId);
+    const startupWindowCarry = (previousKey === "" && draftKey !== "") || sameTabKeyChange;
+    if (startupWindowCarry && draftIsEmpty && previousCarryNonEmpty) {
       draftsBySessionRef.current[draftKey] = previousSnapshot;
       persistComposerDraft(draftKey, previousSnapshot, true);
       restoreComposerDraft(previousSnapshot);
+      return;
+    }
+    // 任务 825 认领：切回已 hydrate 的原 tab 且其 session key 尚无草稿时，
+    // 采用启动期暂存的那份。session key 已有草稿（上次会话遗留）则尊重既有
+    // 语义不覆盖，槽条目留存待下次切换再试。
+    const pendingStartupClaim = pendingStartupCarryByTabRef.current[currentTabId];
+    if (pendingStartupClaim && isSessionScopedDraftKey(draftKey) && draftIsEmpty) {
+      delete pendingStartupCarryByTabRef.current[currentTabId];
+      draftsBySessionRef.current[draftKey] = pendingStartupClaim;
+      persistComposerDraft(draftKey, pendingStartupClaim, true);
+      restoreComposerDraft(pendingStartupClaim);
       return;
     }
     const inMemory = draftsBySessionRef.current[draftKey];
