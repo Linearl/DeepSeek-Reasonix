@@ -9,16 +9,16 @@ import (
 type responseReasoningSnapshots struct{ items []json.RawMessage }
 
 func (s *responseReasoningSnapshots) capture(ev sseEvent) {
-	var candidates []sseItem
+	var candidates []json.RawMessage
 	if ev.Type == "response.output_item.done" && ev.Item != nil {
-		candidates = append(candidates, *ev.Item)
+		candidates = append(candidates, ev.Item.Raw)
 	}
 	if ev.Type == "response.completed" && ev.Response != nil {
 		candidates = append(candidates, ev.Response.Output...)
 	}
 	for _, item := range candidates {
-		if provider.IsReplayableResponsesReasoning(item.Raw) {
-			s.items = provider.UpsertResponsesItem(s.items, item.Raw)
+		if provider.IsReplayableResponsesReasoning(item) {
+			s.items = provider.UpsertResponsesItem(s.items, item)
 		}
 	}
 }
