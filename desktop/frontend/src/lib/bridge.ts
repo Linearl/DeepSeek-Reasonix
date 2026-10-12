@@ -651,6 +651,10 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   SetSubagentPolicyForTab(tabID: string, policy: string): Promise<void>;
   TrashTopicForce(topicID: string): Promise<void>;
   AnswerQuestionForTab(tabID: string, id: string, answers: QuestionAnswer[]): Promise<void>;
+  // 任务806 要素①: the ask panel's first selection/typed edit signals the
+  // backend to stop the autopilot auto-decide timer. No-op on the backend for
+  // every prompt class without a timer.
+  NotifyAskInteractionForTab(tabID: string, id: string): Promise<void>;
   // Task 333: event-log rotation gate + storage panel actions. The mode/threshold
   // setters write config and push into the agent save path immediately (no restart).
   SetEventsAutoRotation(mode: string): Promise<void>;
@@ -4239,6 +4243,9 @@ function makeMockApp(): AppBindings {
         async AnswerQuestionForTab(_tabID, id, answers) {
           await withMockTabScope(_tabID, () => this.AnswerQuestion(id, answers));
         },
+        // 任务806 要素①: dev mock has no backend timer to stop; a resolved
+        // promise keeps the panel's fire-and-forget signal harmless.
+        async NotifyAskInteractionForTab(_tabID, _id) {},
         async ResolvePromptForTab(tabID, promptID, _turnID, _runtimeEpoch, kind, answer) {
           await withMockTabScope(tabID, async () => {
             if (kind === "ask") return this.AnswerQuestion(promptID, answer.questions ?? []);

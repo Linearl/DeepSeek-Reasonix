@@ -5182,6 +5182,23 @@ export function useController() {
     return answerQuestionForTab(activeTabId, id, answers);
   }, [activeTabId, answerQuestionForTab]);
 
+  // 任务806 要素①: the ask panel's first selection/typed edit hops here so the
+  // backend stops the autopilot auto-decide timer. Fire-and-forget: a lost
+  // signal only means the timer keeps the pre-806 behavior.
+  const notifyAskInteractionForTab = useCallback((tabId: string, id: string): void => {
+    if (!tabId || !id) return;
+    try {
+      app.NotifyAskInteractionForTab(tabId, id).catch(() => {});
+    } catch {
+      // best effort
+    }
+  }, []);
+
+  const notifyAskInteraction = useCallback((id: string): void => {
+    if (!activeTabId) return;
+    notifyAskInteractionForTab(activeTabId, id);
+  }, [activeTabId, notifyAskInteractionForTab]);
+
   const answerMCPInteractionForTab = useCallback(
     (tabId: string, id: string, action: "accept" | "decline" | "cancel", content?: Record<string, unknown>) => {
       if (!tabId) return;
@@ -6359,6 +6376,7 @@ export function useController() {
     send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, queueGuidanceBubble, notice,
     cancel, cancelForTab, approve, approveForTab, isPromptCurrentForTab, resolvePlanDecision, resolvePlanDecisionForTab,
     resolveRecovery, resolveRecoveryForTab, answerQuestion, answerQuestionForTab,
+    notifyAskInteraction, notifyAskInteractionForTab,
     answerMCPInteraction, answerMCPInteractionForTab, setControllerMode, setControllerModeForTab,
     dismissExtensionForm, drainExtensionNotifications,
     setCollaborationMode, setCollaborationModeForTab, setToolApprovalMode, setToolApprovalModeForTab, setApprovalTier, setApprovalTierForTab, setQualityFloor, setComposerProfileForTab, setGoal, setGoalForTab, clearGoal, clearGoalForTab, resumeGoal, resumeGoalForTab, pauseGoal, pauseGoalForTab,
