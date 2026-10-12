@@ -380,6 +380,9 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	tab.autopilotAskTimeoutEnabled = autopilotAskEnabled
 	tab.autopilotAskWait = autopilotAskWait
 	tab.autopilotAskAutoContinue = autopilotAskAutoContinue
+	// 任务 801（Phase 3）：同源判定——切到 autopilot 后下一条消息注入决策模
+	// 式块（修订五③）；切出清位，非 autopilot 永不注入。
+	tab.decisionPatternsPending.Store(autopilotOn)
 	ctrl := tab.Ctrl
 	goal := tab.goal
 	plan := tabModeHasPlan(tab.mode)
