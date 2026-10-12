@@ -345,6 +345,15 @@ func (a *App) startupKickTabRestore() {
 	// After restoreOrBuildTabs is launched: the GC's first sweep waits on
 	// tabsRestored so it never observes the pre-restore empty tab map.
 	a.startRecoveryGC()
+	// 任务 824 ⑤: boot:summary 的兜底触发——webview 迟迟不 healthy（白屏/
+	// 崩溃边缘）时也能在 45s 后拿到一份汇总快照（覆盖 0930 基线最坏 38.2s
+	// 的单路 boot）。先到先得，幂等；零行为变更。
+	a.goSafe("bootSummaryFallback", func() {
+		timer := time.NewTimer(45 * time.Second)
+		defer timer.Stop()
+		<-timer.C
+		bootTimelineEmitSummary("tabs-restored+45s")
+	})
 }
 
 func (a *App) beforeClose(ctx context.Context) bool {

@@ -20,6 +20,9 @@ import (
 func (a *App) restoreOrBuildTabs() {
 	restoreStartedAt := time.Now()
 	defer a.recoverToPending("restoreOrBuildTabs")
+	// 任务 824: P1 串行段结束后立即收一行分段日志（任何 return 路径都执行，
+	// 崩溃取证不丢段），分段值同时进 boot:summary 汇总。
+	defer a.logBootP1Stages()
 	// Unblock startup work gated on the restore (recovery GC) no matter how
 	// this returns — including the recover path above.
 	defer a.markTabsRestored()
@@ -33,21 +36,30 @@ func (a *App) restoreOrBuildTabs() {
 	// freshly written config (including the user's default_model) is
 	// picked up by Load instead of falling back to built-in defaults.
 	_, _ = config.MigrateLegacyIfNeeded()
+	// 任务 824 ①: P1 串行段逐段计时。只包住既有调用，不改变任何顺序。
+	topicReconcileStart := time.Now()
 	if err := reconcileTopicArchiveMetadataPending(a.deleteTopic); err != nil {
 		slog.Warn("desktop: topic archive metadata reconciliation remains pending")
 	}
+	bootTimelineNoteP1("topic_reconcile", time.Since(topicReconcileStart))
+	tabsFileStart := time.Now()
 	f := loadTabsFile()
+	bootTimelineNoteP1("load_tabs_file", time.Since(tabsFileStart))
+	migrationsStart := time.Now()
 	_, _ = recoverLegacyProjectSidebarRoots(f)
 	_, _ = config.ApplyUserConfigUpgradesOnStartup(config.UserConfigPath())
 	_, _ = config.MigrateMCPToUserConfigOnUpgrade(desktopMCPMigrationRoots(f))
 	// Task 116: materialize the three shipped playbooks under the user skills
 	// dir so they are editable. Existing files are never overwritten.
 	installShippedPlaybooksToUserDir()
+	bootTimelineNoteP1("startup_migrations", time.Since(migrationsStart))
 
 	// Load i18n from the first available config.
 	// Prefer DesktopLanguage (desktop UI setting) over Language (CLI setting),
 	// so the user's language choice in desktop settings takes effect.
+	configLoadStart := time.Now()
 	startupCfg, cfgErr := config.Load()
+	bootTimelineNoteP1("config_load", time.Since(configLoadStart))
 	if cfgErr == nil {
 		cfg := startupCfg
 		lang := cfg.DesktopLanguage()
@@ -61,12 +73,16 @@ func (a *App) restoreOrBuildTabs() {
 	}
 	// Restore remote tabs as disconnected shells; activation performs the
 	// first network work so desktop startup remains offline-safe.
+	remoteShellsStart := time.Now()
 	a.restoreRemoteTabShells(f)
+	bootTimelineNoteP1("restore_remote_tab_shells", time.Since(remoteShellsStart))
 	// Task 456 ①: reconcile persisted leftover records BEFORE any runtime
 	// launches: collapse duplicates, retire records whose holder process is
 	// dead (live foreign holders and handoff reservations stay untouched).
 	f.Tabs = dedupeRestoredTabEntries(f.Tabs)
 	a.reconcileRestoredSessionKeys(f.Tabs)
+	// 任务 824 ⑤: 汇总行的 tab 数 = 本次恢复发现的持久化 tab 总数。
+	bootTimelineNoteTabs(len(f.Tabs))
 	if len(f.Tabs) > 0 {
 		toBuild := a.restorePersistedTabs(ctx, f)
 		a.settleRestoredTabSkeleton(f, toBuild, restoreStartedAt)
@@ -370,6 +386,15 @@ func (a *App) domReady(_ context.Context) {
 
 func (a *App) completeFrontendStartup() {
 	a.markDesktopHealthy()
+	// 任务 824 ⑤: webview 就绪是启动链用户体感的终点；再等 10s 让各 tab 的
+	// hydrate 到达（P5）与 UI apply（P6）落进收集窗，然后发 boot:summary
+	// （幂等，兜底触发见 startupKickTabRestore）。纯延迟日志，零行为变更。
+	a.goSafe("bootSummaryAtFrontendReady", func() {
+		timer := time.NewTimer(10 * time.Second)
+		defer timer.Stop()
+		<-timer.C
+		bootTimelineEmitSummary("frontend-ready+10s")
+	})
 	ctx := a.ctx
 	a.goSafe("recordHealthyConfig", func() {
 		timer := time.NewTimer(2 * time.Second)

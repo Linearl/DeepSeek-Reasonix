@@ -64,6 +64,7 @@ import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
 import { replayPendingPromptsForActiveTab } from "./lib/promptReplay";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
+import { reportBootUiStateApplied } from "./lib/bootTimeline";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 import { CollabInboxPanel, setCollabInboxOpen, useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
 import { CollabGroupPanel, setCollabGroupOpen } from "./components/CollabGroupPanel";
@@ -739,6 +740,18 @@ export default function App() {
         });
       } catch { /* never block startup */ }
     })();
+  }, []);
+  // 任务 824 ④: 持久化 UI 状态（折叠/分屏/面板）apply 取证——mount 后读
+  // store 已应用状态与分屏初始值一次性上报（0930 报告 P6「未打点未核行」的
+  // 取证重点）。纯观测，一次调用，不进入任何渲染决策。
+  useEffect(() => {
+    const layout = useLayoutStore.getState();
+    reportBootUiStateApplied({
+      splitOpen: splitState.secondaryTabId !== null,
+      sidebarCollapsed: layout.sidebarCollapsed,
+      workspacePanelOpen: layout.workspacePanelOpen,
+      terminalPanelOpen: layout.terminalPanelOpen,
+    });
   }, []);
   useEffect(() => {
     const secondaryId = splitState.secondaryTabId;
