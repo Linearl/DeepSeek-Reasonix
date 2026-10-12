@@ -6922,15 +6922,12 @@ button.reasoning-summary:focus-visible {
 
 /* copy affordance — code blocks (hover) and message actions */
 .copybtn {
-  display: inline-flex;
-  align-items: center;
   gap: 5px;
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
   color: var(--fg-faint);
   border-radius: var(--radius-sm);
   padding: 3px 7px;
-  font: inherit;
   font-size: var(--text-xs);
   transition: color 0.12s, border-color 0.12s, gap 0.12s;
 }
@@ -10732,9 +10729,27 @@ button.statusbar__mcp:focus-visible {
 .blank-project-dialog__actions .btn {
   min-width: 92px;
 }
-.btn {
+/* 833 按钮基类归一：原四套并存按钮体系（.btn / .topicbar__action-btn / .copybtn /
+   .app-chrome__panel-toggle）共享基座收进 .action-btn 选择器组——只收 100% 共享声明
+   （inline-flex 居中；带文字的三家再加 font: inherit），各套特有属性（尺寸/配色/圆角/
+   字号/transition）原样保留，迁移前后渲染等价。新按钮统一挂 .action-btn 基座再叠变体。 */
+.action-btn,
+.btn,
+.topicbar__action-btn,
+.copybtn,
+.app-chrome__panel-toggle {
   display: inline-flex;
   align-items: center;
+}
+
+.action-btn,
+.btn,
+.topicbar__action-btn,
+.copybtn {
+  font: inherit;
+}
+
+.btn {
   justify-content: center;
   gap: 6px;
   height: var(--button-height);
@@ -10742,7 +10757,6 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--button-border);
   background: var(--button-bg);
   color: var(--button-fg);
-  font: inherit;
   font-size: var(--font-control);
   font-weight: 500;
   line-height: 1.25;
@@ -25499,8 +25513,6 @@ button.statusbar__mcp:focus-visible {
   flex: 0 0 var(--chrome-toggle-size);
   width: var(--chrome-toggle-size);
   height: var(--app-chrome-height);
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
   border: 0;
   border-radius: 0;
@@ -26545,8 +26557,6 @@ button.statusbar__mcp:focus-visible {
 }
 
 .topicbar__action-btn {
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
   gap: 0;
   min-height: 28px;
@@ -26555,7 +26565,6 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: var(--bg-elev);
   color: var(--fg-dim);
-  font: inherit;
   font-size: 12.5px;
   line-height: 1;
   transition: color 0.12s, border-color 0.12s, background 0.12s;
@@ -26711,8 +26720,6 @@ button.statusbar__mcp:focus-visible {
 }
 
 .topicbar__action-btn {
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
   gap: 6px;
   min-width: 30px;
@@ -26722,7 +26729,6 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--fg-faint);
-  font: inherit;
 }
 
 .topicbar__action-btn--icon {
