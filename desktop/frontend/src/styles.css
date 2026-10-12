@@ -2766,7 +2766,7 @@ a[href] {
   top: var(--app-chrome-height, 0px);
   bottom: var(--statusbar-height, 0px);
   width: 6px;
-  z-index: 40;
+  z-index: var(--z-workspace-float);
   background: transparent;
   pointer-events: auto;
 }
