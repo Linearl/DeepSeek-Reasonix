@@ -14,9 +14,10 @@ import { foldEffortCurrent, foldEffortMenu } from "../lib/effortTiers";
 import { filterAtMatches } from "../lib/atMatches";
 import { DedupIndex, sha256 } from "../lib/attachDedup";
 import {
-  loadPersistedComposerDraft, persistComposerDraft,
+  deletePersistedComposerDraft, loadPersistedComposerDraft, persistComposerDraft,
+  type PersistedComposerDraft,
 } from "../lib/composerDraftPersistence";
-import { bareTabIdFromDraftKey, isSessionScopedDraftKey } from "../lib/composerDraftKey";
+import { bareTabIdFromDraftKey, isSessionScopedDraftKey, parkedStartupDraftStorageKey } from "../lib/composerDraftKey";
 import { app, onFilesDropped } from "../lib/bridge";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { steerInboxItemForActiveTurn } from "../lib/inboxSubmit";
@@ -1031,6 +1032,10 @@ export function Composer({
   // 任务 825：启动窗口在未就绪 tab 上打的字、切走后按 tabId 暂存的草稿槽。
   // 切回且该 tab 的 session key 尚无草稿时认领（见下方 key 切换 effect）。
   const pendingStartupCarryByTabRef = useRef<Record<string, ComposerDraft>>({});
+  // 任务 839：找回槽——启动期输入与持久化旧草稿冲突时，被让位的那份暂存在这
+  // 里（ref 权威值 + keys 镜像驱动提示条渲染），经输入框上方提示条找回/忽略。
+  const parkedStartupDraftsRef = useRef<Record<string, ComposerDraft>>({});
+  const [parkedStartupDraftKeys, setParkedStartupDraftKeys] = useState<string[]>([]);
   const draftActivationEpochRef = useRef(0);
   // Split view (task 70, B): one composer, one text per target. The store is read at
   // switch time, so a prompt typed for the right pane does not follow the user back to
@@ -1154,6 +1159,84 @@ export function Composer({
     setImageViewer((current) => current.open ? { ...current, open: false } : current);
     setIntentMenuOpen(false);
     setIntentMenuClosing(false);
+  };
+
+  // ---- 任务 839：找回槽（parked startup draft）----
+  // 漏洞场景：重启前 session key 已持久化草稿 A，重启后启动窗口又打了字 B；
+  // 825 的非空保护让 A 赢、下方恢复路径 restore(A) 覆盖掉 B，B 只剩 localStorage
+  // 的孤儿 tab key，用户不可达。找回槽把被让位的那份接住并提示，找回 = 眼前
+  // 内容与暂存草稿互换，A/B 双向都不丢。
+
+  const syncParkedStartupDraftKeys = () => {
+    setParkedStartupDraftKeys(Object.keys(parkedStartupDraftsRef.current));
+  };
+
+  // 持久化形态 -> 组件内草稿（与冷启动恢复同一转换口径）。
+  const draftFromPersistedComposerDraft = (persisted: PersistedComposerDraft): ComposerDraft => {
+    const draft = emptyComposerDraft();
+    draft.text = persisted.text;
+    draft.pastedBlocks = persisted.pastedBlocks.map((block) => ({ ...block }));
+    draft.attachments = persisted.attachments.map((a) => ({ ...a }));
+    draft.attachmentDedupKeys = { ...persisted.attachmentDedupKeys };
+    draft.workspaceRefs = persisted.workspaceRefs.map((ref) => ({ ...ref }));
+    draft.nextPasteId = persisted.pastedBlocks.reduce((max, b) => {
+      const match = /#(\d+)/.exec(b.label);
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0) + 1;
+    return draft;
+  };
+
+  const draftToPersistedComposerDraft = (draft: ComposerDraft): PersistedComposerDraft => ({
+    text: draft.text,
+    pastedBlocks: draft.pastedBlocks.map((block) => ({ label: block.label, text: block.text })),
+    attachments: draft.attachments.map((a) => ({
+      path: a.path,
+      ...(a.displayName ? { displayName: a.displayName } : {}),
+    })),
+    attachmentDedupKeys: draft.attachmentDedupKeys,
+    workspaceRefs: draft.workspaceRefs.map((ref) => ({
+      path: ref.path,
+      ...(ref.isDir ? { isDir: ref.isDir } : {}),
+    })),
+  });
+
+  // 收槽：仅非空值得收（空值静默跳过，不产生提示）。
+  const parkStartupDraft = (forKey: string, draft: ComposerDraft) => {
+    if (!startupCarryIsNotEmpty(draft)) return;
+    parkedStartupDraftsRef.current[forKey] = cloneComposerDraft(draft);
+    syncParkedStartupDraftKeys();
+  };
+
+  // 找回：输入框眼前内容与暂存草稿互换。被换下的一份立即落盘到 parked 持久化
+  // key，重启后仍能再次找回；眼前为空则视作认领，清槽（含持久化）。
+  const reclaimParkedStartupDraft = () => {
+    const forKey = activeDraftKeyRef.current;
+    const parked = parkedStartupDraftsRef.current[forKey];
+    if (!parked) return;
+    const current = snapshotComposerDraft();
+    if (startupCarryIsNotEmpty(current)) {
+      parkedStartupDraftsRef.current[forKey] = current;
+      persistComposerDraft(parkedStartupDraftStorageKey(forKey), draftToPersistedComposerDraft(current), true);
+    } else {
+      delete parkedStartupDraftsRef.current[forKey];
+      deletePersistedComposerDraft(parkedStartupDraftStorageKey(forKey));
+    }
+    syncParkedStartupDraftKeys();
+    restoreComposerDraft(parked);
+  };
+
+  // 忽略：用户明确丢弃暂存草稿，清槽（含持久化）收提示条。
+  const discardParkedStartupDraft = () => {
+    const forKey = activeDraftKeyRef.current;
+    delete parkedStartupDraftsRef.current[forKey];
+    deletePersistedComposerDraft(parkedStartupDraftStorageKey(forKey));
+    syncParkedStartupDraftKeys();
+  };
+
+  // 跨重启找回：上次运行找回动作换下并持久化的草稿，key 就绪后恢复进找回槽。
+  const restoreParkedStartupDraftFromStorage = (forKey: string) => {
+    const parkedPersisted = loadPersistedComposerDraft(parkedStartupDraftStorageKey(forKey));
+    if (parkedPersisted) parkStartupDraft(forKey, draftFromPersistedComposerDraft(parkedPersisted));
   };
 
   const composerEditSnapshot = (
@@ -1473,6 +1556,12 @@ export function Composer({
       restoreComposerDraft(previousSnapshot);
       return;
     }
+    // 任务 839：同 tab key 升级但新 key 已有非空草稿（重启前遗留的 A）时，825
+    // 的非空保护让 A 赢，下方恢复路径会覆盖眼前这份启动期输入（B）——B 不能
+    // 被静默吞掉，先进找回槽，提示条提供找回/忽略。825 的 carry 判定本身未动。
+    if (startupWindowCarry && !draftIsEmpty && previousCarryNonEmpty) {
+      parkStartupDraft(draftKey, previousSnapshot);
+    }
     // 任务 825 认领：切回已 hydrate 的原 tab 且其 session key 尚无草稿时，
     // 采用启动期暂存的那份。session key 已有草稿（上次会话遗留）则尊重既有
     // 语义不覆盖，槽条目留存待下次切换再试。
@@ -1483,6 +1572,12 @@ export function Composer({
       persistComposerDraft(draftKey, pendingStartupClaim, true);
       restoreComposerDraft(pendingStartupClaim);
       return;
+    } else if (pendingStartupClaim && isSessionScopedDraftKey(draftKey) && !draftIsEmpty) {
+      // 任务 839：session key 已有非空草稿，认领 gate 不过——启动期暂存的那份
+      // 转进找回槽并提示；待认领槽条目随之清除，避免用户忽略后切走切回经认领
+      // 路径反复再弹（找回槽的提示条是这份草稿的统一提示面）。
+      parkStartupDraft(draftKey, pendingStartupClaim);
+      delete pendingStartupCarryByTabRef.current[currentTabId];
     }
     const inMemory = draftsBySessionRef.current[draftKey];
     if (inMemory) {
@@ -1493,20 +1588,22 @@ export function Composer({
     // persisted draft (text + pasted blocks + attachments + refs) so unsent
     // work survives app restarts.
     const persisted = loadPersistedComposerDraft(draftKey);
-    const draft = emptyComposerDraft();
-    if (persisted) {
-      draft.text = persisted.text;
-      draft.pastedBlocks = persisted.pastedBlocks.map((block) => ({ ...block }));
-      draft.attachments = persisted.attachments.map((a) => ({ ...a }));
-      draft.attachmentDedupKeys = { ...persisted.attachmentDedupKeys };
-      draft.workspaceRefs = persisted.workspaceRefs.map((ref) => ({ ...ref }));
-      draft.nextPasteId = persisted.pastedBlocks.reduce((max, b) => {
-        const match = /#(\d+)/.exec(b.label);
-        return match ? Math.max(max, Number(match[1])) : max;
-      }, 0) + 1;
-    }
+    const draft = persisted
+      ? draftFromPersistedComposerDraft(persisted)
+      : emptyComposerDraft();
     draftsBySessionRef.current[draftKey] = draft;
     restoreComposerDraft(draft);
+  }, [draftKey]);
+
+  // 任务 839 跨重启找回：上次运行找回动作换下并持久化的草稿（parked\0 key），
+  // 本次 key 就绪后恢复进找回槽并提示。独立于上方切换 effect——carry/认领/
+  // 内存恢复各路径 return 提前，只有这里能对所有 key 变化兜底；mount 时首帧
+  // key 若已是 session key 也由本 effect 覆盖。空持久化值由 parkStartupDraft
+  // 自行判空跳过。
+  useLayoutEffect(() => {
+    if (!draftKey) return;
+    restoreParkedStartupDraftFromStorage(draftKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
   // Task 258: ids the user already submitted from the shelf. The snapshot
@@ -5180,6 +5277,27 @@ export function Composer({
             }
           />
         ) : null
+      )}
+      {parkedStartupDraftKeys.includes(draftKey) && (
+        <div className="composer-guidance-edit-banner composer-parked-draft-banner" role="status" aria-live="polite">
+          <span className="composer-guidance-edit-banner__label">
+            {t("composer.parkedStartupDraftBanner")}
+          </span>
+          <button
+            className="composer-guidance-edit-banner__cancel"
+            type="button"
+            onClick={reclaimParkedStartupDraft}
+          >
+            {t("composer.parkedDraftReclaim")}
+          </button>
+          <button
+            className="composer-guidance-edit-banner__cancel"
+            type="button"
+            onClick={discardParkedStartupDraft}
+          >
+            {t("composer.parkedDraftDiscard")}
+          </button>
+        </div>
       )}
       {guidanceCompose && (
         <div className="composer-guidance-edit-banner" role="status" aria-live="polite">
