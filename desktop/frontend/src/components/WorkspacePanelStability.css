@@ -33,7 +33,7 @@
   grid-area: auto;
   border: 1px solid var(--border-soft);
   border-right: 0;
-  border-radius: 10px 0 0 10px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
   box-shadow: -12px 0 36px rgba(0, 0, 0, 0.24);
 }
 

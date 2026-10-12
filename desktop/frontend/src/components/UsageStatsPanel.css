@@ -29,14 +29,14 @@
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-soft);
 }
 
 .usage-stats__group .provider-add-segmented__item {
   min-height: 28px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .usage-stats__custom {
@@ -60,7 +60,7 @@
   min-height: 30px;
   padding: 4px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--fg);
   font: inherit;
@@ -85,7 +85,7 @@
   color: var(--fg-faint);
   font-size: var(--font-control);
   border: 1px dashed var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
 }
 
 /* numeric cards (sections 2–3): the two long-valued cards (tokens, top model)
@@ -109,7 +109,7 @@
   gap: 6px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: var(--bg-elev);
   min-width: 0;
 }
@@ -245,7 +245,7 @@
   display: inline-block;
   width: 12px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: 3px; /* 833-radius-wl:micro */
 }
 
 .usage-stats__chart {
@@ -295,7 +295,7 @@
   display: inline-block;
   width: 4px;
   height: 14px;
-  border-radius: 3px;
+  border-radius: 3px; /* 833-radius-wl:micro */
   flex: 0 0 auto;
 }
 
@@ -305,7 +305,7 @@
 .usage-stats__legend-swatch--trend {
   width: 14px;
   height: 3px;
-  border-radius: 2px;
+  border-radius: 2px; /* 833-radius-wl:micro */
   background: color-mix(in srgb, var(--accent) 80%, var(--fg));
 }
 
@@ -369,7 +369,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   font-size: var(--font-control);
 }
 
@@ -473,7 +473,7 @@
   top: 0;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-elev-2, var(--bg));
   color: var(--fg);
   font-size: var(--font-caption);

@@ -69,7 +69,7 @@
   margin-bottom: 14px;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-soft);
   color: var(--fg-faint);
 }
@@ -104,7 +104,7 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--fg-faint);
   cursor: pointer;
@@ -307,7 +307,7 @@
   min-height: 28px;
   padding: 0 11px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--fg-dim);
   font-size: var(--font-control-small);
@@ -344,7 +344,7 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border-soft);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-elev) 72%, transparent);
 }
 
@@ -655,7 +655,7 @@
 .settings-page-content { min-height: 100%; }
 /* Neutral, stable-height selection for the settings navigation in every theme. */
 :root .settings-center .settings-center__navitem {
-  border-radius: 16px;
+  border-radius: 16px; /* 833-radius-wl:large */
   align-content: center;
 }
 
@@ -759,7 +759,7 @@
   min-height: var(--settings-control-height);
   max-width: 100%;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--fg);
   background-color: var(--bg);
   font: inherit;

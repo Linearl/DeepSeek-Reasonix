@@ -187,7 +187,7 @@
 .provider-connection-fields .mem-select {
   min-height: 42px;
   box-sizing: border-box;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-elev);
 }
 

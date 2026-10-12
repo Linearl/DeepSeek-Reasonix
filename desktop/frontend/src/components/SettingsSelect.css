@@ -11,7 +11,7 @@
   min-height: 36px;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--fg);
   font: inherit;
@@ -33,7 +33,7 @@
   max-height: min(280px, calc(100dvh - 24px));
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-elev);
   color: var(--fg);
   box-shadow: 0 6px 20px rgb(0 0 0 / 14%);

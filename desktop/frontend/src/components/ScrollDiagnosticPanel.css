@@ -10,7 +10,7 @@
   min-height: 32px;
   padding: 4px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
   box-shadow: var(--shadow-2);
   color: var(--fg-dim);
@@ -27,7 +27,7 @@
   min-height: 26px;
   padding: 0 8px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   font: inherit;

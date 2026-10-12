@@ -45,7 +45,7 @@
   min-width: 0;
   padding: 9px 10px;
   border: 1px solid var(--border-soft);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-soft);
   color: var(--fg-dim);
   font-size: var(--text-sm);
@@ -110,7 +110,7 @@
 .structured-form-unsupported {
   padding: 7px 8px;
   border: 1px solid color-mix(in srgb, var(--err) 32%, var(--border-soft));
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--err) 8%, var(--bg-soft));
   color: var(--err);
 }
@@ -122,7 +122,7 @@
   min-width: 0;
   padding: 0 9px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   outline: none;
   background: var(--bg-elev);
   color: var(--fg);
@@ -180,7 +180,7 @@
   gap: 6px 12px;
   padding: 8px 9px;
   border: 1px solid var(--border-soft);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-soft);
 }
 

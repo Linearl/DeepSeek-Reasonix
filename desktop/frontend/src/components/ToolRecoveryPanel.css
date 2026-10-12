@@ -18,7 +18,7 @@
   overflow: auto;
   background: var(--bg-elev);
   border: 1px solid currentColor;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px 16px;
 }
 .tool-recovery-panel > details { width: 100%; }
