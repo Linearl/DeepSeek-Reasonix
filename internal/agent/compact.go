@@ -30,13 +30,22 @@ const (
 	// region and compaction can never trigger (measured at a 10K window).
 	// The ratio itself is the small-window protection — it shrinks with the
 	// window — so every window at or below ~614K behaves exactly as before.
-	recentTailBudgetFloorTokens = 1
-	recentTailBudgetCapTokens   = 96 * 1024
-
 	// 任务 812: an output-truncated summary gets exactly one retry at twice
 	// the output budget (studio summaryRetryOutputMaxTokens semantics) before
 	// the failure escapes to the chunked ladder.
-	summaryRetryBudgetMultiplier = 2
+	// 任务 819: studio's absolute tail floor, gated to large windows. Studio
+	// clamps the tail at (window×10%, 32K, 96K); the fork's 16% ratio already
+	// yields ≥41K at the 256K gate, so the floor stays dormant at current
+	// constants — it completes the studio clamp envelope (it binds if the
+	// ratio is ever tuned down) and must never reach smaller windows, where
+	// an absolute floor lifts the tail over the whole context and compaction
+	// can never trigger (任务 812 measured this at a 10K window).
+	// 合并线定案（per 819 报告）: tail = max(1, recentTailFloor(clamp(window×16%), window)) —
+	// 812 的 96K cap 与 819 的 32K@≥256K floor 组成 studio clamp 包络上下两段。
+	recentTailBudgetFloorTokens    = 32 * 1024
+	recentTailBudgetFloorMinWindow = 256 * 1024
+	recentTailBudgetCapTokens      = 96 * 1024
+	summaryRetryBudgetMultiplier   = 2
 
 	// summaryReasoningMaxBytes clamps a surfaced reasoning-only summary
 	// (~8k tokens of bytes), matching the summaryOutputMaxTokens envelope.
@@ -147,13 +156,14 @@ func (a *Agent) hardInputCeiling() int {
 
 // recentTailBudget is the content-construction budget for the recent verbatim
 // tail. Harness-style compaction retains 16% of the model window, capped at
-// recentTailBudgetCapTokens (任务 812).
+// recentTailBudgetCapTokens (任务 812); windows from recentTailBudgetFloorMinWindow
+// additionally carry studio's absolute floor (任务 819).
 func (a *Agent) recentTailBudget() int {
 	window := a.effectiveContextWindow()
 	if a == nil || window <= 0 {
 		return 1
 	}
-	return clampRecentTailBudget(int(float64(window)*recentTailBudgetRatio))
+	return max(1, recentTailFloor(clampRecentTailBudget(int(float64(window)*recentTailBudgetRatio)), window))
 }
 
 // clampRecentTailBudget caps oversized windows — a 1M window no longer carries
@@ -164,7 +174,15 @@ func clampRecentTailBudget(budget int) int {
 	if budget > recentTailBudgetCapTokens {
 		return recentTailBudgetCapTokens
 	}
-	if budget < recentTailBudgetFloorTokens {
+	return budget
+}
+
+// recentTailFloor lifts the ratio-derived budget to the studio floor for
+// large windows only. Below the gate the raw ratio stands: an absolute floor
+// on a small window swallows the whole foldable region and compaction never
+// triggers.
+func recentTailFloor(budget, window int) int {
+	if window >= recentTailBudgetFloorMinWindow && budget < recentTailBudgetFloorTokens {
 		return recentTailBudgetFloorTokens
 	}
 	return budget
