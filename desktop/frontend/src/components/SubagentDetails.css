@@ -5,7 +5,7 @@
   margin: 4px 0 8px;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-soft);
   min-width: 0;
 }
@@ -60,7 +60,7 @@
   margin: 4px 0 8px;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-soft);
   font-family: var(--font-code-family);
   font-size: var(--font-caption);
