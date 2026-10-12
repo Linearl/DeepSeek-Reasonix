@@ -1939,7 +1939,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.dreamCreateTaskAction": "建立 dream 自動任務",
 "settings.dreamCreateTaskDone": "已建立/啟用 dream 自動任務。請到自動化面板檢視並按需調整參數。",
 "settings.decisionPatterns": "決策模式提取",
-"settings.decisionPatternsHint": "任務 801：壓縮事件觸發提取裁決輪次（使用者否定/修正 AI 的輪次）寫入正常記憶，心跳任務定期整合固化到決策模式檔案。預設關閉；關閉時零行為。",
+"settings.decisionPatternsHint": "壓縮事件觸發提取裁決輪次（使用者否定/修正 AI 的輪次）寫入正常記憶，心跳任務定期整合固化到決策模式檔案。預設關閉；關閉時零行為。",
 "settings.decisionPatterns.on": "開",
 "settings.decisionPatterns.off": "關",
 "settings.decisionPatternsCreateTask": "建立自動任務",

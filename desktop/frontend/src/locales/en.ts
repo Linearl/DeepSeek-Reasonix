@@ -2550,7 +2550,7 @@ export const en = {
 "settings.dreamCreateTaskAction": "Create dream scheduled task",
 "settings.dreamCreateTaskDone": "Dream scheduled task created/enabled. Open the automation panel to review and tune it.",
 "settings.decisionPatterns": "Decision-pattern extraction",
-"settings.decisionPatternsHint": "Task 801: compaction events trigger a ruling-round scan (user corrections of AI behaviour) persisted as ordinary memories; a heartbeat task periodically consolidates them into the decision-patterns file. Off by default; off means zero behaviour.",
+"settings.decisionPatternsHint": "Compaction events trigger a ruling-round scan (user corrections of AI behaviour) persisted as ordinary memories; a heartbeat task periodically consolidates them into the decision-patterns file. Off by default; off means zero behaviour.",
 "settings.decisionPatterns.on": "On",
 "settings.decisionPatterns.off": "Off",
 "settings.decisionPatternsCreateTask": "Create scheduled task",

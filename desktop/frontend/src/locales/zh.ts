@@ -2548,7 +2548,7 @@ export const zh: Record<DictKey, string> = {
 "settings.dreamCreateTaskAction": "创建 dream 自动任务",
 "settings.dreamCreateTaskDone": "已创建/启用 dream 自动任务。请到自动化面板查看并按需调整参数。",
 "settings.decisionPatterns": "决策模式提取",
-"settings.decisionPatternsHint": "任务 801：压缩事件触发提取裁决轮次（用户否定/修正 AI 的轮次）写入正常记忆，心跳任务定期整合固化到决策模式文件。默认关闭；关闭时零行为。",
+"settings.decisionPatternsHint": "压缩事件触发提取裁决轮次（用户否定/修正 AI 的轮次）写入正常记忆，心跳任务定期整合固化到决策模式文件。默认关闭；关闭时零行为。",
 "settings.decisionPatterns.on": "开",
 "settings.decisionPatterns.off": "关",
 "settings.decisionPatternsCreateTask": "创建自动任务",
