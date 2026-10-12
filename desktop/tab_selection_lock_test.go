@@ -10,13 +10,16 @@ import (
 	"reasonix/internal/control"
 )
 
-// P14 (SetActiveTab 移出锁等待) + 任务 831① (切出快照完全异步化) 的 desktop 层验收：
+// P14 (SetActiveTab 移出锁等待) + 任务 831① (切出快照完全异步化) + 任务 837
+// (切换路径同步快照残留封死) 的 desktop 层验收：
 // ① save-path 锁被占时 SetActiveTab 短时限内返回且切换成功（P14 原验收）；
 // ② 降级路径把落盘交给 tabSnapshotLoop，锁释放后数据最终落盘（P14 原验收）；
 // ③ 831① 语义变更：save-path 空闲时也不再内联快照——切换立即返回，快照由
 //    后台单飞补做（728MB 会话的 snapshot_ms=1000 不再落在切换路径上）；
 // ④ 831① 语义变更：无 try-lock 能力的 legacy controller 同样转后台，
-//    切换路径上不存在任何同步快照回落。
+//    切换路径上不存在任何同步快照回落；
+// ⑤ 837 语义变更：local→remote 切换前的本地快照（snapshotActiveLocalBefore
+//    Remote）与 local↔local 同屏障——同样移交后台单飞，不再走 durable 内联。
 
 // switchSavePathCtrl wraps a real controller: Snapshot blocks until released
 // so any synchronous lock wait would hang the test instead of passing it.
@@ -141,6 +144,37 @@ func TestSetActiveTabHandsSnapshotToBackgroundLoop(t *testing.T) {
 	}
 	close(fake.release)
 	waitForAutosaveIdleWithin(t, tab, autosaveTestTimeout)
+}
+
+// TestSnapshotActiveLocalBeforeRemoteDefersToBackground is the 837 form of
+// snapshotActiveLocalBeforeRemote: switching from a local tab to a remote one
+// used to run snapshotTabForAction's durable inline snapshot on the selection
+// path. Since the local-to-local switch hands its flush to the background
+// loop, the local-to-remote boundary is the same kind of event (nothing
+// mutates the session) and must behave identically — the blocked fake proves
+// no inline materialization happens and the flush lands on the loop.
+func TestSnapshotActiveLocalBeforeRemoteDefersToBackground(t *testing.T) {
+	a, tab, fake, path := newSwitchSavePathFixture(t)
+
+	done := make(chan error, 1)
+	go func() { done <- a.snapshotActiveLocalBeforeRemote() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("snapshotActiveLocalBeforeRemote: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("local-to-remote barrier snapshotted inline; want a background hand-off")
+	}
+	select {
+	case <-fake.snapshotBegan:
+	case <-time.After(5 * time.Second):
+		t.Fatal("local-to-remote barrier flush was not scheduled in the background")
+	}
+	close(fake.release)
+	waitForAutosaveIdleWithin(t, tab, autosaveTestTimeout)
+	// 最终落盘不变：后台单飞写出的仍是完整会话内容。
+	waitForFile(t, path, "remember this turn")
 }
 
 // legacySnapshotCtrl has no SnapshotIfSavePathFree capability (a bare override

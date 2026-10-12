@@ -252,7 +252,9 @@ func TestSetActiveRemoteTabPersistsAndUnknownKeepsSelection(t *testing.T) {
 	}
 }
 
-func TestSetActiveRemoteTabBlocksWhenCurrentSessionCannotPersist(t *testing.T) {
+// 837 语义变更（原 TestSetActiveRemoteTabBlocksWhenCurrentSessionCannotPersist）：
+// local→remote 切换的本地兜底快照同样移交后台单飞，持久化失败不再阻塞选择。
+func TestSetActiveRemoteTabProceedsWhenCurrentSessionCannotPersist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "blocked.jsonl")
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatalf("mkdir blocked path: %v", err)
@@ -265,19 +267,21 @@ func TestSetActiveRemoteTabBlocksWhenCurrentSessionCannotPersist(t *testing.T) {
 	a.remoteTabLayout.order = []string{"remote-1"}
 	a.remoteTabMu.Unlock()
 
-	err := a.SetActiveTab("remote-1")
-	if err == nil || !strings.Contains(err.Error(), "save current session before switching tabs") {
-		t.Fatalf("SetActiveTab(remote) error = %v, want persistence failure", err)
+	if err := a.SetActiveTab("remote-1"); err != nil {
+		t.Fatalf("SetActiveTab(remote) = %v, want selection to proceed while the flush retries in the background", err)
 	}
 	a.remoteTabMu.Lock()
 	active := a.remoteTabLayout.activeID
 	a.remoteTabMu.Unlock()
-	if active != "" {
-		t.Fatalf("remote active tab = %q, want local selection preserved", active)
+	if active != "remote-1" {
+		t.Fatalf("remote active tab = %q, want remote-1", active)
 	}
 }
 
-func TestSetActiveLocalTabKeepsRemoteSelectionWhenSessionCannotPersist(t *testing.T) {
+// 837 语义变更（原 TestSetActiveLocalTabKeepsRemoteSelectionWhenSessionCannotPersist）：
+// remote→local 切换快照后台化（831① 起生效），持久化失败不再阻塞切换——
+// remote 选择被清除、本地目标 tab 正常激活。
+func TestSetActiveLocalTabSwitchesWhenSessionCannotPersist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "blocked.jsonl")
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatalf("mkdir blocked path: %v", err)
@@ -292,21 +296,25 @@ func TestSetActiveLocalTabKeepsRemoteSelectionWhenSessionCannotPersist(t *testin
 	a.remoteTabLayout.order = []string{"remote-1"}
 	a.remoteTabMu.Unlock()
 
-	err := a.SetActiveTab("target")
-	if err == nil || !strings.Contains(err.Error(), "save current session before switching tabs") {
-		t.Fatalf("SetActiveTab(local) error = %v, want persistence failure", err)
+	if err := a.SetActiveTab("target"); err != nil {
+		t.Fatalf("SetActiveTab(local) = %v, want switch to proceed while the flush retries in the background", err)
 	}
 	a.remoteTabMu.Lock()
 	active := a.remoteTabLayout.activeID
 	a.remoteTabMu.Unlock()
-	if active != "remote-1" {
-		t.Fatalf("remote active tab = %q, want original remote selection", active)
+	if active != "" {
+		t.Fatalf("remote active tab = %q, want selection cleared by the local switch", active)
 	}
-	if a.activeTabID != "test_tab" {
-		t.Fatalf("local active tab = %q, want original local tab", a.activeTabID)
+	if a.activeTabID != "target" {
+		t.Fatalf("local active tab = %q, want target", a.activeTabID)
 	}
 }
 
+// 837 后语义澄清（原名保持）：切换兜底快照（snapshotActiveLocalBeforeRemote）
+// 已移交后台单飞，但 OpenRemoteProjectTab 在 one-surface 策略下还会经
+// keepOnlyRemoteVisibleTab 对将被 prune/detach 的本地 tab 做 pre-destroy 落盘
+// （关闭后永无快照机会，正确性必需，不后台化）。本地会话无法持久化时打开仍
+// 被该屏障阻塞，结构变更不发生。
 func TestOpenRemoteProjectTabBlocksBeforeMutationWhenLocalSessionCannotPersist(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)

@@ -530,6 +530,14 @@ func (a *App) activateRemoteTab(tabID string, meta TabMeta) {
 // snapshotActiveLocalBeforeRemote preserves the same data-loss barrier used
 // by local-to-local tab switches. The caller serializes cross-registry tab
 // selection with tabSelectionMu.
+//
+// 任务 837: with 831① the local-to-local switch no longer snapshots inline —
+// every state hands the flush to the tab's background snapshot loop. A
+// local-to-remote selection is the same kind of boundary (nothing mutates the
+// session; TurnDone autosave has already persisted every completed turn), so
+// it goes through the same switch form instead of snapshotTabForAction's
+// durable pre-mutation barrier, keeping the selection path free of any
+// synchronous snapshot.
 func (a *App) snapshotActiveLocalBeforeRemote() error {
 	a.remoteTabMu.Lock()
 	remoteActive := a.remoteTabLayout.activeID != ""
@@ -540,7 +548,7 @@ func (a *App) snapshotActiveLocalBeforeRemote() error {
 	a.mu.RLock()
 	active := a.tabs[a.activeTabID]
 	a.mu.RUnlock()
-	return a.snapshotTabForAction(active, "switching tabs")
+	return a.snapshotTabForSwitch(active)
 }
 
 // remoteTabMeta builds the frontend-facing shape of one remote tab; the

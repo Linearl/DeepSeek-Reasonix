@@ -412,7 +412,11 @@ func TestDesktopSnapshotConflictRecoveryRequiresRecoveryLease(t *testing.T) {
 	}
 }
 
-func TestSetActiveTabBlocksWhenCurrentSessionCannotPersist(t *testing.T) {
+// 837 语义变更（原 TestSetActiveTabBlocksWhenCurrentSessionCannotPersist）：
+// 切出快照移交后台单飞后，持久化失败不再阻塞切换——TurnDone 自动保存已保证
+// 每轮落盘，切换快照只是兜底；失败由 tabSnapshotLoop 退避重试、耗尽后经
+// reportTabSnapshotError 告知用户。切换本身必须照常完成。
+func TestSetActiveTabProceedsWhenCurrentSessionCannotPersist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "blocked.jsonl")
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatalf("mkdir blocked path: %v", err)
@@ -426,12 +430,11 @@ func TestSetActiveTabBlocksWhenCurrentSessionCannotPersist(t *testing.T) {
 	}
 	a.tabOrder = []string{"test_tab", "target_tab"}
 
-	err := a.SetActiveTab("target_tab")
-	if err == nil || !strings.Contains(err.Error(), "save current session before switching tabs") {
-		t.Fatalf("SetActiveTab error = %v, want persistence failure", err)
+	if err := a.SetActiveTab("target_tab"); err != nil {
+		t.Fatalf("SetActiveTab = %v, want switch to proceed while the flush retries in the background", err)
 	}
-	if a.activeTabID != "test_tab" {
-		t.Fatalf("active tab = %q, want original tab after failed save", a.activeTabID)
+	if a.activeTabID != "target_tab" {
+		t.Fatalf("active tab = %q, want target_tab", a.activeTabID)
 	}
 }
 
