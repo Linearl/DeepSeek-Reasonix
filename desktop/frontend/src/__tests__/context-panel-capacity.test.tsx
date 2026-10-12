@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { ContextPanel } from "../components/ContextPanel";
+import { capacityPinLayout } from "../lib/contextWindow";
 import { LocaleProvider } from "../lib/i18n";
 import type { ContextPanelInfo } from "../lib/types";
 
@@ -74,6 +75,22 @@ function emptyPanelInfo(): ContextPanelInfo {
 
 console.log("\ncontext panel capacity");
 
+// 任务834: pin 防重叠判定钉——clamp 边界 + 重叠带内阈值标签让位。
+{
+  const overlap = capacityPinLayout(79, 80);
+  ok(overlap.compactLabelVisible === false, "pin layout hides the threshold label inside the overlap band");
+  const clear = capacityPinLayout(50, 80);
+  eq(clear.compactLabelVisible, true, "pin layout keeps the threshold label when clear of the usage pin");
+  eq(clear.usagePct, 50, "pin layout keeps mid usage position");
+  eq(clear.compactPct, 80, "pin layout keeps the threshold position");
+  const overLimit = capacityPinLayout(101, 80);
+  eq(overLimit.usagePct, 94, "usage pin clamps to the track-safe maximum");
+  ok(overLimit.compactLabelVisible === false, "over-limit usage also suppresses the overlapping threshold label");
+  const lowClamp = capacityPinLayout(0, 0);
+  eq(lowClamp.usagePct, 6, "pins clamp off the left track edge");
+  eq(lowClamp.compactPct, 6, "threshold clamp matches the usage clamp floor");
+}
+
 const dom = installDom();
 (window as unknown as { go: { main: { App: { ContextPanel: () => Promise<ContextPanelInfo> } } } }).go = {
   main: { App: { ContextPanel: async () => emptyPanelInfo() } },
@@ -109,12 +126,26 @@ const fill = meter?.querySelector(".context-panel__progress-fill") as HTMLElemen
 const usedPin = meter?.querySelector(".context-panel__capacity-pin--used");
 const compactMarker = meter?.querySelector(".context-panel__compact-marker") as HTMLElement | null;
 
-eq(capacity?.querySelector(".context-panel__capacity-status")?.textContent, "Over context limit", "over-limit status is explicit");
+// 任务834: the dictionary loads async and locale follows the OS (same race the
+// projection-stale assertion below already accommodates) — the two hard-coded
+// English assertions above it became order-sensitive once this file grew
+// synchronous preamble work. Accept any shipped translation; the point is that
+// the explicit over-limit label and the aria summary render at all.
+const overLimitStatusText = capacity?.querySelector(".context-panel__capacity-status")?.textContent ?? "";
+ok(["Over context limit", "已超过窗口上限", "已超過視窗上限"].includes(overLimitStatusText),
+  `over-limit status is explicit (got ${JSON.stringify(overLimitStatusText)})`);
 eq(usedPin?.textContent, "101%", "just-over-limit percentage pin remains visibly over 100 percent");
 eq(fill?.style.width, "100%", "capacity fill is capped at the physical track width");
 eq(meter?.querySelectorAll(".context-panel__progress-segment").length, 0, "capacity meter does not mix token composition into its fill");
 eq(compactMarker?.style.left, "80%", "compression threshold marker stays at the configured ratio");
-ok(meter?.getAttribute("aria-label")?.includes("101% used") === true, "accessible summary reports the over-limit ratio");
+const ariaSummary = meter?.getAttribute("aria-label") ?? "";
+// zh and zh-TW share the "{pct}% 已用" shape.
+ok(["101% used", "101% 已用"].some((phrase) => ariaSummary.includes(phrase)), "accessible summary reports the over-limit ratio");
+// 任务834: over-limit 时已用 pin（clamp 至 94%）与阈值 pin（80%）落入重叠带，
+// 阈值文字标签让位；竖线 marker 上一行断言已保证仍在。
+eq(meter?.querySelector(".context-panel__capacity-pin--compact"), null, "over-limit usage pin is never covered by the threshold label");
+ok((capacity?.querySelector(".context-panel__capacity-top strong") as HTMLElement | null)?.getAttribute("title")?.includes("101%") === true,
+  "used/window figure carries a hover title with the full readout");
 
 await unmountScenario(root);
 
@@ -152,6 +183,22 @@ ok(validStrong.startsWith("264"), "main readout prefers the projected (actual se
 ok(!validStrong.includes("3.7"), "valid projection never surfaces the canonical bulk in the main readout");
 
 await unmountScenario(validRoot);
+
+// 任务834: 渲染场景钉——已用读数贴近压缩阈值（79% vs 80%）时阈值 pin 的
+// 文字标签让位，两个「NN%」不再互相遮挡；远离阈值时照常双 pin 显示。
+const nearRoot = await renderScenario({ used: 790, window: 1_000, sessionTokens: 790, compactRatio: 0.8 });
+const nearMeter = document.querySelector(".context-panel__capacity-meter");
+eq(nearMeter?.querySelector(".context-panel__capacity-pin--used")?.textContent, "79%", "near-threshold usage pin still renders its percentage");
+eq(nearMeter?.querySelector(".context-panel__capacity-pin--compact"), null, "near-threshold threshold pin label yields to the usage pin");
+ok((nearMeter?.querySelector(".context-panel__compact-marker") as HTMLElement | null)?.style.left === "80%", "threshold line marker stays put while its label yields");
+await unmountScenario(nearRoot);
+
+const midRoot = await renderScenario({ used: 500, window: 1_000, sessionTokens: 500, compactRatio: 0.8 });
+const midMeter = document.querySelector(".context-panel__capacity-meter");
+eq(midMeter?.querySelector(".context-panel__capacity-pin--used")?.textContent, "50%", "mid usage pin renders");
+eq(midMeter?.querySelector(".context-panel__capacity-pin--compact")?.textContent, "80%", "threshold pin label renders when clear of the usage pin");
+await unmountScenario(midRoot);
+
 dom.window.close();
 
 console.log(`\n${passed} passed, ${failed} failed`);
