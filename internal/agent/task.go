@@ -396,7 +396,7 @@ func (t *TaskTool) boundarySummary() string {
 }
 
 func (t *TaskTool) Description() string {
-	return "Spawn a sub-agent for a focused sub-task. Optional profile selects a runAs=subagent Skill whose body becomes the full system prompt (no implicit concise default). Optional write_paths declare non-overlapping write targets so background writers may run in parallel; omitting write_paths on a writer claims the whole workspace and serializes writers. The sub-agent runs in its own session with a filtered tool list (defaults to every parent tool, then applies the subagent boundary: " + t.boundarySummary() + "). Only its final answer is returned."
+	return "Spawn a sub-agent for a focused sub-task. Optional profile selects a runAs=subagent Skill whose body becomes the full system prompt (no implicit concise default). Optional write_paths declare non-overlapping write targets so background writers may run in parallel; omitting write_paths on a writer claims the whole workspace and serializes writers. The sub-agent runs in its own session with a filtered tool list (defaults to every parent tool, then applies the subagent boundary: " + t.boundarySummary() + "). Only its final answer is returned. When to dispatch: multi-file investigation that would flood this conversation with tool noise, independent sub-tasks that can run in parallel, or exploratory work where most reads turn out to be irrelevant. Dispatch these by default; do not do delegable sub-work inline, and do not judge a matching sub-task too small to delegate. Do not dispatch for single-file, single-step changes — do those yourself."
 }
 
 func (t *TaskTool) Schema() json.RawMessage {
@@ -493,7 +493,7 @@ func (r *ReadOnlyTaskTool) WithBackgroundExecution(allow bool) *ReadOnlyTaskTool
 func (*ReadOnlyTaskTool) Name() string { return tool.HostReadOnlyTask }
 
 func (*ReadOnlyTaskTool) Description() string {
-	return "Spawn a read-only research sub-agent for a focused investigation. The sub-agent runs in an isolated, ephemeral session with read-only tools only; bash is wrapped to allow only permission-classified foreground read-only commands. It cannot write files, install capabilities, mutate memory, run background jobs, continue/fork transcripts, or delegate to writer-capable agents. Read-only nested delegation may be available until max_subagent_depth is reached. Only its final answer is returned."
+	return "Spawn a read-only research sub-agent for a focused investigation. The sub-agent runs in an isolated, ephemeral session with read-only tools only; bash is wrapped to allow only permission-classified foreground read-only commands. It cannot write files, install capabilities, mutate memory, run background jobs, continue/fork transcripts, or delegate to writer-capable agents. Read-only nested delegation may be available until max_subagent_depth is reached. Only its final answer is returned. When to dispatch: multi-file investigation that would flood this conversation with tool noise, independent research sub-tasks that can run in parallel, or exploratory work where most reads turn out to be irrelevant. Dispatch these by default; do not do delegable research inline, and do not judge a matching sub-task too small to delegate. Do not dispatch for single-file, single-step lookups — read those yourself."
 }
 
 func (r *ReadOnlyTaskTool) Schema() json.RawMessage {
