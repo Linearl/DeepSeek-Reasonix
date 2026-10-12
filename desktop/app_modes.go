@@ -387,6 +387,12 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	goal := tab.goal
 	plan := tabModeHasPlan(tab.mode)
 	tabIDForSave := tab.ID
+	// Task 806 (P2): the collaboration axis had no switch log — the 2026-10-12
+	// ask 事故的唯一悬案就是"模式从哪条入口切成了什么"无法定案. One line per
+	// switch: target mode plus the before/after autopilot and approval posture,
+	// joinable with the approval-axis line by the [tab-mode] tag.
+	slog.Info("[tab-mode] collaboration mode switch", "tab", tabIDForSave, "mode", mode,
+		"autopilot_pre", wasAutopilot, "autopilot_post", autopilotOn, "approval_post", tab.toolApprovalMode)
 	a.mu.Unlock()
 	a.applyCollabModeEffects(tab, tabIDForSave, ctrl, plan, goal, autopilotOn, wasAutopilot, autopilotRefused, assumedYolo, guardOwner)
 }
@@ -662,6 +668,10 @@ func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelec
 		a.mu.Unlock()
 		return nil
 	}
+	// Task 806 (P2): capture the before state for the switch log below — the
+	// 2026-10-12 ask 事故的唯一悬案就是"用户从哪条入口把模式切成了什么"无法
+	// 定案，because neither approval-axis entry wrote a log line.
+	preApproval, preAutopilot := tab.toolApprovalMode, tab.autopilot
 	tab.toolApprovalMode = mode
 	tab.mode = tabModeFromAxes(plan, mode == control.ToolApprovalYolo)
 	// Task 325 reverse linkage (fail-closed): autopilot on + approval leaving
@@ -693,5 +703,16 @@ func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelec
 		a.saveTabsLocked()
 	}
 	a.mu.Unlock()
+	// Task 806 (P2): one line per approval-axis switch — which entry (the
+	// task-595 tier bar vs the legacy setter), the before/after approval mode,
+	// and the autopilot edge (closeAutopilotForOffYolo / closeAutopilotForTier
+	// may have cleared it). Joinable with the collaboration-axis line in
+	// SetCollaborationModeForTab by the [tab-mode] tag.
+	slog.Info("[tab-mode] approval mode switch",
+		"tab", tabIDForSave,
+		"entry", map[bool]string{true: "tier", false: "legacy"}[tierSingleSelect],
+		"approval_pre", preApproval, "approval_post", mode,
+		"autopilot_pre", preAutopilot, "autopilot_post", tab.autopilot,
+		"tier_yolo_leave", tierYoloLeave)
 	return drained
 }

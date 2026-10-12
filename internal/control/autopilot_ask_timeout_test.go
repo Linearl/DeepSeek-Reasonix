@@ -15,24 +15,47 @@ import (
 	"reasonix/internal/tool"
 )
 
-// askTimeoutSink captures the notices an ask timeout emits.
+// askTimeoutSink captures the events an ask timeout emits. Kind-filtered
+// helpers keep the pre-477 assertions intact; the raw event log is what the
+// task-806 reversible tests read the emitted AskRequest (the surfaced panel)
+// and its prompt ID from.
 type askTimeoutSink struct {
-	mu      sync.Mutex
-	notices []event.Event
+	mu     sync.Mutex
+	events []event.Event
 }
 
 func (s *askTimeoutSink) Emit(e event.Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if e.Kind == event.Notice {
-		s.notices = append(s.notices, e)
-	}
+	s.events = append(s.events, e)
 }
 
 func (s *askTimeoutSink) all() []event.Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]event.Event(nil), s.notices...)
+	return append([]event.Event(nil), s.events...)
+}
+
+func (s *askTimeoutSink) notices() []event.Event {
+	var out []event.Event
+	for _, e := range s.all() {
+		if e.Kind == event.Notice {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// lastAskID returns the prompt ID of the most recent AskRequest, or "" while
+// the panel has not been emitted yet.
+func (s *askTimeoutSink) lastAskID() string {
+	id := ""
+	for _, e := range s.all() {
+		if e.Kind == event.AskRequest {
+			id = e.ItemID
+		}
+	}
+	return id
 }
 
 // askTimeoutController builds an autopilot controller with the task-477
@@ -83,7 +106,7 @@ func TestAutopilotAskTimeoutRefusesAndContinues(t *testing.T) {
 		t.Fatalf("ask took %s; the sub-option exists to stop the stall promptly", elapsed)
 	}
 
-	notices := sink.all()
+	notices := sink.notices()
 	if len(notices) != 1 {
 		t.Fatalf("notices = %d, want exactly the timeout notice", len(notices))
 	}
@@ -115,24 +138,143 @@ func TestAutopilotAskTimeoutLogsOneAnchorLine(t *testing.T) {
 	}
 }
 
-// Reversible asks keep the task-49 A3 immediate self-answer under the
-// sub-option: the timeout only ever governs the high-risk wait, and the
-// low-risk tier still answers "decide for yourself" without waiting.
-func TestAutopilotAskTimeoutLeavesReversibleInstant(t *testing.T) {
-	c, sink := askTimeoutController(t, true, 20*time.Millisecond)
-	answers, err := c.Ask(context.Background(), []event.AskQuestion{{
+// Task 806 验收①②: a reversible ask under autopilot SURFACES THE PANEL (the
+// task-49 A3 instant self-answer is gone) and only decides for the user after
+// the interaction-aware wait expires untouched. The silent-expiry answer keeps
+// the task-49 reply text and the task-544 decision trail (要素②), and carries
+// one grep-able notice so the auto-decision is visible (the 806 P0 half).
+func TestAutopilotReversibleAskSurfacesPanelThenTimesOut(t *testing.T) {
+	c, sink := askTimeoutController(t, true, 30*time.Millisecond)
+	reversible := []event.AskQuestion{{
+		ID:      "q1",
+		Prompt:  "Structure the findings as a table or as bullets?",
+		Options: []event.AskOption{{Label: "table"}, {Label: "bullets"}},
+	}}
+	done := make(chan struct{})
+	var answers []event.AskAnswer
+	var err error
+	go func() {
+		answers, err = c.Ask(context.Background(), reversible)
+		close(done)
+	}()
+
+	// The panel must come out long before the timer fires — that is the whole
+	// point of the rework (验收①: no more 0s self-answer before the panel).
+	var askID string
+	for i := 0; i < 100 && askID == ""; i++ {
+		askID = sink.lastAskID()
+		if askID == "" {
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+	if askID == "" {
+		t.Fatal("no AskRequest emitted; the reversible ask must surface the panel instead of self-answering")
+	}
+	select {
+	case <-done:
+		t.Fatalf("ask returned before any interaction could land; the 0s self-answer is back (answers=%v err=%v)", answers, err)
+	case <-time.After(5 * time.Millisecond):
+	}
+
+	<-done
+	if err != nil {
+		t.Fatalf("reversible ask err = %v, want the auto-decide answers with no error", err)
+	}
+	if len(answers) != 1 || answers[0].QuestionID != "q1" || answers[0].Selected[0] != autopilotNoHumanAnswer {
+		t.Fatalf("answers = %+v, want the decide-for-yourself answer for q1 (decision trail unchanged)", answers)
+	}
+	if left := c.consumeTurnAskAnswered(); left == "" {
+		t.Fatal("turn-ask-answered marker empty; the task-544 decision_id trail must survive the rework")
+	}
+	notices := sink.notices()
+	if len(notices) != 1 {
+		t.Fatalf("notices = %d, want exactly the auto-decide notice", len(notices))
+	}
+	if notices[0].Code != "autopilot_ask_auto_decide" {
+		t.Fatalf("notice code = %q, want the grep-able autopilot_ask_auto_decide anchor", notices[0].Code)
+	}
+}
+
+// Task 806 验收②: the first interaction on the panel stops the auto-decide
+// timer. After the touch the ask waits like any attended one — the run must
+// not take the decision away while the user is mid-choice — and the user's
+// own answer (not the auto-decide reply) is what comes back.
+func TestAutopilotReversibleAskInteractionStopsTimer(t *testing.T) {
+	c, sink := askTimeoutController(t, true, 60*time.Millisecond)
+	reversible := []event.AskQuestion{{
+		ID:      "q1",
+		Prompt:  "Structure the findings as a table or as bullets?",
+		Options: []event.AskOption{{Label: "table"}, {Label: "bullets"}},
+	}}
+	type askResult struct {
+		answers []event.AskAnswer
+		err     error
+	}
+	done := make(chan askResult, 1)
+	go func() {
+		answers, err := c.Ask(context.Background(), reversible)
+		done <- askResult{answers, err}
+	}()
+
+	var askID string
+	for i := 0; i < 100 && askID == ""; i++ {
+		askID = sink.lastAskID()
+		if askID == "" {
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+	if askID == "" {
+		t.Fatal("no AskRequest emitted for the reversible ask")
+	}
+	// 要素①: one selection on the panel — delivered through the same
+	// NotifyAskInteraction entry the desktop bridge calls — stops the timer.
+	c.NotifyAskInteraction(askID)
+	select {
+	case r := <-done:
+		t.Fatalf("ask returned %+v (err=%v) after the interaction; the timer was not stopped", r.answers, r.err)
+	case <-time.After(200 * time.Millisecond):
+		// Well past the 60ms timer: the touch really did stop it.
+	}
+
+	c.AnswerQuestion(askID, []event.AskAnswer{{QuestionID: "q1", Selected: []string{"table"}}})
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("ask err = %v, want the user's own answer", r.err)
+		}
+		if len(r.answers) != 1 || len(r.answers[0].Selected) != 1 || r.answers[0].Selected[0] != "table" {
+			t.Fatalf("answers = %+v, want the user's selection to win over the auto-decide", r.answers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ask did not return after the user answered")
+	}
+	for _, n := range sink.notices() {
+		if n.Code == "autopilot_ask_auto_decide" {
+			t.Fatal("auto-decide notice emitted although the user answered; the timer should have been stopped")
+		}
+	}
+}
+
+// Attended is untouched by the task-806 rework on the reversible tier too: a
+// session that is not autopilot keeps waiting for the panel answer with no
+// timer at all, exactly as before (验收⑤: the yolo/attended axis stays clean).
+func TestAttendedReversibleAskKeepsWaiting(t *testing.T) {
+	ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
+	c := New(Options{
+		Runner:           ag,
+		Executor:         ag,
+		Sink:             event.Discard,
+		AutopilotAskWait: 20 * time.Millisecond,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	_, err := c.Ask(ctx, []event.AskQuestion{{
 		ID:      "q1",
 		Prompt:  "Structure the findings as a table or as bullets?",
 		Options: []event.AskOption{{Label: "table"}, {Label: "bullets"}},
 	}})
-	if err != nil {
-		t.Fatalf("reversible ask err = %v, want the instant self-answer", err)
-	}
-	if len(answers) != 1 || answers[0].Selected[0] != autopilotNoHumanAnswer {
-		t.Fatalf("answers = %+v, want the decide-for-yourself answer", answers)
-	}
-	if notices := sink.all(); len(notices) != 0 {
-		t.Fatalf("reversible ask emitted notices: %+v", notices)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("attended reversible ask err = %v, want it to keep waiting (no auto-decide timer)", err)
 	}
 }
 
@@ -193,7 +335,7 @@ func TestAutopilotAskTimeoutOffKeepsTerminalStop(t *testing.T) {
 	if len(answers) != 0 {
 		t.Fatalf("off-state answers = %+v, want none", answers)
 	}
-	for _, n := range sink.all() {
+	for _, n := range sink.notices() {
 		if n.Code == "autopilot_ask_timeout" {
 			t.Fatal("off state must not carry the task-477 notice code")
 		}

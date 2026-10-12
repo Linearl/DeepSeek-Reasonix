@@ -42,6 +42,12 @@ type AskCardProps = {
   onDismiss?: () => void | Promise<void>;
   draftScope?: string;
   onStop: () => void;
+  // 任务806 要素①: fired once, on the user's first selection or typed edit on
+  // the panel. The backend stops the autopilot auto-decide timer on it, so the
+  // run cannot take the decision away mid-choice. Optional: surfaces without a
+  // local bridge (remote sessions) simply never fire it and keep the plain
+  // wait/timeout behavior.
+  onInteract?: (id: string) => void;
 };
 
 export function AskCard(props: AskCardProps) {
@@ -51,7 +57,7 @@ export function AskCard(props: AskCardProps) {
   return <AskCardBody key={draftKey} {...props} draftKey={draftKey} />;
 }
 
-function AskCardBody({ ask, onAnswer, onStop, draftKey }: AskCardProps & { draftKey: string }) {
+function AskCardBody({ ask, onAnswer, onInteract, onStop, draftKey }: AskCardProps & { draftKey: string }) {
   const t = useT();
   // Per-question state: selected option labels, and an optional typed answer.
   const [sel, setSel] = useState<Record<string, string[]>>(() => readAskDraft(draftKey)?.sel ?? {});
@@ -71,7 +77,22 @@ function AskCardBody({ ask, onAnswer, onStop, draftKey }: AskCardProps & { draft
   const shelfRef = useRef<HTMLDivElement | null>(null);
   const customInputRef = useRef<HTMLInputElement | null>(null);
   const initializedActiveRef = useRef(false);
+  const interactedRef = useRef(false);
   const instanceId = useId();
+
+  // 任务806 要素①: idempotent — the backend consumes the first touch only,
+  // so one fire per panel is enough and keeps the bridge traffic at zero for
+  // panels nobody has touched.
+  const fireInteract = () => {
+    if (interactedRef.current) return;
+    interactedRef.current = true;
+    try {
+      onInteract?.(ask.id);
+    } catch {
+      // The signal is best effort; the auto-decide timer firing early is the
+      // pre-806 behavior, never a crash.
+    }
+  };
 
   const questions = ask.questions;
   const q = questions[Math.min(active, questions.length - 1)];
@@ -175,6 +196,7 @@ function AskCardBody({ ask, onAnswer, onStop, draftKey }: AskCardProps & { draft
   };
 
   const setTyped = (question: WireAskQuestion, text: string) => {
+    fireInteract();
     setSelectedIndex(customRowIndex);
     setAnswerMode((m) => ({ ...m, [question.id]: "custom" }));
     setCustom((c) => ({ ...c, [question.id]: text }));
@@ -209,6 +231,7 @@ function AskCardBody({ ask, onAnswer, onStop, draftKey }: AskCardProps & { draft
 
   const selectRow = (index: number) => {
     if (submitting || !q) return;
+    fireInteract();
     setSelectedIndex(index);
     if (index < optionCount) {
       const option = q.options[index];
@@ -387,6 +410,7 @@ function AskCardBody({ ask, onAnswer, onStop, draftKey }: AskCardProps & { draft
             onClick={(event) => {
               // The card toggles collapse on clicks outside its controls; this row is a control.
               event.stopPropagation();
+              fireInteract();
               setSelectedIndex(customRowIndex);
               setAnswerMode((m) => ({ ...m, [q.id]: "custom" }));
               setCustomOpen(true);
@@ -401,7 +425,10 @@ function AskCardBody({ ask, onAnswer, onStop, draftKey }: AskCardProps & { draft
               placeholder={t("ask.customPlaceholder")}
               value={answerMode[q.id] === "custom" ? custom[q.id] ?? "" : ""}
               disabled={submitting}
-              onFocus={() => setSelectedIndex(customRowIndex)}
+              onFocus={() => {
+                fireInteract();
+                setSelectedIndex(customRowIndex);
+              }}
               onChange={(e) => setTyped(q, e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && canConfirm()) {

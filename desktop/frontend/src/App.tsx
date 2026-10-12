@@ -654,6 +654,7 @@ export default function App() {
     resolvePlanDecision,
     resolveRecovery,
     answerQuestion,
+    notifyAskInteraction,
     answerMCPInteraction,
     setControllerMode,
     dismissExtensionForm,
@@ -5612,6 +5613,7 @@ export default function App() {
                 ask={state.ask}
                 draftScope={activeTabId ?? "local"}
                 onAnswer={answerQuestion}
+                onInteract={notifyAskInteraction}
                 onDismiss={() => answerQuestion(state.ask!.id, [])}
                 onStop={() => {
                   cancel();
