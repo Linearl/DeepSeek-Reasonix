@@ -499,6 +499,18 @@ export interface CollabChannelView {
   hourlyLimit: number;
   members: string[];
   messages: number;
+  // 803 additive（老群无主时缺省）：群主与逐成员明细——微信式群列表的
+  // 群主标、详情页的类型徽标都以这两个字段为准。
+  ownerType?: string;
+  ownerId?: string;
+  memberDetails?: CollabChannelMemberView[];
+}
+
+/** 803: 频道成员明细一行（type = "session" | "human"）。 */
+export interface CollabChannelMemberView {
+  contact: string;
+  type: string;
+  joinedAt: number;
 }
 
 /** 349: 每成员投递行（delivered/read 按成员各算，永不合并）。 */
@@ -518,6 +530,8 @@ export interface CollabChannelMessageView {
   sender: string;
   body: string;
   at: number;
+  // 802: 取消墓碑时间（缺省 0/undefined=未撤回）——撤回后渲染「已取消」行。
+  cancelledAt?: number;
   fanout?: CollabChannelFanoutCellView[];
 }
 
@@ -525,6 +539,16 @@ export interface CollabChannelMessageView {
 export interface CollabChannelReadView {
   channel: CollabChannelView;
   messages: CollabChannelMessageView[];
+}
+
+/** 802: 一次撤回的结果（349 Cancel 墓碑语义的 JSON 形状）。 */
+export interface CollabChannelCancelResultView {
+  messageId: string;
+  channel: string;
+  cancelledAt: number;
+  cancelledQueued: number;
+  alreadyDelivered: number;
+  alreadyCancelled: boolean;
 }
 
 interface NativeConfirmRequest {
@@ -1353,6 +1377,18 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   GetCollabViewOverview(): Promise<CollabViewOverviewView>;
   ListCollabChannels(): Promise<CollabChannelView[]>;
   ReadCollabChannel(ref: string, limit: number): Promise<CollabChannelReadView>;
+  // 任务 802: 群聊微信级 UI 的绑定面（803 wails API 族 + 802 撤回口）。
+  // 签名以 desktop/collab_channel_app.go / collab_channel_cancel_app.go 为准：
+  // ref 一律接受群名或群 id；join/invite/remove 返回更新后的 Channel 免二次拉取；
+  // ChannelMessagesForHuman 读到即标记 human 已读（UI 可见即已读）。
+  ChannelCreateForHuman(name: string, topic: string, hourlyLimit: number): Promise<CollabChannelView>;
+  ChannelJoinHuman(ref: string): Promise<CollabChannelView>;
+  ChannelLeaveHuman(ref: string): Promise<void>;
+  ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
+  ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
+  ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
+  ChannelMessagesForHuman(ref: string, sinceMs: number, limit: number): Promise<CollabChannelReadView>;
+  ChannelCancelFromHuman(ref: string, messageID: string): Promise<CollabChannelCancelResultView>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
 
   RenameProviderConnections: typeof GeneratedApp.RenameProviderConnections;
@@ -5969,6 +6005,32 @@ function makeMockApp(): AppBindings {
     },
     async ReadCollabChannel(_ref: string, _limit: number) {
       return { channel: { id: "", name: "", createdAt: 0, hourlyLimit: 0, members: [], messages: 0 }, messages: [] };
+    },
+    // 任务 802 mocks: dev shell 没有频道实体——诚实的空群目录与失败写路径，
+    // 让微信式 UI 在 dev shell 渲染空态而不是假数据。
+    async ChannelCreateForHuman(_name: string, _topic: string, _hourlyLimit: number) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelJoinHuman(_ref: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelLeaveHuman(_ref: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelSendFromHuman(_ref: string, _body: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelInvite(_ref: string, _contactIDs: string[]) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelRemoveMember(_ref: string, _contactID: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelMessagesForHuman(_ref: string, _sinceMs: number, _limit: number) {
+      return { channel: { id: "", name: "", createdAt: 0, hourlyLimit: 0, members: [], messages: 0 }, messages: [] };
+    },
+    async ChannelCancelFromHuman(_ref: string, _messageID: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
     },
     async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
       settings.autopilot = enabled;
