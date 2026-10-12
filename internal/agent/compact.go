@@ -22,6 +22,22 @@ const (
 	recentTailBudgetRatio  = 0.16 // recent verbatim tail as a fraction of the window
 	summaryOutputMaxTokens = 8192 // max digest output; further clipped by remaining candidate space
 
+	// 任务 812: the 16%-of-window tail budget clamps to a 96K cap. Above
+	// ~614K windows the ratio kept scaling (a 1M window carried a 160K tail
+	// after compaction); above the cap it no longer does. The floor stays
+	// defensive instead of studio's absolute 32K: fork serves arbitrarily
+	// small windows, where an absolute floor swallows the whole foldable
+	// region and compaction can never trigger (measured at a 10K window).
+	// The ratio itself is the small-window protection — it shrinks with the
+	// window — so every window at or below ~614K behaves exactly as before.
+	recentTailBudgetFloorTokens = 1
+	recentTailBudgetCapTokens   = 96 * 1024
+
+	// 任务 812: an output-truncated summary gets exactly one retry at twice
+	// the output budget (studio summaryRetryOutputMaxTokens semantics) before
+	// the failure escapes to the chunked ladder.
+	summaryRetryBudgetMultiplier = 2
+
 	// summaryReasoningMaxBytes clamps a surfaced reasoning-only summary
 	// (~8k tokens of bytes), matching the summaryOutputMaxTokens envelope.
 	summaryReasoningMaxBytes = 32768
@@ -130,13 +146,28 @@ func (a *Agent) hardInputCeiling() int {
 }
 
 // recentTailBudget is the content-construction budget for the recent verbatim
-// tail. Harness-style compaction always retains 16% of the model window.
+// tail. Harness-style compaction retains 16% of the model window, capped at
+// recentTailBudgetCapTokens (任务 812).
 func (a *Agent) recentTailBudget() int {
 	window := a.effectiveContextWindow()
 	if a == nil || window <= 0 {
 		return 1
 	}
-	return max(1, int(float64(window)*recentTailBudgetRatio))
+	return clampRecentTailBudget(int(float64(window)*recentTailBudgetRatio))
+}
+
+// clampRecentTailBudget caps oversized windows — a 1M window no longer carries
+// a 160K tail after compaction — leaving every smaller window at the raw 16%
+// ratio. The floor only guards degenerate ratios, not small windows: see the
+// constant comment for why studio's absolute 32K floor does not transfer.
+func clampRecentTailBudget(budget int) int {
+	if budget > recentTailBudgetCapTokens {
+		return recentTailBudgetCapTokens
+	}
+	if budget < recentTailBudgetFloorTokens {
+		return recentTailBudgetFloorTokens
+	}
+	return budget
 }
 
 // foldEconomics estimates whether compacting the given region saves enough
@@ -442,13 +473,21 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
 	return summary, usage, err
 }
 
-// runSummaryRequest admits, sends, and drains one summary request.
+// runSummaryRequest admits, sends, and drains one summary request at the
+// standard output budget.
+func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (summary string, usage *provider.Usage, err error) {
+	return a.runSummaryRequestWithBudget(ctx, req, a.summaryOutputBudget())
+}
+
+// runSummaryRequestWithBudget admits, sends, and drains one summary request,
+// clipping its output to the given budget. 任务 812: the truncation retry
+// passes a doubled budget; every other caller keeps summaryOutputBudget.
 // Named returns so defer can attach RequestCount and still return usage.
 // 任务 707: the serving destination is compactionDestination() — the armed
 // economic model when it resolves, else the conversation destination exactly
 // as before. Admission and the output budget above stay sized against the
 // conversation model (the fold plan is independent of who writes the digest).
-func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (summary string, usage *provider.Usage, err error) {
+func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Request, outputBudget int) (summary string, usage *provider.Usage, err error) {
 	summaryDest := a.compactionDestination()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -463,8 +502,8 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 	if err := a.applySummaryAdmissionToRequest(&req); err != nil {
 		return "", usage, err
 	}
-	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
-		req.MaxTokens = budget
+	if req.MaxTokens > outputBudget {
+		req.MaxTokens = outputBudget
 	}
 	if req.MaxTokens < 256 {
 		return "", usage, fmt.Errorf("summary output budget too small (%d tokens)", req.MaxTokens)
@@ -527,11 +566,28 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
 	}
 }
 
-// summarizeOnce performs exactly one application-layer summary request.
-// Timeouts, empty results, stream errors, and output truncation all fail once
-// with no second attempt.
+// summarizeOnce performs the application-layer summary request. 任务 812: an
+// output truncation gets exactly one retry at twice the output budget (studio
+// summaryRetryOutputMaxTokens semantics) before the failure escapes to the
+// chunked ladder; timeouts, stream errors, and empty results still fail once.
+// A retry that still truncates returns the truncation error either way, so
+// the chunked-fallback classification is unchanged.
 func (a *Agent) summarizeOnce(ctx context.Context, fold []provider.Message, instructions string) (string, *provider.Usage, error) {
-	return a.summarize(ctx, fold, instructions)
+	summary, usage, err := a.summarize(ctx, fold, instructions)
+	if err == nil || !errors.Is(err, errSummaryOutputTruncated) {
+		return summary, usage, err
+	}
+	req := a.summaryRequest(fold, instructions)
+	req.MaxTokens = a.summaryOutputBudget() * summaryRetryBudgetMultiplier
+	retried, retryUsage, retryErr := a.runSummaryRequestWithBudget(ctx, req, req.MaxTokens)
+	a.observeSummaryOutcome(req, retryUsage, retryErr)
+	// Both attempts ride on one summary call's bill: merge the usages so the
+	// fold telemetry and the chunked run budget see the whole spend.
+	merged := mergeSamplingUsage(usage, retryUsage)
+	if retryErr == nil {
+		return retried, merged, nil
+	}
+	return "", merged, retryErr
 }
 
 // renderTranscript flattens messages into a bounded transcript for the

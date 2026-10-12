@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -106,6 +107,86 @@ func TestSummaryCollectorRejectsEmptyAndLengthLimitedOutput(t *testing.T) {
 				t.Fatalf("summarize error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// truncationRetryProvider fails the first failFirst summary requests with the
+// output-truncation signal (FinishReason=length), then succeeds; streamErr,
+// when set, fails every call. Every request's MaxTokens is recorded so the
+// doubled retry budget is assertable on the wire.
+type truncationRetryProvider struct {
+	failFirst int
+	streamErr error
+	calls     int
+	maxTokens []int
+}
+
+func (p *truncationRetryProvider) Name() string { return "truncation-retry" }
+
+func (p *truncationRetryProvider) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	p.calls++
+	p.maxTokens = append(p.maxTokens, req.MaxTokens)
+	ch := make(chan provider.Chunk, 3)
+	if p.streamErr != nil {
+		ch <- provider.Chunk{Type: provider.ChunkError, Err: p.streamErr}
+		close(ch)
+		return ch, nil
+	}
+	if p.calls <= p.failFirst {
+		ch <- provider.Chunk{Type: provider.ChunkText, Text: "partial"}
+		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{FinishReason: "length"}}
+	} else {
+		ch <- provider.Chunk{Type: provider.ChunkText, Text: "- goal: retried ok"}
+		ch <- provider.Chunk{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, TotalTokens: 10, RequestCount: 1}}
+	}
+	ch <- provider.Chunk{Type: provider.ChunkDone}
+	close(ch)
+	return ch, nil
+}
+
+// 任务 812: one output truncation retries once at twice the output budget
+// before any chunked fallback; the retry's doubled MaxTokens is on the wire.
+func TestSummaryOutputTruncationRetriesOnceWithDoubledBudget(t *testing.T) {
+	prov := &truncationRetryProvider{failFirst: 1}
+	a := New(prov, tool.NewRegistry(), NewSession("system"), Options{ContextWindow: 100_000}, event.Discard)
+	summary, _, err := a.summarizeOnce(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "old"}}, "")
+	if err != nil {
+		t.Fatalf("summarizeOnce: %v", err)
+	}
+	if summary != "- goal: retried ok" {
+		t.Fatalf("summary = %q, want the retry's digest", summary)
+	}
+	if prov.calls != 2 {
+		t.Fatalf("summary calls = %d, want one truncation plus one retry", prov.calls)
+	}
+	if prov.maxTokens[0] != summaryOutputMaxTokens || prov.maxTokens[1] != summaryOutputMaxTokens*summaryRetryBudgetMultiplier {
+		t.Fatalf("max tokens per call = %v, want [%d %d]", prov.maxTokens, summaryOutputMaxTokens, summaryOutputMaxTokens*summaryRetryBudgetMultiplier)
+	}
+}
+
+// A retry that still truncates returns the truncation error, so the chunked
+// fallback classification is unchanged; a transport error never retries.
+func TestSummaryTruncationRetryExhaustionAndTransportFailOnce(t *testing.T) {
+	prov := &truncationRetryProvider{failFirst: 2}
+	a := New(prov, tool.NewRegistry(), NewSession("system"), Options{ContextWindow: 100_000}, event.Discard)
+	_, _, err := a.summarizeOnce(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "old"}}, "")
+	if !errors.Is(err, errSummaryOutputTruncated) {
+		t.Fatalf("exhausted retry error = %v, want errSummaryOutputTruncated", err)
+	}
+	if !chunkedFallbackApplies(err, SummaryInputCachePrefix) {
+		t.Fatal("an exhausted truncation retry must keep its direct chunked path")
+	}
+	if prov.calls != 2 {
+		t.Fatalf("summary calls = %d, want exactly one retry", prov.calls)
+	}
+
+	tp := &truncationRetryProvider{streamErr: errors.New("provider down")}
+	at := New(tp, tool.NewRegistry(), NewSession("system"), Options{ContextWindow: 100_000}, event.Discard)
+	if _, _, err := at.summarizeOnce(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "old"}}, ""); err == nil || errors.Is(err, errSummaryOutputTruncated) {
+		t.Fatalf("transport error = %v, want the raw transport failure", err)
+	}
+	if tp.calls != 1 {
+		t.Fatalf("transport-error calls = %d, want 1 (no retry)", tp.calls)
 	}
 }
 

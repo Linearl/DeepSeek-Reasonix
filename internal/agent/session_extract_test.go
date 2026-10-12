@@ -239,8 +239,30 @@ func extractStubSession() *Session {
 	return sess
 }
 
-func TestChunkedFoldSummarySplitsOnOutputTruncation(t *testing.T) {
+// 任务 812: one truncation is absorbed by the doubled-budget retry inside the
+// summary call itself — no split, no merge, two requests total.
+func TestChunkedFoldSummaryRetryAbsorbsSingleTruncation(t *testing.T) {
 	prov := &extractStubProvider{failFirst: 1, reply: "digest"}
+	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
+	res, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil)
+	if err != nil {
+		t.Fatalf("chunkedFoldSummary: %v", err)
+	}
+	if strings.TrimSpace(res.Text) == "" {
+		t.Fatal("empty summary after retry recovery")
+	}
+	if prov.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (truncated summary + doubled-budget retry)", prov.calls)
+	}
+	if len(prov.requests) != 2 || prov.requests[1].MaxTokens != 2*prov.requests[0].MaxTokens {
+		t.Fatalf("retry max tokens = %d, want twice the first request's %d", prov.requests[1].MaxTokens, prov.requests[0].MaxTokens)
+	}
+}
+
+// Two truncations at the same node exhaust the one retry, so the fragment
+// splits: 2 failing whole requests + 2 half fragments + 1 merge = 5 calls.
+func TestChunkedFoldSummarySplitsOnOutputTruncation(t *testing.T) {
+	prov := &extractStubProvider{failFirst: 2, reply: "digest"}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
 	res, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil)
 	if err != nil {
@@ -249,9 +271,8 @@ func TestChunkedFoldSummarySplitsOnOutputTruncation(t *testing.T) {
 	if strings.TrimSpace(res.Text) == "" {
 		t.Fatal("empty summary after split recovery")
 	}
-	// 1 failing root + 2 half fragments + 1 merge = 4 calls.
-	if prov.calls != 4 {
-		t.Fatalf("provider calls = %d, want 4 (fail, two halves, merge)", prov.calls)
+	if prov.calls != 5 {
+		t.Fatalf("provider calls = %d, want 5 (fail, retry, two halves, merge)", prov.calls)
 	}
 }
 
@@ -314,7 +335,10 @@ func TestChunkedFoldSummaryDoesNotRetryTransportErrors(t *testing.T) {
 }
 
 func TestChunkedFoldSummarySplitsDeepOnRepeatedTruncation(t *testing.T) {
-	prov := &extractStubProvider{failFirst: 2, reply: "digest"}
+	// 任务 812: each node absorbs one truncation via the doubled-budget retry
+	// before splitting, so repeated truncation costs two calls per level:
+	// whole fail+retry, left fail+retry, left success, right success, merge.
+	prov := &extractStubProvider{failFirst: 3, reply: "digest"}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
 	res, err := a.chunkedFoldSummary(context.Background(), a.Session().Snapshot(), compactionInstruction, nil)
 	if err != nil {
@@ -349,8 +373,10 @@ func TestChunkedFoldSummarySingleAtomicToolTurnCannotSplit(t *testing.T) {
 	if _, err := a.extractFragmentResilient(context.Background(), chunk, extractFragmentInstruction(1, 1, ""), extractMergeInstruction, func(bool) {}, run, 0); err == nil {
 		t.Fatal("expected failure rather than splitting one atomic tool turn")
 	}
-	if prov.calls != 1 {
-		t.Fatalf("provider calls = %d, want 1 for an indivisible tool turn", prov.calls)
+	// 任务 812: the retry spends its second call before the indivisible-turn
+	// failure surfaces, so an unsplittable node costs exactly 2 requests.
+	if prov.calls != 2 {
+		t.Fatalf("provider calls = %d, want 2 (fail + doubled-budget retry) for an indivisible tool turn", prov.calls)
 	}
 }
 
@@ -390,10 +416,11 @@ func TestChunkedFoldSummarySkipsGroupingWithinBudget(t *testing.T) {
 }
 
 func TestMergeFragmentsRetriesFinalUnknownWindowMerge(t *testing.T) {
-	// An unknown window skips proactive grouping. If the final whole-set
-	// request still truncates, mergeGroup must split and tree-reduce instead
-	// of discarding briefings that are already in hand.
-	prov := &extractStubProvider{failFirst: 1, reply: "digest"}
+	// An unknown window skips proactive grouping. 任务 812: one truncation is
+	// absorbed by the doubled-budget retry; two truncations on the whole-set
+	// request make mergeGroup split and tree-reduce instead of discarding
+	// briefings that are already in hand.
+	prov := &extractStubProvider{failFirst: 2, reply: "digest"}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
 	merged, err := a.mergeFragments(context.Background(), []string{"one", "two", "three", "four"})
 	if err != nil {
@@ -402,9 +429,9 @@ func TestMergeFragmentsRetriesFinalUnknownWindowMerge(t *testing.T) {
 	if merged != "digest" {
 		t.Fatalf("merged = %q, want digest", merged)
 	}
-	// 1 failing whole-set request + 2 successful halves + 1 final merge.
-	if prov.calls != 4 {
-		t.Fatalf("provider calls = %d, want 4", prov.calls)
+	// 1 failing whole-set request + 1 retry + 2 successful halves + 1 final merge.
+	if prov.calls != 5 {
+		t.Fatalf("provider calls = %d, want 5", prov.calls)
 	}
 }
 
@@ -449,8 +476,11 @@ func TestMergeFragmentsStopsWhenRecoveryMakesNoProgress(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "made no progress") {
 		t.Fatalf("merge error = %v, want explicit no-progress failure", err)
 	}
-	if prov.calls != 3 {
-		t.Fatalf("provider calls = %d, want 3 bounded calls (pair + two singletons)", prov.calls)
+	// 任务 812: the pair merge absorbs one truncation via the doubled-budget
+	// retry before splitting, so the bounded no-progress failure costs
+	// 4 calls (pair fail + retry + two singletons).
+	if prov.calls != 4 {
+		t.Fatalf("provider calls = %d, want 4 bounded calls (pair + retry + two singletons)", prov.calls)
 	}
 }
 
@@ -486,8 +516,14 @@ func TestChunkedFallbackPreservesFocusAndAggregatesTelemetry(t *testing.T) {
 	if tele.FoldTokens <= 0 {
 		t.Fatalf("fold tokens = %d, want original fold estimate", tele.FoldTokens)
 	}
-	if tele.Spans != prov.calls || tele.RequestCount != prov.calls {
-		t.Fatalf("spans/requests/calls = %d/%d/%d, want exact aggregate", tele.Spans, tele.RequestCount, prov.calls)
+	// 任务 812: two spans (the replay summary node + the single chunked
+	// fragment node) against three wire requests — the replay node spent its
+	// doubled-budget retry. Usage stays an exact per-request aggregate.
+	if tele.Spans != 2 {
+		t.Fatalf("spans = %d, want 2 summary nodes (replay + fragment)", tele.Spans)
+	}
+	if tele.RequestCount != prov.calls {
+		t.Fatalf("requests/calls = %d/%d, want exact aggregate", tele.RequestCount, prov.calls)
 	}
 	if tele.InputTokens != prov.calls*10 || tele.CacheHitTokens != prov.calls*3 || tele.CacheMissTokens != prov.calls*7 {
 		t.Fatalf("aggregated usage = %+v, calls = %d", tele, prov.calls)
@@ -537,10 +573,11 @@ func TestMergeDigestMessagesUsesDecimalFragmentIndexes(t *testing.T) {
 }
 
 func TestCompactFallsBackToChunkedSummaryOnTruncation(t *testing.T) {
-	// The single-request summary hits the output limit; compaction must fall
-	// back to the chunked extract strategy and install the projection in the
-	// same session (one /compact covers over-length sessions, #9082 follow-up).
-	prov := &extractStubProvider{failFirst: 1, reply: "digest"}
+	// The single-request summary truncates and its one doubled-budget retry
+	// (任务 812) truncates too; compaction must then fall back to the chunked
+	// extract strategy and install the projection in the same session (one
+	// /compact covers over-length sessions, #9082 follow-up).
+	prov := &extractStubProvider{failFirst: 2, reply: "digest"}
 	sess := NewSession("sys")
 	for range 12 {
 		sess.Add(provider.Message{Role: provider.RoleUser, Content: strings.Repeat("u", 6000)})

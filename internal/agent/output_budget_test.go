@@ -471,8 +471,13 @@ func TestSummarizeRejectsLengthTruncation(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "truncated") {
 		t.Fatalf("summarizeOnce error = %v, want truncation failure", err)
 	}
-	if prov.calls != 1 {
-		t.Fatalf("length-truncated summary calls = %d, want no identical retry", prov.calls)
+	// 任务 812: the truncation gets exactly one doubled-budget retry; a retry
+	// that still truncates is rejected with the same truncation failure.
+	if prov.calls != 2 {
+		t.Fatalf("length-truncated summary calls = %d, want the first attempt plus one doubled-budget retry", prov.calls)
+	}
+	if prov.last.MaxTokens != summaryOutputMaxTokens*summaryRetryBudgetMultiplier {
+		t.Fatalf("retry MaxTokens = %d, want the doubled cap %d", prov.last.MaxTokens, summaryOutputMaxTokens*summaryRetryBudgetMultiplier)
 	}
 }
 
