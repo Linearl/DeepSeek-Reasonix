@@ -51,6 +51,10 @@ var labFeatureTiers = []labFeatureTier{
 	{"sessionCollab", LabTierRecommended, []string{"experimental_session_collab"}},
 	{"fullAccess", LabTierRecommended, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
 	{"dream", LabTierOptional, []string{"experimental_dream"}},
+	// 任务 801：决策模式自动提取（MVP 提取链，默认关）。归自动化组——产物
+	// 服务于 autopilot 的决策边界（决策模式文件+注入），与 dream 同为记忆
+	// 整理族；档位按 550 口径可选（不开启零行为，开启后持续积累决策记忆）。
+	{"decisionPatterns", LabTierOptional, []string{"experimental_decision_patterns"}},
 	// 任务 517：B1/B2/B3 三开关合并为「安全 / 成本控制」单键；三个 legacy 键
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
 	// 任务 722：三个细粒度子开关（条件渲染，nil=跟随总开关不落盘）同归本卡。
@@ -633,6 +637,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Always render so turning the experiment off is recorded (same lesson as
 	// the desktop experimental_* switches: omit-on-off springs back to true).
 	fmt.Fprintf(&b, "experimental_dream = %v   # task 115: enable dream/distill memory-curation tools\n", c.Agent.ExperimentalDream)
+	// 任务 801：决策模式自动提取（MVP 提取链）。显式渲染——omit-on-off 会在
+	// 下一次渲染时把已保存的开关静默弹回（81/123 丢档教训）。
+	fmt.Fprintf(&b, "experimental_decision_patterns = %v   # task 801: decision-pattern extraction — compact-triggered ruling-round scan persists feedback memories (off = zero behaviour)\n", c.Agent.ExperimentalDecisionPatterns)
 	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
 	// Task 632: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).

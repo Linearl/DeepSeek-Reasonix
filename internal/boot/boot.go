@@ -2157,6 +2157,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		SubagentDepth:                0,
 		MaxSubagentDepth:             maxSubagentDepth,
 		Autopilot:                    opts.Autopilot,
+		// 任务 801（决策模式提取 MVP）：实验室开关默认关；关闭时 agent 内
+		// 钩子在首个分支返回，压缩与 turn 路径零行为。Boot snapshot：重启生效。
+		DecisionExtract: agent.DecisionExtractOptions{
+			Enabled: cfg.Agent.ExperimentalDecisionPatterns,
+			Memory:  mem.Store,
+		},
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 	}, sink)
 	reg.Add(sessiontool.NewSetSessionTitleTool(sessionDir, executor.SessionPath, opts.OnSessionTitleChanged))

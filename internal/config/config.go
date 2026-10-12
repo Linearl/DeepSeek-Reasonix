@@ -1625,6 +1625,13 @@ type AgentConfig struct {
 	// (task 115). Off by default: both tools rewrite project memory or
 	// nominate skills from session traces, so they stay behind an opt-in.
 	ExperimentalDream bool `toml:"experimental_dream"`
+	// ExperimentalDecisionPatterns enables the task-801 decision-pattern
+	// extraction (MVP Phase 1): after each successful compaction (plus a
+	// turn-interval fallback), the bound transcript is scanned incrementally
+	// for ruling rounds (user corrections of AI behaviour) and each hit is
+	// persisted as an ordinary feedback memory. Off by default (铁律 2): off
+	// keeps compact and turn paths byte-identical — no reads, no writes.
+	ExperimentalDecisionPatterns bool `toml:"experimental_decision_patterns"`
 	// ExperimentalSessionCollab enables multi-session collaboration tools
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.
