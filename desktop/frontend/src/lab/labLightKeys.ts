@@ -19,6 +19,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalSessionCollab: (s: SettingsView) => Boolean(s.experimentalSessionCollab),
   experimentalFullAccess: (s: SettingsView) => Boolean(s.experimentalFullAccess),
   experimentalDream: (s: SettingsView) => Boolean(s.experimentalDream),
+  // 任务 801：决策模式自动提取+固化（默认关）。
+  experimentalDecisionPatterns: (s: SettingsView) => Boolean(s.experimentalDecisionPatterns),
   experimentalSafetyCostControl: (s: SettingsView) => Boolean(s.experimentalSafetyCostControl),
   experimentalSessionCollabAutoFold: (s: SettingsView) => Boolean(s.experimentalSessionCollabAutoFold),
   experimentalCompactionParallel: (s: SettingsView) => Boolean(s.experimentalCompactionParallel),

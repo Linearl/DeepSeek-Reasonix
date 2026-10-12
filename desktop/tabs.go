@@ -173,6 +173,11 @@ type WorkspaceTab struct {
 	// Task 544: the experimental ask auto-continue sub-option this tab runs
 	// with, fixed at toggle/creation time for the same reason.
 	autopilotAskAutoContinue bool
+	// 任务 801（Phase 3）：决策模式块待注入标记——切到 autopilot 时置位，
+	// 下一条用户消息注入后清除；autopilot 下压缩成功完成后重新置位（重注入，
+	// 修订五③）。atomic：submit 路径（turnStartMu）与切档路径（App.mu）无共
+	// 享锁，注入幂等，极端竞态下多/少一次无害（方案文档明示重复注入无害）。
+	decisionPatternsPending atomic.Bool
 	subagentPolicy           string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
 	disabledMCP              map[string]ServerView
 	mcpOrder                 []string
@@ -1533,6 +1538,10 @@ func (s *tabEventSink) Emit(e event.Event) {
 		case event.TurnDone:
 			app.observeAutopilotResumeTurnDone(tabID, e)
 		}
+		// 任务 801（Phase 3）：autopilot 下压缩成功完成后重新置位决策模式注
+		// 入标记，下一条消息经同一条提交路径重注入（修订五③）。 aborted pass
+		// （空 Summary）不重注入——旧上下文未折叠，已注入块仍在历史中。
+		app.rearmDecisionPatternsForTab(tabID, e)
 		if m := app.metrics.Load(); m != nil {
 			m.observe(e)
 			persistMetricsEvent(app, m, tabID, e)

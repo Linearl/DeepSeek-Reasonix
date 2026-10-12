@@ -136,6 +136,16 @@ export interface SettingsView {
   experimentalTraceAsState?: boolean;
   // Task 115: dream/distill memory-curation experiment.
   experimentalDream?: boolean;
+  // Task 801: decision-pattern extraction + solidification (default off).
+  experimentalDecisionPatterns?: boolean;
+  // Task 801: resolved solidified decision-patterns file path (empty config
+  // value renders as the default global-workspace/docs path).
+  decisionPatternFilePath?: string;
+  // Task 801: heartbeat consolidation threshold (0 = default 5).
+  decisionPatternThreshold?: number;
+  // Task 801: skip the human approval gate before the heartbeat writes
+  // decision-patterns.md (default off).
+  decisionPatternAutoApprove?: boolean;
   // Task 184: host performance monitor — 5s samples of memory/IO/key files plus
   // periodic heap profiles. Off by default.
   experimentalPerfMonitor?: boolean;

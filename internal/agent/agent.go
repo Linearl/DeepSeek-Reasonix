@@ -386,6 +386,13 @@ type Agent struct {
 	// toolStatsMu guards it: record runs on parallel tool goroutines.
 	toolStats   *toolErrorStats
 	toolStatsMu sync.Mutex
+	// Task 801 decision-pattern extraction runtime state: the turn-interval
+	// fallback counter, and a re-entrancy flag so a compact trigger and a
+	// fallback trigger landing together run one extraction, not two. The flag
+	// is cleared in maybeExtractDecisionPatterns' goroutine defer.
+	decisionMu      sync.Mutex
+	decisionTurns   int
+	decisionRunning bool
 	// svc are the collaborators this agent talks to; see services.go.
 	svc agentServices
 	// sess is the state one conversation owns; SetSession restarts it. See
@@ -1304,6 +1311,13 @@ type Options struct {
 	// instead (task 56). Interactive runs leave this false and keep every pause.
 	Autopilot bool
 
+	// DecisionExtract configures the task-801 decision-pattern extraction
+	// (MVP Phase 1): compact-success and turn-interval triggers run an
+	// incremental ruling-round scan over the bound transcript and persist hits
+	// as ordinary feedback memories. Zero value (the default, lab switch off)
+	// means the hooks return before doing any work.
+	DecisionExtract DecisionExtractOptions
+
 	// TraceAsState enables the Trace-as-State compaction experiment (task 60):
 	// the summary sees the assistant's reasoning, a stall on a short context routes
 	// to re-reading instead of a fold, and self-directed folds carry guards. Off by
@@ -1463,6 +1477,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			subagentDepth:              subagentDepth,
 			maxSubagentDepth:           maxSubagentDepth,
 			autopilot:                  opts.Autopilot,
+			decisionExtract:            opts.DecisionExtract,
 			traceAsState:               opts.TraceAsState,
 			compactModel:               strings.TrimSpace(opts.CompactModel),
 			compactModelPricing:        opts.CompactModelPricing,
@@ -1745,6 +1760,10 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 		defer func() { a.updateDeliveryCheckpoint(runErr) }()
 	}
 	defer a.activeTurnCreatedAt.Store(0)
+	// 任务 801（决策模式提取 MVP）：C 混合触发的兜底腿——每 N turn 计一次，
+	// 达到最低间隔即触发一次增量提取（压缩事件是主腿，互不干扰）。开关关闭
+	// 时该调用在首个分支返回，零开销零行为。
+	defer a.maybeExtractDecisionPatterns(false)
 
 	// agent.before_start: an extension may abort the run before the user turn
 	// is appended. The redacted reason surfaces like a normal run error.

@@ -249,6 +249,10 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 		result = m.currentPrepared()
 		if foldLanded(policy, result.InputTokens, fold, hard) {
 			a.resetCompactionProgress()
+			// 任务 801（决策模式提取 MVP）：压缩成功落地 = C 混合触发的主腿。
+			// 开关关闭时该调用在首个分支返回，零开销零行为；开启时异步扫描，
+			// 任何失败只记日志，绝不影响压缩结果（禁区：提取失败不阻断）。
+			a.maybeExtractDecisionPatterns(true)
 			return result, nil
 		}
 		forceFold = false

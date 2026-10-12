@@ -82,6 +82,10 @@ type agentConfig struct {
 	// Options.EditEvidenceRelaxed. Off (the default) keeps every evidence-gate
 	// verdict byte-identical to the pre-789 baseline.
 	editEvidenceRelaxed bool
+	// decisionExtract is the task-801 decision-pattern extraction config; see
+	// Options.DecisionExtract. Zero value = off: every hook checks Enabled
+	// first, so a disabled config keeps compact/turn paths byte-identical.
+	decisionExtract DecisionExtractOptions
 }
 
 // ReadPipelineOptions carries the internal read-pipeline rollback switches. The

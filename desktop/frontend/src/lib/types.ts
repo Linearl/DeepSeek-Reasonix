@@ -2572,6 +2572,14 @@ export interface DesktopStartupSettingsView {
   experimentalTraceAsState?: boolean;
   /** dream/distill memory-curation experiment (task 115); off unless the user opts in. */
   experimentalDream?: boolean;
+  /** Task 801: decision-pattern extraction + solidification; off unless the user opts in. */
+  experimentalDecisionPatterns?: boolean;
+  /** Task 801: resolved decision-patterns file path (default global-workspace/docs). */
+  decisionPatternFilePath?: string;
+  /** Task 801: heartbeat consolidation threshold (0 = default 5). */
+  decisionPatternThreshold?: number;
+  /** Task 801: skip the approval gate before writing (default off). */
+  decisionPatternAutoApprove?: boolean;
   /** multi-session collaboration experiment (task 19); off unless the user opts in. */
   experimentalSessionCollab?: boolean;
   /** merged safety/cost switch (task 517; one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards); off unless the user opts in. */

@@ -51,6 +51,11 @@ var labFeatureTiers = []labFeatureTier{
 	{"sessionCollab", LabTierRecommended, []string{"experimental_session_collab"}},
 	{"fullAccess", LabTierRecommended, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
 	{"dream", LabTierOptional, []string{"experimental_dream"}},
+	// 任务 801：决策模式自动提取（提取链+固化链，默认关）。归自动化组——产物
+	// 服务于 autopilot 的决策边界（决策模式文件+注入），与 dream 同为记忆
+	// 整理族；档位按 550 口径可选（不开启零行为）。三个键同卡渲染：
+	// 文件位置/阈值/跳过人工批准为 801 家族子键（477 ask-timeout 先例）。
+	{"decisionPatterns", LabTierOptional, []string{"experimental_decision_patterns", "decision_pattern_file_path", "decision_pattern_threshold", "decision_pattern_auto_approve"}},
 	// 任务 517：B1/B2/B3 三开关合并为「安全 / 成本控制」单键；三个 legacy 键
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
 	// 任务 722：三个细粒度子开关（条件渲染，nil=跟随总开关不落盘）同归本卡。
@@ -111,8 +116,8 @@ var labFeatureTiers = []labFeatureTier{
 	// ── infra（基础设施，7 项；785 退役 S1 baseProcess，790 增 acpListen）──────
 	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
-	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}}, // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
-	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},     // 任务 545：会话 cwd 跟随，默认关新实验
+	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}},               // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
+	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
 	{"tabModeTint", LabTierUnstable, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
@@ -160,6 +165,11 @@ var labSpecialKeys = map[string]bool{
 	// 任务 790：ACP 常驻监听端口键（无 experimental_ 前缀的实验室特性键，
 	// 随 acpListen 档位族登记；0 = 默认 8790）。
 	"acp_listen_port": true,
+	// 任务 801：决策模式固化链三键（无 experimental_ 前缀的实验室特性键，
+	// 随 decisionPatterns 档位族登记：文件位置/整合阈值/跳过人工批准）。
+	"decision_pattern_file_path":    true,
+	"decision_pattern_threshold":    true,
+	"decision_pattern_auto_approve": true,
 }
 
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
@@ -633,6 +643,17 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Always render so turning the experiment off is recorded (same lesson as
 	// the desktop experimental_* switches: omit-on-off springs back to true).
 	fmt.Fprintf(&b, "experimental_dream = %v   # task 115: enable dream/distill memory-curation tools\n", c.Agent.ExperimentalDream)
+	// 任务 801：决策模式自动提取（MVP 提取链）。显式渲染——omit-on-off 会在
+	// 下一次渲染时把已保存的开关静默弹回（81/123 丢档教训）。三个键同源渲染：
+	// 固化文件位置（空=默认路径）、整合阈值（0=默认 5）、跳过人工批准（默认关）。
+	fmt.Fprintf(&b, "experimental_decision_patterns = %v   # task 801: decision-pattern extraction — compact-triggered ruling-round scan persists feedback memories (off = zero behaviour)\n", c.Agent.ExperimentalDecisionPatterns)
+	decisionPatternFile := strings.TrimSpace(c.Agent.DecisionPatternFilePath)
+	if decisionPatternFile == "" {
+		decisionPatternFile = DefaultDecisionPatternFilePath()
+	}
+	fmt.Fprintf(&b, "decision_pattern_file_path = %q   # task 801: solidified decision-patterns file (empty = default global-workspace/docs path; backups and injection follow it)\n", decisionPatternFile)
+	fmt.Fprintf(&b, "decision_pattern_threshold = %d   # task 801: new decision memories needed before the heartbeat consolidation runs (0 = default 5)\n", c.Agent.DecisionPatternThreshold)
+	fmt.Fprintf(&b, "decision_pattern_auto_approve = %v   # task 801: skip the human approval gate before the heartbeat writes decision-patterns.md (default off = report and wait)\n", c.Agent.DecisionPatternAutoApprove)
 	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
 	// Task 632: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).

@@ -125,12 +125,19 @@ func (a *App) submitToTabResult(tabID, input string, fromBridge, classifyManagem
 	tab := admission.tab
 	a.ensureTabTopicIndexedForUserTurn(tab)
 	result := control.SubmitResult{Disposition: control.SubmitTurnStarted}
+	// 任务 801（Phase 3）：autopilot 下待注入时把决策模式块前置进 model input
+	// （memory compose 同款：display 保持用户原文）。注入失败/未待注入时块为
+	// 空，提交路径零变化——绝不阻断。
+	display := input
+	if block, inject := a.decisionPatternsInjectBlock(tab); inject {
+		input = block + input
+	}
 	if submitter, ok := ctrl.(interface {
 		SubmitDisplayWithResult(display, input string) control.SubmitResult
 	}); ok {
-		result = submitter.SubmitDisplayWithResult(input, input)
+		result = submitter.SubmitDisplayWithResult(display, input)
 	} else {
-		ctrl.SubmitDisplay(input, input)
+		ctrl.SubmitDisplay(display, input)
 	}
 	admission.finish(ctrl)
 	return result, nil
