@@ -72,6 +72,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         },
         { id: "fullAccess", labelKey: "settings.fullAccess", tier: "recommended", onKeys: ["experimentalFullAccess"] },
         { id: "dream", labelKey: "settings.dream", tier: "optional", onKeys: ["experimentalDream"] },
+        // 任务 801：决策模式自动提取+固化——压缩触发提取裁决轮次写记忆，
+        // 心跳定期整合固化 decision-patterns.md。默认关=零行为。
+        { id: "decisionPatterns", labelKey: "settings.decisionPatterns", tier: "optional", onKeys: ["experimentalDecisionPatterns"] },
         // 任务 742：心跳任务后台化——开启后心跳触发不进标签栏（264 detached
         // 语义，提交成功后 park）。默认关=现状一致。
         { id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional", onKeys: ["experimentalHeartbeatBackground"] },

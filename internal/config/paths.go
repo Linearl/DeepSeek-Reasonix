@@ -638,6 +638,18 @@ func MemoryUserDir() string {
 	return userSupportDir()
 }
 
+// DefaultDecisionPatternFilePath returns the task-801 solidified
+// decision-patterns file's default location:
+// <MemoryUserDir>/global-workspace/docs/decision-patterns.md. Empty when the
+// user dir is unresolvable (solidification then reports itself unavailable).
+func DefaultDecisionPatternFilePath() string {
+	userDir := MemoryUserDir()
+	if userDir == "" {
+		return ""
+	}
+	return filepath.Join(userDir, "global-workspace", "docs", "decision-patterns.md")
+}
+
 // ConventionDirs are the parent directories scanned for agent assets (skills,
 // commands), in canonical-first order. .reasonix is ours; .agents / .agent /
 // .claude let users drop in assets authored for other agent tools without moving

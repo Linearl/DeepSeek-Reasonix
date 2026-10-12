@@ -27,6 +27,8 @@ export type TierFeatureId =
   | "fullAccess"
   | "optimisticParallel"
   | "dream"
+  // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
+  | "decisionPatterns"
   // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
   // loopStreakNote 与 standalone eventWaitRecheck 三个表A id → 一个 id）。
   | "safetyCostControl"
@@ -116,6 +118,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   sessionCollab: "recommended",
   fullAccess: "recommended",
   dream: "optional",
+  // 任务 801：决策模式（提取链+固化链）。归自动化组，档位可选。
+  decisionPatterns: "optional",
   safetyCostControl: "optional",
   subagentPolicy: "unstable",
   // ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl；────

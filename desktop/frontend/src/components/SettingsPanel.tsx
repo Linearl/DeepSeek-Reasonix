@@ -1877,6 +1877,8 @@ type ExperimentFeatureId =
   | "pathRules"
   | "traceAsState"
   | "dream"
+  // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
+  | "decisionPatterns"
   | "sessionCollab"
   // Task 244 B4/B5, merged into one switch by task 449.
   | "orphanHandling"
@@ -1946,6 +1948,8 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "sessionCollab",
   "fullAccess",
   "dream",
+  // 任务 801：决策模式卡（automation 组）。
+  "decisionPatterns",
   "optimisticParallel",
   "contextGovernance",
   "safetyCostControl",
@@ -2080,6 +2084,12 @@ function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps & { fo
   const remoteAvailable = useRemoteStore((state) => state.hosts.length > 0);
   const desktopLayoutStyle = normalizeDesktopLayoutStyle(s.desktopLayoutStyle);
   const [dreamTaskCreated, setDreamTaskCreated] = useState(false);
+  // 任务 801：决策模式卡的本地草稿态（阈值数字输入与文件路径文本框），提交
+  // 走 onBlur 保存；初始值随设置快照填充。
+  const [decisionTaskCreated, setDecisionTaskCreated] = useState(false);
+  // 阈值/路径的本地草稿随快照初始化（0 = 配置默认 5，框里显示 5）。
+  const [decisionThresholdDraft, setDecisionThresholdDraft] = useState(String(s.decisionPatternThreshold || 5));
+  const [decisionPathDraft, setDecisionPathDraft] = useState(s.decisionPatternFilePath ?? "");
   // Task 184: the sampler interval is a number the user can edit; the config layer
   // clamps it, so the box can hold an intermediate value while typing.
   const [perfInterval, setPerfInterval] = useState<number>(s.perfMonitorIntervalSeconds ?? 5);
@@ -3379,6 +3389,89 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   <span>{t("settings.dreamCreateTaskDone")}</span>
                 </div>
               ) : null}
+            </>
+          )}
+          {selected === "decisionPatterns" && (
+            <>
+              <SettingsField label={labLabel("decisionPatterns", t("settings.decisionPatterns"))} hint={t("settings.decisionPatternsHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalDecisionPatterns) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalDecisionPatterns(on))}
+                    >
+                      {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.decisionPatternsCreateTask")} hint={t("settings.decisionPatternsCreateTaskHint")} icon={<Sparkles size={18} />}>
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--small"
+                  disabled={busy || !Boolean(s.experimentalDecisionPatterns)}
+                  onClick={() => void apply(async () => {
+                    const created = await app.CreateDecisionPatternHeartbeatTask();
+                    if (created) setDecisionTaskCreated(true);
+                  })}
+                >
+                  {t("settings.decisionPatternsCreateTaskAction")}
+                </button>
+              </SettingsField>
+              {decisionTaskCreated ? (
+                <div className="banner settings-restart-banner" role="status">
+                  <span>{t("settings.decisionPatternsCreateTaskDone")}</span>
+                </div>
+              ) : null}
+              <SettingsField label={t("settings.decisionPatternsThreshold")} hint={t("settings.decisionPatternsThresholdHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  className="settings-input"
+                  value={decisionThresholdDraft}
+                  disabled={busy}
+                  onChange={(e) => setDecisionThresholdDraft(e.target.value)}
+                  onBlur={() => void apply(async () => {
+                    const n = Number.parseInt(decisionThresholdDraft, 10);
+                    if (Number.isFinite(n) && n >= 1 && n <= 500 && n !== s.decisionPatternThreshold) {
+                      await app.SetDecisionPatternThreshold(n);
+                    }
+                  })}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.decisionPatternsFilePath")} hint={t("settings.decisionPatternsFilePathHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+                <input
+                  type="text"
+                  className="settings-input"
+                  placeholder={t("settings.decisionPatternsFilePathPlaceholder")}
+                  value={decisionPathDraft}
+                  disabled={busy}
+                  onChange={(e) => setDecisionPathDraft(e.target.value)}
+                  onBlur={() => void apply(async () => {
+                    const v = decisionPathDraft.trim();
+                    if (v !== s.decisionPatternFilePath) {
+                      await app.SetDecisionPatternFilePath(v);
+                    }
+                  })}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.decisionPatternsAutoApprove")} hint={t("settings.decisionPatternsAutoApproveHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.decisionPatternAutoApprove) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetDecisionPatternAutoApprove(on))}
+                    >
+                      {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {selected === "orphanHandling" && (

@@ -59,6 +59,11 @@ groups:
         labelKey: settings.dream
         tier: optional
         onKeys: [experimentalDream]
+      # 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
+      - id: decisionPatterns
+        labelKey: settings.decisionPatterns
+        tier: optional
+        onKeys: [experimentalDecisionPatterns]
       # 任务 742：心跳任务后台化——开启后心跳触发不进标签栏（264 detached
       # 语义，提交成功后 park）。默认关=现状一致。
       - id: heartbeatBackground

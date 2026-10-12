@@ -1276,6 +1276,47 @@ func (c *Config) SetExperimentalDream(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalDecisionPatterns toggles the task-801 decision-pattern
+// extraction + solidification lab switch. Applies on restart (boot snapshot),
+// like every boot-resolved switch.
+func (c *Config) SetExperimentalDecisionPatterns(enabled bool) error {
+	c.Agent.ExperimentalDecisionPatterns = enabled
+	return nil
+}
+
+// SetDecisionPatternFilePath overrides the solidified decision-patterns file
+// location (task 801 修订七). Empty restores the default
+// global-workspace/docs/decision-patterns.md. A non-empty value must name a
+// .md path; the heartbeat solidification, its backups, and the autopilot
+// injection all follow it.
+func (c *Config) SetDecisionPatternFilePath(path string) error {
+	path = strings.TrimSpace(path)
+	if path != "" && !strings.EqualFold(filepath.Ext(path), ".md") {
+		return fmt.Errorf("decision_pattern_file_path must point at a .md file, got %q", path)
+	}
+	c.Agent.DecisionPatternFilePath = path
+	return nil
+}
+
+// SetDecisionPatternThreshold sets how many new decision memories trigger the
+// heartbeat consolidation (task 801 修订六). Bounds 1..500; anything else is
+// rejected so a typo cannot silently disable the gate (0 in config = default 5).
+func (c *Config) SetDecisionPatternThreshold(n int) error {
+	if n < 1 || n > 500 {
+		return fmt.Errorf("decision_pattern_threshold must be 1..500, got %d", n)
+	}
+	c.Agent.DecisionPatternThreshold = n
+	return nil
+}
+
+// SetDecisionPatternAutoApprove toggles the skip-approval option (task 801
+// 修订六). Off by default: the heartbeat reports patterns and waits for the
+// user before writing.
+func (c *Config) SetDecisionPatternAutoApprove(enabled bool) error {
+	c.Agent.DecisionPatternAutoApprove = enabled
+	return nil
+}
+
 // SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork
 // task 160). Single-writes the [agent] key (task 473); the [desktop] mirror is
 // retired and only cleared here.

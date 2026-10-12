@@ -620,6 +620,32 @@ func (a *App) SetExperimentalDream(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDream(enabled) })
 }
 
+// SetExperimentalDecisionPatterns toggles the task-801 decision-pattern
+// extraction + solidification lab switch. Applies on restart (boot snapshot).
+func (a *App) SetExperimentalDecisionPatterns(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDecisionPatterns(enabled) })
+}
+
+// SetDecisionPatternFilePath overrides the solidified decision-patterns file
+// location (task 801 修订七). Empty restores the default global-workspace/docs
+// path. The heartbeat solidification, its backups, and the autopilot injection
+// all read this config.
+func (a *App) SetDecisionPatternFilePath(path string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDecisionPatternFilePath(path) })
+}
+
+// SetDecisionPatternThreshold sets the consolidation trigger threshold (task
+// 801 修订六; 1..500, default 5 in config).
+func (a *App) SetDecisionPatternThreshold(n int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDecisionPatternThreshold(n) })
+}
+
+// SetDecisionPatternAutoApprove toggles the skip-approval option (task 801
+// 修订六; default off = heartbeat reports and waits for the user).
+func (a *App) SetDecisionPatternAutoApprove(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDecisionPatternAutoApprove(enabled) })
+}
+
 // SetExperimentalSafetyCostControl toggles the merged unattended-safety
 // switch (task 517): one「安全 / 成本控制」knob for the task-244 B1/B2/B3
 // guards. B1 reads the saved switch at call time (no restart); B2/B3 ride
@@ -705,6 +731,21 @@ func perfMonitorHeapHighThresholdForView(cfg *config.Config) int {
 		return cfg.Desktop.PerfMonitorHeapHighThresholdMB
 	}
 	return cfg.Agent.PerfMonitorHeapHighThresholdMB
+}
+
+// decisionPatternPathForView resolves the solidified decision-patterns file
+// path for the settings views (task 801): an empty config value renders as the
+// effective default global-workspace/docs path, so the panel never shows a
+// blank location. An unresolvable user dir renders empty (solidification then
+// reports itself unavailable).
+func decisionPatternPathForView(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	if p := strings.TrimSpace(cfg.Agent.DecisionPatternFilePath); p != "" {
+		return p
+	}
+	return config.DefaultDecisionPatternFilePath()
 }
 
 // SetPerfMonitorHeapHighThresholdMB sets the heap-high trigger threshold in MiB
@@ -848,6 +889,75 @@ func (a *App) CreateDreamHeartbeatTask() (created bool, err error) {
 		NewConversationEachRun: true,
 		ApprovalMode:           "auto",
 		CreatedAt:              time.Now().UnixMilli(),
+	})
+	if _, serr := a.heartbeat.ReplaceConfig(HeartbeatConfigUpdate{
+		Revision: view.Revision,
+		ETag:     view.ETag,
+		Tasks:    view.Tasks,
+	}); serr != nil {
+		return false, serr
+	}
+	return true, nil
+}
+
+// CreateDecisionPatternHeartbeatTask ensures the task-801 consolidation
+// heartbeat exists (修订六：开关联动「自动创建自动化任务」按钮). Returns
+// created=true when a new task was appended; an existing task is re-enabled
+// instead of duplicated. Unlike the dream curation task this one reuses one
+// conversation across runs (ReuseSession, 修订六第 4 条) so历次检查/汇报/批准
+// 在同一会话内连续承载.
+func (a *App) CreateDecisionPatternHeartbeatTask() (created bool, err error) {
+	cfg, _, lerr := a.loadDesktopUserConfigForView()
+	if lerr != nil {
+		return false, lerr
+	}
+	if cfg != nil && !cfg.Agent.ExperimentalDecisionPatterns {
+		return false, errors.New("enable the decision-pattern experiment in Settings → Experimental first")
+	}
+	if a.heartbeat == nil {
+		return false, errors.New("heartbeat engine is not running")
+	}
+	view := a.heartbeat.ReloadConfig()
+	const title = "决策模式整合"
+	const prompt = "决策模式整合检查（任务 801）：调用 decision_pattern_solidify(action=\"list\") 查看上次固化后的新增决策记忆。" +
+		"未达阈值：简短说明「本轮无整合（x/阈值 y 条）」后直接结束，不要写任何文件。" +
+		"达标：通读条目归纳稳定决策模式（去偶发、留共性），按「场景→决策→理由→来源」四段式在对话中完整汇报；" +
+		"list 结果 autoApprove=false（默认）时等待用户在本对话中明确批准后，再调用 decision_pattern_solidify(action=\"write\", patterns=[...]) 固化；" +
+		"autoApprove=true 时可直接写入。若此前你已汇报且用户已明确批准 → 直接执行写入。" +
+		"工具不可用或实验未开启：说明原因后结束。"
+	for i, task := range view.Tasks {
+		if task.Title == title || strings.Contains(strings.ToLower(task.ID), "decision-pattern") {
+			if !task.Enabled {
+				view.Tasks[i].Enabled = true
+				if _, serr := a.heartbeat.ReplaceConfig(HeartbeatConfigUpdate{
+					Revision: view.Revision,
+					ETag:     view.ETag,
+					Tasks:    view.Tasks,
+				}); serr != nil {
+					return false, serr
+				}
+			}
+			return false, nil
+		}
+	}
+	root := a.activeWorkspaceRoot()
+	scope, workspaceRoot := "global", ""
+	if root != "" {
+		scope, workspaceRoot = "project", root
+	}
+	view.Tasks = append(view.Tasks, HeartbeatTask{
+		ID:            a.HeartbeatGenerateID(),
+		Title:         title,
+		Prompt:        prompt,
+		Interval:      "24h",
+		Enabled:       true,
+		Scope:         scope,
+		WorkspaceRoot: workspaceRoot,
+		// 修订六第 4 条：整合心跳固定复用同一对话——首个 run 创建并绑定
+		// TopicID，此后每 run 在其中追加，历次检查/汇报/批准上下文连贯。
+		ReuseSession: true,
+		ApprovalMode: "auto",
+		CreatedAt:    time.Now().UnixMilli(),
 	})
 	if _, serr := a.heartbeat.ReplaceConfig(HeartbeatConfigUpdate{
 		Revision: view.Revision,

@@ -475,6 +475,13 @@ type SettingsView struct {
 	ExperimentalCacheTuning bool `json:"experimentalCacheTuning"`
 	ExperimentalDream       bool `json:"experimentalDream"`
 	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
+	// Task 801: decision-pattern extraction + solidification readback. The
+	// file path resolves to the default global-workspace/docs location when
+	// the config leaves it empty, so the panel shows the effective path.
+	ExperimentalDecisionPatterns bool   `json:"experimentalDecisionPatterns"`
+	DecisionPatternFilePath      string `json:"decisionPatternFilePath"`
+	DecisionPatternThreshold     int    `json:"decisionPatternThreshold"`
+	DecisionPatternAutoApprove   bool   `json:"decisionPatternAutoApprove"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
@@ -1718,6 +1725,11 @@ func (a *App) Settings() SettingsView {
 		ExperimentalToolOptimizations: cfg.Agent.ExperimentalToolOptimizations,
 		ExperimentalTraceAsState:      cfg.Agent.TraceAsState,
 		ExperimentalDream:             cfg.Agent.ExperimentalDream,
+		// Task 801: decision-pattern readback (empty path resolves to default).
+		ExperimentalDecisionPatterns: cfg.Agent.ExperimentalDecisionPatterns,
+		DecisionPatternFilePath:      decisionPatternPathForView(cfg),
+		DecisionPatternThreshold:     cfg.Agent.DecisionPatternThreshold,
+		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
 		ExperimentalSafetyCostControl: cfg.Agent.ExperimentalSafetyCostControl,
 		// Task 722: sub-switch override readback (nil stays nil = inherit).

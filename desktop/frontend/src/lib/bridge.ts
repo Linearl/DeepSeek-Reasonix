@@ -1240,6 +1240,15 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
   // Task 115: dream/distill memory-curation tools (experimental).
   SetExperimentalDream(enabled: boolean): Promise<void>;
+  // Task 801: decision-pattern extraction + solidification (experimental).
+  SetExperimentalDecisionPatterns(enabled: boolean): Promise<void>;
+  // Task 801: solidified decision-patterns file location (empty = default
+  // global-workspace/docs/decision-patterns.md; must be a .md path).
+  SetDecisionPatternFilePath(path: string): Promise<void>;
+  // Task 801: heartbeat consolidation threshold (config clamps 1..500).
+  SetDecisionPatternThreshold(n: number): Promise<void>;
+  // Task 801: skip the approval gate before the heartbeat writes (default off).
+  SetDecisionPatternAutoApprove(enabled: boolean): Promise<void>;
   SetExperimentalPerfMonitor(enabled: boolean): Promise<void>;
   // Task 501: threshold-triggered heap snapshot (experimental, default off).
   SetExperimentalHeapHighProfile(enabled: boolean): Promise<void>;
@@ -1323,6 +1332,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 115: ensure a scheduled dream pass exists in the automation panel.
   // Returns true when a new task was appended.
   CreateDreamHeartbeatTask(): Promise<boolean>;
+  // Task 801: ensure the daily decision-pattern consolidation heartbeat exists
+  // (reuse-session mode). Returns true when a new task was appended.
+  CreateDecisionPatternHeartbeatTask(): Promise<boolean>;
   /** Persist the serve-pool gateway port and restart the gateway when enabled (task 130). */
   SetServePoolPort(port: number): Promise<void>;
   ListFeedbackEntries(limit: number): Promise<{ at: string; kind: string; text: string; tags?: string[]; session?: string; model?: string }[]>;
@@ -5862,6 +5874,10 @@ function makeMockApp(): AppBindings {
     async SetColdCacheCompactIdleMinutes() {},
     async SetExperimentalTraceAsState() {},
     async SetExperimentalDream() {},
+    async SetExperimentalDecisionPatterns() {},
+    async SetDecisionPatternFilePath() {},
+    async SetDecisionPatternThreshold() {},
+    async SetDecisionPatternAutoApprove() {},
     async SetExperimentalPerfMonitor() {},
     async SetExperimentalHeapHighProfile() {},
     async SetPerfMonitorIntervalSeconds() {},
@@ -5920,6 +5936,7 @@ function makeMockApp(): AppBindings {
     async ListAddressableSessions() { return []; },
     async DrainSessionCollabMail() { return { delivered: 0, refused: 0, targets: [] }; },
     async CreateDreamHeartbeatTask() { return false; },
+    async CreateDecisionPatternHeartbeatTask() { return false; },
     async SetServePoolPort() {},
     async ListFeedbackEntries() { return []; },
     async ClearFeedbackEntries() {},

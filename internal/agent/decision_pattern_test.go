@@ -50,7 +50,7 @@ func TestDecisionRulingCandidateWordlist(t *testing.T) {
 		"请继续按计划执行",
 		"帮我看一下这个函数的实现",
 		"好的，收到",
-		"短",                       // 过短
+		"短", // 过短
 		strings.Repeat("很长的一段日志内容", 100), // 超长
 	}
 	for _, m := range misses {
@@ -85,9 +85,9 @@ func TestDecisionExtractSavesRulingRoundsOnly(t *testing.T) {
 	sessions := t.TempDir()
 	transcript := writeSession(t, sessions, "a.jsonl",
 		userLine("不对，应该用 worktree 才对"),
-		userLine("请继续按计划执行"),               // 非裁决轮次：零产出
+		userLine("请继续按计划执行"),         // 非裁决轮次：零产出
 		userLine("你理解错了，我说的是压缩事件触发"), // 裁决轮次
-		userLine("帮我看一下这个函数的实现"),         // 非裁决轮次
+		userLine("帮我看一下这个函数的实现"),     // 非裁决轮次
 	)
 	memDir := t.TempDir()
 	store := memory.Store{Dir: filepath.Join(memDir, "project"), GlobalDir: filepath.Join(memDir, "global")}

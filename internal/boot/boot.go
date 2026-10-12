@@ -1598,6 +1598,18 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(agent.NewDistillTool(dreamCfg))
 	}
 
+	// 任务 801（决策模式固化链 Phase 2）：实验室开关默认关；关闭时工具不注册，
+	// 心跳对话里调用会得到「不可用」说明而不是半失败。文件位置可指定（修订七，
+	// 空=默认 global-workspace/docs/decision-patterns.md）；阈值默认 5；数据源
+	// 经窄接口适配 memory.Store（builtin 不能 import memory，会与 tool 成环）。
+	if cfg.Agent.ExperimentalDecisionPatterns {
+		solidifyPath := strings.TrimSpace(cfg.Agent.DecisionPatternFilePath)
+		if solidifyPath == "" {
+			solidifyPath = config.DefaultDecisionPatternFilePath()
+		}
+		reg.Add(builtin.NewDecisionSolidifyTool(decisionSolidifySource{store: mem.Store}, solidifyPath, cfg.Agent.DecisionPatternThreshold, cfg.Agent.DecisionPatternAutoApprove))
+	}
+
 	// The `ask` tool puts structured multiple-choice questions to the user. It
 	// reaches them through the Asker on the call context, which interactive
 	// frontends wire to the controller (EnableInteractiveApproval); a headless run
@@ -2120,43 +2132,43 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		FeedbackNudge: cfg.FeedbackNudgeEnabled(),
 		// Task 530: nil unless the collab master switch AND the reply-nudge
 		// dial are both on (see above). Boot snapshot: restart to apply.
-		CollabReplyNudge:             collabReplyNudge,
-		SessionTemp:                  sessionTemp,
-		WriteRoots:                   writeRootSet,
-		HomeDir:                      userHomeDir(),
-		StateRoot:                    config.MemoryUserDir(),
-		ProjectChecks:                projectChecks,
-		Ablation:                     opts.Ablation,
-		WorkspaceLease:               workspaceLease,
-		CapabilityLedger:             capLedger,
-		CapabilityAudit:              capAudit,
-		ContextWindow:                entry.ContextWindow,
-		MaxOutputTokens:              entry.MaxOutputTokens,
-		SoftCompactRatio:             cfg.Agent.SoftCompactRatio,
-		ToolResultSnipRatio:          cfg.Agent.ToolResultSnipRatio,
-		CompactRatio:                 cfg.Agent.CompactRatio,
-		CompactForceRatio:            cfg.Agent.CompactForceRatio,
-		ContextEditing:               cfg.Agent.ContextEditing,
-		RecentKeep:                   cfg.Agent.RecentKeep,
-		ArchiveDir:                   config.ArchiveDir(),
-		KeepPolicy:                   keepPolicy,
-		ReasoningLanguage:            config.ReasoningLanguageForEntry(entry, cfg.ReasoningLanguage()),
-		PlanModeReadOnlyCommands:     cfg.Agent.PlanModeReadOnlyCommands,
-		LegacyAnchorSafetyGate:       cfg.Agent.LegacyAnchorSafetyGate,
-		EditEvidenceRelaxed:          cfg.EditEvidenceRelaxedEnabled(), // task 789：证据门宽松开关，默认关
-		TextRepeatN:                  cfg.Agent.TextRepeatN,
-		TextRepeatThreshold:          cfg.Agent.TextRepeatThreshold,
-		StalledIntentNudge:           cfg.Agent.StalledIntentNudge,
-		StalledIntentNudgeLimit:      cfg.Agent.StalledIntentNudgeLimit,
-		ReadinessCatchUp:             cfg.Agent.ReadinessCatchUp,
-		ReadinessCatchUpLimit:        cfg.Agent.ReadinessCatchUpLimit,
-		ToolFloodLimit:               cfg.Agent.ExperimentalToolFloodLimit,
-		CollabStatusPath:             collabStatusPath,
-		PlanResearchGate:             cfg.Agent.PlanResearchGate,
-		PlanResearchGateLimit:        cfg.Agent.PlanResearchGateLimit,
-		SubagentDepth:                0,
-		MaxSubagentDepth:             maxSubagentDepth,
-		Autopilot:                    opts.Autopilot,
+		CollabReplyNudge:         collabReplyNudge,
+		SessionTemp:              sessionTemp,
+		WriteRoots:               writeRootSet,
+		HomeDir:                  userHomeDir(),
+		StateRoot:                config.MemoryUserDir(),
+		ProjectChecks:            projectChecks,
+		Ablation:                 opts.Ablation,
+		WorkspaceLease:           workspaceLease,
+		CapabilityLedger:         capLedger,
+		CapabilityAudit:          capAudit,
+		ContextWindow:            entry.ContextWindow,
+		MaxOutputTokens:          entry.MaxOutputTokens,
+		SoftCompactRatio:         cfg.Agent.SoftCompactRatio,
+		ToolResultSnipRatio:      cfg.Agent.ToolResultSnipRatio,
+		CompactRatio:             cfg.Agent.CompactRatio,
+		CompactForceRatio:        cfg.Agent.CompactForceRatio,
+		ContextEditing:           cfg.Agent.ContextEditing,
+		RecentKeep:               cfg.Agent.RecentKeep,
+		ArchiveDir:               config.ArchiveDir(),
+		KeepPolicy:               keepPolicy,
+		ReasoningLanguage:        config.ReasoningLanguageForEntry(entry, cfg.ReasoningLanguage()),
+		PlanModeReadOnlyCommands: cfg.Agent.PlanModeReadOnlyCommands,
+		LegacyAnchorSafetyGate:   cfg.Agent.LegacyAnchorSafetyGate,
+		EditEvidenceRelaxed:      cfg.EditEvidenceRelaxedEnabled(), // task 789：证据门宽松开关，默认关
+		TextRepeatN:              cfg.Agent.TextRepeatN,
+		TextRepeatThreshold:      cfg.Agent.TextRepeatThreshold,
+		StalledIntentNudge:       cfg.Agent.StalledIntentNudge,
+		StalledIntentNudgeLimit:  cfg.Agent.StalledIntentNudgeLimit,
+		ReadinessCatchUp:         cfg.Agent.ReadinessCatchUp,
+		ReadinessCatchUpLimit:    cfg.Agent.ReadinessCatchUpLimit,
+		ToolFloodLimit:           cfg.Agent.ExperimentalToolFloodLimit,
+		CollabStatusPath:         collabStatusPath,
+		PlanResearchGate:         cfg.Agent.PlanResearchGate,
+		PlanResearchGateLimit:    cfg.Agent.PlanResearchGateLimit,
+		SubagentDepth:            0,
+		MaxSubagentDepth:         maxSubagentDepth,
+		Autopilot:                opts.Autopilot,
 		// 任务 801（决策模式提取 MVP）：实验室开关默认关；关闭时 agent 内
 		// 钩子在首个分支返回，压缩与 turn 路径零行为。Boot snapshot：重启生效。
 		DecisionExtract: agent.DecisionExtractOptions{

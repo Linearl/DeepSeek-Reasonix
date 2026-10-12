@@ -182,7 +182,8 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 16 / 可选 22 / 未稳定 12 / 已退役 0 = 50（任务 785 baseProcess 出表后）.
+// register must stay exactly 推荐 16 / 可选 23 / 未稳定 13 / 已退役 0 = 52（任务 801
+// decisionPatterns 入可选档后）.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
@@ -211,6 +212,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		LabTierUnstable: 13,
 		LabTierRetired:  0,
 	}
+	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
+	// 档入表（22→23、总数 51→52）。
+	want[LabTierOptional] = 23
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
 	for _, f := range labFeatureTiers {
@@ -230,7 +234,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 51 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 51", len(labFeatureTiers))
+	if len(labFeatureTiers) != 52 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 52", len(labFeatureTiers))
 	}
 }
