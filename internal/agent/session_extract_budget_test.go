@@ -123,8 +123,11 @@ func TestChunkedSummaryRunReservesCallsAfterRequest(t *testing.T) {
 }
 
 func TestRecursiveRecoveryPreservesOuterCallBudget(t *testing.T) {
+	// 任务 812: the in-call doubled-budget retry does not consume the shared
+	// run budget, so each node needs two provider-side truncations
+	// (failFirst: 2) before its doomed split attempt is budget-rejected.
 	t.Run("fragment split", func(t *testing.T) {
-		prov := &extractStubProvider{failFirst: 1, reply: "digest"}
+		prov := &extractStubProvider{failFirst: 2, reply: "digest"}
 		a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
 		run := newChunkedSummaryRun(a)
 		run.calls = maxChunkedSummaryCalls - 4
@@ -136,13 +139,13 @@ func TestRecursiveRecoveryPreservesOuterCallBudget(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "call budget exhausted") {
 			t.Fatalf("fragment recovery error = %v", err)
 		}
-		if prov.calls != 1 {
-			t.Fatalf("provider calls = %d, want 1 failed root and no doomed split", prov.calls)
+		if prov.calls != 2 {
+			t.Fatalf("provider calls = %d, want 2 failed root attempts and no doomed split", prov.calls)
 		}
 	})
 
 	t.Run("merge split", func(t *testing.T) {
-		prov := &extractStubProvider{failFirst: 1, reply: "digest"}
+		prov := &extractStubProvider{failFirst: 2, reply: "digest"}
 		a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
 		run := newChunkedSummaryRun(a)
 		run.calls = maxChunkedSummaryCalls - 4
@@ -150,8 +153,8 @@ func TestRecursiveRecoveryPreservesOuterCallBudget(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "call budget exhausted") {
 			t.Fatalf("merge recovery error = %v", err)
 		}
-		if prov.calls != 1 {
-			t.Fatalf("provider calls = %d, want 1 failed root and no doomed split", prov.calls)
+		if prov.calls != 2 {
+			t.Fatalf("provider calls = %d, want 2 failed root attempts and no doomed split", prov.calls)
 		}
 	})
 }

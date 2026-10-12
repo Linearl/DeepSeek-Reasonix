@@ -26,7 +26,11 @@ func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
 	}
 }
 
-func TestRecentTailBudgetIsFixedSixteenPercent(t *testing.T) {
+// 任务 812: the 16%-of-window tail budget is capped at 96K. Windows up to
+// ~614K keep the exact pre-clamp value (small-window behavior unchanged —
+// the ratio itself shrinks with the window), larger windows ride the cap:
+// a 1M window drops from a 160K tail to 96K.
+func TestRecentTailBudgetClampedToStudioCap(t *testing.T) {
 	cases := []struct {
 		window int
 		want   int
@@ -34,7 +38,9 @@ func TestRecentTailBudgetIsFixedSixteenPercent(t *testing.T) {
 		{10_000, 1_600},
 		{128_000, 20_480},
 		{400_000, 64_000},
-		{1_000_000, 160_000},
+		{600_000, 96_000},
+		{700_000, recentTailBudgetCapTokens},
+		{1_000_000, recentTailBudgetCapTokens},
 	}
 	for _, tc := range cases {
 		a := &Agent{agentConfig: agentConfig{contextWindow: tc.window, compactRatio: defaultCompactRatio}}
