@@ -84,6 +84,17 @@ const bindings: CollabGroupBindings = {
       ],
     };
   },
+  // 802：channels tab 由 ChannelChatPanel 承载，其聊天写路径在本 harness
+  // 不断言（由 channel-chat-panel.test.tsx 深测）——类型面补齐为诚实空实现。
+  async ChannelMessagesForHuman() { return { channel: null as never, messages: [] }; },
+  async ChannelCreateForHuman() { throw new Error("not wired in this harness"); },
+  async ChannelJoinHuman() { throw new Error("not wired in this harness"); },
+  async ChannelLeaveHuman() { throw new Error("not wired in this harness"); },
+  async ChannelSendFromHuman() { throw new Error("not wired in this harness"); },
+  async ChannelInvite() { throw new Error("not wired in this harness"); },
+  async ChannelRemoveMember() { throw new Error("not wired in this harness"); },
+  async ChannelCancelFromHuman() { throw new Error("not wired in this harness"); },
+  async ListAddressableSessions() { return []; },
 };
 
 const root = createRoot(document.getElementById("root")!);
@@ -118,27 +129,30 @@ for (const [needle, what] of [
 }
 assert.match(text, /2 unread/, "the queued session's unread badge renders");
 
-// 频道 tab：名册来自 349 实体读口；展开读取消息流 + 每成员送达/已读标注。
+// 频道 tab（802 起）：微信式真群聊由 ChannelChatPanel 承载——面板级只断言
+// 接线（挂载/名册/预览走 409 读口）；聊天交互与钉钉口径细节由
+// channel-chat-panel.test.tsx 深测。旧「名册展开+fanout 标注」断言随 UI
+// 演进迁移：delivered 回执不再显示（802 补充口径①）。
 const tabButtons = Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-group-panel__tab"));
 assert.equal(tabButtons.length, 2, "two tabs render (sessions / channels)");
 await act(async () => {
   tabButtons.find((b) => b.textContent === "Channels")!.click();
 });
-let channelHead = panel!.querySelector<HTMLButtonElement>(".collab-group-panel__channelhead");
-assert.ok(channelHead, "the channel roster renders on the channels tab");
-assert.match(channelHead!.textContent ?? "", /#dev/, "the channel line shows #name");
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const chatPanel = panel!.querySelector(".channel-chat");
+assert.ok(chatPanel, "the channels tab mounts the WeChat-style chat view");
+const chatItems = Array.from(panel!.querySelectorAll(".channel-chat__item"));
+assert.equal(chatItems.length, 1, "the 349 channel roster renders inside the chat view");
+assert.match(chatItems[0].textContent ?? "", /dev/, "the group line shows its name");
+assert.ok(calls.some((c) => c.name === "ListCollabChannels"), "the chat view reads the channel roster");
+const previewCalls = calls.filter((c) => c.name === "ReadCollabChannel");
+assert.ok(previewCalls.length >= 1 && previewCalls[previewCalls.length - 1].args[1] === 1, "list previews read via the 409 port with limit=1 (unread semantics preserved)");
+assert.doesNotMatch(panel!.textContent ?? "", /Delivered/, "no delivered-receipt wording anywhere (DingTalk rule)");
+// 切回会话 tab：聊天面板随 tab 卸载（关面板/切 tab 零成本）。
 await act(async () => {
-  channelHead!.click();
+  tabButtons.find((b) => b.textContent === "Sessions")!.click();
 });
-await act(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-});
-const readCalls = calls.filter((c) => c.name === "ReadCollabChannel");
-assert.ok(readCalls.length >= 1 && readCalls[0].args[0] === "ch_dev", "expanding a channel reads it by ref");
-const fanoutCells = Array.from(panel!.querySelectorAll(".collab-group-panel__fanoutcell"));
-assert.equal(fanoutCells.length, 2, "per-member fan-out cells render (never merged across members)");
-assert.match(fanoutCells[0].textContent ?? "", /Read/, "delivered+read_at annotates Read");
-assert.match(fanoutCells[1].textContent ?? "", /Delivered/, "delivered without read annotates Delivered");
+assert.equal(panel!.querySelector(".channel-chat"), null, "switching tabs unmounts the chat view");
 
 // 验收 ③（空态）：空目录渲染「暂无活跃协作会话」，不是错误块。
 overview = { sessions: [], generatedAt: 1_700_000_004_000 };
