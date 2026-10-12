@@ -2758,23 +2758,51 @@ a[href] {
 }
 
 /* 任务 826 — hover 展开的边缘热区。折叠态的左栏 display:none / 右栏不
-   挂载，指针无处可入，故在窗口边缘渲染一条 6px 全高透明窄条作为触发面：
+   挂载，指针无处可入，故在窗口边缘渲染一条全高透明窄条作为触发面：
    指针进入由 App 侧的 useSidebarHoverBehavior 起 300ms 防误触计时。纯
-   交互面——透明、无焦点、不响应键盘；仅开关开且对应侧栏折叠时才渲染。 */
+   交互面——透明、无焦点、不响应键盘；仅开关开且对应侧栏折叠时才渲染。
+   任务 842（装机实测无反应排查）：6px 对真人鼠标不可驻留——正常速度
+   贴边扫过远不足 300ms，且窄条与 Wails 无边框窗口的边缘缩放带完全重叠
+   （同为 6px），指针贴边先被 useWailsResizeFix 改成 w-resize 光标，
+   「这是窗口边缘不是应用内容」的反馈让用户不停留也不点击。三处修正：
+   加宽到 12px（仍远窄于展开栏宽，300ms 防误触兜住扫过）；cursor 折回
+   default（压过 documentElement 上的 resize 光标）；hover 时亮一条 2px
+   竖线提示「此处有交互」，给用户停下来的理由。 */
 .sidebar-hover-zone {
   position: fixed;
   top: var(--app-chrome-height, 0px);
   bottom: var(--statusbar-height, 0px);
-  width: 6px;
+  width: 12px;
   z-index: var(--z-workspace-float);
   background: transparent;
   pointer-events: auto;
+  cursor: default;
 }
 .sidebar-hover-zone--left {
   left: 0;
 }
 .sidebar-hover-zone--right {
   right: 0;
+}
+.sidebar-hover-zone::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, var(--accent) 30%, var(--accent) 70%, transparent);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+.sidebar-hover-zone--left::after {
+  left: 0;
+}
+.sidebar-hover-zone--right::after {
+  right: 0;
+}
+.sidebar-hover-zone:hover::after {
+  opacity: 0.85;
 }
 
 .app--darwin .sidebar--collapsed {

@@ -158,3 +158,20 @@ export function useWailsResizeFix(enabled: boolean, maximised = false): void {
     };
   }, [enabled, maximised]);
 }
+
+/**
+ * clearWailsResizeEdge — 任务 842 companion for the sidebar hover zones.
+ *
+ * The zones sit exactly on top of Wails' frameless edge-resize strip (the same
+ * `borderThickness` band this hook's mousemove handler flags). While a zone is
+ * mounted (switch on + side collapsed) a mousedown inside it must belong to the
+ * hover affordance, not start a window resize. React's root-level handlers run
+ * before Wails' window-level mousedown listener reads `flags.resizeEdge`, so
+ * clearing the flag here cancels the resize without touching anything else.
+ * Armed only from the zones' onMouseDown — with the lab switch off nothing
+ * calls this and the stock edge-resize behavior is byte-for-byte unchanged.
+ */
+export function clearWailsResizeEdge(): void {
+  const flags = window.wails?.flags;
+  if (flags?.resizeEdge) flags.resizeEdge = undefined;
+}
