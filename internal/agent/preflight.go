@@ -220,12 +220,15 @@ func (a *Agent) kickProjectionRebuild(reason string) {
 		return
 	}
 	fold := a.compactTrigger()
+	if fold <= 0 {
+		return
+	}
 	// ContextUsedTokens first: evaluating it is what builds (and activates)
 	// the degraded tail view on a fresh episode, so the active() read below
 	// sees the episode this kick is deciding about.
 	used := a.ContextUsedTokens()
 	degraded := a.sess.tailView.active()
-	if fold <= 0 || (used < fold && !degraded) {
+	if used < fold && !degraded {
 		return
 	}
 	if !a.sess.rebuildPending.CompareAndSwap(false, true) {
