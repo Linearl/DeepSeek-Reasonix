@@ -164,6 +164,12 @@ func TestDoctorQualityCommandPrintsPublicSafeJSON(t *testing.T) {
 	}
 }
 
+// captureStdout drains the pipe concurrently. A synchronous ReadAll after fn
+// deadlocks once the captured output exceeds the OS pipe buffer (~4KiB on
+// Windows): fmt.Print inside fn blocks on a full pipe, fn never returns, and
+// the whole package hangs (任务 823's usage line pushed the help text past
+// exactly that threshold). Draining while fn runs removes the ceiling; the
+// deferred Close unblocks the drain even if fn panics.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	old := os.Stdout
@@ -172,17 +178,32 @@ func captureStdout(t *testing.T, fn func()) string {
 		t.Fatal(err)
 	}
 	os.Stdout = w
-	defer func() { os.Stdout = old }()
+	defer func() {
+		os.Stdout = old
+		w.Close() // unblocks the drain goroutine if fn panicked first
+	}()
 
+	type captureResult struct {
+		data []byte
+		err  error
+	}
+	done := make(chan captureResult, 1)
+	go func() {
+		data, readErr := io.ReadAll(r)
+		done <- captureResult{data: data, err: readErr}
+	}()
+
+	// Close the write end BEFORE waiting on the drain: ReadAll only returns
+	// on EOF, so waiting first would deadlock against the goroutine.
 	fn()
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	data, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
+	result := <-done
+	if result.err != nil {
+		t.Fatal(result.err)
 	}
-	return string(data)
+	return string(result.data)
 }
 
 func TestDoctorSessionCommandOutEqualsForm(t *testing.T) {

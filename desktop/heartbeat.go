@@ -146,10 +146,14 @@ type heartbeatConfigSnapshot struct {
 
 // HeartbeatConfigView is the revisioned Wails contract used by current
 // frontends. ETag detects external editors that do not increment Revision.
+// ConfigError is the fail-open health surface (任务 823 ②): non-empty when the
+// last load/reload saw an invalid config — the panel renders it as a resident
+// warning banner instead of silently showing an empty list.
 type HeartbeatConfigView struct {
-	Revision uint64          `json:"revision"`
-	ETag     string          `json:"etag"`
-	Tasks    []HeartbeatTask `json:"tasks"`
+	Revision    uint64          `json:"revision"`
+	ETag        string          `json:"etag"`
+	Tasks       []HeartbeatTask `json:"tasks"`
+	ConfigError string          `json:"configError,omitempty"`
 }
 
 type HeartbeatConfigUpdate struct {
@@ -225,6 +229,13 @@ type HeartbeatEngine struct {
 	// engine.
 	rotationState *heartbeatRotationState
 	rotationStats rotationStatsResolver
+
+	// configHealthErr is the fail-open health record (任务 823 ②): the last
+	// config load/reload error, or "" when the config last read clean. While
+	// it is set the engine keeps running its in-memory task list instead of
+	// silently dropping everything, and every HeartbeatConfigView carries the
+	// error so the panel can show a resident warning banner. Guarded by mu.
+	configHealthErr string
 }
 
 type heartbeatPendingTopic struct {
@@ -259,8 +270,16 @@ func (e *HeartbeatEngine) Start() {
 	}
 	snapshot, err := e.readConfigSnapshot()
 	if err != nil {
-		log.Printf("[heartbeat] invalid config: %v", err)
+		// 任务 823 ② fail-open: an invalid config no longer means a silent
+		// engine. Cold start has no in-memory tasks to keep, so the engine
+		// starts empty but records the health error — the panel's resident
+		// banner (HeartbeatConfigView.ConfigError) tells the user why the
+		// task list is empty and `reasonix heartbeat validate` names the
+		// exact field.
+		e.configHealthErr = err.Error()
+		log.Printf("[heartbeat] invalid config: %v (fail-open: starting with no tasks)", err)
 	} else {
+		e.configHealthErr = ""
 		e.recordConfigSnapshotLocked(snapshot)
 		e.tasks = snapshot.cfg.Tasks
 	}
@@ -1052,9 +1071,20 @@ func (e *HeartbeatEngine) ReloadConfig() HeartbeatConfigView {
 	defer e.mu.Unlock()
 	snapshot, err := e.readConfigSnapshot()
 	if err != nil {
-		log.Printf("[heartbeat] reload config: %v", err)
-		return heartbeatConfigSnapshot{cfg: heartbeatConfig{Tasks: []HeartbeatTask{}}}.view()
+		// 任务 823 ② fail-open: keep serving the in-memory task list (the
+		// scheduler keeps running it — adoptExternalEditsLocked has the same
+		// contract) and surface the load error on the view instead of
+		// collapsing the panel to an empty list. The empty ETag makes any
+		// save attempt conflict against the broken on-disk state, so the
+		// invalid file can never be overwritten from a degraded view.
+		e.configHealthErr = err.Error()
+		log.Printf("[heartbeat] reload config: %v (fail-open: keeping %d in-memory task(s))", err, len(e.tasks))
+		fallback := heartbeatConfigSnapshot{cfg: heartbeatConfig{Revision: e.cfgRevision, Tasks: e.tasks}}
+		view := fallback.view()
+		view.ConfigError = e.configHealthErr
+		return view
 	}
+	e.configHealthErr = ""
 	e.recordConfigSnapshotLocked(snapshot)
 	e.tasks = snapshot.cfg.Tasks
 	e.prunePendingTopicsLocked(e.tasks)
