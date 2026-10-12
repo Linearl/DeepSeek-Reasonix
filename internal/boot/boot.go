@@ -318,6 +318,12 @@ type Options struct {
 	PinnedContextLoader    control.PinnedContextLoader
 	SessionTemp            *sessiontemp.Manager // session-private temp manager; Rebuild reuses old's
 	RuntimeReload
+	// OnStageTiming (任务 824) receives the one-line stage summary
+	// ("total=…ms config=…ms …") that build() already renders for its own
+	// "boot: stage timings" log. Observation only: the callback runs after the
+	// build succeeded, must not mutate anything, and nil keeps the exact
+	// previous behavior.
+	OnStageTiming func(summary string)
 	// deferPublish keeps a replacement generation private until migration and
 	// commit succeed. Cold BuildRuntime leaves this false and publishes at boot.
 	deferPublish bool
@@ -2856,6 +2862,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Task 125: one greppable line answers "startup ~9s, where did it go?"
 	// after the fact. Observation only — never fails a build.
 	bootTime.mark("finalize")
+	// 任务 824: hand the same summary to the host's boot-timeline collector
+	// (desktop startup forensics). Nil callback = byte-identical behavior.
+	if opts.OnStageTiming != nil {
+		opts.OnStageTiming(bootTime.summary())
+	}
 	slog.Info("boot: stage timings", "summary", bootTime.summary(), "root", root, "model", modelRef)
 	return finalizeBuildResult(&BuildResult{Controller: ctrl, Snapshot: snap, Runtime: runtimeSet, Owner: owner, Extensions: extensionMgr, Dispatcher: extensionDispatcher, ExtensionUI: extUIHub, ProviderResolver: providerResolver, BaseProviderResolver: baseResolver, Assembly: assembly, BaseClient: baseClient}, !opts.deferPublish), nil
 }

@@ -39,6 +39,12 @@ func (a *App) ReportFrontendLog(feature string, level string, message string, de
 	if feature == "" || message == "" {
 		return
 	}
+	// 任务 824 ③④: 前端 boot-timeline 事件（hydrate 到达 / UI 状态 apply）
+	// 进 Go 侧收集器，汇入 boot:summary。解析失败静默丢弃——诊断通道绝不
+	// 能反过来让调用方失败。随后照常打日志。
+	if feature == "boot-timeline" {
+		bootTimelineNoteFrontendEvent(detail)
+	}
 	attrs := []any{"feature", feature}
 	if detail != "" {
 		attrs = append(attrs, "detail", detail)

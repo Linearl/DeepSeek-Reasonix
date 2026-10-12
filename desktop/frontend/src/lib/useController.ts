@@ -26,6 +26,7 @@ import { mergeTurnResult } from "./turnResult";
 import { invalidateSharedQuery } from "./queryCoalesce";
 import { replayPendingPromptsForActiveTab } from "./promptReplay";
 import { decideActivationPrompt, describeAskReceipt, judgeAskArrival, judgePromptFenceArrival, judgePromptGoneError, type AskArrivalVerdict } from "./askPanelGate";
+import { reportBootHydrateArrival } from "./bootTimeline";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
@@ -3730,6 +3731,11 @@ export function useController() {
       addBreadcrumb("tab.hydrate", `done ${reason} ${tabId} ms=${hydrateElapsed}`);
       reportStageTiming(tabId, `${reason}:total`, hydrateElapsed);
       reportStageSummary(tabId, reason);
+      if (reason === "startup") {
+        // 任务 824 ③: 启动 hydrate 的到达时刻上报（每 tab 一次，fire-and-
+        // forget）。只观测，不进入任何加载决策。
+        reportBootHydrateArrival(tabId, hydrateElapsed);
+      }
 
       // Phase 2: local ancillary data. It stays inside the same in-flight
       // promise so duplicate ready/startup hydrations coalesce, but it runs

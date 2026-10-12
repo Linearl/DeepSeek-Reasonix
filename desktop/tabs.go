@@ -4111,7 +4111,11 @@ func (a *App) startTabControllerBuildThrottled(tab *WorkspaceTab, sem chan struc
 		return
 	}
 	go func() {
+		// 任务 824 ②: 排队取证——0930 基线的「锁等 4-6.6s」若是 slot 排队
+		// 造成，这里现形。纯计时，等待语义不变。
+		slotQueuedAt := time.Now()
 		slot.acquire()
+		bootTimelineNoteSlotWait(tab.ID, time.Since(slotQueuedAt))
 		defer slot.release()
 		a.buildTabControllerWithContext(tab, loadedTabSession{}, buildCtx, generation, cancel)
 	}()
@@ -4214,6 +4218,20 @@ func (a *App) buildTabControllerWithContext(tab *WorkspaceTab, loadedSession loa
 // lifecycle barrier.
 func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession loadedTabSession, buildCtx context.Context, buildGeneration uint64, buildCancel context.CancelFunc) {
 	defer a.recoverToPending("buildTabController")
+	// 任务 824 ②: 每路构建（P3/P4）的 leg 取证——desktop 侧 total + boot 内部
+	// stage（mcp/prompt/agent:tools）。outcome 缺省 error，成功/被放弃路径各自
+	// 改写；bootStageSummary 由 boot.Options.OnStageTiming 回填。收集窗关闭后
+	// bootTimelineNoteLeg 自动静默，启动后的 rebuild 零日志噪音。
+	legStart := time.Now()
+	legOutcome := "error"
+	bootStageSummary := ""
+	legTabID := ""
+	if tab != nil {
+		legTabID = tab.ID
+	}
+	defer func() {
+		bootTimelineNoteLeg(legTabID, legOutcome, time.Since(legStart), bootStageSummary)
+	}()
 	keepBuildContext := false
 	defer func() {
 		a.clearTabBuildCancel(tab, buildGeneration, buildCancel, keepBuildContext)
@@ -4407,6 +4425,9 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	assemblyKey := runtimeAssemblyKeyForTab(root, model, effortKey)
 	ctrl, assembly, err := a.buildTabControllerBootFenced(buildCtx, extensionGen, boot.Options{
 		Model: model,
+		// 任务 824 ②: 回填 boot 内部 stage 串（total/config/.../mcp/prompt/
+		// agent:tools/...），随 leg 行发布。观测回调，不改变构建。
+		OnStageTiming: func(summary string) { bootStageSummary = summary },
 		// X4 断点 A（初始构建丢 autopilot）: this literal is the ONLY tab build
 		// path that never carried the autopilot triple — every clear-session,
 		// rebind, set-model and set-effort rebuild passes tab.autopilot*, but
@@ -4476,11 +4497,13 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	a.storeRuntimeAssembly(assemblyKey, assembly)
 	if a.tabBuildSuperseded(tab, buildGeneration) {
 		registration.rollback()
+		legOutcome = "superseded"
 		a.abandonSupersededBuild(tab, ctrl, rootKey, "")
 		return
 	}
 	if a.currentExtensionGeneration() != extensionGen {
 		registration.rollback()
+		legOutcome = "superseded"
 		a.abandonSupersededBuild(tab, ctrl, rootKey, "")
 		a.scheduleDeferredStartupBuild(tab.ID)
 		return
@@ -4689,6 +4712,9 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	a.advanceSessionRuntimeEpochLocked(tab)
 	keepBuildContext = true
 	a.mu.Unlock()
+	// 任务 824 ②: 走到发布即视为该路构建成功（后续 session 装载失败另有
+	// outcome=error 的独立路径）。
+	legOutcome = "ok"
 	a.finishStartupPublication(tab, ctrl, wailsCtx)
 	// Task 49 A2 + task 254: auto-resume at the same restore point. The dial
 	// (autonomous_update_resume, task 254 user ruling) scopes the family:
