@@ -2750,6 +2750,26 @@ a[href] {
   display: none;
 }
 
+/* 任务 826 — hover 展开的边缘热区。折叠态的左栏 display:none / 右栏不
+   挂载，指针无处可入，故在窗口边缘渲染一条 6px 全高透明窄条作为触发面：
+   指针进入由 App 侧的 useSidebarHoverBehavior 起 300ms 防误触计时。纯
+   交互面——透明、无焦点、不响应键盘；仅开关开且对应侧栏折叠时才渲染。 */
+.sidebar-hover-zone {
+  position: fixed;
+  top: var(--app-chrome-height, 0px);
+  bottom: var(--statusbar-height, 0px);
+  width: 6px;
+  z-index: 40;
+  background: transparent;
+  pointer-events: auto;
+}
+.sidebar-hover-zone--left {
+  left: 0;
+}
+.sidebar-hover-zone--right {
+  right: 0;
+}
+
 .app--darwin .sidebar--collapsed {
   display: flex;
   width: 0;

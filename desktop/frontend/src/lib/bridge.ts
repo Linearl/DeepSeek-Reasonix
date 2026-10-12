@@ -1169,6 +1169,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalPromptHistoryPicker(enabled: boolean): Promise<void>;
   // Task 506: tab-strip adaptive compression (tiered width once >8 tabs; re-applied on settings save).
   SetExperimentalTabCompress(enabled: boolean): Promise<void>;
+  // Task 826: left-sidebar / right-dock hover-to-expand (300ms mis-touch
+  // guard, 15s delayed re-collapse of hover-made expansions only;
+  // re-applied on settings save).
+  SetExperimentalSidebarHoverLeft(enabled: boolean): Promise<void>;
+  SetExperimentalSidebarHoverRight(enabled: boolean): Promise<void>;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; call-time gate, next scheduled run applies it).
   SetExperimentalHeartbeatBackground(enabled: boolean): Promise<void>;
@@ -5841,6 +5846,8 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionWall() {},
     async SetExperimentalPromptHistoryPicker() {},
     async SetExperimentalTabCompress() {},
+    async SetExperimentalSidebarHoverLeft() {},
+    async SetExperimentalSidebarHoverRight() {},
     async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},
     async SetExperimentalCompactionParallel() {},

@@ -165,6 +165,7 @@ import {
 } from "./lib/types";
 import { useComposerProfileStore } from "./app-runtime/composerProfileStore";
 import { useTabOrderSync } from "./app-runtime/tabOrderSync";
+import { useSidebarHoverBehavior } from "./app-runtime/useSidebarHoverBehavior";
 import { NoticePreviewPanel, noticePreviewMockEnabled } from "./app-shell/NoticePreviewPanel";
 import { browserMockScenarioParam } from "./lib/mockScenarios";
 import { useVisibleTabs } from "./app-runtime/visibleTabs";
@@ -839,6 +840,12 @@ export default function App() {
   // off) and the per-session surface selection re-points at every tab change.
   const [trajectoryViewEnabled, setTrajectoryViewEnabled] = useState(labFlagEnabled("trajectoryView"));
   useEffect(() => onLabFlagsChange(() => setTrajectoryViewEnabled(labFlagEnabled("trajectoryView"))), []);
+  // 任务 826: left-sidebar / right-dock hover-to-expand (铁律 2 default off —
+  // with a switch off no hover zone renders and no handler is armed).
+  const [sidebarHoverLeftEnabled, setSidebarHoverLeftEnabled] = useState(labFlagEnabled("sidebarHoverLeft"));
+  useEffect(() => onLabFlagsChange(() => setSidebarHoverLeftEnabled(labFlagEnabled("sidebarHoverLeft"))), []);
+  const [sidebarHoverRightEnabled, setSidebarHoverRightEnabled] = useState(labFlagEnabled("sidebarHoverRight"));
+  useEffect(() => onLabFlagsChange(() => setSidebarHoverRightEnabled(labFlagEnabled("sidebarHoverRight"))), []);
   useEffect(() => { setSurfaceViewTab(activeTabId ?? ""); }, [activeTabId]);
   const surfaceView = useSurfaceView();
   const [sessionWallOpen, setSessionWallOpen] = useState(false);
@@ -1375,7 +1382,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1440,6 +1447,11 @@ export default function App() {
         // the right-dock card renders nothing and issues no network call, the
         // 163 前端门 extended to the sidebar); re-applied on settings save.
         opencodeGoUsage: settings.experimentalOpenCodeGoUsage ?? false,
+        // 任务 826: sidebar hover-to-expand gates (default-false — 铁律 2,
+        // with a switch off no hover zone renders and no handler is armed);
+        // re-applied on settings save.
+        sidebarHoverLeft: settings.experimentalSidebarHoverLeft ?? false,
+        sidebarHoverRight: settings.experimentalSidebarHoverRight ?? false,
       });
       // 任务 651: tab permission indicator three-mode setting (badge | off |
       // background) — the server resolves the legacy 504 tint bool; re-applied
@@ -2664,15 +2676,35 @@ export default function App() {
     return unsub;
   }, []);
 
+  // 任务 826: left-sidebar hover behavior (300ms mis-touch guard → expand;
+  // 15s after the pointer leaves → fold back, reclaiming only the expansion
+  // the hover itself made). With the lab switch off every callback no-ops and
+  // no timer is armed. The expand/collapse actions mirror toggleSidebar's
+  // persistence minus its toggle affordances (no pulse/overlay churn — the
+  // hover path is passive, not a user command).
+  const leftSidebarHover = useSidebarHoverBehavior({
+    enabled: sidebarHoverLeftEnabled,
+    collapsed: sidebarCollapsed,
+    expand: useCallback(() => {
+      setSidebarCollapsed(false);
+      saveSidebarCollapsed(false);
+    }, [setSidebarCollapsed]),
+    collapse: useCallback(() => {
+      setSidebarCollapsed(true);
+      saveSidebarCollapsed(true);
+    }, [setSidebarCollapsed]),
+  });
+
   const toggleSidebar = useCallback(() => {
     closeTransientOverlays("sidebar toggle");
     pulseSidebarToggle();
     anchorAppScrollToChat();
     const nextCollapsed = !sidebarCollapsed;
     if (nextCollapsed) setSidebarSearchOpen(false);
+    leftSidebarHover.markManual();
     setSidebarCollapsed(nextCollapsed);
     saveSidebarCollapsed(nextCollapsed);
-  }, [anchorAppScrollToChat, closeTransientOverlays, pulseSidebarToggle, sidebarCollapsed]);
+  }, [anchorAppScrollToChat, closeTransientOverlays, pulseSidebarToggle, sidebarCollapsed, leftSidebarHover]);
 
   const sidebarWidthClamp = desktopLayoutStyle === "creation" ? clampCreationSidebarWidth : clampSidebarWidth;
   const sidebarRenderWidth = liveSidebarWidth ?? sidebarWidth;
@@ -2985,8 +3017,21 @@ export default function App() {
     [activeWorkspaceRoot, closeTransientOverlays, rightDockMode, workspacePanelMaximized, workspacePanelOpen],
   );
 
+  // 任务 826: right-dock hover behavior — the left switch's counterpart,
+  // fully independent (separate key, separate timers). closeWorkspacePanel
+  // needs hover.markManual (a manual close is never reclaimed), so the
+  // collapse action goes through a ref to break the definition cycle.
+  const closeWorkspacePanelRef = useRef<() => void>(() => {});
+  const rightDockHover = useSidebarHoverBehavior({
+    enabled: sidebarHoverRightEnabled,
+    collapsed: !effectiveWorkspacePanelRenderable,
+    expand: openWorkspacePanel,
+    collapse: () => closeWorkspacePanelRef.current(),
+  });
+
   const closeWorkspacePanel = useCallback(() => {
     closeTransientOverlays("workspace panel close");
+    rightDockHover.markManual();
     if (!workspacePanelOpen) {
       return;
     }
@@ -2994,7 +3039,8 @@ export default function App() {
     setWorkspacePanelMaximized(false);
     setWorkspacePanelOpen(false);
     saveWorkspacePanelOpen(false, activeWorkspaceRoot);
-  }, [activeWorkspaceRoot, closeTransientOverlays, workspacePanelOpen]);
+  }, [activeWorkspaceRoot, closeTransientOverlays, rightDockHover, workspacePanelOpen]);
+  closeWorkspacePanelRef.current = closeWorkspacePanel;
 
   // Restore the right dock's open/closed state per project: switching to a
   // different workspace root (or a global session) restores that scope's own
@@ -3007,6 +3053,7 @@ export default function App() {
   }, [activeWorkspaceRoot]);
 
   const toggleWorkspacePanel = useCallback(() => {
+    rightDockHover.markManual();
     if (workspacePanelRenderable) {
       closeWorkspacePanel();
       return;
@@ -3020,7 +3067,7 @@ export default function App() {
     // Reopen with the previously active tab (rightDockMode is kept in the
     // store across close/open) instead of forcing "context".
     openWorkspacePanel();
-  }, [closeWorkspacePanel, desktopLayoutStyle, workspacePanelRenderable, openWorkspacePanel, rightDockMode]);
+  }, [closeWorkspacePanel, desktopLayoutStyle, rightDockHover, workspacePanelRenderable, openWorkspacePanel, rightDockMode]);
 
   const openRightDockMode = useCallback(
     (mode: RightDockMode) => {
@@ -4840,7 +4887,29 @@ export default function App() {
           {t("shortcuts.skipToComposer")}
         </a>
 
-        <aside className={sidebarClassName} aria-label={t("sidebar.navigation")}>
+        {/* 任务 826 — hover 展开的边缘热区。仅在「开关开 + 对应侧栏折叠 +
+            非管理界面」时渲染：一条 6px 全高透明窄条，指针停留经 hook 的
+            300ms 防误触延迟后自动展开。开关关 ⇒ 元素不存在（零回归）。 */}
+        {sidebarHoverLeftEnabled && sidebarCollapsed && !managementActive && (
+          <div
+            className="sidebar-hover-zone sidebar-hover-zone--left"
+            aria-hidden="true"
+            onMouseEnter={leftSidebarHover.onEnter}
+          />
+        )}
+        {sidebarHoverRightEnabled && !effectiveWorkspacePanelRenderable && !managementActive && (
+          <div
+            className="sidebar-hover-zone sidebar-hover-zone--right"
+            aria-hidden="true"
+            onMouseEnter={rightDockHover.onEnter}
+          />
+        )}
+
+        <aside
+          className={sidebarClassName}
+          aria-label={t("sidebar.navigation")}
+          {...(sidebarHoverLeftEnabled ? { onMouseEnter: leftSidebarHover.onEnter, onMouseLeave: leftSidebarHover.onLeave } : {})}
+        >
           {sidebarWorkbench ? (
             <>
               <div className="sidebar__head" aria-hidden={sidebarCollapsed}>
@@ -5867,6 +5936,7 @@ export default function App() {
               workspacePanelOverlay ? "workbench-dock--overlay" : "",
             ].join(" ")}
             aria-label={t("rightDock.workbench")}
+            {...(sidebarHoverRightEnabled ? { onMouseEnter: rightDockHover.onEnter, onMouseLeave: rightDockHover.onLeave } : {})}
           >
             <div className={["workbench-dock__tools", todoSidebarEnabled ? "workbench-dock__tools--wrap" : ""].filter(Boolean).join(" ")}>
               <div className={["workbench-dock__tabs", todoSidebarEnabled ? "workbench-dock__tabs--wrap" : ""].filter(Boolean).join(" ")} role="tablist" aria-label={t("rightDock.views")}>

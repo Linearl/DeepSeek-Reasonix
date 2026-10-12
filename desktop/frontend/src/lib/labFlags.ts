@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabGroupView" | "trajectoryView" | "opencodeGoUsage";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabGroupView" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -38,6 +38,13 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // the right-dock card — while off the card renders nothing and issues no
   // network call); a flip applies on settings save (no restart).
   opencodeGoUsage: false,
+  // 任务 826: left-sidebar / right-dock hover-to-expand ship off (铁律 2).
+  // With a switch off no hover zone renders and no mouse handler is armed —
+  // the sidebar/dock behave exactly as before the feature existed. Each side
+  // is independent (separate key, separate timers). A flip applies on
+  // settings save (no restart).
+  sidebarHoverLeft: false,
+  sidebarHoverRight: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -66,7 +73,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabGroupView=${flags.collabGroupView} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabGroupView=${flags.collabGroupView} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight}`,
   );
   for (const listener of listeners) listener();
 }

@@ -157,14 +157,18 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         { id: "tabManagement", labelKey: "settings.tabManagement", tier: "optional", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] },
         // 任务 782：视图布局（合并卡，742 先例）——分栏 + 轨迹视图。容器档
         // =成员最高档（可选）；卡内两行各读各键各写各 setter，配置键零变化。
+        // 任务 826：左右边栏 hover 展开两行入卡（左右独立两键两行，默认关；
+        // 300ms 防误触 + 离开 15s 延时折叠，只回收 hover 自动展开的）。
         {
           id: "viewLayout",
           labelKey: "settings.viewLayout",
           tier: "optional",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView"],
+          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
             { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
+            { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" },
+            { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" },
           ],
         },
         { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },
