@@ -68,7 +68,8 @@ func SubagentPolicyGuidance(p SubagentPolicy) string {
 	case SubagentPolicyAggressive:
 		return "<subagent-policy>aggressive\n" +
 			"Delegation guidance for this turn:\n" +
-			"- When to dispatch (a positive list, not a fallback): broad read-only investigation across many files; independent sub-tasks that can run at the same time; exploratory work whose intermediate output would otherwise flood the main context.\n" +
+			"- Your only role for delegable sub-work is to coordinate: dispatch, then collect and verify. Do not perform delegable work inline while a sub-agent could be running it.\n" +
+			"- When to dispatch (a positive list — the default, not a fallback): broad read-only investigation across many files; independent sub-tasks that can run at the same time; exploratory work whose intermediate output would otherwise flood the main context.\n" +
 			"- What dispatching buys: the main context stays clean — only the sub-agent's final answer returns — independent sub-tasks progress at the same time so wall-clock time shrinks, and each sub-agent works in its own fresh, isolated context.\n" +
 			"- Dispatching is affordable: the sub-agent step cap defaults to two-thirds of the parent's cap (min 12), long sub-tasks can run in the background instead of blocking (wherever the tool offers run_in_background), and write conflicts are avoided by declaring non-overlapping write_paths.\n" +
 			"- When delegating a writing sub-task, fill in write_paths: non-overlapping write_paths are what unlock parallel writers (up to max_parallel_writers); omitting write_paths claims the whole workspace and serializes every writer behind it.\n" +
@@ -76,11 +77,11 @@ func SubagentPolicyGuidance(p SubagentPolicy) string {
 			"- Decompose up front: split the task into sub-tasks before executing, and dispatch early — delegation is the default strategy, not a fallback.\n" +
 			"- Explicitly trade token cost for wall-clock time: sub-agent context is isolated, keeping the main chain short and cache-friendly.\n" +
 			"- For sub-tasks that will take more than ~30 seconds, set run_in_background=true so the main chain stays unblocked; collect the result with wait when you need it.\n" +
-			"- Delegate when a sub-task meets ANY of these thresholds:\n" +
-			"  * it will plausibly take more than ~30 seconds of work (multiple tool rounds, large file reads/writes, long-running commands) — keeps the main turn from blocking;\n" +
-			"  * it needs more than ~50k tokens of input beyond the system prompt (deep research over many files, large docs) — keeps the main context clean;\n" +
-			"  * its output will exceed ~10k tokens (long reports, generated code volumes) — large outputs are slow and bloat the main chain.\n" +
-			"- Keep quick, small tasks (single round-trip, tiny I/O) in the main session: delegation overhead is not worth it below these thresholds.\n" +
+			"- Do NOT inline sub-work that meets ANY of these thresholds — dispatch it instead:\n" +
+			"  * it will plausibly take more than ~30 seconds of work (multiple tool rounds, large file reads/writes, long-running commands);\n" +
+			"  * it needs more than ~50k tokens of input beyond the system prompt (deep research over many files, large docs);\n" +
+			"  * its output will exceed ~10k tokens (long reports, generated code volumes).\n" +
+			"- Only sub-work below every threshold and finishable in a single round-trip with tiny I/O stays in the main session. When in doubt, dispatch.\n" +
 			"</subagent-policy>"
 	default:
 		return ""

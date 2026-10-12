@@ -10,9 +10,11 @@ import (
 
 // runSubagentPolicyCommand switches the sub-agent delegation tier for
 // subsequent turns (#9004). The tier is transient (in-memory, per-turn
-// injection): it applies from the next turn, works while a turn is running,
-// and is not persisted — /compact or a session restart falls back to the
-// default (light).
+// injection): it applies from the next turn and works while a turn is
+// running. SetSubagentPolicy persists it to the session's BranchMeta when a
+// session is bound, but the CLI never reads that back — a session restart
+// still falls back to the default (light) here. Task 820 corrects the old
+// comment claiming no persistence happens at all.
 func (m *chatTUI) runSubagentPolicyCommand(input string) tea.Cmd {
 	args := tokenizeArgs(input)
 	if len(args) != 2 {

@@ -411,6 +411,10 @@ type Agent struct {
 	// successful resolve of Options.CompactModel, nil until then (failed
 	// resolves are not cached — each summary retries the seam).
 	compactModelDestination atomic.Value
+	// subagentPolicyTier mirrors the controller's delegation tier (task 820)
+	// for the end-of-turn delegation metrics; "" until the host sets it,
+	// which is exactly the sub-agent condition — children never get a tier.
+	subagentPolicyTier atomic.Value // string
 
 	requireVisibleFinal bool // internal callers require final Content
 	continuationPolicy  ContinuationPolicy
@@ -619,6 +623,27 @@ func (a *Agent) SetResponseLanguage(lang string) {
 		return
 	}
 	a.responseLanguage.Store(NormalizeResponseLanguage(lang))
+}
+
+// SetSubagentPolicyTier mirrors the controller's delegation tier onto this
+// agent for the end-of-turn delegation metrics (task 820). The tier never
+// reaches sub-agents: hosts call this on the main-chain executor only, so a
+// child's metrics report "" and stay distinguishable from a real light turn.
+func (a *Agent) SetSubagentPolicyTier(p SubagentPolicy) {
+	if a == nil {
+		return
+	}
+	a.subagentPolicyTier.Store(string(p))
+}
+
+// subagentPolicyTierValue reads the mirrored tier ("" when the host never set
+// one). atomic.Value stores untyped nil until the first Store, so the
+// missing-value case needs its own read path.
+func (a *Agent) subagentPolicyTierValue() string {
+	if v, ok := a.subagentPolicyTier.Load().(string); ok {
+		return v
+	}
+	return ""
 }
 
 // SetGate installs the per-call permission gate. Interactive frontends also use

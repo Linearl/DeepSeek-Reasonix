@@ -273,6 +273,10 @@ func (c *coalescer) RecordDelegationAdmission(a DelegationAdmissionAudit) {
 	c.enqueueCapability(func() { RecordDelegationAdmission(c.inner, a) })
 }
 
+func (c *coalescer) RecordDelegationMetrics(a DelegationMetricsAudit) {
+	c.enqueueCapability(func() { RecordDelegationMetrics(c.inner, a) })
+}
+
 func (c *coalescer) RecordWorkspaceMutation(m WorkspaceMutation) {
 	c.enqueueCapability(func() { RecordWorkspaceMutation(c.inner, m) })
 }

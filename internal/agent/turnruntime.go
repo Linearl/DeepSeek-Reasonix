@@ -25,6 +25,14 @@ type turnRuntime struct {
 	// "the 17th call cancels the batch" reads one counter, not per-batch math.
 	// Zeroed by `a.turn = turnRuntime{}` in beginRunTurn.
 	toolCallsThisTurn int
+	// Task 820 delegation metrics (816 P0): per-turn delegation dispatch
+	// counts and main-chain tool steps, recorded once at turn end by
+	// emitTurnShadows so "did the tier change behavior" is a number. The
+	// dispatch counters only see admitted batches — a flood-cancelled batch
+	// never executes, so it is not a dispatch. Zeroed with the turn.
+	taskDispatches         int
+	readOnlyTaskDispatches int
+	mainChainToolSteps     int
 	// unattended marks a turn nobody can answer a readiness recovery card for
 	// (task 283): autopilot, or a tool-approval posture that already delegates
 	// writes to policy (auto/yolo) / an unattended host run — the same

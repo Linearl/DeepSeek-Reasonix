@@ -158,6 +158,17 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		}
 	}
 	turn.toolCallsThisTurn += len(calls)
+	// Task 820 delegation metrics: only batches that pass the flood gate get
+	// here, so the counters reflect executed work, not cancelled admissions.
+	for _, call := range calls {
+		switch call.Name {
+		case tool.HostTask:
+			turn.taskDispatches++
+		case tool.HostReadOnlyTask:
+			turn.readOnlyTaskDispatches++
+		}
+	}
+	turn.mainChainToolSteps += len(calls)
 	if a.task.ledger != nil {
 		ctx = withObservationBoundary(ctx, a.task.ledger.ObservationBoundary())
 	}

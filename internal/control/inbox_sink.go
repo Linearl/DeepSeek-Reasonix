@@ -128,6 +128,17 @@ func (s *inboxEventSink) RecordDelegationAdmission(a event.DelegationAdmissionAu
 	}
 }
 
+func (s *inboxEventSink) RecordDelegationMetrics(a event.DelegationMetricsAudit) {
+	if s == nil {
+		return
+	}
+	if rs, ok := s.inner.(interface {
+		RecordDelegationMetrics(event.DelegationMetricsAudit)
+	}); ok {
+		rs.RecordDelegationMetrics(a)
+	}
+}
+
 func (s *inboxEventSink) RecordMemoryRecall(a event.MemoryRecallAudit) {
 	if s == nil {
 		return
