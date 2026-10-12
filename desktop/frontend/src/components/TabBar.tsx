@@ -463,16 +463,27 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   // 退回数量分档参考）。useLayoutEffect 在首帧绘制前完成首次测量，避免先
   // 按回退档位画一帧再跳档的闪动；窗口/面板尺寸变化由 ResizeObserver 跟随
   // （仓内既有守卫模式：环境不提供时跳过，靠依赖变化重测兜底）。
+  // 任务 818（817 修复）：观察目标改为 .tabbar 根节点——原观察 .tabbar__tabs
+  // 在 theme-style（graphite）下 strip 是 width: max-content 内容定宽，已收缩
+  // 档时窗口拉宽/最大化/跨屏 strip 尺寸纹丝不动，观察器永不触发，档位锁死
+  // 在历史窄值。bar 恒 flex 撑满容器，任何窗口变化必触发；测量值与档位解耦
+  // （可伸缩兄弟恒按 min-width 计），无反馈环。另补 window resize 监听兜底：
+  // 与 ResizeObserver 互为冗余，覆盖 RO 缺席环境与 per-monitor DPI 变化
+  // （WebView2 的 DPI 变化会派发 resize 事件），故置于 RO 守卫之外。
   const tabCount = orderedTabs.length;
   useLayoutEffect(() => {
     if (!tabCompressEnabled) return;
     measureAvailWidth();
-    if (typeof ResizeObserver === "undefined") return;
-    const strip = tabsStripRef.current;
-    if (!strip) return;
-    const observer = new ResizeObserver(() => measureAvailWidth());
-    observer.observe(strip);
-    return () => observer.disconnect();
+    const bar = barRef.current;
+    const observer = typeof ResizeObserver !== "undefined" && bar
+      ? new ResizeObserver(() => measureAvailWidth())
+      : null;
+    if (bar && observer) observer.observe(bar);
+    window.addEventListener("resize", measureAvailWidth);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measureAvailWidth);
+    };
   }, [measureAvailWidth, tabCompressEnabled, tabCount, commandCompact]);
 
   // 任务 506：开关开启时按溢出判据（可用宽度 vs 标签需求宽度）取最小够用

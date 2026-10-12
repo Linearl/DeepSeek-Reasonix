@@ -35,15 +35,21 @@ Object.defineProperty(dom.window.HTMLElement.prototype, "clientWidth", {
     return this.classList.contains("tabbar") ? fakeTabBarClientWidth : 0;
   },
 });
-// ResizeObserver 可捕获桩：手动触发回调模拟窗口/容器尺寸变化。
+// ResizeObserver 可捕获桩：手动触发回调模拟窗口/容器尺寸变化；
+// 任务 818（817 修复）起记录 observe() 收到的目标——原桩对手动 trigger
+// 之外的观察行为全盲，测不出「观察错目标」（817 根因即观察了内容定宽
+// 的 .tabbar__tabs 而非 .tabbar 根节点，theme-style 下重测通道整个失效）。
 class TestResizeObserver {
   static instances: TestResizeObserver[] = [];
+  observed: Element[] = [];
   callback: ResizeObserverCallback;
   constructor(callback: ResizeObserverCallback) {
     this.callback = callback;
     TestResizeObserver.instances.push(this);
   }
-  observe() {}
+  observe(target: Element) {
+    this.observed.push(target);
+  }
   unobserve() {}
   disconnect() {}
   trigger() {
@@ -322,9 +328,54 @@ fakeTabBarClientWidth = 0;
   await view.unmount();
 }
 
+// 10. 任务 818（817 修复）回归：theme-style（graphite）下 .tabbar__tabs 是
+//     width: max-content 内容定宽，已收缩档时窗口拉宽/最大化/跨屏 strip
+//     尺寸纹丝不动——观察 strip 的 ResizeObserver 永不触发，档位锁死在
+//     历史窄值。两条契约钉死修复：① observe 目标必须是 .tabbar 根节点；
+//     ② 收缩后 window resize（最大化/跨屏 DPI 变化）必须经兜底通道回档。
+{
+  labFlags.applyLabFlags({ tabCompress: true }); // 第 8 组已翻回关，本组重开
+  fakeTabBarClientWidth = 2400; // 宽窗口（≥1600px 场景），可用宽 2364px
+  TestResizeObserver.instances.length = 0; // 清空：本组 recorder 必来自本次 render（防拿旧实例假绿）
+  const view = await renderTabBar(makeTabs(4));
+  eq(TestResizeObserver.instances.length, 1, "817 修复：开关开启时本次 render 创建恰好一个 ResizeObserver");
+  const recorder = TestResizeObserver.instances[0];
+  const observedTarget = recorder.observed[0];
+  eq(recorder.observed.length, 1, "817 修复：ResizeObserver 只观察一个目标");
+  eq(
+    Boolean(observedTarget?.classList.contains("tabbar")) && !observedTarget?.classList.contains("tabbar__tabs"),
+    true,
+    "817 修复：observe 目标是 .tabbar 根节点（bar 恒 flex 撑满，窗口变化必触发）",
+  );
+  eq(view.bar().getAttribute("data-tab-tier"), null, "817 修复：宽窗口 4 tab 不压缩（恒基础档 176px）");
+  eq(inlineWidth(view.bar()), "", "817 修复：宽窗口 4 tab 不注入行内宽度");
+
+  // 贴靠收缩（半屏 avail<704）正确降档 → 模拟最大化：window resize 兜底通道回 tier 0。
+  fakeTabBarClientWidth = 700;
+  await act(async () => { recorder.trigger(); });
+  eq(view.bar().getAttribute("data-tab-tier"), "1", "817 修复：贴靠收缩 tier 1（判据本身正确触发）");
+  fakeTabBarClientWidth = 2400;
+  await act(async () => { window.dispatchEvent(new dom.window.Event("resize")); });
+  eq(view.bar().getAttribute("data-tab-tier"), null, "817 修复：收缩后最大化，window resize 回 tier 0（≤1 帧）");
+  eq(inlineWidth(view.bar()), "", "817 修复：收缩后最大化，行内宽度消失");
+
+  // 模拟跨屏 125%↔100%（CSS 视口随 DPI 变化收窄再变宽）：resize 路径即时重算。
+  fakeTabBarClientWidth = 560;
+  await act(async () => { window.dispatchEvent(new dom.window.Event("resize")); });
+  eq(view.bar().getAttribute("data-tab-tier"), "2", "817 修复：跨屏变窄，resize 路径重排 tier 2");
+  eq(inlineWidth(view.bar()), "122", "817 修复：跨屏变窄，行内宽度 122px");
+  fakeTabBarClientWidth = 2400;
+  await act(async () => { window.dispatchEvent(new dom.window.Event("resize")); });
+  eq(view.bar().getAttribute("data-tab-tier"), null, "817 修复：跨屏变宽，resize 路径回 tier 0");
+  eq(inlineWidth(view.bar()), "", "817 修复：跨屏变宽，行内宽度消失");
+  await view.unmount();
+}
+
 function container_badge_count(): number {
   return document.querySelectorAll(".tabbar__mode-badge").length;
 }
+
+
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
