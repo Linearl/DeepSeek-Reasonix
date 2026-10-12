@@ -2526,6 +2526,10 @@ export interface DesktopStartupSettingsView {
   experimentalPromptHistoryPicker?: boolean;
   /** Tab-strip adaptive compression (task 506); off by default; tiered tab width once >8 tabs. */
   experimentalTabCompress?: boolean;
+  /** Left-sidebar hover-to-expand (task 826): 300ms mis-touch guard, folds back 15s after the pointer leaves, reclaiming only hover-made expansions; off by default. */
+  experimentalSidebarHoverLeft?: boolean;
+  /** Right-dock hover-to-expand (task 826): the left switch's counterpart, fully independent; off by default. */
+  experimentalSidebarHoverRight?: boolean;
   /** 心跳任务后台化（任务 742）；默认关；开启后心跳触发不进标签栏（264 detached 语义）。 */
   experimentalHeartbeatBackground?: boolean;
   /** Subagent detail view (task 507); off = inline preview + widen affordance, on = read-only in-dock detail view. */

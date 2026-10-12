@@ -71,6 +71,12 @@ export interface SettingsView {
   experimentalPromptHistoryPicker?: boolean;
   // Task 506: tab-strip adaptive compression (tiered width once >8 tabs).
   experimentalTabCompress?: boolean;
+  // Task 826: left-sidebar / right-dock hover-to-expand (300ms mis-touch
+  // guard; folds back 15s after the pointer leaves, reclaiming only
+  // hover-made expansions). Two independent switches; pure frontend gates —
+  // the settings save re-applies the snapshot, no restart.
+  experimentalSidebarHoverLeft?: boolean;
+  experimentalSidebarHoverRight?: boolean;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; default off). The engine reads the switch at call time.
   experimentalHeartbeatBackground?: boolean;

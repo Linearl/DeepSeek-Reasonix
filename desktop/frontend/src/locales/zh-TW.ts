@@ -4235,6 +4235,15 @@ export const zhTW: Record<DictKey, string> = {
 "settings.trajectoryViewHint": "在工作階段標題列加「轉錄 | 軌跡」切換。軌跡視圖把工作階段事件流投影成可觀測性台帳：使用者/助理/工具/壓縮記錄按時間排列，附時間線總覽與記錄檢查器。純投影視圖——唯讀現有工作階段資料，不動儲存；關閉後回落純轉錄，資料無損。預設關閉，變更即時生效。",
 "settings.trajectoryView.on": "開",
 "settings.trajectoryView.off": "關",
+// 任務 826：左右邊欄 hover 展開（實驗室，介面組·視圖佈局卡；預設關）。
+"settings.sidebarHoverLeft": "左邊欄懸停展開",
+"settings.sidebarHoverLeftHint": "左邊欄摺疊時，把滑鼠移到視窗左緣並停留約半秒自動展開；移開後 15 秒自動摺回。只有懸停自動展開的會被收回——你手動展開的狀態不會被回收。預設關閉；變更即時生效。",
+"settings.sidebarHoverLeft.on": "開",
+"settings.sidebarHoverLeft.off": "關",
+"settings.sidebarHoverRight": "右邊欄懸停展開",
+"settings.sidebarHoverRightHint": "右側停靠欄關閉時，把滑鼠移到視窗右緣並停留約半秒自動展開；移開後 15 秒自動收起。只有懸停自動展開的會被收回——你手動打開的狀態不會被回收。與左邊欄開關互相獨立。預設關閉；變更即時生效。",
+"settings.sidebarHoverRight.on": "開",
+"settings.sidebarHoverRight.off": "關",
 // 任務 704：軌跡視圖介面文案（台帳/切換/空態）。
 "trajectory.label": "軌跡",
 "trajectory.switchLabel": "切換轉錄/軌跡視圖",

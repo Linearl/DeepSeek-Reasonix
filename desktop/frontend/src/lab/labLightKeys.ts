@@ -36,6 +36,10 @@ export const LAB_LIGHT_KEYS = {
   experimentalOutputStyleUI: (s: SettingsView) => Boolean(s.experimentalOutputStyleUI),
   experimentalCollabGroupView: (s: SettingsView) => Boolean(s.experimentalCollabGroupView),
   experimentalTabCompress: (s: SettingsView) => Boolean(s.experimentalTabCompress),
+  // 任务 826：左右边栏 hover 展开（300ms 防误触 + 离开 15s 延时折叠）。
+  // 左右独立两键一字段一谓词，默认关=不渲染热区不挂事件（铁律 2）。
+  experimentalSidebarHoverLeft: (s: SettingsView) => Boolean(s.experimentalSidebarHoverLeft),
+  experimentalSidebarHoverRight: (s: SettingsView) => Boolean(s.experimentalSidebarHoverRight),
   // 任务 742：心跳任务后台化（默认关；开启后心跳触发不进标签栏）。
   experimentalHeartbeatBackground: (s: SettingsView) => Boolean(s.experimentalHeartbeatBackground),
   experimentalTrajectoryView: (s: SettingsView) => Boolean(s.experimentalTrajectoryView),

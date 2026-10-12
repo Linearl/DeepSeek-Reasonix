@@ -110,7 +110,11 @@ export type TierFeatureId =
   | "glmPlanUsage"
   // 任务 789: 编辑证据门宽松模式（toolOptimizations 卡成员；默认关=严格
   // 行为逐字节一致）。lab-layout.yaml members + 本表双登记（562 口径）。
-  | "editEvidenceRelaxed";
+  | "editEvidenceRelaxed"
+  // 任务 826: 左右边栏 hover 展开（默认关=不渲染热区不挂事件，可选档）。
+  // 左右独立两键两行，均归界面组「视图布局」卡（782 合并卡先例）。
+  | "sidebarHoverLeft"
+  | "sidebarHoverRight";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -212,6 +216,11 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   searchHistory: "recommended",
   inputSelection: "optional",
   viewLayout: "optional",
+  // 任务 826：左右边栏 hover 展开（左右各一行，独立开关，默认关）。按 550
+  // 口径定可选——不开启时不渲染任何热区、不挂任何事件，左右栏行为与引入前
+  // 完全一致（铁律 2）。
+  sidebarHoverLeft: "optional",
+  sidebarHoverRight: "optional",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
@@ -232,7 +241,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 总数 53→56。任务 783：可观测性组「用量监测」卡容器 + GLM Plan 用量子项
  * 入表（推荐×2），推荐 16→18、总数 56→58；同任务编辑读回（toolOptimizations）
  * 随 22.5 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。任务 785：
- * baseProcess（S1 常驻底座开关）随底座退役出表，未稳定 12→11、总数 58→57。任务 790：acpListen（ACP 常驻监听，默认关）入表未稳定档，11→12、总数 57→58。） */
+ * baseProcess（S1 常驻底座开关）随底座退役出表，未稳定 12→11、总数 58→57。任务 790：acpListen（ACP 常驻监听，默认关）入表未稳定档，11→12、总数 57→58。
+ * 任务 826：sidebarHoverLeft / sidebarHoverRight（左右边栏 hover 展开，默认
+ * 关）按可选档入表（26→28、58→60；562 计数 pin 与 789 统一登记窗口一并
+ * 收口——本常量当前被 task562 钉在 26/58，随登记窗口同步跳变）。） */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 19,
   optional: 26,

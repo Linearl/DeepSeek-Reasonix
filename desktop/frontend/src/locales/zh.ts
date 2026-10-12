@@ -2999,6 +2999,15 @@ export const zh: Record<DictKey, string> = {
 "settings.trajectoryViewHint": "在会话标题栏加「转录 | 轨迹」切换。轨迹视图把会话事件流投影成可观测性台账：用户/助手/工具/压缩记录按时间排列，附时间线总览与记录检查器。纯投影视图——只读现有会话数据，不动存储；关闭后回落纯转录，数据无损。默认关闭，改动即时生效。",
 "settings.trajectoryView.on": "开",
 "settings.trajectoryView.off": "关",
+// 任务 826：左右边栏 hover 展开（实验室，界面组·视图布局卡；默认关）。
+"settings.sidebarHoverLeft": "左边栏悬停展开",
+"settings.sidebarHoverLeftHint": "左边栏折叠时，把鼠标移到窗口左缘并停留约半秒自动展开；移开后 15 秒自动折回。只有悬停自动展开的会被收回——你手动展开的状态不会被回收。默认关闭；改动即时生效。",
+"settings.sidebarHoverLeft.on": "开",
+"settings.sidebarHoverLeft.off": "关",
+"settings.sidebarHoverRight": "右边栏悬停展开",
+"settings.sidebarHoverRightHint": "右侧停靠栏关闭时，把鼠标移到窗口右缘并停留约半秒自动展开；移开后 15 秒自动收起。只有悬停自动展开的会被收回——你手动打开的状态不会被回收。与左边栏开关互相独立。默认关闭；改动即时生效。",
+"settings.sidebarHoverRight.on": "开",
+"settings.sidebarHoverRight.off": "关",
 // 任务 704：轨迹视图界面文案（台账/切换/空态）。
 "trajectory.label": "轨迹",
 "trajectory.switchLabel": "切换转录/轨迹视图",

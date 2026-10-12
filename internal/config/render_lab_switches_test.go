@@ -51,6 +51,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalSessionWall = true                // sessionWall
 	orig.Desktop.ExperimentalSubagentPanel = true              // M4
 	orig.Desktop.ExperimentalSubagentDetail = true             // M4
+	// 任务 826：左右边栏 hover 展开（默认关，两键独立）。
+	orig.Desktop.ExperimentalSidebarHoverLeft = true           // sidebarHoverLeft
+	orig.Desktop.ExperimentalSidebarHoverRight = true          // sidebarHoverRight
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
 	orig.Agent.ExperimentalAutoLoadOlder = true                // autoLoadOlder ([agent] authoritative after task 473)
 	orig.Desktop.ExperimentalSplitView = true                  // splitView
@@ -105,6 +108,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_session_wall = true",
 		"experimental_tab_compress = true",
 		"experimental_subagent_detail = true",
+		// 任务 826：左右边栏 hover 展开两键无条件渲染（fixed-key-set rule）。
+		"experimental_sidebar_hover_left = true",
+		"experimental_sidebar_hover_right = true",
 		"experimental_question_search = true",
 		"experimental_subagent_tps", // rendered from the nil-means-on helper; presence only
 		"experimental_completion_summary = true",
@@ -204,6 +210,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"desktop.experimental_session_wall":          got.Desktop.ExperimentalSessionWall,
 		"desktop.experimental_subagent_panel":        got.Desktop.ExperimentalSubagentPanel,
 		"desktop.experimental_subagent_detail":       got.Desktop.ExperimentalSubagentDetail,
+		// 任务 826：左右边栏 hover 展开两键往返。
+		"desktop.experimental_sidebar_hover_left":    got.Desktop.ExperimentalSidebarHoverLeft,
+		"desktop.experimental_sidebar_hover_right":   got.Desktop.ExperimentalSidebarHoverRight,
 		// (retired from render — task 473 single-key fold.)
 		"desktop.experimental_split_view":      got.Desktop.ExperimentalSplitView,
 		"desktop.experimental_session_monitor": got.Desktop.ExperimentalSessionMonitor,

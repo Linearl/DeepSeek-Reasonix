@@ -3002,6 +3002,15 @@ export const en = {
 "settings.trajectoryViewHint": "Adds a transcript | trajectory switch to the session title bar. The trajectory view projects the session event stream into an observability ledger: user/assistant/tool/compaction records in time order, plus a timing overview and a record inspector. Pure projection - read-only over existing session data, no storage changes; turning it off falls back to the plain transcript with no data loss. Off by default; changes apply immediately.",
 "settings.trajectoryView.on": "On",
 "settings.trajectoryView.off": "Off",
+// 任务 826: left/right sidebar hover-to-expand (lab, ui group / view-layout card; default off).
+"settings.sidebarHoverLeft": "Left sidebar hover expand",
+"settings.sidebarHoverLeftHint": "While the left sidebar is collapsed, rest the pointer on the left window edge for about half a second to expand it; it folds back 15 seconds after the pointer leaves. Only hover-made expansions are reclaimed - a state you expanded manually is never taken back. Off by default; changes apply immediately.",
+"settings.sidebarHoverLeft.on": "On",
+"settings.sidebarHoverLeft.off": "Off",
+"settings.sidebarHoverRight": "Right dock hover expand",
+"settings.sidebarHoverRightHint": "While the right dock is closed, rest the pointer on the right window edge for about half a second to open it; it closes again 15 seconds after the pointer leaves. Only hover-made expansions are reclaimed - a state you opened manually is never taken back. Independent of the left-sidebar switch. Off by default; changes apply immediately.",
+"settings.sidebarHoverRight.on": "On",
+"settings.sidebarHoverRight.off": "Off",
 // 任务 704: trajectory view surface strings (ledger / switch / empty state).
 "trajectory.label": "Trajectory",
 "trajectory.switchLabel": "Switch transcript/trajectory view",

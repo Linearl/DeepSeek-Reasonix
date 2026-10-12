@@ -2975,6 +2975,42 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 826：左右边栏 hover 展开（视图布局卡成员，左右独立两键
+                  两行——各读各键各写各 setter；300ms 防误触 + 离开 15s 延时
+                  折叠，只回收 hover 自动展开的，手动展开不回收）。纯前端门：
+                  保存即生效，免重启；关=不渲染热区不挂事件（铁律 2）。 */}
+              <SettingsField label={labLabel("sidebarHoverLeft", t("settings.sidebarHoverLeft"))} hint={t("settings.sidebarHoverLeftHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSidebarHoverLeft) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalSidebarHoverLeft(on);
+                      })}
+                    >
+                      {t(on ? "settings.sidebarHoverLeft.on" : "settings.sidebarHoverLeft.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={labLabel("sidebarHoverRight", t("settings.sidebarHoverRight"))} hint={t("settings.sidebarHoverRightHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSidebarHoverRight) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalSidebarHoverRight(on);
+                      })}
+                    >
+                      {t(on ? "settings.sidebarHoverRight.on" : "settings.sidebarHoverRight.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {selected === "collabGroupView" && (
