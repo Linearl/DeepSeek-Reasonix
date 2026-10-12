@@ -13,6 +13,14 @@
 // followup so an idle member is never steer-woken, under a per-channel hourly
 // message cap (429 storm governance). Per-recipient delivered/read live in
 // their own fanout rows — one member's state never overwrites another's.
+//
+// Task 803 (人机混合真群聊): members carry a type (session | human) and the
+// channel carries a single owner (conversation or the human, fixed identity
+// human:local — 一期继任规则: the owner cannot leave, no successor rule yet).
+// The human joins/speaks through the same Publish/fan-out path; the fan-out
+// settles human rows delivered WITHOUT any mailbox delivery (the UI is the
+// human's inbox — MarkHumanVisible drives read state), so the storm
+// governance (hourly cap, one publish path) covers human speech unchanged.
 package collabchannel
 
 import (
@@ -35,7 +43,7 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" driver (house pattern: projectiondb/topicstate)
 )
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 // ErrHourlyCap is the per-channel 429 guard: publish refused until the
 // rolling hour window frees up.
@@ -47,6 +55,31 @@ var ErrNotFound = errors.New("collabchannel: channel not found")
 // ErrNotSender rejects a cancel by anyone but the original sender (取消消息
 // 是发送方权利，不是管理员权利 — one session cannot retract another's line).
 var ErrNotSender = errors.New("collabchannel: only the sender can cancel a message")
+
+// ErrOwnerCannotLeave rejects the owner stepping down or being removed
+// (任务 803：群主可为对话或人类；继任规则一期 = 拒绝最后一个群主退出 —
+// the channels table holds exactly one owner, so the owner IS the last one).
+var ErrOwnerCannotLeave = errors.New("collabchannel: the channel owner cannot leave (no successor rule yet)")
+
+// ErrNotOwner rejects owner-only management (Invite / RemoveMember) by anyone
+// but the channel's owner. A pre-803 channel has no owner at all — its
+// membership stays as-is until an owner surface migrates it.
+var ErrNotOwner = errors.New("collabchannel: only the channel owner may do that")
+
+// Member types (任务 803 ①: members.type 枚举). Pre-803 rows read as
+// MemberTypeSession — additive migration, old channels keep their semantics.
+const (
+	MemberTypeSession = "session"
+	MemberTypeHuman   = "human"
+)
+
+// HumanLocal is the fixed human identity (任务 803 ②): the desktop is a
+// single-user app, so the local human has exactly one well-known contact id.
+// It participates in channels like any session contact — Publish as sender,
+// fan-out as recipient (with mailbox delivery SKIPPED: the human reads the
+// channel in the UI, never through the task-309 mailbox), per-recipient
+// delivered/read rows included.
+const HumanLocal = "human:local"
 
 // DefaultHourlyCap is the storm ceiling for a channel that sets no explicit
 // limit (429: 单群每小时消息上限).
@@ -170,6 +203,19 @@ func migrate(db *sql.DB) error {
 		!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return fmt.Errorf("collabchannel: migrate cancelled_at: %w", err)
 	}
+	// v2→v3 (任务 803 ①): 成员类型 + 群主列，全部 additive——老成员补默认
+	// 'session'，老 channel 的 owner 列为空串（= 无群主，语义不变）；无数据
+	// 迁移，不改任何既有行的值。
+	for _, col := range []string{
+		`ALTER TABLE members ADD COLUMN type TEXT NOT NULL DEFAULT '` + MemberTypeSession + `'`,
+		`ALTER TABLE channels ADD COLUMN owner_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE channels ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := db.Exec(col); err != nil &&
+			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return fmt.Errorf("collabchannel: migrate %q: %w", col, err)
+		}
+	}
 	_, err := db.Exec(`INSERT INTO meta (key, value) VALUES ('schema_version', ?)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, fmt.Sprint(schemaVersion))
 	return err
@@ -199,6 +245,14 @@ func newID(prefix string) string {
 	return prefix + hex.EncodeToString(b[:])
 }
 
+// Member is one membership row with its type (任务 803 ①: session | human).
+// Pre-803 rows surface as MemberTypeSession via the additive migration.
+type Member struct {
+	Contact  string `json:"contact"`
+	Type     string `json:"type"`
+	JoinedAt int64  `json:"joinedAt"`
+}
+
 // Channel is one entity row plus its membership (查看频道 payload).
 type Channel struct {
 	ID          string   `json:"id"`
@@ -208,6 +262,13 @@ type Channel struct {
 	HourlyLimit int      `json:"hourlyLimit"`
 	Members     []string `json:"members"`
 	Messages    int      `json:"messages"`
+	// 任务 803 ①: owner identity (human or session) + per-member types.
+	// Empty OwnerType/OwnerID = a pre-803 channel with no owner — old
+	// semantics unchanged. MemberDetails mirrors Members with types; both
+	// stay so the 409 panel's existing []string render keeps compiling.
+	OwnerType     string   `json:"ownerType,omitempty"`
+	OwnerID       string   `json:"ownerId,omitempty"`
+	MemberDetails []Member `json:"memberDetails,omitempty"`
 }
 
 // Message is one channel-side record (获取消息 payload).
@@ -256,6 +317,12 @@ type FanoutStats struct {
 	Failed    int `json:"failed"`
 	Skipped   int `json:"skipped"`   // already in the member's inbox (crash retry)
 	Cancelled int `json:"cancelled"` // row stopped by a cancel between claim and deliver
+	// HumanSkipped counts human-member rows settled WITHOUT mailbox delivery
+	// (任务 803 ④: fan-out 对 human 成员跳过邮箱投递只落库 — the human reads
+	// the channel in the UI; a mailbox copy would bury them under agent wake
+	// mails). The row still lands as delivered, so per-recipient read state
+	// keeps working.
+	HumanSkipped int `json:"humanSkipped,omitempty"`
 }
 
 // resolve maps a channel name-or-id to its id.
@@ -274,11 +341,27 @@ func (s *Store) resolve(ref string) (string, error) {
 
 // CreateChannel registers a channel entity with its founding members
 // (Go API: the three agent tools are list/read/send by 0928 ruling; creation
-// belongs to a future panel/host surface).
+// belongs to a future panel/host surface). No owner — pre-803 semantics.
 func (s *Store) CreateChannel(name, topic string, hourlyLimit int, members ...string) (Channel, error) {
+	return s.CreateChannelWithOwner(name, topic, hourlyLimit, "", "", members...)
+}
+
+// CreateChannelWithOwner is 803 ①: the founding owner may be a conversation
+// (MemberTypeSession) or the human (MemberTypeHuman). The owner is always
+// inserted as a member with their own type; the remaining members... join as
+// sessions (the human joins a group through the owner insert or JoinHuman).
+// Empty ownerType/ownerID behaves exactly like CreateChannel.
+func (s *Store) CreateChannelWithOwner(name, topic string, hourlyLimit int, ownerType, ownerID string, members ...string) (Channel, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return Channel{}, errors.New("collabchannel: channel name is required")
+	}
+	ownerType, ownerID = strings.TrimSpace(ownerType), strings.TrimSpace(ownerID)
+	if (ownerType == "") != (ownerID == "") {
+		return Channel{}, errors.New("collabchannel: owner type and id must be set together")
+	}
+	if ownerType != "" && ownerType != MemberTypeSession && ownerType != MemberTypeHuman {
+		return Channel{}, fmt.Errorf("collabchannel: unknown member type %q", ownerType)
 	}
 	if hourlyLimit <= 0 {
 		hourlyLimit = DefaultHourlyCap
@@ -290,18 +373,25 @@ func (s *Store) CreateChannel(name, topic string, hourlyLimit int, members ...st
 		return Channel{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`INSERT INTO channels (id, name, topic, created_at, hourly_limit) VALUES (?, ?, ?, ?, ?)`,
-		id, name, strings.TrimSpace(topic), now, hourlyLimit); err != nil {
+	if _, err := tx.Exec(`INSERT INTO channels (id, name, topic, created_at, hourly_limit, owner_type, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, name, strings.TrimSpace(topic), now, hourlyLimit, ownerType, ownerID); err != nil {
 		return Channel{}, fmt.Errorf("collabchannel: create %q: %w", name, err)
 	}
-	seen := map[string]bool{}
+	if ownerID != "" {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO members (channel_id, contact, joined_at, type) VALUES (?, ?, ?, ?)`,
+			id, ownerID, now, ownerType); err != nil {
+			return Channel{}, err
+		}
+	}
+	seen := map[string]bool{ownerID: true}
 	for _, m := range members {
 		m = strings.TrimSpace(m)
 		if m == "" || seen[m] {
 			continue
 		}
 		seen[m] = true
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO members (channel_id, contact, joined_at) VALUES (?, ?, ?)`, id, m, now); err != nil {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO members (channel_id, contact, joined_at, type) VALUES (?, ?, ?, ?)`,
+			id, m, now, MemberTypeSession); err != nil {
 			return Channel{}, err
 		}
 	}
@@ -313,15 +403,98 @@ func (s *Store) CreateChannel(name, topic string, hourlyLimit int, members ...st
 
 // Join adds a member (idempotent).
 func (s *Store) Join(ref, contact string) error {
-	return s.memberOp(ref, contact, true)
+	return s.memberOp(ref, contact, true, MemberTypeSession)
 }
 
-// Leave removes a member (idempotent).
+// JoinHuman brings the local human into a channel (任务 803 ②③: the human
+// joins with the fixed identity human:local, typed MemberTypeHuman; idempotent).
+func (s *Store) JoinHuman(ref string) error {
+	return s.memberOp(ref, HumanLocal, true, MemberTypeHuman)
+}
+
+// Leave removes a member (idempotent) — but the channel owner cannot leave
+// (任务 803 ①: 一期继任规则 = 拒绝最后一个群主退出; the single-owner row IS
+// the last owner). Removing the owner requires handing the channel over, a
+// successor rule that does not exist yet.
 func (s *Store) Leave(ref, contact string) error {
-	return s.memberOp(ref, contact, false)
+	contact = strings.TrimSpace(contact)
+	id, err := s.resolve(ref)
+	if err != nil {
+		return err
+	}
+	ownerType, ownerID, err := s.ownerOf(id)
+	if err != nil {
+		return err
+	}
+	if ownerID != "" && contact == ownerID {
+		return fmt.Errorf("%w: %s owns this channel (%s)", ErrOwnerCannotLeave, ownerID, ownerType)
+	}
+	return s.memberOp(id, contact, false, "")
 }
 
-func (s *Store) memberOp(ref, contact string, add bool) error {
+// Invite adds session members — owner-only (任务 803 ③ 群主权限). Idempotent
+// per contact. A channel with no owner (pre-803) rejects: its membership is
+// frozen until an owner surface takes it over.
+func (s *Store) Invite(ref, actor string, contacts ...string) error {
+	actor = strings.TrimSpace(actor)
+	id, err := s.requireOwner(ref, actor)
+	if err != nil {
+		return err
+	}
+	for _, c := range contacts {
+		if err := s.memberOp(id, c, true, MemberTypeSession); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RemoveMember kicks one member — owner-only, and never the owner themselves
+// (same last-owner rule as Leave).
+func (s *Store) RemoveMember(ref, actor, target string) error {
+	actor = strings.TrimSpace(actor)
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return errors.New("collabchannel: target member is required")
+	}
+	id, err := s.requireOwner(ref, actor)
+	if err != nil {
+		return err
+	}
+	if target == actor {
+		// Removing yourself as owner = leaving as owner → refused.
+		return fmt.Errorf("%w: the owner cannot remove themselves", ErrOwnerCannotLeave)
+	}
+	return s.memberOp(id, target, false, "")
+}
+
+// requireOwner resolves the channel and checks the actor owns it.
+func (s *Store) requireOwner(ref, actor string) (string, error) {
+	if actor == "" {
+		return "", errors.New("collabchannel: actor identity is required")
+	}
+	id, err := s.resolve(ref)
+	if err != nil {
+		return "", err
+	}
+	_, ownerID, err := s.ownerOf(id)
+	if err != nil {
+		return "", err
+	}
+	if ownerID == "" || ownerID != actor {
+		return "", fmt.Errorf("%w: %q is not the owner of %s", ErrNotOwner, actor, ref)
+	}
+	return id, nil
+}
+
+// ownerOf reads the channel's owner columns (empty strings = no owner).
+func (s *Store) ownerOf(channelID string) (ownerType, ownerID string, err error) {
+	err = s.db.QueryRow(`SELECT COALESCE(owner_type, ''), COALESCE(owner_id, '') FROM channels WHERE id = ?`,
+		channelID).Scan(&ownerType, &ownerID)
+	return ownerType, ownerID, err
+}
+
+func (s *Store) memberOp(ref, contact string, add bool, mtype string) error {
 	contact = strings.TrimSpace(contact)
 	if contact == "" {
 		return errors.New("collabchannel: contact is required")
@@ -331,7 +504,11 @@ func (s *Store) memberOp(ref, contact string, add bool) error {
 		return err
 	}
 	if add {
-		_, err = s.db.Exec(`INSERT OR IGNORE INTO members (channel_id, contact, joined_at) VALUES (?, ?, ?)`, id, contact, s.now())
+		if mtype != MemberTypeSession && mtype != MemberTypeHuman {
+			return fmt.Errorf("collabchannel: unknown member type %q", mtype)
+		}
+		_, err = s.db.Exec(`INSERT OR IGNORE INTO members (channel_id, contact, joined_at, type) VALUES (?, ?, ?, ?)`,
+			id, contact, s.now(), mtype)
 	} else {
 		_, err = s.db.Exec(`DELETE FROM members WHERE channel_id = ? AND contact = ?`, id, contact)
 	}
@@ -345,17 +522,45 @@ func (s *Store) Channel(ref string) (Channel, error) {
 		return Channel{}, err
 	}
 	var c Channel
-	err = s.db.QueryRow(`SELECT id, name, topic, created_at, hourly_limit FROM channels WHERE id = ?`, id).
-		Scan(&c.ID, &c.Name, &c.Topic, &c.CreatedAt, &c.HourlyLimit)
+	err = s.db.QueryRow(`SELECT id, name, topic, created_at, hourly_limit, COALESCE(owner_type, ''), COALESCE(owner_id, '') FROM channels WHERE id = ?`, id).
+		Scan(&c.ID, &c.Name, &c.Topic, &c.CreatedAt, &c.HourlyLimit, &c.OwnerType, &c.OwnerID)
 	if err != nil {
 		return Channel{}, err
 	}
-	c.Members, err = s.membersOf(id)
+	c.MemberDetails, err = s.Members(id)
 	if err != nil {
 		return Channel{}, err
+	}
+	c.Members = make([]string, 0, len(c.MemberDetails))
+	for _, m := range c.MemberDetails {
+		c.Members = append(c.Members, m.Contact)
 	}
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE channel_id = ?`, id).Scan(&c.Messages)
 	return c, nil
+}
+
+// Members lists one channel's membership with types (任务 803: 成员类型对
+// UI/导出可见). Pre-803 rows read as MemberTypeSession.
+func (s *Store) Members(ref string) ([]Member, error) {
+	id, err := s.resolve(ref)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT contact, COALESCE(type, '`+MemberTypeSession+`'), joined_at
+		FROM members WHERE channel_id = ? ORDER BY joined_at, contact`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Member
+	for rows.Next() {
+		var m Member
+		if err := rows.Scan(&m.Contact, &m.Type, &m.JoinedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) membersOf(channelID string) ([]string, error) {
@@ -579,9 +784,11 @@ func (s *Store) DrainFanout(ctx context.Context) (FanoutStats, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	rows, err := s.db.Query(`SELECT f.message_id, f.member, f.fanout_id, m.sender, m.at, m.body, c.name
+	rows, err := s.db.Query(`SELECT f.message_id, f.member, f.fanout_id, m.sender, m.at, m.body, c.name,
+			COALESCE(mem.type, '` + MemberTypeSession + `')
 		FROM fanout f JOIN messages m ON m.id = f.message_id
 		JOIN channels c ON c.id = m.channel_id
+		LEFT JOIN members mem ON mem.channel_id = m.channel_id AND mem.contact = f.member
 		WHERE f.state = 'queued' ORDER BY m.at, f.member`)
 	if err != nil {
 		return FanoutStats{}, err
@@ -593,11 +800,14 @@ func (s *Store) DrainFanout(ctx context.Context) (FanoutStats, error) {
 		// mail came from even if the channel is renamed or gone later.
 		channel string
 		at      int64
+		// mtype is the member's type (803 ④): a human row is settled delivered
+		// without any mailbox delivery — the UI is the human's inbox.
+		mtype string
 	}
 	var jobs []job
 	for rows.Next() {
 		var j job
-		if err := rows.Scan(&j.messageID, &j.member, &j.fanoutID, &j.sender, &j.at, &j.body, &j.channel); err != nil {
+		if err := rows.Scan(&j.messageID, &j.member, &j.fanoutID, &j.sender, &j.at, &j.body, &j.channel, &j.mtype); err != nil {
 			rows.Close()
 			return FanoutStats{}, err
 		}
@@ -631,6 +841,16 @@ func (s *Store) DrainFanout(ctx context.Context) (FanoutStats, error) {
 			WHERE f.message_id = ? AND f.member = ?`, j.messageID, j.member).Scan(&state, &tombstone); err == nil &&
 			(state != "queued" || (tombstone.Valid && tombstone.Int64 > 0)) {
 			stats.Cancelled++
+			continue
+		}
+		// 803 ④: a human member is NEVER mailed (the mailbox would bury the
+		// human under agent wake-up mails) — the row settles delivered and the
+		// UI-visible read flow (MarkHumanVisible) takes it from there. The
+		// member==HumanLocal guard also covers a stale row left behind by a
+		// human who left the channel before this drain.
+		if j.mtype == MemberTypeHuman || j.member == HumanLocal {
+			_ = s.settle(j.messageID, j.member, "delivered", "", s.now())
+			stats.HumanSkipped++
 			continue
 		}
 		// Crash-retry dedupe: if the fan-out mail is already in this member's
@@ -726,6 +946,42 @@ func (s *Store) MarkRead(ref, member string, messageIDs []string) (int, error) {
 	return total, nil
 }
 
+// MarkHumanVisible is the human half of 803 ⑥: a message the human can SEE in
+// the UI is, by definition, delivered to (and read by) the human — no mailbox
+// round-trip exists to drive the row. It settles any queued human rows to
+// delivered (the UI-visibility event replaces the skipped mail delivery) and
+// then marks them read, both keyed to the fixed identity human:local and both
+// no-ops for messages without human fan-out rows. Returns total rows touched.
+func (s *Store) MarkHumanVisible(ref string, messageIDs []string) (int, error) {
+	member := HumanLocal
+	if len(messageIDs) == 0 {
+		return 0, nil
+	}
+	id, err := s.resolve(ref)
+	if err != nil {
+		return 0, err
+	}
+	now := s.now()
+	total := 0
+	for _, mid := range messageIDs {
+		res, err := s.db.Exec(`UPDATE fanout SET state = 'delivered', delivered_at = COALESCE(delivered_at, ?)
+			WHERE member = ? AND state = 'queued'
+			AND message_id = ? AND message_id IN (SELECT id FROM messages WHERE channel_id = ?)`,
+			now, member, mid, id)
+		if err != nil {
+			return total, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			total += int(n)
+		}
+	}
+	marked, err := s.MarkRead(id, member, messageIDs)
+	if err != nil {
+		return total, err
+	}
+	return total + marked, nil
+}
+
 // ExportMarkdown renders the channel history for humans (task 349: md 导出
 // 供人类查看/事后汇总) — time, sender, body per line. Returns the path.
 func (s *Store) ExportMarkdown(ref, path string) (string, error) {
@@ -742,7 +998,21 @@ func (s *Store) ExportMarkdown(ref, path string) (string, error) {
 	if c.Topic != "" {
 		fmt.Fprintf(&b, "Topic: %s\n\n", c.Topic)
 	}
-	fmt.Fprintf(&b, "- members: %s\n", strings.Join(c.Members, ", "))
+	// 803 ②: members render with their type and the owner mark (类型与群主
+	// 标识对导出可见); pre-803 channels (no owner) keep the plain list.
+	if c.OwnerID != "" {
+		fmt.Fprintf(&b, "- owner: %s (%s)\n", c.OwnerID, c.OwnerType)
+	}
+	memberParts := make([]string, 0, len(c.MemberDetails))
+	for _, m := range c.MemberDetails {
+		if c.OwnerID == m.Contact {
+			// Owner already announced above; keep the type though.
+			memberParts = append(memberParts, fmt.Sprintf("%s (%s, owner)", m.Contact, m.Type))
+			continue
+		}
+		memberParts = append(memberParts, fmt.Sprintf("%s (%s)", m.Contact, m.Type))
+	}
+	fmt.Fprintf(&b, "- members: %s\n", strings.Join(memberParts, ", "))
 	fmt.Fprintf(&b, "- messages: %d (exported %s)\n\n", len(msgs),
 		time.UnixMilli(s.now()).Format("2006-01-02 15:04:05"))
 	for _, m := range msgs {
