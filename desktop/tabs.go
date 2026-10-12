@@ -5492,7 +5492,18 @@ func (a *App) tabSnapshotLoop(tab *WorkspaceTab) {
 		ctrl := tab.Ctrl
 		a.mu.RUnlock()
 		if ctrl != nil {
+			// 任务 831①: the switch path hands its flush here instead of
+			// snapshotting inline, so the loop owns the latency the SetActiveTab
+			// slow log used to attribute to snapshot_ms. Slow flushes surface
+			// here (threshold matches silentLoaderSlowWarnThresholdMs) so a
+			// seconds-large background write stays attributable without any
+			// fast pass adding a line.
+			loopStart := time.Now()
 			if err := a.snapshotTab(tab); err == nil {
+				if elapsed := time.Since(loopStart); elapsed >= 250*time.Millisecond {
+					slog.Info("desktop: tab background snapshot slow",
+						"tab", tab.ID, "ms", elapsed.Milliseconds())
+				}
 				a.mu.RLock()
 				scope, workspaceRoot := tab.Scope, tab.WorkspaceRoot
 				a.mu.RUnlock()
