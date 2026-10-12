@@ -1,0 +1,135 @@
+name: PR build gate
+
+# 任务 829：dependabot 类 PR 的构建+测试门禁。
+#
+# 为什么需要单独的 workflow：dependabot 打开的 PR 上，pull_request 事件的
+# workflow（ci.yml）默认被 GitHub 拦住，需要 maintainer 手工 approve 才会跑
+# （PR#30 mermaid 11→12 major 依赖升级因此从未跑过构建/测试，兼容性只能
+# 人肉本地验证）。能免 approve 自动触发的通道只有 pull_request_target。
+#
+# pull_request_target 以 base 仓库的 token/secrets 运行，所以这条提权通道
+# 做了三层收紧：
+# - permissions 只有 contents: read，且本 workflow 不引用任何 secret；
+# - job 级 if 把入口限死在 dependabot actor：人类 PR 继续走 ci.yml 的
+#   pull_request 事件门禁（其 desktop 面已含 build+测试），不在本通道里
+#   以 base 仓身份执行第三方代码，不新增攻击面；
+# - checkout 显式钉 PR head SHA（pull_request_target 默认检出的是 base，
+#   不显式取 head 就测不到 PR 内容，这也是防 checkout 反转的写法）。
+# 残余风险与 ci.yml 对普通 PR 同级：install 会执行 lockfile 内包的
+# install scripts。dependabot PR 的内容限于依赖版本变更，接受。
+#
+# 触发分支（对照 743 修复的坑）：branches 过滤的是 PR base 分支，
+# main-v2 与 main-v2-stable 两条主线都在列。本 workflow 不加 push 触发，
+# main-v2-stable push 的既有门禁全部由 ci.yml 承担，不回退也不重复。
+# workflow_dispatch 供手动验证本门禁本身（绕过 actor 过滤）。
+#
+# 额度控制：concurrency 按 PR 号取消旧 run（dependabot 连续 rebase 不叠
+# 跑）；pnpm store / go-build 都走 setup action 的锁文件哈希缓存；测试面
+# 是快面（run-ci-tests.mjs），全量留 ci.yml 的 push 面。
+
+on:
+  pull_request_target:
+    branches: [main-v2, main-v2-stable]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-build-gate-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # ①前端构建（契约检查+tsc+vite+bundle budget）+ ②独立 tsc + ③快面测试。
+  frontend-build:
+    if: startsWith(github.actor, 'dependabot') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop/frontend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 10
+          run_install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: desktop/frontend/pnpm-lock.yaml
+
+      # wailsjs 绑定不入 git（bridge.ts 的 type import 和三个绑定断言
+      # 测试都依赖它）。与 ci.yml 的 desktop-prepare 同源生成（同一个
+      # .wails-version pin），两处不会漂移。setup-go 的缓存键是
+      # desktop/go.sum，与 ci.yml 的 desktop 面共用缓存。
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: desktop/go.mod
+          cache: true
+          cache-dependency-path: desktop/go.sum
+
+      - name: Generate wails bindings
+        working-directory: desktop
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$(cat "$GITHUB_WORKSPACE/.wails-version")"
+          wails generate module
+
+      - run: pnpm install --frozen-lockfile
+
+      # ② 独立 tsc：依赖升级最常见的破坏面是类型错误，单独出红绿便于
+      # 归因。复用 package.json 的 typecheck script（--incremental 落
+      # tsbuildinfo，下一步 build 内的 tsc 直接命中增量）。
+      - name: tsc --noEmit
+        run: pnpm typecheck
+
+      # ① build 一条龙（package.json build script）：check-all-parallel
+      # 十道契约检查并行（lint:hooks / check:waapi / check:comment-leak /
+      # check:scroll-writer / check:app-layers / css-syntax / check:z-index /
+      # check:theme-token / check:class-contract / check:bridge-json-tags）
+      # → tsc → vite build → check-bundle-budget（802 棘轮线：初始 gzip、
+      # app-shell CSS、zh/zh-TW locale 等预算超线即红）。
+      # 802 的 class-contract / theme-token / comment-leak 三道由此全部
+      # 在 PR 面生效，不再只在出包跑。
+      - name: Build with contract checks and bundle budget
+        run: pnpm build
+
+      # ③ 关键测试快面：run-ci-tests.mjs = ciUnitScripts 12 套件 +
+      # src/__tests__ 全量自动发现（新测试未入面即 fail-closed），与
+      # ci.yml 的 desktop-frontend 同一面；含 pretest:typecheck（745 的
+      # 测试面 typecheck 门禁经 test:all → test:typecheck 链展开带入）。
+      - name: Frontend CI test face
+        env:
+          REASONIX_TEST_CONCURRENCY: "2"
+        run: node scripts/run-ci-tests.mjs
+
+  # ④ Go build+vet（根模块）。desktop 模块的 Go 面不进本 workflow：
+  # 其 go:embed 需要先产出 dist，且 Linux 构建被 WebKitGTK 4.0/4.1
+  # 双版本矩阵钉在指定 runner 上——在快面里复制这套装配不值，desktop
+  # 的 PR 门禁由 ci.yml 的 desktop-go / desktop-linux-webkit41 兜底。
+  go-build-vet:
+    if: startsWith(github.actor, 'dependabot') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
