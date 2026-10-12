@@ -117,3 +117,45 @@ func TestStripTransientUserBlocksSubagentPolicy(t *testing.T) {
 		t.Fatalf("user text must survive, got %q", stripped)
 	}
 }
+
+// TestSubagentPolicyAggressiveCoordinationContract pins task 820 (816 P0
+// wording): the aggressive block must open with the coordinator role framing
+// (borrowed from the Codex orchestrator template), must no longer carry the
+// "keep quick, small tasks in the main session" clause that contradicted
+// "delegation is the default strategy" inside the same block, and must tilt
+// ambiguous calls toward dispatching instead.
+func TestSubagentPolicyAggressiveCoordinationContract(t *testing.T) {
+	got := SubagentPolicyGuidance(SubagentPolicyAggressive)
+
+	const roleFraming = "Your only role for delegable sub-work is to coordinate: dispatch, then collect and verify"
+	if !strings.Contains(got, roleFraming) {
+		t.Fatalf("aggressive guidance missing the coordinator role framing:\n%s", got)
+	}
+	for _, stale := range []string{
+		"Keep quick, small tasks", // 旧保守条款：与 default strategy 同块矛盾，已删
+		"delegation overhead is not worth it",
+	} {
+		if strings.Contains(got, stale) {
+			t.Fatalf("aggressive guidance still carries the contradictory clause %q:\n%s", stale, got)
+		}
+	}
+	// 阈值保留但方向反转：命令式「不要内联」，含糊时单向倾斜到派发。
+	for _, want := range []string{
+		"Do NOT inline sub-work that meets ANY of these thresholds",
+		"When in doubt, dispatch",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("aggressive guidance missing %q:\n%s", want, got)
+		}
+	}
+	// 角色框定必须是第一条引导：模型最先读到的是身份，不是阈值。
+	roleAt := strings.Index(got, roleFraming)
+	thresholdAt := strings.Index(got, "Do NOT inline")
+	if roleAt < 0 || thresholdAt < 0 || roleAt > thresholdAt {
+		t.Fatalf("role framing must precede the thresholds (role %d, thresholds %d)", roleAt, thresholdAt)
+	}
+	// balanced 档不受 820 影响：不携带角色框定，维持 531 契约原文。
+	if balanced := SubagentPolicyGuidance(SubagentPolicyBalanced); strings.Contains(balanced, "Your only role") {
+		t.Fatalf("balanced guidance must stay untouched by 820:\n%s", balanced)
+	}
+}
