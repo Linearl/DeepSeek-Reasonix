@@ -178,18 +178,41 @@ func (a *Agent) invalidateProjection(reason string) {
 	a.kickProjectionRebuild(reason)
 }
 
-// projectionRebuildTimeout bounds the background rebuild so a wedged summary
-// stream cannot pin a goroutine (and the singleflight slot) indefinitely.
+// projectionRebuildTimeout bounds ONE Prepare round of the background rebuild
+// so a wedged summary stream cannot pin a goroutine (and the singleflight
+// slot) indefinitely.
 const projectionRebuildTimeout = 5 * time.Minute
+
+// 任务813 rebuild-episode bounds. An oversized session (调研-2 shape: canonical
+// several windows past the hard ceiling) rarely returns under the fold trigger
+// in one Prepare round, so the kick loops bounded rounds until the projection
+// is usable again and the visible view sits back under the fold trigger.
+// Every round folds at most the pressure ladder's segments, and each segment
+// is capped to a safe summary prefix (#9572) — the rebuild is segmented by
+// construction, never one full-transcript summary. The round budget is the
+// hard spending cap; past it the installed segments persist and the normal
+// track (next request's pressure preflight, cold-cache tick) continues.
+const (
+	projectionRebuildMaxRounds   = 4 // Prepare transactions per kick episode
+	projectionRebuildMaxFailures = 2 // consecutive failed rounds before giving up
+)
 
 // kickProjectionRebuild restores a projection in the background right after an
 // invalidation or sidecar drop left the session without one (task 549). The
 // old behavior waited for the next sampling round, so any request or readout
 // in the meantime measured the FULL canonical transcript — on a large session
-// that is the canonical-level spike the context panel showed. The rebuild is
-// gated to sessions already at or above the compaction trigger: below it the
-// canonical view is what the next request carries anyway, and folding would be
-// unforced work. Prepare single-flights on compactionRunMu, and
+// that is the canonical-level spike the context panel showed.
+//
+// The kick is gated to sessions at or above the compaction trigger, with one
+// 任务813 exception: the degraded tail view (任务719) caps the visible
+// estimate at 0.60x window — below the 0.80x fold trigger — so the bare
+// ContextUsedTokens gate silently skipped the kick for exactly the oversized
+// invalid-projection sessions the rebuild exists for (the 调研-2 regression:
+// the panel pinned at "投影失效 · 全量回退中" with no background recovery,
+// because the degraded view hid the pressure the gate looks for). While a
+// degraded episode is active — tail view live, meaning the projection is
+// unusable and the canonical view is past the hard ceiling — the rebuild is
+// always forced. Prepare single-flights on compactionRunMu, and
 // rebuildPending deduplicates the kicks themselves so a burst of rewrites
 // (multi-writer rewind storms) cannot queue one summary per invalidation.
 func (a *Agent) kickProjectionRebuild(reason string) {
@@ -197,7 +220,12 @@ func (a *Agent) kickProjectionRebuild(reason string) {
 		return
 	}
 	fold := a.compactTrigger()
-	if fold <= 0 || a.ContextUsedTokens() < fold {
+	// ContextUsedTokens first: evaluating it is what builds (and activates)
+	// the degraded tail view on a fresh episode, so the active() read below
+	// sees the episode this kick is deciding about.
+	used := a.ContextUsedTokens()
+	degraded := a.sess.tailView.active()
+	if fold <= 0 || (used < fold && !degraded) {
 		return
 	}
 	if !a.sess.rebuildPending.CompareAndSwap(false, true) {
@@ -205,16 +233,84 @@ func (a *Agent) kickProjectionRebuild(reason string) {
 	}
 	go func() {
 		defer a.sess.rebuildPending.Store(false)
-		ctx, cancel := context.WithTimeout(context.Background(), projectionRebuildTimeout)
-		defer cancel()
 		slog.Info("agent: rebuilding context projection after invalidation",
 			"writer", SessionWriterID(), "reason", reason)
-		if _, err := a.contextManager().Prepare(ctx, ContextPreparePolicy{Trigger: CompactionTriggerPressure}); err != nil {
-			slog.Warn("agent: post-invalidation projection rebuild failed", "reason", reason, "err", err)
+		failures := 0
+		for round := 1; round <= projectionRebuildMaxRounds; round++ {
+			if a.projectionRebuildSettled() {
+				slog.Info("agent: post-invalidation projection rebuilt",
+					"reason", reason, "rounds", round)
+				return
+			}
+			// 任务813: a round that neither errors nor moves the projection
+			// version is parked behind the maintenance gates (blocked receipt,
+			// stuck view) or has nothing foldable — burning the remaining
+			// rounds against it changes nothing, so the episode stops and the
+			// normal retry rhythm owns the next attempt.
+			startVersion := a.currentProjectionVersion()
+			ctx, cancel := context.WithTimeout(context.Background(), projectionRebuildTimeout)
+			_, err := a.contextManager().Prepare(ctx, ContextPreparePolicy{Trigger: CompactionTriggerPressure})
+			cancel()
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					// Shutdown owns the goroutine; neither a failure nor a retry.
+					return
+				}
+				failures++
+				// 任务813: every installed segment is durable, so a failed round
+				// retries from the committed prefix instead of giving the episode
+				// up after one try (the pre-813 single-shot shape).
+				if failures >= projectionRebuildMaxFailures {
+					slog.Warn("agent: post-invalidation projection rebuild failed",
+						"reason", reason, "rounds", round, "consecutive_failures", failures, "err", err)
+					return
+				}
+				slog.Warn("agent: post-invalidation projection rebuild round failed — retrying",
+					"reason", reason, "rounds", round, "err", err)
+				continue
+			}
+			failures = 0
+			if a.currentProjectionVersion() == startVersion {
+				slog.Warn("agent: post-invalidation projection rebuild parked — no progress this round",
+					"reason", reason, "rounds", round)
+				return
+			}
+		}
+		if a.projectionRebuildSettled() {
+			slog.Info("agent: post-invalidation projection rebuilt",
+				"reason", reason, "rounds", projectionRebuildMaxRounds)
 			return
 		}
-		slog.Info("agent: post-invalidation projection rebuilt", "reason", reason)
+		// Round budget exhausted with the view still above the fold trigger.
+		// The installed segments persist; the normal track (next request's
+		// pressure preflight, cold-cache tick) continues from here — the
+		// session never returns to the unbounded full-canonical fallback.
+		slog.Warn("agent: post-invalidation projection rebuild round budget exhausted — normal track continues",
+			"reason", reason, "rounds", projectionRebuildMaxRounds)
 	}()
+}
+
+// projectionRebuildSettled reports whether the rebuild episode is over: a
+// usable projection is installed again AND the visible view sits back under
+// the fold trigger, so the normal compaction track owns the session from here.
+// A valid projection alone is not enough — a mid-catch-up fold leaves a large
+// spliced tail that the next rounds still need to shrink.
+func (a *Agent) projectionRebuildSettled() bool {
+	if a == nil || a.sess.conversation == nil {
+		return true
+	}
+	msgs, _ := a.sess.conversation.snapshotMessagesVersion()
+	a.sess.compactionMu.Lock()
+	st := a.sess.compactionState
+	a.sess.compactionMu.Unlock()
+	if !projectionValid(st, msgs) {
+		return false
+	}
+	visible := modelVisibleFromProjection(st.Projection, msgs)
+	if len(visible) == 0 {
+		return false
+	}
+	return a.estimatedVisibleRequestTokens(visible) < a.compactTrigger()
 }
 
 // InvalidateProjectionIfStale keeps the projection when it still matches the
