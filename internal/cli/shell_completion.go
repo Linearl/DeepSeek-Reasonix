@@ -157,6 +157,16 @@ func cliCompletionRootSpec() cliCompletionSpec {
 			completionFlag("--out", cliCompletionPathValue),
 			help,
 		}),
+		completionSpec("heartbeat", []cliCompletionFlag{
+			// 任务 823: per-field pre-flight validation of heartbeat-tasks.json.
+			completionFlag("--file", cliCompletionPathValue),
+			completionFlag("--json", cliCompletionNoValue),
+			help,
+		}, completionSpec("validate", []cliCompletionFlag{
+			completionFlag("--file", cliCompletionPathValue),
+			completionFlag("--json", cliCompletionNoValue),
+			help,
+		})),
 		completionSpec("acp", []cliCompletionFlag{
 			model,
 			completionFlag("--planner", cliCompletionStaticValue, "auto", "off"),

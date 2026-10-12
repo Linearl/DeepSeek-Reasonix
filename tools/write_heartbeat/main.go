@@ -1,10 +1,10 @@
-// Command write_heartbeat is an external editor for heartbeat-tasks.json —
-// the writer class the 任务 229 G5 audit identified as the one remaining
-// clobber window: the app guards its own writes with filelock(.lock) +
-// digest CAS + atomic rename, but external editors used to write bare.
-// The external-write contract (same lock, atomic publish, envelope
-// preserved) closes that window; see desktop/heartbeat_store.go for the
-// app-side half of the contract.
+// Command write_heartbeat is an external editor for heartbeat-tasks.json,
+// held to the 任务 229 G5 external-write contract (same filelock(.lock) the
+// app holds, atomic publish via fileutil.AtomicWriteFile, envelope preserved).
+// 任务 823: the upstream seed tool swallowed the Unmarshal error and appended
+// over a config it could not read, silently dropping every existing task on
+// publish — this fork copy reports the read failure and exits non-zero
+// without touching the file (same lesson as the desktop fail-open work).
 package main
 
 import (
@@ -35,6 +35,29 @@ type Task struct {
 	TimeWindowEnd   string `json:"timeWindowEnd,omitempty"`
 }
 
+type envelope struct {
+	SchemaVersion int    `json:"schemaVersion"`
+	Revision      int    `json:"revision"`
+	Tasks         []Task `json:"tasks"`
+}
+
+// loadEnvelope decodes the existing config under the write lock. A parse
+// error is fatal: appending to a config that could not be read would drop
+// every existing task on publish (the exact silent clobber the upstream
+// seed tool's swallowed Unmarshal allowed).
+func loadEnvelope(b []byte) (envelope, error) {
+	var data envelope
+	if len(b) > 0 {
+		if err := json.Unmarshal(b, &data); err != nil {
+			return envelope{}, fmt.Errorf("existing heartbeat-tasks.json is not valid config: %w", err)
+		}
+	}
+	if data.Tasks == nil {
+		data.Tasks = []Task{}
+	}
+	return data, nil
+}
+
 func main() {
 	base := config.MemoryUserDir()
 	if base == "" {
@@ -54,18 +77,17 @@ func main() {
 	}
 	defer release()
 
-	// Read existing (under the lock).
-	b, _ := fileencoding.ReadFileUTF8(path)
-	var data struct {
-		SchemaVersion int    `json:"schemaVersion"`
-		Revision      int    `json:"revision"`
-		Tasks         []Task `json:"tasks"`
+	// Read existing (under the lock) — parse errors are fatal, never swallowed.
+	b, err := fileencoding.ReadFileUTF8(path)
+	if err != nil {
+		fmt.Println("Read error:", err)
+		os.Exit(1)
 	}
-	if len(b) > 0 {
-		_ = json.Unmarshal(b, &data)
-	}
-	if data.Tasks == nil {
-		data.Tasks = []Task{}
+	data, err := loadEnvelope(b)
+	if err != nil {
+		fmt.Println("Parse error:", err)
+		fmt.Println("Run `reasonix heartbeat validate --file` on the config to see the exact problem; fix it before seeding tasks.")
+		os.Exit(1)
 	}
 
 	now := time.Now().UnixMilli()

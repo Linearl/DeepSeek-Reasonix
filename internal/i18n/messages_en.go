@@ -644,6 +644,7 @@ Usage:
   reasonix hook list|status --json [--dir PATH]         inspect redacted hook state
   reasonix task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
                                                          inspect or control redacted tasks
+  reasonix heartbeat validate [--file PATH] [--json]  pre-flight check of heartbeat-tasks.json (per-field problems)
   reasonix bot start|doctor|weixin-login                multi-channel IM bot gateway
   reasonix upgrade [--check] [--force]                   update to the latest official release (also: reasonix update)
   reasonix completion bash|zsh|fish                     print a shell completion script to stdout

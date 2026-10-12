@@ -645,6 +645,7 @@ var Chinese = Messages{
   reasonix hook list|status --json [--dir PATH]         查看脱敏 Hook 状态
   reasonix task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
                                                          查看或控制脱敏 Task
+  reasonix heartbeat validate [--file PATH] [--json]  心跳任务配置预检（逐字段报告问题）
   reasonix bot start|doctor|weixin-login                多渠道 IM bot 网关
   reasonix upgrade [--check] [--force]                   更新到最新正式版（别名：reasonix update）
   reasonix completion bash|zsh|fish                     打印 shell 补全脚本到 stdout

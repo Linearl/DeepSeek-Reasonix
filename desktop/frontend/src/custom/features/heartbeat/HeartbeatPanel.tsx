@@ -31,6 +31,7 @@ import {
   heartbeatMutateTasks,
   heartbeatTriggerNow,
   heartbeatGenerateID,
+  heartbeatConfigError,
 } from "./heartbeat.bridge";
 import type { HeartbeatTask } from "./heartbeat.types";
 import { useHeartbeatT, type HeartbeatTranslator } from "./heartbeat.i18n";
@@ -77,6 +78,10 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
   const drafts = useAutomationDraftStore.getState;
   const { confirm, dialog, dismiss } = useConfirmDialog();
   const [loadError, setLoadError] = useState(false);
+  // 任务 823 ②: invalid-config banner — the engine keeps running its in-memory
+  // tasks while the on-disk config is broken; the banner explains why saving
+  // fails and names the validate command.
+  const [configError, setConfigError] = useState("");
   const [operationError, setOperationError] = useState(false);
   const [tasks, setTasks] = useState<HeartbeatTask[]>([]);
   const [loading, setLoading] = useState(false);
@@ -209,6 +214,7 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
       ]);
       if (generation !== listGeneration.current) return null;
       setTasks(taskList);
+      setConfigError(heartbeatConfigError());
       drafts().reconcile(taskList);
       setLoadError(false);
       const map: Record<string, string> = {};
@@ -461,6 +467,13 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
     <ManagementPageShell active={active} onBack={onBack} title={t("heartbeat.heroTitle")} description={t("heartbeat.heroSubtitle")}
       actions={<><button className="btn btn--small" disabled={loading} onClick={() => void loadTasks()}>{m("refresh")}</button><button className="btn btn--primary btn--small" onClick={() => void handleAdd()}><Plus size={14} />{t("heartbeat.addTask")}</button></>}>
     {loadError && <div className="management-notice" role="alert">{m("loadFailed")}<button className="btn btn--secondary btn--small" onClick={() => void loadTasks()}>{m("retry")}</button></div>}
+    {/* 任务 823 ②: resident banner while the on-disk config is invalid — the
+        task list shown is the engine's in-memory fail-open copy. */}
+    {configError && <div className="management-notice" role="alert" style={{ flexDirection: "column", alignItems: "flex-start" }}>
+      <div>{t("heartbeat.configInvalidBanner")}</div>
+      <div style={{ fontFamily: "var(--font-mono, monospace)", opacity: 0.8 }}>{configError}</div>
+      <div>{t("heartbeat.configInvalidHowTo")}</div>
+    </div>}
     {operationError && <div className="management-notice" role="alert">{m("operationFailed")}</div>}
     <div className="heartbeat-page" data-detail={detailOpen}>
       <div className={`heartbeat-split${detailOpen ? " heartbeat-split--detail-open" : ""}`}>

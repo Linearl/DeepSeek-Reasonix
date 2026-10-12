@@ -81,9 +81,16 @@ func (e *HeartbeatEngine) recordConfigSnapshotLocked(snapshot heartbeatConfigSna
 func (e *HeartbeatEngine) adoptExternalEditsLocked() {
 	snapshot, err := e.readConfigSnapshot()
 	if err != nil {
-		log.Printf("[heartbeat] invalid external config: %v", err)
+		// 任务 823 ② fail-open: an invalid external edit is logged and the
+		// in-memory task list keeps running unchanged (the scheduler must not
+		// drop every task because one hand-edit broke a field type); the
+		// health error is recorded so the panel banner stays up until the
+		// file reads clean again.
+		e.configHealthErr = err.Error()
+		log.Printf("[heartbeat] invalid external config: %v (fail-open: keeping %d in-memory task(s))", err, len(e.tasks))
 		return
 	}
+	e.configHealthErr = ""
 	if !snapshot.exists {
 		// Treat deletion of a previously observed config as authoritative.
 		// Retaining the old tasks would execute them on the next tick and recreate

@@ -274,7 +274,7 @@
       "file-size": 1398
     },
     "desktop/frontend/src/custom/features/heartbeat/HeartbeatPanel.tsx": {
-      "file-size": 208
+      "file-size": 221
     },
     "desktop/frontend/src/custom/features/heartbeat/HeartbeatTaskEditor.tsx": {
       "file-size": 47
@@ -302,8 +302,8 @@
     },
     "desktop/heartbeat.go": {
       "complexity": 7,
-      "essay": 60,
-      "file-size": 589,
+      "essay": 68,
+      "file-size": 619,
       "function-size": 92
     },
     "desktop/heartbeat_maxruns_test.go": {
@@ -325,7 +325,7 @@
     },
     "desktop/heartbeat_store.go": {
       "complexity": 2,
-      "essay": 10
+      "essay": 12
     },
     "desktop/heartbeat_tool.go": {
       "essay": 2
@@ -1795,10 +1795,10 @@
       "test-file-size": 3609
     },
     "internal/cli/cli.go": {
-      "complexity": 99,
-      "essay": 22,
-      "file-size": 2044,
-      "function-size": 599,
+      "complexity": 101,
+      "essay": 23,
+      "file-size": 2056,
+      "function-size": 611,
       "narrative": 1
     },
     "internal/cli/cli_test.go": {
@@ -1899,7 +1899,7 @@
       "file-size": 138
     },
     "internal/cli/shell_completion.go": {
-      "function-size": 144
+      "function-size": 154
     },
     "internal/cli/skill_hooks.go": {
       "essay": 1

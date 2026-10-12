@@ -180,6 +180,12 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 		// 任务 229 G6: normalized JSONL export with LoadSession as the single
 		// transcript parser — external consumers stop maintaining their own.
 		return runExportTranscript(rest)
+	case "heartbeat":
+		// 任务 823: `reasonix heartbeat validate` — per-field pre-flight check
+		// for heartbeat-tasks.json (type errors, duplicate ids, unfireable
+		// schedules, too-new schema), the read-only half of the invalid-config
+		// robustness fix.
+		return heartbeatCommand(rest)
 	case "session", "sessions", "catalogs":
 		return runSessionOrCatalogCommand(cmd, rest)
 	case "hook", "hooks":
