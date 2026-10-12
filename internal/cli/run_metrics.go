@@ -540,6 +540,10 @@ func (s *metricsSink) RecordDelegationAdmission(a event.DelegationAdmissionAudit
 	event.RecordDelegationAdmission(s.inner, a)
 }
 
+func (s *metricsSink) RecordDelegationMetrics(a event.DelegationMetricsAudit) {
+	event.RecordDelegationMetrics(s.inner, a)
+}
+
 func (s *metricsSink) RecordOutcomeProgress(sample evidence.OutcomeSample) {
 	event.RecordOutcomeProgress(s.inner, sample)
 }

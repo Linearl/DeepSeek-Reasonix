@@ -6825,7 +6825,15 @@ func (c *Controller) SetSubagentPolicy(v string) error {
 	c.mu.Lock()
 	c.subagentPolicy = p
 	sessionPath := c.sessionPath
+	executor := c.executor
 	c.mu.Unlock()
+	// Mirror the tier onto the executor so the end-of-turn delegation metrics
+	// (task 820) record the policy the turn actually ran under. The executor
+	// may not exist yet in transient controller states; the rebind flow that
+	// rebuilds a controller replays this setter, so the mirror self-heals.
+	if executor != nil {
+		executor.SetSubagentPolicyTier(p)
+	}
 	// Persist outside the lock (file I/O must not hold controller mu). A
 	// missing/empty session path is a transient controller state (no session
 	// bound yet); skip persistence there — the tier still applies in memory.

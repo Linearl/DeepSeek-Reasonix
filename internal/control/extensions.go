@@ -237,6 +237,10 @@ func (s *frontendEventSink) RecordDelegationAdmission(a event.DelegationAdmissio
 	event.RecordDelegationAdmission(s.inner, a)
 }
 
+func (s *frontendEventSink) RecordDelegationMetrics(a event.DelegationMetricsAudit) {
+	event.RecordDelegationMetrics(s.inner, a)
+}
+
 func (s *frontendEventSink) RecordMemoryRecall(a event.MemoryRecallAudit) {
 	event.RecordMemoryRecall(s.inner, a)
 }

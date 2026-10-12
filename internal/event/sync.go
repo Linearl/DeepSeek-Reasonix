@@ -110,6 +110,14 @@ func (s *syncSink) RecordDelegationAdmission(a DelegationAdmissionAudit) {
 	}
 }
 
+func (s *syncSink) RecordDelegationMetrics(a DelegationMetricsAudit) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if dm, ok := s.inner.(DelegationMetricsSink); ok {
+		dm.RecordDelegationMetrics(a)
+	}
+}
+
 func (s *syncSink) RecordWorkspaceMutation(m WorkspaceMutation) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

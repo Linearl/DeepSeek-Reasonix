@@ -152,6 +152,15 @@ func (a *Agent) emitTurnShadows(input string) {
 	rep := completion.BuildAt(c, a.task.ledger, a.writeWorkspaceRoot, a.scratchRoots())
 	a.turn.completion = &rep
 	event.RecordCompletionReport(a.svc.sink, completionReportAudit(rep))
+	// Task 820 (816 P0): the end-of-turn delegation fingerprint — the tier
+	// this turn ran under, its dispatch counts, and its main-chain tool
+	// steps. Observes; decides nothing. Sub-agent runs report "" for Policy.
+	event.RecordDelegationMetrics(a.svc.sink, event.DelegationMetricsAudit{
+		Policy:                 a.subagentPolicyTierValue(),
+		TaskDispatches:         a.turn.taskDispatches,
+		ReadOnlyTaskDispatches: a.turn.readOnlyTaskDispatches,
+		MainChainToolSteps:     a.turn.mainChainToolSteps,
+	})
 	a.emitCompletionSummary(c, rep)
 }
 

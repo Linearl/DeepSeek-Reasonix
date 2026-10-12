@@ -888,6 +888,44 @@ func RecordDelegationAdmission(s Sink, a DelegationAdmissionAudit) {
 	}
 }
 
+// DelegationMetricsAudit is one main-chain run's end-of-turn delegation
+// fingerprint (#820, 816 P0): the tier the turn ran under, how many
+// delegation dispatches it made, and how many tool steps the main chain
+// spent inline. Counts and a tier label only — never task text or args.
+// This is what makes "did aggressive actually change behavior" verifiable:
+// the light-vs-aggressive dispatch delta becomes a number, not a vibe.
+type DelegationMetricsAudit struct {
+	// Policy is the delegation tier mirrored onto this agent for the turn;
+	// "" means the tier never reached this agent (sub-agent runs, hosts
+	// that never set it) and the turn behaved as light.
+	Policy string
+	// TaskDispatches counts task tool calls this turn.
+	TaskDispatches int
+	// ReadOnlyTaskDispatches counts read_only_task calls this turn.
+	ReadOnlyTaskDispatches int
+	// MainChainToolSteps counts every tool call the main chain executed
+	// this turn, delegation dispatches included — the inline side of the
+	// dispatch-vs-inline trade the tier is supposed to move.
+	MainChainToolSteps int
+}
+
+// DelegationMetricsSink is an optional sink capability; implementations
+// must keep it content-free, like every other audit channel.
+type DelegationMetricsSink interface {
+	RecordDelegationMetrics(DelegationMetricsAudit)
+}
+
+// RecordDelegationMetrics forwards the end-of-turn delegation fingerprint
+// only to sinks that explicitly opt in. Ordinary UI sinks receive nothing.
+func RecordDelegationMetrics(s Sink, a DelegationMetricsAudit) {
+	if nilutil.IsNil(s) {
+		return
+	}
+	if dm, ok := s.(DelegationMetricsSink); ok {
+		dm.RecordDelegationMetrics(a)
+	}
+}
+
 // OutcomeProgressSink is an optional sink capability for the shadow outcome
 // scorer's per-round samples: counts only, never paths or commands. Shadow
 // means observed, not enforced — the novelty guard still decides behavior.
