@@ -242,7 +242,14 @@ func TestTooSmallWindowReturnsCompactionRequired(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(mock.handler))
 	defer srv.Close()
 
-	a, sink := newAgent(t, srv.URL, mock.tools(), 900 /*window tok*/, 4 /*recentKeep*/)
+	// 任务822: 任务719's bounded tail view makes a merely-slightly-over window
+	// runnable again (the 900-token window used here degrades a 657-token
+	// transcript to 556 admissible tokens), so the degenerate shape this test
+	// pins — a window not even the pinned head plus the newest unit can fit —
+	// needs the smaller window: every degraded view stays past the hard
+	// ceiling and the request chain must surface ErrCompactionRequired instead
+	// of fabricating a mechanical digest.
+	a, sink := newAgent(t, srv.URL, mock.tools(), 300 /*window tok*/, 4 /*recentKeep*/)
 
 	if err := a.Run(context.Background(), strings.Repeat("please consider this requirement. ", 6)); !errors.Is(err, ErrCompactionRequired) {
 		t.Fatalf("Run = %v, want ErrCompactionRequired", err)

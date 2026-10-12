@@ -33,11 +33,13 @@ func TestManualCompactEscapesOverCeilingDeadlock(t *testing.T) {
 	a := agentOverForceWindow(t, prov, sess, window)
 
 	big := strings.Repeat("word ", 400)
-	for i := 0; i < 300 && a.estimatedVisibleRequestTokens(a.modelVisibleMessages()) < a.hardInputCeiling(); i++ {
+	for i := 0; i < 300 && canonicalEstimate(a, sess) < a.hardInputCeiling(); i++ {
 		sess.Add(provider.Message{Role: provider.RoleAssistant, Content: big})
 		sess.Add(provider.Message{Role: provider.RoleUser, Content: "continue"})
 	}
-	if est, hard := a.estimatedVisibleRequestTokens(a.modelVisibleMessages()), a.hardInputCeiling(); est < hard {
+	// 任务822: the over-ceiling guard reads the canonical transcript — the
+	// 任务719 clamped tail view sits below the hard ceiling by design.
+	if est, hard := canonicalEstimate(a, sess), a.hardInputCeiling(); est < hard {
 		t.Fatalf("fixture did not reach hard ceiling: %d < %d", est, hard)
 	}
 
@@ -90,7 +92,9 @@ func TestManualCompactOverCeilingPrunesBeforeSummary(t *testing.T) {
 	}
 	sess := &Session{Messages: msgs}
 	a := agentOverForceWindow(t, prov, sess, window)
-	if est, hard := a.estimatedVisibleRequestTokens(a.modelVisibleMessages()), a.hardInputCeiling(); est < hard {
+	// 任务822: the over-ceiling guard reads the canonical transcript — the
+	// 任务719 clamped tail view sits below the hard ceiling by design.
+	if est, hard := canonicalEstimate(a, sess), a.hardInputCeiling(); est < hard {
 		t.Fatalf("fixture did not reach hard ceiling: %d < %d", est, hard)
 	}
 
@@ -128,11 +132,13 @@ func TestManualCompactMultiBatchWhenSingleFoldInsufficient(t *testing.T) {
 
 	big := strings.Repeat("word ", 400)
 	hard := a.hardInputCeiling()
-	for i := 0; i < 500 && a.estimatedVisibleRequestTokens(a.modelVisibleMessages()) < 2*hard+10_000; i++ {
+	for i := 0; i < 500 && canonicalEstimate(a, sess) < 2*hard+10_000; i++ {
 		sess.Add(provider.Message{Role: provider.RoleAssistant, Content: big})
 		sess.Add(provider.Message{Role: provider.RoleUser, Content: "continue"})
 	}
-	if est := a.estimatedVisibleRequestTokens(a.modelVisibleMessages()); est < 2*hard {
+	// 任务822: the over-ceiling guard reads the canonical transcript — the
+	// 任务719 clamped tail view sits below the hard ceiling by design.
+	if est := canonicalEstimate(a, sess); est < 2*hard {
 		t.Fatalf("fixture did not reach double ceiling: %d < %d", est, 2*hard)
 	}
 

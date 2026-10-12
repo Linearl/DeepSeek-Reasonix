@@ -69,12 +69,30 @@ func (s *tailViewState) clear() {
 }
 
 // active reports whether the currently cached evaluation is a degraded tail
-// view — the signal prepareOnce uses to force the compaction pass even though
-// the bounded view itself sits below the fold trigger.
+// view — the signal maintenanceOccupancyEstimate uses to switch the
+// threshold read to the physical transcript occupancy.
 func (s *tailViewState) active() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.known && s.view != nil
+}
+
+// maintenanceOccupancyEstimate is the physical-occupancy read the compaction
+// thresholds speak (任务822): while the degraded tail view is active the
+// canonical transcript is the session's true size — the view only bounds the
+// request payload (任务719), so threshold decisions that read the clamped view
+// would never fire again. Otherwise the current view is authoritative.
+func (a *Agent) maintenanceOccupancyEstimate() int {
+	if a == nil || a.sess.conversation == nil {
+		return 0
+	}
+	if a.sess.tailView.active() {
+		canonical, _ := a.sess.conversation.snapshotMessagesVersion()
+		if len(canonical) > 0 {
+			return a.estimatedVisibleRequestTokens(canonical)
+		}
+	}
+	return a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
 }
 
 // tailViewTarget is the content budget of the degraded view.

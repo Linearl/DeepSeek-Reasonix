@@ -64,6 +64,15 @@ func prepareContext(ctx context.Context, a *Agent, trigger string) error {
 	return err
 }
 
+// canonicalEstimate is the physical occupancy of the session transcript.
+// 任务822: since 任务719 the model-visible view of an over-ceiling session is
+// clamped to a bounded tail whose estimate sits below every threshold by
+// design, so fixture guards that pin "the session is over the ceiling" must
+// read the canonical transcript, not the clamped view.
+func canonicalEstimate(a *Agent, sess *Session) int {
+	return a.estimatedVisibleRequestTokens(sess.Messages)
+}
+
 // foldRegionOf is the region the next compaction would hand the summarizer.
 func foldRegionOf(a *Agent) []provider.Message {
 	canonical, version := a.sess.conversation.snapshotMessagesVersion()
@@ -239,9 +248,13 @@ func TestPressureBelowHardCeilingKeepsTheFailure(t *testing.T) {
 }
 
 // The receipt recorded below the ceiling must not outlive the ceiling itself:
-// once growing usage crosses the hard ceiling the fold is the only way out, so
-// recovery has to run even with a standing failed receipt. If the summarizer is
-// still down, hard pressure takes the truncation rescue without a fake digest.
+// once growing usage crosses the hard ceiling the failed receipt's backoff
+// must not hold forever — the fold retry has to run again even with a standing
+// failed receipt. 任务822: if the summarizer is still down, 任务719's bounded
+// tail view already leaves with an admissible request, so the truncation
+// rescue loses its premise (compact_summary_guard contract): the failure stays
+// recorded without a fake digest and the retry is proven by the new receipt
+// generation.
 func TestFailedSummaryReceiptRetriesAtHardCeilingWithoutFallback(t *testing.T) {
 	sess := foldableSessionOverForce(6)
 	a := agentOverForce(t, &fakeProvider{streamErr: errors.New("provider down")}, sess)
@@ -257,6 +270,7 @@ func TestFailedSummaryReceiptRetriesAtHardCeilingWithoutFallback(t *testing.T) {
 	if r := a.sess.compactionState.LastReceipt; r == nil || (r.Status != "blocked" && r.Status != "failed") {
 		t.Fatalf("receipt = %+v, want the failure recorded", r)
 	}
+	first := a.sess.compactionState.LastReceipt
 
 	// The session keeps growing past the ceiling while the receipt stands.
 	big := strings.Repeat("word ", 400)
@@ -269,13 +283,22 @@ func TestFailedSummaryReceiptRetriesAtHardCeilingWithoutFallback(t *testing.T) {
 	}
 
 	if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
-		t.Fatalf("over-ceiling prepare = %v, want the truncation rescue", err)
+		t.Fatalf("over-ceiling prepare = %v, want the retry absorbed with an admissible view", err)
 	}
 	if degradedFold(a) {
 		t.Fatal("hard-ceiling failure installed a mechanical digest")
 	}
-	if !truncatedRescue(a) {
-		t.Fatalf("receipt = %+v, want an applied truncation", a.sess.compactionState.LastReceipt)
+	r := a.sess.compactionState.LastReceipt
+	if r == nil || (r.Status != "blocked" && r.Status != "failed") {
+		t.Fatalf("receipt = %+v, want the still-failing summary recorded", r)
+	}
+	// 任务822: the standing receipt must not suppress the over-ceiling retry —
+	// a new receipt generation proves the fold was attempted again.
+	if r.OperationID == first.OperationID {
+		t.Fatalf("receipt = %+v, want a fresh retry past the ceiling, not the stale receipt %q", r, first.OperationID)
+	}
+	if est, hard := a.estimatedVisibleRequestTokens(a.modelVisibleMessages()), a.hardInputCeiling(); est >= hard {
+		t.Fatalf("visible view = %d tokens, want the bounded tail window under the ceiling %d", est, hard)
 	}
 }
 

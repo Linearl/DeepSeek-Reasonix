@@ -129,6 +129,20 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	}
 	fold := a.compactTrigger()
 	hard := a.hardInputCeiling()
+	// 任务822: every threshold comparison below (fold trigger, hard ceiling,
+	// backoff bypass, rescue eligibility) must read the session's physical
+	// occupancy, not the degraded view's clamped size. 任务719's bounded tail
+	// view only shrinks the request payload — an active degraded view means
+	// the canonical transcript sits at or above the hard ceiling, so judging
+	// by the clamped view lets a session sit past thresholds it can never
+	// re-cross: the fold never triggers, ceiling rescues never fire, and the
+	// failed-receipt backoff holds forever. Observed provider usage keeps
+	// priority: it is the authoritative measurement the maintenance contract
+	// (issue 7935) is written against.
+	if policy.ObservedInputTokens <= 0 && a.sess.tailView.active() {
+		est = a.maintenanceOccupancyEstimate()
+		prepared.InputTokens = est
+	}
 	if policy.ObservedInputTokens > 0 {
 		est = policy.ObservedInputTokens
 		prepared.InputTokens = est
@@ -161,11 +175,12 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 		return prepared, nil
 	}
 	// One user trigger. Overflow is a one-shot physical recovery path only.
-	// 任务719: a degraded tail view sits below the fold trigger by design, so
-	// without this flag the bounded window would suppress the very compaction
-	// that rebuilds the projection — the fold is forced while the view is the
-	// rolling tail.
-	forceFold := policy.Force || policy.Trigger == CompactionTriggerManual || policy.Trigger == CompactionTriggerOverflow || est >= hard || a.sess.tailView.active()
+	// 任务822: the 任务719 tailView.active() term is gone — with the estimate
+	// above reading the physical occupancy, a degraded view lands in
+	// est >= hard on its own (the view only degrades at or above the hard
+	// ceiling), and the old term wrongly force-folded sessions whose observed
+	// usage sat below the fold trigger (the issue 7935 contract).
+	forceFold := policy.Force || policy.Trigger == CompactionTriggerManual || policy.Trigger == CompactionTriggerOverflow || est >= hard
 	if est < fold && !forceFold {
 		return prepared, nil
 	}
@@ -179,7 +194,11 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 		}
 		if applied {
 			prepared = m.currentPrepared()
-			est = prepared.InputTokens
+			// 任务822: re-read the physical occupancy, not the refreshed view —
+			// the rescue-level decisions below (maxSummaries, ladder-end
+			// truncation) must keep seeing the pre-prune overshoot the view
+			// alone can no longer express.
+			est = a.maintenanceOccupancyEstimate()
 			inputHash = a.contextMaintenanceInputHash(prepared.Messages)
 			if (policy.Trigger == CompactionTriggerPressure && est < fold) ||
 				(policy.Trigger == CompactionTriggerOverflow && est < hard) {
@@ -239,10 +258,10 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 			if ladder.absorbOverflow(err) {
 				continue
 			}
-			return m.summaryFailed(policy, inputHash, hard, foldInstalled, err)
+			return m.summaryFailed(policy, inputHash, hard, est, foldInstalled, err)
 		}
 		if outcome == CompactionNoop {
-			return m.summaryNoop(policy, inputHash, hard)
+			return m.summaryNoop(policy, inputHash, hard, est)
 		}
 		foldInstalled = true
 
@@ -281,13 +300,13 @@ func foldLanded(policy ContextPreparePolicy, tokens, fold, hard int) bool {
 	}
 }
 
-func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash string, hard int, foldInstalled bool, err error) (PreparedContext, error) {
+func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash string, hard, est int, foldInstalled bool, err error) (PreparedContext, error) {
 	a := m.agent
 	if errors.Is(err, errCompressStaleContext) && policy.Trigger != CompactionTriggerManual {
 		reason := "context changed during summary; automatic retry blocked for this generation"
 		slog.Warn("agent: context summary blocked", "reason", reason, "trigger", policy.Trigger, "fold_installed", foldInstalled)
 		a.recordContextMaintenanceBlocked(inputHash, policy.Trigger, "summary", reason)
-		return m.rescueOrFail(policy, hard, errors.New(reason))
+		return m.rescueOrFail(policy, hard, est, errors.New(reason))
 	}
 	status := "failed"
 	if errors.Is(err, errSummaryOutputTruncated) || errors.Is(err, errCheckpointRejected) {
@@ -322,17 +341,20 @@ func (m ContextManager) summaryFailed(policy ContextPreparePolicy, inputHash str
 	if errors.Is(err, errCheckpointCeiling) && policy.Trigger != CompactionTriggerManual {
 		return m.rescueByTruncation(policy, hard, err)
 	}
-	return m.rescueOrFail(policy, hard, err)
+	return m.rescueOrFail(policy, hard, est, err)
 }
 
-func (m ContextManager) summaryNoop(policy ContextPreparePolicy, inputHash string, hard int) (PreparedContext, error) {
+func (m ContextManager) summaryNoop(policy ContextPreparePolicy, inputHash string, hard, est int) (PreparedContext, error) {
 	// Task 424: the reason doubles as the ErrNoFoldableRegion sentinel so
 	// failure consumers recognise the terminal "nothing foldable left" class
 	// without string matching (the desktop cold-cache loop parks on it).
 	m.agent.recordContextMaintenanceBlocked(inputHash, policy.Trigger, "summary", ErrNoFoldableRegion.Error())
 	latest := m.currentPrepared()
+	// 任务822: the ceiling comparison reads the physical occupancy — a clamped
+	// tail view can never reach hard, so the view-sized read would park a
+	// physically-oversized session on a digest-less no-op forever.
 	switch {
-	case policy.Trigger == CompactionTriggerOverflow || latest.InputTokens >= hard:
+	case policy.Trigger == CompactionTriggerOverflow || est >= hard:
 		return m.rescueByTruncation(policy, hard, ErrNoFoldableRegion)
 	case policy.Force:
 		return PreparedContext{}, fmt.Errorf("%w: %w", ErrCompactionRequired, ErrNoFoldableRegion)
@@ -344,13 +366,26 @@ func (m ContextManager) summaryNoop(policy ContextPreparePolicy, inputHash strin
 // rescueOrFail decides what a failed summary means: below the ceiling
 // automatic maintenance waits for the next view and a manual compact reports
 // the error; at or above the ceiling only the lossy truncation rescue is left.
-func (m ContextManager) rescueOrFail(policy ContextPreparePolicy, hard int, cause error) (PreparedContext, error) {
-	latest := m.currentPrepared()
-	if policy.Trigger != CompactionTriggerOverflow && latest.InputTokens < hard {
+// 任务822: the ceiling read is per-trigger. Manual compaction is an explicit
+// demand that the session return to an in-window track, so it reads the
+// physical occupancy (est) — a clamped tail view never reaches hard, and the
+// rescue would never fire. 任务719 made the bounded view admissible for
+// automatic maintenance, so pressure keeps the view-sized read: the
+// truncation rescue loses its premise when the turn already leaves with an
+// admissible view (compact_summary_guard contract, 813 parked-episode pin).
+func (m ContextManager) rescueOrFail(policy ContextPreparePolicy, hard, est int, cause error) (PreparedContext, error) {
+	if policy.Trigger == CompactionTriggerOverflow {
+		return m.rescueByTruncation(policy, hard, cause)
+	}
+	overCeiling := m.currentPrepared().InputTokens >= hard
+	if policy.Trigger == CompactionTriggerManual {
+		overCeiling = est >= hard
+	}
+	if !overCeiling {
 		if policy.Trigger == CompactionTriggerManual {
 			return PreparedContext{}, cause
 		}
-		return latest, nil
+		return m.currentPrepared(), nil
 	}
 	return m.rescueByTruncation(policy, hard, cause)
 }

@@ -80,7 +80,7 @@ func TestCeilingRejectionEndsInTruncationOnFirstReject(t *testing.T) {
 	})
 	m := a.contextManager()
 	got, err1 := m.summaryFailed(ContextPreparePolicy{Trigger: CompactionTriggerPressure},
-		"round1", hard, false, ceilErr)
+		"round1", hard, a.maintenanceOccupancyEstimate(), false, ceilErr)
 	if err1 != nil {
 		t.Fatalf("round 1 summaryFailed = %v, want the truncation rescue to succeed", err1)
 	}
