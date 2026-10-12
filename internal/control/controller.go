@@ -477,6 +477,11 @@ type pendingAsk struct {
 	questions []event.AskQuestion
 	reply     chan []event.AskAnswer
 	queued    bool // registered but not yet shown; replay must skip it
+	// interact carries the task-806 "the user touched the panel" signal for a
+	// reversible ask under autopilot. Non-nil only for the batch class that
+	// arms the interaction-aware timer; closing it stops that timer (要素①),
+	// after which the ask waits for the user like any attended ask.
+	interact chan struct{}
 }
 
 type plannerSessionResetter interface {
@@ -3062,26 +3067,25 @@ func (c *Controller) autopilotAskWaitFor() time.Duration {
 func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]event.AskAnswer, error) {
 	// Registering after the lock left a queued question invisible everywhere:
 	// no event, absent from the snapshot, unreachable by ReplayPendingPrompts.
-	// Autopilot (task 49 A3): nobody is available to answer. Questions the run may
-	// decide alone are handed straight back with an explicit "decide for yourself"
-	// answer, which lands in the transcript as the audit record. Anything
-	// destructive, outward-facing, or credential-touching still waits for a human,
-	// but not forever — after DefaultAutopilotAskWait the run ends with a terminal
-	// error so the safety valve is a real stop, not an invisible hang (task 109 B4).
-	// The task-477 experimental sub-option (default off) replaces that terminal
-	// stop with an explicit refusal answer, so a goal-driven unattended run
-	// keeps going after the timeout instead of dying on the dialog.
+	// Autopilot (task 49 A3, reworked by task 806): a reversible ask — one the
+	// run may equally well decide alone — no longer answers itself instantly.
+	// The panel is surfaced like any attended ask, and an interaction-aware
+	// timer takes over only when the user does not touch it: any selection or
+	// typed edit on the panel stops the timer (要素①), a silent expiry answers
+	// "decide for yourself" on the user's behalf with the same decision trail
+	// as before (要素②). Anything destructive, outward-facing, or
+	// credential-touching still waits for a human, but not forever — after
+	// DefaultAutopilotAskWait the run ends with a terminal error so the safety
+	// valve is a real stop, not an invisible hang (task 109 B4). The task-477
+	// experimental sub-option (default off) replaces that terminal stop with an
+	// explicit refusal answer, so a goal-driven unattended run keeps going
+	// after the timeout instead of dying on the dialog.
 	// Task 567 read-only instrumentation: this entry stamp pairs with the
 	// prompt_lock and ask_emit checkpoints below (same [ask-panel] tag) to
 	// bisect a slow panel; it adds no locking and changes no ordering.
 	slog.Info("[ask-panel] ask chain checkpoint", "stage", "entry", "questions", len(questions))
-	if c.autopilot && askRiskOfQuestions(askQuestionTexts(questions)) == askRiskReversible {
-		answers := autopilotAnswers(questions)
-		// Task 544: this host auto-answer counts as an answered ask of the
-		// running turn, so a terminal stop right after it can be resumed.
-		c.markTurnAskAnswered(askDecisionSummary(questions, answers))
-		return answers, nil
-	}
+	askRisk := askRiskOfQuestions(askQuestionTexts(questions))
+	reversibleTimedAsk := c.autopilot && askRisk == askRiskReversible
 
 	// Task 225: a session working on a task dispatched by an autopilot parent
 	// forwards its prompts to that parent's Ask channel — the parent's own
@@ -3119,7 +3123,17 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 		}
 	}
 
-	id, reply := c.approval.registerAsk(questions)
+	// Task 806: a reversible ask under autopilot registers with the
+	// interaction channel so the panel can stop the auto-decide timer; every
+	// other prompt class keeps the plain registration verbatim.
+	var interactCh chan struct{}
+	var id string
+	var reply chan []event.AskAnswer
+	if reversibleTimedAsk {
+		id, reply, interactCh = c.approval.registerAskInteractive(questions)
+	} else {
+		id, reply = c.approval.registerAsk(questions)
+	}
 	c.registerOwnedPrompt(id, PromptAsk)
 
 	if !c.lockPromptFor(ctx, "question") {
@@ -3171,13 +3185,61 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// terminal stop for an explicit refusal: after the (shorter) configured
 	// wait the run answers "refused, continue another way" so a goal-driven
 	// run keeps going instead of dying on one unanswered dialog.
+	// Task 806: the timer below governs the HIGH-RISK wait only — the
+	// reversible tier is timed by its own interaction-aware block right below,
+	// so a touched panel never races this channel.
 	var askTimeout <-chan time.Time
 	var askWait time.Duration
-	if c.autopilot {
+	if c.autopilot && !reversibleTimedAsk {
 		askWait = c.autopilotAskWaitFor()
 		t := time.NewTimer(askWait)
 		defer t.Stop()
 		askTimeout = t.C
+	}
+
+	// Task 806 三要素 semantics for a reversible ask under autopilot: the panel
+	// is already out (the shared emit above). ① Any panel interaction — a
+	// selection or a typed edit, delivered via NotifyAskInteraction — stops the
+	// timer, and the ask falls through to the plain attended wait: the user is
+	// visibly present, so the run must not take the decision away mid-choice.
+	// ② A silent expiry answers on the user's behalf with the same
+	// decide-for-yourself reply the task-49 A3 instant path used, keeping the
+	// decision_id 留痕链 (markTurnAskAnswered + decision receipt) unchanged.
+	if reversibleTimedAsk {
+		askWait := c.autopilotAskWaitFor()
+		timer := time.NewTimer(askWait)
+		defer timer.Stop()
+		select {
+		case ans := <-reply:
+			return ans, nil
+		case <-interactCh:
+			log.Printf("[ask-panel] ask interaction received; auto-decide timer stopped, waiting for the user (task 806) turn=%s item=%s", turnID, id)
+			// fall through: no timer on the wait below — an attended wait for
+			// an attended user.
+		case <-timer.C:
+			c.cancelOwnedPrompt(id)
+			c.expirePendingCard(id)
+			answers := autopilotAnswers(questions)
+			// Task 544: this host auto-answer counts as an answered ask of the
+			// running turn, so a terminal stop right after it can be resumed.
+			c.markTurnAskAnswered(askDecisionSummary(questions, answers))
+			// 判据锚 (task 477 shape): one grep-able log line plus one notice,
+			// so "did the auto-decide fire and what did it decide" is
+			// answerable from the log and the transcript alone.
+			log.Printf("[autopilot-ask] reversible question untouched for %s; decided for the user (task 806) turn=%s item=%s", askWait, turnID, id)
+			c.sink.Emit(event.Event{
+				Kind:  event.Notice,
+				Level: event.LevelInfo,
+				Code:  "autopilot_ask_auto_decide",
+				Text:   "autopilot · ask — no interaction within " + askWait.String() + "; decided for you: " + clipUTF8(askDecisionSummary(questions, answers), 160),
+				Detail: "the unattended run surfaced this question and answered it itself only after the wait passed untouched; answering on the panel at any point stops the timer (task 806)",
+			})
+			return answers, nil
+		case <-waitCtx.Done():
+			c.cancelOwnedPrompt(id)
+			c.expirePendingCardErr(id, waitCtx.Err())
+			return nil, waitCtx.Err()
+		}
 	}
 
 	select {
@@ -3219,6 +3281,19 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 		c.expirePendingCardErr(id, waitCtx.Err())
 		return nil, waitCtx.Err()
 	}
+}
+
+// NotifyAskInteraction reports that the user started operating the ask panel
+// for a pending ask (a selection or a typed edit; task 806 要素①). For a
+// reversible ask under autopilot it stops the auto-decide timer so the run
+// cannot take the decision away mid-choice; every other prompt class consumes
+// it as a no-op, which is why callers may fire it for any ask ID without
+// knowing the risk tier. Unknown/expired IDs are ignored.
+func (c *Controller) NotifyAskInteraction(id string) {
+	if c == nil || id == "" {
+		return
+	}
+	c.approval.notifyAskInteraction(id)
 }
 
 // AnswerQuestion resolves a pending AskRequest by ID with the user's selections.

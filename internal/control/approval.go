@@ -533,6 +533,39 @@ func (a *approvalManager) registerAsk(questions []event.AskQuestion) (string, ch
 	return id, reply
 }
 
+// registerAskInteractive is registerAsk plus the task-806 interaction channel:
+// a reversible ask under autopilot arms the interaction-aware timer, so its
+// pending record carries the channel the panel signals on when the user starts
+// choosing or typing (要素①). The channel is nil elsewhere — high-risk and
+// attended asks keep the plain registration verbatim.
+func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) (string, chan []event.AskAnswer, chan struct{}) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.nextID++
+	id := strconv.Itoa(a.nextID)
+	reply := make(chan []event.AskAnswer, 1)
+	interact := make(chan struct{})
+	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, interact: interact}
+	return id, reply, interact
+}
+
+// notifyAskInteraction closes the interaction channel of a pending ask, one
+// shot. It reports whether a timer-armed ask actually consumed the signal —
+// false is the expected answer for every other prompt class, which is why the
+// desktop bridge may call this for any ask ID without gating on risk tier.
+func (a *approvalManager) notifyAskInteraction(id string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	p, ok := a.asks[id]
+	if !ok || p.interact == nil {
+		return false
+	}
+	close(p.interact)
+	p.interact = nil
+	a.asks[id] = p
+	return true
+}
+
 // markAskEmitted clears the queued flag once the ask has reached a frontend,
 // which is what makes it eligible for replay.
 func (a *approvalManager) markAskEmitted(id string) {

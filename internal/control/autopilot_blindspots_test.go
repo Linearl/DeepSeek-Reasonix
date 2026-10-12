@@ -116,17 +116,49 @@ func TestReviewUnattendedApprovalKeywordScreenStillRefuses(t *testing.T) {
 	}
 }
 
-// TestAutopilotAskReversibleStillSelfAnswers keeps A3 behaviour.
-func TestAutopilotAskReversibleStillSelfAnswers(t *testing.T) {
-	c := New(Options{Policy: permission.Policy{Mode: permission.Allow}, Autopilot: true, AutopilotMaxRuntime: time.Hour})
-	answers, err := c.Ask(context.Background(), []event.AskQuestion{{
-		ID: "q1", Prompt: "Should I edit README in the workspace?", Options: []event.AskOption{{Label: "yes"}},
-	}})
-	if err != nil {
-		t.Fatalf("Ask: %v", err)
+// TestAutopilotAskReversibleSurfacesPanel replaces the task-49 A3 instant
+// self-answer pin (reworked by task 806): a reversible ask under autopilot now
+// SURFACES THE PANEL — it must hang as a pending ask instead of returning a
+// self-answer immediately — and the user's own answer still wins over the
+// auto-decide timer.
+func TestAutopilotAskReversibleSurfacesPanel(t *testing.T) {
+	c := New(Options{Policy: permission.Policy{Mode: permission.Allow}, Autopilot: true, AutopilotMaxRuntime: time.Hour, AutopilotAskWait: time.Minute})
+	done := make(chan struct{})
+	var answers []event.AskAnswer
+	var err error
+	go func() {
+		answers, err = c.Ask(context.Background(), []event.AskQuestion{{
+			ID: "q1", Prompt: "Should I edit README in the workspace?", Options: []event.AskOption{{Label: "yes"}},
+		}})
+		close(done)
+	}()
+	// 弹面板铁证：ask 进入 pending 集，而不是 0 秒自答 return。
+	deadline := time.Now().Add(2 * time.Second)
+	id := ""
+	for time.Now().Before(deadline) {
+		if ids := c.PendingPromptIdentities(); len(ids) > 0 && ids[0].Kind == PromptAsk {
+			id = ids[0].PromptID
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
-	if len(answers) != 1 || len(answers[0].Selected) == 0 {
-		t.Fatalf("reversible ask under autopilot must self-answer, got %+v", answers)
+	if id == "" {
+		t.Fatal("reversible ask under autopilot never became a pending prompt; the 0s self-answer is back")
+	}
+	select {
+	case <-done:
+		t.Fatalf("ask returned without any user action (answers=%v err=%v); the panel must stay up", answers, err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	if err := c.AnswerQuestionChecked(id, []event.AskAnswer{{QuestionID: "q1", Selected: []string{"yes"}}}); err != nil {
+		t.Fatalf("answer err = %v, want nil", err)
+	}
+	<-done
+	if err != nil {
+		t.Fatalf("ask err = %v, want nil after the user answered", err)
+	}
+	if len(answers) != 1 || len(answers[0].Selected) == 0 || answers[0].Selected[0] != "yes" {
+		t.Fatalf("answers = %+v, want the user's own selection", answers)
 	}
 }
 
