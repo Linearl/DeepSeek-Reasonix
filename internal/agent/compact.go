@@ -22,6 +22,16 @@ const (
 	recentTailBudgetRatio  = 0.16 // recent verbatim tail as a fraction of the window
 	summaryOutputMaxTokens = 8192 // max digest output; further clipped by remaining candidate space
 
+	// 任务 819: studio's absolute tail floor, gated to large windows. Studio
+	// clamps the tail at (window×10%, 32K, 96K); the fork's 16% ratio already
+	// yields ≥41K at the 256K gate, so the floor stays dormant at current
+	// constants — it completes the studio clamp envelope (it binds if the
+	// ratio is ever tuned down) and must never reach smaller windows, where
+	// an absolute floor lifts the tail over the whole context and compaction
+	// can never trigger (任务 812 measured this at a 10K window).
+	recentTailBudgetFloorTokens    = 32 * 1024
+	recentTailBudgetFloorMinWindow = 256 * 1024
+
 	// summaryReasoningMaxBytes clamps a surfaced reasoning-only summary
 	// (~8k tokens of bytes), matching the summaryOutputMaxTokens envelope.
 	summaryReasoningMaxBytes = 32768
@@ -130,13 +140,26 @@ func (a *Agent) hardInputCeiling() int {
 }
 
 // recentTailBudget is the content-construction budget for the recent verbatim
-// tail. Harness-style compaction always retains 16% of the model window.
+// tail. Harness-style compaction always retains 16% of the model window;
+// windows from recentTailBudgetFloorMinWindow additionally carry studio's
+// absolute floor (任务 819).
 func (a *Agent) recentTailBudget() int {
 	window := a.effectiveContextWindow()
 	if a == nil || window <= 0 {
 		return 1
 	}
-	return max(1, int(float64(window)*recentTailBudgetRatio))
+	return max(1, recentTailFloor(int(float64(window)*recentTailBudgetRatio), window))
+}
+
+// recentTailFloor lifts the ratio-derived budget to the studio floor for
+// large windows only. Below the gate the raw ratio stands: an absolute floor
+// on a small window swallows the whole foldable region and compaction never
+// triggers.
+func recentTailFloor(budget, window int) int {
+	if window >= recentTailBudgetFloorMinWindow && budget < recentTailBudgetFloorTokens {
+		return recentTailBudgetFloorTokens
+	}
+	return budget
 }
 
 // foldEconomics estimates whether compacting the given region saves enough

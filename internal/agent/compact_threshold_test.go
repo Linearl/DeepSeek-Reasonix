@@ -44,6 +44,42 @@ func TestRecentTailBudgetIsFixedSixteenPercent(t *testing.T) {
 	}
 }
 
+// 任务 819: the studio floor binds only at or above the 256K gate. A
+// sub-floor budget lifts to 32K for large windows (reachable if the ratio is
+// ever tuned below 16%, e.g. studio's 10%) and passes through untouched below
+// the gate — an absolute floor there would lift the tail over the whole
+// context and compaction would never trigger.
+func TestRecentTailFloorGatedToLargeWindows(t *testing.T) {
+	if got := recentTailFloor(30_000, 300_000); got != recentTailBudgetFloorTokens {
+		t.Fatalf("300K window: recentTailFloor(30000) = %d, want %d", got, recentTailBudgetFloorTokens)
+	}
+	if got := recentTailFloor(30_000, 200_000); got != 30_000 {
+		t.Fatalf("200K window: recentTailFloor(30000) = %d, want 30000 (no floor below gate)", got)
+	}
+}
+
+// 任务 819: end-to-end — every window at or above the 256K gate honors the
+// 32K lower bound, and windows below it stay at the raw 16% ratio, identical
+// to the pre-819 behavior.
+func TestRecentTailBudgetStudioFloorGate(t *testing.T) {
+	cases := []struct {
+		window int
+		want   int
+	}{
+		{262_144, 41_943},    // at the gate: 16% already clears the floor
+		{1_000_000, 160_000}, // floor respected (≥32K); ratio value stands
+		{10_000, 1_600},      // below the gate: unchanged
+		{128_000, 20_480},    // unchanged
+		{200_000, 32_000},    // unchanged — 16% < 32K, the floor must NOT lift it
+	}
+	for _, tc := range cases {
+		a := &Agent{agentConfig: agentConfig{contextWindow: tc.window, compactRatio: defaultCompactRatio}}
+		if got := a.recentTailBudget(); got != tc.want {
+			t.Fatalf("window %d: recentTailBudget = %d, want %d", tc.window, got, tc.want)
+		}
+	}
+}
+
 func TestDefaultCompactRatioIsEightyPercent(t *testing.T) {
 	if defaultCompactRatio != 0.80 {
 		t.Fatalf("defaultCompactRatio = %v, want 0.80", defaultCompactRatio)
