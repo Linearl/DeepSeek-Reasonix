@@ -13,8 +13,8 @@ import (
 	"slices"
 	"strings"
 
-	"reasonix/internal/evidence"
 	"reasonix/internal/event"
+	"reasonix/internal/evidence"
 	"reasonix/internal/provider"
 	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sandbox"
