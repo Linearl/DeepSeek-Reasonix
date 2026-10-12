@@ -360,6 +360,21 @@ func (a *App) SetExperimentalTodoSidebar(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTodoSidebar(enabled) })
 }
 
+// SetExperimentalSidebarHoverLeft toggles the left-sidebar hover-to-expand
+// with its 300ms mis-touch guard and 15s delayed re-collapse (task 826).
+// Pure frontend gate: the settings save re-applies the boot snapshot, so the
+// change is visible without a restart.
+func (a *App) SetExperimentalSidebarHoverLeft(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSidebarHoverLeft(enabled) })
+}
+
+// SetExperimentalSidebarHoverRight toggles the right-dock hover-to-expand
+// (task 826) — the left switch's counterpart, fully independent. Pure
+// frontend gate, visible without a restart.
+func (a *App) SetExperimentalSidebarHoverRight(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSidebarHoverRight(enabled) })
+}
+
 // SetExperimentalSubagentPanel toggles the subagent panel package (task 495):
 // the right-dock subagent tab plus default-collapsed ended subagent cards in
 // deep mode. The frontend snapshots the flag at boot, so the change shows up

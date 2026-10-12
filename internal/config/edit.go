@@ -1007,6 +1007,25 @@ func (c *Config) SetExperimentalSubagentPanel(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSidebarHoverLeft toggles the left-sidebar hover-to-expand
+// with the 300ms mis-touch guard and the 15s delayed re-collapse (task 826).
+// Opt-in: with it off no hover zone renders and the sidebar keeps the exact
+// legacy behaviour. Pure frontend gate: the settings save re-applies the boot
+// snapshot, so a change is visible without a restart.
+func (c *Config) SetExperimentalSidebarHoverLeft(enabled bool) error {
+	c.Desktop.ExperimentalSidebarHoverLeft = enabled
+	return nil
+}
+
+// SetExperimentalSidebarHoverRight toggles the right-dock hover-to-expand
+// (task 826) — the left switch's counterpart, fully independent (separate key,
+// separate timers). Opt-in: with it off the dock keeps the exact legacy
+// behaviour; pure frontend gate, visible without a restart.
+func (c *Config) SetExperimentalSidebarHoverRight(enabled bool) error {
+	c.Desktop.ExperimentalSidebarHoverRight = enabled
+	return nil
+}
+
 // SetExperimentalPromptHistoryPicker gates the composer history-navigation
 // safety rework (task 261): clock-icon history picker + narrowed ArrowUp
 // trigger. Opt-in: with it off the composer keeps the legacy behaviour. The

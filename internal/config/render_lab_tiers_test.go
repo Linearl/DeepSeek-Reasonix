@@ -54,6 +54,9 @@ func allLabSwitchesOn() *Config {
 	c.Desktop.ExperimentalSessionWall = true
 	c.Desktop.ExperimentalSubagentPanel = true
 	c.Desktop.ExperimentalSubagentDetail = true
+	// 任务 826：左右边栏 hover 展开（默认关，可选档）。
+	c.Desktop.ExperimentalSidebarHoverLeft = true
+	c.Desktop.ExperimentalSidebarHoverRight = true
 	c.Desktop.ExperimentalCompletionSummary = boolPtr(true)
 	c.Desktop.ExperimentalAutoLoadOlder = true
 	c.Desktop.ExperimentalSplitView = true
@@ -212,9 +215,11 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		LabTierUnstable: 13,
 		LabTierRetired:  0,
 	}
-	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
-	// 档入表（22→23、总数 51→52）。
-	want[LabTierOptional] = 23
+		// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
+		// 档入表（22→23、总数 51→52）。任务 826：sidebarHoverLeft/Right（左右
+		// 边栏 hover 展开+延时折叠，默认关）按 550 口径可选档入表（23→25、
+		// 总数 52→54）。
+		want[LabTierOptional] = 25
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
 	for _, f := range labFeatureTiers {
@@ -234,7 +239,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 52 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 52", len(labFeatureTiers))
+	if len(labFeatureTiers) != 54 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 54", len(labFeatureTiers))
 	}
 }

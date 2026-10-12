@@ -86,6 +86,12 @@ var labFeatureTiers = []labFeatureTier{
 	// 默认关）。
 	{"trajectoryView", LabTierOptional, []string{"experimental_trajectory_view"}},
 	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
+	// 任务 826：左右边栏 hover 展开（300ms 防误触）+ 离开 15s 延时折叠（只回收
+	// hover 自动展开，手动展开不回收）。两键左右独立（各写各的 setter），按 550
+	// 口径定档可选——不开启时不渲染任何热区、不挂任何事件，左右栏行为与引入前
+	// 完全一致（铁律 2，默认关）。
+	{"sidebarHoverLeft", LabTierOptional, []string{"experimental_sidebar_hover_left"}},
+	{"sidebarHoverRight", LabTierOptional, []string{"experimental_sidebar_hover_right"}},
 	// 任务 742：心跳任务后台化（默认关）。开启后心跳触发不进标签栏（复用 264
 	// detached 语义，提交成功后 park）；档位按 550 口径可选——不开启不影响
 	// 任何调度行为，只是标签栏照旧出现会话。
@@ -406,6 +412,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 507: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123 lesson).
 		fmt.Fprintf(&b, "experimental_subagent_detail = %v   # desktop: subagent dock row click opens the read-only detail view; off keeps the inline preview + widen affordance (task 507; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSubagentDetail)
+		// Task 826: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123
+		// lesson). Off renders no hover zone at all (铁律 2 zero regression).
+		fmt.Fprintf(&b, "experimental_sidebar_hover_left = %v   # desktop: left-sidebar hover-to-expand (300ms mis-touch guard) + fold back 15s after the pointer leaves, reclaiming only hover-made expansions (task 826; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSidebarHoverLeft)
+		fmt.Fprintf(&b, "experimental_sidebar_hover_right = %v   # desktop: right-dock hover-to-expand, same guard and 15s delayed re-collapse; independent of the left switch (task 826; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSidebarHoverRight)
 		// Task 651: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the setting would flip itself back (81/123 lesson).
 		// The resolved indicator renders so the saved value round-trips even

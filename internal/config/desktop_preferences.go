@@ -198,6 +198,26 @@ type DesktopConfig struct {
 	// dock width. It ships off (铁律 2). Pure frontend gate: the settings save
 	// re-applies the boot snapshot, so a change is visible without a restart.
 	ExperimentalSubagentDetail bool `toml:"experimental_subagent_detail"`
+	// ExperimentalSidebarHoverLeft enables hover-to-expand for the left
+	// sidebar (task 826): with it on and the sidebar collapsed, resting the
+	// pointer on the slim left-edge hover zone for 300ms (the mis-touch
+	// guard, borrowed from the dev_13 reference) expands the sidebar; after
+	// the pointer leaves, the sidebar folds back in after 15s (user ruling —
+	// the reference collapsed immediately) — and only an expansion the hover
+	// itself performed is reclaimed, a manual toggle never is. It ships off
+	// (铁律 2): with the zero value no hover zone renders and no handler is
+	// armed, so the sidebar behaves exactly as before the feature existed.
+	// Pure frontend gate: the settings save re-applies the boot snapshot, so
+	// a change is visible without a restart.
+	ExperimentalSidebarHoverLeft bool `toml:"experimental_sidebar_hover_left"`
+	// ExperimentalSidebarHoverRight is the task-826 right-dock counterpart of
+	// ExperimentalSidebarHoverLeft: hover-to-expand for the right dock plus
+	// the same 300ms mis-touch guard and the 15s delayed re-collapse that
+	// reclaims only hover-performed expansions. The two switches are fully
+	// independent (separate keys, separate timers) so either side can be on
+	// without the other. It ships off (铁律 2) for the same zero-regression
+	// reason; pure frontend gate, no restart needed.
+	ExperimentalSidebarHoverRight bool `toml:"experimental_sidebar_hover_right"`
 	// ExperimentalTabModeTint is the task-504 tab-mode-tint switch, retired to
 	// a legacy alias by task 651: it only applies while the replacement
 	// TabPermissionIndicator key is still empty (true = "background", false or

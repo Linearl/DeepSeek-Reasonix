@@ -399,6 +399,12 @@ type SettingsView struct {
 	// view that omits it would read the sub-switch as permanently off.
 	ExperimentalFeedbackNudge bool `json:"experimentalFeedbackNudge"`
 	ExperimentalTodoSidebar   bool `json:"experimentalTodoSidebar"`
+	// Task 826: left-sidebar / right-dock hover-to-expand (300ms mis-touch
+	// guard, 15s delayed re-collapse of hover-made expansions only). Rendered
+	// in both views for the 81/123 two-view lesson — a view that omits a
+	// switch reads it as permanently off.
+	ExperimentalSidebarHoverLeft  bool `json:"experimentalSidebarHoverLeft"`
+	ExperimentalSidebarHoverRight bool `json:"experimentalSidebarHoverRight"`
 	// Task 495: subagent panel package (dock tab + ended-card collapse);
 	// boot snapshot, restart to apply.
 	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
@@ -660,6 +666,10 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTodoSidebar moves the todo list into the right dock (task 259);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalTodoSidebar bool `json:"experimentalTodoSidebar"`
+	// Task 826: the two hover-to-expand switches, rendered in this view too —
+	// a view that omits a switch reads it as permanently off (81/123 lesson).
+	ExperimentalSidebarHoverLeft  bool `json:"experimentalSidebarHoverLeft"`
+	ExperimentalSidebarHoverRight bool `json:"experimentalSidebarHoverRight"`
 	// ExperimentalSubagentPanel gates the subagent panel package (task 495);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
@@ -1477,6 +1487,9 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalFeedback = cfg.Desktop.ExperimentalFeedback
 		view.ExperimentalFeedbackNudge = cfg.Desktop.ExperimentalFeedbackNudge
 		view.ExperimentalTodoSidebar = cfg.Desktop.ExperimentalTodoSidebar
+		// Task 826: hover-to-expand readback (both sides, two-view lesson).
+		view.ExperimentalSidebarHoverLeft = cfg.Desktop.ExperimentalSidebarHoverLeft
+		view.ExperimentalSidebarHoverRight = cfg.Desktop.ExperimentalSidebarHoverRight
 		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel
 		view.ExperimentalSessionWall = cfg.Desktop.ExperimentalSessionWall
 		view.ExperimentalPromptHistoryPicker = cfg.Desktop.ExperimentalPromptHistoryPicker
@@ -1686,6 +1699,9 @@ func (a *App) Settings() SettingsView {
 		ExperimentalFeedback:              cfg.Desktop.ExperimentalFeedback,
 		ExperimentalFeedbackNudge:         cfg.Desktop.ExperimentalFeedbackNudge,
 		ExperimentalTodoSidebar:           cfg.Desktop.ExperimentalTodoSidebar,
+		// Task 826: hover-to-expand readback (both views, two-view lesson).
+		ExperimentalSidebarHoverLeft:      cfg.Desktop.ExperimentalSidebarHoverLeft,
+		ExperimentalSidebarHoverRight:     cfg.Desktop.ExperimentalSidebarHoverRight,
 		ExperimentalSubagentPanel:         cfg.Desktop.ExperimentalSubagentPanel,
 		ExperimentalSessionWall:           cfg.Desktop.ExperimentalSessionWall,
 		ExperimentalPromptHistoryPicker:   cfg.Desktop.ExperimentalPromptHistoryPicker,
