@@ -493,19 +493,19 @@ type plannerSessionResetter interface {
 // distinguish a cancellable foreground turn from pending prompts and background
 // jobs.
 type RuntimeStatus struct {
-		Running         bool
-		// 任务796 observability: the raw TurnDone fan-out window, separate from
-		// the running||finishing merge above (see RuntimeStatus).
-		Finishing          bool
-		FinishingSinceUnix int64
-		PendingPrompt      bool
-		BackgroundJobs     int
-		CancelRequested    bool
-		Cancellable        bool
-	TurnID          string
-	Status          event.TurnStatus
-	TurnEventSeq    uint64
-	ReplayAfterSeq  uint64
+	Running bool
+	// 任务796 observability: the raw TurnDone fan-out window, separate from
+	// the running||finishing merge above (see RuntimeStatus).
+	Finishing          bool
+	FinishingSinceUnix int64
+	PendingPrompt      bool
+	BackgroundJobs     int
+	CancelRequested    bool
+	Cancellable        bool
+	TurnID             string
+	Status             event.TurnStatus
+	TurnEventSeq       uint64
+	ReplayAfterSeq     uint64
 	// 任务461-P7 三级终止: the stop escalation mirror for the UI (L1 normal →
 	// L2 force grace with a countdown deadline → L3 force).
 	StopLevel        int
@@ -2691,7 +2691,7 @@ func (c *Controller) RuntimeStatus() RuntimeStatus {
 		finishingSinceUnix = finishingSince.Unix()
 	}
 	return RuntimeStatus{
-		Running:          active,
+		Running: active,
 		// 任务796 observability: Running merges running||finishing, so a wedged
 		// TurnDone fan-out (finishing-only leak) is invisible to every idle
 		// observer. Finishing/FinishingSinceUnix let the desktop bridge sweep
@@ -3228,9 +3228,9 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			// answerable from the log and the transcript alone.
 			log.Printf("[autopilot-ask] reversible question untouched for %s; decided for the user (task 806) turn=%s item=%s", askWait, turnID, id)
 			c.sink.Emit(event.Event{
-				Kind:  event.Notice,
-				Level: event.LevelInfo,
-				Code:  "autopilot_ask_auto_decide",
+				Kind:   event.Notice,
+				Level:  event.LevelInfo,
+				Code:   "autopilot_ask_auto_decide",
 				Text:   "autopilot · ask — no interaction within " + askWait.String() + "; decided for you: " + clipUTF8(askDecisionSummary(questions, answers), 160),
 				Detail: "the unattended run surfaced this question and answered it itself only after the wait passed untouched; answering on the panel at any point stops the timer (task 806)",
 			})

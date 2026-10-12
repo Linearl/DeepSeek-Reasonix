@@ -364,9 +364,12 @@ func TestCapabilityInputErrorGuidesThreeObservedRetries(t *testing.T) {
 // (the 292 habit), the guidance must say it is a STRING and name the keys
 // inside it — never silently present the string's keys as envelope keys.
 // a) stringified bare target parameters keep the missing-id refusal and the
-//    schema-violation path reports the wrapped keys;
+//
+//	schema-violation path reports the wrapped keys;
+//
 // b) the whole call arguments degraded to one string reports the wrapped
-//    envelope keys with the same "JSON string wrapping" naming.
+//
+//	envelope keys with the same "JSON string wrapping" naming.
 func TestCapabilityInputErrorSummaryNamesStringDegradedArguments(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Add(spreadNotifyTool{})
