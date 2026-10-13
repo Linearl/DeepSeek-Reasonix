@@ -3259,6 +3259,8 @@ export const zhTW: Record<DictKey, string> = {
   "compaction.messages": "{n} 條訊息",
   "compaction.showSummary": "展開摘要",
   "compaction.hideSummary": "收起摘要",
+  "compaction.failed": "上下文壓縮失敗",
+  "compaction.failedAttempt": "上下文壓縮失敗（第 {n} 次）——本次壓縮已停止，上下文繼續記錄，稍後自動重試",
   "rewind.label": "訊息操作",
   "rewind.disabledRunning": "等待當前操作結束",
   "rewind.disabledNoCheckpoint": "這條訊息沒有可恢復點",

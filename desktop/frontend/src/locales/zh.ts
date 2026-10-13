@@ -4624,6 +4624,8 @@ export const zh: Record<DictKey, string> = {
   "compaction.messages": "{n} 条消息",
   "compaction.showSummary": "展开摘要",
   "compaction.hideSummary": "收起摘要",
+  "compaction.failed": "上下文压缩失败",
+  "compaction.failedAttempt": "上下文压缩失败（第 {n} 次）——已停止本次压缩，上下文继续记录，稍后自动重试",
   "rewind.label": "消息操作",
   "rewind.disabledRunning": "等待当前操作结束",
   "rewind.disabledNoCheckpoint": "这条消息没有可恢复点",

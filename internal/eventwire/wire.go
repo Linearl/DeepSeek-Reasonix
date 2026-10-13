@@ -142,8 +142,9 @@ func ToWire(e event.Event) Event {
 		w.Compaction = &Compaction{
 			Trigger: e.Compaction.Trigger, Messages: e.Compaction.Messages,
 			Summary: e.Compaction.Summary, Archive: e.Compaction.Archive,
-			Done: e.Compaction.Done, Total: e.Compaction.Total,
-			Tokens: e.Compaction.Tokens, TokensPerSec: e.Compaction.TokensPerSec,
+			Done: e.Compaction.Done, Total: e.Compaction.Total, Tokens: e.Compaction.Tokens,
+			TokensPerSec: e.Compaction.TokensPerSec, Outcome: e.Compaction.Outcome,
+			Attempt: e.Compaction.Attempt, Reason: e.Compaction.Reason,
 		}
 	case event.ContextMaintenanceEvent:
 		if m := e.Maintenance; m != nil {
@@ -305,6 +306,12 @@ type Compaction struct {
 	// byte-identical to the pre-556 wire shape.
 	Tokens       int `json:"tokens,omitempty"`
 	TokensPerSec int `json:"tokensPerSec,omitempty"`
+	// 任务 867: Done-only outcome ("ok"|"failed"|"aborted"; empty = legacy).
+	// Attempt/Reason ride only failed outcomes so the UI can show
+	// "compaction failed (Nth attempt)" instead of silently dropping the card.
+	Outcome string `json:"outcome,omitempty"`
+	Attempt int    `json:"attempt,omitempty"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // AskOption is one JSON-formatted choice in a structured ask request.

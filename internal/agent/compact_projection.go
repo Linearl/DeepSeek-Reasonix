@@ -280,16 +280,16 @@ func (a *Agent) compressVisibleRange(
 	summary := res.Text
 	tele := compactionTelemetryFromSummary(trigger, a.CacheState(), result.SourceTokens, res)
 	if err != nil {
-		tele.Error = err.Error()
-		a.emitCompactionTelemetry(tele)
-		a.emitCompactionAborted(trigger)
+		// 任务 867: the spent summary request becomes a visible failed outcome
+		// instead of the silent abort.
+		a.emitCompactionFailed(trigger, err)
 		return tool.CompressResult{}, err
 	}
 	summary, err = a.interceptCompactionComplete(ctx, summary)
 	if err != nil {
 		tele.Error = err.Error()
 		a.emitCompactionTelemetry(tele)
-		a.emitCompactionAborted(trigger)
+		a.emitCompactionFailed(trigger, err)
 		return tool.CompressResult{}, err
 	}
 
@@ -327,20 +327,16 @@ func (a *Agent) compressVisibleRange(
 		covered: len(snap.canonical),
 	})
 	if err != nil {
-		if errors.Is(err, errCompressStaleContext) {
-			tele.Error = err.Error()
-			a.emitCompactionTelemetry(tele)
-		}
-		a.emitCompactionAborted(trigger)
+		tele.Error = err.Error()
+		a.emitCompactionTelemetry(tele)
+		a.emitCompactionFailed(trigger, err)
 		return tool.CompressResult{}, err
 	}
 	a.emitCompactionTelemetry(tele)
 	// The transcript was rewritten, so repeating a pre-compaction tool result is
 	// no longer a duplicate (#39 / upstream #10023).
 	a.turn.loop.clearResultFingerprints()
-	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
-		Trigger: trigger, Messages: len(plan.fold), Summary: summary, Archive: state.LastReceipt.Archive,
-	}})
+	a.emitCompactionSucceeded(trigger, len(plan.fold), summary, state.LastReceipt.Archive)
 	// Task 317: the explicit compress tool is the manual "second compaction"
 	// a user reaches for after a network error — its zero-hit round must
 	// attribute its miss exactly like the automatic fold does.
@@ -894,58 +890,26 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	res, tele, err := a.summarizeFold(ctx, trigger, fold, instructions, sourceTokens, inputMode, req)
 	if err != nil {
 		a.emitCompactionTelemetry(tele)
-		a.emitCompactionAborted(trigger)
+		// 任务 867: the burned full-prompt summary request becomes a visible
+		// failed outcome instead of a silently dropped pending card.
+		a.emitCompactionFailed(trigger, err)
 		return CompactionNoop, err
 	}
 	summary, err := a.interceptCompactionComplete(ctx, res.Text)
 	if err != nil {
 		tele.Error = err.Error()
 		a.emitCompactionTelemetry(tele)
-		a.emitCompactionAborted(trigger)
+		a.emitCompactionFailed(trigger, err)
 		return CompactionNoop, err
 	}
-
-	// The projection body freezes only prefix + digest + kept messages; the
-	// verbatim tail splices live from canonical[start:] so tail-side rewrites
-	// (rewind truncation, snips) stay visible without rebuilding the fold.
-	projMsgs := checkpointProjectionMessages(msgs, head, kept, summary)
-	if len(bodySuffix) > 0 {
-		projMsgs = append(projMsgs, projectionMessagesPreservingPinnedContext(bodySuffix)...)
-	}
-	tele.UserTurnsKept, tele.UserTurnsDropped = retention.Kept, retention.Dropped
-	projMsgs, spliced, projTokens, err := a.preparePinnedCheckpointCandidate(trigger, projMsgs, canonical, covered, sourceTokens, &tele)
-	if err != nil {
-		a.emitCompactionAborted(trigger)
-		return CompactionNoop, err
-	}
-	viewOutputHash := providerVisibleFingerprint(modelInputMessages(spliced))
-	_, err = a.commitSummaryProjection(summaryProjectionCommit{
-		canonical: canonical, fold: fold, projected: projMsgs, result: res,
-		transcriptVersion: transcriptVersion, projectionVersion: startProjectionVersion,
-		generation: startGeneration, activeTurn: activeTurn, trigger: trigger,
-		summary: summary, inputHash: viewInputHash, outputHash: viewOutputHash,
-		sourceTokens: sourceTokens, projectionTokens: projTokens, covered: covered,
+	return a.installFoldProjection(foldProjectionInstall{
+		trigger: trigger, msgs: msgs, canonical: canonical, fold: fold,
+		kept: kept, retention: retention, bodySuffix: bodySuffix, summary: summary,
+		head: head, covered: covered, sourceTokens: sourceTokens,
+		transcriptVersion: transcriptVersion, startProjectionVersion: startProjectionVersion,
+		startGeneration: startGeneration,
+		activeTurn:      activeTurn, viewInputHash: viewInputHash, res: res, tele: tele,
 	})
-	if err != nil {
-		a.emitCompactionAborted(trigger)
-		return CompactionNoop, err
-	}
-	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
-		Trigger: trigger, Messages: len(fold), Summary: summary,
-	}})
-	// Task 303: phase 3/3 — done with the cache readout. The 688K/1.5% sample
-	// (full prefill after a model switch, promptCacheKey carries modelRef) is
-	// quantified here: input vs hit/miss tokens pin a slow round to cache miss.
-	slog.Info("agent: compaction done", "trigger", trigger, "stage", "done",
-		"folded_messages", len(fold), "source_tokens", sourceTokens,
-		"projection_tokens", projTokens,
-		"input_tokens", tele.InputTokens, "output_tokens", tele.OutputTokens,
-		"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens,
-		"request_count", tele.RequestCount)
-	// Task 317 (cache 保全 面 b): the automatic fold attributes its miss the
-	// same way the explicit tool does (shared helper, both entry points).
-	a.logCompactionMissAttribution(trigger, tele, sourceTokens)
-	return CompactionInstalled, nil
 }
 
 func (a *Agent) preparePinnedCheckpointCandidate(

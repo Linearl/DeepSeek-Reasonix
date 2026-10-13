@@ -8132,6 +8132,18 @@ body > .mermaid-diagram--fullscreen {
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* 任务 867: failed compaction card — same single-row shape as the pending
+   card, tinted with the warn color so a burned compaction attempt reads as a
+   state, not as silence. */
+.compaction--failed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warn, #b45309);
+}
+.compaction--failed .compaction__meta {
+  color: color-mix(in srgb, var(--warn, #b45309) 78%, var(--fg));
+}
 
 /* ── footer: composer + status line ──────────────────────────────────────── */
 .footer {

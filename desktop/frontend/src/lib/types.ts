@@ -97,6 +97,12 @@ export interface WireCompaction {
   // and cumulative tokens/second since the pass began. 0/absent = hide.
   tokens?: number;
   tokensPerSec?: number;
+  // 任务 867: done-only outcome classification. "failed" turns the historical
+  // silent card removal into a visible failed card; "ok" stamps success;
+  // "aborted"/absent keeps the legacy drop-the-empty-card behavior.
+  outcome?: string;
+  attempt?: number; // failed: 1-based consecutive-failure counter
+  reason?: string; // failed: short display-safe classification
 }
 export interface WireProfile {
   model?: string;

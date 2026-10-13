@@ -4626,6 +4626,8 @@ export const en = {
   "compaction.messages": "{n} messages",
   "compaction.showSummary": "show summary",
   "compaction.hideSummary": "hide summary",
+  "compaction.failed": "Context compaction failed",
+  "compaction.failedAttempt": "Context compaction failed (attempt {n}) — this pass stopped, the context keeps recording, and it retries automatically later",
   "rewind.label": "Message actions",
   "rewind.disabledRunning": "Wait for the current action to finish",
   "rewind.disabledNoCheckpoint": "This message has no restore point",

@@ -367,6 +367,12 @@ export type Item =
       // wholesale, so the finished card never carries a stale estimate.
       tokens?: number;
       tokensPerSec?: number;
+      // 任务 867: a failed pass stays visible (failed/attempt/reason) instead
+      // of vanishing while the watermark climbs; the next CompactionStarted
+      // flips this card back to pending instead of stacking a duplicate.
+      failed?: boolean;
+      attempt?: number;
+      reason?: string;
     }
   | {
       kind: "tool";
@@ -2151,8 +2157,20 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     }
     case "phase":
       return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "phase", id: `p${s.seq}`, text: e.text ?? "" }] };
-    case "compaction_started":
-      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: e.compaction?.trigger ?? "", messages: 0, summary: "", archive: "" }] };
+    case "compaction_started": {
+      // 任务 867: a retry after a failed pass reuses that pass's card — the
+      // transcript shows one evolving attempt per episode instead of stacking
+      // a fresh pending card under every failure.
+      const c = e.compaction;
+      const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && !(it as Extract<Item, { kind: "compaction" }>).pending && (it as Extract<Item, { kind: "compaction" }>).failed);
+      if (idx >= 0) {
+        const at = s.items.length - 1 - idx;
+        const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
+        const restarted: Item = { ...cur, pending: true, failed: false, attempt: undefined, reason: undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0 };
+        return { ...s, seq: s.seq + 1, items: s.items.map((it, i) => (i === at ? restarted : it)) };
+      }
+      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "" }] };
+    }
     case "compaction_progress": {
       // 任务 556: live tokens/throughput + chunked-fold N/M on the pending
       // card. Bounded to ≤1 event/second by the backend throttle gate; a
@@ -2172,6 +2190,16 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && it.pending);
       const at = idx < 0 ? -1 : s.items.length - 1 - idx;
       if (!c?.summary) {
+        // 任务 867: a failed outcome stays on the transcript — the pass burned
+        // its request while the watermark kept climbing, and the historical
+        // silent card removal is exactly the blind spot this replaces. An
+        // aborted outcome (planned skip, no request spent) keeps the legacy
+        // drop-the-card behavior, as does a legacy sender with no outcome.
+        if (c?.outcome === "failed") {
+          const failedCard: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : (s.items[at] as Extract<Item, { kind: "compaction" }>).id, pending: false, failed: true, attempt: c.attempt ?? 0, reason: c.reason ?? "", trigger: c.trigger ?? "", messages: 0, summary: "", archive: "" };
+          const items = at < 0 ? [...s.items, failedCard] : s.items.map((it, i) => (i === at ? failedCard : it));
+          return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, items };
+        }
         const items = at < 0 ? s.items : s.items.filter((_, i) => i !== at);
         return { ...s, running: s.turnActive ? s.running : false, items };
       }

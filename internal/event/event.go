@@ -489,6 +489,12 @@ type Compaction struct {
 	// means "not emitted yet" — frontends hide the readout until nonzero.
 	Tokens       int // Progress: estimated summarizer output tokens so far
 	TokensPerSec int // Progress: cumulative tokens/second since the pass began
+	// 任务 867: Done-only outcome ("ok"|"failed"|"aborted"; "" = legacy
+	// sender). Failed passes were slog-only and vanished from the UI while
+	// the watermark climbed; Attempt counts consecutive failures.
+	Outcome string // Done: "" | "ok" | "failed" | "aborted"
+	Attempt int    // Done(failed): 1-based consecutive-failure counter for the session
+	Reason  string // Done(failed): short failure classification for display
 }
 
 // ContextMaintenance is the typed wire-safe receipt for snip/prune/noop/

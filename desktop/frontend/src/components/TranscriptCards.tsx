@@ -258,6 +258,19 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
     const label = (item.total ?? 0) > 0 ? t("compaction.progress", { done: item.done ?? 0, total: (item.total ?? 0) }) : t("compaction.working");
     return <div className="compaction compaction--pending" data-entrance={item.id} data-transcript-layout-variant="static"><ProcessCompactIcon size={12} /><span>{label}</span></div>;
   }
+  // 任务 867: a failed pass renders as its own visible card instead of the
+  // historical silent removal — the user sees which attempt failed and why,
+  // with the retry state carried by the next pending card on the same id.
+  if (item.failed) {
+    const attempt = item.attempt ?? 0;
+    return (
+      <div className="compaction compaction--failed" data-entrance={item.id} data-transcript-layout-variant="static" role="status">
+        <ProcessCompactIcon size={12} />
+        <span>{attempt > 0 ? t("compaction.failedAttempt", { n: attempt }) : t("compaction.failed")}</span>
+        {item.reason ? <span className="compaction__meta">{item.reason}</span> : null}
+      </div>
+    );
+  }
   return (
     <div className="compaction" data-entrance={item.id} data-transcript-layout-variant={open ? "compaction-expanded" : "compaction-collapsed"}>
       <button type="button" className="compaction__head" onClick={() => { beginUserResize(); setOpen((v) => !v); }} aria-expanded={open}>
