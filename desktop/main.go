@@ -8,6 +8,8 @@ package main
 
 import (
 	"embed"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -22,6 +24,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	// Blank imports wire compile-time built-ins into their registries, exactly as
 	// cmd/reasonix does — boot.Build resolves providers/tools from these registries.
+	"reasonix/internal/config"
+	"reasonix/internal/homemigrate"
 	_ "reasonix/internal/provider/anthropic"
 	_ "reasonix/internal/provider/openai"
 	_ "reasonix/internal/provider/responses"
@@ -122,6 +126,20 @@ func main() {
 	// 「每 5min 拉窗口前台」副作用与握手失败循环的来源。见 base_serve.go。
 	if code, handled := maybeRunBaseServe(os.Args[1:]); handled {
 		os.Exit(code)
+	}
+	// 任务 846：home 指针文件应用 + 迁移期双开拒绝。必须发生在日志装配之前
+	// （logs\desktop 也随 home 走），且在任何路径相关子系统解析 home 之前。
+	// 缺省零行为：没有 home-pointer.json 时 ApplyHomePointerEnv 不动任何东西，
+	// 与引入本段之前逐字节一致；显式 REASONIX_HOME 依旧优先（测试/CI 契约）。
+	// 风险 4（单实例双开）：任一进程的迁移互斥锁存活时，第二实例直接退出
+	// （exit 3）——此刻 home 树可能正处于 copy 中途，带病启动会读写两份 home。
+	if homemigrate.MigrationInProgress() {
+		fmt.Fprintln(os.Stderr, "reasonix-desktop: a home migration is in progress; refusing to start a second instance (task 846)")
+		os.Exit(3)
+	}
+	if status, detail := config.ApplyHomePointerEnv(); status != config.HomePointerStatusNone {
+		// Applied/fallback/env_override 都值得一行日志；none 保持静默（零行为）。
+		slog.Info("desktop: home pointer applied", "status", string(status), "detail", detail)
 	}
 	// Rolling file logging first: every later goroutine, http.Server, and
 	// slog line lands in logs\desktop\desktop.log instead of a console the

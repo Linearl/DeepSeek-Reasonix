@@ -600,6 +600,12 @@ func (a *App) SetExperimentalLocalServer(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalLocalServer(enabled) })
 }
 
+// SetExperimentalHomePointer toggles the task-846 change-data-home lab card.
+// Ships off (铁律 2); the wizard's write path re-checks the switch.
+func (a *App) SetExperimentalHomePointer(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalHomePointer(enabled) })
+}
+
 // SetExperimentalPathRules toggles structured path-scope evaluation (task 134).
 func (a *App) SetExperimentalPathRules(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPathRules(enabled) })

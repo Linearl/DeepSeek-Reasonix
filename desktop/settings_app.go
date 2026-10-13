@@ -470,6 +470,8 @@ type SettingsView struct {
 	ExperimentalLocalServer        bool `json:"experimentalLocalServer"`
 	ExperimentalPathRules          bool `json:"experimentalPathRules"`
 	ExperimentalTraceAsState       bool `json:"experimentalTraceAsState"`
+	// Task 846: change-data-home lab switch; gates the wizard's write path.
+	ExperimentalHomePointer bool `json:"experimentalHomePointer"`
 	// Task 161: cache tuning mirrors (Settings panel reads these from this view).
 	MaxCachedTabs int `json:"maxCachedTabs"`
 	// Task 347: effective replayed-graph cache LRU capacity (task 196fix2
@@ -1802,6 +1804,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalLifecycleNoiseGate:  cfg.Desktop.ExperimentalLifecycleNoiseGate,
 		ExperimentalPathRules:           cfg.Desktop.ExperimentalPathRules,
+		ExperimentalHomePointer:         cfg.Desktop.ExperimentalHomePointer,
 		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,
 		DagGraphCacheCapacity:           config.DagGraphCacheCapacity(cfg),
 		HistoryBodyBudgetMb:             cfg.Desktop.HistoryBodyBudgetMb,
