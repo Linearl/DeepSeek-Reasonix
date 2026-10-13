@@ -4,6 +4,27 @@ const MAX_SESSIONS = 12;
 const MAX_SEGMENTS_PER_SESSION = 512;
 const overrides = new Map<string, Map<string, FoldEntry>>();
 
+// 任务 857：会话级「全部收起」意图。collapse-all 只能对当时已存在的 segment
+// 写 userOverridden 条目，之后新出现的 segment（新回合、回答文本后的新过程段、
+// 回合中途注入的 notice 段）在 FoldMap 无条目，reconcile 按 defaultFoldOpen
+// 给默认值——standard 下运行中即展开，用户看到「收起后新思考又自动展开」。
+// 这张表把「用户要全部收起」记成会话级状态：新块先按意图收起，直到用户
+// 主动展开（点开任一块头 / 全部展开 / 切显示档）才解除。与 overrides 同表
+// 生命周期（按 sessionKey LRU，tab 切换/重挂载存活）。
+const collapseIntents = new Set<string>();
+
+export function setTranscriptCollapseIntent(sessionKey: string, intent: boolean): void {
+  if (intent) {
+    collapseIntents.add(sessionKey);
+    return;
+  }
+  collapseIntents.delete(sessionKey);
+}
+
+export function readTranscriptCollapseIntent(sessionKey: string): boolean {
+  return collapseIntents.has(sessionKey);
+}
+
 function sessionMap(sessionKey: string): Map<string, FoldEntry> {
   const existing = overrides.get(sessionKey);
   if (existing) {
@@ -13,7 +34,11 @@ function sessionMap(sessionKey: string): Map<string, FoldEntry> {
   }
   const created = new Map<string, FoldEntry>();
   overrides.set(sessionKey, created);
-  while (overrides.size > MAX_SESSIONS) overrides.delete(overrides.keys().next().value!);
+  while (overrides.size > MAX_SESSIONS) {
+    const evicted = overrides.keys().next().value!;
+    overrides.delete(evicted);
+    collapseIntents.delete(evicted);
+  }
   return created;
 }
 
@@ -45,4 +70,5 @@ export function replaceTranscriptFoldOverrides(sessionKey: string, folds: FoldMa
 
 export function clearTranscriptFoldOverrideSessionForTest(sessionKey: string): void {
   overrides.delete(sessionKey);
+  collapseIntents.delete(sessionKey);
 }
