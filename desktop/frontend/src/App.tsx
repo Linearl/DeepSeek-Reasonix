@@ -51,7 +51,7 @@ import { insertSessionWallEntry } from "./lib/sessionWall";
 import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
-import { useWailsResizeFix } from "./lib/useWailsResizeFix";
+import { clearWailsResizeEdge, useWailsResizeFix } from "./lib/useWailsResizeFix";
 import { asArray } from "./lib/array";
 import { activeLeaseBlockedTab, createBoundedRefreshCoordinator, sameTabMetaLists, shouldRefreshTabMetaForEvent, TAB_META_MAX_IN_FLIGHT } from "./lib/tabMetaRefresh";
 import { clearLegacyLangPref, normalizeLangPref, readLegacyLangPref, useI18n, useT } from "./lib/i18n";
@@ -4910,13 +4910,16 @@ export default function App() {
         </a>
 
         {/* 任务 826 — hover 展开的边缘热区。仅在「开关开 + 对应侧栏折叠 +
-            非管理界面」时渲染：一条 6px 全高透明窄条，指针停留经 hook 的
-            300ms 防误触延迟后自动展开。开关关 ⇒ 元素不存在（零回归）。 */}
+            非管理界面」时渲染：一条全高透明窄条，指针停留经 hook 的 300ms
+            防误触延迟后自动展开。开关关 ⇒ 元素不存在（零回归）。
+            任务 842 — onMouseDown 让位：热区与 Wails 无边框窗口的边缘缩放
+            带重叠，热区内的按下属于 hover 交互，不该触发窗口缩放拖拽。 */}
         {sidebarHoverLeftEnabled && sidebarCollapsed && !managementActive && (
           <div
             className="sidebar-hover-zone sidebar-hover-zone--left"
             aria-hidden="true"
             onMouseEnter={leftSidebarHover.onEnter}
+            onMouseDown={clearWailsResizeEdge}
           />
         )}
         {sidebarHoverRightEnabled && !effectiveWorkspacePanelRenderable && !managementActive && (
@@ -4924,6 +4927,7 @@ export default function App() {
             className="sidebar-hover-zone sidebar-hover-zone--right"
             aria-hidden="true"
             onMouseEnter={rightDockHover.onEnter}
+            onMouseDown={clearWailsResizeEdge}
           />
         )}
 
