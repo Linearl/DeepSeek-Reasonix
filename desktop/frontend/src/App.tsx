@@ -3022,12 +3022,20 @@ export default function App() {
         setWorkspacePanelMaximized(false);
       }
       if (workspacePanelOpen && workspacePanelMaximized === nextMaximized) {
+        // 任务 841: open=true 但不可渲染（liveWidth 瞬态残留小于 minRenderWidth、
+        // 又不满足 overlay/maximized）时不可在此早退——面板不可见，Icon/hover 展开
+        // 点击必须产生可见反应。清掉残留 liveWidth，让 placement 回退到 storedWidth
+        // 重算后恢复 renderable。
+        if (workspacePanelRenderable) {
+          return;
+        }
+        setLiveWorkspacePanelRenderWidth(null);
         return;
       }
       setWorkspacePanelOpen(true);
       saveWorkspacePanelOpen(true, activeWorkspaceRoot);
     },
-    [activeWorkspaceRoot, closeTransientOverlays, rightDockMode, workspacePanelMaximized, workspacePanelOpen],
+    [activeWorkspaceRoot, closeTransientOverlays, rightDockMode, workspacePanelMaximized, workspacePanelOpen, workspacePanelRenderable],
   );
 
   // 任务 826: right-dock hover behavior — the left switch's counterpart,

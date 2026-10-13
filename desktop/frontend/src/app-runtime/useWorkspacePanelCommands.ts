@@ -27,7 +27,14 @@ export function useWorkspacePanelCommands(input: Input) {
     layout.setRightDockMode(next);
     saveRightDockMode(next, input.workspaceRoot);
     layout.setWorkspacePanelMaximized(false);
-    if (layout.workspacePanelOpen && !layout.workspacePanelMaximized) return;
+    if (layout.workspacePanelOpen && !layout.workspacePanelMaximized) {
+      // 任务 841: open=true 但不可见（liveWidth 瞬态残留小于渲染阈值）时不可
+      // 在此早退——面板不渲染，Icon 点击必须产生可见反应。清掉残留 liveWidth，
+      // 让 placement 回退到 storedWidth 重算后恢复可渲染。
+      if (input.visible) return;
+      input.clearLiveWidth(null);
+      return;
+    }
     layout.setWorkspacePanelOpen(true);
     saveWorkspacePanelOpen(true, input.workspaceRoot);
   });
