@@ -145,9 +145,13 @@ func (a *Agent) checkOperationEvidence(ctx context.Context, call provider.ToolCa
 		check.Missing = missing
 	}
 	check.Reason = "stale_or_partial_evidence"
-	check.Recovery = fmt.Sprintf("re-read the missing lines of %s, then retry", info.Path)
+	// Task 859: the receipt names the reason, not just the rule. The dominant
+	// cause of staleness is the model's own earlier edit, so the guidance says
+	// so — a bare "re-read" invited the model to reword the same call instead
+	// of re-reading (the capability_id lesson).
+	check.Recovery = fmt.Sprintf("the file changed since your last read — usually by your own earlier edit; re-read the missing lines of %s, then retry against the current content", info.Path)
 	if info.WholeFile {
-		check.Recovery = "use read_file with intent=full and complete its pages before retrying the overwrite"
+		check.Recovery = "the file changed since your last read — usually by your own earlier edit; use read_file with intent=full and complete its pages before retrying the overwrite"
 	}
 	return check
 }

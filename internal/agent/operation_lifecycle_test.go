@@ -31,8 +31,8 @@ func TestOperationRejectionOffersMachineExecutableRecovery(t *testing.T) {
 		t.Fatalf("expected a diagnosed block, got %+v", out)
 	}
 	d := out.diagnostic
-	if !d.Retryable || d.RetryBudget != 1 {
-		t.Fatalf("first rejection = retryable %v budget %d, want one offered recovery", d.Retryable, d.RetryBudget)
+	if !d.Retryable || d.RetryBudget != 2 {
+		t.Fatalf("first rejection = retryable %v budget %d, want two offered recoveries", d.Retryable, d.RetryBudget)
 	}
 	if len(d.AllowedRecovery) == 0 {
 		t.Fatal("rejection must name the actions the host accepts")
@@ -45,7 +45,7 @@ func TestOperationRejectionOffersMachineExecutableRecovery(t *testing.T) {
 	}
 }
 
-func TestOperationStopsAutomaticRetryAfterTheSameRejectionTwice(t *testing.T) {
+func TestOperationStopsAutomaticRetryAfterTheSameRejectionThreeTimes(t *testing.T) {
 	executions := 0
 	writer := evidenceWriter{target: tool.EvidenceTargetInfo{
 		Path: "/w/a.go", WholeFile: true, Hashes: hashesFor("alpha", "beta"),
@@ -55,26 +55,41 @@ func TestOperationStopsAutomaticRetryAfterTheSameRejectionTwice(t *testing.T) {
 	if _, blocked := runEvidenceGate(a, "/w/a.go"); !blocked {
 		t.Fatal("first attempt must be rejected")
 	}
+	// Task 859: the second identical rejection still carries a guided retry,
+	// and its receipt names both the failure reason and the compliant path.
+	// This fixture reads as WRITE_EVIDENCE_MISSING (no eligible prior-round
+	// read); the STALE wording itself is pinned in
+	// TestFailureGuidanceNamesReasonAndCompliantPath.
 	second, blocked := runEvidenceGate(a, "/w/a.go")
 	if !blocked {
 		t.Fatal("second attempt must be rejected")
 	}
-	if second.diagnostic.Retryable {
-		t.Fatalf("second identical rejection stayed retryable: %+v", second.diagnostic)
+	if !second.diagnostic.Retryable {
+		t.Fatalf("second identical rejection lost its guided retry: %+v", second.diagnostic)
+	}
+	if !strings.Contains(second.output, "not seen its current content") || !strings.Contains(second.output, "then retry") {
+		t.Fatalf("rejection receipt must name the failure reason and the compliant path, got %q", second.output)
+	}
+	third, blocked := runEvidenceGate(a, "/w/a.go")
+	if !blocked {
+		t.Fatal("third attempt must be rejected")
+	}
+	if third.diagnostic.Retryable {
+		t.Fatalf("third identical rejection stayed retryable: %+v", third.diagnostic)
 	}
 	op, ok := a.operations().Get(writeOperationID("/w/a.go"))
 	if !ok || op.State != evidence.OperationNeedsUser {
 		t.Fatalf("operation state = %+v, want needs_user", op)
 	}
 
-	// The third attempt never reaches the evidence check, so it costs no tool
+	// The fourth attempt never reaches the evidence check, so it costs no tool
 	// execution and no further host analysis — the loop simply ends.
-	third, gated := a.applyOperationGate(writeOperationPlan("/w/a.go"))
-	if !gated || !third.blocked {
+	fourth, gated := a.applyOperationGate(writeOperationPlan("/w/a.go"))
+	if !gated || !fourth.blocked {
 		t.Fatal("a paused operation must be refused before it runs again")
 	}
-	if third.diagnostic == nil || third.diagnostic.Code != tool.OperationNeedsUser {
-		t.Fatalf("third attempt diagnostic = %+v, want OPERATION_NEEDS_USER", third.diagnostic)
+	if fourth.diagnostic == nil || fourth.diagnostic.Code != tool.OperationNeedsUser {
+		t.Fatalf("fourth attempt diagnostic = %+v, want OPERATION_NEEDS_USER", fourth.diagnostic)
 	}
 	if executions != 0 {
 		t.Fatalf("writer executed %d times while blocked", executions)
@@ -86,6 +101,7 @@ func TestOperationBreakerAnnouncesOnceAndLetsTheTurnLand(t *testing.T) {
 		Path: "/w/a.go", WholeFile: true, Hashes: hashesFor("alpha", "beta"),
 	}}
 	a, _ := newEvidenceAgent(t, writer, true)
+	runEvidenceGate(a, "/w/a.go")
 	runEvidenceGate(a, "/w/a.go")
 	runEvidenceGate(a, "/w/a.go")
 
@@ -108,6 +124,7 @@ func TestOperationBlockDoesNotLeakToOtherOperations(t *testing.T) {
 	a, _ := newEvidenceAgent(t, writer, true)
 	runEvidenceGate(a, "/w/a.go")
 	runEvidenceGate(a, "/w/a.go")
+	runEvidenceGate(a, "/w/a.go")
 
 	if _, gated := a.applyOperationGate(writeOperationPlan("/w/other.go")); gated {
 		t.Fatal("an unrelated operation inherited the block")
@@ -121,6 +138,7 @@ func TestOperationSourceChangeOpensANewRecoveryEpoch(t *testing.T) {
 	a, ledger := newEvidenceAgent(t, writer, true)
 	runEvidenceGate(a, "/w/a.go")
 	runEvidenceGate(a, "/w/a.go")
+	runEvidenceGate(a, "/w/a.go")
 	if _, gated := a.applyOperationGate(writeOperationPlan("/w/a.go")); !gated {
 		t.Fatal("fixture: the operation should be paused before the source changes")
 	}
@@ -132,6 +150,27 @@ func TestOperationSourceChangeOpensANewRecoveryEpoch(t *testing.T) {
 
 	if _, gated := a.applyOperationGate(writeOperationPlan("/w/a.go")); gated {
 		t.Fatal("a changed source must reopen automatic recovery for the operation")
+	}
+}
+
+// TestFailureGuidanceNamesReasonAndCompliantPath pins the task 859 receipt
+// wording: every guidance names why the rejection fired and what the host will
+// accept, so the model's first reaction is the compliant path — not a reworded
+// copy of the same call (the capability_id lesson).
+func TestFailureGuidanceNamesReasonAndCompliantPath(t *testing.T) {
+	stale := failureGuidance(tool.WriteEvidenceStale)
+	if !strings.Contains(stale, "your own earlier edit") || !strings.Contains(stale, "re-read") || !strings.Contains(stale, "retry") {
+		t.Fatalf("WRITE_EVIDENCE_STALE guidance must name the cause and the re-read path: %q", stale)
+	}
+	for _, code := range []string{
+		tool.WriteEvidenceMissing, tool.ReadSourceChanged,
+		tool.VerificationReceiptMissing, tool.VerificationReceiptMismatch,
+		"SOME_UNMAPPED_CODE",
+	} {
+		g := failureGuidance(code)
+		if !strings.Contains(g, "re-read") && !strings.Contains(g, "read ") && !strings.Contains(g, "run the verifier") && !strings.Contains(g, "cite") {
+			t.Fatalf("%s guidance offers no actionable path: %q", code, g)
+		}
 	}
 }
 

@@ -39,7 +39,7 @@ const (
 	WriteTargetAbsent    = "WRITE_TARGET_ABSENT"
 	WriteTargetAmbiguous = "WRITE_TARGET_AMBIGUOUS"
 	// OperationNeedsUser is the terminal code for an operation the host stopped
-	// automating after the same failure twice.
+	// automating after the same failure three times.
 	OperationNeedsUser = "OPERATION_NEEDS_USER"
 	// VerificationReceiptMissing rejects a completion citing verification the
 	// host has no successful receipt for.
@@ -61,9 +61,12 @@ const (
 
 // ModelFacing renders the closed set of recovery choices as compact JSON. The
 // model selects an action from allowed_recovery; it never has to reconstruct a
-// command string or guess which wording the host will accept.
+// command string or guess which wording the host will accept. Recovery names
+// the compliant path in prose (task 859): a receipt that only says what is
+// missing invites the model to guess another wording of the same call — the
+// capability_id lesson — so every rejection also says what to do instead.
 func (d OperationDiagnostic) ModelFacing() string {
-	if len(d.AllowedRecovery) == 0 && len(d.AvailableReceipts) == 0 {
+	if len(d.AllowedRecovery) == 0 && len(d.AvailableReceipts) == 0 && d.Recovery == "" {
 		return ""
 	}
 	payload := struct {
@@ -71,11 +74,12 @@ func (d OperationDiagnostic) ModelFacing() string {
 		OperationID       string   `json:"operation_id,omitempty"`
 		Path              string   `json:"path,omitempty"`
 		State             string   `json:"state,omitempty"`
+		Recovery          string   `json:"recovery,omitempty"`
 		AvailableReceipts []string `json:"available_receipts,omitempty"`
 		AllowedRecovery   []string `json:"allowed_recovery,omitempty"`
 		Retryable         bool     `json:"retryable"`
 		RetryBudget       int      `json:"retry_budget"`
-	}{d.Code, d.OperationID, d.Path, d.State, d.AvailableReceipts, d.AllowedRecovery, d.Retryable, d.RetryBudget}
+	}{d.Code, d.OperationID, d.Path, d.State, d.Recovery, d.AvailableReceipts, d.AllowedRecovery, d.Retryable, d.RetryBudget}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return ""

@@ -35,11 +35,13 @@ const (
 	ReceiptKindCommand      = "command"
 )
 
-// operationRecoveryBudget is how many times the host hands the model a
-// machine-executable recovery for the same operation failing the same way.
-// The second identical failure is not a self-correction, it is a loop: the
-// operation goes to the user instead of back to the model.
-const operationRecoveryBudget = 2
+// operationRecoveryBudget is how many times the same operation may fail the
+// same way before the host stops automating it. Task 859 raised it from 2: a
+// single retry with the rejection receipt (failure reason plus the compliant
+// path) is often spent re-orienting, so the second identical failure still
+// gets a guided recovery. The third identical failure is not self-correction,
+// it is a loop: the operation goes to the user instead of back to the model.
+const operationRecoveryBudget = 3
 
 // Operation is the host-authoritative record of one intended change. It spans
 // the read that justified it, the mutation that applied it, and the
@@ -353,8 +355,8 @@ func (l *OperationLedger) MarkUnknown(id, code string) Operation {
 
 // Fail records one rejection and returns how much automatic recovery is left.
 // The budget is keyed on (operation, failure code): a different failure is new
-// information and gets its own budget, while the same rejection twice is a
-// loop and goes to the user.
+// information and gets its own budget, while the same rejection three times is
+// a loop and goes to the user.
 func (l *OperationLedger) Fail(id, code string) RecoveryDecision {
 	if l == nil || id == "" {
 		return RecoveryDecision{State: OperationFailed, Attempt: 1, Retryable: true, Budget: operationRecoveryBudget - 1}

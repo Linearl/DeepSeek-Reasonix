@@ -79,7 +79,7 @@ func (a *Agent) applyOperationGate(plan *toolCallPlan) (toolOutcome, bool) {
 		d.Path = op.TargetPaths[0]
 	}
 	a.auditOperation(evidence.MetricOperationDuplicateBlock, op)
-	msg := fmt.Sprintf("blocked: [operation paused] %s already failed the same way twice (%s); the host will not resubmit it. Continue with other work or report it to the user.",
+	msg := fmt.Sprintf("blocked: [operation paused] %s already failed the same way three times (%s); the host will not resubmit it. Continue with other work or report it to the user.",
 		id, op.FailureCode)
 	if recovery := d.ModelFacing(); recovery != "" {
 		msg += "\n" + recovery
@@ -90,6 +90,9 @@ func (a *Agent) applyOperationGate(plan *toolCallPlan) (toolOutcome, bool) {
 // noteOperationFailure records one rejection against the operation and fills
 // the diagnostic with the closed set of recoveries the host will accept. The
 // model chooses an action instead of guessing another wording of the same call.
+// When the caller supplied no prose, the guidance names both the failure and
+// the compliant path (task 859): a receipt that only says what is missing sent
+// the model looping on reworded calls — the capability_id lesson.
 func (a *Agent) noteOperationFailure(operationID, code string, d *tool.OperationDiagnostic) evidence.RecoveryDecision {
 	ops := a.operations()
 	if ops == nil || operationID == "" || code == "" {
@@ -109,6 +112,9 @@ func (a *Agent) noteOperationFailure(operationID, code string, d *tool.Operation
 	d.State = string(decision.State)
 	d.Retryable = decision.Retryable
 	d.RetryBudget = decision.Budget
+	if d.Recovery == "" {
+		d.Recovery = failureGuidance(code)
+	}
 	if len(d.AllowedRecovery) == 0 {
 		d.AllowedRecovery = allowedRecoveryFor(code, decision)
 	}
@@ -116,6 +122,29 @@ func (a *Agent) noteOperationFailure(operationID, code string, d *tool.Operation
 		d.AvailableReceipts = a.citableReceiptIDs()
 	}
 	return decision
+}
+
+// failureGuidance maps a failure code onto the reason it fired and the path
+// the host will accept, in one sentence the model can act on without another
+// provider round of guessing. WRITE_EVIDENCE_STALE is the canonical case: the
+// file changed because of the model's own earlier edit, so the fix is to
+// re-read the target lines and retry against the new content — not to switch
+// to another tool.
+func failureGuidance(code string) string {
+	switch code {
+	case tool.WriteEvidenceStale:
+		return "the file changed since your last read — usually by your own earlier edit; re-read the target lines, then retry this operation against the current content"
+	case tool.WriteEvidenceMissing:
+		return "no read evidence covers this write; read the target lines first, then retry this same operation"
+	case tool.ReadSourceChanged:
+		return "the source moved since you read it; re-read it, then redo the operation on the new content"
+	case tool.VerificationReceiptMissing:
+		return "the cited verification has no host receipt; run the verifier yourself, then cite the receipt id the host issued for it"
+	case tool.VerificationReceiptMismatch:
+		return "the cited receipt does not cover this step; run a verifier over exactly the files this step changed, then cite that receipt"
+	default:
+		return "re-read the affected target, then retry this operation against its current content"
+	}
 }
 
 // allowedRecoveryFor maps a failure code onto the actions the host accepts. An
@@ -218,7 +247,7 @@ func (a *Agent) applyOperationBreaker(receiptMark int) intervention {
 		lines = append(lines, line)
 	}
 	guard := fmt.Sprintf(
-		"[operation paused] %s failed the same way twice and is now the user's decision. The host will not resubmit it, and re-sending it with reworded arguments will be refused. Continue with unrelated work, or end the turn and report exactly what is unfinished.",
+		"[operation paused] %s failed the same way three times and is now the user's decision. The host will not resubmit it, and re-sending it with reworded arguments will be refused. Continue with unrelated work, or end the turn and report exactly what is unfinished.",
 		strings.Join(lines, "; "))
 	a.armLoopGuardPass(receiptMark)
 	return intervention{

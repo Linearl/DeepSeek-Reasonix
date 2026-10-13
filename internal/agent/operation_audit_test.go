@@ -59,17 +59,19 @@ func TestOperationCountersRecordSettlementAndPause(t *testing.T) {
 		t.Fatalf("%s = %d, want 1", evidence.MetricOperationSettled, got)
 	}
 
-	// Two identical rejections: one recovery attempt, then the pause.
+	// Three identical rejections (task 859 budget): two guided recovery
+	// attempts, then the pause.
 	runEvidenceGate(a, "/w/a.go")
 	runEvidenceGate(a, "/w/a.go")
-	if got := metricCount(*audits, evidence.MetricOperationRecoveryAttempt); got != 1 {
-		t.Fatalf("%s = %d, want 1", evidence.MetricOperationRecoveryAttempt, got)
+	runEvidenceGate(a, "/w/a.go")
+	if got := metricCount(*audits, evidence.MetricOperationRecoveryAttempt); got != 2 {
+		t.Fatalf("%s = %d, want 2", evidence.MetricOperationRecoveryAttempt, got)
 	}
 	if got := metricCount(*audits, evidence.MetricOperationNeedsUser); got != 1 {
 		t.Fatalf("%s = %d, want 1", evidence.MetricOperationNeedsUser, got)
 	}
 
-	// A third attempt is refused without running, and counted as such.
+	// A fourth attempt is refused without running, and counted as such.
 	a.applyOperationGate(writeOperationPlan("/w/a.go"))
 	if got := metricCount(*audits, evidence.MetricOperationDuplicateBlock); got != 1 {
 		t.Fatalf("%s = %d, want 1", evidence.MetricOperationDuplicateBlock, got)

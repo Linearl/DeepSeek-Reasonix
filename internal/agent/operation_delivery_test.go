@@ -96,6 +96,7 @@ func TestPausedOperationIsReportedForTheUserNotTheModel(t *testing.T) {
 	a, _ := newEvidenceAgent(t, writer, true)
 	runEvidenceGate(a, "/w/a.go")
 	runEvidenceGate(a, "/w/a.go")
+	runEvidenceGate(a, "/w/a.go")
 
 	gaps := a.readinessOperationGaps()
 	if len(gaps) != 1 || gaps[0].Action != readinessActionResolveWithUser {
