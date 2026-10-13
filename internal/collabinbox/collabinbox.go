@@ -1020,6 +1020,112 @@ func (s *Store) Decide(ctx context.Context, messageID, by string) (Snapshot, err
 	})
 }
 
+// Delete physically removes the mail behind the given entries from every
+// mailbox holding a copy (任务 856 ②: the inbox is the conversation ARCHIVE —
+// the mail was already injected into the conversations at delivery time, so
+// deleting the archive never touches what a conversation already received;
+// that semantic must show up verbatim in the panel's confirm copy).
+//
+// A folded duplicate entry (任务461 P8 ③) expands to its whole cluster, the
+// same way MarkRead settles one. After the removal, dead dismissed/decided
+// state keys are garbage-collected (the entries they describe no longer
+// exist), and the returned fresh snapshot lets both windows converge in one
+// round trip (contract ①).
+func (s *Store) Delete(ctx context.Context, ids []string) (Snapshot, error) {
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	defer unlock()
+	idx, err := s.buildIndex(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	targets := map[string]bool{}
+	for _, id := range ids {
+		primary := strings.TrimSpace(id)
+		if primary == "" {
+			continue
+		}
+		if p := idx.foldPrimary[primary]; p != "" {
+			primary = p
+		}
+		targets[primary] = true
+		for _, mid := range idx.foldGroups[primary] {
+			targets[mid] = true
+		}
+	}
+	if len(targets) > 0 {
+		if _, err := s.mail.PruneBy(ctx, func(_ string, m sessioncollab.MailMessage) bool {
+			return targets[m.ID]
+		}); err != nil {
+			return Snapshot{}, err
+		}
+		s.gcStateLocked(ctx)
+	}
+	return s.List(ctx, Query{Limit: 1}, false)
+}
+
+// DeleteAll physically empties the whole archive (任务 856 ②「清空全部」:
+// every bucket, dismissed entries included). Returns how many messages were
+// physically removed plus the fresh (empty) default-view snapshot — the same
+// shape the 620 clean-now path answers with, so the panel converges in one
+// round trip. The caller owns the confirm UX; this layer is unconditional.
+func (s *Store) DeleteAll(ctx context.Context) (int, Snapshot, error) {
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return 0, Snapshot{}, err
+	}
+	defer unlock()
+	removed, err := s.mail.PruneBy(ctx, func(string, sessioncollab.MailMessage) bool { return true })
+	if err != nil {
+		return removed, Snapshot{}, err
+	}
+	st := s.loadState()
+	st.Dismissed = map[string]int64{}
+	st.Decided = map[string]Decision{}
+	st.Revision++
+	if err := s.saveState(st); err != nil {
+		return removed, Snapshot{}, err
+	}
+	snap, lerr := s.List(ctx, Query{Limit: 1}, false)
+	return removed, snap, lerr
+}
+
+// gcStateLocked drops dismissed/decided keys whose message no longer exists
+// after a physical removal (the same maintenance ApplyRetention runs after a
+// prune — 设计要点 2: dismissals/decisions die WITH their entries). Caller
+// holds the store lock.
+func (s *Store) gcStateLocked(ctx context.Context) {
+	entries, err := s.build(ctx)
+	if err != nil {
+		return // keep the state keys; the next sweep re-runs the same GC
+	}
+	alive := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		alive[e.ID] = true
+	}
+	st := s.loadState()
+	dropped := false
+	for id := range st.Dismissed {
+		if !alive[id] {
+			delete(st.Dismissed, id)
+			dropped = true
+		}
+	}
+	for id := range st.Decided {
+		if !alive[id] {
+			delete(st.Decided, id)
+			dropped = true
+		}
+	}
+	if dropped {
+		if err := s.saveState(st); err != nil {
+			return
+		}
+	}
+}
+
 // SetRetention switches the retention window (7d|30d|90d|forever) and applies
 // it immediately, so the acceptance "切换 7→30 后超期条目被清理" is one call.
 func (s *Store) SetRetention(ctx context.Context, retention string) (Snapshot, error) {
