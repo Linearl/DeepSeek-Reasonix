@@ -2570,6 +2570,8 @@ export interface DesktopStartupSettingsView {
   experimentalLifecycleNoiseGate?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */
   experimentalLocalServer?: boolean;
+  /** Task 846: change-data-home lab switch; gates the migration wizard write path. */
+  experimentalHomePointer?: boolean;
   /** Path-scope rules experiment switch (task 134); off unless the user opts in. */
   experimentalPathRules?: boolean;
   /** Trace-as-State compaction experiment (task 60); off unless the user opts in. */

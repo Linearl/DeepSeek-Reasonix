@@ -285,6 +285,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "eventsRotation", labelKey: "settings.eventsRotation", tier: "optional" },
           ],
         },
+        // 任务 846：配置数据目录可更改（未稳定档，默认关）。独立卡——迁移
+        // 向导有自己的 pane（HomePointerLabPane），不走 members 合并卡。
+        {
+          id: "homePointer",
+          labelKey: "settings.homePointer",
+          tier: "unstable",
+          onKeys: ["homePointer"],
+        },
         // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
         // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
         // 任务 781：补 tier——闲置释放=recommended（rail 显推荐徽章）。

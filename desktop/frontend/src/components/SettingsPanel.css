@@ -872,3 +872,13 @@
 :root .settings-center .model-preferences .settings-field__label { font-size: 14px; }
 
 :root .settings-center .settings-page .model-preferences .settings-section__head { flex-direction: row; justify-content: flex-start; text-align: left; }
+
+/* 任务 846：数据目录迁移向导（HomePointerLabPane）。布局辅助类；视觉全部
+   复用既有 token（settings-field / banner），这里只管向导专属的排布。 */
+.home-pointer-pane { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
+.home-pointer-pane__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.home-pointer-pane__risks { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.home-pointer-pane__risks ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.home-pointer-pane__risk { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.45; color: var(--fg); }
+.home-pointer-pane__risk input[type="checkbox"] { margin-top: 2px; flex: none; }
+.home-pointer-pane__risk--error span { color: var(--danger); }
