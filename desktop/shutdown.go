@@ -45,12 +45,23 @@ func completeDesktopShutdown(tracker *desktopLifecycleTracker, body func()) {
 			shutdownExit(1)
 		}
 	}()
-	body()
+	// The watchdog guards a body that silently WEDGES — it must be released
+	// when the body PANICS too (task 854): the panic keeps its original
+	// propagation semantics (same goroutine, the shutting_down record stays
+	// behind for the next launch to diagnose), but a RECOVERED panic — the
+	// test binary, a framework-level recover — would otherwise leave the
+	// watchdog armed on a leaked goroutine, and it force-exits the process a
+	// full timeout after the panic was already survived. A deferred release
+	// keeps the normal path byte-for-byte: body returns, the watchdog stands
+	// down, the teardown-complete line and the record clean follow.
+	func() {
+		defer close(done)
+		body()
+	}()
 	// Task 272 G2: an exit with no terminal log line left "when did the old
 	// process die" undecidable — the incident log just stopped. Name the
 	// normal completion before the lifecycle record is removed.
 	slog.Info("desktop: shutdown teardown complete", "phase", tracker.phase())
-	close(done)
 	tracker.clean()
 }
 

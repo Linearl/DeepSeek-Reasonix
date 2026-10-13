@@ -248,6 +248,17 @@ func TestDesktopLifecycleAsyncWriterKeepsLatestPhase(t *testing.T) {
 }
 
 func TestDesktopShutdownPanicPreservesLifecycleRecord(t *testing.T) {
+	// Task 854: a panicking body must release the watchdog too. A recovered
+	// panic that left the watchdog armed force-exited the whole test binary
+	// one full timeout AFTER this test had passed — the three-keyword
+	// `Restart|Update|Lifecycle` mixed run died as a package-level failure
+	// with no FAIL event, and the victim test name drifted run to run.
+	oldExit, oldTimeout := shutdownExit, shutdownWatchdogTimeout
+	t.Cleanup(func() { shutdownExit, shutdownWatchdogTimeout = oldExit, oldTimeout })
+	shutdownWatchdogTimeout = 100 * time.Millisecond
+	fired := make(chan struct{}, 1)
+	shutdownExit = func(int) { fired <- struct{}{} }
+
 	tracker := lifecycleTrackerForTest(t, t.TempDir(), os.Getpid(), "shutdown-panic")
 	if err := tracker.start(); err != nil {
 		t.Fatal(err)
@@ -260,6 +271,13 @@ func TestDesktopShutdownPanicPreservesLifecycleRecord(t *testing.T) {
 	state, err := readDesktopLifecycleState(tracker.path)
 	if err != nil || state.Phase != "shutting_down" {
 		t.Fatalf("panic lifecycle state = %+v err=%v", state, err)
+	}
+	// Past the (shrunk) watchdog deadline the goroutine must have stood down:
+	// a fired one here means the panic path leaks a later force-exit.
+	select {
+	case <-fired:
+		t.Fatal("the watchdog fired after a panicking body; the panic path must release it (task 854)")
+	case <-time.After(300 * time.Millisecond):
 	}
 }
 
