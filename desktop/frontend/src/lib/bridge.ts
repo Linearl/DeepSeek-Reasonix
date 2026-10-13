@@ -1730,6 +1730,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   EnqueueInboxFollowupWithInvocations: typeof GeneratedApp.EnqueueInboxFollowupWithInvocations;
   ExportScrollDiagnostics: typeof GeneratedApp.ExportScrollDiagnostics;
   GetHistoryIndexStatus: typeof GeneratedApp.GetHistoryIndexStatus;
+  DeleteWorkspaceEntriesPermanent: typeof GeneratedApp.DeleteWorkspaceEntriesPermanent;
+  RenameWorkspaceEntry: typeof GeneratedApp.RenameWorkspaceEntry;
+  TrashWorkspaceEntries: typeof GeneratedApp.TrashWorkspaceEntries;
   GetHistorySearchContext: typeof GeneratedApp.GetHistorySearchContext;
   GetPinnedFilesForTab: typeof GeneratedApp.GetPinnedFilesForTab;
   GetTaskCatalogStatus: typeof GeneratedApp.GetTaskCatalogStatus;
