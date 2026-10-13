@@ -105,6 +105,28 @@ func (a *App) ChannelInvite(ref string, contactIDs []string) (collabchannel.Chan
 	return store.Channel(ref)
 }
 
+// ChannelSetDeputy appoints the single deputy manager (任务 856 ⑤): only the
+// HUMAN owner of a human-owned channel, and only a session member. The deputy
+// gains the invite permission (same as the owner); removal stays owner-only.
+func (a *App) ChannelSetDeputy(ref, contactID string) (collabchannel.Channel, error) {
+	store, err := collabchannel.Open(config.SessionCollabMailDir())
+	if err != nil {
+		return collabchannel.Channel{}, err
+	}
+	defer store.Close()
+	return store.SetDeputy(ref, contactID)
+}
+
+// ChannelUnsetDeputy clears the deputy appointment (idempotent).
+func (a *App) ChannelUnsetDeputy(ref string) (collabchannel.Channel, error) {
+	store, err := collabchannel.Open(config.SessionCollabMailDir())
+	if err != nil {
+		return collabchannel.Channel{}, err
+	}
+	defer store.Close()
+	return store.UnsetDeputy(ref)
+}
+
 // ChannelRemoveMember kicks one member — owner-only, never the owner.
 func (a *App) ChannelRemoveMember(ref, contactID string) (collabchannel.Channel, error) {
 	store, err := collabchannel.Open(config.SessionCollabMailDir())

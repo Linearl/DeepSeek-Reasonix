@@ -43,7 +43,10 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" driver (house pattern: projectiondb/topicstate)
 )
 
-const schemaVersion = 3
+// schemaVersion v4 (任务 856 ⑤): channels.deputy_id — the single deputy
+// manager a HUMAN founder may appoint (additive migration, same pattern as
+// the v2→v3 803 columns; empty = no deputy).
+const schemaVersion = 4
 
 // ErrHourlyCap is the per-channel 429 guard: publish refused until the
 // rolling hour window frees up.
@@ -206,10 +209,13 @@ func migrate(db *sql.DB) error {
 	// v2→v3 (任务 803 ①): 成员类型 + 群主列，全部 additive——老成员补默认
 	// 'session'，老 channel 的 owner 列为空串（= 无群主，语义不变）；无数据
 	// 迁移，不改任何既有行的值。
+	// v3→v4 (任务 856 ⑤): 单副管理员列，additive——老群 deputy 为空串
+	// （= 无副管理员，语义不变）；无数据迁移，不改任何既有行的值。
 	for _, col := range []string{
 		`ALTER TABLE members ADD COLUMN type TEXT NOT NULL DEFAULT '` + MemberTypeSession + `'`,
 		`ALTER TABLE channels ADD COLUMN owner_type TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE channels ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE channels ADD COLUMN deputy_id TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(col); err != nil &&
 			!strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
@@ -266,8 +272,13 @@ type Channel struct {
 	// Empty OwnerType/OwnerID = a pre-803 channel with no owner — old
 	// semantics unchanged. MemberDetails mirrors Members with types; both
 	// stay so the 409 panel's existing []string render keeps compiling.
-	OwnerType     string   `json:"ownerType,omitempty"`
-	OwnerID       string   `json:"ownerId,omitempty"`
+	OwnerType string `json:"ownerType,omitempty"`
+	OwnerID   string `json:"ownerId,omitempty"`
+	// 任务 856 ⑤: the single deputy manager (empty = none). A deputy carries
+	// the ChannelInvite permission (same as the owner); removal stays
+	// owner-only. Only a human-owned channel gets one (the SetDeputy API is
+	// human-called by construction).
+	DeputyID      string   `json:"deputyId,omitempty"`
 	MemberDetails []Member `json:"memberDetails,omitempty"`
 }
 
@@ -432,12 +443,13 @@ func (s *Store) Leave(ref, contact string) error {
 	return s.memberOp(id, contact, false, "")
 }
 
-// Invite adds session members — owner-only (任务 803 ③ 群主权限). Idempotent
-// per contact. A channel with no owner (pre-803) rejects: its membership is
+// Invite adds session members — owner OR deputy (任务 803 ③ 群主权限; 任务
+// 856 ⑤: the deputy carries the same invite permission). Idempotent per
+// contact. A channel with no owner (pre-803) rejects: its membership is
 // frozen until an owner surface takes it over.
 func (s *Store) Invite(ref, actor string, contacts ...string) error {
 	actor = strings.TrimSpace(actor)
-	id, err := s.requireOwner(ref, actor)
+	id, err := s.requireManager(ref, actor)
 	if err != nil {
 		return err
 	}
@@ -487,6 +499,107 @@ func (s *Store) requireOwner(ref, actor string) (string, error) {
 	return id, nil
 }
 
+// requireManager resolves the channel and checks the actor may manage
+// membership (owner or deputy — 任务 856 ⑤; removal stays owner-only, so
+// RemoveMember keeps requireOwner).
+func (s *Store) requireManager(ref, actor string) (string, error) {
+	if actor == "" {
+		return "", errors.New("collabchannel: actor identity is required")
+	}
+	id, err := s.resolve(ref)
+	if err != nil {
+		return "", err
+	}
+	deputy, err := s.deputyOf(id)
+	if err != nil {
+		return "", err
+	}
+	if deputy != "" && deputy == actor {
+		return id, nil
+	}
+	_, ownerID, err := s.ownerOf(id)
+	if err != nil {
+		return "", err
+	}
+	if ownerID == "" || ownerID != actor {
+		if deputy != "" {
+			return "", fmt.Errorf("%w: %q is neither the owner nor the deputy of %s", ErrNotOwner, actor, ref)
+		}
+		return "", fmt.Errorf("%w: %q is not the owner of %s", ErrNotOwner, actor, ref)
+	}
+	return id, nil
+}
+
+// deputyOf reads the channel's deputy column (empty = none).
+func (s *Store) deputyOf(channelID string) (string, error) {
+	var deputy string
+	err := s.db.QueryRow(`SELECT COALESCE(deputy_id, '') FROM channels WHERE id = ?`, channelID).Scan(&deputy)
+	return deputy, err
+}
+
+// SetDeputy appoints the single deputy manager (任务 856 ⑤). Only the HUMAN
+// owner of a human-owned channel may appoint (the session side has no
+// deputy-setting surface — 与群主对称、一期单副管理员); the target must be a
+// session MEMBER of the channel (never the owner, never the human). A
+// re-appointment replaces the previous deputy.
+func (s *Store) SetDeputy(ref, contactID string) (Channel, error) {
+	contactID = strings.TrimSpace(contactID)
+	if contactID == "" {
+		return Channel{}, errors.New("collabchannel: deputy contact is required")
+	}
+	id, err := s.resolve(ref)
+	if err != nil {
+		return Channel{}, err
+	}
+	ownerType, ownerID, err := s.ownerOf(id)
+	if err != nil {
+		return Channel{}, err
+	}
+	if ownerID == "" {
+		return Channel{}, fmt.Errorf("%w: %s has no owner (pre-803 channel)", ErrNotOwner, ref)
+	}
+	if ownerType != MemberTypeHuman || ownerID != HumanLocal {
+		return Channel{}, fmt.Errorf("%w: only a human-owned channel can appoint a deputy (%s is owned by %s:%s)", ErrNotOwner, ref, ownerType, ownerID)
+	}
+	if contactID == ownerID {
+		return Channel{}, fmt.Errorf("%w: the owner cannot be their own deputy", ErrNotOwner)
+	}
+	if contactID == HumanLocal {
+		return Channel{}, errors.New("collabchannel: the human cannot be the deputy (deputies are conversations)")
+	}
+	members, err := s.Members(id)
+	if err != nil {
+		return Channel{}, err
+	}
+	isMember := false
+	for _, m := range members {
+		if m.Contact == contactID {
+			isMember = m.Type == MemberTypeSession
+			break
+		}
+	}
+	if !isMember {
+		return Channel{}, fmt.Errorf("collabchannel: %q is not a session member of %s", contactID, ref)
+	}
+	if _, err := s.db.Exec(`UPDATE channels SET deputy_id = ? WHERE id = ?`, contactID, id); err != nil {
+		return Channel{}, err
+	}
+	return s.Channel(id)
+}
+
+// UnsetDeputy clears the deputy appointment (idempotent — clearing an empty
+// deputy is a no-op that still returns the channel).
+func (s *Store) UnsetDeputy(ref string) (Channel, error) {
+	id, err := s.resolve(ref)
+	if err != nil {
+		return Channel{}, err
+	}
+	if _, err := s.db.Exec(`UPDATE channels SET deputy_id = '' WHERE id = ?`, id); err != nil {
+		return Channel{}, err
+	}
+	return s.Channel(id)
+}
+
 // ownerOf reads the channel's owner columns (empty strings = no owner).
 func (s *Store) ownerOf(channelID string) (ownerType, ownerID string, err error) {
 	err = s.db.QueryRow(`SELECT COALESCE(owner_type, ''), COALESCE(owner_id, '') FROM channels WHERE id = ?`,
@@ -522,8 +635,8 @@ func (s *Store) Channel(ref string) (Channel, error) {
 		return Channel{}, err
 	}
 	var c Channel
-	err = s.db.QueryRow(`SELECT id, name, topic, created_at, hourly_limit, COALESCE(owner_type, ''), COALESCE(owner_id, '') FROM channels WHERE id = ?`, id).
-		Scan(&c.ID, &c.Name, &c.Topic, &c.CreatedAt, &c.HourlyLimit, &c.OwnerType, &c.OwnerID)
+	err = s.db.QueryRow(`SELECT id, name, topic, created_at, hourly_limit, COALESCE(owner_type, ''), COALESCE(owner_id, ''), COALESCE(deputy_id, '') FROM channels WHERE id = ?`, id).
+		Scan(&c.ID, &c.Name, &c.Topic, &c.CreatedAt, &c.HourlyLimit, &c.OwnerType, &c.OwnerID, &c.DeputyID)
 	if err != nil {
 		return Channel{}, err
 	}
