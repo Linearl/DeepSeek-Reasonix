@@ -57,6 +57,18 @@ type AskCardProps = {
   // reading" — bounded by the backend's absolute hover budget. Optional like
   // onInteract: remote surfaces keep the plain wait/timeout behavior.
   onActivity?: (id: string) => void;
+  // 任务849: fired on the takeover toggle. true parks the backend auto-decide
+  // (timer and absolute hover budget suspended; the ask waits indefinitely);
+  // false releases it and re-arms a fresh window. Resolves false when no
+  // timed ask consumed the toggle, which rolls the local button state back —
+  // the panel must never show a takeover the backend is not honoring.
+  onTakeover?: (id: string, taking: boolean) => Promise<boolean>;
+  // 任务849: the autopilot auto-decide window in ms (>0 arms the countdown
+  // display and the takeover button). The App mirrors the backend's
+  // autopilotAskWaitFor from the tab's collaboration mode plus the task-477
+  // settings snapshot; 0/undefined keeps the plain panel (non-autopilot tabs,
+  // settings unknown, remote surfaces without a local bridge).
+  countdownMs?: number;
 };
 
 export function AskCard(props: AskCardProps) {
@@ -66,7 +78,7 @@ export function AskCard(props: AskCardProps) {
   return <AskCardBody key={draftKey} {...props} draftKey={draftKey} />;
 }
 
-function AskCardBody({ ask, onAnswer, onInteract, onActivity, onStop, draftKey }: AskCardProps & { draftKey: string }) {
+function AskCardBody({ ask, onAnswer, onInteract, onActivity, onTakeover, countdownMs, onStop, draftKey }: AskCardProps & { draftKey: string }) {
   const t = useT();
   // Per-question state: selected option labels, and an optional typed answer.
   const [sel, setSel] = useState<Record<string, string[]>>(() => readAskDraft(draftKey)?.sel ?? {});
@@ -91,10 +103,14 @@ function AskCardBody({ ask, onAnswer, onInteract, onActivity, onStop, draftKey }
 
   // 任务806 要素①: idempotent — the backend consumes the first touch only,
   // so one fire per panel is enough and keeps the bridge traffic at zero for
-  // panels nobody has touched.
+  // panels nobody has touched. The state twin drives the UI: once the user
+  // started choosing, the backend has stopped the timer, so the countdown and
+  // the takeover button step aside for an attended wait.
+  const [interacted, setInteracted] = useState(false);
   const fireInteract = () => {
     if (interactedRef.current) return;
     interactedRef.current = true;
+    setInteracted(true);
     try {
       onInteract?.(ask.id);
     } catch {
@@ -103,15 +119,64 @@ function AskCardBody({ ask, onAnswer, onInteract, onActivity, onStop, draftKey }
     }
   };
 
+  // 任务849: the takeover toggle — the explicit "I am here, stop the clock"
+  // declaration, one step stronger than hover (844). Held, the panel shows a
+  // settled "no auto-answer" badge instead of a ticking countdown; released,
+  // the countdown restarts from the full window. Optimistic with rollback:
+  // a false reply (attended/high-risk ask, unknown/expired ID) un-renders a
+  // takeover the backend is not honoring.
+  const takeoverArmed = (countdownMs ?? 0) > 0 && Boolean(onTakeover);
+  const [takeoverHeld, setTakeoverHeld] = useState(false);
+  const [takeoverPending, setTakeoverPending] = useState(false);
+  const toggleTakeover = () => {
+    if (!onTakeover || takeoverPending) return;
+    const next = !takeoverHeld;
+    setTakeoverPending(true);
+    setTakeoverHeld(next);
+    void onTakeover(ask.id, next)
+      .then((applied) => {
+        if (!applied) setTakeoverHeld(!next);
+      })
+      .catch(() => setTakeoverHeld(!next))
+      .finally(() => setTakeoverPending(false));
+  };
+
+  // 任务849: the local countdown over the auto-decide window. Rendered from a
+  // local timer — no event schema change, no per-second backend traffic (the
+  // concern that shelved the visual countdown in 844 was exactly the backend
+  // pushed-event variant). The backend clock stays authoritative: this display
+  // is advisory, and its window start simply mirrors where the backend's
+  // timer begins (the panel mounts a beat after the Ask registration, so the
+  // last shown second can overshoot the real expiry by a beat). mousemove
+  // re-arms both clocks — the throttled hop below resets the backend window,
+  // and the same tick resets the local deadline, so the two stay in step.
+  const countdownLive = takeoverArmed && !takeoverHeld && !interacted;
+  const [countdownDeadline, setCountdownDeadline] = useState(() => Date.now() + (countdownMs ?? 0));
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!countdownLive) return;
+    const timer = window.setInterval(() => setCountdownNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [countdownLive]);
+  const countdownSeconds = countdownLive ? Math.max(0, Math.ceil((countdownDeadline - countdownNow) / 1000)) : null;
+
   // 任务844: pointer movement over the panel resets the auto-decide window on
   // the backend ("the user is reading"). mousemove fires at pointer-poll rate,
   // so the signal is throttled well below the window scale — one hop per
-  // second is plenty for a 15s window and keeps the bridge quiet.
+  // second is plenty for a 15s window and keeps the bridge quiet. 任务849:
+  // the same tick re-arms the local countdown, and while a takeover is held
+  // the clock is parked on the backend, so neither the hop nor the local
+  // reset happens.
   const lastActivityRef = useRef(0);
   const fireActivity = () => {
+    if (takeoverArmed && (takeoverHeld || interacted)) return;
     const now = Date.now();
     if (now - lastActivityRef.current < askActivityThrottleMs) return;
     lastActivityRef.current = now;
+    if (countdownLive) {
+      setCountdownDeadline(now + (countdownMs ?? 0));
+      setCountdownNow(now);
+    }
     try {
       onActivity?.(ask.id);
     } catch {
@@ -390,11 +455,28 @@ function AskCardBody({ ask, onAnswer, onInteract, onActivity, onStop, draftKey }
               {t("ask.questionProgress", { progress })}
             </span>
           )}
+          {countdownSeconds !== null && (
+            <span className="ask-shelf__header-text ask-shelf__header-text--progress">
+              {t("ask.autoDecideCountdown", { seconds: countdownSeconds })}
+            </span>
+          )}
+          {takeoverArmed && takeoverHeld && (
+            <span className="ask-shelf__header-text">{t("ask.takeoverHeld")}</span>
+          )}
         </span>
       }
       meta={q.prompt}
       headerActions={
         <>
+          {takeoverArmed && !interacted && (
+            <PromptHeaderAction
+              onClick={toggleTakeover}
+              ariaLabel={takeoverHeld ? t("ask.releaseTakeover") : t("ask.takeover")}
+              disabled={takeoverPending}
+            >
+              {takeoverHeld ? t("ask.releaseTakeover") : t("ask.takeover")}
+            </PromptHeaderAction>
+          )}
           <PromptHeaderAction
             onClick={() => setCollapsed((value) => !value)}
             ariaLabel={collapsed ? t("common.expand") : t("common.collapse")}

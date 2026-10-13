@@ -683,6 +683,12 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // signals the backend to reset the auto-decide window, bounded by the
   // backend's absolute hover budget. No-op without a timer.
   NotifyAskActivityForTab(tabID: string, id: string): Promise<void>;
+  // 任务849: the ask panel's takeover toggle. true parks the auto-decide
+  // timer and its absolute hover budget outright (the user declared
+  // themselves present; the ask waits indefinitely), false releases it and
+  // re-arms a fresh window. Resolves false when no timed ask consumed the
+  // toggle — the frontend rolls its button state back on that.
+  NotifyAskTakeoverForTab(tabID: string, id: string, taking: boolean): Promise<boolean>;
   // Task 333: event-log rotation gate + storage panel actions. The mode/threshold
   // setters write config and push into the agent save path immediately (no restart).
   SetEventsAutoRotation(mode: string): Promise<void>;
@@ -4306,6 +4312,11 @@ function makeMockApp(): AppBindings {
         // 任务844: dev mock has no auto-decide window to reset; same
         // fire-and-forget posture as the interaction hop above.
         async NotifyAskActivityForTab(_tabID, _id) {},
+        // 任务849: dev mock has no auto-decide to park either; resolving true
+        // keeps the takeover toggle fully walkable in the dev shell.
+        async NotifyAskTakeoverForTab(_tabID, _id, _taking) {
+          return true;
+        },
         async ResolvePromptForTab(tabID, promptID, _turnID, _runtimeEpoch, kind, answer) {
           await withMockTabScope(tabID, async () => {
             if (kind === "ask") return this.AnswerQuestion(promptID, answer.questions ?? []);
