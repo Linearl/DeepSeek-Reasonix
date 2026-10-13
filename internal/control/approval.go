@@ -533,14 +533,16 @@ func (a *approvalManager) registerAsk(questions []event.AskQuestion) (string, ch
 	return id, reply
 }
 
-// registerAskInteractive is registerAsk plus the task-806 interaction channel
-// and the task-844 activity channel: a reversible ask under autopilot arms the
-// interaction-aware timer, so its pending record carries the channel the panel
-// signals on when the user starts choosing or typing (要素①, one-shot stop)
-// and the channel it signals on while the pointer merely moves over the panel
-// (task 844 hover, repeatable window reset). Both are nil elsewhere —
-// high-risk and attended asks keep the plain registration verbatim.
-func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) (string, chan []event.AskAnswer, chan struct{}, chan struct{}) {
+// registerAskInteractive is registerAsk plus the task-806 interaction channel,
+// the task-844 activity channel, and the task-849 takeover channel: a
+// reversible ask under autopilot arms the interaction-aware timer, so its
+// pending record carries the channel the panel signals on when the user starts
+// choosing or typing (要素①, one-shot stop), the channel it signals on while
+// the pointer merely moves over the panel (task 844 hover, repeatable window
+// reset), and the channel the takeover button toggles (task 849, park/resume
+// the timer outright). All are nil elsewhere — high-risk and attended asks
+// keep the plain registration verbatim.
+func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) (string, chan []event.AskAnswer, chan struct{}, chan struct{}, chan bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.nextID++
@@ -548,8 +550,9 @@ func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) 
 	reply := make(chan []event.AskAnswer, 1)
 	interact := make(chan struct{})
 	activity := make(chan struct{}, 1)
-	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, interact: interact, activity: activity}
-	return id, reply, interact, activity
+	takeover := make(chan bool, 1)
+	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, interact: interact, activity: activity, takeover: takeover}
+	return id, reply, interact, activity, takeover
 }
 
 // notifyAskInteraction closes the interaction channel of a pending ask, one
@@ -584,6 +587,31 @@ func (a *approvalManager) notifyAskActivity(id string) bool {
 	}
 	select {
 	case p.activity <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+// notifyAskTakeover delivers the task-849 takeover toggle to a pending ask.
+// Repeatable like notifyAskActivity, but each delivery carries the next state
+// (true = hold, false = release). A full buffer is drained first so rapid
+// toggling collapses to the last click — the channel holds one state, not a
+// queue. False is the expected answer for every other prompt class (attended
+// and high-risk asks have no auto-decide to park; the 109 B4 safety valve must
+// stay real), mirroring notifyAskInteraction.
+func (a *approvalManager) notifyAskTakeover(id string, taking bool) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	p, ok := a.asks[id]
+	if !ok || p.takeover == nil {
+		return false
+	}
+	select {
+	case <-p.takeover:
+	default:
+	}
+	select {
+	case p.takeover <- taking:
 	default:
 	}
 	return true

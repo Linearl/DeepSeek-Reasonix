@@ -488,6 +488,14 @@ type pendingAsk struct {
 	// by the controller's absolute hover budget. Buffered size 1 so a
 	// mousemove burst costs one pending signal and never blocks the caller.
 	activity chan struct{}
+	// takeover carries the task-849 "I am here, stop the clock" toggle: the
+	// panel button declares the user present far more strongly than hover,
+	// so the timed wait parks the auto-decide entirely (timer and hover
+	// budget suspended) until the user releases the takeover. Each delivery
+	// carries the next state (true = hold, false = release). Buffered size 1
+	// with a drain-on-send so rapid toggles collapse to the last click.
+	// Non-nil only for the same reversible-timed class as interact/activity.
+	takeover chan bool
 }
 
 type plannerSessionResetter interface {
@@ -3138,14 +3146,16 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 
 	// Task 806: a reversible ask under autopilot registers with the
 	// interaction channel so the panel can stop the auto-decide timer, and
-	// with the task-844 activity channel so hover can reset it; every other
-	// prompt class keeps the plain registration verbatim.
+	// with the task-844 activity channel so hover can reset it; task 849 adds
+	// the takeover channel so the panel button can park the timer outright.
+	// Every other prompt class keeps the plain registration verbatim.
 	var interactCh chan struct{}
 	var activityCh chan struct{}
+	var takeoverCh chan bool
 	var id string
 	var reply chan []event.AskAnswer
 	if reversibleTimedAsk {
-		id, reply, interactCh, activityCh = c.approval.registerAskInteractive(questions)
+		id, reply, interactCh, activityCh, takeoverCh = c.approval.registerAskInteractive(questions)
 	} else {
 		id, reply = c.approval.registerAsk(questions)
 	}
@@ -3227,6 +3237,12 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// (askAutoDecideHoverFactor × askWait): continuous movement defers the
 	// auto-decide at most that long, then the original expiry semantics fire
 	// anyway — 防无限拖死.
+	// Task 849: the panel's takeover button (NotifyAskTakeover) is the explicit
+	// "the user is here" declaration — stronger than hover and unlike it
+	// repeatable forever: holding the takeover parks both the window timer and
+	// the absolute hover budget, so a user who needs more time to think is not
+	// forced to keep moving the mouse; releasing re-arms a fresh window and a
+	// fresh budget.
 	if reversibleTimedAsk {
 		askWait := c.autopilotAskWaitFor()
 		hoverBudget := askAutoDecideHoverFactor * askWait
@@ -3286,6 +3302,29 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			timer.Reset(askWait)
 			return true
 		}
+		// takeover holds the task-849 panel-button state: true = the user
+		// declared themselves present ("take over"), so the auto-decide timer
+		// and the absolute hover budget are parked outright and the ask waits
+		// indefinitely — "thinking but not moving the mouse" must not end in a
+		// decide-for-you. false = released: the wait restarts from a fresh
+		// window and a fresh hover budget, the same arming posture as the
+		// registration above. A stronger declaration than hover (844): hover
+		// says "the user is reading", takeover says "the user is deciding".
+		takeover := false
+		parkTimers := func() {
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			if !budgetTimer.Stop() {
+				select {
+				case <-budgetTimer.C:
+				default:
+				}
+			}
+		}
 		attended := false
 		for !attended {
 			select {
@@ -3297,12 +3336,36 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 				// for an attended user.
 				attended = true
 			case <-activityCh:
+				if takeover {
+					// Held: the clock is parked, so a hover — "the user is
+					// reading" — carries nothing new. Swallow and keep waiting.
+					continue
+				}
 				if extendOnHover() {
 					continue
 				}
 				// The budget is gone: "the user is reading" would otherwise
 				// defer the run forever, so the expiry semantics take over.
 				return decideForUser("hover_budget"), nil
+			case taking := <-takeoverCh:
+				if taking == takeover {
+					continue
+				}
+				takeover = taking
+				if takeover {
+					parkTimers()
+					log.Printf("[ask-panel] ask takeover held; auto-decide timer and hover budget parked, waiting for the user (task 849) turn=%s item=%s", turnID, id)
+					continue
+				}
+				// Released: re-arm exactly like the initial registration — a
+				// fresh window and a fresh absolute budget, so hover spent
+				// before the takeover is not charged against the new one. Both
+				// timers are drained (parkTimers on the way in), so Reset is
+				// on a stopped, drained timer.
+				hoverDeadline = time.Now().Add(hoverBudget)
+				budgetTimer.Reset(hoverBudget)
+				timer.Reset(askWait)
+				log.Printf("[ask-panel] ask takeover released; auto-decide window re-armed for %s (task 849) turn=%s item=%s", askWait, turnID, id)
 			case <-timer.C:
 				// A hover reset may have landed together with the expiry;
 				// honor it rather than answering under the user's eyes.
@@ -3394,6 +3457,25 @@ func (c *Controller) NotifyAskActivity(id string) {
 		return
 	}
 	c.approval.notifyAskActivity(id)
+}
+
+// NotifyAskTakeover applies the task-849 panel takeover toggle for a pending
+// ask: taking=true parks the reversible ask's auto-decide timer and its
+// absolute hover budget outright — the user explicitly declared themselves
+// present, so the ask waits indefinitely no matter how long they think — and
+// taking=false releases the takeover, re-arming a fresh window and a fresh
+// budget. This is deliberately stronger than NotifyAskActivity: hover is the
+// weak "the user is reading" signal, takeover is the explicit "the user is
+// here" declaration. Reports whether a timed ask actually consumed the toggle
+// — false is the expected answer for every other prompt class (attended asks
+// have no auto-decide to park, and the 109 B4 safety valve on high-risk asks
+// must stay real), which is why callers may fire it for any ask ID without
+// knowing the risk tier. Unknown/expired IDs are ignored.
+func (c *Controller) NotifyAskTakeover(id string, taking bool) bool {
+	if c == nil || id == "" {
+		return false
+	}
+	return c.approval.notifyAskTakeover(id, taking)
 }
 
 // AnswerQuestion resolves a pending AskRequest by ID with the user's selections.
