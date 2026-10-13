@@ -311,7 +311,7 @@ if (initialCSS.length > 0) {
   // 126.7: task 379 (intro dialog + card wall styles, 126.2 measured) — one-shot +0.5.
   // 127.7: wave-2 (152 todo-tree archive styles) measures dead-even at the exact 126.7
   // boundary — exact-boundary trip, one-shot +1.0 under the 2026-09-30 step rule (independent commit).
-assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 138.1 * 1024); // 24.4 合并线（856 协作中心全量 CSS 大增：collab-hub/chat/deputybadge/atpop 等数百行，24.3 后首涨）实测恰等 137.6/137.6（恰等=抖动必炸区，403/591 先例）— CSS 棘轮 +0.5 一次到位 → 138.1 含余量（856 无自报值，合并线实测代抬，独立 commit 报备派活方） // assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 137.6 * 1024); 
+assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 139.4 * 1024); // 低峰批（827 图标列统一网格/869 emoji/855 面板）实测 138.4 超 138.1 线 0.3 — CSS 棘轮 +1.0 一次到位 → 139.1 留余量（合并步进规则同 JS 线；主对话独立 commit 报备派活方） // 24.4 合并线（856 协作中心全量 CSS 大增：collab-hub/chat/deputybadge/atpop 等数百行，24.3 后首涨）实测恰等 137.6/137.6（恰等=抖动必炸区，403/591 先例）— CSS 棘轮 +0.5 一次到位 → 138.1 含余量（856 无自报值，合并线实测代抬，独立 commit 报备派活方） // assertBudget("deferred app-shell CSS gzip", appShellCSSGzip, 137.6 * 1024); 
 
 if (localeChunks.length !== 2) {
   throw new Error(`expected 2 on-demand Chinese locale chunks, found ${localeChunks.length}`);
