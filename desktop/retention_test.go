@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,9 +15,11 @@ import (
 //
 // 合同：能跑到启动链（本地服务起立）= 新版本已成功启动 = 「更新成功确认」
 // 的进程内证据——此刻清理才动手，更新失败（新进程没起来）永远不丢回滚源。
-// 本文件钉两个面：
+// 本文件钉三个面：
 //  1. 版本化安装根上，启动清理把超额版本树收敛到 ≤4 且 active 保留；
-//  2. 无版本化布局（portable 形态）是静默 no-op。
+//  2. 无版本化布局（portable 形态）是静默 no-op；
+//  3. 触发点源级钉（835 对账补钉）：唯一触发点在启动链
+//     startupStartLocalServices 内——清理不得挂到切换之前的任何路径。
 
 func writeRetentionFixture(t *testing.T, versions []string, active string) string {
 	t.Helper()
@@ -97,4 +100,29 @@ func TestEnforceInstallRetentionSkipsPortableLayout(t *testing.T) {
 
 	// 不得 panic，不得触碰任何目录。
 	app.enforceInstallRetention()
+}
+
+// TestInstallRetentionWiredInsideStartupServices 钉验收④的触发点（835 对账
+// 补钉，写法同 cascade_grant_test.go 的源级接线钉）：清理必须且只能在
+// startupStartLocalServices 函数体内触发——能走到本地服务起立 = 新版本已
+// 成功启动；挂到切换之前的任何路径都会在更新失败场景烧掉回滚源。
+func TestInstallRetentionWiredInsideStartupServices(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("app_lifecycle.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(src)
+	start := strings.Index(body, "func (a *App) startupStartLocalServices")
+	if start < 0 {
+		t.Fatal("startupStartLocalServices not found in app_lifecycle.go")
+	}
+	end := strings.Index(body[start:], "\nfunc ")
+	if end < 0 {
+		t.Fatal("startupStartLocalServices body not terminated by a following func")
+	}
+	inner := body[start : start+end]
+	if !strings.Contains(inner, `a.goSafe("installRetention", a.enforceInstallRetention)`) {
+		t.Fatal("install retention must be triggered inside startupStartLocalServices " +
+			"(startup-confirmed point) — see desktop/retention.go for the contract")
+	}
 }

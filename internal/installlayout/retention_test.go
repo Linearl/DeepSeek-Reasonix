@@ -1,6 +1,7 @@
 package installlayout
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,10 +15,17 @@ import (
 //
 // 验收对照：
 // ①连续两次更新后 versions ≤4 —— TestEnforceRetentionKeepsThreeHistoriesPlusActive
+//   （7 树累积静态形态）+ TestEnforceRetentionAcrossConsecutiveUpdates
+//   （两轮「发布+切换+启动确认清理」动态循环，835 对账补钉）
 // ②replaced 残壳不留存 —— TestEnforceRetentionRemovesStaleReplacedShells
+//   （超龄 24h 清除；新鲜残壳留 24h 宽限是与签名 helper 链同源口径——
+//   残壳是切换中途崩溃的遗留，完整 activate 自清，宽限不越日积累）
 // ③current.json/staging 不被误清 —— 同上两测试 + 新鲜 staging 保留断言
 // ④清理在成功确认后 —— 调用点合同（desktop 启动链），installlayout 层以
-//   RetentionReport 记录删除面供调用方日志与测试核对。
+//   RetentionReport 记录删除面供调用方日志与测试核对；回滚源（上一版）
+//   不丢由 TestEnforceRetentionAcrossConsecutiveUpdates 显式钉死（835 对账
+//   补钉），构建侧 keep=5 与本侧 keep=3 共用 PruneVersionTrees 同一引擎，
+//   仅 keep 参数按场景取值（构建机余量 vs 运行时上限）。
 
 // TestEnforceRetentionKeepsThreeHistoriesPlusActive 钉数量上限：7 棵树
 // （两次更新叠加的累积形态）收敛到 active + newest 3。
@@ -164,6 +172,86 @@ func TestEnforceRetentionOnEmptyRoot(t *testing.T) {
 	report := EnforceVersionRetention(root)
 	if !report.Empty() {
 		t.Fatalf("empty install root must produce an empty report, got %+v", report)
+	}
+}
+
+// publishRetentionTree 模拟一次更新的发布面：新版本树落到 versions/（本地
+// 构建一次一棵）。
+func publishRetentionTree(t *testing.T, root, version string) {
+	t.Helper()
+	dir := filepath.Join(root, VersionsDirName, version)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, DesktopBinaryName()), []byte("bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// switchRetentionActive 模拟切换面：current.json 改指新版本（更新链的指针
+// 换位）。
+func switchRetentionActive(t *testing.T, root, version string) {
+	t.Helper()
+	body, err := json.Marshal(CurrentPointer{SchemaVersion: CurrentSchemaVersion, ActiveVersion: version, ActiveDir: VersionDirRelative(version)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, CurrentFileName), body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestEnforceRetentionAcrossConsecutiveUpdates 钉验收①④的字面场景（835
+// 对账补钉）：连续两次更新——每轮 = 发布新树 + 切 active + 启动确认后清理
+// ——之后 versions ≤4；且每一轮的上一版（下一轮的回滚源）必须仍在 keep
+// 窗口内。840 版只有 7 树静态累积形态，本钉补动态两轮循环与回滚源显式断言。
+func TestEnforceRetentionAcrossConsecutiveUpdates(t *testing.T) {
+	// 起点 = 现场累积形态（2026-10-12：7 棵树超上限）。
+	root := writePruneFixture(t, []string{
+		"v1.38.3-20261012-1100",
+		"v1.38.3-20261012-1748",
+		"v1.38.3-20261013-0014",
+		"v1.38.3-20261013-0911",
+		"v1.38.3-20261013-1530",
+		"v1.38.3-20261014-0900",
+		"v1.38.3-20261014-1200",
+	}, "v1.38.3-20261014-0900")
+
+	// 第一次更新：发布 20261014-1800、切换，新版本启动确认后清理。
+	first := "v1.38.3-20261014-1800"
+	publishRetentionTree(t, root, first)
+	switchRetentionActive(t, root, first)
+	EnforceVersionRetention(root)
+
+	afterFirst := remainingVersions(t, root)
+	if len(afterFirst) > RetentionKeepHistory+1 {
+		t.Fatalf("after the first update versions = %d (%v), want ≤ %d", len(afterFirst), afterFirst, RetentionKeepHistory+1)
+	}
+	if !slicesContains(afterFirst, first) {
+		t.Fatalf("the freshly activated version must survive the first pass: %v", afterFirst)
+	}
+
+	// 第二次更新：连续第二轮发布+切换+启动确认清理。
+	second := "v1.38.3-20261015-0900"
+	publishRetentionTree(t, root, second)
+	switchRetentionActive(t, root, second)
+	EnforceVersionRetention(root)
+
+	afterSecond := remainingVersions(t, root)
+	if len(afterSecond) > RetentionKeepHistory+1 {
+		t.Fatalf("after two consecutive updates versions = %d (%v), want ≤ %d", len(afterSecond), afterSecond, RetentionKeepHistory+1)
+	}
+	if !slicesContains(afterSecond, second) {
+		t.Fatalf("the running version must survive: %v", afterSecond)
+	}
+	// 验收④：第一轮的 active = 第二轮更新的回滚源，必须存活——keep=3 的
+	// 底线是最新 3 棵历史树恒在窗口内，更新失败永远有源可回。
+	if !slicesContains(afterSecond, first) {
+		t.Fatalf("the previous version (rollback source) must survive retention: %v", afterSecond)
+	}
+	// 清理是真删除而非只「不再增长」：跌出 keep 窗口的树必须消失。
+	if slicesContains(afterSecond, "v1.38.3-20261013-0911") {
+		t.Fatalf("trees beyond the keep window must be pruned, kept = %v", afterSecond)
 	}
 }
 
