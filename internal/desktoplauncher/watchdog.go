@@ -1,11 +1,15 @@
 package desktoplauncher
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
+
+	"reasonix/internal/config"
 )
 
 // 任务 404（launcher watchdog）：the 0930 silent crash (desktop dead under
@@ -64,6 +68,30 @@ func superviseDesktop(gen1 *exec.Cmd, installRoot, desktopPath string, args []st
 	})
 }
 
+// superviseMarkerVouches is the launcher-side read of the update-restart
+// marker (task 876). The marker shape mirrors the desktop writer
+// (desktop/update_restart_marker.go) — pid + unix seconds; keep both in
+// lockstep, like the abnormal-exit record pair. Read-only: consume-once is
+// the relaunched desktop's resume gate business, not the launcher's.
+func superviseMarkerVouches(deadPID int) bool {
+	if deadPID <= 0 {
+		return false
+	}
+	path := filepath.Join(config.MemoryUserDir(), "update-restart-marker.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var marker struct {
+		PID int   `json:"pid"`
+		At  int64 `json:"at"`
+	}
+	if json.Unmarshal(body, &marker) != nil || marker.PID <= 0 || marker.PID != deadPID {
+		return false
+	}
+	return time.Now().Unix()-marker.At < 10*60
+}
+
 // supervise watches generation 1 and, on an abnormal exit, restarts once after
 // the backoff. restart builds generation 2 lazily — only an abnormal first
 // death pays for the resolution work. The returned int is the launcher's own
@@ -73,6 +101,25 @@ func supervise(gen1 *exec.Cmd, restart func() (*exec.Cmd, error)) int {
 		return 0
 	}
 	code := exitCodeOf(gen1)
+	// Task 876 (847 family, exit-code dimension): a forced update restart
+	// (grace window expired → forced quit) can still exit non-zero, and the
+	// pre-876 launcher then recorded it as an abnormal death — the next boot
+	// surfaced a genuine-looking "crash report" for a PLANNED handoff. The
+	// update-restart marker is the exit's own witness: the forced-through
+	// path writes it right before quitting (desktop/update_restart_marker.go,
+	// "publish"), the PID cross-check is the dead process, and the 10-minute
+	// fresh window bounds the vouch exactly like desktop's lifecycle peek.
+	// A marker hit means: do not record death evidence and do not burn the
+	// one restart — the desktop family relaunches itself through its own
+	// launcher handoff, so a watchdog restart here would double-launch.
+	if superviseMarkerVouches(gen1.Process.Pid) {
+		slog.Info("launcher: desktop exited non-zero with a fresh update-restart marker; planned handoff, no death record, no restart",
+			"pid", gen1.Process.Pid, "exit", code)
+		appendDesktopLogLine(fmt.Sprintf(
+			"launcher: planned update-restart exit pid=%d exit=%d (marker vouched); no abnormal-exit record, no watchdog restart",
+			gen1.Process.Pid, code))
+		return 0
+	}
 	slog.Warn("launcher: desktop exited abnormally; restarting once after backoff",
 		"pid", gen1.Process.Pid, "exit", code, "backoff", watchdogRestartDelay.String())
 	// Task 736 (issue #39): persist the death observation so the next desktop
