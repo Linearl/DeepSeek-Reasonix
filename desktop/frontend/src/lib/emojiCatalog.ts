@@ -135,8 +135,8 @@ export const EMOJI_CATEGORIES: readonly EmojiCategory[] = [
     ["💁", "toss info 引导"],
     ["🙅", "no gesture 不 行"],
     ["🙆", "ok person 可以 好"],
-    ["🫡", "salute 敬礼 收到"],
-    ["🫶", "heart hands 比心"],
+    // 刻意不收 Emoji 14.0+ 字符（🫡🫶🫰 等）：旧 Windows 10 WebView2 无彩色
+    // 字形会显示方框，违背「桌面端显示一致」验收；后续可按 WebView2 基线再开。
   ]),
   category("animals", [
     ["🐶", "dog 狗 汪"],
