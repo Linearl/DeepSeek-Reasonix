@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/provider"
 	"reasonix/internal/tool"
@@ -42,17 +44,30 @@ func TestQuotaRetriesWhenFallbackConfigured(t *testing.T) {
 	}
 }
 
-// WITHOUT a stamped target (switch off — the default) quota keeps its
-// pre-242 contract: the very first failure surfaces, no retry burn.
-func TestQuotaFailsFastWhenFallbackOff(t *testing.T) {
+// Task 845 (user-ratified semantics ②) updated the pre-242 default: WITHOUT a
+// stamped target quota no longer dies on the first failure — it enters the
+// long-wait lane, probes until the quota window rolls over (bounded by the
+// quota wait budget), and only then surfaces. The 242 fallback contract above
+// is untouched; this test pins the new default lane and its UI face.
+func TestQuotaLongWaitsWhenFallbackOff(t *testing.T) {
 	prov := &quotaProvider{}
-	a := New(prov, tool.NewRegistry(), NewSession("sys"), Options{}, &incompleteReadEventSink{})
+	a := New(prov, tool.NewRegistry(), NewSession("sys"), Options{
+		QuotaWaitInterval: time.Millisecond,
+		QuotaWaitBudget:   5 * time.Millisecond,
+	}, &incompleteReadEventSink{})
 
 	err := a.Run(context.Background(), "list my tasks")
 	if err == nil {
-		t.Fatal("quota error must surface")
+		t.Fatal("exhausted quota must still end the run once the wait budget is gone")
 	}
-	if prov.call != 1 {
-		t.Fatalf("provider calls = %d, want 1 (default-off must not retry, zero regression)", prov.call)
+	if prov.call <= 1 {
+		t.Fatalf("provider calls = %d, want the long-wait lane to probe beyond the first failure", prov.call)
+	}
+	var exhausted *provider.RecoveryWaitExhaustedError
+	if !errors.As(err, &exhausted) || exhausted.Phase != "quota" {
+		t.Fatalf("err = %v, want a quota wait-exhausted termination", err)
+	}
+	if !strings.Contains(err.Error(), "quota") {
+		t.Fatalf("error = %v, want the quota classification preserved", err)
 	}
 }

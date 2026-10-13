@@ -26,6 +26,12 @@ type RecoveryStatus struct {
 	WaitedMs             int64  `json:"waited_ms,omitempty"`
 	WaitBudgetMs         int64  `json:"wait_budget_ms,omitempty"`
 	Waiting              bool   `json:"waiting,omitempty"`
+	// Task 845 (user-ratified retry semantics): Queue marks the rate-limit
+	// QUEUE face (429 in the waiting lane — "service busy, queued"), and
+	// QuotaWait marks the quota long-wait face ("quota exhausted, resuming
+	// in ~N"). Both waits are cancellable; the strip keeps Stop available.
+	Queue     bool `json:"queue,omitempty"`
+	QuotaWait bool `json:"quota_wait,omitempty"`
 	// Task 372 (visibility only — the task-243 A4 admission semantics are
 	// untouched): BudgetUsed/BudgetLimit mirror the sliding window behind
 	// Allow so the UI can say "auto-retried N (N/limit) times, recovering".
