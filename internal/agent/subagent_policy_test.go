@@ -31,8 +31,25 @@ func TestNormalizeSubagentPolicy(t *testing.T) {
 }
 
 func TestSubagentPolicyGuidance(t *testing.T) {
-	if got := SubagentPolicyGuidance(SubagentPolicyLight); got != "" {
-		t.Fatalf("light must inject nothing, got %q", got)
+	// Task 850 (user decision 2026-10-06/08): an EXPLICIT light tier now
+	// carries the economy block — the conservative clause task 820 removed
+	// from the aggressive tier explicitly lives here instead. The ZERO-VALUE
+	// policy ("") still injects nothing: a session that never expressed a
+	// tier keeps the historical no-guidance behavior.
+	light := SubagentPolicyGuidance(SubagentPolicyLight)
+	if !strings.HasPrefix(light, "<subagent-policy>light\n") {
+		t.Fatalf("explicit light must carry the economy block, got %q", light)
+	}
+	for _, want := range []string{
+		"Economy delegation guidance",
+		"Do quick, small tasks yourself", // 820 删除的保守条款明示归经济档
+	} {
+		if !strings.Contains(light, want) {
+			t.Fatalf("light guidance missing economy clause %q:\n%s", want, light)
+		}
+	}
+	if got := SubagentPolicyGuidance(""); got != "" {
+		t.Fatalf("zero-value policy must inject nothing, got %q", got)
 	}
 	for _, p := range []SubagentPolicy{SubagentPolicyBalanced, SubagentPolicyAggressive} {
 		got := SubagentPolicyGuidance(p)
@@ -45,6 +62,55 @@ func TestSubagentPolicyGuidance(t *testing.T) {
 		}
 		if p == SubagentPolicyAggressive && !strings.Contains(got, "30 seconds") {
 			t.Fatalf("aggressive must carry the cost thresholds")
+		}
+	}
+}
+
+// TestSubagentPolicyEconomyConditionalRouting pins task 850 (user decisions
+// 2026-10-10/12): the economy block routes on the shared-reading-surface
+// predicate, not a blanket serial preference — sub-tasks that would read the
+// same content consolidate so the shared input is read once, while
+// independent task domains dispatch in parallel regardless of tier.
+func TestSubagentPolicyEconomyConditionalRouting(t *testing.T) {
+	got := SubagentPolicyGuidance(SubagentPolicyLight)
+	for _, want := range []string{
+		"share a reading surface", // 分支①：共享读取面 → 合并串行省输入
+		"consolidate them into one sub-agent",
+		"parallel duplicates each pay the same input cost",
+		"independent domains", // 分支②：独立任务域 → 并行优先
+		"dispatch them in parallel regardless of tier",
+		"fewer, larger dispatches", // 1010 经济学：少而大
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("light guidance missing conditional routing clause %q:\n%s", want, got)
+		}
+	}
+	// 经济档不得反向携带效率档的强制派发句式（文案梯度下端）。
+	for _, stale := range []string{
+		"Do NOT inline",
+		"Your only role",
+		"When in doubt, dispatch",
+	} {
+		if strings.Contains(got, stale) {
+			t.Fatalf("light guidance must stay conservative, found %q:\n%s", stale, got)
+		}
+	}
+}
+
+// TestSubagentPolicyEfficiencySharedReadingClause pins task 850: the
+// efficiency (aggressive) tier carries the same conditional predicate —
+// consolidate shared-reading sub-tasks, parallelize independent ones — so
+// the serial-savings rule never over-generalizes into "always serialize".
+func TestSubagentPolicyEfficiencySharedReadingClause(t *testing.T) {
+	got := SubagentPolicyGuidance(SubagentPolicyAggressive)
+	for _, want := range []string{
+		"shared reading surface",
+		"consolidate them into one sub-agent",
+		"independent domains",
+		"serializing independent work buys nothing",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("aggressive guidance missing input-economics clause %q:\n%s", want, got)
 		}
 	}
 }
