@@ -40,7 +40,9 @@ func ClassifyRecovery(err error) RecoveryFailure {
 		return f
 	}
 	if q := AsQuotaError(err); q != nil {
-		f.Phase, f.Status, f.Code = "quota", q.Status, q.Code
+		// Task 845: carry the provider-stated Retry-After so the agent's
+		// quota wait lane can schedule its next probe from it.
+		f.Phase, f.Status, f.Code, f.RetryAfter = "quota", q.Status, q.Code, q.RetryAfter
 		return f
 	}
 	var auth *AuthError
