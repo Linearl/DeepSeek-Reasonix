@@ -46272,7 +46272,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated, var(--bg));
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   overflow: hidden;
 }
 .collab-hub-panel__head {
@@ -46307,7 +46307,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elevated, var(--bg));
   color: var(--accent, var(--fg));
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-color) 8%, transparent);
 }
 .collab-hub-panel__close {
   margin-left: auto;
@@ -46370,7 +46370,7 @@ button.statusbar__mcp:focus-visible {
   position: absolute;
   top: 40px;
   right: 12px;
-  z-index: calc(var(--z-popover) + 1);
+  z-index: var(--z-tooltip);
   width: min(560px, calc(100vw - 48px));
   max-height: min(520px, calc(100vh - 200px));
   display: flex;
@@ -46378,7 +46378,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated, var(--bg));
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   overflow: hidden;
 }
 .collab-chat-view__activityhead {
@@ -46486,7 +46486,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elevated, var(--bg));
   color: var(--accent, var(--fg));
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-color) 8%, transparent);
 }
 .collab-chat-view__dirlist {
   width: 260px;
@@ -46674,13 +46674,13 @@ button.statusbar__mcp:focus-visible {
 }
 .collab-chat-view__ctx {
   position: fixed;
-  z-index: calc(var(--z-popover) + 2);
+  z-index: var(--z-tooltip);
   min-width: 230px;
   padding: 4px 0;
   background: var(--bg-elevated, var(--bg));
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow-color) 18%, transparent);
   overflow: hidden;
 }
 .collab-chat-view__ctxhead {
@@ -46714,8 +46714,8 @@ button.statusbar__mcp:focus-visible {
 /* ─── 任务 856 ⑤⑥：副管理员徽标/@ 浮层/邀请点外关 ───────────────── */
 .channel-chat__deputybadge {
   font-size: 10px;
-  color: #8a6d1a;
-  border: 1px solid #c9a94a;
+  color: color-mix(in srgb, var(--warn) 74%, var(--fg));
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
   border-radius: 4px;
   padding: 0 3px;
   white-space: nowrap;
@@ -46730,8 +46730,8 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elevated, var(--bg));
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.14);
-  z-index: 5;
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--shadow-color) 14%, transparent);
+  z-index: var(--z-local-popover);
 }
 .channel-chat__composer {
   position: relative;
