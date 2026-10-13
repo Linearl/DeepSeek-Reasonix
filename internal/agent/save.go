@@ -110,7 +110,7 @@ type sessionPersistState struct {
 	// of an interrupted save) or that needed repairs keeps the old
 	// first-save-must-run-full behavior — that first save is still the one
 	// that heals a stale ledger.
-	cleanLoad    bool
+	cleanLoad bool
 	// logTail is the event-log size observed when the baseline was recorded.
 	// The no-op re-checks it (plus the ledger identity) before skipping: a
 	// concurrent writer's append grows the log past this tail, and a save that

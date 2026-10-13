@@ -45,12 +45,12 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalOutputStyleUI = true             // outputStyle
 
 	// ui（界面）
-	orig.Desktop.ExperimentalTabCompress = true                // tabCompress
-	orig.Desktop.ExperimentalTodoSidebar = true                // todoSidebar
-	orig.Desktop.ExperimentalPromptHistoryPicker = true        // promptHistoryPicker
-	orig.Desktop.ExperimentalSessionWall = true                // sessionWall
-	orig.Desktop.ExperimentalSubagentPanel = true              // M4
-	orig.Desktop.ExperimentalSubagentDetail = true             // M4
+	orig.Desktop.ExperimentalTabCompress = true         // tabCompress
+	orig.Desktop.ExperimentalTodoSidebar = true         // todoSidebar
+	orig.Desktop.ExperimentalPromptHistoryPicker = true // promptHistoryPicker
+	orig.Desktop.ExperimentalSessionWall = true         // sessionWall
+	orig.Desktop.ExperimentalSubagentPanel = true       // M4
+	orig.Desktop.ExperimentalSubagentDetail = true      // M4
 	// 任务 826：左右边栏 hover 展开（默认关，两键独立）。
 	orig.Desktop.ExperimentalSidebarHoverLeft = true           // sidebarHoverLeft
 	orig.Desktop.ExperimentalSidebarHoverRight = true          // sidebarHoverRight
@@ -211,8 +211,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"desktop.experimental_subagent_panel":        got.Desktop.ExperimentalSubagentPanel,
 		"desktop.experimental_subagent_detail":       got.Desktop.ExperimentalSubagentDetail,
 		// 任务 826：左右边栏 hover 展开两键往返。
-		"desktop.experimental_sidebar_hover_left":    got.Desktop.ExperimentalSidebarHoverLeft,
-		"desktop.experimental_sidebar_hover_right":   got.Desktop.ExperimentalSidebarHoverRight,
+		"desktop.experimental_sidebar_hover_left":  got.Desktop.ExperimentalSidebarHoverLeft,
+		"desktop.experimental_sidebar_hover_right": got.Desktop.ExperimentalSidebarHoverRight,
 		// (retired from render — task 473 single-key fold.)
 		"desktop.experimental_split_view":      got.Desktop.ExperimentalSplitView,
 		"desktop.experimental_session_monitor": got.Desktop.ExperimentalSessionMonitor,
