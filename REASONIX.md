@@ -75,6 +75,15 @@ agent. It is the Reasonix analog of Claude Code's CLAUDE.md.
   Dependency-direction, testutil-isolation, import-cycle and deep-import
   violations are structural defects, not style; pre-existing ones live in
   `architecture-baseline.json` and only new ones block (task 392).
+- Every config experimental key that reaches the render table must have a lab
+  entry before delivery: a rail card, a merged-card row, or an explicit
+  `labNonFeatureKeys` exemption with a reason (task 575 shipped
+  `experimental_bash_heavy_guard` with backend + render table but no lab
+  switch — the user could not find it; task 815 closed the residue and added
+  this check). The 562 gates on both sides
+  (`internal/config/render_lab_tiers_test.go` +
+  `desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts`) enforce
+  the tier half; this line is the entry-half review check.
 
 ## Comments
 

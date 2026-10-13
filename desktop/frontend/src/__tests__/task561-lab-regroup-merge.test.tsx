@@ -82,12 +82,15 @@ console.log("\ntask 561 lab regroup + merged cards");
 // 722：safetyCostControl 迁提效并吸收 messageMerge 入口）。
 // 任务 785：baseProcess 随 S1 底座开关退役，infra 6→5 → 总数 34。
 // 任务 790：acpListen 入 rail，infra 5→6 → 总数 35。
+// 任务 815（登记窗口 pin 收口）：801 decisionPatterns（automation 5→6）与
+// 846 homePointer（storage 3→4）此前已入布局而本 pin 仍钉 783 口径——
+// 总数 35→37，组分布 6/8/9/2/1/4/6/1。
 // 数据源 = 布局默认数据 + yaml（两份必须同构）。
 {
   // 直接导入布局数据模块数真数据（比源码正则稳）。
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
-  ok(defEntries.length === 35, `default layout carries exactly 35 rail entries (got ${defEntries.length})`);
+  ok(defEntries.length === 37, `default layout carries exactly 37 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -96,11 +99,13 @@ console.log("\ntask 561 lab regroup + merged cards");
   const groups: Record<string, number> = {};
   for (const g of LAB_LAYOUT_DEFAULT_DATA.groups) groups[(g as { key: string }).key] = g.entries.length;
   // 任务 783：observability 1→2（用量监测卡落组）。任务 785：baseProcess
-  // 退役，infra 6→5 → 总数 34。任务 790：acpListen 入 rail，infra 5→6 → 总数 35。
-  ok(groups["automation"] === 5 && groups["efficiency"] === 8 && groups["ui"] === 9 &&
-     groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 6 &&
+  // 退役，infra 6→5 → 总数 34。任务 790：acpListen 入 rail，infra 5→6 → 35。
+  // 任务 815：登记窗口 pin 收口——801 decisionPatterns（automation 5→6）与
+  // 846 homePointer（storage 3→4）此前已入布局，pin 一并跟上 → 6/8/9/2/1/4/6/1。
+  ok(groups["automation"] === 6 && groups["efficiency"] === 8 && groups["ui"] === 9 &&
+     groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 4 && groups["infra"] === 6 &&
      groups["tool-opt"] === 1,
-    `group counts are 5/8/9/2/1/3/6/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 6/8/9/2/1/4/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。

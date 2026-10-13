@@ -1,15 +1,15 @@
 // Run: npx tsx src/__tests__/task603-tool-optimizations.test.ts
 // 任务 603 acceptance harness (「工具优化」family first member: edit readBack):
-//  ① the tier register carries toolOptimizations at the UNSTABLE tier (用户
-//     定档 20261007: gate 联动是新行为变更，测试完再转其他徽章);
+//  ① the tier register carries toolOptimizations at the RECOMMENDED tier
+//     (783④：编辑读回随 22.5 交付转正，自 unstable 升档；815 收口本测试
+//     未跟的过期 pin);
 //  ② SettingsPanel wiring: the tool-opt group, the rail entry with its own
 //     `on` read, the pane card with its own setter and a visible risk line;
 //  ③ locale keys exist in all three dialects (group/label/hint/on/off/risk);
 //  ④ the bridge surface: interface method + browser mock + settings view
 //     field (experimentalToolOptimizations);
 //  ⑤ the Go tier registry (render.go) tags experimental_tool_optimizations
-//     unstable — two sides, one source (this entry only; the 545/504/551
-//     mirror drift is the pre-existing task562 red, not this task's scope).
+//     recommended — two sides, one source (this entry only).
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -34,9 +34,14 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
 // ① tier register.
 {
   ok(isTierFeatureId("toolOptimizations"), "toolOptimizations is a registered TierFeatureId");
-  ok(EXPERIMENT_FEATURE_TIERS.toolOptimizations === "unstable", "toolOptimizations badges as UNSTABLE (用户定档)");
+  // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐（Go 渲染
+  // 表同步升档，562 两侧一致断言守护；815 收口本测试的过期 pin）。
+  ok(EXPERIMENT_FEATURE_TIERS.toolOptimizations === "recommended", "toolOptimizations badges as RECOMMENDED (783④ 转正)");
+  // 任务 789：editEvidenceRelaxed 以成员行入卡（unstable）——卡头聚合 =
+  // max(卡 recommended, 成员 unstable) = recommended 单枚（774 口径）。
   const tiers = railTiersForDefault("toolOptimizations");
-  ok(tiers.length === 1 && tiers[0] === "unstable", `standalone rail entry shows [unstable] (got ${JSON.stringify(tiers)})`);
+  ok(JSON.stringify(tiers) === JSON.stringify(["recommended", "unstable"]) && tiers[0] === "recommended",
+    `rail entry aggregates [recommended, unstable] to the single 推荐 badge (got ${JSON.stringify(tiers)})`);
 }
 
 // ② SettingsPanel wiring（722 起 rail 分组/条目数据驱动：组词表在
@@ -48,8 +53,9 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
   ok(layoutTypes.includes('"tool-opt"'), "LabGroupKey carries the tool-opt group");
   ok(layoutDefault.includes('key: "tool-opt"') && layoutDefault.includes('labelKey: "settings.labGroup.toolOpt"'),
     "labGroups renders the tool-opt entry");
-  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "unstable", onKeys: ["experimentalToolOptimizations"] }'),
-    "rail entry reads its own switch (81/123 lost-save rule)");
+  // 任务 789：editEvidenceRelaxed 以成员行入卡——条目变为「主控+成员」形态。
+  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "recommended", onKeys: ["experimentalToolOptimizations"], members: [{ id: "editEvidenceRelaxed"'),
+    "rail entry reads its own switch and hosts the 789 member row (81/123 lost-save rule; 783④ 升档后口径)");
   ok(panel.includes("on: labEntryLightOn(entry, s)"), "panel derives each rail light from its own onKeys (81/123 lost-save rule)");
   ok(panel.includes('{selected === "toolOptimizations" && ('), "pane card located");
   ok(panel.includes('app.SetExperimentalToolOptimizations(on)'), "card writes through its own setter");
@@ -89,8 +95,8 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
 // ⑤ Go registry agreement for this entry.
 {
   const goSrc = readFileSync(fileURLToPath(new URL("../../../../internal/config/render.go", import.meta.url)), "utf8");
-  ok(goSrc.includes('{"toolOptimizations", LabTierUnstable, []string{"experimental_tool_optimizations"}}'),
-    "Go labFeatureTiers tags toolOptimizations unstable (render.go)");
+  ok(goSrc.includes('{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}'),
+    "Go labFeatureTiers tags toolOptimizations recommended (render.go, 783④ 转正)");
   ok(goSrc.includes("experimental_tool_optimizations = %v"), "render table emits the switch (81/123 lost-save rule)");
 }
 
