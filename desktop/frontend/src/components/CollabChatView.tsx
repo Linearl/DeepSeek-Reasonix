@@ -160,7 +160,10 @@ export function CollabChatView() {
 
       <div className="collab-chat-view__body">
         {tab === "groups" ? (
-          <ChannelChatPanel onOpenSession={jumpTo} />
+          <ChannelChatPanel
+            onOpenSession={jumpTo}
+            onViewDirectChains={() => { setTab("directs"); setOpenPairId(null); }}
+          />
         ) : (
           <>
             {/* 左列表：对话链（单聊）段——会话↔会话协作消息流，只读回放。 */}

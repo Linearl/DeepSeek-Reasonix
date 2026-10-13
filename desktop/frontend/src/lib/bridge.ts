@@ -503,6 +503,8 @@ export interface CollabChannelView {
   // 群主标、详情页的类型徽标都以这两个字段为准。
   ownerType?: string;
   ownerId?: string;
+  /** 任务 856 ⑤: 单副管理员（缺省=无）；仅 human 群主可任命，拥有邀请权。 */
+  deputyId?: string;
   memberDetails?: CollabChannelMemberView[];
 }
 
@@ -1456,6 +1458,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
+  /** 任务 856 ⑤: 任命单副管理员（仅 human 群主；目标须为群内会话成员）。 */
+  ChannelSetDeputy(ref: string, contactID: string): Promise<CollabChannelView>;
+  /** 任务 856 ⑤: 撤销副管理员（幂等）。 */
+  ChannelUnsetDeputy(ref: string): Promise<CollabChannelView>;
   ChannelMessagesForHuman(ref: string, sinceMs: number, limit: number): Promise<CollabChannelReadView>;
   ChannelCancelFromHuman(ref: string, messageID: string): Promise<CollabChannelCancelResultView>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
@@ -6158,7 +6164,10 @@ function makeMockApp(): AppBindings {
     async ChannelInvite(_ref: string, _contactIDs: string[]) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
-    async ChannelRemoveMember(_ref: string, _contactID: string) {
+    async ChannelSetDeputy(_ref: string, _contactID: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelUnsetDeputy(_ref: string) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
     async ChannelMessagesForHuman(_ref: string, _sinceMs: number, _limit: number) {

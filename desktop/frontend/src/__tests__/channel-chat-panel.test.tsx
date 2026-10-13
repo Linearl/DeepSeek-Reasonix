@@ -141,6 +141,24 @@ const bindings: ChannelChatBindings = {
     channel.messages = state.messages[channel.id].length;
     return { ...msg };
   },
+  async ChannelSetDeputy(ref, contactID) {
+    calls.push({ name: "ChannelSetDeputy", args: [ref, contactID] });
+    const ch = state.channels.find((c) => c.id === ref || c.name === ref);
+    if (ch) {
+      ch.deputyId = contactID;
+      return JSON.parse(JSON.stringify(ch));
+    }
+    throw new Error("channel not found");
+  },
+  async ChannelUnsetDeputy(ref) {
+    calls.push({ name: "ChannelUnsetDeputy", args: [ref] });
+    const ch = state.channels.find((c) => c.id === ref || c.name === ref);
+    if (ch) {
+      ch.deputyId = undefined;
+      return JSON.parse(JSON.stringify(ch));
+    }
+    throw new Error("channel not found");
+  },
   async ChannelInvite(ref, contactIDs) {
     calls.push({ name: "ChannelInvite", args: [ref, contactIDs] });
     const channel = state.channels.find((c) => c.id === ref || c.name === ref);
@@ -297,6 +315,24 @@ await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); 
 const detail = chat().querySelector(".channel-chat__detail")!;
 assert.ok(detail, "the detail drawer opens");
 assert.match(detail.textContent ?? "", /Owner: You/, "the detail names the human as owner");
+// 任务 856 ⑤：human 群的 session 成员行有「设为副管理员」；任命后徽标+撤销；
+// 任命走 ChannelSetDeputy 口（后端仅 human 群主可任命，Go 侧测试钉死）。
+const devRow = Array.from(detail.querySelectorAll(".channel-chat__member"))
+  .find((r) => r.textContent!.includes("fork开发-新6"))!;
+const setDeputyBtn = Array.from(devRow.querySelectorAll("button")).find((b) => b.textContent === "Set as deputy");
+assert.ok(setDeputyBtn, "a human-owned group offers the deputy appointment on session members");
+await act(async () => { setDeputyBtn!.click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const deputyCalls = calls.filter((c) => c.name === "ChannelSetDeputy");
+assert.ok(deputyCalls.length >= 1 && deputyCalls[0].args[1] === "sc_dev6", "the appointment goes through the deputy port");
+const devRowAfter = Array.from(detail.querySelectorAll(".channel-chat__member"))
+  .find((r) => r.textContent!.includes("fork开发-新6"))!;
+assert.match(devRowAfter.textContent ?? "", /Deputy/, "the appointed member carries the deputy badge");
+const unsetDeputyBtn = Array.from(devRowAfter.querySelectorAll("button")).find((b) => b.textContent === "Remove deputy");
+assert.ok(unsetDeputyBtn, "the appointed member offers the unset entry");
+await act(async () => { unsetDeputyBtn!.click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.ok(calls.some((c) => c.name === "ChannelUnsetDeputy"), "the unset goes through its port");
 const members = Array.from(detail.querySelectorAll(".channel-chat__member"));
 assert.equal(members.length, 3, "all members render");
 assert.match(members[0].textContent ?? "", /You/, "the human member row renders");
@@ -414,6 +450,56 @@ assert.match(badge!.textContent ?? "", /^1$/, "the badge counts exactly the unse
 await act(async () => { (mineItem2 as HTMLElement).click(); });
 await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 assert.equal(document.querySelector(".channel-chat__item .channel-chat__unread"), null, "opening the group clears its unread badge");
+
+// ── 任务 856 ⑤⑥：副管理员 + @ 选人 + 邀请点外关 ──────────────────────
+// （切回「发布协调」群——前面的建群段打开了空新群；sc_dev6 在发布协调里。）
+await act(async () => {
+  const mineItem = Array.from(chat().querySelectorAll(".channel-chat__item"))
+    .find((r) => r.textContent!.includes("发布协调")) as HTMLElement;
+  mineItem!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Details")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+// ⑥ @ 选人：输入 @ → 浮层列成员（带类型徽标）→ Enter 插入「@名字 」。
+const composerInput = chat().querySelector(".channel-chat__input")! as HTMLTextAreaElement;
+await act(async () => {
+  setNativeValue(composerInput, "对齐一下 @");
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const atPop = chat().querySelector(".channel-chat__atpop");
+assert.ok(atPop, "typing a trailing @ opens the mention picker");
+assert.equal(atPop!.querySelectorAll("button").length >= 3, true, "the picker lists every group member");
+await act(async () => {
+  composerInput.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.match(composerInput.value, /@[^ ]+ /, "picking inserts 「@名字 」into the draft");
+assert.equal(chat().querySelector(".channel-chat__atpop"), null, "picking closes the picker");
+
+// ⑥ 邀请框点外部区域自动关闭（无显式关闭按钮；勾选保留）。
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Add sessions")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const inviteBox = chat().querySelector(".channel-chat__invitebox");
+assert.ok(inviteBox, "the invite box opens");
+assert.equal(Array.from(inviteBox!.querySelectorAll("button")).some((b) => b.textContent === "Close"), false, "the invite box has NO explicit close button (856 ⑥)");
+const firstCandidate = inviteBox!.querySelector("input[type=checkbox]")! as HTMLInputElement;
+await act(async () => { firstCandidate.click(); });
+assert.ok(firstCandidate.checked, "a candidate can be checked");
+document.body.click();
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(chat().querySelector(".channel-chat__invitebox"), null, "clicking outside dismisses the invite box");
+await act(async () => {
+  Array.from(chat().querySelectorAll("button")).find((b) => b.textContent === "Add sessions")!.click();
+});
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const inviteBoxRe = chat().querySelector(".channel-chat__invitebox")!;
+const reChecked = (inviteBoxRe.querySelector("input[type=checkbox]")! as HTMLInputElement).checked;
+assert.ok(reChecked, "the pick survives the outside-dismiss (重开不丢)");
 
 // 邮箱哨兵：全程没有任何信件中心读口调用（去重口径 b）。
 assert.equal(calls.some((c) => /Mail|Inbox/i.test(c.name)), false, "the chat never touches the mail center");

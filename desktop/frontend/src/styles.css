@@ -46710,3 +46710,67 @@ button.statusbar__mcp:focus-visible {
   color: var(--text-muted, inherit);
   cursor: default;
 }
+
+/* ─── 任务 856 ⑤⑥：副管理员徽标/@ 浮层/邀请点外关 ───────────────── */
+.channel-chat__deputybadge {
+  font-size: 10px;
+  color: #8a6d1a;
+  border: 1px solid #c9a94a;
+  border-radius: 4px;
+  padding: 0 3px;
+  white-space: nowrap;
+}
+.channel-chat__atpop {
+  position: absolute;
+  bottom: 100%;
+  left: 8px;
+  width: min(300px, 90%);
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.14);
+  z-index: 5;
+}
+.channel-chat__composer {
+  position: relative;
+}
+.channel-chat__atpoptitle {
+  padding: 6px 10px;
+  font-size: 10px;
+  color: var(--text-muted, inherit);
+  border-bottom: 1px solid var(--border);
+}
+.channel-chat__atrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.channel-chat__atrow:hover,
+.channel-chat__atrow--on {
+  background: var(--bg-soft);
+}
+.channel-chat__atname {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.channel-chat__mention {
+  color: var(--accent, var(--fg));
+  cursor: pointer;
+  text-decoration: underline;
+}
+.channel-chat__invitedismiss {
+  font-size: 10px;
+  color: var(--text-muted, inherit);
+}
