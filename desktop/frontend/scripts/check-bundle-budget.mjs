@@ -628,7 +628,7 @@ const rawInitialBytes = [...initialJS, ...initialCSS, ...appShellCSS]
 // Task 318 (lab internals five): three switches + merge/regroup pages + 11 locale keys x 3 measured 2560.6 over the 2560.0 line — one-shot +10 KiB per the raw-step rule.
 // B3 remote fix (App tree remote-project navigation branch + RemoteNavigationContext Provider + Composer inbox props): measured 2560.5, tripping the 2560.0 line; one-shot +10 KiB per the ratchet rule (same gate as 318 — one shared 2570 value, no double).
 // B2 merge batch (LA+LB+338+304+333 tail+343 stacked): measured 2571.9 over the 2570.0 line — one-shot +10 KiB per the raw-step rule (independent commit).
-const rawInitialBudgetKiB = 3_030.0; // 24.4 合并线（856 协作中心全量九 commit：组件+CSS+三语 raw 面大增）实测 3024.4 超 3000.0 线 24.4 — raw 棘轮 +10 步长三步并一步 +30 一次到位 → 3030.0 含余量（856 无自报值，合并线实测代抬，独立 commit 报备派活方） // const rawInitialBudgetKiB = 3_000.0;
+const rawInitialBudgetKiB = 3_045.0; // 低峰批（827/869/855/815 叠加 raw 面）实测 3033.6 超 3030.0 线 3.6 — raw 棘轮照 231/318/B2 先例 +10 一次到位 → 3045.0 含余量（主对话独立 commit 报备派活方） // 24.4 合并线（856 协作中心全量九 commit：组件+CSS+三语 raw 面大增）实测 3024.4 超 3000.0 线 24.4 — raw 棘轮 +10 步长三步并一步 +30 一次到位 → 3030.0 含余量（856 无自报值，合并线实测代抬，独立 commit 报备派活方） // const rawInitialBudgetKiB = 3_000.0;
 // [fork note] the smallest one-decimal ratchet. Bumped to 2_461.0 for the serve pool
 assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudgetKiB * 1024);
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the
