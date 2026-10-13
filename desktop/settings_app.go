@@ -369,10 +369,14 @@ type SettingsView struct {
 	UpdateChimeTune            string `json:"updateChimeTune"`
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
-	// ExperimentalCollabGroupView gates the sidebar group-chat entry (task 677);
-	// rendered in both views or the lab switch reads permanently off (the
-	// 2026-09-15 lesson, task 81/123).
+	// ExperimentalCollabGroupView is the LEGACY task-677 group-chat switch,
+	// kept as a decode-side migration source only (任务 856 ③ renamed the
+	// switch to collabHub); new code reads ExperimentalCollabHub instead.
 	ExperimentalCollabGroupView bool `json:"experimentalCollabGroupView"`
+	// ExperimentalCollabHub gates the unified collaboration-hub entry (task
+	// 856 ③); rendered in both views or the lab switch reads permanently off
+	// (the 2026-09-15 lesson, task 81/123).
+	ExperimentalCollabHub bool `json:"experimentalCollabHub"`
 	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
 	// into a summary bar (task 705); rendered in both views for the same
 	// permanently-off lesson.
@@ -640,10 +644,14 @@ type DesktopStartupSettingsView struct {
 	UpdateChimeTune            string `json:"updateChimeTune"`
 	ExperimentalSessionMonitor bool   `json:"experimentalSessionMonitor"`
 	ExperimentalSplitView      bool   `json:"experimentalSplitView"`
-	// ExperimentalCollabGroupView gates the sidebar group-chat entry (task 677);
-	// rendered in both views or the lab switch reads permanently off (the
-	// 2026-09-15 lesson, task 81/123).
+	// ExperimentalCollabGroupView is the LEGACY task-677 group-chat switch,
+	// kept as a decode-side migration source only (任务 856 ③ renamed the
+	// switch to collabHub); new code reads ExperimentalCollabHub instead.
 	ExperimentalCollabGroupView bool `json:"experimentalCollabGroupView"`
+	// ExperimentalCollabHub gates the unified collaboration-hub entry (task
+	// 856 ③); rendered in both views or the lab switch reads permanently off
+	// (the 2026-09-15 lesson, task 81/123).
+	ExperimentalCollabHub bool `json:"experimentalCollabHub"`
 	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
 	// into a summary bar (task 705); rendered in both views for the same
 	// permanently-off lesson.
@@ -1477,8 +1485,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.UpdateChimeTune = cfg.UpdateChimeTuneMode()
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
-		// Task 677: group-chat entry readback (boot snapshot).
+		// Task 677: legacy group-chat entry readback (migration source only).
 		view.ExperimentalCollabGroupView = cfg.Desktop.ExperimentalCollabGroupView
+		// Task 856 ③: unified collaboration-hub entry readback (boot snapshot).
+		view.ExperimentalCollabHub = cfg.Desktop.ExperimentalCollabHub
 		// Task 705: cross-session message auto-fold readback.
 		view.ExperimentalSessionCollabAutoFold = cfg.Desktop.ExperimentalSessionCollabAutoFold
 		// Task 704: trajectory view switch readback (boot snapshot).
@@ -1685,7 +1695,8 @@ func (a *App) Settings() SettingsView {
 		UpdateChimeTune:              cfg.UpdateChimeTuneMode(),
 		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
-		ExperimentalCollabGroupView:  cfg.Desktop.ExperimentalCollabGroupView, // task 677 group-chat entry
+		ExperimentalCollabGroupView:  cfg.Desktop.ExperimentalCollabGroupView, // task 677 legacy group-chat entry (migration source)
+		ExperimentalCollabHub:        cfg.Desktop.ExperimentalCollabHub,       // task 856 ③ unified collaboration-hub entry
 		ExperimentalTrajectoryView:   cfg.Desktop.ExperimentalTrajectoryView,  // task 704 trajectory view switch
 		// Task 705, readback fixed by 759: the field was mapped only in
 		// DesktopStartupSettings, so the panel read the Go zero value and the

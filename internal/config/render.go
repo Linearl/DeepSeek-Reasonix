@@ -76,7 +76,11 @@ var labFeatureTiers = []labFeatureTier{
 	{"compactModel", LabTierOptional, []string{"experimental_compact_model", "compact_model"}},
 	{"outputStyle", LabTierOptional, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
-	{"collabGroupView", LabTierUnstable, []string{"experimental_collab_group_view"}},                            // 任务 677：群聊入口开关（409 交付漏挂铁律 2 开关，用户定档未稳定）
+	// 任务 856 ③：collabGroupView 语义升级为「协作中心」入口总开关（信件中心+
+	// 群聊两图标合一），键随语义一次性迁移 collabHub（首次读取继承旧值，见
+	// decode.go inheritLegacyCollabHubKey；旧键随 fixed-key-set 渲染淘汰，
+	// render_coverage_test.go 豁免表登记）。
+	{"collabHub", LabTierUnstable, []string{"experimental_collab_hub"}},
 	// 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关归提效
 	// 组（同 messageMerge 的跨会话展示族先例）；档位按 550 口径建议可选。
 	{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}},
@@ -382,9 +386,12 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "fork_notice_last_version = %q   # desktop: version tree the fork notice last fired for (task 670)\n", c.Desktop.ForkNoticeLastVersion)
 		fmt.Fprintf(&b, "experimental_session_monitor = %v   # desktop: left-rail session monitor board (task 123)\n", c.Desktop.ExperimentalSessionMonitor)
 		fmt.Fprintf(&b, "experimental_split_view = %v   # desktop: tab-bar split view (task 70-1)\n", c.Desktop.ExperimentalSplitView)
-		// Task 677: fixed-key-set rule — an unlisted key would be dropped on
-		// every save and the group-chat switch would flip itself back off.
-		fmt.Fprintf(&b, "experimental_collab_group_view = %v   # desktop: sidebar group-chat entry (task 409 view, task 677 switch)\n", c.Desktop.ExperimentalCollabGroupView)
+		// Task 856: fixed-key-set rule — an unlisted key would be dropped on
+		// every save. The unified collaboration-hub switch (856 ③: mail-inbox +
+		// group-chat icons merged into one entry) writes the NEW key only; the
+		// legacy task-677 line is retired by this very drop (decode.go inherits
+		// its stored value on first read).
+		fmt.Fprintf(&b, "experimental_collab_hub = %v   # desktop: unified collaboration-hub entry (task 856; inherits legacy task-677 group-chat switch)\n", c.Desktop.ExperimentalCollabHub)
 		// Task 705: fixed-key-set rule (same as above) — the fold switch must
 		// survive every settings save.
 		fmt.Fprintf(&b, "experimental_session_collab_auto_fold = %v   # desktop: fold over-long cross-session messages into a summary bar (task 705; off = render in full)\n", c.Desktop.ExperimentalSessionCollabAutoFold)

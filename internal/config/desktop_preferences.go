@@ -102,6 +102,15 @@ type DesktopConfig struct {
 	// utility row renders exactly the pre-409 four-icon layout, and the panel
 	// becomes unreachable — the 409 deliverable itself is untouched.
 	ExperimentalCollabGroupView bool `toml:"experimental_collab_group_view"`
+	// ExperimentalCollabHub gates the unified collaboration-hub entry (task 856:
+	// 信件中心+群聊两图标融合为一个「协作中心」入口). It inherits the legacy
+	// task-677 group-chat switch's stored value on first read (decode-time
+	// fallback, decode.go) so an existing user keeps their entry state across
+	// the rename; once the settings view saves, the new key is the only one on
+	// disk (fixed-key-set drop retires the legacy line). Ships off per 铁律 2:
+	// with it off the utility row renders exactly the pre-856 layout minus the
+	// two merged icons.
+	ExperimentalCollabHub bool `toml:"experimental_collab_hub"`
 	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
 	// in the transcript into a summary bar (task 705). It ships off per 铁律 2:
 	// off = every cross-session message renders in full, exactly as before the

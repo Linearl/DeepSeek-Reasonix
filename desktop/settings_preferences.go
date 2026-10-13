@@ -322,8 +322,17 @@ func (a *App) SetExperimentalSplitView(enabled bool) error {
 
 // SetExperimentalCollabGroupView toggles the sidebar group-chat entry (task 677):
 // with it off the sidebar utility row keeps the pre-409 four-icon layout.
+//
+// 任务 856 起为 legacy setter：面板只调用 SetExperimentalCollabHub，本方法仅为
+// 旧 wailsjs 绑定保留（decode 继承负责存量值迁移）。
 func (a *App) SetExperimentalCollabGroupView(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCollabGroupView(enabled) })
+}
+
+// SetExperimentalCollabHub toggles the unified collaboration-hub entry (task
+// 856 ③): with it off the utility row keeps the pre-856 layout (no hub icon).
+func (a *App) SetExperimentalCollabHub(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCollabHub(enabled) })
 }
 
 // SetExperimentalSessionCollabAutoFold toggles the transcript fold for
