@@ -117,6 +117,13 @@ type inboxState struct {
 	// body matches one of them were applied before the restart and settle on
 	// store open instead of replaying onto the shelf. nil disables settling.
 	appliedReceipts func(sessionPath string) map[string]struct{}
+	// 任务866: appliedBodies lists the bodies of every plain user turn the
+	// transcript durably holds — the follow-up twin of appliedReceipts. A
+	// follow-up row consumed by a turn leaves no steer receipt, so without
+	// this face its Uncertain residue (the TranscriptNotDurable park a failed
+	// turn snapshot writes) replays onto the shelf after every restart. nil
+	// keeps the P15-only behaviour.
+	appliedBodies   func(sessionPath string) map[string]struct{}
 	dispatching     bool
 	dispatchPending bool
 	// Retry bookkeeping is guarded by mu. Retries are bounded so a persistent
@@ -242,16 +249,31 @@ func (s *inboxState) settled(meta sessioninbox.InboxItemMeta) bool {
 //     which also settles a merged carrier row: the carrier holds the merged
 //     full text verbatim);
 //   - its body equals one merged segment body (task 543 text fallback for
-//     member rows whose id is no longer recoverable from the receipt).
+//     member rows whose id is no longer recoverable from the receipt);
+//   - its body equals one plain user-turn body the transcript durably holds
+//     (任务866: the follow-up face. A follow-up row consumed by a turn —
+//     typically a degraded collab follow-up later parked TranscriptNotDurable
+//     by a failed turn snapshot — leaves no steer receipt, so without this
+//     face its Uncertain residue replays onto the shelf after every restart.
+//     Exact equality keeps the repeat instruction honest: matching text means
+//     the same instruction already ran in this conversation).
 //
-// nil receipts (host never injected the loader, or the transcript holds no
-// steer) return nil so nothing is auto-settled.
+// Both receipt loaders missing (host never injected either, or the transcript
+// holds neither a steer nor a plain user turn) return nil so nothing is
+// auto-settled.
 func (s *inboxState) residueMatcher(sessionPath string) func(sessioninbox.InboxItemMeta, sessioninbox.PromptEnvelope) bool {
-	if s == nil || s.appliedReceipts == nil {
+	if s == nil || (s.appliedReceipts == nil && s.appliedBodies == nil) {
 		return nil
 	}
-	texts := s.appliedReceipts(sessionPath)
-	if len(texts) == 0 {
+	var texts map[string]struct{}
+	if s.appliedReceipts != nil {
+		texts = s.appliedReceipts(sessionPath)
+	}
+	var bodies map[string]struct{}
+	if s.appliedBodies != nil {
+		bodies = s.appliedBodies(sessionPath)
+	}
+	if len(texts) == 0 && len(bodies) == 0 {
 		return nil
 	}
 	memberIDs := make(map[string]struct{})
@@ -285,7 +307,10 @@ func (s *inboxState) residueMatcher(sessionPath string) func(sessioninbox.InboxI
 		if _, ok := texts[text]; ok {
 			return true
 		}
-		_, ok := segmentBodies[text]
+		if _, ok := segmentBodies[text]; ok {
+			return true
+		}
+		_, ok := bodies[text]
 		return ok
 	}
 }

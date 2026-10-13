@@ -637,6 +637,14 @@ type Options struct {
 	// receipt are settled instead of replaying onto the shelf. nil keeps the
 	// raw behaviour (nothing is auto-settled).
 	InboxAppliedReceipts func(sessionPath string) map[string]struct{}
+	// InboxAppliedBodyReceipts (任务866) reports the bodies of every plain
+	// user turn the transcript durably holds — the application receipt for
+	// follow-up rows, which no steer receipt ever describes (a degraded collab
+	// follow-up parked as TranscriptNotDurable had no face left to settle it
+	// and replayed onto the shelf after every restart). The residue matcher
+	// consults it only after the steer faces miss. nil keeps the P15-only
+	// behaviour.
+	InboxAppliedBodyReceipts func(sessionPath string) map[string]struct{}
 	// TaskBudget is the configured spend gate; unset leaves a turn unbounded.
 	TaskBudget agent.TaskBudget
 	// GoalTokenBudget bounds an unattended Goal loop by cumulative tokens.
@@ -928,6 +936,10 @@ func New(opts Options) *Controller {
 			// rows that were already applied settle on store open instead of
 			// replaying onto the shelf.
 			appliedReceipts: opts.InboxAppliedReceipts,
+			// 任务866: the follow-up twin — plain user-turn bodies back the
+			// residue matcher for rows no steer receipt describes (degraded
+			// collab follow-ups parked as TranscriptNotDurable).
+			appliedBodies: opts.InboxAppliedBodyReceipts,
 		},
 		taskBudget:                 opts.TaskBudget,
 		goalTokenBudget:            opts.GoalTokenBudget,
