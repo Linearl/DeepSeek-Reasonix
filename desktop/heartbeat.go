@@ -792,6 +792,12 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 			"topic", topicID,
 			"waited", heartbeatControllerWaitTimeout.String(),
 			"reason", e.app.tabControllerWaitReason(tabMeta.ID))
+		// Task 865: the tab the run itself opened (or promoted) must not linger
+		// in the strip forever just because this run gave up — the deferred-park
+		// waiter takes it back out once the controller publishes idle.
+		if background && !visibleBefore {
+			e.app.deferHeartbeatPark(tabMeta.ID)
+		}
 		return t // don't update LastRunAt — retry next tick
 	}
 	if heartbeatControllerBusy(ctrl) {
@@ -805,6 +811,13 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 		} else {
 			log.Printf("[heartbeat] controller busy for %q, skipping", t.Title)
 		}
+		// Task 865: same no-self-lock rule as above — a tab this run put into
+		// the strip (typically the previous run's runtime promoted back while
+		// its turn is still running) is taken out again once the turn goes
+		// idle, instead of flipping every later run into visible-before.
+		if background && !visibleBefore {
+			e.app.deferHeartbeatPark(tabMeta.ID)
+		}
 		return t // don't change approval mode for an existing turn — retry next tick
 	}
 	if heartbeatFreshConversationMode(t) && pendingSubmitted {
@@ -816,10 +829,14 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 		// Task 742: the previous run finished and this run moves on to a fresh
 		// topic — if the done conversation was only promoted for this check,
 		// park it back so the strip stays clean. A tab the user has open stays
-		// (visibleBefore), exactly like the baseline behaviour.
+		// (visibleBefore), exactly like the baseline behaviour. Task 865: the
+		// parked turn is this task's own finished run, so the fence reads the
+		// owned variant; a refusal arms the deferred park instead of leaving
+		// the tab to self-lock into the strip.
 		if background && !visibleBefore {
-			if err := e.app.parkTabAsDetached(tabMeta.ID); err != nil {
+			if err := e.app.parkTabAsDetachedOwned(tabMeta.ID); err != nil {
 				log.Printf("[heartbeat] background re-park for %q: %s (tab stays visible)", t.Title, secrets.RedactError(err))
+				e.app.deferHeartbeatPark(tabMeta.ID)
 			}
 		}
 		return e.executeTaskOwned(t)
@@ -914,15 +931,24 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	}
 
 	// Task 742: background mode — the prompt is in, so the run's tab goes back
-	// out of the strip: parkTabAsDetached moves the SAME runtime into the
+	// out of the strip: parkTabAsDetachedOwned moves the SAME runtime into the
 	// detached pool (task 264 semantics), the turn keeps running, the sink
 	// keeps forwarding (bot channels stay live), and the next run promotes the
 	// runtime back through the prefer-live open. Parking is best-effort (the
 	// 264 ruling): on failure the tab stays visible and the run still counts.
 	// A tab the user had open never parks (visibleBefore).
+	//
+	// Task 865: the turn on this tab is the one THIS run just submitted — the
+	// plain park's Running fence read that same submit success as "user
+	// foreground turn" and refused, so every background run left its tab in
+	// the strip (the 864 root cause: submit success ⟺ plain park refused ⟺
+	// visible-before self-lock). The owned variant exempts the turn fence and
+	// keeps only the active-tab one; a refusal still arms the deferred park so
+	// the tab leaves the strip once its turn goes idle.
 	if background && !visibleBefore {
-		if err := e.app.parkTabAsDetached(tabMeta.ID); err != nil {
+		if err := e.app.parkTabAsDetachedOwned(tabMeta.ID); err != nil {
 			log.Printf("[heartbeat] background park for %q: %s (tab stays visible)", t.Title, secrets.RedactError(err))
+			e.app.deferHeartbeatPark(tabMeta.ID)
 		} else {
 			log.Printf("[heartbeat] task %q run parked detached (background mode)", t.Title)
 		}
