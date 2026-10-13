@@ -11,6 +11,7 @@
 // in place (same order as collab-inbox-panel) — otherwise controlled-input
 // onChange never fires in this environment.
 
+import * as React from "react"; // tsconfig exclude 了 __tests__，tsx 对本文件走 classic JSX——必须显式绑定 React
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 

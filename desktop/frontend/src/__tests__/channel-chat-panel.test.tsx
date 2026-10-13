@@ -12,6 +12,7 @@
 //      未读记账 localStorage（首见初始化，不打扰老频道）。
 // Go 侧契约（store/绑定）由 desktop 包测试持有；本 harness 持渲染与接线。
 
+import * as React from "react"; // tsconfig exclude 了 __tests__，tsx 对本文件走 classic JSX——必须显式绑定 React
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 

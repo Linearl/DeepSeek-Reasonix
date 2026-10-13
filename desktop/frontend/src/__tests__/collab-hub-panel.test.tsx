@@ -10,6 +10,7 @@
 //   ⑤ 关闭 Hub → 子面板模块 open 同步复位（未读徽标刷新时机保持）。
 // The Go tests own the data contracts; this harness owns the shell wiring.
 
+import * as React from "react"; // tsconfig exclude 了 __tests__，tsx 对本文件走 classic JSX——必须显式绑定 React
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
