@@ -545,6 +545,164 @@ func TestStartCrashAnalysisNamesAnalysisSessionNotInitiator(t *testing.T) {
 	}
 }
 
+// ── 任务858：分析命名绝不落既有会话（第二道门）──────────────────────────────
+// 2026-10-13 事故形态：更新重启窗口内一键分析链开跑，分析 tab 的 controller
+// 在等待完成时指向的已不是新建分析会话，而是用户 video_comprehension 域的
+// 评测会话（meta 绑着旧 topic、CustomTitle 是用户可读名）——RenameSession 把
+// 「崩溃分析-20261013-121643」写进了它的 sidecar。任务780 把目标钉到打开的
+// tab 上，但钉不住「tab 的 controller 本身被换绑」；任务858 在 rename 前加
+// 第二道门：目标必须位于 global 会话目录，且 sidecar 已带 topic 绑定时必须
+// 指向本次新建的 topic。命中拦截时宁可分析会话无名，也不改写用户会话。
+
+// TestAnalysisRenameAllowedGatesForeignSessions pins the guard's four shapes:
+// a project-bound session (the 858 victim form), and a global session whose
+// sidecar binds a foreign topic, are both refused; a brand-new analysis
+// session (no sidecar binding yet) and one bound to this flow's topic pass.
+func TestAnalysisRenameAllowedGatesForeignSessions(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	projectRoot := t.TempDir()
+	projectDir := desktopSessionDir(projectRoot)
+	victimPath, err := createEmptySessionFile(projectDir, "victim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.UpdateBranchMeta(victimPath, false, func(m *agent.BranchMeta) error {
+		m.TopicID = "topic-user-old"
+		m.CustomTitle = "镜头脏污-主对话"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	globalDir := desktopSessionDir(globalWorkspaceRoot())
+	foreignTopicPath, err := createEmptySessionFile(globalDir, "foreign")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.UpdateBranchMeta(foreignTopicPath, false, func(m *agent.BranchMeta) error {
+		m.TopicID = "topic-user-old"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	unboundPath, err := createEmptySessionFile(globalDir, "fresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownedPath, err := createEmptySessionFile(globalDir, "owned")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.UpdateBranchMeta(ownedPath, false, func(m *agent.BranchMeta) error {
+		m.TopicID = "topic-analysis-new"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name   string
+		path   string
+		topic  string
+		wantOK bool
+	}{
+		{"project-bound session is the 858 victim form", victimPath, "topic-analysis-new", false},
+		{"global session bound to a foreign topic is refused", foreignTopicPath, "topic-analysis-new", false},
+		{"brand-new analysis session without a binding passes", unboundPath, "topic-analysis-new", true},
+		{"session bound to this flow's topic passes", ownedPath, "topic-analysis-new", true},
+		{"empty path is refused", "", "topic-analysis-new", false},
+	}
+	for _, tc := range cases {
+		if got := analysisRenameAllowed(tc.path, tc.topic); got != tc.wantOK {
+			t.Fatalf("%s: analysisRenameAllowed(%q, %q) = %v, want %v",
+				tc.name, tc.path, tc.topic, got, tc.wantOK)
+		}
+	}
+}
+
+// TestStartCrashAnalysisNeverRenamesForeignSession is the 858 regression pin:
+// the opened analysis tab's controller reports the USER's evaluation session
+// (a mid-wait rebind the 任务780 tab pin cannot see), so without the second
+// gate RenameSession would stamp 崩溃分析-<时间> onto it — exactly the
+// 2026-10-13 incident. The rename must stand down, the user's title must
+// survive untouched, and the analysis itself must still start.
+func TestStartCrashAnalysisNeverRenamesForeignSession(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	app := NewApp()
+	app.ctx = context.Background()
+	app.readyHook = func() {}
+	app.runtimeEvents.emit = func(context.Context, string, ...any) {}
+
+	// The victim: a project-scoped evaluation session carrying the user's own
+	// name and an old topic binding — the 858 incident's exact sidecar state.
+	projectRoot := t.TempDir()
+	victimDir := desktopSessionDir(projectRoot)
+	victimPath, err := createEmptySessionFile(victimDir, "victim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agent.UpdateBranchMeta(victimPath, false, func(m *agent.BranchMeta) error {
+		m.TopicID = "topic-user-old"
+		m.CustomTitle = "镜头脏污-主对话"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	app.mu.Lock()
+	app.tabs["tab-user"] = &WorkspaceTab{ID: "tab-user", Scope: "project", WorkspaceRoot: projectRoot,
+		TopicID: "topic-user-old", TopicTitle: "镜头脏污-主对话",
+		Ctrl: &crashAnalysisNamedCtrlStub{sessionPath: victimPath, sessionDir: victimDir}, Ready: true}
+	app.tabOrder = []string{"tab-user"}
+	app.activeTabID = "tab-user"
+	app.mu.Unlock()
+
+	sourceDir := t.TempDir()
+	origSource, origGh, origSubmit := crashAnalysisSourceDir, crashAnalysisGhAuth, crashAnalysisSubmit
+	crashAnalysisSourceDir = func() string { return sourceDir }
+	crashAnalysisGhAuth = func() (bool, string) { return true, "" }
+	submittedTab := make(chan string, 1)
+	crashAnalysisSubmit = func(a *App, tabID, instruction string) error {
+		submittedTab <- tabID
+		return nil
+	}
+	t.Cleanup(func() {
+		crashAnalysisSourceDir, crashAnalysisGhAuth, crashAnalysisSubmit = origSource, origGh, origSubmit
+	})
+
+	// The rebind replay: the analysis tab's controller claims the VICTIM's
+	// session — the tab pin (任务780) resolves faithfully to what its tab
+	// reports, so only the topic/identity gate (任务858) stands between the
+	// analysis title and the user's conversation.
+	reboundCtrl := &crashAnalysisNamedCtrlStub{sessionPath: victimPath, sessionDir: victimDir}
+	tabIDCh := publishControllerAndStealActivation(t, app, reboundCtrl, "tab-user")
+	origWait := crashAnalysisControllerWaitTimeout
+	crashAnalysisControllerWaitTimeout = 10 * time.Second
+	t.Cleanup(func() { crashAnalysisControllerWaitTimeout = origWait })
+
+	if _, err := app.StartCrashAnalysis("performance", "event loop lag"); err != nil {
+		t.Fatalf("StartCrashAnalysis: %v", err)
+	}
+	hostedID := <-tabIDCh
+	// The analysis itself must not die because its rename stood down.
+	if got := <-submittedTab; got != hostedID {
+		t.Fatalf("instruction submitted to tab %q, want the analysis tab %q", got, hostedID)
+	}
+
+	victim, ok, err := agent.LoadBranchMeta(victimPath)
+	if err != nil || !ok {
+		t.Fatalf("victim branch meta: ok=%v err=%v", ok, err)
+	}
+	if victim.CustomTitle != "镜头脏污-主对话" {
+		t.Fatalf("victim CustomTitle = %q, want 镜头脏污-主对话 — the analysis name leaked into the user's session (task 858)", victim.CustomTitle)
+	}
+	if victim.TopicID != "topic-user-old" {
+		t.Fatalf("victim TopicID = %q, want topic-user-old — the flow must not rebind the user's session", victim.TopicID)
+	}
+}
+
 // The instruction the analysis session receives quotes the same source dir;
 // the visible template must render it with real separators too (the same
 // complaint targeted this path as "github-repo.reasonix").
@@ -580,7 +738,7 @@ func TestCrashAnalysisSessionOpenTimesOutWithoutController(t *testing.T) {
 	publishControllerAfterDelay(t, app, ctrl, time.Hour)
 
 	start := time.Now()
-	_, err := app.openCrashAnalysisSession("crash")
+	_, _, err := app.openCrashAnalysisSession("crash")
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatal("openCrashAnalysisSession succeeded without a controller")

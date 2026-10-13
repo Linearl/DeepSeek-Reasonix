@@ -160,13 +160,21 @@ func (a *App) StartHangAnalysis() (string, error) {
 	// flow could even start. The shared openCrashAnalysisSession path removes
 	// both couplings: the hang analysis lands under Global, and the flow only
 	// needs the (inherently live) hung session for the verdict probe above.
-	tabID, err := a.openCrashAnalysisSession("卡顿")
+	tabID, topicID, err := a.openCrashAnalysisSession("卡顿")
 	if err != nil {
 		return "", err
 	}
 	// 任务780: same pin as the crash entry — name the tab this flow opened,
 	// never whichever tab happens to be active when the controller wait settles.
+	// 任务858: same second gate too — if the tab's controller no longer points
+	// at this flow's own global session, the rename (and the run tracking)
+	// stands down instead of stamping 卡顿分析-<时间> onto a user conversation.
 	sessionPath, sessionDir := a.sessionLocationForTab(tabID)
+	if sessionPath != "" && !analysisRenameAllowed(sessionPath, topicID) {
+		slog.Warn("hang-analysis: rename skipped — target is not the analysis session this flow opened (task 858)",
+			"session", scrubUserPaths(sessionPath), "wantTopic", topicID)
+		sessionPath, sessionDir = "", ""
+	}
 	title := crashAnalysisSessionTitle("卡顿分析", false)
 	if sessionPath != "" {
 		if renameErr := agent.RenameSession(sessionPath, title); renameErr != nil {
