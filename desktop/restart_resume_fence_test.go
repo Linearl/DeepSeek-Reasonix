@@ -36,6 +36,11 @@ type fenceProbeController struct {
 	pending          []provider.ToolCallRecord
 	inboxPausedCalls []bool
 	settleCalls      int
+	// 任务840: guidance-settle bookkeeping + the ordered call log across the
+	// fence/inbox seams, so the restore-point ordering contract (settle the
+	// guidance parks BEFORE the pause clears) is assertable.
+	guidanceSettleCalls int
+	callOrder           []string
 }
 
 func (c *fenceProbeController) SessionPath() string { return c.path }
@@ -44,6 +49,7 @@ func (c *fenceProbeController) SetInboxPausedPassive(paused bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.inboxPausedCalls = append(c.inboxPausedCalls, paused)
+	c.callOrder = append(c.callOrder, "unpause")
 	return nil
 }
 
@@ -53,7 +59,28 @@ func (c *fenceProbeController) SettleRestartInterruptedEffects() int {
 	n := len(c.pending)
 	c.pending = nil
 	c.settleCalls++
+	c.callOrder = append(c.callOrder, "fence")
 	return n
+}
+
+func (c *fenceProbeController) SettlePlannedRestartGuidance() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.guidanceSettleCalls++
+	c.callOrder = append(c.callOrder, "guidance")
+	return 0
+}
+
+func (c *fenceProbeController) guidanceSettleCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.guidanceSettleCalls
+}
+
+func (c *fenceProbeController) callOrderNow() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.callOrder...)
 }
 
 func (c *fenceProbeController) pendingNow() []provider.ToolCallRecord {

@@ -306,6 +306,49 @@ func (c *Controller) settleAppliedResidue(st *sessioninbox.Store, stage string) 
 	}
 }
 
+// SettlePlannedRestartGuidance is the 任务840 planned-restart read confirmation.
+// The desktop restore point calls it from the task-254 roster consumption
+// chain — the one place where a restart is provably planned by the update
+// chain — BEFORE it clears the recovery pause, so guidance rows the previous
+// process had already admitted into a turn do not replay onto the shelf with
+// a retry button after an unattended update restart (实测 2026-10-13: three
+// consumed guidance messages back as pending).
+//
+// Evidence contract (all three must hold for a drop):
+//   - the row parks as Uncertain with BlockReasonRestartOrphan or
+//     BlockReasonSteerUnapplied — both are only ever written for rows a
+//     previous process had already admitted into a turn;
+//   - the collab delivery evidence (task-570 receipt / recipient cursor,
+//     the same settled probe recovery consults) confirms the source mail was
+//     delivered — non-collab rows never pass this probe;
+//   - the caller is the roster consumption point, so the restart interruption
+//     was planned, not a crash.
+//
+// BlockReasonTranscriptNotDurable rows stay for review (their content never
+// reached the transcript), and a wrong drop is self-healing: the pump
+// re-delivers an unconsumed collab mail onto a fresh idempotency-keyed row.
+// Returns the number of settled rows; hosts without the settled probe
+// (settledItem == nil) are a no-op.
+func (c *Controller) SettlePlannedRestartGuidance() int {
+	if c == nil || c.inbox.settledItem == nil {
+		return 0
+	}
+	st, err := c.ensureInbox()
+	if err != nil {
+		slog.Warn("controller: planned-restart guidance settle", "err", err)
+		return 0
+	}
+	dropped, err := st.SettlePlannedRestartResidue(c.inbox.settledItem)
+	if err != nil {
+		slog.Warn("controller: planned-restart guidance settle", "err", err)
+		return 0
+	}
+	if dropped > 0 {
+		slog.Info("controller: settled planned-restart guidance residue", "count", dropped)
+	}
+	return dropped
+}
+
 func (s *inboxState) activeIDs() []string {
 	if s == nil || len(s.activeItemIDs) == 0 {
 		return nil

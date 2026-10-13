@@ -237,6 +237,36 @@ type restartFenceSettler interface {
 	SettleRestartInterruptedEffects() int
 }
 
+// plannedGuidanceSettler is the narrow control surface for the 任务840
+// planned-restart read confirmation: the roster-resumed session's
+// admission-proven guidance parks (RestartOrphan / SteerUnapplied whose collab
+// mail was delivered) are settled host-side so the guidance shelf does not
+// replay consumed messages with a retry button after an unattended update
+// restart. Same type-asserted shape as restartFenceSettler — a fake or an
+// older controller without the capability simply keeps its shelf rows.
+type plannedGuidanceSettler interface {
+	SettlePlannedRestartGuidance() int
+}
+
+// settlePlannedRestartGuidanceForTab settles the tab session's parked guidance
+// rows via SettlePlannedRestartGuidance (任务840). Called from both roster
+// consumption restore points BEFORE the recovery pause is cleared, so the
+// shelf's first post-ready snapshot no longer carries the consumed rows.
+func (a *App) settlePlannedRestartGuidanceForTab(tab *WorkspaceTab) int {
+	if tab == nil || tab.Ctrl == nil {
+		return 0
+	}
+	settler, ok := tab.Ctrl.(plannedGuidanceSettler)
+	if !ok {
+		return 0
+	}
+	settled := settler.SettlePlannedRestartGuidance()
+	if settled > 0 {
+		slog.Info("desktop: planned-restart session resumed; consumed guidance rows settled off the shelf", "tab", tab.ID, "settled", settled)
+	}
+	return settled
+}
+
 // settleRestartFenceForTab clears the tab session's pending effect records via
 // SettleRestartInterruptedEffects (task 435). Called from the roster-consume
 // restore point BEFORE the continue prompt is submitted, so the panel's first
@@ -329,6 +359,11 @@ func (a *App) maybeResumeAutonomousUpdateTab(tab *WorkspaceTab) {
 	// leftover guidance content replays into the conversation on its own. True
 	// pending work stays paused-for-review reachable via /queue; the notice
 	// (the "tell") is already gone because we own the continue decision.
+	// 任务840: the read confirmation runs BEFORE the pause clears — admission-
+	// proven guidance parks whose collab mail was delivered settle off the
+	// shelf here, so the fresh shelf snapshot never shows the consumed rows
+	// with a retry button.
+	a.settlePlannedRestartGuidanceForTab(tab)
 	if tab.Ctrl != nil {
 		if err := tab.Ctrl.SetInboxPausedPassive(false); err != nil {
 			slog.Debug("desktop: clearing recovery pause for auto-resume", "tab", tab.ID, "err", err)
