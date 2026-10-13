@@ -126,6 +126,31 @@ export function deleteProjectGroup(
   return { groups: nextGroups, assign: nextAssign };
 }
 
+// Task 827 ④: reorderProjectGroups moves one group before/after another and
+// rewrites sortOrder to 0..n-1 so the field stays a dense ranking. The dropped
+// order is persisted to the same GROUPS_KEY immediately, so a refresh or an
+// app restart reads it back (acceptance ④). A drag whose endpoints vanished
+// (another window dissolved a group mid-drag) is a no-op, mirroring the
+// session-group moveGroup behaviour.
+export function reorderProjectGroups(
+  groups: ProjectGroup[],
+  draggedId: string,
+  targetId: string,
+  position: "before" | "after",
+): ProjectGroup[] {
+  if (draggedId === targetId) return groups;
+  const from = groups.findIndex((g) => g.id === draggedId);
+  const to = groups.findIndex((g) => g.id === targetId);
+  if (from < 0 || to < 0) return groups;
+  const next = groups.slice();
+  const [moved] = next.splice(from, 1);
+  const targetIndex = next.findIndex((g) => g.id === targetId);
+  next.splice(position === "before" ? targetIndex : targetIndex + 1, 0, moved);
+  const ordered = next.map((g, index) => (g.sortOrder === index ? g : { ...g, sortOrder: index }));
+  persistGroups(ordered);
+  return ordered;
+}
+
 // moveProjectToGroup assigns a project root to a single group (pass null to
 // ungroup). Single-select semantics, per #9222.
 export function moveProjectToGroup(
