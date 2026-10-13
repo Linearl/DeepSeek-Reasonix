@@ -178,10 +178,10 @@ type WorkspaceTab struct {
 	// 修订五③）。atomic：submit 路径（turnStartMu）与切档路径（App.mu）无共
 	// 享锁，注入幂等，极端竞态下多/少一次无害（方案文档明示重复注入无害）。
 	decisionPatternsPending atomic.Bool
-	subagentPolicy           string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
-	disabledMCP              map[string]ServerView
-	mcpOrder                 []string
-	lastBuildResult          *boot.BuildResult // incremental extension reload
+	subagentPolicy          string // per-session sub-agent delegation tier (light|balanced|aggressive, fork)
+	disabledMCP             map[string]ServerView
+	mcpOrder                []string
+	lastBuildResult         *boot.BuildResult // incremental extension reload
 
 	PinnedFiles              []string
 	pendingLegacyPinnedFiles []string // round-tripped until the session sidecar publishes

@@ -539,7 +539,7 @@ func TestIdleTurnSweepLogRateLimited(t *testing.T) {
 }
 
 // TestIdleTurnSweepLogSkipsQuietTargets：无队首且无滞留 item 的目标零打点
-//（空转会话每分钟一行是纯噪音）。
+// （空转会话每分钟一行是纯噪音）。
 func TestIdleTurnSweepLogSkipsQuietTargets(t *testing.T) {
 	b := newIdleTurnBridge()
 	now := time.Now()

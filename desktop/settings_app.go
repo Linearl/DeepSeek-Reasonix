@@ -1702,11 +1702,11 @@ func (a *App) Settings() SettingsView {
 		ExperimentalFeedbackNudge:         cfg.Desktop.ExperimentalFeedbackNudge,
 		ExperimentalTodoSidebar:           cfg.Desktop.ExperimentalTodoSidebar,
 		// Task 826: hover-to-expand readback (both views, two-view lesson).
-		ExperimentalSidebarHoverLeft:      cfg.Desktop.ExperimentalSidebarHoverLeft,
-		ExperimentalSidebarHoverRight:     cfg.Desktop.ExperimentalSidebarHoverRight,
-		ExperimentalSubagentPanel:         cfg.Desktop.ExperimentalSubagentPanel,
-		ExperimentalSessionWall:           cfg.Desktop.ExperimentalSessionWall,
-		ExperimentalPromptHistoryPicker:   cfg.Desktop.ExperimentalPromptHistoryPicker,
+		ExperimentalSidebarHoverLeft:    cfg.Desktop.ExperimentalSidebarHoverLeft,
+		ExperimentalSidebarHoverRight:   cfg.Desktop.ExperimentalSidebarHoverRight,
+		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
+		ExperimentalSessionWall:         cfg.Desktop.ExperimentalSessionWall,
+		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
 		// Task 506: tab-strip adaptive compression readback.
 		ExperimentalTabCompress: cfg.Desktop.ExperimentalTabCompress,
 		// Task 742: heartbeat background mode readback.

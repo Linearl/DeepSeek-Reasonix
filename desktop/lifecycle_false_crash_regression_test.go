@@ -159,7 +159,8 @@ func TestStartupSweepRetiresBenignLifecycleBacklog(t *testing.T) {
 		if err := json.Unmarshal([]byte(payload), &parsed); err != nil {
 			t.Fatal(err)
 		}
-		if parsed.Source == "native.lifecycle" && (parsed.Label == "desktop.abnormal_exit.v2" || parsed.Label == "desktop.abnormal_exit.v2-benign-healthy") {			t.Fatalf("judged-non-crash report must never surface: %s", parsed.Label)
+		if parsed.Source == "native.lifecycle" && (parsed.Label == "desktop.abnormal_exit.v2" || parsed.Label == "desktop.abnormal_exit.v2-benign-healthy") {
+			t.Fatalf("judged-non-crash report must never surface: %s", parsed.Label)
 		}
 	}
 }

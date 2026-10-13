@@ -353,7 +353,7 @@ func TestIdleTurnEndToEndWedgedFinishingObservableThenConsumed(t *testing.T) {
 			e.inputs = append(e.inputs, input)
 			e.mu.Unlock()
 		}),
-		Sink: blockingSink,
+		Sink:        blockingSink,
 		SessionDir:  dir,
 		SessionPath: filepath.Join(dir, "session.jsonl"),
 	})
