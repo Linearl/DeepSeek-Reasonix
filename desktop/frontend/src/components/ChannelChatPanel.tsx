@@ -17,7 +17,7 @@
 // tick 全新——这是验收第 3 步「送达已读逐成员正确」的硬前提；未打开频道
 // 零消息拉取，列表未读用 messages 总数差（localStorage 记账）。
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { app as appBridge } from "../lib/bridge";
 import type { CollabSessionDirectoryRow } from "./CollabInboxPanel";
@@ -53,6 +53,9 @@ export type ChannelChatBindings = {
   ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
+  /** 任务 856 ⑤: 任命/撤销单副管理员（human 群主口）。 */
+  ChannelSetDeputy(ref: string, contactID: string): Promise<CollabChannelView>;
+  ChannelUnsetDeputy(ref: string): Promise<CollabChannelView>;
   ChannelCancelFromHuman(ref: string, messageID: string): Promise<CollabChannelCancelResultView>;
   ListAddressableSessions(): Promise<CollabSessionDirectoryRow[]>;
 };
@@ -93,7 +96,7 @@ function shortId(id: string): string {
   return id.length > 18 ? `${id.slice(0, 17)}…` : id;
 }
 
-export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings } = {}) {
+export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }: { bindings?: ChannelChatBindings; onOpenSession?: (contactId: string) => void; onViewDirectChains?: () => void } = {}) {
   const t = useT();
   const b: ChannelChatBindings = bindings ?? appBridge;
 
@@ -114,7 +117,14 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
   const [createName, setCreateName] = useState("");
   const [createTopic, setCreateTopic] = useState("");
   const [createLimit, setCreateLimit] = useState("");
-  const [menu, setMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
+  // 任务 856 ⑦：右键菜单扩展——own 消息=撤回（既有）；他人消息=打开发信方
+  // 会话（onOpenSession 注入）+ 收信方（群）提示项。
+  const [menu, setMenu] = useState<{ messageId: string; sender: string; x: number; y: number } | null>(null);
+  // 任务 856 ⑤：副管理员操作（详情抽屉成员行）。
+  const [deputyBusy, setDeputyBusy] = useState(false);
+  // 任务 856 ⑥：@ 选人浮层（↑↓ 选择 / Enter 确认 / Esc 关闭）。
+  const [atOpen, setAtOpen] = useState(false);
+  const [atIndex, setAtIndex] = useState(0);
 
   // refs：轮询闭包里要读「当前打开的群」与最新退避状态，不作为渲染依赖。
   const openIdRef = useRef<string | null>(null);
@@ -223,6 +233,18 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
 
   useEffect(() => { void ensureDirectory(); }, [ensureDirectory]);
 
+  // 任务 856 ⑥：邀请框点外部区域自动关闭（捕获阶段拦截内部点击；勾选保留）。
+  useEffect(() => {
+    if (!inviteOpen) return;
+    const onDocClick = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".channel-chat__invitebox")) return;
+      setInviteOpen(false);
+    };
+    document.addEventListener("click", onDocClick, true);
+    return () => document.removeEventListener("click", onDocClick, true);
+  }, [inviteOpen]);
+
   const openChannel = useCallback((id: string) => {
     setOpenId(id);
     openIdRef.current = id;
@@ -230,6 +252,7 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
     setActionError(null);
     setDetailOpen(false);
     setInviteOpen(false);
+    setAtOpen(false);
     void refresh();
   }, [refresh]);
 
@@ -239,6 +262,7 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
     setChat(null);
     setDetailOpen(false);
     setInviteOpen(false);
+    setAtOpen(false);
   }, []);
 
   const send = useCallback(async () => {
@@ -323,6 +347,39 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
     }
   }, [b, invitePicked, refresh]);
 
+  // 任务 856 ⑤：任命/撤销副管理员（仅 human 群主可见入口；失败原样透出）。
+  const setDeputy = useCallback(async (contactId: string) => {
+    const ref = openIdRef.current;
+    if (!ref || deputyBusy) return;
+    setDeputyBusy(true);
+    setActionError(null);
+    try {
+      const updated = await b.ChannelSetDeputy(ref, contactId);
+      setChat((prev) => (prev && (prev.channel.id === updated.id || prev.channel.name === updated.name) ? { ...prev, channel: updated } : prev));
+      await refresh();
+    } catch (err) {
+      setActionError(String(err));
+    } finally {
+      setDeputyBusy(false);
+    }
+  }, [b, deputyBusy, refresh]);
+
+  const unsetDeputy = useCallback(async () => {
+    const ref = openIdRef.current;
+    if (!ref || deputyBusy) return;
+    setDeputyBusy(true);
+    setActionError(null);
+    try {
+      const updated = await b.ChannelUnsetDeputy(ref);
+      setChat((prev) => (prev && (prev.channel.id === updated.id || prev.channel.name === updated.name) ? { ...prev, channel: updated } : prev));
+      await refresh();
+    } catch (err) {
+      setActionError(String(err));
+    } finally {
+      setDeputyBusy(false);
+    }
+  }, [b, deputyBusy, refresh]);
+
   const create = useCallback(async () => {
     const name = createName.trim();
     if (!name) return;
@@ -356,9 +413,53 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
   const memberDetails: CollabChannelMemberView[] = openCh?.memberDetails
     ?? (openCh?.members ?? []).map((contact) => ({ contact, type: "session", joinedAt: 0 }));
 
+  // 任务 856 ⑥：气泡内 @名字 渲染为「查看对话链」快捷入口（点 @ 名字 →
+  // 切到协作中心的对话链通道，衔接 ④；v2 口径：不再有「与该会话的单聊」）。
+  // 普通函数（非 hook）：定义处于 loading 早退之后，hook 规则不允许。
+  const renderBody = (body: string): ReactNode => {
+    if (!body.includes("@")) return body;
+    const parts: ReactNode[] = [];
+    let rest = body;
+    let key = 0;
+    for (const m of memberDetails) {
+      const name = m.contact === HUMAN_LOCAL ? t("collabGroup.chat.you") : directoryTitle(m.contact);
+      const needle = `@${name}`;
+      for (;;) {
+        const idx = rest.indexOf(needle);
+        if (idx < 0) break;
+        if (idx > 0) parts.push(rest.slice(0, idx));
+        parts.push(
+          <span
+            key={`m:${key++}`}
+            className="channel-chat__mention"
+            title={t("collabGroup.chat.mentionHint")}
+            role="link"
+            tabIndex={0}
+            onClick={() => onViewDirectChains?.()}
+            onKeyDown={(e) => { if (e.key === "Enter") onViewDirectChains?.(); }}
+          >
+            {needle}
+          </span>,
+        );
+        rest = rest.slice(idx + needle.length);
+      }
+    }
+    if (rest) parts.push(rest);
+    return parts;
+  };
+
+
   const lastSeenNow = lastSeenRef.current ?? {};
   const unreadOf = (c: CollabChannelView): number =>
     Math.max(0, c.messages - (lastSeenNow[c.id] ?? c.messages));
+
+  // 任务 856 ⑥：@ 候选=当前群成员（human 与会话同列，带类型徽标）。
+  const atCandidates: CollabChannelMemberView[] = openCh?.memberDetails ?? [];
+  const pickAt = (m: CollabChannelMemberView) => {
+    const name = m.contact === HUMAN_LOCAL ? t("collabGroup.chat.you") : directoryTitle(m.contact);
+    setDraft((prev) => prev.replace(/@$/, `@${name} `));
+    setAtOpen(false);
+  };
 
   const inviteCandidates = (directory ?? [])
     .filter((row) => !memberDetails.some((m) => m.contact === row.contactId))
@@ -397,7 +498,7 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
               className={`channel-chat__item${openId === c.id ? " channel-chat__item--on" : ""}`}
               onClick={() => openChannel(c.id)}
             >
-              <span className="channel-chat__itemname">
+              <span className="channel-chat__itemname" title={c.name}>
                 {c.name}
                 {c.ownerId && (
                   <span className={`channel-chat__ownerbadge${c.ownerId === HUMAN_LOCAL ? " channel-chat__ownerbadge--me" : ""}`}>
@@ -406,7 +507,7 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
                 )}
                 {unread > 0 && <span className="channel-chat__unread">{unread > 99 ? "99+" : unread}</span>}
               </span>
-              <span className="channel-chat__itempreview">
+              <span className="channel-chat__itempreview" title={preview ? (preview.cancelledAt ? t("collabGroup.chat.recalled", { sender: preview.sender }) : `${preview.sender}: ${preview.body}`) : undefined}>
                 {preview
                   ? (preview.cancelledAt
                     ? t("collabGroup.chat.recalled", { sender: preview.sender })
@@ -428,7 +529,7 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
           <>
             <div className="channel-chat__chathead">
               <button type="button" className="channel-chat__back" onClick={closeChannel} aria-label={t("collabGroup.chat.back")}>‹</button>
-              <span className="channel-chat__chatname">{openCh.name}</span>
+              <span className="channel-chat__chatname" title={openCh.name}>{openCh.name}</span>
               {openCh.topic && <span className="channel-chat__chattopic">{openCh.topic}</span>}
               <span className="channel-chat__chatmeta">{t("collabGroup.membersCount", { n: openCh.members?.length ?? 0 })}</span>
               <button type="button" className="btn btn--small" onClick={() => setDetailOpen((v) => !v)}>
@@ -478,12 +579,11 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
                     <div
                       className="channel-chat__bubble"
                       onContextMenu={(event) => {
-                        if (!own) return;
                         event.preventDefault();
-                        setMenu({ messageId: m.id, x: event.clientX, y: event.clientY });
+                        setMenu({ messageId: m.id, sender: m.sender, x: event.clientX, y: event.clientY });
                       }}
                     >
-                      {m.body}
+                      {renderBody(m.body)}
                     </div>
                     {(readMembers.length > 0 || failedMembers.length > 0) && (
                       <div className="channel-chat__receipts">
@@ -505,13 +605,64 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
             </div>
 
             <div className="channel-chat__composer">
+              {/* 任务 856 ⑥：@ 选人浮层——输入 @ 触发，↑↓ 选择、Enter 确认、
+                  Esc 关闭；选中插入「@名字 」。 */}
+              {atOpen && atCandidates.length > 0 && (
+                <div className="channel-chat__atpop" role="listbox" aria-label={t("collabGroup.chat.atPopLabel")}>
+                  <div className="channel-chat__atpoptitle">{t("collabGroup.chat.atPopTitle")}</div>
+                  {atCandidates.map((m, i) => (
+                    <button
+                      key={m.contact}
+                      type="button"
+                      role="option"
+                      aria-selected={i === atIndex}
+                      className={`channel-chat__atrow${i === atIndex ? " channel-chat__atrow--on" : ""}`}
+                      onClick={() => pickAt(m)}
+                    >
+                      <span className="channel-chat__atname">{m.contact === HUMAN_LOCAL ? t("collabGroup.chat.you") : directoryTitle(m.contact)}</span>
+                      <span className={`channel-chat__typebadge channel-chat__typebadge--${m.type === "human" ? "human" : "session"}`}>
+                        {m.type === "human" ? t("collabGroup.identity.human") : t("collabGroup.chat.typeSession")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <textarea
                 className="channel-chat__input"
                 value={draft}
                 rows={2}
                 placeholder={t("collabGroup.chat.sendPlaceholder")}
-                onChange={(event) => setDraft(event.target.value)}
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  // ⑥：光标处 @ 触发浮层（简化口径：以 @ 结尾即弹，demo 同款）。
+                  const atTrigger = /@$/.test(event.target.value);
+                  setAtOpen(atTrigger);
+                  setAtIndex(0);
+                }}
                 onKeyDown={(event) => {
+                  // ⑥：浮层开着时 ↑↓/Enter/Esc 归浮层。
+                  if (atOpen && atCandidates.length > 0) {
+                    if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setAtIndex((i) => (i + 1) % atCandidates.length);
+                      return;
+                    }
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setAtIndex((i) => (i - 1 + atCandidates.length) % atCandidates.length);
+                      return;
+                    }
+                    if (event.key === "Enter" && !(event.nativeEvent as KeyboardEvent).isComposing) {
+                      event.preventDefault();
+                      pickAt(atCandidates[atIndex]);
+                      return;
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setAtOpen(false);
+                      return;
+                    }
+                  }
                   // Enter 发送、Shift+Enter 换行；中文输入法组词中的 Enter 不发送。
                   if (event.key === "Enter" && !event.shiftKey && !(event.nativeEvent as KeyboardEvent).isComposing) {
                     event.preventDefault();
@@ -551,16 +702,31 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
             {memberDetails.map((m) => {
               const isHuman = m.type === "human";
               const isOwnerMember = Boolean(openCh.ownerId && openCh.ownerId === m.contact);
+              const isDeputyMember = Boolean(openCh.deputyId && openCh.deputyId === m.contact);
               const removable = iAmOwner && hasOwner && m.contact !== HUMAN_LOCAL && !isOwnerMember;
+              // 任务 856 ⑤：设为副管理员——两条件同现才渲染（群主=human:local、
+              // 目标=session 成员）；已设时徽标+撤销入口。
+              const deputyAssignable = iAmOwner && hasOwner && !isHuman && !isOwnerMember && m.type === "session";
               return (
                 <div key={m.contact} className="channel-chat__member">
-                  <span className="channel-chat__membername">
+                  <span className="channel-chat__membername" title={m.contact === HUMAN_LOCAL ? undefined : directoryTitle(m.contact)}>
                     {m.contact === HUMAN_LOCAL ? t("collabGroup.chat.you") : directoryTitle(m.contact)}
                   </span>
                   <span className={`channel-chat__typebadge channel-chat__typebadge--${isHuman ? "human" : "session"}`}>
                     {isHuman ? t("collabGroup.identity.human") : t("collabGroup.chat.typeSession")}
                   </span>
                   {isOwnerMember && <span className="channel-chat__ownerbadge channel-chat__ownerbadge--me">{t("collabGroup.chat.ownerBadge")}</span>}
+                  {isDeputyMember && <span className="channel-chat__deputybadge">{t("collabGroup.chat.deputyBadge")}</span>}
+                  {deputyAssignable && !isDeputyMember && (
+                    <button type="button" className="btn btn--secondary btn--small" disabled={deputyBusy} onClick={() => void setDeputy(m.contact)}>
+                      {t("collabGroup.chat.setDeputy")}
+                    </button>
+                  )}
+                  {isDeputyMember && (
+                    <button type="button" className="btn btn--secondary btn--small" disabled={deputyBusy} onClick={() => void unsetDeputy()}>
+                      {t("collabGroup.chat.unsetDeputy")}
+                    </button>
+                  )}
                   {removable && (
                     <button type="button" className="btn btn--secondary btn--small" onClick={() => void removeMember(m.contact)}>
                       {t("collabGroup.chat.remove")}
@@ -573,8 +739,10 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
 
           {iAmOwner && (
             <div className="channel-chat__invited">
+              {/* 任务 856 ⑥：打开不再清空勾选——点外关闭后重开保留已选
+                  （demo v2 钦定「勾选不丢失」）；邀请成功后仍清空。 */}
               {!inviteOpen ? (
-                <button type="button" className="btn btn--small" onClick={() => { setInviteOpen(true); setInvitePicked([]); }}>
+                <button type="button" className="btn btn--small" onClick={() => setInviteOpen(true)}>
                   {t("collabGroup.chat.invite")}
                 </button>
               ) : (
@@ -607,9 +775,9 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
                     <button type="button" className="btn btn--small" disabled={invitePicked.length === 0} onClick={() => void invite()}>
                       {t("collabGroup.chat.inviteConfirm", { n: invitePicked.length })}
                     </button>
-                    <button type="button" className="btn btn--secondary btn--small" onClick={() => setInviteOpen(false)}>
-                      {t("collabGroup.close")}
-                    </button>
+                    {/* 任务 856 ⑥：无显式关闭按钮——点击弹层外部区域自动关闭
+                        （demo v2 钦定）；invitePicked 不清空=已勾选保留，重开不丢。 */}
+                    <span className="channel-chat__invitedismiss">{t("collabGroup.chat.inviteDismissHint")}</span>
                   </div>
                 </div>
               )}
@@ -656,16 +824,40 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
         </div>
       )}
 
-      {/* 右键撤回菜单（仅自己的消息可撤，349 Cancel 墓碑语义） */}
+      {/* 右键菜单：own=撤回（349 Cancel 墓碑语义）；他人=⑦跳转发信方会话 +
+          收信方（群）提示（demo v2 返工口径：收信方为群，第二项示意已在当前视图）。 */}
       {menu && createPortal(
         <div className="channel-chat__menu" style={{ left: menu.x, top: menu.y }} role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => void cancelMessage(menu.messageId)}
-          >
-            {t("collabGroup.chat.recall")}
-          </button>
+          {menu.sender === HUMAN_LOCAL ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setMenu(null); void cancelMessage(menu.messageId); }}
+            >
+              {t("collabGroup.chat.recall")}
+            </button>
+          ) : (
+            <>
+              {onOpenSession && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setMenu(null); onOpenSession(menu.sender); }}
+                >
+                  {t("collabHub.directs.ctxSender", { name: directoryTitle(menu.sender) })}
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                className="channel-chat__menuitem--muted"
+                onClick={() => setMenu(null)}
+                title={t("collabHub.directs.ctxGroupSelf")}
+              >
+                {t("collabHub.directs.ctxRecipientGroup")}
+              </button>
+            </>
+          )}
         </div>,
         document.body,
       )}

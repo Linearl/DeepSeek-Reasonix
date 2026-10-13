@@ -35,6 +35,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalTraceAsState: (s: SettingsView) => Boolean(s.experimentalTraceAsState),
   experimentalOutputStyleUI: (s: SettingsView) => Boolean(s.experimentalOutputStyleUI),
   experimentalCollabGroupView: (s: SettingsView) => Boolean(s.experimentalCollabGroupView),
+  // 任务 856 ③：协作中心入口灯（677 collabGroupView 迁移改名）。
+  experimentalCollabHub: (s: SettingsView) => Boolean(s.experimentalCollabHub),
   experimentalTabCompress: (s: SettingsView) => Boolean(s.experimentalTabCompress),
   // 任务 826：左右边栏 hover 展开（300ms 防误触 + 离开 15s 延时折叠）。
   // 左右独立两键一字段一谓词，默认关=不渲染热区不挂事件（铁律 2）。

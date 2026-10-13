@@ -946,8 +946,20 @@ func (c *Config) SetExperimentalSplitView(enabled bool) error {
 // the task-409 group-chat view entered without its lab switch). Pure frontend
 // gate: the sidebar reads the flag from the settings snapshot, so a flip is
 // visible without a restart.
+//
+// 任务 856 起此键为 legacy 迁移源：设置面板与入口只读写 SetExperimentalCollabHub，
+// 本 setter 仅为旧绑定保留（decode 继承把存量值搬进新键）。
 func (c *Config) SetExperimentalCollabGroupView(enabled bool) error {
 	c.Desktop.ExperimentalCollabGroupView = enabled
+	return nil
+}
+
+// SetExperimentalCollabHub toggles the unified collaboration-hub entry (task
+// 856 ③: the mail-inbox + group-chat icons merge into one 「协作中心」 entry;
+// the lab switch renames with it). Pure frontend gate: the sidebar reads the
+// flag from the settings snapshot, so a flip is visible without a restart.
+func (c *Config) SetExperimentalCollabHub(enabled bool) error {
+	c.Desktop.ExperimentalCollabHub = enabled
 	return nil
 }
 

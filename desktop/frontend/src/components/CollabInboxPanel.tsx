@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { app } from "../lib/bridge";
 import { collabTitleFor, rememberCollabContactNames, shortContactId } from "../lib/collabContactNames";
 import { reportFrontendLog } from "../lib/frontendLog";
@@ -98,6 +99,11 @@ export type CollabInboxBindings = {
   SetCollabMailCleanupRule(rule: string): Promise<CollabMailSnapshot>;
   /** 任务 620：立即清理——按当前保留期与清理规则执行一次清理，返回移除数与新快照。 */
   CleanCollabMailNow(): Promise<CollabInboxCleanResult>;
+  /** 任务 856 ②：批量删除——物理移除所选留档（对话留档语义：不影响已注入内容），
+   * 返回新快照；折叠簇随主条目整体删除。 */
+  DeleteCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
+  /** 任务 856 ②：清空全部——物理清空全部留档（含已处理），返回移除数与新快照（620 形状）。 */
+  ClearAllCollabMail(): Promise<CollabInboxCleanResult>;
 };
 
 /** 任务461-P4: one ListAddressableSessions row — the addressable roster that
@@ -137,8 +143,35 @@ export function isCollabInboxOpen(): boolean {
   return panelOpen;
 }
 
-/** Opens/closes the panel (settings entry point, task 320). */
+/** Opens/closes the panel (settings entry point, task 320).
+ * 任务 856 ①：注册 forward 后本调用升级为「打开协作中心（信件视图）」的
+ * 外部信号——调用方（设置页副入口、派单通知等）零改动。 */
 export function setCollabInboxOpen(next: boolean): void {
+  // 任务 856 ①：本地 listeners 只在真实变化时通知（幂等保护），但 forward
+  // 同值也转发——Hub 已开在聊天视图时，设置页的「打开信件中心」（同值 true）
+  // 仍要能切回信件视图。
+  if (panelOpen === next) {
+    openForward?.(next);
+    return;
+  }
+  panelOpen = next;
+  for (const listener of openListeners) listener(next);
+  openForward?.(next);
+}
+
+// 任务 856 ①：打开信号转发缝——协作中心（CollabHubPanel）挂载后把本面板的
+// open 信号重定向为「打开 Hub 并切到信件视图」。转发发生在本地 listeners
+// 通知之后；未注册时（独立面板模式，含全部既有测试）行为与 320 原样一致。
+let openForward: ((next: boolean) => void) | null = null;
+
+/** 任务 856 ①：CollabHubPanel 模块初始化时注册（传 null 撤销）。 */
+export function forwardCollabInboxOpen(fn: ((next: boolean) => void) | null): void {
+  openForward = fn;
+}
+
+/** 任务 856 ①：Hub 开合同步本面板模块 open（通知 listeners 使未读徽标的
+ * 「面板开/合即刷」时机在 Hub 开/合时保持，但不触发 forward——防递归）。 */
+export function syncCollabInboxOpen(next: boolean): void {
   if (panelOpen === next) return;
   panelOpen = next;
   for (const listener of openListeners) listener(next);
@@ -234,7 +267,7 @@ function contactHoverLabel(display: string, contactId: string): string {
   return display === id ? `contact_id=${id}` : `${display}（contact_id=${id}）`;
 }
 
-export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInboxBindings; directory?: CollabSessionDirectory } = {}) {
+export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?: CollabInboxBindings; directory?: CollabSessionDirectory; embedded?: boolean } = {}) {
   const t = useT();
   const b: CollabInboxBindings = bindings ?? app;
   // 任务461-P4: the from/to dropdowns read the addressable roster. The
@@ -249,6 +282,8 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
     return app as CollabSessionDirectory;
   }, [bindings, directory]);
   const [open, setOpen] = useState(panelOpen);
+  // 任务 856 ①：embedded（协作中心信件视图）= 渲染由 Hub 决定，忽略模块 open。
+  const effectiveOpen = Boolean(embedded) || open;
   const [bucket, setBucket] = useState<Bucket>("all");
   const [state, setState] = useState<StateFilter>("all");
   const [order, setOrder] = useState<OrderFilter>("desc");
@@ -256,11 +291,17 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   const [to, setTo] = useState("");
   const [sessions, setSessions] = useState<CollabSessionDirectoryRow[]>([]);
   const [view, setView] = useState<"list" | "chains">("list");
+  // 任务 856 ②：批量选择模式——list 视图选中 entry.id，chains 视图选中
+  // threadId（删除时展开为链内全部信件 id，=「按链选择=删除链内全部信件」）。
+  const [multi, setMulti] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDismissed, setShowDismissed] = useState(false);
   const [snapshot, setSnapshot] = useState<CollabMailSnapshot | null>(null);
   const [chains, setChains] = useState<CollabMailChains | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 任务 856 ②：删除/清空的二次确认（项目统一 ConfirmDialog，danger 声调）。
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   // 任务587（失败态与空态分离）：loading = 读取进行中（不得冒充「暂无信件」），
   // loadError = 最近一次读取失败（显式报错 + 重试按钮，绝不渲染成空态）。
   const [loading, setLoading] = useState(false);
@@ -280,7 +321,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   // 任务462: the same rows also feed the shared contact-id→会话名 cache, so
   // transcript cards resolve names from data the panel already fetched.
   useEffect(() => {
-    if (!open) return;
+    if (!effectiveOpen) return;
     let alive = true;
     dir.ListAddressableSessions()
       .then((rows) => {
@@ -298,7 +339,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
     return () => {
       alive = false;
     };
-  }, [open, dir]);
+  }, [effectiveOpen, dir]);
 
   // 任务587（失败后自动恢复）：the retry loop lives in refs so re-creating
   // `refresh` (every filter change) never stacks timers, and the pending timer
@@ -360,12 +401,12 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   }, [refresh]);
 
   useEffect(() => {
-    if (!open) {
+    if (!effectiveOpen) {
       cancelRetry();
       return;
     }
     void refresh();
-  }, [open, refresh, cancelRetry]);
+  }, [effectiveOpen, refresh, cancelRetry]);
 
   // unmount cleanup: no retry timer may outlive the panel.
   useEffect(() => cancelRetry, [cancelRetry]);
@@ -402,7 +443,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   );
 
 
-  if (!open) return null;
+  if (!effectiveOpen) return null;
 
   const act = async (fn: () => Promise<CollabMailSnapshot>) => {
     setBusy(true);
@@ -436,6 +477,90 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
     }
   };
 
+  // 任务 856 ②：批量删除——二次确认（带「对话留档不影响已注入内容」语义句，
+  // demo v2 钦定文案）→ 物理删除 → 退出多选并刷新。chains 视图把选中的
+  // threadId 展开为链内全部信件 id。
+  const deleteSelected = async () => {
+    if (selected.size === 0) return;
+    let ids = [...selected];
+    if (view === "chains") {
+      const chainsById = new Map((chains?.chains ?? []).map((c) => [c.threadId, c]));
+      const expanded: string[] = [];
+      for (const tid of selected) {
+        for (const e of chainsById.get(tid)?.entries ?? []) expanded.push(e.id);
+      }
+      ids = expanded;
+      if (ids.length === 0) return;
+    }
+    const ok = await confirm({
+      title: t("collabInbox.deleteConfirmTitle", { n: view === "chains" ? ids.length : selected.size }),
+      message: (
+        <>
+          {t("collabInbox.deleteConfirmBody")}
+          <span className="collab-inbox-panel__confirmnote">{t("collabInbox.deleteConfirmNote")}</span>
+        </>
+      ),
+      confirmLabel: t("collabInbox.deleteSelected"),
+      cancelLabel: t("collabInbox.cancel"),
+      tone: "danger",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      setSnapshot(await b.DeleteCollabMail(ids));
+      setMulti(false);
+      setSelected(new Set());
+    } catch (err) {
+      reportFrontendLog("collab-inbox", "delete failed", String(err), "warn");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 任务 856 ②：清空全部——并入清理条件区的入口 + 二次确认（不可撤销；
+  // 同样的「仅清留档」语义句）。
+  const clearAll = async () => {
+    const total = snapshot?.total ?? 0;
+    const ok = await confirm({
+      title: t("collabInbox.clearAllConfirmTitle"),
+      message: (
+        <>
+          {t("collabInbox.clearAllConfirmBody", { n: total })}
+          <span className="collab-inbox-panel__confirmnote">{t("collabInbox.deleteConfirmNote")}</span>
+        </>
+      ),
+      confirmLabel: t("collabInbox.clearAll"),
+      cancelLabel: t("collabInbox.cancel"),
+      tone: "danger",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const result = await b.ClearAllCollabMail();
+      setSnapshot(result.snapshot);
+      setMulti(false);
+      setSelected(new Set());
+    } catch (err) {
+      reportFrontendLog("collab-inbox", "clear all failed", String(err), "warn");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleSelected = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const exitMulti = () => {
+    setMulti(false);
+    setSelected(new Set());
+  };
+
   const rows: CollabMailEntry[] = snapshot?.entries ?? [];
 
   // 任务587（失败态与空态分离）：四个展示位互斥——
@@ -446,16 +571,22 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   const viewEmpty = listEmpty || chainsEmpty;
 
 
-  return createPortal(
+  // 任务 856 ①：embedded（协作中心信件视图）渲染在 Hub 的 React 树内（壳体
+  // 内部，DOM 同处一树，样式可被壳层容器约束）；独立模式保持 portal-at-root
+  // （task 121/123 规则——settings 覆盖层打开时也可见）。
+  const panelTree = (
     <div className="collab-inbox-panel" role="dialog" aria-label={t("collabInbox.title")}>
       {/* 任务716 ①（用户拖拽定稿）：头部=标题横排（nowrap 防窄容器竖排截断）+
-          关闭按钮右上角；副标题按定稿③不设。 */}
-      <div className="collab-inbox-panel__head">
-        <span className="collab-inbox-panel__title">{t("collabInbox.title")}</span>
-        <button type="button" className="btn btn--small" onClick={() => setCollabInboxOpen(false)}>
-          {t("collabInbox.close")}
-        </button>
-      </div>
+          关闭按钮右上角；副标题按定稿③不设。
+          任务 856 ①：embedded（协作中心信件视图）时头部由 Hub 壳承担，不渲染。 */}
+      {!embedded && (
+        <div className="collab-inbox-panel__head">
+          <span className="collab-inbox-panel__title">{t("collabInbox.title")}</span>
+          <button type="button" className="btn btn--small" onClick={() => setCollabInboxOpen(false)}>
+            {t("collabInbox.close")}
+          </button>
+        </div>
+      )}
 
       {/* 任务716 ②（定稿第二位）：维护行——保留期 + 清理条件（定稿①②：原
           「会话删除时」是场景描述不作下拉前缀，更名为「清理条件」）+ 立即清理，
@@ -497,6 +628,16 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
           onClick={() => void cleanNow()}
         >
           {t("collabInbox.cleanNow")}
+        </button>
+        {/* 任务 856 ②：清空全部（危险操作，与清理同区；二次确认见 clearAll）。 */}
+        <button
+          type="button"
+          className="btn btn--danger btn--small collab-inbox-panel__clearall"
+          title={t("collabInbox.clearAllHint")}
+          disabled={busy}
+          onClick={() => void clearAll()}
+        >
+          {t("collabInbox.clearAll")}
         </button>
         {cleanNote && <span className="collab-inbox-panel__cleannote">{cleanNote}</span>}
       </div>
@@ -547,6 +688,15 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
             {t("collabInbox.markAllRead")}
           </button>
         )}
+        {/* 任务 856 ②：批量选择模式开关（多选态=复选框+底部浮动条）。 */}
+        <button
+          type="button"
+          className={`btn btn--small${multi ? " btn--primary" : " btn--secondary"}`}
+          disabled={busy}
+          onClick={() => (multi ? exitMulti() : setMulti(true))}
+        >
+          {multi ? t("collabInbox.multiSelectExit") : t("collabInbox.multiSelect")}
+        </button>
       </div>
 
       {/* 任务716 ④（定稿第四位）：桶过滤标签行。 */}
@@ -658,6 +808,17 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
         {view === "list" &&
           rows.map((entry) => (
             <div key={entry.id} className={`collab-inbox-panel__row${entry.dismissed ? " collab-inbox-panel__row--dismissed" : ""}`}>
+              {/* 任务 856 ②：多选态行首复选框。 */}
+              {multi && (
+                <label className="collab-inbox-panel__check">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(entry.id)}
+                    disabled={busy}
+                    onChange={() => toggleSelected(entry.id)}
+                  />
+                </label>
+              )}
               <div className="collab-inbox-panel__meta">
                 <span className={`collab-inbox-panel__bucketbadge collab-inbox-panel__bucketbadge--${entry.bucket}`}>
                   {t(`collabInbox.bucket.${entry.bucket as Bucket}` as "collabInbox.bucket.all")}
@@ -743,6 +904,17 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
         {view === "chains" &&
           (chains?.chains ?? []).map((chain) => (
             <div key={chain.threadId} className="collab-inbox-panel__chain">
+              {/* 任务 856 ②：按链选择=删除链内全部信件（删除时展开 entries id）。 */}
+              {multi && (
+                <label className="collab-inbox-panel__check">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(chain.threadId)}
+                    disabled={busy}
+                    onChange={() => toggleSelected(chain.threadId)}
+                  />
+                </label>
+              )}
               <button
                 type="button"
                 className="collab-inbox-panel__chainhead"
@@ -786,13 +958,48 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
           ))}
       </div>
 
+      {/* 任务 856 ②：批量操作浮动条（选中后浮现：全选/删除/取消）。 */}
+      {multi && (
+        <div className="collab-inbox-panel__batchbar" role="toolbar" aria-label={t("collabInbox.batchbar")}>
+          <span className="collab-inbox-panel__batchcount">{t("collabInbox.selectedCount", { n: selected.size })}</span>
+          <button
+            type="button"
+            className="btn btn--secondary btn--small"
+            disabled={busy}
+            onClick={() => {
+              if (view === "chains") {
+                setSelected(new Set((chains?.chains ?? []).map((c) => c.threadId)));
+              } else {
+                setSelected(new Set(rows.map((entry) => entry.id)));
+              }
+            }}
+          >
+            {t("collabInbox.selectAll")}
+          </button>
+          <button
+            type="button"
+            className="btn btn--danger btn--small"
+            disabled={busy || selected.size === 0}
+            onClick={() => void deleteSelected()}
+          >
+            {t("collabInbox.deleteSelected")}
+          </button>
+          <button type="button" className="btn btn--small" disabled={busy} onClick={exitMulti}>
+            {t("collabInbox.cancel")}
+          </button>
+        </div>
+      )}
+
       <div className="collab-inbox-panel__foot">
         <span className="collab-inbox-panel__revision">
           {t("collabInbox.revision", { rev: snapshot?.revision ?? chains?.revision ?? "-" })}
         </span>
         <span className="collab-inbox-panel__note">{t("collabInbox.note")}</span>
       </div>
-    </div>,
-    document.body,
+
+      {/* 任务 856 ②：删除/清空的统一二次确认对话框。 */}
+      {confirmDialog}
+    </div>
   );
+  return embedded ? panelTree : createPortal(panelTree, document.body);
 }

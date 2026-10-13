@@ -58,6 +58,11 @@ var desktopRenderOmissions = map[string]string{
 	// one has a renamed [agent] key (trace_as_state), so its [desktop] spelling
 	// must be listed here.
 	"experimental_trace_as_state": "task 473: retired [desktop] mirror of [agent] trace_as_state; folded at load, never rendered",
+	// Task 856 ③: the legacy task-677 group-chat switch, retired by the
+	// collabHub rename — accepted on read (decode inherits it into
+	// experimental_collab_hub), never rendered; a stale line vanishes on the
+	// next save via the fixed-key-set rule.
+	"experimental_collab_group_view": "task 856: legacy task-677 key retired by the collabHub rename; decode-side migration source, never rendered",
 }
 
 // TestDesktopRenderTableCoversEveryKey is the single guard against that class of bug:

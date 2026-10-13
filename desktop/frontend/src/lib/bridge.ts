@@ -503,6 +503,8 @@ export interface CollabChannelView {
   // 群主标、详情页的类型徽标都以这两个字段为准。
   ownerType?: string;
   ownerId?: string;
+  /** 任务 856 ⑤: 单副管理员（缺省=无）；仅 human 群主可任命，拥有邀请权。 */
+  deputyId?: string;
   memberDetails?: CollabChannelMemberView[];
 }
 
@@ -533,6 +535,32 @@ export interface CollabChannelMessageView {
   // 802: 取消墓碑时间（缺省 0/undefined=未撤回）——撤回后渲染「已取消」行。
   cancelledAt?: number;
   fanout?: CollabChannelFanoutCellView[];
+}
+
+/** 任务 856 ③: 对话链（会话↔会话协作流）聚合一行——pairId 为稳定无序对键。 */
+export interface CollabDirectChainPairView {
+  pairId: string;
+  a: string;
+  b: string;
+  count: number;
+  firstAt: number;
+  lastAt: number;
+  preview: string;
+}
+
+/** 任务 856 ③: 对话链列表快照（revision 戳；human 端点与频道信不出现）。 */
+export interface CollabDirectChainSnapshotView {
+  revision: string;
+  total: number;
+  pairs: CollabDirectChainPairView[];
+}
+
+/** 任务 856 ③: 一条对话链的只读回放（双向时间线，旧→新，来源 intact）。 */
+export interface CollabDirectChainReadView {
+  pairId: string;
+  a: string;
+  b: string;
+  entries: CollabMailEntryView[];
 }
 
 /** 409: 一次频道读取（频道头 + 最近消息，旧→新）。 */
@@ -1163,6 +1191,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
   // Task 677: sidebar group-chat entry switch (experimental; pure frontend gate).
   SetExperimentalCollabGroupView(enabled: boolean): Promise<void>;
+  /** 任务 856 ③：协作中心入口总开关（677 collabGroupView 迁移改名）。 */
+  SetExperimentalCollabHub(enabled: boolean): Promise<void>;
   // Task 705: cross-session message auto-fold switch (experimental; pure display pref).
   SetExperimentalSessionCollabAutoFold(enabled: boolean): Promise<void>;
   // Task 704: trajectory view switch (experimental; pure frontend gate).
@@ -1405,6 +1435,14 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetCollabMailCleanupRule(rule: string): Promise<CollabMailSnapshotView>;
   /** 任务 620: 立即清理——按当前保留期与清理规则立即执行一次清理，返回物理移除数与新快照。 */
   CleanCollabMailNow(): Promise<CollabInboxCleanNowView>;
+  /** 任务 856 ②: 批量删除——物理移除所选留档（对话留档语义：不影响已注入内容）。 */
+  DeleteCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
+  /** 任务 856 ②: 清空全部——物理清空全部留档（含已处理），返回移除数与新快照。 */
+  ClearAllCollabMail(): Promise<CollabInboxCleanNowView>;
+  // 任务 856 ③: 对话链读口（方案 B）——仅会话↔会话点对点信聚合（human 端点
+  // 与频道信不出现，v2 返工口径）；回放旧→新、只读。
+  ListCollabDirectChains(limit: number): Promise<CollabDirectChainSnapshotView>;
+  ReadCollabDirectChain(pairId: string, limit: number): Promise<CollabDirectChainReadView>;
   // 任务 409: 群聊式协作视图（只读观察窗）— 聚合通讯录/共享忙闲判定/任务卡/
   // 已投递往来，全部现有数据源，无新协议。
   GetCollabViewOverview(): Promise<CollabViewOverviewView>;
@@ -1420,6 +1458,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
+  /** 任务 856 ⑤: 任命单副管理员（仅 human 群主；目标须为群内会话成员）。 */
+  ChannelSetDeputy(ref: string, contactID: string): Promise<CollabChannelView>;
+  /** 任务 856 ⑤: 撤销副管理员（幂等）。 */
+  ChannelUnsetDeputy(ref: string): Promise<CollabChannelView>;
   ChannelMessagesForHuman(ref: string, sinceMs: number, limit: number): Promise<CollabChannelReadView>;
   ChannelCancelFromHuman(ref: string, messageID: string): Promise<CollabChannelCancelResultView>;
   SetDefaultAutoRecoveryCheckpoint(enabled: boolean): Promise<void>;
@@ -5888,6 +5930,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
     async SetExperimentalCollabGroupView() {},
+    async SetExperimentalCollabHub() {},
     async SetExperimentalSessionCollabAutoFold() {},
     async SetExperimentalTrajectoryView() {},
     async SetExperimentalTodoSidebar() {},
@@ -6076,6 +6119,23 @@ function makeMockApp(): AppBindings {
         snapshot: { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] },
       };
     },
+    // 任务 856 ②: the dev shell deletes nothing — same honest empty archive.
+    async DeleteCollabMail() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async ClearAllCollabMail() {
+      return {
+        removed: 0,
+        snapshot: { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] },
+      };
+    },
+    // 任务 856 ③: the dev shell has no archive — an honest empty chain list.
+    async ListCollabDirectChains() {
+      return { revision: "0.0.0", total: 0, pairs: [] };
+    },
+    async ReadCollabDirectChain(pairId: string) {
+      return { pairId, a: "", b: "", entries: [] };
+    },
     // 任务 409 mocks: the dev shell has no collaboration either — an honest
     // empty roster, so the panel renders its empty state in the dev shell.
     async GetCollabViewOverview() {
@@ -6104,7 +6164,10 @@ function makeMockApp(): AppBindings {
     async ChannelInvite(_ref: string, _contactIDs: string[]) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
-    async ChannelRemoveMember(_ref: string, _contactID: string) {
+    async ChannelSetDeputy(_ref: string, _contactID: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelUnsetDeputy(_ref: string) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
     async ChannelMessagesForHuman(_ref: string, _sinceMs: number, _limit: number) {

@@ -144,7 +144,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           tier: "optional",
           onKeys: ["experimentalOutputStyleUI", "outputStyleActive"],
         },
-        { id: "collabGroupView", labelKey: "settings.collabGroupView", tier: "unstable", onKeys: ["experimentalCollabGroupView"] },
+        { id: "collabHub", labelKey: "settings.collabHub", tier: "unstable", onKeys: ["experimentalCollabHub"] },
       ],
     },
     {

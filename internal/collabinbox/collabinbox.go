@@ -1020,6 +1020,299 @@ func (s *Store) Decide(ctx context.Context, messageID, by string) (Snapshot, err
 	})
 }
 
+// HumanLocalContact is the local human's well-known contact id (803 口径：
+// desktop 单用户固定身份)。collabinbox 引用它只为对话链聚合口径——human
+// 端点不入对话链。字符串与 collabchannel.HumanLocal 保持一致。
+const HumanLocalContact = "human:local"
+
+// isHumanEndpoint reports whether a contact id is the local human (任务 856
+// ③ 聚合口径：用户↔会话的信件往来属用户直接管理范畴，不经协作中心的对话
+// 链视图——only session↔session pairs aggregate).
+func isHumanEndpoint(contact string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(contact)), "human:")
+}
+
+// DirectChainPair is one session↔session aggregation row (任务 856 ③: 对话链
+// =两个会话身份之间的协作消息流). PairID is the stable unordered-pair key —
+// pass it back to ReadDirectChain for the replay.
+type DirectChainPair struct {
+	PairID  string `json:"pairId"`
+	A       string `json:"a"`
+	B       string `json:"b"`
+	Count   int    `json:"count"`
+	FirstAt int64  `json:"firstAt"`
+	LastAt  int64  `json:"lastAt"`
+	Preview string `json:"preview"`
+}
+
+// DirectChainSnapshot is the revision-stamped 对话链 answer.
+type DirectChainSnapshot struct {
+	Revision string            `json:"revision"`
+	Total    int               `json:"total"`
+	Pairs    []DirectChainPair `json:"pairs"`
+}
+
+// directChainPairKey is the unordered-pair aggregation key (stable encoding:
+// the two contacts sorted, joined with a NUL that cannot appear in a contact
+// id). This IS the pairId the panel round-trips.
+func directChainPairKey(a, b string) string {
+	if a > b {
+		a, b = b, a
+	}
+	sep := string(rune(0))
+	return a + sep + b
+}
+
+// directChainPairParties decodes a pairId back into its two contacts.
+func directChainPairParties(pairID string) (a, b string, ok bool) {
+	i := strings.IndexByte(pairID, 0)
+	if i <= 0 || i == len(pairID)-1 {
+		return "", "", false
+	}
+	return pairID[:i], pairID[i+1:], true
+}
+
+// ListDirectChains aggregates the archive into session↔session conversation
+// chains (任务 856 ③, 方案 B 读口). Aggregation 口径 (v2 返工钦定): point-to-
+// point mail only (channel empty — channel mail belongs to its group view)
+// and BOTH ends are session identities (human↔session mail stays in the mail
+// inbox view). Dismissed entries are excluded, matching the chains view.
+// Newest pair first; limit <= 0 → defaultLimit, hard max maxLimit.
+func (s *Store) ListDirectChains(ctx context.Context, limit int) (DirectChainSnapshot, error) {
+	unlock, _, err := s.lockRead(ctx)
+	if err != nil {
+		return DirectChainSnapshot{}, err
+	}
+	if unlock != nil {
+		defer unlock()
+	}
+	st := s.loadState()
+	entries, err := s.build(ctx)
+	if err != nil {
+		return DirectChainSnapshot{}, err
+	}
+	type acc struct {
+		a, b        string
+		count       int
+		first, last int64
+		preview     string
+	}
+	groups := map[string]*acc{}
+	for _, e := range entries {
+		if e.Dismissed {
+			continue
+		}
+		if e.Channel != "" || isHumanEndpoint(e.From) || isHumanEndpoint(e.To) {
+			continue
+		}
+		key := directChainPairKey(e.From, e.To)
+		g := groups[key]
+		if g == nil {
+			g = &acc{a: e.From, b: e.To}
+			groups[key] = g
+		}
+		g.count++
+		if g.first == 0 || e.At < g.first {
+			g.first = e.At
+		}
+		if e.At > g.last {
+			g.last = e.At
+			g.preview = e.Preview
+		}
+	}
+	pairs := make([]DirectChainPair, 0, len(groups))
+	for key, g := range groups {
+		pairs = append(pairs, DirectChainPair{
+			PairID:  key,
+			A:       g.a,
+			B:       g.b,
+			Count:   g.count,
+			FirstAt: g.first,
+			LastAt:  g.last,
+			Preview: g.preview,
+		})
+	}
+	sort.SliceStable(pairs, func(i, j int) bool { return pairs[i].LastAt > pairs[j].LastAt })
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	if len(pairs) > limit {
+		pairs = pairs[:limit]
+	}
+	return DirectChainSnapshot{
+		Revision: revisionOf(st.Revision, entries),
+		Total:    len(pairs),
+		Pairs:    pairs,
+	}, nil
+}
+
+// DirectChainReadView is one 对话链 replay: the unordered pair plus its
+// bidirectional timeline (oldest first — a playback, not a notification list).
+type DirectChainReadView struct {
+	PairID  string  `json:"pairId"`
+	A       string  `json:"a"`
+	B       string  `json:"b"`
+	Entries []Entry `json:"entries"`
+}
+
+// ReadDirectChain answers the replay for one pair (pairId as ListDirectChains
+// issued it). Same aggregation 口径 as the list; entries come back oldest
+// first with per-entry origin (from/to) intact so the UI can render both
+// sides with source-session marks. limit <= 0 → defaultLimit, max maxLimit.
+func (s *Store) ReadDirectChain(ctx context.Context, pairID string, limit int) (DirectChainReadView, error) {
+	a, b, ok := directChainPairParties(pairID)
+	if !ok {
+		return DirectChainReadView{}, fmt.Errorf("collabinbox: malformed direct-chain pair id %q", pairID)
+	}
+	unlock, _, err := s.lockRead(ctx)
+	if err != nil {
+		return DirectChainReadView{}, err
+	}
+	if unlock != nil {
+		defer unlock()
+	}
+	entries, err := s.build(ctx)
+	if err != nil {
+		return DirectChainReadView{}, err
+	}
+	out := make([]Entry, 0, len(entries))
+	for _, e := range entries {
+		if e.Dismissed || e.Channel != "" {
+			continue
+		}
+		if e.From != a && e.From != b {
+			continue
+		}
+		if e.To != a && e.To != b {
+			continue
+		}
+		if e.From == e.To {
+			continue // a pair needs two distinct parties
+		}
+		out = append(out, e)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At < out[j].At })
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	if len(out) > limit {
+		out = out[len(out)-limit:] // the replay keeps the newest tail
+	}
+	return DirectChainReadView{PairID: pairID, A: a, B: b, Entries: out}, nil
+}
+
+// Delete physically removes the mail behind the given entries from every
+// mailbox holding a copy (任务 856 ②: the inbox is the conversation ARCHIVE —
+// the mail was already injected into the conversations at delivery time, so
+// deleting the archive never touches what a conversation already received;
+// that semantic must show up verbatim in the panel's confirm copy).
+//
+// A folded duplicate entry (任务461 P8 ③) expands to its whole cluster, the
+// same way MarkRead settles one. After the removal, dead dismissed/decided
+// state keys are garbage-collected (the entries they describe no longer
+// exist), and the returned fresh snapshot lets both windows converge in one
+// round trip (contract ①).
+func (s *Store) Delete(ctx context.Context, ids []string) (Snapshot, error) {
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	defer unlock()
+	idx, err := s.buildIndex(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	targets := map[string]bool{}
+	for _, id := range ids {
+		primary := strings.TrimSpace(id)
+		if primary == "" {
+			continue
+		}
+		if p := idx.foldPrimary[primary]; p != "" {
+			primary = p
+		}
+		targets[primary] = true
+		for _, mid := range idx.foldGroups[primary] {
+			targets[mid] = true
+		}
+	}
+	if len(targets) > 0 {
+		if _, err := s.mail.PruneBy(ctx, func(_ string, m sessioncollab.MailMessage) bool {
+			return targets[m.ID]
+		}); err != nil {
+			return Snapshot{}, err
+		}
+		s.gcStateLocked(ctx)
+	}
+	return s.List(ctx, Query{Limit: 1}, false)
+}
+
+// DeleteAll physically empties the whole archive (任务 856 ②「清空全部」:
+// every bucket, dismissed entries included). Returns how many messages were
+// physically removed plus the fresh (empty) default-view snapshot — the same
+// shape the 620 clean-now path answers with, so the panel converges in one
+// round trip. The caller owns the confirm UX; this layer is unconditional.
+func (s *Store) DeleteAll(ctx context.Context) (int, Snapshot, error) {
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return 0, Snapshot{}, err
+	}
+	defer unlock()
+	removed, err := s.mail.PruneBy(ctx, func(string, sessioncollab.MailMessage) bool { return true })
+	if err != nil {
+		return removed, Snapshot{}, err
+	}
+	st := s.loadState()
+	st.Dismissed = map[string]int64{}
+	st.Decided = map[string]Decision{}
+	st.Revision++
+	if err := s.saveState(st); err != nil {
+		return removed, Snapshot{}, err
+	}
+	snap, lerr := s.List(ctx, Query{Limit: 1}, false)
+	return removed, snap, lerr
+}
+
+// gcStateLocked drops dismissed/decided keys whose message no longer exists
+// after a physical removal (the same maintenance ApplyRetention runs after a
+// prune — 设计要点 2: dismissals/decisions die WITH their entries). Caller
+// holds the store lock.
+func (s *Store) gcStateLocked(ctx context.Context) {
+	entries, err := s.build(ctx)
+	if err != nil {
+		return // keep the state keys; the next sweep re-runs the same GC
+	}
+	alive := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		alive[e.ID] = true
+	}
+	st := s.loadState()
+	dropped := false
+	for id := range st.Dismissed {
+		if !alive[id] {
+			delete(st.Dismissed, id)
+			dropped = true
+		}
+	}
+	for id := range st.Decided {
+		if !alive[id] {
+			delete(st.Decided, id)
+			dropped = true
+		}
+	}
+	if dropped {
+		if err := s.saveState(st); err != nil {
+			return
+		}
+	}
+}
+
 // SetRetention switches the retention window (7d|30d|90d|forever) and applies
 // it immediately, so the acceptance "切换 7→30 后超期条目被清理" is one call.
 func (s *Store) SetRetention(ctx context.Context, retention string) (Snapshot, error) {

@@ -1930,9 +1930,9 @@ type ExperimentFeatureId =
   | "homePointer"
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
   | "toolOptimizations"
-  // 任务 677: sidebar group-chat entry switch (the task-409 view landed
-  // without its lab switch; unstable tier, default off).
-  | "collabGroupView"
+  // 任务 677→856 ③: unified collaboration-hub entry switch (the mail-inbox
+  // + group-chat icons merged into one; renamed from collabGroupView).
+  | "collabHub"
   // 任务 775: kind:param 参数卡 id——无硬编码 pane，pane 走通用参数渲染器
   // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
   | "idleReleaseMinutes"
@@ -1960,7 +1960,7 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "quickCommands",
   "traceAsState",
   "outputStyle",
-  "collabGroupView",
+  "collabHub",
   "tabManagement",
   "heartbeatBackground",
   "viewLayout",
@@ -2354,6 +2354,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // its badge EXACTLY ONCE — on the master switch row; sibling switches and
   // dials (时长/间隔/阈值) never carry one. The task621 test pins the count
   // per id (labLabel("id") appears exactly once, or the usage card covers it).
+  // 任务 856 ③：协作中心开关的前置依赖状态（LAB_FEATURE_DEPS 唯一消费方
+  // ——sessionCollab 关 = collabHub 开关禁用 + 提示；关前置时下方联动关）。
+  const sessionCollabOn = Boolean(s.experimentalSessionCollab);
   const labLabel = (id: TierFeatureId, label: string) => (
     <>
       {label}
@@ -3018,22 +3021,32 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-          {selected === "collabGroupView" && (
-            <SettingsField label={labLabel("collabGroupView", t("settings.collabGroupView"))} hint={t("settings.collabGroupViewHint")} icon={<Sparkles size={18} />}>
+          {selected === "collabHub" && (
+            <SettingsField
+              label={labLabel("collabHub", t("settings.collabHub"))}
+              hint={Boolean(s.experimentalSessionCollab) && !sessionCollabOn ? t("settings.collabHubHintDep") : t("settings.collabHubHint")}
+              icon={<Sparkles size={18} />}
+            >
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
                     key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalCollabGroupView) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
+                    className={`set-seg__btn${Boolean(s.experimentalCollabHub) === on ? " set-seg__btn--on" : ""}`}
+                    // 任务 856 ③ 前置依赖（demo v2 交互稿）：跨会话协作关闭时
+                    // 协作中心开关禁用 + 提示；依赖声明在 LAB_FEATURE_DEPS。
+                    disabled={busy || (!on && Boolean(s.experimentalCollabHub) && !sessionCollabOn)}
+                    title={!on || !sessionCollabOn ? t("settings.collabHubDepBlocked") : undefined}
                     onClick={() => void apply(async () => {
-                      await app.SetExperimentalCollabGroupView(on);
+                      await app.SetExperimentalCollabHub(on);
                     })}
                   >
-                    {t(on ? "settings.collabGroupView.on" : "settings.collabGroupView.off")}
+                    {t(on ? "settings.collabHub.on" : "settings.collabHub.off")}
                   </button>
                 ))}
               </SettingsOptions>
+              {!sessionCollabOn && (
+                <div className="set-lab-dep-note" role="note">{t("settings.collabHubDepNote")}</div>
+              )}
             </SettingsField>
           )}
           {selected === "todoSidebar" && (
@@ -3749,6 +3762,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       disabled={busy}
                       onClick={() => void apply(async () => {
                         await app.SetExperimentalSessionCollab(on);
+                        // 任务 856 ③（demo v2 交互稿）：前置关闭 → 协作中心联动
+                        // 关闭——否则留下「值仍为开、开关却禁用」的不一致状态。
+                        if (!on && Boolean(s.experimentalCollabHub)) {
+                          await app.SetExperimentalCollabHub(false);
+                        }
                         // The collaboration tools register when a session's
                         // controller is built, so an already-open session does
                         // not see them until it is rebuilt — surface that.

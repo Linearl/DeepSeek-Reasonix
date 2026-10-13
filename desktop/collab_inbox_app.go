@@ -256,6 +256,35 @@ func (a *App) CleanCollabMailNow() (CollabInboxCleanResult, error) {
 	return CollabInboxCleanResult{Removed: removed, Snapshot: snap}, lerr
 }
 
+// ListCollabDirectChains answers the 对话链 (direct-chain) list for the hub's
+// chat view (任务 856 ③, 方案 B 读口): session↔session point-to-point pairs
+// only — human endpoints and channel mail never appear (v2 返工口径).
+func (a *App) ListCollabDirectChains(limit int) (collabinbox.DirectChainSnapshot, error) {
+	return collabInboxStore().ListDirectChains(collabInboxCtx(), limit)
+}
+
+// ReadCollabDirectChain replays one pair's bidirectional timeline (oldest
+// first, origins intact) for the read-only 对话链 view.
+func (a *App) ReadCollabDirectChain(pairID string, limit int) (collabinbox.DirectChainReadView, error) {
+	return collabInboxStore().ReadDirectChain(collabInboxCtx(), pairID, limit)
+}
+
+// DeleteCollabMail physically removes the given entries' archive copies and
+// returns the fresh snapshot (任务 856 ②: 批量删除——archive-only semantics;
+// mail already injected into conversations is NOT touched, and the panel's
+// confirm copy must say so).
+func (a *App) DeleteCollabMail(ids []string) (collinboxSnapshot, error) {
+	return collabInboxStore().Delete(collabInboxCtx(), ids)
+}
+
+// ClearAllCollabMail empties the whole archive (任务 856 ②「清空全部」) and
+// answers with the 620 clean-now shape: how many messages were physically
+// removed plus the fresh default-view snapshot.
+func (a *App) ClearAllCollabMail() (CollabInboxCleanResult, error) {
+	removed, snap, err := collabInboxStore().DeleteAll(collabInboxCtx())
+	return CollabInboxCleanResult{Removed: removed, Snapshot: snap}, err
+}
+
 // CollabInboxCleanResult carries the 「立即清理」 outcome (任务 620): how many
 // messages the pass physically removed (both maintenance halves combined)
 // plus the fresh default-view snapshot.

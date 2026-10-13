@@ -39,8 +39,10 @@ export interface SettingsView {
   experimentalSessionMonitor?: boolean;
   // Task 70-1: exposes the tab-bar split view (experimental).
   experimentalSplitView?: boolean;
-  // Task 677: gates the sidebar group-chat entry (experimental).
+  // Task 677: LEGACY group-chat entry switch (task 856 migration source only).
   experimentalCollabGroupView?: boolean;
+  // Task 856 ③: gates the unified collaboration-hub entry (experimental).
+  experimentalCollabHub?: boolean;
   // Task 705: folds over-long cross-session messages into a summary bar (experimental; off = render in full).
   experimentalSessionCollabAutoFold?: boolean;
   // Task 704: gates the topicbar transcript|trajectory switch and the trajectory surface (experimental; off = transcript only).

@@ -30,7 +30,6 @@ import {
   RotateCw,
   Trash2,
   AlarmClock,
-  Mailbox,
   MessagesSquare,
   BarChart3,
   Brain,
@@ -66,8 +65,12 @@ import { replayPendingPromptsForActiveTab } from "./lib/promptReplay";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
 import { reportBootUiStateApplied } from "./lib/bootTimeline";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
-import { CollabInboxPanel, setCollabInboxOpen, useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
-import { CollabGroupPanel, setCollabGroupOpen } from "./components/CollabGroupPanel";
+// 任务 856 ①：信件/群聊两面板的挂载与入口合一进 CollabHubPanel；App 侧仅
+// 保留未读徽标 hook（320 遗留 #1 接线）。设置页副入口仍直接调
+// setCollabInboxOpen/setCollabGroupOpen（经转发缝重定向到 Hub）。
+import { useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
+import { CollabHubPanel, setCollabHubOpen } from "./components/CollabHubPanel";
+import { onCollabChatOpenSession } from "./components/CollabChatView";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { SessionWallBoundary } from "./components/SessionWallBoundary";
 import { effectiveSplitTier, loadSplitPreviewTier, persistSplitPreviewTier, splitPreviewTierFromPointer, SPLIT_PREVIEW_TIERS, setSplitPaneTitle, setSplitViewEnabled, type SplitPreviewTier } from "./lib/splitView";
@@ -849,8 +852,9 @@ export default function App() {
   useEffect(() => onLabFlagsChange(() => setSessionWallEnabled(labFlagEnabled("sessionWall"))), []);
   // 任务 677: the group-chat entry rides the same lab-flag snapshot — off
   // (default) renders the utility row exactly as before task 409.
-  const [collabGroupEntryEnabled, setCollabGroupEntryEnabled] = useState(labFlagEnabled("collabGroupView"));
-  useEffect(() => onLabFlagsChange(() => setCollabGroupEntryEnabled(labFlagEnabled("collabGroupView"))), []);
+  // 任务 856 ③：协作中心入口总开关（677 collabGroupView 随两图标合一迁移改名）。
+  const [collabHubEntryEnabled, setCollabHubEntryEnabled] = useState(labFlagEnabled("collabHub"));
+  useEffect(() => onLabFlagsChange(() => setCollabHubEntryEnabled(labFlagEnabled("collabHub"))), []);
   // 任务 704: the trajectory view rides the lab-flag snapshot (铁律 2 default
   // off) and the per-session surface selection re-points at every tab change.
   const [trajectoryViewEnabled, setTrajectoryViewEnabled] = useState(labFlagEnabled("trajectoryView"));
@@ -1413,7 +1417,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1468,9 +1472,9 @@ export default function App() {
         // 任务 507: subagent detail view (plan A on / plan C off);
         // default-false, re-applied on every settings save.
         subagentDetail: settings.experimentalSubagentDetail ?? false,
-        // 任务 677: sidebar group-chat entry (default-false — 铁律 2, the 409
-        // view shipped without its lab switch); re-applied on settings save.
-        collabGroupView: settings.experimentalCollabGroupView ?? false,
+        // 任务 856 ③: unified collaboration-hub entry (default-false — 铁律 2,
+        // renamed from the task-677 group-chat switch; re-applied on settings save).
+        collabHub: settings.experimentalCollabHub ?? false,
         // 任务 704: trajectory view switch (default-false — 铁律 2, off keeps
         // the transcript as the only surface); re-applied on settings save.
         trajectoryView: settings.experimentalTrajectoryView ?? false,
@@ -4423,6 +4427,32 @@ export default function App() {
     return enqueueNavigation({ kind: "sidebar-im", connection });
   }, [enqueueNavigation]);
 
+  // 任务 856 ③（⑦消息右键跳转）：协作中心（对话链/群聊）发起的「打开发信方/
+  // 收信方会话」信号——查通讯录定位会话 → 走既有「打开会话」导航（与命令面板
+  // 同一队列）；查不到（会话已结束/不可达）toast 提示，无新增后端。
+  const collabHubDirectoryRef = useRef<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
+  useEffect(() => onCollabChatOpenSession((contactId) => {
+    void (async () => {
+      let rows = collabHubDirectoryRef.current;
+      if (!rows.some((r) => r.contactId === contactId)) {
+        rows = await app.ListAddressableSessions().catch(() => []);
+        collabHubDirectoryRef.current = rows;
+      }
+      const row = rows.find((r) => r.contactId === contactId);
+      if (!row?.topicId) {
+        showToast(t("collabHub.jumpFailed", { name: contactId }));
+        return;
+      }
+      void enqueueNavigationWithIntent({
+        kind: "topic",
+        scope: row.scope === "project" ? "project" : "global",
+        workspaceRoot: row.workspaceRoot ?? "",
+        topicId: row.topicId,
+        sessionPath: row.sessionPath,
+      }, noteNavigationIntent());
+    })();
+  }), [enqueueNavigationWithIntent, noteNavigationIntent, showToast, t]);
+
   const onResumeSession = useCallback((session: SessionMeta): Promise<void> => {
     // Split view (task 70, D): with a split open, a turn running in one pane must not
     // freeze navigation in the other — the write that turn reserved is scoped to its
@@ -5124,37 +5154,27 @@ export default function App() {
                     <span className="sr-only">{t("sidebar.trash")}</span>
                   </button>
                 </Tooltip>
-                {/* 任务 320 UI 规格（20261002 用户钦定）：跨会话收件箱进左下角图标行，
-                    与回收站/自动化/设置同排；群聊（任务 349/409）图标后续并排加入此行。 */}
-                <Tooltip label={t("sidebar.collabInbox")} fill side="top">
+                {/* 任务 856 ①（demo v2 定稿）：信件中心 + 群聊两图标融合为一个
+                    「协作中心」入口（双视图面板，CollabHubPanel 承载）——工具行
+                    5→4 位：回收站 → 协作中心 → 自动化 → 设置。未读徽标沿用
+                    320 接线（信件未读仍是入口主信号）。挂 collabHub 实验室
+                    开关（实验室 → 提效 → 协作中心，前置依赖跨会话协作）——
+                    关=不渲染本按钮（802 零痕迹策略沿用）。 */}
+                {collabHubEntryEnabled && (
+                <Tooltip label={t("sidebar.collabHub")} fill side="top">
                   <button
                     className="sidebar__utility-button"
                     type="button"
-                    onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); setCollabInboxOpen(true); }}
+                    onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); setCollabHubOpen(true); }}
                   >
-                    <Mailbox size={16} aria-hidden="true" />
+                    <MessagesSquare size={16} aria-hidden="true" />
                     {/* 任务 320 遗留 #1：未读徽标（>0 才渲染；>99 折叠为 99+）。 */}
                     {collabInboxUnread > 0 && (
                       <span className="sidebar__utility-badge" aria-hidden="true">
                         {collabInboxUnread > 99 ? "99+" : collabInboxUnread}
                       </span>
                     )}
-                    <span className="sr-only">{t("sidebar.collabInbox")}{collabInboxUnread > 0 ? ` (${collabInboxUnread})` : ""}</span>
-                  </button>
-                </Tooltip>
-                {/* 任务 409：群聊式协作视图并排此行（回收站 → 信件中心 → 群聊 →
-                    自动化 → 设置），兑现 320 UI 规格里预留的群聊图标位。
-                    任务 677：入口挂实验室开关（实验室 → 提效 → 群聊，未稳定档
-                    默认关）——关=不渲染本按钮，工具行恢复 409 前的四图标布局。 */}
-                {collabGroupEntryEnabled && (
-                <Tooltip label={t("sidebar.collabGroup")} fill side="top">
-                  <button
-                    className="sidebar__utility-button"
-                    type="button"
-                    onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); setCollabGroupOpen(true); }}
-                  >
-                    <MessagesSquare size={16} aria-hidden="true" />
-                    <span className="sr-only">{t("sidebar.collabGroup")}</span>
+                    <span className="sr-only">{t("sidebar.collabHub")}{collabInboxUnread > 0 ? ` (${collabInboxUnread})` : ""}</span>
                   </button>
                 </Tooltip>
                 )}
@@ -6587,12 +6607,10 @@ export default function App() {
           unchanged. */}
       <SessionMonitorPanel />
       <FeedbackPanel />
-      {/* Task 320: cross-session inbox — same portal-at-root rule as above;
-          primary entry = sidebar bottom utility row (20261002 UI spec), settings keeps a secondary path. */}
-      <CollabInboxPanel />
-      {/* Task 409: 群聊式协作视图（多 Agent 协作可视化）— same portal-at-root
-          rule, opened from the sidebar utility row (与信件中心并排). */}
-      <CollabGroupPanel />
+      {/* Task 856 ①: 协作中心容器（信件 320 + 群聊 409/802 两入口合一）—
+          same portal-at-root rule; 内部子面板各自 portal。老挂载点
+          <CollabInboxPanel/>+<CollabGroupPanel/> 由本容器一处承担。 */}
+      <CollabHubPanel />
     </div>
     </UpdaterProvider>
     </RemoteNavigationContext.Provider>
