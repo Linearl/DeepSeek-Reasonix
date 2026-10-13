@@ -456,6 +456,92 @@ func compactSegments(in []string) []string {
 	return out
 }
 
+// RedirectTargets returns the file targets of every write-direction
+// redirection in a single static Bash command (>, >>, >|, <>, &>, &>>, and
+// >&file fd-duplications whose target is a path). Static target words are
+// returned verbatim; ok is false when the command cannot be parsed, holds a
+// here-document, or any write redirection's target is a runtime expansion —
+// the caller then cannot know what the target names and must treat the
+// command conservatively. Targets that are bare fd numbers (`2>&1`, `>&-`)
+// are skipped: they redirect between descriptors, not to a file.
+//
+// 读方向重定向（<、<&、<<<）不产生目标；引号内的 '>'（模式文本、'=>'、'>='）
+// 不构成 Redirect 节点，天然不会误报（task 851：写判定从「段内出现 '>'」升级
+// 到「重定向目标为何」的精度来源）。
+func RedirectTargets(command string) (targets []string, ok bool) {
+	if strings.TrimSpace(command) == "" {
+		return nil, true
+	}
+	file, err := ParseBash(command)
+	if err != nil || HasHereDoc(file) {
+		return nil, false
+	}
+	var out []string
+	dynamic := false
+	syntax.Walk(file, func(node syntax.Node) bool {
+		redir, isRedir := node.(*syntax.Redirect)
+		if !isRedir {
+			return true
+		}
+		switch redir.Op {
+		case syntax.RdrOut, syntax.AppOut, syntax.RdrClob, syntax.RdrInOut,
+			syntax.DplOut, syntax.RdrAll, syntax.RdrAllClob, syntax.AppAll, syntax.AppAllClob:
+		default:
+			return true // 读方向：<、<&、<<<、heredoc
+		}
+		if redir.Word == nil {
+			return true
+		}
+		word, static := StaticWord(redir.Word)
+		if !static {
+			dynamic = true
+			return true
+		}
+		if isFdSelector(word) {
+			return true // 2>&1 / >&-：fd 之间的复制/关闭，不落到文件系统
+		}
+		// 返回源文本切片而非 StaticWord 归一化值：bash 语义里 `C:\Users` 的
+		// 反斜杠是转义、会被消费成 `C:Users`，Windows 反斜杠路径形态随之
+		// 丢失；安全判定按调用方书写形态处理（保守），引号原样保留在切片
+		// 两端不影响调用方的子串匹配。
+		out = append(out, sourceSlice(command, redir.Word))
+		return true
+	})
+	if dynamic {
+		return out, false
+	}
+	return out, true
+}
+
+// sourceSlice returns the raw source text a word was parsed from. StaticWord
+// collapses bash escapes, so callers that match against written path shapes
+// (Windows backslash spellings) need the original slice; falls back to the
+// static value when offsets do not line up.
+func sourceSlice(source string, word *syntax.Word) string {
+	start, end := int(word.Pos().Offset()), int(word.End().Offset())
+	if start < 0 || end > len(source) || start >= end {
+		if v, ok := StaticWord(word); ok {
+			return v
+		}
+		return ""
+	}
+	return source[start:end]
+}
+
+// isFdSelector reports whether a redirection target names a file descriptor
+// (all digits, or "-" meaning close) rather than a filesystem path.
+func isFdSelector(word string) bool {
+	if word == "-" || word == "" {
+		return true
+	}
+	for i := 0; i < len(word); i++ {
+		if word[i] < '0' || word[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // HasHereDoc reports whether file contains a here-document. Here-doc bodies are
 // arbitrary text, so callers that analyze shell syntax should usually fail
 // closed when this returns true.
