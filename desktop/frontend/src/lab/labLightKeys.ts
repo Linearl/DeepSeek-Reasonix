@@ -17,6 +17,9 @@ export const LAB_LIGHT_KEYS = {
   // ── plain boolean SettingsView fields（一字段一谓词）────────────
   autopilot: (s: SettingsView) => Boolean(s.autopilot),
   experimentalSessionCollab: (s: SettingsView) => Boolean(s.experimentalSessionCollab),
+  // 任务 815：cascade_approval 是 sessionCollab 卡内行级开关（Task 225 交付，
+  // 甄别确认非缺口）——补灯：审批回投开 = 卡亮。
+  experimentalCascadeApproval: (s: SettingsView) => Boolean(s.experimentalCascadeApproval),
   experimentalFullAccess: (s: SettingsView) => Boolean(s.experimentalFullAccess),
   experimentalDream: (s: SettingsView) => Boolean(s.experimentalDream),
   // 任务 801：决策模式自动提取+固化（默认关）。
@@ -30,7 +33,17 @@ export const LAB_LIGHT_KEYS = {
   experimentalColdCacheCompact: (s: SettingsView) => Boolean(s.experimentalColdCacheCompact),
   experimentalCacheTuning: (s: SettingsView) => Boolean(s.experimentalCacheTuning),
   experimentalCompactModel: (s: SettingsView) => Boolean(s.experimentalCompactModel),
+  // 任务 815：三键补灯（半缺口收口——pane 行级开关早已交付、卡片灯漏接，
+  // 开了卡不亮；家族/卡内伴生行不挂独立徽章，621 附属行口径）：
+  //   - experimentalFallbackModel：modelStrategy 卡行级开关（722 点1 迁入）；
+  //   - experimentalActiveTabResident：contextGovernance 卡 cacheTuning 附属行
+  //     （Task 347；Go 侧早已登记 cacheTuning renderKeys 家族子键）；
+  //   - experimentalBashHeavyGuard：optimisticParallel 卡成员行（575 本尊，
+  //     815 全链路补卡；Go 侧同步自豁免表迁 optimisticParallel renderKeys）。
   experimentalHighSpeedModel: (s: SettingsView) => Boolean(s.experimentalHighSpeedModel),
+  experimentalFallbackModel: (s: SettingsView) => Boolean(s.experimentalFallbackModel),
+  experimentalBashHeavyGuard: (s: SettingsView) => Boolean(s.experimentalBashHeavyGuard),
+  experimentalActiveTabResident: (s: SettingsView) => Boolean(s.experimentalActiveTabResident),
   experimentalQuickCommands: (s: SettingsView) => Boolean(s.experimentalQuickCommands),
   experimentalTraceAsState: (s: SettingsView) => Boolean(s.experimentalTraceAsState),
   experimentalOutputStyleUI: (s: SettingsView) => Boolean(s.experimentalOutputStyleUI),

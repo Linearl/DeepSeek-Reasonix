@@ -45,7 +45,9 @@ groups:
       - id: sessionCollab
         labelKey: settings.sessionCollab
         tier: recommended
-        onKeys: [experimentalSessionCollab]
+        # 任务 815：cascade_approval 是卡内行级开关（Task 225），补灯——
+        # 审批回投开 = 卡亮（无 member 行，家族伴生不挂徽章）。
+        onKeys: [experimentalSessionCollab, experimentalCascadeApproval]
         members:
           # 任务 722 点3：跨会话协作的展示子项。
           - id: sessionCollabAutoFold
@@ -78,11 +80,16 @@ groups:
       - id: optimisticParallel
         labelKey: settings.optimisticParallel
         tier: recommended
-        onKeys: [optimisticWrite]
+        # 任务 815：bash_heavy_guard（575）补实验室入口——optimistic-parallel
+        # 卡成员行（写并发保护，optimistic_write 家族伴生开关；pane 行+灯，
+        # 无 member 行不挂独立徽章）。
+        onKeys: [optimisticWrite, experimentalBashHeavyGuard]
       - id: contextGovernance
         labelKey: settings.contextGovernance
         # 任务 722 点5：compactModel 迁出（键引用同步移走）。
-        onKeys: [experimentalCompactionParallel, experimentalContextBudget, experimentalResearchBudget, experimentalProactiveCompact, experimentalColdCacheCompact, experimentalCacheTuning]
+        # 任务 815：active_tab_resident 补灯（Task 347 附属行早已在 pane，
+        # Go 侧 cacheTuning renderKeys 家族已含——前端灯漏接，开了卡不亮）。
+        onKeys: [experimentalCompactionParallel, experimentalContextBudget, experimentalResearchBudget, experimentalProactiveCompact, experimentalColdCacheCompact, experimentalCacheTuning, experimentalActiveTabResident]
         members:
           - id: compactionParallel
             labelKey: settings.compactionParallel
@@ -117,7 +124,8 @@ groups:
       - id: modelStrategy
         labelKey: settings.modelStrategy
         # 任务 722 点2：成员表无 modelCapabilityFilter——「已退役」徽章移除。
-        onKeys: [experimentalHighSpeedModel]
+        # 任务 815：fallback_model 补灯（722 点1 迁入的行级开关，开了卡不亮）。
+        onKeys: [experimentalHighSpeedModel, experimentalFallbackModel]
         members:
           - id: highSpeedModel
             labelKey: settings.highSpeedModel
@@ -340,10 +348,11 @@ groups:
         tier: unstable
         onKeys: [experimentalZcodeTaskBus]
       # 任务 790：ACP 常驻监听（loopback TCP，每连接独立 client 面；默认关，
-      # 重启生效）。
+      # 重启生效）。815：tier optional→unstable——修正与内置 default/前端注册
+      # 表/Go labFeatureTiers 三方的既有漂移（722 同构锚要求 yaml=default）。
       - id: acpListen
         labelKey: settings.acpListen
-        tier: optional
+        tier: unstable
         onKeys: [experimentalACPListen]
       - id: pathRules
         labelKey: settings.pathRules

@@ -1186,6 +1186,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 603: the 工具优化 lab family (edit readBack + evidence gate
   // linkage). Boot lights the tool surface — restart to apply.
   SetExperimentalToolOptimizations(enabled: boolean): Promise<void>;
+  // Task 789: relaxed edit evidence gate (工具优化 companion; restart to
+  // apply). Task 815: settings-page entry for the registration window.
+  SetExperimentalEditEvidenceRelaxed(enabled: boolean): Promise<void>;
   // Task 254: the auto-resume scope dial ("off" | "goal_autopilot" | "all").
   // Takes effect live; execute reads it when it fires.
   SetAutonomousUpdateResume(mode: string): Promise<void>;
@@ -1235,6 +1238,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetPreapproveManagedPaths(enabled: boolean, skills: boolean, hooks: boolean, sessionStores: boolean, bashEscape: boolean): Promise<void>;
   // Task 192: active-tab residency policy (ships off).
   SetExperimentalActiveTabResident(enabled: boolean): Promise<void>;
+  // Task 575: heavy-bash write guard under optimistic_write (ships off).
+  // Task 815: lab optimistic-parallel card entry.
+  SetExperimentalBashHeavyGuard(enabled: boolean): Promise<void>;
   // Task 163: OpenCode Go usage card switch + the usage query itself. baseUrl
   // is allow-listed host-side; off (the default) never reaches either call.
   SetExperimentalOpenCodeGoUsage(enabled: boolean): Promise<void>;
@@ -5941,6 +5947,7 @@ function makeMockApp(): AppBindings {
     async SetUpdateChimeTune() {},
     async SetExperimentalFullAccess() {},
     async SetExperimentalToolOptimizations() {},
+    async SetExperimentalEditEvidenceRelaxed() {},
     async SetAutonomousUpdateResume() {},
     async ResolveTakeoverDecision() { return false; },
     async SetExperimentalSessionMonitor() {},
@@ -5964,6 +5971,7 @@ function makeMockApp(): AppBindings {
     async SetPreapproveManagedPaths() {},
     async SetExperimentalQuestionSearch() {},
     async SetExperimentalActiveTabResident() {},
+    async SetExperimentalBashHeavyGuard() {},
     async SetExperimentalOpenCodeGoUsage() {},
     async GetOpenCodeGoUsage() { return { tiers: [], note: "no-key" }; },
     // Task 287: unsupported in the browser mock — plan surfaces stay hidden.

@@ -18,7 +18,7 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalFullAccess = true
 	c.Desktop.ExperimentalParallelFullAccess = true
 	c.Sandbox.OptimisticWrite = true
-	c.Sandbox.ExperimentalBashHeavyGuard = true             // task 575：豁免键，门禁要求仍被渲染
+	c.Sandbox.ExperimentalBashHeavyGuard = true             // task 575：815 起登记 optimisticParallel 家族子键（原豁免键，门禁要求仍被渲染）
 	c.Sandbox.ExperimentalParallelWriterReadOnlyBash = true // task 573：豁免键，门禁要求仍被渲染
 	c.Agent.ExperimentalDream = true
 	// 任务 517：B1/B2/B3 合并为单键，legacy 键渲染面保持（迁移后读 false）。
@@ -93,7 +93,8 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalPreapproveManagedPaths = true
 	c.Agent.ExperimentalCascadeApproval = true
 	c.Agent.ExperimentalFallbackModel = true
-	// task 789：证据门宽松开关（默认关）。Go 侧先行，统一登记窗口前先走豁免。
+	// task 789：证据门宽松开关（默认关）。815 登记窗口：设置页入口落地，
+	// 自豁免表转正入表（editEvidenceRelaxed，未稳定档）。
 	c.Agent.ExperimentalEditEvidenceRelaxed = true
 	// 任务 707：压缩模型指定（上下文治理卡，可选档）。注册表 renderKeys 含
 	// compact_model（labSpecialKeys），两键都要被渲染表发射（反向门禁）。
@@ -187,8 +188,8 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 16 / 可选 23 / 未稳定 13 / 已退役 0 = 52（任务 801
-// decisionPatterns 入可选档后）.
+// register must stay exactly 推荐 16 / 可选 25 / 未稳定 15 / 已退役 0 = 56（任务 815
+// editEvidenceRelaxed 转正入表后）.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
@@ -215,8 +216,10 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// （S1 常驻底座开关）随底座退役出表（13→12，总数 51→50）。任务 790：
 		// acpListen（ACP 常驻监听，默认关）入表未稳定档（12→13，总数 50→51）。
 		// 任务 846：homePointer（配置数据目录可更改，默认关）入表未稳定档
-		// （13→14，总数 54→55）。
-		LabTierUnstable: 14,
+		// （13→14，总数 54→55）。任务 815：editEvidenceRelaxed（编辑证据门
+		// 宽松，任务 789 交付、815 登记窗口补设置页入口后转正）入表未稳定档
+		// （14→15，总数 55→56）。
+		LabTierUnstable: 15,
 		LabTierRetired:  0,
 	}
 	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
@@ -243,7 +246,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 55 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 55", len(labFeatureTiers))
+	if len(labFeatureTiers) != 56 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 56", len(labFeatureTiers))
 	}
 }

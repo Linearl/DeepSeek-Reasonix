@@ -1905,7 +1905,9 @@ type AgentConfig struct {
 	// the cache is still warm — one compaction fee now beats a full-price
 	// input on every later wake (a switched model invalidates the whole
 	// prefix anyway). Off by default (iron rule 2); mounted on the lab
-	// storage group as the "cost optimization" card with two knobs.
+	// efficiency group's context-governance card as the cache-tuning sibling
+	// row with two knobs (815 核验：注释原称 storage 组已过期——561 M3 起实际
+	// 挂载点从未变过).
 	ExperimentalColdCacheCompact bool `toml:"experimental_cold_cache_compact"`
 	// ColdCacheCompactMinBytes is the visible-context size floor (0 = the
 	// built-in 600 KiB); the tick counts live transcript + events bytes.

@@ -461,6 +461,10 @@ type SettingsView struct {
 	PreapproveBashEscape               bool `json:"preapproveBashEscape"`
 	// Task 192: active-tab residency policy (default false; 铁律 2).
 	ExperimentalActiveTabResident bool `json:"experimentalActiveTabResident"`
+	// Task 575: heavy-bash write guard under optimistic_write (default false;
+	// 铁律 2). Task 815: settings-view mirror for the lab optimistic-parallel
+	// card entry.
+	ExperimentalBashHeavyGuard bool `json:"experimentalBashHeavyGuard"`
 	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
 	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
@@ -468,6 +472,10 @@ type SettingsView struct {
 	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
 	// (edit readBack + evidence gate linkage); boot snapshot, restart to apply.
 	ExperimentalToolOptimizations bool `json:"experimentalToolOptimizations"`
+	// Task 789: relaxed edit evidence gate, 工具优化 family companion (default
+	// false; 铁律 2). Task 815: settings-view mirror for the unified
+	// registration window.
+	ExperimentalEditEvidenceRelaxed bool `json:"experimentalEditEvidenceRelaxed"`
 	// ExperimentalLifecycleNoiseGate is the task-377 crash-report noise
 	// triage; the gate is read once at startup diagnostics, restart to apply.
 	ExperimentalLifecycleNoiseGate bool `json:"experimentalLifecycleNoiseGate"`
@@ -735,6 +743,10 @@ type DesktopStartupSettingsView struct {
 	PreapproveBashEscape               bool `json:"preapproveBashEscape"`
 	// Task 192: active-tab residency policy (default false; 铁律 2).
 	ExperimentalActiveTabResident bool `json:"experimentalActiveTabResident"`
+	// Task 575: heavy-bash write guard under optimistic_write (default false;
+	// 铁律 2). Task 815: settings-view mirror for the lab optimistic-parallel
+	// card entry.
+	ExperimentalBashHeavyGuard bool `json:"experimentalBashHeavyGuard"`
 	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
 	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
@@ -742,6 +754,10 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
 	// (edit readBack + evidence gate linkage); boot snapshot, restart to apply.
 	ExperimentalToolOptimizations bool `json:"experimentalToolOptimizations"`
+	// Task 789: relaxed edit evidence gate, 工具优化 family companion (default
+	// false; 铁律 2). Task 815: settings-view mirror for the unified
+	// registration window.
+	ExperimentalEditEvidenceRelaxed bool `json:"experimentalEditEvidenceRelaxed"`
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
@@ -1538,11 +1554,15 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.PreapproveBashEscape = cfg.Agent.PreapproveManagedBashEscape
 		// Task 192: residency policy readback.
 		view.ExperimentalActiveTabResident = cfg.Agent.ExperimentalActiveTabResident
+		// Task 575: heavy-bash write guard readback (task 815 lab entry).
+		view.ExperimentalBashHeavyGuard = cfg.Sandbox.ExperimentalBashHeavyGuard
 		// Task 163: usage card switch readback.
 		view.ExperimentalOpenCodeGoUsage = cfg.Agent.ExperimentalOpenCodeGoUsage
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
 		// Task 603: 工具优化 family readback.
 		view.ExperimentalToolOptimizations = cfg.Agent.ExperimentalToolOptimizations
+		// Task 789: relaxed edit evidence gate readback (task 815 registration window).
+		view.ExperimentalEditEvidenceRelaxed = cfg.Agent.ExperimentalEditEvidenceRelaxed
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Agent.ExperimentalDream
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
@@ -1750,8 +1770,12 @@ func (a *App) Settings() SettingsView {
 		PreapproveBashEscape:               cfg.Agent.PreapproveManagedBashEscape,
 		// Task 192: residency policy readback.
 		ExperimentalActiveTabResident: cfg.Agent.ExperimentalActiveTabResident,
+		// Task 575: heavy-bash write guard readback (task 815 lab entry).
+		ExperimentalBashHeavyGuard:    cfg.Sandbox.ExperimentalBashHeavyGuard,
 		ExperimentalFullAccess:        cfg.Agent.ExperimentalFullAccess,
 		ExperimentalToolOptimizations: cfg.Agent.ExperimentalToolOptimizations,
+		// Task 789: relaxed edit evidence gate readback (task 815 registration window).
+		ExperimentalEditEvidenceRelaxed: cfg.Agent.ExperimentalEditEvidenceRelaxed,
 		ExperimentalTraceAsState:      cfg.Agent.TraceAsState,
 		ExperimentalDream:             cfg.Agent.ExperimentalDream,
 		// Task 801: decision-pattern readback (empty path resolves to default).

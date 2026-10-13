@@ -1146,6 +1146,24 @@ func (c *Config) SetExperimentalActiveTabResident(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalBashHeavyGuard toggles the task-575 heavy-bash write guard
+// (task 815: lab entry in the efficiency group's optimistic-parallel card).
+// Ships off: the zero value keeps byte-for-byte the pre-575 write behavior —
+// heavy bash commands never take the workspace hold under optimistic_write.
+func (c *Config) SetExperimentalBashHeavyGuard(enabled bool) error {
+	c.Sandbox.ExperimentalBashHeavyGuard = enabled
+	return nil
+}
+
+// SetExperimentalEditEvidenceRelaxed toggles the task-789 relaxed edit
+// evidence gate (task 815 lands the settings-page entry promised for the
+// unified registration window). Ships off: the zero value keeps the gate
+// byte-identical to the pre-789 baseline.
+func (c *Config) SetExperimentalEditEvidenceRelaxed(enabled bool) error {
+	c.Agent.ExperimentalEditEvidenceRelaxed = enabled
+	return nil
+}
+
 // SetExperimentalOpenCodeGoUsage toggles the task-163 usage card. Ships off:
 // the zero value keeps the settings page and network behavior unchanged.
 func (c *Config) SetExperimentalOpenCodeGoUsage(enabled bool) error {

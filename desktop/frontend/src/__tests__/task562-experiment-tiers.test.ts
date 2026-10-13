@@ -1,8 +1,9 @@
 // Run: npx tsx src/__tests__/task562-experiment-tiers.test.ts
 // 任务 562 acceptance harness (lab three-tier badges):
-//  ① the tier register mirrors xlsx 表A exactly — 推荐 15 / 可选 24 /
-//     未稳定 13 / 已退役 1 = 53 (acceptance ④; 任务 742 合并卡容器+心跳后台化
-//     入表后口径);
+//  ① the tier register mirrors xlsx 表A exactly — 推荐 19 / 可选 29 /
+//     未稳定 14 / 已退役 1 = 63 (acceptance ④; 任务 815 统一登记窗口收口：
+//     sidebarHover×2 + editEvidenceRelaxed + homePointer 等此前已入表而
+//     pin 未跟的项一并计数);
 //  ② the wall picks are the 16 curated 表B W1 items, every pick carries a
 //     tier (12 recommended + 4 optional) (acceptance ② data half);
 //  ③ the frontend register and the Go labFeatureTiers registry in
@@ -12,7 +13,7 @@
 //     未稳定>已退役；成员徽章只在卡内详情行可见); merged cards cover all
 //     member features; non-表A ids (preapproveManagedPaths) get none;
 //  ⑤ pane wiring: every 表A feature's switch label is wrapped in labLabel
-//     (or the standalone usage card), i.e. 48/48 pane badges;
+//     (or the standalone usage card), i.e. 62/63 pane badges;
 //  ⑥ locale keys exist in all three dialects.
 
 import { readFileSync } from "node:fs";
@@ -76,11 +77,14 @@ console.log("\ntask 562 lab three-tier badges");
   // 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。
   // 任务 785：baseProcess（S1 常驻底座开关）随底座退役出表——未稳定
   // 12→11、总数 58→57（合并线依 Go 表A 12/50 同源实跑对齐）。
-  ok(counts.recommended === 19 && counts.optional === 26 && counts.unstable === 12 && counts.retired === 1,
-    `register counts are 19/26/12/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 58, `register holds exactly 58 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 19/26/12/1");
+  // 任务 815（统一登记窗口收口）：sidebarHover×2（826）+ editEvidenceRelaxed
+  // （789/815）+ homePointer（846）此前已入表而计数 pin 尚钉在收口前口径
+  // （19/26/12/1=58），本窗口一并跳到 19/29/14/1=63。
+  ok(counts.recommended === 19 && counts.optional === 29 && counts.unstable === 14 && counts.retired === 1,
+    `register counts are 19/29/14/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 63, `register holds exactly 63 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 29 && LAB_TIER_COUNTS.unstable === 14 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 19/29/14/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -112,7 +116,10 @@ console.log("\ntask 562 lab three-tier badges");
   for (const m of goSrc.matchAll(/\{"([a-zA-Z]+)", LabTier([A-Za-z]+), \[/g)) {
     goTiers[m[1]] = m[2].toLowerCase();
   }
-  ok(Object.keys(goTiers).length === 51, `Go registry parses to 51 entries (got ${Object.keys(goTiers).length})`);
+  // 任务 815：editEvidenceRelaxed（789 证据门宽松）随设置页入口落地自 Go
+  // 豁免表转正入表——Go registry 51→56 条目；前端独有的 editEvidenceRelaxed
+  // 转为两侧共享。feOnly 回到 8 个纯前端容器/展示/桥接豁免。
+  ok(Object.keys(goTiers).length === 56, `Go registry parses to 56 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -137,14 +144,16 @@ console.log("\ntask 562 lab three-tier badges");
   // 成员总数 17→19；点2 modelStrategy 成员表去掉 modelCapabilityFilter。
   // 任务 782：viewLayout(+2)、searchHistory(+3)、inputSelection(+2)——
   // 成员总数 19→26。任务 783：用量监测卡 glmPlanUsage + opencodeGoUsage
-  // ——成员总数 26→28。
-  ok(members.length === 28, `merged cards carry 28 member features (got ${members.length})`);
+  // ——成员总数 26→28。任务 815（登记窗口收口）：toolOptimizations 卡
+  // editEvidenceRelaxed（789）+ viewLayout 卡 sidebarHover×2（826）计入
+  // ——成员总数 28→31。
+  ok(members.length === 31, `merged cards carry 31 member features (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
-  // 任务 704：trajectoryView 入表 → 50；任务 727 heartbeatRotation → 51；
-  // 任务 742 tabManagement + heartbeatBackground → 53；任务 782 三容器 → 56；
-  // 任务 783 用量监测容器+子项 → 58；任务 785 baseProcess 退役 → 57。
-  ok(covered.size === 58, "rail entries cover all 58 features");
+  // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
+  // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
+  // → 63。
+  ok(covered.size === 63, "rail entries cover all 63 features");
 
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构

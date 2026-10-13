@@ -4017,6 +4017,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             </>
           )}
           {selected === "optimisticParallel" && (
+            <>
             <SettingsField label={labLabel("optimisticParallel", t("settings.optimisticParallel"))} hint={t("settings.optimisticParallelHint")} icon={<Sparkles size={18} />}>
               {/* Task 650: the checkbox became a two-segment capsule control
                   (Off | On) matching the permission-tier switch style; the
@@ -4034,6 +4035,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
+            {/* Task 575 → 815: the heavy-bash write guard joins the card as a
+                family sibling row (researchBudget/coldCacheCompact precedent:
+                companion rows read their own key, save through their own
+                setter, carry no separate tier badge). Off keeps pre-575
+                behavior byte-for-byte. */}
+            <SettingsField label={t("settings.bashHeavyGuard")} hint={t("settings.bashHeavyGuardHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalBashHeavyGuard) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalBashHeavyGuard(on))}
+                  >
+                    {t(on ? "settings.bashHeavyGuard.on" : "settings.bashHeavyGuard.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+            </>
           )}
           {selected === "autopilot" && (
             <>
@@ -4934,6 +4955,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                counts as fresh read evidence, so a same-file follow-up edit
                skips the read round trip. Gate 联动是行为变更：开关默认关，
                异常时先关开关回退。 */
+            <>
             <SettingsField label={labLabel("toolOptimizations", t("settings.toolOptimizations"))} hint={t("settings.toolOptimizationsHint")} icon={<Sparkles size={18} />} stacked>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
@@ -4952,6 +4974,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
               <p className="approval-mode-hint">{t("settings.toolOptimizations.risk")}</p>
             </SettingsField>
+            {/* 任务 789 → 815 登记窗口：编辑证据门宽松模式落卡成员行（Go 侧
+                开关 789 先行，前端 yaml/experimentTiers 登记已在；本行补齐
+                设置页入口+labLabel 徽章面，tier 镜像 Go 侧 unstable）。 */}
+            <SettingsField label={labLabel("editEvidenceRelaxed", t("settings.editEvidenceRelaxed"))} hint={t("settings.editEvidenceRelaxedHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalEditEvidenceRelaxed) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalEditEvidenceRelaxed(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.editEvidenceRelaxed.on" : "settings.editEvidenceRelaxed.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+            </>
           )}
         </div>
       </div>

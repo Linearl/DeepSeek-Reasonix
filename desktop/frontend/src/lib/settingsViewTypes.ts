@@ -119,6 +119,9 @@ export interface SettingsView {
   preapproveBashEscape?: boolean;
   // Task 192: active-tab residency policy (ships off; keeps the running tab resident across switches).
   experimentalActiveTabResident?: boolean;
+  // Task 575: heavy-bash write guard under optimistic_write (ships off).
+  // Task 815: settings-view mirror for the lab optimistic-parallel card entry.
+  experimentalBashHeavyGuard?: boolean;
   // Task 163: OpenCode Go subscription usage card (ships off; no query while off).
   experimentalOpenCodeGoUsage?: boolean;
   // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
@@ -126,6 +129,9 @@ export interface SettingsView {
   // 任务 603: 工具优化 family (edit readBack + evidence gate linkage; ships
   // off — byte-identical tool surface; restart to apply).
   experimentalToolOptimizations?: boolean;
+  // Task 789: relaxed edit evidence gate (工具优化 companion; ships off;
+  // restart to apply). Task 815: settings-page entry for the registration window.
+  experimentalEditEvidenceRelaxed?: boolean;
   // Task 377: crash-report lifecycle noise triage (boot snapshot; restart to apply).
   experimentalLifecycleNoiseGate?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.

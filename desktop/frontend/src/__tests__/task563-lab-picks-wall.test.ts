@@ -138,8 +138,10 @@ console.log("\ntask 563 lab picks wall");
   // 707 → 49（压缩模型指定）；任务 704 → 50（轨迹视图）；任务 727 → 51
   // （heartbeatRotation）；任务 742 → 53（tabManagement + heartbeatBackground，
   // 任务书指定 optional 档，562 双端同源测试已核非重复注册）；任务 785
-  // baseProcess 退役 → 52；+1 simulated = 53.
-  ok(Object.keys(grown).length === 53 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
+  // baseProcess 退役 → 52；任务 782 三容器+783 用量监测两 id → 58；826
+  // sidebarHover×2 + 789 editEvidenceRelaxed + 846 homePointer 计入 → 63
+  // （815 登记窗口收口口径）；+1 simulated = 64.
+  ok(Object.keys(grown).length === 64 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
     "simulated new tier item is absent from LAB_WALL_PICKS");
   ok(LAB_WALL_PICKS.every((id) => Object.prototype.hasOwnProperty.call(EXPERIMENT_FEATURE_TIERS, id)),
     "every wall pick is a registered tier item (no orphans)");

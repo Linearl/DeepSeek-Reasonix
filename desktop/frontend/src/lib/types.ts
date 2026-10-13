@@ -2572,12 +2572,16 @@ export interface DesktopStartupSettingsView {
   preapproveBashEscape?: boolean;
   /** Task 192: active-tab residency policy; ships off; boot snapshot. */
   experimentalActiveTabResident?: boolean;
+  /** Task 575: heavy-bash write guard under optimistic_write; ships off. Task 815: lab optimistic-parallel card entry. */
+  experimentalBashHeavyGuard?: boolean;
   /** Task 163: OpenCode Go usage card; ships off; boot snapshot. */
   experimentalOpenCodeGoUsage?: boolean;
   /** Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped; ships off; restart to apply. */
   experimentalFullAccess?: boolean;
   /** 任务 603: 工具优化 family (edit readBack + gate linkage); ships off; restart to apply. */
   experimentalToolOptimizations?: boolean;
+  /** Task 789: relaxed edit evidence gate (工具优化 companion); ships off; restart to apply. Task 815: settings-page entry. */
+  experimentalEditEvidenceRelaxed?: boolean;
   /** Task 377: lifecycle noise triage (crash-pending residue); boot snapshot; restart to apply. */
   experimentalLifecycleNoiseGate?: boolean;
   /** Local-server page experiment switch (task 130); off unless the user opts in. */

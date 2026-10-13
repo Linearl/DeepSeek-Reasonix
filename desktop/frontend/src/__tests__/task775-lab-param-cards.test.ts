@@ -51,7 +51,8 @@ const paneIds = new Set<string>();
     "yaml structure equals the built-in default (param cards included)");
 
   const storage = LAB_LAYOUT_DEFAULT_DATA.groups.find((g) => g.key === "storage");
-  ok(storage?.entries.length === 3, "storage group carries sessionStore + two param cards");
+  // 任务 846：homePointer 独立卡入存储组（3→4）；815 收口本测试未跟的 pin。
+  ok(storage?.entries.length === 4, "storage group carries sessionStore + homePointer + two param cards");
   const idle = storage?.entries.find((e) => e.id === "idleReleaseMinutes");
   const mem = storage?.entries.find((e) => e.id === "goMemLimit");
   ok(idle?.kind === "param" && JSON.stringify(idle.fields) === JSON.stringify([{ id: "detachedIdleReleaseMinutes", input: "number" }]),

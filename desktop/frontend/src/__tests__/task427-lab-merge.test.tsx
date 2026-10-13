@@ -97,7 +97,9 @@ ok(panel.includes('{selected === "contextGovernance" && ('), "pane branch render
 // ③ family entry light reads the member switches (either on = discoverable).
 {
   ok(Boolean(familyEntry), "contextGovernance entry light found");
-  // 灯读数键 = 恰好六个成员开关（布局数据源，722 起 rail 灯读数即此表）。
+  // 灯读数键 = 恰好七个成员开关（布局数据源，722 起 rail 灯读数即此表；
+  // 815 补第七键 experimentalActiveTabResident——Task 347 附属行，Go 侧
+  // cacheTuning renderKeys 家族早已含它，灯补齐后开了卡会亮）。
   const expected = [
     "experimentalCompactionParallel",
     "experimentalContextBudget",
@@ -105,9 +107,10 @@ ok(panel.includes('{selected === "contextGovernance" && ('), "pane branch render
     "experimentalProactiveCompact",
     "experimentalColdCacheCompact",
     "experimentalCacheTuning",
+    "experimentalActiveTabResident",
   ];
   ok(JSON.stringify(familyEntry?.entry.onKeys ?? []) === JSON.stringify(expected),
-    "family entry onKeys are exactly the six member switches");
+    "family entry onKeys are exactly the seven member switches");
   // lightKeys 谓词逐键读原配置键（④ 的「原名读取」在灯侧同样成立）。
   const lightKeysSrc = src("../lab/labLightKeys.ts");
   for (const key of expected) {
