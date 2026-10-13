@@ -860,6 +860,22 @@ export default function App() {
   useEffect(() => onLabFlagsChange(() => setSidebarHoverLeftEnabled(labFlagEnabled("sidebarHoverLeft"))), []);
   const [sidebarHoverRightEnabled, setSidebarHoverRightEnabled] = useState(labFlagEnabled("sidebarHoverRight"));
   useEffect(() => onLabFlagsChange(() => setSidebarHoverRightEnabled(labFlagEnabled("sidebarHoverRight"))), []);
+  // 任务 848 — 首屏动画门：848 的侧栏/dock 过渡动画规则全部挂在
+  // .app--ui-settled 下，本标记在首帧绘制完成（double rAF）后置位，
+  // 保证首屏渲染与状态恢复零动画（含开关关的用户——铁律 2 零回归）。
+  // 纯视觉呈现层标记：不参与 300ms 防误触窗口与 15s 折回计时的任何判定
+  // （那两条仍完全归 useSidebarHoverBehavior 的状态/定时器，task826 钉）。
+  const [uiSettled, setUiSettled] = useState(false);
+  useEffect(() => {
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setUiSettled(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, []);
   useEffect(() => { setSurfaceViewTab(activeTabId ?? ""); }, [activeTabId]);
   const surfaceView = useSurfaceView();
   const [sessionWallOpen, setSessionWallOpen] = useState(false);
@@ -4837,6 +4853,7 @@ export default function App() {
         sidebarWorkbench ? "app--workbench" : "",
         sidebarCreation ? "app--creation" : "",
         !sidebarWorkbench && !sidebarCreation ? "app--classic" : "",
+        uiSettled ? "app--ui-settled" : "",
       ].filter(Boolean).join(" ")}
     >
       <ThemeBackground />

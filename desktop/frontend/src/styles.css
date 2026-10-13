@@ -2805,6 +2805,48 @@ a[href] {
   opacity: 0.85;
 }
 
+/* 任务 848 — hover 展开/折回的平滑过渡（纯视觉呈现层）。语义不变式：
+   300ms 防误触窗口与 15s 折回计时仍完全由 useSidebarHoverBehavior 的
+   状态/定时器判定（task826 钉死，本任务零改动），本块只让「已决定的
+   折叠/展开」在视觉上平滑落地——动画时长不参与任何判定。选型
+   180ms（--dur-base；任务书 150-250ms 区间中段，且比 layout 列宽过渡
+   0.16s 略长，内容渐隐覆盖列宽收拢全程不脱节）+ --ease-out（仓库标准
+   减速曲线，darwin 侧栏同款）。全部规则挂在 .app--ui-settled 首屏门
+   下：门由 App 首帧绘制完成后置位，首屏渲染与状态恢复零动画。
+   darwin 用 :not(.app--darwin) 排除在外——它自 826 起就有自己的
+   width/opacity/transform 收缩动画（0.22-0.28s），节奏保持不动。
+   左栏（非 darwin）：折叠是 display:none，display 不参与过渡则内容
+   瞬失，故 display 走 allow-discrete（旧 WebView 降级回瞬切，无害）：
+   展开时经 @starting-style 从 -18px/透明滑入，折回时 display 延迟到
+   渐隐结束才卸下。右栏 dock：React 挂载/卸载型，入场由 @starting-style
+   渐入；卸载退场纯 CSS 无法动画（延迟卸载 = 改渲染时序，违反动画/状态
+   解耦约束），由 layout 列宽 0.16s 收拢过渡兜底。 */
+.app--ui-settled:not(.app--darwin) .sidebar {
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out),
+    display var(--dur-base) allow-discrete;
+}
+.app--ui-settled:not(.app--darwin) .sidebar--collapsed {
+  opacity: 0;
+  transform: translateX(-18px);
+}
+.app--ui-settled .workbench-dock {
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+@starting-style {
+  .app--ui-settled:not(.app--darwin) .sidebar:not(.sidebar--collapsed) {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  .app--ui-settled .workbench-dock {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+
 .app--darwin .sidebar--collapsed {
   display: flex;
   width: 0;
