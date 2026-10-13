@@ -35,6 +35,19 @@ func (a *App) recordPreviousRunDiagnostics() {
 	// "上次运行崩溃" banner on every update restart.
 	gateSuppressed, markerSuppressed := 0, 0
 	for _, lifecycle := range a.lifecycle.previousRuns {
+		// Task 873: the marker check must precede the phase gate. A forced
+		// update restart (grace window expired → forced quit) can leave the
+		// record in a mid-shutdown phase (closing_*, waiting_runtime_locks):
+		// that phase is not "benign" in the task-377 sense, but the exit was
+		// still PLANNED (the marker writer is this exact PID handing off to an
+		// update relaunch). Task 847 only suppressed clean phases, so every
+		// forced-through install surfaced the "上次运行遗留的崩溃报告" banner.
+		// The PID-match + fresh-window vouching stays the same — a marker from
+		// an unrelated PID or an old window suppresses nothing.
+		if updateRestartMarkerFreshForLifecycle(lifecycle.PID) {
+			markerSuppressed++
+			continue
+		}
 		if !lifecycleNoiseBenign(lifecycle.Phase) {
 			_ = writePendingReport(desktopLifecycleReport(lifecycle), true)
 			if m := a.metrics.Load(); m != nil {
@@ -46,10 +59,6 @@ func (a *App) recordPreviousRunDiagnostics() {
 		}
 		if a.lifecycle.noiseGate {
 			gateSuppressed++
-			continue
-		}
-		if updateRestartMarkerFreshForLifecycle(lifecycle.PID) {
-			markerSuppressed++
 			continue
 		}
 		_ = writePendingReport(desktopLifecycleReport(lifecycle), true)
