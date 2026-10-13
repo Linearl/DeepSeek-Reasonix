@@ -2563,7 +2563,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// applied before the restart and settle on store open instead of
 		// replaying onto the shelf (the composer-guidance twin of task 263's
 		// collab cursor drop).
-		InboxAppliedReceipts:           agent.AppliedSteerReceiptTexts,
+		InboxAppliedReceipts: agent.AppliedSteerReceiptTexts,
+		// 任务866: the follow-up twin — a degraded collab follow-up consumed by
+		// a turn persists its body as a plain user message (no mid-turn prefix),
+		// so the steer receipts never describe it and its TranscriptNotDurable
+		// park replayed onto the shelf after every update restart (实测
+		// 2026-10-13). The matcher falls back to this face only after the steer
+		// faces miss.
+		InboxAppliedBodyReceipts:       agent.AppliedTurnBodyTexts,
 		SessionV4:                      sessionV4,
 		Host:                           pluginHost,
 		Commands:                       cmds,

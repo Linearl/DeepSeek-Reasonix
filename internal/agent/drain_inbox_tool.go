@@ -108,6 +108,13 @@ func drainInboxRenderText(msg sessioncollab.MailMessage, effectiveHop int) strin
 		b.WriteString(strconv.Itoa(effectiveHop))
 		b.WriteString(")")
 	}
+	// 任务866/1553: the send timestamp rides the head line on both delivery
+	// faces (the desktop pump's sessionCollabDeliveryText renders the same
+	// shape), so drained mail carries the sender's wall clock too.
+	if sent := CollabSentTimeText(msg.At); sent != "" {
+		b.WriteString("，发送于 ")
+		b.WriteString(sent)
+	}
 	b.WriteString("\n\n")
 	b.WriteString(msg.Body)
 	b.WriteString("\n\n---\n")
