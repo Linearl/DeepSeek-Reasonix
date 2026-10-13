@@ -14,6 +14,10 @@ import {
 const askDrafts = new Map<string, AskDraft>();
 const askDraftKey = (scope: string, ask: WireAsk) =>
   JSON.stringify([scope, ask.runtimeEpoch ?? "", ask.turnId ?? "", ask.id]);
+// 任务844: minimum spacing between panel-hover signals. One hop per second is
+// far below the auto-decide window scale (default 15s) and keeps the bridge
+// traffic negligible while still resetting the window long before it expires.
+const askActivityThrottleMs = 1000;
 type AnswerMode = "option" | "custom";
 type AskDraft = {
   sel: Record<string, string[]>;
@@ -48,6 +52,11 @@ type AskCardProps = {
   // local bridge (remote sessions) simply never fire it and keep the plain
   // wait/timeout behavior.
   onInteract?: (id: string) => void;
+  // 任务844: fired while the pointer moves over the panel area. The backend
+  // resets (not stops) the autopilot auto-decide window on it — "the user is
+  // reading" — bounded by the backend's absolute hover budget. Optional like
+  // onInteract: remote surfaces keep the plain wait/timeout behavior.
+  onActivity?: (id: string) => void;
 };
 
 export function AskCard(props: AskCardProps) {
@@ -57,7 +66,7 @@ export function AskCard(props: AskCardProps) {
   return <AskCardBody key={draftKey} {...props} draftKey={draftKey} />;
 }
 
-function AskCardBody({ ask, onAnswer, onInteract, onStop, draftKey }: AskCardProps & { draftKey: string }) {
+function AskCardBody({ ask, onAnswer, onInteract, onActivity, onStop, draftKey }: AskCardProps & { draftKey: string }) {
   const t = useT();
   // Per-question state: selected option labels, and an optional typed answer.
   const [sel, setSel] = useState<Record<string, string[]>>(() => readAskDraft(draftKey)?.sel ?? {});
@@ -91,6 +100,23 @@ function AskCardBody({ ask, onAnswer, onInteract, onStop, draftKey }: AskCardPro
     } catch {
       // The signal is best effort; the auto-decide timer firing early is the
       // pre-806 behavior, never a crash.
+    }
+  };
+
+  // 任务844: pointer movement over the panel resets the auto-decide window on
+  // the backend ("the user is reading"). mousemove fires at pointer-poll rate,
+  // so the signal is throttled well below the window scale — one hop per
+  // second is plenty for a 15s window and keeps the bridge quiet.
+  const lastActivityRef = useRef(0);
+  const fireActivity = () => {
+    const now = Date.now();
+    if (now - lastActivityRef.current < askActivityThrottleMs) return;
+    lastActivityRef.current = now;
+    try {
+      onActivity?.(ask.id);
+    } catch {
+      // Best effort like onInteract: a lost hover only means the window keeps
+      // the plain countdown, never a crash.
     }
   };
 
@@ -353,6 +379,7 @@ function AskCardBody({ ask, onAnswer, onInteract, onStop, draftKey }: AskCardPro
       cardCollapsible
       collapsed={collapsed}
       onToggleCollapse={() => setCollapsed((value) => !value)}
+      onMouseMove={fireActivity}
       barRef={shelfRef}
       titleId="ask-shelf-title"
       title={q.header ?? t("ask.title")}

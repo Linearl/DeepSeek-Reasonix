@@ -1,4 +1,4 @@
-import type { ReactNode, RefObject } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 
 export { PromptAction, PromptDescriptionDisclosure, PromptDescriptionToggle } from "./PromptAction";
 
@@ -24,6 +24,7 @@ export function PromptShelf({
   cardCollapsible = false,
   collapsed = false,
   onToggleCollapse,
+  onMouseMove,
 }: {
   className?: string;
   cardClassName?: string;
@@ -55,6 +56,10 @@ export function PromptShelf({
   cardCollapsible?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  // Task 844: pointer-move hook for panels that report hover presence to the
+  // backend (the ask panel resets its auto-decide window on it). Bound to the
+  // card element, i.e. the panel area itself.
+  onMouseMove?: (event: ReactMouseEvent<HTMLDivElement>) => void;
 }) {
   return (
     <div
@@ -83,6 +88,7 @@ export function PromptShelf({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={cardCollapsible ? 0 : -1}
+        onMouseMove={onMouseMove}
         onClick={cardCollapsible ? (event) => {
           const target = event.target as HTMLElement;
           if (target.closest("button, input, textarea, select, a, [role='button'], [role='option'], [role='radio'], [role='checkbox']")) return;

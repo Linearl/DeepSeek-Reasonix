@@ -5205,6 +5205,24 @@ export function useController() {
     notifyAskInteractionForTab(activeTabId, id);
   }, [activeTabId, notifyAskInteractionForTab]);
 
+  // 任务844: panel hover (mousemove) hops here so the backend resets the
+  // autopilot auto-decide window — "the user is reading" — bounded by the
+  // backend's absolute hover budget. Fire-and-forget like the interaction hop
+  // above: a lost signal only means the window keeps its plain countdown.
+  const notifyAskActivityForTab = useCallback((tabId: string, id: string): void => {
+    if (!tabId || !id) return;
+    try {
+      app.NotifyAskActivityForTab(tabId, id).catch(() => {});
+    } catch {
+      // best effort
+    }
+  }, []);
+
+  const notifyAskActivity = useCallback((id: string): void => {
+    if (!activeTabId) return;
+    notifyAskActivityForTab(activeTabId, id);
+  }, [activeTabId, notifyAskActivityForTab]);
+
   const answerMCPInteractionForTab = useCallback(
     (tabId: string, id: string, action: "accept" | "decline" | "cancel", content?: Record<string, unknown>) => {
       if (!tabId) return;
@@ -6382,7 +6400,7 @@ export function useController() {
     send, sendToTab, recoverDeliveryToTab, runShell, runShellForTab, steer, steerForTab, queueGuidanceBubble, notice,
     cancel, cancelForTab, approve, approveForTab, isPromptCurrentForTab, resolvePlanDecision, resolvePlanDecisionForTab,
     resolveRecovery, resolveRecoveryForTab, answerQuestion, answerQuestionForTab,
-    notifyAskInteraction, notifyAskInteractionForTab,
+    notifyAskInteraction, notifyAskInteractionForTab, notifyAskActivity, notifyAskActivityForTab,
     answerMCPInteraction, answerMCPInteractionForTab, setControllerMode, setControllerModeForTab,
     dismissExtensionForm, drainExtensionNotifications,
     setCollaborationMode, setCollaborationModeForTab, setToolApprovalMode, setToolApprovalModeForTab, setApprovalTier, setApprovalTierForTab, setQualityFloor, setComposerProfileForTab, setGoal, setGoalForTab, clearGoal, clearGoalForTab, resumeGoal, resumeGoalForTab, pauseGoal, pauseGoalForTab,

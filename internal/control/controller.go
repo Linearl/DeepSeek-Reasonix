@@ -482,6 +482,12 @@ type pendingAsk struct {
 	// arms the interaction-aware timer; closing it stops that timer (要素①),
 	// after which the ask waits for the user like any attended ask.
 	interact chan struct{}
+	// activity carries the task-844 "the user is at the panel" hover signal
+	// (mousemove on the panel area). Unlike interact it is repeatable: each
+	// delivery resets the auto-decide window instead of stopping it, bounded
+	// by the controller's absolute hover budget. Buffered size 1 so a
+	// mousemove burst costs one pending signal and never blocks the caller.
+	activity chan struct{}
 }
 
 type plannerSessionResetter interface {
@@ -2999,6 +3005,13 @@ func (c *Controller) SteerConsumed() bool {
 // long enough that an approval answered promptly never emits a notice.
 var promptQueueNoticeDelay = 3 * time.Second
 
+// askAutoDecideHoverFactor bounds the task-844 hover resets: mousemove on the
+// ask panel may defer the reversible-tier auto-decide by at most this many ask
+// windows in total (3×15s = 45s at the default wait), after which the original
+// expiry semantics fire even under continuous movement — a signal the user can
+// keep producing forever must not hold an unattended run hostage.
+const askAutoDecideHoverFactor = 3
+
 // lockPromptFor acquires the prompt lock, emitting one notice if the wait is
 // long enough to look like a hang. It reports false only when ctx ended first;
 // the lock is held on true.
@@ -3124,13 +3137,15 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	}
 
 	// Task 806: a reversible ask under autopilot registers with the
-	// interaction channel so the panel can stop the auto-decide timer; every
-	// other prompt class keeps the plain registration verbatim.
+	// interaction channel so the panel can stop the auto-decide timer, and
+	// with the task-844 activity channel so hover can reset it; every other
+	// prompt class keeps the plain registration verbatim.
 	var interactCh chan struct{}
+	var activityCh chan struct{}
 	var id string
 	var reply chan []event.AskAnswer
 	if reversibleTimedAsk {
-		id, reply, interactCh = c.approval.registerAskInteractive(questions)
+		id, reply, interactCh, activityCh = c.approval.registerAskInteractive(questions)
 	} else {
 		id, reply = c.approval.registerAsk(questions)
 	}
@@ -3205,18 +3220,27 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// ② A silent expiry answers on the user's behalf with the same
 	// decide-for-yourself reply the task-49 A3 instant path used, keeping the
 	// decision_id 留痕链 (markTurnAskAnswered + decision receipt) unchanged.
+	// Task 844: a mousemove on the panel (NotifyAskActivity) is the weaker
+	// "the user is reading" signal — it resets the window instead of stopping
+	// the timer, so a panel someone is merely looking at does not self-answer
+	// under their eyes. The resets are bounded by an absolute hover budget
+	// (askAutoDecideHoverFactor × askWait): continuous movement defers the
+	// auto-decide at most that long, then the original expiry semantics fire
+	// anyway — 防无限拖死.
 	if reversibleTimedAsk {
 		askWait := c.autopilotAskWaitFor()
+		hoverBudget := askAutoDecideHoverFactor * askWait
+		hoverDeadline := time.Now().Add(hoverBudget)
 		timer := time.NewTimer(askWait)
 		defer timer.Stop()
-		select {
-		case ans := <-reply:
-			return ans, nil
-		case <-interactCh:
-			log.Printf("[ask-panel] ask interaction received; auto-decide timer stopped, waiting for the user (task 806) turn=%s item=%s", turnID, id)
-			// fall through: no timer on the wait below — an attended wait for
-			// an attended user.
-		case <-timer.C:
+		budgetTimer := time.NewTimer(hoverBudget)
+		defer budgetTimer.Stop()
+		hoverResets := 0
+		// decideForUser is the single task-806 expiry path: cancel the prompt,
+		// close the card, and answer "decide for yourself" with the unchanged
+		// decision trail. The reason distinguishes a plain expiry from a hover
+		// budget exhaustion so the log anchor says which one fired.
+		decideForUser := func(reason string) []event.AskAnswer {
 			c.cancelOwnedPrompt(id)
 			c.expirePendingCard(id)
 			answers := autopilotAnswers(questions)
@@ -3226,19 +3250,78 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			// 判据锚 (task 477 shape): one grep-able log line plus one notice,
 			// so "did the auto-decide fire and what did it decide" is
 			// answerable from the log and the transcript alone.
-			log.Printf("[autopilot-ask] reversible question untouched for %s; decided for the user (task 806) turn=%s item=%s", askWait, turnID, id)
+			if reason == "hover_budget" {
+				log.Printf("[autopilot-ask] reversible question hover-resets exhausted the %s budget (%d reset(s)); decided for the user (task 844) turn=%s item=%s", hoverBudget, hoverResets, turnID, id)
+			} else {
+				log.Printf("[autopilot-ask] reversible question untouched for %s; decided for the user (task 806) turn=%s item=%s", askWait, turnID, id)
+			}
+			text := "autopilot · ask — no interaction within " + askWait.String() + "; decided for you: " + clipUTF8(askDecisionSummary(questions, answers), 160)
+			if reason == "hover_budget" {
+				text = "autopilot · ask — only mouse movement within " + hoverBudget.String() + "; decided for you: " + clipUTF8(askDecisionSummary(questions, answers), 160)
+			}
 			c.sink.Emit(event.Event{
 				Kind:   event.Notice,
 				Level:  event.LevelInfo,
 				Code:   "autopilot_ask_auto_decide",
-				Text:   "autopilot · ask — no interaction within " + askWait.String() + "; decided for you: " + clipUTF8(askDecisionSummary(questions, answers), 160),
-				Detail: "the unattended run surfaced this question and answered it itself only after the wait passed untouched; answering on the panel at any point stops the timer (task 806)",
+				Text:   text,
+				Detail: "the unattended run surfaced this question and answered it itself only after the wait passed untouched; answering on the panel at any point stops the timer, and moving the mouse over it resets the wait up to a bounded budget (task 806, task 844)",
 			})
-			return answers, nil
-		case <-waitCtx.Done():
-			c.cancelOwnedPrompt(id)
-			c.expirePendingCardErr(id, waitCtx.Err())
-			return nil, waitCtx.Err()
+			return answers
+		}
+		// extendOnHover arms the window afresh on a hover signal, draining a
+		// concurrently-fired expiry first (the safe time.Timer.Reset dance).
+		// Reports false when the absolute hover budget is gone and the caller
+		// must take the expiry path instead.
+		extendOnHover := func() bool {
+			if !time.Now().Before(hoverDeadline) {
+				return false
+			}
+			hoverResets++
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(askWait)
+			return true
+		}
+		attended := false
+		for !attended {
+			select {
+			case ans := <-reply:
+				return ans, nil
+			case <-interactCh:
+				log.Printf("[ask-panel] ask interaction received; auto-decide timer stopped, waiting for the user (task 806) turn=%s item=%s", turnID, id)
+				// fall through: no timer on the wait below — an attended wait
+				// for an attended user.
+				attended = true
+			case <-activityCh:
+				if extendOnHover() {
+					continue
+				}
+				// The budget is gone: "the user is reading" would otherwise
+				// defer the run forever, so the expiry semantics take over.
+				return decideForUser("hover_budget"), nil
+			case <-timer.C:
+				// A hover reset may have landed together with the expiry;
+				// honor it rather than answering under the user's eyes.
+				select {
+				case <-activityCh:
+					if extendOnHover() {
+						continue
+					}
+					return decideForUser("hover_budget"), nil
+				default:
+				}
+				return decideForUser("expiry"), nil
+			case <-budgetTimer.C:
+				return decideForUser("hover_budget"), nil
+			case <-waitCtx.Done():
+				c.cancelOwnedPrompt(id)
+				c.expirePendingCardErr(id, waitCtx.Err())
+				return nil, waitCtx.Err()
+			}
 		}
 	}
 
@@ -3294,6 +3377,23 @@ func (c *Controller) NotifyAskInteraction(id string) {
 		return
 	}
 	c.approval.notifyAskInteraction(id)
+}
+
+// NotifyAskActivity reports that the user's pointer is moving over the ask
+// panel (mousemove on the panel area; task 844). This is deliberately weaker
+// than NotifyAskInteraction: hover says "the user is reading", not "the user
+// is choosing", so for a reversible ask under autopilot it resets the
+// auto-decide window instead of stopping the timer. The resets are bounded by
+// the controller's absolute hover budget (askAutoDecideHoverFactor × the ask
+// wait), after which the original expiry semantics fire — a continuous
+// hover defers the decision at most a few windows, never forever. Every other
+// prompt class consumes the signal as a no-op; unknown/expired IDs are
+// ignored.
+func (c *Controller) NotifyAskActivity(id string) {
+	if c == nil || id == "" {
+		return
+	}
+	c.approval.notifyAskActivity(id)
 }
 
 // AnswerQuestion resolves a pending AskRequest by ID with the user's selections.

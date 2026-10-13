@@ -533,20 +533,23 @@ func (a *approvalManager) registerAsk(questions []event.AskQuestion) (string, ch
 	return id, reply
 }
 
-// registerAskInteractive is registerAsk plus the task-806 interaction channel:
-// a reversible ask under autopilot arms the interaction-aware timer, so its
-// pending record carries the channel the panel signals on when the user starts
-// choosing or typing (要素①). The channel is nil elsewhere — high-risk and
-// attended asks keep the plain registration verbatim.
-func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) (string, chan []event.AskAnswer, chan struct{}) {
+// registerAskInteractive is registerAsk plus the task-806 interaction channel
+// and the task-844 activity channel: a reversible ask under autopilot arms the
+// interaction-aware timer, so its pending record carries the channel the panel
+// signals on when the user starts choosing or typing (要素①, one-shot stop)
+// and the channel it signals on while the pointer merely moves over the panel
+// (task 844 hover, repeatable window reset). Both are nil elsewhere —
+// high-risk and attended asks keep the plain registration verbatim.
+func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) (string, chan []event.AskAnswer, chan struct{}, chan struct{}) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.nextID++
 	id := strconv.Itoa(a.nextID)
 	reply := make(chan []event.AskAnswer, 1)
 	interact := make(chan struct{})
-	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, interact: interact}
-	return id, reply, interact
+	activity := make(chan struct{}, 1)
+	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, interact: interact, activity: activity}
+	return id, reply, interact, activity
 }
 
 // notifyAskInteraction closes the interaction channel of a pending ask, one
@@ -563,6 +566,26 @@ func (a *approvalManager) notifyAskInteraction(id string) bool {
 	close(p.interact)
 	p.interact = nil
 	a.asks[id] = p
+	return true
+}
+
+// notifyAskActivity delivers one panel-hover signal (task 844) to a pending
+// ask. Unlike notifyAskInteraction it is repeatable: each delivery asks the
+// timed wait to reset its window, so it never closes or nils the channel. The
+// buffered send never blocks a mousemove burst — a full buffer just means the
+// timed wait already has a reset pending. False is the expected answer for
+// every other prompt class, mirroring notifyAskInteraction.
+func (a *approvalManager) notifyAskActivity(id string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	p, ok := a.asks[id]
+	if !ok || p.activity == nil {
+		return false
+	}
+	select {
+	case p.activity <- struct{}{}:
+	default:
+	}
 	return true
 }
 
