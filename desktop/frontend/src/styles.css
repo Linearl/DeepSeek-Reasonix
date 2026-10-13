@@ -76,6 +76,16 @@
   --font-control: var(--text-md);
   --font-control-small: var(--text-sm);
   --font-status: var(--font-control-small);
+  /* Task 827 ②③: project-tree grid tokens — the single source of truth for
+     the row icon column (same width on every row, acceptance ③'s hard
+     constraint) and the group/project title sizes ("one step larger", token-
+     driven so themes and font-scale compose). Pure sizing, no color: dark
+     themes need no special case. The per-skin overrides below keep "project
+     font" equal to whatever the skin already renders project rows at, so the
+     group title is always exactly one step larger than the project title. */
+  --project-tree-icon-col: 16px;
+  --project-tree-project-font: 13.5px;
+  --project-tree-group-font: calc(var(--project-tree-project-font) + 1px);
   --statusbar-dock-height: max(30px, calc(28px * var(--font-scale)));
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
@@ -28176,6 +28186,24 @@ button.statusbar__mcp:focus-visible {
   text-align: left;
 }
 
+/* Task 827 ③: the session row's icon-column placeholder. Same fixed column
+   width as every row, plus the shared 7px icon-to-label gap, so a session
+   title starts exactly one indent step right of its container row's title.
+   The status dot keeps its established home in the side area — this column
+   only holds the grid. */
+.project-tree__topic-lead {
+  flex: 0 0 var(--project-tree-icon-col);
+  width: var(--project-tree-icon-col);
+  margin-right: 7px;
+}
+/* Workbench and creation pin their own topic paddings; the grid column is a
+   classic-tree geometry and must not add width there. */
+.sidebar--workbench .project-tree__topic-lead,
+.app--creation .project-tree__topic-lead,
+:root[data-theme-style] .app--creation .project-tree__topic-lead {
+  display: none;
+}
+
 .project-tree__topic--has-meta .project-tree__topic-main {
   min-height: 48px;
   padding-top: 7px;
@@ -28470,12 +28498,14 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
 }
 
-/* Project tree: icon stack holds folder open/closed icon */
+/* Project tree: icon stack holds folder open/closed icon.
+   Task 827 ③: the stack is the row's uniform icon column — the same
+   --project-tree-icon-col width on every row, so titles start on one grid. */
 .project-tree__icon-stack {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
+  width: var(--project-tree-icon-col);
   height: 14px;
   flex: 0 0 auto;
   position: relative;
@@ -28484,6 +28514,14 @@ button.statusbar__mcp:focus-visible {
   width: 14px;
   height: 14px;
   color: var(--fg-faint);
+}
+/* Task 827 ③: the project color dot moved inside the icon column (bottom-
+   right overlay) so the label starts right after the column — the folder
+   glyph and the dot together are the column's content ("folder + status dot"). */
+.project-tree__icon-stack .project-tree__folder-color {
+  position: absolute;
+  right: -2px;
+  bottom: -1px;
 }
 /* Topic hover/active effect: full row width (remove left margin) */
 :root[data-theme-style] .sidebar--workbench .project-tree__topic {
@@ -32457,6 +32495,12 @@ button.statusbar__mcp:focus-visible {
   font-weight: 600;
 }
 
+/* Task 827 ②: this skin renders project titles at 12.5px — keep the token in
+   step so the group title stays exactly one step larger here too. */
+:root[data-theme-style] {
+  --project-tree-project-font: 12.5px;
+}
+
 :root[data-theme-style] .project-tree__folder--active,
 :root[data-theme-style] .project-tree__folder--menu-open {
   background: color-mix(in srgb, var(--project-accent, var(--accent)) 5%, transparent);
@@ -32540,7 +32584,11 @@ button.statusbar__mcp:focus-visible {
 
 :root[data-theme-style] .project-tree__topic-main {
   min-height: 34px;
-  padding-left: 16px !important;
+  /* Task 827 ③: the old !important 16px left-padding flattened every session
+     row to one column regardless of depth — group headers kept their indent
+     while their members did not (the misalignment this task fixes). The
+     inline `14 + depth * 16` formula is back in charge; the row's icon
+     column (.project-tree__topic-lead) holds the grid. */
   padding-right: 9px;
 }
 
@@ -34610,6 +34658,20 @@ button.statusbar__mcp:focus-visible {
   font-weight: 500;
 }
 
+/* Task 827 ②: the workbench skin renders project titles at 15px — keep the
+   token in step so the group title stays exactly one step larger here too.
+   The :root-qualified selector matches the skin override's specificity, so
+   the workbench value wins regardless of rule order. */
+:root .sidebar--workbench,
+:root[data-theme-style] .sidebar--workbench {
+  --project-tree-project-font: 15px;
+}
+/* Task 827 ③: the workbench project row uses an 8px icon-to-label gap;
+   the group row follows it so both titles share one column. */
+.sidebar--workbench .project-tree__group-main {
+  gap: 8px;
+}
+
 :root[data-theme-style] .sidebar--workbench .project-tree__folder {
   height: 32px;
   min-height: 32px;
@@ -35150,7 +35212,10 @@ button.statusbar__mcp:focus-visible {
 .project-tree__group-main {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* Task 827 ③: gap 7 matches the project row's icon-to-label gap
+     (:root[data-theme-style] .project-tree__folder-main), so every row's title
+     starts at indent + icon column + 7. */
+  gap: 7px;
   width: 100%;
   padding: 5px 6px;
   border-radius: var(--radius-sm);
@@ -35168,10 +35233,15 @@ button.statusbar__mcp:focus-visible {
 .project-tree__group-main--drop-target {
   border-color: color-mix(in srgb, currentColor 18%, transparent);
 }
+/* Task 827 ③: the session-group header's icon column is the bare chevron —
+   no folder semantics, the arrow IS the icon — but it occupies the same
+   --project-tree-icon-col width as every other row's column (acceptance ③'s
+   hard constraint). */
 .project-tree__group-chevron {
-  flex: 0 0 auto;
-  width: 10px;
+  flex: 0 0 var(--project-tree-icon-col);
+  width: var(--project-tree-icon-col);
   font-size: 9px;
+  text-align: center;
   opacity: 0.7;
 }
 .project-tree__group-title {
@@ -43702,6 +43772,71 @@ button.statusbar__mcp:focus-visible {
 .project-tree__group-icon {
   flex: none;
   color: var(--fg-faint);
+}
+/* Task 827 ②: the project-group title renders one step larger than the
+   project title, both driven by tokens (--project-tree-group-font =
+   --project-tree-project-font + 1px), so a theme that changes the project
+   size keeps the "one step larger" relationship and font-scale composes.
+   Pure sizing: light and dark themes need no extra case. */
+.project-tree__pgroup-main {
+  position: relative;
+  font-size: var(--project-tree-group-font);
+}
+.project-tree__pgroup-main--menu-open {
+  background: color-mix(in srgb, var(--accent) 6%, var(--sidebar-hover));
+}
+/* Task 827 ③: the group row's icon column — one folder glyph with the fold
+   chevron overlaid (collapsed ▸, expanded rotated to ▾), so the collapse
+   indicator no longer occupies its own column and the title starts at
+   indent + icon column + gap, the same grid the project rows follow. */
+.project-tree__group-fold-stack {
+  position: relative;
+  flex: 0 0 var(--project-tree-icon-col);
+  width: var(--project-tree-icon-col);
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.project-tree__group-fold {
+  position: absolute;
+  top: -4px;
+  right: -3px;
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: transform var(--dur-fast, 0.12s);
+}
+.project-tree__group-fold--open {
+  transform: rotate(90deg);
+}
+/* Task 827 ④: drag visuals for the group reorder — a dimmed source row and a
+   drop indicator line before/after the target, mirroring the project-row
+   drop affordance. */
+.project-tree__pgroup-main--dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+.project-tree__pgroup-main--drop-before::before,
+.project-tree__pgroup-main--drop-after::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+  pointer-events: none;
+}
+.project-tree__pgroup-main--drop-before::before {
+  top: -2px;
+}
+.project-tree__pgroup-main--drop-after::after {
+  bottom: -2px;
+}
+.project-tree__pgroup-main--dragging {
+  cursor: grabbing;
 }
 .project-tree__group-name {
   flex: 1;
