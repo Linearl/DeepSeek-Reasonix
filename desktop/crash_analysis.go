@@ -154,11 +154,31 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 	// to no user project, so it takes the same path heartbeat runs do:
 	// CreateTopic(global) → open a global tab → wait for its controller. The
 	// user's open project gains nothing; the sidebar lists the run under Global.
-	tabID, err := a.openCrashAnalysisSession(r.Kind)
+	tabID, topicID, err := a.openCrashAnalysisSession(r.Kind)
 	if err != nil {
 		return "", err
 	}
-	sessionPath, sessionDir := a.activeSessionLocation() // 663 ⑤ rides the 672 Global flow: the global tab is active now
+	// 任务780: the rename target is pinned to the tab this flow just opened,
+	// never to "whichever tab happens to be active". The active tab is global
+	// mutable state (frontend SetActiveTab, tab closes, workspace switches) and
+	// the controller wait window below can be long; a 2026-10-11 run saw it
+	// flip back to the originating conversation, so 崩溃分析-<时间> landed in
+	// the initiator's branch-meta CustomTitle and the contact directory showed
+	// the analysis name on the wrong session.
+	sessionPath, sessionDir := a.sessionLocationForTab(tabID)
+	// 任务858: the pin alone is not enough. The 2026-10-13 update-restart run
+	// renamed the user's video_comprehension evaluation session — the opened
+	// tab's controller no longer pointed at the fresh analysis session by the
+	// time the wait settled. Defense in depth: the rename may only land on a
+	// session that actually belongs to this flow (global session dir +, when
+	// the sidecar carries a topic binding, this flow's topic). Anything else
+	// keeps its title and the run stays untracked — an unnamed analysis beats
+	// a corrupted user conversation every time.
+	if sessionPath != "" && !analysisRenameAllowed(sessionPath, topicID) {
+		slog.Warn("crash-analysis: rename skipped — target is not the analysis session this flow opened (task 858)",
+			"session", scrubUserPaths(sessionPath), "wantTopic", topicID)
+		sessionPath, sessionDir = "", ""
+	}
 	title := crashAnalysisSessionTitle("崩溃分析", r.TestMock)
 	if sessionPath != "" {
 		// Task 663 ⑤: name the session so the analysis is identifiable in the
@@ -189,12 +209,15 @@ func (a *App) StartCrashAnalysis(kind, detail string) (string, error) {
 // crashAnalysisSummary is the detail line the frontend appends under the
 // localized "analysis started" notice (task 673). Kept for the 673 e2e test;
 // the 663 productized return inlines its content with session naming.
-// activeSessionLocation returns the active tab's session path and dir, "" when
-// the workspace has no live session. Read-only helper for the analysis entries.
-func (a *App) activeSessionLocation() (string, string) {
+// sessionLocationForTab returns the session path and dir bound to the given
+// tab's controller, "" when that tab has no live runtime. Task 780: the
+// one-click analysis family names sessions through this helper — the target
+// must be the tab the flow opened, not whatever tab is active by the time the
+// controller wait settles.
+func (a *App) sessionLocationForTab(tabID string) (string, string) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	tab := a.activeTabLocked()
+	tab := a.tabByIDLocked(tabID)
 	if tab == nil || a.tabIsReadOnly(tab) || tab.Ctrl == nil {
 		return "", ""
 	}
@@ -218,30 +241,59 @@ func crashAnalysisSummary(dir string) string {
 
 // openCrashAnalysisSession creates the Global-scope conversation hosting a
 // one-click analysis run and waits for its tab controller. It returns the ID
-// of the tab the analysis instruction must be submitted to.
+// of the tab the analysis instruction must be submitted to, plus the fresh
+// topic's ID — the rename target's identity anchor for the 任务858 guard.
 //
 // Task 688: the tab open/activation here happens entirely on the backend — no
 // frontend navigation carries it, so the webview would keep rendering the
 // previously active tab while the tab bar shows the new one. The
 // tab:backend-activated event hands the activation to the frontend, which
 // follows it with the same navigation a tab click takes.
-func (a *App) openCrashAnalysisSession(kind string) (string, error) {
+func (a *App) openCrashAnalysisSession(kind string) (string, string, error) {
 	topic, err := a.CreateTopic("global", "", crashAnalysisTopicTitle(kind))
 	if err != nil {
-		return "", fmt.Errorf("could not create the analysis conversation under Global (%v) — use the Copy button to report manually", err)
+		return "", "", fmt.Errorf("could not create the analysis conversation under Global (%v) — use the Copy button to report manually", err)
 	}
 	tabMeta, err := a.openGlobalTab(topic.ID)
 	if err != nil {
-		return "", fmt.Errorf("could not open the analysis tab (%v) — use the Copy button to report manually", err)
+		return "", "", fmt.Errorf("could not open the analysis tab (%v) — use the Copy button to report manually", err)
 	}
 	a.emitRuntimeEvent(tabBackendActivatedEvent, BackendTabActivatedEvent{
 		TabID:  tabMeta.ID,
 		Reason: "analysis",
 	})
 	if a.awaitAnalysisController(tabMeta.ID) == nil {
-		return "", fmt.Errorf("the analysis workspace did not become ready in time — use the Copy button to report manually")
+		return "", "", fmt.Errorf("the analysis workspace did not become ready in time — use the Copy button to report manually")
 	}
-	return tabMeta.ID, nil
+	return tabMeta.ID, topic.ID, nil
+}
+
+// analysisRenameAllowed gates the analysis family's session rename (任务858).
+// The session must live in the global session dir — the analysis family hosts
+// under Global scope only (task 672), so a project-bound session path is by
+// definition not this flow's conversation — and, when the sidecar already
+// carries a topic binding, that binding must name the topic this flow just
+// created. A missing sidecar or an empty binding passes: a brand-new analysis
+// session legitimately has neither yet (and the tab pin from 任务780 remains
+// the primary defense; this guard is the second layer behind it).
+func analysisRenameAllowed(sessionPath, topicID string) bool {
+	if strings.TrimSpace(sessionPath) == "" {
+		return false
+	}
+	globalDir := desktopSessionDir(globalWorkspaceRoot())
+	if !sameDesktopPath(filepath.Dir(sessionPath), globalDir) {
+		return false
+	}
+	meta, ok, err := agent.LoadBranchMeta(sessionPath)
+	if err != nil {
+		return false
+	}
+	if ok {
+		if bound := strings.TrimSpace(meta.TopicID); bound != "" && bound != strings.TrimSpace(topicID) {
+			return false
+		}
+	}
+	return true
 }
 
 // crashAnalysisTopicTitle names the sidebar row the analysis files under, so

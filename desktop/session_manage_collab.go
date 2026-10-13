@@ -41,6 +41,20 @@ func (a *App) renameCollabSession(topicID, sessionPath, title string) (agent.Ren
 	}
 	if topicID != "" {
 		if err := a.RenameTopic(topicID, title); err == nil {
+			// 任务780: RenameTopic only writes the topic-facing surfaces (the
+			// title store and the sidecar TopicTitle). The contact directory and
+			// the sidebar session rows read the sidecar with CustomTitle first
+			// (agent.scanAddressable), so a session that ever carried a manual
+			// title kept showing the old name while this tool reported
+			// listingSynced=true — the 2026-10-11 "rename did not reach the
+			// directory" report. Write the CustomTitle through as well; a
+			// failure here is reported instead of being swallowed into a
+			// truthful-sounding synced flag.
+			if sessionPath != "" {
+				if err := a.RenameSession(sessionPath, title); err != nil {
+					return result, err
+				}
+			}
 			result.ListingSynced = true
 			return result, nil
 		}
@@ -57,8 +71,10 @@ func (a *App) renameCollabSession(topicID, sessionPath, title string) (agent.Ren
 }
 
 // collabSessionTitle reads a session's current display title from the
-// branch-meta sidecar - the same source the contact directory lists - so a
-// rename can report what it replaced.
+// branch-meta sidecar with the same precedence the contact directory uses
+// (agent.scanAddressable: CustomTitle, then TopicTitle) — 任务780: reporting
+// the TopicTitle while the directory shows a CustomTitle made rename_session
+// claim a "previousTitle" the user could not see anywhere.
 func collabSessionTitle(sessionPath string) string {
 	if strings.TrimSpace(sessionPath) == "" {
 		return ""
@@ -66,6 +82,9 @@ func collabSessionTitle(sessionPath string) string {
 	meta, ok, err := agent.LoadBranchMeta(sessionPath)
 	if err != nil || !ok {
 		return ""
+	}
+	if trimmed := strings.TrimSpace(meta.CustomTitle); trimmed != "" {
+		return trimmed
 	}
 	return strings.TrimSpace(meta.TopicTitle)
 }
