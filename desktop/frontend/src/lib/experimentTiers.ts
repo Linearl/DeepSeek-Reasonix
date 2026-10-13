@@ -76,8 +76,9 @@ export type TierFeatureId =
   | "localServer"
   // 任务 603:「工具优化」族首件 (edit readBack + evidence gate linkage).
   | "toolOptimizations"
-  // 任务 677: 群聊入口开关（409 视图交付漏挂铁律 2 开关，未稳定档默认关）。
-  | "collabGroupView"
+  // 任务 677→856 ③: 协作中心入口总开关（信件中心+群聊两图标合一；原
+  // 「群聊入口」开关 collabGroupView 随语义一次性迁移为 collabHub，未稳定档沿用）。
+  | "collabHub"
   // 任务 705: 超长跨会话消息自动折叠（默认关=全量展示，可选档）。
   | "sessionCollabAutoFold"
   // 任务 707: 压缩模型指定（经济模型压缩，默认关，可选档）。
@@ -140,8 +141,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   traceAsState: "optional",
   outputStyle: "optional",
   cacheTuning: "optional",
-  // 任务 677：群聊入口开关（409 交付漏挂开关，用户定档未稳定、默认关）。
-  collabGroupView: "unstable",
+  // 任务 677→856 ③：协作中心入口总开关（677 群聊入口开关随两图标合一迁移
+  // 改名，未稳定档默认关沿用）。
+  collabHub: "unstable",
   // 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关按 550
   // 口径定档可选——不开启只影响长消息的阅读密度，不动任何协作行为。
   sessionCollabAutoFold: "optional",
@@ -321,6 +323,18 @@ export const LAB_SETTINGS_LOCATION: Readonly<Partial<Record<LabWallPickId, reado
   completionSummary: ["settings.labGroup.ui", "settings.completionSummary"],
   // ── observability（可观测性）─────────────────────────────────
   monitoring: ["settings.labGroup.observability", "settings.monitoring"],
+};
+
+/**
+ * 任务 856 ③ — 实验室开关前置依赖表（键=依赖者，值=被依赖的前置开关）。
+ *
+ * demo v2 交互稿口径：跨会话协作（sessionCollab）关闭时，协作中心开关呈
+ * 禁用态并提示「需先开启跨会话协作」。声明在此而非散在设置页——后续其他
+ * 开关要挂前置时加一行即可，渲染侧统一处理禁用态（856 计划文档 ③）。
+ * 单前置一期够用（与一期单副管理员同一简化原则）；多条依赖再演进为数组。
+ */
+export const LAB_FEATURE_DEPS: Readonly<Partial<Record<TierFeatureId, TierFeatureId>>> = {
+  collabHub: "sessionCollab",
 };
 
 export function isTierFeatureId(id: string): id is TierFeatureId {

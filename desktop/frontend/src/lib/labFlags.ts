@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabGroupView" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -26,10 +26,12 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // (inline preview expansion + widen affordance), on = plan A (row click
   // opens the read-only in-dock detail view with a back button).
   subagentDetail: false,
-  // 任务 677: the sidebar group-chat entry ships off (铁律 2 — the task-409
-  // view landed without its lab switch). With it off the utility row renders
-  // exactly the pre-409 four-icon layout; a flip applies on settings save.
-  collabGroupView: false,
+  // 任务 856 ③: the unified collaboration-hub entry (信件中心 + 群聊两图标
+  // 合一) ships off (铁律 2 — same contract as the task-677 switch it renames;
+  // the stored value migrates server-side at decode). With it off the utility
+  // row renders exactly the pre-856 layout minus the two merged icons; a flip
+  // applies on settings save.
+  collabHub: false,
   // 任务 704: the trajectory view ships off (铁律 2). With it off the topicbar
   // renders exactly the pre-704 layout and the transcript is the only surface;
   // a flip applies on settings save (no restart).
@@ -73,7 +75,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabGroupView=${flags.collabGroupView} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight}`,
   );
   for (const listener of listeners) listener();
 }

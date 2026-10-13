@@ -1163,6 +1163,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
   // Task 677: sidebar group-chat entry switch (experimental; pure frontend gate).
   SetExperimentalCollabGroupView(enabled: boolean): Promise<void>;
+  /** 任务 856 ③：协作中心入口总开关（677 collabGroupView 迁移改名）。 */
+  SetExperimentalCollabHub(enabled: boolean): Promise<void>;
   // Task 705: cross-session message auto-fold switch (experimental; pure display pref).
   SetExperimentalSessionCollabAutoFold(enabled: boolean): Promise<void>;
   // Task 704: trajectory view switch (experimental; pure frontend gate).
@@ -5888,6 +5890,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
     async SetExperimentalCollabGroupView() {},
+    async SetExperimentalCollabHub() {},
     async SetExperimentalSessionCollabAutoFold() {},
     async SetExperimentalTrajectoryView() {},
     async SetExperimentalTodoSidebar() {},

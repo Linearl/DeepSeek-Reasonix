@@ -134,10 +134,10 @@ groups:
         labelKey: settings.outputStyle
         tier: optional
         onKeys: [experimentalOutputStyleUI, outputStyleActive]
-      - id: collabGroupView
-        labelKey: settings.collabGroupView
+      - id: collabHub
+        labelKey: settings.collabHub
         tier: unstable
-        onKeys: [experimentalCollabGroupView]
+        onKeys: [experimentalCollabHub]
 
   # ── 界面（9 项；任务 742：tab 二开关合并为「标签页管理」；任务 782：
   #    三张条目级合并卡 + opencodeGoUsage 迁出至可观测性组）────────────

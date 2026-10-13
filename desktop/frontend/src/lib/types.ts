@@ -2506,8 +2506,10 @@ export interface DesktopStartupSettingsView {
   experimentalSessionMonitor?: boolean;
   /** Split-view experiment switch (task 70-1); off unless the user opts in. */
   experimentalSplitView?: boolean;
-  /** Group-chat entry switch (task 677): gates the sidebar utility-row icon; off unless the user opts in. */
+  /** LEGACY group-chat entry switch (task 677; task 856 migration source only). */
   experimentalCollabGroupView?: boolean;
+  /** Unified collaboration-hub entry switch (task 856 ③): gates the merged utility-row icon; off unless the user opts in. */
+  experimentalCollabHub?: boolean;
   /** Cross-session message auto-fold (task 705): collapse over-long collab messages into a summary bar; off = render in full. */
   experimentalSessionCollabAutoFold?: boolean;
   /** Trajectory view switch (task 704): gates the topicbar transcript|trajectory switch and the trajectory surface; off = transcript only. */
