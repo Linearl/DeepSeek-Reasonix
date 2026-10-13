@@ -130,7 +130,10 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
   ok(goHeartbeat.includes("e.app.heartbeatTopicTabVisible(scope, workspaceRoot, topicID)") &&
      goHeartbeat.includes("if background && !visibleBefore {"),
     "park is guarded by the visible-before snapshot (user-opened tabs never park)");
-  ok(goHeartbeat.includes("e.app.parkTabAsDetached(tabMeta.ID)") && goTabs.includes("func (a *App) parkTabAsDetached(tabID string) error {"),
+  // 865 语义变更：心跳 park 走 owned 变体（豁免自身 turn 的 Running fence，
+  // 修复 864「submit 成功 ⟺ park 必被拒」自锁），仍复用 264 detached 语义。
+  // 断言意图不变：park 存在且走 detached 语义——仅随调用点更名同步锚点。
+  ok(goHeartbeat.includes("e.app.parkTabAsDetachedOwned(tabMeta.ID)") && goTabs.includes("func (a *App) parkTabAsDetached(tabID string) error {"),
     "park reuses the task-264 detached semantics");
   ok(goTabs.includes("func (a *App) openHeartbeatTabInactive(") && goTabs.includes("openTopicTabPreferLiveActivation"),
     "background open promotes a previously parked runtime via prefer-live");
