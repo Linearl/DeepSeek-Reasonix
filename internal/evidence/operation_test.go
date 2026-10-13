@@ -61,17 +61,23 @@ func TestOperationFailedVerificationDoesNotSettle(t *testing.T) {
 	}
 }
 
-func TestOperationSameFailureTwiceStopsAutomaticRecovery(t *testing.T) {
+func TestOperationSameFailureThreeTimesStopAutomaticRecovery(t *testing.T) {
 	ops := NewOperationLedger()
 	ops.Open("op_1", "edit_file", []string{"a.go"})
 
 	first := ops.Fail("op_1", "WRITE_EVIDENCE_STALE")
-	if !first.Retryable || first.Attempt != 1 || first.Budget != 1 {
-		t.Fatalf("first failure = %+v, want one retry offered", first)
+	if !first.Retryable || first.Attempt != 1 || first.Budget != 2 {
+		t.Fatalf("first failure = %+v, want two retries offered", first)
 	}
+	// Task 859: the second identical failure still gets a guided retry — one
+	// attempt is often spent re-orienting, not looping.
 	second := ops.Fail("op_1", "WRITE_EVIDENCE_STALE")
-	if second.Retryable || second.State != OperationNeedsUser {
-		t.Fatalf("second identical failure = %+v, want needs_user", second)
+	if !second.Retryable || second.Attempt != 2 || second.Budget != 1 {
+		t.Fatalf("second identical failure = %+v, want one guided retry left", second)
+	}
+	third := ops.Fail("op_1", "WRITE_EVIDENCE_STALE")
+	if third.Retryable || third.State != OperationNeedsUser {
+		t.Fatalf("third identical failure = %+v, want needs_user", third)
 	}
 	if got := ops.NeedsUser(); len(got) != 1 || got[0].ID != "op_1" {
 		t.Fatalf("needs-user list = %+v", got)
@@ -98,6 +104,7 @@ func TestOperationNewEpochReopensRecoveryAfterExplicitContinue(t *testing.T) {
 	ops.Open("op_1", "edit_file", []string{"a.go"})
 	ops.Fail("op_1", "WRITE_EVIDENCE_STALE")
 	ops.Fail("op_1", "WRITE_EVIDENCE_STALE")
+	ops.Fail("op_1", "WRITE_EVIDENCE_STALE")
 
 	ops.NewEpoch("op_1")
 	op, _ := ops.Get("op_1")
@@ -112,6 +119,7 @@ func TestOperationNewEpochReopensRecoveryAfterExplicitContinue(t *testing.T) {
 func TestOperationTerminalStateIsNotReopenedByLateResults(t *testing.T) {
 	ops := NewOperationLedger()
 	ops.Open("op_1", "bash", nil)
+	ops.Fail("op_1", "X")
 	ops.Fail("op_1", "X")
 	ops.Fail("op_1", "X") // needs_user
 	if op := ops.Apply("op_1", ReceiptRef{ID: "r_9", Success: true}); op.State != OperationNeedsUser {
