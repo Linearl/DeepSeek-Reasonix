@@ -221,11 +221,21 @@ func replaySessionDAGTail(ctx context.Context, path string, windowBytes int64, l
 	return st, nil
 }
 
-// sessionDAGTailWindowStart returns a restart offset that leaves about
-// windowBytes at the end of the log, snapped forward to a line boundary: schema-2
+// sessionDAGTailWindowStart returns a restart offset that leaves at least
+// windowBytes at the end of the log, snapped back to a line boundary: schema-2
 // entries are one JSON object per line, so the byte after a newline is a legal
 // restart point. ok=false means the file is not large enough to be worth a window
 // (or could not be inspected), and the caller replays it whole.
+//
+// 任务 831②/③: the snap scans backwards from the cut instead of forward with a
+// fixed probe, for two fixture-proven reasons. A single oversized entry — a
+// large tool result, a big paste — is one JSON line longer than any fixed
+// forward probe, so the probe found no newline inside one line and disabled the
+// window outright. And when the cut lands inside the log's last line, the
+// forward snap's only newline is the file terminator, producing an empty window
+// that falls back to the full replay anyway. Snapping backwards keeps the
+// window at least windowBytes and always aligned, at the cost of including at
+// most one extra line.
 func sessionDAGTailWindowStart(path string, windowBytes int64) (int64, bool) {
 	if windowBytes <= 0 {
 		return 0, false
@@ -240,22 +250,33 @@ func sessionDAGTailWindowStart(path string, windowBytes int64) (int64, bool) {
 		return 0, false
 	}
 	cut := info.Size() - windowBytes
-	// Snap forward to the next entry: read from the cut and take the first
-	// newline after it, so the window covers about windowBytes rather than the
-	// whole log (searching backwards would land on the file's first line).
-	probe := min(int64(64<<10), info.Size()-cut)
-	if probe <= 0 {
-		return 0, false
+	// Scan left from the cut for the nearest newline; the byte after it starts
+	// a window that is at least windowBytes wide and aligned to an entry
+	// boundary. Entries are one JSON object per line, so the line containing
+	// the cut contributes at most one extra entry of overlap.
+	const scanChunk = 64 << 10
+	buf := make([]byte, scanChunk)
+	for offset := cut; offset > 0; {
+		chunkStart := offset - scanChunk
+		if chunkStart < 0 {
+			chunkStart = 0
+		}
+		n, readErr := f.ReadAt(buf[:offset-chunkStart], chunkStart)
+		if n > 0 {
+			if idx := bytes.LastIndexByte(buf[:n], '\n'); idx >= 0 {
+				start := chunkStart + int64(idx) + 1
+				if start > 0 && start < info.Size() {
+					return start, true
+				}
+				return 0, false
+			}
+		}
+		if readErr != nil {
+			break
+		}
+		offset = chunkStart
 	}
-	buf := make([]byte, probe)
-	if _, err := f.ReadAt(buf, cut); err != nil {
-		return 0, false
-	}
-	idx := bytes.IndexByte(buf, '\n')
-	if idx < 0 {
-		return 0, false
-	}
-	return cut + int64(idx) + 1, true
+	return 0, false
 }
 
 // replayFrom applies every entry from byte offset from to the end of the log.

@@ -97,6 +97,25 @@ type sessionPersistState struct {
 	// interrupted save — so only save-verified baselines may arm the
 	// snapshot no-op fast path; the first save after a load must run in full
 	// and heal a stale ledger.
+	//
+	// 任务 831②: the load-time exception is narrowed. A load that came back
+	// clean — no normalization repair, no damaged log, no tail truncation, and
+	// a decode-time digest the ledger sidecar agrees with — has already proven
+	// that the in-memory transcript is byte-identical to what the ledger
+	// describes. That baseline is recorded with cleanLoad set and arms the
+	// same no-op: the defensive switch/close snapshot a large session pays
+	// right after a resume (SetActiveTab slow snapshot_ms=1000) is re-proving
+	// an identity the load just established, and the full marshal+digest pass
+	// it triggers is pure rework. A load whose ledger disagrees (the aftermath
+	// of an interrupted save) or that needed repairs keeps the old
+	// first-save-must-run-full behavior — that first save is still the one
+	// that heals a stale ledger.
+	cleanLoad    bool
+	// logTail is the event-log size observed when the baseline was recorded.
+	// The no-op re-checks it (plus the ledger identity) before skipping: a
+	// concurrent writer's append grows the log past this tail, and a save that
+	// is genuinely behind must surface the stale-prefix conflict, not skip.
+	logTail      int64
 	saveVerified bool
 	ok           bool
 }
@@ -347,11 +366,13 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 	// rest so "where do the seconds go" answers from one grep.
 	phaseStart := time.Now()
 	var authMs, healMs, snapMs, probeMs int64
+	var noopReason string
 	defer func() {
 		slog.Info("session: save phases",
 			"path", canonicalSessionSavePath(path), "mode", int(mode),
 			"lock_wait_ms", s.lastSaveLockWaitMs.Load(),
 			"auth_ms", authMs, "heal_ms", healMs, "snap_ms", snapMs, "probe_ms", probeMs,
+			"noop", noopReason,
 			"locked_total_ms", time.Since(phaseStart).Milliseconds())
 	}()
 	releaseAuth, err := s.requireWriteAuthorityForSave(path)
@@ -388,9 +409,15 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 		// save above just to rebuild a derived index. A log whose derived files
 		// need more than that (schema 2 also derives its head index and meta
 		// mirror) declines and falls through unchanged.
+		//
+		// 任务 831②: noop names the baseline source that armed the skip
+		// (save-verified / clean-load) so the fast path's coverage is provable
+		// from desktop.log instead of inferred from absent slow lines.
+		noopReason = s.snapshotNoOpReason(path)
 		if s.flushDeferredDerivedFiles(path) {
 			return nil
 		}
+		noopReason = ""
 	}
 	// Capture the snapshot only while holding the save locks. Concurrent
 	// in-process savers (turn-end snapshot, periodic autosave, shutdown
@@ -949,18 +976,64 @@ func (s *Session) ownsPersistedState(path string, existingDigest [sha256.Size]by
 // digest + probe path this fast path exists to avoid (#6607) merely to
 // republish a derived index. The caller republishes those derived files
 // directly instead — see flushDeferredDerivedFiles.
-func (s *Session) snapshotUpToDate(path string) bool {
+// snapshotNoOpReason reports why a defensive snapshot may skip the write
+// entirely: "" when it may not, "save-verified" when the baseline came from a
+// completed save in this process, and "clean-load" when the baseline came from
+// a load that proved the in-memory transcript identical to the ledger-backed
+// disk transcript (任务 831②). A clean-load no-op must not fire on a repaired
+// or damaged load — the first save still owns those fixes — nor on a
+// first-paint tail window, whose transcript is a subset of the disk
+// transcript, and never before the baseline's revision is a real ledger value.
+//
+// The memory-side guards above are not sufficient on their own: another
+// runtime can extend the log after this baseline was recorded, and a save that
+// is genuinely behind must surface the stale-prefix conflict rather than skip
+// (TestDAGSaveBehindDiskReportsStalePrefix). So the fast path re-verifies the
+// disk before it claims anything: the event log must still end exactly where
+// the baseline saw it, and the ledger must still describe the baseline digest.
+// Both checks are small fixed-size reads (one stat, one sidecar read) — the
+// cost the no-op exists to avoid is the full-transcript serialize + digest,
+// which stays gone.
+func (s *Session) snapshotNoOpReason(path string) string {
 	key := canonicalSessionSavePath(path)
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.persisted.ok &&
-		s.persisted.saveVerified &&
-		s.persisted.path == key &&
-		s.persisted.version == s.version &&
-		s.persisted.revisionKnown &&
-		s.rewriteVersion == s.persistedRewriteVersion &&
-		!s.normalizedDirty &&
-		!s.eventLogDamaged
+	if !s.persisted.ok || s.persisted.path != key ||
+		s.persisted.version != s.version ||
+		!s.persisted.revisionKnown ||
+		s.rewriteVersion != s.persistedRewriteVersion ||
+		s.normalizedDirty || s.eventLogDamaged || s.tailTruncated {
+		s.mu.RUnlock()
+		return ""
+	}
+	baselineTail := s.persisted.logTail
+	baselineRevision := s.persisted.revision
+	baselineDigest := s.persisted.digest
+	armed := "save-verified"
+	if !s.persisted.saveVerified {
+		if !s.persisted.cleanLoad {
+			s.mu.RUnlock()
+			return ""
+		}
+		armed = "clean-load"
+	}
+	s.mu.RUnlock()
+	// Disk re-verification. A missing or resized log means someone wrote —
+	// fall through to the full path, which owns conflict semantics.
+	if info, err := os.Stat(store.SessionEventLog(path)); err != nil || info.Size() != baselineTail {
+		return ""
+	}
+	rev, ledgerDigest, err := sessionContentRevision(path)
+	if err != nil || rev != baselineRevision || ledgerDigest != digestString(baselineDigest) {
+		return ""
+	}
+	return armed
+}
+
+// snapshotUpToDate reports that the transcript this session holds is exactly
+// what the ledger already describes, so a snapshot can skip the serialize +
+// digest + probe entirely (#6607).
+func (s *Session) snapshotUpToDate(path string) bool {
+	return s.snapshotNoOpReason(path) != ""
 }
 
 func (s *Session) persistState(path string) sessionPersistState {
@@ -1653,7 +1726,12 @@ func loadSessionWithReader(path string, read func(*sessionTranscriptHasher) (ses
 			if ok {
 				revision = meta.Revision
 			}
-			s.markPersistedFromLoad(path, digest, s.version, revision, s.rewriteVersion, diskView)
+			// 任务 831②: the clean-load snapshot no-op additionally requires
+			// the sidecar to agree with the decoded transcript. A missing
+			// sidecar, or one whose digest lags the bytes (interrupted save),
+			// keeps the first save on the full path that heals the ledger.
+			ledgerClean := ok && strings.TrimSpace(meta.ContentDigest) == digestString(digest)
+			s.markPersistedFromLoad(path, digest, s.version, revision, s.rewriteVersion, diskView, ledgerClean)
 		}
 	}
 	return s, nil

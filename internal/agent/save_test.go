@@ -170,18 +170,11 @@ func TestSnapshotUpToDateFastPath(t *testing.T) {
 		t.Fatal("snapshotUpToDate = true for a different path")
 	}
 
-	// Deterministic proof the disk is untouched: scribble on the event log and
-	// snapshot again. The fast path skips entirely, so the scribble survives; a
-	// full save would detect and repair/truncate it.
+	// The no-op leaves the disk byte-identical when the log is exactly as the
+	// baseline recorded it (任务 831②: the skip now re-verifies the log tail
+	// and the ledger identity first — a handful of fixed-size reads, still no
+	// serialize, no digest, no full replay).
 	logPath := store.SessionEventLog(path)
-	f, err := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		t.Fatalf("open log: %v", err)
-	}
-	if _, err := f.Write([]byte("{torn")); err != nil {
-		t.Fatalf("scribble: %v", err)
-	}
-	f.Close()
 	before, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("read log: %v", err)
@@ -195,6 +188,32 @@ func TestSnapshotUpToDateFastPath(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Fatal("no-op snapshot touched the disk — fast path did not fire")
+	}
+
+	// A log that was modified behind the baseline's back (the scribble below)
+	// is no longer provably ours, so the fast path must stand down and the
+	// full save heals it — a defensive snapshot must never paper over external
+	// writes.
+	f, err := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		t.Fatalf("open log: %v", err)
+	}
+	if _, err := f.Write([]byte("{torn")); err != nil {
+		t.Fatalf("scribble: %v", err)
+	}
+	f.Close()
+	if s.snapshotUpToDate(path) {
+		t.Fatal("snapshotUpToDate = true with a modified event log behind the baseline")
+	}
+	if err := s.SaveSnapshot(path); err != nil {
+		t.Fatalf("full SaveSnapshot after scribble: %v", err)
+	}
+	healed, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read healed log: %v", err)
+	}
+	if string(healed) == string(before)+"{torn" {
+		t.Fatal("scribbled log survived the save — the disk re-verification did not stand down")
 	}
 
 	// Any transcript change re-arms the full path, which heals the scribble
@@ -219,12 +238,20 @@ func TestSnapshotUpToDateFastPath(t *testing.T) {
 	if got := loaded.Messages[len(loaded.Messages)-1].Content; got != "again" {
 		t.Fatalf("reloaded tail = %q, want %q", got, "again")
 	}
-	// A load-adopted baseline must NOT arm the fast path: the ledger can lag
-	// the transcript after an interrupted save, and the first save after a
-	// load is the one that heals it (see
-	// TestSameContentSaveHealsStaleLedgerDigest).
-	if loaded.snapshotUpToDate(path) {
-		t.Fatal("snapshotUpToDate = true for a freshly loaded session")
+	// 任务 831② semantic change: a load that came back clean AND whose ledger
+	// sidecar agrees with the decoded transcript now DOES arm the fast path —
+	// the load itself proved the in-memory transcript is exactly what the
+	// ledger describes, so the first defensive snapshot after a resume skips
+	// instead of re-running the full marshal+digest pass. The stale-ledger
+	// concern the old assertion covered (interrupted save: bytes landed, the
+	// sidecar did not) is covered narrowly below and by
+	// TestSameContentSaveHealsStaleLedgerDigest — those loads still save in
+	// full on first write.
+	if got := loaded.snapshotNoOpReason(path); got != "clean-load" {
+		t.Fatalf("snapshotNoOpReason for a freshly loaded session = %q, want clean-load", got)
+	}
+	if !loaded.snapshotUpToDate(path) {
+		t.Fatal("snapshotUpToDate = false for a clean load with an agreeing ledger")
 	}
 
 	// A pending rewrite (compaction/rewind) also disarms the fast path.

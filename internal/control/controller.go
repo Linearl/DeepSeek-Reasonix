@@ -4544,12 +4544,16 @@ func (c *Controller) snapshotWithDurability(markActivity, forceRewrite, shutdown
 	// UpdatedAt exactly like the previous TouchBranchMeta did; false preserves it
 	// like SetBranchModelPreserveUpdated. The single write subsumes the old
 	// EnsureBranchMeta / SetBranchModel / TouchBranchMeta sequence.
-	preview, turns := agent.SessionPreviewFromMessages(s.Snapshot())
+	// 任务 831②: the transcript copy is taken once — the listing projection and
+	// the v4 bridge sync used to call s.Snapshot() independently, doubling the
+	// (shallow but O(messages)) copy on every defensive large-session save.
+	finalMsgs := s.Snapshot()
+	preview, turns := agent.SessionPreviewFromMessages(finalMsgs)
 	if err := updateSessionListingProjection(s, path, modelRef, preview, turns, markActivity); err != nil && !listingDeferredAfterUnlockedAppend(s, path, err) {
 		return transcriptDurable, err
 	}
 	if c.sessionV4 != nil {
-		if syncErr := c.sessionV4.SyncAgentTranscript(context.Background(), path, s.Snapshot()); syncErr != nil {
+		if syncErr := c.sessionV4.SyncAgentTranscript(context.Background(), path, finalMsgs); syncErr != nil {
 			logSessionV4Bridge(syncErr, "snapshot-sync", path)
 		}
 	}

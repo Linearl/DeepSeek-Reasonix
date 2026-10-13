@@ -130,3 +130,41 @@ func TestLoadSessionTranscriptTailLeavesSmallSessionsAlone(t *testing.T) {
 		t.Fatalf("small-session load changed: %v vs %v", dagContents(tail.msgs), dagContents(plain.msgs))
 	}
 }
+
+// TestSessionDAGTailWindowStartHandlesOversizedLines pins the 任务 831③ fix:
+// one entry can be a single JSON line far longer than the old fixed 64KiB snap
+// probe, and a log of such entries (large tool results, big pastes) must still
+// get a window — the fixed probe found no newline inside the first line and
+// silently disabled the tail window, falling back to the full replay exactly
+// for the oversized sessions the window exists for.
+func TestSessionDAGTailWindowStartHandlesOversizedLines(t *testing.T) {
+	path := dagTestSession(t)
+	logPath := store.SessionEventLog(path)
+	base := time.Date(2026, 2, 1, 9, 0, 0, 0, time.UTC)
+	entries := []sessionDAGEntry{{Type: sessionDAGTypeLog, Generation: 1, At: base}}
+	parent := ""
+	for i := 0; i < 48; i++ {
+		id := "B" + strconv.Itoa(i)
+		// 1MiB per entry: every line dwarfs the old probe window.
+		content := "b" + strconv.Itoa(i) + ":" + strings.Repeat("x", 1<<20)
+		m := dagMsg(provider.RoleUser, content, id)
+		entries = append(entries, dagMessageEntry(t, SessionMainHead, parent, "t1", m, base.Add(time.Duration(i)*time.Second)))
+		parent = id
+	}
+	dagAppend(t, path, entries...)
+
+	start, ok := sessionDAGTailWindowStart(logPath, 1<<20)
+	if !ok {
+		t.Fatal("window start unavailable behind oversized lines; the tail window is dead for large-message sessions")
+	}
+	st, err := replaySessionDAGTail(context.Background(), logPath, 1<<20, defaultSessionReplayLimits)
+	if err != nil {
+		t.Fatalf("replay from the oversized-line window: %v", err)
+	}
+	if st.damaged || len(st.nodes) == 0 {
+		t.Fatalf("oversized-line window replay damaged=%v nodes=%d", st.damaged, len(st.nodes))
+	}
+	if start <= 0 {
+		t.Fatalf("window start = %d, want a forward cut", start)
+	}
+}

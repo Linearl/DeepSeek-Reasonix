@@ -10,15 +10,18 @@ import (
 	"reasonix/internal/control"
 )
 
-// P14 (SetActiveTab 移出锁等待) 的 desktop 层验收：
-// ① save-path 锁被占时 SetActiveTab 短时限内返回且切换成功；
-// ② 降级路径把落盘交给 tabSnapshotLoop，锁释放后数据最终落盘；
-// ③ 锁空闲时内联快照、不产生后台重复刷新；
-// ④ 无 try-lock 能力的 controller 保持原有同步快照行为。
+// P14 (SetActiveTab 移出锁等待) + 任务 831① (切出快照完全异步化) 的 desktop 层验收：
+// ① save-path 锁被占时 SetActiveTab 短时限内返回且切换成功（P14 原验收）；
+// ② 降级路径把落盘交给 tabSnapshotLoop，锁释放后数据最终落盘（P14 原验收）；
+// ③ 831① 语义变更：save-path 空闲时也不再内联快照——切换立即返回，快照由
+//    后台单飞补做（728MB 会话的 snapshot_ms=1000 不再落在切换路径上）；
+// ④ 831① 语义变更：无 try-lock 能力的 legacy controller 同样转后台，
+//    切换路径上不存在任何同步快照回落。
 
-// switchSavePathCtrl wraps a real controller: the try-lock form reports
-// contention per flag, while the plain Snapshot blocks until released so any
-// synchronous lock wait would hang the test instead of passing it.
+// switchSavePathCtrl wraps a real controller: Snapshot blocks until released
+// so any synchronous lock wait would hang the test instead of passing it.
+// Since 831① the switch path never calls SnapshotIfSavePathFree; the fake
+// keeps the method to prove it stays uncalled from SetActiveTab.
 type switchSavePathCtrl struct {
 	control.SessionAPI
 
@@ -55,6 +58,10 @@ func newSwitchSavePathFixture(t *testing.T) (*App, *WorkspaceTab, *switchSavePat
 		Scope:       "global",
 		Ready:       true,
 		disabledMCP: map[string]ServerView{},
+		// 测试环境 a.ctx==nil 时 lazy controller build 是同步的（整段 boot
+		// 3-4s），会把 SetActiveTab 拖过断言窗——本组测试只关心切换与快照
+		// 的时序，不关心 build，占位一个 buildCancel 把 lazy build 关掉。
+		buildCancel: func() {},
 	}
 	a.tabOrder = []string{"test_tab", "target_tab"}
 	fake := &switchSavePathCtrl{
@@ -83,8 +90,10 @@ func TestSetActiveTabReturnsWhileSavePathBusy(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("SetActiveTab blocked while the save path was busy; want an immediate switch")
 	}
-	if got := fake.tryLockCalls.Load(); got != 1 {
-		t.Fatalf("SnapshotIfSavePathFree calls = %d, want 1", got)
+	// 831①: the try-lock is gone from the switch path entirely — busy or not,
+	// the flush is handed to the background loop.
+	if got := fake.tryLockCalls.Load(); got != 0 {
+		t.Fatalf("SnapshotIfSavePathFree calls = %d, want 0 (switch must not snapshot inline)", got)
 	}
 
 	// 降级路径：后台刷新被排上，且其 Snapshot 会阻塞到我们放行——证明刷新
@@ -100,43 +109,60 @@ func TestSetActiveTabReturnsWhileSavePathBusy(t *testing.T) {
 	waitForFile(t, path, "remember this turn")
 }
 
-func TestSetActiveTabSnapshotsInlineWhenPathFree(t *testing.T) {
-	a, _, fake, _ := newSwitchSavePathFixture(t)
+// TestSetActiveTabHandsSnapshotToBackgroundLoop is the 831① form of the old
+// inline-on-free-path assertion: a free save path must behave exactly like a
+// busy one — the switch returns while the loop's (blocked) Snapshot proves the
+// flush runs on the background goroutine, not inside the click.
+func TestSetActiveTabHandsSnapshotToBackgroundLoop(t *testing.T) {
+	a, tab, fake, _ := newSwitchSavePathFixture(t)
 
-	if err := a.SetActiveTab("target_tab"); err != nil {
-		t.Fatalf("SetActiveTab on free save path: %v", err)
-	}
-	if a.activeTabID != "target_tab" {
-		t.Fatalf("active tab = %q, want target_tab", a.activeTabID)
-	}
-	if got := fake.tryLockCalls.Load(); got != 1 {
-		t.Fatalf("SnapshotIfSavePathFree calls = %d, want 1", got)
-	}
-	// 空闲路径内联完成、无后台刷新：留给后台循环一个观察窗，Snapshot 必须
-	// 保持零调用。
-	deadline := time.Now().Add(300 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if got := fake.snapshotCalls.Load(); got != 0 {
-			t.Fatalf("free-path switch scheduled a background snapshot (%d calls), want none", got)
+	switched := make(chan error, 1)
+	go func() { switched <- a.SetActiveTab("target_tab") }()
+	select {
+	case err := <-switched:
+		if err != nil {
+			t.Fatalf("SetActiveTab with a pending background snapshot: %v", err)
 		}
-		time.Sleep(10 * time.Millisecond)
+		if a.activeTabID != "target_tab" {
+			t.Fatalf("active tab = %q, want target_tab", a.activeTabID)
+		}
+	case <-time.After(3 * time.Second):
+		// The loop's Snapshot is held on fake.release, so an inline snapshot
+		// would hang exactly here.
+		t.Fatal("SetActiveTab waited for the snapshot; want an immediate switch with the flush in the background")
 	}
+	if got := fake.tryLockCalls.Load(); got != 0 {
+		t.Fatalf("SnapshotIfSavePathFree calls = %d, want 0 (no try-lock on the switch path)", got)
+	}
+	select {
+	case <-fake.snapshotBegan:
+	case <-time.After(5 * time.Second):
+		t.Fatal("background snapshot loop did not pick up the switch flush")
+	}
+	close(fake.release)
+	waitForAutosaveIdleWithin(t, tab, autosaveTestTimeout)
 }
 
 // legacySnapshotCtrl has no SnapshotIfSavePathFree capability (a bare override
-// wrapper), so snapshotTabForSwitch must keep the previous blocking form.
+// wrapper). Since 831① the switch path has no blocking fallback: legacy
+// controllers degrade to the same background loop.
 type legacySnapshotCtrl struct {
 	control.SessionAPI
 
 	snapshotCalls atomic.Int32
+	snapshotOnce  sync.Once
+	snapshotBegan chan struct{}
+	release       chan struct{}
 }
 
 func (c *legacySnapshotCtrl) Snapshot() error {
 	c.snapshotCalls.Add(1)
+	c.snapshotOnce.Do(func() { close(c.snapshotBegan) })
+	<-c.release
 	return c.SessionAPI.Snapshot()
 }
 
-func TestSetActiveTabLegacyControllerStillSnapshotsInline(t *testing.T) {
+func TestSetActiveTabLegacyControllerAlsoDefersToBackground(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "p14-legacy.jsonl")
 	a, tab := appWithTab(t, path)
 	a.tabs["target_tab"] = &WorkspaceTab{
@@ -144,18 +170,34 @@ func TestSetActiveTabLegacyControllerStillSnapshotsInline(t *testing.T) {
 		Scope:       "global",
 		Ready:       true,
 		disabledMCP: map[string]ServerView{},
+		buildCancel: func() {}, // 见 newSwitchSavePathFixture：免同步 lazy build
 	}
 	a.tabOrder = []string{"test_tab", "target_tab"}
-	fake := &legacySnapshotCtrl{SessionAPI: tab.Ctrl}
+	fake := &legacySnapshotCtrl{
+		SessionAPI:    tab.Ctrl,
+		snapshotBegan: make(chan struct{}),
+		release:       make(chan struct{}),
+	}
 	tab.Ctrl = fake
 
-	if err := a.SetActiveTab("target_tab"); err != nil {
-		t.Fatalf("SetActiveTab with legacy controller: %v", err)
+	switched := make(chan error, 1)
+	go func() { switched <- a.SetActiveTab("target_tab") }()
+	select {
+	case err := <-switched:
+		if err != nil {
+			t.Fatalf("SetActiveTab with legacy controller: %v", err)
+		}
+		if a.activeTabID != "target_tab" {
+			t.Fatalf("active tab = %q, want target_tab", a.activeTabID)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("SetActiveTab ran the legacy blocking snapshot inline; want a background hand-off")
 	}
-	if a.activeTabID != "target_tab" {
-		t.Fatalf("active tab = %q, want target_tab", a.activeTabID)
+	select {
+	case <-fake.snapshotBegan:
+	case <-time.After(5 * time.Second):
+		t.Fatal("legacy controller flush was not scheduled in the background")
 	}
-	if got := fake.snapshotCalls.Load(); got != 1 {
-		t.Fatalf("inline Snapshot calls = %d, want 1", got)
-	}
+	close(fake.release)
+	waitForAutosaveIdleWithin(t, tab, autosaveTestTimeout)
 }

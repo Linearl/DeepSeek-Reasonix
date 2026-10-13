@@ -198,22 +198,39 @@ func (a *App) HistoryPageForTab(tabID string, beforeTurn, limit int) HistoryPage
 	msgs := ctrl.History()
 	status := ctrl.RuntimeStatus()
 	idle := !status.Running && !status.PendingPrompt && !ctrl.SessionHasUnsavedChanges()
+	// 任务 831③: whether the page below came from a first-paint tail window —
+	// its message slice is a subset of the transcript, so the fingerprint must
+	// come from the ledger identity instead of the window content.
+	tailOnly := false
 	// Session-v4 experiment: when idle, prefer the durable v4 projection via
 	// Query so history browsing exercises the v4 store. Live turns keep the
 	// agent in-memory history until the next Snapshot mirrors into v4.
 	if idle && strings.TrimSpace(path) != "" {
+		loaded := false
 		if c, ok := ctrl.(*control.Controller); ok {
 			if v4 := c.SessionV4(); v4 != nil {
 				if v4Msgs, hit := v4.HistoryMessages(context.Background(), path); hit {
 					msgs = v4Msgs
-				} else if loaded, ok := silentLoadSessionSnapshot("history_page_v4_fallback", path); ok {
-					msgs = loaded
+					loaded = true
 				}
-			} else if loaded, ok := silentLoadSessionSnapshot("history_page_v4_fallback", path); ok {
-				msgs = loaded
 			}
-		} else if loaded, ok := silentLoadSessionSnapshot("history_page_v4_fallback", path); ok {
-			msgs = loaded
+		}
+		if !loaded {
+			if beforeTurn > 0 {
+				// 翻旧页：需要窗口之前的完整内容，走全量加载。同进程内这一笔
+				// 已被 P18-R1 load 缓存与 DAG 图缓存摊薄为 O(materialize)；
+				// 冷启动后第一次翻旧才付一次全量解码。
+				if l, ok := silentLoadSessionSnapshot("history_page_v4_fallback", path); ok {
+					msgs = l
+				}
+			} else if l, truncated, ok := silentLoadSessionTailSnapshot("history_page_tail", path); ok {
+				// 首屏（beforeTurn==0）只载尾部：831③ 把 v4 miss 时的全量解码
+				// （728MB 会话切入的 history/bridge 3335ms）砍到 20MiB 尾窗；
+				// 小日志在 loader 内部直通全量，行为不变。更早内容由前端翻页
+				// （beforeTurn>0）再补。
+				msgs = l
+				tailOnly = truncated
+			}
 		}
 	}
 	page := historyPageFromProviderMessages(
@@ -224,8 +241,32 @@ func (a *App) HistoryPageForTab(tabID string, beforeTurn, limit int) HistoryPage
 		beforeTurn,
 		limit,
 	)
+	if tailOnly {
+		// 尾窗页的指纹必须取持久层身份（全量语义的 digest/revision），不能取
+		// 窗口内容的 digest——否则前端驻留缓存用它与下次切换的 fresh meta 对
+		// 比必然失配，秒开 fast path 就被尾窗本身打破了。
+		return tailPageFingerprint(page, path)
+	}
 	digest, _ := agent.ContentDigestForMessages(msgs)
 	return historyPageWithFingerprint(page, path, digest)
+}
+
+// tailPageFingerprint fingerprints a first-paint tail page with the session's
+// durable ledger identity (任务 831③): the digest/revision pair a full page
+// would carry, so the frontend's resident-cache freshness checks keep matching
+// across tail and full pages. HasOlder is forced on because the tail window
+// only arms for logs above the first-paint threshold — there is always
+// un-loaded history in front of the window, and the older pages refill through
+// the beforeTurn>0 full load.
+func tailPageFingerprint(page HistoryPage, sessionPath string) HistoryPage {
+	if state, ok, err := agent.SessionContentIdentity(sessionPath); err == nil && ok {
+		page.Digest = state.DigestHex
+		if state.RevisionKnown {
+			page.Revision = state.Revision
+		}
+	}
+	page.HasOlder = true
+	return page
 }
 
 func historyPageWithFingerprint(page HistoryPage, sessionPath, contentDigest string) HistoryPage {

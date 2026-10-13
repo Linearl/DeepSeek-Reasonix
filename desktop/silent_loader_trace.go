@@ -89,3 +89,22 @@ func silentLoadSessionSnapshot(callpoint, path string) ([]provider.Message, bool
 	tr.finish(nil, len(msgs))
 	return msgs, true
 }
+
+// silentLoadSessionTailSnapshot is the first-paint form of
+// silentLoadSessionSnapshot (任务 831③): it goes through agent.LoadSessionTail,
+// so a very large schema-2 log decodes only its trailing window instead of the
+// whole file — the cold-start side of the tab-switch cost — and reports
+// truncated so the caller can fingerprint the page against the ledger identity
+// rather than the window content. Sessions below the tail threshold load in
+// full with truncated=false and behave exactly like the non-tail form.
+func silentLoadSessionTailSnapshot(callpoint, path string) (msgs []provider.Message, truncated bool, ok bool) {
+	tr := beginSilentLoader(callpoint, path)
+	loaded, err := agent.LoadSessionTail(path)
+	if err != nil || loaded == nil {
+		tr.finish(err, -1)
+		return nil, false, false
+	}
+	msgs = loaded.Snapshot()
+	tr.finish(nil, len(msgs))
+	return msgs, loaded.TailTruncated(), true
+}
