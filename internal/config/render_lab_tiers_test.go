@@ -76,6 +76,8 @@ func allLabSwitchesOn() *Config {
 	// storage
 	c.SessionStorage = "dual_write_read_v4"
 	c.EventsAutoRotation = "auto"
+	// 任务 846：配置数据目录可更改（storage 组，未稳定档，默认关）。
+	c.Desktop.ExperimentalHomePointer = true
 	// infra（785 退役 baseProcess 条目）
 	c.Agent.ExperimentalRuntimeReuse = true
 	c.Desktop.ExperimentalZcodeTaskBus = true
@@ -212,7 +214,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// 任务 783④：toolOptimizations 转正（14→13）。任务 785：baseProcess
 		// （S1 常驻底座开关）随底座退役出表（13→12，总数 51→50）。任务 790：
 		// acpListen（ACP 常驻监听，默认关）入表未稳定档（12→13，总数 50→51）。
-		LabTierUnstable: 13,
+		// 任务 846：homePointer（配置数据目录可更改，默认关）入表未稳定档
+		// （13→14，总数 54→55）。
+		LabTierUnstable: 14,
 		LabTierRetired:  0,
 	}
 	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
@@ -239,7 +243,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 54 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 54", len(labFeatureTiers))
+	if len(labFeatureTiers) != 55 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 55", len(labFeatureTiers))
 	}
 }

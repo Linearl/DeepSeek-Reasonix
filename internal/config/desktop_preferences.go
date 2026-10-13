@@ -455,6 +455,17 @@ type DesktopConfig struct {
 	// 127.0.0.1 when ExperimentalACPListen is on. 0 (the default) means 8790 —
 	// next to, but never colliding with, the task bus endpoint on 8787.
 	ACPListenPort int `toml:"acp_listen_port"`
+	// ExperimentalHomePointer is the task-846 lab switch for changing the
+	// Reasonix data home through the settings wizard (home-pointer.json +
+	// transactional copy→verify→swap-pointer migration). It ships OFF
+	// (铁律 2 / 验收 1): with the zero value the settings page shows no entry
+	// and the wizard cannot start. The switch gates the WRITE path only — the
+	// startup honours an existing home-pointer.json regardless, because the
+	// pointer only ever exists after the user walked the gated wizard (or
+	// flipped the switch on earlier), and hiding the entry must not strand a
+	// migrated home behind an unreachable reset control. Reset-to-default
+	// lives behind the same switch.
+	ExperimentalHomePointer bool `toml:"experimental_home_pointer"`
 }
 
 // DesktopQuestionSearchEnabled reports whether the topic-bar question-search

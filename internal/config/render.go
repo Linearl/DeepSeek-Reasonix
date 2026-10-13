@@ -116,9 +116,12 @@ var labFeatureTiers = []labFeatureTier{
 	// ── dev-debug（开发调试，2 项）───────────────────────────────
 	{"cdpDebugPort", LabTierUnstable, []string{"experimental_cdp_debug_port"}},
 	{"lifecycleNoiseGate", LabTierUnstable, []string{"experimental_lifecycle_noise_gate"}},
-	// ── storage（存储，2 项）────────────────────────────────────
+	// ── storage（存储，3 项；846 增 homePointer）──────────────────
 	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation"}},
 	{"sessionStorage", LabTierUnstable, []string{"session_storage"}},
+	// 任务 846：配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
+	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
+	{"homePointer", LabTierUnstable, []string{"experimental_home_pointer"}},
 	// ── infra（基础设施，7 项；785 退役 S1 baseProcess，790 增 acpListen）──────
 	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
@@ -448,6 +451,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "acp_listen_port = %d   # desktop: resident ACP listener port on 127.0.0.1 (task 790; 0 = default 8790)\n", c.Desktop.ACPListenPort)
 		fmt.Fprintf(&b, "experimental_path_rules = %v   # desktop: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md, task 134)\n", c.Desktop.ExperimentalPathRules)
 		fmt.Fprintf(&b, "experimental_local_server = %v   # desktop: expose Settings → Local server (task 130)\n", c.Desktop.ExperimentalLocalServer)
+		// Task 846: fixed-key-set rule — an unlisted key would be dropped on
+		// every save and the lab switch would flip itself back off.
+		fmt.Fprintf(&b, "experimental_home_pointer = %v   # desktop: expose the change-data-home lab card + transactional migration wizard (task 846; off = no entry, no pointer file, zero behaviour)\n", c.Desktop.ExperimentalHomePointer)
 		fmt.Fprintf(&b, "max_cached_tabs = %d   # desktop: resident tab-state limit for the LRU prune (0 = unlimited, task 161)\n", c.Desktop.MaxCachedTabs)
 		fmt.Fprintf(&b, "history_body_budget_mb = %d   # desktop: transcript body cache ceiling in MiB (task 161; 0 = default 192)\n", c.Desktop.HistoryBodyBudgetMb)
 		fmt.Fprintf(&b, "markdown_budget_mb = %d   # desktop: markdown parse-cache ceiling in MiB (task 161; 0 = default 256)\n", c.Desktop.MarkdownBudgetMb)

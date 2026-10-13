@@ -1211,6 +1211,17 @@ func (c *Config) SetExperimentalACPListen(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalHomePointer toggles the task-846 lab entry for changing the
+// Reasonix data home. It ships off (铁律 2 / 验收 1): off hides the settings
+// entry and blocks the migration wizard. It gates the WRITE path only — the
+// startup honours an existing home-pointer.json regardless, so hiding the
+// entry cannot strand an already-migrated home behind an unreachable reset
+// control.
+func (c *Config) SetExperimentalHomePointer(enabled bool) error {
+	c.Desktop.ExperimentalHomePointer = enabled
+	return nil
+}
+
 // SetACPListenPort records the resident ACP listener's loopback port (task
 // 790). 0 keeps the 8790 default; the value is read once at desktop boot.
 func (c *Config) SetACPListenPort(port int) error {
