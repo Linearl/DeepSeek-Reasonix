@@ -115,7 +115,7 @@ func TestACPListenOnHostsEndpoint(t *testing.T) {
 	var resp struct {
 		ID     *json.Number `json:"id"`
 		Result struct {
-			ProtocolVersion int    `json:"protocolVersion"`
+			ProtocolVersion int `json:"protocolVersion"`
 			AgentInfo       struct {
 				Name string `json:"name"`
 			} `json:"agentInfo"`

@@ -37,12 +37,12 @@ type HomePointerStatusView struct {
 // HomeMigrationPreviewView is the wizard's step-2 payload: validation result,
 // advisory warnings, and the six risks to acknowledge.
 type HomeMigrationPreviewView struct {
-	Valid    bool                  `json:"valid"`
-	Source   string                `json:"source"`
-	Target   string                `json:"target"`
-	Warnings []string              `json:"warnings"`
-	Error    string                `json:"error"`
-	Risks    []homemigrate.Risk    `json:"risks"`
+	Valid    bool               `json:"valid"`
+	Source   string             `json:"source"`
+	Target   string             `json:"target"`
+	Warnings []string           `json:"warnings"`
+	Error    string             `json:"error"`
+	Risks    []homemigrate.Risk `json:"risks"`
 }
 
 // HomeMigrationResultView is Execute's terminal outcome.
