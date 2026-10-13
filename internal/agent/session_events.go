@@ -928,6 +928,53 @@ func readSessionEventIndex(sessionPath string) (*sessionEventIndex, error) {
 	return &idx, nil
 }
 
+// SessionEventIndexSummary is the desktop-facing projection of the event index
+// sidecar: the authoritative message count, the ledger-aligned identity, and
+// the log size the index was published against. 任务 836: the cold-history
+// tail-window first paint uses it to translate the window's relative message
+// indexes back into absolute provider-message indexes and to prove — before
+// any window read — that the index still describes the log on disk. Reading it
+// is one small sidecar decode; message bodies are never touched.
+type SessionEventIndexSummary struct {
+	MessageCount int
+	// Revision/RevisionKnown carry the listing index's revision. The schema-2
+	// head index records no revision; callers then bind the identity by
+	// ContentDigest alone.
+	Revision      int64
+	RevisionKnown bool
+	DigestHex     string
+	LogSize       int64
+}
+
+// SessionEventIndexSummaryOf reads the event index sidecar. ok=false means the
+// sidecar is missing (legacy sessions have none); an unreadable or
+// unsupported sidecar surfaces as an error so callers can keep their
+// synchronous path instead of guessing. Both published shapes are accepted:
+// the schema-2 head index a DAG log writes and the schema-1 listing index —
+// whichever the save chain last published at the shared sidecar path.
+func SessionEventIndexSummaryOf(sessionPath string) (SessionEventIndexSummary, bool, error) {
+	if head, err := ReadSessionHeadIndex(sessionPath); err != nil {
+		return SessionEventIndexSummary{}, false, err
+	} else if head != nil && head.SchemaVersion == sessionDAGSchemaVersion {
+		return SessionEventIndexSummary{
+			MessageCount: head.MessageCount,
+			DigestHex:    head.ContentDigest,
+			LogSize:      head.LogSize,
+		}, true, nil
+	}
+	idx, err := readSessionEventIndex(sessionPath)
+	if err != nil || idx == nil {
+		return SessionEventIndexSummary{}, false, err
+	}
+	return SessionEventIndexSummary{
+		MessageCount:  idx.MessageCount,
+		Revision:      idx.Revision,
+		RevisionKnown: true,
+		DigestHex:     idx.ContentDigest,
+		LogSize:       idx.LogSize,
+	}, true, nil
+}
+
 func writeSessionEventIndex(path string, msgs []provider.Message, digest [sha256.Size]byte, revision int64) error {
 	return writeSessionEventIndexContext(context.Background(), path, msgs, digest, revision)
 }

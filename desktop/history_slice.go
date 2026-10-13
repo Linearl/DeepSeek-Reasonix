@@ -292,6 +292,14 @@ type historySliceSource struct {
 	// errors are propagated all the way to the cold read instead of being
 	// mistaken for an empty window and indexing past its end.
 	fetch func(lo, hi int) ([]provider.Message, error)
+	// windowLo is the first absolute message index the source can serve (0 for
+	// full-coverage sources). 任务 836: the cold tail-window source only holds
+	// the trailing window of the transcript, so cross-page lookups (planner
+	// priming, todo derivation) start here instead of failing on the
+	// unreachable prefix. The derived state is then the window's view — a
+	// documented short-term annotation that heals once the background
+	// self-heal republishes the full index and later pages hit it.
+	windowLo int
 	// windowBytes estimates the raw transcript span of [lo, hi); 0 means
 	// unbounded-but-cheap (in-memory). Used to cap cold-path reads.
 	windowBytes func(lo, hi int) int64
@@ -652,6 +660,100 @@ func (a *App) coldHistorySlice(sessionDir, path string, req HistorySliceRequest,
 	return slice, err
 }
 
+// coldTailHistorySource builds the 任务 836 first-paint tail-window source for
+// a cold read whose display index is missing or stale. Instead of paying the
+// full streaming scan or the full event-log replay before the first page can
+// be cut, it decodes only the trailing window of the authoritative event log
+// via LoadSessionTail — the same 20MiB first-paint window the hydrate path
+// uses (831③) — and translates the window's relative indexes back into
+// absolute provider-message indexes through the event index sidecar. The full
+// self-heal (index scan / read-model repair) is left to the caller's
+// background kick.
+//
+// Preconditions (any miss reports ok=false and the caller keeps the original
+// synchronous path):
+//   - the request is a latest-page request (cursor empty; a cursor names an
+//     absolute index the window cannot serve — those keep the full path);
+//   - the ledger identity is known and the event index sidecar agrees with
+//     it, and the sidecar's recorded log size still matches the log on disk:
+//     the window provably reaches the authoritative end;
+//   - the load actually truncated (large log). Sub-threshold logs keep the
+//     original path, whose full replay is already cheap — that keeps every
+//     small-session behaviour byte-identical.
+//
+// Short-term annotations of a tail page (documented, self-healing): turn
+// numbers are derived inside the window from a zero base (rows before the
+// first visible user message in the window render without a turn label, and
+// TotalTurns is a lower bound); planner/todo derived state covers the window
+// only; the page fingerprint is the ledger identity — the same full-semantics
+// pair an index page carries — so a v2 cursor cut here stays valid once the
+// background self-heal republishes the index and later page requests hit it.
+func coldTailHistorySource(sessionPath string, identity agent.PersistedState, identityKnown bool, resolver func(string) string, tr *historySliceTrace) (*historySliceSource, *agent.Session, bool, error) {
+	if !identityKnown || strings.TrimSpace(identity.DigestHex) == "" {
+		return nil, nil, false, nil
+	}
+	summary, ok, err := agent.SessionEventIndexSummaryOf(sessionPath)
+	if err != nil || !ok || summary.MessageCount <= 0 {
+		return nil, nil, false, err
+	}
+	// The head-index shape records no revision, so the identity binds by
+	// digest alone; the listing-index shape must match on both.
+	if summary.DigestHex != identity.DigestHex || (summary.RevisionKnown && summary.Revision != identity.Revision) {
+		return nil, nil, false, nil
+	}
+	if logInfo, statErr := os.Stat(store.SessionEventLog(sessionPath)); statErr != nil || logInfo.IsDir() || logInfo.Size() != summary.LogSize {
+		return nil, nil, false, nil
+	}
+	var sess *agent.Session
+	var loadErr error
+	tr.run("cold-tail-read", func() { sess, loadErr = agent.LoadSessionTail(sessionPath) })
+	if loadErr != nil {
+		return nil, nil, false, loadErr
+	}
+	if sess == nil || !sess.TailTruncated() {
+		return nil, sess, false, nil
+	}
+	msgs := sess.Messages
+	lo := summary.MessageCount - len(msgs)
+	if lo <= 0 || len(msgs) == 0 {
+		return nil, sess, false, nil
+	}
+	epoch := int(identity.Revision)
+	turns := make([]int, summary.MessageCount)
+	roles := make([]provider.Role, summary.MessageCount)
+	turn := 0
+	for i, m := range msgs {
+		if isVisibleHistoryUser(m, resolver) {
+			turn++
+		}
+		turns[lo+i] = turn
+		roles[lo+i] = historyPersistedUserRole(m.Role, agent.IsPinnedContextRevision(m))
+	}
+	src := &historySliceSource{
+		sessionID:  strings.TrimSuffix(filepath.Base(sessionPath), ".jsonl"),
+		total:      summary.MessageCount,
+		turns:      turns,
+		roles:      roles,
+		totalTurns: turn,
+		revision:   identity.Revision,
+		revKnown:   true,
+		digest:     identity.DigestHex,
+		epoch:      epoch,
+		windowLo:   lo,
+		fetch: func(flo, fhi int) ([]provider.Message, error) {
+			if flo < lo || fhi < flo || fhi > summary.MessageCount {
+				return nil, fmt.Errorf("cold tail window [%d,%d) escapes the loaded span [%d,%d)", flo, fhi, lo, summary.MessageCount)
+			}
+			out := make([]provider.Message, fhi-flo)
+			copy(out, msgs[flo-lo:fhi-lo])
+			return out, nil
+		},
+	}
+	// cacheKey 有意留空：尾窗页的派生状态是窗口内视角，不得进入跨页派生
+	// 缓存（key 相同会污染后续全量页的 todo 状态）。
+	return src, sess, true, nil
+}
+
 // coldHistorySliceRead is the uncached cold read: a valid on-disk display
 // index + byte-offset reads serve the window; a missing/stale/corrupt index is
 // rebuilt by streaming scan (constant memory) and the first page is served
@@ -734,6 +836,39 @@ func (a *App) coldHistorySliceRead(sessionDir, sessionPath string, req HistorySl
 		slice.Source = "index"
 		tr.markSource(slice.Source)
 		return slice, nil
+	}
+
+	// 任务 836: the display index could not serve this read, and the
+	// synchronous fallbacks below are the measured cold-start stall (full
+	// streaming scan ~1290ms on a large transcript; full event-log replay
+	// seconds). A latest-page request gets its first paint from the trailing
+	// window of the authoritative event log instead — tens of ms — and the
+	// full self-heal (index scan, or the stronger read-model repair when the
+	// anchor is behind) runs single-flighted in the background. Cursor
+	// requests name absolute indexes the window cannot serve and keep the
+	// original paths below.
+	if req.Cursor == "" {
+		tailSrc, tailSess, ok, tailErr := coldTailHistorySource(sessionPath, identity, identityKnown, resolver, tr)
+		if tailErr != nil {
+			slog.Debug("desktop: cold tail-window first paint skipped", "path", sessionPath, "err", tailErr)
+		}
+		if ok && tailSrc != nil {
+			tailSrc.trace = tr
+			var plannerTurns []plannerDisplayTurn
+			tr.run("planner-turns", func() { plannerTurns = sessionPlannerDisplayTurns(sessionDir, sessionPath) })
+			slice, pageErr := a.pageHistorySliceSource(tailSrc, req, resolver, plannerTurns, nil, sessionPath)
+			if pageErr != nil {
+				return emptyHistorySlice(), pageErr
+			}
+			slice.Source = "cold-tail"
+			tr.markSource(slice.Source)
+			// A torn event log keeps the original semantics: the save chain
+			// owns healing it, so the background self-heal does not start.
+			if tailSess == nil || !tailSess.EventLogDamaged() {
+				a.kickColdHistorySelfHeal(sessionPath, identity)
+			}
+			return slice, nil
+		}
 	}
 
 	// A missing/corrupt sidecar is cheap to repair when the checkpoint itself is
@@ -1045,6 +1180,12 @@ func (a *App) pageHistorySliceSource(src *historySliceSource, req HistorySliceRe
 		// (system prompt), mirroring providerMessagesForVisibleTurnRange.
 		candidateLo = 0
 	}
+	// 任务 836: a tail-window source cannot serve the prefix before its window.
+	// When the turn budget (or the pre-turn inclusion above) reaches past it,
+	// the page simply starts at the window edge — HasOlder stays true and the
+	// older content arrives through the normal paging path once the background
+	// self-heal has republished the index.
+	candidateLo = max(candidateLo, src.windowLo)
 	// Cold-path raw-span cap: shrink the window forward while the byte span
 	// is excessive (image-dense windows).
 	if src.windowBytes != nil {
@@ -1227,12 +1368,15 @@ func extendHistoryToolResults(src *historySliceSource, window []provider.Message
 
 // forEachHistorySourceChunk decodes a bounded contiguous message window at a
 // time. It is the common primitive for the cross-page lookups below; callers
-// retain only their derived state, never the full transcript.
+// retain only their derived state, never the full transcript. Sources with a
+// windowLo prefix (任务 836 cold tail windows) start at windowLo: the
+// unreachable prefix is skipped rather than fetched, and the derived state
+// covers the window the source can actually serve.
 func forEachHistorySourceChunk(src *historySliceSource, end int, visit func([]provider.Message) error) error {
 	if end > src.total {
 		end = src.total
 	}
-	for lo := 0; lo < end; lo += historyLookupChunkMessages {
+	for lo := max(src.windowLo, 0); lo < end; lo += historyLookupChunkMessages {
 		hi := min(lo+historyLookupChunkMessages, end)
 		msgs, err := src.fetch(lo, hi)
 		if err != nil {
