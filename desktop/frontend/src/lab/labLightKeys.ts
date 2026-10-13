@@ -85,6 +85,8 @@ export const LAB_LIGHT_KEYS = {
   sessionStorageNonDefault: (s: SettingsView) => (s.sessionStorage ?? "v3_only") !== "v3_only",
   /** 会话存储灯半：事件日志轮转非 off（task 333）。 */
   eventsRotationNonDefault: (s: SettingsView) => (s.eventsAutoRotation ?? "manual") !== "off",
+  /** 数据目录灯：实验开关开（向导入口可见）即亮（task 846）。 */
+  homePointer: (s: SettingsView) => Boolean(s.experimentalHomePointer),
 } as const;
 
 /** The validation whitelist: every id a layout document may reference. */

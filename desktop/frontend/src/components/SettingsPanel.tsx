@@ -156,6 +156,7 @@ const MemorySettingsPage = lazy(() => import("./MemoryPanel").then((module) => (
 const SubagentsSettingsPage = lazy(() => import("./SubagentsPanel").then((module) => ({ default: module.SubagentsSettingsPage })));
 const DiagnosticsSettingsPage = lazy(() => import("./DiagnosticsSettingsPage").then((module) => ({ default: module.DiagnosticsSettingsPage })));
 const StorageSettingsPage = lazy(() => import("./StorageSettingsPage").then((module) => ({ default: module.StorageSettingsPage })));
+const HomePointerLabPane = lazy(() => import("./HomePointerLabPane").then((module) => ({ default: module.HomePointerLabPane })));
 const UsageStatsPanel = lazy(() => import("./UsageStatsPanel").then((module) => ({ default: module.UsageStatsPanel })));
 const QRCodeSVG = lazy(() => import("qrcode.react").then((module) => ({ default: module.QRCodeSVG })));
 
@@ -1925,6 +1926,8 @@ type ExperimentFeatureId =
   | "devDebug"
   | "updateFeedback"
   | "sessionStore"
+  // 任务 846: change-data-home wizard card (storage group; unstable, default off).
+  | "homePointer"
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
   | "toolOptimizations"
   // 任务 677: sidebar group-chat entry switch (the task-409 view landed
@@ -1972,6 +1975,8 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "monitoring",
   "devDebug",
   "sessionStore",
+  // 任务 846: data-home migration wizard pane.
+  "homePointer",
   "runtimeReuse",
   "zcodeTaskBus",
   "acpListen",
@@ -3361,6 +3366,27 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {selected === "homePointer" && (
+            /* 任务 846: change-data-home wizard. The switch is the lab gate
+               (ships off); the wizard body renders only while it is on. */
+            <>
+              <SettingsField label={labLabel("homePointer", t("settings.homePointer"))} hint={t("settings.homePointer.hint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalHomePointer) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalHomePointer(on))}
+                    >
+                      {t(on ? "settings.homePointer.on" : "settings.homePointer.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <Suspense fallback={<div className="empty" />}><HomePointerLabPane enabled={Boolean(s.experimentalHomePointer)} /></Suspense>
+            </>
           )}
           {selected === "pathRules" && (
             /* Task 564: retired (task 551 paradigm, UI side) — the structured

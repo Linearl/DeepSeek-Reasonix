@@ -128,6 +128,8 @@ export interface SettingsView {
   experimentalLifecycleNoiseGate?: boolean;
   // Task 130: exposes the Settings → 本地服务 page and serve-pool controls.
   experimentalLocalServer?: boolean;
+  /** Task 846: change-data-home lab switch; gates the migration wizard write path. */
+  experimentalHomePointer?: boolean;
   // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).
   experimentalPathRules?: boolean;
   // Task 161: transcript cache tuning (experimental; user values ignored while off).

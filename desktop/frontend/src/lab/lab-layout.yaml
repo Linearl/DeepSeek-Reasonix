@@ -300,6 +300,12 @@ groups:
           - id: eventsRotation
             labelKey: settings.eventsRotation
             tier: optional
+      # 任务 846：配置数据目录可更改（未稳定档，默认关）。独立卡+独立 pane
+      # （向导在 SettingsPanel 的 homePointer 分支，HomePointerLabPane）。
+      - id: homePointer
+        labelKey: settings.homePointer
+        tier: unstable
+        onKeys: [homePointer]
       # 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡。
       # 无开关纯字段卡（分钟；0=从不释放）；字段绑定在 src/lab/labParamFields.ts
       # （值语义收拢在代码，yaml 只描述结构与引用——724 硬约束同构延伸）。

@@ -1262,6 +1262,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalLifecycleNoiseGate(enabled: boolean): Promise<void>;
   // Task 130: Settings → 本地服务 page (experimental).
   SetExperimentalLocalServer(enabled: boolean): Promise<void>;
+  // Task 846: change-data-home lab card gate (experimental; wizard write path re-checks).
+  SetExperimentalHomePointer(enabled: boolean): Promise<void>;
   // Task 134: structured path-scope evaluation (experimental).
   SetExperimentalPathRules(enabled: boolean): Promise<void>;
   // Task 161: transcript cache-size tuning (experimental).
@@ -1519,6 +1521,12 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   OpenUserConfigPath?(): Promise<void>;
   ReloadUserConfig?(): Promise<{ configWarnings?: string[]; configWarningsRevision?: number; configPath?: string } | null>;
   StorageSettings(): Promise<{ defaultWorkspace: string; statePath: string; cachePath: string; extensionsPath: string }>;
+  // Task 846: change-data-home wizard (lab feature; write path gated by
+  // experimental_home_pointer on the Go side too).
+  HomePointerStatus(): Promise<{ experimentalEnabled: boolean; pointerPath: string; activeHome: string; defaultHome: string; pointerActive: boolean; pointerError: string; migrationLockActive: boolean }>;
+  HomeMigrationPreview(target: string): Promise<{ valid: boolean; source: string; target: string; warnings: string[]; error: string; risks: Array<{ id: string; severity: string; detailKey: string }> }>;
+  HomeMigrationExecute(target: string, acknowledged: string[]): Promise<{ success: boolean; phase: string; detail: string }>;
+  HomeMigrationResetToDefault(): Promise<void>;
   NeedsOnboarding(): Promise<boolean>;
   ConnectKey(apiKey: string): Promise<string>;
   // Crash overlay "Send report" (desktop/crash_app.go): scrubs user paths, attaches
@@ -5763,6 +5771,29 @@ function makeMockApp(): AppBindings {
     },
     ...makeMockModelSettingsBindings(settings, loadMockProviderCatalog, mockProviderPresetViews),
     async StorageSettings() { return { defaultWorkspace: cwd, statePath: `${cwd}/.reasonix`, cachePath: `${cwd}/.reasonix/cache`, extensionsPath: `${cwd}/.reasonix/plugins` }; },
+    // Task 846 mocks: browser mode never migrates anything; the six risk ids
+    // mirror internal/homemigrate/risks.go so the wizard flow is exercisable.
+    async HomePointerStatus() {
+      return { experimentalEnabled: false, pointerPath: `${cwd}/.reasonix/home-pointer.json`, activeHome: `${cwd}/.reasonix`, defaultHome: `${cwd}/.reasonix`, pointerActive: false, pointerError: "", migrationLockActive: false };
+    },
+    async HomeMigrationPreview(target: string) {
+      const risks = [
+        { id: "dual-home-split", severity: "warn", detailKey: "settings.homePointer.risk.dualHomeSplit" },
+        { id: "pointer-corrupt-fallback", severity: "warn", detailKey: "settings.homePointer.risk.pointerCorruptFallback" },
+        { id: "interrupted-migration", severity: "warn", detailKey: "settings.homePointer.risk.interruptedMigration" },
+        { id: "concurrent-instance", severity: "error", detailKey: "settings.homePointer.risk.concurrentInstance" },
+        { id: "onedrive-lock", severity: "error", detailKey: "settings.homePointer.risk.oneDriveLock" },
+        { id: "credential-env", severity: "warn", detailKey: "settings.homePointer.risk.credentialEnv" },
+      ];
+      if (!target || target === `${cwd}/.reasonix`) return { valid: false, source: `${cwd}/.reasonix`, target, warnings: [], error: "target equals the current home", risks };
+      const warnings = /onedrive/i.test(target) ? ["target-path-onedrive"] : [];
+      return { valid: true, source: `${cwd}/.reasonix`, target, warnings, error: "", risks };
+    },
+    async HomeMigrationExecute(_target: string, acknowledged: string[]) {
+      if (acknowledged.length < 6) return { success: false, phase: "aborted", detail: "migration risks not acknowledged (mock)" };
+      return { success: true, phase: "done", detail: "mock migration completed (no files touched)" };
+    },
+    async HomeMigrationResetToDefault() {},
     // Task 333: the mock keeps the gate settings on the shared settings view so
     // the storage detail card sees its own writes like the real backend does.
     async SetEventsAutoRotation(mode: string) { settings.eventsAutoRotation = mode; },
@@ -5920,6 +5951,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalFeedbackNudge() {},
     async SetExperimentalLifecycleNoiseGate() {},
     async SetExperimentalLocalServer() {},
+    async SetExperimentalHomePointer() {},
     async SetExperimentalPathRules() {},
     async SetExperimentalCacheTuning() {},
     async SetTranscriptCacheTuning() {},

@@ -64,6 +64,8 @@ export type TierFeatureId =
   | "lifecycleNoiseGate"
   | "eventsRotation"
   | "sessionStorage"
+  // 任务 846: 配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
+  | "homePointer"
   | "runtimeReuse"
   | "zcodeTaskBus"
   // 任务 790: ACP 常驻监听（loopback TCP，每连接独立 client 面，默认关）。
@@ -182,9 +184,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── dev-debug（开发调试，2 项）───────────────────────────────
   cdpDebugPort: "unstable",
   lifecycleNoiseGate: "unstable",
-  // ── storage（存储，2 项）────────────────────────────────────
+  // ── storage（存储，3 项；846 增 homePointer）────────────────
   eventsRotation: "optional",
   sessionStorage: "unstable",
+  homePointer: "unstable",
   // ── infra（基础设施，7 项；785 退役 S1 baseProcess，790 增 acpListen）──────
   runtimeReuse: "optional",
   zcodeTaskBus: "unstable",
