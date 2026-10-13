@@ -5167,7 +5167,7 @@ export const en = {
   "settings.bashHeavyGuard": "Heavy-command write guard",
   "settings.bashHeavyGuard.off": "Off",
   "settings.bashHeavyGuard.on": "On",
-  "settings.bashHeavyGuardHint": "Task 575: when on, heavy bash commands (install/build) take the workspace write lock first under optimistic parallel writes (guarding against stale-content detection misses). Off (default) keeps pre-575 behaviour byte-for-byte. Only meaningful while optimistic parallel writes is on.",
+  "settings.bashHeavyGuardHint": "When on, heavy bash commands (install/build) take the workspace write lock first under optimistic parallel writes (guarding against stale-content detection misses). Off (default) keeps pre-575 behaviour byte-for-byte. Only meaningful while optimistic parallel writes is on.",
   "settings.removeGlobalWriteRoot": "Remove this global common dir",
   "settings.removeSessionWriteRoot": "Revoke this session write-dir grant",
   "settings.sessionWriteRootPlaceholder": "Enter a directory to authorize for this session",

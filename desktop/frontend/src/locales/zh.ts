@@ -5163,7 +5163,7 @@ export const zh: Record<DictKey, string> = {
   "settings.bashHeavyGuard": "重命令写守卫",
   "settings.bashHeavyGuard.off": "关闭",
   "settings.bashHeavyGuard.on": "开启",
-  "settings.bashHeavyGuardHint": "任务 575：开启后，安装/构建等重 bash 命令在乐观并行写模式下会先取得工作区写锁再执行（防陈旧内容检测漏判写冲突）。关闭（默认）=重命令不取写锁，与 575 之前行为逐字节一致。仅在「乐观并行」开启时有意义。",
+  "settings.bashHeavyGuardHint": "开启后，安装/构建等重 bash 命令在乐观并行写模式下会先取得工作区写锁再执行（防陈旧内容检测漏判写冲突）。关闭（默认）=重命令不取写锁，与 575 之前行为逐字节一致。仅在「乐观并行」开启时有意义。",
   "settings.removeGlobalWriteRoot": "移除该全局公共目录",
   "settings.removeSessionWriteRoot": "移除该会话写目录授权",
   "settings.sessionWriteRootPlaceholder": "输入要为本会话授权的目录",

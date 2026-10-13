@@ -5159,7 +5159,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.bashHeavyGuard": "重命令寫守衛",
   "settings.bashHeavyGuard.off": "關閉",
   "settings.bashHeavyGuard.on": "開啟",
-  "settings.bashHeavyGuardHint": "任務 575：開啟後，安裝/建構等重 bash 命令在樂觀並行寫模式下會先取得工作區寫鎖再執行（防陳舊內容偵測漏判寫入衝突）。關閉（預設）=重命令不取寫鎖，與 575 之前行為逐位元組一致。僅在「樂觀並行」開啟時有意義。",
+  "settings.bashHeavyGuardHint": "開啟後，安裝/建構等重 bash 命令在樂觀並行寫模式下會先取得工作區寫鎖再執行（防陳舊內容偵測漏判寫入衝突）。關閉（預設）=重命令不取寫鎖，與 575 之前行為逐位元組一致。僅在「樂觀並行」開啟時有意義。",
   "settings.removeGlobalWriteRoot": "移除該全域公共目錄",
   "settings.removeSessionWriteRoot": "移除該會話寫入目錄授權",
   "settings.sessionWriteRootPlaceholder": "輸入要為本會話授權的目錄",
