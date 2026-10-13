@@ -1179,6 +1179,8 @@ export const en = {
   "status.recoveryNetwork": "network unavailable",
   "status.recoveryProvider": "service unavailable",
   "status.recoveryWaiting": "Waiting for provider ({phase}); next attempt in {seconds}s. Stop to cancel.",
+  "status.queuing": "Service busy — queued for retry (next attempt in ~{seconds}s). Stop to cancel.",
+  "status.quotaWaiting": "Quota exhausted — resuming automatically in ~{seconds}s. Stop to cancel.",
   "status.recoveryWaitTitleNetwork": "Waiting for the network to recover",
   "status.recoveryWaitTitleProvider": "Waiting for the provider to recover",
   "status.recoveryWaitNext": "Next attempt in {seconds}s",

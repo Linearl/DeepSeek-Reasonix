@@ -2116,6 +2116,20 @@ type AgentConfig struct {
 	// PlanResearchGateLimit caps gate rounds per run. 0 keeps the built-in
 	// default (1). Values above 2 are clamped.
 	PlanResearchGateLimit int `toml:"plan_research_gate_limit"`
+	// Task 845 (user-ratified three-lane retry semantics) — the retry knobs.
+	// Defaults keep the pre-845 behavior exactly (default-value = current
+	// behavior); every field accepts 0/negative to mean that default.
+	//   RetryWaitBudgetMinutes bounds the waiting lane (429 queue / 5xx
+	//   recovery) per turn; default 10 (the #9889 budget).
+	//   RetryQueueMax caps the 429 queue ROUNDS; 0 = uncapped — the time
+	//   budget above already bounds the lane (the pre-845 shape).
+	//   QuotaWaitBudgetMinutes bounds the NEW quota long-wait lane; default 30.
+	//   QuotaWaitIntervalMinutes is the probe cadence when the provider does
+	//   not state a Retry-After; default 5.
+	RetryWaitBudgetMinutes   int `toml:"retry_wait_budget_minutes"`
+	RetryQueueMax            int `toml:"retry_queue_max"`
+	QuotaWaitBudgetMinutes   int `toml:"quota_wait_budget_minutes"`
+	QuotaWaitIntervalMinutes int `toml:"quota_wait_interval_minutes"`
 	// ReadOnlyTaskBackground exposes the optional run_in_background argument on
 	// read_only_task (task 118). Off by default: the tool's contract is that a
 	// read-only dispatch has no durable host side effects, and a background run

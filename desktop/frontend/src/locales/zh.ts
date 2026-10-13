@@ -1179,6 +1179,8 @@ export const zh: Record<DictKey, string> = {
   "status.recoveryNetwork": "网络暂时不可用",
   "status.recoveryProvider": "服务暂时不可用",
   "status.recoveryWaiting": "正在等待供应商恢复（{phase}），{seconds} 秒后重试；可点击停止。",
+  "status.queuing": "服务繁忙，已排队等待重试（约 {seconds} 秒后重试）；可点击停止。",
+  "status.quotaWaiting": "配额已用完，预计 {seconds} 秒后自动继续；可点击停止。",
   "status.recoveryWaitTitleNetwork": "正在等待网络恢复",
   "status.recoveryWaitTitleProvider": "正在等待供应商恢复",
   "status.recoveryWaitNext": "{seconds} 秒后重试",

@@ -12,6 +12,11 @@ export interface RecoveryStatus {
   waited_ms?: number;
   wait_budget_ms?: number;
   waiting?: boolean;
+  // Task 845 (user-ratified retry semantics): the queue face (429 — "service
+  // busy, queued") and the quota long-wait face ("quota exhausted, resuming
+  // in ~N"). Both waits stay cancellable; the strip keeps Stop available.
+  queue?: boolean;
+  quota_wait?: boolean;
   // Task 372 (visibility only): the task-243 A4 sliding-window counts, so the
   // strip can say "auto-retried N (N/limit) times" and name the give-up end
   // state. Admission semantics live in Go and are untouched here.
@@ -44,6 +49,15 @@ export function recoveryStatusText(t: Translator, retry: RecoveryRetry, now: num
     const limit = r.budget_limit || retry.max;
     const used = r.budget_used || retry.attempt;
     return t("status.retryExhausted", { used, limit });
+  }
+  // Task 845 lane faces, before the generic budget/wait wording: the quota
+  // long-wait names the reset expectation, the 429 queue names the busy
+  // state — both keep the cancellable cue so Stop reads as available.
+  if (r?.quota_wait) {
+    return t("status.quotaWaiting", { seconds: recoveryNextAttemptSeconds(r, now) });
+  }
+  if (r?.queue) {
+    return t("status.queuing", { seconds: recoveryNextAttemptSeconds(r, now) });
   }
   // In-window frame carrying the budget counts: the "auto-retried N (N/limit)"
   // face the user asked for (372 scope 1).
