@@ -1311,6 +1311,16 @@ export interface DirEntry {
   displayPath?: string;
 }
 
+export interface WorkspaceFileOpFailure {
+  path: string;
+  err: string;
+}
+
+export interface WorkspaceFileOpsResult {
+  succeeded: string[];
+  failed: WorkspaceFileOpFailure[];
+}
+
 export interface DroppedItem {
   kind: "workspace" | "attachment";
   path: string;
