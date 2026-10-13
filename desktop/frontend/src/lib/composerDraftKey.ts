@@ -34,3 +34,10 @@ export function bareTabIdFromDraftKey(key: string): string | null {
 export function isSessionScopedDraftKey(key: string): boolean {
   return key.startsWith("session-topic\u0000") || key.startsWith("session-path\u0000");
 }
+
+// 任务 839：找回槽的持久化 key。与草稿同存一张 localStorage 表（composer:drafts:v1），
+// 前缀 "parked\0" 保证任何草稿读取路径都不会按 session key 误命中；找回动作把
+// 被换下的草稿落盘到这个 key，重启后仍能再次找回。
+export function parkedStartupDraftStorageKey(draftKey: string): string {
+  return draftKey ? `parked\u0000${draftKey}` : "";
+}
