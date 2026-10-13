@@ -5073,6 +5073,8 @@ export const en = {
   "projectGroup.movePanelLabel": "Move to group",
   "projectGroup.rename": "Rename",
   "projectGroup.renamePrompt": "Rename group 《{title}》:",
+  "projectGroup.deleteConfirm": "Dissolve group 《{title}》?",
+  "projectGroup.deleteDetail": "Only the group shell is removed. Its projects return to the ungrouped section and are not deleted.",
   "projectGroup.ungrouped": "Ungrouped",
   "projectTree.filterByColor": "Filter by color",
   "projectTree.filterByColorAll": "All colors",
