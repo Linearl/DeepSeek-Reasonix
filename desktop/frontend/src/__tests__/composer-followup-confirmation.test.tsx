@@ -5,20 +5,32 @@ import { runtimeStateStore, type RuntimeProjection } from "../lib/runtimeStateSt
 import { acceptRuntimeState } from "../lib/runtimeStateReducer";
 import { pendingFollowups, followupSessionKey, type InboxTarget } from "../lib/pendingFollowup";
 import { composerDraftKeyForTab } from "../lib/composerDraftKey";
+// 任务 828：submit 内部经 `await import("../lib/inboxGuidanceSubmit")` 走持久化入队。
+// tsx 对首次 dynamic import 现场编译模块，耗时跨过用例的单轮 setTimeout(0) flush，
+// 断言时 bridge mock 尚未被调（posts 0≠1 崩溃）。这里预加载同一模块使该 import
+// 命中缓存、回到微任务级；只修测试基建时序，不断言弱化。
+import "../lib/inboxGuidanceSubmit";
 
 const pendingSession = followupSessionKey("session-a");
 
 const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+// 任务 828：submit 链（bridge mock、持久化入队）与 React 并发渲染的提交都要跨
+// 多个事件循环轮次（dynamic import 现场编译、MessageChannel/rAF 驱动的 commit）。
+// 单轮 setTimeout(0) 偶发先于这些完成，click 落在按钮仍 disabled 的窗口（探针
+// 实证：等待 30ms 后同一 click 即生效）。settle 放行 ≥1 帧（jsdom
+// pretendToBeVisual 的 rAF 为 16ms）让链走完；只修测试基建时序，断言不变。
+const settle = async () => { for (let i = 0; i < 2; i++) await new Promise<void>(resolve => setTimeout(resolve, 20)); };
 async function paste(text: string) {
   await act(async () => {
     const event = new window.Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(event, "clipboardData", { value: { files: [], items: [], types: ["text/plain"], getData: () => text } });
     document.querySelector("textarea.composer__input:not([aria-hidden=true])")!.dispatchEvent(event);
     await flush();
+    await settle();
   });
 }
 async function send() {
-  await act(async () => { (document.querySelector(".composer__btn--send") as HTMLButtonElement).click(); await flush(); });
+  await act(async () => { (document.querySelector(".composer__btn--send") as HTMLButtonElement).click(); await flush(); await settle(); });
 }
 function state(phase: "idle" | "executing" | "finishing", revision: number): RuntimeProjection {
   return { epoch: "confirmation-test", revision, topics: [], sessions: [{

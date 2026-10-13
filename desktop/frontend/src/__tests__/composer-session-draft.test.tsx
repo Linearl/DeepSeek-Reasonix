@@ -10,6 +10,10 @@ import { composerDraftKeyForTab } from "../lib/composerDraftKey";
 import { LocaleProvider } from "../lib/i18n";
 import { resetCustomShortcuts, saveCustomShortcut } from "../lib/keyboardShortcuts";
 import { ToastProvider } from "../lib/toast";
+// 任务 828：submit 内部经 `await import("../lib/inboxGuidanceSubmit")` 走持久化
+// 入队，tsx 对首次 dynamic import 现场编译模块，耗时跨过用例的 flush 窗口。此处
+// 预加载同一模块使该 import 命中缓存、回到微任务级；只修测试基建时序。
+import "../lib/inboxGuidanceSubmit";
 import type { CollaborationMode, ToolApprovalMode } from "../lib/types";
 
 let passed = 0;
@@ -32,6 +36,14 @@ function eq(actual: unknown, expected: unknown, label: string) {
 
 function flushTimers(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// 任务 828：submit 链（bridge mock、持久化入队）与 React 并发渲染的提交都要跨
+// 多个事件循环轮次。单轮 setTimeout(0) 偶发先于这些完成，click 落在按钮仍
+// disabled 的窗口。settle 放行 ≥1 帧（jsdom pretendToBeVisual 的 rAF 为 16ms）
+// 让链走完；只修测试基建时序，断言不变。
+async function settle(): Promise<void> {
+  for (let i = 0; i < 2; i++) await new Promise<void>((resolve) => setTimeout(resolve, 20));
 }
 
 function deferred<T>() {
@@ -307,10 +319,18 @@ console.log("\ncomposer session draft");
   // A queued follow-up belongs to the session where it was entered. Switching
   // to an idle session must neither auto-send it there nor discard it from the
   // running source session.
+  // 任务 828 按 task 258 语义更新（e8e58767a 有意变更）：Enter 排队的 follow-up
+  // 在回执时刻转为 transcript bubble（onQueueGuidanceBubble）并从 shelf 退休，
+  // shelf 只留给仍等用户处理的行。Composer 层的义务随之钉为：入队恰一次、
+  // bubble 恰一次（携带完整正文与 durable itemId）、跨会话零泄漏、切回零重复
+  // 入队；bubble 的跨切换显示/恢复由 transcript 承担（reducer 按 inboxItemId
+  // 幂等，task258-message-presentation 钉住）。
   const dom = installDom();
   const sent: Array<{ tab: string; text: string }> = [];
   const inboxByTab = new Map<string, Array<{ id: string; preview: string }>>();
   let inboxRevision = 0;
+  let enqueueCalls = 0;
+  const bubbleCalls: Array<{ text: string; itemId?: string }> = [];
   installBridgeApp({
     InboxSnapshot: async (tabId: string) => {
       const items = (inboxByTab.get(tabId) ?? []).map((item, position) => ({
@@ -332,6 +352,7 @@ console.log("\ncomposer session draft");
       };
     },
     EnqueueInboxFollowup: async (tabId: string, display: string) => {
+      enqueueCalls += 1;
       const item = { id: "durable-tab-a", preview: display };
       inboxByTab.set(tabId, [...(inboxByTab.get(tabId) ?? []), item]);
       inboxRevision += 1;
@@ -345,13 +366,21 @@ console.log("\ncomposer session draft");
     onSend: (text, _submit, targetTabId) => {
       sent.push({ tab: targetTabId ?? "", text });
     },
+    onQueueGuidanceBubble: (text, itemId) => {
+      bubbleCalls.push({ text, itemId: itemId ?? undefined });
+    },
   });
   await rerender({ insertRequest: { id: 10, text: "follow up in A", mode: "replace" } });
   await act(async () => {
     sendButton().click();
     await flushTimers();
+    await settle();
   });
-  ok(document.querySelector(".composer-guidance-item") !== null, "session A shows its queued guidance before switching");
+  eq(enqueueCalls, 1, "session A enqueues its follow-up exactly once");
+  eq(bubbleCalls.length, 1, "session A receipt renders exactly one guidance bubble");
+  eq(bubbleCalls[0]?.text, "follow up in A", "bubble carries the full original text");
+  eq(bubbleCalls[0]?.itemId, "durable-tab-a", "bubble carries the durable inbox item id");
+  ok(document.querySelector(".composer-guidance-item") === null, "Enter-queued follow-up stays off the guidance shelf (task 258)");
   await rerender({
     running: false,
     tabId: "tab-b",
@@ -361,6 +390,8 @@ console.log("\ncomposer session draft");
     },
   });
   eq(sent.length, 0, "switching to idle session B does not send session A guidance");
+  eq(enqueueCalls, 1, "switching does not re-enqueue session A guidance");
+  eq(bubbleCalls.length, 1, "switching does not replay session A bubble in session B");
   ok(document.querySelector(".composer-guidance-item") === null, "session B does not inherit session A guidance shelf");
 
   await rerender({
@@ -371,16 +402,18 @@ console.log("\ncomposer session draft");
       sent.push({ tab: targetTabId ?? "", text });
     },
   });
-  ok(document.querySelector(".composer-guidance-item") !== null, "session A restores its queued guidance after switching back");
+  eq(enqueueCalls, 1, "switching back does not re-enqueue session A guidance");
+  eq(bubbleCalls.length, 1, "guidance bubble is owned by the transcript, not replayed on return");
 
   inboxByTab.delete("tab-a"); // Controller dispatched and durably acked it.
   inboxRevision += 1;
   await rerender({ running: false });
   await act(async () => {
     await flushTimers();
+    await settle();
   });
   eq(sent.length, 0, "session A completion does not duplicate the Controller-owned follow-up");
-  ok(document.querySelector(".composer-guidance-item") === null, "session A clears the durable item after its backend ack");
+  eq(enqueueCalls, 1, "completion path does not re-enqueue the durable item");
   await act(async () => {
     root.unmount();
   });
