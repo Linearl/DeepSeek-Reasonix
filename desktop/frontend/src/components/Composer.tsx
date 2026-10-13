@@ -5279,7 +5279,7 @@ export function Composer({
         ) : null
       )}
       {parkedStartupDraftKeys.includes(draftKey) && (
-        <div className="composer-guidance-edit-banner composer-parked-draft-banner" role="status" aria-live="polite">
+        <div className={`composer-guidance-edit-banner composer-parked-draft-banner`} role="status" aria-live="polite">
           <span className="composer-guidance-edit-banner__label">
             {t("composer.parkedStartupDraftBanner")}
           </span>
