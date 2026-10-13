@@ -50,6 +50,13 @@ const (
 	// transcript snapshot did not become durable (task 585's keep half —
 	// nothing silently drops when the application receipt itself is lost).
 	BlockReasonTranscriptNotDurable = "turn completed but transcript snapshot failed"
+	// BlockReasonRestartOrphan parks an in-flight item whose owning turn was
+	// killed mid-flight (crash or hard restart). 任务840: constant-ified from
+	// the recovery literal — the only writer stays
+	// RecoverOrphanedInFlightOwnedBy, so the reason itself is the proof the
+	// row was admitted into a turn of a PREVIOUS process (the planned-restart
+	// settle reads it as that admission evidence).
+	BlockReasonRestartOrphan = "in-flight owner is no longer active"
 )
 
 // Disposition reports how an admission attempt settled.

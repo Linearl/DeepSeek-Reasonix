@@ -105,3 +105,93 @@ func boundedSamples(ids []string, n int) []string {
 	}
 	return ids
 }
+
+// SettlePlannedRestartResidue drops the admission-proven review parks whose
+// source mail carries a settled delivery receipt (任务840: the planned-restart
+// read confirmation).
+//
+// Face it fixes: an unattended update restart kills the consuming process
+// mid-turn, recovery rewrites the orphaned rows to Uncertain (RestartOrphan /
+// SteerUnapplied), and neither settle pass can clear them — the transcript
+// matcher has no steer receipt for them, and RecoverOrphanedInFlightOwnedBy's
+// settled drop skips both parks by design (585/641/589b: no injection
+// evidence). The rows then replay onto the shelf with a retry button even
+// though their content was consumed before the restart (实测 2026-10-13: three
+// consumed guidance messages back as pending after the 24.1 unattended update).
+//
+// The missing evidence is supplied by the CALLER, not the row: this method is
+// only invoked from the task-254 roster consumption point, where the roster
+// entry proves THIS restart was planned by the update chain (the same
+// planned-vs-crash distinction task 435 drew for the fence), and the
+// delivered callback is the task-570 delivery receipt / recipient cursor —
+// the collab mail's durable read confirmation, written at delivery time and
+// immune to the restart window. Admission is proven by the parked reasons
+// themselves: both are only ever written for rows that were already admitted
+// into a turn of the PREVIOUS process.
+//
+// Safety net against a wrong drop: a truly unconsumed collab row is re-delivered
+// by the pump, which dedupes onto a fresh row via the idempotency key — an
+// at-least-once contract, never silent loss.
+//
+// BlockReasonTranscriptNotDurable stays untouched (its content did not reach
+// the transcript, so the review park is the honest face), and so does every
+// Queued/Blocked row and every row the callback cannot vouch for. The drop
+// mirrors SettleAppliedResidue: idempotency keys and receipts travel with the
+// row.
+func (s *Store) SettlePlannedRestartResidue(delivered func(InboxItemMeta) bool) (int, error) {
+	if s == nil {
+		return 0, ErrClosed
+	}
+	if delivered == nil {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	release, err := s.beginDiskTransactionLocked()
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+	if err := s.mutableLocked(); err != nil {
+		return 0, err
+	}
+	next := s.man.clone()
+	kept := next.Items[:0]
+	var removed []InboxItemMeta
+	var droppedIDs map[string]string // idempotency key -> itemID (settle deletions)
+	for _, item := range next.Items {
+		if item.State != StateUncertain ||
+			(item.BlockReason != BlockReasonRestartOrphan && item.BlockReason != BlockReasonSteerUnapplied) ||
+			!delivered(item) {
+			kept = append(kept, item)
+			continue
+		}
+		removed = append(removed, item)
+		if item.Idempotency != "" {
+			if droppedIDs == nil {
+				droppedIDs = map[string]string{}
+			}
+			droppedIDs[item.Idempotency] = item.ID
+		}
+	}
+	if len(removed) == 0 {
+		return 0, nil
+	}
+	next.Items = kept
+	for key, itemID := range droppedIDs {
+		if id, ok := next.Idempotency[key]; ok && id == itemID {
+			delete(next.Idempotency, key)
+			delete(next.IdempotencyHashes, key)
+		}
+		delete(next.Receipts, key)
+	}
+	clearPauseIfEmpty(next)
+	if err := s.commitManifestLocked(next); err != nil {
+		return 0, err
+	}
+	for _, item := range removed {
+		s.removeBlobLocked(blobNameFor(item))
+	}
+	s.notifyLocked(s.snapshotLocked())
+	return len(removed), nil
+}

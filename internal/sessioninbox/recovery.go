@@ -172,7 +172,7 @@ func (s *Store) RecoverOrphanedInFlightOwnedBy(ownedBy func(string) bool, settle
 				if wasAccepted {
 					item.BlockReason = BlockReasonSteerUnapplied
 				} else {
-					item.BlockReason = "in-flight owner is no longer active"
+					item.BlockReason = BlockReasonRestartOrphan
 				}
 				item.UpdatedAt = now
 				recovered++

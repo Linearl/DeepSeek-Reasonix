@@ -4770,6 +4770,11 @@ func (a *App) maybeResumeAutopilotTab(tab *WorkspaceTab) {
 		slog.Warn("desktop: autopilot resume skipped — the session's last step was an interrupted tool call ("+restartInterruptedToolMarker+"; review the pending tools manually)", "tab", id)
 		return
 	}
+	// 任务840: the planned-restart read confirmation — same settle as the
+	// roster path. The goal resume owns the continue decision, so
+	// admission-proven guidance parks whose collab mail was delivered settle
+	// before the shelf's first snapshot shows them as pending work.
+	a.settlePlannedRestartGuidanceForTab(tab)
 	go func() {
 		if err := a.SubmitToTab(id, autopilotResumePrompt); err != nil {
 			// codeql[go/clear-text-logging] the flagged chain only carries the
