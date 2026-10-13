@@ -159,7 +159,8 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   ] },
   // 任务 782：界面组三张条目级合并卡（742 tabManagement 先例）——各成员行
   // 读自己的键、写自己的 setter；聚合徽章断言在 562 测试。
-  { id: "viewLayout", endMarker: '{selected === "collabGroupView" && (', members: [
+  // 任务 856 ③：后继分支随两图标合一迁移改名（collabGroupView → collabHub）。
+  { id: "viewLayout", endMarker: '{selected === "collabHub" && (', members: [
     { label: "782 splitView", field: "s.experimentalSplitView", setter: "app.SetExperimentalSplitView(on)" },
     { label: "782 trajectoryView", field: "s.experimentalTrajectoryView", setter: "app.SetExperimentalTrajectoryView(on)" },
   ] },

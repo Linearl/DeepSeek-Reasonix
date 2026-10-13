@@ -1,12 +1,11 @@
 import { lazy, Suspense, type ComponentProps, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import { AlarmClock, Brain, Command, Mailbox, MessageSquare, MessagesSquare, PanelLeft, PanelRight, Search, Settings, SquarePen, Trash2 } from "lucide-react";
+import { AlarmClock, Brain, Command, MessageSquare, MessagesSquare, PanelLeft, PanelRight, Search, Settings, SquarePen, Trash2 } from "lucide-react";
 // NOTE: the monitor/feedback entry points were removed from this rail — the
 // settings pane is the single entry point now (task 121/123). The panels
 // themselves are mounted at the App root (App.tsx), not here.
-// 452L: 收件站/群聊开合接缝直接导入（与 SettingsPanel 副入口同模式；主入口
-// App.tsx 的图标行用的也是同一接缝），本卸载树无需新增 props 接线。
-import { setCollabInboxOpen } from "../components/CollabInboxPanel";
-import { setCollabGroupOpen } from "../components/CollabGroupPanel";
+// 452L→856：两图标合一后本行只需要协作中心一个接缝（信号在 Hub 内转发给
+// 子面板；与 SettingsPanel 副入口同模式），本卸载树无需新增 props 接线。
+import { setCollabHubOpen } from "../components/CollabHubPanel";
 import { useHydrateSessionExperimentFlags } from "../app-runtime/useHydrateSessionExperimentFlags";
 import { Tooltip } from "../components/Tooltip";
 import type { Translator } from "../lib/i18n";
@@ -92,12 +91,11 @@ export function SidebarRegion(props: SidebarRegionProps) {
           <nav className="sidebar__nav sidebar__nav--footer">
             <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
               <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
-              {/* 452L: 收件站/群聊键同步自挂载侧（App.tsx 五位行，兑现 320/409
-                  两份交付报备的遗留）：回收站 → 信件中心 → 群聊 → 自动化 → 设置。
-                  未读徽标属挂载侧动态状态（useCollabInboxUnreadCount），本卸载
-                  树不接；复挂时如需徽标再补 count 接线。 */}
-              <UtilityButton label={t("sidebar.collabInbox")} icon={<Mailbox size={16} />} onClick={() => setCollabInboxOpen(true)} />
-              <UtilityButton label={t("sidebar.collabGroup")} icon={<MessagesSquare size={16} />} onClick={() => setCollabGroupOpen(true)} />
+              {/* 452L→856：收件站/群聊两键融合为协作中心一键（App.tsx 四位行
+                  同步）：回收站 → 协作中心 → 自动化 → 设置。未读徽标属挂载侧
+                  动态状态（useCollabInboxUnreadCount），本卸载树不接；复挂时
+                  如需徽标再补 count 接线。 */}
+              <UtilityButton label={t("sidebar.collabHub")} icon={<MessagesSquare size={16} />} onClick={() => setCollabHubOpen(true)} />
               <UtilityButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
               <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
             </div>
@@ -125,9 +123,8 @@ export function SidebarRegion(props: SidebarRegionProps) {
           <nav className="sidebar__nav sidebar__nav--footer">
             <div className="sidebar__utility-row" aria-label={t("sidebar.utilityActions")}>
               <UtilityButton label={t("sidebar.trash")} icon={<Trash2 size={16} />} onClick={props.onOpenTrash} />
-              {/* 452L: 同步收件站/群聊键，与挂载侧 5 位行对齐（说明见 workbench 分支注释）。 */}
-              <UtilityButton label={t("sidebar.collabInbox")} icon={<Mailbox size={16} />} onClick={() => setCollabInboxOpen(true)} />
-              <UtilityButton label={t("sidebar.collabGroup")} icon={<MessagesSquare size={16} />} onClick={() => setCollabGroupOpen(true)} />
+              {/* 452L→856：同融合一键，与挂载侧 4 位行对齐（说明见 workbench 分支注释）。 */}
+              <UtilityButton label={t("sidebar.collabHub")} icon={<MessagesSquare size={16} />} onClick={() => setCollabHubOpen(true)} />
               <UtilityButton active={props.automation} label={t("heartbeat.scheduler")} icon={<AlarmClock size={16} />} onClick={props.onOpenAutomation} />
               <UtilityButton label={t("topbar.settings")} icon={<Settings size={16} />} onClick={() => props.onOpenSettings("general")} />
             </div>

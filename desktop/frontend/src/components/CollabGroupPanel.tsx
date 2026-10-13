@@ -52,15 +52,37 @@ export type CollabGroupBindings = ChannelChatBindings & {
 let panelOpen = false;
 const openListeners = new Set<(open: boolean) => void>();
 
+// 任务 856 ①：打开信号转发缝（与 CollabInboxPanel 同构）——协作中心挂载后
+// 把本面板 open 信号重定向为「打开 Hub 并切到聊天视图」；未注册时（既有
+// 测试/独立渲染）行为与 409 原样一致。
+let openForward: ((next: boolean) => void) | null = null;
+
+/** 任务 856 ①：CollabHubPanel 模块初始化时注册（传 null 撤销）。 */
+export function forwardCollabGroupOpen(fn: ((next: boolean) => void) | null): void {
+  openForward = fn;
+}
+
+/** 任务 856 ①：Hub 开合同步本面板模块 open（不触发 forward，防递归）。 */
+export function syncCollabGroupOpen(next: boolean): void {
+  if (panelOpen === next) return;
+  panelOpen = next;
+  for (const listener of openListeners) listener(next);
+}
+
 export function isCollabGroupOpen(): boolean {
   return panelOpen;
 }
 
-/** 开/关群聊视图面板（侧栏工具行图标入口，task 409）。 */
+/** 开/关群聊视图面板（侧栏工具行图标入口，task 409；856 起为 Hub 外部信号）。 */
 export function setCollabGroupOpen(next: boolean): void {
-  if (panelOpen === next) return;
+  // 任务 856 ①：同值也转发（Hub 已开在信件视图时群聊信号仍要切聊天视图）。
+  if (panelOpen === next) {
+    openForward?.(next);
+    return;
+  }
   panelOpen = next;
   for (const listener of openListeners) listener(next);
+  openForward?.(next);
 }
 
 export function onCollabGroupOpenChange(cb: (open: boolean) => void): () => void {
@@ -82,11 +104,15 @@ function formatTime(ms: number): string {
 
 type PanelTab = "sessions" | "channels";
 
-export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings } = {}) {
+export function CollabGroupPanel({ bindings, embedded, sessionsOnly }: { bindings?: CollabGroupBindings; embedded?: boolean; sessionsOnly?: boolean } = {}) {
   const t = useT();
   const b: CollabGroupBindings = bindings ?? app;
   const [open, setOpen] = useState(panelOpen);
   const [tab, setTab] = useState<PanelTab>("sessions");
+  // 任务 856 ①：embedded（协作动态浮层）= 渲染由 Hub 决定；sessionsOnly =
+  // 409 观察窗降级形态（固定 sessions，不再承载频道 tab）。
+  const effectiveOpen = Boolean(embedded) || open;
+  const effectiveTab: PanelTab = sessionsOnly ? "sessions" : tab;
   const [overview, setOverview] = useState<CollabViewOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -144,16 +170,16 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
   }, [refresh]);
 
   useEffect(() => {
-    if (!open) {
+    if (!effectiveOpen) {
       cancelRetry();
       return;
     }
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, COLLAB_GROUP_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [open, refresh, cancelRetry]);
+  }, [effectiveOpen, refresh, cancelRetry]);
 
-  if (!open) return null;
+  if (!effectiveOpen) return null;
 
   const sessions = overview?.sessions ?? [];
   const viewEmpty = sessions.length === 0;
@@ -164,40 +190,51 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
   const cardStatusLabel = (status: string) =>
     t(`collabGroup.card.${status}` as "collabGroup.card.running");
 
-  return createPortal(
-    <div className="collab-group-panel" role="dialog" aria-label={t("collabGroup.title")}>
-      <div className="collab-group-panel__head">
-        <span className="collab-group-panel__title">{t("collabGroup.title")}</span>
-        <div className="collab-group-panel__actions">
-          <button type="button" className="btn btn--small" onClick={() => void refresh()}>
-            {t("collabGroup.refresh")}
+  // 任务 856 ①：embedded = 协作动态浮层形态（标题+刷新保留、外层关闭钮由
+  // Hub 壳承担）；sessionsOnly = 409 观察窗降级（频道 tab 移交协作中心聊天
+  // 视图的 ChannelChatPanel，本组件不再承载）。
+  const showHead = !embedded;
+  const showTabs = !sessionsOnly;
+  // 任务 856 ①：embedded（协作动态浮层）渲染在 Hub 聊天视图的 React 树内；
+  // 独立模式保持 portal-at-root（121/123 同上）。
+  const panelTree = (
+    <div className={`collab-group-panel${embedded ? " collab-group-panel--embedded" : ""}`} role="dialog" aria-label={t("collabGroup.title")}>
+      {showHead && (
+        <div className="collab-group-panel__head">
+          <span className="collab-group-panel__title">{t("collabGroup.title")}</span>
+          <div className="collab-group-panel__actions">
+            <button type="button" className="btn btn--small" onClick={() => void refresh()}>
+              {t("collabGroup.refresh")}
+            </button>
+            <button type="button" className="btn btn--small" onClick={() => setCollabGroupOpen(false)}>
+              {t("collabGroup.close")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showTabs && (
+        <div className="collab-group-panel__tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={effectiveTab === "sessions"}
+            className={`collab-group-panel__tab${effectiveTab === "sessions" ? " collab-group-panel__tab--on" : ""}`}
+            onClick={() => setTab("sessions")}
+          >
+            {t("collabGroup.tab.sessions")}
           </button>
-          <button type="button" className="btn btn--small" onClick={() => setCollabGroupOpen(false)}>
-            {t("collabGroup.close")}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={effectiveTab === "channels"}
+            className={`collab-group-panel__tab${effectiveTab === "channels" ? " collab-group-panel__tab--on" : ""}`}
+            onClick={() => setTab("channels")}
+          >
+            {t("collabGroup.tab.channels")}
           </button>
         </div>
-      </div>
-
-      <div className="collab-group-panel__tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "sessions"}
-          className={`collab-group-panel__tab${tab === "sessions" ? " collab-group-panel__tab--on" : ""}`}
-          onClick={() => setTab("sessions")}
-        >
-          {t("collabGroup.tab.sessions")}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "channels"}
-          className={`collab-group-panel__tab${tab === "channels" ? " collab-group-panel__tab--on" : ""}`}
-          onClick={() => setTab("channels")}
-        >
-          {t("collabGroup.tab.channels")}
-        </button>
-      </div>
+      )}
 
       <div className="collab-group-panel__rows">
         {/* 任务587 同款：失败但有旧数据 → 旧数据优先（可用性>新鲜度），顶部
@@ -221,12 +258,12 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
           </div>
         )}
         {/* 健康空：空目录渲染空态，不是错误（409 验收：空态不劣化现状）。 */}
-        {tab === "sessions" && viewEmpty && !loadError && (
+        {effectiveTab === "sessions" && viewEmpty && !loadError && (
           <div className="collab-group-panel__empty">
             {loading ? t("collabGroup.loading") : t("collabGroup.empty")}
           </div>
         )}
-        {tab === "sessions" &&
+        {effectiveTab === "sessions" &&
           sessions.map((session) => (
             <div key={session.contactId || session.title || session.topicId} className="collab-group-panel__session">
               <div className="collab-group-panel__meta">
@@ -267,17 +304,17 @@ export function CollabGroupPanel({ bindings }: { bindings?: CollabGroupBindings 
 
         {/* 任务 802：频道消息 tab = 微信式真群聊（建群/发言/撤回/详情/邀请）。
             自管拉取与退避；切走 tab 即卸载即停，关面板零成本（409 同款）。 */}
-        {tab === "channels" && <ChannelChatPanel bindings={b} />}
+        {effectiveTab === "channels" && <ChannelChatPanel bindings={b} />}
       </div>
 
       <div className="collab-group-panel__foot">
         {/* 观察窗注（409 语义）只描述会话 tab；频道消息 tab 是可发言的真群聊。 */}
-        {tab === "sessions" && <span className="collab-group-panel__note">{t("collabGroup.note")}</span>}
+        {effectiveTab === "sessions" && <span className="collab-group-panel__note">{t("collabGroup.note")}</span>}
         {overview?.generatedAt ? (
           <span className="collab-group-panel__time">{formatTime(overview.generatedAt)}</span>
         ) : null}
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+  return embedded ? panelTree : createPortal(panelTree, document.body);
 }

@@ -137,8 +137,35 @@ export function isCollabInboxOpen(): boolean {
   return panelOpen;
 }
 
-/** Opens/closes the panel (settings entry point, task 320). */
+/** Opens/closes the panel (settings entry point, task 320).
+ * 任务 856 ①：注册 forward 后本调用升级为「打开协作中心（信件视图）」的
+ * 外部信号——调用方（设置页副入口、派单通知等）零改动。 */
 export function setCollabInboxOpen(next: boolean): void {
+  // 任务 856 ①：本地 listeners 只在真实变化时通知（幂等保护），但 forward
+  // 同值也转发——Hub 已开在聊天视图时，设置页的「打开信件中心」（同值 true）
+  // 仍要能切回信件视图。
+  if (panelOpen === next) {
+    openForward?.(next);
+    return;
+  }
+  panelOpen = next;
+  for (const listener of openListeners) listener(next);
+  openForward?.(next);
+}
+
+// 任务 856 ①：打开信号转发缝——协作中心（CollabHubPanel）挂载后把本面板的
+// open 信号重定向为「打开 Hub 并切到信件视图」。转发发生在本地 listeners
+// 通知之后；未注册时（独立面板模式，含全部既有测试）行为与 320 原样一致。
+let openForward: ((next: boolean) => void) | null = null;
+
+/** 任务 856 ①：CollabHubPanel 模块初始化时注册（传 null 撤销）。 */
+export function forwardCollabInboxOpen(fn: ((next: boolean) => void) | null): void {
+  openForward = fn;
+}
+
+/** 任务 856 ①：Hub 开合同步本面板模块 open（通知 listeners 使未读徽标的
+ * 「面板开/合即刷」时机在 Hub 开/合时保持，但不触发 forward——防递归）。 */
+export function syncCollabInboxOpen(next: boolean): void {
   if (panelOpen === next) return;
   panelOpen = next;
   for (const listener of openListeners) listener(next);
@@ -234,7 +261,7 @@ function contactHoverLabel(display: string, contactId: string): string {
   return display === id ? `contact_id=${id}` : `${display}（contact_id=${id}）`;
 }
 
-export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInboxBindings; directory?: CollabSessionDirectory } = {}) {
+export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?: CollabInboxBindings; directory?: CollabSessionDirectory; embedded?: boolean } = {}) {
   const t = useT();
   const b: CollabInboxBindings = bindings ?? app;
   // 任务461-P4: the from/to dropdowns read the addressable roster. The
@@ -249,6 +276,8 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
     return app as CollabSessionDirectory;
   }, [bindings, directory]);
   const [open, setOpen] = useState(panelOpen);
+  // 任务 856 ①：embedded（协作中心信件视图）= 渲染由 Hub 决定，忽略模块 open。
+  const effectiveOpen = Boolean(embedded) || open;
   const [bucket, setBucket] = useState<Bucket>("all");
   const [state, setState] = useState<StateFilter>("all");
   const [order, setOrder] = useState<OrderFilter>("desc");
@@ -280,7 +309,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   // 任务462: the same rows also feed the shared contact-id→会话名 cache, so
   // transcript cards resolve names from data the panel already fetched.
   useEffect(() => {
-    if (!open) return;
+    if (!effectiveOpen) return;
     let alive = true;
     dir.ListAddressableSessions()
       .then((rows) => {
@@ -298,7 +327,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
     return () => {
       alive = false;
     };
-  }, [open, dir]);
+  }, [effectiveOpen, dir]);
 
   // 任务587（失败后自动恢复）：the retry loop lives in refs so re-creating
   // `refresh` (every filter change) never stacks timers, and the pending timer
@@ -360,12 +389,12 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   }, [refresh]);
 
   useEffect(() => {
-    if (!open) {
+    if (!effectiveOpen) {
       cancelRetry();
       return;
     }
     void refresh();
-  }, [open, refresh, cancelRetry]);
+  }, [effectiveOpen, refresh, cancelRetry]);
 
   // unmount cleanup: no retry timer may outlive the panel.
   useEffect(() => cancelRetry, [cancelRetry]);
@@ -402,7 +431,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   );
 
 
-  if (!open) return null;
+  if (!effectiveOpen) return null;
 
   const act = async (fn: () => Promise<CollabMailSnapshot>) => {
     setBusy(true);
@@ -446,16 +475,22 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
   const viewEmpty = listEmpty || chainsEmpty;
 
 
-  return createPortal(
+  // 任务 856 ①：embedded（协作中心信件视图）渲染在 Hub 的 React 树内（壳体
+  // 内部，DOM 同处一树，样式可被壳层容器约束）；独立模式保持 portal-at-root
+  // （task 121/123 规则——settings 覆盖层打开时也可见）。
+  const panelTree = (
     <div className="collab-inbox-panel" role="dialog" aria-label={t("collabInbox.title")}>
       {/* 任务716 ①（用户拖拽定稿）：头部=标题横排（nowrap 防窄容器竖排截断）+
-          关闭按钮右上角；副标题按定稿③不设。 */}
-      <div className="collab-inbox-panel__head">
-        <span className="collab-inbox-panel__title">{t("collabInbox.title")}</span>
-        <button type="button" className="btn btn--small" onClick={() => setCollabInboxOpen(false)}>
-          {t("collabInbox.close")}
-        </button>
-      </div>
+          关闭按钮右上角；副标题按定稿③不设。
+          任务 856 ①：embedded（协作中心信件视图）时头部由 Hub 壳承担，不渲染。 */}
+      {!embedded && (
+        <div className="collab-inbox-panel__head">
+          <span className="collab-inbox-panel__title">{t("collabInbox.title")}</span>
+          <button type="button" className="btn btn--small" onClick={() => setCollabInboxOpen(false)}>
+            {t("collabInbox.close")}
+          </button>
+        </div>
+      )}
 
       {/* 任务716 ②（定稿第二位）：维护行——保留期 + 清理条件（定稿①②：原
           「会话删除时」是场景描述不作下拉前缀，更名为「清理条件」）+ 立即清理，
@@ -792,7 +827,7 @@ export function CollabInboxPanel({ bindings, directory }: { bindings?: CollabInb
         </span>
         <span className="collab-inbox-panel__note">{t("collabInbox.note")}</span>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+  return embedded ? panelTree : createPortal(panelTree, document.body);
 }

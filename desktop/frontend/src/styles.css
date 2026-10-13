@@ -46258,3 +46258,158 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--font-status, 11px);
   white-space: nowrap;
 }
+
+/* ─── 任务 856 ①：协作中心容器（双视图壳）────────────────────────── */
+.collab-hub-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 56px;
+  z-index: var(--z-popover);
+  width: min(980px, calc(100vw - 24px));
+  height: min(680px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated, var(--bg));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+.collab-hub-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.collab-hub-panel__title {
+  font-weight: 600;
+  font-size: var(--text-md);
+}
+.collab-hub-panel__views {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+}
+.collab-hub-panel__view {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 16px;
+  font-size: var(--text-sm);
+  color: var(--text-muted, inherit);
+  cursor: pointer;
+}
+.collab-hub-panel__view--on {
+  background: var(--bg-elevated, var(--bg));
+  color: var(--accent, var(--fg));
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.collab-hub-panel__close {
+  margin-left: auto;
+}
+.collab-hub-panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+/* embedded：子面板从固定定位浮层改为填满壳体（DOM 同树，后代选择器覆盖） */
+.collab-hub-panel__body .collab-inbox-panel {
+  position: static;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+/* 聊天视图（CollabChatView）：工具行 + 群聊本体 + 协作动态浮层 */
+.collab-chat-view {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.collab-chat-view__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.collab-chat-view__label {
+  font-size: var(--text-sm);
+  color: var(--text-muted, inherit);
+}
+.collab-chat-view__spacer {
+  flex: 1;
+}
+.collab-chat-view__activitybtn--on {
+  color: var(--accent, var(--fg));
+}
+.collab-chat-view__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.collab-chat-view__body .channel-chat {
+  flex: 1;
+  min-width: 0;
+}
+.collab-chat-view__activity {
+  position: absolute;
+  top: 40px;
+  right: 12px;
+  z-index: calc(var(--z-popover) + 1);
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(520px, calc(100vh - 200px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated, var(--bg));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+.collab-chat-view__activityhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.collab-chat-view__activitytitle {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.collab-chat-view__activity .collab-group-panel {
+  position: static;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: auto;
+}
+
+/* 任务 856 ③：实验室开关前置依赖提示行（collabHub ← sessionCollab） */
+.set-lab-dep-note {
+  margin-top: 6px;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted, inherit);
+}
