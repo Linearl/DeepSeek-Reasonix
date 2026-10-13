@@ -46413,3 +46413,54 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-xs, 12px);
   color: var(--text-muted, inherit);
 }
+
+/* 任务 856 ②：信件批量管理——复选框/浮动删除条/确认语义句 */
+.collab-inbox-panel__check {
+  display: inline-flex;
+  align-items: flex-start;
+  flex: none;
+  padding-top: 2px;
+}
+.collab-inbox-panel__row {
+  flex-direction: row;
+}
+.collab-inbox-panel__row > .collab-inbox-panel__meta,
+.collab-inbox-panel__row > .collab-inbox-panel__preview,
+.collab-inbox-panel__row > .collab-inbox-panel__rowactions {
+  min-width: 0;
+}
+.collab-inbox-panel__chain {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 6px;
+}
+.collab-inbox-panel__chain > .collab-inbox-panel__chainhead,
+.collab-inbox-panel__chain > .collab-inbox-panel__chainbody {
+  flex: 1;
+  min-width: 0;
+}
+.collab-inbox-panel__batchbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+  flex: none;
+}
+.collab-inbox-panel__batchcount {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.collab-inbox-panel__clearall {
+  margin-left: auto;
+}
+.collab-inbox-panel__confirmnote {
+  display: block;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg-soft);
+  color: var(--text-muted, inherit);
+  font-size: var(--text-sm);
+}

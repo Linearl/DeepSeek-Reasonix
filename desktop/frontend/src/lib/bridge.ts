@@ -1407,6 +1407,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetCollabMailCleanupRule(rule: string): Promise<CollabMailSnapshotView>;
   /** 任务 620: 立即清理——按当前保留期与清理规则立即执行一次清理，返回物理移除数与新快照。 */
   CleanCollabMailNow(): Promise<CollabInboxCleanNowView>;
+  /** 任务 856 ②: 批量删除——物理移除所选留档（对话留档语义：不影响已注入内容）。 */
+  DeleteCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
+  /** 任务 856 ②: 清空全部——物理清空全部留档（含已处理），返回移除数与新快照。 */
+  ClearAllCollabMail(): Promise<CollabInboxCleanNowView>;
   // 任务 409: 群聊式协作视图（只读观察窗）— 聚合通讯录/共享忙闲判定/任务卡/
   // 已投递往来，全部现有数据源，无新协议。
   GetCollabViewOverview(): Promise<CollabViewOverviewView>;
@@ -6074,6 +6078,16 @@ function makeMockApp(): AppBindings {
     },
     async CleanCollabMailNow() {
       // dev shell has no mailbox — an honest "nothing to clean" result
+      return {
+        removed: 0,
+        snapshot: { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] },
+      };
+    },
+    // 任务 856 ②: the dev shell deletes nothing — same honest empty archive.
+    async DeleteCollabMail() {
+      return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] };
+    },
+    async ClearAllCollabMail() {
       return {
         removed: 0,
         snapshot: { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] },
