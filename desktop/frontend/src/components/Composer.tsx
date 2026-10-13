@@ -6,7 +6,7 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Smile, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
 import { useWorkProcessFoldAggregate } from "../lib/workProcessFoldState";
 import { asArray } from "../lib/array";
@@ -74,6 +74,8 @@ import { normalizeSubagentPolicy } from "../lib/types";
 import type { QuickCommandEntry } from "../lib/settingsViewTypes";
 import { Tooltip } from "./Tooltip";
 const RecoveryWaitBanner = lazy(() => import("./RecoveryWaitBanner").then((module) => ({ default: module.RecoveryWaitBanner })));
+// 任务 869：emoji 面板本体（含 catalog 数据）走 lazy chunk，initial 面只保留入口按钮。
+const EmojiPicker = lazy(() => import("./EmojiPicker").then((module) => ({ default: module.EmojiPicker })));
 import { ComposerContextCard } from "./ComposerContextCard";
 import { Markdown } from "./Markdown";
 import { CodeViewer } from "./CodeViewer";
@@ -984,6 +986,10 @@ export function Composer({
   // 不再受 .composer-meta（overflow:hidden）裁剪——此前 absolute 定位面板被
   // 裁成不可见，点击看似无反应。
   const historyPickerAnchorRef = useRef<HTMLButtonElement | null>(null);
+  // 任务 869：emoji 面板复用同一弹层路线（AnchoredPopover portal 到 body），
+  // 点选只插入光标处、面板保持打开支持连选，Esc/外点关闭交给弹层统一语义。
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const emojiPickerAnchorRef = useRef<HTMLButtonElement | null>(null);
   const savedTextRef = useRef("");
   const taRef = useRef<HTMLTextAreaElement>(null);
   const measureTaRef = useRef<HTMLTextAreaElement>(null);
@@ -2352,6 +2358,34 @@ export function Composer({
     const inserted = leading + body + trailing;
     const pos = before.length + inserted.length;
     const updated = replaceInvocationTextRange(current, invocationsRef.current, start, end, inserted);
+    textRef.current = updated.text;
+    invocationsRef.current = updated.invocations;
+    setText(updated.text);
+    setInvocations(updated.invocations);
+    setComposerSelection(pos);
+    recordComposerEdit(
+      targetDraftKey,
+      beforeEdit,
+      composerEditSnapshot(targetDraftKey, { start: pos, end: pos }),
+    );
+  };
+
+  // 任务 869：emoji 紧凑插入——替换选区、无片段式空行分隔，光标落在插入
+  // 内容之后；经 replaceInvocationTextRange 保持 @调用 偏移一致，并记录撤销
+  // 快照与 insertTextAtCaret 同规。组合 emoji（ZWJ/肤色修饰符）是普通
+  // UTF-16 码元序列，slice 拼接天然不截断。
+  const insertEmojiAtCaret = (emoji: string) => {
+    const selection = getComposerSelection();
+    const targetDraftKey = activeDraftKeyRef.current;
+    const beforeEdit = composerEditSnapshot(targetDraftKey, selection);
+    const updated = replaceInvocationTextRange(
+      textRef.current,
+      invocationsRef.current,
+      selection.start,
+      selection.end,
+      emoji,
+    );
+    const pos = selection.start + emoji.length;
     textRef.current = updated.text;
     invocationsRef.current = updated.invocations;
     setText(updated.text);
@@ -5888,6 +5922,43 @@ export function Composer({
               </div>}
             </div>
             <div className={`composer-toolbar-send${submitUnavailableHint ? " composer-toolbar-send--unavailable" : ""}`}>
+              {/* 任务 869：emoji 面板入口。与历史提示词时钟同一弹层语义
+                  （AnchoredPopover portal 到 body，Esc/外点关闭）；面板 lazy
+                  加载，首开有一次 Suspense 占位。 */}
+              {!heroMode && (
+                <div className="composer-emoji-picker">
+                  <Tooltip label={t("composer.emojiPickerTitle")} disabled={emojiPickerOpen}>
+                    <button
+                      ref={emojiPickerAnchorRef}
+                      type="button"
+                      className={`composer__btn${emojiPickerOpen ? " composer__btn--on" : ""}`}
+                      onClick={() => setEmojiPickerOpen((open) => !open)}
+                      aria-label={t("composer.emojiPickerTitle")}
+                      aria-haspopup="dialog"
+                      aria-expanded={emojiPickerOpen}
+                    >
+                      <Smile size={14} />
+                    </button>
+                  </Tooltip>
+                  <AnchoredPopover
+                    open={emojiPickerOpen}
+                    anchorRef={emojiPickerAnchorRef}
+                    onClose={() => setEmojiPickerOpen(false)}
+                    className="composer-emoji-popover composer-menu-surface"
+                    align="end"
+                  >
+                    <Suspense fallback={<div className="composer-emoji-menu__loading" aria-hidden="true">…</div>}>
+                      {emojiPickerOpen && (
+                        <EmojiPicker
+                          t={t}
+                          onPick={insertEmojiAtCaret}
+                          onClose={() => setEmojiPickerOpen(false)}
+                        />
+                      )}
+                    </Suspense>
+                  </AnchoredPopover>
+                </div>
+              )}
               {/* Task 261: explicit history picker - picking never replaces the
                   unsent draft (insert-at-caret), unlike the legacy ArrowUp path. */}
               {historyPickerEnabled && (
