@@ -34,8 +34,10 @@ import {
 } from "../lib/transcriptRows";
 import { projectTranscriptTimeline, transcriptRenderMode } from "../lib/transcriptTimeline";
 import {
+  readTranscriptCollapseIntent,
   readTranscriptFoldOverrides,
   replaceTranscriptFoldOverrides,
+  setTranscriptCollapseIntent,
   writeTranscriptFoldOverride,
 } from "../lib/transcriptFoldOverrides";
 import {
@@ -236,9 +238,22 @@ export function Transcript(props: TranscriptProps) {
     // 任务 765: a tier switch re-baselines the reasoning panels too — the old
     // tier's manual open/closed choices must not leak into the new semantics
     // (same contract as the fold-map reconcile clearing userOverridden below).
-    if (preferenceChanged) clearReasoningFoldOverrides(resolvedSessionKey);
+    if (preferenceChanged) {
+      clearReasoningFoldOverrides(resolvedSessionKey);
+      // 任务 857: 切显示档是显式的全局意图变更，「收起全部」意图随之解除，
+      // 新块回到新档位的默认规则。
+      setTranscriptCollapseIntent(resolvedSessionKey, false);
+    }
     setFolds((previous) => {
-      const next = reconcileFoldEntries(previous, segmentStates, experience, preferenceChanged);
+      const next = reconcileFoldEntries(
+        previous,
+        segmentStates,
+        experience,
+        preferenceChanged,
+        // 任务 857: 「收起全部工作过程」的会话级意图——新 segment 按意图
+        // 收起而不是运行中自动展开，fresh-run 也不清除用户 override。
+        readTranscriptCollapseIntent(resolvedSessionKey),
+      );
       if (next) replaceTranscriptFoldOverrides(resolvedSessionKey, next);
       return next ?? previous;
     });
@@ -412,6 +427,9 @@ export function Transcript(props: TranscriptProps) {
 
   const handleFoldToggle = useTranscriptCommand((segmentKey: string, open: boolean) => {
     beginStructural("display-change");
+    // 任务 857: 用户主动展开任一块头 = 撤回「收起全部」意图，后续新块回到
+    // 默认规则（运行中自动展开）；单块收起不升级为全局意图。
+    if (open) setTranscriptCollapseIntent(resolvedSessionKey, false);
     setFolds((previous) => {
       const next = foldMapWithToggle(previous, segmentKey, open);
       const entry = next.get(segmentKey);
@@ -439,6 +457,10 @@ export function Transcript(props: TranscriptProps) {
   // once the header is closed and re-derive from presentation on next open.
   const handleCollapseAll = useTranscriptCommand(() => {
     beginStructural("display-change");
+    // 任务 857: 把「全部收起」记成会话级意图——本次写入只覆盖当时已存在的
+    // segment，之后流式到达的新 segment（新回合/新过程段）靠这张表按意图
+    // 收起，直到用户主动展开（点开块头 / 全部展开 / 切显示档）。
+    setTranscriptCollapseIntent(resolvedSessionKey, true);
     setFolds((previous) => {
       const next = new Map(previous);
       for (const segment of segmentStates) {
@@ -457,6 +479,8 @@ export function Transcript(props: TranscriptProps) {
   // 没有它，运行中的 reconcile tick 会把刚展开的块按默认规则改回去。
   const handleExpandAll = useTranscriptCommand(() => {
     beginStructural("display-change");
+    // 任务 857: 全部展开即撤回收起意图，新块恢复默认规则。
+    setTranscriptCollapseIntent(resolvedSessionKey, false);
     setFolds((previous) => {
       const next = new Map(previous);
       for (const segment of segmentStates) {

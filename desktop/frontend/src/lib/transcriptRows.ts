@@ -396,12 +396,22 @@ export function foldSegmentStates(models: readonly TurnModel[], keepReasoningExp
  * outside, or the preference pins every fold open. A preference switch clears
  * per-fold overrides so the whole transcript lands in one consistent state.
  * Returns null when nothing changed (so callers can skip a re-render).
+ *
+ * 任务 857：collapseIntent（会话级「全部收起」意图，默认 false=原语义）激活时，
+ * 两条自动展开路径被收起意图压住：
+ *   ① 新 segment（FoldMap 无条目）不再走 defaultFoldOpen 的运行中展开，按意图
+ *      收起且记 userOverridden=true——否则新回合/新过程段一出现就把「收起全部
+ *      工作过程」顶回去（24.3 装机反馈的回归面）；
+ *   ② fresh-run 分支（entry.running false→true，tab 切回/重挂载后运行中的
+ *      segment 也走这里）不再清除用户 override。
+ * 用户主动展开任一块头（Transcript 的 handleFoldToggle open=true）即解除意图。
  */
 export function reconcileFoldEntries(
   prev: FoldMap,
   segments: readonly FoldSegmentState[],
   experience: ExperienceInput,
   preferenceChanged: boolean,
+  collapseIntent = false,
 ): Map<string, FoldEntry> | null {
   const normalizedExperience = normalizeExperience(experience);
   let next: Map<string, FoldEntry> | null = null;
@@ -415,8 +425,8 @@ export function reconcileFoldEntries(
     const entry = prev.get(segment.key);
     if (!entry) {
       write(segment.key, {
-        open: defaultFoldOpen(segment, normalizedExperience),
-        userOverridden: false,
+        open: collapseIntent ? false : defaultFoldOpen(segment, normalizedExperience),
+        userOverridden: collapseIntent,
         running: segment.hasRunningWork,
         keepReasoningExpanded: segment.keepReasoningExpanded,
       });
@@ -450,7 +460,9 @@ export function reconcileFoldEntries(
       // stays open unless the user closed it during THIS run. The concise tier
       // (task 111) inverts the default: the work process stays hidden until the
       // user opens it on purpose.
-      const userOverridden = entry.running ? entry.userOverridden : false;
+      // 任务 857：会话级收起意图激活时，fresh-run 不清除用户 override——
+      // 「收起全部」的意愿跨运行周期保持，直到用户主动展开。
+      const userOverridden = (entry.running || collapseIntent) ? entry.userOverridden : false;
       const open = userOverridden ? entry.open : normalizedExperience !== "concise";
       if (open !== entry.open || userOverridden !== entry.userOverridden || !entry.running) {
         write(segment.key, { open, userOverridden, running: true, keepReasoningExpanded: segment.keepReasoningExpanded });
