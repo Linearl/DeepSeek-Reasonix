@@ -835,7 +835,7 @@ const CHECKS = [
   // 任务 320 UI 规格（20261002 用户钦定）：面板入口进左下角图标行（与回收站/
   // 自动化/设置同排，邮箱图标）。锁 App.tsx 接线与三语键——图标行是常驻入口，
   // 被 merge 摘掉则面板退回仅设置可达。
-  { feature: "任务320 左下角图标行入口（邮箱图标+开合接线）", file: "desktop/frontend/src/App.tsx", patterns: ["Mailbox size={16}", "setCollabInboxOpen(true)", "sidebar.collabInbox"] },
+  { feature: "任务320 左下角图标行入口（邮箱图标+开合接线；856 两图标合一进 CollabHub，未读数为邮箱语义残留）", file: "desktop/frontend/src/App.tsx", patterns: ["setCollabHubOpen(true)", "sidebar.collabHub", "collabInboxUnread"] },
   { feature: "任务320 图标行入口三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["sidebar.collabInbox"] },
   // 任务 409 群聊式协作视图（20261009）：只读观察窗——聚合面（Go）+ 面板组件
   // + 图标行入口 + 三语。状态词汇必须与 get_session_status 同源
@@ -845,8 +845,8 @@ const CHECKS = [
   { feature: "任务409 聚合面测试（≥3 会话/四态/往来只算已投递）", file: "desktop/collab_view_app_test.go", patterns: ["TestGetCollabViewOverviewAggregatesRoster", "TestCollabViewCardForPicksCurrentCard"] },
   { feature: "任务409 群聊面板组件", file: "desktop/frontend/src/components/CollabGroupPanel.tsx", patterns: ["collab-group-panel__session", "GetCollabViewOverview", "COLLAB_GROUP_POLL_MS"] },
   { feature: "任务409 面板测试（≥3 同屏/空态/失败≠空态）", file: "desktop/frontend/src/__tests__/collab-group-panel.test.tsx", patterns: ["acceptance: ≥3", "must never render as the healthy empty state"] },
-  { feature: "任务409 图标行群聊入口", file: "desktop/frontend/src/App.tsx", patterns: ["MessagesSquare size={16}", "setCollabGroupOpen(true)", "sidebar.collabGroup"] },
-  { feature: "任务409 三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["sidebar.collabGroup", "collabGroup.state.unknown", "collabGroup.note"] },
+  { feature: "任务409 图标行群聊入口（856 合一：MessagesSquare 保留为 CollabHub 图标）", file: "desktop/frontend/src/App.tsx", patterns: ["MessagesSquare size={16}", "setCollabHubOpen(true)", "sidebar.collabHub"] },
+  { feature: "任务409 三语 locale（856 侧栏键改名 collabHub；面板状态键不变）", file: "desktop/frontend/src/locales/zh.ts", patterns: ["sidebar.collabHub", "collabGroup.state.unknown", "collabGroup.note"] },
   { feature: "任务409 面板 CSS", file: "desktop/frontend/src/styles.css", patterns: [".collab-group-panel__state--running", ".collab-group-panel__fanoutcell--read"] },
   // 任务 320 余段（20261003）：a 的面板侧日期升/降切换——索引层 Query.Order
   // 双序早已在，缺的是 Wails 透传与面板控件；锁 Go 参数、控件类与三语键，
