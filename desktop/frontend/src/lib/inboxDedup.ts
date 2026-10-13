@@ -56,6 +56,16 @@ export function attachInboxDedupItemId(tabId: string, display: string, structure
   if (entry) entry.itemId = itemId;
 }
 
+/**
+ * 任务 828：明确的未执行拒绝（后端 definite pre-execution rejection，或未拿到
+ * 持久 itemId 的失败）撤销本次窗口记录。防双击去重只该覆盖「已成功入队」的
+ * 尝试——失败尝试占据窗口会让用户在 5 秒内的有意重试被短路成 duplicate，且该
+ * duplicate 缺少 itemId，会被提交层当成功清掉草稿（消息既未入队也已丢失）。
+ */
+export function forgetInboxEnqueue(tabId: string, display: string, structuredKey: string): void {
+  recent.delete(keyFor(tabId, display, structuredKey));
+}
+
 /** Test helper: clears the short-window ledger. */
 export function resetInboxDedup(): void {
   recent.clear();

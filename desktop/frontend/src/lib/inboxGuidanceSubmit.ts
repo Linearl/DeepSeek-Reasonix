@@ -1,7 +1,7 @@
 import type { AppBindings } from "./bridge";
 import type { StructuredInvocationSubmit } from "./invocationDisplay";
 import { resolveActiveTurnId } from "./inboxSubmit";
-import { attachInboxDedupItemId, noteInboxEnqueue } from "./inboxDedup";
+import { attachInboxDedupItemId, forgetInboxEnqueue, noteInboxEnqueue } from "./inboxDedup";
 
 type InboxEnqueueBindings = Pick<AppBindings, "EnqueueInboxFollowup" | "EnqueueInboxFollowupWithInvocations" | "EnqueueInboxSteer" | "EnqueueInboxSteerForTurn">;
 
@@ -43,14 +43,22 @@ export async function enqueueInboxGuidance(
   // Task 51 UI-2: collapse a same-text same-structure double submit inside a
   // short window. The first attempt owns the durable enqueue; the second is a
   // no-op that reports the already-queued item id.
+  // 任务 828：窗口只覆盖拿到持久收据的尝试——未执行拒绝/无 itemId 的失败在
+  // 返回前撤销记录，保证「known unexecuted request remains retryable」。
   const fp = structuredFingerprint(structured);
   const prior = noteInboxEnqueue(tabId, display, fp);
   if (prior) {
     return { itemId: prior.itemId, duplicate: true };
   }
-  const receipt = await performEnqueue(binding, tabId, display, submit, structured, opts);
-  if (receipt?.itemId) attachInboxDedupItemId(tabId, display, fp, receipt.itemId);
-  return receipt ?? {};
+  try {
+    const receipt = await performEnqueue(binding, tabId, display, submit, structured, opts);
+    if (receipt?.itemId) attachInboxDedupItemId(tabId, display, fp, receipt.itemId);
+    else forgetInboxEnqueue(tabId, display, fp);
+    return receipt ?? {};
+  } catch (error) {
+    forgetInboxEnqueue(tabId, display, fp);
+    throw error;
+  }
 }
 
 async function performEnqueue(
