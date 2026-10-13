@@ -5065,6 +5065,8 @@ export const zhTW: Record<DictKey, string> = {
   "projectGroup.movePanelLabel": "移動到分組",
   "projectGroup.rename": "重新命名",
   "projectGroup.renamePrompt": "重新命名分組《{title}》：",
+  "projectGroup.deleteConfirm": "解散分組《{title}》？",
+  "projectGroup.deleteDetail": "僅移除分組殼，組內專案將回到未分組，專案本身不會被刪除。",
   "projectGroup.ungrouped": "未分組",
   "projectTree.filterByColor": "按顏色篩選",
   "projectTree.filterByColorAll": "全部顏色",

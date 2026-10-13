@@ -29,11 +29,15 @@ import { GLOBAL_PROJECT_ORDER_KEY, ProjectTreeFolderActivity, ProjectTreeGroupRo
 import { ProjectTreeSessionArchiveMenu } from "./ProjectTreeSessionArchiveMenu";
 import {
   addProjectGroup,
+  deleteProjectGroup,
+  dropProjectGroupCollapsed,
   groupForProject,
   loadProjectGroupAssign,
   loadProjectGroupCollapsed,
   loadProjectGroups,
   moveProjectToGroup,
+  renameProjectGroup,
+  reorderProjectGroups,
   persistProjectGroupCollapsed,
   type ProjectGroup,
 } from "../lib/projectGroups";
@@ -51,6 +55,12 @@ function projectNodeKey(node: ProjectNode, depth: number): string {
 }
 
 type WorkbenchHeaderMenu = "more" | "add" | null;
+
+// Task 827 ④: a dedicated drag MIME type for project-group reorder drags. It
+// is what keeps the group drag and the project-row drag from ever interfering
+// (acceptance ⑤): each side sets and matches only its own type, and each side
+// gates its dragover/drop on its own state (dragGroupId vs dragProjectRoot).
+const PROJECT_GROUP_DRAG_TYPE = "application/x-reasonix-project-group-id";
 
 type CollapseSnapshot = {
   expanded: Set<string>;
@@ -733,6 +743,71 @@ export function ProjectTree({
     },
     [groups, activeWorkspaceRoot],
   );
+
+  // Task 827 ①: per-group-row context menu state. The menu itself renders
+  // inside the row (same pattern as the topic rows), so only one group menu can
+  // be open at a time and closing is a single setState.
+  const [groupMenuId, setGroupMenuId] = useState<string | null>(null);
+  const [groupMenuPoint, setGroupMenuPoint] = useState<ContextMenuPoint | null>(null);
+  // Task 827 ①: inline rename — the row swaps its title for an input, Enter
+  // commits, Escape cancels (same UX as the session-group rename in
+  // ProjectTreeGroupRows).
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
+  const [groupRenameDraft, setGroupRenameDraft] = useState("");
+  // Task 827 ④: group reorder drag. A dedicated drag type keeps this fully
+  // separate from the project-row drag (acceptance ⑤): a group drag never sets
+  // dragProjectRoot, so project rows ignore it (their onDragOver bails when
+  // dragProjectRoot is null), and a project drag never sets dragGroupId, so
+  // group rows ignore it.
+  const [dragGroupId, setDragGroupId] = useState<string | null>(null);
+  const [dropGroup, setDropGroup] = useState<{ id: string; position: ProjectDropPosition } | null>(null);
+
+  const clearGroupDrag = useCallback(() => {
+    setDragGroupId(null);
+    setDropGroup(null);
+  }, []);
+
+  useEffect(() => {
+    if (!dragGroupId) return;
+    window.addEventListener("dragend", clearGroupDrag);
+    window.addEventListener("drop", clearGroupDrag);
+    window.addEventListener("blur", clearGroupDrag);
+    return () => {
+      window.removeEventListener("dragend", clearGroupDrag);
+      window.removeEventListener("drop", clearGroupDrag);
+      window.removeEventListener("blur", clearGroupDrag);
+    };
+  }, [clearGroupDrag, dragGroupId]);
+
+  const commitGroupRename = useCallback((id: string) => {
+    setGroups((current) => renameProjectGroup(current, id, groupRenameDraft));
+    setRenamingGroupId(null);
+  }, [groupRenameDraft]);
+
+  // Task 827 ①: dissolve = remove the group shell only. deleteProjectGroup
+  // clears the group's project assignments (persisting both sides), so its
+  // projects return to the ungrouped section — the projects themselves are
+  // never touched. The confirm dialog guards against a mis-click; the group's
+  // persisted collapsed marker is dropped alongside so the set never
+  // accumulates stale ids.
+  const dissolveProjectGroup = useCallback((group: ProjectGroup) => {
+    void (async () => {
+      const confirmed = await app.ConfirmAction({
+        title: t("projectGroup.delete"),
+        message: t("projectGroup.deleteConfirm", { title: group.title }),
+        detail: t("projectGroup.deleteDetail"),
+        confirmLabel: t("projectGroup.delete"),
+        cancelLabel: t("common.cancel"),
+        destructive: true,
+      });
+      if (!confirmed) return;
+      const res = deleteProjectGroup(groups, assign, group.id);
+      setGroups(res.groups);
+      setAssign(res.assign);
+      setCollapsedProjectGroups((current) => dropProjectGroupCollapsed(current, group.id));
+      setGroupMenuId(null);
+    })();
+  }, [groups, assign, t]);
 
   const collapseToggleLabel = t(canRestoreCollapsedView ? "projectTree.restoreCollapsedTooltip" : "projectTree.collapseAllTooltip");
   const workbenchCollapseToggleLabel = t(canRestoreCollapsedView ? "projectTree.restoreCollapsedWorkbench" : "projectTree.collapseAllWorkbench");
@@ -1428,6 +1503,13 @@ export function ProjectTree({
               startRenameTopic(node, label);
             }}
           >
+            {/* Task 827 ③: the session row's icon-column placeholder — the
+                same fixed width every row reserves, so the title starts one
+                indent step right of its container row's title. The status dot
+                keeps its established home in the side area; this column only
+                holds the grid. Hidden in workbench/creation, which have their
+                own fixed paddings. */}
+            <span className="project-tree__topic-lead" aria-hidden="true" />
             <span className="project-tree__topic-copy">
               <span className="project-tree__topic-heading">
                 <span className="project-tree__topic-label">{label}</span>
@@ -1993,8 +2075,11 @@ export function ProjectTree({
           >
             <span className={folderDisclosure.iconStackClassName}>
               {node.remote ? <Cloud size={14} className="project-tree__folder-icon" /> : folderDisclosure.isOpen ? <FolderOpen size={14} className="project-tree__folder-icon" /> : <Folder size={14} className="project-tree__folder-icon" />}
+              {/* Task 827 ③: the project color dot lives inside the icon column
+                  (bottom-right overlay), so the label starts right after one
+                  uniform icon column — the same grid every row follows. */}
+              <span className="project-tree__folder-color" aria-hidden="true" />
             </span>
-            <span className="project-tree__folder-color" aria-hidden="true" />
             <span className={`project-tree__folder-label${!hasChildren ? " project-tree__folder-label--empty" : ""}`}>
               {projectLabel}
               {node.isolatedWorktree && <WorktreeBadge size={11} />}
@@ -2479,32 +2564,144 @@ export function ProjectTree({
   // Project rows render under their group heading; ungrouped projects follow at
   // the bottom. A group with no members still renders so a freshly created one
   // stays visible while the user fills it.
+  //
+  // Task 827: the group header row is wired for all four optimizations —
+  // ① right-click menu (rename / dissolve with confirm), ③ the unified icon
+  // column (folder glyph with the fold chevron overlaid on it), ④ drag to
+  // reorder (a dedicated drag type, persisted through reorderProjectGroups).
+  // The row paddingLeft is the shared tree grid: 8 + depth * 16 with depth 0,
+  // so the group title starts at the same column as a project row title
+  // (indent + icon column + gap).
   const renderProjectSection = (depth: number) => (
     <div className="project-tree__section project-tree__section--projects">
       {groups.map((group) => {
         const members = pinnedTreeSections.projects.filter((node) => groupForProjectRoot(node.root)?.id === group.id);
         const collapsed = collapsedProjectGroups.has(group.id);
+        const groupDropPosition = dropGroup?.id === group.id && dragGroupId !== group.id ? dropGroup?.position ?? null : null;
+        const groupMenuOpen = groupMenuId === group.id;
         return (
           <div key={group.id} className="project-tree__group">
             <div
-              className="project-tree__group-main"
+              className={`project-tree__group-main project-tree__pgroup-main${groupDropPosition ? ` project-tree__pgroup-main--drop-${groupDropPosition}` : ""}${dragGroupId === group.id ? " project-tree__pgroup-main--dragging" : ""}${groupMenuOpen ? " project-tree__pgroup-main--menu-open" : ""}`}
               role="button"
               tabIndex={0}
               aria-expanded={!collapsed}
               title={group.title}
-              onClick={() => toggleProjectGroup(group.id)}
+              style={{ paddingLeft: 8 + depth * 16 }}
+              onClick={() => {
+                if (renamingGroupId === group.id) return;
+                toggleProjectGroup(group.id);
+              }}
               onKeyDown={(event) => {
+                if (renamingGroupId === group.id) return;
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   toggleProjectGroup(group.id);
                 }
+                if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                  setGroupMenuId(group.id);
+                  setGroupMenuPoint(contextMenuPointFromEvent(event));
+                }
               }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setGroupMenuId(group.id);
+                setGroupMenuPoint(contextMenuPointFromEvent(event));
+              }}
+              draggable={projectDragEnabled}
+              onDragStart={(event) => {
+                if (!projectDragEnabled) return;
+                const target = event.target;
+                if (target instanceof Element && target.closest(".project-tree__action-slot,.project-tree__folder-action-slot")) {
+                  event.preventDefault();
+                  return;
+                }
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData(PROJECT_GROUP_DRAG_TYPE, group.id);
+                setDragGroupId(group.id);
+                setDropGroup(null);
+              }}
+              onDragOver={(event) => {
+                // Only a group drag (its own MIME type) may land on a group
+                // row; project drags carry a different type and keep flowing
+                // to the project rows (acceptance ⑤).
+                if (!dragGroupId || dragGroupId === group.id) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                const rect = event.currentTarget.getBoundingClientRect();
+                const position: ProjectDropPosition = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                setDropGroup((current) => {
+                  if (current?.id === group.id && current?.position === position) return current;
+                  return { id: group.id, position };
+                });
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setDropGroup((current) => current?.id === group.id ? null : current);
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const draggedId = dragGroupId || event.dataTransfer.getData(PROJECT_GROUP_DRAG_TYPE);
+                const position = dropGroup?.id === group.id ? dropGroup?.position ?? "after" : "after";
+                clearGroupDrag();
+                if (draggedId && draggedId !== group.id) {
+                  setGroups((current) => reorderProjectGroups(current, draggedId, group.id, position));
+                }
+              }}
+              onDragEnd={clearGroupDrag}
             >
-              <span className="project-tree__group-chevron" aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
-              <FolderInput className="project-tree__group-icon" size={12} aria-hidden="true" />
-              <span className="project-tree__group-name">{group.title}</span>
-              <span className="project-tree__group-count">{members.length}</span>
+              {renamingGroupId === group.id ? <input
+                autoFocus
+                className="project-tree__group-input"
+                value={groupRenameDraft}
+                onChange={(event) => setGroupRenameDraft(event.target.value)}
+                onFocus={(event) => event.target.select()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") commitGroupRename(group.id);
+                  if (event.key === "Escape") setRenamingGroupId(null);
+                }}
+                onBlur={() => commitGroupRename(group.id)}
+                onClick={(event) => event.stopPropagation()}
+              /> : <>
+                {/* Task 827 ③: the group's icon column — one folder glyph with
+                    the fold chevron overlaid (collapsed ▸, expanded rotated to
+                    ▾). The column is the same width as the project-row folder
+                    column, so all titles sit on one vertical grid. */}
+                <span className="project-tree__group-fold-stack" aria-hidden="true">
+                  <FolderInput className="project-tree__group-icon" size={14} />
+                  <span className={`project-tree__group-fold${collapsed ? "" : " project-tree__group-fold--open"}`}>▸</span>
+                </span>
+                <span className="project-tree__group-name">{group.title}</span>
+                <span className="project-tree__group-count">{members.length}</span>
+              </>}
             </div>
+            {groupMenuOpen && <ContextMenu
+              open
+              point={groupMenuPoint}
+              items={[
+                {
+                  key: "rename",
+                  icon: <Pencil size={13} />,
+                  label: t("projectGroup.rename"),
+                  onSelect: () => {
+                    setGroupRenameDraft(group.title);
+                    setRenamingGroupId(group.id);
+                    setGroupMenuId(null);
+                  },
+                },
+                {
+                  key: "dissolve",
+                  icon: <XCircle size={13} />,
+                  label: t("projectGroup.delete"),
+                  danger: true,
+                  onSelect: () => dissolveProjectGroup(group),
+                },
+              ]}
+              minWidth={178}
+              ariaLabel={t("projectGroup.rename")}
+              onClose={() => setGroupMenuId(null)}
+            />}
             {!collapsed && members.map((node) => renderNode(node, depth, "projects"))}
           </div>
         );

@@ -5069,6 +5069,8 @@ export const zh: Record<DictKey, string> = {
   "projectGroup.movePanelLabel": "移动到分组",
   "projectGroup.rename": "重命名",
   "projectGroup.renamePrompt": "重命名分组《{title}》：",
+  "projectGroup.deleteConfirm": "解散分组《{title}》？",
+  "projectGroup.deleteDetail": "仅移除分组壳，组内项目将回到未分组，项目本身不会被删除。",
   "projectGroup.ungrouped": "未分组",
   "projectTree.filterByColor": "按颜色筛选",
   "projectTree.filterByColorAll": "全部颜色",
