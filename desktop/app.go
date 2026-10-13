@@ -353,6 +353,14 @@ type App struct {
 	// added and removed under a.mu and never persisted.
 	collabParkWaiters map[string]bool
 
+	// heartbeatParkWaiters tracks the per-tab deferred-park goroutines for
+	// background heartbeat runs (task 865): tabs a run opened but could not
+	// park yet (busy turn, controller still building). The waiter parks the
+	// tab once its own turn goes idle; heartbeatTopicTabVisible reads the map
+	// to keep a pending tab from counting as user-opened. Same locking contract
+	// as collabParkWaiters: added and removed under a.mu, never persisted.
+	heartbeatParkWaiters map[string]bool
+
 	// historySliceMu guards the windowed-history background bookkeeping:
 	// single-flight display-index rebuilds for live sessions, the startup
 	// index-migration worker's cancel handle, and the idle-prefetch worker's

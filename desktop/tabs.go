@@ -2708,6 +2708,25 @@ var errParkTabInUse = errors.New("tab is in use")
 // immediate-park path never hits these fences (activate=false on a fresh
 // tab), so they only bite for the reuse and deferred-park paths.
 func (a *App) parkTabAsDetached(tabID string) error {
+	return a.parkTabFenced(tabID, false)
+}
+
+// parkTabAsDetachedOwned is the heartbeat-caller variant of parkTabAsDetached
+// (task 865): the only turn the tab can carry is the one the heartbeat run
+// itself just submitted, so the Running/PendingPrompt fence — which exists to
+// protect a USER's foreground turn — must not reject the park (task 264
+// detached semantics keep the turn running while parked, and a pending
+// approval replays onto the surface when the runtime is promoted back). The
+// active-tab fence stays: a tab the user has clicked onto is theirs and
+// remains visible.
+func (a *App) parkTabAsDetachedOwned(tabID string) error {
+	return a.parkTabFenced(tabID, true)
+}
+
+// parkTabFenced is the shared park body behind both entries; exemptOwnTurn
+// drops the turn-state fence for heartbeat-owned submissions (task 865) while
+// keeping the active-tab fence for every caller.
+func (a *App) parkTabFenced(tabID string, exemptOwnTurn bool) error {
 	defer a.lockRuntimeMutation("park-detached")()
 	a.sessionRemovalMu.Lock()
 	defer a.sessionRemovalMu.Unlock()
@@ -2718,7 +2737,7 @@ func (a *App) parkTabAsDetached(tabID string) error {
 	a.mu.RLock()
 	tab := a.tabs[tabID]
 	inUse := tab != nil && a.activeTabID == tabID
-	if tab != nil && tab.Ctrl != nil {
+	if !exemptOwnTurn && tab != nil && tab.Ctrl != nil {
 		if status := tab.Ctrl.RuntimeStatus(); status.Running || status.PendingPrompt {
 			inUse = true
 		}
@@ -2910,18 +2929,107 @@ func (a *App) awaitRuntimeThenPark(tabID string) {
 	}
 }
 
+// heartbeatDeferredParkTimeout bounds one heartbeat deferred-park wait
+// (task 865). A heartbeat turn can legitimately run for minutes, and the
+// waiter exists to break the leave-it-visible-forever self-lock the 864
+// diagnosis pinned (a park refused once kept the topic tab in the strip for
+// every later run); ten minutes covers long turns without holding a goroutine
+// forever. Var (not const) so the gate tests can shrink the window.
+var heartbeatDeferredParkTimeout = 10 * time.Minute
+
+// deferHeartbeatPark arms the single per-tab heartbeat deferred-park waiter
+// (task 865, the 738 deferParkUntilRuntime pattern applied to background
+// heartbeat runs): the run opened (or promoted) a topic tab it intends to
+// take back out of the strip, but the park attempt was refused or the run
+// exited early (controller not ready, busy skip). Duplicate arms while a
+// waiter is alive are no-ops, so per-tick retries cannot stack waiters.
+// heartbeatTopicTabVisible treats a tab carrying this marker as not visible,
+// so the next run neither mistakes the pending tab for a user-opened surface
+// nor skips its own park because of it.
+func (a *App) deferHeartbeatPark(tabID string) {
+	a.mu.Lock()
+	if a.heartbeatParkWaiters == nil {
+		a.heartbeatParkWaiters = map[string]bool{}
+	}
+	if a.heartbeatParkWaiters[tabID] {
+		a.mu.Unlock()
+		return
+	}
+	a.heartbeatParkWaiters[tabID] = true
+	a.mu.Unlock()
+	go a.awaitHeartbeatIdleThenPark(tabID)
+}
+
+// awaitHeartbeatIdleThenPark waits (bounded) for the tab's controller to exist
+// and go idle, then parks the tab detached with the heartbeat-owned fence
+// exemption — the turn that made it busy, if any, is the heartbeat's own. The
+// active-tab fence still rules: the moment the user clicks onto the tab the
+// surface is theirs and the deferred park gives up, leaving it visible. A tab
+// closed while waiting is simply gone.
+func (a *App) awaitHeartbeatIdleThenPark(tabID string) {
+	defer func() {
+		a.mu.Lock()
+		delete(a.heartbeatParkWaiters, tabID)
+		a.mu.Unlock()
+	}()
+	deadline := time.NewTimer(heartbeatDeferredParkTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(collabParkRuntimePollInterval)
+	defer ticker.Stop()
+	for {
+		a.mu.RLock()
+		tab := a.tabs[tabID]
+		userTookOver := tab != nil && a.activeTabID == tabID
+		var busy bool
+		if tab != nil && tab.Ctrl != nil {
+			busy = heartbeatControllerBusy(tab.Ctrl)
+		}
+		a.mu.RUnlock()
+		if tab == nil {
+			return // closed while waiting — nothing to park
+		}
+		if userTookOver {
+			slog.Info("desktop: deferred heartbeat park skipped; the user opened the tab, keeping it visible", "tab", tabID)
+			return
+		}
+		if tab.Ctrl != nil && !busy {
+			if err := a.parkTabAsDetachedOwned(tabID); err != nil {
+				if errors.Is(err, errParkTabInUse) {
+					// The user clicked onto the tab between the check and the
+					// park: same ruling as above, the surface stays theirs.
+					slog.Info("desktop: deferred heartbeat park skipped; the user opened the tab, keeping it visible", "tab", tabID)
+					return
+				}
+				slog.Info("desktop: deferred heartbeat park failed; leaving the tab visible in the tab bar", "tab", tabID, "err", err)
+				return
+			}
+			return // parkTabAsDetachedOwned logged the detached landing
+		}
+		select {
+		case <-deadline.C:
+			slog.Info("desktop: deferred heartbeat park wait exhausted; leaving the tab visible in the tab bar", "tab", tabID)
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 // heartbeatTopicTabVisible reports whether the topic already has a tab in the
 // visible strip (task 742). Background mode never parks such a tab: a session
 // the user opened themselves keeps running in place exactly like the baseline;
 // only tabs a heartbeat run opened (or promoted back from its own previous
 // detached run) go back to the pool after the submit. Detached entries are not
-// visible by definition, so a parked runtime re-parks on the next run.
+// visible by definition, so a parked runtime re-parks on the next run. A tab
+// carrying a pending heartbeat park (task 865) counts as not visible: it is a
+// surface the run itself put in the strip and is waiting to take back out, not
+// one the user opened — without this the first refused park would flip every
+// later run into visible-before and self-lock the tab into the strip.
 func (a *App) heartbeatTopicTabVisible(scope, workspaceRoot, topicID string) bool {
 	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	for _, tab := range a.tabs {
-		if tab != nil && tabMatchesTopicTarget(tab, scope, workspaceRoot, topicID) {
+		if tab != nil && !a.heartbeatParkWaiters[tab.ID] && tabMatchesTopicTarget(tab, scope, workspaceRoot, topicID) {
 			return true
 		}
 	}
