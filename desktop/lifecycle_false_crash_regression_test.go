@@ -82,8 +82,12 @@ func TestUpdateRestartMarkerPeekRejectsMismatchedEvidence(t *testing.T) {
 }
 
 // 修法①回归钉（更新重启场景）：gate=false（装机默认，配置文件渲染显式 false）
-// 时，更新重启退出进程自己的 clean-shutdown 残留不再写成 crash 报告；wedged
-// 与他人 PID 的残留照写——豁免面只有「marker 作者本人的干净退出相位」。
+// 时，更新重启退出进程自己的 clean-shutdown 残留不再写成 crash 报告；他人 PID
+// 的残留照写——豁免面是「marker 作者本人的退出相位」。task 873 把 marker 自证
+// 提到相位判定之前：宽限期强制退出会把记录留在 mid-shutdown 相位（非 benign），
+// 原顺序让 marker 没机会自证；豁免的语义本位是「计划内更新退出的作者本人残留」，
+// 相位只是 377 gate（clean 相位免报）的管辖区。marker 作者的 wedged 相位同样
+// 由 marker 背书——计划退出途中被 watchdog 强杀仍是计划退出的一部分。
 func TestUpdateRestartExemptionSuppressesCleanShutdownResidue(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	removeAllPendingCrashes()
@@ -98,8 +102,8 @@ func TestUpdateRestartExemptionSuppressesCleanShutdownResidue(t *testing.T) {
 		{Phase: "shutting_down", PID: 9999, Version: "v1.38.2", Channel: "stable"},
 	}
 	app.recordPreviousRunDiagnostics()
-	if got := pendingReportCount(t); got != 2 {
-		t.Fatalf("pending reports = %d, want 2 (wedged + another PID's residue); the marker writer's own clean-shutdown phases stay suppressed", got)
+	if got := pendingReportCount(t); got != 1 {
+		t.Fatalf("pending reports = %d, want 1 (another PID's residue); the marker writer's own phases — clean or mid-shutdown or wedged — stay suppressed (task 873: marker vouch precedes the phase gate)", got)
 	}
 }
 
@@ -212,5 +216,33 @@ func removeAllCrashesAndMarker(t *testing.T) func() {
 	return func() {
 		removeAllPendingCrashes()
 		_ = os.Remove(updateRestartMarkerPath())
+	}
+}
+
+// ── task 873: 847 家族第三形态回归钉 ────────────────────────────────────────
+// 1706（2026-10-13 17:14 execute）装机走宽限期超时强制路径：强杀退出把记录留
+// 在 mid-shutdown 相位（closing_*/waiting_runtime_locks），847 的 marker 豁免
+// 检查被 `!lifecycleNoiseBenign` 分支短路——非 benign 相位直接写报告，marker
+// 根本没机会自证。1756 启动弹「检测到上次运行遗留的崩溃报告(1)」。修法 =
+// marker 检查提到相位判定之前：计划内更新重启的退出（marker 作者本人的任何
+// 相位残留）一律先过 marker 自证；PID 不匹配/过期 marker/无 marker 的语义不
+// 变（照写报告），377 gate 只管 clean 相位，语义不越界。
+func TestUpdateRestartMarkerVouchesForMidShutdownPhaseResidue(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+	plantMarkerAt(t, time.Now().Add(-time.Minute), 5150)
+
+	app := NewApp()
+	app.lifecycle.previousRuns = []desktopLifecycleObservation{
+		{Phase: "closing_shared_hosts", PID: 5150, Version: "v1.38.2", Channel: "stable"},
+		{Phase: "waiting_runtime_locks", PID: 5150, Version: "v1.38.2", Channel: "stable"},
+		{Phase: "closing_tab:abc", PID: 5150, Version: "v1.38.2", Channel: "stable"},
+		// 控制组：无 marker 保护的残留照写。
+		{Phase: "closing_shared_hosts", PID: 8642, Version: "v1.38.2", Channel: "stable"},
+	}
+	app.recordPreviousRunDiagnostics()
+	if got := pendingReportCount(t); got != 1 {
+		t.Fatalf("pending reports = %d, want 1 (the marker writer's mid-shutdown phases stay suppressed; the markerless PID's residue keeps reporting)", got)
 	}
 }
