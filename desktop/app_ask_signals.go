@@ -34,3 +34,20 @@ func (a *App) NotifyAskActivityForTab(tabID, id string) {
 	}
 	ctrl.NotifyAskActivity(id)
 }
+
+// NotifyAskTakeoverForTab forwards the ask panel's takeover toggle (task 849)
+// to the tab's controller: true parks the reversible ask's auto-decide timer
+// and its absolute hover budget outright — the user explicitly declared
+// themselves present, so the ask waits indefinitely no matter how long they
+// think — and false releases the takeover, re-arming a fresh window. Unlike
+// the two hops above this one reports back: false means no timed ask consumed
+// the toggle (attended or high-risk ask, unknown/expired ID), which is the
+// frontend's cue to roll its button state back so the panel never shows a
+// takeover the backend is not honoring.
+func (a *App) NotifyAskTakeoverForTab(tabID, id string, taking bool) bool {
+	ctrl := a.ctrlByTabID(tabID)
+	if ctrl == nil || id == "" {
+		return false
+	}
+	return ctrl.NotifyAskTakeover(id, taking)
+}

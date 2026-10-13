@@ -658,6 +658,7 @@ export default function App() {
     answerQuestion,
     notifyAskInteraction,
     notifyAskActivity,
+    notifyAskTakeover,
     answerMCPInteraction,
     setControllerMode,
     dismissExtensionForm,
@@ -1792,6 +1793,48 @@ export default function App() {
   const goal = composerProfile.goal;
   const collaborationMode = displayedComposerProfileCollaborationMode(composerProfile);
   const toolApprovalMode = composerProfile.toolApprovalMode;
+
+  // 任务849: the ask panel's auto-decide window, mirrored from the backend's
+  // autopilotAskWaitFor() (internal/control/controller.go): the task-477
+  // sub-option's configured seconds (default 15) while it is on, else the
+  // task-109 B4 built-in 10-minute wait (DefaultAutopilotAskWait,
+  // internal/control/ask_risk.go). Snapshot once at mount, deliberately not
+  // re-synced on settings changes: a tab's backend arms its controller from
+  // the config at tab creation and keeps that value for the tab's life, so a
+  // live panel must show the same vintage rather than chase newer dials. The
+  // display is advisory either way — the backend clock is the one that fires.
+  const [askWaitSnapshot, setAskWaitSnapshot] = useState<{ timeoutEnabled: boolean; waitSeconds: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      void app
+        .Settings()
+        .then((view) => {
+          if (cancelled) return;
+          setAskWaitSnapshot({
+            timeoutEnabled: Boolean(view.experimentalAutopilotAskTimeout),
+            waitSeconds: Number(view.autopilotAskWaitSeconds ?? 0),
+          });
+        })
+        .catch(() => {
+          // No settings view (dev shell without a backend): the countdown
+          // simply stays hidden — safer than guessing a window length.
+        });
+    } catch {
+      // same posture
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const askAutoDecideCountdownMs = useMemo(() => {
+    if (collaborationMode !== "autopilot" || !askWaitSnapshot) return 0;
+    if (askWaitSnapshot.timeoutEnabled) {
+      const seconds = askWaitSnapshot.waitSeconds > 0 ? askWaitSnapshot.waitSeconds : 15;
+      return seconds * 1000;
+    }
+    return 10 * 60 * 1000;
+  }, [collaborationMode, askWaitSnapshot]);
   const runtimeTransitioning = navigationSurfaceIntent !== null;
   const controllerReady =
     state.meta?.ready === true &&
@@ -5727,6 +5770,8 @@ export default function App() {
                 onAnswer={answerQuestion}
                 onInteract={notifyAskInteraction}
                 onActivity={notifyAskActivity}
+                onTakeover={notifyAskTakeover}
+                countdownMs={askAutoDecideCountdownMs}
                 onDismiss={() => answerQuestion(state.ask!.id, [])}
                 onStop={() => {
                   cancel();

@@ -5223,6 +5223,25 @@ export function useController() {
     notifyAskActivityForTab(activeTabId, id);
   }, [activeTabId, notifyAskActivityForTab]);
 
+  // 任务849: the ask panel's takeover toggle hops here. Unlike the two hops
+  // above this one reports back — false means no timed ask consumed the
+  // toggle (attended/high-risk ask, unknown/expired ID), so the panel can roll
+  // its button state back instead of showing a takeover the backend is not
+  // honoring. A bridge failure resolves false for the same reason.
+  const notifyAskTakeoverForTab = useCallback(async (tabId: string, id: string, taking: boolean): Promise<boolean> => {
+    if (!tabId || !id) return false;
+    try {
+      return await app.NotifyAskTakeoverForTab(tabId, id, taking);
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const notifyAskTakeover = useCallback(
+    (id: string, taking: boolean): Promise<boolean> => notifyAskTakeoverForTab(activeTabId ?? "", id, taking),
+    [activeTabId, notifyAskTakeoverForTab],
+  );
+
   const answerMCPInteractionForTab = useCallback(
     (tabId: string, id: string, action: "accept" | "decline" | "cancel", content?: Record<string, unknown>) => {
       if (!tabId) return;
@@ -6401,6 +6420,7 @@ export function useController() {
     cancel, cancelForTab, approve, approveForTab, isPromptCurrentForTab, resolvePlanDecision, resolvePlanDecisionForTab,
     resolveRecovery, resolveRecoveryForTab, answerQuestion, answerQuestionForTab,
     notifyAskInteraction, notifyAskInteractionForTab, notifyAskActivity, notifyAskActivityForTab,
+    notifyAskTakeover, notifyAskTakeoverForTab,
     answerMCPInteraction, answerMCPInteractionForTab, setControllerMode, setControllerModeForTab,
     dismissExtensionForm, drainExtensionNotifications,
     setCollaborationMode, setCollaborationModeForTab, setToolApprovalMode, setToolApprovalModeForTab, setApprovalTier, setApprovalTierForTab, setQualityFloor, setComposerProfileForTab, setGoal, setGoalForTab, clearGoal, clearGoalForTab, resumeGoal, resumeGoalForTab, pauseGoal, pauseGoalForTab,

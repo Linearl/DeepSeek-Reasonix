@@ -1159,6 +1159,11 @@ export const zhTW: Record<DictKey, string> = {
   // 提問卡片
   "ask.title": "需要你決定",
   "ask.questionProgress": "問題 {progress}",
+  // 任務849: 無人值守代答倒數與接管切換。
+  "ask.autoDecideCountdown": "{seconds}s 後自動代答",
+  "ask.takeover": "接管",
+  "ask.releaseTakeover": "取消接管",
+  "ask.takeoverHeld": "已接管，慢慢想，不會自動代答",
   "ask.details": "詳情",
   "ask.hideDetails": "收起",
   "ask.back": "返回",

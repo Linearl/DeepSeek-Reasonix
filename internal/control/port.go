@@ -123,6 +123,13 @@ type Approvals interface {
 	// the reversible-tier auto-decide window, bounded by the controller's
 	// absolute hover budget. No-op for every prompt class without a timer.
 	NotifyAskActivity(id string)
+	// NotifyAskTakeover forwards the ask panel's takeover toggle (task 849):
+	// true parks the reversible-tier auto-decide timer and its hover budget
+	// outright (the user explicitly declared themselves present), false
+	// releases the takeover and re-arms a fresh window. Reports whether a
+	// timed ask consumed the toggle; false for every prompt class without a
+	// timer, which is the frontend's cue to roll the button state back.
+	NotifyAskTakeover(id string, taking bool) bool
 	// AnswerMCPInteractionChecked resolves an mcp_interaction prompt after its
 	// durable transition (serve /mcp-interaction, desktop bridge).
 	AnswerMCPInteractionChecked(id, action string, content map[string]any) error

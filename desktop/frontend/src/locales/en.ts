@@ -1480,6 +1480,11 @@ export const en = {
   // ask card
   "ask.title": "Need your decision",
   "ask.questionProgress": "Question {progress}",
+  // Task 849: unattended auto-decide countdown and the takeover toggle.
+  "ask.autoDecideCountdown": "auto-answers in {seconds}s",
+  "ask.takeover": "Take over",
+  "ask.releaseTakeover": "Release",
+  "ask.takeoverHeld": "Taken over — take your time, no auto-answer",
   "ask.details": "Details",
   "ask.hideDetails": "Hide",
   "ask.back": "Back",
