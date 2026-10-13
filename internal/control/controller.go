@@ -147,6 +147,13 @@ type Controller struct {
 	// recorded decision, instead of idling until the user sends "continue".
 	// Off (the zero value) keeps the idle stop byte-for-byte.
 	autopilotAskAutoContinue bool
+	// explicitAskGranted is the task-806b explicit ask grant: the user said,
+	// in this session, that the run must ask them instead of deciding alone —
+	// revoking the unattended premise every autopilot auto-answer rests on.
+	// While set, a reversible ask under autopilot waits attended; the
+	// high-risk tier is untouched. Atomic because Ask reads it on the turn
+	// goroutine while the grant signal may land at any moment.
+	explicitAskGranted atomic.Bool
 	// turnAskAnsweredSummary is the per-turn marker (guarded by mu) that an
 	// ask of the running turn was answered, carrying the one-line decision
 	// summary for the task-544 continuation prompt. Cleared at orchestrated
@@ -3106,7 +3113,23 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// bisect a slow panel; it adds no locking and changes no ordering.
 	slog.Info("[ask-panel] ask chain checkpoint", "stage", "entry", "questions", len(questions))
 	askRisk := askRiskOfQuestions(askQuestionTexts(questions))
-	reversibleTimedAsk := c.autopilot && askRisk == askRiskReversible
+	reversibleAsk := askRisk == askRiskReversible
+	// Task 806b: the user's explicit ask grant outranks every autopilot
+	// auto-answer — it revokes the unattended premise the auto-decide rests
+	// on, so a granted reversible ask surfaces the panel like any other and
+	// then waits attended: no timer, no hover budget, no decide-for-yourself
+	// expiry. The grant never reaches the high-risk tier: those asks keep the
+	// 477/109 waits, because "ask me" cannot turn a destructive question into
+	// one the run may answer itself.
+	explicitAskGranted := c.explicitAskGranted.Load()
+	reversibleTimedAsk := c.autopilot && reversibleAsk && !explicitAskGranted
+	if explicitAskGranted && c.autopilot && reversibleAsk {
+		// 判据锚 (task 806b): the one grep-able line answering "why did this
+		// reversible ask NOT auto-decide".
+		slog.Info("[ask-panel] ask chain checkpoint", "stage", "explicit_grant",
+			"questions", len(questions),
+			"detail", "the user's explicit ask grant is active; the reversible ask waits attended, no auto-decide (task 806b)")
+	}
 
 	// Task 225: a session working on a task dispatched by an autopilot parent
 	// forwards its prompts to that parent's Ask channel — the parent's own
@@ -3212,10 +3235,15 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// run keeps going instead of dying on one unanswered dialog.
 	// Task 806: the timer below governs the HIGH-RISK wait only — the
 	// reversible tier is timed by its own interaction-aware block right below,
-	// so a touched panel never races this channel.
+	// so a touched panel never races this channel. Task 806b keeps that
+	// boundary under the explicit ask grant too: the predicate tests the risk
+	// tier itself, not reversibleTimedAsk — with the grant on, a reversible
+	// ask falls out of the timed reversible block above, and testing
+	// reversibleTimedAsk here would dump it into this 15s-refusal lane
+	// instead of the attended wait the grant promises.
 	var askTimeout <-chan time.Time
 	var askWait time.Duration
-	if c.autopilot && !reversibleTimedAsk {
+	if c.autopilot && !reversibleAsk {
 		askWait = c.autopilotAskWaitFor()
 		t := time.NewTimer(askWait)
 		defer t.Stop()
@@ -3476,6 +3504,27 @@ func (c *Controller) NotifyAskTakeover(id string, taking bool) bool {
 		return false
 	}
 	return c.approval.notifyAskTakeover(id, taking)
+}
+
+// SetExplicitAskGranted sets the task-806b explicit ask grant: the user's
+// standing instruction that this session must ask them instead of deciding
+// alone. While set, a reversible ask under autopilot waits attended — panel
+// surfaced, no auto-decide timer, no hover budget — outranking the 806 expiry
+// and the 844 budget alike; the high-risk tier is untouched either way. The
+// grant is session-scoped and sticks until cleared. This is the gate-side
+// entry the grant signal source (the 806 report's P4) calls once wired; like
+// the 844 bridge entries the semantics are ready before the source lands.
+func (c *Controller) SetExplicitAskGranted(granted bool) {
+	if c == nil {
+		return
+	}
+	c.explicitAskGranted.Store(granted)
+}
+
+// ExplicitAskGranted reports whether the task-806b explicit ask grant is
+// currently set on this session.
+func (c *Controller) ExplicitAskGranted() bool {
+	return c != nil && c.explicitAskGranted.Load()
 }
 
 // AnswerQuestion resolves a pending AskRequest by ID with the user's selections.
