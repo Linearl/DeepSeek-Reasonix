@@ -1442,6 +1442,15 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 		b.WriteString(strconv.Itoa(effectiveHop))
 		b.WriteString(")")
 	}
+	// 任务866/1553: the send timestamp rides the head line — storage metadata,
+	// the injected text and the UI card carried no time at all, so the
+	// recipient could not tell a fresh message from one that waited overnight.
+	// Same shape as the current-time block (agent.CollabSentTimeText renders it
+	// for the drain path too, so the two delivery faces cannot drift).
+	if sent := agent.CollabSentTimeText(msg.At); sent != "" {
+		b.WriteString("，发送于 ")
+		b.WriteString(sent)
+	}
 	b.WriteString("\n\n")
 	b.WriteString(msg.Body)
 	b.WriteString("\n\n---\n")

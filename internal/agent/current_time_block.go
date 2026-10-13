@@ -41,3 +41,20 @@ func WithCurrentTime(content string, now time.Time) string {
 	}
 	return block + "\n\n" + content
 }
+
+// CollabSentTimeText renders one cross-session message's send timestamp in
+// the same shape the current-time block uses (RFC3339 with a numeric zone
+// offset plus the weekday), so the injected mail body carries the sender's
+// wall clock at its head (任务866/1553: storage metadata, the injected text
+// and the UI card carried no time at all — three layers, no clock; the user
+// could not tell a fresh message from one that waited overnight). Both
+// delivery paths — the desktop pump's injection text and the drain tool's
+// rendered mail — call this so the format cannot drift. A zero timestamp
+// renders "" so malformed records keep their shape instead of printing a
+// fake 1970 clock.
+func CollabSentTimeText(atMillis int64) string {
+	if atMillis <= 0 {
+		return ""
+	}
+	return time.UnixMilli(atMillis).Format("2006-01-02T15:04:00Z07:00 Mon")
+}
