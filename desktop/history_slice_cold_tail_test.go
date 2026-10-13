@@ -259,6 +259,7 @@ func TestColdHistoryTailPageMatchesFullReplayTail(t *testing.T) {
 //   - 「前」= 改动前该慢路径分支的同步主体（S3 全量流式扫描 / S4 全量事件
 //     日志重放），同 fixture 上直接计时；
 //   - 「后」= HistorySliceForTab 首屏总耗时（内含 cold-tail-read 尾窗读分相）。
+//
 // 同进程顺序执行、OS cache 条件一致；结构性结论（尾窗窗口 << 全量解码）对
 // 噪声稳健，生产口径以 451 的 cold-* 分相 desktop.log 打点为准。
 func TestColdHistoryTailFirstPaintTimingAgainstFullPass(t *testing.T) {
