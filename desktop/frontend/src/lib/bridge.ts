@@ -535,6 +535,32 @@ export interface CollabChannelMessageView {
   fanout?: CollabChannelFanoutCellView[];
 }
 
+/** 任务 856 ③: 对话链（会话↔会话协作流）聚合一行——pairId 为稳定无序对键。 */
+export interface CollabDirectChainPairView {
+  pairId: string;
+  a: string;
+  b: string;
+  count: number;
+  firstAt: number;
+  lastAt: number;
+  preview: string;
+}
+
+/** 任务 856 ③: 对话链列表快照（revision 戳；human 端点与频道信不出现）。 */
+export interface CollabDirectChainSnapshotView {
+  revision: string;
+  total: number;
+  pairs: CollabDirectChainPairView[];
+}
+
+/** 任务 856 ③: 一条对话链的只读回放（双向时间线，旧→新，来源 intact）。 */
+export interface CollabDirectChainReadView {
+  pairId: string;
+  a: string;
+  b: string;
+  entries: CollabMailEntryView[];
+}
+
 /** 409: 一次频道读取（频道头 + 最近消息，旧→新）。 */
 export interface CollabChannelReadView {
   channel: CollabChannelView;
@@ -1411,6 +1437,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   DeleteCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
   /** 任务 856 ②: 清空全部——物理清空全部留档（含已处理），返回移除数与新快照。 */
   ClearAllCollabMail(): Promise<CollabInboxCleanNowView>;
+  // 任务 856 ③: 对话链读口（方案 B）——仅会话↔会话点对点信聚合（human 端点
+  // 与频道信不出现，v2 返工口径）；回放旧→新、只读。
+  ListCollabDirectChains(limit: number): Promise<CollabDirectChainSnapshotView>;
+  ReadCollabDirectChain(pairId: string, limit: number): Promise<CollabDirectChainReadView>;
   // 任务 409: 群聊式协作视图（只读观察窗）— 聚合通讯录/共享忙闲判定/任务卡/
   // 已投递往来，全部现有数据源，无新协议。
   GetCollabViewOverview(): Promise<CollabViewOverviewView>;
@@ -6092,6 +6122,13 @@ function makeMockApp(): AppBindings {
         removed: 0,
         snapshot: { revision: "0.0.0", settings: { retention: "7d" }, total: 0, returned: 0, truncated: false, entries: [] },
       };
+    },
+    // 任务 856 ③: the dev shell has no archive — an honest empty chain list.
+    async ListCollabDirectChains() {
+      return { revision: "0.0.0", total: 0, pairs: [] };
+    },
+    async ReadCollabDirectChain(pairId: string) {
+      return { pairId, a: "", b: "", entries: [] };
     },
     // 任务 409 mocks: the dev shell has no collaboration either — an honest
     // empty roster, so the panel renders its empty state in the dev shell.

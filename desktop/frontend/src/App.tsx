@@ -70,6 +70,7 @@ import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 // setCollabInboxOpen/setCollabGroupOpen（经转发缝重定向到 Hub）。
 import { useCollabInboxUnreadCount } from "./components/CollabInboxPanel";
 import { CollabHubPanel, setCollabHubOpen } from "./components/CollabHubPanel";
+import { onCollabChatOpenSession } from "./components/CollabChatView";
 import { SessionMonitorPanel } from "./components/SessionMonitorPanel";
 import { SessionWallBoundary } from "./components/SessionWallBoundary";
 import { effectiveSplitTier, loadSplitPreviewTier, persistSplitPreviewTier, splitPreviewTierFromPointer, SPLIT_PREVIEW_TIERS, setSplitPaneTitle, setSplitViewEnabled, type SplitPreviewTier } from "./lib/splitView";
@@ -4425,6 +4426,32 @@ export default function App() {
     setSidebarImDetailConnectionId("");
     return enqueueNavigation({ kind: "sidebar-im", connection });
   }, [enqueueNavigation]);
+
+  // 任务 856 ③（⑦消息右键跳转）：协作中心（对话链/群聊）发起的「打开发信方/
+  // 收信方会话」信号——查通讯录定位会话 → 走既有「打开会话」导航（与命令面板
+  // 同一队列）；查不到（会话已结束/不可达）toast 提示，无新增后端。
+  const collabHubDirectoryRef = useRef<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
+  useEffect(() => onCollabChatOpenSession((contactId) => {
+    void (async () => {
+      let rows = collabHubDirectoryRef.current;
+      if (!rows.some((r) => r.contactId === contactId)) {
+        rows = await app.ListAddressableSessions().catch(() => []);
+        collabHubDirectoryRef.current = rows;
+      }
+      const row = rows.find((r) => r.contactId === contactId);
+      if (!row?.topicId) {
+        showToast(t("collabHub.jumpFailed", { name: contactId }));
+        return;
+      }
+      void enqueueNavigationWithIntent({
+        kind: "topic",
+        scope: row.scope === "project" ? "project" : "global",
+        workspaceRoot: row.workspaceRoot ?? "",
+        topicId: row.topicId,
+        sessionPath: row.sessionPath,
+      }, noteNavigationIntent());
+    })();
+  }), [enqueueNavigationWithIntent, noteNavigationIntent, showToast, t]);
 
   const onResumeSession = useCallback((session: SessionMeta): Promise<void> => {
     // Split view (task 70, D): with a split open, a turn running in one pane must not

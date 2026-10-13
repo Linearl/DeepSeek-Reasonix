@@ -46464,3 +46464,249 @@ button.statusbar__mcp:focus-visible {
   color: var(--text-muted, inherit);
   font-size: var(--text-sm);
 }
+
+/* ─── 任务 856 ③：聊天视图双通道（对话链/群聊）+ ⑦右键菜单 ─────── */
+.collab-chat-view__tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+}
+.collab-chat-view__tab {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: var(--text-sm);
+  color: var(--text-muted, inherit);
+  cursor: pointer;
+}
+.collab-chat-view__tab--on {
+  background: var(--bg-elevated, var(--bg));
+  color: var(--accent, var(--fg));
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.collab-chat-view__dirlist {
+  width: 260px;
+  flex: none;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.collab-chat-view__sect {
+  padding: 8px 10px 4px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, inherit);
+  flex: none;
+}
+.collab-chat-view__diritem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.collab-chat-view__diritem:hover {
+  background: var(--bg-soft);
+}
+.collab-chat-view__diritem--on {
+  background: var(--bg-soft);
+  border-left-color: var(--accent, var(--fg));
+}
+/* 用户 1138：链名/预览截断处一律 ellipsis + title hover */
+.collab-chat-view__dirname {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.collab-chat-view__dirmeta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.collab-chat-view__dirpreview {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, inherit);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.collab-chat-view__dircount {
+  flex: none;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, inherit);
+}
+.collab-chat-view__direrror {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, inherit);
+}
+.collab-chat-view__dirempty,
+.collab-chat-view__placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted, inherit);
+  font-size: var(--text-sm);
+}
+.collab-chat-view__placeholderhint {
+  font-size: var(--text-xs, 11px);
+}
+.collab-chat-view__replay {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.collab-chat-view__replayhead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  min-width: 0;
+}
+.collab-chat-view__replaytitle {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.collab-chat-view__replaysub {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, inherit);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.collab-chat-view__stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.collab-chat-view__msg {
+  max-width: 78%;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.collab-chat-view__msg--right {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.collab-chat-view__msgmeta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, inherit);
+}
+.collab-chat-view__msgfrom {
+  font-weight: 600;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.collab-chat-view__typebadge {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-size: 10px;
+  color: var(--text-muted, inherit);
+}
+.collab-chat-view__msgtime {
+  white-space: nowrap;
+}
+.collab-chat-view__bubble {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 4px 10px 10px 10px;
+  padding: 7px 11px;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.collab-chat-view__msg--right .collab-chat-view__bubble {
+  border-radius: 10px 4px 10px 10px;
+}
+.collab-chat-view__msgpeer {
+  font-size: 10px;
+  color: var(--text-muted, inherit);
+}
+.collab-chat-view__readonly {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, inherit);
+  flex: none;
+}
+.collab-chat-view__ctx {
+  position: fixed;
+  z-index: calc(var(--z-popover) + 2);
+  min-width: 230px;
+  padding: 4px 0;
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+.collab-chat-view__ctxhead {
+  padding: 5px 14px;
+  margin-bottom: 3px;
+  border-bottom: 1px dashed var(--border);
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, inherit);
+  white-space: nowrap;
+}
+.collab-chat-view__ctx > button {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 7px 14px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.collab-chat-view__ctx > button:hover {
+  background: var(--bg-soft);
+  color: var(--accent, var(--fg));
+}
+.channel-chat__menuitem--muted {
+  color: var(--text-muted, inherit);
+  cursor: default;
+}

@@ -264,7 +264,16 @@ const agentBubble = Array.from(chat().querySelectorAll(".channel-chat__row"))
 await act(async () => {
   agentBubble.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
 });
-assert.equal(document.querySelector(".channel-chat__menu"), null, "another member's bubble offers no recall menu");
+// 任务 856 ⑦：他人消息右键=跳转菜单（无撤回项——取消是发送方权利，不是
+// 管理员权利；802 断言随 UI 演进迁移，非弱化：菜单打开但无 recall 按钮）。
+const agentMenu = document.querySelector(".channel-chat__menu");
+assert.ok(agentMenu, "another member's bubble opens the jump menu (856 ⑦)");
+const menuButtons = Array.from(agentMenu!.querySelectorAll("button"));
+assert.equal(menuButtons.some((b) => b.textContent === "Recall"), false, "the jump menu carries no recall item");
+assert.ok(menuButtons.some((b) => /already open in this view/i.test(b.textContent ?? "")), "the group-recipient hint item renders");
+await act(async () => { menuButtons[0].click(); });
+await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+assert.equal(document.querySelector(".channel-chat__menu"), null, "picking a menu item closes the menu");
 
 // ── ① 输入框：Enter 发送 + 假数据零容忍 ─────────────────────────────────
 const input = chat().querySelector(".channel-chat__input")! as HTMLTextAreaElement;

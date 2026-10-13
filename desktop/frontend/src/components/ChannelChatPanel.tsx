@@ -93,7 +93,7 @@ function shortId(id: string): string {
   return id.length > 18 ? `${id.slice(0, 17)}…` : id;
 }
 
-export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings } = {}) {
+export function ChannelChatPanel({ bindings, onOpenSession }: { bindings?: ChannelChatBindings; onOpenSession?: (contactId: string) => void } = {}) {
   const t = useT();
   const b: ChannelChatBindings = bindings ?? appBridge;
 
@@ -114,7 +114,9 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
   const [createName, setCreateName] = useState("");
   const [createTopic, setCreateTopic] = useState("");
   const [createLimit, setCreateLimit] = useState("");
-  const [menu, setMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
+  // 任务 856 ⑦：右键菜单扩展——own 消息=撤回（既有）；他人消息=打开发信方
+  // 会话（onOpenSession 注入）+ 收信方（群）提示项。
+  const [menu, setMenu] = useState<{ messageId: string; sender: string; x: number; y: number } | null>(null);
 
   // refs：轮询闭包里要读「当前打开的群」与最新退避状态，不作为渲染依赖。
   const openIdRef = useRef<string | null>(null);
@@ -397,7 +399,7 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
               className={`channel-chat__item${openId === c.id ? " channel-chat__item--on" : ""}`}
               onClick={() => openChannel(c.id)}
             >
-              <span className="channel-chat__itemname">
+              <span className="channel-chat__itemname" title={c.name}>
                 {c.name}
                 {c.ownerId && (
                   <span className={`channel-chat__ownerbadge${c.ownerId === HUMAN_LOCAL ? " channel-chat__ownerbadge--me" : ""}`}>
@@ -406,7 +408,7 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
                 )}
                 {unread > 0 && <span className="channel-chat__unread">{unread > 99 ? "99+" : unread}</span>}
               </span>
-              <span className="channel-chat__itempreview">
+              <span className="channel-chat__itempreview" title={preview ? (preview.cancelledAt ? t("collabGroup.chat.recalled", { sender: preview.sender }) : `${preview.sender}: ${preview.body}`) : undefined}>
                 {preview
                   ? (preview.cancelledAt
                     ? t("collabGroup.chat.recalled", { sender: preview.sender })
@@ -428,7 +430,7 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
           <>
             <div className="channel-chat__chathead">
               <button type="button" className="channel-chat__back" onClick={closeChannel} aria-label={t("collabGroup.chat.back")}>‹</button>
-              <span className="channel-chat__chatname">{openCh.name}</span>
+              <span className="channel-chat__chatname" title={openCh.name}>{openCh.name}</span>
               {openCh.topic && <span className="channel-chat__chattopic">{openCh.topic}</span>}
               <span className="channel-chat__chatmeta">{t("collabGroup.membersCount", { n: openCh.members?.length ?? 0 })}</span>
               <button type="button" className="btn btn--small" onClick={() => setDetailOpen((v) => !v)}>
@@ -478,9 +480,8 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
                     <div
                       className="channel-chat__bubble"
                       onContextMenu={(event) => {
-                        if (!own) return;
                         event.preventDefault();
-                        setMenu({ messageId: m.id, x: event.clientX, y: event.clientY });
+                        setMenu({ messageId: m.id, sender: m.sender, x: event.clientX, y: event.clientY });
                       }}
                     >
                       {m.body}
@@ -656,16 +657,40 @@ export function ChannelChatPanel({ bindings }: { bindings?: ChannelChatBindings 
         </div>
       )}
 
-      {/* 右键撤回菜单（仅自己的消息可撤，349 Cancel 墓碑语义） */}
+      {/* 右键菜单：own=撤回（349 Cancel 墓碑语义）；他人=⑦跳转发信方会话 +
+          收信方（群）提示（demo v2 返工口径：收信方为群，第二项示意已在当前视图）。 */}
       {menu && createPortal(
         <div className="channel-chat__menu" style={{ left: menu.x, top: menu.y }} role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => void cancelMessage(menu.messageId)}
-          >
-            {t("collabGroup.chat.recall")}
-          </button>
+          {menu.sender === HUMAN_LOCAL ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setMenu(null); void cancelMessage(menu.messageId); }}
+            >
+              {t("collabGroup.chat.recall")}
+            </button>
+          ) : (
+            <>
+              {onOpenSession && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setMenu(null); onOpenSession(menu.sender); }}
+                >
+                  {t("collabHub.directs.ctxSender", { name: directoryTitle(menu.sender) })}
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                className="channel-chat__menuitem--muted"
+                onClick={() => setMenu(null)}
+                title={t("collabHub.directs.ctxGroupSelf")}
+              >
+                {t("collabHub.directs.ctxRecipientGroup")}
+              </button>
+            </>
+          )}
         </div>,
         document.body,
       )}
