@@ -199,7 +199,7 @@ async function main() {
   const plan = itemWithTitle("计划");
   ok(plan && plan.disabled, "plan task mode disabled mid-turn");
   ok(plan?.title === "会话运行中，结束后可用", "plan task mode carries the running hint tooltip");
-  const light = itemWithTitle("轻量");
+  const light = itemWithTitle("经济");
   ok(light && light.disabled, "subagent policy tier disabled mid-turn");
   ok(light?.title === "会话运行中，结束后可用", "subagent policy tier carries the running hint tooltip");
 
@@ -213,7 +213,7 @@ async function main() {
   ok(!attachmentIdle?.title, "running hint tooltip gone when idle");
   const planIdle = itemWithTitle("计划");
   ok(planIdle && !planIdle.disabled, "plan task mode available when idle");
-  const lightIdle = itemWithTitle("轻量");
+  const lightIdle = itemWithTitle("经济");
   ok(lightIdle && !lightIdle.disabled, "subagent policy tier available when idle");
   ok(plusButton() && !plusButton()!.disabled, "+ button available when idle");
 

@@ -64,6 +64,10 @@ const (
 	// 留痕，与连续续轮预算用尽后的停止告警。
 	NoticeCodeAutopilotResumeFired     = "autopilot_resume_fired"
 	NoticeCodeAutopilotResumeExhausted = "autopilot_resume_exhausted"
+	// NoticeCodeDelegationReminder (task 850, 816 P1-②): the efficiency tier
+	// burned many main-chain steps with zero sub-agent dispatches and the host
+	// injected one transient mid-turn delegation reminder.
+	NoticeCodeDelegationReminder = "delegation_reminder"
 )
 
 // 任务553: wake-yield code lives in its own block so the wire-stable table
