@@ -576,6 +576,25 @@ func (a *App) SetExperimentalActiveTabResident(enabled bool) error {
 	})
 }
 
+// SetExperimentalBashHeavyGuard toggles the task-575 heavy-bash write guard
+// (ships off; the guard reads the config at write time, no rebuild needed —
+// task 815 adds the lab entry in the optimistic-parallel card).
+func (a *App) SetExperimentalBashHeavyGuard(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalBashHeavyGuard(enabled)
+	})
+}
+
+// SetExperimentalEditEvidenceRelaxed toggles the task-789 relaxed edit
+// evidence gate (ships off; restart to apply — the tool surface is composed
+// per session; task 815 lands the settings-page entry for the unified
+// registration window).
+func (a *App) SetExperimentalEditEvidenceRelaxed(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalEditEvidenceRelaxed(enabled)
+	})
+}
+
 // SetExperimentalOpenCodeGoUsage toggles the task-163 usage card (ships off;
 // the frontend gate issues no usage query while it is off).
 func (a *App) SetExperimentalOpenCodeGoUsage(enabled bool) error {

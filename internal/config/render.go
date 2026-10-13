@@ -63,7 +63,7 @@ var labFeatureTiers = []labFeatureTier{
 	{"subagentPolicy", LabTierUnstable, []string{"experimental_subagent_policy"}},
 	// ── efficiency（提效，11 项；任务 517 B3 并入 safetyCostControl；────
 	//    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效）
-	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write"}},
+	{"optimisticParallel", LabTierRecommended, []string{"optimistic_write", "experimental_bash_heavy_guard"}}, // bash_heavy_guard 为 task 575 家族子键（815 补实验室入口：optimistic-parallel 卡成员行）
 	{"budgetControl", LabTierRecommended, []string{"experimental_context_budget", "experimental_research_budget"}},
 	{"compressOpt", LabTierRecommended, []string{"experimental_proactive_compact", "experimental_cold_cache_compact"}},
 	{"messageMerge", LabTierRecommended, []string{"collab_inbox_merge", "collab_guidance_merge"}},
@@ -135,23 +135,24 @@ var labFeatureTiers = []labFeatureTier{
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
-	// ── tool-opt（工具优化，1 项）────────────────────────────────
+	// ── tool-opt（工具优化，2 项；815 登记窗口：789 证据门宽松转正入表）──
 	{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动）；任务 783④：编辑读回（readBack）随 22.5 交付转正，未稳定→推荐（前端注册表同步升档，562 两侧一致断言守护）
+	// 任务 789/815：编辑证据门宽松模式（工具优化卡成员行，未稳定档默认关）。
+	// 789 先行（Go 侧开关+前端登记半程），815 登记窗口补齐设置页入口后转正入表。
+	{"editEvidenceRelaxed", LabTierUnstable, []string{"experimental_edit_evidence_relaxed"}},
 }
 
 // labNonFeatureKeys：渲染表里存在、但不属于表A 46 项的实验室族键（豁免门禁，
 // 逐键给理由；键消亡后应从此清单移除）。
 var labNonFeatureKeys = map[string]string{
 	"experimental_preapprove_managed":            "task 231/364 域：入口并入 autopilot 卡，非表A 46 项，不挂档位",
-	"experimental_cascade_approval":              "task 225：派遣审批回投任务源，实验室 tab 无入口",
-	"experimental_fallback_model":                "task 242：额度耗尽切 fallback_model，实验室 tab 无入口",
-	"experimental_collab_background_delivery":    "task 224：协作投递后台化，实验室 tab 无入口",
-	"experimental_bash_heavy_guard":              "task 575：bash 重命令写守卫（写并发保护，optimistic_write 家族伴生开关，实验室 tab 无入口）",
+	"experimental_cascade_approval":              "task 225：派遣审批回投任务源（815 核验：sessionCollab 卡内行级开关已交付，非缺口；家族伴生行不挂独立徽章，621 附属行口径）",
+	"experimental_fallback_model":                "task 242：额度耗尽切 fallback_model（815 核验：722 点1 已迁 modelStrategy 卡行级开关+灯，非缺口；模型策略域伴生行不挂独立徽章）",
+	"experimental_collab_background_delivery":    "task 224：协作投递后台化——boot-resolved 服务端开关（collab_drain_gate.go：drain_inbox 注册与 pump 跳过均取 boot 快照，翻转重启才生效），config-only 是合理形态（815 定档不建卡）",
 	"experimental_parallel_writer_readonly_bash": "task 573：并行 writer 只读 bash 回退（写隔离伴生开关，write_paths 象限自证能力，实验室 tab 无入口）",
 	"experimental_gc_child_session":              "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
 	"experimental_general_purpose_subagent":      "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
-	"experimental_edit_evidence_relaxed":         "task 789：edit_file 证据门宽松开关（同批读取计数 + 悬置证据不拦 bash 写，默认关）；Go 侧先行，实验室 yaml 档位登记与设置页入口在统一登记窗口补（lab-layout.yaml 由并行代理持有，避免冲突）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键

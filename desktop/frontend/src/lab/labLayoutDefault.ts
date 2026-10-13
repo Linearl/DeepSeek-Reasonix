@@ -64,7 +64,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           id: "sessionCollab",
           labelKey: "settings.sessionCollab",
           tier: "recommended",
-          onKeys: ["experimentalSessionCollab"],
+          // 任务 815：cascade_approval 卡内行级开关（Task 225）补灯。
+          onKeys: ["experimentalSessionCollab", "experimentalCascadeApproval"],
           // 任务 722 点3：自动折叠跨会话消息并为跨会话协作子项。
           members: [
             { id: "sessionCollabAutoFold", labelKey: "settings.sessionCollabAutoFold", tier: "optional" },
@@ -84,10 +85,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "efficiency",
       labelKey: "settings.labGroup.efficiency",
       entries: [
-        { id: "optimisticParallel", labelKey: "settings.optimisticParallel", tier: "recommended", onKeys: ["optimisticWrite"] },
+        // 任务 815：bash_heavy_guard（575）补实验室入口——卡成员行+灯
+        // （optimistic_write 家族伴生，无 member 行不挂独立徽章）。
+        { id: "optimisticParallel", labelKey: "settings.optimisticParallel", tier: "recommended", onKeys: ["optimisticWrite", "experimentalBashHeavyGuard"] },
         {
           id: "contextGovernance",
           labelKey: "settings.contextGovernance",
+          // 任务 815：active_tab_resident 补灯（Task 347 附属行，Go 侧
+          // cacheTuning renderKeys 家族已含，前端灯漏接）。
           onKeys: [
             "experimentalCompactionParallel",
             "experimentalContextBudget",
@@ -95,6 +100,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalProactiveCompact",
             "experimentalColdCacheCompact",
             "experimentalCacheTuning",
+            "experimentalActiveTabResident",
           ],
           members: [
             { id: "compactionParallel", labelKey: "settings.compactionParallel", tier: "optional" },
@@ -131,7 +137,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           // 不再出现在模型策略卡（只读展示行仍在卡内，无徽章）。
           id: "modelStrategy",
           labelKey: "settings.modelStrategy",
-          onKeys: ["experimentalHighSpeedModel"],
+          // 任务 815：fallback_model 补灯（722 点1 迁入的行级开关）。
+          onKeys: ["experimentalHighSpeedModel", "experimentalFallbackModel"],
           members: [
             { id: "highSpeedModel", labelKey: "settings.highSpeedModel", tier: "optional" },
           ],

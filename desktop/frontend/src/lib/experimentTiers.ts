@@ -249,11 +249,16 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * baseProcess（S1 常驻底座开关）随底座退役出表，未稳定 12→11、总数 58→57。任务 790：acpListen（ACP 常驻监听，默认关）入表未稳定档，11→12、总数 57→58。
  * 任务 826：sidebarHoverLeft / sidebarHoverRight（左右边栏 hover 展开，默认
  * 关）按可选档入表（26→28、58→60；562 计数 pin 与 789 统一登记窗口一并
- * 收口——本常量当前被 task562 钉在 26/58，随登记窗口同步跳变）。） */
+ * 收口——本常量当前被 task562 钉在 26/58，随登记窗口同步跳变）。
+ * 任务 815（统一登记窗口收口）：editEvidenceRelaxed（编辑证据门宽松，789
+ * 交付、815 补设置页入口，Go 侧同步转正入表）档位不变（未稳定）；本常量
+ * 自收口前口径 19/26/12/1=58 一次跳到 19/29/14/1=63（sidebarHover×2 +
+ * editEvidenceRelaxed + homePointer 等收口前已在表而 pin 未跟的项一并计入；
+ * Go 侧 56 条目，详见 task562 测试头注）。） */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 19,
-  optional: 26,
-  unstable: 12,
+  optional: 29,
+  unstable: 14,
   retired: 1,
 };
 
