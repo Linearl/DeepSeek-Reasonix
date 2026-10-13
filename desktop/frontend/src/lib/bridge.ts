@@ -79,6 +79,7 @@ import type {
   WorktreeMergeResult,
   WorktreeCleanupRequest,
   WorktreeCleanupResult,
+  WorkspaceFileOpsResult,
   CloseMergedWorktreeTabRequest,
   CloseMergedWorktreeTabResult,
   DroppedItem,
@@ -1084,6 +1085,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   OpenWorkspacePath(rel: string): Promise<void>;
   OpenWorkspacePathForTab(tabID: string, rel: string): Promise<void>;
   ResolveWorkspacePathForTab(tabID: string, rel: string): Promise<string>;
+  RenameWorkspaceEntryForTab(tabID: string, rel: string, newName: string): Promise<string>;
+  TrashWorkspaceEntriesForTab(tabID: string, rels: string[]): Promise<WorkspaceFileOpsResult>;
+  DeleteWorkspaceEntriesPermanentForTab(tabID: string, rels: string[]): Promise<WorkspaceFileOpsResult>;
   ExternalOpeners(): Promise<ExternalOpenersView>; ExternalOpenersForTab(tabID: string): Promise<ExternalOpenersView>;
   SetPreferredExternalOpener(id: string): Promise<void>;
   OpenWorkspaceInExternalOpener(id: string): Promise<void>;
@@ -5514,6 +5518,18 @@ function makeMockApp(): AppBindings {
       await this.OpenWorkspacePath(rel);
     },
     async ResolveWorkspacePathForTab(_tabID: string, rel: string) { return `${cwd.replace(/[\\/]+$/, "")}/${rel.replace(/^[/\\]+/, "").replace(/[\\/]+$/, "")}`; },
+    async RenameWorkspaceEntryForTab(_tabID: string, rel: string, newName: string) {
+      const parent = rel.replace(/\/$/, "").split("/").slice(0, -1).join("/");
+      return `${parent}${parent ? "/" : ""}${newName}`;
+    },
+    async TrashWorkspaceEntriesForTab(_tabID: string, rels: string[]) {
+      console.info("mock TrashWorkspaceEntriesForTab", rels);
+      return { succeeded: [...rels], failed: [] };
+    },
+    async DeleteWorkspaceEntriesPermanentForTab(_tabID: string, rels: string[]) {
+      console.info("mock DeleteWorkspaceEntriesPermanentForTab", rels);
+      return { succeeded: [...rels], failed: [] };
+    },
     async ExternalOpeners() {
       return {
         openers: [

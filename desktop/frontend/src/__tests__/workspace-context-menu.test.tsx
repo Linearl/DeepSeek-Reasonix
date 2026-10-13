@@ -159,12 +159,15 @@ const fileLabels = [
   "Open in integrated terminal",
   "Copy relative path",
   "Copy absolute path",
+  "Rename",
+  "Move to Trash",
+  "Delete Permanently…",
   "Add file reference",
   "Add file contents",
   "Pin to Session Context",
 ];
 ok(JSON.stringify(menuLabels()) === JSON.stringify(fileLabels), "file menu keeps the default-open action first and preserves command order");
-ok(document.querySelectorAll(".workspace-tree-menu [role=separator]").length === 1, "file menu separates path commands from chat commands");
+ok(document.querySelectorAll(".workspace-tree-menu [role=separator]").length === 2, "file menu separates file operations and chat commands");
 
 const defaultOpen = Array.from(document.querySelectorAll<HTMLButtonElement>(".workspace-tree-menu button")).find(
   (button) => button.textContent?.trim() === "Open with default app",
@@ -187,11 +190,14 @@ ok(
     "Open in integrated terminal",
     "Copy relative path",
     "Copy absolute path",
+    "Rename",
+    "Move to Trash",
+    "Delete Permanently…",
     "Add folder reference",
   ]),
   "folder menu preserves its existing command order",
 );
-ok(document.querySelectorAll(".workspace-tree-menu [role=separator]").length === 1, "folder menu keeps one chat-command separator");
+ok(document.querySelectorAll(".workspace-tree-menu [role=separator]").length === 2, "folder menu keeps its two separators");
 
 await act(async () => {
   root.unmount();

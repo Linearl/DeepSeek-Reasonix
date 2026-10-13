@@ -1,9 +1,7 @@
 package main
 
-// 任务 855 铁律：文件面板的「删除」（回收站语义）必须把条目送进操作系统
-// 回收站/废纸篓（Windows Shell API / macOS trashItemAtURL / Linux gio trash），
-// 禁止用 os.RemoveAll、os.Rename 或自建 .trash 目录冒充回收站。彻底删除
-// （os.RemoveAll）是独立的显式操作，不在此文件实现。
+// 任务 855 铁律：「删除」（回收站语义）必须经平台 API 送进系统回收站/废纸篓，
+// 禁止 os.RemoveAll/os.Rename 或自建 .trash 冒充；彻底删除是独立显式操作。
 
 import "errors"
 

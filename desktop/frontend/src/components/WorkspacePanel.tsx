@@ -24,6 +24,7 @@ import {
 import { asArray } from "../lib/array";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { useToast } from "../lib/toast";
 import {
   clampWorkspaceSplitTreeWidth,
   initialWorkspaceSplitTreeWidth,
@@ -68,6 +69,7 @@ import type {
   RewindResultView,
   WorkspaceChangeDetailView,
   WireCompletionSummary,
+  WorkspaceFileOpsResult,
 } from "../lib/types";
 import { workspaceGitStatusLabel } from "../lib/workspaceChanges";
 import { formatWorkspaceReference, WORKSPACE_REF_DRAG_TYPE } from "../lib/workspaceDrag";
@@ -76,6 +78,7 @@ import { cleanGitDiff } from "../lib/diff";
 import { CodeViewer } from "./CodeViewer";
 import { DiffView } from "./DiffView";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { FloatingMenu, FloatingMenuItems } from "./FloatingMenu";
 import { Markdown } from "./Markdown";
 import { Tooltip } from "./Tooltip";
@@ -196,6 +199,11 @@ export function WorkspacePanel({
   sessionItems?: readonly import("../lib/sessionSideFiles").SessionSideItem[];
 }) {
   const t = useT();
+  // Task 855 file ops: toast for per-entry failures, dialog for the permanent
+  // delete double confirm. Kept above the `!open` early return — hooks must
+  // run in both renders.
+  const { showToast } = useToast();
+  const { confirm: confirmTreeOps, dialog: treeOpsConfirmDialog } = useConfirmDialog();
   const [widthMenuPoint, setWidthMenuPoint] = useState<ContextMenuPoint | null>(null);
   const workspaceTabId = tabId ?? "";
   const activeVerificationRevealRequest = verificationRevealRequest?.tabId === workspaceTabId
@@ -252,7 +260,16 @@ export function WorkspacePanel({
   const [commitDetail, setCommitDetail] = useState<GitCommitDetailView | null>(null);
   const [loadingCommit, setLoadingCommit] = useState(false);
   const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number; text: string; path: string } | null>(null);
-  const [treeMenu, setTreeMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
+  const [treeMenu, setTreeMenu] = useState<{ x: number; y: number; path: string; isDir: boolean; paths: string[] } | null>(null);
+  // Task 855 explorer-style multi-selection: tree rows chosen with Ctrl/Shift,
+  // independent from selectedPath (the preview selection). Dirs keep their
+  // trailing slash, matching tree row paths.
+  const [selectedEntryPaths, setSelectedEntryPaths] = useState<string[]>([]);
+  const [selectionAnchorPath, setSelectionAnchorPath] = useState<string | null>(null);
+  const [treeRenaming, setTreeRenaming] = useState<{ path: string; value: string } | null>(null);
+  // Enter commits and unmounts the input; the unmount blur fires onCommit a
+  // second time through a stale closure — the ref keeps commit idempotent.
+  const treeRenamingRef = useRef<{ path: string; value: string } | null>(null);
   const [treeBlankMenuPoint, setTreeBlankMenuPoint] = useState<ContextMenuPoint | null>(null);
   const [filter, setFilter] = useState("");
   const [searchResults, setSearchResults] = useState<DirEntry[] | null>(null);
@@ -550,6 +567,10 @@ export function WorkspacePanel({
     setCommitDetail(null);
     setSelectionMenu(null);
     setTreeMenu(null);
+    setSelectedEntryPaths([]);
+    setSelectionAnchorPath(null);
+    treeRenamingRef.current = null;
+    setTreeRenaming(null);
     setFilter("");
     setScopedFilePaths(null);
     setScopedChangeRows(null);
@@ -1053,6 +1074,12 @@ export function WorkspacePanel({
       .sort((a, b) => a.path.localeCompare(b.path));
   }, [entriesByDir, filter, scopedFilePaths, searchResults]);
 
+  const selectedEntrySet = useMemo(() => new Set(selectedEntryPaths), [selectedEntryPaths]);
+  const rowIsActive = useCallback(
+    (path: string) => selectedPath === path || selectedEntrySet.has(path) || treeRenaming?.path === path,
+    [selectedPath, selectedEntrySet, treeRenaming],
+  );
+
   const treeRows = useMemo<WorkspaceTreeRowData[]>(() => {
     if (flattened) {
       return flattened.map(({ path, entry }) => ({
@@ -1060,7 +1087,7 @@ export function WorkspacePanel({
         path,
         depth: 0,
         entry,
-        active: selectedPath === path,
+        active: rowIsActive(path),
         isSearch: true,
       }));
     }
@@ -1075,7 +1102,7 @@ export function WorkspacePanel({
             path: firstPath,
             depth,
             entry,
-            active: selectedPath === firstPath,
+            active: rowIsActive(firstPath),
             isOpen: false,
           });
           continue;
@@ -1101,7 +1128,7 @@ export function WorkspacePanel({
           path: lastPath,
           depth,
           entry: lastEntry,
-          active: selectedPath === lastPath,
+          active: rowIsActive(lastPath),
           isOpen,
           compactPaths,
           displayName: compactNames.join(" / "),
@@ -1113,7 +1140,7 @@ export function WorkspacePanel({
     };
     build("", 0);
     return acc;
-  }, [flattened, entriesByDir, openDirs, revealedRootPaths, selectedPath]);
+  }, [flattened, entriesByDir, openDirs, revealedRootPaths, rowIsActive]);
   const getTreeRowKey = useCallback((index: number) => treeRows[index]?.key ?? index, [treeRows]);
 
   const virtualizer = useVirtualizer({
@@ -1420,7 +1447,14 @@ export function WorkspacePanel({
     event.stopPropagation();
     setTreeBlankMenuPoint(null);
     setSelectionMenu(null);
-    setTreeMenu({ x: event.clientX, y: event.clientY, path, isDir });
+    // Explorer behavior: the menu acts on the visually selected set (multi
+    // selection plus the preview-selected row). Right-click outside that set
+    // collapses it to (and visually selects) the right-clicked row.
+    const visualPaths = Array.from(new Set([...selectedEntryPaths, ...(selectedPath ? [selectedPath] : [])]));
+    const menuPaths = visualPaths.includes(path) ? visualPaths : [path];
+    setSelectedEntryPaths(menuPaths);
+    setSelectionAnchorPath(path);
+    setTreeMenu({ x: event.clientX, y: event.clientY, path, isDir, paths: menuPaths });
   };
 
   const openTreeBlankMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -1468,13 +1502,136 @@ export function WorkspacePanel({
     }
   };
 
-  const activateTreeRow = (row: WorkspaceTreeRowData) => {
+  // removed keeps the tree-row spelling (dirs end with "/"); candidate is a
+  // preview path without a trailing slash.
+  const pathCoversEntry = (removed: string, candidate: string) => {
+    const base = removed.replace(/\/+$/, "");
+    return candidate === base || candidate.startsWith(`${base}/`);
+  };
+
+  const reportFileOpsFailures = (res: WorkspaceFileOpsResult) => {
+    if (res.failed.length === 0) return;
+    const detail = res.failed[0]?.err ?? "";
+    showToast(
+      res.failed.length === 1
+        ? t("workspace.fileOpFailed", { detail })
+        : t("workspace.fileOpsFailedCount", { count: res.failed.length, detail }),
+      "error",
+    );
+  };
+
+  const pruneSelectionAfterRemoval = (rels: string[]) => {
+    if (selectedPath && rels.some((r) => pathCoversEntry(r, selectedPath))) {
+      setSelectedFilePath(null);
+    }
+    setSelectedEntryPaths((prev) => prev.filter((p) => !rels.some((r) => pathCoversEntry(r, p))));
+  };
+
+  const adjustTreeSelection = (row: WorkspaceTreeRowData, rangeSelect: boolean, additive: boolean) => {
+    if (rangeSelect && selectionAnchorPath) {
+      const from = treeRows.findIndex((r) => r.path === selectionAnchorPath);
+      const to = treeRows.findIndex((r) => r.path === row.path);
+      if (from >= 0 && to >= 0) {
+        const [lo, hi] = from <= to ? [from, to] : [to, from];
+        const range = treeRows.slice(lo, hi + 1).map((r) => r.path);
+        setSelectedEntryPaths((prev) => {
+          const merged = new Set(additive ? prev : []);
+          range.forEach((p) => merged.add(p));
+          // Keep the menu target set in tree order for a stable delete batch.
+          return treeRows.map((r) => r.path).filter((p) => merged.has(p));
+        });
+        return;
+      }
+    }
+    if (additive) {
+      setSelectedEntryPaths((prev) =>
+        prev.includes(row.path) ? prev.filter((p) => p !== row.path) : [...prev, row.path],
+      );
+      setSelectionAnchorPath(row.path);
+      return;
+    }
+    setSelectedEntryPaths([row.path]);
+    setSelectionAnchorPath(row.path);
+  };
+
+  const activateTreeRow = (row: WorkspaceTreeRowData, event: ReactMouseEvent<HTMLElement>) => {
+    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      adjustTreeSelection(row, event.shiftKey, event.ctrlKey || event.metaKey);
+      return;
+    }
+    setSelectedEntryPaths([]);
+    setSelectionAnchorPath(row.path);
     if (row.entry.isDir) {
       toggleDir(row.path, row.compactPaths ?? [row.path]);
     } else if (selectedPath === row.path) {
       setSelectedFilePath(null);
     } else {
       selectFile(row.path);
+    }
+  };
+
+  // Task 855 recycle-bin deletion: the backend routes every entry through the
+  // OS trash API; the panel reports per-entry failures and prunes stale state.
+  const trashTreeEntries = async (paths: string[]) => {
+    if (paths.length === 0) return;
+    try {
+      const res = await app.TrashWorkspaceEntriesForTab(workspaceTabId, paths);
+      reportFileOpsFailures(res);
+      pruneSelectionAfterRemoval(res.succeeded);
+      refreshWorkspaceList();
+    } catch (err) {
+      showToast(t("workspace.fileOpFailed", { detail: String((err as Error)?.message || err) }), "error");
+    }
+  };
+
+  const deleteTreeEntriesPermanent = async (paths: string[]) => {
+    if (paths.length === 0) return;
+    const confirmed = await confirmTreeOps({
+      title: t("workspace.deletePermanentConfirmTitle"),
+      message: t("workspace.deletePermanentConfirmMessage", { count: paths.length }),
+      confirmLabel: t("workspace.deletePermanentConfirmLabel"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    try {
+      const res = await app.DeleteWorkspaceEntriesPermanentForTab(workspaceTabId, paths);
+      reportFileOpsFailures(res);
+      pruneSelectionAfterRemoval(res.succeeded);
+      refreshWorkspaceList();
+    } catch (err) {
+      showToast(t("workspace.fileOpFailed", { detail: String((err as Error)?.message || err) }), "error");
+    }
+  };
+
+  const startTreeRename = (path: string) => {
+    setTreeMenu(null);
+    setSelectedEntryPaths([path]);
+    setSelectionAnchorPath(path);
+    const next = { path, value: basename(path) };
+    treeRenamingRef.current = next;
+    setTreeRenaming(next);
+  };
+
+  const commitTreeRename = async () => {
+    const renaming = treeRenamingRef.current;
+    if (!renaming) return;
+    treeRenamingRef.current = null;
+    setTreeRenaming(null);
+    const nextName = renaming.value.trim();
+    if (!nextName || nextName === basename(renaming.path)) return;
+    try {
+      const newRel = await app.RenameWorkspaceEntryForTab(workspaceTabId, renaming.path, nextName);
+      const normalizedNew = renaming.path.endsWith("/") ? `${newRel}/` : newRel;
+      setSelectedEntryPaths((prev) => prev.map((p) => (p === renaming.path ? normalizedNew : p)));
+      setSelectionAnchorPath((prev) => (prev === renaming.path ? normalizedNew : prev));
+      if (selectedPath && pathCoversEntry(renaming.path, selectedPath)) {
+        setSelectedFilePath(`${normalizedNew}${selectedPath.slice(renaming.path.length)}`);
+      }
+      refreshWorkspaceList();
+    } catch (err) {
+      showToast(t("workspace.renameFailed", { detail: String((err as Error)?.message || err) }), "error");
     }
   };
 
@@ -1532,6 +1689,25 @@ export function WorkspacePanel({
           event.preventDefault();
           event.stopPropagation();
           openCodeSearch();
+          return;
+        }
+        // Task 855: Ctrl/Cmd+A selects the visible tree rows, Escape clears
+        // the multi-selection — only while the focus sits inside the tree.
+        const treeHasFocus = treeRef.current != null
+          && event.target instanceof Node
+          && treeRef.current.contains(event.target);
+        if (!treeHasFocus) return;
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a" && !event.shiftKey && !event.altKey) {
+          if (treeRows.length === 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setSelectedEntryPaths(treeRows.map((r) => r.path));
+          setSelectionAnchorPath(treeRows[treeRows.length - 1]?.path ?? null);
+          return;
+        }
+        if (event.key === "Escape" && selectedEntryPaths.length > 0) {
+          event.stopPropagation();
+          setSelectedEntryPaths([]);
         }
       }}
     >
@@ -2130,6 +2306,11 @@ export function WorkspacePanel({
           ref={treeRef}
           onScroll={onWorkspaceTreeScroll}
           onContextMenu={openTreeBlankMenu}
+          onClick={(event) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.closest(".workspace-tree__row")) return;
+            setSelectedEntryPaths([]);
+          }}
           style={{
             height: "100%",
             overflow: "auto",
@@ -2165,6 +2346,22 @@ export function WorkspacePanel({
                       onActivate={activateTreeRow}
                       onDragStart={startTreeDrag}
                       onContextMenu={openTreeMenu}
+                      renaming={treeRenaming?.path === item.path ? {
+                        value: treeRenaming.value,
+                        label: basename(item.path),
+                        onInput: (value) => {
+                          // The commit path reads the ref (blur can fire after
+                          // the state closed) — sync it here, not inside the
+                          // state updater whose timing React owns.
+                          treeRenamingRef.current = { path: item.path, value };
+                          setTreeRenaming((current) => (current?.path === item.path ? { ...current, value } : current));
+                        },
+                        onCommit: () => void commitTreeRename(),
+                        onCancel: () => {
+                          treeRenamingRef.current = null;
+                          setTreeRenaming(null);
+                        },
+                      } : undefined}
                     />
                   </div>
                 );
@@ -2182,8 +2379,12 @@ export function WorkspacePanel({
           onOpenInTerminal={onOpenInTerminal}
           onAddReference={addTreeReferenceToChat}
           onAddFile={() => void addTreeFileToChat()}
+          onRename={startTreeRename}
+          onDelete={(paths) => void trashTreeEntries(paths)}
+          onDeletePermanent={(paths) => void deleteTreeEntriesPermanent(paths)}
         />
       )}
+      {treeOpsConfirmDialog}
       <ContextMenu
         open={Boolean(treeBlankMenuPoint)}
         point={treeBlankMenuPoint}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, FileText, FolderOpen, MessageSquarePlus, Pin, PinOff, TerminalSquare } from "lucide-react";
+import { ExternalLink, FileText, FolderOpen, MessageSquarePlus, PenLine, Pin, PinOff, TerminalSquare, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import type { PinnedFileInfo } from "../lib/pinnedContextBridge";
@@ -16,6 +16,9 @@ export interface WorkspaceTreeMenuTarget {
   y: number;
   path: string;
   isDir: boolean;
+  /** Task 855: the selection snapshot the menu acts on (right-click keeps an
+   * existing multi-selection; otherwise exactly the right-clicked row). */
+  paths: string[];
 }
 
 export function WorkspaceTreeMenu({
@@ -26,6 +29,9 @@ export function WorkspaceTreeMenu({
   onOpenInTerminal,
   onAddReference,
   onAddFile,
+  onRename,
+  onDelete,
+  onDeletePermanent,
 }: {
   target: WorkspaceTreeMenuTarget;
   workspaceTabId: string;
@@ -34,13 +40,17 @@ export function WorkspaceTreeMenu({
   onOpenInTerminal?: (path: string) => void;
   onAddReference: () => void;
   onAddFile: () => void;
+  onRename: (path: string) => void;
+  onDelete: (paths: string[]) => void;
+  onDeletePermanent: (paths: string[]) => void;
 }) {
   const t = useT();
   const { showToast } = useToast();
   const [isPinned, setIsPinned] = useState(false);
+  const multi = target.paths.length > 1;
 
   useEffect(() => {
-    if (target.isDir || !workspaceTabId) return;
+    if (multi || target.isDir || !workspaceTabId) return;
     let active = true;
     app.GetPinnedFilesForTab(workspaceTabId)
       .then((files: PinnedFileInfo[]) => {
@@ -55,12 +65,64 @@ export function WorkspaceTreeMenu({
     return () => {
       active = false;
     };
-  }, [workspaceTabId, target.path, target.isDir]);
+  }, [workspaceTabId, target.path, target.isDir, multi]);
 
   const closeThen = (action: () => void) => {
     onClose();
     action();
   };
+
+  const fileOps = [
+    { separator: true as const, key: "sep-file-ops" },
+    {
+      key: "rename",
+      icon: <PenLine size={14} />,
+      label: t("workspace.renameEntry"),
+      disabled: multi,
+      onSelect: () => {
+        onClose();
+        onRename(target.path);
+      },
+    },
+    {
+      key: "trash",
+      icon: <Trash2 size={14} />,
+      label: multi
+        ? t("workspace.trashEntriesCount", { count: target.paths.length })
+        : t("workspace.trashEntry"),
+      onSelect: () => {
+        onClose();
+        onDelete(target.paths);
+      },
+    },
+    {
+      key: "delete-permanent",
+      icon: <Trash2 size={14} />,
+      label: multi
+        ? t("workspace.deletePermanentEntriesCount", { count: target.paths.length })
+        : t("workspace.deletePermanentEntry"),
+      onSelect: () => {
+        onClose();
+        onDeletePermanent(target.paths);
+      },
+    },
+  ];
+
+  // Multi-selection keeps the menu on the destructive block only: the
+  // single-file actions below (open, copy, pin, chat references) have no
+  // well-defined meaning across a mixed batch.
+  if (multi) {
+    return (
+      <FloatingMenu
+        x={target.x}
+        y={target.y}
+        estimatedHeight={WORKSPACE_CONTEXT_MENU_FILE_HEIGHT + 40}
+        className="workspace-tree-menu"
+      >
+        <FloatingMenuItems items={fileOps.slice(1)} />
+      </FloatingMenu>
+    );
+  }
 
   return (
     <FloatingMenu
@@ -98,6 +160,7 @@ export function WorkspaceTreeMenu({
             relativeLabel: t("workspace.copyRelativePath"),
             absoluteLabel: t("workspace.copyAbsolutePath"),
           }),
+          ...fileOps,
           { separator: true },
           {
             icon: <MessageSquarePlus size={14} />,
