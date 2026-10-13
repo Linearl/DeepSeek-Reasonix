@@ -889,6 +889,22 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 	}
 	a.trackTodoProgress(ctx, state, receiptMark)
 
+	// Task 850 (816 P1-②): the efficiency tier's guidance block fades with
+	// turn length, so a long turn that has not dispatched anything gets ONE
+	// transient mid-turn reminder here — appended at the context tail (same
+	// seam as the repair/finalization nudges above), never rewriting the
+	// cached prefix. Armed only for an explicit aggressive tier mirror;
+	// light/balanced/unset turns are untouched (the economy tier must stay
+	// free to spend nothing on dispatches).
+	if a.shouldNudgeDelegationReminder(state) {
+		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
+			Code:   event.NoticeCodeDelegationReminder,
+			Text:   delegationReminderMessage(state.mainChainToolSteps),
+			Detail: "efficiency tier mid-turn delegation reminder (task 850)"})
+		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(
+			delegationReminderMessage(state.mainChainToolSteps))))
+	}
+
 	// The prompt only grows from here; compact before the next turn so it
 	// stays within the model's window.
 	a.contextManager().ObserveUsage(usage)

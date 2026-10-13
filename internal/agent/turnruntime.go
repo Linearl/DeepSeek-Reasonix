@@ -33,6 +33,11 @@ type turnRuntime struct {
 	taskDispatches         int
 	readOnlyTaskDispatches int
 	mainChainToolSteps     int
+	// delegationReminderSent marks the once-per-turn mid-turn delegation
+	// reminder (task 850, 816 P1-②): the efficiency tier that keeps burning
+	// main-chain steps with zero dispatches gets exactly one transient nudge —
+	// a second one would nag without new information. Zeroed with the turn.
+	delegationReminderSent bool
 	// unattended marks a turn nobody can answer a readiness recovery card for
 	// (task 283): autopilot, or a tool-approval posture that already delegates
 	// writes to policy (auto/yolo) / an unattended host run — the same
