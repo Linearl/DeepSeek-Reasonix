@@ -634,4 +634,4 @@ assertBudget("initial raw JavaScript and CSS", rawInitialBytes, rawInitialBudget
 // [fork note] 2026-09-15: measured 1102.2 KiB raw - same pre-existing growth as the
 // gzip budget above; re-set from the measured value with headroom.
   // 2520: raw ratchet step widened to ~+10 KiB (user 2026-09-20). Merge batch measured 2511.8 (tasks 185/181/collab frontend).
-assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_180 * 1024); // 24.2 出包实测 1160.1 贴 1160.0 线 0.1（恰等/贴线=抖动必炸区）— raw 步长 +10 一次到位 → 1170.0（主对话出包前独立 commit）
+assertBudget("largest initial JavaScript chunk raw", largestInitialJSRaw, 1_190 * 1024); // 低峰批实测 1180.2 超 1180.0 线 0.2（恰等/贴线=抖动，分支 emoji catalog 入 chunk）— raw 棘轮 +10 一次到位 → 1190 含余量（主对话独立 commit 报备派活方） // (原) 24.2 出包实测 1160.1 贴 1160.0 线 0.1（恰等/贴线=抖动必炸区）— raw 步长 +10 一次到位 → 1170.0（主对话出包前独立 commit）
