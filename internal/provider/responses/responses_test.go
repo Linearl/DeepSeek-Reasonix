@@ -612,6 +612,10 @@ func TestVendorCapabilityTableCoversKnownEndpoints(t *testing.T) {
 		{"https://api.deepseek.com", "deepseek", true, true, false, false},
 		{"https://api.xiaomimimo.com/v1", "mimo", true, true, true, true},
 		{"https://dashscope.aliyuncs.com/compatible-mode/v1", "dashscope", false, false, false, false},
+		// OpenCode Go: summaryRequired=true is asserted below (400 without it,
+		// live-verified 2026-10-13); the other fields stay at the OpenAI base
+		// defaults until a live run shows the endpoint needs more.
+		{"https://opencode.ai/zen/go/v1", "opencode", false, false, false, false},
 		{"https://example.com/v1", "", false, false, false, false},
 	}
 	for _, test := range tests {
@@ -632,6 +636,13 @@ func TestVendorCapabilityTableCoversKnownEndpoints(t *testing.T) {
 		if caps.singleSegmentReasoning != test.singleSegment {
 			t.Errorf("capabilities(%q).singleSegmentReasoning = %v, want %v", vendor, caps.singleSegmentReasoning, test.singleSegment)
 		}
+	}
+	// Task 871: OpenCode Go's Responses route rejects reasoning input items
+	// without a `summary` list (live 400 "Missing required parameter:
+	// 'input[2].summary'"), so the vendor entry must stay summaryRequired —
+	// this is the field the table above does not cover.
+	if got := capabilitiesFor(DetectVendor("https://opencode.ai/zen/go/v1")).summaryRequired; !got {
+		t.Errorf("capabilities(opencode).summaryRequired = %v, want true", got)
 	}
 }
 

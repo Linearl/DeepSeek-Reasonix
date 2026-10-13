@@ -123,6 +123,19 @@ var vendorTable = map[string]vendorCapabilities{
 		summaryRequired:        true,
 		compactionOutputTokens: provider.DefaultOrdinaryOutputTokens,
 	},
+	// OpenCode Go's Responses route (opencode.ai/zen/go/v1/responses) rejects
+	// input reasoning items without a `summary` list ("Missing required
+	// parameter: 'input[2].summary'", verified live 2026-10-13 with the
+	// opencode-go-responses preset), so it is stricter than the OpenAI base
+	// format and needs the summary field like DashScope/StepFun. The rest of
+	// the shape is OpenAI-compatible for now: stateless/toolCallReasoning are
+	// left unset until a live run shows the endpoint needs them (an
+	// over-eager summary echo is the known cost of getting this wrong, so
+	// only fields with evidence get set).
+	"opencode": {
+		summaryRequired:        true,
+		compactionOutputTokens: provider.DefaultOrdinaryOutputTokens,
+	},
 	// "" (unknown OpenAI-compatible endpoint) → zero value = default behavior.
 	// Unknown gateways deliberately do NOT inherit a large max-output default.
 }
@@ -150,6 +163,8 @@ func DetectVendor(baseURL string) string {
 		return "mimo"
 	case host == "api.stepfun.com", host == "api.stepfun.ai":
 		return "stepfun"
+	case host == "opencode.ai", strings.HasSuffix(host, ".opencode.ai"):
+		return "opencode"
 	default:
 		return ""
 	}
