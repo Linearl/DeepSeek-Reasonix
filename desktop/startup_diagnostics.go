@@ -25,10 +25,31 @@ func (a *App) recordPreviousRunDiagnostics() {
 	// phases that prove a clean shutdown was already underway — the clean()/exit
 	// race C-20260920-02 documented, not crash evidence. Suppression stays
 	// observable: one summary line + a metrics bucket, never a silent drop.
-	suppressed := 0
+	// Task 847 (763 复发#2, 20261011 装机实测): an update restart is a PLANNED
+	// exit — the exiting process wrote the update-restart marker right before
+	// quitting, so a residue in a clean-shutdown phase from that same PID is
+	// the marker-writer's clean()/exit race, not a crash. The marker vouches
+	// for exactly that record (fresh window + PID match), independent of the
+	// gate: gate=false installs (the field default, and every existing config
+	// renders the key explicitly false) must not re-surface the 0911 false
+	// "上次运行崩溃" banner on every update restart.
+	gateSuppressed, markerSuppressed := 0, 0
 	for _, lifecycle := range a.lifecycle.previousRuns {
-		if a.lifecycle.noiseGate && lifecycleNoiseBenign(lifecycle.Phase) {
-			suppressed++
+		if !lifecycleNoiseBenign(lifecycle.Phase) {
+			_ = writePendingReport(desktopLifecycleReport(lifecycle), true)
+			if m := a.metrics.Load(); m != nil {
+				m.inc("desktop_exit", "abnormal")
+				m.inc("desktop_exit_phase", metricBucket(lifecycle.Phase))
+				m.persist()
+			}
+			continue
+		}
+		if a.lifecycle.noiseGate {
+			gateSuppressed++
+			continue
+		}
+		if updateRestartMarkerFreshForLifecycle(lifecycle.PID) {
+			markerSuppressed++
 			continue
 		}
 		_ = writePendingReport(desktopLifecycleReport(lifecycle), true)
@@ -38,11 +59,17 @@ func (a *App) recordPreviousRunDiagnostics() {
 			m.persist()
 		}
 	}
-	if suppressed > 0 {
-		slog.Info("desktop: lifecycle noise gate suppressed clean-shutdown residue",
-			"suppressed", suppressed, "phases", "shutting_down/healthy")
+	if gateSuppressed > 0 || markerSuppressed > 0 {
+		slog.Info("desktop: clean-shutdown lifecycle residue suppressed",
+			"gate_suppressed", gateSuppressed, "update_restart_suppressed", markerSuppressed,
+			"phases", "shutting_down/healthy")
 		if m := a.metrics.Load(); m != nil {
-			m.inc("desktop_exit_phase", "noise_gate_suppressed")
+			if gateSuppressed > 0 {
+				m.inc("desktop_exit_phase", "noise_gate_suppressed")
+			}
+			if markerSuppressed > 0 {
+				m.inc("desktop_exit_phase", "update_restart_suppressed")
+			}
 			m.persist()
 		}
 	}

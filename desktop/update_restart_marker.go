@@ -128,6 +128,45 @@ func consumeUpdateRestartGate() {
 	slog.Info("restart: 更新重启标记命中；本轮按 450 语义自动恢复", "reason", marker.Reason, "version", marker.Version, "age_s", time.Now().Unix()-marker.At)
 }
 
+// updateRestartMarkerFreshWindow bounds how long after the swap commit a
+// marker may still vouch for the relaunch. The launcher waits the old PID at
+// most 90s and the new process consumes the marker on its first tab restore,
+// so a fresh handoff lands well inside a minute; ten minutes leaves margin for
+// a slow disk without ever letting a stale leftover marker (a crashed tab
+// restore, days ago) excuse a later launch's evidence.
+const updateRestartMarkerFreshWindow = 10 * time.Minute
+
+// updateRestartMarkerFreshForLifecycle reports whether the on-disk marker
+// proves this launch continues an update restart whose exiting process was
+// deadPID (task 847, 763 复发#2). Read-only by design: the auto-resume gate
+// (updateRestartResumeAllowed) owns consuming the marker; this peek only
+// vouches for lifecycle-residue attribution and must not disturb that
+// consume-once semantics.
+//
+// The PID cross-check is the load-bearing half: the residue that update
+// restarts leave behind (the clean()/exit sharing-violation race
+// C-20260920-02) is the EXITING process's own record, and the exiting process
+// is exactly the one that wrote the marker. A record from any other PID is
+// someone else's death and keeps reporting.
+func updateRestartMarkerFreshForLifecycle(deadPID int) bool {
+	if deadPID <= 0 {
+		return false
+	}
+	data, err := os.ReadFile(updateRestartMarkerPath())
+	if err != nil {
+		return false
+	}
+	var marker updateRestartMarker
+	if json.Unmarshal(data, &marker) != nil {
+		return false
+	}
+	if marker.PID <= 0 || marker.PID != deadPID {
+		return false
+	}
+	at := time.Unix(marker.At, 0)
+	return at.After(time.Now().Add(-updateRestartMarkerFreshWindow))
+}
+
 // dropUnfiredAutonomousUpdateRoster clears the task-254 roster on a launch
 // that is not an update relaunch. Every dropped session is named on the log
 // (1545: a resume that will not happen must never be silent).

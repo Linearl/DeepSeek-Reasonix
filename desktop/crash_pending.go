@@ -579,6 +579,56 @@ func newestPendingCrashQueueName(paths []string) string {
 	return newest
 }
 
+// ── task 847: startup sweep for already-judged non-crash residue ────────────
+// 763 复发#2（0911 装机实测）：同一次启动 recordPreviousRunDiagnostics 先把
+// clean-shutdown 误报写进队列（文件名 > 水位），随后的 snapshot 把它当 fresh
+// 面呈——「上次运行遗留的崩溃报告(3)」正是 maxPendingCrashAnalysisReports 的
+// 上限。水位只拦「已面呈过的旧文件」，对本启动新写的误报无能为力，积压也在
+// 队列里反复占位。修法：启动快照前把已判定非崩溃的报告（native.lifecycle 来
+// 源 + 退出相位于 shutting_down/healthy——377 定性 not crash evidence）从队
+// 列退役：不再面呈、不再上传、不再积压。其余报告一字节不动。
+
+// benignLifecyclePendingReport reports whether a queued report is the already-
+// judged non-crash family: desktopLifecycleReport output (Source
+// "native.lifecycle") whose exit phase proves a clean shutdown was underway.
+// wedged/starting/running/closing_* phases stay — they are real abnormal exits.
+func benignLifecyclePendingReport(r crashReport) bool {
+	return r.Source == "native.lifecycle" && lifecycleNoiseBenign(r.ExitPhase)
+}
+
+// sweepBenignLifecyclePendingReports retires the judged-non-crash reports from
+// the queue before the prompt snapshot reads it, returning the survivors.
+// Best-effort both ways: a file that fails to read or parse is left alone (the
+// flush and diagnostics surfaces own it), and a removal failure just keeps the
+// file (it can be retired on a later launch). The retirements are named on the
+// log — a drop that nobody can see is indistinguishable from data loss.
+func sweepBenignLifecyclePendingReports(paths []string) []string {
+	kept := paths[:0]
+	retired := 0
+	for _, path := range paths {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			kept = append(kept, path)
+			continue
+		}
+		var r crashReport
+		if json.Unmarshal(body, &r) != nil || !benignLifecyclePendingReport(r) {
+			kept = append(kept, path)
+			continue
+		}
+		if os.Remove(path) == nil {
+			retired++
+			continue
+		}
+		kept = append(kept, path)
+	}
+	if retired > 0 {
+		slog.Info("desktop: retired already-judged non-crash lifecycle reports from the pending queue",
+			"retired", retired, "phase", "shutting_down/healthy", "source", "native.lifecycle")
+	}
+	return kept
+}
+
 // snapshotPendingCrashForAnalysis captures the pending queue into memory.
 // Called from startup BEFORE flushPendingCrash: the flush ships (telemetry on)
 // or drops (telemetry off) the files either way, and the analysis entry must
@@ -591,6 +641,14 @@ func (a *App) snapshotPendingCrashForAnalysis() {
 	a.crashAnalysisMu.Unlock()
 
 	paths := pendingCrashPaths()
+	if len(paths) == 0 {
+		return
+	}
+	// Task 847: already-judged non-crash residue (native.lifecycle + clean-
+	// shutdown phase) retires here — the same boot's recordPreviousRunDiagnostics
+	// may have just written it, so the watermark alone can never keep it off the
+	// prompt (new names always sort above the watermark).
+	paths = sweepBenignLifecyclePendingReports(paths)
 	if len(paths) == 0 {
 		return
 	}
