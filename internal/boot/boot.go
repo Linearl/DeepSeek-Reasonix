@@ -2169,12 +2169,19 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ReadinessCatchUp:         cfg.Agent.ReadinessCatchUp,
 		ReadinessCatchUpLimit:    cfg.Agent.ReadinessCatchUpLimit,
 		ToolFloodLimit:           cfg.Agent.ExperimentalToolFloodLimit,
-		CollabStatusPath:         collabStatusPath,
-		PlanResearchGate:         cfg.Agent.PlanResearchGate,
-		PlanResearchGateLimit:    cfg.Agent.PlanResearchGateLimit,
-		SubagentDepth:            0,
-		MaxSubagentDepth:         maxSubagentDepth,
-		Autopilot:                opts.Autopilot,
+		// Task 845 (user-ratified retry semantics): the retry knobs. Minutes→
+		// Duration here; zero/negative keeps the agent-package default, which
+		// is byte-identical to the pre-845 behavior.
+		RetryWaitBudget:       time.Duration(cfg.Agent.RetryWaitBudgetMinutes) * time.Minute,
+		RetryQueueMax:         cfg.Agent.RetryQueueMax,
+		QuotaWaitBudget:       time.Duration(cfg.Agent.QuotaWaitBudgetMinutes) * time.Minute,
+		QuotaWaitInterval:     time.Duration(cfg.Agent.QuotaWaitIntervalMinutes) * time.Minute,
+		CollabStatusPath:      collabStatusPath,
+		PlanResearchGate:      cfg.Agent.PlanResearchGate,
+		PlanResearchGateLimit: cfg.Agent.PlanResearchGateLimit,
+		SubagentDepth:         0,
+		MaxSubagentDepth:      maxSubagentDepth,
+		Autopilot:             opts.Autopilot,
 		// 任务 801（决策模式提取 MVP）：实验室开关默认关；关闭时 agent 内
 		// 钩子在首个分支返回，压缩与 turn 路径零行为。Boot snapshot：重启生效。
 		DecisionExtract: agent.DecisionExtractOptions{

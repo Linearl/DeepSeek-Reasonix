@@ -338,7 +338,10 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 
 		msg := readErrorBody(resp)
 		retryAfter = parseRetryAfter(resp)
-		if quota := QuotaErrorFromResponseWithIdentity(opts.Provider, opts.ProviderDisplayName, opts.Protocol, resp.StatusCode, string(msg)); quota != nil {
+		// Task 845: carry the provider's Retry-After into the quota error so
+		// the agent's quota lane can honor a stated reset time instead of
+		// probing blindly.
+		if quota := quotaErrorFromResponse(opts.Provider, opts.ProviderDisplayName, opts.Protocol, resp.StatusCode, string(msg), retryAfter); quota != nil {
 			return nil, quota
 		}
 

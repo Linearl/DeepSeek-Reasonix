@@ -92,8 +92,8 @@ func classifyRetryKind(errText string) ErrKind {
 
 // retryMatrix is the phase×kind admission table (the rule surface — the
 // phase argument lets a stricter lane opt in later without touching the
-// classifier). 4xx never retries in ANY phase; rate limit and transient
-// kinds stay budgeted.
+// classifier). 4xx never retries in ANY phase; transient kinds stay budgeted.
+// Task 845: KindRateLimit (429) is ALSO exempted downstream — see Allow.
 func retryMatrix(phase string, kind ErrKind) bool {
 	if kind == KindTerminal4xx {
 		return false
@@ -143,6 +143,15 @@ func RetryFingerprint(err error) string {
 // kind must be admitted by the matrix, and the phase's sliding-window count
 // must stay under the limit. On refusal the original error string is kept as
 // the phase's refused identity. now is injectable for tests.
+//
+// Task 845 (user-ratified three-lane retry semantics): a 429 is a QUEUE, not
+// a budget spend. The cross-turn sliding window (8/15min) existed to stop
+// failure storms, but for 429 it manufactured the "keep typing 继续" loop —
+// the window stayed hot across turns and each new turn was refused before its
+// first wait could pay off. Rate limits now bypass the window entirely
+// (nothing consumed, nothing enforced); the queue is bounded by the wait
+// budget and the queue cap in waitSamplingRetry instead, and the user can
+// always cancel. The storm breaker stays armed for 5xx/network/unknown kinds.
 func (b *RetryBudget) Allow(phase string, err error, now time.Time) (ok bool, kind ErrKind, reason string) {
 	if b == nil {
 		return false, "", "no budget" // nil budget never admits: fail closed
@@ -152,6 +161,9 @@ func (b *RetryBudget) Allow(phase string, err error, now time.Time) (ok bool, ki
 		text = err.Error()
 	}
 	kind = classifyRetryKind(text)
+	if kind == KindRateLimit {
+		return true, kind, "rate-limit queue: budget-exempt"
+	}
 	if !retryMatrix(phase, kind) {
 		b.mu.Lock()
 		b.refused[phase] = RetryFingerprint(err)

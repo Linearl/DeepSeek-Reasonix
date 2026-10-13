@@ -859,6 +859,8 @@ export const zhTW: Record<DictKey, string> = {
   "status.recoveryNetwork": "網路暫時無法使用",
   "status.recoveryProvider": "服務暫時無法使用",
   "status.recoveryWaiting": "正在等待供應商恢復（{phase}），{seconds} 秒後重試；可點擊停止。",
+  "status.queuing": "服務繁忙，已排隊等待重試（約 {seconds} 秒後重試）；可點擊停止。",
+  "status.quotaWaiting": "配額已用完，預計 {seconds} 秒後自動繼續；可點擊停止。",
   "status.recoveryWaitTitleNetwork": "正在等待網路恢復",
   "status.recoveryWaitTitleProvider": "正在等待供應商恢復",
   "status.recoveryWaitNext": "{seconds} 秒後重試",

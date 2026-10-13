@@ -434,7 +434,15 @@ type Agent struct {
 	// streamRetryBudget (task 243 A4) is the kind-aware bounded budget for
 	// provider stream retries: 4xx terminal by matrix, transient kinds
 	// consume a sliding 8/15min window. Constructed in New; nil fails closed.
+	// Task 845: rate-limit kinds are exempt (the 429 queue lane is bounded by
+	// retryWaitBudget/retryQueueMax instead of the cross-turn window).
 	streamRetryBudget *RetryBudget
+	// Task 845 retry knobs (see the Options comment); zero values fall back
+	// to the package defaults inside sampling_recovery.go.
+	retryWaitBudget   time.Duration
+	retryQueueMax     int
+	quotaWaitBudget   time.Duration
+	quotaWaitInterval time.Duration
 	// Task 202: when set, the engine appends batch collaboration status
 	// events (turn start/end, tool failures, commits) to the shared stream
 	// file. Empty keeps the engine fully silent.
@@ -1400,6 +1408,17 @@ type Options struct {
 	// Distinct from storm breaker (cross-turn repeat failures): this is the
 	// single-turn call-count face MiMo's TOOLCALL_FLOODING_LIMIT guards.
 	ToolFloodLimit bool
+	// Task 845 (user-ratified three-lane retry semantics) — the retry knobs:
+	//   RetryWaitBudget bounds the waiting lane (429 queue / 5xx recovery);
+	//   zero falls back to the package default (10min — the pre-845 value).
+	//   RetryQueueMax caps the 429 queue ROUNDS; zero = uncapped (the time
+	//   budget above already bounds the lane).
+	//   QuotaWaitBudget / QuotaWaitInterval shape the quota long-wait lane;
+	//   zero falls back to 30min / 5min.
+	RetryWaitBudget   time.Duration
+	RetryQueueMax     int
+	QuotaWaitBudget   time.Duration
+	QuotaWaitInterval time.Duration
 	// Task 202: when set, the engine appends batch collaboration status
 	// events (turn start/end, tool failures, git commits, received
 	// cross-session messages) to the shared stream file this path names.
@@ -1536,6 +1555,10 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		readinessCatchUpLimit:   normalizeReadinessCatchUpLimit(opts.ReadinessCatchUpLimit),
 		toolFloodLimit:          opts.ToolFloodLimit,
 		streamRetryBudget:       NewRetryBudget(),
+		retryWaitBudget:         opts.RetryWaitBudget,
+		retryQueueMax:           opts.RetryQueueMax,
+		quotaWaitBudget:         opts.QuotaWaitBudget,
+		quotaWaitInterval:       opts.QuotaWaitInterval,
 		collabStatusPath:        strings.TrimSpace(opts.CollabStatusPath),
 		planResearchGate:        opts.PlanResearchGate,
 		planResearchGateLimit:   normalizePlanResearchNudgeLimit(opts.PlanResearchGateLimit),

@@ -836,6 +836,21 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if c.Agent.PlanResearchGateLimit > 0 {
 		fmt.Fprintf(&b, "plan_research_gate_limit = %d   # max plan research-gate rounds per run (1-2; default 1)\n", c.Agent.PlanResearchGateLimit)
 	}
+	// Task 845 (user-ratified retry semantics): emitted only when non-default
+	// — zero fields keep the agent-package defaults, which equal the pre-845
+	// behavior, so the untouched config renders none of these keys.
+	if c.Agent.RetryWaitBudgetMinutes > 0 {
+		fmt.Fprintf(&b, "retry_wait_budget_minutes = %d   # task 845: 429-queue/5xx wait budget per turn (default 10)\n", c.Agent.RetryWaitBudgetMinutes)
+	}
+	if c.Agent.RetryQueueMax > 0 {
+		fmt.Fprintf(&b, "retry_queue_max = %d   # task 845: max 429 queue rounds per turn (0 = uncapped, default)\n", c.Agent.RetryQueueMax)
+	}
+	if c.Agent.QuotaWaitBudgetMinutes > 0 {
+		fmt.Fprintf(&b, "quota_wait_budget_minutes = %d   # task 845: quota long-wait budget per turn (default 30)\n", c.Agent.QuotaWaitBudgetMinutes)
+	}
+	if c.Agent.QuotaWaitIntervalMinutes > 0 {
+		fmt.Fprintf(&b, "quota_wait_interval_minutes = %d   # task 845: quota probe cadence without Retry-After (default 5)\n", c.Agent.QuotaWaitIntervalMinutes)
+	}
 	fmt.Fprintf(&b, "read_only_task_background = %v   # task 118: offer run_in_background on read_only_task\n", c.Agent.ReadOnlyTaskBackground)
 	if c.Agent.SubagentDefaultSteps > 0 {
 		fmt.Fprintf(&b, "subagent_default_steps = %d   # task 118: override default non-review sub-agent step budget (0 = formula)\n", c.Agent.SubagentDefaultSteps)
