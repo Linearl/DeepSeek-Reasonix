@@ -115,9 +115,15 @@ var forceFlagRe = regexp.MustCompile(`(?:^|\s)(?:--force|-f)(?:\s|$)`)
 // unknowable from the command line alone, and the reason tells the caller to
 // name the branch explicitly — a non-protected target passes on the retry,
 // a protected one stays blocked.
+//
+// Task 851 只读自查：`--dry-run`/`-n` 只演算推送、不落盘，push 的只读形态——
+// 演算放行，真实改写照拦。
 func checkForcePushSegment(seg string) Verdict {
 	fields, malformed := shellparse.StaticFields(seg)
 	if malformed != "" {
+		// 字段不可解析时不放行 dry-run：文本级豁免可被引号构造绕过
+		// （`git push --force origin "x -n y"` 含 ` -n `），硬禁区误放的
+		// 代价高于误拦 dry-run，该分支保持一律拦。
 		if isGitPushHead(seg) && forceFlagRe.MatchString(seg) {
 			return forcePushVerdict("unknown")
 		}
@@ -127,6 +133,9 @@ func checkForcePushSegment(seg string) Verdict {
 		return Verdict{}
 	}
 	if !forceFlagRe.MatchString(seg) {
+		return Verdict{}
+	}
+	if hasPushDryRunFlag(fields) {
 		return Verdict{}
 	}
 	protected := protectedBranchList()
@@ -160,6 +169,22 @@ func checkForcePushSegment(seg string) Verdict {
 func isGitPushHead(seg string) bool {
 	lower := strings.ToLower(strings.TrimSpace(seg))
 	return strings.HasPrefix(lower, "git push ") || lower == "git push"
+}
+
+// hasPushDryRunFlag reports whether a parsed git push carries the dry-run
+// flag. `-n` aggregates into short-flag clusters (`-nf`) via git
+// parse-options; among git push's short flags only -n contains an 'n'. 字段
+// 解析是引号感知的，引号消息里的 `-n` 字样不会误中。
+func hasPushDryRunFlag(fields []string) bool {
+	for _, f := range fields {
+		if strings.EqualFold(f, "--dry-run") {
+			return true
+		}
+		if strings.HasPrefix(f, "-") && !strings.HasPrefix(f, "--") && strings.ContainsRune(f[1:], 'n') {
+			return true
+		}
+	}
+	return false
 }
 
 func branchMatchesProtected(branch string, protected []string) bool {
@@ -360,28 +385,231 @@ func exfilVerdict(name string) Verdict {
 
 // ─── system config writes ───────────────────────────────────────────────────
 
-// systemConfigWriteRe matches in-place write verbs and redirects on the
-// segment text; the protected-path substring check pins the target, so a
-// redirect to an ordinary file never trips the rule.
-var systemConfigWriteRe = regexp.MustCompile(`(?i)(?:^|\s)(sed\s+-\w*i|tee|rm|shred|truncate|set-content|add-content|out-file)(?:\s|$)|>{1,2}`)
+// Task 851 判定升级：此前按「段内出现敏感路径 + 段内出现任意写特征词或 '>'
+// 字符」拦截，纯读命令文本里的 '=>' '>=' '->' 或写动词词形即误拦 grep/cat
+// 等排查命令（实锤：1006 排查 847 时 grep 只读被拦；python 拼路径绕过 =
+// 文本层拦截可被规避）。现按「写特征的操作数是否敏感路径」判定：
+//
+//   - 重定向：shellparse.RedirectTargets 在 AST 级提取写目标，目标是敏感
+//     路径才拦；目标含运行时展开（> $f）不可判定 → 保守拦（防 $var 间接写）。
+//   - 写动词：按段头 + 参数语义判定——sed -i/--in-place 原地写、tee/touch/
+//     shred/truncate/PowerShell 写动词的位置参数、rm 族删除、cp/mv 仅目标
+//     （末个非旗标参数）命中、find -delete/-exec。
+//
+// 已知只读命令（grep/cat/ls/stat/head/tail/find/wc/diff 等）不靠白名单放行
+// ——白名单有害（find -delete 证明白名单内也有写形态），「无写特征即放行」
+// 是默认，只读形态在测试矩阵逐例钉住。判定仍是纯规则（零模型，410 约束），
+// 不做任何模型判断。
+
+// headWriteVerbTextRe 保守匹配段头写动词，仅在 RedirectTargets 不可用
+// （heredoc / 解析失败 / 重定向目标含展开）时使用：形态不可静态判定，段头
+// 是写动词族即拦（宁滥勿漏；cp/mv 在此不分源目标，因参数不可解析）。
+var headWriteVerbTextRe = regexp.MustCompile(
+	`(?i)^\s*(?:sed|tee|touch|shred|truncate|set-content|add-content|out-file|` +
+		`cp|copy|mv|move|move-item|rm|rmdir|unlink|del|erase|remove-item|ri)\b`)
 
 // copyVerbRe matches cp/move spellings; for these the protected path must be
-// the destination (final non-flag argument).
+// the destination (final non-flag argument) to count as a write.
 var copyVerbRe = regexp.MustCompile(`(?i)^(?:cp|copy|mv|move|move-item)\b`)
 
 func checkWriteSystemConfigSegment(seg string) Verdict {
-	if path := matchProtectedPath(seg); path != "" && systemConfigWriteRe.MatchString(seg) {
-		return writeSystemConfigVerdict(path)
+	// 1) 重定向：AST 级提取写目标，目标命中敏感路径才拦（目标支持 tilde
+	//    形态——expandTilde 后匹配）。
+	targets, redirOK := shellparse.RedirectTargets(seg)
+	if !redirOK {
+		// heredoc / 解析失败 / 目标含运行时展开：写目标不可知，保守回退。
+		// 段以任何形态携带敏感路径（原文本或 tilde 展开后的参数）、且段头
+		// 是写动词或文本含裸 '>' 才拦（heredoc 的 '<<' 不含 '>'，
+		// `cat config.toml << EOF` 这类纯读形态照常放行）。
+		if p := segmentProtectedPathText(seg); p != "" &&
+			(headWriteVerbTextRe.MatchString(seg) || strings.Contains(seg, ">")) {
+			return writeSystemConfigVerdict(p, "不可静态判定的写入形态")
+		}
+		return Verdict{}
 	}
-	// cp/mv: only when the protected path is the destination argument.
-	fields, malformed := shellparse.StaticFields(seg)
-	if malformed == "" && len(fields) > 2 && copyVerbRe.MatchString(fields[0]) {
-		last := fields[len(fields)-1]
-		if p := matchProtectedPath(expandTilde(last)); p != "" && p == normalizePath(expandTilde(last)) {
-			return writeSystemConfigVerdict(p)
+	for _, t := range targets {
+		if p := matchProtectedPath(expandTilde(t)); p != "" {
+			return writeSystemConfigVerdict(p, "重定向写入")
 		}
 	}
+	// 2) 写动词：按段头 + 参数语义判定。
+	return writeVerbVerdict(seg)
+}
+
+// segmentProtectedPathText reports the protected path a raw segment carries,
+// checking the text itself and every whitespace field after tilde expansion
+// (参数以 `~/...` 形态出现时整段文本不命中绝对路径，逐字段展开兜住).
+func segmentProtectedPathText(seg string) string {
+	if p := matchProtectedPath(seg); p != "" {
+		return p
+	}
+	for _, f := range strings.Fields(seg) {
+		if p := matchProtectedPath(expandTilde(f)); p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
+// writeVerbVerdict classifies the segment head: which verbs write in place,
+// which treat their arguments as write targets, and which only count when the
+// protected path is the destination. Fields 不可解析时（参数含运行时展开、
+// 重定向等）按空白粗分词回退——旗标词不含空格，粗分词足够旗标级判定。
+func writeVerbVerdict(seg string) Verdict {
+	fields, malformed := shellparse.StaticFields(seg)
+	if malformed != "" {
+		fields = strings.Fields(seg)
+	}
+	if len(fields) == 0 {
+		return Verdict{}
+	}
+	head := strings.ToLower(shellparse.WordBase(fields[0]))
+	switch {
+	case head == "sed":
+		// sed 只有原地写（-i/--in-place）才算写；`sed -n '1,10p' cfg` 是读。
+		if sedInPlaceFlags(fields) {
+			if p := fieldsProtectedPath(fields); p != "" {
+				return writeSystemConfigVerdict(p, "sed 原地改写（-i/--in-place）")
+			}
+		}
+	case head == "tee":
+		// tee 的位置参数全是写入目标（-a 追加也是写）。
+		if p := fieldsProtectedPath(fields); p != "" {
+			return writeSystemConfigVerdict(p, "tee 写入")
+		}
+	case head == "touch":
+		if p := fieldsProtectedPath(fields); p != "" {
+			return writeSystemConfigVerdict(p, "touch 创建/更新")
+		}
+	case head == "shred", head == "truncate":
+		if p := fieldsProtectedPath(fields); p != "" {
+			return writeSystemConfigVerdict(p, "原地覆写/截断")
+		}
+	case head == "set-content", head == "add-content", head == "out-file":
+		if p := fieldsProtectedPath(fields); p != "" {
+			return writeSystemConfigVerdict(p, "PowerShell 写入")
+		}
+	case deleteVerbRe.MatchString(fields[0]):
+		// 删除动词把祖先目录连同其中的敏感文件一起消灭，用祖先匹配。
+		if p := fieldsProtectedPathOrAncestor(fields); p != "" {
+			return writeSystemConfigVerdict(p, "删除")
+		}
+	case head == "find":
+		// find 名义只读，但这些动作位写/删/执行；-delete 删目录同 rm。
+		if hasFindWriteAction(fields) {
+			p := fieldsProtectedPath(fields)
+			if p == "" && fieldsContain(fields, "-delete") {
+				p = fieldsProtectedPathOrAncestor(fields)
+			}
+			if p != "" {
+				return writeSystemConfigVerdict(p, "find -delete/-exec 等写动作")
+			}
+		}
+	case copyVerbRe.MatchString(fields[0]):
+		return copyMoveVerdict(fields)
+	}
 	return Verdict{}
+}
+
+// fieldsProtectedPath reports the protected path carried by any field, tilde
+// expansion included.
+func fieldsProtectedPath(fields []string) string {
+	for _, f := range fields {
+		if p := matchProtectedPath(expandTilde(f)); p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
+// fieldsProtectedPathOrAncestor additionally matches fields that name an
+// ancestor directory of a protected path (`rm -rf <reasonix home>` 删树时
+// 其中的敏感文件一并被删). Only deletion-shaped verbs use this — touch/tee
+// 对目录不产生文件写入，祖先匹配会造成误拦。
+func fieldsProtectedPathOrAncestor(fields []string) string {
+	if p := fieldsProtectedPath(fields); p != "" {
+		return p
+	}
+	for _, f := range fields {
+		if strings.HasPrefix(f, "-") {
+			continue
+		}
+		expanded := expandTilde(f)
+		if expanded == "" {
+			continue
+		}
+		for _, p := range protectedPathList() {
+			if len(p) > len(expanded) && strings.HasPrefix(p, expanded) && p[len(expanded)] == '/' {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+// fieldsContain reports whether the field list holds the exact word.
+func fieldsContain(fields []string, word string) bool {
+	for _, f := range fields {
+		if f == word {
+			return true
+		}
+	}
+	return false
+}
+
+// hasFindWriteAction reports whether the find invocation carries an action
+// primary that writes, deletes, or executes.
+func hasFindWriteAction(fields []string) bool {
+	for _, f := range fields[1:] {
+		switch strings.ToLower(f) {
+		case "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls":
+			return true
+		}
+	}
+	return false
+}
+
+// copyMoveVerdict blocks cp/mv only when the protected path is the destination
+// (final non-flag argument); copying FROM the config outward is a read.
+func copyMoveVerdict(fields []string) Verdict {
+	dest := ""
+	for i := len(fields) - 1; i > 0; i-- {
+		if strings.HasPrefix(fields[i], "-") {
+			continue
+		}
+		dest = fields[i]
+		break
+	}
+	if dest == "" {
+		return Verdict{}
+	}
+	expanded := expandTilde(dest)
+	if p := matchProtectedPath(expanded); p != "" && p == normalizePath(expanded) {
+		return writeSystemConfigVerdict(p, "复制/移动覆盖")
+	}
+	return Verdict{}
+}
+
+// sedInPlaceFlags reports whether any flag asks sed to edit files in place
+// (`-i`, `-in`, `-i.bak`, `--in-place`, `--in-place=.bak`). GNU/BSD 短旗标
+// 组合里 'i' 只属 in-place，旗标含 'i' 即视为原地写（保守方向；任务 851 顺带
+// 补上旧正则漏掉的 `--in-place` 长形式）。
+func sedInPlaceFlags(fields []string) bool {
+	for _, f := range fields[1:] {
+		if !strings.HasPrefix(f, "-") || f == "-" || f == "--" {
+			continue
+		}
+		if strings.HasPrefix(f, "--") {
+			if name, _, _ := strings.Cut(strings.TrimPrefix(f, "--"), "="); strings.EqualFold(name, "in-place") {
+				return true
+			}
+			continue
+		}
+		if strings.ContainsRune(strings.SplitN(strings.TrimPrefix(f, "-"), ".", 2)[0], 'i') {
+			return true
+		}
+	}
+	return false
 }
 
 // checkWriteSystemConfigPath blocks file-tool writes (or moves) whose path
@@ -389,7 +617,7 @@ func checkWriteSystemConfigSegment(seg string) Verdict {
 // write_file/edit_file/move_file are the only callers.
 func checkWriteSystemConfigPath(subject string) Verdict {
 	if path := matchProtectedPath(subject); path != "" {
-		return writeSystemConfigVerdict(path)
+		return writeSystemConfigVerdict(path, "文件工具写入/移动")
 	}
 	return Verdict{}
 }
@@ -451,12 +679,17 @@ func expandTilde(f string) string {
 	return normalizePath(f)
 }
 
-func writeSystemConfigVerdict(path string) Verdict {
+// writeSystemConfigVerdict is the block for every write-shaped hit on a
+// protected path. action names the triggering shape (重定向写入 / sed 原地改写
+// / tee 写入 / …)，与判定行为对齐；文案同时明示只读访问不受本规则限制
+// （task 851 用户拍板：读不需要拦截）。
+func writeSystemConfigVerdict(path, action string) Verdict {
 	return Verdict{
 		Blocked: true,
 		Rule:    RuleWriteSystemConfig,
-		Reason: "blocked by sentinel rule write_system_config: " + path +
-			" 是 Reasonix 系统级配置/凭据存储，模型写入属硬禁区（任何审批模式含 yolo 下都拦截；文件工具的人工审批门不豁免本规则）。" +
-			"替代路径：告诉用户要改哪个设置，由用户在设置页或自己编辑；配置问题可先读出来汇报。",
+		Reason: "blocked by sentinel rule write_system_config: " + action +
+			"（" + path + "）属硬禁区——该路径是 Reasonix 系统级配置/凭据存储，" +
+			"任何审批模式含 yolo 下都拦截（文件工具的人工审批门不豁免本规则；只读访问不受本规则限制）。" +
+			"替代路径：告诉用户要改哪个设置，由用户在设置页或自己编辑；读取该配置用于排查可以直接进行。",
 	}
 }
