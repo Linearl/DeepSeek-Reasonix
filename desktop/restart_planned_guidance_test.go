@@ -98,9 +98,10 @@ func TestCrashRestartDoesNotSettleGuidance(t *testing.T) {
 // interruptedToolController carries the 461-P2 backstop probe with a pending
 // interrupted tool call — the skip path needs a controller that actually
 // reports it (fenceProbeController deliberately has no probe, so the 435
-// resume-with-settle chain keeps its shape).
+// resume-with-settle chain keeps its shape). Embedded by pointer: the inner
+// struct owns a mutex and must never be copied.
 type interruptedToolController struct {
-	fenceProbeController
+	*fenceProbeController
 }
 
 func (c *interruptedToolController) HasPendingToolRecovery() bool { return true }
@@ -116,7 +117,7 @@ func TestInterruptedToolResumeKeepsGuidanceParked(t *testing.T) {
 		t.Fatal("precondition: staging under the default dial must succeed")
 	}
 
-	inner := fenceProbeController{path: session}
+	inner := &fenceProbeController{path: session}
 	ctrl := &interruptedToolController{fenceProbeController: inner}
 	tab := &WorkspaceTab{ID: "t1", SessionPath: session, Ready: true, Ctrl: ctrl}
 

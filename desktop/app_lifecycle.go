@@ -199,6 +199,11 @@ func (a *App) startupStartLocalServices(ctx context.Context) {
 	a.enableDeferredRebuildRetry()
 	a.startHistoryIndexMigration()
 	a.startHistoryIdlePrefetch()
+	// 任务835: the versions retention pass runs from the fresh process's own
+	// startup — reaching this point proves the new version booted, which is the
+	// update-confirmed precondition the rollback-source rule needs. Background
+	// and idempotent: every launch converges versions/ to active + 3 histories.
+	a.goSafe("installRetention", a.enforceInstallRetention)
 }
 
 // startupPushAgentSettings forwards the config values the agent layer cannot
