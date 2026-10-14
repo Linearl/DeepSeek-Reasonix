@@ -1,4 +1,5 @@
 import { app } from "./bridge";
+import { emitActiveModelChanged } from "./activeModelChanged";
 import type { BalanceInfo } from "./types";
 
 type Ref<T> = { current: T };
@@ -59,12 +60,23 @@ export function createControllerModelCommands(ports: Ports) {
       // If this latest queued switch then fails, reconcile the model metadata
       // to the provider that actually became active in the backend.
       if (olderSwitchSucceeded) await refreshMetaForTab(tabId);
+      // 任务 872：最新一次尝试失败落定（后端仍是旧 provider）——同样广播，
+      // 让被作废的用量面重查并收敛回实际活跃的 provider；若落定前又被
+      // 更新的尝试接管则不广播（由更新的那次负责）。
+      if (modelSwitchSeqByTab.current.get(tabId) === switchSeq) emitActiveModelChanged();
       return false;
     }
     if (modelSwitchSeqByTab.current.get(tabId) !== switchSeq) return false;
     void refreshBalanceForTab(tabId);
     await refreshMetaForTab(tabId);
-    return modelSwitchSeqByTab.current.get(tabId) === switchSeq;
+    const latest = modelSwitchSeqByTab.current.get(tabId) === switchSeq;
+    // 任务 872：最新一次切换落定后广播「活跃模型已变」——用量显示面
+    // （PlanUsageCard / OpenCodeGoUsageSidebarCard / 状态栏）同步作废旧
+    // provider 快照并重查，否则旧卡要等 60s 轮询才下线，切换瞬间与新
+    // provider 卡同屏并存。被更新的尝试 superseded 时不广播（由更新的
+    // 那次落定广播）。
+    if (latest) emitActiveModelChanged();
+    return latest;
   };
 
   const setEffortForTab = async (tabId: string, level: string) => {

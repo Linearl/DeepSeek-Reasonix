@@ -21,11 +21,17 @@ import { ensurePlanUsagePolling, usePlanUsageStore } from "../store/planUsage";
 // switch re-queries immediately. An unsupported answer renders nothing at
 // all — hidden, never an error (task 287 fallback rule). The refresh button
 // is the manual refresh path alongside the polling.
+//
+// Task 872: a hot model switch flips the store to `switching` — the card
+// renders a skeleton for that handover window instead of the outgoing
+// provider's quota, so it can never coexist with the incoming provider's
+// card.
 
 export function PlanUsageCard({ tabId }: { tabId?: string }) {
   const { t } = useI18n();
   const view = usePlanUsageStore((s) => s.view);
   const loading = usePlanUsageStore((s) => s.loading);
+  const switching = usePlanUsageStore((s) => s.switching);
   const refresh = usePlanUsageStore((s) => s.refresh);
   const reportTab = usePlanUsageStore((s) => s.reportTab);
 
@@ -47,6 +53,24 @@ export function PlanUsageCard({ tabId }: { tabId?: string }) {
     const timer = window.setInterval(() => setTick((value) => value + 1), 30_000);
     return () => window.clearInterval(timer);
   }, [hasResets]);
+
+  // Task 872: during a model-switch handover the outgoing provider's snapshot
+  // is already gone and the incoming answer is in flight — a skeleton holds
+  // the slot so the card never shows stale quota next to the other provider's
+  // card (the "double quota" misreading in the user report).
+  if (switching) {
+    return (
+      <section className="context-panel__section plan-usage" data-testid="plan-usage-card-skeleton" aria-busy="true">
+        <header className="context-panel__section-head">
+          <h3>{t("planUsage.title")}</h3>
+        </header>
+        <div className="plan-usage__skeleton" aria-hidden="true">
+          <span className="plan-usage__skeleton-bar" />
+          <span className="plan-usage__skeleton-bar plan-usage__skeleton-bar--short" />
+        </div>
+      </section>
+    );
+  }
 
   if (!view || !view.supported) return null;
 
