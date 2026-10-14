@@ -57,19 +57,61 @@ func sessionDAGSingleWriterProof(sessionPath string, st *sessionDAGState, now ti
 }
 
 // sessionDAGLogOversized bounds a schema-2 log at the schema-1 growth factor
-// over the encoded size of every live head's chain. Reads the shared graph
-// (liveHeads/materialize), so it takes st.mu.RLock itself (major-1, audit-2).
+// over the encoded size of everything a rotation would keep: the union of
+// every live head's chain, each node measured once (任务 884).
+//
+// 任务 884（2026-10-14 现场实测修正）: 旧口径把每个 live head 的整条链各自
+// 序列化后**相加**。链式并发头沿 parent 走到根，共享前缀被每头重复计一次——
+// 现场 20261005-collab 的 11 个头把选中链仅 42.5MB 的会话虚增成
+// contentBytes=287.8MB（WARN 实录比 101.6MB 的日志本身还大，物理不可能），
+// content×2≥logSize 恒成立 ⇒ 旋转被永久禁死、日志只涨不跌（现场四会话
+// 101/238/133/162MB vs cap 50MB）。按去重 union 计同四会话 ≤77/102/53/52MB，
+// 旋转恢复运转（三会话一刀可砍 24-70%），同时把旧口径坐在 save 关键路径里
+// 的 Σ整链 marshal（与 1817ms 锁等待同源）换成一遍 union 序列化。
+//
+// Reads the shared graph (liveHeads/chainIDs/appliedMessage), so it takes
+// st.mu.RLock itself (major-1, audit-2).
 func sessionDAGLogOversized(st *sessionDAGState) bool {
 	st.mu.RLock()
 	defer st.mu.RUnlock()
-	live := int64(0)
+	// 便宜早退：log 不高于维护地板时 off/manual/auto 三模式都判「不超限」（都要
+	// 先越过 sessionEventLogCompactFloor 才可能 true）；st.size 由 replayFrom 在
+	// st.mu 下更新，所以读取必须在锁内。
+	if st.size <= sessionEventLogCompactFloor {
+		return false
+	}
+	return sessionEventLogOversized(st.path, st.size, st.rotatedContentBytesLocked())
+}
+
+// rotatedContentBytesLocked estimates the encoded transcript a rotation leaves
+// behind: dedup every live head's chain by node id (chains share prefixes
+// through parent links) and measure the union once; head system overrides
+// count like materialize does. A marshal failure reads as zero — the same
+// under-count direction as the old per-chain skip (which dropped the whole
+// chain it could not measure); messages decoded from this log always marshal.
+// Caller holds st.mu for reading (sessionDAGLogOversized).
+func (st *sessionDAGState) rotatedContentBytesLocked() int64 {
+	seen := make(map[string]struct{}, len(st.nodes))
+	union := make([]provider.Message, 0, len(st.nodes))
 	for _, id := range st.liveHeads() {
-		msgs, _ := st.materialize(id)
-		if _, size, err := digestAndSizeSessionMessages(msgs); err == nil {
-			live += size
+		for _, mid := range st.chainIDs(id) {
+			if _, dup := seen[mid]; dup {
+				continue
+			}
+			seen[mid] = struct{}{}
+			if n := st.nodes[mid]; n != nil {
+				union = append(union, st.appliedMessage(n))
+			}
+		}
+		if h := st.heads[id]; h != nil && h.system != nil {
+			union = append(union, *h.system)
 		}
 	}
-	return sessionEventLogOversized(st.path, st.size, live)
+	size, err := sessionMessagesEncodedSize(union)
+	if err != nil {
+		return 0
+	}
+	return size
 }
 
 // rotateSessionDAG atomically replaces the log with the next generation: live
