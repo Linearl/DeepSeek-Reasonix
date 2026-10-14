@@ -20781,6 +20781,26 @@ button.statusbar__mcp:focus-visible {
   line-height: 1.45;
   font-weight: 620;
 }
+/* 任务 872：模型切换交接期的用量占位骨架 —— 旧 provider 快照已作废、
+   新查询在途；两条脉动占位条让空窗读作加载态，绝不与另一 provider 卡
+   同屏并存（脉动复用 project-tree 骨架的 pulse 动画）。 */
+.plan-usage__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-usage__skeleton-bar {
+  display: block;
+  height: 12px;
+  width: 72%;
+  border-radius: var(--radius-sm);
+  background: var(--fg-faint);
+  opacity: 0.16;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.plan-usage__skeleton-bar--short {
+  width: 48%;
+}
 
 /* ─── Session-collab capability gates (task 253) ─────
    Checkboxes, two per row. Locked (master switch off) items keep their

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { app } from "../lib/bridge";
+import { ACTIVE_MODEL_CHANGED_EVENT } from "../lib/activeModelChanged";
 import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { useI18n, type DictKey } from "../lib/i18n";
 import {
@@ -21,6 +22,10 @@ import {
 // GetActivePlanFamily 的注册表判定，零 I/O）——GLM 地址下不渲染 OpenCode Go
 // 卡（数据全 0% 的无意义占位），切到 opencode-go 地址时卡与轮询一起出现。
 // family 与用量共用同一个 60s 轮询：family 不对时连用量查询都不发。
+//
+// 任务 872 — 热切换（ACTIVE_MODEL_CHANGED_EVENT）立即重查：epoch 递增让
+// 在途的旧 provider family 查询作废（迟到答案不得复活旧卡），并立刻对新
+// 模型重查——GLM↔OpenCode Go 来回切时本卡与 GLM 卡都不会同屏并存。
 //
 // 数据面与 GLM 卡一致：60s 轮询（ensurePlanUsagePolling 同节奏）+ 手动刷新
 // + 30s 倒计时 tick。任务 800 起本卡是明细的权威展示位：设置卡
@@ -46,10 +51,27 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
   const [usage, setUsage] = useState<OpenCodeGoUsageResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
+  // 任务 872: bumped on every hot model switch — the poll effect below tears
+  // down (its cancelled flag drops in-flight answers for the outgoing model)
+  // and re-queries the new model immediately.
+  const [epoch, setEpoch] = useState(0);
 
   // Lab switch gate — same module gate the settings save re-applies, so the
   // card flips live without a restart.
   useEffect(() => onLabFlagsChange(() => setEnabled(labFlagEnabled("opencodeGoUsage"))), []);
+
+  // 任务 872: forget the outgoing provider's family answer the moment the
+  // switch lands (a late answer must not resurrect this card beside the
+  // other provider's card) and re-query the new model right away.
+  useEffect(() => {
+    const onModelChanged = () => {
+      setFamily(undefined);
+      setUsage(null);
+      setEpoch((value) => value + 1);
+    };
+    window.addEventListener(ACTIVE_MODEL_CHANGED_EVENT, onModelChanged);
+    return () => window.removeEventListener(ACTIVE_MODEL_CHANGED_EVENT, onModelChanged);
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -66,7 +88,8 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
   // Shared 60s poll for both gates: the family lookup first (zero-I/O config
   // scan), and the usage request only fires when this card may actually show.
   // A tabId change re-queries immediately so a tab switch never shows the
-  // previous tab's provider card; a transport failure keeps the last family
+  // previous tab's provider card; an epoch bump (任务 872) does the same for a
+  // hot model switch within the tab; a transport failure keeps the last family
   // and retries on the next tick. While the lab switch is off: no family
   // query, no usage fetch, no timer, no DOM (163 zero-regression contract).
   useEffect(() => {
@@ -97,7 +120,7 @@ export function OpenCodeGoUsageSidebarCard({ tabId }: { tabId?: string }) {
       cancelled = true;
       window.clearInterval(poll);
     };
-  }, [enabled, tabId, refresh]);
+  }, [enabled, tabId, refresh, epoch]);
 
   // Countdown lines re-render every 30s off the same fetched resetsAt values
   // (same cadence as the GLM plan card).
