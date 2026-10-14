@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -425,33 +426,102 @@ func TestSessionGroupParentAdditiveMigration(t *testing.T) {
 }
 
 func TestSessionGroupHierarchyValidation(t *testing.T) {
+	// Task 892: nesting is arbitrary (a depth-3 chain is valid now — the old
+	// task-350 depth-2 cap is lifted); cycles and unknown parents still fail.
 	ok := []desktopGroup{
 		{ID: "top", Title: "Top"},
 		{ID: "child", Title: "Child", Parent: "top"},
+		{ID: "grandchild", Title: "Grandchild", Parent: "child"},
 	}
 	if err := validateSessionGroups(ok); err != nil {
-		t.Fatalf("valid hierarchy rejected: %v", err)
+		t.Fatalf("valid depth-3 hierarchy rejected: %v", err)
 	}
+	// A deep-but-legal chain (exactly maxSessionGroupDepth links) passes.
+	deep := make([]desktopGroup, 0, maxSessionGroupDepth+1)
+	deep = append(deep, desktopGroup{ID: "g0", Title: "G0"})
+	for i := 1; i <= maxSessionGroupDepth; i++ {
+		deep = append(deep, desktopGroup{ID: fmt.Sprintf("g%d", i), Title: fmt.Sprintf("G%d", i), Parent: fmt.Sprintf("g%d", i-1)})
+	}
+	if err := validateSessionGroups(deep); err != nil {
+		t.Fatalf("chain of exactly max depth rejected: %v", err)
+	}
+	tooDeep := append(append([]desktopGroup(nil), deep...), desktopGroup{ID: "g-over", Title: "Over", Parent: fmt.Sprintf("g%d", maxSessionGroupDepth)})
 	cases := []struct {
 		name   string
 		groups []desktopGroup
 	}{
 		{"unknown parent", []desktopGroup{{ID: "a", Title: "A", Parent: "ghost"}}},
 		{"self parent", []desktopGroup{{ID: "a", Title: "A", Parent: "a"}}},
-		{"nested parent (depth 3)", []desktopGroup{
-			{ID: "a", Title: "A"},
-			{ID: "b", Title: "B", Parent: "a"},
-			{ID: "c", Title: "C", Parent: "b"},
-		}},
 		{"two-node cycle", []desktopGroup{
 			{ID: "a", Title: "A", Parent: "b"},
 			{ID: "b", Title: "B", Parent: "a"},
 		}},
+		{"three-node cycle (task 892)", []desktopGroup{
+			{ID: "a", Title: "A", Parent: "c"},
+			{ID: "b", Title: "B", Parent: "a"},
+			{ID: "c", Title: "C", Parent: "b"},
+		}},
+		{"cycle below the root (task 892)", []desktopGroup{
+			{ID: "root", Title: "Root"},
+			{ID: "a", Title: "A", Parent: "root"},
+			{ID: "b", Title: "B", Parent: "d"},
+			{ID: "c", Title: "C", Parent: "b"},
+			{ID: "d", Title: "D", Parent: "c"},
+		}},
+		{"chain exceeds max depth", tooDeep},
 	}
 	for _, tc := range cases {
 		if err := validateSessionGroups(tc.groups); err == nil {
 			t.Fatalf("%s: expected rejection, got nil", tc.name)
 		}
+	}
+}
+
+// TestProjectGroupCatalogValidation covers the second grouping system (task
+// 892): same recursion contract, plus flat legacy data reading losslessly.
+func TestProjectGroupCatalogValidation(t *testing.T) {
+	ok := []desktopProjectGroup{
+		{ID: "p-top", Title: "Top"},
+		{ID: "p-child", Title: "Child", Parent: "p-top"},
+		{ID: "p-grand", Title: "Grand", Parent: "p-child"},
+	}
+	if err := validateProjectGroups(ok); err != nil {
+		t.Fatalf("valid catalog hierarchy rejected: %v", err)
+	}
+	cases := []struct {
+		name   string
+		groups []desktopProjectGroup
+	}{
+		{"unknown parent", []desktopProjectGroup{{ID: "a", Title: "A", Parent: "ghost"}}},
+		{"self parent", []desktopProjectGroup{{ID: "a", Title: "A", Parent: "a"}}},
+		{"two-node cycle", []desktopProjectGroup{
+			{ID: "a", Title: "A", Parent: "b"},
+			{ID: "b", Title: "B", Parent: "a"},
+		}},
+		{"duplicate id", []desktopProjectGroup{
+			{ID: "a", Title: "A"},
+			{ID: "a", Title: "A2"},
+		}},
+		{"empty title", []desktopProjectGroup{{ID: "a", Title: " "}}},
+	}
+	for _, tc := range cases {
+		if err := validateProjectGroups(tc.groups); err == nil {
+			t.Fatalf("%s: expected rejection, got nil", tc.name)
+		}
+	}
+	// Migration compatibility: a projects file without the key reads as an
+	// empty catalog, and the flat (no parent) roster round-trips unchanged.
+	var f desktopProjectFile
+	if err := json.Unmarshal([]byte(`{"projects":[{"root":"/x","topics":[]}]}`), &f); err != nil {
+		t.Fatalf("legacy projects json: %v", err)
+	}
+	normalized := normalizeProjectsFile(f)
+	if len(normalized.ProjectGroups) != 0 {
+		t.Fatalf("legacy file gained project groups: %#v", normalized.ProjectGroups)
+	}
+	flat := []desktopProjectGroup{{ID: "a", Title: "A"}, {ID: "b", Title: "B"}}
+	if got := normalizeProjectGroups(flat); !reflect.DeepEqual(got, flat) {
+		t.Fatalf("flat roster mutated by normalize: %#v", got)
 	}
 }
 
