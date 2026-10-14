@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"reasonix/internal/event"
+	"reasonix/internal/eventwire"
 	"reasonix/internal/store"
 	"reasonix/internal/turnevent"
 )
@@ -18,9 +19,9 @@ import (
 // Responsiveness thresholds. They are presentation judgment, not protocol:
 // the stream idle watchdog (provider defaultStreamIdleTimeout) force-recovers
 // a silent started stream at 5m, so a live runtime keeps writing at least
-// every ~5m while a turn runs. Silence past 6m therefore means something the
-// ledger alone cannot classify: a stalled wait outside the stream, or a dead
-// runtime.
+// every ~5m while a turn runs. Silence past 6m therefore means one of two
+// things the ledger must tell apart (task 879): a long-blocking tool (wait /
+// event_wait) legitimately executing outside the stream, or a dead runtime.
 const (
 	// ResponsivenessSilenceAfter: last ledger record older than this on an
 	// open turn reads as "silent", not "working".
@@ -47,6 +48,26 @@ var responsivenessResponseKinds = map[string]bool{
 	"reasoning": true, "text": true, "tool_dispatch": true, "tool_started": true,
 }
 
+// responsivenessBlockingTools are tools whose documented contract is to block
+// for an unbounded or long window while writing nothing to the ledger — for
+// them, ledger silence is designed behavior, not a stall (task 879: a wait
+// past ResponsivenessSilenceAfter used to read as "silent", which the desktop
+// hang gate maps straight to the 会话疑似卡死 prompt). Everything else
+// deliberately stays out: a foreground bash/subagent streams tool_progress
+// while it works (its silence really is suspicious), and ask/approval waits
+// arrive as turn status waiting_user, which assignVerdict checks first.
+var responsivenessBlockingTools = map[string]bool{
+	"wait":       true, // blocks until background jobs finish (tool/builtin/bgjobs.go)
+	"event_wait": true, // blocks on a collab condition (agent/event_wait_tool.go)
+}
+
+// isResponsivenessBlockingTool matches both faces of a proxy call: the
+// provider-visible name and the resolved target name (a capability proxy
+// fronting wait keeps the display name in Tool.Name).
+func isResponsivenessBlockingTool(name, resolvedName string) bool {
+	return responsivenessBlockingTools[name] || responsivenessBlockingTools[resolvedName]
+}
+
 // ResponsivenessTurn summarizes one turn found in the retained ledger records.
 type ResponsivenessTurn struct {
 	TurnID          string `json:"turnId"`
@@ -61,11 +82,22 @@ type ResponsivenessTurn struct {
 	LatestPrompt    int    `json:"latestPromptTokens,omitempty"`
 	DurationMs      int64  `json:"durationMs,omitempty"` // summary sidecar only
 	Outcome         string `json:"outcome,omitempty"`    // summary sidecar only
+	// BlockingTool (task 879) is the long-blocking tool call still in flight
+	// at the turn's last retained record — tool dispatch/started without a
+	// matching tool_result. Empty when no wait-family tool is executing.
+	BlockingTool    string `json:"blockingTool,omitempty"`
 	firstResponseAt time.Time
 	firstActivityAt time.Time
 	startedAt       time.Time
 	lastEventAt     time.Time
 	finishedAt      time.Time
+	// In-flight long-blocking tool calls (task 879), keyed by tool id: dispatch
+	// order, display name, and dispatch time. Only wait-family calls are
+	// tracked — a non-blocking call in flight is no liveness signal either way
+	// (it either returned, or its silence stays the "silent" verdict).
+	blockingIDs   []string
+	blockingNames map[string]string
+	blockingSince map[string]time.Time
 }
 
 // ResponsivenessReport is the content-free answer to "stuck or slow?".
@@ -217,6 +249,9 @@ func summarizeTurns(records []turnevent.Envelope, report *ResponsivenessReport) 
 		// (eventwire.KindName), so no reverse mapping is needed here.
 		kind := rec.Kind
 		at := time.UnixMilli(rec.CreatedAt)
+		if rec.Event.Tool != nil {
+			t.observeBlockingToolCall(kind, rec.Event.Tool, at)
+		}
 		if responsivenessActivityKinds[kind] {
 			if t.firstActivityAt.IsZero() {
 				t.firstActivityAt = at
@@ -269,6 +304,69 @@ func (t *ResponsivenessTurn) fillDerived() {
 	if !t.firstActivityAt.IsZero() {
 		t.FirstActivityMs = t.firstActivityAt.Sub(t.startedAt).Milliseconds()
 	}
+	if name, _, ok := t.inFlightBlockingTool(); ok {
+		t.BlockingTool = name
+	}
+}
+
+// observeBlockingToolCall keeps the turn's in-flight long-blocking tool set
+// current — the same reconstruction turnevent's own ledger replay performs
+// over these records: a tool_dispatch/tool_started opens the call, a
+// tool_result with the same id closes it (task 879). Records without a tool
+// id (progress, id-less legacy dispatches) cannot open a call, and a result
+// for a compacted-away dispatch closes nothing (no-op).
+func (t *ResponsivenessTurn) observeBlockingToolCall(kind string, tool *eventwire.Tool, at time.Time) {
+	if tool.ID == "" {
+		return
+	}
+	switch kind {
+	case "tool_dispatch", "tool_started":
+		if !isResponsivenessBlockingTool(tool.Name, tool.ResolvedName) {
+			return
+		}
+		// A capability proxy keeps the display name in Name and the real
+		// target in ResolvedName; show whichever face actually matched.
+		display := tool.Name
+		if !responsivenessBlockingTools[tool.Name] {
+			display = tool.ResolvedName
+		}
+		if t.blockingNames == nil {
+			t.blockingNames = map[string]string{}
+			t.blockingSince = map[string]time.Time{}
+		}
+		if _, seen := t.blockingNames[tool.ID]; !seen {
+			t.blockingIDs = append(t.blockingIDs, tool.ID)
+		}
+		if _, stamped := t.blockingSince[tool.ID]; !stamped {
+			// A refreshed upsert re-dispatches after the first; the call
+			// started at its first dispatch.
+			t.blockingSince[tool.ID] = at
+		}
+		t.blockingNames[tool.ID] = display
+	case "tool_result":
+		if t.blockingNames == nil {
+			return
+		}
+		delete(t.blockingNames, tool.ID)
+		delete(t.blockingSince, tool.ID)
+		for i, id := range t.blockingIDs {
+			if id == tool.ID {
+				t.blockingIDs = append(t.blockingIDs[:i], t.blockingIDs[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+// inFlightBlockingTool reports the first long-blocking tool call still open at
+// the turn's last retained record, with its first-dispatch time.
+func (t *ResponsivenessTurn) inFlightBlockingTool() (name string, since time.Time, ok bool) {
+	for _, id := range t.blockingIDs {
+		if n := t.blockingNames[id]; n != "" {
+			return n, t.blockingSince[id], true
+		}
+	}
+	return "", time.Time{}, false
 }
 
 // assignVerdict classifies the session state. The verdict names the state,
@@ -323,8 +421,22 @@ func assignVerdict(report *ResponsivenessReport, turns []ResponsivenessTurn, now
 	}
 	lastAge := now.Sub(active.lastEventAt)
 	if lastAge >= ResponsivenessSilenceAfter {
+		// Task 879: the ledger can tell the two silence causes apart. A
+		// long-blocking tool call (wait / event_wait) is still open at the
+		// last record — silence is that tool's designed behavior while it
+		// waits for its condition, so the session is waiting, not dead. The
+		// desktop hang gate maps "silent" straight to the 会话疑似卡死
+		// prompt; this verdict keeps a legitimate out-of-stream wait from
+		// firing it. No open blocking tool leaves "silent" exactly as before
+		// (the dead-runtime case, unchanged on purpose).
+		if name, since, ok := active.inFlightBlockingTool(); ok {
+			report.Verdict = "waiting_tool"
+			report.Detail = fmt.Sprintf("turn open, ledger silent for %s — but the long-blocking tool %q is still executing (running %s): silence is this tool's designed behavior while it waits, not a stall. Not stuck: its tool result will resume the ledger; re-run with --watch to see the sequence advance when the wait returns",
+				relativeAge(lastAge), name, relativeAge(now.Sub(since)))
+			return
+		}
 		report.Verdict = "silent"
-		report.Detail = fmt.Sprintf("turn open, but the ledger has been silent for %s (first response landed after %s) — past the stream watchdog window: either a wait outside the stream, or the runtime died mid-turn. Re-run with --watch: advancing sequence means alive; no progress plus a dead reasonix process means crash remnant (recovered on next open)",
+		report.Detail = fmt.Sprintf("turn open, but the ledger has been silent for %s (first response landed after %s) — past the stream watchdog window, and no long-blocking tool call is in flight: the runtime is stalled or died mid-turn. Re-run with --watch: advancing sequence means alive; no progress plus a dead reasonix process means crash remnant (recovered on next open)",
 			relativeAge(lastAge), formatMs(active.FirstResponseMs))
 		return
 	}
@@ -378,6 +490,9 @@ func RenderResponsivenessText(r ResponsivenessReport, now time.Time) string {
 		a := r.Active
 		fmt.Fprintf(&b, "    open turn %s status=%s started %s ago, %d records, first response %s\n",
 			short(a.TurnID), a.Status, relativeAge(now.Sub(a.startedAt)), a.Records, formatMs(a.FirstResponseMs))
+		if a.BlockingTool != "" {
+			fmt.Fprintf(&b, "    blocking tool in flight: %s (writes nothing until it returns)\n", a.BlockingTool)
+		}
 	case r.Verdict == "idle":
 		fmt.Fprintf(&b, "    no open turn (last turn closed normally)\n")
 	default:
@@ -397,7 +512,7 @@ func RenderResponsivenessText(r ResponsivenessReport, now time.Time) string {
 	if r.TornTail {
 		fmt.Fprintf(&b, "  note: ledger tail is torn; the runtime repairs it on next open (diagnostic read only)\n")
 	}
-	if r.Verdict == "first_response_wait" || r.Verdict == "silent" {
+	if r.Verdict == "first_response_wait" || r.Verdict == "silent" || r.Verdict == "waiting_tool" {
 		fmt.Fprintf(&b, "  next: re-run with --watch <duration> to see whether the ledger advances\n")
 	}
 	return b.String()

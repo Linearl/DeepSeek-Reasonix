@@ -16,16 +16,21 @@ import (
 // "没崩但卡死" — a session whose open turn stopped making progress — never
 // produces a crash report, so the crash overlay never fires for it. The trigger
 // is the doctor responsiveness verdict (task 370, a54890acd): verdict
-// "silent" (open turn, ledger silent past the stream-watchdog window), or
+// "silent" (open turn, ledger silent past the stream-watchdog window with no
+// long-blocking tool in flight — task 879 split the legitimate wait out), or
 // "first_response_wait" that has itself outlived ResponsivenessSilenceAfter.
-// Verdicts that mean alive or waiting-on-user (working / idle / waiting_user)
-// refuse with an explicit error instead of analyzing a healthy session.
+// Verdicts that mean alive or waiting (working / idle / waiting_user /
+// waiting_tool) refuse with an explicit error instead of analyzing a healthy
+// session.
 //
 // Upstream comparison (调研对照, 2026-10-09): the stream idle watchdog
 // (provider defaultStreamIdleTimeout) force-recovers a silent started stream
 // at 5m, so a *streaming* stall self-heals. What this entry covers is the
-// residue the watchdog cannot classify: a stalled wait outside the stream or a
-// dead runtime — exactly the states doctor responsiveness calls silent.
+// residue the watchdog cannot classify: a stalled tool outside the stream or a
+// dead runtime. Task 879: the first of those has two faces — a long-blocking
+// tool (wait/event_wait) still executing is legitimate silence (doctor verdict
+// waiting_tool, never a hang), while silence with no such tool open is the
+// dead/stalled residue this entry analyzes (doctor verdict silent).
 //
 // The pipeline is the crash one byte for byte (fresh Global-scope named session
 // → YOLO → instruction with a sanitized payload → gh-issue-submit, task 687),
@@ -54,11 +59,16 @@ type HangAnalysisAvailabilityReport struct {
 // report. "silent" is the hang verdict. "first_response_wait" counts only once
 // the wait itself outlives ResponsivenessSilenceAfter — below that it is the
 // legitimate prefill/thinking phase the doctor explicitly refuses to call
-// stuck.
+// stuck. "waiting_tool" (task 879) is the doctor's split of a silent ledger
+// whose long-blocking tool call (wait/event_wait) is still executing: the
+// session waits for its background job, it is not hung, so a wait past six
+// minutes never surfaces the 会话疑似卡死 prompt again.
 func responsivenessVerdictIsHang(report doctor.ResponsivenessReport, now time.Time) bool {
 	switch report.Verdict {
 	case "silent":
 		return true
+	case "waiting_tool":
+		return false
 	case "first_response_wait":
 		if report.Active == nil {
 			return false
