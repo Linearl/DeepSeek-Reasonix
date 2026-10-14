@@ -4993,7 +4993,6 @@ export function Composer({
       >
         <ComposerContentMenuActions
           attachmentInputEnabled={attachmentInputEnabled}
-          running={running}
           textPresent={text.trim().length > 0}
           onChooseAttachment={chooseAttachmentFiles}
           onInsertTrigger={insertContentTrigger}

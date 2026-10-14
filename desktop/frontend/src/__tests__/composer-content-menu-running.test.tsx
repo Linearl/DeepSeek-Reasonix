@@ -2,10 +2,11 @@
 //
 // Task 594: the composer "+" menu must answer mid-turn. While a turn is
 // running the pure text inserts (quick commands, @/#/ triggers) stay usable,
-// the attachment item grays out with a three-language reason tooltip, and
-// the turn-gated rows (plan/goal, subagent policy) carry the same hint —
-// nothing in the menu reacts silently. When idle everything is available
-// (no regression).
+// and the turn-gated rows (plan/goal, subagent policy) carry a reason
+// tooltip — nothing in the menu reacts silently. When idle everything is
+// available (no regression).
+// Task 870: attaching is draft editing (local staging only), so the
+// attachment item is available mid-turn too — the 594 gray-out is gone.
 
 import { JSDOM } from "jsdom";
 
@@ -188,12 +189,13 @@ async function main() {
     eq(picked.join(","), "片段A正文", "picking a snippet fires the insert mid-turn");
   }
 
-  // 4) running 中：附件置灰并给出三语 tooltip（zh 词典文案）。
-  //    上一步选中片段后菜单自动关闭（choosing 契约），重开再断言。
+  // 4) 任务 870：running 中附件项可用（附件=编辑草稿，纯本地暂存），
+  //    594 的置灰与 tooltip 移除。上一步选中片段后菜单自动关闭
+  //    （choosing 契约），重开再断言。
   await act(async () => { plusButton()!.click(); await flushTimers(); });
   const attachment = itemWithTitle("添加文件或图片");
-  ok(attachment && attachment.disabled, "attachment item disabled mid-turn");
-  ok(attachment?.title === "会话运行中，结束后可用", "attachment item carries the running hint tooltip");
+  ok(attachment && !attachment.disabled, "attachment item available mid-turn (870)");
+  ok(!attachment?.title, "attachment item has no running gate tooltip");
 
   // 5) running 中：执行方式/子代理委派置灰且同带提示（禁止无反应）。
   const plan = itemWithTitle("计划");
@@ -210,7 +212,6 @@ async function main() {
   }
   const attachmentIdle = itemWithTitle("添加文件或图片");
   ok(attachmentIdle && !attachmentIdle.disabled, "attachment item available when idle");
-  ok(!attachmentIdle?.title, "running hint tooltip gone when idle");
   const planIdle = itemWithTitle("计划");
   ok(planIdle && !planIdle.disabled, "plan task mode available when idle");
   const lightIdle = itemWithTitle("经济");

@@ -5,7 +5,6 @@ import type { QuickCommandEntry } from "../lib/settingsViewTypes";
 
 export function ComposerContentMenuActions({
   attachmentInputEnabled,
-  running = false,
   textPresent,
   onChooseAttachment,
   onInsertTrigger,
@@ -14,7 +13,6 @@ export function ComposerContentMenuActions({
   onManageQuickCommands,
 }: {
   attachmentInputEnabled: boolean;
-  running?: boolean;
   textPresent: boolean;
   onChooseAttachment: () => void;
   onInsertTrigger: (trigger: "@" | "#" | "/") => void;
@@ -98,12 +96,13 @@ export function ComposerContentMenuActions({
     <div className="composer-access-menu__section" role="menu" aria-label={t("composer.contentMenuTitle")}>
       <div className="composer-access-menu__label">{t("composer.contentMenuTitle")}</div>
       {attachmentInputEnabled ? <>
-        {/* Task 594: attachments stay turn-gated (grayed with a reason) while
-            the text-only inserts below remain usable mid-turn. */}
+        {/* 任务 870: attaching is draft editing — local staging only, no
+            backend upload — so the attachment entry stays usable mid-turn,
+            same treatment as the text-only inserts below. Sending a draft
+            that carries attachments while a turn runs rides the guidance
+            path (steer, or a queued follow-up for a fresh turn). */}
         <button type="button" role="menuitem" className="composer-access-menu__item composer-content-menu__item"
-          onClick={onChooseAttachment}
-          disabled={running}
-          title={running ? t("composer.runningGateHint") : undefined}>
+          onClick={onChooseAttachment}>
           <FilePlus2 size={16} aria-hidden="true" />
           <span className="composer-access-menu__copy">
             <span className="composer-access-menu__title">{t("composer.contentAddAttachment")}</span>
