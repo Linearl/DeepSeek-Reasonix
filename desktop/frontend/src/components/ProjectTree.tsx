@@ -702,6 +702,11 @@ export function ProjectTree({
   const [groups, setGroups] = useState<ProjectGroup[]>(loadProjectGroups);
   const [assign, setAssign] = useState<Record<string, string>>(loadProjectGroupAssign);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
+  // Task 881 ①: the blank-area right-click menu point. Before this the only
+  // "new group" doors were the project-row menu (needs an existing row) and
+  // the header controls, so with zero groups and zero projects the whole
+  // grouping feature had no visible way in.
+  const [blankMenuPoint, setBlankMenuPoint] = useState<ContextMenuPoint | null>(null);
   const [collapsedProjectGroups, setCollapsedProjectGroups] = useState<ReadonlySet<string>>(loadProjectGroupCollapsed);
   // Which project the "move to group" panel is acting on.
   const [groupTarget, setGroupTarget] = useState<ProjectNode | null>(null);
@@ -748,6 +753,29 @@ export function ProjectTree({
   // inside the row (same pattern as the topic rows), so only one group menu can
   // be open at a time and closing is a single setState.
   const [groupMenuId, setGroupMenuId] = useState<string | null>(null);
+  // Task 881 ①: right-clicking the tree's blank area offers "new group" — the
+  // one entry that never depends on an existing project row or group. Topic
+  // and project rows stop propagation inside their own openers, but the group
+  // row (task 827 ①) does not, so the handler re-checks the target and stays
+  // out of any row that owns its own menu.
+  const openBlankMenu = (event: ReactMouseEvent<HTMLElement>) => {
+    const target = event.target;
+    if (target instanceof Element && target.closest(".project-tree__topic,.project-tree__folder,.project-tree__group-main")) return;
+    event.preventDefault();
+    closeMenu();
+    setBlankMenuPoint(contextMenuPointFromEvent(event));
+  };
+  const blankMenuItems: ContextMenuItem[] = [
+    {
+      key: "blank-new-group",
+      icon: <FolderInput size={13} />,
+      label: t("projectTree.newGroup"),
+      onSelect: () => {
+        setBlankMenuPoint(null);
+        setNewGroupOpen(true);
+      },
+    },
+  ];
   const [groupMenuPoint, setGroupMenuPoint] = useState<ContextMenuPoint | null>(null);
   // Task 827 ①: inline rename — the row swaps its title for an input, Enter
   // commits, Escape cancels (same UX as the session-group rename in
@@ -2474,6 +2502,21 @@ export function ProjectTree({
                 {canRestoreCollapsedView ? <Maximize2 size={15} aria-hidden="true" /> : <Minimize2 size={15} aria-hidden="true" />}
               </button>
             </Tooltip>
+            {/* Task 881 ②: a dedicated create-group button in the workbench
+                header — before this the only header door was one item inside
+                the add menu, which the user never found. Classic already had a
+                direct button (f90030), so this is parity, not a new pattern;
+                FolderInput matches the classic button and the group icon. */}
+            <Tooltip label={t("projectGroup.createNew")} className="project-tree__header-action-slot">
+              <button
+                type="button"
+                className="project-tree__header-icon-btn"
+                aria-label={t("projectGroup.createNew")}
+                onClick={() => setNewGroupOpen(true)}
+              >
+                <FolderInput size={15} aria-hidden="true" />
+              </button>
+            </Tooltip>
             <span className="project-tree__header-menu-wrap">
               <Tooltip label={t("projectTree.moreActions")} className="project-tree__header-action-slot">
                 <button
@@ -2812,7 +2855,7 @@ export function ProjectTree({
       {compactTopics ? (
         <>
           {renderProjectHeader("workbench")}
-          <div className="project-tree__list project-tree__list--workbench">
+          <div className="project-tree__list project-tree__list--workbench" onContextMenu={openBlankMenu}>
             {treeBody === "loading" ? (
               renderTreeLoadingState()
             ) : treeBody === "empty" ? (
@@ -2836,7 +2879,7 @@ export function ProjectTree({
       ) : (
         <>
           {renderProjectHeader("classic")}
-          <div className="project-tree__list" onScroll={cancelHoverCard}>
+          <div className="project-tree__list" onScroll={cancelHoverCard} onContextMenu={openBlankMenu}>
             {treeBody === "loading" ? (
               renderTreeLoadingState()
             ) : treeBody === "empty" ? (
@@ -2880,6 +2923,16 @@ export function ProjectTree({
       {blankProjectFlow}
       {remoteConnectFlow}
       <NewGroupPanel open={newGroupOpen} onClose={() => setNewGroupOpen(false)} onConfirm={handleAddGroup} />
+      {/* Task 881 ①: blank-area right-click — the create-group door that works
+          with zero projects and zero groups on screen. */}
+      <ContextMenu
+        open={blankMenuPoint !== null}
+        point={blankMenuPoint}
+        items={blankMenuItems}
+        minWidth={178}
+        ariaLabel={t("projectTree.newGroup")}
+        onClose={() => setBlankMenuPoint(null)}
+      />
       <MoveToGroupPanel
         open={groupTarget !== null}
         onClose={() => setGroupTarget(null)}
