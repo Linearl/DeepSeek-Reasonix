@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -176,5 +178,44 @@ func (a *Agent) emitCompactionTelemetry(t CompactionTelemetry) {
 }
 
 func (a *Agent) emitCompactionAborted(trigger string) {
-	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{Trigger: trigger}})
+	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{Trigger: trigger, Outcome: "aborted"}})
+}
+
+// emitCompactionFailed closes a failed pass with a visible outcome (任务 867):
+// the failure used to be slog-only and the frontend read the summary-less Done
+// as an abort, erasing the pending card while the watermark kept climbing.
+func (a *Agent) emitCompactionFailed(trigger string, err error) {
+	attempt := a.sess.compaction.failureStreak.Add(1)
+	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
+		Trigger: trigger, Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
+	}})
+}
+
+// emitCompactionSucceeded stamps the success outcome and resets the streak.
+func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, archive string) {
+	a.sess.compaction.failureStreak.Store(0)
+	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
+		Trigger: trigger, Messages: messages, Summary: summary, Archive: archive, Outcome: "ok",
+	}})
+}
+
+// compactionFailureReason reduces an error to a short, display-safe
+// classification. The frontend renders it verbatim, so it must never carry
+// transcript content — provider error text can echo request fragments, so
+// non-classified errors stay generic.
+func compactionFailureReason(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, errCompressStaleContext):
+		return "context changed during compaction; the pass was discarded and will retry"
+	case errors.Is(err, errSummaryOutputTruncated):
+		return "summarizer output was truncated"
+	case errors.Is(err, errCheckpointRejected):
+		return "compaction candidate did not reduce the context"
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "compaction was cancelled"
+	default:
+		return "summarizer request failed"
+	}
 }

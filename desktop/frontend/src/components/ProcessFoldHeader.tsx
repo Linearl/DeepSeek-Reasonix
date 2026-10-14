@@ -56,7 +56,11 @@ export function ProcessFoldHeader({
       ? (compactionItem.done ?? 0) > 0
         ? t("compaction.progress", { done: (compactionItem.done ?? 0), total: (compactionItem.total ?? 0) })
         : t("compaction.working")
-      : t("compaction.title")
+      : compactionItem.failed
+        ? (compactionItem.attempt ?? 0) > 0
+          ? t("compaction.failedAttempt", { n: compactionItem.attempt ?? 0 })
+          : t("compaction.failed")
+        : t("compaction.title")
     : workStatusLabel(effectiveDurationMs, hasRunningWork, t);
   // 任务 556: live "12.3k tokens · 45 tokens/s" readout while the pass is
   // pending, fed by throttled backend CompactionProgress events. Same shape

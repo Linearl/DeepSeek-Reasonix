@@ -21,6 +21,9 @@ type compactionProgress struct {
 	// failedTurn backs off changed-view retries within one active tool loop.
 	// A later user turn may retry, while hard-ceiling recovery bypasses it.
 	failedTurn atomic.Int64
+	// 任务867: consecutive failed compaction passes, surfaced as the "Nth
+	// attempt" counter on the failed CompactionDone event; success resets it.
+	failureStreak atomic.Int64
 	// lastTurn stops the post-turn observer and the pre-send preflight from
 	// paying for two summaries during one active tool loop.
 	lastTurn atomic.Int64
