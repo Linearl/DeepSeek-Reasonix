@@ -85,6 +85,7 @@ import { Composer } from "./components/Composer";
 import { QuickCommandsManagerDialog } from "./components/QuickCommandsManagerDialog";
 import type { QuickCommandEntry } from "./lib/settingsViewTypes";
 import { TodoPanel } from "./components/TodoPanel";
+import { TodoDockEmptyState } from "./components/TodoDockEmptyState";
 import { PendingCardsBadge } from "./components/PendingCardsBadge";
 import { ApprovalModal } from "./components/ApprovalModal";
 import { AskCard } from "./components/AskCard";
@@ -6176,7 +6177,17 @@ export default function App() {
                     />
                   </div>
                 ) : (
-                  <div className="workbench-dock__todo workbench-dock__todo--empty">{t("rightDock.todoEmpty")}</div>
+                  /* 893-B: distinguish "never had tasks" from "tasks sealed at
+                     the turn boundary" so the empty panel stops reading as
+                     "the agent is tracking nothing". */
+                  <TodoDockEmptyState
+                    t={t}
+                    todos={todos}
+                    archive={todoArchive}
+                    items={state.items}
+                    dismissedBatches={state.meta?.dismissedTodoBatches}
+                    canonicalTodos={metaTodos}
+                  />
                 )
               ) : effectiveRightDockMode === "subagents" ? (
                 /* Task 495: the subagent directory panel; keyed per session so
