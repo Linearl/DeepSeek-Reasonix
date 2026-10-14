@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -60,6 +61,42 @@ var (
 	canonicalFlights = map[string]*canonicalFlight{}
 )
 
+// Task 883 probe (read-only instrumentation, zero behavior change): counters
+// for sizing the 639 root fix. They answer, from desktop.log alone, how often
+// canonicalization is entered, what share is served by the 30s TTL cache or
+// an in-flight walk, how many real walks run and how long they take, and how
+// many hit the 250ms budget. All atomic; the only log is one line per
+// completed walk — walks are already the slow path (at least one
+// EvalSymlinks syscall chain, at most one per path per TTL), and each line
+// doubles as the running counter dump, so no timer or goroutine is added.
+// Outcome values: "resolved" (walk found an existing ancestor), "missing"
+// (nothing along the path existed; cleaned input kept), "timeout" (250ms
+// budget hit; cleaned input kept). The phrase "timed out" is deliberately
+// avoided so existing log assertions keep counting only the original warning.
+var (
+	probeCalls atomic.Uint64 // resolveCanonicalPath entries
+	probeHits  atomic.Uint64 // served from canonicalCache within TTL
+	probeJoins atomic.Uint64 // joined an in-flight walk
+	probeWalks atomic.Uint64 // canonicalWalkBounded runs (cached + fresh)
+	probeFresh atomic.Uint64 // ResolveAbsPathFresh uncached walks
+	probeTime  atomic.Uint64 // walks that hit the 250ms budget
+)
+
+// canonicalProbeWalkLog emits the per-walk line with the running totals.
+func canonicalProbeWalkLog(abs string, started time.Time, outcome string) {
+	probeWalks.Add(1)
+	slog.Info("canonical probe: walk",
+		"path", abs,
+		"elapsed_ms", time.Since(started).Milliseconds(),
+		"outcome", outcome,
+		"calls_total", probeCalls.Load(),
+		"cache_hits", probeHits.Load(),
+		"flight_joins", probeJoins.Load(),
+		"walks_total", probeWalks.Load(),
+		"fresh_walks_total", probeFresh.Load(),
+		"timeouts_total", probeTime.Load())
+}
+
 // resolveCanonicalPath returns the absolute, symlink-free form of path,
 // resolving the deepest existing ancestor and re-appending the
 // not-yet-existing tail (write targets need not exist yet). The walk is
@@ -77,16 +114,21 @@ func resolveCanonicalPath(path string) (string, error) {
 	canonicalMu.Lock()
 	if entry, ok := canonicalCache[abs]; ok && time.Now().Before(entry.expiresAt) {
 		canonicalMu.Unlock()
+		probeCalls.Add(1)
+		probeHits.Add(1)
 		return entry.resolved, nil
 	}
 	if flight, ok := canonicalFlights[abs]; ok {
 		canonicalMu.Unlock()
+		probeCalls.Add(1)
+		probeJoins.Add(1)
 		<-flight.done
 		return flight.resolved, nil
 	}
 	flight := &canonicalFlight{done: make(chan struct{})}
 	canonicalFlights[abs] = flight
 	canonicalMu.Unlock()
+	probeCalls.Add(1)
 
 	resolved := canonicalWalkBounded(abs)
 
@@ -110,6 +152,7 @@ func ResolveAbsPathFresh(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	probeFresh.Add(1)
 	return canonicalWalkBounded(filepath.Clean(abs)), nil
 }
 
@@ -168,10 +211,20 @@ func canonicalWalkBounded(abs string) string {
 	}()
 	timer := time.NewTimer(canonicalResolveTimeout)
 	defer timer.Stop()
+	// Task 883 probe: measure the walk only; no branch, value or error path
+	// depends on anything below.
+	walkStarted := time.Now()
 	select {
 	case res := <-ch:
+		outcome := "resolved"
+		if res.path == abs {
+			outcome = "missing"
+		}
+		canonicalProbeWalkLog(abs, walkStarted, outcome)
 		return res.path
 	case <-timer.C:
+		probeTime.Add(1)
+		canonicalProbeWalkLog(abs, walkStarted, "timeout")
 		slog.Warn("canonical path resolution timed out; keeping cleaned path (network drive offline?)",
 			"path", abs, "budget", canonicalResolveTimeout.String())
 		return abs
