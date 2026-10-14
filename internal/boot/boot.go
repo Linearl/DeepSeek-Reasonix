@@ -317,6 +317,14 @@ type Options struct {
 	WorkspaceOnly          bool
 	PinnedContextLoader    control.PinnedContextLoader
 	SessionTemp            *sessiontemp.Manager // session-private temp manager; Rebuild reuses old's
+	// Jobs and WorkspaceLease carry a hot model/settings swap's handoff (task
+	// 890): when both are set, build() reuses them instead of creating a fresh
+	// manager and lease, so the outgoing controller's background jobs survive
+	// the swap. Both or neither — the manager's job-start observer retains the
+	// lease it was created with, so supplying one without the other is
+	// rejected rather than silently rebinding half of the pair.
+	Jobs           *jobs.Manager
+	WorkspaceLease *workspacelease.Owner
 	RuntimeReload
 	// OnStageTiming (任务 824) receives the one-line stage summary
 	// ("total=…ms config=…ms …") that build() already renders for its own
@@ -692,26 +700,39 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		sink.Emit(event.Event{Kind: event.Notice, Text: "Selected model is missing its API key.", Detail: fmt.Sprintf("model %q is selected but its API key %s is not set — requests will fail until you set it", modelName, entry.APIKeyEnv)})
 	}
 	// Every role setting lazily acquires a workspace write lease on the first
-	// real writer. Read-only turns never take the lease.
+	// real writer. Read-only turns never take the lease. A hot model/settings
+	// swap hands the outgoing controller's pair over instead (task 890): the
+	// manager's job-start observer already retains that same lease, and a
+	// fresh manager would kill the background jobs still running while a
+	// fresh lease would orphan their retains. Both or neither.
+	if (opts.Jobs == nil) != (opts.WorkspaceLease == nil) {
+		return nil, fmt.Errorf("jobs handoff requires boot.Options.Jobs and boot.Options.WorkspaceLease together")
+	}
 	var workspaceLease *workspacelease.Owner
-	jobOptions := []jobs.Option{
-		jobs.WithStalledWarningAfter(time.Duration(cfg.BackgroundJobStalledWarningSeconds()) * time.Second),
-		jobs.WithSessionOwnershipProbe(agent.SessionLeaseHeldByCurrentRuntime),
-	}
-	workspaceLease, err = workspacelease.New(root, config.WorkspaceLeaseDir(), func() {
-		sink.Emit(event.Event{
-			Kind:   event.Notice,
-			Level:  event.LevelInfo,
-			Code:   event.NoticeCodeWorkspaceLease,
-			Text:   "Another session is writing to this workspace; this session will continue automatically when it is safe.",
-			Detail: "workspace write lease is busy; read-only work remains concurrent",
+	var jm *jobs.Manager
+	if opts.Jobs != nil {
+		workspaceLease = opts.WorkspaceLease
+		jm = opts.Jobs
+	} else {
+		jobOptions := []jobs.Option{
+			jobs.WithStalledWarningAfter(time.Duration(cfg.BackgroundJobStalledWarningSeconds()) * time.Second),
+			jobs.WithSessionOwnershipProbe(agent.SessionLeaseHeldByCurrentRuntime),
+		}
+		workspaceLease, err = workspacelease.New(root, config.WorkspaceLeaseDir(), func() {
+			sink.Emit(event.Event{
+				Kind:   event.Notice,
+				Level:  event.LevelInfo,
+				Code:   event.NoticeCodeWorkspaceLease,
+				Text:   "Another session is writing to this workspace; this session will continue automatically when it is safe.",
+				Detail: "workspace write lease is busy; read-only work remains concurrent",
+			})
 		})
-	})
-	if err != nil {
-		return nil, fmt.Errorf("initialize workspace write lease: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("initialize workspace write lease: %w", err)
+		}
+		jobOptions = append(jobOptions, jobs.WithJobStartObserver(workspaceLease.RetainUntil))
+		jm = jobs.NewManager(sink, jobOptions...)
 	}
-	jobOptions = append(jobOptions, jobs.WithJobStartObserver(workspaceLease.RetainUntil))
-	jm := jobs.NewManager(sink, jobOptions...)
 	sessionDir := opts.SessionDir
 	if sessionDir == "" {
 		sessionDir = config.SessionDir()
@@ -2587,11 +2608,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// Indirection: the cleanup variable gains the extension runtime set at
 		// the end of build (snapshot assembly runs after control.New), and the
 		// controller must observe the final chain at Close time.
-		Cleanup:               func() { cleanup() },
-		BalanceURL:            entry.BalanceURL,
-		BalanceKey:            entry.APIKey(),
-		BalanceClient:         balanceClient,
-		Jobs:                  jm,
+		Cleanup:       func() { cleanup() },
+		BalanceURL:    entry.BalanceURL,
+		BalanceKey:    entry.APIKey(),
+		BalanceClient: balanceClient,
+		Jobs:          jm,
+		// A handed-off manager is borrowed until the swap commits: a failed
+		// swap's Close must leave it running for the outgoing controller
+		// (task 890). Fresh managers are owned from birth.
+		JobsHandoff:           opts.Jobs != nil,
 		TaskStore:             opts.TaskStore,
 		WorkspaceLease:        workspaceLease,
 		Registry:              reg,
