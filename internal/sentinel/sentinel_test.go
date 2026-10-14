@@ -15,6 +15,7 @@ func withSentinelState(t *testing.T, fn func(t *testing.T)) {
 	oldHome := homeDir
 	oldHard := hardForbidden()
 	oldExit := exitScan()
+	oldPenetration := PenetrationGuardEnabled()
 	oldUserHome := osUserHomeDir
 	t.Cleanup(func() {
 		protectedBranches.Store(oldBranches)
@@ -22,6 +23,7 @@ func withSentinelState(t *testing.T, fn func(t *testing.T)) {
 		homeDir = oldHome
 		hardForbiddenEnabled.Store(oldHard)
 		exitScanEnabled.Store(oldExit)
+		penetrationEnabled.Store(oldPenetration)
 		osUserHomeDir = oldUserHome
 	})
 	fn(t)

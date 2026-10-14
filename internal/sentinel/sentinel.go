@@ -43,6 +43,7 @@ type Verdict struct {
 var (
 	hardForbiddenEnabled atomic.Bool // default handled by boot (default on)
 	exitScanEnabled      atomic.Bool // default off: experimental switch
+	penetrationEnabled   atomic.Bool // task 895: 形态穿透封堵, default PenetrationGuardDefault
 
 	protectedBranches atomic.Value // []string
 	disabledRules     atomic.Value // []string
@@ -50,6 +51,14 @@ var (
 
 	auditPath atomic.Value // string; "" disables the JSONL audit file
 )
+
+// PenetrationGuardDefault is the shipped default of the task-895 penetration
+// guard (wrapper/subshell/git-global-option see-through). It is a single
+// source shared by init, the composition root (internal/boot) and the settings
+// snapshot: [sentinel] penetration_guard 未写时三处取值必须一致。默认值随
+// 开销实测定标（判定路径 P50/P99 两态对照见任务 895 交付报告）——改这个
+// 常量等于改所有未显式配置用户的默认姿态，必须带实测依据。
+const PenetrationGuardDefault = true
 
 func init() {
 	protectedBranches.Store(defaultProtectedBranches())
@@ -60,6 +69,7 @@ func init() {
 	// (tests, tooling) get the documented posture without boot.
 	hardForbiddenEnabled.Store(true)
 	exitScanEnabled.Store(false)
+	penetrationEnabled.Store(PenetrationGuardDefault)
 }
 
 // defaultProtectedBranches is the v1 protected-branch list. Users extend it
@@ -74,6 +84,17 @@ func SetHardForbidden(enabled bool) { hardForbiddenEnabled.Store(enabled) }
 
 // SetExitScan enables or disables the outbound secret scan (experimental).
 func SetExitScan(enabled bool) { exitScanEnabled.Store(enabled) }
+
+// SetPenetrationGuard enables or disables the task-895 penetration guard
+// (experimental switch sentinel_penetration_guard): wrapper/subshell
+// see-through and git global-option skipping for the hard-forbidden rules.
+// Off must be behaviour-identical to the pre-895 code path — the guard gates
+// every new inspection, none of it runs when off.
+func SetPenetrationGuard(enabled bool) { penetrationEnabled.Store(enabled) }
+
+// PenetrationGuardEnabled reports the current switch state (settings snapshot
+// and tests read the effective value through this getter).
+func PenetrationGuardEnabled() bool { return penetrationEnabled.Load() }
 
 // SetProtectedBranches replaces the force-push protected branch list. Empty
 // input restores the built-in defaults.

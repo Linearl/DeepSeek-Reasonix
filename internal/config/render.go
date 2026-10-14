@@ -1357,6 +1357,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		} else {
 			b.WriteString("# exit_scan = false   # opt-in 实验开关；默认关，误杀面待实测\n")
 		}
+		// 任务 895：穿透封堵开关显式值必须渲染出来，否则设置页写入的
+		// `penetration_guard = false` 会在下一次 Save 时静默丢失（回环缺口）。
+		if c.Sentinel.PenetrationGuard != nil {
+			fmt.Fprintf(&b, "penetration_guard = %v   # 任务 895 实验开关：包装/子 shell/git 全局选项穿透封堵（sentinel_penetration_guard）\n",
+				*c.Sentinel.PenetrationGuard)
+		} else {
+			b.WriteString("# penetration_guard = false   # 缺省开（sentinel.PenetrationGuardDefault，实测开销 P50 +2.9µs/P99 无回退）；穿透封堵实验开关\n")
+		}
 		if len(c.Sentinel.ProtectedBranches) > 0 {
 			quoted := make([]string, 0, len(c.Sentinel.ProtectedBranches))
 			for _, branch := range c.Sentinel.ProtectedBranches {

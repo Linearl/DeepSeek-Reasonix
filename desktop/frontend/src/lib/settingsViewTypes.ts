@@ -229,6 +229,8 @@ export interface SettingsView {
   safetyIdleTerminate?: boolean | null;
   safetyLoopStreakNote?: boolean | null;
   safetyEventWaitRecheck?: boolean | null;
+  // 任务 895: sentinel 穿透封堵实验开关的生效值（缺省开）。
+  sentinelPenetrationGuard?: boolean;
   // Task 449: merged orphan switch (folds task 244 B5 lease reclaim + B4
   // recovery sweep into one key).
   experimentalOrphanHandling?: boolean;

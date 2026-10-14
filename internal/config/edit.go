@@ -1461,6 +1461,14 @@ func (c *Config) SetSafetyEventWaitRecheck(enabled bool) error {
 	return nil
 }
 
+// SetSentinelPenetrationGuard 写任务 895 穿透封堵实验开关（[sentinel]
+// penetration_guard，用户全局段，项目 reasonix.toml 不可覆盖）。显式值落盘
+// 后渲染回环不丢；nil 缺省态由 boot 按 sentinel.PenetrationGuardDefault 解析。
+func (c *Config) SetSentinelPenetrationGuard(enabled bool) error {
+	c.Sentinel.PenetrationGuard = &enabled
+	return nil
+}
+
 // SetExperimentalOrphanHandling toggles the merged orphan switch (task 449):
 // both the task-244 B5 lease reclaim and the B4 recovery-store sweep follow
 // this one key. Single-writes the [agent] key (task 473); the [desktop]

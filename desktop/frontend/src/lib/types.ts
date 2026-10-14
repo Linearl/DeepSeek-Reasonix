@@ -2616,6 +2616,8 @@ export interface DesktopStartupSettingsView {
   safetyIdleTerminate?: boolean | null;
   safetyLoopStreakNote?: boolean | null;
   safetyEventWaitRecheck?: boolean | null;
+  /** 任务 895: sentinel 穿透封堵实验开关的生效值（缺省开）。 */
+  sentinelPenetrationGuard?: boolean;
   /** merged orphan switch (task 449; folds task 244 B5 lease reclaim + B4 recovery sweep); off unless the user opts in. */
   experimentalOrphanHandling?: boolean;
   /** Task 363A: reuse the runtime assembly across same-config tabs instead of full rebuild; off unless the user opts in. */

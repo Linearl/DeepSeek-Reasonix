@@ -281,6 +281,11 @@ type SentinelConfig struct {
 	// ExitScan enables the outbound secret scan before git commit/push and
 	// other outbound commands. Experimental switch, default off (误杀面待实测).
 	ExitScan bool `toml:"exit_scan"`
+	// PenetrationGuard 是任务 895 的形态穿透封堵实验开关（sentinel_
+	// penetration_guard）：包装/子 shell 透视 + git 全局选项跳过。指针语义
+	// 与 HardForbidden 同款——缺省跟随 sentinel.PenetrationGuardDefault（当前
+	// 开，实测开销 P50 +2.9µs/P99 无回退），仅显式 false 才关。
+	PenetrationGuard *bool `toml:"penetration_guard"`
 	// ProtectedBranches are the git branches force-push must never rewrite.
 	// Empty = built-in defaults (main, master, main-v2-stable).
 	ProtectedBranches []string `toml:"protected_branches"`

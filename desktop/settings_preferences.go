@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/sentinel"
 	"strings"
 	"time"
 )
@@ -720,6 +721,17 @@ func (a *App) SetSafetyLoopStreakNote(enabled bool) error {
 // B3 rides the boot snapshot — sessions pick it up on restart.
 func (a *App) SetSafetyEventWaitRecheck(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetSafetyEventWaitRecheck(enabled) })
+}
+
+// SetSentinelPenetrationGuard 写任务 895 穿透封堵实验开关（[sentinel]
+// penetration_guard，用户全局段）。落盘后同步拨运行期原子变量——判定路径
+// 每次调用都读该开关，新旧工具调用即时跟随，无需重启。
+func (a *App) SetSentinelPenetrationGuard(enabled bool) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetSentinelPenetrationGuard(enabled) }); err != nil {
+		return err
+	}
+	sentinel.SetPenetrationGuard(enabled)
+	return nil
 }
 
 // SetExperimentalOrphanHandling toggles the merged orphan switch (task 449):

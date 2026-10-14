@@ -3749,6 +3749,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 895：sentinel 穿透封堵实验开关（sentinel_penetration_guard）——
+                  单开关条目入「安全 / 成本控制」卡（517/722 合并卡内追加行，
+                  卡片结构/成员/灯不动）。[sentinel] 用户全局段落盘，判定路径
+                  每次调用读运行期开关，拨动即时生效、无需重启。 */}
+              <SettingsField label={t("settings.sentinelPenetrationGuard")} hint={t("settings.sentinelPenetrationGuardHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${(s.sentinelPenetrationGuard ?? true) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetSentinelPenetrationGuard(on))}
+                    >
+                      {t(on ? "settings.sentinelPenetrationGuard.on" : "settings.sentinelPenetrationGuard.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {selected === "sessionCollab" && (
