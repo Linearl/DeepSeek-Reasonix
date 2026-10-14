@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -56,6 +57,12 @@ func TestPendingCrashAnalysisPayloadsNewestFirstSchema2(t *testing.T) {
 
 // Startup/webview diagnostic writers queue schema-3 reports; the analysis
 // snapshot must accept anything the flush would ship (≤ currentCrashSchema).
+// Issue #45 (task 878): the payload keeps the SOURCE identity — schemaVersion,
+// version/eventId/dedupKey, analysisReplay marker — and the exact parser the
+// analysis entry uses must hand back that identity with nothing left for
+// ensureCrashIdentity to regenerate. (The pre-878 behavior this test pinned —
+// schema hard-coded down to 2 and identity dropped — is exactly the forgery
+// the issue describes.)
 func TestPendingCrashAnalysisPayloadsAcceptsCurrentSchemaVariants(t *testing.T) {
 	removeAllPendingCrashes()
 	t.Cleanup(removeAllPendingCrashes)
@@ -67,6 +74,16 @@ func TestPendingCrashAnalysisPayloadsAcceptsCurrentSchemaVariants(t *testing.T) 
 	if !writePendingReport(report, true) {
 		t.Fatal("writePendingReport failed")
 	}
+	// writePendingReport fills the identity before the file lands; read the
+	// stored report back so the expectations reference the source truth.
+	body, err := os.ReadFile(pendingCrashPaths()[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored crashReport
+	if err := json.Unmarshal(body, &stored); err != nil {
+		t.Fatal(err)
+	}
 
 	payloads := pendingCrashAnalysisPayloads(pendingCrashPaths(), false)
 	if len(payloads) != 1 {
@@ -76,14 +93,41 @@ func TestPendingCrashAnalysisPayloadsAcceptsCurrentSchemaVariants(t *testing.T) 
 	if err := json.Unmarshal([]byte(payloads[0]), &payload); err != nil {
 		t.Fatalf("payload not valid JSON: %v", err)
 	}
-	if payload.SchemaVersion != 2 {
-		t.Errorf("payload schemaVersion = %d, want 2 (analysis-facing schema)", payload.SchemaVersion)
+	if payload.SchemaVersion != currentCrashSchema {
+		t.Errorf("payload schemaVersion = %d, want %d (source schema preserved)", payload.SchemaVersion, currentCrashSchema)
 	}
 	if payload.Source != "startup" {
 		t.Errorf("payload source = %q, want startup preserved", payload.Source)
 	}
 	if !contains(payload.Message, "startup diagnostic panic") {
 		t.Errorf("payload message must carry the report, got: %s", payload.Message)
+	}
+	if payload.Version != stored.Version || payload.EventID != stored.EventID || payload.DedupKey != stored.DedupKey {
+		t.Errorf("payload lost the source identity: version %q/%q eventId %q/%q dedupKey %q/%q",
+			payload.Version, stored.Version, payload.EventID, stored.EventID, payload.DedupKey, stored.DedupKey)
+	}
+	if !payload.AnalysisReplay || payload.AnalysisOf != stored.EventID {
+		t.Errorf("payload replay marker = %v/%q, want true/%q", payload.AnalysisReplay, payload.AnalysisOf, stored.EventID)
+	}
+
+	// Round trip through the exact parser the analysis entry uses.
+	r, err := crashReportFromDetail("crash", payloads[0])
+	if err != nil {
+		t.Fatalf("crashReportFromDetail rejected the pending payload: %v", err)
+	}
+	if r.Version != stored.Version || r.EventID != stored.EventID || r.DedupKey != stored.DedupKey || r.SchemaVersion != currentCrashSchema {
+		t.Fatalf("parsed identity drifted from the source: version %q/%q eventId %q/%q dedupKey %q/%q schema %d/%d",
+			r.Version, stored.Version, r.EventID, stored.EventID, r.DedupKey, stored.DedupKey, r.SchemaVersion, currentCrashSchema)
+	}
+	if !r.AnalysisReplay || r.AnalysisOf != stored.EventID {
+		t.Fatalf("parsed replay marker = %v/%q, want true/%q", r.AnalysisReplay, r.AnalysisOf, stored.EventID)
+	}
+	before := r
+	if err := ensureCrashIdentity(&r); err != nil {
+		t.Fatalf("ensureCrashIdentity: %v", err)
+	}
+	if r.EventID != before.EventID || r.DedupKey != before.DedupKey || r.Version != before.Version {
+		t.Fatalf("ensureCrashIdentity re-stamped a replay payload: %+v", r)
 	}
 }
 

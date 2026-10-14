@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -144,6 +145,101 @@ func TestReportCrashRejectsBadInput(t *testing.T) {
 	}
 	if err := app.ReportCrash("crash", ""); err == nil {
 		t.Error("empty detail should be rejected")
+	}
+}
+
+// Issue #45 (task 878): a payload that carries identity fields but no
+// analysisReplay marker is a live frontend report — the injected identity must
+// be ignored and ensureCrashIdentity must generate fresh values. A forged or
+// stale payload cannot smuggle a foreign eventId/dedupKey/version into the
+// live report path without the explicit replay marker.
+func TestCrashReportFromDetailIgnoresIdentityWithoutReplayMarker(t *testing.T) {
+	payload := frontendCrashPayload{
+		SchemaVersion: 2,
+		Kind:          "crash",
+		Source:        "frontend",
+		Message:       "forged identity attempt",
+		Version:       "0.0.0-forged",
+		EventID:       "0123456789abcdef0123456789abcdef",
+		DedupKey:      "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+		AnalysisOf:    "0ea009a2cd3b0ef6a0097464a9e2958c",
+	}
+	detail, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := crashReportFromDetail("crash", string(detail))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Version != version {
+		t.Errorf("unmarked payload version = %q, want the current run version %q (injected identity ignored)", r.Version, version)
+	}
+	if r.EventID != "" || r.DedupKey != "" || r.AnalysisReplay {
+		t.Errorf("unmarked payload carried identity eventId=%q dedupKey=%q replay=%v, want all empty/false", r.EventID, r.DedupKey, r.AnalysisReplay)
+	}
+	if err := ensureCrashIdentity(&r); err != nil {
+		t.Fatal(err)
+	}
+	if r.EventID == "" || r.DedupKey == "" {
+		t.Fatal("ensureCrashIdentity must generate fresh identity for unmarked reports")
+	}
+}
+
+// Issue #45 (task 878) P2: schemaVersion joins the dedup basis — the same
+// label family recorded under different report schemas no longer shares one
+// dedup key, while identical same-schema reports still dedup together.
+func TestEnsureCrashIdentityDedupBasisSeparatesSchemaVersions(t *testing.T) {
+	build := func(schema int) crashReport {
+		r := baseCrashReport("crash")
+		r.SchemaVersion = schema
+		r.Source = "native.lifecycle"
+		r.Label = "desktop.abnormal_exit"
+		r.ErrorType = "AbnormalExit"
+		r.ErrorMessage = "the previous desktop run ended abnormally"
+		r.TopFrame = "main.go:12"
+		return r
+	}
+	schema2, schema3 := build(2), build(3)
+	if err := ensureCrashIdentity(&schema2); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureCrashIdentity(&schema3); err != nil {
+		t.Fatal(err)
+	}
+	if schema2.DedupKey == schema3.DedupKey {
+		t.Fatalf("schema-2 and schema-3 reports share one dedup key %q", schema2.DedupKey)
+	}
+	sameA, sameB := build(3), build(3)
+	if err := ensureCrashIdentity(&sameA); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureCrashIdentity(&sameB); err != nil {
+		t.Fatal(err)
+	}
+	if sameA.DedupKey != sameB.DedupKey {
+		t.Fatalf("identical schema-3 reports dedup apart: %q vs %q", sameA.DedupKey, sameB.DedupKey)
+	}
+}
+
+// Issue #45 (task 878): the replay must never re-enter the crash statistics —
+// postCrashReport refuses a replay-marked report before any network write,
+// covering every upload path (ReportCrash, ReportMockCrash, flushPendingCrash).
+func TestPostCrashReportRefusesReplayPayload(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+	r := baseCrashReport("crash")
+	r.AnalysisReplay = true
+	r.AnalysisOf = "0ea009a2cd3b0ef6a0097464a9e2958c"
+	if err := postCrashReport(context.Background(), srv.Client(), srv.URL, r); err == nil {
+		t.Fatal("replay-marked payload must be refused")
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("refused replay reached the endpoint, hits = %d", hits.Load())
 	}
 }
 
