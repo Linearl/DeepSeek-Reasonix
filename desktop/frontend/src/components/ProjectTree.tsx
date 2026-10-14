@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Archive, ArchiveX, ArrowDown, CheckCheck, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
@@ -29,6 +29,7 @@ import { GLOBAL_PROJECT_ORDER_KEY, ProjectTreeFolderActivity, ProjectTreeGroupRo
 import { ProjectTreeSessionArchiveMenu } from "./ProjectTreeSessionArchiveMenu";
 import {
   addProjectGroup,
+  clearProjectGroupRoster,
   deleteProjectGroup,
   dropProjectGroupCollapsed,
   groupForProject,
@@ -36,13 +37,25 @@ import {
   loadProjectGroupCollapsed,
   loadProjectGroups,
   moveProjectToGroup,
+  nextProjectGroupID,
+  pruneProjectGroupAssign,
   renameProjectGroup,
   reorderProjectGroups,
   persistProjectGroupCollapsed,
   type ProjectGroup,
 } from "../lib/projectGroups";
+import {
+  createProjectGroupViaCatalog,
+  defaultProjectGroupCatalogBindings,
+  executeProjectGroupDelete,
+  proposeProjectGroupDelete,
+  pullProjectGroupCatalog,
+  renameProjectGroupViaCatalog,
+  type ProjectGroupCatalogBindings,
+} from "../lib/projectGroupCatalog";
 import { MoveToGroupPanel } from "./MoveToGroupPanel";
 import { NewGroupPanel } from "./NewGroupPanel";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { loadReadActivityStore, markReadKeysRead, persistReadActivity, readActivityEquals, readActivityKeysInScope, readActivityKeysInSubtree, READ_ACTIVITY_CHANGED_EVENT } from "../lib/readActivity";
 import { ProjectTreeHeaderAddControl, ProjectTreeRemoteAction, projectTreeHeaderAddItems } from "./ProjectTreeAddControls";
 import { activeRemoteProjectAncestorKeys, buildRemoteProjectMenuItems, useRemoteRuntimeTree, openRemoteSessionNode, remoteProjectKey, remoteServeBadgeState, renameRemoteProjectTitle, RemoteProjectEmptyState, useRemoteProjectGroups, useRemoteSessionActions } from "./ProjectTreeRemoteGroups";
@@ -513,6 +526,10 @@ export function ProjectTree({
     void refresh();
   }, [refresh, refreshSignal]);
 
+  // Task 892-B ⑤: the project-group catalog pull is declared further down with
+  // the rest of the project-group state; the listener only needs the ref (it
+  // fires after mount, when the ref already holds the latest callback).
+  const refreshProjectGroupsRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => onProjectTreeChangedV2((event) => {
     // A stale or missed revision means the tree may have drifted from the
     // catalog; refetch the full snapshot instead of dropping the event.
@@ -521,7 +538,13 @@ export function ProjectTree({
       return;
     }
     latestRevisionRef.current = Math.max(latestRevisionRef.current, event.revision);
-    if (event.reason === "metadata") setOrganizationRevision((current) => Math.max(current, event.revision));
+    if (event.reason === "metadata") {
+      setOrganizationRevision((current) => Math.max(current, event.revision));
+      // A-slice writes (rename/move/create, incl. project groups) each emit
+      // reason=metadata — re-pull the project-group roster so every open
+      // window converges on the same catalog (handoff §2.4).
+      void refreshProjectGroupsRef.current();
+    }
     const catalogStatusGeneration = catalogStatusGenerationRef.current;
     void app.GetSessionCatalogStatus().then((status) => { if (!catalogRebuildFailedRef.current && catalogStatusGeneration === catalogStatusGenerationRef.current) setCatalogStatus(status); }).catch(() => {});
     if (treeRef.current.length === 0) { void refresh(); return; } // race: event before shell
@@ -705,6 +728,38 @@ export function ProjectTree({
   const [collapsedProjectGroups, setCollapsedProjectGroups] = useState<ReadonlySet<string>>(loadProjectGroupCollapsed);
   // Which project the "move to group" panel is acting on.
   const [groupTarget, setGroupTarget] = useState<ProjectNode | null>(null);
+  // Task 892-B ⑤: roster source. false = localStorage only (pre-892 backend /
+  // dev mock); true = the backend catalog (desktop-projects.json projectGroups)
+  // is the source of truth and localStorage is only the fallback shadow.
+  // Assignments (project→group) stay local — 892-A exposes no setter for
+  // desktopProject.ProjectGroup (handoff §一.1 残留).
+  const [projectGroupsFromCatalog, setProjectGroupsFromCatalog] = useState(false);
+  const projectGroupCatalogRef = useRef<ProjectGroupCatalogBindings>(defaultProjectGroupCatalogBindings());
+  const projectGroupPullSeqRef = useRef(0);
+  const refreshProjectGroups = useCallback(async () => {
+    const seq = ++projectGroupPullSeqRef.current;
+    const pull = await pullProjectGroupCatalog(projectGroupCatalogRef.current, loadProjectGroups());
+    // null = no binding/read failure (stay local); stale seq = a newer pull wins.
+    if (!pull || seq !== projectGroupPullSeqRef.current) return;
+    setProjectGroupsFromCatalog(true);
+    if (pull.imported) clearProjectGroupRoster();
+    setGroups((current) => {
+      const same = current.length === pull.roster.length && current.every((group, index) => {
+        const next = pull.roster[index];
+        return next && group.id === next.id && group.title === next.title && group.parent === next.parent && group.sortOrder === next.sortOrder;
+      });
+      return same ? current : pull.roster;
+    });
+    // A group that left the roster (deleted, or cascade-deleted as a child)
+    // takes its project assignments with it — projects fall back to ungrouped.
+    setAssign((current) => pruneProjectGroupAssign(current, new Set(pull.roster.map((group) => group.id))));
+  }, []);
+
+  // Catalog adoption on mount (one-time import lives inside the pull).
+  useEffect(() => { void refreshProjectGroups(); }, [refreshProjectGroups]);
+  // Publish to the v2 metadata listener declared above (same render pass, so
+  // a plain ref assignment is enough — every render refreshes the pointer).
+  refreshProjectGroupsRef.current = refreshProjectGroups;
 
   const toggleProjectGroup = useCallback((id: string) => {
     setCollapsedProjectGroups((current) => {
@@ -735,19 +790,50 @@ export function ProjectTree({
     (title: string) => {
       const trimmed = title.trim();
       if (!trimmed) return;
-      const res = addProjectGroup(trimmed, groups);
-      setGroups(res.groups);
       setNewGroupOpen(false);
       const root = activeWorkspaceRoot;
+      if (projectGroupsFromCatalog) {
+        // Task 892-B ⑤: catalog mode — the write goes through the A-slice
+        // host (op-log + reason=metadata v2 event re-pulls every window); the
+        // assignment below still lands in localStorage (no backend setter).
+        const groupID = nextProjectGroupID();
+        void (async () => {
+          await createProjectGroupViaCatalog(projectGroupCatalogRef.current, groupID, trimmed, null);
+          await refreshProjectGroups();
+        })();
+        if (root) setAssign((current) => moveProjectToGroup(current, root, groupID));
+        return;
+      }
+      const res = addProjectGroup(trimmed, groups);
+      setGroups(res.groups);
       if (root) setAssign((current) => moveProjectToGroup(current, root, res.group.id));
     },
-    [groups, activeWorkspaceRoot],
+    [groups, activeWorkspaceRoot, projectGroupsFromCatalog, refreshProjectGroups],
   );
 
   // Task 827 ①: per-group-row context menu state. The menu itself renders
   // inside the row (same pattern as the topic rows), so only one group menu can
   // be open at a time and closing is a single setState.
   const [groupMenuId, setGroupMenuId] = useState<string | null>(null);
+  // Task 892-B ⑤: 「新建子分组」inline composer (827-form twin of the
+  // session-group composer) — the group id whose child-create input is open.
+  const [creatingProjectSubUnder, setCreatingProjectSubUnder] = useState<string | null>(null);
+  const [projectSubDraft, setProjectSubDraft] = useState("");
+  const commitProjectSubGroup = useCallback((parentID: string) => {
+    const trimmed = projectSubDraft.trim();
+    setCreatingProjectSubUnder(null);
+    if (!trimmed) return;
+    if (projectGroupsFromCatalog) {
+      void (async () => {
+        await createProjectGroupViaCatalog(projectGroupCatalogRef.current, nextProjectGroupID(), trimmed, parentID);
+        await refreshProjectGroups();
+      })();
+      return;
+    }
+    // Local fallback keeps the same storage spelling the catalog imports
+    // (parent field), so a later migration carries the nesting over.
+    setGroups((current) => addProjectGroup(trimmed, current, parentID).groups);
+  }, [projectSubDraft, projectGroupsFromCatalog, refreshProjectGroups]);
   const [groupMenuPoint, setGroupMenuPoint] = useState<ContextMenuPoint | null>(null);
   // Task 827 ①: inline rename — the row swaps its title for an input, Enter
   // commits, Escape cancels (same UX as the session-group rename in
@@ -780,9 +866,18 @@ export function ProjectTree({
   }, [clearGroupDrag, dragGroupId]);
 
   const commitGroupRename = useCallback((id: string) => {
-    setGroups((current) => renameProjectGroup(current, id, groupRenameDraft));
     setRenamingGroupId(null);
-  }, [groupRenameDraft]);
+    if (projectGroupsFromCatalog) {
+      const title = groupRenameDraft.trim();
+      if (!title) return; // blank draft keeps the old title (same as local)
+      void (async () => {
+        await renameProjectGroupViaCatalog(projectGroupCatalogRef.current, id, title);
+        await refreshProjectGroups();
+      })();
+      return;
+    }
+    setGroups((current) => renameProjectGroup(current, id, groupRenameDraft));
+  }, [groupRenameDraft, projectGroupsFromCatalog, refreshProjectGroups]);
 
   // Task 827 ①: dissolve = remove the group shell only. deleteProjectGroup
   // clears the group's project assignments (persisting both sides), so its
@@ -790,8 +885,51 @@ export function ProjectTree({
   // never touched. The confirm dialog guards against a mis-click; the group's
   // persisted collapsed marker is dropped alongside so the set never
   // accumulates stale ids.
+  // Task 892-B ⑤: useConfirmDialog powers the proposal-first delete — its
+  // message is a ReactNode, so the cascade checkbox rides inside the dialog
+  // (same pattern as the session-group flow in ProjectTreeOrganization).
+  const projectGroupDeleteDialog = useConfirmDialog();
   const dissolveProjectGroup = useCallback((group: ProjectGroup) => {
     void (async () => {
+      setGroupMenuId(null);
+      if (projectGroupsFromCatalog) {
+        // A-slice 提案制: confirm=false returns the zero-write plan; the
+        // dialog offers children-promoted (default) vs cascade (whole
+        // subtree). Projects are never deleted — pointing ones ungroup.
+        const plan = await proposeProjectGroupDelete(projectGroupCatalogRef.current, group.id);
+        if (plan === null) { await refreshProjectGroups(); return; }
+        const promoted = plan.promoted ?? [];
+        const cascadeRef = { current: false };
+        const titles = promoted.map((id) => groups.find((candidate) => candidate.id === id)?.title ?? id);
+        const confirmed = await projectGroupDeleteDialog.confirm({
+          title: t("projectGroup.delete"),
+          message: <>
+            <p>{t("projectGroup.deletePlanIntro", { title: group.title })}</p>
+            {Array.isArray(plan.unfiledTopics) && plan.unfiledTopics.length > 0 && <p>{t("projectGroup.deletePlanUnfiled", { count: String(plan.unfiledTopics.length) })}</p>}
+            {promoted.length > 0 && <>
+              <p>{t("projectGroup.deletePlanPromote", { count: String(promoted.length), titles: titles.join(", ") })}</p>
+              <label className="reasonix-confirm-dialog__cascade">
+                <input
+                  type="checkbox"
+                  aria-label={t("projectGroup.deletePlanCascade", { count: String(promoted.length) })}
+                  onChange={(event) => { cascadeRef.current = event.target.checked; }}
+                />
+                {t("projectGroup.deletePlanCascade", { count: String(promoted.length) })}
+              </label>
+            </>}
+          </>,
+          confirmLabel: t("projectGroup.delete"),
+          cancelLabel: t("common.cancel"),
+          tone: "danger",
+        });
+        if (!confirmed) return;
+        await executeProjectGroupDelete(projectGroupCatalogRef.current, group.id, cascadeRef.current);
+        setCollapsedProjectGroups((current) => dropProjectGroupCollapsed(current, group.id));
+        // The re-pull adopts the backend roster and prunes assignments of
+        // every id that left it (children included under cascade).
+        await refreshProjectGroups();
+        return;
+      }
       const confirmed = await app.ConfirmAction({
         title: t("projectGroup.delete"),
         message: t("projectGroup.deleteConfirm", { title: group.title }),
@@ -805,9 +943,8 @@ export function ProjectTree({
       setGroups(res.groups);
       setAssign(res.assign);
       setCollapsedProjectGroups((current) => dropProjectGroupCollapsed(current, group.id));
-      setGroupMenuId(null);
     })();
-  }, [groups, assign, t]);
+  }, [groups, assign, t, projectGroupsFromCatalog, projectGroupDeleteDialog, refreshProjectGroups]);
 
   const collapseToggleLabel = t(canRestoreCollapsedView ? "projectTree.restoreCollapsedTooltip" : "projectTree.collapseAllTooltip");
   const workbenchCollapseToggleLabel = t(canRestoreCollapsedView ? "projectTree.restoreCollapsedWorkbench" : "projectTree.collapseAllWorkbench");
@@ -2572,13 +2709,17 @@ export function ProjectTree({
   // The row paddingLeft is the shared tree grid: 8 + depth * 16 with depth 0,
   // so the group title starts at the same column as a project row title
   // (indent + icon column + gap).
-  const renderProjectSection = (depth: number) => (
-    <div className="project-tree__section project-tree__section--projects">
-      {groups.map((group) => {
+  const renderProjectSection = (depth: number) => {
+    // Task 892-B ⑤: arbitrary nesting — top level = no parent, or a parent
+    // that left the roster (dangling pointer renders at top level, promote-at-
+    // render, same contract as the session tree). Each child renders inside
+    // its parent block at level + 1, any depth.
+    const renderGroupRow = (group: ProjectGroup, level: number): ReactNode => {
         const members = pinnedTreeSections.projects.filter((node) => groupForProjectRoot(node.root)?.id === group.id);
         const collapsed = collapsedProjectGroups.has(group.id);
         const groupDropPosition = dropGroup?.id === group.id && dragGroupId !== group.id ? dropGroup?.position ?? null : null;
         const groupMenuOpen = groupMenuId === group.id;
+        const kidGroups = groups.filter((candidate) => candidate.parent === group.id);
         return (
           <div key={group.id} className="project-tree__group">
             <div
@@ -2587,7 +2728,7 @@ export function ProjectTree({
               tabIndex={0}
               aria-expanded={!collapsed}
               title={group.title}
-              style={{ paddingLeft: 8 + depth * 16 }}
+              style={{ paddingLeft: 8 + depth * 16 + level * 16 }}
               onClick={() => {
                 if (renamingGroupId === group.id) return;
                 toggleProjectGroup(group.id);
@@ -2676,6 +2817,29 @@ export function ProjectTree({
                 <span className="project-tree__group-count">{members.length}</span>
               </>}
             </div>
+            {/* Task 892-B ⑤: inline 子分组 composer — one level past this
+                group's header, so the to-be-created child appears exactly
+                where it will render. */}
+            {creatingProjectSubUnder === group.id && <div
+              className="project-tree__group-subgroup-create"
+              style={{ paddingLeft: 8 + depth * 16 + (level + 1) * 16 }}
+            >
+              <input
+                autoFocus
+                className="project-tree__group-input"
+                value={projectSubDraft}
+                placeholder={t("projectTree.createSubGroupPlaceholder")}
+                aria-label={t("projectTree.createSubGroup")}
+                onChange={(event) => setProjectSubDraft(event.target.value)}
+                onFocus={(event) => event.target.select()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") commitProjectSubGroup(group.id);
+                  if (event.key === "Escape") setCreatingProjectSubUnder(null);
+                }}
+                onBlur={() => commitProjectSubGroup(group.id)}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </div>}
             {groupMenuOpen && <ContextMenu
               open
               point={groupMenuPoint}
@@ -2688,6 +2852,21 @@ export function ProjectTree({
                     setGroupRenameDraft(group.title);
                     setRenamingGroupId(group.id);
                     setGroupMenuId(null);
+                  },
+                },
+                // Task 892-B ⑤: 新建子分组 (827 form on the project tree) —
+                // opens the inline composer below this group's header; Enter
+                // files it as this group's child (parent pass-through), Escape
+                // /blank blur cancels. Works at every nesting level.
+                {
+                  key: "create-subgroup",
+                  icon: <FolderPlus size={13} />,
+                  label: t("projectTree.createSubGroup"),
+                  onSelect: () => {
+                    setProjectSubDraft("");
+                    setCreatingProjectSubUnder(group.id);
+                    setGroupMenuId(null);
+                    if (collapsed) toggleProjectGroup(group.id);
                   },
                 },
                 {
@@ -2703,14 +2882,20 @@ export function ProjectTree({
               onClose={() => setGroupMenuId(null)}
             />}
             {!collapsed && members.map((node) => renderNode(node, depth, "projects"))}
+            {!collapsed && kidGroups.map((kid) => renderGroupRow(kid, level + 1))}
           </div>
         );
-      })}
-      {pinnedTreeSections.projects
-        .filter((node) => !groupForProjectRoot(node.root))
-        .map((node) => renderNode(node, depth, "projects"))}
-    </div>
-  );
+    };
+    const topGroups = groups.filter((group) => !group.parent || !groups.some((candidate) => candidate.id === group.parent));
+    return (
+      <div className="project-tree__section project-tree__section--projects">
+        {topGroups.map((group) => renderGroupRow(group, 0))}
+        {pinnedTreeSections.projects
+          .filter((node) => !groupForProjectRoot(node.root))
+          .map((node) => renderNode(node, depth, "projects"))}
+      </div>
+    );
+  };
 
   const renderEmptyState = () => {
     if (query.trim()) return <div className="project-tree__empty">{t("projectTree.emptyNoMatch")}</div>;
@@ -2879,6 +3064,9 @@ export function ProjectTree({
       )}
       {blankProjectFlow}
       {remoteConnectFlow}
+      {/* Task 892-B ⑤: project-group delete proposal dialog (portal targets
+          body; the element just has to mount in the component owning the hook). */}
+      {projectGroupDeleteDialog.dialog}
       <NewGroupPanel open={newGroupOpen} onClose={() => setNewGroupOpen(false)} onConfirm={handleAddGroup} />
       <MoveToGroupPanel
         open={groupTarget !== null}

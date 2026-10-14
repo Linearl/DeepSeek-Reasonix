@@ -161,9 +161,10 @@ ok(cssSource.includes(".project-tree__group-fold--open") && cssSource.includes("
 ok(readFileSync(resolve(dir, "../components/ProjectTreeOrganization.tsx"), "utf8").includes('<span className="project-tree__group-chevron" aria-hidden="true">{collapsed ? "▸" : "▾"}</span>'),
   "session-group headers keep the bare chevron as the column's whole content");
 
-// 文字起点网格：分组行缩进 = 项目行同款公式（depth 0）；会话行回到 depth 缩进
-ok(treeSource.includes("style={{ paddingLeft: 8 + depth * 16 }}\n              onClick"),
-  "the group row rides the project row's own indent formula (8 + depth * 16, depth 0)");
+// 文字起点网格：分组行缩进 = 项目行同款公式（depth 0）+ 892-B 每层嵌套 +16；
+// 会话行回到 depth 缩进
+ok(treeSource.includes("style={{ paddingLeft: 8 + depth * 16 + level * 16 }}\n              onClick"),
+  "the group row rides the project row's indent formula plus one 16px step per nesting level (892-B)");
 ok(!/:root\[data-theme-style\] \.project-tree__topic-main\s*\{[^}]*padding-left:[^}]*!important/.test(cssSource),
   "the theme-style skin no longer flattens session rows (padding-left !important removed — depth indent restored)");
 
