@@ -396,14 +396,26 @@ type PendingCrashSnapshotReport struct {
 	Reports []string `json:"reports,omitempty"`
 }
 
-// pendingReportToAnalysisPayload maps a queued crashReport into the schema-2
-// frontend payload JSON that StartCrashAnalysis parses structurally. Queued
-// reports may carry any schema ≤ currentCrashSchema (writePendingCrash writes
-// 2, the startup/webview diagnostic writers write 3); the fields that matter
-// for analysis are the same either way.
+// pendingReportToAnalysisPayload maps a queued crashReport into the analysis
+// payload JSON that StartCrashAnalysis parses structurally. Queued reports may
+// carry any schema ≤ currentCrashSchema (writePendingCrash writes 2, the
+// startup/webview diagnostic writers write 3); the source schema is preserved
+// when in range and normalized to 2 otherwise.
+//
+// Issue #45 (task 878): the payload keeps the ORIGINAL report's identity —
+// version/eventId/dedupKey plus the source schemaVersion — and is marked
+// analysisReplay. The analysis therefore reads the true source ("a schema-3
+// report written by version X on date Y") instead of a payload re-stamped with
+// the current run's version, a regenerated eventId, and a schema downgraded to
+// 2; and the marker lets postCrashReport refuse any path that would upload the
+// replay back into the crash statistics.
 func pendingReportToAnalysisPayload(r crashReport) (string, error) {
+	schema := r.SchemaVersion
+	if schema < 2 || schema > currentCrashSchema {
+		schema = 2
+	}
 	payload := frontendCrashPayload{
-		SchemaVersion:   2,
+		SchemaVersion:   schema,
 		Kind:            r.Kind,
 		Source:          r.Source,
 		Label:           r.Label,
@@ -421,6 +433,11 @@ func pendingReportToAnalysisPayload(r crashReport) (string, error) {
 		View:            r.View,
 		Breadcrumbs:     r.Breadcrumbs,
 		OccurredAt:      r.OccurredAt,
+		Version:         r.Version,
+		EventID:         r.EventID,
+		DedupKey:        r.DedupKey,
+		AnalysisReplay:  true,
+		AnalysisOf:      r.EventID,
 	}
 	if _, ok := normalizeReportKind(payload.Kind); !ok {
 		payload.Kind = "crash"

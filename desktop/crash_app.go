@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"reasonix/internal/config"
@@ -129,6 +130,15 @@ type crashReport struct {
 	// WebView2 is retained only so pending reports written by preview builds can
 	// still be decoded and forwarded after upgrade. New reports use WebRuntime.
 	WebView2 *webView2Diagnostic `json:"webview2,omitempty"`
+	// Issue #45 (task 878): replay provenance. A crash-analysis payload is a
+	// REPLAY of an already-recorded pending report — it carries the original
+	// event's identity (version/eventId/dedupKey, issue #45's three-layer
+	// forgery) so the analysis reads the true source, and the marker keeps the
+	// replay distinguishable from a fresh crash: postCrashReport refuses to
+	// upload replay-marked reports, so a replay can never re-enter the crash
+	// statistics under — or next to — the original event's identity.
+	AnalysisReplay bool   `json:"analysisReplay,omitempty"`
+	AnalysisOf     string `json:"analysisOf,omitempty"`
 }
 
 type frontendCrashPayload struct {
@@ -150,6 +160,18 @@ type frontendCrashPayload struct {
 	View            string            `json:"view"`
 	Breadcrumbs     []crashBreadcrumb `json:"breadcrumbs"`
 	OccurredAt      string            `json:"occurredAt"`
+	// Issue #45 (task 878): replay identity. Zero on every real frontend
+	// report; pendingReportToAnalysisPayload sets them so a replayed pending
+	// report keeps the ORIGINAL event's identity instead of being re-stamped
+	// with the current run's. crashReportFromDetail copies them only under the
+	// explicit analysisReplay marker — the live frontend report path can never
+	// inject an eventId/dedupKey/version — and postCrashReport refuses to
+	// upload replay-marked reports.
+	Version        string `json:"version,omitempty"`
+	EventID        string `json:"eventId,omitempty"`
+	DedupKey       string `json:"dedupKey,omitempty"`
+	AnalysisReplay bool   `json:"analysisReplay,omitempty"`
+	AnalysisOf     string `json:"analysisOf,omitempty"`
 }
 
 func normalizeReportKind(kind string) (string, bool) {
@@ -212,9 +234,17 @@ func ensureCrashIdentity(report *crashReport) error {
 		report.EventID = hex.EncodeToString(value)
 	}
 	if report.DedupKey == "" {
+		// Issue #45 (task 878): schemaVersion joins the fingerprint basis — the
+		// same label family recorded under different report schemas (e.g. an
+		// old-schema event replayed next to a current-schema report) must not
+		// share one dedup key. The raw message deliberately stays out: panic
+		// stacks embed hex addresses that digit normalization never collapses
+		// ("0xc000..." has no \b\d+\b boundary run), so message-keyed dedup
+		// would split every recurring Go panic into unique events.
 		basis := strings.Join([]string{
 			report.Kind,
 			report.Version,
+			strconv.Itoa(report.SchemaVersion),
 			report.Source,
 			report.Label,
 			report.ErrorType,
@@ -296,7 +326,14 @@ func crashReportFromDetail(kind, detail string) (crashReport, error) {
 	r := baseCrashReport(kind)
 
 	var payload frontendCrashPayload
-	if json.Unmarshal([]byte(detail), &payload) == nil && payload.SchemaVersion == 2 {
+	// Issue #45 (task 878): the analysis replay of a current-schema pending
+	// report carries the source's own schemaVersion (3 today), so the
+	// structural branch accepts any schema the flush would ship (2..
+	// currentCrashSchema) instead of hardcoding 2 — a schema-3 replay used to
+	// fall into the legacy-text branch and lose its structure. Real frontend
+	// reports send 2 and are unaffected; out-of-range shapes keep the legacy
+	// path.
+	if json.Unmarshal([]byte(detail), &payload) == nil && payload.SchemaVersion >= 2 && payload.SchemaVersion <= currentCrashSchema {
 		if payloadKind, ok := normalizeReportKind(payload.Kind); ok {
 			r.Kind = payloadKind
 		}
@@ -317,6 +354,23 @@ func crashReportFromDetail(kind, detail string) (crashReport, error) {
 		r.Breadcrumbs = sanitizeBreadcrumbs(payload.Breadcrumbs)
 		r.OccurredAt = sanitizeCrashField(payload.OccurredAt, 64)
 		r.Message = sanitizeCrashText(payload.Message, maxCrashDetailBytes)
+		// Issue #45 (task 878): replay identity is copied only under the
+		// explicit analysisReplay marker. sanitizeCrashField (not Text) keeps
+		// the 32-hex event ids intact — sanitizeCrashText would redact them as
+		// longHex matches and destroy the identity being preserved.
+		if payload.AnalysisReplay {
+			r.AnalysisReplay = true
+			r.AnalysisOf = sanitizeCrashField(payload.AnalysisOf, 64)
+			if v := sanitizeCrashField(payload.Version, 64); v != "" {
+				r.Version = v
+			}
+			if v := sanitizeCrashField(payload.EventID, 64); v != "" {
+				r.EventID = v
+			}
+			if v := sanitizeCrashField(payload.DedupKey, 128); v != "" {
+				r.DedupKey = v
+			}
+		}
 		if r.TopFrame == "" {
 			r.TopFrame = topFrameFromStack(r.Stack)
 		}
@@ -354,6 +408,14 @@ func (a *App) ReportCrash(kind, detail string) error {
 }
 
 func postCrashReport(ctx context.Context, c *http.Client, endpoint string, r crashReport) error {
+	// Issue #45 (task 878): a replay-marked payload carries an ORIGINAL event's
+	// identity; uploading it through any live path would re-count an old event
+	// as a fresh crash (and pollute the dedup statistics). The replay surface
+	// is the analysis session only, so this single chokepoint guards every
+	// upload path: ReportCrash, ReportMockCrash, and flushPendingCrash.
+	if r.AnalysisReplay {
+		return fmt.Errorf("crash-analysis replay payload (analysisOf %s) must not be uploaded through the live report path", r.AnalysisOf)
+	}
 	// Pending crash files deliberately omit the anonymous installation id. Add
 	// it only at send time, under the same desktop.telemetry opt-in as pings.
 	if cfg, err := config.Load(); err == nil && cfg.DesktopTelemetry() {
