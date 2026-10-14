@@ -172,8 +172,8 @@ ok(treeSource.includes('className="project-tree__folder-main"\n            style
   "guard: project folder rows keep their indentation formula");
 ok(/style=\{\{ paddingLeft: 14 \+ depth \* 16 \}\}/.test(treeSource),
   "guard: topic rows keep 14 + depth * 16");
-ok(readFileSync(resolve(dir, "../components/ProjectTreeOrganization.tsx"), "utf8").includes("style={{ paddingLeft: 8 + (depth - 1) * 16 + (nested ? 16 : 0) }}"),
-  "guard: session-group headers keep the task-313 formula");
+ok(readFileSync(resolve(dir, "../components/ProjectTreeOrganization.tsx"), "utf8").includes("style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16 }}"),
+  "guard: session-group headers keep the task-313 formula (892: one 16px step per level)");
 
 // 文字起点推演（classic + data-theme-style，W=16，gap=7）：
 //   项目分组行  8+0*16+16+7 = 31

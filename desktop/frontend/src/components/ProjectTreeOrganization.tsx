@@ -527,10 +527,13 @@ export function ProjectTreeGroupRows({
     organization.renameGroup(key, id, groupDraft);
     setEditingGroup(null);
   };
-  // Task 350: groups render as a two-level tree (top-level group → child
-  // group). `roots` hides orphaned pointers (parent dissolved elsewhere), so a
-  // stale pointer can never swallow a group off the sidebar.
-  const renderGroupRow = (group: SessionGroup, nested: boolean) => {
+  // Task 350: groups render as a tree of arbitrary depth (task-892 removed the
+  // depth-2 cap; the backend accepts any chain ≤ 64). `level` is the nesting
+  // level within this folder (0 = top level). `roots` hides orphaned pointers
+  // (parent dissolved elsewhere), so a stale pointer can never swallow a group
+  // off the sidebar.
+  const renderGroupRow = (group: SessionGroup, level: number) => {
+      const nested = level > 0;
       const collapsed = organization.groupCollapsed(key, group.id);
       // The count badge reads the persisted roster (already filtered against
       // the session catalog by the backend), not the windowed render list —
@@ -538,18 +541,23 @@ export function ProjectTreeGroupRows({
       // signal and must not shrink with classic preview / pagination (#9518).
       const memberCount = group.topicIds?.length ?? 0;
       const ownMembers = children.filter((child) => group.topicIds?.includes(child.topicId ?? ""));
-      // Task 350 activity inheritance: a parent header's dot stands for its own
-      // members plus every child group's members (a collapsed tree still shows
-      // where things run). A child aggregates only itself. Flat groups are
-      // unchanged — the inherited set equals the own set.
-      const dotMemberIDs = new Set(nested ? (group.topicIds ?? []) : inheritedMemberIDs(groups, group.id));
+      // Task 350 activity inheritance, task-892 generalized: every header's
+      // dot stands for its own members plus its ENTIRE descendant subtree (any
+      // depth), so a collapsed tree still shows where things run. Flat and
+      // leaf groups are unchanged — the inherited set equals the own set.
+      const dotMemberIDs = new Set(inheritedMemberIDs(groups, group.id));
       const dotMembers = children.filter((child) => dotMemberIDs.has(child.topicId ?? ""));
       const members = dotMembers;
-      const kids = nested ? [] : childGroups(groups, group.id);
+      // Task-892: children render at every level (the depth-2 gate is gone).
+      const kids = childGroups(groups, group.id);
       const canDrop = organization.canDropTopicInto(key);
       // Menu economy: at most four inline nest targets — beyond that the roster
       // is big enough that the context menu should not grow linearly with it.
-      const nestInto = nested ? [] : nestTargets(groups, group.id).slice(0, 4);
+      // The group's own parent is excluded (re-nesting where it already sits is
+      // a no-op); every other legal target is offered at any depth.
+      const nestInto = nestTargets(groups, group.id)
+        .filter((target) => target.id !== (group.parent ?? ""))
+        .slice(0, 4);
       return <div key={group.id} className={`project-tree__group${collapsed ? " project-tree__group--collapsed" : ""}${nested ? " project-tree__group--nested" : ""}`}>
         <div
           role="button"
@@ -561,8 +569,9 @@ export function ProjectTreeGroupRows({
           // 8 + (depth - 1) * 16 — puts the collapse chevron exactly on the
           // folder icon column. Member rows keep the depth they are rendered
           // with, so the project tree and expanded children do not move.
-          // Task 350: a nested group rides one extra step.
-          style={{ paddingLeft: 8 + (depth - 1) * 16 + (nested ? 16 : 0) }}
+          // Task 892: a nested group rides one extra 16px step PER LEVEL
+          // (arbitrary depth replaced task-350's single `nested` step).
+          style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16 }}
           title={group.title}
           onClick={() => {
             // A press that became a drag already did its work on release; the click it
@@ -664,9 +673,10 @@ export function ProjectTreeGroupRows({
               label: t("projectTree.markAllRead"),
               onSelect: () => { onMarkAllRead(members); setMenuGroup(null); },
             }] : []),
-            // Task 350: display-only hierarchy moves — nest under a top-level
-            // group (≤4 inline targets), or back to the top level. No authority
-            // follows the pointer (层级≠指挥权).
+            // Task 350 → 892: display-only hierarchy moves — nest under any
+            // legal group at any depth (≤4 inline targets, cycle- and
+            // depth-guarded by canNestUnder), or back to the top level. No
+            // authority follows the pointer (层级≠指挥权).
             ...nestInto.map((target) => ({
               key: `nest:${target.id}`,
               icon: <FolderMinus size={13} />,
@@ -719,13 +729,13 @@ export function ProjectTreeGroupRows({
           {ownMembers.map((child) => renderNode(child, depth, section, visible))}
         </div>}
         {!collapsed && kids.length > 0 && <div className="project-tree__group-subtree">
-          {kids.map((kid) => renderGroupRow(kid, true))}
+          {kids.map((kid) => renderGroupRow(kid, level + 1))}
         </div>}
       </div>;
   };
   return <>
     {children.filter((child) => !groupedIDs.has(child.topicId ?? "")).map((child) => renderNode(child, depth, section, visible))}
-    {roots.map((group) => renderGroupRow(group, false))}
+    {roots.map((group) => renderGroupRow(group, 0))}
   </>;
 }
 
