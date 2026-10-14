@@ -75,7 +75,9 @@ func TestReadBackEditSatisfiesNextRoundEvidenceGate(t *testing.T) {
 	}
 }
 
-func TestEditWithoutReadBackStillRequiresAReRead(t *testing.T) {
+// Task 875: with the family lit the read-back is the DEFAULT — an edit call
+// that omits readBack still reads back, so the follow-up edit passes the gate.
+func TestEditDefaultReadBackSatisfiesNextRoundEvidenceGate(t *testing.T) {
 	path := readBackRunFixture(t, "alpha\nbeta\ngamma\n")
 	second, _ := json.Marshal(map[string]any{"path": path, "old_string": "REPLACED", "new_string": "FINAL"})
 	p := &scriptedProvider{turns: [][]provider.Chunk{
@@ -84,18 +86,40 @@ func TestEditWithoutReadBackStillRequiresAReRead(t *testing.T) {
 		{toolCallChunk("edit2", "edit_file", string(second)), {Type: provider.ChunkDone}},
 		textTurn("Done."),
 	}}
-	// The family switch is lit, but the call does not ask for readBack — the
-	// ordinary write-gate behavior must be untouched.
+	writer := readBackEditTool(t, filepath.Dir(path))
+	a := newIncompleteReadTestAgent(p, incompleteReadBuiltin(t), NewSession("sys"), event.Discard, writer)
+	if err := a.Run(withNoClosedLoop(context.Background()), "Edit the file twice."); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); !strings.HasPrefix(string(got), "alpha\nFINAL\ngamma") {
+		t.Fatalf("default read-back did not carry the gate over: %q (edit2 result: %q)", got, toolResultByID(a.Session(), "edit2"))
+	}
+	if back := toolResultByID(a.Session(), "edit1"); !strings.Contains(back, "read_back "+path) {
+		t.Fatalf("omitted readBack must read back by default (family lit): %q", back)
+	}
+}
+
+// Task 875: readBack:false is the explicit opt-out — the ordinary write-gate
+// behavior must be untouched.
+func TestEditReadBackFalseStillRequiresAReRead(t *testing.T) {
+	path := readBackRunFixture(t, "alpha\nbeta\ngamma\n")
+	second, _ := json.Marshal(map[string]any{"path": path, "old_string": "REPLACED", "new_string": "FINAL"})
+	p := &scriptedProvider{turns: [][]provider.Chunk{
+		{toolCallChunk("read", "read_file", fmt.Sprintf(`{"path":%q}`, path)), {Type: provider.ChunkDone}},
+		{toolCallChunk("edit1", "edit_file", fmt.Sprintf(`{"path":%q,"old_string":"beta","new_string":"REPLACED","readBack":false}`, path)), {Type: provider.ChunkDone}},
+		{toolCallChunk("edit2", "edit_file", string(second)), {Type: provider.ChunkDone}},
+		textTurn("Done."),
+	}}
 	writer := readBackEditTool(t, filepath.Dir(path))
 	a := newIncompleteReadTestAgent(p, incompleteReadBuiltin(t), NewSession("sys"), event.Discard, writer)
 	if err := a.Run(withNoClosedLoop(context.Background()), "Edit the file twice."); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(path); strings.Contains(string(got), "FINAL") {
-		t.Fatal("a follow-up edit without readBack must still be blocked until the model re-reads")
+		t.Fatal("a follow-up edit after readBack:false must still be blocked until the model re-reads")
 	}
 	if back := toolResultByID(a.Session(), "edit1"); strings.Contains(back, "read_back ") {
-		t.Fatalf("no readBack requested, yet the result carried a window: %q", back)
+		t.Fatalf("readBack:false opted out, yet the result carried a window: %q", back)
 	}
 	if blocked := toolResultByID(a.Session(), "edit2"); !strings.Contains(blocked, "evidence required") {
 		t.Fatalf("follow-up edit result = %q, want the read-evidence rejection", blocked)
