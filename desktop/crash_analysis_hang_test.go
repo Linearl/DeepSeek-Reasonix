@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,10 @@ import (
 	"time"
 
 	"reasonix/internal/doctor"
+	"reasonix/internal/event"
+	"reasonix/internal/eventwire"
+	"reasonix/internal/store"
+	"reasonix/internal/turnevent"
 )
 
 // ── task 663 gap ①/⑥: hang analysis ─────────────────────────────────────────
@@ -44,6 +49,7 @@ func TestResponsivenessVerdictIsHang(t *testing.T) {
 		{"working is not hung", hangReportForVerdict("working", 0), false},
 		{"idle is not hung", hangReportForVerdict("idle", 0), false},
 		{"waiting user is not hung", hangReportForVerdict("waiting_user", 0), false},
+		{"long-blocking tool silence (task 879) is not hung", hangReportForVerdict("waiting_tool", 0), false},
 		{"no ledger is not hung", hangReportForVerdict("no_ledger", 0), false},
 	}
 	for _, tc := range cases {
@@ -59,14 +65,118 @@ func TestHangGateErrorRefusesHealthySessionExplicitly(t *testing.T) {
 	if err := hangGateError(hangReportForVerdict("silent", 0), time.Now()); err != nil {
 		t.Fatalf("a silent session must pass the hang gate, got %v", err)
 	}
-	err := hangGateError(hangReportForVerdict("working", 0), time.Now())
-	if err == nil {
-		t.Fatal("a working session must be refused")
-	}
-	for _, want := range []string{"not hung", "verdict: working", "analysis not started"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("refusal missing %q: %v", want, err)
+	// 任务 879: waiting_tool refuses by name too — the analyze button must not
+	// start an analysis for a session legitimately waiting on its background
+	// job, and the message must say which verdict refused.
+	for _, verdict := range []string{"working", "waiting_tool"} {
+		err := hangGateError(hangReportForVerdict(verdict, 0), time.Now())
+		if err == nil {
+			t.Fatalf("a %s session must be refused", verdict)
 		}
+		for _, want := range []string{"not hung", "verdict: " + verdict, "analysis not started"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("refusal for %s missing %q: %v", verdict, want, err)
+			}
+		}
+	}
+}
+
+// hangLedgerRecord mirrors the schema-2 on-disk turn-ledger line (recordType +
+// inline envelope) for the 任务 879 end-to-end fixture.
+type hangLedgerRecord struct {
+	RecordType string `json:"recordType"`
+	turnevent.Envelope
+}
+
+func writeHangLedger(t *testing.T, path string, recs ...turnevent.Envelope) {
+	t.Helper()
+	var b strings.Builder
+	for _, rec := range recs {
+		line, err := json.Marshal(hangLedgerRecord{RecordType: "event", Envelope: rec})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func hangLedgerEnv(turn string, seq uint64, kind string, status event.TurnStatus, at time.Time, tool *eventwire.Tool) turnevent.Envelope {
+	rec := turnevent.Envelope{
+		SchemaVersion: 2,
+		SessionID:     "sess-879",
+		TurnID:        turn,
+		Sequence:      seq,
+		Kind:          kind,
+		Status:        status,
+		CreatedAt:     at.UnixMilli(),
+		Event:         eventwire.Event{Kind: kind},
+	}
+	if tool != nil {
+		rec.Event.Tool = tool
+	}
+	return rec
+}
+
+// 任务 879 验收①: end-to-end over a REAL turn ledger — an open turn that
+// dispatched the wait tool 10 minutes ago is silent past
+// ResponsivenessSilenceAfter, yet must collect as waiting_tool and must not
+// pass the hang gate: 会话疑似卡死 surfaces from exactly this gate
+// (shouldSurfaceHangPrompt → report.hung), so a legitimate out-of-stream wait
+// can never reach the prompt. The negative control is the same ledger with the
+// wait removed: no blocking tool + silence must still collect as silent and
+// gate as hung (验收② 真死场景回归零变化).
+func TestWaitSilenceLedgerDoesNotGateAsHang(t *testing.T) {
+	sessionPath := filepath.Join(t.TempDir(), "s.jsonl")
+	ledgerPath := store.SessionTurnEventLog(sessionPath)
+	// ResolveSessionRef requires the session file itself to exist; the ledger
+	// beside it carries the turn records under test.
+	if err := os.WriteFile(sessionPath, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	start := now.Add(-30 * time.Minute)
+	dispatch := now.Add(-10 * time.Minute) // silence 10m — past the 6m window
+
+	writeHangLedger(t, ledgerPath,
+		hangLedgerEnv("turn_e2e", 1, "turn_started", event.TurnInProgress, start, nil),
+		hangLedgerEnv("turn_e2e", 2, "reasoning", event.TurnInProgress, start.Add(4*time.Second), nil),
+		hangLedgerEnv("turn_e2e", 3, "tool_dispatch", event.TurnInProgress, dispatch,
+			&eventwire.Tool{ID: "call-1", Name: "wait", Args: `{"job_ids":["bash-1"]}`}),
+	)
+	report, err := doctor.CollectResponsiveness(sessionPath, now)
+	if err != nil {
+		t.Fatalf("CollectResponsiveness: %v", err)
+	}
+	if report.Verdict != "waiting_tool" {
+		t.Fatalf("verdict = %q, want waiting_tool (detail: %s)", report.Verdict, report.Detail)
+	}
+	if responsivenessVerdictIsHang(report, now) {
+		t.Fatalf("hung = true for a wait past %s — the 会话疑似卡死 prompt would fire again (detail: %s)",
+			doctor.ResponsivenessSilenceAfter, report.Detail)
+	}
+	if gateErr := hangGateError(report, now); gateErr == nil {
+		t.Fatal("the hang gate must refuse a session waiting on its background job")
+	}
+
+	// Negative control: drop the wait dispatch — the same silence is the
+	// dead/stalled runtime shape and must gate as hung, exactly as before 879.
+	writeHangLedger(t, ledgerPath,
+		hangLedgerEnv("turn_e2e", 1, "turn_started", event.TurnInProgress, start, nil),
+		hangLedgerEnv("turn_e2e", 2, "reasoning", event.TurnInProgress, start.Add(4*time.Second), nil),
+	)
+	report, err = doctor.CollectResponsiveness(sessionPath, now)
+	if err != nil {
+		t.Fatalf("CollectResponsiveness (control): %v", err)
+	}
+	if report.Verdict != "silent" {
+		t.Fatalf("control verdict = %q, want silent (detail: %s)", report.Verdict, report.Detail)
+	}
+	if !responsivenessVerdictIsHang(report, now) {
+		t.Fatal("silent with no blocking tool must still gate as hung (验收② 回归零变化)")
 	}
 }
 
