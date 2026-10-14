@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
-import { CheckCheck, Eraser, FolderInput, FolderMinus, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { CheckCheck, Eraser, FolderInput, FolderMinus, FolderPlus, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
@@ -100,6 +100,11 @@ export interface ProjectTreeOrganizationController {
   topicRow(node: ProjectNode, disabled: boolean): { className: string; props: TopicRowDragProps };
   topicMenuItems(node: ProjectNode, t: Translator): ContextMenuItem[];
   createGroup(folder: ProjectNode, title: string): void;
+  /** createSubGroup appends a child group under parentID (task 892-B). With the
+   * A-slice CreateSessionGroup binding the write goes through the backend
+   * (server validation + op-log + reason=metadata v2 event); older mocks fall
+   * back to the CAS roster append with the `parent` field set. */
+  createSubGroup(folder: ProjectNode, parentID: string, title: string): void;
   groupsFor(folder: ProjectNode): SessionGroup[];
   groupCollapsed(key: string, id: string): boolean;
   toggleGroup(key: string, id: string): void;
@@ -108,8 +113,9 @@ export interface ProjectTreeOrganizationController {
    * dragged group id and the id it was dropped on, matching the topic drag helpers. */
   moveGroup(key: string, fromID: string, toID: string): void;
   /** nestGroup moves a group under another (parentID) or to the top level
-   * (null) — task 350. Display-only: the hierarchy never touches ids,
-   * membership, or permissions (层级≠指挥权); the backend caps depth at 2. */
+   * (null) — task 350, generalized by 892-B to arbitrary depth. Display-only:
+   * the hierarchy never touches ids, membership, or permissions (层级≠指挥权);
+   * the backend accepts any chain ≤ 64 and rejects cycles. */
   nestGroup(key: string, childID: string, parentID: string | null): void;
   /** clearGroup keeps the group shell and drops its sessions (task 17). */
   clearGroup(key: string, id: string): void;
@@ -359,6 +365,31 @@ export function useProjectTreeOrganization({
       const suffix = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       mutateGroups(key, (groups) => [...groups, { id: `group-${suffix}`, title, topicIds: [] }]);
     },
+    createSubGroup(folder, parentID, title) {
+      const key = projectTreeOrganizationKey(folder);
+      const suffix = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const groupID = `group-${suffix}`;
+      const { scope, root } = splitOrganizationKey(key);
+      if (typeof bindings.CreateSessionGroup === "function") {
+        // Task 892-B: the write goes through the A-slice host — server-side
+        // validation (cycle/depth), op-log, and the reason=metadata v2 event
+        // that re-pulls every open window. The roster refreshes from the
+        // backend; the local optimistic append is only the paint meanwhile.
+        groupMutationVersionsRef.current[key] = (groupMutationVersionsRef.current[key] ?? 0) + 1;
+        loadedGroupsRef.current.add(key);
+        setKeyGroups(key, [...(groupsRef.current[key] ?? []), { id: groupID, title, parent: parentID, topicIds: [] }]);
+        void bindings.CreateSessionGroup(scope, root, groupID, title, parentID)
+          .then(() => loadGroups(key, true))
+          .catch((error) => {
+            reportFrontendLog("project-groups", "create sub-group failed", `parent=${parentID} error=${String(error)}`);
+            // The optimistic paint must not survive a rejected write: re-pull
+            // the server truth (which never saw the group).
+            loadGroups(key, true);
+          });
+        return;
+      }
+      mutateGroups(key, (groups) => [...groups, { id: groupID, title, parent: parentID, topicIds: [] }]);
+    },
     groupsFor(folder) { return groupsByKey[projectTreeOrganizationKey(folder)] ?? []; },
     groupCollapsed(key, id) { return collapsedGroups.has(`${key}|${id}`); },
     toggleGroup(key, id) {
@@ -441,6 +472,9 @@ export function ProjectTreeGroupRows({
   const [menuGroup, setMenuGroup] = useState<string | null>(null);
   const [menuPoint, setMenuPoint] = useState<ContextMenuPoint | null>(null);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  // Task 892-B: 「新建子分组」inline composer — the group id whose child-create
+  // input is open (same inline pattern as rename; 827 form on the other tree).
+  const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
   // Task 50: long-press a group header to drag it within its project. The reorder is
   // committed once on release rather than per hover, so a drag writes the roster a
   // single time, and a press that never became a drag stays a plain click.
@@ -526,6 +560,13 @@ export function ProjectTreeGroupRows({
   const commitRename = (id: string) => {
     organization.renameGroup(key, id, groupDraft);
     setEditingGroup(null);
+  };
+  // Task 892-B: commit the inline 子分组 composer. A blank draft cancels (blur
+  // cannot create empty groups); Enter/blur share the path like rename.
+  const commitSubGroup = (parentID: string) => {
+    const title = groupDraft.trim();
+    setCreatingUnder(null);
+    if (title) organization.createSubGroup(folder, parentID, title);
   };
   // Task 350: groups render as a tree of arbitrary depth (task-892 removed the
   // depth-2 cap; the backend accepts any chain ≤ 64). `level` is the nesting
@@ -662,6 +703,29 @@ export function ProjectTreeGroupRows({
             </>;
           })()}
         </div>
+        {/* Task 892-B: inline 子分组 composer — indented one level past this
+            group's header (same grid as its first child), so the to-be-created
+            child appears exactly where it will render. */}
+        {creatingUnder === group.id && <div
+          className="project-tree__group-subgroup-create"
+          style={{ paddingLeft: 8 + (depth - 1) * 16 + (level + 1) * 16 }}
+        >
+          <input
+            autoFocus
+            className="project-tree__group-input"
+            value={groupDraft}
+            placeholder={t("projectTree.createSubGroupPlaceholder")}
+            aria-label={t("projectTree.createSubGroup")}
+            onChange={(event) => setGroupDraft(event.target.value)}
+            onFocus={(event) => event.target.select()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commitSubGroup(group.id);
+              if (event.key === "Escape") setCreatingUnder(null);
+            }}
+            onBlur={() => commitSubGroup(group.id)}
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>}
         {menuGroup === group.id && <ContextMenu
           open
           point={menuPoint}
@@ -689,6 +753,16 @@ export function ProjectTreeGroupRows({
               label: t("projectTree.moveGroupToTopLevel"),
               onSelect: () => { organization.nestGroup(key, group.id, null); setMenuGroup(null); },
             }] : []),
+            // Task 892-B: 「新建子分组」(827 form on the session tree) — opens an
+            // inline composer right below this group's header; Enter files it
+            // as this group's child via the A-slice CreateSessionGroup (parentId
+            // pass-through), Escape/blur cancels. Works at every nesting level.
+            {
+              key: "create-subgroup",
+              icon: <FolderPlus size={13} />,
+              label: t("projectTree.createSubGroup"),
+              onSelect: () => { setCreatingUnder(group.id); setGroupDraft(""); setMenuGroup(null); if (collapsed) organization.toggleGroup(key, group.id); },
+            },
             { key: "rename", icon: <Pencil size={13} />, label: t("projectTree.renameGroup"), onSelect: () => { setEditingGroup(group.id); setGroupDraft(group.title); setMenuGroup(null); } },
             { key: "clear", icon: <Eraser size={13} />, label: t("projectTree.clearGroup"), onSelect: () => { organization.clearGroup(key, group.id); setMenuGroup(null); } },
             { key: "dissolve", icon: <FolderMinus size={13} />, label: t("projectTree.dissolveGroup"), onSelect: () => { organization.dissolveGroup(key, group.id); setMenuGroup(null); } },

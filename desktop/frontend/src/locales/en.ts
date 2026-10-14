@@ -1711,6 +1711,8 @@ export const en = {
   "projectTree.renameGroup": "Rename group",
   "projectTree.nestGroupUnder": "Move under \"{title}\"",
   "projectTree.moveGroupToTopLevel": "Move to top level",
+  "projectTree.createSubGroup": "New sub-group",
+  "projectTree.createSubGroupPlaceholder": "Sub-group name…",
   "projectTree.deleteGroup": "Delete group",
   "projectTree.clearGroup": "Clear group",
   "projectTree.dissolveGroup": "Dissolve group",

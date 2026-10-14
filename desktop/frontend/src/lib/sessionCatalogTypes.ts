@@ -160,6 +160,114 @@ export interface ProjectTreeOrganizationBindings {
     groupID: string,
     groupTitle: string,
   ): Promise<void>;
+  // ── Task 892-A: manage_sessions 直连面（handoff-892a §2.2）────────────────
+  // 全部可选：老 mock/浏览器开发面没有这些方法，调用点 typeof 守卫 + 既有
+  // CAS/localStorage 回退；wails 运行时注入的 window.go.main.App 在 A 片
+  // 编译后具备。字段拼法（handoff §2.1）：工具入参 parent_id / 视图 parentId /
+  // 存储 parent —— 这里的签名是直连面（parentId）。
+  /** list 动作的宿主面：全部 roster + 项目分组 catalog + 会话归属。 */
+  ManageSessionsList?(): Promise<ManageSessionsListResult>;
+  /** group_create（kind=session）：scope 缺省 "global"；workspaceRoot 仅 project
+   * 作用域需要。parentID 空 = 顶层；成环/超深由后端校验拒绝。 */
+  CreateSessionGroup?(
+    scope: string,
+    workspaceRoot: string,
+    groupID: string,
+    title: string,
+    parentID: string,
+  ): Promise<ManageSessionsGroupResult>;
+  RenameSessionGroup?(
+    scope: string,
+    workspaceRoot: string,
+    groupID: string,
+    title: string,
+  ): Promise<ManageSessionsGroupResult>;
+  /** group_delete 提案制：confirm=false 只返回 plan（零写入），confirm=true 才执行。 */
+  DeleteSessionGroup?(
+    scope: string,
+    workspaceRoot: string,
+    groupID: string,
+    cascade: boolean,
+    confirm: boolean,
+  ): Promise<ManageSessionsGroupResult>;
+  /** reorder_session：index 越界自动收敛，stale drag 不会失败。 */
+  ReorderTopicInGroup?(
+    scope: string,
+    workspaceRoot: string,
+    topicID: string,
+    groupID: string,
+    index: number,
+  ): Promise<ManageSessionsGroupResult>;
+  /** group_create（kind=project）：roster 是 desktop-projects.json 顶层 catalog。 */
+  CreateProjectGroup?(groupID: string, title: string, parentID: string): Promise<ManageSessionsGroupResult>;
+  RenameProjectGroup?(groupID: string, title: string): Promise<ManageSessionsGroupResult>;
+  DeleteProjectGroup?(groupID: string, cascade: boolean, confirm: boolean): Promise<ManageSessionsGroupResult>;
+  /** 操作回退：恢复 opID 那笔的 before 快照；无写互锁，尽快回退最新一笔。 */
+  RollbackManageOperation?(opID: string): Promise<ManageSessionsGroupResult>;
+  /** 单一 dispatch（与 agent 工具同面）：9 action 见 handoff §2.3 schema。 */
+  ManageSessions?(action: string, args: string): Promise<string>;
+}
+
+// ── Task 892-A 视图（Go struct → TS，handoff §2.2）──────────────────────────
+
+export interface ManageSessionsTopicView {
+  topicId: string;
+  title: string;
+  order: number;
+}
+
+export interface ManageSessionsGroupView {
+  id: string;
+  title: string;
+  parentId?: string;
+  depth: number;
+  order: number;
+  topics: ManageSessionsTopicView[];
+}
+
+export interface ManageSessionsProjectGroupView {
+  id: string;
+  title: string;
+  parentId?: string;
+  depth: number;
+  sortOrder: number;
+}
+
+export interface ManageSessionsSessionView {
+  topicId: string;
+  title: string;
+  scope: "global" | "project" | string;
+  workspaceRoot?: string;
+  groupId?: string;
+  groupPath?: string[];
+  order: number;
+}
+
+/** ManageSessionsList 的 groups 键：`"global"` 或 `"project|<root>"`。 */
+export interface ManageSessionsListResult {
+  groups: Record<string, ManageSessionsGroupView[]>;
+  projectGroups: ManageSessionsProjectGroupView[];
+  sessions: ManageSessionsSessionView[];
+}
+
+/** group_delete 的提案：deleted 必有；promoted=升顶子组；batch=批量阈值(≥10)。 */
+export interface DeleteGroupsPlan {
+  deleted: string[];
+  promoted?: string[];
+  unfiledTopics?: string[];
+  batch?: boolean;
+}
+
+export interface ManageSessionsGroupResult {
+  kind: "session" | "project" | string;
+  scope?: string;
+  workspaceRoot?: string;
+  groupId: string;
+  title?: string;
+  parentId?: string;
+  applied: boolean;
+  plan?: DeleteGroupsPlan;
+  opId?: string;
 }
 
 // SessionReference is a session selected via @ past:chats for context injection.

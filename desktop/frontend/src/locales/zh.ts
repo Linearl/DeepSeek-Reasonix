@@ -1711,6 +1711,8 @@ export const zh: Record<DictKey, string> = {
   "projectTree.renameGroup": "重命名分组",
   "projectTree.nestGroupUnder": "移到「{title}」子层",
   "projectTree.moveGroupToTopLevel": "移到顶层",
+  "projectTree.createSubGroup": "新建子分组",
+  "projectTree.createSubGroupPlaceholder": "子分组名称…",
   "projectTree.deleteGroup": "删除分组",
   "projectTree.clearGroup": "清空分组",
   "projectTree.dissolveGroup": "解散分组",

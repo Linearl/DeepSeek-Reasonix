@@ -35338,6 +35338,13 @@ button.statusbar__mcp:focus-visible {
   color: inherit;
   outline: none;
 }
+/* Task 892-B: the inline 子分组 composer row — one flex row under the parent
+   header, indented to the child column (inline style owns the padding). */
+.project-tree__group-subgroup-create {
+  display: flex;
+  align-items: center;
+  padding: 3px 6px 3px 0;
+}
 .project-tree__group-children {
   padding-left: 0;
 }
