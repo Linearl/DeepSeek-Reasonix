@@ -19,6 +19,7 @@ import (
 	"reasonix/internal/event"
 	"reasonix/internal/mcplaunch"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/sentinel"
 	"reasonix/internal/tool"
 )
 
@@ -1701,5 +1702,84 @@ func TestReaderIntentRefusesDispatchAfterSafetyDrift(t *testing.T) {
 	}
 	if got := readHelperCounter(t, callCount); got != 3 {
 		t.Fatalf("writer call count = %d, want 3", got)
+	}
+}
+
+// recordingCallTransport answers tools/call and records every dispatch, so a
+// test can prove a sentinel block stops the request BEFORE it reaches the
+// wire (task 896 ③: MCP 出口面挂 exit_scan).
+type recordingCallTransport struct {
+	mu        sync.Mutex
+	toolCalls int
+}
+
+func (t *recordingCallTransport) call(_ context.Context, method string, _ any) (json.RawMessage, error) {
+	if method == "tools/call" {
+		t.mu.Lock()
+		t.toolCalls++
+		t.mu.Unlock()
+		return json.RawMessage(`{"content":[{"type":"text","text":"ok"}]}`), nil
+	}
+	return json.RawMessage(`{}`), nil
+}
+
+func (t *recordingCallTransport) close() {}
+
+func (t *recordingCallTransport) calls() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.toolCalls
+}
+
+// TestMCPOutboundExitScanTwoStates pins task 896 ③ at the dispatch layer:
+// callRaw is the single tools/call choke point for every MCP lane, and the
+// outbound scan hangs on exit_scan — off (default) means a key-shaped payload
+// reaches the server unchanged (zero behavior change), on means the block
+// fires before dispatch (transport sees no extra call).
+func TestMCPOutboundExitScanTwoStates(t *testing.T) {
+	sentinel.SetExitScan(false)
+	t.Cleanup(func() { sentinel.SetExitScan(false) })
+
+	tr := &recordingCallTransport{}
+	c := &Client{name: "mock", t: tr, spec: Spec{Name: "mock"}, catalogGeneration: 1}
+	rt := &remoteTool{
+		client:      c,
+		name:        "mcp__mock__echo",
+		rawName:     "echo",
+		visibleName: "echo",
+		generation:  1,
+	}
+	secretArgs := json.RawMessage(`{"msg":"sk-proj-abc123defGHIjklMNOpq"}`)
+	cleanArgs := json.RawMessage(`{"msg":"hello world"}`)
+
+	// State 1 — exit_scan off (default): the key-shaped payload dispatches
+	// untouched; wiring the scan changed nothing.
+	out, err := rt.Execute(context.Background(), secretArgs)
+	if err != nil {
+		t.Fatalf("exit_scan off must be zero behavior change: %v", err)
+	}
+	if out != "ok" {
+		t.Fatalf("result = %q, want ok", out)
+	}
+	if got := tr.calls(); got != 1 {
+		t.Fatalf("exit_scan off: dispatched calls = %d, want 1", got)
+	}
+
+	// State 2 — exit_scan on: the same payload blocks before dispatch and the
+	// error names the sentinel rule; a clean payload still goes through.
+	sentinel.SetExitScan(true)
+	if _, err := rt.Execute(context.Background(), secretArgs); err == nil {
+		t.Fatal("exit_scan on: key-shaped MCP args must be blocked")
+	} else if !strings.Contains(err.Error(), "exit_secret_scan") {
+		t.Fatalf("blocked error must name the rule, got: %v", err)
+	}
+	if got := tr.calls(); got != 1 {
+		t.Fatalf("blocked call must not reach the transport, dispatched = %d, want 1", got)
+	}
+	if _, err := rt.Execute(context.Background(), cleanArgs); err != nil {
+		t.Fatalf("exit_scan on: clean args must still pass: %v", err)
+	}
+	if got := tr.calls(); got != 2 {
+		t.Fatalf("clean call dispatch count = %d, want 2", got)
 	}
 }

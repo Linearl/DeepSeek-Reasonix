@@ -263,3 +263,48 @@ func TestExitscanDisabledByDefaultDoubleCheck(t *testing.T) {
 		expectAllowed(t, tool, args)
 	})
 }
+
+// TestCheckMCPOutboundTwoStates pins task 896 ③'s contract at the sentinel
+// layer: the MCP egress scan hangs on the same experimental exit_scan switch,
+// so the default posture is zero behavior change (allow even key-shaped
+// args), and flipping the switch on blocks a hit before dispatch.
+func TestCheckMCPOutboundTwoStates(t *testing.T) {
+	withSentinelState(t, func(t *testing.T) {
+		secretArgs := json.RawMessage(`{"msg":"sk-proj-abc123defGHIjklMNOpq"}`)
+		cleanArgs := json.RawMessage(`{"msg":"hello world"}`)
+
+		// State 1 — exit_scan off (default): key-shaped MCP args pass untouched.
+		SetExitScan(false)
+		if v := CheckMCPOutbound("mcp__mock__echo", secretArgs); v.Blocked {
+			t.Fatalf("exit_scan off must be zero behavior change, got blocked: %+v", v)
+		}
+		if v := CheckMCPOutbound("mcp__mock__echo", cleanArgs); v.Blocked {
+			t.Fatalf("clean args blocked with scan off: %+v", v)
+		}
+		// Empty payload never scans (nothing leaves).
+		SetExitScan(true)
+		if v := CheckMCPOutbound("mcp__mock__echo", nil); v.Blocked {
+			t.Fatalf("empty args must not scan: %+v", v)
+		}
+
+		// State 2 — exit_scan on: a hit blocks with the exit-scan rule and a
+		// model-facing reason that names the tool call.
+		v := CheckMCPOutbound("mcp__mock__echo", secretArgs)
+		if !v.Blocked || v.Rule != RuleExitSecretScan {
+			t.Fatalf("exit_scan on must block key-shaped MCP args, got %+v", v)
+		}
+		if !strings.Contains(v.Reason, "mcp__mock__echo") || !strings.Contains(v.Reason, "exit_secret_scan") {
+			t.Fatalf("reason must name the tool and rule: %s", v.Reason)
+		}
+		// Clean args still pass with the scan on — no blanket block.
+		if v := CheckMCPOutbound("mcp__mock__echo", cleanArgs); v.Blocked {
+			t.Fatalf("clean args must pass with scan on: %+v", v)
+		}
+		// A URL carrying a credential query param in MCP args is outbound
+		// content too (web_fetch treatment, no stripURLs).
+		urlArgs := json.RawMessage(`{"url":"https://host/x?api_key=abcdef123456"}`)
+		if v := CheckMCPOutbound("mcp__mock__fetch", urlArgs); !v.Blocked {
+			t.Fatalf("credential-bearing URL in MCP args must block, got %+v", v)
+		}
+	})
+}
