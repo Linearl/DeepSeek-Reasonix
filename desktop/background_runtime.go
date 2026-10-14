@@ -292,7 +292,11 @@ func (a *App) WorkspaceConflictForTab(tabID string) WorkspaceConflictView {
 	if !targetState.Waiting {
 		return empty
 	}
+	// Task 883 probe: time the canonicalization only; result and error
+	// handling below are untouched.
+	probeStarted := time.Now()
 	targetRoot, err := workspacelease.CanonicalWorkspace(targetWorkspaceRoot)
+	canonicalProbeLease("lease-overlap:target", targetWorkspaceRoot, probeStarted, targetRoot, err)
 	if err != nil {
 		return empty
 	}
@@ -321,7 +325,11 @@ func (a *App) WorkspaceConflictForTab(tabID string) WorkspaceConflictView {
 	a.mu.RUnlock()
 
 	for _, candidate := range candidates {
+		// Task 883 probe: time the canonicalization only; the candidate loop's
+		// ownership check and skip logic are untouched.
+		probeStarted := time.Now()
 		root, err := workspacelease.CanonicalWorkspace(candidate.root)
+		canonicalProbeLease("lease-overlap:candidate", candidate.root, probeStarted, root, err)
 		ownerState := controllerWorkspaceLeaseState(candidate.ctrl)
 		if err != nil || !ownerState.Acquired {
 			continue
