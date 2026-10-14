@@ -94,7 +94,11 @@ ok(settingsPrefs.includes("func (a *App) SetExperimentalSessionCollabAutoFold(en
 // 5. Tier registration: optional (550 口径), mirrored on both sides, counts moved 18→19 / 47→48.
 ok(tiers.includes('| "sessionCollabAutoFold"') && tiers.includes('sessionCollabAutoFold: "optional"'), "frontend tier registry: sessionCollabAutoFold = optional");
 ok(goRender.includes('{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}}'), "Go labFeatureTiers: sessionCollabAutoFold = optional");
-ok(tiers.includes("optional: 22,"), "LAB_TIER_COUNTS optional 19→20→21→22（707→704→727 推进）");
+// 811 修预存红：这里曾写死 "optional: 22,"，后续每加一个 optional 实验特性
+// 就红一次（现值 29）。705 真正要守的是「计数不倒退」——22 是 727 推进后
+// 的下界，跌破即说明有人删了登记。
+const optionalCount = Number(/optional:\s*(\d+),/.exec(tiers)?.[1] ?? -1);
+ok(optionalCount >= 22, `LAB_TIER_COUNTS optional 计数不低于 727 下界 22（当前 ${optionalCount}）`);
 
 // 6. Settings feed: App writes the store once per settings load (and on save).
 ok(

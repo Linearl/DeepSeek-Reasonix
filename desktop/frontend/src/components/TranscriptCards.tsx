@@ -12,6 +12,10 @@ import { TurnEditList } from "./TurnEditList";
 import { STEER_NOTICE_PREFIX } from "../lib/useController";
 import { collabAsImSource, type CollabImSourceMessage } from "../lib/collabMessage";
 import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactNames";
+// 任务811: steer 卡复用 705 的折叠门（同一开关/阈值/首行预览），让 ↪ notice
+// 实体与 user row 实体折叠行为一致。
+import { useCollabDisplayStore } from "../store/collabDisplay";
+import { COLLAB_MSG_FOLD_LINE_THRESHOLD, estimateUserMessageLines, firstDisplayLine } from "../lib/messageFold";
 import { ProcessCompactIcon, ProcessPhaseIcon } from "./ProcessCard";
 import { useTranscriptUserResizeIntent } from "./TranscriptLayoutIntentContext";
 
@@ -35,9 +39,21 @@ function useCollabLabel(): (contactId: string) => string {
 // notice here) — one delivery text, one presentation. The ↪ mark rides the
 // card head so the steer provenance stays visible; hover keeps the raw
 // contact_ids (same contract as the user-row card).
-function SteerCollabCard({ source }: { source: CollabImSourceMessage }) {
+//
+// 任务811: 705 的自动折叠此前只实现在 Message.tsx 的 user-row 卡里——同一封
+// 跨会话消息以 ↪ steer notice 落 transcript 时（758 直渲第三态）永远全文
+// 铺开，与实验开关无关（超长回执不折叠的复发根因）。这里复用同一开关
+// （collabDisplay store）、同一阈值与同一套摘要条 CSS 类，让两个实体的折叠
+// 行为一致；`foldable=false` 供 723 deferred 占位展开时使用（用户已显式
+// 点开，不再二次折叠）。
+function SteerCollabCard({ source, foldable = true }: { source: CollabImSourceMessage; foldable?: boolean }) {
   const t = useT();
   const collabLabel = useCollabLabel();
+  const autoFold = useCollabDisplayStore((state) => state.autoFold);
+  const [foldExpanded, setFoldExpanded] = useState(false);
+  const foldCandidate = foldable && autoFold && estimateUserMessageLines(source.text) >= COLLAB_MSG_FOLD_LINE_THRESHOLD;
+  const foldActive = foldCandidate && !foldExpanded;
+  const previewLine = foldActive ? firstDisplayLine(source.text) : "";
   return (
     <div className="im-source-card im-source-card--steer">
       <div className="im-source-card__head" data-transcript-selection-ignore>
@@ -45,7 +61,38 @@ function SteerCollabCard({ source }: { source: CollabImSourceMessage }) {
         <span>{t("msg.fromIm", { source: t("msg.fromCollab") })}</span>
         <span className="im-source-card__steer-mark" title={t("transcript.steer")} aria-hidden="true">↪</span>
       </div>
-      {source.text && <div className="im-source-card__text">{source.text}</div>}
+      {source.text && (foldActive ? (
+        // 任务811: 折叠态与 user-row 卡同款摘要条（发件人 chip + 首行 + 展开）。
+        <div className="im-source-card__text im-source-card__text--folded">
+          {source.sender && <span className="im-source-card__fold-sender">{collabLabel(source.sender)}</span>}
+          <span className="im-source-card__preview">{previewLine}</span>
+          <button
+            type="button"
+            className="im-source-card__fold-toggle"
+            aria-expanded={false}
+            onClick={() => setFoldExpanded(true)}
+          >
+            <ChevronDown size={13} />
+            {t("msg.collabFoldExpand")}
+          </button>
+        </div>
+      ) : (
+        <div className="im-source-card__text">
+          {source.text}
+          {foldCandidate && (
+            <button
+              type="button"
+              className="im-source-card__fold-toggle"
+              aria-expanded={true}
+              data-expanded="true"
+              onClick={() => setFoldExpanded(false)}
+            >
+              <ChevronDown size={13} />
+              {t("msg.collabFoldCollapse")}
+            </button>
+          )}
+        </div>
+      ))}
       {(source.sender || source.chat) && (
         <div
           className="im-source-card__meta"
@@ -123,7 +170,8 @@ export function SteerCard({ id, text, deferred = false }: { id: string; text: st
         </span>
         <ChevronRight size={12} className="steer-line__chevron" aria-hidden="true" />
       </button>
-      {expanded && collab && <SteerCollabCard source={collab} />}
+      {/* 任务811: deferred 占位展开时用户已显式点开，卡片不再套 705 二次折叠。 */}
+      {expanded && collab && <SteerCollabCard source={collab} foldable={false} />}
     </div>
   );
 }

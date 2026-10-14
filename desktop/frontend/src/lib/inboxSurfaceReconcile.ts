@@ -44,3 +44,35 @@ export function missingQueuedGuidanceBubbles(
   }
   return bubbles;
 }
+
+/**
+ * 任务811: 把 preview 气泡升级成全文气泡。
+ *
+ * P17 的 reconcile 气泡只带 `row.preview`（PreviewText 空白折叠 + 120 rune
+ * 截断）。对跨会话消息这是致命的：header（含「，发送于 <时间>」）本身就占掉
+ * 近百 rune，卡片化后正文只剩时间戳残片，且没有任何入口能看全文（811 症状
+ * 2）。queued 项的正文在盘上，ReadInboxItem 换回 displayText；读失败（项已被
+ * 消费/删除，或宿主未接线）保留 preview 气泡——降级口径与 shelf 的
+ * hydrateEmptyGuidancePreviews 一致。
+ */
+export async function hydrateQueuedGuidanceBubbles(
+  bubbles: readonly QueuedGuidanceBubble[],
+  readItem: (id: string) => Promise<{ displayText?: string; rawText?: string; submitText?: string } | undefined>,
+): Promise<QueuedGuidanceBubble[]> {
+  if (bubbles.length === 0) return [];
+  return Promise.all(bubbles.map(async (bubble) => {
+    if (!bubble.inboxItemId) return bubble;
+    try {
+      const env = await readItem(bubble.inboxItemId);
+      const text = (env?.displayText || env?.rawText || env?.submitText || "").trim();
+      // 保持与 preview 气泡同形状：guidance_bubble action 的 text 是裸文本，
+      // 但 reconcile 气泡已带 ↪ 前缀（reducer 会再包一层）——升级只换正文，
+      // 不改前缀契约。
+      if (!text) return bubble;
+      return { ...bubble, text: bubble.text.startsWith(STEER_NOTICE_PREFIX) ? `${STEER_NOTICE_PREFIX}${text}` : text };
+    } catch {
+      // preview-only 降级：读不到全文就维持原气泡，不吞消息。
+      return bubble;
+    }
+  }));
+}
