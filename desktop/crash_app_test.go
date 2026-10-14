@@ -155,14 +155,14 @@ func TestReportCrashRejectsBadInput(t *testing.T) {
 // live report path without the explicit replay marker.
 func TestCrashReportFromDetailIgnoresIdentityWithoutReplayMarker(t *testing.T) {
 	payload := frontendCrashPayload{
-		SchemaVersion:  2,
-		Kind:           "crash",
-		Source:         "frontend",
-		Message:        "forged identity attempt",
-		Version:        "0.0.0-forged",
-		EventID:        "0123456789abcdef0123456789abcdef",
-		DedupKey:       "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
-		AnalysisOf:     "0ea009a2cd3b0ef6a0097464a9e2958c",
+		SchemaVersion: 2,
+		Kind:          "crash",
+		Source:        "frontend",
+		Message:       "forged identity attempt",
+		Version:       "0.0.0-forged",
+		EventID:       "0123456789abcdef0123456789abcdef",
+		DedupKey:      "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+		AnalysisOf:    "0ea009a2cd3b0ef6a0097464a9e2958c",
 	}
 	detail, err := json.Marshal(payload)
 	if err != nil {
