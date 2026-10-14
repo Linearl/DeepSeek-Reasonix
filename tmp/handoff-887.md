@@ -89,3 +89,19 @@ runtime」的会话，注入同一趟 sweepTargets；唯一新增动作是 run �
 | ② 569/579 零回归 | ✅ | collab/idle-turn 族回归全绿（同基线过滤器） |
 | ③ 拉起失败有界重试+回执（3次有界+570） | ✅ | `TestDormantWakeFailureBoundedWithReceipt` |
 | ④ 只有真实排队 follow-up 才拉起 | ✅ | `TestDormantDiscoveryOnlyRealQueuedFollowup` + `TestDormantDiscoveryProbeErrorsClassified` |
+
+## 全包对照结论（desktop module，20m timeout，双分支串/并跑）
+
+| | wt-887 | pristine main |
+|---|---|---|
+| 全包结果 | FAIL + `panic: test timed out after 20m0s` | FAIL + 同样20m 超时挂死 |
+| FAIL 集合 | RemoteTab / PumpDerivedHop / HopExhausted / Rebind / SandboxWriteRoots / CatalogTopicTitle / CatalogManualDefaultTitle / BuildTabControllerLease / StartTopicActivation | 同左（仅少 Rebind） |
+
+- **全包超时挂死 = 预存**（主仓原样复现，与887 无关；即任务书所说"挂死测试族"，
+  故全包只作对照不作卡点）。
+- FAIL 组 = 预存红组（两分支一致）；wt-887 多出的 `TestRebindWithTakeover…`
+  **串行单跑绿** → 并发双跑互相干扰（lease/顺序敏感），非887 引入。
+- `TestCatalogManualDefaultTitleIsNotLocalized` 串行单跑仍 FAIL，主仓全包同样
+  FAIL → 预存红确认。
+- 887 直接责任面全部绿：`internal/sessioninbox` 全包、`internal/sessioncollab`
+  全包、desktop collab/idle-turn/dormant 族（含6个新测试）、`go vet ./desktop`。
