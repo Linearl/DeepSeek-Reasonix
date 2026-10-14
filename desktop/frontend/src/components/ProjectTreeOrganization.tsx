@@ -3,11 +3,12 @@ import { CheckCheck, Eraser, FolderInput, FolderMinus, FolderPlus, GripVertical,
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { isTopicNode, projectTreeGroupActiveCount, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
 import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargets, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
-import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
+import type { DeleteGroupsPlan, ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { reportFrontendLog } from "../lib/frontendLog";
 
@@ -124,6 +125,15 @@ export interface ProjectTreeOrganizationController {
   /** dissolveGroup removes the shell; its sessions return to ungrouped. This is
    * what the old deleteGroup always did - the label was simply wrong. */
   dissolveGroup(key: string, id: string): void;
+  /** deleteGroupPropose runs the A-slice group_delete proposal (confirm=false,
+   * zero write) and returns the plan — null when the binding is absent (older
+   * backend/mock: caller falls back to the plain CAS dissolve). */
+  deleteGroupPropose(key: string, groupID: string): Promise<DeleteGroupsPlan | null>;
+  /** deleteGroupExecute commits the confirmed deletion (confirm=true). Cascade
+   * deletes the whole subtree; otherwise children are promoted and the group's
+   * sessions are only unfiled. Falls back to the CAS dissolve without the
+   * A-slice binding. */
+  deleteGroupExecute(key: string, groupID: string, cascade: boolean): Promise<void>;
   canDropTopicInto(key: string): boolean;
   dropTopicInto(key: string, groupID: string): void;
   /** moveTopicToGroup files a topic into an existing group from the topic
@@ -423,6 +433,34 @@ export function useProjectTreeOrganization({
     },
     clearGroup(key, id) { mutateGroups(key, (groups) => groups.map((group) => group.id === id ? { ...group, topicIds: [] } : group)); },
     dissolveGroup(key, id) { mutateGroups(key, (groups) => groups.filter((group) => group.id !== id)); },
+    async deleteGroupPropose(key, groupID) {
+      if (typeof bindings.DeleteSessionGroup !== "function") return null;
+      const { scope, root } = splitOrganizationKey(key);
+      try {
+        // Task 892-A 提案制：confirm=false 只返回 plan，零写入。
+        const result = await bindings.DeleteSessionGroup(scope, root, groupID, false, false);
+        return result.plan ?? { deleted: [groupID] };
+      } catch (error) {
+        reportFrontendLog("project-groups", "delete proposal failed", `group=${groupID} error=${String(error)}`);
+        return null;
+      }
+    },
+    async deleteGroupExecute(key, groupID, cascade) {
+      if (typeof bindings.DeleteSessionGroup !== "function") {
+        // Pre-892 path: the CAS roster filter (children would orphan-render top-level).
+        mutateGroups(key, (groups) => groups.filter((group) => group.id !== groupID));
+        return;
+      }
+      const { scope, root } = splitOrganizationKey(key);
+      // confirm=true executes with fresh plan semantics backend-side (children
+      // promoted unless cascade). A rejected write re-pulls server truth.
+      try {
+        await bindings.DeleteSessionGroup(scope, root, groupID, cascade, true);
+      } catch (error) {
+        reportFrontendLog("project-groups", "delete execute failed", `group=${groupID} cascade=${String(cascade)} error=${String(error)}`);
+      }
+      loadGroups(key, true);
+    },
     nestGroup(key, childID, parentID) {
       // Task 350: hierarchy is display organization — the roster helpers only
       // rewrite the `parent` pointer, never ids or membership.
@@ -471,6 +509,9 @@ export function ProjectTreeGroupRows({
   // Task 892-B: 「新建子分组」inline composer — the group id whose child-create
   // input is open (same inline pattern as rename; 827 form on the other tree).
   const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
+  // Task 892-B: the dissolve flow is proposal-first (confirm=false → plan →
+  // dialog → confirm=true); the dialog lives on this component.
+  const { confirm: confirmDelete, dialog: deleteDialog } = useConfirmDialog();
   // Task 50: long-press a group header to drag it within its project. The reorder is
   // committed once on release rather than per hover, so a drag writes the roster a
   // single time, and a press that never became a drag stays a plain click.
@@ -787,7 +828,48 @@ export function ProjectTreeGroupRows({
             },
             { key: "rename", icon: <Pencil size={13} />, label: t("projectTree.renameGroup"), onSelect: () => { setEditingGroup(group.id); setGroupDraft(group.title); setMenuGroup(null); } },
             { key: "clear", icon: <Eraser size={13} />, label: t("projectTree.clearGroup"), onSelect: () => { organization.clearGroup(key, group.id); setMenuGroup(null); } },
-            { key: "dissolve", icon: <FolderMinus size={13} />, label: t("projectTree.dissolveGroup"), onSelect: () => { organization.dissolveGroup(key, group.id); setMenuGroup(null); } },
+            // Task 892-B ④: proposal-first delete — confirm=false returns a
+            // zero-write plan; the dialog then offers the A-slice's two options:
+            // children promoted to top (default) or cascade (whole subtree).
+            // No binding → pre-892 immediate CAS dissolve (same promote result).
+            { key: "dissolve", icon: <FolderMinus size={13} />, label: t("projectTree.dissolveGroup"), onSelect: () => {
+              setMenuGroup(null);
+              void (async () => {
+                const plan = await organization.deleteGroupPropose(key, group.id);
+                if (plan === null) { organization.dissolveGroup(key, group.id); return; }
+                const promoted = plan.promoted ?? [];
+                const unfiled = plan.unfiledTopics ?? [];
+                // cascadeRef: the checkbox lives inside the dialog's ReactNode
+                // message; its value is read back after the dialog resolves.
+                const cascadeRef = { current: false };
+                const titles = promoted.map((id) => groups.find((candidate) => candidate.id === id)?.title ?? id);
+                const confirmed = await confirmDelete({
+                  title: t("projectTree.dissolveGroup"),
+                  message: <>
+                    <p>{t("projectTree.deleteGroupPlanIntro", { title: group.title })}</p>
+                    {unfiled.length > 0 && <p>{t("projectTree.deleteGroupPlanUnfiled", { count: String(unfiled.length) })}</p>}
+                    {promoted.length > 0 && <>
+                      <p>{t("projectTree.deleteGroupPlanPromote", { count: String(promoted.length), titles: titles.join(", ") })}</p>
+                      <label className="reasonix-confirm-dialog__cascade">
+                        <input
+                          type="checkbox"
+                          aria-label={t("projectTree.deleteGroupPlanCascade", { count: String(promoted.length) })}
+                          onChange={(event) => { cascadeRef.current = event.target.checked; }}
+                        />
+                        {t("projectTree.deleteGroupPlanCascade", { count: String(promoted.length) })}
+                      </label>
+                    </>}
+                    {plan.batch && unfiled.length > 0 && <p>{t("projectTree.deleteGroupPlanBatch", { count: String(unfiled.length) })}</p>}
+                  </>,
+                  confirmLabel: t("projectTree.dissolveGroup"),
+                  cancelLabel: t("common.cancel"),
+                  tone: "danger",
+                  wide: Boolean(plan.batch),
+                });
+                if (!confirmed) return;
+                await organization.deleteGroupExecute(key, group.id, cascadeRef.current);
+              })();
+            } },
             { key: "delete-sessions", icon: <Trash2 size={13} />, label: t("projectTree.deleteGroupSessions"), danger: true, onSelect: () => {
               setMenuGroup(null);
               // Destructive variant of dissolve (task 17 S3): every session goes
@@ -813,7 +895,10 @@ export function ProjectTreeGroupRows({
                     }
                   }
                 }
-                organization.dissolveGroup(key, group.id);
+                // Task 892-B: route the shell removal through the A-slice too
+                // (children promote, cascade=false); without the binding this
+                // lands on the same CAS filter the old dissolveGroup used.
+                await organization.deleteGroupExecute(key, group.id, false);
               })();
             } },
           ]}
@@ -830,6 +915,9 @@ export function ProjectTreeGroupRows({
       </div>;
   };
   return <>
+    {/* Task 892-B ④: the proposal confirm dialog (portal target is body, but
+        the element must mount inside the component tree that owns the hook). */}
+    {deleteDialog}
     {children.filter((child) => !groupedIDs.has(child.topicId ?? "")).map((child) => renderNode(child, depth, section, visible))}
     {roots.map((group) => renderGroupRow(group, 0))}
   </>;

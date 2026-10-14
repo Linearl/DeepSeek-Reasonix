@@ -10790,6 +10790,19 @@ button.statusbar__mcp:focus-visible {
 }
 .reasonix-confirm-dialog__actions .btn { min-width: 84px; }
 .reasonix-confirm-dialog__actions .btn--danger { font-weight: 600; }
+/* Task 892-B ④: the dissolve proposal lists its consequences as paragraphs and
+   offers the cascade option as a checkbox row. */
+.reasonix-confirm-dialog__message p { margin: 0 0 6px; }
+.reasonix-confirm-dialog__message p:last-child { margin-bottom: 0; }
+.reasonix-confirm-dialog__cascade {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.reasonix-confirm-dialog__cascade input { margin-top: 3px; }
 .blank-project-backdrop {
   --wails-draggable: no-drag;
   z-index: var(--z-overlay-backdrop);
