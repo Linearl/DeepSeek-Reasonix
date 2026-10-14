@@ -394,6 +394,11 @@ func (t *UseCapabilityTool) resolveCall(ctx context.Context, id string, args jso
 	}
 	server, raw, err := parseMCPCapabilityID(id)
 	if err != nil {
+		// Task 877: 裸名/畸形 id——附最接近 catalog 真名建议（裸名最常见
+		// 是漏了 tool: 前缀，本地名完全相等即命中）。
+		if guide := t.capabilityNameCorrection(id); guide != "" {
+			return tool.ResolvedCall{}, fmt.Errorf("%s. %s", err, guide)
+		}
 		return tool.ResolvedCall{}, err
 	}
 	if !t.serverEnabled(server) {

@@ -25,7 +25,14 @@ func (t *UseCapabilityTool) resolveRegistryTool(ctx context.Context, name, id st
 	}
 	target, ok := t.registry.Get(name)
 	if !ok {
-		return t.resolveUnavailable(base, id, name, fmt.Sprintf("tool %q is not registered in this session", name)), nil
+		// Task 877: 真名错——附最接近的 catalog 真名建议与 search 占引用，
+		// 让模型下一轮即可自愈，不再撞一次学一次。
+		reason := fmt.Sprintf("tool %q is not registered in this session", name)
+		if guide := t.capabilityNameCorrection(id); guide != "" {
+			// 换行开头：errMsg=firstLine 只留原错误行，引导全文在 output。
+			reason += "\n" + guide
+		}
+		return t.resolveUnavailable(base, id, name, reason), nil
 	}
 	if metadata, isMCP := target.(tool.MCPMetadata); isMCP && t.runtime != nil {
 		server := strings.TrimSpace(metadata.MCPServerName())

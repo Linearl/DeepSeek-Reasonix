@@ -93,7 +93,12 @@ func (t *UseCapabilityTool) inspect(_ context.Context, id string) (string, error
 	cat := t.currentCatalog()
 	e, ok := cat.Lookup(id)
 	if !ok {
-		return "", fmt.Errorf("unknown capability_id %q", id)
+		// Task 877: inspect 也可能是真名错——附最接近 catalog 真名建议。
+		msg := fmt.Sprintf("unknown capability_id %q", id)
+		if guide := t.capabilityNameCorrection(id); guide != "" {
+			msg += ". " + guide
+		}
+		return "", fmt.Errorf("%s", msg)
 	}
 	payload := map[string]any{
 		"id":           e.ID,

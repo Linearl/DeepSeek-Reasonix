@@ -69,9 +69,14 @@ func (a *Agent) diagnoseCapabilityInputFailure(plan *toolCallPlan, err error) to
 	// never values) so the model sees what actually arrived and corrects the
 	// packaging in one round — the same discipline as tasks 216 and 457.
 	output := fmt.Sprintf("error: %v\nReceived envelope shape: %s\nThe capability call was not executed. Correct the indicated input and retry; normal permission checks still apply.", err, describeActualArguments(json.RawMessage(plan.call.Arguments)))
+	// Task 877: 命中已知错型时附可复制修正例（纠错引导），未定诊时给
+	// search(query) 指引；self_explanatory 与代理出口族不追加。
+	if guide := capabilityInputCorrection(err.Error(), json.RawMessage(plan.call.Arguments)); guide != "" {
+		output += "\n" + guide
+	}
 	return toolOutcome{
-		output: truncateValidationMessage(output),
-		errMsg: firstLine(err.Error()),
+		output:   truncateValidationMessage(output),
+		errMsg:   firstLine(err.Error()),
 	}
 }
 
@@ -127,6 +132,12 @@ func argumentValidationMessage(plan *toolCallPlan, result tool.ArgumentValidatio
 	}
 	if _, enveloped := detectDoubleEnvelopedArguments(plan.execArgs); enveloped {
 		b.WriteString("\nDouble-enveloped call detected: the arguments value is itself a full use_capability call envelope. Take the INNER \"arguments\" value and pass it directly as use_capability.arguments; capability_id and action belong on the use_capability level, not inside arguments.")
+	}
+	// Task 877: schema 违规面的纠错引导——字符串化/多行 envelope、双包、
+	// spread 参数各附可复制修正例（只对 use_capability 调用生效）。
+	if guide := capabilityValidationCorrection(plan); guide != "" {
+		b.WriteString("\n")
+		b.WriteString(guide)
 	}
 	return truncateValidationMessage(b.String())
 }
