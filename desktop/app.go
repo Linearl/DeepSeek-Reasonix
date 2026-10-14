@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"reasonix/internal/control"
 	"reasonix/internal/notify"
 	"reasonix/internal/servepool"
 	"reasonix/internal/sessioncatalog"
@@ -149,6 +150,18 @@ type App struct {
 	effortCacheMu           sync.Mutex
 	effortCache             map[string]effortCacheEntry
 	reconcileReadProbe      func(tabID string)
+
+	// Task 882: bounded context-usage read (see context_usage_fetch.go).
+	// contextUsageCache holds the last completed controller-derived gauge
+	// fields per tab ID ("" = the active-tab form) so a read that blows the
+	// timeout serves them instead of stalling the switch-tab ancillary batch.
+	// Display data only. The stub and the limit override are test-only
+	// (effortReadStub convention: set before concurrent calls, zero/nil in
+	// production).
+	contextUsageReadStub          func(ctrl control.SessionAPI) contextUsageCompute
+	contextUsageReadLimitOverride time.Duration
+	contextUsageCacheMu           sync.Mutex
+	contextUsageCache             map[string]contextUsageCacheEntry
 
 	// Task 609: per-workspace-root config snapshots for the effort read path
 	// (see config_snapshot.go). Keys are cleaned roots; each snapshot reloads
