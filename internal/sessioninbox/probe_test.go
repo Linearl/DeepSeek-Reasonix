@@ -21,10 +21,10 @@ func enqueueProbeItem(t *testing.T, sessionPath string, collabMsgID string) Inbo
 	rec, err := st.Enqueue(EnqueueRequest{
 		Intent: IntentFollowup,
 		Envelope: PromptEnvelope{
-			DisplayText: "probe queued followup",
-			RawText:     "probe queued followup",
-			SubmitText:  "probe queued followup",
-			CollabMsgID: collabMsgID,
+			DisplayText:  "probe queued followup",
+			RawText:      "probe queued followup",
+			SubmitText:   "probe queued followup",
+			CollabMsgID:  collabMsgID,
 			CollabMailTo: "contact-self",
 		},
 		Source: "collab:contact-peer",
