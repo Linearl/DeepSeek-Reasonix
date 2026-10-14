@@ -11,7 +11,7 @@ import { addBreadcrumb } from "./breadcrumbs";
 import { app, onEvent, onReady, onRuntimeRebuilt, onTabMeta, onTabsRestored, onTopicActivation } from "./bridge";
 import { invalidateCache } from "./composerHistory";
 import { formatInboxCancelError } from "./inboxError";
-import { missingQueuedGuidanceBubbles } from "./inboxSurfaceReconcile";
+import { hydrateQueuedGuidanceBubbles, missingQueuedGuidanceBubbles } from "./inboxSurfaceReconcile";
 import { settleForkConversationForTab } from "./forkWorktree";
 import type { MessageActionScope, MessageActionState } from "./messageActions";
 import { mergeRateBand, type AggregatedRateBand } from "./costRateBand";
@@ -3430,7 +3430,14 @@ export function useController() {
       const snapshot = await (app.InboxSnapshot as (id: string) => Promise<unknown>)(tabId).catch(() => undefined);
       const current = statesRef.current.get(tabId);
       if (!snapshot || !current) return;
-      for (const bubble of missingQueuedGuidanceBubbles(snapshot as import("./composerInboxQueue").InboxSnapshotLike, current.items)) {
+      const previewBubbles = missingQueuedGuidanceBubbles(snapshot as import("./composerInboxQueue").InboxSnapshotLike, current.items);
+      if (previewBubbles.length === 0) return;
+      // 任务811: preview 气泡对跨会话消息只剩时间戳残片且无入口看全文——
+      // queued 项正文在盘上，ReadInboxItem 换回全文再渲染（读失败保留 preview）。
+      const bubbles = typeof app.ReadInboxItem === "function"
+        ? await hydrateQueuedGuidanceBubbles(previewBubbles, (id) => app.ReadInboxItem(tabId, id))
+        : previewBubbles;
+      for (const bubble of bubbles) {
         dispatchTo(tabId, { type: "guidance_bubble", text: bubble.text, inboxItemId: bubble.inboxItemId });
       }
     })();
