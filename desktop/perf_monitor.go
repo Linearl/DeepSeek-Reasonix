@@ -166,6 +166,11 @@ type perfMonitor struct {
 	// 任务 373 R4: events 增长速率追踪（warnEventsGrowth）。仅在采样循环
 	// goroutine 上读写，与 warnGate / heapHigh 同一纪律，不加锁。
 	growth eventsGrowthTracker
+
+	// 任务 886 体量哨兵: 上一次 collectTotals walk 记录的单会话 top 文件
+	// （transcript jsonl / events jsonl）。仅在采样循环 goroutine 上读写，
+	// 与 warnGate / growth 同一纪律，不加锁。
+	sizeTops projectFileTops
 }
 
 // perfWarnGate 决定同一 metric 的超限 WARN 何时再发：首次必发；之后仅当
@@ -389,7 +394,44 @@ func (m *perfMonitor) warnThresholdsAt(sample perfSample, now time.Time) {
 	if float64(sample.V4OperationBytes)/(1<<20) > perfMonitorWarnV4OpsMB {
 		warn("v4OperationMb", float64(sample.V4OperationBytes)/(1<<20), perfMonitorWarnV4OpsMB)
 	}
+	m.warnSessionSizes(now)
 	m.warnEventsGrowth(sample, now)
+}
+
+// warnSessionSizes 是任务 886 体量哨兵：单会话 transcript/events 文件达阈值
+// 即 WARN，指认文件并给出转线建议。与 warnThresholds 的总量线互补——总量线
+// 说「库大了」，这条说「是哪个会话、该转线了」。限频复用 warnGate（metric
+// sessionTranscriptMb / sessionEventsFileMb 各自独立记账，15min 冷却 + 恶化
+// 重开）。数据来自最近一次 collectTotals 的同一遍 walk（m.sizeTops），零额外
+// IO；仅在采样循环 goroutine 上调用（与 warnGate/growth 同一纪律）。
+func (m *perfMonitor) warnSessionSizes(now time.Time) {
+	if m.warnGate == nil {
+		m.warnGate = newPerfWarnGate()
+	}
+	warnFile := func(metric string, value float64, limit float64, path string, remedy string) {
+		ok, suppressed, sinceMinutes := m.warnGate.allow(metric, value, now)
+		if !ok {
+			return
+		}
+		fields := []any{"metric", metric, "value", value, "limit", limit, "path", path}
+		if suppressed > 0 {
+			fields = append(fields, "suppressed", suppressed, "sinceMinutes", int64(sinceMinutes))
+		}
+		fields = append(fields, "remedy", remedy)
+		slog.Warn("desktop: perf monitor session size", fields...)
+	}
+	if t := m.sizeTops; t.transcriptBytes > 0 {
+		if mb := float64(t.transcriptBytes) / (1 << 20); mb >= perfMonitorWarnSessionTranscriptMB {
+			warnFile("sessionTranscriptMb", mb, perfMonitorWarnSessionTranscriptMB, t.transcriptPath,
+				"transcript jsonl is canonical (compact only writes projections, bytes never shrink) — 建议转线：把该会话归档并新开会话接续；短期可对该会话跑 compact 投影减轻加载")
+		}
+	}
+	if t := m.sizeTops; t.eventsBytes > 0 {
+		if mb := float64(t.eventsBytes) / (1 << 20); mb >= perfMonitorWarnSessionEventsFileMB {
+			warnFile("sessionEventsFileMb", mb, perfMonitorWarnSessionEventsFileMB, t.eventsPath,
+				"events log beyond healthy rotation bound (884 union ceiling ~102MB) — 检查 events_auto_rotation 是否 off/旋转门是否被禁；否则运行存储面板的 per-session repair")
+		}
+	}
 }
 
 // warnEventsGrowth 是任务 373 的速率预警分支：events 总量在窗口内以超阈斜率
@@ -602,6 +644,22 @@ const (
 	eventsGrowthMinNetMB            = 5.0
 )
 
+// 任务 886 体量哨兵：单会话水位线（转线判据）。存量告警（eventsMb>512 总量、
+// eventsGrowthMbPerH 斜率）都是**全库口径**——2026-10-14 新6 事故中 jsonl 已达
+// 86.5MB、events 达 238MB，总量线迟迟不报或只报总数不点名，转线决策两次靠人
+// 肉眼发现（710→886 复发）。哨兵补「单文件达阈值即 WARN 并指认文件+建议转线」：
+//   - transcript jsonl：canonical 落盘不可缩（compact 只写 .context.json 投影），
+//     64MB 依据=新6 现场 86.5MB 的提前量，常规长会话 ≤26MB（20260608 老会话实测）。
+//   - events jsonl：884 修复后健康 union 上界 ≤102MB（四会话实测），cap 50MiB，
+//     取 100MB = 明显越过 884 健康上界，说明旋转门再次失效或 events_auto_rotation=off。
+//
+// 告警走 warnGate 独立记账（metric=sessionTranscriptMb/sessionEventsFileMb），
+// remedy 明确给出下一步（转线/归档/检查旋转配置），不等人读总数猜元凶。
+const (
+	perfMonitorWarnSessionTranscriptMB = 64  // 单会话 transcript jsonl，886 判据
+	perfMonitorWarnSessionEventsFileMB = 100 // 单会话 events jsonl，884 健康上界+余量
+)
+
 // eventsGrowthPoint is one sparse (time, eventsMb) reading inside the growth
 // window. Points sit at least eventsGrowthPointSpacing apart: per-sample
 // deltas are dominated by walk jitter against files being written mid-scan,
@@ -656,10 +714,12 @@ func (t *eventsGrowthTracker) observe(now time.Time, eventsMB float64) (rateMBPH
 
 // collectTotals walks the two session roots once per sample. The event logs are
 // counted separately because they are the append-only files that grow with every
-// turn.
+// turn. 任务886: the same walk hands back the top transcript/events file for the
+// per-session size sentinel (stored on m.sizeTops, sampler goroutine only).
 func (m *perfMonitor) collectTotals() (storeMB, projectsMB, eventsMB float64) {
 	storeMB = walkBytesMB(config.SessionStoreDir())
-	projectsMB, eventsMB = walkProjectsBytesMB(config.MemoryUserDir())
+	projectsMB, eventsMB, tops := walkProjectsBytesMB(config.MemoryUserDir())
+	m.sizeTops = tops
 	return storeMB, projectsMB, eventsMB
 }
 
@@ -682,6 +742,19 @@ func walkBytesMB(root string) float64 {
 	return float64(total) / (1 << 20)
 }
 
+// projectFileTops is the largest single live file of each size-relevant class
+// found by walkProjectsBytesMB: the canonical transcript (jsonl) and the
+// append-only events log. 任务886 体量哨兵 uses it to alert on ONE session
+// crossing a size line — the aggregate totals below cannot name which session
+// is the offender, and the 2026-10-14 新6 incident (jsonl 86.5MB + events 238MB)
+// produced no per-session warning at all until a human noticed.
+type projectFileTops struct {
+	transcriptPath  string
+	transcriptBytes int64
+	eventsPath      string
+	eventsBytes     int64
+}
+
 // walkProjectsBytesMB sums the per-project session roots and, separately, the
 // append-only event logs inside them. Directories named .trash are skipped at
 // any depth: they are storage the user chose to keep, not live growth, and
@@ -691,9 +764,11 @@ func walkBytesMB(root string) float64 {
 // (see recovery_isolated.go stableRecoverySessionPath) — safety snapshots, not
 // live growth. They must be filtered by filename, not by a "recovery" directory
 // name (there is no such directory).
-func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) {
+// 任务886: the same walk also records the top transcript/events file (one pass,
+// no extra IO) so the per-session size sentinel can name the offender.
+func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64, tops projectFileTops) {
 	if memoryRoot == "" {
-		return 0, 0
+		return 0, 0, tops
 	}
 	root := filepath.Join(memoryRoot, "projects")
 	var total, events int64
@@ -720,10 +795,15 @@ func walkProjectsBytesMB(memoryRoot string) (totalMB float64, eventsMB float64) 
 		total += info.Size()
 		if store.IsSessionEventLogName(name) {
 			events += info.Size()
+			if info.Size() > tops.eventsBytes {
+				tops.eventsPath, tops.eventsBytes = path, info.Size()
+			}
+		} else if store.IsSessionTranscriptName(name) && info.Size() > tops.transcriptBytes {
+			tops.transcriptPath, tops.transcriptBytes = path, info.Size()
 		}
 		return nil
 	})
-	return float64(total) / (1 << 20), float64(events) / (1 << 20)
+	return float64(total) / (1 << 20), float64(events) / (1 << 20), tops
 }
 
 // collectFiles expands the configured globs and keeps the biggest/most recently
