@@ -1364,6 +1364,16 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			}
 			fmt.Fprintf(&b, "protected_branches = [%s]\n", strings.Join(quoted, ", "))
 		}
+		// disabled_rules 渲染（任务 896，852 调研改进建议 #2）：此前漏渲染，
+		// cfg.Save() 重写配置时用户手写的禁用清单会静默丢失——一行配置关掉
+		// 底线后连配置本身都留不下来。与 protected_branches 同形态：非空才渲染。
+		if len(c.Sentinel.DisabledRules) > 0 {
+			quoted := make([]string, 0, len(c.Sentinel.DisabledRules))
+			for _, rule := range c.Sentinel.DisabledRules {
+				quoted = append(quoted, fmt.Sprintf("%q", rule))
+			}
+			fmt.Fprintf(&b, "disabled_rules = [%s]   # 禁用的硬规则 id；装配时发 WARN+会话通知\n", strings.Join(quoted, ", "))
+		}
 		b.WriteString("\n")
 	}
 
