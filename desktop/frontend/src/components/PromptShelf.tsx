@@ -149,15 +149,21 @@ export function PromptHeaderAction({
   onClick,
   ariaLabel,
   disabled = false,
+  // 任务860: modifier hook for header actions that need a stronger visual
+  // weight than the default icon-grade pill (the ask takeover button is a
+  // text button and must read as a primary control). Keeps the base class so
+  // existing styling/tests stay byte-identical when the prop is omitted.
+  className,
 }: {
   children: ReactNode;
   onClick: () => void;
   ariaLabel?: string;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
     <button
-      className="prompt-shelf__header-button"
+      className={["prompt-shelf__header-button", className].filter(Boolean).join(" ")}
       type="button"
       onClick={onClick}
       aria-label={ariaLabel}
