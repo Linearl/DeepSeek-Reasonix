@@ -1354,6 +1354,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetSafetyIdleTerminate(enabled: boolean): Promise<void>;
   SetSafetyLoopStreakNote(enabled: boolean): Promise<void>;
   SetSafetyEventWaitRecheck(enabled: boolean): Promise<void>;
+  // 任务 895: sentinel 穿透封堵实验开关（sentinel_penetration_guard，即时生效）。
+  SetSentinelPenetrationGuard(enabled: boolean): Promise<void>;
   // 任务 727: heartbeat session rotation — bridge heartbeat-rotation.json enabled.
   HeartbeatRotationStatus(): Promise<{ enabled: boolean; path: string; err: string }>;
   SetHeartbeatRotationEnabled(enabled: boolean): Promise<void>;
@@ -6070,6 +6072,7 @@ function makeMockApp(): AppBindings {
     async SetSafetyIdleTerminate() {},
     async SetSafetyLoopStreakNote() {},
     async SetSafetyEventWaitRecheck() {},
+    async SetSentinelPenetrationGuard() {},
     async HeartbeatRotationStatus() { return { enabled: true, path: "", err: "" }; },
     async SetHeartbeatRotationEnabled() {},
     async SetExperimentalOrphanHandling() {},
