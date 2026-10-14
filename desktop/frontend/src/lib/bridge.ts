@@ -166,6 +166,8 @@ import type {
   WorkspaceView,
   SessionClearResult,
   LastSessionWorkspaceInfo,
+  ManageSessionsListResult,
+  ManageSessionsGroupResult,
 } from "./types";
 import { browserPreviewShellSupport } from "./shellSupportPreview";
 export * from "./remoteTabEvents";
@@ -650,15 +652,15 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // 接 UI 时可按需把宽类型细化为结构类型）。
   AgentManageSessions(action: string, payload: string): Promise<string>;
   ManageSessions(action: string, payload: string): Promise<string>;
-  ManageSessionsList(): Promise<unknown>;
-  CreateProjectGroup(scope: string, workspaceRoot: string, title: string): Promise<unknown>;
-  CreateSessionGroup(scope: string, workspaceRoot: string, topicId: string, title: string, parentId: string): Promise<unknown>;
-  DeleteProjectGroup(scope: string, workspaceRoot: string, dryRun: boolean, cascade: boolean): Promise<unknown>;
-  DeleteSessionGroup(scope: string, workspaceRoot: string, groupId: string, dryRun: boolean, cascade: boolean): Promise<unknown>;
-  RenameProjectGroup(scope: string, groupId: string, title: string): Promise<unknown>;
-  RenameSessionGroup(scope: string, workspaceRoot: string, groupId: string, title: string): Promise<unknown>;
-  ReorderTopicInGroup(scope: string, workspaceRoot: string, groupId: string, topicId: string, index: number): Promise<unknown>;
-  RollbackManageOperation(opId: string): Promise<unknown>;
+  ManageSessionsList(): Promise<ManageSessionsListResult>;
+  CreateProjectGroup(scope: string, workspaceRoot: string, title: string): Promise<ManageSessionsGroupResult>;
+  CreateSessionGroup(scope: string, workspaceRoot: string, topicId: string, title: string, parentId: string): Promise<ManageSessionsGroupResult>;
+  DeleteProjectGroup(groupId: string, cascade: boolean, confirm: boolean): Promise<ManageSessionsGroupResult>;
+  DeleteSessionGroup(scope: string, workspaceRoot: string, groupId: string, dryRun: boolean, cascade: boolean): Promise<ManageSessionsGroupResult>;
+  RenameProjectGroup(groupId: string, title: string): Promise<ManageSessionsGroupResult>;
+  RenameSessionGroup(scope: string, workspaceRoot: string, groupId: string, title: string): Promise<ManageSessionsGroupResult>;
+  ReorderTopicInGroup(scope: string, workspaceRoot: string, groupId: string, topicId: string, index: number): Promise<ManageSessionsGroupResult>;
+  RollbackManageOperation(opId: string): Promise<ManageSessionsGroupResult>;
 // AppBindings is the hand-written React-to-Go contract. _CheckGeneratedBindings
 // catches generated methods missing here; update this interface and typecheck.
   // Fire-and-forget diagnostic from the transcript controller: how long a switch-tab
