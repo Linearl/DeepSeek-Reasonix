@@ -72,6 +72,7 @@ import { useTranscriptSelectionRetention } from "../lib/useTranscriptSelectionRe
 import { useCreationTranscriptScrollbar } from "../lib/useCreationTranscriptScrollbar";
 import { hasTranscriptScrollableRange } from "../lib/transcriptScrollGeometry";
 import { attachNestedScrollHandoff } from "../lib/nestedScrollHandoff";
+import { assessTranscriptBlank, blankSentinelState, rollBlankSentinelSurface, TRANSCRIPT_BLANK_CHECK_INTERVAL_MS, TRANSCRIPT_BLANK_RECOVERY_LIMIT } from "../lib/transcriptBlankSentinel";
 import { useTranscriptEntranceAnimation } from "../lib/useEntranceAnimation";
 import type { QuestionAnchor } from "../lib/transcriptGrouping";
 import { transcriptSelectionStore } from "../lib/transcriptSelectionStore";
@@ -651,6 +652,67 @@ export function Transcript(props: TranscriptProps) {
       onSurfacePaintReady(surfaceCommitToken, safeMode ? "degraded" : "ready");
     });
   }, [empty, hydrating, safeMode, snapshot, onSurfacePaintReady, projection, surfaceCommitToken, transcriptKernel]);
+  // 任务874: transcript 空白哨兵 + 有界自恢复。2026-10-13 19:10 实录：大会话
+  // reset 重建后 items 已在 state，视口可见块却为 0（渲染层丢失）；kernel 的
+  // blank-viewport anomaly 只重观察一次且不落 desktop.log，空白持续到用户重开
+  // 窗口。本哨兵独立于渲染事件轮询（丢面后可能再无重渲染来触发 kernel 观察）：
+  // 内容行已挂载但连续多次检查可见块为 0 → 先落日志（事故后可查），再重提交
+  // 几何并按 #9567 同款收尾强制回底；恢复次数有上限，用尽后补一条升级日志，
+  // 不做无限循环。空白视口里没有读者，回底不会打断任何人。
+  const blankSentinelRef = useRef(blankSentinelState(""));
+  const blankContentRef = useRef({ rows: 0, blocks: 0 });
+  blankContentRef.current = { rows: allRows.length, blocks: projection.completedBlocks.length };
+  useEffect(() => {
+    if (empty || hydrating || !scrollElement) {
+      blankSentinelRef.current = blankSentinelState("");
+      return;
+    }
+    blankSentinelRef.current = rollBlankSentinelSurface(blankSentinelRef.current, surfaceKey);
+    let cancelled = false;
+    const check = () => {
+      if (cancelled || document.hidden) return;
+      const geometry = snapshot();
+      if (!geometry) return;
+      const content = blankContentRef.current;
+      const verdict = assessTranscriptBlank(
+        blankSentinelRef.current,
+        {
+          scrollTop: geometry.scrollTop,
+          scrollHeight: geometry.scrollHeight,
+          clientHeight: geometry.clientHeight,
+          visibleBlockCount: geometry.visibleBlocks.length,
+        },
+        content.rows,
+      );
+      blankSentinelRef.current = verdict.state;
+      if (verdict.shouldRecover) {
+        reportFrontendLog(
+          "session-monitor",
+          "transcript blank sentinel",
+          `tab=${tabId ?? ""} rows=${content.rows} blocks=${content.blocks}`
+            + ` scrollHeight=${Math.round(geometry.scrollHeight)} clientHeight=${Math.round(geometry.clientHeight)}`
+            + ` scrollTop=${Math.round(geometry.scrollTop)} attempt=${verdict.state.recoveries}/${TRANSCRIPT_BLANK_RECOVERY_LIMIT}`,
+          "warn",
+        );
+        beginStructural("display-change");
+        commitViewportGeometry();
+        setScrollMode("tail-follow");
+        scrollToBottom();
+      } else if (verdict.shouldReportExhausted) {
+        reportFrontendLog(
+          "session-monitor",
+          "transcript blank recovery exhausted",
+          `tab=${tabId ?? ""} rows=${content.rows} blocks=${content.blocks} attempts=${TRANSCRIPT_BLANK_RECOVERY_LIMIT}`,
+          "warn",
+        );
+      }
+    };
+    const timer = window.setInterval(check, TRANSCRIPT_BLANK_CHECK_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [beginStructural, commitViewportGeometry, empty, hydrating, scrollElement, scrollToBottom, setScrollMode, snapshot, surfaceKey, tabId]);
   const autoFillRef = useRef({ surface: "", pages: 0 });
   useEffect(() => {
     if (autoFillRef.current.surface !== surfaceKey) autoFillRef.current = { surface: surfaceKey, pages: 0 };

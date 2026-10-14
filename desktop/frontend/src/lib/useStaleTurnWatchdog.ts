@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from "react";
+import { reportFrontendLog } from "./frontendLog";
 
 const STALE_TURN_RECONCILE_MS = 30_000;
 
@@ -56,6 +57,15 @@ export function useStaleTurnWatchdog<T extends StaleTurnWatchdogState>({
         schedule();
         return;
       }
+      // 任务874: 看门狗触发过去完全静默——2026-10-13 19:10 的 transcript 自行
+      // 重建在 desktop.log 只留下 reason=reset，查不到这一步。留一行触发证据。
+      const evidenceAt = lastActivityAt > 0 ? lastActivityAt : current?.turnStartAt ?? 0;
+      reportFrontendLog(
+        "turn-watchdog",
+        "stale-turn watchdog fired",
+        `tab=${tabId} quietForMs=${Math.max(0, Date.now() - evidenceAt)}`,
+        "info",
+      );
       await reconcile(tabId);
       if (!cancelled && activeTabIdRef.current === tabId && statesRef.current.get(tabId)?.running) {
         schedule(STALE_TURN_RECONCILE_MS);

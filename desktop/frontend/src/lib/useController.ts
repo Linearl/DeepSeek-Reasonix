@@ -4313,6 +4313,14 @@ export function useController() {
     const foregroundRunning = dispatchRuntimeStatusForTab(tabId, tab, snapshotAt);
     const missedTurnDone = Boolean(local?.running && !foregroundRunning);
     if (hydrateSessionData && (needsInitialLoad || missedTurnDone)) {
+      if (missedTurnDone) {
+        // 任务874: 这条分支是「无用户操作、transcript 自行 reset 重建」的主要
+        // 入口（2026-10-13 19:10 实录：desktop.log 只留下 hydrate reason=reset
+        // 一行，无法回答谁下的令）。本地仍认为轮次在跑、后端快照已空闲——判
+        // 定漏接 turn_done 并全量重建表面。把触发源写进 desktop.log，再发生
+        // 时可直接归因。
+        reportFrontendLog("turn-watchdog", "missed turn-done reset", `tab=${tabId} local=running backend=idle`, "warn");
+      }
       await loadSessionDataForTab(tabId, missedTurnDone, "startup", {
         sessionPath: tab.sessionPath,
         sessionRevision: tab.sessionRevision,
