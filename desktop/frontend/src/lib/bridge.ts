@@ -645,6 +645,20 @@ export interface SessionStorageMigrationReportView {
 export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
   /** Task 36 Phase 1: answer an app:takeover-request prompt; false when stale. */
   ResolveTakeoverDecision(marker: string, accept: boolean): Promise<boolean>;
+  // 892A 分组嵌套+会话整理（ManageSessions 工具族）：手写契约补全——wailsjs 生成物已有
+  // 这 11 个方法，_CheckGenToApp 防线抓出 AppBindings 缺声明（出包构建红现场补，892B 前端片
+  // 接 UI 时可按需把宽类型细化为结构类型）。
+  AgentManageSessions(action: string, payload: string): Promise<string>;
+  ManageSessions(action: string, payload: string): Promise<string>;
+  ManageSessionsList(): Promise<unknown>;
+  CreateProjectGroup(scope: string, workspaceRoot: string, title: string): Promise<unknown>;
+  CreateSessionGroup(scope: string, workspaceRoot: string, topicId: string, title: string, parentId: string): Promise<unknown>;
+  DeleteProjectGroup(scope: string, workspaceRoot: string, dryRun: boolean, cascade: boolean): Promise<unknown>;
+  DeleteSessionGroup(scope: string, workspaceRoot: string, groupId: string, dryRun: boolean, cascade: boolean): Promise<unknown>;
+  RenameProjectGroup(scope: string, groupId: string, title: string): Promise<unknown>;
+  RenameSessionGroup(scope: string, workspaceRoot: string, groupId: string, title: string): Promise<unknown>;
+  ReorderTopicInGroup(scope: string, workspaceRoot: string, groupId: string, topicId: string, index: number): Promise<unknown>;
+  RollbackManageOperation(opId: string): Promise<unknown>;
 // AppBindings is the hand-written React-to-Go contract. _CheckGeneratedBindings
 // catches generated methods missing here; update this interface and typecheck.
   // Fire-and-forget diagnostic from the transcript controller: how long a switch-tab
