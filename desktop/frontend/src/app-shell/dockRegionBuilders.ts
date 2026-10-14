@@ -32,6 +32,8 @@ export function buildWorkspaceDockProps(input: {
   todoSidebar: boolean;
   /** Task 259: same payload the composer footer renders; undefined shows the empty state. */
   todo?: WorkspaceDockRegionProps["todo"];
+  /** 893-B: never/sealed signals for the empty state; omitted keeps the original copy. */
+  todoEmpty?: WorkspaceDockRegionProps["todoEmpty"];
   /** Task 495: the subagent panel switch (own switch, not the todo family). */
   subagentsPanel?: boolean;
   /** Task 495: the session's subagent directory payload. */
@@ -75,6 +77,7 @@ export function buildWorkspaceDockProps(input: {
     showContext: input.showContext,
     todoSidebar: input.todoSidebar,
     todo: input.todo,
+    todoEmpty: input.todoEmpty,
     subagentsPanel: input.subagentsPanel,
     subagents: input.subagents,
     t: input.t,

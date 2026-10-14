@@ -332,6 +332,9 @@ export const zh: Record<DictKey, string> = {
   "rightDock.remote": "远程",
   "rightDock.terminal": "终端",
   "rightDock.todoEmpty": "当前会话暂无任务",
+  // 893-B: 会话曾有任务清单、回合结束后被回收时不再误显「暂无任务」。
+  "rightDock.todoSealed": "任务列表已按回合封存",
+  "rightDock.todoSealedCount": "任务列表已按回合封存（上一回合 {count} 项）",
 
   // 话题栏
   "topicBar.renameSession": "重命名会话",

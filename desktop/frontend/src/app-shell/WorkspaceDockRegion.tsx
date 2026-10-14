@@ -4,6 +4,8 @@ import type { Translator } from "../lib/i18n";
 import type { RightDockMode } from "../store/layout";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "../lib/dockTabs";
 import type { SubagentDirectory } from "../lib/subagentDirectory";
+import type { TodoDockEmptyStateInput } from "../lib/todoVisibility";
+import { TodoDockEmptyState } from "../components/TodoDockEmptyState";
 
 const ContextPanel = lazy(() => import("../components/ContextPanel").then((module) => ({ default: module.ContextPanel })));
 const RemotePanel = lazy(() => import("../components/RemotePanel").then((module) => ({ default: module.RemotePanel })));
@@ -30,6 +32,8 @@ export type WorkspaceDockRegionProps = {
   todoSidebar: boolean;
   /** Task 259: the same payload the composer footer would render; undefined shows the empty state. */
   todo?: { identity: string; props: TodoProps };
+  /** 893-B: signals for the empty state's never/sealed distinction; omitted keeps the original "never" copy. */
+  todoEmpty?: TodoDockEmptyStateInput;
   /** Task 495: the subagent panel switch (own switch, not the todo family). */
   subagentsPanel?: boolean;
   /** Task 495: the session's subagent directory payload; undefined keeps the tab away. */
@@ -100,7 +104,8 @@ export function WorkspaceDockRegion(props: WorkspaceDockRegionProps) {
                   <Suspense fallback={null}><TodoDockPanel key={props.todo.identity} {...props.todo.props} defaultOpen /></Suspense>
                 </div>
               ) : (
-                <div className="workbench-dock__todo workbench-dock__todo--empty">{t("rightDock.todoEmpty")}</div>
+                /* 893-B: never vs sealed — see TodoDockEmptyState. */
+                <TodoDockEmptyState t={t} {...(props.todoEmpty ?? {})} />
               )
             ) : mode === "subagents" && props.subagentsPanel ? (
               /* Task 495: the subagent directory panel (own switch). */
