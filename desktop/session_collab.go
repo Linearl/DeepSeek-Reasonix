@@ -81,6 +81,13 @@ type sessionCollabPump struct {
 	// idleTurns is the task-569 idle-turn bridge state (per-target idle clock +
 	// in-flight marks). The bridge itself is switch-gated (default off).
 	idleTurns *idleTurnBridge
+
+	// 任务887: dormant reverse-lookup cache — candidates (durable queued
+	// follow-up, no runtime in this process) probed at most every
+	// dormantProbeInterval; sweep passes rebuild views from it every tick.
+	dormantMu      sync.Mutex
+	dormantProbeAt time.Time
+	dormant        []dormantQueuedTarget
 }
 
 // collabRetryState is one contact's consecutive-failure chain: the count

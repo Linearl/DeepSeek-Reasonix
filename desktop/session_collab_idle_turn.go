@@ -544,7 +544,13 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 		return
 	}
 	var targets []idleTurnTargetView
+	// 任务887: contacts covered by a live runtime this pass — the dormant
+	// reverse lookup must never stand up a session the live half already owns.
+	covered := map[string]bool{}
 	for _, t := range p.app.sessionCollabLiveTargets(nil) {
+		if t.contactID != "" {
+			covered[t.contactID] = true
+		}
 		if t.ctrl == nil {
 			continue
 		}
@@ -600,6 +606,11 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 		view.exhausted = exhausted
 		targets = append(targets, view)
 	}
+	// 任务887: 第三态——durable inbox 有排队 follow-up、本进程却没有任何
+	// runtime 的会话（从未打开/重启后不落盘）。反查出的候选注入同一趟
+	// sweepTargets：空闲窗口、579 三振、in-flight 去重、570 回执、709 唤醒
+	// 全部复用；唯一新增是 run 前按需拉起 runtime（wakeDormantRuntime）。
+	targets = append(targets, p.dormantIdleTurnTargets(now, covered)...)
 	p.idleTurns.sweepTargets(targets, now)
 }
 
