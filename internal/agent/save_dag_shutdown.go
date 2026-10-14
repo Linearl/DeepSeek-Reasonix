@@ -24,7 +24,14 @@ func (s *Session) AppendForShutdownWithoutLock(path string, rewrite bool) (handl
 	if strings.TrimSpace(path) == "" {
 		return false, fmt.Errorf("empty session path")
 	}
-	unlock := lockSessionSavePath(path)
+	// 任务 885: this is the shutdown escape hatch after the file-lock wait
+	// already expired — it must not trade one unbounded wait for another.
+	// A wedged in-process holder surfaces as ErrSessionFileLockHeld instead of
+	// freezing shutdown, and the caller falls back to the recovery copy.
+	unlock, lockErr := lockSessionSavePathWithin(path, sessionSavePathLockWait)
+	if lockErr != nil {
+		return false, lockErr
+	}
 	defer unlock()
 	probe, err := probeSessionEventLog(path)
 	if err != nil || !probe.dag {
