@@ -710,7 +710,10 @@ var curatedProviderPresets = []ProviderPreset{
 			ContextWindow:   128000,
 			MaxOutputTokens: 32_768,
 			BillingMode:     "subscription_equivalent",
-			ModelOverrides: withOpenCodeGoChatContextOverrides(map[string]ProviderModelOverride{
+			// Task 880: merged with the shared chat-effort defaults so this
+			// same-named entry can never downgrade models the recommended
+			// preset declares (install order flip => "effort not configurable").
+			ModelOverrides: openCodeGoLegacyChatOverrides(map[string]ProviderModelOverride{
 				"glm-5.3": {
 					ReasoningProtocol: ReasoningProtocolOpenAI,
 					SupportedEfforts:  []string{"low", "high", "max"},
