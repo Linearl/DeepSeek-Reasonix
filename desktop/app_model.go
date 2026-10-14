@@ -491,6 +491,7 @@ func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, 
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRenameSession:            a.renameCollabSession,
 		OnMoveTopicToGroup:         a.moveCollabTopicToGroup,
+		OnManageSessions:           a.AgentManageSessions,
 		// Keep the private temporary directory across model switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
 	})

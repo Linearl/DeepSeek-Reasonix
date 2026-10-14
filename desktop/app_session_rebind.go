@@ -637,6 +637,7 @@ func (a *App) rebindCandidateBuildOptions(tab *WorkspaceTab, source tabRuntimeSn
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRenameSession:            a.renameCollabSession,
 		OnMoveTopicToGroup:         a.moveCollabTopicToGroup,
+		OnManageSessions:           a.AgentManageSessions,
 		// ReuseAssembly lives on the embedded RuntimeReload; promoted names
 		// cannot appear in the outer literal, so name the embedded struct.
 		RuntimeReload: boot.RuntimeReload{
