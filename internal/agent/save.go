@@ -55,6 +55,20 @@ var (
 	sessionFileLockWait         = 5 * time.Second
 	sessionFileLockPollInterval = 25 * time.Millisecond
 	sessionMetaLockWait         = 5 * time.Second
+	// 任务 885: sessionSavePathLockWait bounds the IN-PROCESS save-path mutex
+	// acquisition for the blocking save path. The cross-process file lock
+	// above has been bounded since task 357, but this mutex waited forever —
+	// a wedged holder (full-replay load, stuck projection) turned into an
+	// unbounded save queue (observed 791ms → 11973ms monotonic growth, 2026-10-14
+	// incident). The budget is deliberately above every healthy-but-slow
+	// critical section seen in the field (~14s for the 238MB-events session):
+	// only a genuinely wedged holder trips it, and the timeout surfaces as
+	// ErrSessionFileLockHeld so the existing shutdown-recovery, degraded-read
+	// and friendly-error machinery all engage instead of a silent hang.
+	sessionSavePathLockWait = 30 * time.Second
+	// sessionSavePathLockPoll is the try-lock retry cadence while waiting for
+	// the in-process save-path mutex; same rhythm as the file-lock poll.
+	sessionSavePathLockPoll = 25 * time.Millisecond
 	ErrSessionSnapshotConflict  = errors.New("session snapshot conflicts with newer transcript")
 	// ErrSessionExternallyRemoved means a live Session still has a verified
 	// baseline for path, but every authoritative transcript artifact disappeared.
@@ -62,8 +76,10 @@ var (
 	// external cleanup tool deliberately removed.
 	ErrSessionExternallyRemoved = errors.New("session was removed while still open")
 	ErrSessionRecoveryNotNeeded = errors.New("session recovery not needed")
-	// ErrSessionFileLockHeld reports that another process kept the
-	// compatibility save lock for the full bounded acquisition window. Callers
+	// ErrSessionFileLockHeld reports that the save lock stayed held for the
+	// full bounded acquisition window: the cross-process compatibility .lock
+	// file kept by another process, or — task 885 — the in-process save-path
+	// mutex kept by another goroutine past sessionSavePathLockWait. Callers
 	// that are about to terminate can use this sentinel to persist a recovery
 	// branch without waiting on the same stalled file again.
 	ErrSessionFileLockHeld = errors.New("session file lock held")
@@ -283,12 +299,17 @@ func (s *Session) withSessionSaveLocks(path string, fn func() error) error {
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("empty session path")
 	}
-	lockWaitStart := time.Now()
-	unlock := lockSessionSavePath(path)
-	defer unlock()
+	// Task 885: the directory create is disk IO, not a critical-section step —
+	// it runs before the mutex so a slow volume cannot stretch the lock hold.
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create session dir: %w", err)
 	}
+	lockWaitStart := time.Now()
+	unlock, lockErr := lockSessionSavePathWithin(path, sessionSavePathLockWait)
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
 	unlockFile, err := lockSessionFile(path)
 	if err != nil {
 		return fmt.Errorf("lock session file: %w", err)
@@ -298,6 +319,41 @@ func (s *Session) withSessionSaveLocks(path string, fn func() error) error {
 	// first-class segment of the save total (196-family attribution).
 	s.lastSaveLockWaitMs.Store(time.Since(lockWaitStart).Milliseconds())
 	return fn()
+}
+
+// lockSessionSavePathWithin acquires the in-process save-path mutex for path,
+// polling every sessionSavePathLockPoll, and gives up after budget with
+// ErrSessionFileLockHeld instead of queueing forever behind a wedged holder
+// (任务 885). The blocking save path is the only caller: reads and maintenance
+// keep the unbounded lockSessionSavePath so a slow-but-live holder can never
+// fail a hydrate or a repair, while a save that cannot land within the budget
+// surfaces through the existing lock-held recovery machinery.
+func lockSessionSavePathWithin(path string, budget time.Duration) (func(), error) {
+	key := canonicalSessionSavePath(path)
+	v, _ := sessionSaveLocks.LoadOrStore(key, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	waitStart := time.Now()
+	deadline := waitStart.Add(budget)
+	for {
+		if mu.TryLock() {
+			waited := time.Since(waitStart)
+			if waited >= sessionSaveLockWarnWait {
+				slog.Warn("session: save-path lock waited", "path", key, "wait_ms", waited.Milliseconds())
+			}
+			return mu.Unlock, nil
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			waited := time.Since(waitStart)
+			slog.Warn("session: save-path lock wait exceeded budget; save declines", "path", key, "wait_ms", waited.Milliseconds(), "budget_ms", budget.Milliseconds())
+			return nil, fmt.Errorf("save-path lock %s held %s (budget %s): %w", key, waited.Round(time.Millisecond), budget, ErrSessionFileLockHeld)
+		}
+		sleep := sessionSavePathLockPoll
+		if sleep > remaining {
+			sleep = remaining
+		}
+		time.Sleep(sleep)
+	}
 }
 
 // tryWithSessionSaveLocks is the non-blocking form of withSessionSaveLocks for
