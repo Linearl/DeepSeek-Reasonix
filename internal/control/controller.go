@@ -252,8 +252,14 @@ type Controller struct {
 
 	// jobs is the session-scoped background-job manager. The agent's background
 	// tools spawn into it; Compose drains its completion notes into the next turn;
-	// Close cancels its still-running jobs.
+	// Close cancels its still-running jobs — unless the manager is borrowed
+	// (jobsBorrowed, task 890 hot-swap handoff) or is being handed off
+	// (closeJobsKeep), in which case this controller must leave it running.
 	jobs *jobs.Manager
+	// jobsBorrowed marks jobs as borrowed from an outgoing controller (task
+	// 890): a failed swap closes this controller without touching the shared
+	// manager. AdoptJobs clears it once the swap has committed.
+	jobsBorrowed bool
 	// wake owns task 553's idle-session wake bookkeeping (completion observer,
 	// coalesce timer, self-drive budget, throttle, per-job dedupe). Guarded by
 	// c.mu; see job_wake.go.
@@ -773,6 +779,12 @@ type Options struct {
 	BalanceClient *http.Client
 	// Jobs is the session-scoped background-job manager (nil disables background jobs).
 	Jobs *jobs.Manager
+	// JobsHandoff marks Jobs as borrowed from an outgoing controller during a
+	// hot model/settings swap (task 890): the replacement must not close the
+	// shared manager when its own swap fails — the outgoing controller still
+	// owns it. Ownership transfers only through AdoptJobs after the swap
+	// commits; until then every close path leaves the manager running.
+	JobsHandoff bool
 	// BackgroundJobWake opts in to idle-session wake turns when an owned
 	// background job finishes (task 553). Iron rule 2: default off; boot
 	// snapshot — restart to apply.
@@ -1006,6 +1018,7 @@ func New(opts Options) *Controller {
 		balanceKey:                        opts.BalanceKey,
 		balanceClient:                     opts.BalanceClient,
 		jobs:                              opts.Jobs,
+		jobsBorrowed:                      opts.JobsHandoff,
 		workspaceLease:                    opts.WorkspaceLease,
 		baseClient:                        opts.BaseClient,
 		mcp:                               newMcpManager(opts.Host, opts.Registry, pluginCtx, opts.MCPHostProfile),
@@ -6181,11 +6194,29 @@ func (c *Controller) CloseAfterDestroy() {
 	c.close(true, closeJobsAsync)
 }
 
+// CloseHandingOffJobs tears this controller down for a hot model/settings
+// swap (task 890) while the shared background-job manager keeps running: the
+// replacement was built on the same manager and takes ownership via
+// AdoptJobs, so background tasks started before the swap survive it. Every
+// other cleanup step runs exactly as Close does — only the manager close is
+// skipped, and the build-scoped cleanup chain (LSP servers, session v4
+// bridge, resident base) is deferred until the jobs running at this moment
+// exit, because a background task started under this controller still uses
+// them mid-run.
+func (c *Controller) CloseHandingOffJobs() {
+	c.close(true, closeJobsKeep)
+}
+
 type closeJobsMode int
 
 const (
 	closeJobsWithGrace closeJobsMode = iota
 	closeJobsAsync
+	// closeJobsKeep leaves the manager running for the replacement controller
+	// that adopts it (task 890 handoff); the outgoing controller closes
+	// neither the manager nor — until its current jobs exit — the build-scoped
+	// resources they may still be using.
+	closeJobsKeep
 )
 
 func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
@@ -6197,6 +6228,7 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 		c.mu.Lock()
 		started := c.startedOnce
 		cancel := c.cancel
+		jobsBorrowed := c.jobsBorrowed
 		// Seal turn admission and drop anything already parked: a parked turn
 		// must not start against a controller that is being torn down, and
 		// without the closed flag a submit landing after this critical
@@ -6241,10 +6273,17 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 		// before the manager closes. Runs outside the c.mu critical section;
 		// fireWakeTurn's closed check covers any timer already in flight.
 		c.shutdownBackgroundJobWake()
-		if c.jobs != nil {
+		// A borrowed manager (task 890 hot-swap handoff) belongs to the
+		// outgoing controller still serving this session — closing this
+		// controller on a failed swap must leave it running, whatever the
+		// caller asked for.
+		if c.jobs != nil && !jobsBorrowed {
 			switch jobsMode {
 			case closeJobsAsync:
 				c.jobs.CloseAsync()
+			case closeJobsKeep:
+				// Handoff close: the manager — and its running background
+				// jobs — belongs to the replacement controller now (task 890).
 			default:
 				c.jobs.Close() // cancel any still-running background jobs
 			}
@@ -6255,7 +6294,16 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 			}
 		}
 		if c.cleanup != nil {
-			c.cleanup()
+			if c.jobs != nil && !jobsBorrowed && jobsMode == closeJobsKeep {
+				// Build-scoped teardown (LSP servers, session v4 bridge,
+				// resident base) waits for the jobs running at this moment:
+				// a background task started under this controller still uses
+				// them mid-run (task 890). Jobs the replacement starts later
+				// do not extend the wait.
+				c.jobs.AfterUnfinished(c.cleanup)
+			} else {
+				c.cleanup()
+			}
 		}
 		// Drop the Controller owner reference last so background job leases
 		// that outlive close still pin retired generations until they exit.
@@ -6284,6 +6332,40 @@ func (c *Controller) rotateSessionTemp() {
 		return
 	}
 	c.sessionTemp.Rotate()
+}
+
+// AdoptJobs takes ownership of a handed-off background-job manager (task
+// 890). Call it only after the swap onto this controller has committed;
+// until then a failure-path Close leaves the shared manager running for the
+// outgoing controller that still serves the session.
+func (c *Controller) AdoptJobs() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.jobsBorrowed = false
+	c.mu.Unlock()
+}
+
+// JobsManager exposes the raw background-job manager for a hot-swap handoff
+// (nil when background jobs are disabled). The replacement build receives it
+// through boot.Options.Jobs so background jobs survive the swap (task 890).
+func (c *Controller) JobsManager() *jobs.Manager {
+	if c == nil {
+		return nil
+	}
+	return c.jobs
+}
+
+// WorkspaceLeaseOwner exposes the raw Delivery writer owner for a hot-swap
+// handoff (task 890): the manager's job-start observer retains THIS lease, so
+// the replacement build must receive it together with JobsManager — both or
+// neither.
+func (c *Controller) WorkspaceLeaseOwner() *workspacelease.Owner {
+	if c == nil {
+		return nil
+	}
+	return c.workspaceLease
 }
 
 // Jobs returns the still-running background jobs for the status bar (nil when

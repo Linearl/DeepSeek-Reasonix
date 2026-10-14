@@ -35,6 +35,32 @@ func (w activeRuntimeWork) active() bool {
 	return w.running || w.pendingPrompt || w.backgroundJobs > 0
 }
 
+// activeForModelSwitch is the model-switch admission (task 890): background
+// jobs are model-agnostic — they run on the shared job manager's own context
+// and travel with the handoff swap — so they must not veto a model change
+// after the turn has ended (running=false). A running turn or a pending
+// prompt still blocks exactly as before.
+func (w activeRuntimeWork) activeForModelSwitch() bool {
+	return w.running || w.pendingPrompt
+}
+
+// isModelSwitchSetting reports whether setting names a rebuild whose inputs
+// are only the model and its saved settings: "model" is SetModelForTab's
+// rebuild fallback, "saved model settings" is the settings-apply rebuild
+// turn admission runs after a settings save (the task-890 half-commit path).
+// Every other setting — effort, MCP server, plugins, subagents, language,
+// runtime reload — keeps the full active() check unchanged (task 890 only
+// demotes the model path; other rebuilds may depend on work state a model
+// swap never touches).
+func isModelSwitchSetting(setting string) bool {
+	switch setting {
+	case "model", "saved model settings":
+		return true
+	default:
+		return false
+	}
+}
+
 func controllerHasActiveRuntimeWork(ctrl control.SessionAPI) bool {
 	return controllerActiveRuntimeWork(ctrl).active()
 }
@@ -59,7 +85,11 @@ func (e *rebuildBusyError) Error() string {
 
 func rebuildControllerActiveWorkErrorFor(ctrl control.SessionAPI, setting string) error {
 	work := controllerActiveRuntimeWork(ctrl)
-	if !work.active() {
+	active := work.active()
+	if isModelSwitchSetting(setting) {
+		active = work.activeForModelSwitch()
+	}
+	if !active {
 		return nil
 	}
 	return &rebuildBusyError{setting: setting, work: work}

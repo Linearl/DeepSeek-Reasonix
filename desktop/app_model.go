@@ -445,6 +445,10 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 // buildModelSwitchController builds the replacement controller for a model
 // switch, preserving the shared plugin host and the tab's private temp dir.
 func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, snap tabRuntimeSnapshot, effortOverride *string, runtime normalizedTabRuntime, oldCtrl control.SessionAPI, sharedHost *plugin.Host, stageStarted time.Time, timing *modelSwitchTiming) (*control.Controller, error) {
+	// Task 890: hand the outgoing controller's background-job manager and
+	// write lease to the replacement so background jobs survive the swap
+	// (nil/nil falls back to a fresh pair — pre-890 behavior).
+	handoffJobs, handoffLease := jobsHandoffFrom(oldCtrl)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
@@ -493,6 +497,9 @@ func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, 
 		OnMoveTopicToGroup:         a.moveCollabTopicToGroup,
 		// Keep the private temporary directory across model switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
+		// Task 890: the shared pair keeps background jobs alive across the swap.
+		Jobs:           handoffJobs,
+		WorkspaceLease: handoffLease,
 	})
 	if err != nil {
 		return nil, err
@@ -540,9 +547,9 @@ func (a *App) swapModelController(tab *WorkspaceTab, tabID, name string, newCtrl
 	a.supersedeTabBuildLocked(tab)
 	a.saveTabsLocked()
 	a.mu.Unlock()
-	if oldCtrl != nil {
-		oldCtrl.Close()
-	}
+	// Task 890: a handoff-built replacement adopts the outgoing job manager
+	// first, then the outgoing close keeps its background jobs running.
+	closeReplacedControllerAfterHandoff(newCtrl, oldCtrl)
 	// A refresh queued during this build still owns its newer sequence.
 	a.clearDeferredRebuildVersion(tab.ID, pendingSequence)
 	a.persistTabSessionPath(tab, path)
