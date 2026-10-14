@@ -27,6 +27,7 @@ import (
 	"reasonix/internal/netclient"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
+	"reasonix/internal/sentinel"
 	"reasonix/internal/tool"
 )
 
@@ -1873,6 +1874,14 @@ func (t *remoteTool) callRaw(ctx context.Context, args json.RawMessage) (json.Ra
 		if !t.MCPServerAuthorized() || destructive {
 			return nil, fmt.Errorf("MCP server %q changed the authorization or destructive classification for tool %q; the call was blocked before dispatch — retry so Reasonix can re-apply the current Planner MCP safety boundary", t.client.name, t.rawName)
 		}
+	}
+	// 任务 896（852 调研建议 #5）：MCP 出口面接出口扫描。callRaw 是全库唯一
+	// tools/call 出站咽喉（agent/Planner/MCP App/扩展车道全部汇聚），调用参数
+	// 即将发往第三方工具服务器的内容——410 外发面枚举 #8（v1 明示未覆盖）。
+	// 复用 sentinel 的 scanText 形态判定，挂既有 exit_scan 实验开关：默认关
+	// （exitScan 未开）直接放行，零行为变化；开态命中即拦，不落 dispatch。
+	if v := sentinel.CheckMCPOutbound(t.name, args); v.Blocked {
+		return nil, errors.New(v.Reason)
 	}
 	tool.ObserveRemoteDispatch(ctx)
 	res, err := t.client.call(ctx, "tools/call", map[string]any{

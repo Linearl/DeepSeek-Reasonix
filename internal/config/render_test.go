@@ -1559,3 +1559,43 @@ func TestRenderTOMLPersistsSecretsSection(t *testing.T) {
 		t.Fatalf("user-scope render still exposes removed live-redaction setting:\n%s", out)
 	}
 }
+
+// TestRenderTOMLPersistsSentinelDisabledRules pins the config-save round-trip
+// for [sentinel] disabled_rules (task 896, 852 调研建议 #2): the renderer
+// used to omit the key, so cfg.Save() rewrote the file and silently dropped
+// the user's opt-out list — the exact "静默关底线 + 静默丢配置" state the
+// report flagged as the most dangerous config posture.
+func TestRenderTOMLPersistsSentinelDisabledRules(t *testing.T) {
+	cfg := Default()
+	cfg.Sentinel.DisabledRules = []string{"force_push_protected", "exfil_credentials"}
+
+	out := RenderTOMLForScope(cfg, RenderScopeUser)
+	if !strings.Contains(out, `disabled_rules = ["force_push_protected", "exfil_credentials"]`) {
+		t.Fatalf("user-scope render dropped disabled_rules:\n%s", out)
+	}
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	back := Default()
+	if err := mergeFile(back, path); err != nil {
+		t.Fatalf("round-trip decode: %v", err)
+	}
+	if len(back.Sentinel.DisabledRules) != 2 ||
+		back.Sentinel.DisabledRules[0] != "force_push_protected" ||
+		back.Sentinel.DisabledRules[1] != "exfil_credentials" {
+		t.Fatalf("disabled_rules lost in render round-trip: %+v", back.Sentinel.DisabledRules)
+	}
+
+	// Empty list must not render the key (byte-identical default config).
+	clean := RenderTOMLForScope(Default(), RenderScopeUser)
+	if strings.Contains(clean, "disabled_rules") {
+		t.Fatalf("default render should omit disabled_rules:\n%s", clean)
+	}
+
+	// Project scope must not render the section — [sentinel] is user-global only.
+	if proj := RenderTOMLForScope(cfg, RenderScopeProject); strings.Contains(proj, "[sentinel]") {
+		t.Fatalf("project scope rendered [sentinel]:\n%s", proj)
+	}
+}

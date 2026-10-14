@@ -35,6 +35,12 @@ import (
 const (
 	gitScanMaxCommits = 50
 	gitScanMaxBytes   = 1 << 20 // 1 MiB of scanned content per operation
+
+	// mcpScanMaxBytes bounds one MCP argument-payload scan to the same 1 MiB
+	// as the git surface: MCP args routinely carry multi-MiB base64 images,
+	// and the scan sits on the dispatch path — bounded work, bounded latency.
+	// Truncation can only miss a secret past the cap, never invent a hit.
+	mcpScanMaxBytes = 1 << 20
 )
 
 // RuleExitSecretScan is the exit-scan rule id.
@@ -190,4 +196,29 @@ func scanURLs(s string) string {
 		return "URL 查询参数携带凭据（key/token=...）"
 	}
 	return ""
+}
+
+// CheckMCPOutbound applies the exit scan to the outgoing argument payload of
+// one MCP tools/call — outbound surface #8 of the task-410 enumeration, the
+// one v1 left explicitly uncovered ("调用参数即内容但形状不可枚举"). The whole
+// payload is content leaving for a third-party tool server, so it is scanned
+// as-is (no stripURLs: a URL carried in the arguments is itself outbound,
+// same treatment as web_fetch). Gated on the same experimental exit_scan
+// switch — off by default, so wiring an extra egress costs zero behavior
+// change until the user opts in. Bounded to mcpScanMaxBytes; truncation can
+// only miss past the cap, never invent a hit. workspaceRoot records as "" —
+// the plugin dispatch layer does not know the session root.
+func CheckMCPOutbound(modelTool string, args json.RawMessage) Verdict {
+	if !exitScan() || len(args) == 0 {
+		return Verdict{}
+	}
+	content := args
+	if len(content) > mcpScanMaxBytes {
+		content = content[:mcpScanMaxBytes]
+	}
+	v := scanVerdict(modelTool+" 调用参数", string(content))
+	if v.Blocked {
+		recordIntercept(modelTool, "", v.Rule, string(content))
+	}
+	return v
 }
