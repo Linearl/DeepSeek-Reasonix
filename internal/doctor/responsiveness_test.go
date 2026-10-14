@@ -300,3 +300,221 @@ func TestResponsivenessCascadeWaitIsNotAHang(t *testing.T) {
 		t.Fatalf("verdict = %q, want silent for the unmarked shape (the negative control)", report.Verdict)
 	}
 }
+
+// ── 任务 879: wait 等长阻塞工具的静默不是 hang ───────────────────────────────
+
+// toolCallRecord builds a tool_dispatch/tool_result record carrying a
+// named tool call — the exact durable shape the runtime writes around every
+// tool execution (turn_events persistAndPublish treats both kinds as barriers).
+func toolCallRecord(turn string, seq uint64, kind string, status event.TurnStatus, at time.Time, id, name string) turnevent.Envelope {
+	return env(turn, seq, kind, status, at, func(r *turnevent.Envelope) {
+		r.Event.Tool = &eventwire.Tool{ID: id, Name: name}
+	})
+}
+
+// Task 879 (验收①): a wait blocked past ResponsivenessSilenceAfter writes
+// nothing to the ledger by design — the wait tool blocks until its background
+// jobs finish (tool/builtin/bgjobs.go), so a >6min silence with the wait call
+// still open must classify as waiting_tool, not the "silent" verdict the
+// desktop hang gate maps to the 会话疑似卡死 prompt. The controls pin the
+// boundary: once the wait's tool_result landed, the same silence is silent
+// again (验收② — the dead-runtime shape is unchanged), and a non-blocking tool
+// in flight never downgrades.
+func TestResponsivenessWaitToolSilenceIsWaitingToolNotSilent(t *testing.T) {
+	sessionPath, now := responsivenessFixture(t)
+	ledgerPath := store.SessionTurnEventLog(sessionPath)
+	start := now.Add(-30 * time.Minute)
+	dispatch := now.Add(-10 * time.Minute) // ledger silent 10m — past the 6m window
+	openWait := []turnevent.Envelope{
+		env("turn_b", 1, "turn_started", event.TurnInProgress, start, nil),
+		env("turn_b", 2, "reasoning", event.TurnInProgress, start.Add(4*time.Second), func(r *turnevent.Envelope) { r.Event.Text = "…" }),
+		toolCallRecord("turn_b", 3, "tool_dispatch", event.TurnInProgress, dispatch, "call-1", "wait"),
+	}
+
+	writeLedger(t, ledgerPath, openWait, "")
+	report := readResponsiveness(sessionPath, ledgerPath, now)
+	if report.Verdict != "waiting_tool" {
+		t.Fatalf("verdict = %q, want waiting_tool for the open wait (detail: %s)", report.Verdict, report.Detail)
+	}
+	if report.Active == nil || report.Active.BlockingTool != "wait" {
+		t.Fatalf("active = %+v, want blockingTool \"wait\"", report.Active)
+	}
+	if !strings.Contains(report.Detail, "wait") {
+		t.Errorf("detail must name the blocking tool: %s", report.Detail)
+	}
+
+	// The wait returned 9 minutes ago and the ledger went quiet again: no
+	// blocking tool in flight → silent, byte-for-byte the pre-task-879 verdict
+	// for the dead-runtime shape (验收② 回归零变化).
+	closedWait := append(append([]turnevent.Envelope{}, openWait...),
+		env("turn_b", 4, "tool_result", event.TurnInProgress, now.Add(-9*time.Minute), func(r *turnevent.Envelope) {
+			r.Event.Tool = &eventwire.Tool{ID: "call-1", Name: "wait", Output: "[bash-1] done"}
+		}))
+	writeLedger(t, ledgerPath, closedWait, "")
+	report = readResponsiveness(sessionPath, ledgerPath, now)
+	if report.Verdict != "silent" {
+		t.Fatalf("verdict = %q, want silent once the wait returned (detail: %s)", report.Verdict, report.Detail)
+	}
+	if report.Active == nil || report.Active.BlockingTool != "" {
+		t.Fatalf("active = %+v, want no blocking tool after the result", report.Active)
+	}
+
+	// A non-blocking tool (edit) in flight past the window stays silent: only
+	// wait-family silence is designed behavior.
+	writeLedger(t, ledgerPath, []turnevent.Envelope{
+		env("turn_b", 1, "turn_started", event.TurnInProgress, start, nil),
+		env("turn_b", 2, "reasoning", event.TurnInProgress, start.Add(4*time.Second), func(r *turnevent.Envelope) { r.Event.Text = "…" }),
+		toolCallRecord("turn_b", 3, "tool_dispatch", event.TurnInProgress, dispatch, "call-2", "edit"),
+	}, "")
+	report = readResponsiveness(sessionPath, ledgerPath, now)
+	if report.Verdict != "silent" {
+		t.Fatalf("verdict = %q, want silent for a non-blocking tool in flight (detail: %s)", report.Verdict, report.Detail)
+	}
+	if report.Active == nil || report.Active.BlockingTool != "" {
+		t.Fatalf("active = %+v, want no blocking tool for edit", report.Active)
+	}
+}
+
+// Task 879: the blocking set covers every wait-family tool whose contract is
+// an unbounded/long block — event_wait (default 1200s) and a capability proxy
+// fronting wait (display name in Name, real target in ResolvedName) both
+// downgrade; wait's non-blocking siblings never do.
+func TestResponsivenessBlockingToolSetBoundary(t *testing.T) {
+	cases := []struct {
+		name         string
+		toolName     string
+		resolvedName string
+		wantVerdict  string
+		wantBlocking string
+	}{
+		{"event_wait blocks up to 20min by default", "event_wait", "", "waiting_tool", "event_wait"},
+		{"proxy fronting wait matches on ResolvedName", "cap_proxy", "wait", "waiting_tool", "wait"},
+		{"bash_output never blocks", "bash_output", "", "silent", ""},
+		{"kill_shell never blocks", "kill_shell", "", "silent", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sessionPath, now := responsivenessFixture(t)
+			ledgerPath := store.SessionTurnEventLog(sessionPath)
+			start := now.Add(-30 * time.Minute)
+			dispatch := now.Add(-10 * time.Minute)
+			rec := toolCallRecord("turn_x", 3, "tool_dispatch", event.TurnInProgress, dispatch, "call-1", tc.toolName)
+			if tc.resolvedName != "" {
+				rec.Event.Tool.ResolvedName = tc.resolvedName
+			}
+			writeLedger(t, ledgerPath, []turnevent.Envelope{
+				env("turn_x", 1, "turn_started", event.TurnInProgress, start, nil),
+				env("turn_x", 2, "reasoning", event.TurnInProgress, start.Add(4*time.Second), func(r *turnevent.Envelope) { r.Event.Text = "…" }),
+				rec,
+			}, "")
+			report := readResponsiveness(sessionPath, ledgerPath, now)
+			if report.Verdict != tc.wantVerdict {
+				t.Fatalf("verdict = %q, want %q (detail: %s)", report.Verdict, tc.wantVerdict, report.Detail)
+			}
+			got := ""
+			if report.Active != nil {
+				got = report.Active.BlockingTool
+			}
+			if got != tc.wantBlocking {
+				t.Fatalf("blockingTool = %q, want %q", got, tc.wantBlocking)
+			}
+		})
+	}
+}
+
+// Task 879 (验收③): the three liveness criteria are orthogonal — running
+// (streaming inside the window), pendingPrompt (waiting_user), and a
+// long-blocking tool in flight each hold their own verdict, none reads as the
+// hang, and only "no criterion present + silence past the window" remains the
+// hang shape. Precedence between them is pinned too: a user prompt outranks a
+// blocking tool, and the silence window still outranks nothing.
+func TestResponsivenessLivenessCriteriaAreOrthogonal(t *testing.T) {
+	sessionPath, now := responsivenessFixture(t)
+	ledgerPath := store.SessionTurnEventLog(sessionPath)
+	start := now.Add(-30 * time.Minute)
+	early := func(r *turnevent.Envelope) { r.Event.Text = "…" }
+	writeBase := func(recs ...turnevent.Envelope) {
+		t.Helper()
+		base := []turnevent.Envelope{
+			env("turn_o", 1, "turn_started", event.TurnInProgress, start, nil),
+			env("turn_o", 2, "reasoning", event.TurnInProgress, start.Add(4*time.Second), early),
+		}
+		writeLedger(t, ledgerPath, append(base, recs...), "")
+	}
+	waitDispatch := func(at time.Time) turnevent.Envelope {
+		return toolCallRecord("turn_o", 3, "tool_dispatch", event.TurnInProgress, at, "call-1", "wait")
+	}
+
+	t.Run("running: last write inside the window is working", func(t *testing.T) {
+		writeBase(env("turn_o", 3, "text", event.TurnInProgress, now.Add(-time.Minute), early))
+		if report := readResponsiveness(sessionPath, ledgerPath, now); report.Verdict != "working" {
+			t.Fatalf("verdict = %q, want working (detail: %s)", report.Verdict, report.Detail)
+		}
+	})
+
+	t.Run("pendingPrompt: waiting_user wins even past the silence window", func(t *testing.T) {
+		writeBase(env("turn_o", 3, "ask_request", event.TurnWaitingUser, now.Add(-10*time.Minute), nil))
+		if report := readResponsiveness(sessionPath, ledgerPath, now); report.Verdict != "waiting_user" {
+			t.Fatalf("verdict = %q, want waiting_user (detail: %s)", report.Verdict, report.Detail)
+		}
+	})
+
+	t.Run("blocking tool: silence with wait open is waiting_tool", func(t *testing.T) {
+		writeBase(waitDispatch(now.Add(-10 * time.Minute)))
+		if report := readResponsiveness(sessionPath, ledgerPath, now); report.Verdict != "waiting_tool" {
+			t.Fatalf("verdict = %q, want waiting_tool (detail: %s)", report.Verdict, report.Detail)
+		}
+	})
+
+	t.Run("prompt outranks blocking tool", func(t *testing.T) {
+		writeBase(
+			waitDispatch(now.Add(-20*time.Minute)),
+			env("turn_o", 4, "turn_status", event.TurnWaitingUser, now.Add(-10*time.Minute), nil),
+		)
+		if report := readResponsiveness(sessionPath, ledgerPath, now); report.Verdict != "waiting_user" {
+			t.Fatalf("verdict = %q, want waiting_user (detail: %s)", report.Verdict, report.Detail)
+		}
+	})
+
+	t.Run("blocking tool inside the window is ordinary working", func(t *testing.T) {
+		writeBase(waitDispatch(now.Add(-time.Minute)))
+		if report := readResponsiveness(sessionPath, ledgerPath, now); report.Verdict != "working" {
+			t.Fatalf("verdict = %q, want working (detail: %s)", report.Verdict, report.Detail)
+		}
+	})
+
+	t.Run("no criterion + silence past the window is silent", func(t *testing.T) {
+		writeBase(env("turn_o", 3, "text", event.TurnInProgress, now.Add(-10*time.Minute), early))
+		if report := readResponsiveness(sessionPath, ledgerPath, now); report.Verdict != "silent" {
+			t.Fatalf("verdict = %q, want silent (detail: %s)", report.Verdict, report.Detail)
+		}
+	})
+}
+
+// Task 879: the human report exposes the blocking tool the verdict rests on
+// and keeps the --watch next step — a waiting_tool session reads as "waiting,
+// here is how to confirm" instead of an unexplained silence.
+func TestRenderResponsivenessShowsBlockingToolAndWaitHint(t *testing.T) {
+	sessionPath, now := responsivenessFixture(t)
+	ledgerPath := store.SessionTurnEventLog(sessionPath)
+	start := now.Add(-30 * time.Minute)
+	writeLedger(t, ledgerPath, []turnevent.Envelope{
+		env("turn_r", 1, "turn_started", event.TurnInProgress, start, nil),
+		env("turn_r", 2, "reasoning", event.TurnInProgress, start.Add(4*time.Second), func(r *turnevent.Envelope) { r.Event.Text = "…" }),
+		toolCallRecord("turn_r", 3, "tool_dispatch", event.TurnInProgress, now.Add(-10*time.Minute), "call-1", "wait"),
+	}, "")
+	report := readResponsiveness(sessionPath, ledgerPath, now)
+	if report.Verdict != "waiting_tool" {
+		t.Fatalf("verdict = %q, want waiting_tool (detail: %s)", report.Verdict, report.Detail)
+	}
+	out := RenderResponsivenessText(report, now)
+	for _, want := range []string{
+		"verdict: waiting_tool",
+		"blocking tool in flight: wait",
+		"--watch",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render missing %q:\n%s", want, out)
+		}
+	}
+}
