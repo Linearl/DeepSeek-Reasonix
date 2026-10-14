@@ -1725,13 +1725,15 @@ type AgentConfig struct {
 	ExperimentalActiveTabResident bool `toml:"experimental_active_tab_resident"`
 	// ExperimentalToolOptimizations is the task-603 "工具优化" lab family
 	// switch — later agent-efficiency tool upgrades hang off this one family.
-	// First member: edit_file/multi_edit accept a readBack parameter that
-	// returns the edited snippet with surrounding context and files the
-	// returned window as fresh read evidence, so a same-file follow-up edit
-	// passes the write gate without a separate read_file round trip. Off
-	// (default, 铁律 2): the parameter is absent from both tool schemas and an
-	// argument that still passes it is ignored — every tool output, gate
-	// verdict, and schema byte stays exactly as before the family existed.
+	// First member: edit_file/multi_edit return the edited snippet with
+	// surrounding context and file the returned window as fresh read evidence,
+	// so a same-file follow-up edit passes the write gate without a separate
+	// read_file round trip. Since task 875 the read-back is the DEFAULT with
+	// the family lit (an omitted readBack reads back, readBack:false opts
+	// out). Off (default, 铁律 2): the parameter is absent from both tool
+	// schemas and an argument that still passes it is ignored — every tool
+	// output, gate verdict, and schema byte stays exactly as before the family
+	// existed.
 	ExperimentalToolOptimizations bool `toml:"experimental_tool_optimizations"`
 	// ExperimentalEditEvidenceRelaxed is the task-789 relaxed edit evidence
 	// gate ("工具优化" family companion). On: a read that already completed

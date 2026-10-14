@@ -15,10 +15,11 @@ func init() { tool.RegisterBuiltin(multiEdit{}) }
 // the workspace when non-empty (see writeFile); guard rejects Reasonix
 // session-data targets (see SessionDataGuard); workDir, when non-empty, is the
 // directory a relative path resolves against (see resolveIn). readBack, when
-// true (the experimental_tool_optimizations family, task 603), lets a call
-// pass readBack to get the edited region rendered back with surrounding
-// context and filed as fresh read evidence; the zero value keeps the tool
-// byte-identical to the pre-family surface.
+// true (the experimental_tool_optimizations family, task 603), gets the
+// edited region rendered back with surrounding context and filed as fresh
+// read evidence; since task 875 the read-back is the DEFAULT with the family
+// lit (an omitted readBack reads back, readBack:false opts out). The zero
+// value keeps the tool byte-identical to the pre-family surface.
 type multiEdit struct {
 	roots    []string
 	rootSet  *sandbox.WritableRootSet
@@ -49,7 +50,7 @@ func (m multiEdit) Schema() json.RawMessage {
 	readBackField := ""
 	if m.readBack {
 		readBackField = `,
-  "readBack":{"type":"boolean","description":"Set true to have the result read back the edited region (first to last edit) with ±20 surrounding lines. The returned window counts as having read the file: a follow-up edit on this file passes the read-evidence gate without a separate read_file call (any outside change is still caught)."}`
+  "readBack":{"type":"boolean","default":true,"description":"Defaults to true: the result reads back the edited region (first to last edit) with ±20 surrounding lines. The returned window counts as having read the file: a follow-up edit on this file passes the read-evidence gate without a separate read_file call (any outside change is still caught). Set false only to opt out (e.g. very large edits)."}`
 	}
 	return json.RawMessage(`{
 "type":"object",
@@ -87,7 +88,7 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 		Path     string     `json:"path"`
 		Edits    []editStep `json:"edits"`
 		Expected string     `json:"expected"`
-		ReadBack bool       `json:"readBack"`
+		ReadBack *bool      `json:"readBack"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -100,8 +101,10 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 	}
 	// The readBack parameter only exists while the experimental_tool_optimizations
 	// family is lit (task 603). With the family off the field is ignored —
-	// identical bytes in, identical bytes out (铁律 2).
-	useReadBack := p.ReadBack && m.readBack
+	// identical bytes in, identical bytes out (铁律 2). With the family lit,
+	// task 875 flips the default: an omitted readBack reads back (the value
+	// users actually want in back-to-back edits), readBack:false opts out.
+	useReadBack := m.readBack && (p.ReadBack == nil || *p.ReadBack)
 	p.Path = resolveIn(m.workDir, p.Path)
 	if err := confineWrite(ctx, effectiveWriteRoots(ctx, m.rootSet, m.roots), m.guard, m.managed, p.Path); err != nil {
 		return "", err

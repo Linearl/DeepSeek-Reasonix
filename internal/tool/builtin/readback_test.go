@@ -55,6 +55,69 @@ func TestReadBackSchemaOnlyWithFamilyOn(t *testing.T) {
 	}
 }
 
+// Task 875: with the family lit the read-back is the DEFAULT — an omitted
+// readBack parameter reads back, readBack:false opts out.
+
+func TestReadBackDefaultOnWithFamilyLit(t *testing.T) {
+	path := writeFixture(t, "alpha\nbeta\ngamma\n")
+	ctx, sink := tool.WithReadBackCollector(context.Background())
+	out, err := readBackEnabledEdit().Execute(ctx, json.RawMessage(`{"path":`+quote(t, path)+`,"old_string":"beta","new_string":"BETA"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "read_back "+path) {
+		t.Fatalf("omitted readBack must read back by default (family lit): %q", out)
+	}
+	if sink.Path != path || len(sink.LineHashes) == 0 {
+		t.Fatalf("default read-back must file an observation: path %q hashes %d", sink.Path, len(sink.LineHashes))
+	}
+}
+
+func TestReadBackFalseOptsOutWithFamilyLit(t *testing.T) {
+	path := writeFixture(t, "alpha\nbeta\ngamma\n")
+	ctx, sink := tool.WithReadBackCollector(context.Background())
+	out, err := readBackEnabledEdit().Execute(ctx, json.RawMessage(`{"path":`+quote(t, path)+`,"old_string":"beta","new_string":"BETA","readBack":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "read_back ") {
+		t.Fatalf("readBack:false must opt out even with the family lit: %q", out)
+	}
+	if sink.Path != "" || len(sink.LineHashes) > 0 {
+		t.Fatal("readBack:false must not file a read-back observation")
+	}
+}
+
+func TestReadBackMultiEditDefaultOnAndOptOut(t *testing.T) {
+	body := "001 unique\n002 unique\n"
+	path := writeFixture(t, body)
+	edits := `"edits":[{"old_string":"001 unique","new_string":"ONE"}]`
+
+	ctx, sink := tool.WithReadBackCollector(context.Background())
+	out, err := multiEdit{readBack: true}.Execute(ctx, json.RawMessage(`{"path":`+quote(t, path)+`,`+edits+`}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "read_back "+path) {
+		t.Fatalf("multi_edit omitted readBack must read back by default (family lit): %q", out)
+	}
+	if sink.Path != path {
+		t.Fatalf("default read-back must file an observation: path %q", sink.Path)
+	}
+
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx2, sink2 := tool.WithReadBackCollector(context.Background())
+	out2, err := multiEdit{readBack: true}.Execute(ctx2, json.RawMessage(`{"path":`+quote(t, path)+`,`+edits+`,"readBack":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out2, "read_back ") || sink2.Path != "" {
+		t.Fatal("multi_edit readBack:false must opt out even with the family lit")
+	}
+}
+
 func TestReadBackOffIgnoresTheParameter(t *testing.T) {
 	// Both runs share one fixture path: the outputs must be byte-identical,
 	// path included.

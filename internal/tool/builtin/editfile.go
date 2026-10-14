@@ -16,10 +16,11 @@ func init() { tool.RegisterBuiltin(editFile{}) }
 // workspace when non-empty (see writeFile); guard rejects Reasonix session-data
 // targets (see SessionDataGuard); workDir, when non-empty, is the directory a
 // relative path resolves against (see resolveIn). readBack, when true (the
-// experimental_tool_optimizations family, task 603), lets a call pass readBack
-// to get the edited region rendered back with surrounding context and filed as
-// fresh read evidence; the zero value keeps the tool byte-identical to the
-// pre-family surface.
+// experimental_tool_optimizations family, task 603), lets a call get the
+// edited region rendered back with surrounding context and filed as fresh
+// read evidence; since task 875 the read-back is the DEFAULT with the family
+// lit (an omitted readBack reads back, readBack:false opts out). The zero
+// value keeps the tool byte-identical to the pre-family surface.
 type editFile struct {
 	roots    []string
 	rootSet  *sandbox.WritableRootSet
@@ -39,7 +40,7 @@ func (e editFile) Description() string {
 func (e editFile) Schema() json.RawMessage {
 	readBackField := ""
 	if e.readBack {
-		readBackField = `,"readBack":{"type":"boolean","description":"Set true to have the result read back the edited region with ±20 surrounding lines. The returned window counts as having read the file: a follow-up edit on this file passes the read-evidence gate without a separate read_file call (any outside change is still caught)."}`
+		readBackField = `,"readBack":{"type":"boolean","default":true,"description":"Defaults to true: the result reads back the edited region with ±20 surrounding lines. The returned window counts as having read the file: a follow-up edit on this file passes the read-evidence gate without a separate read_file call (any outside change is still caught). Set false only to opt out (e.g. very large edits)."}`
 	}
 	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"File path"},"old_string":{"type":"string","description":"Exact text to replace (must be unique in the file). Required unless line_range is used."},"new_string":{"type":"string","description":"Replacement text (may be empty to delete). With line_range, empty deletes the range."},` + expectedContentSchemaField() + `,"source_token":{"type":"string","description":"The source_token printed by the read_file that showed you this file. Citing it names the exact version you are editing, so a change made outside this session is caught instead of silently overwritten. REQUIRED for line_range edits."},"line_range":{"type":"string","description":"Optional line-range variant: \"start-end\" (1-based, inclusive, e.g. \"278-292\"). Replaces those lines with new_string (empty = delete the range); avoids re-emitting the old block. Requires source_token; anchor_head/anchor_tail strongly recommended."},"anchor_head":{"type":"string","description":"With line_range: expected content prefix of the first line in the range. A mismatch rejects the edit instead of touching the wrong block."},"anchor_tail":{"type":"string","description":"With line_range: expected content prefix of the last line in the range."}` + readBackField + `},"required":["path"]}`)
 }
@@ -60,7 +61,7 @@ func (e editFile) Execute(ctx context.Context, args json.RawMessage) (string, er
 		LineRange   string `json:"line_range"`
 		AnchorHead  string `json:"anchor_head"`
 		AnchorTail  string `json:"anchor_tail"`
-		ReadBack    bool   `json:"readBack"`
+		ReadBack    *bool  `json:"readBack"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -79,8 +80,10 @@ func (e editFile) Execute(ctx context.Context, args json.RawMessage) (string, er
 	}
 	// The readBack parameter only exists while the experimental_tool_optimizations
 	// family is lit (task 603). With the family off the field is ignored —
-	// identical bytes in, identical bytes out (铁律 2).
-	useReadBack := p.ReadBack && e.readBack
+	// identical bytes in, identical bytes out (铁律 2). With the family lit,
+	// task 875 flips the default: an omitted readBack reads back (the value
+	// users actually want in back-to-back edits), readBack:false opts out.
+	useReadBack := e.readBack && (p.ReadBack == nil || *p.ReadBack)
 	p.Path = resolveIn(e.workDir, p.Path)
 	if err := confineWrite(ctx, effectiveWriteRoots(ctx, e.rootSet, e.roots), e.guard, e.managed, p.Path); err != nil {
 		return "", err
