@@ -393,6 +393,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	sentinel.SetExitScan(cfg.Sentinel.ExitScan)
 	sentinel.SetProtectedBranches(cfg.Sentinel.ProtectedBranches)
 	sentinel.SetDisabledRules(cfg.Sentinel.DisabledRules)
+	// 852 调研改进建议 #2：disabled_rules 关掉硬底线过去零 WARN——一行配置
+	// 即可静默关掉「yolo 下也拦」的安全底线，是配置面最危险的静默态。装配期
+	// 即发日志；会话内通知一条在 sink 就绪后补发（见 GoalUsageTee 之后）。
+	if rules := cfg.Sentinel.DisabledRules; len(rules) > 0 {
+		slog.Warn("boot: sentinel: disabled_rules opts out of hard-forbidden rules",
+			"rules", strings.Join(rules, ", "))
+	}
 	sentinel.SetHomeDir(config.ReasonixHomeDir())
 	sentinelPaths := append([]string(nil), config.ReasonixManagedConfigPaths()...)
 	if creds := config.UserCredentialsPath(); creds != "" {
@@ -451,6 +458,20 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// attributes billable usage to the active goal turn's recorder. Both the
 	// tee must ride the shared sink agents emit into directly.
 	sink = control.NewGoalUsageTee(sink)
+
+	// 852 调研改进建议 #2：装配期 WARN（上方 sentinel 装配处）之后，这里补
+	// 会话内通知一条，让用户在会话里看见「哪些硬底线被配置关掉了」——静默
+	// 关底线是配置面最危险的态。只在非空时发；内容与 WARN 同源。
+	if rules := cfg.Sentinel.DisabledRules; len(rules) > 0 {
+		sink.Emit(event.Event{
+			Kind:  event.Notice,
+			Level: event.LevelWarn,
+			Text:  "Sentinel 硬规则已被配置禁用。",
+			Detail: fmt.Sprintf("[sentinel].disabled_rules 当前禁用了这些硬底线规则：%s。"+
+				"这些规则本应在任何审批模式（含 yolo）下都拦截；如非有意，请删除配置中对应 id 恢复保护。",
+				strings.Join(rules, ", ")),
+		})
+	}
 
 	// Extension preflight (stages 5b/7): start the installed, enabled v2 runtime
 	// packages ONCE, here, before model resolution, so plugin-namespaced refs
