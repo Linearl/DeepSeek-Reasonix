@@ -4841,13 +4841,24 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	// the gate is consumed once per process regardless of the dial, so the
 	// marker can never leak into a later unrelated launch.
 	resumeAllowed := updateRestartResumeAllowed()
-	if resumeGate := a.autonomousUpdateResumeMode(); resumeGate != "off" && resumeAllowed {
-		a.maybeResumeAutopilotTab(tab)
-		// Task 254: the same restore point for a session this process's
-		// predecessor restarted away from via the restart_update tool. No goal
-		// sidecar is involved — the marker file names the session — and the
-		// entry is consumed on first sight, so ordinary restarts never resume it.
-		a.maybeResumeAutonomousUpdateTab(tab)
+	if resumeGate := a.autonomousUpdateResumeMode(); resumeGate != "off" {
+		if resumeAllowed {
+			a.maybeResumeAutopilotTab(tab)
+			// Task 254: the same restore point for a session this process's
+			// predecessor restarted away from via the restart_update tool. No goal
+			// sidecar is involved — the marker file names the session — and the
+			// entry is consumed on first sight, so ordinary restarts never resume it.
+			a.maybeResumeAutonomousUpdateTab(tab)
+		}
+		// 任务868: the unattended tab's restart recovery gate auto-continues on
+		// EVERY restart, not only update-driven relaunches — the 1508 scene is a
+		// plain restart, so requiring the 461-P2 marker here would fix nothing.
+		// The gate-clear is not a resume (no prompt is invented; the queue was
+		// already accepted work), it only lifts the human-choice banner for a
+		// tab whose yolo-gated autopilot posture says nobody is coming. Runs
+		// after the roster family so a resume that already cleared the pause
+		// makes this a no-op.
+		a.autoContinueInboxGateForTab(tab)
 	}
 }
 
