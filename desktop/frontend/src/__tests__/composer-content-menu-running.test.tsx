@@ -197,6 +197,81 @@ async function main() {
   ok(attachment && !attachment.disabled, "attachment item available mid-turn (870)");
   ok(!attachment?.title, "attachment item has no running gate tooltip");
 
+  // 4.5) 任务 870 行为钉：running 中带附件发送走引导队列——附件以
+  //      @.reasonix/attachments 引用随 submit 文本入队（与纯文本 steer 同路），
+  //      发送后草稿附件清空；绑定 go 桥模拟内核返回。
+  {
+    const calls: Array<{ name: string; args: unknown[] }> = [];
+    // tabId 挂载会牵起一堆与本案无关的内核读（模型目录、上下文用量等），
+    // 用 Proxy 兜底成空数组返回，未覆盖的绑定不再以 unhandled rejection 炸测。
+    const appStub: Record<string, unknown> = {
+      SavePastedImage: async () => ".reasonix/attachments/shot-870.png",
+      AttachmentDataURL: async () => "data:image/png;base64,iVBORw0KGgo=",
+      ListTabs: async () => [{ id: "tab-870", turnId: "turn-870" }],
+      EnqueueInboxSteerForTurn: async (tabId: string, turnId: string, display: string, submit: string) => {
+        calls.push({ name: "EnqueueInboxSteerForTurn", args: [tabId, turnId, display, submit] });
+        return { itemId: "item-870", disposition: "steer_accepted", position: 1, paused: false };
+      },
+      InboxSnapshot: async () => ({ revision: 0, paused: false, recovered: false, items: [], itemsCount: 0, bytes: 0, maxItems: 0, maxBytes: 0 }),
+    };
+    const appProxy = new Proxy(appStub, {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        return async () => [];
+      },
+    });
+    (dom.window as unknown as { go: unknown }).go = { main: { App: appProxy } };
+    await paint({ tabId: "tab-870", turnId: "turn-870" });
+    await act(async () => { plusButton()!.click(); await flushTimers(); });
+    const attachItem = itemWithTitle("添加文件或图片");
+    ok(Boolean(attachItem), "attachment item reachable for the send-path pin");
+    const fileInput = document.querySelector<HTMLInputElement>(".composer-content-file-input");
+    ok(Boolean(fileInput), "hidden attachment input present");
+    if (attachItem && fileInput) {
+      await act(async () => {
+        attachItem.click();
+        await flushTimers();
+        const png = new dom.window.File([new Uint8Array([137, 80, 78, 71])], "shot.png", { type: "image/png" });
+        Object.defineProperty(fileInput, "files", { value: [png], configurable: true });
+        fileInput.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+        // 等待异步 attach（sha256 + SavePastedImage + AttachmentDataURL）落定。
+        for (let i = 0; i < 10 && !document.querySelector(".composer-context__item"); i++) {
+          await flushTimers();
+        }
+      });
+      const chip = () => document.querySelector(".composer-context__item");
+      ok(Boolean(chip()), "attachment chip lands in the draft mid-turn (870)");
+      const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value")!.set!;
+      await act(async () => {
+        const input = document.querySelector<HTMLTextAreaElement>("#composer-input");
+        // 附件单独构成可发送输入（composer-context 条目），文本为空也允许
+        // 提交；本钉只断言 870 特有的附件路由。纯文本引导提交的 submit 文本
+        // 保真由 turn-running-degrade.test.tsx 覆盖（args[3] 携带原文）。
+        if (input) {
+          setValue.call(input, "补充说明");
+          input.setSelectionRange(4, 4);
+          input.dispatchEvent(new dom.window.InputEvent("input", { bubbles: true, data: "补充说明", inputType: "insertText", isComposing: false }));
+        }
+        await flushTimers();
+        document.querySelector<HTMLButtonElement>(".composer__btn--send")?.click();
+        for (let i = 0; i < 10 && calls.length === 0; i++) {
+          await flushTimers();
+        }
+        await flushTimers();
+      });
+      const steer = calls.find((c) => c.name === "EnqueueInboxSteerForTurn");
+      ok(Boolean(steer), "running send with attachment routes to the exact-turn guidance enqueue");
+      const submitArg = typeof steer?.args[3] === "string" ? steer.args[3] : "";
+      ok(submitArg.includes("@.reasonix/attachments/shot-870.png"), "guidance submit text carries the attachment @ref");
+      eq(steer?.args[1], "turn-870", "guidance enqueue is fenced to the running turn id");
+      ok(!chip(), "attachment chip cleared after the guidance send");
+    }
+    await paint({ tabId: undefined, turnId: undefined });
+    delete (dom.window as unknown as { go?: unknown }).go;
+    // 断言 5/6 沿用「菜单处于打开态」的前置：这里重开它。
+    await act(async () => { plusButton()!.click(); await flushTimers(); });
+  }
+
   // 5) running 中：执行方式/子代理委派置灰且同带提示（禁止无反应）。
   const plan = itemWithTitle("计划");
   ok(plan && plan.disabled, "plan task mode disabled mid-turn");
