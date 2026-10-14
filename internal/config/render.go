@@ -717,7 +717,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_opencode_go_usage = %v   # task 163: OpenCode Go subscription usage card (5h/7d/month windows; no query while off)\n", c.Agent.ExperimentalOpenCodeGoUsage)
 	// Task 603: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).
-	fmt.Fprintf(&b, "experimental_tool_optimizations = %v   # task 603: 工具优化 family — edit_file/multi_edit accept readBack (edited snippet + context returned and filed as fresh read evidence); off keeps every schema/output byte identical (restart to apply)\n", c.Agent.ExperimentalToolOptimizations)
+	fmt.Fprintf(&b, "experimental_tool_optimizations = %v   # task 603: 工具优化 family — edit_file/multi_edit return the edited snippet + context as fresh read evidence (task 875: default on when lit, readBack:false opts out); off keeps every schema/output byte identical (restart to apply)\n", c.Agent.ExperimentalToolOptimizations)
 	// Task 789: same explicit-render rule — the Go-side switch ships first; the
 	// lab tier entry and the settings-page entry land in the unified
 	// registration window (labNonFeatureKeys exemption carries the reason).
