@@ -1776,8 +1776,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalToolOptimizations: cfg.Agent.ExperimentalToolOptimizations,
 		// Task 789: relaxed edit evidence gate readback (task 815 registration window).
 		ExperimentalEditEvidenceRelaxed: cfg.Agent.ExperimentalEditEvidenceRelaxed,
-		ExperimentalTraceAsState:      cfg.Agent.TraceAsState,
-		ExperimentalDream:             cfg.Agent.ExperimentalDream,
+		ExperimentalTraceAsState:        cfg.Agent.TraceAsState,
+		ExperimentalDream:               cfg.Agent.ExperimentalDream,
 		// Task 801: decision-pattern readback (empty path resolves to default).
 		ExperimentalDecisionPatterns: cfg.Agent.ExperimentalDecisionPatterns,
 		DecisionPatternFilePath:      decisionPatternPathForView(cfg),
@@ -2820,8 +2820,10 @@ func (a *App) rebuildSettingTurnLockedWithModel(setting string, tab *WorkspaceTa
 	a.saveTabsLocked()
 	a.mu.Unlock()
 	// True subgraph rebuilds reuse the same controller pointer — never Close it.
+	// Task 890: a handoff-built replacement adopts the outgoing job manager
+	// first, then the outgoing close keeps its background jobs running.
 	if oldCtrl != nil && oldCtrl != ctrl {
-		oldCtrl.Close()
+		closeReplacedControllerAfterHandoff(ctrl, oldCtrl)
 	}
 	a.persistTabSessionPath(tab, path)
 	a.clearDeferredRebuildVersion(tab.ID, pendingSequence)
@@ -2875,6 +2877,13 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		OnRenameSession:          a.renameCollabSession,
 		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
 	}
+	// Task 890: hand the outgoing controller's background-job manager and
+	// write lease to the replacement — both branches below (boot.Rebuild
+	// reload and legacy boot.Build) consume the same opts, and nil/nil falls
+	// back to a fresh pair (pre-890 behavior).
+	handoffJobs, handoffLease := jobsHandoffFrom(oldCtrl)
+	opts.Jobs = handoffJobs
+	opts.WorkspaceLease = handoffLease
 	if reload && oldCtrl != nil {
 		old, ok := oldCtrl.(*control.Controller)
 		if !ok {
