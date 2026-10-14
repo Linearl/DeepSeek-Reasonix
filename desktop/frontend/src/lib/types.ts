@@ -16,7 +16,7 @@ import type { PinnedFileInfo } from "./pinnedContextBridge";
 import type { RecoveryLineageView } from "./sessionRecoveryTypes";
 export * from "./remoteTypes";
 export type { ContextBudgetInfo, ContextMaintenanceInfo, ContextMaintenanceReceipt, WireContextMaintenance } from "./contextMaintenanceTypes";
-export type { ProjectGroupsSnapshot, ProjectRuntimeTopic, ProjectTopicKey, ProjectTopicPage, ProjectTopicPageRequest, ProjectTreeChangedV2, ProjectTreeOrganizationBindings, ProjectTreeRuntimeSnapshot, ProjectTreeSnapshot, SessionCatalogBindings, SessionCatalogStatus, SessionGroup, SessionReference } from "./sessionCatalogTypes";
+export type { DeleteGroupsPlan, ManageSessionsGroupResult, ManageSessionsGroupView, ManageSessionsListResult, ManageSessionsProjectGroupView, ManageSessionsSessionView, ManageSessionsTopicView, ProjectGroupsSnapshot, ProjectRuntimeTopic, ProjectTopicKey, ProjectTopicPage, ProjectTopicPageRequest, ProjectTreeChangedV2, ProjectTreeOrganizationBindings, ProjectTreeRuntimeSnapshot, ProjectTreeSnapshot, SessionCatalogBindings, SessionCatalogStatus, SessionGroup, SessionReference } from "./sessionCatalogTypes";
 export type EventKind =
   | "turn_started"
   | "reasoning"

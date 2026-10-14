@@ -10790,6 +10790,19 @@ button.statusbar__mcp:focus-visible {
 }
 .reasonix-confirm-dialog__actions .btn { min-width: 84px; }
 .reasonix-confirm-dialog__actions .btn--danger { font-weight: 600; }
+/* Task 892-B ④: the dissolve proposal lists its consequences as paragraphs and
+   offers the cascade option as a checkbox row. */
+.reasonix-confirm-dialog__message p { margin: 0 0 6px; }
+.reasonix-confirm-dialog__message p:last-child { margin-bottom: 0; }
+.reasonix-confirm-dialog__cascade {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.reasonix-confirm-dialog__cascade input { margin-top: 3px; }
 .blank-project-backdrop {
   --wails-draggable: no-drag;
   z-index: var(--z-overlay-backdrop);
@@ -35414,6 +35427,13 @@ button.statusbar__mcp:focus-visible {
   color: inherit;
   outline: none;
 }
+/* Task 892-B: the inline 子分组 composer row — one flex row under the parent
+   header, indented to the child column (inline style owns the padding). */
+.project-tree__group-subgroup-create {
+  display: flex;
+  align-items: center;
+  padding: 3px 6px 3px 0;
+}
 .project-tree__group-children {
   padding-left: 0;
 }
@@ -44685,6 +44705,14 @@ button.statusbar__mcp:focus-visible {
 .project-tree__group-main--reorder-target {
   background: rgba(127, 127, 127, 0.16);
   box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.5);
+}
+
+/* Task 892-B: the INTO band of a group drop (drop on the row = join the
+   group's subtree) paints stronger than the sibling-reorder bands, so the
+   two plain-drop meanings are distinguishable mid-drag. */
+.project-tree__group-main--nest-target {
+  background: rgba(127, 127, 127, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(127, 127, 127, 0.75);
 }
 
 /* Task 169: desktop drag affordance for group reordering. The grip sits at the

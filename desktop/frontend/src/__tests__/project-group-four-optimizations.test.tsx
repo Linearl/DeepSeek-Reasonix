@@ -161,9 +161,10 @@ ok(cssSource.includes(".project-tree__group-fold--open") && cssSource.includes("
 ok(readFileSync(resolve(dir, "../components/ProjectTreeOrganization.tsx"), "utf8").includes('<span className="project-tree__group-chevron" aria-hidden="true">{collapsed ? "▸" : "▾"}</span>'),
   "session-group headers keep the bare chevron as the column's whole content");
 
-// 文字起点网格：分组行缩进 = 项目行同款公式（depth 0）；会话行回到 depth 缩进
-ok(treeSource.includes("style={{ paddingLeft: 8 + depth * 16 }}\n              onClick"),
-  "the group row rides the project row's own indent formula (8 + depth * 16, depth 0)");
+// 文字起点网格：分组行缩进 = 项目行同款公式（depth 0）+ 892-B 每层嵌套 +16；
+// 会话行回到 depth 缩进
+ok(treeSource.includes("style={{ paddingLeft: 8 + depth * 16 + level * 16 }}\n              onClick"),
+  "the group row rides the project row's indent formula plus one 16px step per nesting level (892-B)");
 ok(!/:root\[data-theme-style\] \.project-tree__topic-main\s*\{[^}]*padding-left:[^}]*!important/.test(cssSource),
   "the theme-style skin no longer flattens session rows (padding-left !important removed — depth indent restored)");
 
@@ -172,8 +173,8 @@ ok(treeSource.includes('className="project-tree__folder-main"\n            style
   "guard: project folder rows keep their indentation formula");
 ok(/style=\{\{ paddingLeft: 14 \+ depth \* 16 \}\}/.test(treeSource),
   "guard: topic rows keep 14 + depth * 16");
-ok(readFileSync(resolve(dir, "../components/ProjectTreeOrganization.tsx"), "utf8").includes("style={{ paddingLeft: 8 + (depth - 1) * 16 + (nested ? 16 : 0) }}"),
-  "guard: session-group headers keep the task-313 formula");
+ok(readFileSync(resolve(dir, "../components/ProjectTreeOrganization.tsx"), "utf8").includes("style={{ paddingLeft: 8 + (depth - 1) * 16 + level * 16 }}"),
+  "guard: session-group headers keep the task-313 formula (892: one 16px step per level)");
 
 // 文字起点推演（classic + data-theme-style，W=16，gap=7）：
 //   项目分组行  8+0*16+16+7 = 31

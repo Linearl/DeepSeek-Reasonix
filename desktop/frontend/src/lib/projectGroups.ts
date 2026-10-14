@@ -7,6 +7,10 @@ export interface ProjectGroup {
   id: string;
   title: string;
   sortOrder: number;
+  // Task 892-B ⑤: arbitrary nesting, storage spelling `parent` (A-slice
+  // handoff §2.1 — tool input uses parent_id, view/response uses parentId).
+  // Absent = top level; legacy flat rosters load without ever growing it.
+  parent?: string;
 }
 
 const GROUPS_KEY = "projectTree:groups";
@@ -14,10 +18,13 @@ const ASSIGN_KEY = "projectTree:projectGroupAssign";
 const COLLAPSED_KEY = "projectTree:projectGroupCollapsed";
 
 let groupSeq = 0;
-function nextGroupID(): string {
+// Exported for 892-B: the catalog write path generates ids frontend-side too
+// (CreateProjectGroup takes an explicit groupID), same as the session path.
+export function nextProjectGroupID(): string {
   groupSeq += 1;
   return `group-${groupSeq}-${Date.now().toString(36)}`;
 }
+const nextGroupID = nextProjectGroupID;
 
 function read<T>(key: string): T | null {
   try {
@@ -93,10 +100,12 @@ export function dropProjectGroupCollapsed(ids: ReadonlySet<string>, id: string):
   return next;
 }
 
-export function addProjectGroup(title: string, groups: ProjectGroup[]): { groups: ProjectGroup[]; group: ProjectGroup } {
+export function addProjectGroup(title: string, groups: ProjectGroup[], parent?: string): { groups: ProjectGroup[]; group: ProjectGroup } {
   const next = [...groups];
   const order = next.reduce((max, g) => Math.max(max, g.sortOrder), -1) + 1;
-  const group: ProjectGroup = { id: nextGroupID(), title: title.trim() || "Group", sortOrder: order };
+  // parent is only set when given, so the legacy flat roster never grows a
+  // `parent` key (A-slice migration compatibility, handoff §1.4).
+  const group: ProjectGroup = { id: nextGroupID(), title: title.trim() || "Group", sortOrder: order, ...(parent ? { parent } : {}) };
   next.push(group);
   persistGroups(next);
   return { groups: next, group };
@@ -171,4 +180,29 @@ export function moveProjectToGroup(
 export function groupForProject(assign: Record<string, string>, root?: string): string | null {
   if (!root) return null;
   return assign[root] ?? null;
+}
+
+// Task 892-B ⑤: after a catalog pull the local roster shadow is cleared — the
+// backend is the source of truth from then on, and a leftover copy would
+// resurrect deleted groups the next time the catalog comes back empty.
+export function clearProjectGroupRoster(): void {
+  persistGroups([]);
+}
+
+// pruneProjectGroupAssign drops assignments whose group id left the roster
+// (deleted directly, or cascade-deleted as a child). Same-reference when
+// nothing changed so setState can skip the render; persists when it did.
+export function pruneProjectGroupAssign(
+  assign: Record<string, string>,
+  validIDs: ReadonlySet<string>,
+): Record<string, string> {
+  const next: Record<string, string> = {};
+  let changed = false;
+  for (const [root, groupId] of Object.entries(assign)) {
+    if (validIDs.has(groupId)) next[root] = groupId;
+    else changed = true;
+  }
+  if (!changed) return assign;
+  persistAssign(next);
+  return next;
 }

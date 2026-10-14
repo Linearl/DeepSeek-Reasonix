@@ -16,6 +16,8 @@ import type { Translator } from "../lib/i18n";
 import {
   canNestUnder,
   childGroups,
+  descendantGroupIDs,
+  groupDepth,
   hierarchyMutationIsDisplayOnly,
   inheritedMemberIDs,
   nestGroup,
@@ -55,10 +57,40 @@ console.log("\nsession group hierarchy — pure helpers (task 350)");
   eq(childGroups(roster, "top").map((g) => g.id), ["child"], "childGroups lists the nested group");
   eq(inheritedMemberIDs(roster, "top"), ["a", "b"], "inherited members = own + child group members");
   eq(inheritedMemberIDs(roster, "child"), ["b"], "a child aggregates only itself");
-  ok(canNestUnder(roster, "top", "child") === false, "a group that already has children cannot become a child itself (depth cap)");
+  ok(canNestUnder(roster, "top", "child") === false, "a group cannot nest under its own descendant (cycle guard, 892 replaced the depth-2 cap)");
   ok(canNestUnder([{ id: "a", title: "A" }, { id: "b", title: "B" }], "a", "b"), "flat groups nest freely");
   ok(canNestUnder([{ id: "a", title: "A" }, { id: "b", title: "B" }], "a", "a") === false, "self-nesting rejected");
   ok(canNestUnder(roster, "child", "ghost") === false, "unknown parent rejected");
+  // 892-B: arbitrary depth — a deep chain is legal, a broken parent chain is not.
+  {
+    const deep = [
+      { id: "d1", title: "D1", topicIds: ["own"] },
+      { id: "d2", title: "D2", parent: "d1" },
+      { id: "d3", title: "D3", parent: "d2" },
+      { id: "extra", title: "Extra" },
+    ];
+    ok(canNestUnder(deep, "extra", "d3"), "a 4th level nests (arbitrary depth, no depth-2 cap)");
+    eq(descendantGroupIDs(deep, "d1"), ["d2", "d3"], "descendantGroupIDs walks every hop");
+    eq(groupDepth(deep, "d3"), 2, "groupDepth counts the ancestor chain");
+    const cyclic = [
+      { id: "x", title: "X", parent: "y" },
+      { id: "y", title: "Y", parent: "x" },
+      { id: "extra", title: "Extra" },
+    ];
+    eq(groupDepth(cyclic, "x"), null, "a cyclic parent chain reports null instead of hanging");
+    // The parent side is what the nest cannot repair: its chain stays as-is.
+    ok(canNestUnder(cyclic, "extra", "x") === false, "a nest target whose ancestor chain loops is rejected");
+    // The child side IS repaired by the write (its parent pointer is replaced),
+    // so a looping child may nest under a healthy root.
+    ok(canNestUnder(cyclic, "x", "extra"), "nesting a looping child under a root repairs its chain");
+    // inherited members aggregate the whole subtree, any depth.
+    const deepWithTopics = [
+      { id: "d1", title: "D1", topicIds: ["own"] },
+      { id: "d2", title: "D2", parent: "d1", topicIds: ["mid"] },
+      { id: "d3", title: "D3", parent: "d2", topicIds: ["deep"] },
+    ];
+    eq(inheritedMemberIDs(deepWithTopics, "d1").sort(), ["deep", "mid", "own"], "inherited members aggregate the whole subtree");
+  }
   eq(nestTargets(roster, "child").map((g) => g.id), ["top"], "nest targets exclude the group itself and orphaned groups");
 
   const flat: SessionGroup[] = [
@@ -322,6 +354,62 @@ console.log("\nsession group hierarchy — controller & render (task 350)");
     await flush();
     eq((saved.payloads[0] ?? []).find((g) => g.id === "g-b")?.parent, undefined, "move-to-top clears the parent pointer");
   }
+  await cleanup();
+}
+
+{
+  // 892-B 验收①: three-level nesting renders with per-level indent + independent
+  // collapse/expand at every level. L1 > L2 > L3, L3 holds the running session.
+  const initial: SessionGroup[] = [
+    { id: "l1", title: "L1", topicIds: [] },
+    { id: "l2", title: "L2", topicIds: [], parent: "l1" },
+    { id: "l3", title: "L3", topicIds: ["t2"], parent: "l2" },
+  ];
+  const saved: SavedState = { payloads: [], revisions: [] };
+  const children = [topicNode("t1", "idle"), topicNode("t2", "streaming")];
+  await mount(makeBindings(initial, saved), children);
+  await flush();
+  eq(headers().map((h) => h.getAttribute("title")), ["L1", "L2", "L3"], "three levels all render");
+  const block1 = groupBlock("L1");
+  const block2 = groupBlock("L2");
+  const block3 = groupBlock("L3");
+  ok(Boolean(block1 && block2 && block1.contains(block2) && block1 !== block2), "L2 renders inside L1's subtree");
+  ok(Boolean(block2 && block3 && block2.contains(block3) && block2 !== block3), "L3 renders inside L2's subtree");
+  // Per-level indent: level 0/1/2 step +16px each (folder depth 1 → base 8px).
+  eq((headers()[0] as HTMLElement).style.paddingLeft, "8px", "level 0 sits on the folder column");
+  eq((headers()[1] as HTMLElement).style.paddingLeft, "24px", "level 1 steps +16px");
+  eq((headers()[2] as HTMLElement).style.paddingLeft, "40px", "level 2 steps +16px again");
+
+  // Collapse the middle level: L3 hides, L1 keeps showing.
+  await act(async () => { headers()[1].click(); await flush(); });
+  eq(headers().map((h) => h.getAttribute("title")), ["L1", "L2"], "collapsing L2 hides L3 only");
+  ok(groupBlock("L1")?.contains(groupBlock("L2") ?? document.createElement("div")) === true, "L2 still renders under L1");
+
+  // Collapse the root: everything below hides; the root dot aggregates the
+  // whole subtree (L3's running session), proving deep inheritance.
+  await act(async () => { headers()[0].click(); await flush(); });
+  eq(headers().map((h) => h.getAttribute("title")), ["L1"], "collapsing L1 hides L2 (L3 already hidden)");
+  const rootBlock = groupBlock("L1");
+  const deepDot = rootBlock?.querySelector(".project-tree__group-state");
+  ok(Boolean(deepDot), "collapsed root shows the dot inherited from depth 3");
+  eq(rootBlock?.querySelector(".project-tree__group-active-count")?.textContent ?? null, "1",
+    "root active count aggregates the level-3 running member");
+
+  // Re-expand root then middle: L3 comes back (expand restores the chain).
+  await act(async () => { headers()[0].click(); await flush(); });
+  await act(async () => { headers()[1].click(); await flush(); });
+  eq(headers().map((h) => h.getAttribute("title")), ["L1", "L2", "L3"], "re-expanding restores all three levels");
+  // The level-3 group's menu offers 移到顶层 (it is nested), and no re-nest
+  // under its own parent (no-op filtered out).
+  await act(async () => {
+    headers()[2].dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await flush();
+  });
+  const menuTexts = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
+    .map((el) => el.textContent ?? "");
+  ok(menuTexts.some((text) => text.includes("projectTree.moveGroupToTopLevel")), "level-3 menu offers 移到顶层");
+  ok(!menuTexts.some((text) => text.includes("projectTree.nestGroupUnder:L2")),
+    "no no-op re-nest under its own parent in the menu");
   await cleanup();
 }
 
