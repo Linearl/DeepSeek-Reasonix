@@ -2,7 +2,7 @@
 
 ## 状态
 - worktree: wt-890（基于 main-v2-stable 73ff458bd）
-- 阶段：实现完成，四包测试推进中（jobs/control 绿、boot 二绿一 flaky、desktop 后台跑）。
+- 阶段：实现、四包测试、切片提交全部完成；交付报告见会话汇报。
 
 ## 设计要点①：swap 后后台任务存活吗？——**现状：不存活**（修复前）
 
@@ -42,10 +42,13 @@
 单元：`internal/jobs/after_unfinished_test.go`（2）、`internal/control/jobs_handoff_test.go`（3：handoff 关不杀 job+延迟 cleanup / borrowed close 不关 jm / AdoptJobs 后 owner close 收编）、`internal/boot/jobs_handoff_test.go`（2：单腿拒绝 / 复用身份+borrowed close 保 jm）。
 
 ## 包级测试
-- internal/jobs：ok（15s）
-- internal/control：ok（252s）
-- internal/boot：第 1 跑 FAIL（未留失败名）→ 第 2、3 跑 ok；新测试单跑 5 连绿。疑既有 flaky，未复现。
-- desktop：进行中（见最终汇报）。
+- internal/jobs：**ok**（15s）
+- internal/control：**ok**（252s）
+- internal/boot：第 1 跑 FAIL（未留失败名，疑既有 flaky）→ 第 2、3 跑 **ok**；新测试单跑 5 连绿。
+- desktop：默认 10m 超时跑不完（2908 个测试，需 `-timeout 25m+`）。35m 上限全量跑 1250s 收官，8 个 FAIL：
+  - **预存红 7 个（base 73ff458bd 基线对照同样失败，与本任务无关）**：TestPumpDerivedHopExhaustionIsAHopRefusal、TestHopExhaustedIsReportedAndSettled、TestSettingsExposesEffectiveSandboxWriteRoots、TestCatalogTopicTitleLocalizesAtSidebarBoundary、TestCatalogManualDefaultTitleIsNotLocalized、TestBuildTabControllerBlocksWhenSessionLeaseHeld、TestStartTopicActivationFailureDetachesPreviousAndReattaches（对照方法：`git worktree add ../wt-890-base 73ff458bd` 跑同 7 项后删除基线 worktree）
+  - **1 个隔离复跑即绿的环境 flake**：TestSetActiveRemoteTabProceedsWhenCurrentSessionCannotPersist（TempDir RemoveAll 清理竞态，全量跑专属）
+  - 受影响族定向子集（SetModelForTab/SetEffort/ReloadRuntime/ModelSettingsApply/RebuildSetting/SetSandbox/MCPServer/TokenMode/DeferredRebuild 等）**61s 全绿**；四组新验收测试**全绿**。
 
 ## 残留风险 / 边界（预登记）
 - deferred-rebuild 重试循环（deferred_rebuild.go:258/:310）仍按全量 active() 门控——只影响「先被 running 拦下而入队」的 model 重建：turn 结束后若还有 bg job，队列重试会等到 job 结束才跑。直接路径（用户此刻切换）已畅通；入队路径属既有行为，未改动。
@@ -58,4 +61,4 @@
 - [x] boot：Options.Jobs/WorkspaceLease 复用接线 + 测试
 - [x] desktop：交接接线 + guard 按 setting 降权 + 测试 4 组
 - [x] jobs：AfterUnfinished + 测试
-- [ ] desktop 包级测试收尾 + commit（中文「890 」开头，显式路径）+ 最终汇报
+- [x] 包级测试（含预存红基线对照）+ 切片 commit（4 切片，「890 」开头）+ 最终汇报
