@@ -1106,6 +1106,44 @@ func (m *Manager) HasUnfinishedForSession(parentSession string) bool {
 	return false
 }
 
+// AfterUnfinished runs fn once every job that is unfinished AT CALL TIME has
+// closed its done channel; with none unfinished fn runs before returning.
+// Jobs started after the call do not delay fn. Task 890: a hot model/settings
+// swap hands the manager to the replacement controller, and the outgoing
+// controller defers its build-scoped cleanup (LSP servers, session store
+// bridge, resident base) until the background tasks still running under it
+// exit — without extending that wait for jobs the replacement starts later.
+func (m *Manager) AfterUnfinished(fn func()) {
+	if fn == nil {
+		return
+	}
+	m.mu.Lock()
+	pending := make([]<-chan struct{}, 0, len(m.order))
+	for _, key := range m.order {
+		j := m.jobs[key]
+		if j == nil {
+			continue
+		}
+		select {
+		case <-j.done:
+			continue
+		default:
+		}
+		pending = append(pending, j.done)
+	}
+	m.mu.Unlock()
+	if len(pending) == 0 {
+		fn()
+		return
+	}
+	go func() {
+		for _, done := range pending {
+			<-done
+		}
+		fn()
+	}()
+}
+
 // DrainCompletedNote returns (and clears) a one-line summary of jobs that
 // finished since the last drain, for the controller to fold into the next turn
 // so the model learns of completions. "" when nothing finished.
