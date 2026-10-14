@@ -3274,6 +3274,7 @@ export const zhTW: Record<DictKey, string> = {
   "notice.autopilotAssumedYolo": "Autopilot 已開啟：審批自動切到 Yolo（決策已記錄）。",
   "notice.autopilotResumeFired": "無人值守自動續輪：上一回合異常終止，已自動提交一條續輪回合接續工作。",
   "notice.autopilotResumeExhausted": "無人值守自動續輪已停止：連續續輪仍異常終止，為避免無限循環暫停續輪；回合正常完成前不再自動續輪，請人工檢查該會話。",
+  "notice.unattendedGateAutoContinue": "無人值守自動繼續：重啟恢復門已自動解除，積壓佇列照常消化；佇列內容可在 /queue 查看。",
   "notice.turnStalled": "已經有一段時間沒有任何進展。回合仍在執行；如果看起來卡住了，請點擊停止。",
   "questionNav.label": "問題導航",
   "questionNav.progress": "問題 {current} / {total}",

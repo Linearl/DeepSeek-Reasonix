@@ -61,6 +61,8 @@ const noticeCodeKeys: Record<string, DictKey> = {
   // 任务 731 异常态自动续轮：一次续轮注入留痕 + 连续预算用尽的停止告警。
   autopilot_resume_fired: "notice.autopilotResumeFired",
   autopilot_resume_exhausted: "notice.autopilotResumeExhausted",
+  // 任务 868 无人值守恢复门自动继续：恢复点的自动决策留痕（有人会话不触发）。
+  unattended_gate_auto_continue: "notice.unattendedGateAutoContinue",
 };
 
 const streamInterruptReasonCodeKeys: Record<string, DictKey> = {

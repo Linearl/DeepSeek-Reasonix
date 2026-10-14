@@ -68,6 +68,12 @@ const (
 	// burned many main-chain steps with zero sub-agent dispatches and the host
 	// injected one transient mid-turn delegation reminder.
 	NoticeCodeDelegationReminder = "delegation_reminder"
+	// NoticeCodeUnattendedGateAutoContinue (task 868): an unattended tab's
+	// restart recovery gate was cleared automatically at the restore point so
+	// the queued work keeps flowing without the three-choice banner. The
+	// user-visible trace of the automatic decision — attended tabs keep the
+	// gate and never emit this.
+	NoticeCodeUnattendedGateAutoContinue = "unattended_gate_auto_continue"
 )
 
 // 任务553: wake-yield code lives in its own block so the wire-stable table
