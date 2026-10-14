@@ -1276,6 +1276,23 @@ func digestAndSizeSessionMessages(msgs []provider.Message) ([sha256.Size]byte, i
 	return out, size, nil
 }
 
+// sessionMessagesEncodedSize sums the encoded transcript bytes exactly the way
+// digestAndSizeSessionMessages measures them (identity fold + one newline per
+// message), without the digest pass — the schema-2 size gate needs only the
+// number and runs inside the save critical section (任务 884: that gate used to
+// pay a full digest of every live head's chain on every save).
+func sessionMessagesEncodedSize(msgs []provider.Message) (int64, error) {
+	size := int64(0)
+	for _, m := range msgs {
+		b, err := json.Marshal(messageForSessionIdentity(m))
+		if err != nil {
+			return 0, err
+		}
+		size += int64(len(b)) + 1
+	}
+	return size, nil
+}
+
 // sessionTranscriptHasher accumulates the transcript digest one message at a
 // time, exactly like digestAndSizeSessionMessages, so load paths hash during
 // decode instead of re-serializing. A nil receiver disables hashing.
