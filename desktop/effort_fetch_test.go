@@ -55,25 +55,62 @@ func effortInfoFor(level string) EffortInfo {
 // semantics: the log line is an evidence channel for slow reads, so it must
 // stay silent at 100ms and fire at 200ms — proving the threshold compares
 // milliseconds, not raw durations (a Duration-vs-untyped-const slip would
-// turn the gate into 150ns and log every warm read).
+// turn the gate into 150ns and log every warm read). Task 889: the line now
+// also carries the reconcile sub-split (memo vs walk), the snapshot sub-split
+// (wait/stat/load) and the after_timeout pairing — asserted here so a field
+// can never silently drop out of the evidence channel.
 func TestEffortReadBreakdownLogThreshold(t *testing.T) {
 	var buf bytes.Buffer
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	logEffortReadBreakdown("tab_threshold", 100*time.Millisecond, 90*time.Millisecond, 10*time.Millisecond, 0, false)
+	logEffortReadBreakdown(effortReadBreakdown{
+		tabID:     "tab_threshold",
+		total:     100 * time.Millisecond,
+		reconcile: 90 * time.Millisecond,
+		snapshot:  10 * time.Millisecond,
+	})
 	if buf.Len() != 0 {
 		t.Fatalf("breakdown logged below threshold: %s", buf.String())
 	}
 
-	logEffortReadBreakdown("tab_threshold", 200*time.Millisecond, 190*time.Millisecond, 10*time.Millisecond, 0, false)
+	logEffortReadBreakdown(effortReadBreakdown{
+		tabID:            "tab_threshold",
+		total:            200 * time.Millisecond,
+		reconcile:        190 * time.Millisecond,
+		memo:             40 * time.Millisecond,
+		walk:             150 * time.Millisecond,
+		memoHit:          false,
+		snapshot:         10 * time.Millisecond,
+		snapshotWait:     3 * time.Millisecond,
+		snapshotStat:     4 * time.Millisecond,
+		snapshotLoad:     3 * time.Millisecond,
+		resolve:          0,
+		snapshotReloaded: false,
+		afterTimeout:     true,
+	})
 	line := buf.String()
 	if !strings.Contains(line, "effort read breakdown") {
 		t.Fatalf("no breakdown line at/above threshold, got %q", line)
 	}
-	if !strings.Contains(line, `"reconcile_ms":190`) || !strings.Contains(line, `"snapshot_reloaded":false`) {
-		t.Fatalf("breakdown line missing segment fields: %s", line)
+	for _, field := range []string{
+		`"reconcile_ms":190`,
+		`"snapshot_reloaded":false`,
+		// Task 889 sub-splits: without these the congestion-window question
+		// "reconcile 是 memo key 还是 walk？snapshot 是等锁还是 load？"
+		// would still need cross-reading the phase logs.
+		`"memo_ms":40`,
+		`"reconcile_walk_ms":150`,
+		`"memo_hit":false`,
+		`"snapshot_wait_ms":3`,
+		`"snapshot_stat_ms":4`,
+		`"snapshot_load_ms":3`,
+		`"after_timeout":true`,
+	} {
+		if !strings.Contains(line, field) {
+			t.Fatalf("breakdown line missing %s: %s", field, line)
+		}
 	}
 }
 

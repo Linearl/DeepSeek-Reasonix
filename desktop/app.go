@@ -151,6 +151,10 @@ type App struct {
 	effortCache             map[string]effortCacheEntry
 	reconcileReadProbe      func(tabID string)
 
+	// Task 889: in-flight effort-read phase trail (effort_phase_trail.go);
+	// observability only, no verdict or fallback reads it.
+	effortPhase effortPhaseState
+
 	// Task 882: bounded context-usage read (see context_usage_fetch.go).
 	// contextUsageCache holds the last completed controller-derived gauge
 	// fields per tab ID ("" = the active-tab form) so a read that blows the
