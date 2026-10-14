@@ -53,15 +53,16 @@ func (a *App) ContextUsageForTab(tabID string) ContextInfo {
 	}
 	// The gauge measures the loaded view, so a rebound session reports its real
 	// fill immediately and no longer needs the persisted last-turn fallback.
-	used, window := ctrl.ContextSnapshot()
-	info.Used = used
-	info.Window = window
-	info.CompactRatio = ctrl.CompactRatio()
-	snapshot := ctrl.ContextMaintenanceSnapshot()
-	info.Maintenance = contextMaintenanceInfo(snapshot)
-	if snapshot.ContextBudget != nil {
-		info.ContextBudget = contextBudgetInfo(snapshot.ContextBudget)
-	}
+	// Task 882: the controller-derived fields run bounded (2s cap + cached
+	// fallback, see context_usage_fetch.go) - this binding is the "ancillary
+	// context" leg of the switch-tab batch, and its O(transcript) recompute
+	// used to hold the whole switch for seconds on long sessions.
+	compute := a.boundedContextUsageCompute(tabID, ctrl)
+	info.Used = compute.used
+	info.Window = compute.window
+	info.CompactRatio = compute.compactRatio
+	info.Maintenance = compute.maintenance
+	info.ContextBudget = compute.contextBudget
 	return info
 }
 
