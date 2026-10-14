@@ -135,13 +135,13 @@ func TestWithdrawnDurableSteerDoesNotEmitUnappliedNotice(t *testing.T) {
 	a.steerMu.Lock()
 	a.steerRunActive = true
 	a.steerMu.Unlock()
-	if !a.SteerItem("withdrawn-consume", func() (string, error) { return "", ErrSteerWithdrawn }) {
+	if !a.SteerItem("withdrawn-consume", func() (SteerPayload, error) { return SteerPayload{}, ErrSteerWithdrawn }) {
 		t.Fatal("active steer should be accepted")
 	}
-	if text, itemID, ok := a.consumeSteer(); ok || text != "" || itemID != "" {
-		t.Fatalf("withdrawn consume = (%q, %q, %v), want silent miss", text, itemID, ok)
+	if payload, itemID, ok := a.consumeSteer(); ok || payload.Text != "" || itemID != "" {
+		t.Fatalf("withdrawn consume = (%q, %q, %v), want silent miss", payload.Text, itemID, ok)
 	}
-	if !a.SteerItem("withdrawn-flush", func() (string, error) { return "", ErrSteerWithdrawn }) {
+	if !a.SteerItem("withdrawn-flush", func() (SteerPayload, error) { return SteerPayload{}, ErrSteerWithdrawn }) {
 		t.Fatal("second active steer should be accepted")
 	}
 	a.flushSteerQueue()

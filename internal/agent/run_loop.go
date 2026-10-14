@@ -221,17 +221,21 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 		// survives tab switches and history replay. The model sees it as
 		// guidance (with a prefix), not a new task. One cache miss per
 		// steer is unavoidable — the model must see the new instruction.
-		if text, itemID, ok := a.consumeSteer(); ok {
+		// 任务870: frozen image attachments ride the injected user message
+		// (same field a regular user turn embeds), so the very next provider
+		// request carries them; admission is capability-gated upstream.
+		if payload, itemID, ok := a.consumeSteer(); ok {
 			a.sess.conversation.Add(provider.Message{
 				Role: provider.RoleUser, Origin: provider.MessageOriginUser,
-				Content: a.withTurnPreferences(midTurnSteerMessage(text)), RawContent: text,
+				Content: a.withTurnPreferences(midTurnSteerMessage(payload.Text)), RawContent: payload.Text,
+				Images: payload.Images,
 			})
-			a.svc.sink.Emit(event.Event{Kind: event.Steer, Text: text, ItemID: itemID})
+			a.svc.sink.Emit(event.Event{Kind: event.Steer, Text: payload.Text, ItemID: itemID})
 			// Task 172 T2: a user steering mid-turn is the high-signal moment —
 			// append one optional inbox mention to the correction round. The
 			// shared cooldown consumed here keeps T1 from stacking onto the
 			// same turn.
-			a.maybeNudgeFeedbackSteer(state, text)
+			a.maybeNudgeFeedbackSteer(state, payload.Text)
 		} else if itemID != "" {
 			// Loader failed after dequeue: durable entry stays for inspection
 			// (unapplied path marks uncertain + pause via the notice sink).

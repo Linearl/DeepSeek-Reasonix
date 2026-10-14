@@ -42,39 +42,40 @@ func (c *Controller) unlockInboxSteerAdmission(dispatch *bool) {
 	}
 }
 
-func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (string, error) {
-	return func() (string, error) {
+func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (agent.SteerPayload, error) {
+	return func() (agent.SteerPayload, error) {
 		meta, env, err := st.ReadItem(itemID)
 		if err != nil {
 			if errors.Is(err, sessioninbox.ErrNotFound) {
-				return "", agent.ErrSteerWithdrawn
+				return agent.SteerPayload{}, agent.ErrSteerWithdrawn
 			}
-			return "", err
+			return agent.SteerPayload{}, err
 		}
 		text := strings.TrimSpace(env.SubmitText)
 		if text == "" {
 			text = strings.TrimSpace(env.DisplayText)
 		}
 		if text == "" {
-			return "", fmt.Errorf("inbox item %s has empty body", itemID)
+			return agent.SteerPayload{}, fmt.Errorf("inbox item %s has empty body", itemID)
 		}
 		materialized, images, block, materializeErr := applyInboxReferences(env)
 		if materializeErr != nil {
-			return "", materializeErr
+			return agent.SteerPayload{}, materializeErr
 		}
 		if block != "" {
-			return "", fmt.Errorf("frozen reference unavailable: %s", block)
+			return agent.SteerPayload{}, fmt.Errorf("frozen reference unavailable: %s", block)
 		}
-		if len(images) > 0 {
-			return "", fmt.Errorf("image guidance requires a follow-up turn")
-		}
+		// 任务870: frozen images ride the injected steer message so the next
+		// provider request carries them. Admission is capability-gated in
+		// trySteerInboxItem; a non-vision model never reaches this branch with
+		// images (its steer is converted to a follow-up turn instead).
 		// This compare-and-transition is the durable hand-off boundary and
 		// closes the loader-vs-cancel gap after TrySteerInboxItem returns.
 		if err := st.MarkSteerConsumed(itemID); err != nil {
 			if errors.Is(err, sessioninbox.ErrNotFound) {
-				return "", agent.ErrSteerWithdrawn
+				return agent.SteerPayload{}, agent.ErrSteerWithdrawn
 			}
-			return "", err
+			return agent.SteerPayload{}, err
 		}
 		// Task 309: the mail just entered the recipient's context — the read
 		// level. Best-effort: a receipt failure must not fail the injection,
@@ -88,7 +89,7 @@ func inboxSteerLoader(st *sessioninbox.Store, itemID string) func() (string, err
 			_ = sessioncollab.SendReadReceipt(config.SessionCollabMailDir(),
 				strings.TrimPrefix(env.Source, "collab:"), ref.MailTo, ref.MsgID)
 		}
-		return firstNonEmptyStr(materialized, text), nil
+		return agent.SteerPayload{Text: firstNonEmptyStr(materialized, text), Images: images}, nil
 	}
 }
 
@@ -161,12 +162,20 @@ func (c *Controller) trySteerInboxItem(id, expectedTurnID string) (sessioninbox.
 	}
 	// Capture only the store pointer + item id. Load body from disk at consume.
 	loader := inboxSteerLoader(st, id)
+	// 任务870: image-bearing envelopes steer mid-turn only when the active
+	// model takes image input — the injected steer message embeds the frozen
+	// data URLs directly, with no per-turn vision-summary pass. A
+	// non-vision model keeps the pre-870 contract: the steer is converted to
+	// a queued follow-up and runs as its own turn (which does run the frozen
+	// images through prepareVisionTurn). Desktop controllers answer this from
+	// the frozen boot snapshot; others resolve config only on this path.
+	imagesSteerable := len(env.FrozenImages) == 0 || c.imageInputEnabled()
 	// Persist the admission boundary before exposing the loader to the agent.
 	// Holding c.mu for the short in-memory enqueue serializes active tracking
 	// with finishGuardedTurn, so TurnDone cannot overtake an accepted steer.
 	c.inbox.trackAdmission(id)
 	defer c.inbox.untrackAdmission(id)
-	if len(env.FrozenImages) == 0 {
+	if imagesSteerable {
 		if err := st.SetState(id, sessioninbox.StateSteerAccepted, ""); err != nil {
 			return sessioninbox.InboxReceipt{}, err
 		}
@@ -183,7 +192,7 @@ func (c *Controller) trySteerInboxItem(id, expectedTurnID string) (sessioninbox.
 	// precise across every admission path, so a steer (or a tool-gap pull)
 	// lands whenever an agent run is actually consuming guidance.
 	executorRunActive := c.executor != nil && c.executor.SteerRunActive()
-	accepted := turnMatches && !c.closed && !c.rotating && (c.running || executorRunActive) && c.executor != nil && len(env.FrozenImages) == 0 && c.executor.SteerItem(id, loader)
+	accepted := turnMatches && !c.closed && !c.rotating && (c.running || executorRunActive) && c.executor != nil && imagesSteerable && c.executor.SteerItem(id, loader)
 	if accepted {
 		c.inbox.mu.Lock()
 		c.inbox.trackActive(id)
@@ -200,7 +209,7 @@ func (c *Controller) trySteerInboxItem(id, expectedTurnID string) (sessioninbox.
 		}, nil
 	}
 	// Rejected: keep as follow-up.
-	if len(env.FrozenImages) == 0 {
+	if imagesSteerable {
 		if err := st.SetState(id, sessioninbox.StateQueued, ""); err != nil {
 			_ = st.ForcePause(true, 1)
 			return sessioninbox.InboxReceipt{}, err

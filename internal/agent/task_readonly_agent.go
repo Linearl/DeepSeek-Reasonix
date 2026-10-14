@@ -113,8 +113,16 @@ func RunSubAgentWithSession(ctx context.Context, prov provider.Provider, reg *to
 	// nudge continuations below — and the deferred unpublish covers every
 	// return path and panic unwinding. Ephemeral runs (ref == "") publish
 	// nothing: their mailbox is nil.
+	// 任务870: mailbox steers stay text-only (the mailbox body has no
+	// attachment channel), so the publish boundary wraps the payload-shaped
+	// SteerItem instead of passing it directly.
 	if opts.SubagentMailbox != nil {
-		unpublish := opts.SubagentMailbox.Publish(sub.SteerItem)
+		unpublish := opts.SubagentMailbox.Publish(func(itemID string, load func() (string, error)) bool {
+			return sub.SteerItem(itemID, func() (SteerPayload, error) {
+				text, err := load()
+				return SteerPayload{Text: text}, err
+			})
+		})
 		defer unpublish()
 	}
 	if err := sub.Run(ctx, prompt); err != nil {

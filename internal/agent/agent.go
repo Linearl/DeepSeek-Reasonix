@@ -869,10 +869,18 @@ func trimLeadingSteerWrapper(content string) (string, bool) {
 	return content, false
 }
 
+// SteerPayload is the consumed body of one mid-turn guidance admission: the
+// instruction text plus optional image attachments (data URLs) that ride on
+// the injected user message so the next provider request sees them. 任务870.
+type SteerPayload struct {
+	Text   string
+	Images []string
+}
+
 // steerEntry is one mid-turn guidance admission.
 type steerEntry struct {
 	itemID string
-	load   func() (string, error)
+	load   func() (SteerPayload, error)
 	// text is a fallback when load is nil (legacy Steer(string) path).
 	text string
 }
@@ -889,12 +897,12 @@ var ErrSteerWithdrawn = errors.New("steer withdrawn")
 // controller observing running=false would sit in the queue unconsumed and
 // unpersisted — invisible to both the model and history.
 func (a *Agent) Steer(text string) bool {
-	return a.SteerItem("", func() (string, error) { return text, nil })
+	return a.SteerItem("", func() (SteerPayload, error) { return SteerPayload{Text: text}, nil })
 }
 
 // SteerItem queues durable-inbox guidance identified by itemID. load is called
 // only when the entry is consumed so the agent does not retain every body.
-func (a *Agent) SteerItem(itemID string, load func() (string, error)) bool {
+func (a *Agent) SteerItem(itemID string, load func() (SteerPayload, error)) bool {
 	a.steerMu.Lock()
 	defer a.steerMu.Unlock()
 	if !a.steerRunActive {
@@ -955,26 +963,26 @@ func (a *Agent) SetSink(sink event.Sink) {
 	a.svc.sink = sink
 }
 
-func (a *Agent) consumeSteer() (text, itemID string, ok bool) {
+func (a *Agent) consumeSteer() (payload SteerPayload, itemID string, ok bool) {
 	a.steerMu.Lock()
 	defer a.steerMu.Unlock()
 	if len(a.steerQueue) == 0 {
-		return "", "", false
+		return SteerPayload{}, "", false
 	}
 	e := a.steerQueue[0]
 	a.steerQueue = a.steerQueue[1:]
 	a.steerConsumed = len(a.steerQueue) == 0
 	if e.load != nil {
-		t, err := e.load()
+		p, err := e.load()
 		if err != nil {
 			if errors.Is(err, ErrSteerWithdrawn) {
-				return "", "", false
+				return SteerPayload{}, "", false
 			}
-			return "", e.itemID, false
+			return SteerPayload{}, e.itemID, false
 		}
-		return t, e.itemID, true
+		return p, e.itemID, true
 	}
-	return e.text, e.itemID, true
+	return SteerPayload{Text: e.text}, e.itemID, true
 }
 
 // closeSteerIntakeIfIdle atomically closes the normal-completion race between
@@ -1010,10 +1018,10 @@ func (a *Agent) flushSteerQueue() {
 	for _, e := range pending {
 		text := e.text
 		if e.load != nil {
-			if t, err := e.load(); errors.Is(err, ErrSteerWithdrawn) {
+			if p, err := e.load(); errors.Is(err, ErrSteerWithdrawn) {
 				continue
 			} else if err == nil {
-				text = t
+				text = p.Text
 			}
 		}
 		a.RecordUnappliedSteer(text, e.itemID)
