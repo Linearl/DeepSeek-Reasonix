@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"reasonix/internal/shellparse"
+	"reasonix/internal/shellsafe"
 )
 
 // Stable rule ids. Config [sentinel] disabled_rules references these strings.
@@ -76,6 +77,15 @@ func bashSegments(cmd string) []string {
 }
 
 func checkForbiddenBash(cmd string) Verdict {
+	// 任务 895 穿透封堵（实验开关 sentinel_penetration_guard）：先做源级
+	// 透视——wrapper（bash/sh -c/eval/sudo/env/裸赋值）解包、子 shell 与
+	// 花括号组展平——再走四规则。解包本身永不产生判定，命中仍只可能来自
+	// 四规则；开关关时这段完全不执行，文本与判定路径逐位等于 895 前现状。
+	// heredoc/动态 payload/解析失败形态 SeeThroughWrappers 原文返回，由下方
+	// 各规则既有的保守回退接管（维持现保守回退）。
+	if PenetrationGuardEnabled() {
+		cmd, _ = shellsafe.SeeThroughWrappers(cmd)
+	}
 	segs := bashSegments(cmd)
 	for _, seg := range segs {
 		if v := checkForcePushSegment(seg); v.Blocked {
@@ -118,6 +128,13 @@ var forceFlagRe = regexp.MustCompile(`(?:^|\s)(?:--force|-f)(?:\s|$)`)
 //
 // Task 851 只读自查：`--dry-run`/`-n` 只演算推送、不落盘，push 的只读形态——
 // 演算放行，真实改写照拦。
+//
+// Task 895 穿透封堵（开关开时）：① git 判定跳过全局选项（-C/-c/--git-dir
+// 等，对标 codex find_git_subcommand）——`git -C <dir> push --force` 不再
+// 因 fields[1]≠push 放行；② force/dry-run 判定改按字段（引号感知）且只扫
+// push 子命令之后的参数——全局选项值里碰巧出现的 `-f`/`-n` 字样不会误中；
+// 顺带闭掉 `git push '--force'`（引号包裹旗标躲过词边界正则）的漏拦。
+// 开关关时下面走 895 前的原路径，行为逐位不变。
 func checkForcePushSegment(seg string) Verdict {
 	fields, malformed := shellparse.StaticFields(seg)
 	if malformed != "" {
@@ -129,19 +146,37 @@ func checkForcePushSegment(seg string) Verdict {
 		}
 		return Verdict{}
 	}
-	if len(fields) < 3 || !strings.EqualFold(fields[0], "git") || !strings.EqualFold(fields[1], "push") {
+	if len(fields) < 2 {
 		return Verdict{}
 	}
-	if !forceFlagRe.MatchString(seg) {
-		return Verdict{}
-	}
-	if hasPushDryRunFlag(fields) {
-		return Verdict{}
+	subIdx := 1
+	if PenetrationGuardEnabled() {
+		idx, ok := gitPushSubcommandIndex(fields)
+		if !ok {
+			return Verdict{}
+		}
+		subIdx = idx
+		if !hasPushForceFlag(fields[subIdx+1:]) {
+			return Verdict{}
+		}
+		if hasPushDryRunFlag(fields[subIdx+1:]) {
+			return Verdict{}
+		}
+	} else {
+		if len(fields) < 3 || !strings.EqualFold(fields[0], "git") || !strings.EqualFold(fields[1], "push") {
+			return Verdict{}
+		}
+		if !forceFlagRe.MatchString(seg) {
+			return Verdict{}
+		}
+		if hasPushDryRunFlag(fields) {
+			return Verdict{}
+		}
 	}
 	protected := protectedBranchList()
 	sawRefspec := false
 	seenRemote := false
-	for _, f := range fields[2:] {
+	for _, f := range fields[subIdx+1:] {
 		if strings.HasPrefix(f, "-") {
 			continue
 		}
@@ -181,6 +216,88 @@ func hasPushDryRunFlag(fields []string) bool {
 			return true
 		}
 		if strings.HasPrefix(f, "-") && !strings.HasPrefix(f, "--") && strings.ContainsRune(f[1:], 'n') {
+			return true
+		}
+	}
+	return false
+}
+
+// gitPushSubcommandIndex (任务 895) 返回 git 的 push 子命令下标：跳过 git
+// 全局选项后再找子命令，对标 codex is_dangerous_command.rs 的
+// find_git_subcommand——`git -C <dir> push --force` 这类全局选项前缀不再让
+// fields[1]≠push 的浅判定放行。首个非旗标词即子命令：不是 push 即返回未找到
+// （与 codex 的 subcommands 列表判定同义，防把后面的 refspec 误认成子命令）。
+// 命令词按 basename 比对（/usr/bin/git、git.exe 同样识别）。
+func gitPushSubcommandIndex(fields []string) (int, bool) {
+	if len(fields) < 2 || !isGitCommandWord(fields[0]) {
+		return 0, false
+	}
+	skipValue := false
+	for i := 1; i < len(fields); i++ {
+		f := fields[i]
+		if skipValue {
+			skipValue = false
+			continue
+		}
+		if gitGlobalTakesValue(f) {
+			skipValue = true
+			continue
+		}
+		if gitGlobalInlineValue(f) {
+			continue
+		}
+		if f == "--" || strings.HasPrefix(f, "-") {
+			continue
+		}
+		if strings.EqualFold(f, "push") {
+			return i, true
+		}
+		return 0, false
+	}
+	return 0, false
+}
+
+func isGitCommandWord(word string) bool {
+	base := strings.ToLower(word)
+	if i := strings.LastIndexByte(base, '/'); i >= 0 {
+		base = base[i+1:]
+	}
+	base = strings.TrimSuffix(base, ".exe")
+	return base == "git"
+}
+
+// gitGlobalTakesValue 是取值与选项分写的 git 全局选项（codex 同名单）。
+func gitGlobalTakesValue(f string) bool {
+	switch f {
+	case "-C", "-c", "--config-env", "--exec-path", "--git-dir",
+		"--namespace", "--super-prefix", "--work-tree":
+		return true
+	default:
+		return false
+	}
+}
+
+// gitGlobalInlineValue 是值内联在选项里的形态（--git-dir=<path>、-C<path>、
+// -c<name>=<value>）。`-C`/`-c` 要求长度 >2，裸旗标走分写分支。
+func gitGlobalInlineValue(f string) bool {
+	if strings.HasPrefix(f, "--config-env=") || strings.HasPrefix(f, "--exec-path=") ||
+		strings.HasPrefix(f, "--git-dir=") || strings.HasPrefix(f, "--namespace=") ||
+		strings.HasPrefix(f, "--super-prefix=") || strings.HasPrefix(f, "--work-tree=") {
+		return true
+	}
+	return (strings.HasPrefix(f, "-C") || strings.HasPrefix(f, "-c")) && len(f) > 2
+}
+
+// hasPushForceFlag 按字段判定 push 的 force 旗标（引号感知：StaticFields 已
+// 把 `'--force'` 还原为裸词）。`--force` 精确匹配；短旗标簇取 -f 前缀
+// （`-f`/`-fn`；`--force-with-lease` 起双横线不在其列，守卫形态照旧放行）。
+// 只该喂 push 子命令之后的参数——全局选项值不在其中。
+func hasPushForceFlag(fields []string) bool {
+	for _, f := range fields {
+		if f == "--force" {
+			return true
+		}
+		if strings.HasPrefix(f, "-f") && !strings.HasPrefix(f, "--") {
 			return true
 		}
 	}

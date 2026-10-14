@@ -17,12 +17,17 @@ import (
 
 // allowedImports is the complete non-stdlib import surface the sentinel
 // package may have. shellparse: bash command segmentation. secrets: audit
-// redaction. Nothing else — in particular nothing from internal/agent,
-// internal/provider, internal/boundedllm, internal/guardian or any other
-// package that talks to a model.
+// redaction. shellsafe: wrapper-family recognition for the task-895
+// penetration guard — reviewed into the allowlist because it is itself
+// model-free (deps: shellparse + mvdan AST parser + stdlib only; 852 四问 #4
+// 「wrapper 家族识别交 shellsafe、零模型可评审进白名单」) and keeps command
+// family naming single-sourced. Nothing else — in particular nothing from
+// internal/agent, internal/provider, internal/boundedllm, internal/guardian
+// or any other package that talks to a model.
 var allowedImports = map[string]bool{
 	"reasonix/internal/shellparse": true,
 	"reasonix/internal/secrets":    true,
+	"reasonix/internal/shellsafe":  true,
 }
 
 func TestSentinelPackageImportsAreModelFree(t *testing.T) {
