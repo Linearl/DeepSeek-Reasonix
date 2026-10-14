@@ -18,6 +18,14 @@ const askDraftKey = (scope: string, ask: WireAsk) =>
 // far below the auto-decide window scale (default 15s) and keeps the bridge
 // traffic negligible while still resetting the window long before it expires.
 const askActivityThrottleMs = 1000;
+// 任务860: split sentinel for ask.autoDecideCountdown — the sentence is
+// localized as one string, so the seconds slot is rendered through this
+// placeholder and the result split around it. Locale word order is preserved
+// exactly and the concatenated DOM text stays byte-identical to the unsplit
+// sentence (the 849 takeover test pins match on it). A locale without the
+// {seconds} slot makes the split produce one part and fall back to the plain
+// 849 markup.
+const askCountdownSplitToken = "ask-countdown-seconds";
 type AnswerMode = "option" | "custom";
 type AskDraft = {
   sel: Record<string, string[]>;
@@ -159,6 +167,17 @@ function AskCardBody({ ask, onAnswer, onInteract, onActivity, onTakeover, countd
     return () => window.clearInterval(timer);
   }, [countdownLive]);
   const countdownSeconds = countdownLive ? Math.max(0, Math.ceil((countdownDeadline - countdownNow) / 1000)) : null;
+  // 任务860: split the localized sentence around its seconds slot so the
+  // number can render as the large accent figure (849 feedback: the small
+  // "15s" in the corner reads as fine print). The split runs on the cheap
+  // local tick — one string split per 250ms — and the concatenated text stays
+  // byte-identical to the unsplit sentence, so the 849 test pins still match.
+  // null (split failed or countdown parked) falls back to the plain markup.
+  const countdownSplit = countdownSeconds !== null
+    ? t("ask.autoDecideCountdown", { seconds: askCountdownSplitToken }).split(askCountdownSplitToken)
+    : null;
+  const countdownLabel: [string, string] | null =
+    countdownSplit?.length === 2 ? [countdownSplit[0], countdownSplit[1]] : null;
 
   // 任务844: pointer movement over the panel resets the auto-decide window on
   // the backend ("the user is reading"). mousemove fires at pointer-poll rate,
@@ -455,13 +474,32 @@ function AskCardBody({ ask, onAnswer, onInteract, onActivity, onTakeover, countd
               {t("ask.questionProgress", { progress })}
             </span>
           )}
-          {countdownSeconds !== null && (
+          {countdownLabel !== null && (
+            // 任务860: the remaining seconds are card-level visual state, not
+            // fine print — the number renders as a large accent figure inside
+            // the sentence. The label is split around a placeholder token so
+            // every locale keeps its exact word order and the concatenated
+            // text stays byte-identical to the plain 849 string (the takeover
+            // test pins match on it).
+            <span className="ask-shelf__countdown" data-testid="ask-countdown">
+              {countdownLabel[0] !== "" && (
+                <span className="ask-shelf__countdown-label">{countdownLabel[0]}</span>
+              )}
+              <span className="ask-shelf__countdown-num">{countdownSeconds}</span>
+              {countdownLabel[1] !== "" && (
+                <span className="ask-shelf__countdown-label">{countdownLabel[1]}</span>
+              )}
+            </span>
+          )}
+          {countdownSeconds !== null && countdownLabel === null && (
+            // Fallback: a locale without the {seconds} slot keeps the 849
+            // sentence markup verbatim.
             <span className="ask-shelf__header-text ask-shelf__header-text--progress">
               {t("ask.autoDecideCountdown", { seconds: countdownSeconds })}
             </span>
           )}
           {takeoverArmed && takeoverHeld && (
-            <span className="ask-shelf__header-text">{t("ask.takeoverHeld")}</span>
+            <span className="ask-shelf__header-text ask-shelf__header-text--held">{t("ask.takeoverHeld")}</span>
           )}
         </span>
       }
@@ -473,6 +511,10 @@ function AskCardBody({ ask, onAnswer, onInteract, onActivity, onTakeover, countd
               onClick={toggleTakeover}
               ariaLabel={takeoverHeld ? t("ask.releaseTakeover") : t("ask.takeover")}
               disabled={takeoverPending}
+              // 任务860: primary-button weight for the takeover control — it is
+              // the user's stop-the-clock action and must not read as one of
+              // the 32px icon slots beside it.
+              className="prompt-shelf__header-button--takeover"
             >
               {takeoverHeld ? t("ask.releaseTakeover") : t("ask.takeover")}
             </PromptHeaderAction>
