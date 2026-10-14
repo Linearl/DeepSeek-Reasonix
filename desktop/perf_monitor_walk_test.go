@@ -29,7 +29,7 @@ func TestWalkProjectsBytesSkipsTrashAtAnyDepth(t *testing.T) {
 	write("projects/sessions/.trash/nested/deeper.events.jsonl", 500)
 	write("projects/other/.trash/also-dead.events.jsonl", 700)
 
-	totalMB, eventsMB := walkProjectsBytesMB(root)
+	totalMB, eventsMB, _ := walkProjectsBytesMB(root)
 
 	bytesOf := func(mb float64) int64 {
 		return int64(math.Round(mb * (1 << 20)))
@@ -45,7 +45,7 @@ func TestWalkProjectsBytesSkipsTrashAtAnyDepth(t *testing.T) {
 // An empty root is the degenerate case the early return exists for; the .trash
 // rule must not change it.
 func TestWalkProjectsBytesEmptyRoot(t *testing.T) {
-	totalMB, eventsMB := walkProjectsBytesMB("")
+	totalMB, eventsMB, _ := walkProjectsBytesMB("")
 	if totalMB != 0 || eventsMB != 0 {
 		t.Fatalf("empty root = (%v, %v), want (0, 0)", totalMB, eventsMB)
 	}
@@ -69,7 +69,7 @@ func TestWalkProjectsBytesSkipsRecoveryFiles(t *testing.T) {
 	write("projects/sessions/other-recovery-ff00aa11.events.jsonl", 500)
 	write("projects/sessions/live.jsonl", 50) // not .events.jsonl, counts in total only
 
-	totalMB, eventsMB := walkProjectsBytesMB(root)
+	totalMB, eventsMB, _ := walkProjectsBytesMB(root)
 	gotEvents := int64(math.Round(eventsMB * (1 << 20)))
 	if gotEvents != 100 {
 		t.Fatalf("eventsMB = %.10f (%d bytes), want exactly the 100 live bytes - recovery leaked in", eventsMB, gotEvents)
