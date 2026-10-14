@@ -414,11 +414,16 @@ func (a *App) runEffortCommandForTab(tabID, input string) {
 
 func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, error) {
 	readStart := time.Now()
+	// Task 889: announce each segment to the in-flight phase trail (a no-op
+	// without an EffortForTab attempt), so the timeout warn can say which
+	// step a blown 2s read is standing in.
+	mark := func(phase string) { a.effortPhaseMark(tabID, phase) }
 	// Task 639/691: the session reconcile below is defensive healing with a
 	// full disk walk (project registry reads, per-dir session path
 	// validation, branch-meta sidecar loads). A settled tab re-derives the same binding on every read, so reconcileTabWithPinnedSessionMeta itself now serves the memoized outcome (tab_reconcile_memo.go) and only walks when an input that could move a binding changed.
+	mark("reconcile")
 	reconcileStart := time.Now()
-	a.reconcileTabWithPinnedSessionMeta(a.tabByID(tabID))
+	_, _, reconcileObs := a.reconcileTabWithPinnedSessionMetaObserved(a.tabByID(tabID), mark)
 	reconcileMs := time.Since(reconcileStart)
 	a.mu.RLock()
 	ref := ""
@@ -434,8 +439,11 @@ func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, e
 	// full LoadForRoot per call — this line was the read-side hot path behind
 	// EffortForTab (431-1350ms, multi-second AV outliers per task 421). The snapshot reloads itself when the tracked config files change, so value freshness matches a fresh load.
 	reloadsBefore := a.cfgSnapshotReloadCount(workspaceRoot)
+	mark("snapshot")
 	snapshotStart := time.Now()
-	cfg, err := a.cachedConfigForRoot(workspaceRoot)
+	cfg, snapshotTiming, err := a.cachedConfigForRootTimed(workspaceRoot, func(segment string) {
+		mark("snapshot." + segment)
+	})
 	snapshotMs := time.Since(snapshotStart)
 	if err != nil {
 		return nil, err
@@ -443,6 +451,7 @@ func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, e
 	if strings.TrimSpace(ref) == "" {
 		ref = cfg.DefaultModel
 	}
+	mark("model")
 	resolveStart := time.Now()
 	config.NormalizeLegacyMimoCustomProvidersForRefs(cfg, ref)
 	resolved, _, ok := cfg.ResolveModelWithFallback(ref)
@@ -457,10 +466,24 @@ func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, e
 	if effortOverride != nil {
 		entry.Effort = *effortOverride
 	}
+	mark("done")
 	// Task 639: answer "what is left of the read after the task-609 snapshot"
 	// from the log instead of from code reading. The capability mapping in
 	// effortForTabDirect is deliberately not a segment: it is pure in-memory table work, so any real cost shows up as total_ms exceeding the sum of the segments here.
-	logEffortReadBreakdown(tabID, time.Since(readStart), reconcileMs, snapshotMs, resolveMs,
-		a.cfgSnapshotReloadCount(workspaceRoot) != reloadsBefore)
+	logEffortReadBreakdown(effortReadBreakdown{
+		tabID:            tabID,
+		total:            time.Since(readStart),
+		reconcile:        reconcileMs,
+		memo:             reconcileObs.memoMs,
+		walk:             reconcileObs.walkMs,
+		memoHit:          reconcileObs.memoHit,
+		snapshot:         snapshotMs,
+		snapshotWait:     snapshotTiming.wait,
+		snapshotStat:     snapshotTiming.stat,
+		snapshotLoad:     snapshotTiming.load,
+		snapshotReloaded: a.cfgSnapshotReloadCount(workspaceRoot) != reloadsBefore,
+		resolve:          resolveMs,
+		afterTimeout:     a.effortReadAfterTimeout(tabID),
+	})
 	return entry, nil
 }

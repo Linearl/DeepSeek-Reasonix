@@ -37,24 +37,56 @@ const effortReadTimeout = 2 * time.Second
 // regressed (snapshot reload, registry change, or disk stall).
 const effortBreakdownLogMs = 150
 
-// logEffortReadBreakdown emits the task-639 segment split for one effort read
-// (see currentProviderEntryForTab): reconcile vs config snapshot vs model
-// resolve. The stage tag matches the frontend's switch-tab ancillary batch
-// name so a "switch-tab:ancillary effort" timing line pairs with the Go-side
-// breakdown of the same read. snapshotReloaded distinguishes a warm snapshot
-// hit (false) from a full LoadForRoot the read had to pay (true).
-func logEffortReadBreakdown(tabID string, total, reconcile, snapshot, resolve time.Duration, snapshotReloaded bool) {
-	if total.Milliseconds() < effortBreakdownLogMs {
+// effortReadBreakdown is the segment split for one completed effort read,
+// the task-639 answer to "what is left of the read" and the task-889 answer
+// to "which step exactly". Top level: reconcile vs snapshot vs model
+// resolve, as before. Task 889 adds the sub-splits so a congestion-window
+// sample localizes without cross-reading the phase logs: memo/walk split
+// reconcile into "memo key computation (settled path, disk stats)" vs
+// "binding resolve + apply", and wait/stat/load split snapshot into "queued
+// behind a sibling's load" vs "freshness stats" vs "LoadForRoot". afterTimeout
+// pairs the line back to the 2s-cap warn for the same read (set when the cap
+// fired before this completion), so grep finds both halves of one incident.
+type effortReadBreakdown struct {
+	tabID            string
+	total            time.Duration
+	reconcile        time.Duration
+	memo             time.Duration // part of reconcile: memo key compute + lookup
+	walk             time.Duration // part of reconcile: binding resolve + apply after a memo miss
+	memoHit          bool          // the memo served this read (walk = 0 by construction)
+	snapshot         time.Duration
+	snapshotWait     time.Duration // part of snapshot: per-root mutex wait
+	snapshotStat     time.Duration // part of snapshot: freshness fingerprints
+	snapshotLoad     time.Duration // part of snapshot: configLoadForRoot (0 when warm)
+	snapshotReloaded bool
+	resolve          time.Duration
+	afterTimeout     bool
+}
+
+// logEffortReadBreakdown emits the segment split for one effort read (see
+// currentProviderEntryForTab). The stage tag matches the frontend's
+// switch-tab ancillary batch name so a "switch-tab:ancillary effort" timing
+// line pairs with the Go-side breakdown of the same read. Threshold semantics
+// unchanged (task 639): under effortBreakdownLogMs the line stays silent.
+func logEffortReadBreakdown(b effortReadBreakdown) {
+	if b.total.Milliseconds() < effortBreakdownLogMs {
 		return
 	}
 	slog.Info("desktop: effort read breakdown",
-		"tab", tabID,
+		"tab", b.tabID,
 		"stage", "switch-tab:ancillary effort",
-		"total_ms", total.Milliseconds(),
-		"reconcile_ms", reconcile.Milliseconds(),
-		"snapshot_ms", snapshot.Milliseconds(),
-		"resolve_ms", resolve.Milliseconds(),
-		"snapshot_reloaded", snapshotReloaded)
+		"total_ms", b.total.Milliseconds(),
+		"reconcile_ms", b.reconcile.Milliseconds(),
+		"memo_ms", b.memo.Milliseconds(),
+		"reconcile_walk_ms", b.walk.Milliseconds(),
+		"memo_hit", b.memoHit,
+		"snapshot_ms", b.snapshot.Milliseconds(),
+		"snapshot_wait_ms", b.snapshotWait.Milliseconds(),
+		"snapshot_stat_ms", b.snapshotStat.Milliseconds(),
+		"snapshot_load_ms", b.snapshotLoad.Milliseconds(),
+		"resolve_ms", b.resolve.Milliseconds(),
+		"snapshot_reloaded", b.snapshotReloaded,
+		"after_timeout", b.afterTimeout)
 }
 
 // effortCacheEntry is the last completed effort read for one tab, kept so a
@@ -75,11 +107,16 @@ type effortCacheEntry struct {
 // is diagnosable instead of silently slow.
 func (a *App) EffortForTab(tabID string) EffortInfo {
 	limit := a.effortReadLimit()
+	// Task 889: register this attempt's in-flight phase trail; the timeout
+	// branch renders it and flags it for the breakdown's after_timeout
+	// pairing, and completion drops it (generation-checked).
+	phaseGen := a.beginEffortReadPhase(tabID)
 	// Buffered channel: once the timeout branch has returned, the late send
 	// lands in the buffer and the goroutine exits - an abandoned read never
 	// leaks on the send, and its storeEffortCache still lands.
 	done := make(chan EffortInfo, 1)
 	go func() {
+		defer a.finishEffortReadPhase(tabID, phaseGen)
 		info := a.effortReadCompute(tabID)
 		a.storeEffortCache(tabID, info)
 		done <- info
@@ -88,17 +125,31 @@ func (a *App) EffortForTab(tabID string) EffortInfo {
 	case info := <-done:
 		return info
 	case <-time.After(limit):
+		// Task 889: snapshot the trail before flagging; "" means a newer
+		// attempt replaced the record — no attribution beats the wrong one.
+		phases := a.effortPhaseTrailString(tabID, phaseGen)
+		a.markEffortReadTimedOut(tabID, phaseGen)
 		if cached, at, ok := a.cachedEffortForTab(tabID); ok {
 			// A fallback hit is not an error for the caller - the switch must
 			// go through - but it must leave a trace, or the bad samples that
 			// motivated task 421 would stay invisible forever.
-			slog.Warn("desktop: effort read timed out; serving cached value",
-				"tab", tabID, "limit", limit, "cache_age", time.Since(at).Round(time.Millisecond))
+			attrs := []any{
+				"tab", tabID,
+				"limit", limit,
+				"cache_age", time.Since(at).Round(time.Millisecond),
+			}
+			if phases != "" {
+				attrs = append(attrs, "phases", phases)
+			}
+			slog.Warn("desktop: effort read timed out; serving cached value", attrs...)
 			a.noticeForTab(tabID, fmt.Sprintf("effort read timed out (>%s); showing last known value", limit))
 			return cached
 		}
-		slog.Warn("desktop: effort read timed out; no cached value, serving default",
-			"tab", tabID, "limit", limit)
+		attrs := []any{"tab", tabID, "limit", limit}
+		if phases != "" {
+			attrs = append(attrs, "phases", phases)
+		}
+		slog.Warn("desktop: effort read timed out; no cached value, serving default", attrs...)
 		a.noticeForTab(tabID, fmt.Sprintf("effort read timed out (>%s); showing default", limit))
 		return EffortInfo{Current: "auto", Levels: []string{}}
 	}

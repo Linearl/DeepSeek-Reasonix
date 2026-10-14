@@ -72,7 +72,32 @@ var configLoadForRoot = config.LoadForRoot
 // serialize on the snapshot's own lock, so a slow load delays only that
 // root's readers — and EffortForTab still bounds the wait with its timeout
 // cap (task 421).
+// snapshotTiming is the task-889 split of one snapshot access: wait is the
+// time to acquire the per-root mutex (a reader queued behind a sibling's
+// slow load), stat the freshness fingerprints (os.Stat over the tracked
+// sources), load the configLoadForRoot call itself (0 when warm). The
+// effort-read breakdown carries all three, so a slow snapshot_ms answers
+// "disk stall on the stat, a sibling's load, or my own reload" instead of
+// just "snapshot was slow".
+type snapshotTiming struct {
+	wait time.Duration
+	stat time.Duration
+	load time.Duration
+}
+
+// cachedConfigForRoot is the read-path wrapper kept for callers that only
+// want the config (config_snapshot_test, non-effort surfaces).
 func (a *App) cachedConfigForRoot(root string) (*config.Config, error) {
+	cfg, _, err := a.cachedConfigForRootTimed(root, nil)
+	return cfg, err
+}
+
+// cachedConfigForRootTimed is the task-889 instrumented form: same snapshot
+// semantics plus the wait/stat/load timing for the effort-read breakdown and
+// an optional mark callback announcing each sub-step to the tab's
+// effort-read phase trail (nil for callers without a trail, e.g. tests and
+// non-effort reads — a nil mark costs nothing).
+func (a *App) cachedConfigForRootTimed(root string, mark func(segment string)) (*config.Config, snapshotTiming, error) {
 	key := filepath.Clean(root)
 	a.cfgSnapshotsMu.Lock()
 	if a.cfgSnapshots == nil {
@@ -84,27 +109,51 @@ func (a *App) cachedConfigForRoot(root string) (*config.Config, error) {
 		a.cfgSnapshots[key] = snap
 	}
 	a.cfgSnapshotsMu.Unlock()
-	return snap.get(root)
+	return snap.getTimed(root, mark)
 }
 
 // get serves the cached config while every tracked source fingerprint still
 // matches, and reloads exactly once otherwise.
 func (s *configSnapshot) get(root string) (*config.Config, error) {
+	cfg, _, err := s.getTimed(root, nil)
+	return cfg, err
+}
+
+// getTimed is the task-889 instrumented get: identical freshness/reload
+// semantics, with the mutex-wait / fingerprint-stat / load durations split
+// out (snapshotTiming) and each sub-step announced through mark when the
+// caller has one (the effort read's phase trail, so a 2s timeout can say
+// snapshot.load instead of just snapshot).
+func (s *configSnapshot) getTimed(root string, mark func(segment string)) (*config.Config, snapshotTiming, error) {
+	var timing snapshotTiming
+	markSeg := func(segment string) {
+		if mark != nil {
+			mark(segment)
+		}
+	}
+	waitStart := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	timing.wait = time.Since(waitStart)
+	markSeg("stat")
+	statStart := time.Now()
 	sources, stamps := configSnapshotSources(root)
+	timing.stat = time.Since(statStart)
 	if s.loaded && configStampsUnchanged(s.sources, s.stamps, sources, stamps) {
-		return s.cfg, nil
+		return s.cfg, timing, nil
 	}
+	markSeg("load")
+	loadStart := time.Now()
 	cfg, err := configLoadForRoot(root)
+	timing.load = time.Since(loadStart)
 	if err != nil {
 		// Preserve today's read-path behavior: surface the load error and
 		// keep the stale stamps so the next read retries the reload.
-		return nil, err
+		return nil, timing, err
 	}
 	s.sources, s.stamps, s.cfg, s.loaded = sources, stamps, cfg, true
 	s.reloads++
-	return cfg, nil
+	return cfg, timing, nil
 }
 
 // cfgSnapshotReloadCount reports how many full loads the root's snapshot has
