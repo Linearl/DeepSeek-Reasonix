@@ -331,6 +331,10 @@ export const en = {
   "rightDock.remote": "Remote",
   "rightDock.terminal": "Terminal",
   "rightDock.todoEmpty": "No tasks for this session",
+  // 893-B: the dock's empty todos area must not read as "the agent tracks
+  // nothing" once a task list existed; sealed = turn-level recycling happened.
+  "rightDock.todoSealed": "The task list was sealed when the turn ended",
+  "rightDock.todoSealedCount": "The task list was sealed when the turn ended ({count} tasks)",
 
   // topic bar
   "topicBar.renameSession": "Rename session",

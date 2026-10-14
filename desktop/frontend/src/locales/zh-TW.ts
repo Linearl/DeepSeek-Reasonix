@@ -241,6 +241,9 @@ export const zhTW: Record<DictKey, string> = {
   "rightDock.remote": "遠端",
   "rightDock.terminal": "終端機",
   "rightDock.todoEmpty": "目前會話暫無任務",
+  // 893-B: 會話曾有任務清單、回合結束後被回收時不再誤顯「暫無任務」。
+  "rightDock.todoSealed": "任務列表已按回合封存",
+  "rightDock.todoSealedCount": "任務列表已按回合封存（上一回合 {count} 項）",
 
   // 話題欄
   "topicBar.renameSession": "重新命名會話",

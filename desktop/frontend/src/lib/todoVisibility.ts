@@ -234,6 +234,83 @@ export function scopedTodoBatchKey(scope: string | null | undefined, batchKey: s
   return prefix ? `${prefix}\0${key}` : key;
 }
 
+// ---- Task 893-B: three-state right-dock empty area ----
+// The right-dock "todos" tab renders an empty copy whenever no live list is
+// shown, but "no live list" has two very different meanings: a session that
+// never recorded any task, versus one whose list was sealed at a turn
+// boundary or retired after sign-off. The old single "暂无任务" copy read as
+// "the agent is tracking nothing", which mislead users into doubting work in
+// progress. All signals below are transcript/meta state the frontend already
+// holds — no backend field needed:
+//   - the transcript keeps every successful top-level todo_write (args
+//     included on hydrate; see desktop/app_history_tools.go historyToolCall),
+//   - todoArchive retains earlier finished batches,
+//   - meta.dismissedTodoBatches survives reloads via the session sidecar,
+//   - meta.canonicalTodos is non-nil once the kernel ever snapshotted a list.
+
+export type TodoDockEmptyState = "never" | "sealed";
+
+/** Structural probe for transcript tool items; App's `Item` narrows to it. */
+export interface TodoDockEmptyItemSignal {
+  kind?: string;
+  name?: string;
+  parentId?: string | null;
+  status?: string;
+  error?: unknown;
+}
+
+export interface TodoDockEmptyStateInput {
+  /** Currently resolved panel list (may be empty). */
+  todos?: readonly Todo[] | null;
+  /** Collapsed archive of earlier finished batches. */
+  archive?: readonly TodoBatch[] | null;
+  /** Session transcript items; any successful top-level todo_write counts. */
+  items?: readonly TodoDockEmptyItemSignal[] | null;
+  /** Sidecar-recorded dismissed completed batches (session + lineage). */
+  dismissedBatches?: readonly string[] | null;
+  /** Authoritative canonical list from Meta (nil = no snapshot, [] = cleared). */
+  canonicalTodos?: readonly Todo[] | null;
+}
+
+export interface TodoDockEmptyStateResult {
+  state: TodoDockEmptyState;
+  /**
+   * Items in the most recently known list, when derivable — feeds the
+   * "上一回合 N 项" copy. Null when only an empty clear was ever observed.
+   */
+  count: number | null;
+}
+
+function transcriptEverWroteTodos(items: readonly TodoDockEmptyItemSignal[] | null | undefined): boolean {
+  if (!items) return false;
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (item?.kind === "tool" && item?.name === "todo_write" && !item?.parentId && item?.status === "done" && !item?.error) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// todoDockEmptyState picks the copy for the dock's empty todos area. "sealed"
+// means the session demonstrably had a task list that is now out of the live
+// view; "never" keeps the original "no tasks" copy. The count is best-effort
+// (live list > newest archived batch > canonical snapshot) so the sealed copy
+// can say how many tasks were tracked when that is known.
+export function todoDockEmptyState(input: TodoDockEmptyStateInput): TodoDockEmptyStateResult {
+  const todosCount = input.todos?.length ?? 0;
+  const archiveCount = input.archive?.[0]?.todos.length ?? 0;
+  const canonicalCount = input.canonicalTodos?.length ?? 0;
+  const everHadTodos = todosCount > 0
+    || archiveCount > 0
+    || canonicalCount > 0
+    || (input.dismissedBatches?.length ?? 0) > 0
+    || transcriptEverWroteTodos(input.items);
+  if (!everHadTodos) return { state: "never", count: null };
+  const count = todosCount > 0 ? todosCount : archiveCount > 0 ? archiveCount : canonicalCount > 0 ? canonicalCount : null;
+  return { state: "sealed", count };
+}
+
 export function shouldShowTodoPanel(
   todoKey: string | null | undefined,
   dismissedTodoKey: string | null,
