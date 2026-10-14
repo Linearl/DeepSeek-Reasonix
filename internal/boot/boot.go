@@ -291,6 +291,11 @@ type Options struct {
 	// group (task 170), removing it from the group it was in. Nil omits the
 	// move_topic_to_group tool.
 	OnMoveTopicToGroup agent.MoveTopicToGroupFunc
+	// OnManageSessions (task 892) is the single dispatch face behind the
+	// manage_sessions tool: list/rename/move/reorder sessions, nested group
+	// CRUD and proposal-first group deletion, for both grouping systems
+	// (sidebar session groups + the project-group catalog). Nil omits the tool.
+	OnManageSessions agent.ManageSessionsFunc
 	// SubagentParentLive reports whether this process currently owns or is
 	// building the parent session. Desktop uses it to avoid probing a live tab's
 	// lease during stale-subagent cleanup. Nil preserves lease-only cleanup.
@@ -2451,6 +2456,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 		if opts.OnMoveTopicToGroup != nil {
 			reg.Add(agent.NewMoveTopicToGroupTool(collab, opts.OnMoveTopicToGroup))
+		}
+		// Task 892: the unified manage face. Same host-capability gate as the
+		// two above — a host without the desktop's group store has nothing to
+		// manage, so the tool stays unregistered rather than refusing.
+		if opts.OnManageSessions != nil {
+			reg.Add(agent.NewManageSessionsTool(collab, opts.OnManageSessions))
 		}
 	}
 	// Task 482（fence 退役）: the tool_recovery self-diagnosis tool is withdrawn

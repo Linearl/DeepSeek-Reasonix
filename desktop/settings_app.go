@@ -2897,6 +2897,7 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
 		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
+		OnManageSessions:         a.AgentManageSessions,
 	}
 	// Task 890: hand the outgoing controller's background-job manager and
 	// write lease to the replacement — both branches below (boot.Rebuild

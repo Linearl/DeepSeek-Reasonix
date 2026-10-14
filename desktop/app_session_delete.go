@@ -207,6 +207,7 @@ func (a *App) clearSessionBuildOptions(tab *WorkspaceTab, snap tabRuntimeSnapsho
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRenameSession:            a.renameCollabSession,
 		OnMoveTopicToGroup:         a.moveCollabTopicToGroup,
+		OnManageSessions:           a.AgentManageSessions,
 	}
 }
 

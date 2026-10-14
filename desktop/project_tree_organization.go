@@ -13,10 +13,16 @@ const (
 	maxSessionGroupIDRunes = 160
 	maxSessionGroupRunes   = 120
 	maxSessionGroupTopics  = 10_000
-	// maxSessionGroupDepth caps the nesting introduced by task 350 (session
-	// group hierarchy). The tree is a display organization only — Discord-style
-	// shallow categories — so a child may never itself have a child.
-	maxSessionGroupDepth = 2
+	// maxSessionGroupDepth (task 892) caps nesting at a generous 64 levels:
+	// arbitrary depth is the point (simulating a company org chart), but an
+	// unbounded chain from corrupt data would make every ancestor walk — cycle
+	// check, tree render, cascade planning — quadratic, so a sanity cap stays.
+	// Cycles are prevented by the explicit ancestor walk in
+	// validateGroupHierarchy, not by the depth cap.
+	maxSessionGroupDepth = 64
+	// maxProjectGroups bounds the project-group catalog (task 892): the same
+	// scale as session groups, one global list per workspace file.
+	maxProjectGroups = 100
 )
 
 type desktopProject struct {
@@ -51,17 +57,35 @@ type ProjectGroupsSnapshot struct {
 }
 
 type desktopProjectFile struct {
-	GlobalTitle            string           `json:"globalTitle,omitempty"`
-	GlobalColor            string           `json:"globalColor,omitempty"`
-	GlobalTopics           []string         `json:"globalTopics,omitempty"`
-	GlobalPinnedTopics     []string         `json:"globalPinnedTopics,omitempty"`
-	GlobalManualTopicOrder bool             `json:"globalManualTopicOrder,omitempty"`
-	GlobalGroups           []desktopGroup   `json:"globalGroups,omitempty"`
-	GlobalGroupsRevision   uint64           `json:"-"`
-	DeletedTopics          []string         `json:"deletedTopics,omitempty"`
-	PinnedProjects         []string         `json:"pinnedProjects,omitempty"`
-	SidebarOrder           []string         `json:"sidebarOrder,omitempty"`
-	Projects               []desktopProject `json:"projects"`
+	GlobalTitle            string         `json:"globalTitle,omitempty"`
+	GlobalColor            string         `json:"globalColor,omitempty"`
+	GlobalTopics           []string       `json:"globalTopics,omitempty"`
+	GlobalPinnedTopics     []string       `json:"globalPinnedTopics,omitempty"`
+	GlobalManualTopicOrder bool           `json:"globalManualTopicOrder,omitempty"`
+	GlobalGroups           []desktopGroup `json:"globalGroups,omitempty"`
+	GlobalGroupsRevision   uint64         `json:"-"`
+	DeletedTopics          []string       `json:"deletedTopics,omitempty"`
+	PinnedProjects         []string       `json:"pinnedProjects,omitempty"`
+	SidebarOrder           []string       `json:"sidebarOrder,omitempty"`
+	// ProjectGroups (task 892) is the project-group catalog: the entities a
+	// project's projectGroup field points at. Before 892 the frontend kept the
+	// entity list in localStorage only; the backend just carried the pointer
+	// string. Moving the roster into the catalog file makes nesting (parent)
+	// and tool-managed CRUD durable and cross-window consistent. Flat/absent
+	// data reads as an empty list — old saves never carried the key.
+	ProjectGroups []desktopProjectGroup `json:"projectGroups,omitempty"`
+	Projects      []desktopProject      `json:"projects"`
+}
+
+// desktopProjectGroup is one project-group entity in the catalog, mirroring
+// desktopGroup's nesting contract: parent references another project group's
+// id, empty = top level. Hierarchy is display organization only (层级≠指挥权);
+// a project references its group through the desktopProject.ProjectGroup id.
+type desktopProjectGroup struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Parent    string `json:"parent,omitempty"`
+	SortOrder int    `json:"sortOrder,omitempty"`
 }
 
 func normalizeGroups(groups []desktopGroup) []desktopGroup {
@@ -155,29 +179,221 @@ func validateSessionGroups(groups []desktopGroup) error {
 	return validateSessionGroupHierarchy(groups)
 }
 
-// validateSessionGroupHierarchy checks the task-350 parent pointers: a parent
-// must exist, must not be the group itself (normalize clears that case), and
-// must keep the tree shallow — a child group may never have children of its own
-// (maxSessionGroupDepth 2, Discord-category style). Cycles are impossible under
-// that cap because a chain longer than two links is rejected outright. The
-// hierarchy is display organization only, so these checks guard data integrity,
-// not permissions.
+// validateSessionGroupHierarchy checks the task-350 parent pointers under the
+// task-892 recursive contract: a parent must exist, the ancestor chain must not
+// loop (a cycle would make the tree unrenderable and every walk unbounded), and
+// the chain must stay within maxSessionGroupDepth. The hierarchy is display
+// organization only, so these checks guard data integrity, not permissions.
 func validateSessionGroupHierarchy(groups []desktopGroup) error {
+	parents := make(map[string]string, len(groups))
+	for _, group := range groups {
+		parents[group.ID] = strings.TrimSpace(group.Parent)
+	}
+	for _, group := range groups {
+		if err := validateGroupParentChain(group.ID, parents, maxSessionGroupDepth); err != nil {
+			return fmt.Errorf("session group %q: %w", group.ID, err)
+		}
+	}
+	return nil
+}
+
+// validateGroupParentChain walks one group's ancestor chain: every parent must
+// exist, the walk may never revisit a node (cycle), and it may never exceed
+// maxDepth links. Shared by the session-group and project-group validators —
+// both trees are flat id→parent maps, so one walker covers both.
+func validateGroupParentChain(id string, parents map[string]string, maxDepth int) error {
+	visited := make(map[string]bool)
+	current := id
+	for depth := 0; ; depth++ {
+		parent := parents[current]
+		if parent == "" {
+			return nil
+		}
+		if _, ok := parents[parent]; !ok {
+			return fmt.Errorf("unknown parent %q", parent)
+		}
+		if visited[parent] {
+			return fmt.Errorf("parent chain forms a cycle at %q", parent)
+		}
+		if depth >= maxDepth {
+			return fmt.Errorf("parent chain exceeds max depth %d", maxDepth)
+		}
+		visited[current] = true
+		current = parent
+	}
+}
+
+// ── task 892: subtree helpers (arbitrary nesting) ────────────────────────────
+
+// groupChildIDs returns the direct children of parentID, in roster order.
+func groupChildIDs(groups []desktopGroup, parentID string) []string {
+	parentID = strings.TrimSpace(parentID)
+	var out []string
+	for _, group := range groups {
+		if strings.TrimSpace(group.Parent) == parentID && group.ID != parentID {
+			out = append(out, group.ID)
+		}
+	}
+	return out
+}
+
+// groupSubtreeIDs returns groupID plus every descendant, parents before
+// children (stable roster order within a level). The entry itself is always
+// first, so a caller can peel it off to get "the children's subtree".
+func groupSubtreeIDs(groups []desktopGroup, groupID string) []string {
+	groupID = strings.TrimSpace(groupID)
+	if groupID == "" {
+		return nil
+	}
+	out := []string{groupID}
+	for i := 0; i < len(out); i++ {
+		out = append(out, groupChildIDs(groups, out[i])...)
+	}
+	return out
+}
+
+// deleteGroupsPlan describes what a group deletion will do before it does it —
+// the proposal half of the task-892 safety contract (批量删组提案制).
+type deleteGroupsPlan struct {
+	// Deleted lists the group ids the deletion removes.
+	Deleted []string `json:"deleted"`
+	// Promoted lists child groups re-parented onto the deleted group's parent
+	// (or the top level) — the default, non-destructive semantics.
+	Promoted []string `json:"promoted,omitempty"`
+	// UnfiledTopics lists the topics that lose their group because the group
+	// holding them is deleted. Topics are never deleted, only unfiled.
+	UnfiledTopics []string `json:"unfiledTopics,omitempty"`
+	// Batch marks a plan at or above the tool layer's blast-radius threshold;
+	// the proposal response carries it so the caller shows the full list
+	// before confirming (task 892 安全分级).
+	Batch bool `json:"batch,omitempty"`
+}
+
+// planGroupDeletion computes the effect of deleting groupID: with cascade the
+// whole subtree goes; without it the direct children are promoted to the
+// deleted group's parent (top level when it was a root group) and only the
+// group itself is removed. The chosen semantics (task 892): 升顶 default,
+// cascade opt-in — deletion never silently discards a child group's
+// organization, mirroring 用户决策判据 3 (删保护性结构前先有替代路径).
+func planGroupDeletion(groups []desktopGroup, groupID string, cascade bool) (deleteGroupsPlan, error) {
+	groupID = strings.TrimSpace(groupID)
 	byID := make(map[string]desktopGroup, len(groups))
 	for _, group := range groups {
 		byID[group.ID] = group
 	}
+	if _, ok := byID[groupID]; !ok {
+		return deleteGroupsPlan{}, fmt.Errorf("group %q not found", groupID)
+	}
+	plan := deleteGroupsPlan{Deleted: []string{groupID}}
+	if cascade {
+		plan.Deleted = groupSubtreeIDs(groups, groupID)
+	} else if children := groupChildIDs(groups, groupID); len(children) > 0 {
+		plan.Promoted = children
+	}
+	deletedSet := make(map[string]bool, len(plan.Deleted))
+	for _, id := range plan.Deleted {
+		deletedSet[id] = true
+	}
 	for _, group := range groups {
-		parent := strings.TrimSpace(group.Parent)
-		if parent == "" {
+		if !deletedSet[group.ID] {
 			continue
 		}
-		p, ok := byID[parent]
-		if !ok {
-			return fmt.Errorf("session group %q: unknown parent %q", group.ID, parent)
+		plan.UnfiledTopics = append(plan.UnfiledTopics, group.TopicIDs...)
+	}
+	return plan, nil
+}
+
+// applyGroupDeletion removes the planned groups and promotes the direct
+// children of each non-cascade deleted group onto its parent ("" = top level).
+// Callers persist the result through the versioned save, which re-validates
+// the whole roster — a plan computed against stale data cannot corrupt it.
+func applyGroupDeletion(groups []desktopGroup, groupID string, cascade bool) ([]desktopGroup, deleteGroupsPlan, error) {
+	groupID = strings.TrimSpace(groupID)
+	plan, err := planGroupDeletion(groups, groupID, cascade)
+	if err != nil {
+		return nil, plan, err
+	}
+	deleted := make(map[string]bool, len(plan.Deleted))
+	for _, id := range plan.Deleted {
+		deleted[id] = true
+	}
+	promoted := make(map[string]bool, len(plan.Promoted))
+	for _, id := range plan.Promoted {
+		promoted[id] = true
+	}
+	out := make([]desktopGroup, 0, len(groups))
+	for _, group := range groups {
+		if deleted[group.ID] {
+			continue
 		}
-		if strings.TrimSpace(p.Parent) != "" {
-			return fmt.Errorf("session group %q: parent %q is itself nested (max depth %d)", group.ID, parent, maxSessionGroupDepth)
+		if promoted[group.ID] {
+			// Re-home onto the deleted group's own parent. The plan only
+			// promotes direct children, so one lookup is the whole story.
+			var parent string
+			for _, candidate := range groups {
+				if candidate.ID == groupID {
+					parent = strings.TrimSpace(candidate.Parent)
+					break
+				}
+			}
+			group.Parent = parent
+		}
+		out = append(out, group)
+	}
+	return out, plan, nil
+}
+
+// ── task 892: project-group catalog (the second of the two grouping systems) ─
+
+// normalizeProjectGroups trims and de-duplicates the catalog roster the same
+// way normalizeGroups does for session groups: dup ids drop (first wins), a
+// self parent is meaningless and clears, and absent data stays an empty slice
+// rather than nil so old flat saves round-trip losslessly.
+func normalizeProjectGroups(groups []desktopProjectGroup) []desktopProjectGroup {
+	out := make([]desktopProjectGroup, 0, len(groups))
+	seen := make(map[string]bool, len(groups))
+	for _, group := range groups {
+		group.ID = strings.TrimSpace(group.ID)
+		group.Title = strings.TrimSpace(group.Title)
+		group.Parent = strings.TrimSpace(group.Parent)
+		if group.Parent == group.ID {
+			group.Parent = ""
+		}
+		if group.ID == "" || seen[group.ID] {
+			continue
+		}
+		seen[group.ID] = true
+		out = append(out, group)
+	}
+	return out
+}
+
+// validateProjectGroups bounds and validates the catalog roster, reusing the
+// shared ancestor walker: unknown parent, cycles and over-deep chains are all
+// rejected exactly like session groups.
+func validateProjectGroups(groups []desktopProjectGroup) error {
+	if len(groups) > maxProjectGroups {
+		return fmt.Errorf("too many project groups: %d", len(groups))
+	}
+	parents := make(map[string]string, len(groups))
+	seen := make(map[string]bool, len(groups))
+	for _, group := range groups {
+		id, title := strings.TrimSpace(group.ID), strings.TrimSpace(group.Title)
+		if id == "" || title == "" {
+			return fmt.Errorf("project group id and title are required")
+		}
+		if utf8.RuneCountInString(id) > maxSessionGroupIDRunes || utf8.RuneCountInString(title) > maxSessionGroupRunes {
+			return fmt.Errorf("project group id or title is too long")
+		}
+		if seen[id] {
+			return fmt.Errorf("duplicate project group %q", id)
+		}
+		seen[id] = true
+		parents[id] = strings.TrimSpace(group.Parent)
+	}
+	for id := range parents {
+		if err := validateGroupParentChain(id, parents, maxSessionGroupDepth); err != nil {
+			return fmt.Errorf("project group %q: %w", id, err)
 		}
 	}
 	return nil

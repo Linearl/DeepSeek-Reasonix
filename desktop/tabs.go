@@ -4589,6 +4589,7 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 		OnDeleteSession:       a.deleteCollabSession,
 		OnRenameSession:       a.renameCollabSession,
 		OnMoveTopicToGroup:    a.moveCollabTopicToGroup,
+		OnManageSessions:      a.AgentManageSessions,
 		// ReuseAssembly lives on the embedded RuntimeReload; promoted names
 		// cannot appear in the outer literal, so name the embedded struct
 		// (same shape as the rebind chain in app.go).
@@ -6501,6 +6502,9 @@ func normalizeProjectsFile(f desktopProjectFile) desktopProjectFile {
 		GlobalGroups:           normalizeGroups(f.GlobalGroups),
 		GlobalGroupsRevision:   f.GlobalGroupsRevision,
 		DeletedTopics:          uniqueStrings(f.DeletedTopics),
+		// Task 892: the project-group catalog rides the same normalize-on-load
+		// path as every other field; an absent key reads as an empty slice.
+		ProjectGroups: normalizeProjectGroups(f.ProjectGroups),
 	}
 	for _, p := range f.Projects {
 		root := normalizeProjectRoot(p.Root)
