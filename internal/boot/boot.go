@@ -391,6 +391,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	sentinel.SetHardForbidden(hardForbiddenDefault)
 	sentinel.SetExitScan(cfg.Sentinel.ExitScan)
+	// 任务 895 穿透封堵实验开关（sentinel_penetration_guard）：缺省跟随
+	// sentinel.PenetrationGuardDefault（与包 init、设置快照同一事实源），
+	// 显式 `penetration_guard = false` 才关。
+	penetrationDefault := sentinel.PenetrationGuardDefault
+	if cfg.Sentinel.PenetrationGuard != nil {
+		penetrationDefault = *cfg.Sentinel.PenetrationGuard
+	}
+	sentinel.SetPenetrationGuard(penetrationDefault)
 	sentinel.SetProtectedBranches(cfg.Sentinel.ProtectedBranches)
 	sentinel.SetDisabledRules(cfg.Sentinel.DisabledRules)
 	sentinel.SetHomeDir(config.ReasonixHomeDir())

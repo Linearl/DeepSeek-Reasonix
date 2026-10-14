@@ -31,6 +31,7 @@ import (
 	"reasonix/internal/provider"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
+	"reasonix/internal/sentinel"
 )
 
 // settings_app.go is the desktop Settings panel's command surface: it reads the
@@ -41,6 +42,16 @@ import (
 // stores only the env-var name, not the key.
 
 // read
+
+// sentinelPenetrationGuardForView 解析任务 895 穿透封堵开关的生效值供设置
+// 快照回读：显式 [sentinel] penetration_guard 优先，缺省跟随
+// sentinel.PenetrationGuardDefault（与 boot 装配同一事实源）。
+func sentinelPenetrationGuardForView(cfg *config.Config) bool {
+	if cfg.Sentinel.PenetrationGuard != nil {
+		return *cfg.Sentinel.PenetrationGuard
+	}
+	return sentinel.PenetrationGuardDefault
+}
 
 type ProviderView struct {
 	DisplayName                 *string                       `json:"displayName,omitempty"`
@@ -523,11 +534,14 @@ type SettingsView struct {
 	// Task 722: fine-grained sub-switch overrides. nil (= JSON null) means
 	// "follow the master", so the UI can render the effective value while
 	// still distinguishing an untouched follower from an explicit choice.
-	SafetyIdleTerminate    *bool  `json:"safetyIdleTerminate"`
-	SafetyLoopStreakNote   *bool  `json:"safetyLoopStreakNote"`
-	SafetyEventWaitRecheck *bool  `json:"safetyEventWaitRecheck"`
-	CollabInboxMerge       string `json:"collabInboxMerge"`
-	CollabGuidanceMerge    bool   `json:"collabGuidanceMerge"`
+	SafetyIdleTerminate    *bool `json:"safetyIdleTerminate"`
+	SafetyLoopStreakNote   *bool `json:"safetyLoopStreakNote"`
+	SafetyEventWaitRecheck *bool `json:"safetyEventWaitRecheck"`
+	// 任务 895: sentinel 穿透封堵实验开关（[sentinel] penetration_guard），
+	// 快照给的是解析后的生效值（缺省 = sentinel.PenetrationGuardDefault）。
+	SentinelPenetrationGuard bool   `json:"sentinelPenetrationGuard"`
+	CollabInboxMerge         string `json:"collabInboxMerge"`
+	CollabGuidanceMerge      bool   `json:"collabGuidanceMerge"`
 	// Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
 	SessionCollabAllowDelete       bool `json:"sessionCollabAllowDelete"`
 	SessionCollabAllowRequireReply bool `json:"sessionCollabAllowRequireReply"`
@@ -790,6 +804,9 @@ type DesktopStartupSettingsView struct {
 	SafetyIdleTerminate    *bool `json:"safetyIdleTerminate"`
 	SafetyLoopStreakNote   *bool `json:"safetyLoopStreakNote"`
 	SafetyEventWaitRecheck *bool `json:"safetyEventWaitRecheck"`
+	// 任务 895: sentinel 穿透封堵实验开关的生效值（both-views：启动快照与
+	// 设置快照同字段，缺 UI 读到 undefined=关 是「开不了」根因）。
+	SentinelPenetrationGuard bool `json:"sentinelPenetrationGuard"`
 	// CollabInboxMerge exposes the inbox drain merge tri-state (task 221):
 	// off | same_sender | all. The runtime value lives on [agent].
 	CollabInboxMerge string `json:"collabInboxMerge"`
@@ -1571,6 +1588,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SafetyIdleTerminate = cfg.Agent.SafetyIdleTerminate
 		view.SafetyLoopStreakNote = cfg.Agent.SafetyLoopStreakNote
 		view.SafetyEventWaitRecheck = cfg.Agent.SafetyEventWaitRecheck
+		// 任务 895: 穿透封堵开关生效值（缺省跟随 sentinel.PenetrationGuardDefault）。
+		view.SentinelPenetrationGuard = sentinelPenetrationGuardForView(cfg)
 		view.ExperimentalOrphanHandling = cfg.Agent.ExperimentalOrphanHandling
 
 		view.ExperimentalRuntimeReuse = cfg.Desktop.ExperimentalRuntimeReuse || cfg.Agent.ExperimentalRuntimeReuse
@@ -1776,8 +1795,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalToolOptimizations: cfg.Agent.ExperimentalToolOptimizations,
 		// Task 789: relaxed edit evidence gate readback (task 815 registration window).
 		ExperimentalEditEvidenceRelaxed: cfg.Agent.ExperimentalEditEvidenceRelaxed,
-		ExperimentalTraceAsState:      cfg.Agent.TraceAsState,
-		ExperimentalDream:             cfg.Agent.ExperimentalDream,
+		ExperimentalTraceAsState:        cfg.Agent.TraceAsState,
+		ExperimentalDream:               cfg.Agent.ExperimentalDream,
 		// Task 801: decision-pattern readback (empty path resolves to default).
 		ExperimentalDecisionPatterns: cfg.Agent.ExperimentalDecisionPatterns,
 		DecisionPatternFilePath:      decisionPatternPathForView(cfg),
@@ -1789,6 +1808,8 @@ func (a *App) Settings() SettingsView {
 		SafetyIdleTerminate:    cfg.Agent.SafetyIdleTerminate,
 		SafetyLoopStreakNote:   cfg.Agent.SafetyLoopStreakNote,
 		SafetyEventWaitRecheck: cfg.Agent.SafetyEventWaitRecheck,
+		// 任务 895: 穿透封堵开关生效值（缺省跟随 sentinel.PenetrationGuardDefault）。
+		SentinelPenetrationGuard: sentinelPenetrationGuardForView(cfg),
 		// Task 163: usage card switch readback.
 		ExperimentalOpenCodeGoUsage: cfg.Agent.ExperimentalOpenCodeGoUsage,
 		// Task 449: merged orphan switch readback (folds task 244 B5 + B4).
