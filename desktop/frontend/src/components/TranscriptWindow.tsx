@@ -234,9 +234,20 @@ export default function TranscriptWindow({
     const clientHeight = scrollElement?.clientHeight ?? nativeViewport.clientHeight;
     const domItems: Array<{ index: number; top: number }> = [];
     const blocks = Array.from(container?.querySelectorAll<HTMLElement>("[data-transcript-block-key]") ?? []);
+    // Task 861 (#50): each block used to be read once per consumer — the
+    // visibility filter, the common-anchor fallback, and the measurement loop
+    // each called getBoundingClientRect on the same element inside this one
+    // synchronous pass, where the answers cannot disagree. Sample every block
+    // exactly once and hand the same rect to all three.
+    const blockRects = new Map<Element, DOMRect>();
+    for (const element of blocks) blockRects.set(element, element.getBoundingClientRect());
+    const elementByIndex = new Map<string, HTMLElement>();
+    for (const element of blocks) {
+      if (element.dataset.index != null) elementByIndex.set(element.dataset.index, element);
+    }
     const visible = blocks.filter(element => {
-      const rect = element.getBoundingClientRect();
-      return viewport && rect.bottom > viewport.top + 0.5 && rect.top < viewport.top + clientHeight;
+      const rect = blockRects.get(element);
+      return viewport && rect && rect.bottom > viewport.top + 0.5 && rect.top < viewport.top + clientHeight;
     });
     const common = visible.find(element => materializedElements.current.has(element));
     const commonKey = common?.dataset.transcriptBlockKey;
@@ -245,7 +256,7 @@ export default function TranscriptWindow({
     // a cold content coordinate from separately sampled DOMRect/scrollTop
     // would let a native advance between those reads become an origin error.
     const commonTop = commonItem ? commonItem.start + origin
-      : common && viewport ? common.getBoundingClientRect().top - viewport.top + (scrollElement?.scrollTop ?? observedTop) : undefined;
+      : common && viewport ? (blockRects.get(common)?.top ?? common.getBoundingClientRect().top) - viewport.top + (scrollElement?.scrollTop ?? observedTop) : undefined;
     // Origin removal converts the already-painted coordinate system. Choose
     // from its committed prefix, never from DOM heights that have just changed.
     const committedVisible = measuredItems.find(item => item.start + origin + item.size > observedTop + 0.5
@@ -255,10 +266,10 @@ export default function TranscriptWindow({
       : undefined;
     if (container) {
       for (const item of measuredItems) {
-        const element = container.querySelector<HTMLElement>(`.transcript__window-item[data-index="${item.index}"]`);
+        const element = elementByIndex.get(String(item.index));
         if (!element) continue;
         if (!materializedElements.current.has(element)) firstMeasurements.add(String(item.key));
-        const rect = element.getBoundingClientRect();
+        const rect = blockRects.get(element) ?? element.getBoundingClientRect();
         if (viewport) domItems.push({ index: item.index, top: rect.top - viewport.top });
         const size = Math.max(64, rect.height || element.offsetHeight);
         changes.push({ key: String(item.key), size });

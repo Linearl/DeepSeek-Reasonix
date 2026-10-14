@@ -49,24 +49,150 @@ if (typeof requestAnimationFrame === "function") {
 
 let frameSnapshot: { element: HTMLElement; frame: number; snapshot: TranscriptViewportSnapshot } | null = null;
 
+// Task 861 (fork #50): block content coordinates survive a native scroll
+// (rect.top and scrollTop move together, and transcript blocks never position
+// themselves against the scroller), so the full-scan answers can outlive the
+// frame that measured them. The cache below is trusted only behind three
+// synchronous gates — a layout signature over the scroller's own dimensions,
+// a deep-compare of the ordered block keys, and first/last block sentinel
+// re-reads — plus an asynchronous MutationObserver epoch that widens
+// invalidation to same-task DOM churn the signature cannot see. Any gate
+// failure falls back to the full scan the previous behavior always did.
+let blockRectCache: {
+  element: HTMLElement;
+  keys: string[];
+  rects: Map<string, { top: number; bottom: number }>;
+  signature: string;
+  epoch: number;
+} | null = null;
+let blockCacheEpoch = 0;
+let cacheObserverElement: HTMLElement | null = null;
+let cacheObserver: MutationObserver | null = null;
+
+/** Read counters for tests and handoff evidence (task 861 acceptance ②). */
+export const transcriptGeometryReadStats = {
+  snapshotCalls: 0,
+  frameMerges: 0,
+  cacheHits: 0,
+  fullScans: 0,
+  blockRectReads: 0,
+  viewportRectReads: 0,
+};
+
+export function resetTranscriptGeometryReadStats(): void {
+  transcriptGeometryReadStats.snapshotCalls = 0;
+  transcriptGeometryReadStats.frameMerges = 0;
+  transcriptGeometryReadStats.cacheHits = 0;
+  transcriptGeometryReadStats.fullScans = 0;
+  transcriptGeometryReadStats.blockRectReads = 0;
+  transcriptGeometryReadStats.viewportRectReads = 0;
+}
+
+function ensureCacheObserver(element: HTMLElement): void {
+  if (cacheObserverElement === element) return;
+  cacheObserver?.disconnect();
+  cacheObserver = null;
+  cacheObserverElement = element;
+  blockRectCache = null;
+  if (typeof MutationObserver !== "function") return;
+  // Any subtree mutation (structure, text, or attributes — including the
+  // style/class writes React uses for windowed placement) marks the cache
+  // stale for the *next* task; the synchronous gates above still guard reads
+  // that run inside the mutating task itself.
+  cacheObserver = new MutationObserver(() => {
+    blockCacheEpoch += 1;
+  });
+  cacheObserver.observe(element, { subtree: true, childList: true, characterData: true, attributes: true });
+}
+
+function sameKeys(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function visibleFromRects(
+  rects: Map<string, { top: number; bottom: number }>,
+  scrollTop: number,
+  clientHeight: number,
+): TranscriptViewportSnapshot["visibleBlocks"] {
+  const visible: { key: string; top: number; bottom: number }[] = [];
+  for (const [key, rect] of rects) {
+    if (rect.bottom >= scrollTop && rect.top <= scrollTop + clientHeight) visible.push({ key, top: rect.top, bottom: rect.bottom });
+  }
+  return visible.sort((left, right) => left.top - right.top);
+}
+
+function fullScan(element: HTMLElement, entries: { node: HTMLElement; key: string }[], top: number): Map<string, { top: number; bottom: number }> {
+  transcriptGeometryReadStats.fullScans += 1;
+  transcriptGeometryReadStats.viewportRectReads += 1;
+  const viewport = element.getBoundingClientRect();
+  const rects = new Map<string, { top: number; bottom: number }>();
+  for (const { node, key } of entries) {
+    transcriptGeometryReadStats.blockRectReads += 1;
+    const rect = node.getBoundingClientRect();
+    const contentTop = rect.top - viewport.top + top;
+    rects.set(key, { top: contentTop, bottom: contentTop + rect.height });
+  }
+  blockRectCache = { element, keys: entries.map((entry) => entry.key), rects, signature: layoutSignature(element), epoch: blockCacheEpoch };
+  return rects;
+}
+
+function layoutSignature(element: HTMLElement): string {
+  return `${element.scrollHeight}|${element.clientHeight}|${element.clientWidth}`;
+}
+
 function readSnapshot(element: HTMLElement): TranscriptViewportSnapshot {
+  transcriptGeometryReadStats.snapshotCalls += 1;
   if (frameSnapshot && frameSnapshot.element === element && frameSnapshot.frame === transcriptFrame) {
+    transcriptGeometryReadStats.frameMerges += 1;
     return frameSnapshot.snapshot;
   }
-  const viewport = element.getBoundingClientRect();
   const top = element.scrollTop;
+  const scrollHeight = element.scrollHeight;
+  const clientHeight = element.clientHeight;
+  ensureCacheObserver(element);
+  const entries: { node: HTMLElement; key: string }[] = [];
+  for (const node of element.querySelectorAll<HTMLElement>("[data-transcript-block-key]")) {
+    const key = node.dataset.transcriptBlockKey;
+    if (key) entries.push({ node, key });
+  }
+  const signature = layoutSignature(element);
+  let rects: Map<string, { top: number; bottom: number }> | null = null;
+  const cache = blockRectCache;
+  const keys = entries.map((entry) => entry.key);
+  if (cache && cache.element === element && cache.epoch === blockCacheEpoch
+    && cache.signature === signature && sameKeys(cache.keys, keys) && keys.length > 0) {
+    // Sentinels: re-read the first and last block so a layout shift that
+    // leaves the signature intact still invalidates before these coordinates
+    // reach anchor correction.
+    transcriptGeometryReadStats.blockRectReads += 2;
+    transcriptGeometryReadStats.viewportRectReads += 1;
+    const viewport = element.getBoundingClientRect();
+    const measure = (node: HTMLElement) => {
+      const rect = node.getBoundingClientRect();
+      const contentTop = rect.top - viewport.top + top;
+      return { top: contentTop, bottom: contentTop + rect.height };
+    };
+    const firstRect = measure(entries[0].node);
+    const lastRect = measure(entries[entries.length - 1].node);
+    const cachedFirst = cache.rects.get(keys[0]);
+    const cachedLast = cache.rects.get(keys[keys.length - 1]);
+    if (cachedFirst && cachedLast
+      && Math.abs(cachedFirst.top - firstRect.top) <= 0.5 && Math.abs(cachedFirst.bottom - firstRect.bottom) <= 0.5
+      && Math.abs(cachedLast.top - lastRect.top) <= 0.5 && Math.abs(cachedLast.bottom - lastRect.bottom) <= 0.5) {
+      rects = cache.rects;
+    }
+  }
+  if (!rects) rects = fullScan(element, entries, top);
+  else transcriptGeometryReadStats.cacheHits += 1;
   const snapshot: TranscriptViewportSnapshot = {
     scrollTop: top,
-    scrollHeight: element.scrollHeight,
-    clientHeight: element.clientHeight,
-    visibleBlocks: Array.from(element.querySelectorAll<HTMLElement>("[data-transcript-block-key]"))
-      .map((node) => {
-        const rect = node.getBoundingClientRect();
-        const contentTop = rect.top - viewport.top + top;
-        return { key: node.dataset.transcriptBlockKey ?? "", top: contentTop, bottom: contentTop + rect.height };
-      })
-      .filter((block) => block.key && block.bottom >= top && block.top <= top + element.clientHeight)
-      .sort((left, right) => left.top - right.top),
+    scrollHeight,
+    clientHeight,
+    visibleBlocks: visibleFromRects(rects, top, clientHeight),
   };
   frameSnapshot = { element, frame: transcriptFrame, snapshot };
   return snapshot;
