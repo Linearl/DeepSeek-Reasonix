@@ -1599,7 +1599,12 @@ func UpdateBranchMeta(path string, touchUpdated bool, update func(*BranchMeta) e
 }
 
 func canonicalSessionSavePath(path string) string {
-	return pathidentity.Canonical(path)
+	// Task 883 probe: time the canonicalization only; the returned key is
+	// exactly what it was before.
+	started := time.Now()
+	key := pathidentity.Canonical(path)
+	canonicalProbeSaveLockKey(path, key, started)
+	return key
 }
 
 // CanonicalSessionPath is the identity key of a session path: cleaned,
