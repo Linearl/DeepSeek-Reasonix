@@ -67,11 +67,6 @@ type configSnapshot struct {
 // zero full loads on warm reads).
 var configLoadForRoot = config.LoadForRoot
 
-// cachedConfigForRoot returns the config snapshot for root, reloading it when
-// any tracked source changed since the cached load. Same-root callers
-// serialize on the snapshot's own lock, so a slow load delays only that
-// root's readers — and EffortForTab still bounds the wait with its timeout
-// cap (task 421).
 // snapshotTiming is the task-889 split of one snapshot access: wait is the
 // time to acquire the per-root mutex (a reader queued behind a sibling's
 // slow load), stat the freshness fingerprints (os.Stat over the tracked
@@ -85,8 +80,12 @@ type snapshotTiming struct {
 	load time.Duration
 }
 
-// cachedConfigForRoot is the read-path wrapper kept for callers that only
-// want the config (config_snapshot_test, non-effort surfaces).
+// cachedConfigForRoot returns the config snapshot for root, reloading it when
+// any tracked source changed since the cached load. Same-root callers
+// serialize on the snapshot's own lock, so a slow load delays only that
+// root's readers — and EffortForTab still bounds the wait with its timeout
+// cap (task 421). Task 889 keeps it as the untimed wrapper for callers that
+// only want the config.
 func (a *App) cachedConfigForRoot(root string) (*config.Config, error) {
 	cfg, _, err := a.cachedConfigForRootTimed(root, nil)
 	return cfg, err
