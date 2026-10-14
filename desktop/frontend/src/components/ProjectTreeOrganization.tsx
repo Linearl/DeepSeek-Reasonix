@@ -5,7 +5,7 @@ import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
 import { isTopicNode, projectTreeGroupActiveCount, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
-import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargets, topLevelGroups, unnestGroup as unnestInRoster } from "../lib/sessionGroupTree";
+import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargets, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
@@ -109,9 +109,11 @@ export interface ProjectTreeOrganizationController {
   groupCollapsed(key: string, id: string): boolean;
   toggleGroup(key: string, id: string): void;
   renameGroup(key: string, id: string, title: string): void;
-  /** moveGroup reorders a group inside its project (task 50): the caller passes the
-   * dragged group id and the id it was dropped on, matching the topic drag helpers. */
-  moveGroup(key: string, fromID: string, toID: string): void;
+  /** dropGroup applies a group drag release (task 50 flat reorder generalized
+   * by 892-B multi-level semantics): `into` appends the dragged group at the
+   * target's subtree tail, `before`/`after` joins the target's own level.
+   * Cycle-safe through the pure placeGroup — an illegal drop is a no-op. */
+  dropGroup(key: string, fromID: string, toID: string, zone: GroupDropZone): void;
   /** nestGroup moves a group under another (parentID) or to the top level
    * (null) — task 350, generalized by 892-B to arbitrary depth. Display-only:
    * the hierarchy never touches ids, membership, or permissions (层级≠指挥权);
@@ -411,19 +413,13 @@ export function useProjectTreeOrganization({
       const trimmed = title.trim();
       mutateGroups(key, (groups) => trimmed ? groups.map((group) => group.id === id ? { ...group, title: trimmed } : group) : groups.filter((group) => group.id !== id));
     },
-    moveGroup(key, fromID, toID) {
+    dropGroup(key, fromID, toID, zone) {
       if (fromID === toID) return;
-      mutateGroups(key, (groups) => {
-        const from = groups.findIndex((group) => group.id === fromID);
-        const to = groups.findIndex((group) => group.id === toID);
-        // Either id may be gone (another window dissolved the group first); in that
-        // case the roster is left alone rather than reordered around a ghost.
-        if (from < 0 || to < 0) return groups;
-        const next = groups.slice();
-        const [moved] = next.splice(from, 1);
-        next.splice(to, 0, moved);
-        return next;
-      });
+      // Illegal drops (cycle into one's own subtree, ghost endpoints, depth
+      // cap) leave placeGroup's reference untouched — no CAS write for them.
+      const current = groupsRef.current[key] ?? [];
+      if (placeGroup(current, fromID, toID, zone) === current) return;
+      mutateGroups(key, (groups) => placeGroup(groups, fromID, toID, zone));
     },
     clearGroup(key, id) { mutateGroups(key, (groups) => groups.map((group) => group.id === id ? { ...group, topicIds: [] } : group)); },
     dissolveGroup(key, id) { mutateGroups(key, (groups) => groups.filter((group) => group.id !== id)); },
@@ -482,8 +478,8 @@ export function ProjectTreeGroupRows({
   // header's drag handle — long-press stays for touch, the handle is the desktop
   // affordance (a 350ms invisible press is undiscoverable with a mouse).
   const [draggingGroup, setDraggingGroup] = useState<string | null>(null);
-  const [groupDropTarget, setGroupDropTarget] = useState<string | null>(null);
-  const groupDragRef = useRef<{ from: string | null; to: string | null; moved: boolean }>({ from: null, to: null, moved: false });
+  const [groupDropTarget, setGroupDropTarget] = useState<{ id: string; zone: GroupDropZone } | null>(null);
+  const groupDragRef = useRef<{ from: string | null; to: string | null; zone: GroupDropZone; moved: boolean }>({ from: null, to: null, zone: "after", moved: false });
   const groupPressTimerRef = useRef<number | null>(null);
   const groupSuppressClickRef = useRef(false);
   const [groupDraft, setGroupDraft] = useState("");
@@ -498,18 +494,21 @@ export function ProjectTreeGroupRows({
         window.clearTimeout(groupPressTimerRef.current);
         groupPressTimerRef.current = null;
       }
-      const { from, to, moved } = groupDragRef.current;
+      const { from, to, zone, moved } = groupDragRef.current;
       if (moved && from && to && from !== to) {
-        // Task 350: Alt+drop nests the dragged group under the target instead
-        // of reordering (display-only hierarchy, depth capped by canNestUnder);
-        // a plain drop keeps the task-50 flat reorder.
+        // Task 350: Alt+drop keeps its force-nest meaning (display-only
+        // hierarchy, cycle/depth-guarded by canNestUnder).
+        // Task 892-B: a plain drop follows the zone the pointer hovered —
+        // ON the target row = into its subtree (append at tail), BETWEEN
+        // rows = same-level reorder at the target's level. Both land through
+        // the one pure placeGroup (cycle-safe).
         if (event.altKey && canNestUnder(groups, from, to)) organization.nestGroup(key, from, to);
-        else organization.moveGroup(key, from, to);
+        else organization.dropGroup(key, from, to, zone);
       }
       // Swallow the click the release would otherwise produce: a drag must not also
       // toggle the group it started on.
       groupSuppressClickRef.current = moved;
-      groupDragRef.current = { from: null, to: null, moved: false };
+      groupDragRef.current = { from: null, to: null, zone: "after", moved: false };
       setDraggingGroup(null);
       setGroupDropTarget(null);
     };
@@ -522,7 +521,7 @@ export function ProjectTreeGroupRows({
   }, [draggingGroup, groups, key, organization]);
 
   const beginGroupPress = (id: string) => {
-    groupDragRef.current = { from: id, to: id, moved: false };
+    groupDragRef.current = { from: id, to: id, zone: "after", moved: false };
     // The flag only exists to swallow the click of the release that just
     // dragged. Scoped to the gesture: if no click materialised (release over
     // another header fires it on a common ancestor), the stale flag must not
@@ -537,7 +536,7 @@ export function ProjectTreeGroupRows({
   // drag state immediately. No pointer capture is taken, so the sibling headers'
   // pointerenter hover tracking (the drop-target recorder) keeps working.
   const beginGroupDrag = (id: string) => {
-    groupDragRef.current = { from: id, to: id, moved: false };
+    groupDragRef.current = { from: id, to: id, zone: "after", moved: false };
     groupSuppressClickRef.current = false;
     setDraggingGroup(id);
   };
@@ -547,14 +546,33 @@ export function ProjectTreeGroupRows({
       groupPressTimerRef.current = null;
     }
     // A press released before the long-press fired is an ordinary click.
-    if (!draggingGroup) groupDragRef.current = { from: null, to: null, moved: false };
+    if (!draggingGroup) groupDragRef.current = { from: null, to: null, zone: "after", moved: false };
   };
-  const hoverGroup = (id: string) => {
+  // Task 892-B: the hover zone decides what a plain drop MEANS — the pointer
+  // band within the target header (top third = sibling before, middle third =
+  // into the group, bottom third = sibling after). A header with no measurable
+  // box (jsdom / pre-layout) falls back to "after", which keeps the task-50
+  // flat-reorder contract intact for every legacy drop.
+  const hoverGroup = (id: string, clientY?: number, target?: Element | null) => {
     if (!draggingGroup) return;
-    if (id !== groupDragRef.current.to) {
-      groupDragRef.current = { ...groupDragRef.current, to: id, moved: true };
+    let zone: GroupDropZone = "after";
+    if (typeof clientY === "number" && target) {
+      const rect = target.getBoundingClientRect();
+      if (rect.height > 0) {
+        const rel = (clientY - rect.top) / rect.height;
+        zone = rel < 1 / 3 ? "before" : rel > 2 / 3 ? "after" : "into";
+      }
     }
-    setGroupDropTarget(id);
+    const prev = groupDragRef.current;
+    if (prev.to === id) {
+      if (prev.zone === zone) return;
+      groupDragRef.current = { ...prev, zone };
+    } else {
+      groupDragRef.current = { ...prev, to: id, zone, moved: true };
+    }
+    // Pointermove fires continuously within a header; keep the drop paint to
+    // renders where the (id, zone) pair actually changed.
+    setGroupDropTarget((current) => (current && current.id === id && current.zone === zone ? current : { id, zone }));
   };
 
   const commitRename = (id: string) => {
@@ -603,7 +621,7 @@ export function ProjectTreeGroupRows({
         <div
           role="button"
           tabIndex={0}
-          className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}${groupDropTarget === group.id && groupDropTarget !== draggingGroup ? " project-tree__group-main--reorder-target" : ""}${draggingGroup === group.id ? " project-tree__group-main--dragging" : ""}`}
+          className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}${groupDropTarget && groupDropTarget.id === group.id && groupDropTarget.id !== draggingGroup ? (groupDropTarget.zone === "into" ? " project-tree__group-main--nest-target" : " project-tree__group-main--reorder-target") : ""}${draggingGroup === group.id ? " project-tree__group-main--dragging" : ""}`}
           // Task 313: the group header used to ride the children depth (the
           // caller passes folder depth + 1), sitting 22px right of the project
           // folder row. Rewriting to the folder row's own formula —
@@ -628,7 +646,11 @@ export function ProjectTreeGroupRows({
           }}
           onPointerUp={cancelGroupPress}
           onPointerLeave={cancelGroupPress}
-          onPointerEnter={() => hoverGroup(group.id)}
+          // Task 892-B: enter AND move both feed the zone tracker — the band
+          // within one header can change (before → into → after) as the
+          // pointer crosses it. hoverGroup bails unless dragging.
+          onPointerEnter={(event) => hoverGroup(group.id, event.clientY, event.currentTarget)}
+          onPointerMove={(event) => hoverGroup(group.id, event.clientY, event.currentTarget)}
           onKeyDown={(event) => {
             if (editingGroup === group.id) return;
             if (event.key === "Enter" || event.key === " ") organization.toggleGroup(key, group.id);

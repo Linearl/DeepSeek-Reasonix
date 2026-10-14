@@ -44618,6 +44618,14 @@ button.statusbar__mcp:focus-visible {
   box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.5);
 }
 
+/* Task 892-B: the INTO band of a group drop (drop on the row = join the
+   group's subtree) paints stronger than the sibling-reorder bands, so the
+   two plain-drop meanings are distinguishable mid-drag. */
+.project-tree__group-main--nest-target {
+  background: rgba(127, 127, 127, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(127, 127, 127, 0.75);
+}
+
 /* Task 169: desktop drag affordance for group reordering. The grip sits at the
    row start and appears on header hover (plus while dragging), the same
    discoverability contract as the status-bar item editor's handle. Colours use

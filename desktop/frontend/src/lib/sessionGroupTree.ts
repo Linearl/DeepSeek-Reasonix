@@ -163,3 +163,61 @@ export function hierarchyMutationIsDisplayOnly(
   }
   return true;
 }
+
+// ── Task 892-B: multi-level drop semantics ──────────────────────────────────
+
+/** Where a dragged group landed on its target: `into` the target's own
+ * subtree (drop ON the row), or `before`/`after` it (drop BETWEEN rows). */
+export type GroupDropZone = "before" | "into" | "after";
+
+/** placeGroup is the one pure function behind a group drag release:
+ *  - into:   the dragged group becomes the target's LAST child (nest + append
+ *            to the subtree tail). Rejected when canNestUnder refuses (cycle,
+ *            broken chain, depth cap) — a drop into one's own subtree is a
+ *            no-op, never a corrupted roster.
+ *  - before/after: the dragged group joins the TARGET's level (parent :=
+ *            target's parent) and lands immediately before/after it — a
+ *            cross-level drag re-levels rather than silently keeping a stale
+ *            parent. Rejected when the target sits inside the dragged group's
+ *            own subtree (that reorder would re-parent an ancestor under its
+ *            own descendant and close a cycle).
+ * Same 层级≠指挥权 contract: only `parent` and array position change; ids,
+ * titles and membership are untouched.
+ */
+export function placeGroup(
+  groups: SessionGroup[],
+  draggedID: string,
+  targetID: string,
+  zone: GroupDropZone,
+): SessionGroup[] {
+  if (draggedID === targetID) return groups;
+  const dragged = groups.find((group) => group.id === draggedID);
+  const target = groups.find((group) => group.id === targetID);
+  if (!dragged || !target) return groups;
+  const rest = groups.filter((group) => group.id !== draggedID);
+  if (zone === "into") {
+    if (!canNestUnder(groups, draggedID, targetID)) return groups;
+    const subtree = new Set([targetID, ...descendantGroupIDs(groups, targetID)]);
+    let insertAt = rest.length;
+    for (let i = rest.length - 1; i >= 0; i -= 1) {
+      if (subtree.has(rest[i]!.id)) {
+        insertAt = i + 1;
+        break;
+      }
+    }
+    rest.splice(insertAt, 0, { ...dragged, parent: targetID });
+    return rest;
+  }
+  // before/after: the target's ancestor chain must not run through the
+  // dragged group — re-parenting it there would close a cycle.
+  if (descendantGroupIDs(groups, draggedID).includes(targetID)) return groups;
+  const newParent = (target.parent ?? "").trim();
+  if (newParent !== "") {
+    const parentDepth = groupDepth(groups, newParent);
+    if (parentDepth === null) return groups;
+    if (parentDepth + 1 + subtreeHeight(groups, draggedID) > SESSION_GROUP_MAX_DEPTH) return groups;
+  }
+  const targetIndex = rest.findIndex((group) => group.id === targetID);
+  rest.splice(zone === "before" ? targetIndex : targetIndex + 1, 0, { ...dragged, parent: newParent || undefined });
+  return rest;
+}
