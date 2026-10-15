@@ -2243,14 +2243,23 @@ export function Composer({
     const epochAtHeal = draftActivationEpochRef.current;
     let attempt = 0;
     const tryRefocus = () => {
-      if (draftActivationEpochRef.current !== epochAtHeal) return;
+      // 任务 913盲区②：自愈放弃路径原先零痕迹——耗尽/被 epoch 连坐取消都查
+      // 无日志，复发时与成功探针一样静默，无法区分「没发生」与「发生了但
+      // 自愈失败」。放弃必须留痕，走同一 composer-focus 通道。
+      if (draftActivationEpochRef.current !== epochAtHeal) {
+        reportFrontendLog("composer-focus", "disable-flip heal cancelled by draft epoch");
+        return;
+      }
       const target = invocationsRef.current.length > 0 ? richInputRef.current : taRef.current;
       target?.focus();
       if (document.activeElement === target) {
         reportFrontendLog("composer-focus", "focus restored after disable flip");
         return;
       }
-      if (attempt >= COMPOSER_INPUT_DISABLE_HEAL_FRAMES) return;
+      if (attempt >= COMPOSER_INPUT_DISABLE_HEAL_FRAMES) {
+        reportFrontendLog("composer-focus", "disable-flip heal exhausted retries", `attempt=${attempt + 1}`);
+        return;
+      }
       attempt += 1;
       requestAnimationFrame(tryRefocus);
     };
