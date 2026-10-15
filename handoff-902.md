@@ -42,6 +42,43 @@
 ## 记录
 
 - [x] 第一步：worktree wt-902 创建，本计划落盘
-- [ ] 第一步：读码定性（app_modes.go + preset 持久化链）
-- [ ] 第二步：复现测试
-- [ ] 第三步：二选一结论 + 报告/修复
+- [x] 第一步：读码定性（app_modes.go + preset 持久化链）
+- [x] 第二步：复现测试（desktop/preset_persistence_repro_902_test.go，7 组全通过，commit c4858a503）
+- [x] 第三步：二选一结论 = **不复现**，出报告销项
+
+## 最终结论（2026-10-15）
+
+**不复现**。七组状态重建往返测试全部保值：
+
+1. 重启等价（desktop-tabs.json entry 直读恢复）——yolo/auto/ask 三档均保值（T1/T1b）；
+2. 切页等价（BranchMeta sidecar 切走写/回读）——保值（T2）；
+3. 打开会话等价（applyTabSessionProfile 读 session 自己 sidecar）——保值（T3）；
+4. 前端水合后回推（SetComposerProfileForTab 幂等）——保值（T4）。
+
+`app_modes.go:157-161` 重算只在显式 SetModeForTab 触发，重启/切页恢复路径均不经过（读码证据链见报告）。
+
+**残留风险（销项但记录）**：
+- R1：SetComposerProfileForTab 无会话围栏（T5 实证可被未水合默认值打掉 yolo 并持久化）；前端有 controllerReady/pending/reconcile 三重护栏，真实窗口需前端测试证伪，本次不做。
+- R2：SetModeForTab yolo→ask 联动降档会持久化（T6）；显式调用才触发，若未来出现「切页后自动推 SetMode」的前端改动即成真缺陷。
+
+报告：`docs/report/zcode交付/zcode交付-902-权限preset静默回退复现验证-20261015.md`（工作区）。
+
+## 读码层结论（2026-10-15）
+
+### 上游 #10335 病灶（PR #10825 描述）
+
+- 权限 preset 属于**会话**，但值存**tab surface**；`OpenSession` 把出面 surface 的 preset 套到被开会话；New Chat surface 强制 workspace-write。
+- renderer 侧 composer profile 表按 tab 键控，导航后的 profile push 把上一个会话的 preset 推给新会话。
+- 修法：per-SessionID 记录（`session_preset_store.go`）+ 会话围栏（`SetPermissionPresetForTab(expectedSessionID)`）+ 新绑定会话不吃 surface 值。
+
+### fork 无同名结构，但有同族三条链（逐条定性）
+
+fork 无 `SetPermissionPresetForTab` / `desktop-session-presets.json`；权限轴是 `toolApprovalMode`（ask/auto/yolo），持久化两处：
+
+1. **`desktop-tabs.json` 的 `ToolApprovalMode` 列**（`persistedDesktopTabEntry` → `persistedToolApprovalMode`：ask 存空串，auto/yolo 存值）——重启恢复入口 `restorePersistedTabs`（app_tabs.go:146-149）直接取 entry 值，**不吃 surface、不吃 sidecar**。
+2. **session BranchMeta sidecar 的 `ToolApprovalMode`**（`saveTabSessionMeta` → `saveTabSessionMetaSnapshot`）——切页 rebind 前写旧 session（app_session_rebind.go:118/187），打开新 tab 时 `applyTabSessionProfile(loadTabSessionProfile(path))`（tabs.go:2538）从 sidecar 恢复——**per-session 语义，与上游修后方向一致**。
+3. **前端启动回推**（App.tsx:2166-2181）：controllerReady 后 `SetComposerProfileForTab(activeTabId, collab, toolApprovalMode, goal)`——后端 `SetComposerProfileForTab`（app_modes.go:261）**直接覆盖 tab.toolApprovalMode 并 saveTabsLocked 持久化，无会话围栏**。若回推发生在 tabMetas/meta 水合之前（默认 `defaultComposerProfile.toolApprovalMode="ask"`），即上游 renderer 泄漏同族；水合若再读被覆盖后的 meta，则锁死为 ask（data-loss）。
+
+### app_modes.go:157-161 重算逻辑定性
+
+`SetModeForTab` 内：新 mode 带 autoapprove → yolo；否则**当前 approval 是 yolo → 强制降 ask**。这是显式模式切换时的联动降档（非静默），只有 `SetModeForTab` 被调用才触发——启动回推走 `SetComposerProfileForTab` 不经过它。**是否构成「关闭/切页后变默认」需测试判定**：关键是（a）重启往返 entry 值是否保值；（b）`SetComposerProfileForTab` 无围栏覆盖是否可被默认值打回并持久化。
