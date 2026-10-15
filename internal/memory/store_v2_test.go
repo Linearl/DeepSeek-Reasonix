@@ -414,3 +414,104 @@ func TestStoreV2RestoreArchivedRejectsSymlinkDirectory(t *testing.T) {
 		t.Fatalf("outside target changed: %v", err)
 	}
 }
+
+// task 905 / upstream 11846: MigrateV2 rewrites legacy facts in place, so the
+// exact pre-migration bytes must exist as a .bak snapshot before the rewrite.
+func TestStoreV2MigrationWritesByteIdenticalBackup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy-fact.md")
+	// CRLF, an unknown frontmatter key, and no id/revision: exactly the shape
+	// the rewrite normalizes away, so only the backup preserves it.
+	legacy := "---\r\nname: legacy-fact\r\nunknown_key: keep-me\r\ndescription: old file\r\nmetadata:\r\n  type: project\r\n---\r\n\r\nlegacy body\r\n"
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Dir: dir}
+	report, err := store.MigrateV2()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Migrated != 1 {
+		t.Fatalf("migration report = %+v", report)
+	}
+	bak := mustReadString(t, path+".bak")
+	if bak != legacy {
+		t.Fatalf("backup is not byte-identical to the original:\ngot  %q\nwant %q", bak, legacy)
+	}
+	frontmatter, _ := splitFrontmatter(mustReadString(t, path))
+	if !strings.HasPrefix(frontmatter["id"], "legacy-") || frontmatter["revision"] != "1" {
+		t.Fatalf("migrated frontmatter = %+v", frontmatter)
+	}
+	// The backup is the rollback path: restoring it recovers the original.
+	if err := os.WriteFile(path, []byte(bak), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustReadString(t, path); got != legacy {
+		t.Fatalf("restored file = %q, want original %q", got, legacy)
+	}
+}
+
+// task 905: when the backup cannot be written, the migration must refuse the
+// rewrite so no legacy fact is overwritten without a recoverable copy.
+func TestStoreV2MigrationBackupFailureRefusesRewrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy-fact.md")
+	legacy := "---\nname: legacy-fact\ndescription: old file\nmetadata:\n  type: project\n---\n\nlegacy body\n"
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A directory squatting on the backup path makes the backup write fail.
+	if err := os.Mkdir(path+".bak", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Dir: dir}
+	if _, err := store.MigrateV2(); err == nil || !strings.Contains(err.Error(), "backup") {
+		t.Fatalf("migration error = %v, want backup failure", err)
+	}
+	if got := mustReadString(t, path); got != legacy {
+		t.Fatalf("refused migration still rewrote the fact:\ngot  %q\nwant %q", got, legacy)
+	}
+}
+
+// task 905: a retried migration keeps the first backup copy — it must never
+// overwrite the pre-migration snapshot with later bytes.
+func TestStoreV2MigrationRetryKeepsFirstBackupCopy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy-fact.md")
+	legacy := "---\nname: legacy-fact\ndescription: old file\nmetadata:\n  type: project\n---\n\nlegacy body\n"
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	firstCopy := "---\nname: legacy-fact\n# interrupted-run snapshot\n---\n\nfirst copy\n"
+	if err := os.WriteFile(path+".bak", []byte(firstCopy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Dir: dir}
+	if _, err := store.MigrateV2(); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustReadString(t, path+".bak"); got != firstCopy {
+		t.Fatalf("retry overwrote the first backup copy:\ngot  %q\nwant %q", got, firstCopy)
+	}
+}
+
+// task 905: the .bak snapshot lives beside the fact but stays out of every
+// reader — discovery, the derived index, and recall all filter on ".md".
+func TestStoreV2MigrationBackupStaysOutOfReaders(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy-fact.md")
+	legacy := "---\nname: legacy-fact\ndescription: old file\nmetadata:\n  type: project\n---\n\nlegacy body\n"
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Dir: dir}
+	if _, err := store.MigrateV2(); err != nil {
+		t.Fatal(err)
+	}
+	if listed := store.List(); len(listed) != 1 || listed[0].Name != "legacy-fact" {
+		t.Fatalf("list after migration = %+v, want exactly the migrated fact", listed)
+	}
+	if idx := store.Index(); strings.Contains(idx, ".bak") {
+		t.Fatalf("backup leaked into the derived index:\n%s", idx)
+	}
+}

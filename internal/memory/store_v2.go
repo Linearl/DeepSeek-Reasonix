@@ -80,6 +80,25 @@ func (s Store) MigrateV2() (MigrationReport, error) {
 			if memory.Scope == "" {
 				memory.Scope = s.scopeForDir(dir)
 			}
+			// The rewrite below is in place: persist the exact original bytes
+			// as <name>.md.bak first so a bad migration stays recoverable
+			// (upstream 11846/PR11857 semantics). Backup failure refuses the
+			// migration; an existing backup is kept as the first copy so a
+			// retried migration never overwrites the pre-migration snapshot.
+			// The .bak suffix keeps it out of every reader — fact discovery,
+			// index, recall, and revisions all filter on ".md".
+			bakPath := path + ".bak"
+			bakInfo, bakErr := os.Stat(bakPath)
+			switch {
+			case os.IsNotExist(bakErr):
+				if err := writeMemoryAtomic(bakPath, raw, 0o644); err != nil {
+					return report, fmt.Errorf("memory migration backup %q failed: %w", bakPath, err)
+				}
+			case bakErr != nil:
+				return report, fmt.Errorf("memory migration backup %q: %w", bakPath, bakErr)
+			case !bakInfo.Mode().IsRegular():
+				return report, fmt.Errorf("memory migration backup %q exists and is not a regular file", bakPath)
+			}
 			if err := writeMemoryAtomic(path, []byte(render(memory, memory.Name)), 0o644); err != nil {
 				return report, err
 			}
