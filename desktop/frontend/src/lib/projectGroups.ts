@@ -3,6 +3,10 @@
 // A project belongs to at most one group (single-select). Storage is local-only,
 // following the existing project-tree localStorage precedent (WORKBENCH_*_KEY).
 
+// 908：归属数据是 data-loss 面（用户唯一的分组归属副本），清理动作必须留下
+// 可追溯的条数证据 —— 走 frontendLog（ring + console + desktop.log 三落点）。
+import { reportFrontendLog } from "./frontendLog";
+
 export interface ProjectGroup {
   id: string;
   title: string;
@@ -192,10 +196,29 @@ export function clearProjectGroupRoster(): void {
 // pruneProjectGroupAssign drops assignments whose group id left the roster
 // (deleted directly, or cascade-deleted as a child). Same-reference when
 // nothing changed so setState can skip the render; persists when it did.
+//
+// 908（data-loss 返修）：空 roster 一律不清归属。拉取返回空集合是异常过渡态
+// （启动竞态下 ManageSessionsList 为空/缺 projectGroups 字段，本地影子又已被
+// 迁移清掉 → 返回 {roster: [], imported: false} 而非 null），按差集 prune 会
+// 把全部归属一次清空并持久化（892B 引入的回归）。守卫：validIDs 空且归属非空
+// → 跳过清理并 WARN；只有 roster 非空才按差集 prune，正常删组（其余组仍在）
+// 语义不变。
 export function pruneProjectGroupAssign(
   assign: Record<string, string>,
   validIDs: ReadonlySet<string>,
 ): Record<string, string> {
+  if (validIDs.size === 0) {
+    const kept = Object.keys(assign).length;
+    if (kept > 0) {
+      reportFrontendLog(
+        "project-group-assign",
+        "empty roster — prune skipped, assignments kept (908)",
+        `kept=${kept}`,
+        "warn",
+      );
+    }
+    return assign;
+  }
   const next: Record<string, string> = {};
   let changed = false;
   for (const [root, groupId] of Object.entries(assign)) {
@@ -203,6 +226,13 @@ export function pruneProjectGroupAssign(
     else changed = true;
   }
   if (!changed) return assign;
+  // 908 ②：清理前的归属快照入遥测 —— 归属一旦被清，条数证据必须可追溯。
+  reportFrontendLog(
+    "project-group-assign",
+    "assignments pruned to roster",
+    `before=${Object.keys(assign).length} kept=${Object.keys(next).length}`,
+    "info",
+  );
   persistAssign(next);
   return next;
 }
