@@ -26,9 +26,9 @@ func TestCloseTabDetachThenReopenReplaysPendingAsk(t *testing.T) {
 	path := filepath.Join(dir, "ask-reopen.jsonl")
 
 	type wireMsg struct {
-		tabID  string
-		kind   string
-		askID  string
+		tabID string
+		kind  string
+		askID string
 	}
 	wire := make(chan wireMsg, 32)
 	sink := &tabEventSink{tabID: "asktab", ctx: context.Background()}
