@@ -757,6 +757,8 @@ export function ProjectTree({
     });
     // A group that left the roster (deleted, or cascade-deleted as a child)
     // takes its project assignments with it — projects fall back to ungrouped.
+    // 908: an EMPTY roster must never clear assignments (a transient empty pull
+    // would wipe them all); that guard + WARN lives in pruneProjectGroupAssign.
     setAssign((current) => pruneProjectGroupAssign(current, new Set(pull.roster.map((group) => group.id))));
   }, []);
 

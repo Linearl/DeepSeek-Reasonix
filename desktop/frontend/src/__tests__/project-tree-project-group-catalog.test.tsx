@@ -11,6 +11,9 @@
 //   ⑤ 本地回退：addProjectGroup(parent) 写存储拼法 parent；clearProjectGroupRoster
 //      清影子防复活；源码钉住 ProjectTree 接线（递归渲染/新建子分组菜单/提案删除/
 //      v2 metadata 刷新）。
+//   ⑥ 908 data-loss 守卫三态（892B harness 漏网原因=只测正常 prune）：
+//      pull 空 roster → 归属保持 + WARN 快照；pull null → 组件提前返回
+//      （prune 不可达）；roster 非空（正常删组）→ 仍按差集 prune 且快照入遥测。
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -45,6 +48,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http:
 const {
   addProjectGroup,
   clearProjectGroupRoster,
+  loadProjectGroupAssign,
   loadProjectGroups,
   pruneProjectGroupAssign,
 } = await import("../lib/projectGroups");
@@ -56,6 +60,8 @@ const {
   pullProjectGroupCatalog,
   renameProjectGroupViaCatalog,
 } = await import("../lib/projectGroupCatalog");
+// 908：守卫 WARN 与 prune 快照遥测经 frontendLog ring 断言（DOM 装好后动态加载）。
+const { drainFrontendLogRing, peekFrontendLogRing } = await import("../lib/frontendLog");
 
 const thisFile = fileURLToPath(import.meta.url);
 const dir = dirname(thisFile);
@@ -205,6 +211,57 @@ console.log("\n892-B⑤ 本地回退（parent 存储拼法 / 清影子防复活�
   eq("parent" in withoutParent[0]!, false, "顶层创建不长 parent 键（扁平兼容）");
   clearProjectGroupRoster();
   eq(loadProjectGroups(), [], "clearProjectGroupRoster 清空本地影子（防删组复活）");
+}
+
+// ── ⑥ 908 空 roster 守卫（data-loss 三态钉） ────────────────────────────────
+console.log("\n908 空 roster 守卫（空拉取保持归属 / null 提前返回 / 正常删组仍 prune）");
+{
+  // 态1：启动竞态下 list 空/缺 projectGroups 字段 + 本地影子已清 →
+  // {roster: [], imported: false} 非 null（:82 catch 安全分支不覆盖）→ 归属必须保持。
+  {
+    dom.window.localStorage.clear();
+    const assign = { "/a": "g1", "/b": "g2" };
+    localStorage.setItem("projectTree:projectGroupAssign", JSON.stringify(assign));
+    let creates = 0;
+    const bindings: ProjectGroupCatalogBindings = {
+      ManageSessionsList: async () => ({ groups: {}, sessions: [] } as unknown as ManageSessionsListResult),
+      CreateProjectGroup: async () => { creates += 1; throw new Error("must not run"); },
+    };
+    const pull = await pullProjectGroupCatalog(bindings, []);
+    ok(pull !== null, "态1 前提：projectGroups 字段缺失 → 返回非 null（catch 安全分支不覆盖）");
+    eq(pull?.roster.length, 0, "态1 前提：roster 为空");
+    eq(pull?.imported, false, "态1 前提：本地影子已清 → imported=false（不走迁移重建）");
+    eq(creates, 0, "态1 前提：影子已清 → 迁移重建分支不触发（根因④实钉）");
+    drainFrontendLogRing();
+    const kept = pruneProjectGroupAssign(assign, new Set((pull?.roster ?? []).map((group) => group.id)));
+    ok(kept === assign, "态1：空 roster → 跳过 prune，同一引用（跳过渲染）");
+    eq(kept, { "/a": "g1", "/b": "g2" }, "态1：归属逐位保持（8 项事故的等价面）");
+    eq(loadProjectGroupAssign(), { "/a": "g1", "/b": "g2" }, "态1：localStorage 持久化面未被清空");
+    const ring = peekFrontendLogRing();
+    eq(ring.length, 1, "态1：守卫恰好 WARN 一条");
+    ok(ring.some((line) => line.includes("[frontend:project-group-assign]") && line.includes("kept=2")),
+      "态1：WARN 带归属快照计数（kept=2）");
+  }
+
+  // 态2：pull null（无绑定/读失败）→ 组件在 setAssign 之前提前返回，归属保持。
+  {
+    eq(await pullProjectGroupCatalog({}, []), null, "态2：无绑定/读失败 → null（留在本地）");
+    const guardIdx = treeSource.indexOf("if (!pull || seq !== projectGroupPullSeqRef.current) return;");
+    const pruneIdx = treeSource.indexOf("pruneProjectGroupAssign(current, new Set(pull.roster.map");
+    ok(guardIdx > -1 && pruneIdx > guardIdx, "态2：null 提前返回位于 prune 接线之前（pull null 不触达 setAssign）");
+  }
+
+  // 态3：roster 非空（正常删组，其余组仍在）→ 差集 prune 语义不变 + 快照入遥测。
+  {
+    dom.window.localStorage.clear();
+    const assign = { "/kept": "g1", "/gone": "g2" };
+    drainFrontendLogRing();
+    const pruned = pruneProjectGroupAssign(assign, new Set(["g1", "g3"]));
+    eq(pruned, { "/kept": "g1" }, "态3：roster 非空 → 死组（直删/cascade）赋值仍被清");
+    eq(loadProjectGroupAssign(), { "/kept": "g1" }, "态3：清理已持久化");
+    ok(peekFrontendLogRing().some((line) => line.includes("before=2") && line.includes("kept=1")),
+      "态3：prune 前归属快照入遥测（before=2 kept=1，data-loss 面可追溯）");
+  }
 }
 
 // ── ProjectTree 接线源码钉 ──────────────────────────────────────────────────
