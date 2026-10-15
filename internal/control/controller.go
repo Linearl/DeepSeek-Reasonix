@@ -3329,9 +3329,21 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			c.cancelOwnedPrompt(id)
 			c.expirePendingCard(id)
 			answers := autopilotAnswers(questions)
+			summary := askDecisionSummary(questions, answers)
 			// Task 544: this host auto-answer counts as an answered ask of the
 			// running turn, so a terminal stop right after it can be resumed.
-			c.markTurnAskAnswered(askDecisionSummary(questions, answers))
+			c.markTurnAskAnswered(summary)
+			// 任务925（代答可见提示）: the auto-answer used to leave no durable
+			// trace — the notice died with a backgrounded tab's sink and the
+			// session history had nothing to replay, so reopening showed no
+			// evidence a question had ever been asked. Persist the decision
+			// into the session's decision trail (replayed as a receipt row on
+			// reopen) under the SAME dec-* id the ask tool hands the model in
+			// its decision_id line, so notice, receipt and model record all
+			// greppable to one id. Durable-only: the auto-decide notice below
+			// stays the single live card (attended/human path unchanged).
+			decisionID := agent.DecisionIDForQuestions(questions)
+			c.addAskDecisionReceipt(id, clipUTF8(summary+" — decision "+decisionID, 240), "auto_answered")
 			// 判据锚 (task 477 shape): one grep-able log line plus one notice,
 			// so "did the auto-decide fire and what did it decide" is
 			// answerable from the log and the transcript alone.
@@ -3340,9 +3352,9 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			} else {
 				log.Printf("[autopilot-ask] reversible question untouched for %s; decided for the user (task 806) turn=%s item=%s", askWait, turnID, id)
 			}
-			text := "autopilot · ask — no interaction within " + askWait.String() + "; decided for you: " + clipUTF8(askDecisionSummary(questions, answers), 160)
+			text := "本问题已自动回答（autopilot · ask，" + askWait.String() + " 无交互）：" + clipUTF8(summary, 160) + " — decision " + decisionID
 			if reason == "hover_budget" {
-				text = "autopilot · ask — only mouse movement within " + hoverBudget.String() + "; decided for you: " + clipUTF8(askDecisionSummary(questions, answers), 160)
+				text = "本问题已自动回答（autopilot · ask，" + hoverBudget.String() + " 内仅鼠标移动）：" + clipUTF8(summary, 160) + " — decision " + decisionID
 			}
 			c.sink.Emit(event.Event{
 				Kind:   event.Notice,
@@ -3692,6 +3704,25 @@ func (c *Controller) recordAskDecisionReceipt(id string, pending pendingAsk, ans
 		Level:           event.LevelInfo,
 		Text:            "Decision recorded: answered",
 		DecisionReceipt: receipt,
+	})
+}
+
+// addAskDecisionReceipt (任务925) persists an ask decision into the session's
+// durable decision trail WITHOUT an extra live notice: the auto-answer path's
+// own auto-decide notice is the single live card, and reopening the session
+// replays this receipt from history — the same attachment recordAskDecisionReceipt
+// writes, minus its "Decision recorded" event. Outcome names the path
+// ("answered" = the user, "auto_answered" = the host answered for them) so a
+// later audit can tell the two apart.
+func (c *Controller) addAskDecisionReceipt(id, subject, outcome string) {
+	if c == nil || c.executor == nil {
+		return
+	}
+	c.executor.Session().AddDecisionReceipt(&provider.DecisionReceipt{
+		ID:      id,
+		Kind:    "ask",
+		Subject: subject,
+		Outcome: outcome,
 	})
 }
 

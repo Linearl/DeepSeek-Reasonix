@@ -38,6 +38,16 @@ func decisionIDForQuestions(qs []event.AskQuestion) string {
 	return "dec-" + hex.EncodeToString(h.Sum(nil)[:8])
 }
 
+// DecisionIDForQuestions exposes the ask tool's decision-id derivation to the
+// host (任务925): the controller's auto-answer path stamps the same dec-* id
+// the tool returns to the model in its decision_id line, so the notice and
+// durable receipt it writes can be grepped back to the exact decision the
+// model recorded. Fresh asks — the only ones an auto-answer ever sees — never
+// carry a model-supplied decision_id, so the derived id is the real id.
+func DecisionIDForQuestions(qs []event.AskQuestion) string {
+	return decisionIDForQuestions(qs)
+}
+
 type turnStateContextKey struct{}
 
 func withTurnState(ctx context.Context, turn *turnRuntime) context.Context {
