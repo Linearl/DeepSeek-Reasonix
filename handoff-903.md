@@ -106,3 +106,34 @@ agent 生成「隔离 HOME 复跑」命令：第一句 `$home = Join-Path $env:T
 2. i18n UI 文案未搬（见上表）。
 3. 上游效果测试在 boot 层（headless 全链），fork 落在 builtin 层直接调 `ExecuteDetailed`——同一执行入口、少一层 agent 编排，判定语义相同。
 4. PowerShell 5.1 实测通过（本机 powershell）；pwsh 7 与非 Windows 执行环境本机不可用（与上游 PR 自述一致）。
+
+## 验收记录（2026-10-15/16）
+
+### ① 正向用例钉死（事故脚本 → 中止 + 主目录完好）
+
+`bash_delete_test.go::TestDeleteIncidentHomeSurvives`：
+- 脚本 = 上游事故原样：`$home = Join-Path $env:TEMP 'cf-p6-manual'; if (Test-Path $home) { Remove-Item -Recurse -Force $home }; Set-Content executed.txt executed`
+- 真实 PowerShell 执行路径（无 terminal stub），USERPROFILE/HOME 指向 temp fixture；**探针先断言子进程 `$home` 解析到 fixture 才执行危险命令**（防 fixture 失效误删真主目录）。
+- 结果：**PASS**——拒绝码 `shell.delete_sequence`；fixture `keep.txt` 存活；`executed.txt` 未产生（后续语句未执行）。
+
+### ② 误杀面回归钉（正常 Remove-Item 用法不受影响）
+
+`TestBashDeleteGateAllowsBoundedCleanup`：18 条放行用例（bash 侧 8 + PS 侧 10），断言**零拒绝且命令到达执行**（terminal stub calls=1）：
+- 非递归删除：`rm "$f"` / `rm tree` / `Remove-Item $f` / `Remove-Item style.css` / `[IO.Directory]::Delete('child')` / `(Get-Item child).Delete()`
+- 字面 in-root 递归：`rm -rf child` / `rm -rf build && make` / `rm -rf build || true` / `cd app && rm -rf dist 2>/dev/null` / `Remove-Item -LiteralPath child -Recurse -Force` / `Remove-Item -Recurse -Force child -ErrorAction SilentlyContinue`
+- 合法控制流/管道：`if (Test-Path child) { Remove-Item -Recurse -Force child ... }` / `Set-Location app; Remove-Item -Recurse dist` / `'child' | Remove-Item -Force`
+- 普通命令：`git status`、`rmdir /absolute/empty`
+- 结果：**PASS（18/18）**。
+- 另 `TestDeletePowerShellGoldenCauses` 5 条放行 + `TestAnalyzeRecursiveDelete` 36 行表 + `TestDeleteWrappers` 全绿——上游语义内「允许面」无回归。
+
+### 拒绝面（辅助）
+
+- `TestBashDestructiveTargetGate`：27 条拒绝用例（越界字面/非字面/序列/未知选项/解释器递归/cmd /c/find）逐条钉 code，且断言 terminal 从未被调用、Execution=not_run/not_started——**PASS**。
+- `TestDeletePowerShellGoldenCauses`（对照上游 pwsh golden 表 15 条）、`TestDeleteParserNeverEvaluates`（解析通道不执行源码、不污染后续请求）、`TestDeletePowerShellUnicode`、`TestDeleteGateRejectsNestedDirectoryChange`、`TestDeleteGateRefusalCarriesCode`、`TestDeleteGateIgnoresOrdinaryScriptErrors`——**PASS**。
+
+### 包级回归
+
+- `go test ./internal/shellparse/ ./internal/shellsafe/`：**ok**（含既有全部用例）。
+- `go test ./internal/tool/builtin/`：首跑 FAIL（日志被截断未留失败名，当时机器上有多个并行 .test.exe 进程）；**紧接着两次复跑（-count=1）均 ok**（334s）。判定为并行负载下的偶发，非护栏引入；如再次出现需按失败名追。
+- `go vet` 三包：**clean**。
+- status 净；提交见 git log（3 个「903 」开头 commit）。
