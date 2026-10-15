@@ -33,7 +33,6 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/agentpreset"
 	"reasonix/internal/autoresearch"
-	"reasonix/internal/baseproc"
 	"reasonix/internal/billing"
 	"reasonix/internal/capability"
 	"reasonix/internal/checkpoint"
@@ -267,10 +266,6 @@ type Controller struct {
 	// workspaceLease is the Delivery writer owner shared with the executor.
 	// It is exposed only through a sanitized state snapshot for Desktop recovery.
 	workspaceLease *workspacelease.Owner
-
-	// baseClient is the S1b resident-base client (nil = no base wired; the
-	// catalog gate then always takes the local path). See base_gate.go.
-	baseClient baseproc.BaseClient
 
 	// mcp owns the session's live tool/plugin surface behind its own lock, off
 	// c.mu; the Controller keeps config-facing orchestration. See mcp.go.
@@ -799,10 +794,6 @@ type Options struct {
 	// context; both are needed for hot-adding MCP servers via AddMCPServer.
 	Registry  *tool.Registry
 	PluginCtx context.Context
-	// BaseClient is the resident-base client boot built (design §10 S1b): the
-	// controller's tool-catalog gate consults it only when it is remote-capable.
-	// Nil (every pre-S1 construction) keeps the local path.
-	BaseClient baseproc.BaseClient
 	// MCPDefaultCallTimeout is the global MCP call cap used by hot-connected
 	// servers when they do not declare a server- or tool-specific override.
 	MCPDefaultCallTimeout time.Duration
@@ -1020,7 +1011,6 @@ func New(opts Options) *Controller {
 		jobs:                              opts.Jobs,
 		jobsBorrowed:                      opts.JobsHandoff,
 		workspaceLease:                    opts.WorkspaceLease,
-		baseClient:                        opts.BaseClient,
 		mcp:                               newMcpManager(opts.Host, opts.Registry, pluginCtx, opts.MCPHostProfile),
 		mcpDefaultCallTimeout:             opts.MCPDefaultCallTimeout,
 		mcpConfigureSpec:                  opts.MCPConfigureSpec,
@@ -1214,11 +1204,6 @@ func (c *Controller) ToolContractEntries() []tool.ContractEntry {
 	if c == nil {
 		return nil
 	}
-	// S1b gate: a remote base with the tools capability answers over IPC;
-	// every other state falls through to the local registry (base_gate.go).
-	if entries, ok := c.baseCatalogEntries(true); ok {
-		return entries
-	}
 	reg := c.mcp.registry()
 	if reg == nil {
 		return nil
@@ -1231,9 +1216,6 @@ func (c *Controller) ToolContractEntries() []tool.ContractEntry {
 func (c *Controller) AllToolContractEntries() []tool.ContractEntry {
 	if c == nil {
 		return nil
-	}
-	if entries, ok := c.baseCatalogEntries(false); ok {
-		return entries
 	}
 	reg := c.mcp.registry()
 	if reg == nil {
