@@ -189,7 +189,11 @@ func setJaccard(left, right map[string]struct{}) float64 {
 type askArgs struct {
 	DecisionID string `json:"decision_id"`
 	Evidence   string `json:"new_evidence"`
-	Questions  []struct {
+	// AllowReplay (任务926) declares that the USER explicitly asked to re-ask
+	// an already-answered question; it bypasses both decision-reuse arms. An
+	// omitted/false value keeps the dedup contract unchanged.
+	AllowReplay bool `json:"allow_replay"`
+	Questions   []struct {
 		Header      string `json:"header"`
 		Question    string `json:"question"`
 		MultiSelect bool   `json:"multiSelect"`

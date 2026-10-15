@@ -1,10 +1,14 @@
 [
   {
     "Name": "ask",
-    "Description": "Ask the user one or more multiple-choice questions when you hit a decision that is genuinely theirs to make — one you can't resolve from the request, the code, or sensible defaults. The frontend shows the options for the user to pick; their choices are returned to you. Prefer this over asking in prose for any real fork (which approach, which library, scope). Don't use it for decisions with an obvious default — pick the sensible option and proceed. Tool-approval modes such as YOLO do not answer these questions for the user. Each question has a short `header` (a tab label), the `question` text, 2-4 `options` (each a `label` and optional `description`; put any recommended option first), and `multiSelect` when more than one may apply.",
+    "Description": "Ask the user one or more multiple-choice questions when you hit a decision that is genuinely theirs to make — one you can't resolve from the request, the code, or sensible defaults. The frontend shows the options for the user to pick; their choices are returned to you. Prefer this over asking in prose for any real fork (which approach, which library, scope). Don't use it for decisions with an obvious default — pick the sensible option and proceed. Tool-approval modes such as YOLO do not answer these questions for the user. Each question has a short `header` (a tab label), the `question` text, 2-4 `options` (each a `label` and optional `description`; put any recommended option first), and `multiSelect` when more than one may apply. A question that matches an already-answered decision is answered from that decision instead of re-asking; if the user explicitly asks you to re-ask a question they already answered, pass `allow_replay=true` so the panel shows again — never set it for retries or repeated scheduling.",
     "ReadOnly": true,
     "Schema": {
       "properties": {
+        "allow_replay": {
+          "description": "Set true ONLY when the user explicitly asked to re-ask a question that was already answered (they want to choose again): the host then shows the panel again instead of reusing the accepted decision. Never set it for retries or repeated scheduling — duplicate asks stay deduplicated.",
+          "type": "boolean"
+        },
         "decision_id": {
           "description": "Required when reopening a previously accepted decision; cite the original decision_id.",
           "type": "string"

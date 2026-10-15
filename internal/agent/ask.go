@@ -26,7 +26,7 @@ func NewAskTool() *AskTool { return &AskTool{} }
 func (*AskTool) Name() string { return tool.HostAsk }
 
 func (*AskTool) Description() string {
-	return "Ask the user one or more multiple-choice questions when you hit a decision that is genuinely theirs to make — one you can't resolve from the request, the code, or sensible defaults. The frontend shows the options for the user to pick; their choices are returned to you. Prefer this over asking in prose for any real fork (which approach, which library, scope). Don't use it for decisions with an obvious default — pick the sensible option and proceed. Tool-approval modes such as YOLO do not answer these questions for the user. Each question has a short `header` (a tab label), the `question` text, 2-4 `options` (each a `label` and optional `description`; put any recommended option first), and `multiSelect` when more than one may apply."
+	return "Ask the user one or more multiple-choice questions when you hit a decision that is genuinely theirs to make — one you can't resolve from the request, the code, or sensible defaults. The frontend shows the options for the user to pick; their choices are returned to you. Prefer this over asking in prose for any real fork (which approach, which library, scope). Don't use it for decisions with an obvious default — pick the sensible option and proceed. Tool-approval modes such as YOLO do not answer these questions for the user. Each question has a short `header` (a tab label), the `question` text, 2-4 `options` (each a `label` and optional `description`; put any recommended option first), and `multiSelect` when more than one may apply. A question that matches an already-answered decision is answered from that decision instead of re-asking; if the user explicitly asks you to re-ask a question they already answered, pass `allow_replay=true` so the panel shows again — never set it for retries or repeated scheduling."
 }
 
 func (*AskTool) Schema() json.RawMessage {
@@ -61,7 +61,8 @@ func (*AskTool) Schema() json.RawMessage {
     }
   },
   "decision_id":{"type":"string","description":"Required when reopening a previously accepted decision; cite the original decision_id."},
-  "new_evidence":{"type":"string","description":"Required with decision_id when asking again after the user already accepted a consequence."}
+  "new_evidence":{"type":"string","description":"Required with decision_id when asking again after the user already accepted a consequence."},
+  "allow_replay":{"type":"boolean","description":"Set true ONLY when the user explicitly asked to re-ask a question that was already answered (they want to choose again): the host then shows the panel again instead of reusing the accepted decision. Never set it for retries or repeated scheduling — duplicate asks stay deduplicated."}
 },
 "required":["questions"]
 }`)
@@ -110,13 +111,20 @@ func (*AskTool) Execute(ctx context.Context, args json.RawMessage) (string, erro
 	if id == "" {
 		id = decisionIDForQuestions(qs)
 	}
+	// 任务926（显式重发放行）: allow_replay is the caller's declaration that the
+	// USER asked to re-ask an already-answered question ("重新提一次"). With it,
+	// both reuse arms are skipped and the panel really pops; without it the
+	// dedup contract is exactly the old one — repeated scheduling with no user
+	// intent stays deduplicated (the ask-storm protection). The unknown-id
+	// validation below stays in force either way: allow_replay licenses a
+	// re-ask, not a fabricated decision_id.
 	if dec, ok := existingDecision(ctx, id); ok {
-		if strings.TrimSpace(p.Evidence) == "" {
-			return fmt.Sprintf("Host reused accepted decision %s. The user already chose: %s. Continue with that decision unless you supply decision_id and new_evidence.", dec.ID, dec.Answer), nil
+		if !p.AllowReplay && strings.TrimSpace(p.Evidence) == "" {
+			return fmt.Sprintf("Host reused accepted decision %s. The user already chose: %s. Continue with that decision unless you supply decision_id and new_evidence, or set allow_replay=true because the user explicitly asked to re-ask it.", dec.ID, dec.Answer), nil
 		}
 	} else if !explicitID {
-		if dec, matched := matchingExistingDecision(ctx, qs); matched {
-			return fmt.Sprintf("Host reused accepted decision %s for the same ambiguity. The user already chose: %s. Continue with that decision; to reopen it, cite decision_id %s and supply new_evidence.", dec.ID, dec.Answer, dec.ID), nil
+		if dec, matched := matchingExistingDecision(ctx, qs); matched && !p.AllowReplay {
+			return fmt.Sprintf("Host reused accepted decision %s for the same ambiguity. The user already chose: %s. Continue with that decision; to reopen it, cite decision_id %s with new_evidence, or set allow_replay=true when the user explicitly asked to re-ask it.", dec.ID, dec.Answer, dec.ID), nil
 		}
 	} else if explicitID {
 		if _, hasAcceptedDecision := firstExistingDecision(ctx); hasAcceptedDecision {
