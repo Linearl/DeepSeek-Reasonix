@@ -79,6 +79,13 @@ func (a *Agent) recordToolReceipts(plan *toolCallPlan, result string, execution 
 		return rec
 	default:
 		rec := evidence.ReceiptFromToolCall(call.Name, args, err == nil, plan.tool.ReadOnly())
+		// A named-path write that reached the disk stays a write when tool.after
+		// reports it failed: the extension rules on content, not on what landed.
+		// Task 906 (upstream #12528/PR12614): ranClean is the tool's own Execute
+		// outcome, recorded before the extension rewrote the result.
+		if rec.Write && plan.ranClean {
+			rec.Success = true
+		}
 		rec.ToolCallID = call.ID
 		rec.Mutation = plan.effects.ContentMutation
 		a.stampReceiptDeliveryScope(&rec)
