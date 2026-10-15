@@ -555,6 +555,25 @@ func chunkedFallbackApplies(err error, inputMode string) bool {
 // Size/limit failures are excluded — those belong to the chunked fallback.
 const summaryTransientMaxAttempts = 2
 
+// 任务912 P0-a: the slow backoff ladder for a compaction whose failure is the
+// provider's, not the request's. Task 303's transient lane waits 1–3 seconds
+// and only for stream hiccups; the incident (desktop.log.8, 2026-10-15
+// 14:51–14:55) showed the three shapes it never retried — `context canceled`
+// from an inner scope, an expired key's 401, and a rate limit — each failing
+// the pass on its FIRST attempt (`attempts=1 transient=false`). A compaction
+// is worth waiting for: its input is already paid for and re-planning it is
+// the expensive part. The schedule is a var so tests can shrink it; production
+// waits 30s → 2m → 5m, three times, then parks on the task-867 failure card.
+var summaryBackoffSteps = defaultSummaryBackoffSteps()
+
+// defaultSummaryBackoffSteps returns the production schedule (a fresh slice,
+// so a test that mutates the package var cannot corrupt the pinned values).
+// 30s covers a short gateway hiccup, 2m a rolling TPM window, 5m a plan-window
+// rollover.
+func defaultSummaryBackoffSteps() []time.Duration {
+	return []time.Duration{30 * time.Second, 2 * time.Minute, 5 * time.Minute}
+}
+
 // Task 330: a 429 is not a stream hiccup - the 10M TPM window needs roughly
 // a minute, so the generic short backoff (303) would just re-trip the limit.
 // Rate-limited summaries get their own lane: wait out the provider's
@@ -649,6 +668,51 @@ func summaryTransientRetryable(err error) bool {
 	return provider.RateLimitText(msg)
 }
 
+// summaryResilientRetryable reports whether a failed summary request deserves
+// the 任务912 backoff ladder (summaryBackoffSteps) instead of an immediate
+// park: the shapes whose cause is the provider or its credentials, never the
+// request's input — a cancel from an inner scope, an expired key, a rate
+// limit. Distinct from summaryTransientRetryable (task 303): those are
+// millisecond stream hiccups that deserve a fast retry; these need a WINDOW.
+func summaryResilientRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	return summaryRateLimited(err) || summaryAuthExpired(err) || summaryUpstreamCanceled(err)
+}
+
+// summaryAuthExpired reports the key-rejection shape. Task 912 P1-d fires the
+// global alert from the same recognition surface; the retry here exists
+// because a gateway can answer 401 transiently under load (provider/retry.go's
+// maxAuthRetries rationale) and because a user who fixes the key mid-wait is
+// unblocked by the next attempt instead of a fresh manual compact.
+func summaryAuthExpired(err error) bool {
+	if err == nil {
+		return false
+	}
+	var auth *provider.AuthError
+	if errors.As(err, &auth) {
+		return auth.Status == 401
+	}
+	if httpStatusOf(err.Error()) == 401 {
+		return true
+	}
+	low := strings.ToLower(err.Error())
+	return strings.Contains(low, "unauthorized") || strings.Contains(low, "invalid api key")
+}
+
+// summaryUpstreamCanceled reports a cancel that did NOT come from this
+// request's own context — summarizeFold checks ctx before consulting this, so
+// a live ctx with a canceled error means an upstream gateway or an inner scope
+// dropped the stream, which heals on a fresh request.
+func summaryUpstreamCanceled(err error) bool {
+	if err == nil {
+		return false
+	}
+	low := strings.ToLower(err.Error())
+	return strings.Contains(low, "canceled") || strings.Contains(low, "cancelled")
+}
+
 // promptCacheTTLEstimate is the observation-only TTL assumption for cache-miss
 // attribution (task 317): providers do not publish their prompt-cache window;
 // the industry range is 5–10 minutes, so the lower bound is used. Nothing
@@ -716,6 +780,10 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 	var tele CompactionTelemetry
 	var err error
 	rateWaits := 0
+	// 任务912 P0-a: how many slow backoff steps (summaryBackoffSteps) this pass
+	// already spent. Bounded across error classes, so a class-hopping failure
+	// chain (401 → 429 → canceled) cannot multiply its retries.
+	backoffStep := 0
 	// 任务635 P0: the summary request destination resolves live per attempt
 	// (runSummaryRequest → providerForRequest), so a model switch landing while
 	// a summary is in flight changes what the next attempt reaches. The 切模型
@@ -746,6 +814,12 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 					slog.Info("agent: summary request succeeded after model-ref retry",
 						"attempts", attempt+1, "trigger", trigger,
 						"model_ref", a.summaryDestinationRef(),
+						"source_tokens", sourceTokens,
+						"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
+				} else if backoffStep > 0 {
+					slog.Info("agent: summary request succeeded after backoff retry",
+						"attempts", attempt+1, "trigger", trigger,
+						"backoff_steps", backoffStep,
 						"source_tokens", sourceTokens,
 						"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
 				} else {
@@ -790,6 +864,36 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 			rateWaits++
 			continue
 		}
+		// 任务912 P0-a: a cancel of our own context is the turn ending — never
+		// wait, never retry, hand it straight back so the caller stops.
+		if ctx.Err() != nil {
+			return res, tele, ctx.Err()
+		}
+		// 任务912 P0-a: the slow backoff ladder for provider-side failures
+		// (upstream cancel / expired key / rate limit). It runs AFTER the
+		// 429's dedicated Retry-After wait — that wait is the window itself —
+		// and BEFORE the task-303 terminal check, which is where all three of
+		// these shapes used to park on their first appearance. Exhausting the
+		// ladder falls through to the terminal branch below, and its caller
+		// then closes the pass with the task-867 failed card.
+		if backoffStep < len(summaryBackoffSteps) && summaryResilientRetryable(err) {
+			wait := summaryBackoffSteps[backoffStep]
+			slog.Warn("agent: summary request backing off before retry",
+				"trigger", trigger, "attempt", attempt+1,
+				"backoff_step", backoffStep+1, "max_steps", len(summaryBackoffSteps),
+				"wait_s", int(wait/time.Second),
+				"rate_limited", summaryRateLimited(err),
+				"auth_expired", summaryAuthExpired(err),
+				"upstream_cancel", summaryUpstreamCanceled(err),
+				"err", err)
+			select {
+			case <-ctx.Done():
+				return res, tele, ctx.Err()
+			case <-time.After(wait):
+			}
+			backoffStep++
+			continue
+		}
 		if attempt >= summaryTransientMaxAttempts || !summaryTransientRetryable(err) {
 			// Task 317: a failed summary is a provider error too — stamp it so
 			// the NEXT compaction round can attribute its miss against the
@@ -799,6 +903,8 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 				"trigger", trigger, "attempts", attempt+1, "err", err,
 				"model_ref", attemptRef,
 				"transient", summaryTransientRetryable(err),
+				"resilient", summaryResilientRetryable(err),
+				"backoff_steps", backoffStep,
 				"rate_limited", summaryRateLimited(err),
 				"source_tokens", sourceTokens,
 				"cache_hit_tokens", tele.CacheHitTokens, "cache_miss_tokens", tele.CacheMissTokens)
