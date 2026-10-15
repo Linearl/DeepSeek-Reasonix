@@ -48,8 +48,11 @@ type warnLine struct {
 	Detail string
 }
 
-// warnCollectCap 限制一轮采集留存的 WARN 行数（防极端场景内存膨胀；
-// 实测日常 72h 窗口几十条，20000 是宽松上限不是采样）。
+// warnCollectCap 限制留存的 WARN 巡检行数。**采集期就按模式过滤**
+// （2026-10-15 实测教训：全量留档时 168h 窗内 6.1 万条 WARN 噪音
+// （config: unknown key ×51k）在旧文件优先顺序下先吃满上限，把近期
+// 慢 switch 行挤出池子 → 巡检假 PASS；按模式过滤后同类行仅百级）。
+// 截断仍视为错误状态：丢行即置 WarnTruncated，判定期出 FAIL 行，不许静默。
 const warnCollectCap = 20000
 
 // logCollect 是一轮日志采集的全部产物。
@@ -67,14 +70,17 @@ type logCollect struct {
 	SwitchRender    []sample // frontend tab switch render
 	FirstFrame      []sample // frontend transcript first frame
 	BackendCensus   []censusRow
-	Warns           []warnLine // 窗口内全部 level=WARN 行（阶段 4 巡检池）
+	Warns           []warnLine // 窗口内命中巡检模式的 level=WARN 行（阶段 4 巡检池）
+	WarnTruncated   bool       // 巡检池达上限丢过行：判定期 FAIL 显式化，绝不静默
+	warnPatterns    []string   // 采集期过滤模式（= -warn-patterns，collectLogDir 注入）
 	backendRaw      []sample   // 后端 stage 行（待归并为普查）
 }
 
 // collectLogDir 扫描目录内 desktop.log 与轮转文件（desktop.log.N，N 越大越旧），
-// 解析窗口内的行。目录不存在返回错误。
-func collectLogDir(dir string, window time.Duration, now time.Time) (*logCollect, error) {
-	c := &logCollect{Window: window}
+// 解析窗口内的行。目录不存在返回错误。warnPatterns 为 WARN 巡检模式（采集期
+// 按模式过滤入池；nil/空 = 不采集 WARN 池，与 -warn-patterns 为空语义一致）。
+func collectLogDir(dir string, window time.Duration, now time.Time, warnPatterns []string) (*logCollect, error) {
+	c := &logCollect{Window: window, warnPatterns: warnPatterns}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -134,10 +140,17 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 		return
 	}
 	c.LinesParsed++
-	// 阶段 4：WARN 行全量留档进巡检池（窗口过滤已在上面做过）；
-	// 模式匹配推迟到 benchWarnPatrol（-warn-patterns 用户可配）。
-	if ln.level == "WARN" && len(c.Warns) < warnCollectCap {
-		c.Warns = append(c.Warns, warnLine{At: ln.ts, Msg: ln.msg, Detail: ln.attrs["detail"]})
+	// 阶段 4：WARN 行按巡检模式在**采集期**过滤入池（窗口过滤已在上面做过），
+	// 防无模式全量留档被高频噪音行吃满上限造成假 PASS（见 warnCollectCap 注释）。
+	if ln.level == "WARN" && len(c.warnPatterns) > 0 {
+		w := warnLine{At: ln.ts, Msg: ln.msg, Detail: ln.attrs["detail"]}
+		if warnLineMatchesAny(&w, c.warnPatterns) {
+			if len(c.Warns) < warnCollectCap {
+				c.Warns = append(c.Warns, w)
+			} else {
+				c.WarnTruncated = true
+			}
+		}
 	}
 	switch ln.msg {
 	case "desktop: runtime assembly hit":

@@ -94,7 +94,7 @@ func TestCollectLogDirAndPairing(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.FixedZone("CST", 8*3600))
-	col, err := collectLogDir(dir, 72*time.Hour, now)
+	col, err := collectLogDir(dir, 72*time.Hour, now, nil) // 本测不涉 WARN 巡检：模式传 nil
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -44,11 +44,22 @@ func warnMatches(w *warnLine, pattern string) bool {
 	return strings.Contains(w.Msg+" "+w.Detail, pattern)
 }
 
+// warnLineMatchesAny：采集期过滤用——命中任一巡检模式即入池。
+func warnLineMatchesAny(w *warnLine, patterns []string) bool {
+	for _, p := range patterns {
+		if warnMatches(w, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // benchWarnPatrol：每个模式一行计数判定——条数 ≤ -warn-max-count（默认 0）
-// 为 PASS，超出即 FAIL；日志目录缺失时整行 N/A（明示不算过也不算挂）。
+// 为 PASS，超出即 FAIL；日志目录缺失时整行 N/A（明示不算过也不算挂）；
+// 巡检池发生过截断（WarnTruncated）追加 FAIL 行显式化「读数不完整」。
 func benchWarnPatrol(col *logCollect, o options) []metricResult {
 	patterns := parseWarnPatterns(o.warnPatterns)
-	out := make([]metricResult, 0, len(patterns))
+	out := make([]metricResult, 0, len(patterns)+1)
 	for _, p := range patterns {
 		r := metricResult{
 			Bench:     "warn-patrol",
@@ -82,6 +93,18 @@ func benchWarnPatrol(col *logCollect, o options) []metricResult {
 			r.Note = fmt.Sprintf("%d 条（在门内）", n)
 		}
 		out = append(out, r)
+	}
+	if col.WarnTruncated {
+		out = append(out, metricResult{
+			Bench:     "warn-patrol",
+			Metric:    "WARN 巡检池截断（读数不完整）",
+			Source:    fmt.Sprintf("采集层 warnCollectCap=%d", warnCollectCap),
+			Threshold: "0 次截断（丢行即 FAIL，不许静默假 PASS）",
+			Ref:       "任务 414 阶段 4",
+			N:         warnCollectCap,
+			Verdict:   verdictFail,
+			Note:      "匹配行达采集上限，后续行未入池——本窗口各模式计数偏小，须缩窗或收窄 -warn-patterns 后重跑",
+		})
 	}
 	return out
 }

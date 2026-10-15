@@ -31,13 +31,17 @@ func TestWarnPatrolCollectAndVerdict(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.FixedZone("CST", 8*3600))
-	col, err := collectLogDir(dir, 72*time.Hour, now)
+	col, err := collectLogDir(dir, 72*time.Hour, now, parseWarnPatterns(defaultWarnPatterns))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// WARN 池 = 2 命中 + 1 不命中；INFO 行与窗口外旧 WARN 不入池。
-	if len(col.Warns) != 3 {
-		t.Fatalf("Warns = %d，应为 3（INFO/窗口外不入池）：%+v", len(col.Warns), col.Warns)
+	// WARN 池（采集期按模式过滤）= 仅 2 条命中：不命中模式的 WARN
+	//（open session slow）、INFO 行、窗口外旧 WARN 都不入池。
+	if len(col.Warns) != 2 {
+		t.Fatalf("Warns = %d，应为 2（模式/level/窗口三重过滤）：%+v", len(col.Warns), col.Warns)
+	}
+	if col.WarnTruncated {
+		t.Fatal("未达上限不应标记截断")
 	}
 
 	o := options{warnPatterns: defaultWarnPatterns, warnMaxCount: 0}
@@ -65,11 +69,32 @@ func TestWarnPatrolCollectAndVerdict(t *testing.T) {
 		}
 	}
 
-	// 自定义模式：不命中模式出 0 条 PASS 行；INFO 文本不得凑数。
-	rows = benchWarnPatrol(col, options{warnPatterns: "open session slow, totally-absent", warnMaxCount: 0})
+	// 自定义模式：采集期按该模式过滤后，不命中的行出 0 条 PASS 行。
+	col2, err := collectLogDir(dir, 72*time.Hour, now, parseWarnPatterns("open session slow, totally-absent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(col2.Warns) != 1 {
+		t.Fatalf("自定义模式入池 = %d，应为 1：%+v", len(col2.Warns), col2.Warns)
+	}
+	rows = benchWarnPatrol(col2, options{warnPatterns: "open session slow, totally-absent", warnMaxCount: 0})
 	if len(rows) != 2 || rows[0].N != 1 || rows[0].Verdict != verdictFail ||
 		rows[1].N != 0 || rows[1].Verdict != verdictPass {
 		t.Fatalf("自定义模式判定不符：%+v", rows)
+	}
+}
+
+func TestWarnPatrolTruncatedIsLoud(t *testing.T) {
+	// 池截断 = 读数不完整：必须追加 FAIL 行显式化，绝不允许静默 PASS
+	//（2026-10-15 实测事故：全量留档被 6.1 万条噪音吃满上限 → 168h 巡检假 PASS）。
+	col := &logCollect{FilesParsed: 1, WarnTruncated: true}
+	rows := benchWarnPatrol(col, options{warnPatterns: defaultWarnPatterns, warnMaxCount: 0})
+	if len(rows) != 3 {
+		t.Fatalf("应为 2 模式行 + 1 截断行，实际 %d：%+v", len(rows), rows)
+	}
+	last := rows[len(rows)-1]
+	if last.Verdict != verdictFail || !strings.Contains(last.Metric, "截断") {
+		t.Fatalf("截断行应 FAIL 且点名截断：%+v", last)
 	}
 }
 

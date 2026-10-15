@@ -28,7 +28,7 @@ go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json  
 | M6 | 切 tab 渲染 render（`tab-switch`） | P95 < 150ms | 任务 196 判定线（`tab_timing.go` `slowTabSwitchLogMs=150`，越线才落日志则取同值作门） | `frontend tab switch render` |
 | M7 | transcript 首帧 / switch-tab summary（`tab-switch`，OBSERVE） | 无 | tasklist 无数值验收 | `frontend transcript first frame`、`frontend switch-tab summary` |
 | M8 | 后端 stage 越线普查（`tab-switch`，OBSERVE） | 普通 stage 150ms / switch-out 50ms（越线才落行） | 任务 196 | `desktop: tab switch timing` 按 stage 归并计数 |
-| M9 | WARN 巡检（`warn-patrol`） | 每模式 ≤0 条（`-warn-max-count` 可配） | 任务 414 阶段 4（heartbeat WARN 巡检；默认模式 = 任务书点名 `slow switch stage`=196 慢线面、`cold cache compact failed`=压缩失败面） | `desktop.log` 全部 `level=WARN` 行按 `-warn-patterns` 子串匹配计数 |
+| M9 | WARN 巡检（`warn-patrol`） | 每模式 ≤0 条（`-warn-max-count` 可配） | 任务 414 阶段 4（heartbeat WARN 巡检；默认模式 = 任务书点名 `slow switch stage`=196 慢线面、`cold cache compact failed`=压缩失败面） | 窗口内 `level=WARN` 且命中 `-warn-patterns` 的行（**采集期按模式过滤入池**；池截断追加显式 FAIL 行，绝不静默假 PASS） |
 
 阈值均可 CLI 覆盖：`-boot-hot-max-ms`、`-open-topic-max-ms`、
 `-render-max-ms`、`-first-response-max-s`、`-boot-hot-budget-ms`、
@@ -59,8 +59,11 @@ go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json  
   P95 百分比，恶化 ≥ `-trend-worse-pct`（默认 10%）标 `↑慢化`；计数行
   （census/WARN）按 n 对比，增多即标 `↑增多`。任一侧无样本不出行。趋势段
   **只报告、不改退出码**；上期文件缺失/损坏降级为 stderr 提示。
-- **`warn-patrol`**（M9）：窗口内全部 `level=WARN` 行按可配模式计数，
-  超 `-warn-max-count`（默认 0）即 FAIL，日志缺失明示 N/A。
+- **`warn-patrol`**（M9）：窗口内命中 `-warn-patterns` 的 `level=WARN` 行计数
+  （**采集期按模式过滤**——2026-10-15 实测教训：全量留档时 168h 窗 6.1 万条
+  `config: unknown key` 噪音会先吃满采集上限，把慢 switch 行挤出池子造成
+  假 PASS），超 `-warn-max-count`（默认 0）即 FAIL；池截断追加 FAIL 行
+  显式「读数不完整」，日志缺失明示 N/A。
 - **heartbeat 周任务**：`%APPDATA%\reasonix\heartbeat-tasks.json` 的
   `ebdd-weekly-experience`（168h）按「跑 `-window 168h -json` + `-trend 上期`
   → 贴读数/趋势/WARN 巡检」执行，报告落 `docs/report/`；改该文件必须

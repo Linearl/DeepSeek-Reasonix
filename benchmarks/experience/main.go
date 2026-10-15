@@ -124,8 +124,8 @@ func main() {
 
 	var results []metricResult
 
-	// 日志侧四项共享一次采集。
-	col, err := collectLogDir(o.logDir, o.window, now)
+	// 日志侧共享一次采集（巡检模式在采集期过滤入池，与 -warn-patterns 同源）。
+	col, err := collectLogDir(o.logDir, o.window, now, parseWarnPatterns(o.warnPatterns))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "读取日志目录失败（%v）；日志侧四项不可用，仅尝试会话侧\n", err)
 		col = &logCollect{Window: o.window}
