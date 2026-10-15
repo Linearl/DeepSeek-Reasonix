@@ -160,8 +160,14 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	// Receipts back off sub-critical retries only. A failed summary never
 	// fabricates a digest; at the ceiling the lossy truncation rescue is the
 	// last resort, so the turn still leaves with a view the provider accepts.
-	if blocked, _ := a.contextMaintenanceBlocked(inputHash, viewEst); blocked && policy.Trigger != CompactionTriggerManual &&
+	if blocked, reason := a.contextMaintenanceBlocked(inputHash, viewEst); blocked && policy.Trigger != CompactionTriggerManual &&
 		policy.Trigger != CompactionTriggerOverflow && est < hard {
+		// 任务912 P1-c: a backed-off view is still the whole transcript. Once
+		// the failure is a pattern the turn must not leave with it — cap it to
+		// the sliding window instead of handing back the full history.
+		if capped, ok := m.slidingWindowFallback(policy, errors.New(reason)); ok {
+			return capped, nil
+		}
 		return prepared, nil
 	}
 	if est < fold {
@@ -291,6 +297,12 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
 		return m.rescueByTruncation(policy, hard, errors.New(reason))
 	}
 	slog.Info("agent: context maintenance paused below hard ceiling", "reason", reason)
+	// 任务912 P1-c: the ladder exhausted and the view is still the whole
+	// transcript. 永不全量 — after N consecutive failures the turn leaves with
+	// the capped sliding window, never the full canonical history.
+	if capped, ok := m.slidingWindowFallback(policy, slidingWindowCapCause(errors.New(reason))); ok {
+		return capped, nil
+	}
 	return result, nil
 }
 
@@ -387,6 +399,12 @@ func (m ContextManager) rescueOrFail(policy ContextPreparePolicy, hard, est int,
 	if !overCeiling {
 		if policy.Trigger == CompactionTriggerManual {
 			return PreparedContext{}, cause
+		}
+		// 任务912 P1-c: below the ceiling a failed summary used to hand the turn
+		// the whole transcript, every time, forever. One failure is recoverable;
+		// after N in a row the view is capped to the sliding window instead.
+		if capped, ok := m.slidingWindowFallback(policy, slidingWindowCapCause(cause)); ok {
+			return capped, nil
 		}
 		return m.currentPrepared(), nil
 	}

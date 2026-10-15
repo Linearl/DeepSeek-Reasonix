@@ -77,6 +77,7 @@ type Messages struct {
 	PlannerPlanNotApproved           string
 	PlannerPlanOnly                  string
 	CredentialExpiredAlert           string // 任务912 P1-d: HTTP 401 key rejection, only the user can fix it
+	SlidingWindowCap                 string // 任务912 P1-c: compaction kept failing, so the context was clipped
 	CapabilityProxyFmt               string // %s = display name, %s = resolved target
 	ReceiptVerified                  string // end-of-turn receipt, nothing unproven
 	ReceiptGapsHeader                string // end-of-turn receipt, header above the unproven list

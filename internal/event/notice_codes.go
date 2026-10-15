@@ -98,3 +98,10 @@ const (
 const (
 	NoticeCodeCredentialExpired = "credential_expired"
 )
+
+// 任务912 P1-c: compaction failed N times in a row, so the turn's context was
+// clipped to a sliding window instead of going out full. A warn notice, not a
+// log line: the model just lost history and the user should be able to see why.
+const (
+	NoticeCodeSlidingWindowCap = "sliding_window_cap"
+)

@@ -53,6 +53,7 @@ var Chinese = Messages{
 	PlannerPlanNotApproved:           "计划未获批准，未执行任何操作。回复即可继续。",
 	PlannerPlanOnly:                  "计划已就绪；本次请求明确不包含执行。",
 	CredentialExpiredAlert:           "服务商密钥被拒绝（HTTP 401）：密钥已失效或过期。请更新 .env（或环境变量）中的密钥后重试，或运行 `reasonix setup`。",
+	SlidingWindowCap:                 "上下文已裁剪：压缩连续失败，为保证请求不超出模型窗口，最早的历史已被丢弃。内容没有删除，压缩恢复后会重新回来。",
 	CapabilityProxyFmt:               "能力代理：%s → %s",
 	ReceiptVerified:                  "没有未经验证的部分",
 	ReceiptGapsHeader:                "未验证:",

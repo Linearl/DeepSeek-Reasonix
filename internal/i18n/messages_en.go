@@ -52,6 +52,7 @@ var English = Messages{
 	PlannerPlanNotApproved:           "Plan not approved; nothing was executed. Reply to continue.",
 	PlannerPlanOnly:                  "Plan ready; the request explicitly excluded execution.",
 	CredentialExpiredAlert:           "Provider key rejected (HTTP 401): the credential is invalid or expired. Update it in .env (or your environment) and retry, or run `reasonix setup`.",
+	SlidingWindowCap:                 "Context clipped: compaction kept failing, so the oldest history was dropped to keep this request inside the model's window. Nothing was deleted — it returns once compaction recovers.",
 	CapabilityProxyFmt:               "capability proxy: %s → %s",
 	ReceiptVerified:                  "nothing left unverified",
 	ReceiptGapsHeader:                "not verified:",
