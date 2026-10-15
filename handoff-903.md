@@ -138,6 +138,7 @@ agent 生成「隔离 HOME 复跑」命令：第一句 `$home = Join-Path $env:T
   - 首跑 FAIL（日志被 tail 截断未留失败名；当时机器上并行多个 .test.exe 进程）；
   - 第二次全量：**ok**（334.8s）；
   - 第三次全量（-count=1）：仅 `TestBashHereDocIssue5624CommandsReturnPromptly` FAIL（5.55s）——**时序断言**测试（要求 2s 内返回），单独复跑 PASS（3.44s，两个子用例 0.88s/0.78s）；实测护栏对该 heredoc 命令的单次开销 **10.19µs**（临时基准用例，已删），远低于其 2s 预算 → 判定为满负载下的既有偶发，非护栏引入。
-  - 与护栏相关的三个新测试组（gate/bounded/golden）在**每次全量跑中均 PASS**。
+  - 与护栏相关的三个新测试组（gate/bounded/golden）在**每次全量跑中均 PASS**；
+  - 第四次全量（-count=1，收尾确认）：**ok（319.2s，零失败）**。合计 4 次全量：2 次全绿、1 次失败名未知（并行负载）、1 次已定性为时序偶发。
 - `go vet` 三包：**clean**。
 - status 净；提交见 git log（5 个「903 」开头 commit）。
