@@ -6,13 +6,14 @@ package main
 // turn ledger，对照 tasklist 各任务验收阈值输出 P50/P95 读数与 PASS/FAIL。
 // 一键重跑：
 //
-//	go run ./benchmarks/experience                      # 默认窗口 72h，全部 4 项
-//	go run ./benchmarks/experience -bench open-topic    # 只跑一项
+//	go run ./benchmarks/experience                      # 默认窗口 72h，全部 5 项
+//	go run ./benchmarks/experience -bench open-topic    # boot|open-topic|tab-switch|first-response|warn-patrol
 //	go run ./benchmarks/experience -window 240h -json out.json
+//	go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json   # 阶段 4 周趋势
 //
 // 指标、阈值与 tasklist 出处的完整清单见同目录 README.md。
 // 本命令只读日志与会话文件，不写任何产品状态；任一门越线以退出码 1 结束，
-// 可直接挂进批次阶段门或 heartbeat（阶段 4 的聚合入口是 -json）。
+// 可直接挂进批次阶段门或 heartbeat（阶段 4：-json/-trend 聚合 + WARN 巡检）。
 
 import (
 	"encoding/json"
@@ -49,6 +50,10 @@ type options struct {
 	renderMaxMS         int64
 	firstResponseMaxSec float64
 	jsonOut             string
+	warnPatterns        string  // 阶段 4：WARN 巡检模式（逗号分隔子串；空=关闭）
+	warnMaxCount        int     // 阶段 4：每模式允许条数（超出即 FAIL）
+	trend               string  // 阶段 4：上期读数 JSON（周趋势对比）
+	trendWorsePct       float64 // 阶段 4：P95 恶化百分比慢化线
 }
 
 // verdict 是一项指标的判定结论。
@@ -82,13 +87,17 @@ func main() {
 	flag.StringVar(&o.logDir, "log-dir", "", "desktop.log 所在目录（默认 <home>/logs/desktop）")
 	flag.StringVar(&o.sessionsDir, "sessions-dir", "", "turn ledger 目录（默认 <home>/sessions + <home>/projects/*/sessions）")
 	flag.DurationVar(&o.window, "window", defaultWindow, "统计窗口（只读窗口内样本）")
-	flag.StringVar(&o.bench, "bench", "all", "boot|open-topic|tab-switch|first-response|all")
+	flag.StringVar(&o.bench, "bench", "all", "boot|open-topic|tab-switch|first-response|warn-patrol|all")
 	flag.Int64Var(&o.bootHotBudgetMS, "boot-hot-budget-ms", defaultBootHotBudgetMS, "热路径分类的重组相合计预算")
 	flag.Int64Var(&o.bootHotMaxMS, "boot-hot-max-ms", defaultBootHotMaxMS, "热路径 boot total 阈值（363①）")
 	flag.Int64Var(&o.openTopicMaxMS, "open-topic-max-ms", defaultOpenTopicMaxMS, "打开历史对话端到端阈值（363⑥）")
 	flag.Int64Var(&o.renderMaxMS, "render-max-ms", defaultRenderMaxMS, "切 tab 渲染阈值（196 慢线）")
 	flag.Float64Var(&o.firstResponseMaxSec, "first-response-max-s", defaultFirstResponseMaxSec, "首响 P95 阈值秒数（370，可配）")
 	flag.StringVar(&o.jsonOut, "json", "", "把读数写成 JSON 文件（阶段 4 聚合的入口）")
+	flag.StringVar(&o.warnPatterns, "warn-patterns", defaultWarnPatterns, "WARN 巡检模式（逗号分隔，msg+detail 子串；空=关闭巡检）")
+	flag.IntVar(&o.warnMaxCount, "warn-max-count", 0, "WARN 巡检每模式允许条数（超出即 FAIL，可配）")
+	flag.StringVar(&o.trend, "trend", "", "上期读数 JSON（阶段 4 周趋势对比；只报告，不影响退出码）")
+	flag.Float64Var(&o.trendWorsePct, "trend-worse-pct", 10, "趋势慢化线：P95 恶化百分比 ≥ 该值标 ↑（计数行增多即标，可配）")
 	flag.Parse()
 
 	if o.home == "" {
@@ -101,10 +110,10 @@ func main() {
 	want := map[string]bool{}
 	if o.bench != "all" {
 		switch o.bench {
-		case "boot", "open-topic", "tab-switch", "first-response":
+		case "boot", "open-topic", "tab-switch", "first-response", "warn-patrol":
 			want[o.bench] = true
 		default:
-			fmt.Fprintf(os.Stderr, "未知 -bench %q（可选 boot|open-topic|tab-switch|first-response|all）\n", o.bench)
+			fmt.Fprintf(os.Stderr, "未知 -bench %q（可选 boot|open-topic|tab-switch|first-response|warn-patrol|all）\n", o.bench)
 			os.Exit(2)
 		}
 	}
@@ -135,8 +144,20 @@ func main() {
 	if len(want) == 0 || want["first-response"] {
 		results = append(results, benchFirstResponse(o, now)...)
 	}
+	if len(want) == 0 || want["warn-patrol"] {
+		results = append(results, benchWarnPatrol(col, o)...)
+	}
 
 	printResults(results)
+
+	// 阶段 4：周趋势对比（只报告；上期文件缺失/损坏不改退出码，stderr 提示）。
+	if o.trend != "" {
+		if prev, err := loadPrevResults(o.trend); err != nil {
+			fmt.Fprintf(os.Stderr, "趋势对比跳过：%v\n", err)
+		} else {
+			printTrend(o.trend, buildTrendRows(prev, results, o.trendWorsePct), o.trendWorsePct, o.window)
+		}
+	}
 
 	if o.jsonOut != "" {
 		b, err := json.MarshalIndent(results, "", "  ")
@@ -419,7 +440,12 @@ func printResults(rs []metricResult) {
 	fmt.Println("─", strings.Repeat("─", 100))
 	for _, r := range rs {
 		readout := "—"
-		if r.N > 0 {
+		switch {
+		case r.Bench == "warn-patrol":
+			if r.N > 0 {
+				readout = "条 WARN 行"
+			}
+		case r.N > 0:
 			readout = fmt.Sprintf("P50=%.0fms P95=%.0fms Max=%.0fms", r.P50MS, r.P95MS, r.MaxMS)
 		}
 		fmt.Printf("[%s] %s\n", r.Verdict, r.Metric)

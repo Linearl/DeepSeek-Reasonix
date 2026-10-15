@@ -40,6 +40,18 @@ type censusRow struct {
 	MaxMS int64
 }
 
+// warnLine 是窗口内一条 level=WARN 日志的最小留档（阶段 4 WARN 巡检用：
+// 模式匹配在 msg+detail 上做，模式本身由 -warn-patterns 配置）。
+type warnLine struct {
+	At     time.Time
+	Msg    string
+	Detail string
+}
+
+// warnCollectCap 限制一轮采集留存的 WARN 行数（防极端场景内存膨胀；
+// 实测日常 72h 窗口几十条，20000 是宽松上限不是采样）。
+const warnCollectCap = 20000
+
 // logCollect 是一轮日志采集的全部产物。
 type logCollect struct {
 	Window          time.Duration
@@ -55,7 +67,8 @@ type logCollect struct {
 	SwitchRender    []sample // frontend tab switch render
 	FirstFrame      []sample // frontend transcript first frame
 	BackendCensus   []censusRow
-	backendRaw      []sample // 后端 stage 行（待归并为普查）
+	Warns           []warnLine // 窗口内全部 level=WARN 行（阶段 4 巡检池）
+	backendRaw      []sample   // 后端 stage 行（待归并为普查）
 }
 
 // collectLogDir 扫描目录内 desktop.log 与轮转文件（desktop.log.N，N 越大越旧），
@@ -121,6 +134,11 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 		return
 	}
 	c.LinesParsed++
+	// 阶段 4：WARN 行全量留档进巡检池（窗口过滤已在上面做过）；
+	// 模式匹配推迟到 benchWarnPatrol（-warn-patterns 用户可配）。
+	if ln.level == "WARN" && len(c.Warns) < warnCollectCap {
+		c.Warns = append(c.Warns, warnLine{At: ln.ts, Msg: ln.msg, Detail: ln.attrs["detail"]})
+	}
 	switch ln.msg {
 	case "desktop: runtime assembly hit":
 		// 363A 复用命中的直接证据：acquire 发生在 BuildWithAssembly 起步前，
