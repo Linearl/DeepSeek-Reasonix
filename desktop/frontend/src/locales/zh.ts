@@ -2841,7 +2841,7 @@ export const zh: Record<DictKey, string> = {
 "settings.tabManagement.subHint": "卡内为两个独立开关——各留各的语义与默认值，未动过的偏好原样沿用。",
 // 任务 742：心跳任务后台化（默认关 = 742 前的可见标签行为）。
 "settings.heartbeatBackground": "心跳任务后台化",
-"settings.heartbeatBackgroundHint": "让心跳计划任务不占用标签栏：运行在后台打开对应话题、提交提示词后把会话转入后台驻留（任务 264 detached 语义）——回合继续跑完，标签栏不留新标签。你自己打开过的话题永远不会被收起；后台驻留期间机器人通道转发照常工作，下一次运行会自动接回。实验特性，默认关闭——关闭时每次运行保持原行为（话题标签照常留在标签栏）。保存后对下一次计划运行生效，无需重启。",
+"settings.heartbeatBackgroundHint": "控制心跳计划任务在标签栏的可见方式（实验特性，默认关闭）。开启：运行时仍会短暂打开对应话题标签——提示词要通过它提交——提交后立即转入后台驻留（任务 264 detached 语义），回合在后台继续跑，该标签在回合结束、界面刷新时自动移出标签栏；即「执行期间短暂出现、不常驻」，而非全程不出现。你自己打开过的话题永远不会被收起；后台驻留期间机器人通道转发照常工作，下一次运行会自动接回。关闭：每次运行保持原行为——话题标签打开后照常留在标签栏。保存后对下一次计划运行生效，无需重启。",
 "settings.heartbeatBackground.on": "开",
 "settings.heartbeatBackground.off": "关",
 "settings.subagentDetail": "子代理详情视图",

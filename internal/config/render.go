@@ -419,7 +419,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_tab_compress = %v   # desktop: tiered tab-width reduction once >8 tabs are open, floor 84px (task 506; settings save re-applies, no restart)\n", c.Desktop.ExperimentalTabCompress)
 		// Task 742: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123 lesson).
-		fmt.Fprintf(&b, "experimental_heartbeat_background = %v   # desktop: heartbeat runs park their tab detached (task 264 semantics) after submit so nothing appears in the tab strip (task 742; default off = pre-742 visible-tab behaviour; engine reads at call time, next run applies)\n", c.Desktop.ExperimentalHeartbeatBackground)
+		fmt.Fprintf(&b, "experimental_heartbeat_background = %v   # desktop: heartbeat runs open the topic tab only to submit the prompt, then park it detached (task 264 semantics) — the tab is removed from the strip when the run finishes instead of staying (task 742; default off = pre-742 visible-tab behaviour; engine reads at call time, next run applies)\n", c.Desktop.ExperimentalHeartbeatBackground)
 		// Task 507: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123 lesson).
 		fmt.Fprintf(&b, "experimental_subagent_detail = %v   # desktop: subagent dock row click opens the read-only detail view; off keeps the inline preview + widen affordance (task 507; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSubagentDetail)

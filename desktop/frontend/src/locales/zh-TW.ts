@@ -2230,7 +2230,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.tabManagement.subHint": "卡內為兩個獨立開關——各留各的語義與預設值，未動過的偏好原樣沿用。",
 // 任務 742：心跳任務背景化（預設關 = 742 前的可見標籤行為）。
 "settings.heartbeatBackground": "心跳任務背景化",
-"settings.heartbeatBackgroundHint": "讓心跳排程任務不佔用標籤欄：執行在背景開啟對應話題、提交提示詞後把會話轉入背景駐留（任務 264 detached 語義）——回合繼續跑完，標籤欄不留新標籤。你自己開啟過的話題永遠不會被收起；背景駐留期間機器人通道轉發照常運作，下一次執行會自動接回。實驗特性，預設關閉——關閉時每次執行保持原行為（話題標籤照常留在標籤欄）。儲存後對下一次排程執行生效，無需重啟。",
+"settings.heartbeatBackgroundHint": "控制心跳排程執行在標籤列的可見方式（實驗特性，預設關閉）。開啟：執行時仍會短暫打開對應話題標籤——提示詞透過它提交——提交後立即轉入背景駐留（任務 264 detached 語義），回合在背景繼續跑，該標籤在回合結束、介面重新整理時自動移出標籤列；即「執行期間短暫出現、不常駐」，而非全程不出現。你自己開啟過的話題永遠不會被收起；背景駐留期間機器人通道轉發照常運作，下一次執行會自動接回。關閉：每次執行保持原行為——話題標籤打開後照常留在標籤列。儲存後對下一次排程執行生效，無需重啟。",
 "settings.heartbeatBackground.on": "開",
 "settings.heartbeatBackground.off": "關",
 "settings.subagentDetail": "子代理詳情視圖",
