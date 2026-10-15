@@ -3,7 +3,7 @@
 // 任务 428：ask 面板投递门（C1 残留 cancel 不吞注入 / C2 激活清空护栏）。
 // 纯逻辑测试——判定函数与 reducer 状态迁移，不依赖 DOM/渲染。
 
-import { judgeAskArrival, decideActivationPrompt } from "../lib/askPanelGate";
+import { decideActivationPrompt, judgeAskArrival, shouldReplayPendingPromptsAfterHydrate } from "../lib/askPanelGate";
 import { initialState, reducer } from "../lib/useController";
 import type { WireEvent } from "../lib/types";
 
@@ -175,6 +175,14 @@ const replayedSettledMcp = reducer(settledMcp, {
   e: { kind: "mcp_interaction", turnId: "turn-1", itemId: "mcp-1", mcpInteraction: { id: "mcp-1" } } as WireEvent,
 });
 eq(replayedSettledMcp.mcpInteraction, undefined, "469③ 回归：已处置卡的延迟重放不复活");
+
+// ---------- 任务178：hydrate 尾部挂起 prompt 重放判定 ----------
+
+eq(shouldReplayPendingPromptsAfterHydrate(undefined), true, "178 无本地状态 → 向后端重问（重放只发真实挂起，无僵尸风险）");
+eq(shouldReplayPendingPromptsAfterHydrate({}), true, "178 本地无任何面板 → 需要重放");
+eq(shouldReplayPendingPromptsAfterHydrate({ ask: { id: "ask-1" } }), false, "178 本地已有 ask 面板 → 不打扰（避免无谓重锚）");
+eq(shouldReplayPendingPromptsAfterHydrate({ approval: { id: "appr-1" } }), false, "178 本地已有审批面板 → 不打扰");
+eq(shouldReplayPendingPromptsAfterHydrate({ mcpInteraction: { id: "mcp-1" } }), false, "178 本地已有 mcp 核实卡 → 不打扰");
 
 // ---------- 汇总 ----------
 

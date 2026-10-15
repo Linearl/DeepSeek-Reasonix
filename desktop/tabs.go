@@ -1927,6 +1927,21 @@ func (a *App) replayPendingPromptsAfterRuntimeAttach(tabID string, sink *tabEven
 		a.emitRuntimeEvent("runtime:rebuilt", tabID, epoch)
 	}
 	ctrl.ReplayPendingPrompts()
+	// 任务178（打开后才计时）: the panel frames are out — tell every pending ask
+	// the view came back, so a timed auto-decide window re-arms from this
+	// re-presentation instead of running out on a clock the backgrounded tab
+	// silently spent. Best-effort and narrow: only ask-kind prompts carry the
+	// signal, controllers without the notifier skip (capability assert), and
+	// the method itself is a no-op for unknown ids or untimed asks.
+	if reader, ok := ctrl.(interface{ PendingPromptIdentities() []control.PromptIdentity }); ok {
+		if notifier, ok := ctrl.(interface{ NotifyAskReattached(string) }); ok {
+			for _, identity := range reader.PendingPromptIdentities() {
+				if identity.Kind == control.PromptAsk {
+					notifier.NotifyAskReattached(identity.PromptID)
+				}
+			}
+		}
+	}
 }
 
 func (a *App) emitReady(ctx context.Context, tabID ...string) {

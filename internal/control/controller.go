@@ -509,6 +509,14 @@ type pendingAsk struct {
 	// with a drain-on-send so rapid toggles collapse to the last click.
 	// Non-nil only for the same reversible-timed class as interact/activity.
 	takeover chan bool
+	// reattach carries the 任务178 "the session was reopened and the panel is
+	// back on screen" signal (NotifyAskReattached). Buffered size 1; sent
+	// once per tab reopen from the desktop attach-replay hook, consumed by
+	// Ask's wait loops to re-arm a fresh window — 打开后才计时: closing the
+	// tab into the background must not spend the answer window the user
+	// never saw. Every ask carries it (the getter is nil-safe), but only the
+	// timed waits read it; attended asks ignore it.
+	reattach chan struct{}
 }
 
 type plannerSessionResetter interface {
@@ -3207,6 +3215,10 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	} else {
 		id, reply = c.approval.registerAsk(questions)
 	}
+	// 任务178: the reopen signal rides alongside registration — a tab that
+	// detaches mid-ask and re-attaches later delivers it via
+	// NotifyAskReattached so the timed waits can re-arm a fresh window.
+	reattachCh := c.approval.askReattachChannel(id)
 	c.registerOwnedPrompt(id, PromptAsk)
 
 	if !c.lockPromptFor(ctx, "question") {
@@ -3268,11 +3280,15 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// instead of the attended wait the grant promises.
 	var askTimeout <-chan time.Time
 	var askWait time.Duration
+	// askTimer stays in scope so the 任务178 reattach case below can re-arm the
+	// high-risk window in place; nil means this ask carries no timer (attended
+	// wait), and the reattach signal is then inert.
+	var askTimer *time.Timer
 	if c.autopilot && !reversibleAsk {
 		askWait = c.autopilotAskWaitFor()
-		t := time.NewTimer(askWait)
-		defer t.Stop()
-		askTimeout = t.C
+		askTimer = time.NewTimer(askWait)
+		defer askTimer.Stop()
+		askTimeout = askTimer.C
 	}
 
 	// Task 806 三要素 semantics for a reversible ask under autopilot: the panel
@@ -3419,6 +3435,20 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 				budgetTimer.Reset(hoverBudget)
 				timer.Reset(askWait)
 				log.Printf("[ask-panel] ask takeover released; auto-decide window re-armed for %s (task 849) turn=%s item=%s", askWait, turnID, id)
+			case <-reattachCh:
+				// 任务178（打开后才计时）: the session was reopened and the panel is
+				// back on screen. The window this backgrounded ask silently spent
+				// must not decide for a user who never saw it — park both timers
+				// (draining any concurrent expiry exactly like a takeover
+				// release) and re-arm a fresh window plus a fresh hover budget
+				// from the moment of re-presentation. One signal per reopen; the
+				// desktop attach hook sends at most one, so this cannot loop the
+				// window (任务844 的有界性保持).
+				parkTimers()
+				hoverDeadline = time.Now().Add(hoverBudget)
+				budgetTimer.Reset(hoverBudget)
+				timer.Reset(askWait)
+				log.Printf("[ask-panel] ask re-presented after session reopen; auto-decide window re-armed for %s (task 178) turn=%s item=%s", askWait, turnID, id)
 			case <-timer.C:
 				// A hover reset may have landed together with the expiry;
 				// honor it rather than answering under the user's eyes.
@@ -3441,44 +3471,66 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 		}
 	}
 
-	select {
-	case ans := <-reply:
-		return ans, nil
-	case <-askTimeout:
-		c.cancelOwnedPrompt(id)
-		c.expirePendingCard(id)
-		if c.autopilotAskTimeoutEnabled {
-			// Task 477 判据锚: one grep-able log line plus one notice, so
-			// "did the ask timeout fire and what did it decide" is answerable
-			// from the log and the transcript alone. The refusal travels as
-			// the ask's answers, so this turn ends like any other answered
-			// ask and the goal loop keeps driving the run forward.
-			log.Printf("[autopilot-ask] high-risk question unanswered after %s; refused and the run continues (task 477) turn=%s item=%s", askWait, turnID, id)
+	// 任务178: looped so a session-reopen signal can re-arm askTimeout in place
+	// (打开后才计时) before the wait continues; every non-reattach case returns,
+	// so the loop is behavior-identical for callers that never reopen.
+	for {
+		select {
+		case ans := <-reply:
+			return ans, nil
+		case <-askTimeout:
+			c.cancelOwnedPrompt(id)
+			c.expirePendingCard(id)
+			if c.autopilotAskTimeoutEnabled {
+				// Task 477 判据锚: one grep-able log line plus one notice, so
+				// "did the ask timeout fire and what did it decide" is answerable
+				// from the log and the transcript alone. The refusal travels as
+				// the ask's answers, so this turn ends like any other answered
+				// ask and the goal loop keeps driving the run forward.
+				log.Printf("[autopilot-ask] high-risk question unanswered after %s; refused and the run continues (task 477) turn=%s item=%s", askWait, turnID, id)
+				c.sink.Emit(event.Event{
+					Kind:   event.Notice,
+					Level:  event.LevelWarn,
+					Code:   "autopilot_ask_timeout",
+					Text:   "autopilot · ask — no human answered within " + askWait.String() + "; high-risk question refused, run continues with the safe default",
+					Detail: "the unattended run declines destructive/outward-facing/credential actions instead of deciding them; it keeps working on the rest of the goal (task 477)",
+				})
+				answers := autopilotAskTimeoutRefusalAnswers(questions, askWait)
+				// Task 544: the timeout refusal is a host auto-answer, so a
+				// terminal stop later in the same turn can still be resumed.
+				c.markTurnAskAnswered(askDecisionSummary(questions, answers))
+				return answers, nil
+			}
 			c.sink.Emit(event.Event{
 				Kind:   event.Notice,
 				Level:  event.LevelWarn,
-				Code:   "autopilot_ask_timeout",
-				Text:   "autopilot · ask — no human answered within " + askWait.String() + "; high-risk question refused, run continues with the safe default",
-				Detail: "the unattended run declines destructive/outward-facing/credential actions instead of deciding them; it keeps working on the rest of the goal (task 477)",
+				Text:   "autopilot · ask — refused: high-risk question unanswered after " + askWait.String(),
+				Detail: "the unattended run stopped instead of deciding destructive/outward-facing/credential actions for the user",
 			})
-			answers := autopilotAskTimeoutRefusalAnswers(questions, askWait)
-			// Task 544: the timeout refusal is a host auto-answer, so a
-			// terminal stop later in the same turn can still be resumed.
-			c.markTurnAskAnswered(askDecisionSummary(questions, answers))
-			return answers, nil
+			c.expirePendingCard(id)
+			return nil, ErrAutopilotAskUnanswered
+		case <-waitCtx.Done():
+			c.cancelOwnedPrompt(id)
+			c.expirePendingCardErr(id, waitCtx.Err())
+			return nil, waitCtx.Err()
+		case <-reattachCh:
+			// 任务178（打开后才计时）: the session was reopened with this panel back
+			// on screen — give the high-risk wait a fresh window from the
+			// re-presentation, draining a concurrently-fired expiry first (same
+			// Timer.Reset dance as the timer cases above). Attended asks have no
+			// timer (askTimer == nil) and simply keep waiting for the user.
+			if askTimer == nil {
+				continue
+			}
+			if !askTimer.Stop() {
+				select {
+				case <-askTimer.C:
+				default:
+				}
+			}
+			askTimer.Reset(askWait)
+			log.Printf("[ask-panel] ask re-presented after session reopen; high-risk wait re-armed for %s (task 178) turn=%s item=%s", askWait, turnID, id)
 		}
-		c.sink.Emit(event.Event{
-			Kind:   event.Notice,
-			Level:  event.LevelWarn,
-			Text:   "autopilot · ask — refused: high-risk question unanswered after " + askWait.String(),
-			Detail: "the unattended run stopped instead of deciding destructive/outward-facing/credential actions for the user",
-		})
-		c.expirePendingCard(id)
-		return nil, ErrAutopilotAskUnanswered
-	case <-waitCtx.Done():
-		c.cancelOwnedPrompt(id)
-		c.expirePendingCardErr(id, waitCtx.Err())
-		return nil, waitCtx.Err()
 	}
 }
 
@@ -3529,6 +3581,22 @@ func (c *Controller) NotifyAskTakeover(id string, taking bool) bool {
 		return false
 	}
 	return c.approval.notifyAskTakeover(id, taking)
+}
+
+// NotifyAskReattached (任务178) reports that the session was reopened and this
+// pending ask's panel is back on screen: every timed wait — the reversible
+// auto-decide window and its hover budget, the high-risk autopilot window —
+// re-arms a fresh window from this moment (打开后才计时), so a tab closed into
+// the background never spends an answer window the user never saw. Attended
+// asks have no timer and consume the signal as a no-op, which is why the
+// desktop attach hook may fire it for any ask ID without gating on risk tier.
+// One re-arm per delivered signal (buffered slot, non-blocking send); unknown
+// or expired IDs are ignored.
+func (c *Controller) NotifyAskReattached(id string) {
+	if c == nil || id == "" {
+		return
+	}
+	c.approval.notifyAskReattached(id)
 }
 
 // SetExplicitAskGranted sets the task-806b explicit ask grant: the user's

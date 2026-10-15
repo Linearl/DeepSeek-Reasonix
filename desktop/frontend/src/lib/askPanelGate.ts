@@ -192,3 +192,27 @@ export function describeAskReceipt(
   else parts.push("delivery_ms=absent");
   return { latencyMs, detail: parts.join(" ") };
 }
+
+/**
+ * 任务178 重开重弹（纯判定）：hydrate 收尾时是否需要向后端重问一次挂起 prompt。
+ *
+ * 转后台期间挂起的 ask，其 ask_request 可能先于本 tab 的状态/meta 建立而到达，
+ * 被 epoch/generation fence 或激活清场吞掉；此后若各路对账都没补上这一发，
+ * 面板就永远弹不出来（用户实测现场：只剩「中断的工具调用记录 ask·结果未知」
+ * 卡片）。hydrate 收尾是时序上最靠后的权威时刻——历史已落地、状态已存在——
+ * 在这里补一次重放（复用 ReplayPendingPrompts 通道，不另起炉灶）。
+ *
+ * 判定与428 同款抽纯函数：本地已有任一决策面板就不再打扰（避免无谓重锚新鲜
+ * 度锚点）；没有面板就放行重放——重放只重发当前 controller 真实挂起的 prompt，
+ * 后端无挂起时是纯 no-op，无僵尸风险。
+ */
+export interface HydratePromptView {
+  approval?: unknown;
+  ask?: unknown;
+  mcpInteraction?: unknown;
+}
+
+export function shouldReplayPendingPromptsAfterHydrate(local: HydratePromptView | undefined): boolean {
+  if (!local) return true;
+  return !local.approval && !local.ask && !local.mcpInteraction;
+}
