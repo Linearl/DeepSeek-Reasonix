@@ -85,7 +85,9 @@ export const LAB_LIGHT_KEYS = {
   experimentalPathRules: (s: SettingsView) => Boolean(s.experimentalPathRules),
   experimentalOrphanHandling: (s: SettingsView) => Boolean(s.experimentalOrphanHandling),
   experimentalLocalServer: (s: SettingsView) => Boolean(s.experimentalLocalServer),
-  experimentalToolOptimizations: (s: SettingsView) => Boolean(s.experimentalToolOptimizations),
+  // 任务 915：键未写入（null/undefined）按面板层默认开判亮——与卡片开态
+  // 渲染（?? true）同源；首载写入 true 后即按显式值判。
+  experimentalToolOptimizations: (s: SettingsView) => s.experimentalToolOptimizations ?? true,
   collabGuidanceMerge: (s: SettingsView) => Boolean(s.collabGuidanceMerge),
   // ── derived / non-boolean reads（判亮规则收拢在谓词里）──────────
   /** sandbox.optimistic_write（嵌套字段）。 */

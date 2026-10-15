@@ -279,6 +279,18 @@ export function SettingsPanel({
   useEffect(() => {
     void reload();
   }, [reload]);
+  // 任务 915：工具优化族键缺省时（后端 *bool nil → JSON null）面板按默认开
+  // 渲染，首载即写入 true 落盘（write-on-show，670 AcknowledgeForkNotice
+  // 同款 best-effort：失败不打断设置页，下次打开重试；显式关恒为 false
+  // 不触发）。
+  const toolOptimizationsSeeded = useRef(false);
+  useEffect(() => {
+    if (toolOptimizationsSeeded.current || !s || s.experimentalToolOptimizations != null) return;
+    toolOptimizationsSeeded.current = true;
+    void app.SetExperimentalToolOptimizations(true)
+      .then(() => setS((prev) => (prev ? { ...prev, experimentalToolOptimizations: true } : prev)))
+      .catch((e) => console.warn("[settings] seed toolOptimizations default-on failed:", e));
+  }, [s]);
   const refreshModelApplication = useCallback(async () => {
     const seq = ++modelApplicationSeq.current;
     try {
@@ -4979,7 +4991,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 {[false, true].map((on) => (
                   <button
                     key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalToolOptimizations) === on ? " set-seg__btn--on" : ""}`}
+                    className={`set-seg__btn${(s.experimentalToolOptimizations ?? true) === on ? " set-seg__btn--on" : ""}`}
                     disabled={busy}
                     onClick={() => void apply(async () => {
                       await app.SetExperimentalToolOptimizations(on);

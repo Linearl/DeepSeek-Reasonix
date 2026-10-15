@@ -2584,8 +2584,8 @@ export interface DesktopStartupSettingsView {
   experimentalOpenCodeGoUsage?: boolean;
   /** Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped; ships off; restart to apply. */
   experimentalFullAccess?: boolean;
-  /** 任务 603: 工具优化 family (edit readBack + gate linkage); ships off; restart to apply. */
-  experimentalToolOptimizations?: boolean;
+  /** 任务 603: 工具优化 family (edit readBack + gate linkage + 任务 915 multi_edit 直注); restart to apply. 任务 915：*bool——键未写入时 JSON 报 null，面板默认开渲染并自动写入 true。 */
+  experimentalToolOptimizations?: boolean | null;
   /** Task 789: relaxed edit evidence gate (工具优化 companion); ships off; restart to apply. Task 815: settings-page entry. */
   experimentalEditEvidenceRelaxed?: boolean;
   /** Task 377: lifecycle noise triage (crash-pending residue); boot snapshot; restart to apply. */

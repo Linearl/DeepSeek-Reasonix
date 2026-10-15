@@ -126,9 +126,10 @@ export interface SettingsView {
   experimentalOpenCodeGoUsage?: boolean;
   // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
   experimentalFullAccess?: boolean;
-  // 任务 603: 工具优化 family (edit readBack + evidence gate linkage; ships
-  // off — byte-identical tool surface; restart to apply).
-  experimentalToolOptimizations?: boolean;
+  // 任务 603: 工具优化 family (edit readBack + evidence gate linkage + 任务
+  // 915 multi_edit 直注; restart to apply). 任务 915：Go 侧 *bool——键未写入
+  // 时 JSON 报 null，面板按默认开渲染并自动写入 true（显式关恒为 false）。
+  experimentalToolOptimizations?: boolean | null;
   // Task 789: relaxed edit evidence gate (工具优化 companion; ships off;
   // restart to apply). Task 815: settings-page entry for the registration window.
   experimentalEditEvidenceRelaxed?: boolean;
