@@ -2173,9 +2173,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ContextBudget:      cfg.ContextBudgetEnabled(),
 		ResearchBudget:     cfg.ResearchBudgetEnabled(),
 		Gate:               headlessGate,
-			Hooks:              hookRunner,
-			Jobs:               jm,
-			// Parent write reservation at the executor entry covers all writers
+		Hooks:              hookRunner,
+		Jobs:               jm,
+		// Parent write reservation at the executor entry covers all writers
 		// (including late Economy/MCP adds) without wrapping tool schemas.
 		WriteScheduler:     subagentScheduler,
 		WriteWorkspaceRoot: root,

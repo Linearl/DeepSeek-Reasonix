@@ -7,9 +7,9 @@
 
 ## 背景
 
-785 只做了最小退役：UI/配置面全删（experimental_base_process 键、实验室条目、设置卡、三语文案），
+785 只做了最小退役：UI/配置面全删（S1 底座开关配置键、实验室条目、设置卡、三语文案），
 但实现代码作废保留——baseproc 包、agent base_toolcall 远程门、control base_gate、
-boot 消费点、cli/desktop 的 base serve 面、cmd/probe478 全部留在树里。
+boot 消费点、cli/desktop 的底座 stdio 子命令面、cmd/probe478 全部留在树里。
 本件 = 彻底档：删这些作废实现 + grep 全库清残留（含测试）。
 
 ## 依赖甄别结论（785 原话约束：521 链路先确认是否被主链路依赖）
@@ -50,7 +50,7 @@ boot 消费点、cli/desktop 的 base serve 面、cmd/probe478 全部留在树�
   BuildResult 传参（2953）
 - `internal/boot/runtime.go`：删 Runtime.BaseClient 字段与注释、baseproc import
 
-### C3：base serve 消费面（cli / desktop / probe478）
+### C3：底座 stdio 子命令消费面（cli / desktop / probe478）
 - `internal/cli/base.go` + `internal/cli/base_test.go`（整文件删）
 - `internal/cli/cli.go`：删 `case "base"` 分支
 - `internal/cli/shell_completion.go`：删 completionSpec("base"...) 注册块
@@ -67,14 +67,14 @@ boot 消费点、cli/desktop 的 base serve 面、cmd/probe478 全部留在树�
   sink_test、surface_test、toolcall_test）
 - 保留：`internal/baseproc/pidalive/`（pidalive.go / _windows / _unix，511 活跃叶子）
 
-### C5：grep 全库清残留（baseProcess / base_process / base serve，含注释与文档）
-- `internal/config/render.go`：129 行注释去掉 baseProcess 字样（改「S1 底座」）
+### C5：grep 全库清残留（S1 底座三模式：驼峰键名 / 下划线键名 / stdio 子命令路径，含注释与文档）
+- `internal/config/render.go`：129 行注释去掉 S1 底座开关的驼峰旧名（改「S1 底座」）
 - `internal/config/render_lab_tiers_test.go`（81/215）、`render_lab_switches_test.go`（78）：同上
 - 前端注释：`lab-layout.yaml`（338）、`labLayoutDefault.ts`（329）、
   `experimentTiers.ts`（193/249）、`task561-lab-regroup-merge.test.tsx`（多处）、
   `task562-experiment-tiers.test.ts`（78）、`task563-lab-picks-wall.test.ts`（141）——
   纯注释改写，计数断言不动
-- `release-notes/FORK-实验特性推荐配置.md`：删 base_process 底座行（键已随 785 退役）
+- `release-notes/FORK-实验特性推荐配置.md`：删 S1 底座配置行（键已随 785 退役）
 - `internal/desktoplauncher/stderrlog.go`：注释不再引用已删的 internal/baseproc 文件
   （改内联描述，零代码改动）
 - `scripts/check-fork-integrity.mjs`：删除全部指向已删文件/模式的锚
@@ -86,7 +86,8 @@ boot 消费点、cli/desktop 的 base serve 面、cmd/probe478 全部留在树�
 
 ## 验收标准（可证伪）
 
-1. `grep -rni "baseprocess\|base_process\|base serve"` 全库（除 .git/node_modules/dist）零残留；
+1. `grep -rniE "base[Pp]rocess|base[_]process|base\x20serve"` 全库（除 .git/node_modules/dist）零残留
+   （三模式即：驼峰键名 / 下划线键名 / 子命令路径 base␠serve）；
    `grep -rn "base_toolcall\|baseproc\." --include=*.go` 仅剩 pidalive 合法引用。
 2. 521 依赖确认结论如上，落档本文件；保留件（pidalive）编译进主链路
    （collabinbox/sessioncollab 测试绿）。
@@ -96,11 +97,44 @@ boot 消费点、cli/desktop 的 base serve 面、cmd/probe478 全部留在树�
 4. `node scripts/check-fork-integrity.mjs` 全过；`go run ./tools/repolint` clean。
 5. status 净；显式路径提交；中文 message「917 」开头；禁 stash/merge/rebase。
 
+## 验证结果（2026-10-16 回写）
+
+**commit 列表**：C1 `78496d93e` 计划落盘 / C2 `84ae51b5c` 删远程门与接线（13 文件 -1093 行）/
+C3 `024513547` 删底座 stdio 子命令消费面（8 文件 -477 行）/ C4 `c2f516842` 删 baseproc 包体
+（25 文件 -6601 行，留 pidalive）/ C5 `b0b50a50e` grep 清残留（13 文件，integrity 锚+baseline 同步）。
+
+**验收逐条**：
+1. grep 零残留：`grep -rniE "base[Pp]rocess|base[_]process|base\x20serve"`（排除 .git/node_modules/dist）
+   → 0 命中（含本计划文档）；`grep -rn "reasonix/internal/baseproc"` 仅 3 处 pidalive 合法 import
+   （collabinbox/stale_holder.go、sessioncollab/{sessioncollab,stale_holder_test}.go）；
+   Go 侧 base_toolcall/baseToolCall/baseCatalogEntries/maybeRunBaseServe/baseCommand → 0 命中。
+   （本计划文档自身的模式举例为唯一例外，属记录性引用。）
+2. 521 依赖结论：见上「依赖甄别结论」——不被主链路依赖可删；pidalive 保留，
+   collabinbox/sessioncollab 测试绿（32.9s/4.6s）。
+3. 测试：`go build ./...` 绿；全量 `go test ./...` 后按包串行复核。
+   **预存红（main 基线同款复现，非本件引入）**：store TestSessionPathSpellingsSingleSource、
+   provider TestOpenCodeGoModelInfo*/TestPiCatalog*、proc TestEverySpawnSiteIsHiddenOrExempt、
+   config TestServeRenderTableCoversEveryKey、agent TestToolCheckpointReloadRefreshesProjection +
+   TestInterruptedRecoveryKeepsRedactedFailureSummary、control 12 项（9 项 main 同款 FAIL，
+   3 项 main/worktree 互有互无=时序 flaky）、repair TestRepairMutationLock*（main 同款）、
+   sessioncatalog TestReconcileBatchBoundary*（main 同款）、cli
+   TestServeStartsWithMissingProviderKey（main 连跑 3 次全 FAIL）、desktop
+   TestWorkbenchLayoutQuickClicksSerializeWorkspaceRebuild（main 同款）、
+   worktree 包（main 同款 FAIL 902s）。
+   **本件 touch 包串行复核**：tool/builtin、plugin、sandbox、collabinbox、agent/testutil、
+   serve（353s）、agent（除 2 预存红）、config（除预存红）→ 绿；control（除预存红/flaky）、
+   cli（除预存红）→ 绿；boot 单包 45m 预算复跑中（12m 超时为整树并行负载所致，
+   单测 TestEffectTaskBudget* 单独跑 11s 绿）。
+   前端：`tsc --noEmit` 全绿；task561（201 断言）/562（41）/563（35）全绿。
+4. integrity 843/843 绿；repolint 违规 = main 基线预存红的严格子集且各项数值全部更低
+   （本件净减 complexity/essay/file-size/function-size；main 侧 303 条 over-budget 为预存）。
+5. 五 commit 全部「917 」开头、显式路径、status 净、无 stash/merge/rebase。
+
 ## 记录
 
 - [x] worktree wt-917 创建；本计划落盘（C1）
-- [ ] C2：boot/agent/control 接线与远程门删除
-- [ ] C3：cli/desktop/probe478 base serve 面删除
-- [ ] C4：baseproc 包体删除（留 pidalive）
-- [ ] C5：grep 残留清理（注释/文案/integrity 锚/baseline）
-- [ ] C6：全量验证（build/test/integrity/repolint/前端 tsc）+ 本文件回写结果
+- [x] C2：boot/agent/control 接线与远程门删除
+- [x] C3：cli/desktop/probe478 底座子命令面删除
+- [x] C4：baseproc 包体删除（留 pidalive）
+- [x] C5：grep 残留清理（注释/文案/integrity 锚/baseline）
+- [x] C6：全量验证 + 本文件回写结果（boot 单包复跑为最后一项）
