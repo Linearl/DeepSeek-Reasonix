@@ -255,6 +255,12 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 		"usage_present", usagePresent,
 		"session_hit_total", a.sess.cacheHit.Load(), "session_miss_total", a.sess.cacheMiss.Load(),
 		"err", result.err)
+	// 任务912 P1-d: a rejected key is the one failure the user has to fix.
+	// Raise the global banner here (throttled per credential) so a dead key is
+	// announced by the turn that hit it, not by whichever path notices first.
+	if failure.Phase == "auth" {
+		a.alertCredentialExpired(result.err)
+	}
 	waiting := attempt >= maxSamplingAttempts && a.canWaitSampling(ctx, s, failure)
 	// Task 242: quota-class failures join the ordinary fast retry loop ONLY
 	// when a fallback target is configured — the retries exist to absorb

@@ -51,6 +51,10 @@ var sessionCarryOver = map[string]bool{
 	// prefix against the replaced conversation's shape. Left as found here.
 	"lastPrefixShape":     true,
 	"haveLastPrefixShape": true,
+	// 任务912 P1-d: the credential-expired banner throttle tracks the provider
+	// key, not the conversation — a key already announced must stay quiet
+	// across a session swap until its cooldown lapses.
+	"authAlert": true,
 }
 
 func sessionRuntimeFields(t *testing.T) map[string]bool {

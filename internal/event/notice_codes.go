@@ -91,3 +91,10 @@ const (
 const (
 	NoticeCodePendingCardEnqueued = "pending_card_enqueued"
 )
+
+// 任务912 P1-d: a rejected credential is the one provider failure the user —
+// not the agent — has to fix, so it gets its own code for a front-end banner
+// instead of a log line nobody reads.
+const (
+	NoticeCodeCredentialExpired = "credential_expired"
+)

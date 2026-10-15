@@ -30,6 +30,11 @@ type sessionRuntime struct {
 	// conversation so a fresh session starts in the "no recent error" state.
 	lastProviderErrorAt atomic.Int64
 
+	// authAlert throttles the task-912 P1-d global credential-expired banner.
+	// It tracks the PROVIDER KEY, not the conversation: a key already announced
+	// must not re-announce on the next conversation, so reset leaves it found.
+	authAlert credentialAlertWatch
+
 	missingReasoning missingReasoningWatch
 
 	// reasoningReplayStrongProjection records the provider-visible history cutoff

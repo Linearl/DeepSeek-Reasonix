@@ -51,6 +51,7 @@ var English = Messages{
 	PlannerPlanAwaitingApproval:      "Plan ready; execution was not started without approval.",
 	PlannerPlanNotApproved:           "Plan not approved; nothing was executed. Reply to continue.",
 	PlannerPlanOnly:                  "Plan ready; the request explicitly excluded execution.",
+	CredentialExpiredAlert:           "Provider key rejected (HTTP 401): the credential is invalid or expired. Update it in .env (or your environment) and retry, or run `reasonix setup`.",
 	CapabilityProxyFmt:               "capability proxy: %s → %s",
 	ReceiptVerified:                  "nothing left unverified",
 	ReceiptGapsHeader:                "not verified:",

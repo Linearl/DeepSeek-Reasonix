@@ -1003,6 +1003,11 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	res, tele, err := a.summarizeFold(ctx, trigger, fold, instructions, sourceTokens, inputMode, req)
 	if err != nil {
 		a.emitCompactionTelemetry(tele)
+		// 任务912 P1-d: a rejected key needs the USER, and compaction is the
+		// place it hides worst — a burned 1.8M-token fold that never
+		// authenticates. Raise the global banner before the failure card so
+		// the fix is visible while the retry ladder is still running.
+		a.alertCredentialExpired(err)
 		// 任务 867: the burned full-prompt summary request becomes a visible
 		// failed outcome instead of a silently dropped pending card.
 		a.emitCompactionFailed(trigger, err)
