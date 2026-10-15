@@ -87,7 +87,7 @@ git ls-tree -r --name-only upstream/main-v2 -- <目标路径>/ | grep -i <关键
 |---|---|
 | **只读轮次预算加倍** | `extend_research_budget` 工具：软预算触发收敛后可 10→20→40→80（每 turn ≤3 次，时间闸门同步加倍） |
 | **每轮上下文预算行** | 每轮注入 `<context-budget>41k/128k (32%)</context-budget>`；临近阈值时提示把关键决策写进项目文档 |
-| **每轮当前时间锚** | 每轮 user 消息头部注入 `<current-time>…</current-time>`（RFC3339+星期），长会话/隔夜会话不再靠历史推算时间（664）；缓存尾段追加、不碰稳定前缀 |
+| **每轮当前时间锚** | 每轮 user 消息头部注入 `<current-time>…</current-time>`（RFC3339+英文星期+显式中文日期周几，914），长会话/隔夜会话不再靠历史推算时间（664）；中文锚防模型误读英文周几缩写（当日周四被误判周一两起事故）；缓存尾段追加、不碰稳定前缀 |
 | **路径作用域规则** | `.reasonix/rules/**/*.md` + `paths:` frontmatter，按工作区实际文件清单过滤后折进系统提示；项目规则遮蔽同名用户规则 |
 | **乐观并发写入** | 写工具可选 `expected` 基线参数，内容不匹配即 stale-content 拒绝，替代整工作区串行锁 |
 | **子代理委派档位** | `/subagent-policy` 以 transient block 注入，零重建、零持久化 |
