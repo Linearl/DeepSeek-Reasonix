@@ -42,19 +42,24 @@
 7. **并发**：Store 单连接（SetMaxOpenConns(1)）+ mu；worker 多 goroutine settle 安全。
 8. **开关**：v1 未加实验开关——journal 是纯观测写路径（不改行为、无 UI），设计上开关留给 S3 时间线 UI（铁律 2 由 UI 侧兑现）。若评审要求后端也挂开关，加 `experimental_run_journal`（config+render+lab 测试三处，参照 677 先例）。
 
-## 4. 未完成 / 下一步（S3）
+## 4. 已完成 S3a / 未完成 S3b
 
-- [ ] **bridge 读口**：`desktop/*_app.go` 加 `ListRunJournalRuns(parentSession?, limit)` / `GetRunJournalRunDetail(runID)`（自包含 open/close，沿 collab_channel_app.go 先例；路径 `config.SessionDir()/runjournal.db`）。
-- [ ] **bridge.ts**：AppBindings 接口内联签名 + dev mock 空列表（沿 409 诚实空态先例）+ 类型 view。
-- [ ] **前端时间线面板**：条目按 at 分组、成员 pill 语义状态灯（DESIGN.md 色纪律：状态用语义 token，avatar 色不编码状态）、入口挂**实验开关**（config key + render + 三语 + lab 开关测试，不漏铁律 2，参照 677/任务 409 教训）。
-- [ ] class-contract / bundle 预算 / `pnpm build` 全绿。
-- [ ] 设计文档 §7 有面板形态细节。
+### S3a 已 commit（`419 切片3a：run journal 桥接读口…`）
+- `desktop/run_journal_app.go`：ListRunJournalRuns / GetRunJournalRunDetail（自包含 open→read→close；降级=空结果+error 带原因）；`desktop/run_journal_app_test.go` 5 用例全绿。
+- `bridge.ts`：AppBindings 两方法 + 七个 RunJournal*View 类型 + dev mock 空目录；tsc 全绿。
 
-## 5. 测试基线（2026-10-15 实测）
+### S3b 未做：前端时间线面板 + 实验开关（完整一块，参照 677 接线模板）
+`git show 61c94ffd5`（677 群聊入口开关）是完整的开关接线模板，涉及：
+- Go：desktop config key（`experimental_run_timeline` 建议）+ Config/App 两层 setter + SettingsView/DesktopStartupSettingsView 双视图回读 + render.go 固定键集 + labFeatureTiers 登记（render_lab_tiers_test 钉值同步）。
+- 前端：labFlags 旗 + applyLabFlags + App.tsx 挂载点 + **RunJournalPanel 组件**（条目按 at 分组、成员 pill 语义状态灯、DESIGN.md 色纪律：状态用语义 token、avatar 色永不编码状态）+ SettingsPanel 提效组条目 + experimentTiers/task562 测试同步 + settingsViewTypes/types。
+- 三语 locale 4 键×3；bundle 预算棘轮按实测抬；class-contract（新引用类必须有定义）；`pnpm build` 全绿。
+- 面板数据就是 S3a 两方法：ListRunJournalRuns 选 run → GetRunJournalRunDetail 渲染 roster/health/timeline/artifacts 四段；error 非空时显示「运行日志不可用」而非空历史。
 
-- 预存红对照：`collabchannel ok / sessioncollab ok`（S1 前基线）。
-- 包级：`go test ./internal/agent/ ./internal/runjournal/ ./internal/boot/ ./internal/collabchannel/ ./internal/sessioncollab/`（S2 收尾跑，见 git log / 本文件更新）。
-- 新增测试：runjournal 16 用例；agent 6 用例（`RunJournal|FleetRecords|ParallelTasksRecords` 过滤器）。
+## 5. 测试基线（2026-10-15 实测，S3a 收尾）
+
+- 包级全绿：runjournal ok / collabchannel ok / sessioncollab ok / boot ok（复跑）；desktop ok（journal 5 用例）；tsc --noEmit 全绿。
+- 预存红（非 419 引入，主仓基线同红）：`internal/agent TestToolCheckpointReloadRefreshesProjection`（"restart left stale projection"）；`TestCompactSessionFileRewritesAndIsIdempotent` 全量下负载抖动、隔离复跑绿；boot `TestMCPReuseAcrossRebuildsBench` 抖动复跑绿。
+- 新增测试：runjournal 16 + agent 6 + desktop 5 = 27 用例。
 
 ## 6. 工作纪律提醒（本分支）
 
