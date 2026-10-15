@@ -66,3 +66,19 @@
 
 - 904a：见下方「904a 实施记录」。
 - 904b：见下方「904b 实证记录」。
+
+## 904a 实施记录（2026-10-15）
+
+**修复**：`internal/sandbox/shell.go` —— `isWindowsWSLBash` 重写为上游 PR10617 语义：
+- 抽纯函数 `isWindowsWSLBashPath(path, windowsRoot)`：`\`→`/`、剥 `\\?\` 前缀、小写、pathpkg.Clean 归一化后比对；
+- 判定面从「%SystemRoot% 前缀」扩为「%SystemRoot% 前缀 **或** `/microsoft/windowsapps/`+`/bash.exe` 后缀」——WindowsApps 0 字节 App Execution Alias（WSL 装了就能过 `bash -c true` 探针）从此不再被当 Git Bash 选中；
+- 环境读取（SystemRoot/windir、GOOS 门）留在 `isWindowsWSLBash` 壳里，纯函数任意 host 可测。
+
+**为什么只修这一点**：issue 9597 三个根因中，根因 1（非标准安装漏检）上游 #9519 修法 fork 已有同款五级发现序（config→PATH git 推导→注册表 InstallPath→标准根+Scoop/Choco）；根因 2（回退静默）fork `warnMissingShell` 已在（boot.go:820 传 stderr）；根因 3（WindowsApps 别名）fork 缺——即本件。上游同 PR 的 pwsh/powershell 跨版本路径忽略、shellInventoryKey 大小写改造属邻接面，不在「非标准 Git Bash 发现面」scope，按「上游动作不自动跟」不引入。
+
+**新增测试** `internal/sandbox/shell_wsl_alias_test.go`（2 组）：
+- `TestIsWindowsWSLBashPath` 13 表项：System32 启动器/大小写/正斜杠/`\\?\` 前缀/WindowsApps 别名三形态→true；非标准 Git Bash/标准 Git Bash/usr\bin/别名非 bash.exe/Windows 根同前缀目录/空→false；无 Windows root 时别名仍排除。
+- `TestWindowsAppsAliasExcludedFromNonStandardDiscovery`：复现 9597 机器形状（PATH 首命中=别名且探针通过 + 非标准 `D:\app\Git\Git\bin\bash.exe` 不在 PATH）→ 解析落到非标准 Git Bash 而非别名；候选构造器同排除；全缺失 → PowerShell 回落 + warn 点名 "not found"/"bash"（不静默）。
+
+**验收**：单测绿（上述 2 组 + shell 域 24 项全过：ResolveShell 决策表/候选排序/能力报告/配置路径安全边界/WSL 排除回归等）；gofmt 0、go vet 净。
+**预存红申报**：包内 `TestNormalizeWriteDirResolvesSymlinkParent`、`TestResolveCanonicalPathLocalBehaviorRegression`、`TestEnsureWriteDirRejectsApprovalIdentityChange` 三条在**干净 main-v2-stable 主仓同样红**（symlink/规范路径环境相关，与 shell 域无关，非本件引入）。
