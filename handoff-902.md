@@ -82,3 +82,7 @@ fork 无 `SetPermissionPresetForTab` / `desktop-session-presets.json`；权限�
 ### app_modes.go:157-161 重算逻辑定性
 
 `SetModeForTab` 内：新 mode 带 autoapprove → yolo；否则**当前 approval 是 yolo → 强制降 ask**。这是显式模式切换时的联动降档（非静默），只有 `SetModeForTab` 被调用才触发——启动回推走 `SetComposerProfileForTab` 不经过它。**是否构成「关闭/切页后变默认」需测试判定**：关键是（a）重启往返 entry 值是否保值；（b）`SetComposerProfileForTab` 无围栏覆盖是否可被默认值打回并持久化。
+
+## 全包回归核对（补录）
+
+`go test -timeout 30m ./desktop` 全包 10 个 FAIL 逐个在基线 main-v2-stable（6280772ea）复跑：9 个基线同样红（预存），1 个（TestSetActiveRemoteTabProceedsWhenCurrentSessionCannotPersist）高负载偶发、两边单跑均过。**wt-902 无回归**。
