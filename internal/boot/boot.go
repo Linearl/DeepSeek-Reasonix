@@ -1019,7 +1019,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// the mcp stage's wall clock, but builtin registration is invisible in
 	// the per-spec lines — time it so a 21s stage decomposes.
 	builtinsStart := time.Now()
-	addBuiltins(reg, enabledBuiltins, writeRoots, writeRootSet, bashSpec, bashTimeout, searchSpec, stderr, root, proxySpec, forbidReadRoots, readPathResolver, sessionGuard, managedConfig, opts.FileOverlay, opts.TerminalRunner, sessionTemp, fileWriteReceipt, cfg.Agent.ExperimentalToolOptimizations)
+	addBuiltins(reg, enabledBuiltins, writeRoots, writeRootSet, bashSpec, bashTimeout, searchSpec, stderr, root, proxySpec, forbidReadRoots, readPathResolver, sessionGuard, managedConfig, opts.FileOverlay, opts.TerminalRunner, sessionTemp, fileWriteReceipt, cfg.ToolOptimizationsEnabled())
 	// Task 233 batch 2: controlled UI driving, gated by iron-rule-2 config —
 	// with the switch off the tool does not exist in the registry at all.
 	if cfg.Agent.ExperimentalUIDriver {
@@ -3001,7 +3001,7 @@ func providerSurfaceExtras(cfg *config.Config) []string {
 	if cfg.Desktop.ExperimentalAutonomousUpdate {
 		extras = append(extras, "restart_update")
 	}
-	if cfg.Agent.ExperimentalToolOptimizations {
+	if cfg.ToolOptimizationsEnabled() {
 		extras = append(extras, "multi_edit")
 	}
 	return extras

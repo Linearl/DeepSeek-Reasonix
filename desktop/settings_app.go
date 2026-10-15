@@ -481,8 +481,11 @@ type SettingsView struct {
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
-	// (edit readBack + evidence gate linkage); boot snapshot, restart to apply.
-	ExperimentalToolOptimizations bool `json:"experimentalToolOptimizations"`
+	// (edit readBack + evidence gate linkage + task-915 multi_edit injection);
+	// boot snapshot, restart to apply. Task 915: *bool — nil (key absent)
+	// reaches the panel as null so the frontend shows the default-on state
+	// (?? true) and materializes it by writing true; explicit false stays false.
+	ExperimentalToolOptimizations *bool `json:"experimentalToolOptimizations"`
 	// Task 789: relaxed edit evidence gate, 工具优化 family companion (default
 	// false; 铁律 2). Task 815: settings-view mirror for the unified
 	// registration window.
@@ -766,8 +769,11 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
 	ExperimentalFullAccess bool `json:"experimentalFullAccess"`
 	// ExperimentalToolOptimizations is the task-603 工具优化 family switch
-	// (edit readBack + evidence gate linkage); boot snapshot, restart to apply.
-	ExperimentalToolOptimizations bool `json:"experimentalToolOptimizations"`
+	// (edit readBack + evidence gate linkage + task-915 multi_edit injection);
+	// boot snapshot, restart to apply. Task 915: *bool — nil (key absent)
+	// reaches the panel as null so the frontend shows the default-on state
+	// (?? true) and materializes it by writing true; explicit false stays false.
+	ExperimentalToolOptimizations *bool `json:"experimentalToolOptimizations"`
 	// Task 789: relaxed edit evidence gate, 工具优化 family companion (default
 	// false; 铁律 2). Task 815: settings-view mirror for the unified
 	// registration window.

@@ -706,11 +706,12 @@ func (c *Config) SubagentMessagingEnabled() bool {
 }
 
 // ToolOptimizationsEnabled reports whether the "工具优化" tool family is lit
-// (task 603). The field is a plain default-false bool: the zero value (and a
-// nil config) keeps every tool surface byte-identical to the pre-family
-// baseline.
+// (task 603/915). The field is a *bool with panel-layer default-on: nil (key
+// absent) reads as OFF here so the boot surface stays byte-identical to the
+// pre-family baseline (golden/forbidden untouched); the panel materializes
+// the default by writing true (task 915).
 func (c *Config) ToolOptimizationsEnabled() bool {
-	return c != nil && c.Agent.ExperimentalToolOptimizations
+	return c != nil && c.Agent.ExperimentalToolOptimizations != nil && *c.Agent.ExperimentalToolOptimizations
 }
 
 // EditEvidenceRelaxedEnabled reports whether the task-789 relaxed edit
@@ -1735,11 +1736,15 @@ type AgentConfig struct {
 	// so a same-file follow-up edit passes the write gate without a separate
 	// read_file round trip. Since task 875 the read-back is the DEFAULT with
 	// the family lit (an omitted readBack reads back, readBack:false opts
-	// out). Off (default, 铁律 2): the parameter is absent from both tool
-	// schemas and an argument that still passes it is ignored — every tool
-	// output, gate verdict, and schema byte stays exactly as before the family
-	// existed.
-	ExperimentalToolOptimizations bool `toml:"experimental_tool_optimizations"`
+	// out). Task 915 turns the field into a *bool with panel-layer default-on
+	// semantics (user ruling: the default value lives in the lab panel, NOT in
+	// DefaultConfig): nil (key absent — fresh install / reset) keeps every
+	// schema, gate verdict, and tool output byte-identical to the pre-family
+	// baseline (铁律 2), while the settings panel treats nil as on and
+	// materializes the default by writing true. Only non-nil values render
+	// (the task-722 conditional rule): an absent key never gets baked into an
+	// explicit false by an unrelated save.
+	ExperimentalToolOptimizations *bool `toml:"experimental_tool_optimizations"`
 	// ExperimentalEditEvidenceRelaxed is the task-789 relaxed edit evidence
 	// gate ("工具优化" family companion). On: a read that already completed
 	// earlier in the same provider batch counts as valid edit evidence, and an
