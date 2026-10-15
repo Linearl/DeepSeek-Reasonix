@@ -575,7 +575,9 @@ func summaryRateLimited(err error) bool {
 		return false
 	}
 	low := strings.ToLower(err.Error())
-	if strings.Contains(low, "rate limit") || strings.Contains(low, "429") {
+	// 任务912 P0-b: the shared open markers (provider.RateLimitText) cover the
+	// underscore/连字符 forms the old `Contains(low, "rate limit")` missed.
+	if provider.RateLimitText(low) || strings.Contains(low, "429") {
 		return true
 	}
 	return httpStatusOf(err.Error()) == 429
@@ -639,7 +641,12 @@ func summaryTransientRetryable(err error) bool {
 			return true
 		}
 	}
-	return false
+	// 任务912 P0-b: the marker table above only knew the status token "429", so
+	// a gateway that names the limit in words ("Request rate limited", no
+	// status) classified transient=false and the summary gave up after its one
+	// dedicated wait. Same open markers the provider's recovery classifier
+	// reads — the two judgments must not disagree.
+	return provider.RateLimitText(msg)
 }
 
 // promptCacheTTLEstimate is the observation-only TTL assumption for cache-miss

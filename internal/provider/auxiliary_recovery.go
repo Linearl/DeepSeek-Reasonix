@@ -95,7 +95,14 @@ func StreamAuxiliary(ctx context.Context, p Provider, req Request) (<-chan Chunk
 				return
 			}
 			f := ClassifyRecovery(err)
-			if !f.Retryable || attempt == 3 {
+			// 任务912 P0-b: a rate limit is surfaced, never absorbed here. This
+			// lane's backoff (2s/4s/8s) cannot roll a TPM/RPM window over, and
+			// every caller owns a window-aware lane that must SEE the failure —
+			// summarizeFold's 429 wait (Retry-After), the fragment wait, and
+			// session-extract's resume. Absorbing it here just burned three
+			// fast attempts and returned a half-waited answer to a caller that
+			// was ready to wait properly.
+			if !f.Retryable || RateLimited(err) || attempt == 3 {
 				send(Chunk{Type: ChunkUsage, Usage: &aggregate})
 				send(Chunk{Type: ChunkError, Err: err})
 				return
