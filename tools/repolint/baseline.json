@@ -19,9 +19,6 @@
     "cmd/e2ebench/memorybench.go": {
       "essay": 4
     },
-    "cmd/probe478/main.go": {
-      "essay": 2
-    },
     "cmd/reasonix-launcher/localdumps_cmd.go": {
       "essay": 16
     },
@@ -72,9 +69,6 @@
     },
     "desktop/autopilot_resume_test.go": {
       "essay": 4
-    },
-    "desktop/base_serve.go": {
-      "essay": 16
     },
     "desktop/binding_resolve_cache.go": {
       "essay": 28
@@ -915,12 +909,6 @@
     "internal/agent/agent_config.go": {
       "essay": 2
     },
-    "internal/agent/base_toolcall.go": {
-      "essay": 22
-    },
-    "internal/agent/base_toolcall_test.go": {
-      "essay": 2
-    },
     "internal/agent/bash_heavy_commands.go": {
       "essay": 28
     },
@@ -1584,46 +1572,11 @@
     "internal/attachment/walk_test.go": {
       "essay": 2
     },
-    "internal/baseproc/client.go": {
-      "essay": 1,
-      "marker": 1
-    },
-    "internal/baseproc/frame.go": {
-      "essay": 4
-    },
-    "internal/baseproc/lease.go": {
-      "essay": 7
-    },
-    "internal/baseproc/lifecycle.go": {
-      "essay": 7
-    },
-    "internal/baseproc/lifecycle_nil_test.go": {
-      "essay": 11
-    },
-    "internal/baseproc/manager.go": {
-      "essay": 17
-    },
-    "internal/baseproc/protocol.go": {
-      "essay": 37
-    },
-    "internal/baseproc/serve.go": {
-      "essay": 1
-    },
-    "internal/baseproc/serve_test.go": {
-      "banner": 2
-    },
-    "internal/baseproc/surface.go": {
-      "essay": 5,
-      "marker": 1
-    },
     "internal/billing/catalog_test.go": {
       "essay": 2
     },
     "internal/boot/agent_tools_stage_telemetry_test.go": {
       "essay": 3
-    },
-    "internal/boot/base_client.go": {
-      "essay": 2
     },
     "internal/boot/boot.go": {
       "complexity": 307,

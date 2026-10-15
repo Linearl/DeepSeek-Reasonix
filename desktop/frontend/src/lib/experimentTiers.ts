@@ -190,7 +190,7 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   eventsRotation: "optional",
   sessionStorage: "unstable",
   homePointer: "unstable",
-  // ── infra（基础设施，7 项；785 退役 S1 baseProcess，790 增 acpListen）──────
+  // ── infra（基础设施，7 项；785 退役 S1 常驻底座开关，790 增 acpListen）──────
   runtimeReuse: "optional",
   zcodeTaskBus: "unstable",
   acpListen: "unstable",
@@ -246,7 +246,7 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 总数 53→56。任务 783：可观测性组「用量监测」卡容器 + GLM Plan 用量子项
  * 入表（推荐×2），推荐 16→18、总数 56→58；同任务编辑读回（toolOptimizations）
  * 随 22.5 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。任务 785：
- * baseProcess（S1 常驻底座开关）随底座退役出表，未稳定 12→11、总数 58→57。任务 790：acpListen（ACP 常驻监听，默认关）入表未稳定档，11→12、总数 57→58。
+ * S1 常驻底座开关随底座退役出表，未稳定 12→11、总数 58→57。任务 790：acpListen（ACP 常驻监听，默认关）入表未稳定档，11→12、总数 57→58。
  * 任务 826：sidebarHoverLeft / sidebarHoverRight（左右边栏 hover 展开，默认
  * 关）按可选档入表（26→28、58→60；562 计数 pin 与 789 统一登记窗口一并
  * 收口——本常量当前被 task562 钉在 26/58，随登记窗口同步跳变）。

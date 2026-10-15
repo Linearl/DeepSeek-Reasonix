@@ -335,7 +335,7 @@ groups:
           - id: goMemLimitMB
             input: number
 
-  # ── 基础设施（5 项；任务 785：baseProcess 条目随 S1 底座开关退役移除）──
+  # ── 基础设施（5 项；任务 785：S1 常驻底座开关条目随底座退役移除）──
   - key: infra
     labelKey: settings.labGroup.infra
     entries:

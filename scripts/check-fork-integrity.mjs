@@ -99,7 +99,6 @@ const CHECKS = [
   // 最后一个静默空分支诚实化。逐机制锚定，merge 丢任一半边即报警。
   { feature: "任务511 复发 pid 存活叶子包（零依赖，解 config→sessioncollab 环）", file: "internal/baseproc/pidalive/pidalive.go", patterns: ["func ParseHolderPid"] },
   { feature: "任务511 复发 pid 存活平台实现", file: "internal/baseproc/pidalive/pidalive_windows.go", patterns: ["func Alive"] },
-  { feature: "任务511 复发 lease 存活源切至叶子包", file: "internal/baseproc/lease.go", patterns: ["var leaseAlive = pidalive.Alive"] },
   { feature: "任务511 复发 inbox 锁 stale 侧车回收（防误杀契约）", file: "internal/collabinbox/stale_holder.go", patterns: ["clearStaleHolderIfDead", "pidalive.Alive", "never guess"] },
   { feature: "任务511 复发 mail 锁 stale 侧车回收（同契约孪生）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["clearStaleHolderIfDead", "stale lock holder sidecar cleared"] },
   { feature: "任务511 复发 面板读取 INFO 留痕（静默通道哨兵）", file: "internal/collabinbox/collabinbox.go", patterns: ["collab inbox: panel read"] },
@@ -159,10 +158,6 @@ const CHECKS = [
   { feature: "任务511 降级提示三语 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["collabInbox.degraded"] },
   { feature: "任务461-P13② 上下文增幅观测告警（维护间隔跳变有日志诊断入口）", file: "internal/agent/context_manager.go", patterns: ["observeContextGrowth", "contextGrowthWarnRatio"] },
   { feature: "任务461-P13③ task309 幂等默认开（Default 钉 true，显式 false 仍可关）", file: "internal/config/config.go", patterns: ["SessionCollabMailIdempotentDefault: true"] },
-  // base_toolcall 远程门：不可比较的值类型工具（内置写工具族）在接口 == 前必须先挡，
-  // 否则 experimental_base_process 开启后首次派发即 Go runtime fatal（10-06 三连崩）。
-  { feature: "base_toolcall 不可比较类型防崩守卫（Comparable 先于 ==）", file: "internal/agent/base_toolcall.go", patterns: ["!reflect.TypeOf(owned).Comparable() || owned != runTool"] },
-  { feature: "base_toolcall 防崩守卫回归测试（ModeRemote 值类型工具）", file: "internal/agent/base_toolcall_test.go", patterns: ["uncomparable value tool runs local without panicking", "gateValueTool"] },
   // 任务 90 链拼接：promote 时把落败链（当前 main）中 winner 缺失的头部 graft 到新主线。
   // 三个锚点按「顺序」登记——gap 在 rename 前算、graft 在侧车搬移后写、事件日志随即折叠；
   // 顺序错位造成的失败是静默的（文件对而读回旧），所以这里锁的是调用形状，不只是符号名。
@@ -416,8 +411,6 @@ const CHECKS = [
   { feature: "任务330 429 专用等待 lane（主路径+段级）", file: "internal/agent/compact_projection.go", patterns: ["summaryRateLimited", "waiting to resume"] },
   { feature: "任务196fix 注记 path_mismatch 判定归一+226 Info canonical", file: "internal/agent/save_dag.go", patterns: ["sameSessionLogPath", "canonicalSessionSavePath(path), \"extended\""] },
   { feature: "任务307 physical ceiling 拒当轮 truncation 兜底", file: "internal/agent/context_manager.go", patterns: ["errors.Is(err, errCheckpointCeiling)", "End the loop"] },
-  { feature: "任务521 baseproc ManagedClient nil 防线（typed-nil panic fail-closed 回落本地）", file: "internal/baseproc/lifecycle.go", patterns: ["任务521", "return inline, nil"] },
-  { feature: "任务521 三种 nil 注入测试（半构造视图/typed-nil receiver/state×nil remote）", file: "internal/baseproc/lifecycle_nil_test.go", patterns: ["TestManagedClientNilManagerViewFallsBackToLocal", "TestManagedClientTypedNilReceiverNeverPanics", "TestManagedClientNilRemoteEveryStateFallsBackInline"] },
   { feature: "任务516 ceiling 拒绝改接受部分进度（解 307 同尺寸反复被拒死锁）", file: "internal/agent/compact_projection.go", patterns: ["installing partial fold progress", "candidateTokens >= sourceTokens"] },
   { feature: "任务516④ 投影失效回退全量显式日志（冷却节流+原因分类）", file: "internal/agent/context_manager.go", patterns: ["observeProjectionFallback", "projectionFallbackWarnCooldown"] },
   { feature: "任务357 save 链毫秒分段打点（phases+dag 三段+锁等待）", file: "internal/agent/save.go", patterns: ["session: save phases", "lastSaveLockWaitMs.Store"] },
@@ -919,12 +912,6 @@ const CHECKS = [
   { feature: "任务443 推理口径标注选择器", file: "desktop/frontend/src/components/ContextPanel.tsx", patterns: ["reasoningScopeNote", "context.typeNoteSessionReasoning", "context.typeNoteReasoningMissing", "context.typeScopeTurn"] },
   { feature: "任务443 口径标注文案（三语）", file: "desktop/frontend/src/locales/zh.ts", patterns: ["context.typeScopeTurn", "context.typeNoteSessionReasoning", "context.typeNoteReasoningMissing"] },
   { feature: "任务443 口径标注 CSS", file: "desktop/frontend/src/styles.css", patterns: [".context-panel__type-note", ".context-panel__type-note:empty"] },
-  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1a 切片）──────────────────
-  // 纯增量骨架：协议 v1 + 双实现（inline/remote）+ base serve 子命令 + 开关。
-  // 任何一道被 merge 顶掉，后续 S1b/S1c 切片都会骑在断墙上施工。
-  { feature: "S1a base 协议 v1 定义", file: "internal/baseproc/protocol.go", patterns: ["ProtocolVersion = 1", "\"base.hello\"", "\"base.toolCall\"", "\"base.dying\"", "CodeVersionMismatch"] },
-  { feature: "S1a base 双实现骨架与 R1 回退", file: "internal/baseproc/manager.go", patterns: ["boot: base fallback", "boot: base remote", "func Start(", "subprocessDial", "RunStdioServer"] },
-  { feature: "S1a base serve 子命令接线", file: "internal/cli/base.go", patterns: ["base serve", "--stdio", "RunStdioServer"] },
   // 任务 325：autopilot 只能在 yolo 审批模式下开启（用户 2026-09-25 裁决）。
   // 锁三处——闸门本体、四个开启入口的接线、前端按码本地化。merge 丢掉接线
   // 会重新出现「autopilot 挂着但审批是 ask/auto」的无人值守中间态。
@@ -969,28 +956,10 @@ const CHECKS = [
   { feature: "任务547 设置视图与 setter（翻转即对账收敛）", file: "desktop/settings_app.go", patterns: ["SetDesktopAutopilotGuardAutocreate", "experimentalAutopilotGuardAutocreate"] },
   { feature: "任务547 面板 UI（子选项开关+档位随开关禁用）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["settings.autopilotGuardAutocreate", "SetDesktopAutopilotGuardAutocreate"] },
 
-  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1b 工具面迁移）────────────
-  // 工具目录/工具调用经 base 通道 + 进度流 + sink 适配器 + boot 消费点；
-  // 开关默认 off，任一道被顶掉都会让「开关关=现行为」的对照失去支点。
-  { feature: "S1b base ToolSurface 与 RegistrySurface", file: "internal/baseproc/surface.go", patterns: ["type ToolSurface interface", "RegistrySurface", "ScopeProvider", "ErrUnknownScope"] },
-  { feature: "S1b serve 端工具面挂载与 toolCall 进度流", file: "internal/baseproc/serve_toolface.go", patterns: ["AttachToolSurface", "handleToolCall", "validateToolCallParams", "NotifyToolProgress"] },
-  { feature: "S1b 客户端进度路由（call_id 分发）", file: "internal/baseproc/client.go", patterns: ["dispatchNotify", "trackProgress", "untrackProgress", "ProgressFrom"] },
-  { feature: "S1b sink 适配器（ToolProgress 事件形状）", file: "internal/baseproc/sink.go", patterns: ["WithToolProgress", "ToolEventSink", "event.ToolProgress"] },
-  { feature: "S1b 控制器工具目录闸", file: "internal/control/base_gate.go", patterns: ["baseCatalogEntries", "ModeRemote", "ErrNotWired"] },
-  { feature: "S1b agent 工具调用闸", file: "internal/agent/base_toolcall.go", patterns: ["baseToolCall", "ModeRemote", "ErrNotWired"] },
-  // 任务 785（2026-10-11 用户拍板）：experimental_base_process 开关退役，
-  // boot 消费点硬编码 Enabled=false——锚「永不 spawn」语义（RegistrySurface
-  // 仍是 inline client 的工具面来源）。
-  { feature: "S1b boot 消费点（Start 接线；785 后恒 inline）", file: "internal/boot/base_client.go", patterns: ["startBaseClient", "Enabled:       false", "RegistrySurface"] },
-  { feature: "S1b boot 消费点（注入与拆除）", file: "internal/boot/boot.go", patterns: ["startBaseClient(ctx, cfg, reg)", "_ = baseClient.Close()"] },
-  // 任务 478：S1 消费面接线的桌面侧——D4 spawn 契约的另一半。baseproc 默认
-  // spawn「当前可执行文件 base serve --stdio」，桌面 exe 不认这段 argv = 底座
-  // 100% 空转（握手失败循环、base.log 0 字节、每 5min degraded 探测把窗口拉
-  // 到前台）。被 merge 顶掉就回退到那个状态，且无编译错误。
-  { feature: "任务478 桌面 exe 分发 base serve（拦截+分发体）", file: "desktop/base_serve.go", patterns: ["maybeRunBaseServe", "classifyBaseServeArgs", "baseproc.RunStdioServer"] },
-  { feature: "任务478 main 抢位次序（先于 installDesktopLogging，保 fd2=base.log）", file: "desktop/main.go", patterns: ["maybeRunBaseServe(os.Args[1:])"] },
-  { feature: "任务478 base.log 存活行（就绪/退出，F2 落地）", file: "internal/baseproc/baselog.go", patterns: ["base serve: ready", "base serve: exit"] },
-  { feature: "任务478 验收探针（真 Manager 对桌面 exe）", file: "cmd/probe478/main.go", patterns: ["remote_ready", "base serve", "RestartBaseDelay"] },
+  // 任务 917（2026-10-15）：S1 底座彻底退役（785 最小档后的彻底档）——
+  // baseproc 远程门、底座 stdio 子命令消费面、boot 消费点全部删除，pidalive
+  // 叶子（任务 511）保留。
+
   // 任务 399：会话内 Ctrl+F 搜索（对照上游 #11230→#11236）。四件套锁：
   // 行级检索纯逻辑（数据面搜索，虚拟滚动下 DOM 搜索会漏未挂载行）、
   // 搜索条 UI、行高亮 context 接线、快捷键注册 + 代码块域隔离——
@@ -1012,32 +981,10 @@ const CHECKS = [
   { feature: "任务398 历史/搜索索引 keep-first", file: "internal/session/history_index.go", patterns: ["repeated message/complete keeps the id's first record", "state.positions[strings.TrimSpace(body.Message.ID)]"] },
   { feature: "任务398 checkpoint 携带 id 集+版本3", file: "internal/session/recovery_store.go", patterns: ["MessageIDs []string", "recoveryProjectionVersion = 3", "state.messageIDs.admit(commit)"] },
 
-  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1c 生命周期收口）──────────
-  // health/退避重启/degraded 状态机 + 托管视图；任一道被顶掉，矩阵 C6 的
-  // 「子进程死则全体 inline」就没有落点，开关 on 会退回 S1a 的 one-shot。
-  { feature: "S1c base 生命周期状态机（D5）", file: "internal/baseproc/lifecycle.go", patterns: ["type Manager struct", "degraded_inline", "boot: base dying", "func (m *Manager) markDead("] },
-  { feature: "S1c 心跳检测与退避重启", file: "internal/baseproc/lifecycle.go", patterns: ["REASONIX_BASE_HEALTH_INTERVAL", "func (m *Manager) healthTick(", "func (m *Manager) restartTick(", "func (m *Manager) backoffLocked("] },
-  { feature: "S1c 托管视图（Mode 跟随状态）", file: "internal/baseproc/lifecycle.go", patterns: ["type ManagedClient struct", "func (c *ManagedClient) Mode()", "errClientClosed"] },
-  { feature: "S1c Start 托管与生命周期阈值选项", file: "internal/baseproc/manager.go", patterns: ["NewManager(ctx, opts).Acquire(opts)", "RestartMaxFailures", "gracefulCloseWait = 5 * time.Second"] },
-  { feature: "S1c 子进程日志面（F2 logs/base.log）", file: "internal/baseproc/baselog.go", patterns: ["baseLogFileName", "defaultBaseLogPath", "func openBaseLog(", "REASONIX_BASE_LOG"] },
-  { feature: "S1c spawn stderr 接线（F1 环境显式传递）", file: "internal/baseproc/manager.go", patterns: ["resolveStderr(opts)", "withBaseLogEnv(env, stderr.path)", "cmd.Stderr = stderr.w"] },
-  { feature: "S1c shutdown 前置与关闭可中止重启", file: "internal/baseproc/lifecycle.go", patterns: ["alreadySent := m.shutdownSent", "m.baseCancel()", "abort a restart attempt already in flight"] },
-
-  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1c 会话租约）──────────────
-  // base.attach 携 workspace root + client_pid owner key；C3 隔离、C4 孤儿
-  // 回收。掉一道，底座就无从知道哪些 workspace 在用（注册表托管的前置）。
-  { feature: "S1c 会话租约表与 attach/detach 处理器", file: "internal/baseproc/lease.go", patterns: ["type leaseTable struct", "func (t *leaseTable) reclaimDead(", "AttachSessionAccounting", "func (s *Server) handleAttach("] },
-  { feature: "S1c 孤儿回收挂在 base.hello 上", file: "internal/baseproc/serve.go", patterns: ["leases *leaseTable", "onHello := s.onHello", "onHello(p.ClientPID)"] },
   // 任务511 复发断根把 pidAlive 双平台实现迁入零依赖叶子包 internal/baseproc/pidalive/
-  //（解 config→sessioncollab 导入环），S1c 锚随迁至新路径。
-  { feature: "S1c 孤儿判定 pidAlive（双平台）", file: "internal/baseproc/pidalive/pidalive_windows.go", patterns: ["func Alive(pid int) bool", "os.FindProcess(pid)"] },
-
-  // ── S1 底座常驻子进程（设计 2026-09-30，§10 S1c 单例收敛）────────────────
-  // S1b 审计 note 的遗留：manager one-shot = N boot 各起一个子进程。掉一道，
-  // 「常驻底座」就退回「每 tab 一个底座进程」，S1 的内存/启动收益全部落空。
-  { feature: "S1c 每视图自带 inline 回退面", file: "internal/baseproc/lifecycle.go", patterns: ["func (m *Manager) Acquire(opts Options)", "inline InlineBaseClient", "One critical section decides remote vs inline"] },
-  // 任务 785（2026-10-11 用户拍板）：S1c boot 常驻单例锚随开关退役移除——
-  // sharedBaseClient 已删，boot 恒走 inline client（见上方 S1b Start 接线锚）。
+  //（解 config→sessioncollab 导入环）——任务 917 底座退役后该叶子包保留
+  // （collabinbox/sessioncollab 仍依赖），锚不随 baseproc 删除。
+  { feature: "任务511 pid 孤儿判定 pidAlive（双平台）", file: "internal/baseproc/pidalive/pidalive_windows.go", patterns: ["func Alive(pid int) bool", "os.FindProcess(pid)"] },
 
   // ── 任务 450 重启宽限窗（方案 A：停心跳 → 宽限 10s → 到期 Cancel → 谁断谁续）────
   // 旧守卫是「任一他 tab 忙即拒」；宽限窗是重启族三入口（发布/回滚/普通重启）

@@ -75,7 +75,7 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 783：「用量监测」卡容器 + GLM Plan 用量子项入表（推荐×2）→
   // 推荐 16→18、总数 56→58；同任务④编辑读回（toolOptimizations）随 22.5
   // 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。
-  // 任务 785：baseProcess（S1 常驻底座开关）随底座退役出表——未稳定
+  // 任务 785：S1 常驻底座开关随底座退役出表——未稳定
   // 12→11、总数 58→57（合并线依 Go 表A 12/50 同源实跑对齐）。
   // 任务 815（统一登记窗口收口）：sidebarHover×2（826）+ editEvidenceRelaxed
   // （789/815）+ homePointer（846）此前已入表而计数 pin 尚钉在收口前口径
