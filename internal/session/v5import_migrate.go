@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"reasonix/internal/provider"
+	"reasonix/internal/store"
 )
 
 // V5ImportBackup is the record of the pre-import backup.
@@ -395,7 +396,7 @@ func buildV5ImportStaged(ctx context.Context, plan *V5Plan, entry V5PlanEntry, s
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(stagedDir, entry.SessionID+".jsonl.meta"), append(metaBytes, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(stagedDir, entry.SessionID+store.SessionMetaFileSuffix), append(metaBytes, '\n'), 0o600); err != nil {
 		return err
 	}
 	receipt, err := json.MarshalIndent(map[string]any{
@@ -422,7 +423,7 @@ func publishV5ImportStaged(entry V5PlanEntry, stagedDir string) ([]string, error
 		return nil, err
 	}
 	var published []string
-	for _, name := range []string{entry.SessionID + ".jsonl", entry.SessionID + ".jsonl.meta"} {
+	for _, name := range []string{entry.SessionID + store.SessionTranscriptSuffix, entry.SessionID + store.SessionMetaFileSuffix} {
 		source := filepath.Join(stagedDir, name)
 		target := filepath.Join(targetDir, name)
 		if err := os.Rename(source, target); err != nil {
