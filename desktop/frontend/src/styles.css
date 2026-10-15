@@ -25119,8 +25119,8 @@ button.statusbar__mcp:focus-visible {
 }
 .rt-notice {
   /* 图标徽章字形色：作用域 token（token 定义处是硬编码的合法位置），
-     对齐 demo 的 .rt-notice__icon { color: #fff }；--n-color/--n-border/
-     --n-bg 由下面四档 data-level 规则注入，组件本身不再写任何色值。 */
+     对齐 demo 图标徽章的白字设定；--n-color/--n-border/--n-bg 由下面四档
+     data-level 规则注入，组件本身不再写任何色值。 */
   --n-fg: #fff;
   position: relative;
   width: min(440px, calc(100vw - 24px));
