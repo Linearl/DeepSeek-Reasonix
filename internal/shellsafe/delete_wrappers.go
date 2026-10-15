@@ -24,7 +24,7 @@ func UnwrapDeleteCommand(name string, args []string) (string, []string, bool) {
 func CommandBase(name string) string { return commandBase(name) }
 
 func unwrapDeleteCommand(name string, args []string) (string, []string, bool) {
-	base := commandBase(name)
+	base := deleteCommandBase(name)
 	for {
 		switch base {
 		case "command", "env", "exec", "builtin", "sudo", "nohup":
@@ -68,6 +68,16 @@ func unwrapDeleteCommand(name string, args []string) (string, []string, bool) {
 		if len(args) == 0 {
 			return "", nil, true
 		}
-		base, args = commandBase(args[0]), args[1:]
+		base, args = deleteCommandBase(args[0]), args[1:]
 	}
+}
+
+// deleteCommandBase is commandBase with the empty word preserved: a dynamic
+// (non-static) command name arrives as "" and must stay "" so the analyzer
+// treats it as unknown rather than as the literal ".".
+func deleteCommandBase(word string) string {
+	if word == "" {
+		return ""
+	}
+	return commandBase(word)
 }
