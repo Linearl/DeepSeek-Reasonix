@@ -460,6 +460,111 @@ func ReorderTopicInGroup(scope, workspaceRoot, topicID, groupID string, index in
 	return result, nil
 }
 
+// FileTopic moves one session into a group AND removes it from every other
+// group in the same roster, so the session ends up in exactly one place (the
+// desktop task-170 semantics — an append-only "move" leaves the session behind
+// in its old group whenever that group is written first). A missing target
+// group is created on demand; an empty groupId+groupTitle is a no-op.
+func FileTopic(scope, workspaceRoot, topicID, groupID, groupTitle string) (GroupResult, error) {
+	scope, workspaceRoot, err := NormalizeTarget(scope, workspaceRoot)
+	if err != nil {
+		return GroupResult{}, err
+	}
+	topicID, groupID, groupTitle = strings.TrimSpace(topicID), strings.TrimSpace(groupID), strings.TrimSpace(groupTitle)
+	if topicID == "" {
+		return GroupResult{}, fmt.Errorf("topicId is required")
+	}
+	if groupID == "" && groupTitle == "" {
+		return GroupResult{}, nil
+	}
+	result := GroupResult{Kind: KindSession, Scope: scope, Root: workspaceRoot, GroupID: groupID, Title: groupTitle}
+	for attempt := 0; attempt < 5; attempt++ {
+		snapshot, err := ReadSnapshot(scope, workspaceRoot)
+		if err != nil {
+			return result, err
+		}
+		groups := append([]Group(nil), snapshot.Groups...)
+		target := -1
+		for i, g := range groups {
+			if groupID != "" {
+				if strings.EqualFold(strings.TrimSpace(g.ID), groupID) {
+					target = i
+					break
+				}
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(g.Title), groupTitle) {
+				target = i
+				break
+			}
+		}
+		if target < 0 {
+			if groupID == "" {
+				groupID = "collab-" + strings.ToLower(groupTitle)
+			}
+			if groupTitle == "" {
+				// An id with no title is not a usable group label; fall back
+				// to the id so the row is still readable in the sidebar.
+				groupTitle = groupID
+			}
+			groups = append(groups, Group{ID: groupID, Title: groupTitle, TopicIDs: []string{topicID}})
+		} else {
+			result.GroupID = groups[target].ID
+			result.Title = groups[target].Title
+			already := false
+			for _, member := range groups[target].TopicIDs {
+				if member == topicID {
+					already = true
+					break
+				}
+			}
+			if !already {
+				groups[target].TopicIDs = append(groups[target].TopicIDs, topicID)
+			}
+		}
+		// Remove the topic from every OTHER group so it ends up in one place.
+		removed := []string{}
+		for i := range groups {
+			if i == target {
+				continue
+			}
+			kept := groups[i].TopicIDs[:0]
+			for _, member := range groups[i].TopicIDs {
+				if member == topicID {
+					removed = append(removed, groups[i].ID)
+					continue
+				}
+				kept = append(kept, member)
+			}
+			groups[i].TopicIDs = kept
+		}
+		saved, err := SaveSessionGroups(scope, workspaceRoot, snapshot.Revision, groups)
+		if err != nil {
+			return result, err
+		}
+		if saved.Applied {
+			opID, logErr := logWrite("file_topic", KindSession, scope, workspaceRoot, topicID, nil, snapshot.Groups, saved.Groups, true)
+			result.Applied = true
+			result.OpID = opID
+			_ = removed
+			if logErr != nil {
+				return result, fmt.Errorf("topic filed but operation log failed: %w", logErr)
+			}
+			return result, nil
+		}
+	}
+	return result, fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmpty(groupID, groupTitle))
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // ── project-group catalog operations ────────────────────────────────────────
 
 // projectGroupsRoster converts the catalog into the shared Group shape.

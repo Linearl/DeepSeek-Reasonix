@@ -738,6 +738,7 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("POST /manage-groups/rename", s.manageGroupsMutate(s.manageGroupsRename))
 		mux.HandleFunc("POST /manage-groups/delete", s.manageGroupsMutate(s.manageGroupsDelete))
 		mux.HandleFunc("POST /manage-groups/reorder", s.manageGroupsMutate(s.manageGroupsReorder))
+		mux.HandleFunc("POST /manage-groups/file-topic", s.manageGroupsMutate(s.manageGroupsFileTopic))
 	}
 	// 任务 701（Web Remote）：web_dist 配置后才挂载 /web 静态托管；未配置
 	// 时 /web* 保持 404（零行为）。

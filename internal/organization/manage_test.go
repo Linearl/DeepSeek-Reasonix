@@ -249,3 +249,72 @@ func TestSaveSessionGroupsCASConflict(t *testing.T) {
 		t.Fatalf("conflict snapshot = %+v, want the current g1 roster", stale.Groups)
 	}
 }
+
+// FileTopic 把会话移入目标组并移出其它组（desktop task-170 语义）；目标组
+// 不存在则按需创建；已在目标组内幂等零写。
+func TestFileTopicMovesBetweenGroups(t *testing.T) {
+	seedHome(t)
+
+	if _, err := SaveSessionGroups("global", "", 0, []Group{
+		{ID: "g-a", Title: "甲组", TopicIDs: []string{"t1", "t2"}},
+		{ID: "g-b", Title: "乙组", TopicIDs: []string{"t3"}},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Move t1 from g-a into g-b.
+	res, err := FileTopic("global", "", "t1", "g-b", "")
+	if err != nil || !res.Applied {
+		t.Fatalf("FileTopic: %v applied=%v", err, res.Applied)
+	}
+	snap, _ := ReadSnapshot("global", "")
+	byID := map[string]Group{}
+	for _, g := range snap.Groups {
+		byID[g.ID] = g
+	}
+	for _, m := range byID["g-a"].TopicIDs {
+		if m == "t1" {
+			t.Fatal("t1 still in g-a after move")
+		}
+	}
+	found := false
+	for _, m := range byID["g-b"].TopicIDs {
+		if m == "t1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("t1 not in g-b after move")
+	}
+
+	// Idempotent re-file writes nothing new (Applied stays true but roster
+	// is unchanged).
+	before, _ := ReadSnapshot("global", "")
+	if _, err := FileTopic("global", "", "t1", "g-b", ""); err != nil {
+		t.Fatalf("idempotent file: %v", err)
+	}
+	after, _ := ReadSnapshot("global", "")
+	if !EqualGroups(before.Groups, after.Groups) {
+		t.Fatal("idempotent re-file changed the roster")
+	}
+
+	// A groupTitle with no id creates the group on demand.
+	if _, err := FileTopic("global", "", "t2", "", "新组"); err != nil {
+		t.Fatalf("create-on-demand file: %v", err)
+	}
+	snap, _ = ReadSnapshot("global", "")
+	created := false
+	for _, g := range snap.Groups {
+		if g.Title == "新组" {
+			created = true
+			for _, m := range g.TopicIDs {
+				if m == "t2" {
+					t.Log("t2 filed in 新组")
+				}
+			}
+		}
+	}
+	if !created {
+		t.Fatal("on-demand group not created")
+	}
+}

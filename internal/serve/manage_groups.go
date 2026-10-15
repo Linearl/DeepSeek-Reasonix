@@ -87,3 +87,7 @@ func (s *Server) manageGroupsReorder(body manageGroupsRequest) (any, error) {
 	}
 	return organization.ReorderTopicInGroup(body.Scope, body.WorkspaceRoot, body.TopicID, body.GroupID, index)
 }
+
+func (s *Server) manageGroupsFileTopic(body manageGroupsRequest) (any, error) {
+	return organization.FileTopic(body.Scope, body.WorkspaceRoot, body.TopicID, body.GroupID, body.Title)
+}
