@@ -22,7 +22,7 @@ func TestIdempotencyConflictSettlesAsDuplicateDelivery(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	d, _, _ := collabTestDelivery(t, mail, nil)
+	d, _, _, _ := collabTestDelivery(t, mail, nil)
 	delivered, _, err := runCollabDelivery(mail, target, d)
 	if err != nil || delivered != 1 {
 		t.Fatalf("first delivery: delivered=%d err=%v", delivered, err)
@@ -38,7 +38,7 @@ func TestIdempotencyConflictSettlesAsDuplicateDelivery(t *testing.T) {
 
 	// 目标收件箱对该内容键的再次入队返回幂等冲突（同 key、信封含逐条变化的
 	// 元数据 → hash 不同）——即 desktop.log 里每 5-6s 一次的那个错误。
-	d2, _, notices2 := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
+	d2, _, notices2, _ := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
 		return sessioninbox.ErrIdempotencyConflict
 	})
 	delivered2, refused2, err := runCollabDelivery(mail, target, d2)

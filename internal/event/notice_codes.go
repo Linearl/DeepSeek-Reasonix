@@ -74,6 +74,12 @@ const (
 	// user-visible trace of the automatic decision — attended tabs keep the
 	// gate and never emit this.
 	NoticeCodeUnattendedGateAutoContinue = "unattended_gate_auto_continue"
+	// NoticeCodeCollabDeliverySilent (任务894): a cross-session delivery
+	// outcome that needs no sender action (injected / normal queued_followup /
+	// steer degraded to a queued follow-up) was demoted from an injected host
+	// message to this UI-layer notice — the model never reads it; the durable
+	// channel stays the 570 delivery receipt (get_message_status by messageId).
+	NoticeCodeCollabDeliverySilent = "collab_delivery_silent"
 )
 
 // 任务553: wake-yield code lives in its own block so the wire-stable table

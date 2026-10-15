@@ -45,7 +45,7 @@ func deliverOnePlain(t *testing.T, mail *sessioncollab.MailStore, msg sessioncol
 func TestReceiptRecordsDegradedSteer(t *testing.T) {
 	mail, target := newCollabTestMail(t)
 	id := deliverOnePlain(t, mail, sessioncollab.MailMessage{From: "sc_from", To: target, Body: "wake up", Delivery: "steer"})
-	d, _, notices := collabTestDelivery(t, mail, nil) // enqueue 成功但不注入（steered=false）
+	d, _, notices, silentNotices := collabTestDelivery(t, mail, nil) // enqueue 成功但不注入（steered=false）
 	d = receiptTestDelivery(d, mail)
 	if delivered, _, err := runCollabDelivery(mail, target, d); err != nil || delivered != 1 {
 		t.Fatalf("delivery: %d %v", delivered, err)
@@ -63,8 +63,13 @@ func TestReceiptRecordsDegradedSteer(t *testing.T) {
 	if got.Delivery != "steer" || got.To != target {
 		t.Fatalf("receipt must carry mode and recipient: %+v", got)
 	}
-	if len(*notices) != 1 {
-		t.Fatalf("the degraded note must still go out, got %d", len(*notices))
+	// 任务894：570 留痕通道不动（回执照写），但通知分级了——降级属无需行动
+	// 侧：注入通道零消息，静默通道（UI 层）恰好一条。
+	if len(*notices) != 0 {
+		t.Fatalf("降级通知不得走注入通道（任务894），got %d: %v", len(*notices), *notices)
+	}
+	if len(*silentNotices) != 1 {
+		t.Fatalf("降级通知必须仍走静默通道对人可见，got %d", len(*silentNotices))
 	}
 }
 
@@ -72,7 +77,7 @@ func TestReceiptRecordsDegradedSteer(t *testing.T) {
 func TestReceiptRecordsInjectedSteer(t *testing.T) {
 	mail, target := newCollabTestMail(t)
 	id := deliverOnePlain(t, mail, sessioncollab.MailMessage{From: "sc_from", To: target, Body: "wake", Delivery: "steer"})
-	d, _, _ := collabTestDelivery(t, mail, nil)
+	d, _, _, _ := collabTestDelivery(t, mail, nil)
 	// 把 enqueue 换成「注入成功」：steered=true。
 	d.enqueue = func(sessioncollab.MailMessage, string) (bool, error) { return true, nil }
 	d = receiptTestDelivery(d, mail)
@@ -90,7 +95,7 @@ func TestReceiptRecordsFailureThenOverwritesOnSuccess(t *testing.T) {
 	mail, target := newCollabTestMail(t)
 	id := deliverOnePlain(t, mail, sessioncollab.MailMessage{From: "sc_from", To: target, Body: "work"})
 	attempts := 0
-	d, _, _ := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
+	d, _, _, _ := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
 		attempts++
 		if attempts <= 2 {
 			return errors.New("workspace not ready")
@@ -122,7 +127,7 @@ func TestReceiptRecordsFailureThenOverwritesOnSuccess(t *testing.T) {
 func TestReceiptRecordsRefusals(t *testing.T) {
 	mail, target := newCollabTestMail(t)
 	id := deliverOnePlain(t, mail, sessioncollab.MailMessage{From: "sc_from", To: target, Body: "reply", ThreadID: "msg_ghost"})
-	d, _, _ := collabTestDelivery(t, mail, nil)
+	d, _, _, _ := collabTestDelivery(t, mail, nil)
 	d = receiptTestDelivery(d, mail)
 	// 注入一个必然失败的 deriveHop（等价于真实链路上无法核实 thread 来源）。
 	d.deriveHop = func(sessioncollab.MailMessage) (int, error) { return 0, errors.New("thread not in sender mailbox") }
@@ -138,7 +143,7 @@ func TestReceiptRecordsRefusals(t *testing.T) {
 	if err := appendRawLine(mail.InboxPath(target), `{"id":"msg_deep","fromContactId":"sc_from","toContactId":"`+target+`","body":"too deep","hop":99}`); err != nil {
 		t.Fatal(err)
 	}
-	d2, _, _ := collabTestDelivery(t, mail, nil)
+	d2, _, _, _ := collabTestDelivery(t, mail, nil)
 	d2 = receiptTestDelivery(d2, mail)
 	if _, refused, err := runCollabDelivery(mail, target, d2); err != nil || refused != 1 {
 		t.Fatalf("hop ceiling refusal: %d %v", refused, err)
