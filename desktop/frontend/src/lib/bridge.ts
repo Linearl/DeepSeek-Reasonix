@@ -493,6 +493,77 @@ export interface CollabViewOverviewView {
   generatedAt: number;
 }
 
+// 任务 419: run journal 读口视图（与 desktop/run_journal_app.go 的 JSON 形状
+// 一一对应；运行日志=单会话流水线的持久记录）。
+export interface RunJournalRunSummaryView {
+  id: string;
+  parentSession: string;
+  tool: string;
+  label: string;
+  status: string;
+  total: number;
+  createdAt: number;
+  endedAt: number;
+}
+
+export interface RunJournalMemberView {
+  idx: number;
+  memberId: string;
+  label: string;
+  profile: string;
+  status: string;
+  ref: string;
+  error: string;
+  preview: string;
+  startedAt: number;
+  endedAt: number;
+}
+
+export interface RunJournalHealthView {
+  terminal: boolean;
+  lastProgressAt: number;
+  consecutiveFailures: number;
+  leftoverRunning: number;
+  membersTerminal: number;
+  membersTotal: number;
+}
+
+export interface RunJournalTimelineEntryView {
+  seq: number;
+  at: number;
+  kind: string;
+  memberIdx: number;
+  memberLabel: string;
+  status: string;
+  detail: string;
+}
+
+export interface RunJournalArtifactView {
+  id: string;
+  kind: string;
+  title: string;
+  ref: string;
+  memberIdx: number;
+  version: number;
+  primary: boolean;
+  publishedAt: number;
+}
+
+export interface RunJournalRunListResult {
+  runs: RunJournalRunSummaryView[];
+  generatedAt: number;
+  error?: string;
+}
+
+export interface RunJournalRunDetailResult {
+  run: RunJournalRunSummaryView;
+  members: RunJournalMemberView[];
+  health: RunJournalHealthView;
+  timeline: RunJournalTimelineEntryView[];
+  artifacts: RunJournalArtifactView[];
+  error?: string;
+}
+
 /** 409/349: 频道名册一行。 */
 export interface CollabChannelView {
   id: string;
@@ -1476,6 +1547,12 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   GetCollabViewOverview(): Promise<CollabViewOverviewView>;
   ListCollabChannels(): Promise<CollabChannelView[]>;
   ReadCollabChannel(ref: string, limit: number): Promise<CollabChannelReadView>;
+  // 任务 419: 运行日志读口（单会话多 agent 流水线的运行记录/花名册/时间线/产物
+  // 投影；签名以 desktop/run_journal_app.go 为准）。Degraded reads return the
+  // empty shape WITH error set — the panel can say "journal unavailable"
+  // instead of pretending the history is empty.
+  ListRunJournalRuns(parentSession: string, limit: number): Promise<RunJournalRunListResult>;
+  GetRunJournalRunDetail(runID: string): Promise<RunJournalRunDetailResult>;
   // 任务 802: 群聊微信级 UI 的绑定面（803 wails API 族 + 802 撤回口）。
   // 签名以 desktop/collab_channel_app.go / collab_channel_cancel_app.go 为准：
   // ref 一律接受群名或群 id；join/invite/remove 返回更新后的 Channel 免二次拉取；
@@ -6192,6 +6269,19 @@ function makeMockApp(): AppBindings {
     },
     async ReadCollabChannel(_ref: string, _limit: number) {
       return { channel: { id: "", name: "", createdAt: 0, hourlyLimit: 0, members: [], messages: 0 }, messages: [] };
+    },
+    // 任务 419 mocks: dev shell 没有运行日志——诚实的空目录（409 先例：不造假数据）。
+    async ListRunJournalRuns(_parentSession: string, _limit: number) {
+      return { runs: [], generatedAt: Date.now() };
+    },
+    async GetRunJournalRunDetail(_runID: string) {
+      return {
+        run: { id: "", parentSession: "", tool: "", label: "", status: "", total: 0, createdAt: 0, endedAt: 0 },
+        members: [],
+        health: { terminal: false, lastProgressAt: 0, consecutiveFailures: 0, leftoverRunning: 0, membersTerminal: 0, membersTotal: 0 },
+        timeline: [],
+        artifacts: [],
+      };
     },
     // 任务 802 mocks: dev shell 没有频道实体——诚实的空群目录与失败写路径，
     // 让微信式 UI 在 dev shell 渲染空态而不是假数据。

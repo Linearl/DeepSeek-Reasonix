@@ -15,6 +15,7 @@ import (
 	"reasonix/internal/event"
 	"reasonix/internal/evidence"
 	"reasonix/internal/jobs"
+	"reasonix/internal/runjournal"
 	"reasonix/internal/tool"
 )
 
@@ -28,6 +29,18 @@ const (
 // write_paths; preflight failure starts nothing.
 type FleetTool struct {
 	taskTool *TaskTool
+	// runJournalPath enables task-419 run recording ("" = off: without a
+	// path the pre-419 behavior is byte-identical).
+	runJournalPath string
+}
+
+// WithRunJournalPath points the fleet at the run journal database file
+// (task 419). Empty disables recording.
+func (f *FleetTool) WithRunJournalPath(path string) *FleetTool {
+	if f != nil {
+		f.runJournalPath = path
+	}
+	return f
 }
 
 // NewFleetTool creates a fleet dispatcher that reuses TaskTool infrastructure.
@@ -326,8 +339,39 @@ func (f *FleetTool) runFleet(ctx context.Context, sink event.Sink, specs []Profi
 	}
 	merger.directStatus(groupParentID, subagentPhaseRunning)
 	var results []fleetItemResult
+	// Task 419: run journal. begin happens only here — inside runFleet, after
+	// Execute's preflight — so a rejected fleet never leaves a run row behind
+	// (a run that did not happen must not be recorded as having happened).
+	// The terminal settle + end ride the same defer as the group lifecycle so
+	// every exit path closes the journal exactly once.
+	rec := newRunRecorder(f.runJournalPath)
+	rec.begin(runjournal.RunSpec{
+		ParentSession: ParentSession(ctx),
+		ToolCallID:    groupParentID,
+		Tool:          "fleet",
+		Label:         fmt.Sprintf("fleet(%d)", len(specs)),
+		Members:       fleetMemberSpecs(groupParentID, specs),
+	})
 	defer func() {
-		merger.directStatus(groupParentID, fleetGroupTerminalPhase(ctx, err, results))
+		// Members the workers never settled (dependency-skipped, queue cut by
+		// cancellation) land here; first-write-wins makes the worker-settled
+		// duplicates no-ops.
+		for i := range results {
+			if results[i].status == fleetItemPending {
+				continue
+			}
+			rec.settled(runjournal.MemberSettlement{
+				Idx:    i + 1,
+				Status: string(results[i].status),
+				Label:  specs[i].Task.Description,
+				Ref:    results[i].ref,
+				Error:  errorText(results[i].err),
+				Preview: results[i].output,
+			})
+		}
+		phase := fleetGroupTerminalPhase(ctx, err, results)
+		rec.end(string(phase), result)
+		merger.directStatus(groupParentID, phase)
 	}()
 
 	n := len(specs)
@@ -355,6 +399,7 @@ func (f *FleetTool) runFleet(ctx context.Context, sink event.Sink, specs []Profi
 				Args: string(dispatchArgs), ReadOnly: spec.Grant.ReadOnly,
 			},
 		})
+		rec.dispatched(idx + 1)
 
 		wg.Go(func() {
 			// Each fleet item runs as its own task-shaped execution so
@@ -380,6 +425,16 @@ func (f *FleetTool) runFleet(ctx context.Context, sink event.Sink, specs []Profi
 					Tool: event.Tool{ID: subID, ParentID: parentID, Name: "task", Err: err.Error()},
 				})
 			}
+			// Settle inside the worker so the journal's settled event carries
+			// the member's real completion instant, not the group's end tick.
+			rec.settled(runjournal.MemberSettlement{
+				Idx:     idx + 1,
+				Status:  string(res.status),
+				Label:   label,
+				Ref:     ref,
+				Error:   errorText(err),
+				Preview: answer,
+			})
 			doneCh <- res
 		})
 	}
