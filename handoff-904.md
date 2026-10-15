@@ -82,3 +82,34 @@
 
 **验收**：单测绿（上述 2 组 + shell 域 24 项全过：ResolveShell 决策表/候选排序/能力报告/配置路径安全边界/WSL 排除回归等）；gofmt 0、go vet 净。
 **预存红申报**：包内 `TestNormalizeWriteDirResolvesSymlinkParent`、`TestResolveCanonicalPathLocalBehaviorRegression`、`TestEnsureWriteDirRejectsApprovalIdentityChange` 三条在**干净 main-v2-stable 主仓同样红**（symlink/规范路径环境相关，与 shell 域无关，非本件引入）。
+
+## 904b 实证记录（2026-10-15）：**不复现 → 销项**
+
+### 定案：上游 10446 缺陷在 fork **结构性不存在**，不复现，不实施修复
+
+### 读码链（复现所需两层在 fork 均不存在）
+
+| 上游 10446 要素 | fork 对应 | 结论 |
+|---|---|---|
+| ① 传输层：前台 bash 共享**会话级 PTY**（#10327 新特性，`internal/persistentshell`）| fork **无 persistentshell 包**；bash 工具前台 = `internal/shellrun.RunForeground`：`proc.CommandContext` 独立子进程 + `cmd.Stdout=cmd.Stderr=同一 MultiWriter`（runner.go:118-126 注释钉死单 pipe 保序），**每调用一进程，无任何 PTY/ConPTY** | 寄生缺陷无宿主 |
+| ② 哨兵层：宿主依赖 `REASONIX_END_<hash>` 唯一结束标记判定完成 | fork 前台链路**无 REASONIX_END 类哨兵**（全仓 grep 无此机制）；完成判定 = 子进程退出 + pipe EOF（shellrun timeout/cancel/exit 分类）| 污染哨兵→假超时的第二层不存在 |
+| ConPTY 使用面 | 仅 `desktop/terminal_process_windows.go`——服务**用户主动打开的集成终端**（terminalManager UI 会话，用户看得见的真终端），不参与模型 bash 工具路径；上游修复也声明不动用户终端 | 不在缺陷面 |
+| 非 ASCII 解码 | `shellrun/codepage.go decodeConsoleOutput`：UTF-8 原样放行 → 系统代码页候选逐一试解（含 U+FFFD 双重拒收）→ CP936/54936 时 GB18030 兜底；`progressWriter` pending 缓冲跨 pipe 读拆字符（上游 #11311→#11327 移植，`773d98b6d`）| 已有修复面 |
+| 超时语义 | `context.WithTimeoutCause` 真实进程组 deadline（fork 默认 300s 非上游 120s，`config.go:2514`）| 真超时，非哨兵假超时 |
+
+### 实证（新增 `internal/shellrun/foreground_cjk_repro_904_test.go`，5 测试全绿）
+
+复现矩阵原形状 + 超时/解码断言，真实 Git Bash 前台执行（`go test ./internal/shellrun/ -run 'TestForegroundCJK|TestForegroundGBK|TestNoSharedPTY' -v`，2026-10-15 实测 6.8s 全 PASS）：
+
+1. `TestForegroundCJKOutputBytePerfectNoFakeTimeout`——上游复现命令 A 原形状 `printf '中文测试A\n中文测试B\n'; echo MARKER_END`：state=completed、三段逐字在、无 U+FFFD、耗时 0.92s 远低于超时。**不复现乱码、不复现假超时**。
+2. `TestForegroundCJKQuotedLsNoFakeTimeout`——上游唯一失败行「前台裸 `ls -a` + 中文文件名」（三个真实 fixture）：文件名逐字在、无 `$'` tty quoting 踪迹（pipe stdout 下 ls 不进 tty 格式）、completed。**不复现**。
+3. `TestForegroundCJKTimeoutKeepsDecodedOutput`——中文输出后 sleep 10 + 500ms 超时：state=timed_out/timeout（真 deadline），且超时前已收中文输出完好无替换符。证超时层是真进程组超时、与输出编码解耦。**不复现「超时吞输出/污染输出」**。
+4. `TestForegroundGBKConsoleOutputRealShell`——真实子进程 printf 发 GBK 原始字节（invalid UTF-8 上 pipe，即 CP936 控制台程序形状）→ 解码链还原「中文GBK通道验证完成」。**不复现乱码**。
+5. `TestNoSharedPTYInForegroundPath`——结构守卫：连续两次前台运行持有**不同**子进程/Tracked 句柄且各自独立 completed（共享会话 PTY 若回归，此测试红，倒逼重做本分析）。
+
+对照上游矩阵：上游「前台裸 ls=乱码+假超时」行在 fork 对应形状为全绿 → **不复现二选一取「不复现」，销项**。上游修复主体（persistentshell 管道化）在 fork 无对应结构，按「验证先行类：不复现则销项不硬造」不实施。
+
+### 真实 UI 无法测的部分（标注）
+
+- 桌面**集成终端面板**（用户开的 ConPTY 真终端，`desktop/terminal_process_*`）在无头环境只能跑已有 `TestWindowsTerminalProcessConPTYSmoke`（ASCII 冒烟）；中文渲染依赖前端 xterm 渲染与用户交互，**无法无头取证**——但该终端是用户主动打开的可见 UI，不是上游 10446 的「模型前台 bash 调用」，且上游修复明确不改用户终端，故不构成销项风险。
+- ACP 客户端终端（`clientio.RunCommand` 走 terminal/create 协议）输出由客户端终端渲染，宿主只回传字节，同理不在 fork 自有解码链内；需真实 ACP 客户端（如 Zed）联调，超出无头范围。
