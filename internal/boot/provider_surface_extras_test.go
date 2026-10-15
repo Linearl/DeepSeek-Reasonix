@@ -18,6 +18,9 @@ import (
 // surfaceProbeTool is a minimal tool.Tool for registry visibility tests.
 type surfaceProbeTool struct{ name string }
 
+// boolPtr arms the task-915 *bool family field in test configs.
+func boolPtr(v bool) *bool { return &v }
+
 func (p surfaceProbeTool) Name() string        { return p.name }
 func (p surfaceProbeTool) Description() string { return p.name + " desc" }
 func (p surfaceProbeTool) Schema() json.RawMessage {
@@ -54,13 +57,13 @@ func TestProviderSurfaceExtrasFollowTheFlag(t *testing.T) {
 // stack, and the default-off config stays empty (golden/forbidden untouched).
 func TestProviderSurfaceExtrasCarryMultiEditWithToolOptimizations(t *testing.T) {
 	familyOn := &config.Config{}
-	familyOn.Agent.ExperimentalToolOptimizations = true
+	familyOn.Agent.ExperimentalToolOptimizations = boolPtr(true)
 	if got := providerSurfaceExtras(familyOn); len(got) != 1 || got[0] != "multi_edit" {
 		t.Fatalf("extras with the family on = %v, want [multi_edit]", got)
 	}
 	both := &config.Config{}
 	both.Desktop.ExperimentalAutonomousUpdate = true
-	both.Agent.ExperimentalToolOptimizations = true
+	both.Agent.ExperimentalToolOptimizations = boolPtr(true)
 	if got := providerSurfaceExtras(both); len(got) != 2 || got[0] != "restart_update" || got[1] != "multi_edit" {
 		t.Fatalf("extras with both switches on = %v, want [restart_update multi_edit]", got)
 	}
@@ -120,7 +123,7 @@ func TestProviderVisibleSurfaceCarriesMultiEditWithFamilyLit(t *testing.T) {
 
 	// Family on: the model tools list carries multi_edit.
 	on := &config.Config{}
-	on.Agent.ExperimentalToolOptimizations = true
+	on.Agent.ExperimentalToolOptimizations = boolPtr(true)
 	applyUnifiedProviderToolSurface(reg, providerSurfaceExtras(on)...)
 	if !reg.ProviderVisible("multi_edit") {
 		t.Fatal("multi_edit must be provider-visible with the family switch on")
