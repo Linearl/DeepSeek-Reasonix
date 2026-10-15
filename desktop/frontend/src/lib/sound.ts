@@ -525,6 +525,25 @@ export async function maybePlayUpdateChime(options: UpdateChimeOptions): Promise
   return "played";
 }
 
+// 任务 907（上游 8859 / PR11085 重实施）：turn_done 的四类「停在等用户」
+// 结局（host 侧 desktop/topic_status.go 记为 paused / awaiting_delivery，
+// 从不是完成）在旧通知链里被 `if (!err)` 的成功音判据整体漏掉——它们都带
+// err，于是既不响成功音也没有任何提示。这四类结局改响 attention chime
+// （Settings 的「AI 提问」音）；干净结束保持 success，普通失败保持静音。
+// 上游把该集合放在 runtimeNotifications.ts；fork 的 chime 决策收敛在
+// sound.ts，语义与其 diff 逐条对齐。
+export const PAUSED_TURN_OUTCOMES = new Set(["final_readiness", "recovery_paused", "incomplete_read", "completion_uncertain"]);
+
+export type TurnDoneChime = "success" | "attention" | "none";
+
+/** Turn-done chime verdict: paused outcomes wait on the user (attention), a
+ * clean finish rings success, an ordinary failure stays silent. */
+export function turnDoneChimeChoice(err?: string, outcome?: string): TurnDoneChime {
+  if (outcome && PAUSED_TURN_OUTCOMES.has(outcome)) return "attention";
+  if (err) return "none";
+  return "success";
+}
+
 export type AttentionChimeEvent = {
   kind?: string;
   tabId?: string;

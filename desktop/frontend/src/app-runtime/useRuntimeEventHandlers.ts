@@ -4,7 +4,7 @@ import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { activeTabMirror } from "./activeTabMirror";
 import { asArray } from "../lib/array";
 import { createBoundedRefreshCoordinator, sameTabMetaLists, seedActiveTabMetaList, shouldRefreshTabMetaForEvent, TAB_META_MAX_IN_FLIGHT } from "../lib/tabMetaRefresh";
-import { clearAttentionChimeKeys, playAttentionChime, playSuccessChime, shouldPlayAttentionChimeForEvent } from "../lib/sound";
+import { clearAttentionChimeKeys, playAttentionChime, playSuccessChime, shouldPlayAttentionChimeForEvent, turnDoneChimeChoice } from "../lib/sound";
 import { composerProfileFromTab, defaultComposerProfile, patchComposerProfile, resolvePlanRestoreTabId, shouldRestoreUserPlanModeForProfile, updateUserPlanModeIntent, type ComposerProfile, type UserPlanModeIntents } from "../lib/composerProfile";
 import { useRemoteTabOpened } from "../lib/useRemoteTabOpened";
 import { recordFrontendDiagnostic } from "../lib/frontendDiagnosticBridge";
@@ -83,7 +83,11 @@ export function useRuntimeEventHandlers(input: RuntimeEventHandlersInput) {
     if (event.kind === "turn_done") {
       input.setDockRefreshKey((value) => value + 1);
       input.setProjectRevision((value) => value + 1);
-      if (!event.err) playSuccessChime();
+      // 任务 907（上游 8859/PR11085）：paused 结局（final_readiness 等四类）
+      // 响 attention 而非静音；success 只留给干净结束。与 App.tsx 活树同判定。
+      const chime = turnDoneChimeChoice(event.err, event.outcome);
+      if (chime === "attention") playAttentionChime();
+      else if (chime === "success") playSuccessChime();
     }
     if (shouldPlayAttentionChimeForEvent(event, attentionChimeEvents.current)) playAttentionChime();
     if (shouldRefreshTabMetaForEvent(event.kind)) void refreshTabMetas(undefined, { afterMutation: true });
