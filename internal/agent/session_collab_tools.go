@@ -1137,8 +1137,12 @@ func (t talkToSessionTool) Execute(ctx context.Context, args json.RawMessage) (s
 	// 任务 570 (c1)：把「queued 只是入队回执，不是投递终态」说成显式字段，
 	// 并给出查询终态的现成入口。既有调用方零破坏：全部为增量字段，原字段
 	// 语义与取值不变（回归由既有测试钉住）。
+	// 任务894：注记补上分级通道的契约——无需行动终态（injected / 正常
+	// queued_followup / steer 降级）不再注入独立消息（省空转轮次），改走 UI
+	// 通知层 + 本返回值指引的按需查询；需行动终态（refused_*/未送达/开轮
+	// 耗尽）仍强制注入。返回值与查询通道是发送方的持久兜底，不因静默化丢失。
 	payload["deliveryOutcome"] = "pending"
-	payload["deliveryOutcomeNote"] = "queued 只代表消息已进入持久信箱；是否注入当轮/降级排队/被拒绝由投递泵异步定局（约 4 秒一轮）。用 get_message_status(message_id=\"" + msg.ID + "\") 查询终态（injected/queued_followup/refused_*/failed_retrying）；用 peek_own_inbox 查看落进你自己信箱的系统回执（降级/拒绝通知）。pending 不是成功回执。"
+	payload["deliveryOutcomeNote"] = "queued 只代表消息已进入持久信箱；是否注入当轮/降级排队/被拒绝由投递泵异步定局（约 4 秒一轮，返回值全程不等待）。用 get_message_status(message_id=\"" + msg.ID + "\") 查询终态。分级通道（任务894）：无需行动的终态（injected、queued_followup——含 steer 降级为排队）不再注入独立消息，只进 UI 通知层与本回执查询；需行动的终态（refused_*、open_retry_exhausted、投递失败）仍会作为独立消息强制注入你的上下文，拒绝/失败通知也可在 peek_own_inbox 看到。pending 不是成功回执。"
 	// 任务 599：建议复查间隔（毫秒），与宿主投递泵的定局节奏同源
 	// （sessioncollab.DeliveryPumpIntervalMS，desktop ticker 从它推导）——
 	// 调用方照这个间隔用 get_message_status 复查，第一次复查就有真结果的
