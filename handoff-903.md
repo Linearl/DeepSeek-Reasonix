@@ -63,7 +63,46 @@ agent 生成「隔离 HOME 复跑」命令：第一句 `$home = Join-Path $env:T
 ## 记录（每步即 commit）
 
 - [x] 第一步：worktree wt-903 创建，本计划落盘
-- [ ] 第二步：上游 diff 取回 + fork 执行链勘察（插入点定案）
-- [ ] 第三步：护栏实现 + 单测（正向用例）
-- [ ] 第四步：误杀面回归用例
-- [ ] 第五步：语义对照说明 + 验收 + 汇报
+- [x] 第二步：上游 diff 取回（tmp/pr11786.diff，2259 行）+ fork 执行链勘察
+- [x] 第三步：护栏实现 + 单测（正向用例）
+- [x] 第四步：误杀面回归用例 + PS golden cause 对照用例
+- [x] 第五步：语义对照说明 + docs 补节 + 验收
+
+## 上游 PR11786 语义对照说明（验收③，2026-10-15）
+
+### 上游修复结构（diff 逐文件确认）
+
+| 上游文件 | 职责 |
+|---|---|
+| `internal/base/shellparse/delete.go` | bash AST 删除调用提取（序列安全性、字面参数解析） |
+| `internal/base/shellparse/delete_powershell.go` | PowerShell AST 分析脚本（宿主进程纯解析，stdin=数据永不执行） |
+| `internal/safety/shellsafe/delete.go` + `delete_options.go` + `delete_wrappers.go` | 递归删除范围分析（POSIX/PS/cmd 选项、find/xargs/cmd /c、wrapper 解包） |
+| `internal/tools/builtin/bash_delete.go` | 执行前护栏判定（序列规则、字面路径、granted roots 边界） |
+| `internal/tools/builtin/bash_delete_interpreter.go` | iex / powershell -Command / bash -c / -EncodedCommand payload 递归分析 |
+| `internal/tools/builtin/bash_delete_parser.go` | 常驻 PowerShell 解析 worker（每 shell 路径一个，超时/出错重建） |
+| `internal/tools/builtin/bash.go` | 接线：`prepareGuardedLaunch`（refuseCommand → prepareLaunch） |
+| `docs/TOOL_APPROVAL_MODES.md` | 「Recursive shell deletes」文档节 + 拒绝码表 |
+| `desktop/frontend-next/src/i18n/*` | 拒绝码的中英文 UI 文案（kernel.ts SAID 映射） |
+| `internal/assembly/boot/effect_delete_test.go` | 端到端效果测试（Auto/Yolo 下 fixture 存活、后续语句不执行） |
+
+### fork 重实施映射（语义对齐、结构按 fork 现状）
+
+| 上游 | fork 落点 | 说明 |
+|---|---|---|
+| `base/shellparse/delete.go` | `internal/shellparse/delete.go` | 同语义：sequence 标记 + Walk 提取 + StaticWord 字面解析（复用 fork 既有 StaticWord/ParseBash） |
+| `base/shellparse/delete_powershell.go` | `internal/shellparse/delete_powershell.go` | 分析脚本语义对照重写（Literal-Node / Delete-Unsafe / 别名表 / PSDefaultParameterValues / if-Test-Path 安全条件 / 管道与 .NET Delete 展平） |
+| `safety/shellsafe/delete*.go` | `internal/shellsafe/delete*.go` | AnalyzeRecursiveDelete / 选项解析 / wrapper 解包同语义；`ExecutableBase` 用 fork 既有 `commandBase`（补 `deleteCommandBase` 保住空命令名=`动态命令`语义） |
+| `tools/builtin/bash_delete.go` | `internal/tool/builtin/bash_delete.go` | judgeDelete 主循环、boundedDeleteTarget（home/根/工作区祖先/严格子路径判定、realPath 防 symlink 逃逸）、session temp 根均对齐；`tool.Refusal{Code}` 用 fork 的 `deleteRefusal` 错误类型 + `(refusal: shell.*)` 文本身份（fork 无 Refusal 类型，取相同信息量） |
+| `bash_delete_interpreter.go` | 同名（builtin） | iex/invoke-expression、powershell/pwsh -Command/-c/-EncodedCommand(base64 UTF-16LE)、bash/sh -c 全对齐 |
+| `bash_delete_parser.go` | 同名（builtin） | 常驻 worker、10s 超时、单行 JSON 协议、失败杀进程重建，均对齐 |
+| `bash.go` 接线 | `ExecuteDetailed` 在 `prepareLaunch` 前插 `refuseDestructiveDelete` | **等价性**：上游 `prepareGuardedLaunch` = refuseCommand(externalRef+cmdline+delete) → prepareLaunch；fork 无 externalRef/cmdline 检查，故只插 delete 护栏，同样位于**一切启动路径之前**（前台/终端/后台） |
+| docs 文档节 | `docs/TOOL_APPROVAL_MODES.md` 新增同名节 | 拒绝码表逐条对齐（fork 无 `shell.command_line_too_long`，该码属上游 bash_cmdline 域，不在本任务面） |
+| i18n kernel.ts | **未实施**（记残留） | fork 前端拒绝码渲染链路不同构；core 错误文本已带 remedy + code，UI 层按码翻译属 desktop 面，不在本任务「core 执行层护栏」范围 |
+| boot effect test | `internal/tool/builtin/bash_delete_test.go::TestDeleteIncidentHomeSurvives` | 端到端等价：真实 PowerShell 执行路径（terminal=nil），USERPROFILE/HOME 指 fixture，探针先证 $home 解析到 fixture 才敢跑危险命令；断言拒绝 + fixture 完好 + 后续语句未执行 |
+
+### 已知残余（对齐上游自述 + fork 特有）
+
+1. **护栏不是 OS 沙箱**（上游自述同款）：磁盘脚本、`Start-Process`、`robocopy`、`git clean`、任意程序、文件系统竞态在其范围外；动态/复合删除会被保守拒绝。
+2. i18n UI 文案未搬（见上表）。
+3. 上游效果测试在 boot 层（headless 全链），fork 落在 builtin 层直接调 `ExecuteDetailed`——同一执行入口、少一层 agent 编排，判定语义相同。
+4. PowerShell 5.1 实测通过（本机 powershell）；pwsh 7 与非 Windows 执行环境本机不可用（与上游 PR 自述一致）。
