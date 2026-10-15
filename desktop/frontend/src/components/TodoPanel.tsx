@@ -14,8 +14,6 @@ import { PromptBadge, PromptHeaderAction, PromptShelf } from "./PromptShelf";
 
 const STORAGE_KEY = "todoPanel:openStates";
 const MAX_STORED_OPEN_STATES = 80;
-const COMPLETION_HOLD_MS = 900;
-const COMPLETION_FADE_MS = 240;
 
 function loadOpenStates(): Record<string, boolean> {
   try {
@@ -53,8 +51,11 @@ function saveOpenState(stateKey: string, open: boolean): void {
 // latest todo_write call drives it, and it updates in place as the agent flips
 // items to in_progress / completed. Each new todo batch starts collapsed so the
 // header can show live progress and the current task without occupying extra
-// space. A batch that just reached completion briefly shows its final count,
-// then leaves the composer shelf; the transcript tool call remains.
+// space. Task 893-C: a batch that reaches completion stays visible — the
+// sign-off is not recycled within the turn; the shelf keeps its final count and
+// a close action, and reclaim only happens when the user closes it (then the
+// dock falls back to the sealed empty state). A batch restored already-all-done
+// (session reload) still does not reattach; the transcript tool call remains.
 // Manual expand/collapse is restored only for the same batch.
 // Task 152: the list renders as a tree (parent_id nesting with indent and
 // per-parent collapse, dotted T1/T1.1 position codes) and optionally carries an
@@ -92,22 +93,14 @@ export function TodoPanel({
   const allDone = todos.length > 0 && done === todos.length;
   const summary = current?.activeForm || current?.content || todos[todos.length - 1]?.content || "";
   const [open, setOpen] = useState(() => loadOpenState(stateKey, defaultOpen ?? shouldOpenTodoPanelByDefault()));
+  // Task 893-C: only a batch restored already-all-done starts hidden (session
+  // reload — the sealed empty state takes over). A live batch that completes
+  // mid-session keeps its visible state: sign-off is not recycled in-turn.
   const [visible, setVisible] = useState(!allDone);
 
   useEffect(() => {
-    if (!allDone) {
-      setVisible(true);
-      return;
-    }
-    if (!visible) return;
-
-    saveOpenState(stateKey, false);
-    setOpen(false);
-    const dismissTimer = window.setTimeout(() => setVisible(false), COMPLETION_HOLD_MS + COMPLETION_FADE_MS);
-    return () => {
-      window.clearTimeout(dismissTimer);
-    };
-  }, [allDone, stateKey, visible]);
+    if (!allDone) setVisible(true);
+  }, [allDone]);
 
   useEffect(() => {
     if (!open) return;
@@ -118,7 +111,6 @@ export function TodoPanel({
 
   return (
     <PromptShelf
-      className={allDone ? "todo-exit" : undefined}
       titleId="todo-shelf-title"
       title={t("todo.title")}
       badges={<PromptBadge>{done}/{todos.length}</PromptBadge>}
