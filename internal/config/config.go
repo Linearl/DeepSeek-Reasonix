@@ -1107,6 +1107,16 @@ type ServeConfig struct {
 	// and the capability is not advertised. Applies on restart, like every
 	// boot-resolved serve switch.
 	ExperimentalGCChildSession bool `toml:"experimental_gc_child_session"`
+	// ExperimentalGCManageSessions is the task-911 lab switch: when on, the
+	// GrandCouncil remote client may manage the project/session group rosters
+	// through the serve gateway (GET /manage-groups and POST
+	// /manage-groups/{create,rename,delete,reorder}) — the same
+	// desktop-projects.json + sidecar the desktop app writes, so both sides
+	// stay one roster. GET /capabilities advertises "manage-groups" alongside.
+	// The zero value (off) keeps every route and capability byte-for-byte as
+	// it was (铁律 2). Applies on restart, like every boot-resolved serve
+	// switch.
+	ExperimentalGCManageSessions bool `toml:"experimental_gc_manage_sessions"`
 }
 
 // BusMCPConfig is the [serve.bus_mcp] table. See [ServeConfig.BusMCP].

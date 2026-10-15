@@ -2156,6 +2156,14 @@ func renderServeConfig(b *strings.Builder, c *Config, scope RenderScope) {
 	} else {
 		b.WriteString("# experimental_gc_child_session = false   # opt-in; lets the GrandCouncil client spawn a derived child session\n")
 	}
+	// 任务911: GC manage groups — default off (iron rule 2). Boot-resolved:
+	// the flip mounts GET /manage-groups + POST /manage-groups/{create,rename,
+	// delete,reorder} and advertises the "manage-groups" capability.
+	if c.Serve.ExperimentalGCManageSessions {
+		b.WriteString("experimental_gc_manage_sessions = true   # GrandCouncil may manage the project/session group rosters through the gateway\n")
+	} else {
+		b.WriteString("# experimental_gc_manage_sessions = false   # opt-in; lets the GrandCouncil client manage session/project groups\n")
+	}
 	b.WriteString("\n")
 
 	b.WriteString("[serve.bus_mcp]\n")

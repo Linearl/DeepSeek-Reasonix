@@ -51,6 +51,11 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 	if s.gcChildSession {
 		caps = append(caps, "child-session")
 	}
+	// 任务911: the manage-groups capability rides the same fail-closed
+	// pattern — advertised only while the lab switch is on.
+	if s.gcManageSessions {
+		caps = append(caps, "manage-groups")
+	}
 	writeJSON(w, capabilitiesResponse{
 		Protocol:     serveProtocolVersion,
 		MinProtocol:  serveProtocolVersion,
