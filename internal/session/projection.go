@@ -27,8 +27,13 @@ type Projection struct {
 	// remains the complete UI/history transcript; compaction replaces only this
 	// view and never deletes the underlying business history.
 	ModelMessages []provider.Message
-	Todos         []event.Todo
-	TodoWritten   bool
+	// Todos is the session-level task list view (task 893-A): like the
+	// canonical host list (internal/agent/todo_state.go), it outlives a turn —
+	// projectTurnStart resets only the per-turn TodoWritten marker. A real
+	// reclaim (explicit empty todo/write, goal stall clear on the canonical
+	// side) still replaces or empties it through the write path.
+	Todos       []event.Todo
+	TodoWritten bool
 	Interactions  map[string]string
 	ActiveTools   map[string]string
 	Recovery      *event.RecoveryStatus
@@ -319,7 +324,10 @@ func projectTurnStart(projection *Projection, commit Commit, ev Event) error {
 	projection.TurnStatus = event.TurnInProgress
 	projection.CurrentTurnStart = ev.Sequence
 	projection.CurrentTurnMessageID = ""
-	projection.Todos, projection.TodoWritten = []event.Todo{}, false
+	// Task 893-A: the todo list is session-scoped, not turn-scoped. Only the
+	// per-turn "wrote in this turn" marker resets; the visible list survives
+	// the turn boundary so a completed list is not silently recycled.
+	projection.TodoWritten = false
 	projection.Recovery = nil
 	return nil
 }
