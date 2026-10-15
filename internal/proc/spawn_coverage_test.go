@@ -64,6 +64,7 @@ func TestEverySpawnSiteIsHiddenOrExempt(t *testing.T) {
 		"desktop/updater_install_linux.go":         "linux-only",
 		"desktop/updater_mac.go":                   "darwin-only",
 		"desktop/updater_other.go":                 "!windows build tag",
+		"desktop/workspace_trash_linux.go":         "linux-only (freedesktop trash via gio; no window to hide)",
 		"internal/notify/sender_darwin.go":         "darwin-only",
 		"internal/notify/sender_linux.go":          "linux-only",
 		"internal/sandbox/git_preflight_darwin.go": "darwin-only",
