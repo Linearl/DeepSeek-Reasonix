@@ -56,15 +56,33 @@ func (c *Controller) CheckWriteAccess(ctx context.Context, req agent.WriteAccess
 		return agent.WriteAccessDecision{Allow: false, Reason: agentHeadlessWriteHint(display)}, nil
 	}
 	missing := c.writeAccess.roots.Missing(abs)
+	// The current session's private temp generation is owned by this controller.
+	// Grant it for this call only, so rotation cannot leave the old directory writable.
+	var sessionTempDirs []string
+	if c.sessionTemp != nil {
+		if root := c.sessionTemp.Dir(); root != "" {
+			if resolved, resolveErr := sandbox.ResolveAbsPath(root); resolveErr == nil {
+				remaining := missing[:0]
+				for _, dir := range missing {
+					if sandbox.PathWithin(resolved, dir) {
+						sessionTempDirs = append(sessionTempDirs, dir)
+					} else {
+						remaining = append(remaining, dir)
+					}
+				}
+				missing = remaining
+			}
+		}
+	}
 	if len(missing) == 0 {
-		return agent.WriteAccessDecision{Allow: true}, nil
+		return agent.WriteAccessDecision{Allow: true, PerCallRoots: sessionTempDirs}, nil
 	}
 	// Task 127: trusted managed worktree roots skip the write-access ask while
 	// the parallel full-access experiment is on. Other missing roots still ask.
 	if filtered := filterParallelTrustedMissing(missing); len(filtered) == 0 {
 		return agent.WriteAccessDecision{
 			Allow:        true,
-			PerCallRoots: missing,
+			PerCallRoots: append(sessionTempDirs, missing...),
 		}, nil
 	} else {
 		missing = filtered
@@ -97,7 +115,7 @@ func (c *Controller) CheckWriteAccess(ctx context.Context, req agent.WriteAccess
 	}
 	return agent.WriteAccessDecision{
 		Allow:            true,
-		PerCallRoots:     grant.PerCall,
+		PerCallRoots:     append(sessionTempDirs, grant.PerCall...),
 		SkipOrdinaryGate: mergeAsk || decision == permission.Allow,
 	}, nil
 }
