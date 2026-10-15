@@ -1564,8 +1564,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// static: profile names and result refs never enter provider-visible
 		// schemas, and the result reader does not change between turns.
 		reg.Add(taskTool)
-		reg.Add(agent.NewParallelTasksTool(taskTool, reg))
-		reg.Add(agent.NewFleetTool(taskTool))
+		// 任务419: run journal 注入（fleet/parallel_tasks 组运行记录）——空
+		// sessionDir 时路径为空串，工具侧关闭记录，行为与 419 前逐字节一致。
+		runJournalPath := agent.RunJournalDBPath(sessionDir)
+		reg.Add(agent.NewParallelTasksTool(taskTool, reg).WithRunJournalPath(runJournalPath))
+		reg.Add(agent.NewFleetTool(taskTool).WithRunJournalPath(runJournalPath))
 		reg.Add(agent.NewSubagentResultTool(taskTool))
 		// 任务616: the parent-only messaging tool rides the same ablation and
 		// switch gates as the task tool itself (a run without delegation has

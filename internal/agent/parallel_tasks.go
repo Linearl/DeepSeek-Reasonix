@@ -11,8 +11,18 @@ import (
 	"sync"
 
 	"reasonix/internal/event"
+	"reasonix/internal/runjournal"
 	"reasonix/internal/tool"
 )
+
+// journalStatusForRunErr maps a worker error onto the journal's member
+// status vocabulary (cancelled for context termination, failed otherwise).
+func journalStatusForRunErr(err error) string {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return "cancelled"
+	}
+	return "failed"
+}
 
 // ParallelTasksTool dispatches multiple read-only sub-agent tasks concurrently
 // and collects all results. Each sub-task runs as a foreground sub-agent in its
@@ -20,6 +30,17 @@ import (
 // cards for each sub-task.
 type ParallelTasksTool struct {
 	taskTool *TaskTool
+	// runJournalPath enables task-419 run recording ("" = off).
+	runJournalPath string
+}
+
+// WithRunJournalPath points the tool at the run journal database file
+// (task 419). Empty disables recording.
+func (p *ParallelTasksTool) WithRunJournalPath(path string) *ParallelTasksTool {
+	if p != nil {
+		p.runJournalPath = path
+	}
+	return p
 }
 
 // NewParallelTasksTool creates a parallel dispatch tool that reuses the given
@@ -136,6 +157,18 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 	// The group starts running once children begin dispatching.
 	merger.directStatus(parentID, subagentPhaseRunning)
 
+	// Task 419: run journal — begin only after every validation passed (a
+	// rejected call records nothing). The terminal close rides a defer
+	// registered below, after the result slices it reads are declared.
+	rec := newRunRecorder(p.runJournalPath)
+	rec.begin(runjournal.RunSpec{
+		ParentSession: ParentSession(ctx),
+		ToolCallID:    parentID,
+		Tool:          "parallel_tasks",
+		Label:         fmt.Sprintf("parallel_tasks(%d)", len(params.Tasks)),
+		Members:       parallelMemberSpecs(parentID, params.Tasks),
+	})
+
 	type subResult struct {
 		index  int
 		output string
@@ -154,6 +187,30 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 	for i := range params.Tasks {
 		statuses[i] = parallelTaskPending
 	}
+	// Task 419: every exit path closes the journal exactly once. Worker-side
+	// settles already stamped the members that finished; this sweep fills the
+	// ones cancellation/skips left behind (first-write-wins makes duplicates
+	// no-ops).
+	defer func() {
+		for i := range statuses {
+			if statuses[i] == parallelTaskPending {
+				continue
+			}
+			label := ""
+			if i < len(params.Tasks) {
+				label = params.Tasks[i].Description
+			}
+			rec.settled(runjournal.MemberSettlement{
+				Idx:     i + 1,
+				Status:  string(statuses[i]),
+				Label:   label,
+				Ref:     refs[i],
+				Error:   errorText(taskErrs[i]),
+				Preview: outputs[i],
+			})
+		}
+		rec.end(string(parallelGroupTerminalPhase(ctx, err, statuses)), result)
+	}()
 
 	doneCh := make(chan subResult, n)
 	var wg sync.WaitGroup
@@ -177,6 +234,7 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 				Args: string(dispatchArgs), ReadOnly: true,
 			},
 		})
+		rec.dispatched(idx + 1)
 
 		wg.Go(func() {
 			modelRef, effortRef := p.taskTool.effectiveProfile(t.Model, t.Effort)
@@ -203,6 +261,14 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 					Kind: event.ToolResult,
 					Tool: event.Tool{ID: subID, ParentID: parentID, Name: "task", Err: errText},
 				})
+				// Journal inside the worker: the settled event carries this
+				// member's real completion instant (task 419).
+				rec.settled(runjournal.MemberSettlement{
+					Idx:    idx + 1,
+					Status: string(journalStatusForRunErr(runErr)),
+					Label:  label,
+					Error:  errText,
+				})
 				doneCh <- subResult{index: idx, err: runErr}
 				return
 			}
@@ -211,6 +277,13 @@ func (p *ParallelTasksTool) Execute(ctx context.Context, args json.RawMessage) (
 				Tool: event.Tool{ID: subID, ParentID: parentID, Name: "task", Output: output},
 			})
 			answer, ref := splitSubagentRunResult(output)
+			rec.settled(runjournal.MemberSettlement{
+				Idx:     idx + 1,
+				Status:  "completed",
+				Label:   label,
+				Ref:     ref,
+				Preview: answer,
+			})
 			doneCh <- subResult{index: idx, output: answer, ref: ref}
 		})
 	}

@@ -320,6 +320,7 @@ func (s *Store) Dispatched(runID string, idx int) error {
 type MemberSettlement struct {
 	Idx     int
 	Status  string // completed | failed | cancelled | skipped
+	Label   string // roster label, lifted onto the published artifact title
 	Ref     string
 	Error   string
 	Preview string // bounded answer preview (UTF-8 safe, caller truncates)
