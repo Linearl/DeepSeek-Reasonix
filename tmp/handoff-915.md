@@ -1,51 +1,46 @@
 # 915 handoff（P2 小件：multi_edit 注入面暴露——工具优化族键 + extras 通道）
 
-状态：**进行中**（2026-10-15 二派；前任两代均死于长推理/重启零残盘，本件每步即 commit）。
-分支 wt-915（基 6280772ea = main-v2-stable）。任务书全文 = `tl show 915`（已读，四拍板并入正文）。
+状态：**完成**（2026-10-16；wt-915 七 commit，基 6280772ea = main-v2-stable，status 净）。
+任务书 = `tl show 915`（四拍板：Extras 暴露/工具优化族/默认开启/默认值放实验室面板）。
 
-## 方案定稿（读码后落定，与任务书一致）
+## Commits（每片即 commit，顺序执行）
 
-1. **boot 接线**（`internal/boot/boot.go:2993` `providerSurfaceExtras`）：
-   族键 `cfg.Agent.ExperimentalToolOptimizations == true` 时 extras 追加 `"multi_edit"`；
-   restart_update 分支保留（两开关可叠加，extras 变两元素）。`applyUnifiedProviderToolSurface`
-   现有 `reg.Get` 检查天然生效（multi_edit 恒注册 `internal/tool/builtin/multiedit.go:12`）。
-2. **面板默认开（本件设计核心）**：config 字段 **`bool` → `*bool`**（`internal/config/config.go:1742`）——
-   - nil（键未写入，新装/重置）：`ToolOptimizationsEnabled()` = false → boot 行为=现状（golden/forbidden 零波及）；
-     **render 条件渲染**（nil 不落盘，722 子键同款「防跟随者被转显式关」反向：显式值恒渲染、缺键永不被物化成 false）；
-   - `&true` / `&false`：显式值，渲染恒落盘（81/123 lost-save 规则保住）。
-   - **SettingsView 字段转 `*bool`**（settings_app.go 两视图 + reasoning_display_app.go）：nil 透传到前端 JSON；
-     前端 `s.experimentalToolOptimizations ?? true` 呈开态 + 首载 `== null` 时 `SetExperimentalToolOptimizations(true)` 落盘
-     （write-on-show，670 AcknowledgeForkNotice 同款 best-effort；失败不打断、下次打开重试）；
-     卡片灯 labLightKeys 谓词同 `?? true`。
-   - **弃用方案**：view 层 tomlFileDefinesKey 存在性探测——render 首次任意保存会把缺键物化成 false，
-     面板默认开在「用户改任何别的设置」后即失效，脆；`*bool` 根治。
-   - 存量语义：老配置里被 render 物化过的 `= false`（非用户本意）→ 视为显式关、面板呈关——495 口径现状等价，不动。
-3. **UI**：toolOptimizations 卡不新增；hint 三语补第二效果（族开 multi_edit 直注：模型获得完整 schema、
-   edit_file「prefer multi_edit」引导闭合；关态仍可经 use_capability 调用）+ 生效时机（boot 快照，改开关需重建 runtime；
-   新装面板默认开并自动写入）。
-4. **红线**：不动 `CoreProviderToolNames`（agent_preset.go:58）；不动 edit_file prefer 尾句（editfile.go:37）；
-   执行面恒可用（registry 全量注册不变）。
+1. `44255510d` handoff 计划落盘（方案定稿：config bool→*bool 根治面板默认开，弃 view 层存在性探测——render 任意保存会把缺键物化成 false，方案脆）
+2. `6ee6316c4` Go boot：providerSurfaceExtras 族开追加 multi_edit（extras 通道，restart_update 可叠加）+ 四测试（extras 两态/registry 可见性两态/真实 Build 捕获 tools 含 multi_edit 且 schema 带 readBack/显式关态 use_capability tool:multi_edit 端到端执行钉）
+3. `855b12fe4` Go config/desktop：族键 bool→*bool（缺键 nil=boot 现状等价+面板呈开；render 条件渲染防缺键被物化成显式关——722 子键同款；setter 恒写非 nil）+ 两视图 *bool 透传 + desktop 三态视图测试/默认写入物化测试/条件渲染测试
+4. `cc17bef91` 前端：族卡 ?? true 呈开 + 首载缺键写入 true（write-on-show best-effort，670 同款）+ 卡灯谓词同源 + hint 三语补第二效果+生效时机+新装默认开说明 + 类型 nullable
+5. `1bdd9f76e` 锚测试 task915-multi-edit-injection（26 断言全绿）
+6. `3f1dad058` 棘轮：locale gzip 双 +1.0（zh 余 0.24<1.0 抖动区 → 106.2；zh-TW 繁体同批必炸先例预抬 → 108.4）
+7. `2195d1483` boot 测试适配 *bool 补漏文件
 
-## 切片（每片即 commit，中文 message「915 」开头，显式路径）
+## 实现要点
 
-1. handoff-915.md（本文件）落盘。
-2. Go boot：providerSurfaceExtras + 开态全链测试（真实 Build 捕获 tools 含 multi_edit + schema 带 readBack）+
-   use_capability 显式关态恒可用钉 + extras 单测。
-3. Go config/desktop：字段 *bool + ToolOptimizationsEnabled/render/edit/两视图 + render_lab_tiers_test 夹具适配 + desktop 视图三态测试（缺键=nil/显式关/显式开）。
-4. 前端：卡片 ?? true + 首载写入 effect + labLightKeys 谓词 + hint 三语 + task915 锚测试；pnpm build（bundle 棘轮 locale +1.0KiB 预期）+ dist 自证。
-5. 验收七条自检 + handoff 终态回写。
+- boot：`providerSurfaceExtras`（boot.go:2996）`ToolOptimizationsEnabled()` 时追加 `"multi_edit"`；`addBuiltins`
+  readBack 参数同源走该 helper。`applyUnifiedProviderToolSurface` 的 `reg.Get` 检查天然生效（multi_edit 恒注册）。
+- config：`ExperimentalToolOptimizations *bool`——nil（缺键）boot 读 off=现状等价（golden/forbidden 零波及）、
+  render 不落盘（缺键永不被无关保存物化成显式关）、面板呈开；`&false`/`&true` 显式值恒渲染（81/123 lost-save）。
+- 面板默认开链路：缺键 → 两视图 *bool=nil → JSON null → 前端 `?? true` 呈开 + 首载 effect 写入 true →
+  下次重建 runtime 即含 multi_edit（验收第 3 条）。写入失败 best-effort 重试（下次打开设置）。
+- 存量语义：老配置里被旧 render 物化过的 `= false` 视为显式关（495 现状等价口径，不动）。
 
-## 预存红基线（875 handoff 口径，复跑确认后申报）
+## 验收七条（全过）
 
-- internal/config `TestServeRenderTableCoversEveryKey`（web_dist 遗留）；
-- internal/agent 两测 + boot 压缩轨迹 flake（-count=3）。
+- [x] **开态**：`TestBootRequestCarriesMultiEditWhenFamilyLit`——真实 Build 捕获 tools 含 multi_edit + schema 带 readBack（875 语义进注入面）+ restart_update 不越界；
+- [x] **关态/Go 默认（nil）**：golden/forbidden（boot_test.go:2373）/lean surface/use_capability matrix 全套原样绿（`go test ./internal/boot -run "...Golden|..."` 281s ok）；
+- [x] **面板默认开**：`TestSettingsViewToolOptimizationsThreeStates`（缺键=nil/显式开/显式关三态，两视图一致）+ `TestToolOptimizationsDefaultWriteMaterializesTheKey`（写入物化+无关保存不丢）+ 前端锚断言；
+- [x] **config render 表防线**：`TestRenderTOMLRoundTripsLabSwitches`/`TestLabRenderKeysAllTaggedWithTier`/`TestLabFeatureTierCountsMatchTableA` 绿（族键已渲染、无新键）；
+- [x] **hint 三语 + build**：三语第二效果+生效时机+默认开说明；`pnpm build` 8 项 bundle 预算全 PASS（zh 104.8/106.2、zh-TW 106.5/108.4）+ dist 产物 grep 自证（zh/zh-TW/i18n chunk 均含新文案）；
+- [x] **执行面恒可用钉**：`TestUseCapabilityDispatchesMultiEditWhileFamilyExplicitlyOff`——显式关态 use_capability tool:multi_edit 端到端 patch 成功且 tools 数组不含 multi_edit；
+- [x] **红线三条**：CoreProviderToolNames 未动（diff 空）、edit_file prefer 尾句未动（diff 空）、registry 全量注册未变（multiedit.go:12）。
 
-## 验收对照（七条）
+## 预存红申报（均与本件无关，基线对照实证）
 
-- [ ] 开态：Build 捕获 tools 含 multi_edit + multi_edit schema 含 readBack；
-- [ ] 关态/Go 默认（nil）：forbidden 断言/boot_test.go:2373、golden、unifiedBootToolNames 原样绿；
-- [ ] 面板默认开：缺键视图 nil→前端呈开+写入 true；写入后重建 runtime 含 multi_edit；
-- [ ] config render 表防线绿（族键已渲染、无新键）；
-- [ ] hint 三语 + pnpm build 过 bundle 预算 + dist 自证；
-- [ ] 执行面恒可用钉：显式关态 use_capability tool:multi_edit 照常执行；
-- [ ] 红线三条复核（CoreProviderToolNames/prefer 尾句/registry 全量）。
+- `internal/config TestServeRenderTableCoversEveryKey`——`web_dist` 键未入 serve 渲染表（701 遗留，875 handoff 同款申报）；wt-915 与干净基线同挂。
+- `desktop` 三布局 `Test*QuickClicksSerializeWorkspaceRebuild`——环境敏感间歇 flake（`begin_tab_turn` 慢 19s+ 撞 `waitNotRunning` 5s 界）：
+  wt-915 4 跑 3 过 1 挂，**干净基线主仓同 4 跑 3 过 1 挂**，归属=负载敏感非本件引入。
+- `internal/boot` 全量套件在并发负载下 10m 默认超时（`TestBuildHonorsSessionDirOverride` 单跑 9.6s 过）——环境时长问题非断言失败。
+
+## 残留
+
+- 无源码残留。合并令由主对话批发；出包不在本件范围。
+- 装机后人工验证建议：新装/删 `experimental_tool_optimizations` 键 → 打开设置→实验室→工具优化卡呈开、config.toml 出现 `= true`、重启后会话 tools 含 multi_edit。
