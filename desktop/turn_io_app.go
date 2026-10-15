@@ -139,6 +139,16 @@ func (a *App) submitToTabResult(tabID, input string, fromBridge, classifyManagem
 	} else {
 		ctrl.SubmitDisplay(display, input)
 	}
+	// 任务900（上游 #9806/PR10781 语义）：受理锁释放后 tab 可能已换上重建后
+	// 的控制器，替换者不持有本次提交的 receipt。ctrl 是受理本提交的那个控制
+	// 器（beginTabTurn 返回），turn id 在 Submit 返回时已同步入账（spawnGuarded
+	// → prepareTurnAdmission → ledger.Begin），这里直接取走，调用方无需再向
+	// 重解析出的控制器查询。
+	if result.TurnID == "" && firstSubmissionID(submissionID) != "" {
+		if admitted, ok := ctrl.(interface{ TurnIDForSubmission(string) string }); ok {
+			result.TurnID = admitted.TurnIDForSubmission(firstSubmissionID(submissionID))
+		}
+	}
 	admission.finish(ctrl)
 	return result, nil
 }
