@@ -420,6 +420,10 @@ type SettingsView struct {
 	// switch reads it as permanently off.
 	ExperimentalSidebarHoverLeft  bool `json:"experimentalSidebarHoverLeft"`
 	ExperimentalSidebarHoverRight bool `json:"experimentalSidebarHoverRight"`
+	// 任务 686: the workflow visualization panel (command-palette entry opening
+	// the DAG flow view). Rendered in both views for the 81/123 two-view
+	// lesson; pure frontend gate, settings save re-applies.
+	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
 	// Task 495: subagent panel package (dock tab + ended-card collapse);
 	// boot snapshot, restart to apply.
 	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
@@ -705,6 +709,9 @@ type DesktopStartupSettingsView struct {
 	// a view that omits a switch reads it as permanently off (81/123 lesson).
 	ExperimentalSidebarHoverLeft  bool `json:"experimentalSidebarHoverLeft"`
 	ExperimentalSidebarHoverRight bool `json:"experimentalSidebarHoverRight"`
+	// 任务 686: the workflow visualization panel gate, rendered in this view
+	// too (81/123 two-view lesson); pure frontend gate, no restart needed.
+	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
 	// ExperimentalSubagentPanel gates the subagent panel package (task 495);
 	// the frontend snapshots it at boot, so a change needs a restart.
 	ExperimentalSubagentPanel bool `json:"experimentalSubagentPanel"`
@@ -1541,6 +1548,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// Task 826: hover-to-expand readback (both sides, two-view lesson).
 		view.ExperimentalSidebarHoverLeft = cfg.Desktop.ExperimentalSidebarHoverLeft
 		view.ExperimentalSidebarHoverRight = cfg.Desktop.ExperimentalSidebarHoverRight
+		// 任务 686: workflow visualization panel readback (two-view lesson).
+		view.ExperimentalWorkflowPanel = cfg.Desktop.ExperimentalWorkflowPanel
 		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel
 		view.ExperimentalSessionWall = cfg.Desktop.ExperimentalSessionWall
 		view.ExperimentalPromptHistoryPicker = cfg.Desktop.ExperimentalPromptHistoryPicker
@@ -1760,6 +1769,8 @@ func (a *App) Settings() SettingsView {
 		// Task 826: hover-to-expand readback (both views, two-view lesson).
 		ExperimentalSidebarHoverLeft:    cfg.Desktop.ExperimentalSidebarHoverLeft,
 		ExperimentalSidebarHoverRight:   cfg.Desktop.ExperimentalSidebarHoverRight,
+		// 任务 686: workflow visualization panel readback (two-view lesson).
+		ExperimentalWorkflowPanel:       cfg.Desktop.ExperimentalWorkflowPanel,
 		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
 		ExperimentalSessionWall:         cfg.Desktop.ExperimentalSessionWall,
 		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,

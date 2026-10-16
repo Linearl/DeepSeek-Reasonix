@@ -1058,6 +1058,17 @@ func (c *Config) SetExperimentalSessionWall(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalWorkflowPanel toggles the workflow visualization panel
+// (task 686): the command-palette entry opening the DAG flow view (plan
+// preview plus live node-state lighting). Opt-in: with it off the palette
+// keeps the exact legacy item list (铁律 2). Pure frontend gate: the settings
+// save re-applies the boot snapshot, so a change is visible without a
+// restart.
+func (c *Config) SetExperimentalWorkflowPanel(enabled bool) error {
+	c.Desktop.ExperimentalWorkflowPanel = enabled
+	return nil
+}
+
 // SetExperimentalTabCompress toggles the tab-strip adaptive compression (task
 // 506): tiered tab-width reduction once more than 8 tabs are open, floor 84px,
 // with hover keeping the full annotated title. Opt-in: with it off the strip

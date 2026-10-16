@@ -104,6 +104,10 @@ var labFeatureTiers = []labFeatureTier{
 	{"promptHistoryPicker", LabTierRecommended, []string{"experimental_prompt_history_picker"}},
 	{"restartUpdate", LabTierRecommended, []string{"experimental_restart_update", "experimental_autonomous_update"}}, // autonomous_update 为 task 254 家族子键
 	{"sessionWall", LabTierRecommended, []string{"experimental_session_wall"}},
+	// 任务 686：工作流可视化面板（DAG 流程图 + 运行进展动态点亮，palette 入口；
+	// 后端 685 编排引擎未落地，当前为前端 fixture 预览）。定档未稳定——开启
+	// 可能看到的是演示数据（铁律 2 默认关，不开启时 palette 逐字节不变）。
+	{"workflowPanel", LabTierUnstable, []string{"experimental_workflow_panel"}},
 	{"subagentPanel", LabTierOptional, []string{"experimental_subagent_panel"}},
 	{"subagentDetail", LabTierOptional, []string{"experimental_subagent_detail"}},
 	{"completionSummary", LabTierOptional, []string{"experimental_completion_summary"}},
@@ -428,6 +432,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// lesson). Off renders no hover zone at all (铁律 2 zero regression).
 		fmt.Fprintf(&b, "experimental_sidebar_hover_left = %v   # desktop: left-sidebar hover-to-expand (300ms mis-touch guard) + fold back 15s after the pointer leaves, reclaiming only hover-made expansions (task 826; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSidebarHoverLeft)
 		fmt.Fprintf(&b, "experimental_sidebar_hover_right = %v   # desktop: right-dock hover-to-expand, same guard and 15s delayed re-collapse; independent of the left switch (task 826; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSidebarHoverRight)
+		// 任务 686: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123
+		// lesson). Off renders no palette entry at all (铁律 2 zero regression).
+		fmt.Fprintf(&b, "experimental_workflow_panel = %v   # desktop: workflow visualization panel — command-palette entry opening the DAG flow view (plan preview + live node-state lighting); off = palette byte-for-byte unchanged (task 686; settings save re-applies, no restart)\n", c.Desktop.ExperimentalWorkflowPanel)
 		// Task 651: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the setting would flip itself back (81/123 lesson).
 		// The resolved indicator renders so the saved value round-trips even

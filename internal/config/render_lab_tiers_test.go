@@ -188,8 +188,8 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 16 / 可选 25 / 未稳定 15 / 已退役 0 = 56（任务 815
-// editEvidenceRelaxed 转正入表后）.
+// register must stay exactly 推荐 16 / 可选 25 / 未稳定 16 / 已退役 0 = 57（任务 686
+// workflowPanel 入表后）.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
@@ -218,8 +218,10 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// 任务 846：homePointer（配置数据目录可更改，默认关）入表未稳定档
 		// （13→14，总数 54→55）。任务 815：editEvidenceRelaxed（编辑证据门
 		// 宽松，任务 789 交付、815 登记窗口补设置页入口后转正）入表未稳定档
-		// （14→15，总数 55→56）。
-		LabTierUnstable: 15,
+		// （14→15，总数 55→56）。任务 686：workflowPanel（工作流可视化面板，
+		// 685 引擎未落地为前端 fixture 预览）入表未稳定档（15→16，总数
+		// 56→57）。
+		LabTierUnstable: 16,
 		LabTierRetired:  0,
 	}
 	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
@@ -246,7 +248,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 56 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 56", len(labFeatureTiers))
+	if len(labFeatureTiers) != 57 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 57", len(labFeatureTiers))
 	}
 }
