@@ -79,7 +79,7 @@ import { reportFrontendLog } from "./lib/frontendLog";
 import { app, onBackendTabActivated, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
-import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent } from "./lib/sound";
+import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent, turnDoneChimeChoice } from "./lib/sound";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { QuickCommandsManagerDialog } from "./components/QuickCommandsManagerDialog";
@@ -1036,7 +1036,11 @@ export default function App() {
         playAttentionChime();
       }
       if (e.kind === "turn_done") {
-        if (!e.err) playSuccessChime();
+        // 任务 907（上游 8859/PR11085）：paused 结局（final_readiness 等四类）
+        // 响 attention 而非静音；success 只留给干净结束。
+        const chime = turnDoneChimeChoice(e.err, e.outcome);
+        if (chime === "attention") playAttentionChime();
+        else if (chime === "success") playSuccessChime();
       }
     });
     // Runtime rebuilds (model/effort/settings switch) replace the controller,
