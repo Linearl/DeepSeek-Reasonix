@@ -145,6 +145,12 @@ type Server struct {
 	// /capabilities advertises "child-session" so the GrandCouncil client can
 	// show its derive entry. Off keeps both absent — the fail-closed default.
 	gcChildSession bool
+	// gcManageSessions is the task-911 lab switch (experimental_gc_manage_
+	// sessions, boot-resolved): when on, the /manage-groups routes are mounted
+	// and GET /capabilities advertises "manage-groups" so the GrandCouncil
+	// client can manage the group rosters through the gateway. Off keeps both
+	// absent — the fail-closed default.
+	gcManageSessions bool
 	// webDist is the [serve] web_dist directory (task 701 Web Remote): the
 	// desktop web shell build output hosted under /web/. Empty (the default)
 	// mounts no /web route — byte-for-byte zero behavior change.
@@ -168,17 +174,18 @@ func New(ctrl control.SessionAPI, bc *Broadcaster, serveCfg config.ServeConfig) 
 		bc = NewBroadcaster()
 	}
 	s := &Server{
-		ctrl:           ctrl,
-		bc:             bc,
-		titles:         newTitleCache(ctrl.SessionDir()),
-		titleSem:       make(chan struct{}, 2),
-		auth:           newAuthGate(serveCfg),
-		detached:       map[string]*detachedSession{},
-		tags:           map[*control.Controller]*sessionTagSink{},
-		leaseOwners:    map[*control.Controller]*control.SessionLeaseKeeper{},
-		mirrored:       map[string]mirroredSession{},
-		gcChildSession: serveCfg.ExperimentalGCChildSession,
-		webDist:        serveCfg.WebDist,
+		ctrl:             ctrl,
+		bc:               bc,
+		titles:           newTitleCache(ctrl.SessionDir()),
+		titleSem:         make(chan struct{}, 2),
+		auth:             newAuthGate(serveCfg),
+		detached:         map[string]*detachedSession{},
+		tags:             map[*control.Controller]*sessionTagSink{},
+		leaseOwners:      map[*control.Controller]*control.SessionLeaseKeeper{},
+		mirrored:         map[string]mirroredSession{},
+		gcChildSession:   serveCfg.ExperimentalGCChildSession,
+		gcManageSessions: serveCfg.ExperimentalGCManageSessions,
+		webDist:          serveCfg.WebDist,
 	}
 	bc.SetCurrentSession(agent.CanonicalSessionPath(ctrl.SessionPath()))
 	if cfg, err := config.Load(); err == nil {
@@ -721,6 +728,17 @@ func (s *Server) handler() http.Handler {
 	// switch is on, so the off state answers 404 exactly as before.
 	if s.gcChildSession {
 		mux.HandleFunc("POST /spawn-child-session", s.spawnChildSession)
+	}
+	// 任务911: fail-closed mounting — the /manage-groups routes exist only
+	// while the lab switch is on, so the off state answers 404 exactly as
+	// before; GET /capabilities advertises "manage-groups" alongside.
+	if s.gcManageSessions {
+		mux.HandleFunc("GET /manage-groups", s.manageGroupsList)
+		mux.HandleFunc("POST /manage-groups/create", s.manageGroupsMutate(s.manageGroupsCreate))
+		mux.HandleFunc("POST /manage-groups/rename", s.manageGroupsMutate(s.manageGroupsRename))
+		mux.HandleFunc("POST /manage-groups/delete", s.manageGroupsMutate(s.manageGroupsDelete))
+		mux.HandleFunc("POST /manage-groups/reorder", s.manageGroupsMutate(s.manageGroupsReorder))
+		mux.HandleFunc("POST /manage-groups/file-topic", s.manageGroupsMutate(s.manageGroupsFileTopic))
 	}
 	// 任务 701（Web Remote）：web_dist 配置后才挂载 /web 静态托管；未配置
 	// 时 /web* 保持 404（零行为）。
