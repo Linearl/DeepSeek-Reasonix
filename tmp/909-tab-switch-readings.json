@@ -1,0 +1,48 @@
+[
+  {
+    "bench": "tab-switch",
+    "metric": "切 tab 渲染 render",
+    "source": "desktop.log「desktop: frontend tab switch render」",
+    "threshold": "P95 \u003c 150ms",
+    "ref": "tab_timing.go slowTabSwitchLogMs（任务 196 判定线）",
+    "n": 234,
+    "p50_ms": 41,
+    "p95_ms": 101,
+    "max_ms": 197,
+    "verdict": "PASS"
+  },
+  {
+    "bench": "tab-switch",
+    "metric": "transcript 首帧 firstFrame（观测）",
+    "source": "desktop.log「desktop: frontend tab switch render」",
+    "threshold": "—",
+    "ref": "tasklist 无数值验收（观测项）",
+    "n": 237,
+    "p50_ms": 45,
+    "p95_ms": 127,
+    "max_ms": 287,
+    "verdict": "OBSERVE"
+  },
+  {
+    "bench": "tab-switch",
+    "metric": "switch-tab summary total（观测）",
+    "source": "desktop.log「desktop: frontend tab switch render」",
+    "threshold": "—",
+    "ref": "tasklist 无数值验收（观测项）",
+    "n": 204,
+    "p50_ms": 73,
+    "p95_ms": 922,
+    "max_ms": 2835,
+    "verdict": "OBSERVE"
+  },
+  {
+    "bench": "tab-switch",
+    "metric": "后端 stage 越线普查",
+    "source": "desktop.log「desktop: tab switch timing」",
+    "threshold": "普通 stage 150ms / switch-out 50ms（越线才落日志）",
+    "ref": "tab_timing.go（任务 196）",
+    "n": 0,
+    "verdict": "OBSERVE",
+    "note": "open-topic:ancillary checkpoints×2(P50=221ms,Max=778ms) open-topic:ancillary context×8(P50=499ms,Max=1223ms) open-topic:ancillary effort×4(P50=249ms,Max=776ms) open-topic:ancillary jobs×2(P50=219ms,Max=776ms) open-topic:e2e×15(P50=1235ms,Max=2641ms) open-topic:history×14(P50=619ms,Max=1997ms) open-topic:history reconcile×2(P50=459ms,Max=754ms) open-topic:meta×3(P50=213ms,Max=561ms) open-topic:total×15(P50=741ms,Max=1997ms) startup:ancillary checkpoints×3(P50=335ms,Max=366ms) startup:ancillary context×16(P50=280ms,Max=2020ms) startup:ancillary effort×8(P50=566ms,Max=817ms) startup:ancillary jobs×3(P50=335ms,Max=367ms) startup:history×15(P50=665ms,Max=3798ms) startup:history reconcile×1(P50=194ms,Max=194ms) startup:history/bridge×1(P50=3791ms,Max=3791ms) startup:meta×5(P50=392ms,Max=1441ms) startup:total×17(P50=805ms,Max=3801ms) switch-tab:ancillary checkpoints×30(P50=212ms,Max=2517ms) switch-tab:ancillary context×129(P50=408ms,Max=2518ms) switch-tab:ancillary effort×111(P50=331ms,Max=2517ms) switch-tab:ancillary jobs×20(P50=270ms,Max=2516ms) switch-tab:history×85(P50=371ms,Max=2833ms) switch-tab:history reconcile×12(P50=189ms,Max=465ms) switch-tab:history/bridge×8(P50=665ms,Max=2831ms) switch-tab:meta×33(P50=204ms,Max=8786ms) switch-tab:total×91(P50=397ms,Max=2835ms)"
+  }
+]
