@@ -79,7 +79,7 @@ func TestPerfTimeSeriesIsPureRead(t *testing.T) {
 	// the zero-overhead proof is "the read neither creates nor removes files",
 	// not "the dir happens to be absent here".
 	writePerfSampleLines(t, perfDir, "perf-sample-x.jsonl",
-		`{"ts":"`+time.Now().Add(-2*time.Hour).UTC().Format(time.RFC3339Nano)+`","workingSetMb":42}`)
+		`{"ts":"`+time.Now().Add(-2*time.Hour).UTC().Format(time.RFC3339Nano)+`","workingSetMb":42,"eventsMb":733.1}`)
 	before, err := os.ReadDir(perfDir)
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +88,11 @@ func TestPerfTimeSeriesIsPureRead(t *testing.T) {
 	view := perfTestApp().PerfTimeSeries(180) // 3h window contains the 2h-old point
 	if !view.Available || len(view.Points) != 1 || view.Points[0].WorkingSetMB != 42 {
 		t.Fatalf("one-sample view wrong: %+v", view)
+	}
+	// 任务 932: eventsMb 必须随点投影（样本 jsonl 里一直有该字段）——概览
+	// 面板的 events 大小行读的就是这个投影。
+	if view.Points[0].EventsMB != 733.1 {
+		t.Fatalf("eventsMb projection = %v, want 733.1 (task 932)", view.Points[0].EventsMB)
 	}
 	if view.Enabled {
 		t.Fatal("default config has the sampler off")

@@ -5020,6 +5020,7 @@ export const zhTW: Record<DictKey, string> = {
   "context.maintenanceActionNative": "原生清理",
   "context.sessionMetrics": "會話指標",
   "context.sessionGroup": "分組",
+  "context.eventsSizeLabel": "events 檔案大小",
   "context.mcpListTitle": "MCP tools/list",
   "context.mcpListSharedHost": "共享 Host",
   "context.mcpListDiskCache": "磁碟快取",

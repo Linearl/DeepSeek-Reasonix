@@ -29,6 +29,10 @@ type PerfPoint struct {
 	Goroutines   int     `json:"goroutines"`
 	Handles      uint32  `json:"handles"`
 	CPUPercent   float64 `json:"cpuPercent"`
+	// 任务 932: events 体量展示件——概览面板最下方的 events 文件大小行读这里。
+	// eventsMb 是采样器同一遍 walkProjectsBytesMB 的落盘读数（walk 已存在，
+	// 零新增 IO），样本 jsonl 里一直有该字段，只是此前没投影过桥。
+	EventsMB float64 `json:"eventsMb"`
 }
 
 // PerfTimeSeriesView is the window the panel asked for. Available says whether
@@ -110,6 +114,7 @@ func (a *App) PerfTimeSeries(windowMinutes int) PerfTimeSeriesView {
 			Goroutines:   sample.Goroutines,
 			Handles:      sample.Handles,
 			CPUPercent:   sample.CPUPercent,
+			EventsMB:     sample.EventsMB,
 		})
 	}
 	view.Available = len(view.Points) > 0
