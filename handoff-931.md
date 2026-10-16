@@ -69,7 +69,36 @@
 - AC5 回归：753 全套（task753-scroll-anchor.test.ts）+ transcript-kernel / kernel-races / task267 / geometry-commit 全绿；check-single-scroll-writer OK。
 - 源码钉：settleGeometry 仍向 correctAnchor 传 viewport（753 防回退钉沿用）。
 
-## 四、执行记录
+## 四、执行记录（2026-10-17 完成）
 
-- [ ] 修法①+② → task931 单测 → 全量相关测试 → commit
-- [ ] 收工自检：status 净 + rev-parse 自检 + 回执（commit 列表+根因+验收证据+残留）
+### Commit 列表
+
+| commit | 内容 |
+|---|---|
+| `4b5e57ab4` | 诊断 handoff 落盘（根因机理 + 两腿修法 + compat 论证 + AC 矩阵） |
+| `cefb4907e` | 修法落地：kernel 两腿 + surfaceRestoreKey 保 AC8 + task931 单测 24 项 |
+
+### 修法实现细节（相对 handoff 二节的落地差异）
+
+- 豁免判定落点：`correctAnchor` 内 `sameAnchorAligned || passiveFirstAlignment`，其中 `passiveFirstAlignment = active.passive && kind !== jump && kind !== prepend && !surfaceRestoreFirst`。豁免三类 = 显式 jump（kind 天然非 passive）、prepend（kind 排除）、surface 恢复（`surfaceRestoreKey` 一次性键匹配，真实位移 observeNativeScroll 即清）。
+- `ActiveTransaction.passive` 随 `begin(kind, anchor, {passive})` 传入；deferredStructural 记录 passive 并在 endUserGesture 恢复时透传（非硬编码）。
+- 新拒绝对 outcome=`anchor-stale`；同 key 二次对齐拒绝保持 `anchor-drift`（753 观测语义不变，现场诊断面板可区分两种触发形态）。
+- 无 viewport 上下文时闸门不启用——`jumpToBlock` 直调路径与 753 兼容语义逐字节不变。
+
+### 验收证据
+
+- AC1 ✅ defer 恢复用当前锚：手势内位移后 resume 写 900（实际位置）而非 500（手势起点）。
+- AC2 ✅ 陈旧被动首对齐拒绝：零写回、outcome=anchor-stale、就地重锚 step-9、intent 保持 reader。
+- AC3 ✅ AC8 角例：surface 恢复锚的首个被动修正仍写（一次性豁免）；第二次同键远距被动修正被闸（豁免不复用）。
+- AC4 ✅ 显式 jump 大偏差仍写；小位移被动首对齐仍写。
+- 753 回归 ✅ 同 key 大漂移拒绝且 outcome 仍 anchor-drift。
+- 兼容 ✅ 无 viewport 逐字节不变；task931 共 24 项全绿。
+- 套件回归 ✅ task753 21 / transcript-kernel 43 / kernel-races 29 / task267 19 / geometry-commit / blank-sentinel 24 / geometry-read-cache / find 48 / materialization / command / fold-preference 10 / question-jump 26 / nested-scroll-handoff 21 / creation-scrollbar 11 / selection-retention 33。
+- tsc 全量 `--noEmit` 绿；check-single-scroll-writer OK。
+- 预存红申报：`transcript-viewport.test.tsx`「jump-to-bottom visibility after reader takeover」jsdom 超时——**基线 301ede029 同红**（临时 detached worktree 复测确认，非本支引入；与 753 报告所记预存红同一条）。
+
+### 残留
+
+- AC5 实机验收待用户：流式中上翻停手后新增量到达，视图不再回弹到上一条用户消息（jsdom 无法断言真实 WebView 动量/合成滚动，行为级只能钉 kernel 状态机）。
+- 现场诊断面板读法：回弹若仍复现，抓 kernel 事件流——`outcome=anchor-stale` 出现即本防线触发（陈旧锚被拒）；若 teleport 且无 anchor-stale/anchor-drift，说明走了无 viewport 上下文路径，需再报。
+- 前端测试环境：worktree 内 node_modules/wailsjs 为指向主仓的 Junction（用完随 worktree 删除）；未跑 desktop 全量 go test（纯前端件）；未 wails generate。
