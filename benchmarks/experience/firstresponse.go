@@ -21,6 +21,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"reasonix/internal/store"
 )
 
 // firstResponseKinds 是「首个模型输出」的 ledger kind 集合，与
@@ -96,7 +98,7 @@ func scanLedgers(roots []string, window time.Duration, now time.Time) (*sessionS
 			n := e.Name()
 			// .trash 等子目录不在这一层；guardian 看门狗的 turn 不是
 			// 「用户发消息」，排除以免污染首响分布。
-			if !strings.HasSuffix(n, ".turns.jsonl") || strings.Contains(n, ".guardian.") {
+			if !strings.HasSuffix(n, store.SessionTurnEventLogSuffix) || strings.Contains(n, ".guardian.") {
 				continue
 			}
 			info, err := e.Info()

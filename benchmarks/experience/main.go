@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"reasonix/internal/config"
+	"reasonix/internal/store"
 )
 
 // 阈值默认值：全部引用 tasklist 各任务验收（详见 README.md 指标清单）。
@@ -319,7 +320,7 @@ func benchFirstResponse(o options, now time.Time) []metricResult {
 	if err != nil {
 		out = append(out, metricResult{
 			Bench: "first-response", Metric: "发消息→首响",
-			Source:    "sessions/*.turns.jsonl turn_started→首个模型输出",
+			Source:    fmt.Sprintf("sessions/*%s turn_started→首个模型输出", store.SessionTurnEventLogSuffix),
 			Threshold: fmt.Sprintf("P95 ≤ %.0fs", o.firstResponseMaxSec),
 			Ref:       "task 370（阈值默认取遥测分桶 s_15_60 上沿）",
 			Verdict:   verdictNA, Note: fmt.Sprintf("会话目录不可读：%v", err),
@@ -430,7 +431,7 @@ func logSourceOf(bench string) string {
 	case "tab-switch":
 		return "desktop.log「desktop: frontend tab switch render」"
 	case "first-response":
-		return "sessions/*.turns.jsonl turn_started→首个模型输出（370/doctor 同款口径）"
+		return fmt.Sprintf("sessions/*%s turn_started→首个模型输出（370/doctor 同款口径）", store.SessionTurnEventLogSuffix)
 	}
 	return ""
 }
