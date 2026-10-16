@@ -3,6 +3,7 @@ package sandbox
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -25,8 +26,10 @@ func resetCanonicalEngine(t *testing.T) {
 	canonicalFlights = map[string]*canonicalFlight{}
 	canonicalMu.Unlock()
 	oldEval, oldTimeout, oldTTL := canonicalEvalSymlinks, canonicalResolveTimeout, canonicalCacheTTL
+	oldPositiveTTL := canonicalCachePositiveTTL
 	t.Cleanup(func() {
 		canonicalEvalSymlinks, canonicalResolveTimeout, canonicalCacheTTL = oldEval, oldTimeout, oldTTL
+		canonicalCachePositiveTTL = oldPositiveTTL
 		canonicalMu.Lock()
 		canonicalCache = map[string]canonicalEntry{}
 		canonicalFlights = map[string]*canonicalFlight{}
@@ -363,6 +366,144 @@ func TestResolveAbsPathFreshBypassesCache(t *testing.T) {
 	}
 	if got != filepath.Clean(other) {
 		t.Fatalf("fresh resolution must observe the new identity: got %q, want %q", got, filepath.Clean(other))
+	}
+}
+
+// 任务 928 现场复现（desktop.log 2026-10-16 canonical probe 风暴）：
+// 同一物理文件的两种拼写（目录记录保持磁盘大小写、canonical key 全小写）
+// 在 Windows 上必须共享一个缓存条目。修复前每个拼写各占一条、各走一次
+// walk，历史会话工作集直接翻倍。
+func TestResolveCanonicalPathCaseVariantSpellingsShareCacheEntry(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("case-insensitive path aliasing is Windows-specific behavior")
+	}
+	resetCanonicalEngine(t)
+
+	var walks int32
+	canonicalEvalSymlinks = func(p string) (string, error) {
+		atomic.AddInt32(&walks, 1)
+		return p, nil
+	}
+	canonicalResolveTimeout = 2 * time.Second
+	canonicalCacheTTL = time.Minute
+
+	upper := filepath.Join(t.TempDir(), "MixedCase", "session.jsonl")
+	lower := strings.ToLower(upper)
+
+	got1, err := ResolveAbsPath(upper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2, err := ResolveAbsPath(lower)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := atomic.LoadInt32(&walks); n != 1 {
+		t.Fatalf("case-variant spellings did %d walks, want 1 shared cache entry (key self-splits on Windows)", n)
+	}
+	if got1 != got2 {
+		t.Fatalf("case-variant spellings resolved differently: %q vs %q", got1, got2)
+	}
+}
+
+// 任务 928 现场复现第二半：修复前缓存上限 1024 小于历史会话工作集
+// （global-workspace 1440 条 + 各项目，~823 个 jsonl，双拼写翻倍），任意逐出
+// 使同一路径在 TTL 内被反复重走——「缓存键自毁」的逐出形态。本测试用
+// 1500 个路径钉死：生产容量必须能在 TTL 内保住整个工作集。
+func TestResolveCanonicalPathWorkingSetSurvivesWithinTTL(t *testing.T) {
+	resetCanonicalEngine(t)
+
+	var walks int32
+	canonicalEvalSymlinks = func(p string) (string, error) {
+		atomic.AddInt32(&walks, 1)
+		return p, nil
+	}
+	canonicalResolveTimeout = 2 * time.Second
+	canonicalCacheTTL = time.Minute
+
+	base := t.TempDir()
+	const workingSet = 1500
+	paths := make([]string, workingSet)
+	for i := range paths {
+		paths[i] = filepath.Join(base, "proj", "sessions", fmt.Sprintf("20261016-000000.%09d-session.jsonl", i))
+	}
+	for _, p := range paths {
+		if _, err := ResolveAbsPath(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := atomic.LoadInt32(&walks)
+	for _, p := range paths {
+		if _, err := ResolveAbsPath(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := atomic.LoadInt32(&walks); n != first {
+		t.Fatalf("second pass over %d-path working set re-walked (%d -> %d), cache must hold the whole working set within TTL", workingSet, first, n)
+	}
+}
+
+// 任务 928 残留①：正结果长 TTL。首层 eval 即成功的路径（已存在文件/目录）
+// 走 canonicalCachePositiveTTL，不再每 30s 重走——持续触碰的热路径（每个
+// 打开会话的保存漏斗）此前是永久跑步机。missing/timeout 保持短 TTL：
+// 尚未创建的写目标可能以 symlink 出现，死盘需要重探。
+func TestResolveCanonicalPathPositiveResultOutlivesShortTTL(t *testing.T) {
+	resetCanonicalEngine(t)
+
+	var generation, calls int32
+	canonicalResolveTimeout = 2 * time.Second
+	canonicalCacheTTL = 40 * time.Millisecond
+	canonicalCachePositiveTTL = time.Minute
+
+	base := t.TempDir()
+	existing := filepath.Join(base, "exists")
+	if err := os.MkdirAll(existing, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(base, "created-later")
+
+	canonicalEvalSymlinks = func(p string) (string, error) {
+		atomic.AddInt32(&calls, 1)
+		if atomic.LoadInt32(&generation) == 0 {
+			if p == missing {
+				return "", errors.New("generation 0: not created yet")
+			}
+			return p, nil
+		}
+		// Generation 1: existing became a symlink to `other`; missing appeared
+		// as a symlink too. Only the SHORT-TTL (missing) entry may observe
+		// this; the positive entry stays pinned for its long TTL.
+		other := filepath.Join(base, "other")
+		return filepath.Join(other, filepath.Base(p)), nil
+	}
+
+	if _, err := ResolveAbsPath(existing); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveAbsPath(missing); err != nil {
+		t.Fatal(err)
+	}
+	callsAfterFirst := atomic.LoadInt32(&calls)
+
+	time.Sleep(100 * time.Millisecond) // past the short TTL, well within the positive TTL
+	atomic.StoreInt32(&generation, 1)
+
+	gotExisting, err := ResolveAbsPath(existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotExisting != filepath.Clean(existing) {
+		t.Fatalf("positive result must stay pinned within its long TTL: got %q want %q", gotExisting, filepath.Clean(existing))
+	}
+	gotMissing, err := ResolveAbsPath(missing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(base, "other", "created-later"); gotMissing != want {
+		t.Fatalf("missing path must re-walk past the short TTL: got %q want %q", gotMissing, want)
+	}
+	if n := atomic.LoadInt32(&calls); n == callsAfterFirst {
+		t.Fatal("post-TTL calls should have re-walked at least the missing path")
 	}
 }
 
