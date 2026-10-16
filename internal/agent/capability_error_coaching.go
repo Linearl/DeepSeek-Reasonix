@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -211,17 +212,21 @@ func capabilityCorrectionFor(kind capabilityErrorKind, shape capabilityEnvelopeS
 	}
 	id := "<exact catalog id>"
 	if shape.id != "" {
-		id = `"` + escapeJSONString(shape.id) + `"`
+		// 935：引号构造一律走 strconv.Quote（stdlib 引号器，自带成对引号与
+		// 转义），不再手动 `"`+escapeJSONString(x)+`"` 拼接——后者被
+		// CodeQL go/unsafe-quoting 判为「json.Marshal 输出流入引号拼接」
+		// （escapeJSONString 内部即 json.Marshal）。
+		id = strconv.Quote(shape.id)
 	}
 	searchHint := ` If the exact id is unclear, run {"action":"search","query":"<topic>","limit":5} first.`
 	switch kind {
 	case capabilityErrMissingID:
 		return fmt.Sprintf(`Corrected call (single line): {"action":%s,"capability_id":%s,"arguments":{ ...the target tool's own parameters... }} — capability_id must be a TOP-LEVEL field of use_capability, never inside arguments.%s`,
-			`"`+escapeJSONString(action)+`"`, id, searchHint)
+			strconv.Quote(action), id, searchHint)
 	case capabilityErrNestedID:
 		nested := "<the nested id>"
 		if shape.nestedID != "" {
-			nested = `"` + escapeJSONString(shape.nestedID) + `"`
+			nested = strconv.Quote(shape.nestedID)
 		}
 		return fmt.Sprintf(`capability_id was found INSIDE arguments; hoist it to the top level: {"action":"call","capability_id":%s,"arguments":{ ...the target tool's own parameters... }}`,
 			nested)
@@ -237,7 +242,7 @@ func capabilityCorrectionFor(kind capabilityErrorKind, shape capabilityEnvelopeS
 	case capabilityErrSpreadParams:
 		parts := make([]string, 0, len(shape.spreadKeys))
 		for _, key := range shape.spreadKeys {
-			parts = append(parts, `"`+escapeJSONString(key)+`":"…"`)
+			parts = append(parts, strconv.Quote(key)+`:"…"`)
 		}
 		return fmt.Sprintf(`The target parameters [%s] were spread across the envelope top level. Pack them into ONE arguments object: {"action":"call","capability_id":%s,"arguments":{%s}}`,
 			strings.Join(shape.spreadKeys, ", "), id, strings.Join(parts, ","))
@@ -258,7 +263,11 @@ func capabilityValidationCorrection(plan *toolCallPlan) string {
 	shape := inspectCapabilityEnvelope(json.RawMessage(plan.call.Arguments))
 	id := "<exact catalog id>"
 	if shape.id != "" {
-		id = `"` + escapeJSONString(shape.id) + `"`
+		// 935：引号构造一律走 strconv.Quote（stdlib 引号器，自带成对引号与
+		// 转义），不再手动 `"`+escapeJSONString(x)+`"` 拼接——后者被
+		// CodeQL go/unsafe-quoting 判为「json.Marshal 输出流入引号拼接」
+		// （escapeJSONString 内部即 json.Marshal）。
+		id = strconv.Quote(shape.id)
 	}
 	// 整包或 arguments 成员字符串化：Actual 行已点名 "a JSON string wrapping…"，
 	// 这里补可复制的单行修正例。
@@ -278,7 +287,7 @@ func capabilityValidationCorrection(plan *toolCallPlan) string {
 	if !shape.hasArguments && len(shape.spreadKeys) > 0 {
 		parts := make([]string, 0, len(shape.spreadKeys))
 		for _, key := range shape.spreadKeys {
-			parts = append(parts, `"`+escapeJSONString(key)+`":"…"`)
+			parts = append(parts, strconv.Quote(key)+`:"…"`)
 		}
 		return fmt.Sprintf(`The target parameters [%s] were spread across the envelope top level. Pack them into ONE arguments object: {"action":"call","capability_id":%s,"arguments":{%s}}`,
 			strings.Join(shape.spreadKeys, ", "), id, strings.Join(parts, ","))
@@ -395,15 +404,17 @@ func (t *UseCapabilityTool) capabilityNameCorrection(wrongID string) string {
 	if len(suggestions) > 0 {
 		quoted := make([]string, 0, len(suggestions))
 		for _, s := range suggestions {
-			quoted = append(quoted, `"`+escapeJSONString(s)+`"`)
+			quoted = append(quoted, strconv.Quote(s))
 		}
 		fmt.Fprintf(&b, "Did you mean %s? Retry with capability_id=%s, for example: {\"action\":\"call\",\"capability_id\":%s,\"arguments\":{ ...that tool's own parameters... }}.",
 			strings.Join(quoted, " or "), quoted[0], quoted[0])
 	} else {
 		fmt.Fprintf(&b, "No close catalog id matches %q.", wrongID)
 	}
+	// %q 自带成对引号与转义，直引本地名即可（此前再套一层 escapeJSONString
+	// 是双重转义：含引号/反斜杠的本地名会被转义两次）。
 	fmt.Fprintf(&b, " To list candidates, run {\"action\":\"search\",\"query\":%q,\"limit\":5} then action=inspect the exact id.",
-		escapeJSONString(capabilityLocalName(wrongID)))
+		capabilityLocalName(wrongID))
 	return b.String()
 }
 
