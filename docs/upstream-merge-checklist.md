@@ -35,6 +35,21 @@ node scripts/check-fork-integrity.mjs
 4. **可上游化的优化提 PR**（上游 merged 后从 CHECKS 销账）——上游吸收是
    最强的防冲掉：fork 不再独自维护该代码。
 
+### 1.2 结构红线（必跑，与锚点核对互补）
+
+```bash
+node scripts/check-architecture.mjs --changed --base <合并前 commit>
+# 未指定合并前 commit 时全量：node scripts/check-architecture.mjs
+```
+
+`check-fork-integrity.mjs` 管「fork 特有锚点防静默丢」，本脚本管
+「模块级结构红线防静默坏」——上游大改可能把 import 方向改倒挂（内核侧
+反向依赖展示层、生产包 import 宿主/testutil）、把 internal 包导入改出环。
+**基线增量报告**：存量违规登记在 `architecture-baseline.json`，只报基线外
+新增；**新增必须清零**才能继续构建。合并顺手还清的存量违规，检查器会提示
+指纹已无对应，同一提交从基线删除（只减不增）。治理面全貌见
+`docs/ARCHITECTURE_CONTEXT.md`。
+
 ## 2. Token 契约（必跑）
 
 ```bash

@@ -35,7 +35,7 @@ description: DeepSeek-Reasonix fork 开发指南——fork 定位与上游协作
 - 搬代码前先查上游目标位置同名文件；文本比对只作线索不作判决。
 - **modify/delete 冲突会静默丢文件**（fork 无该文件→取删除侧）——必须 tree 比对。
 - **CSS 必核**：auto-merge 静默丢块先例（#9222 分组 194 行）。
-- 合并后必跑 `node scripts/check-fork-integrity.mjs`（锚点完整性）。
+- 合并后必跑 `node scripts/check-fork-integrity.mjs`（锚点完整性）+ `node scripts/check-architecture.mjs`（结构红线，**基线增量报告**：只报 `architecture-baseline.json` 外的新增违规，存量不刷屏；上游大改可能引入跨模块倒挂 import，新增必须清零后才能构建）。
 
 ## 4. 版本与出包
 

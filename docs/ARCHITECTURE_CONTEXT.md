@@ -26,7 +26,21 @@ node scripts/check-architecture.mjs --context go/control
 描述里应能回答五步（唯一所有者/单一路径/显式边界/显式时序/有界上下文）；答
 不上来说明上下文没拉，退回先拉。
 
-改完自跑（本地开发环，只查改动文件 + 反向依赖闭包；环检测恒为全图）：
+**bounded context 包（任务 682，2026-10-15）**：加 `--full` 追加两块实证内容，
+让「改码前读什么」有确定答案——
+
+```bash
+node scripts/check-architecture.mjs --context ts/lib --full
+```
+
+- **本模块文件清单（有界阅读集）**：Go 按包粒度、TS 按文件列出；读这些即
+  圈定模块内全部事实，不必整目录复制进 prompt；
+- **跨模块消费方**：外部谁在直接 import 本模块——公开面（导出/入口）变化时
+  的同步核对面，也是审计时影响面质疑的起点。
+
+阅读集只含本模块文件与**直接**消费方，不含传递闭包（传递影响由 `--changed`
+的反向依赖一层展开兜住）。改完自跑（本地开发环，只查改动文件 + 反向依赖
+闭包；环检测恒为全图）：
 
 ```bash
 node scripts/check-architecture.mjs --changed          # 对照 HEAD（含未跟踪新文件）
@@ -82,3 +96,13 @@ node scripts/check-architecture.mjs --changed --base main-v2-stable   # 分支�
 - 新方向红线：`directionRules` 加一对 from/forbid（先跑 `--strict` 数一数存量，
   有存量就随本变更登记基线，评审可见代价）。
 - 禁深导入：给模块声明 `publicEntrypoints` 即启用（先实测存量直连，为 0 再开）。
+
+## 与审计/合并流程的衔接（任务 682）
+
+- **对抗式审计**（`ll-iteration-audit-fix` 技能）：阶段 A 用模块注册表切范围、
+  `--context <id> --full` 拉 bounded context 包定边界与消费方；B1 查找者顺带
+  查边界违规（倒挂 import / 深导入 / 宿主与 testutil 误导入 / 环）；阶段 C
+  清理以 `--changed` 增量报告验收（新增清零 + 销账指纹）。
+- **上游合并**（`docs/upstream-merge-checklist.md` §1.2）：合并后必跑本检查器，
+  与 `check-fork-integrity.mjs`（锚点防静默丢）互补——一个防「fork 东西丢了」，
+  一个防「结构被上游改坏」；同样只报基线外新增，避免全量噪音。

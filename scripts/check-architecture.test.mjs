@@ -14,6 +14,7 @@ import {
   fingerprint,
   findCycles,
   formatContext,
+  formatContextPackage,
   isSourceFile,
   moduleForPath,
   resolveTsTarget,
@@ -203,6 +204,29 @@ test("--context：已知模块含方向红线，未知模块列出注册表", as
     const miss = formatContext(fx.policy, "ts/nope");
     assert.match(miss, /未注册模块/);
     assert.match(miss, /ts\/components/);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+// bounded context 包（任务 682）：模块文件清单 + 跨模块消费方。
+test("formatContextPackage：文件清单圈定模块内、消费方只收直接外部导入", async () => {
+  const fx = makeFixture();
+  try {
+    const graph = await scanGraph(fx.root);
+    // ts/lib：本模块文件 = k.ts + ktype.ts；消费方 = src/store/s.ts（直接导入）。
+    const pkg = formatContextPackage(fx.policy, graph, "ts/lib");
+    assert.match(pkg, /本模块文件/);
+    assert.match(pkg, /src\/lib\/k\.ts/);
+    assert.match(pkg, /src\/lib\/ktype\.ts/);
+    assert.doesNotMatch(pkg, /本模块文件[\s\S]*src\/components\/P\.tsx/); // 清单不含外模块文件
+    assert.match(pkg, /src\/store\/s\.ts → ts\/store/);
+    // go/tree：包粒度清单 + 直接消费方（z 经深导入 tree/sub 触碰模块）。
+    const goPkg = formatContextPackage(fx.policy, graph, "go/tree");
+    assert.match(goPkg, /internal\/tree\/ \(1 files\)/);
+    assert.match(goPkg, /internal\/z/);
+    // 未注册模块返回 null（调用方走 formatContext 的报错分支）。
+    assert.equal(formatContextPackage(fx.policy, graph, "no/such"), null);
   } finally {
     fx.cleanup();
   }
