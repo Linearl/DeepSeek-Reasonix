@@ -515,6 +515,18 @@ type Agent struct {
 	// (SetToolRoundGapHook) to extend the guidance injection point from the
 	// turn boundary to every round gap; nil = no host hook (no extra work).
 	toolRoundGap func()
+	// compactionSettled (任务920 压缩单飞门) fires on the agent goroutine right
+	// after a real maintenance transaction releases its single-flight slot
+	// (deferred clear covers every exit: prune-only, fold ladder, rescue,
+	// failure, panic). The host controller uses it to release turns parked
+	// behind the in-flight compaction gate. Bind-time only, same discipline
+	// as toolRoundGap: nil = no host hook.
+	compactionSettled func()
+	// maintaining (任务920) counts real maintenance transactions in flight —
+	// set once prepareOnce commits past the below-trigger fast path, cleared
+	// on return. Fast paths (below trigger, blocked/stuck views) never touch
+	// it, so ordinary sampling rounds carry zero gate cost (验收②).
+	maintaining atomic.Int32
 
 	// feedbackNudgeTurn counts Run entries (user message rounds) and
 	// feedbackNudgeLastTurn stores the round of the last task-172 nudge
@@ -921,6 +933,45 @@ func (a *Agent) SetToolRoundGapHook(fn func()) {
 		return
 	}
 	a.toolRoundGap = fn
+}
+
+// SetCompactionSettledHook registers the host callback fired when a real
+// compaction pass closes its Started→Done window (任务920 压缩单飞门). The
+// controller parks new turn bodies while CompactionInFlight reports true and
+// drains them from this hook — the only path that reliably fires on every
+// pass exit (success, failure, abort, panic) because the meter's stop is
+// deferred next to the pass itself.
+func (a *Agent) SetCompactionSettledHook(fn func()) {
+	if a == nil {
+		return
+	}
+	a.compactionSettled = fn
+}
+
+// CompactionInFlight reports whether a real maintenance transaction is in
+// flight (任务920 压缩单飞门). The gate source is the maintaining counter set
+// past the below-trigger fast path, not compactionRunMu: the mutex is also
+// held for sub-millisecond no-op paths, so gating admission on it would add
+// false-park noise to every sampling round. False = zero extra admission cost.
+func (a *Agent) CompactionInFlight() bool {
+	if a == nil {
+		return false
+	}
+	return a.maintaining.Load() > 0
+}
+
+// endMaintenance releases one in-flight maintenance slot and, on the last
+// release, fires the host settle hook so the controller drains turns parked
+// behind the compaction gate. Deferred in prepareOnce, so every exit path
+// (prune-only, fold ladder, rescue, failure, panic) pays it — a parked turn
+// can never outlive its gate (任务920 S3: 失败/超时后队列放行不卡死).
+func (a *Agent) endMaintenance() {
+	if a.maintaining.Add(-1) > 0 || a.maintaining.Load() < 0 {
+		return
+	}
+	if a.compactionSettled != nil {
+		a.compactionSettled()
+	}
 }
 
 // SteerRunActive reports whether a run is executing and accepting steers.

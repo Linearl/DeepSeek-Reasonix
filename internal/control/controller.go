@@ -389,6 +389,12 @@ type Controller struct {
 	// lets tools with InterruptBehaviorContinue (bash) keep running in the
 	// background while ending the turn gracefully.
 	interrupting bool
+	// interruptDeferred (任务920) records that a park-path interrupt arrived
+	// while a compaction pass was in flight. Firing cancel() then would kill
+	// the summary mid-stream (the context-canceled burn 912 repaired), so the
+	// interrupt is held until onCompactionSettled — which fires cancel and
+	// starts the stall clock together, keeping the Task 303 self-heal honest.
+	interruptDeferred bool
 	// interruptRequestedAt stamps the park-path interrupt (Task 303): a turn
 	// body that ignores ctx cancellation keeps running=true forever, silently
 	// dropping every later submit. admitGuardedTurn self-heals once the
@@ -1069,6 +1075,10 @@ func New(opts Options) *Controller {
 		c.executor.SetMemoryQueue(c)
 		// 任务461-P9: durable guidance injection at every tool-round gap.
 		c.bindAgentToolRoundGap()
+		// 任务920 压缩单飞门: release turns parked behind an in-flight
+		// compaction the moment the pass settles (agent goroutine, every exit
+		// path). Without this the parked FIFO strands until the next submit.
+		c.executor.SetCompactionSettledHook(c.onCompactionSettled)
 	}
 	// Auto Guard is built into Auto. Ask and YOLO bypass it through the mode
 	// provider, so no separate enablement state is needed.
@@ -1483,6 +1493,9 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 	// have inherited a stale interrupt from a finished turn.
 	c.interrupting = false
 	c.interruptRequestedAt = time.Time{}
+	// 任务920: a deferred park-interrupt dies with its turn too — the turn is
+	// already finished, there is nothing left to cancel at compaction settle.
+	c.interruptDeferred = false
 	// Keep cancelling visible through TurnDone fan-out; clearing it here creates
 	// a finishing-only window before Stop reaches its durable terminal event.
 	// A closed controller has no live surface and may clear immediately.
@@ -1515,7 +1528,12 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 			c.refreshRuntimeState(event.Event{})
 			return
 		}
-		if len(c.parkedTurns) == 0 {
+		if len(c.parkedTurns) == 0 || (c.executor != nil && c.executor.CompactionInFlight()) {
+			// 任务920: with a compaction pass still in flight the parked bodies
+			// stay queued even when non-empty — spawning one now would inject
+			// into the pass's snapshot→install window (the very hole the gate
+			// closes). onCompactionSettled drains them when the pass settles.
+			compacting := len(c.parkedTurns) > 0
 			c.mu.Unlock()
 			// 任务807: the gate just closed — reconcile window-era unowned
 			// claims before the kick below, so a stray whose claiming pipeline
@@ -1528,6 +1546,9 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 			// guards (yield/budget/throttle) re-checked at fire time.
 			c.wakeKickAfterTurnFinished()
 			c.refreshRuntimeState(event.Event{})
+			if compacting {
+				slog.Info("control: parked turns held behind in-flight compaction at turn close")
+			}
 			return
 		}
 		next := c.parkedTurns[0]

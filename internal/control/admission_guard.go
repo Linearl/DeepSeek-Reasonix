@@ -90,6 +90,9 @@ func (c *Controller) selfHealStalledLocked(now time.Time) time.Duration {
 	c.canceling = false
 	c.cancel = nil
 	c.interruptRequestedAt = time.Time{}
+	// 任务920: a deferred park-interrupt dies with the abandoned turn — its
+	// late finishGuardedTurn is recognized stale and would never clear it.
+	c.interruptDeferred = false
 	slog.Warn("control: turn deadlock detected — self-heal reset the admission gate",
 		"stalled_for", stalledFor, "threshold", turnInterruptStaleTimeout,
 		"parked", len(c.parkedTurns), "generation", c.turnGeneration,
@@ -153,6 +156,62 @@ func (c *Controller) HealStuckFinishing(maxAge time.Duration) (healed bool, stal
 	return true, stalledFor
 }
 
+// onCompactionSettled (任务920 压缩单飞门放行) runs on the agent goroutine the
+// moment a real maintenance transaction releases its slot. It does the same
+// work finishGuardedTurn's cleanup does, under the same critical section
+// discipline: honor a park-path interrupt deferred during the pass, then
+// start the oldest parked body (if any) while flipping running under c.mu —
+// opening the gate first and re-admitting after would let an unrelated submit
+// jump the queue. With nothing parked it re-arms the durable inbox, mirroring
+// endRotation, so 579 items rejected busy during the window get their kick.
+func (c *Controller) onCompactionSettled() {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	if c.interruptDeferred {
+		c.interruptDeferred = false
+		// The compaction this interrupt waited out is over; fire it now and
+		// start the stall clock together (see interruptDeferred field note).
+		c.interrupting = true
+		c.interruptRequestedAt = time.Now()
+		if c.cancel != nil {
+			c.cancel()
+		}
+	}
+	if c.rotating || c.running || c.finishing || len(c.parkedTurns) == 0 {
+		c.mu.Unlock()
+		// Same re-arms the normal turn-close path performs: durable inbox and
+		// idle-session wake both had their admission refused during the pass.
+		c.maybeDispatchInbox()
+		c.wakeKickAfterTurnFinished()
+		return
+	}
+	// Re-check the gate on the agent's own signal: another pass may already
+	// have started (manual compact right after a pressure fold), and parking
+	// until THAT pass settles is the correct behavior.
+	if c.executor != nil && c.executor.CompactionInFlight() {
+		c.mu.Unlock()
+		return
+	}
+	next := c.parkedTurns[0]
+	c.parkedTurns = c.parkedTurns[1:]
+	ctx, cancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
+	forceCtx, forceCancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
+	ctx = agent.WithStopForce(ctx, forceCtx.Done())
+	c.cancel = cancel
+	c.forceCancel = forceCancel
+	c.running = true
+	c.canceling = false
+	parked := len(c.parkedTurns)
+	c.mu.Unlock()
+	slog.Info("control: parked turn drained after compaction settled", "parked_remaining", parked)
+	c.releaseUnownedInboxClaims("compaction_settle")
+	c.spawnGuardedTurn(ctx, cancel, next)
+	c.refreshRuntimeState(event.Event{})
+}
+
 func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, parkWhileRunning, parkWhileFinishing bool, onStart func()) admissionResult {
 	if err := c.ensureWriteAuthorityReady(); err != nil {
 		slog.Warn("control: submit dropped", "reason", "write_authority_not_ready", "err", err)
@@ -185,23 +244,51 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 	// stalled turn under the same lock: bump the generation so its late
 	// completion is treated as stale, then reopen the gate for THIS body.
 	healedStalledFor := c.selfHealStalledLocked(time.Now())
+	// 任务920 压缩单飞门: a real maintenance transaction (prune/fold/rescue)
+	// is in flight. Admitting a turn now would inject its messages into the
+	// summary's snapshot→install window — either invalidating the whole pass
+	// (errCompressStaleContext, the burned-summary family) or re-inflating the
+	// view right after the fold lands (压完又胀). Park instead; the settle
+	// hook (onCompactionSettled) drains the FIFO when the pass ends.
+	compacting := c.executor != nil && c.executor.CompactionInFlight()
 	if c.running {
 		if parkWhileRunning {
 			// Claude Code-style interrupt: if the current turn is executing
 			// tools, signal it to end gracefully (bash keeps running in
 			// background). This lets the parked turn start sooner.
 			c.interrupting = true
-			c.interruptRequestedAt = time.Now()
-			if c.cancel != nil {
-				c.cancel()
+			if compacting {
+				// 让路不打断: cancelling the turn now would cancel the in-flight
+				// summary with it (the context-canceled burn 912 repaired).
+				// Record the intent and fire the cancel when the pass settles;
+				// the stall clock (interruptRequestedAt) only starts then, so a
+				// minutes-long compaction can never trip the 303 self-heal.
+				c.interruptDeferred = true
+			} else {
+				c.interruptRequestedAt = time.Now()
+				if c.cancel != nil {
+					c.cancel()
+				}
 			}
 			c.parkedTurns = append(c.parkedTurns, body)
 			c.mu.Unlock()
-			slog.Info("control: submit parked behind running turn", "interrupt_requested", true)
+			slog.Info("control: submit parked behind running turn", "interrupt_requested", !compacting, "compaction_in_flight", compacting)
 			return turnParked
 		}
 		c.mu.Unlock()
 		slog.Warn("control: submit dropped", "reason", "turn_running", "interrupting", true)
+		return turnDroppedRunning
+	}
+	if compacting {
+		if parkWhileRunning {
+			c.parkedTurns = append(c.parkedTurns, body)
+			parked := len(c.parkedTurns)
+			c.mu.Unlock()
+			slog.Info("control: submit parked behind in-flight compaction", "parked", parked)
+			return turnParked
+		}
+		c.mu.Unlock()
+		slog.Warn("control: submit dropped", "reason", "compaction_in_flight")
 		return turnDroppedRunning
 	}
 	if c.finishing {
@@ -218,6 +305,15 @@ func (c *Controller) admitGuardedTurn(body func(ctx context.Context) error, park
 		c.mu.Unlock()
 		slog.Info("control: submit parked behind finishing turn", "parked", parked)
 		return turnParked
+	}
+	// 任务920 FIFO 自愈: the gate is open but the queue is not empty — the
+	// bodies parked behind the compaction window lost their settle kick (hook
+	// rebind, controller rebuild). This submit joins the tail and the oldest
+	// parked body starts first, so order is preserved and nothing strands.
+	if len(c.parkedTurns) > 0 {
+		c.parkedTurns = append(c.parkedTurns, body)
+		body = c.parkedTurns[0]
+		c.parkedTurns = c.parkedTurns[1:]
 	}
 	ctx, cancel := context.WithCancel(extension.ContextWithRuntimeOwner(context.Background(), c.runtimeOwner))
 	// 任务461-P7 三级终止: the force half is an INDEPENDENT context (same base

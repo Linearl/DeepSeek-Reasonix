@@ -132,6 +132,13 @@ func (c *Controller) dispatchInboxOnce() inboxDispatchResult {
 	c.mu.Lock()
 	busy := c.running || c.finishing || c.rotating || c.closed
 	c.mu.Unlock()
+	// 任务920: an in-flight compaction is busy for durable dispatch too —
+	// admitting an item would runGuardedInbox-drop it (turnDroppedRunning)
+	// and burn a claim cycle; the settle hook's maybeDispatchInbox is the
+	// kick that owns this window (same level-triggered contract as rotation).
+	if !busy && c.executor != nil && c.executor.CompactionInFlight() {
+		busy = true
+	}
 	if busy {
 		return inboxDispatchIdle
 	}
