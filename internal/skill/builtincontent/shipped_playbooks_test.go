@@ -33,6 +33,9 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 		"ll-iteration-review",
 		"ll-zcode-collaboration",
 		"ll-update",
+		"react-best-practices",
+		"feature-boundary-planner",
+		"dogfood",
 	} {
 		sk, ok := byName[want]
 		if !ok {

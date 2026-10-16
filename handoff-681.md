@@ -44,4 +44,23 @@
 
 | commit | 内容 |
 |---|---|
-| （回填） | handoff 计划落盘 |
+| `02d08f926` | handoff 计划落盘 |
+| `8c0cf97ce` | 移植① react-best-practices（SKILL.md + rules/ 72 文件） |
+| `c8c7025c8` | 移植② feature-boundary-planner（SKILL.md + 4 references，含新建五维特性图 21 节点/17 关系） |
+| `7b20ea8aa` | 移植③ dogfood（SKILL.md 改写 + taxonomy/report 模板） |
+| （本 commit） | 内置化注册（embed.go 整目录 go:embed + install.go ShippedPlaybookNames 15 项 + shipped_playbooks/install 测试期望 15）+ handoff 验收回填 |
+
+## 验收结果（2026-10-15）
+
+1. **build**：`go build ./...` 全仓过（embed 完整）。
+2. **测试**：`go test ./internal/skill/builtincontent/` 绿——`TestShippedPlaybooksAreEmbedded` 期望清单含三名；`TestInstallToUserDirWritesShippedPlaybooks` 15 项物化 + 四条新 sidecar（rules/async-parallel.md、references/reasonix-feature-graph.yaml、dogfood templates+references）落盘断言过。
+3. **目录解析**：临时测试 `All()` 确认三技能 Name/Description/runas=inline 齐全（dogfood 14373B / feature-boundary-planner 6315B / react-best-practices 7932B body），无子目录误收（每技能仅顶层一个 SKILL.md）。
+4. **死引用 grep**：三技能全目录对 `mcp__node_repl / ZCODE_PLUGIN_ROOT / browser-client.mjs / pnpm dep:refs / zcode-feature-graph / openai.yaml / THIRD-PARTY-NOTICES / disable-model-invocation / allowed-tools / packages/ui/src / apps/zcode` **零命中**；`agent-browser` 仅存于 Apache-2.0 出处注释与「There is no agent-browser CLI here」免责声明（非可调用引用）。
+5. **frontmatter 形态**：三技能均为 `name/description/runas: inline`，与既有 12 个一致。
+6. **特性图种子**：`reasonix-feature-graph.yaml` 21 节点/17 关系——YAML 可解析、ID 唯一、关系端点存在、rank 合法、codeSeeds 文件路径与声明符号全部实测存在（脚本逐条 grep 验证）。
+
+## 残留
+
+- react-best-practices 的 `server-*`/`async-api-routes` 类规则面向 Next.js 服务端，本 fork 桌面前端（Vite+wails）无对应运行时——SKILL.md 已标注「参考材料」，保留全量是为覆盖 workspace 内任何 Next.js 代码。
+- dogfood 出处注释保留 `agent-browser` 项目名（Apache-2.0 许可要求保留溯源）；如验收要求字面 grep 清零可再收敛，但删出处会违反上游许可。
+- feature-boundary-planner 特性图为首批种子（12 能力面），后续按 graph-drift-candidate 机制随任务补录。

@@ -18,7 +18,7 @@ import (
 // ll-iteration-parallel-dev was retired in favor of ll-iteration-dev (708).
 // ll-fork-guide replaces the builtin-only reasonix-fork-guide (task 430);
 // ll-update ships with scripts/switch-version.sh (task 430).
-var ShippedPlaybookNames = []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-dev", "ll-iteration-audit-fix", "ll-iteration-review", "ll-zcode-collaboration", "ll-fork-guide", "ll-update"}
+var ShippedPlaybookNames = []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-dev", "ll-iteration-audit-fix", "ll-iteration-review", "ll-zcode-collaboration", "ll-fork-guide", "ll-update", "react-best-practices", "feature-boundary-planner", "dogfood"}
 
 // renamedSkills maps retired user-dir skill names to their shipped replacement
 // (task 430; parallel-worktree-dev re-pointed to ll-iteration-dev by task 708).

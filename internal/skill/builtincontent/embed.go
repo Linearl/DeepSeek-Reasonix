@@ -28,6 +28,9 @@ import (
 //go:embed ll-iteration-review
 //go:embed ll-zcode-collaboration
 //go:embed ll-update
+//go:embed react-best-practices
+//go:embed feature-boundary-planner
+//go:embed dogfood
 var files embed.FS
 
 // SkillMarkdown is one embedded skill file after frontmatter split.
