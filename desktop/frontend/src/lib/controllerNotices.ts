@@ -69,6 +69,9 @@ const streamInterruptReasonCodeKeys: Record<string, DictKey> = {
   stream_interrupted_idle_timeout: "notice.streamInterruptReason.idleTimeout",
   stream_interrupted_premature_eof: "notice.streamInterruptReason.prematureEof",
   stream_interrupted_connection_reset: "notice.streamInterruptReason.connectionReset",
+  // 任务929: the gateway itself reset the stream (HTTP/2 RST / SSE error
+  // frame) — its own face instead of a flattened "premature eof".
+  stream_interrupted_server_error: "notice.streamInterruptReason.serverError",
 };
 
 export function localizedNoticeText(text: string, code?: string): string {

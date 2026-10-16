@@ -720,9 +720,17 @@ func (c *client) streamOnce(ctx context.Context, resp *http.Response, out chan<-
 		sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkError, Err: err})
 		return
 	}
-	if provider.IsConnReset(err) {
-		sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkError, Err: provider.StreamInterrupt(err, provider.ClassifyStreamInterrupt(err))})
-		return
+	// 任务929 S1: every body-phase cut that is not a cancellation becomes a
+	// StreamInterruptedError carrying a fixed reason — the same contract the
+	// anthropic (streamScanEndError) and responses readers already honour.
+	// The old `IsConnReset`-only gate left the gateway's HTTP/2
+	// RST_STREAM(INTERNAL_ERROR) and a clean-FIN cut as bare errors, so the
+	// reason came from the text fallback and the diagnostics payload flattened
+	// a deterministic gateway rejection into an idle-proxy drop. readStream
+	// already labels the stall and clean-FIN shapes explicitly; classify the
+	// rest (scanner/transport failures) here.
+	if !provider.IsStreamInterrupted(err) {
+		err = provider.StreamInterrupt(err, provider.ClassifyStreamInterrupt(err))
 	}
 	sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkError, Err: err})
 }
@@ -1043,8 +1051,13 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 	}
 	if stalled.Load() {
 		// Idle stall is a body-phase cut: wrap so the Agent can replay the
-		// frozen request. Providers no longer reconnect here.
-		return emitted, fmt.Errorf("%s: stream stalled — no data for %s, connection likely dropped: %w", c.name, idleTimeout, io.ErrUnexpectedEOF)
+		// frozen request. Providers no longer reconnect here. 任务929 S1: the
+		// reason is attached at the source (anthropic stream_eof.go parity) —
+		// a bare io.ErrUnexpectedEOF wrapper read as connect/premature_eof and
+		// the notice layer could not name the idle watchdog.
+		return emitted, provider.StreamInterrupt(
+			fmt.Errorf("%s: stream stalled — no data for %s, connection likely dropped: %w", c.name, idleTimeout, io.ErrUnexpectedEOF),
+			provider.StreamInterruptIdleTimeout)
 	}
 	if err := scanner.Err(); err != nil {
 		return emitted, fmt.Errorf("%s: read stream: %w", c.name, err)
@@ -1053,8 +1066,12 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 	// this check the turn would be committed as complete — including half-streamed
 	// tool-call arguments, which then 400 on every replay (#3953). OpenAI Chat
 	// accepts either [DONE] or a legal finish_reason as a complete terminal.
+	// 任务929 S1: labelled here too — the clean-FIN cut and the gateway's
+	// INTERNAL_ERROR must not collapse into one another downstream.
 	if !sawDone && lastFinishReason == "" {
-		return emitted, fmt.Errorf("%s: stream ended before completion: %w", c.name, io.ErrUnexpectedEOF)
+		return emitted, provider.StreamInterrupt(
+			fmt.Errorf("%s: stream ended before completion: %w", c.name, io.ErrUnexpectedEOF),
+			provider.StreamInterruptPrematureEOF)
 	}
 
 	if r, txt := think.flush(); r != "" || txt != "" {

@@ -3535,6 +3535,8 @@ func streamInterruptNotice(err error) (code, text string) {
 		return event.NoticeCodeStreamInterruptedPrematureEOF, i18n.M.StreamInterruptedPrematureEOF
 	case provider.StreamInterruptConnectionReset:
 		return event.NoticeCodeStreamInterruptedConnectionReset, i18n.M.StreamInterruptedConnectionReset
+	case provider.StreamInterruptServerError:
+		return event.NoticeCodeStreamInterruptedServerError, i18n.M.StreamInterruptedServerError
 	default:
 		return "", ""
 	}

@@ -4628,6 +4628,7 @@ export const zh: Record<DictKey, string> = {
   "notice.streamInterruptReason.idleTimeout": "超过空闲超时仍未收到任何数据",
   "notice.streamInterruptReason.prematureEof": "数据流在完成前被提前断开",
   "notice.streamInterruptReason.connectionReset": "连接被重置",
+  "notice.streamInterruptReason.serverError": "供应商网关重置了数据流",
   "notice.streamInterruptReason.unknown": "未知传输故障",
   "notice.unappliedSteer": "本条引导未能应用，因为当前回合在处理它之前已结束。如仍需要，请重新发送：\n{guidance}",
   "notice.contextLarge": "上下文正在变大，暂时保留缓存，等需要时再清理。",

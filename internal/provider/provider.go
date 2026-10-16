@@ -960,6 +960,19 @@ func ClassifyStreamInterrupt(err error) string {
 	switch {
 	case strings.Contains(msg, "stalled") || strings.Contains(msg, "idle timeout") || strings.Contains(msg, "no data for"):
 		return StreamInterruptIdleTimeout
+	// 任务929 (+927缺陷面①): an HTTP/2 RST_STREAM from the gateway — MiMo's
+	// "stream error: stream ID 5; INTERNAL_ERROR; received from peer" — is the
+	// SERVER killing a healthy stream, not a client-observed EOF. This case
+	// must precede the EOF one: that RST often wraps io.ErrUnexpectedEOF, and
+	// the old ordering flattened a deterministic gateway rejection into
+	// premature_eof (an idle proxy drop read the same), so the diagnostic
+	// payload could not tell the two apart. Server-sent reset codes
+	// (INTERNAL_ERROR / REFUSED_STREAM / ENHANCE_YOUR_CALM …) share this shape;
+	// a client-issued CANCEL never reaches here with a live context (the emit
+	// sites exclude context.Canceled/DeadlineExceeded first).
+	case strings.Contains(msg, "internal_error") ||
+		(strings.Contains(msg, "stream error") && strings.Contains(msg, "stream id")):
+		return StreamInterruptServerError
 	case errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) || strings.Contains(msg, "before completion") || strings.Contains(msg, "unexpected eof"):
 		return StreamInterruptPrematureEOF
 	case errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||

@@ -59,30 +59,39 @@ type Messages struct {
 	StreamInterruptedIdleTimeout     string
 	StreamInterruptedPrematureEOF    string
 	StreamInterruptedConnectionReset string
-	ToolOutputTruncatedFmt           string // %d = elided bytes, %d = original bytes
-	IncompleteReadFinishBlocked      string
-	ReadContinuationRequired         string
-	IncompleteReadDetected           string
-	ReadStrategyRequired             string
-	ReadStrategyProgress             string
-	ReadStrategyResolved             string
-	ReadLocalSafetyPaged             string
-	ReadCompleted                    string
-	ReadRestrictedStrategyFmt        string // %d = estimated tokens, %d = token budget
-	ContextRecoveryAdjustBudget      string
-	ContextRecoveryCompacted         string
-	PlannerFallback                  string
-	PlannerSafetyFallback            string
-	PlannerPlanAwaitingApproval      string
-	PlannerPlanNotApproved           string
-	PlannerPlanOnly                  string
-	CredentialExpiredAlert           string // 任务912 P1-d: HTTP 401 key rejection, only the user can fix it
-	SlidingWindowCap                 string // 任务912 P1-c: compaction kept failing, so the context was clipped
-	CapabilityProxyFmt               string // %s = display name, %s = resolved target
-	ReceiptVerified                  string // end-of-turn receipt, nothing unproven
-	ReceiptGapsHeader                string // end-of-turn receipt, header above the unproven list
-	ReceiptRisksHeader               string // end-of-turn receipt, header above declared risks
-	ReceiptMore                      string // end-of-turn receipt, "and N more" tail
+	// StreamInterruptedServerError: the provider gateway reset/errored the
+	// stream itself (任务929 — HTTP/2 RST / SSE error frame).
+	StreamInterruptedServerError string
+	// ProviderDeterministicReject (任务929 S2): the breaker stopped the retry
+	// loop; %d = the attempt that proved the pattern.
+	ProviderDeterministicReject string
+	// PrefillSlowNoticeFmt (任务929 S3): the first-token watch fired; %d =
+	// estimated prompt tokens so the wait is attributed to context size.
+	PrefillSlowNoticeFmt        string
+	ToolOutputTruncatedFmt      string // %d = elided bytes, %d = original bytes
+	IncompleteReadFinishBlocked string
+	ReadContinuationRequired    string
+	IncompleteReadDetected      string
+	ReadStrategyRequired        string
+	ReadStrategyProgress        string
+	ReadStrategyResolved        string
+	ReadLocalSafetyPaged        string
+	ReadCompleted               string
+	ReadRestrictedStrategyFmt   string // %d = estimated tokens, %d = token budget
+	ContextRecoveryAdjustBudget string
+	ContextRecoveryCompacted    string
+	PlannerFallback             string
+	PlannerSafetyFallback       string
+	PlannerPlanAwaitingApproval string
+	PlannerPlanNotApproved      string
+	PlannerPlanOnly             string
+	CredentialExpiredAlert      string // 任务912 P1-d: HTTP 401 key rejection, only the user can fix it
+	SlidingWindowCap            string // 任务912 P1-c: compaction kept failing, so the context was clipped
+	CapabilityProxyFmt          string // %s = display name, %s = resolved target
+	ReceiptVerified             string // end-of-turn receipt, nothing unproven
+	ReceiptGapsHeader           string // end-of-turn receipt, header above the unproven list
+	ReceiptRisksHeader          string // end-of-turn receipt, header above declared risks
+	ReceiptMore                 string // end-of-turn receipt, "and N more" tail
 	// ReceiptGapKinds maps a completion gap kind to its short human phrase.
 	ReceiptGapKinds   map[string]string
 	NoSessionToResume string // shown when --continue / --resume finds nothing

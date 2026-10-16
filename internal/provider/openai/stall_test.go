@@ -56,6 +56,12 @@ func TestStreamStallTimesOut(t *testing.T) {
 				if !strings.Contains(chunk.Err.Error(), "stalled") {
 					t.Fatalf("error = %v, want a 'stalled' error", chunk.Err)
 				}
+				// 任务929 S1: the idle watchdog must surface its own reason —
+				// a bare unexpected-EOF wrapper read as connect/premature_eof
+				// and the notice layer could not name the stall.
+				if got := provider.StreamInterruptReason(chunk.Err); got != provider.StreamInterruptIdleTimeout {
+					t.Fatalf("reason = %q, want %q (err %v)", got, provider.StreamInterruptIdleTimeout, chunk.Err)
+				}
 				return
 			}
 		case <-deadline:

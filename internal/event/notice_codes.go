@@ -26,14 +26,28 @@ const (
 	NoticeCodeStreamInterruptedIdleTimeout     = "stream_interrupted_idle_timeout"
 	NoticeCodeStreamInterruptedPrematureEOF    = "stream_interrupted_premature_eof"
 	NoticeCodeStreamInterruptedConnectionReset = "stream_interrupted_connection_reset"
-	NoticeCodeUnappliedSteer                   = "unapplied_steer"
-	NoticeCodeMCPToolsList                     = "mcp_tools_list"
-	NoticeCodeSessionRecoveryForked            = "session_recovery_forked"
-	NoticeCodeSessionRecoveryAdopted           = "session_recovery_adopted"
-	NoticeCodeSessionRecoveryAdoptedCovered    = "session_recovery_adopted_covered"
-	NoticeCodeSessionRecoveryDepthCap          = "session_recovery_depth_cap"
-	NoticeCodeSessionShutdownRecoveryForked    = "session_shutdown_recovery_forked"
-	NoticeCodeSessionConcurrentWriter          = "session_concurrent_writer"
+	// NoticeCodeStreamInterruptedServerError (任务929): the provider gateway
+	// itself reset the stream (HTTP/2 RST_STREAM / an SSE error frame) — the
+	// distinct face that used to flatten into premature_eof.
+	NoticeCodeStreamInterruptedServerError = "stream_interrupted_server_error"
+	// NoticeCodeProviderDeterministicReject (任务929 S2): the breaker proved
+	// the gateway is rejecting THIS request deterministically (same reason,
+	// near-identical durations, N times) — the loop stopped early instead of
+	// replaying another full prefill.
+	NoticeCodeProviderDeterministicReject = "provider_deterministic_reject"
+	// NoticeCodePrefillSlow (任务929 S3): a first-token watch fired — no
+	// provider chunk for prefillNoticeAfter while a very large context is
+	// being prefetched. Says "still working" instead of leaving the transcript
+	// indistinguishable from a hang.
+	NoticeCodePrefillSlow                   = "prefill_slow"
+	NoticeCodeUnappliedSteer                = "unapplied_steer"
+	NoticeCodeMCPToolsList                  = "mcp_tools_list"
+	NoticeCodeSessionRecoveryForked         = "session_recovery_forked"
+	NoticeCodeSessionRecoveryAdopted        = "session_recovery_adopted"
+	NoticeCodeSessionRecoveryAdoptedCovered = "session_recovery_adopted_covered"
+	NoticeCodeSessionRecoveryDepthCap       = "session_recovery_depth_cap"
+	NoticeCodeSessionShutdownRecoveryForked = "session_shutdown_recovery_forked"
+	NoticeCodeSessionConcurrentWriter       = "session_concurrent_writer"
 	// NoticeCodeSessionConcurrentDualTab (task 203): the competing writer was
 	// an in-process second tab on the same conversation — the real dual-writer
 	// case, phrased as such instead of blaming another window or process.
