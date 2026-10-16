@@ -15,14 +15,83 @@ import (
 // TestCurrentTimeBlockRendersExactTimestamp pins the block's exact shape: the
 // task-664 acceptance criterion is that the injected anchor carries the correct
 // local wall clock, so the test asserts the rendered RFC3339 timestamp and
-// weekday against a fixed clock in a fixed zone.
+// weekday against a fixed clock in a fixed zone. Task 914 extends the shape
+// with an explicit Chinese date+weekday right after the ISO stamp — the exact
+// assertion here pins that too, so any silent format drift fails loudly.
 func TestCurrentTimeBlockRendersExactTimestamp(t *testing.T) {
 	tz := time.FixedZone("UTC+8", 8*60*60)
 	// 2026-10-09 08:05 in UTC+8 is a Friday.
 	now := time.Date(2026, 10, 9, 8, 5, 0, 0, tz)
-	want := "<current-time>2026-10-09T08:05:00+08:00 Fri — host clock when this turn started</current-time>"
+	want := "<current-time>2026-10-09T08:05:00+08:00 Fri — 2026-10-09 星期五 — host clock when this turn started</current-time>"
 	if got := CurrentTimeBlock(now); got != want {
 		t.Fatalf("CurrentTimeBlock = %q, want %q", got, want)
+	}
+}
+
+// TestCurrentTimeBlockCarriesExplicitChineseWeekday is the task-914 acceptance
+// criterion: the per-turn anchor must carry the explicit Chinese date and
+// weekday, because models skimmed past the English abbreviation and misjudged
+// the weekday (周四误判为周一, two incidents on one day). One fixed Thursday is
+// enough to prove the Chinese rendering is present and correct.
+func TestCurrentTimeBlockCarriesExplicitChineseWeekday(t *testing.T) {
+	tz := time.FixedZone("UTC+8", 8*60*60)
+	// 2026-10-15 15:55 in UTC+8 is a Thursday — the incident day itself.
+	now := time.Date(2026, 10, 15, 15, 55, 0, 0, tz)
+	got := CurrentTimeBlock(now)
+	if !strings.Contains(got, "2026-10-15 星期四") {
+		t.Fatalf("CurrentTimeBlock = %q, want explicit Chinese anchor %q", got, "2026-10-15 星期四")
+	}
+}
+
+// TestCurrentTimeBlockAnchorsAgreeAcrossFullWeek is the no-contradiction
+// criterion: the ISO stamp and the Chinese date+weekday derive from the same
+// time.Time in the same zone, so every field must agree for every day of a
+// week sweep (including a month boundary). The test parses the rendered ISO
+// stamp back and re-derives the Chinese fields independently — if the block
+// ever composed the two renderings from different clocks or zones, this fails.
+func TestCurrentTimeBlockAnchorsAgreeAcrossFullWeek(t *testing.T) {
+	tz := time.FixedZone("UTC+8", 8*60*60)
+	wantWeekday := [...]string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
+	// Start Sun 2026-09-27 so the sweep crosses the month boundary into October.
+	start := time.Date(2026, 9, 27, 0, 0, 0, 0, tz)
+	for i := range 7 {
+		now := start.AddDate(0, 0, i).Add(13 * time.Hour)
+		got := CurrentTimeBlock(now)
+		body, ok := strings.CutPrefix(got, "<current-time>")
+		if !ok {
+			t.Fatalf("CurrentTimeBlock = %q, want <current-time> prefix", got)
+		}
+		stamp, rest, _ := strings.Cut(body, " ")
+		parsed, err := time.Parse(time.RFC3339, stamp)
+		if err != nil {
+			t.Fatalf("anchor %q is not RFC3339: %v", stamp, err)
+		}
+		// Re-derive the Chinese fields from the parsed ISO stamp: same date,
+		// same weekday, no room for the two renderings to contradict.
+		if !strings.Contains(rest, parsed.Format("2006-01-02")+" "+wantWeekday[parsed.Weekday()]) {
+			t.Fatalf("for stamp %q, block %q does not carry matching Chinese date+weekday %q",
+				stamp, got, parsed.Format("2006-01-02")+" "+wantWeekday[parsed.Weekday()])
+		}
+	}
+}
+
+// TestTurnAnchorsRefreshChineseDateAcrossMidnight is the cross-day acceptance
+// criterion: a session spanning midnight must see the Chinese date roll over
+// between turns, because each turn re-renders the anchor from its own host
+// clock. Two turns composed 20 minutes apart across a day boundary assert both
+// that the dates differ by one day and that each matches its own turn clock.
+func TestTurnAnchorsRefreshChineseDateAcrossMidnight(t *testing.T) {
+	tz := time.FixedZone("UTC+8", 8*60*60)
+	lateNight := time.Date(2026, 10, 15, 23, 50, 0, 0, tz)  // Thursday
+	nextDay := time.Date(2026, 10, 16, 0, 10, 0, 0, tz)      // Friday, 20 minutes later
+
+	a := WithCurrentTime("late turn", lateNight)
+	b := WithCurrentTime("early turn", nextDay)
+	if !strings.Contains(a, "2026-10-15 星期四") {
+		t.Fatalf("late-night anchor %q lacks %q", a, "2026-10-15 星期四")
+	}
+	if !strings.Contains(b, "2026-10-16 星期五") {
+		t.Fatalf("next-day anchor %q lacks %q — Chinese date must roll with the turn clock", b, "2026-10-16 星期五")
 	}
 }
 

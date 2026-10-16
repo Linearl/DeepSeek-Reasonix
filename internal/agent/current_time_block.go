@@ -18,16 +18,35 @@ import (
 // only the new tail message changes per request.
 const currentTimeTag = "current-time"
 
+// chineseWeekday renders Go's Weekday as the explicit Chinese weekday. The
+// English abbreviation ("Thu") proved easy for models to skim past and misread
+// as another day — two same-day "which weekday is it" misjudgments (任务914:
+// 周四被误判为周一) traced back to the anchor carrying only the English form.
+// The explicit Chinese weekday removes the inference step entirely.
+var chineseWeekday = [...]string{
+	time.Sunday:    "星期日",
+	time.Monday:    "星期一",
+	time.Tuesday:   "星期二",
+	time.Wednesday: "星期三",
+	time.Thursday:  "星期四",
+	time.Friday:    "星期五",
+	time.Saturday:  "星期六",
+}
+
 // CurrentTimeBlock renders the one-line clock anchor, or "" for a zero time.
 // RFC3339 with a numeric zone offset keeps the local wall clock unambiguous;
 // the weekday helps scheduling reasoning ("by Friday", "tomorrow morning").
-// The short gloss says what the timestamp is, so the model anchors on it
-// instead of guessing from older context.
+// The explicit Chinese date+weekday (任务914) sits right after the ISO stamp,
+// derived from the same time.Time in the same zone, so the two renderings can
+// never contradict each other — a model that misreads "Thu" still has
+// "2026-10-15 星期四" to fall back on. The short gloss says what the timestamp
+// is, so the model anchors on it instead of guessing from older context.
 func CurrentTimeBlock(now time.Time) string {
 	if now.IsZero() {
 		return ""
 	}
 	return "<" + currentTimeTag + ">" + now.Format("2006-01-02T15:04:00Z07:00 Mon") +
+		" — " + now.Format("2006-01-02") + " " + chineseWeekday[now.Weekday()] +
 		" — host clock when this turn started</" + currentTimeTag + ">"
 }
 
