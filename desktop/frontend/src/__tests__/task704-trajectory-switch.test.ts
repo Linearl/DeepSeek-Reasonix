@@ -135,10 +135,11 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 // 9. experimentTiers test counts moved with the register (the 562 harness
 //    pins the distribution — a silent mismatch would fail CI elsewhere).
 //    计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 24/53；
-//    815 统一登记窗口收口 → 29/63）。
+//    815 统一登记窗口收口 → 29/63；任务 686 workflowPanel 入表 → 29/64，
+//    未稳定 14→15、总数 63→64）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 29") && tierTest.includes("length === 63"),
-  "task562 test pins the 63-entry register (815 登记窗口收口口径)");
+ok(tierTest.includes("counts.optional === 29") && tierTest.includes("length === 64"),
+  "task562 test pins the 64-entry register (686 workflowPanel 入表口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");
