@@ -97,6 +97,14 @@ func ValidateModelTranscript(msgs []Message) error {
 // RepairRejectedArguments changes only the outbound copy of calls the host
 // proved never ran. Their validation-error result remains available for the
 // model to correct its next proposal; stored arguments remain inspectable.
+//
+// Empty (or whitespace-only) arguments are additionally normalized to "{}"
+// for every call, executed or not (task 930): they carry no parameters to
+// preserve, and a completed no-argument call (wait etc.) previously fell
+// through the never-ran whitelist below, leaving the stored empty string to
+// be re-rejected on every future request — a permanent poison pill. Only the
+// empty string is rewritten; non-empty rejected arguments keep the original
+// never-ran-only rule.
 func RepairRejectedArguments(msgs []Message) []Message {
 	out := append([]Message(nil), msgs...)
 	for i, m := range out {
@@ -104,6 +112,11 @@ func RepairRejectedArguments(msgs []Message) []Message {
 			continue
 		}
 		for j, c := range m.ToolCalls {
+			if strings.TrimSpace(c.Arguments) == "" {
+				out[i].ToolCalls = append([]ToolCall(nil), out[i].ToolCalls...)
+				out[i].ToolCalls[j].Arguments = "{}"
+				continue
+			}
 			var args map[string]json.RawMessage
 			if json.Unmarshal([]byte(c.Arguments), &args) == nil && args != nil {
 				continue

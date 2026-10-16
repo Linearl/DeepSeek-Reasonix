@@ -128,6 +128,107 @@ func TestValidateTranscriptEmptyArgumentsFiveShapes(t *testing.T) {
 	}
 }
 
+// TestRepairRejectedArgumentsNormalizesEmptyOnly pins 任务 930 S2: empty
+// arguments are rewritten to "{}" on the outbound copy for every run state —
+// including completed no-argument calls (wait) that the never-ran whitelist
+// never covered. Non-empty rejected arguments keep the original rule, and the
+// stored history is never mutated.
+func TestRepairRejectedArgumentsNormalizesEmptyOnly(t *testing.T) {
+	completedResult := func(id string) Message {
+		return Message{Role: RoleTool, ToolCallID: id, Name: "wait", Content: "done", ToolRunState: ToolRunCompleted}
+	}
+	cases := []struct {
+		name string
+		in   []Message
+		want []string // outbound arguments per assistant call, in order
+	}{
+		{
+			name: "completed empty call normalized",
+			in: []Message{
+				{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "a", Name: "wait", Arguments: ""}}},
+				completedResult("a"),
+			},
+			want: []string{"{}"},
+		},
+		{
+			name: "completed whitespace call normalized",
+			in: []Message{
+				{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "a", Name: "wait", Arguments: " \n "}}},
+				completedResult("a"),
+			},
+			want: []string{"{}"},
+		},
+		{
+			name: "mixed batch empty normalized others untouched",
+			in: []Message{
+				{Role: RoleAssistant, ToolCalls: []ToolCall{
+					{ID: "a", Name: "wait", Arguments: ""},
+					{ID: "b", Name: "read_file", Arguments: `{"path":"a.go"}`},
+					{ID: "c", Name: "read_file", Arguments: `[]`},
+				}},
+				{Role: RoleTool, ToolCallID: "a", Name: "wait", Content: "done", ToolRunState: ToolRunCompleted},
+				{Role: RoleTool, ToolCallID: "b", Name: "read_file", Content: "one", ToolRunState: ToolRunCompleted},
+				{Role: RoleTool, ToolCallID: "c", Name: "read_file", Content: "bad", ToolRunState: ToolRunCompleted},
+			},
+			// completed-but-nonempty invalid ("[]") stays verbatim: only the
+			// empty string may be rewritten for executed calls.
+			want: []string{"{}", `{"path":"a.go"}`, `[]`},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			before, _ := json.Marshal(tc.in)
+			got := RepairRejectedArguments(tc.in)
+			idx := 0
+			for _, m := range got {
+				if m.Role != RoleAssistant {
+					continue
+				}
+				for _, c := range m.ToolCalls {
+					if idx >= len(tc.want) {
+						t.Fatalf("unexpected extra call %q", c.ID)
+					}
+					if c.Arguments != tc.want[idx] {
+						t.Fatalf("call %d arguments=%q, want %q", idx, c.Arguments, tc.want[idx])
+					}
+					idx++
+				}
+			}
+			if idx != len(tc.want) {
+				t.Fatalf("checked %d calls, want %d", idx, len(tc.want))
+			}
+			after, _ := json.Marshal(tc.in)
+			if !bytes.Equal(before, after) {
+				t.Fatal("repair mutated stored history")
+			}
+		})
+	}
+}
+
+// TestRepairRejectedEmptyPoisonPassesGate is the 任务 930 poison-pill
+// acceptance test at the provider layer: a completed wait call with
+// arguments:"" must survive repair and then pass validation — before 930 the
+// gate rejected it (permanent session poison), after S1+S2 the repaired
+// outbound copy is a plain JSON object.
+func TestRepairRejectedEmptyPoisonPassesGate(t *testing.T) {
+	msgs := []Message{
+		{Role: RoleUser, Content: "wait for jobs"},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "a", Name: "wait", Arguments: ""}}},
+		{Role: RoleTool, ToolCallID: "a", Name: "wait", Content: "No background jobs to wait for.", ToolRunState: ToolRunCompleted},
+		{Role: RoleAssistant, Content: "all done"},
+	}
+	repaired := RepairRejectedArguments(msgs)
+	if err := ValidateTranscript(repaired); err != nil {
+		t.Fatalf("repaired poison transcript still rejected: %v", err)
+	}
+	if err := ValidateModelTranscript(repaired); err != nil {
+		t.Fatalf("repaired poison transcript rejected by model gate: %v", err)
+	}
+	if got := repaired[1].ToolCalls[0].Arguments; got != "{}" {
+		t.Fatalf("outbound arguments=%q, want %q", got, "{}")
+	}
+}
+
 func TestTranscriptGateModelProjectionHidesRecoveryArguments(t *testing.T) {
 	const secret = "RECOVERY-RAW-ARGUMENT-ONLY"
 	recovery := &InterruptedTurnRecovery{Pending: true, ToolCalls: []ToolCallRecord{{
