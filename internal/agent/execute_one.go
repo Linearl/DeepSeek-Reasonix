@@ -672,6 +672,10 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 	// tool.after: extensions rule on the executed result (success or error)
 	// before evidence, hooks, and recovery observation, so every downstreamconsumer sees the final
 	// (possiblyreplaced) outcome.
+	// Task 906 (upstream #12528/PR12614): record the tool's own outcome before
+	// the extension rules on it, so a write that reached the disk keeps its
+	// success in the evidence ledger below.
+	plan.ranClean = err == nil
 	result, err = a.interceptToolAfter(ctx, call, result, err)
 	// A tool that refused its own call never ran:
 	// reportitlikethepermissionandplan-modeblocksaboveratherthanasanexecution failure.

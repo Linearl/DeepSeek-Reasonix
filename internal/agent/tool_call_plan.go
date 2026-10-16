@@ -47,6 +47,11 @@ type toolCallPlan struct {
 	releaseParentWrite, releaseMutationWrite, releaseLease func()
 	mutationPath                                           string
 	mutationObserved, mutationAfterDone, executed          bool
+	// ranClean: the tool's own Execute returned no error, before tool.after
+	// ruled. Task 906 (upstream #12528/PR12614): an extension that blocks a
+	// write which already reached the disk must not flip the receipt to a
+	// failure — the extension rules on content, not on what landed.
+	ranClean                                               bool
 	hooksMayMutateWorkspace                                bool
 	perCallWriteRoots                                      []string
 	skipOrdinaryGate                                       bool
