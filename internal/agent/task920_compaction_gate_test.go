@@ -10,6 +10,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/provider"
@@ -158,4 +159,45 @@ func (p *gateFailProbe) Name() string { return "gate-fail-probe" }
 
 func (p *gateFailProbe) Stream(_ context.Context, _ provider.Request) (<-chan provider.Chunk, error) {
 	return nil, errors.New("terminal summarizer refusal")
+}
+
+// S3 超时出口: a summary stream that outlives its context must release the
+// gate when the ctx fires — the deferred release is what keeps a parked turn
+// from wedging behind a timed-out pass (kickProjectionRebuild's 5min/round
+// timeout is the production shape).
+func TestTask920TimedOutFoldStillSettles(t *testing.T) {
+	probe := &gateTimeoutProbe{}
+	sess := foldableSessionOverForce(6)
+	a := New(probe, tool.NewRegistry(), sess, Options{
+		ContextWindow:     5_000,
+		CompactRatio:      0.5,
+		CompactForceRatio: 0.5,
+		RecentKeep:        2,
+		ArchiveDir:        t.TempDir(),
+	}, event.Discard)
+
+	var settles atomic.Int32
+	a.SetCompactionSettledHook(func() { settles.Add(1) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, _ = a.contextManager().Prepare(ctx, ContextPreparePolicy{Trigger: CompactionTriggerPressure})
+
+	if a.CompactionInFlight() {
+		t.Fatal("timed-out pass must release the gate")
+	}
+	if got := settles.Load(); got != 1 {
+		t.Fatalf("settle hook fired %d times after timeout, want exactly 1", got)
+	}
+}
+
+// gateTimeoutProbe parks the summary stream until its context dies — the
+// production shape of a wedged provider stream hitting the rebuild timeout.
+type gateTimeoutProbe struct{}
+
+func (p *gateTimeoutProbe) Name() string { return "gate-timeout-probe" }
+
+func (p *gateTimeoutProbe) Stream(ctx context.Context, _ provider.Request) (<-chan provider.Chunk, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
