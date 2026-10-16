@@ -82,3 +82,9 @@ ParseCache 让每次扫盘变快（372→120ms），但热路径（assembly hit�
 
 72h 复测 **PASS P95=107ms**（n=168；基线 168h FAIL P95=170ms 含 10-12~10-14 旧构建日志）。慢 render（≥150ms）仅 3 个样本，其分钟 canonical 399/min vs 总体 275/min——同 928 放大器。WARN slow switch stage 72h=74 条（基线 745/168h，密度降 ~4×），主体=hydration/effort 侧慢线非 render 口径。#49 稳态 commit 链（861 已代码级定位 Transcript.tsx:178 useSyncExternalStore 每 token reconcile + MarkdownHistory geometryChanged 回写环）属**流式稳态**余热，不进切 tab render 门读数，留作后续优化不阻塞本门。
 
+### ④ 首响门：仍 FAIL——巨型 prompt prefill TTFT（交叉引用 927 不重复修）
+
+72h 复测 FAIL P95=69387ms（n=22，P50=19130ms；基线 P95=129509ms）。top12 慢样本 5 个来自 82.6MB transcript 会话（perf monitor sessionTranscriptMb=82.7 超 64MB 限 WARN 同源）+ collab 大会话——**巨型 prompt 单次 prefill TTFT**（与 912 handoff「1.82M 反复全量」同域；912 修压缩重试，未改变「压缩成功后仍 400-900K」的存量大投影）。窗口内 14 个 turn 无首响（取消/失败）。本门与 **927（mimo 大 prompt 首响应>5min 超时循环，P1 在飞）同域**，交叉引用不重复修；达标路径=927 落地 + 大会话体量治理（fold/checkpoint 面）。
+
+**复测证据**：`tmp/919-retest-72h.json`（`go run ./benchmarks/experience -window 72h`）。
+
