@@ -61,6 +61,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalTodoSidebar: (s: SettingsView) => Boolean(s.experimentalTodoSidebar),
   experimentalPromptHistoryPicker: (s: SettingsView) => Boolean(s.experimentalPromptHistoryPicker),
   experimentalSessionWall: (s: SettingsView) => Boolean(s.experimentalSessionWall),
+  // 任务 686：工作流可视化面板（默认关）。
+  experimentalWorkflowPanel: (s: SettingsView) => Boolean(s.experimentalWorkflowPanel),
   experimentalSubagentPanel: (s: SettingsView) => Boolean(s.experimentalSubagentPanel),
   experimentalSubagentDetail: (s: SettingsView) => Boolean(s.experimentalSubagentDetail),
   experimentalSubagentPolicy: (s: SettingsView) => Boolean(s.experimentalSubagentPolicy),

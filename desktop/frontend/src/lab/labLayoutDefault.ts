@@ -193,6 +193,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           ],
         },
         { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended", onKeys: ["experimentalSessionWall"] },
+        // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎
+        // 未落地，当前为前端 fixture 预览+演示回放）。默认关=palette 不变。
+        { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "unstable", onKeys: ["experimentalWorkflowPanel"] },
         {
           id: "subagentSuite",
           labelKey: "settings.subagentSuite",

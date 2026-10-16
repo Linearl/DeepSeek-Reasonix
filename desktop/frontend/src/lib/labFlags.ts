@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -47,6 +47,11 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // settings save (no restart).
   sidebarHoverLeft: false,
   sidebarHoverRight: false,
+  // 任务 686: the workflow visualization panel (command-palette entry opening
+  // the DAG flow view) ships off (铁律 2). With it off no palette entry renders
+  // and the panel chunk never loads — the palette is byte-for-byte unchanged.
+  // A flip applies on settings save (no restart).
+  workflowPanel: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -75,7 +80,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel}`,
   );
   for (const listener of listeners) listener();
 }

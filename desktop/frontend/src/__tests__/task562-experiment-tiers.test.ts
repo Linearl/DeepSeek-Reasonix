@@ -80,11 +80,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 815（统一登记窗口收口）：sidebarHover×2（826）+ editEvidenceRelaxed
   // （789/815）+ homePointer（846）此前已入表而计数 pin 尚钉在收口前口径
   // （19/26/12/1=58），本窗口一并跳到 19/29/14/1=63。
-  ok(counts.recommended === 19 && counts.optional === 29 && counts.unstable === 14 && counts.retired === 1,
-    `register counts are 19/29/14/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 63, `register holds exactly 63 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 29 && LAB_TIER_COUNTS.unstable === 14 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 19/29/14/1");
+  // 任务 686：workflowPanel（工作流可视化面板，未稳定档）入表——未稳定
+  // 14→15、总数 63→64（Go 侧同步 56→57）。
+  ok(counts.recommended === 19 && counts.optional === 29 && counts.unstable === 15 && counts.retired === 1,
+    `register counts are 19/29/15/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 64, `register holds exactly 64 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 29 && LAB_TIER_COUNTS.unstable === 15 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 19/29/15/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -119,7 +121,8 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 815：editEvidenceRelaxed（789 证据门宽松）随设置页入口落地自 Go
   // 豁免表转正入表——Go registry 51→56 条目；前端独有的 editEvidenceRelaxed
   // 转为两侧共享。feOnly 回到 8 个纯前端容器/展示/桥接豁免。
-  ok(Object.keys(goTiers).length === 56, `Go registry parses to 56 entries (got ${Object.keys(goTiers).length})`);
+  // 任务 686：workflowPanel 入表（两侧共享）——Go registry 56→57。
+  ok(Object.keys(goTiers).length === 57, `Go registry parses to 57 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -152,8 +155,8 @@ console.log("\ntask 562 lab three-tier badges");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
-  // → 63。
-  ok(covered.size === 63, "rail entries cover all 63 features");
+  // → 63。任务 686：workflowPanel 独立 rail 入口计入 → 64。
+  ok(covered.size === 64, "rail entries cover all 64 features");
 
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构

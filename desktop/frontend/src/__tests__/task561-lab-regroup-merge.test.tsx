@@ -85,12 +85,14 @@ console.log("\ntask 561 lab regroup + merged cards");
 // 任务 815（登记窗口 pin 收口）：801 decisionPatterns（automation 5→6）与
 // 846 homePointer（storage 3→4）此前已入布局而本 pin 仍钉 783 口径——
 // 总数 35→37，组分布 6/8/9/2/1/4/6/1。
+// 任务 686：workflowPanel（工作流可视化面板）入 ui 组——总数 37→38，
+// 组分布 6/8/10/2/1/4/6/1。
 // 数据源 = 布局默认数据 + yaml（两份必须同构）。
 {
   // 直接导入布局数据模块数真数据（比源码正则稳）。
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
-  ok(defEntries.length === 37, `default layout carries exactly 37 rail entries (got ${defEntries.length})`);
+  ok(defEntries.length === 38, `default layout carries exactly 38 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -102,10 +104,11 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 开关退役，infra 6→5 → 总数 34。任务 790：acpListen 入 rail，infra 5→6 → 35。
   // 任务 815：登记窗口 pin 收口——801 decisionPatterns（automation 5→6）与
   // 846 homePointer（storage 3→4）此前已入布局，pin 一并跟上 → 6/8/9/2/1/4/6/1。
-  ok(groups["automation"] === 6 && groups["efficiency"] === 8 && groups["ui"] === 9 &&
+  // 任务 686：workflowPanel（工作流可视化面板）入 ui 组 → 6/8/10/2/1/4/6/1。
+  ok(groups["automation"] === 6 && groups["efficiency"] === 8 && groups["ui"] === 10 &&
      groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 4 && groups["infra"] === 6 &&
      groups["tool-opt"] === 1,
-    `group counts are 6/8/9/2/1/4/6/1 (got ${JSON.stringify(groups)})`);
+    `group counts are 6/8/10/2/1/4/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。

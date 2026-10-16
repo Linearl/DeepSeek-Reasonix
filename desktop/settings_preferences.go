@@ -385,6 +385,14 @@ func (a *App) SetExperimentalSidebarHoverRight(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSidebarHoverRight(enabled) })
 }
 
+// SetExperimentalWorkflowPanel toggles the workflow visualization panel
+// (task 686): the command-palette entry opening the DAG flow view. Pure
+// frontend gate: the settings save re-applies the boot snapshot, so the
+// change is visible without a restart.
+func (a *App) SetExperimentalWorkflowPanel(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalWorkflowPanel(enabled) })
+}
+
 // SetExperimentalSubagentPanel toggles the subagent panel package (task 495):
 // the right-dock subagent tab plus default-collapsed ended subagent cards in
 // deep mode. The frontend snapshots the flag at boot, so the change shows up

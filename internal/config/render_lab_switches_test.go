@@ -54,6 +54,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	// 任务 826：左右边栏 hover 展开（默认关，两键独立）。
 	orig.Desktop.ExperimentalSidebarHoverLeft = true           // sidebarHoverLeft
 	orig.Desktop.ExperimentalSidebarHoverRight = true          // sidebarHoverRight
+	// 任务 686：工作流可视化面板（默认关）。
+	orig.Desktop.ExperimentalWorkflowPanel = true              // workflowPanel
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
 	orig.Agent.ExperimentalAutoLoadOlder = true                // autoLoadOlder ([agent] authoritative after task 473)
 	orig.Desktop.ExperimentalSplitView = true                  // splitView
@@ -111,6 +113,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		// 任务 826：左右边栏 hover 展开两键无条件渲染（fixed-key-set rule）。
 		"experimental_sidebar_hover_left = true",
 		"experimental_sidebar_hover_right = true",
+		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
+		"experimental_workflow_panel = true",
 		"experimental_question_search = true",
 		"experimental_subagent_tps", // rendered from the nil-means-on helper; presence only
 		"experimental_completion_summary = true",

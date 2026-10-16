@@ -206,6 +206,11 @@ groups:
         labelKey: settings.sessionWall
         tier: recommended
         onKeys: [experimentalSessionWall]
+      # 任务 686：工作流可视化面板（685 引擎未落地，前端 fixture 预览）。
+      - id: workflowPanel
+        labelKey: settings.workflowPanel
+        tier: unstable
+        onKeys: [experimentalWorkflowPanel]
       - id: subagentSuite
         labelKey: settings.subagentSuite
         onKeys: [experimentalSubagentPanel, experimentalSubagentDetail, experimentalSubagentPolicy, experimentalSubagentTps]

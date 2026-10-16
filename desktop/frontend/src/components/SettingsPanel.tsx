@@ -1876,6 +1876,9 @@ type ExperimentFeatureId =
   | "todoSidebar"
   // Task 505: session graph wall (palette 跳转会话 entry + grid wall).
   | "sessionWall"
+  // 任务 686: 工作流可视化面板（palette 入口开 DAG 流程图；685 引擎未落地
+  // 为前端 fixture 预览）。纯前端门，保存即生效免重启。
+  | "workflowPanel"
   // 任务 782：检索与历史合并卡（历史提问选择器 + 搜索历史提问 + 自动加载
   // 更早消息）——promptHistoryPicker/questionSearch/autoLoadOlder 独立 pane
   // 退役为卡内成员行。
@@ -1979,6 +1982,8 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "todoSidebar",
   "searchHistory",
   "sessionWall",
+  // 任务 686：工作流可视化面板 pane。
+  "workflowPanel",
   "subagentSuite",
   "completionSummary",
   "inputSelection",
@@ -3238,6 +3243,29 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   >
                     {t(on ? "settings.sessionWall.on" : "settings.sessionWall.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {/* 任务 686：工作流可视化面板——palette 入口开 DAG 流程图。纯前端
+              门（685 引擎未落地，当前为 fixture 预览+演示回放），保存即
+              生效免重启（sessionWall 的 boot-snapshot 语义不同）。 */}
+          {selected === "workflowPanel" && (
+            <SettingsField label={labLabel("workflowPanel", t("settings.workflowPanel"))} hint={t("settings.workflowPanelHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalWorkflowPanel) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      // Call-time gate（742/826 先例）：palette 条目与面板挂载
+                      // 每次渲染现读 labFlags，保存后立即生效，无需重启。
+                      await app.SetExperimentalWorkflowPanel(on);
+                    })}
+                  >
+                    {t(on ? "settings.workflowPanel.on" : "settings.workflowPanel.off")}
                   </button>
                 ))}
               </SettingsOptions>

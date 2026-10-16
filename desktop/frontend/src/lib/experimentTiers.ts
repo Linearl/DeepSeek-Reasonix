@@ -117,7 +117,11 @@ export type TierFeatureId =
   // 任务 826: 左右边栏 hover 展开（默认关=不渲染热区不挂事件，可选档）。
   // 左右独立两键两行，均归界面组「视图布局」卡（782 合并卡先例）。
   | "sidebarHoverLeft"
-  | "sidebarHoverRight";
+  | "sidebarHoverRight"
+  // 任务 686: 工作流可视化面板（DAG 流程图 + 运行进展点亮，palette 入口；
+  // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。未稳定档（开发
+  // 测试中），默认关=palette 逐字节不变。
+  | "workflowPanel";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -160,6 +164,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   promptHistoryPicker: "recommended",
   restartUpdate: "recommended",
   sessionWall: "recommended",
+  // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图；685 引擎未落地
+  // 为前端 fixture 预览）。镜像 Go 档位——未稳定（开发测试中）。
+  workflowPanel: "unstable",
   subagentPanel: "optional",
   subagentDetail: "optional",
   completionSummary: "optional",
@@ -254,11 +261,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 交付、815 补设置页入口，Go 侧同步转正入表）档位不变（未稳定）；本常量
  * 自收口前口径 19/26/12/1=58 一次跳到 19/29/14/1=63（sidebarHover×2 +
  * editEvidenceRelaxed + homePointer 等收口前已在表而 pin 未跟的项一并计入；
- * Go 侧 56 条目，详见 task562 测试头注）。） */
+ * Go 侧 56 条目，详见 task562 测试头注）。）
+ * 任务 686：workflowPanel（工作流可视化面板，未稳定档）入表——未稳定
+ * 14→15、总数 63→64（Go 侧同步 56→57）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 19,
   optional: 29,
-  unstable: 14,
+  unstable: 15,
   retired: 1,
 };
 

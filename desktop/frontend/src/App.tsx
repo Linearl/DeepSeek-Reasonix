@@ -47,6 +47,11 @@ import {
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { buildSubagentDirectory, subagentsTabLabel } from "./lib/subagentDirectory";
 import { insertSessionWallEntry } from "./lib/sessionWall";
+// 任务 686: 工作流可视化面板的 palette 插条（flag 关=原数组逐字节不变）。
+// 单独轻量模块：workflowDag 的 fixture/布局只随面板懒加载 chunk 走，不进
+// initial 面（首版实测炸 initial 线的教训）。
+import { insertWorkflowPanelEntry } from "./lib/workflowPanelEntry";
+import { WorkflowPanelBoundary } from "./components/WorkflowPanelBoundary";
 import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
@@ -335,6 +340,19 @@ const SessionWallPanel = lazy(() =>
     })
     .catch((error: unknown) => {
       reportFrontendLog("sessionWall", "panel chunk load failed", error instanceof Error ? `${error.name}: ${error.message}` : String(error));
+      throw error;
+    }),
+);
+// 任务 686: 工作流可视化面板——lab 门控（默认关）+ 懒加载（sessionWall 同款
+// 面包屑：打包态 chunk 失败在 desktop.log 可归因）。
+const WorkflowPanel = lazy(() =>
+  import("./components/WorkflowPanel")
+    .then((module) => {
+      reportFrontendLog("workflowPanel", "panel chunk loaded");
+      return { default: module.WorkflowPanel };
+    })
+    .catch((error: unknown) => {
+      reportFrontendLog("workflowPanel", "panel chunk load failed", error instanceof Error ? `${error.name}: ${error.message}` : String(error));
       throw error;
     }),
 );
@@ -868,6 +886,10 @@ export default function App() {
   useEffect(() => onLabFlagsChange(() => setSidebarHoverLeftEnabled(labFlagEnabled("sidebarHoverLeft"))), []);
   const [sidebarHoverRightEnabled, setSidebarHoverRightEnabled] = useState(labFlagEnabled("sidebarHoverRight"));
   useEffect(() => onLabFlagsChange(() => setSidebarHoverRightEnabled(labFlagEnabled("sidebarHoverRight"))), []);
+  // 任务 686: 工作流可视化面板（铁律 2 默认 off——关时 palette 逐字节不变、
+  // 面板 chunk 不加载）；面板本体走懒加载（sessionWall 同款）。
+  const [workflowPanelEnabled, setWorkflowPanelEnabled] = useState(labFlagEnabled("workflowPanel"));
+  useEffect(() => onLabFlagsChange(() => setWorkflowPanelEnabled(labFlagEnabled("workflowPanel"))), []);
   // 任务 848 — 首屏动画门：848 的侧栏/dock 过渡动画规则全部挂在
   // .app--ui-settled 下，本标记在首帧绘制完成（double rAF）后置位，
   // 保证首屏渲染与状态恢复零动画（含开关关的用户——铁律 2 零回归）。
@@ -887,6 +909,10 @@ export default function App() {
   useEffect(() => { setSurfaceViewTab(activeTabId ?? ""); }, [activeTabId]);
   const surfaceView = useSurfaceView();
   const [sessionWallOpen, setSessionWallOpen] = useState(false);
+  // 任务 686: 工作流可视化面板的开关态（运行态 store 内收在面板里——面板
+  // 本身是懒加载 chunk，fixture 数据不进 initial 面；685 真事件源落地后
+  // 经面板的 store prop 注入）。
+  const [workflowPanelOpen, setWorkflowPanelOpen] = useState(false);
   // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
   // global shortcut can't double-fire in split view; pulse re-selects the
   // query when the chord repeats while the bar is already open.
@@ -1424,7 +1450,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalWorkflowPanel?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1494,6 +1520,10 @@ export default function App() {
         // re-applied on settings save.
         sidebarHoverLeft: settings.experimentalSidebarHoverLeft ?? false,
         sidebarHoverRight: settings.experimentalSidebarHoverRight ?? false,
+        // 任务 686: workflow visualization panel gate (default-false — 铁律 2,
+        // off = palette byte-for-byte unchanged, panel chunk never loads);
+        // re-applied on settings save.
+        workflowPanel: settings.experimentalWorkflowPanel ?? false,
       });
       // 任务 651: tab permission indicator three-mode setting (badge | off |
       // background) — the server resolves the legacy 504 tint bool; re-applied
@@ -4712,8 +4742,27 @@ export default function App() {
         },
       },
     );
-    return [...cmdsWithWall, ...extensionItems, ...remoteItems, ...sessionItems];
-  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled]);
+    // 任务 686: 工作流面板插条跟在会话图墙后（sessionWall 的 insert 同款
+    // 语义）——flag 关（默认）= cmdsWithWall 原样返回，palette 逐字节不变。
+    // 685 引擎落地后此入口迁移为会话内 workflow 卡片（handoff-686 等待点③）。
+    const cmdsWithWorkflow = insertWorkflowPanelEntry(
+      cmdsWithWall,
+      workflowPanelEnabled,
+      {
+        id: "cmd-workflow-panel",
+        group: t("palette.group.commands"),
+        title: t("palette.cmd.workflowPanel"),
+        icon: <GitBranch size={15} />,
+        compact: true,
+        keywords: ["workflow", "dag", "flow", "工作流", "流程图", "编排"],
+        run: () => {
+          reportFrontendLog("workflowPanel", "open requested", "palette entry");
+          setWorkflowPanelOpen(true);
+        },
+      },
+    );
+    return [...cmdsWithWorkflow, ...extensionItems, ...remoteItems, ...sessionItems];
+  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled]);
   // Delete / rename act on disk, then re-fetch so the panel reflects the change.
   const onDeleteSession = useCallback(
     async (path: string) => {
@@ -6486,6 +6535,23 @@ export default function App() {
               }}
             />
           </SessionWallBoundary>
+        </Suspense>
+      )}
+
+      {/* 任务 686: 工作流可视化面板——lab 门控（默认关 → 从不挂载、chunk 不
+          加载）+ 懒加载 + 本地边界（渲染期异常只带走面板）。运行态 store
+          内收在面板内（fixture 底）；685 真源接入时再传 store prop。 */}
+      {workflowPanelOpen && (
+        <Suspense fallback={null}>
+          <WorkflowPanelBoundary>
+            <WorkflowPanel
+              open={workflowPanelOpen}
+              onClose={() => {
+                reportFrontendLog("workflowPanel", "closed", "esc/backdrop/button");
+                setWorkflowPanelOpen(false);
+              }}
+            />
+          </WorkflowPanelBoundary>
         </Suspense>
       )}
 

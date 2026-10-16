@@ -1308,6 +1308,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // re-applied on settings save).
   SetExperimentalSidebarHoverLeft(enabled: boolean): Promise<void>;
   SetExperimentalSidebarHoverRight(enabled: boolean): Promise<void>;
+  // 任务 686: workflow visualization panel (palette entry opening the DAG flow
+  // view; re-applied on settings save, no restart).
+  SetExperimentalWorkflowPanel(enabled: boolean): Promise<void>;
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; call-time gate, next scheduled run applies it).
   SetExperimentalHeartbeatBackground(enabled: boolean): Promise<void>;
@@ -6061,6 +6064,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalTabCompress() {},
     async SetExperimentalSidebarHoverLeft() {},
     async SetExperimentalSidebarHoverRight() {},
+    async SetExperimentalWorkflowPanel() {},
     async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},
     async SetExperimentalCompactionParallel() {},

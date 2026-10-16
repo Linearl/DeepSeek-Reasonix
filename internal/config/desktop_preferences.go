@@ -227,6 +227,16 @@ type DesktopConfig struct {
 	// without the other. It ships off (铁律 2) for the same zero-regression
 	// reason; pure frontend gate, no restart needed.
 	ExperimentalSidebarHoverRight bool `toml:"experimental_sidebar_hover_right"`
+	// ExperimentalWorkflowPanel gates the workflow visualization panel (task
+	// 686): a command-palette entry opening the DAG flow view (plan preview
+	// plus live node-state lighting from the run event stream). It ships off
+	// (铁律 2): with the zero value no palette entry renders and no panel
+	// chunk loads, so the palette and every surface stay byte-for-byte
+	// identical to the pre-686 behaviour. Pure frontend gate: the settings
+	// save re-applies the boot snapshot, so a change is visible without a
+	// restart. The in-session workflow-card entry lands with task 685's
+	// engine (handoff-686.md records the wait point).
+	ExperimentalWorkflowPanel bool `toml:"experimental_workflow_panel"`
 	// ExperimentalTabModeTint is the task-504 tab-mode-tint switch, retired to
 	// a legacy alias by task 651: it only applies while the replacement
 	// TabPermissionIndicator key is still empty (true = "background", false or
