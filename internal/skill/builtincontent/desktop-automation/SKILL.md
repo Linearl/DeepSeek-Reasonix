@@ -74,6 +74,8 @@ await page.locator(".settings-screen").waitFor();
 
 选择器纪律：真实实例界面语言跟系统 locale（zh-CN），**双语正则**（如 `新建会话|New session`）防失配；动态列表每次操作前重取，勿缓存 index。
 
+脚本落盘纪律：验证脚本一律 `write_file` 写 UTF-8 文件再 `node xxx.mjs` 执行——**勿用 bash heredoc 内联中文**（Windows 控制台默认 GBK，经 stdin 传入会把中文绞成乱码，选择器静默失配）；构造测试页用 `page.setContent(html)` 而非 `data:` URL（非 ASCII 在 data URL 同样受编码绞乱，2026-10-15 干跑实测）。
+
 ## 4. 窗口铁律（不守则点击被拦，症状极具误导性）
 
 1. 测试实例**一律最大化**：`await page.evaluate(() => window.runtime.WindowMaximise())`（wails runtime 最稳，CDP 改窗口尺寸会被应用自身状态管理改回）；
@@ -97,6 +99,7 @@ await page.locator(".settings-screen").waitFor();
 | connect 成功但 pages 空 | WebView2 初始化中 | 等 2-3s 重试（应用启动比网页慢） |
 | 点击超时/intercept | 小窗口 sticky header 拦截 | §4 窗口铁律，先 WindowMaximise |
 | 选择器批量失配 | 界面语言 locale | 双语正则 |
+| 中文选择器静默失配、DOM 里中文成乱码 | 脚本经 GBK 控制台 heredoc 传入 / data: URL 编码绞乱 | 脚本 write_file 落盘 UTF-8 再执行；测试页用 setContent |
 | `Cannot find module 'playwright'` | cwd 不对 | 切到 `desktop/frontend` 再跑 |
 | 远程子窗口自动化不了 | remote 子窗口无 bindings、启动即不带 CDP 参数 | 预期内，改走主窗口入口验证 |
 
