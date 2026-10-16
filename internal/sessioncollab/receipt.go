@@ -85,6 +85,33 @@ func DeliveryReceiptSettled(outcome string) bool {
 	return outcome != ReceiptFailedRetrying && ValidDeliveryReceiptOutcome(outcome)
 }
 
+// ReceiptNeedsAction (任务894) 是回执分级通道的单一判定源：该结局是否要求
+// 发送方行动（催办 / 换路 / 新起链）。要求行动 = 保留强制注入通道——它的
+// 通知必须作为独立 host 消息进发送方上下文（现状不变）。
+//
+// false = 无需行动（成功，或对本投递模式而言正常/已被兜住的落点）：
+//   - injected：steer 真正注入当轮，绿灯；
+//   - queued_followup：delivery=followup 的正常落点；delivery=steer 的降级
+//     ——消息已在目标持久收件箱队列，空闲开轮桥接管，无需发送方做任何事。
+//
+// 无需行动的通知在任务894 被降级（静默化）：只进 talk_to_session 返回值 +
+// UI 通知层 + 本回执存储（get_message_status 按 messageId 查），绝不注入
+// 发送方模型——2026-10-14 实测这类回执一天吃掉协调线 6-7 个纯空转轮次。
+//
+// 未知结局一律返回 true：静默是「按已知无需行动结局」逐个开通的，词表新增
+// 或拼错必须默认保留注入通道——需行动误入静默 = 漏行动（任务894 的反向用例，
+// 危险方向在「静默侧多收」，故 fail-safe 倒向注入侧）。
+func ReceiptNeedsAction(outcome string) bool {
+	switch outcome {
+	case ReceiptInjected, ReceiptQueuedFollowup:
+		return false
+	default:
+		// 全部需行动结局（refused_*、failed_retrying、open_retry_exhausted）
+		// 与任何未知值都落这里。
+		return true
+	}
+}
+
 // DeliveryReceipt is one message's settle record, written by the host pump at
 // the moment the message's outcome is decided (task 570 c1).
 type DeliveryReceipt struct {

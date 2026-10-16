@@ -202,6 +202,29 @@ func TestTalkToSessionReturnStaysAdditive(t *testing.T) {
 	}
 }
 
+// 任务894 验收①（前半，进返回值）+④（非阻塞）：分级通道契约必须写进
+// talk_to_session 返回值注记——无需行动终态静默化（UI 通知层+按需查询），
+// 需行动终态（refused_* 等）保留强制注入。返回值仍只含调用时已知信息
+// （status 恒 queued + messageId + 建议复查间隔），没有任何同步等泵面。
+func TestTalkToSessionReturnCarriesTieredChannelContract(t *testing.T) {
+	env := newStatusTestEnv(t)
+	tool := NewTalkToSessionTool(statusToolCfg(env, env.fromID))
+	out, err := tool.Execute(context.Background(), json.RawMessage(`{"to":"`+env.toID+`","message":"hi"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"无需行动", "UI 通知层", "refused_*", "强制注入", "get_message_status"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("deliveryOutcomeNote must carry the tiered-channel contract (missing %q): %s", want, out)
+		}
+	}
+	// 非阻塞钉子：返回值必须仍以 queued 入队态收尾，不得出现任何「已定局」
+	// 的同步断言（终态由泵异步定，等泵=阻塞）。
+	if !strings.Contains(out, `"status":"queued"`) || !strings.Contains(out, `"deliveryOutcome":"pending"`) {
+		t.Fatalf("the return must stay async-queued (no synchronous settle): %s", out)
+	}
+}
+
 // 任务 599：返回体必须带建议复查间隔 retryAfterMs，且取值与投递泵节奏常量
 // 同源（不是硬编码的魔法数）——字段的存在意义是让调用方按泵的定局节奏安排
 // get_message_status 复查，值与泵脱钩就失去意义甚至误导。

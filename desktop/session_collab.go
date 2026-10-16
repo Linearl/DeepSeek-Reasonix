@@ -18,6 +18,7 @@ import (
 	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/event"
 	"reasonix/internal/safego"
 	"reasonix/internal/secrets"
 	"reasonix/internal/sessioncollab"
@@ -928,6 +929,14 @@ type collabDelivery struct {
 	enqueue func(msg sessioncollab.MailMessage, body string) (steered bool, err error)
 	// notify writes a status note back to the sender (once per key).
 	notify func(msg sessioncollab.MailMessage, kind, text string)
+	// notifySilent (任务894) is the 无需行动 tier's demoted channel: a settle
+	// notice whose outcome needs no sender action (steer degraded to a queued
+	// follow-up) must stay visible to the human WITHOUT becoming an independent
+	// model message — it surfaces as a UI notice + the 570 receipt, never in
+	// the sender's context. Nil falls back to notify (legacy wiring keeps the
+	// injected behavior). The production wiring fail-safes an action-needed
+	// outcome arriving here back into the injected channel (漏行动拦截).
+	notifySilent func(msg sessioncollab.MailMessage, kind, outcome, text string)
 	// deriveHop returns the chain depth derived from the thread, or an error
 	// when provenance cannot be verified.
 	deriveHop func(msg sessioncollab.MailMessage) (int, error)
@@ -967,9 +976,11 @@ func (p *sessionCollabPump) deliverToTarget(target sessionCollabTarget) (deliver
 		enqueue: func(msg sessioncollab.MailMessage, body string) (bool, error) {
 			return p.deliverOne(target, msg, body)
 		},
-		notify:    p.notifySenderOnce,
-		deriveHop: p.verifyHop,
-		render:    sessionCollabDeliveryText,
+		notify: p.notifySenderOnce,
+		// 任务894：无需行动回执（steer 降级等）走 UI 通知层，不注入模型。
+		notifySilent: p.silenceSenderNotice,
+		deriveHop:    p.verifyHop,
+		render:       sessionCollabDeliveryText,
 		// 任务585: a settled 570 receipt proves a prior pass handed this message
 		// over already — re-claiming it after a restart must not re-inject it.
 		settledReceipt: func(msg sessioncollab.MailMessage) string {
@@ -1039,6 +1050,28 @@ func (a *App) inboxDispatchExhausted(info control.InboxDispatchExhausted) {
 	}
 }
 
+// notice routes one settle notice by the action tier of the outcome it
+// accompanies (任务894：分级判定在回执生成点). 需行动 outcomes keep the
+// force-injection notify — the sender's model must see them. 无需行动
+// outcomes go to notifySilent (UI 通知层 + 570 回执, 绝不注入模型). A wiring
+// without the silent seam falls back to notify so legacy harnesses keep
+// today's behavior.
+func (d collabDelivery) notice(msg sessioncollab.MailMessage, kind, outcome, text string) {
+	if sessioncollab.ReceiptNeedsAction(outcome) {
+		if d.notify != nil {
+			d.notify(msg, kind, text)
+		}
+		return
+	}
+	if d.notifySilent != nil {
+		d.notifySilent(msg, kind, outcome, text)
+		return
+	}
+	if d.notify != nil {
+		d.notify(msg, kind, text)
+	}
+}
+
 // runCollabDelivery is the whole delivery contract in one place: claim without
 // consuming, derive the hop, hand over, ack exactly what settled, and report
 // anything that did not. Every exit path either acks a message or leaves it for
@@ -1059,7 +1092,8 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 
 	for _, msg := range rejected {
 		// Hop exhausted: the sender must learn why, and the message is settled.
-		d.notify(msg, "refused_hop", sessionCollabRefusedHopText(msg))
+		// 需行动结局（refused）：保留注入通道（任务894 分级后不变）。
+		d.notice(msg, "refused_hop", sessioncollab.ReceiptRefusedHop, sessionCollabRefusedHopText(msg))
 		if d.recordReceipt != nil {
 			d.recordReceipt(msg, sessioncollab.ReceiptRefusedHop, "collaboration chain hop limit reached")
 		}
@@ -1089,8 +1123,9 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 			// chain is not a provenance failure, and a cross-wired thread is
 			// not the same mistake as an unknown one — one catch-all text sent
 			// senders hunting for a threadId bug that does not exist.
+			// 需行动结局（refused_*，kind 即 570 outcome 词值）：保留注入通道。
 			kind, text := sessionCollabRefusalText(msg, verr)
-			d.notify(msg, kind, text)
+			d.notice(msg, kind, kind, text)
 			if d.recordReceipt != nil {
 				// 任务 570 c1: a refusal is terminal — the sender must be able
 				// to see it by id, not only as a note that landed unread.
@@ -1116,7 +1151,8 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 				continue
 			}
 			// Not acked: retried next pass. The sender hears about it once.
-			d.notify(msg, "delivery_failed", sessionCollabDeliveryFailedText(msg, derr))
+			// 需行动结局（failed_retrying 未送达）：保留注入通道。
+			d.notice(msg, "delivery_failed", sessioncollab.ReceiptFailedRetrying, sessionCollabDeliveryFailedText(msg, derr))
 			if d.recordReceipt != nil {
 				// 任务 570 c1: a failed pass is NOT terminal — the receipt says
 				// so (failed_retrying) and a later success overwrites it.
@@ -1136,7 +1172,11 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 			}
 		}
 		if !steered && msg.Delivery == string(sessioncollab.DeliverySteer) {
-			d.notify(msg, "steer_degraded", sessionCollabSteerDegradedText(msg))
+			// 任务894：steer 降级 = queued_followup，属无需行动侧——消息已在
+			// 目标持久队列、空闲开轮桥接管，发送方无需做任何事。通知降级到
+			// UI 通知层 + 570 回执（get_message_status 可查），不再作为独立
+			// 消息注入发送方模型（省一个纯空转轮次）。
+			d.notice(msg, "steer_degraded", sessioncollab.ReceiptQueuedFollowup, sessionCollabSteerDegradedText(msg))
 		}
 		acked = append(acked, msg.ID)
 		delivered++
@@ -1228,6 +1268,39 @@ func (p *sessionCollabPump) notifySenderOnce(msg sessioncollab.MailMessage, kind
 	}); err != nil {
 		log.Printf("[session-collab] %s notice to %s failed: %v", kind, msg.From, err)
 	}
+}
+
+// silenceSenderNotice (任务894) 是无需行动回执的降级通道：通知对人必须仍
+// 可见（静默 ≠ 不可见），但绝不成为独立的模型消息（这正是本任务要省掉的
+// 轮次成本）。可见面按可达性排序：
+//  1. 570 回执存储——同一结算点已写入，get_message_status(messageId) 按 id
+//     可查，跨进程/跨机器通用（talk_to_session 返回值就带 messageId）；
+//  2. Notice 事件——发送方是本窗口存活会话时，打进它所在 tab 的事件通道
+//     （UI 通知层，人可见、模型不可见）；
+//  3. 日志行。
+//
+// 反向守卫（漏行动拦截）：需行动结局走到这里是调用点分级错误——静默会吞掉
+// 发送方的行动信号，所以大声记日志并回退到注入通道（notifySenderOnce），
+// 宁可多一个轮次也不丢行动。
+func (p *sessionCollabPump) silenceSenderNotice(msg sessioncollab.MailMessage, kind, outcome, text string) {
+	if sessioncollab.ReceiptNeedsAction(outcome) {
+		log.Printf("[session-collab] WARN misrouted %s notice for %s (outcome=%s): action-needed tier must inject — falling back to the sender mailbox channel", kind, msg.ID, outcome)
+		p.notifySenderOnce(msg, kind, text)
+		return
+	}
+	log.Printf("[session-collab] %s for message %s settled without sender action — UI notice layer only (no model injection)", kind, msg.ID)
+	if p.app == nil {
+		return
+	}
+	for _, t := range p.app.sessionCollabLiveTargets(nil) {
+		if t.contactID != msg.From || t.tabID == "" {
+			continue
+		}
+		p.app.noticeCodeForTab(t.tabID, event.LevelInfo, event.NoticeCodeCollabDeliverySilent, text)
+		return
+	}
+	// 发送方不在本窗口（另一进程/机器，或已关闭）：本侧的义务只有日志与
+	// 570 回执——发送方按 messageId 用 get_message_status 查终态。
 }
 
 func sessionCollabRefusedHopText(msg sessioncollab.MailMessage) string {

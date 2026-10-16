@@ -7,6 +7,7 @@ package sessioncollab
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,5 +124,49 @@ func TestDeliveryReceiptSettledClassifier(t *testing.T) {
 	}
 	if DeliveryReceiptSettled("") || DeliveryReceiptSettled("unknown") {
 		t.Fatal("empty and unknown outcomes must not count as settled")
+	}
+}
+
+// 任务894：回执分级判定的钉子。危险方向只有一个——需行动结局被分进静默侧
+// （漏行动：发送方对 refused / 开轮耗尽 / 未送达永久失聪），所以表里逐个
+// 钉死需行动集，并钉死「未知一律需行动」的 fail-safe 默认。
+func TestReceiptNeedsActionTiering(t *testing.T) {
+	noAction := map[string]string{
+		ReceiptInjected:       "steer 注入当轮成功：纯绿灯，无需发送方做任何事",
+		ReceiptQueuedFollowup: "正常排队落点（followup 模式）/ steer 降级——消息已在目标队列，空闲桥接管",
+	}
+	for outcome, why := range noAction {
+		if ReceiptNeedsAction(outcome) {
+			t.Fatalf("outcome %q 属无需行动侧（%s），判成需行动 = 白白多一个注入轮次", outcome, why)
+		}
+	}
+
+	actionNeeded := []string{
+		ReceiptRefusedHop, ReceiptRefusedProvenance, ReceiptRefusedCrossWire,
+		ReceiptFailedRetrying, ReceiptOpenRetryExhausted,
+		// 未知/空值：fail-safe——静默必须逐个已知结局显式开通，任何不认识的
+		// 值都保留注入通道（反向用例的核心断言）。
+		"", "delivered_fine_trust_me", "STEER_DEGRADED", "refused_hop ",
+	}
+	for _, outcome := range actionNeeded {
+		if !ReceiptNeedsAction(outcome) {
+			t.Fatalf("outcome %q 必须判为需行动（含未知值 fail-safe）：分进静默侧 = 漏行动", outcome)
+		}
+	}
+
+	// 词表穷尽：词表内每个合法结局都必须有确定的分级，且分级与语义一致——
+	// 新增词表值忘了接分级时，此循环给出明确失败而不是静默漏判。
+	for _, outcome := range []string{
+		ReceiptInjected, ReceiptQueuedFollowup, ReceiptRefusedHop,
+		ReceiptRefusedProvenance, ReceiptRefusedCrossWire, ReceiptFailedRetrying,
+		ReceiptOpenRetryExhausted,
+	} {
+		if !ValidDeliveryReceiptOutcome(outcome) {
+			t.Fatalf("词汇表成员 %q 必须通过合法性校验（测试自身失效）", outcome)
+		}
+		needs := ReceiptNeedsAction(outcome)
+		if strings.HasPrefix(outcome, "refused_") && !needs {
+			t.Fatalf("拒收结局 %q 永远需要行动", outcome)
+		}
 	}
 }

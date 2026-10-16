@@ -33,10 +33,11 @@ func newCollabTestMail(t *testing.T) (*sessioncollab.MailStore, string) {
 	return sessioncollab.NewMailStore(filepath.Join(dir, "mail")), "sc_target"
 }
 
-func collabTestDelivery(t *testing.T, mail *sessioncollab.MailStore, fail func(sessioncollab.MailMessage) error) (collabDelivery, *[]string, *[]string) {
+func collabTestDelivery(t *testing.T, mail *sessioncollab.MailStore, fail func(sessioncollab.MailMessage) error) (collabDelivery, *[]string, *[]string, *[]string) {
 	t.Helper()
 	deliveredBodies := &[]string{}
 	notices := &[]string{}
+	silentNotices := &[]string{}
 	d := collabDelivery{
 		enqueue: func(msg sessioncollab.MailMessage, body string) (bool, error) {
 			if fail != nil {
@@ -58,10 +59,17 @@ func collabTestDelivery(t *testing.T, mail *sessioncollab.MailStore, fail func(s
 			}
 			*notices = append(*notices, text)
 		},
+		// 任务894：无需行动侧通道只记账，不落发送方信箱——夹具必须能区分
+		// 「注入了」与「只进了 UI 层」，两个切片的断言才有意义。
+		notifySilent: func(msg sessioncollab.MailMessage, kind, outcome, text string) {
+			_ = kind
+			_ = outcome
+			*silentNotices = append(*silentNotices, text)
+		},
 		deriveHop: func(sessioncollab.MailMessage) (int, error) { return 0, nil },
 		render:    func(msg sessioncollab.MailMessage, hop int) string { return msg.Body },
 	}
-	return d, deliveredBodies, notices
+	return d, deliveredBodies, notices, silentNotices
 }
 
 // The audit's F1: a claim that consumed the cursor before delivery lost every
@@ -71,7 +79,7 @@ func TestDeliveryFailureDoesNotLoseMessage(t *testing.T) {
 	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: "first"}); err != nil {
 		t.Fatal(err)
 	}
-	d, _, notices := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
+	d, _, notices, _ := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
 		return errors.New("workspace not ready")
 	})
 	delivered, refused, err := runCollabDelivery(mail, target, d)
@@ -97,7 +105,7 @@ func TestDeliveryRetrySucceedsAfterTransientFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	attempts := 0
-	d, bodies, _ := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
+	d, bodies, _, _ := collabTestDelivery(t, mail, func(sessioncollab.MailMessage) error {
 		attempts++
 		if attempts == 1 {
 			return errors.New("workspace not ready")
@@ -128,7 +136,7 @@ func TestOneFailedMessageDoesNotBlockTheRest(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d, bodies, _ := collabTestDelivery(t, mail, func(msg sessioncollab.MailMessage) error {
+	d, bodies, _, _ := collabTestDelivery(t, mail, func(msg sessioncollab.MailMessage) error {
 		if msg.Body == "bad" {
 			return errors.New("workspace not ready")
 		}
@@ -154,7 +162,7 @@ func TestHopExhaustedIsReportedAndSettled(t *testing.T) {
 	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: "ok"}); err != nil {
 		t.Fatal(err)
 	}
-	d, bodies, notices := collabTestDelivery(t, mail, nil)
+	d, bodies, notices, _ := collabTestDelivery(t, mail, nil)
 	// Force the over-limit record the way a lying relay would.
 	raw := mail.InboxPath(target)
 	if err := appendRawLine(raw, `{"id":"msg_deep","fromContactId":"sc_from","toContactId":"`+target+
@@ -182,15 +190,16 @@ func TestHopExhaustedIsReportedAndSettled(t *testing.T) {
 }
 
 // A steer that cannot inject must be reported as degraded, and the message is
-// still delivered as a queued follow-up.
-func TestDegradedSteerIsReported(t *testing.T) {
+// still delivered as a queued follow-up. 任务894: 降级属无需行动侧——通知降级
+// 到静默通道（UI 通知层+570 回执），注入通道（发送方模型）零消息。
+func TestDegradedSteerIsReportedSilently(t *testing.T) {
 	mail, target := newCollabTestMail(t)
 	if _, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
 		From: "sc_from", To: target, Body: "urgent", Delivery: string(sessioncollab.DeliverySteer),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	d, bodies, notices := collabTestDelivery(t, mail, nil)
+	d, bodies, notices, silentNotices := collabTestDelivery(t, mail, nil)
 	delivered, _, err := runCollabDelivery(mail, target, d)
 	if err != nil || delivered != 1 {
 		t.Fatalf("degraded steer is still a delivery: %d (%v)", delivered, err)
@@ -198,8 +207,11 @@ func TestDegradedSteerIsReported(t *testing.T) {
 	if len(*bodies) != 1 {
 		t.Fatalf("the body must still reach the target: %v", *bodies)
 	}
-	if len(*notices) != 1 {
-		t.Fatalf("the sender must hear about the degradation, got %d", len(*notices))
+	if len(*notices) != 0 {
+		t.Fatalf("降级回执不得再注入发送方模型（任务894 无需行动静默化），got %d injected notices: %v", len(*notices), *notices)
+	}
+	if len(*silentNotices) != 1 {
+		t.Fatalf("降级必须仍对人可见（静默通道恰好一条），got %d: %v", len(*silentNotices), *silentNotices)
 	}
 }
 
@@ -212,7 +224,7 @@ func TestUnverifiableProvenanceIsRefusedAndReported(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	d, bodies, notices := collabTestDelivery(t, mail, nil)
+	d, bodies, notices, _ := collabTestDelivery(t, mail, nil)
 	d.deriveHop = func(sessioncollab.MailMessage) (int, error) {
 		return 0, errors.New("thread not in sender's mailbox")
 	}
