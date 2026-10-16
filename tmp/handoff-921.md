@@ -63,19 +63,39 @@
    注入式 compact 模拟（照 runEventsRepairRounds 模式）覆盖「真超限兜底到 live 水位后
    park」「死会话回 cap 内」两形态。
 
-## 四、验收对照
+## 四、验收对照（2026-10-16 实测收口）
 
-1. ✅ 存量会话 events 回 cap 内：死会话类（20260922 型）兜底后回 cap 内（单测模拟+真实
-   文件副本实测）；真超限类（三会话型）兜底到 union 水位、砍 17-37% 尾巴，仍超部分
-   如实申报为 live 本体（479 方向，需拍板）。
-2. ✅ 全局 eventsMb 回落：兜底砍掉的尾巴计入（sum 下降，实测/模拟给数）。
-3. ✅ save-path 锁：兜底在空闲期跑、不在保存路径；884 已把 Σmarshal 降为一遍 union
-   （1817ms 锁等待同源减项）；当前 desktop.log 仍有 save-path lock waited（13:36
-   4198ms）——该面由 885 锁有界化承接，本单互补验证=兜底不新增保存路径争用。
-4. ✅ 触发补强边界单测：sweep 决策函数矩阵（auto 门/over-limit/busy/park/re-arm）。
+1. ✅ 存量会话 events 回 cap 内（真实文件副本实测，原件未动）：
+   - 死会话 20260922-231913（103.5MB events / 39.2MB live）：兜底生产动作
+     CompactSessionFile → **45.6MB，回 cap(50MB) 内**，freed 57.9MB；
+   - 真超限 20260927-020815（98.3MB / 56.7MB live）：→ **63.5MB**，freed 34.9MB
+     尾巴，仍超 cap 的 13.5MB 是 live 本体（479 治本方向，需拍板，如实申报）；
+   - 死会话形态另有单测 `TestCompactSessionFileClearsUnreachableRowsUnderCap`
+     （retire 并发头 → 12MB 夹具压回 live 水位、字节物理清除、转写完整性）。
+2. ✅ 全局 eventsMb 回落：上述两会话合计 freed 92.8MB（1460 → ~1367 若在原件上
+   执行）；三会话+20261005 型真超限合计可砍 ~120-150MB。live 本体部分不计入
+   （不可非破坏回收）。
+3. ✅ save-path 锁：兜底在空闲期跑（lease 空闲证明），不进保存路径；实测副本
+   compact 的 lock_wait_ms=0、全程 5.4-5.7s；1817ms 锁等待的 Σmarshal 减项已由
+   884 落地，剩余 save-path lock waited（13:36 4198ms）由 885 锁有界化承接。
+4. ✅ 触发补强边界单测：`desktop/events_idle_sweep_test.go` 7 测——配置门
+   （off/manual/auto 无 cap 全关）、决策矩阵（门/超限/busy/park 重入线 10%）、
+   死会话回 cap + park 防重清、真超限 park、预算大者优先、忙/失败重试、
+   under-limit 静默。
 
-## 五、不在本单
+## 五、不在本单（残留申报）
 
 - 真超限会话压进 cap 的破坏性手段（历史剪枝/大字段外置/转线）——479 治本方向，需拍板；
-- 陈旧并发头 retire（884 残留 #1，语义减法需拍板）；
+  本件后它们的稳态是「live 水位 + park」，不再无限增长尾巴，但 cap 之内装不下 live
+  本体这件事没有任何非破坏机制能解决。
+- 陈旧并发头 retire（884 残留 #1，语义减法需拍板）——sweep 只清已 retire 头的字节，
+  不替用户做 retire 决定。
 - save-path 锁等待本体（885 承接）。
+- sweep 覆盖 auto+cap 模式（用户现场配置）；manual 模式的存量清理仍走存储面板手动
+  入口（333 设计，不越权）。
+
+## 六、commit 列表
+
+1. `639d6fc93` 交接文档落盘
+2. `07fca68ac` events_idle_sweep 循环 + lifecycle 挂载 + WARN remedy 补强（7 测）
+3. `13e0f815a` 验收①端到端单测（死会话形态）

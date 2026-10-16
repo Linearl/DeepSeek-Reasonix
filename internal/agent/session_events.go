@@ -490,10 +490,6 @@ func warnFoldWouldNotShrink(path string, logSize, contentBytes, capMB int64) {
 	// The message text up to the closing paren is a grep contract (task 339
 	// rescue tests and on-device log triage key on "fold would not shrink it");
 	// the remediation rides in structured attrs, not in the prefix.
-	//
-	// 任务 921：remedy 首项改为自动化出口——desktop 空闲期兜底 sweep（auto+cap
-	// 模式）会在 lease 空闲时强制一次维护重写，把日志压到 live union 水位。
-	// 死会话（无 save 无旋转）同样由它接管。人工动作降为兜底之后的选项。
 	slog.Warn("session: oversized event log left in place (fold would not shrink it)",
 		"path", path, "logSize", logSize, "contentBytes", contentBytes, "capMB", capMB,
 		"reason", "live transcript itself is at least half the log size, so folding history cannot get under the cap",

@@ -13,28 +13,9 @@ import (
 	"reasonix/internal/store"
 )
 
-// 任务 921：存量超限 events 会话的空闲期兜底清（884 遗留①）。
-//
-// 884 把保存路径旋转门的 contentBytes 口径修成 union 去重后，「虚高误拒」类
-// 日志恢复了旋转（现场 20261010 从 238MB 降到 100MB 实证）。但两类日志仍会
-// 永久滞留超限态：
-//   - 真超限会话：live transcript 本体就超 cap，`content×2≥logSize` 恒成立，
-//     保存路径每次命中 fold-no-shrink WARN 只留置（20261016 实测三会话
-//     100/98/60MB，WARN 持续刷）；
-//   - 死会话：`maintainDAGLog` 只在保存时判定，停止写入的会话（20260922 型，
-//     104MB）永远等不到下一次旋转。
-//
-// 本循环是那个 WARN 的 remedy 出口的自动化（用户 884 口径「对话空闲时会自动
-// 处理」）：auto 模式下，空闲期对超限会话强制一次维护重写
-// （agent.CompactSessionFile → SaveRewriteCompact → 强制 rotateSessionDAG），
-// 把日志压到 live union 水位——死会话直接回 cap 内，真超限会话砍掉不可达/
-// 补丁尾巴（仍超 cap 的部分是 live 本体，属 479 治本方向，不在本件）。
-//
-// 与 cold_cache_compact_loop（任务 297）同一形态：unconditioned ticker + 每
-// tick 现读配置（OFF 零行为）+ park/inFlight 防重入。区别在于那个循环做的是
-// 投影 compact（写 .context.json），本循环做的是落盘 rewrite（缩 events 字节），
-// 因此以「lease 即空闲证明」为准入（CompactSessionFile 内部 TryAcquireSessionLease），
-// 不另设 idle 分钟门槛——正在被任何 runtime 写的会话都会被 lease 拒掉。
+// 任务 921：存量超限 events 会话的空闲期兜底清（884 遗留①）——auto 模式下空闲期
+// 强制维护重写（CompactSessionFile），接管 fold-no-shrink WARN 的真超限会话与
+// 「无 save 无旋转」的死会话。完整设计与实测见 tmp/handoff-921.md。
 
 const (
 	// 首扫延迟：给启动期让路（配置加载、tab 恢复），也给「刚重启的会话」
@@ -174,11 +155,8 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 		before, after, err := compact(c.Path)
 		res.Before, res.After, res.Freed = before, after, before-after
 		if err != nil {
-			// Lease-busy = another runtime showed up between the busy mark and
-			// the rewrite: skip without parking, the next tick retries. Other
-			// failures also retry next tick (transient IO); the log rewrite is
-			// atomic (CompactSessionFile goes through SaveRewriteCompact's
-			// CAS + staged write), so a failure leaves the previous log intact.
+			// Lease-busy/失败都不 park：下一 tick 重试。重写是原子的
+			// （SaveRewriteCompact 的 CAS+staged write），失败不损原日志。
 			res.Error = err.Error()
 			res.Skipped = isSessionNotIdle(err)
 			if !res.Skipped {
