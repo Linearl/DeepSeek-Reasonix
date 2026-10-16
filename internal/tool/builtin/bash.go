@@ -206,6 +206,20 @@ func (b bash) ExecuteDetailed(ctx context.Context, args json.RawMessage) (tool.D
 			"conditional chaining, or issue the commands as separate calls")
 	}
 
+	// Hard pre-launch refusal for recursive deletes whose target is not a
+	// literal path strictly inside the granted roots (task 903, upstream
+	// 11782/PR11786). Consulted before every launch path — foreground, host
+	// terminal, background jobs — so no approval mode can route around it.
+	// A refusal never starts a process and never acquires the session-temp
+	// lease.
+	if err := b.refuseDestructiveDelete(ctx, sh, p.Command); err != nil {
+		ex.State = tool.ShellStateNotRun
+		ex.FailurePhase = tool.ShellPhaseAuthorization
+		ex.MutationRisk = tool.ShellMutationNotStarted
+		ex.DurationMs = time.Since(start).Milliseconds()
+		return tool.DetailedResult{Execution: ex}, err
+	}
+
 	// Pin the session-private temporary generation before any launch path so
 	// foreground, background, and host-terminal runs share one directory, and
 	// so a failed start still releases the lease.
