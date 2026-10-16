@@ -622,7 +622,8 @@ func TestRepairTruncatedToolCallArgs(t *testing.T) {
 		{Name: "write_file", Arguments: `{"content": "unclosed`}, // truncated mid-string
 		{Name: "bash", Arguments: `{"command":"ls",`},            // truncated mid-object with a dangling comma
 		{Name: "read_file", Arguments: `{"path":"a.go"}`},        // valid: untouched
-		{Name: "complete_step", Arguments: ""},                   // empty: untouched
+		{Name: "complete_step", Arguments: ""},                   // empty: 任务 930 normalizes to "{}" before commit
+		{Name: "wait", Arguments: " \t\n"},                       // whitespace-only: 任务 930 also normalizes to "{}"
 		{Name: "ask", Arguments: `{"questions":["q":1]}`},        // structurally complete but invalid: left for the host validation contract
 	}
 	got := repairTruncatedToolCallArgs(calls)
@@ -635,15 +636,42 @@ func TestRepairTruncatedToolCallArgs(t *testing.T) {
 	if got[2].Arguments != `{"path":"a.go"}` {
 		t.Fatalf("valid args must stay verbatim, got %q", got[2].Arguments)
 	}
-	if got[3].Arguments != "" {
-		t.Fatalf("empty args must stay empty, got %q", got[3].Arguments)
+	// 任务 930 S3: committing arguments:"" wrote the poison pill into both
+	// persistence layers; the no-argument call is normalized to "{}".
+	if got[3].Arguments != "{}" {
+		t.Fatalf("empty args must normalize to {}, got %q", got[3].Arguments)
 	}
-	if got[4].Arguments != `{"questions":["q":1]}` {
-		t.Fatalf("structurally complete but invalid args must stay verbatim for the validation contract, got %q", got[4].Arguments)
+	if got[4].Arguments != "{}" {
+		t.Fatalf("whitespace-only args must normalize to {}, got %q", got[4].Arguments)
+	}
+	if got[5].Arguments != `{"questions":["q":1]}` {
+		t.Fatalf("structurally complete but invalid args must stay verbatim for the validation contract, got %q", got[5].Arguments)
 	}
 	for i, c := range got {
-		if c.Arguments != "" && c.Arguments != `{"questions":["q":1]}` && !json.Valid([]byte(c.Arguments)) {
+		if c.Arguments == `{"questions":["q":1]}` {
+			continue // structurally complete but invalid: deliberately left verbatim
+		}
+		if !json.Valid([]byte(c.Arguments)) {
 			t.Fatalf("call %d arguments still invalid after repair: %q", i, c.Arguments)
 		}
+	}
+}
+
+// TestRepairTruncatedEmptyArgumentsPoisonPrevention is the 任务 930 write-side
+// (S3) acceptance test: a wait call streamed with arguments:"" must reach the
+// committed assistant message — and therefore both the main jsonl and the
+// events.jsonl replay of the same messages — as "{}" so the transcript gate
+// can never poison the session on a later request.
+func TestRepairTruncatedEmptyArgumentsPoisonPrevention(t *testing.T) {
+	calls := []provider.ToolCall{{ID: "call_1", Name: "wait", Arguments: ""}}
+	repaired := repairTruncatedToolCallArgs(calls)
+	if repaired[0].Arguments != "{}" {
+		t.Fatalf("empty wait arguments not normalized: %q", repaired[0].Arguments)
+	}
+	msg := provider.Message{Role: provider.RoleAssistant, ToolCalls: repaired}
+	if err := provider.ValidateTranscript([]provider.Message{
+		msg, {Role: provider.RoleTool, ToolCallID: "call_1", Name: "wait", Content: "done", ToolRunState: provider.ToolRunCompleted},
+	}); err != nil {
+		t.Fatalf("committed no-argument call rejected by gate: %v", err)
 	}
 }

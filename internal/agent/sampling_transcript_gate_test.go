@@ -34,6 +34,58 @@ func TestSamplingTranscriptGateBlocksInvalidArgumentsBeforeProvider(t *testing.T
 	}
 }
 
+// TestSamplingPoisonedEmptyWaitArgumentsRequestGoesOut is the 任务 930
+// end-to-end acceptance test (验收①): a session whose history holds a
+// committed wait call with arguments:"" (the multi-session poison pill — the
+// call executed, so the never-ran repair whitelist never covered it) must
+// still produce a provider request. Before 930 the gate rejected every such
+// request ("transcript gate: tool arguments must be a JSON object"), leaving
+// the session permanently unusable; after S1 the request goes out, and the
+// outbound copy carries the normalized "{}".
+func TestSamplingPoisonedEmptyWaitArgumentsRequestGoesOut(t *testing.T) {
+	mp := &mockProvider{name: "p", chunks: []provider.Chunk{{Type: provider.ChunkDone}}}
+	s := NewSession("sys")
+	s.Add(provider.Message{Role: provider.RoleUser, Content: "wait for the jobs"})
+	// Poison shape straight from the incident: assistant wait call executed
+	// with an empty arguments string, followed by its completed result.
+	s.Add(provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{ID: "call_wait", Name: "wait", Arguments: ""},
+	}})
+	s.Add(provider.Message{Role: provider.RoleTool, ToolCallID: "call_wait", Name: "wait",
+		Content: "No background jobs to wait for.", ToolRunState: provider.ToolRunCompleted})
+	a := New(mp, tool.NewRegistry(), s, Options{}, event.Discard)
+
+	req, err := a.buildSamplingRequest(context.Background(), CompactionTriggerPressure)
+	if err != nil {
+		t.Fatalf("poisoned session can no longer build a request: %v", err)
+	}
+	if _, err := a.streamProviderRequest(context.Background(), nil, req.req); err != nil {
+		t.Fatalf("poisoned session request rejected: %v", err)
+	}
+	if len(mp.requests) != 1 {
+		t.Fatalf("provider requests=%d, want 1", len(mp.requests))
+	}
+	var found bool
+	for _, m := range mp.requests[0].Messages {
+		for _, c := range m.ToolCalls {
+			if c.Name == "wait" {
+				found = true
+				if c.Arguments != "{}" {
+					t.Fatalf("outbound wait arguments=%q, want normalized %q", c.Arguments, "{}")
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("wait tool call missing from outbound request")
+	}
+	// The stored history keeps the original bytes: normalization happens on
+	// the outbound copy only. Index 2 = system(0), user(1), assistant(2).
+	if got := s.Messages[2].ToolCalls[0].Arguments; got != "" {
+		t.Fatalf("stored arguments mutated: %q", got)
+	}
+}
+
 func TestSamplingTranscriptGateRunsAfterProviderInterceptor(t *testing.T) {
 	client := &fakeDispatchClient{interceptFn: func(ev protocol.InterceptEvent, payload json.RawMessage) (protocol.InterceptResult, error) {
 		if ev != protocol.EventProviderRequest {
