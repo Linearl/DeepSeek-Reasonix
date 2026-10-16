@@ -3,6 +3,7 @@ package sandbox
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -363,6 +364,80 @@ func TestResolveAbsPathFreshBypassesCache(t *testing.T) {
 	}
 	if got != filepath.Clean(other) {
 		t.Fatalf("fresh resolution must observe the new identity: got %q, want %q", got, filepath.Clean(other))
+	}
+}
+
+// 任务 928 现场复现（desktop.log 2026-10-16 canonical probe 风暴）：
+// 同一物理文件的两种拼写（目录记录保持磁盘大小写、canonical key 全小写）
+// 在 Windows 上必须共享一个缓存条目。修复前每个拼写各占一条、各走一次
+// walk，历史会话工作集直接翻倍。
+func TestResolveCanonicalPathCaseVariantSpellingsShareCacheEntry(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("case-insensitive path aliasing is Windows-specific behavior")
+	}
+	resetCanonicalEngine(t)
+
+	var walks int32
+	canonicalEvalSymlinks = func(p string) (string, error) {
+		atomic.AddInt32(&walks, 1)
+		return p, nil
+	}
+	canonicalResolveTimeout = 2 * time.Second
+	canonicalCacheTTL = time.Minute
+
+	upper := filepath.Join(t.TempDir(), "MixedCase", "session.jsonl")
+	lower := strings.ToLower(upper)
+
+	got1, err := ResolveAbsPath(upper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2, err := ResolveAbsPath(lower)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := atomic.LoadInt32(&walks); n != 1 {
+		t.Fatalf("case-variant spellings did %d walks, want 1 shared cache entry (key self-splits on Windows)", n)
+	}
+	if got1 != got2 {
+		t.Fatalf("case-variant spellings resolved differently: %q vs %q", got1, got2)
+	}
+}
+
+// 任务 928 现场复现第二半：修复前缓存上限 1024 小于历史会话工作集
+// （global-workspace 1440 条 + 各项目，~823 个 jsonl，双拼写翻倍），任意逐出
+// 使同一路径在 TTL 内被反复重走——「缓存键自毁」的逐出形态。本测试用
+// 1500 个路径钉死：生产容量必须能在 TTL 内保住整个工作集。
+func TestResolveCanonicalPathWorkingSetSurvivesWithinTTL(t *testing.T) {
+	resetCanonicalEngine(t)
+
+	var walks int32
+	canonicalEvalSymlinks = func(p string) (string, error) {
+		atomic.AddInt32(&walks, 1)
+		return p, nil
+	}
+	canonicalResolveTimeout = 2 * time.Second
+	canonicalCacheTTL = time.Minute
+
+	base := t.TempDir()
+	const workingSet = 1500
+	paths := make([]string, workingSet)
+	for i := range paths {
+		paths[i] = filepath.Join(base, "proj", "sessions", fmt.Sprintf("20261016-000000.%09d-session.jsonl", i))
+	}
+	for _, p := range paths {
+		if _, err := ResolveAbsPath(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first := atomic.LoadInt32(&walks)
+	for _, p := range paths {
+		if _, err := ResolveAbsPath(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := atomic.LoadInt32(&walks); n != first {
+		t.Fatalf("second pass over %d-path working set re-walked (%d -> %d), cache must hold the whole working set within TTL", workingSet, first, n)
 	}
 }
 
