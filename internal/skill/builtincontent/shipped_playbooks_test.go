@@ -36,6 +36,7 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 		"react-best-practices",
 		"feature-boundary-planner",
 		"dogfood",
+		"desktop-automation",
 	} {
 		sk, ok := byName[want]
 		if !ok {

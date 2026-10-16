@@ -31,6 +31,7 @@ import (
 //go:embed react-best-practices
 //go:embed feature-boundary-planner
 //go:embed dogfood
+//go:embed desktop-automation
 var files embed.FS
 
 // SkillMarkdown is one embedded skill file after frontmatter split.
