@@ -43,10 +43,12 @@ func TestSubagentArmDropsBuiltinWrapperTools(t *testing.T) {
 	run := skill.SubagentRunner(func(context.Context, skill.Skill, string, skill.SubagentRunOptions) (string, error) {
 		return "", nil
 	})
-	if got := builtinSubagentTools(ablation.New(ablation.Subagent), skill.New(skill.Options{}), run); len(got) != 0 {
+	store := skill.New(skill.Options{})
+	skills := store.List()
+	if got := builtinSubagentTools(ablation.New(ablation.Subagent), store, skills, run); len(got) != 0 {
 		t.Fatalf("arm still registered %d wrapper tools", len(got))
 	}
-	if got := builtinSubagentTools(ablation.Set{}, skill.New(skill.Options{}), run); len(got) == 0 {
+	if got := builtinSubagentTools(ablation.Set{}, store, skills, run); len(got) == 0 {
 		t.Fatal("the ordinary run must keep explore/research/review")
 	}
 }

@@ -537,7 +537,24 @@ func (t *subagentSkillTool) ResolveProfile(json.RawMessage) *event.Profile {
 // skills, named after the verb so the model picks them naturally (affordance >
 // prompt rules). Each is skipped when its underlying skill isn't present (e.g. a
 // user disabled it), so the tool set never advertises a phantom skill.
+//
+// Task 919: one store.List() replaces the previous per-spec store.Read — each
+// Read re-walked and re-validated the whole skill-root tree (ParseCache only
+// caches per-file parses; the walk and stat validation still run, the same
+// (1+N)-scan shape task 660 removed from search), so every boot paid four
+// extra full tree walks here. Boot already holds the list, so prefer
+// BuiltinSubagentToolsFromList with it.
 func BuiltinSubagentTools(store *Store, runner SubagentRunner, profileResolver ...ProfileResolver) []tool.Tool {
+	return BuiltinSubagentToolsFromList(store, store.List(), runner, profileResolver...)
+}
+
+// BuiltinSubagentToolsFromList is BuiltinSubagentTools with the presence check
+// answered from an already-loaded skill list instead of re-scanning the disk.
+// Membership in skills is byte-equivalent to the old store.Read(name) ok-check:
+// Read searches exactly enabledSkills(), which is what List returns. boot passes
+// its own List() result (or the assembly-reused one) so the hot path scans
+// nothing extra.
+func BuiltinSubagentToolsFromList(store *Store, skills []Skill, runner SubagentRunner, profileResolver ...ProfileResolver) []tool.Tool {
 	var pr ProfileResolver
 	if len(profileResolver) > 0 {
 		pr = profileResolver[0]
@@ -558,11 +575,17 @@ func BuiltinSubagentTools(store *Store, runner SubagentRunner, profileResolver .
 			"Security-focused review of the current branch diff in an isolated subagent — injection / authz / secrets / deserialization / path-traversal / crypto, severity-tagged. Read-only. Use when shipping changes that touch auth, input parsing, file IO, or external requests.",
 			"Optional scope hint (e.g. 'focus on token handling in internal/auth/') or 'full' for everything in the diff."},
 	}
+	byName := make(map[string]Skill, len(skills))
+	for _, sk := range skills {
+		if _, dup := byName[sk.Name]; !dup {
+			byName[sk.Name] = sk
+		}
+	}
 	var out []tool.Tool
 	for _, s := range specs {
 		// Skill profiles are diagnostic-only; do not hide builtin subagent
 		// entry points based on the session role setting.
-		if _, ok := store.Read(s.skillName); !ok {
+		if _, ok := byName[s.skillName]; !ok {
 			continue
 		}
 		out = append(out, &subagentSkillTool{

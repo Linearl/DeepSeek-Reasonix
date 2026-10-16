@@ -24,9 +24,12 @@ func gateSubagentArm(set ablation.Set, run skill.SubagentRunner) skill.SubagentR
 
 // builtinSubagentTools returns the dedicated explore/research/review wrappers,
 // or nothing under the arm so the control run does not even carry their schemas.
-func builtinSubagentTools(set ablation.Set, store *skill.Store, run skill.SubagentRunner, profile ...skill.ProfileResolver) []tool.Tool {
+// skills is the already-loaded list (boot's List() or the assembly-reused one);
+// task 919 threads it through so building these wrappers never re-scans the
+// skill roots — each store.Read used to trigger a full disk scan.
+func builtinSubagentTools(set ablation.Set, store *skill.Store, skills []skill.Skill, run skill.SubagentRunner, profile ...skill.ProfileResolver) []tool.Tool {
 	if set.Off(ablation.Subagent) {
 		return nil
 	}
-	return skill.BuiltinSubagentTools(store, run, profile...)
+	return skill.BuiltinSubagentToolsFromList(store, skills, run, profile...)
 }

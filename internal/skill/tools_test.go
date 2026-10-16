@@ -508,6 +508,43 @@ func TestBuiltinSubagentToolResolvesProfile(t *testing.T) {
 	}
 }
 
+// Task 919: BuiltinSubagentToolsFromList must answer the presence check from
+// the supplied list alone — an empty store with a list naming "explore" builds
+// the wrapper, and a full store with an empty list builds none. This is what
+// lets boot build these tools without re-scanning the skill roots (each old
+// store.Read was a full disk scan; the boot hot path paid four of them).
+func TestBuiltinSubagentToolsFromListAnswersFromListOnly(t *testing.T) {
+	// Empty discovery (no builtins, no roots) + a list that names explore:
+	// the wrapper must still build — proof the list, not the disk, decides.
+	emptyStore := New(Options{HomeDir: t.TempDir(), DisableBuiltins: true})
+	tools := BuiltinSubagentToolsFromList(emptyStore, []Skill{{Name: "explore"}}, nil)
+	if len(tools) != 1 || tools[0].Name() != "explore" {
+		t.Fatalf("from-list with [explore] = %d tools (first %q), want exactly the explore wrapper", len(tools), firstToolName(tools))
+	}
+
+	// A store that WOULD resolve builtins, but an empty list: no wrappers.
+	fullStore := New(Options{HomeDir: t.TempDir()})
+	if _, ok := fullStore.Read("explore"); !ok {
+		t.Fatal("control store must resolve builtin explore; test premise broken")
+	}
+	if got := BuiltinSubagentToolsFromList(fullStore, nil, nil); len(got) != 0 {
+		t.Fatalf("from-list with empty list built %d tools, want 0", len(got))
+	}
+
+	// Byte-equivalence with the legacy store-backed path: both see the same
+	// builtin set when the list is that store's own List().
+	if got, want := len(BuiltinSubagentToolsFromList(fullStore, fullStore.List(), nil)), len(BuiltinSubagentTools(fullStore, nil)); got != want {
+		t.Fatalf("from-list(List()) built %d tools, store-backed built %d; presence semantics diverged", got, want)
+	}
+}
+
+func firstToolName(tools []tool.Tool) string {
+	if len(tools) == 0 {
+		return ""
+	}
+	return tools[0].Name()
+}
+
 func TestInstallSkill(t *testing.T) {
 	home := t.TempDir()
 	st := New(Options{HomeDir: home, DisableBuiltins: true})

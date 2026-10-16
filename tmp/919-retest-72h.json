@@ -1,0 +1,127 @@
+[
+  {
+    "bench": "boot",
+    "metric": "boot total（热路径=assembly hit 配对，兜底=重组相合计≤预算）",
+    "source": "desktop.log「boot: stage timings」",
+    "threshold": "boot total \u003c 1000ms（热路径）",
+    "ref": "task 363 验收①",
+    "n": 51,
+    "p50_ms": 13720,
+    "p95_ms": 34945,
+    "max_ms": 64431,
+    "verdict": "FAIL"
+  },
+  {
+    "bench": "boot",
+    "metric": "boot total（冷启动，观测）",
+    "source": "desktop.log「boot: stage timings」",
+    "threshold": "",
+    "ref": "tasklist 无冷启动数值验收；363① 的对照基线 3.4s",
+    "n": 26,
+    "p50_ms": 4223,
+    "p95_ms": 7038,
+    "max_ms": 11477,
+    "verdict": "OBSERVE",
+    "note": "冷启动 P50/P95/Max 见右列；最慢相 prompt=5114ms agent:tools=4938ms config=1485ms"
+  },
+  {
+    "bench": "open-topic",
+    "metric": "打开历史对话→可发消息（summary total+ancillary effort 合成）",
+    "source": "desktop.log「open-topic summary」+「open-topic:ancillary effort」+「open session slow」",
+    "threshold": "P95 \u003c 2000ms",
+    "ref": "task 363 追加验收⑥",
+    "n": 12,
+    "p50_ms": 767,
+    "p95_ms": 1997,
+    "max_ms": 1997,
+    "verdict": "PASS"
+  },
+  {
+    "bench": "open-topic",
+    "metric": "打开会话失败（census）",
+    "source": "desktop.log「desktop: open session failed」",
+    "threshold": "0 条",
+    "ref": "task 298（失败必须留痕）",
+    "n": 0,
+    "verdict": "PASS",
+    "note": "窗口内无失败记录"
+  },
+  {
+    "bench": "tab-switch",
+    "metric": "切 tab 渲染 render",
+    "source": "desktop.log「desktop: frontend tab switch render」",
+    "threshold": "P95 \u003c 150ms",
+    "ref": "tab_timing.go slowTabSwitchLogMs（任务 196 判定线）",
+    "n": 168,
+    "p50_ms": 37,
+    "p95_ms": 107,
+    "max_ms": 197,
+    "verdict": "PASS"
+  },
+  {
+    "bench": "tab-switch",
+    "metric": "transcript 首帧 firstFrame（观测）",
+    "source": "desktop.log「desktop: frontend tab switch render」",
+    "threshold": "—",
+    "ref": "tasklist 无数值验收（观测项）",
+    "n": 169,
+    "p50_ms": 40,
+    "p95_ms": 121,
+    "max_ms": 174,
+    "verdict": "OBSERVE"
+  },
+  {
+    "bench": "tab-switch",
+    "metric": "switch-tab summary total（观测）",
+    "source": "desktop.log「desktop: frontend tab switch render」",
+    "threshold": "—",
+    "ref": "tasklist 无数值验收（观测项）",
+    "n": 145,
+    "p50_ms": 51,
+    "p95_ms": 828,
+    "max_ms": 1362,
+    "verdict": "OBSERVE"
+  },
+  {
+    "bench": "tab-switch",
+    "metric": "后端 stage 越线普查",
+    "source": "desktop.log「desktop: tab switch timing」",
+    "threshold": "普通 stage 150ms / switch-out 50ms（越线才落日志）",
+    "ref": "tab_timing.go（任务 196）",
+    "n": 0,
+    "verdict": "OBSERVE",
+    "note": "open-topic:ancillary checkpoints×1(P50=221ms,Max=221ms) open-topic:ancillary context×6(P50=458ms,Max=1223ms) open-topic:ancillary effort×3(P50=249ms,Max=333ms) open-topic:ancillary jobs×1(P50=219ms,Max=219ms) open-topic:e2e×12(P50=988ms,Max=2641ms) open-topic:history×11(P50=619ms,Max=1997ms) open-topic:meta×1(P50=561ms,Max=561ms) open-topic:total×12(P50=713ms,Max=1997ms) startup:ancillary checkpoints×2(P50=280ms,Max=366ms) startup:ancillary context×13(P50=296ms,Max=2020ms) startup:ancillary effort×5(P50=559ms,Max=817ms) startup:ancillary jobs×2(P50=280ms,Max=367ms) startup:history×11(P50=637ms,Max=3798ms) startup:history reconcile×1(P50=194ms,Max=194ms) startup:history/bridge×1(P50=3791ms,Max=3791ms) startup:meta×2(P50=272ms,Max=392ms) startup:total×12(P50=783ms,Max=3801ms) switch-tab:ancillary checkpoints×23(P50=235ms,Max=2517ms) switch-tab:ancillary context×91(P50=375ms,Max=2518ms) switch-tab:ancillary effort×81(P50=284ms,Max=2517ms) switch-tab:ancillary jobs×15(P50=288ms,Max=2516ms) switch-tab:history×54(P50=331ms,Max=1331ms) switch-tab:history reconcile×9(P50=211ms,Max=465ms) switch-tab:history/bridge×3(P50=665ms,Max=824ms) switch-tab:meta×23(P50=214ms,Max=8786ms) switch-tab:total×59(P50=361ms,Max=1362ms)"
+  },
+  {
+    "bench": "first-response",
+    "metric": "发消息→首响（turn_started→首个模型输出）",
+    "source": "sessions/*.turns.jsonl turn_started→首个模型输出（370/doctor 同款口径）",
+    "threshold": "P95 ≤ 60s",
+    "ref": "task 370（阈值默认取遥测分桶 s_15_60 上沿）",
+    "n": 22,
+    "p50_ms": 19130,
+    "p95_ms": 69387,
+    "max_ms": 73577,
+    "verdict": "FAIL",
+    "note": "扫描 36 个 turn ledger；14 个 turn 无首响（取消/失败）；1 个 turn 进行中未收盘"
+  },
+  {
+    "bench": "warn-patrol",
+    "metric": "WARN 巡检「slow switch stage」",
+    "source": "desktop.log level=WARN（msg+detail 子串匹配）",
+    "threshold": "≤0 条（-warn-max-count 可配）",
+    "ref": "任务 414 阶段 4 · heartbeat WARN 巡检",
+    "n": 74,
+    "verdict": "FAIL",
+    "note": "首条 10-16 09:29:14 msg=\"desktop: frontend slow switch stage\"（74 条越线）"
+  },
+  {
+    "bench": "warn-patrol",
+    "metric": "WARN 巡检「cold cache compact failed」",
+    "source": "desktop.log level=WARN（msg+detail 子串匹配）",
+    "threshold": "≤0 条（-warn-max-count 可配）",
+    "ref": "任务 414 阶段 4 · heartbeat WARN 巡检",
+    "n": 0,
+    "verdict": "PASS"
+  }
+]

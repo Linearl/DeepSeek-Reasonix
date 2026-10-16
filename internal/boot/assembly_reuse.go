@@ -14,6 +14,7 @@ import (
 type ReusedAssembly struct {
 	SystemPrompt            string
 	Skills                  []skill.Skill
+	SlashSkills             []skill.Skill // visible slash directory (task 919: rebuild slash tool without a re-scan)
 	Commands                []command.Command
 	Hooks                   []hook.ResolvedHook
 	Registry                *tool.Registry

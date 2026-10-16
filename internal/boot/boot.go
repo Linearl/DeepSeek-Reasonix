@@ -905,15 +905,19 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			sysPrompt = s
 		}
 	} else {
+		// Task 919: both stores read the same on-disk skill tree and differ only
+		// in disabled-name filters, so they share one parse cache — the second
+		// List() reuses the first's parses instead of re-reading every file.
+		parseCache := skill.NewParseCache()
 		skillStore = skill.New(skill.Options{
 			ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(),
 			PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(),
 			DisabledNames: collabDisabledSkillNames(cfg), DisableBuiltinNames: featureGatedBuiltinNames(cfg),
-			MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr,
+			MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr, ParseCache: parseCache,
 		})
 		skillStore.ConfigureInvocationPolicy("", nil)
 		skills = skillStore.List()
-		allSkillStore = skill.New(skill.Options{ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(), PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(), MaxDepth: cfg.SkillMaxDepth(), Stderr: io.Discard})
+		allSkillStore = skill.New(skill.Options{ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(), PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(), MaxDepth: cfg.SkillMaxDepth(), Stderr: io.Discard, ParseCache: parseCache})
 		allSkills = allSkillStore.List()
 		if implicitSkillInvocation {
 			sysPrompt += "\n\n" + skill.InvocationPolicyBlock()
@@ -1910,6 +1914,32 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	slashCommandAdded := false
 	slashCommandIncludesSkills := false
+	// Task 919: the visible slash directory is discovery output too. SlashList
+	// re-walks every skill root (ParseCache only caches per-file parses; the
+	// walk + stat validation still run), so on the reuse path take the list the
+	// previous build already paid for, and memoize the cold-path scan so a
+	// second addSlashCommandTool call never re-walks the disk. The reuse guard
+	// mirrors canReuseSkills: the slash view depends on the same discovery
+	// inputs and on implicitSkillInvocation.
+	var slashSkills []skill.Skill
+	slashSkillsLoaded := false
+	loadSlashSkills := func() []skill.Skill {
+		if slashSkillsLoaded {
+			return slashSkills
+		}
+		slashSkillsLoaded = true
+		// SlashList always returns a non-nil slice, so a nil cached value means
+		// the assembly predates the field (or was built with skills off) — fall
+		// back to a scan rather than silently dropping every skill command.
+		if opts.ReuseAssembly != nil && shouldReuseDiscovery(opts.PreviousPlan) &&
+			opts.ReuseAssembly.ImplicitSkillInvocation == implicitSkillInvocation &&
+			opts.ReuseAssembly.SlashSkills != nil {
+			slashSkills = opts.ReuseAssembly.SlashSkills
+			return slashSkills
+		}
+		slashSkills = skillStore.SlashList()
+		return slashSkills
+	}
 	addSlashCommandTool := func(includeSkills bool) string {
 		if slashCommandAdded && (!includeSkills || slashCommandIncludesSkills) {
 			return "slash commands are already enabled."
@@ -1918,7 +1948,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// mode skills join this list only after the skills source is enabled.
 		var slashEntries []command.SlashEntry
 		if includeSkills && implicitSkillInvocation {
-			for _, sk := range skillStore.SlashList() {
+			for _, sk := range loadSlashSkills() {
 				slashEntries = append(slashEntries, command.SlashEntry{
 					Name:        sk.SlashName(),
 					Description: sk.Description,
@@ -2032,7 +2062,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(skill.NewRunSkillTool(skillStore, gateSubagentArm(opts.Ablation, skillRunner), skillProfile))
 		reg.Add(skill.NewReadSkillTool(skillStore))
 		reg.Add(skill.NewInstallSkillTool(skillStore, nil))
-		for _, t := range builtinSubagentTools(opts.Ablation, skillStore, skillRunner, skillProfile) {
+		for _, t := range builtinSubagentTools(opts.Ablation, skillStore, skills, skillRunner, skillProfile) {
 			reg.Add(t)
 		}
 		addSlashCommandTool(implicitSkillInvocation)
@@ -2928,6 +2958,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	assembly := &ReusedAssembly{
 		SystemPrompt:            sysPrompt,
 		Skills:                  skills,
+		SlashSkills:             slashSkills,
 		Commands:                cmds,
 		Hooks:                   resolvedHooks,
 		Registry:                reg,
