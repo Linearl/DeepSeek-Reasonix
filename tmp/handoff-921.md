@@ -99,3 +99,28 @@
 1. `639d6fc93` 交接文档落盘
 2. `07fca68ac` events_idle_sweep 循环 + lifecycle 挂载 + WARN remedy 补强（7 测）
 3. `13e0f815a` 验收①端到端单测（死会话形态）
+4. `af5c14de1` repolint 收口 + handoff 实测数据补录
+
+## 七、测试与预存红申报（2026-10-16）
+
+- **新增测试全绿**：`desktop -run TestEventsIdleSweep`（7 测）、
+  `internal/agent -run TestCompactSessionFileClearsUnreachableRowsUnderCap`（12.5s）、
+  与既有 `TestCompactSessionFile` 两测同跑均绿。
+- **定向族全绿**（本单改动的直接影响面）：`TestDAG|TestWarnRotate|TestFold|TestRotate|
+  TestEventsRotation|TestSessionEvent`（22.8s）；`TestCompact|TestCompaction|TestProjection|
+  TestSave|TestSummary|TestTruncate|TestPrune|TestMaintenance`（124s）；
+  `go build ./...`、`go vet ./internal/agent`、`go vet ./desktop` 净。
+- **agent 全量**（`-skip 'TestAppendForShutdown'`，900s 窗口两轮）：仅
+  `TestToolCheckpointReloadRefreshesProjection`、`TestInterruptedRecoveryKeepsRedactedFailureSummary`
+  ——884 handoff 已申报的同两个基线预存红（按其纪律已在基线复现口径内）。
+  另 `TestCompactSessionFileRewritesAndIsIdempotent` 在全量/-count=10 下偶发
+  「second compact grew the log: 1859 -> 1861」（+2 字节）——**已在未改动基线
+  main-v2-stable 复现同一失败与同一数字**，预存 flake，非本单引入。
+- **desktop 全量**：两轮不同点挂死（`TestColdHistoryTailFirstPaintOnMissingIndex`、
+  `TestPlanYoloDeliveryOrderConverges`/`TestGoalDeliveryYolo...`）——同一
+  skip 组合在**未改动基线**同样 10min 超时挂死（挂死点不同），基线预存；
+  `TestWindowsDesktopCommandsUseProcConstructors`（bash_delete_parser.go 源扫描）
+  与 `TestMetaForTabIncludesWorkspaceContext` 均在基线复现失败。本单新增/
+  触及测试与定向族不受影响；sweep 循环只在 Wails OnStartup 路径启动，测试不可达。
+- **repolint**：`desktop/events_idle_sweep.go`（新文件）零违规；`session_events.go`
+  file-size 1017 = 基线净零；`app_lifecycle.go:202 essay` 为基线预存。
