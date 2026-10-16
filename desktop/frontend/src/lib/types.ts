@@ -53,7 +53,9 @@ export type EventKind =
   | "tool_started"
   | "provider_unreachable"
   /** 任务580: durable inbox item consumed as a new turn's input (Text=display text, itemId=inbox item id). */
-  | "user_input";
+  | "user_input"
+  /** 任务685: one workflow DAG node state transition (payload: workflow). */
+  | "workflow_node";
 export type StreamAttemptAction = "begin" | "discard" | "commit";
 export type TurnStatus = "queued" | "in_progress" | "waiting_user" | "cancelling" | "completed" | "interrupted" | "failed" | "protocol_failed" | "recovery_required";
 export interface TurnEventEnvelope {
@@ -462,6 +464,8 @@ export interface WireEvent extends RecoveryEventFields {
   phase?: string;
   /** completion_summary: content-free quality summary for role settings */
   completion?: WireCompletionSummary;
+  /** workflow_node: one DAG node state transition (任务685). */
+  workflow?: WireWorkflowNode;
   tabId?: string; // Go's tabEventSink tags events for the correct per-tab reducer.
   runtimeEpoch?: string; sessionGeneration?: number;
   /** Unix milliseconds recorded by the desktop host when this turn began. */
@@ -499,6 +503,21 @@ export interface WireCompletionSummary {
 
 export type { TurnFileChange, TurnChanges, WireCompletionReceipt } from "./turnResultTypes";
 import type { WireCompletionReceipt } from "./turnResultTypes";
+
+/** 任务685: workflow DAG node state transition (wire kind "workflow_node").
+ * Six states drive the 686 visualization: queued (gray) / running (pulse) /
+ * completed (green) / unconfirmed (yellow) / failed (red) / gate_passed. */
+export type WorkflowNodeState = "queued" | "running" | "completed" | "unconfirmed" | "failed" | "gate_passed";
+export interface WireWorkflowNode {
+  runId: string;
+  workflow: string;
+  nodeId: string;
+  nodeType: "subagent" | "gate" | "phase" | "join" | "confirm" | string;
+  state: WorkflowNodeState;
+  phase?: string;
+  round?: number;
+  detail?: string;
+}
 
 export type WorkspaceWatchState = "active" | "degraded" | "unavailable";
 export type WorkspaceChangeOp = "create" | "write" | "remove" | "rename" | "unknown";

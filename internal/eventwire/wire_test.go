@@ -213,6 +213,44 @@ func TestUserInputWireCarriesTextAndItemID(t *testing.T) {
 	}
 }
 
+// 任务685: workflow_node carries one DAG node state transition to the 686
+// visualization panel. All payload fields must cross the wire verbatim and
+// the kind must not be promoted to a prompt event.
+func TestWorkflowNodeWireCarriesPayload(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.WorkflowNode, Workflow: &event.WorkflowNodeInfo{
+		RunID: "wf-1", Workflow: "sample", NodeID: "unit-gate", NodeType: "gate",
+		State: event.WorkflowNodeGatePassed, Phase: "deliver", Round: 2, Detail: "exit 0",
+	}})
+	if w.Kind != "workflow_node" {
+		t.Fatalf("wire kind = %q, want workflow_node", w.Kind)
+	}
+	if w.Workflow == nil {
+		t.Fatal("wire workflow payload = nil")
+	}
+	got := w.Workflow
+	if got.RunID != "wf-1" || got.Workflow != "sample" || got.NodeID != "unit-gate" ||
+		got.NodeType != "gate" || got.State != "gate_passed" || got.Phase != "deliver" ||
+		got.Round != 2 || got.Detail != "exit 0" {
+		t.Fatalf("wire payload = %+v", got)
+	}
+	if w.PromptID != "" {
+		t.Fatalf("workflow_node must not become a prompt event, promptId = %q", w.PromptID)
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, want := range []string{`"workflow_node"`, `"runId":"wf-1"`, `"state":"gate_passed"`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("workflow JSON = %s, want %s", b, want)
+		}
+	}
+	// Ordinary events carry no workflow field.
+	if plain := ToWire(event.Event{Kind: event.TurnStarted}); plain.Workflow != nil {
+		t.Fatalf("non-workflow event carries workflow payload: %+v", plain.Workflow)
+	}
+}
+
 func TestDesktopWireEventKindTypeCoversSharedKinds(t *testing.T) {
 	ts := readDesktopTypes(t)
 	for k := range event.KindCount {

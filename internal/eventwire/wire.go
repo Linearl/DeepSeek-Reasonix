@@ -197,8 +197,28 @@ func ToWire(e event.Event) Event {
 		}
 	case event.CompletionSummary:
 		w.Completion = toWireCompletionSummary(e.Completion)
+	case event.WorkflowNode:
+		w.Workflow = toWireWorkflowNode(e.Workflow)
 	}
 	return w
+}
+
+// toWireWorkflowNode copies one workflow node transition (task 685) into its
+// wire form; nil stays nil so ordinary events carry no workflow field.
+func toWireWorkflowNode(n *event.WorkflowNodeInfo) *WorkflowNode {
+	if n == nil {
+		return nil
+	}
+	return &WorkflowNode{
+		RunID:    n.RunID,
+		Workflow: n.Workflow,
+		NodeID:   n.NodeID,
+		NodeType: n.NodeType,
+		State:    string(n.State),
+		Phase:    n.Phase,
+		Round:    n.Round,
+		Detail:   n.Detail,
+	}
 }
 
 func toWireUsage(e event.Event) *Usage {
@@ -607,6 +627,7 @@ var kindNames = map[event.Kind]string{
 	event.ToolStarted:             "tool_started",
 	event.PromptClosed:            "prompt_closed",
 	event.UserInput:               "user_input",
+	event.WorkflowNode:            "workflow_node",
 }
 
 // ContextMaintenance is the JSON form of event.ContextMaintenance.

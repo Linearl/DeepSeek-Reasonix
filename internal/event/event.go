@@ -163,6 +163,12 @@ const (
 	// for a history reload. Appended last to keep the Kind values before it
 	// wire-stable; older clients ignore unknown kinds.
 	UserInput
+	// WorkflowNode reports one workflow node state transition (task 685).
+	// Carries WorkflowNodeInfo (run/node ids, six-state value, phase/round/
+	// detail). The 686 visualization panel subscribes to this kind to light
+	// up DAG nodes. Appended last to keep the Kind values before it
+	// wire-stable; older clients ignore unknown kinds.
+	WorkflowNode
 	KindCount // Follows all real event kinds.
 )
 
@@ -622,6 +628,8 @@ type Event struct {
 	PhaseName TurnPhaseName
 	// Completion is set on CompletionSummary events.
 	Completion *CompletionSummaryInfo
+	// Workflow is set on WorkflowNode events (task 685).
+	Workflow *WorkflowNodeInfo
 }
 
 type WorkspaceWatchState string
