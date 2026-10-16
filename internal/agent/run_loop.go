@@ -751,9 +751,21 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 // 400. Arguments that are structurally complete but invalid (a mid-token
 // syntax error the model must correct) are left untouched so the host
 // validation contract reports them verbatim.
+//
+// 任务 930: empty (or whitespace-only) arguments are normalized to "{}"
+// before the assistant message is committed. All-optional tools such as wait
+// legally emit arguments:"" from the model, and committing the empty string
+// writes it into BOTH persistence layers (main jsonl and events.jsonl replay
+// the same session messages), where the transcript gate rejected it on every
+// later request — a permanent session poison pill once the call had executed.
+// "{}" is the same no-argument call; the executed intent is unchanged.
 func repairTruncatedToolCallArgs(calls []provider.ToolCall) []provider.ToolCall {
 	for i := range calls {
-		if calls[i].Arguments == "" || json.Valid([]byte(calls[i].Arguments)) {
+		if strings.TrimSpace(calls[i].Arguments) == "" {
+			calls[i].Arguments = "{}"
+			continue
+		}
+		if json.Valid([]byte(calls[i].Arguments)) {
 			continue
 		}
 		if repaired, ok := closeTruncatedJSON(calls[i].Arguments); ok {
