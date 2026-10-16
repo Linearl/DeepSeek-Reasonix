@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -196,11 +197,13 @@ func warnMissingShell(warn io.Writer, prefer string) {
 	}
 }
 
-// isWindowsWSLBash reports whether a resolved bash path is the WSL launcher
-// Windows ships under %SystemRoot% (e.g. C:\Windows\System32\bash.exe). With WSL
-// installed it runs commands inside the Linux VM — where the Windows workspace is
-// a /mnt/<drive> path — so it must never be chosen for a native Windows workspace;
-// the only bash.exe Microsoft places under the Windows dir is that launcher.
+// isWindowsWSLBash reports whether a resolved bash path is a WSL launcher:
+// the one Windows ships under %SystemRoot% (e.g. C:\Windows\System32\bash.exe)
+// or the 0-byte App Execution Alias under %LOCALAPPDATA%\Microsoft\WindowsApps.
+// With WSL installed both run commands inside the Linux VM — where the Windows
+// workspace is a /mnt/<drive> path — so neither may be chosen for a native
+// Windows workspace; the alias even passes `bash -c true`, so a successful
+// health probe does not make it Git Bash (upstream issue 9597, PR 10617).
 func isWindowsWSLBash(path string) bool {
 	if runtime.GOOS != "windows" || path == "" {
 		return false
@@ -209,12 +212,29 @@ func isWindowsWSLBash(path string) bool {
 	if win == "" {
 		win = os.Getenv("windir")
 	}
-	if win == "" {
+	return isWindowsWSLBashPath(path, win)
+}
+
+// isWindowsWSLBashPath compares Windows paths independently of the host so the
+// alias exclusion is covered by tests on non-Windows builders too. Forward
+// slashes, the \\?\ extended prefix, and case differences are all normalized
+// before matching.
+func isWindowsWSLBashPath(path, windowsRoot string) bool {
+	normalize := func(p string) string {
+		if p == "" {
+			return ""
+		}
+		p = strings.TrimPrefix(strings.ReplaceAll(p, `\`, "/"), "//?/")
+		return strings.TrimSuffix(strings.ToLower(pathpkg.Clean(p)), "/")
+	}
+	p := normalize(path)
+	if p == "" {
 		return false
 	}
-	p := strings.ToLower(filepath.Clean(path))
-	root := strings.ToLower(filepath.Clean(win)) + string(filepath.Separator)
-	return strings.HasPrefix(p, root)
+	if root := normalize(windowsRoot); root != "" && strings.HasPrefix(p, root+"/") {
+		return true
+	}
+	return strings.Contains(p, "/microsoft/windowsapps/") && strings.HasSuffix(p, "/bash.exe")
 }
 
 // Windows ships a bash.exe launcher stub in %SystemRoot% that opens the WSL
