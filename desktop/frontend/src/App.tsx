@@ -76,6 +76,8 @@ import { SessionWallBoundary } from "./components/SessionWallBoundary";
 import { effectiveSplitTier, loadSplitPreviewTier, persistSplitPreviewTier, splitPreviewTierFromPointer, SPLIT_PREVIEW_TIERS, setSplitPaneTitle, setSplitViewEnabled, type SplitPreviewTier } from "./lib/splitView";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./components/ContextMenu";
 import { reportFrontendLog } from "./lib/frontendLog";
+import { restoreComposerFocus } from "./lib/composerFocus";
+import { useRuntimeTransitionFocusRestore } from "./app-runtime/useLocalUiLifecycles";
 import { app, onBackendTabActivated, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
@@ -1891,14 +1893,22 @@ export default function App() {
     prevDecisionSurfaceRef.current = null;
     if (!hadDecision) return;
     const tabAtRelease = activeTabId;
+    // 任务 913根因面之三：单发 focus() 在目标该帧仍 hidden/inert/disabled 时
+    // 静默失败且零痕迹；共享器补落位校验+有界重试+耗尽留痕（composer-focus）。
     const frame = requestAnimationFrame(() => {
       if (decisionSurfaceRef.current != null) return;
       if (activeTabIdRef.current !== tabAtRelease) return;
-      const input = document.getElementById("composer-input") as HTMLTextAreaElement | null;
-      input?.focus({ preventScroll: true });
+      restoreComposerFocus({
+        site: "decision-release",
+        abort: () => decisionSurfaceRef.current != null || activeTabIdRef.current !== tabAtRelease,
+      });
     });
     return () => cancelAnimationFrame(frame);
   }, [activeTabId, closeTransientOverlays, decisionSurface]);
+  // 任务 913根因面之一：导航遮罩（runtimeTransitioning）静默收走 composer
+  // 焦点且 settle 后无人归还——打字中断、必须手点。遮罩落下时焦点确在
+  // composer、settle 时焦点空闲才归还；用户已点走绝不抢。
+  useRuntimeTransitionFocusRestore({ runtimeTransitioning, decisionSurfaceActive: Boolean(decisionSurface) });
 
   // Extension form surface (stage 8b2): submit delivers the structured values
   // to the owning sidecar; cancel reports values{"cancelled": true} over the
