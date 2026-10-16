@@ -27,6 +27,32 @@
 
 ---
 
+## v1.38.3-20261017-0646（2026-10-17，批 36 + 37；上游 5ba6eb4b6）
+
+| 域 | 改进 | 上游吸收状态 |
+|---|---|---|
+| 存储 | 存储版本锁定 v3：面板仅 v3 可选（v4/v5 禁用留档位高亮），805 一次性迁移入口保留，带 v4 数据升级用户可见迁移引导（916） | fork 独有 |
+| 稳定性 | 大 prompt 首响应治理：响应头等待期 30s 起发进度提示（header_wait_slow，与 body-prefill 阶段结构性区分）；连续 2 次响应头超时止损（无效循环 20min→10min）+可行动建议（927） | fork 独有 |
+| UI | transcript 流式滚动回弹修复：手势冻结锚回拨+首对齐豁免被陈旧锚穿透两腿修，新增 anchor-stale 诊断 outcome（931） | fork 独有 |
+| 观测 | 概览面板最下方 events 文件大小行（挂实验室-可观测性-监控开关，同源采样零新增 IO）（932） | fork 独有 |
+| 安全 | code-scanning 18 条清零：15× unsafe-quoting 改 strconv.Quote 断链 + 3× cache-poisoning 移除 workflow_dispatch 触发器+提权通道禁共享缓存（935，合入后重扫自动 fixed） | fork 独有 |
+| 工程 | 验收自动化体系一期：结构化验收清单 docs/ACCEPTANCE_CHECKLIST.zh-CN.md + switch-cost 门（切 tab/模型/effort 耗时读数+阈值判定）（909）；依赖批量清偿（go/npm 五 PR+mermaid 12+dbus v5.2.4 Windows 修复） | fork 独有 |
+
+---
+
+## v1.38.3-20261016-2039（2026-10-16，批 34 + 35 + 929/930；上游 f8a09feec）
+
+| 域 | 改进 | 上游吸收状态 |
+|---|---|---|
+| P0 修复 | transcript gate 空 arguments 毒丸三刀：gate 放行归一 {} + 修复器覆盖已执行调用 + 写入侧双层归一——中毒会话装机自动解毒无需修数据（930）；上游同款 #10648/#10693 已由 #10731 归档路线修复，fork 最小修与之互补 | 上游同款已修（#10731 归档路线），fork 走最小修互补 |
+| 稳定性 | 网关 ~304s 确定性 RST 熔断（同 reason 3 连+耗时窗±5s）+观测信号 internal_error 不再压平 premature_eof+prefill 60s 进度提示（929）；canonical 风暴三刀（大小写折叠+容量 8192+TTL 长缓存）+closing_tab per-tab 5s 降级防全进程强杀（928） | fork 独有 |
+| 性能 | 压缩单飞化（压前反升断除：maintaining 门+parkedTurns FIFO）（920）；锁内 IO 剥离（diff DeepEqual 快路径 12.8×+digest 增量 47.2ms→635ns）（923）；events 存量空闲期兜底 rotate（死会话 103.5→45.6MB 回 cap）（921） | fork 独有 |
+| 可靠性 | 886 两机制：inFlight 残留 cancelTurnStart+clearStaleTurnReservation 自愈+579 桥盲区 ctrl 兜底（922）；boot 门 ParseCache+免扫修复（919 PARTIAL，装机后下期周报验证） | fork 独有 |
+| 新能力 | DAG 编排引擎 MVP（internal/workflow 库层：五型节点+strong 门支配性+执行语义全测试）（685）；工作流可视化面板（自绘 SVG+实验开关+fixture 演示）（686） | fork 独有 |
+| 技能 | react-best-practices / feature-boundary-planner / dogfood / desktop-automation（CDP 桌面自动化）四技能（681/682/683） | fork 独有 |
+
+---
+
 ## v1.38.3-20261012-0045（2026-10-12，批 23 + wave2；基线 1600）
 
 | 域 | 改进 | 上游吸收状态 |
