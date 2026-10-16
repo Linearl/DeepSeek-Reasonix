@@ -125,3 +125,26 @@ const (
 const (
 	NoticeCodeSlidingWindowCap = "sliding_window_cap"
 )
+
+// 任务927: the response-header wait is an EARLIER silence phase than 929 S3's
+// prefill watch — the request is out but the gateway has not sent response
+// headers at all (the 2026-10-16 anthropic-endpoint incident sat 300s here
+// with zero events, then burned the same wait up to four times). The two
+// watch phases are structurally exclusive: the prefill watch only arms once
+// headers arrive, so header_wait_slow and prefill_slow can never both name
+// the same stretch of silence.
+const (
+	// NoticeCodeHeaderWaitSlow: still awaiting response headers past the
+	// threshold; repeats carry the elapsed wait in Detail so a multi-minute
+	// wait reads as progress, not a frozen counter.
+	NoticeCodeHeaderWaitSlow = "header_wait_slow"
+	// NoticeCodeHeaderTimeoutRetry: one response-header timeout consumed a
+	// retry; before the next full replay, tell the user this loop re-pays the
+	// whole prefill each round and what to do instead.
+	NoticeCodeHeaderTimeoutRetry = "header_timeout_retry"
+	// NoticeCodeHeaderTimeoutGiveup: consecutive response-header timeouts on
+	// the same request are deterministic (the timeout is OUR client-side
+	// timer, so durations are near-identical by construction) — stop the
+	// loop early instead of burning every remaining attempt.
+	NoticeCodeHeaderTimeoutGiveup = "header_timeout_giveup"
+)

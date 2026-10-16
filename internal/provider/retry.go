@@ -236,6 +236,35 @@ func IsConnReset(err error) bool {
 	return errors.As(err, &netErr)
 }
 
+// responseHeaderTimeoutMarker is the phrase both net/http transports share
+// when the client-side ResponseHeaderTimeout guard fires: HTTP/1.1 reports
+// "net/http: timeout awaiting response headers" and the bundled HTTP/2
+// transport reports "http2: timeout awaiting response headers" — the gateway
+// accepted the request but never sent response headers (task 927: the 2026-10-16
+// anthropic-endpoint incident burned 300s × 4 attempts this way). Shape match,
+// not a closed enumeration (retrybudget rule #2407).
+const responseHeaderTimeoutMarker = "timeout awaiting response headers"
+
+// IsResponseHeaderTimeout reports whether err is the client-side
+// ResponseHeaderTimeout guard firing — the request went out but no response
+// headers arrived before the transport's deadline. A context deadline the
+// CALLER set is not this shape: the caller owns that cancellation and must
+// keep its own semantics, so context.DeadlineExceeded is excluded even though
+// both surface as net.Error timeouts.
+func IsResponseHeaderTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var ne net.Error
+	if !errors.As(err, &ne) || !ne.Timeout() {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), responseHeaderTimeoutMarker)
+}
+
 func backoffDelay(attempt int, retryAfter time.Duration) time.Duration {
 	if retryAfter > 0 {
 		if retryAfter > maxRetryAfter {

@@ -123,6 +123,12 @@ type samplingRecoveryState struct {
 	detReason        string
 	detStreak        int
 	detMin, detMax   time.Duration
+	// 任务927: consecutive RESPONSE-HEADER timeouts on this round's frozen
+	// request. Independent of the 929 S2 streak above — that one tracks
+	// server-sent stream resets (phase=stream); this one tracks the client's
+	// own ResponseHeaderTimeout guard (phase=connect), the 2026-10-16
+	// anthropic-endpoint loop face. Reset by any other failure shape.
+	headerTimeoutStreak int
 }
 
 func (a *Agent) samplingDeadline(ctx context.Context) (context.Context, context.CancelFunc, TaskBudget) {
@@ -366,6 +372,26 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 		}
 	} else {
 		s.resetDeterministicStreamFailure()
+	}
+	// 任务927: response-header timeout loop governance. This failure is OUR
+	// client-side guard (ResponseHeaderTimeout) firing — the gateway accepted
+	// the request and then stayed silent past the window — so every replay
+	// re-pays the full prefill for a request the gateway has already shown it
+	// cannot answer in time (the 2026-10-16 anthropic-endpoint incident: 4 ×
+	// 300s ≈ 20 minutes of zero output). Independent of the 929 S2 streak
+	// above: that one keys on server-sent stream resets (phase=stream); this
+	// one keys on the client's own timeout (phase=connect). One timeout earns
+	// a retry with an advisory; a second consecutive one stops the loop.
+	if provider.IsResponseHeaderTimeout(result.err) {
+		s.headerTimeoutStreak++
+		if s.headerTimeoutStreak >= headerTimeoutStopStreak {
+			return a.stopHeaderTimeoutRetry(s, result, attempt, failure)
+		}
+		// Tell the user the loop is about to burn another full prefill —
+		// with the actionable alternative — before the retry runs.
+		a.emitHeaderTimeoutRetryNotice(attempt)
+	} else {
+		s.headerTimeoutStreak = 0
 	}
 	waiting := attempt >= maxSamplingAttempts && a.canWaitSampling(ctx, s, failure)
 	// Task 242: quota-class failures join the ordinary fast retry loop ONLY

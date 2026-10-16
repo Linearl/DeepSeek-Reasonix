@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"syscall"
@@ -95,6 +96,49 @@ func TestIsConnReset(t *testing.T) {
 	} {
 		if !IsConnReset(err) {
 			t.Errorf("want conn reset for %v", err)
+		}
+	}
+}
+
+// headerTimeoutErr is the production shape of a ResponseHeaderTimeout fire:
+// a net.Error whose message carries the transport phrase (HTTP/1.1 and HTTP/2
+// share it modulo prefix), reachable through RequestFailure → url.Error wraps
+// exactly like SendWithRetry hands the error to the agent.
+type headerTimeoutErr struct{ msg string }
+
+func (e *headerTimeoutErr) Error() string   { return e.msg }
+func (e *headerTimeoutErr) Timeout() bool   { return true }
+func (e *headerTimeoutErr) Temporary() bool { return true }
+
+func TestIsResponseHeaderTimeout(t *testing.T) {
+	if IsResponseHeaderTimeout(nil) {
+		t.Error("nil is not a header timeout")
+	}
+	if IsResponseHeaderTimeout(context.Canceled) {
+		t.Error("caller cancel must not read as a gateway header timeout")
+	}
+	// A deadline the CALLER set carries DeadlineExceeded through the wrap; the
+	// marker may even appear in an outer message — the ctx identity wins.
+	ctxShaped := fmt.Errorf("post request: %w", context.DeadlineExceeded)
+	if IsResponseHeaderTimeout(ctxShaped) {
+		t.Error("caller-set deadline must be excluded")
+	}
+	if IsResponseHeaderTimeout(errors.New("dial tcp: i/o timeout")) {
+		t.Error("a dial timeout is not a header wait")
+	}
+	if IsResponseHeaderTimeout(errors.New("net/http: timeout awaiting response headers")) {
+		t.Error("plain text without a net.Error face must not match: transport guards surface as net.Error")
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"h2 direct", &headerTimeoutErr{msg: "http2: timeout awaiting response headers"}},
+		{"h1 wrapped in url.Error", &url.Error{Op: "Post", URL: "https://gw/anthropic", Err: &headerTimeoutErr{msg: "net/http: timeout awaiting response headers"}}},
+		{"RequestFailure chain", &RequestFailure{Identity: RequestIdentity{Provider: "mimo"}, Operation: "request failed", Err: &url.Error{Op: "Post", URL: "https://gw/anthropic", Err: &headerTimeoutErr{msg: "http2: timeout awaiting response headers"}}}},
+	} {
+		if !IsResponseHeaderTimeout(tc.err) {
+			t.Errorf("%s: want response-header timeout match, got false (%v)", tc.name, tc.err)
 		}
 	}
 }
