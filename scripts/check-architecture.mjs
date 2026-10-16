@@ -14,6 +14,9 @@
 //   node scripts/check-architecture.mjs --changed        增量：改动文件 + 直接反向依赖（一层，不递归）
 //   node scripts/check-architecture.mjs --base <ref>     增量对照基线改为 git ref（默认 HEAD）
 //   node scripts/check-architecture.mjs --context <id>   打印模块受控上下文（改码前先拉）
+//   node scripts/check-architecture.mjs --context <id> --full
+//                                                        bounded context 包：在受控上下文之上追加
+//                                                        模块文件清单 + 跨模块消费方（有界阅读集）
 //   node scripts/check-architecture.mjs --strict         全量审计（忽略基线，不进门禁）
 //   node scripts/check-architecture.mjs --self-test      规则引擎自检（node --test 单测）
 
@@ -468,6 +471,69 @@ export function formatContext(policy, id) {
   return lines.join("\n");
 }
 
+// ── bounded context 包（任务 682）：模块受控上下文 + 有界阅读集 ──
+// 在 formatContext 的模块元信息之外，追加两块实证内容，让「改码前读什么」
+// 有确定答案：①模块内文件清单（Go 按包聚合）②跨模块消费方（谁在 import
+// 本模块——边界变化的同步面）。阅读集天然有界：只含本模块文件与直接消费
+// 方，不含传递闭包。
+const CONTEXT_FILE_CAP = 40;
+
+function capList(items, cap = CONTEXT_FILE_CAP) {
+  if (items.length <= cap) return items.map((s) => `    ${s}`);
+  const head = items.slice(0, cap).map((s) => `    ${s}`);
+  head.push(`    …（共 ${items.length} 个，此处截断）`);
+  return head;
+}
+
+function modContains(mod, rel) {
+  return underRoots(rel, mod.roots ?? []) || matchesAnyPattern(rel, mod.patterns);
+}
+
+export function formatContextPackage(policy, graph, id) {
+  const mod = moduleById(policy, id);
+  if (!mod) return null;
+  const lines = [formatContext(policy, id), ""];
+
+  // ① 模块内文件清单：Go 按包聚合（pkg (N files)），TS 按文件列。
+  const goPkgs = [];
+  for (const [pkg, entry] of graph.go) {
+    if (modContains(mod, pkg)) goPkgs.push(`${pkg}/ (${entry.files.length} files)`);
+  }
+  const tsFiles = [...graph.tsFiles.keys()].filter((rel) => modContains(mod, rel)).sort();
+  const own = [...goPkgs.sort(), ...tsFiles];
+  lines.push(`本模块文件（有界阅读集，${own.length} 项${mod.kind === "go" ? "，Go 为包粒度" : ""}）:`);
+  lines.push(...capList(own));
+
+  // ② 跨模块消费方：外部包/文件直接 import 本模块者——公开面变化时的同步面。
+  const consumers = new Set();
+  for (const [depPkg, importers] of graph.goImporters) {
+    if (!modContains(mod, depPkg)) continue;
+    for (const importer of importers) {
+      if (modContains(mod, importer)) continue;
+      const owner = moduleForPath(importer, policy);
+      consumers.add(`${importer}/ → ${owner?.id ?? "(未注册)"}`);
+    }
+  }
+  for (const [target, importers] of graph.tsImporters) {
+    if (!modContains(mod, target)) continue;
+    for (const importer of importers) {
+      if (modContains(mod, importer)) continue;
+      const owner = moduleForPath(importer, policy);
+      consumers.add(`${importer} → ${owner?.id ?? "(未注册)"}`);
+    }
+  }
+  const consumerList = [...consumers].sort();
+  if (consumerList.length) {
+    lines.push(``);
+    lines.push(`跨模块消费方（公开面变化须同步核对，${consumerList.length} 项）:`);
+    lines.push(...capList(consumerList));
+  } else {
+    lines.push(``);
+    lines.push(`跨模块消费方: 无（外部无人直接 import 本模块）`);
+  }
+  return lines.join("\n");
+}
+
 // ── CLI ─────────────────────────────────────────────────────────
 
 function printFindings(findings) {
@@ -508,7 +574,13 @@ async function main(argv) {
       process.exitCode = 2;
       return;
     }
-    console.log(formatContext(policy, id));
+    if (argv.includes("--full")) {
+      // bounded context 包（任务 682）：全图扫描，追加文件清单与跨模块消费方。
+      const graph = await scanGraph(root);
+      console.log(formatContextPackage(policy, graph, id));
+    } else {
+      console.log(formatContext(policy, id));
+    }
     return;
   }
 
