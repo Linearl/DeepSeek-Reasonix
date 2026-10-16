@@ -547,15 +547,47 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 	// 任务887: contacts covered by a live runtime this pass — the dormant
 	// reverse lookup must never stand up a session the live half already owns.
 	covered := map[string]bool{}
-	for _, t := range p.app.sessionCollabLiveTargets(nil) {
+	targets = append(targets, p.idleTurnTargetViews(p.app.sessionCollabLiveTargets(nil), covered, now)...)
+	// 任务887: 第三态——durable inbox 有排队 follow-up、本进程却没有任何
+	// runtime 的会话（从未打开/重启后不落盘）。反查出的候选注入同一趟
+	// sweepTargets：空闲窗口、579 三振、in-flight 去重、570 回执、709 唤醒
+	// 全部复用；唯一新增是 run 前按需拉起 runtime（wakeDormantRuntime）。
+	targets = append(targets, p.dormantIdleTurnTargets(now, covered)...)
+	p.idleTurns.sweepTargets(targets, now)
+}
+
+// idleTurnTargetViews flattens one sweep pass's live collab targets into sweep
+// views. 任务922（886 机制②）: sessionCollabTargets builds visible-tab targets
+// WITHOUT the ctrl field, so the previous unconditional `t.ctrl == nil`
+// skip made the bridge blind to every visible tab — including an over-limit
+// long session left sitting on one (2026-10-14 新6 现场：reattach 后会话在
+// 可见 tab，桥全程看不见，queued_followup 4 次 drain 空转无人接续；佐证是
+// 生产日志 decision=skip:active_tab 0 条——该分支当时不可达）。Resolve the
+// controller through the tab registry — the same tabByID.Ctrl fallback
+// collabSessionWorkDetail (任务667) already uses — so visible tabs rejoin the
+// 569 设计内的桥可见性（「仅非 active tab 开轮」的边界 2 仍在 sweepTargets
+// 内判定，active tab 照旧不开）。filled marks which contacts received a view
+// (887 dormant reverse lookup must not stand up a session the live half owns).
+func (p *sessionCollabPump) idleTurnTargetViews(live []sessionCollabTarget, filled map[string]bool, now time.Time) []idleTurnTargetView {
+	var views []idleTurnTargetView
+	for _, t := range live {
 		if t.contactID != "" {
-			covered[t.contactID] = true
+			filled[t.contactID] = true
 		}
-		if t.ctrl == nil {
+		ctrl := t.ctrl
+		if ctrl == nil && t.tabID != "" {
+			if tab := p.app.tabByID(t.tabID); tab != nil {
+				ctrl = tab.Ctrl
+			}
+		}
+		if ctrl == nil {
+			// 留痕不再静默：target 快照与 sweep 之间 runtime 消失正是 886
+			// 隐蔽盲区的形状，一行日志让下一次现场可直接读出。
+			log.Printf("[idle-turn-sweep] contact=%s tab=%s skip:no_ctrl_resolvable (target snapshot lost its runtime before the sweep)", t.contactID, t.tabID)
 			continue
 		}
 		view := idleTurnTargetView{contactID: t.contactID, tabID: t.tabID, activeTab: t.activeTab}
-		st := t.ctrl.RuntimeStatus()
+		st := ctrl.RuntimeStatus()
 		view.running = st.Running
 		// 任务796: the raw TurnDone fan-out window and its age. RuntimeStatus.
 		// Running merges running||finishing, so a wedged fan-out is invisible
@@ -564,19 +596,18 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 		if st.FinishingSinceUnix != 0 {
 			view.finishingFor = now.Sub(time.Unix(st.FinishingSinceUnix, 0))
 		}
-		snap := t.ctrl.InboxSnapshot()
+		snap := ctrl.InboxSnapshot()
 		// 任务709: pause provenance — only a user-held pause mutes the bridge;
 		// an automatic pause (restart recovery / reopen backlog) becomes a
 		// wake at open time. paused and autoPaused are mutually exclusive.
 		view.paused = snap.Paused && snap.UserPaused
 		view.autoPaused = snap.Paused && !snap.UserPaused
 		view.resume = func() error {
-			_, err := t.ctrl.ResumeInboxAutoPause()
+			_, err := ctrl.ResumeInboxAutoPause()
 			return err
 		}
 		// 任务796: durable state summary for the sweep observability line.
 		view.itemsSummary = summarizeInboxItems(snap.Items)
-		ctrl := t.ctrl
 		view.heal = func() (bool, time.Duration) {
 			return ctrl.HealStuckFinishing(idleTurnFinishingStuckTimeout)
 		}
@@ -589,7 +620,7 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 				break
 			}
 		}
-		view.run = t.ctrl.RunInboxTurn
+		view.run = ctrl.RunInboxTurn
 		exhausted := p.recordIdleTurnExhausted
 		if t.tabID != "" {
 			// 任务731 S2 (收信后异常态无法开轮的合并线形态): the bridge has
@@ -604,14 +635,9 @@ func (p *sessionCollabPump) sweepIdleInboxTurns(now time.Time) {
 			}
 		}
 		view.exhausted = exhausted
-		targets = append(targets, view)
+		views = append(views, view)
 	}
-	// 任务887: 第三态——durable inbox 有排队 follow-up、本进程却没有任何
-	// runtime 的会话（从未打开/重启后不落盘）。反查出的候选注入同一趟
-	// sweepTargets：空闲窗口、579 三振、in-flight 去重、570 回执、709 唤醒
-	// 全部复用；唯一新增是 run 前按需拉起 runtime（wakeDormantRuntime）。
-	targets = append(targets, p.dormantIdleTurnTargets(now, covered)...)
-	p.idleTurns.sweepTargets(targets, now)
+	return views
 }
 
 // recordIdleTurnExhausted persists the spent opening budget as a 任务570
