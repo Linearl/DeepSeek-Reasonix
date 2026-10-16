@@ -6,8 +6,49 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"time"
 )
+
+// rateLimitMarkers is the OPEN shape matcher for a rate-limit answer
+// (retrybudget rule #2407: classify by shape, never by a closed message
+// enumeration). Gateways report a limit two ways: an HTTP 429 body — caught by
+// the *APIError branch below — or, inside a streaming error frame, a plain
+// wrapped error carrying no status at all ("mimo-token-plan: Request rate
+// limited", openai.go's `fmt.Errorf("%s: %s", name, sr.Error.Message)`).
+// Matching text keeps both faces one class instead of leaving the second one
+// at Phase "unknown"/Retryable=false.
+var rateLimitMarkers = []string{
+	"rate limit", "rate-limit", "rate_limit",
+	"too many requests", "too_many_requests",
+}
+
+// RateLimitText reports whether free-form provider error text carries the
+// rate-limit shape. Exported so the agent's summary and retry-budget
+// classifiers read the same markers as this package's recovery classifier —
+// the three judgments must never disagree about what a rate limit is.
+func RateLimitText(text string) bool {
+	low := strings.ToLower(text)
+	for _, marker := range rateLimitMarkers {
+		if strings.Contains(low, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// RateLimited reports the rate-limit shape of an error: a typed 429 or the
+// text markers above (see RateLimitText).
+func RateLimited(err error) bool {
+	if err == nil {
+		return false
+	}
+	var api *APIError
+	if errors.As(err, &api) && api.Status == 429 {
+		return true
+	}
+	return RateLimitText(err.Error())
+}
 
 type managedRecoveryKey struct{}
 
@@ -77,6 +118,17 @@ func ClassifyRecovery(err error) RecoveryFailure {
 		if api.ShouldRetry == "false" {
 			f.Retryable = false
 		}
+		return f
+	}
+	// 任务912 P0-b: a rate limit that arrives as plain text (streaming error
+	// frame, no HTTP status) used to fall through to Phase "unknown",
+	// Retryable=false — the sampling log's `retryable=false` on
+	// "mimo-token-plan: Request rate limited" killed the turn on its first
+	// response. The shape says "headers, 429": that is the lane the wait/queue
+	// logic and the budget exemption already read, so the typed-429 face and
+	// the text face now behave identically.
+	if RateLimited(err) {
+		f.Phase, f.Status, f.Retryable = "headers", 429, true
 		return f
 	}
 	if IsStreamInterrupted(err) {

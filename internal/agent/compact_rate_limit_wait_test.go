@@ -29,6 +29,16 @@ func shrinkRateLimitWait(t *testing.T) {
 	t.Cleanup(func() { summaryRateLimitWaitDefault = old })
 }
 
+// shrinkSummaryBackoff makes the 任务912 backoff ladder measurable in a test
+// run. The pinned production schedule lives in defaultSummaryBackoffSteps and
+// is asserted separately, so shrinking here cannot hide a schedule change.
+func shrinkSummaryBackoff(t *testing.T) {
+	t.Helper()
+	old := summaryBackoffSteps
+	summaryBackoffSteps = []time.Duration{time.Millisecond, 2 * time.Millisecond, 3 * time.Millisecond}
+	t.Cleanup(func() { summaryBackoffSteps = old })
+}
+
 // Task 330: the rate-limit classifier and wait picker are the two judgment
 // surfaces of the 429 lane - shape recognition (status text vs message) and
 // Retry-After parsing with a default and a cap.
@@ -93,17 +103,27 @@ func TestSummarizeFoldWaitsOutRateLimitAndResumes(t *testing.T) {
 	}
 }
 
-// A persistent limit (both attempts 429) must wait once, then fail through -
-// no unbounded waiting, and the failure line still ships the rate_limited
-// flag for the acceptance readout.
-func TestSummarizeFoldRateLimitGivesUpAfterOneWait(t *testing.T) {
+// A persistent limit must wait ONCE on the dedicated 429 lane (the window
+// itself), then walk the 任务912 backoff ladder (3 steps) and only then fail
+// through — no unbounded waiting, and the failure line still ships the
+// rate_limited flag for the acceptance readout.
+//
+// 任务912: this used to be "wait once, then fail", pinned as
+// TestSummarizeFoldRateLimitGivesUpAfterOneWait. The task's acceptance ①②
+// explicitly replace that give-up with the 30s/2m/5m backoff, so the fixture
+// now carries enough 429s to exhaust the ladder and the assertions moved from
+// "gives up" to "one dedicated wait + three backoff steps, then fails".
+func TestSummarizeFoldRateLimitWalksBackoffThenFails(t *testing.T) {
 	buf := captureSlogForRateLimit(t)
 	shrinkRateLimitWait(t)
+	shrinkSummaryBackoff(t)
 
 	sess := foldableSessionOverForce(3)
 	rl := errors.New("provider returned status 429 rate limit exceeded")
+	// 1 dedicated wait + 3 backoff steps each retry once, so the 5th attempt is
+	// the terminal one.
 	a := agentOverForce(t, &fakeProvider{
-		streamErrs: []error{rl, rl},
+		streamErrs: []error{rl, rl, rl, rl, rl},
 	}, sess)
 
 	_, _, err := a.summarizeFold(context.Background(), CompactionTriggerPressure,
@@ -113,7 +133,10 @@ func TestSummarizeFoldRateLimitGivesUpAfterOneWait(t *testing.T) {
 	}
 	out := buf.String()
 	if got := strings.Count(out, "summary rate limited — waiting to resume"); got != 1 {
-		t.Fatalf("waiting lines = %d, want exactly 1 (one wait, no loop); slog:%s", got, out)
+		t.Fatalf("waiting lines = %d, want exactly 1 (one dedicated wait, no loop); slog:%s", got, out)
+	}
+	if got := strings.Count(out, "summary request backing off before retry"); got != 3 {
+		t.Fatalf("backoff lines = %d, want exactly 3 (the full ladder); slog:%s", got, out)
 	}
 	if !strings.Contains(out, "summary request failed") {
 		t.Fatalf("no terminal failure line; slog:%s", out)

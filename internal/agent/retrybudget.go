@@ -4,6 +4,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reasonix/internal/provider"
 )
 
 // Task 243 A4 (sub-report 02-④C, MiMo #2407/#2450 borrowed as rules):
@@ -86,6 +88,12 @@ func classifyRetryKind(errText string) ErrKind {
 		if strings.Contains(low, marker) {
 			return KindNetwork
 		}
+	}
+	// 任务912 P0-b: a status-less rate limit ("Request rate limited") classified
+	// KindUnknown and therefore spent the 8/15min storm budget — task 845 made
+	// 429 a queue that is budget-exempt, and the text face is the same shape.
+	if provider.RateLimitText(low) {
+		return KindRateLimit
 	}
 	return KindUnknown
 }

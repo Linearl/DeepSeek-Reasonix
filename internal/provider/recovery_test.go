@@ -81,3 +81,39 @@ func TestWriteEvidenceNeverEntersModelMessages(t *testing.T) {
 		t.Fatal("unknown version lost")
 	}
 }
+
+// 任务912 P0-b: a rate limit that arrives as plain streaming-error text carries
+// no HTTP status, so it used to fall through to Phase "unknown" with
+// Retryable=false — the sampling log's `retryable=false` on
+// "mimo-token-plan: Request rate limited" killed the turn on attempt 1. The
+// text face must classify exactly like a typed 429.
+func TestClassifyRecoveryTextRateLimitIsRetryableHeaders(t *testing.T) {
+	for _, msg := range []string{
+		"mimo-token-plan: Request rate limited",
+		"mimo-api: too_many_requests, slow down",
+		"gateway: Rate-Limit exceeded for this minute",
+	} {
+		f := ClassifyRecovery(errors.New(msg))
+		if f.Phase != "headers" || f.Status != 429 || !f.Retryable {
+			t.Fatalf("ClassifyRecovery(%q) = phase %q status %d retryable %t, want headers/429/retryable",
+				msg, f.Phase, f.Status, f.Retryable)
+		}
+	}
+	// A typed status still wins: a 429 APIError stays retryable, and a non-429
+	// status is never re-labelled as a rate limit even if the body mentions one.
+	f := ClassifyRecovery(&APIError{Status: 429, Body: `{"error":{"message":"Too Many Requests"}}`})
+	if f.Phase != "headers" || f.Status != 429 || !f.Retryable {
+		t.Fatalf("typed 429 = phase %q status %d retryable %t, want headers/429/retryable", f.Phase, f.Status, f.Retryable)
+	}
+	f = ClassifyRecovery(&APIError{Status: 400, Body: `{"error":{"message":"prompt had a rate limit note"}}`})
+	if f.Retryable || f.Status == 429 {
+		t.Fatalf("typed 400 re-labelled as rate limit: status %d retryable %t", f.Status, f.Retryable)
+	}
+	// Transport errors must not be swallowed by the new markers.
+	if got := ClassifyRecovery(errors.New("stream error: connection reset by peer")); got.Phase == "headers" {
+		t.Fatalf("transport error classified as rate limit: %+v", got)
+	}
+	if RateLimited(nil) {
+		t.Fatal("nil must not read as rate limited")
+	}
+}
