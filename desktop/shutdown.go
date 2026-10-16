@@ -20,6 +20,39 @@ import (
 // below that 90s: 20s leaves the launcher a full minute of margin.
 var shutdownWatchdogTimeout = 20 * time.Second
 
+// shutdownTabCloseTimeout bounds ONE tab's teardown (final snapshot + close)
+// during shutdown (task 928 ⑤). Before it existed, a single tab wedged in
+// SnapshotForShutdown — the 2026-10-16 incidents were session saves stalling
+// under the canonical-walk/disk-pressure storm — held the whole teardown
+// chain until the global watchdog fired and force-killed the process: every
+// other tab lost its shutdown snapshot, the exit logged as abnormal, and the
+// launcher restarted the app under the user mid-send ("发信无反应"). Now the
+// per-tab step is bounded: past this budget the tab is abandoned (its
+// snapshot goroutine keeps running detached — the process exits shortly
+// after, so the leak dies with it), the lease is still released, and the
+// remaining tabs get their normal teardown. The global
+// shutdownWatchdogTimeout stays as the backstop for wedges outside this loop
+// (runtime locks, shared hosts) and for many wedged tabs whose combined
+// budgets still exceed it.
+var shutdownTabCloseTimeout = 5 * time.Second
+
+// shutdownStepBounded runs step on its own goroutine and reports whether it
+// finished within budget. On timeout the step keeps running detached — used
+// only on the shutdown path, where the process exits shortly after.
+func shutdownStepBounded(budget time.Duration, step func()) bool {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		step()
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(budget):
+		return false
+	}
+}
+
 // shutdownExit lets the watchdog's force-exit be observed in tests without
 // killing the test binary.
 var shutdownExit = os.Exit
@@ -186,12 +219,23 @@ func (a *App) shutdownBody() {
 		// hitting a 117MB full save — mark per tab so the watchdog's phase
 		// names exactly which tab teardown blocked.
 		a.lifecycle.tracker.mark("closing_tab:" + it.tab.ID)
-		if !it.readOnly {
-			if err := it.ctrl.SnapshotForShutdown(); err != nil {
-				slog.Warn("desktop: shutdown snapshot failed", "tab", it.tab.ID, "err", err)
+		// 任务 928 ⑤: per-tab budget. A wedged tab used to trip the global
+		// watchdog and force-kill the whole process mid-teardown (复发 3 例：
+		// 用户发信无反应的根因之一). Now it is abandoned instead: the lease
+		// still releases below, the other tabs still close normally, and the
+		// global watchdog remains the backstop for anything outside this step.
+		closed := shutdownStepBounded(shutdownTabCloseTimeout, func() {
+			if !it.readOnly {
+				if err := it.ctrl.SnapshotForShutdown(); err != nil {
+					slog.Warn("desktop: shutdown snapshot failed", "tab", it.tab.ID, "err", err)
+				}
 			}
+			it.ctrl.Close()
+		})
+		if !closed {
+			slog.Error("desktop: shutdown tab teardown timed out; abandoning tab",
+				"tab", it.tab.ID, "timeout", shutdownTabCloseTimeout)
 		}
-		it.ctrl.Close()
 		if !a.returnTakeoverLeaseForShutdown(it.tab) {
 			it.tab.releaseSessionLease()
 		}

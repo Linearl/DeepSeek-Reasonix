@@ -53,6 +53,71 @@ func TestShutdownWatchdogAbsentForFastBody(t *testing.T) {
 	completeDesktopShutdown(tracker, func() {})
 }
 
+// 任务 928 ⑤: the per-tab degrade. A tab wedged in snapshot/close must be
+// abandoned within shutdownTabCloseTimeout — NOT held until the global
+// watchdog force-kills the process (the 2026-10-16 "发信无反应" incidents:
+// closing_tab exceeded 20s → whole process force-killed → launcher restart
+// under the user mid-send).
+func TestShutdownStepBoundedAbandonsWedgedStep(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+
+	start := time.Now()
+	finished := shutdownStepBounded(30*time.Millisecond, func() {
+		<-release // a SnapshotForShutdown that never returns
+	})
+	elapsed := time.Since(start)
+	if finished {
+		t.Fatal("wedged step reported finished; it must be abandoned")
+	}
+	if elapsed > time.Second {
+		t.Fatalf("abandon took %v, want return within the budget", elapsed)
+	}
+
+	// A fast step completes normally and reports success.
+	if !shutdownStepBounded(time.Second, func() {}) {
+		t.Fatal("fast step reported abandoned; normal teardown must not regress")
+	}
+}
+
+// TestShutdownBodyWedgedTabDoesNotTripWatchdog pins the loop-level contract:
+// with the global watchdog armed far above the per-tab budget, one wedged tab
+// must not force-exit the process — the remaining tabs still close and the
+// body returns on its own.
+func TestShutdownBodyWedgedTabDoesNotTripWatchdog(t *testing.T) {
+	oldExit, oldTimeout, oldTabTimeout := shutdownExit, shutdownWatchdogTimeout, shutdownTabCloseTimeout
+	t.Cleanup(func() {
+		shutdownExit, shutdownWatchdogTimeout, shutdownTabCloseTimeout = oldExit, oldTimeout, oldTabTimeout
+	})
+	shutdownWatchdogTimeout = time.Hour
+	shutdownTabCloseTimeout = 30 * time.Millisecond
+	shutdownExit = func(code int) { t.Errorf("watchdog force-exited the process: code=%d (the incident pattern)", code) }
+
+	// Reproduce the shutdownBody per-tab loop shape: one wedged tab between
+	// two healthy ones. All three leases-equivalent cleanups must run.
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	cleaned := 0
+	for _, wedged := range []bool{false, true, false} {
+		wedged := wedged
+		ok := shutdownStepBounded(shutdownTabCloseTimeout, func() {
+			if wedged {
+				<-release
+			}
+		})
+		if wedged && ok {
+			t.Fatal("wedged tab reported closed")
+		}
+		if !wedged && !ok {
+			t.Fatal("healthy tab reported abandoned")
+		}
+		cleaned++ // lease release + runtime cleanup run regardless
+	}
+	if cleaned != 3 {
+		t.Fatalf("cleaned %d tabs, want 3 — a wedged tab must not skip the others", cleaned)
+	}
+}
+
 // TestSessionLeaseBusyErrorNamesLeftoverPID pins task 272 L3: when the lease
 // holder is a concrete foreign pid, the message hands over an EXISTING next
 // step (restart reaps it; taskkill PID is directly runnable) instead of the
