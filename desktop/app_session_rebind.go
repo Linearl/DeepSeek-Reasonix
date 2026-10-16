@@ -145,6 +145,11 @@ func (a *App) rebindViaDetachedReattach(tab *WorkspaceTab, sessionPath string, s
 	if oldSink != nil {
 		oldSink.setBinding("", nil)
 		oldSink.clearContext()
+		// 任务922（886 机制①）: the idle source's controller closes below and
+		// will never emit TurnDone again — release any lingering turn
+		// reservation in the rebind window instead of leaving permanent
+		// residue on the retired sink.
+		oldSink.cancelTurnStart()
 	}
 	if oldCtrl != nil {
 		oldCtrl.Close()
@@ -320,6 +325,10 @@ func (a *App) commitSessionRebind(tab *WorkspaceTab, source tabRuntimeSnapshot, 
 		if oldSink != nil {
 			oldSink.setBinding("", nil)
 			oldSink.clearContext()
+			// 任务922（886 机制①）: same rebind-window reservation release as
+			// the reattach teardown — the closed controller below never emits
+			// TurnDone, so a held inFlight here would be permanent residue.
+			oldSink.cancelTurnStart()
 		}
 		if oldCtrl != nil {
 			oldCtrl.Close()
@@ -403,6 +412,13 @@ func (a *App) reattachDetachedSessionRuntimeForRebind(
 	attachedEpoch := a.runtimeEpochForTabLocked(tab)
 	a.mu.Unlock()
 
+	// 任务922（886 机制① 接续协议）: a detached runtime reattached to a visible
+	// tab can carry a stranded turn reservation whose TurnDone was lost in an
+	// earlier rebind/epoch window (超限/异常轮的在飞消息形态). The reservation
+	// would make every later Submit/dispatch on this tab fail ErrTurnRunning
+	// forever — clear it while the controller is provably idle so the durable
+	// queue head becomes claimable again.
+	clearStaleTurnReservation(attachedCtrl, attachedSink, tab.ID)
 	a.replayPendingPromptsAfterRuntimeAttach(tab.ID, attachedSink, attachedCtrl, attachedEpoch)
 	return oldCtrl, oldSink, oldLease, oldHostKey, true
 }
