@@ -71,3 +71,10 @@ ParseCache 让每次扫盘变快（372→120ms），但热路径（assembly hit�
 
 **72h 复测（boot 行）**：FAIL P95=34945ms（n=51）vs 基线 45011ms——读数来自修复前运行中的旧构建；两轮代码修复（ParseCache+免扫）需装机后下一期周报验证。长尾主因=夜间批量窗整机争用（config P95=22.6s/controller P95=17.1s 同窗齐涨，非单一代码热点）——达标路径=装机复测 + 争用窗观测。
 
+### ② open-topic 门：当前窗已 PASS（交叉引用 928 不重复修）
+
+72h 复测 **PASS P95=1997ms**（n=12，贴线；基线 168h FAIL P95=4021ms）。慢开归因（hydrate 分相 + history slice 分相实证）：
+- 前端 e2e 慢样本=hydrate history 主导（如 e2e=2047ms 中 hydrate=1997ms、ancillary 仅 49ms）；
+- 后端 history slice 慢点=`page-todo`（todoArgs 两遍全 transcript 重放，P95=644ms Max=1672ms，4-entry cache 之上仍有冷 miss）+ `page-convert`（P95=729ms）+ `planner-turns`（P95=368ms）；
+- 慢开分钟 canonical probe 319/min vs 总体 274/min——**928 canonical 风暴为放大器**（同域：923 锁内 IO、889 已治）。本门不另立修复，交叉引用 928；贴线 PASS，第 2 期周报复核。
+
