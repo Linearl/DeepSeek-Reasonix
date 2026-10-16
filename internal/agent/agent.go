@@ -2362,8 +2362,16 @@ func (a *Agent) stream(ctx context.Context, turn int, sink event.Sink) streamedT
 }
 
 func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink, frozen *samplingRequest, attemptID string) streamedTurn {
+	// The header-retry notification is routed through a channel instead of
+	// emitting inline (任务927): SendWithRetry runs on the request-start
+	// goroutine now, and Sink.Emit is serial-call-only — the select loop
+	// below drains this channel and emits from the run loop.
+	retryNotice := make(chan provider.RetryInfo, 4)
 	ctx = provider.WithRetryNotify(ctx, func(info provider.RetryInfo) {
-		sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: info.Attempt, RetryMax: info.Max, RetryScope: event.RetryScopeHeaders})
+		select {
+		case retryNotice <- info:
+		case <-ctx.Done():
+		}
 	})
 	// Reuse a parent attempt counter when present so stream retries accumulate
 	// into one RequestCount; otherwise install a fresh counter for this call.
@@ -2390,16 +2398,53 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	}
 	// Host stream cancels on generation drain (OpenAI/Anthropic HTTP reads).
 	defer trackPublishedHostStream(ctx, cancel)()
-	// 任务929 S3: first-token watch. The timer starts the moment the request
-	// goes out — a slow response-header wait counts too — and the first
-	// provider chunk cancels it, because any chunk means prefill is over.
-	// Until then a multi-minute silence and a hang are indistinguishable on
-	// screen (the 2026-10-16 incident sat 18.5 minutes this way; issue #59).
-	// Emission stays in this select: Sink.Emit is serial-call-only, so no
-	// goroutine may touch it.
-	prefillTimer := time.NewTimer(prefillNoticeAfter)
-	prefillNotice := (<-chan time.Time)(prefillTimer.C)
+	// 任务927: the request start itself can block for the whole
+	// ResponseHeaderTimeout (300s) waiting for response headers — before this
+	// change it ran inline above the select, so NOTHING could be emitted
+	// during the wait (the 2026-10-16 anthropic-endpoint incident sat 5+
+	// minutes this way). Run it on its own goroutine; the buffered channel
+	// (cap 1) lets that goroutine finish and exit even if this loop has
+	// already returned, so goleak stays clean.
+	type streamStart struct {
+		ch  <-chan provider.Chunk
+		err error
+	}
+	start := make(chan streamStart, 1)
+	requestSentAt := time.Now()
+	go func() {
+		ch, err := a.streamProviderRequest(ctx, dest, req)
+		start <- streamStart{ch: ch, err: err}
+	}()
+
+	// 任务927 phase 1 watch: request out, response headers not yet back.
+	// Fires header_wait_slow after headerWaitNoticeAfter, then re-arms at the
+	// repeat cadence while the wait continues; disarmed the moment headers
+	// arrive. Emission stays in this select: Sink.Emit is serial-call-only,
+	// so no goroutine may touch it.
+	headerTimer := time.NewTimer(headerWaitNoticeAfter)
+	headerNotice := (<-chan time.Time)(headerTimer.C)
+	stopHeader := func() {
+		if headerTimer.Stop() {
+			return
+		}
+		select {
+		case <-headerTimer.C:
+		default:
+		}
+	}
+	defer stopHeader()
+
+	// 任务929 S3 phase 2 watch (re-phased by 任务927): first-token watch for
+	// the BODY prefill, armed only once response headers arrive — so
+	// header_wait_slow (phase 1) and prefill_slow (phase 2) are structurally
+	// exclusive and can never name the same stretch of silence. The first
+	// provider chunk disarms it, because any chunk means prefill is over.
+	var prefillTimer *time.Timer
+	var prefillNotice (<-chan time.Time)
 	stopPrefill := func() {
+		if prefillTimer == nil {
+			return
+		}
 		if prefillTimer.Stop() {
 			return
 		}
@@ -2409,10 +2454,10 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 		}
 	}
 	defer stopPrefill()
-	ch, err := a.streamProviderRequest(ctx, dest, req)
-	if err != nil {
-		return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: err}
-	}
+
+	// nil until response headers arrive: a receive on a nil channel blocks
+	// forever, so the chunk case simply never fires during phase 1.
+	var ch <-chan provider.Chunk
 
 	// A PostLLMCall hook rewrites the whole reasoning block, so when one is wired
 	// up we buffer reasoning silently and emit the transformed text once after the
@@ -2469,6 +2514,35 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			usage = bestEffortStreamUsage(usage, text.Len(), reasoning.Len(), "interrupted")
 			usage = provider.UsageWithRequestAttemptCount(ctx, usage)
 			return collect(stored, ctx.Err())
+		case s := <-start:
+			// 任务927: response headers arrived (or the start failed) —
+			// phase 1 is over either way. Hand the silence watch over to
+			// the 929 S3 body-prefill watch, or surface the start error
+			// exactly as the old inline call did.
+			start = nil
+			stopHeader()
+			headerNotice = nil
+			if s.err != nil {
+				return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: s.err}
+			}
+			ch = s.ch
+			prefillTimer = time.NewTimer(prefillNoticeAfter)
+			prefillNotice = prefillTimer.C
+			continue
+		case <-headerNotice:
+			// 任务927: still awaiting response headers — name the silence
+			// with the elapsed wait, then re-arm at the repeat cadence. The
+			// start case above disarms this before prefill_slow can speak,
+			// so the two phases never overlap.
+			a.emitHeaderWaitSlowNotice(sink, time.Since(requestSentAt))
+			headerTimer.Reset(headerWaitNoticeRepeat)
+			continue
+		case info := <-retryNotice:
+			// The header-retry notification, delivered from the start
+			// goroutine via WithRetryNotify and emitted here so Sink.Emit
+			// stays on the run loop (任务927 re-route).
+			sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: info.Attempt, RetryMax: info.Max, RetryScope: event.RetryScopeHeaders})
+			continue
 		case <-prefillNotice:
 			// 任务929 S3: no provider output for prefillNoticeAfter — say what
 			// the silence is (once per turn; see emitPrefillSlowNotice) and
