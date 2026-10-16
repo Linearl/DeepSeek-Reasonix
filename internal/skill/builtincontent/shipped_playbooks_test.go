@@ -33,6 +33,7 @@ func TestShippedPlaybooksAreEmbedded(t *testing.T) {
 		"ll-iteration-review",
 		"ll-zcode-collaboration",
 		"ll-update",
+		"desktop-automation",
 	} {
 		sk, ok := byName[want]
 		if !ok {
