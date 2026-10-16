@@ -36,7 +36,13 @@ const (
 	defaultOpenTopicMaxMS      = 2000 // 363 追加验收⑥：打开历史对话→可发消息 <2s
 	defaultRenderMaxMS         = 150  // tab_timing.go slowTabSwitchLogMs（任务 196 判定线）
 	defaultFirstResponseMaxSec = 60   // 370：无数值验收，取遥测分桶 s_15_60 上沿（可配）
-	defaultWindow              = 72 * time.Hour
+	// 任务 909：切换快路径门。task 602 的验收是「跨供应商热切 <2s」（端到端、
+	// 测试内构造）；日志里的 elapsed_ms 是同一路径的现场读数（含锁等与
+	// tabs 持久化）。门取 1500ms：快路径本体是毫秒级 override，够不到
+	// 1500ms 说明有东西掉进慢 IO/重建——比 602 的 2s 留 500ms 余量，
+	// 避免高负载机器抖动误报。
+	defaultSwitchFastMaxMS = 1500
+	defaultWindow          = 72 * time.Hour
 )
 
 type options struct {
@@ -49,6 +55,7 @@ type options struct {
 	bootHotMaxMS        int64
 	openTopicMaxMS      int64
 	renderMaxMS         int64
+	switchFastMaxMS     int64 // 任务 909：切换快路径（模型/effort）P95 门
 	firstResponseMaxSec float64
 	jsonOut             string
 	warnPatterns        string  // 阶段 4：WARN 巡检模式（逗号分隔子串；空=关闭）
@@ -88,11 +95,12 @@ func main() {
 	flag.StringVar(&o.logDir, "log-dir", "", "desktop.log 所在目录（默认 <home>/logs/desktop）")
 	flag.StringVar(&o.sessionsDir, "sessions-dir", "", "turn ledger 目录（默认 <home>/sessions + <home>/projects/*/sessions）")
 	flag.DurationVar(&o.window, "window", defaultWindow, "统计窗口（只读窗口内样本）")
-	flag.StringVar(&o.bench, "bench", "all", "boot|open-topic|tab-switch|first-response|warn-patrol|all")
+	flag.StringVar(&o.bench, "bench", "all", "boot|open-topic|tab-switch|switch-cost|first-response|warn-patrol|all")
 	flag.Int64Var(&o.bootHotBudgetMS, "boot-hot-budget-ms", defaultBootHotBudgetMS, "热路径分类的重组相合计预算")
 	flag.Int64Var(&o.bootHotMaxMS, "boot-hot-max-ms", defaultBootHotMaxMS, "热路径 boot total 阈值（363①）")
 	flag.Int64Var(&o.openTopicMaxMS, "open-topic-max-ms", defaultOpenTopicMaxMS, "打开历史对话端到端阈值（363⑥）")
 	flag.Int64Var(&o.renderMaxMS, "render-max-ms", defaultRenderMaxMS, "切 tab 渲染阈值（196 慢线）")
+	flag.Int64Var(&o.switchFastMaxMS, "switch-fast-max-ms", defaultSwitchFastMaxMS, "切换模型/effort 快路径 P95 阈值（909）")
 	flag.Float64Var(&o.firstResponseMaxSec, "first-response-max-s", defaultFirstResponseMaxSec, "首响 P95 阈值秒数（370，可配）")
 	flag.StringVar(&o.jsonOut, "json", "", "把读数写成 JSON 文件（阶段 4 聚合的入口）")
 	flag.StringVar(&o.warnPatterns, "warn-patterns", defaultWarnPatterns, "WARN 巡检模式（逗号分隔，msg+detail 子串；空=关闭巡检）")
@@ -111,10 +119,10 @@ func main() {
 	want := map[string]bool{}
 	if o.bench != "all" {
 		switch o.bench {
-		case "boot", "open-topic", "tab-switch", "first-response", "warn-patrol":
+		case "boot", "open-topic", "tab-switch", "switch-cost", "first-response", "warn-patrol":
 			want[o.bench] = true
 		default:
-			fmt.Fprintf(os.Stderr, "未知 -bench %q（可选 boot|open-topic|tab-switch|first-response|warn-patrol|all）\n", o.bench)
+			fmt.Fprintf(os.Stderr, "未知 -bench %q（可选 boot|open-topic|tab-switch|switch-cost|first-response|warn-patrol|all）\n", o.bench)
 			os.Exit(2)
 		}
 	}
@@ -141,6 +149,9 @@ func main() {
 	}
 	if len(want) == 0 || want["tab-switch"] {
 		results = append(results, benchTabSwitch(col, o)...)
+	}
+	if len(want) == 0 || want["switch-cost"] {
+		results = append(results, benchSwitchCost(col, o)...)
 	}
 	if len(want) == 0 || want["first-response"] {
 		results = append(results, benchFirstResponse(o, now)...)
@@ -310,6 +321,73 @@ func benchTabSwitch(col *logCollect, o options) []metricResult {
 	return out
 }
 
+// benchSwitchCost：任务 909（验收自动化一期）——切换模型/effort 耗时门。
+//
+// 快路径读数来自 switch 自己落的 elapsed_ms 行（model 侧 909 补齐、effort
+// 侧 task 148 已有）：P95 ≤ -switch-fast-max-ms。fallback 计数行只报告
+// 不设门——走重建本身不是错误（persona 边界/无控制器都属预期），但它是
+// 快路径失效的早期信号，与 P95 恶化常同行。effort 读取慢行是截断样本
+// （≥150ms 才落行），与 tab-switch 普查同语义单列。
+func benchSwitchCost(col *logCollect, o options) []metricResult {
+	na := "窗口内无该路径样本（未发生切换，或装机版本早于读数打点：model 侧 elapsed_ms 随 909 出包、effort 侧随 task 148）"
+	out := []metricResult{
+		latencyResult("switch-cost", "切换模型耗时（fast path elapsed_ms）",
+			fmt.Sprintf("P95 < %dms", o.switchFastMaxMS),
+			"task 602 验收（跨供应商热切 <2s）+ task 909 读数接线",
+			samplesMS(col.ModelSwitchFast), float64(o.switchFastMaxMS),
+			verdictNA, na),
+		latencyResult("switch-cost", "切换 effort 耗时（fast path elapsed_ms）",
+			fmt.Sprintf("P95 < %dms", o.switchFastMaxMS),
+			"task 334/148 验收（快路径不重建）+ task 909 门化",
+			samplesMS(col.EffortSwitchFast), float64(o.switchFastMaxMS),
+			verdictNA, na),
+	}
+	for i := range out {
+		if out[i].N > 0 {
+			out[i] = gated(out[i], out[i].P95MS, float64(o.switchFastMaxMS))
+		}
+	}
+	fallbackNote := func() string {
+		if col.ModelSwitchFallbk+col.EffortSwitchFallb == 0 {
+			return "窗口内无 fallback 重建"
+		}
+		return fmt.Sprintf("model fallback %d 次 / effort fallback %d 次（重建=秒级路径；persona 边界与无控制器属预期，占比升高需归因）",
+			col.ModelSwitchFallbk, col.EffortSwitchFallb)
+	}
+	out = append(out, metricResult{
+		Bench: "switch-cost", Metric: "切换落重建 fallback（计数）",
+		Source:    "desktop.log「desktop: model switch path=fallback-*」+「desktop: runtime build end trigger=set-effort」",
+		Threshold: "—（观测计数；重建本身不是错误）",
+		Ref:       "task 909（快路径失效早期信号）",
+		N:         col.ModelSwitchFallbk + col.EffortSwitchFallb, Verdict: verdictObserve,
+		Note: fallbackNote(),
+	})
+	if len(col.EffortReadSlow) > 0 {
+		vals := samplesMS(col.EffortReadSlow)
+		sort.Slice(vals, func(i, j int) bool { return vals[i] < vals[j] })
+		out = append(out, metricResult{
+			Bench: "switch-cost", Metric: "effort 读取 ≥150ms 慢读（census，截断样本）",
+			Source:    "desktop.log「desktop: effort read breakdown」（effortBreakdownLogMs=150 才落行）",
+			Threshold: "—（观测计数；639/889 无数值验收，越线才落日志故条数本身即信号）",
+			Ref:       "task 639/889（读取分段取证）+ task 909 观测接线",
+			N:         len(vals), Verdict: verdictObserve,
+			P50MS: float64(percentileInt64(vals, 0.50)),
+			P95MS: float64(percentileInt64(vals, 0.95)),
+			MaxMS: float64(vals[len(vals)-1]),
+			Note:  fmt.Sprintf("%d 条慢读（截断样本单列，不并入 P95 门）；条数升高=切换附带读取劣化", len(vals)),
+		})
+	} else {
+		out = append(out, metricResult{
+			Bench: "switch-cost", Metric: "effort 读取 ≥150ms 慢读（census，截断样本）",
+			Source:    "desktop.log「desktop: effort read breakdown」（effortBreakdownLogMs=150 才落行）",
+			Threshold: "—（观测计数；639/889 无数值验收）",
+			Ref:       "task 639/889（读取分段取证）+ task 909 观测接线",
+			N:         0, Verdict: verdictPass, Note: "窗口内无慢读记录",
+		})
+	}
+	return out
+}
+
 // benchFirstResponse：M5 发消息→首响，P95 ≤ 阈值（370 未定数值验收，
 // 默认取遥测分桶 s_15_60 上沿 60s，可配）。数据源为 sessions/*.turns.jsonl
 // turn ledger（370/doctor 同款口径），不是 events 的 turn_begin 标记。
@@ -430,6 +508,8 @@ func logSourceOf(bench string) string {
 		return "desktop.log「open-topic summary」+「open-topic:ancillary effort」+「open session slow」"
 	case "tab-switch":
 		return "desktop.log「desktop: frontend tab switch render」"
+	case "switch-cost":
+		return "desktop.log「desktop: model switch」+「desktop: effort switch」的 elapsed_ms"
 	case "first-response":
 		return fmt.Sprintf("sessions/*%s turn_started→首个模型输出（370/doctor 同款口径）", store.SessionTurnEventLogSuffix)
 	}

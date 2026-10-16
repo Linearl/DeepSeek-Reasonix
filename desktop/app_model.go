@@ -298,7 +298,7 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 		return err
 	}
 	timing.Config = time.Since(stageStarted)
-	if handled, err := a.tryModelSessionOverride(tab, tabID, switchRef, switchSnap, switchEntry); err != nil {
+	if handled, err := a.tryModelSessionOverride(tab, tabID, switchRef, switchSnap, switchEntry, totalStarted); err != nil {
 		return err
 	} else if handled {
 		return nil
@@ -386,15 +386,19 @@ func (a *App) SetModelForTab(tabID, name string) (retErr error) {
 // override on the running controller, so the next request carries the new model with no runtime rebuild. Task 602 lifts the same-provider restriction: every destination-scoped surface (protocol shaping, wire, pricing, window scalars, controller identity) follows the override, so cross-provider targets take this path too. An active turn is no longer a rejection reason — the in-flight request stays frozen and the override lands from the next request freeze — while the build+swap path below keeps its active-work guard for everything that declines here (no controller, persona-boundary crossings, recovery-forked sessions).
 // tryModelSessionOverride performs the override attempt described above and
 // reports whether the switch was handled without a rebuild. Callers hold
-// runtimeRebuildMu and tab.turnStartMu.
-func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string, switchSnap tabRuntimeSnapshot, switchEntry *config.ProviderEntry) (bool, error) {
+// runtimeRebuildMu and tab.turnStartMu. switchStarted is the entry clock of
+// SetModelForTab (before the rebuild locks) so the fast-path elapsed_ms on
+// the log line measures what the user's click actually waited — the same
+// seam task 148 already wired for the effort fast path (task 909: the model
+// side had no comparable reading, so "切换模型快不快" was unmeasurable).
+func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string, switchSnap tabRuntimeSnapshot, switchEntry *config.ProviderEntry, switchStarted time.Time) (bool, error) {
 	// Alias-folded same-model short circuit: the raw check above runs before
 	// resolution; tab.model holds the canonical ref the tab currently runs.
 	a.mu.RLock()
 	sameModel := switchRef == tab.model
 	a.mu.RUnlock()
 	if sameModel {
-		slog.Info("desktop: model switch", "tab", tabID, "path", "fast-same-model", "model", switchRef) // task 148: same-model exits before arming anything.
+		slog.Info("desktop: model switch", "tab", tabID, "path", "fast-same-model", "model", switchRef, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 148: same-model exits before arming anything.
 		return true, nil
 	}
 	if ctrl := a.controllerForTab(tab); ctrl != nil {
@@ -428,7 +432,7 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 					// A model switch changes the pricing context; discard the
 					// session-local automatic wallet hint, same as the rebuild path.
 					tab.clearRuntimeDisplayCurrency()
-					slog.Info("desktop: model switch", "tab", tabID, "path", "fast-per-request", "model", switchRef) // task 148/602: fast path observability (paired against runtime build end path=fallback).
+					slog.Info("desktop: model switch", "tab", tabID, "path", "fast-per-request", "model", switchRef, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 148/602: fast path observability (paired against runtime build end path=fallback); elapsed_ms: task 909.
 					return true, nil
 				}
 			}

@@ -1,0 +1,47 @@
+[
+  {
+    "bench": "switch-cost",
+    "metric": "切换模型耗时（fast path elapsed_ms）",
+    "source": "desktop.log「desktop: model switch」+「desktop: effort switch」的 elapsed_ms",
+    "threshold": "P95 \u003c 1500ms",
+    "ref": "task 602 验收（跨供应商热切 \u003c2s）+ task 909 读数接线",
+    "n": 0,
+    "verdict": "N/A",
+    "note": "窗口内无该路径样本（未发生切换，或装机版本早于读数打点：model 侧 elapsed_ms 随 909 出包、effort 侧随 task 148）"
+  },
+  {
+    "bench": "switch-cost",
+    "metric": "切换 effort 耗时（fast path elapsed_ms）",
+    "source": "desktop.log「desktop: model switch」+「desktop: effort switch」的 elapsed_ms",
+    "threshold": "P95 \u003c 1500ms",
+    "ref": "task 334/148 验收（快路径不重建）+ task 909 门化",
+    "n": 1,
+    "p50_ms": 4,
+    "p95_ms": 4,
+    "max_ms": 4,
+    "verdict": "PASS"
+  },
+  {
+    "bench": "switch-cost",
+    "metric": "切换落重建 fallback（计数）",
+    "source": "desktop.log「desktop: model switch path=fallback-*」+「desktop: runtime build end trigger=set-effort」",
+    "threshold": "—（观测计数；重建本身不是错误）",
+    "ref": "task 909（快路径失效早期信号）",
+    "n": 0,
+    "verdict": "OBSERVE",
+    "note": "窗口内无 fallback 重建"
+  },
+  {
+    "bench": "switch-cost",
+    "metric": "effort 读取 ≥150ms 慢读（census，截断样本）",
+    "source": "desktop.log「desktop: effort read breakdown」（effortBreakdownLogMs=150 才落行）",
+    "threshold": "—（观测计数；639/889 无数值验收，越线才落日志故条数本身即信号）",
+    "ref": "task 639/889（读取分段取证）+ task 909 观测接线",
+    "n": 169,
+    "p50_ms": 386,
+    "p95_ms": 1638,
+    "max_ms": 5838,
+    "verdict": "OBSERVE",
+    "note": "169 条慢读（截断样本单列，不并入 P95 门）；条数升高=切换附带读取劣化"
+  }
+]
