@@ -16,10 +16,10 @@ func TestInstallToUserDirWritesShippedPlaybooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallToUserDir: %v", err)
 	}
-	if len(res.Installed) != 12 {
-		t.Fatalf("installed = %v, want twelve playbooks", res.Installed)
+	if len(res.Installed) != 15 {
+		t.Fatalf("installed = %v, want fifteen playbooks", res.Installed)
 	}
-	for _, name := range []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-dev", "ll-iteration-audit-fix", "ll-iteration-review", "ll-zcode-collaboration", "ll-fork-guide", "ll-update"} {
+	for _, name := range []string{"deep-research", "data-analytics", "memory-search", "collect_issues", "ll-iteration-intake", "ll-iteration-plan", "ll-iteration-dev", "ll-iteration-audit-fix", "ll-iteration-review", "ll-zcode-collaboration", "ll-fork-guide", "ll-update", "react-best-practices", "feature-boundary-planner", "dogfood"} {
 		path := filepath.Join(dir, name, "SKILL.md")
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -49,8 +49,8 @@ func TestInstallToUserDirWritesShippedPlaybooks(t *testing.T) {
 	if len(res2.Installed) != 0 {
 		t.Fatalf("second pass should install nothing, got %v", res2.Installed)
 	}
-	if len(res2.Skipped) != 12 {
-		t.Fatalf("second pass skipped = %v, want all twelve", res2.Skipped)
+	if len(res2.Skipped) != 15 {
+		t.Fatalf("second pass skipped = %v, want all fifteen", res2.Skipped)
 	}
 	// Task 708: sidecar files (templates/scripts/references) must materialize
 	// with the skill — a SKILL.md-only copy ships broken references.
@@ -60,6 +60,18 @@ func TestInstallToUserDirWritesShippedPlaybooks(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "ll-update", "scripts", "switch-version.sh")); err != nil {
 		t.Fatalf("ll-update switch-version.sh not materialized: %v", err)
+	}
+	// Task 681: the three migrated zcode skills ship reference/template/rules
+	// subtrees; a SKILL.md-only copy would break their cross-references.
+	for _, sidecarPath := range []string{
+		filepath.Join(dir, "react-best-practices", "rules", "async-parallel.md"),
+		filepath.Join(dir, "feature-boundary-planner", "references", "reasonix-feature-graph.yaml"),
+		filepath.Join(dir, "dogfood", "templates", "dogfood-report-template.md"),
+		filepath.Join(dir, "dogfood", "references", "issue-taxonomy.md"),
+	} {
+		if _, err := os.Stat(sidecarPath); err != nil {
+			t.Fatalf("sidecar not materialized: %v", err)
+		}
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "deep-research", "SKILL.md"))
 	if !strings.Contains(string(raw), "Customized.") {
