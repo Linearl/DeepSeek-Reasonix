@@ -70,6 +70,13 @@ type logCollect struct {
 	SwitchRender    []sample // frontend tab switch render
 	FirstFrame      []sample // frontend transcript first frame
 	BackendCensus   []censusRow
+	// 任务 909（验收自动化一期）：切换耗时三读数。
+	ModelSwitchFast   []sample // desktop: model switch（fast-same-model/fast-per-request，elapsed_ms）
+	ModelSwitchFallbk int      // desktop: model switch path=fallback-* 条数（走重建=非快路径）
+	EffortSwitchFast  []sample // desktop: effort switch（fast-same-level/fast-per-request，elapsed_ms）
+	EffortSwitchFallb int      // desktop: runtime build end trigger=set-effort 条数（快路径双双拒收）
+	EffortReadSlow    []sample // desktop: effort read breakdown（≥150ms 才落行，截断样本普查）
+
 	Warns           []warnLine // 窗口内命中巡检模式的 level=WARN 行（阶段 4 巡检池）
 	WarnTruncated   bool       // 巡检池达上限丢过行：判定期 FAIL 显式化，绝不静默
 	warnPatterns    []string   // 采集期过滤模式（= -warn-patterns，collectLogDir 注入）
@@ -209,6 +216,38 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 		if ms, ok := parseMs(d["firstFrame"]); ok {
 			c.FirstFrame = append(c.FirstFrame,
 				sample{At: ln.ts, Tab: d["tab"], MS: ms, Kind: "firstFrame"})
+		}
+	// 任务 909：切换模型/effort 耗时。快路径行带 elapsed_ms（model 侧
+	// 909 补齐，effort 侧 task 148 已有）；fallback 行不带读数，只计条数
+	// （走重建路径的占比本身是体验信号：重建=秒级，快路径=毫秒级）。
+	case "desktop: model switch":
+		path := ln.attrs["path"]
+		if strings.HasPrefix(path, "fallback") {
+			c.ModelSwitchFallbk++
+			return
+		}
+		if ms, ok := parseMs(ln.attrs["elapsed_ms"]); ok {
+			c.ModelSwitchFast = append(c.ModelSwitchFast,
+				sample{At: ln.ts, Tab: ln.attrs["tab"], MS: ms, Kind: path})
+		}
+	case "desktop: effort switch":
+		path := ln.attrs["path"]
+		if ms, ok := parseMs(ln.attrs["elapsed_ms"]); ok {
+			c.EffortSwitchFast = append(c.EffortSwitchFast,
+				sample{At: ln.ts, Tab: ln.attrs["tab"], MS: ms, Kind: path})
+		}
+	case "desktop: runtime build end":
+		// effort 快路径双双拒收后落 rebuild；trigger=set-effort 的 end 行
+		// 是 fallback 的读数面（model 侧 fallback 由上面 path=fallback-* 计数）。
+		if ln.attrs["trigger"] == "set-effort" {
+			c.EffortSwitchFallb++
+		}
+	case "desktop: effort read breakdown":
+		// 截断样本（total_ms ≥150 才落行，effortBreakdownLogMs）：每条=一次
+		// 越线读取，与 tab-switch 普查同语义——只计条数与读数，不做 P95 门。
+		if ms, ok := parseMs(ln.attrs["total_ms"]); ok {
+			c.EffortReadSlow = append(c.EffortReadSlow,
+				sample{At: ln.ts, Tab: ln.attrs["tab"], MS: ms, Kind: ln.attrs["stage"]})
 		}
 	}
 }

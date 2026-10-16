@@ -7,7 +7,7 @@ PASS/FAIL/N/A/OBSERVE。任一门越线以**退出码 1** 结束，可直接挂�
 
 ```bash
 go run ./benchmarks/experience                      # 默认窗口 72h，全部 5 项
-go run ./benchmarks/experience -bench open-topic    # boot|open-topic|tab-switch|first-response|warn-patrol
+go run ./benchmarks/experience -bench open-topic    # boot|open-topic|tab-switch|switch-cost|first-response|warn-patrol
 go run ./benchmarks/experience -window 240h -json out.json
 go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json   # 阶段 4：周趋势（慢化浮出）
 ```
@@ -29,11 +29,15 @@ go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json  
 | M7 | transcript 首帧 / switch-tab summary（`tab-switch`，OBSERVE） | 无 | tasklist 无数值验收 | `frontend transcript first frame`、`frontend switch-tab summary` |
 | M8 | 后端 stage 越线普查（`tab-switch`，OBSERVE） | 普通 stage 150ms / switch-out 50ms（越线才落行） | 任务 196 | `desktop: tab switch timing` 按 stage 归并计数 |
 | M9 | WARN 巡检（`warn-patrol`） | 每模式 ≤0 条（`-warn-max-count` 可配） | 任务 414 阶段 4（heartbeat WARN 巡检；默认模式 = 任务书点名 `slow switch stage`=196 慢线面、`cold cache compact failed`=压缩失败面） | 窗口内 `level=WARN` 且命中 `-warn-patterns` 的行（**采集期按模式过滤入池**；池截断追加显式 FAIL 行，绝不静默假 PASS） |
+| M10 | 切换模型耗时（`switch-cost`） | P95 < 1500ms（`-switch-fast-max-ms` 可配） | 任务 909（读数接线）；锚 task 602 验收「跨供应商热切 <2s」留 500ms 余量 | `desktop: model switch` 快路径行的 `elapsed_ms`（fast-same-model / fast-per-request 分桶；**打点随 909 出包**，老日志无此字段=无样本 N/A） |
+| M11 | 切换 effort 耗时（`switch-cost`） | P95 < 1500ms（同上门） | 任务 909 门化；锚 task 334/148「快路径不重建」 | `desktop: effort switch` 的 `elapsed_ms`（fast-same-level / fast-per-request；task 148 起有读数） |
+| M12 | 切换落重建 fallback（`switch-cost`，OBSERVE 计数） | 无（占比升高需归因） | 任务 909（快路径失效早期信号） | `desktop: model switch path=fallback-*` 计数 + `desktop: runtime build end trigger=set-effort` 计数 |
+| M13 | effort 读取 ≥150ms 慢读（`switch-cost`，OBSERVE census） | 无（越线才落行，条数本身即信号） | 任务 639/889（读取分段取证） | `desktop: effort read breakdown` 的 `total_ms`（`effortBreakdownLogMs=150` 截断样本，单列不并入 P95 门） |
 
 阈值均可 CLI 覆盖：`-boot-hot-max-ms`、`-open-topic-max-ms`、
-`-render-max-ms`、`-first-response-max-s`、`-boot-hot-budget-ms`、
-`-warn-patterns`（巡检模式）、`-warn-max-count`（巡检门）、
-`-trend-worse-pct`（趋势慢化线）。`boot > Ns` 类告警即 M1 门
+`-render-max-ms`、`-switch-fast-max-ms`、`-first-response-max-s`、
+`-boot-hot-budget-ms`、`-warn-patterns`（巡检模式）、`-warn-max-count`
+（巡检门）、`-trend-worse-pct`（趋势慢化线）。`boot > Ns` 类告警即 M1 门
 （`-boot-hot-max-ms`），不重复实现。
 
 ## 口径与已知边界
