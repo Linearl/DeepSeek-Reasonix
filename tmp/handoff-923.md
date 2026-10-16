@@ -1,10 +1,53 @@
 # 任务 923 交接（wt-923）—— 锁内 IO 剥离专项：Session.save 锁内全量重放/写盘 移出或批写
 
-生成：2026-10-16 | 分支 wt-923（基 main-v2-stable tip f8a09feec，已含 885 锁有界化 / 884 marshal 出锁 / 889 监测）| 状态：分析+切片落地中
+生成：2026-10-16 | 分支 wt-923（基 main-v2-stable tip f8a09feec，已含 885 锁有界化 / 884 marshal 出锁 / 889 监测）| 状态：**已完成**（两切片落地+全量回归，待用户指定会话合并）
 
 ## 一句话结论
 
-（落地后回填）
+save 锁内两个 O(全量) CPU 大头出锁：**diff 全前缀双份 marshal 加 DeepEqual 快路径（实测 68.5ms→5.3ms，12.8 倍）**、**transcript digest 增量化（全量 47.2ms→增量读 635ns）**——4000msg 合成会话每次版本变化的 save 锁内 CPU 从 ~116ms 降到 ~6ms；两者全部 fail-open 回退、摘要/分类字节语义 bit 级不变。checkpoint 全量重写（187ms）与 display index 全量重建（323ms）仍留锁内——语义改动大（stale-window/代序论证），已给量级表留另立项。
+
+## Commit 列表
+
+1. `0f79020eb` handoff：同域件读数对齐 + 锁内段落地图 + 五候选量级利弊取舍
+2. `e41d95549` 切片C：messagesEqualForStorage DeepEqual 快路径 + 对照实现穷举等价测试 4 个 + 分段量级 benchmark
+3. `c559a8bd1` 切片B：增量 transcript digest（Add/AddBatch 漏斗喂流、save 三重一致即取、失配回退全量+重播种）+ 12 个正确性测试
+
+## 验收对照
+
+| 验收 | 结论 | 证据 |
+|---|---|---|
+| ① 并发写读数下降 | ✅（实测段级） | 4000msg 锁内 CPU：diff 68.5→5.3ms（12.8x）、digest 47.2ms→635ns；`BenchmarkT923LockSegment*` 可复跑；885 的 `save phases locked_total_ms` 观测点在装机后可直接对比（旧口径 023554 会话 4482~8321ms 中 digest+diff 约占 100~150ms/次——是「每周期都付」的常项；重 IO 的 rewrite/index 段仍留锁内，见残留） |
+| ② 885/196 观测点不回归 | ✅ | 885 四测试（同键排队链/有界失败/跨会话不互等/双会话不拖累）+ 710 成本形状（append<full/2、redundant≈0）+ DAG stale-prefix 全绿；`save phases`/`dag state for save` 打点未动 |
+| ③ 老会话数据兼容（往返） | ✅ | TestT923IncrementalDigestLongMixedWorkload 末段：30 轮混合负载（append/rewrite/checkpoint 交错）后 Save→LoadSession，往返 digest 相等；增量摘要与全量重算 bit 级一致断言贯穿全部测试 |
+| ④ 与 885/884/889 既有测试全绿 | ✅（1 预存红申报） | `internal/agent` 全量 628s：仅 `TestInterruptedRecoveryKeepsRedactedFailureSummary` 红——**基线 f8a09feec 临时 worktree 单跑同样红**（已实证后删），预存红与 923 无交集；`internal/control` 全量 ok（495s）；根模块 `go build ./...` + desktop 模块 `go build ./...` 均过 |
+
+## 锁内段落量级表（4000msg 合成会话，实测；外推 6434msg 现场按线性标注）
+
+| 段 | 每次版本变化 save 的锁内成本 | 923 后 |
+|---|---|---|
+| DAG diff（全前缀分类） | 68.5ms | **5.3ms**（DeepEqual 快路径） |
+| transcript digest | 51.5ms（47.2 复跑） | **635ns**（增量流）；首存/rewrite 后首次仍付全量并重播种 |
+| checkpoint 全量重写（非 pureAppend） | 187ms | 未动（D 候选，另立项） |
+| display index 全量重建（非 append） | 323ms | 未动（E 候选，另立项） |
+| dagStateForSave 重放 | 命中 graph cache 时 O(新增)（196 已治） | 未动 |
+
+## 残留 + 风险面
+
+1. **D（checkpoint 后台批写）/ E（display index 出锁）未做**：单次成本最高（187/323ms）但语义改动大——.jsonl 从「锁内与 log 同代」变「滞后代」需 stale-window 观测先行；display index 移锁外需逐写者代序论证。量级与利弊已录候选节，建议另立项、先补「read model 与 log 代差现网频率」观测。
+2. **增量 digest 正确性契约**：依赖「所有改序列化字节的变更点必 bump version/rewriteVersion」。923 已审计全部原地修改点（session.go/protocol_recovery/tool_recovery/write_recovery/tool_result_checkpoint/save_dag ID 回写）；**未来新增原地内容修改若漏 bump，会静默错摘要**——契约已写进 save_digest_incremental_923.go 文件头与 Session 字段注释；漏网场景被 count/version/rewriteVersion 三重 guard 拦截为「回退全量」而非错值（guard 只有在变更点完全绕过 version 体系时才会失效）。
+3. Add 内 `expireProtocolRecoveryLocked` 是 rewrite 形变更（bump rewriteVersion），在捕获 pre 值之前执行——捕获点特意放在其后，expire 触发时流会正确失效（测试 AddDecisionReceipt/ConsumeFinalReadinessRecovery 分支覆盖）。
+4. 首存、Rewrite 后首次 save、跨进程恢复后的首次 save 仍付一次全量 digest（并重播种）——预期行为，非常态成本。
+5. schema-1 的 classify 全量 loadSessionUnlocked（885 申报残留）保持锁内原位：只在 drift/无 authority 触发（writer-bound 快路径覆盖日常），挪锁外有 TOCTOU 风险，收益/风险比不划算——已在候选 A 节论证。
+6. 本机 -race 不可用（无 gcc，CGO 需 C 编译器，889 已申报同环境限制）；增量流全部状态在 s.mu 下读写。
+
+## 中断恢复 / 复跑
+
+```bash
+cd github-repo/worktrees/wt-923
+go test ./internal/agent/ -run "TestT923|TestCrossSessionSavesDoNotShareLockKey|TestSameSessionSaveWaitChainBounded|TestBlockingSavePathWaitBounded|TestConcurrentSessionSavesBothBounded|TestSyntheticLargeSessionSaveCostShape" -count=1
+go test ./internal/agent/ -run XXX -bench BenchmarkT923LockSegment -benchtime 3x   # 量级表复跑
+go test ./internal/agent/ ./internal/control/ -count=1 -timeout 20m               # 包级（1 预存红见上）
+```
 
 ## 同域既有件读数对齐（885 / 196 / 889，勿重复）
 
