@@ -93,6 +93,9 @@ type ActiveTransaction = {
   listeners?: Set<() => void>;
   transaction: ScrollTransaction;
   anchor: LogicalAnchor;
+  /** Task 931: passive corrections (the streaming anchor-restore path) face
+   * the drift gate on their FIRST alignment too; explicit intents do not. */
+  passive: boolean;
   correctionRevision: number;
   retryUsed: boolean;
   timeout: ReturnType<typeof setTimeout>;
@@ -101,7 +104,7 @@ type ActiveTransaction = {
 type DeferredStructuralTransaction = {
   generation: number;
   kind: "restore" | "prepend" | "display-change" | "composer-resize";
-  anchor: LogicalAnchor;
+  passive: boolean;
 };
 
 const TRANSACTION_TTL_MS = 1_000;
@@ -167,6 +170,12 @@ export class TranscriptKernel {
   // top it had at that moment. Same key + a large top delta at correction
   // time = the anchored block drifted and the stale restore must be refused.
   private alignedAnchor: { key: string; top: number } | null = null;
+  // Task 931 (AC8 corner): the block anchor restored by replaceSurface. Its
+  // FIRST correction stays exempt from the drift gate even when a later
+  // passive restore carries it (the explicit restore may have expired while
+  // the block was still unmeasurable). Consumed by the first viewport-present
+  // correction for that key, or superseded by real user displacement.
+  private surfaceRestoreKey: string | null = null;
 
   constructor(options: { clock?: TranscriptKernelClock; emit?: (event: TranscriptKernelEvent) => void } = {}) {
     this.clock = options.clock ?? defaultClock();
@@ -195,6 +204,7 @@ export class TranscriptKernel {
     this.cancelActive("surface-detached");
     this.deferredStructural = null;
     this.alignedAnchor = null;
+    this.surfaceRestoreKey = null;
     if (this.tailFrame !== null) this.clock.cancelAnimationFrame(this.tailFrame);
     this.tailFrame = null;
     this.generationValue += 1;
@@ -221,6 +231,11 @@ export class TranscriptKernel {
     this.alignedAnchor = null;
     this.anchorValue = this.anchors.get(session) ?? { kind: "tail" };
     this.intentValue = this.anchorValue.kind === "tail" ? "tail" : "reader";
+    // Task 931 (AC8): record the restored block key so its first correction
+    // keeps the pre-931 exemption even when it rides a passive restore (the
+    // explicit restore transaction may have expired while the block was still
+    // unmeasurable). Real displacement supersedes it.
+    this.surfaceRestoreKey = this.anchorValue.kind === "block" ? this.anchorValue.blockKey : null;
     return { generation: this.generationValue, anchor: this.anchorValue };
   }
 
@@ -251,6 +266,9 @@ export class TranscriptKernel {
     this.intentValue = atBottom ? "tail" : "reader";
     this.anchorValue = this.intentValue === "tail" ? { kind: "tail" } : this.capture(snapshot);
     this.anchors.set(this.session, this.anchorValue);
+    // Task 931: real displacement supersedes any pending surface-restore
+    // exemption — the reader has moved, the restored key is no longer special.
+    this.surfaceRestoreKey = null;
     return true;
   }
 
@@ -284,7 +302,13 @@ export class TranscriptKernel {
     const deferred = this.deferredStructural;
     this.deferredStructural = null;
     let resumed: ScrollTransaction | null = null;
-    if (deferred && deferred.generation === this.generationValue) resumed = this.begin(deferred.kind, deferred.anchor);
+    // Task 931: resume with the CURRENT anchor, not the one frozen at defer
+    // time. The user may have kept scrolling through this gesture
+    // (observeNativeScroll already advanced anchorValue past the defer point);
+    // re-applying the frozen anchor here used to revert the logical anchor and
+    // hand the next correction a stale target — a teleport back to where the
+    // gesture started instead of where the reader actually is.
+    if (deferred && deferred.generation === this.generationValue) resumed = this.begin(deferred.kind, this.anchorValue, { passive: deferred.passive });
     // Task 267: tail-sync requests arriving during the gesture were dropped
     // outright (only structural kinds defer), and nothing ever retried them.
     // With the gate open and the view still owning the tail, re-arm the
@@ -319,10 +343,10 @@ export class TranscriptKernel {
     return () => { cancelled = true; this.clock.cancelAnimationFrame(handle); };
   }
 
-  begin(kind: ScrollTransactionKind, anchor = this.anchorValue): ScrollTransaction | null {
+  begin(kind: ScrollTransactionKind, anchor = this.anchorValue, options?: { passive?: boolean }): ScrollTransaction | null {
     if (this.userGesture && kind !== "selection") {
       if (kind === "restore" || kind === "prepend" || kind === "display-change" || kind === "composer-resize") {
-        this.deferredStructural = { generation: this.generationValue, kind, anchor };
+        this.deferredStructural = { generation: this.generationValue, kind, passive: options?.passive === true };
       }
       return null;
     }
@@ -337,7 +361,7 @@ export class TranscriptKernel {
       status: "active",
     };
     const timeout = this.clock.setTimeout(() => this.finish(transaction.id, "expired", "deadline"), TRANSACTION_TTL_MS);
-    this.active = { transaction, anchor, correctionRevision: -1, retryUsed: false, timeout };
+    this.active = { transaction, anchor, passive: options?.passive === true, correctionRevision: -1, retryUsed: false, timeout };
     this.anchorValue = anchor;
     this.intentValue = anchor.kind === "tail" ? "tail" : "reader";
     this.anchors.set(this.session, anchor);
@@ -392,10 +416,27 @@ export class TranscriptKernel {
     // kernel last aligned it, re-applying the anchor is a teleport back to a
     // message the reader left long ago ("jumps to my message, never follows
     // the bottom"). Refuse the restore, re-anchor to the block the reader is
-    // actually looking at, and keep the current pixels. A first alignment
-    // (no alignedAnchor / different key - fresh capture, explicit jump,
-    // surface restore) is always legitimate and stays exempt.
-    if (viewport && this.alignedAnchor && this.alignedAnchor.key === active.anchor.blockKey) {
+    // actually looking at, and keep the current pixels.
+    //
+    // Task 931: the same teleport rides the FIRST alignment when the anchor is
+    // stale — 753's exemption covered fresh captures / explicit jumps / surface
+    // restores, but a passive streaming restore can carry an anchor that was
+    // never aligned against this viewport (native momentum walked the viewport
+    // past the gesture lease, or a gesture-deferred structural resume reverted
+    // the logical anchor). The gate now also covers passive corrections on
+    // their first alignment; explicit intents keep the exemption unchanged:
+    // jump (user navigation), prepend (position compensation may legitimately
+    // move far), and non-passive restores (explicit jump/surface restore keep
+    // pre-931 first-alignment semantics byte-for-byte). The surface-restore
+    // key (AC8) additionally exempts the restored block's first correction.
+    const sameAnchorAligned = this.alignedAnchor?.key === active.anchor.blockKey;
+    const surfaceRestoreFirst = active.anchor.kind === "block" && this.surfaceRestoreKey === active.anchor.blockKey;
+    if (surfaceRestoreFirst && viewport) this.surfaceRestoreKey = null;
+    const passiveFirstAlignment = active.passive
+      && !surfaceRestoreFirst
+      && active.transaction.kind !== "jump"
+      && active.transaction.kind !== "prepend";
+    if (viewport && (sameAnchorAligned || passiveFirstAlignment)) {
       const target = top + active.anchor.offsetPx;
       if (Math.abs(target - viewport.scrollTop) > Math.max(ANCHOR_DRIFT_MIN_PX, viewport.clientHeight)) {
         const first = viewport.visibleBlocks.find((block) => block.bottom > viewport.scrollTop + 0.5);
@@ -405,7 +446,7 @@ export class TranscriptKernel {
           this.anchorValue = replacement;
           this.anchors.set(this.session, replacement);
         }
-        this.finish(transaction.id, "cancelled", "anchor-drift");
+        this.finish(transaction.id, "cancelled", sameAnchorAligned ? "anchor-drift" : "anchor-stale");
         return false;
       }
     }
