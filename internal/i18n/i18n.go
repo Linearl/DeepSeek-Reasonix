@@ -67,7 +67,18 @@ type Messages struct {
 	ProviderDeterministicReject string
 	// PrefillSlowNoticeFmt (任务929 S3): the first-token watch fired; %d =
 	// estimated prompt tokens so the wait is attributed to context size.
-	PrefillSlowNoticeFmt        string
+	PrefillSlowNoticeFmt string
+	// HeaderWaitSlowNoticeFmt (任务927): response-header watch fired — the
+	// request is out but no headers arrived; %d = estimated prompt tokens,
+	// %d = seconds already waited (repeats stay informative, not a frozen line).
+	HeaderWaitSlowNoticeFmt string
+	// HeaderTimeoutRetryFmt (任务927): a response-header timeout consumed one
+	// retry; %d = attempt number, %d = max attempts. Actionable advice before
+	// the next full-prefill replay.
+	HeaderTimeoutRetryFmt string
+	// HeaderTimeoutGiveupFmt (任务927): consecutive header timeouts proved the
+	// gateway deterministic — loop stopped early; %d = attempts burned.
+	HeaderTimeoutGiveupFmt      string
 	ToolOutputTruncatedFmt      string // %d = elided bytes, %d = original bytes
 	IncompleteReadFinishBlocked string
 	ReadContinuationRequired    string
