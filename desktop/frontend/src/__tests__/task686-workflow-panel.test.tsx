@@ -18,11 +18,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   WORKFLOW_FIXTURE_DAG,
-  insertWorkflowPanelEntry,
   layoutWorkflowDag,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "../lib/workflowDag";
+import { insertWorkflowPanelEntry } from "../lib/workflowPanelEntry";
 import {
   applyWorkflowEvent,
   createWorkflowRunStore,

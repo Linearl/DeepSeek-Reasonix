@@ -48,9 +48,10 @@ import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./li
 import { buildSubagentDirectory, subagentsTabLabel } from "./lib/subagentDirectory";
 import { insertSessionWallEntry } from "./lib/sessionWall";
 // 任务 686: 工作流可视化面板的 palette 插条（flag 关=原数组逐字节不变）。
-import { insertWorkflowPanelEntry } from "./lib/workflowDag";
+// 单独轻量模块：workflowDag 的 fixture/布局只随面板懒加载 chunk 走，不进
+// initial 面（首版实测炸 initial 线的教训）。
+import { insertWorkflowPanelEntry } from "./lib/workflowPanelEntry";
 import { WorkflowPanelBoundary } from "./components/WorkflowPanelBoundary";
-import { useWorkflowRunStore } from "./app-runtime/useWorkflowRunStore";
 import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
@@ -908,10 +909,10 @@ export default function App() {
   useEffect(() => { setSurfaceViewTab(activeTabId ?? ""); }, [activeTabId]);
   const surfaceView = useSurfaceView();
   const [sessionWallOpen, setSessionWallOpen] = useState(false);
-  // 任务 686: 工作流可视化面板的开关态 + 运行态 store（685 引擎未落地，
-  // store 以 fixture DAG 为底；事件源可插拔——真实源落地后接 wire 事件）。
+  // 任务 686: 工作流可视化面板的开关态（运行态 store 内收在面板里——面板
+  // 本身是懒加载 chunk，fixture 数据不进 initial 面；685 真事件源落地后
+  // 经面板的 store prop 注入）。
   const [workflowPanelOpen, setWorkflowPanelOpen] = useState(false);
-  const workflowRunStore = useWorkflowRunStore();
   // Task 399: in-session Ctrl+F find. Owned here (not per Transcript) so one
   // global shortcut can't double-fire in split view; pulse re-selects the
   // query when the chord repeats while the bar is already open.
@@ -6538,13 +6539,13 @@ export default function App() {
       )}
 
       {/* 任务 686: 工作流可视化面板——lab 门控（默认关 → 从不挂载、chunk 不
-          加载）+ 懒加载 + 本地边界（渲染期异常只带走面板）。 */}
+          加载）+ 懒加载 + 本地边界（渲染期异常只带走面板）。运行态 store
+          内收在面板内（fixture 底）；685 真源接入时再传 store prop。 */}
       {workflowPanelOpen && (
         <Suspense fallback={null}>
           <WorkflowPanelBoundary>
             <WorkflowPanel
               open={workflowPanelOpen}
-              store={workflowRunStore}
               onClose={() => {
                 reportFrontendLog("workflowPanel", "closed", "esc/backdrop/button");
                 setWorkflowPanelOpen(false);

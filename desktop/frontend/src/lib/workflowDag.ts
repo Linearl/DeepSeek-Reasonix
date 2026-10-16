@@ -222,23 +222,6 @@ export function layoutWorkflowDag(dag: WorkflowDag): WorkflowDagLayout {
   return { width, height, nodes: placements, edges };
 }
 
-/** 命令面板插条（sessionWall 的 insertSessionWallEntry 同款语义）：
- * flag 关 = 原数组逐字节不变（返回同一引用）。 */
-export function insertWorkflowPanelEntry<T extends { id: string }>(cmds: T[], enabled: boolean, entry: T): T[] {
-  if (!enabled) return cmds;
-  const at = cmds.findIndex((c) => c.id === "cmd-session-wall");
-  if (at >= 0) {
-    const out = cmds.slice();
-    out.splice(at + 1, 0, entry);
-    return out;
-  }
-  const reload = cmds.findIndex((c) => c.id === "cmd-reload-runtime");
-  if (reload < 0) return [...cmds, entry];
-  const out = cmds.slice();
-  out.splice(reload + 1, 0, entry);
-  return out;
-}
-
 /** 685 示例编排的前端 fixture（扇出 → 汇聚 → 门控循环 → 确认 → 报告）。
  * 同时承担两重角色：① 运行前全图预览的演示数据；② 布局/渲染测试的固定输入。 */
 export const WORKFLOW_FIXTURE_DAG: WorkflowDag = {

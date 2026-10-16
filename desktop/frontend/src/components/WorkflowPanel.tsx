@@ -19,6 +19,7 @@ import { useMountTransition } from "../lib/useMountTransition";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { layoutWorkflowDag, WORKFLOW_FIXTURE_DAG, WORKFLOW_NODE_HEIGHT, WORKFLOW_NODE_WIDTH, type WorkflowDag, type WorkflowDagNode } from "../lib/workflowDag";
 import {
+  createWorkflowRunStore,
   playFixtureRun,
   workflowRunProgress,
   type WorkflowNodeState,
@@ -105,18 +106,23 @@ export function WorkflowPanel({
   open,
   onClose,
   dag = WORKFLOW_FIXTURE_DAG,
-  store,
+  store: storeProp,
 }: {
   open: boolean;
   onClose: () => void;
   dag?: WorkflowDag;
-  store: WorkflowRunStore;
+  /** 外部运行态源（685 真事件接入点）。缺省=面板自持 fixture store。 */
+  store?: WorkflowRunStore;
 }) {
   const t = useT();
   const { mounted, status } = useMountTransition(open, 200);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const stopDemoRef = useRef<(() => void) | null>(null);
   const [demoPlaying, setDemoPlaying] = useState(false);
+  // store 内收：无外部源时自持一份（fixture DAG 底）。store 本体与 fixture
+  // 数据只随本懒加载 chunk 加载，不进 initial 面（686 首版实测教训）。
+  const [selfStore] = useState(() => (storeProp ? null : createWorkflowRunStore(dag)));
+  const store = storeProp ?? selfStore!;
 
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const layout = useMemo(() => layoutWorkflowDag(dag), [dag]);
