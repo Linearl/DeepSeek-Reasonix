@@ -6,6 +6,21 @@ import (
 	"strings"
 )
 
+// validGateArguments reports whether a tool call's argument payload satisfies
+// the gate's JSON-object contract. Empty and whitespace-only arguments are
+// accepted as the legal no-argument form (equivalent to "{}"): all-optional
+// tools such as wait legitimately emit arguments:"" (task 930), and rejecting
+// them made the whole request unsendable — a permanent poison pill once the
+// call had already executed. The stored bytes are never rewritten here;
+// outbound normalization happens in RepairRejectedArguments.
+func validGateArguments(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return true
+	}
+	var args map[string]json.RawMessage
+	return json.Unmarshal([]byte(raw), &args) == nil && args != nil
+}
+
 // ValidateTranscript validates a request view without changing history or
 // inventing tool results. IDs are scoped to one assistant batch.
 func ValidateTranscript(msgs []Message) error {
@@ -21,8 +36,7 @@ func ValidateTranscript(msgs []Message) error {
 			if _, exists := pending[c.ID]; exists {
 				return fmt.Errorf("transcript gate: duplicate call ID at message %d", i)
 			}
-			var args map[string]json.RawMessage
-			if json.Unmarshal([]byte(c.Arguments), &args) != nil || args == nil {
+			if !validGateArguments(c.Arguments) {
 				return fmt.Errorf("transcript gate: tool arguments must be a JSON object at message %d", i)
 			}
 			pending[c.ID] = c.Name
@@ -47,8 +61,7 @@ func ValidateModelTranscript(msgs []Message) error {
 	view := ModelMessages(msgs)
 	for i, m := range view {
 		for _, c := range m.ToolCalls {
-			var args map[string]json.RawMessage
-			if json.Unmarshal([]byte(c.Arguments), &args) != nil || args == nil {
+			if !validGateArguments(c.Arguments) {
 				return fmt.Errorf("transcript gate: tool arguments must be a JSON object at message %d", i)
 			}
 		}

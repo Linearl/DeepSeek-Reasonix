@@ -28,6 +28,11 @@ func TestValidateTranscriptValidPairingPreservesBytes(t *testing.T) {
 			{Role: RoleUser, Content: "again"},
 			transcriptGateCall("same", `{"path":"another"}`), transcriptGateResult("same"),
 		},
+		// 任务 930: all-optional tools (wait) legally emit arguments:"";
+		// the gate accepts it as the no-argument form instead of
+		// rejecting the whole request forever.
+		"no-argument call empty string":    {transcriptGateCall("a", ``), transcriptGateResult("a")},
+		"no-argument call whitespace only": {transcriptGateCall("a", " \t\n "), transcriptGateResult("a")},
 	}
 	for name, msgs := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -59,7 +64,9 @@ func TestValidateTranscriptRejectsMalformedToolHistory(t *testing.T) {
 		"duplicate parallel id":      {{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "a", Name: "read_file", Arguments: `{}`}, {ID: "a", Name: "read_file", Arguments: `{}`}}}, transcriptGateResult("a")},
 		"empty call id":              {transcriptGateCall("", `{}`), transcriptGateResult("")},
 	}
-	for _, args := range []string{"", `{"path":`, `[]`, `null`, `"text"`, `true`, `42`, `{} {}`} {
+	// "" and whitespace-only are no longer listed: 任务 930 accepts them
+	// as the legal no-argument form (see TestValidateTranscriptEmptyArgumentsFiveShapes).
+	for _, args := range []string{`{"path":`, `[]`, `null`, `"text"`, `true`, `42`, `{} {}`} {
 		cases["arguments "+args] = []Message{transcriptGateCall("a", args), transcriptGateResult("a")}
 	}
 	for name, msgs := range cases {
@@ -71,6 +78,51 @@ func TestValidateTranscriptRejectsMalformedToolHistory(t *testing.T) {
 			after, _ := json.Marshal(msgs)
 			if !bytes.Equal(before, after) {
 				t.Fatal("validation repaired/mutated canonical history")
+			}
+		})
+	}
+}
+
+// TestValidateTranscriptEmptyArgumentsFiveShapes pins 任务 930 S1: the five
+// argument shapes a model may emit for a no-argument call. Empty and
+// whitespace-only are accepted (the wait poison pill); null, valid JSON
+// objects, and invalid JSON keep their pre-930 verdicts. Validation must
+// never rewrite the stored bytes.
+func TestValidateTranscriptEmptyArgumentsFiveShapes(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    string
+		wantErr bool
+	}{
+		{"empty string", "", false},
+		{"whitespace only", " \t\n ", false},
+		{"null", "null", true},
+		{"valid json object", `{"job_ids":["j1"]}`, false},
+		{"invalid json", `{"path":`, true},
+	}
+	for _, tc := range cases {
+		t.Run("ValidateTranscript/"+tc.name, func(t *testing.T) {
+			msgs := []Message{transcriptGateCall("a", tc.args), transcriptGateResult("a")}
+			before, _ := json.Marshal(msgs)
+			err := ValidateTranscript(msgs)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ValidateTranscript(%q) err=%v, wantErr=%v", tc.args, err, tc.wantErr)
+			}
+			after, _ := json.Marshal(msgs)
+			if !bytes.Equal(before, after) {
+				t.Fatal("validation mutated canonical history")
+			}
+		})
+		t.Run("ValidateModelTranscript/"+tc.name, func(t *testing.T) {
+			msgs := []Message{transcriptGateCall("a", tc.args), transcriptGateResult("a")}
+			before, _ := json.Marshal(msgs)
+			err := ValidateModelTranscript(msgs)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ValidateModelTranscript(%q) err=%v, wantErr=%v", tc.args, err, tc.wantErr)
+			}
+			after, _ := json.Marshal(msgs)
+			if !bytes.Equal(before, after) {
+				t.Fatal("model validation mutated canonical history")
 			}
 		})
 	}
