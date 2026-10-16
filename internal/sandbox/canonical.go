@@ -3,6 +3,8 @@ package sandbox
 import (
 	"log/slog"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,9 +27,14 @@ const (
 	canonicalResolveTimeoutBudget = 250 * time.Millisecond
 
 	// canonicalCacheMaxEntries caps memoization growth: write targets are
-	// user-supplied, so the key set is open-ended. Far above any real
-	// working set of write roots.
-	canonicalCacheMaxEntries = 1024
+	// user-supplied, so the key set is open-ended. Task 928 raised the cap
+	// from 1024: the desktop funnels every historical session path through
+	// this cache (sessionRuntimeKey), and one project alone carries >1400
+	// session records — below the old cap the store's arbitrary eviction
+	// re-walked the same paths inside the TTL, the walk storm behind
+	// desktop.log's canonical probe lines. Entries are one small string plus
+	// a deadline, so 8192 caps worst-case memory well under a megabyte.
+	canonicalCacheMaxEntries = 8192
 )
 
 // Test seams: production code never reassigns these; tests swap them to
@@ -97,6 +104,24 @@ func canonicalProbeWalkLog(abs string, started time.Time, outcome string) {
 		"timeouts_total", probeTime.Load())
 }
 
+// canonicalCacheKey folds the memoization key. On Windows the filesystem is
+// case-insensitive, but callers reach this cache with both the on-disk
+// spelling (catalog records keep directory-listing case, e.g.
+// C--Users-...) and the lowercased identity form (pathidentity.Canonical
+// output fed back in). Task 928: without the fold each physical file held
+// two cache entries and paid two walks, doubling the working set — enough,
+// with the old 1024 cap, to make the store evict paths that were about to be
+// asked for again. The walk itself still runs on the caller's spelling; only
+// the cache/flight key is folded, and on Windows both spellings resolve to
+// the same volume-canonical case anyway, so the shared entry is the same
+// value the second walk would have produced.
+func canonicalCacheKey(abs string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(abs)
+	}
+	return abs
+}
+
 // resolveCanonicalPath returns the absolute, symlink-free form of path,
 // resolving the deepest existing ancestor and re-appending the
 // not-yet-existing tail (write targets need not exist yet). The walk is
@@ -110,15 +135,16 @@ func resolveCanonicalPath(path string) (string, error) {
 		return "", err
 	}
 	abs = filepath.Clean(abs)
+	key := canonicalCacheKey(abs)
 
 	canonicalMu.Lock()
-	if entry, ok := canonicalCache[abs]; ok && time.Now().Before(entry.expiresAt) {
+	if entry, ok := canonicalCache[key]; ok && time.Now().Before(entry.expiresAt) {
 		canonicalMu.Unlock()
 		probeCalls.Add(1)
 		probeHits.Add(1)
 		return entry.resolved, nil
 	}
-	if flight, ok := canonicalFlights[abs]; ok {
+	if flight, ok := canonicalFlights[key]; ok {
 		canonicalMu.Unlock()
 		probeCalls.Add(1)
 		probeJoins.Add(1)
@@ -126,15 +152,15 @@ func resolveCanonicalPath(path string) (string, error) {
 		return flight.resolved, nil
 	}
 	flight := &canonicalFlight{done: make(chan struct{})}
-	canonicalFlights[abs] = flight
+	canonicalFlights[key] = flight
 	canonicalMu.Unlock()
 	probeCalls.Add(1)
 
 	resolved := canonicalWalkBounded(abs)
 
 	canonicalMu.Lock()
-	delete(canonicalFlights, abs)
-	canonicalCacheStore(abs, resolved)
+	delete(canonicalFlights, key)
+	canonicalCacheStore(key, resolved)
 	canonicalMu.Unlock()
 
 	flight.resolved = resolved

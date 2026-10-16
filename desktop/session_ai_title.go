@@ -133,8 +133,15 @@ func sessionPreviewForPath(path string) string {
 }
 
 func topicSessionPreview(sessions []sessioncatalog.SessionRecord, path string) string {
+	// 任务 928：path 的 key 是循环不变量——原实现在循环内每次迭代都重新
+	// canonicalize，1440 条记录的主题一次渲染多付 1440 次 canonical 调用
+	// （每次都进 save-lock-key 漏斗）。提到循环外，每主题只算一次。
+	want := sessionRuntimeKey(path)
+	if want == "" {
+		return ""
+	}
 	for _, session := range sessions {
-		if sessionRuntimeKey(session.Path) == sessionRuntimeKey(path) {
+		if sessionRuntimeKey(session.Path) == want {
 			return strings.TrimSpace(session.Preview)
 		}
 	}
