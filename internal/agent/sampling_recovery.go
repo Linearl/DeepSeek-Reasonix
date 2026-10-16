@@ -3,13 +3,90 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"time"
 
 	"reasonix/internal/event"
+	"reasonix/internal/i18n"
 	"reasonix/internal/provider"
 )
+
+// 任务929 S2 knobs for the deterministic-reject breaker. A package var (the
+// recovery suite's established pattern) keeps the production thresholds
+// reviewable in one place while tests shrink them to milliseconds.
+var (
+	// deterministicBreakStreak: consecutive same-reason stream failures that
+	// prove the pattern (the incident's 3 killed attempts → the 4th is refused).
+	deterministicBreakStreak = 3
+	// deterministicBreakMinAttempt: each attempt must have burned real prefill
+	// time — fast failures (bad request shapes the provider refuses instantly)
+	// keep the historical retry loop instead of tripping a "slow gateway"
+	// breaker they never earned.
+	deterministicBreakMinAttempt = 30 * time.Second
+	// deterministicBreakJitter: max-min spread of those attempt durations
+	// (task wording: ±5s around the mean) — 303.9/303.8/304.4s spread 0.7s,
+	// a jittering network does not stay that tight.
+	deterministicBreakJitter = 10 * time.Second
+)
+
+// noteDeterministicStreamFailure folds one stream-interrupt failure into the
+// breaker's run and reports whether the deterministic pattern is proven.
+func (a *Agent) noteDeterministicStreamFailure(s *samplingRecoveryState, reason string, elapsed time.Duration) (bool, time.Duration) {
+	if reason == "" || s.attemptStartedAt.IsZero() || elapsed < 0 {
+		s.resetDeterministicStreamFailure()
+		return false, 0
+	}
+	if reason != s.detReason {
+		s.detReason, s.detStreak, s.detMin, s.detMax = reason, 1, elapsed, elapsed
+		return false, elapsed
+	}
+	s.detStreak++
+	if elapsed < s.detMin {
+		s.detMin = elapsed
+	}
+	if elapsed > s.detMax {
+		s.detMax = elapsed
+	}
+	if s.detStreak < deterministicBreakStreak || s.detMin < deterministicBreakMinAttempt || s.detMax-s.detMin > deterministicBreakJitter {
+		return false, elapsed
+	}
+	return true, elapsed
+}
+
+func (s *samplingRecoveryState) resetDeterministicStreamFailure() {
+	s.detReason, s.detStreak, s.detMin, s.detMax = "", 0, 0, 0
+}
+
+// stopDeterministicStreamRetry gives up BEFORE the next pointless replay and
+// tells the user why. It mirrors the existing "retry loop ended" terminal
+// frame (same stream-scope give-up shape, so the retry strip settles) and adds
+// the actionable notice the incident lacked: the gateway is rejecting this
+// request, not flaking.
+func (a *Agent) stopDeterministicStreamRetry(s *samplingRecoveryState, result *streamedTurn, attempt int, failure provider.RecoveryFailure, reason string, elapsed time.Duration) bool {
+	slog.Warn("agent: deterministic stream failure — stopping the retry loop (task 929)",
+		"reason", reason, "streak", s.detStreak,
+		"attempt_ms", elapsed.Milliseconds(),
+		"min_ms", s.detMin.Milliseconds(), "max_ms", s.detMax.Milliseconds(),
+		"attempt", attempt, "max_attempts", maxSamplingAttempts, "err", result.err)
+	a.svc.sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: attempt, RetryMax: maxStreamRecoveries, RetryScope: event.RetryScopeStream, Recovery: &event.RecoveryStatus{
+		Phase:           failure.Phase,
+		Reason:          "deterministic reject",
+		BudgetUsed:      a.streamRetryBudget.Count(failure.Phase, time.Now()),
+		BudgetLimit:     a.streamRetryBudget.Limit(),
+		BudgetExhausted: true,
+	}})
+	a.svc.sink.Emit(event.Event{
+		Kind:  event.Notice,
+		Level: event.LevelWarn,
+		Code:  event.NoticeCodeProviderDeterministicReject,
+		Text:  fmt.Sprintf(i18n.M.ProviderDeterministicReject, attempt),
+		Detail: fmt.Sprintf("reason=%s streak=%d attempt_ms=%d window_ms=%d..%d",
+			reason, s.detStreak, elapsed.Milliseconds(), s.detMin.Milliseconds(), s.detMax.Milliseconds()),
+	})
+	return false
+}
 
 // defaultRecoveryWaitBudget bounds continuous waiting on an unreachable
 // provider (#9889): mainstream agents stop after ~10 attempts or ~10 minutes.
@@ -38,6 +115,14 @@ type samplingRecoveryState struct {
 	// from `waited`: the two lanes have independent budgets (wait vs quota
 	// wait) and must not erode each other's allowance.
 	quotaWaited time.Duration
+	// 任务929 S2: deterministic-reject breaker bookkeeping. attemptStartedAt
+	// stamps one attempt's wall clock (excludes retry backoff) so the breaker
+	// compares attempt-to-attempt durations; detReason/detStreak track the
+	// current run of same-reason failures and detMin/detMax its spread.
+	attemptStartedAt time.Time
+	detReason        string
+	detStreak        int
+	detMin, detMax   time.Duration
 }
 
 func (a *Agent) samplingDeadline(ctx context.Context) (context.Context, context.CancelFunc, TaskBudget) {
@@ -99,6 +184,9 @@ func (a *Agent) streamWithSamplingRecovery(parent context.Context, turn int) (te
 		a.emitStreamAttempt(id, event.StreamAttemptBegin, attempt, "", nil)
 		sink, attemptSink := a.samplingAttemptSinks()
 		a.freezeVisibleReads(state.frozen.req.Messages)
+		// 任务929 S2: stamp the attempt so the deterministic breaker can
+		// compare attempt-to-attempt durations (backoff excluded).
+		state.attemptStartedAt = time.Now()
 		result := a.runSamplingAttempt(ctx, turn, attemptSink, &state.frozen, id)
 		state.billable, _ = a.recordSamplingAttempt(state.billable, result)
 		if ctx.Err() != nil {
@@ -260,6 +348,24 @@ func (a *Agent) waitSamplingRetry(ctx context.Context, s *samplingRecoveryState,
 	// announced by the turn that hit it, not by whichever path notices first.
 	if failure.Phase == "auth" {
 		a.alertCredentialExpired(result.err)
+	}
+	// 任务929 S2: deterministic-reject breaker. A gateway that cuts the SAME
+	// stream reason after NEARLY IDENTICAL durations (the 2026-10-16 incident:
+	// 303.9 / 303.8 / 304.4s, range 0.7s) is rejecting the request itself, not
+	// flaking — replaying it only re-pays the full prefill (~5 min per attempt,
+	// 18.5 min of zero output for the user). Three such failures in a row stop
+	// the loop with an actionable notice instead of gambling on the 4th.
+	// Fast failures stay under deterministicBreakMinAttempt and jittered ones
+	// widen past deterministicBreakJitter: both keep the historical loop. The
+	// Phase=="stream" gate is the shape ClassifyRecovery reaches only when no
+	// special lane owns the failure — quota / 429 / auth / header lanes keep
+	// their task-845 / task-242 semantics untouched.
+	if failure.Phase == "stream" && provider.IsStreamInterrupted(result.err) {
+		if deterministic, elapsed := a.noteDeterministicStreamFailure(s, reason, time.Since(s.attemptStartedAt)); deterministic {
+			return a.stopDeterministicStreamRetry(s, result, attempt, failure, reason, elapsed)
+		}
+	} else {
+		s.resetDeterministicStreamFailure()
 	}
 	waiting := attempt >= maxSamplingAttempts && a.canWaitSampling(ctx, s, failure)
 	// Task 242: quota-class failures join the ordinary fast retry loop ONLY

@@ -38,6 +38,11 @@ type turnRuntime struct {
 	// main-chain steps with zero dispatches gets exactly one transient nudge —
 	// a second one would nag without new information. Zeroed with the turn.
 	delegationReminderSent bool
+	// prefillNoticeShown (任务929 S3): one user-visible "model is processing a
+	// very large context" notice per turn. Each retry attempt re-arms the
+	// first-token watch, but a sentence the user already read would only repeat
+	// per replay. Zeroed with the turn.
+	prefillNoticeShown bool
 	// unattended marks a turn nobody can answer a readiness recovery card for
 	// (task 283): autopilot, or a tool-approval posture that already delegates
 	// writes to policy (auto/yolo) / an unattended host run — the same

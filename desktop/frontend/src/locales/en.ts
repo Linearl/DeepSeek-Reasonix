@@ -4669,6 +4669,7 @@ export const en = {
   "notice.streamInterruptReason.idleTimeout": "no data arrived before the idle timeout",
   "notice.streamInterruptReason.prematureEof": "the stream ended before completion",
   "notice.streamInterruptReason.connectionReset": "the connection was reset",
+  "notice.streamInterruptReason.serverError": "the provider gateway reset the stream",
   "notice.streamInterruptReason.unknown": "unknown transport failure",
   "notice.unappliedSteer": "Guidance was not applied because the turn ended before it could be processed. Send it again if it is still needed:\n{guidance}",
   "notice.contextLarge": "Context is getting large; preserving cache until cleanup is needed.",

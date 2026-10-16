@@ -1543,12 +1543,14 @@ function applyExtensionForm(s: State, surface: WireExtensionSurface): State {
 }
 
 // streamInterruptReasonText localizes the closed host enum a stream-attempt
-// discard carries (idle_timeout | premature_eof | connection_reset).
+// discard carries (idle_timeout | premature_eof | connection_reset |
+// server_error).
 function streamInterruptReasonText(reason: string): string {
   switch (reason) {
     case "idle_timeout": return t("notice.streamInterruptReason.idleTimeout");
     case "premature_eof": return t("notice.streamInterruptReason.prematureEof");
     case "connection_reset": return t("notice.streamInterruptReason.connectionReset");
+    case "server_error": return t("notice.streamInterruptReason.serverError");
     default: return t("notice.streamInterruptReason.unknown");
   }
 }

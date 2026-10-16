@@ -3301,6 +3301,7 @@ export const zhTW: Record<DictKey, string> = {
   "notice.streamInterruptReason.idleTimeout": "超過閒置逾時仍未收到任何資料",
   "notice.streamInterruptReason.prematureEof": "資料流在完成前被提前斷開",
   "notice.streamInterruptReason.connectionReset": "連線被重置",
+  "notice.streamInterruptReason.serverError": "供應商閘道重設了資料流",
   "notice.streamInterruptReason.unknown": "未知傳輸故障",
   "notice.unappliedSteer": "本條引導未能套用，因為目前回合在處理它之前已結束。如仍需要，請重新傳送：\n{guidance}",
   "notice.contextLarge": "上下文正在變大，暫時保留快取，等需要時再清理。",

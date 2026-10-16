@@ -51,6 +51,15 @@ console.log("\ninterrupted turn surfaces the last stream failure reason (#9560)"
 }
 
 {
+  // 任务929: the gateway's HTTP/2 RST_STREAM no longer reads as an unknown
+  // transport failure — it has its own reason face.
+  const state = interruptedTurnWithDiscard("server_error");
+  const notices = noticeTexts(state);
+  ok(notices.some((n) => n.level === "warn" && n.text.includes("reset the stream")), "server_error maps to a readable reason", notices);
+  ok(!notices.some((n) => n.level === "warn" && n.text.includes("unknown transport")), "server_error must not fall back to unknown", notices);
+}
+
+{
   const state = interruptedTurnWithDiscard(undefined);
   const notices = noticeTexts(state);
   ok(!notices.some((n) => n.level === "warn" && n.text.includes("connection")), "a stop with no recorded failure adds no reason notice", notices);
