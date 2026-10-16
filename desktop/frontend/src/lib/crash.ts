@@ -8,6 +8,8 @@ import { t } from "./i18n";
 import { sessionPipelineDiagnostics, type SessionPipelineDiagnostics } from "./sessionDiagnostics";
 import { isWailsRuntimeOnlyCrashEvent } from "./wailsRuntimeCrash";
 import { buildCrashIssueSkeleton } from "./crashIssue";
+// 任务 910：性能/卡顿/崩溃入口三面共用的 .rt-notice 骨架挂载器。
+import { rtNoticeHead, rtNoticeHost, rtNoticeMount } from "./rtNotice";
 import type { CrashAnalysisAvailabilityReport } from "./types";
 declare const __BUILD_COMMIT__: string;
 declare const __BUILD_CHANNEL__: string;
@@ -980,20 +982,16 @@ export function copyButton(text: string, className: string): HTMLButtonElement {
 
 function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnapshot) {
   if (typeof document === "undefined") return;
-  let host = document.getElementById("performance-report-prompt");
-  if (!host) {
-    host = document.createElement("div");
-    host.id = "performance-report-prompt";
-    document.body.appendChild(host);
-  }
+  // 任务 910：性能强调=accent 档（橙，非故障强调——语义固定，见 rtNotice.ts）。
+  const host = rtNoticeHost("performance-report-prompt", "accent");
   const title = document.createElement("div");
-  title.className = "performance-report__title";
+  title.className = "performance-report__title rt-notice__title";
   title.textContent = t("performanceReport.title");
   const body = document.createElement("pre");
-  body.className = "performance-report__body";
+  body.className = "performance-report__body rt-notice__body";
   body.textContent = formatPerformanceContext(snapshot);
   const actions = document.createElement("div");
-  actions.className = "performance-report__actions";
+  actions.className = "performance-report__actions rt-notice__actions";
   // Task 674 button layout: [一键分析][复制][关闭] — analyze takes the slot the
   // unusable "发送报告" button used to hold, and the send button is gone from
   // the real face entirely (the upstream upload endpoint is down, 618; the lab
@@ -1001,29 +999,30 @@ function paintPerformancePrompt(payload: CrashPayload, snapshot: PerformanceSnap
   // Task 617 route A: copy a paste-ready GitHub issue skeleton, not the bare
   // diagnostic text — the upstream endpoint is down (618) and this is the
   // zero-dependency feedback path.
-  const copy = copyButton(buildCrashIssueSkeleton(payload), "performance-report__copy");
+  // 任务 910：主按钮带严重度描边（rt-btn--primary），普通按钮统一 rt-btn。
+  const copy = copyButton(buildCrashIssueSkeleton(payload), "performance-report__copy rt-btn");
   const analysisNote = document.createElement("div");
-  analysisNote.className = "performance-report__analysis";
-  const analyze = analyzeButton(payload, "performance-report__analyze", analysisNote, () =>
+  analysisNote.className = "performance-report__analysis rt-notice__analysis";
+  const analyze = analyzeButton(payload, "performance-report__analyze rt-btn rt-btn--primary", analysisNote, () =>
     markPerfReported(payload.label),
   );
   const dismiss = document.createElement("button");
-  dismiss.className = "performance-report__dismiss";
+  dismiss.className = "performance-report__dismiss rt-btn";
   dismiss.textContent = t("performanceReport.dismiss");
-  dismiss.onclick = () => {
+  // 头行关闭 × 与动作行「关闭」走同一收口（demo 提案节两处并存）。
+  const closePrompt = () => {
     dismissedPerfLabels.add(payload.label);
-    host?.remove();
+    host.remove();
   };
+  dismiss.onclick = closePrompt;
   if (analyze) actions.append(analyze);
   actions.append(copy);
   actions.append(dismiss);
   const note = document.createElement("div");
-  note.className = "performance-report__note";
+  note.className = "performance-report__note rt-notice__note";
   note.textContent = t("performanceReport.privacyNote");
-  const children = [title, body, actions];
-  if (analyze) children.push(analysisNote);
-  children.push(note);
-  host.replaceChildren(...children);
+  const head = rtNoticeHead(title, "accent", t("common.close"), closePrompt);
+  rtNoticeMount(host, head, body, actions, analyze ? analysisNote : null, note);
   // Task 674: collapse to a capsule so the prompt stops covering the composer
   // while the analysis runs; expanding restores the exact content.
   host.appendChild(collapseFaceToggle(t("performanceReport.collapse"), t("performanceReport.expand")));

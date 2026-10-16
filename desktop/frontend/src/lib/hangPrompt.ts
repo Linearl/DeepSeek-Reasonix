@@ -11,6 +11,7 @@ import { t } from "./i18n";
 import { analyzeEntryButton, copyButton, type CrashPayload } from "./crash";
 import { buildCrashIssueSkeleton } from "./crashIssue";
 import { snapshotBreadcrumbs } from "./breadcrumbs";
+import { rtNoticeHead, rtNoticeHost, rtNoticeMount } from "./rtNotice";
 import type { HangAnalysisAvailabilityReport } from "./types";
 
 declare const __BUILD_COMMIT__: string;
@@ -82,45 +83,44 @@ function buildHangIssuePayload(report: HangAnalysisAvailabilityReport): CrashPay
 
 function paintHangPrompt(report: HangAnalysisAvailabilityReport): void {
   if (typeof document === "undefined") return;
-  let host = document.getElementById("hang-analysis-prompt");
-  if (!host) {
-    host = document.createElement("div");
-    host.id = "hang-analysis-prompt";
-    document.body.appendChild(host);
-  }
+  // 任务 910：卡顿=warn 档（黄，警戒非故障——语义固定，见 rtNotice.ts）。
+  const host = rtNoticeHost("hang-analysis-prompt", "warn");
   const title = document.createElement("div");
-  title.className = "hang-analysis__title";
+  title.className = "hang-analysis__title rt-notice__title";
   title.textContent = t("hangPrompt.title");
   const intro = document.createElement("div");
-  intro.className = "hang-analysis__intro";
+  intro.className = "hang-analysis__intro rt-notice__intro";
   intro.textContent = t("hangPrompt.intro");
   const body = document.createElement("pre");
-  body.className = "hang-analysis__body";
+  body.className = "hang-analysis__body rt-notice__body";
   const detail = typeof report.detail === "string" ? report.detail.trim() : "";
   body.textContent = detail ? `verdict: ${report.verdict}\n${detail}` : `verdict: ${report.verdict}`;
   const actions = document.createElement("div");
-  actions.className = "hang-analysis__actions";
+  actions.className = "hang-analysis__actions rt-notice__actions";
   const analysisNote = document.createElement("div");
-  analysisNote.className = "hang-analysis__note";
+  analysisNote.className = "hang-analysis__note rt-notice__analysis";
   const start = window.go?.main?.App?.StartHangAnalysis;
   const analyze = start
-    ? analyzeEntryButton("hang-analysis__analyze", analysisNote, () => start())
+    ? analyzeEntryButton("hang-analysis__analyze rt-btn rt-btn--primary", analysisNote, () => start())
     : null;
   const dismiss = document.createElement("button");
-  dismiss.className = "hang-analysis__dismiss";
+  dismiss.className = "hang-analysis__dismiss rt-btn";
   dismiss.textContent = t("performanceReport.dismiss");
-  dismiss.onclick = () => {
+  // 头行关闭 × 与动作行「关闭」走同一收口（demo 提案节两处并存）。
+  const closePrompt = () => {
     lastDismissedAt = Date.now();
-    host?.remove();
+    host.remove();
   };
+  dismiss.onclick = closePrompt;
   // Task 769 button layout: [一键分析][复制][关闭] — the same three-slot family
   // as the performance prompt (crash.ts paintPerformancePrompt). Copy is
   // unconditional: the analyzeFailed note names it, so it must always exist.
-  const copy = copyButton(buildCrashIssueSkeleton(buildHangIssuePayload(report)), "hang-analysis__copy");
+  const copy = copyButton(buildCrashIssueSkeleton(buildHangIssuePayload(report)), "hang-analysis__copy rt-btn");
   if (analyze) actions.append(analyze);
   actions.append(copy);
   actions.append(dismiss);
-  host.replaceChildren(title, intro, body, actions, analysisNote);
+  const head = rtNoticeHead(title, "warn", t("common.close"), closePrompt);
+  rtNoticeMount(host, head, intro, body, actions, analysisNote);
 }
 
 /** Test seam: paint the prompt directly — the watch path is timer-gated

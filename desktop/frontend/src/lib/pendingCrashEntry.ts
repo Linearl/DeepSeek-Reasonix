@@ -17,6 +17,7 @@
 
 import { tFor, type Locale } from "./i18n";
 import { analyzeEntryButton } from "./crash";
+import { rtNoticeHead, rtNoticeHost, rtNoticeMount } from "./rtNotice";
 import type { PendingCrashSnapshotReport } from "./types";
 
 const PENDING_CRASH_DISMISS_KEY = "reasonix:pending-crash-dismissed";
@@ -85,12 +86,12 @@ export function pendingCrashPreview(report: PendingCrashSnapshotReport): string 
 function renderPendingCrashBanner(host: HTMLElement, report: PendingCrashSnapshotReport): void {
   const tt = tFor(localeFromHtmlLang());
   const title = document.createElement("div");
-  title.className = "pending-crash__title";
+  title.className = "pending-crash__title rt-notice__title";
   title.textContent = `${tt("pendingCrash.title")}（${report.count}）`;
   const intro = document.createElement("div");
-  intro.className = "pending-crash__intro";
+  intro.className = "pending-crash__intro rt-notice__intro";
   intro.textContent = tt("pendingCrash.intro");
-  const children: HTMLElement[] = [title, intro];
+  const slots: HTMLElement[] = [intro];
   const preview = pendingCrashPreview(report);
   if (preview) {
     // Task 695: the panic line itself is backend-log verbatim (translating it
@@ -99,21 +100,21 @@ function renderPendingCrashBanner(host: HTMLElement, report: PendingCrashSnapsho
     // English block. Rides the intro class: same family look as the hang
     // prompt, zero CSS delta (ratchet stays untouched).
     const previewNote = document.createElement("div");
-    previewNote.className = "pending-crash__intro";
+    previewNote.className = "pending-crash__intro rt-notice__intro";
     previewNote.textContent = tt("pendingCrash.previewNote");
-    children.push(previewNote);
+    slots.push(previewNote);
     const body = document.createElement("pre");
-    body.className = "pending-crash__body";
+    body.className = "pending-crash__body rt-notice__body";
     body.textContent = preview;
-    children.push(body);
+    slots.push(body);
   }
   const actions = document.createElement("div");
-  actions.className = "pending-crash__actions";
+  actions.className = "pending-crash__actions rt-notice__actions";
   const analysisNote = document.createElement("div");
-  analysisNote.className = "pending-crash__note";
+  analysisNote.className = "pending-crash__note rt-notice__analysis";
   const analyze =
     report.reports?.length && window.go?.main?.App?.StartCrashAnalysis
-      ? analyzeEntryButton("pending-crash__analyze", analysisNote, () => {
+      ? analyzeEntryButton("pending-crash__analyze rt-btn rt-btn--primary", analysisNote, () => {
           const start = window.go?.main?.App?.StartCrashAnalysis;
           if (!start) return Promise.reject(new Error("analysis binding vanished"));
           // The newest payload is schema-2 JSON captured by the backend — it
@@ -122,20 +123,26 @@ function renderPendingCrashBanner(host: HTMLElement, report: PendingCrashSnapsho
         })
       : null;
   const dismiss = document.createElement("button");
-  dismiss.className = "pending-crash__dismiss";
+  dismiss.className = "pending-crash__dismiss rt-btn";
   dismiss.textContent = tt("performanceReport.dismiss");
-  dismiss.onclick = () => {
+  // 头行关闭 × 与动作行「关闭」走同一收口（demo 提案节两处并存）。
+  const closeEntry = () => {
     try {
       sessionStorage.setItem(PENDING_CRASH_DISMISS_KEY, "1");
     } catch {
       // The banner still closes for this paint; it may return next run.
     }
     visibleReport = null;
-    host?.remove();
+    host.remove();
   };
+  dismiss.onclick = closeEntry;
   if (analyze) actions.append(analyze);
   actions.append(dismiss);
-  host.replaceChildren(...children, actions, analysisNote);
+  slots.push(actions, analysisNote);
+  // 任务 910：崩溃=danger 档（红，语义归位——过去是硬编码橙边框 + --accent
+  // 橙标题两种来源，现统一走 danger token，见 rtNotice.ts）。
+  const head = rtNoticeHead(title, "danger", tt("common.close"), closeEntry);
+  rtNoticeMount(host, head, ...slots);
 }
 
 // One observer for the module lifetime: LocaleProvider writes the applied
@@ -154,12 +161,8 @@ function installLocaleFlipWatch(): void {
 function paintPendingCrashPrompt(report: PendingCrashSnapshotReport): void {
   if (typeof document === "undefined") return;
   visibleReport = report;
-  let host = document.getElementById("pending-crash-entry");
-  if (!host) {
-    host = document.createElement("div");
-    host.id = "pending-crash-entry";
-    document.body.appendChild(host);
-  }
+  // 任务 910：崩溃=danger 档，挂进统一右下角堆叠（见 rtNotice.ts）。
+  const host = rtNoticeHost("pending-crash-entry", "danger");
   renderPendingCrashBanner(host, report);
 }
 

@@ -54,8 +54,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="toast-container" role="status" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast--${t.level}`} onClick={() => dismissToast(t.id)}>
-            {t.level === "warn" && <span className="toast__icon">⚠️</span>}
-            {t.level === "error" && <span className="toast__icon">❌</span>}
+            {/* 任务 910: 图标字形与 .rt-notice 徽章同族（语言中立文本字形，
+                随 token 着色；emoji 彩色块与统一后的 token 视觉脱节）。 */}
+            {t.level === "info" && <span className="toast__icon">ℹ</span>}
+            {t.level === "warn" && <span className="toast__icon">⚠</span>}
+            {t.level === "error" && <span className="toast__icon">✕</span>}
             <span className="toast__text">{t.text}</span>
             {t.actionLabel && t.onAction && (
               <button

@@ -137,6 +137,8 @@
   --err: #e0696a;
   --danger: #e5484d;
   --danger-fg: #fff;
+  /* 任务 910：.rt-notice 第四档（中性提示蓝，更新类通知等）——demo 提案新增档。 */
+  --info: #5b8def;
   --shell-accent: #22c55e;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.22);
   --shadow-2: 0 14px 40px rgba(0, 0, 0, 0.28);
@@ -25065,10 +25067,9 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-xs);
   font-weight: 700;
 }
-.crash-overlay__analyze,
-.performance-report__analyze,
-.hang-analysis__analyze,
-.pending-crash__analyze {
+/* 任务 910：三面（性能/卡顿/崩溃入口）的 analyze 按钮并入统一 .rt-btn 族
+   （含 rt-btn--primary 严重度描边）；这里只留全屏 crash overlay 一族。 */
+.crash-overlay__analyze {
   min-height: 30px;
   padding: 5px 10px;
   border: 1px solid var(--border);
@@ -25077,19 +25078,10 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   font-size: var(--text-sm);
 }
-.crash-overlay__analyze[disabled],
-.performance-report__analyze[disabled],
-.hang-analysis__analyze[disabled],
-.pending-crash__analyze[disabled] {
+.crash-overlay__analyze[disabled] {
   opacity: 0.65;
 }
-.hang-analysis__note span:last-child,
-.pending-crash__note span:last-child {
-  display: flex;
-  gap: 8px;
-}
-.crash-overlay__analysis,
-.performance-report__analysis {
+.crash-overlay__analysis {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -25098,36 +25090,135 @@ button.statusbar__mcp:focus-visible {
   white-space: pre-wrap;
   word-break: break-word;
 }
-.crash-overlay__analysis span:last-child,
-.performance-report__analysis span:last-child {
+.crash-overlay__analysis span:last-child {
   display: flex;
   gap: 8px;
 }
 
-#performance-report-prompt {
+/* ────────────────────────────────────────────────────────────────────────
+   任务 910: 右下角弹窗统一 —— 一份 .rt-notice 组件族替换三个 #id 骨架块
+   （性能报告 / 卡顿分析 / 崩溃入口）。设计稿唯一权威：
+   docs/design/右下角弹窗统一-demo-20261015.html（二、统一提案节）。
+   骨架 = 左 3px 色条 + 图标徽章 + 标题 + 关闭 ×，可选槽位 intro 文案 /
+   mono 数据块 / 按钮组 / note 脚注；尺寸沿用现状值（440px、右下 18px、
+   堆叠 10px、radius-md、shadow-2）。严重度语义固定，谁都不许换色：
+   崩溃=danger 红 / 卡顿=warn 黄 / 性能强调=accent 橙 / 中性=info 蓝。
+   全部色源 color-mix(…theme token…)，硬编码橙色值就此清零（组件里只允许
+   var(--accent) 取色），深浅主题自动联动（demo 第四节）。流内 notice-line
+   与全屏 crash overlay 不在本族（语义不同，排除项）。 */
+.rt-notice-stack {
   position: fixed;
   right: 18px;
   bottom: 18px;
   z-index: var(--z-performance-report-prompt);
-  width: min(440px, calc(100vw - 24px));
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
+  align-items: flex-end;
   gap: 10px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, #d97757 22%);
+  max-width: calc(100vw - 24px);
+}
+.rt-notice {
+  /* 图标徽章字形色：作用域 token（token 定义处是硬编码的合法位置），
+     对齐 demo 图标徽章的白字设定；--n-color/--n-border/--n-bg 由下面四档
+     data-level 规则注入，组件本身不再写任何色值。 */
+  --n-fg: #fff;
+  position: relative;
+  width: min(440px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr);
+  border: 1px solid var(--n-border, var(--border));
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--panel, var(--bg-elev)) 96%, #d97757 4%);
+  background: var(--n-bg, var(--panel, var(--bg-elev)));
   color: var(--fg);
   box-shadow: var(--shadow-2);
+  overflow: hidden;
 }
-.performance-report__title {
+.rt-notice[data-level="info"] {
+  --n-color: var(--info);
+  --n-border: color-mix(in srgb, var(--border) 80%, var(--info) 20%);
+  --n-bg: color-mix(in srgb, var(--panel, var(--bg-elev)) 96%, var(--info) 4%);
+}
+.rt-notice[data-level="warn"] {
+  --n-color: var(--warn);
+  --n-border: color-mix(in srgb, var(--border) 80%, var(--warn) 20%);
+  --n-bg: color-mix(in srgb, var(--panel, var(--bg-elev)) 96%, var(--warn) 4%);
+}
+.rt-notice[data-level="danger"] {
+  --n-color: var(--danger);
+  --n-border: color-mix(in srgb, var(--border) 80%, var(--danger) 20%);
+  --n-bg: color-mix(in srgb, var(--panel, var(--bg-elev)) 96%, var(--danger) 4%);
+}
+.rt-notice[data-level="accent"] {
+  --n-color: var(--accent);
+  --n-border: color-mix(in srgb, var(--border) 80%, var(--accent) 20%);
+  --n-bg: color-mix(in srgb, var(--panel, var(--bg-elev)) 96%, var(--accent) 4%);
+}
+.rt-notice__bar {
+  background: var(--n-color, var(--accent));
+}
+.rt-notice__inner {
+  min-width: 0;
+  padding: 12px 14px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rt-notice__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rt-notice__icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--n-fg);
+  background: var(--n-color, var(--accent));
+}
+.rt-notice__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
   font-size: var(--text-md);
   font-weight: 700;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.performance-report__body {
-  max-height: 170px;
+.rt-notice__close {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.rt-notice__close:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+.rt-notice__intro {
   margin: 0;
-  padding: 10px;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.rt-notice__body {
+  max-height: 120px;
+  margin: 0;
+  padding: 9px 10px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -25139,145 +25230,69 @@ button.statusbar__mcp:focus-visible {
   white-space: pre-wrap;
   word-break: break-word;
 }
-.performance-report__actions {
+.rt-notice__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
-.performance-report__copy,
-.performance-report__dismiss {
-  min-height: 30px;
-  padding: 5px 10px;
+.rt-btn {
+  min-height: 28px;
+  padding: 4px 11px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--button-bg);
   color: var(--fg);
   font-size: var(--text-sm);
+  cursor: pointer;
 }
-/* 任务 674: 真实面的「发送报告」按钮已移除（.performance-report__send 样式随之清掉）；
-   mock 演练面保留的发送按钮沿用 .crash-overlay__send。 */
-.performance-report__note {
+.rt-btn:hover {
+  background: color-mix(in srgb, var(--button-bg) 70%, var(--fg) 8%);
+}
+.rt-btn:disabled {
+  opacity: 0.65;
+}
+.rt-btn--primary {
+  border-color: color-mix(in srgb, var(--n-color, var(--accent)) 55%, var(--border));
+  font-weight: 600;
+}
+.rt-btn--primary:hover {
+  background: color-mix(in srgb, var(--n-color, var(--accent)) 14%, var(--button-bg));
+}
+.rt-notice__note {
+  margin: 0;
   color: var(--fg-faint);
   font-size: 11.5px;
   line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
-
-/* 任务663: 会话卡顿一键分析入口 + 上次运行遗留崩溃报告入口 —— 视觉沿用
-   performance-report 弹层语言（右下角、同一 token 面、同一 z 层族）。
-   hang 用 --warn 警戒色相（卡顿=警戒非故障），pending-crash 沿用
-   performance 的 accent 强调（真实故障家族）。分析/重启按钮复用
-   analyze 按钮类分组（重启按钮继承所在 surface 的 analyze 类）。 */
-#hang-analysis-prompt {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: var(--z-performance-report-prompt);
-  width: min(440px, calc(100vw - 24px));
+.rt-notice__analysis {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, var(--warn) 22%);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--panel, var(--bg-elev)) 96%, var(--warn) 4%);
-  color: var(--fg);
-  box-shadow: var(--shadow-2);
-}
-.hang-analysis__title {
+  gap: 6px;
   color: var(--warn);
-  font-size: var(--text-md);
-  font-weight: 700;
-}
-.hang-analysis__intro {
-  color: var(--fg-dim);
   font-size: var(--text-sm);
-  line-height: 1.45;
-}
-.hang-analysis__body {
-  max-height: 150px;
-  margin: 0;
-  padding: 10px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--fg-dim);
-  font-family: var(--mono, monospace);
-  font-size: 11.5px;
-  line-height: 1.45;
-  overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
-.hang-analysis__actions,
-.pending-crash__actions {
+.rt-notice__analysis span:last-child {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
 }
-/* 任务 769: hang 弹窗补「复制」按钮（674 三键布局对齐），样式并入 dismiss 同组。 */
-.hang-analysis__copy,
-.hang-analysis__dismiss,
-.pending-crash__dismiss {
-  min-height: 30px;
-  padding: 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--button-bg);
-  color: var(--fg);
-  font-size: var(--text-sm);
+/* 性能报告面独有折叠胶囊（.crash-collapse-toggle 绝对定位右上）：head 让出
+   64px，标题与关闭 × 才不会压到胶囊下（EN「Collapse」约 68px 宽）。 */
+#performance-report-prompt .rt-notice__head {
+  padding-right: 64px;
 }
-.hang-analysis__note,
-.pending-crash__note {
-  color: var(--fg-faint);
-  font-size: 11.5px;
-  line-height: 1.35;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-#pending-crash-entry {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: var(--z-performance-report-prompt);
-  width: min(440px, calc(100vw - 24px));
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--border) 78%, #d97757 22%);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--panel, var(--bg-elev)) 96%, #d97757 4%);
-  color: var(--fg);
-  box-shadow: var(--shadow-2);
-}
-.pending-crash__title {
-  color: var(--accent);
-  font-size: var(--text-md);
-  font-weight: 700;
-}
-.pending-crash__intro {
-  color: var(--fg-dim);
-  font-size: var(--text-sm);
-  line-height: 1.45;
-}
-.pending-crash__body {
-  max-height: 150px;
-  margin: 0;
-  padding: 10px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--fg-dim);
-  font-family: var(--mono, monospace);
-  font-size: 11.5px;
-  line-height: 1.45;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 /* 任务 674: 真实面的「发送报告」按钮已移除（.performance-report__send 样式随之清掉）；
    mock 演练面保留的发送按钮沿用 .crash-overlay__send。 */
+
+/* 任务 663/674/769 的会话卡顿入口（#hang-analysis-prompt）与上次运行遗留
+   崩溃入口（#pending-crash-entry）自任务 910 起并入上方 .rt-notice 组件族：
+   三面骨架/按钮/note 只剩一份 CSS（改一处三处生效），#id 只留作挂载与测试
+   钩子；严重度由 data-level 定（hang=warn 警戒黄，pending-crash=danger 红，
+   过去的硬编码橙边框与 --accent 橙标题两种来源就此统一）。 */
 /* 任务 674: 弹窗折叠/收起 —— 仅切换 host 上的 crash-face--collapsed 类，
    子元素全部保留在 DOM（display:none），展开即完整还原（含分析中的提示行）；
    折叠态缩成右下角胶囊，不再遮挡输入区。两个兜底面共用同一套类。 */
@@ -25296,12 +25311,11 @@ button.statusbar__mcp:focus-visible {
 .crash-overlay__title {
   padding-right: 84px;
 }
-.performance-report__title {
-  padding-right: 60px;
-}
 #performance-report-prompt.crash-face--collapsed {
+  /* 网格骨架在折叠态只剩胶囊（toggle 是 host 直接子元素）：切回 block，
+     否则 3px 色条列会把胶囊挤进 3px 栅格。 */
+  display: block;
   width: auto;
-  gap: 0;
   padding: 6px 10px;
 }
 #performance-report-prompt.crash-face--collapsed > :not(.crash-collapse-toggle),
@@ -25322,15 +25336,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 @media (max-width: 560px) {
-  #hang-analysis-prompt,
-  #pending-crash-entry {
-    right: 12px;
-    bottom: 12px;
-  }
-}
-
-@media (max-width: 560px) {
-  #performance-report-prompt {
+  .rt-notice-stack {
     right: 12px;
     bottom: 12px;
   }
@@ -35523,13 +35529,13 @@ button.statusbar__mcp:focus-visible {
   max-width: min(560px, calc(100vw - 32px));
   pointer-events: auto;
   cursor: pointer;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  background: var(--t-bg, var(--bg-elev));
+  border: 1px solid var(--t-border, var(--border));
   border-radius: var(--radius-md);
-  padding: 10px 20px;
-  font-size: 14px;
+  padding: 8px 14px;
+  font-size: 13.5px;
   color: var(--fg);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-2);
   white-space: normal;
   display: flex;
   align-items: center;
@@ -35537,15 +35543,20 @@ button.statusbar__mcp:focus-visible {
   animation: toast-in 0.2s ease-out;
   user-select: none;
 }
+/* 任务 910: Toast 位置不动（顶部居中），视觉改吃 .rt-notice 同一套严重度
+   token（info/warn/danger 同 70/30 描边 + 90/10 底，色源全走 theme token，
+   demo「轻通知」节）。 */
+.toast--info {
+  --t-border: color-mix(in srgb, var(--border) 70%, var(--info) 30%);
+  --t-bg: color-mix(in srgb, var(--bg-elev) 90%, var(--info) 10%);
+}
 .toast--warn {
-  border-color: color-mix(in srgb, var(--warn) 38%, var(--border));
-  background: color-mix(in srgb, var(--warn) 12%, var(--bg-elev));
-  color: color-mix(in srgb, var(--warn) 78%, var(--fg));
+  --t-border: color-mix(in srgb, var(--border) 70%, var(--warn) 30%);
+  --t-bg: color-mix(in srgb, var(--bg-elev) 90%, var(--warn) 10%);
 }
 .toast--error {
-  border-color: color-mix(in srgb, var(--danger) 38%, var(--border));
-  background: color-mix(in srgb, var(--danger) 12%, var(--bg-elev));
-  color: color-mix(in srgb, var(--danger) 78%, var(--fg));
+  --t-border: color-mix(in srgb, var(--border) 70%, var(--danger) 30%);
+  --t-bg: color-mix(in srgb, var(--bg-elev) 90%, var(--danger) 10%);
 }
 .toast__icon {
   flex: 0 0 auto;
