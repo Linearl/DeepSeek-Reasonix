@@ -283,6 +283,10 @@ func (a *App) startupStartBackgroundLoops() {
 	// switch is read live inside the loop, so OFF is one config read per
 	// tick and ON applies without a restart.
 	a.startColdCacheCompactLoop()
+	// 任务 921:存量超限 events 的空闲期兜底清（auto+cap 门每 tick 现读;OFF
+	// 零行为）。884 修复后 fold-no-shrink WARN 与死会话（无 save 无旋转）的
+	// 自动出口。
+	a.startEventsIdleSweepLoop()
 	// Task 308-O4: release detached/idle runtimes (gate: env minutes, default off).
 	a.startDetachedIdleReleaseLoop()
 	// Task 485 P1: release self-held orphan session leases (leaked-handle
