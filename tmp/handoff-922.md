@@ -27,7 +27,21 @@
 3. 反向用例：579/569/796 族测试全绿（包级 go test）。
 4. 与 886 哨兵联动观测点：哨兵只报体量（sessionTranscriptMb/sessionEventsFileMb），本件补的是体量超标后的「消息不丢、可恢复投递」；WARN 留痕关键字面写在报告残留节。
 
-## 三、环境备忘
+## 三、实施结果（2026-10-15 终验）
+
+切片 commit：
+1. `d75a7e708` 922 handoff（本文件）
+2. `ba2548eef` 922 ②桥盲区（sweepIdleInboxTurns 拆出 idleTurnTargetViews + tabByID.Ctrl 兜底 + 不可解析留痕；附单测）
+3. `1917ab20d` 922 ①inFlight（rebind fence 补 cancelTurnStart ×2 + attach 接续协议 clearStaleTurnReservation ×3 落点；附单测）
+
+验收：
+- ①超限会话在飞消息不丢：`TestEmitTurnDoneClearsDetachedSinkReservation`（rebind fence 后 TurnDone 仍回 sink 清预留）+ `TestClearStaleTurnReservationOnIdleAttach`（残留清掉后队首可认领=降级后可恢复投递）。
+- ②桥盲区：`TestIdleTurnSweepResolvesVisibleTabCtrlByID`（ctrl==nil 可见 tab 经兜底进入视图并真开轮消费队首）。
+- ③反向用例：`TestClearStaleTurnReservationKeepsLiveTurn`（在飞预留不误清）、`TestIdleTurnSweepKeepsActiveTabMarker`（activeTab 不丢）、`TestIdleTurnSweepDropsUnresolvableCtrlTarget`（竞态丢弃不 panic）、`TestClearStaleTurnReservationNilSafe`；族回归 `TestIdleTurn|TestDormant|TestTabEventSink|TestTurnSubmission|TestHeal|TestFinishing|TestSweep` 全绿（19.4s）。
+- 包级：`go build ./... && go vet ./...` 干净；全量 `go test -count=1 -timeout 40m .`（2124s）10 条失败**全部在基线 f8a09feec 同条件下复现**（9 确定性 + 1 双侧 flaky：SetActiveRemoteTab），wt-922 失败集 ⊆ 基线失败集，零新增红。预存红清单：WindowsDesktopCommandsUseProcConstructors / EnsureBlankTabConcurrentModelSwitch / SetActiveRemoteTab（flaky）/ PumpDerivedHopExhaustion（双侧同文案）/ RebindWithTakeoverMirror（3s 超时载荷敏感，双侧同文案）/ SettingsExposesEffectiveSandboxWriteRoots / CatalogTopicTitle+CatalogManualDefaultTitle / BuildTabControllerBlocksWhenSessionLeaseHeld / StartTopicActivationFailureDetachesPreviousAndReattaches。
+- ④与886哨兵联动：哨兵（sessionTranscriptMb≥64 / sessionEventsFileMb≥100 WARN）报体量；本件补「体量超标会话的消息不丢+可恢复投递」。观测点：`cleared stale sink turn reservation after runtime attach`（886 机制①自愈触发）与 `[idle-turn-sweep] ... skip:no_ctrl_resolvable`（target 解析失败留痕）——哨兵 WARN 同窗若见 queued_followup 搁浅，先 grep 这两行。
+
+## 四、环境备忘
 
 - grep 用 `git grep`；提交显式路径、中文 message「922 」开头；不 add -A。
 - 主仓勿写；wt-922 内 `git rev-parse --show-toplevel` 应以 wt-922 结尾。
