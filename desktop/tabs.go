@@ -865,6 +865,10 @@ func (a *App) attachExistingSessionRuntimeCore(tab *WorkspaceTab, path string, w
 		attachedSink := tab.sink
 		attachedEpoch := a.runtimeEpochForTabLocked(tab)
 		a.mu.Unlock()
+		// 任务922（886 机制①）: attaching a detached runtime whose TurnDone was
+		// lost in a rebind/epoch window must not import its stranded turn
+		// reservation — clear while provably idle so the tab stays claimable.
+		clearStaleTurnReservation(attachedCtrl, attachedSink, tab.ID)
 		a.replayPendingPromptsAfterRuntimeAttach(tab.ID, attachedSink, attachedCtrl, attachedEpoch)
 		return true
 	}
@@ -904,6 +908,10 @@ func (a *App) attachExistingSessionRuntimeCore(tab *WorkspaceTab, path string, w
 	attachedSink := tab.sink
 	attachedEpoch := a.runtimeEpochForTabLocked(tab)
 	a.mu.Unlock()
+	// 任务922（886 机制①）: same stranded-reservation heal as the detached
+	// attach branch above — adopting a runtime must not import a turn
+	// reservation whose TurnDone was lost in an earlier rebind window.
+	clearStaleTurnReservation(attachedCtrl, attachedSink, tab.ID)
 	if path != "" && !tab.ReadOnly {
 		a.attachTakeoverMirror(tab.ID, path)
 		go a.adoptSessionFromLocalServe(tab.ID, path)
@@ -1656,6 +1664,50 @@ func (s *tabEventSink) cancelTurnStart() {
 	s.mu.Lock()
 	s.turn = turnSubmissionState{}
 	s.mu.Unlock()
+}
+
+// clearInFlightIfHeld releases a held turn reservation and reports whether it
+// did, returning the reserved submissionID for observability (任务922, 886
+// 机制①). Distinct from cancelTurnStart, which clears unconditionally: the
+// residue self-heal must log only when it actually found and removed a
+// stranded reservation.
+func (s *tabEventSink) clearInFlightIfHeld() (bool, string) {
+	if s == nil {
+		return false, ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.turn.inFlight {
+		return false, ""
+	}
+	submissionID := s.turn.submissionID
+	s.turn = turnSubmissionState{}
+	return true, submissionID
+}
+
+// clearStaleTurnReservation (任务922, 886 机制① 接续协议) releases a
+// re-attached sink's turn reservation when the owning controller is provably
+// idle. The reservation contract is TurnStarted sets inFlight and that turn's
+// TurnDone clears it (Emit above), but a rebind/epoch window can lose that
+// TurnDone for the sink — RuntimeStatus().Running merges running||finishing
+// and finishGuardedTurn only drops finishing AFTER the TurnDone fan-out
+// completes, so Running==false with inFlight still held is unambiguous
+// residue: every later Submit/dispatch on this tab would fail tryBeginTurn →
+// ErrTurnRunning, dispatchInboxOnce stays silently idle BY DESIGN, and the
+// durable queue head is never claimed (886 新6 现场：12:22 后 4 次 drain 全部
+// 空转，消息未丢但无人能消费). A genuinely running turn keeps its
+// reservation — its own TurnDone will clear it.
+func clearStaleTurnReservation(ctrl control.SessionAPI, sink *tabEventSink, tabID string) {
+	if ctrl == nil || sink == nil {
+		return
+	}
+	if ctrl.RuntimeStatus().Running {
+		return
+	}
+	if cleared, submissionID := sink.clearInFlightIfHeld(); cleared {
+		slog.Warn("desktop: cleared stale sink turn reservation after runtime attach — TurnDone never returned to this sink, queued follow-ups can be claimed again (922/886)",
+			"tab", tabID, "submission", submissionID)
+	}
 }
 
 func (s *tabEventSink) setContext(ctx context.Context) {
