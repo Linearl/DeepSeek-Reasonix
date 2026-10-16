@@ -905,15 +905,19 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			sysPrompt = s
 		}
 	} else {
+		// Task 919: both stores read the same on-disk skill tree and differ only
+		// in disabled-name filters, so they share one parse cache — the second
+		// List() reuses the first's parses instead of re-reading every file.
+		parseCache := skill.NewParseCache()
 		skillStore = skill.New(skill.Options{
 			ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(),
 			PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(),
 			DisabledNames: collabDisabledSkillNames(cfg), DisableBuiltinNames: featureGatedBuiltinNames(cfg),
-			MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr,
+			MaxDepth: cfg.SkillMaxDepth(), Stderr: opts.Stderr, ParseCache: parseCache,
 		})
 		skillStore.ConfigureInvocationPolicy("", nil)
 		skills = skillStore.List()
-		allSkillStore = skill.New(skill.Options{ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(), PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(), MaxDepth: cfg.SkillMaxDepth(), Stderr: io.Discard})
+		allSkillStore = skill.New(skill.Options{ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(), PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(), MaxDepth: cfg.SkillMaxDepth(), Stderr: io.Discard, ParseCache: parseCache})
 		allSkills = allSkillStore.List()
 		if implicitSkillInvocation {
 			sysPrompt += "\n\n" + skill.InvocationPolicyBlock()

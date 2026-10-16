@@ -22,6 +22,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"reasonix/internal/config"
 	"reasonix/internal/fileutil"
@@ -153,10 +155,49 @@ type Options struct {
 	// DisableDiscovery returns an empty store without probing project, custom,
 	// global, plugin, or built-in skill sources. It is a test-only isolation knob.
 	DisableDiscovery bool
+	// ParseCache optionally shares one parse cache across stores (task 919:
+	// boot builds two stores over the same roots — skillStore and allSkillStore
+	// differ only in disabled-name filters — and each paid its own full scan).
+	// Entries are keyed by path plus filesystem facts, never by filter config,
+	// so sharing across differently-filtered stores is safe. Nil = store-private
+	// cache.
+	ParseCache *ParseCache
 	// Stderr is the writer for diagnostic warnings. When nil, defaults to
 	// os.Stderr. Set to io.Discard to suppress output (e.g. during model
 	// switch inside a bubbletea session).
 	Stderr io.Writer
+}
+
+// ParseCache is a shareable per-file skill parse memo (task 919). See
+// parseCacheEntry for the freshness contract.
+type ParseCache struct {
+	mu sync.Mutex
+	m  map[string]parseCacheEntry
+}
+
+// NewParseCache returns an empty shareable parse cache.
+func NewParseCache() *ParseCache { return &ParseCache{m: map[string]parseCacheEntry{}} }
+
+func (c *ParseCache) get(path string) (parseCacheEntry, bool) {
+	if c == nil {
+		return parseCacheEntry{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.m[path]
+	return e, ok
+}
+
+func (c *ParseCache) put(path string, e parseCacheEntry) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.m == nil {
+		c.m = map[string]parseCacheEntry{}
+	}
+	c.m[path] = e
 }
 
 // Store resolves skills across the configured roots.
@@ -177,6 +218,32 @@ type Store struct {
 	runtimeProfile   string
 	requiresReady    func([]string) []string
 	toolBindings     func(Skill) []tool.MCPBinding
+
+	// cache memoizes parseSkill per file path (task 919: discovery runs on
+	// every List/SlashList/Read, and the capability catalog rebuilds List per
+	// request — a warm scan of a 217-skill tree costs ~370ms of pure repeated
+	// reads). A hit requires every recorded filesystem fact to still match, so
+	// fresh installs, hand edits and store mutations stay visible; the cache
+	// removes repeated content reads, never freshness. Shared via Options for
+	// stores built over the same roots in one build.
+	cache *ParseCache
+}
+
+// parseCacheEntry memoizes one parsed skill file plus the filesystem facts that
+// produced it. refsSig/scriptsSig cover the sidecar material inlined into Body
+// (references/*.md content, scripts/ names), so editing a reference without
+// touching SKILL.md also invalidates.
+type parseCacheEntry struct {
+	mtime         time.Time
+	size          int64
+	stem          string
+	scope         Scope
+	requireMarker bool
+	refsSig       string
+	scriptsSig    string
+	warn          string // stderr warning replayed on cache hits
+	sk            Skill
+	ok            bool
 }
 
 // New builds a Store. Relative custom paths and a relative project root are made
@@ -219,7 +286,7 @@ func New(opts Options) *Store {
 	if stderr == nil {
 		stderr = os.Stderr
 	}
-	return &Store{
+	st := &Store{
 		homeDir:          home,
 		reasonixHomeDir:  reasonixHome,
 		projectRoot:      root,
@@ -233,7 +300,12 @@ func New(opts Options) *Store {
 		disableBuiltins:  opts.DisableBuiltins,
 		disableDiscovery: opts.DisableDiscovery,
 		stderr:           stderr,
+		cache:            opts.ParseCache,
 	}
+	if st.cache == nil {
+		st.cache = NewParseCache()
+	}
+	return st
 }
 
 // ConfigureInvocationPolicy installs session-local runtime constraints for
@@ -869,15 +941,73 @@ func (s *Store) parseFlat(path, stem string, scope Scope, requireSkillMarker boo
 	return s.parseSkill(path, stem, scope, requireSkillMarker)
 }
 
+// parseWarnTransient marks an uncached outcome caused by a read/stat failure:
+// transient I/O errors must not be memoized (the next scan should retry).
+const parseWarnTransient = "\x00transient"
+
+// parseSkill reads and decodes one skill file, consulting the per-store parse
+// cache first (task 919: discovery re-parses every file on every List/SlashList/
+// Read, and the capability catalog rebuilds List per request — a warm scan of a
+// 217-skill tree costs ~370ms of repeated reads). A hit requires every recorded
+// filesystem fact (mtime, size, sidecar signatures) to still match, so fresh
+// installs, hand edits and store mutations stay visible; the cache removes
+// repeated content reads, never freshness. Cache hits re-emit the missing-
+// description warning so repeated List/Read calls behave exactly like repeated
+// full parses.
 func (s *Store) parseSkill(path, stem string, scope Scope, requireSkillMarker bool) (Skill, bool) {
+	var mtime time.Time
+	var size int64
+	statOK := false
+	if info, err := os.Stat(path); err == nil {
+		mtime, size, statOK = info.ModTime(), info.Size(), true
+	}
+	if statOK && s != nil {
+		if entry, hit := s.cache.get(path); hit &&
+			entry.mtime.Equal(mtime) && entry.size == size &&
+			entry.stem == stem && entry.scope == scope && entry.requireMarker == requireSkillMarker {
+			refsSig, scriptsSig := sidecarSignatures(path)
+			if entry.refsSig == refsSig && entry.scriptsSig == scriptsSig {
+				if entry.warn != "" {
+					fmt.Fprint(s.stderr, entry.warn)
+				}
+				return entry.sk, entry.ok
+			}
+		}
+	}
+	sk, ok, warn := s.parseSkillUncached(path, stem, scope, requireSkillMarker)
+	if statOK && s != nil && warn != parseWarnTransient {
+		refsSig, scriptsSig := sidecarSignatures(path)
+		s.cache.put(path, parseCacheEntry{
+			mtime:         mtime,
+			size:          size,
+			stem:          stem,
+			scope:         scope,
+			requireMarker: requireSkillMarker,
+			refsSig:       refsSig,
+			scriptsSig:    scriptsSig,
+			warn:          warn,
+			sk:            sk,
+			ok:            ok,
+		})
+	}
+	if warn != "" && warn != parseWarnTransient {
+		fmt.Fprint(s.stderr, warn)
+	}
+	return sk, ok
+}
+
+// parseSkillUncached is the disk-backed implementation parseSkill wraps. It
+// returns the would-be stderr warning text instead of writing it, so the cache
+// layer can replay it on hits.
+func (s *Store) parseSkillUncached(path, stem string, scope Scope, requireSkillMarker bool) (Skill, bool, string) {
 	b, err := fileencoding.ReadFileUTF8(path)
 	if err != nil {
-		return Skill{}, false
+		return Skill{}, false, parseWarnTransient
 	}
 	content := strings.TrimPrefix(strings.ReplaceAll(string(b), "\r\n", "\n"), "\uFEFF")
 	fm, body := splitFrontmatter(content)
 	if requireSkillMarker && !hasSkillMarker(content, fm) {
-		return Skill{}, false
+		return Skill{}, false, ""
 	}
 
 	name := stem
@@ -885,8 +1015,9 @@ func (s *Store) parseSkill(path, stem string, scope Scope, requireSkillMarker bo
 		name = v
 	}
 	desc := strings.TrimSpace(fm[skillFrontmatterDescription])
+	warn := ""
 	if desc == "" {
-		fmt.Fprintf(s.stderr, "warning: skill %q at %s has no description: — it will load but won't appear in the skills index\n", name, path)
+		warn = fmt.Sprintf("warning: skill %q at %s has no description: — it will load but won't appear in the skills index\n", name, path)
 	}
 	sk := Skill{
 		Name:         name,
@@ -911,7 +1042,64 @@ func (s *Store) parseSkill(path, stem string, scope Scope, requireSkillMarker bo
 		Requires:       parseCSVFrontmatter(fm[skillFrontmatterRequires]),
 	}
 	sk.Profiles, sk.InvalidProfiles = parseProfilesFrontmatter(fm[skillFrontmatterProfiles])
-	return sk, true
+	return sk, true, warn
+}
+
+// sidecarSignatures fingerprints the sidecar material that gets inlined into a
+// directory-layout skill's Body: references/*.md contents (name+size, which
+// change on any rewrite) and scripts/ names. Flat skills have no sidecars and
+// return empty signatures. Only the stat metadata is read — never contents — so
+// validation stays far cheaper than the parse it protects.
+func sidecarSignatures(skillPath string) (refsSig, scriptsSig string) {
+	if filepath.Base(skillPath) != SkillFile {
+		return "", ""
+	}
+	dir := filepath.Dir(skillPath)
+	if entries, err := os.ReadDir(filepath.Join(dir, "references")); err == nil {
+		var names []string
+		for _, e := range entries {
+			if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".md") {
+				if info, err := e.Info(); err == nil {
+					names = append(names, fmt.Sprintf("%s|%d|%d", e.Name(), info.Size(), info.ModTime().UnixNano()))
+				}
+			}
+		}
+		sort.Strings(names)
+		refsSig = strings.Join(names, ";")
+	}
+	if entries, err := os.ReadDir(filepath.Join(dir, "scripts")); err == nil {
+		var names []string
+		for _, e := range entries {
+			if e.IsDir() || strings.HasPrefix(e.Name(), ".") || !isScriptExt(filepath.Ext(e.Name())) {
+				continue
+			}
+			names = append(names, e.Name())
+		}
+		sort.Strings(names)
+		scriptsSig = strings.Join(names, ";")
+	}
+	return refsSig, scriptsSig
+}
+
+// scriptsListingSignature is the scripts half of sidecarSignatures, split out
+// so callers that only need that half skip the references ReadDir.
+func scriptsListingSignature(skillPath string) string {
+	if filepath.Base(skillPath) != SkillFile {
+		return ""
+	}
+	entries, err := os.ReadDir(filepath.Join(filepath.Dir(skillPath), "scripts"))
+	if err != nil {
+		return ""
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") || !isScriptExt(filepath.Ext(e.Name())) {
+			continue
+		}
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	return strings.Join(names, ";")
 }
 
 func firstNonEmptySkillValue(values ...string) string {
