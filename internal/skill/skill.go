@@ -178,6 +178,17 @@ type ParseCache struct {
 // NewParseCache returns an empty shareable parse cache.
 func NewParseCache() *ParseCache { return &ParseCache{m: map[string]parseCacheEntry{}} }
 
+// defaultCache is the process-wide parse cache every Store shares unless
+// Options.ParseCache says otherwise (task 919). Desktop builds a fresh Store on
+// every runtime rebuild, so a store-private cache would re-pay the full skill
+// scan on each build — hoisting the default to process scope lets the first
+// scan of a process serve every later build, sidebar refresh and capability
+// catalog request. Freshness does not weaken: every hit still validates the
+// entry against the file's live mtime/size/sidecar state, so external edits and
+// installs surface exactly as with a private cache. Entries are bounded by the
+// number of distinct skill paths seen in the process.
+var defaultCache = NewParseCache()
+
 func (c *ParseCache) get(path string) (parseCacheEntry, bool) {
 	if c == nil {
 		return parseCacheEntry{}, false
@@ -303,7 +314,7 @@ func New(opts Options) *Store {
 		cache:            opts.ParseCache,
 	}
 	if st.cache == nil {
-		st.cache = NewParseCache()
+		st.cache = defaultCache
 	}
 	return st
 }
