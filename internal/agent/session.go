@@ -4,6 +4,7 @@ package agent
 
 import (
 	"bytes"
+	"hash"
 	"slices"
 	"strings"
 	"sync"
@@ -94,6 +95,23 @@ type Session struct {
 	// one recovery file without letting a replacement controller overwrite it.
 	recoveryLane string
 	head         sessionHeadState
+	// 任务 923: incremental transcript digest state. digestHash accumulates the
+	// exact sha256 stream digestAndSizeSessionMessages would compute, fed one
+	// message at a time by the append funnels (Add/AddBatch) so a save on a
+	// large session no longer re-marshals the whole transcript inside the
+	// save-path lock (measured 51.5ms per save on a 4000-message synthetic
+	// session). Validity is pinned by three guards, all checked under mu:
+	// digestCount == len(Messages) (any replace/truncate desyncs the count),
+	// digestVersion == version and digestRewriteVersion == rewriteVersion
+	// (every in-place byte-affecting mutation bumps one of them without
+	// feeding the hasher, so a stale state fails open to the full pass).
+	// nil means "no incremental state" — the common post-load, post-rewrite
+	// shape — and is always safe: the save path falls back to the full digest.
+	digestHash          hash.Hash
+	digestCount         int
+	digestVersion       uint64
+	digestRewriteVersion int
+	digestSize          int64
 }
 
 // NewSession initializes a session with an optional system prompt.
@@ -139,8 +157,14 @@ func (s *Session) Add(m provider.Message) {
 		m.ID = NewMessageID()
 	}
 	s.expireProtocolRecoveryLocked([]provider.Message{m})
+	// 任务 923: append funnels feed the incremental transcript hash so the next
+	// save skips the full marshal+sha256 inside the save-path lock. Captured
+	// after expireProtocolRecoveryLocked, which is itself a rewrite-shaped
+	// mutation (it bumps rewriteVersion and desyncs the stream on purpose).
+	preCount, preVersion, preRewrite := len(s.Messages), s.version, s.rewriteVersion
 	s.Messages = append(s.Messages, m)
 	s.version++
+	s.feedDigestAppendLocked(s.Messages[preCount:], preCount, preVersion, preRewrite)
 }
 
 // AddBatch appends one logical transcript batch under a single lock. Turn
@@ -153,8 +177,10 @@ func (s *Session) AddBatch(messages ...provider.Message) {
 	s.mu.Lock()
 	mintMessageIDs(messages)
 	s.expireProtocolRecoveryLocked(messages)
+	preCount, preVersion, preRewrite := len(s.Messages), s.version, s.rewriteVersion
 	s.Messages = append(s.Messages, messages...)
 	s.version++
+	s.feedDigestAppendLocked(s.Messages[preCount:], preCount, preVersion, preRewrite)
 	s.mu.Unlock()
 }
 

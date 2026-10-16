@@ -505,13 +505,13 @@ func (s *Session) saveLocked(path string, mode sessionSaveMode) error {
 	}
 	probeMs = time.Since(probeStart).Milliseconds()
 	if route := s.dagSaveRoute(path, probe); route != dagRouteSchemaOne {
-		digest, err := s.snapshotDigest(path, msgs, version)
+		digest, err := s.snapshotDigest(path, msgs, version, rewriteVersion)
 		if err != nil {
 			return err
 		}
 		return s.saveDAGLocked(path, mode, route, msgs, version, rewriteVersion, digest)
 	}
-	digest, contentBytes, err := digestAndSizeSessionMessages(msgs)
+	digest, contentBytes, err := s.transcriptDigestAndSizeForSave(msgs, version, rewriteVersion)
 	if err != nil {
 		return err
 	}
@@ -1299,38 +1299,45 @@ func messageForSessionIdentity(m provider.Message) provider.Message {
 // (planDAGWrite diffs the transcript itself). Recomputing it instead costs a
 // json.Marshal + sha256 pass over every message, which on a large session
 // dominates a defensive switch/close snapshot.
-func (s *Session) snapshotDigest(path string, msgs []provider.Message, version uint64) ([sha256.Size]byte, error) {
+func (s *Session) snapshotDigest(path string, msgs []provider.Message, version uint64, rewriteVersion int) ([sha256.Size]byte, error) {
 	if s.snapshotUpToDate(path) {
 		if state := s.persistState(path); state.ok && state.version == version {
 			return state.digest, nil
 		}
 	}
-	digest, _, err := digestAndSizeSessionMessages(msgs)
-	return digest, err
+	// 任务 923: the append funnels maintain an incremental transcript hash;
+	// when it describes exactly this snapshot the save skips the full
+	// marshal+sha256 pass inside the save-path lock.
+	if digest, _, ok := s.incrementalDigestAndSize(msgs, version, rewriteVersion); ok {
+		return digest, nil
+	}
+	digest, size, h, err := digestAndSizeSessionMessagesState(msgs)
+	if err != nil {
+		return digest, err
+	}
+	s.seedDigestState(msgs, version, rewriteVersion, h, size)
+	return digest, nil
+}
+
+// transcriptDigestAndSizeForSave is the schema-1 twin of snapshotDigest: the
+// incremental stream first, then the full pass with a reseed (任务 923).
+func (s *Session) transcriptDigestAndSizeForSave(msgs []provider.Message, version uint64, rewriteVersion int) ([sha256.Size]byte, int64, error) {
+	if digest, size, ok := s.incrementalDigestAndSize(msgs, version, rewriteVersion); ok {
+		return digest, size, nil
+	}
+	digest, size, h, err := digestAndSizeSessionMessagesState(msgs)
+	if err != nil {
+		return digest, 0, err
+	}
+	s.seedDigestState(msgs, version, rewriteVersion, h, size)
+	return digest, size, nil
 }
 
 // digestAndSizeSessionMessages also reports the encoded transcript size, which
 // the save path uses to bound the event log relative to the live content.
 func digestAndSizeSessionMessages(msgs []provider.Message) ([sha256.Size]byte, int64, error) {
-	h := sha256.New()
-	size := int64(0)
-	for _, m := range msgs {
-		m = messageForSessionIdentity(m)
-		b, err := json.Marshal(m)
-		if err != nil {
-			return [sha256.Size]byte{}, 0, err
-		}
-		if _, err := h.Write(b); err != nil {
-			return [sha256.Size]byte{}, 0, err
-		}
-		if _, err := h.Write([]byte{'\n'}); err != nil {
-			return [sha256.Size]byte{}, 0, err
-		}
-		size += int64(len(b)) + 1
-	}
-	var out [sha256.Size]byte
-	copy(out[:], h.Sum(nil))
-	return out, size, nil
+	digest, size, _, err := digestAndSizeSessionMessagesState(msgs)
+	return digest, size, err
 }
 
 // sessionMessagesEncodedSize sums the encoded transcript bytes exactly the way

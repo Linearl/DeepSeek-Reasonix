@@ -61,6 +61,27 @@ func BenchmarkT923LockSegmentDiff(b *testing.B) {
 	}
 }
 
+// BenchmarkT923LockSegmentDigestIncremental measures the post-923 append-save
+// digest cost: the incremental stream fed by AddBatch, read under mu. This is
+// the shape every version-bumped save now pays instead of the 51.5ms full pass.
+func BenchmarkT923LockSegmentDigestIncremental(b *testing.B) {
+	s := NewSession("sys")
+	s.AddBatch(t923SyntheticMessages(4000)...)
+	// Seed the stream via a full pass, exactly like the first save does.
+	msgs, version, rewriteVersion := s.snapshotWithVersion()
+	_, _, h, err := digestAndSizeSessionMessagesState(msgs)
+	if err != nil {
+		b.Fatal(err)
+	}
+	s.seedDigestState(msgs, version, rewriteVersion, h, 0)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, _, ok := s.incrementalDigestAndSize(msgs, version, rewriteVersion); !ok {
+			b.Fatal("incremental digest miss")
+		}
+	}
+}
+
 // BenchmarkT923LockSegmentCheckpointWrite measures the non-pureAppend
 // checkpoint rewrite (writeSessionMessages: full marshal + disk write) that a
 // patch-shaped tool-checkpoint save pays inside the lock on the schema-2 path.

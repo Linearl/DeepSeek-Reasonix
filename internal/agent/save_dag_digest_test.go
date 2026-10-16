@@ -39,8 +39,8 @@ func TestSnapshotDigestReusesPersistedBaselineForSchemaTwo(t *testing.T) {
 		t.Fatalf("checkpoint state = %+v, want derived files left pending", state)
 	}
 
-	msgs, version, _ := s.snapshotWithVersion()
-	reused, err := s.snapshotDigest(path, msgs, version)
+	msgs, version, rewriteVersion := s.snapshotWithVersion()
+	reused, err := s.snapshotDigest(path, msgs, version, rewriteVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +58,8 @@ func TestSnapshotDigestReusesPersistedBaselineForSchemaTwo(t *testing.T) {
 	}
 
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "more"})
-	msgs, version, _ = s.snapshotWithVersion()
-	moved, err := s.snapshotDigest(path, msgs, version)
+	msgs, version, rewriteVersion = s.snapshotWithVersion()
+	moved, err := s.snapshotDigest(path, msgs, version, rewriteVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
