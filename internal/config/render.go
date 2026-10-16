@@ -225,8 +225,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "default_model = %q\n", c.DefaultModel)
 	// Conversation store mode (task 155). Rendered unconditionally: it lives on
 	// the top-level Config rather than [desktop], and a hand-added line used to be
-	// dropped by the next settings save.
-	fmt.Fprintf(&b, "session_storage = %q   # v3_only (default) | dual_write_read_v3 | dual_write_read_v4 | v4_only (needs a restart)\n", SessionStorageMode(c))
+	// dropped by the next settings save. 任务 916：设置面板锁定 v3_only（v4/v5
+	// 档入口禁用），注释仍列全四档——已存 v4 档的配置必须原样渲染往返，
+	// 不得因锁定被改写。
+	fmt.Fprintf(&b, "session_storage = %q   # v3_only (default, settings-locked per task 916) | dual_write_read_v3 | dual_write_read_v4 | v4_only (needs a restart)\n", SessionStorageMode(c))
 	// Automatic event-log rotation gate + thresholds (task 333). Rendered
 	// unconditionally for the same reason as session_storage above: top-level
 	// scalars dropped from this table are silently lost on the next save.
@@ -1511,7 +1513,8 @@ func RenderTOMLProjectDelta(c *Config) string {
 	// the top-level Config rather than [desktop], and a hand-added line used to be
 	// dropped by the next settings save. (It used to sit inside the default_model
 	// branch above, so a mode change on its own was silently dropped on save.)
-	fmt.Fprintf(&b, "session_storage = %q   # v3_only (default) | dual_write_read_v3 | dual_write_read_v4 | v4_only (needs a restart)\n", SessionStorageMode(c))
+	// 任务 916：面板锁定 v3_only；注释列全四档，v4 档存量配置原样渲染往返。
+	fmt.Fprintf(&b, "session_storage = %q   # v3_only (default, settings-locked per task 916) | dual_write_read_v3 | dual_write_read_v4 | v4_only (needs a restart)\n", SessionStorageMode(c))
 	// Event-log rotation gate/thresholds (task 333): rendered unconditionally
 	// like session_storage above — mergeTOMLTopLevelFields only replaces keys
 	// the delta carries, so a sparse rendering would leave a stale
