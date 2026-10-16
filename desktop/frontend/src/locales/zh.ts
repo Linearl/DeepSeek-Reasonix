@@ -2476,7 +2476,7 @@ export const zh: Record<DictKey, string> = {
 "settings.restartUpdate": "重启更新",
 "settings.restartUpdateHint": "状态栏显示「快速切换版本」按钮：把 InstallRoot/staging 里的调试构建换入当前安装目录并重启。调试辅助，非官方更新；默认关闭。",
   "settings.toolOptimizations": "编辑读回（readBack）",
-  "settings.toolOptimizationsHint": "「工具优化」族：edit_file/multi_edit 支持 readBack 参数——编辑后自动返回编辑段落与相邻上下文（各 20 行），该读回内容同时作为文件的新读取证据，同文件连续编辑不再被 evidence gate 拦截（省掉「拦→重读→再改」循环）。关闭=与现版行为逐字节一致；开启需重启生效。",
+  "settings.toolOptimizationsHint": "「工具优化」族（两项效果）：①编辑读回——edit_file/multi_edit 支持 readBack 参数，编辑后自动返回编辑段落与相邻上下文（各 20 行），该读回内容同时作为文件的新读取证据，同文件连续编辑不再被 evidence gate 拦截（省掉「拦→重读→再改」循环）；②multi_edit 直注——族开启时 multi_edit 进入模型可见工具列表（模型拿到完整 schema，edit_file「prefer multi_edit」的批量编辑引导自此闭合；关闭时 multi_edit 仍始终可被调用，只是不进模型可见列表）。生效时机：开关在启动时定格，改开关需重建运行时（重启）生效。新装默认开启——首次打开设置时自动写入开启；关闭=与现版行为逐字节一致。",
   "settings.toolOptimizations.on": "开启",
   "settings.toolOptimizations.off": "关闭",
 "settings.editEvidenceRelaxed": "编辑证据门宽松模式",

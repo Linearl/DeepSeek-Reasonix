@@ -1019,7 +1019,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// the mcp stage's wall clock, but builtin registration is invisible in
 	// the per-spec lines — time it so a 21s stage decomposes.
 	builtinsStart := time.Now()
-	addBuiltins(reg, enabledBuiltins, writeRoots, writeRootSet, bashSpec, bashTimeout, searchSpec, stderr, root, proxySpec, forbidReadRoots, readPathResolver, sessionGuard, managedConfig, opts.FileOverlay, opts.TerminalRunner, sessionTemp, fileWriteReceipt, cfg.Agent.ExperimentalToolOptimizations)
+	addBuiltins(reg, enabledBuiltins, writeRoots, writeRootSet, bashSpec, bashTimeout, searchSpec, stderr, root, proxySpec, forbidReadRoots, readPathResolver, sessionGuard, managedConfig, opts.FileOverlay, opts.TerminalRunner, sessionTemp, fileWriteReceipt, cfg.ToolOptimizationsEnabled())
 	// Task 233 batch 2: controlled UI driving, gated by iron-rule-2 config —
 	// with the switch off the tool does not exist in the registry at all.
 	if cfg.Agent.ExperimentalUIDriver {
@@ -2996,14 +2996,24 @@ func applyUnifiedProviderToolSurface(reg *tool.Registry, extras ...string) {
 }
 
 // providerSurfaceExtras returns the registry names that join the
-// provider-visible surface behind their own experiment flags (task 254).
-// Currently only restart_update: it ships hidden from the model unless
-// experimental_autonomous_update is on.
+// provider-visible surface behind their own experiment flags (task 254/915).
+// Two members ship hidden from the model unless their switch is on:
+// restart_update (experimental_autonomous_update) and multi_edit
+// (experimental_tool_optimizations, task 915 — the model then gets its full
+// schema and the edit_file "prefer multi_edit" guidance resolves to a real
+// tool; either way multi_edit stays executable via use_capability).
 func providerSurfaceExtras(cfg *config.Config) []string {
-	if cfg != nil && cfg.Desktop.ExperimentalAutonomousUpdate {
-		return []string{"restart_update"}
+	if cfg == nil {
+		return nil
 	}
-	return nil
+	var extras []string
+	if cfg.Desktop.ExperimentalAutonomousUpdate {
+		extras = append(extras, "restart_update")
+	}
+	if cfg.ToolOptimizationsEnabled() {
+		extras = append(extras, "multi_edit")
+	}
+	return extras
 }
 
 // effectivePlannerModel centralizes planner precedence. Every role setting

@@ -715,9 +715,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 163: explicit render — omit-on-off would silently disable a
 	// saved-on usage card on the next render (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "experimental_opencode_go_usage = %v   # task 163: OpenCode Go subscription usage card (5h/7d/month windows; no query while off)\n", c.Agent.ExperimentalOpenCodeGoUsage)
-	// Task 603: explicit render — omit-on-off would silently spring a saved-on
-	// switch back off on the next render (81/123 lost-save lesson).
-	fmt.Fprintf(&b, "experimental_tool_optimizations = %v   # task 603: 工具优化 family — edit_file/multi_edit return the edited snippet + context as fresh read evidence (task 875: default on when lit, readBack:false opts out); off keeps every schema/output byte identical (restart to apply)\n", c.Agent.ExperimentalToolOptimizations)
+	// Task 603: explicit render of a SET value — omit-on-off would silently
+	// spring a saved-on switch back off on the next render (81/123 lost-save
+	// lesson). Task 915: the field is a *bool; nil (key absent) renders
+	// NOTHING so the panel-layer default-on can never be baked into an
+	// explicit false by an unrelated save (the task-722 conditional rule).
+	if c.Agent.ExperimentalToolOptimizations != nil {
+		fmt.Fprintf(&b, "experimental_tool_optimizations = %v   # task 603/915: 工具优化 family — edit_file/multi_edit return the edited snippet + context as fresh read evidence (task 875: default on when lit, readBack:false opts out) + multi_edit joins the provider-visible tools while lit; absent = off keeps every schema/output byte identical (restart to apply)\n", *c.Agent.ExperimentalToolOptimizations)
+	}
 	// Task 789: same explicit-render rule — the Go-side switch ships first; the
 	// lab tier entry and the settings-page entry land in the unified
 	// registration window (labNonFeatureKeys exemption carries the reason).

@@ -2479,7 +2479,7 @@ export const en = {
 "settings.restartUpdate": "Quick version switch",
 "settings.restartUpdateHint": "Shows a quick-version-switch button in the status bar: swaps the staged debug build into the current install directory and restarts. Debug aid, not official update; off by default.",
   "settings.toolOptimizations": "Edit read-back (readBack)",
-  "settings.toolOptimizationsHint": "Tool-optimization family: edit_file/multi_edit accept a readBack parameter — the result returns the edited region plus ±20 surrounding lines, and that window is filed as the file's fresh read evidence, so back-to-back edits on one file no longer trip the evidence gate (no more block → re-read → re-edit loop). Off keeps behavior byte-identical; on applies after a restart.",
+  "settings.toolOptimizationsHint": "Tool-optimization family (two effects): (1) edit read-back — edit_file/multi_edit accept a readBack parameter; the result returns the edited region plus ±20 surrounding lines, and that window is filed as the file's fresh read evidence, so back-to-back edits on one file no longer trip the evidence gate (no more block → re-read → re-edit loop). (2) multi_edit injection — while the family is on, multi_edit joins the model-visible tools (the model gets its full schema and the edit_file \"prefer multi_edit\" batch-edit guidance closes; while off, multi_edit stays callable, just not model-visible). Timing: the switch is decided at boot — changing it needs a runtime rebuild (restart). Fresh installs default ON — the first Settings open materializes the key; off keeps behavior byte-identical.",
   "settings.toolOptimizations.on": "On",
   "settings.toolOptimizations.off": "Off",
 "settings.editEvidenceRelaxed": "Relaxed edit evidence gate",

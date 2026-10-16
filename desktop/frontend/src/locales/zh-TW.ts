@@ -1867,7 +1867,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.restartUpdate": "快速切換版本",
 "settings.restartUpdateHint": "狀態列顯示「快速切換版本」按鈕：把 InstallRoot/staging 裡的除錯建置換入目前安裝目錄並重新啟動。除錯輔助，非官方更新；預設關閉。",
   "settings.toolOptimizations": "編輯讀回（readBack）",
-  "settings.toolOptimizationsHint": "「工具最佳化」族：edit_file/multi_edit 支援 readBack 參數——編輯後自動返回編輯段落與相鄰上下文（各 20 行），該讀回內容同時作為檔案的新讀取證據，同檔案連續編輯不再被 evidence gate 攔截（省掉「攔→重讀→再改」循環）。關閉=與現版行為逐位元組一致；開啟需重新啟動生效。",
+  "settings.toolOptimizationsHint": "「工具最佳化」族（兩項效果）：①編輯讀回——edit_file/multi_edit 支援 readBack 參數，編輯後自動返回編輯段落與相鄰上下文（各 20 行），該讀回內容同時作為檔案的新讀取證據，同檔案連續編輯不再被 evidence gate 攔截（省掉「攔→重讀→再改」循環）；②multi_edit 直注——族開啟時 multi_edit 進入模型可見工具清單（模型拿到完整 schema，edit_file「prefer multi_edit」的批次編輯引導自此閉合；關閉時 multi_edit 仍始終可被呼叫，只是不進模型可見清單）。生效時機：開關在啟動時定格，改開關需重建執行時（重新啟動）生效。新裝預設開啟——首次開啟設定時自動寫入開啟；關閉=與現版行為逐位元組一致。",
   "settings.toolOptimizations.on": "開啟",
   "settings.toolOptimizations.off": "關閉",
 "settings.editEvidenceRelaxed": "編輯證據門寬鬆模式",

@@ -87,8 +87,8 @@ func allLabSwitchesOn() *Config {
 	c.Agent.ExperimentalOrphanLeaseReclaim = true
 	c.Agent.ExperimentalRecoveryOrphanSweep = true
 	c.Desktop.ExperimentalLocalServer = true
-	// tool-opt（任务 603）
-	c.Agent.ExperimentalToolOptimizations = true
+	// tool-opt（任务 603/915：字段 *bool 条件渲染——all-on 夹具必须置非 nil 才发射）
+	c.Agent.ExperimentalToolOptimizations = boolPtr(true)
 	// 豁免键（非表A，但属于实验室族，门禁要求它们仍被渲染）
 	c.Agent.ExperimentalPreapproveManagedPaths = true
 	c.Agent.ExperimentalCascadeApproval = true

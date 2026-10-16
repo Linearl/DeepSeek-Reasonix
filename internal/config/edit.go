@@ -715,8 +715,10 @@ func (c *Config) SetExperimentalFullAccess(enabled bool) error {
 // SetExperimentalToolOptimizations toggles the 工具优化 family (task 603):
 // edit_file/multi_edit accept readBack and file the returned window as read
 // evidence. Restart to apply — the boot assembly lights the tool surface.
+// Task 915: the stored field is a *bool (nil = key absent = panel default-on
+// display, boot off); an explicit click always writes a non-nil value.
 func (c *Config) SetExperimentalToolOptimizations(enabled bool) error {
-	c.Agent.ExperimentalToolOptimizations = enabled
+	c.Agent.ExperimentalToolOptimizations = &enabled
 	return nil
 }
 
