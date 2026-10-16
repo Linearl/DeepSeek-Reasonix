@@ -353,7 +353,12 @@ export function useTranscriptKernel({
   const beginAnchorRestore = useCallback((anchor?: LogicalAnchor) => {
     const restoreAnchor = anchor ?? kernel.anchor;
     if (kernel.userGestureActive || kernel.intent !== "reader" || restoreAnchor.kind !== "block") return null;
-    const transaction = kernel.activeTransaction ?? kernel.begin("restore", restoreAnchor);
+    // Task 931: this is the passive streaming-restore path — measurement
+    // publishes re-apply kernel.anchor to hold the reader's position. When the
+    // anchor is stale (unobserved native momentum / a gesture-deferred revert),
+    // that re-application is a teleport; mark it passive so correctAnchor's
+    // drift gate also covers its first alignment.
+    const transaction = kernel.activeTransaction ?? kernel.begin("restore", restoreAnchor, { passive: true });
     if (transaction) refresh();
     return transaction;
   }, [kernel, refresh]);
