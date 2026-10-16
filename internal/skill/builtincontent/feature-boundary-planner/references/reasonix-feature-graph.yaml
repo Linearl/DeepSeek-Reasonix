@@ -1,0 +1,315 @@
+# Maintainer contract: inlined in ../SKILL.md §Maintain The Seed Graph.
+# Search aliases and IDs first; read only the relevant nodes and one-hop relationships.
+schemaVersion: 1
+graphId: reasonix-fork-feature-relationships
+purpose:
+  "Curated source discovery seeds for this fork (Reasonix desktop app — Go host + wails bindings +
+  React frontend), not an exhaustive feature catalog or a product authority. Verify matched nodes
+  and relationships against the current checkout."
+rules:
+  semanticExpansion:
+    Load matched nodes and one meaningful semantic hop; expand only for unresolved owners
+    or callers.
+  driftPolicy:
+    Report missing paths, symbols or changed semantics as graph-drift-candidate; do not infer
+    product rules from reachability.
+  stableIdPolicy:
+    Keep existing IDs when the semantic boundary is unchanged; use aliases for terminology
+    changes.
+  persistencePolicy:
+    Impact-only reports proposed graph changes. Planning or implementation may update
+    verified entries within the requested scope.
+  relationRanks:
+    - must-inspect
+    - should-inspect
+    - conditional
+    - invariant-only
+    - evidence-only
+nodes:
+  - id: capability.model-selection
+    kind: capability
+    label: Model and provider selection
+    aliases:
+      - select model
+      - model switch
+      - model picker
+      - 选择模型
+      - 模型选择
+      - 切换模型
+      - provider
+    codeSeeds:
+      - file: desktop/app_model.go
+        symbol: SetModelForTab
+      - file: desktop/model_catalog.go
+      - file: desktop/model_settings.go
+    invariants:
+      - "Per-tab model selection wins over the global default for that tab; SetModelForTab persists
+        only when the tab's model is current (persistTabModelIfCurrent)."
+  - id: surface.composer-model-control
+    kind: ui-surface
+    label: Composer model control
+    codeSeeds:
+      - file: desktop/frontend/src/lib/controllerModelCommands.ts
+      - file: desktop/frontend/src/lib/activeModelChanged.ts
+  - id: state.tab-model
+    kind: state-owner
+    label: Per-tab resolved model
+    codeSeeds:
+      - file: desktop/app_model.go
+        symbol: resolveTabModelRef
+      - file: desktop/app_model.go
+        symbol: persistTabModelIfCurrent
+  - id: persistence.model-settings
+    kind: persistence
+    label: Persisted provider/model configuration
+    codeSeeds:
+      - file: internal/config/config.go
+        symbol: Config
+      - file: desktop/model_settings.go
+  - id: capability.turn-submission
+    kind: capability
+    label: Turn submission and steering
+    aliases:
+      - 发消息
+      - 提交
+      - submit
+      - steer
+      - prompt
+      - turn
+      - 输入队列
+    codeSeeds:
+      - file: desktop/turn_submission_app.go
+        symbol: SubmitToTabWithID
+      - file: desktop/session_prompt.go
+  - id: state.composer-draft
+    kind: state-owner
+    label: Composer draft and history
+    codeSeeds:
+      - file: desktop/frontend/src/lib/composerDraftPersistence.ts
+      - file: desktop/frontend/src/lib/composerDraftKey.ts
+  - id: protocol.turn-admission
+    kind: protocol
+    label: Host-side turn admission
+    codeSeeds:
+      - file: desktop/turn_admission.go
+        symbol: beginTabTurn
+    invariants:
+      - "Admission is host-owned; the frontend optimistic overlay is a display draft, never an
+        accepted runtime fact. submissionID provides idempotency."
+  - id: protocol.wails-bindings
+    kind: protocol
+    label: Wails command bindings (frontend → host)
+    codeSeeds:
+      - file: desktop/wails.json
+      - file: desktop/app.go
+  - id: protocol.event-wire
+    kind: protocol
+    label: Wire events (host → frontend)
+    codeSeeds:
+      - file: internal/eventwire/receipt.go
+        symbol: CompletionReceiptEvent
+      - file: internal/eventwire/approval.go
+        symbol: toWireApproval
+  - id: ui-surface.project-tree
+    kind: ui-surface
+    label: Sidebar project/topic tree
+    aliases:
+      - 侧栏
+      - 项目树
+      - 会话列表
+      - topic tree
+      - sidebar
+      - 目录树
+    codeSeeds:
+      - file: desktop/project_tree_runtime.go
+        symbol: projectTreeRuntimeState
+      - file: desktop/frontend/src/lib/projectTreeTopic.ts
+  - id: persistence.topic-state
+    kind: persistence
+    label: Per-workspace topic state store
+    codeSeeds:
+      - file: desktop/topic_state_store.go
+        symbol: newTopicStateManager
+      - file: desktop/session_storage_mode.go
+  - id: persistence.tabs
+    kind: persistence
+    label: Tab registry and persistence
+    codeSeeds:
+      - file: desktop/tabs.go
+      - file: desktop/tabs_persistence_types.go
+  - id: capability.settings-lab
+    kind: capability
+    label: Settings and lab (experimental switches)
+    aliases:
+      - 设置
+      - 实验室
+      - lab
+      - 实验特性
+      - 开关
+      - settings
+    codeSeeds:
+      - file: desktop/settings_app.go
+        symbol: Settings
+      - file: desktop/frontend/src/lab/labLayout.ts
+    invariants:
+      - "Lab switches default off; an experimental feature with its switch off must behave exactly
+        like the baseline (byte-identical code path when dual-empty)."
+  - id: capability.theme
+    kind: capability
+    label: Theme packs and appearance
+    aliases:
+      - 主题
+      - theme
+      - 深色模式
+      - dark mode
+    codeSeeds:
+      - file: desktop/theme_app.go
+        symbol: ListThemePacks
+      - file: desktop/theme_store.go
+  - id: capability.skills
+    kind: capability
+    label: Skills (builtin, user-dir, project)
+    aliases:
+      - 技能
+      - skill
+      - 内置技能
+      - playbook
+    codeSeeds:
+      - file: desktop/skills_app.go
+        symbol: SkillsSettings
+      - file: internal/skill/builtins.go
+      - file: internal/skill/builtincontent/embed.go
+    invariants:
+      - "A user-dir or project skill with the same name overrides the builtin copy
+        (internal/skill/builtins.go); a fix shipped only in the builtin copy is shadowed wherever
+        an override exists."
+  - id: capability.collab
+    kind: capability
+    label: Cross-session collaboration
+    aliases:
+      - 跨会话
+      - talk_to_session
+      - 协作
+      - 收件箱
+      - 心跳
+      - heartbeat
+    codeSeeds:
+      - file: desktop/session_collab.go
+      - file: desktop/collab_inbox_app.go
+      - file: internal/collabchannel/collabchannel.go
+      - file: internal/collabinbox/collabinbox.go
+    invariants:
+      - "Collaboration tools register only while the cross-session switch (settings → lab) is on;
+        an already-open session needs its controller rebuilt after the switch flips."
+  - id: capability.mcp
+    kind: capability
+    label: MCP server management
+    aliases:
+      - mcp
+      - 工具服务器
+      - 插件
+    codeSeeds:
+      - file: desktop/mcp_app.go
+        symbol: MCPServers
+      - file: desktop/mcp_apps_app.go
+  - id: validation.frontend-bench
+    kind: validation
+    label: Frontend Playwright bench gates
+    codeSeeds:
+      - file: desktop/frontend/bench/run.mjs
+      - file: desktop/frontend/bench/app-browser.mjs
+  - id: validation.go-contract
+    kind: validation
+    label: Go contract tests (desktop package)
+    codeSeeds:
+      - file: desktop/settings_app_test.go
+      - file: desktop/final_readiness_sidebar_idle_907_test.go
+  - id: boundary.desktop-local-tabs
+    kind: boundary
+    label: Local desktop tabs
+    codeSeeds:
+      - file: desktop/tabs.go
+      - file: desktop/app_tabs.go
+  - id: boundary.remote-serve-tabs
+    kind: boundary
+    label: Remote serve tabs
+    codeSeeds:
+      - file: desktop/remote_serve.go
+      - file: desktop/remote_tab_persistence.go
+relationships:
+  - from: capability.model-selection
+    to: surface.composer-model-control
+    type: renders-in
+    rank: must-inspect
+  - from: capability.model-selection
+    to: state.tab-model
+    type: edits-draft
+    rank: must-inspect
+    condition: The control updates the per-tab selection; it does not rewrite the global default.
+  - from: state.tab-model
+    to: persistence.model-settings
+    type: persisted-by
+    rank: must-inspect
+  - from: capability.turn-submission
+    to: state.composer-draft
+    type: reads-draft-from
+    rank: should-inspect
+  - from: capability.turn-submission
+    to: protocol.wails-bindings
+    type: arrives-through
+    rank: must-inspect
+  - from: protocol.wails-bindings
+    to: protocol.turn-admission
+    type: requires-admission-through
+    rank: must-inspect
+    condition: Every submit path funnels through host admission (beginTabTurn) with submissionID idempotency.
+  - from: protocol.turn-admission
+    to: protocol.event-wire
+    type: emits-outcomes-through
+    rank: should-inspect
+  - from: protocol.event-wire
+    to: ui-surface.project-tree
+    type: projects-activity-into
+    rank: conditional
+    condition: Activity/status badges (running dot, awaiting_delivery) derive from runtime state events.
+  - from: ui-surface.project-tree
+    to: persistence.topic-state
+    type: reads-projection-from
+    rank: must-inspect
+  - from: persistence.topic-state
+    to: persistence.tabs
+    type: must-remain-distinct-from
+    rank: invariant-only
+    condition: Tabs persist tab/session binding; topic state persists per-workspace topic metadata; synchronization is not proven.
+  - from: capability.settings-lab
+    to: capability.theme
+    type: gates-through
+    rank: conditional
+    condition: Experimental appearance features sit behind lab switches, default off.
+  - from: capability.collab
+    to: protocol.event-wire
+    type: delivers-through
+    rank: should-inspect
+    condition: Inbox messages and receipts ride the wire event stream.
+  - from: capability.mcp
+    to: protocol.wails-bindings
+    type: manages-through
+    rank: evidence-only
+  - from: boundary.desktop-local-tabs
+    to: boundary.remote-serve-tabs
+    type: must-remain-isolated-from
+    rank: invariant-only
+    condition: Local and remote tab lifecycles, persistence and reclaim paths are separate until proven synchronized.
+  - from: persistence.tabs
+    to: boundary.remote-serve-tabs
+    type: isolated-by
+    rank: conditional
+    condition: Remote tab persistence uses its own path (remote_tab_persistence.go).
+  - from: capability.turn-submission
+    to: validation.go-contract
+    type: evidence-from
+    rank: evidence-only
+  - from: ui-surface.project-tree
+    to: validation.frontend-bench
+    type: evidence-from
+    rank: evidence-only
