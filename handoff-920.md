@@ -59,40 +59,60 @@ compacting := c.executor != nil && c.executor.CompactionInFlight()
 
 ### 2.3 放行（`onCompactionSettled`）
 
-controller sink 链观察 `event.CompactionDone`（succeeded/failed/aborted 三出口都发，`context_receipt.go:181-201`）→ `onCompactionSettled()`：
+**实现修正（vs S1 草案）**：不走 sink 事件链（Done 事件在 ladder 各轮间歇发出、且事件链多层包装易漏），改为 **agent 直接钩子**：`prepareOnce` 决策后 `maintaining.Add(1)` + `defer endMaintenance()`（计数归零时调 `compactionSettled` 钩子），`New()` 接线 `SetCompactionSettledHook(c.onCompactionSettled)`。覆盖整个维护事务（prune+ladder+rescue），且 defer 保证失败/超时/早退全出口放行。
 
-- `interruptDeferred && running` → 补发 interrupt（压缩落地后才让位）；
-- `!running && !finishing && !rotating && parked>0 && !CompactionInFlight()`（防另一个 pass 已起）→ drain 最老（同 `finishGuardedTurn` 临界区模式）；
-- `parked==0` → `maybeDispatchInbox()`（579 durable 项重踢，对齐 endRotation 语义）。
+`onCompactionSettled()`（agent goroutine 上执行）：
 
-`finishGuardedTurn` 的 drain 加一条：`CompactionInFlight()` 时**不 spawn**（留队，等 settle drain）。
+- `closed` → 直接返回；
+- `interruptDeferred` → 补发 interrupt（cancel + 启动 stall 时钟，压缩落地后才让位）；
+- `rotating/running/finishing/parked==0` → 只做 `maybeDispatchInbox()` + `wakeKickAfterTurnFinished()`（579/553 重踢，对齐 endRotation 语义）；
+- 否则 drain 最老 parked（同 `finishGuardedTurn` 临界区模式：set running 于同一临界区，`CompactionInFlight()` 复查防另一 pass 已起）。
+
+三处补检：
+
+- `finishGuardedTurn` drain：`CompactionInFlight()` 时**不 spawn**（留队，等 settle drain）；
+- `dispatchInboxOnce` busy 集合加 `CompactionInFlight()`（durable 项不烧 claim 周期）；
+- `admitGuardedTurn` 门开但 `parkedTurns>0` → FIFO 自愈（settle 钩子万一丢失时任何后来 submit 补漏，保序不卡死）。
+
+`interruptDeferred` 三个清理点：`finishGuardedTurn`（turn 已完，无物可 cancel）、`selfHealStalledLocked`（被弃 turn 的迟到 finish 走 stale 分支不会清理）。
 
 ### 2.4 验收映射
 
 - ① 压缩 in-flight 提交不二次膨胀：后台重建压缩在途 + Submit → parked，压完才 admit（测试钉死：压缩 in-flight 时提交新轮→排队，压完才执行）。
-- ② 正常轮零劣化：无压缩时 `CompactionInFlight()=false`，admission 路径只多一次 atomic/mutex 读，无等待。
+- ② 正常轮零劣化：无压缩时 `CompactionInFlight()=false`，admission 路径只多一次 atomic 读，无等待。
 - ③ 语义一致：复用 parkedTurns FIFO + 579 电平重踢 + steer 不动。
 
 ### 2.5 已知残留（记录在案，不扩大战线）
 
 - snapshot→Started 发出间的 µs 级窗口仍可注入（无网络请求，CAS 兜底作废重试）；
-- 压缩失败/超时（912 阶梯耗尽、rebuild 5min/round ctx）都会走 Done 事件 → settle 放行，不死锁（S3 测试钉死）；
-- 手动 `/compact` 保持 rotating drop+resend（让路语义），不改排队。
+- 压缩失败/超时（912 阶梯耗尽、rebuild 5min/round ctx）走 defer 放行，不死锁（S3 测试钉死）；
+- 手动 `/compact` 保持 rotating drop+resend（让路语义），不改排队；
+- provider Stream 在 StreamAuxiliary 独立 goroutine 的 panic 无法被调用方 recover（进程级），门的 defer 在该形状下无意义——失败/超时两测已覆盖 defer 合同；
+- 压缩成功但新轮恰在 settle drain 后立即注入 = 正常新内容（在折叠边界之后），不属于本门管辖。
 
-## 三、切片
+## 三、切片（全部完成）
 
-1. **S1**（本 commit）：勘察 + 设计 handoff。
-2. **S2**：`Agent.CompactionInFlight()` + admission 门（park 不 interrupt、FIFO 自愈）+ `onCompactionSettled`（sink 包装观察 Done、finishGuardedTurn drain 补检）+ 测试：
-   - `TestTask920SubmitParksDuringBackgroundCompaction`（①：阻塞摘要 provider，压缩 in-flight 提交→不 admit；放行→落盘执行）；
-   - `TestTask920NoCompactionNoDelay`（②：无压缩提交即时 admit）；
-   - `TestTask920FIFOAcrossCompaction`（③：两个 parked 按序 drain）。
-3. **S3**：边界——压缩失败/中止/超时后 settle 放行不死锁 + running 期间压缩的 interrupt 延迟补发，测试：
-   - `TestTask920FailedCompactionReleasesParked`；
-   - `TestTask920InterruptDeferredUntilCompactionSettles`。
+1. **S1**（`d2f0d1e50`）：勘察 + 设计 handoff。
+2. **S2**（`f9bcaad2d`）：`Agent.CompactionInFlight()` + `maintaining` 计数 + admission 门 + `onCompactionSettled` + 三处补检 + 测试：
+   - `TestTask920SubmitParksDuringInFlightCompaction`（①：阻塞摘要 provider，压缩 in-flight 提交→parked 不执行不落盘；放行→落盘执行）；
+   - `TestTask920NoCompactionNoDelay`（②：无压缩提交即时 admit、零 parked）；
+   - `TestTask920FIFOAcrossCompaction`（③：两个 parked 按序 drain，turnSeen 断言 FIFO）；
+   - `TestTask920RealFoldRaisesGateAndSettlesOnce` / `TestTask920FastPathNeverRaisesGate`（agent 信号半）。
+3. **S3**（`86c7b8fab`）：边界——压缩失败/超时后 settle 放行不死锁 + running 期间压缩的 interrupt 延迟补发：
+   - `TestTask920FailedCompactionReleasesParked`（终局摘要失败→parked 放行落盘）；
+   - `TestTask920TimedOutFoldStillSettles`（ctx 超时→gate 归零+settle 恰好一次）；
+   - `TestTask920FailedFoldStillSettles`（agent 半失败出口）；
+   - `TestTask920InterruptDeferredUntilCompactionSettles`（running+压缩期间 submit 不 cancel 在途摘要；收尾后 interrupt 才 fire→unwind→drain）；
+   - `TestTask920CompactionSettledWithEmptyQueueIsNoop`（空队列 settle 无副作用）。
 
 ## 四、验收对照
 
-（S2/S3 完成后逐条填写）
+- [x] **① 压缩期间提交行为不产生二次膨胀**——`TestTask920SubmitParksDuringInFlightCompaction`：后台压缩（无 running turn，正是 admission 五门全开的洞）在摘要 in-flight 时 Submit → `parkedTurns==1`、`RuntimeStatus().Running==false`、用户文本**未**落 transcript（注入即烧 pass 的反证）；释放摘要 → install → settle → drain → 文本落盘。agent 侧 `TestTask920RealFoldRaisesGateAndSettlesOnce` 钉住信号半：摘要请求全程观测 `CompactionInFlight()==true`、settle 恰好一次。
+- [x] **② 正常轮延迟不劣化**——`TestTask920NoCompactionNoDelay`：无压缩提交即时执行落盘、零 parked、`CompactionInFlight()==false`；`TestTask920FastPathNeverRaisesGate`：低于触发线的 Prepare 零门零 settle（普通采样轮零成本的门闩）。
+- [x] **③ 与 579/steer 排队语义一致**——`TestTask920FIFOAcrossCompaction`：两个 parked 按到达序 drain（turnSeen FIFO 断言）；实现复用 581 的 `parkedTurns` FIFO + `finishGuardedTurn` 临界区 drain 模式；579 durable 项走 busy 拒绝 + settle 时 `maybeDispatchInbox` 电平重踢（对齐 endRotation）；steer 队列未动（turn 内语义不变）。
+- [x] **S3 边界不卡死**——失败（`TestTask920FailedCompactionReleasesParked`）、超时（`TestTask920TimedOutFoldStillSettles`）、interrupt 延迟补发（`TestTask920InterruptDeferredUntilCompactionSettles`）三测全绿。
+
+**回归对照**：admission/park/steer/finishing/heal/inbox-dispatch 定向族绿；agent 压缩族（Compact/Fold/Summar/Projection/Truncat/Rescue/Receipt/912/RateLimit/Credential/SlidingWindow/920）绿；两包全量另跑（结果见提交后补记/回执）。
 
 ## 五、Commits
 
