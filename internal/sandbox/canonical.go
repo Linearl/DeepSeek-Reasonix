@@ -48,6 +48,20 @@ var (
 	canonicalEvalSymlinks   = filepath.EvalSymlinks
 	canonicalResolveTimeout = canonicalResolveTimeoutBudget
 	canonicalCacheTTL       = 30 * time.Second
+
+	// Task 928 (residual ①): the TTL treadmill. Paths that are continuously
+	// re-canonicalized (every open tab's session file on the save/load/lock
+	// funnel) were re-walked once per 30s forever — harmless at 2ms on a
+	// healthy disk, but each walk under disk pressure cost 100-500ms and each
+	// timed-out walk leaked an abandoned walker goroutine still hammering
+	// EvalSymlinks. A positive first-level resolution (the exact path exists
+	// and resolved itself) now gets a much longer TTL: the identity of an
+	// existing file is stable, and the security-sensitive staleness question
+	// is owned by ResolveAbsPathFresh (EnsureWriteDir's approval check),
+	// which is untouched. Missing paths and timeouts keep the short TTL —
+	// a not-yet-created write target must be re-probed (it may be created as
+	// a symlink), and a dead drive must be retried.
+	canonicalCachePositiveTTL = 10 * time.Minute
 )
 
 type canonicalEntry struct {
@@ -156,11 +170,15 @@ func resolveCanonicalPath(path string) (string, error) {
 	canonicalMu.Unlock()
 	probeCalls.Add(1)
 
-	resolved := canonicalWalkBounded(abs)
+	resolved, positive := canonicalWalkBounded(abs)
 
 	canonicalMu.Lock()
 	delete(canonicalFlights, key)
-	canonicalCacheStore(key, resolved)
+	ttl := canonicalCacheTTL
+	if positive {
+		ttl = canonicalCachePositiveTTL
+	}
+	canonicalCacheStore(key, resolved, ttl)
 	canonicalMu.Unlock()
 
 	flight.resolved = resolved
@@ -179,13 +197,14 @@ func ResolveAbsPathFresh(path string) (string, error) {
 		return "", err
 	}
 	probeFresh.Add(1)
-	return canonicalWalkBounded(filepath.Clean(abs)), nil
+	resolved, _ := canonicalWalkBounded(filepath.Clean(abs))
+	return resolved, nil
 }
 
 // canonicalCacheStore inserts an entry, evicting expired entries first and
 // then arbitrary ones (memoization-grade eviction is enough) when the key
 // set outgrows canonicalCacheMaxEntries. canonicalMu must be held.
-func canonicalCacheStore(key, resolved string) {
+func canonicalCacheStore(key, resolved string, ttl time.Duration) {
 	now := time.Now()
 	if len(canonicalCache) >= canonicalCacheMaxEntries {
 		for k, entry := range canonicalCache {
@@ -200,7 +219,7 @@ func canonicalCacheStore(key, resolved string) {
 			break
 		}
 	}
-	canonicalCache[key] = canonicalEntry{resolved: resolved, expiresAt: now.Add(canonicalCacheTTL)}
+	canonicalCache[key] = canonicalEntry{resolved: resolved, expiresAt: now.Add(ttl)}
 }
 
 // canonicalWalkBounded resolves the deepest existing ancestor of abs with
@@ -208,8 +227,18 @@ func canonicalCacheStore(key, resolved string) {
 // tail. On timeout it returns abs itself — the same fallback the walk uses
 // when nothing along the path exists — after one warning; the result is
 // cached, so the warning cannot repeat within the TTL.
-func canonicalWalkBounded(abs string) string {
-	type walkResult struct{ path string }
+//
+// The second result reports a positive first-level resolution: the exact
+// path existed and eval'd itself, so its identity is stable and the caller
+// may cache it under the long positive TTL (task 928 residual ①). Anything
+// else — a re-appended missing tail, nothing-existed fallback, timeout —
+// keeps the short TTL, because the path may still be created (possibly as a
+// symlink) or the dead root may come back with a different identity.
+func canonicalWalkBounded(abs string) (string, bool) {
+	type walkResult struct {
+		path     string
+		positive bool
+	}
 	// Buffered: a walker that outlives the budget (e.g. an SMB reconnect)
 	// must never block on delivery.
 	ch := make(chan walkResult, 1)
@@ -223,12 +252,12 @@ func canonicalWalkBounded(abs string) string {
 		cur := abs
 		for {
 			if real, err := eval(cur); err == nil {
-				ch <- walkResult{filepath.Join(real, tail)}
+				ch <- walkResult{filepath.Join(real, tail), tail == ""}
 				return
 			}
 			parent := filepath.Dir(cur)
 			if parent == cur {
-				ch <- walkResult{abs} // nothing along the path exists; use the cleaned abs
+				ch <- walkResult{abs, false} // nothing along the path exists; use the cleaned abs
 				return
 			}
 			tail = filepath.Join(filepath.Base(cur), tail)
@@ -247,12 +276,17 @@ func canonicalWalkBounded(abs string) string {
 			outcome = "missing"
 		}
 		canonicalProbeWalkLog(abs, walkStarted, outcome)
-		return res.path
+		return res.path, res.positive
 	case <-timer.C:
 		probeTime.Add(1)
 		canonicalProbeWalkLog(abs, walkStarted, "timeout")
-		slog.Warn("canonical path resolution timed out; keeping cleaned path (network drive offline?)",
+		// Task 928 residual ④: the old text blamed the network drive even
+		// for local C:\ paths — the observed cause was a saturated disk
+		// pushing EvalSymlinks past the budget. Name both candidates and
+		// drop the parenthetical verdict; the path attr lets the operator
+		// tell which one it actually was.
+		slog.Warn("canonical path resolution timed out; keeping cleaned path (slow disk or unreachable network drive?)",
 			"path", abs, "budget", canonicalResolveTimeout.String())
-		return abs
+		return abs, false
 	}
 }

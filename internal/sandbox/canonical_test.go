@@ -26,8 +26,10 @@ func resetCanonicalEngine(t *testing.T) {
 	canonicalFlights = map[string]*canonicalFlight{}
 	canonicalMu.Unlock()
 	oldEval, oldTimeout, oldTTL := canonicalEvalSymlinks, canonicalResolveTimeout, canonicalCacheTTL
+	oldPositiveTTL := canonicalCachePositiveTTL
 	t.Cleanup(func() {
 		canonicalEvalSymlinks, canonicalResolveTimeout, canonicalCacheTTL = oldEval, oldTimeout, oldTTL
+		canonicalCachePositiveTTL = oldPositiveTTL
 		canonicalMu.Lock()
 		canonicalCache = map[string]canonicalEntry{}
 		canonicalFlights = map[string]*canonicalFlight{}
@@ -438,6 +440,70 @@ func TestResolveCanonicalPathWorkingSetSurvivesWithinTTL(t *testing.T) {
 	}
 	if n := atomic.LoadInt32(&walks); n != first {
 		t.Fatalf("second pass over %d-path working set re-walked (%d -> %d), cache must hold the whole working set within TTL", workingSet, first, n)
+	}
+}
+
+// 任务 928 残留①：正结果长 TTL。首层 eval 即成功的路径（已存在文件/目录）
+// 走 canonicalCachePositiveTTL，不再每 30s 重走——持续触碰的热路径（每个
+// 打开会话的保存漏斗）此前是永久跑步机。missing/timeout 保持短 TTL：
+// 尚未创建的写目标可能以 symlink 出现，死盘需要重探。
+func TestResolveCanonicalPathPositiveResultOutlivesShortTTL(t *testing.T) {
+	resetCanonicalEngine(t)
+
+	var generation, calls int32
+	canonicalResolveTimeout = 2 * time.Second
+	canonicalCacheTTL = 40 * time.Millisecond
+	canonicalCachePositiveTTL = time.Minute
+
+	base := t.TempDir()
+	existing := filepath.Join(base, "exists")
+	if err := os.MkdirAll(existing, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(base, "created-later")
+
+	canonicalEvalSymlinks = func(p string) (string, error) {
+		atomic.AddInt32(&calls, 1)
+		if atomic.LoadInt32(&generation) == 0 {
+			if p == missing {
+				return "", errors.New("generation 0: not created yet")
+			}
+			return p, nil
+		}
+		// Generation 1: existing became a symlink to `other`; missing appeared
+		// as a symlink too. Only the SHORT-TTL (missing) entry may observe
+		// this; the positive entry stays pinned for its long TTL.
+		other := filepath.Join(base, "other")
+		return filepath.Join(other, filepath.Base(p)), nil
+	}
+
+	if _, err := ResolveAbsPath(existing); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveAbsPath(missing); err != nil {
+		t.Fatal(err)
+	}
+	callsAfterFirst := atomic.LoadInt32(&calls)
+
+	time.Sleep(100 * time.Millisecond) // past the short TTL, well within the positive TTL
+	atomic.StoreInt32(&generation, 1)
+
+	gotExisting, err := ResolveAbsPath(existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotExisting != filepath.Clean(existing) {
+		t.Fatalf("positive result must stay pinned within its long TTL: got %q want %q", gotExisting, filepath.Clean(existing))
+	}
+	gotMissing, err := ResolveAbsPath(missing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(base, "other", "created-later"); gotMissing != want {
+		t.Fatalf("missing path must re-walk past the short TTL: got %q want %q", gotMissing, want)
+	}
+	if n := atomic.LoadInt32(&calls); n == callsAfterFirst {
+		t.Fatal("post-TTL calls should have re-walked at least the missing path")
 	}
 }
 
