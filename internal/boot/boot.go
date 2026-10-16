@@ -1408,7 +1408,16 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		return subagentEffectiveIdentity(cfg, opts.ProviderResolver, modelName, entry, modelRef, effort)
 	}
 	taskModel := firstNonEmpty(cfg.Agent.SubagentModels["task"], cfg.Agent.SubagentModel)
-	taskEffort := firstNonEmpty(cfg.Agent.SubagentEfforts["task"], cfg.Agent.SubagentEffort)
+	// upstream #10503: agent.subagent_effort is a cross-model default. Decide
+	// once, from the execution model's reasoning capability, whether the
+	// persisted global value applies — Build feeds the answer to the task tool,
+	// the skill runners and the profile display so what preflight-equivalent
+	// validation would allow is exactly what the runtime sends. An unsupported
+	// inherited value is dropped for this build only (a warning notice names
+	// it); the persisted setting is untouched and applies again on a model
+	// that supports it.
+	subagentEffort := subagentEffortDefault(cfg, entry, sink)
+	taskEffort := firstNonEmpty(cfg.Agent.SubagentEfforts["task"], subagentEffort)
 	maxSubagentDepth := agent.NormalizeMaxSubagentDepth(cfg.Agent.MaxSubagentDepth)
 	maxSubagentConcurrency, maxParallelWriters := agent.NormalizeConcurrencyLimits(
 		cfg.Agent.MaxSubagentConcurrency, cfg.Agent.MaxParallelWriters,
@@ -1704,7 +1713,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		sk = skill.WithCodeGraphTools(sk, skill.CodeGraphReadTools(reg))
 		prov, price, ctxWin := execProv, entry.Price, entry.ContextWindow
 		modelRef := subagentModelRef(cfg, sk)
-		effortRef := subagentEffortRef(cfg, sk)
+		effortRef := subagentEffortRef(cfg, sk, subagentEffort)
 		if modelRef != "" || effortRef != "" {
 			p, pr, cw, err := resolveSubagentProvider(modelRef, effortRef)
 			if err != nil {
@@ -1777,7 +1786,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		sk = skill.WithCodeGraphTools(sk, skill.CodeGraphReadTools(reg))
 		prov, price, ctxWin := execProv, entry.Price, entry.ContextWindow
 		modelRef := subagentModelRef(cfg, sk)
-		effortRef := subagentEffortRef(cfg, sk)
+		effortRef := subagentEffortRef(cfg, sk, subagentEffort)
 		if modelRef != "" || effortRef != "" {
 			p, pr, cw, err := resolveSubagentProvider(modelRef, effortRef)
 			if err != nil {
@@ -1884,7 +1893,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		return agent.FormatSubagentRunResult(answer, run, false), nil
 	}
 	skillProfile := func(sk skill.Skill) *event.Profile {
-		model, effort := subagentModelRef(cfg, sk), subagentEffortRef(cfg, sk)
+		model, effort := subagentModelRef(cfg, sk), subagentEffortRef(cfg, sk, subagentEffort)
 		if model == "" && effort == "" {
 			return nil
 		}
@@ -3158,7 +3167,13 @@ func subagentModelRef(cfg *config.Config, sk skill.Skill) string {
 	return strings.TrimSpace(cfg.Agent.SubagentModel)
 }
 
-func subagentEffortRef(cfg *config.Config, sk skill.Skill) string {
+// subagentEffortRef resolves the effort a skill subagent dispatch should send.
+// Precedence: per-name config map, then skill frontmatter, then defaultEffort —
+// the capability-checked agent.subagent_effort value decided once per build by
+// subagentEffortDefault (upstream #10503). The persisted global value is never
+// read here directly: an inherited level the execution model cannot take must
+// not reach the wire just because a skill carries no effort of its own.
+func subagentEffortRef(cfg *config.Config, sk skill.Skill, defaultEffort string) string {
 	if cfg != nil {
 		for _, key := range SubagentModelKeys(sk.Name) {
 			if e := strings.TrimSpace(cfg.Agent.SubagentEfforts[key]); e != "" {
@@ -3169,10 +3184,65 @@ func subagentEffortRef(cfg *config.Config, sk skill.Skill) string {
 	if e := strings.TrimSpace(sk.Effort); e != "" {
 		return e
 	}
+	return defaultEffort
+}
+
+// inheritedSubagentEffort is agent.subagent_effort as an inherited cross-model
+// default (upstream #10503): when agent.subagent_model is unset, subagents
+// follow the execution model, so a persisted level the execution model cannot
+// take is dropped for this build — the returned dropped value feeds a warning
+// notice and the persisted setting is left untouched, so it applies again after
+// switching back to a model that supports it. An explicit agent.subagent_model
+// pairing stays strict (value returned as configured), and the per-profile
+// agent.subagent_efforts map never passes through this function at all.
+//
+// Fork note (901): upstream decides via ResolveReasoningEntry + capability
+// Validate; fork has neither that entry overlay nor the upstream preflight, so
+// the decision mirrors what the fork's dispatch path actually requires — the
+// exact NormalizeEffort + ReasoningCapability.Validate gates that
+// resolveSubagentProvider applies (including the anthropic Thinking=adaptive
+// lift), so a value that reaches the wire here is a value dispatch accepts.
+func inheritedSubagentEffort(cfg *config.Config, execution *config.ProviderEntry) (effort, dropped string) {
 	if cfg == nil {
-		return ""
+		return "", ""
 	}
-	return strings.TrimSpace(cfg.Agent.SubagentEffort)
+	effort = strings.TrimSpace(cfg.Agent.SubagentEffort)
+	if effort == "" || strings.TrimSpace(cfg.Agent.SubagentModel) != "" || execution == nil {
+		return effort, ""
+	}
+	entry := *execution
+	if strings.TrimSpace(entry.Model) == "" {
+		entry.Model = entry.DefaultModel()
+	}
+	normalized, err := config.NormalizeEffort(&entry, effort)
+	if err != nil {
+		return "", effort
+	}
+	entry.Effort = normalized
+	if entry.Kind == "anthropic" && strings.TrimSpace(entry.Thinking) == "" {
+		// Same lift resolveSubagentProvider applies before building the
+		// provider: the anthropic capability read depends on it.
+		entry.Thinking = "adaptive"
+	}
+	if config.ReasoningCapabilityForEntry(&entry).Validate(entry.Model, config.EffectiveEffort(&entry)) != nil {
+		return "", effort
+	}
+	return effort, ""
+}
+
+// subagentEffortDefault is the agent.subagent_effort the assembled runtime
+// hands its subagents, with a notice naming a value the model could not take.
+func subagentEffortDefault(cfg *config.Config, execution *config.ProviderEntry, sink event.Sink) string {
+	effort, dropped := inheritedSubagentEffort(cfg, execution)
+	if dropped != "" && sink != nil && execution != nil {
+		sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelWarn,
+			Text:   "Subagents use the model's default effort.",
+			Detail: fmt.Sprintf("agent.subagent_effort = %q is not supported by %q, which subagents inherit because agent.subagent_model is unset; the setting is kept and applies again on a model that supports it.", dropped, execution.Model),
+		})
+	}
+	return effort
 }
 
 // SubagentModelKeys returns the cfg.Agent.SubagentModels/SubagentEfforts map
