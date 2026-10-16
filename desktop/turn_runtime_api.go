@@ -73,8 +73,12 @@ func (a *App) StartTurnForTab(tabID, input, submissionID string) (TurnStartView,
 	if ctrl == nil {
 		return TurnStartView{}, a.workspaceNotReadyErr(tab)
 	}
-	turnID := ""
-	if admitted, ok := ctrl.(interface{ TurnIDForSubmission(string) string }); ok {
+	// 任务900（上游 #9806/PR10781）：受理锁已释放，tab 可能已持有重建后的控制
+	// 器（/compact 是可复现现场），它不保证持有本次提交的 receipt。受理时
+	// submitToTabResult 已带回 admit 的那个控制器的 turn id，此处为权威；向
+	// 重解析出的控制器查询只在回执缺失时回退（老调用方/非 Controller 实现）。
+	turnID := result.TurnID
+	if admitted, ok := ctrl.(interface{ TurnIDForSubmission(string) string }); ok && turnID == "" {
 		turnID = admitted.TurnIDForSubmission(submissionID)
 	}
 	if strings.TrimSpace(turnID) == "" {

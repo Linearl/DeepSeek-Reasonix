@@ -125,8 +125,15 @@ func classifyDocsSubmit(trimmed, command string) SubmitDisposition {
 
 // SubmitResult is returned by the result-capable desktop submit path. The
 // legacy Submit* methods intentionally keep their void/error contracts.
+//
+// TurnID carries the admitting controller's durable turn receipt so the
+// desktop reply does not have to re-resolve the tab's controller after the
+// admission locks are released (任务900, upstream #9806/PR10781: a runtime
+// rebuild in that window — /compact being the reproducible case — leaves the
+// tab holding a replacement controller that never held the receipt).
 type SubmitResult struct {
 	Disposition SubmitDisposition `json:"disposition"`
+	TurnID      string            `json:"turnId,omitempty"`
 }
 
 // SubmitDisplayWithResult preserves the existing asynchronous submit behavior
