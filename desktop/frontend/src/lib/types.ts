@@ -53,7 +53,9 @@ export type EventKind =
   | "tool_started"
   | "provider_unreachable"
   /** 任务580: durable inbox item consumed as a new turn's input (Text=display text, itemId=inbox item id). */
-  | "user_input";
+  | "user_input"
+  /** 任务685: one workflow DAG node state transition (payload: workflow). */
+  | "workflow_node";
 export type StreamAttemptAction = "begin" | "discard" | "commit";
 export type TurnStatus = "queued" | "in_progress" | "waiting_user" | "cancelling" | "completed" | "interrupted" | "failed" | "protocol_failed" | "recovery_required";
 export interface TurnEventEnvelope {
@@ -462,6 +464,8 @@ export interface WireEvent extends RecoveryEventFields {
   phase?: string;
   /** completion_summary: content-free quality summary for role settings */
   completion?: WireCompletionSummary;
+  /** workflow_node: one DAG node state transition (任务685). */
+  workflow?: WireWorkflowNode;
   tabId?: string; // Go's tabEventSink tags events for the correct per-tab reducer.
   runtimeEpoch?: string; sessionGeneration?: number;
   /** Unix milliseconds recorded by the desktop host when this turn began. */
@@ -499,6 +503,8 @@ export interface WireCompletionSummary {
 
 export type { TurnFileChange, TurnChanges, WireCompletionReceipt } from "./turnResultTypes";
 import type { WireCompletionReceipt } from "./turnResultTypes";
+export type { WorkflowNodeState, WireWorkflowNode } from "./workflowTypes";
+import type { WireWorkflowNode } from "./workflowTypes";
 
 export type WorkspaceWatchState = "active" | "degraded" | "unavailable";
 export type WorkspaceChangeOp = "create" | "write" | "remove" | "rename" | "unknown";

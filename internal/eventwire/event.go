@@ -65,4 +65,20 @@ type Event struct {
 	Phase string `json:"phase,omitempty"`
 	// Completion is set on completion_summary events (content-free quality summary).
 	Completion *CompletionSummary `json:"completion,omitempty"`
+	// Workflow is set on workflow_node events (task 685): one DAG node state
+	// transition consumed by the workflow visualization panel.
+	Workflow *WorkflowNode `json:"workflow,omitempty"`
+}
+
+// WorkflowNode is the JSON form of event.WorkflowNodeInfo: one node state
+// transition inside one workflow run (six states, see event.WorkflowNodeState).
+type WorkflowNode struct {
+	RunID    string `json:"runId"`
+	Workflow string `json:"workflow"`
+	NodeID   string `json:"nodeId"`
+	NodeType string `json:"nodeType"`
+	State    string `json:"state"`
+	Phase    string `json:"phase,omitempty"`
+	Round    int    `json:"round,omitempty"`
+	Detail   string `json:"detail,omitempty" externalizable:"true"`
 }
