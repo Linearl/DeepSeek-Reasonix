@@ -493,7 +493,7 @@ func warnFoldWouldNotShrink(path string, logSize, contentBytes, capMB int64) {
 	slog.Warn("session: oversized event log left in place (fold would not shrink it)",
 		"path", path, "logSize", logSize, "contentBytes", contentBytes, "capMB", capMB,
 		"reason", "live transcript itself is at least half the log size, so folding history cannot get under the cap",
-		"remedy", "compact/redact the transcript (SaveRewriteCompact path), archive to a new session, or raise events rotation capMB")
+		"remedy", "wait for the desktop events idle sweep (auto+cap mode) to force a maintenance rewrite when the session goes idle; or compact/redact the transcript (SaveRewriteCompact path), archive to a new session, or raise events rotation capMB")
 }
 
 // sessionEventReplay is the result of a tolerant event-log replay: the
