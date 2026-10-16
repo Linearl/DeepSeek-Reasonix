@@ -2922,10 +2922,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <SettingsField label={labLabel("sessionStorage", t("settings.sessionStorage"))} hint={t("settings.sessionStorageHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 <SettingsOptions layout="field" className="set-seg">
                   {SESSION_STORAGE_MODES.map((mode) => (
+                    // 916: 存储版本锁定 v3 —— v3 是唯一可选档；v4 档位仍按
+                    // storageMode 高亮（带 v4 数据的用户看得见自己在哪档），
+                    // 但不可再切换，下方迁移是唯一的回去路径。
                     <button
                       key={mode}
                       className={`set-seg__btn${storageMode === mode ? " set-seg__btn--on" : ""}`}
-                      disabled={busy || migrationRunning}
+                      disabled={busy || migrationRunning || mode !== "v3_only"}
                       onClick={() => void apply(async () => {
                         // Stage skipping is refused by the backend, so the stage
                         // banner below always describes the mode that is stored.
@@ -2939,6 +2942,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     </button>
                   ))}
                 </SettingsOptions>
+                {/* 916: 锁定原因贴着禁用档位渲染；下方 805 迁移区保持可达——
+                    带 v4 数据的升级用户打开本卡仍看得到迁移引导。 */}
+                <p className="settings-field__hint-line">{t("settings.sessionStorage.locked")}</p>
                 <p className="settings-field__hint-line">{t(`settings.sessionStorage.stage.${storageMode}`)}</p>
                 <p className="settings-field__hint-line">{t(`settings.sessionStorage.risk.${storageMode}`)}</p>
                 {s.sessionStorageRestartPending ? (
