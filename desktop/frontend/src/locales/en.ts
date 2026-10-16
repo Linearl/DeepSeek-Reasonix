@@ -4924,6 +4924,7 @@ export const en = {
   "context.maintenanceActionNative": "Native tool clearing",
   "context.sessionMetrics": "Session metrics",
   "context.sessionGroup": "Group",
+  "context.eventsSizeLabel": "Events file size",
   "context.mcpListTitle": "MCP tools/list",
   "context.mcpListSharedHost": "Shared host",
   "context.mcpListDiskCache": "Disk cache",

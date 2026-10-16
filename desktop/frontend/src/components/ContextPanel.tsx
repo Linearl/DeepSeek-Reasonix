@@ -10,6 +10,7 @@ import { formatTokens, formatOptionalTokens } from "../lib/format";
 import { appendRateBand, normalizeRateBand, rateBandLabel, type DisplayRateBand } from "../lib/costRateBand";
 import type { BalanceInfo, ContextInfo, ContextPanelInfo, UsageSourceStats, WireUsage } from "../lib/types";
 import { contextSessionCache } from "../lib/contextSessionCache";
+import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { ContextBudgetCard, resolveContextBudget } from "./ContextBudgetCard";
 import { PlanUsageCard } from "./PlanUsageCard";
 import { OpenCodeGoUsageSidebarCard } from "./OpenCodeGoUsageSidebarCard";
@@ -292,6 +293,20 @@ export function contextBreakdown(
 }
 
 export { contextWindowStatus } from "../lib/contextPanelUtils";
+
+// 任务 932: 概览面板最下方的 events 文件大小行（可观测性展示件）。
+// 门控 = 实验室「可观测性-监控」perf monitor 行（experimental_perf_monitor，
+// labFlags.perfMonitor）：关闭时本行零 DOM（概览与引入前一致），开启才
+// 渲染并读 PerfTimeSeries 落盘投影的 eventsMb（perf 采样器同一遍 walk 的
+// 读数，零新增 IO）。
+
+/** Human-readable MB→KB/MB rendering for the events file size row (task 932).
+ *  Values below 1 MB render in KB so a small log never reads as "0.0 MB". */
+export function formatEventsSize(mb: number): string {
+  if (!Number.isFinite(mb) || mb <= 0) return "-";
+  if (mb < 1) return `${(mb * 1024).toFixed(0)} KB`;
+  return `${mb.toFixed(1)} MB`;
+}
 
 // Task 443: the Token composition rows are latest-turn shaped (prompt may be a
 // full 700K context while 回复/推理 cover only the last attempt), so a user
@@ -843,6 +858,9 @@ export function ContextPanel({
               </div>
             )}
           </section>
+          {/* 任务 932: 概览最下方 events 文件大小行——perf monitor 开启才渲染
+              （关闭时本节点不进 DOM，概览与引入前一致）。 */}
+          <EventsSizeRow />
         </section>
       </div>
 
@@ -850,7 +868,50 @@ export function ContextPanel({
   );
 }
 
+// 任务 932: events 文件大小行。数据源 = PerfTimeSeries 落盘投影的最新一点
+// eventsMb（perf 采样器同一遍 walk 的读数，零新增 IO）；开关 = labFlags
+// .perfMonitor（监控卡 perf monitor 行，保存即换态）。关闭时返回 null——
+// 概览 DOM 零变化；开启时挂载才发一次只读桥调用，无轮询。
+export function EventsSizeRow() {
+  const { t } = useI18n();
+  const [enabled, setEnabled] = useState(() => labFlagEnabled("perfMonitor"));
+  const [eventsMb, setEventsMb] = useState<number | null>(null);
+
+  useEffect(() => onLabFlagsChange(() => setEnabled(labFlagEnabled("perfMonitor"))), []);
+
+  useEffect(() => {
+    if (!enabled) {
+      setEventsMb(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        // 只取最新一点：短窗口（5 分钟）足够覆盖采样间隔（默认 5s，上限 300s）。
+        const view = await app.PerfTimeSeries(5);
+        if (cancelled) return;
+        const last = view?.points?.[view.points.length - 1];
+        setEventsMb(last && last.eventsMb > 0 ? last.eventsMb : null);
+      } catch {
+        if (!cancelled) setEventsMb(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
+
+  if (!enabled) return null;
+  return (
+    <div className="context-panel__events-size" data-testid="context-events-size">
+      <span className="context-panel__events-size-label">{t("context.eventsSizeLabel")}</span>
+      <strong>{eventsMb === null ? "-" : formatEventsSize(eventsMb)}</strong>
+    </div>
+  );
+}
+
 function SectionHeading({ title, meta, children }: { title: string; meta?: string; children?: ReactNode }) {
+
   return (
     <header className="context-panel__section-head">
       <h3>{title}</h3>

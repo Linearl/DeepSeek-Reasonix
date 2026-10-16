@@ -217,6 +217,9 @@ export interface PerfPoint {
   goroutines: number;
   handles: number;
   cpuPercent: number;
+  // 任务 932: events 体量展示件——概览面板最下方 events 大小行读采样器
+  // 落盘的 eventsMb（walkProjectsBytesMB 同一遍 walk 的读数）。
+  eventsMb: number;
 }
 
 export interface PerfTimeSeriesView {

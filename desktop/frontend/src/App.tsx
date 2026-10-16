@@ -1450,7 +1450,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalWorkflowPanel?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalWorkflowPanel?: boolean; experimentalPerfMonitor?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1524,6 +1524,9 @@ export default function App() {
         // off = palette byte-for-byte unchanged, panel chunk never loads);
         // re-applied on settings save.
         workflowPanel: settings.experimentalWorkflowPanel ?? false,
+        // 任务 932: 概览 events 大小行门控（并入监控卡 perf monitor 行，
+        // experimentalPerfMonitor）——关闭时不渲染任何 DOM；保存即换态。
+        perfMonitor: settings.experimentalPerfMonitor ?? false,
       });
       // 任务 651: tab permission indicator three-mode setting (badge | off |
       // background) — the server resolves the legacy 504 tint bool; re-applied
