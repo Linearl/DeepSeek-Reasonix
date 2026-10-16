@@ -529,7 +529,7 @@ func (a *approvalManager) registerAsk(questions []event.AskQuestion) (string, ch
 	a.nextID++
 	id := strconv.Itoa(a.nextID)
 	reply := make(chan []event.AskAnswer, 1)
-	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true}
+	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, reattach: make(chan struct{}, 1)}
 	return id, reply
 }
 
@@ -551,8 +551,39 @@ func (a *approvalManager) registerAskInteractive(questions []event.AskQuestion) 
 	interact := make(chan struct{})
 	activity := make(chan struct{}, 1)
 	takeover := make(chan bool, 1)
-	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, interact: interact, activity: activity, takeover: takeover}
+	a.asks[id] = pendingAsk{questions: questions, reply: reply, queued: true, interact: interact, activity: activity, takeover: takeover, reattach: make(chan struct{}, 1)}
 	return id, reply, interact, activity, takeover
+}
+
+// askReattachChannel exposes the 任务178 re-presented signal for a pending ask
+// so Ask's wait loops can read it without widening the register return
+// signatures. Nil (never blocks, never fires) for an unknown id.
+func (a *approvalManager) askReattachChannel(id string) <-chan struct{} {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if p, ok := a.asks[id]; ok {
+		return p.reattach
+	}
+	return nil
+}
+
+// notifyAskReattached delivers the 任务178 session-reopen signal to a pending
+// ask: the panel is back on screen, so a timed wait re-arms a fresh window
+// (打开后才计时 — closing the tab must not spend an answer window the user never
+// saw). One buffered slot with a non-blocking send: a repeated attach for the
+// same ask collapses into one pending re-arm, and unknown/expired ids are
+// ignored (same contract as the notify* family below).
+func (a *approvalManager) notifyAskReattached(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	p, ok := a.asks[id]
+	if !ok || p.reattach == nil {
+		return
+	}
+	select {
+	case p.reattach <- struct{}{}:
+	default:
+	}
 }
 
 // notifyAskInteraction closes the interaction channel of a pending ask, one

@@ -157,7 +157,11 @@ func TestAskToolProviderContractStable(t *testing.T) {
 	tool := NewAskTool()
 	contract := tool.Description() + "\n" + string(provider.CanonicalizeSchema(tool.Schema()))
 	got := fmt.Sprintf("%x", sha256.Sum256([]byte(contract)))
-	const want = "3d78ec412ccb8ae4034e1d6f84c3a6dec54fe7aa4b70f8c15f3067495da8413e"
+	// 任务926: deliberate contract change — allow_replay (+ its description
+	// sentence) joined the ask tool so a user-explicit re-ask can bypass the
+	// decision dedup. Regenerate with care: this hash is the provider-facing
+	// tool contract (prompt-cache invalidation on schema change).
+	const want = "6252a670f3efa050607cb02dc7f59594bd77ff49078201857e4c2f311587bd15"
 	if got != want {
 		t.Fatalf("ask provider contract hash = %s, want %s; tool description or canonical schema changed", got, want)
 	}

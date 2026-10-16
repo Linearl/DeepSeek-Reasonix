@@ -25,7 +25,7 @@ import { historicalResultNotice, withLiveTurnResult, withRunningChecks, withTurn
 import { mergeTurnResult } from "./turnResult";
 import { invalidateSharedQuery } from "./queryCoalesce";
 import { replayPendingPromptsForActiveTab } from "./promptReplay";
-import { decideActivationPrompt, describeAskReceipt, judgeAskArrival, judgePromptFenceArrival, judgePromptGoneError, type AskArrivalVerdict } from "./askPanelGate";
+import { decideActivationPrompt, describeAskReceipt, judgeAskArrival, judgePromptFenceArrival, judgePromptGoneError, shouldReplayPendingPromptsAfterHydrate, type AskArrivalVerdict } from "./askPanelGate";
 import { reportBootHydrateArrival } from "./bootTimeline";
 import { createRafBatch } from "./rafBatch";
 import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./runtimeMeta";
@@ -3762,6 +3762,14 @@ export function useController() {
       if (!stillCurrent()) return;
       dispatchTo(tabId, { type: "hydrate_done" });
       reconcileQueuedGuidanceForTab(tabId);
+      // 任务178（重开重弹）: hydrate 是时序上最靠后的权威时刻——历史已落地、
+      // 状态已存在。转后台期间挂起的 ask 若在本 tab 状态/meta 建立前就到达并
+      // 被 fence 吞掉，此前各路对账未必补得上；这里若本地没有面板，就向后端
+      // 再要一次重放（重放只重发当前 controller 真实挂起的 prompt，后端无挂起
+      // 时是纯 no-op，无僵尸风险）。
+      if (shouldReplayPendingPromptsAfterHydrate(statesRef.current.get(tabId))) {
+        replayPendingPromptsForActiveTab(tabId);
+      }
       const hydrateElapsed = Date.now() - hydrateStartedAt;
       addBreadcrumb("tab.hydrate", `done ${reason} ${tabId} ms=${hydrateElapsed}`);
       reportStageTiming(tabId, `${reason}:total`, hydrateElapsed);
