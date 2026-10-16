@@ -2346,6 +2346,25 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	}
 	// Host stream cancels on generation drain (OpenAI/Anthropic HTTP reads).
 	defer trackPublishedHostStream(ctx, cancel)()
+	// 任务929 S3: first-token watch. The timer starts the moment the request
+	// goes out — a slow response-header wait counts too — and the first
+	// provider chunk cancels it, because any chunk means prefill is over.
+	// Until then a multi-minute silence and a hang are indistinguishable on
+	// screen (the 2026-10-16 incident sat 18.5 minutes this way; issue #59).
+	// Emission stays in this select: Sink.Emit is serial-call-only, so no
+	// goroutine may touch it.
+	prefillTimer := time.NewTimer(prefillNoticeAfter)
+	prefillNotice := (<-chan time.Time)(prefillTimer.C)
+	stopPrefill := func() {
+		if prefillTimer.Stop() {
+			return
+		}
+		select {
+		case <-prefillTimer.C:
+		default:
+		}
+	}
+	defer stopPrefill()
 	ch, err := a.streamProviderRequest(ctx, dest, req)
 	if err != nil {
 		return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: err}
@@ -2406,6 +2425,13 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			usage = bestEffortStreamUsage(usage, text.Len(), reasoning.Len(), "interrupted")
 			usage = provider.UsageWithRequestAttemptCount(ctx, usage)
 			return collect(stored, ctx.Err())
+		case <-prefillNotice:
+			// 任务929 S3: no provider output for prefillNoticeAfter — say what
+			// the silence is (once per turn; see emitPrefillSlowNotice) and
+			// keep waiting for the stream.
+			prefillNotice = nil
+			a.emitPrefillSlowNotice(sink)
+			continue
 		case c, ok := <-ch:
 			if !ok {
 				if err := ctx.Err(); err != nil {
@@ -2456,6 +2482,12 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 					calls: calls, responsesItems: responsesItems, serverSearch: search.calls, usage: usage,
 					partialCalls: partialCalls, maxArgChars: maxArgChars,
 				}
+			}
+			// 任务929 S3: any chunk means the provider is answering — prefill
+			// is over, so the first-token watch never has a reason to fire.
+			if prefillNotice != nil {
+				prefillNotice = nil
+				stopPrefill()
 			}
 			chunk = c
 		}
