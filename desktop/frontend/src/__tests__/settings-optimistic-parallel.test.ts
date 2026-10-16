@@ -10,6 +10,10 @@
 // Task 650 also moved the lab entry from the automation group to efficiency
 // (less write-lock waiting is an efficiency gain, not autonomy); the config
 // key and semantics are untouched.
+// Task 724 — the render table left SettingsPanel for the layout data
+// (lab-layout.yaml + labLayoutDefault.ts, safety-net fallback), so the group
+// and on-state assertions read the layout documents (561 test idiom) instead
+// of string-pinning the panel.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -39,10 +43,27 @@ const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
 // ── old entry removed, new entry present (no double入口) ────────────────────
 ok(!panelRaw.includes("settings.optimisticWrite"), "the permissions-area entry no longer references the old label key");
-ok(panel.includes('{ id: "optimisticParallel", group: "efficiency",'),
-  "the lab entry lives in the efficiency group (render table, task 650)");
-ok(!panel.includes('{ id: "optimisticParallel", group: "automation",'),
-  "the automation group no longer lists the entry (task 650)");
+// Task 724: group membership lives in the layout documents, not the panel.
+const labDefaultRaw = readFileSync(join(root, "lab", "labLayoutDefault.ts"), "utf8");
+const labYaml = readFileSync(join(root, "lab", "lab-layout.yaml"), "utf8");
+const labDefault = labDefaultRaw.replace(/\n\s*/g, " ");
+function groupBlock(source: string, keyMarker: string, endMarker: string): string {
+  const start = source.indexOf(keyMarker);
+  const end = source.indexOf(endMarker, start + keyMarker.length);
+  return start >= 0 ? source.slice(start, end === -1 ? undefined : end) : "";
+}
+const effBlockDefault = groupBlock(labDefault, 'key: "efficiency"', 'key: "ui"');
+const autoBlockDefault = groupBlock(labDefault, 'key: "automation"', 'key: "efficiency"');
+const effBlockYaml = groupBlock(labYaml, "key: efficiency", "key: ui");
+const autoBlockYaml = groupBlock(labYaml, "key: automation", "key: efficiency");
+ok(effBlockDefault.includes('{ id: "optimisticParallel"'),
+  "the built-in default layout puts the lab entry in the efficiency group (task 650)");
+ok(!autoBlockDefault.includes('{ id: "optimisticParallel"'),
+  "the built-in default layout's automation group no longer lists the entry (task 650)");
+ok(effBlockYaml.includes("- id: optimisticParallel"),
+  "lab-layout.yaml puts the lab entry in the efficiency group (task 650)");
+ok(!autoBlockYaml.includes("- id: optimisticParallel"),
+  "lab-layout.yaml's automation group no longer lists the entry (task 650)");
 ok(panel.includes('| "optimisticParallel"'), "the detail union includes the id");
 
 // ── segmented-control binding: reads the field upright (On=乐观, task 650) ──
@@ -56,8 +77,14 @@ ok(!panelRaw.includes("checked={Boolean(s.sandbox?.optimisticWrite)}"),
   "the old checkbox binding is gone");
 ok(!panelRaw.includes('onChange={(e) => void apply(() => app.SetOptimisticWrite(e.target.checked))}'),
   "the old checkbox onChange is gone");
-ok(panel.includes("on: Boolean(s.sandbox?.optimisticWrite)"),
-  "the lab list entry's on-state mirrors the field (default false = off = safety check on)");
+// Task 724: the entry's on-state is an onKeys reference resolved against the
+// light-key registry; the predicate itself is the old upright field read.
+const labLights = readFileSync(join(root, "lab", "labLightKeys.ts"), "utf8");
+ok(effBlockDefault.includes('{ id: "optimisticParallel", labelKey: "settings.optimisticParallel", tier: "recommended", onKeys: ["optimisticWrite", "experimentalBashHeavyGuard"] }')
+  || (effBlockDefault.includes('{ id: "optimisticParallel"') && effBlockYaml.includes("onKeys: [optimisticWrite, experimentalBashHeavyGuard]")),
+  "the lab entry's on-state references the optimisticWrite light key (default false = off = safety check on)");
+ok(/optimisticWrite:\s*\(s:\s*SettingsView\)\s*=>\s*Boolean\(s\.sandbox\?\.optimisticWrite\)/.test(labLights),
+  "the optimisticWrite light predicate reads the field upright (task 724 registry)");
 
 // ── the underlying key is untouched (lossless rollback) ─────────────────────
 const configGo = readFileSync(join(repoRoot, "internal", "config", "config.go"), "utf8");
