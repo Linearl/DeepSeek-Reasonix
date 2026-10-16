@@ -78,7 +78,7 @@ func allLabSwitchesOn() *Config {
 	c.EventsAutoRotation = "auto"
 	// 任务 846：配置数据目录可更改（storage 组，未稳定档，默认关）。
 	c.Desktop.ExperimentalHomePointer = true
-	// infra（785 退役 baseProcess 条目）
+	// infra（785 退役 S1 常驻底座开关条目）
 	c.Agent.ExperimentalRuntimeReuse = true
 	c.Desktop.ExperimentalZcodeTaskBus = true
 	c.Desktop.ExperimentalModelCapabilityFilter = true
@@ -212,8 +212,8 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// 任务 603（toolOptimizations，「工具优化」族首件）同为快照后新增，
 		// 用户定档未稳定。任务 677（collabGroupView，群聊入口开关，409 交付
 		// 漏挂铁律 2 开关）同为快照后新增，用户定档未稳定（46→47）。
-		// 任务 783④：toolOptimizations 转正（14→13）。任务 785：baseProcess
-		// （S1 常驻底座开关）随底座退役出表（13→12，总数 51→50）。任务 790：
+		// 任务 783④：toolOptimizations 转正（14→13）。任务 785：S1 常驻底座开关
+		// 随底座退役出表（13→12，总数 51→50）。任务 790：
 		// acpListen（ACP 常驻监听，默认关）入表未稳定档（12→13，总数 50→51）。
 		// 任务 846：homePointer（配置数据目录可更改，默认关）入表未稳定档
 		// （13→14，总数 54→55）。任务 815：editEvidenceRelaxed（编辑证据门

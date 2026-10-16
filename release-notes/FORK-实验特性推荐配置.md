@@ -55,7 +55,6 @@
 | 反馈主动邀请 | `experimental_feedback_nudge` | ✅ | 完成后邀请反馈（我们开着用于积累意见箱；介意打扰可关） |
 | zcode 任务总线内置化 | `experimental_zcode_task_bus` | ❌ | 嵌入式总线 MCP（多机协同实验；已更名 externalCollabBus 定位，键名沿用零迁移） |
 | 路径规则引擎 | `experimental_path_rules` | ❌ | 结构化路径Scope 评估（实验） |
-| base_process 底座 | `experimental_base_process` | ❌ | 常驻子进程底座（S1 实验线） |
 | 生命周期噪音门 | `experimental_lifecycle_noise_gate` | ❌ | 干净关闭的崩溃报告降噪 |
 
 ---

@@ -75,7 +75,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.SessionStorage = "dual_write_read_v4" // M7 (sessionStorage)
 	orig.EventsAutoRotation = "auto"           // M7 (eventsRotation)
 
-	// infra（基础设施；785 退役 baseProcess 条目）
+	// infra（基础设施；785 退役 S1 常驻底座开关条目）
 	orig.Agent.ExperimentalRuntimeReuse = true            // runtimeReuse
 	orig.Desktop.ExperimentalZcodeTaskBus = true          // zcodeTaskBus
 	orig.Desktop.ExperimentalACPListen = true             // acpListen (task 790)

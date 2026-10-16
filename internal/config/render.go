@@ -126,7 +126,7 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 846：配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
 	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
 	{"homePointer", LabTierUnstable, []string{"experimental_home_pointer"}},
-	// ── infra（基础设施，7 项；785 退役 S1 baseProcess，790 增 acpListen）──────
+	// ── infra（基础设施，7 项；785 退役 S1 常驻底座开关，790 增 acpListen）──────
 	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
 	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}},               // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）

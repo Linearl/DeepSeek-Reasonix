@@ -22,7 +22,7 @@
 //     任务 783 后为 5/8/9/2/1/3/6/1=35（可观测性组增「用量监测」卡：
 //     GLM Plan 用量 + OpenCode Go 用量，opencodeGoUsage 独立 pane 退役为
 //     成员行）。
-//     任务 785 后为 5/8/9/2/1/3/5/1=34（baseProcess 条目随 S1 底座开关退役，infra 6→5）。
+//     任务 785 后为 5/8/9/2/1/3/5/1=34（S1 常驻底座开关条目随底座退役，infra 6→5）。
 //     任务 790 后为 5/8/9/2/1/3/6/1=35（acpListen ACP 常驻监听入 rail，infra 5→6）。
 //     任务 722/724：render table 移交布局默认数据（labLayoutDefault.ts），
 //     分组/成员/徽章/排序由 lab-layout.yaml（校验回退默认）驱动——本测试的
@@ -80,7 +80,7 @@ console.log("\ntask 561 lab regroup + merged cards");
 // trajectoryView 并为 viewLayout——七独立入口并三卡净 -5；775：存储组增
 // 两张 kind:param 参数卡；742：automation 增 heartbeatBackground 入口；
 // 722：safetyCostControl 迁提效并吸收 messageMerge 入口）。
-// 任务 785：baseProcess 随 S1 底座开关退役，infra 6→5 → 总数 34。
+// 任务 785：S1 常驻底座开关随底座退役，infra 6→5 → 总数 34。
 // 任务 790：acpListen 入 rail，infra 5→6 → 总数 35。
 // 任务 815（登记窗口 pin 收口）：801 decisionPatterns（automation 5→6）与
 // 846 homePointer（storage 3→4）此前已入布局而本 pin 仍钉 783 口径——
@@ -98,8 +98,8 @@ console.log("\ntask 561 lab regroup + merged cards");
     `yaml and built-in default list the same entries in the same order (yaml ${yamlEntries.length})`);
   const groups: Record<string, number> = {};
   for (const g of LAB_LAYOUT_DEFAULT_DATA.groups) groups[(g as { key: string }).key] = g.entries.length;
-  // 任务 783：observability 1→2（用量监测卡落组）。任务 785：baseProcess
-  // 退役，infra 6→5 → 总数 34。任务 790：acpListen 入 rail，infra 5→6 → 35。
+  // 任务 783：observability 1→2（用量监测卡落组）。任务 785：S1 常驻底座
+  // 开关退役，infra 6→5 → 总数 34。任务 790：acpListen 入 rail，infra 5→6 → 35。
   // 任务 815：登记窗口 pin 收口——801 decisionPatterns（automation 5→6）与
   // 846 homePointer（storage 3→4）此前已入布局，pin 一并跟上 → 6/8/9/2/1/4/6/1。
   ok(groups["automation"] === 6 && groups["efficiency"] === 8 && groups["ui"] === 9 &&
@@ -147,7 +147,7 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
     { label: "M5 cdpDebugPort", field: "s.experimentalCDPDebugPort", setter: "app.SetExperimentalCDPDebugPort(on)" },
     { label: "M5 lifecycleNoiseGate", field: "s.experimentalLifecycleNoiseGate", setter: "app.SetExperimentalLifecycleNoiseGate(on)" },
   ] },
-  // 任务 785：baseProcess 详情卡退役——endMarker 随迁到物理下一个卡
+  // 任务 785：S1 常驻底座开关详情卡退役——endMarker 随迁到物理下一个卡
   // monitoring（旧 marker 不存在会让 cardSlice 返回空、测试假红/假绿）。
   { id: "updateFeedback", endMarker: '{selected === "monitoring" && (', members: [
     { label: "M6 restartUpdate", field: "s.experimentalRestartUpdate", setter: "app.SetExperimentalRestartUpdate(on)" },

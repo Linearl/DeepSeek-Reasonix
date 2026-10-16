@@ -17,17 +17,16 @@ import (
 // stderr 丢失 = 静默通道".
 //
 // The packaged launcher therefore points its own stderr at a dedicated rolling
-// file, following the internal/baseproc F2 family pattern (rename-once
-// rotation, append on rotation failure — losing the file must never lose the
-// launch). The desktop child inherits the same file as its fd 2, so its
-// pre-installDesktopLogging boot output lands here too.
+// file (task 404 F2 family pattern: rename-once rotation, append on rotation
+// failure — losing the file must never lose the launch). The desktop child
+// inherits the same file as its fd 2, so its pre-installDesktopLogging boot
+// output lands here too.
 const (
 	// launcherLogFileName is the launcher's own log (logs/launcher/launcher.log,
 	// the same home-relative layout as logs/desktop/desktop.log).
 	launcherLogFileName = "launcher.log"
-	// launcherLogMaxBytes caps one generation — 4 MiB per task 404. Rotation is
-	// the family pattern from internal/baseproc/baselog.go: rename the
-	// oversized file to <path>.1 at open, one generation deep.
+	// launcherLogMaxBytes caps one generation — 4 MiB per task 404. Rotation:
+	// rename the oversized file to <path>.1 at open, one generation deep.
 	launcherLogMaxBytes = 4 << 20
 )
 
@@ -41,8 +40,7 @@ var launcherLogPath = func() string {
 // sink slog writes through) to the rolling launcher log. Detach-only by
 // design: a console-launched launcher keeps talking to its terminal. Returns
 // nil when redirection is not applied — a failed log file must never fail the
-// launch (the R1 rule from baseproc's resolveStderr), it only costs the
-// diagnostics.
+// launch, it only costs the diagnostics.
 func installLauncherLog() *os.File {
 	if !detachByDefault() {
 		return nil
