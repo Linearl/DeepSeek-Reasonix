@@ -24,6 +24,7 @@ var (
 	ErrSlotStale          = errors.New("schedule: slot is not the latest slot of this schedule")
 	ErrPolicyTightened    = errors.New("schedule: policy was tightened after this schedule was confirmed")
 	ErrLifetimeSpent      = errors.New("schedule: lifetime budget is spent")
+	ErrTotalRunsSpent     = errors.New("schedule: total run budget is spent")
 	ErrRunSettled         = errors.New("schedule: run already settled")
 	ErrRunStarted         = errors.New("schedule: run already started")
 	ErrRunToken           = errors.New("schedule: start token does not match this run")

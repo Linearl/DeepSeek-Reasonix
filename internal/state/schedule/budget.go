@@ -85,6 +85,8 @@ func Admit(p Policy, m Manifest, s Schedule, now time.Time) error {
 	switch {
 	case own.runs+1 > s.Budget.MaxRunsPerDay:
 		return fmt.Errorf("%w: schedule run count for 24h", ErrBudget)
+	case s.Budget.MaxRunsTotal > 0 && s.SpentRuns+1 > s.Budget.MaxRunsTotal:
+		return fmt.Errorf("%w: schedule run count total", ErrBudget)
 	case all.runs+1 > p.MaxRunsGlobalDay:
 		return fmt.Errorf("%w: global run count for 24h", ErrBudget)
 	case all.tokens+reserve > p.GlobalTokensDay:

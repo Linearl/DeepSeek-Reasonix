@@ -185,6 +185,7 @@ func (s *Store) settle(m *Manifest, p Policy, triggerID string, o Outcome) error
 		return nil
 	}
 	sc.SpentLifetimeTokens += r.Charged
+	sc.SpentRuns++
 	sc.UpdatedAt = now
 	switch o.State {
 	case RunSucceeded:
@@ -198,6 +199,8 @@ func (s *Store) settle(m *Manifest, p Policy, triggerID string, o Outcome) error
 	switch {
 	case sc.SpentLifetimeTokens+sc.Budget.PerRunTokens > sc.Budget.LifetimeTokens:
 		sc.Status, sc.PausedReason = StatusCircuitOpen, PauseLifetime
+	case sc.Budget.MaxRunsTotal > 0 && sc.SpentRuns >= sc.Budget.MaxRunsTotal:
+		sc.Status, sc.PausedReason = StatusCircuitOpen, PauseTotalRuns
 	case int64(sc.ConsecutiveFailures) >= p.MaxConsecutiveFails:
 		sc.Status, sc.PausedReason = StatusCircuitOpen, PauseFailures
 	}

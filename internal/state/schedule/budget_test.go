@@ -3,6 +3,7 @@ package schedule
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -371,5 +372,75 @@ func TestReapSkipsRunThatStartedDuringCallback(t *testing.T) {
 	m, _, _ := st.Snapshot(t.Context())
 	if r := m.run(run.TriggerID); r.State != RunRunning || r.Charged != run.PerRunCap {
 		t.Fatalf("live run disturbed: %+v", r)
+	}
+}
+
+// TestMaxRunsTotalRefusesAcrossDays pins the property MaxRunsPerDay cannot
+// give: the total cap is judged from engine-owned SpentRuns, so it still
+// refuses days later when every 24h window has long rolled over. A schedule
+// without the field (every manifest written before it existed) is unaffected.
+func TestMaxRunsTotalRefusesAcrossDays(t *testing.T) {
+	p := DefaultPolicy()
+	b := p.DefaultBudget()
+	b.MaxRunsTotal = 2
+	sc := Schedule{ID: "sch_t", Status: StatusActive, Budget: b, ExpiresAt: epoch.Add(10 * Week),
+		Trigger: Trigger{Kind: TriggerEvery, EverySec: 3600}, SpentRuns: 2}
+	err := Admit(p, Manifest{}, sc, epoch.Add(48*time.Hour))
+	if !errors.Is(err, ErrBudget) {
+		t.Fatalf("the total cap must refuse: %v", err)
+	}
+	if !strings.Contains(err.Error(), "run count total") {
+		t.Fatalf("the refusal must name the total cap, not another budget: %v", err)
+	}
+	// One run below the cap admits: the cap is a boundary, not a lock-out.
+	sc.SpentRuns = 1
+	if err := Admit(p, Manifest{}, sc, epoch.Add(48*time.Hour)); err != nil {
+		t.Fatalf("a settled count below the cap must still admit: %v", err)
+	}
+	// Absent field = no cap: manifests written before MaxRunsTotal stay valid.
+	sc.Budget, sc.SpentRuns = p.DefaultBudget(), 9_999
+	if err := Admit(p, Manifest{}, sc, epoch.Add(48*time.Hour)); err != nil {
+		t.Fatalf("a schedule without the field must never be capped: %v", err)
+	}
+}
+
+// TestTotalRunsBudgetOpensCircuitAndRefusesResume drives the whole path:
+// settle counts runs, the Nth settle opens the circuit with the typed reason,
+// and Resume demands a raised cap — mirroring how lifetime spend behaves.
+func TestTotalRunsBudgetOpensCircuitAndRefusesResume(t *testing.T) {
+	st, clk, _ := newTestStore(t)
+	p := DefaultPolicy()
+	p.GlobalTokensDay = 100_000_000
+	p.GlobalTokensWeek = 100_000_000
+	p.MaxRunsGlobalDay = 100
+	p.MaxRunsPerScheduleDay = 100
+	b := p.DefaultBudget()
+	b.MaxRunsPerDay = 100
+	b.LifetimeTokens = p.LifetimeTokens
+	b.MaxRunsTotal = 2
+	req := everyReq()
+	req.Budget = &b
+	sc := mustCreate(t, st, p, req)
+	clean := Outcome{State: RunSucceeded, Observed: 1, Clean: true}
+	for n := int64(1); n <= 2; n++ {
+		clk.Advance(time.Hour)
+		if err := claimAndFinish(t, st, p, sc, n, clean); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, _, _ := st.Snapshot(t.Context())
+	if got := m.Schedules[0]; got.SpentRuns != 2 || got.Status != StatusCircuitOpen || got.PausedReason != PauseTotalRuns {
+		t.Fatalf("total-runs breaker did not open: %+v", got)
+	}
+	clk.Advance(time.Hour)
+	if _, err := st.Claim(t.Context(), p, sc.ID, slotN(sc, 3)); !errors.Is(err, ErrNotActive) {
+		t.Fatalf("open circuit must refuse: %v", err)
+	}
+	if err := st.Resume(t.Context(), sc.ID); !errors.Is(err, ErrTotalRunsSpent) {
+		t.Fatalf("resume must demand a raised cap, not reopen silently: %v", err)
+	}
+	m, _, _ = st.Snapshot(t.Context())
+	if m.Schedules[0].Status != StatusCircuitOpen {
+		t.Fatalf("status must stay circuit-open: %s", m.Schedules[0].Status)
 	}
 }

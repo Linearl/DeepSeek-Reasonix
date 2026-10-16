@@ -146,6 +146,8 @@ func (s *Store) Pause(ctx context.Context, id string) error {
 // Resume reopens a paused or circuit-open schedule and clears its failure
 // streak. It never resets lifetime spend: a schedule whose next run no longer
 // fits its lifetime budget is refused with ErrLifetimeSpent and stays as it is.
+// The total-run cap is refused the same way with ErrTotalRunsSpent: raising
+// Budget.MaxRunsTotal is what reopens such a schedule, not Resume alone.
 func (s *Store) Resume(ctx context.Context, id string) error {
 	return s.setStatus(ctx, id, func(sc *Schedule) error {
 		if sc.Status != StatusPaused && sc.Status != StatusCircuitOpen {
@@ -153,6 +155,9 @@ func (s *Store) Resume(ctx context.Context, id string) error {
 		}
 		if sc.SpentLifetimeTokens+sc.Budget.PerRunTokens > sc.Budget.LifetimeTokens {
 			return ErrLifetimeSpent
+		}
+		if sc.Budget.MaxRunsTotal > 0 && sc.SpentRuns+1 > sc.Budget.MaxRunsTotal {
+			return ErrTotalRunsSpent
 		}
 		sc.Status, sc.PausedReason, sc.ConsecutiveFailures = StatusActive, "", 0
 		return nil

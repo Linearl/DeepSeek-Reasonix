@@ -47,11 +47,12 @@ const (
 type PauseReason string
 
 const (
-	PauseUser     PauseReason = "user"
-	PauseCorrupt  PauseReason = "corrupt"
-	PauseBreaker  PauseReason = "breaker"
-	PauseLifetime PauseReason = "lifetime_budget"
-	PauseFailures PauseReason = "consecutive_failures"
+	PauseUser      PauseReason = "user"
+	PauseCorrupt   PauseReason = "corrupt"
+	PauseBreaker   PauseReason = "breaker"
+	PauseLifetime  PauseReason = "lifetime_budget"
+	PauseFailures  PauseReason = "consecutive_failures"
+	PauseTotalRuns PauseReason = "total_runs_budget"
 )
 
 const ConfirmedByHuman = "human-frontend"
@@ -86,6 +87,10 @@ type Budget struct {
 	PerRunSteps    int64 `json:"perRunSteps"`
 	MaxRunsPerDay  int64 `json:"maxRunsPerDay"`
 	LifetimeTokens int64 `json:"lifetimeTokens"`
+	// MaxRunsTotal caps settled runs over the schedule's whole life, unlike
+	// MaxRunsPerDay, which resets every 24h. 0 or absent means no total cap;
+	// it is deliberately optional so existing manifests stay valid.
+	MaxRunsTotal int64 `json:"maxRunsTotal,omitempty"`
 }
 
 type Confirmation struct {
@@ -108,9 +113,13 @@ type Schedule struct {
 	PausedReason        PauseReason  `json:"pausedReason,omitempty"`
 	ConsecutiveFailures int          `json:"consecutiveFailures,omitempty"`
 	SpentLifetimeTokens int64        `json:"spentLifetimeTokens,omitempty"`
-	CreatedAt           time.Time    `json:"createdAt"`
-	ExpiresAt           time.Time    `json:"expiresAt"`
-	UpdatedAt           time.Time    `json:"updatedAt"`
+	// SpentRuns counts settled runs against Budget.MaxRunsTotal. It is
+	// engine-owned state like SpentLifetimeTokens: it never resets, so the
+	// total cap holds across days even though run records are pruned.
+	SpentRuns int64     `json:"spentRuns,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Run is one claimed slot. Charged is the reservation (the full per-run cap)
