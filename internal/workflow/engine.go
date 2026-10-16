@@ -47,9 +47,9 @@ const (
 type terminal int
 
 const (
-	termPassed        terminal = iota // subagent/join/phase/confirm done, gate exit 0
-	termGateFailed                    // gate exit ≠ 0 with a receiving branch
-	termSkipped                       // no active in-edge; never ran
+	termPassed     terminal = iota // subagent/join/phase/confirm done, gate exit 0
+	termGateFailed                 // gate exit ≠ 0 with a receiving branch
+	termSkipped                    // no active in-edge; never ran
 )
 
 // schedEdge is one dependency with branch semantics (real edges plus the
@@ -78,12 +78,13 @@ type runState struct {
 	status     map[string]nodeStatus
 	term       map[string]terminal
 	gatePassed map[string]bool
-	output     map[string]string      // interpolatable node output
-	result     map[string]any         // parsed typed result / join map
-	findings   map[string][]Finding   // per producer node, for promotion
+	output     map[string]string    // interpolatable node output
+	result     map[string]any       // parsed typed result / join map
+	findings   map[string][]Finding // per producer node, for promotion
 
 	phase      string
 	failedNode string
+	gateRound  int // current gate attempt, so a world-failure reports its round
 }
 
 // Run executes the whole workflow sequentially in topological order. It
@@ -106,19 +107,20 @@ func newRunState(e *Engine, wf *Workflow) *runState {
 	}
 	fixers := wf.fixerSet(index)
 	s := &runState{
-		eng:      e,
-		wf:       wf,
-		runID:    newRunID(),
-		bag:      &reportBag{},
-		index:    index,
-		inEdges:  make(map[string][]int, len(wf.Nodes)),
-		outEdges: make(map[string][]int, len(wf.Nodes)),
-		fixers:   fixers,
-		status:   make(map[string]nodeStatus, len(wf.Nodes)),
-		term:     make(map[string]terminal, len(wf.Nodes)),
-		output:   make(map[string]string, len(wf.Nodes)),
-		result:   make(map[string]any, len(wf.Nodes)),
-		findings: make(map[string][]Finding, len(wf.Nodes)),
+		eng:        e,
+		wf:         wf,
+		runID:      newRunID(),
+		bag:        &reportBag{},
+		index:      index,
+		inEdges:    make(map[string][]int, len(wf.Nodes)),
+		outEdges:   make(map[string][]int, len(wf.Nodes)),
+		fixers:     fixers,
+		status:     make(map[string]nodeStatus, len(wf.Nodes)),
+		term:       make(map[string]terminal, len(wf.Nodes)),
+		gatePassed: make(map[string]bool, len(wf.Nodes)),
+		output:     make(map[string]string, len(wf.Nodes)),
+		result:     make(map[string]any, len(wf.Nodes)),
+		findings:   make(map[string][]Finding, len(wf.Nodes)),
 	}
 	addEdge := func(from, to, when string) {
 		if when == "" {
@@ -174,6 +176,13 @@ func (s *runState) runAll(ctx context.Context) error {
 			n := &s.wf.Nodes[i]
 			if s.status[n.ID] != stPending {
 				continue
+			}
+			// A confirm whose target never ran (skipped branch) has nothing
+			// to confirm: skip alongside it rather than confirm empty air.
+			if n.Type == NodeConfirm && s.status[n.Target] == stSkipped {
+				s.skip(n)
+				progressed = true
+				break
 			}
 			decided, active := s.inState(n.ID)
 			if !decided {

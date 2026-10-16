@@ -57,12 +57,12 @@ var (
 
 // Workflow is one declarative orchestration document.
 type Workflow struct {
-	Version     int         `json:"version" yaml:"version"`
-	Name        string      `json:"name" yaml:"name"`
-	Description string      `json:"description,omitempty" yaml:"description,omitempty"`
-	Nodes       []Node      `json:"nodes" yaml:"nodes"`
-	Edges       []Edge      `json:"edges,omitempty" yaml:"edges,omitempty"`
-	Report      ReportSpec  `json:"report,omitempty" yaml:"report,omitempty"`
+	Version     int        `json:"version" yaml:"version"`
+	Name        string     `json:"name" yaml:"name"`
+	Description string     `json:"description,omitempty" yaml:"description,omitempty"`
+	Nodes       []Node     `json:"nodes" yaml:"nodes"`
+	Edges       []Edge     `json:"edges,omitempty" yaml:"edges,omitempty"`
+	Report      ReportSpec `json:"report,omitempty" yaml:"report,omitempty"`
 }
 
 // ResultField describes one typed-result field. Its Description is the field
@@ -87,14 +87,14 @@ type Node struct {
 	Type string `json:"type" yaml:"type"`
 
 	// subagent
-	Prompt        string         `json:"prompt,omitempty" yaml:"prompt,omitempty"`
-	Description   string         `json:"description,omitempty" yaml:"description,omitempty"`
-	Result        []ResultField  `json:"result,omitempty" yaml:"result,omitempty"`
-	FindingsField string         `json:"findings_field,omitempty" yaml:"findings_field,omitempty"`
-	Tools         []string       `json:"tools,omitempty" yaml:"tools,omitempty"`
-	Model         string         `json:"model,omitempty" yaml:"model,omitempty"`
-	Effort        string         `json:"effort,omitempty" yaml:"effort,omitempty"`
-	MaxSteps      int            `json:"max_steps,omitempty" yaml:"max_steps,omitempty"`
+	Prompt        string        `json:"prompt,omitempty" yaml:"prompt,omitempty"`
+	Description   string        `json:"description,omitempty" yaml:"description,omitempty"`
+	Result        []ResultField `json:"result,omitempty" yaml:"result,omitempty"`
+	FindingsField string        `json:"findings_field,omitempty" yaml:"findings_field,omitempty"`
+	Tools         []string      `json:"tools,omitempty" yaml:"tools,omitempty"`
+	Model         string        `json:"model,omitempty" yaml:"model,omitempty"`
+	Effort        string        `json:"effort,omitempty" yaml:"effort,omitempty"`
+	MaxSteps      int           `json:"max_steps,omitempty" yaml:"max_steps,omitempty"`
 
 	// gate
 	Command string    `json:"command,omitempty" yaml:"command,omitempty"`

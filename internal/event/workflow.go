@@ -22,12 +22,12 @@ const (
 // number on gate events (0 elsewhere); Detail is a short diagnostic (exit
 // code, failure summary) — never the full output.
 type WorkflowNodeInfo struct {
-	RunID     string            `json:"runId"`
-	Workflow  string            `json:"workflow"`
-	NodeID    string            `json:"nodeId"`
-	NodeType  string            `json:"nodeType"`
-	State     WorkflowNodeState `json:"state"`
-	Phase     string            `json:"phase,omitempty"`
-	Round     int               `json:"round,omitempty"`
-	Detail    string            `json:"detail,omitempty"`
+	RunID    string            `json:"runId"`
+	Workflow string            `json:"workflow"`
+	NodeID   string            `json:"nodeId"`
+	NodeType string            `json:"nodeType"`
+	State    WorkflowNodeState `json:"state"`
+	Phase    string            `json:"phase,omitempty"`
+	Round    int               `json:"round,omitempty"`
+	Detail   string            `json:"detail,omitempty"`
 }

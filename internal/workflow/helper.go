@@ -109,9 +109,12 @@ func resultHint(n *Node) string {
 }
 
 // parseResultJSON decodes a typed result: the whole answer, or the first
-// JSON object embedded in prose/fences (sub-agents embellish).
+// JSON object embedded in prose/fences (sub-agents embellish). The task
+// substrate may wrap the final answer with a reference block — prefer the
+// text after "Final answer:" when present so the wrapper's braces never
+// pollute the slice.
 func parseResultJSON(answer string) (map[string]any, error) {
-	trimmed := strings.TrimSpace(answer)
+	trimmed := finalAnswerBody(answer)
 	var obj map[string]any
 	if err := json.Unmarshal([]byte(trimmed), &obj); err == nil {
 		return obj, nil
@@ -169,6 +172,15 @@ func findingString(m map[string]any, key string) string {
 	default:
 		return strings.TrimSpace(stringifyValue(v))
 	}
+}
+
+// finalAnswerBody returns the part of a sub-agent reply after the task
+// substrate's "Final answer:" marker (or the whole reply when unwrapped).
+func finalAnswerBody(answer string) string {
+	if idx := strings.LastIndex(answer, "Final answer:"); idx >= 0 {
+		return strings.TrimSpace(answer[idx+len("Final answer:"):])
+	}
+	return strings.TrimSpace(answer)
 }
 
 // truncate shortens detail strings for event payloads (never the full

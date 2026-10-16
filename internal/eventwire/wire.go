@@ -78,7 +78,9 @@ type StreamAttempt struct {
 
 // ToWire converts a typed runtime event into the shared frontend JSON contract.
 func ToWire(e event.Event) Event {
-	w := Event{Kind: kindNames[e.Kind], PromptKind: e.PromptKind, TurnID: e.TurnID, Sequence: e.Sequence, Status: string(e.Status), Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ItemID: e.ItemID, SessionPath: e.SessionPath, SessionReset: e.SessionReset}
+	// WorkflowNode payload (task 685) copies for that kind only and stays nil
+	// otherwise, so it rides the base literal instead of a switch case.
+	w := Event{Kind: kindNames[e.Kind], PromptKind: e.PromptKind, TurnID: e.TurnID, Sequence: e.Sequence, Status: string(e.Status), Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ItemID: e.ItemID, SessionPath: e.SessionPath, SessionReset: e.SessionReset, Workflow: toWireWorkflowNode(e.Workflow)}
 	if e.ItemID != "" {
 		promptEvent := false
 		switch e.Kind {
@@ -118,18 +120,7 @@ func ToWire(e event.Event) Event {
 	case event.ToolDispatch, event.ToolStarted, event.ToolResult, event.ToolProgress, event.ToolResultPreview:
 		w.Tool = toWireTool(e.Tool)
 	case event.WorkspaceChanged:
-		ws := e.Workspace
-		if ws == nil {
-			ws = &event.WorkspaceChangedPayload{}
-		}
-		changes := make([]WorkspacePathChange, 0, len(ws.Changes))
-		for _, c := range ws.Changes {
-			changes = append(changes, WorkspacePathChange{Path: c.Path, OldPath: c.OldPath, Op: c.Op})
-		}
-		w.Workspace = &WorkspaceChanged{
-			Revisions: WorkspaceRevision{Content: ws.Revisions.Content, Tree: ws.Revisions.Tree, WorkingTree: ws.Revisions.WorkingTree, GitMeta: ws.Revisions.GitMeta, Session: ws.Revisions.Session},
-			Changes:   changes, AllPaths: ws.AllPaths, Source: ws.Source, WatchState: string(ws.WatchState),
-		}
+		w.Workspace = toWireWorkspaceChanged(e.Workspace)
 	case event.Usage:
 		w.Usage = toWireUsage(e)
 	case event.ApprovalRequest:
@@ -197,10 +188,24 @@ func ToWire(e event.Event) Event {
 		}
 	case event.CompletionSummary:
 		w.Completion = toWireCompletionSummary(e.Completion)
-	case event.WorkflowNode:
-		w.Workflow = toWireWorkflowNode(e.Workflow)
 	}
 	return w
+}
+
+// toWireWorkspaceChanged copies a workspace-change payload; a nil payload
+// becomes an empty view (matching the pre-extraction behaviour).
+func toWireWorkspaceChanged(ws *event.WorkspaceChangedPayload) *WorkspaceChanged {
+	if ws == nil {
+		ws = &event.WorkspaceChangedPayload{}
+	}
+	changes := make([]WorkspacePathChange, 0, len(ws.Changes))
+	for _, c := range ws.Changes {
+		changes = append(changes, WorkspacePathChange{Path: c.Path, OldPath: c.OldPath, Op: c.Op})
+	}
+	return &WorkspaceChanged{
+		Revisions: WorkspaceRevision{Content: ws.Revisions.Content, Tree: ws.Revisions.Tree, WorkingTree: ws.Revisions.WorkingTree, GitMeta: ws.Revisions.GitMeta, Session: ws.Revisions.Session},
+		Changes:   changes, AllPaths: ws.AllPaths, Source: ws.Source, WatchState: string(ws.WatchState),
+	}
 }
 
 // toWireWorkflowNode copies one workflow node transition (task 685) into its

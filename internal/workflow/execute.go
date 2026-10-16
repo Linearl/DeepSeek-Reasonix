@@ -14,7 +14,11 @@ import (
 // gates); the caller always keeps the report built so far.
 func (s *runState) execute(ctx context.Context, n *Node) error {
 	s.status[n.ID] = stRunning
-	s.emit(n, event.WorkflowNodeRunning, 0, "")
+	// Gates emit their own per-round running events (with round numbers), so
+	// the generic running emit only covers the other four node types.
+	if n.Type != NodeGate {
+		s.emit(n, event.WorkflowNodeRunning, 0, "")
+	}
 	var err error
 	switch n.Type {
 	case NodeSubagent:
@@ -34,7 +38,11 @@ func (s *runState) execute(ctx context.Context, n *Node) error {
 	if err != nil {
 		s.status[n.ID] = stAborted
 		s.failedNode = n.ID
-		s.emit(n, event.WorkflowNodeFailed, 0, truncate(err.Error(), 240))
+		round := 0
+		if n.Type == NodeGate {
+			round = s.gateRound // the attempt the world-failure hit
+		}
+		s.emit(n, event.WorkflowNodeFailed, round, truncate(err.Error(), 240))
 		return err
 	}
 	return nil
@@ -128,6 +136,7 @@ func (s *runState) runGate(ctx context.Context, n *Node) error {
 	}
 	var last GateResult
 	for round := 1; ; round++ {
+		s.gateRound = round
 		s.emit(n, event.WorkflowNodeRunning, round, "")
 		res, err := s.eng.gate()(ctx, n.Command, timeout)
 		if err != nil {
@@ -272,7 +281,7 @@ func (s *runState) runConfirm(ctx context.Context, n *Node) error {
 // parseConfirmed extracts the confirmer's boolean verdict. Unparseable,
 // ambiguous, or negative answers all mean NOT confirmed (doubt survives).
 func parseConfirmed(answer string) bool {
-	trimmed := strings.TrimSpace(answer)
+	trimmed := finalAnswerBody(answer)
 	// Prefer a fenced/JSON blob inside prose.
 	start := strings.Index(trimmed, "{")
 	end := strings.LastIndex(trimmed, "}")

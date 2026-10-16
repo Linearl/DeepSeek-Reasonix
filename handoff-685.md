@@ -156,4 +156,7 @@ type WorkflowReport struct {
 
 ## 进度日志
 
-- 2026-10-15：建档；worktree wt-685 建立（base f8a09feec）；调研 task 底座/internal event/shellrun/eventtrigger/SKILL.md 语义源完毕；schema 契约成章。
+- 2026-10-15：建档；worktree wt-685 建立（base f8a09feec）；调研 task 底座/internal event/shellrun/eventtrigger/SKILL.md 语义源完毕；schema 契约成章（commit 553e841d1）。
+- 2026-10-16：切片1（commit d62de794d）——internal/workflow 新包（schema/validate/engine/execute/helper/report/runner）+ event.Kind WorkflowNode 尾部追加 + eventwire 透传 + TS 契约；schema 解析校验 35 例全绿。
+- 2026-10-16：切片2——②③④⑤⑥ 执行语义测试套件（fake runners 14 例 + 真 TaskTool e2e 1 例）全绿；repolint 修复：测试 banner 分隔线改普通注释、wire.go ToWire 拆 toWireWorkspaceChanged/Workflow 载荷并入基字面量（function-size/complexity 净债消除）、TS WireWorkflowNode 移至 workflowTypes.ts（types.ts 只留 6 行契约入口，该文件本已超 baseline 42 行为既有漂移）；tsc --noEmit 全量绿。
+- 遗留：boot 接线（workflow 工具面/触发入口）不在本件范围；并行 fan-out、wait 节点（230/228 底座）留后续任务；685 依赖的上游 baseline 刷新（origin/main-v2-stable 15dcd3bde）尚未合入本 worktree 基线，repolint types.ts 报既有漂移与本件无关。

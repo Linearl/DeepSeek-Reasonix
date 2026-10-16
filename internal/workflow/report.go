@@ -28,7 +28,7 @@ type Finding struct {
 // found and confirmed, what actually decided the result, and — under strict
 // semantics — what could NOT be checked (never "what existed but was skipped").
 type WorkflowReport struct {
-	Conclusion string   `json:"conclusion"`
+	Conclusion string    `json:"conclusion"`
 	Findings   []Finding `json:"findings"`
 	Verified   []string  `json:"verified"`
 	NotCovered []string  `json:"notCovered"`
