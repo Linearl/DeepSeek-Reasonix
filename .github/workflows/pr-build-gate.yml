@@ -21,17 +21,28 @@ name: PR build gate
 # 触发分支（对照 743 修复的坑）：branches 过滤的是 PR base 分支，
 # main-v2 与 main-v2-stable 两条主线都在列。本 workflow 不加 push 触发，
 # main-v2-stable push 的既有门禁全部由 ci.yml 承担，不回退也不重复。
-# workflow_dispatch 供手动验证本门禁本身（绕过 actor 过滤）。
+#
+# 935：移除 workflow_dispatch 触发器。它有两个安全隐患——① CodeQL
+# actions/cache-poisoning 判定「job 能写默认分支 cache」的事件集合里含
+# workflow_dispatch，本 workflow 因此被报 3 条 high（pull_request_target
+# 本身不在该集合，故单独保留它不会触发）；② workflow_dispatch 会绕过下面
+# 的 startsWith(actor,'dependabot') 保护（原 if 里有
+# || github.event_name == 'workflow_dispatch' 兜底分支），让任意能 dispatch
+# 的账号在提权通道里跑第三方代码。手动验证改走开一个 dependabot PR 或临时
+# 加回（评审后删）——安全优先，不为验证便利保留默认分支 cache 写入口。
 #
 # 额度控制：concurrency 按 PR 号取消旧 run（dependabot 连续 rebase 不叠
-# 跑）；pnpm store / go-build 都走 setup action 的锁文件哈希缓存；测试面
-# 是快面（run-ci-tests.mjs），全量留 ci.yml 的 push 面。
+# 跑）；测试面是快面（run-ci-tests.mjs），全量留 ci.yml 的 push 面。
+# 935：本提权 workflow 内禁用 pnpm/go 共享缓存（setup-node 去 cache、
+# setup-go cache:false）——pull_request_target checkout 的是 PR head 第三方
+# 代码，install/build 会执行其 package scripts，若回写 base 分支可见的共享
+# cache 即构成缓存污染（GitHub 官方加固：提权通道不写共享缓存）。代价是本
+# 通道每次冷装，但只跑 dependabot PR、面窄，可接受；ci.yml 非提权面缓存不受影响。
 
 on:
   pull_request_target:
     branches: [main-v2, main-v2-stable]
     types: [opened, synchronize, reopened]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -43,7 +54,7 @@ concurrency:
 jobs:
   # ①前端构建（契约检查+tsc+vite+bundle budget）+ ②独立 tsc + ③快面测试。
   frontend-build:
-    if: startsWith(github.actor, 'dependabot') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.actor, 'dependabot')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -62,18 +73,15 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-          cache: pnpm
-          cache-dependency-path: desktop/frontend/pnpm-lock.yaml
 
       # wailsjs 绑定不入 git（bridge.ts 的 type import 和三个绑定断言
       # 测试都依赖它）。与 ci.yml 的 desktop-prepare 同源生成（同一个
-      # .wails-version pin），两处不会漂移。setup-go 的缓存键是
-      # desktop/go.sum，与 ci.yml 的 desktop 面共用缓存。
+      # .wails-version pin），两处不会漂移。
+      # 935：cache:false——提权通道不回写共享缓存（缓存污染加固）。
       - uses: actions/setup-go@v7
         with:
           go-version-file: desktop/go.mod
-          cache: true
-          cache-dependency-path: desktop/go.sum
+          cache: false
 
       - name: Generate wails bindings
         working-directory: desktop
@@ -115,7 +123,7 @@ jobs:
   # 双版本矩阵钉在指定 runner 上——在快面里复制这套装配不值，desktop
   # 的 PR 门禁由 ci.yml 的 desktop-go / desktop-linux-webkit41 兜底。
   go-build-vet:
-    if: startsWith(github.actor, 'dependabot') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.actor, 'dependabot')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -123,10 +131,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      # 935：cache:false——提权通道不回写共享缓存（缓存污染加固）。
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: build
         run: go build ./...
