@@ -55,3 +55,19 @@
 - [x] boot 门修复：ParseCache + boot 双 store 共享 + 7 契约测试
 - [ ] open-topic / render / 首响：归因已给，判断是否需代码治理还是达标路径
 - [ ] bench 复测
+
+## 三、接力增量（2026-10-16 18:0x，前任复活后并行工作；本节=后半程 agent 补充）
+
+### ① boot 门：ParseCache 之外的第三块拼图（复用路径免扫）
+
+ParseCache 让每次扫盘变快（372→120ms），但热路径（assembly hit）仍有 5 次扫盘调用；本次改动让复用路径**根本不扫**：
+
+1. **`ReusedAssembly.SlashSkills`**：冷路径把 `skillStore.SlashList()` 结果存入 assembly；复用路径直接用缓存列表重建 slash_command 工具（nil 回退扫描，兼容旧 assembly）。同时修复复用路径的一个一致性偏差——复用路径的 minimal store（无 CustomPaths）此前扫出的 slash 目录比冷路径少 custom-path 技能，现在热/冷两路径列表一致。
+2. **`BuiltinSubagentToolsFromList`**：explore/research/review/security-review 四个包装工具的存在性判定从 4 次 `store.Read`（每次全量扫盘）改为一次内存列表成员判定；boot 传入自己已加载的 `skills`（冷路径=List 结果，复用路径=assembly 缓存）。旧入口 `BuiltinSubagentTools` 委托实现（内部 List 一次），行为字节等价（Read 恰好搜索 enabledSkills，即 List 返回集）。
+
+**量级**：复用路径 skills 面 5 次扫盘 → 0 次；冷路径 7 次 → 3 次（List×2 + SlashList×1）。叠加 ParseCache 后单次 warm 扫盘 120ms、Read 110ms——纯调用次数削减，与缓存层正交。测试：`TestRuntimeAssemblyReuseCarriesSlashSkills`（删文件后复用路径仍列缓存、冷路径对照不列）+ `TestBuiltinSubagentToolsFromListAnswersFromListOnly`。
+
+**探针补证**（tmp/scantest，接力探针，结论落盘后目录移除）：217 真实技能根，warm List 第二遍 129-131ms；拆分构成=纯目录 stat 22ms + SKILL.md 全量读取 36ms（1.8MB）+ 解析 ~70ms——**解析占大头，证实 ParseCache 方向正确**；调用次数削减（本 commit）与解析缓存（前任 commit）分别打掉两个乘数。
+
+**72h 复测（boot 行）**：FAIL P95=34945ms（n=51）vs 基线 45011ms——读数来自修复前运行中的旧构建；两轮代码修复（ParseCache+免扫）需装机后下一期周报验证。长尾主因=夜间批量窗整机争用（config P95=22.6s/controller P95=17.1s 同窗齐涨，非单一代码热点）——达标路径=装机复测 + 争用窗观测。
+

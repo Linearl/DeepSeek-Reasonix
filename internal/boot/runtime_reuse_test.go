@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -79,6 +81,84 @@ auto_start = true
 	}
 	if logs := logBuf.String(); !strings.Contains(logs, "agent:tools=") {
 		t.Fatalf("stage timings missing agent:tools segment, got:\n%s", logs)
+	}
+}
+
+// slashToolDescription digs the slash_command tool description out of a build's
+// registry — it names every available slash entry, skills included.
+func slashToolDescription(t *testing.T, res *BuildResult) string {
+	t.Helper()
+	if res.Assembly == nil || res.Assembly.Registry == nil {
+		t.Fatal("build returned no assembly registry; nothing to inspect")
+	}
+	tl, ok := res.Assembly.Registry.Get("slash_command")
+	if !ok {
+		t.Fatal("slash_command tool missing from registry")
+	}
+	return tl.Description()
+}
+
+// Task 919 gate-1 proof: the hot path (assembly reuse) must build the slash
+// tool from the assembly's cached skill directory, not from a fresh disk scan.
+// Round 1 discovers a project skill; the skill file is then deleted; round 2
+// reuses the assembly and must STILL list it (cache hit). The control round
+// without an assembly must NOT list it — proving the file deletion is
+// detectable and round 2's listing came from the cache.
+func TestRuntimeAssemblyReuseCarriesSlashSkills(t *testing.T) {
+	isolateConfigHome(t)
+	dir := robustTempDir(t)
+	t.Chdir(dir)
+	registerBootTokenProfileTestProvider()
+	setBootTokenProfileTestProvider(t, testutil.NewMock("slash-reuse", testutil.Turn{Text: "ok"}))
+	writeFile(t, dir, "reasonix.toml", mcpCapabilityTestProviderConfig)
+	writeFile(t, dir, ".reasonix/skills/reusingskill.md",
+		"---\ndescription: a skill discovered in round one\n---\nplaybook body")
+
+	baseOpts := func() Options {
+		return Options{Sink: event.Discard, MCPHostProfile: plugin.HostProfileInteractive}
+	}
+	res1, err := BuildRuntime(context.Background(), baseOpts())
+	if err != nil {
+		t.Fatalf("round1 BuildRuntime: %v", err)
+	}
+	if res1.Assembly == nil || res1.Assembly.SlashSkills == nil {
+		t.Fatal("round1 assembly must carry SlashSkills (populated by the cold-path scan)")
+	}
+	if desc := slashToolDescription(t, res1); !strings.Contains(desc, "reusingskill") {
+		t.Fatalf("round1 slash tool must list the project skill, got: %s", desc)
+	}
+
+	// Remove the skill from disk. A re-scan would no longer see it; the
+	// cached directory must.
+	if err := os.Remove(filepath.Join(dir, ".reasonix", "skills", "reusingskill.md")); err != nil {
+		t.Fatalf("remove skill file: %v", err)
+	}
+
+	// Reuse round: the sentinel prompt already proved the reuse branch runs;
+	// here the slash tool must serve the cached directory.
+	assembly := res1.Assembly
+	assembly.SystemPrompt = "SENTINEL-SLASH-REUSE"
+	opts2 := baseOpts()
+	opts2.RuntimeReload = RuntimeReload{ReuseAssembly: assembly, PreviousPlan: FullReusePlan()}
+	res2, err := BuildRuntime(context.Background(), opts2)
+	if err != nil {
+		t.Fatalf("round2 BuildRuntime: %v", err)
+	}
+	if res2.Snapshot == nil || res2.Snapshot.SystemPrompt() != "SENTINEL-SLASH-REUSE" {
+		t.Fatal("round2 did not take the reuse branch; the slash assertion below would prove nothing")
+	}
+	if desc := slashToolDescription(t, res2); !strings.Contains(desc, "reusingskill") {
+		t.Fatalf("reuse-path slash tool lost the cached skill (re-scanned instead of reusing); got: %s", desc)
+	}
+
+	// Control: a cold build over the same directory must NOT list the deleted
+	// skill — the file removal is real, so round 2's listing is a cache hit.
+	res3, err := BuildRuntime(context.Background(), baseOpts())
+	if err != nil {
+		t.Fatalf("control BuildRuntime: %v", err)
+	}
+	if desc := slashToolDescription(t, res3); strings.Contains(desc, "reusingskill") {
+		t.Fatalf("control cold build still lists a deleted skill; test setup broken: %s", desc)
 	}
 }
 
