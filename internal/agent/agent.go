@@ -2408,12 +2408,26 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	type streamStart struct {
 		ch  <-chan provider.Chunk
 		err error
+		// panicValue carries a provider panic across the goroutine boundary:
+		// the start goroutine recovers it (an unrecovered panic there would
+		// kill the process) and the select's start case re-panics on the run
+		// loop, preserving the propagate-up-the-stack contract the task-tool
+		// tests pin (a failed terminal is emitted, then the panic resumes).
+		panicValue any
 	}
 	start := make(chan streamStart, 1)
 	requestSentAt := time.Now()
 	go func() {
-		ch, err := a.streamProviderRequest(ctx, dest, req)
-		start <- streamStart{ch: ch, err: err}
+		var s streamStart
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					s.panicValue = r
+				}
+			}()
+			s.ch, s.err = a.streamProviderRequest(ctx, dest, req)
+		}()
+		start <- s
 	}()
 
 	// 任务927 phase 1 watch: request out, response headers not yet back.
@@ -2522,6 +2536,12 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			start = nil
 			stopHeader()
 			headerNotice = nil
+			if s.panicValue != nil {
+				// A provider panic must keep propagating up the run-loop
+				// stack (task.go's recover sites emit the failed terminal,
+				// then re-panic) — the start goroutine only ferried it here.
+				panic(s.panicValue)
+			}
 			if s.err != nil {
 				return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: s.err}
 			}
