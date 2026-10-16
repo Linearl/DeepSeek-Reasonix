@@ -194,6 +194,14 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 		return prepared, nil
 	}
 
+	// 任务920 压缩单飞门：过了 above-trigger 快路径 = 本事务一定会做真实的
+	// prune/fold/rescue 工作（分钟级摘要窗口从这里开始）。维护 in-flight 计数
+	// 在每个出口（含 panic 的 defer）归零并触发宿主 settle 钩子，控制器据此把
+	// 压缩窗口内新提交的轮次排队，压完统一放行——治「在途注入窗口」家族。
+	// 快路径（低于触发线/被 block 的视图）不碰计数，普通采样轮零门成本（验收②）。
+	a.maintaining.Add(1)
+	defer a.endMaintenance()
+
 	// A manual compact over the hard ceiling is a rescue, not a convenience:
 	// prune first so the never-folded recent tail can shrink too.
 	if shouldPruneBeforeFold(policy.Trigger, est >= hard) {
