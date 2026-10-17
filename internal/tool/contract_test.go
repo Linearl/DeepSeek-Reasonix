@@ -84,6 +84,7 @@ var acceptsDefaultSnip = map[string]bool{
 	"move_file":                      true,
 	"multi_edit":                     true,
 	"notebook_edit":                  true,
+	"set_quick_commands":             true, // short structured JSON (list view / one-line ack); generic head/tail split is fine
 	"todo_read":                      true, // small JSON list; generic head/tail split is fine
 	"todo_write":                     true,
 	"view_image":                     true, // visual summary, not a text body a head/tail split would help

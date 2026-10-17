@@ -324,6 +324,10 @@ func (a *App) startupStartBackgroundLoops() {
 	// adapter keeps the engine as the single source of truth; CLI/serve
 	// sessions keep the tools failing with a "no engine attached" error.
 	builtin.SetHeartbeatManager(newHeartbeatManagerAdapter(a.heartbeat))
+	// 任务960: quick-command edits go through the same App.SetQuickCommands
+	// validation chain the settings UI uses; CLI/serve sessions keep the tool
+	// failing with a "no store attached" error.
+	builtin.SetQuickCommandsStore(newQuickCommandsStoreAdapter(a))
 
 	a.sessionCollab = newSessionCollabPump(a)
 	a.sessionCollab.Start()
