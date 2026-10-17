@@ -753,7 +753,7 @@ func TestReadStrategyCapabilityIsDynamicWithoutChangingProviderSchema(t *testing
 		key: "ir-cap", readID: "ir-cap", path: "rules.txt", phase: incompleteReadStrategy,
 		searches: map[string]incompleteReadSearch{}, reads: map[string]incompleteReadWindow{},
 	})
-	listed, err := proxy.listCapabilities()
+	listed, err := proxy.listCapabilities(useCapabilityArgs{})
 	if err != nil {
 		t.Fatal(err)
 	}

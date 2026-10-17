@@ -25,11 +25,16 @@ type useCapabilityArgs struct {
 	// CapabilityIDs lets action=decline dismiss several unrelated capabilities
 	// in one call (fork: the per-turn capability route can list dozens of
 	// candidates, and declining them one call at a time burns the turn).
-	CapabilityIDs []string        `json:"capability_ids"`
-	Query         string          `json:"query"`
-	Limit         int             `json:"limit"`
-	Arguments     json.RawMessage `json:"arguments"`
-	Reason        string          `json:"reason"`
+	CapabilityIDs []string `json:"capability_ids"`
+	Query         string   `json:"query"`
+	Limit         int      `json:"limit"`
+	// Task 953 list v2 parameters (advertised in the schema only while
+	// experimental_capability_groups is on; ignored when off).
+	Kind      string          `json:"kind"`
+	Offset    int             `json:"offset"`
+	Detail    bool            `json:"detail"`
+	Arguments json.RawMessage `json:"arguments"`
+	Reason    string          `json:"reason"`
 	// healedDoubleEnvelope is set by parseUseCapabilityArgs when a
 	// stringified call envelope was unwrapped (task 212). It never
 	// serializes; ResolveCall uses it to keep the self-heal observable.
@@ -59,6 +64,9 @@ var capabilityEnvelopeKeys = map[string]bool{
 	"capability_ids": true,
 	"query":          true,
 	"limit":          true,
+	"kind":           true, // task 953 list v2
+	"offset":         true, // task 953 list v2
+	"detail":         true, // task 953 list v2
 	"arguments":      true,
 	"reason":         true,
 }
@@ -344,9 +352,14 @@ func parseUseCapabilityArgs(raw json.RawMessage) (useCapabilityArgs, string, str
 	}
 	action := strings.ToLower(strings.TrimSpace(args.Action))
 	id := strings.TrimSpace(args.CapabilityID)
-	if args.Limit < 0 || args.Limit > 8 {
+	// The 1-8 upper bound is enforced at resolve time (ResolveCall) where the
+	// experimental_capability_groups flag is reachable: search keeps 1-8; list
+	// with the group surface on accepts up to 50. Parse keeps only the sign
+	// check so one flat parser serves both tiers.
+	if args.Limit < 0 {
 		return args, "", "", fmt.Errorf("limit must be between 1 and 8 when provided")
 	}
+	args.Offset = max(args.Offset, 0)
 	if action == "call" {
 		// Task 457: remember target parameters spread across the envelope
 		// top level (message+to etc. with no arguments object) so ResolveCall

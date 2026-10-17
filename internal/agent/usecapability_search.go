@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -21,7 +22,14 @@ type capabilitySearchResult struct {
 	Status       string   `json:"status,omitempty"`
 	ReadOnly     bool     `json:"read_only"`
 	Arguments    []string `json:"argument_names,omitempty"`
-	score        int
+	// Task 953 (group surface on): hits inside a disclosed group carry their
+	// group id/title plus a copyable call hint so the model never has to guess
+	// the envelope shape.
+	Group     string `json:"group,omitempty"`
+	GroupID   string `json:"group_id,omitempty"`
+	GroupCard string `json:"group_card,omitempty"`
+	CallHint  string `json:"call_hint,omitempty"`
+	score     int
 }
 
 // searchCapabilities ranks the in-memory catalog and schema cache only. It is
@@ -58,7 +66,7 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 			continue
 		}
 		scored++
-		results = append(results, capabilitySearchResult{
+		result := capabilitySearchResult{
 			CapabilityID: entry.ID,
 			Kind:         string(entry.Kind),
 			Name:         entry.Name,
@@ -67,7 +75,19 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 			ReadOnly:     entry.ReadOnly,
 			Arguments:    arguments,
 			score:        score,
-		})
+		}
+		// Task 953 (group surface on): attach group membership + a copyable
+		// call hint. The lookup is pure metadata against the frozen group
+		// table — no runtime objects, no per-hit catalog scans.
+		if t.capabilityGroups {
+			if group, ok := groupForTool(entry.Name); ok {
+				result.Group = group.Title
+				result.GroupID = "tool:group/" + group.Key
+				result.GroupCard = "inspect " + result.GroupID
+				result.CallHint = fmt.Sprintf(`{"action":"call","capability_id":%q,"arguments":{ ...the tool's own parameters... }}`, entry.ID)
+			}
+		}
+		results = append(results, result)
 	}
 	scanMs := time.Since(scanStarted).Milliseconds()
 
@@ -81,6 +101,10 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 	if len(results) > limit {
 		results = results[:limit]
 	}
+	note := "Local catalog search only; no MCP process, network request, or tools/list call was made. Inspect one exact capability_id before calling when its argument contract is unfamiliar."
+	if t.capabilityGroups {
+		note += " Hits inside a capability group carry group/group_id (group card: inspect tool:group/<name>) and a copy-paste call_hint."
+	}
 	payload := struct {
 		Query   string                   `json:"query"`
 		Results []capabilitySearchResult `json:"results"`
@@ -88,7 +112,7 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 	}{
 		Query:   query,
 		Results: results,
-		Note:    "Local catalog search only; no MCP process, network request, or tools/list call was made. Inspect one exact capability_id before calling when its argument contract is unfamiliar.",
+		Note:    note,
 	}
 	b, err := json.MarshalIndent(payload, "", "  ")
 	slog.Debug("agent: use_capability search segment timing",

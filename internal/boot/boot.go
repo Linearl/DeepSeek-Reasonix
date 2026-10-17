@@ -2127,6 +2127,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Always build the capability runtime and provider-visible use_capability
 	// proxy so all three role settings share one tool schema.
 	capRuntime = agent.NewMCPCapabilityRuntime(ctx, pluginHost, capSpecs, reg, catalogFn)
+	// Task 953: L0/L1 capability-group disclosure surface (shared switch with
+	// 954/955). Set before any frontend is built so executor and planner
+	// proxies inherit the same tier; off = pre-953 list/search behavior.
+	capRuntime.SetCapabilityGroups(cfg.Agent.ExperimentalCapabilityGroups)
 	capRuntime.ConfigureServers(capEntries, capSpecs, enabledMCPNames)
 	capLedger = capability.NewLedger()
 	capAudit = &capability.Audit{}

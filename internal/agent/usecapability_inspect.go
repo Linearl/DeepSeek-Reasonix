@@ -16,7 +16,7 @@ const maxInspectBytes = 16 << 10
 func (t *UseCapabilityTool) resolveDiscovery(ctx context.Context, p useCapabilityArgs, action, id string, base tool.ResolvedCall) (tool.ResolvedCall, error) {
 	switch action {
 	case "list":
-		out, err := t.listCapabilities()
+		out, err := t.listCapabilities(p)
 		if err != nil {
 			if t.audit != nil {
 				t.audit.RecordMCPProxy(true, false, true)
@@ -34,7 +34,13 @@ func (t *UseCapabilityTool) resolveDiscovery(ctx context.Context, p useCapabilit
 	case "search":
 		query := strings.TrimSpace(p.Query)
 		if query == "" {
-			return tool.ResolvedCall{}, capabilityInputErrorf("query is required for action=search")
+			// Task 953: the copyable example is the fix for the observed
+			// schema-vs-code mismatch loop (10-17: four consecutive
+			// query-less search attempts) — one round of feedback corrects it.
+			return tool.ResolvedCall{}, capabilityInputErrorf(`query is required for action=search; copyable example: {"action":"search","query":"<topic keywords>","limit":5}`)
+		}
+		if p.Limit > 8 {
+			return tool.ResolvedCall{}, capabilityInputErrorf("limit must be between 1 and 8 when provided")
 		}
 		out, resultCount, err := t.searchCapabilities(query, p.Limit)
 		if err != nil {
@@ -50,6 +56,25 @@ func (t *UseCapabilityTool) resolveDiscovery(ctx context.Context, p useCapabilit
 	default:
 		if id == "" {
 			return tool.ResolvedCall{}, capabilityInputErrorf("capability_id is required for action=inspect")
+		}
+		// Task 953: group cards live at tool:group/<key> while the group
+		// surface is on; off, they fall through to the unknown-id path like
+		// any other nonexistent capability.
+		if t.capabilityGroups {
+			if group, ok := groupByID(id); ok {
+				out, gerr := t.inspectGroupCard(group)
+				if gerr != nil {
+					return tool.ResolvedCall{}, gerr
+				}
+				if t.audit != nil {
+					t.audit.RecordMCPProxy(true, false, false)
+					t.audit.RecordCapabilityDiscovery("inspect", 1, len(out), false)
+				}
+				base.SkipExecute = true
+				base.Result = out
+				base.ReadOnly = true
+				return base, nil
+			}
 		}
 		if id == sessionToolResultCapabilityID {
 			out, err := t.inspectSessionToolResult()

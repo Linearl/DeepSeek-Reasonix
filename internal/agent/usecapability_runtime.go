@@ -35,6 +35,10 @@ type MCPCapabilityRuntime struct {
 	state       *mcpProxySharedState
 	frontendsMu sync.RWMutex
 	frontends   map[*UseCapabilityTool]int
+	// capabilityGroups mirrors the boot-time experimental_capability_groups
+	// switch (task 953) so every frontend built from this runtime inherits
+	// the same group-surface tier.
+	capabilityGroups bool
 }
 
 type mcpRuntimeServer struct {
@@ -309,6 +313,16 @@ func (r *MCPCapabilityRuntime) serverEnabled(server string) bool {
 	return ok && configured.enabled
 }
 
+// SetCapabilityGroups propagates the boot-time experimental_capability_groups
+// switch (task 953) to every frontend this runtime hands out. Boot calls it
+// once right after constructing the runtime, before any frontend exists.
+func (r *MCPCapabilityRuntime) SetCapabilityGroups(enabled bool) {
+	if r == nil {
+		return
+	}
+	r.capabilityGroups = enabled
+}
+
 // NewFrontend returns a per-agent use_capability instance. ledger/audit may be
 // nil for ordinary sub-agents that do not run Delivery capability gates.
 func (r *MCPCapabilityRuntime) NewFrontend(ledger *capability.Ledger, audit *capability.Audit) *UseCapabilityTool {
@@ -316,14 +330,15 @@ func (r *MCPCapabilityRuntime) NewFrontend(ledger *capability.Ledger, audit *cap
 		return NewUseCapabilityTool(context.Background(), nil, nil, nil, ledger, audit, nil)
 	}
 	frontend := &UseCapabilityTool{
-		host:     r.host,
-		lifeCtx:  r.lifeCtx,
-		runtime:  r,
-		registry: r.registry,
-		ledger:   ledger,
-		audit:    audit,
-		catalog:  r.catalog,
-		state:    r.state,
+		host:             r.host,
+		lifeCtx:          r.lifeCtx,
+		runtime:          r,
+		registry:         r.registry,
+		ledger:           ledger,
+		audit:            audit,
+		catalog:          r.catalog,
+		state:            r.state,
+		capabilityGroups: r.capabilityGroups,
 	}
 	return frontend
 }
