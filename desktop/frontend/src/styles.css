@@ -28363,7 +28363,7 @@ button.statusbar__mcp:focus-visible {
   padding: 10px 12px;
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--shadow-color) 22%, transparent);
 }
 
 .session-purpose-editor__head {
