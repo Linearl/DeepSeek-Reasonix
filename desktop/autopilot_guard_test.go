@@ -6,9 +6,10 @@ package main
 //   - 幂等单例: repeated Ensure (and a planted duplicate) converge on ONE task.
 //   - 对称清理: owner leaves autopilot → guard disabled; owner conversation
 //     deleted → guard deleted (no orphans).
-//   - 权限隔离: the guard records approvalMode "ask", and running it changes
-//     neither the owner's approval mode nor its autopilot flag — so a guard can
-//     never carry proxy-approval power or trip task 325's reverse linkage.
+//   - 审批档位继承 (task 942): the guard records the user's global
+//     default_tool_approval_mode at creation, and running it changes neither
+//     the owner's approval mode nor its autopilot flag — the wake still never
+//     trips task 325's reverse linkage.
 //   - 自关闭三档: disable / standby / destroy after three quiet checks; a
 //     session with work left never reaches the policy.
 //   - 面板间隔: the minute dial lands in the guard's interval and re-points
@@ -74,8 +75,27 @@ func setGuardPolicy(t *testing.T, policy string) {
 	}
 }
 
+// setGuardApprovalGlobal writes the user-global Ask/Auto/YOLO default the way
+// Settings does (task 942: a new guard inherits this gear at creation).
+func setGuardApprovalGlobal(t *testing.T, mode string) {
+	t.Helper()
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	if err := cfg.SetDesktopDefaultToolApprovalMode(mode); err != nil {
+		t.Fatalf("set global approval mode %q: %v", mode, err)
+	}
+	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("write global approval mode: %v", err)
+	}
+	if got := config.LoadForEdit(config.UserConfigPath()).DesktopDefaultToolApprovalMode(); got != mode {
+		t.Fatalf("global approval mode read back %q, want %q", got, mode)
+	}
+}
+
 func TestAutopilotGuardEnsureIsIdempotentSingleton(t *testing.T) {
 	_, engine := newGuardTestApp(t)
+	// Task 942: the guard inherits the user global at creation — pin it to
+	// yolo so the assertion is the inheritance, not a default accident.
+	setGuardApprovalGlobal(t, "yolo")
 	owner := autopilotGuardOwner{TopicID: "owner-a", Scope: "global"}
 
 	// The same session switched on five times (or five entry points firing)
@@ -96,8 +116,8 @@ func TestAutopilotGuardEnsureIsIdempotentSingleton(t *testing.T) {
 	if !g.Enabled || g.Interval != "30m" || g.TopicID != "owner-a" {
 		t.Fatalf("guard template wrong: enabled=%v interval=%q topic=%q", g.Enabled, g.Interval, g.TopicID)
 	}
-	if g.ApprovalMode != "ask" {
-		t.Fatalf("guard approvalMode = %q, want the strictest gear (ask)", g.ApprovalMode)
+	if g.ApprovalMode != "yolo" {
+		t.Fatalf("guard approvalMode = %q, want the user global (yolo) inherited at creation (task 942)", g.ApprovalMode)
 	}
 	if !g.ReuseSession {
 		t.Fatal("guard must watch the owner's own conversation (reuseSession)")
@@ -381,13 +401,14 @@ func startGuardInjector(t *testing.T, app *App, ctrl *heartbeatExecuteTaskCtrlSt
 
 func TestAutopilotGuardRunKeepsOwnerPermissions(t *testing.T) {
 	app, engine := newGuardTestApp(t)
+	setGuardApprovalGlobal(t, "yolo")
 	owner := autopilotGuardOwner{TopicID: "owner-perm", Scope: "global"}
 	if err := engine.EnsureAutopilotGuard(owner, 30); err != nil {
 		t.Fatal(err)
 	}
 	guard := findGuard(t, engine, owner.TopicID)
-	if guard.ApprovalMode != "ask" {
-		t.Fatalf("guard approvalMode = %q, want ask (strictest)", guard.ApprovalMode)
+	if guard.ApprovalMode != "yolo" {
+		t.Fatalf("guard approvalMode = %q, want the user global (yolo) inherited at creation (task 942)", guard.ApprovalMode)
 	}
 
 	ctrl := &heartbeatExecuteTaskCtrlStub{}
@@ -433,10 +454,68 @@ func TestAutopilotGuardRunKeepsOwnerPermissions(t *testing.T) {
 		t.Fatal("one quiet check must not self-close the guard")
 	}
 
-	// 3. The persisted template still records the strictest gear.
+	// 3. The persisted template still records the inherited global gear —
+	// the run must not rewrite it (nor push it onto the owner).
 	persisted := findGuard(t, engine, owner.TopicID)
-	if persisted.ApprovalMode != "ask" {
-		t.Fatalf("persisted guard approvalMode = %q, want ask", persisted.ApprovalMode)
+	if persisted.ApprovalMode != "yolo" {
+		t.Fatalf("persisted guard approvalMode = %q, want yolo untouched", persisted.ApprovalMode)
+	}
+}
+
+// Task 942 — a NEW guard records the user's global default_tool_approval_mode
+// (not a hardcoded "ask"), and the stamp is creation-only: re-ensuring an
+// existing guard never rewrites its gear, so an upgrade cannot batch-rewrite
+// the guards already in the file.
+func TestAutopilotGuardInheritsUserGlobalApprovalMode(t *testing.T) {
+	_, engine := newGuardTestApp(t)
+
+	// Global yolo (the unattended posture this task exists for): the new
+	// guard records yolo.
+	setGuardApprovalGlobal(t, "yolo")
+	if err := engine.EnsureAutopilotGuard(autopilotGuardOwner{TopicID: "owner-yolo", Scope: "global"}, 30); err != nil {
+		t.Fatal(err)
+	}
+	if g := findGuard(t, engine, "owner-yolo"); g.ApprovalMode != "yolo" {
+		t.Fatalf("guard approvalMode = %q, want the user global (yolo)", g.ApprovalMode)
+	}
+
+	// Global ask: a guard created afterwards records ask — the gear tracks the
+	// global, it is not a second hardcode in the other direction.
+	setGuardApprovalGlobal(t, "ask")
+	if err := engine.EnsureAutopilotGuard(autopilotGuardOwner{TopicID: "owner-ask", Scope: "global"}, 30); err != nil {
+		t.Fatal(err)
+	}
+	if g := findGuard(t, engine, "owner-ask"); g.ApprovalMode != "ask" {
+		t.Fatalf("guard approvalMode = %q, want the user global (ask)", g.ApprovalMode)
+	}
+
+	// Creation-only stamp: flipping the global back to yolo and re-ensuring
+	// the ask guard must NOT rewrite it (acceptance ②: 既有任务不被批量改).
+	setGuardApprovalGlobal(t, "yolo")
+	if err := engine.EnsureAutopilotGuard(autopilotGuardOwner{TopicID: "owner-ask", Scope: "global"}, 30); err != nil {
+		t.Fatal(err)
+	}
+	if g := findGuard(t, engine, "owner-ask"); g.ApprovalMode != "ask" {
+		t.Fatalf("existing guard approvalMode = %q after re-ensure, want it untouched (ask)", g.ApprovalMode)
+	}
+
+	// A hand-edited guard whose gear differs from the global is likewise left
+	// alone by the refresh — only ReuseSession/Prompt are restored.
+	tasks := engine.ListTasks()
+	for i := range tasks {
+		if tasks[i].ID == autopilotGuardID("owner-ask") {
+			tasks[i].ApprovalMode = "auto"
+		}
+	}
+	if err := engine.saveTasks(tasks); err != nil {
+		t.Fatalf("plant hand-edited gear: %v", err)
+	}
+	engine.ReloadConfig()
+	if err := engine.EnsureAutopilotGuard(autopilotGuardOwner{TopicID: "owner-ask", Scope: "global"}, 30); err != nil {
+		t.Fatal(err)
+	}
+	if g := findGuard(t, engine, "owner-ask"); g.ApprovalMode != "auto" {
+		t.Fatalf("hand-edited guard approvalMode = %q after refresh, want it preserved (auto)", g.ApprovalMode)
 	}
 }
 
@@ -636,7 +715,9 @@ func TestAutopilotGuardAutocreateOnMatchesLegacyBehavior(t *testing.T) {
 	setAutopilotTab(t, app, "tab-on-new", "ac-on-new", true)
 	app.ensureAutopilotGuard(autopilotGuardOwner{TopicID: "ac-on-new", Scope: "global"})
 	g := findGuard(t, engine, "ac-on-new")
-	if !g.Enabled || g.Interval != "30m" || g.ApprovalMode != "ask" || !g.ReuseSession {
+	// Task 942: the fresh guard records the user global read path, not the
+	// pre-942 hardcoded "ask".
+	if !g.Enabled || g.Interval != "30m" || g.ApprovalMode != app.autopilotGuardApprovalMode() || !g.ReuseSession {
 		t.Fatalf("created guard template wrong: %+v", g)
 	}
 

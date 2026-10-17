@@ -867,8 +867,9 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 	// Task 326 permission isolation: a guard watches the owner's own
 	// conversation, so touching that conversation's approval mode would both
 	// rewrite the owner's permissions and trip task 325's reverse linkage
-	// (autopilot is yolo). The guard's recorded "ask" is what a guard-owned
-	// session would run under; a guard never grants itself proxy-approval.
+	// (autopilot is yolo). The guard's recorded gear (task 942: the user's
+	// global default, stamped at creation) is what a guard-owned session would
+	// run under; a guard run still never pushes a mode onto the owner.
 	if !isAutopilotGuardTask(t) {
 		e.app.SetToolApprovalModeForTab(tabMeta.ID, mode)
 	}
