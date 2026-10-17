@@ -8,7 +8,7 @@ import { app } from "../lib/bridge";
 import { cachedSessionPurpose, loadSessionPurpose, setCachedSessionPurpose, subscribeSessionPurposes } from "../lib/sessionPurpose";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
 import { createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
-import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreePageLoadFlipsIndicator, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
+import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreePageLoadFlipsIndicator, projectTreeBrowsePageContinues, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
 import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeBodyState, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
 export * from "../lib/projectTreePresentation";
@@ -388,38 +388,61 @@ export function ProjectTree({
       updateTopicPageState(key, { ...pageState, loading: true });
     }
     try {
-      const page = await app.ListProjectTopics({
-        scope: project.kind === "global_folder" ? "global" : "project",
-        workspaceRoot: project.kind === "global_folder" ? "" : project.root ?? "",
-        cursor,
-        limit,
-        query: query.trim(),
-        timeFilter: timeFilter === "10" || timeFilter === "20" || timeFilter === "all" ? "" : timeFilter,
-        sortMode,
-      });
-      if (topicLoadSeqRef.current[key] !== seq) return;
-      delete topicLoadErrorRef.current[key];
-      if (!projectTreeTopicPageIsFresh(topicRevisionRef.current, key, page.revision)) {
-        updateTopicPageState(key, { ...topicPageStateRef.current[key], loading: false });
-        return;
+      // 962：普通浏览不再渲染「加载更多」按钮（对齐上游 main-v2 —— 分页按钮
+      // 只留给搜索结果）。浏览态列表完整性改由这里沿后端游标自动续拉：首页返回
+      // 后只要后端还给出下一页游标就继续拉，直到取全（停机条件见
+      // projectTreeBrowsePageContinues：搜索态停 / 空页停 / 游标不前进停）。
+      // 搜索态（query 非空）维持单页 + 用户显式翻页，行为零回归。每页之间复
+      // 查 seq —— 期间任何刷新拿到新 seq，本循环安静退出，由新请求重新取数。
+      let currentCursor = cursor;
+      let firstPage = true;
+      for (;;) {
+        const page = await app.ListProjectTopics({
+          scope: project.kind === "global_folder" ? "global" : "project",
+          workspaceRoot: project.kind === "global_folder" ? "" : project.root ?? "",
+          cursor: currentCursor,
+          limit,
+          query: query.trim(),
+          timeFilter: timeFilter === "10" || timeFilter === "20" || timeFilter === "all" ? "" : timeFilter,
+          sortMode,
+        });
+        if (topicLoadSeqRef.current[key] !== seq) return;
+        delete topicLoadErrorRef.current[key];
+        if (!projectTreeTopicPageIsFresh(topicRevisionRef.current, key, page.revision)) {
+          updateTopicPageState(key, { ...topicPageStateRef.current[key], loading: false });
+          return;
+        }
+        topicRevisionRef.current[key] = Math.max(topicRevisionRef.current[key] ?? 0, page.revision);
+        const items = projectTreeWithoutTopics(asArray(page.items), currentArchiveTombstones());
+        const completeBaseline = topicCompletePageRef.current[key];
+        const preserveCompletePage = page.complete === false && completeBaseline?.signature === requestSignature;
+        if (page.complete !== false) {
+          topicCompletePageRef.current[key] = { signature: requestSignature, revision: page.revision };
+        }
+        const pageAppend = append || !firstPage;
+        setTree((current) => applyRuntimeProjection(current.map((node) => {
+          if (node.key !== key) return node;
+          const children = preserveCompletePage
+            ? mergeIncompleteProjectTopicPage(asArray(node.children), items)
+            : mergeProjectTopicPage(asArray(node.children), items, pageAppend);
+          return children === node.children ? node : { ...node, children };
+        })));
+        const continues = projectTreeBrowsePageContinues({
+          query,
+          requestCursor: currentCursor,
+          nextCursor: page.nextCursor,
+          itemCount: page.items.length,
+        });
+        if (!continues) {
+          updateTopicPageState(key, preserveCompletePage
+            ? { ...topicPageStateRef.current[key], loading: false }
+            : { nextCursor: page.nextCursor, loading: false });
+          break;
+        }
+        // continues=true 已蕴含 nextCursor 存在；?? 只为收敛 TS。
+        currentCursor = page.nextCursor ?? "";
+        firstPage = false;
       }
-      topicRevisionRef.current[key] = Math.max(topicRevisionRef.current[key] ?? 0, page.revision);
-      const items = projectTreeWithoutTopics(asArray(page.items), currentArchiveTombstones());
-      const completeBaseline = topicCompletePageRef.current[key];
-      const preserveCompletePage = page.complete === false && completeBaseline?.signature === requestSignature;
-      if (page.complete !== false) {
-        topicCompletePageRef.current[key] = { signature: requestSignature, revision: page.revision };
-      }
-      setTree((current) => applyRuntimeProjection(current.map((node) => {
-        if (node.key !== key) return node;
-        const children = preserveCompletePage
-          ? mergeIncompleteProjectTopicPage(asArray(node.children), items)
-          : mergeProjectTopicPage(asArray(node.children), items, append);
-        return children === node.children ? node : { ...node, children };
-      })));
-      updateTopicPageState(key, preserveCompletePage
-        ? { ...topicPageStateRef.current[key], loading: false }
-        : { nextCursor: page.nextCursor, loading: false });
     } catch (error) {
       if (topicLoadSeqRef.current[key] !== seq) return;
       updateTopicPageState(key, { ...topicPageStateRef.current[key], loading: false });
@@ -2200,12 +2223,16 @@ export function ProjectTree({
                 {hiddenCount > 0 ? t("projectTree.showMoreTopics", { n: hiddenCount }) : t("projectTree.showFewerTopics")}
               </button>
             )}
-            {backendPage?.nextCursor && (
+            {/* 962：分页按钮只留给搜索结果（对齐上游 main-v2 的
+                query.trim() && nextCursor 守卫）。普通浏览的完整性由
+                loadProjectTopics 沿游标自动续拉保证，不再渲染此按钮。 */}
+            {query.trim() && backendPage?.nextCursor && (
               <button
                 type="button"
                 className="project-tree__topic-window-toggle"
                 style={{ paddingLeft: 14 + (depth + 1) * 16 }}
                 disabled={backendPage.loading}
+                aria-label={`${t("projectTree.loadMore")} · ${projectLabel}`}
                 onClick={() => void loadProjectTopics(node, true)}
               >
                 {backendPage.loading ? t("projectTree.indexing") : t("projectTree.loadMore")}
