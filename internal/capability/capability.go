@@ -59,6 +59,12 @@ type Entry struct {
 	Profiles         []string // deprecated frontmatter labels; diagnostics only
 	AutoStart        bool     // MCP: configured auto_start
 	FailureReason    string   // host-proven failure detail
+	// Group is the task-955 pure-metadata group tag (group name, no
+	// "tool:group/" prefix). Set only when experimental_capability_groups is
+	// on at catalog build; renderers (list rows / route / search attribution)
+	// consume it. Groups have no lifecycle, permissions, or own switch
+	// (951 修点④) — this field is the entire runtime representation.
+	Group string
 }
 
 type RouteCandidate struct {
@@ -293,6 +299,17 @@ func routeEntry(text string, e Entry) (AutoUse, string, bool) {
 		if e.Name == "review" && looksLikeReview(text) {
 			return AutoUsePrefer, "the user is asking for review or issue inspection", true
 		}
+	}
+	// Task 955: group entries route as suggest-only navigation hints. A group
+	// is never "used" — the reason names the inspect path so the next hop is
+	// the group card, not a guessed member tool. Groups only reach the
+	// catalog when experimental_capability_groups is on (registration is
+	// structural: an unregistered group cannot produce a candidate).
+	if e.Kind == KindGroup {
+		if triggerMatch(text, e.Triggers) {
+			return AutoUseSuggest, fmt.Sprintf("the request matches the %s capability group — inspect %s first for its member table, then call a member", e.Name, e.ID), true
+		}
+		return "", "", false
 	}
 	if e.Kind == KindMCPTool {
 		if explicitMCP(text, e.Source) || (looksLikeGitHub(text) && strings.Contains(e.Source, "github")) {

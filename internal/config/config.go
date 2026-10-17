@@ -1959,15 +1959,6 @@ type AgentConfig struct {
 	// Off by default (iron rule 2) — off means the list is ignored even when
 	// configured, so an unconfigured default config behaves as before.
 	ExperimentalHighSpeedModel bool `toml:"experimental_high_speed_model"`
-	// ExperimentalCapabilityGroups gates the L0/L1 capability-group
-	// disclosure surface (task 953, shared with 954/955): use_capability
-	// action=list switches to the 30-entry × 240B summary tier with
-	// kind=group group rows and the two volume safety gates, and
-	// action=search attaches group membership + a copyable call hint to
-	// every hit. Off by default (铁律 2) — off means list/search behave
-	// exactly as before the group surface existed (full untruncated
-	// enumeration, group-less search hits).
-	ExperimentalCapabilityGroups bool `toml:"experimental_capability_groups"`
 	// Task 318.2: expose the model-driven fold cooldown as configuration.
 	// Off by default: the fold cooldown stays the hard-coded 10-minute
 	// interval (today's behavior byte-for-byte). On: the cooldown below

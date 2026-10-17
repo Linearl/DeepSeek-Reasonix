@@ -303,6 +303,11 @@ type Controller struct {
 	// capabilityProxy directs unready MCP candidates to use_capability in the
 	// transient route block (Delivery and dual-model Planner).
 	capabilityProxy bool
+	// capabilityGroups (task 955) enables the capability group disclosure
+	// layer in the route catalog: group directory rows join the entries and
+	// route can suggest a group. Boot-resolved from
+	// experimental_capability_groups (default off = zero behaviour).
+	capabilityGroups bool
 	// proxyToolsFn returns live tools observed through use_capability without
 	// entering the provider-visible registry (dual-model Planner).
 	proxyToolsFn func() map[string][]plugin.CachedTool

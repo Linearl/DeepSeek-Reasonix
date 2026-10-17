@@ -169,7 +169,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_gc_child_session":              "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
 	"experimental_general_purpose_subagent":      "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
-	"experimental_capability_groups":             "task 953：L0/L1 能力组披露面（use_capability list 摘要档+组行+体积闸、search 附组）——引擎侧开关与 954/955 共用，设置页卡随那两批交付补挂档位入表A（815 定档不建卡先例）",
+	"experimental_capability_groups":             "task 953/955：能力组披露面+组目录卡（L0/L1 组披露、list 摘要档+组行+体积闸、search 附组与 call_hint）——953/954/955 三件共用引擎侧开关，config-only；档位待定档入表A（815 定档不建卡先例），实验室 tab 暂无入口",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
@@ -709,6 +709,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// 任务 944：render_artifact 产物卡片。显式渲染——同 81/123 丢档教训，
 	// omit-on-off 会在下一次渲染时把已保存的开关静默弹回。
 	fmt.Fprintf(&b, "experimental_render_artifact = %v   # task 944: render_artifact tool + ArtifactCard (md/text preview card, html open-only; off = tool unregistered, zero behaviour)\n", c.Agent.ExperimentalRenderArtifact)
+	// 任务 955：能力组披露层（Entry.Group 渲染 + 组卡 + route 推组）。显式渲染
+	// ——同 81/123 丢档教训，omit-on-off 会在下一次渲染时把已保存的开关静默弹回。
+	fmt.Fprintf(&b, "experimental_capability_groups = %v   # task 955: capability group disclosure (list group rows, route group suggestions, group cards; off = zero behaviour)\n", c.Agent.ExperimentalCapabilityGroups)
 	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
 	// Task 632: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).

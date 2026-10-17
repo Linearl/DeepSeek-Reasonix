@@ -40,6 +40,9 @@ type capInfoForList struct {
 	Status      string `json:"status,omitempty"`
 	ReadOnly    bool   `json:"read_only,omitempty"`
 	Description string `json:"description,omitempty"`
+	// Group is the task-955 pure-metadata group tag (absent when the
+	// group layer is off or the entry is untagged).
+	Group string `json:"group,omitempty"`
 }
 
 // listServersPayload is the decoded compact server summary block.
@@ -56,7 +59,9 @@ type listServersPayload struct {
 // With capabilityGroups on (task 953), the same call returns the summary tier
 // (kind/limit/offset paging over 240B descriptions, plus group rows when
 // kind is unset or "group") and gates detail=true full dumps on total volume.
-// With it off, behavior is exactly the pre-953 full enumeration.
+// With it off, behavior is exactly the pre-953 full enumeration. Group tag
+// on entries is the task-955 pure-metadata attribution (absent when the
+// group layer is off or the entry is untagged).
 func (t *UseCapabilityTool) listCapabilities(p useCapabilityArgs) (string, error) {
 	var caps []capInfoForList
 	if t.currentToolResultTarget() != nil {
@@ -90,6 +95,7 @@ func (t *UseCapabilityTool) listCapabilities(p useCapabilityArgs) (string, error
 				Status:      string(e.Status),
 				ReadOnly:    e.ReadOnly,
 				Description: e.Description,
+				Group:       e.Group,
 			})
 		}
 	}

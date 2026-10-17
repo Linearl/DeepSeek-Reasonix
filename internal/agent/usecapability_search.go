@@ -22,9 +22,12 @@ type capabilitySearchResult struct {
 	Status       string   `json:"status,omitempty"`
 	ReadOnly     bool     `json:"read_only"`
 	Arguments    []string `json:"argument_names,omitempty"`
-	// Task 953 (group surface on): hits inside a disclosed group carry their
-	// group id/title plus a copyable call hint so the model never has to guess
-	// the envelope shape.
+	// Task 955 group attribution: the group a hit belongs to ("" when
+	// untagged or the group layer is off), plus the group card id to
+	// inspect next. Mechanism-layer — never derived from description text.
+	// Task 953 (group surface on): hits inside a disclosed group additionally
+	// carry the group id and a copyable call hint so the model never has to
+	// guess the envelope shape.
 	Group     string `json:"group,omitempty"`
 	GroupID   string `json:"group_id,omitempty"`
 	GroupCard string `json:"group_card,omitempty"`
@@ -78,7 +81,9 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 		}
 		// Task 953 (group surface on): attach group membership + a copyable
 		// call hint. The lookup is pure metadata against the frozen group
-		// table — no runtime objects, no per-hit catalog scans.
+		// table — no runtime objects, no per-hit catalog scans. Runs before
+		// the 955 attribution below so the mechanism-layer Group/GroupCard
+		// (key + bare card id) stay authoritative on the merged surface.
 		if t.capabilityGroups {
 			if group, ok := groupForTool(entry.Name); ok {
 				result.Group = group.Title
@@ -86,6 +91,18 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 				result.GroupCard = "inspect " + result.GroupID
 				result.CallHint = fmt.Sprintf(`{"action":"call","capability_id":%q,"arguments":{ ...the tool's own parameters... }}`, entry.ID)
 			}
+		}
+		// Task 955: search hits on group members carry their group
+		// attribution so a lost model can walk hit → group card → member
+		// table without a second search. Group rows point at themselves.
+		// This runs last so the merged Group/GroupCard keep the 955
+		// mechanism-layer values (group key + bare "tool:group/<key>" id).
+		if entry.Kind == capability.KindGroup {
+			result.Group = entry.Name
+			result.GroupCard = entry.ID
+		} else if entry.Group != "" {
+			result.Group = entry.Group
+			result.GroupCard = capability.GroupID(entry.Group)
 		}
 		results = append(results, result)
 	}

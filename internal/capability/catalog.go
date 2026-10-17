@@ -33,7 +33,12 @@ type CatalogOptions struct {
 	// ProxyTools carries host-observed live tools of servers connected through
 	// the use_capability proxy: they are absent from Tools (never registered)
 	// yet must stay routable after the server turns ready.
-	ProxyTools map[string][]plugin.CachedTool
+	ProxyTools map[string][]plugin.CachedTool // server → tools
+	// CapabilityGroups (task 955) enables the group disclosure layer: builtin
+	// tool entries get their Entry.Group tag and the 8 group directory rows
+	// join the catalog. Off (default) = no tags, no group entries, zero
+	// behaviour. Pure metadata — no group lifecycle or per-group switch.
+	CapabilityGroups bool
 }
 
 // LoadCachedToolsForSpecs loads the persisted MCP schema caches for the given
@@ -93,9 +98,34 @@ func BuildCatalog(opts CatalogOptions) Catalog {
 			toolEntries[i].FailureReason = opts.Failed[name]
 		}
 	}
+	if opts.CapabilityGroups {
+		// Task 955: tag builtin tool entries with their pure-metadata group
+		// and join the 8 group directory rows. Registration validation is
+		// structural — group rows and tags are derived from the live tool
+		// set, so a suggestion can never reference an unregistered group.
+		// Tagging runs before the entries copy below (append copies values).
+		groupOf := toolGroupIndex()
+		for i := range toolEntries {
+			if toolEntries[i].Kind != KindTool {
+				continue
+			}
+			if name, ok := groupOf[toolEntries[i].Name]; ok {
+				toolEntries[i].Group = name
+			}
+		}
+	}
 	entries = append(entries, toolEntries...)
 	entries = append(entries, SkillEntriesForCatalog(opts.Skills, opts.Tools)...)
 	entries = append(entries, MCPServerEntries(opts)...)
+	if opts.CapabilityGroups {
+		registered := make(map[string]bool, len(toolEntries))
+		for _, e := range toolEntries {
+			if e.Kind == KindTool {
+				registered[e.Name] = true
+			}
+		}
+		entries = append(entries, BuildGroupEntries(registered)...)
+	}
 
 	// Deduplicate by ID, preferring ready over configured.
 	byID := map[string]Entry{}
