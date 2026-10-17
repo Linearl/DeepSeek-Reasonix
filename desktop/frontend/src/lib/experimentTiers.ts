@@ -130,7 +130,14 @@ export type TierFeatureId =
   // 任务 686: 工作流可视化面板（DAG 流程图 + 运行进展点亮，palette 入口；
   // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。未稳定档（开发
   // 测试中），默认关=palette 逐字节不变。
-  | "workflowPanel";
+  | "workflowPanel"
+  // 任务 961: automation/efficiency 两张条目级合并卡容器 id（742/782 先例，
+  // 纯前端容器、无自有配置键，卡内各行各写各的键；Go 渲染表无条目，同
+  // tabManagement 豁免）——smartAutomation（智能自动化：梦境整理+决策模式
+  // 提取+心跳任务后台化）、interactionPresentation（交互与呈现：快捷指令+
+  // 轨迹状态+回答风格）。
+  | "smartAutomation"
+  | "interactionPresentation";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -253,6 +260,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 开关按 550 口径定可选——不开启时 composer 权限区与引入前逐字节一致
   // （铁律 2）。
   approvalSelect: "optional",
+  // 任务 961：automation/efficiency 两张条目级合并卡容器档 = 成员最高档
+  // （782 合并卡语义同源：smartAutomation 三成员全可选 → 可选；
+  // interactionPresentation 快捷指令推荐压过两可选 → 推荐）。合并是入口层
+  // 组织，不降级任何成员特性。
+  smartAutomation: "optional",
+  interactionPresentation: "recommended",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
@@ -289,10 +302,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 选择器形态二选一，默认关）按可选档入表——可选 30→31、总数 65→66
  * （Go 侧同步 58→59；与 943 先后入表各 +1）。任务 944：renderArtifact
  * （对话内产物卡片）按可选档入表——可选 31→32、总数 66→67（Go 侧同步
- * 59→60）。 */
+ * 59→60）。 任务 961：smartAutomation（智能自动化合并卡，纯前端容器 id）
+ * 按可选档入表——可选 32→33；interactionPresentation（交互与呈现合并卡，
+ * 纯前端容器 id）按推荐档入表——推荐 19→20；总数 67→69（Go 渲染表无条目，
+ * 同 tabManagement 豁免）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  recommended: 19,
-  optional: 32,
+  recommended: 20,
+  optional: 33,
   unstable: 15,
   retired: 1,
 };

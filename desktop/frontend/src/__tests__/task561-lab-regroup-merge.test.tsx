@@ -22,6 +22,9 @@
 //     任务 783 后为 5/8/9/2/1/3/6/1=35（可观测性组增「用量监测」卡：
 //     GLM Plan 用量 + OpenCode Go 用量，opencodeGoUsage 独立 pane 退役为
 //     成员行）。
+//     任务 961 后为 4/6/10/2/1/4/6/2=35（automation 三散条并「智能自动化」
+//     卡 6→4、efficiency 三散条并「交互与呈现」卡 8→6、ui renderArtifact
+//     并入视图布局卡 11→10——条目级合并净 -5 +2 容器 = 40→35）。
 //     任务 785 后为 5/8/9/2/1/3/5/1=34（S1 常驻底座开关条目随底座退役，infra 6→5）。
 //     任务 790 后为 5/8/9/2/1/3/6/1=35（acpListen ACP 常驻监听入 rail，infra 5→6）。
 //     任务 722/724：render table 移交布局默认数据（labLayoutDefault.ts），
@@ -90,12 +93,16 @@ console.log("\ntask 561 lab regroup + merged cards");
 // 任务 943：multiEditInjection（multi_edit 直注）入 tool-opt 组——
 // 任务 944：renderArtifact（对话内产物卡片）入 ui 组——两件先后入布局，
 // 合并态总数 38→40，组分布 ui 10→11、tool-opt 1→2（6/8/11/2/1/4/6/2）。
+// 任务 961：automation 三散条（dream/decisionPatterns/heartbeatBackground）
+// 并「智能自动化」卡、efficiency 三散条（quickCommands/traceAsState/
+// outputStyle）并「交互与呈现」卡、ui renderArtifact 并入视图布局卡——
+// 条目级合并净 -5 +2 容器 = 40→35，组分布 4/6/10/2/1/4/6/2。
 // 数据源 = 布局默认数据 + yaml（两份必须同构）。
 {
   // 直接导入布局数据模块数真数据（比源码正则稳）。
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
-  ok(defEntries.length === 40, `default layout carries exactly 40 rail entries (got ${defEntries.length})`);
+  ok(defEntries.length === 35, `default layout carries exactly 35 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -109,11 +116,13 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 846 homePointer（storage 3→4）此前已入布局，pin 一并跟上 → 6/8/9/2/1/4/6/1。
   // 任务 686：workflowPanel（工作流可视化面板）入 ui 组 → 6/8/10/2/1/4/6/1。
   // 任务 943：multiEditInjection 入 tool-opt 组、任务 944：renderArtifact 入
-  // ui 组——两件先后入布局 → 6/8/11/2/1/4/6/2。
-  ok(groups["automation"] === 6 && groups["efficiency"] === 8 && groups["ui"] === 11 &&
+  // ui 组——两件先后入布局 → 6/8/11/2/1/4/6/2。任务 961：三处条目级收编
+  // → 4/6/10/2/1/4/6/2（automation/efficiency 各并一卡、ui renderArtifact
+  // 并入视图布局卡）。
+  ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 10 &&
      groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 4 && groups["infra"] === 6 &&
      groups["tool-opt"] === 2,
-    `group counts are 6/8/11/2/1/4/6/2 (got ${JSON.stringify(groups)})`);
+    `group counts are 4/6/10/2/1/4/6/2 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -173,9 +182,11 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // 任务 782：界面组三张条目级合并卡（742 tabManagement 先例）——各成员行
   // 读自己的键、写自己的 setter；聚合徽章断言在 562 测试。
   // 任务 856 ③：后继分支随两图标合一迁移改名（collabGroupView → collabHub）。
+  // 任务 961：renderArtifact 成员行入卡（944 原独立卡并入，键/setter 零变化）。
   { id: "viewLayout", endMarker: '{selected === "collabHub" && (', members: [
     { label: "782 splitView", field: "s.experimentalSplitView", setter: "app.SetExperimentalSplitView(on)" },
     { label: "782 trajectoryView", field: "s.experimentalTrajectoryView", setter: "app.SetExperimentalTrajectoryView(on)" },
+    { label: "961 renderArtifact", field: "s.experimentalRenderArtifact", setter: "app.SetExperimentalRenderArtifact(on)" },
   ] },
   { id: "searchHistory", endMarker: '{selected === "localServer" && (', members: [
     { label: "782 promptHistoryPicker", field: "s.experimentalPromptHistoryPicker", setter: "app.SetExperimentalPromptHistoryPicker(on)" },
@@ -188,9 +199,26 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   ] },
   // 任务 783：用量监测卡——GLM Plan 行只读（无键）；Go 用量成员行经
   // SettingsOpenCodeGoUsageCard 读自己的开关键、写自己的 setter。
-  { id: "usageMonitoring", endMarker: '{selected === "quickCommands" && (', members: [
+  // 任务 961：quickCommands 独立 pane 退役并入「交互与呈现」卡——本卡
+  // endMarker 随迁到后继分支 interactionPresentation（旧 marker 不存在会
+  // 让 cardSlice 返回空、测试假红/假绿）。
+  { id: "usageMonitoring", endMarker: '{selected === "interactionPresentation" && (', members: [
     { label: "783 opencodeGoUsage", field: "s.experimentalOpenCodeGoUsage", setter: "app.SetExperimentalOpenCodeGoUsage(on)" },
     { label: "783 glmPlanUsage (read-only row)", field: "settings.glmPlanUsageHint", setter: "" },
+  ] },
+  // 任务 961：automation/efficiency 两张条目级合并卡（742/782 先例）——
+  // dream/decisionPatterns/heartbeatBackground 并「智能自动化」；
+  // quickCommands/traceAsState/outputStyle 并「交互与呈现」。各成员行读
+  // 自己的键、写自己的 setter；聚合徽章断言在 562 测试。
+  { id: "smartAutomation", endMarker: '{selected === "searchHistory" && (', members: [
+    { label: "961 dream", field: "s.experimentalDream", setter: "app.SetExperimentalDream(on)" },
+    { label: "961 decisionPatterns", field: "s.experimentalDecisionPatterns", setter: "app.SetExperimentalDecisionPatterns(on)" },
+    { label: "961 heartbeatBackground", field: "s.experimentalHeartbeatBackground", setter: "app.SetExperimentalHeartbeatBackground(on)" },
+  ] },
+  { id: "interactionPresentation", endMarker: '{selected === "devDebug" && (', members: [
+    { label: "961 quickCommands", field: "s.experimentalQuickCommands", setter: "app.SetExperimentalQuickCommands(on)" },
+    { label: "961 traceAsState", field: "s.experimentalTraceAsState", setter: "app.SetExperimentalTraceAsState(on)" },
+    { label: "961 outputStyle", field: "s.experimentalOutputStyleUI", setter: "app.SetExperimentalOutputStyleUI(on)" },
   ] },
 ];
 
@@ -267,6 +295,15 @@ for (const id of [
   // 任务 783：opencodeGoUsage 独立入口/pane/union id 摘除（用量监测卡成员行
   // 承载，SettingsOpenCodeGoUsageCard 整体搬入卡内）。
   "opencodeGoUsage",
+  // 任务 961：三处条目级收编——七个独立入口/pane/union id 摘除（成员行+
+  // 成员徽章承载，742/782 先例）。
+  "dream",
+  "decisionPatterns",
+  "heartbeatBackground",
+  "quickCommands",
+  "traceAsState",
+  "outputStyle",
+  "renderArtifact",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);
@@ -279,6 +316,8 @@ for (const id of [
   "viewLayout", "searchHistory", "inputSelection",
   // 任务 783：用量监测容器 id 进 union。
   "usageMonitoring",
+  // 任务 961：两张合并卡容器 id 进 union。
+  "smartAutomation", "interactionPresentation",
 ]) {
   ok(panel.includes(`| "${id}"`), `union gains the family id ${id}`);
 }

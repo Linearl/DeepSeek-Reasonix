@@ -45,7 +45,10 @@ console.log("\ntask 564 A-level copy fixes + retired-key read-only retention");
 
 // ① pathRules retired read-only (551 paradigm, UI side).
 {
-  const pane = paneSlice('{selected === "pathRules" && (', '{selected === "traceAsState" && (');
+  // 任务 961：后继分支由 traceAsState 随迁为 orphanHandling（traceAsState
+  // 独立 pane 退役并入「交互与呈现」卡——旧 marker 不存在会让 paneSlice
+  // 返回空、测试假红）。
+  const pane = paneSlice('{selected === "pathRules" && (', '{selected === "orphanHandling" && (');
   ok(pane.includes('t("settings.pathRules.retired")') && pane.includes('t("settings.pathRules.value"'),
     "pathRules pane renders the retired read-only block (hint + stored value)");
   ok(pane.includes("Task 564") && pane.includes("task 551 paradigm"),

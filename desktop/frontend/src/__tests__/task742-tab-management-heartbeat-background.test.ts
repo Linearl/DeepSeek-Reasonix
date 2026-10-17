@@ -63,15 +63,19 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
   // rail pane 白名单随迁。
   const paneMatch = panel.match(/const LAB_PANE_IDS: ReadonlySet<string> = new Set\(\[([\s\S]*?)\]\);/);
   const paneIds = paneMatch ? paneMatch[1] : "";
-  ok(paneIds.includes('"tabManagement"') && paneIds.includes('"heartbeatBackground"'),
-    "pane whitelist registers tabManagement + heartbeatBackground");
+  // 任务 961：heartbeatBackground 独立 pane 退役（并入 smartAutomation 合并
+  // 卡）——白名单收容器 id smartAutomation，742 面其余断言不变。
+  ok(paneIds.includes('"tabManagement"') && paneIds.includes('"smartAutomation"'),
+    "pane whitelist registers tabManagement + smartAutomation (961: heartbeatBackground folded)");
   ok(!paneIds.includes('"tabCompress"') && !paneIds.includes('"tabModeTint"'),
     "pane whitelist drops the retired ids");
   // 两个旧 pane 分支退役，合并卡 pane 承载两行成员开关。
   ok(!panel.includes('{selected === "tabCompress" && (') && !panel.includes('{selected === "tabModeTint" && ('),
     "the two standalone pane branches are retired");
   const tmStart = panel.indexOf('{selected === "tabManagement" && (');
-  const tmEnd = panel.indexOf('{selected === "heartbeatBackground" && (', tmStart);
+  // 任务 961：后继分支由 heartbeatBackground 随迁为 smartAutomation（旧
+  // marker 不存在会让 cardSlice 返回空、测试假红/假绿）。
+  const tmEnd = panel.indexOf('{selected === "smartAutomation" && (', tmStart);
   const tmCard = tmStart >= 0 && tmEnd > tmStart ? panel.slice(tmStart, tmEnd) : "";
   ok(tmCard.includes("app.SetExperimentalTabCompress(on)") && tmCard.includes("Boolean(s.experimentalTabCompress) === on"),
     "member row 1 (adaptive compression) reads + writes its own key");
@@ -100,8 +104,10 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
   const autoBlock = yamlText.slice(yamlText.indexOf("key: automation"), yamlText.indexOf("key: efficiency"));
   ok(autoBlock.includes("- id: heartbeatBackground") && autoBlock.includes("labelKey: settings.heartbeatBackground"),
     "yaml registers heartbeatBackground in the automation group");
-  ok(labDefault.includes('{ id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional", onKeys: ["experimentalHeartbeatBackground"] }'),
-    "built-in default registers the same entry (optional tier)");
+  // 任务 961：heartbeatBackground 由独立卡改为 smartAutomation 合并卡成员
+  // 行（optional tier 不变，键/setter 零变化）。
+  ok(labDefault.includes('{ id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional" }'),
+    "built-in default registers the same entry as a smartAutomation member (optional tier)");
   ok(lightKeys.includes("experimentalHeartbeatBackground: (s: SettingsView) => Boolean(s.experimentalHeartbeatBackground)"),
     "the card light reads its own settings key");
   // Go 配置：零值 false 默认（铁律 2）+ 固定键集渲染 + setter 链。

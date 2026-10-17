@@ -24,6 +24,12 @@
 //       存储组登记 idleReleaseMinutes / goMemLimit 两张 kind:param 参数卡
 //       （后台会话闲置释放 308-O4 + Go 软内存上限 308-O3），自跨会话协作卡
 //       硬编码行迁出——数据驱动渲染，配置键/setter 零变化。
+//   961 条目级收编三处（742/782 合并卡先例，配置键零变化）：
+//       automation 组 dream+decisionPatterns+heartbeatBackground 三散条
+//       并「智能自动化」卡（smartAutomation）；efficiency 组 quickCommands+
+//       traceAsState+outputStyle 三散条并「交互与呈现」卡
+//       （interactionPresentation）；ui 组 renderArtifact 并入「视图布局」
+//       （viewLayout）卡成员行。
 
 import type { DictKey } from "../locales/en";
 import type { LabTier, TierFeatureId } from "../lib/experimentTiers";
@@ -72,13 +78,26 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           ],
         },
         { id: "fullAccess", labelKey: "settings.fullAccess", tier: "recommended", onKeys: ["experimentalFullAccess"] },
-        { id: "dream", labelKey: "settings.dream", tier: "optional", onKeys: ["experimentalDream"] },
-        // 任务 801：决策模式自动提取+固化——压缩触发提取裁决轮次写记忆，
-        // 心跳定期整合固化 decision-patterns.md。默认关=零行为。
-        { id: "decisionPatterns", labelKey: "settings.decisionPatterns", tier: "optional", onKeys: ["experimentalDecisionPatterns"] },
-        // 任务 742：心跳任务后台化——开启后心跳触发不进标签栏（264 detached
-        // 语义，提交成功后 park）。默认关=现状一致。
-        { id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional", onKeys: ["experimentalHeartbeatBackground"] },
+        {
+          // 任务 961：智能自动化（合并卡，742/782 条目级合并先例）——
+          // 梦境整理 + 决策模式提取 + 心跳任务后台化三散条并卡。容器档 =
+          // 成员最高档（全可选 → 可选）；卡内三行各读各的键、各写各的
+          // setter，配置键零变化，已存偏好零迁移。
+          id: "smartAutomation",
+          labelKey: "settings.smartAutomation",
+          tier: "optional",
+          onKeys: ["experimentalDream", "experimentalDecisionPatterns", "experimentalHeartbeatBackground"],
+          members: [
+            // 梦境整理（原 automation 独立卡，961 并卡）。
+            { id: "dream", labelKey: "settings.dream", tier: "optional" },
+            // 任务 801→961：决策模式自动提取+固化——压缩触发提取裁决轮次
+            // 写记忆，心跳定期整合固化 decision-patterns.md。默认关=零行为。
+            { id: "decisionPatterns", labelKey: "settings.decisionPatterns", tier: "optional" },
+            // 任务 742→961：心跳任务后台化——开启后心跳触发不进标签栏（264
+            // detached 语义，提交成功后 park）。默认关=现状一致。
+            { id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional" },
+          ],
+        },
       ],
     },
     {
@@ -143,13 +162,24 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "highSpeedModel", labelKey: "settings.highSpeedModel", tier: "optional" },
           ],
         },
-        { id: "quickCommands", labelKey: "settings.quickCommands", tier: "recommended", onKeys: ["experimentalQuickCommands"] },
-        { id: "traceAsState", labelKey: "settings.traceAsState", tier: "optional", onKeys: ["experimentalTraceAsState"] },
         {
-          id: "outputStyle",
-          labelKey: "settings.outputStyle",
-          tier: "optional",
-          onKeys: ["experimentalOutputStyleUI", "outputStyleActive"],
+          // 任务 961：交互与呈现（合并卡，742/782 条目级合并先例）——
+          // 快捷指令 + 轨迹状态 + 回答风格三散条并卡。容器档 = 成员最高档
+          // （快捷指令推荐 → 推荐）；卡内三行各读各的键、各写各的 setter，
+          // 配置键零变化，已存偏好零迁移。
+          id: "interactionPresentation",
+          labelKey: "settings.interactionPresentation",
+          tier: "recommended",
+          onKeys: ["experimentalQuickCommands", "experimentalTraceAsState", "experimentalOutputStyleUI", "outputStyleActive"],
+          members: [
+            // 快捷指令（原 efficiency 独立卡，推荐档，961 并卡）。
+            { id: "quickCommands", labelKey: "settings.quickCommands", tier: "recommended" },
+            // 轨迹状态（原 efficiency 独立卡，961 并卡）。
+            { id: "traceAsState", labelKey: "settings.traceAsState", tier: "optional" },
+            // 回答风格（原 efficiency 独立卡；灯=门控开或已选非默认风格，
+            // 961 并卡）。
+            { id: "outputStyle", labelKey: "settings.outputStyle", tier: "optional" },
+          ],
         },
         { id: "collabHub", labelKey: "settings.collabHub", tier: "unstable", onKeys: ["experimentalCollabHub"] },
       ],
@@ -158,9 +188,6 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "ui",
       labelKey: "settings.labGroup.ui",
       entries: [
-        // 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard）。
-        // 默认关=工具不注册、卡片不渲染，对话与引入前一致。
-        { id: "renderArtifact", labelKey: "settings.renderArtifact", tier: "optional", onKeys: ["experimentalRenderArtifact"] },
         // 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离
         // 默认档；卡徽章可选。卡内两行各自读自己的键、写自己的 setter
         // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。
@@ -171,17 +198,22 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // 300ms 防误触 + 离开 15s 延时折叠，只回收 hover 自动展开的）。
         // 任务 940：composer 权限选择器形态二选一行入卡（默认关=现按钮组，
         // 开=zcode 同款下拉框省空间）。
+        // 任务 961：对话内产物卡片（renderArtifact，944 原 ui 组独立卡）
+        // 并入本卡为成员行（条目级合并，782 先例——键/setter 零变化，
+        // 独立 pane 退役为卡内行）。
         {
           id: "viewLayout",
           labelKey: "settings.viewLayout",
           tier: "optional",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect"],
+          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalRenderArtifact"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
             { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
             { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" },
             { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" },
             { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" },
+            // 任务 961：对话内产物卡片（默认关=工具不注册、卡片不渲染）。
+            { id: "renderArtifact", labelKey: "settings.renderArtifact", tier: "optional" },
           ],
         },
         { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },

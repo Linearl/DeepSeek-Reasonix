@@ -31,10 +31,16 @@
 #       checkbox），字段值读写绑定收拢在 src/lab/labParamFields.ts；首批两参
 #       数迁「存储」组——后台会话闲置释放（308-O4）+ Go 软内存上限（308-O3），
 #       自跨会话协作卡硬编码行迁出（数据驱动渲染，配置键/setter 零变化）。
+#   961 条目级收编三处（742/782 合并卡先例，配置键零变化，已存偏好零迁移）：
+#       automation 组 dream+decisionPatterns+heartbeatBackground 三散条并
+#       「智能自动化」卡（smartAutomation）；efficiency 组 quickCommands+
+#       traceAsState+outputStyle 三散条并「交互与呈现」卡
+#       （interactionPresentation）；ui 组 renderArtifact 并入「视图布局」
+#       （viewLayout）卡成员行。
 
 version: 1
 groups:
-  # ── 自动化（5 项；任务 742 增心跳任务后台化）──────────────────
+  # ── 自动化（4 项；任务 742 增心跳任务后台化；任务 961 三散条并智能自动化卡）──
   - key: automation
     labelKey: settings.labGroup.automation
     entries:
@@ -57,23 +63,29 @@ groups:
         labelKey: settings.fullAccess
         tier: recommended
         onKeys: [experimentalFullAccess]
-      - id: dream
-        labelKey: settings.dream
+      # 任务 961：智能自动化（合并卡，742/782 条目级合并先例）——梦境整理 +
+      # 决策模式提取 + 心跳任务后台化三散条并卡。容器档 = 成员最高档（全可选
+      # → 可选）；卡内三行各读各的键、各写各的 setter，配置键零变化。
+      - id: smartAutomation
+        labelKey: settings.smartAutomation
         tier: optional
-        onKeys: [experimentalDream]
-      # 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
-      - id: decisionPatterns
-        labelKey: settings.decisionPatterns
-        tier: optional
-        onKeys: [experimentalDecisionPatterns]
-      # 任务 742：心跳任务后台化——开启后心跳触发不进标签栏（264 detached
-      # 语义，提交成功后 park）。默认关=现状一致。
-      - id: heartbeatBackground
-        labelKey: settings.heartbeatBackground
-        tier: optional
-        onKeys: [experimentalHeartbeatBackground]
+        onKeys: [experimentalDream, experimentalDecisionPatterns, experimentalHeartbeatBackground]
+        members:
+          # 梦境整理（原 automation 独立卡，961 并卡）。
+          - id: dream
+            labelKey: settings.dream
+            tier: optional
+          # 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
+          - id: decisionPatterns
+            labelKey: settings.decisionPatterns
+            tier: optional
+          # 任务 742：心跳任务后台化——开启后心跳触发不进标签栏（264 detached
+          # 语义，提交成功后 park）。默认关=现状一致。
+          - id: heartbeatBackground
+            labelKey: settings.heartbeatBackground
+            tier: optional
 
-  # ── 提效（8 项；任务 722：安全/成本控制卡迁入本组）────────────
+  # ── 提效（6 项；任务 722：安全/成本控制卡迁入本组；任务 961 三散条并交互与呈现卡）──
   - key: efficiency
     labelKey: settings.labGroup.efficiency
     entries:
@@ -130,34 +142,37 @@ groups:
           - id: highSpeedModel
             labelKey: settings.highSpeedModel
             tier: optional
-      - id: quickCommands
-        labelKey: settings.quickCommands
+      # 任务 961：交互与呈现（合并卡，742/782 条目级合并先例）——快捷指令 +
+      # 轨迹状态 + 回答风格三散条并卡。容器档 = 成员最高档（快捷指令推荐 →
+      # 推荐）；卡内三行各读各的键、各写各的 setter，配置键零变化。
+      - id: interactionPresentation
+        labelKey: settings.interactionPresentation
         tier: recommended
-        onKeys: [experimentalQuickCommands]
-      - id: traceAsState
-        labelKey: settings.traceAsState
-        tier: optional
-        onKeys: [experimentalTraceAsState]
-      - id: outputStyle
-        labelKey: settings.outputStyle
-        tier: optional
-        onKeys: [experimentalOutputStyleUI, outputStyleActive]
+        onKeys: [experimentalQuickCommands, experimentalTraceAsState, experimentalOutputStyleUI, outputStyleActive]
+        members:
+          # 快捷指令（原 efficiency 独立卡，推荐档，961 并卡）。
+          - id: quickCommands
+            labelKey: settings.quickCommands
+            tier: recommended
+          # 轨迹状态（原 efficiency 独立卡，961 并卡）。
+          - id: traceAsState
+            labelKey: settings.traceAsState
+            tier: optional
+          # 回答风格（原 efficiency 独立卡；灯=门控开或已选非默认风格，961 并卡）。
+          - id: outputStyle
+            labelKey: settings.outputStyle
+            tier: optional
       - id: collabHub
         labelKey: settings.collabHub
         tier: unstable
         onKeys: [experimentalCollabHub]
 
-  # ── 界面（11 项；任务 742：tab 二开关合并为「标签页管理」；任务 782：
-  #    三张条目级合并卡 + opencodeGoUsage 迁出至可观测性组）────────────
+  # ── 界面（10 项；任务 742：tab 二开关合并为「标签页管理」；任务 782：
+  #    三张条目级合并卡 + opencodeGoUsage 迁出至可观测性组；任务 961：
+  #    renderArtifact 并入视图布局卡）──────────────────────────
   - key: ui
     labelKey: settings.labGroup.ui
     entries:
-      # 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard）。
-      # 默认关=工具不注册、卡片不渲染，对话与引入前一致。
-      - id: renderArtifact
-        labelKey: settings.renderArtifact
-        tier: optional
-        onKeys: [experimentalRenderArtifact]
       # 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离默认档；
       # 卡徽章可选。卡内两行各自读自己的键、写自己的 setter：
       #   行1 标签栏自适应压缩（experimental_tab_compress，506）；
@@ -173,10 +188,13 @@ groups:
       # 300ms 防误触 + 离开 15s 延时折叠，只回收 hover 自动展开的）。
       # 任务 940：composer 权限选择器形态二选一行入卡（默认关=现按钮组，
       # 开=zcode 同款下拉框省空间）。
+      # 任务 961：对话内产物卡片（render_artifact 工具 + ArtifactCard，944 原
+      # ui 组独立卡）并入本卡为成员行（条目级合并，782 先例——键/setter 零
+      # 变化）。默认关=工具不注册、卡片不渲染，对话与引入前一致。
       - id: viewLayout
         labelKey: settings.viewLayout
         tier: optional
-        onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect]
+        onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalRenderArtifact]
         members:
           - id: splitView
             labelKey: settings.splitView
@@ -192,6 +210,10 @@ groups:
             tier: optional
           - id: approvalSelect
             labelKey: settings.approvalSelect
+            tier: optional
+          # 任务 961：对话内产物卡片（默认关=工具不注册、卡片不渲染）。
+          - id: renderArtifact
+            labelKey: settings.renderArtifact
             tier: optional
       - id: todoSidebar
         labelKey: settings.todoSidebar
