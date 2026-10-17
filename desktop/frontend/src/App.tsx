@@ -1141,6 +1141,16 @@ export default function App() {
     }
   }, [setQuickCommands]);
 
+  // Task 960: agent-side edits (set_quick_commands tool) persist through the
+  // same App.SetQuickCommands save path and push the saved list back on this
+  // event, so the composer picker reflects them without a settings reload.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.runtime) return;
+    return window.runtime.EventsOn("app:quick-commands-changed", (payload: unknown) => {
+      if (Array.isArray(payload)) setQuickCommands(payload as QuickCommandEntry[]);
+    });
+  }, [setQuickCommands]);
+
   // Autopilot is opt-in: its mode only appears in the composer once the
   // preference is on, so nobody lands in an unattended run by accident.
   const autopilotEnabled = useAppLifecycleStore((s) => s.autopilotEnabled);
