@@ -39,10 +39,14 @@ const (
 )
 
 type Entry struct {
-	ID               string
-	Kind             Kind
-	Name             string
-	Description      string
+	ID          string
+	Kind        Kind
+	Name        string
+	Description string
+	// ShortDescription is the curated ≤100B summary for the standing L1
+	// directory (task 969). Empty falls back to a mechanical clip of
+	// Description at render time; quality audits edit the source, not the clip.
+	ShortDescription string
 	Source           string
 	Status           Status
 	ReadOnly         bool
@@ -65,6 +69,9 @@ type Entry struct {
 	// consume it. Groups have no lifecycle, permissions, or own switch
 	// (951 修点④) — this field is the entire runtime representation.
 	Group string
+	// Invocation mirrors skill.Invocation so standing-catalog renderers can
+	// keep manual-only skills out of model-scanned surfaces.
+	Invocation string
 }
 
 type RouteCandidate struct {
@@ -109,6 +116,7 @@ func SkillEntries(skills []skill.Skill, tools []tool.ContractEntry) []Entry {
 			Kind:             KindSkill,
 			Name:             sk.Name,
 			Description:      sk.Description,
+			ShortDescription: sk.ShortDescription,
 			Source:           string(sk.Scope),
 			Status:           status,
 			Cost:             strings.TrimSpace(sk.Cost),
@@ -120,6 +128,7 @@ func SkillEntries(skills []skill.Skill, tools []tool.ContractEntry) []Entry {
 			ConnectSource:    connectSource,
 			Requires:         cleanList(sk.Requires),
 			Profiles:         cleanList(sk.Profiles),
+			Invocation:       sk.Invocation,
 		})
 	}
 	return out

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/capability"
 	"reasonix/internal/event"
 	"reasonix/internal/memory"
 	"reasonix/internal/provider"
@@ -123,6 +124,109 @@ func sessionContextCount(messages []provider.Message) int {
 		}
 	}
 	return count
+}
+
+// Task 969 acceptance ①: the standing L1 directory rides every real turn as a
+// session-context section, and ③④: unchanged content appends nothing (the
+// block is reused, keeping the provider prefix cache warm) while a memory-only
+// change re-sends only the memory section — the standing catalog bytes are not
+// repeated.
+func TestTurnContextStandingDirectoryRidesTurnsAndDeltasMemoryOnly(t *testing.T) {
+	root := t.TempDir()
+	userDir := filepath.Join(root, "user")
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mem := memory.Load(memory.Options{CWD: project, UserDir: userDir})
+	sess := agent.NewSession("stable system")
+	executor := agent.New(nil, tool.NewRegistry(), sess, agent.Options{}, event.Discard)
+	catalogBlock := "```\n- skill:review — Review code\n- tool:gh_pr_list\n```"
+	c := New(Options{
+		Executor: executor, Memory: mem,
+		SessionContextStatic: sessioncontext.Sections{Workspace: "workspace"},
+		CapabilityDirectory: func() (string, capability.DirectoryStats) {
+			return catalogBlock, capability.DirectoryStats{Bytes: len(catalogBlock), Rows: 2}
+		},
+	})
+
+	if !executor.AppendTurnContext(c.withTurnContext(context.Background(), true)) {
+		t.Fatal("initial snapshot with standing directory was not published")
+	}
+	first, ok := latestControlSessionContext(sess.Messages)
+	if !ok || first.Sections.CapabilityCatalog != catalogBlock {
+		t.Fatalf("standing directory missing from first snapshot: %+v", first)
+	}
+	// ③ unchanged content reuses the same block: no new append.
+	if executor.AppendTurnContext(c.withTurnContext(context.Background(), true)) {
+		t.Fatal("unchanged snapshot appended a duplicate block")
+	}
+	// ④ memory-only change re-sends only the memory section.
+	if _, err := c.SaveMemory(memory.Memory{
+		Name: "currency", Description: "balance currency", Scope: memory.FactScopeGlobal,
+		Type: memory.TypeUser, Body: "Use RMB.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !executor.AppendTurnContext(c.withTurnContext(context.Background(), true)) {
+		t.Fatal("memory change did not publish a context")
+	}
+	delta, ok := latestControlSessionContext(sess.Messages)
+	if !ok || delta.Sections.CapabilityCatalog != "" || !strings.Contains(delta.Sections.BackgroundMemory, "Use RMB.") {
+		t.Fatalf("memory-only delta resent the directory block: %+v", delta)
+	}
+	// The merged view still resolves the standing catalog from the first
+	// snapshot, so the next unchanged turn deduplicates again.
+	if executor.AppendTurnContext(c.withTurnContext(context.Background(), true)) {
+		t.Fatal("post-delta unchanged turn appended a duplicate block")
+	}
+	// A catalog change re-sends only the catalog section.
+	catalogBlock = "```\n- skill:review — Review code\n- tool:gh_pr_list\n- tool:gh_issue_triage\n```"
+	if !executor.AppendTurnContext(c.withTurnContext(context.Background(), true)) {
+		t.Fatal("catalog change did not publish a context")
+	}
+	catalogDelta, ok := latestControlSessionContext(sess.Messages)
+	if !ok || catalogDelta.Sections.CapabilityCatalog == "" || catalogDelta.Sections.BackgroundMemory != "" {
+		t.Fatalf("catalog delta carried extra sections: %+v", catalogDelta)
+	}
+}
+
+// Task 969 双态/门控: the directory follows the model-facing skill discovery
+// gate — disabled discovery publishes snapshots without the catalog section,
+// and a nil renderer keeps the section empty.
+func TestTurnContextDirectoryHonorsDiscoveryGate(t *testing.T) {
+	sess := agent.NewSession("stable system")
+	executor := agent.New(nil, tool.NewRegistry(), sess, agent.Options{}, event.Discard)
+	c := New(Options{
+		Executor:                       executor,
+		DisableImplicitSkillInvocation: true,
+		SessionContextStatic:           sessioncontext.Sections{Workspace: "workspace"},
+		CapabilityDirectory: func() (string, capability.DirectoryStats) {
+			return "```\n- skill:review — Review code\n```", capability.DirectoryStats{Bytes: 34, Rows: 1}
+		},
+	})
+	if !executor.AppendTurnContext(c.withTurnContext(context.Background(), true)) {
+		t.Fatal("expected an initial snapshot")
+	}
+	snapshot, ok := latestControlSessionContext(sess.Messages)
+	if !ok || snapshot.Sections.CapabilityCatalog != "" || snapshot.Sections.SkillsCatalog != "" {
+		t.Fatalf("disabled discovery leaked the directory: %+v", snapshot)
+	}
+
+	nilSess := agent.NewSession("stable system")
+	nilExecutor := agent.New(nil, tool.NewRegistry(), nilSess, agent.Options{}, event.Discard)
+	gated := New(Options{
+		Executor:             nilExecutor,
+		SessionContextStatic: sessioncontext.Sections{Workspace: "workspace"},
+		CapabilityDirectory:  nil,
+	})
+	if !nilExecutor.AppendTurnContext(gated.withTurnContext(context.Background(), true)) {
+		t.Fatal("expected a snapshot with nil directory renderer")
+	}
+	empty, ok := latestControlSessionContext(nilSess.Messages)
+	if !ok || empty.Sections.CapabilityCatalog != "" {
+		t.Fatalf("nil renderer produced a catalog section: %+v", empty)
+	}
 }
 
 func latestControlSessionContext(messages []provider.Message) (sessioncontext.Snapshot, bool) {

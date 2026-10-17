@@ -570,6 +570,7 @@ func ToWireCacheDiagnostics(d *event.CacheDiagnostics) *CacheDiagnostics {
 			Reasons:     append([]string(nil), sc.Reasons...),
 			Environment: section(sc.Environment), Workspace: section(sc.Workspace),
 			BackgroundMemory: section(sc.BackgroundMemory), SkillsCatalog: section(sc.SkillsCatalog),
+			CapabilityCatalog: section(sc.CapabilityCatalog),
 		}
 	}
 	return out

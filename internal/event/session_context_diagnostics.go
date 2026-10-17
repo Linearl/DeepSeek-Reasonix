@@ -30,4 +30,6 @@ type SessionContextDiagnostics struct {
 	Workspace        SessionContextSectionDiagnostics
 	BackgroundMemory SessionContextSectionDiagnostics
 	SkillsCatalog    SessionContextSectionDiagnostics
+	// CapabilityCatalog fingerprints the standing L1 directory block (task 969).
+	CapabilityCatalog SessionContextSectionDiagnostics
 }

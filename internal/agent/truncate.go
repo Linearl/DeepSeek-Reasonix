@@ -86,14 +86,15 @@ func elideToolResult(m provider.Message) (provider.Message, bool) {
 }
 
 // dropOldestUnits removes whole replay units from the oldest end of the
-// foldable region until the estimate fits. The latest session context,
-// compaction digests, and pinned revisions survive behind one marker.
+// foldable region until the estimate fits. The session-context section
+// carriers, compaction digests, and pinned revisions survive behind one
+// marker.
 func (a *Agent) dropOldestUnits(msgs []provider.Message, head, protect, target int) ([]provider.Message, int) {
 	if protect <= head {
 		return msgs, 0
 	}
 	remaining := a.estimatedVisibleRequestTokens(msgs)
-	latestContext := latestSessionContextIndex(msgs)
+	carriers := sessionContextCarrierSet(msgs)
 	var kept []provider.Message
 	dropped, end := 0, head
 	for _, u := range extractMessageUnits(msgs[head:protect]) {
@@ -101,7 +102,7 @@ func (a *Agent) dropOldestUnits(msgs []provider.Message, head, protect, target i
 			break
 		}
 		for i := head + u.lo; i < head+u.hi; i++ {
-			if i == latestContext || isCompactionSummary(msgs[i]) || IsPinnedContextRevision(msgs[i]) {
+			if carriers[i] || isCompactionSummary(msgs[i]) || IsPinnedContextRevision(msgs[i]) {
 				kept = append(kept, msgs[i])
 				continue
 			}

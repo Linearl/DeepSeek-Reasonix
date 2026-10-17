@@ -186,17 +186,19 @@ func (a *Agent) tailWindowView(msgs []provider.Message, target int) ([]provider.
 	if keepFrom <= head {
 		return msgs, 0
 	}
-	// Carry the rolling summary, pinned revisions, and the latest session-context
-	// snapshot across the cut, matching dropOldestUnits' retention policy: state
-	// built before the boundary must survive it. Orphan tool results are never
-	// carried — unit boundaries already pair them with their calls.
-	latest := latestSessionContextIndex(msgs)
+	// Carry the rolling summary, pinned revisions, and the session-context
+	// section carriers across the cut, matching dropOldestUnits' retention
+	// policy: state built before the boundary must survive it. Section deltas
+	// mean one carrier per section, not just the newest envelope. Orphan tool
+	// results are never carried — unit boundaries already pair them with their
+	// calls.
+	carriers := sessionContextCarrierSet(msgs)
 	var kept []provider.Message
 	for i := head; i < keepFrom; i++ {
 		if msgs[i].Role == provider.RoleTool {
 			continue
 		}
-		if i == latest || isCompactionSummary(msgs[i]) || IsPinnedContextRevision(msgs[i]) {
+		if carriers[i] || isCompactionSummary(msgs[i]) || IsPinnedContextRevision(msgs[i]) {
 			kept = append(kept, msgs[i])
 		}
 	}

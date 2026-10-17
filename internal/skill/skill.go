@@ -68,10 +68,15 @@ const (
 type Skill struct {
 	Name        string // canonical identifier; matches the directory / filename stem
 	Description string // one-liner shown in the session-context catalog
-	Body        string // full markdown body (post-frontmatter), loaded eagerly
-	Scope       Scope  // where it came from
-	Path        string // absolute path to the SKILL.md / <name>.md, or "(builtin)"
-	Plugin      string // installed plugin package name; empty for non-plugin skills
+	// ShortDescription is the curated ≤100B summary for the standing L1
+	// capability directory (task 969, frontmatter `short_description:`). Empty
+	// falls back to a mechanical clip of Description at render time; quality
+	// audits edit the source, not the clip.
+	ShortDescription string
+	Body             string // full markdown body (post-frontmatter), loaded eagerly
+	Scope            Scope  // where it came from
+	Path             string // absolute path to the SKILL.md / <name>.md, or "(builtin)"
+	Plugin           string // installed plugin package name; empty for non-plugin skills
 	// runtimeBindingsPrepared is session-local invocation state. It must not be
 	// inferred from untrusted Markdown content or persisted skill metadata.
 	runtimeBindingsPrepared bool
@@ -1031,17 +1036,18 @@ func (s *Store) parseSkillUncached(path, stem string, scope Scope, requireSkillM
 		warn = fmt.Sprintf("warning: skill %q at %s has no description: — it will load but won't appear in the skills index\n", name, path)
 	}
 	sk := Skill{
-		Name:         name,
-		Description:  desc,
-		Body:         loadBodyWithScripts(path, loadBodyWithReferences(path, strings.TrimSpace(body))),
-		Scope:        scope,
-		Path:         path,
-		AllowedTools: parseAllowedTools(firstNonEmptySkillValue(fm[skillFrontmatterAllowedTools], fm["tools"])),
-		RunAs:        parseRunAs(fm[skillFrontmatterRunAs], fm[skillFrontmatterContext], fm[skillFrontmatterAgent]),
-		Model:        strings.TrimSpace(fm[skillFrontmatterModel]),
-		Effort:       strings.TrimSpace(fm[skillFrontmatterEffort]),
-		ReadOnly:     parseBoolFrontmatter(fm[skillFrontmatterReadOnly]),
-		Triggers:     parseCSVFrontmatter(fm[skillFrontmatterTriggers]),
+		Name:             name,
+		Description:      desc,
+		ShortDescription: strings.TrimSpace(fm[skillFrontmatterShortDescription]),
+		Body:             loadBodyWithScripts(path, loadBodyWithReferences(path, strings.TrimSpace(body))),
+		Scope:            scope,
+		Path:             path,
+		AllowedTools:     parseAllowedTools(firstNonEmptySkillValue(fm[skillFrontmatterAllowedTools], fm["tools"])),
+		RunAs:            parseRunAs(fm[skillFrontmatterRunAs], fm[skillFrontmatterContext], fm[skillFrontmatterAgent]),
+		Model:            strings.TrimSpace(fm[skillFrontmatterModel]),
+		Effort:           strings.TrimSpace(fm[skillFrontmatterEffort]),
+		ReadOnly:         parseBoolFrontmatter(fm[skillFrontmatterReadOnly]),
+		Triggers:         parseCSVFrontmatter(fm[skillFrontmatterTriggers]),
 		NegativeTriggers: parseCSVFrontmatter(
 			fm[skillFrontmatterNegativeTriggers],
 		),
@@ -1154,6 +1160,7 @@ func mapClaudeAgentTools(in []string) []string {
 
 const (
 	skillFrontmatterDescription      = "description"
+	skillFrontmatterShortDescription = "short_description"
 	skillFrontmatterName             = "name"
 	skillFrontmatterRunAs            = "runas"
 	skillFrontmatterContext          = "context"

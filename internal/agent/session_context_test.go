@@ -113,8 +113,13 @@ func TestSessionContextDiagnosticsAreContentFreeAndAttributeChanges(t *testing.T
 		}
 	})
 	a := New(prov, tool.NewRegistry(), NewSession("stable"), Options{}, sink)
-	first := sessioncontext.Build(sessioncontext.Sections{Workspace: "/secret/path", BackgroundMemory: "secret fact"})
-	second := sessioncontext.Build(sessioncontext.Sections{Workspace: "/secret/path", BackgroundMemory: "changed secret fact"})
+	firstSections := sessioncontext.Sections{Workspace: "/secret/path", BackgroundMemory: "secret fact"}
+	secondSections := sessioncontext.Sections{Workspace: "/secret/path", BackgroundMemory: "changed secret fact"}
+	first := sessioncontext.Build(firstSections)
+	second := sessioncontext.Build(secondSections)
+	// Task 969: the second append only re-sends the changed memory section, so
+	// the recorded digest is the delta envelope's, not the full snapshot's.
+	secondDelta := sessioncontext.BuildDelta(secondSections, firstSections)
 	for i, snapshot := range []sessioncontext.Snapshot{first, second} {
 		ctx := WithTurnContextBundle(context.Background(), TurnContextBundle{Executor: snapshot})
 		if err := a.Run(ctx, []string{"first", "second"}[i]); err != nil {
@@ -125,7 +130,7 @@ func TestSessionContextDiagnosticsAreContentFreeAndAttributeChanges(t *testing.T
 		t.Fatalf("diagnostics = %+v", diagnostics)
 	}
 	firstDiag, secondDiag := diagnostics[0].SessionContext, diagnostics[1].SessionContext
-	if firstDiag == nil || secondDiag == nil || firstDiag.Digest != first.Digest || secondDiag.Digest != second.Digest {
+	if firstDiag == nil || secondDiag == nil || firstDiag.Digest != first.Digest || secondDiag.Digest != secondDelta.Digest {
 		t.Fatalf("session diagnostics = first %+v second %+v", firstDiag, secondDiag)
 	}
 	if strings.Join(firstDiag.Reasons, ",") != "first_seen" || strings.Join(secondDiag.Reasons, ",") != "memory_changed" {
