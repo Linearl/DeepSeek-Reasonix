@@ -65,6 +65,25 @@ export function projectTreePageLoadFlipsIndicator(
   return append || !pageState;
 }
 
+// 962：普通浏览不再渲染「加载更多」分页按钮（对齐上游 main-v2 —— 上游浏览态
+// 不渲染分页按钮，分页按钮只留给搜索结果）。浏览态会话列表的完整性改由
+// loadProjectTopics 沿后端 nextCursor 自动续拉保证：首页返回后只要后端还给出
+// 下一页游标就继续拉，直到取全。三条停机条件缺一不可：搜索态仍由用户显式
+// 分页（保留的按钮）；空页必须停；游标不前进必须停（防后端游标异常时无限
+// 续拉——同一游标反复请求会永远返回同一页）。
+export function projectTreeBrowsePageContinues(options: {
+  query: string;
+  requestCursor: string;
+  nextCursor?: string;
+  itemCount: number;
+}): boolean {
+  if (options.query.trim()) return false;
+  if (!options.nextCursor) return false;
+  if (options.itemCount <= 0) return false;
+  if (options.nextCursor === options.requestCursor) return false;
+  return true;
+}
+
 // Project shells come from desktop-projects.json and are valid even when the
 // disposable catalog still reports revision 0. Catalog revision only gates
 // topic pages and non-empty tree refreshes after the first shell is painted.
