@@ -119,10 +119,11 @@ ok(/^\s*\| "trajectoryView";?\s*$/m.test(tiers),
 ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajectoryView is optional");
 // 计数 pin 随每次表A 变更步进（704 落地时 21；727 → 22；742 → 24，含
 // tabManagement 容器 + heartbeatBackground 两个可选档；815 统一登记窗口
-// 收口 → optional 29；任务 940 approvalSelect 入表 → optional 30，
-// 见 LAB_TIER_COUNTS 815/940 注）。
-ok(/recommended: 19,\s*\n\s*optional: 30,/.test(tiers),
-  "LAB_TIER_COUNTS bumped to optional 30 (940 approvalSelect 入表口径)");
+// 收口 → optional 29；任务 940 approvalSelect → 30；任务 943
+// multiEditInjection → 31；任务 944 renderArtifact → 32，见 LAB_TIER_COUNTS
+// 815/940/943/944 注——合并态取 32）。
+ok(/recommended: 19,\s*\n\s*optional: 32,/.test(tiers),
+  "LAB_TIER_COUNTS bumped to optional 32 (940/943/944 入表合并态口径)");
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -136,11 +137,11 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 // 9. experimentTiers test counts moved with the register (the 562 harness
 //    pins the distribution — a silent mismatch would fail CI elsewhere).
 //    计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 24/53；
-//    815 统一登记窗口收口 → 29/63；任务 686 workflowPanel 入表 → 29/64；
-//    任务 940 approvalSelect 入表 → 30/65，可选 29→30、总数 64→65）。
+//    815 统一登记窗口收口 → 29/63；686 workflowPanel → 29/64；940/943/944
+//    三件先后入表 → 32/67，见 task562 注——合并态取 32/67）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 30") && tierTest.includes("length === 65"),
-  "task562 test pins the 65-entry register (940 approvalSelect 入表口径)");
+ok(tierTest.includes("counts.optional === 32") && tierTest.includes("length === 67"),
+  "task562 test pins the 67-entry register (940/943/944 入表合并态口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");
