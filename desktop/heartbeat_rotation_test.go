@@ -213,7 +213,9 @@ func newRotationRelayFixture(t *testing.T, manualID string) *rotationRelayFixtur
 		{ID: "task-a", Title: "任务A", Prompt: "tick-a", Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID},
 		{ID: "task-b", Title: "任务B", Prompt: "tick-b", Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID},
 		{ID: manualID, Title: "手动线", Prompt: "tick-m", Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID},
-		{ID: "autoguard-" + old.ID, Title: "Autopilot guard", Prompt: autopilotGuardPrompt, Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID, ApprovalMode: "ask"},
+		// Task 942: the guard row records the user global gear (what the
+		// creation path stamps now), not the pre-942 hardcoded "ask".
+		{ID: "autoguard-" + old.ID, Title: "Autopilot guard", Prompt: autopilotGuardPrompt, Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID, ApprovalMode: app.autopilotGuardApprovalMode()},
 	}
 	if err := engine.saveTasks(tasks); err != nil {
 		t.Fatal(err)
