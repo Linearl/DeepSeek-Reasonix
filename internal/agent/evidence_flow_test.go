@@ -1211,7 +1211,7 @@ func TestEvidenceFlowRejectsReplacingCompletedTodoAfterNumericCompleteStep(t *te
 				"result":"parser added",
 				"evidence":[{"kind":"manual","summary":"checked manually"}]
 			}`),
-			toolCallChunk("c3", "todo_write", `{"todos":[{"content":"Ship parser","status":"completed"}]}`),
+			toolCallChunk("c3", "todo_write", `{"todos":[{"content":"Ship parser","status":"completed","step_id":"plan_step_99"}]}`),
 			{Type: provider.ChunkDone},
 		},
 		{{Type: provider.ChunkText, Text: "done"}, {Type: provider.ChunkDone}},

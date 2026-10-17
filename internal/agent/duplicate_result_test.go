@@ -20,6 +20,32 @@ func TestDedupeProviderVisibleResultOmitsExactRepeats(t *testing.T) {
 	}
 }
 
+// Task 972, fix 3: a deduplicated repeat must say the previous result still
+// stands and echo a bounded summary of that identical original — "omitted"
+// alone left the model blind to whether its write landed.
+func TestDedupeEchoesOriginalResultSummary(t *testing.T) {
+	a := &Agent{}
+	ack := "Todos updated: 3 total — 1 completed, 1 in progress, 1 pending."
+	first := a.dedupeProviderVisibleResult("todo_write", "c1", ack, ack)
+	if first != ack {
+		t.Fatalf("first = %q", first)
+	}
+	second := a.dedupeProviderVisibleResult("todo_write", "c2", ack, ack)
+	if !strings.Contains(second, "已去重，上次结果仍有效") {
+		t.Fatalf("dedup reply must say the previous result stands: %q", second)
+	}
+	if !strings.Contains(second, ack) {
+		t.Fatalf("dedup reply must echo the original result: %q", second)
+	}
+
+	long := strings.Repeat("x", 1000)
+	a.dedupeProviderVisibleResult("read_file", "c3", long, long)
+	third := a.dedupeProviderVisibleResult("read_file", "c4", long, long)
+	if !strings.Contains(third, "…") || len([]rune(third)) > 2*300+300 {
+		t.Fatalf("long originals must be bounded in the echo, got %d runes", len([]rune(third)))
+	}
+}
+
 func TestDedupeUsesRawResultBeforeLossySummary(t *testing.T) {
 	a := &Agent{}
 	visible := "same bounded failure summary"

@@ -18,7 +18,7 @@ type todoRead struct{}
 func (todoRead) Name() string { return "todo_read" }
 
 func (todoRead) Description() string {
-	return "Read the current structured task list (content, status, step_id, level) as JSON. Use this before todo_write ops or when the earlier todo_write call may have been compacted out of context, so you edit the real list instead of guessing."
+	return "Read the current structured task list (content, status, step_id, level) as JSON, plus the current plan marker (plan_id). Use this before todo_write ops or when the earlier todo_write call may have been compacted out of context, so you edit the real list instead of guessing. Re-send the same plan_id on the next todo_write to stay inside the current plan."
 }
 
 func (todoRead) Schema() json.RawMessage {
@@ -44,7 +44,9 @@ func (todoRead) Execute(ctx context.Context, _ json.RawMessage) (string, error) 
 			Running:    t.Running,
 		})
 	}
-	payload, err := json.Marshal(map[string]any{"todos": out})
+	// Task 972: echo the current plan marker so the model can re-send it on
+	// the next todo_write and stay inside the same plan.
+	payload, err := json.Marshal(map[string]any{"todos": out, "plan_id": todoPlanMarker(items)})
 	if err != nil {
 		return "", fmt.Errorf("encode todos: %w", err)
 	}

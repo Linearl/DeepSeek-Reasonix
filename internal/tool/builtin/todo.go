@@ -32,6 +32,9 @@ type todoItem struct {
 	// ParentID (task 152) references the parent task's step_id. Empty = root
 	// (or a flat/level list item). step_id stays the only identity.
 	ParentID string `json:"parent_id,omitempty"`
+	// PlanID (task 972) mirrors the top-level plan marker onto recorded items
+	// (host-assigned; the model sends plan_id once per call, not per item).
+	PlanID string `json:"plan_id,omitempty"`
 }
 
 func (todoWrite) Name() string { return "todo_write" }
@@ -80,7 +83,8 @@ func (todoWrite) Schema() json.RawMessage {
       },
       "required":["op"]
     }
-  }
+  },
+  "plan_id":{"type":"string","description":"Optional plan marker (task 972). Send a NEW value when you start a different plan — the host then treats the write as a wholesale replacement and archives the old plan, instead of rejecting your new items as invented. Re-send the SAME value (or omit it) while working inside the current plan, where completed items are preserved and never invented. The host echoes the current plan marker back in todo_read."}
 }
 }`)
 }
@@ -92,19 +96,32 @@ func (todoWrite) ReadOnly() bool { return true }
 
 func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
-		Todos []todoItem `json:"todos"`
-		Ops   []todoOp   `json:"ops"`
+		Todos  []todoItem `json:"todos"`
+		Ops    []todoOp   `json:"ops"`
+		PlanID string     `json:"plan_id"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
+	planID := strings.TrimSpace(p.PlanID)
+	// Task 972: scope validation to one plan. A non-empty plan_id that differs
+	// from the host's current plan marker declares a NEW plan — a wholesale
+	// replacement is legal there (the old plan is archived, not forged), while
+	// same-plan writes keep every continuity and anti-forgery check. An empty
+	// plan_id means "continue the current plan" (backwards compatible).
+	previous := todoBaseline(ctx)
+	currentPlan := todoPlanMarker(previous)
+	planSwitched := planID != "" && planID != currentPlan && len(previous) > 0
 	// Ops path (task 68): apply to the host baseline, then validate the
 	// resulting full list with the same five checks as a wholesale rewrite.
 	if len(p.Ops) > 0 {
 		if p.Todos != nil {
 			return "", fmt.Errorf("send either todos (full list) or ops (incremental), not both")
 		}
-		applied, err := applyTodoOps(todoBaseline(ctx), p.Ops)
+		if planSwitched {
+			return "", fmt.Errorf("plan_id %q does not match the current plan; switching plans requires the full todos list — ops only edit the current plan", planID)
+		}
+		applied, err := applyTodoOps(previous, p.Ops)
 		if err != nil {
 			return "", err
 		}
@@ -116,6 +133,11 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 	if p.Todos == nil {
 		return "", fmt.Errorf("todos is required (or ops that produce a list)")
 	}
+	// Task 972, fix 2: the host fills in stable step ids for items the model
+	// sent without one — content hash plus collision counter, identical to the
+	// ids the receipt parser assigns — so "create without id, complete later"
+	// resolves by identity instead of dying on wording drift.
+	assignStableTodoStepIDs(p.Todos)
 	var done, active, pending, dropped int
 	for i, t := range p.Todos {
 		if t.Content == "" {
@@ -143,7 +165,7 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 		// Task 23 P0-a: attach the host's current plan so a rejected write can be
 		// repaired without guessing (upstream #10023). The rule text alone left
 		// the model retrying the same invalid list.
-		if snapshot := todoPlanSnapshot(todoBaseline(ctx)); snapshot != "" {
+		if snapshot := todoPlanSnapshot(previous); snapshot != "" {
 			return "", fmt.Errorf("%w.%s", err, snapshot)
 		}
 		return "", err
@@ -151,23 +173,64 @@ func (todoWrite) Execute(ctx context.Context, args json.RawMessage) (string, err
 	if err := verifyUniqueStepIDs(p.Todos); err != nil {
 		return "", err
 	}
-	if !tool.HasPlanReplacementAuthorization(ctx) {
-		if err := verifyTodoCurrentContinuity(ctx, p.Todos); err != nil {
+	if planSwitched {
+		// Task 972: a declared plan switch archives the old plan, so the
+		// same-plan continuity checks (current-step preservation, kept
+		// step_ids, completed positions) do not apply — the new list starts
+		// from scratch. Structural serial-shape validation above still runs.
+	} else {
+		if !tool.HasPlanReplacementAuthorization(ctx) {
+			if err := verifyTodoCurrentContinuity(ctx, p.Todos); err != nil {
+				return "", err
+			}
+			if err := verifyStepIDsPreserved(ctx, p.Todos); err != nil {
+				return "", err
+			}
+		}
+		if err := verifyCompletedTodoPositions(ctx, p.Todos); err != nil {
 			return "", err
 		}
-		if err := verifyStepIDsPreserved(ctx, p.Todos); err != nil {
-			return "", err
-		}
-	}
-	if err := verifyCompletedTodoPositions(ctx, p.Todos); err != nil {
-		return "", err
 	}
 	ack := fmt.Sprintf("Todos updated: %d total — %d completed, %d in progress, %d pending.",
 		len(p.Todos), done, active, pending)
 	if dropped > 0 {
 		ack += fmt.Sprintf(" %d abandoned (given up; kept in the list as a record).", dropped)
 	}
+	if planSwitched {
+		ack += fmt.Sprintf(" 计划已切换，旧计划 %d 项已归档。", len(previous))
+	}
 	return ack, nil
+}
+
+// todoPlanMarker reports the plan marker the host baseline carries (the first
+// non-empty per-item plan_id). Empty means an unmarked plan.
+func todoPlanMarker(baseline []evidence.TodoItem) string {
+	for _, item := range baseline {
+		if id := strings.TrimSpace(item.PlanID); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// assignStableTodoStepIDs is the tool-side twin of
+// evidence.AssignStableTodoStepIDs (task 972, fix 2): same content hash, same
+// collision counter, so the ids the validator sees match the ids the receipt
+// parser will record.
+func assignStableTodoStepIDs(todos []todoItem) {
+	occurrences := make(map[string]int, len(todos))
+	for i := range todos {
+		if strings.TrimSpace(todos[i].StepID) != "" {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(todos[i].Content))
+		if key == "" {
+			continue
+		}
+		n := occurrences[key]
+		occurrences[key] = n + 1
+		todos[i].StepID = evidence.StableTodoStepID(todos[i].Content, n)
+	}
 }
 
 // verifyUniqueStepIDs keeps a step id an identity: two items claiming the same
@@ -205,7 +268,13 @@ func verifyStepIDsPreserved(ctx context.Context, todos []todoItem) error {
 			continue
 		}
 		match, found := evidence.MatchTodoIdentity(todo, next)
-		if !found || match.StepID != "" {
+		if !found {
+			continue
+		}
+		// Task 972, fix 2: a host-assigned id (auto_ prefix) counts as "no id
+		// sent" — the model dropped an explicit identity it was given, and the
+		// host silently minting a content hash must not mask that.
+		if match.StepID != "" && !(strings.HasPrefix(match.StepID, evidence.AutoStepIDPrefix) && !strings.HasPrefix(todo.StepID, evidence.AutoStepIDPrefix)) {
 			continue
 		}
 		return fmt.Errorf("todo %d %q dropped its step_id %q; re-send it with step_id %q so its completion stays attached across retitles and reordering", match.Index, match.Content, todo.StepID, todo.StepID)
@@ -311,6 +380,14 @@ func verifyCompletedTodoPositions(ctx context.Context, todos []todoItem) error {
 		// plan already had. Inventing a brand-new "completed" entry stays
 		// rejected, as does letting a completed step regress (checked below).
 		if _, found := evidence.MatchTodoIdentity(toEvidenceTodo(todo), previous); !found {
+			// Task 972, fix 1: "no step_id" and "invented step" are different
+			// failures and must not share one message. A host-assigned id
+			// (auto_ prefix) means the model never sent a step_id for this
+			// item, so the host cannot tell whether it is a real step; an
+			// explicit unknown id is a genuine invention.
+			if strings.HasPrefix(strings.TrimSpace(todo.StepID), evidence.AutoStepIDPrefix) {
+				return fmt.Errorf("completed todo %q has no step_id; re-send it with the step_id from todo_read so the host can match it to a real step (completed items may be reordered, but a fabricated step is rejected — a missing step_id is not fabrication, it is just unverifiable).%s", todo.Content, snapshot)
+			}
 			return fmt.Errorf("completed todo %q is not a step from the current plan; completed items may be reordered, but not invented — keep the real step content or leave it out.%s", todo.Content, snapshot)
 		}
 	}

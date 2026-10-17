@@ -266,10 +266,13 @@ func TestTodoWriteRejectsDuplicatedCompletedButAllowsReorder(t *testing.T) {
 	}
 
 	// Inventing a completed step that was never in the plan stays rejected.
+	// Task 972: the invented item carries an explicit step_id — a completed
+	// entry without one now gets the dedicated "missing step_id" message
+	// instead, which is a different failure (see the test below).
 	invented := json.RawMessage(`{"todos":[
 		{"content":"Inspect environment","status":"completed"},
 		{"content":"Design solution","status":"completed"},
-		{"content":"Ship it","status":"completed"},
+		{"content":"Ship it","status":"completed","step_id":"plan_step_99"},
 		{"content":"Write code","status":"in_progress"}
 	]}`)
 	if _, err := (todoWrite{}).Execute(ctx, invented); err == nil || !strings.Contains(err.Error(), "not a step from the current plan") {
