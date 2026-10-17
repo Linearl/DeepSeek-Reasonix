@@ -21,7 +21,12 @@ type capabilitySearchResult struct {
 	Status       string   `json:"status,omitempty"`
 	ReadOnly     bool     `json:"read_only"`
 	Arguments    []string `json:"argument_names,omitempty"`
-	score        int
+	// Group is the task-955 group attribution: the group a hit belongs to
+	// ("" when untagged or the group layer is off), plus the group card id
+	// to inspect next. Mechanism-layer — never derived from description text.
+	Group     string `json:"group,omitempty"`
+	GroupCard string `json:"group_card,omitempty"`
+	score     int
 }
 
 // searchCapabilities ranks the in-memory catalog and schema cache only. It is
@@ -58,7 +63,7 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 			continue
 		}
 		scored++
-		results = append(results, capabilitySearchResult{
+		result := capabilitySearchResult{
 			CapabilityID: entry.ID,
 			Kind:         string(entry.Kind),
 			Name:         entry.Name,
@@ -67,7 +72,18 @@ func (t *UseCapabilityTool) searchCapabilities(query string, limit int) (string,
 			ReadOnly:     entry.ReadOnly,
 			Arguments:    arguments,
 			score:        score,
-		})
+		}
+		// Task 955: search hits on group members carry their group
+		// attribution so a lost model can walk hit → group card → member
+		// table without a second search. Group rows point at themselves.
+		if entry.Kind == capability.KindGroup {
+			result.Group = entry.Name
+			result.GroupCard = entry.ID
+		} else if entry.Group != "" {
+			result.Group = entry.Group
+			result.GroupCard = capability.GroupID(entry.Group)
+		}
+		results = append(results, result)
 	}
 	scanMs := time.Since(scanStarted).Milliseconds()
 

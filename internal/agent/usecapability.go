@@ -367,6 +367,12 @@ func (t *UseCapabilityTool) Execute(ctx context.Context, args json.RawMessage) (
 }
 
 func (t *UseCapabilityTool) resolveCall(ctx context.Context, id string, args json.RawMessage, base tool.ResolvedCall) (tool.ResolvedCall, error) {
+	// Task 955: group cards are documentation, never dispatch targets. A
+	// call on tool:group/* names the inspect path instead of failing deep
+	// in registry resolution with an unrelated unknown-tool error.
+	if name, isGroup := capability.ParseGroupID(id); isGroup {
+		return tool.ResolvedCall{}, fmt.Errorf("tool:group/%s is a capability group card, not a callable tool — call use_capability(action=\"inspect\", capability_id=%q) for its member table, then call a member as tool:<name>", name, id)
+	}
 	// Registry-backed tools and skills share the unified proxy. Real writers
 	// still pass permission/plan/sandbox/lease checks via ResolvedCall.Target.
 	if name, ok := strings.CutPrefix(id, "tool:"); ok {

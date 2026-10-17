@@ -31,6 +31,9 @@ func (t *UseCapabilityTool) listCapabilities() (string, error) {
 		Status      string `json:"status,omitempty"`
 		ReadOnly    bool   `json:"read_only,omitempty"`
 		Description string `json:"description,omitempty"`
+		// Group is the task-955 pure-metadata group tag (absent when the
+		// group layer is off or the entry is untagged).
+		Group string `json:"group,omitempty"`
 	}
 	var caps []capInfo
 	if t.currentToolResultTarget() != nil {
@@ -64,6 +67,7 @@ func (t *UseCapabilityTool) listCapabilities() (string, error) {
 				Status:      string(e.Status),
 				ReadOnly:    e.ReadOnly,
 				Description: e.Description,
+				Group:       e.Group,
 			})
 		}
 	}

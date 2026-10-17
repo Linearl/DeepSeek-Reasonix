@@ -93,6 +93,13 @@ func (t *UseCapabilityTool) inspect(_ context.Context, id string) (string, error
 	cat := t.currentCatalog()
 	e, ok := cat.Lookup(id)
 	if !ok {
+		// Task 955: a tool:group/* id missing from the catalog means the
+		// group layer is off or the group does not exist — say which family
+		// the miss belongs to instead of a bare unknown-id (anti-ghost: a
+		// suggested id must never render as if it existed).
+		if name, isGroup := capability.ParseGroupID(id); isGroup {
+			return "", fmt.Errorf("capability group %q is not available in this session (experimental_capability_groups is off, or no group by that name exists); action=list shows the registered catalog", name)
+		}
 		// Task 877: inspect 也可能是真名错——附最接近 catalog 真名建议。
 		msg := fmt.Sprintf("unknown capability_id %q", id)
 		if guide := t.capabilityNameCorrection(id); guide != "" {
@@ -121,10 +128,68 @@ func (t *UseCapabilityTool) inspect(_ context.Context, id string) (string, error
 			payload["schema_fingerprint"] = tool.SchemaFingerprint(contract.Schema)
 		}
 	}
+	if e.Kind == capability.KindGroup {
+		t.decorateGroupInspect(payload, e, cat)
+	}
 	if e.Kind == capability.KindMCPServer || e.Kind == capability.KindMCPTool {
 		t.decorateMCPInspect(payload, e)
 	}
 	return marshalBoundedInspect(payload), nil
+}
+
+// decorateGroupInspect attaches the L2 group card (task 955): scenario lines,
+// the member table, and copy-paste examples for first-batch groups; a compact
+// directory payload for the six card-less groups. Every member row carries a
+// live registered flag derived from the current catalog — the card can point
+// at a member only while that member is actually registered (anti-ghost on
+// the card face).
+func (t *UseCapabilityTool) decorateGroupInspect(payload map[string]any, e capability.Entry, cat capability.Catalog) {
+	def, ok := capability.GroupByName(e.Name)
+	if !ok {
+		payload["note"] = "group row has no static definition — report this as a data bug"
+		return
+	}
+	registered := make(map[string]bool, len(cat.Entries))
+	for _, entry := range cat.Entries {
+		if entry.Kind == capability.KindTool {
+			registered[entry.Name] = true
+		}
+	}
+	if def.Entry != "" {
+		if registered[def.Entry] {
+			payload["entry"] = "tool:" + def.Entry
+		} else {
+			payload["entry_note"] = "L0 aggregate tool:" + def.Entry + " is not registered in this session — browse the member table instead"
+		}
+	}
+	payload["member_count"] = len(def.Members)
+	if def.Card == nil {
+		payload["note"] = "group card not built yet (first batch covers session and im); use the member ids above with action=inspect / action=call"
+		return
+	}
+	payload["scenario"] = def.Card.Scenario
+	rows := make([]map[string]any, 0, len(def.Card.Members))
+	missing := 0
+	for _, m := range def.Card.Members {
+		row := map[string]any{
+			"id":         m.ID,
+			"summary":    m.Summary,
+			"params":     m.Params,
+			"registered": registered[strings.TrimPrefix(m.ID, "tool:")],
+		}
+		if m.Action != "" {
+			row["action"] = m.Action
+		}
+		if !row["registered"].(bool) {
+			missing++
+		}
+		rows = append(rows, row)
+	}
+	payload["members"] = rows
+	payload["examples"] = def.Card.Examples
+	if missing > 0 {
+		payload["note"] = fmt.Sprintf("%d of %d members are not registered in this session (their own lab switches are off) — inspect only registered ids", missing, len(rows))
+	}
 }
 
 func (t *UseCapabilityTool) decorateMCPInspect(payload map[string]any, e capability.Entry) {
