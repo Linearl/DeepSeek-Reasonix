@@ -21,7 +21,7 @@ export interface SettingsView {
   autopilotGuardInterval?: number;
   /** Task 326: what happens to the guard once the watched session goes quiet. */
   autopilotGuardQuiescent?: string;
-  // Task 81: exposes the restart-and-update action. Same preference restart_and_update reads.
+  // Task 81: exposes the restart-and-update action. Same preference the restart_update tool's set_target+execute path reads.
   experimentalRestartUpdate?: boolean;
   // Task 670: fork first-launch notice switch, resolved (nil-means-on; default on per user ruling).
   forkNotice?: boolean;

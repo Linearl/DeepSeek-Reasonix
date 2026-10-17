@@ -66,7 +66,7 @@ func TestSafetyMetadataEquivalenceWithLegacyLists(t *testing.T) {
 			t.Errorf("%q was a serial barrier before the convergence (parallelisableCall) but its metadata marks it parallel-safe", name)
 		}
 	}
-	legacyDestructive := []string{"bash", "kill_shell", "restart_update", "restart_and_update"}
+	legacyDestructive := []string{"bash", "kill_shell", "restart_update"}
 	for _, name := range legacyDestructive {
 		if !SafetyOfName(name).Destructive {
 			t.Errorf("%q was in the destructive class before the convergence but its metadata says otherwise", name)

@@ -43,8 +43,7 @@ type SafetySpec struct {
 	// ReadOnly 与 Tool.ReadOnly() 必须一致，由契约测试钉死。
 	ReadOnly bool
 	// Destructive 表示工具会终止/重启宿主进程或以任意命令面执行（bash、
-	// kill_shell、restart_update、restart_and_update）。破坏性工具在任何
-	// 并发分组里独占。
+	// kill_shell、restart_update）。破坏性工具在任何并发分组里独占。
 	Destructive bool
 	// ConcurrentSafe 表示只读且可与其他只读调用并行扇出。false 不代表工具
 	// 有写副作用（complete_step 只写台账），只代表它必须独占串行批：证据
@@ -101,10 +100,9 @@ var builtinSafety = map[string]SafetySpec{
 	"screenshot":                     {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	"ui_interact":                    {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	// 进程/应用生命周期或任意命令面：破坏性，任何分组独占。
-	"bash":               {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
-	"kill_shell":         {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
-	"restart_and_update": {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
-	"restart_update":     {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
+	"bash":           {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
+	"kill_shell":     {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
+	"restart_update": {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
 }
 
 // SafetyOfName 按规范名读取登记表。未知名返回零值（各布尔位 false、RiskLevel

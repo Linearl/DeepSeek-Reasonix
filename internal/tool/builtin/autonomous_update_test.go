@@ -174,6 +174,23 @@ func TestRestartUpdateNotInitRegistered(t *testing.T) {
 	}
 }
 
+// TestRestartAndUpdateToolRemoved pins task 948: the one-shot restart_and_update
+// entry is gone — its execute semantics overlapped restart_update's
+// set_target+execute pair, which is the supported two-step path. The UI channel
+// (Settings → restart-and-update) calls the App method directly and is not
+// affected. If this fails, someone re-added the tool: the deletion was
+// deliberate, do not restore it without a fresh decision.
+func TestRestartAndUpdateToolRemoved(t *testing.T) {
+	if _, ok := tool.LookupBuiltin("restart_and_update"); ok {
+		t.Fatal("restart_and_update must stay removed (task 948): use restart_update set_target + execute instead")
+	}
+	for _, b := range tool.Builtins() {
+		if b.Name() == "restart_and_update" {
+			t.Fatal("restart_and_update must not appear in the builtin inventory (task 948)")
+		}
+	}
+}
+
 // TestRestartUpdateResolverCoversCapabilityFace pins the third-face fix
 // (task 254 field report): a capability-routed call carries no caller-session
 // context binding, so the construction-time resolver must supply it — the

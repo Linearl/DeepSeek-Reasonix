@@ -186,7 +186,6 @@ func (a *App) tryEffortFastPaths(tab *WorkspaceTab, tabID, level string, switchS
 // switch (both fast paths declined; the fallback reason rides the agent line).
 func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, effort string, snap tabRuntimeSnapshot, runtime normalizedTabRuntime, oldCtrl control.SessionAPI, sharedHost *plugin.Host) (*control.Controller, error) {
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
-		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      modelRef,

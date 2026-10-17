@@ -155,10 +155,9 @@ func (a *App) startupRegisterProcessHelpers() {
 	// task source's controller. One desktop App per process.
 	cascadeApp = a
 	// Task 254: capability-routed tool calls never cross the agent's
-	// context-binding point, so register the process-wide restart fallbacks
+	// context-binding point, so register the process-wide restart fallback
 	// next to cascadeApp (idempotent; nil in CLI/serve hosts).
 	tool.SetFallbackAutonomousUpdateController(newAutonomousUpdateController(a))
-	tool.SetFallbackRestartUpdater(restartUpdaterAdapter{a})
 	// Task 203: the head-divergence notice needs a tab-registry fact to tell a
 	// real second tab from an in-process race; register the probe once per
 	// process (nil in CLI/serve -- the local class then only logs).

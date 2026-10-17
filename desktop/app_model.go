@@ -454,7 +454,6 @@ func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, 
 	// (nil/nil falls back to a fresh pair — pre-890 behavior).
 	handoffJobs, handoffLease := jobsHandoffFrom(oldCtrl)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
-		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      name,

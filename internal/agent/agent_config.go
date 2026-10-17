@@ -24,10 +24,6 @@ type agentConfig struct {
 	// compactModelPricing prices the compact model's usage events; nil keeps
 	// the events unpriced (same contract as the construction pricing).
 	compactModelPricing *provider.Pricing
-	// restartUpdater publishes a staged build and relaunches the app (task 81).
-	// Bound by the host; nil in a host that cannot swap its own install, which
-	// is what makes the tool report itself unavailable rather than half-fail.
-	restartUpdater tool.RestartUpdater
 	// autonomousUpdateController backs the restart_update tool (task 254).
 	// Bound by the host; nil outside the desktop, which keeps the tool
 	// reporting itself unavailable rather than half-failing.
