@@ -3166,6 +3166,11 @@ export const en = {
 "settings.sidebarHoverRightHint": "While the right dock is closed, rest the pointer on the right window edge for about half a second to open it; it closes again 15 seconds after the pointer leaves. Only hover-made expansions are reclaimed - a state you opened manually is never taken back. Independent of the left-sidebar switch. Off by default; changes apply immediately.",
 "settings.sidebarHoverRight.on": "On",
 "settings.sidebarHoverRight.off": "Off",
+// 任务 940: composer permission-tier picker form toggle (lab, ui group / view-layout card; default off = button group).
+"settings.approvalSelect": "Permission dropdown",
+"settings.approvalSelectHint": "Show the composer's conversation-permission tier (Ask / Auto / Yolo / Autopilot) as a compact dropdown instead of the segmented button group, saving composer-row space. Tier semantics are identical. Off by default (keeps the button group); changes apply immediately.",
+"settings.approvalSelect.on": "Dropdown",
+"settings.approvalSelect.off": "Buttons",
 // 任务 704: trajectory view surface strings (ledger / switch / empty state).
 "trajectory.label": "Trajectory",
 "trajectory.switchLabel": "Switch transcript/trajectory view",

@@ -9256,6 +9256,55 @@ body > .mermaid-diagram--fullscreen {
   transform: none;
 }
 
+/* 任务 940：开关开＝权限档位下拉框（zcode 同款紧凑形态，省出原 264px 按钮条
+   空间）。触发器压到 composer 控件高度、胶囊圆角与 modebar 同风格；当前档沿用
+   modebar 的模式色系（auto 绿 / yolo 红 / autopilot 橙）做边框与文字点缀，
+   高权限态一眼可辨（zcode 同思路：图标/文字承载风险级别）。 */
+.composer-meta__control--approval--select {
+  min-width: 116px;
+  max-width: 168px;
+  flex: 0 0 auto;
+}
+
+.composer-approval-select {
+  --wails-draggable: no-drag;
+  height: var(--composer-control-height);
+  min-height: var(--composer-control-height);
+  max-width: 168px;
+  padding: 0 8px 0 10px;
+  gap: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border-color: var(--border);
+  box-shadow: var(--app-graphite-shadow);
+  font-size: var(--composer-control-font-size);
+  font-weight: var(--composer-control-font-weight);
+  line-height: 14px;
+}
+
+.composer-approval-select:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-2);
+}
+
+.composer-approval-select--auto {
+  border-color: var(--mode-auto-border);
+  color: var(--mode-auto-fg);
+  background: color-mix(in srgb, var(--ok) 24%, var(--surface-2));
+}
+
+.composer-approval-select--yolo {
+  border-color: var(--mode-yolo-border);
+  color: var(--mode-yolo-fg);
+  background: color-mix(in srgb, var(--mode-yolo-bg) 55%, var(--surface-2));
+}
+
+.composer-approval-select--autopilot {
+  border-color: var(--mode-autopilot-border);
+  color: var(--mode-autopilot-fg);
+  background: color-mix(in srgb, var(--mode-autopilot-bg) 55%, var(--surface-2));
+}
+
 .composer-task-mode-trigger {
   --wails-draggable: no-drag;
   display: inline-flex;

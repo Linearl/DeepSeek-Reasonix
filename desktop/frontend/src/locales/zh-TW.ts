@@ -4402,6 +4402,11 @@ export const zhTW: Record<DictKey, string> = {
 "settings.sidebarHoverRightHint": "右側停靠欄關閉時，把滑鼠移到視窗右緣並停留約半秒自動展開；移開後 15 秒自動收起。只有懸停自動展開的會被收回——你手動打開的狀態不會被回收。與左邊欄開關互相獨立。預設關閉；變更即時生效。",
 "settings.sidebarHoverRight.on": "開",
 "settings.sidebarHoverRight.off": "關",
+// 任務 940：composer 權限選擇器形態二選一（實驗室，介面組·視圖佈局卡；預設關=按鈕組）。
+"settings.approvalSelect": "對話權限下拉框",
+"settings.approvalSelectHint": "輸入區的對話權限檔位（詢問/自動/Yolo/Autopilot）改為下拉框選擇，省出composer空間。檔位含義與按鈕組完全一致。預設關閉（保持原按鈕組）；變更即時生效。",
+"settings.approvalSelect.on": "下拉框",
+"settings.approvalSelect.off": "按鈕組",
 // 任務 704：軌跡視圖介面文案（台帳/切換/空態）。
 "trajectory.label": "軌跡",
 "trajectory.switchLabel": "切換轉錄/軌跡視圖",

@@ -2554,6 +2554,8 @@ export interface DesktopStartupSettingsView {
   experimentalSidebarHoverLeft?: boolean;
   /** Right-dock hover-to-expand (task 826): the left switch's counterpart, fully independent; off by default. */
   experimentalSidebarHoverRight?: boolean;
+  /** Composer 权限选择器形态二选一（任务 940）：off（默认）=现分段按钮组，on=zcode 同款下拉框（省空间）；纯前端门，保存即生效。 */
+  experimentalApprovalSelect?: boolean;
   /** 工作流可视化面板（任务 686）：palette 入口开 DAG 流程图；默认关，纯前端门，保存即生效。 */
   experimentalWorkflowPanel?: boolean;
   /** 心跳任务后台化（任务 742）；默认关；开启后心跳触发不进标签栏（264 detached 语义）。 */

@@ -174,10 +174,13 @@ console.log("\ntask 826 sidebar hover-to-expand + delayed re-collapse");
      goRender.includes('{"sidebarHoverRight", LabTierOptional, []string{"experimental_sidebar_hover_right"}}'),
     "② tier register: sidebarHoverLeft/Right tagged optional in labFeatureTiers");
   // settings view 双侧字段 + 双侧注入（81/123 两视图教训）。
+  // 任务 940 注：struct 字面量注入点断言改为对齐无关的正则（gofmt 的对齐组
+  // 宽度随邻近字段名长度变化——940 插入 ExperimentalApprovalSelect 后该组
+  // 从 6 空格缩到 2 空格，锁死空格数的 includes 会误报）。
   ok(goSettingsApp.split('ExperimentalSidebarHoverLeft  bool `json:"experimentalSidebarHoverLeft"`').length === 3,
     "② settings views: the field pair is declared in BOTH SettingsView and DesktopStartupSettingsView");
   ok(goSettingsApp.includes("view.ExperimentalSidebarHoverLeft = cfg.Desktop.ExperimentalSidebarHoverLeft") &&
-     goSettingsApp.includes("ExperimentalSidebarHoverLeft:      cfg.Desktop.ExperimentalSidebarHoverLeft"),
+     /ExperimentalSidebarHoverLeft:\s+cfg\.Desktop\.ExperimentalSidebarHoverLeft,/.test(goSettingsApp),
     "② settings views: both injection sites map the left switch");
   // bridge：声明 + 测试桩。
   ok(bridge.includes("SetExperimentalSidebarHoverLeft(enabled: boolean): Promise<void>;") &&
@@ -195,9 +198,11 @@ console.log("\ntask 826 sidebar hover-to-expand + delayed re-collapse");
      typeof LAB_LIGHT_KEYS.experimentalSidebarHoverRight === "function",
     "② labLightKeys: both predicates registered (yaml onKeys whitelist)");
   // yaml + 内置默认同构同值（724 硬约束）。
-  ok(yamlText.includes("onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight]") &&
-     labDefault.includes('onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight"]'),
-    "② layout data: the viewLayout card light covers all four keys in yaml AND the built-in default");
+  // 任务 940：viewLayout 卡灯追加 experimentalApprovalSelect（成员行入卡），
+  // 本断言随卡演进为五键。
+  ok(yamlText.includes("onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect]") &&
+     labDefault.includes('onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect"]'),
+    "② layout data: the viewLayout card light covers all five keys in yaml AND the built-in default");
   ok(yamlText.includes('- id: sidebarHoverLeft') && yamlText.includes('- id: sidebarHoverRight') &&
      labDefault.includes('{ id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" }') &&
      labDefault.includes('{ id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" }'),

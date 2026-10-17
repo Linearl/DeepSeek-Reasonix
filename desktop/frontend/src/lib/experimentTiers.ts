@@ -122,6 +122,9 @@ export type TierFeatureId =
   // 左右独立两键两行，均归界面组「视图布局」卡（782 合并卡先例）。
   | "sidebarHoverLeft"
   | "sidebarHoverRight"
+  // 任务 940: composer 权限选择器形态二选一（默认关=现按钮组，开=下拉框
+  // zcode 同款省空间）。界面组「视图布局」卡成员（782/826 先例）。
+  | "approvalSelect"
   // 任务 686: 工作流可视化面板（DAG 流程图 + 运行进展点亮，palette 入口；
   // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。未稳定档（开发
   // 测试中），默认关=palette 逐字节不变。
@@ -242,6 +245,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 完全一致（铁律 2）。
   sidebarHoverLeft: "optional",
   sidebarHoverRight: "optional",
+  // 任务 940：composer 权限选择器形态二选一（默认关=现按钮组）。展示形态
+  // 开关按 550 口径定可选——不开启时 composer 权限区与引入前逐字节一致
+  // （铁律 2）。
+  approvalSelect: "optional",
 };
 
 /** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
@@ -274,10 +281,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 任务 686：workflowPanel（工作流可视化面板，未稳定档）入表——未稳定
  * 14→15、总数 63→64（Go 侧同步 56→57）。任务 943：multiEditInjection
  * （multi_edit 直注，工具优化族拆分独立卡）按可选档入表——可选 29→30、
- * 总数 64→65（Go 侧同步 57→58）。 */
+ * 总数 64→65（Go 侧同步 57→58）。任务 940：approvalSelect（composer 权限
+ * 选择器形态二选一，默认关）按可选档入表——可选 30→31、总数 65→66
+ * （Go 侧同步 58→59；与 943 先后入表各 +1）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 19,
-  optional: 30,
+  optional: 31,
   unstable: 15,
   retired: 1,
 };

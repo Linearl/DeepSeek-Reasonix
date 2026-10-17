@@ -1,5 +1,5 @@
 import { recoveryStatusText, type RecoveryRetry } from "../lib/recoveryStatus";
-import { labFlagEnabled } from "../lib/labFlags";
+import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { useRuntimeSession } from "../lib/useRuntimeState";
 import { stopButtonView, type StopButtonPhase } from "../lib/stopButton";
 import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessionKey, type PendingFollowup } from "../lib/pendingFollowup";
@@ -31,6 +31,9 @@ import { guidanceIsDelivering, guidanceIsInFlight, guidanceNeedsRetry, guidanceT
 import { canUsePromptHistory, composerEnterAction, composerEscapeAction, composerMenuKeyAction, insertComposerNewline, isFnKeyEvent, isImeKeyEvent, promptHistoryDirectionFromEvent } from "../lib/composerKeyboard";
 import { cacheGeneration, hasMoreOlder, loadOlder } from "../lib/composerHistory";
 import { PromptHistoryPicker } from "./PromptHistoryPicker";
+// 任务 940：权限档位下拉框形态（实验室-界面-视图布局开关开时启用）——
+// 复用仓内 select 家族 SettingsSelect（AnchoredPopover listbox，不新造）。
+import { SettingsSelect } from "./SettingsSelect";
 import { sessionTurnsLabel } from "../lib/sessionTurnsPresentation";
 import { useI18n, type Translator } from "../lib/i18n";
 import { detectShortcutPlatform, formatShortcutCombo, isReservedComposerHistoryShortcut, matchesShortcut, useShortcutComboLabel } from "../lib/keyboardShortcuts";
@@ -841,6 +844,11 @@ export function Composer({
   const undoComboLabel = useShortcutComboLabel("composer.undo");
   const redoComboLabel = useShortcutComboLabel("composer.redo");
   const yoloComboLabel = useShortcutComboLabel("toolApproval.yolo");
+  // 任务 940：权限档位选择器形态二选一（实验室-界面-视图布局）。关（默认）
+  // ＝原分段按钮组逐字节零变化；开＝zcode 同款下拉框（省空间），档位语义
+  // 与按钮组同链路。订阅 labFlags：设置保存即换态，免重启。
+  const [approvalSelectOn, setApprovalSelectOn] = useState(() => labFlagEnabled("approvalSelect"));
+  useEffect(() => onLabFlagsChange(() => setApprovalSelectOn(labFlagEnabled("approvalSelect"))), []);
   const draftKey = sessionKey || tabId || DEFAULT_COMPOSER_DRAFT_KEY;
   const runtimeState = useRuntimeSession(tabId, inboxSessionPath);
   // 任务461-P7 三级终止: the stop button mirrors the escalation level. The
@@ -5771,11 +5779,35 @@ export function Composer({
               </div>
             )}
             {!heroMode && (
-              <div className="composer-meta__control composer-meta__control--approval">
+              <div className={`composer-meta__control composer-meta__control--approval${approvalSelectOn ? " composer-meta__control--approval--select" : ""}`}>
                 {/* A pending tool approval disables the composer, but the approval
                     bar stays usable so mode changes remain possible mid-prompt;
                     the approval card explains that the pending request still needs
                     an explicit decision. */}
+                {/* 任务 940 两态：开关开＝下拉框（zcode 同款紧凑形态，省出原
+                    264px 按钮条空间）。档位语义与按钮组同链路——ask/auto/yolo
+                    走 chooseApprovalMode（含 595 原子离 autopilot），autopilot
+                    走 chooseTaskMode（465 两维矩阵第四档同源）。开关关（默
+                    认）＝下方按钮组逐字节零变化（铁律 2）。 */}
+                {approvalSelectOn ? (
+                  <SettingsSelect
+                    className={`composer-approval-select composer-approval-select--${autopilotModeOn ? "autopilot" : toolApprovalMode}`}
+                    value={autopilotModeOn ? "autopilot" : toolApprovalMode}
+                    disabled={approvalBarDisabled}
+                    title={t("composer.accessMenuTitle", { shortcut: yoloComboLabel })}
+                    aria-label={t("composer.accessMenuTitle", { shortcut: yoloComboLabel })}
+                    onValueChange={(next) => {
+                      if (next === "autopilot") { chooseTaskMode("autopilot"); return; }
+                      chooseApprovalMode(next as ToolApprovalMode);
+                    }}
+                    options={[
+                      { value: "ask", label: t("composer.modeAsk"), hint: t("composer.accessAskTitle") },
+                      { value: "auto", label: t("composer.modeNormal"), hint: t("composer.accessAutoTitle") },
+                      { value: "yolo", label: t("composer.modeYolo"), hint: t("composer.accessYoloTitle", { shortcut: yoloComboLabel }) },
+                      ...(autopilotEnabled ? [{ value: "autopilot", label: t("composer.taskModeAutopilot"), hint: t("composer.taskModeAutopilotHint") }] : []),
+                    ]}
+                  />
+                ) : (
                 <div
                   className="composer-modebar composer-modebar--approval"
                   data-mode={autopilotModeOn ? "autopilot" : toolApprovalMode}
@@ -5834,6 +5866,7 @@ export function Composer({
                     </button>
                   )}
                 </div>
+                )}
               </div>
             )}
             {!heroMode && splitActive && (

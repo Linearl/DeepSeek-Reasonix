@@ -3052,6 +3052,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 940：composer 权限选择器形态二选一（视图布局卡成员行，
+                  826 先例——读自己的键写自己的 setter）。关（默认）=现分段按钮组
+                  零变化；开=zcode 同款下拉框省空间，档位语义同链路。纯前端门：
+                  保存即生效，免重启（铁律 2）。 */}
+              <SettingsField label={labLabel("approvalSelect", t("settings.approvalSelect"))} hint={t("settings.approvalSelectHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalApprovalSelect) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalApprovalSelect(on);
+                      })}
+                    >
+                      {t(on ? "settings.approvalSelect.on" : "settings.approvalSelect.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {selected === "collabHub" && (

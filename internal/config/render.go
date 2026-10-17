@@ -96,6 +96,10 @@ var labFeatureTiers = []labFeatureTier{
 	// 完全一致（铁律 2，默认关）。
 	{"sidebarHoverLeft", LabTierOptional, []string{"experimental_sidebar_hover_left"}},
 	{"sidebarHoverRight", LabTierOptional, []string{"experimental_sidebar_hover_right"}},
+	// 任务 940：对话权限选择器形态二选一（composer 权限档位：按钮组 vs 下拉框，
+	// zcode 同款下拉省空间）。展示形态开关按 550 口径定档可选——不开启时
+	// composer 权限区与引入前逐字节一致（铁律 2，默认关）。
+	{"approvalSelect", LabTierOptional, []string{"experimental_approval_select"}},
 	// 任务 742：心跳任务后台化（默认关）。开启后心跳触发不进标签栏（复用 264
 	// detached 语义，提交成功后 park）；档位按 550 口径可选——不开启不影响
 	// 任何调度行为，只是标签栏照旧出现会话。
@@ -438,6 +442,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// lesson). Off renders no hover zone at all (铁律 2 zero regression).
 		fmt.Fprintf(&b, "experimental_sidebar_hover_left = %v   # desktop: left-sidebar hover-to-expand (300ms mis-touch guard) + fold back 15s after the pointer leaves, reclaiming only hover-made expansions (task 826; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSidebarHoverLeft)
 		fmt.Fprintf(&b, "experimental_sidebar_hover_right = %v   # desktop: right-dock hover-to-expand, same guard and 15s delayed re-collapse; independent of the left switch (task 826; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSidebarHoverRight)
+		// 任务 940: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123
+		// lesson). Off keeps the composer permission button group byte-for-byte.
+		fmt.Fprintf(&b, "experimental_approval_select = %v   # desktop: composer permission-tier picker form — off (default) = segmented ask/auto/yolo(/autopilot) button group, on = compact dropdown (zcode-style, saves composer-row space) (task 940; settings save re-applies, no restart)\n", c.Desktop.ExperimentalApprovalSelect)
 		// 任务 686: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off renders no palette entry at all (铁律 2 zero regression).

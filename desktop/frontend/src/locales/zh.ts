@@ -3162,6 +3162,11 @@ export const zh: Record<DictKey, string> = {
 "settings.sidebarHoverRightHint": "右侧停靠栏关闭时，把鼠标移到窗口右缘并停留约半秒自动展开；移开后 15 秒自动收起。只有悬停自动展开的会被收回——你手动打开的状态不会被回收。与左边栏开关互相独立。默认关闭；改动即时生效。",
 "settings.sidebarHoverRight.on": "开",
 "settings.sidebarHoverRight.off": "关",
+// 任务 940：composer 权限选择器形态二选一（实验室，界面组·视图布局卡；默认关=按钮组）。
+"settings.approvalSelect": "对话权限下拉框",
+"settings.approvalSelectHint": "输入区的对话权限档位（询问/自动/Yolo/Autopilot）改为下拉框选择，省出composer空间。档位含义与按钮组完全一致。默认关闭（保持原按钮组）；改动即时生效。",
+"settings.approvalSelect.on": "下拉框",
+"settings.approvalSelect.off": "按钮组",
 // 任务 704：轨迹视图界面文案（台账/切换/空态）。
 "trajectory.label": "轨迹",
 "trajectory.switchLabel": "切换转录/轨迹视图",
