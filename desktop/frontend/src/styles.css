@@ -28344,6 +28344,80 @@ button.statusbar__mcp:focus-visible {
   flex: 0 0 auto;
 }
 
+/* 938：hover 卡的职责行——pre-wrap 保留换行 + anywhere 断长词，长 purpose
+   换行完整展示不裁剪（验收①）。 */
+.project-tree__hover-card-purpose {
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 938：「编辑职责」弹窗（AnchoredPopover portal 到 body，529 先例）。 */
+.session-purpose-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+}
+
+.session-purpose-editor__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-purpose-editor__title {
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.session-purpose-editor__hint {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+
+.session-purpose-editor__input {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  padding: 6px 8px;
+}
+
+.session-purpose-editor__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.session-purpose-editor__error {
+  color: var(--danger);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.session-purpose-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.session-purpose-editor__spinner {
+  animation: spin 0.9s linear infinite;
+}
+
 /* Classic per-folder show-more toggle and empty-folder placeholder rows. */
 .project-tree__topic-window-toggle {
   --wails-draggable: no-drag;
