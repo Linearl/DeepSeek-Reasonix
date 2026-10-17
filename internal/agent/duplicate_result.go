@@ -50,9 +50,27 @@ func (a *Agent) dedupeProviderVisibleResult(toolName, callID, raw, visible strin
 	fp := hex.EncodeToString(sum[:12])
 	prev, seen := a.turn.loop.rememberFingerprint(fp, callID)
 	if seen && prev != callID {
-		return fmt.Sprintf("duplicate tool result omitted (identical to call_id=%s, fingerprint=%s). Full original remains locally; page it with session:tool_result if needed.%s", prev, fp, a.duplicateStateSnapshot())
+		// Task 972, fix 3: a deduplicated repeat must still answer the
+		// question the call asked. "Omitted" alone left the model unable to
+		// see whether its write landed and forced a probe re-send — so the
+		// reply now says the previous result still stands and echoes a
+		// bounded summary of that identical original.
+		return fmt.Sprintf("duplicate tool result omitted (identical to call_id=%s, fingerprint=%s). 已去重，上次结果仍有效；上次结果：%s Full original remains locally; page it with session:tool_result if needed.%s", prev, fp, duplicateResultSummary(raw), a.duplicateStateSnapshot())
 	}
 	return visible
+}
+
+// duplicateResultSummary echoes a bounded, single-line excerpt of a
+// deduplicated result (task 972, fix 3) so the model sees what the identical
+// earlier call returned without re-sending it.
+func duplicateResultSummary(raw string) string {
+	const limit = 300
+	s := strings.Join(strings.Fields(raw), " ")
+	runes := []rune(s)
+	if len(runes) > limit {
+		s = string(runes[:limit]) + "…"
+	}
+	return s
 }
 
 // duplicateStateSnapshot appends the host's current plan to a deduplicated
