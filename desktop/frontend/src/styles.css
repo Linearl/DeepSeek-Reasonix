@@ -47472,3 +47472,147 @@ button.statusbar__mcp:focus-visible {
   font-size: 10px;
   color: var(--text-muted, inherit);
 }
+
+
+/* ── 任务 944: 对话内产物卡片（ArtifactCard）──────────────────────────────
+   结构参照 MCPAppCard/notice-line 的 token 纪律：语义色 token、radius 阶梯、
+   字号阶梯；关闭态（labFlag 关）时该 class 不出现在任何 DOM 上。 */
+.artifact-card {
+  margin: 6px auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-soft) 76%, var(--bg-elev));
+  font-size: var(--text-md);
+  color: var(--fg-dim);
+}
+.artifact-card--empty {
+  color: var(--fg-faint);
+  font-style: italic;
+}
+.artifact-card__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.artifact-card__icon {
+  flex: none;
+  color: var(--fg-faint);
+}
+.artifact-card__title {
+  font-weight: var(--font-weight-medium);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.artifact-card__kind {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+.artifact-card__size {
+  flex: none;
+  margin-left: auto;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+.artifact-card__path {
+  margin-top: 3px;
+  color: var(--fg-faint);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.artifact-card__note {
+  margin-top: 4px;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.artifact-card__warn {
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: var(--text-sm);
+}
+.artifact-card__preview {
+  margin-top: 8px;
+}
+.artifact-card__preview-body {
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.artifact-card__preview-fallback {
+  height: 24px;
+}
+.artifact-card__preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 6px;
+  background: none;
+  border: none;
+  color: var(--fg-faint);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.artifact-card__preview-toggle:hover {
+  background: var(--bg-soft);
+  color: var(--fg-dim);
+}
+.artifact-card__preview-chevron {
+  transition: transform 0.15s ease;
+}
+.artifact-card__preview-chevron--open {
+  transform: rotate(180deg);
+}
+.artifact-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+.artifact-card__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.artifact-card__open:hover {
+  background: var(--bg-soft);
+}
+.artifact-card__menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+.artifact-card__menu-btn:hover {
+  background: var(--bg-soft);
+  color: var(--fg-dim);
+}

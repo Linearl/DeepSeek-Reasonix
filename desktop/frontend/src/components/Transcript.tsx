@@ -50,6 +50,7 @@ import {
   publishWorkProcessFoldState,
 } from "../lib/workProcessFoldState";
 import { useTranscriptCommand } from "../lib/useTranscriptCommand";
+import { supersededArtifactIds } from "../lib/artifactCard";
 import {
   EMPTY_FIND_INDEX,
   buildTranscriptFindIndex,
@@ -294,6 +295,9 @@ export function Transcript(props: TranscriptProps) {
   }, [tabId]);
 
   const subcallsByParent = cachedSubcallsByParent(items);
+  // 任务 944: render_artifact 幂等归并——同一 path 的旧调用渲染为普通工具行
+  //（或隐藏），只有最后一次调用保留卡片形态。
+  const supersededArtifacts = useMemo(() => supersededArtifactIds(items), [items]);
   const checkpointsByTurn = useMemo(() => new Map(checkpoints.map((checkpoint) => [checkpoint.turn, checkpoint])), [checkpoints]);
   const blocks = cachedTranscriptRowBlocks(turnModels, {
     folds,
@@ -509,6 +513,7 @@ export function Transcript(props: TranscriptProps) {
   const renderRow = useTranscriptRowRenderer({
     tabId, checkpoints, subcallsByParent, creationMode, running, actionPending,
     rewindDisabled, actionHoverMenus, turnStartAt, lastTurn,
+    supersededArtifacts,
     onFoldToggle: handleFoldToggle, onReasoningManualOpen: handleReasoningManualOpen,
     reasoningFoldIntent, onReasoningFoldIntent,
     onPrompt, onDeliveryContinue, onAcceptDelivery, onOpenChanges, onOpenVerification, onConsolidateRecovery,
