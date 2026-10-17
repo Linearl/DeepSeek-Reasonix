@@ -111,7 +111,7 @@ export function SettingsSelect({ value, onValueChange, children, options, search
       <ChevronDown size={14} aria-hidden="true" />
     </button>
     <AnchoredPopover open={open && !disabled} anchorRef={triggerRef} onClose={() => setOpen(false)}
-      className="settings-select-menu" placement="bottom" offset={4}
+      className="settings-select-menu" placement="flip" offset={4}
       style={{ width: triggerRef.current?.getBoundingClientRect().width }}>
       {searchPlaceholder && <div className="settings-select-menu__search"><input autoFocus value={query}
         role="combobox" aria-expanded="true" aria-controls={`${id}-list`} aria-activedescendant={activeID}

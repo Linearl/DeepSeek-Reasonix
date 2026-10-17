@@ -26,17 +26,30 @@ function calculatePosition(
   menu: DOMRect,
   align: "start" | "end",
   offset: number,
-  placement: "auto" | "bottom",
+  placement: "auto" | "bottom" | "flip",
 ): PopoverPosition {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const preferredTop = anchor.top - menu.height - offset;
   const fallbackTop = anchor.bottom + offset;
+  // Highest anchor top that still keeps the menu bottom EDGE_GAP above the
+  // viewport bottom edge; the menu can never leave the viewport vertically.
+  const belowTop = Math.min(fallbackTop, Math.max(EDGE_GAP, viewportHeight - menu.height - EDGE_GAP));
   const top = placement === "bottom"
-    ? Math.min(fallbackTop, Math.max(EDGE_GAP, viewportHeight - menu.height - EDGE_GAP))
+    ? belowTop
+    // "flip" prefers opening below the anchor, flips above it when the menu
+    // would cross the viewport bottom edge and the space above can hold the
+    // menu, and falls back to the clamped below position when neither side
+    // has room (the menu is then bottom-anchored to the viewport edge).
+    : placement === "flip"
+    ? fallbackTop + menu.height <= viewportHeight - EDGE_GAP
+      ? fallbackTop
+      : preferredTop >= EDGE_GAP
+      ? preferredTop
+      : belowTop
     : preferredTop >= EDGE_GAP
     ? preferredTop
-    : Math.min(fallbackTop, Math.max(EDGE_GAP, viewportHeight - menu.height - EDGE_GAP));
+    : belowTop;
   const rawLeft = align === "end" ? anchor.right - menu.width : anchor.left;
   const left = clamp(rawLeft, EDGE_GAP, Math.max(EDGE_GAP, viewportWidth - menu.width - EDGE_GAP));
   return { left, top: clamp(top, EDGE_GAP, Math.max(EDGE_GAP, viewportHeight - menu.height - EDGE_GAP)) };
@@ -61,7 +74,7 @@ export function AnchoredPopover({
   children: ReactNode;
   align?: "start" | "end";
   offset?: number;
-  placement?: "auto" | "bottom";
+  placement?: "auto" | "bottom" | "flip";
   style?: CSSProperties;
   closing?: boolean;
 }) {
