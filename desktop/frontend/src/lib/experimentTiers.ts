@@ -267,10 +267,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * editEvidenceRelaxed + homePointer 等收口前已在表而 pin 未跟的项一并计入；
  * Go 侧 56 条目，详见 task562 测试头注）。）
  * 任务 686：workflowPanel（工作流可视化面板，未稳定档）入表——未稳定
- * 14→15、总数 63→64（Go 侧同步 56→57）。 */
+ * 14→15、总数 63→64（Go 侧同步 56→57）。
+ * 任务 944：renderArtifact（对话内产物卡片，可选档）入表——可选 29→30、
+ * 总数 64→65（Go 侧同步 57→58）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 19,
-  optional: 29,
+  optional: 30,
   unstable: 15,
   retired: 1,
 };

@@ -119,9 +119,10 @@ ok(/^\s*\| "trajectoryView";?\s*$/m.test(tiers),
 ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajectoryView is optional");
 // 计数 pin 随每次表A 变更步进（704 落地时 21；727 → 22；742 → 24，含
 // tabManagement 容器 + heartbeatBackground 两个可选档；815 统一登记窗口
-// 收口 → optional 29，见 LAB_TIER_COUNTS 815 注）。
-ok(/recommended: 19,\s*\n\s*optional: 29,/.test(tiers),
-  "LAB_TIER_COUNTS bumped to optional 29 (815 登记窗口收口口径)");
+// 收口 → optional 29，见 LAB_TIER_COUNTS 815 注；944 renderArtifact 入表
+// → optional 30）。
+ok(/recommended: 19,\s*\n\s*optional: 30,/.test(tiers),
+  "LAB_TIER_COUNTS bumped to optional 30 (944 renderArtifact 入表口径)");
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -136,10 +137,10 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 //    pins the distribution — a silent mismatch would fail CI elsewhere).
 //    计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 24/53；
 //    815 统一登记窗口收口 → 29/63；任务 686 workflowPanel 入表 → 29/64，
-//    未稳定 14→15、总数 63→64）。
+//    未稳定 14→15、总数 63→64；任务 944 renderArtifact 入表 → 30/65）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 29") && tierTest.includes("length === 64"),
-  "task562 test pins the 64-entry register (686 workflowPanel 入表口径)");
+ok(tierTest.includes("counts.optional === 30") && tierTest.includes("length === 65"),
+  "task562 test pins the 65-entry register (944 renderArtifact 入表口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");

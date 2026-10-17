@@ -227,8 +227,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
 	// 档入表（22→23、总数 51→52）。任务 826：sidebarHoverLeft/Right（左右
 	// 边栏 hover 展开+延时折叠，默认关）按 550 口径可选档入表（23→25、
-	// 总数 52→54）。
-	want[LabTierOptional] = 25
+	// 总数 52→54）。任务 944：renderArtifact（对话内产物卡片，可选档）入表
+	// （25→26、总数 57→58）。
+	want[LabTierOptional] = 26
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
 	for _, f := range labFeatureTiers {
@@ -248,7 +249,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 57 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 57", len(labFeatureTiers))
+	if len(labFeatureTiers) != 58 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 58", len(labFeatureTiers))
 	}
 }
