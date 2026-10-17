@@ -4007,10 +4007,30 @@ export function Composer({
       attributes: true,
       attributeFilter: ["data-text-size", "data-font-family", "data-mono-font-family", "style"],
     });
+    // 任务 939：侧边栏展开/收起改变的是 layout 元素的 --sidebar-expanded-width，
+    // 既不是 window resize 也不改 documentElement 属性——上面两个触发器都捕获
+    // 不到；输入区变窄后文本换行增多、真实 scrollHeight 变大，而 inline 高度
+    // 停留在旧测量值（偏低），resized 固定高度卡片里就出现输入框下方的错排
+    // 空白（低分屏聊天列更窄，最先踩到）。拖动改高度能「恢复」正是因为
+    // composerHeight 变化迫使本 effect 重跑并重测。补一个对卡片宽度的
+    // ResizeObserver：只在宽度变化时重测——高度变化多是我们自己写出来的
+    // 测量结果，忽略以避免「测量→写高度→再测量」回环。
+    const card = composerCardRef.current;
+    let lastCardWidth = card ? Math.round(card.getBoundingClientRect().width) : 0;
+    const sizeObserver = typeof ResizeObserver === "function" && card
+      ? new ResizeObserver(() => {
+          const width = card ? Math.round(card.getBoundingClientRect().width) : 0;
+          if (width === lastCardWidth) return;
+          lastCardWidth = width;
+          update();
+        })
+      : null;
+    if (sizeObserver && card) sizeObserver.observe(card);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", update);
       observer.disconnect();
+      sizeObserver?.disconnect();
     };
   }, [composerHeight, measureTextareaAutoHeight]);
 
