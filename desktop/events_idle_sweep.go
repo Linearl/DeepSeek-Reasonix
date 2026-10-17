@@ -76,14 +76,18 @@ type eventsIdleSweepPark struct {
 }
 
 // eventsIdleSweepCandidate is one session's sweep input: plain stats plus the
-// busy mark, before any judgment. Factored so tests can drive the pass without
-// a live session catalog.
+// busy mark and the sidecar multi-head mirror, before any judgment. Factored
+// so tests can drive the pass without a live session catalog.
 type eventsIdleSweepCandidate struct {
 	Path           string
 	EventsBytes    int64
 	LiveBytes      int64
 	LastActivityAt int64
 	Busy           bool
+	// MultiHead mirrors sidecar HeadCount>1 (schema-2 only): the only
+	// sessions where a stale concurrent head can be hiding behind the bytes
+	// the sweep is about to rewrite (task 945).
+	MultiHead bool
 }
 
 // eventsIdleSweepDecision is the whole per-session policy in one testable
@@ -120,14 +124,20 @@ type eventsIdleSweepResult = SessionEventsCompactResult
 // runEventsIdleSweepPass runs one sweep pass over pre-collected candidates:
 // over-limit judgment, decision, then the injected compact action — largest
 // first so the per-pass budget lands on the biggest offenders, capped at
-// eventsIdleSweepMaxPerPass rewrites. The compact action is injected so tests
-// can drive pass behaviour without a live session; the production wiring
-// passes agent.CompactSessionFile.
+// eventsIdleSweepMaxPerPass rewrites. Both actions are injected so tests can
+// drive pass behaviour without a live session; the production wiring passes
+// agent.CompactSessionFile and agent.RetireStaleConcurrentHeadsNow.
+//
+// Task 945: for a multi-head candidate about to be rewritten, the stale-head
+// retire runs first — the rewrite only frees bytes that rotation can drop,
+// and rotation only drops unreachable ones, and a concurrent head only
+// becomes unreachable once retired. A retire failure never blocks the
+// rewrite: without it the pass just frees what it frees today.
 //
 // park updates happen here (success records the landed size; lease-busy and
 // failures leave the park untouched so the next tick retries — same contract
 // as runEventsRepairRounds' skipped/failed rows).
-func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSweepConfig, park map[string]eventsIdleSweepPark, compact func(path string) (int64, int64, error)) []eventsIdleSweepResult {
+func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSweepConfig, park map[string]eventsIdleSweepPark, retire func(path string) ([]string, error), compact func(path string) (int64, int64, error)) []eventsIdleSweepResult {
 	sorted := append([]eventsIdleSweepCandidate(nil), cands...)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		return sorted[i].EventsBytes > sorted[j].EventsBytes
@@ -152,6 +162,15 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 			continue
 		}
 		res := eventsIdleSweepResult{Path: c.Path}
+		if c.MultiHead && retire != nil {
+			if heads, err := retire(c.Path); err != nil {
+				slog.Warn("desktop: stale concurrent head retire before sweep rewrite failed (rewrite continues)",
+					"path", c.Path, "err", secrets.RedactError(err))
+			} else if len(heads) > 0 {
+				slog.Info("desktop: stale concurrent heads retired before sweep rewrite",
+					"path", c.Path, "heads", len(heads))
+			}
+		}
 		before, after, err := compact(c.Path)
 		res.Before, res.After, res.Freed = before, after, before-after
 		if err != nil {
@@ -228,12 +247,21 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 			} else if leaseInfo, leaseErr := agent.LoadSessionLeaseInfo(info.Path); leaseErr == nil && leaseInfo != nil {
 				busy = true
 			}
+			// Task 945: the sidecar mirror cheaply marks the sessions that can
+			// even have a stale concurrent head — the retire probe (a replay)
+			// is then only spent on the rare multi-head log, never on the
+			// single-head majority.
+			multiHead := false
+			if meta, ok, metaErr := agent.LoadBranchMeta(info.Path); metaErr == nil && ok {
+				multiHead = meta.LogSchema == 2 && meta.HeadCount > 1
+			}
 			cands = append(cands, eventsIdleSweepCandidate{
 				Path:           info.Path,
 				EventsBytes:    eventsBytes,
 				LiveBytes:      statFileSize(info.Path),
 				LastActivityAt: info.LastActivityAt.UnixMilli(),
 				Busy:           busy,
+				MultiHead:      multiHead,
 			})
 		}
 	}
@@ -244,7 +272,9 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 	if len(l.park) > eventsIdleSweepParkMax {
 		l.park = make(map[string]eventsIdleSweepPark)
 	}
-	results := runEventsIdleSweepPass(cands, knobs, l.park, agent.CompactSessionFile)
+	results := runEventsIdleSweepPass(cands, knobs, l.park,
+		func(path string) ([]string, error) { return agent.RetireStaleConcurrentHeadsNow(path, time.Now()) },
+		agent.CompactSessionFile)
 	l.mu.Unlock()
 	compacted, skipped := 0, 0
 	for _, res := range results {
