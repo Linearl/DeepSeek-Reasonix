@@ -129,7 +129,13 @@ func loadSessionUserMessagesCached(path string) ([]SessionUserMessage, bool) {
 	if store.SessionEventLog(path) == "" {
 		return nil, false
 	}
-	unlock := lockSessionSavePath(path)
+	// 946: bounded in-process wait; a budget-out falls through to the
+	// ordinary full replay (ok=false) instead of queueing forever — the
+	// cache is an optimization, never a correctness dependency.
+	unlock, err := lockSessionSavePath(path)
+	if err != nil {
+		return nil, false
+	}
 	defer unlock()
 	res, ok := cachedSessionLoadResult(path, nil)
 	if !ok {

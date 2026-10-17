@@ -47,7 +47,7 @@ func TestSaveSnapshotIfPathFreeBusyDeclinesWithoutWriting(t *testing.T) {
 	s := NewSession("system")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "queued behind a loader"})
 
-	unlock := lockSessionSavePath(path) // simulates a slow reader/writer on the same path
+	unlock := HoldSessionSavePathForTest(path) // simulates a slow reader/writer on the same path
 	// No defer: the mutex is released explicitly mid-test so the post-release
 	// leg can save through the uncontended path exactly once.
 
@@ -96,7 +96,7 @@ func TestTryWithSessionSaveLocksDeclinesWhenBusy(t *testing.T) {
 	ran := false
 	fn := func() error { ran = true; return nil }
 
-	unlock := lockSessionSavePath(path)
+	unlock := HoldSessionSavePathForTest(path)
 	attempted, err := s.tryWithSessionSaveLocks(path, fn)
 	if err != nil {
 		t.Fatalf("tryWithSessionSaveLocks on busy path: %v", err)
@@ -123,7 +123,7 @@ func TestSavePathLockFreeReflectsHeldMutex(t *testing.T) {
 	if !savePathLockFree(path) {
 		t.Fatal("savePathLockFree = false for a never-locked path, want true")
 	}
-	unlock := lockSessionSavePath(path)
+	unlock := HoldSessionSavePathForTest(path)
 	if savePathLockFree(path) {
 		unlock()
 		t.Fatal("savePathLockFree = true while the mutex is held, want false")

@@ -24,7 +24,13 @@ func updateSessionListingProjectionIfCurrent(sessionPath, model, preview string,
 	if strings.TrimSpace(sessionPath) == "" {
 		return false, fmt.Errorf("empty session path")
 	}
-	unlockSave := lockSessionSavePath(sessionPath)
+	// 946: bounded in-process wait; a wedged holder makes the publication
+	// decline (false, ErrSessionFileLockHeld) instead of queueing forever —
+	// the projection is advisory and the next turn-end republishes.
+	unlockSave, err := lockSessionSavePath(sessionPath)
+	if err != nil {
+		return false, err
+	}
 	defer unlockSave()
 	unlockFile, err := lockSessionFile(sessionPath)
 	if err != nil {

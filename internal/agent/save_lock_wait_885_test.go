@@ -72,7 +72,7 @@ func TestSameSessionSaveWaitChainBounded(t *testing.T) {
 	s := NewSession("sys")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "queued probe"})
 
-	hold := releaseOnce(lockSessionSavePath(path))
+	hold := releaseOnce(HoldSessionSavePathForTest(path))
 	done := make(chan error, 1)
 	go func() { done <- s.SaveSnapshot(path) }()
 
@@ -113,7 +113,7 @@ func TestBlockingSavePathWaitBounded(t *testing.T) {
 	s := NewSession("sys")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "wedged holder"})
 
-	hold := releaseOnce(lockSessionSavePath(path)) // wedged holder
+	hold := releaseOnce(HoldSessionSavePathForTest(path)) // wedged holder
 
 	start := time.Now()
 	err := s.SaveSnapshot(path)
@@ -158,7 +158,7 @@ func TestConcurrentSessionSavesBothBounded(t *testing.T) {
 	pathA := filepath.Join(dir, "conc-a.jsonl")
 	pathB := filepath.Join(dir, "conc-b.jsonl")
 
-	holdA := releaseOnce(lockSessionSavePath(pathA))
+	holdA := releaseOnce(HoldSessionSavePathForTest(pathA))
 	defer holdA()
 
 	sA := NewSession("sys")

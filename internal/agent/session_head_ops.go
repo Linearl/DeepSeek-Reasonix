@@ -117,7 +117,13 @@ func appendSessionHeadMarker(path, headID string, build func(*sessionDAGState) (
 	if strings.TrimSpace(path) == "" || headID == "" {
 		return fmt.Errorf("session head marker: path and head id are required")
 	}
-	unlock := lockSessionSavePath(path)
+	// 946: bounded in-process wait; the head op declines with
+	// ErrSessionFileLockHeld instead of queueing forever behind a wedged
+	// holder — the user retries and the second attempt lands.
+	unlock, err := lockSessionSavePath(path)
+	if err != nil {
+		return fmt.Errorf("lock session path: %w", err)
+	}
 	defer unlock()
 	unlockFile, err := lockSessionFile(path)
 	if err != nil {

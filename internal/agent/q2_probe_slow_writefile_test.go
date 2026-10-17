@@ -209,9 +209,9 @@ func q2MeasureJSON(t *testing.T, s *Session) []byte {
 
 func q2HoldSavePath(t *testing.T, path string) func() {
 	t.Helper()
-	// lockSessionSavePath is the same per-path mutex every saver takes.
-	unlock := lockSessionSavePath(path)
-	return unlock
+	// HoldSessionSavePathForTest takes the same per-path mutex every saver
+	// takes, with the blocking form a probe holder wants.
+	return HoldSessionSavePathForTest(path)
 }
 
 func TestProbeQ2SessionSnapshotContention(t *testing.T) {
