@@ -116,12 +116,16 @@ console.log("\ntask 943 split: readBack × multi_edit injection as independent s
 }
 
 // ④ frontend panel wiring: union + whitelist + card + light + layout + tiers.
+// 任务 971：multiEditInjection 独立卡退役为 toolOptimizations 聚合页成员行——
+// 语义断言（独立键/setter/回落链/档位/灯）逐条保持，结构断言（独立 pane/
+// rail 入口）随聚合更新。
 {
   const panel = read("components/SettingsPanel.tsx");
-  ok(panel.includes(`  | "multiEditInjection"`), "pane id union carries multiEditInjection");
-  ok(panel.includes(`  "multiEditInjection",`), "pane whitelist carries multiEditInjection");
-  ok(panel.includes('{selected === "multiEditInjection" && ('), "standalone card branch located");
-  // 卡片显示与 Go 侧同一条回落链。
+  // 971：独立 pane 退役——union 与 whitelist 均不再含 multiEditInjection。
+  ok(!panel.includes(`  | "multiEditInjection"`), "pane id union retired multiEditInjection (971 aggregation)");
+  ok(!panel.includes(`  "multiEditInjection",`), "pane whitelist retired multiEditInjection (971 aggregation)");
+  ok(!panel.includes('{selected === "multiEditInjection" && ('), "standalone card branch retired (971 aggregation)");
+  // 语义保持：卡片显示与 Go 侧同一条回落链。
   ok(panel.includes("(s.experimentalMultiEditInjection ?? (s.experimentalToolOptimizations ?? true)) === on"),
     "card renders the SAME fallback chain as the Go side");
   ok(panel.includes('app.SetExperimentalMultiEditInjection(on)'),
@@ -129,25 +133,30 @@ console.log("\ntask 943 split: readBack × multi_edit injection as independent s
   ok(panel.includes('labLabel("multiEditInjection"'), "card label carries the tier badge");
   ok(panel.includes('t("settings.multiEditInjection.risk")'), "card carries its own risk line");
   ok(panel.includes("setRestartNeeded(true)"), "card marks restart-needed on save");
-  // A 卡不再提注入面（收窄为 readBack）。
-  ok(!panel.includes("settings.multiEditInjectionHint\")}") || panel.indexOf('selected === "multiEditInjection"') < panel.indexOf("settings.multiEditInjectionHint"),
-    "the injection hint lives on the new card, not the family card");
+  // A 卡不再提注入面（收窄为 readBack）——971 聚合后注入 hint 仍在 toolOptimizations
+  // pane 内（晚于 readBack 行），回落链独立语义不变。
+  ok(panel.indexOf('labLabel("toolOptimizations"') < panel.indexOf("settings.multiEditInjectionHint"),
+    "the injection hint lives inside the hub pane, after the readBack row");
   const lightKeys = read("lab/labLightKeys.ts");
   ok(lightKeys.includes("s.experimentalMultiEditInjection ?? (s.experimentalToolOptimizations ?? true)"),
     "lab light predicate matches the fallback chain");
   const layoutDefault = read("lab/labLayoutDefault.ts");
-  ok(layoutDefault.includes('{ id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional", onKeys: ["experimentalMultiEditInjection"] }'),
-    "built-in default layout carries the standalone rail entry at the optional tier");
+  // 971：multiEditInjection 转为 toolOptimizations 聚合页成员行（optional 档）。
+  ok(layoutDefault.includes('{ id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" }') &&
+     layoutDefault.indexOf('{ id: "multiEditInjection"') > layoutDefault.indexOf('{ id: "toolOptimizations"'),
+    "built-in default layout hosts multiEditInjection as a member row of the hub");
   const yaml = read("lab/lab-layout.yaml");
-  ok(yaml.includes("id: multiEditInjection") && yaml.includes("onKeys: [experimentalMultiEditInjection]"),
-    "lab-layout.yaml carries the standalone rail entry");
-  // 徽章注册表（前端镜像）。
+  ok(yaml.includes("id: multiEditInjection") && yaml.includes("tier: optional"),
+    "lab-layout.yaml carries multiEditInjection as a member row");
+  // 徽章注册表（前端镜像）——语义不变。
   ok(isTierFeatureId("multiEditInjection"), "multiEditInjection is a registered TierFeatureId");
   ok(EXPERIMENT_FEATURE_TIERS.multiEditInjection === "optional", "multiEditInjection badges as OPTIONAL");
   ok(EXPERIMENT_FEATURE_TIERS.toolOptimizations === "recommended", "toolOptimizations keeps the RECOMMENDED badge");
-  const tiers = railTiersForDefault("multiEditInjection");
-  ok(JSON.stringify(tiers) === JSON.stringify(["optional"]),
-    `standalone entry badges itself (got ${JSON.stringify(tiers)})`);
+  // 971：multiEditInjection 不再是独立 rail 入口，其 optional 档并入聚合页
+  // 卡头聚合输入（toolOptimizations tiers 含 optional）。
+  const tiers = railTiersForDefault("toolOptimizations");
+  ok(tiers.includes("optional") && tiers[0] === "recommended",
+    `hub badge aggregates to 推荐 while carrying the optional member (got ${JSON.stringify(tiers)})`);
 }
 
 // ⑤ locale keys in all three dialects + family hint narrowed.

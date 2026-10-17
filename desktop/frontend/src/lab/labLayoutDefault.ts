@@ -235,9 +235,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "updateFeedback",
           labelKey: "settings.updateFeedback",
-          onKeys: ["experimentalRestartUpdate", "experimentalFeedback", "forkNotice"],
+          // 任务 971：restartUpdate 迁至工具优化聚合页——onKeys 去 experimentalRestartUpdate。
+          onKeys: ["experimentalFeedback", "forkNotice"],
           members: [
-            { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },
             { id: "feedback", labelKey: "settings.feedback", tier: "optional" },
           ],
         },
@@ -354,11 +354,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // （注册表与 Go 渲染表同步升档；562 drift 检查钉两侧一致）。任务
         // 943：原「工具优化」族拆两卡——本卡只管 readBack 面（789 证据门
         // 联动是读回计证据的伴生，成员行随本卡）。
-        { id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "recommended", onKeys: ["experimentalToolOptimizations"], members: [{ id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" }] },
-        // 任务 943：multi_edit 直注独立卡（原族卡第二效果拆出）。可选档——
-        // 不开启只小幅影响（multi_edit 仍可经 use_capability 调用，edit_file
-        // 批量编辑引导降级）；灯读数回落链与 Go 侧一致（键缺省跟随旧族键）。
-        { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional", onKeys: ["experimentalMultiEditInjection"] },
+        // 任务 971：扩为聚合页——multi_edit 直注（943 拆出）与 restart_update
+        // （自界面组更新反馈卡迁入）转成员行；卡灯三键任一非默认即亮。任务
+        // 943 两开关独立语义保持——合并入页不回并，各持各键各 setter。
+        { id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalRestartUpdate"], members: [
+          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" },
+          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },
+          { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },
+        ] },
       ],
     },
   ],

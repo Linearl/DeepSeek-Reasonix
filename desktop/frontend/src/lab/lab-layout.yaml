@@ -152,6 +152,12 @@ groups:
   - key: ui
     labelKey: settings.labGroup.ui
     entries:
+      # 任务 944：对话内产物卡片（ui 组可选档）。971 补录——944 落「布局默认」
+      # 时漏同步本 yaml（724 同构违规，561 基线预存红），本行修复两侧同构。
+      - id: renderArtifact
+        labelKey: settings.renderArtifact
+        tier: optional
+        onKeys: [experimentalRenderArtifact]
       # 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离默认档；
       # 卡徽章可选。卡内两行各自读自己的键、写自己的 setter：
       #   行1 标签栏自适应压缩（experimental_tab_compress，506）；
@@ -252,13 +258,11 @@ groups:
             tier: optional
       # 任务 782④：opencodeGoUsage 迁出界面组（→任务 783 可观测性组
       # 「用量监测」卡成员；迁出瞬间 pane 分支保留，入口随 783 落卡恢复）。
+      # 任务 971：restartUpdate 迁至工具优化聚合页——onKeys 去 experimentalRestartUpdate。
       - id: updateFeedback
         labelKey: settings.updateFeedback
-        onKeys: [experimentalRestartUpdate, experimentalFeedback, forkNotice]
+        onKeys: [experimentalFeedback, forkNotice]
         members:
-          - id: restartUpdate
-            labelKey: settings.restartUpdate
-            tier: recommended
           - id: feedback
             labelKey: settings.feedback
             tier: optional
@@ -377,23 +381,32 @@ groups:
         tier: unstable
         onKeys: [experimentalLocalServer]
 
-  # ── 工具优化（2 项；任务 943：原族卡拆 readBack / multi_edit 直注两卡）──
+  # ── 工具优化（1 卡聚合页；任务 971：readBack / multi_edit 直注 / restart_update
+  #    三开关单页管理 + 顶部 rev2 警告 + 三生效点机制说明；任务 943 两开关
+  #    独立语义保持——合并入页不回并，各持各键各 setter）──
   - key: tool-opt
     labelKey: settings.labGroup.toolOpt
     entries:
       # 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐。
       # 任务 943：本卡只管 readBack 面（789 证据门联动成员行随卡）。
+      # 任务 971：扩为聚合页——multi_edit 直注（943 拆出）与 restart_update
+      # （自界面组更新反馈卡迁入）转成员行；卡灯三键任一非默认即亮。
       - id: toolOptimizations
-        labelKey: settings.toolOptimizations
+        labelKey: settings.toolOptHub
         tier: recommended
-        onKeys: [experimentalToolOptimizations]
+        onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalRestartUpdate]
         members:
           # 任务 789：编辑证据门宽松模式（同轮读取计数+悬置证据不连带拦 bash）。
           - id: editEvidenceRelaxed
             labelKey: settings.editEvidenceRelaxed
             tier: unstable
-      # 任务 943：multi_edit 直注独立卡（原族卡第二效果拆出，可选档）。
-      - id: multiEditInjection
-        labelKey: settings.multiEditInjection
-        tier: optional
-        onKeys: [experimentalMultiEditInjection]
+          # 任务 943：multi_edit 直注（原族卡第二效果拆出，可选档）——971 聚合
+          # 入页为成员行，键/setter/回落链零变化。
+          - id: multiEditInjection
+            labelKey: settings.multiEditInjection
+            tier: optional
+          # 任务 971：restart_update 迁自界面组「更新与反馈」卡（推荐档）——
+          # 迁移走完整链 config→setter→渲染表→UI，键/setter 零变化。
+          - id: restartUpdate
+            labelKey: settings.restartUpdate
+            tier: recommended

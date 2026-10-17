@@ -89,6 +89,11 @@ console.log("\ntask 561 lab regroup + merged cards");
 // 组分布 6/8/10/2/1/4/6/1。
 // 任务 943：multiEditInjection（multi_edit 直注）入 tool-opt 组——总数
 // 38→39，组分布 6/8/10/2/1/4/6/2（工具优化族拆两卡）。
+// 任务 971：multiEditInjection 独立卡退役 + restartUpdate 迁入工具优化
+// 聚合页——tool-opt 组 2→1 卡。顺带修复 944 预存同构违规：renderArtifact
+// 已入「布局默认」ui 组却漏同步 yaml（561 基线预存红），本任务补录 yaml。
+// 修复+迁移后：总条目 39，组分布 6/8/11/2/1/4/6/1（ui 10→11 补录、tool-opt
+// 2→1 聚合）。
 // 数据源 = 布局默认数据 + yaml（两份必须同构）。
 {
   // 直接导入布局数据模块数真数据（比源码正则稳）。
@@ -108,10 +113,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 846 homePointer（storage 3→4）此前已入布局，pin 一并跟上 → 6/8/9/2/1/4/6/1。
   // 任务 686：workflowPanel（工作流可视化面板）入 ui 组 → 6/8/10/2/1/4/6/1。
   // 任务 943：multiEditInjection 入 tool-opt 组 → 6/8/10/2/1/4/6/2。
-  ok(groups["automation"] === 6 && groups["efficiency"] === 8 && groups["ui"] === 10 &&
+  // 任务 971：multiEditInjection 独立卡退役为聚合页成员行 → tool-opt 2→1；
+  // 顺带补录 944 漏同步的 renderArtifact 入 yaml ui 组 → ui 10→11。
+  ok(groups["automation"] === 6 && groups["efficiency"] === 8 && groups["ui"] === 11 &&
      groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 4 && groups["infra"] === 6 &&
-     groups["tool-opt"] === 2,
-    `group counts are 6/8/10/2/1/4/6/2 (got ${JSON.stringify(groups)})`);
+     groups["tool-opt"] === 1,
+    `group counts are 6/8/11/2/1/4/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -156,7 +163,8 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // 任务 785：S1 常驻底座开关详情卡退役——endMarker 随迁到物理下一个卡
   // monitoring（旧 marker 不存在会让 cardSlice 返回空、测试假红/假绿）。
   { id: "updateFeedback", endMarker: '{selected === "monitoring" && (', members: [
-    { label: "M6 restartUpdate", field: "s.experimentalRestartUpdate", setter: "app.SetExperimentalRestartUpdate(on)" },
+    // 任务 971：restartUpdate 迁至工具优化聚合页（toolOptimizations pane）——
+    // 本卡不再含该行（键/setter 零变化，仅 UI 落点迁移）。
     { label: "M6 feedback", field: "s.experimentalFeedback", setter: "app.SetExperimentalFeedback(on)" },
     // 任务 670: fork 首启提示（默认开，用户裁决）入卡，独立开关独立 setter。
     { label: "670 forkNotice", field: "s.forkNotice", setter: "app.SetDesktopForkNotice(on)" },

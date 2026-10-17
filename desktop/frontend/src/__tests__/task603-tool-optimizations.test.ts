@@ -39,9 +39,11 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
   ok(EXPERIMENT_FEATURE_TIERS.toolOptimizations === "recommended", "toolOptimizations badges as RECOMMENDED (783④ 转正)");
   // 任务 789：editEvidenceRelaxed 以成员行入卡（unstable）——卡头聚合 =
   // max(卡 recommended, 成员 unstable) = recommended 单枚（774 口径）。
+  // 任务 971：聚合页扩员——multiEditInjection（可选）+ restartUpdate（推荐）
+  // 转成员行，聚合输入扩为 [recommended, unstable, optional]，卡头仍单枚 推荐。
   const tiers = railTiersForDefault("toolOptimizations");
-  ok(JSON.stringify(tiers) === JSON.stringify(["recommended", "unstable"]) && tiers[0] === "recommended",
-    `rail entry aggregates [recommended, unstable] to the single 推荐 badge (got ${JSON.stringify(tiers)})`);
+  ok(JSON.stringify(tiers) === JSON.stringify(["recommended", "optional", "unstable"]) && tiers[0] === "recommended",
+    `rail entry aggregates [recommended, optional, unstable] to the single 推荐 badge (got ${JSON.stringify(tiers)})`);
 }
 
 // ② SettingsPanel wiring（722 起 rail 分组/条目数据驱动：组词表在
@@ -54,8 +56,10 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
   ok(layoutDefault.includes('key: "tool-opt"') && layoutDefault.includes('labelKey: "settings.labGroup.toolOpt"'),
     "labGroups renders the tool-opt entry");
   // 任务 789：editEvidenceRelaxed 以成员行入卡——条目变为「主控+成员」形态。
-  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "recommended", onKeys: ["experimentalToolOptimizations"], members: [{ id: "editEvidenceRelaxed"'),
-    "rail entry reads its own switch and hosts the 789 member row (81/123 lost-save rule; 783④ 升档后口径)");
+  // 任务 971：聚合页扩员——multiEditInjection + restartUpdate 转成员行，
+  // 卡灯三键任一非默认即亮；卡 labelKey 改指聚合页标题 toolOptHub。
+  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalRestartUpdate"], members: [\n          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" },\n          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },\n          { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },\n        ] }'),
+    "rail entry reads its three switches and hosts the 789/943/971 member rows (81/123 lost-save rule; 971 聚合页)");
   ok(panel.includes("on: labEntryLightOn(entry, s)"), "panel derives each rail light from its own onKeys (81/123 lost-save rule)");
   ok(panel.includes('{selected === "toolOptimizations" && ('), "pane card located");
   ok(panel.includes('app.SetExperimentalToolOptimizations(on)'), "card writes through its own setter");
