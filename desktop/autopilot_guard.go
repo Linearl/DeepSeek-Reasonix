@@ -21,11 +21,13 @@ package main
 //  3. 对称清理 — the sweep disables a guard whose owner tab is no longer in
 //     autopilot, and deletes one whose owner conversation was deleted (no
 //     orphan guards).
-//  4. 权限隔离 — the guard task records approvalMode "ask" (the strictest
-//     gear), but a guard that wakes its *owner* session never touches that
-//     session's approval mode: the wake runs with the owner's own permissions
-//     (autopilot is yolo, task 325). A guard that ends up owning its own
-//     session gets ask, so it can never carry proxy-approval power.
+//  4. 审批档位 — the guard task records approvalMode inherited from the
+//     user's global default (desktop.default_tool_approval_mode; task 942,
+//     用户 2026-10-17 拍板接受 guard 携带代理审批权, previously hardcoded
+//     "ask"). What did NOT change: a guard that wakes its *owner* session
+//     never pushes an approval mode onto that session — the wake runs with
+//     the owner's own permissions (autopilot is yolo, task 325). The
+//     recorded gear is only what a guard-owned session would run under.
 //  5. 自关闭 — after heartbeatIdleTerminateStrikes consecutive checks in which
 //     the owner had nothing to do, the configured policy applies
 //     (disable | standby | destroy). The strike ceiling and the IdleStreak
@@ -94,7 +96,7 @@ func autopilotGuardInterval(minutes int) string {
 	return fmt.Sprintf("%dm", minutes)
 }
 
-func autopilotGuardTask(owner autopilotGuardOwner, interval string) HeartbeatTask {
+func autopilotGuardTask(owner autopilotGuardOwner, interval, approvalMode string) HeartbeatTask {
 	scope, workspaceRoot := heartbeatRunScope(owner.Scope, owner.WorkspaceRoot)
 	return HeartbeatTask{
 		ID:            autopilotGuardID(owner.TopicID),
@@ -107,9 +109,13 @@ func autopilotGuardTask(owner autopilotGuardOwner, interval string) HeartbeatTas
 		// The guard watches the owner's own conversation: waking it appends to
 		// the session whose permissions already apply, so the wake inherits the
 		// owner's posture instead of a new one.
-		TopicID:      owner.TopicID,
+		TopicID: owner.TopicID,
+		// Task 942: the recorded gear is the user's global default at creation
+		// time, not a hardcoded "ask" — an unattended guard that must ask for
+		// every write paralyzes itself at night (用户 2026-10-17 拍板接受
+		// guard 携带代理审批权, same posture as every other session).
 		ReuseSession: true,
-		ApprovalMode: "ask", // strictest gear — a guard never carries proxy-approval power
+		ApprovalMode: approvalMode,
 		CreatedAt:    time.Now().UnixMilli(),
 	}
 }
@@ -198,6 +204,18 @@ func (a *App) autopilotGuardIntervalMinutes() int {
 	return cfg.AutopilotGuardIntervalMinutes()
 }
 
+// autopilotGuardApprovalMode is the approval gear a NEWLY created guard task
+// records (task 942): the user's global Ask/Auto/YOLO default, not the old
+// hardcoded "ask". An unattended guard pinned to "ask" paralyzes itself after
+// hours — every write waits for a human who is not there — so the guard
+// inherits the same posture as every other session (用户 2026-10-17 拍板接受
+// guard 携带代理审批权). Existing tasks are never rewritten by this read; it
+// only stamps creations.
+func (a *App) autopilotGuardApprovalMode() string {
+	cfg := config.LoadForEdit(config.UserConfigPath())
+	return cfg.DesktopDefaultToolApprovalMode()
+}
+
 // autopilotGuardAutocreate reports whether autopilot may auto-create guard
 // tasks (task 547 sub-option, default off).
 func (a *App) autopilotGuardAutocreate() bool {
@@ -228,6 +246,16 @@ func (e *HeartbeatEngine) autopilotGuardAutocreate() bool {
 		return false
 	}
 	return e.app.autopilotGuardAutocreate()
+}
+
+// autopilotGuardApprovalMode is the engine-side read of the guard's creation
+// gear; it fails closed to "ask" when no App is wired (tests, early startup)
+// so a missing config can never mint a proxy-approving guard by accident.
+func (e *HeartbeatEngine) autopilotGuardApprovalMode() string {
+	if e == nil || e.app == nil {
+		return "ask"
+	}
+	return e.app.autopilotGuardApprovalMode()
 }
 
 // resyncAutopilotGuardInterval re-points every existing guard at the new dial
@@ -344,16 +372,19 @@ func (e *HeartbeatEngine) EnsureAutopilotGuard(owner autopilotGuardOwner, interv
 				t.Scope, t.WorkspaceRoot = scope, workspaceRoot
 				changed = true
 			}
-			if !t.ReuseSession || t.ApprovalMode != "ask" || t.Prompt != autopilotGuardPrompt {
+			if !t.ReuseSession || t.Prompt != autopilotGuardPrompt {
 				// A hand-edited guard that stopped watching its owner (or that
-				// was given a different prompt/approval) is restored — the
-				// permission isolation in point 4 depends on it.
-				t.ReuseSession, t.ApprovalMode, t.Prompt = true, "ask", autopilotGuardPrompt
+				// was given a different prompt) is restored. ApprovalMode is
+				// deliberately NOT restored anymore (task 942): the gear is the
+				// user's choice, stamped at creation from the global default —
+				// a refresh re-pin would silently rewrite it on every sweep and
+				// resurrect the unattended-paralysis this task removes.
+				t.ReuseSession, t.Prompt = true, autopilotGuardPrompt
 				changed = true
 			}
 			out = append(out, t)
 		} else {
-			out = append(out, autopilotGuardTask(owner, interval))
+			out = append(out, autopilotGuardTask(owner, interval, e.autopilotGuardApprovalMode()))
 			changed = true
 		}
 		return out, changed, nil
