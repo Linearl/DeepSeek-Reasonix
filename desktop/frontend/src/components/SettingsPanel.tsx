@@ -1895,6 +1895,8 @@ type ExperimentFeatureId =
   | "dream"
   // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
   | "decisionPatterns"
+  // 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard，默认关）。
+  | "renderArtifact"
   | "sessionCollab"
   // Task 244 B4/B5, merged into one switch by task 449.
   | "orphanHandling"
@@ -1968,6 +1970,8 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "dream",
   // 任务 801：决策模式卡（automation 组）。
   "decisionPatterns",
+  // 任务 944：对话内产物卡片（ui 组）。
+  "renderArtifact",
   "optimisticParallel",
   "contextGovernance",
   "safetyCostControl",
@@ -3594,6 +3598,22 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </SettingsOptions>
               </SettingsField>
             </>
+          )}
+          {selected === "renderArtifact" && (
+            <SettingsField label={labLabel("renderArtifact", t("settings.renderArtifact"))} hint={t("settings.renderArtifactHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalRenderArtifact) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalRenderArtifact(on))}
+                  >
+                    {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
           )}
           {selected === "orphanHandling" && (
             <>

@@ -29,6 +29,8 @@ export type TierFeatureId =
   | "dream"
   // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
   | "decisionPatterns"
+  // 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard，默认关）。
+  | "renderArtifact"
   // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
   // loopStreakNote 与 standalone eventWaitRecheck 三个表A id → 一个 id）。
   | "safetyCostControl"
@@ -159,6 +161,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 默认关）。
   trajectoryView: "optional",
   // ── ui（界面，15 项）────────────────────────────────────────
+  // 任务 944：对话内产物卡片。镜像 Go 档位——可选（不开启不影响核心体验）。
+  renderArtifact: "optional",
   tabCompress: "recommended",
   todoSidebar: "recommended",
   promptHistoryPicker: "recommended",
