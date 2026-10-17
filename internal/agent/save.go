@@ -56,21 +56,26 @@ var (
 	sessionFileLockWait         = 5 * time.Second
 	sessionFileLockPollInterval = 25 * time.Millisecond
 	sessionMetaLockWait         = 5 * time.Second
-	// 任务 885: sessionSavePathLockWait bounds the IN-PROCESS save-path mutex
-	// acquisition for the blocking save path. The cross-process file lock
-	// above has been bounded since task 357, but this mutex waited forever —
-	// a wedged holder (full-replay load, stuck projection) turned into an
-	// unbounded save queue (observed 791ms → 11973ms monotonic growth, 2026-10-14
-	// incident). The budget is deliberately above every healthy-but-slow
-	// critical section seen in the field (~14s for the 238MB-events session):
-	// only a genuinely wedged holder trips it, and the timeout surfaces as
-	// ErrSessionFileLockHeld so the existing shutdown-recovery, degraded-read
-	// and friendly-error machinery all engage instead of a silent hang.
+	// 任务 885/946: sessionSavePathLockWait bounds the IN-PROCESS save-path
+	// mutex acquisition for EVERY caller — the blocking save path (885) and
+	// the loads/maintenance/recovery paths that go through
+	// lockSessionSavePath (946). The cross-process file lock above has been
+	// bounded since task 357, but this mutex waited forever — a wedged holder
+	// (full-replay load, stuck projection) turned into an unbounded queue
+	// (observed 791ms → 11973ms monotonic growth, 2026-10-14 incident) and,
+	// past the 20s process watchdog, a whole-process kill that dropped the
+	// user's in-flight message (2026-10-16 closing_tab incidents,
+	// "发信无反应"). The budget is deliberately above every healthy-but-slow
+	// critical section seen in the field (~14s for the 238MB-events session),
+	// so brief contention waits instead of failing: only a genuinely wedged
+	// holder trips it, and the timeout surfaces as ErrSessionFileLockHeld so
+	// the existing shutdown-recovery, degraded-read and friendly-error
+	// machinery all engage instead of a silent hang.
 	sessionSavePathLockWait = 30 * time.Second
 	// sessionSavePathLockPoll is the try-lock retry cadence while waiting for
 	// the in-process save-path mutex; same rhythm as the file-lock poll.
-	sessionSavePathLockPoll = 25 * time.Millisecond
-	ErrSessionSnapshotConflict  = errors.New("session snapshot conflicts with newer transcript")
+	sessionSavePathLockPoll    = 25 * time.Millisecond
+	ErrSessionSnapshotConflict = errors.New("session snapshot conflicts with newer transcript")
 	// ErrSessionExternallyRemoved means a live Session still has a verified
 	// baseline for path, but every authoritative transcript artifact disappeared.
 	// Treating it as a first save would silently recreate a file the user or an
@@ -325,10 +330,10 @@ func (s *Session) withSessionSaveLocks(path string, fn func() error) error {
 // lockSessionSavePathWithin acquires the in-process save-path mutex for path,
 // polling every sessionSavePathLockPoll, and gives up after budget with
 // ErrSessionFileLockHeld instead of queueing forever behind a wedged holder
-// (任务 885). The blocking save path is the only caller: reads and maintenance
-// keep the unbounded lockSessionSavePath so a slow-but-live holder can never
-// fail a hydrate or a repair, while a save that cannot land within the budget
-// surfaces through the existing lock-held recovery machinery.
+// (任务 885, extended to every lockSessionSavePath caller by 任务 946). The
+// budget-out error carries the canonical key, the wait actually paid and the
+// budget itself, so a timed-out caller can name the wedged session in its
+// user-facing error and the log line points at the same facts.
 func lockSessionSavePathWithin(path string, budget time.Duration) (func(), error) {
 	key := canonicalSessionSavePath(path)
 	v, _ := sessionSaveLocks.LoadOrStore(key, &sync.Mutex{})
@@ -346,7 +351,7 @@ func lockSessionSavePathWithin(path string, budget time.Duration) (func(), error
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			waited := time.Since(waitStart)
-			slog.Warn("session: save-path lock wait exceeded budget; save declines", "path", key, "wait_ms", waited.Milliseconds(), "budget_ms", budget.Milliseconds())
+			slog.Warn("session: save-path lock wait exceeded budget; caller declines", "path", key, "wait_ms", waited.Milliseconds(), "budget_ms", budget.Milliseconds())
 			return nil, fmt.Errorf("save-path lock %s held %s (budget %s): %w", key, waited.Round(time.Millisecond), budget, ErrSessionFileLockHeld)
 		}
 		sleep := sessionSavePathLockPoll
@@ -871,7 +876,10 @@ func (s *Session) saveRecoveryBranch(opts RecoveryBranchOptions, shutdown bool) 
 	digestText := digestString(digest)
 
 	if !shutdown {
-		unlockOriginal := lockSessionSavePath(originalPath)
+		unlockOriginal, lockErr := lockSessionSavePath(originalPath)
+		if lockErr != nil {
+			return RecoveryBranchInfo{}, fmt.Errorf("lock original session path: %w", lockErr)
+		}
 		unlockOriginalFile, lockErr := lockSessionFile(originalPath)
 		if lockErr != nil {
 			unlockOriginal()
@@ -1530,19 +1538,19 @@ func messagesCompatibleForStorageBaseline(a, b []provider.Message) bool {
 	return messagesEqualForStorageList(messagesWithoutLeadingSystem(a), messagesWithoutLeadingSystem(b))
 }
 
-func lockSessionSavePath(path string) func() {
-	key := canonicalSessionSavePath(path)
-	v, _ := sessionSaveLocks.LoadOrStore(key, &sync.Mutex{})
-	mu := v.(*sync.Mutex)
-	// Task 196: the interesting half of this lock is the wait, not the hold. A reader
-	// queueing behind a full rewrite is otherwise invisible - and a 22.9s process-wide
-	// freeze with no log lines at all is exactly the shape of a mutex storm.
-	waitStart := time.Now()
-	mu.Lock()
-	if waited := time.Since(waitStart); waited >= sessionSaveLockWarnWait {
-		slog.Warn("session: save-path lock waited", "path", canonicalSessionSavePath(path), "wait_ms", waited.Milliseconds())
-	}
-	return mu.Unlock
+// lockSessionSavePath acquires the in-process save-path mutex for path with a
+// bounded wait (任务 946): TryLock every sessionSavePathLockPoll and give up
+// after sessionSavePathLockWait with ErrSessionFileLockHeld instead of
+// queueing forever behind a wedged holder. The blocking save path was bounded
+// in 885, but every load/maintenance/recovery caller kept an unbounded
+// mu.Lock — one wedged save still parked hydration, tab close and shutdown
+// behind the 20s process watchdog, whose hard kill dropped the user's
+// in-flight message (2026-10-16 "发信无反应" incidents). The budget is shared
+// with the save path on purpose: it sits above every healthy-but-slow
+// critical section observed in the field, so brief contention waits and only
+// a genuinely wedged holder fails.
+func lockSessionSavePath(path string) (func(), error) {
+	return lockSessionSavePathWithin(path, sessionSavePathLockWait)
 }
 
 // sessionSaveLockWarnWait is the queueing time above which the save-path lock is worth a
@@ -1582,10 +1590,17 @@ func savePathLockFree(path string) bool {
 
 // HoldSessionSavePathForTest acquires the in-process save-path mutex for path
 // and returns the release func, so other packages' tests can reproduce
-// save-path contention (the mutex itself is deliberately unexported). Tests
-// only — production code must use lockSessionSavePath / tryLockSessionSavePath.
+// save-path contention (the mutex itself is deliberately unexported). It keeps
+// a plain blocking Lock — a test deliberately holding the lock past the
+// production budget is exactly the wedged-holder scenario 946 bounds on the
+// real code paths. Tests only — production code must use lockSessionSavePath /
+// tryLockSessionSavePath.
 func HoldSessionSavePathForTest(path string) func() {
-	return lockSessionSavePath(path)
+	key := canonicalSessionSavePath(path)
+	v, _ := sessionSaveLocks.LoadOrStore(key, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // lockSessionFile waits briefly for the cross-process compatibility save lock.
@@ -1721,10 +1736,16 @@ func CanonicalSessionPath(path string) string {
 // next save heals it with a rewrite-and-compact.
 // In-process loads share the save path mutex so they cannot observe a local
 // SaveSnapshot between appending an event-log record and refreshing the index.
+// The mutex wait is bounded (任务 946): a wedged holder surfaces as
+// ErrSessionFileLockHeld instead of hanging the hydrate until the process
+// watchdog kills the app.
 // Missing files surface as os.IsNotExist so callers can fall through to a
 // new session.
 func LoadSession(path string) (*Session, error) {
-	unlock := lockSessionSavePath(path)
+	unlock, err := lockSessionSavePath(path)
+	if err != nil {
+		return nil, err
+	}
 	defer unlock()
 	return loadSessionUnlocked(path)
 }
@@ -1734,8 +1755,13 @@ func LoadSession(path string) (*Session, error) {
 // reports that fact through TailTruncated. It exists for the hydrate path, where
 // the reader pages older history in anyway; every other caller (save, recovery,
 // migration, export) keeps using LoadSession, whose transcript is complete.
+// 946: this is the hydrate entry that sat behind a wedged save-path holder
+// until the 20s process watchdog killed the app — the wait is bounded now.
 func LoadSessionTail(path string) (*Session, error) {
-	unlock := lockSessionSavePath(path)
+	unlock, err := lockSessionSavePath(path)
+	if err != nil {
+		return nil, err
+	}
 	defer unlock()
 	return loadSessionTailUnlocked(path)
 }
@@ -2254,9 +2280,19 @@ func renameOverlongSession(oldPath string) (string, error) {
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
-	unlockOld := lockSessionSavePath(oldPath)
+	// 946: bounded in-process wait. A budget-out here means another goroutine
+	// in this process holds the session — the same skip semantics as a live
+	// lease or a held .lock file: leave it for a later sweep (the warn line
+	// already named the wedged path).
+	unlockOld, err := lockSessionSavePath(oldPath)
+	if err != nil {
+		return "", nil
+	}
 	defer unlockOld()
-	unlockNew := lockSessionSavePath(newPath)
+	unlockNew, err := lockSessionSavePath(newPath)
+	if err != nil {
+		return "", nil
+	}
 	defer unlockNew()
 	if sessionLeaseHeldLocally(oldPath) {
 		return "", nil
@@ -2373,7 +2409,12 @@ func reparentSessionBranches(dir string, renamed map[string]string) error {
 			continue
 		}
 		path := filepath.Join(dir, name)
-		unlock := lockSessionSavePath(path)
+		// 946: skip a wedged path instead of failing the sweep — the budget
+		// warn already named it, and the next reconcile retries.
+		unlock, lockErr := lockSessionSavePath(path)
+		if lockErr != nil {
+			continue
+		}
 		meta, ok, err := LoadBranchMeta(path)
 		if err == nil && ok {
 			if newParent, hit := renamed[meta.ParentID]; hit && newParent != meta.ParentID {

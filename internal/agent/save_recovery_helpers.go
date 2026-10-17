@@ -27,7 +27,13 @@ func (s *Session) writeRecoveryBranchAtPath(
 	recoveryDepth int,
 	shutdown bool,
 ) (RecoveryBranchInfo, bool, error) {
-	unlockPath := lockSessionSavePath(path)
+	// 946: the in-process wait is bounded like every other save-path lock
+	// acquisition; the ErrSessionFileLockHeld wrap keeps the caller's
+	// degrade-one-more-lane machinery engaged.
+	unlockPath, err := lockSessionSavePath(path)
+	if err != nil {
+		return RecoveryBranchInfo{}, false, fmt.Errorf("lock recovery session path: %w", err)
+	}
 	defer unlockPath()
 	unlockFile, err := lockSessionFile(path)
 	if err != nil {

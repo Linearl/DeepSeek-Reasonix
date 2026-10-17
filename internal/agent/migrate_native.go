@@ -46,7 +46,14 @@ func moveFlatImport(oldPath, newPath string, srcInfo os.FileInfo) bool {
 // A native flat import must be re-homed from its WAL-backed view, not its
 // possibly older compatibility checkpoint.
 func moveNativeFlatImport(oldPath, newPath string) (moved, decided bool) {
-	unlockOld := lockSessionSavePath(oldPath)
+	// 946: bounded in-process wait; a budget-out means the session is in
+	// active use, so leave the import for the next migrate pass rather than
+	// re-homing it without the lock (decided, not moved — the fallback link
+	// path below must not race an in-flight writer either).
+	unlockOld, err := lockSessionSavePath(oldPath)
+	if err != nil {
+		return false, true
+	}
 	defer unlockOld()
 	probe, err := probeSessionEventLog(oldPath)
 	if err != nil || !probe.native || probe.size == 0 {
@@ -58,7 +65,10 @@ func moveNativeFlatImport(oldPath, newPath string) (moved, decided bool) {
 	}
 	defer oldFileUnlock()
 
-	unlockNew := lockSessionSavePath(newPath)
+	unlockNew, err := lockSessionSavePath(newPath)
+	if err != nil {
+		return false, true
+	}
 	defer unlockNew()
 	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
 		return false, true

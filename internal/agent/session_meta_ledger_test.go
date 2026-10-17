@@ -424,7 +424,7 @@ func TestSaveSnapshotCapturesContentUnderSaveLock(t *testing.T) {
 		t.Fatalf("SaveSnapshot seed: %v", err)
 	}
 
-	unlock := lockSessionSavePath(path)
+	unlock := HoldSessionSavePathForTest(path)
 	done := make(chan error, 1)
 	go func() { done <- s.SaveSnapshot(path) }()
 	// Let the saver reach the save lock, then grow the session while it waits.

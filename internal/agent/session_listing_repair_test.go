@@ -60,7 +60,7 @@ func TestRepairSessionListingProjectionHealsRecoveryLedgerOnce(t *testing.T) {
 func TestRepairSessionListingProjectionYieldsToForegroundSave(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "busy.jsonl")
 	writeSessionFile(t, path, []provider.Message{{Role: provider.RoleUser, Content: "question"}})
-	unlock := lockSessionSavePath(path)
+	unlock := HoldSessionSavePathForTest(path)
 	defer unlock()
 	started := time.Now()
 	_, err := RepairSessionListingProjection(context.Background(), path)

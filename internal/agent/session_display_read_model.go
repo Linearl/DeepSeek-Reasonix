@@ -21,7 +21,12 @@ var ErrSessionDisplayReadModelDamaged = errors.New("session display read model s
 // without applying resume-time normalization. Desktop history uses this only
 // as the bounded-recovery path while the random-read model is missing or stale.
 func LoadSessionDisplayMessages(path string) ([]provider.Message, PersistedState, bool, error) {
-	unlock := lockSessionSavePath(path)
+	// 946: bounded in-process wait; a wedged holder surfaces as
+	// ErrSessionFileLockHeld instead of hanging the reader forever.
+	unlock, err := lockSessionSavePath(path)
+	if err != nil {
+		return nil, PersistedState{}, false, err
+	}
 	defer unlock()
 	return loadSessionDisplayMessagesUnlocked(path)
 }
@@ -66,7 +71,13 @@ func RepairSessionDisplayReadModel(path string) error {
 	if path == "" {
 		return fmt.Errorf("empty session path")
 	}
-	unlock := lockSessionSavePath(path)
+	// 946: bounded in-process wait; the repair declines with
+	// ErrSessionFileLockHeld when a wedged holder keeps the path, and the
+	// next repair pass retries.
+	unlock, err := lockSessionSavePath(path)
+	if err != nil {
+		return err
+	}
 	defer unlock()
 	unlockFile, err := lockSessionFile(path)
 	if err != nil {
