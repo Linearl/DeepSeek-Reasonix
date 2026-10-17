@@ -45,6 +45,13 @@ type TodoItem struct {
 	// only identity — ParentID is a structural reference to one, not an
 	// identity of its own.
 	ParentID string `json:"parent_id,omitempty"`
+	// PlanID (task 972) marks which plan this item belongs to. todo_write
+	// stamps a top-level plan_id onto every item it records, so the host
+	// baseline carries the plan marker and a later write can tell "same plan"
+	// from "new plan": validation scope is one plan_id, and a write that
+	// declares a different one is a legal wholesale replacement instead of
+	// history forgery. Empty means an unmarked (legacy or freehand) plan.
+	PlanID string `json:"plan_id,omitempty"`
 }
 
 // ValidateSerialTodos enforces the task-list state machine promised by
@@ -1755,6 +1762,19 @@ func ReceiptFromToolCall(toolName string, args json.RawMessage, success bool, re
 		}
 		if toolName == "todo_write" {
 			r.Todos = todoItemsField(fields, "todos")
+			// Task 972: the top-level plan marker rides onto every recorded
+			// item, so the host baseline (ledger + canonical state) carries
+			// which plan the list belongs to and a later write can be scoped
+			// to it instead of to "all history ever".
+			if pid := strings.TrimSpace(stringField(fields, "plan_id")); pid != "" {
+				for i := range r.Todos {
+					r.Todos[i].PlanID = pid
+				}
+			}
+			// Task 972, fix 2: the host assigns stable step ids to items the
+			// model sent without one, so "create a todo, complete it later"
+			// works without the model remembering to copy an id it never wrote.
+			AssignStableTodoStepIDs(r.Todos)
 		}
 		r.Paths = extractPaths(fields)
 	}
@@ -2868,6 +2888,46 @@ func normalizeTodos(todos []TodoItem) []TodoItem {
 		out = append(out, t)
 	}
 	return out
+}
+
+// AutoStepIDPrefix marks host-assigned step ids (task 972, fix 2). The host
+// derives them from content so an item the model created without an id still
+// has a stable identity across calls; the prefix keeps them distinguishable
+// from model-chosen ids like "plan_step_01".
+const AutoStepIDPrefix = "auto_"
+
+// StableTodoStepID derives the host-assigned step id for one todo item: the
+// content hash (lowercased, so a trivial case difference does not fork
+// identity) plus an occurrence counter for repeated wording. It is
+// deterministic — the same content yields the same base id on every call —
+// so "create a todo without an id, complete it in the next call" resolves to
+// the same identity without relying on the model copying an id it never saw.
+func StableTodoStepID(content string, occurrence int) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(content))))
+	id := AutoStepIDPrefix + hex.EncodeToString(sum[:6])
+	if occurrence > 0 {
+		id = fmt.Sprintf("%s_%d", id, occurrence+1)
+	}
+	return id
+}
+
+// AssignStableTodoStepIDs fills in a step_id for every item that arrived
+// without one, using StableTodoStepID. Items that already carry a step_id are
+// never touched.
+func AssignStableTodoStepIDs(todos []TodoItem) {
+	occurrences := make(map[string]int, len(todos))
+	for i := range todos {
+		if strings.TrimSpace(todos[i].StepID) != "" {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(todos[i].Content))
+		if key == "" {
+			continue
+		}
+		n := occurrences[key]
+		occurrences[key] = n + 1
+		todos[i].StepID = StableTodoStepID(todos[i].Content, n)
+	}
 }
 
 func todoStatus(status string) string {

@@ -453,6 +453,10 @@
             },
             "type": "array"
           },
+          "plan_id": {
+            "description": "Optional plan marker (task 972). Send a NEW value when you start a different plan — the host then treats the write as a wholesale replacement and archives the old plan, instead of rejecting your new items as invented. Re-send the SAME value (or omit it) while working inside the current plan, where completed items are preserved and never invented. The host echoes the current plan marker back in todo_read.",
+            "type": "string"
+          },
           "todos": {
             "description": "The complete task list, in order. Replaces any previous list. Prefer ops for small edits.",
             "items": {

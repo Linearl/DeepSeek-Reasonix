@@ -32,6 +32,7 @@ func applyTodoOps(baseline []evidence.TodoItem, ops []todoOp) ([]todoItem, error
 			Owner:      t.Owner,
 			Running:    t.Running,
 			ParentID:   t.ParentID, // task 152: ops must not strip the tree structure
+			PlanID:     t.PlanID,   // task 972: ops edits stay inside the baseline's plan
 		})
 	}
 	if len(ops) == 0 {
@@ -75,9 +76,9 @@ func applyTodoOps(baseline []evidence.TodoItem, ops []todoOp) ([]todoItem, error
 				return nil, fmt.Errorf("ops[%d] insert: item.content is required", i)
 			}
 			next := *op.Item
-			if strings.TrimSpace(next.StepID) == "" {
-				return nil, fmt.Errorf("ops[%d] insert: item.step_id is required for a new step", i)
-			}
+			// Task 972, fix 2: an insert without step_id is no longer an error —
+			// the host assigns a stable id after the ops are applied, so the
+			// model is not required to mint ids itself.
 			if indexOf(next.StepID) >= 0 {
 				return nil, fmt.Errorf("ops[%d] insert: step_id %q already exists; give the new item a fresh id", i, next.StepID)
 			}
