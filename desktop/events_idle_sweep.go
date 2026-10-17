@@ -128,11 +128,9 @@ type eventsIdleSweepResult = SessionEventsCompactResult
 // drive pass behaviour without a live session; the production wiring passes
 // agent.CompactSessionFile and agent.RetireStaleConcurrentHeadsNow.
 //
-// Task 945: for a multi-head candidate about to be rewritten, the stale-head
-// retire runs first — the rewrite only frees bytes that rotation can drop,
-// and rotation only drops unreachable ones, and a concurrent head only
-// becomes unreachable once retired. A retire failure never blocks the
-// rewrite: without it the pass just frees what it frees today.
+// Task 945: a multi-head candidate about to be rewritten retires its stale
+// concurrent heads first — rotation only drops bytes a retired head no longer
+// makes reachable. A retire failure never blocks the rewrite.
 //
 // park updates happen here (success records the landed size; lease-busy and
 // failures leave the park untouched so the next tick retries — same contract
@@ -247,10 +245,9 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 			} else if leaseInfo, leaseErr := agent.LoadSessionLeaseInfo(info.Path); leaseErr == nil && leaseInfo != nil {
 				busy = true
 			}
-			// Task 945: the sidecar mirror cheaply marks the sessions that can
-			// even have a stale concurrent head — the retire probe (a replay)
-			// is then only spent on the rare multi-head log, never on the
-			// single-head majority.
+			// Task 945: the sidecar mirror cheaply marks sessions that can hold a
+			// stale concurrent head — the retire probe (a replay) is then spent
+			// only on the rare multi-head log, never on the single-head majority.
 			multiHead := false
 			if meta, ok, metaErr := agent.LoadBranchMeta(info.Path); metaErr == nil && ok {
 				multiHead = meta.LogSchema == 2 && meta.HeadCount > 1

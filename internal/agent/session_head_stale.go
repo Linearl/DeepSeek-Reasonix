@@ -11,10 +11,8 @@ import (
 	"reasonix/internal/store"
 )
 
-// 任务 945：陈旧并发头 retire（884 残留①的语义减法）——无活跃写者+超龄+被
-// selected 线取代的并发头自动标记退役。只 append retire marker 不删数据；
-// 字节由下一次 rotation（含 921 idle sweep 的 compact）物理清除。实测见
-// tmp/handoff-945.md。
+// 任务 945：陈旧并发头 retire（884 残留①语义减法）——保守判定后标记退役，
+// 只 append retire marker 不删数据；字节由下一次 rotation 物理清除。见 handoff-945。
 
 // staleConcurrentHeadMinAge is how long a concurrent head must go untouched
 // before the idle sweep may retire it: three recentHeadWindows. Retiring is a
