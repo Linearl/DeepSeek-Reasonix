@@ -2490,6 +2490,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// two above: a CLI host without a sidebar has nothing to move or retitle.
 		if opts.OnRenameSession != nil {
 			reg.Add(agent.NewRenameSessionTool(collab, opts.OnRenameSession))
+			// 任务 949：rename_topic——按 topic_id/contact_id 定址的改名面（命名
+			// 方案执行用），与 rename_session 同一宿主回调、同一权限面：宿主无
+			// 能力则整件不注册，与上面两个 host-capability 工具同门。
+			reg.Add(agent.NewRenameTopicTool(collab, opts.OnRenameSession))
 		}
 		if opts.OnMoveTopicToGroup != nil {
 			reg.Add(agent.NewMoveTopicToGroupTool(collab, opts.OnMoveTopicToGroup))
@@ -4090,6 +4094,12 @@ Tools:
   reply; a ` + "`status=\"timeout\"`" + ` result is NOT a failure — do not retry.
 - set_session_purpose(purpose, target?) — register a duty (own by default;
   pass target to register another session's). Later calls overwrite.
+- rename_topic(topic_id | contact_id, title) — rename a session's display title
+  (sidebar, search and the directory follow). Address it by id from the list
+  tool above, never by the name you are about to change. A rename never alters
+  the contact_id or topic_id, so existing references keep working — but update
+  memories/documents that still quote the OLD title. (Older equivalent with a
+  free-form target: rename_session(target, title).)
 - read_session_tail(target, max_bytes?) — read another session's last 10 KiB
   so you can judge its duty from what it actually did.
 - task_card(action: create|update|get|list, ...) — collaboration task cards,
