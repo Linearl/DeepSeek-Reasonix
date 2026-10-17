@@ -99,7 +99,7 @@ func TestEventsIdleSweepPassDeadSessionBackUnderCap(t *testing.T) {
 	park := map[string]eventsIdleSweepPark{}
 	h := &sweepPassHarness{byPath: map[string][2]int64{"dead.jsonl": {104 * mb, 45 * mb}}}
 
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, h.compact)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact)
 	if len(h.asked) != 1 || h.asked[0] != "dead.jsonl" {
 		t.Fatalf("first pass must compact the dead session exactly once: %v", h.asked)
 	}
@@ -115,7 +115,7 @@ func TestEventsIdleSweepPassDeadSessionBackUnderCap(t *testing.T) {
 	swept := []eventsIdleSweepCandidate{
 		{Path: "dead.jsonl", EventsBytes: 45 * mb, LiveBytes: 40 * mb, LastActivityAt: activity},
 	}
-	runEventsIdleSweepPass(swept, sweepKnobs, park, h.compact)
+	runEventsIdleSweepPass(swept, sweepKnobs, park, nil, h.compact)
 	if len(h.asked) != 1 {
 		t.Fatalf("parked session must not be re-compactd without regrowth: asked=%v", h.asked)
 	}
@@ -124,7 +124,7 @@ func TestEventsIdleSweepPassDeadSessionBackUnderCap(t *testing.T) {
 	grew := []eventsIdleSweepCandidate{
 		{Path: "dead.jsonl", EventsBytes: 51 * mb, LiveBytes: 40 * mb, LastActivityAt: activity},
 	}
-	runEventsIdleSweepPass(grew, sweepKnobs, park, h.compact)
+	runEventsIdleSweepPass(grew, sweepKnobs, park, nil, h.compact)
 	if len(h.asked) != 2 {
 		t.Fatalf("10%% regrowth must re-arm the sweep: asked=%v", h.asked)
 	}
@@ -142,7 +142,7 @@ func TestEventsIdleSweepPassTrueOverLimitParksAfterOneRewrite(t *testing.T) {
 	park := map[string]eventsIdleSweepPark{}
 	h := &sweepPassHarness{byPath: map[string][2]int64{"live-over-cap.jsonl": {102 * mb, 65 * mb}}}
 
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, h.compact)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact)
 	if len(results) != 1 || results[0].Freed != 37*mb {
 		t.Fatalf("one rewrite must free the non-live tail (37MB): %+v", results)
 	}
@@ -150,7 +150,7 @@ func TestEventsIdleSweepPassTrueOverLimitParksAfterOneRewrite(t *testing.T) {
 	swept := []eventsIdleSweepCandidate{
 		{Path: "live-over-cap.jsonl", EventsBytes: 65 * mb, LiveBytes: 64 * mb, LastActivityAt: activity},
 	}
-	runEventsIdleSweepPass(swept, sweepKnobs, park, h.compact)
+	runEventsIdleSweepPass(swept, sweepKnobs, park, nil, h.compact)
 	if len(h.asked) != 1 {
 		t.Fatalf("still-over-cap session must park after one rewrite: asked=%v", h.asked)
 	}
@@ -170,7 +170,7 @@ func TestEventsIdleSweepPassBudgetLargestFirst(t *testing.T) {
 		})
 		h.byPath[path] = [2]int64{size * mb, (size - 20) * mb}
 	}
-	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, h.compact)
+	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, nil, h.compact)
 	if len(h.asked) != eventsIdleSweepMaxPerPass {
 		t.Fatalf("pass budget must cap rewrites at %d: asked=%v", eventsIdleSweepMaxPerPass, h.asked)
 	}
@@ -200,7 +200,7 @@ func TestEventsIdleSweepPassBusyAndFailureRetry(t *testing.T) {
 		errFor: map[string]error{"raced.jsonl": leaseErr, "broken.jsonl": errors.New("disk full")},
 	}
 
-	results := runEventsIdleSweepPass(cands, sweepKnobs, park, h.compact)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact)
 	if len(h.asked) != 2 {
 		t.Fatalf("busy candidate must never reach compact: asked=%v", h.asked)
 	}
@@ -225,7 +225,7 @@ func TestEventsIdleSweepPassBusyAndFailureRetry(t *testing.T) {
 
 	// 下一趟：两个失败会话都仍在候选里 → 重试（compact 再被问到）。
 	h.errFor = map[string]error{}
-	runEventsIdleSweepPass(cands[1:], sweepKnobs, park, h.compact)
+	runEventsIdleSweepPass(cands[1:], sweepKnobs, park, nil, h.compact)
 	if len(h.asked) != 4 {
 		t.Fatalf("failed attempts must retry on the next pass: asked=%v", h.asked)
 	}
@@ -239,8 +239,88 @@ func TestEventsIdleSweepPassUnderLimitSilent(t *testing.T) {
 		{Path: "small.jsonl", EventsBytes: 20 * mb, LiveBytes: 18 * mb, LastActivityAt: 1},
 	}
 	h := &sweepPassHarness{byPath: map[string][2]int64{}}
-	results := runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, h.compact)
+	results := runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, nil, h.compact)
 	if len(h.asked) != 0 || len(results) != 0 {
 		t.Fatalf("under-limit session must be silent: asked=%v results=%+v", h.asked, results)
+	}
+}
+
+// 任务 945 验收②（pass 级联动）：将被重写的多头候选先 retire 陈旧并发头、
+// 再 compact（顺序即语义——rotation 只丢不可达节点，并发头 retire 后其独占
+// 字节才不可达）；单头候选不问 retire（sidecar 预筛挡掉绝大多数 replay）；
+// retire 失败不阻断 compact（没有它就退化为今天的清法，不该升级为新的失败面）。
+func TestEventsIdleSweepPassRetiresStaleHeadsBeforeCompact(t *testing.T) {
+	const mb = int64(1) << 20
+	activity := int64(1790600000000)
+	cands := []eventsIdleSweepCandidate{
+		{Path: "multi.jsonl", EventsBytes: 100 * mb, LiveBytes: 40 * mb, LastActivityAt: activity, MultiHead: true},
+		{Path: "single.jsonl", EventsBytes: 80 * mb, LiveBytes: 30 * mb, LastActivityAt: activity},
+		{Path: "racy.jsonl", EventsBytes: 70 * mb, LiveBytes: 20 * mb, LastActivityAt: activity, MultiHead: true},
+	}
+	var retiredAsked []string
+	retire := func(path string) ([]string, error) {
+		retiredAsked = append(retiredAsked, path)
+		if path == "racy.jsonl" {
+			return nil, errors.New("replay torn")
+		}
+		return []string{"hdead"}, nil
+	}
+	h := &sweepPassHarness{byPath: map[string][2]int64{
+		"multi.jsonl":  {100 * mb, 45 * mb},
+		"single.jsonl": {80 * mb, 35 * mb},
+		"racy.jsonl":   {70 * mb, 30 * mb},
+	}}
+	park := map[string]eventsIdleSweepPark{}
+
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, retire, h.compact)
+	if len(retiredAsked) != 2 || retiredAsked[0] != "multi.jsonl" || retiredAsked[1] != "racy.jsonl" {
+		t.Fatalf("only multi-head candidates may cost a retire probe: %v", retiredAsked)
+	}
+	// retire 失败不阻断：三个候选都完成了 compact。
+	if len(h.asked) != 3 {
+		t.Fatalf("retire failure must not block the rewrite: asked=%v", h.asked)
+	}
+	if len(results) != 3 {
+		t.Fatalf("every eligible candidate must land a result row: %+v", results)
+	}
+	for _, res := range results {
+		if res.Error != "" {
+			t.Fatalf("compact outcomes must be unchanged by retire: %+v", res)
+		}
+	}
+
+	// 顺序：每个会话 retire 先于 compact（用共享序列验证）。
+	// （顺序验证在下面的顺序专用测试中做——此处先验证集合并存。）
+
+	// park 语义不受 retire 影响：parked 的多头会话不再问 retire 也不再 compact。
+	swept := []eventsIdleSweepCandidate{
+		{Path: "multi.jsonl", EventsBytes: 45 * mb, LiveBytes: 40 * mb, LastActivityAt: activity, MultiHead: true},
+	}
+	retiredAsked = nil
+	runEventsIdleSweepPass(swept, sweepKnobs, park, retire, h.compact)
+	if len(retiredAsked) != 0 || len(h.asked) != 3 {
+		t.Fatalf("parked session must skip retire and compact alike: retire=%v compact=%v", retiredAsked, h.asked)
+	}
+}
+
+// 任务 945 验收②（顺序）：同一会话内 retire 严格先于 compact——反过来就没有
+// 意义（先 compact 清不到 retire 之后才不可达的字节）。
+func TestEventsIdleSweepPassRetireRunsBeforeCompactPerSession(t *testing.T) {
+	const mb = int64(1) << 20
+	var seq []string
+	retire := func(path string) ([]string, error) {
+		seq = append(seq, "retire:"+path)
+		return nil, nil
+	}
+	compact := func(path string) (int64, int64, error) {
+		seq = append(seq, "compact:"+path)
+		return 90 * mb, 40 * mb, nil
+	}
+	cands := []eventsIdleSweepCandidate{
+		{Path: "m.jsonl", EventsBytes: 90 * mb, LiveBytes: 40 * mb, LastActivityAt: 1, MultiHead: true},
+	}
+	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, retire, compact)
+	if len(seq) != 2 || seq[0] != "retire:m.jsonl" || seq[1] != "compact:m.jsonl" {
+		t.Fatalf("retire must precede compact within one session: %v", seq)
 	}
 }
