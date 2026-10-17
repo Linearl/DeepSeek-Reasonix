@@ -338,6 +338,8 @@ export type ProjectTreeTopicHoverCard = {
   metaLine: string;
   exactTime: string;
   projectLabel: string;
+  // 938：会话登记的职责（sidecar purpose，hover 时按需拉取；空=未登记，不渲染行）。
+  purpose: string;
 };
 
 // Activity labels older than a week are already the calendar date (always the
@@ -346,7 +348,7 @@ export function projectTreeDedupedExactTime(metaLine: string, exactTime: string)
   return exactTime && metaLine.endsWith(exactTime) ? "" : exactTime;
 }
 
-export function projectTreeTopicHoverCardModel(node: ProjectNode, t: Translator, projectLabel: string): ProjectTreeTopicHoverCard {
+export function projectTreeTopicHoverCardModel(node: ProjectNode, t: Translator, projectLabel: string, purpose = ""): ProjectTreeTopicHoverCard {
   const activityAt = node.lastActivityAt || node.createdAt || 0;
   const metaLine = projectTreeTopicMetaLine(node, t);
   const exactTime = activityAt ? topicActivityDateLabel(activityAt) : "";
@@ -356,6 +358,7 @@ export function projectTreeTopicHoverCardModel(node: ProjectNode, t: Translator,
     metaLine,
     exactTime: projectTreeDedupedExactTime(metaLine, exactTime),
     projectLabel,
+    purpose: purpose.trim(),
   };
 }
 

@@ -1507,6 +1507,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetCollabGuidanceMerge(enabled: boolean): Promise<void>;
   // Task 19: sessions that can be addressed by contact_id.
   ListAddressableSessions(): Promise<{ contactId: string; purpose?: string; title?: string; topicId?: string; sessionPath: string; scope?: string; workspaceRoot?: string; open: boolean }[]>;
+  // 938: hover/编辑弹窗按需读一个会话登记的职责（sidecar purpose；缺失=空串）。
+  GetSessionPurpose(sessionPath: string): Promise<string>;
+  // 938: 「编辑职责」弹窗保存（空串=清除登记；identity/duties 结构化字段不动）。
+  SetSessionPurpose(sessionPath: string, purpose: string): Promise<void>;
   // Task 19: run one collaboration delivery pass.
   DrainSessionCollabMail(): Promise<{ delivered: number; refused: number; targets: { tabId: string; contactId: string; delivered: number; refused: number; error?: string }[] }>;
   // Task 115: ensure a scheduled dream pass exists in the automation panel.
@@ -2575,6 +2579,8 @@ function mockExternalOpenerIconDataURL(color: string, label: string): string {
 }
 function makeMockApp(): AppBindings {
   const scenario = mockScenario();
+  // 938：浏览器 dev mock 的会话职责存档（Get/SetSessionPurpose 往返用）。
+  const mockSessionPurposes = new Map<string, string>();
   // Both bridge families publish into the same catalog, as ListTabs does in
   // the desktop backend. A remote event is not a second source of tab state.
   const remoteProjects = createMockRemoteProjects({
@@ -6207,6 +6213,15 @@ function makeMockApp(): AppBindings {
     async SetCollabInboxMerge() {},
     async SetCollabGuidanceMerge() {},
     async ListAddressableSessions() { return []; },
+    // 938：内存往返即可——mock 没有 sidecar，职责随会话路径存取。
+    async GetSessionPurpose(sessionPath: string) { return mockSessionPurposes.get(sessionPath) ?? ""; },
+    async SetSessionPurpose(sessionPath: string, purpose: string) {
+      const key = sessionPath.trim();
+      if (!key) throw new Error("session path is required");
+      const next = purpose.trim();
+      if (next) mockSessionPurposes.set(key, next);
+      else mockSessionPurposes.delete(key);
+    },
     async DrainSessionCollabMail() { return { delivered: 0, refused: 0, targets: [] }; },
     async CreateDreamHeartbeatTask() { return false; },
     async CreateDecisionPatternHeartbeatTask() { return false; },
