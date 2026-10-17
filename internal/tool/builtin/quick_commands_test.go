@@ -14,10 +14,10 @@ import (
 // Replace, so tool-layer tests exercise decoding, seam wiring, index
 // addressing, and error pass-through only.
 type fakeQuickCommandsStore struct {
-	entries  []config.QuickCommandEntry
-	replaced []config.QuickCommandEntry
-	replaceN int
-	listEr   error
+	entries   []config.QuickCommandEntry
+	replaced  []config.QuickCommandEntry
+	replaceN  int
+	listEr    error
 	replaceEr error
 }
 
