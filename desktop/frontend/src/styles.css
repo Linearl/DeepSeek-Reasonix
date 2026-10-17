@@ -28403,12 +28403,19 @@ button.statusbar__mcp:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* 938：「编辑职责」弹窗（AnchoredPopover portal 到 body，529 先例）。 */
+/* 938：「编辑职责」弹窗（AnchoredPopover portal 到 body，529 先例）。
+   批39 返修（1538 用户验收反馈「太小」）：320px 卡片宽 → 内容弹窗先例同级
+   min(1100px, 94vw)（照 .reasonix-confirm-dialog--wide 链预览弹窗写法；
+   width/max-width 双写——任务 721 教训：单写 width 会被级联 max-width 钳制
+   而静默不生效）。max-height 兜底防 AnchoredPopover 钳位后底边出屏。 */
 .session-purpose-editor {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 320px;
+  width: min(1100px, 94vw);
+  max-width: min(1100px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
   padding: 10px 12px;
   border-radius: var(--radius-md);
   background: var(--bg-elev);
@@ -28434,7 +28441,11 @@ button.statusbar__mcp:focus-visible {
 
 .session-purpose-editor__input {
   width: 100%;
-  min-height: 72px;
+  /* 批39 返修：随弹窗加大同步加高——多行职责正文开箱可见，
+     上限贴住容器 max-height（90vh），超高自身滚动。 */
+  min-height: min(48vh, 420px);
+  max-height: 72vh;
+  flex: 1 1 auto;
   resize: vertical;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

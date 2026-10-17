@@ -11,6 +11,13 @@
 //     订阅者即时重渲染），setCachedSessionPurpose 后 cachedSessionPurpose 即新值；
 //   ④ 三语键齐备；
 //   ⑤ ProjectTree 右键菜单接线源码钉（编辑职责项 + 锚点 + 弹窗渲染）。
+//
+// 批39 返修（1538 用户验收反馈「编辑职责弹窗太小」）验收：
+//   ⑥ 弹窗尺寸加大到内容弹窗先例同级——.session-purpose-editor width 与
+//     max-width 双写 min(1100px, 94vw)（.reasonix-confirm-dialog--wide 链
+//     预览弹窗先例；任务 721 教训：单写 width 会被级联 max-width 钳死）；
+//   ⑦ textarea 同步加高——min-height 升到 min(48vh, 420px)（原 72px），
+//     多行编辑开箱可见；rows 4 → 12。
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -219,6 +226,23 @@ console.log("\nsession purpose hover wiring (938)");
   const purposeLine = css.slice(css.indexOf(".project-tree__hover-card-purpose"));
   ok(purposeLine.includes("white-space: pre-wrap"), "css: the hover-card duty line keeps line breaks");
   ok(purposeLine.includes("overflow-wrap: anywhere"), "css: the hover-card duty line breaks long words (no clipping)");
+}
+
+// ── ⑥⑦ 批39 返修：弹窗与 textarea 尺寸加大（先例同级，纯 CSS/属性改动） ──
+console.log("\nsession purpose editor sizing (938 batch-39 fix)");
+{
+  const css = readFileSync(resolve(here, "../styles.css"), "utf8");
+  const block = css.slice(css.indexOf(".session-purpose-editor {"), css.indexOf(".session-purpose-editor__head"));
+  ok(block.includes("width: min(1100px, 94vw)"), "size: the shell matches the wide content-dialog precedent min(1100px, 94vw)");
+  ok(block.includes("max-width: min(1100px, 94vw)"), "size: max-width is double-written (task 721: a lone width gets clamped away)");
+  ok(block.includes("max-height: 90vh"), "size: a 90vh cap keeps the enlarged shell on screen after popover clamping");
+
+  const inputBlock = css.slice(css.indexOf(".session-purpose-editor__input {"), css.indexOf(".session-purpose-editor__input:focus"));
+  ok(inputBlock.includes("min-height: min(48vh, 420px)"), "textarea: min-height grows from 72px to min(48vh, 420px)");
+  ok(inputBlock.includes("max-height: 72vh"), "textarea: a 72vh cap keeps it scrolling inside the shell");
+
+  const editorSource = readFileSync(resolve(here, "../components/SessionPurposeEditor.tsx"), "utf8");
+  ok(editorSource.includes("rows={12}"), "textarea: rows grow from 4 to 12 for multi-line duty text");
 }
 
 // ── ④ 三语键齐备 ──
