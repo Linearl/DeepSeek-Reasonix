@@ -98,6 +98,7 @@ var builtinSafety = map[string]SafetySpec{
 	"merge_worktree_back":            {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	"open_isolated_worktree_project": {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	"screenshot":                     {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
+	"set_quick_commands":             {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	"ui_interact":                    {ReadOnly: false, ConcurrentSafe: false, RiskLevel: RiskMedium},
 	// 进程/应用生命周期或任意命令面：破坏性，任何分组独占。
 	"bash":           {ReadOnly: false, ConcurrentSafe: false, Destructive: true, RiskLevel: RiskHigh},
