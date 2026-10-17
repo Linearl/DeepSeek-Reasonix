@@ -75,8 +75,8 @@ func (a *Agent) diagnoseCapabilityInputFailure(plan *toolCallPlan, err error) to
 		output += "\n" + guide
 	}
 	return toolOutcome{
-		output: truncateValidationMessage(output),
-		errMsg: firstLine(err.Error()),
+		output:   truncateValidationMessage(output),
+		errMsg:   firstLine(err.Error()),
 	}
 }
 

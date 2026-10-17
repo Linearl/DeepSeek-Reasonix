@@ -82,8 +82,8 @@ func TestCurrentTimeBlockAnchorsAgreeAcrossFullWeek(t *testing.T) {
 // that the dates differ by one day and that each matches its own turn clock.
 func TestTurnAnchorsRefreshChineseDateAcrossMidnight(t *testing.T) {
 	tz := time.FixedZone("UTC+8", 8*60*60)
-	lateNight := time.Date(2026, 10, 15, 23, 50, 0, 0, tz) // Thursday
-	nextDay := time.Date(2026, 10, 16, 0, 10, 0, 0, tz)    // Friday, 20 minutes later
+	lateNight := time.Date(2026, 10, 15, 23, 50, 0, 0, tz)  // Thursday
+	nextDay := time.Date(2026, 10, 16, 0, 10, 0, 0, tz)      // Friday, 20 minutes later
 
 	a := WithCurrentTime("late turn", lateNight)
 	b := WithCurrentTime("early turn", nextDay)

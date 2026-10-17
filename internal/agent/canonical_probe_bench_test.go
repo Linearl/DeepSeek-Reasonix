@@ -23,7 +23,7 @@ import (
 // warm loop. One package-level path keeps every measured loop a pure cache-hit
 // loop (TTL 30s comfortably outlasts the whole benchmark).
 var (
-	benchPathOnce  sync.Once
+	benchPathOnce sync.Once
 	benchPathValue string
 	benchPathErr   error
 )

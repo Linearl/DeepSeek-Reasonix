@@ -107,11 +107,11 @@ type Session struct {
 	// feeding the hasher, so a stale state fails open to the full pass).
 	// nil means "no incremental state" — the common post-load, post-rewrite
 	// shape — and is always safe: the save path falls back to the full digest.
-	digestHash           hash.Hash
-	digestCount          int
-	digestVersion        uint64
+	digestHash          hash.Hash
+	digestCount         int
+	digestVersion       uint64
 	digestRewriteVersion int
-	digestSize           int64
+	digestSize          int64
 }
 
 // NewSession initializes a session with an optional system prompt.
