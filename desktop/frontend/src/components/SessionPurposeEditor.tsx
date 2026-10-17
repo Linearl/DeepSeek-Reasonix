@@ -103,7 +103,7 @@ export function SessionPurposeEditor({
       <textarea
         className="session-purpose-editor__input"
         value={draft}
-        rows={4}
+        rows={12}
         placeholder={t("projectTree.purposePlaceholder")}
         aria-label={t("projectTree.editPurpose")}
         disabled={loading || saving}
