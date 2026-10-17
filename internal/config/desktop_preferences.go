@@ -227,6 +227,14 @@ type DesktopConfig struct {
 	// without the other. It ships off (铁律 2) for the same zero-regression
 	// reason; pure frontend gate, no restart needed.
 	ExperimentalSidebarHoverRight bool `toml:"experimental_sidebar_hover_right"`
+	// ExperimentalApprovalSelect switches the composer's conversation-permission
+	// (tool-approval tier) picker between the two forms (任务 940): zero value
+	// (default) keeps the segmented ask/auto/yolo(/autopilot) button group
+	// byte-for-byte as before; on swaps it for a compact dropdown (zcode-style,
+	// saves composer-row space — permission tiers rarely switch, the space is
+	// not worth a permanent 264px bar). It ships off (铁律 2); pure frontend
+	// gate: the settings save re-applies the boot snapshot, no restart.
+	ExperimentalApprovalSelect bool `toml:"experimental_approval_select"`
 	// ExperimentalWorkflowPanel gates the workflow visualization panel (task
 	// 686): a command-palette entry opening the DAG flow view (plan preview
 	// plus live node-state lighting from the run event stream). It ships off

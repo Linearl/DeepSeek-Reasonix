@@ -385,6 +385,14 @@ func (a *App) SetExperimentalSidebarHoverRight(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSidebarHoverRight(enabled) })
 }
 
+// SetExperimentalApprovalSelect toggles the composer permission-tier picker
+// form (任务 940): off (default) keeps the segmented button group, on swaps it
+// for a compact dropdown. Pure frontend gate: the settings save re-applies the
+// boot snapshot, so the change is visible without a restart.
+func (a *App) SetExperimentalApprovalSelect(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalApprovalSelect(enabled) })
+}
+
 // SetExperimentalWorkflowPanel toggles the workflow visualization panel
 // (task 686): the command-palette entry opening the DAG flow view. Pure
 // frontend gate: the settings save re-applies the boot snapshot, so the

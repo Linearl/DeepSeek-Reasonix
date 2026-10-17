@@ -1040,6 +1040,17 @@ func (c *Config) SetExperimentalSidebarHoverRight(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalApprovalSelect toggles the composer conversation-permission
+// (tool-approval tier) picker form (任务 940): off (default) keeps the
+// segmented ask/auto/yolo(/autopilot) button group, on swaps it for a compact
+// dropdown. Opt-in: with it off the composer meta row renders exactly the
+// pre-940 button group. Pure frontend gate: the settings save re-applies the
+// boot snapshot, so a change is visible without a restart.
+func (c *Config) SetExperimentalApprovalSelect(enabled bool) error {
+	c.Desktop.ExperimentalApprovalSelect = enabled
+	return nil
+}
+
 // SetExperimentalPromptHistoryPicker gates the composer history-navigation
 // safety rework (task 261): clock-icon history picker + narrowed ArrowUp
 // trigger. Opt-in: with it off the composer keeps the legacy behaviour. The

@@ -52,8 +52,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalSubagentPanel = true       // M4
 	orig.Desktop.ExperimentalSubagentDetail = true      // M4
 	// 任务 826：左右边栏 hover 展开（默认关，两键独立）。
-	orig.Desktop.ExperimentalSidebarHoverLeft = true           // sidebarHoverLeft
-	orig.Desktop.ExperimentalSidebarHoverRight = true          // sidebarHoverRight
+	orig.Desktop.ExperimentalSidebarHoverLeft = true  // sidebarHoverLeft
+	orig.Desktop.ExperimentalSidebarHoverRight = true // sidebarHoverRight
+	// 任务 940：composer 权限选择器形态二选一（默认关=按钮组）。
+	orig.Desktop.ExperimentalApprovalSelect = true // approvalSelect
 	// 任务 686：工作流可视化面板（默认关）。
 	orig.Desktop.ExperimentalWorkflowPanel = true              // workflowPanel
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
@@ -113,6 +115,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		// 任务 826：左右边栏 hover 展开两键无条件渲染（fixed-key-set rule）。
 		"experimental_sidebar_hover_left = true",
 		"experimental_sidebar_hover_right = true",
+		// 任务 940：composer 权限选择器形态键无条件渲染（fixed-key-set rule）。
+		"experimental_approval_select = true",
 		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
 		"experimental_workflow_panel = true",
 		"experimental_question_search = true",
@@ -217,6 +221,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		// 任务 826：左右边栏 hover 展开两键往返。
 		"desktop.experimental_sidebar_hover_left":  got.Desktop.ExperimentalSidebarHoverLeft,
 		"desktop.experimental_sidebar_hover_right": got.Desktop.ExperimentalSidebarHoverRight,
+		// 任务 940：composer 权限选择器形态键往返。
+		"desktop.experimental_approval_select": got.Desktop.ExperimentalApprovalSelect,
 		// (retired from render — task 473 single-key fold.)
 		"desktop.experimental_split_view":      got.Desktop.ExperimentalSplitView,
 		"desktop.experimental_session_monitor": got.Desktop.ExperimentalSessionMonitor,

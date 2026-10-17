@@ -57,6 +57,8 @@ func allLabSwitchesOn() *Config {
 	// 任务 826：左右边栏 hover 展开（默认关，可选档）。
 	c.Desktop.ExperimentalSidebarHoverLeft = true
 	c.Desktop.ExperimentalSidebarHoverRight = true
+	// 任务 940：composer 权限选择器形态二选一（默认关，可选档）。
+	c.Desktop.ExperimentalApprovalSelect = true
 	c.Desktop.ExperimentalCompletionSummary = boolPtr(true)
 	c.Desktop.ExperimentalAutoLoadOlder = true
 	c.Desktop.ExperimentalSplitView = true
@@ -188,8 +190,8 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 16 / 可选 25 / 未稳定 16 / 已退役 0 = 57（任务 686
-// workflowPanel 入表后）.
+// register must stay exactly 推荐 16 / 可选 26 / 未稳定 16 / 已退役 0 = 58（任务 940
+// approvalSelect 入表后）.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
@@ -227,8 +229,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
 	// 档入表（22→23、总数 51→52）。任务 826：sidebarHoverLeft/Right（左右
 	// 边栏 hover 展开+延时折叠，默认关）按 550 口径可选档入表（23→25、
-	// 总数 52→54）。
-	want[LabTierOptional] = 25
+	// 总数 52→54）。任务 940：approvalSelect（composer 权限选择器形态
+	// 二选一，默认关=按钮组）按 550 口径可选档入表（25→26、总数 54→55）。
+	want[LabTierOptional] = 26
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
 	for _, f := range labFeatureTiers {
@@ -248,7 +251,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 57 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 57", len(labFeatureTiers))
+	if len(labFeatureTiers) != 58 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 58", len(labFeatureTiers))
 	}
 }
