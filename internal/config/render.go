@@ -139,11 +139,15 @@ var labFeatureTiers = []labFeatureTier{
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
-	// ── tool-opt（工具优化，2 项；815 登记窗口：789 证据门宽松转正入表）──
-	{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动）；任务 783④：编辑读回（readBack）随 22.5 交付转正，未稳定→推荐（前端注册表同步升档，562 两侧一致断言守护）
+	// ── tool-opt（工具优化，3 项；815 登记窗口：789 证据门宽松转正入表；
+	//    943 族拆两卡：multiEditInjection 独立入表）──
+	{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动）；任务 783④：编辑读回（readBack）随 22.5 交付转正，未稳定→推荐（前端注册表同步升档，562 两侧一致断言守护）；任务 943：族拆两键后本键只管 readBack 面
 	// 任务 789/815：编辑证据门宽松模式（工具优化卡成员行，未稳定档默认关）。
 	// 789 先行（Go 侧开关+前端登记半程），815 登记窗口补齐设置页入口后转正入表。
 	{"editEvidenceRelaxed", LabTierUnstable, []string{"experimental_edit_evidence_relaxed"}},
+	// 任务 943：multi_edit 直注独立卡（原族键第二效果拆出，可选档——550 口径：
+	// 不开启只小幅影响，multi_edit 仍可经 use_capability 调用）。
+	{"multiEditInjection", LabTierOptional, []string{"experimental_multi_edit_injection"}},
 }
 
 // labNonFeatureKeys：渲染表里存在、但不属于表A 46 项的实验室族键（豁免门禁，
@@ -730,8 +734,16 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// lesson). Task 915: the field is a *bool; nil (key absent) renders
 	// NOTHING so the panel-layer default-on can never be baked into an
 	// explicit false by an unrelated save (the task-722 conditional rule).
+	// 任务 943：族拆两键后本键只管 readBack 面（multi_edit 直注见
+	// experimental_multi_edit_injection）。
 	if c.Agent.ExperimentalToolOptimizations != nil {
-		fmt.Fprintf(&b, "experimental_tool_optimizations = %v   # task 603/915: 工具优化 family — edit_file/multi_edit return the edited snippet + context as fresh read evidence (task 875: default on when lit, readBack:false opts out) + multi_edit joins the provider-visible tools while lit; absent = off keeps every schema/output byte identical (restart to apply)\n", *c.Agent.ExperimentalToolOptimizations)
+		fmt.Fprintf(&b, "experimental_tool_optimizations = %v   # task 603/915/943: edit readBack face — edit_file/multi_edit return the edited snippet + context as fresh read evidence (task 875: default on when lit, readBack:false opts out); task 943 narrowed this key to the readBack face (multi_edit injection moved to experimental_multi_edit_injection, which falls back to this key while absent); absent = off keeps every schema/output byte identical (restart to apply)\n", *c.Agent.ExperimentalToolOptimizations)
+	}
+	// 任务 943：multi_edit 直注独立键（原族键第二效果拆出）。同一 *bool
+	// 条件渲染规则（键缺省不渲染——回落语义在 MultiEditInjectionEnabled，
+	// 渲染层永不把回落拍成显式值）。
+	if c.Agent.ExperimentalMultiEditInjection != nil {
+		fmt.Fprintf(&b, "experimental_multi_edit_injection = %v   # task 943: multi_edit joins the provider-visible tools while lit (the model gets its full schema; execution via use_capability stays available either way); nil falls back to experimental_tool_optimizations for migration, absent on both keys = off (restart to apply)\n", *c.Agent.ExperimentalMultiEditInjection)
 	}
 	// Task 789: same explicit-render rule — the Go-side switch ships first; the
 	// lab tier entry and the settings-page entry land in the unified

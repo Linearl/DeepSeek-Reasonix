@@ -89,6 +89,8 @@ func allLabSwitchesOn() *Config {
 	c.Desktop.ExperimentalLocalServer = true
 	// tool-opt（任务 603/915：字段 *bool 条件渲染——all-on 夹具必须置非 nil 才发射）
 	c.Agent.ExperimentalToolOptimizations = boolPtr(true)
+	// 任务 943：族拆两键——注入键同为 *bool 条件渲染，all-on 夹具置非 nil。
+	c.Agent.ExperimentalMultiEditInjection = boolPtr(true)
 	// 豁免键（非表A，但属于实验室族，门禁要求它们仍被渲染）
 	c.Agent.ExperimentalPreapproveManagedPaths = true
 	c.Agent.ExperimentalCascadeApproval = true
@@ -188,8 +190,8 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 16 / 可选 25 / 未稳定 16 / 已退役 0 = 57（任务 686
-// workflowPanel 入表后）.
+// register must stay exactly 推荐 16 / 可选 26 / 未稳定 16 / 已退役 0 = 58（任务 943
+// multiEditInjection 入表后）.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
@@ -227,8 +229,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
 	// 档入表（22→23、总数 51→52）。任务 826：sidebarHoverLeft/Right（左右
 	// 边栏 hover 展开+延时折叠，默认关）按 550 口径可选档入表（23→25、
-	// 总数 52→54）。
-	want[LabTierOptional] = 25
+	// 总数 52→54）。任务 943：multiEditInjection（multi_edit 直注，工具优化
+	// 族拆分独立卡）按可选档入表（25→26、总数 57→58；前端注册表同步）。
+	want[LabTierOptional] = 26
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
 	for _, f := range labFeatureTiers {
@@ -248,7 +251,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 57 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 57", len(labFeatureTiers))
+	if len(labFeatureTiers) != 58 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 58", len(labFeatureTiers))
 	}
 }

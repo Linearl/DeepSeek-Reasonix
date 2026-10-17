@@ -3013,9 +3013,11 @@ func applyUnifiedProviderToolSurface(reg *tool.Registry, extras ...string) {
 // provider-visible surface behind their own experiment flags (task 254/915).
 // Two members ship hidden from the model unless their switch is on:
 // restart_update (experimental_autonomous_update) and multi_edit
-// (experimental_tool_optimizations, task 915 — the model then gets its full
-// schema and the edit_file "prefer multi_edit" guidance resolves to a real
-// tool; either way multi_edit stays executable via use_capability).
+// (experimental_multi_edit_injection, task 943 split of the 915 family key —
+// the model then gets its full schema and the edit_file "prefer multi_edit"
+// guidance resolves to a real tool; either way multi_edit stays executable
+// via use_capability. The injection key falls back to the legacy family key
+// while absent — see config.MultiEditInjectionEnabled).
 func providerSurfaceExtras(cfg *config.Config) []string {
 	if cfg == nil {
 		return nil
@@ -3024,7 +3026,7 @@ func providerSurfaceExtras(cfg *config.Config) []string {
 	if cfg.Desktop.ExperimentalAutonomousUpdate {
 		extras = append(extras, "restart_update")
 	}
-	if cfg.ToolOptimizationsEnabled() {
+	if cfg.MultiEditInjectionEnabled() {
 		extras = append(extras, "multi_edit")
 	}
 	return extras
