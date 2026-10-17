@@ -1261,7 +1261,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetDesktopAutopilotGuardInterval(minutes: number): Promise<void>;
   SetDesktopAutopilotGuardQuiescent(policy: string): Promise<void>;
   // Task 81: the Settings switch for the restart-and-update action. Same preference the
-  // restart_and_update tool reads, so one enables both.
+  // restart_update tool's set_target+execute path reads, so one enables both.
   SetExperimentalRestartUpdate(enabled: boolean): Promise<void>;
   // Task 254: the Settings switch for the agent-facing restart_update tool. Registration
   // reads the boot snapshot, so the flip applies on the next restart.

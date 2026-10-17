@@ -182,8 +182,9 @@ func (a *App) SetSessionStorage(mode string) error {
 }
 
 // SetExperimentalRestartUpdate toggles the restart-and-update action (task 81). The
-// Settings switch and the restart_and_update tool read the same preference, so the
-// error the tool returns stays true: what enables one enables the other.
+// Settings switch and the restart_update tool's set_target+execute path read the same
+// preference (the host's swap refuses while it is off), so the error the tool returns
+// stays true: what enables one enables the other.
 func (a *App) SetExperimentalRestartUpdate(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRestartUpdate(enabled) })
 }
