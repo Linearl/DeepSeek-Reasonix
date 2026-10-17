@@ -70,7 +70,7 @@ var groupCatalog = []GroupDef{
 		},
 		Entry:    "session_hub",
 		Example:  "send/contacts/tail",
-		Triggers: []string{"派单", "发信", "回信", "联系人", "判活", "读尾", "建会话", "任务卡", "跨会话", "talk_to_session", "session_hub"},
+		Triggers: []string{"派单", "发信", "发消息", "回信", "联系人", "判活", "读尾", "建会话", "任务卡", "跨会话", "talk_to_session", "session_hub"},
 		Card: &GroupCard{
 			Scenario: []string{
 				"跨会话协作深件组：与另一会话发信/判活/读尾、任务卡记录、会话组织与版本管理都在这里。",
