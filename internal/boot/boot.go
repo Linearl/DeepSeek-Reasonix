@@ -2511,6 +2511,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		if opts.OnManageSessions != nil {
 			reg.Add(agent.NewManageSessionsTool(collab, opts.OnManageSessions))
 		}
+		// 任务 954（951 第二批②）：L0 聚合件 session_hub——仅在
+		// experimental_capability_groups 开启时注册（铁律 2 默认关）。分发层是薄壳：
+		// 从注册表取回上面九件的同一实例（reg.Get），action 路由+参数归一后转发，
+		// 不重写任何逻辑（架构修点②）。关态不注册，九件保持直挂行为等价；开态 hub
+		// 经 providerSurfaceExtras 独占可见面，旧件仅 use_capability 可达（修点③：
+		// 撤 L0 但保持注册，存量转录经 use_capability 仍能调到旧名）。
+		if cfg.Agent.ExperimentalCapabilityGroups {
+			reg.Add(agent.NewSessionHubTool(sessionHubTargetsFromRegistry(reg)))
+		}
 	}
 	// Task 482（fence 退役）: the tool_recovery self-diagnosis tool is withdrawn
 	// with the fence it served — no remaining error copy may point at it.
@@ -3040,7 +3049,45 @@ func providerSurfaceExtras(cfg *config.Config) []string {
 	if cfg.MultiEditInjectionEnabled() {
 		extras = append(extras, "multi_edit")
 	}
+	// 任务 954（951 第二批②）：session_hub 聚合件走同一条 extras 通道进可见面。
+	// 仅在 experimental_capability_groups 开时追加；且它只在 collab 块内注册，所以
+	// 两道闸 compose：开关开但协作关 → 注册表无 session_hub → 下面的 reg.Get 过滤
+	// 掉，可见面不含它（与 restart_update/multi_edit 同构）。
+	if cfg.Agent.ExperimentalCapabilityGroups {
+		extras = append(extras, "session_hub")
+	}
 	return extras
+}
+
+// sessionHubTargetsFromRegistry pulls the nine collaboration tools' EXACT
+// registered instances back out of the registry to build the session_hub
+// dispatch table (task 954). Reusing the same instances (rather than
+// re-running the constructors) is what makes the hub a thin shell: every action
+// forwards to the identical implementation the direct tool would have run, so
+// behaviour equivalence is by construction. A missing tool (panel gate off, or
+// a host without the capability) yields nil, which narrows the hub's action
+// enum instead of leaving a dead action behind.
+func sessionHubTargetsFromRegistry(reg *tool.Registry) agent.SessionHubTargets {
+	if reg == nil {
+		return agent.SessionHubTargets{}
+	}
+	get := func(name string) tool.Tool {
+		if t, ok := reg.Get(name); ok {
+			return t
+		}
+		return nil
+	}
+	return agent.SessionHubTargets{
+		Send:           get("talk_to_session"),
+		Contacts:       get("list_addressable_sessions"),
+		Tail:           get("read_session_tail"),
+		Status:         get("get_session_status"),
+		Create:         get("create_collab_session"),
+		Purpose:        get("set_session_purpose"),
+		DeliveryStatus: get("get_message_status"),
+		Card:           get("task_card"),
+		Budget:         get("extend_research_budget"),
+	}
 }
 
 // effectivePlannerModel centralizes planner precedence. Every role setting

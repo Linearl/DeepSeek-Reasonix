@@ -1690,6 +1690,14 @@ type AgentConfig struct {
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.
 	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// ExperimentalCapabilityGroups (tasks 953/954/955, the 951 second batch)
+	// turns on the capability-group disclosure layer: use_capability v2 (list
+	//摘要档+kind=group 组行+两道闸), the session_hub L0 aggregation entry, and
+	// the group mechanism. One switch gates all three (用户拍板: 提效类可选档).
+	// Off by default (铁律 2): off = session_hub unregistered and the nine
+	// collab tools keep their direct-mounted behaviour byte-for-byte; the hub
+	// only joins the provider-visible surface when on.
+	ExperimentalCapabilityGroups bool `toml:"experimental_capability_groups"`
 	// ExperimentalGeneralPurposeSubagent exposes the built-in general-purpose
 	// writer profile (task 632): task profile="general-purpose" / run_skill
 	// dispatch a writer subagent whose system prompt teaches multi-step
