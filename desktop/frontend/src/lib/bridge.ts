@@ -1428,6 +1428,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalDream(enabled: boolean): Promise<void>;
   // Task 801: decision-pattern extraction + solidification (experimental).
   SetExperimentalDecisionPatterns(enabled: boolean): Promise<void>;
+  // Task 944: render_artifact tool + ArtifactCard (experimental).
+  SetExperimentalRenderArtifact(enabled: boolean): Promise<void>;
   // Task 801: solidified decision-patterns file location (empty = default
   // global-workspace/docs/decision-patterns.md; must be a .md path).
   SetDecisionPatternFilePath(path: string): Promise<void>;
@@ -6157,6 +6159,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalTraceAsState() {},
     async SetExperimentalDream() {},
     async SetExperimentalDecisionPatterns() {},
+    async SetExperimentalRenderArtifact() {},
     async SetDecisionPatternFilePath() {},
     async SetDecisionPatternThreshold() {},
     async SetDecisionPatternAutoApprove() {},

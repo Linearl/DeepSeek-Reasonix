@@ -29,6 +29,8 @@ export type TierFeatureId =
   | "dream"
   // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
   | "decisionPatterns"
+  // 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard，默认关）。
+  | "renderArtifact"
   // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
   // loopStreakNote 与 standalone eventWaitRecheck 三个表A id → 一个 id）。
   | "safetyCostControl"
@@ -166,6 +168,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 默认关）。
   trajectoryView: "optional",
   // ── ui（界面，15 项）────────────────────────────────────────
+  // 任务 944：对话内产物卡片。镜像 Go 档位——可选（不开启不影响核心体验）。
+  renderArtifact: "optional",
   tabCompress: "recommended",
   todoSidebar: "recommended",
   promptHistoryPicker: "recommended",
@@ -283,10 +287,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * （multi_edit 直注，工具优化族拆分独立卡）按可选档入表——可选 29→30、
  * 总数 64→65（Go 侧同步 57→58）。任务 940：approvalSelect（composer 权限
  * 选择器形态二选一，默认关）按可选档入表——可选 30→31、总数 65→66
- * （Go 侧同步 58→59；与 943 先后入表各 +1）。 */
+ * （Go 侧同步 58→59；与 943 先后入表各 +1）。任务 944：renderArtifact
+ * （对话内产物卡片）按可选档入表——可选 31→32、总数 66→67（Go 侧同步
+ * 59→60）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 19,
-  optional: 31,
+  optional: 32,
   unstable: 15,
   retired: 1,
 };

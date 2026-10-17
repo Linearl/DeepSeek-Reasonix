@@ -531,6 +531,8 @@ type SettingsView struct {
 	DecisionPatternFilePath      string `json:"decisionPatternFilePath"`
 	DecisionPatternThreshold     int    `json:"decisionPatternThreshold"`
 	DecisionPatternAutoApprove   bool   `json:"decisionPatternAutoApprove"`
+	// Task 944: render_artifact tool + ArtifactCard lab switch readback.
+	ExperimentalRenderArtifact bool `json:"experimentalRenderArtifact"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
@@ -1847,6 +1849,8 @@ func (a *App) Settings() SettingsView {
 		DecisionPatternFilePath:      decisionPatternPathForView(cfg),
 		DecisionPatternThreshold:     cfg.Agent.DecisionPatternThreshold,
 		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
+		// Task 944: render_artifact lab switch readback.
+		ExperimentalRenderArtifact: cfg.Agent.ExperimentalRenderArtifact,
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
 		ExperimentalSafetyCostControl: cfg.Agent.ExperimentalSafetyCostControl,
 		// Task 722: sub-switch override readback (nil stays nil = inherit).

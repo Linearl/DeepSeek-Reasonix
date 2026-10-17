@@ -192,8 +192,8 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 }
 
 // TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 16 / 可选 27 / 未稳定 16 / 已退役 0 = 59（任务 943
-// multiEditInjection 与任务 940 approvalSelect 先后入表后，两件各 +1 可选）.
+// register must stay exactly 推荐 16 / 可选 28 / 未稳定 16 / 已退役 0 = 60（任务 943
+// multiEditInjection、940 approvalSelect、944 renderArtifact 先后入表后）.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
@@ -235,7 +235,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	// 族拆分独立卡）按可选档入表（25→26、总数 57→58；前端注册表同步）。
 	// 任务 940：approvalSelect（composer 权限选择器形态二选一，默认关=按钮
 	// 组）按 550 口径可选档入表（26→27、总数 58→59；与 943 先后入表各 +1）。
-	want[LabTierOptional] = 27
+	// 任务 944：renderArtifact（对话内产物卡片）按可选档入表（27→28、
+	// 总数 59→60）。
+	want[LabTierOptional] = 28
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
 	for _, f := range labFeatureTiers {
@@ -255,7 +257,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 59 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 59", len(labFeatureTiers))
+	if len(labFeatureTiers) != 60 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 60", len(labFeatureTiers))
 	}
 }

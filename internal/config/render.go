@@ -122,6 +122,10 @@ var labFeatureTiers = []labFeatureTier{
 	{"questionSearch", LabTierRecommended, []string{"experimental_question_search"}},
 	{"opencodeGoUsage", LabTierUnstable, []string{"experimental_opencode_go_usage"}},
 	{"feedback", LabTierOptional, []string{"experimental_feedback", "experimental_feedback_nudge"}}, // nudge 为 task 172 家族子键
+	// 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard）。展示类
+	// 开关按 550 口径定档可选——不开启时工具不注册、前端不渲染卡片，对话与
+	// 引入前完全一致（铁律 2，默认关）。
+	{"renderArtifact", LabTierOptional, []string{"experimental_render_artifact"}},
 	// ── observability（可观测性，2 项）───────────────────────────
 	{"monitoring", LabTierRecommended, []string{"experimental_session_monitor", "experimental_perf_monitor", "experimental_heap_high_profile"}}, // heap_high_profile 为 task 501 家族子键（rides perf_monitor）
 	{"subagentTps", LabTierOptional, []string{"experimental_subagent_tps"}},
@@ -701,6 +705,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "decision_pattern_file_path = %q   # task 801: solidified decision-patterns file (empty = default global-workspace/docs path; backups and injection follow it)\n", decisionPatternFile)
 	fmt.Fprintf(&b, "decision_pattern_threshold = %d   # task 801: new decision memories needed before the heartbeat consolidation runs (0 = default 5)\n", c.Agent.DecisionPatternThreshold)
 	fmt.Fprintf(&b, "decision_pattern_auto_approve = %v   # task 801: skip the human approval gate before the heartbeat writes decision-patterns.md (default off = report and wait)\n", c.Agent.DecisionPatternAutoApprove)
+	// 任务 944：render_artifact 产物卡片。显式渲染——同 81/123 丢档教训，
+	// omit-on-off 会在下一次渲染时把已保存的开关静默弹回。
+	fmt.Fprintf(&b, "experimental_render_artifact = %v   # task 944: render_artifact tool + ArtifactCard (md/text preview card, html open-only; off = tool unregistered, zero behaviour)\n", c.Agent.ExperimentalRenderArtifact)
 	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
 	// Task 632: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).

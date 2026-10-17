@@ -158,6 +158,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "ui",
       labelKey: "settings.labGroup.ui",
       entries: [
+        // 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard）。
+        // 默认关=工具不注册、卡片不渲染，对话与引入前一致。
+        { id: "renderArtifact", labelKey: "settings.renderArtifact", tier: "optional", onKeys: ["experimentalRenderArtifact"] },
         // 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离
         // 默认档；卡徽章可选。卡内两行各自读自己的键、写自己的 setter
         // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。

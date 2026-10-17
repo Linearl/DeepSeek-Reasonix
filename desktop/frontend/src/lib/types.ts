@@ -2620,6 +2620,8 @@ export interface DesktopStartupSettingsView {
   decisionPatternThreshold?: number;
   /** Task 801: skip the approval gate before writing (default off). */
   decisionPatternAutoApprove?: boolean;
+  /** Task 944: render_artifact tool + ArtifactCard; off unless the user opts in. */
+  experimentalRenderArtifact?: boolean;
   /** multi-session collaboration experiment (task 19); off unless the user opts in. */
   experimentalSessionCollab?: boolean;
   /** merged safety/cost switch (task 517; one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards); off unless the user opts in. */

@@ -85,12 +85,14 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 943：multiEditInjection（multi_edit 直注，工具优化族拆分独立卡）
   // 按可选档入表——可选 29→30、总数 64→65（Go 侧同步 57→58）。任务 940：
   // approvalSelect（composer 权限选择器形态二选一，默认关）按可选档入表
-  // ——可选 30→31、总数 65→66（Go 侧同步 58→59；两件先后入表各 +1）。
-  ok(counts.recommended === 19 && counts.optional === 31 && counts.unstable === 15 && counts.retired === 1,
-    `register counts are 19/31/15/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 66, `register holds exactly 66 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 31 && LAB_TIER_COUNTS.unstable === 15 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 19/31/15/1");
+  // ——可选 30→31、总数 65→66（Go 侧同步 58→59；两件先后入表各 +1）。任务
+  // 944：renderArtifact（对话内产物卡片）按可选档入表——可选 31→32、
+  // 总数 66→67（Go 侧同步 59→60）。
+  ok(counts.recommended === 19 && counts.optional === 32 && counts.unstable === 15 && counts.retired === 1,
+    `register counts are 19/32/15/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 67, `register holds exactly 67 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.recommended === 19 && LAB_TIER_COUNTS.optional === 32 && LAB_TIER_COUNTS.unstable === 15 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 19/32/15/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -128,7 +130,8 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 686：workflowPanel 入表（两侧共享）——Go registry 56→57。
   // 任务 943：multiEditInjection 入表（两侧共享，工具优化族拆分）——57→58。
   // 任务 940：approvalSelect 入表（两侧共享）——Go registry 58→59（两件各 +1）。
-  ok(Object.keys(goTiers).length === 59, `Go registry parses to 59 entries (got ${Object.keys(goTiers).length})`);
+  // 任务 944：renderArtifact 入表（两侧共享）——Go registry 59→60。
+  ok(Object.keys(goTiers).length === 60, `Go registry parses to 60 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -164,8 +167,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
   // → 63。任务 686：workflowPanel 独立 rail 入口计入 → 64。任务 943：
   // multiEditInjection 独立 rail 入口计入 → 65。任务 940：approvalSelect
-  // 入表计入 → 66（943/940 两件先后入表各 +1）。
-  ok(covered.size === 66, "rail entries cover all 66 features");
+  // 入表计入 → 66（943/940 两件先后入表各 +1）。任务 944：renderArtifact
+  // 独立 rail 入口计入 → 67。
+  ok(covered.size === 67, "rail entries cover all 67 features");
 
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构

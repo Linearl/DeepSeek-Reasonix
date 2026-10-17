@@ -1680,6 +1680,12 @@ type AgentConfig struct {
 	// heartbeat writes decision-patterns.md (task 801 修订六). Off by default:
 	// the default posture reports the patterns and waits for the user.
 	DecisionPatternAutoApprove bool `toml:"decision_pattern_auto_approve"`
+	// ExperimentalRenderArtifact enables the task-944 render_artifact tool +
+	// ArtifactCard: the agent declares a deliverable file and the transcript
+	// renders an openable card (md/text preview, html open-only). Off by
+	// default (铁律 2): off = tool unregistered, frontend renders no card —
+	// zero behaviour.
+	ExperimentalRenderArtifact bool `toml:"experimental_render_artifact"`
 	// ExperimentalSessionCollab enables multi-session collaboration tools
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.

@@ -9,11 +9,14 @@ import { TurnActions, UserMessage } from "./Message";
 import { ProcessFoldHeader } from "./ProcessFoldHeader";
 import { InlineAssistantReasoning } from "./InlineAssistantReasoning";
 import { ToolCard } from "./ToolCard";
+import { ArtifactCard } from "./ArtifactCard";
 import { ReadOnlyBatch } from "./ReadOnlyBatch";
 import { ToolGroup } from "./ToolGroup";
 import { CompactionCard, NoticeCard, PhaseCard, SteerCard } from "./TranscriptCards";
 import { ExtensionCard } from "./ExtensionCard";
 import { LiveAssistantMessage } from "./LiveAssistantMessage";
+import { labFlagEnabled } from "../lib/labFlags";
+import { isRenderArtifactToolItem } from "../lib/artifactCard";
 
 type OpenTurnAction = { turn: number; menu: "summary" | "rewind" | "fork" };
 
@@ -28,6 +31,7 @@ export function useTranscriptRowRenderer({
   actionHoverMenus,
   turnStartAt,
   lastTurn,
+  supersededArtifacts,
   onFoldToggle,
   onReasoningManualOpen,
   reasoningFoldIntent,
@@ -53,6 +57,8 @@ export function useTranscriptRowRenderer({
   actionHoverMenus: boolean;
   turnStartAt?: number;
   lastTurn: number | undefined;
+  /** 任务 944: render_artifact 幂等归并——同一 path 的旧调用不渲染卡片。 */
+  supersededArtifacts: ReadonlySet<string>;
   onFoldToggle: (segmentKey: string, open: boolean) => void;
   onReasoningManualOpen: (segmentKey: string) => void;
   /** 任务 765: persisted user fold intent for one reasoning panel (undefined =
@@ -109,7 +115,22 @@ export function useTranscriptRowRenderer({
         onExplicitFoldChange={(open) => onReasoningFoldIntent(row.item.id, open)}
         onManualOpen={() => onReasoningManualOpen(row.segmentKey)}
       /></div>;
-      case "tool": return <div className="turn-collapse__body"><ToolCard item={row.item} subcalls={subcallsByParent.get(row.item.id)} tabId={tabId} /></div>;
+      case "tool": {
+        // 任务 944: render_artifact 产卡三条件——实验室开关开、调用成功、
+        // 不是被同 path 后续调用取代的旧卡（幂等归并）。任一不满足回退
+        // 普通工具卡：开关关=与引入前逐字节一致（铁律 2）；运行中/失败的
+        // 调用保持工具卡形态，错误照常可见（不许 dead card）。
+        if (
+          labFlagEnabled("renderArtifact")
+          && isRenderArtifactToolItem(row.item)
+          && row.item.status === "done"
+          && !row.item.error
+          && !supersededArtifacts.has(row.item.id)
+        ) {
+          return <div className="turn-collapse__body"><ArtifactCard item={row.item} tabId={tabId} /></div>;
+        }
+        return <div className="turn-collapse__body"><ToolCard item={row.item} subcalls={subcallsByParent.get(row.item.id)} tabId={tabId} /></div>;
+      }
       case "tool-batch": return <div className="turn-collapse__body"><ReadOnlyBatch items={[...row.items]} subcalls={subcallsByParent} tabId={tabId} /></div>;
       case "tool-group": return <div className="turn-collapse__body"><ToolGroup kind={row.groupKind} items={[...row.items]} subcalls={subcallsByParent} tabId={tabId} /></div>;
       case "phase": return <div className="turn-collapse__body"><PhaseCard id={row.item.id} text={row.item.text} /></div>;
@@ -159,6 +180,6 @@ export function useTranscriptRowRenderer({
     actionHoverMenus, actionPending, checkpointsByTurn, creationMode, lastTurn,
     onAcceptDelivery, onDeliveryContinue, onEditPrompt, onFoldToggle, onOpenChanges, onReasoningFoldIntent, onResendPrompt,
     onOpenVerification, onPrompt, onReasoningManualOpen, onRewind, onViewVersions, openAction,
-    reasoningFoldIntent, rewindDisabled, running, subcallsByParent, t, tabId, turnStartAt,
+    reasoningFoldIntent, rewindDisabled, running, subcallsByParent, supersededArtifacts, t, tabId, turnStartAt,
   ]);
 }

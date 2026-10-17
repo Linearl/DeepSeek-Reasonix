@@ -174,6 +174,8 @@ export interface SettingsView {
   // Task 801: skip the human approval gate before the heartbeat writes
   // decision-patterns.md (default off).
   decisionPatternAutoApprove?: boolean;
+  // Task 944: render_artifact tool + ArtifactCard lab switch (default off).
+  experimentalRenderArtifact?: boolean;
   // Task 184: host performance monitor — 5s samples of memory/IO/key files plus
   // periodic heap profiles. Off by default.
   experimentalPerfMonitor?: boolean;
