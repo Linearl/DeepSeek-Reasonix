@@ -1687,6 +1687,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		reg.Add(builtin.NewDecisionSolidifyTool(decisionSolidifySource{store: mem.Store}, solidifyPath, cfg.Agent.DecisionPatternThreshold, cfg.Agent.DecisionPatternAutoApprove))
 	}
 
+	// 任务 944（对话内产物卡片）：实验室开关默认关；关闭时工具不注册，模型
+	// 调用会得到「未知工具」而不是半失败。工具本身只读（校验路径+返回卡片
+	// 元数据），打开动作仍走 desktop opener 家族的同一门禁。
+	if cfg.Agent.ExperimentalRenderArtifact {
+		reg.Add(builtin.NewRenderArtifactTool(root))
+	}
+
 	// The `ask` tool puts structured multiple-choice questions to the user. It
 	// reaches them through the Asker on the call context, which interactive
 	// frontends wire to the controller (EnableInteractiveApproval); a headless run

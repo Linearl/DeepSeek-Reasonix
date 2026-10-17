@@ -1357,6 +1357,14 @@ func (c *Config) SetExperimentalDecisionPatterns(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalRenderArtifact toggles the task-944 render_artifact tool +
+// ArtifactCard lab switch. Applies on restart (boot snapshot): the tool is
+// registered at boot and the frontend gate reads the same boot snapshot.
+func (c *Config) SetExperimentalRenderArtifact(enabled bool) error {
+	c.Agent.ExperimentalRenderArtifact = enabled
+	return nil
+}
+
 // SetDecisionPatternFilePath overrides the solidified decision-patterns file
 // location (task 801 修订七). Empty restores the default
 // global-workspace/docs/decision-patterns.md. A non-empty value must name a
