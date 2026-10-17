@@ -191,7 +191,12 @@ type Controller struct {
 	prompt                  controllerPromptState
 	pinnedContextLoader     PinnedContextLoader
 	sessionContextStatic    sessioncontext.Sections
-	sessionDir              string
+	capabilityDirectory     func() (string, capability.DirectoryStats)
+	// directoryTruncationDropped dedupes the 20KB ratchet warning (task 969):
+	// it stores the last observed drop count so a persistent overflow logs once
+	// per distinct count instead of once per turn.
+	directoryTruncationDropped atomic.Int64
+	sessionDir                 string
 	// sessionV4 mirrors transcripts into the experimental v4 store when set.
 	sessionV4 *SessionV4Bridge
 	commands  atomic.Pointer[[]command.Command]
@@ -838,6 +843,10 @@ type Options struct {
 	// host user-turn snapshot rather than the cache-stable system prompt. Only
 	// Environment and Workspace are consumed; memory and skills stay live.
 	SessionContextStatic sessioncontext.Sections
+	// CapabilityDirectory renders the standing L1 capability directory block
+	// (task 969) from the live catalog on each real user turn. Nil keeps the
+	// session-context Capability catalog section empty.
+	CapabilityDirectory func() (string, capability.DirectoryStats)
 	// FileBranchesOnly keeps fork, branch, switch, and conversation rewind on
 	// separate session files even for schema-2 logs. The desktop sets it until
 	// its tabs bind to heads; every other frontend branches inside the log.
@@ -994,6 +1003,7 @@ func New(opts Options) *Controller {
 		prompt:                            newControllerPromptState(opts.SystemPrompt, opts.Executor),
 		pinnedContextLoader:               opts.PinnedContextLoader,
 		sessionContextStatic:              opts.SessionContextStatic,
+		capabilityDirectory:               opts.CapabilityDirectory,
 		sessionDir:                        opts.SessionDir,
 		sessionV4:                         opts.SessionV4,
 		sessionPath:                       opts.SessionPath,

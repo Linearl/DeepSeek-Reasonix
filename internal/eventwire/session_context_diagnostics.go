@@ -14,4 +14,6 @@ type SessionContextDiagnostics struct {
 	Workspace        SessionContextSectionDiagnostics `json:"workspace"`
 	BackgroundMemory SessionContextSectionDiagnostics `json:"backgroundMemory"`
 	SkillsCatalog    SessionContextSectionDiagnostics `json:"skillsCatalog"`
+	// CapabilityCatalog fingerprints the standing L1 directory block (task 969).
+	CapabilityCatalog SessionContextSectionDiagnostics `json:"capabilityCatalog"`
 }

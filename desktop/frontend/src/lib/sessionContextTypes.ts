@@ -12,4 +12,6 @@ export interface WireSessionContextDiagnostics {
   workspace: WireSessionContextSectionDiagnostics;
   backgroundMemory: WireSessionContextSectionDiagnostics;
   skillsCatalog: WireSessionContextSectionDiagnostics;
+  /** Standing L1 capability directory block (task 969). */
+  capabilityCatalog?: WireSessionContextSectionDiagnostics;
 }

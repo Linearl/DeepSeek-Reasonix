@@ -2723,6 +2723,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ResponseLanguage:       cfg.ResponseLanguage(),
 		ReasoningLanguage:      config.ReasoningLanguageForEntry(entry, cfg.ReasoningLanguage()),
 		SessionContextStatic:   sessionContextStatic,
+		// Task 969: the standing L1 directory renders from the live catalog on
+		// each turn; core tools already exposed at the L0 provider surface are
+		// filtered out so the block never duplicates the tool schema.
+		CapabilityDirectory: func() (string, capability.DirectoryStats) {
+			return capability.DirectoryBlock(catalogFn(), capability.DirectoryOptions{
+				ProviderVisible: reg.ProviderVisible,
+			})
+		},
 		DisableColdResumePrune: !cfg.ColdResumePruneEnabled(),
 		FileBranchesOnly:       opts.FileBranchesOnly,
 		Shell:                  shell,
