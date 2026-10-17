@@ -166,16 +166,19 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // =成员最高档（可选）；卡内两行各读各键各写各 setter，配置键零变化。
         // 任务 826：左右边栏 hover 展开两行入卡（左右独立两键两行，默认关；
         // 300ms 防误触 + 离开 15s 延时折叠，只回收 hover 自动展开的）。
+        // 任务 940：composer 权限选择器形态二选一行入卡（默认关=现按钮组，
+        // 开=zcode 同款下拉框省空间）。
         {
           id: "viewLayout",
           labelKey: "settings.viewLayout",
           tier: "optional",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight"],
+          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
             { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
             { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" },
             { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" },
+            { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" },
           ],
         },
         { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },

@@ -55,6 +55,8 @@ export const LAB_LIGHT_KEYS = {
   // 左右独立两键一字段一谓词，默认关=不渲染热区不挂事件（铁律 2）。
   experimentalSidebarHoverLeft: (s: SettingsView) => Boolean(s.experimentalSidebarHoverLeft),
   experimentalSidebarHoverRight: (s: SettingsView) => Boolean(s.experimentalSidebarHoverRight),
+  // 任务 940：composer 权限选择器形态二选一（默认关=现按钮组）。
+  experimentalApprovalSelect: (s: SettingsView) => Boolean(s.experimentalApprovalSelect),
   // 任务 742：心跳任务后台化（默认关；开启后心跳触发不进标签栏）。
   experimentalHeartbeatBackground: (s: SettingsView) => Boolean(s.experimentalHeartbeatBackground),
   experimentalTrajectoryView: (s: SettingsView) => Boolean(s.experimentalTrajectoryView),

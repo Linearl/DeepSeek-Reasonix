@@ -79,6 +79,9 @@ export interface SettingsView {
   // the settings save re-applies the snapshot, no restart.
   experimentalSidebarHoverLeft?: boolean;
   experimentalSidebarHoverRight?: boolean;
+  // 任务 940: composer permission-tier picker form (button group vs compact
+  // dropdown); default off, pure frontend gate — settings save re-applies.
+  experimentalApprovalSelect?: boolean;
   // 任务 686: workflow visualization panel (palette entry opening the DAG flow
   // view; default off, pure frontend gate — settings save re-applies).
   experimentalWorkflowPanel?: boolean;

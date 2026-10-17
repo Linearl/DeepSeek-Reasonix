@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -59,6 +59,11 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // 数据源 = perf 采样器同一遍 walk 的 eventsMb 落盘样本（零新增 IO）。
   // A flip applies on settings save (no restart).
   perfMonitor: false,
+  // 任务 940: composer 权限选择器形态二选一（experimental_approval_select）
+  // ships off (铁律 2) — with it off the permission picker keeps the exact
+  // segmented button group; on swaps it for a compact dropdown (zcode-style).
+  // A flip applies on settings save (no restart).
+  approvalSelect: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -87,7 +92,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect}`,
   );
   for (const listener of listeners) listener();
 }
