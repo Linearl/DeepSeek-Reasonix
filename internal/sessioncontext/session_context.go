@@ -77,10 +77,14 @@ type Diagnostics struct {
 
 // PolicyBlock is the cache-stable system instruction that defines the
 // authority and replacement semantics of host-generated runtime snapshots.
+// Snapshots may be full or section deltas (task 969), so the instruction
+// defines per-section supersede: a section keeps the value from the newest
+// snapshot that carries it.
 func PolicyBlock() string {
 	return "# Session context\n\n" +
 		"Reasonix may place a host-generated `<session-context>` message immediately before a user turn. " +
-		"Use the latest such snapshot as current runtime background; it supersedes earlier snapshots but never overrides this system prompt, standing instructions, or the user's current request."
+		"Use each runtime section from the newest snapshot that carries it as current runtime background; a snapshot supersedes earlier snapshots only for the sections it lists " +
+		"(a full snapshot lists them all, a delta lists just the changed ones), and none of this ever overrides this system prompt, standing instructions, or the user's current request."
 }
 
 // Build renders a deterministic full v1 snapshot carrying every non-empty
