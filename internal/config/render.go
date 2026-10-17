@@ -169,6 +169,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_gc_child_session":              "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
 	"experimental_general_purpose_subagent":      "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
+	"experimental_capability_groups":             "task 953：L0/L1 能力组披露面（use_capability list 摘要档+组行+体积闸、search 附组）——引擎侧开关与 954/955 共用，设置页卡随那两批交付补挂档位入表A（815 定档不建卡先例）",
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
@@ -858,6 +859,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_compact_model = %v   # task 707: serve compaction summaries with compact_model instead of the conversation model (off by default)\n", c.Agent.ExperimentalCompactModel)
 	fmt.Fprintf(&b, "compact_model = %q   # task 707: provider/model pair serving summary requests while the switch above is on (empty = keep the conversation model)\n", c.Agent.CompactModel)
 	fmt.Fprintf(&b, "experimental_high_speed_model = %v   # task 318.1: allow the high-speed model lane for highSpeedModels (off by default)\n", c.Agent.ExperimentalHighSpeedModel)
+	// 任务 953：L0/L1 能力组披露面（use_capability list 摘要档+组行+两道体积闸、
+	// search 附组归属）——与 954/955 共用开关。引擎侧开关：设置页卡随 954/955
+	// 批次补挂，本键先入渲染表防保存丢失（81/123 教训）。
+	fmt.Fprintf(&b, "experimental_capability_groups = %v   # task 953: use_capability list summary tier (30x240B) + kind=group rows + volume gates; search hits carry group membership (off by default)\n", c.Agent.ExperimentalCapabilityGroups)
 	fmt.Fprintf(&b, "experimental_proactive_compact = %v   # task 318.2: use proactive_compact_cooldown_minutes instead of the hard-coded 10min fold cooldown (off by default)\n", c.Agent.ExperimentalProactiveCompact)
 	fmt.Fprintf(&b, "proactive_compact_cooldown_minutes = %d   # task 318.2: model-driven fold cooldown in minutes (default 10; used only when the switch above is on)\n", c.Agent.ProactiveCompactCooldownMinutes)
 	fmt.Fprintf(&b, "experimental_cold_cache_compact = %v   # task 297: compact a long conversation once before it goes cold (off by default)\n", c.Agent.ExperimentalColdCacheCompact)
