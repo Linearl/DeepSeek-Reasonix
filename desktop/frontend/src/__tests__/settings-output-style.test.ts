@@ -52,9 +52,12 @@ ok(
 
 // 2. Detail card: gate toggle + selector wired to the backend, selector value
 // round-trips through the reloaded settings view, and unloadable files render.
+// 任务 961：outputStyle 独立 pane 退役——门控+选择器随迁「交互与呈现」合并
+// 卡（interactionPresentation 分支内保留原行与 setter，语义零变化）。
 ok(
-  panel.includes('selected === "outputStyle" && ('),
-  "detail card renders for outputStyle",
+  panel.includes('selected === "interactionPresentation" && (') &&
+    panel.includes('labLabel("outputStyle", t("settings.outputStyle"))'),
+  "detail card renders inside the interactionPresentation merged card (961)",
 );
 ok(
   panel.includes("app.SetExperimentalOutputStyleUI(on)"),

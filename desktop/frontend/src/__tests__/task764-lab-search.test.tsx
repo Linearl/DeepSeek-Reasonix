@@ -66,13 +66,15 @@ ok(panel.includes("for (const member of entry.members ?? []) parts.push(t(member
 {
   const tZh = translate(zh as Record<string, string>);
   const tEn = translate(en as Record<string, string>);
-  ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "心跳任务后台化", tZh) === "heartbeatBackground",
-    "「心跳任务后台化」 resolves to the heartbeatBackground card (zh)");
-  ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "Heartbeat background mode", tEn) === "heartbeatBackground",
-    "English label resolves to the same card (locale-driven, no extra word list)");
+  // 任务 961：heartbeatBackground 并入「智能自动化」合并卡——成员命中返回
+  // 父卡 id（成员没有独立 pane，父卡才是可打开面，764 契约不变）。
+  ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "心跳任务后台化", tZh) === "smartAutomation",
+    "「心跳任务后台化」 resolves to its parent merged card smartAutomation (zh)");
+  ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "Heartbeat background mode", tEn) === "smartAutomation",
+    "English label resolves to the same parent card (locale-driven, no extra word list)");
   ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "指定压缩模型", tZh) === "safetyCostControl",
     "member hit (指定压缩模型) resolves to its parent merged card");
-  ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "  心跳任务后台化  ", tZh) === "heartbeatBackground",
+  ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "  心跳任务后台化  ", tZh) === "smartAutomation",
     "query is trimmed (nav input whitespace tolerated)");
   ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "", tZh) === null && findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "   ", tZh) === null,
     "empty/blank query → null (zero behavior)");
