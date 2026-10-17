@@ -489,7 +489,14 @@ type SettingsView struct {
 	// boot snapshot, restart to apply. Task 915: *bool — nil (key absent)
 	// reaches the panel as null so the frontend shows the default-on state
 	// (?? true) and materializes it by writing true; explicit false stays false.
+	// 任务 943：族拆两键后本键只管 readBack 面。
 	ExperimentalToolOptimizations *bool `json:"experimentalToolOptimizations"`
+	// ExperimentalMultiEditInjection is the task-943 split of the 工具优化
+	// family: alone decides whether multi_edit joins the model-visible tools.
+	// *bool — nil (key absent) falls back to the family key on the Go side
+	// (migration: legacy family-on configs keep the injection face) and the
+	// panel renders the same fallback chain.
+	ExperimentalMultiEditInjection *bool `json:"experimentalMultiEditInjection"`
 	// Task 789: relaxed edit evidence gate, 工具优化 family companion (default
 	// false; 铁律 2). Task 815: settings-view mirror for the unified
 	// registration window.
@@ -780,7 +787,14 @@ type DesktopStartupSettingsView struct {
 	// boot snapshot, restart to apply. Task 915: *bool — nil (key absent)
 	// reaches the panel as null so the frontend shows the default-on state
 	// (?? true) and materializes it by writing true; explicit false stays false.
+	// 任务 943：族拆两键后本键只管 readBack 面。
 	ExperimentalToolOptimizations *bool `json:"experimentalToolOptimizations"`
+	// ExperimentalMultiEditInjection is the task-943 split of the 工具优化
+	// family: alone decides whether multi_edit joins the model-visible tools.
+	// *bool — nil (key absent) falls back to the family key on the Go side
+	// (migration: legacy family-on configs keep the injection face) and the
+	// panel renders the same fallback chain.
+	ExperimentalMultiEditInjection *bool `json:"experimentalMultiEditInjection"`
 	// Task 789: relaxed edit evidence gate, 工具优化 family companion (default
 	// false; 铁律 2). Task 815: settings-view mirror for the unified
 	// registration window.
@@ -1591,8 +1605,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// Task 163: usage card switch readback.
 		view.ExperimentalOpenCodeGoUsage = cfg.Agent.ExperimentalOpenCodeGoUsage
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
-		// Task 603: 工具优化 family readback.
+		// Task 603: 工具优化 family readback. 任务 943：族拆两键（readBack 面
+		// + multi_edit 直注独立键，后者缺省回落族键由 Go 侧解析）。
 		view.ExperimentalToolOptimizations = cfg.Agent.ExperimentalToolOptimizations
+		view.ExperimentalMultiEditInjection = cfg.Agent.ExperimentalMultiEditInjection
 		// Task 789: relaxed edit evidence gate readback (task 815 registration window).
 		view.ExperimentalEditEvidenceRelaxed = cfg.Agent.ExperimentalEditEvidenceRelaxed
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
@@ -1807,9 +1823,10 @@ func (a *App) Settings() SettingsView {
 		// Task 192: residency policy readback.
 		ExperimentalActiveTabResident: cfg.Agent.ExperimentalActiveTabResident,
 		// Task 575: heavy-bash write guard readback (task 815 lab entry).
-		ExperimentalBashHeavyGuard:    cfg.Sandbox.ExperimentalBashHeavyGuard,
-		ExperimentalFullAccess:        cfg.Agent.ExperimentalFullAccess,
-		ExperimentalToolOptimizations: cfg.Agent.ExperimentalToolOptimizations,
+		ExperimentalBashHeavyGuard:     cfg.Sandbox.ExperimentalBashHeavyGuard,
+		ExperimentalFullAccess:         cfg.Agent.ExperimentalFullAccess,
+		ExperimentalToolOptimizations:  cfg.Agent.ExperimentalToolOptimizations,
+		ExperimentalMultiEditInjection: cfg.Agent.ExperimentalMultiEditInjection,
 		// Task 789: relaxed edit evidence gate readback (task 815 registration window).
 		ExperimentalEditEvidenceRelaxed: cfg.Agent.ExperimentalEditEvidenceRelaxed,
 		ExperimentalTraceAsState:        cfg.Agent.TraceAsState,

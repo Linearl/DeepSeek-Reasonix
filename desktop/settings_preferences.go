@@ -225,8 +225,16 @@ func (a *App) SetExperimentalFullAccess(enabled bool) error {
 }
 
 // SetExperimentalToolOptimizations toggles the 工具优化 family (task 603).
+// 任务 943：族拆两键后本 setter 只管 readBack 面。
 func (a *App) SetExperimentalToolOptimizations(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalToolOptimizations(enabled) })
+}
+
+// SetExperimentalMultiEditInjection toggles the multi_edit injection face
+// (task 943 split of the 工具优化 family): on, multi_edit joins the
+// model-visible tools. Boot snapshot — restart to apply.
+func (a *App) SetExperimentalMultiEditInjection(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalMultiEditInjection(enabled) })
 }
 
 // SetAutonomousUpdateResume sets the auto-resume scope dial (task 254): off
