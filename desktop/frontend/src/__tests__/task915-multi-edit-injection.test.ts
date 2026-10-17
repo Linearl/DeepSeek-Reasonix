@@ -2,7 +2,9 @@
 // 任务 915 acceptance harness (multi_edit 注入面暴露——工具优化族键 + extras 通道):
 //  ① Go boot wiring: providerSurfaceExtras carries multi_edit behind the
 //     family switch (extras channel, stacks with restart_update), the
-//     addBuiltins readBack flag resolves through ToolOptimizationsEnabled;
+//     addBuiltins readBack flag resolves through ToolOptimizationsEnabled.
+//     任务 943 拆分：extras 门改读 MultiEditInjectionEnabled（注入键缺省
+//     回落族键），readBack 面仍读族键；
 //  ② config *bool panel-layer default-on: the field is a *bool, the render
 //     line is conditional (absent key never bakes to an explicit false), and
 //     the setter materializes a non-nil value;
@@ -11,8 +13,9 @@
 //  ④ frontend default-on: the card and the lab light render `?? true` for a
 //     null/undefined field, and the first-load effect materializes the key
 //     by writing true;
-//  ⑤ locale hints carry the second effect (multi_edit injection) and the
-//     boot-time timing note in all three dialects.
+//  ⑤ locale hints carry the injection effect and the boot-time timing note
+//     in all three dialects（任务 943 后注入面文案迁至 multiEditInjection 卡，
+//     文件级 needles 由两张卡任一携带即过）。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -34,13 +37,18 @@ console.log("\ntask 915 multi_edit injection (extras channel + panel-layer defau
 // ① Go boot wiring.
 {
   const boot = readRepo("internal/boot/boot.go");
-  ok(boot.includes(`if cfg.ToolOptimizationsEnabled() {
-		extras = append(extras, "multi_edit")`), "providerSurfaceExtras appends multi_edit behind ToolOptimizationsEnabled");
-  ok(boot.includes(`fileWriteReceipt, cfg.ToolOptimizationsEnabled())`), "addBuiltins readBack flag resolves through the same helper");
+  // 任务 943：extras 门改读 MultiEditInjectionEnabled（注入键缺省回落族键）。
+  ok(boot.includes(`if cfg.MultiEditInjectionEnabled() {
+		extras = append(extras, "multi_edit")`), "providerSurfaceExtras appends multi_edit behind MultiEditInjectionEnabled (task-943 split)");
+  // readBack 面仍走族键（addBuiltins 参数）。
+  ok(boot.includes(`fileWriteReceipt, cfg.ToolOptimizationsEnabled())`), "addBuiltins readBack flag still resolves through the family helper");
   const extrasTest = readRepo("internal/boot/provider_surface_extras_test.go");
   ok(extrasTest.includes("TestProviderSurfaceExtrasCarryMultiEditWithToolOptimizations"), "extras gate has its own two-state pin");
   ok(extrasTest.includes("TestBootRequestCarriesMultiEditWhenFamilyLit"), "real-build capture pins tools + readBack schema");
   ok(extrasTest.includes("TestUseCapabilityDispatchesMultiEditWhileFamilyExplicitlyOff"), "execution-surface-always-available pin exists");
+  // 任务 943：正反向独立两态的真实构建捕获。
+  ok(extrasTest.includes("TestBootRequestReadBackOnInjectionExplicitlyOff"), "forward-split (readBack on, injection off) real-build capture exists");
+  ok(extrasTest.includes("TestBootRequestInjectionOnFamilyExplicitlyOff"), "reverse-split (injection on, readBack off) real-build capture exists");
 }
 
 // ② config *bool + conditional render.

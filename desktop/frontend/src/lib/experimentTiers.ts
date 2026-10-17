@@ -75,7 +75,11 @@ export type TierFeatureId =
   | "orphanHandling"
   | "localServer"
   // 任务 603:「工具优化」族首件 (edit readBack + evidence gate linkage).
+  // 任务 943：族拆两卡——本 id 收窄为 readBack 面；multi_edit 直注独立 id。
   | "toolOptimizations"
+  // 任务 943: multi_edit 直注（原工具优化族第二效果拆出独立卡，可选档——
+  // 不开启只小幅影响：multi_edit 仍可经 use_capability 调用）。
+  | "multiEditInjection"
   // 任务 677→856 ③: 协作中心入口总开关（信件中心+群聊两图标合一；原
   // 「群聊入口」开关 collabGroupView 随语义一次性迁移为 collabHub，未稳定档沿用）。
   | "collabHub"
@@ -208,10 +212,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   pathRules: "unstable",
   orphanHandling: "unstable",
   localServer: "unstable",
-  // ── tool-opt（工具优化，1 项）────────────────────────────────
+  // ── tool-opt（工具优化，2 项；任务 943 拆分）──────────────────
   // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
-  // （Go 渲染表同步升档，562 两侧一致断言守护）。
+  // （Go 渲染表同步升档，562 两侧一致断言守护）。任务 943：本 id 收窄
+  // 为 readBack 面（含 789 证据门联动成员）。
   toolOptimizations: "recommended",
+  // 任务 943：multi_edit 直注独立卡（原族卡第二效果拆出）。可选档——按
+  // 550 口径：不开启只小幅影响（multi_edit 仍可经 use_capability 调用，
+  // edit_file 批量编辑引导降级），非体验缺口。
+  multiEditInjection: "optional",
   // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
   // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
   heartbeatRotation: "optional",
@@ -263,10 +272,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * editEvidenceRelaxed + homePointer 等收口前已在表而 pin 未跟的项一并计入；
  * Go 侧 56 条目，详见 task562 测试头注）。）
  * 任务 686：workflowPanel（工作流可视化面板，未稳定档）入表——未稳定
- * 14→15、总数 63→64（Go 侧同步 56→57）。 */
+ * 14→15、总数 63→64（Go 侧同步 56→57）。任务 943：multiEditInjection
+ * （multi_edit 直注，工具优化族拆分独立卡）按可选档入表——可选 29→30、
+ * 总数 64→65（Go 侧同步 57→58）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 19,
-  optional: 29,
+  optional: 30,
   unstable: 15,
   retired: 1,
 };

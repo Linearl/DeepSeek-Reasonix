@@ -345,8 +345,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       labelKey: "settings.labGroup.toolOpt",
       entries: [
         // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
-        // （注册表与 Go 渲染表同步升档；562 drift 检查钉两侧一致）。
+        // （注册表与 Go 渲染表同步升档；562 drift 检查钉两侧一致）。任务
+        // 943：原「工具优化」族拆两卡——本卡只管 readBack 面（789 证据门
+        // 联动是读回计证据的伴生，成员行随本卡）。
         { id: "toolOptimizations", labelKey: "settings.toolOptimizations", tier: "recommended", onKeys: ["experimentalToolOptimizations"], members: [{ id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" }] },
+        // 任务 943：multi_edit 直注独立卡（原族卡第二效果拆出）。可选档——
+        // 不开启只小幅影响（multi_edit 仍可经 use_capability 调用，edit_file
+        // 批量编辑引导降级）；灯读数回落链与 Go 侧一致（键缺省跟随旧族键）。
+        { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional", onKeys: ["experimentalMultiEditInjection"] },
       ],
     },
   ],

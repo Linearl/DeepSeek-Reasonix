@@ -1274,8 +1274,13 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // writable-root set and the bash spec — the flip applies on the next restart.
   SetExperimentalFullAccess(enabled: boolean): Promise<void>;
   // 任务 603: the 工具优化 lab family (edit readBack + evidence gate
-  // linkage). Boot lights the tool surface — restart to apply.
+  // linkage). Boot lights the tool surface — restart to apply. 任务 943:
+  // the family split — this setter now only governs the readBack face.
   SetExperimentalToolOptimizations(enabled: boolean): Promise<void>;
+  // 任务 943: multi_edit injection, split out of the 工具优化 family —
+  // while on, multi_edit joins the model-visible tools. Boot snapshot,
+  // restart to apply.
+  SetExperimentalMultiEditInjection(enabled: boolean): Promise<void>;
   // Task 789: relaxed edit evidence gate (工具优化 companion; restart to
   // apply). Task 815: settings-page entry for the registration window.
   SetExperimentalEditEvidenceRelaxed(enabled: boolean): Promise<void>;
@@ -6051,6 +6056,7 @@ function makeMockApp(): AppBindings {
     async SetUpdateChimeTune() {},
     async SetExperimentalFullAccess() {},
     async SetExperimentalToolOptimizations() {},
+    async SetExperimentalMultiEditInjection() {},
     async SetExperimentalEditEvidenceRelaxed() {},
     async SetAutonomousUpdateResume() {},
     async ResolveTakeoverDecision() { return false; },

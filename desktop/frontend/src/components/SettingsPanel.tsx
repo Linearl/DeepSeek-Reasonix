@@ -282,7 +282,10 @@ export function SettingsPanel({
   // 任务 915：工具优化族键缺省时（后端 *bool nil → JSON null）面板按默认开
   // 渲染，首载即写入 true 落盘（write-on-show，670 AcknowledgeForkNotice
   // 同款 best-effort：失败不打断设置页，下次打开重试；显式关恒为 false
-  // 不触发）。
+  // 不触发）。任务 943：拆出的 multi_edit 直注键不加播种——它的显示与
+  // Go 侧同一条回落链（experimentalMultiEditInjection ?? 族键 ?? 面板默认开），
+  // 族键播种 true 后回落自然解析为开，无需二次落盘；显式关了族键的存量
+  // 用户回落为关，不会被面板悄悄打开注入。
   const toolOptimizationsSeeded = useRef(false);
   useEffect(() => {
     if (toolOptimizationsSeeded.current || !s || s.experimentalToolOptimizations != null) return;
@@ -1944,7 +1947,10 @@ type ExperimentFeatureId =
   // 任务 846: change-data-home wizard card (storage group; unstable, default off).
   | "homePointer"
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
+  // 任务 943：族拆两卡——本 id 收窄为 readBack 面；multi_edit 直注独立卡。
   | "toolOptimizations"
+  // 任务 943: multi_edit 直注独立卡（原族卡第二效果拆出，键缺省回落族键）。
+  | "multiEditInjection"
   // 任务 677→856 ③: unified collaboration-hub entry switch (the mail-inbox
   // + group-chat icons merged into one; renamed from collabGroupView).
   | "collabHub"
@@ -1960,7 +1966,9 @@ type ExperimentFeatureId =
 // （一个 id 一个可点开的卡片分支）；yaml 引用白名单外的 id ⇒ 整份回退默认
 // （防半份数据渲染/白屏）。任务 783 后仍 33 个 id（-opencodeGoUsage
 // +usageMonitoring）与布局一一对应（722 后 37 → 782 三张合并卡 -7 独立
-// pane +3 容器 id → 33）。
+// pane +3 容器 id → 33；此后 686 workflowPanel / 846 homePointer 等陆续
+// 入表，实数以 Set 为准）。任务 943：multiEditInjection（工具优化族拆分
+// 独立卡）入表。
 const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "autopilot",
   "sessionCollab",
@@ -2001,6 +2009,8 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "orphanHandling",
   "localServer",
   "toolOptimizations",
+  // 任务 943：multi_edit 直注独立卡（工具优化族拆分）。
+  "multiEditInjection",
   // 任务 775：kind:param 参数卡 id——pane 由通用参数渲染器承接（无独立
   // 硬编码分支）；登记进白名单与 feature 卡同一安全网语义（yaml 引用
   // 白名单外 id ⇒ 整份回退默认）。
@@ -5018,7 +5028,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                readBack (edited snippet + context) and the returned window
                counts as fresh read evidence, so a same-file follow-up edit
                skips the read round trip. Gate 联动是行为变更：开关默认关，
-               异常时先关开关回退。 */
+               异常时先关开关回退。任务 943：族拆两卡——本卡只管 readBack
+               面（multi_edit 直注拆至独立卡 multiEditInjection）。 */
             <>
             <SettingsField label={labLabel("toolOptimizations", t("settings.toolOptimizations"))} hint={t("settings.toolOptimizationsHint")} icon={<Sparkles size={18} />} stacked>
               <SettingsOptions layout="field" className="set-seg">
@@ -5059,6 +5070,30 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
             </>
+          )}
+          {selected === "multiEditInjection" && (
+            /* 任务 943: multi_edit 直注独立卡（原「工具优化」族卡第二效果
+               拆出）——族键开启时 multi_edit 进入模型可见工具列表。显示走
+               与 Go 侧同一条回落链（键缺省跟随旧族键，族键也缺省按面板层
+               默认开）：存量族键开的用户拆分前后显示不跳变。 */
+            <SettingsField label={labLabel("multiEditInjection", t("settings.multiEditInjection"))} hint={t("settings.multiEditInjectionHint")} icon={<Sparkles size={18} />} stacked>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${(s.experimentalMultiEditInjection ?? (s.experimentalToolOptimizations ?? true)) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalMultiEditInjection(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.multiEditInjection.on" : "settings.multiEditInjection.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+              <p className="approval-mode-hint">{t("settings.multiEditInjection.risk")}</p>
+            </SettingsField>
           )}
         </div>
       </div>
