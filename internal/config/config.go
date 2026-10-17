@@ -1686,6 +1686,15 @@ type AgentConfig struct {
 	// default (铁律 2): off = tool unregistered, frontend renders no card —
 	// zero behaviour.
 	ExperimentalRenderArtifact bool `toml:"experimental_render_artifact"`
+	// ExperimentalCapabilityGroups enables the task-955 capability group
+	// disclosure layer: Entry.Group metadata is rendered (list group rows,
+	// route group suggestions, search group attribution, group cards via
+	// inspect tool:group/<name>). Groups are pure metadata — no group
+	// lifecycle, permissions, or per-group switch (951 修点④). Off by default
+	// (铁律 2): off = no group entries in the catalog, no group rendering —
+	// zero behaviour. The same switch also gates task 953 list v2 and task
+	// 954 session_hub.
+	ExperimentalCapabilityGroups bool `toml:"experimental_capability_groups"`
 	// ExperimentalSessionCollab enables multi-session collaboration tools
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.
