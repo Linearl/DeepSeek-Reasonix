@@ -130,6 +130,103 @@ func (t renameSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 // NewMoveTopicToGroupTool exposes the desktop's grouping for a collaborating
 // agent (task 170). The target session keeps its contact_id and transcript; only
 // its group membership changes.
+// NewRenameTopicTool exposes the desktop's rename to a collaborating agent as
+// a typed-id face (任务 949): the naming-plan executor addresses a session by
+// topic_id or contact_id only — never by a display name it is about to change —
+// and gets the ID-stability guarantee spelled out in the receipt.
+//
+// It shares the rename_session host callback on purpose: one capability, one
+// permission surface (the same host-capability gate that registers
+// rename_session; no extra panel switch, matching set_session_purpose's face).
+func NewRenameTopicTool(cfg SessionCollabConfig, rename RenameSessionFunc) tool.Tool {
+	return renameTopicTool{cfg: cfg, rename: rename}
+}
+
+type renameTopicTool struct {
+	cfg    SessionCollabConfig
+	rename RenameSessionFunc
+}
+
+func (renameTopicTool) Name() string { return "rename_topic" }
+
+func (renameTopicTool) Description() string {
+	return "Rename a session's display title (sidebar, search, contact directory) by topic_id OR contact_id — both from list_addressable_sessions. ID-stable (task 453 precedent): a rename NEVER changes the contact_id or the topic_id, so every existing cross-session reference keeps addressing the same session. Returns the previous and the new title — update any memory/document that still quotes the old title. Metadata only: safe while the session is running (transcript untouched). Same permission surface as set_session_purpose. Experimental."
+}
+
+func (renameTopicTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"topic_id":{"type":"string","description":"topic_id of the session to rename (from list_addressable_sessions). Pass this OR contact_id."},"contact_id":{"type":"string","description":"contact_id of the session to rename (from list_addressable_sessions). Pass this OR topic_id."},"title":{"type":"string","description":"New display title (non-empty)."}},"required":["title"]}`)
+}
+
+func (renameTopicTool) ReadOnly() bool { return false }
+
+func (t renameTopicTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		TopicID   string `json:"topic_id"`
+		ContactID string `json:"contact_id"`
+		Title     string `json:"title"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	title := strings.TrimSpace(p.Title)
+	if title == "" {
+		return "", fmt.Errorf("title is required")
+	}
+	topicID, contactID := strings.TrimSpace(p.TopicID), strings.TrimSpace(p.ContactID)
+	if topicID == "" && contactID == "" {
+		return "", fmt.Errorf("pass topic_id or contact_id (the session to rename)")
+	}
+	// Resolve on whichever id was given; ids are exact keys in the directory,
+	// so a display name can never be mistaken for the target here.
+	ref := contactID
+	if ref == "" {
+		ref = topicID
+	}
+	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+	id, err := ResolveTarget(ids, ref)
+	if err != nil {
+		return "", err
+	}
+	// Both ids given: they must name the SAME session, otherwise the caller
+	// would retitle one session while believing it addressed another.
+	if topicID != "" && contactID != "" && id.TopicID != topicID {
+		return "", fmt.Errorf("topic_id %q does not belong to contact_id %q (different sessions)", topicID, contactID)
+	}
+	if id.Archived {
+		return "", fmt.Errorf("session %q is archived; cannot rename it", ref)
+	}
+	if t.rename == nil {
+		return "", fmt.Errorf("rename_topic: this host cannot rename sessions")
+	}
+	result, err := t.rename(id.TopicID, id.SessionPath, title)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(result.TopicID) == "" {
+		result.TopicID = id.TopicID
+	}
+	if strings.TrimSpace(result.ContactID) == "" {
+		result.ContactID = id.ContactID
+	}
+	if strings.TrimSpace(result.SessionPath) == "" {
+		result.SessionPath = id.SessionPath
+	}
+	if strings.TrimSpace(result.Previous) == "" {
+		result.Previous = id.Title
+	}
+	if strings.TrimSpace(result.Title) == "" {
+		result.Title = title
+	}
+	out, _ := json.Marshal(map[string]any{
+		"status": "renamed",
+		"result": result,
+		"note": "contact_id and topic_id are unchanged (a rename never re-addresses the session); " +
+			"the sidebar, search and the contact directory now show the new title — " +
+			"update memories/documents that still reference the OLD title",
+	})
+	return string(out), nil
+}
+
 func NewMoveTopicToGroupTool(cfg SessionCollabConfig, move MoveTopicToGroupFunc) tool.Tool {
 	return moveTopicToGroupTool{cfg: cfg, move: move}
 }
