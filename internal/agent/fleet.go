@@ -361,11 +361,11 @@ func (f *FleetTool) runFleet(ctx context.Context, sink event.Sink, specs []Profi
 				continue
 			}
 			rec.settled(runjournal.MemberSettlement{
-				Idx:    i + 1,
-				Status: string(results[i].status),
-				Label:  specs[i].Task.Description,
-				Ref:    results[i].ref,
-				Error:  errorText(results[i].err),
+				Idx:     i + 1,
+				Status:  string(results[i].status),
+				Label:   specs[i].Task.Description,
+				Ref:     results[i].ref,
+				Error:   errorText(results[i].err),
 				Preview: results[i].output,
 			})
 		}

@@ -140,25 +140,146 @@ func (a *Agent) prepareTurnContext(ctx context.Context) (provider.Message, bool)
 		return provider.Message{}, false
 	}
 	visible := a.modelVisibleMessages()
-	previous, found := latestTurnContextSnapshot(visible)
+	// Task 969: gate the append on the merged per-section view instead of the
+	// newest envelope alone. Section deltas mean the newest snapshot may carry
+	// only part of the runtime state; unchanged sections must not be re-sent or
+	// the provider prefix cache pays for the standing catalog block again.
+	merged, found := mergedTurnContextSections(visible)
 	a.turn.sessionContext = turnContextDiagnostics{
 		snapshot: snapshot,
 		stats:    sessioncontext.SectionDiagnostics(snapshot),
 		target:   role.String(),
 	}
 	if found {
-		if bootstrapOnly || previous.Digest == snapshot.Digest {
+		if bootstrapOnly {
 			return provider.Message{}, false
 		}
-		a.turn.sessionContext.reasons = changedTurnContextReasons(previous, snapshot)
-	} else {
-		reason := "first_seen"
-		if bootstrapOnly || hasPriorConversation(visible) {
-			reason = "legacy_resume"
+		delta := sessioncontext.BuildDelta(snapshot.Sections, merged)
+		if delta.Content == "" {
+			// Nothing changed since the merged earlier state: reuse the same
+			// block and keep the provider prefix cache warm.
+			return provider.Message{}, false
 		}
-		a.turn.sessionContext.reasons = []string{reason}
+		a.turn.sessionContext.snapshot = delta
+		a.turn.sessionContext.reasons = changedTurnContextReasons(merged, snapshot.Sections)
+		return HostGeneratedUserMessage(delta.Content), true
 	}
+	reason := "first_seen"
+	if bootstrapOnly || hasPriorConversation(visible) {
+		reason = "legacy_resume"
+	}
+	a.turn.sessionContext.reasons = []string{reason}
 	return HostGeneratedUserMessage(snapshot.Content), true
+}
+
+// mergedTurnContextSections resolves the effective runtime sections from the
+// newest snapshot backwards. Delta envelopes only supersede the sections they
+// carry; a full snapshot terminates the walk because it supersedes every
+// earlier snapshot, including sections it omits.
+func mergedTurnContextSections(messages []provider.Message) (sessioncontext.Sections, bool) {
+	var merged sessioncontext.Sections
+	found := false
+	for i := range slices.Backward(messages) {
+		message := messages[i]
+		if message.Role != provider.RoleUser || message.Origin != provider.MessageOriginHost {
+			continue
+		}
+		snapshot, ok := sessioncontext.Parse(message.Content)
+		if !ok {
+			continue
+		}
+		found = true
+		fillMissingSections(&merged, snapshot.Sections)
+		if !snapshot.Delta {
+			// A full snapshot resolves every remaining section (omission = empty)
+			// and supersedes everything older.
+			return merged, true
+		}
+	}
+	return merged, found
+}
+
+// fillMissingSections copies each non-empty section value into dst where dst is
+// still empty.
+func fillMissingSections(dst *sessioncontext.Sections, src sessioncontext.Sections) {
+	if src.Environment != "" && dst.Environment == "" {
+		dst.Environment = src.Environment
+	}
+	if src.Workspace != "" && dst.Workspace == "" {
+		dst.Workspace = src.Workspace
+	}
+	if src.SkillsCatalog != "" && dst.SkillsCatalog == "" {
+		dst.SkillsCatalog = src.SkillsCatalog
+	}
+	if src.CapabilityCatalog != "" && dst.CapabilityCatalog == "" {
+		dst.CapabilityCatalog = src.CapabilityCatalog
+	}
+	if src.BackgroundMemory != "" && dst.BackgroundMemory == "" {
+		dst.BackgroundMemory = src.BackgroundMemory
+	}
+}
+
+// sessionContextCarrierIndexes returns the message indexes that must survive a
+// compaction cut: the newest snapshot carrying each section, plus the full
+// snapshot that terminates the merge when one exists. Keeping only the newest
+// envelope would drop sections that a delta relies on from older snapshots.
+func sessionContextCarrierIndexes(messages []provider.Message) []int {
+	type pending struct {
+		index    int
+		sections sessioncontext.Sections
+		full     bool
+	}
+	var walk []pending
+	var covered sessioncontext.Sections
+	for i := range slices.Backward(messages) {
+		message := messages[i]
+		if message.Role != provider.RoleUser || message.Origin != provider.MessageOriginHost {
+			continue
+		}
+		snapshot, ok := sessioncontext.Parse(message.Content)
+		if !ok {
+			continue
+		}
+		section := snapshot.Sections
+		if !snapshot.Delta {
+			// The full snapshot resolves the rest; only carry it.
+			carriers := []int{i}
+			for j := len(walk) - 1; j >= 0; j-- {
+				carriers = append(carriers, walk[j].index)
+			}
+			slices.Reverse(carriers)
+			return carriers
+		}
+		walk = append(walk, pending{index: i, sections: section})
+		if section.Environment != "" {
+			covered.Environment = section.Environment
+		}
+		if section.Workspace != "" {
+			covered.Workspace = section.Workspace
+		}
+		if section.SkillsCatalog != "" {
+			covered.SkillsCatalog = section.SkillsCatalog
+		}
+		if section.CapabilityCatalog != "" {
+			covered.CapabilityCatalog = section.CapabilityCatalog
+		}
+		if section.BackgroundMemory != "" {
+			covered.BackgroundMemory = section.BackgroundMemory
+		}
+		if covered.Environment != "" && covered.Workspace != "" &&
+			covered.SkillsCatalog != "" && covered.CapabilityCatalog != "" &&
+			covered.BackgroundMemory != "" {
+			break
+		}
+	}
+	if len(walk) == 0 {
+		return nil
+	}
+	carriers := make([]int, 0, len(walk))
+	for i := len(walk) - 1; i >= 0; i-- {
+		carriers = append(carriers, walk[i].index)
+	}
+	return carriers
 }
 
 func latestTurnContextSnapshot(messages []provider.Message) (sessioncontext.Snapshot, bool) {
@@ -197,16 +318,21 @@ func hasPriorConversation(messages []provider.Message) bool {
 	return false
 }
 
-func changedTurnContextReasons(previous, current sessioncontext.Snapshot) []string {
+// changedTurnContextReasons attributes an append to the sections that differ
+// from the merged earlier state (task 969 分节 digest).
+func changedTurnContextReasons(previous, current sessioncontext.Sections) []string {
 	var reasons []string
-	if previous.Sections.Environment != current.Sections.Environment || previous.Sections.Workspace != current.Sections.Workspace {
+	if previous.Environment != current.Environment || previous.Workspace != current.Workspace {
 		reasons = append(reasons, "runtime_changed")
 	}
-	if previous.Sections.BackgroundMemory != current.Sections.BackgroundMemory {
+	if previous.BackgroundMemory != current.BackgroundMemory {
 		reasons = append(reasons, "memory_changed")
 	}
-	if previous.Sections.SkillsCatalog != current.Sections.SkillsCatalog {
+	if previous.SkillsCatalog != current.SkillsCatalog {
 		reasons = append(reasons, "skills_changed")
+	}
+	if previous.CapabilityCatalog != current.CapabilityCatalog {
+		reasons = append(reasons, "catalog_changed")
 	}
 	if len(reasons) == 0 {
 		reasons = append(reasons, "snapshot_changed")
@@ -233,15 +359,20 @@ func eventSessionContextDiagnostics(observed turnContextDiagnostics) *event.Sess
 		TargetRole: observed.target, Reasons: append([]string(nil), observed.reasons...),
 		Environment: section(observed.stats.Environment), Workspace: section(observed.stats.Workspace),
 		BackgroundMemory: section(observed.stats.BackgroundMemory), SkillsCatalog: section(observed.stats.SkillsCatalog),
+		CapabilityCatalog: section(observed.stats.CapabilityCatalog),
 	}
 }
 
 func captureTurnContextShape(system string, schemas []provider.ToolSchema, rewriteVersion int, messages []provider.Message) PrefixShape {
 	shape := CaptureShape(system, schemas, rewriteVersion)
-	if snapshot, ok := latestTurnContextSnapshot(messages); ok {
-		shape.SessionContextDigest = snapshot.Digest
+	// Task 969: attribute on the merged per-section state, not the newest
+	// envelope — a section-delta digest alone would misreport the effective
+	// runtime context whenever the delta only refreshed one section.
+	if merged, ok := mergedTurnContextSections(messages); ok {
+		digest := sessioncontext.Build(merged).Digest
+		shape.SessionContextDigest = digest
 		shape.PrefixHash = shortHash(map[string]string{
-			"stable": shape.PrefixHash, "session_context": snapshot.Digest,
+			"stable": shape.PrefixHash, "session_context": digest,
 		})
 	}
 	return shape

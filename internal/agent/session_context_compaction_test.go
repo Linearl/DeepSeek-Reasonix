@@ -20,7 +20,7 @@ func TestCompactionExcludesAllContextsFromSummaryAndKeepsLatestFoldSnapshot(t *t
 		{Role: provider.RoleAssistant, Content: "second answer"},
 	}
 	a := &Agent{}
-	kept, fold, retention := a.partitionFoldForProjectionAt(region, 1, 1+latestSessionContextIndex(region))
+	kept, fold, retention := a.partitionFoldForProjectionAt(region, 1, sessionContextCarrierSet(append([]provider.Message{{Role: provider.RoleSystem}}, region...)))
 	if len(kept) != 1 || kept[0].Content != latestSnapshot.Content || kept[0].Origin != provider.MessageOriginHost {
 		t.Fatalf("kept context = %+v", kept)
 	}
@@ -59,7 +59,7 @@ func TestCompactionDropsFoldContextsWhenLatestRemainsInRecentTail(t *testing.T) 
 		latest, {Role: provider.RoleUser, Content: "recent"},
 	}
 	a := &Agent{}
-	kept, fold, _ := a.partitionFoldForProjectionAt(all[1:4], 1, latestSessionContextIndex(all))
+	kept, fold, _ := a.partitionFoldForProjectionAt(all[1:4], 1, sessionContextCarrierSet(all))
 	if len(kept) != 0 || len(fold) != 2 {
 		t.Fatalf("kept=%+v fold=%+v", kept, fold)
 	}

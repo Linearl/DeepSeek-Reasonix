@@ -51,10 +51,10 @@ type toolCallPlan struct {
 	// ruled. Task 906 (upstream #12528/PR12614): an extension that blocks a
 	// write which already reached the disk must not flip the receipt to a
 	// failure — the extension rules on content, not on what landed.
-	ranClean                                               bool
-	hooksMayMutateWorkspace                                bool
-	perCallWriteRoots                                      []string
-	skipOrdinaryGate                                       bool
+	ranClean                bool
+	hooksMayMutateWorkspace bool
+	perCallWriteRoots       []string
+	skipOrdinaryGate        bool
 	// incompleteReadRoot binds an exact host-requested source/result page to
 	// the read chain it advances. Empty means an independent tool call.
 	incompleteReadRoot   string

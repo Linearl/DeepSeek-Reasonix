@@ -409,15 +409,21 @@ func (a *Agent) planVisibleCompression(snap explicitCompressionSnapshot, directi
 	plan.foldMask = make([]bool, len(snap.visible))
 	plan.dropMask = make([]bool, len(snap.visible))
 	plan.firstFold = len(snap.visible)
-	latestContext := latestSessionContextIndex(snap.visible)
+	// Task 969: a section-delta snapshot only supersedes the sections it
+	// carries, so compaction must retain the carrier of every section rather
+	// than only the newest envelope.
+	carriers := make(map[int]bool)
+	for _, idx := range sessionContextCarrierIndexes(snap.visible) {
+		carriers[idx] = true
+	}
 	for i, msg := range snap.visible {
 		selected := i >= start && i < end
 		mergeSummary := i < completedEnd && isCompactionSummary(msg)
 		if isSessionContextMessage(msg) {
 			// Context never enters the summarizer. Once an older snapshot falls
 			// inside the explicitly compressed range, remove it from the
-			// projection; the latest valid snapshot remains byte-identical.
-			plan.dropMask[i] = selected && i != latestContext
+			// projection; the section carriers remain byte-identical.
+			plan.dropMask[i] = selected && !carriers[i]
 			continue
 		}
 		if msg.Role == provider.RoleSystem || i < head || (!selected && !mergeSummary) {
@@ -935,7 +941,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	if !ok {
 		return CompactionNoop, nil
 	}
-	latestContext := latestSessionContextIndex(msgs)
+	latestContext := sessionContextCarrierSet(msgs)
 	_, preliminaryFold, _ := a.partitionFoldForProjectionAt(msgs[head:start], head, latestContext)
 	if len(preliminaryFold) == 0 || (!req.force && !foldEconomics(preliminaryFold)) {
 		return CompactionNoop, nil
@@ -1139,16 +1145,19 @@ type userTurnRetention struct {
 }
 
 func (a *Agent) partitionFoldForProjection(region []provider.Message) (kept, fold []provider.Message, retention userTurnRetention) {
-	return a.partitionFoldForProjectionAt(region, 0, latestSessionContextIndex(region))
+	return a.partitionFoldForProjectionAt(region, 0, sessionContextCarrierSet(region))
 }
 
-func (a *Agent) partitionFoldForProjectionAt(region []provider.Message, offset, latestContext int) (kept, fold []provider.Message, retention userTurnRetention) {
+// partitionFoldForProjectionAt keeps every session-context message whose index
+// is in carriers (task 969: one carrier per runtime section, not just the
+// newest envelope) and folds the rest.
+func (a *Agent) partitionFoldForProjectionAt(region []provider.Message, offset int, carriers map[int]bool) (kept, fold []provider.Message, retention userTurnRetention) {
 	for i, m := range region {
 		if m.LocalOnly || IsPinnedContextRevision(m) {
 			continue
 		}
 		if isSessionContextMessage(m) {
-			if offset+i == latestContext {
+			if carriers[offset+i] {
 				kept = append(kept, m)
 			}
 			continue
@@ -1159,6 +1168,14 @@ func (a *Agent) partitionFoldForProjectionAt(region []provider.Message, offset, 
 		}
 	}
 	return kept, fold, retention
+}
+
+func sessionContextCarrierSet(messages []provider.Message) map[int]bool {
+	set := make(map[int]bool)
+	for _, idx := range sessionContextCarrierIndexes(messages) {
+		set[idx] = true
+	}
+	return set
 }
 
 func latestSessionContextIndex(messages []provider.Message) int {

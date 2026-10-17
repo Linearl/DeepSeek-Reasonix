@@ -42,11 +42,14 @@ type Sections struct {
 
 // Snapshot is one validated session-context envelope. Content is the exact
 // provider-visible representation; Digest covers the normalized body only.
+// Delta reports whether the envelope carries only the sections that changed
+// instead of the full runtime state.
 type Snapshot struct {
 	Version  int
 	Digest   string
 	Content  string
 	Sections Sections
+	Delta    bool
 }
 
 // Part is one exact substring returned by SplitBlocks. SessionContext is true
@@ -147,7 +150,7 @@ func buildSnapshot(sections Sections, head string) Snapshot {
 	bodyText := body.String()
 	digest := digestOf(bodyText)
 	content := openTag + "\n" + bodyText + "\n\n" + digestPrefix + digest + "\n" + closeTag
-	return Snapshot{Version: Version, Digest: digest, Content: content, Sections: sections}
+	return Snapshot{Version: Version, Digest: digest, Content: content, Sections: sections, Delta: head == deltaPreamble}
 }
 
 // Parse validates a complete v1 envelope. Surrounding whitespace is accepted
@@ -187,7 +190,7 @@ func Parse(content string) (Snapshot, bool) {
 	if !ok {
 		return Snapshot{}, false
 	}
-	return Snapshot{Version: Version, Digest: digest, Content: content, Sections: sections}, true
+	return Snapshot{Version: Version, Digest: digest, Content: content, Sections: sections, Delta: head == deltaPreamble}, true
 }
 
 func preambleOf(body string) (string, bool) {
