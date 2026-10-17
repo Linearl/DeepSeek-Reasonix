@@ -57,6 +57,13 @@ type UseCapabilityTool struct {
 	// state is session-shared connection observation when built via
 	// MCPCapabilityRuntime; nil falls back to a private map for tests.
 	state *mcpProxySharedState
+	// capabilityGroups gates the task-953 L0/L1 group disclosure surface
+	// (shared experimental_capability_groups switch with 954/955, default
+	// off): list switches to the 30×240B summary tier with kind=group rows
+	// and the two volume gates; search attaches group membership + call
+	// hints; inspect resolves tool:group/<key> cards. Off = the pre-953
+	// list/search/inspect behavior and schema, byte for byte.
+	capabilityGroups bool
 }
 
 // NewUseCapabilityTool builds a standalone capability proxy (tests and simple
@@ -86,23 +93,36 @@ func (t *UseCapabilityTool) CloneForAgent(ledger *capability.Ledger, audit *capa
 		state = &mcpProxySharedState{connected: map[string]bool{}}
 	}
 	clone := &UseCapabilityTool{
-		host:     t.host,
-		lifeCtx:  t.lifeCtx,
-		specs:    t.specs,
-		runtime:  t.runtime,
-		registry: t.registry,
-		ledger:   ledger,
-		audit:    audit,
-		catalog:  t.catalog,
-		state:    state,
+		host:             t.host,
+		lifeCtx:          t.lifeCtx,
+		specs:            t.specs,
+		runtime:          t.runtime,
+		registry:         t.registry,
+		ledger:           ledger,
+		audit:            audit,
+		catalog:          t.catalog,
+		state:            state,
+		capabilityGroups: t.capabilityGroups,
 	}
 	return clone
 }
 
 func (*UseCapabilityTool) Name() string { return tool.HostUseCapability }
 
-func (*UseCapabilityTool) Description() string {
-	return "Fixed-schema capability proxy. Prefer search(query, limit<=8), then inspect one exact capability, then call it. list is a compact diagnostic inventory only. Supports stable ids such as tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, and web:/lsp:/session:/memory: namespaces. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). decline records a reason for a prefer capability. Independent list/search/inspect calls are read-only and may be issued together. Calls keep the provider-visible schema fixed; real writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. ARGUMENT PACKING (common mistake): action and capability_id are TOP-LEVEL parameters of this tool. For action=call, the `arguments` value must be the TARGET TOOL'S OWN argument object exactly (e.g. {\"description\":..., \"body\":...} for memory:remember) — never wrap another {arguments:..., capability_id:...} envelope inside it. Error self-diagnosis: \"capability_id is required\" means the top-level capability_id was missing; \"argument validation failed for <tool>: required ...\" means the arguments value is not the target tool's own parameter object (check for a double-wrapped envelope)."
+func (t *UseCapabilityTool) Description() string {
+	base := "Fixed-schema capability proxy. Prefer search(query, limit<=8), then inspect one exact capability, then call it. list is a compact diagnostic inventory only. Supports stable ids such as tool:grep, skill:review, mcp-tool:server/tool, task:subagent, workflow:name, and web:/lsp:/session:/memory: namespaces. memory:remember saves facts (description+body required; activation=\"relevant\" on create; omit activation on update; \"pinned\" only if user asks); memory:forget(name); tool:memory(operation=search|read|list). decline records a reason for a prefer capability. Independent list/search/inspect calls are read-only and may be issued together. Calls keep the provider-visible schema fixed; real writers still pass permission, plan mode, sandbox, write-path, and workspace-lease checks. ARGUMENT PACKING (common mistake): action and capability_id are TOP-LEVEL parameters of this tool. For action=call, the `arguments` value must be the TARGET TOOL'S OWN argument object exactly (e.g. {\"description\":..., \"body\":...} for memory:remember) — never wrap another {arguments:..., capability_id:...} envelope inside it. Error self-diagnosis: \"capability_id is required\" means the top-level capability_id was missing; \"argument validation failed for <tool>: required ...\" means the arguments value is not the target tool's own parameter object (check for a double-wrapped envelope)."
+	if t == nil || !t.capabilityGroups {
+		return base
+	}
+	// Task 953 (experimental_capability_groups on): three targeted
+	// enhancements on top of the proven base text — (1) per-action parameter
+	// contracts, (2) the two volume gates declared up front so a refusal
+	// reads as a guardrail not a fault, (3) the group-directory pointer as
+	// the fixed next-step line. Off = the base text above, byte for byte.
+	return base +
+		" ACTION PARAMETERS: list — kind? (skill|tool|source|session|mcp|group), limit? (default 30, max 50), offset?; the default is the SUMMARY tier (30 rows x 240B descriptions) — do NOT use list to pull full descriptions, inspect one exact id for those. search — query is REQUIRED (example: {\"action\":\"search\",\"query\":\"<topic keywords>\",\"limit\":5}); limit 1-8. inspect — capability_id required; group docs use tool:group/<group>." +
+		" TWO VOLUME GUARDS: before a list detail=true full dump the host reports total entries and bytes; if the dump would exceed the injection budget the call is refused with pagination guidance — that is a guardrail working, not a failure." +
+		" GROUP DIRECTORY: list kind=group prints one row per capability group (name | scenario (N deep members) | entry tool | example); inspect tool:group/<group> for a group's member card; search hits carry their group and a copy-paste call hint."
 }
 
 // declineCapabilityIDs merges the single id and the batch list into a stable,
@@ -161,19 +181,50 @@ func appendSelfHealNote(result string, resolved tool.ResolvedCall) string {
 	return strings.TrimRight(result, "\n") + "\n" + resolved.SelfHealNote
 }
 
-func (*UseCapabilityTool) Schema() json.RawMessage {
-	// Stable schema — must not change across turns or when MCP connects.
-	// capability_id is optional only for action=list; inspect/call/decline still
-	// require it at resolve time. One intentional prefix upgrade; thereafter
-	// install/connect churn does not change this schema.
-	return json.RawMessage(`{
+// Schema is stable within a session — it must not change across turns or when
+// MCP connects. capability_id is optional only for action=list; inspect/call/
+// decline still require it at resolve time. With experimental_capability_groups
+// on (task 953), the schema additionally advertises the list v2 parameters
+// (kind/limit/offset/detail); the flag is boot-time config, so the schema is
+// still constant across every turn of one session.
+func (t *UseCapabilityTool) Schema() json.RawMessage {
+	// Task 953: query's required-for-search contract cannot be expressed in
+	// this JSON Schema (one flat schema serves five actions; a conditional
+	// allOf/if would break the host's minimal-example coach and is outside
+	// the provider tool-schema subset) — so the requirement lives in the
+	// property description AND the resolve-time error carries a copyable
+	// example (tl951 落地建议 #1 的定案落法). This wording fix is a bug fix
+	// (the 10-17 four-strike query-less search loop), not a group-surface
+	// feature: it ships in both switch states. Inner quotes are JSON-escaped
+	// because the description is spliced into the schema literal below.
+	queryDesc := `REQUIRED for action=search (a search without it fails). Example: {\"action\":\"search\",\"query\":\"<topic keywords>\",\"limit\":5}. Local catalog only; no process or network is started.`
+	if t == nil || !t.capabilityGroups {
+		return json.RawMessage(`{
 		"type":"object",
 		"properties":{
 			"action":{"type":"string","enum":["list","search","inspect","call","decline"],"description":"Use search for discovery, inspect one exact result, then call. list is diagnostic only."},
 			"capability_id":{"type":"string","description":"Capability id such as skill:review, mcp-server:github, or mcp-tool:github/search_issues. Not required for action=list."},
 			"capability_ids":{"type":"array","items":{"type":"string"},"description":"Fork: action=decline only. Decline several capabilities in one call instead of one call per id."},
-			"query":{"type":"string","description":"Local catalog query required for action=search. No process or network is started."},
+			"query":{"type":"string","description":"` + queryDesc + `"},
 			"limit":{"type":"integer","minimum":1,"maximum":8,"default":5,"description":"Maximum search results; defaults to 5."},
+			"arguments":{"type":"object","description":"For action=call: the TARGET TOOL'S OWN argument object, passed through unchanged (e.g. {\"description\":..., \"body\":...} for memory:remember). Do NOT wrap capability_id, action, or another arguments envelope inside it — those are top-level parameters of this tool, not part of the target arguments."},
+			"reason":{"type":"string","description":"Required non-empty reason when action=decline"}
+		},
+		"required":["action"],
+		"additionalProperties":false
+	}`)
+	}
+	return json.RawMessage(`{
+		"type":"object",
+		"properties":{
+			"action":{"type":"string","enum":["list","search","inspect","call","decline"],"description":"Use search for discovery, inspect one exact result, then call. list returns a summary-tier inventory (default 30 entries x 240B) — do NOT use it to pull full descriptions; inspect one exact id for those."},
+			"capability_id":{"type":"string","description":"Capability id such as skill:review, mcp-server:github, mcp-tool:github/search_issues, or tool:group/session (a group card). Not required for action=list."},
+			"capability_ids":{"type":"array","items":{"type":"string"},"description":"Fork: action=decline only. Decline several capabilities in one call instead of one call per id."},
+			"query":{"type":"string","description":"` + queryDesc + `"},
+			"kind":{"type":"string","enum":["skill","tool","source","session","mcp","group"],"description":"action=list filter: only list capabilities of this kind. kind=group lists the capability group directory (one row per group: name, scenario, member count, entry tool, example)."},
+			"limit":{"type":"integer","minimum":1,"maximum":50,"default":30,"description":"action=search: 1-8 results (default 5). action=list: page size 1-50 (default 30 summary rows)."},
+			"offset":{"type":"integer","minimum":0,"default":0,"description":"action=list pagination offset; pair with limit. The payload reports total and next_offset."},
+			"detail":{"type":"boolean","default":false,"description":"action=list only. false (default) returns the 30x240B summary tier. true requests full descriptions; the host prechecks total volume first and REFUSES with pagination guidance if the dump would exceed the injection budget — that refusal is a guardrail, not a failure."},
 			"arguments":{"type":"object","description":"For action=call: the TARGET TOOL'S OWN argument object, passed through unchanged (e.g. {\"description\":..., \"body\":...} for memory:remember). Do NOT wrap capability_id, action, or another arguments envelope inside it — those are top-level parameters of this tool, not part of the target arguments."},
 			"reason":{"type":"string","description":"Required non-empty reason when action=decline"}
 		},
@@ -188,6 +239,14 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 	p, action, id, err := parseUseCapabilityArgs(args)
 	if err != nil {
 		return tool.ResolvedCall{}, &capabilityInputError{err}
+	}
+	// Task 953: the limit upper bound moved from parse to here so the list
+	// tier can widen it to 50 while the group surface is on. Off state keeps
+	// the pre-953 1-8 bound for every action (behavior equivalence); on state
+	// keeps 1-8 for search (enforced in resolveDiscovery) and allows list up
+	// to listMaxLimit (also enforced there).
+	if p.Limit > 8 && (!t.capabilityGroups || action != "list") {
+		return tool.ResolvedCall{}, capabilityInputErrorf("limit must be between 1 and 8 when provided")
 	}
 	base := tool.ResolvedCall{
 		DisplayName:  "use_capability",
