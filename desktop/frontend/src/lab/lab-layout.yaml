@@ -372,11 +372,12 @@ groups:
         tier: unstable
         onKeys: [experimentalLocalServer]
 
-  # ── 工具优化（1 项）────────────────────────────────────────
+  # ── 工具优化（2 项；任务 943：原族卡拆 readBack / multi_edit 直注两卡）──
   - key: tool-opt
     labelKey: settings.labGroup.toolOpt
     entries:
       # 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐。
+      # 任务 943：本卡只管 readBack 面（789 证据门联动成员行随卡）。
       - id: toolOptimizations
         labelKey: settings.toolOptimizations
         tier: recommended
@@ -386,3 +387,8 @@ groups:
           - id: editEvidenceRelaxed
             labelKey: settings.editEvidenceRelaxed
             tier: unstable
+      # 任务 943：multi_edit 直注独立卡（原族卡第二效果拆出，可选档）。
+      - id: multiEditInjection
+        labelKey: settings.multiEditInjection
+        tier: optional
+        onKeys: [experimentalMultiEditInjection]

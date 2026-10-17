@@ -710,8 +710,26 @@ func (c *Config) SubagentMessagingEnabled() bool {
 // absent) reads as OFF here so the boot surface stays byte-identical to the
 // pre-family baseline (golden/forbidden untouched); the panel materializes
 // the default by writing true (task 915).
+// 任务 943：族拆两键后本函数只代表 readBack 面（multi_edit 直注见
+// MultiEditInjectionEnabled）。
 func (c *Config) ToolOptimizationsEnabled() bool {
 	return c != nil && c.Agent.ExperimentalToolOptimizations != nil && *c.Agent.ExperimentalToolOptimizations
+}
+
+// MultiEditInjectionEnabled reports whether multi_edit joins the
+// provider-visible tool list (task 943 split of the 603/915 family).
+// 迁移语义：显式键值恒优先；键缺省（nil）回落旧族键
+// experimental_tool_optimizations——存量「族开」配置升级后注入面不丢
+// （行为与拆分前一致），存量「族关/缺省」仍关；两键均缺省 = 关（铁律 2，
+// 与拆分前基线逐字节一致）。
+func (c *Config) MultiEditInjectionEnabled() bool {
+	if c == nil {
+		return false
+	}
+	if c.Agent.ExperimentalMultiEditInjection != nil {
+		return *c.Agent.ExperimentalMultiEditInjection
+	}
+	return c.ToolOptimizationsEnabled()
 }
 
 // EditEvidenceRelaxedEnabled reports whether the task-789 relaxed edit
@@ -1754,7 +1772,24 @@ type AgentConfig struct {
 	// materializes the default by writing true. Only non-nil values render
 	// (the task-722 conditional rule): an absent key never gets baked into an
 	// explicit false by an unrelated save.
+	// 任务 943（迁移收窄）：族拆两键——本键自此只管 readBack 面
+	// （ToolOptimizationsEnabled 的三个消费点：Workspace.readBack、
+	// BindReadBack、acp 工具组装）；multi_edit 进模型可见列表移交
+	// ExperimentalMultiEditInjection（MultiEditInjectionEnabled），旧配置
+	// 只写本键的用户经回落语义注入面不丢（见 MultiEditInjectionEnabled 注释）。
 	ExperimentalToolOptimizations *bool `toml:"experimental_tool_optimizations"`
+	// ExperimentalMultiEditInjection is the task-943 split of the task-603/915
+	// 工具优化 family: this key alone decides whether multi_edit joins the
+	// provider-visible tool list (the model then gets its full schema and the
+	// edit_file "prefer multi_edit" guidance resolves to a real tool; either
+	// way multi_edit stays executable via use_capability). Same *bool
+	// panel-layer default-on shape as the family key (nil renders nothing —
+	// task-722 conditional rule).
+	// 迁移语义（943 拆分注释）：键缺省（nil）时回落旧族键
+	// experimental_tool_optimizations——存量「族开」配置升级后注入面不丢，
+	// 行为与拆分前逐字节一致；显式值恒优先（正向/反向独立开关由此成立）。
+	// 两键均缺省 = 注入关，与拆分前基线一致（铁律 2）。
+	ExperimentalMultiEditInjection *bool `toml:"experimental_multi_edit_injection"`
 	// ExperimentalEditEvidenceRelaxed is the task-789 relaxed edit evidence
 	// gate ("工具优化" family companion). On: a read that already completed
 	// earlier in the same provider batch counts as valid edit evidence, and an

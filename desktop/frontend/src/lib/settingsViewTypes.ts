@@ -132,7 +132,12 @@ export interface SettingsView {
   // 任务 603: 工具优化 family (edit readBack + evidence gate linkage + 任务
   // 915 multi_edit 直注; restart to apply). 任务 915：Go 侧 *bool——键未写入
   // 时 JSON 报 null，面板按默认开渲染并自动写入 true（显式关恒为 false）。
+  // 任务 943：族拆两卡——本键收窄为 readBack 面。
   experimentalToolOptimizations?: boolean | null;
+  // 任务 943: multi_edit 直注独立键（原族键第二效果拆出）。Go 侧 *bool——
+  // 键缺省回落族键 experimental_tool_optimizations（迁移兼容），面板显示
+  // 同一条回落链。
+  experimentalMultiEditInjection?: boolean | null;
   // Task 789: relaxed edit evidence gate (工具优化 companion; ships off;
   // restart to apply). Task 815: settings-page entry for the registration window.
   experimentalEditEvidenceRelaxed?: boolean;

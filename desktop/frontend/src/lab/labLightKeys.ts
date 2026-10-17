@@ -90,6 +90,10 @@ export const LAB_LIGHT_KEYS = {
   // 任务 915：键未写入（null/undefined）按面板层默认开判亮——与卡片开态
   // 渲染（?? true）同源；首载写入 true 后即按显式值判。
   experimentalToolOptimizations: (s: SettingsView) => s.experimentalToolOptimizations ?? true,
+  // 任务 943：multi_edit 直注独立键——回落链与 Go 侧 MultiEditInjectionEnabled
+  // 一致（键缺省跟随旧族键 experimental_tool_optimizations，族键也缺省按面板
+  // 层默认开）：存量族键开的用户灯不灭，拆分前后显示不跳变。
+  experimentalMultiEditInjection: (s: SettingsView) => s.experimentalMultiEditInjection ?? (s.experimentalToolOptimizations ?? true),
   collabGuidanceMerge: (s: SettingsView) => Boolean(s.collabGuidanceMerge),
   // ── derived / non-boolean reads（判亮规则收拢在谓词里）──────────
   /** sandbox.optimistic_write（嵌套字段）。 */

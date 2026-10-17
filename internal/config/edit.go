@@ -717,8 +717,19 @@ func (c *Config) SetExperimentalFullAccess(enabled bool) error {
 // evidence. Restart to apply — the boot assembly lights the tool surface.
 // Task 915: the stored field is a *bool (nil = key absent = panel default-on
 // display, boot off); an explicit click always writes a non-nil value.
+// 任务 943：族拆两键后本 setter 只管 readBack 面。
 func (c *Config) SetExperimentalToolOptimizations(enabled bool) error {
 	c.Agent.ExperimentalToolOptimizations = &enabled
+	return nil
+}
+
+// SetExperimentalMultiEditInjection toggles the multi_edit injection face
+// (task 943 split of the 603/915 family): on, multi_edit joins the
+// provider-visible tools. Restart to apply. Same *bool materialization rule
+// as the family key — an explicit click always writes a non-nil value, so an
+// absent key (which falls back to the family key) becomes an explicit one.
+func (c *Config) SetExperimentalMultiEditInjection(enabled bool) error {
+	c.Agent.ExperimentalMultiEditInjection = &enabled
 	return nil
 }
 

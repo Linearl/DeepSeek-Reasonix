@@ -52,20 +52,46 @@ func TestProviderSurfaceExtrasFollowTheFlag(t *testing.T) {
 }
 
 // TestProviderSurfaceExtrasCarryMultiEditWithToolOptimizations (task 915)
-// pins the multi_edit gate on the same extras channel: the family switch
-// (experimental_tool_optimizations) is the single source, both switches can
-// stack, and the default-off config stays empty (golden/forbidden untouched).
+// pins the multi_edit gate on the same extras channel. Task 943 re-pins it
+// under the split key semantics: experimental_multi_edit_injection is the
+// explicit source, an absent injection key falls back to the legacy family
+// key (migration — legacy family-on configs keep the injection face), an
+// explicit injection key overrides the family key in BOTH directions
+// (正向/反向独立开关), and both keys absent/off stays empty (golden/forbidden
+// untouched).
 func TestProviderSurfaceExtrasCarryMultiEditWithToolOptimizations(t *testing.T) {
+	// 迁移回落：注入键缺省 + 族键开 → multi_edit 仍进可见面（拆分前行为不变）。
 	familyOn := &config.Config{}
 	familyOn.Agent.ExperimentalToolOptimizations = boolPtr(true)
 	if got := providerSurfaceExtras(familyOn); len(got) != 1 || got[0] != "multi_edit" {
-		t.Fatalf("extras with the family on = %v, want [multi_edit]", got)
+		t.Fatalf("extras with the legacy family on (injection key absent) = %v, want [multi_edit] (task-943 migration fallback)", got)
 	}
 	both := &config.Config{}
 	both.Desktop.ExperimentalAutonomousUpdate = true
 	both.Agent.ExperimentalToolOptimizations = boolPtr(true)
 	if got := providerSurfaceExtras(both); len(got) != 2 || got[0] != "restart_update" || got[1] != "multi_edit" {
 		t.Fatalf("extras with both switches on = %v, want [restart_update multi_edit]", got)
+	}
+	// 正向独立：readBack 开（族键开）+ 注入显式关 → multi_edit 不进可见面。
+	readBackOnly := &config.Config{}
+	readBackOnly.Agent.ExperimentalToolOptimizations = boolPtr(true)
+	readBackOnly.Agent.ExperimentalMultiEditInjection = boolPtr(false)
+	if got := providerSurfaceExtras(readBackOnly); len(got) != 0 {
+		t.Fatalf("extras with readBack on + injection explicitly off = %v, want none (task-943 forward split)", got)
+	}
+	// 反向独立：族键关 + 注入显式开 → multi_edit 进可见面。
+	injectionOnly := &config.Config{}
+	injectionOnly.Agent.ExperimentalToolOptimizations = boolPtr(false)
+	injectionOnly.Agent.ExperimentalMultiEditInjection = boolPtr(true)
+	if got := providerSurfaceExtras(injectionOnly); len(got) != 1 || got[0] != "multi_edit" {
+		t.Fatalf("extras with family off + injection explicitly on = %v, want [multi_edit] (task-943 reverse split)", got)
+	}
+	// 两键显式全关 → 空面。
+	bothOff := &config.Config{}
+	bothOff.Agent.ExperimentalToolOptimizations = boolPtr(false)
+	bothOff.Agent.ExperimentalMultiEditInjection = boolPtr(false)
+	if got := providerSurfaceExtras(bothOff); len(got) != 0 {
+		t.Fatalf("extras with both keys explicitly off = %v, want none", got)
 	}
 }
 
@@ -138,6 +164,8 @@ func TestProviderVisibleSurfaceCarriesMultiEditWithFamilyLit(t *testing.T) {
 // puts multi_edit into the request tools array, and its schema carries the
 // task-875 readBack parameter (the family's first member rides along with the
 // injection). Go DefaultConfig stays off, so this config is explicit.
+// 任务 943：注入键缺省时本用例同时钉住迁移回落（族键开 = 注入开，与拆分
+// 前行为一致）。
 func TestBootRequestCarriesMultiEditWhenFamilyLit(t *testing.T) {
 	isolateConfigHome(t)
 	dir := robustTempDir(t)
@@ -166,6 +194,74 @@ model = "x"
 	}
 	if !requestToolSchemaContains(req, "multi_edit", "readBack") {
 		t.Fatal("family-on multi_edit schema must carry the task-875 readBack parameter")
+	}
+}
+
+// TestBootRequestReadBackOnInjectionExplicitlyOff (task 943 正向独立) is the
+// forward-split acceptance capture: experimental_tool_optimizations = true +
+// experimental_multi_edit_injection = false → edit_file keeps the readBack
+// parameter (readBack face follows the family key) while multi_edit leaves
+// the provider-visible surface. 行为与「只开 readBack」的期望一致。
+func TestBootRequestReadBackOnInjectionExplicitlyOff(t *testing.T) {
+	isolateConfigHome(t)
+	dir := robustTempDir(t)
+	t.Chdir(dir)
+	writeFile(t, dir, "reasonix.toml", `
+default_model = "test-model"
+
+[agent]
+system_prompt = "BASE"
+experimental_tool_optimizations = true
+experimental_multi_edit_injection = false
+
+[[providers]]
+name = "test-model"
+kind = "boot-token-profile-test"
+model = "x"
+`)
+	req := firstTokenProfileRequest(t, "economy")
+	if requestHasTool(req, "multi_edit") {
+		t.Fatalf("multi_edit must stay off the provider surface while injection is explicitly off; tools=%v", toolSchemaNames(req.Tools))
+	}
+	if !requestHasTool(req, "edit_file") {
+		t.Fatalf("sanity: edit_file must stay on the unified surface; tools=%v", toolSchemaNames(req.Tools))
+	}
+	if !requestToolSchemaContains(req, "edit_file", "readBack") {
+		t.Fatal("readBack face must stay lit (family key on) — edit_file schema must carry the readBack parameter")
+	}
+}
+
+// TestBootRequestInjectionOnFamilyExplicitlyOff (task 943 反向独立) is the
+// reverse-split acceptance capture: experimental_tool_optimizations = false +
+// experimental_multi_edit_injection = true → multi_edit joins the
+// provider-visible surface while its schema does NOT carry readBack (the
+// readBack face follows the family key, which is off).
+func TestBootRequestInjectionOnFamilyExplicitlyOff(t *testing.T) {
+	isolateConfigHome(t)
+	dir := robustTempDir(t)
+	t.Chdir(dir)
+	writeFile(t, dir, "reasonix.toml", `
+default_model = "test-model"
+
+[agent]
+system_prompt = "BASE"
+experimental_tool_optimizations = false
+experimental_multi_edit_injection = true
+
+[[providers]]
+name = "test-model"
+kind = "boot-token-profile-test"
+model = "x"
+`)
+	req := firstTokenProfileRequest(t, "economy")
+	if !requestHasTool(req, "multi_edit") {
+		t.Fatalf("injection-on first request must carry multi_edit; tools=%v", toolSchemaNames(req.Tools))
+	}
+	if requestToolSchemaContains(req, "multi_edit", "readBack") {
+		t.Fatal("readBack face must stay dark (family key off) — multi_edit schema must NOT carry the readBack parameter")
+	}
+	if requestToolSchemaContains(req, "edit_file", "readBack") {
+		t.Fatal("readBack face must stay dark (family key off) — edit_file schema must NOT carry the readBack parameter")
 	}
 }
 
