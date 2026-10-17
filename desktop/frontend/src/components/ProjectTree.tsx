@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Archive, ArchiveX, ArrowDown, CheckCheck, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
+import { Archive, ArchiveX, ArrowDown, CheckCheck, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
+import { cachedSessionPurpose, loadSessionPurpose, setCachedSessionPurpose, subscribeSessionPurposes } from "../lib/sessionPurpose";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
 import { createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
 import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreePageLoadFlipsIndicator, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
@@ -27,6 +28,7 @@ import { useProjectTreeFrontendDiagnostics, type ProjectTreeDiagnosticSnapshot }
 import { summarizeProjectTreeSessions } from "../lib/projectTreeDiagnostics";
 import { GLOBAL_PROJECT_ORDER_KEY, ProjectTreeFolderActivity, ProjectTreeGroupRows, applyProjectOrder, projectTreeProjectRoots, reorderedProjectRoots, useProjectTreeOrganization, type ProjectDropPosition } from "./ProjectTreeOrganization";
 import { ProjectTreeSessionArchiveMenu } from "./ProjectTreeSessionArchiveMenu";
+import { SessionPurposeEditor } from "./SessionPurposeEditor";
 import {
   addProjectGroup,
   clearProjectGroupRoster,
@@ -303,8 +305,14 @@ export function ProjectTree({
   const [colorFilter, setColorFilter] = useState<ProjectColorKey[]>([]);
   const [colorFilterMenuOpen, setColorFilterMenuOpen] = useState(false);
   const [showAllTopics, setShowAllTopics] = useState<Set<string>>(new Set());
-  const [hoverCard, setHoverCard] = useState<{ key: string; card: ProjectTreeTopicHoverCard; left: number; top: number } | null>(null);
+  const [hoverCard, setHoverCard] = useState<{ key: string; card: ProjectTreeTopicHoverCard; left: number; top: number; sessionPath: string } | null>(null);
   const [aiRenamingTopic, setAiRenamingTopic] = useState<string | null>(null);
+  // 938：职责缓存变更 → 行 title/「编辑职责」弹窗即时反映（保存成功即 bump）。
+  const [, setPurposeRevision] = useState(0);
+  useEffect(() => subscribeSessionPurposes(() => setPurposeRevision((n) => n + 1)), []);
+  // 938：「编辑职责」弹窗（锚定右键的行元素，AnchoredPopover portal 到 body）。
+  const [purposeEditorSessionPath, setPurposeEditorSessionPath] = useState<string | null>(null);
+  const purposeEditorAnchorRef = useRef<HTMLElement | null>(null);
   const hoverCardTimerRef = useRef<number | null>(null);
   const creatingRef = useRef(false);
   const closeMenu = useCallback(() => {
@@ -1342,9 +1350,10 @@ export function ProjectTree({
         : projectLabelByRoot.get(node.root ?? "") ?? "";
       setHoverCard({
         key: rowKey,
-        card: projectTreeTopicHoverCardModel(node, t, projectLabel),
+        card: projectTreeTopicHoverCardModel(node, t, projectLabel, node.sessionPath ? cachedSessionPurpose(node.sessionPath) : ""),
         left: rect.right + 10,
         top: Math.max(8, Math.min(rect.top, window.innerHeight - 150)),
+        sessionPath: node.sessionPath ?? "",
       });
     }, 350);
   }, [menuNodeKey, menuProject, editingTopic, editingProject, dragProjectRoot, projectLabelByRoot, t]);
@@ -1514,6 +1523,11 @@ export function ProjectTree({
           ? t("projectTree.recovered")
           : "";
       const title = [node.preview || "", label, recoveryLabel, imSourceTitle, statusLabel, metaFull, projectTreeDedupedExactTime(metaFull, exactTimeLabel)].filter(Boolean).join(" · ");
+      // 938：hover 展示该会话登记的职责（sidecar purpose，按需拉取+缓存）。
+      // 侧栏标题多为自动命名，purpose 才是真实职责——拼进 title 供原生 tooltip
+      // 与 aria-label 展示；purposeRevision 订阅保证拉取到达后即时补上。
+      const rowPurpose = node.sessionPath ? cachedSessionPurpose(node.sessionPath) ?? "" : "";
+      const titleWithPurpose = rowPurpose ? `${title}\n${rowPurpose}` : title;
       const topicMenuOpen = menuNodeKey === key;
       const pinned = Boolean(node.pinned);
       const pinLabel = t(pinned ? "projectTree.unpinTopic" : "projectTree.pinTopic");
@@ -1525,6 +1539,8 @@ export function ProjectTree({
         setMenuPoint(contextMenuPointFromEvent(event));
         setMenuNodeKey(key);
         setConfirmArchiveTarget(null);
+        // 938：记住右键的行元素——「编辑职责」弹窗的锚点（菜单关闭后仍指向该行）。
+        purposeEditorAnchorRef.current = event.currentTarget as HTMLElement;
       };
       const topicMenuItems: ContextMenuItem[] = [
         // wt-zcode-288：会话行右键「全部已读」——当前上下文 = 该会话所属工作区
@@ -1563,6 +1579,20 @@ export function ProjectTree({
           label: aiRenamingTopic === topicId ? t("projectTree.aiRenamingTopic") : t("projectTree.aiRenameTopic"),
           disabled: aiRenamingTopic !== null || Boolean(node.remoteSession),
           onSelect: () => void aiRenameSession(topicId),
+        },
+        // 938：编辑会话职责（sidecar purpose）——仅本地会话行可编辑（远端会话
+        // 无本地 sidecar），弹窗走 SetSessionPurpose 既有写链。
+        {
+          key: "editPurpose",
+          icon: <ClipboardPen size={13} />,
+          label: t("projectTree.editPurpose"),
+          disabled: !sessionPath || Boolean(node.remoteSession),
+          onSelect: () => {
+            closeMenu();
+            if (!sessionPath) return;
+            void loadSessionPurpose(sessionPath);
+            setPurposeEditorSessionPath(sessionPath);
+          },
         },
         {
           key: "trash",
@@ -1627,15 +1657,19 @@ export function ProjectTree({
           style={accentStyle}
           {...topicDrag.props}
           onContextMenu={openTopicMenu}
-          onMouseEnter={classicTopics ? (event) => scheduleHoverCard(event.currentTarget, key, node) : undefined}
+          onMouseEnter={(event) => {
+            // 938：hover 即拉职责（缓存命中零成本）；classic 另起 hover 卡。
+            if (node.sessionPath) void loadSessionPurpose(node.sessionPath);
+            if (classicTopics) scheduleHoverCard(event.currentTarget, key, node);
+          }}
           onMouseLeave={classicTopics ? cancelHoverCard : undefined}
           onMouseDown={classicTopics ? cancelHoverCard : undefined}
         >
           <button
             type="button"
             className="project-tree__topic-main"
-            title={classicTopics ? undefined : title}
-            aria-label={classicTopics ? title : undefined}
+            title={classicTopics ? undefined : titleWithPurpose}
+            aria-label={classicTopics ? titleWithPurpose : undefined}
             style={{ paddingLeft: 14 + depth * 16 }}
             onClick={() => {
               const remote = node.remoteSession ?? remoteSessionActions.resolve(topicId);
@@ -3096,6 +3130,12 @@ export function ProjectTree({
           {hoverCard.card.statusLabel && (
             <div className="project-tree__hover-card-status">{hoverCard.card.statusLabel}</div>
           )}
+          {/* 938：职责行——实时读缓存（拉取晚到也即时补现），pre-wrap 换行不裁剪。 */}
+          {(hoverCard.card.purpose || (hoverCard.sessionPath ? cachedSessionPurpose(hoverCard.sessionPath) : "")) && (
+            <div className="project-tree__hover-card-purpose">
+              {hoverCard.sessionPath ? cachedSessionPurpose(hoverCard.sessionPath) ?? hoverCard.card.purpose : hoverCard.card.purpose}
+            </div>
+          )}
           <div className="project-tree__hover-card-meta">
             {[hoverCard.card.metaLine, hoverCard.card.exactTime].filter(Boolean).join(" · ")}
           </div>
@@ -3110,6 +3150,19 @@ export function ProjectTree({
       )}
       {blankProjectFlow}
       {remoteConnectFlow}
+      {/* 938：「编辑职责」弹窗——锚定右键的那一行，AnchoredPopover portal 到
+          body（529 先例防侧栏滚动裁剪）；保存成功写 hover 缓存即时反映。 */}
+      <SessionPurposeEditor
+        open={purposeEditorSessionPath !== null}
+        anchorRef={purposeEditorAnchorRef}
+        sessionPath={purposeEditorSessionPath ?? ""}
+        initialPurpose={purposeEditorSessionPath ? cachedSessionPurpose(purposeEditorSessionPath) : undefined}
+        onClose={() => setPurposeEditorSessionPath(null)}
+        onSaved={(purpose) => {
+          if (purposeEditorSessionPath) setCachedSessionPurpose(purposeEditorSessionPath, purpose);
+          setPurposeEditorSessionPath(null);
+        }}
+      />
       {/* Task 892-B ⑤: project-group delete proposal dialog (portal targets
           body; the element just has to mount in the component owning the hook). */}
       {projectGroupDeleteDialog.dialog}

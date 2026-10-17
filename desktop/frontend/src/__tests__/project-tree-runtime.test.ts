@@ -642,8 +642,30 @@ eq(
     metaLine: "3 turns",
     exactTime: "",
     projectLabel: "my-project",
+    purpose: "",
   },
   "hover card model shows the full preview and carries turns, status, and project",
+);
+
+// 938：hover 卡模型携带职责——传入即原样（去首尾空白）；缺省为空（不渲染行）。
+eq(
+  projectTreeTopicHoverCardModel(
+    { key: "topic_p", kind: "topic", label: "T", root: "/repo", topicId: "p" },
+    testT,
+    "my-project",
+    "  维护工具引擎  ",
+  ).purpose,
+  "维护工具引擎",
+  "hover card model carries the session duty with whitespace trimmed (938)",
+);
+eq(
+  projectTreeTopicHoverCardModel(
+    { key: "topic_np", kind: "topic", label: "T", root: "/repo", topicId: "np" },
+    testT,
+    "my-project",
+  ).purpose,
+  "",
+  "hover card model defaults duty to empty when the cache has nothing (938)",
 );
 
 const day = 24 * 60 * 60 * 1000;
