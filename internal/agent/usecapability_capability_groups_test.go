@@ -257,10 +257,14 @@ func TestCapabilityGroupsOffEqualsPre953(t *testing.T) {
 		t.Fatalf("off list limit=9 should keep the 1-8 bound, got: %v", err)
 	}
 
-	// Off: group cards are unknown ids.
+	// Off: group cards are refused. Merged-surface caliber (task 955): the
+	// group mechanism owns the off-state answer and replies with its
+	// explicit "not available ... experimental_capability_groups is off"
+	// guidance instead of the pre-953 generic "unknown capability_id" —
+	// both refuse, neither leaks member content.
 	if _, err := off.Execute(context.Background(), json.RawMessage(`{"action":"inspect","capability_id":"tool:group/im"}`)); err == nil ||
-		!strings.Contains(err.Error(), "unknown capability_id") {
-		t.Fatalf("off inspect of a group id should be unknown, got: %v", err)
+		!strings.Contains(err.Error(), "experimental_capability_groups is off") {
+		t.Fatalf("off inspect of a group id should be refused by the group mechanism, got: %v", err)
 	}
 
 	// Off: search hits carry no group fields.

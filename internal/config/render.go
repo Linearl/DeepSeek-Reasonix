@@ -709,9 +709,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// 任务 944：render_artifact 产物卡片。显式渲染——同 81/123 丢档教训，
 	// omit-on-off 会在下一次渲染时把已保存的开关静默弹回。
 	fmt.Fprintf(&b, "experimental_render_artifact = %v   # task 944: render_artifact tool + ArtifactCard (md/text preview card, html open-only; off = tool unregistered, zero behaviour)\n", c.Agent.ExperimentalRenderArtifact)
-	// 任务 955：能力组披露层（Entry.Group 渲染 + 组卡 + route 推组）。显式渲染
+	// 任务 953/955：能力组披露面+组目录卡（Entry.Group 渲染 + 组卡 + route 推组、
+	// list 摘要档 30×240B + 两道体积闸、search 附组与 call_hint）。显式渲染
 	// ——同 81/123 丢档教训，omit-on-off 会在下一次渲染时把已保存的开关静默弹回。
-	fmt.Fprintf(&b, "experimental_capability_groups = %v   # task 955: capability group disclosure (list group rows, route group suggestions, group cards; off = zero behaviour)\n", c.Agent.ExperimentalCapabilityGroups)
+	fmt.Fprintf(&b, "experimental_capability_groups = %v   # task 953/955: capability group disclosure (use_capability list summary tier 30x240B + kind=group rows + volume gates, search group attribution + call_hint, route group suggestions, group cards; off = zero behaviour)\n", c.Agent.ExperimentalCapabilityGroups)
 	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
 	// Task 632: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).
@@ -862,10 +863,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_compact_model = %v   # task 707: serve compaction summaries with compact_model instead of the conversation model (off by default)\n", c.Agent.ExperimentalCompactModel)
 	fmt.Fprintf(&b, "compact_model = %q   # task 707: provider/model pair serving summary requests while the switch above is on (empty = keep the conversation model)\n", c.Agent.CompactModel)
 	fmt.Fprintf(&b, "experimental_high_speed_model = %v   # task 318.1: allow the high-speed model lane for highSpeedModels (off by default)\n", c.Agent.ExperimentalHighSpeedModel)
-	// 任务 953：L0/L1 能力组披露面（use_capability list 摘要档+组行+两道体积闸、
-	// search 附组归属）——与 954/955 共用开关。引擎侧开关：设置页卡随 954/955
-	// 批次补挂，本键先入渲染表防保存丢失（81/123 教训）。
-	fmt.Fprintf(&b, "experimental_capability_groups = %v   # task 953: use_capability list summary tier (30x240B) + kind=group rows + volume gates; search hits carry group membership (off by default)\n", c.Agent.ExperimentalCapabilityGroups)
+	// 任务 953：L0/L1 能力组披露面与 954/955 共用开关；渲染行已在上方
+	// [agent] 开关群统一输出（task 953/955 合并文案），此处不重复渲染。
 	fmt.Fprintf(&b, "experimental_proactive_compact = %v   # task 318.2: use proactive_compact_cooldown_minutes instead of the hard-coded 10min fold cooldown (off by default)\n", c.Agent.ExperimentalProactiveCompact)
 	fmt.Fprintf(&b, "proactive_compact_cooldown_minutes = %d   # task 318.2: model-driven fold cooldown in minutes (default 10; used only when the switch above is on)\n", c.Agent.ProactiveCompactCooldownMinutes)
 	fmt.Fprintf(&b, "experimental_cold_cache_compact = %v   # task 297: compact a long conversation once before it goes cold (off by default)\n", c.Agent.ExperimentalColdCacheCompact)
