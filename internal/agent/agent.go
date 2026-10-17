@@ -1409,10 +1409,6 @@ type Options struct {
 	// default — every path it touches behaves exactly as before when it is off.
 	TraceAsState bool
 
-	// RestartUpdater lets the model restart the desktop onto a staged build
-	// (task 81); nil in a host that cannot do that.
-	RestartUpdater tool.RestartUpdater
-
 	// AutonomousUpdateController backs the restart_update tool (task 254);
 	// nil in a host that cannot list/switch its own install versions.
 	AutonomousUpdateController tool.AutonomousUpdateController
@@ -1577,7 +1573,6 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			traceAsState:               opts.TraceAsState,
 			compactModel:               strings.TrimSpace(opts.CompactModel),
 			compactModelPricing:        opts.CompactModelPricing,
-			restartUpdater:             opts.RestartUpdater,
 			autonomousUpdateController: opts.AutonomousUpdateController,
 			contextWindow:              opts.ContextWindow,
 			compactRatio:               opts.CompactRatio,

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -450,19 +449,6 @@ func startDetachedLauncher(launcherPath string, exitingPID int) error {
 		return cmd.Process.Release()
 	}
 	return cmd.Process.Release()
-}
-
-// restartUpdaterAdapter exposes App.RestartAndUpdate to the tool layer. It exists
-// because the tool interface returns a message for the model while the app method
-// returns only an error: the message is what tells the model the swap is committed
-// and must not be retried (task 81).
-type restartUpdaterAdapter struct{ app *App }
-
-func (r restartUpdaterAdapter) RestartAndUpdate(_ context.Context, sourceDir, version string) (string, error) {
-	if err := r.app.RestartAndUpdate(sourceDir, version); err != nil {
-		return "", err
-	}
-	return "restart scheduled: the staged build was published and the app will relaunch shortly", nil
 }
 
 // RestartDesktop relaunches the desktop without publishing a staged build, for settings

@@ -21,21 +21,13 @@ func (s stubController) RestartOnly(context.Context, string) (string, error) {
 	return "", s.err
 }
 
-type stubUpdater struct{ err error }
-
-func (s stubUpdater) RestartAndUpdate(context.Context, string, string) (string, error) {
-	return "", s.err
-}
-
-// clearFallbacks restores the process-wide slots after a test. The fallbacks
-// are process-wide BY DESIGN (that is the fix), so tests must not leak
+// clearFallbacks restores the process-wide slot after a test. The fallback is
+// process-wide BY DESIGN (that is the fix), so tests must not leak
 // registrations into each other or into other package tests.
 func clearFallbacks(t *testing.T) {
 	t.Cleanup(func() {
 		var nilController *AutonomousUpdateController
-		var nilUpdater *RestartUpdater
 		fallbackAutonomousUpdate.Store(nilController)
-		fallbackRestartUpdater.Store(nilUpdater)
 	})
 }
 
@@ -71,30 +63,5 @@ func TestFallbackControllerServesCapabilityRoutedCalls(t *testing.T) {
 	SetFallbackAutonomousUpdateController(nil)
 	if _, ok := AutonomousUpdateControllerFromContext(context.Background()); !ok {
 		t.Fatal("nil registration must not clear a live fallback")
-	}
-}
-
-// TestFallbackRestartUpdaterServesCapabilityRoutedCalls pins the same fix for
-// the task-81 restart_and_update path (plugin.go's identical availability
-// check).
-func TestFallbackRestartUpdaterServesCapabilityRoutedCalls(t *testing.T) {
-	clearFallbacks(t)
-
-	if _, ok := RestartUpdaterFromContext(context.Background()); ok {
-		t.Fatal("without a binding or fallback the updater must be unavailable")
-	}
-
-	fallback := stubUpdater{err: errors.New("fallback")}
-	SetFallbackRestartUpdater(fallback)
-	got, ok := RestartUpdaterFromContext(context.Background())
-	if !ok || got != RestartUpdater(fallback) {
-		t.Fatalf("fallback updater not served: ok=%v got=%v", ok, got)
-	}
-
-	bound := stubUpdater{err: errors.New("bound")}
-	ctx := WithRestartUpdater(context.Background(), bound)
-	got, ok = RestartUpdaterFromContext(ctx)
-	if !ok || got != RestartUpdater(bound) {
-		t.Fatalf("context binding must win: ok=%v got=%v", ok, got)
 	}
 }

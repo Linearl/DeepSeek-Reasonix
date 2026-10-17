@@ -559,9 +559,8 @@ func (a *Agent) prepareToolExecution(ctx context.Context, plan *toolCallPlan) (t
 		}
 	}
 	cctx := tool.WithContextCompressor(withCallContext(ctx, plan.call.ID, a.svc.sink, a.svc.asker, a.planMode.Load()), a)
-	cctx = tool.WithRestartUpdater(cctx, a.restartUpdater)
-	// Task 254: the autonomous-update controller rides the same context-binding
-	// pattern, plus the calling session path execute uses for its busy-guard
+	// Task 254: the autonomous-update controller binds through the call
+	// context, plus the calling session path execute uses for its busy-guard
 	// exemption (the restart ends the turn that asked for it).
 	cctx = tool.WithAutonomousUpdateController(cctx, a.autonomousUpdateController)
 	cctx = tool.WithRestartCallerSession(cctx, a.SessionPath())

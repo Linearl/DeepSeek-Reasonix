@@ -162,7 +162,6 @@ func removeDesktopSessionArtifacts(path string) error {
 // controller built by clearActiveSessionRuntime.
 func (a *App) clearSessionBuildOptions(tab *WorkspaceTab, snap tabRuntimeSnapshot, newSink *tabEventSink, sharedHost *plugin.Host) boot.Options {
 	return boot.Options{
-		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      snap.model,

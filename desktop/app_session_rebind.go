@@ -608,7 +608,6 @@ func loadResumableSession(sessionPath string) (*agent.Session, error) {
 // in an outer composite literal).
 func (a *App) rebindCandidateBuildOptions(tab *WorkspaceTab, source tabRuntimeSnapshot, model, root, sessionDir string, sink *tabEventSink, cfg *config.Config, sharedHost *plugin.Host, runtimeProfile normalizedTabRuntime, assemblyKey string) boot.Options {
 	return boot.Options{
-		RestartUpdater:             restartUpdaterAdapter{a},
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
 		Model:                      model,

@@ -6,10 +6,10 @@ import (
 )
 
 // AutonomousUpdateController is the host side of the restart_update tool
-// (task 254). It mirrors the RestartUpdater pattern (task 81): the interface
-// lives in the tool package, the desktop app supplies the implementation, and
-// the binding travels through the call context so the tool schema stays stable
-// across hosts that cannot swap their own install.
+// (task 254). The interface lives in the tool package, the desktop app
+// supplies the implementation, and the binding travels through the call
+// context so the tool schema stays stable across hosts that cannot swap
+// their own install.
 //
 // The controller is the agent-facing half of the versions/ mechanism:
 // listing installed versions with a health bit, staging an update target, and

@@ -109,9 +109,6 @@ type Options struct {
 	// MaxRuntime is the hard wall-clock bound. A non-positive MaxRuntime with
 	// Autopilot set is refused rather than silently running unbounded.
 	Autopilot bool
-	// RestartUpdater carries the host's restart-and-update capability down to
-	// the agent (task 81); nil in a host that cannot swap its own install.
-	RestartUpdater tool.RestartUpdater
 	// AutonomousUpdateController carries the restart_update tool's host side
 	// (task 254); nil in a host without a versions/ install. Registration is
 	// gated by experimental_autonomous_update in the boot code.
@@ -2183,7 +2180,6 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MaxStepsKey:                opts.MaxStepsKey,
 		Temperature:                cfg.Agent.Temperature,
 		TraceAsState:               cfg.Agent.TraceAsState,
-		RestartUpdater:             opts.RestartUpdater,
 		AutonomousUpdateController: opts.AutonomousUpdateController,
 		WorktreeProjectOpener:      opts.WorktreeProjectOpener,
 		TaskBudget:                 taskBudgetFromConfig(cfg),
