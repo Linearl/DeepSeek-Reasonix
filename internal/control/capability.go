@@ -67,6 +67,9 @@ func (c *Controller) routeCapabilities(ctx context.Context, routeInput string) c
 	opts := capability.CatalogOptions{
 		Tools:  tools,
 		Skills: c.Skills(),
+		// Task 955: group rows only join the route catalog when the lab
+		// switch is on (boot-resolved; default off = zero behaviour).
+		CapabilityGroups: c.capabilityGroups,
 	}
 	if c.capabilityRuntime != nil {
 		opts.Plugins, opts.CachedTools, opts.CacheKeyOK, opts.Disabled, proxyTools = c.capabilityRuntime.CapabilityCatalogState()
@@ -143,6 +146,16 @@ func (c *Controller) SetCapabilityProxyRouting(v bool) {
 		return
 	}
 	c.capabilityProxy = v
+}
+
+// SetCapabilityGroups enables the task-955 capability group disclosure layer
+// in the route catalog (group directory rows + group suggestions). Boot
+// resolves it from experimental_capability_groups; default off.
+func (c *Controller) SetCapabilityGroups(v bool) {
+	if c == nil {
+		return
+	}
+	c.capabilityGroups = v
 }
 
 // SetCapabilityProxyTools registers a getter for live tools observed through

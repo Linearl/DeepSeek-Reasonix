@@ -2118,6 +2118,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			Failed:      failedNow,
 			CachedTools: cachedTools,
 			CacheKeyOK:  cacheKeyOK,
+			// Task 955: group disclosure layer (default off = zero behaviour).
+			CapabilityGroups: cfg.Agent.ExperimentalCapabilityGroups,
 		}
 		if capRuntime != nil {
 			catOpts.Plugins, catOpts.CachedTools, catOpts.CacheKeyOK, catOpts.Disabled, catOpts.ProxyTools = capRuntime.CapabilityCatalogState()
@@ -2875,6 +2877,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	ctrl.WireCapabilityRouting(cfg.Plugins, capSpecs, router, capAudit)
 	ctrl.SetCapabilityProxyRouting(true)
+	// Task 955: route catalog joins the group disclosure layer when the lab
+	// switch is on (boot-resolved; default off = zero behaviour).
+	ctrl.SetCapabilityGroups(cfg.Agent.ExperimentalCapabilityGroups)
 
 	// Provider-visible tool surface is identical for every role setting before
 	// the extension snapshot freezes registry schemas for cache diagnostics.
