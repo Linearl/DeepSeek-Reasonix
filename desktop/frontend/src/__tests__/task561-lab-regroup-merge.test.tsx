@@ -97,12 +97,16 @@ console.log("\ntask 561 lab regroup + merged cards");
 // 并「智能自动化」卡、efficiency 三散条（quickCommands/traceAsState/
 // outputStyle）并「交互与呈现」卡、ui renderArtifact 并入视图布局卡——
 // 条目级合并净 -5 +2 容器 = 40→35，组分布 4/6/10/2/1/4/6/2。
+// 任务 971：multiEditInjection 独立卡退役并入工具优化聚合页（restartUpdate
+// 自更新反馈卡迁入聚合页，成员计数净零）——tool-opt 组 2→1，总数 35→34。
+// 971 基线侧的「补录 renderArtifact 入 yaml」在合并态已由 944 返修/961 收编
+// 先行落地（viewLayout 卡内），971 补录版为过时重复条目已删。
 // 数据源 = 布局默认数据 + yaml（两份必须同构）。
 {
   // 直接导入布局数据模块数真数据（比源码正则稳）。
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const defEntries = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id));
-  ok(defEntries.length === 35, `default layout carries exactly 35 rail entries (got ${defEntries.length})`);
+  ok(defEntries.length === 34, `default layout carries exactly 34 rail entries (got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -118,11 +122,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 任务 943：multiEditInjection 入 tool-opt 组、任务 944：renderArtifact 入
   // ui 组——两件先后入布局 → 6/8/11/2/1/4/6/2。任务 961：三处条目级收编
   // → 4/6/10/2/1/4/6/2（automation/efficiency 各并一卡、ui renderArtifact
-  // 并入视图布局卡）。
+  // 并入视图布局卡）。任务 971：multiEditInjection 独立卡退役并入聚合页
+  // → tool-opt 2→1。
   ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 10 &&
      groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 4 && groups["infra"] === 6 &&
-     groups["tool-opt"] === 2,
-    `group counts are 4/6/10/2/1/4/6/2 (got ${JSON.stringify(groups)})`);
+     groups["tool-opt"] === 1,
+    `group counts are 4/6/10/2/1/4/6/1 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -167,7 +172,8 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // 任务 785：S1 常驻底座开关详情卡退役——endMarker 随迁到物理下一个卡
   // monitoring（旧 marker 不存在会让 cardSlice 返回空、测试假红/假绿）。
   { id: "updateFeedback", endMarker: '{selected === "monitoring" && (', members: [
-    { label: "M6 restartUpdate", field: "s.experimentalRestartUpdate", setter: "app.SetExperimentalRestartUpdate(on)" },
+    // 任务 971：restartUpdate 迁至工具优化聚合页（toolOptimizations pane）——
+    // 本卡不再含该行（键/setter 零变化，仅 UI 落点迁移）。
     { label: "M6 feedback", field: "s.experimentalFeedback", setter: "app.SetExperimentalFeedback(on)" },
     // 任务 670: fork 首启提示（默认开，用户裁决）入卡，独立开关独立 setter。
     { label: "670 forkNotice", field: "s.forkNotice", setter: "app.SetDesktopForkNotice(on)" },

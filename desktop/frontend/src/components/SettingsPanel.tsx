@@ -1951,9 +1951,10 @@ type ExperimentFeatureId =
   | "homePointer"
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
   // 任务 943：族拆两卡——本 id 收窄为 readBack 面；multi_edit 直注独立卡。
+  // 任务 971：扩为聚合页——readBack + multi_edit 直注 + restart_update 三开关
+  // 单页管理 + rev2 警告；multiEditInjection 独立 pane 退役为页内成员行
+  // （键/setter/回落链零变化，943 两开关独立语义保持）。
   | "toolOptimizations"
-  // 任务 943: multi_edit 直注独立卡（原族卡第二效果拆出，键缺省回落族键）。
-  | "multiEditInjection"
   // 任务 677→856 ③: unified collaboration-hub entry switch (the mail-inbox
   // + group-chat icons merged into one; renamed from collabGroupView).
   | "collabHub"
@@ -2011,8 +2012,7 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "orphanHandling",
   "localServer",
   "toolOptimizations",
-  // 任务 943：multi_edit 直注独立卡（工具优化族拆分）。
-  "multiEditInjection",
+  // 任务 971：multiEditInjection 独立 pane 退役（聚合页成员行，943 语义不变）。
   // 任务 775：kind:param 参数卡 id——pane 由通用参数渲染器承接（无独立
   // 硬编码分支）；登记进白名单与 feature 卡同一安全网语义（yaml 引用
   // 白名单外 id ⇒ 整份回退默认）。
@@ -2645,20 +2645,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("restartUpdate", t("settings.restartUpdate"))} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
-                    >
-                      {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
+              {/* 任务 971：restartUpdate 行迁至「工具优化」聚合页（toolOptimizations
+                  pane）——键/setter 零变化，仅 UI 落点迁移。 */}
               <>
                 {/*
                  * Task 381: the fast-switch staging directory. Empty = the
@@ -5065,13 +5053,22 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               （interactionPresentation，卡内成员行承载；Task 385a 门控+选择器
               语义不变，仅落点迁卡）。 */}
           {selected === "toolOptimizations" && (
-            /* 任务 603:「工具优化」族首件 — edit_file/multi_edit accept
-               readBack (edited snippet + context) and the returned window
-               counts as fresh read evidence, so a same-file follow-up edit
-               skips the read round trip. Gate 联动是行为变更：开关默认关，
-               异常时先关开关回退。任务 943：族拆两卡——本卡只管 readBack
-               面（multi_edit 直注拆至独立卡 multiEditInjection）。 */
+            /* 任务 971：工具优化聚合页——工具表相关开关单页管理。
+               顶部常驻 rev2 警告（定稿原文）+ 三生效点机制说明 + 四配套；
+               下方 readBack / multi_edit 直注 / restart_update 三开关 + 证据门
+               成员行 + session_hub 预留键位。任务 603 readBack 语义不变；任务
+               943 两开关独立语义保持（合并入页不回并，各持各键各 setter）。 */
             <>
+            {/* 任务 971：顶部常驻警告（rev2 定稿全文，双向语义保留）。 */}
+            <div className="banner banner--warning" role="alert" data-testid="tool-opt-hub-warning">
+              {t("settings.toolOptHub.warning")}
+            </div>
+            {/* 任务 971：三生效点机制说明 + 四配套（pending 态/compact 立即生效/
+                换装 notice/纯 schema 范围）。 */}
+            <p className="approval-mode-hint">{t("settings.toolOptHub.effect")}</p>
+            <p className="approval-mode-hint">{t("settings.toolOptHub.pending")}</p>
+            <p className="approval-mode-hint">{t("settings.toolOptHub.notice")}</p>
+            <p className="approval-mode-hint">{t("settings.toolOptHub.scope")}</p>
             <SettingsField label={labLabel("toolOptimizations", t("settings.toolOptimizations"))} hint={t("settings.toolOptimizationsHint")} icon={<Sparkles size={18} />} stacked>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
@@ -5110,13 +5107,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
-            </>
-          )}
-          {selected === "multiEditInjection" && (
-            /* 任务 943: multi_edit 直注独立卡（原「工具优化」族卡第二效果
-               拆出）——族键开启时 multi_edit 进入模型可见工具列表。显示走
-               与 Go 侧同一条回落链（键缺省跟随旧族键，族键也缺省按面板层
-               默认开）：存量族键开的用户拆分前后显示不跳变。 */
+            {/* 任务 943 multi_edit 直注（971 聚合入页为成员行，独立 pane 退役）。
+                显示走与 Go 侧同一条回落链（键缺省跟随旧族键，族键也缺省按面板层
+                默认开）：存量族键开的用户拆分前后显示不跳变。键/setter 零变化。 */}
             <SettingsField label={labLabel("multiEditInjection", t("settings.multiEditInjection"))} hint={t("settings.multiEditInjectionHint")} icon={<Sparkles size={18} />} stacked>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
@@ -5135,6 +5128,28 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
               <p className="approval-mode-hint">{t("settings.multiEditInjection.risk")}</p>
             </SettingsField>
+            {/* 任务 971：restart_update 自界面组「更新与反馈」卡迁入（键/setter
+                零变化，仅 UI 落点迁移）。 */}
+            <SettingsField label={labLabel("restartUpdate", t("settings.restartUpdate"))} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+                  >
+                    {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+            {/* 任务 971：session_hub 预留键位（954 未合并，仅占位不生效）。
+                键名 experimental_capability_groups 同键预留——954 落地后挂接。 */}
+            <SettingsField label={t("settings.toolOptHub.sessionHubSlot")} hint={t("settings.toolOptHub.sessionHubSlotHint")} icon={<Sparkles size={18} />}>
+              <span className="approval-mode-hint" data-testid="session-hub-slot">experimental_capability_groups</span>
+            </SettingsField>
+            </>
           )}
         </div>
       </div>

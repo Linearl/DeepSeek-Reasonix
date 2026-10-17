@@ -167,8 +167,10 @@ console.log("\ntask 562 lab three-tier badges");
   // ——成员总数 31→32。任务 961：smartAutomation 三成员（dream/
   // decisionPatterns/heartbeatBackground）+ interactionPresentation 三成员
   // （quickCommands/traceAsState/outputStyle）+ viewLayout 卡 renderArtifact
-  // 计入——成员总数 32→39。
-  ok(members.length === 39, `merged cards carry 39 member features (got ${members.length})`);
+  // 计入——成员总数 32→39。任务 971：multiEditInjection 独立卡退役为聚合页
+  // 成员行（restartUpdate 自 updateFeedback 迁入 toolOptimizations，成员
+  // 计数净零）——成员总数 39→40。
+  ok(members.length === 40, `merged cards carry 40 member features (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
@@ -206,7 +208,12 @@ console.log("\ntask 562 lab three-tier badges");
   ok(JSON.stringify(railTiersForDefault("subagentSuite")) === JSON.stringify(["optional", "unstable"]) && agg("subagentSuite") === "optional",
     `subagentSuite aggregates to the single 可选 badge over its unstable member (got ${String(agg("subagentSuite"))})`);
   // 其余合并卡逐卡钉聚合终值（722 布局现值）。
-  ok(agg("updateFeedback") === "recommended", `updateFeedback aggregates to 推荐 (got ${String(agg("updateFeedback"))})`);
+  // 任务 971：restartUpdate 迁至工具优化聚合页——updateFeedback 仅余 feedback
+  // （可选档），聚合终值 推荐→可选。
+  ok(agg("updateFeedback") === "optional", `updateFeedback aggregates to 可选 after 971 (got ${String(agg("updateFeedback"))})`);
+  // 任务 971：toolOptimizations 聚合页（readBack 推荐 + 证据门未稳定 + multi_edit
+  // 直注可选 + restart_update 推荐）——卡头聚合单枚 推荐。
+  ok(agg("toolOptimizations") === "recommended", `toolOptimizations hub aggregates to 推荐 (got ${String(agg("toolOptimizations"))})`);
   ok(agg("sessionStore") === "optional", `sessionStore aggregates to 可选 over its unstable member (got ${String(agg("sessionStore"))})`);
   ok(agg("devDebug") === "unstable", `devDebug aggregates to 未稳定 (got ${String(agg("devDebug"))})`);
   // 任务 782：界面组三张合并卡逐卡钉聚合终值——容器徽章 = 成员最高档
