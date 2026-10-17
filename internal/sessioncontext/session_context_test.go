@@ -7,25 +7,29 @@ import (
 
 func TestBuildParseDeterministicOrderedSnapshot(t *testing.T) {
 	sections := Sections{
-		Environment:      "## Environment\r\n\r\ngo/linux",
-		Workspace:        `Current workspace: "/work"`,
-		BackgroundMemory: "fact index",
-		SkillsCatalog:    "```\n- review — Review code\n```",
+		Environment:       "## Environment\r\n\r\ngo/linux",
+		Workspace:         `Current workspace: "/work"`,
+		SkillsCatalog:     "```\n- review — Review code\n```",
+		CapabilityCatalog: "```\n- skill:review — Review code\n```",
+		BackgroundMemory:  "fact index",
 	}
 	first := Build(sections)
 	second := Build(sections)
 	if first.Content == "" || first.Content != second.Content || first.Digest != second.Digest {
 		t.Fatalf("Build is not deterministic:\nfirst=%+v\nsecond=%+v", first, second)
 	}
-	for _, want := range []string{"## Environment", "## Workspace", "## Background memory", "## Skills catalog", "Digest: sha256:"} {
+	for _, want := range []string{"## Environment", "## Workspace", "## Skills catalog", "## Capability catalog", "## Background memory", "Digest: sha256:"} {
 		if !strings.Contains(first.Content, want) {
 			t.Fatalf("snapshot missing %q:\n%s", want, first.Content)
 		}
 	}
-	if strings.Index(first.Content, "## Environment") > strings.Index(first.Content, "## Workspace") ||
-		strings.Index(first.Content, "## Workspace") > strings.Index(first.Content, "## Background memory") ||
-		strings.Index(first.Content, "## Background memory") > strings.Index(first.Content, "## Skills catalog") {
-		t.Fatalf("sections out of order:\n%s", first.Content)
+	// Task 969: stability order — volatile Background memory renders last so a
+	// memory-only change keeps the earlier section bytes cache-reusable.
+	if !(strings.Index(first.Content, "## Environment") < strings.Index(first.Content, "## Workspace") &&
+		strings.Index(first.Content, "## Workspace") < strings.Index(first.Content, "## Skills catalog") &&
+		strings.Index(first.Content, "## Skills catalog") < strings.Index(first.Content, "## Capability catalog") &&
+		strings.Index(first.Content, "## Capability catalog") < strings.Index(first.Content, "## Background memory")) {
+		t.Fatalf("sections out of stability order:\n%s", first.Content)
 	}
 	parsed, ok := Parse(first.Content)
 	if !ok || parsed.Digest != first.Digest || parsed.Content != first.Content {
@@ -36,11 +40,110 @@ func TestBuildParseDeterministicOrderedSnapshot(t *testing.T) {
 	}
 	diagnostics := SectionDiagnostics(parsed)
 	if diagnostics.Environment.Chars != len("go/linux") || len(diagnostics.Environment.Digest) != 64 ||
-		diagnostics.Workspace.Chars != len(`Current workspace: "/work"`) {
+		diagnostics.Workspace.Chars != len(`Current workspace: "/work"`) ||
+		len(diagnostics.CapabilityCatalog.Digest) != 64 {
 		t.Fatalf("content-free diagnostics = %+v", diagnostics)
 	}
 	if strings.Contains(first.Content, "\r") {
 		t.Fatalf("snapshot retained non-LF newline: %q", first.Content)
+	}
+}
+
+// Task 969 acceptance ③: identical content reuses the same block — the delta
+// build returns a zero snapshot so the caller skips the append entirely and the
+// provider prefix cache keeps hitting.
+func TestBuildDeltaUnchangedProducesNoBlock(t *testing.T) {
+	sections := Sections{
+		Environment:       "go/linux",
+		Workspace:         "ws",
+		SkillsCatalog:     "skills",
+		CapabilityCatalog: "catalog",
+		BackgroundMemory:  "memory v1",
+	}
+	if got := BuildDelta(sections, sections); got != (Snapshot{}) {
+		t.Fatalf("BuildDelta(unchanged) = %+v, want zero snapshot", got)
+	}
+	// Normalization-equivalent input must also count as unchanged.
+	crlf := Sections{
+		Environment:      "## Environment\r\n\r\ngo/linux",
+		Workspace:        "ws",
+		SkillsCatalog:    "skills",
+		BackgroundMemory: "memory v1",
+	}
+	previous := Sections{Environment: "go/linux", Workspace: "ws", SkillsCatalog: "skills", BackgroundMemory: "memory v1"}
+	if got := BuildDelta(crlf, previous); got != (Snapshot{}) {
+		t.Fatalf("BuildDelta(normalized-equal) = %+v, want zero snapshot", got)
+	}
+}
+
+// Task 969 acceptance ④ (分节 digest): a memory-only change re-sends only the
+// memory section — unchanged blocks (capability catalog included) must not
+// reappear in the delta envelope.
+func TestBuildDeltaMemoryOnlyResendsMemorySection(t *testing.T) {
+	previous := Sections{
+		Environment:       "go/linux",
+		Workspace:         "ws",
+		SkillsCatalog:     "skills",
+		CapabilityCatalog: "catalog",
+		BackgroundMemory:  "memory v1",
+	}
+	current := previous
+	current.BackgroundMemory = "memory v2"
+	delta := BuildDelta(current, previous)
+	if delta.Content == "" {
+		t.Fatal("BuildDelta produced no block for a memory change")
+	}
+	parsed, ok := Parse(delta.Content)
+	if !ok {
+		t.Fatalf("delta does not parse:\n%s", delta.Content)
+	}
+	if parsed.Sections.BackgroundMemory != "memory v2" {
+		t.Fatalf("delta memory = %q, want memory v2", parsed.Sections.BackgroundMemory)
+	}
+	for _, absent := range []string{"go/linux", "ws", "skills", "catalog", "## Environment", "## Workspace", "## Skills catalog", "## Capability catalog"} {
+		if strings.Contains(delta.Content, absent) {
+			t.Fatalf("delta re-sent unchanged content %q:\n%s", absent, delta.Content)
+		}
+	}
+	if !strings.Contains(delta.Content, deltaPreamble) {
+		t.Fatalf("delta missing delta preamble:\n%s", delta.Content)
+	}
+	// Only the changed section is carried; a later delta merges onto it.
+	merged := parsed.Sections
+	if merged.Environment != "" || merged.CapabilityCatalog != "" {
+		t.Fatalf("delta carried extra sections: %+v", merged)
+	}
+}
+
+// Omission means "keep the earlier value", so a section cleared to empty cannot
+// be expressed as a delta — BuildDelta must fall back to a full snapshot.
+func TestBuildDeltaClearFallsBackToFullSnapshot(t *testing.T) {
+	previous := Sections{Environment: "go/linux", Workspace: "ws", BackgroundMemory: "memory v1"}
+	current := Sections{Environment: "go/linux", Workspace: "ws"}
+	full := BuildDelta(current, previous)
+	if full.Content == "" || !strings.HasPrefix(full.Content, openTag+"\n"+preamble) {
+		t.Fatalf("clear did not fall back to full snapshot:\n%s", full.Content)
+	}
+	if strings.Contains(full.Content, "memory v1") {
+		t.Fatalf("fallback snapshot leaked cleared memory:\n%s", full.Content)
+	}
+	parsed, ok := Parse(full.Content)
+	if !ok || parsed.Sections != (Sections{Environment: "go/linux", Workspace: "ws"}) {
+		t.Fatalf("fallback snapshot round trip = %+v ok=%v", parsed, ok)
+	}
+}
+
+// Legacy four-section snapshots (pre-969 order, zero-length entries, no
+// Capability catalog) must keep parsing so upgraded clients resume old sessions.
+func TestParseLegacyFourSectionManifest(t *testing.T) {
+	body := preamble + "\n\n" +
+		"Section lengths: Environment=0; Workspace=2; Background memory=0; Skills catalog=6" +
+		"\n\n## Workspace\n\nws" +
+		"\n\n## Skills catalog\n\nskills"
+	legacy := openTag + "\n" + body + "\n\n" + digestPrefix + digestOf(body) + "\n" + closeTag
+	parsed, ok := Parse(legacy)
+	if !ok || parsed.Sections.Workspace != "ws" || parsed.Sections.SkillsCatalog != "skills" {
+		t.Fatalf("legacy four-section manifest no longer parses: ok=%v sections=%+v", ok, parsed.Sections)
 	}
 }
 
