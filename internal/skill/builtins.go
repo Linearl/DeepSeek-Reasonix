@@ -340,6 +340,11 @@ straight to the matching expert and the secretariat never touches it.
 - The target does **not** need a visible tab. A session whose runtime is alive
   takes the message directly; a session that is fully closed is opened so the
   work can land. You do not need to open it yourself.
+- Renaming (task 949): ` + "`rename_topic(topic_id | contact_id, title)`" + ` retitles a
+  session on every surface (sidebar, search, directory). Address it by id, not
+  by the name you are about to change. A rename never alters the contact_id or
+  topic_id, so existing dispatch references stay valid — update any
+  memory/document that still quotes the OLD title.
 
 ### Registering duties (set_session_purpose)
 
