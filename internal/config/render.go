@@ -139,13 +139,13 @@ var labFeatureTiers = []labFeatureTier{
 	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
 	{"homePointer", LabTierUnstable, []string{"experimental_home_pointer"}},
 	// ── infra（基础设施，7 项；785 退役 S1 常驻底座开关，790 增 acpListen）──────
-	{"runtimeReuse", LabTierOptional, []string{"experimental_runtime_reuse"}},
+	{"runtimeReuse", LabTierRecommended, []string{"experimental_runtime_reuse"}}, // 任务 992：用户 1018 升推荐（复用池稳定运行一段时间无问题，不开启有体验缺口）
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
 	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}},               // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
 	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
 	{"tabModeTint", LabTierUnstable, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
-	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
+	{"orphanHandling", LabTierRecommended, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键；任务 992：随复用池升推荐（用户 1018）
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
 	// ── tool-opt（工具优化，4 项；815 登记窗口：789 证据门宽松转正入表；
 	//    943 族拆两卡：multiEditInjection 独立入表；979 capabilityGroups
@@ -153,7 +153,7 @@ var labFeatureTiers = []labFeatureTier{
 	{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动）；任务 783④：编辑读回（readBack）随 22.5 交付转正，未稳定→推荐（前端注册表同步升档，562 两侧一致断言守护）；任务 943：族拆两键后本键只管 readBack 面
 	// 任务 789/815：编辑证据门宽松模式（工具优化卡成员行，未稳定档默认关）。
 	// 789 先行（Go 侧开关+前端登记半程），815 登记窗口补齐设置页入口后转正入表。
-	{"editEvidenceRelaxed", LabTierUnstable, []string{"experimental_edit_evidence_relaxed"}},
+	{"editEvidenceRelaxed", LabTierOptional, []string{"experimental_edit_evidence_relaxed"}}, // 任务 992：用户 1018 升可选（原 789/815 未稳定档）
 	// 任务 943：multi_edit 直注独立卡（原族键第二效果拆出，可选档——550 口径：
 	// 不开启只小幅影响，multi_edit 仍可经 use_capability 调用）。
 	{"multiEditInjection", LabTierOptional, []string{"experimental_multi_edit_injection"}},

@@ -23,6 +23,7 @@ import { collabTitleFor, rememberCollabContactNames, shortContactId } from "../l
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
 import { groupForProject, loadProjectGroupAssign, loadProjectGroups } from "../lib/projectGroups";
+import { acquireOverlayOrder } from "../lib/stackingOrder";
 
 export type CollabMailEntry = {
   id: string;
@@ -346,12 +347,16 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
   // error=取全文失败（弹窗内显式报错 + 重试，绝不把「读不到」渲染成空正文，
   // 与 587 空/败分离同口径）。entry 骨架先行渲染（发/收/时间即刻可见）。
   const [detail, setDetail] = useState<{ entry: CollabMailEntry; full: CollabMailDetail | null } | null>(null);
+  // 任务 986：详情弹窗层内 LIFO 序——打开时取单调递增号，点击置前重新取号，
+  // zIndex = calc(--z-popover-elevated + order)（后弹在前 + 点击置前，用户两原则）。
+  const [detailOrder, setDetailOrder] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const openDetail = useCallback(async (entry: CollabMailEntry) => {
     const read = b.ReadCollabMail;
     setDetail({ entry, full: null });
+    setDetailOrder(acquireOverlayOrder());
     setDetailError(null);
     if (typeof read !== "function") {
       // 向前兼容缝：无全文口 → 弹窗展示预览行（不空白、不崩）。
@@ -1099,7 +1104,10 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
         <div
           className="modal-backdrop collab-inbox-detail-backdrop"
           role="presentation"
+          style={{ zIndex: `calc(var(--z-popover-elevated) + ${detailOrder})` }}
           onMouseDown={(event) => {
+            // 任务 986 ②：点击置前——mousedown 即抬 order（显式抬号，不依赖 DOM 重排）。
+            setDetailOrder(acquireOverlayOrder());
             if (event.target === event.currentTarget) setDetail(null);
           }}
         >

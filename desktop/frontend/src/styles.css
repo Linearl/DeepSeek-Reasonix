@@ -169,6 +169,7 @@
   --z-modal: 1200;
   --z-overlay-backdrop: 1300;
   --z-popover: 1301;
+  --z-popover-elevated: 1303;
   --z-toast: 1302;
   --z-tooltip: 1302;
   --z-onboarding: 9999;
@@ -46116,10 +46117,12 @@ button.statusbar__mcp:focus-visible {
   color: var(--accent);
 }
 /* 任务 980 ③：详情弹窗——modal 家族先例（.modal-backdrop/.modal 公共骨架），
-   本块只补差异：宽幅 + 纵向 flex + 正文区滚动。 */
+   本块只补差异：宽幅 + 纵向 flex + 正文区滚动。
+   任务 984：z-index 由 --z-overlay-backdrop(1300) 提升到 --z-popover-elevated(1303)——
+   详情弹窗从协作中心主面板(--z-popover 1301)内点出，1300 < 1301 会被主面板盖住。 */
 .collab-inbox-detail-backdrop {
   --wails-draggable: no-drag;
-  z-index: var(--z-overlay-backdrop);
+  z-index: var(--z-popover-elevated);
 }
 .collab-inbox-detail {
   max-width: min(720px, 92vw);

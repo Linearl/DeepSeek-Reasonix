@@ -267,10 +267,12 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "updateFeedback",
           labelKey: "settings.updateFeedback",
-          // 任务 971：restartUpdate 迁至工具优化聚合页——onKeys 去 experimentalRestartUpdate。
-          onKeys: ["experimentalFeedback", "forkNotice"],
+          // 任务 971 曾迁 restartUpdate 至工具优化聚合页；任务 992（用户 1018 21:34）
+          // 归位回本卡——重启更新放回原位置，工具优化处不再保留。
+          onKeys: ["experimentalFeedback", "forkNotice", "experimentalRestartUpdate"],
           members: [
             { id: "feedback", labelKey: "settings.feedback", tier: "optional" },
+            { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },
           ],
         },
         // 任务 782④：opencodeGoUsage 迁出界面组（→任务 783 可观测性组
@@ -369,32 +371,20 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       labelKey: "settings.labGroup.infra",
       // 任务 785：S1 常驻底座开关条目已随底座退役移除。
       entries: [
-        { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "optional", onKeys: ["experimentalRuntimeReuse"] },
+        { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "recommended", onKeys: ["experimentalRuntimeReuse"] },
         { id: "zcodeTaskBus", labelKey: "settings.zcodeTaskBus", tier: "unstable", onKeys: ["experimentalZcodeTaskBus"] },
         // 任务 790：ACP 常驻监听（与 yaml 同序同值——回退安全网）。
         { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable", onKeys: ["experimentalACPListen"] },
         { id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] },
-        { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "unstable", onKeys: ["experimentalOrphanHandling"] },
+        { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended", onKeys: ["experimentalOrphanHandling"] },
         { id: "localServer", labelKey: "settings.localServer", tier: "unstable", onKeys: ["experimentalLocalServer"] },
-      ],
-    },
-    {
-      key: "tool-opt",
-      labelKey: "settings.labGroup.toolOpt",
-      entries: [
-        // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
-        // （注册表与 Go 渲染表同步升档；562 drift 检查钉两侧一致）。任务
-        // 943：原「工具优化」族拆两卡——本卡只管 readBack 面（789 证据门
-        // 联动是读回计证据的伴生，成员行随本卡）。
-        // 任务 971：扩为聚合页——multi_edit 直注（943 拆出）与 restart_update
-        // （自界面组更新反馈卡迁入）转成员行；卡灯三键任一非默认即亮。任务
-        // 943 两开关独立语义保持——合并入页不回并，各持各键各 setter。
-        // 任务 979：capabilityGroups（能力组披露+session_hub 聚合件，953/954/955
-        // 共用一键）971 占位替换为真开关——成员行入卡，卡灯增第四键。
-        { id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalRestartUpdate", "experimentalCapabilityGroups"], members: [
-          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" },
+        // 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原独立
+        // tool-opt 组退役，labGroup.toolOpt 不再引用）；restartUpdate 归位回界面组
+        // updateFeedback 卡（971 迁入撤销，onKeys/members 同步回迁）；宽松模式升可选。
+        // 卡灯三键（readBack/直注/能力组），restartUpdate 不再入灯。
+        { id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalCapabilityGroups"], members: [
+          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "optional" },
           { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },
-          { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },
           { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional" },
         ] },
       ],
