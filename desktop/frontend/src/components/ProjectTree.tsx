@@ -12,7 +12,7 @@ import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkb
 export * from "../lib/projectTreeTopic";
 import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeBodyState, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
 export * from "../lib/projectTreePresentation";
-import type { ProjectNode, SessionCatalogStatus } from "../lib/types";
+import type { ProjectNode, ProjectTreeChangedV2, SessionCatalogStatus } from "../lib/types";
 import { topicActivityTime } from "../lib/session";
 import { useT, type Translator } from "../lib/i18n";
 import { requestTopicVersions } from "../lib/sessionRecoveryVersionHostBridge";
@@ -81,6 +81,14 @@ type CollapseSnapshot = {
   expanded: Set<string>;
   manuallyCollapsed: Set<string>;
 };
+
+// Task 981: fixed window (not sliding — a sliding debounce starves under the
+// continuous event stream a long turn produces) that batches
+// project-tree:changed-v2 events before one merged sidebar refresh. 400ms sits
+// inside the report's recommended 300–500ms band: long enough to absorb a
+// write+reconcile+metadata burst, short enough that a real rename still feels
+// immediate.
+const PROJECT_TREE_EVENT_BATCH_MS = 400;
 
 // wt-zcode-288：readActivity 的存取与「全部已读」批量标记收口到 lib/readActivity
 // （TabBar 等树外组件也要写同一份存档）；这里只保留 baseline 的本地初始化。
@@ -561,16 +569,39 @@ export function ProjectTree({
   // the rest of the project-group state; the listener only needs the ref (it
   // fires after mount, when the ref already holds the latest callback).
   const refreshProjectGroupsRef = useRef<() => Promise<void>>(async () => {});
-  useEffect(() => onProjectTreeChangedV2((event) => {
-    // A stale or missed revision means the tree may have drifted from the
-    // catalog; refetch the full snapshot instead of dropping the event.
-    if (!projectTreeRevisionIsFresh(latestRevisionRef.current, event.revision)) {
+  // Task 981 (sidebar flicker): catalog events ride every revision bump, so a
+  // long-running turn streams write/reconcile/metadata events several times a
+  // second and each one used to run the full refresh suite (status pull +
+  // group roster + a topic-page reload per expanded folder) — the整树重-render
+  // the user sees as flicker. Events now batch into a fixed 400ms window: the
+  // first event opens the window, every event inside it joins the batch, and
+  // one merged flush runs the suite once. A fixed (not sliding) window matters:
+  // under a continuous event stream a sliding debounce would starve the flush
+  // forever, exactly the load the report measured.
+  const pendingTreeEventsRef = useRef<ProjectTreeChangedV2[]>([]);
+  const treeEventWindowRef = useRef<number | null>(null);
+  const flushTreeEventsRef = useRef<() => void>(() => {});
+  flushTreeEventsRef.current = () => {
+    const events = pendingTreeEventsRef.current;
+    pendingTreeEventsRef.current = [];
+    if (events.length === 0) return;
+    // Merge the batch: the freshest revision wins, metadata-ness is sticky
+    // (any metadata event keeps the roster pull), and the affected-roots union
+    // degrades to "everything" the moment any batched event carries empty
+    // roots — the same all-folders semantics a single empty-roots event has.
+    const event = events.reduce((current, item) => item.revision >= current.revision ? item : current);
+    // Any stale member means the stream jumped a revision while batching — the
+    // same "refetch the full snapshot instead of dropping the event" contract a
+    // single stale event had, evaluated per batched event.
+    if (events.some((item) => !projectTreeRevisionIsFresh(latestRevisionRef.current, item.revision))
+      || !projectTreeRevisionIsFresh(latestRevisionRef.current, event.revision)) {
       void refresh();
       return;
     }
     latestRevisionRef.current = Math.max(latestRevisionRef.current, event.revision);
-    if (event.reason === "metadata") {
-      setOrganizationRevision((current) => Math.max(current, event.revision));
+    const metadataRevision = events.reduce((current, item) => item.reason === "metadata" ? Math.max(current, item.revision) : current, 0);
+    if (metadataRevision > 0) {
+      setOrganizationRevision((current) => Math.max(current, metadataRevision));
       // A-slice writes (rename/move/create, incl. project groups) each emit
       // reason=metadata — re-pull the project-group roster so every open
       // window converges on the same catalog (handoff §2.4).
@@ -579,13 +610,41 @@ export function ProjectTree({
     const catalogStatusGeneration = catalogStatusGenerationRef.current;
     void app.GetSessionCatalogStatus().then((status) => { if (!catalogRebuildFailedRef.current && catalogStatusGeneration === catalogStatusGenerationRef.current) setCatalogStatus(status); }).catch(() => {});
     if (treeRef.current.length === 0) { void refresh(); return; } // race: event before shell
-    const affected = asArray(event.roots);
+    let affected: string[] = [];
+    for (const item of events) {
+      const roots = asArray(item.roots);
+      if (roots.length === 0) { affected = []; break; } // empty roots = every folder
+      affected = [...new Set([...affected, ...roots])];
+    }
     for (const project of treeRef.current) {
       const key = projectNodeKey(project, 0);
       if (!expanded.has(key)) continue;
       if (projectTreeEventAffectsFolder(project, affected)) void loadProjectTopics(project);
     }
-  }), [expanded, loadProjectTopics, refresh]);
+  };
+  useEffect(() => {
+    const unsubscribe = onProjectTreeChangedV2((event) => {
+      pendingTreeEventsRef.current.push(event);
+      // Fixed window: the first event opens it; later events just join. The flush
+      // callback is ref-forwarded so it always sees the latest expanded set and
+      // reload closure without re-subscribing per state change.
+      if (treeEventWindowRef.current !== null) return;
+      treeEventWindowRef.current = window.setTimeout(() => {
+        treeEventWindowRef.current = null;
+        flushTreeEventsRef.current();
+      }, PROJECT_TREE_EVENT_BATCH_MS);
+    });
+    return () => {
+      unsubscribe();
+      if (treeEventWindowRef.current !== null) {
+        window.clearTimeout(treeEventWindowRef.current);
+        treeEventWindowRef.current = null;
+      }
+      // Unmount must not swallow a batched refresh the tree still owes... but
+      // the component is going away, so dropping the pending batch is correct.
+      pendingTreeEventsRef.current = [];
+    };
+  }, []);
   // Debounce query/timeFilter reloads so typing does not stampede the catalog.
   // Dependency is the project-shell signature, not tree: topic page loads
   // rewrite children and would otherwise re-arm this effect in a loop.

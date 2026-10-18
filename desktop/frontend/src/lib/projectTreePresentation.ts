@@ -8,9 +8,24 @@ export type PinnedTreeSections = {
   projects: ProjectNode[];
 };
 
+// Task 981 (sidebar flicker): a running session's lastActivityAt moves on every
+// mid-turn autosave/write, so under pure activity sort its row climbs toward
+// the folder top continuously and every other row shifts down with it — the
+// reorder the user perceives as flicker. Bucketing ONLY running rows to
+// minute granularity freezes their relative order inside a minute (ties fall
+// through to the topicId tie-break) while leaving completed sessions on exact
+// timestamps: the active row still rises to where its last completed minute
+// puts it, it just stops jittering second by second. Report §6.4.
+const ACTIVITY_BUCKET_MS = 60_000;
+
+function bucketedActivityTime(node: ProjectNode): number {
+  const activity = topicActivityTime(node);
+  return node.running ? Math.floor(activity / ACTIVITY_BUCKET_MS) * ACTIVITY_BUCKET_MS : activity;
+}
+
 function topicSortValue(node: ProjectNode, sortMode: WorkbenchSortMode): number {
   if (sortMode === "created") return node.createdAt || node.lastActivityAt || 0;
-  return topicActivityTime(node);
+  return bucketedActivityTime(node);
 }
 
 // Color sort rank for project/folder nodes: uncolored projects sink last, and
