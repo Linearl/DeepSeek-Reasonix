@@ -114,6 +114,29 @@ func TestUseCapabilityCleanIDDoesNotCountSelfHeal(t *testing.T) {
 	}
 }
 
+// TestUseCapabilityControlOnlyTopLevelIDStillPromotesNested pins the ordering
+// between task 975 and task 728: a control-only top-level id must not block
+// the nested-capability_id rescue — promotion runs first, the control-char
+// error only names the failure when nothing rescued it.
+func TestUseCapabilityControlOnlyTopLevelIDStillPromotesNested(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Add(spreadNotifyTool{})
+	audit := &capability.Audit{}
+	proxy := NewUseCapabilityTool(context.Background(), nil, nil, reg, nil, audit, nil)
+
+	resolved, err := proxy.ResolveCall(t.Context(), json.RawMessage(`{
+		"action":"call",
+		"capability_id":"\r\n",
+		"arguments":{"capability_id":"tool:notify","arguments":{"message":"hi","to":"you"}}
+	}`))
+	if err != nil {
+		t.Fatalf("ResolveCall: %v (728 promotion must rescue a control-only top-level id)", err)
+	}
+	if resolved.CapabilityID != "tool:notify" {
+		t.Fatalf("CapabilityID = %q, want tool:notify from the 728 promotion", resolved.CapabilityID)
+	}
+}
+
 // TestUseCapabilityControlOnlyIDFailsClearly is acceptance 2: an id that is
 // nothing but control characters cleans to empty and must fail with the
 // control-character message — not a panic, and not the generic missing-id
