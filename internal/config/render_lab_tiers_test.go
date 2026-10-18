@@ -201,7 +201,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// 任务 783④：toolOptimizations（编辑读回 readBack）随 22.5 交付
 		// 转正，未稳定→推荐（前端注册表同步升档）——推荐 15→16、未稳定
 		// 14→13，总数不变 51。
-		LabTierRecommended: 16,
+		// 任务 992：runtimeReuse + orphanHandling 随用户 1018 升推荐（16→18，
+		// 总数不变 61；批42 交付时本 want 表未同步，2026-10-19 补齐）。
+		LabTierRecommended: 18,
 		// 任务 517：B1/B2/B3（可选×3）合并为 safetyCostControl（可选×1），
 		// 可选 20→18、总数 48→46。任务 705（sessionCollabAutoFold，超长跨
 		// 会话消息自动折叠，默认关）按可选档入表（18→19、47→48）。任务 707
@@ -226,7 +228,9 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		// （14→15，总数 55→56）。任务 686：workflowPanel（工作流可视化面板，
 		// 685 引擎未落地为前端 fixture 预览）入表未稳定档（15→16，总数
 		// 56→57）。
-		LabTierUnstable: 16,
+		// 任务 992：orphanHandling 升推荐 + editEvidenceRelaxed 升可选
+		//（用户 1018），16→14，总数不变 61。
+		LabTierUnstable: 14,
 		LabTierRetired:  0,
 	}
 	// 任务 801：decisionPatterns（决策模式提取+固化，默认关）按 550 口径可选
@@ -239,7 +243,8 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	// 任务 944：renderArtifact（对话内产物卡片）按可选档入表（27→28、
 	// 总数 59→60）。任务 979：capabilityGroups（能力组披露+session_hub
 	// 聚合件，953/954/955 共用一键）自 labNonFeatureKeys 豁免表转正入表
-	// 按可选档（28→29、总数 60→61；前端注册表同步）。
+	// 按可选档（28→29、总数 60→61；前端注册表同步）。任务 992：runtimeReuse
+	// 移出（-1）与 editEvidenceRelaxed 升入（+1）抵消，29 不变。
 	want[LabTierOptional] = 29
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
