@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-func (a *Agent) boundProviderVisibleResult(raw, toolName, callID string) (body, notice, original string) {
+func (a *Agent) boundProviderVisibleResult(raw, toolName, callID, args string) (body, notice, original string) {
 	summarized := summarizeCIOutput(raw)
 	body, notice = truncateToolOutputFor(summarized, toolName, callID)
-	deduped := a.dedupeProviderVisibleResult(toolName, callID, raw, body)
+	deduped := a.dedupeProviderVisibleResult(toolName, callID, args, raw, body)
 	if deduped != body {
 		original = raw
 	}
@@ -31,7 +31,22 @@ var dedupeExemptTools = map[string]bool{
 	"read_collab_status": true,
 }
 
-func (a *Agent) dedupeProviderVisibleResult(toolName, callID, raw, visible string) string {
+// dedupeFingerprint is the duplicate key: tool name + canonicalized call
+// arguments + the raw result (task 976). Keying on the result text alone let
+// two different writes collide whenever their acks were identical — a
+// todo_write ack only carries counts, so distinct ops/content with equal
+// counts produced one fingerprint and every later write was falsely reported
+// as a duplicate of the first (0528 install regression, task 972 fix 3
+// exposure). Arguments split those collisions; the result half keeps
+// same-arguments reads distinct when the underlying data changed. The map
+// lives in turnLoopState, which is zeroed per user turn (beginRunTurn) and on
+// compaction, so the key already carries a turn boundary.
+func dedupeFingerprint(toolName, args, raw string) string {
+	sum := sha256.Sum256([]byte(toolName + "\x00" + canonicalToolArgs(args) + "\x00" + raw))
+	return hex.EncodeToString(sum[:12])
+}
+
+func (a *Agent) dedupeProviderVisibleResult(toolName, callID, args, raw, visible string) string {
 	if a == nil || strings.TrimSpace(raw) == "" {
 		return visible
 	}
@@ -46,10 +61,18 @@ func (a *Agent) dedupeProviderVisibleResult(toolName, callID, raw, visible strin
 	if dedupeExemptTools[toolName] {
 		return visible
 	}
-	sum := sha256.Sum256([]byte(raw))
-	fp := hex.EncodeToString(sum[:12])
+	fp := dedupeFingerprint(toolName, args, raw)
 	prev, seen := a.turn.loop.rememberFingerprint(fp, callID)
 	if seen && prev != callID {
+		// Task 976, self-heal: a deduplicated todo_write while the host panel
+		// is empty means "the previous result still stands" would be a lie —
+		// the model would stop retrying a write that never landed, and the
+		// write gate (which reads the same empty panel) would keep blocking
+		// every follow-up tool: the 0528 self-lock. Panel empty = hand back
+		// the real result of this call and let the model proceed.
+		if toolName == "todo_write" && len(a.CurrentTaskTodoState()) == 0 {
+			return visible
+		}
 		// Task 972, fix 3: a deduplicated repeat must still answer the
 		// question the call asked. "Omitted" alone left the model unable to
 		// see whether its write landed and forced a probe re-send — so the

@@ -748,6 +748,14 @@ func (l *Ledger) Record(r Receipt) Receipt {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// Task 976: an ops-based todo_write records its resulting full list by
+	// replaying the ops against the pre-write baseline. Without this the
+	// receipt carried an empty Todos — the ledger baseline, canonical panel
+	// state, and todo_read all read empty while the tool acked success, and
+	// the write gate then deadlocked the turn.
+	if r.ToolName == "todo_write" && len(r.Todos) == 0 {
+		r = ExpandTodoOpsReceipt(r, latestTodoBaseline(l.receipts))
+	}
 	l.nextSequence++
 	if r.ID == "" {
 		// A short content+position digest, not the provider's call ID: the model
@@ -1506,6 +1514,21 @@ func (l *Ledger) LatestTodos() ([]TodoItem, bool) {
 		}
 	}
 	return nil, false
+}
+
+// latestTodoBaseline scans receipts (caller holds the ledger lock) for the
+// latest successful todo_write that recorded a non-empty list — the baseline
+// todo_write.Execute itself validates ops against (task 976). Empty receipts
+// are skipped: an ops write that recorded nothing must not erase the list the
+// next replay applies against.
+func latestTodoBaseline(receipts []Receipt) []TodoItem {
+	for _, v := range slices.Backward(receipts) {
+		r := v
+		if r.Success && r.ToolName == "todo_write" && len(r.Todos) > 0 {
+			return append([]TodoItem(nil), r.Todos...)
+		}
+	}
+	return nil
 }
 
 // UnverifiedCompletedTodos reports current completed todos that transitioned
