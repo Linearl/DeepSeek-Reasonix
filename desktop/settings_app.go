@@ -533,6 +533,10 @@ type SettingsView struct {
 	DecisionPatternAutoApprove   bool   `json:"decisionPatternAutoApprove"`
 	// Task 944: render_artifact tool + ArtifactCard lab switch readback.
 	ExperimentalRenderArtifact bool `json:"experimentalRenderArtifact"`
+	// Task 979: capability-group disclosure layer readback (tasks 953/954/955
+	// shared switch: use_capability group rows + group cards, session_hub L0
+	// aggregation entry, standing-directory group attribution). Boot snapshot.
+	ExperimentalCapabilityGroups bool `json:"experimentalCapabilityGroups"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
@@ -1851,6 +1855,8 @@ func (a *App) Settings() SettingsView {
 		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
 		// Task 944: render_artifact lab switch readback.
 		ExperimentalRenderArtifact: cfg.Agent.ExperimentalRenderArtifact,
+		// Task 979: capability-group disclosure lab switch readback (953/954/955 shared).
+		ExperimentalCapabilityGroups: cfg.Agent.ExperimentalCapabilityGroups,
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
 		ExperimentalSafetyCostControl: cfg.Agent.ExperimentalSafetyCostControl,
 		// Task 722: sub-switch override readback (nil stays nil = inherit).

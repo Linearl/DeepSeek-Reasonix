@@ -176,6 +176,10 @@ export interface SettingsView {
   decisionPatternAutoApprove?: boolean;
   // Task 944: render_artifact tool + ArtifactCard lab switch (default off).
   experimentalRenderArtifact?: boolean;
+  // Task 979: capability-group disclosure layer (tasks 953/954/955 shared
+  // switch: use_capability group rows + group cards, session_hub L0
+  // aggregation entry, standing-directory group attribution; default off).
+  experimentalCapabilityGroups?: boolean;
   // Task 184: host performance monitor — 5s samples of memory/IO/key files plus
   // periodic heap profiles. Off by default.
   experimentalPerfMonitor?: boolean;

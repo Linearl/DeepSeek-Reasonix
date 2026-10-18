@@ -58,8 +58,10 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
   // 任务 789：editEvidenceRelaxed 以成员行入卡——条目变为「主控+成员」形态。
   // 任务 971：聚合页扩员——multiEditInjection + restartUpdate 转成员行，
   // 卡灯三键任一非默认即亮；卡 labelKey 改指聚合页标题 toolOptHub。
-  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalRestartUpdate"], members: [\n          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" },\n          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },\n          { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },\n        ] }'),
-    "rail entry reads its three switches and hosts the 789/943/971 member rows (81/123 lost-save rule; 971 聚合页)");
+  // 任务 979：capabilityGroups（能力组披露+session_hub 聚合件）真开关入卡
+  // ——第四灯键+第四成员行（971 占位替换）。
+  ok(layoutDefault.includes('{ id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalRestartUpdate", "experimentalCapabilityGroups"], members: [\n          { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" },\n          { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },\n          { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },\n          { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional" },\n        ] }'),
+    "rail entry reads its four switches and hosts the 789/943/971/979 member rows (81/123 lost-save rule; 971 聚合页)");
   ok(panel.includes("on: labEntryLightOn(entry, s)"), "panel derives each rail light from its own onKeys (81/123 lost-save rule)");
   ok(panel.includes('{selected === "toolOptimizations" && ('), "pane card located");
   ok(panel.includes('app.SetExperimentalToolOptimizations(on)'), "card writes through its own setter");

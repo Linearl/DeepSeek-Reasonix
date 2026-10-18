@@ -238,6 +238,15 @@ func (a *App) SetExperimentalMultiEditInjection(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalMultiEditInjection(enabled) })
 }
 
+// SetExperimentalCapabilityGroups toggles the capability-group disclosure
+// layer (tasks 953/954/955, one shared switch): use_capability group rows +
+// group cards, the session_hub L0 aggregation entry, and the standing
+// directory's group attribution. Boot snapshot — restart (or a new session)
+// to apply. Task 979 wires the settings-page entry that 953 deferred.
+func (a *App) SetExperimentalCapabilityGroups(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCapabilityGroups(enabled) })
+}
+
 // SetAutonomousUpdateResume sets the auto-resume scope dial (task 254): off
 // resumes nothing, goal_autopilot resumes goal runs and autopilot sessions
 // that asked for the update, all additionally resumes every mid-turn session.

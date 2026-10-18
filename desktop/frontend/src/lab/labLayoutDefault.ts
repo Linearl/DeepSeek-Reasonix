@@ -389,10 +389,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // 任务 971：扩为聚合页——multi_edit 直注（943 拆出）与 restart_update
         // （自界面组更新反馈卡迁入）转成员行；卡灯三键任一非默认即亮。任务
         // 943 两开关独立语义保持——合并入页不回并，各持各键各 setter。
-        { id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalRestartUpdate"], members: [
+        // 任务 979：capabilityGroups（能力组披露+session_hub 聚合件，953/954/955
+        // 共用一键）971 占位替换为真开关——成员行入卡，卡灯增第四键。
+        { id: "toolOptimizations", labelKey: "settings.toolOptHub", tier: "recommended", onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalRestartUpdate", "experimentalCapabilityGroups"], members: [
           { id: "editEvidenceRelaxed", labelKey: "settings.editEvidenceRelaxed", tier: "unstable" },
           { id: "multiEditInjection", labelKey: "settings.multiEditInjection", tier: "optional" },
           { id: "restartUpdate", labelKey: "settings.restartUpdate", tier: "recommended" },
+          { id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional" },
         ] },
       ],
     },

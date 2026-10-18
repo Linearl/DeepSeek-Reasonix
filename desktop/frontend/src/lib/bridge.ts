@@ -1281,6 +1281,11 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // while on, multi_edit joins the model-visible tools. Boot snapshot,
   // restart to apply.
   SetExperimentalMultiEditInjection(enabled: boolean): Promise<void>;
+  // 任务 979: capability-group disclosure layer (tasks 953/954/955 shared
+  // switch: use_capability group rows + group cards, session_hub L0
+  // aggregation entry, standing-directory group attribution). Boot snapshot,
+  // restart to apply.
+  SetExperimentalCapabilityGroups(enabled: boolean): Promise<void>;
   // Task 789: relaxed edit evidence gate (工具优化 companion; restart to
   // apply). Task 815: settings-page entry for the registration window.
   SetExperimentalEditEvidenceRelaxed(enabled: boolean): Promise<void>;
@@ -6068,6 +6073,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalFullAccess() {},
     async SetExperimentalToolOptimizations() {},
     async SetExperimentalMultiEditInjection() {},
+    async SetExperimentalCapabilityGroups() {},
     async SetExperimentalEditEvidenceRelaxed() {},
     async SetAutonomousUpdateResume() {},
     async ResolveTakeoverDecision() { return false; },
