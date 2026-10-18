@@ -16,6 +16,8 @@
 // pattern inherited from project-tree-group-drag.test.tsx.
 
 import { JSDOM } from "jsdom";
+// tsconfig exclude 了 __tests__，tsx 对本文件走 classic JSX——必须显式绑定 React
+import * as React from "react";
 import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {

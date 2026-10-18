@@ -19,6 +19,8 @@
 //   拖排直连 A 片写，UI 消费面见 project-tree-group-topic-drag.test.tsx）。
 
 import { JSDOM } from "jsdom";
+// tsconfig exclude 了 __tests__，tsx 对本文件走 classic JSX——必须显式绑定 React
+import * as React from "react";
 import type { Root } from "react-dom/client";
 import type { Translator } from "../lib/i18n";
 import type {

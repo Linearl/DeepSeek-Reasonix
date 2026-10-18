@@ -465,7 +465,7 @@ const CHECKS = [
   // pump drainOnce 的接线点、579 去开关（桥始终打开，唯一剩余门是守卫④互斥）、
   // 控制器侧失效路径留痕 + 5/15/45s 有界重试 + 用尽可见（570 状态面新结局）。
   // 少任何一个都会退回「降级 follow-up 静默死锁 / 4s 无限重试 / 无痕滞留」。
-  { feature: "任务569 空闲开轮桥本体（RunInboxTurn 接桥+active-tab 判据）", file: "desktop/session_collab_idle_turn.go", patterns: ["sessionCollabIdleTurnDelay", "target.activeTab || target.contactID", "view.run = t.ctrl.RunInboxTurn", "sweepIdleInboxTurns"] },
+  { feature: "任务569 空闲开轮桥本体（RunInboxTurn 接桥+active-tab 判据）", file: "desktop/session_collab_idle_turn.go", patterns: ["sessionCollabIdleTurnDelay", "target.activeTab || target.contactID", "view.run = ctrl.RunInboxTurn", "sweepIdleInboxTurns"] },
   { feature: "任务569 pump 接线（drainOnce 每拍过桥）", file: "desktop/session_collab.go", patterns: ["p.sweepIdleInboxTurns(time.Now())"] },
   { feature: "任务579 去开关（桥始终打开；3 次有界预算+守卫④互斥门保留）", file: "desktop/session_collab_idle_turn.go", patterns: ["idleTurnMaxAttempts", "idleTurnSweepActive", "recordOpeningFailure"] },
   { feature: "任务579 控制器侧失效路径留痕+有界重试（5/15/45s，上限 3 次）", file: "internal/control/inbox_dispatch.go", patterns: ["inboxDispatchRuntimePending", "inboxRuntimeRetryBackoff", "scheduleInboxRuntimeRetry", "SetOnInboxDispatchExhausted"] },
@@ -1057,7 +1057,7 @@ const CHECKS = [
   // boot 各吃满一次 SMB 重连预算（实测 ~21s）。共享引擎提供 250ms 有界超时、
   // 30s TTL 缓存（含失败）与并发单飞；审批身份复核走 ResolveAbsPathFresh
   // 旁路缓存。上游 merge 若恢复了任何一份无界双实现，上述保障即失效。
-  { feature: "任务455fix 共享有界 canonical 引擎（250ms 超时+30s TTL 缓存含失败+并发单飞）", file: "internal/sandbox/canonical.go", patterns: ["func resolveCanonicalPath", "canonicalFlights", "canonicalCacheStore", "network drive offline?", "canonicalResolveTimeoutBudget = 250 * time.Millisecond"] },
+  { feature: "任务455fix 共享有界 canonical 引擎（250ms 超时+30s TTL 缓存含失败+并发单飞）", file: "internal/sandbox/canonical.go", patterns: ["func resolveCanonicalPath", "canonicalFlights", "canonicalCacheStore", "unreachable network drive?", "canonicalResolveTimeoutBudget = 250 * time.Millisecond"] },
   { feature: "任务455fix boot 两处 canonicalizer 收敛委托 + 审批复核旁路缓存", file: "internal/sandbox/write_path.go", patterns: ["resolveCanonicalPath(path)", "ResolveAbsPathFresh(approved)"] },
   { feature: "任务455fix builtin realPath 委托共享实现（消双实现）", file: "internal/tool/builtin/confine.go", patterns: ["sandbox.ResolveAbsPath(path)"] },
 
@@ -1432,12 +1432,12 @@ const CHECKS = [
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役；621 修正计数 46→48）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },
   { feature: "任务562 门禁测试（新增实验项不标档位⇒失败 + 表A 计数钉）", file: "internal/config/render_lab_tiers_test.go", patterns: ["TestLabRenderKeysAllTaggedWithTier", "TestLabFeatureTierCountsMatchTableA", "门禁失败（任务562）"] },
-  { feature: "任务562 前端档位镜像（单一展示事实源；815 补灯后 unstable 14，815 锚同步）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 14", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
+  { feature: "任务562 前端档位镜像（单一展示事实源；815 补灯后 unstable 14，815 锚同步）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "unstable: 15", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
   { feature: "任务562 徽章组件（纯展示；621 加档位 tooltip）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "LAB_TIER_DESC_KEYS", "title={t(LAB_TIER_DESC_KEYS[tier])}", "lab-tier-badge--"] },
   { feature: "任务562 设置页 rail+成员开关接线（774 徽章聚合后：rail 卡头单枚最高档 labEntryBadgeTier，成员 tiers 收进详情行）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["labEntryBadgeTier(labLayoutResolved.layout, entry.id)", "labLabel(\"autopilot\"", "settings.modelCapabilityFilter.retired"] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 豁免式比对；815 统一登记收口后计数 19/29/14/1=63，815 锚同步）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.optional === 29 && counts.unstable === 14", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 豁免式比对；815 统一登记收口后计数 19/29/14/1=63，815 锚同步）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.optional === 34 && counts.unstable === 15", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（pane 每特性恰一枚：去重 monitoring/budgetControl/compressOpt/messageMerge 兄弟行 + 补挂 tabModeTint）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.coldCacheCompact\")}", "label={t(\"settings.collabGuidanceMerge\")}", "label={t(\"settings.perfMonitor\")}", "labLabel(\"tabModeTint\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },
