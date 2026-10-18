@@ -413,10 +413,12 @@ groups:
       # 任务 943：本卡只管 readBack 面（789 证据门联动成员行随卡）。
       # 任务 971：扩为聚合页——multi_edit 直注（943 拆出）与 restart_update
       # （自界面组更新反馈卡迁入）转成员行；卡灯三键任一非默认即亮。
+      # 任务 979：capabilityGroups（能力组披露+session_hub 聚合件，953/954/955
+      # 共用一键）971 占位替换为真开关——成员行入卡，卡灯增第四键。
       - id: toolOptimizations
         labelKey: settings.toolOptHub
         tier: recommended
-        onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalRestartUpdate]
+        onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalRestartUpdate, experimentalCapabilityGroups]
         members:
           # 任务 789：编辑证据门宽松模式（同轮读取计数+悬置证据不连带拦 bash）。
           - id: editEvidenceRelaxed
@@ -432,3 +434,8 @@ groups:
           - id: restartUpdate
             labelKey: settings.restartUpdate
             tier: recommended
+          # 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键，
+          # 默认关=零行为，重启生效）。
+          - id: capabilityGroups
+            labelKey: settings.capabilityGroups
+            tier: optional

@@ -5144,10 +5144,28 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
-            {/* 任务 971：session_hub 预留键位（954 未合并，仅占位不生效）。
-                键名 experimental_capability_groups 同键预留——954 落地后挂接。 */}
-            <SettingsField label={t("settings.toolOptHub.sessionHubSlot")} hint={t("settings.toolOptHub.sessionHubSlotHint")} icon={<Sparkles size={18} />}>
-              <span className="approval-mode-hint" data-testid="session-hub-slot">experimental_capability_groups</span>
+            {/* 任务 979：能力组披露+session_hub 聚合件真开关——替换 971 的
+                占位键位（954/955 已合入 149491604，占位从未挂接）。一键覆盖
+                953（use_capability 组行/组卡/体积闸/call_hint）、954（session_hub
+                L0 聚合件注册+可见面）、969（常驻目录组归属）；boot 快照，重启
+                （或新会话）生效。默认关=零行为（铁律 2），九件协作工具直挂不变。 */}
+            <SettingsField label={labLabel("capabilityGroups", t("settings.capabilityGroups"))} hint={t("settings.capabilityGroupsHint")} icon={<Sparkles size={18} />} stacked>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalCapabilityGroups) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalCapabilityGroups(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.capabilityGroups.on" : "settings.capabilityGroups.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+              <p className="approval-mode-hint">{t("settings.capabilityGroups.risk")}</p>
             </SettingsField>
             </>
           )}

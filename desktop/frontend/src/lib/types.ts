@@ -2622,6 +2622,8 @@ export interface DesktopStartupSettingsView {
   decisionPatternAutoApprove?: boolean;
   /** Task 944: render_artifact tool + ArtifactCard; off unless the user opts in. */
   experimentalRenderArtifact?: boolean;
+  /** Task 979: capability-group disclosure layer (tasks 953/954/955 shared switch); off unless the user opts in. */
+  experimentalCapabilityGroups?: boolean;
   /** multi-session collaboration experiment (task 19); off unless the user opts in. */
   experimentalSessionCollab?: boolean;
   /** merged safety/cost switch (task 517; one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards); off unless the user opts in. */

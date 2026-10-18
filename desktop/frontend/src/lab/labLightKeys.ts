@@ -98,6 +98,9 @@ export const LAB_LIGHT_KEYS = {
   // 一致（键缺省跟随旧族键 experimental_tool_optimizations，族键也缺省按面板
   // 层默认开）：存量族键开的用户灯不灭，拆分前后显示不跳变。
   experimentalMultiEditInjection: (s: SettingsView) => s.experimentalMultiEditInjection ?? (s.experimentalToolOptimizations ?? true),
+  // 任务 979：能力组披露+session_hub 聚合件+目录组归属（953/954/955 共用一键，
+  // 默认关；开了卡亮——工具优化聚合页成员行）。
+  experimentalCapabilityGroups: (s: SettingsView) => Boolean(s.experimentalCapabilityGroups),
   collabGuidanceMerge: (s: SettingsView) => Boolean(s.collabGuidanceMerge),
   // ── derived / non-boolean reads（判亮规则收拢在谓词里）──────────
   /** sandbox.optimistic_write（嵌套字段）。 */

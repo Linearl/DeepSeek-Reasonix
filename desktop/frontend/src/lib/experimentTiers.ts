@@ -82,6 +82,10 @@ export type TierFeatureId =
   // 任务 943: multi_edit 直注（原工具优化族第二效果拆出独立卡，可选档——
   // 不开启只小幅影响：multi_edit 仍可经 use_capability 调用）。
   | "multiEditInjection"
+  // 任务 979: 能力组披露+session_hub 聚合件+常驻目录组归属（953/954/955
+  // 共用一键，默认关=零行为，用户拍板提效类可选档）。toolOptimizations
+  // 聚合页成员行。
+  | "capabilityGroups"
   // 任务 677→856 ③: 协作中心入口总开关（信件中心+群聊两图标合一；原
   // 「群聊入口」开关 collabGroupView 随语义一次性迁移为 collabHub，未稳定档沿用）。
   | "collabHub"
@@ -226,7 +230,7 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   pathRules: "unstable",
   orphanHandling: "unstable",
   localServer: "unstable",
-  // ── tool-opt（工具优化，2 项；任务 943 拆分）──────────────────
+  // ── tool-opt（工具优化，3 项；任务 943 拆分 + 979 capabilityGroups）──
   // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
   // （Go 渲染表同步升档，562 两侧一致断言守护）。任务 943：本 id 收窄
   // 为 readBack 面（含 789 证据门联动成员）。
@@ -235,6 +239,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 550 口径：不开启只小幅影响（multi_edit 仍可经 use_capability 调用，
   // edit_file 批量编辑引导降级），非体验缺口。
   multiEditInjection: "optional",
+  // 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键）。用户
+  // 拍板提效类可选档（config.go 注释原文）；默认关=零行为（铁律 2），九件
+  // 协作工具保持直挂。toolOptimizations 聚合页成员行，重启生效。
+  capabilityGroups: "optional",
   // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
   // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
   heartbeatRotation: "optional",
@@ -305,10 +313,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 59→60）。 任务 961：smartAutomation（智能自动化合并卡，纯前端容器 id）
  * 按可选档入表——可选 32→33；interactionPresentation（交互与呈现合并卡，
  * 纯前端容器 id）按推荐档入表——推荐 19→20；总数 67→69（Go 渲染表无条目，
- * 同 tabManagement 豁免）。 */
+ * 同 tabManagement 豁免）。任务 979：capabilityGroups（能力组披露+
+ * session_hub 聚合件，953/954/955 共用一键）按可选档入表——可选 33→34、
+ * 总数 69→70（Go 侧同步 60→61）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   recommended: 20,
-  optional: 33,
+  optional: 34,
   unstable: 15,
   retired: 1,
 };
