@@ -55,6 +55,11 @@ func (t *UseCapabilityTool) resolveDiscovery(ctx context.Context, p useCapabilit
 		return base, nil
 	default:
 		if id == "" {
+			// Task 975: a present-but-control-only id fails for its own
+			// reason, not for being absent.
+			if p.controlOnlyID {
+				return tool.ResolvedCall{}, capabilityControlOnlyIDError()
+			}
 			return tool.ResolvedCall{}, capabilityInputErrorf("capability_id is required for action=inspect")
 		}
 		// Task 953: group cards live at tool:group/<key> while the group

@@ -113,7 +113,11 @@ func capabilityIDFromToolCall(toolName string, args json.RawMessage) string {
 			CapabilityID string `json:"capability_id"`
 		}
 		_ = json.Unmarshal(args, &p)
-		return strings.TrimSpace(p.CapabilityID)
+		// Task 975: the ledger key must match the sanitized id the proxy
+		// resolved with — a dirty key here would split the outcome into a
+		// second phantom entry the gate never reconciles.
+		cleaned, _ := sanitizeCapabilityID(p.CapabilityID)
+		return cleaned
 	default:
 		if server, raw, ok := splitMCP(toolName); ok {
 			return "mcp-tool:" + server + "/" + raw

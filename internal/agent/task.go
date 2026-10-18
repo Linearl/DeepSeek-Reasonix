@@ -1095,7 +1095,10 @@ func (t *restrictedCapabilityProxy) check(args json.RawMessage) error {
 	if action == "list" || action == "search" {
 		return nil
 	}
-	id := strings.TrimSpace(p.CapabilityID)
+	// Task 975: sanitize before the allowlist match — the underlying resolver
+	// strips control characters too, so a dirty id must not be rejected here
+	// as "outside the allowlist" and then succeed one layer down.
+	id, _ := sanitizeCapabilityID(p.CapabilityID)
 	if id == "" {
 		return fmt.Errorf("capability_id is required")
 	}

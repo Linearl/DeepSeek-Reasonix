@@ -46,11 +46,22 @@ type useCapabilityArgs struct {
 	healedStringified bool `json:"-"`
 	// spreadParameters holds envelope-foreign top-level members captured when
 	// action=call arrived with target parameters spread across the envelope
-	// (message+to etc.) and no arguments object at all (task 457). It never
+	// top level (message+to etc.) and no arguments object at all (task 457). It never
 	// serializes; ResolveCall may merge them into one schema-gated arguments
 	// object, and the capture only happens when "arguments" was absent so a
 	// call that carried one is never rewritten.
 	spreadParameters map[string]json.RawMessage `json:"-"`
+	// healedControlChars is set by parseUseCapabilityArgs when capability_id
+	// carried embedded control characters that sanitizeCapabilityID removed
+	// (task 975: the 1018 screenshot form "tool:talk\r_to\r_session"). It
+	// never serializes; ResolveCall uses it to keep the heal observable
+	// (audit counter + WARN log, task 798 discipline).
+	healedControlChars bool `json:"-"`
+	// controlOnlyID is set when capability_id was present but consisted solely
+	// of control characters, so nothing usable remained after cleaning (task
+	// 975). ResolveCall names this cause instead of the generic missing-id
+	// error, which would wrongly blame the field placement.
+	controlOnlyID bool `json:"-"`
 }
 
 // capabilityEnvelopeKeys are the top-level members of a use_capability call
@@ -313,7 +324,10 @@ func promoteNestedCapabilityID(raw json.RawMessage) (string, json.RawMessage, bo
 	if json.Unmarshal(nested, &id) != nil {
 		return "", nil, false
 	}
-	id = strings.TrimSpace(id)
+	// Task 975: a nested capability_id may carry the same embedded control
+	// characters as a top-level one; sanitize before the emptiness check so a
+	// dirty-but-usable nested id still promotes.
+	id, _ = sanitizeCapabilityID(id)
 	if id == "" {
 		return "", nil, false
 	}
@@ -345,13 +359,67 @@ func promoteNestedCapabilityID(raw json.RawMessage) (string, json.RawMessage, bo
 	return id, merged, true
 }
 
+// sanitizeCapabilityID strips ASCII control characters (task 975: the 10-18
+// field screenshot showed capability_id "tool:talk\r_to\r_session" arriving
+// with bare \r bytes, missing the registry with "not registered in this
+// session" and dragging the whole parallel batch down with it). Embedded
+// control characters are never legitimate inside a capability id — the
+// namespaces are tool:/skill:/mcp-tool:/task:/workflow:/web:/lsp:/session:/
+// memory: plus plain ASCII names — so removal is safe. ids without control
+// characters pass through byte-for-byte after the same TrimSpace the parser
+// always applied. The bool reports whether anything was removed so the caller
+// can keep the heal observable instead of silently rewriting model output.
+func sanitizeCapabilityID(id string) (string, bool) {
+	if !hasControlCharacter(id) {
+		return strings.TrimSpace(id), false
+	}
+	var b strings.Builder
+	b.Grow(len(id))
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if c < 0x20 || c == 0x7f {
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return strings.TrimSpace(b.String()), true
+}
+
+// hasControlCharacter reports whether id contains any C0 control character or
+// DEL (0x00-0x1f, 0x7f). Bytes >= 0x80 pass untouched so multi-byte UTF-8
+// names are never reinterpreted.
+func hasControlCharacter(id string) bool {
+	for i := 0; i < len(id); i++ {
+		if c := id[i]; c < 0x20 || c == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// capabilityControlOnlyIDError names the failure the generic missing-id error
+// would misdiagnose: the model DID send a capability_id, but every byte of it
+// was a control character so nothing usable remained after cleaning (task 975).
+func capabilityControlOnlyIDError() error {
+	return capabilityInputErrorf(`capability_id contained only control characters (e.g. \r, \n, \x00) and cannot name a capability; send a plain id such as "tool:talk_to_session"`)
+}
+
 func parseUseCapabilityArgs(raw json.RawMessage) (useCapabilityArgs, string, string, error) {
 	var args useCapabilityArgs
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return args, "", "", fmt.Errorf("invalid args: %w", err)
 	}
 	action := strings.ToLower(strings.TrimSpace(args.Action))
-	id := strings.TrimSpace(args.CapabilityID)
+	id, controlStripped := sanitizeCapabilityID(args.CapabilityID)
+	if controlStripped {
+		if id == "" {
+			args.controlOnlyID = true
+		} else {
+			// Task 975: only an embedded-control cleanup counts as a heal —
+			// a whitespace-only id was always empty after TrimSpace.
+			args.healedControlChars = true
+		}
+	}
 	// The 1-8 upper bound is enforced at resolve time (ResolveCall) where the
 	// experimental_capability_groups flag is reachable: search keeps 1-8; list
 	// with the group surface on accepts up to 50. Parse keeps only the sign
