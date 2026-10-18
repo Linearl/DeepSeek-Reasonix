@@ -16,14 +16,18 @@
 //     同理切聊天视图；调用方零改动（856 计划 ① 风险面）。
 //   - 开关关 = 入口按钮不渲染（802 零痕迹策略沿用；入口挂 collabHub 实验室
 //     开关，前置依赖 sessionCollab——见 experimentTiers.LAB_FEATURE_DEPS）。
+//   - 任务 980 ①：外点空白 / Esc 关闭（面板家族 mousedown 外点先例；自家
+//     portal 浮层排除见组件内注释）。inboxBindings 是注入接缝（测试注入信件
+//     fixture；生产不传 = 走真实 bridge，行为零变化）。
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CollabInboxPanel,
   forwardCollabInboxOpen,
   syncCollabInboxOpen,
 } from "./CollabInboxPanel";
+import type { CollabInboxBindings } from "./CollabInboxPanel";
 import {
   forwardCollabGroupOpen,
   syncCollabGroupOpen,
@@ -92,10 +96,11 @@ function publishSubPanelOpen(next: boolean): void {
   syncCollabGroupOpen(next);
 }
 
-export function CollabHubPanel() {
+export function CollabHubPanel({ inboxBindings }: { inboxBindings?: CollabInboxBindings } = {}) {
   const t = useT();
   const [open, setOpen] = useState(panelOpen);
   const [view, setViewState] = useState<CollabHubView>(readStoredView());
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const off = onCollabHubOpenChange((next, current) => {
@@ -106,6 +111,34 @@ export function CollabHubPanel() {
     return () => { off(); };
   }, []);
 
+  // 任务 980 ①（用户验收实测）：外点空白 / Esc 关闭面板。检测模式照用面板家
+  // 族既有先例（QuestionSearchPanel 的 mousedown 外点 + Esc；AnchoredPopover
+  // 的 document click 同源）。两条排除规则与「点击即关闭」的语义同等重要：
+  //   ① 面板内部（含 embedded 子面板后代）不算外部；
+  //   ② 本面板子树 portal 到 body 的浮层（ConfirmDialog 家族的 .modal-backdrop
+  //      与对话链右键菜单 .collab-chat-view__ctx）不算外部——它们 DOM 上不在
+  //      面板容器内（portal 脱离），但语义上属于面板：点确认/取消/菜单项若
+  //      同时触发外点关闭，浮层会被连带卸载（确认变取消、跳转失效）。
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (panelRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest(".modal-backdrop, .collab-chat-view__ctx")) return;
+      setCollabHubOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCollabHubOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   const switchView = (next: CollabHubView) => {
     writeStoredView(next);
     setViewState(next);
@@ -114,7 +147,7 @@ export function CollabHubPanel() {
   if (!open) return null;
 
   return createPortal(
-    <div className="collab-hub-panel" role="dialog" aria-label={t("collabHub.title")}>
+    <div ref={panelRef} className="collab-hub-panel" role="dialog" aria-label={t("collabHub.title")}>
       {/* 壳层头部：标题 + 双视图 segmented control（demo v2 ①）+ 关闭。 */}
       <div className="collab-hub-panel__head">
         <span className="collab-hub-panel__title">{t("collabHub.title")}</span>
@@ -145,7 +178,7 @@ export function CollabHubPanel() {
 
       <div className="collab-hub-panel__body">
         {view === "mail"
-          ? <CollabInboxPanel embedded />
+          ? <CollabInboxPanel embedded bindings={inboxBindings} />
           : <CollabChatView />}
       </div>
     </div>,
