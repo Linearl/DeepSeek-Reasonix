@@ -20,7 +20,18 @@ export function useRemoteRuntimeTree(tree: ProjectNode[], sessions: Record<strin
   const runtime = useSyncExternalStore(runtimeStateStore.subscribe, runtimeStateStore.getSnapshot);
   // 任务510：不再把全局 failed 传入合并——单会话/远端同步失败只影响它自己的
   // freshness，其他 tab 与全局失败都不再把本会话标成 unknown（b 收敛故障面）。
-  return useMemo(() => mergeRemoteSessionsIntoTree(tree, sessions, t, runtime), [tree, sessions, t, runtime]);
+  return useMemo(() => {
+    const merged = mergeRemoteSessionsIntoTree(tree, sessions, t, runtime);
+    // Task 981 (sidebar flicker, 修法③轻量切片): mergeRemoteSessionsIntoTree
+    // maps the array, so for a tree with no remote projects every element keeps
+    // its identity yet the array itself came back new — and a new array here
+    // invalidates visibleTree's memo on every runtime commit, re-running the
+    // whole filter+arrange pipeline per thinking↔streaming flip. Hand back the
+    // original array when nothing actually changed; trees WITH remote projects
+    // keep today's rebuilt-array behavior (their rows are the ones runtime
+    // state genuinely rewrites).
+    return merged.every((node, index) => node === tree[index]) ? tree : merged;
+  }, [tree, sessions, t, runtime]);
 }
 
 export function activeRemoteProjectAncestorKeys(
