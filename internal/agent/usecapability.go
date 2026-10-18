@@ -127,21 +127,23 @@ func (t *UseCapabilityTool) Description() string {
 
 // declineCapabilityIDs merges the single id and the batch list into a stable,
 // deduplicated order (single id first), so one call can dismiss many
-// candidates the capability route listed for the turn.
+// candidates the capability route listed for the turn. Every id is sanitized
+// (task 975) so a control-character-battered id still matches the ledger key
+// it is supposed to mark declined.
 func declineCapabilityIDs(id string, batch []string) []string {
 	// Hint deliberately drops the +1: len(batch)+1 is an overflow-prone sum
 	// for the allocator on 32-bit builds (codeql
 	// go/allocation-size-overflow); the single-id prepend costs at most one
 	// amortized growth.
 	candidates := make([]string, 0, len(batch))
-	if trimmed := strings.TrimSpace(id); trimmed != "" {
-		candidates = append(candidates, trimmed)
+	if cleaned, _ := sanitizeCapabilityID(id); cleaned != "" {
+		candidates = append(candidates, cleaned)
 	}
 	candidates = append(candidates, batch...)
 	seen := make(map[string]struct{}, len(candidates))
 	out := candidates[:0]
 	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
+		candidate, _ = sanitizeCapabilityID(candidate)
 		if candidate == "" {
 			continue
 		}
@@ -248,6 +250,14 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 	if p.Limit > 8 && (!t.capabilityGroups || action != "list") {
 		return tool.ResolvedCall{}, capabilityInputErrorf("limit must be between 1 and 8 when provided")
 	}
+	// Task 975: a capability_id cleaned of embedded control characters is a
+	// host-side self-heal — observable through the audit counter and WARN log
+	// (task 457/798 discipline). No model-visible note: unlike envelope-shape
+	// mistakes the model cannot act on its own tokenizer emitting \r, so a
+	// result note would only add noise to an otherwise successful call.
+	if p.healedControlChars {
+		t.noteArgumentSelfHeal(id, "stripped embedded control characters from capability_id before matching")
+	}
 	base := tool.ResolvedCall{
 		DisplayName:  "use_capability",
 		ProxyAction:  action,
@@ -316,6 +326,14 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 					t.noteArgumentSelfHeal(nestedID, "promoted a capability_id nested inside the arguments object to the envelope top level")
 					return healed, nil
 				}
+			}
+			// Task 975: a capability_id that was present but consisted only of
+			// control characters fails for a different reason than a missing
+			// one — and after the 728 promotion above had its chance. The
+			// generic missing-id wording would blame the field placement the
+			// model already got right.
+			if p.controlOnlyID {
+				return tool.ResolvedCall{}, capabilityControlOnlyIDError()
 			}
 			// Task 728 R3: name the expected placement so one round of
 			// feedback corrects the nesting (725 observed the same bad shape

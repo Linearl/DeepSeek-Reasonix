@@ -163,7 +163,11 @@ func classifyCapabilityInputError(errText string, raw json.RawMessage) capabilit
 	case strings.Contains(errText, "reason is required"),
 		strings.Contains(errText, "limit must be"),
 		strings.Contains(errText, "query is required"),
-		strings.Contains(errText, "unknown action"):
+		strings.Contains(errText, "unknown action"),
+		// Task 975: the message already carries the full fix (send a plain
+		// id); a search/hoist hint would send the model down the wrong
+		// repair path.
+		strings.Contains(errText, "contained only control characters"):
 		return capabilityErrSelfExplanatory
 	case strings.Contains(errText, "capability_id is required"):
 		// 728 形态：提升失败回退到 missing-id 报错时，即使结构上像双包，
