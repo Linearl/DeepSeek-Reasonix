@@ -2,7 +2,10 @@ package sessioncatalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -17,6 +20,17 @@ func (c *Catalog) SyncMetadata(ctx context.Context, projects []ProjectRecord, to
 	}
 	c.mutationMu.Lock()
 	defer c.mutationMu.Unlock()
+	// Task 981 (sidebar flicker): the desktop refresh loop re-syncs the same
+	// registry every 30s. The projection transaction stays idempotent so the
+	// database keeps converging (orphan cleanup, folded-shell skips, session
+	// aggregate inheritance all still run), but an unchanged registry must not
+	// bump the catalog revision — every bump rides a project-tree:changed-v2
+	// event into the frontend, where it force-reloads every expanded folder.
+	// Session-driven changes are unaffected: they publish their own write /
+	// reconcile events, so skipping this redundant metadata publish loses no
+	// notification.
+	registryFingerprint := metadataRegistryFingerprint(projects, topics)
+	skipPublication := registryFingerprint == c.lastMetadataFingerprint
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -79,8 +93,34 @@ func (c *Catalog) SyncMetadata(ctx context.Context, projects []ProjectRecord, to
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	c.lastMetadataFingerprint = registryFingerprint
+	if skipPublication {
+		// Revision bookkeeping still advanced (the transaction above is the
+		// single writer), but nothing observable changed, so no event fires.
+		c.rememberRevision(revision)
+		return nil
+	}
 	c.publishRevision(revision, mapKeys(roots), "metadata")
 	return nil
+}
+
+// metadataRegistryFingerprint hashes the normalized registry projection
+// SyncMetadata receives. Field separators are explicit so a title moved between
+// projects cannot collide with the same characters in another field.
+func metadataRegistryFingerprint(projects []ProjectRecord, topics []TopicMetadata) string {
+	hash := sha256.New()
+	for _, project := range projects {
+		project.Scope, project.WorkspaceRoot = normalizeScope(project.Scope, project.WorkspaceRoot)
+		fmt.Fprintf(hash, "p|%s|%s|%s|%s|%t|%d\n",
+			project.Scope, project.WorkspaceRoot, project.Title, project.Color, project.Pinned, project.SortOrder)
+	}
+	for _, topic := range topics {
+		topic.Scope, topic.WorkspaceRoot = normalizeScope(topic.Scope, topic.WorkspaceRoot)
+		fmt.Fprintf(hash, "t|%s|%s|%s|%s|%s|%t|%d|%d\n",
+			topic.Scope, topic.WorkspaceRoot, topic.TopicID, topic.Title, topic.TitleSource,
+			topic.Pinned, topic.SortOrder, topic.CreatedAt)
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // skipFoldedRecoveryShell reports whether SyncMetadata must not (re)create a

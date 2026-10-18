@@ -34,8 +34,15 @@ type Catalog struct {
 	// mutationMu is the process-local SQLite single-writer boundary. WAL permits
 	// concurrent readers, but repair, metadata, and reconcile mutations must not
 	// race into avoidable SQLITE_BUSY failures.
-	mutationMu       sync.Mutex
-	removedPaths     sync.Map
+	mutationMu sync.Mutex
+	// lastMetadataFingerprint is the registry projection hash of the last
+	// SyncMetadata call (task 981). Guarded by mutationMu: an unchanged
+	// registry must not bump the revision, because every bump rides a
+	// project-tree:changed-v2 event into the frontend and force-reloads every
+	// expanded sidebar folder. In-memory only: after a restart (or catalog
+	// rebuild) the first sync always publishes, which is the safe direction.
+	lastMetadataFingerprint string
+	removedPaths            sync.Map
 	repairCh         chan string
 	repairQueued     sync.Map
 	reconcileCh      chan DirectoryTarget
