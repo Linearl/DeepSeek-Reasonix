@@ -13,9 +13,10 @@
 //   list→ManageSessionsList（项目组拉取）；group_create→CreateSessionGroup/
 //   CreateProjectGroup；group_delete→DeleteSessionGroup/DeleteProjectGroup
 //   （提案制）；group_rename→RenameProjectGroup；rollback/op_log→dispatch 面
-//   （UI 未出入口，agent 工具同面）；rename_session/move_session/
-//   reorder_session 与 RenameSessionGroup/ReorderTopicInGroup 为已声明未接线
-//   残留（会话侧 rename/拖排仍走 CAS 链，行为等价）。
+//   （UI 未出入口，agent 工具同面）；rename_session/move_session 与
+//   RenameSessionGroup 为已声明未接线残留（会话侧 rename 仍走 CAS 链，行为
+//   等价）；reorder_session→ReorderTopicInGroup 已于任务 950 接线（组内成员
+//   拖排直连 A 片写，UI 消费面见 project-tree-group-topic-drag.test.tsx）。
 
 import { JSDOM } from "jsdom";
 import type { Root } from "react-dom/client";
@@ -334,9 +335,11 @@ console.log("\n892-B⑤ 签名面源码钉（10 直连方法 + 9 action 声明 +
   ok(typesSource.includes("DeleteGroupsPlan") && typesSource.includes("ManageSessionsListResult"),
     "视图类型（plan/list）落 TS 声明");
   const orgSource = readFileSync(resolve(here, "../components/ProjectTreeOrganization.tsx"), "utf8");
-  // 未接线残留（如实钉住，防后人误以为已接）：会话 rename/拖排仍走 CAS 链。
+  // 未接线残留（如实钉住，防后人误以为已接）：会话 rename 仍走 CAS 链。
   ok(!orgSource.includes("RenameSessionGroup"), "残留：会话 rename 未接 RenameSessionGroup（CAS 行为等价）");
-  ok(!orgSource.includes("ReorderTopicInGroup"), "残留：会话拖排未接 ReorderTopicInGroup（CAS 行为等价）");
+  // 任务 950 已接线：组内成员拖排直连 ReorderTopicInGroup（顶层仍走 CAS 链）。
+  ok(orgSource.includes("ReorderTopicInGroup"), "组内拖排已接 ReorderTopicInGroup（任务 950）");
+  ok(orgSource.includes("reorderedGroupTopicIDs"), "组内落位识别 reorderedGroupTopicIDs 参与 drop 分派");
 }
 
 process.stdout.write(`\nproject-tree-manage-sessions-consumption: ${passed} passed, ${failed} failed\n`);

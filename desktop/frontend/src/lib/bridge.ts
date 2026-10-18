@@ -750,7 +750,10 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   DeleteSessionGroup(scope: string, workspaceRoot: string, groupId: string, dryRun: boolean, cascade: boolean): Promise<ManageSessionsGroupResult>;
   RenameProjectGroup(groupId: string, title: string): Promise<ManageSessionsGroupResult>;
   RenameSessionGroup(scope: string, workspaceRoot: string, groupId: string, title: string): Promise<ManageSessionsGroupResult>;
-  ReorderTopicInGroup(scope: string, workspaceRoot: string, groupId: string, topicId: string, index: number): Promise<ManageSessionsGroupResult>;
+  // 参数名对齐 Go 签名（manage_sessions.go: ReorderTopicInGroup(scope,
+  // workspaceRoot, topicID, groupID, index)）——旧声明把 groupId/topicId 名字
+  // 写反（位置类型相同不影响 wails 调用，但按名传参会踩坑），任务 950 接线时修正。
+  ReorderTopicInGroup(scope: string, workspaceRoot: string, topicId: string, groupId: string, index: number): Promise<ManageSessionsGroupResult>;
   RollbackManageOperation(opId: string): Promise<ManageSessionsGroupResult>;
 // AppBindings is the hand-written React-to-Go contract. _CheckGeneratedBindings
 // catches generated methods missing here; update this interface and typecheck.
