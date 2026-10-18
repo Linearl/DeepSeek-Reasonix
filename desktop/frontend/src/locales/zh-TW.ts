@@ -5316,6 +5316,10 @@ export const zhTW: Record<DictKey, string> = {
   "collabInbox.error": "信件中心讀取失敗",
   "collabInbox.error.stale": "上次重新整理失敗——目前顯示的是之前的結果",
   "collabInbox.retry": "重試",
+  // 任務 980 ③：詳情彈窗——全文按需取（列表保持速覽定位不變）。
+  "collabInbox.detail": "詳情",
+  "collabInbox.detailTitle": "信件詳情",
+  "collabInbox.detailHint": "點擊查看全文",
   "collabInbox.retention": "保留期",
   "collabInbox.retention.7d": "7 天",
   "collabInbox.retention.30d": "30 天",

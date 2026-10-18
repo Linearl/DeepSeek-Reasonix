@@ -10,6 +10,10 @@
 // 任务587（后端正常前端空断裂修复）：读取失败/读取中与健康空三态分离——失败
 // 显式报错+重试按钮+退避自动恢复，绝不渲染成「暂无信件」；所有 catch 路径
 // 经 reportFrontendLog 落 console + ring buffer（网关断连也有本地痕迹）。
+// 任务 980 ③（用户验收实测）：详情弹窗——列表条目/预览行点开 → portal 弹窗
+// 展示全文（ReadCollabMail 按需取全文；列表保持 preview-only 设计不变）。
+// 任务 980 ②：协作中心嵌入形态（embedded in Hub）的列表滚动由 Hub 壳层 CSS
+// 承担（.collab-hub-panel__body 后代规则 overflow:auto），本组件零改动。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -66,6 +70,23 @@ export type CollabMailSnapshot = {
   degraded?: boolean;
 };
 
+/** 任务 980 ③：单封信件的全文详情（collabinbox.MailDetail）——列表保持
+ * preview-only（性能与 320 设计意图不变），弹窗按需取全文。 */
+export type CollabMailDetail = {
+  id: string;
+  from: string;
+  fromSession?: string;
+  to: string;
+  toTitle?: string;
+  at: number;
+  threadId: string;
+  bucket: string;
+  channel?: string;
+  preview: string;
+  /** 完整正文，无截断。 */
+  body: string;
+};
+
 export type CollabMailChain = {
   threadId: string;
   participants: string[];
@@ -89,6 +110,10 @@ export type CollabInboxCleanResult = { removed: number; snapshot: CollabMailSnap
 export type CollabInboxBindings = {
   ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean, order: string): Promise<CollabMailSnapshot>;
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChains>;
+  /** 任务 980 ③：详情弹窗的全文读口。可选 = 向前兼容缝——旧 bindings fake /
+   * 旧网关面缺方法时面板降级为「预览即正文」展示，不崩不阻塞（生产 bridge
+   * 恒有此方法）。 */
+  ReadCollabMail?(id: string): Promise<CollabMailDetail>;
   CountUnreadCollabMail(): Promise<number>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshot>;
   MarkCollabMailRead(ids: string[]): Promise<CollabMailSnapshot>;
@@ -315,6 +340,49 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
   }, []);
 
   useEffect(() => onCollabInboxOpenChange((next) => setOpen(next)), []);
+
+  // 任务 980 ③（用户验收实测）：详情弹窗——点信件条目/预览行 → 弹窗展示全文。
+  // full=null（尚未取回或绑定面缺读口走预览降级）、detailLoading=取全文中、
+  // error=取全文失败（弹窗内显式报错 + 重试，绝不把「读不到」渲染成空正文，
+  // 与 587 空/败分离同口径）。entry 骨架先行渲染（发/收/时间即刻可见）。
+  const [detail, setDetail] = useState<{ entry: CollabMailEntry; full: CollabMailDetail | null } | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const openDetail = useCallback(async (entry: CollabMailEntry) => {
+    const read = b.ReadCollabMail;
+    setDetail({ entry, full: null });
+    setDetailError(null);
+    if (typeof read !== "function") {
+      // 向前兼容缝：无全文口 → 弹窗展示预览行（不空白、不崩）。
+      setDetailLoading(false);
+      return;
+    }
+    setDetailLoading(true);
+    try {
+      const full = await read.call(b, entry.id);
+      setDetail((cur) => (cur?.entry.id === entry.id ? { ...cur, full } : cur));
+    } catch (err) {
+      reportFrontendLog("collab-inbox", "detail read failed", `id=${entry.id} err=${String(err)}`, "warn");
+      setDetailError(String(err));
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [b]);
+
+  // Esc 关闭详情弹窗（capture 相 + stopPropagation = 只关弹窗，不连带触发
+  // Hub 外点/Esc 关闭——协作中心壳层的 Esc 在 document bubble 相，980 ①）。
+  useEffect(() => {
+    if (!detail) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setDetail(null);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [detail]);
 
   // 任务461-P4: the roster backs the from/to dropdowns — loaded while the
   // panel is open, failures degrade to an empty roster (「全部」 keeps working).
@@ -860,8 +928,25 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
                   <span className="collab-inbox-panel__pending">{t("collabInbox.state.pendingMe")}</span>
                 )}
               </div>
-              <div className="collab-inbox-panel__preview">{entry.preview}</div>
+              {/* 任务 980 ③：预览行可点 → 详情弹窗展示全文（hint 明示可点）。 */}
+              <button
+                type="button"
+                className="collab-inbox-panel__preview collab-inbox-panel__preview--btn"
+                title={t("collabInbox.detailHint")}
+                onClick={() => void openDetail(entry)}
+              >
+                {entry.preview}
+              </button>
               <div className="collab-inbox-panel__rowactions">
+                {/* 任务 980 ③：显式「详情」入口（用户报告的可发现性缺口——
+                    预览行可点但无提示时不被发现）。 */}
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--small"
+                  onClick={() => void openDetail(entry)}
+                >
+                  {t("collabInbox.detail")}
+                </button>
                 {entry.bucket === "approval" && !entry.decidedBy && !entry.dismissed && (
                   <button
                     type="button"
@@ -950,6 +1035,15 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
                       </span>
                       <span className="collab-inbox-panel__preview">{entry.preview}</span>
                       <span className="collab-inbox-panel__time">{formatTime(entry.at)}</span>
+                      {/* 任务 980 ③：链内条目同享详情弹窗（预览行无法再放按钮，
+                          动作位补一个显式入口）。 */}
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--small"
+                        onClick={() => void openDetail(entry)}
+                      >
+                        {t("collabInbox.detail")}
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -996,6 +1090,77 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
         </span>
         <span className="collab-inbox-panel__note">{t("collabInbox.note")}</span>
       </div>
+
+      {/* 任务 980 ③：详情弹窗——modal 家族先例（与 ConfirmDialog 同款
+          backdrop/modal 结构），portal 到 body 防壳体裁剪（529 先例）。三路
+          关闭：backdrop 点击 / Esc（capture 相自拦，不连带关 Hub）/ 关闭按钮；
+          backdrop 在 Hub 外点检测中被排除（语义上面板专属浮层）。 */}
+      {detail && createPortal(
+        <div
+          className="modal-backdrop collab-inbox-detail-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDetail(null);
+          }}
+        >
+          <div
+            className="modal collab-inbox-detail"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("collabInbox.detailTitle")}
+          >
+            <div className="modal__title collab-inbox-detail__title">{t("collabInbox.detailTitle")}</div>
+            <div className="collab-inbox-detail__meta">
+              <span
+                className="collab-inbox-panel__route"
+                title={`${t("collabInbox.senderLabel")} ${contactHoverLabel(contactDisplayName(detail.entry.from), detail.entry.from)} → ${t("collabInbox.recipientLabel")} ${contactHoverLabel(contactDisplayName(detail.entry.to, detail.entry.toTitle), detail.entry.to)}`}
+              >
+                {contactDisplayName(detail.entry.from)}
+                {" → "}
+                {contactDisplayName(detail.entry.to, detail.entry.toTitle)}
+              </span>
+              <span className="collab-inbox-panel__time">{formatTime(detail.entry.at)}</span>
+              <span className={`collab-inbox-panel__bucketbadge collab-inbox-panel__bucketbadge--${detail.entry.bucket}`}>
+                {t(`collabInbox.bucket.${detail.entry.bucket as Bucket}` as "collabInbox.bucket.all")}
+              </span>
+              {detail.entry.channel && (
+                <span className="collab-inbox-panel__channel" title={t("collabInbox.channel")}>
+                  #{detail.entry.channel}
+                </span>
+              )}
+            </div>
+            {detailError ? (
+              <div className="collab-inbox-panel__error" role="alert">
+                <span className="collab-inbox-panel__error-label">{t("collabInbox.error")}</span>
+                <span className="collab-inbox-panel__error-detail" title={detailError}>{detailError}</span>
+              </div>
+            ) : detail.full ? (
+              <div className="collab-inbox-detail__body">{detail.full.body}</div>
+            ) : detailLoading ? (
+              <div className="collab-inbox-detail__body collab-inbox-detail__body--loading">{t("collabInbox.loading")}</div>
+            ) : (
+              // 向前兼容缝：绑定面无全文读口 → 预览行即展示内容（有啥展示啥，
+              // 不空白）。
+              <div className="collab-inbox-detail__body">{detail.entry.preview}</div>
+            )}
+            <div className="modal__actions">
+              {detailError && typeof b.ReadCollabMail === "function" && (
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--small"
+                  onClick={() => void openDetail(detail.entry)}
+                >
+                  {t("collabInbox.retry")}
+                </button>
+              )}
+              <button type="button" className="btn btn--primary btn--small" onClick={() => setDetail(null)}>
+                {t("collabInbox.close")}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* 任务 856 ②：删除/清空的统一二次确认对话框。 */}
       {confirmDialog}

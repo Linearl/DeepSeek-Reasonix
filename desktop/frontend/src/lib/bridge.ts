@@ -429,6 +429,23 @@ export interface CollabMailSnapshotView {
   degraded?: boolean;
 }
 
+/** 任务 980 ③: one entry's on-demand full-body view (collabinbox.MailDetail) —
+ * the list stays preview-only, the detail popup fetches the complete text. */
+export interface CollabMailDetailView {
+  id: string;
+  from: string;
+  fromSession?: string;
+  to: string;
+  toTitle?: string;
+  at: number;
+  threadId: string;
+  bucket: string;
+  channel?: string;
+  preview: string;
+  /** Complete mail body, untruncated. */
+  body: string;
+}
+
 /** Task 320 g: one conversation chain (collabinbox.Chain). */
 export interface CollabMailChainView {
   threadId: string;
@@ -1545,6 +1562,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // return the NEW state directly.
   ListCollabMail(bucket: string, from: string, to: string, state: string, limit: number, includeDismissed: boolean, order: string): Promise<CollabMailSnapshotView>;
   ListCollabMailChains(bucket: string, limit: number): Promise<CollabMailChainsView>;
+  /** 任务 980 ③: one entry's full body for the detail popup (list stays preview-only). */
+  ReadCollabMail(id: string): Promise<CollabMailDetailView>;
   // 任务 320 遗留 #1：图标行未读徽标的只读计数（不应用保留期，零副作用）。
   CountUnreadCollabMail(): Promise<number>;
   DismissCollabMail(ids: string[]): Promise<CollabMailSnapshotView>;
@@ -6254,6 +6273,11 @@ function makeMockApp(): AppBindings {
     },
     async ListCollabMailChains() {
       return { revision: "0.0.0", settings: { retention: "7d" }, total: 0, chains: [] };
+    },
+    async ReadCollabMail(id: string) {
+      // dev shell has no mailbox — an honest not-found, same shape as the real
+      // backend's ReadMail miss (the detail popup renders its failure state).
+      throw new Error(`collab mail detail: mail "${id}" not found`);
     },
     async CountUnreadCollabMail() {
       return 0; // dev shell has no mailbox — an honest empty badge

@@ -5325,6 +5325,10 @@ export const en = {
   "collabInbox.error": "Couldn't load the Mail Center",
   "collabInbox.error.stale": "Last refresh failed — showing the previous result",
   "collabInbox.retry": "Retry",
+  // 任务 980 ③: the detail popup — full text on demand (the list stays triage-only).
+  "collabInbox.detail": "Details",
+  "collabInbox.detailTitle": "Mail detail",
+  "collabInbox.detailHint": "Click to view the full text",
   "collabInbox.retention": "Retention",
   "collabInbox.retention.7d": "7 days",
   "collabInbox.retention.30d": "30 days",
