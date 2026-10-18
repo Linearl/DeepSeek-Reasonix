@@ -733,6 +733,18 @@ func (c *Config) SetExperimentalMultiEditInjection(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalCapabilityGroups toggles the capability-group disclosure
+// layer (tasks 953/954/955, one shared switch per the 用户拍板 in config.go):
+// use_capability group rows + group cards, the session_hub L0 aggregation
+// entry, and the standing-directory group attribution. Restart to apply —
+// boot resolves the flag into the catalog options, the session_hub
+// registration and the provider-surface extras. Off by default (铁律 2): off
+// = zero behaviour, the nine collab tools stay direct-mounted byte-for-byte.
+func (c *Config) SetExperimentalCapabilityGroups(enabled bool) error {
+	c.Agent.ExperimentalCapabilityGroups = enabled
+	return nil
+}
+
 // SetAutonomousUpdateResume scopes the auto-resume family (task 254). Only the
 // three known values are accepted so a typo cannot silently disable resuming.
 func (c *Config) SetAutonomousUpdateResume(mode string) error {

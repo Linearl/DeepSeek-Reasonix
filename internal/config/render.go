@@ -147,8 +147,9 @@ var labFeatureTiers = []labFeatureTier{
 	{"pathRules", LabTierUnstable, []string{"experimental_path_rules"}},
 	{"orphanHandling", LabTierUnstable, []string{"experimental_orphan_handling", "experimental_orphan_lease_reclaim", "experimental_recovery_orphan_sweep"}}, // 后两个为 task 449 迁移遗留键
 	{"localServer", LabTierUnstable, []string{"experimental_local_server"}},
-	// ── tool-opt（工具优化，3 项；815 登记窗口：789 证据门宽松转正入表；
-	//    943 族拆两卡：multiEditInjection 独立入表）──
+	// ── tool-opt（工具优化，4 项；815 登记窗口：789 证据门宽松转正入表；
+	//    943 族拆两卡：multiEditInjection 独立入表；979 capabilityGroups
+	//    自 labNonFeatureKeys 豁免表转正入表）──
 	{"toolOptimizations", LabTierRecommended, []string{"experimental_tool_optimizations"}}, // 任务 603：「工具优化」族首件（edit readBack + evidence gate 联动）；任务 783④：编辑读回（readBack）随 22.5 交付转正，未稳定→推荐（前端注册表同步升档，562 两侧一致断言守护）；任务 943：族拆两键后本键只管 readBack 面
 	// 任务 789/815：编辑证据门宽松模式（工具优化卡成员行，未稳定档默认关）。
 	// 789 先行（Go 侧开关+前端登记半程），815 登记窗口补齐设置页入口后转正入表。
@@ -156,6 +157,10 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 943：multi_edit 直注独立卡（原族键第二效果拆出，可选档——550 口径：
 	// 不开启只小幅影响，multi_edit 仍可经 use_capability 调用）。
 	{"multiEditInjection", LabTierOptional, []string{"experimental_multi_edit_injection"}},
+	// 任务 979：能力组披露 + session_hub 聚合件 + 常驻目录组归属（953/954/955
+	// 三件共用一键，config.go 用户拍板「提效类可选档」）——979 补设置页入口
+	// 自豁免表转正；工具优化聚合页成员行，重启生效（boot 快照三处门控）。
+	{"capabilityGroups", LabTierOptional, []string{"experimental_capability_groups"}},
 }
 
 // labNonFeatureKeys：渲染表里存在、但不属于表A 46 项的实验室族键（豁免门禁，
@@ -169,7 +174,8 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_gc_child_session":              "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
 	"experimental_general_purpose_subagent":      "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
-	"experimental_capability_groups":             "task 953/955：能力组披露面+组目录卡（L0/L1 组披露、list 摘要档+组行+体积闸、search 附组与 call_hint）——953/954/955 三件共用引擎侧开关，config-only；档位待定档入表A（815 定档不建卡先例），实验室 tab 暂无入口",
+	// 任务 979：experimental_capability_groups 自本豁免表转正入表A（见
+	// tool-opt 段 capabilityGroups 条目）——953/954/955 设置页入口补齐。
 }
 
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
