@@ -74,6 +74,26 @@ groups:
         title: 沙箱与工作区
         desc: Bash 沙箱模式、网络放行、工作区根与可写根集中在一页；沙箱只界定“能写到哪”，不自动批准命令。
         how: 设置 → 安全与控制 → 沙箱。
+  # 任务 992（用户 1018 21:34 勾选补充）：fork 特性速览新增「效率与资源」组
+  # （yaml-only id 避开 task-282 design-table 的 locale 覆盖）。
+  - key: efficiency
+    label: 效率与资源
+    features:
+      - id: bangCommands
+        icon: "⚡"
+        title: 快捷指令 !! 触发
+        desc: 输入框开头打 !! 即弹快捷指令选择列表，回车插入。
+        how: 输入框输入 !! 开头。
+      - id: editReadBack
+        icon: "🧾"
+        title: 编辑读回与 multi_edit 直注
+        desc: 编辑后自动返回上下文证据，同文件连续编辑不被打断；multi_edit 进模型工具列表，批量编辑引导闭合。
+        how: 新装默认开启；实验室 → 基础设施 → 工具优化可调。
+      - id: runtimeReusePool
+        icon: "♻️"
+        title: 运行时复用池
+        desc: 会话运行时复用，起会话更快更省；已稳定运行一段时间。
+        how: 实验室 → 基础设施 → 运行时复用池（推荐档）。
 
 # 任务 563 — lab picks wall copy (xlsx 表B「实验室特性-档位与图墙-20261006」
 # 第 6/7 列逐字收录；which picks exist is decided in code — lib/experimentTiers

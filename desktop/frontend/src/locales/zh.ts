@@ -2505,7 +2505,7 @@ export const zh: Record<DictKey, string> = {
 "settings.editEvidenceRelaxed": "编辑证据门宽松模式",
 "settings.editEvidenceRelaxed.on": "开启",
 "settings.editEvidenceRelaxed.off": "关闭",
-"settings.editEvidenceRelaxedHint": "放宽 edit_file 的读取证据校验：同轮内读取计入有效证据；悬置/过期证据不再连带拦截同目录的 bash 写操作（降级为警告）。默认关闭——关闭时与严格行为逐字节一致（任务 789）。",
+"settings.editEvidenceRelaxedHint": "放宽 edit_file 的读取证据校验：同轮内读取计入有效证据；悬置/过期证据不再连带拦截同目录的 bash 写操作（降级为警告）。默认关闭——关闭时与严格行为逐字节一致（任务 789）。生效时机：开关在启动时定格，改开关需重启生效。",
   "settings.toolOptimizations.risk": "风险提示：gate 联动属行为变更（读取豁免），机制尚未长期验证。若出现误放行或误拦截，请先关闭本开关回退，再反馈问题。",
   // 任务 971：工具优化聚合页顶部常驻警告（rev2 定稿全文，逐字使用）。
   "settings.toolOptHub": "工具优化（工具表开关）",

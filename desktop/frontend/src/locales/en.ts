@@ -2508,7 +2508,7 @@ export const en = {
 "settings.editEvidenceRelaxed": "Relaxed edit evidence gate",
 "settings.editEvidenceRelaxed.on": "On",
 "settings.editEvidenceRelaxed.off": "Off",
-"settings.editEvidenceRelaxedHint": "Relax edit_file read-evidence checks: same-turn reads count as valid evidence, and stale evidence no longer blocks bash writes in the same directory (downgraded to a warning). Default off — off matches strict behavior exactly (task 789).",
+"settings.editEvidenceRelaxedHint": "Relax edit_file read-evidence checks: same-turn reads count as valid evidence, and stale evidence no longer blocks bash writes in the same directory (downgraded to a warning). Default off — off matches strict behavior exactly (task 789). Effective timing: the switch is fixed at startup; changing it requires an app restart to take effect.",
   "settings.toolOptimizations.risk": "Risk note: the gate linkage is a behavior change (read-evidence waiver) and is not battle-tested yet. If you see a wrong pass or a wrong block, switch this off first to roll back, then report the issue.",
   // Task 971: persistent top-of-page warning for the tool-optimization hub (rev2 final wording).
   "settings.toolOptHub": "Tool optimization (tool-list switches)",

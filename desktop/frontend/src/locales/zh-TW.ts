@@ -1882,7 +1882,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.editEvidenceRelaxed": "編輯證據門寬鬆模式",
 "settings.editEvidenceRelaxed.on": "開啟",
 "settings.editEvidenceRelaxed.off": "關閉",
-"settings.editEvidenceRelaxedHint": "放寬 edit_file 的讀取證據校驗：同輪內讀取計入有效證據；懸置/過期證據不再連帶攔截同目錄的 bash 寫操作（降級為警告）。預設關閉——關閉時與嚴格行為逐位元組一致（任務 789）。",
+"settings.editEvidenceRelaxedHint": "放寬 edit_file 的讀取證據校驗：同輪內讀取計入有效證據；懸置/過期證據不再連帶攔截同目錄的 bash 寫操作（降級為警告）。預設關閉——關閉時與嚴格行為逐位元組一致（任務 789）。生效時機：開關在啟動時定格，改開關需重啟生效。",
   "settings.toolOptimizations.risk": "風險提示：gate 聯動屬行為變更（讀取豁免），機制尚未長期驗證。若出現誤放行或誤攔截，請先關閉本開關回退，再回報問題。",
   // 任務 971：工具最佳化聚合頁頂部常駐警告（rev2 定稿全文）。
   "settings.toolOptHub": "工具最佳化（工具表開關）",
