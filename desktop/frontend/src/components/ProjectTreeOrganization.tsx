@@ -84,6 +84,47 @@ export function reorderedTopicIDs(
   return [...rest.slice(0, insertAt), draggedID, ...rest.slice(insertAt)];
 }
 
+/** Task 950: the same-before/after splice as reorderedTopicIDs, but against a
+ * group's own member order (group.topicIds) — the order the group actually
+ * renders. Returns the target group id, the insertion index for the backend
+ * ReorderTopicInGroup (remove-then-insert, Go clamps stale indexes), and the
+ * full reordered member list for the optimistic paint. Null when dragged and
+ * target do not share a group: cross-group and top-level drops keep the
+ * existing semantics (moveTopicInRoster append / flat ReorderTopics). */
+export function reorderedGroupTopicIDs(
+  groups: SessionGroup[],
+  draggedID: string,
+  targetID: string,
+  position: ProjectDropPosition,
+): { groupID: string; index: number; topicIds: string[] } | null {
+  if (!draggedID || !targetID || draggedID === targetID) return null;
+  for (const group of groups) {
+    const ids = group.topicIds ?? [];
+    if (!ids.includes(draggedID) || !ids.includes(targetID)) continue;
+    const rest = ids.filter((id) => id !== draggedID);
+    const targetIndex = rest.indexOf(targetID);
+    if (targetIndex < 0) return null;
+    const insertAt = position === "before" ? targetIndex : targetIndex + 1;
+    return { groupID: group.id, index: insertAt, topicIds: [...rest.slice(0, insertAt), draggedID, ...rest.slice(insertAt)] };
+  }
+  return null;
+}
+
+/** Task 950: a group renders its members in the persisted topicIds order —
+ * the order ReorderTopicInGroup writes and moveTopicInRoster appends to.
+ * Without this the member rows follow the flat children order (project
+ * sortOrder/activity) and a group-internal reorder lands on disk but never
+ * paints. Members absent from topicIds keep the incoming order at the tail
+ * (they cannot occur through the filtered ownMembers set today, but a stale
+ * roster must not drop rows). */
+export function orderedGroupMembers<T>(members: T[], topicIds: string[] | undefined, idOf: (member: T) => string): T[] {
+  const rank = new Map((topicIds ?? []).map((id, index) => [id, index]));
+  return members
+    .map((member, index): [T, number, number] => [member, rank.get(idOf(member)) ?? Number.MAX_SAFE_INTEGER, index])
+    .sort((a, b) => (a[1] - b[1]) || (a[2] - b[2]))
+    .map(([member]) => member);
+}
+
 type TopicRowDragProps = Pick<HTMLAttributes<HTMLDivElement>, "draggable" | "onDragStart" | "onDragOver" | "onDragLeave" | "onDrop" | "onDragEnd">;
 
 // Task 720: the one move semantics for a topic — leave every group it is listed
@@ -172,6 +213,11 @@ export function useProjectTreeOrganization({
   const groupMutationVersionsRef = useRef<Record<string, number>>({});
   const groupLoadSequencesRef = useRef<Record<string, number>>({});
   const groupSaveChainsRef = useRef(new Map<string, Promise<void>>());
+  /** Task 950: in-flight direct A-slice writes (ReorderTopicInGroup) per key.
+   * loadGroups refuses to apply a snapshot taken while one is pending — the
+   * read raced the write and carries the pre-write order (the 981 event-flow
+   * reset family). The settle path re-pulls after clearing the count. */
+  const groupDirectWritesRef = useRef<Record<string, number>>({});
   const organizationRevisionRef = useRef(organizationRevision);
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(loadSessionGroupCollapsed);
 
@@ -201,6 +247,9 @@ export function useProjectTreeOrganization({
       // Never replace an optimistic state while its semantic mutations are
       // queued. The CAS path reads the newest server snapshot before applying.
       if (groupSaveChainsRef.current.has(key)) return;
+      // Task 950: same refusal while a direct ReorderTopicInGroup is in
+      // flight — the snapshot may predate the write (event-flow reset guard).
+      if ((groupDirectWritesRef.current[key] ?? 0) > 0) return;
       loadedGroupsRef.current.add(key);
       setKeyGroups(key, asArray(snapshot.groups));
     }).catch(() => {}).finally(() => {
@@ -262,6 +311,39 @@ export function useProjectTreeOrganization({
     persistGroups(key, update, next);
   }, [persistGroups, setKeyGroups]);
 
+  /** Task 950: the group-internal topic reorder the flat ReorderTopics chain
+   * cannot express. Optimistic paint first (the member rows re-render in the
+   * dropped order at once), then the direct ReorderTopicInGroup write — the
+   * backend moves the member in its own TopicIDs order and logs a
+   * reorder_session op. Both settle paths (success and rejection) re-pull the
+   * server truth, so a rejected write never leaves a phantom order on screen
+   * and a metadata re-pull after the write reads back the persisted order
+   * (no event-flow reset — the 981 family). Older mocks without the binding
+   * fall back to the same versioned CAS chain every other roster mutation
+   * uses, so the browser dev surface stays functional. */
+  const reorderTopicWithinGroup = useCallback((key: string, scope: "global" | "project", root: string, topicID: string, order: { groupID: string; index: number; topicIds: string[] }) => {
+    groupMutationVersionsRef.current[key] = (groupMutationVersionsRef.current[key] ?? 0) + 1;
+    loadedGroupsRef.current.add(key);
+    const applyOrder = (groups: SessionGroup[]) => groups.map((group) => group.id === order.groupID ? { ...group, topicIds: order.topicIds } : group);
+    const next = applyOrder(groupsRef.current[key] ?? []);
+    setKeyGroups(key, next);
+    if (typeof bindings.ReorderTopicInGroup !== "function") {
+      persistGroups(key, applyOrder, next);
+      return;
+    }
+    groupDirectWritesRef.current[key] = (groupDirectWritesRef.current[key] ?? 0) + 1;
+    const settle = () => {
+      groupDirectWritesRef.current[key] = Math.max(0, (groupDirectWritesRef.current[key] ?? 1) - 1);
+      // Write landed (or failed): the next snapshot is post-write truth, so
+      // the re-pull reads back the persisted order instead of repainting old.
+      loadGroups(key, true);
+    };
+    void bindings.ReorderTopicInGroup(scope, root, topicID, order.groupID, order.index).then(settle).catch((error) => {
+      reportFrontendLog("project-groups", "reorder topic in group failed", `group=${order.groupID} error=${String(error)}`);
+      settle();
+    });
+  }, [bindings, loadGroups, persistGroups, setKeyGroups]);
+
   const clearTopicDrag = useCallback(() => {
     dragContextRef.current = null;
     setDragTopicID(null);
@@ -312,20 +394,29 @@ export function useProjectTreeOrganization({
       if (draggedID && context && sameScope) {
         const rect = event.currentTarget.getBoundingClientRect();
         const position = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
-        const ordered = reorderedTopicIDs(tree, context.scope, context.root, draggedID, topicID, position);
-        if (ordered) {
-          // Paint the dropped order immediately: the topics page reload is
-          // signature-cached and would otherwise keep the stale order on
-          // screen until some unrelated refresh happened to pull it.
-          onLocalTopicReorder?.(context.scope, context.root, ordered);
-          void bindings.ReorderTopics(context.scope, context.root, ordered).then(() => refresh()).then(() => onTopicsChanged?.()).catch(() => refresh());
+        // Task 950: a drop inside one group's members reorders that group's
+        // own topicIds (the order the group renders) through the direct
+        // ReorderTopicInGroup write — the flat ReorderTopics chain below only
+        // rewrites top-level sortOrder and silently dropped this case.
+        const groupOrder = reorderedGroupTopicIDs(groupsRef.current[key] ?? [], draggedID, topicID, position);
+        if (groupOrder) {
+          reorderTopicWithinGroup(key, context.scope, context.root, draggedID, groupOrder);
+        } else {
+          const ordered = reorderedTopicIDs(tree, context.scope, context.root, draggedID, topicID, position);
+          if (ordered) {
+            // Paint the dropped order immediately: the topics page reload is
+            // signature-cached and would otherwise keep the stale order on
+            // screen until some unrelated refresh happened to pull it.
+            onLocalTopicReorder?.(context.scope, context.root, ordered);
+            void bindings.ReorderTopics(context.scope, context.root, ordered).then(() => refresh()).then(() => onTopicsChanged?.()).catch(() => refresh());
+          }
         }
       }
       clearTopicDrag();
     };
     props.onDragEnd = clearTopicDrag;
     return { className, props };
-  }, [bindings, clearTopicDrag, dragTopicID, dropTopic, onLocalTopicReorder, onTopicsChanged, refresh, tree]);
+  }, [bindings, clearTopicDrag, dragTopicID, dropTopic, onLocalTopicReorder, onTopicsChanged, refresh, reorderTopicWithinGroup, tree]);
 
   const removeTopicFromGroups = useCallback((node: ProjectNode) => {
     const topicID = node.topicId;
@@ -640,7 +731,15 @@ export function ProjectTreeGroupRows({
       // collapsed groups render no member rows, so the badge is the only
       // signal and must not shrink with classic preview / pagination (#9518).
       const memberCount = group.topicIds?.length ?? 0;
-      const ownMembers = children.filter((child) => group.topicIds?.includes(child.topicId ?? ""));
+      // Task 950: members paint in the persisted topicIds order (the order a
+      // group-internal drag writes and a move-to-group appends to), not the
+      // flat children order — otherwise the reorder lands on disk and the
+      // sidebar keeps showing the pre-drag arrangement.
+      const ownMembers = orderedGroupMembers(
+        children.filter((child) => group.topicIds?.includes(child.topicId ?? "")),
+        group.topicIds,
+        (child) => child.topicId ?? "",
+      );
       // Task 350 activity inheritance, task-892 generalized: every header's
       // dot stands for its own members plus its ENTIRE descendant subtree (any
       // depth), so a collapsed tree still shows where things run. Flat and
