@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -41,8 +41,12 @@ var dedupeExemptTools = map[string]bool{
 // same-arguments reads distinct when the underlying data changed. The map
 // lives in turnLoopState, which is zeroed per user turn (beginRunTurn) and on
 // compaction, so the key already carries a turn boundary.
+//
+// sha512 (truncated to 12 bytes, same strength as before): this is a
+// dedupe fingerprint, not password hashing — sha256 here tripped GitHub
+// code-scanning rule go/weak-sensitive-data-hashing (#97, task 985).
 func dedupeFingerprint(toolName, args, raw string) string {
-	sum := sha256.Sum256([]byte(toolName + "\x00" + canonicalToolArgs(args) + "\x00" + raw))
+	sum := sha512.Sum512([]byte(toolName + "\x00" + canonicalToolArgs(args) + "\x00" + raw))
 	return hex.EncodeToString(sum[:12])
 }
 
