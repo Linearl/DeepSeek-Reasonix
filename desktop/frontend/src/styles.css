@@ -46101,6 +46101,63 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   word-break: break-word;
 }
+/* 任务 980 ③：预览行可点 → 详情弹窗展示全文。按钮形态清零（原生 button 的
+   边框/底色/字体全部抹掉），保留文字外观 + 可点光标 + hover 微亮提示。 */
+.collab-inbox-panel__preview--btn {
+  border: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.collab-inbox-panel__preview--btn:hover {
+  color: var(--accent);
+}
+/* 任务 980 ③：详情弹窗——modal 家族先例（.modal-backdrop/.modal 公共骨架），
+   本块只补差异：宽幅 + 纵向 flex + 正文区滚动。 */
+.collab-inbox-detail-backdrop {
+  --wails-draggable: no-drag;
+  z-index: var(--z-overlay-backdrop);
+}
+.collab-inbox-detail {
+  max-width: min(720px, 92vw);
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 720px);
+}
+.collab-inbox-detail__title {
+  margin-bottom: 8px;
+}
+.collab-inbox-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+/* 正文区：全文 pre-wrap 原样展示（信件正文的换行是语义），超高滚动。 */
+.collab-inbox-detail__body {
+  flex: 1;
+  min-height: 80px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+.collab-inbox-detail__body--loading {
+  color: var(--fg-faint);
+}
 .collab-inbox-panel__rowactions {
   display: flex;
   gap: 6px;
@@ -47149,7 +47206,11 @@ button.statusbar__mcp:focus-visible {
   min-height: 0;
   display: flex;
 }
-/* embedded：子面板从固定定位浮层改为填满壳体（DOM 同树，后代选择器覆盖） */
+/* embedded：子面板从固定定位浮层改为填满壳体（DOM 同树，后代选择器覆盖）。
+   任务 980 ②（用户验收实测）：overflow 必须是 auto 而非 hidden——独立面板靠
+   壳体 max-height+overflow:auto 滚动（见 .collab-inbox-panel 基础规则），嵌入
+   形态把 max-height 摘掉后若落 hidden，信件一多整块内容被裁掉且无滚动条
+   （用户实测「列表溢出无滚动条」的根因）。auto = 内容超壳体高度时出滚动条。 */
 .collab-hub-panel__body .collab-inbox-panel {
   position: static;
   width: 100%;
@@ -47159,7 +47220,7 @@ button.statusbar__mcp:focus-visible {
   border: none;
   border-radius: 0;
   box-shadow: none;
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* 聊天视图（CollabChatView）：工具行 + 群聊本体 + 协作动态浮层 */
