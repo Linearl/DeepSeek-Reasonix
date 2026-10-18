@@ -76,6 +76,13 @@ func catalogRuntimeStatus(activity string, runtimeStatus control.RuntimeStatus) 
 // event and page request, so no disk-IO fallback (desktop-projects.json) is
 // consulted here — the metadata-fallback window is transient and its own page
 // builder dedupes runtime rows by topic id.
+//
+// 983: a tab whose SessionPath has not landed yet still has a controller
+// holding the bound path, and the render side (runtimeProjectTopicNodes) has
+// always treated ctrl.SessionPath() as the path authority. The gate aligns
+// with that fallback: without it an empty tab path skipped correction forever
+// and the tab's global opinion bubbled the project-filed conversation onto
+// the Global top level with a live dot.
 func (a *App) applyCatalogFiledIdentity(snapshots []catalogRuntimeSnapshot) {
 	if len(snapshots) == 0 {
 		return
@@ -88,6 +95,9 @@ func (a *App) applyCatalogFiledIdentity(snapshots []catalogRuntimeSnapshot) {
 	defer cancel()
 	for i := range snapshots {
 		path := strings.TrimSpace(snapshots[i].sessionPath)
+		if path == "" && snapshots[i].ctrl != nil {
+			path = strings.TrimSpace(snapshots[i].ctrl.SessionPath())
+		}
 		if path == "" {
 			continue
 		}
@@ -801,8 +811,20 @@ func (a *App) withLiveTopics(catalog *sessioncatalog.Catalog, req ProjectTopicPa
 	runtimeNodes, sessionsByTopic := a.runtimeOnlyProjectTopicsWithSessions(req.Scope, req.WorkspaceRoot)
 	ctx, cancel := a.catalogReadContext()
 	defer cancel()
+	reqScope, reqRoot := normalizeDesktopTopicScope(req.Scope, req.WorkspaceRoot)
 	for _, node := range runtimeNodes {
 		if indexed[node.TopicID] {
+			continue
+		}
+		// 983: the gate above can still miss transiently (one GetSession error
+		// per snapshot keeps the tab's opinion). Before any off-page rule may
+		// keep the row, re-check the catalog filing: a conversation the catalog
+		// files under another scope (or another project) belongs on that
+		// page's ordinary row, never as a runtime row on this one — that
+		// double-paint is the Global-top bubble. Catalog-unknown sessions
+		// keep the tab's opinion (740 lag contract), so a fresh live session
+		// is never hidden.
+		if liveTopicFiledElsewhere(ctx, catalog, sessionsByTopic[node.TopicID], reqScope, reqRoot) {
 			continue
 		}
 		// A restored tab may still carry a legacy topic ID for a recovery
@@ -838,6 +860,41 @@ func (a *App) withLiveTopics(catalog *sessioncatalog.Catalog, req ProjectTopicPa
 	}
 	page.Items = append(kept, page.Items...)
 	return page
+}
+
+// liveTopicFiledElsewhere reports whether the catalog files every known
+// session of a runtime-only topic outside the requested page's scope/root
+// (983). One found-and-differently-filed session is enough to answer yes: the
+// catalog filing wins (740), so the row belongs to the other page and must
+// not paint here. A session the catalog does not know, a lookup error, or a
+// record without a logical topic answers no — the 740 lag contract keeps the
+// tab's opinion and the row stays visible rather than hiding a live
+// conversation.
+func liveTopicFiledElsewhere(ctx context.Context, catalog *sessioncatalog.Catalog, paths []string, reqScope, reqRoot string) bool {
+	if catalog == nil || len(paths) == 0 {
+		return false
+	}
+	known := 0
+	for _, path := range paths {
+		record, found, err := catalog.GetSession(ctx, strings.TrimSpace(path))
+		if err != nil || !found {
+			continue
+		}
+		// A record without a logical topic paints no ordinary row on any page
+		// (the catalog only draws topic rows), so it can never be evidence
+		// that the conversation "belongs elsewhere" — dropping the runtime
+		// row on its filing alone would hide the conversation from the
+		// sidebar entirely (740: never hide a conversation this app runs).
+		if strings.TrimSpace(record.LogicalTopicID) == "" {
+			continue
+		}
+		known++
+		scope, root := normalizeDesktopTopicScope(record.Scope, record.WorkspaceRoot)
+		if scope == reqScope && (scope != "project" || sameProjectRoot(root, reqRoot)) {
+			return false
+		}
+	}
+	return known > 0
 }
 
 // liveTopicProjectedOnPage reports whether every catalog-known session of a
