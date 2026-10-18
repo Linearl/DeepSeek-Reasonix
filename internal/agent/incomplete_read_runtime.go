@@ -97,7 +97,7 @@ func (a *Agent) boundIncompleteReadAwareResult(plan *toolCallPlan, result string
 			original = result
 		}
 	} else {
-		body, truncMsg, original = a.boundProviderVisibleResult(result, plan.call.Name, plan.call.ID)
+		body, truncMsg, original = a.boundProviderVisibleResult(result, plan.call.Name, plan.call.ID, plan.call.Arguments)
 	}
 	readArgs, _ := parseReadFileArgs(plan.execArgs)
 	if a.readPipelineActive() && plan.evidenceName == "read_file" && (plan.readTaskID != "" || readArgs.fullRead()) {

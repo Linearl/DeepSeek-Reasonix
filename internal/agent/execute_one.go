@@ -707,7 +707,7 @@ func (a *Agent) finishToolExecution(ctx context.Context, plan *toolCallPlan) too
 		// Task 202: a failed tool call is batch status evidence.
 		a.collabStatusEvent(CollabStatusToolError, fmt.Sprintf("%s: %v", call.Name, err), false)
 		rawErr := fmt.Sprintf("error: %v\n%s", err, detail)
-		body, truncMsg, original := a.boundProviderVisibleResult(rawErr, call.Name, call.ID)
+		body, truncMsg, original := a.boundProviderVisibleResult(rawErr, call.Name, call.ID, call.Arguments)
 		out := toolOutcome{
 			runState: recoveryFailureState(err),
 			output:   body, errMsg: firstLine(err.Error()), truncated: truncMsg != "" || original != "", truncMsg: truncMsg,
