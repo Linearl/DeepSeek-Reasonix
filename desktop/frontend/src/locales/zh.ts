@@ -2515,7 +2515,7 @@ export const zh: Record<DictKey, string> = {
   "settings.toolOptHub.notice": "换装通知：工具表按新设置更新后的首个请求会注入一行提示，点名被移除或新增的工具，便于模型与你确认列表已变化。",
   "settings.toolOptHub.scope": "适用范围：本页仅收纯 schema 影响的开关（只改工具列表本身）；带运行时状态的开关按各自语义生效，不在此列。",
   "settings.capabilityGroups": "能力组披露与 session_hub 聚合",
-  "settings.capabilityGroupsHint": "任务 953/954/955 共用一个开关：开启后 use_capability 的 list/search 带能力组行与组卡（体积闸控总量）、注册跨会话协作聚合工具 session_hub（发信/通讯录/判活/读尾/建会话/投递追踪/任务卡/预算的统一入口，九件协作工具仍可单独调用）、常驻能力目录按组归属渲染。默认关闭 = 以上全部不注册不披露，行为与开启前逐字节一致。重启（或新会话）生效。",
+  "settings.capabilityGroupsHint": "能力组披露 + session_hub 聚合（三件能力共用一键）：开启后 use_capability 的 list/search 带能力组行与组卡（体积闸控总量）、注册跨会话协作聚合工具 session_hub（发信/通讯录/判活/读尾/建会话/投递追踪/任务卡/预算的统一入口，九件协作工具仍可单独调用）、常驻能力目录按组归属渲染。默认关闭 = 以上全部不注册不披露，行为与开启前逐字节一致。重启（或新会话）生效。",
   "settings.capabilityGroups.on": "开启",
   "settings.capabilityGroups.off": "关闭",
   "settings.capabilityGroups.risk": "提示：需先开启「跨会话协作」session_hub 才注册（协作关闭时本开关对 session_hub 那一半不生效，组披露照常）；session_hub 进入模型可见工具表，影响与上方工具表开关同一套生效机制。",

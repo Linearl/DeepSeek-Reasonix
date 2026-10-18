@@ -1892,7 +1892,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.toolOptHub.notice": "換裝通知：工具表按新設定更新後的首個請求會注入一行提示，點名被移除或新增的工具，便於模型與你確認清單已變化。",
   "settings.toolOptHub.scope": "適用範圍：本頁僅收純 schema 影響的開關（只改工具清單本身）；帶執行時狀態的開關按各自語義生效，不在此列。",
   "settings.capabilityGroups": "能力組披露與 session_hub 聚合",
-  "settings.capabilityGroupsHint": "任務 953/954/955 共用一個開關：開啟後 use_capability 的 list/search 帶能力組行與組卡（體積閘控總量）、註冊跨會話協作聚合工具 session_hub（發信/通訊錄/判活/讀尾/建會話/投遞追蹤/任務卡/預算的統一入口，九件協作工具仍可單獨調用）、常駐能力目錄按組歸屬渲染。預設關閉 = 以上全部不註冊不披露，行為與開啟前逐位元組一致。重啟（或新會話）生效。",
+  "settings.capabilityGroupsHint": "能力組披露 + session_hub 聚合（三件能力共用一鍵）：開啟後 use_capability 的 list/search 帶能力組行與組卡（體積閘控總量）、註冊跨會話協作聚合工具 session_hub（發信/通訊錄/判活/讀尾/建會話/投遞追蹤/任務卡/預算的統一入口，九件協作工具仍可單獨調用）、常駐能力目錄按組歸屬渲染。預設關閉 = 以上全部不註冊不披露，行為與開啟前逐位元組一致。重啟（或新會話）生效。",
   "settings.capabilityGroups.on": "開啟",
   "settings.capabilityGroups.off": "關閉",
   "settings.capabilityGroups.risk": "提示：需先開啟「跨會話協作」session_hub 才註冊（協作關閉時本開關對 session_hub 那一半不生效，組披露照常）；session_hub 進入模型可見工具清單，影響與上方工具表開關同一套生效機制。",

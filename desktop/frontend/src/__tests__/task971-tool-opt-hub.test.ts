@@ -2,12 +2,12 @@
 // 任务 971 acceptance harness (实验室-提效-工具优化聚合页):
 //  ① 聚合页渲染：顶部 rev2 警告定稿原文逐字断言 + 三生效点机制说明 + 四配套
 //     + 开关全集在页（readBack / 证据门 / multi_edit 直注 / restart_update /
-//     session_hub 预留键位）；
+//     能力组披露真开关——任务 979 替换 971 的 session_hub 预留占位）；
 //  ② 迁移零回归：restartUpdate 自界面组更新反馈卡迁入聚合页——键/setter/档位
 //     不变，仅 UI 落点迁移（updateFeedback 不再含该行）；multiEditInjection
 //     独立卡退役为成员行，键/setter/回落链不变（943 两开关独立语义保持）；
-//  ③ session_hub 键位就绪：experimental_capability_groups 同键预留（954 未
-//     合并，仅占位不生效）；
+//  ③ session_hub 真开关（任务 979）：experimental_capability_groups 读写
+//     app.SetExperimentalCapabilityGroups，占位 span 退役；
 //  ④ 三语：toolOptHub 全键在 zh / zh-TW / en 齐备；布局 yaml 与内置默认同构。
 
 import { readFileSync } from "node:fs";
@@ -45,7 +45,9 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
   ok(panel.includes('app.SetExperimentalEditEvidenceRelaxed(on)'), "hub hosts the edit-evidence-relaxed switch");
   ok(panel.includes('app.SetExperimentalMultiEditInjection(on)'), "hub hosts the multi_edit injection switch");
   ok(panel.includes('app.SetExperimentalRestartUpdate(on)'), "hub hosts the restart_update switch");
-  ok(panel.includes('data-testid="session-hub-slot"'), "hub hosts the session_hub reserved slot");
+  // 任务 979：971 的 session_hub 预留占位已替换为真开关（954/955 已合入）。
+  ok(panel.includes('app.SetExperimentalCapabilityGroups(on)'), "hub hosts the real capability-groups switch (979 replaced the placeholder)");
+  ok(!panel.includes('data-testid="session-hub-slot"'), "the 971 placeholder span is gone (replaced by the real switch)");
 }
 
 // ② 迁移零回归。
@@ -83,14 +85,17 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
     "toolOptimizations hub hosts restartUpdate + multiEditInjection as members");
 }
 
-// ③ session_hub 键位就绪（954 未合并，同键名预留）。
+// ③ session_hub 真开关（任务 979：954/955 已合入，占位替换为真开关——
+//    键 experimental_capability_groups，UI 读写 app.SetExperimentalCapabilityGroups）。
 {
   const panel = read("components/SettingsPanel.tsx");
-  ok(panel.includes("experimental_capability_groups"),
-    "pane reserves the experimental_capability_groups key slot (954 pending)");
+  ok(panel.includes("Boolean(s.experimentalCapabilityGroups) === on"),
+    "pane switch reads the experimental_capability_groups view field");
+  ok(panel.includes('"settings.capabilityGroups.on"') && panel.includes('"settings.capabilityGroups.off"'),
+    "pane switch renders the on/off labels from locale keys");
   const zh = read("locales/zh.ts");
-  ok(zh.includes('"settings.toolOptHub.sessionHubSlot"') && zh.includes("experimental_capability_groups"),
-    "zh locale labels the reserved session_hub slot with the same key name");
+  ok(zh.includes('"settings.capabilityGroups"') && zh.includes("session_hub"),
+    "zh locale labels the real switch with the session_hub coverage note");
 }
 
 // ④ 三语 + 布局同构。
@@ -102,21 +107,25 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
     "settings.toolOptHub.pending",
     "settings.toolOptHub.notice",
     "settings.toolOptHub.scope",
-    "settings.toolOptHub.sessionHubSlot",
-    "settings.toolOptHub.sessionHubSlotHint",
+    // 任务 979：占位键（sessionHubSlot/SlotHint）退役，替换为真开关键。
+    "settings.capabilityGroups",
+    "settings.capabilityGroupsHint",
+    "settings.capabilityGroups.on",
+    "settings.capabilityGroups.off",
   ];
   for (const locale of ["zh", "zh-TW", "en"]) {
     const src = read(`locales/${locale}.ts`);
     const missing = keys.filter((k) => !src.includes(`"${k}"`));
     ok(missing.length === 0, `${locale} carries all toolOptHub keys${missing.length ? ` (missing ${missing.join(", ")})` : ""}`);
+    ok(!src.includes('"settings.toolOptHub.sessionHubSlot"'), `${locale} drops the retired placeholder keys`);
   }
   // 布局 yaml 与内置默认同构（724 硬约束）。
   const layoutDefault = read("lab/labLayoutDefault.ts");
   const yaml = read("lab/lab-layout.yaml");
   ok(layoutDefault.includes('labelKey: "settings.toolOptHub"') && yaml.includes("labelKey: settings.toolOptHub"),
     "both layout sources label the hub with toolOptHub");
-  ok(yaml.includes("onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalRestartUpdate]"),
-    "yaml hub entry lights on all three switch keys");
+  ok(yaml.includes("onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalRestartUpdate, experimentalCapabilityGroups]"),
+    "yaml hub entry lights on all four switch keys (979 added the capability-groups light)");
   // 聚合页不回并：readBack 与 multi_edit 仍是两个独立 setter。
   ok(layoutDefault.includes('id: "multiEditInjection"') && layoutDefault.includes('id: "restartUpdate"'),
     "default layout keeps the two switches as distinct member rows (not re-merged)");
