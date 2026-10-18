@@ -256,6 +256,9 @@ func (state *historyTodoArgsState) consume(m provider.Message) {
 		switch tc.Name {
 		case "todo_write":
 			rec := evidence.ReceiptFromToolCall(tc.Name, json.RawMessage(tc.Arguments), true, true)
+			// Task 976: replay ops against the reconstructed base so history
+			// renders ops-based writes instead of silently skipping them.
+			rec = evidence.ExpandTodoOpsReceipt(rec, state.todos)
 			if len(rec.Todos) == 0 {
 				continue
 			}

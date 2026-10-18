@@ -2110,6 +2110,10 @@ func (a *Agent) rebuildTodoState(msgs []provider.Message) {
 				continue
 			}
 			rec := evidence.ReceiptFromToolCall(tc.Name, json.RawMessage(tc.Arguments), true, true)
+			// Task 976: an ops-based write replays against the reconstructed
+			// base so a reload restores the same list the live ledger recorded,
+			// instead of wiping the base to empty.
+			rec = evidence.ExpandTodoOpsReceipt(rec, todos)
 			// A successful empty todo_write is an explicit clear. Preserve it as the
 			// latest base so history reloads do not resurrect an older non-empty list.
 			// Task 152: explicit parent_id trees skip the legacy normalizer (see
