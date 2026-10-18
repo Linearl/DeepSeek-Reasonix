@@ -227,7 +227,8 @@ func waitForDesktop(t *testing.T, what string, cond func() bool) {
 }
 
 // TestRebuildModelSwitchGuardOnlyIgnoresBackgroundJobs is acceptance ② (task
-// 890): the demotion is scoped to the model settings — background jobs alone
+// 890, extended by task 974): the demotion is scoped to the jobs-handoff
+// settings (model, saved model settings, effort) — background jobs alone
 // never block them, while a running turn or pending prompt still blocks them
 // exactly as before, and every other setting keeps the full check.
 func TestRebuildModelSwitchGuardOnlyIgnoresBackgroundJobs(t *testing.T) {
@@ -242,7 +243,10 @@ func TestRebuildModelSwitchGuardOnlyIgnoresBackgroundJobs(t *testing.T) {
 		{"model still blocks on a pending prompt", "model", control.RuntimeStatus{PendingPrompt: true}, true},
 		{"saved model settings ignore background jobs", "saved model settings", control.RuntimeStatus{BackgroundJobs: 2}, false},
 		{"saved model settings still block on a running turn", "saved model settings", control.RuntimeStatus{Running: true}, true},
-		{"effort still blocks on background jobs", "effort", control.RuntimeStatus{BackgroundJobs: 1}, true},
+		// Task 974 demotes effort onto the same jobs-handoff admission.
+		{"effort ignores background jobs", "effort", control.RuntimeStatus{BackgroundJobs: 1}, false},
+		{"effort still blocks on a running turn", "effort", control.RuntimeStatus{Running: true, BackgroundJobs: 1}, true},
+		{"effort still blocks on a pending prompt", "effort", control.RuntimeStatus{PendingPrompt: true}, true},
 		{"sandbox still blocks on background jobs", "sandbox", control.RuntimeStatus{BackgroundJobs: 1}, true},
 		{"MCP server still blocks on background jobs", "MCP server", control.RuntimeStatus{BackgroundJobs: 1}, true},
 		{"runtime reload still blocks on background jobs", "runtime reload", control.RuntimeStatus{BackgroundJobs: 1}, true},

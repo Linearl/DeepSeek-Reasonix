@@ -185,6 +185,11 @@ func (a *App) tryEffortFastPaths(tab *WorkspaceTab, tabID, level string, switchS
 // buildEffortController builds the replacement controller for an effort
 // switch (both fast paths declined; the fallback reason rides the agent line).
 func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, effort string, snap tabRuntimeSnapshot, runtime normalizedTabRuntime, oldCtrl control.SessionAPI, sharedHost *plugin.Host) (*control.Controller, error) {
+	// Task 974: hand the outgoing controller's background-job manager and
+	// write lease to the replacement (same handoff as the task-890 model
+	// swap) so background jobs survive the rebuild; nil/nil falls back to a
+	// fresh pair — pre-974 behavior.
+	handoffJobs, handoffLease := jobsHandoffFrom(oldCtrl)
 	newCtrl, err := boot.Build(a.bootContext(), boot.Options{
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
@@ -232,6 +237,9 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 		OnManageSessions:           a.AgentManageSessions,
 		// Keep the private temporary directory across effort switches (#7575).
 		SessionTemp: sessionTempFromController(oldCtrl),
+		// Task 974: the shared pair keeps background jobs alive across the swap.
+		Jobs:           handoffJobs,
+		WorkspaceLease: handoffLease,
 	})
 	if err != nil {
 		return nil, err
@@ -270,9 +278,10 @@ func (a *App) swapEffortController(tab *WorkspaceTab, newCtrl *control.Controlle
 	a.supersedeTabBuildLocked(tab)
 	a.saveTabsLocked()
 	a.mu.Unlock()
-	if oldCtrl != nil {
-		oldCtrl.Close()
-	}
+	// Task 974: a handoff-built replacement adopts the outgoing job manager
+	// first, then the outgoing close keeps its background jobs running (same
+	// as the task-890 model swap; plain close for non-handoff builds).
+	closeReplacedControllerAfterHandoff(newCtrl, oldCtrl)
 	a.clearDeferredRebuildVersion(tab.ID, pendingSequence)
 	a.persistTabSessionPath(tab, path)
 	a.notifyTabRuntimeRebuilt(tab)
