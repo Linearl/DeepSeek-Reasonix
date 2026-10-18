@@ -35,26 +35,32 @@ func (w activeRuntimeWork) active() bool {
 	return w.running || w.pendingPrompt || w.backgroundJobs > 0
 }
 
-// activeForModelSwitch is the model-switch admission (task 890): background
-// jobs are model-agnostic — they run on the shared job manager's own context
-// and travel with the handoff swap — so they must not veto a model change
-// after the turn has ended (running=false). A running turn or a pending
-// prompt still blocks exactly as before.
-func (w activeRuntimeWork) activeForModelSwitch() bool {
+// activeForJobsHandoffSwitch is the admission for rebuilds that adopt the
+// outgoing controller's background-job manager and write lease via the
+// jobs-handoff pair (tasks 890/974): background jobs are setting-agnostic —
+// they run on the shared job manager's own context and travel with the swap —
+// so they must not veto such a rebuild after the turn has ended
+// (running=false). A running turn or a pending prompt still blocks exactly as
+// before.
+func (w activeRuntimeWork) activeForJobsHandoffSwitch() bool {
 	return w.running || w.pendingPrompt
 }
 
-// isModelSwitchSetting reports whether setting names a rebuild whose inputs
-// are only the model and its saved settings: "model" is SetModelForTab's
-// rebuild fallback, "saved model settings" is the settings-apply rebuild
-// turn admission runs after a settings save (the task-890 half-commit path).
-// Every other setting — effort, MCP server, plugins, subagents, language,
-// runtime reload — keeps the full active() check unchanged (task 890 only
-// demotes the model path; other rebuilds may depend on work state a model
-// swap never touches).
-func isModelSwitchSetting(setting string) bool {
+// isJobsHandoffSwitchSetting reports whether setting names a rebuild that
+// travels the jobs-handoff pair (jobsHandoffFrom → boot.Options.Jobs +
+// WorkspaceLease → closeReplacedControllerAfterHandoff), so background jobs
+// survive the swap and must not veto it: "model" is SetModelForTab's rebuild
+// fallback, "saved model settings" is the settings-apply rebuild turn
+// admission runs after a settings save (the task-890 half-commit path), and
+// "effort" is SetEffortForTab's build+swap fallback (task 974; since 9866 the
+// effort depth rides per-request overrides for new turns, so the rebuild only
+// re-anchors the session — same handoff semantics as the model swap). Every
+// other setting — MCP server, plugins, subagents, language, runtime reload —
+// keeps the full active() check unchanged (their rebuilds may depend on work
+// state a handoff swap never touches).
+func isJobsHandoffSwitchSetting(setting string) bool {
 	switch setting {
-	case "model", "saved model settings":
+	case "model", "saved model settings", "effort":
 		return true
 	default:
 		return false
@@ -86,8 +92,8 @@ func (e *rebuildBusyError) Error() string {
 func rebuildControllerActiveWorkErrorFor(ctrl control.SessionAPI, setting string) error {
 	work := controllerActiveRuntimeWork(ctrl)
 	active := work.active()
-	if isModelSwitchSetting(setting) {
-		active = work.activeForModelSwitch()
+	if isJobsHandoffSwitchSetting(setting) {
+		active = work.activeForJobsHandoffSwitch()
 	}
 	if !active {
 		return nil
