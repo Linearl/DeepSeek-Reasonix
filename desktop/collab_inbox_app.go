@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -172,6 +174,19 @@ func (a *App) ListCollabMailChains(bucket string, limit int) (collabinbox.ChainS
 		Viewer: a.collabInboxViewer(),
 		Limit:  limit,
 	})
+}
+
+// ReadCollabMail answers the panel's detail popup (任务 980 ③): the full body
+// of ONE archive entry, fetched on demand — the list stays preview-only by
+// design, the popup is the only full-text path. Read-only, no retention side
+// effects (the agent query tool path's contract, reused here).
+func (a *App) ReadCollabMail(id string) (collabinbox.MailDetail, error) {
+	if strings.TrimSpace(id) == "" {
+		return collabinbox.MailDetail{}, errors.New("ReadCollabMail: empty mail id")
+	}
+	// 与 ListCollabMail 同款两级哨兵（任务511 ②）：本行在 = 请求到达绑定层。
+	slog.Info("collab inbox: ReadCollabMail", "id", id, "viewer", a.collabInboxViewer())
+	return collabInboxStore().ReadMail(collabInboxCtx(), id)
 }
 
 // CountUnreadCollabMail answers the icon-row badge (task 320 遗留 #1): how
