@@ -47,9 +47,6 @@ const (
 	MaxMessageBytes = 8 << 10
 	// MaxPending bounds the queue so a runaway loop cannot pile up entries.
 	MaxPending = 64
-	// MinDelay is the shortest schedulable delay. Zero/negative delays would
-	// race the set call itself; an alarm at least waits this long.
-	MinDelay = 5 * time.Second
 	// MaxDelay is the longest schedulable delay (7 days). Longer horizons are
 	// heartbeat-tasks territory (守护心跳体系), not in-session alarms.
 	MaxDelay = 7 * 24 * time.Hour
@@ -80,7 +77,9 @@ func newID() string {
 	return "rem_" + hex.EncodeToString(b[:])
 }
 
-// ValidateReminder checks the schedulable window for a due time.
+// ValidateReminder checks the schedulable window for a due time. The floor is
+// "strictly in the future" (the tool layer enforces whole minutes); sub-minute
+// delays stay schedulable for programmatic callers and tests.
 func ValidateReminder(due time.Time, message string, now time.Time) error {
 	if strings.TrimSpace(message) == "" {
 		return fmt.Errorf("reminder message is required")
@@ -88,10 +87,10 @@ func ValidateReminder(due time.Time, message string, now time.Time) error {
 	if len(message) > MaxMessageBytes {
 		return fmt.Errorf("reminder message is %d bytes, over the %d byte limit", len(message), MaxMessageBytes)
 	}
-	delay := due.Sub(now)
-	if delay < MinDelay {
-		return fmt.Errorf("reminder delay must be at least %s", MinDelay)
+	if !due.After(now) {
+		return fmt.Errorf("reminder due time must be in the future")
 	}
+	delay := due.Sub(now)
 	if delay > MaxDelay {
 		return fmt.Errorf("reminder delay must be at most %s", MaxDelay)
 	}
@@ -190,13 +189,17 @@ func Remove(sessionPath, id string) error {
 	})
 }
 
-// load reads the queue file. A missing file is an empty queue; a corrupt file
-// surfaces as an error — reminders must fail loudly, never silently vanish.
+// load reads the queue file. A missing file (or directory — a session that
+// never set a reminder) is an empty queue; a corrupt file surfaces as an
+// error — reminders must fail loudly, never silently vanish.
 func load(sessionPath string) (queue, error) {
 	var q queue
 	dir := store.SessionRemindersDir(sessionPath)
 	if dir == "" {
 		return q, fmt.Errorf("reminder: empty session path")
+	}
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return q, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), diskLockWait)
 	defer cancel()
@@ -255,9 +258,16 @@ func mutate(sessionPath string, fn func(*queue) error) error {
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return fmt.Errorf("reminder: write queue: %w", err)
 	}
-	if err := os.Rename(tmp, filepath.Join(dir, fileName)); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("reminder: commit queue: %w", err)
+	// Windows: transient external holders (indexer/AV) can deny the rename
+	// for a few milliseconds; retry briefly so a consumed entry is really
+	// removed — a half-removed entry would re-deliver on the next scan.
+	var renameErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		if renameErr = os.Rename(tmp, filepath.Join(dir, fileName)); renameErr == nil {
+			return nil
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
-	return nil
+	_ = os.Remove(tmp)
+	return fmt.Errorf("reminder: commit queue: %w", renameErr)
 }

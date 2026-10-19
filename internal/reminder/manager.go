@@ -49,8 +49,8 @@ func (m *Manager) SetNowFunc(now func() time.Time) {
 // Sync scans the session's durable queue and re-arms every pending entry:
 // future entries get a timer at their due time, already-overdue entries fire
 // immediately with the catch-up annotation. Call on session bind / rebind.
-// A second Sync for the same session replaces prior timers (entries may have
-// changed on disk while the session was away), never double-fires.
+// Sync replaces the whole prior timer set first — entries may have changed on
+// disk while the session was away, and only what the file holds now may fire.
 func (m *Manager) Sync(sessionPath string) {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
@@ -60,7 +60,8 @@ func (m *Manager) Sync(sessionPath string) {
 	if err != nil {
 		// The queue file is per-session auxiliary state; a broken file must
 		// not break session bind. Loud log, no timers — the next successful
-		// Set re-syncs.
+		// Set re-syncs. Prior timers are left alone here: dropping them on a
+		// read failure would silently cancel alarms the file may still hold.
 		slog.Warn("reminder: sync queue", "session", sessionPath, "err", err)
 		return
 	}
@@ -69,6 +70,7 @@ func (m *Manager) Sync(sessionPath string) {
 	if m.closed {
 		return
 	}
+	m.dropAllLocked()
 	now := m.now().UnixMilli()
 	for _, e := range entries {
 		m.armLocked(sessionPath, e, now)
@@ -99,14 +101,16 @@ func (m *Manager) Forget(id string) {
 	}
 }
 
-// DropSession disarms every timer bound to a session path (rebind away).
-func (m *Manager) DropSession(sessionPath string) {
-	sessionPath = strings.TrimSpace(sessionPath)
-	if sessionPath == "" {
-		return
-	}
+// DropAll disarms every timer. A controller serves one session at a time, so
+// a session identity change (rebind) drops the whole set and re-syncs from
+// the (new) session's durable queue.
+func (m *Manager) DropAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.dropAllLocked()
+}
+
+func (m *Manager) dropAllLocked() {
 	for id, t := range m.timers {
 		t.Stop()
 		delete(m.timers, id)
