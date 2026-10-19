@@ -2181,11 +2181,15 @@ export const en = {
   "settings.labGroup.onCount": "{n} on",
   // 任务 626: rail group-header total badge (same labGroupTotals source as the chips).
   "settings.labGroup.itemCount": "{n} items",
+  "settings.labTier.stable": "Stable",
   "settings.labTier.recommended": "Recommended",
   "settings.labTier.optional": "Optional",
   "settings.labTier.unstable": "Unstable",
   "settings.labTier.retired": "Retired",
-  // Task 621: badge tooltip (what each tier means; wording per the 2026-10-06 user ruling)
+  // Task 621: badge tooltip (what each tier means; wording per the 2026-10-06 user ruling; 任务 1005 adds the stable tier)
+  // 任务 1005: stable tier — validated defaults, on by default; the switch is
+  // disabled until developer mode is enabled (single-item unlock, stable scope only).
+  "settings.labTier.stable.desc": "Validated in production — on by default (developer mode required to turn off)",
   "settings.labTier.recommended.desc": "Core feature — skipping it leaves an experience gap",
   "settings.labTier.optional.desc": "Optional enhancement — skipping it has minor impact",
   "settings.labTier.unstable.desc": "In development — enabling it may be unstable",
@@ -2211,6 +2215,20 @@ export const en = {
   "settings.modelCapabilityFilter.value": "Stored value: {value} (read-only; the key is retired)",
   "settings.lab.enabledFirst.on": "[Disabled items] last: on (enabled first)",
   "settings.lab.enabledFirst.off": "[Disabled items] last: off (source order)",
+  // 任务 1005: developer mode — single-item unlock scoped to the stable tier
+  // only (page preference in localStorage, no config key). Label states the
+  // CURRENT state (task 361 discipline, same as enabledFirst).
+  "settings.lab.devMode.on": "Developer mode: on (closing stable features allowed)",
+  "settings.lab.devMode.off": "Developer mode: off (stable features locked)",
+  // Small print next to the toggle — visible ONLY while developer mode is on,
+  // count of stable features currently switched off. Notice only, never a dialog.
+  "settings.lab.devMode.disabledCount": "You manually turned off {n} stable feature(s); no compatibility or stability guarantee while off",
+  // Disabled-row copy, two branches by the stored value (任务 1005 定稿 ⑤):
+  // value on = default-on explanation; value off = manually-turned-off explanation.
+  "settings.lab.stable.lockedOn": "Stable feature, on by default; enable developer mode to turn it off",
+  "settings.lab.stable.lockedOff": "You manually turned this stable feature off; enable developer mode to restore it",
+  // Warning shown in stable panes while developer mode is unlocked.
+  "settings.lab.stable.devWarning": "Developer mode unlocked this stable feature; turning it off does not guarantee compatibility or stability",
   "settings.lab.tocLabel": "Group directory",
   "settings.forkFeaturesIntro.title": "Fork Features",
   "settings.forkFeaturesIntro.lead": "These improvements are already active everywhere — no switches needed; each entry says where to find it.",

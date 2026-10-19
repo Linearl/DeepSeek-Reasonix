@@ -44,13 +44,15 @@ groups:
   - key: automation
     labelKey: settings.labGroup.automation
     entries:
+      # 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（及 infra 段
+      # runtimeReuse）四项 tier 升「稳定」——与内置默认同构（724 回退安全网）。
       - id: autopilot
         labelKey: settings.autopilot
-        tier: recommended
+        tier: stable
         onKeys: [autopilot]
       - id: sessionCollab
         labelKey: settings.sessionCollab
-        tier: recommended
+        tier: stable
         # 任务 815：cascade_approval 是卡内行级开关（Task 225），补灯——
         # 审批回投开 = 卡亮（无 member 行，家族伴生不挂徽章）。
         onKeys: [experimentalSessionCollab, experimentalCascadeApproval]
@@ -61,7 +63,7 @@ groups:
             tier: optional
       - id: fullAccess
         labelKey: settings.fullAccess
-        tier: recommended
+        tier: stable
         onKeys: [experimentalFullAccess]
       # 任务 961：智能自动化（合并卡，742/782 条目级合并先例）——梦境整理 +
       # 决策模式提取 + 心跳任务后台化三散条并卡。容器档 = 成员最高档（全可选
@@ -280,14 +282,18 @@ groups:
             tier: optional
       # 任务 782④：opencodeGoUsage 迁出界面组（→任务 783 可观测性组
       # 「用量监测」卡成员；迁出瞬间 pane 分支保留，入口随 783 落卡恢复）。
-      # 任务 971：restartUpdate 迁至工具优化聚合页——onKeys 去 experimentalRestartUpdate。
+      # 任务 992（用户 1018 21:34）：restartUpdate 归位回本卡——本文件随
+      # 1005 一并补同步（992 漏同步 drift 收口：成员+灯键与内置默认对齐）。
       - id: updateFeedback
         labelKey: settings.updateFeedback
-        onKeys: [experimentalFeedback, forkNotice]
+        onKeys: [experimentalFeedback, forkNotice, experimentalRestartUpdate]
         members:
           - id: feedback
             labelKey: settings.feedback
             tier: optional
+          - id: restartUpdate
+            labelKey: settings.restartUpdate
+            tier: recommended
 
   # ── 可观测性（2 项；任务 783：用量监测卡落组）─────────────────
   - key: observability
@@ -371,13 +377,16 @@ groups:
           - id: goMemLimitMB
             input: number
 
-  # ── 基础设施（5 项；任务 785：S1 常驻底座开关条目随底座退役移除）──
+  # ── 基础设施（7 项；任务 785：S1 常驻底座开关条目随底座退役移除；
+  #    任务 992：工具优化整体并入本组，原独立 tool-opt 组退役）──
   - key: infra
     labelKey: settings.labGroup.infra
     entries:
+      # 任务 1005 批1 转档：runtimeReuse 升「稳定」（与内置默认/前端注册表
+      # /Go labFeatureTiers 三方同构）。
       - id: runtimeReuse
         labelKey: settings.runtimeReuse
-        tier: optional
+        tier: stable
         onKeys: [experimentalRuntimeReuse]
       - id: zcodeTaskBus
         labelKey: settings.zcodeTaskBus
@@ -394,46 +403,36 @@ groups:
         labelKey: settings.pathRules
         tier: unstable
         onKeys: [experimentalPathRules]
+      # 任务 992：orphanHandling 随复用池升推荐——本文件随 1005 一并补同步
+      # （992 漏同步 drift 收口）。
       - id: orphanHandling
         labelKey: settings.orphanHandling
-        tier: unstable
+        tier: recommended
         onKeys: [experimentalOrphanHandling]
       - id: localServer
         labelKey: settings.localServer
         tier: unstable
         onKeys: [experimentalLocalServer]
-
-  # ── 工具优化（1 卡聚合页；任务 971：readBack / multi_edit 直注 / restart_update
-  #    三开关单页管理 + 顶部 rev2 警告 + 三生效点机制说明；任务 943 两开关
-  #    独立语义保持——合并入页不回并，各持各键各 setter）──
-  - key: tool-opt
-    labelKey: settings.labGroup.toolOpt
-    entries:
+      # 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原
+      # 独立 tool-opt 组退役）；restartUpdate 归位回界面组 updateFeedback 卡
+      # （本文件随 1005 一并补同步——卡灯三键，restartUpdate 不再入灯/入卡）。
       # 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐。
       # 任务 943：本卡只管 readBack 面（789 证据门联动成员行随卡）。
-      # 任务 971：扩为聚合页——multi_edit 直注（943 拆出）与 restart_update
-      # （自界面组更新反馈卡迁入）转成员行；卡灯三键任一非默认即亮。
       # 任务 979：capabilityGroups（能力组披露+session_hub 聚合件，953/954/955
-      # 共用一键）971 占位替换为真开关——成员行入卡，卡灯增第四键。
+      # 共用一键）成员行入卡，卡灯第三键。
       - id: toolOptimizations
         labelKey: settings.toolOptHub
         tier: recommended
-        onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalRestartUpdate, experimentalCapabilityGroups]
+        onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalCapabilityGroups]
         members:
-          # 任务 789：编辑证据门宽松模式（同轮读取计数+悬置证据不连带拦 bash）。
+          # 任务 789/992：编辑证据门宽松模式（992 升可选——1005 补同步）。
           - id: editEvidenceRelaxed
             labelKey: settings.editEvidenceRelaxed
-            tier: unstable
-          # 任务 943：multi_edit 直注（原族卡第二效果拆出，可选档）——971 聚合
-          # 入页为成员行，键/setter/回落链零变化。
+            tier: optional
+          # 任务 943：multi_edit 直注（原族卡第二效果拆出，可选档）。
           - id: multiEditInjection
             labelKey: settings.multiEditInjection
             tier: optional
-          # 任务 971：restart_update 迁自界面组「更新与反馈」卡（推荐档）——
-          # 迁移走完整链 config→setter→渲染表→UI，键/setter 零变化。
-          - id: restartUpdate
-            labelKey: settings.restartUpdate
-            tier: recommended
           # 任务 979：能力组披露+session_hub 聚合件（953/954/955 共用一键，
           # 默认关=零行为，重启生效）。
           - id: capabilityGroups

@@ -92,8 +92,12 @@ console.log("\ntask 563 lab picks wall");
   };
   const yaml = parseForkFeaturesYaml(yamlText);
   ok(yaml.labPicks.length === 16, `yaml labPicks parses 16 entries (got ${yaml.labPicks.length})`);
-  ok(yaml.groups.length === 5 && Object.keys(yaml.byId).length === 9,
-    "intro wall untouched by the labPicks section (groups 5 / byId 9)");
+  // 563 交付时点为 groups 5 / byId 9；此后 Fork 速览组自然生长（sessions/
+  // automation/sandbox/efficiency 四组先后加入，均非 labPicks 段）→ 6/12。
+  // labPicks 仍不向 groups/byId 贡献任何条目（labPicks 16 与 byId 分账）——
+  // 本 pin 2026-10-19 随 1005 窗口补步进到生长后现值。
+  ok(yaml.groups.length === 6 && Object.keys(yaml.byId).length === 12,
+    "intro wall untouched by the labPicks section (groups 6 / byId 12, post-growth pin)");
   let verbatim = true;
   for (const id of LAB_WALL_PICKS) {
     const copy = labPickCopyFor(yaml, id);
@@ -141,8 +145,12 @@ console.log("\ntask 563 lab picks wall");
   // S1 常驻底座开关退役 → 52；任务 782 三容器+783 用量监测两 id → 58；826
   // sidebarHover×2 + 789 editEvidenceRelaxed + 846 homePointer 计入 → 63
   // （815 登记窗口收口口径）；任务 686 workflowPanel → 64；任务 940
-  // approvalSelect（composer 权限选择器形态二选一）→ 65；+1 simulated = 66.
-  ok(Object.keys(grown).length === 66 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
+  // approvalSelect（composer 权限选择器形态二选一）→ 65；任务 943
+  // multiEditInjection（族拆独立卡）→ 66；任务 944 renderArtifact → 67；
+  // 任务 961 smartAutomation + interactionPresentation 两容器 → 69；任务
+  // 979 capabilityGroups → 70（本 pin 2026-10-19 随 1005 窗口补步进，
+  // 943/944/961/979 落地时漏跟）；+1 simulated = 71.
+  ok(Object.keys(grown).length === 71 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
     "simulated new tier item is absent from LAB_WALL_PICKS");
   ok(LAB_WALL_PICKS.every((id) => Object.prototype.hasOwnProperty.call(EXPERIMENT_FEATURE_TIERS, id)),
     "every wall pick is a registered tier item (no orphans)");

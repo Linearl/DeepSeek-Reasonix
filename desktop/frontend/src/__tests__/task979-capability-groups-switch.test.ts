@@ -90,9 +90,11 @@ console.log("\ntask 979 capability-groups switch: UI entry → config write → 
     "lab-layout.yaml carries the capabilityGroups member row");
   ok(labDefault.includes('id: "capabilityGroups", labelKey: "settings.capabilityGroups", tier: "optional"'),
     "built-in default mirrors the member row (724 fallback is seamless)");
-  ok(yaml.includes("onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalRestartUpdate, experimentalCapabilityGroups]") &&
-     labDefault.includes('onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalRestartUpdate", "experimentalCapabilityGroups"]'),
-    "hub card light covers the fourth key in both layout sources");
+  // 任务 992：restartUpdate 归位回 updateFeedback 卡——卡灯回落三键（本 pin
+  // 2026-10-19 随 1005 窗口补同步，992 归位时漏跟）。
+  ok(yaml.includes("onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalCapabilityGroups]") &&
+     labDefault.includes('onKeys: ["experimentalToolOptimizations", "experimentalMultiEditInjection", "experimentalCapabilityGroups"]'),
+    "hub card light covers the third key in both layout sources (992 现值)");
   ok(goRender.includes('{"capabilityGroups", LabTierOptional, []string{"experimental_capability_groups"}}'),
     "Go render table registers the entry in 表A (tool-opt section)");
   ok(!goRender.includes('"experimental_capability_groups":'),

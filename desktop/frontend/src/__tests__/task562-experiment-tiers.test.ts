@@ -1,9 +1,8 @@
 // Run: npx tsx src/__tests__/task562-experiment-tiers.test.ts
-// 任务 562 acceptance harness (lab three-tier badges):
-//  ① the tier register mirrors xlsx 表A exactly — 推荐 19 / 可选 29 /
-//     未稳定 14 / 已退役 1 = 63 (acceptance ④; 任务 815 统一登记窗口收口：
-//     sidebarHover×2 + editEvidenceRelaxed + homePointer 等此前已入表而
-//     pin 未跟的项一并计数);
+// 任务 562 acceptance harness (lab tier badges):
+//  ① the tier register mirrors xlsx 表A exactly — 稳定 4 / 推荐 18 / 可选 34 /
+//     未稳定 13 / 已退役 1 = 70 (acceptance ④; 任务 1005 批1 四项转稳定档后，
+//     见下方 ① 内演进注);
 //  ② the wall picks are the 16 curated 表B W1 items, every pick carries a
 //     tier (12 recommended + 4 optional) (acceptance ② data half);
 //  ③ the frontend register and the Go labFeatureTiers registry in
@@ -46,7 +45,7 @@ console.log("\ntask 562 lab three-tier badges");
 
 // ① 表A distribution.
 {
-  const counts: Record<LabTier, number> = { recommended: 0, optional: 0, unstable: 0, retired: 0 };
+  const counts: Record<LabTier, number> = { stable: 0, recommended: 0, optional: 0, unstable: 0, retired: 0 };
   for (const id of Object.keys(EXPERIMENT_FEATURE_TIERS) as TierFeatureId[]) {
     counts[EXPERIMENT_FEATURE_TIERS[id]] += 1;
   }
@@ -94,11 +93,19 @@ console.log("\ntask 562 lab three-tier badges");
   // capabilityGroups（能力组披露+session_hub 聚合件，953/954/955 共用一键）
   // 按可选档入表（自 Go labNonFeatureKeys 豁免表转正）——可选 33→34、
   // 总数 69→70（Go 侧同步 60→61）。
-  ok(counts.recommended === 20 && counts.optional === 34 && counts.unstable === 15 && counts.retired === 1,
-    `register counts are 20/34/15/1 (got ${JSON.stringify(counts)})`);
+  // 任务 979：capabilityGroups（能力组披露+session_hub 聚合件）按可选档入表
+  // ——可选 33→34、总数 69→70（Go 侧同步 60→61）。任务 1005：autopilot /
+  // sessionCollab / fullAccess / runtimeReuse 四项升「稳定」（新增第四档，
+  // Go labFeatureTiers 同动作 18→14 推荐 / +4 稳定，总数 61 不变）——前端
+  // 此前口径 20/34/15/1：推荐 -3+1（orphanHandling 992 补升）、可选 -1+1
+  // （runtimeReuse 原挂可选 + editEvidenceRelaxed 992 补升）、未稳定 -2
+  // （orphanHandling/editEvidenceRelaxed）→ 4 稳定/18 推荐/34 可选/13 未稳定
+  // /1 退役，总数不变 70。
+  ok(counts.stable === 4 && counts.recommended === 18 && counts.optional === 34 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 4 稳定/18/34/13/1 (got ${JSON.stringify(counts)})`);
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 70, `register holds exactly 70 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 34 && LAB_TIER_COUNTS.unstable === 15 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 20/34/15/1");
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 34 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/18/34/13/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -109,10 +116,12 @@ console.log("\ntask 562 lab three-tier badges");
   ok(LAB_WALL_PICKS.length === 16, `wall carries exactly 16 picks (got ${LAB_WALL_PICKS.length})`);
   const picks = LAB_WALL_PICKS as readonly string[];
   ok(picks.every((id) => isTierFeatureId(id)), "every pick is a registered 表A feature");
-  const pickCounts: Record<LabTier, number> = { recommended: 0, optional: 0, unstable: 0, retired: 0 };
+  const pickCounts: Record<LabTier, number> = { stable: 0, recommended: 0, optional: 0, unstable: 0, retired: 0 };
   for (const id of picks) pickCounts[EXPERIMENT_FEATURE_TIERS[id as TierFeatureId]] += 1;
-  ok(pickCounts.recommended === 12 && pickCounts.optional === 4,
-    `pick tier split is 推荐 12 + 可选 4 (got ${JSON.stringify(pickCounts)})`);
+  // 任务 1005：autopilot / sessionCollab / fullAccess 三 pick 转稳定档——
+  // 图墙收录清单不变（W1 人工收录口径），pick 档位拆分 12+4 → 3 稳定 + 9 推荐 + 4 可选。
+  ok(pickCounts.stable === 3 && pickCounts.recommended === 9 && pickCounts.optional === 4,
+    `pick tier split is 稳定 3 + 推荐 9 + 可选 4 (got ${JSON.stringify(pickCounts)})`);
   ok(new Set(picks).size === 16, "no duplicate picks");
 }
 
@@ -196,7 +205,9 @@ console.log("\ntask 562 lab three-tier badges");
   const agg = (id: string) => labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, id);
   ok(JSON.stringify(railTiersForDefault("contextGovernance")) === JSON.stringify(["recommended", "optional"]) && agg("contextGovernance") === "recommended",
     `contextGovernance: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("contextGovernance"))} → ${String(agg("contextGovernance"))})`);
-  ok(JSON.stringify(railTiersForDefault("autopilot")) === JSON.stringify(["recommended"]) && agg("autopilot") === "recommended", "standalone entry badges itself");
+  // 任务 1005：autopilot 独立卡转稳定档——单枚稳定徽章（LAB_TIER_ORDER
+  // 首位，聚合取最高档）。
+  ok(JSON.stringify(railTiersForDefault("autopilot")) === JSON.stringify(["stable"]) && agg("autopilot") === "stable", "standalone entry badges itself");
   ok(railTiersForDefault("preapproveManagedPaths").length === 0 && agg("preapproveManagedPaths") === null, "non-表A id (task-364 domain) shows no badge");
   // 任务 722 点2：「已退役」徽章自模型策略卡移除——只余 highSpeedModel 的可选档。
   ok(JSON.stringify(railTiersForDefault("modelStrategy")) === JSON.stringify(["optional"]) && agg("modelStrategy") === "optional",
@@ -205,18 +216,20 @@ console.log("\ntask 562 lab three-tier badges");
   // （可选）并入后，卡头只聚合出推荐一枚。
   ok(JSON.stringify(railTiersForDefault("safetyCostControl")) === JSON.stringify(["recommended", "optional"]) && agg("safetyCostControl") === "recommended",
     `safetyCostControl: input [推荐,可选] aggregates to the single 推荐 badge after the 722 folds (got ${String(agg("safetyCostControl"))})`);
-  // 任务 722 点3 + 774 验收件①：跨会话协作卡（卡=推荐 + 折叠子项=可选）
-  // 卡头只显示「推荐」一枚，不再双徽章。
-  ok(JSON.stringify(railTiersForDefault("sessionCollab")) === JSON.stringify(["recommended", "optional"]) && agg("sessionCollab") === "recommended",
-    `sessionCollab shows exactly one 推荐 badge, its auto-fold member's 可选 stays in-card (got ${String(agg("sessionCollab"))})`);
+  // 任务 722 点3 + 774 验收件① + 任务 1005：跨会话协作卡（卡=稳定 + 折叠
+  // 子项=可选）卡头只显示「稳定」一枚（1005 批1 转档后推荐>可选、稳定>推荐）。
+  ok(JSON.stringify(railTiersForDefault("sessionCollab")) === JSON.stringify(["stable", "optional"]) && agg("sessionCollab") === "stable",
+    `sessionCollab shows exactly one 稳定 badge, its auto-fold member's 可选 stays in-card (got ${String(agg("sessionCollab"))})`);
   // 任务 774 验收件②：子代理套件（无自有档，成员 可选×3+未稳定）按最高档
   // 单枚——可选压过未稳定。
   ok(JSON.stringify(railTiersForDefault("subagentSuite")) === JSON.stringify(["optional", "unstable"]) && agg("subagentSuite") === "optional",
     `subagentSuite aggregates to the single 可选 badge over its unstable member (got ${String(agg("subagentSuite"))})`);
   // 其余合并卡逐卡钉聚合终值（722 布局现值）。
   // 任务 971：restartUpdate 迁至工具优化聚合页——updateFeedback 仅余 feedback
-  // （可选档），聚合终值 推荐→可选。
-  ok(agg("updateFeedback") === "optional", `updateFeedback aggregates to 可选 after 971 (got ${String(agg("updateFeedback"))})`);
+  // （可选档），聚合终值 推荐→可选。任务 992（用户 1018 21:34）：restartUpdate
+  // 归位回本卡——聚合终值回升 推荐（推荐压过可选；本断言 2026-10-19 随 1005
+  // 窗口一并补同步，992 落地时本 pin 漏跟）。
+  ok(agg("updateFeedback") === "recommended", `updateFeedback aggregates to 推荐 after the 992 move-back (got ${String(agg("updateFeedback"))})`);
   // 任务 971：toolOptimizations 聚合页（readBack 推荐 + 证据门未稳定 + multi_edit
   // 直注可选 + restart_update 推荐）——卡头聚合单枚 推荐。
   ok(agg("toolOptimizations") === "recommended", `toolOptimizations hub aggregates to 推荐 (got ${String(agg("toolOptimizations"))})`);

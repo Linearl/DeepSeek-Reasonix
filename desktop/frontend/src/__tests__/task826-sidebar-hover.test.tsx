@@ -199,10 +199,11 @@ console.log("\ntask 826 sidebar hover-to-expand + delayed re-collapse");
     "② labLightKeys: both predicates registered (yaml onKeys whitelist)");
   // yaml + 内置默认同构同值（724 硬约束）。
   // 任务 940：viewLayout 卡灯追加 experimentalApprovalSelect（成员行入卡），
-  // 本断言随卡演进为五键。
-  ok(yamlText.includes("onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect]") &&
-     labDefault.includes('onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect"]'),
-    "② layout data: the viewLayout card light covers all five keys in yaml AND the built-in default");
+  // 本断言随卡演进为五键。任务 961：renderArtifact 并卡 → 六键（本 pin
+  // 2026-10-19 随 1005 窗口补同步，961 并卡时漏跟）。
+  ok(yamlText.includes("onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalRenderArtifact]") &&
+     labDefault.includes('onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalRenderArtifact"]'),
+    "② layout data: the viewLayout card light covers all six keys in yaml AND the built-in default");
   ok(yamlText.includes('- id: sidebarHoverLeft') && yamlText.includes('- id: sidebarHoverRight') &&
      labDefault.includes('{ id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" }') &&
      labDefault.includes('{ id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" }'),

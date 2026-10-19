@@ -71,7 +71,9 @@ console.log("\ntask 815 lab entry completeness (config key ↔ lab entry)");
     ["view-types + types fields", viewTypes.includes("experimentalEditEvidenceRelaxed?: boolean;") && types.includes("experimentalEditEvidenceRelaxed?: boolean;")],
     ["pane row wrapped in labLabel (badge face)", panel.includes('labLabel("editEvidenceRelaxed"')],
     ["pane row wires the setter", panel.includes("app.SetExperimentalEditEvidenceRelaxed(on)")],
-    ["Go register entry (exemption dropped)", goRender.includes('{"editEvidenceRelaxed", LabTierUnstable, []string{"experimental_edit_evidence_relaxed"}}') && !goRender.includes('"experimental_edit_evidence_relaxed":')],
+    // 任务 992：用户 1018 升可选——本 pin 2026-10-19 随 1005 窗口补同步
+    // （992 升档时漏跟，815 交付时点为未稳定）。
+    ["Go register entry (exemption dropped)", goRender.includes('{"editEvidenceRelaxed", LabTierOptional, []string{"experimental_edit_evidence_relaxed"}}') && !goRender.includes('"experimental_edit_evidence_relaxed":')],
     ["locale on/off in all three", ["locales/zh.ts", "locales/en.ts", "locales/zh-TW.ts"].every((f) => read(f).includes('"settings.editEvidenceRelaxed.on"'))],
   ] as const;
   for (const [label, hit] of steps) ok(Boolean(hit), `editEvidenceRelaxed: ${label}`);

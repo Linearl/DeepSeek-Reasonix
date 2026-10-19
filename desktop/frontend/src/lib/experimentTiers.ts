@@ -1,4 +1,4 @@
-// 任务 562 — 实验室三档徽章注册表（前端展示镜像）。
+// 任务 562 — 实验室档位徽章注册表（前端展示镜像）。
 //
 // 权威源是 Go 侧 `labFeatureTiers`（internal/config/render.go，xlsx 表A
 // 「实验室特性-档位与图墙-20261006」推荐等级列：推荐 15 / 可选 20 / 未稳定
@@ -7,15 +7,18 @@
 // tab（rail + 详情卡）与会话图墙（ForkFeaturesIntroDialog 精选区）两视图都
 // 从这里取档位，徽章在两个视图间不可能失配。
 //
-// 用户口径：推荐 = 核心特性，不开启会有体验缺口；可选 = 非核心，不开启只
-// 小幅影响；未稳定 = 开发测试中，开启可能不稳定；已退役 = 开关已退役。
+// 用户口径（任务 1005 增第四档）：稳定 = 经发布验证的默认能力（默认开启，
+// 桌面开关禁用态+开发者模式单项解锁，config 手写 false 仍生效）；推荐 =
+// 核心特性，不开启会有体验缺口；可选 = 非核心，不开启只小幅影响；未稳定 =
+// 开发测试中，开启可能不稳定；已退役 = 开关已退役。
 
 import type { DictKey } from "./i18n";
 
-export type LabTier = "recommended" | "optional" | "unstable" | "retired";
+export type LabTier = "stable" | "recommended" | "optional" | "unstable" | "retired";
 
-/** Badge display order: strongest first. */
-export const LAB_TIER_ORDER: readonly LabTier[] = ["recommended", "optional", "unstable", "retired"];
+/** Badge display order: strongest first. 任务 1005：稳定档为最强档
+ * （经发布验证的默认能力压过一切「建议开启」类档位）。 */
+export const LAB_TIER_ORDER: readonly LabTier[] = ["stable", "recommended", "optional", "unstable", "retired"];
 
 /** Every 表A feature id (49 items as of 任务 707 — the register mirrors the Go
  * labFeatureTiers registry; see the LAB_TIER_COUNTS note for the items
@@ -145,9 +148,11 @@ export type TierFeatureId =
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
-  autopilot: "recommended",
-  sessionCollab: "recommended",
-  fullAccess: "recommended",
+  // 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（及 infra 段
+  // runtimeReuse）升「稳定」——镜像 Go labFeatureTiers（562 双侧一致门禁）。
+  autopilot: "stable",
+  sessionCollab: "stable",
+  fullAccess: "stable",
   dream: "optional",
   // 任务 801：决策模式（提取链+固化链）。归自动化组，档位可选。
   decisionPatterns: "optional",
@@ -220,15 +225,19 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   sessionStorage: "unstable",
   homePointer: "unstable",
   // ── infra（基础设施，7 项；785 退役 S1 常驻底座开关，790 增 acpListen）──────
-  runtimeReuse: "optional",
+  // 任务 1005 批1 转档：runtimeReuse 升「稳定」（992 刚升推荐的四项之一）。
+  runtimeReuse: "stable",
   zcodeTaskBus: "unstable",
   acpListen: "unstable",
-  // 任务 789: 编辑证据门宽松模式（未稳定档默认关——放宽 evidence gate 属
-  // 行为变更；toolOptimizations 卡成员）。
-  editEvidenceRelaxed: "unstable",
+  // 任务 789: 编辑证据门宽松模式（放宽 evidence gate 属行为变更；
+  // toolOptimizations 卡成员）。任务 992：用户 1018 升可选——本注册表
+  // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
+  editEvidenceRelaxed: "optional",
   modelCapabilityFilter: "retired",
   pathRules: "unstable",
-  orphanHandling: "unstable",
+  // 任务 992：orphanHandling 随复用池升推荐（用户 1018）——本注册表
+  // 2026-10-19 随 1005 一并补同步（992 漏同步 drift 收口）。
+  orphanHandling: "recommended",
   localServer: "unstable",
   // ── tool-opt（工具优化，3 项；任务 943 拆分 + 979 capabilityGroups）──
   // 任务 783④：编辑读回（readBack）随 22.5 交付转正——未稳定→推荐
@@ -315,11 +324,19 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 纯前端容器 id）按推荐档入表——推荐 19→20；总数 67→69（Go 渲染表无条目，
  * 同 tabManagement 豁免）。任务 979：capabilityGroups（能力组披露+
  * session_hub 聚合件，953/954/955 共用一键）按可选档入表——可选 33→34、
- * 总数 69→70（Go 侧同步 60→61）。 */
+ * 总数 69→70（Go 侧同步 60→61）。任务 1005：autopilot / sessionCollab /
+ * fullAccess / runtimeReuse 四项升「稳定」（新增第四档）——前端此前口径
+ * 20 推荐/34 可选/15 未稳定/1 退役：推荐 -3（三 automation 项）+1（992
+ * 漏同步的 orphanHandling 升推荐）、可选 -1（992 漏同步的 runtimeReuse 本
+ * 仓仍挂可选）+1（992 漏同步的 editEvidenceRelaxed 升可选）、未稳定 -2
+ * （orphanHandling / editEvidenceRelaxed 原挂未稳定）→ 4 稳定/18 推荐/
+ * 34 可选/13 未稳定/1 退役，总数不变 70（Go 侧 61 条目：runtimeReuse 992
+ * 已升推荐，故 14 推荐/4 稳定/29 可选/14 未稳定）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  recommended: 20,
+  stable: 4,
+  recommended: 18,
   optional: 34,
-  unstable: 15,
+  unstable: 13,
   retired: 1,
 };
 
@@ -416,7 +433,8 @@ export function suggestEnable(tier: LabTier, on: boolean): boolean {
 
 /** Locale keys for tier labels (DictKey-checked literals — a typo here is a
  * compile error once the keys exist in locales/*). */
-export const LAB_TIER_LABEL_KEYS: Readonly<Record<LabTier, "settings.labTier.recommended" | "settings.labTier.optional" | "settings.labTier.unstable" | "settings.labTier.retired">> = {
+export const LAB_TIER_LABEL_KEYS: Readonly<Record<LabTier, "settings.labTier.stable" | "settings.labTier.recommended" | "settings.labTier.optional" | "settings.labTier.unstable" | "settings.labTier.retired">> = {
+  stable: "settings.labTier.stable",
   recommended: "settings.labTier.recommended",
   optional: "settings.labTier.optional",
   unstable: "settings.labTier.unstable",
@@ -425,9 +443,11 @@ export const LAB_TIER_LABEL_KEYS: Readonly<Record<LabTier, "settings.labTier.rec
 
 /** 任务 621 — tooltip text keys: one line per tier saying what the tier means
  * (口径出处 2026-10-06 用户定：推荐 = 核心特性、不开启会有体验缺口；可选 =
- * 非核心增强；未稳定 = 开发测试中、开启可能不稳定). Same DictKey-checked
- * literal discipline as LAB_TIER_LABEL_KEYS. */
+ * 非核心增强；未稳定 = 开发测试中、开启可能不稳定；任务 1005：稳定 = 经
+ * 发布验证的默认能力). Same DictKey-checked literal discipline as
+ * LAB_TIER_LABEL_KEYS. */
 export const LAB_TIER_DESC_KEYS: Readonly<Record<LabTier, `settings.labTier.${LabTier}.desc`>> = {
+  stable: "settings.labTier.stable.desc",
   recommended: "settings.labTier.recommended.desc",
   optional: "settings.labTier.optional.desc",
   unstable: "settings.labTier.unstable.desc",
