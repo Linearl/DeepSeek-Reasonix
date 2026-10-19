@@ -1536,6 +1536,7 @@ export const zh: Record<DictKey, string> = {
   "ask.justChat": "跳过并继续聊天",
   "ask.justChatDesc": "提交空回答并继续对话。",
   "ask.skipQuestion": "跳过本题",
+  "ask.bgToast": "另一个标签页有问待答",
 
   // 清空上下文确认
   "clearContext.title": "清空当前上下文",

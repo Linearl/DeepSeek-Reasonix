@@ -96,6 +96,7 @@ import { TodoDockEmptyState } from "./components/TodoDockEmptyState";
 import { PendingCardsBadge } from "./components/PendingCardsBadge";
 import { ApprovalModal } from "./components/ApprovalModal";
 import { AskCard } from "./components/AskCard";
+import { AskBackgroundToasts } from "./components/AskBackgroundToasts";
 import { ClearContextCard } from "./components/ClearContextCard";
 import { RuntimeDecisionCard } from "./components/RuntimeDecisionCard";
 import { decisionSurfaceMockFromInput } from "./lib/decisionSurfaceMock";
@@ -6721,6 +6722,10 @@ export default function App() {
           same portal-at-root rule; 内部子面板各自 portal。老挂载点
           <CollabInboxPanel/>+<CollabGroupPanel/> 由本容器一处承担。 */}
       <CollabHubPanel />
+      {/* 任务991: 后台 tab 的 ask 感知 toast — 右下角限时提醒，计时与后端
+          askWaitFor 同源（事件携带 waitMs）；点击走 handleTabChange 的完整
+          切换路径（tab 已在后端存在，切换即打开其面板）。 */}
+      <AskBackgroundToasts activeTabId={activeTabId} onSwitchTab={handleTabChange} />
     </div>
     </UpdaterProvider>
     </RemoteNavigationContext.Provider>

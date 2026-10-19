@@ -359,6 +359,10 @@ type Ask struct {
 	ID        string        `json:"id"`
 	Questions []AskQuestion `json:"questions"`
 	TurnID    string        `json:"turnId,omitempty"`
+	// AutoDecideWaitMs (task 991) carries the armed auto-decide window so a
+	// background-tab reminder toast times out with the backend decision.
+	// omitempty keeps the attended-ask wire byte-identical to the pre-991 shape.
+	AutoDecideWaitMs int64 `json:"autoDecideWaitMs,omitempty"`
 }
 
 // MCPInteraction is the JSON form of an event.MCPInteraction: one
@@ -545,7 +549,7 @@ func ToWireAsk(a event.Ask) *Ask {
 		}
 		qs[i] = AskQuestion{ID: q.ID, Header: q.Header, Prompt: q.Prompt, Options: opts, Multi: q.Multi}
 	}
-	return &Ask{ID: a.ID, Questions: qs, TurnID: a.TurnID}
+	return &Ask{ID: a.ID, Questions: qs, TurnID: a.TurnID, AutoDecideWaitMs: a.AutoDecideWaitMs}
 }
 
 // ToWireCacheDiagnostics converts cache diagnostics into their JSON wire form.

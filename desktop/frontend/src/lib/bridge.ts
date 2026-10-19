@@ -846,6 +846,12 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // re-arms a fresh window. Resolves false when no timed ask consumed the
   // toggle — the frontend rolls its button state back on that.
   NotifyAskTakeoverForTab(tabID: string, id: string, taking: boolean): Promise<boolean>;
+  // 任务991: the background-ask toast's click hop. Re-arms a fresh
+  // auto-decide window + fresh hover budget (the task-178 re-presented
+  // semantics) — deliberately NOT the 806 stop-the-timer signal: a click
+  // that switches tabs must not hang the run if the user walks away.
+  // No-op for unknown tabs and prompt classes without a timer.
+  NotifyAskReattachForTab(tabID: string, id: string): Promise<void>;
   // Task 333: event-log rotation gate + storage panel actions. The mode/threshold
   // setters write config and push into the agent save path immediately (no restart).
   SetEventsAutoRotation(mode: string): Promise<void>;
@@ -2281,6 +2287,25 @@ export function __emitMockTabMeta(event: TabMetaRefreshEvent): void {
 export function onSessionRecovered(cb: (payload: SessionRecoveryEvent) => void): () => void {
   if (realApp() && typeof window !== "undefined" && window.runtime) {
     return window.runtime.EventsOn("session:recovered", (payload?: unknown) => cb((payload ?? {}) as SessionRecoveryEvent));
+  }
+  return () => {};
+}
+
+// 任务991: the background-tab ask reminder. The backend fires this only when
+// an AskRequest provably lands on a non-active tab; waitMs is the same-source
+// auto-decide window (0 = attended ask, toast persists until answered or
+// dismissed), so the toast expires with the decision instead of racing a
+// hardcoded copy of it.
+export interface AskBackgroundNotice {
+  tabId: string;
+  askId: string;
+  waitMs: number;
+  summary: string;
+}
+
+export function onAskBackground(cb: (payload: AskBackgroundNotice) => void): () => void {
+  if (realApp() && typeof window !== "undefined" && window.runtime) {
+    return window.runtime.EventsOn("ask:background", (payload?: unknown) => cb((payload ?? {}) as AskBackgroundNotice));
   }
   return () => {};
 }
@@ -4546,6 +4571,9 @@ function makeMockApp(): AppBindings {
         async NotifyAskTakeoverForTab(_tabID, _id, _taking) {
           return true;
         },
+        // 任务991: dev mock has no auto-decide window to re-arm; the toast
+        // click's fire-and-forget hop stays harmless the same way.
+        async NotifyAskReattachForTab(_tabID, _id) {},
         async ResolvePromptForTab(tabID, promptID, _turnID, _runtimeEpoch, kind, answer) {
           await withMockTabScope(tabID, async () => {
             if (kind === "ask") return this.AnswerQuestion(promptID, answer.questions ?? []);

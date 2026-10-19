@@ -1201,6 +1201,7 @@ export const zhTW: Record<DictKey, string> = {
   "ask.justChat": "跳過並繼續聊天",
   "ask.justChatDesc": "提交空回答並繼續對話。",
   "ask.skipQuestion": "跳過本題",
+  "ask.bgToast": "另一個分頁有問待答",
 
   // 歷史抽屜
   "history.title": "歷史",

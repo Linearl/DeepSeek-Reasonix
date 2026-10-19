@@ -1537,6 +1537,7 @@ export const en = {
   "ask.justChat": "Skip and keep chatting",
   "ask.justChatDesc": "Submit empty answers and continue the conversation.",
   "ask.skipQuestion": "Skip this question",
+  "ask.bgToast": "A question is waiting in another tab",
 
   // clear context confirmation
   "clearContext.title": "Clear current context",

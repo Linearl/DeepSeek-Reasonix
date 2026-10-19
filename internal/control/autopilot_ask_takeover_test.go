@@ -41,12 +41,13 @@ func askTakeoverController(t *testing.T, wait time.Duration) (*Controller, *askT
 
 // 验收②: holding the takeover parks the auto-decide entirely — timer and
 // absolute hover budget suspended — so the ask waits far past the point where
-// any unattended semantics (plain expiry at askWait, budget at 3×askWait,
-// continuous hover at any rate) would have decided. Only the user's own
-// answer ends it, and the auto-decide anchor never fires.
+// any unattended semantics (plain expiry at askWait, budget at
+// askAutoDecideHoverFactor×askWait, continuous hover at any rate) would have
+// decided. Only the user's own answer ends it, and the auto-decide anchor
+// never fires.
 func TestAutopilotReversibleAskTakeoverStopsTimerAndSuspendsBudget(t *testing.T) {
 	const askWait = 50 * time.Millisecond
-	const budget = 3 * askWait // 150ms
+	budget := askAutoDecideHoverFactor * askWait
 	c, sink := askTakeoverController(t, askWait)
 	done := make(chan struct{})
 	var answers []event.AskAnswer
@@ -61,10 +62,13 @@ func TestAutopilotReversibleAskTakeoverStopsTimerAndSuspendsBudget(t *testing.T)
 		t.Fatal("NotifyAskTakeover(hold) = false on a reversible timed ask; the takeover channel must be armed")
 	}
 
-	// Hold far past every unattended deadline (20× budget) while hovering
-	// continuously: neither the parked timers nor the hover may decide.
+	// Hold far past every unattended deadline (5× budget) while hovering
+	// continuously: neither the parked timers nor the hover may decide. The
+	// multiplier is 5, not the old 20, because task 991 raised the factor to
+	// 10 — 5× that budget is already far past both deadlines without making
+	// the test ten seconds long.
 	start := time.Now()
-	stop := time.After(20 * budget)
+	stop := time.After(5 * budget)
 hoverLoop:
 	for {
 		select {

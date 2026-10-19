@@ -1556,6 +1556,13 @@ func (s *tabEventSink) Emit(e event.Event) {
 		}
 	}
 	s.emitRuntimeEvent(eventChannel, toWireTabWithSubmission(e, tabID, s.runtimeEpochSnapshot(), s.submissionIDSnapshot(), turnStartedAt, s.sessionGenerationSnapshot()))
+	if e.Kind == event.AskRequest && app != nil {
+		// 任务991: the panel wire event above already reached every tab's
+		// reducer; this second hop is only the UI hint for the case the
+		// reducer cannot act on — the ask landed on a background tab, so the
+		// panel is mounted where the user cannot see or touch it.
+		app.noteBackgroundAskToast(tabID, e, s.emitRuntimeEvent)
+	}
 	if m := s.takeoverMirror.Load(); m != nil {
 		m.forwardEvent(e)
 	}

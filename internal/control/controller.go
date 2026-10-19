@@ -3073,10 +3073,13 @@ var promptQueueNoticeDelay = 3 * time.Second
 
 // askAutoDecideHoverFactor bounds the task-844 hover resets: mousemove on the
 // ask panel may defer the reversible-tier auto-decide by at most this many ask
-// windows in total (3×15s = 45s at the default wait), after which the original
+// windows in total (10×15s = 150s at the default wait), after which the original
 // expiry semantics fire even under continuous movement — a signal the user can
-// keep producing forever must not hold an unattended run hostage.
-const askAutoDecideHoverFactor = 3
+// keep producing forever must not hold an unattended run hostage. Task 991
+// raised this from 3 (45s): the 45s ceiling misfired as "the run decided
+// under my cursor" for a foreground reader who was slow but present; 150s
+// covers reading a long question without reaching the unattended-hold bound.
+const askAutoDecideHoverFactor = 10
 
 // lockPromptFor acquires the prompt lock, emitting one notice if the wait is
 // long enough to look like a hang. It reports false only when ctx ended first;
@@ -3255,7 +3258,17 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// (coalescer → ledger persist), so this duration is where I/O contention
 	// shows up. Logging after the emit keeps the timed section unmodified.
 	emitStart := time.Now()
-	emitErr := event.EmitChecked(c.sink, event.Event{Kind: event.AskRequest, TurnID: turnID, ItemID: id, Ask: event.Ask{ID: id, Questions: questions, TurnID: turnID}})
+	// Task 991: stamp the window that will actually arm the timers below into
+	// the wire event, from the same autopilotAskWaitFor() source — a background
+	// tab's reminder toast counts this value down, so it expires with the
+	// decision instead of a frontend copy of it. Attended asks carry 0 (no
+	// timer, no toast deadline). Both timed tiers (reversible under autopilot,
+	// high-risk under autopilot) arm from the same call below.
+	var autoDecideWaitMs int64
+	if reversibleTimedAsk || (c.autopilot && !reversibleAsk) {
+		autoDecideWaitMs = c.autopilotAskWaitFor().Milliseconds()
+	}
+	emitErr := event.EmitChecked(c.sink, event.Event{Kind: event.AskRequest, TurnID: turnID, ItemID: id, Ask: event.Ask{ID: id, Questions: questions, TurnID: turnID, AutoDecideWaitMs: autoDecideWaitMs}})
 	slog.Info("[ask-panel] ask chain checkpoint", "stage", "ask_emit", "turnID", turnID, "itemID", id,
 		"durationMs", time.Since(emitStart).Milliseconds())
 	if emitErr != nil {
