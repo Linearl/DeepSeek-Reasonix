@@ -4117,7 +4117,22 @@ a[href] {
 .experimental-lab__intro-toggle--open { border-color: color-mix(in srgb, var(--accent) 35%, var(--border-soft)); }
 
 /* Task 359 (③): "disabled items last" display-order switch row. */
-.experimental-lab__order-row { display: flex; margin-top: 6px; }
+.experimental-lab__order-row { display: flex; margin-top: 6px; gap: 6px; }
+/* 任务 1006：批量开关入口（与顺序开关同排胶囊）；确认弹窗样式见
+   .lab-bulk-dialog 段（lab-pick-dialog 复用面之后）。 */
+.experimental-lab__bulk-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  margin-left: auto;
+}
+.experimental-lab__bulk-toggle:hover { background: color-mix(in srgb, var(--bg-elev) 70%, transparent); color: var(--fg); }
 .experimental-lab__order-toggle {
   display: inline-flex;
   align-items: center;
@@ -4459,6 +4474,58 @@ a[href] {
 .lab-pick-dialog__path-arrow {
   color: var(--fg-faint, #8a8f98);
 }
+
+/* 任务 1006：批量开关弹窗（复用 lab-pick-dialog 壳；轴选择/警示/重启两选项）。 */
+.lab-bulk-dialog__axis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+.lab-bulk-dialog__legend {
+  padding: 0 6px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg-faint, #8a8f98);
+}
+.lab-bulk-dialog__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.lab-bulk-dialog__option input { accent-color: var(--accent); cursor: pointer; }
+.lab-bulk-dialog__summary {
+  margin: 4px 0 10px;
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+.lab-bulk-dialog__summary[data-empty="true"] { color: var(--fg-faint, #8a8f98); }
+.lab-bulk-dialog__warn { margin: 0 0 10px; border-color: color-mix(in srgb, var(--warn) 45%, transparent); color: var(--warn); }
+.lab-bulk-dialog__skip-note { margin: 0 0 10px; }
+.lab-bulk-dialog__skips {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: var(--text-sm);
+  color: var(--fg-dim);
+}
+.lab-bulk-dialog__skips li { margin: 2px 0; }
+.lab-bulk-dialog__skips code { margin-right: 6px; }
+.lab-bulk-dialog__error { margin: 0 0 10px; border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger); }
+.lab-bulk-dialog__actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-soft);
+}
+.lab-bulk-dialog__restart { display: flex; flex-direction: column; gap: 14px; }
+.lab-bulk-dialog__restart-note { margin: 0; font-size: 14px; line-height: 1.6; color: var(--fg); }
+.lab-bulk-dialog__restart-actions { display: flex; gap: 8px; }
 
 /* Task 132: experimental features left rail + detail pane. */
 .experimental-layout {

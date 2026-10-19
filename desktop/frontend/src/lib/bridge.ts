@@ -354,6 +354,24 @@ export interface DesktopShellStatusView {
   backgroundCloseAvailable: boolean;
   reason?: string;
 }
+// 任务 1006 — 实验室批量开关（范围×行为两轴）。Skipped 的 reason 码：
+// danger_gate / precondition / not_bool_switch / no_bulk_setter。
+export interface LabBulkSkipView {
+  id: string;
+  reason: string;
+}
+export interface LabBulkPlanView {
+  scope: string;
+  on: boolean;
+  targets: string[];
+  stableInScope: string[];
+  skippedStable: string[];
+  skipped: LabBulkSkipView[];
+  /** 仅执行回执非空；预览为 null。 */
+  applied?: string[];
+  /** 恒 true：配置已写入，下次启动生效（987 需重启明示 → 重启两选项）。 */
+  needsRestart: boolean;
+}
 import type { MarkdownImageView } from "./markdownImage";
 const GLOBAL_PROJECT_ORDER_KEY = "__global__";
 
@@ -1383,6 +1401,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalQuestionSearch(enabled: boolean): Promise<void>;
   SetExperimentalSubagentTps(enabled: boolean): Promise<void>;
   SetExperimentalCompletionSummary(enabled: boolean): Promise<void>;
+  // 任务 1006 — 实验室批量开关：Plan=确认前预览（纯读），Apply=单事务写入
+  // （回执带 applied + needsRestart，前端据此给重启两选项）。
+  LabBulkPlan(scope: string, on: boolean): Promise<LabBulkPlanView>;
+  LabBulkApply(scope: string, on: boolean): Promise<LabBulkPlanView>;
   // Task 342: WebView2 CDP debug endpoint switch (loopback-only random port;
   // ships off; the browser args are read at startup — restart to apply).
   SetExperimentalCDPDebugPort(enabled: boolean): Promise<void>;
@@ -6121,6 +6143,13 @@ function makeMockApp(): AppBindings {
     async SetExperimentalResearchBudget() {},
     async SetPreapproveManagedPaths() {},
     async SetExperimentalQuestionSearch() {},
+    // 任务 1006：mock 面给出诚实的空目标计划（浏览器 dev 无配置可写）。
+    async LabBulkPlan(scope: string, on: boolean) {
+      return { scope, on, targets: [], stableInScope: [], skippedStable: [], skipped: [], needsRestart: true };
+    },
+    async LabBulkApply(scope: string, on: boolean) {
+      return { scope, on, targets: [], stableInScope: [], skippedStable: [], skipped: [], applied: [], needsRestart: true };
+    },
     async SetExperimentalActiveTabResident() {},
     async SetExperimentalBashHeavyGuard() {},
     async SetExperimentalOpenCodeGoUsage() {},

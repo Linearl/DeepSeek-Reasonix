@@ -2199,6 +2199,29 @@ export const en = {
   // Task 604: detail-dialog settings-location prefix (path segments reuse
   // existing keys, nothing added to this table for them).
   "settings.labPicks.settingsPath": "Settings location:",
+  // 任务 1006 — lab bulk toggle dialog (scope × behavior; no "all" scope —
+  // unstable-tier items never join a batch, single-item toggles only).
+  "settings.labBulk.button": "Bulk toggle",
+  "settings.labBulk.title": "Bulk toggle lab switches",
+  "settings.labBulk.scopeLabel": "Scope",
+  "settings.labBulk.scope.stable": "Stable tier",
+  "settings.labBulk.scope.recommended": "Recommended and above",
+  "settings.labBulk.scope.optional": "Optional and above",
+  "settings.labBulk.behaviorLabel": "Action",
+  "settings.labBulk.behavior.on": "Turn on",
+  "settings.labBulk.behavior.off": "Turn off",
+  "settings.labBulk.summary": "{n} switch(es) will be toggled.",
+  "settings.labBulk.summaryEmpty": "No switches in this scope can be bulk-toggled.",
+  "settings.labBulk.skippedCount": "{n} handled individually",
+  "settings.labBulk.stableWarning": "You are about to turn off {n} stable-tier capability(ies). Stability and compatibility are not guaranteed — same caveat as turning one off individually.",
+  "settings.labBulk.stableSkipped": "Developer mode is off: {n} stable-tier capability(ies) were skipped and stay unchanged.",
+  "settings.labBulk.skip.dangerGate": "needs its own danger confirmation",
+  "settings.labBulk.skip.precondition": "has a precondition; toggle it individually",
+  "settings.labBulk.skip.notBool": "master switch is not a plain on/off",
+  "settings.labBulk.skip.noSetter": "not bulk-toggleable; set it individually",
+  "settings.labBulk.confirm": "Apply",
+  "settings.labBulk.restartNote": "Saved {n} switch(es). The changes take effect on the next start — restart now, or later without interrupting running tasks.",
+  "settings.labBulk.restartLater": "Restart later",
   // Task 561: merged family cards (entry-level merge only — every member
   // switch still saves through its own setter).
   "settings.modelStrategy": "Model strategy",
