@@ -8,7 +8,7 @@ import { app } from "../lib/bridge";
 import { cachedSessionPurpose, loadSessionPurpose, setCachedSessionPurpose, subscribeSessionPurposes } from "../lib/sessionPurpose";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
 import { createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
-import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreePageLoadFlipsIndicator, projectTreeBrowsePageContinues, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
+import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkbenchSortMode, mergeIncompleteProjectTopicPage, mergeProjectTopicFirstPage, mergeProjectTopicPage, projectTreeDedupedExactTime, projectTreeEventAffectsFolder, projectTreeFolderDisclosure, projectTreePageLoadFlipsIndicator, projectTreeBrowsePageContinues, projectTreeReadActivityKey, projectTreeRevisionIsFresh, projectTreeShellChildren, projectTreeShellSignature, projectTreeShouldApplyShellSnapshot, projectTreeShouldRenderTopicActions, projectTreeShouldSuppressOpenForRename, projectTreeTopicArchiveBlocked, projectTreeTopicHasUnreadActivity, projectTreeTopicHoverCardModel, projectTreeTopicMenuOffersPin, projectTreeTopicMetaLine, projectTreeTopicOpenRequest, projectTreeTopicPageIsFresh, projectTreeTopicPageSignature, projectTreeWithoutTopic, projectTreeWithTopicTitle, topicActivityAt, topicActivityDateLabel, topicActivityLabel, topicIsActive, topicStatus, topicStatusLabel, topicUnknownTimeLabel, WORKBENCH_ORGANIZE_KEY, WORKBENCH_SORT_KEY, type ProjectTreePendingTopicOpen, type ProjectTreeReadActivity, type ProjectTreeTopicHoverCard, type WorkbenchOrganizeMode, type WorkbenchSortMode } from "../lib/projectTreeTopic";
 export * from "../lib/projectTreeTopic";
 import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeBodyState, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
 export * from "../lib/projectTreePresentation";
@@ -374,9 +374,14 @@ export function ProjectTree({
     });
   }, []);
 
-  const loadProjectTopicsRef = useRef<(project: ProjectNode, append?: boolean) => Promise<void>>(async () => {});
+  const loadProjectTopicsRef = useRef<(project: ProjectNode, append?: boolean, full?: boolean) => Promise<void>>(async () => {});
 
-  const loadProjectTopics = useCallback(async (project: ProjectNode, append = false) => {
+  // 981 二轮（候选1 分场景）：full=true（默认）沿游标取全——用户主动展开、首次
+  // 挂载、筛选/排序变化、归档后的权威重拉都走这条；full=false 只取首页——catalog
+  // 事件驱动的背景刷新只需要首页新鲜（新会话都排在首页），恒不续拉，把一次事件
+  // flush 的每文件夹 ListProjectTopics 调用数从 ⌈N/limit⌉ 压回 1（报告 20261019
+  // §3.1-A 残余放大链）。
+  const loadProjectTopics = useCallback(async (project: ProjectNode, append = false, full = true) => {
     if ((project.kind !== "project" && project.kind !== "global_folder") || project.remote) return;
     const key = project.key;
     const pageState = topicPageStateRef.current[key];
@@ -400,6 +405,8 @@ export function ProjectTree({
       // 只留给搜索结果）。浏览态列表完整性改由这里沿后端游标自动续拉：首页返回
       // 后只要后端还给出下一页游标就继续拉，直到取全（停机条件见
       // projectTreeBrowsePageContinues：搜索态停 / 空页停 / 游标不前进停）。
+      // 981 二轮（候选1）：full=false（事件驱动的背景刷新）不进续拉——恒停在
+      // 首页，合并也走保尾部的 mergeProjectTopicFirstPage；full 只改这两处。
       // 搜索态（query 非空）维持单页 + 用户显式翻页，行为零回归。每页之间复
       // 查 seq —— 期间任何刷新拿到新 seq，本循环安静退出，由新请求重新取数。
       let currentCursor = cursor;
@@ -432,11 +439,14 @@ export function ProjectTree({
           if (node.key !== key) return node;
           const children = preserveCompletePage
             ? mergeIncompleteProjectTopicPage(asArray(node.children), items)
-            : mergeProjectTopicPage(asArray(node.children), items, pageAppend);
+            : full
+              ? mergeProjectTopicPage(asArray(node.children), items, pageAppend)
+              : mergeProjectTopicFirstPage(asArray(node.children), items, { nextCursor: page.nextCursor });
           return children === node.children ? node : { ...node, children };
         })));
         const continues = projectTreeBrowsePageContinues({
           query,
+          full,
           requestCursor: currentCursor,
           nextCursor: page.nextCursor,
           itemCount: page.items.length,
@@ -619,7 +629,9 @@ export function ProjectTree({
     for (const project of treeRef.current) {
       const key = projectNodeKey(project, 0);
       if (!expanded.has(key)) continue;
-      if (projectTreeEventAffectsFolder(project, affected)) void loadProjectTopics(project);
+      // 981 二轮（候选1）：事件驱动的背景刷新只取首页（full=false）——首页
+      // 足够覆盖新会话插入；取全只留给用户主动展开/首次挂载/筛选变化。
+      if (projectTreeEventAffectsFolder(project, affected)) void loadProjectTopics(project, false, false);
     }
   };
   useEffect(() => {
