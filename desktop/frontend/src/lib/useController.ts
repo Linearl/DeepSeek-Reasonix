@@ -6445,7 +6445,8 @@ export function useController() {
     stopLevel: activeState.stopLevel,
     queuedFollowup: Boolean(activeState.queuedFollowup),
   }), [runtimeState.known, runtimeState.unknown, runtimeState.running, activeState.running, activeState.cancelRequested, activeState.stopLevel, activeState.queuedFollowup]);
-  const runtimeSignals = turnRuntimeSignals(turnRuntime);
+  // 981 同款引用纪律：signals 一并 memo，避免每渲染新引用打穿下游 projectedState memo。
+  const runtimeSignals = useMemo(() => turnRuntimeSignals(turnRuntime), [turnRuntime]);
 
   // 迁移留痕（验收4）：from→to + 触发事实进环形缓冲 + desktop.log，事后可核对。
   const lastTurnRuntimeRef = useRef<TurnRuntimeDerivation | null>(null);
