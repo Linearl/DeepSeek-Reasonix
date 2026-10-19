@@ -173,6 +173,17 @@ func (*UseCapabilityTool) ReadOnly() bool { return true }
 // tolerance is not a contract (725 error-guidance precedent).
 const capabilityPromotionNote = "capability_id was auto-promoted from arguments — correct usage: pass capability_id as a top-level parameter, not inside arguments. Auto-promotion may be removed in future versions."
 
+// capabilityAliasNote is the model-visible correct-usage guidance appended to
+// a successful result whose id arrived under a spelling alias (task 996:
+// ability_id / capabilityId both failed with "capability_id is required" in
+// the 975 field check). Wording names what the host did, the right key, and
+// that the tolerance is not a contract (728 promotion-note precedent). Unlike
+// the 975 control-char cleanup this one MUST reach the model: a wrong key
+// name is a correctable generation mistake, not tokenizer noise.
+func capabilityAliasNote(alias string) string {
+	return alias + " was accepted as an alias of capability_id — correct usage: pass the parameter as capability_id. Alias tolerance may be removed in future versions."
+}
+
 // appendSelfHealNote attaches the resolver's model-visible heal note to a
 // successful target result. Host-side audit/WARN logging already happened at
 // resolve time; this is the copy the model actually reads.
@@ -263,6 +274,14 @@ func (t *UseCapabilityTool) ResolveCall(ctx context.Context, args json.RawMessag
 		ProxyAction:  action,
 		CapabilityID: id,
 		Args:         p.Arguments,
+	}
+	// Task 996: an id rescued from a converged spelling alias stays observable
+	// on both sides — host audit counter + WARN log (457/798 discipline) and a
+	// model-visible note on the successful result, because a wrong key name is
+	// a correctable generation mistake (972/728 note precedent).
+	if p.healedAliasKey != "" {
+		t.noteArgumentSelfHeal(id, "accepted "+p.healedAliasKey+" as an alias of capability_id")
+		base.SelfHealNote = capabilityAliasNote(p.healedAliasKey)
 	}
 	switch action {
 	case "list", "search", "inspect":

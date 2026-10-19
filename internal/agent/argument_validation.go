@@ -58,7 +58,12 @@ func (a *Agent) argumentValidationFailure(plan *toolCallPlan, result tool.Argume
 // input error. Successful resolution and unavailable/authorization errors keep
 // their historical behavior, even if an ignored envelope field is invalid.
 func (a *Agent) diagnoseCapabilityInputFailure(plan *toolCallPlan, err error) toolOutcome {
-	result := tool.ValidateArguments(plan.tool, json.RawMessage(plan.call.Arguments))
+	// Task 996: validate the envelope the resolver actually accepted — a
+	// fired spelling alias is renamed to capability_id for the schema check
+	// so additionalProperties does not flag the very key the resolver
+	// rescued (that would teach the model the opposite of the success-path
+	// alias note). No alias → byte-identical envelope, unchanged behavior.
+	result := tool.ValidateArguments(plan.tool, canonicalCapabilityIDEnvelope(json.RawMessage(plan.call.Arguments)))
 	if !result.Skipped && (result.CompileErr != nil || len(result.Violations) > 0) {
 		if a.capabilityAudit != nil {
 			a.capabilityAudit.RecordArgumentValidation(true, false, false)

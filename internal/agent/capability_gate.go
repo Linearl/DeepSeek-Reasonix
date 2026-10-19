@@ -117,6 +117,11 @@ func capabilityIDFromToolCall(toolName string, args json.RawMessage) string {
 		// resolved with — a dirty key here would split the outcome into a
 		// second phantom entry the gate never reconciles.
 		cleaned, _ := sanitizeCapabilityID(p.CapabilityID)
+		if cleaned == "" {
+			// Task 996: same agreement for the converged spelling aliases —
+			// an alias-rescued call must mark the id it actually dispatched.
+			cleaned, _ = capabilityIDFromEnvelopeAlias(args)
+		}
 		return cleaned
 	default:
 		if server, raw, ok := splitMCP(toolName); ok {

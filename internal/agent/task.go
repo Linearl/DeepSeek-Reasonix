@@ -1100,6 +1100,12 @@ func (t *restrictedCapabilityProxy) check(args json.RawMessage) error {
 	// as "outside the allowlist" and then succeed one layer down.
 	id, _ := sanitizeCapabilityID(p.CapabilityID)
 	if id == "" {
+		// Task 996: accept the converged spelling aliases here too — the
+		// underlying resolver resolves them, so rejecting at the allowlist
+		// would contradict the layer below (same 975 disagreement risk).
+		id, _ = capabilityIDFromEnvelopeAlias(args)
+	}
+	if id == "" {
 		return fmt.Errorf("capability_id is required")
 	}
 	if id == sessionToolResultCapabilityID || id == sessionReadStrategyReceiptCapabilityID {
