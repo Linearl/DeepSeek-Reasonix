@@ -92,6 +92,19 @@ export function localizedNoticeText(text: string, code?: string, detail?: string
       return t(key, params);
     }
   }
+  // 任务 1011: the self-heal notices carry their readings the same way.
+  if (code === "session_selfhealed") {
+    const params = detailParams(detail);
+    if (Object.keys(params).length > 0) {
+      return t("recovery.noticeSelfHealed", params);
+    }
+  }
+  if (code === "session_compact_fail_streak") {
+    const params = detailParams(detail);
+    if (Object.keys(params).length > 0) {
+      return t("recovery.noticeCompactFailStreak", params);
+    }
+  }
   const streamReasonKey = code ? streamInterruptReasonCodeKeys[code] : undefined;
   if (streamReasonKey) {
     return t("notice.streamInterruptReason", { reason: t(streamReasonKey) });
@@ -101,10 +114,19 @@ export function localizedNoticeText(text: string, code?: string, detail?: string
 }
 
 // detailParams parses the key=value reading list the backend puts in a
-// notice's Detail field (任务 1010).
+// notice's Detail field (任务 1010). Each key is also registered in camelCase
+// so both placeholder styles interpolate: the 1010 copy reads
+// {selectedMessages} while the backend Detail says selected_messages — the
+// un-bridged mismatch left the raw {placeholder} on screen (the pinned
+// heads-notices test caught it during 1011).
 function detailParams(detail?: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of (detail ?? "").matchAll(/([a-zA-Z_]+)=(\S+)/g)) out[m[1]] = m[2];
+  for (const m of (detail ?? "").matchAll(/([a-zA-Z_]+)=(\S+)/g)) {
+    const key = m[1];
+    out[key] = m[2];
+    const camel = key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    if (camel !== key) out[camel] = m[2];
+  }
   return out;
 }
 

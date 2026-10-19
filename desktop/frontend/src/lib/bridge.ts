@@ -349,6 +349,86 @@ export interface RecoveryChainSet {
   longestHead: string;
 }
 
+// 任务 1011 — 会话健康与自愈（设置页「工作阶段版本与修复」分区）。
+/** One head of a schema-2 session log (mirrors agent.SessionHead). */
+export interface SessionHeadView {
+  id: string;
+  kind: string;
+  name?: string;
+  parentHead?: string;
+  forkFrom?: string;
+  writer?: string;
+  createdAt: string;
+  lastActivity: string;
+  retired: boolean;
+  selected: boolean;
+  covered: boolean;
+  messageCount: number;
+  turns?: number;
+  preview?: string;
+}
+/** One multi-head conversation for the versions panel (需求 E). */
+export interface SessionVersionGroupView {
+  mainPath: string;
+  mainLabel: string;
+  directory: string;
+  headCount: number;
+  selected: string;
+  suggest?: string;
+  heads: SessionHeadView[];
+}
+/** One startup-scan finding (badge data; strictly read-only detection). */
+export interface SessionHealthFindingView {
+  path: string;
+  label: string;
+  codes: string[];
+  detail: string;
+  healed?: boolean;
+  suggestHead?: string;
+}
+/** Read-only five-criteria readings (mirrors agent.SessionHealthReport). */
+export interface SessionHealthReportView {
+  path: string;
+  healthy: boolean;
+  issues?: { code: string; detail: string; suggestedAction?: string }[];
+  heads?: SessionHeadView[];
+  suggestedHeadId?: string;
+  selectedHeadId?: string;
+  projectionTokens?: number;
+  windowTokens?: number;
+  materializedMsgs?: number;
+  eventChainMsgs?: number;
+  logSchema?: number;
+  headCount?: number;
+  loadTimeout?: boolean;
+  loadMillis?: number;
+}
+/** One executed/skipped repair step. */
+export interface SelfHealActionView {
+  action: string;
+  status: string;
+  detail?: string;
+}
+/** What one repair run produced (mirrors agent.SelfHealReport). */
+export interface SelfHealReportView {
+  path: string;
+  backupDir?: string;
+  actions: SelfHealActionView[];
+  headFrom?: string;
+  headTo?: string;
+  healthy: boolean;
+  repaired: boolean;
+}
+/** One repair-log line (mirrors agent.RepairRecord). */
+export interface SessionRepairRecordView {
+  at: string;
+  path: string;
+  backupDir?: string;
+  actions: SelfHealActionView[];
+  before: string;
+  after: string;
+}
+
 export interface DesktopShellStatusView {
   trayState: "probing" | "ready" | "unavailable";
   backgroundCloseAvailable: boolean;
@@ -816,6 +896,12 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ListRecoveryCopyGroups(): Promise<RecoveryCopyGroupView[]>;
   ScanRecoveryCopyGroup(mainPath: string): Promise<RecoveryCopyGroupView>;
   ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet>;
+  // 任务 1011: session health / self-heal / versions panel (需求 E).
+  ListSessionVersionGroups(): Promise<SessionVersionGroupView[]>;
+  ListSessionHealthFindings(): Promise<SessionHealthFindingView[]>;
+  InspectSessionHealthFor(path: string): Promise<SessionHealthReportView>;
+  RepairSessionFor(path: string, promoteHead: boolean, hydrate: boolean, diet: boolean): Promise<SelfHealReportView>;
+  ListSessionRepairRecordsFor(path: string): Promise<SessionRepairRecordView[]>;
   PickGlobalWriteDir(): Promise<string>;
   // Authorized write-directory management (#9167).
   QueryAuthorizedWriteDirs(): Promise<{ project: string[]; global: string[]; session: string[] }>;
@@ -3911,6 +3997,21 @@ function makeMockApp(): AppBindings {
     },
     async ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet> {
       return { mainPath, mainLabel: mainPath, chains: [], longestPath: "", longestHead: "" };
+    },
+    async ListSessionVersionGroups(): Promise<SessionVersionGroupView[]> {
+      return [];
+    },
+    async ListSessionHealthFindings(): Promise<SessionHealthFindingView[]> {
+      return [];
+    },
+    async InspectSessionHealthFor(path: string): Promise<SessionHealthReportView> {
+      return { path, healthy: true };
+    },
+    async RepairSessionFor(path: string): Promise<SelfHealReportView> {
+      return { path, actions: [], healthy: true, repaired: false };
+    },
+    async ListSessionRepairRecordsFor(_path: string): Promise<SessionRepairRecordView[]> {
+      return [];
     },
     async ScanRecoveryCopyGroup(_mainPath: string): Promise<RecoveryCopyGroupView> {
       return { mainPath: "", mainLabel: "", directory: "", mainExists: false, mainMessages: 0, mainBytes: 0, mainModified: "", copies: [] };

@@ -3,6 +3,7 @@ import { Copy, Check } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { RecoveryCopiesSection } from "./RecoveryCopiesSection";
+import { SessionVersionsSection } from "./SessionVersionsSection";
 
 type StorageSettingsView = Awaited<ReturnType<typeof app.StorageSettings>>;
 
@@ -54,6 +55,8 @@ export function StorageSettingsPage() {
         <StoragePathField label={t("settings.storageExtensions")} value={view.extensionsPath} />
       </div>
           <RecoveryCopiesSection />
+          {/* 任务 1011 需求 E：v3 events heads 的版本与修复分区，与 legacy 副本扫描分区并存 */}
+          <SessionVersionsSection />
 </section>
   );
 }
