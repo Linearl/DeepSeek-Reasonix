@@ -33,9 +33,15 @@ const reminderSource = "reminder"
 // on). Call once during boot; off = no timers are armed and the scheduling
 // tool stays unregistered, so an alarm set before the flip still fires from
 // the next enabled boot's scan (the durable promise survives the switch).
+// Re-enabling forces a fresh scan: entries that came due while the switch was
+// off deliver late with the annotation, same as a restart.
 func (c *Controller) SetRemindersEnabled(enabled bool) {
 	c.reminders.mu.Lock()
 	c.reminders.enabled = enabled
+	if enabled {
+		// Defeat the same-path short circuit so the re-enable re-scans disk.
+		c.reminders.sessionPath = ""
+	}
 	c.reminders.mu.Unlock()
 	if enabled {
 		c.rebindReminders()
