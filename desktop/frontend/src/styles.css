@@ -8158,6 +8158,23 @@ body > .mermaid-diagram--fullscreen {
   color: color-mix(in srgb, var(--warn, #b45309) 78%, var(--fg));
 }
 
+/* 任务 973: the pending card now carries the live readout（已 Xs · tokens ·
+   t/s）on the same single row — clip with ellipsis so a long readout stays on
+   the 36px static row instead of wrapping past the virtualizer's estimate. */
+.compaction--pending {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.compaction--pending > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
 /* ── footer: composer + status line ──────────────────────────────────────── */
 .footer {
   flex: 0 0 auto;

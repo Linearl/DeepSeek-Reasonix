@@ -6,9 +6,9 @@
 import { useContext } from "react";
 import { ChevronRight } from "lucide-react";
 import { useT } from "../lib/i18n";
-import { formatTokens } from "../lib/format";
 import type { CompactionItem, SegmentModel } from "../lib/transcriptRows";
 import { useTick, resolveRunningDurationMs, workStatusLabel } from "../lib/workStatus";
+import { compactionLiveReadout } from "../lib/compactionLive";
 import { LiveStreamContext } from "./LiveStreamContext";
 
 export function ProcessFoldHeader({
@@ -26,8 +26,21 @@ export function ProcessFoldHeader({
   const live = useContext(LiveStreamContext);
   const displayItems = segment.displayItems;
 
+  // A process fold that coalesces context-compaction events must not show a
+  // bare "worked Xm" label — the chunked /compact fallback (over-length
+  // sessions) runs minutes and produces no tool/assistant rows, so the fold
+  // reads as a mysteriously empty "worked" segment. Label it by the actual
+  // compaction state instead: "compacting (N/M)" while the fold is still
+  // pending, "context compacted" only once it has finished. Hide the
+  // duration/counts that would otherwise imply timing for work that is really
+  // async summarization.
+  const compactionItem = displayItems.find((it): it is CompactionItem => it.kind === "compaction");
+  const hasCompaction = compactionItem !== undefined;
   const hasRunningWork = segment.hasRunningWork;
-  const now = useTick(hasRunningWork);
+  // 任务 973: a pending compaction also keeps the tick alive — segment
+  // hasRunningWork only counts tool/assistant rows, and a pure summarization
+  // fold has neither, which would freeze the「已 XXs」leg at its first value.
+  const now = useTick(hasRunningWork || (compactionItem?.pending ?? false));
   // Task 341: with no start timestamp the resolver anchors the count at the
   // first render that saw this segment running and grows from the static
   // snapshot, so the duration keeps ticking through long quiet stretches
@@ -41,16 +54,6 @@ export function ProcessFoldHeader({
     reasoningStartedAt: live?.reasoningStartedAt,
   });
 
-  // A process fold that coalesces context-compaction events must not show a
-  // bare "worked Xm" label — the chunked /compact fallback (over-length
-  // sessions) runs minutes and produces no tool/assistant rows, so the fold
-  // reads as a mysteriously empty "worked" segment. Label it by the actual
-  // compaction state instead: "compacting (N/M)" while the fold is still
-  // pending, "context compacted" only once it has finished. Hide the
-  // duration/counts that would otherwise imply timing for work that is really
-  // async summarization.
-  const compactionItem = displayItems.find((it): it is CompactionItem => it.kind === "compaction");
-  const hasCompaction = compactionItem !== undefined;
   const baseLabel = compactionItem
     ? compactionItem.pending
       ? (compactionItem.done ?? 0) > 0
@@ -62,19 +65,12 @@ export function ProcessFoldHeader({
           : t("compaction.failed")
         : t("compaction.title")
     : workStatusLabel(effectiveDurationMs, hasRunningWork, t);
-  // 任务 556: live "12.3k tokens · 45 tokens/s" readout while the pass is
-  // pending, fed by throttled backend CompactionProgress events. Same shape
-  // as the composer run-strip's readout (formatTokens + status.tokens unit +
-  // "<n> tokens/s") so a compacting session reads like a working one. tps
-  // stays hidden until the backend's 500ms noise floor passes (it sends 0).
-  const liveTokens = compactionItem?.pending ? (compactionItem.tokens ?? 0) : 0;
-  const liveTps = compactionItem?.pending ? (compactionItem.tokensPerSec ?? 0) : 0;
-  const readout =
-    liveTokens > 0
-      ? liveTps > 0
-        ? ` · ${t("compaction.liveReadout", { tokens: formatTokens(liveTokens), tps: liveTps })}`
-        : ` · ${formatTokens(liveTokens)} ${t("status.tokens")}`
-      : "";
+  // 任务 556/973: live "40s · 12.3k tokens · 45 tokens/s" readout while the
+  // pass is pending, fed by throttled backend CompactionProgress events plus
+  // the reducer's compaction_started stamp. The shared compactionLiveReadout
+  // is the single formatting seam (fold header + compaction card); tps stays
+  // hidden until the backend's 500ms noise floor passes (it sends 0).
+  const readout = compactionLiveReadout(compactionItem ?? {}, now, t);
   // Surface what the closed fold hides — a bare duration reads as pure timing
   // and users have no way to know process detail sits behind it.
   const toolCount = displayItems.reduce((n, it) => n + (it.kind === "tool" ? 1 : 0), 0);
