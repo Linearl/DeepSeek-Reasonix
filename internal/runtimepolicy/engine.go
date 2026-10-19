@@ -19,6 +19,8 @@ type Engine struct {
 }
 
 // NewEngine starts an empty contract with the fixed monotonic guard set.
+// ContractPreconditionGuard registers disabled (tl 982: the todo/criteria
+// write-gate contract is off by default; ConstraintGuard stays active).
 func NewEngine(constraints Constraints, extra ...Guard) *Engine {
 	guards := []Guard{
 		PlanGuard{},
@@ -29,6 +31,24 @@ func NewEngine(constraints Constraints, extra ...Guard) *Engine {
 	}
 	guards = append(guards, extra...)
 	return &Engine{contract: taskcontract.New(""), guards: guards, constraints: constraints}
+}
+
+// SetContractPreconditionGuardEnabled toggles the todo/criteria write-gate
+// contract (tl 982: default off). It flips only the default-registered
+// instance, so extra guards with preset fields are left untouched. On
+// restores the pre-982 behavior verbatim.
+func (e *Engine) SetContractPreconditionGuardEnabled(on bool) {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i, g := range e.guards {
+		if _, ok := g.(ContractPreconditionGuard); ok {
+			e.guards[i] = ContractPreconditionGuard{Enabled: on}
+			return
+		}
+	}
 }
 
 // Constraints returns a copy of the frozen user/host limits.

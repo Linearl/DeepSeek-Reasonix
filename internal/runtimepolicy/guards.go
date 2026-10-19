@@ -95,12 +95,23 @@ func looksExternalCommand(ctx CallContext) bool {
 }
 
 // ContractPreconditionGuard requires todo/criteria before mapped writers.
+//
+// tl 982（用户 2026-10-18 拍板）：todo/criteria 契约门禁默认 off（Enabled 零值即
+// 关）。三论据：bash（含 heredoc 写文件）全通道不经此门而 write_file/
+// talk_to_session 被管，约束力≈零；893 持久化（投影层跨回合 todo + 面板封存
+// 可见）已替代其「逼维护」功能；976 去重锁死曾借道此处连坐全会话写通道。
+// Enabled 仅作回退对照（on 态行为与门禁移除前等价），不接 config/UI 层——
+// 逃生是治标，拆门禁是治本；稳定若干批后可彻底删除本 guard。
 type ContractPreconditionGuard struct {
+	Enabled     bool
 	HasTodo     bool
 	HasCriteria bool
 }
 
 func (g ContractPreconditionGuard) BeforeTool(ctx CallContext) GuardDecision {
+	if !g.Enabled {
+		return GuardDecision{Action: GuardAbstain}
+	}
 	if !ctx.Profile.MutatesState() || ctx.Profile.ReadOnly || ctx.Verification {
 		return GuardDecision{Action: GuardAbstain}
 	}

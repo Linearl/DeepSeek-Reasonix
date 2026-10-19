@@ -118,6 +118,8 @@ func TestFailedWriterBarrier(t *testing.T) {
 
 func TestWriterPreflightInterleavesWithTodoRebuild(t *testing.T) {
 	e := NewEngine(Constraints{})
+	// tl 982：契约门禁默认 off；本测试钉的是 on 态回退路径，显式开启。
+	e.SetContractPreconditionGuardEnabled(true)
 	auth := authWriteCall()
 	if e.BeforeTool(auth).Action != GuardDeny {
 		t.Fatal("auth write without todo must deny")
@@ -257,6 +259,8 @@ func TestChildMergeInterleavesWithParentStop(t *testing.T) {
 
 func TestSequentialProductionWritesEscalatePreconditions(t *testing.T) {
 	e := NewEngine(Constraints{})
+	// tl 982：契约门禁默认 off；本测试钉的是 on 态回退路径，显式开启。
+	e.SetContractPreconditionGuardEnabled(true)
 	e.CommitReceipt(writeResult("internal/agent/agent.go"))
 
 	if got := e.BeforeTool(writeCall("internal/agent/run_loop.go")); got.Action != GuardDeny {
