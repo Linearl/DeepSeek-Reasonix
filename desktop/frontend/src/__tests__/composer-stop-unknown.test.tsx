@@ -148,6 +148,7 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced"));
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
   const { root, calls } = await renderComposer({ running: true, tabId: "t510-stop" });
   ok(stopButton() !== null, "synced running composer renders the stop button");
   eq(stopButton()?.disabled, false, "synced stop button is enabled");
@@ -164,6 +165,7 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("unknown"));
+  runtimeStateStore.flush();
   const { root, calls } = await renderComposer({ running: true, tabId: "t510-stop" });
   ok(stopButton() !== null, "unknown state keeps the stop button visible");
   eq(stopButton()?.disabled, false, "unknown stop button is not disabled by a stale projection");
@@ -181,6 +183,7 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("unknown", { cancellable: false }));
+  runtimeStateStore.flush();
   const { root, calls } = await renderComposer({ running: true, tabId: "t510-stop" });
   eq(stopButton()?.disabled, false, "stale cancellable=false does not disable the stop exit while unknown");
   await act(async () => {
@@ -196,6 +199,7 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced", { cancellable: false }));
+  runtimeStateStore.flush();
   const { root, calls } = await renderComposer({ running: true, tabId: "t510-stop" });
   ok(stopButton() !== null, "fresh uncancellable state still renders the stop button");
   eq(stopButton()?.disabled, true, "fresh cancellable=false disables the button as before");
@@ -212,6 +216,7 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced", { phase: "finishing" }));
+  runtimeStateStore.flush();
   const { root } = await renderComposer({ running: true, tabId: "t510-stop" });
   eq(stopButton(), null, "finishing composer renders no stop button");
   await act(async () => { root.unmount(); });
@@ -223,6 +228,7 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced"));
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
   runtimeStateStore.fail();
   const { root, calls } = await renderComposer({ running: true, tabId: "t510-stop" });
   ok(stopButton() !== null, "global sync failure no longer hides this tab's stop button");

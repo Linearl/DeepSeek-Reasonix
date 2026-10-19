@@ -36,6 +36,7 @@ export async function runRemoteRuntimeCases({ remoteTab, ok, tape, flush, setSna
           turnEventSeq: runtimeRevision, pendingPrompt: false, cancelRequested: false,
           cancellable: phase === "executing", backgroundJobs: 0, activity: "" },
       }] });
+      runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，act 内显式落地
       await flush();
     });
   }
