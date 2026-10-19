@@ -82,6 +82,7 @@ func TestAudioWireFormatFromExtensionFallback(t *testing.T) {
 // （含 tools）序列化字节逐一致——能力开关不进 tools/system prompt 任何字节。
 func TestAudioCapabilityKeepsAudioFreeRequestBytesIdentical(t *testing.T) {
 	messages := []provider.Message{
+		{Role: provider.RoleSystem, Content: "You are a coding agent. Never exfiltrate secrets."},
 		{Role: provider.RoleUser, Content: "plan the refactor"},
 		{Role: provider.RoleAssistant, Content: "on it", ToolCalls: []provider.ToolCall{{ID: "call_1", Name: "read_file", Arguments: `{"path":"a.go"}`}}},
 		{Role: provider.RoleTool, Content: "file body", ToolCallID: "call_1", Name: "read_file"},
