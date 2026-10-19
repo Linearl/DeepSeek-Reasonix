@@ -1997,11 +1997,30 @@ model = "x"
 
 	defaultReq := firstTokenProfileRequest(t, "")
 	balancedReq := firstTokenProfileRequest(t, "balanced")
-	if !reflect.DeepEqual(withoutMessageIDs(balancedReq.Messages), withoutMessageIDs(defaultReq.Messages)) {
-		t.Fatal("balanced alias changed provider-visible messages")
+	dm, bm := withoutMessageIDs(defaultReq.Messages), withoutMessageIDs(balancedReq.Messages)
+	if !reflect.DeepEqual(bm, dm) {
+		// Low-frequency flaky (1/26 single-run, 1/2 gate-batch runs on code
+		// with zero diff in internal/boot): capture the offending entry so the
+		// next red run carries its own scene instead of a bare assertion.
+		first, n := -1, min(len(dm), len(bm))
+		for i := 0; i < n; i++ {
+			if !reflect.DeepEqual(dm[i], bm[i]) {
+				first = i
+				break
+			}
+		}
+		di, bi := first, first
+		if di < 0 || di >= len(dm) {
+			di = len(dm) - 1
+		}
+		if bi < 0 || bi >= len(bm) {
+			bi = len(bm) - 1
+		}
+		t.Fatalf("balanced alias changed provider-visible messages (default=%d, balanced=%d, firstDiff=%d):\n default[%d] = %#v\n balanced[%d] = %#v",
+			len(dm), len(bm), first, di, dm[di], bi, bm[bi])
 	}
 	if !reflect.DeepEqual(balancedReq.Tools, defaultReq.Tools) {
-		t.Fatal("balanced alias changed provider-visible tool schemas")
+		t.Fatalf("balanced alias changed provider-visible tool schemas (default=%d, balanced=%d)", len(defaultReq.Tools), len(balancedReq.Tools))
 	}
 }
 
