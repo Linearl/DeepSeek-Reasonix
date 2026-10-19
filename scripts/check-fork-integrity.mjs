@@ -204,8 +204,14 @@ const CHECKS = [
   { feature: "任务556 折叠片段完成计数（report(false) 补齐）", file: "internal/agent/session_extract.go", patterns: ["report(false)"] },
   { feature: "任务556 wire 字段", file: "internal/eventwire/wire.go", patterns: ["TokensPerSec int `json:\"tokensPerSec,omitempty\"`"] },
   { feature: "任务556 前端 reducer", file: "desktop/frontend/src/lib/useController.ts", patterns: ["case \"compaction_progress\":"] },
-  { feature: "任务556 折叠头读数", file: "desktop/frontend/src/components/ProcessFoldHeader.tsx", patterns: ["compaction.liveReadout", "formatTokens(liveTokens)"] },
+  { feature: "任务556 折叠头读数（973 起改走共享 helper）", file: "desktop/frontend/src/components/ProcessFoldHeader.tsx", patterns: ["compactionLiveReadout"] },
   { feature: "任务556 三语", file: "desktop/frontend/src/locales/zh.ts", patterns: ["compaction.liveReadout"] },
+  // 任务 973：pending 压缩卡实时读数——读数格式化收口到共享 helper（折叠头与
+  // 压缩卡两处共用），startedAt 戳由 reducer 在 compaction_started 打（重试复用
+  // 卡时刷新）。helper 被删/内联回组件、或卡面读数被还原成静态文案时，这里报警。
+  { feature: "任务973 读数共享 helper", file: "desktop/frontend/src/lib/compactionLive.ts", patterns: ["compactionLiveReadout", "formatElapsedShort"] },
+  { feature: "任务973 压缩卡读数接入", file: "desktop/frontend/src/components/TranscriptCards.tsx", patterns: ["compactionLiveReadout"] },
+  { feature: "任务973 reducer startedAt 戳（新卡+重试复用卡）", file: "desktop/frontend/src/lib/useController.ts", patterns: ["archive: \"\", startedAt: Date.now()", "tokensPerSec: 0, startedAt: Date.now()"] },
   { feature: "#9468 reload fallback", file: "desktop/frontend/src/lib/useController.ts", patterns: ["loadOlderHistory"] },
   // 任务533（wt-533-panel-ux，2026-10-07）：前台子代理/组卡的结果事件即权威
   // 终态——终态进度事件丢失/乱序时卡片不再永久挂「运行中」；后台
