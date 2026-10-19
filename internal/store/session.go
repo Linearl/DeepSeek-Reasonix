@@ -278,6 +278,16 @@ func SessionInboxDir(sessionPath string) string {
 	return sessionStem(sessionPath) + ".inbox"
 }
 
+// SessionRemindersDir is the durable in-session delayed-reminder queue
+// (<id>.reminders/, task 1001). One JSON file holds the pending entries.
+func SessionRemindersDir(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + ".reminders"
+}
+
 // SessionCleanupPending is the delayed-cleanup marker (<id>.cleanup-pending.json).
 func SessionCleanupPending(sessionPath string) string {
 	sessionPath = strings.TrimSpace(sessionPath)
