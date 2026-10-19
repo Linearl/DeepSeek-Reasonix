@@ -110,14 +110,14 @@ func TestLoadHeadEventsIgnoresStaleHeads(t *testing.T) {
 		sessionDAGEntry{Type: sessionDAGTypeFork, Head: SessionMainHead, NewHead: "old", From: "U1", Kind: HeadKindConcurrent, At: base.Add(-48 * time.Hour)},
 	)
 	st := dagReplay(t, path)
-	if events := loadHeadEvents(st, st.selectedHead()); len(events) != 0 {
+	if events := loadHeadEvents(st, st.selectedHead(), path); len(events) != 0 {
 		t.Fatalf("a head idle for two days must not trigger a notice: %+v", events)
 	}
 	dagAppend(t, path,
 		sessionDAGEntry{Type: sessionDAGTypeFork, Head: SessionMainHead, NewHead: "fresh", From: "U1", Kind: HeadKindConcurrent, At: base.Add(-time.Hour)},
 	)
 	st = dagReplay(t, path)
-	if events := loadHeadEvents(st, st.selectedHead()); len(events) != 1 || events[0].HeadID != SessionMainHead {
+	if events := loadHeadEvents(st, st.selectedHead(), path); len(events) != 1 || events[0].HeadID != SessionMainHead {
 		t.Fatalf("events = %+v", events)
 	}
 }
