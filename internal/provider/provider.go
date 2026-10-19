@@ -60,7 +60,13 @@ type Message struct {
 	// ProviderContent is a transitional field written by early Context Engine v2
 	// builds. Loaders migrate it into Content/RawContent before normal use.
 	ProviderContent  string   `json:"provider_content,omitempty"`
-	Images           []string `json:"images,omitempty"`            // vision refs: data URLs, http(s) image URLs, or Files API file-api- ids; embedded only for vision-capable models
+	Images           []string `json:"images,omitempty"` // vision refs: data URLs, http(s) image URLs, or Files API file-api- ids; embedded only for vision-capable models
+	// Audio holds inline audio data URLs (task 1008, first phase: file
+	// attachments only). A separate field from Images keeps the two capability
+	// gates independent; adapters embed it as input_audio parts only when the
+	// model is audio-enabled, and must reject audio-carrying messages
+	// otherwise (never drop silently).
+	Audio            []string `json:"audio,omitempty"`
 	ReasoningContent string   `json:"reasoning_content,omitempty"` // assistant: thinking-mode chain-of-thought, round-tripped on multi-turn
 	// ReasoningID is the provider-issued reasoning-item id (OpenAI Responses:
 	// Reasoning.id is required on input items),

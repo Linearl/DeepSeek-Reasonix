@@ -244,6 +244,12 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 	if err := c.reasoning.Validate(c.model, req.EffortOverride); err != nil {
 		return nil, err
 	}
+	// Task 1008: first-phase audio support covers the chat-completions shape
+	// only. The Responses adapter has no input_audio construction yet, so an
+	// audio-carrying message fails loudly here instead of dropping the bytes.
+	if err := provider.RejectAudioIfPresent(c.name, c.model, "audio input is not built for the Responses protocol yet", req.Messages); err != nil {
+		return nil, err
+	}
 	requestCtx := provider.WithRequestAttemptCounter(ctx)
 	body, usedPrevious, wireMessages := c.buildRequestBody(req)
 	resp, err := c.send(requestCtx, body)
