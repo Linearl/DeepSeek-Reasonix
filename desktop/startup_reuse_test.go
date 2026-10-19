@@ -39,7 +39,12 @@ func TestStartupChainReuseHitAndStore(t *testing.T) {
 	a := &App{}
 	key := runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "high")
 
-	// Gate off (no config in the temp home): acquire nil, store no-op.
+	// Gate off: seed an explicit false — 任务 1005 后 runtimeReuse 转稳定档
+	// 默认开，缺省键读默认开，「gate off」必须走 C4 kill switch 手写 false。
+	cfgPath := filepath.Join(home, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte("[agent]\nexperimental_runtime_reuse = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if got := a.acquireRuntimeAssembly(key); got != nil {
 		t.Fatal("gate-off acquire returned an assembly")
 	}
@@ -48,8 +53,7 @@ func TestStartupChainReuseHitAndStore(t *testing.T) {
 		t.Fatal("gate-off store became visible")
 	}
 
-	// Gate on: seed the user config the gate reads, then store→hit.
-	cfgPath := filepath.Join(home, "config.toml")
+	// Gate on: flip the seeded key to true, then store→hit.
 	if err := os.WriteFile(cfgPath, []byte("[agent]\nexperimental_runtime_reuse = true\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
