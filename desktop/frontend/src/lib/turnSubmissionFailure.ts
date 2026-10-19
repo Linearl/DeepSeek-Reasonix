@@ -62,6 +62,9 @@ export function reduceSubmitDegraded(
   text: string,
   inboxItemId: string | undefined,
   turnId: string | undefined,
+  // 任务1015：steer 注入失败降级 durable 队列时为 true——五态 queued_followup
+  // 的事实源（与「本轮注入成功」的 steer_accepted 区分）。
+  queued = false,
 ): State {
   if (state.pendingSubmissionId !== submissionId) return state;
   const index = state.items.findIndex((item) => item.kind === "user" && item.submissionId === submissionId);
@@ -80,6 +83,7 @@ export function reduceSubmitDegraded(
     running: true,
     turnActive: true,
     cancellable: true,
+    queuedFollowup: queued,
     pendingPrompt: Boolean(state.approval || state.ask || state.mcpInteraction),
     // Adopt the freshly resolved authoritative turn id when the tab owner
     // answered (turn-state alignment, ruling ②); keep the current one else.
