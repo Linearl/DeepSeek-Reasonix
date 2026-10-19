@@ -4476,6 +4476,10 @@ a[href] {
 }
 
 /* 任务 1006：批量开关弹窗（复用 lab-pick-dialog 壳；轴选择/警示/重启两选项）。 */
+.lab-bulk-dialog {
+  /* 批量面内容更多（两轴 fieldset + summary + 重启两选项），比单选 pick 放宽一档；在壳规则之后故覆盖生效。 */
+  width: min(640px, 94vw);
+}
 .lab-bulk-dialog__axis {
   display: flex;
   flex-wrap: wrap;
