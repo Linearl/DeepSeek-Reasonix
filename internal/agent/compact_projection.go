@@ -804,7 +804,18 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 	modelRefRetried := false
 	for attempt := 0; ; attempt++ {
 		attemptRef := a.summaryDestinationRef()
-		if req.allowChunked {
+		// 任务 1010 需求 2: the overflow lane (the one-shot physical recovery
+		// an inadmissible sampling request triggers) may finish on the
+		// fragment/tree-reduce path when the capped single summary still fails
+		// on size — a physically inadmissible request must be able to make
+		// chunked progress instead of parking the turn forever. Steady-state
+		// pressure keeps its 任务822 contract unchanged — one summary plus one
+		// doubled-budget retry, the bounded tail view as the admissible
+		// answer, even when that pressure fold runs with mustFree over the
+		// ceiling. The happy path is unchanged either way: the chunked lane
+		// only starts after the single summary already failed on size.
+		allowChunked := req.allowChunked || trigger == CompactionTriggerOverflow
+		if allowChunked {
 			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 		} else {
 			res, tele, err = a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
