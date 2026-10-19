@@ -370,6 +370,13 @@ type Ask struct {
 	ID        string
 	Questions []AskQuestion
 	TurnID    string
+	// AutoDecideWaitMs (task 991) is the auto-decide window this ask will be
+	// timed with, in milliseconds; 0 means the ask waits attended (no timer).
+	// The controller stamps it from the same autopilotAskWaitFor() value that
+	// arms its own timer, so a frontend reminder toast for a background tab
+	// expires with the decision instead of counting a hardcoded copy of the
+	// window — hover resets on either side keep both in step.
+	AutoDecideWaitMs int64
 }
 
 // MCPInteraction carries one MCPInteractionRequest: a server-initiated

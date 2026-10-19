@@ -82,7 +82,7 @@ func TestAutopilotReversibleAskActivityResetsWindow(t *testing.T) {
 
 	// Hover once per window, starting inside the first one. The plain expiry
 	// points are at ~80ms and ~160ms; the resets must push the actual decide
-	// past 160ms (the absolute budget is 3×80ms = 240ms).
+	// past 160ms (the absolute budget is askAutoDecideHoverFactor×80ms).
 	hovers := []time.Duration{40 * time.Millisecond, 120 * time.Millisecond, 200 * time.Millisecond}
 	start := time.Now()
 	for _, at := range hovers {
@@ -101,7 +101,7 @@ func TestAutopilotReversibleAskActivityResetsWindow(t *testing.T) {
 	// Just past the first two windows and still open: the reset is real.
 	select {
 	case <-done:
-		t.Fatalf("ask returned at %v although hovers kept resetting the window (budget=%v)", time.Since(start).Round(time.Millisecond), 3*askWait)
+		t.Fatalf("ask returned at %v although hovers kept resetting the window (budget=%v)", time.Since(start).Round(time.Millisecond), askAutoDecideHoverFactor*askWait)
 	case <-time.After(60 * time.Millisecond):
 	}
 
@@ -123,10 +123,12 @@ func TestAutopilotReversibleAskActivityResetsWindow(t *testing.T) {
 
 // 验收③: the absolute hover budget ends the deferral. Continuous mouse
 // movement resets every window, yet the ask must decide within the budget
-// (3×askWait) plus slack — an unattended run may not be held hostage forever.
+// (askAutoDecideHoverFactor×askWait) plus slack — an unattended run may not be
+// held hostage forever. Task 991: the budget derives from the constant, so
+// raising the factor stretches both the hover loop and the bound together.
 func TestAutopilotReversibleAskActivityBudgetExpires(t *testing.T) {
 	const askWait = 50 * time.Millisecond
-	const budget = 3 * askWait // 150ms
+	budget := askAutoDecideHoverFactor * askWait
 	c, sink := askActivityController(t, askWait)
 	done := make(chan struct{})
 	var answers []event.AskAnswer
@@ -140,7 +142,7 @@ func TestAutopilotReversibleAskActivityBudgetExpires(t *testing.T) {
 	// Hover far more often than the window, for longer than the budget: the
 	// resets must stop mattering once the budget is gone.
 	start := time.Now()
-	stop := time.After(400 * time.Millisecond)
+	stop := time.After(budget + 300*time.Millisecond)
 hoverLoop:
 	for {
 		select {
