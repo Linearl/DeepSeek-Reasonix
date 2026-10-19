@@ -2929,7 +2929,19 @@ func Default() *Config {
 		DefaultModel:     "deepseek-flash",
 		CredentialsStore: CredentialsStoreAuto,
 		UI:               UIConfig{Theme: "auto", ShowTurnUsage: true},
-		Desktop:          DesktopConfig{DefaultToolApprovalMode: "auto", ConversationWidth: "standard"},
+		// 任务 1005 批1 稳定档默认开（C1）：autopilot 随 sessionCollab /
+		// fullAccess / runtimeReuse 一同转「稳定」——TOML decode 以 Default()
+		// 打底、显式值覆盖默认值，存量手写 false 不被覆盖（C4 kill switch：
+		// 配置手写键双向保留，fullAccess 安全项尤其不升级强开）。
+		// AutopilotMaxRuntime 必须伴生默认：desktopAutopilotDefaults（app_tabs）
+		// 对 autopilot=开 但无有效时限的组合直接拒绝降级为关——不伴生则新装
+		// 用户的「默认开」是静默空转；8h 与桌面端 setter 的兜底值同源。
+		Desktop: DesktopConfig{
+			DefaultToolApprovalMode: "auto",
+			ConversationWidth:       "standard",
+			Autopilot:               true,
+			AutopilotMaxRuntime:     "8h",
+		},
 		Billing:          BillingConfig{},
 		Notifications: NotificationsConfig{
 			Enabled:         false,
@@ -2960,6 +2972,12 @@ func Default() *Config {
 			// not cover). Pin the documented default here; an explicit false in
 			// a user config still wins.
 			SessionCollabMailIdempotentDefault: true,
+			// 任务 1005 批1 稳定档默认开（C1）：sessionCollab / fullAccess /
+			// runtimeReuse 三项转「稳定」档。机制同上：Default() 打底 +
+			// TOML 显式值覆盖，手写 false 不被覆盖（C4 kill switch）。
+			ExperimentalSessionCollab: true,
+			ExperimentalFullAccess:    true,
+			ExperimentalRuntimeReuse:  true,
 		},
 		// Mode "ask" with no rules keeps `reasonix run` autonomous (no TTY → ask
 		// resolves to allow) while `reasonix` prompts before writers. Users add
