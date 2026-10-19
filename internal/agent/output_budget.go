@@ -252,12 +252,36 @@ func (a *Agent) requestCalibrationShape(req provider.Request) requestCalibration
 
 func requestCalibrationShapeWithPolicy(req provider.Request, policy provider.SharedWindowInputPolicy) requestCalibrationShape {
 	requestChars, cjkRunes, cjkBytes := requestCalibrationTextShape(req, policy)
+	// 任务 1010: the agent wire shape prices images in (capped per image); the
+	// bare text shape stays image-free because the chunk-budget plane
+	// (messageWireBytes) is built on it and counts full image bytes itself.
+	requestChars += cappedImageChars(req)
 	return requestCalibrationShape{
 		requestChars: requestChars,
 		compactChars: int64(charsOfMessages(req.Messages)),
 		cjkRunes:     cjkRunes,
 		cjkBytes:     cjkBytes,
 	}
+}
+
+// cappedImageChars prices every image of a request at
+// requestImageEstimateByteCap bytes — see the constant's comment for why the
+// estimate cannot stay blind to images, and why it must not count them raw.
+func cappedImageChars(req provider.Request) int64 {
+	var n int64
+	for _, msg := range req.Messages {
+		if msg.LocalOnly {
+			continue
+		}
+		for _, img := range msg.Images {
+			if len(img) > requestImageEstimateByteCap {
+				n += requestImageEstimateByteCap
+				continue
+			}
+			n += int64(len(img))
+		}
+	}
+	return n
 }
 
 // requestImageEstimateByteCap bounds how many bytes of one image ride into the
@@ -294,8 +318,9 @@ func requestImageFootprint(req provider.Request) (count int, bytes int64) {
 // requestCalibrationTextShape counts common shared-window text plus only the
 // adapter-specific replay fields declared by the active provider. This keeps
 // omitted bytes out of the ratio without missing newly appended wire content.
-// 任务 1010: each image also rides in at requestImageEstimateByteCap — the one
-// plane the ai-passport incident proved cannot stay blind to images.
+// Images are NOT counted here: the chunk-budget plane (messageWireBytes) is
+// built on this function and adds full image bytes itself — the capped image
+// pricing lives in the agent wire shape (requestCalibrationShapeWithPolicy).
 func requestCalibrationTextShape(req provider.Request, policy provider.SharedWindowInputPolicy) (chars, cjkRunes, cjkBytes int64) {
 	add := func(s string) {
 		chars += int64(len(s))
@@ -313,13 +338,6 @@ func requestCalibrationTextShape(req provider.Request, policy provider.SharedWin
 		chars += 4
 		add(string(msg.Role))
 		add(msg.Content)
-		for _, img := range msg.Images {
-			if len(img) > requestImageEstimateByteCap {
-				chars += requestImageEstimateByteCap
-				continue
-			}
-			chars += int64(len(img))
-		}
 		if msg.Role == provider.RoleAssistant && (len(msg.ToolCalls) > 0 || policy.ReplaysOrdinaryReasoning) {
 			add(msg.ReasoningContent)
 		}

@@ -19,14 +19,19 @@ func TestRequestShapeCountsCappedImageBytes(t *testing.T) {
 	req := provider.Request{Messages: []provider.Message{
 		{Role: provider.RoleUser, Content: "hi", Images: []string{"data:image/png;base64," + big}},
 	}}
-	chars, _, _ := requestCalibrationTextShape(req, provider.SharedWindowInputPolicy{})
+	// Agent 级 wire 形状计图片（封顶）；裸文本形状不分（分块面自己计全量）。
+	chars := requestCalibrationShapeOf(req).requestChars
 	want := int64(len("user")) + int64(len("hi")) + requestImageEstimateByteCap + 4
 	if chars != want {
 		t.Fatalf("image shape chars = %d, want capped %d (not the raw %d)", chars, want, len(big))
 	}
+	textChars, _, _ := requestCalibrationTextShape(req, provider.SharedWindowInputPolicy{})
+	if textChars != want-requestImageEstimateByteCap {
+		t.Fatalf("bare text shape must stay image-free: %d", textChars)
+	}
 	small := strings.Repeat("A", 100)
 	req.Messages[0].Images = []string{"data:image/png;base64," + small}
-	chars, _, _ = requestCalibrationTextShape(req, provider.SharedWindowInputPolicy{})
+	chars = requestCalibrationShapeOf(req).requestChars
 	want = int64(len("user")) + int64(len("hi")) + int64(len("data:image/png;base64,")+len(small)) + 4
 	if chars != want {
 		t.Fatalf("small image shape chars = %d, want full %d", chars, want)
