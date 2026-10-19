@@ -162,6 +162,12 @@ func (a *App) startupRegisterProcessHelpers() {
 	// real second tab from an in-process race; register the probe once per
 	// process (nil in CLI/serve -- the local class then only logs).
 	control.SetConcurrentDualTabProbe(a.isConversationDualOpen)
+	// 任务 1011: the built-in session self-heal switch is read live on every
+	// heal decision, so the settings flip applies without a restart; the gate
+	// returning false (or the key absent-off posture) leaves the 1010
+	// read-only notices untouched. CLI/serve hosts keep the gate unset —
+	// detection only, exactly as 1010 shipped it.
+	control.SetSessionSelfHealGate(a.sessionSelfHealEnabled)
 	// Only the process that claimed the pre-Wails diagnostics lock consumes
 	// lifecycle evidence. This remains correct on Linux where Wails invokes
 	// OnStartup before its DBus single-instance handoff.
@@ -297,6 +303,10 @@ func (a *App) startupStartBackgroundLoops() {
 		applyGoMemLimit(cfg)
 	}
 	a.heartbeat = newHeartbeatEngine(a)
+	// 任务 1011 检测路 2: the delayed startup sweep replays recent sessions
+	// read-only and badges the flagged ones; repairs stay on the open path
+	// and the panel button, never in this sweep.
+	a.startupStartSessionHealthScan()
 	// Task 244 B1: call-time evaluation (S4) -- the burn guard reads the
 	// saved switch on every run, so toggling it in settings applies without a
 	// restart. Missing config = off.
