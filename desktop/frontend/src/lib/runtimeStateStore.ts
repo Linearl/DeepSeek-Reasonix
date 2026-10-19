@@ -59,22 +59,85 @@ export function selectRuntime(session?: RuntimeSession) {
   };
 }
 
-export function createRuntimeStateStore() {
+// 981 二轮（候选2，残余放大链 B）：runtime 通道此前零节流——活跃轮次每次
+// thinking↔streaming 翻转都 commit→notify（无上限），每个订阅方（侧栏
+// FolderActivity 逐文件夹、useRuntimeState 的停止按钮、远端树合并）都整轮
+// 重渲染（调查报告 20261019 §3.1-B）。生产单例的 commit 按 400ms 合并、
+// 窗口内只保最新一帧：60s 内 commit→notify ≤ 60000/400 = 150（验收硬条目）。
+// 状态点更新随之延迟 ≤400ms——视觉无感（本就有翻转动画）。
+export const RUNTIME_COMMIT_BATCH_MS = 400;
+
+// 内容等价判定（候选2 下半）：sessions/topics 由 acceptRuntimeState 保住未变
+// 成员的对象引用（逐元素 === 即可判等价）；revision 只是记账字段，内容等价
+// 的新投影没有可渲染的差异，跳过 notify。
+function runtimeProjectionContentEquals(current: RuntimeProjection, next: RuntimeProjection): boolean {
+  if (current.epoch !== next.epoch) return false;
+  if (current.sessions.length !== next.sessions.length || current.topics.length !== next.topics.length) return false;
+  for (let index = 0; index < current.sessions.length; index++) {
+    if (current.sessions[index] !== next.sessions[index]) return false;
+  }
+  for (let index = 0; index < current.topics.length; index++) {
+    if (current.topics[index] !== next.topics[index]) return false;
+  }
+  return true;
+}
+
+export interface RuntimeStateStoreOptions {
+  // 0（缺省）= 同步 commit，直接构造的 store（测试）保持原语义；生产单例传
+  // RUNTIME_COMMIT_BATCH_MS。
+  batchMs?: number;
+}
+
+export function createRuntimeStateStore(options?: RuntimeStateStoreOptions) {
+  const batchMs = options?.batchMs ?? 0;
   let snapshot: RuntimeProjection | undefined;
   let failed = false;
+  let pending: RuntimeProjection | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach(listener => listener());
+  const apply = (next: RuntimeProjection) => { snapshot = next; failed = false; notify(); };
+  const clearTimer = () => { if (timer !== undefined) { clearTimeout(timer); timer = undefined; } };
   return {
     getSnapshot: () => snapshot,
     getFailed: () => failed,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    fail() { if (!failed) { failed = true; notify(); } },
+    fail() {
+      // 失败比在途的合批更新更新：丢弃未落的 pending（其内容早于失败），否则
+      // 窗口结束时它会把 failed 清回 false——同步语义下「commit 后 fail」的
+      // 终态就是 failed=true，这里保持同一终态；恢复由下一次 commit/周期读完成。
+      clearTimer();
+      pending = undefined;
+      if (!failed) { failed = true; notify(); }
+    },
     commit(next: RuntimeProjection) {
       if (snapshot === next && !failed) return;
-      snapshot = next;
-      failed = false;
-      notify();
+      if (!failed && snapshot && runtimeProjectionContentEquals(snapshot, next)) {
+        // 等价内容跳过 notify；新引用仍要换上（revision 记账前移，后续 stale
+        // 判定不失真）。若在途 pending 比本次更旧且内容不同，被本次更新取代，
+        // 一并丢弃（最新帧为准）。
+        clearTimer();
+        pending = undefined;
+        snapshot = next;
+        return;
+      }
+      if (batchMs <= 0) { apply(next); return; }
+      pending = next;
+      if (timer !== undefined) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        const flushed = pending;
+        pending = undefined;
+        if (flushed !== undefined) apply(flushed);
+      }, batchMs);
+    },
+    // 立刻落地在途合批：测试的同步断言 + 生产卸载收尾用。
+    flush() {
+      clearTimer();
+      const flushed = pending;
+      pending = undefined;
+      if (flushed !== undefined) apply(flushed);
     },
   };
 }
-export const runtimeStateStore = createRuntimeStateStore();
+export const runtimeStateStore = createRuntimeStateStore({ batchMs: RUNTIME_COMMIT_BATCH_MS });

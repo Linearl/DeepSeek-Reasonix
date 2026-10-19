@@ -714,6 +714,7 @@ await import("../lib/inboxGuidanceSubmit");
       pendingPrompt: false, cancelRequested: false, cancellable: false, backgroundJobs: 0, activity: "" },
   }] };
   acceptRuntimeState(runtimeStateStore, snapshot, true);
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
   const { root } = await renderComposer({ running: false, inboxSessionPath: "session-a", onSend: () => { direct++; }, onCancel: () => { cancelled++; } });
   ok(Boolean(document.querySelector(".composer-run-strip")?.textContent?.includes("正在收尾")), "finishing is visibly announced from shared state after TurnDone");
   ok(!document.querySelector(".composer-card--running") && !document.querySelector(".composer-run-strip__dot"), "finishing does not animate as model execution");

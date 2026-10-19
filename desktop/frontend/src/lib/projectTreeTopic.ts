@@ -71,12 +71,21 @@ export function projectTreePageLoadFlipsIndicator(
 // 下一页游标就继续拉，直到取全。三条停机条件缺一不可：搜索态仍由用户显式
 // 分页（保留的按钮）；空页必须停；游标不前进必须停（防后端游标异常时无限
 // 续拉——同一游标反复请求会永远返回同一页）。
+//
+// 981 二轮（残余放大面 A，候选1 分场景）：962 的沿游标取全只在「用户主动展开 /
+// 首次挂载 / 筛选变化」（full=true，默认）时执行；catalog 事件驱动的背景刷新
+// 传 full=false —— 只要首页新鲜，恒不续拉。否则一次事件 flush 每个展开文件夹
+// 都整轮循环取全（本机 83 会话 / limit 50 → 每文件夹 2 次 ListProjectTopics，
+// 2× setTree），962 把单次刷新的成本放大成闪烁主源（调查报告 20261019 §3.1-A）。
+// 搜索态/空页/游标不前进三条 962 停机条件原样保留。
 export function projectTreeBrowsePageContinues(options: {
   query: string;
   requestCursor: string;
   nextCursor?: string;
   itemCount: number;
+  full?: boolean;
 }): boolean {
+  if (options.full === false) return false;
   if (options.query.trim()) return false;
   if (!options.nextCursor) return false;
   if (options.itemCount <= 0) return false;
@@ -127,6 +136,28 @@ export function mergeIncompleteProjectTopicPage(current: ProjectNode[], incoming
   const residentKeys = new Set(current.map((node) => node.key));
   const discovered = incoming.filter((node) => !residentKeys.has(node.key));
   return discovered.length === 0 ? current : [...current, ...discovered];
+}
+
+// 981 二轮（候选1）：事件驱动的背景刷新只取首页，这个合并必须保住已取全文件夹
+// 的尾部行——首页只有 limit 行，若按首页整体替换，超过一页的文件夹（本机 83
+// 会话 / limit 50 → 2 页）会在每次事件后收缩到 50 行，本身就是一次可见跳变
+// （闪烁回归）。合同按「首页是否已覆盖全量」分两支：
+//   ·首页无 nextCursor（首页即全量列表）：整体替换，删除/重排照常生效——
+//     背景刷新对一页内文件夹的行为与 962 前一致；
+//   ·首页仍是窗口（nextCursor 存在）：首页行以新数据替换在前，不在首页的
+//     驻留行按原序保留在后；这些行的变更等下一次全量加载（用户展开/重开）
+//     收敛，与 741 背景刷新不翻分页指示器的降级口径一致。
+export function mergeProjectTopicFirstPage(
+  current: ProjectNode[],
+  incoming: ProjectNode[],
+  options: { nextCursor?: string },
+): ProjectNode[] {
+  if (!options.nextCursor) return mergeProjectTopicPage(current, incoming, false);
+  const incomingKeys = new Set(incoming.map((node) => node.key));
+  const offPagePins = current.filter((node) => Boolean(node.pinned) && !incomingKeys.has(node.key));
+  const pinKeys = new Set(offPagePins.map((node) => node.key));
+  const residentTail = current.filter((node) => !incomingKeys.has(node.key) && !pinKeys.has(node.key));
+  return [...incoming, ...offPagePins, ...residentTail];
 }
 
 export function projectTreeTopicPageSignature(

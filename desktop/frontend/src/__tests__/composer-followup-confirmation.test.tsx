@@ -59,12 +59,13 @@ for (const phase of ["idle", "executing", "finishing"] as const) {
     InboxSnapshot: async () => ({ revision: 1, paused: false, recovered: false, items: [], itemsCount: 0, bytes: 0, maxItems: 64, maxBytes: 1024 }),
   });
   runtimeStateStore.commit(state("finishing", 1));
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
   let view = await renderComposer({ inboxSessionPath: "session-a", onSend: () => { direct++; }, onSteer: async () => { steers++; } });
   await paste("original follow-up");
   await send();
   assert.equal(posts, 1);
   assert.equal(document.querySelector(".composer__btn--send")?.getAttribute("aria-label"), "Check send result");
-  await act(async () => { acceptRuntimeState(runtimeStateStore, state(phase, 2), true); await flush(); });
+  await act(async () => { acceptRuntimeState(runtimeStateStore, state(phase, 2), true); runtimeStateStore.flush(); await flush(); });
   await send();
   assert.equal(queries, 1);
   assert.equal(posts, 1);
@@ -98,10 +99,11 @@ for (const phase of ["idle", "executing", "finishing"] as const) {
   let posts = 0;
   installBridgeApp({ EnqueueInboxFollowup: async () => { posts++; throw new Error("legacy transport outcome unknown"); } });
   runtimeStateStore.commit(state("finishing", 1));
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
   const view = await renderComposer();
   await paste("legacy follow-up");
   await send();
-  await act(async () => { runtimeStateStore.commit(state("idle", 2)); });
+  await act(async () => { runtimeStateStore.commit(state("idle", 2)); runtimeStateStore.flush(); });
   await send();
   assert.equal(posts, 1, "missing receipt capability never permits another POST");
   const pending = pendingFollowups.get(pendingSession);
@@ -117,6 +119,7 @@ for (const phase of ["idle", "executing", "finishing"] as const) {
   let posts = 0;
   installBridgeApp({ EnqueueInboxFollowup: async () => { posts++; throw new Error("reasonix_error:inbox_not_submitted"); } });
   runtimeStateStore.commit(state("finishing", 1));
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
   const view = await renderComposer();
   await paste("rejected follow-up");
   await send();
@@ -146,9 +149,10 @@ console.log("PASS: uncertain follow-up stays bound across phases, selection, edi
     },
   });
   runtimeStateStore.commit(state("finishing", 1));
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
   const view = await renderComposer({ sessionKey, onSend: () => { direct++; } });
   await paste("original task"); await send();
-  await act(async () => { runtimeStateStore.commit({ ...state("idle", 2), sessions: state("idle", 2).sessions.map(s => ({ ...s, sessionPath: "session-b" })) }); });
+  await act(async () => { runtimeStateStore.commit({ ...state("idle", 2), sessions: state("idle", 2).sessions.map(s => ({ ...s, sessionPath: "session-b" })) }); runtimeStateStore.flush(); });
   await view.rerender({ inboxSessionPath: "session-b" });
   assert.notEqual(document.querySelector(".composer__btn--send")?.getAttribute("aria-label"), "Check send result");
   await send();
@@ -169,6 +173,7 @@ console.log("PASS: uncertain follow-up stays bound across phases, selection, edi
   let posts = 0;
   installBridgeApp({ EnqueueInboxFollowup: async () => { posts++; } });
   runtimeStateStore.commit(state("finishing", 1));
+  runtimeStateStore.flush(); // 981 二轮：单例 commit 已合批，测试同步断言前显式落地
   const view = await renderComposer({ inboxSessionPath: undefined });
   await paste("path not bound"); await send();
   assert.equal(posts, 0, "unknown durable identity cannot fall back to a topic key");
