@@ -14,6 +14,7 @@ import { useRemoteStore } from "../store/remote";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useConfirmDialog } from "./ConfirmDialog";
 import ForkFeaturesIntroDialog from "./ForkFeaturesIntroDialog";
+import LabBulkToggleDialog from "./LabBulkToggleDialog";
 
 // Autopilot runs unattended, so it needs a wall-clock bound; this is the value the
 // settings switch falls back to when the user turns it on without typing one.
@@ -2268,6 +2269,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // is a pure display preference (localStorage, no experimental_* chain — it
   // never touches switch semantics or persistence, task 359 / rule 2).
   const [introOpen, setIntroOpen] = useState(false);
+  // 任务 1006：实验室快捷批量开关弹窗（范围×行为+重启两选项）。
+  const [labBulkOpen, setLabBulkOpen] = useState(false);
   // 任务 764：搜索直达（focusEntry）时目标组直接展开挂载；无直达时维持
   // 359 契约——全部组默认折叠。
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<LabGroupKey>>(() => {
@@ -2491,6 +2494,16 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   Two keys (on/off), both languages, switched by aria state. */}
               <span>{t(enabledFirst ? "settings.lab.enabledFirst.on" : "settings.lab.enabledFirst.off")}</span>
             </button>
+            {/* 任务 1006：快捷批量开关入口（与显示顺序开关同排）——点开
+                范围×行为弹窗，确认后写配置并给重启两选项。 */}
+            <button
+              type="button"
+              className="experimental-lab__bulk-toggle"
+              aria-haspopup="dialog"
+              onClick={() => setLabBulkOpen(true)}
+            >
+              {t("settings.labBulk.button")}
+            </button>
           </div>
           {/* 任务 764（用户 0325 裁决）：顶部带计数筛选 chips 已删除——它与
               下方 rail 内的分组目录 toc 视觉几乎相同（同款 999px 胶囊），目标
@@ -2580,6 +2593,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             </div>
           ) : null}
           {fullAccessDialog}
+          {/* 任务 1006：批量开关弹窗（portal 到 body，529 教训——rail 在滚动
+              容器内，portal 才不被裁剪）。 */}
+          {labBulkOpen ? <LabBulkToggleDialog t={t} onClose={() => setLabBulkOpen(false)} /> : null}
           {/* 任务 775：kind:param 参数卡通用 pane——布局里已登记的参数卡走
               这份数据渲染（字段形态按 field.input 分派，值读写走注册表）；
               未登记参数仍走下方各硬编码分支兜底（渐进迁移，登记一张删一张）。 */}
