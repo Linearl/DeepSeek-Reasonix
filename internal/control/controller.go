@@ -4526,6 +4526,10 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 	c.rebindInbox()
 	c.recoverCheckpointTransactions()
 	c.recoverInterruptedTurn(path)
+	// 任务 1011: recoverInterruptedTurn 已在 emitHeadEvents 里完成 head 级
+	// 自愈（更长且更新链的自动切换）；这里补跑剩余判据（投影超窗的本地饮
+	// 食）。开关关闭时整个函数第一行就返回——现状（只提示）零变化。
+	c.selfHealAfterResume(path)
 	c.maybeColdResumePrune(path)
 	// Task 67: another Reasonix instance holds this session's write lease.
 	// Saving still uses last-writer-wins + recovery fork by design; surfacing

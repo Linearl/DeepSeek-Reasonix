@@ -85,8 +85,8 @@ type SelfHealReport struct {
 	Repaired bool `json:"repaired"`
 }
 
-// repairLogRecord is one line of <stem>.repairlog.jsonl.
-type repairLogRecord struct {
+// RepairRecord is one line of <stem>.repairlog.jsonl.
+type RepairRecord struct {
 	At        string           `json:"at"`
 	Path      string           `json:"path"`
 	BackupDir string           `json:"backup_dir,omitempty"`
@@ -177,7 +177,7 @@ func SelfHealSessionContext(ctx context.Context, path string, opts SelfHealOptio
 	report.Healthy = after.Healthy
 
 	// 修复记录：判据读数、动作、前后状态、备份路径，一行一条追加。
-	writeRepairLogRecord(path, repairLogRecord{
+	writeRepairLogRecord(path, RepairRecord{
 		At:        time.Now().UTC().Format(time.RFC3339),
 		Path:      path,
 		BackupDir: backupDir,
@@ -188,10 +188,17 @@ func SelfHealSessionContext(ctx context.Context, path string, opts SelfHealOptio
 	return report, nil
 }
 
-// backupSessionFiles copies every sibling file sharing the session's stem
-// into <stem>.pre-repair-<UTC compact>/ beside it. Only regular files are
-// copied; the backup dir itself is excluded by construction (it is a
-// directory, and its name carries the suffix).
+// BackupSessionFiles copies every sibling file sharing the session's stem
+// into <stem>.pre-repair-<UTC compact>/ beside it and returns the directory.
+// Exported for the open-session heal: the controller backs up before a diet
+// just like SelfHealSession does before its own steps.
+func BackupSessionFiles(path string) (string, error) {
+	return backupSessionFiles(path)
+}
+
+// backupSessionFiles copies every regular sibling of the session stem into
+// the backup directory. The backup dir itself is excluded by construction
+// (it is a directory, and its name carries the suffix).
 func backupSessionFiles(path string) (string, error) {
 	stem := sessionFileStem(path)
 	if stem == "" {
@@ -324,38 +331,8 @@ func dietSessionProjection(ctx context.Context, path string, windowTokens int) (
 		return nil, "load failed: " + err.Error()
 	}
 	msgs := s.Snapshot()
-	tokens := estimateProjectionTokens(msgs)
-	if tokens < int(float64(windowTokens)*projectionOverflowRatio) {
-		return nil, fmt.Sprintf("projection_tokens=%d window_tokens=%d already fits", tokens, windowTokens)
-	}
-
-	imgBytes := projectionImageBytes(msgs)
-	dieted := stripMessageImages(msgs)
-	tokensAfterStrip := estimateProjectionTokens(dieted)
-	acts := []SelfHealAction{}
-	if imgBytes > 0 {
-		acts = append(acts, SelfHealAction{
-			Action: HealActionStripImages, Status: "done",
-			Detail: fmt.Sprintf("images_bytes=%d tokens_before=%d tokens_after=%d", imgBytes, tokens, tokensAfterStrip),
-		})
-	} else {
-		acts = append(acts, SelfHealAction{Action: HealActionStripImages, Status: "skipped", Detail: "no embedded images"})
-	}
-
-	// 折叠：把保留窗口之外的旧消息折成一条本地占位。预算取窗口的 60%：
-	// 估算器偏保守，留出系统提示、工具框架与下一次请求的输出余量。
-	budget := int(float64(windowTokens) * 0.6)
-	folded, foldedCount := foldProjectionTail(dieted, budget)
-	if foldedCount > 0 {
-		acts = append(acts, SelfHealAction{
-			Action: HealActionFold, Status: "done",
-			Detail: fmt.Sprintf("folded=%d tokens_after_fold=%d budget=%d", foldedCount, estimateProjectionTokens(folded), budget),
-		})
-	} else {
-		acts = append(acts, SelfHealAction{Action: HealActionFold, Status: "skipped", Detail: "tail already within budget"})
-	}
-
-	if len(acts) == 2 && acts[0].Status == "skipped" && acts[1].Status == "skipped" {
+	folded, acts, changed := DietSessionMessages(msgs, windowTokens)
+	if !changed {
 		return nil, "nothing to strip or fold"
 	}
 	s.Rewrite(folded, "selfheal_diet")
@@ -367,6 +344,61 @@ func dietSessionProjection(ctx context.Context, path string, windowTokens int) (
 		return acts, ""
 	}
 	return acts, ""
+}
+
+// DietSessionMessages is the pure-local projection diet as a pure function:
+// strip embedded image payloads, then fold the over-budget old messages into
+// one placeholder. changed is false when the projection already fits — the
+// caller then writes nothing. The caller owns persistence (Rewrite +
+// SaveRewriteCompact for a live session; dietSessionProjection for a closed
+// one), so the same diet serves both the open-session heal and the file heal.
+func DietSessionMessages(msgs []provider.Message, windowTokens int) (folded []provider.Message, actions []SelfHealAction, changed bool) {
+	if windowTokens <= 0 {
+		windowTokens = defaultHealthWindowTokens
+	}
+	tokens := estimateProjectionTokens(msgs)
+	if tokens < int(float64(windowTokens)*projectionOverflowRatio) {
+		return msgs, nil, false
+	}
+
+	imgBytes := projectionImageBytes(msgs)
+	dieted := stripMessageImages(msgs)
+	tokensAfterStrip := estimateProjectionTokens(dieted)
+	actions = []SelfHealAction{}
+	if imgBytes > 0 {
+		actions = append(actions, SelfHealAction{
+			Action: HealActionStripImages, Status: "done",
+			Detail: fmt.Sprintf("images_bytes=%d tokens_before=%d tokens_after=%d", imgBytes, tokens, tokensAfterStrip),
+		})
+	} else {
+		actions = append(actions, SelfHealAction{Action: HealActionStripImages, Status: "skipped", Detail: "no embedded images"})
+	}
+
+	// 折叠：把保留窗口之外的旧消息折成一条本地占位。预算取窗口的 60%：
+	// 估算器偏保守，留出系统提示、工具框架与下一次请求的输出余量。
+	budget := int(float64(windowTokens) * 0.6)
+	folded, foldedCount := foldProjectionTail(dieted, budget)
+	if foldedCount > 0 {
+		actions = append(actions, SelfHealAction{
+			Action: HealActionFold, Status: "done",
+			Detail: fmt.Sprintf("folded=%d tokens_after_fold=%d budget=%d", foldedCount, estimateProjectionTokens(folded), budget),
+		})
+	} else {
+		actions = append(actions, SelfHealAction{Action: HealActionFold, Status: "skipped", Detail: "tail already within budget"})
+	}
+	if actsAllSkipped(actions) {
+		return msgs, nil, false
+	}
+	return folded, actions, true
+}
+
+func actsAllSkipped(actions []SelfHealAction) bool {
+	for _, a := range actions {
+		if a.Status != "skipped" {
+			return false
+		}
+	}
+	return true
 }
 
 // stripMessageImages replaces embedded data-URL payloads with a short local
@@ -443,7 +475,7 @@ func foldProjectionTail(msgs []provider.Message, budgetTokens int) ([]provider.M
 // writeRepairLogRecord appends one JSON line to <stem>.repairlog.jsonl. A
 // failed log write must never fail the repair itself — the log is the
 // audit trail, not the fix.
-func writeRepairLogRecord(path string, rec repairLogRecord) {
+func writeRepairLogRecord(path string, rec RepairRecord) {
 	logPath := sessionSiblingPath(path, selfHealRepairLogSuffix)
 	if logPath == "" {
 		return
@@ -464,10 +496,28 @@ func writeRepairLogRecord(path string, rec repairLogRecord) {
 	}
 }
 
+// WriteSelfHealRepairRecord appends one externally-executed repair to the
+// session's repair log, so the open-session heal (controller side) and the
+// file heal share one audit trail.
+func WriteSelfHealRepairRecord(path, backupDir string, actions []string, before string) {
+	acts := make([]SelfHealAction, 0, len(actions))
+	for _, name := range actions {
+		acts = append(acts, SelfHealAction{Action: name, Status: "done"})
+	}
+	writeRepairLogRecord(path, RepairRecord{
+		At:        time.Now().UTC().Format(time.RFC3339),
+		Path:      path,
+		BackupDir: backupDir,
+		Actions:   acts,
+		Before:    before,
+		After:     "healthy",
+	})
+}
+
 // ListSessionRepairRecords reads the repair log of one session, oldest
 // first. A missing log is an empty list, not an error — healthy sessions
 // never grew one.
-func ListSessionRepairRecords(path string) ([]repairLogRecord, error) {
+func ListSessionRepairRecordsFor(path string) ([]RepairRecord, error) {
 	logPath := sessionSiblingPath(strings.TrimSpace(path), selfHealRepairLogSuffix)
 	if logPath == "" {
 		return nil, nil
@@ -480,10 +530,10 @@ func ListSessionRepairRecords(path string) ([]repairLogRecord, error) {
 		return nil, err
 	}
 	defer f.Close()
-	var out []repairLogRecord
+	var out []RepairRecord
 	dec := json.NewDecoder(f)
 	for {
-		var rec repairLogRecord
+		var rec RepairRecord
 		if err := dec.Decode(&rec); err != nil {
 			if err == io.EOF {
 				break

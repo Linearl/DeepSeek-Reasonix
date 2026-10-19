@@ -357,6 +357,24 @@ func (c *Controller) emitHeadEvents() {
 			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionHeadSwitched,
 				"opened the newest version of this conversation; other saved versions are available in View versions"))
 		case agent.HeadEventSelectedHeadBehind:
+			// 任务 1011: with the self-heal on, the dominated head is not
+			// just reported — the controller switches to the strictly longer
+			// and newer chain right here (the same SwitchBranch the versions
+			// panel uses, so the old version stays and the move is
+			// reversible). With the heal off this stays the 1010 observation.
+			if sessionSelfHealActive() {
+				if _, err := c.SwitchBranch(ev.OtherHeadID); err == nil {
+					notice := sessionRecoveryNotice(event.NoticeCodeSessionSelfHealed,
+						"opened the newer, longer version of this conversation automatically; the previous version is kept and reversible from View versions")
+					notice.Detail = fmt.Sprintf("actions=%s from=%s(%d) to=%s(%d)", agent.HealActionPromoteHead,
+						ev.HeadID, ev.Messages, ev.OtherHeadID, ev.OtherMessages)
+					c.sink.Emit(notice)
+					agent.WriteSelfHealRepairRecord(c.SessionPath(), "", []string{agent.HealActionPromoteHead},
+						string(agent.HealthHeadLag))
+					continue
+				}
+				// 切换失败：落回 1010 的只读提示，绝不在失败时静默。
+			}
 			// 任务 1010 需求 4: name both chains' readings so the user can see
 			// which version is longer and newer; switching is manual. The
 			// Detail carries the readings as key=value pairs the frontend

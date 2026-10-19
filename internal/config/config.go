@@ -705,6 +705,15 @@ func (c *Config) SubagentMessagingEnabled() bool {
 	return c == nil || c.Agent.ExperimentalSubagentMessaging == nil || *c.Agent.ExperimentalSubagentMessaging
 }
 
+// SessionSelfHealEnabled reports whether the built-in session self-heal
+// (任务 1011) is lit. Nil means ON — same ruling as SubagentMessaging: the
+// 1010 detection layer is already in production shape, 1011 only adds the
+// repair actions behind the same readings; an explicit false returns the
+// read-only posture (notices stay, zero data changes).
+func (c *Config) SessionSelfHealEnabled() bool {
+	return c == nil || c.Agent.ExperimentalSessionSelfHeal == nil || *c.Agent.ExperimentalSessionSelfHeal
+}
+
 // ToolOptimizationsEnabled reports whether the "工具优化" tool family is lit
 // (task 603/915). The field is a *bool with panel-layer default-on: nil (key
 // absent) reads as OFF here so the boot surface stays byte-identical to the
@@ -1741,6 +1750,15 @@ type AgentConfig struct {
 	// continue_from — the pre-616 surface byte for byte. Applies on restart
 	// (boot snapshot), like every boot-resolved switch.
 	ExperimentalSubagentMessaging *bool `toml:"experimental_subagent_messaging"`
+	// ExperimentalSessionSelfHeal keeps the built-in session self-heal
+	// (任务 1011): on open, a conversation whose selected head is strictly
+	// dominated by a longer, newer chain gets switched to that chain, and an
+	// over-window projection gets the local diet (strip embedded images, fold
+	// old messages) — every step backed up first, logged to the repair log,
+	// reversible from the versions panel. Nil means ON (现场两连：1010 检测
+	// 已在，1011 只补修复动作)；an explicit false returns the 1010 posture —
+	// read-only notices, zero data changes.
+	ExperimentalSessionSelfHeal *bool `toml:"experimental_session_selfheal"`
 	// ExperimentalFullAccess is the "full access (yolo)" lab switch (task 257).
 	// On passes every declared write directory through the preflight and the
 	// desktop gate without authorization, and runs bash unwrapped. The zero

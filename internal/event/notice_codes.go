@@ -63,6 +63,16 @@ const (
 	// points at the manual fix-conversation entry (任务 1011); nothing in the
 	// detection path ever writes a session file.
 	NoticeCodeSessionMaterializationLag = "session_materialization_lag"
+	// 任务 1011: the self-heal ran on this conversation and made it usable
+	// again — head re-selected to the longer, newer chain and/or the
+	// projection dieted (images stripped, old messages folded). Detail
+	// carries action=key=value readings; every moved-aside version stays in
+	// the versions panel, so the heal is reversible.
+	NoticeCodeSessionSelfHealed = "session_selfhealed"
+	// 任务 1011: consecutive compaction passes keep failing at runtime. The
+	// notice only reports the streak; the local projection diet runs on the
+	// open-session heal or a manual repair, never mid-turn.
+	NoticeCodeSessionCompactFailStreak = "session_compact_fail_streak"
 	NoticeCodeSessionAlsoOpen                                   = "session_also_open"
 	NoticeCodeCompletionUncertain                               = "completion_uncertain"
 	NoticeCodeIncompleteReadDetected                            = "incomplete_read_detected"

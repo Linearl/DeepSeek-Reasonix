@@ -192,7 +192,7 @@ func Test1011SelfHealPromotesHeadAndHydratesCheckpoint(t *testing.T) {
 	if !logSeen {
 		t.Fatal("repair must leave a repair log")
 	}
-	records, err := ListSessionRepairRecords(path)
+	records, err := ListSessionRepairRecordsFor(path)
 	if err != nil || len(records) != 1 {
 		t.Fatalf("repair records = %d err=%v, want 1", len(records), err)
 	}

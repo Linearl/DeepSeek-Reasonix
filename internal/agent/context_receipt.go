@@ -189,6 +189,15 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
 		Trigger: trigger, Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
 	}})
+	// 任务 1011 检测路 3（运行中压缩连败）：连败达到阈值时发一条用户可见
+	// 提示——只报告读数，不改数据；修复动作（剥图+折叠饮食）由打开会话的
+	// 自愈或手动修复执行，绝不在进行中的 turn 上动投影。
+	if attempt == compactFailStreakThreshold {
+		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
+			Code: event.NoticeCodeSessionCompactFailStreak,
+			Text: fmt.Sprintf("context compaction has failed %d times in a row; the conversation may overflow its window — reopening the conversation lets the local self-heal strip images and fold old messages", int(attempt)),
+			Detail: fmt.Sprintf("streak=%d threshold=%d trigger=%s", int(attempt), compactFailStreakThreshold, trigger)})
+	}
 }
 
 // emitCompactionSucceeded stamps the success outcome and resets the streak.
