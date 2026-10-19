@@ -1,23 +1,11 @@
 // Package reminder is the durable in-session delayed self-reminder queue
-// (task 1001): a conversation can schedule "remind me of X in N minutes" and
-// the entry fires back into the same session's inbox when due.
-//
-// Design (方案 B of the tl 1001 comparison report):
-//   - One <stem>.reminders/reminders.json file per session holds every pending
-//     entry. Set is durable before the tool returns, so a crash or app restart
-//     never loses an alarm — the hard cross-restart promise.
-//   - The process-side timer lives in Manager (reminder.go's sibling): the
-//     controller scans the store when a session binds and re-arms pending
-//     timers; entries found already overdue are delivered immediately with an
-//     explicit catch-up annotation.
-//   - Due entries are delivered through the controller's follow-up enqueue,
-//     which rides the 任务579 idle-turn bridge — the reminder path never goes
-//     through talk_to_session, so the cross-session receipt face (and its
-//     to==from self-send detection, tl 1000) is structurally untouched.
-//
-// The queue is deliberately NOT the sessioninbox: the inbox is a
-// deliver-on-arrival queue, reminders are a delayed scheduler. Different
-// lifecycles, separate files, separate schemas.
+// (task 1001): a conversation schedules "remind me of X in N minutes" and the
+// entry fires back into the same session when due. One <stem>.reminders/
+// file per session holds the pending entries; Set commits before returning,
+// so a restart never loses an alarm — the controller re-scans the queue on
+// bind (pending re-arm, overdue deliver late with an annotation). Due
+// entries ride the controller's follow-up enqueue (任务579 idle-turn bridge),
+// never talk_to_session; this is a delayed scheduler, not the inbox.
 package reminder
 
 import (
@@ -262,7 +250,7 @@ func mutate(sessionPath string, fn func(*queue) error) error {
 	// for a few milliseconds; retry briefly so a consumed entry is really
 	// removed — a half-removed entry would re-deliver on the next scan.
 	var renameErr error
-	for attempt := 0; attempt < 5; attempt++ {
+	for range 5 {
 		if renameErr = os.Rename(tmp, filepath.Join(dir, fileName)); renameErr == nil {
 			return nil
 		}

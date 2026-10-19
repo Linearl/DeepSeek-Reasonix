@@ -19,11 +19,9 @@ import (
 
 func reminderTestController(t *testing.T) (*Controller, string) {
 	t.Helper()
-	// Manual temp dir with best-effort cleanup: the controller's background
-	// pump goroutines can still hold inbox blobs for a few milliseconds after
-	// the assertions pass, and t.TempDir's strict RemoveAll then fails the
-	// test on Windows ("directory is not empty") even though the test itself
-	// is green.
+	// Manual temp dir with best-effort cleanup: background pump goroutines
+	// can still hold inbox blobs briefly after the assertions pass, and
+	// t.TempDir's strict RemoveAll would fail the test on Windows.
 	dir, err := os.MkdirTemp("", "remindertest")
 	if err != nil {
 		t.Fatal(err)
@@ -111,8 +109,8 @@ func TestReminderDueDeliversIntoInbox(t *testing.T) {
 	_ = r
 }
 
-// TestReminderRestartScanDeliversLateWithAnnotation covers 验收①: an entry set
-// before a restart is picked up by the new controller's bind scan and
+// TestReminderRestartScanDeliversLateWithAnnotation covers 验收①: an entry
+// set before a restart is picked up by the new controller's bind scan and
 // delivered with the explicit catch-up annotation.
 func TestReminderRestartScanDeliversLateWithAnnotation(t *testing.T) {
 	c, session := reminderTestController(t)

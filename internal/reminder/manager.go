@@ -48,9 +48,8 @@ func (m *Manager) SetNowFunc(now func() time.Time) {
 
 // Sync scans the session's durable queue and re-arms every pending entry:
 // future entries get a timer at their due time, already-overdue entries fire
-// immediately with the catch-up annotation. Call on session bind / rebind.
-// Sync replaces the whole prior timer set first — entries may have changed on
-// disk while the session was away, and only what the file holds now may fire.
+// immediately with the catch-up annotation. Sync replaces the whole prior
+// timer set first — only what the file holds now may fire.
 func (m *Manager) Sync(sessionPath string) {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
@@ -58,10 +57,8 @@ func (m *Manager) Sync(sessionPath string) {
 	}
 	entries, err := List(sessionPath)
 	if err != nil {
-		// The queue file is per-session auxiliary state; a broken file must
-		// not break session bind. Loud log, no timers — the next successful
-		// Set re-syncs. Prior timers are left alone here: dropping them on a
-		// read failure would silently cancel alarms the file may still hold.
+		// Broken queue file must not break session bind: loud log, no timers,
+		// prior timers untouched — the next successful Set re-syncs.
 		slog.Warn("reminder: sync queue", "session", sessionPath, "err", err)
 		return
 	}
@@ -146,11 +143,9 @@ func (m *Manager) armLocked(sessionPath string, r Reminder, nowMillis int64) {
 		// Already overdue (restart catch-up, or the process slept past the
 		// due time): fire immediately, marked late.
 		r.FiredLate = true
-		m.wg.Add(1)
-		go func() {
-			defer m.wg.Done()
+		m.wg.Go(func() {
 			m.deliver(sessionPath, r)
-		}()
+		})
 		return
 	}
 	id := r.ID
@@ -158,10 +153,8 @@ func (m *Manager) armLocked(sessionPath string, r Reminder, nowMillis int64) {
 		m.mu.Lock()
 		delete(m.timers, id)
 		m.mu.Unlock()
-		m.wg.Add(1)
-		go func() {
-			defer m.wg.Done()
+		m.wg.Go(func() {
 			m.deliver(sessionPath, r)
-		}()
+		})
 	})
 }

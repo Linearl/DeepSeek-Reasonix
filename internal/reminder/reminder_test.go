@@ -146,7 +146,7 @@ func TestListSortedByDueAt(t *testing.T) {
 func TestSetQueueFull(t *testing.T) {
 	session := testSession(t)
 	now := time.Now()
-	for i := 0; i < MaxPending; i++ {
+	for i := range MaxPending {
 		if _, err := Set(session, "m", now.Add(time.Duration(i+1)*time.Minute), now); err != nil {
 			t.Fatalf("set %d: %v", i, err)
 		}

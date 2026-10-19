@@ -12,10 +12,9 @@ import (
 )
 
 type deliveryLog struct {
-	mu     sync.Mutex
-	seen   []Reminder
-	paths  []string
-	closed bool
+	mu    sync.Mutex
+	seen  []Reminder
+	paths []string
 }
 
 func (l *deliveryLog) record(path string, r Reminder) {
