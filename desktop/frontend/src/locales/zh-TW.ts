@@ -1702,11 +1702,14 @@ export const zhTW: Record<DictKey, string> = {
   "settings.labGroup.onCount": "{n} 開",
   // 任務 626: 組頭項數徽章（與篩選 chips 同源 labGroupTotals）。
   "settings.labGroup.itemCount": "{n} 項",
+  // 任務 1005：穩定 = 經發布驗證的預設能力（第四檔，徽章權威口徑）。
+  "settings.labTier.stable": "穩定",
   "settings.labTier.recommended": "推薦",
   "settings.labTier.optional": "可選",
   "settings.labTier.unstable": "未穩定",
   "settings.labTier.retired": "已退役",
-  // 任務 621：徽章 tooltip（檔位含義，口徑 2026-10-06 用戶定）
+  // 任務 621：徽章 tooltip（檔位含義，口徑 2026-10-06 用戶定；1005 增穩定檔）
+  "settings.labTier.stable.desc": "經發布驗證的預設能力，預設開啟（關閉需先啟用開發者模式）",
   "settings.labTier.recommended.desc": "核心特性，不開啟會有體驗缺口",
   "settings.labTier.optional.desc": "非核心增強，不開啟僅小幅影響",
   "settings.labTier.unstable.desc": "開發測試中，開啟可能不穩定",
@@ -1752,6 +1755,17 @@ export const zhTW: Record<DictKey, string> = {
   "settings.modelCapabilityFilter.value": "目前值：{value}（唯讀展示，鍵已退役）",
   "settings.lab.enabledFirst.on": "【未啟用項】沉底：開（啟用項在前）",
   "settings.lab.enabledFirst.off": "【未啟用項】沉底：關（原始順序）",
+  // 任務 1005：開發者模式——單項解鎖，作用域僅穩定檔（頁面偏好存
+  // localStorage，無配置鍵）。標籤顯示目前態（361 紀律，同 enabledFirst）。
+  "settings.lab.devMode.on": "開發者模式：開（允許關閉穩定能力）",
+  "settings.lab.devMode.off": "開發者模式：關（穩定能力受保護）",
+  // 開發者模式開時 toggle 旁小字（僅開發者模式可見，只提示不彈窗）。
+  "settings.lab.devMode.disabledCount": "檢測到你手動關閉了 {n} 個穩定能力；關閉期間不保證相容性和穩定性",
+  // 禁用行兩分支文案（1005 定稿 ⑤）：按儲存值分支。
+  "settings.lab.stable.lockedOn": "穩定能力已預設開啟；關閉需先啟用開發者模式",
+  "settings.lab.stable.lockedOff": "你曾手動關閉此穩定能力；恢復需先啟用開發者模式",
+  // 開發者模式解鎖態，穩定卡內警示行。
+  "settings.lab.stable.devWarning": "開發者模式已解鎖此穩定能力；關閉不保證相容性和穩定性",
   "settings.lab.tocLabel": "分組目錄",
   "settings.forkFeaturesIntro.title": "Fork 功能速覽",
   "settings.forkFeaturesIntro.lead": "以下改進已在各處生效，無需開關；每條註明在哪裡找到。",

@@ -2182,11 +2182,14 @@ export const zh: Record<DictKey, string> = {
   "settings.labGroup.onCount": "{n} 开",
   // 任务 626: 组头项数徽章（与筛选 chips 同源 labGroupTotals）。
   "settings.labGroup.itemCount": "{n} 项",
+  // 任务 1005：稳定 = 经发布验证的默认能力（第四档，徽章权威口径）。
+  "settings.labTier.stable": "稳定",
   "settings.labTier.recommended": "推荐",
   "settings.labTier.optional": "可选",
   "settings.labTier.unstable": "未稳定",
   "settings.labTier.retired": "已退役",
-  // 任务 621：徽章 tooltip（档位含义，口径 2026-10-06 用户定）
+  // 任务 621：徽章 tooltip（档位含义，口径 2026-10-06 用户定；1005 增稳定档）
+  "settings.labTier.stable.desc": "经发布验证的默认能力，默认开启（关闭需先启用开发者模式）",
   "settings.labTier.recommended.desc": "核心特性，不开启会有体验缺口",
   "settings.labTier.optional.desc": "非核心增强，不开启仅小幅影响",
   "settings.labTier.unstable.desc": "开发测试中，开启可能不稳定",
@@ -2232,6 +2235,17 @@ export const zh: Record<DictKey, string> = {
   "settings.modelCapabilityFilter.value": "当前值：{value}（只读展示，键已退役）",
   "settings.lab.enabledFirst.on": "【未启用项】沉底：开（启用项在前）",
   "settings.lab.enabledFirst.off": "【未启用项】沉底：关（原始顺序）",
+  // 任务 1005：开发者模式——单项解锁，作用域仅稳定档（页面偏好存
+  // localStorage，无配置键）。标签显示当前态（361 纪律，同 enabledFirst）。
+  "settings.lab.devMode.on": "开发者模式：开（允许关闭稳定能力）",
+  "settings.lab.devMode.off": "开发者模式：关（稳定能力受保护）",
+  // 开发者模式开时 toggle 旁小字（仅开发者模式可见，只提示不弹窗）。
+  "settings.lab.devMode.disabledCount": "检测到你手动关闭了 {n} 个稳定能力；关闭期间不保证兼容性和稳定性",
+  // 禁用行两分支文案（1005 定稿 ⑤）：按存储值分支。
+  "settings.lab.stable.lockedOn": "稳定能力已默认开启；关闭需先启用开发者模式",
+  "settings.lab.stable.lockedOff": "你曾手动关闭此稳定能力；恢复需先启用开发者模式",
+  // 开发者模式解锁态，稳定卡内警示行。
+  "settings.lab.stable.devWarning": "开发者模式已解锁此稳定能力；关闭不保证兼容性和稳定性",
   "settings.lab.tocLabel": "分组目录",
   "settings.forkFeaturesIntro.title": "Fork 特性速览",
   "settings.forkFeaturesIntro.lead": "以下改进已在各处生效，无需开关；每条注明在哪里找到。",

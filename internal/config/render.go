@@ -19,12 +19,14 @@ const (
 	RenderScopeProject RenderScope = "project"
 )
 
-// ─── 实验室三档徽章注册表（任务 562，落点 A：与渲染表同文件同源）──────────
+// ─── 实验室档位徽章注册表（任务 562，落点 A：与渲染表同文件同源）──────────
 //
 // 权威数据：workspace xlsx 表A「实验室特性-档位与图墙-20261006」推荐等级列
-// （46 项：推荐 15 / 可选 20 / 未稳定 10 / 已退役 1）。用户口径：推荐 = 核心
-// 特性，不开启会有体验缺口；可选 = 非核心，不开启只小幅影响；未稳定 = 开发
-// 测试中，开启可能不稳定；已退役 = 开关已退役（只读展示，见任务 551/564）。
+// （46 项：推荐 15 / 可选 20 / 未稳定 10 / 已退役 1）。用户口径：稳定 = 经
+// 发布验证的默认能力（任务 1005 新增第四档，徽章权威口径随之升级）；推荐 =
+// 核心特性，不开启会有体验缺口；可选 = 非核心，不开启只小幅影响；未稳定 =
+// 开发测试中，开启可能不稳定；已退役 = 开关已退役（只读展示，见任务
+// 551/564）。
 //
 // 与 81/123 渲染表防线同源：每个条目的 renderKeys 必须覆盖该特性在渲染表
 // 中的全部开关键。render_lab_tiers_test.go 是门禁——渲染表新出现一个未在
@@ -33,6 +35,10 @@ const (
 type LabTier string
 
 const (
+	// LabTierStable 稳定：经发布验证的默认能力（任务 1005 批1 转档）。进徽章
+	// 权威口径；桌面端默认开启且开关呈禁用态（开发者模式单项解锁，作用域仅
+	// 稳定档），config 手写显式 false 仍生效（C4 kill switch，见 config.Default）。
+	LabTierStable      LabTier = "stable"
 	LabTierRecommended LabTier = "recommended" // 推荐：不开启致体验缺口
 	LabTierOptional    LabTier = "optional"    // 可选：不开启只小幅影响
 	LabTierUnstable    LabTier = "unstable"    // 未稳定：开启可能不稳定
@@ -47,9 +53,12 @@ type labFeatureTier struct {
 
 var labFeatureTiers = []labFeatureTier{
 	// ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
-	{"autopilot", LabTierRecommended, []string{"autopilot", "experimental_autopilot_ask_timeout"}}, // ask-timeout 为 task 477 家族子键
-	{"sessionCollab", LabTierRecommended, []string{"experimental_session_collab"}},
-	{"fullAccess", LabTierRecommended, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
+	// 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（以及 infra
+	// 段 runtimeReuse）三推荐升「稳定」——C1~C5 判据见任务书；稳定 = 默认开
+	// （config.Default）+ 桌面开关禁用态（开发者模式解锁）+ 手写 false 保留。
+	{"autopilot", LabTierStable, []string{"autopilot", "experimental_autopilot_ask_timeout"}}, // ask-timeout 为 task 477 家族子键
+	{"sessionCollab", LabTierStable, []string{"experimental_session_collab"}},
+	{"fullAccess", LabTierStable, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
 	{"dream", LabTierOptional, []string{"experimental_dream"}},
 	// 任务 801：决策模式自动提取（提取链+固化链，默认关）。归自动化组——产物
 	// 服务于 autopilot 的决策边界（决策模式文件+注入），与 dream 同为记忆
@@ -139,7 +148,9 @@ var labFeatureTiers = []labFeatureTier{
 	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
 	{"homePointer", LabTierUnstable, []string{"experimental_home_pointer"}},
 	// ── infra（基础设施，7 项；785 退役 S1 常驻底座开关，790 增 acpListen）──────
-	{"runtimeReuse", LabTierRecommended, []string{"experimental_runtime_reuse"}}, // 任务 992：用户 1018 升推荐（复用池稳定运行一段时间无问题，不开启有体验缺口）
+	// 任务 1005 批1 转档：runtimeReuse 随 autopilot/sessionCollab/fullAccess
+	// 一同入「稳定」档（992 刚升推荐的四项中的第四项，用户 1018 拍板批1）。
+	{"runtimeReuse", LabTierStable, []string{"experimental_runtime_reuse"}},
 	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
 	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}},               // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
 	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验

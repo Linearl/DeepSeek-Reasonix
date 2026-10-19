@@ -4116,8 +4116,14 @@ a[href] {
 .experimental-lab__intro-chevron { color: var(--fg-faint); font-size: var(--text-xs); }
 .experimental-lab__intro-toggle--open { border-color: color-mix(in srgb, var(--accent) 35%, var(--border-soft)); }
 
-/* Task 359 (③): "disabled items last" display-order switch row. */
-.experimental-lab__order-row { display: flex; margin-top: 6px; gap: 6px; }
+/* Task 359 (③): "disabled items last" display-order switch row.
+   任务 1005: the developer-mode toggle rides the same row shape; the small
+   print next to it shows only while developer mode is on (notice, never a
+   dialog).
+   合并注记（批 1005 × 已合 1006）：本行现同排承载 顺序开关(359) + 批量开关入口(1006)
+   + 开发者模式开关(1005)；间距/对齐取 1005 侧（align-items:center; gap:10px），
+   1006 侧的 bulk-toggle 靠 margin-left:auto 自行右靠，不受 gap 变化影响。 */
+.experimental-lab__order-row { display: flex; margin-top: 6px; align-items: center; gap: 10px; }
 /* 任务 1006：批量开关入口（与顺序开关同排胶囊）；确认弹窗样式见
    .lab-bulk-dialog 段（lab-pick-dialog 复用面之后）。 */
 .experimental-lab__bulk-toggle {
@@ -4133,6 +4139,14 @@ a[href] {
   margin-left: auto;
 }
 .experimental-lab__bulk-toggle:hover { background: color-mix(in srgb, var(--bg-elev) 70%, transparent); color: var(--fg); }
+.experimental-lab__devmode-hint {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+/* 任务 1005: the stable-pane warning line while developer mode is unlocked —
+   same hint-line shape, warn tint so the "no compatibility guarantee" copy
+   reads as a caution, not a description. */
+.experimental-lab__stable-warning { color: var(--warn, #d9a441); }
 .experimental-lab__order-toggle {
   display: inline-flex;
   align-items: center;
@@ -4263,6 +4277,14 @@ a[href] {
   vertical-align: middle;
   white-space: nowrap;
   flex-shrink: 0;
+}
+/* 任务 1005: lab tier badges gain the 「稳定」 tier — validated defaults, on
+   by default; blue = shipped-and-stable, deliberately distinct from the green
+   "recommended" nudge colour (stable never nags). */
+.lab-tier-badge--stable {
+  background: color-mix(in srgb, var(--info, #5b8def) 14%, transparent);
+  border-color: color-mix(in srgb, var(--info, #5b8def) 45%, transparent);
+  color: var(--info, #5b8def);
 }
 .lab-tier-badge--recommended {
   background: color-mix(in srgb, var(--ok, #3fb26f) 15%, transparent);

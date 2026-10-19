@@ -65,10 +65,12 @@ ok(goRender.includes('fmt.Fprintf(&b, "experimental_trajectory_view = %v'),
 // 3. Tier register (Go side): trajectoryView registered, optional tier.
 ok(/\{"trajectoryView", LabTierOptional, \[\]string\{"experimental_trajectory_view"\}\}/.test(goRender),
   "Go labFeatureTiers registers trajectoryView as optional");
-// 计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 22/51，
-// Go 侧只收 heartbeatBackground、不收纯前端容器 tabManagement）。
-ok(goTierTest.includes("LabTierOptional: 22") && goTierTest.includes("len(labFeatureTiers) != 51"),
-  "Go tier-count test bumped to optional 22 / total 51 (742 口径)");
+// 计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 22/51；
+// 此后 783④/846/815/686/943/940/944/961/979/992 多轮演进未跟——Go 门禁
+// 现行口径：可选 22 起步 + want[LabTierOptional]=29 覆盖、总数 61（992 双
+// 升档 2026-10-19 补齐），1005 批1 转档不改总数。本 pin 随 1005 窗口补步进）。
+ok(goTierTest.includes("want[LabTierOptional] = 29") && goTierTest.includes("len(labFeatureTiers) != 61"),
+  "Go tier-count test at the current 口径 (optional override 29 / total 61)");
 
 // 4. Both settings views carry the field (81/123: a view that omits it would
 //    read permanently off) and the boot snapshot fills it.
@@ -119,12 +121,12 @@ ok(/^\s*\| "trajectoryView";?\s*$/m.test(tiers),
 ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajectoryView is optional");
 // 计数 pin 随每次表A 变更步进（704 落地时 21；727 → 22；742 → 24，含
 // tabManagement 容器 + heartbeatBackground 两个可选档；815 统一登记窗口
-// 收口 → optional 29；任务 940 approvalSelect → 30；任务 943
-// multiEditInjection → 31；任务 944 renderArtifact → 32；任务 961
-// smartAutomation（可选）+ interactionPresentation（推荐）两张合并卡容器
-// 入表 → 20/33，见 LAB_TIER_COUNTS 961 注——合并态取 20/33）。
-ok(/recommended: 20,\s*\n\s*optional: 33,/.test(tiers),
-  "LAB_TIER_COUNTS bumped to 20/33 (961 两张合并卡容器入表合并态口径)");
+// 收口 → optional 29；940 → 30；943 → 31；944 → 32；961 两容器 → 33；
+// 979 capabilityGroups → 34（961 注钉 20/33 后漏跟）；任务 1005 批1 转档
+// → 4 稳定/18 推荐/34 可选（992 漏同步三键同窗收口）。本 pin 随 1005
+// 窗口补步进）。
+ok(/stable: 4,\s*\n\s*recommended: 18,\s*\n\s*optional: 34,/.test(tiers),
+  "LAB_TIER_COUNTS at the 1005 口径 (4 stable / 18 recommended / 34 optional)");
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -138,12 +140,12 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 // 9. experimentTiers test counts moved with the register (the 562 harness
 //    pins the distribution — a silent mismatch would fail CI elsewhere).
 //    计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 24/53；
-//    815 统一登记窗口收口 → 29/63；686 workflowPanel → 29/64；940/943/944
-//    三件先后入表 → 32/67；961 两张合并卡容器入表 → 33/69，见 task562 注
-//    ——合并态取 33/69）。
+//    815 → 29/63；686 → 29/64；940/943/944 → 32/67；961 → 33/69；979
+//    capabilityGroups → 34/70（961 后漏跟）；任务 1005 批1 转档总数不变 70。
+//    本 pin 随 1005 窗口补步进）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 33") && tierTest.includes("length === 69"),
-  "task562 test pins the 69-entry register (961 合并态口径)");
+ok(tierTest.includes("counts.optional === 34") && tierTest.includes("length === 70"),
+  "task562 test pins the 70-entry register (1005 合并态口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");

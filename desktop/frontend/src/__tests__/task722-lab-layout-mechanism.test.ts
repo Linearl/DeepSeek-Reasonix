@@ -138,10 +138,12 @@ items:
   const onKeys = [...yamlText.matchAll(/^ {8}onKeys: \[([^\]]*)\]/gm)].flatMap((m) => m[1].split(",").map((s) => s.trim()));
   ok(onKeys.length > 0 && onKeys.every((k) => LAB_LIGHT_KEY_IDS.has(k)),
     `every yaml onKeys reference is a registered light key (${onKeys.length} refs)`);
-  // 组键受控词表。
+  // 组键受控词表。任务 992：工具优化并入 infra、原独立 tool-opt 组退役——
+  // 词表保留 tool-opt（旧词表兼容），但 yaml 只承载现役 7 组（本 pin 随
+  // 1005 窗口补同步，992 合组时漏跟）。
   const groupKeys = [...yamlText.matchAll(/^  - key: (\w[-\w]*)$/gm)].map((m) => m[1]);
-  ok(groupKeys.length === LAB_GROUP_KEYS.length && groupKeys.every((k) => (LAB_GROUP_KEYS as readonly string[]).includes(k)),
-    "yaml group keys are the controlled 8-key vocabulary");
+  ok(groupKeys.length === 7 && groupKeys.every((k) => (LAB_GROUP_KEYS as readonly string[]).includes(k)),
+    "yaml group keys are the controlled vocabulary, carrying the 7 active groups");
 }
 
 // ── ④ 722 点6：三子键 wire 面 ──

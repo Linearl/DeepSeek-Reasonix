@@ -557,6 +557,14 @@ func TestSetDesktopAutopilotRequiresYoloDefault(t *testing.T) {
 	app.ctx = context.Background()
 	app.readyHook = func() {}
 
+	// 任务 1005：autopilot 转稳定档后默认开——本测试的前提（拒绝路径的起点是
+	// 关）需显式夹具固定；手写 autopilot = false 正是 C4 kill switch 路径。
+	cfgSeed := config.LoadForEdit(config.UserConfigPath())
+	cfgSeed.Desktop.Autopilot = false
+	if err := cfgSeed.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
 	// Default approval is auto → enabling the autopilot default is refused.
 	if err := app.SetDesktopAutopilot(true, "8h", ""); err == nil {
 		t.Fatal("enabling the autopilot default under a non-yolo approval default must be refused")

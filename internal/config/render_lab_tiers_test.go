@@ -191,19 +191,23 @@ func TestLabRenderKeysAllTaggedWithTier(t *testing.T) {
 	}
 }
 
-// TestLabFeatureTierCountsMatchTableA pins the xlsx 表A distribution: the tier
-// register must stay exactly 推荐 16 / 可选 29 / 未稳定 16 / 已退役 0 = 61（任务 943
-// multiEditInjection、940 approvalSelect、944 renderArtifact、979
-// capabilityGroups 先后入表后）.
+// TestLabFeatureTierCountsMatchTableA pins the tier distribution: the tier
+// register must stay exactly 稳定 4 / 推荐 14 / 可选 29 / 未稳定 14 / 已退役 0 =
+// 61（任务 1005 批1 四项转稳定档后；943 multiEditInjection、940 approvalSelect、
+// 944 renderArtifact、979 capabilityGroups 先后入表，992 双升档）.
 // Any lab addition/removal moves these numbers ON PURPOSE (update 表A first).
 func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	want := map[LabTier]int{
+		// 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess /
+		// runtimeReuse 四项自推荐升「稳定」（新增第四档 LabTierStable）——
+		// 推荐 18→14、稳定 0→4，总数不变 61。
+		LabTierStable: 4,
 		// 任务 783④：toolOptimizations（编辑读回 readBack）随 22.5 交付
 		// 转正，未稳定→推荐（前端注册表同步升档）——推荐 15→16、未稳定
 		// 14→13，总数不变 51。
 		// 任务 992：runtimeReuse + orphanHandling 随用户 1018 升推荐（16→18，
 		// 总数不变 61；批42 交付时本 want 表未同步，2026-10-19 补齐）。
-		LabTierRecommended: 18,
+		LabTierRecommended: 14,
 		// 任务 517：B1/B2/B3（可选×3）合并为 safetyCostControl（可选×1），
 		// 可选 20→18、总数 48→46。任务 705（sessionCollabAutoFold，超长跨
 		// 会话消息自动折叠，默认关）按可选档入表（18→19、47→48）。任务 707
@@ -255,7 +259,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 		}
 		seen[f.id] = true
 		switch f.tier {
-		case LabTierRecommended, LabTierOptional, LabTierUnstable, LabTierRetired:
+		case LabTierStable, LabTierRecommended, LabTierOptional, LabTierUnstable, LabTierRetired:
 		default:
 			t.Errorf("lab feature %q has unknown tier %q", f.id, f.tier)
 		}

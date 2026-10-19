@@ -51,20 +51,21 @@ function cardSlice(startMarker: string, endMarker: string): string {
 
 console.log("\ntask 561 lab regroup + merged cards");
 
-// ① 8-group structure（任务 722/724 修订）：组受控词表在 labLayoutTypes，
-//    组序/组键/组标签键全部来自布局文档（yaml 与内置默认一致）。
+// ① group structure（任务 722/724 修订；任务 992 工具优化并入 infra 后
+//    7 组——本 pin 2026-10-19 随 1005 窗口补同步，992 合组时漏跟）：
+//    组受控词表在 labLayoutTypes，组序/组键/组标签键全部来自布局文档
+//    （yaml 与内置默认一致）。
 {
   const yaml = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
   const keys = [
-    "automation", "efficiency", "ui", "observability", "dev-debug", "storage", "infra", "tool-opt",
+    "automation", "efficiency", "ui", "observability", "dev-debug", "storage", "infra",
   ];
   const yamlOrder = keys.map((k) => yaml.indexOf(`key: ${k}`));
   ok(yamlOrder.every((i) => i >= 0) && [...yamlOrder].sort((a, b) => a - b).every((v, i) => v === yamlOrder[i]),
-    "lab-layout.yaml carries the 8 groups in the audit-table order (rail order)");
+    "lab-layout.yaml carries the 7 groups in the audit-table order (rail order)");
   for (const [key, labelKey] of [
     ["automation", "settings.labGroup.automation"],
-    ["tool-opt", "settings.labGroup.toolOpt"],
     ["dev-debug", "settings.labGroup.devDebug"],
   ] as const) {
     const block = yaml.slice(yaml.indexOf(`key: ${key}`));
@@ -123,11 +124,13 @@ console.log("\ntask 561 lab regroup + merged cards");
   // ui 组——两件先后入布局 → 6/8/11/2/1/4/6/2。任务 961：三处条目级收编
   // → 4/6/10/2/1/4/6/2（automation/efficiency 各并一卡、ui renderArtifact
   // 并入视图布局卡）。任务 971：multiEditInjection 独立卡退役并入聚合页
-  // → tool-opt 2→1。
+  // → tool-opt 2→1。任务 992：工具优化整体并入 infra（原独立 tool-opt 组
+  // 退役，restartUpdate 归位回 updateFeedback 卡，组成员不变）→ 组分布
+  // 4/6/10/2/1/4/7（infra 6→7、tool-opt 组移除，总数不变 34；本 pin 随
+  // 1005 窗口补同步，992 合组时漏跟）。
   ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 10 &&
-     groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 4 && groups["infra"] === 6 &&
-     groups["tool-opt"] === 1,
-    `group counts are 4/6/10/2/1/4/6/1 (got ${JSON.stringify(groups)})`);
+     groups["observability"] === 2 && groups["dev-debug"] === 1 && groups["storage"] === 4 && groups["infra"] === 7,
+    `group counts are 4/6/10/2/1/4/7 (got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。

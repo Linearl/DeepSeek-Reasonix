@@ -65,11 +65,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "automation",
       labelKey: "settings.labGroup.automation",
       entries: [
-        { id: "autopilot", labelKey: "settings.autopilot", tier: "recommended", onKeys: ["autopilot"] },
+        // 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（及 infra
+        // 段 runtimeReuse）四项 tier 升「稳定」——镜像档位注册表（562 双侧
+        // 一致门禁）；桌面开关禁用态与开发者模式解锁见 SettingsPanel。
+        { id: "autopilot", labelKey: "settings.autopilot", tier: "stable", onKeys: ["autopilot"] },
         {
           id: "sessionCollab",
           labelKey: "settings.sessionCollab",
-          tier: "recommended",
+          tier: "stable",
           // 任务 815：cascade_approval 卡内行级开关（Task 225）补灯。
           onKeys: ["experimentalSessionCollab", "experimentalCascadeApproval"],
           // 任务 722 点3：自动折叠跨会话消息并为跨会话协作子项。
@@ -77,7 +80,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "sessionCollabAutoFold", labelKey: "settings.sessionCollabAutoFold", tier: "optional" },
           ],
         },
-        { id: "fullAccess", labelKey: "settings.fullAccess", tier: "recommended", onKeys: ["experimentalFullAccess"] },
+        { id: "fullAccess", labelKey: "settings.fullAccess", tier: "stable", onKeys: ["experimentalFullAccess"] },
         {
           // 任务 961：智能自动化（合并卡，742/782 条目级合并先例）——
           // 梦境整理 + 决策模式提取 + 心跳任务后台化三散条并卡。容器档 =
@@ -371,7 +374,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       labelKey: "settings.labGroup.infra",
       // 任务 785：S1 常驻底座开关条目已随底座退役移除。
       entries: [
-        { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "recommended", onKeys: ["experimentalRuntimeReuse"] },
+        { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "stable", onKeys: ["experimentalRuntimeReuse"] },
         { id: "zcodeTaskBus", labelKey: "settings.zcodeTaskBus", tier: "unstable", onKeys: ["experimentalZcodeTaskBus"] },
         // 任务 790：ACP 常驻监听（与 yaml 同序同值——回退安全网）。
         { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable", onKeys: ["experimentalACPListen"] },
