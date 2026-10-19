@@ -208,6 +208,8 @@ func TestPolicyEscalatesBeforeFirstSensitiveMutation(t *testing.T) {
 	permission := &stubGate{deny: map[string]bool{}}
 	a := New(nil, reg, NewSession("sys"), Options{Gate: permission}, event.Discard)
 	setTurnConstraints(a, "fix the typo in README.md")
+	// tl 982：todo/criteria 契约门禁默认 off；本测试钉 on 态回退路径，显式开启。
+	a.turn.engine.SetContractPreconditionGuardEnabled(true)
 
 	got := a.executeOne(context.Background(), &a.turn, provider.ToolCall{
 		Name:      "edit_file",
