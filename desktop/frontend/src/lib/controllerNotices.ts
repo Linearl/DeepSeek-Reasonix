@@ -63,6 +63,8 @@ const noticeCodeKeys: Record<string, DictKey> = {
   autopilot_resume_exhausted: "notice.autopilotResumeExhausted",
   // 任务 868 无人值守恢复门自动继续：恢复点的自动决策留痕（有人会话不触发）。
   unattended_gate_auto_continue: "notice.unattendedGateAutoContinue",
+  // 任务999：单条 >4MiB 软提醒——已入队、无需行动，只作提示（不打断、不注入模型）。
+  inbox_large_item: "notice.inboxLargeItem",
 };
 
 const streamInterruptReasonCodeKeys: Record<string, DictKey> = {
