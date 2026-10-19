@@ -469,6 +469,11 @@ type Controller struct {
 	// inbox is the durable session-level instruction queue. Disk I/O never
 	// runs under c.mu; the store owns its own lock.
 	inbox inboxState
+
+	// reminders is the durable in-session delayed self-reminder wiring
+	// (task 1001). Same lock discipline as inbox: timer/queue state keeps its
+	// own mutex, never c.mu.
+	reminders reminderState
 }
 
 type approvalReply struct {
@@ -1083,6 +1088,7 @@ func New(opts Options) *Controller {
 		c.executor.SetSink(c.sink)
 	}
 	c.rebindInbox()
+	c.rebindReminders()
 	cmdsInit := opts.Commands
 	c.commands.Store(&cmdsInit)
 	if c.executor != nil {
@@ -4198,6 +4204,7 @@ func (c *Controller) NewSession() error {
 	// Old session keeps its inbox (paused); the fresh session starts empty.
 	c.pauseInboxOnRotate()
 	c.rebindInbox()
+	c.rebindReminders()
 	// A new session starts with no active goal: without this, a running goal's
 	// text kept injecting into the fresh session's first turns. The old
 	// session's goal-state sidecar was persisted before the rotation and stays
@@ -4298,6 +4305,7 @@ func (c *Controller) ClearSession() error {
 	c.rotateSessionTemp()
 	c.snapshotMu.Unlock()
 	c.rebindInbox()
+	c.rebindReminders()
 	// Same contract as NewSession: the fresh session starts with no active goal.
 	c.ClearGoal()
 	c.mu.Lock()
@@ -4524,6 +4532,7 @@ func (c *Controller) Resume(s *agent.Session, path string) {
 		}
 	}
 	c.rebindInbox()
+	c.rebindReminders()
 	c.recoverCheckpointTransactions()
 	c.recoverInterruptedTurn(path)
 	c.maybeColdResumePrune(path)
@@ -5503,6 +5512,7 @@ func (c *Controller) setSessionPath(p string, fresh bool) {
 	}
 	c.snapshotMu.Unlock()
 	c.rebindInbox()
+	c.rebindReminders()
 	if !fresh {
 		c.recoverCheckpointTransactions()
 	}
@@ -6395,6 +6405,10 @@ func (c *Controller) close(fireSessionEnd bool, jobsMode closeJobsMode) {
 		c.inbox.closed = true
 		c.inbox.mu.Unlock()
 		c.inbox.scanMu.Unlock()
+		// Task 1001: stop reminder timers. Pending durable entries survive
+		// the close; the next bind's scan re-arms them (overdue entries
+		// deliver late with the catch-up annotation).
+		c.closeReminders()
 		if fireSessionEnd && started {
 			c.hooks.SessionEnd(context.Background(), "other")
 			c.extensionSessionEvent(extension.PointSessionEnd, dispatch.PhaseEnd, c.SessionPath())

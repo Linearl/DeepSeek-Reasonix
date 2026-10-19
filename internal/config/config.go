@@ -697,6 +697,14 @@ func (c *Config) SubagentPolicyIntakeEnabled() bool {
 	return c == nil || c.Agent.ExperimentalSubagentPolicy == nil || *c.Agent.ExperimentalSubagentPolicy
 }
 
+// SessionRemindersEnabled reports whether the in-session delayed self-reminder
+// tool registers and reminder timers arm (task 1001). Nil means on — the
+// 拍板 ruled default-on for this pure additive experiment; off unregisters the
+// tool and skips the durable-queue scan until the switch returns.
+func (c *Config) SessionRemindersEnabled() bool {
+	return c == nil || c.Agent.ExperimentalSessionReminders == nil || *c.Agent.ExperimentalSessionReminders
+}
+
 // SubagentMessagingEnabled reports whether the runtime message channel to
 // running sub-agents is lit (task 616). Nil means ON — the user's explicit
 // 2026-10-08 ruling, the recorded exception to the default-off fork rule;
@@ -1741,6 +1749,17 @@ type AgentConfig struct {
 	// continue_from — the pre-616 surface byte for byte. Applies on restart
 	// (boot snapshot), like every boot-resolved switch.
 	ExperimentalSubagentMessaging *bool `toml:"experimental_subagent_messaging"`
+	// ExperimentalSessionReminders enables the in-session delayed self-reminder
+	// tool (task 1001): session_remind(set|cancel|list) schedules a durable
+	// per-session alarm (<stem>.reminders/) that injects its message back into
+	// the conversation when due and rides the 任务579 idle-turn bridge to open
+	// a turn. Nil means ON — the 拍板 (commit 9457057) ruled this a pure
+	// additive experiment: default-on so the capability is discoverable, off =
+	// the tool is unregistered and no reminder timers are armed, while the
+	// durable queue files are left untouched so a later flip-on recovers
+	// pending alarms from the next boot's scan. Applies on restart (boot
+	// snapshot).
+	ExperimentalSessionReminders *bool `toml:"experimental_session_reminders"`
 	// ExperimentalFullAccess is the "full access (yolo)" lab switch (task 257).
 	// On passes every declared write directory through the preflight and the
 	// desktop gate without authorization, and runs bash unwrapped. The zero
