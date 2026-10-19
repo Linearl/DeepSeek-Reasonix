@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"reasonix/internal/provider"
 )
@@ -117,11 +118,26 @@ func (p *MockProvider) Stream(ctx context.Context, req provider.Request) (<-chan
 		// cancelled run's producer must never block forever on an unbuffered
 		// channel (task 244: the goleak contract exposed this latent leak when
 		// an interrupting reader stopped consuming mid-stream).
+		// The cancellation error is a terminal-contract message, though, and a
+		// reader that is already parked on <-ch must win deterministically: with
+		// ctx.Done() in the same select, a ready reader and a cancelled context
+		// make both cases ready and Go picks at random — dropping the error chunk
+		// half the time (TestMockProviderStreamStopsOnContextCancellation, flaky).
+		// So: prefer the rendezvous first (a blocked receiver makes ch<-c ready,
+		// and a ready case always beats default), and only if no reader is
+		// parked yet wait out a bounded grace window instead of racing ctx.Done.
 		sendOrGone := func(c provider.Chunk) bool {
 			select {
 			case ch <- c:
 				return true
-			case <-ctx.Done():
+			default:
+			}
+			select {
+			case ch <- c:
+				return true
+			case <-time.After(time.Second):
+				// Nobody came to read within the grace window: uphold the
+				// task-244 contract and give up rather than block forever.
 				return false
 			}
 		}
