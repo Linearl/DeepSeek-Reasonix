@@ -262,6 +262,26 @@ function hasImageAttachments(items: Attachment[]): boolean {
   return items.some((attachment) => Boolean(attachment.previewUrl));
 }
 
+// 任务 1008：音频附件按路径扩展名识别（MIME 在拖拽/粘贴入口不可靠）。
+const AUDIO_ATTACHMENT_EXTS = ["mp3", "wav", "flac", "m4a", "ogg"];
+const AUDIO_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
+// tl 999 联动：收件箱单条 16MiB、>4MiB 软提醒不阻断——音频内嵌随请求走，同阈值提示。
+const AUDIO_SOFT_REMIND_BYTES = 4 * 1024 * 1024;
+
+function audioAttachmentExt(name: string): string {
+  const dot = name.lastIndexOf(".");
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+  return AUDIO_ATTACHMENT_EXTS.includes(ext) ? ext : "";
+}
+
+function isAudioFile(file: File): boolean {
+  return file.type.startsWith("audio/") || Boolean(audioAttachmentExt(file.name));
+}
+
+function hasAudioAttachments(items: Attachment[]): boolean {
+  return items.some((attachment) => Boolean(audioAttachmentExt(attachmentName(attachment))));
+}
+
 function displayRefName(name: string): string {
   return name.replace(/[\[\]\(\)\r\n]+/g, " ").replace(/\s+/g, " ").trim() || "attachment";
 }
@@ -579,6 +599,7 @@ export function Composer({
   commandCatalog,
   imageInputEnabled = true,
   imageUnderstandingEnabled = false,
+  audioInputEnabled = true,
   attachmentInputEnabled = true,
   tabId, turnId,
   effort,
@@ -691,6 +712,8 @@ export function Composer({
   modelLabel: string;
   commandCatalog?: readonly CommandInfo[];
   imageInputEnabled?: boolean;
+  /** 任务 1008：当前模型接受直接音频输入时才走音频附件保存链。 */
+  audioInputEnabled?: boolean;
   /** True when text-only image turns are preprocessed by a configured vision model. */
   imageUnderstandingEnabled?: boolean;
   /** False for remote sessions because local filesystem paths are not portable to Serve. */
@@ -2723,6 +2746,10 @@ export function Composer({
     if (!imageInputEnabled && !imageUnderstandingEnabled && hasImageAttachments(attachmentsRef.current)) {
       warnImageInputFallback();
     }
+    // 任务 1008：门未开时音频附件不进请求，提交前如实提醒（后端注记同口径）。
+    if (!audioInputEnabled && hasAudioAttachments(attachmentsRef.current)) {
+      showToast(t("composer.audioInputDisabled"), "warn");
+    }
     const currentAttachments = attachmentsRef.current;
     const currentWorkspaceRefs = workspaceRefsRef.current;
     const inlineInvocationCount = trimmedDraft.invocations.filter((invocation) => invocation.command.kind === "skill").length;
@@ -3262,11 +3289,40 @@ export function Composer({
     }
   };
 
+  // 任务 1008：音频粘贴/拖拽走专用保存链（SavePastedAudio，五格式 + 50MB），
+  // 大于 4MiB 给 999 口径的软提醒（不阻断）。
+  const attachAudioFiles = async (files: File[], sourceDraftKey: string) => {
+    if (!attachmentInputEnabled) return;
+    const audios = files.filter(isAudioFile);
+    if (audios.length === 0) return;
+    for (const file of audios) {
+      updatePendingPasteForDraft(sourceDraftKey, 1);
+      try {
+        if (file.size > AUDIO_ATTACHMENT_MAX_BYTES) {
+          showToast(t("composer.audioTooLarge"), "warn");
+          continue;
+        }
+        const key = await fileDedupKey(file);
+        if (attachmentSeenInDraft(sourceDraftKey, key)) continue;
+        const dataUrl = await readFileAsDataURL(file);
+        const path = await app.SavePastedAudio(file.name, dataUrl);
+        addAttachmentToDraft(sourceDraftKey, { path, displayName: file.name }, key);
+        if (file.size > AUDIO_SOFT_REMIND_BYTES) showToast(t("composer.audioLargeHint"), "warn");
+      } catch (error) {
+        console.warn("[composer] failed to attach audio file", error);
+        showToast(t("composer.attachAudioFailed"), "warn");
+        // non-fatal: a failed audio attach must not block normal text input
+      } finally {
+        updatePendingPasteForDraft(sourceDraftKey, -1);
+      }
+    }
+  };
+
   // Non-image pastes (PDFs, docs): the clipboard hands us bytes, not a path, so
   // the kernel stores them and we reference the saved path — attached, not ignored.
   const attachOtherFiles = async (files: File[], sourceDraftKey: string) => {
     if (!attachmentInputEnabled) return;
-    const others = files.filter((f) => !f.type.startsWith("image/"));
+    const others = files.filter((f) => !f.type.startsWith("image/") && !isAudioFile(f));
     if (others.length === 0) return;
     for (const file of others) {
       updatePendingPasteForDraft(sourceDraftKey, 1);
@@ -3290,6 +3346,7 @@ export function Composer({
     if (!attachmentInputEnabled) return;
     const sourceDraftKey = activeDraftKeyRef.current;
     void attachImageFiles(files, sourceDraftKey);
+    if (audioInputEnabled) void attachAudioFiles(files, sourceDraftKey);
     void attachOtherFiles(files, sourceDraftKey);
   };
 
