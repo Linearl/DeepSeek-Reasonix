@@ -62,6 +62,13 @@ type useCapabilityArgs struct {
 	// 975). ResolveCall names this cause instead of the generic missing-id
 	// error, which would wrongly blame the field placement.
 	controlOnlyID bool `json:"-"`
+	// healedAliasKey records which spelling-alias key (ability_id /
+	// capabilityId) parseUseCapabilityArgs accepted in place of
+	// capability_id (task 996). It never serializes; ResolveCall uses it to
+	// keep the heal observable — audit counter + WARN log host-side AND a
+	// model-visible notice, because unlike a tokenizer-emitted control
+	// character the model CAN correct a key name it chose.
+	healedAliasKey string `json:"-"`
 }
 
 // capabilityEnvelopeKeys are the top-level members of a use_capability call
@@ -80,6 +87,82 @@ var capabilityEnvelopeKeys = map[string]bool{
 	"detail":         true, // task 953 list v2
 	"arguments":      true,
 	"reason":         true,
+	// Task 996: the converged spelling-alias keys are envelope members, not
+	// spread target parameters — without this the alias would ride the 457
+	// spread merge into the target's argument object and fail its schema.
+	"ability_id":   true,
+	"capabilityId": true,
+}
+
+// capabilityIDAliasKeys is the CONVERGED list of capability_id spelling
+// variants accepted at the envelope top level (task 996). Every entry is a
+// form actually observed failing in the field (975 交付回板实测：ability_id
+// 与 capabilityId 均触发 "capability_id is required") — the tolerance is a
+// closed list, never fuzzy matching, so a genuinely wrong key still gets the
+// missing-id correction instead of silent acceptance.
+var capabilityIDAliasKeys = []string{"ability_id", "capabilityId"}
+
+// capabilityIDFromEnvelopeAlias extracts the envelope capability_id accepting
+// the converged alias keys when the canonical key yields nothing usable. It
+// returns the cleaned id and the alias key it came from ("" when no alias
+// fired). Both callers that parse the envelope independently of
+// parseUseCapabilityArgs (the ledger key and the subagent allowlist check)
+// must agree with the resolver on this, or an alias call splits into a
+// phantom ledger entry or is rejected one layer above a resolver that would
+// accept it (task 975 same-discipline).
+func capabilityIDFromEnvelopeAlias(raw json.RawMessage) (id, aliasKey string) {
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal(raw, &envelope) != nil || envelope == nil {
+		return "", ""
+	}
+	for _, key := range capabilityIDAliasKeys {
+		var value string
+		if json.Unmarshal(envelope[key], &value) != nil {
+			continue
+		}
+		cleaned, _ := sanitizeCapabilityID(value)
+		if cleaned == "" {
+			continue
+		}
+		return cleaned, key
+	}
+	return "", ""
+}
+
+// canonicalCapabilityIDEnvelope returns a validation-only copy of the envelope
+// with a fired alias key renamed to capability_id, so the schema check in
+// diagnoseCapabilityInputFailure judges the call the resolver actually
+// accepted instead of flagging the accepted alias as an unknown property
+// ("remove: ability_id" right after the alias dispatched would teach the
+// model the opposite of the success-path note). An envelope where no alias
+// fires passes through byte-identical — lookalike keys keep their additional
+// properties violation, which is the desired明确报错 for non-converged
+// spellings.
+func canonicalCapabilityIDEnvelope(raw json.RawMessage) json.RawMessage {
+	_, aliasKey := capabilityIDFromEnvelopeAlias(raw)
+	if aliasKey == "" {
+		return raw
+	}
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal(raw, &envelope) != nil || envelope == nil {
+		return raw
+	}
+	// Canonical key present and usable → parse uses it and never records the
+	// alias heal; keep the envelope byte-identical in that case too.
+	if cleaned, _ := sanitizeCapabilityID(capabilityStringField(envelope, "capability_id")); cleaned != "" {
+		return raw
+	}
+	canonical := make(map[string]json.RawMessage, len(envelope))
+	for key, value := range envelope {
+		canonical[key] = value
+	}
+	delete(canonical, aliasKey)
+	canonical["capability_id"] = envelope[aliasKey]
+	rewritten, err := json.Marshal(canonical)
+	if err != nil {
+		return raw
+	}
+	return rewritten
 }
 
 // detectDoubleEnvelopedArguments reports whether the arguments value looks
@@ -418,6 +501,21 @@ func parseUseCapabilityArgs(raw json.RawMessage) (useCapabilityArgs, string, str
 			// Task 975: only an embedded-control cleanup counts as a heal —
 			// a whitespace-only id was always empty after TrimSpace.
 			args.healedControlChars = true
+		}
+	}
+	// Task 996: when the canonical capability_id yields nothing usable, fall
+	// back to the CONVERGED spelling-alias keys (ability_id / capabilityId —
+	// the two variants actually observed failing). Canonical always wins; an
+	// alias never overrides a present, usable capability_id. The heal is
+	// recorded so ResolveCall can surface a model-visible spelling note —
+	// unlike the 975 control-char cleanup the model CAN correct a key name.
+	if id == "" {
+		if aliasID, aliasKey := capabilityIDFromEnvelopeAlias(raw); aliasID != "" {
+			id = aliasID
+			args.healedAliasKey = aliasKey
+			// An alias carrying the id means the call is NOT missing its
+			// target; the control-only diagnosis would blame the wrong field.
+			args.controlOnlyID = false
 		}
 	}
 	// The 1-8 upper bound is enforced at resolve time (ResolveCall) where the
