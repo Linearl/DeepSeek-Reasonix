@@ -155,7 +155,11 @@ context_window = 40000
 	}
 	defer ctrl.Close()
 
-	runCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// 60s pinned the pre-task-123 build speed; under load this RealBuild
+	// round-trip measured 61-63s four runs in a row (deadline exceeded, not an
+	// assertion), so widen to 120s — the assertion below (compaction shrunk the
+	// next summary) is what this test actually pins.
+	runCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	if err := ctrl.Run(runCtx, "read every file-N.txt until you are told to stop"); err != nil {
 		t.Fatalf("Run: %v", err)

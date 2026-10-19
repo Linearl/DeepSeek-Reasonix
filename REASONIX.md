@@ -244,6 +244,79 @@ measurement), never closed as "pre-existing, not mine":
   guards the one known silent exit path
   (`third_party/go-webview2/pkg/edge/chromium.go` errorCallback).
 
+* **批42 gate pass (registered 2026-10-19, user directive: "预存失败要分析修复,
+  不能看到也不处理") — 9 items analyzed to a verdict, 8 closed / 1 open.**
+  Verdicts (evidence in `global-workspace/docs/collab/zcode/to-main.md`
+  [07:12] block + the fix commit message):
+
+  * **`internal/proc` + `desktop` spawn guards** — **code-side**: `startDeleteParser`
+    spawned PowerShell via raw `exec.Command` + explicit `proc.HideWindow`; the
+    coverage guard is textual. Migrated to `proc.Command` (already hides the
+    window, behavior-identical). Both guards green (`internal/proc` 81.5s full
+    package; `desktop` 7.1s in its own module).
+  * **`internal/config` `TestServeRenderTableCoversEveryKey` (web_dist)** —
+    **code-side**: `ServeConfig.WebDist` (task 701) was never rendered by
+    `renderServeConfig`, so every Load→Save cycle dropped the user's
+    `[serve] web_dist`. Both set and commented-default forms now render.
+  * **`internal/provider` `TestOpenCodeGoModelInfoUsesExactLocalCatalog`** —
+    **code-side**: `OpenCodeGoModelInfo` discarded the limits table
+    (`if _, ok := …`) and the vision map lacked kimi-k2.6, so fallback models
+    returned ContextWindow=0/MaxOutput=0/text-only. Now fills
+    API/Context/MaxOutput per route and declares kimi-k2.6 image-capable
+    (moonshotai catalog lists `input:["text","image"]`).
+  * **`internal/provider` `TestPiCatalogModelInfoForProviderRequiresExactServingRoute`**
+    — **stale test (dependency drift)**: pi v0.84.20 → v0.99.26 (latest; no
+    newer release exists) dropped qwen3.6-plus from the opencode-go route.
+    Case moved to qwen3.7-plus (same family, openai-completions, image); the
+    exact-route matching intent is unchanged and documented in-test.
+  * **`internal/agent` `TestTruncatedJSONStreamRecoversWithoutExecutingPartialTools`**
+    — **stale test**: written 2026-09-06 (pre-task317). The openai path now
+    classifies the malformed complete frame as `premature_eof` (retryable →
+    recovers), while anthropic still terminates it (`unknown`) — the protocol
+    split is asserted as-is with a comment; the safety invariant (no partial
+    tool execution) is unchanged and still asserted.
+  * **`internal/agent` `TestInterruptedRecoveryKeepsRedactedFailureSummary`** —
+    **stale fixture**: HTTP 402 *or* an "insufficient balance" body enters
+    task845's quota long-wait lane (loops until the 1800s budget without
+    consuming `max_attempts` slots — measured up to sampling #6), and 5xx
+    takes the retryable headers lane, so no fixed script length terminates.
+    Fixture now uses HTTP 400 + non-billing body (single-shot terminal);
+    the summary-content and credential-redaction assertions keep their intent.
+  * **`internal/agent` `TestToolCheckpointReloadRefreshesProjection`** —
+    **code-side product bug**: the snapshot no-op fast path gated derived-file
+    republishing on the in-process `projectionPending` flag only, so after
+    another process deferred a tool-checkpoint projection and exited, a freshly
+    loaded session's defensive no-op snapshots never republished the display
+    index ("restart left stale projection"). `flushDeferredDerivedFiles` now
+    also compares the **on-disk** index revision/content-digest against the
+    save baseline: exact match keeps the zero-cost no-op (#10056), a lag — or
+    a missing/undecodable index — declines to the full save path.
+  * **`internal/boot` `TestEffectSummaryOverflowShrinksNextSummaryThroughRealBuild`**
+    — deadline widened 60s→120s (four runs measured 61–63s deadline-exceeded;
+    the timeout was hiding the real assertion). Widening **exposed** the open
+    entry below rather than closing it.
+
+* **OPEN: `internal/boot` effect-compaction shrink assertion (registered
+  2026-10-19, specialist task — predates batch 42)** — under the widened
+  deadline the test reaches its real assertion and fails:
+  `summary request after an overflow did not shrink: [36380 25767 24833 34632
+  26277 34724 34724]`. Logs show compaction's summarizer requests themselves
+  overshooting the 40k fixture window on some rounds
+  (`status 400 … requested 44572 …` → `compaction failed … in=0 out=0`) while
+  other rounds pre-fold and succeed (input 25767/24833) — the shrink chain
+  breaks when the summarizer request is rejected. Fix direction: pre-fold the
+  summarizer input to the model ceiling before issuing the request. Evidence:
+  `wt-42fix` boot `-v` run, 2026-10-19.
+
+Environment-tier entries (no code change, by verdict): `internal/worktree`
+`TestMergeBackRejectsIndexMutationBeforeRefUpdate` fails only as go's package
+default 10m `panic: test timed out` under load (the single test runs green in
+22.25s; batch 42 touches nothing in `internal/worktree`); `internal/control`
+(379.7s/1012 PASS), `internal/serve` (195.3s/272 PASS) and `internal/cli`
+(219.5s/1103 PASS) are green as `-v` single runs and only stall in non-`-v`
+full-package scheduling (suspected Windows stdout-pipe buffering — mechanism
+watch-listed, not a test verdict).
+
 Empty, and kept empty.
 
 One Windows flake was diagnosed and driven to zero on 2026-10-05 (task 491), verdict

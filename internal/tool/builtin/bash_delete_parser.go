@@ -107,9 +107,8 @@ func analyzePowerShellDelete(ctx context.Context, sh sandbox.Shell, command stri
 }
 
 func startDeleteParser(sh sandbox.Shell) (*deleteParserProcess, error) {
-	cmd := exec.Command(sh.Path, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", sandbox.PowerShellUTF8Script(shellparse.PowerShellDeleteServer))
+	cmd := proc.Command(sh.Path, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", sandbox.PowerShellUTF8Script(shellparse.PowerShellDeleteServer))
 	cmd.Env = secrets.ProcessEnv()
-	proc.HideWindow(cmd)
 	input, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

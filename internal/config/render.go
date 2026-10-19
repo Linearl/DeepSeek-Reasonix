@@ -2203,6 +2203,14 @@ func renderServeConfig(b *strings.Builder, c *Config, scope RenderScope) {
 	} else {
 		b.WriteString("# behind_proxy = false   # set true only behind a trusted reverse proxy\n")
 	}
+	// 任务701 (Web Remote): web shell dist directory mounted at /web. It is a
+	// first-class [serve] key (config.go ServeConfig.WebDist), so render it or
+	// a Load→Save cycle silently drops the user's configuration.
+	if c.Serve.WebDist != "" {
+		fmt.Fprintf(b, "web_dist = %q   # task 701 Web Remote: web shell build directory mounted at /web\n", c.Serve.WebDist)
+	} else {
+		b.WriteString("# web_dist = \"...\"   # task 701 Web Remote: directory of the web shell build mounted at /web\n")
+	}
 	// 任务540: GC child session — default off (iron rule 2). Boot-resolved:
 	// the flip mounts POST /spawn-child-session and advertises the
 	// "child-session" capability to the GrandCouncil client on the next

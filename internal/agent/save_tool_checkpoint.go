@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"reasonix/internal/provider"
+	"reasonix/internal/store"
 )
 
 // SaveToolCheckpoint commits the canonical transcript, CAS revision and event
@@ -74,7 +75,25 @@ func (s *Session) refreshPendingCheckpointProjection(path string, msgs []provide
 // receipt.
 func (s *Session) flushDeferredDerivedFiles(path string) bool {
 	state := s.persistState(path)
-	if !state.ok || !state.projectionPending {
+	if !state.ok {
+		return true
+	}
+	if !state.projectionPending {
+		// Cross-process deferred projection (restart shape): a tool checkpoint
+		// or shutdown append in ANOTHER process deferred the derived files and
+		// exited, so this freshly loaded session never arms projectionPending —
+		// yet the committed transcript runs ahead of the on-disk display index
+		// and nothing else would republish it ("restart left stale projection").
+		// Compare the index's own revision/digest against the save baseline:
+		// an exact match keeps the no-op fast path at zero rebuild cost
+		// (#10056 switch/close snapshots); a lag — or a missing/undecodable
+		// index — declines so the full save republishes.
+		if indexPath := store.SessionDisplayIndex(path); indexPath != "" {
+			idx, err := LoadSessionDisplayIndex(indexPath)
+			if err != nil || !idx.RevisionKnown || idx.Revision != state.revision || idx.ContentDigest != digestString(state.digest) {
+				return false
+			}
+		}
 		return true
 	}
 	probe, err := probeLogForSave(path)

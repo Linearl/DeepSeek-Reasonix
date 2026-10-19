@@ -153,11 +153,15 @@ func TestPiCatalogModelInfosContainsMultipleProviders(t *testing.T) {
 }
 
 func TestPiCatalogModelInfoForProviderRequiresExactServingRoute(t *testing.T) {
-	model, ok := PiCatalogModelInfoForProvider("opencode-go", "openai", "https://opencode.ai/zen/go/v1", "qwen3.6-plus")
+	// pi upstream catalog drift: qwen3.6-plus existed at pi v0.84.20 (when
+	// this contract was written) but was dropped from the opencode-go route by
+	// v0.99.26 (latest). qwen3.7-plus is the current same-family openai-completions
+	// image-capable entry; the exact-route matching intent is unchanged.
+	model, ok := PiCatalogModelInfoForProvider("opencode-go", "openai", "https://opencode.ai/zen/go/v1", "qwen3.7-plus")
 	if !ok || !model.SupportsInput(ModalityImage) || model.API != "openai-completions" {
 		t.Fatalf("OpenCode catalog model = %+v, ok=%t", model, ok)
 	}
-	if _, ok := PiCatalogModelInfoForProvider("opencode-go", "openai", "https://gateway.example/v1", "qwen3.6-plus"); ok {
+	if _, ok := PiCatalogModelInfoForProvider("opencode-go", "openai", "https://gateway.example/v1", "qwen3.7-plus"); ok {
 		t.Fatal("custom endpoint must not inherit pi catalog metadata")
 	}
 }

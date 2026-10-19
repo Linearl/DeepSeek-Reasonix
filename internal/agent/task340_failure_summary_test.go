@@ -20,8 +20,17 @@ import (
 // while the actual cause stayed invisible.
 
 func TestInterruptedRecoveryKeepsRedactedFailureSummary(t *testing.T) {
-	body := `{"error":{"message":"insufficient balance, key sk-live-abcdef123456 registered"}}`
-	apiErr := &provider.APIError{Provider: "relay", ProviderDisplayName: "Relay", Protocol: "openai", Status: 402, Body: body}
+	// The original fixture used HTTP 402 with an "insufficient balance" body,
+	// but either half alone sends the error into task 845's quota long-wait lane
+	// (provider/quota_error.go matches status==402 OR a narrow billing-keyword
+	// list), which re-enters sampling until the 1800s quota budget without
+	// consuming max_attempts slots — and a 5xx would take the retryable headers
+	// lane (measured: status 500 → phase=headers retryable=true), so any fixed
+	// script length stays brittle. A 400 with a non-billing body keeps the
+	// contract this test pins — a real provider error whose redacted summary
+	// survives a reload — on the ordinary single-shot failure path.
+	body := `{"error":{"message":"internal error: request rejected, key sk-live-abcdef123456 registered"}}`
+	apiErr := &provider.APIError{Provider: "relay", ProviderDisplayName: "Relay", Protocol: "openai", Status: 400, Body: body}
 	mp := testutil.NewMock("m", testutil.ErrorTurn(apiErr))
 	a := New(mp, echoRegistry(), NewSession(""), Options{}, event.Discard)
 	if err := a.Run(withNoClosedLoop(context.Background()), "check bug"); !errors.Is(err, apiErr) {
@@ -37,7 +46,7 @@ func TestInterruptedRecoveryKeepsRedactedFailureSummary(t *testing.T) {
 		t.Fatal("failed turn must persist a failure summary")
 	}
 	// The real cause survives: the status and the body snippet.
-	if !strings.Contains(summary, "402") || !strings.Contains(summary, "insufficient balance") {
+	if !strings.Contains(summary, "400") || !strings.Contains(summary, "request rejected") {
 		t.Fatalf("failure summary lost the real cause: %q", summary)
 	}
 	// The credential does not (418 RedactError discipline, applied before the
