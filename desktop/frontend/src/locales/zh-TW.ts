@@ -723,6 +723,11 @@ export const zhTW: Record<DictKey, string> = {
   "composer.queueGuidance": "加入引導佇列（{combo}）",
   "composer.steer": "追加到目前任務（Enter）",
   "composer.steerPlaceholder": "正在執行——輸入補充指示，{combo} 加入佇列",
+  // 任務1015：五態 queued_followup 與長工具鏈可見性。
+  "composer.queuedStrip": "訊息已排隊，本輪結束後自動發出",
+  "composer.queuedPlaceholder": "已排隊——本輪結束後自動發出，可繼續輸入",
+  "composer.executingTool": "正在執行：{tool}",
+  "composer.lastEventAgo": "最後事件 {n}s 前",
   "composer.runWaitingApproval": "等待你核准 — {tool}",
   "composer.runWaitingAsk": "等待你回答",
   "composer.runAnnounceRunning": "正在執行",
