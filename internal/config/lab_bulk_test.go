@@ -51,7 +51,7 @@ func TestLabBulkScopeBoundary(t *testing.T) {
 	}
 
 	// 占位实测：当前稳定档集合为空 ⇒ stable 档 0 目标（不报错）。
-	p = PlanLabBulk(LabBulkScopeStable, true, labStableFeatureIDs(), false)
+	p = PlanLabBulk(LabBulkScopeStable, true, LabStableFeatureIDs(), false)
 	if len(p.Targets) != 0 {
 		t.Fatalf("placeholder stable set is empty — stable scope must plan 0 targets, got %v", p.Targets)
 	}

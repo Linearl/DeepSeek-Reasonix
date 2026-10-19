@@ -40,13 +40,13 @@ const (
 	LabBulkSkipNoSetter     = "no_bulk_setter"  // 未登记批量写入器（参数卡/家族键/纯展示行），需单项设置
 )
 
-// labStableFeatureIDs —— 稳定档集合占位（tl 1005 联调点）。
+// LabStableFeatureIDs —— 稳定档集合占位（tl 1005 联调点）。
 //
 // 1005「稳定档」尚未合入：当前返回空集，LabBulkScopeStable 计划 0 目标。
 // 1005 落地后在此（或改为读 1005 的权威注册表）填入批1 四项
 // sessionCollab / autopilot / fullAccess / runtimeReuse 的稳定档判定，
 // 护栏①②随集合非空自动生效，本包测试已用注入集合验证过两条护栏。
-func labStableFeatureIDs() map[string]bool {
+func LabStableFeatureIDs() map[string]bool {
 	return map[string]bool{}
 }
 
@@ -180,7 +180,7 @@ func labBulkScopeHas(scope LabBulkScope, id string, tier LabTier, stableIDs map[
 
 // PlanLabBulk 纯计划：范围×行为 → 目标集 + 护栏输出。不写配置。
 //
-// 稳定档集合与开发者模式都经参数注入（占位实现见 labStableFeatureIDs /
+// 稳定档集合与开发者模式都经参数注入（占位实现见 LabStableFeatureIDs /
 // LabDeveloperModeOn），测试可用真集合验证护栏，1005 联调后无需改判定逻辑。
 func PlanLabBulk(scope LabBulkScope, on bool, stableIDs map[string]bool, devModeOn bool) LabBulkPlan {
 	plan := LabBulkPlan{Scope: scope, On: on}
@@ -215,7 +215,7 @@ func PlanLabBulk(scope LabBulkScope, on bool, stableIDs map[string]bool, devMode
 // 单个 setter 报错不中断其余目标，错误合并返回（配置在 SaveTo 前均为内存态，
 // 失败目标仅缺写，不产生半写键）。
 func (c *Config) ApplyLabBulk(scope LabBulkScope, on bool) (LabBulkPlan, []string, error) {
-	plan := PlanLabBulk(scope, on, labStableFeatureIDs(), c.LabDeveloperModeOn())
+	plan := PlanLabBulk(scope, on, LabStableFeatureIDs(), c.LabDeveloperModeOn())
 	var applied []string
 	var errs []string
 	for _, id := range plan.Targets {
