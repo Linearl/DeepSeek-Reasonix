@@ -450,6 +450,17 @@ func (a *App) SavePastedFile(name, dataURL string) (string, error) {
 	})
 }
 
+// SavePastedAudio stores a pasted/dropped audio file (task 1008) under the
+// active tab's workspace .reasonix/attachments and returns the relative
+// @-reference path. The five accepted formats are validated here so a stray
+// binary never lands under an audio name; the 50 MB ceiling mirrors the
+// provider's inline audio limit (the generic 25 MB file cap does not apply).
+func (a *App) SavePastedAudio(name, dataURL string) (string, error) {
+	return a.withActiveWorkspace(func() (string, error) {
+		return control.SaveAudioAttachmentDataURL(name, dataURL)
+	})
+}
+
 // PickExportFile opens the native save dialog and returns the selected path. It
 // returns "" when the user cancels.
 func (a *App) PickExportFile(defaultFilename, mimeType string) (string, error) {

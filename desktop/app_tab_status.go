@@ -173,6 +173,7 @@ type Meta struct {
 	WorkspacePath         string             `json:"workspacePath,omitempty"`
 	GitBranch             string             `json:"gitBranch,omitempty"`
 	ImageInputEnabled     bool               `json:"imageInputEnabled"`
+	AudioInputEnabled     bool               `json:"audioInputEnabled"` // task 1008: audio attachment entry gate
 	VisionFallbackEnabled bool               `json:"visionFallbackEnabled,omitempty"`
 	AutoApproveTools      bool               `json:"autoApproveTools"`
 	Bypass                bool               `json:"bypass"` // legacy JSON key for YOLO/full-access tool auto-approval
@@ -312,6 +313,7 @@ func (a *App) MetaForTab(tabID string) Meta {
 		WorkspacePath:         cwd,
 		GitBranch:             extras.gitBranch,
 		ImageInputEnabled:     extras.imageInputEnabled,
+		AudioInputEnabled:     extras.audioInputEnabled,
 		VisionFallbackEnabled: extras.visionFallbackEnabled,
 		AutoApproveTools:      autoApproveTools,
 		Bypass:                autoApproveTools,

@@ -28,6 +28,7 @@ type orchestratedTurn struct {
 	raw              string
 	imageRefs        string
 	userImages       []string
+	userAudio        []string // task 1008: resolved with the images, same @-reference line
 	imageCandidates  []string
 	imagesResolved   bool
 	display          string
@@ -162,7 +163,7 @@ func (o *turnOrchestrator) runSubagentSkillTurns(ctx context.Context, skills []s
 	if c.executor == nil {
 		return fmt.Errorf("subagent slash invocation requires an active session")
 	}
-	c.executor.AppendTurnContextAndUser(ctx, persistedUserTurn(input, firstNonEmpty(raw, task), images, time.Now().UnixMilli()))
+	c.executor.AppendTurnContextAndUser(ctx, persistedUserTurn(input, firstNonEmpty(raw, task), images, nil, time.Now().UnixMilli()))
 
 	for _, sk := range skills {
 		sk = c.skills.prepare(sk)
@@ -212,7 +213,9 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	ctx = agent.WithParentSession(ctx, parentSession)
 	ctx = jobs.WithSession(ctx, parentSession)
 	userImages, imageCandidates := c.imagesForOrchestratedTurn(ctx, turn)
+	userAudio := c.audioForOrchestratedTurn(ctx, turn)
 	ctx = agent.WithUserImages(ctx, userImages)
+	ctx = agent.WithUserAudio(ctx, userAudio)
 	ctx = agent.WithSubagentImageCandidates(ctx, imageCandidates)
 	ctx = agent.WithRawUserInput(ctx, turn.raw)
 	ctx = withTurnInputOrigin(ctx, turn.synthetic)
@@ -325,15 +328,15 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 				c.stripInterruptedSyntheticTurnMessagesAfter(startMessages)
 			} else {
 				c.stripCancelledVisibleTurnMessagesAfterWithFallback(startMessages,
-					persistedUserTurn(input, turn.raw, userImages, time.Now().UnixMilli()))
+					persistedUserTurn(input, turn.raw, userImages, userAudio, time.Now().UnixMilli()))
 			}
 		} else if !turn.synthetic && c.hasInterruptedDisplayAfter(startMessages,
-			persistedUserTurn(input, turn.raw, nil, 0)) {
+			persistedUserTurn(input, turn.raw, nil, nil, 0)) {
 			// Provider/API failures use the same safe recovery path as an explicit
 			// stop once the agent has recorded a partial stream. Completed tool
 			// pairs survive; unsafe stream fragments stay local-only.
 			c.stripCancelledVisibleTurnMessagesAfterWithFallback(startMessages,
-				persistedUserTurn(input, turn.raw, userImages, time.Now().UnixMilli()))
+				persistedUserTurn(input, turn.raw, userImages, userAudio, time.Now().UnixMilli()))
 		}
 		return err
 	}

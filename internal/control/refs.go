@@ -22,6 +22,7 @@ import (
 	"reasonix/internal/fileref"
 	"reasonix/internal/instruction"
 	"reasonix/internal/proc"
+	"reasonix/internal/provider"
 	"reasonix/internal/secrets"
 )
 
@@ -50,6 +51,7 @@ const (
 	refImage                      // a local image attachment: @.reasonix/attachments/<file>
 	refRemoteImage                // an http(s) image URL
 	refFileID                     // a Files API file-api- id
+	refAudio                      // a local audio attachment: @.reasonix/attachments/<file> (task 1008)
 )
 
 // ref is a resolved @reference found in a submitted line.
@@ -177,6 +179,9 @@ func classifyRef(token string, known map[string]bool, exists func(string) bool) 
 		if isImageAttachmentRef(token) {
 			return ref{kind: refImage, path: token, raw: token}, true
 		}
+		if isAudioAttachmentRef(token) {
+			return ref{kind: refAudio, path: token, raw: token}, true
+		}
 		return ref{kind: refFile, path: token, raw: token}, true
 	}
 	if exists(token) {
@@ -195,6 +200,12 @@ func isImageAttachmentRef(token string) bool {
 		return true
 	}
 	return false
+}
+
+// isAudioAttachmentRef reports the task-1008 audio attachment extensions
+// (mp3/wav/flac/m4a/ogg) via the shared provider whitelist.
+func isAudioAttachmentRef(token string) bool {
+	return provider.IsAudioAttachmentPath(token)
 }
 
 // RegisterExternalFolderRef authorizes one dropped directory outside the
@@ -521,6 +532,9 @@ func (c *Controller) detectRefsMode(line string, scopedOnly bool) []ref {
 				kind := refFile
 				if isAttachmentRef(rel) && isImageAttachmentRef(rel) {
 					kind = refImage
+				}
+				if isAttachmentRef(rel) && isAudioAttachmentRef(rel) {
+					kind = refAudio
 				}
 				refs = append(refs, ref{kind: kind, path: rel, raw: tok})
 			}
@@ -864,6 +878,19 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			if r.baseDir != "" {
 				baseDir = r.baseDir
 			}
+			// Task 1008: an audio workspace file (dropped from inside the
+			// workspace) resolves as refFile; reading it as text would inject
+			// binary garbage, so it gets the audio note instead. The actual
+			// bytes reach the provider through resolveInputAudioCandidates.
+			if isAudioRef(r) {
+				if err := c.audioRefAvailable(r, baseDir); err != nil {
+					errs = append(errs, "@"+r.raw+" — "+err.Error())
+					appendRefBlock(&b, "audio", `path="`+r.path+`"`, audioAttachmentFailedNote(r.path, err))
+					continue
+				}
+				appendRefBlock(&b, "audio", `path="`+r.path+`"`, audioFileRefNote(r.path, c.audioInputEnabled()))
+				continue
+			}
 			text, isDir, err := readFileRefWithVision(r.path, baseDir, c.imageInputEnabled())
 			if err != nil {
 				errs = append(errs, "@"+r.raw+" — "+err.Error())
@@ -885,6 +912,20 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 				displayPath = r.displayPath
 			}
 			appendRefBlock(&b, tag, `path="`+displayPath+`"`, text)
+		case refAudio:
+			// Task 1008: the note lands in the user-turn context block only. It
+			// never changes tools or the system prompt, so the audio capability
+			// state leaves request prefix bytes untouched.
+			refBaseDir := c.workspaceRoot
+			if r.baseDir != "" {
+				refBaseDir = r.baseDir
+			}
+			if err := c.audioRefAvailable(r, refBaseDir); err != nil {
+				errs = append(errs, "@"+r.raw+" — "+err.Error())
+				appendRefBlock(&b, "audio", `path="`+r.path+`"`, audioAttachmentFailedNote(r.path, err))
+				continue
+			}
+			appendRefBlock(&b, "audio", `path="`+r.path+`"`, audioAttachmentNote(r.path, c.audioInputEnabled()))
 		case refImage, refRemoteImage, refFileID:
 			// The note has to describe what actually happened. A reference whose
 			// bytes never reach the model must not be announced as "attached as
