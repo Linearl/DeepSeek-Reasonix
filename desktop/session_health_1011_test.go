@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -226,4 +227,78 @@ func activateWorkspaceRootForTest(t *testing.T, app *App, root string) {
 	app.tabs["tab-1011"] = &WorkspaceTab{ID: "tab-1011", WorkspaceRoot: root}
 	app.activeTabID = "tab-1011"
 	app.mu.Unlock()
+}
+
+// Test1011DesktopVersionGroupsSamplePanel is the 需求 E acceptance against the
+// real 20261019 backup: the panel must list the incident session with its 8
+// heads and the "更长且更新" readings (7087 messages / 120 turns on 01M59JNK,
+// marked as the suggestion over the rotation-pinned 01M51VB chain).
+func Test1011DesktopVersionGroupsSamplePanel(t *testing.T) {
+	sample := os.Getenv("TL1011_SAMPLE_DIR")
+	if sample == "" {
+		t.Skip("TL1011_SAMPLE_DIR not set; sample panel acceptance runs only against the 20261019 backup")
+	}
+	isolateDesktopUserDirs(t)
+	root := globalWorkspaceRoot()
+	dir := desktopSessionDir(root)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(sample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var path string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".jsonl") && !strings.HasSuffix(e.Name(), ".events.jsonl") && !strings.HasSuffix(e.Name(), ".turns.jsonl") {
+			blob, err := os.ReadFile(filepath.Join(sample, e.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, e.Name()), blob, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			path = filepath.Join(dir, e.Name())
+			continue
+		}
+		blob, err := os.ReadFile(filepath.Join(sample, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, e.Name()), blob, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app := NewApp()
+	activateWorkspaceRootForTest(t, app, root)
+	groups, err := app.ListSessionVersionGroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var group *SessionVersionGroupView
+	for i := range groups {
+		if samePath(groups[i].MainPath, path) {
+			group = &groups[i]
+		}
+	}
+	if group == nil {
+		t.Fatalf("the incident session (head_count=8) must appear in the panel: %d groups", len(groups))
+	}
+	if group.HeadCount != 8 {
+		t.Errorf("panel head count = %d, want 8 (任务书样本读数)", group.HeadCount)
+	}
+	if group.Selected != "01M51VBWNBR0MXNBPJ25SNRYHC" {
+		t.Errorf("panel selected head = %q, want the rotation-pinned 01M51VB chain", group.Selected)
+	}
+	// 检查读数：健康检查必须给出「更长且更新」建议 = 01M59JNK 链。
+	check, err := app.InspectSessionHealthFor(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if check.Healthy {
+		t.Fatal("the incident sample must inspect unhealthy")
+	}
+	if check.SuggestedHeadID != "01M59JNKEEW3CEQC16XTX035TW" {
+		t.Errorf("panel suggestion = %q, want the longer-newer 01M59JNK chain (7087 msgs / 120 turns)", check.SuggestedHeadID)
+	}
 }
