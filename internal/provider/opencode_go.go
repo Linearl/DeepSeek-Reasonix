@@ -207,12 +207,24 @@ func OpenCodeGoModelInfo(kind, baseURL, model string) (ModelInfo, bool) {
 	if !ok {
 		return ModelInfo{}, false
 	}
-	if _, ok := LookupOfficialOpenCodeGo(kind, baseURL, model); !ok {
+	limits, ok := LookupOfficialOpenCodeGo(kind, baseURL, model)
+	if !ok {
 		return ModelInfo{}, false
 	}
-	info := ModelInfo{ID: strings.TrimSpace(model), InputModalities: []ModelModality{ModalityText}}
+	apiByRoute := map[string]string{
+		OpenCodeGoRouteChat:      "openai-completions",
+		OpenCodeGoRouteAnthropic: "anthropic-messages",
+		OpenCodeGoRouteResponses: "openai-responses",
+	}
+	info := ModelInfo{
+		ID:              strings.TrimSpace(model),
+		API:             apiByRoute[route],
+		ContextWindow:   limits.Context,
+		MaxOutputTokens: limits.MaxOutput,
+		InputModalities: []ModelModality{ModalityText},
+	}
 	vision := map[string]map[string]bool{
-		OpenCodeGoRouteChat:      {"kimi-k3": true},
+		OpenCodeGoRouteChat:      {"kimi-k3": true, "kimi-k2.6": true},
 		OpenCodeGoRouteAnthropic: {"qwen3.8-max": true, "qwen3.7-plus": true, "qwen3.6-plus": true},
 		OpenCodeGoRouteResponses: {"grok-4.5": true, "gpt-5.6-luna": true, "muse-spark-1.2-contributor": true},
 	}[route]
