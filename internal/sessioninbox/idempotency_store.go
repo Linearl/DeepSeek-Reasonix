@@ -69,6 +69,7 @@ func (s *Store) idempotentReceiptLocked(key, requestHash string) (InboxReceipt, 
 				ItemID: item.ID, Disposition: DispositionIdempotentHit,
 				Position: s.man.indexOf(item.ID) + 1, Paused: s.man.Paused,
 				Capacity: s.snapshotLocked().Capacity, Idempotent: true,
+				ByteSize: item.ByteSize, // 任务999: replayed live hit still reports size
 			}, true, nil
 		}
 	}

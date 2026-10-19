@@ -568,6 +568,20 @@ func (c *Controller) EnqueueInbox(req InboxRequest) (sessioninbox.InboxReceipt, 
 		rec.Paused = true
 	}
 	sessioninbox.NoteEnqueue(int64(len(env.SubmitText)))
+	// 任务999: soft notice above the 4 MiB advisory threshold. The item was
+	// admitted (hard ceiling stays DefaultMaxItemBytes) and nothing needs
+	// action, so this follows the 任务894 no-action tier: a UI Notice event,
+	// never an injected model message. Idempotent replays stay silent — the
+	// first delivery already said it once.
+	if !rec.Idempotent && rec.ByteSize > sessioninbox.SoftNoticeItemBytes {
+		c.sink.Emit(event.Event{
+			Kind:   event.Notice,
+			Level:  event.LevelInfo,
+			Code:   event.NoticeCodeInboxLargeItem,
+			Text:   "This instruction is over 4 MiB; many images add transfer overhead and may slow the response.",
+			Detail: fmt.Sprintf("item_bytes=%d limit=%d", rec.ByteSize, sessioninbox.DefaultMaxItemBytes),
+		})
+	}
 	// Task 51 backend: warn when the session event log is inside the replay
 	// fence band so the user can compact before inbox delivery starts failing.
 	// Observation only — never blocks a successful enqueue.

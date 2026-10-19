@@ -94,6 +94,12 @@ const (
 	// message to this UI-layer notice — the model never reads it; the durable
 	// channel stays the 570 delivery receipt (get_message_status by messageId).
 	NoticeCodeCollabDeliverySilent = "collab_delivery_silent"
+	// NoticeCodeInboxLargeItem (任务999): a queued instruction's encoded body
+	// crossed the advisory 4 MiB threshold. Informational only — the item was
+	// admitted (the hard ceiling is DefaultMaxItemBytes, 16 MiB since 999) and
+	// nothing needs action, so it follows the 任务894 no-action tier: a UI
+	// notice, never an injected model message.
+	NoticeCodeInboxLargeItem = "inbox_large_item"
 )
 
 // 任务553: wake-yield code lives in its own block so the wire-stable table
