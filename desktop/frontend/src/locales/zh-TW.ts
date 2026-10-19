@@ -3391,7 +3391,7 @@ export const zhTW: Record<DictKey, string> = {
   "rewind.confirmBoth": "確認回滾程式碼和對話",
   "rewind.confirmConversation": "確認回滾對話",
   "rewind.confirmCode": "確認回滾程式碼",
-  "rewind.confirmPartialCoverage": "Reasonix 無法追蹤所有可能的檔案寫入，只會還原已擷取的檔案。\n\n覆蓋缺口：\n{gaps}\n\n是否繼續？",
+  "rewind.confirmPartialCoverage": "Reasonix 無法追蹤所有可能的檔案寫入，只會還原已擷取的檔案；bash 命令的副作用（刪除、移動等）不在追蹤範圍，回滾不會撤銷它們。\n\n覆蓋缺口：\n{gaps}\n\n是否繼續？",
   "rewind.partialCoverageUnknown": "部分寫入無法關聯到具體檔案路徑。",
   "rewind.partialRestoreFailed": "對話已分叉，但程式碼未能完整還原。",
   "rewind.busyFork": "正在從這條訊息分叉…",

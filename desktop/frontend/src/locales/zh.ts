@@ -4779,7 +4779,7 @@ export const zh: Record<DictKey, string> = {
   "rewind.confirmBoth": "确认回滚代码和对话",
   "rewind.confirmConversation": "确认回滚对话",
   "rewind.confirmCode": "确认回滚代码",
-  "rewind.confirmPartialCoverage": "Reasonix 无法追踪所有可能的文件写入，只会恢复已捕获的文件。\n\n覆盖缺口：\n{gaps}\n\n是否继续？",
+  "rewind.confirmPartialCoverage": "Reasonix 无法追踪所有可能的文件写入，只会恢复已捕获的文件；bash 命令的副作用（删除、移动等）不在跟踪范围，回滚不会撤销它们。\n\n覆盖缺口：\n{gaps}\n\n是否继续？",
   "rewind.partialCoverageUnknown": "部分写入无法关联到具体文件路径。",
   "rewind.partialRestoreFailed": "对话已分叉，但代码未能完整恢复。",
   "rewind.busyFork": "正在从这条消息分叉…",
