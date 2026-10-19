@@ -227,7 +227,9 @@ func decodeModalities(raw json.RawMessage) ([]provider.ModelModality, bool) {
 	out := make([]provider.ModelModality, 0, len(values))
 	for _, value := range values {
 		modality := provider.ModelModality(strings.ToLower(strings.TrimSpace(value)))
-		if modality != provider.ModalityText && modality != provider.ModalityImage {
+		// Task 1008: audio rides the same declaration channel; an unknown
+		// modality still poisons the entry (nil) rather than being dropped.
+		if modality != provider.ModalityText && modality != provider.ModalityImage && modality != provider.ModalityAudio {
 			return nil, false
 		}
 		if !seen[modality] {
@@ -236,7 +238,7 @@ func decodeModalities(raw json.RawMessage) ([]provider.ModelModality, bool) {
 		}
 	}
 	// Stable order also makes duplicate merging independent of array order.
-	if len(out) == 2 && out[0] == provider.ModalityImage {
+	if len(out) >= 2 && out[0] == provider.ModalityImage {
 		out[0], out[1] = out[1], out[0]
 	}
 	return out, len(out) > 0

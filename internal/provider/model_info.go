@@ -10,6 +10,11 @@ type ModelModality string
 const (
 	ModalityText  ModelModality = "text"
 	ModalityImage ModelModality = "image"
+	// ModalityAudio marks models that accept file audio input (task 1008,
+	// mimo-v2.6 全模态). The modality only ever widens the user-turn content
+	// shape (input_audio parts); it must never touch tools or the system
+	// prompt, so capability caches keep prefix bytes stable.
+	ModalityAudio ModelModality = "audio"
 )
 
 // ModelInfo is the adapter-owned, model-level capability metadata. A nil

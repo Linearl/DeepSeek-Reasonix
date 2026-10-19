@@ -2360,6 +2360,7 @@ type ProviderEntry struct {
 	// base_url/key.
 	ModelOverrides map[string]ProviderModelOverride `toml:"model_overrides"`
 	visionOverride *bool
+	audioOverride  *bool
 	// NoProxy reaches this provider's base_url directly, never through the proxy.
 	// For China-only endpoints a foreign-exit proxy resets the TLS handshake (#2803).
 	NoProxy bool `toml:"no_proxy"`
@@ -2373,6 +2374,11 @@ type ProviderModelOverride struct {
 	SupportedEfforts  []string `toml:"supported_efforts"`
 	DefaultEffort     string   `toml:"default_effort"`
 	Vision            *bool    `toml:"vision"`
+	// Audio gates direct file audio input for this model (task 1008). Nil
+	// inherits the adapter-resolved modality; true forces audio on when the
+	// protocol supports it, false forces it off. Like vision, it only ever
+	// affects the user-turn content shape — never tools or system prompt bytes.
+	Audio *bool `toml:"audio"`
 	// ContextWindow overrides the provider-wide context budget for this model.
 	// Zero inherits ProviderEntry.ContextWindow so existing configurations keep
 	// their current compaction behavior.
@@ -2519,6 +2525,9 @@ func (e *ProviderEntry) applyModelOverride() {
 	}
 	if ov.Vision != nil {
 		e.visionOverride = ov.Vision
+	}
+	if ov.Audio != nil {
+		e.audioOverride = ov.Audio
 	}
 	if ov.ContextWindow > 0 {
 		e.ContextWindow = ov.ContextWindow
