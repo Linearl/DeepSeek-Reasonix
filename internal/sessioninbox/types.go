@@ -9,12 +9,23 @@ import (
 // read-only and force pause; they never auto-execute.
 const SchemaVersion = 3
 
-// Default capacity limits.
+// Default capacity limits. 任务999: user decision 2026-10-19 — steer injection
+// and a normal turn cost the same request, so blocking large messages until
+// the next turn bought nothing; the single-item ceiling 4→16 MiB and the total
+// 64→128 MiB.
 const (
 	DefaultMaxItems      = 64
-	DefaultMaxItemBytes  = 4 << 20  // 4 MiB
-	DefaultMaxTotalBytes = 64 << 20 // 64 MiB
+	DefaultMaxItemBytes  = 16 << 20  // 16 MiB (任务999: was 4 MiB)
+	DefaultMaxTotalBytes = 128 << 20 // 128 MiB (任务999: was 64 MiB)
 	DefaultPreviewRunes  = 120
+
+	// SoftNoticeItemBytes (任务999) is the advisory threshold, NOT a gate: an
+	// item whose encoded blob exceeds it still enqueues (the hard ceiling
+	// stays DefaultMaxItemBytes) but earns one UI-layer notice — many images
+	// inflate transfer cost and can slow the response. Same 任务894 tier as
+	// the silent delivery receipts: no action needed → the model never reads
+	// it, the human sees a transcript notice.
+	SoftNoticeItemBytes = 4 << 20 // 4 MiB
 )
 
 // InboxIntent distinguishes durable follow-up turns from mid-turn steers.
@@ -240,6 +251,12 @@ type InboxReceipt struct {
 	Position    int         `json:"position"`
 	Paused      bool        `json:"paused"`
 	Capacity    Capacity    `json:"capacity"`
+	// ByteSize (任务999) is the encoded blob size of the item this receipt
+	// names. Fresh enqueues and idempotent hits that found a live item fill
+	// it; zero elsewhere (settled-receipt replay, synthesized receipts). The
+	// controller's >4 MiB soft-notice reads it — no second blob or manifest
+	// lookup just to decide whether to warn.
+	ByteSize int64 `json:"byteSize,omitempty"`
 	// MergedInto (task 309) is set on an idempotent hit when the original
 	// item's content was folded into another queue row by a merge: the
 	// receipt still names the surviving row, and this field tells the sender

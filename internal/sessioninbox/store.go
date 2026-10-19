@@ -462,6 +462,7 @@ func (s *Store) Enqueue(req EnqueueRequest) (InboxReceipt, error) {
 		Position:    len(next.Items),
 		Paused:      next.Paused,
 		Capacity:    snap.Capacity,
+		ByteSize:    byteSize, // 任务999: feeds the >4 MiB soft notice
 	}, nil
 }
 
