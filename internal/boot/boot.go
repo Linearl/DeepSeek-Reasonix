@@ -947,6 +947,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		if implicitSkillInvocation {
 			rebuilt += "\n\n" + skill.InvocationPolicyBlock()
 		}
+		// 任务 1005 C4：sessionCollab 默认开，boot 在 skills policy 之后追加
+		// 通讯录索引段。压缩后的 memory 重建必须与 boot 同构，否则默认开的
+		// 会话在首次压缩后就丢掉该段教学（模型会对「通讯录」答 no such tool）。
+		if sessionCollabEnabled(cfg) {
+			rebuilt += "\n\n" + sessionCollabIndexBlock()
+		}
 		return config.ApplyOfficialDeepSeekV4ProPersona(rebuilt, entry)
 	}
 

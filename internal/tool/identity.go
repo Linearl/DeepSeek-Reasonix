@@ -44,6 +44,31 @@ const (
 	HostWebSearch     = "web_search"
 )
 
+// forkCollabToolNames：fork 的会话协作工具（session collab / channel / mailbox /
+// task card / 会话元数据）。任务 1005 C4 让 sessionCollab 默认开，这批工具随之
+// 默认注册，因此必须列入诊断身份名单——boot 的
+// TestBootRegisteredToolsHaveDiagnosticIdentities 要求每个注册工具都可查。
+var forkCollabToolNames = []string{
+	"adopt_session_version",
+	"channel_cancel",
+	"channel_list",
+	"channel_read",
+	"channel_send",
+	"event_wait",
+	"get_message_status",
+	"get_session_info",
+	"get_session_status",
+	"list_addressable_sessions",
+	"list_session_versions",
+	"mailbox",
+	"peek_own_inbox",
+	"query_collab_mail",
+	"read_collab_status",
+	"set_session_purpose",
+	"talk_to_session",
+	"task_card",
+}
+
 // KnownToolNames combines compile-time built-ins with host-managed identities.
 // Callers must import tool/builtin to initialize the compile-time inventory.
 func KnownToolNames() []string {
@@ -85,6 +110,7 @@ func KnownToolNames() []string {
 		HostUseCapability,
 		HostWebSearch,
 	}
+	names = append(names, forkCollabToolNames...)
 	for _, t := range Builtins() {
 		names = append(names, t.Name())
 	}

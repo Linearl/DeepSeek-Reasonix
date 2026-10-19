@@ -48,6 +48,14 @@ func PublishCollabDrainInboxGate(enabled bool) {
 	collabDrainInboxPublish.Do(func() { collabDrainInboxSnapshot.Store(enabled) })
 }
 
+// resetCollabDrainGateForTest 重置进程级 gate（once + snapshot）。仅供本包测试
+// 使用：验证「首次发布决定」（once 语义）的测试必须在干净 once 上跑，而同一
+// 测试进程里其它测试可能已先发布（同包顺序依赖）；生产路径不会调用它。
+func resetCollabDrainGateForTest() {
+	collabDrainInboxPublish = sync.Once{}
+	collabDrainInboxSnapshot.Store(false)
+}
+
 // CollabDrainInboxGate reports the boot-time drain_inbox registration decision
 // so the desktop pump's skip check resolves at the same instant as the
 // registration (minor-1, audit-2): two sides that read different config states

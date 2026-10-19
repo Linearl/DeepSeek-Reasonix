@@ -148,7 +148,10 @@ func TestRuntimeAssemblyReuseCarriesSlashSkills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("round2 BuildRuntime: %v", err)
 	}
-	if res2.Snapshot == nil || res2.Snapshot.SystemPrompt() != "SENTINEL-SLASH-REUSE" {
+	// 任务 1005 C4 后 sessionCollab 默认开：装配会在基础 prompt（＝复用的
+	// sentinel）之后追加通讯录段，故按前缀判定「走了复用分支」（同
+	// TestRuntimeAssemblyReuseFeedsDiscovery 口径）。
+	if res2.Snapshot == nil || !strings.HasPrefix(res2.Snapshot.SystemPrompt(), "SENTINEL-SLASH-REUSE") {
 		t.Fatal("round2 did not take the reuse branch; the slash assertion below would prove nothing")
 	}
 	if desc := slashToolDescription(t, res2); !strings.Contains(desc, "reusingskill") {
