@@ -18,6 +18,8 @@ import { useCollabDisplayStore } from "../store/collabDisplay";
 import { COLLAB_MSG_FOLD_LINE_THRESHOLD, estimateUserMessageLines, firstDisplayLine } from "../lib/messageFold";
 import { ProcessCompactIcon, ProcessPhaseIcon } from "./ProcessCard";
 import { useTranscriptUserResizeIntent } from "./TranscriptLayoutIntentContext";
+import { useTick } from "../lib/workStatus";
+import { compactionLiveReadout } from "../lib/compactionLive";
 
 export function PhaseCard({ id, text }: { id: string; text: string }) {
   return <div className="phase" data-entrance={id}><ProcessPhaseIcon size={12} /><span>{text}</span></div>;
@@ -302,9 +304,17 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const beginUserResize = useTranscriptUserResizeIntent();
+  // 任务 973: the pending card is the user's primary compaction surface (the
+  // static「正在压缩对话…」block from the screenshot) — it now carries the
+  // same live readout as the fold header:「已 Xs · XX tokens · X t/s」, fed by
+  // CompactionProgress events plus the compaction_started stamp. The 1s tick
+  // keeps the elapsed leg moving between events; resolved/failed cards
+  // (pending=false) never start the interval.
+  const now = useTick(item.pending);
   if (item.pending) {
     const label = (item.total ?? 0) > 0 ? t("compaction.progress", { done: item.done ?? 0, total: (item.total ?? 0) }) : t("compaction.working");
-    return <div className="compaction compaction--pending" data-entrance={item.id} data-transcript-layout-variant="static"><ProcessCompactIcon size={12} /><span>{label}</span></div>;
+    const readout = compactionLiveReadout(item, now, t);
+    return <div className="compaction compaction--pending" data-entrance={item.id} data-transcript-layout-variant="static"><ProcessCompactIcon size={12} /><span>{label + readout}</span></div>;
   }
   // 任务 867: a failed pass renders as its own visible card instead of the
   // historical silent removal — the user sees which attempt failed and why,

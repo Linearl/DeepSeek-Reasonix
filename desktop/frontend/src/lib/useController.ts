@@ -367,6 +367,12 @@ export type Item =
       // wholesale, so the finished card never carries a stale estimate.
       tokens?: number;
       tokensPerSec?: number;
+      // 任务 973: compaction_started stamp — feeds the「已 XXs」elapsed leg of
+      // the live readout (compactionLive.ts) so the pending card ticks within
+      // 3s even before the summarizer's first token estimate lands. In-memory
+      // only, same convention as ToolItem.startedAt: hydrated cards carry no
+      // stamp and therefore render no elapsed.
+      startedAt?: number;
       // 任务 867: a failed pass stays visible (failed/attempt/reason) instead
       // of vanishing while the watermark climbs; the next CompactionStarted
       // flips this card back to pending instead of stacking a duplicate.
@@ -2168,10 +2174,10 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       if (idx >= 0) {
         const at = s.items.length - 1 - idx;
         const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
-        const restarted: Item = { ...cur, pending: true, failed: false, attempt: undefined, reason: undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0 };
+        const restarted: Item = { ...cur, pending: true, failed: false, attempt: undefined, reason: undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0, startedAt: Date.now() };
         return { ...s, seq: s.seq + 1, items: s.items.map((it, i) => (i === at ? restarted : it)) };
       }
-      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "" }] };
+      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "", startedAt: Date.now() }] };
     }
     case "compaction_progress": {
       // 任务 556: live tokens/throughput + chunked-fold N/M on the pending
