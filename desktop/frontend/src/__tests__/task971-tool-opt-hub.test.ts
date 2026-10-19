@@ -73,16 +73,19 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
     "multiEditInjection standalone pane retired (943 split preserved as independent switch)");
   ok(panel.includes("(s.experimentalMultiEditInjection ?? (s.experimentalToolOptimizations ?? true)) === on"),
     "multi_edit injection keeps the SAME fallback chain (independent semantics)");
-  // updateFeedback 卡不再含 restartUpdate 成员（onKeys 去 experimentalRestartUpdate）。
+  // 任务 992（用户 1018 21:34）：restartUpdate 归位回 updateFeedback 卡——
+  // updateFeedback 重新含 restartUpdate 成员与灯键，工具优化卡不再承载
+  // （本 pin 2026-10-19 随 1005 窗口补同步，992 归位时漏跟）。
   // 剥行注释再断言——避免迁移注释里的关键字造成假红。
   const layoutDefault = read("lab/labLayoutDefault.ts").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
   const ufIdx = layoutDefault.indexOf('id: "updateFeedback"');
-  const ufEntry = layoutDefault.slice(ufIdx, ufIdx + 220);
-  ok(!ufEntry.includes("experimentalRestartUpdate") && !ufEntry.includes('id: "restartUpdate"'),
-    "updateFeedback layout entry drops the restartUpdate member and light key");
+  // 窗口放宽到 400：992 归位后条目含三键灯 + 两成员行，220 截不住成员表。
+  const ufEntry = layoutDefault.slice(ufIdx, ufIdx + 400);
+  ok(ufEntry.includes("experimentalRestartUpdate") && ufEntry.includes('id: "restartUpdate"'),
+    "updateFeedback layout entry hosts the restartUpdate member and light key again (992 move-back)");
   const toolOptEntry = layoutDefault.slice(layoutDefault.indexOf('id: "toolOptimizations"'));
-  ok(toolOptEntry.includes('id: "restartUpdate"') && toolOptEntry.includes('id: "multiEditInjection"'),
-    "toolOptimizations hub hosts restartUpdate + multiEditInjection as members");
+  ok(!toolOptEntry.includes('id: "restartUpdate"') && toolOptEntry.includes('id: "multiEditInjection"'),
+    "toolOptimizations hub hosts multiEditInjection (restartUpdate moved back to updateFeedback at 992)");
 }
 
 // ③ session_hub 真开关（任务 979：954/955 已合入，占位替换为真开关——
@@ -124,11 +127,14 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
   const yaml = read("lab/lab-layout.yaml");
   ok(layoutDefault.includes('labelKey: "settings.toolOptHub"') && yaml.includes("labelKey: settings.toolOptHub"),
     "both layout sources label the hub with toolOptHub");
-  ok(yaml.includes("onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalRestartUpdate, experimentalCapabilityGroups]"),
-    "yaml hub entry lights on all four switch keys (979 added the capability-groups light)");
-  // 聚合页不回并：readBack 与 multi_edit 仍是两个独立 setter。
+  // 任务 992：restartUpdate 归位——卡灯回落三键（本 pin 2026-10-19 随 1005
+  // 窗口补同步）。
+  ok(yaml.includes("onKeys: [experimentalToolOptimizations, experimentalMultiEditInjection, experimentalCapabilityGroups]"),
+    "yaml hub entry lights on the three switch keys (992 move-back dropped restart_update)");
+  // 聚合页不回并：readBack 与 multi_edit 仍是两个独立 setter（992 后
+  // restartUpdate 的独立开关归位回 updateFeedback 卡）。
   ok(layoutDefault.includes('id: "multiEditInjection"') && layoutDefault.includes('id: "restartUpdate"'),
-    "default layout keeps the two switches as distinct member rows (not re-merged)");
+    "default layout keeps the switches as distinct member rows (not re-merged)");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
