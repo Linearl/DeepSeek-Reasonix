@@ -125,6 +125,11 @@ func NewSession(prov provider.Provider, readOnlyReg *tool.Registry, policyPrompt
 // surfaces as a reasoned human prompt. Callers that must tell an authentic
 // verdict apart from a failed review use ReviewVerdict.
 //
+// 任务 990 三接口防错配：交互审批链用本接口（失败折叠、不打断）；auto_review
+// 降级人工必须用 ReviewVerdict（失败带 err）；无人值守 fail-closed 用
+// ReviewAction（失败 DENY 且不计熔断）。三者对同一 provider 故障的熔断/打断
+// 行为不同，换接口前先读 exception_matrix_test.go 的对应钉子测试。
+//
 // The mutex serialises access to the guardian agent.session so concurrent
 // reviews cannot interleave their messages (guardian reuses one session for
 // prefix-cache warmth). Event emission is deferred to outside the lock so a
@@ -154,6 +159,9 @@ func (gs *Session) ReviewVerdict(ctx context.Context, toolName string, args json
 // A failed or unparseable review is a DENY (fail-closed): an unattended run must
 // never act merely because the reviewer was unreachable. The returned error lets
 // a caller that prefers waiting for a human over guessing tell the two apart.
+// 任务 990 防错配：本接口完全不碰熔断簿记（不调 recordDenial/recordAllow）——
+// 无人值守下连续失败只逐条 fail-closed，不会像 Review/ReviewVerdict 那样因失败
+// 折叠 DENY 而跳闸打断 turn（钉子测试 TestGuardianReviewActionFailureBypassesBreaker）。
 func (gs *Session) ReviewAction(ctx context.Context, toolName string, args json.RawMessage, requestReason string) (allow bool, reason string, failure error) {
 	reviewCtx, cancel := context.WithTimeout(ctx, reviewTimeout)
 	defer cancel()
@@ -554,6 +562,13 @@ const (
 	cbInterrupt
 )
 
+// recordDenial bumps both breaker counters for EVERY deny verdict — including
+// the three failure-folded DENYs (transport error / review timeout / unparseable
+// output, see review()). The count therefore carries no signal about whether the
+// reviewer actually judged anything: three provider hiccups in one turn trip
+// cbInterrupt and interrupt the turn. 任务 990 矩阵钉住此现状（不动语义）；
+// 修法方向等真实样本——届时失败不计连拒、连续失败降级 parent/human 而非打断
+// turn，exception_matrix_test.go 中相应测试须随语义一起重写。
 func (gs *Session) recordDenial() cbAction {
 	gs.consecutiveDenials++
 	gs.recentDenials = append(gs.recentDenials, true)

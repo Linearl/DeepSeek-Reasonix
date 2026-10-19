@@ -549,3 +549,77 @@ func TestLazyDirectoryCreation(t *testing.T) {
 		t.Fatalf("turn file should now exist: %v", err)
 	}
 }
+
+// TestRewindThenRecheckAtReusedTurnLandsInFreshArchive pins the archive landing
+// point for the turn-key rewrite the rewind flow causes: conversation rewind
+// truncates the future turns, the rewritten transcript then reuses the same turn
+// number for a new checkpoint, and that checkpoint must land in the same
+// turns/<n> slot as a FRESH archive — reload sees the new prompt/preimage, and a
+// restore from the reused number returns the post-rewind start state, never the
+// pre-rewind payload that occupied the slot before (任务 990 观察项「turn 键被
+// rewind 重写」的落点钉子；不动语义).
+func TestRewindThenRecheckAtReusedTurnLandsInFreshArchive(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "sess.ckpt")
+	a := filepath.Join(root, "a.txt")
+
+	// Turn 0 archives a.txt at "v0"; turn 1 at "v1"; turn 2 begins with no files.
+	write(t, a, "v0")
+	s := New(dir, root)
+	s.Begin(0, "first", 0)
+	s.Snapshot(diff.Change{Path: a, Kind: diff.Modify, OldText: "v0"})
+	write(t, a, "v1")
+	s.Begin(1, "second", 2)
+	s.Snapshot(diff.Change{Path: a, Kind: diff.Modify, OldText: "v1"})
+	write(t, a, "v2")
+	s.Begin(2, "third", 4)
+
+	// Rewind to the start of turn 1: future turns 1 and 2 are dropped and the
+	// workspace is restored to turn 1's preimage.
+	if err := s.TruncateFrom(1); err != nil {
+		t.Fatal(err)
+	}
+	write(t, a, "v1") // RestoreCode(1) equivalent: turn-1 start state
+
+	// The rewritten transcript reuses turn number 1 for the next checkpoint.
+	s.Begin(1, "post-rewind", 2)
+	s.Snapshot(diff.Change{Path: a, Kind: diff.Modify, OldText: "v1"})
+
+	// Landing point in the live store: one slot per turn, the reused slot holds
+	// the new checkpoint.
+	metas := s.List()
+	if len(metas) != 2 || metas[0].Turn != 0 || metas[1].Turn != 1 {
+		t.Fatalf("metas = %+v, want turns 0 and 1", metas)
+	}
+	if metas[1].Prompt != "post-rewind" {
+		t.Fatalf("reused turn prompt = %q, want post-rewind (stale second checkpoint survived)", metas[1].Prompt)
+	}
+
+	// Landing point on disk: the reused turn's directory carries the new payload,
+	// not the pre-rewind one.
+	payload := readBytes(t, filepath.Join(dir, "turns", "1", "files", "0000.before"))
+	if string(payload) != "v1" {
+		t.Fatalf("reused turn payload = %q, want the post-rewind preimage", payload)
+	}
+
+	// A fresh store over the same dir must agree — the rewrite survived reload
+	// as the archive for turn 1, with no resurrection of "second"/"third".
+	s2 := New(dir, root)
+	metas2 := s2.List()
+	if len(metas2) != 2 || metas2[1].Prompt != "post-rewind" {
+		t.Fatalf("reloaded metas = %+v, want [first post-rewind]", metas2)
+	}
+	if b := s2.Bounds(); b[1] != 2 || len(b) != 2 {
+		t.Fatalf("reloaded bounds = %v, want {0:0 1:2}", b)
+	}
+
+	// Restore through the reused number returns the post-rewind start state: if
+	// the slot still held the pre-rewind archive this would put "v0" back.
+	write(t, a, "edited-after-rewind")
+	if _, _, err := s2.RestoreCode(1); err != nil {
+		t.Fatalf("RestoreCode(1): %v", err)
+	}
+	if got := read(t, a); got != "v1" {
+		t.Fatalf("restore via reused turn = %q, want post-rewind preimage v1", got)
+	}
+}
