@@ -2310,6 +2310,33 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     setEnabledFirst(on);
     try { globalThis.localStorage?.setItem("reasonix.lab.enabledFirst", on ? "1" : "0"); } catch { /* private mode: session-only */ }
   };
+  // 任务 1005：开发者模式——单项解锁，作用域仅稳定档（防呆不防刁；不做全局
+  // dev mode）。默认关；开时稳定档开关解锁可关（卡内警示不保证兼容性和稳定
+  // 性）。页面偏好存 localStorage（同 enabledFirst：零配置键、零 experimental_*
+  // 链，纯前端 UI 门禁）。
+  const [labDevMode, setLabDevMode] = useState<boolean>(
+    () => {
+      try { return globalThis.localStorage?.getItem("reasonix.lab.devMode") === "1"; } catch { return false; }
+    },
+  );
+  const setLabDevModePref = (on: boolean) => {
+    setLabDevMode(on);
+    try { globalThis.localStorage?.setItem("reasonix.lab.devMode", on ? "1" : "0"); } catch { /* private mode: session-only */ }
+  };
+  // 稳定档判定/锁定（档位数据取自 562 注册表——Go labFeatureTiers 镜像）：
+  // 锁定 = 稳定档 且 开发者模式关；解锁警示 = 稳定档 且 开发者模式开。
+  const labStableLocked = (id: TierFeatureId) => EXPERIMENT_FEATURE_TIERS[id] === "stable" && !labDevMode;
+  const labStableUnlocked = (id: TierFeatureId) => EXPERIMENT_FEATURE_TIERS[id] === "stable" && labDevMode;
+  // 开发者模式 toggle 旁小字的 N：当前处于关态的稳定档开关数（从 settings
+  // 状态直接算；批1 四项 = autopilot / sessionCollab / fullAccess / runtimeReuse）。
+  const labStableOffCount = (
+    [
+      ["autopilot", Boolean(s.autopilot)],
+      ["sessionCollab", Boolean(s.experimentalSessionCollab)],
+      ["fullAccess", Boolean(s.experimentalFullAccess)],
+      ["runtimeReuse", Boolean(s.experimentalRuntimeReuse)],
+    ] as const
+  ).filter(([id, on]) => EXPERIMENT_FEATURE_TIERS[id] === "stable" && !on).length;
   const t = useT();
   // Task 155: the configured store mode, normalized so every stage key stays a
   // literal (the dictionaries are typed by DictKey).
@@ -2492,6 +2519,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <span>{t(enabledFirst ? "settings.lab.enabledFirst.on" : "settings.lab.enabledFirst.off")}</span>
             </button>
           </div>
+          {/* 任务 1005：开发者模式（作用域仅稳定档）——默认关，标签显示当前态
+              （361 纪律，同上一行的 enabledFirst 开关）；旁侧小字只在开发者
+              模式开且确有手动关闭的稳定能力时出现（只提示不弹窗，普通用户
+              零打扰）。 */}
+          <div className="experimental-lab__order-row">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={labDevMode}
+              className={`experimental-lab__order-toggle${labDevMode ? " experimental-lab__order-toggle--on" : ""}`}
+              onClick={() => setLabDevModePref(!labDevMode)}
+            >
+              <span className="experimental-lab__order-dot" aria-hidden="true" />
+              <span>{t(labDevMode ? "settings.lab.devMode.on" : "settings.lab.devMode.off")}</span>
+            </button>
+            {labDevMode && labStableOffCount > 0 ? (
+              <span className="experimental-lab__devmode-hint">{t("settings.lab.devMode.disabledCount", { n: labStableOffCount })}</span>
+            ) : null}
+          </div>
           {/* 任务 764（用户 0325 裁决）：顶部带计数筛选 chips 已删除——它与
               下方 rail 内的分组目录 toc 视觉几乎相同（同款 999px 胶囊），目标
               层面重复（都是「去某个组」），且计数与 rail 组头徽章重复（626
@@ -2587,39 +2633,49 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             <LabParamFieldsCard entry={selectedEntry} s={s} busy={busy} apply={apply} />
           )}
           {selected === "fullAccess" && (
-            <SettingsField label={labLabel("fullAccess", t("settings.fullAccess"))} hint={t("settings.fullAccessHint")} icon={<ShieldCheck size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalFullAccess) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void (async () => {
-                      // One-shot danger gate on the way in (task 257): the
-                      // confirmation spells out that writes need no approval
-                      // afterwards. Turning it off restores the old chain
-                      // without asking.
-                      if (on) {
-                        const ok = await confirmFullAccess({
-                          title: t("settings.fullAccessConfirmTitle"),
-                          message: t("settings.fullAccessConfirmMessage"),
-                          confirmLabel: t("settings.fullAccessConfirm"),
-                          cancelLabel: t("common.cancel"),
-                          tone: "danger",
-                        });
-                        if (!ok) return;
-                      }
-                      await apply(() => app.SetExperimentalFullAccess(on));
-                      // Boot snapshot: the writable-root set and the bash spec
-                      // are built at startup, so the flip lands on restart.
-                      setRestartNeeded(true);
-                    })()}
-                  >
-                    {t(on ? "settings.fullAccess.on" : "settings.fullAccess.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+            <>
+              <SettingsField label={labLabel("fullAccess", t("settings.fullAccess"))} hint={t("settings.fullAccessHint")} icon={<ShieldCheck size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalFullAccess) === on ? " set-seg__btn--on" : ""}`}
+                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
+                      disabled={busy || labStableLocked("fullAccess")}
+                      onClick={() => void (async () => {
+                        // One-shot danger gate on the way in (task 257): the
+                        // confirmation spells out that writes need no approval
+                        // afterwards. Turning it off restores the old chain
+                        // without asking.
+                        if (on) {
+                          const ok = await confirmFullAccess({
+                            title: t("settings.fullAccessConfirmTitle"),
+                            message: t("settings.fullAccessConfirmMessage"),
+                            confirmLabel: t("settings.fullAccessConfirm"),
+                            cancelLabel: t("common.cancel"),
+                            tone: "danger",
+                          });
+                          if (!ok) return;
+                        }
+                        await apply(() => app.SetExperimentalFullAccess(on));
+                        // Boot snapshot: the writable-root set and the bash spec
+                        // are built at startup, so the flip lands on restart.
+                        setRestartNeeded(true);
+                      })()}
+                    >
+                      {t(on ? "settings.fullAccess.on" : "settings.fullAccess.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* 任务 1005：稳定档禁用态两分支解释行（值开=默认开启说明 / 值关=
+                  曾手动关闭说明）；开发者模式解锁态改显不保证兼容性/稳定性警示。 */}
+              {labStableLocked("fullAccess") ? (
+                <p className="settings-field__hint-line">{t(Boolean(s.experimentalFullAccess) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
+              ) : labStableUnlocked("fullAccess") ? (
+                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
+              ) : null}
+            </>
           )}
           {/* Task 561 M6 更新/反馈族: the restart-and-update family and the feedback
               family fold into ONE card; every switch below keeps its own
@@ -3648,7 +3704,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     <button
                       key={String(on)}
                       className={`set-seg__btn${Boolean(s.experimentalRuntimeReuse) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
+                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
+                      disabled={busy || labStableLocked("runtimeReuse")}
                       onClick={() => void apply(async () => {
                         await app.SetExperimentalRuntimeReuse(on);
                       })}
@@ -3658,6 +3715,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 1005：稳定档禁用态两分支解释行；开发者模式解锁态改显警示。 */}
+              {labStableLocked("runtimeReuse") ? (
+                <p className="settings-field__hint-line">{t(Boolean(s.experimentalRuntimeReuse) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
+              ) : labStableUnlocked("runtimeReuse") ? (
+                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
+              ) : null}
             </>
           )}
           {/* 任务 517:「安全 / 成本控制」— one switch for all three task-244
@@ -3847,7 +3910,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     <button
                       key={String(on)}
                       className={`set-seg__btn${Boolean(s.experimentalSessionCollab) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
+                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
+                      disabled={busy || labStableLocked("sessionCollab")}
                       onClick={() => void apply(async () => {
                         await app.SetExperimentalSessionCollab(on);
                         // 任务 856 ③（demo v2 交互稿）：前置关闭 → 协作中心联动
@@ -3866,6 +3930,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 1005：稳定档禁用态两分支解释行；开发者模式解锁态改显警示。 */}
+              {labStableLocked("sessionCollab") ? (
+                <p className="settings-field__hint-line">{t(Boolean(s.experimentalSessionCollab) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
+              ) : labStableUnlocked("sessionCollab") ? (
+                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
+              ) : null}
               <SettingsField label={t("settings.sessionCollab.hopLimit")} hint={t("settings.sessionCollab.hopLimitHint")} icon={<Sparkles size={18} />}>
                 <input
                   type="number"
@@ -4152,7 +4222,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     <button
                       key={String(on)}
                       className={`set-seg__btn${Boolean(s.autopilot) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
+                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
+                      disabled={busy || labStableLocked("autopilot")}
                       onClick={() => void apply(() => {
                         const runtime = String(s.autopilotMaxRuntime ?? "").trim();
                         return app.SetDesktopAutopilot(
@@ -4167,6 +4238,12 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 1005：稳定档禁用态两分支解释行；开发者模式解锁态改显警示。 */}
+              {labStableLocked("autopilot") ? (
+                <p className="settings-field__hint-line">{t(Boolean(s.autopilot) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
+              ) : labStableUnlocked("autopilot") ? (
+                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
+              ) : null}
               <SettingsField label={t("settings.autopilotMaxRuntime")} hint={t("settings.autopilotMaxRuntimeHint")} icon={<ShieldCheck size={18} />}>
                 <input
                   className="set-input"

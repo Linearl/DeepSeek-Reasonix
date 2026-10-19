@@ -4116,8 +4116,19 @@ a[href] {
 .experimental-lab__intro-chevron { color: var(--fg-faint); font-size: var(--text-xs); }
 .experimental-lab__intro-toggle--open { border-color: color-mix(in srgb, var(--accent) 35%, var(--border-soft)); }
 
-/* Task 359 (③): "disabled items last" display-order switch row. */
-.experimental-lab__order-row { display: flex; margin-top: 6px; }
+/* Task 359 (③): "disabled items last" display-order switch row.
+   任务 1005: the developer-mode toggle rides the same row shape; the small
+   print next to it shows only while developer mode is on (notice, never a
+   dialog). */
+.experimental-lab__order-row { display: flex; margin-top: 6px; align-items: center; gap: 10px; }
+.experimental-lab__devmode-hint {
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+}
+/* 任务 1005: the stable-pane warning line while developer mode is unlocked —
+   same hint-line shape, warn tint so the "no compatibility guarantee" copy
+   reads as a caution, not a description. */
+.experimental-lab__stable-warning { color: var(--warn, #d9a441); }
 .experimental-lab__order-toggle {
   display: inline-flex;
   align-items: center;
@@ -4248,6 +4259,14 @@ a[href] {
   vertical-align: middle;
   white-space: nowrap;
   flex-shrink: 0;
+}
+/* 任务 1005: lab tier badges gain the 「稳定」 tier — validated defaults, on
+   by default; blue = shipped-and-stable, deliberately distinct from the green
+   "recommended" nudge colour (stable never nags). */
+.lab-tier-badge--stable {
+  background: color-mix(in srgb, var(--info, #5b8def) 14%, transparent);
+  border-color: color-mix(in srgb, var(--info, #5b8def) 45%, transparent);
+  color: var(--info, #5b8def);
 }
 .lab-tier-badge--recommended {
   background: color-mix(in srgb, var(--ok, #3fb26f) 15%, transparent);
