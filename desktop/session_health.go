@@ -45,7 +45,7 @@ type SessionHealthFindingView struct {
 	Codes       []string `json:"codes"`
 	Detail      string   `json:"detail"`
 	Healed      bool     `json:"healed,omitempty"`
-	SuggestHead string   `json:"suggest_head,omitempty"`
+	SuggestHead string   `json:"suggestHead,omitempty"`
 }
 
 // sessionHealthFindings 是启动扫描的最近一轮结果（按 path 去重）。
