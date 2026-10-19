@@ -78,7 +78,9 @@ const structFields = settingsApp.split('ExperimentalTrajectoryView bool   `json:
 ok(structFields === 2, `both SettingsView and DesktopStartupSettingsView carry the field (got ${structFields})`);
 ok(settingsApp.includes("view.ExperimentalTrajectoryView = cfg.Desktop.ExperimentalTrajectoryView"),
   "boot snapshot readback fills ExperimentalTrajectoryView");
-ok(settingsApp.includes("ExperimentalTrajectoryView:      cfg.Desktop.ExperimentalTrajectoryView"),
+// 对齐由 gofmt 决定（插入新字段会重排空格数），此处只钉「字面量从 cfg 填充」
+// 语义——1005 合并窗口复核发现该断言因历史对齐漂移早已红。
+ok(/ExperimentalTrajectoryView:\s+cfg\.Desktop\.ExperimentalTrajectoryView/.test(settingsApp),
   "Settings() literal fills ExperimentalTrajectoryView");
 ok(settingsPrefs.includes("func (a *App) SetExperimentalTrajectoryView(enabled bool) error {"),
   "desktop app exposes SetExperimentalTrajectoryView");
@@ -106,12 +108,17 @@ ok(appTsx.includes("experimentalTrajectoryView?: boolean"),
 // 7. Lab rail entry + detail card (81/123 lost-save rule).
 // 任务 742 修复预存红：724 起 render table 移交 lab-layout.yaml + 内置默认
 // 数据，SettingsPanel 不再硬编码条目——布局锚改为钉两份数据源。
-ok(labDefaultLayout.includes('{ id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional", onKeys: ["experimentalTrajectoryView"] }'),
-  "built-in default layout has the trajectoryView entry in the ui group (724 数据源)");
+// 1005 ③ 锚点随动：782 视图布局合并卡后成员行不再带 onKeys（onKeys 只许引用
+// labLightKeys 注册表 id，配置键语义改由 onKeys 之外的成员行 setter 承载）。
+ok(labDefaultLayout.includes('{ id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" }'),
+  "built-in default layout has the trajectoryView entry (724 数据源；782 后成员行无 onKeys)");
 ok(labYaml.includes("- id: trajectoryView") && labYaml.includes("labelKey: settings.trajectoryView"),
   "lab-layout.yaml carries the trajectoryView entry (724 数据源)");
-ok(panel.includes('| "trajectoryView"'), "ExperimentFeatureId union includes trajectoryView");
-ok(panel.includes('selected === "trajectoryView"') &&
+// 1005 ③ 锚点随动：782 把 splitView/trajectoryView 收进 viewLayout 卡（条目级
+// 合并、键与 setter 零变化），union 落 viewLayout，成员行由 labLabel 渲染。
+ok(panel.includes('| "viewLayout"') && panel.includes('labLabel("trajectoryView"'),
+  "ExperimentFeatureId union routes trajectoryView through the 782 viewLayout card");
+ok(panel.includes("Boolean(s.experimentalTrajectoryView) === on") &&
   panel.includes("app.SetExperimentalTrajectoryView(on)"),
   "detail card wires the setter");
 // 成员行在 union 中部（后随注释行），行尾分号可有可无——按行锚定，不再

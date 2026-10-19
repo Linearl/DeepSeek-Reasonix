@@ -76,8 +76,12 @@ auto_start = true
 	if res2.Snapshot == nil {
 		t.Fatal("round2 returned nil Snapshot")
 	}
-	if got := res2.Snapshot.SystemPrompt(); got != "SENTINEL-PROMPT-FROM-POOL" {
-		t.Fatalf("reuse path did not feed the sentinel prompt through (len=%d first60=%q)", len(got), first60(got))
+	// 任务 1005 C4 后 sessionCollab 默认开：装配会在基础 prompt（＝复用来的
+	// sentinel）之后追加「# 通讯录 / contact directory」等段，因此按前缀断言
+	// —— 哨兵仍逐字作为基础段喂入，追加段不改变复用语义（旧默认全关时二者等长，
+	// 断言退化为全等）。
+	if got := res2.Snapshot.SystemPrompt(); !strings.HasPrefix(got, "SENTINEL-PROMPT-FROM-POOL") {
+		t.Fatalf("reuse path did not feed the sentinel prompt through as the base prompt (len=%d first60=%q)", len(got), first60(got))
 	}
 	if logs := logBuf.String(); !strings.Contains(logs, "agent:tools=") {
 		t.Fatalf("stage timings missing agent:tools segment, got:\n%s", logs)

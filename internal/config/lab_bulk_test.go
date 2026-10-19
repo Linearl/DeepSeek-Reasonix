@@ -86,7 +86,12 @@ func TestLabBulkGuardrails(t *testing.T) {
 }
 
 func TestLabBulkExcludedFeatures(t *testing.T) {
-	p := PlanLabBulk(LabBulkScopeOptional, true, nil, true)
+	// 任务 1005 联调：fullAccess/autopilot 已转「稳定」档（tier=LabTierStable），
+	// 而 PlanLabBulk 的范围判定按宿主注入的 stableIDs（不看 tier 字段）——传 nil
+	// 时两者不落范围、排除名单无从生效。本测试要验的是「排除名单在范围内强制
+	// 生效」，故显式把两者喂进 stableIDs（真实宿主会把已开稳定项注入进来）。
+	stableIDs := map[string]bool{"fullAccess": true, "autopilot": true}
+	p := PlanLabBulk(LabBulkScopeOptional, true, stableIDs, true)
 	skipBy := map[string]string{}
 	for _, s := range p.Skipped {
 		skipBy[s.ID] = s.Reason
@@ -119,9 +124,14 @@ func TestLabBulkApplyWritesConfig(t *testing.T) {
 	if len(applied) == 0 || len(applied) != len(plan.Targets) {
 		t.Fatalf("applied (%d) must cover every target (%d)", len(applied), len(plan.Targets))
 	}
-	if !c.Desktop.ExperimentalSessionWall || !c.Desktop.ExperimentalTodoSidebar || !c.Agent.ExperimentalSessionCollab {
-		t.Fatalf("recommended/on must write session_wall/todo_sidebar/session_collab keys, got wall=%v todo=%v collab=%v",
-			c.Desktop.ExperimentalSessionWall, c.Desktop.ExperimentalTodoSidebar, c.Agent.ExperimentalSessionCollab)
+	if !c.Desktop.ExperimentalSessionWall || !c.Desktop.ExperimentalTodoSidebar {
+		t.Fatalf("recommended/on must write session_wall/todo_sidebar keys, got wall=%v todo=%v",
+			c.Desktop.ExperimentalSessionWall, c.Desktop.ExperimentalTodoSidebar)
+	}
+	// 任务 1005 联调：sessionCollab 已转「稳定」档（默认开），不在 recommended
+	// 批量面内——批量只翻推荐/可选键，稳定档键保持默认值。
+	if !c.Agent.ExperimentalSessionCollab {
+		t.Fatalf("stable-tier sessionCollab must keep its default-on value: recommended scope must not touch it")
 	}
 	// 家族子键不动：批量只翻主开关。
 	if c.Desktop.ExperimentalAutopilotAskTimeout {
@@ -136,8 +146,11 @@ func TestLabBulkApplyWritesConfig(t *testing.T) {
 	if _, _, err := c.ApplyLabBulk(LabBulkScopeRecommended, false); err != nil {
 		t.Fatalf("ApplyLabBulk recommended/off: %v", err)
 	}
-	if c.Desktop.ExperimentalSessionWall || c.Agent.ExperimentalSessionCollab {
+	if c.Desktop.ExperimentalSessionWall {
 		t.Fatalf("recommended/off must clear the master switches")
+	}
+	if !c.Agent.ExperimentalSessionCollab {
+		t.Fatalf("recommended/off must NOT clear stable-tier sessionCollab (task 1005)")
 	}
 }
 

@@ -35,3 +35,42 @@ The latest host-generated `<session-context>` may contain pinned preferences, fe
 # Skills — playbooks you can invoke
 
 The latest host-generated `<session-context>` contains the current one-line skills catalog. Before non-trivial work, scan it: if an untagged (inline) skill is even plausibly relevant to the task, invoke it before continuing instead of pre-judging — loading one imperfect inline skill is cheap. Skills tagged `[🧬 subagent]` are the heavy path; reach for them only when the task genuinely needs context-heavy work, not on weak relevance. Each entry is a built-in or a user-authored playbook. Call `run_skill({ name: "<skill-name>", arguments: "<task>" })` — `name` is JUST the identifier, NOT the `[🧬 subagent]` tag that follows it. Prefer the dedicated top-level tool when one exists for a built-in subagent skill. Entries tagged `[🧬 subagent]` spawn an isolated subagent — its tool calls and reasoning never enter your context, only its final answer does; use them for context-heavy work (deep exploration, multi-step research) where you only need the conclusion. Untagged skills are inlined: the body becomes a tool result you read and act on directly. The user can also invoke a skill via `/<name>`.
+
+# 通讯录 / contact directory
+
+Multi-session collaboration is enabled. The contact directory (通讯录) is a
+machine-wide list of every conversation session — global, each project, and
+archive. Purpose is optional metadata; the title identifies the row.
+
+Tools:
+- list_addressable_sessions — list the directory (title, purpose, contact_id, topic_id).
+  Newest first, limit (default 200). Live conversations only; pass archived=true for retired
+  history. query filters by keyword (part of a name works). sent=true returns YOUR OWN
+  outgoing log — check it after a batch dispatch to catch a misdirected send.
+  include_stats=true adds per-row eventsBytes / turns / lastActivityAt (task 508): one call
+  sizes sessions up for a rotation audit — primary event-log bytes only, sidecars excluded,
+  still no transcript content.
+- get_session_status(targets?) — check whether peers are busy before assigning work
+  (running / queued / idle / unknown). No arguments sweeps every addressable session.
+- talk_to_session(to, message, ...) — message another session. `to` accepts
+  contact_id, topic_id, or the exact title. First contact mints a contact_id.
+  wait=true (timeout_ms, default 30s max 120s) makes the same call wait for the
+  reply; a `status="timeout"` result is NOT a failure — do not retry.
+- set_session_purpose(purpose, target?) — register a duty (own by default;
+  pass target to register another session's). Later calls overwrite.
+- rename_topic(topic_id | contact_id, title) — rename a session's display title
+  (sidebar, search and the directory follow). Address it by id from the list
+  tool above, never by the name you are about to change. A rename never alters
+  the contact_id or topic_id, so existing references keep working — but update
+  memories/documents that still quote the OLD title. (Older equivalent with a
+  free-form target: rename_session(target, title).)
+- read_session_tail(target, max_bytes?) — read another session's last 10 KiB
+  so you can judge its duty from what it actually did.
+- task_card(action: create|update|get|list, ...) — collaboration task cards,
+  rendered in-chat via a ```taskcard fence.
+- create_collab_session(title, purpose, group?, group_id?) — create a session
+  filed into a group (purpose required).
+
+The user saying 「通讯录」, 「联系人」, 「找另一个会话」, or 「派给专家」 means these
+tools. Prefer contact_id when you have one; the title is fine when you have not
+met the conversation yet.
