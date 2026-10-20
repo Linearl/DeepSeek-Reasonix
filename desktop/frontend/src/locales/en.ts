@@ -13,6 +13,9 @@ export const en = {
   "toolRecovery.rejected": "Retry declined. The uncertain effect remains recorded.",
   // shared verbs / chrome
   "common.close": "Close",
+  "navigation.surfaceTimeout": "Loading timed out. The overlay was released — retry, view diagnostics, or keep browsing.",
+  "navigation.viewDiagnostics": "View diagnostics",
+  "navigation.forceExitOverlay": "Force exit overlay",
   "settings.providerProtocolMismatch": "The endpoint does not match the selected API format.",
   "settings.imageInputLabel": "Image input",
   "settings.imageInputModeAria": "Image input mode for {model}",

@@ -14,6 +14,9 @@ export const zh: Record<DictKey, string> = {
   "toolRecovery.rejected": "已按不重试处理。未知效果仍被记录。",
   // 通用动词 / 框架
   "common.close": "关闭",
+  "navigation.surfaceTimeout": "加载超时：已退出加载遮罩，可重试、查看诊断或继续浏览。",
+  "navigation.viewDiagnostics": "查看诊断",
+  "navigation.forceExitOverlay": "强制退出遮罩",
   "settings.providerProtocolMismatch": "API 地址与所选协议不一致。",
   "settings.imageInputLabel": "图片输入",
   "settings.imageInputModeAria": "{model} 的图片输入模式",

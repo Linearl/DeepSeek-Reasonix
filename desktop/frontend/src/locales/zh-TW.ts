@@ -27,6 +27,9 @@ export const zhTW: Record<DictKey, string> = {
   "settings.imageInputUnknownHint": "此連線未提供圖片能力資訊。如果服務商確認此模型支援圖片，可選擇「開啟」。",
   // 通用動詞 / 框架
   "common.close": "關閉",
+  "navigation.surfaceTimeout": "載入逾時：已退出載入遮罩，可重試、查看診斷或繼續瀏覽。",
+  "navigation.viewDiagnostics": "查看診斷",
+  "navigation.forceExitOverlay": "強制退出遮罩",
   "common.moreActions": "更多操作",
   "common.cancel": "取消",
   "common.confirm": "確認",
