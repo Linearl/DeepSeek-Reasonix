@@ -31,6 +31,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ArrowLeft, Bot, ChevronDown, SendHorizontal, Sparkles, Square, TerminalSquare } from "lucide-react";
 import { AnchoredPopover } from "./AnchoredPopover";
 import { InlineConfirmButton } from "./InlineConfirmButton";
+import { Tooltip } from "./Tooltip";
 import { useT, type DictKey } from "../lib/i18n";
 import { historyMessagesToItems } from "../lib/useController";
 import type { BackgroundRuntimeView, ForegroundSubagentView, HistoryMessage, JobView, SubagentArtifactView, SubagentSendReceiptView } from "../lib/types";
@@ -525,7 +526,12 @@ export function CapsuleIndicator({
                 {icon === "agent" ? <Bot size={14} /> : <TerminalSquare size={14} />}
               </span>
               <span className="capsule-panel__copy">
-                <strong title={entry.job.label || entry.job.kind}>{entry.job.label || entry.job.kind}</strong>
+                {/* 任务1033: the native title attr clipped long command labels to
+                    one ellipsized line — the wrap-mode Tooltip shows the full
+                    text (72ch wrap, 30-line cap, copy when truncated). */}
+                <Tooltip label={entry.job.label || entry.job.kind} wrap fill>
+                  <strong>{entry.job.label || entry.job.kind}</strong>
+                </Tooltip>
                 <small className="capsule-panel__elapsed" data-elapsed={formatCapsuleElapsed(entry.job.startedAt, now)}>
                   {entry.origin && <span className="capsule-panel__origin">{entry.origin} · </span>}
                   {formatCapsuleElapsed(entry.job.startedAt, now)}
