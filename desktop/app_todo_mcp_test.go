@@ -219,6 +219,8 @@ func isolateDesktopUserDirs(t *testing.T) string {
 	t.Setenv("XDG_CONFIG_HOME", xdg)
 	t.Setenv("REASONIX_STATE_HOME", filepath.Join(home, "state"))
 	t.Setenv("REASONIX_CACHE_HOME", filepath.Join(home, "cache"))
+	// 任务 1032: UserConfigPath 只认 REASONIX_HOME，缺它会写开发者真实用户目录。
+	t.Setenv("REASONIX_HOME", filepath.Join(home, "reasonix"))
 	t.Setenv("AppData", appData)
 	// Close process-local SQLite handles before TempDir cleanup for Windows.
 	t.Cleanup(func() {
