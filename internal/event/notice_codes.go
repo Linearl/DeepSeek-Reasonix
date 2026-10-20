@@ -54,6 +54,15 @@ const (
 	NoticeCodeSessionConcurrentDualTab                          = "session_concurrent_dual_tab"
 	NoticeCodeSessionHeadSwitched                               = "session_head_switched"
 	NoticeCodeSessionHeadSelected                               = "session_head_selected"
+	// 任务 1010 需求 4: the open landed on a head that another live head
+	// strictly dominates (fewer messages AND older activity). The notice
+	// carries both chains' readings; switching stays a manual versions action.
+	NoticeCodeSessionSelectedHeadBehind = "session_selected_head_behind"
+	// 任务 1010 需求 3: the events log holds a strictly newer, longer chain
+	// than the materialized .jsonl checkpoint. Detection only — the notice
+	// points at the manual fix-conversation entry (任务 1011); nothing in the
+	// detection path ever writes a session file.
+	NoticeCodeSessionMaterializationLag = "session_materialization_lag"
 	NoticeCodeSessionAlsoOpen                                   = "session_also_open"
 	NoticeCodeCompletionUncertain                               = "completion_uncertain"
 	NoticeCodeIncompleteReadDetected                            = "incomplete_read_detected"

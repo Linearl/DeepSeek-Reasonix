@@ -1,6 +1,7 @@
 package control
 
 import (
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -355,6 +356,24 @@ func (c *Controller) emitHeadEvents() {
 		case agent.HeadEventMultipleRecentHeads:
 			c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionHeadSwitched,
 				"opened the newest version of this conversation; other saved versions are available in View versions"))
+		case agent.HeadEventSelectedHeadBehind:
+			// 任务 1010 需求 4: name both chains' readings so the user can see
+			// which version is longer and newer; switching is manual. The
+			// Detail carries the readings as key=value pairs the frontend
+			// interpolates into the localized copy.
+			notice := sessionRecoveryNotice(event.NoticeCodeSessionSelectedHeadBehind,
+				fmt.Sprintf("opened version %s (%d messages), but version %s holds %d messages with newer activity; switch versions manually in View versions if that is the chain you want",
+					ev.HeadID, ev.Messages, ev.OtherHeadID, ev.OtherMessages))
+			notice.Detail = fmt.Sprintf("selected_messages=%d other_messages=%d", ev.Messages, ev.OtherMessages)
+			c.sink.Emit(notice)
+		case agent.HeadEventMaterializationLag:
+			// 任务 1010 需求 3: detection only. The notice points at the manual
+			// repair entry; nothing here ever writes a session file.
+			notice := sessionRecoveryNotice(event.NoticeCodeSessionMaterializationLag,
+				fmt.Sprintf("%d messages of this conversation are not materialized into the local transcript (events are newer); right-click the session and choose the repair-conversation action",
+					ev.OtherMessages-ev.Messages))
+			notice.Detail = fmt.Sprintf("gap=%d event_chain=%d materialized=%d", ev.OtherMessages-ev.Messages, ev.OtherMessages, ev.Messages)
+			c.sink.Emit(notice)
 		}
 	}
 }

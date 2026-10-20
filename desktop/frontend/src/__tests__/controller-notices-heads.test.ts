@@ -39,3 +39,26 @@ console.log("  PASS  concurrent-writer notice carries the inline view_versions a
 const rebuilt = historyNoticeItems({ role: "notice", content: "another writer appended to this session log", code: "session_concurrent_writer", level: "warn" } as Parameters<typeof historyNoticeItems>[0], "h0")[0];
 assert.equal(rebuilt.kind === "notice" && rebuilt.action, "view_versions", "rebuilt history notice keeps the view_versions action");
 console.log("  PASS  history-rebuilt concurrent-writer notice keeps the inline action");
+
+// 任务 1010: the head-behind and materialization-lag notices interpolate their
+// key=value readings from the event Detail; a missing Detail falls back to the
+// backend's English text instead of showing unfilled placeholders.
+const behind = localizedNoticeText(
+  "opened version 01OLD (6611 messages), but version 01NEW holds 7087 messages with newer activity; switch versions manually in View versions if that is the chain you want",
+  "session_selected_head_behind",
+  "selected_messages=6611 other_messages=7087",
+);
+assert.ok(behind.includes("6611") && behind.includes("7087"), `behind notice carries the readings: ${behind}`);
+assert.ok(!behind.includes("01OLD") && !behind.includes("{"), `behind notice stays id-free and fully interpolated: ${behind}`);
+
+const lag = localizedNoticeText(
+  "476 messages of this conversation are not materialized into the local transcript (events are newer); right-click the session and choose the repair-conversation action",
+  "session_materialization_lag",
+  "gap=476 event_chain=7087 materialized=6611",
+);
+assert.ok(lag.includes("476") && lag.includes("6611") && lag.includes("7087"), `lag notice carries the readings: ${lag}`);
+assert.ok(!lag.includes("{"), `lag notice fully interpolated: ${lag}`);
+
+const behindNoDetail = localizedNoticeText("backend english text", "session_selected_head_behind");
+assert.equal(behindNoDetail, "backend english text", "a missing Detail keeps the backend text verbatim (no unfilled placeholders)");
+console.log("  PASS  task-1010 lag notices interpolate readings and never leak head ids");

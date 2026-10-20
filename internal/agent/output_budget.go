@@ -252,6 +252,10 @@ func (a *Agent) requestCalibrationShape(req provider.Request) requestCalibration
 
 func requestCalibrationShapeWithPolicy(req provider.Request, policy provider.SharedWindowInputPolicy) requestCalibrationShape {
 	requestChars, cjkRunes, cjkBytes := requestCalibrationTextShape(req, policy)
+	// 任务 1010: the agent wire shape prices images in (capped per image); the
+	// bare text shape stays image-free because the chunk-budget plane
+	// (messageWireBytes) is built on it and counts full image bytes itself.
+	requestChars += cappedImageChars(req)
 	return requestCalibrationShape{
 		requestChars: requestChars,
 		compactChars: int64(charsOfMessages(req.Messages)),
@@ -260,9 +264,63 @@ func requestCalibrationShapeWithPolicy(req provider.Request, policy provider.Sha
 	}
 }
 
+// cappedImageChars prices every image of a request at
+// requestImageEstimateByteCap bytes — see the constant's comment for why the
+// estimate cannot stay blind to images, and why it must not count them raw.
+func cappedImageChars(req provider.Request) int64 {
+	var n int64
+	for _, msg := range req.Messages {
+		if msg.LocalOnly {
+			continue
+		}
+		for _, img := range msg.Images {
+			if len(img) > requestImageEstimateByteCap {
+				n += requestImageEstimateByteCap
+				continue
+			}
+			n += int64(len(img))
+		}
+	}
+	return n
+}
+
+// requestImageEstimateByteCap bounds how many bytes of one image ride into the
+// request-shape estimate (任务 1010). On the wire an image is a data URL or a
+// structured vision part priced by tiles (~1–2K tokens each), not by base64
+// length — but the ai-passport incident (2026-10-19) showed the failure mode of
+// counting them at ZERO: hundreds of accumulated screenshots were invisible to
+// every threshold, so the fold cap, admission and the truncation rescue all
+// believed a 2.1M-token view fit a 1M window and the freeze loop never broke.
+// The cap ≈ 2K tokens at the ~4-chars-per-token cold rate: real multi-image
+// pressure shows up (compaction fires, the summary prefix caps), while a single
+// 2 MB screenshot no longer estimates at ~500K tokens and over-folds healthy
+// image sessions. Image bytes are base64 — no CJK accounting applies.
+const requestImageEstimateByteCap = 8 * 1024
+
+// requestImageFootprint reports the raw image surface of a request: how many
+// images ride on it and their encoded byte total (uncapped). The admission
+// error uses it to name the images an over-window request still carries, so
+// the degradation names the repair instead of a bare token count (任务 1010
+// 需求 1：超窗前自主降级，错误可操作).
+func requestImageFootprint(req provider.Request) (count int, bytes int64) {
+	for _, msg := range req.Messages {
+		if msg.LocalOnly {
+			continue
+		}
+		count += len(msg.Images)
+		for _, img := range msg.Images {
+			bytes += int64(len(img))
+		}
+	}
+	return count, bytes
+}
+
 // requestCalibrationTextShape counts common shared-window text plus only the
 // adapter-specific replay fields declared by the active provider. This keeps
 // omitted bytes out of the ratio without missing newly appended wire content.
+// Images are NOT counted here: the chunk-budget plane (messageWireBytes) is
+// built on this function and adds full image bytes itself — the capped image
+// pricing lives in the agent wire shape (requestCalibrationShapeWithPolicy).
 func requestCalibrationTextShape(req provider.Request, policy provider.SharedWindowInputPolicy) (chars, cjkRunes, cjkBytes int64) {
 	add := func(s string) {
 		chars += int64(len(s))
@@ -570,6 +628,13 @@ func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens
 	}
 	if physical <= 0 {
 		a.storeAdmission(adm)
+		// 任务 1010 需求 1: an over-window request that still carries images
+		// names them and the repair instead of a bare token count — the
+		// ai-passport freeze kept the user staring at "2.1M/1M" with no
+		// actionable next step while every retry re-sent the same images.
+		if count, bytes := requestImageFootprint(req); count > 0 {
+			return adm, fmt.Errorf("%w: estimated prompt %d leaves no shared-window output budget; the request still carries %d image(s) (~%.1f MB encoded) — compact the conversation, or repair it to strip the images, before retrying", ErrCompactionRequired, est, count, float64(bytes)/(1<<20))
+		}
 		return adm, fmt.Errorf("%w: estimated prompt %d leaves no shared-window output budget", ErrCompactionRequired, est)
 	}
 	requested := 0

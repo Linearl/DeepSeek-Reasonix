@@ -1305,6 +1305,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesDualOpen": "該會話正在本視窗的兩個分頁中開啟，已暫停合併——請先關閉其中一個分頁（解決雙寫入）再重新合併。",
   "recovery.noticeAlsoOpen": "這個會話也在另一個 Reasonix 實例中開啟。雙方都可能儲存；發生衝突時會分出還原副本。",
   "recovery.noticeHeadSwitched": "已開啟該會話的最新版本，其他儲存版本可在「查看版本」中查看。",
+  "recovery.noticeSelectedHeadBehind": "已開啟一個較舊的版本（{selectedMessages} 條），另一版本更長且更新（{otherMessages} 條）；如需那條鏈，可在「查看版本」中手動切換。",
+  "recovery.noticeMaterializationLag": "本會話有 {gap} 條歷史未落入本地記錄（事件日誌 {eventChain} 條，本地記錄 {materialized} 條）；可右鍵該會話選擇「修復對話」。",
   "recovery.noticeHeadSelected": "已將此版本設為目前版本。",
   "recovery.headsSummary": "該會話共 {branches} 個版本",
   "recovery.currentVersion": "目前版本",

@@ -114,7 +114,7 @@ func cachedSessionLoadResult(path string, hasher *sessionTranscriptHasher) (sess
 		headCount: len(st.heads),
 		state:     st,
 		openTurn:  st.heads[headID].openTurn,
-		events:    loadHeadEvents(st, headID),
+		events:    loadHeadEvents(st, headID, path),
 	}, true
 }
 

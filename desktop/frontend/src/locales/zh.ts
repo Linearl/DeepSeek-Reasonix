@@ -1650,6 +1650,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesDualOpen": "该会话正在本窗口的两个标签页中打开，已暂停合并——请先关闭其中一个标签页（解决双写入）再重新合并。",
   "recovery.noticeAlsoOpen": "这个会话也在另一个 Reasonix 实例中打开。双方都可能保存；发生冲突时会分出恢复副本。",
   "recovery.noticeHeadSwitched": "已打开该会话的最新版本，其他保存版本可在“查看版本”中查看。",
+  "recovery.noticeSelectedHeadBehind": "已打开一个较旧的版本（{selectedMessages} 条），另一版本更长且更新（{otherMessages} 条）；如需那条链，可在“查看版本”中手动切换。",
+  "recovery.noticeMaterializationLag": "本会话有 {gap} 条历史未落入本地记录（事件日志 {eventChain} 条，本地记录 {materialized} 条）；可右键该会话选择“修复对话”。",
   "recovery.noticeHeadSelected": "已将此版本设为当前版本。",
   "recovery.headsSummary": "该会话共 {branches} 个版本",
   "recovery.currentVersion": "当前版本",

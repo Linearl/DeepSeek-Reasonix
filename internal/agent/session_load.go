@@ -116,7 +116,7 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 			headCount: len(st.heads),
 			state:     st,
 			openTurn:  st.heads[headID].openTurn,
-			events:    loadHeadEvents(st, headID),
+			events:    loadHeadEvents(st, headID, sessionPath),
 		}, nil
 	}
 	if probe.native && probe.size > 0 {
@@ -185,7 +185,7 @@ func loadSessionTranscriptTail(ctx context.Context, sessionPath string, limits s
 		headCount:     len(st.heads),
 		state:         st,
 		openTurn:      st.heads[headID].openTurn,
-		events:        loadHeadEvents(st, headID),
+		events:        loadHeadEvents(st, headID, sessionPath),
 	}, nil
 }
 

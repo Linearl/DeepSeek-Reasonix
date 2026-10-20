@@ -3,6 +3,7 @@ package agent
 import (
 	"cmp"
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"time"
@@ -271,8 +272,28 @@ func buildRotatedSessionDAG(st *sessionDAGState, now time.Time) ([]sessionDAGEnt
 			entries = append(entries, sessionDAGEntry{Type: sessionDAGTypeTurnBegin, Head: id, Turn: t.turn, Leaf: t.leaf, PreserveUser: t.preserveUser, Writer: t.writer, At: t.at})
 		}
 	}
+	// 任务 1010 需求 4: rotation re-pins the recorded selection so the view
+	// stays stable across the rewrite — but the ai-passport incident
+	// (2026-10-19 21:03) showed the failure mode: a stale recorded pin (a
+	// days-old rewind head) got re-emitted while a concurrent head had grown
+	// strictly longer and newer, so every later open landed back on the old
+	// short chain and 10-16→10-19 went "missing". When another live head
+	// strictly dominates the recorded selection (more messages AND newer
+	// activity — see dominatingLiveHead), the pin is not re-emitted: the
+	// open-time fallback lands on the dominant head, the dominated head stays
+	// in the versions list with its readings, and moving back is a manual
+	// switch. A selection that is not strictly dominated keeps today's
+	// byte-stable behavior.
 	if h := st.heads[st.selected]; h != nil && !h.retired {
-		entries = append(entries, sessionDAGEntry{Type: sessionDAGTypeSelect, Head: st.selected, Reason: "rotation", At: now})
+		if domID, selLen, domLen, dominated := st.dominatingLiveHead(st.selected); dominated {
+			slog.Warn("session: rotation drops a stale select pin dominated by a longer, newer head",
+				"path", st.path,
+				"stale_head", st.selected, "stale_messages", selLen,
+				"dominant_head", domID, "dominant_messages", domLen,
+				"dominant_activity", st.heads[domID].lastActivity.UTC().Format(time.RFC3339))
+		} else {
+			entries = append(entries, sessionDAGEntry{Type: sessionDAGTypeSelect, Head: st.selected, Reason: "rotation", At: now})
+		}
 	}
 	return entries, nil
 }

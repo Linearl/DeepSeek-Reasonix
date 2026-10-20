@@ -1651,6 +1651,8 @@ export const en = {
   "settings.recoveryCopiesDualOpen": "This conversation is open in two tabs of this window — merging is paused. Close one tab (resolve the dual writer) and run the merge again.",
   "recovery.noticeAlsoOpen": "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.",
   "recovery.noticeHeadSwitched": "Opened the newest version of this conversation. Other saved versions are available in View versions.",
+  "recovery.noticeSelectedHeadBehind": "Opened an older version ({selectedMessages} messages), while another version is longer and newer ({otherMessages} messages); switch in View versions if that is the chain you want.",
+  "recovery.noticeMaterializationLag": "{gap} messages of this conversation are not materialized into the local transcript (events: {eventChain}, transcript: {materialized}); right-click the session and choose the repair-conversation action.",
   "recovery.noticeHeadSelected": "This version is now the current version of the conversation.",
   "recovery.headsSummary": "{branches} versions of this conversation",
   "recovery.currentVersion": "Current version",

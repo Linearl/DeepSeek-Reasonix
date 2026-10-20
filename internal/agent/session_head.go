@@ -44,6 +44,15 @@ type HeadEvent struct {
 	// HeadDivergenceUnknown (task 646): no_replay_state, no_writer_id,
 	// writer_unregistered, or pid_missing. Empty for external/local.
 	UnknownReason string
+	// 任务 1010: readings for the lag notices. HeadID stays the side this
+	// session opened on; OtherHeadID names the competing head.
+	//   - SelectedHeadBehind: Messages/OtherMessages are the two chains'
+	//     materialized lengths;
+	//   - MaterializationLag: Messages is the materialized .jsonl checkpoint
+	//     line count, OtherMessages the newest events chain's length.
+	Messages      int
+	OtherMessages int
+	OtherHeadID   string
 }
 
 const (
@@ -53,6 +62,16 @@ const (
 	// HeadEventMultipleRecentHeads: the session opened on one of several heads
 	// that were active within recentHeadWindow; the others remain versions.
 	HeadEventMultipleRecentHeads = "multiple_recent_heads"
+	// HeadEventSelectedHeadBehind (任务 1010 需求 4): the head this session
+	// opened on is strictly dominated by another live head — fewer messages
+	// AND older last activity. Readings ride in Messages/OtherMessages/
+	// OtherHeadID; switching is a manual versions action.
+	HeadEventSelectedHeadBehind = "selected_head_behind"
+	// HeadEventMaterializationLag (任务 1010 需求 3): the events log holds a
+	// strictly newer, longer chain than the materialized .jsonl checkpoint.
+	// Detection only — no file is ever written here; the repair belongs to
+	// the manual fix-conversation entry (任务 1011).
+	HeadEventMaterializationLag = "materialization_lag"
 )
 
 // HeadDivergence classes for HeadEvent.Class (task 203): who wrote the
@@ -110,8 +129,10 @@ func classifyHeadDivergenceReason(st *sessionDAGState, otherWriter string) (stri
 // conversation stops mentioning it.
 const recentHeadWindow = 24 * time.Hour
 
-// loadHeadEvents derives the events a fresh load should surface.
-func loadHeadEvents(st *sessionDAGState, selected string) []HeadEvent {
+// loadHeadEvents derives the events a fresh load should surface. sessionPath
+// backs the materialization-gap detection (任务 1010 需求 3); it may be empty
+// in tests that only exercise the head-side facts.
+func loadHeadEvents(st *sessionDAGState, selected, sessionPath string) []HeadEvent {
 	if st == nil {
 		return nil
 	}
@@ -119,15 +140,32 @@ func loadHeadEvents(st *sessionDAGState, selected string) []HeadEvent {
 	if h == nil {
 		return nil
 	}
+	var events []HeadEvent
 	for _, id := range st.liveHeads() {
 		if id == selected {
 			continue
 		}
 		if other := st.heads[id]; other != nil && h.lastActivity.Sub(other.lastActivity) < recentHeadWindow {
-			return []HeadEvent{{Kind: HeadEventMultipleRecentHeads, HeadID: selected, OtherWriter: other.writer}}
+			events = append(events, HeadEvent{Kind: HeadEventMultipleRecentHeads, HeadID: selected, OtherWriter: other.writer})
+			break
 		}
 	}
-	return nil
+	// 任务 1010 需求 4: an open that landed on a strictly dominated head says
+	// so with readings — the user sees WHICH chain is longer and newer and
+	// switches manually in the versions dialog. Pure observation.
+	if domID, selLen, domLen, dominated := st.dominatingLiveHead(selected); dominated {
+		events = append(events, HeadEvent{
+			Kind:          HeadEventSelectedHeadBehind,
+			HeadID:        selected,
+			OtherHeadID:   domID,
+			Messages:      selLen,
+			OtherMessages: domLen,
+		})
+	}
+	if ev, ok := detectMaterializationGap(sessionPath, st); ok {
+		events = append(events, ev)
+	}
+	return events
 }
 
 // Head reports the head this session was loaded from or last saved to. ok is
@@ -185,6 +223,34 @@ func (st *sessionDAGState) selectedHead() string {
 		return best
 	}
 	return SessionMainHead
+}
+
+// dominatingLiveHead reports whether another live head strictly dominates the
+// given head: strictly more chain messages AND strictly newer last activity
+// (任务 1010 需求 4). Both conditions must hold, so an ordinary rewind or a
+// deliberate switch to a review branch — same length, or touched more recently
+// — is never judged dominated, and rotation keeps honoring it.
+// Caller holds st.mu for reading (replay-mutation readers).
+func (st *sessionDAGState) dominatingLiveHead(headID string) (domID string, headLen, domLen int, ok bool) {
+	h := st.heads[headID]
+	if h == nil || h.retired {
+		return "", 0, 0, false
+	}
+	headLen = len(st.chainIDs(headID))
+	for _, id := range st.liveHeads() {
+		if id == headID {
+			continue
+		}
+		o := st.heads[id]
+		if o == nil || o.retired {
+			continue
+		}
+		oLen := len(st.chainIDs(id))
+		if oLen > headLen && o.lastActivity.After(h.lastActivity) {
+			return id, headLen, oLen, true
+		}
+	}
+	return "", headLen, 0, false
 }
 
 func (st *sessionDAGState) headRecord(id string, selected string) SessionHead {

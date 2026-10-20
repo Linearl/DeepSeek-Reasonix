@@ -14,9 +14,9 @@ function inlineActionForCode(code?: string): "view_versions" | undefined {
 
 export function appendNoticeItem(items: Item[], seq: number, id: string, level: "info" | "warn", rawText: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt): { items: Item[]; seq: number } {
   if (quietTranscriptNoticeKey(rawText, code)) return { items, seq };
-  const text = localizedNoticeText(rawText, code);
-  if (quietTranscriptNoticeKey(text, code)) return { items, seq };
   const trimmedDetail = detail?.trim();
+  const text = localizedNoticeText(rawText, code, trimmedDetail);
+  if (quietTranscriptNoticeKey(text, code)) return { items, seq };
   const inlineAction = inlineActionForCode(code);
   return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(code ? { code } : {}), ...(decisionReceipt ? { decisionReceipt } : {}), ...(inlineAction ? { action: inlineAction } : {}) }], seq: seq + 1 };
 }
@@ -76,11 +76,21 @@ const streamInterruptReasonCodeKeys: Record<string, DictKey> = {
   stream_interrupted_server_error: "notice.streamInterruptReason.serverError",
 };
 
-export function localizedNoticeText(text: string, code?: string): string {
+export function localizedNoticeText(text: string, code?: string, detail?: string): string {
   if (code === "unapplied_steer") {
     const separator = text.indexOf("\n");
     const guidance = separator >= 0 ? text.slice(separator + 1) : text;
     return t("notice.unappliedSteer", { guidance });
+  }
+  // 任务 1010: the head-behind and materialization-lag notices carry their
+  // readings as key=value pairs in the event Detail; without a Detail the
+  // backend's English text falls through unchanged.
+  if (code === "session_selected_head_behind" || code === "session_materialization_lag") {
+    const params = detailParams(detail);
+    if (Object.keys(params).length > 0) {
+      const key: DictKey = code === "session_selected_head_behind" ? "recovery.noticeSelectedHeadBehind" : "recovery.noticeMaterializationLag";
+      return t(key, params);
+    }
   }
   const streamReasonKey = code ? streamInterruptReasonCodeKeys[code] : undefined;
   if (streamReasonKey) {
@@ -88,6 +98,14 @@ export function localizedNoticeText(text: string, code?: string): string {
   }
   const key = code ? noticeCodeKeys[code] : undefined;
   return key ? t(key) : localizedBackendNoticeText(text);
+}
+
+// detailParams parses the key=value reading list the backend puts in a
+// notice's Detail field (任务 1010).
+function detailParams(detail?: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of (detail ?? "").matchAll(/([a-zA-Z_]+)=(\S+)/g)) out[m[1]] = m[2];
+  return out;
 }
 
 const deliveryRequirementKeys: Record<string, DictKey> = {
@@ -209,7 +227,7 @@ export function historyNoticeItems(m: HistoryMessage, id: string): Item[] {
   if (m.code === "incomplete_read") return [readPauseItem(m.readPause, id)];
   if (m.content.trim() === "" && !m.decisionReceipt) return [];
   if (quietTranscriptNoticeKey(m.content, m.code)) return [];
-  const text = localizedNoticeText(m.content, m.code);
+  const text = localizedNoticeText(m.content, m.code, m.detail?.trim());
   if (quietTranscriptNoticeKey(text, m.code)) return [];
   const detail = m.detail?.trim();
   const inlineAction = inlineActionForCode(m.code);
