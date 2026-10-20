@@ -25,6 +25,25 @@ export function useTick(on: boolean): number {
   return Date.now();
 }
 
+// Task 1020: last-event heartbeat of the live turn. Both inputs must be epoch
+// milliseconds (Date.now() epoch): task 1015 fed this field with
+// promptEventClock() (performance.now() — milliseconds since page origin,
+// "only ever compared against itself"), so subtracting it from the wall clock
+// rendered a 10^9-scale "last event Ns ago". Missing / non-finite inputs,
+// a future timestamp beyond tolerance, or a heartbeat older than 24h (an
+// obvious unit error or a dead feed) all return null — the caller must show
+// the em-dash guard instead of an absurd reading.
+export const TURN_HEARTBEAT_FUTURE_TOLERANCE_MS = 5000;
+export const TURN_HEARTBEAT_MAX_MS = 24 * 60 * 60 * 1000;
+
+export function turnHeartbeatSeconds(now: number, lastTurnEventAt: number | undefined | null): number | null {
+  if (!lastTurnEventAt || !Number.isFinite(lastTurnEventAt) || !Number.isFinite(now)) return null;
+  const deltaMs = now - lastTurnEventAt;
+  if (deltaMs < -TURN_HEARTBEAT_FUTURE_TOLERANCE_MS) return null;
+  if (deltaMs > TURN_HEARTBEAT_MAX_MS) return null;
+  return Math.max(0, Math.floor(deltaMs / 1000));
+}
+
 // Task 341: a running segment whose start timestamp is unknown (turnStartAt
 // and reasoningStartedAt both missing) must not fall back to the static
 // segment.durationMs snapshot — that value only advances with new events, so
