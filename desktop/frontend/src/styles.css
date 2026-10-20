@@ -3167,6 +3167,13 @@ a[href] {
   color: var(--ok);
   border-bottom: 1px solid var(--border-soft);
 }
+/* 任务 1023：未入档输入横幅的 info 变体（中性提示，非告警）。class-contract
+   要求被引用的修饰符必须有真实定义，故显式补；配色沿用既有 token。 */
+.banner--info {
+  background: var(--bg-elev);
+  color: var(--fg);
+  border-bottom: 1px solid var(--border-soft);
+}
 .banner--update {
   display: flex;
   align-items: center;
