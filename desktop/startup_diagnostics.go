@@ -42,7 +42,7 @@ func (a *App) recordPreviousRunDiagnostics() {
 	//
 	// Task 1018 (20261020 装机实测): the record family is read-and-clear at
 	// the source, for EVERY disposition — marker-vouched, clean-shutdown, and
-	// abnormal phase alike. Nothing here wrote a crash report anymore. The
+	// abnormal phase alike. Nothing here writes a crash report anymore. The
 	// 10-19/10-20 incidents: a wedged-phase record (shutdown watchdog forced
 	// quit, desktop.log zero panic) sat in the crash queue and re-surfaced the
 	// 「上次运行遗留的崩溃报告」 banner on every launch while uploads were
