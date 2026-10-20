@@ -44,10 +44,11 @@ const (
 	HostWebSearch     = "web_search"
 )
 
-// forkCollabToolNames：fork 的会话协作工具（session collab / channel / mailbox /
-// task card / 会话元数据）。任务 1005 C4 让 sessionCollab 默认开，这批工具随之
-// 默认注册，因此必须列入诊断身份名单——boot 的
-// TestBootRegisteredToolsHaveDiagnosticIdentities 要求每个注册工具都可查。
+// forkCollabToolNames：fork 自研的会话级工具（session collab / channel / mailbox /
+// task card / 会话元数据 / 会话提醒）。任务 1005 C4 让 sessionCollab 默认开，这批
+// 工具随之默认注册；任务 1001 又新增了 session_remind（默认开）。因此两者都必须
+// 列入诊断身份名单——boot 的 TestBootRegisteredToolsHaveDiagnosticIdentities
+// 要求每个注册工具都可查（本批门禁报 session_remind 缺失即此处）。
 var forkCollabToolNames = []string{
 	"adopt_session_version",
 	"channel_cancel",
@@ -64,6 +65,7 @@ var forkCollabToolNames = []string{
 	"peek_own_inbox",
 	"query_collab_mail",
 	"read_collab_status",
+	"session_remind",
 	"set_session_purpose",
 	"talk_to_session",
 	"task_card",
