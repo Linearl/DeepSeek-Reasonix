@@ -1467,6 +1467,14 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 940: composer 权限选择器形态二选一（off=现按钮组 / on=下拉框；
   // re-applied on settings save, no restart).
   SetExperimentalApprovalSelect(enabled: boolean): Promise<void>;
+  // 任务 959 ①: transcript markdown-table re-flow (off = wide-table layout
+  // unchanged, on = cells wrap to the pane width; re-applied on settings save,
+  // no restart).
+  SetExperimentalTableWrap(enabled: boolean): Promise<void>;
+  // 任务 959 ②: composer split-pane send-target picker form (off = three
+  // button group unchanged, on = dropdown; re-applied on settings save, no
+  // restart).
+  SetExperimentalSendTargetSelect(enabled: boolean): Promise<void>;
   // 任务 686: workflow visualization panel (palette entry opening the DAG flow
   // view; re-applied on settings save, no restart).
   SetExperimentalWorkflowPanel(enabled: boolean): Promise<void>;
@@ -6290,6 +6298,8 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSidebarHoverLeft() {},
     async SetExperimentalSidebarHoverRight() {},
     async SetExperimentalApprovalSelect() {},
+    async SetExperimentalTableWrap() {},
+    async SetExperimentalSendTargetSelect() {},
     async SetExperimentalWorkflowPanel() {},
     async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},

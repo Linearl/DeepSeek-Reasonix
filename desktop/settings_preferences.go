@@ -411,6 +411,24 @@ func (a *App) SetExperimentalApprovalSelect(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalApprovalSelect(enabled) })
 }
 
+// SetExperimentalTableWrap toggles transcript markdown-table re-flow (任务
+// 959 ①): off (default) keeps the wide-table layout with horizontal scroll,
+// on wraps cells to the current pane width. Pure frontend gate: the settings
+// save re-applies the boot snapshot, so the change is visible without a
+// restart.
+func (a *App) SetExperimentalTableWrap(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTableWrap(enabled) })
+}
+
+// SetExperimentalSendTargetSelect toggles the composer split-pane send-target
+// picker form (任务 959 ②): off (default) keeps the three-button group, on
+// swaps it for a compact dropdown (task-940 form mechanism reused). Pure
+// frontend gate: the settings save re-applies the boot snapshot, so the
+// change is visible without a restart.
+func (a *App) SetExperimentalSendTargetSelect(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSendTargetSelect(enabled) })
+}
+
 // SetExperimentalWorkflowPanel toggles the workflow visualization panel
 // (task 686): the command-palette entry opening the DAG flow view. Pure
 // frontend gate: the settings save re-applies the boot snapshot, so the

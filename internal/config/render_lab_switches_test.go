@@ -56,6 +56,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalSidebarHoverRight = true // sidebarHoverRight
 	// 任务 940：composer 权限选择器形态二选一（默认关=按钮组）。
 	orig.Desktop.ExperimentalApprovalSelect = true // approvalSelect
+	// 任务 959 ①：对话表格按栏宽自动换行（默认关=宽表横滚不变）。
+	orig.Desktop.ExperimentalTableWrap = true // tableWrap
+	// 任务 959 ②：发送目标选择器形态（默认关=三按钮组）。
+	orig.Desktop.ExperimentalSendTargetSelect = true // sendTargetSelect
 	// 任务 686：工作流可视化面板（默认关）。
 	orig.Desktop.ExperimentalWorkflowPanel = true              // workflowPanel
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
@@ -117,6 +121,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_sidebar_hover_right = true",
 		// 任务 940：composer 权限选择器形态键无条件渲染（fixed-key-set rule）。
 		"experimental_approval_select = true",
+		// 任务 959 ①：表格换行键无条件渲染（fixed-key-set rule）。
+		"experimental_table_wrap = true",
+		// 任务 959 ②：发送目标形态键无条件渲染（fixed-key-set rule）。
+		"experimental_send_target_select = true",
 		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
 		"experimental_workflow_panel = true",
 		"experimental_question_search = true",

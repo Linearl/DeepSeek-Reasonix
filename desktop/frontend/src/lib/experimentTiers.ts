@@ -134,6 +134,12 @@ export type TierFeatureId =
   // 任务 940: composer 权限选择器形态二选一（默认关=现按钮组，开=下拉框
   // zcode 同款省空间）。界面组「视图布局」卡成员（782/826 先例）。
   | "approvalSelect"
+  // 任务 959 ①: 对话 markdown 表格按栏宽自动换行（默认关=宽表横滚不变，
+  // 分栏拖窄后随新宽度重排）。界面组「视图布局」卡成员（940 先例）。
+  | "tableWrap"
+  // 任务 959 ②: composer 发送目标选择器形态二选一（默认关=三按钮组，开=
+  // 下拉框，复用 940 形态机制）。界面组「视图布局」卡成员。
+  | "sendTargetSelect"
   // 任务 686: 工作流可视化面板（DAG 流程图 + 运行进展点亮，palette 入口；
   // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。未稳定档（开发
   // 测试中），默认关=palette 逐字节不变。
@@ -277,6 +283,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 开关按 550 口径定可选——不开启时 composer 权限区与引入前逐字节一致
   // （铁律 2）。
   approvalSelect: "optional",
+  // 任务 959 ①：表格按栏宽自动换行（默认关）。展示形态开关按 550 口径定
+  // 可选——不开启时转录表格与引入前逐字节一致（铁律 2）。
+  tableWrap: "optional",
+  // 任务 959 ②：composer 发送目标形态二选一（默认关=三按钮组）。展示形态
+  // 开关按 550 口径定可选——不开启时发送目标区与引入前逐字节一致（铁律 2）。
+  sendTargetSelect: "optional",
   // 任务 961：automation/efficiency 两张条目级合并卡容器档 = 成员最高档
   // （782 合并卡语义同源：smartAutomation 三成员全可选 → 可选；
   // interactionPresentation 快捷指令推荐压过两可选 → 推荐）。合并是入口层
@@ -331,11 +343,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 仓仍挂可选）+1（992 漏同步的 editEvidenceRelaxed 升可选）、未稳定 -2
  * （orphanHandling / editEvidenceRelaxed 原挂未稳定）→ 4 稳定/18 推荐/
  * 34 可选/13 未稳定/1 退役，总数不变 70（Go 侧 61 条目：runtimeReuse 992
- * 已升推荐，故 14 推荐/4 稳定/29 可选/14 未稳定）。 */
+ * 已升推荐，故 14 推荐/4 稳定/29 可选/14 未稳定）。 * 任务 959：① tableWrap（对话表格按栏宽自动换行，默认关）+ ②
+ * sendTargetSelect（composer 发送目标形态二选一，默认关）按可选档入表
+ * ——可选 34→36、总数 70→72（Go 侧同步 61→63）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 18,
-  optional: 34,
+  optional: 36,
   unstable: 13,
   retired: 1,
 };

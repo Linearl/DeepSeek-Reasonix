@@ -109,6 +109,14 @@ var labFeatureTiers = []labFeatureTier{
 	// zcode 同款下拉省空间）。展示形态开关按 550 口径定档可选——不开启时
 	// composer 权限区与引入前逐字节一致（铁律 2，默认关）。
 	{"approvalSelect", LabTierOptional, []string{"experimental_approval_select"}},
+	// 任务 959 ①：对话 markdown 表格按栏宽自动换行（分栏拖窄后随新宽度
+	// 重排，不再横向溢出）。展示形态开关按 550 口径定档可选——不开启时
+	// 转录表格与引入前逐字节一致（铁律 2，默认关）。
+	{"tableWrap", LabTierOptional, []string{"experimental_table_wrap"}},
+	// 任务 959 ②：composer 分栏发送目标选择器形态二选一（按钮组 vs 下拉框，
+	// 复用 940 形态机制）。展示形态开关按 550 口径定档可选——不开启时
+	// composer 发送目标区与引入前逐字节一致（铁律 2，默认关）。
+	{"sendTargetSelect", LabTierOptional, []string{"experimental_send_target_select"}},
 	// 任务 742：心跳任务后台化（默认关）。开启后心跳触发不进标签栏（复用 264
 	// detached 语义，提交成功后 park）；档位按 550 口径可选——不开启不影响
 	// 任何调度行为，只是标签栏照旧出现会话。
@@ -468,6 +476,15 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off keeps the composer permission button group byte-for-byte.
 		fmt.Fprintf(&b, "experimental_approval_select = %v   # desktop: composer permission-tier picker form — off (default) = segmented ask/auto/yolo(/autopilot) button group, on = compact dropdown (zcode-style, saves composer-row space) (task 940; settings save re-applies, no restart)\n", c.Desktop.ExperimentalApprovalSelect)
+		// 任务 959 ①: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123
+		// lesson). Off keeps the wide-table horizontal-scroll layout
+		// byte-for-byte (铁律 2 zero regression).
+		fmt.Fprintf(&b, "experimental_table_wrap = %v   # desktop: transcript markdown-table re-flow — off (default) = wide tables keep max-content width with horizontal scroll, on = tables wrap cells to the current pane width (narrowed split re-flows) (task 959; settings save re-applies, no restart)\n", c.Desktop.ExperimentalTableWrap)
+		// 任务 959 ②: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123
+		// lesson). Off keeps the three-button group byte-for-byte (铁律 2).
+		fmt.Fprintf(&b, "experimental_send_target_select = %v   # desktop: composer split-pane send-target picker form — off (default) = segmented left/right/both button group, on = compact dropdown (task-940 form mechanism reused) (task 959; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSendTargetSelect)
 		// 任务 686: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off renders no palette entry at all (铁律 2 zero regression).

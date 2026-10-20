@@ -1074,6 +1074,30 @@ func (c *Config) SetExperimentalApprovalSelect(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalTableWrap toggles transcript markdown-table re-flow (任务
+// 959 ①): off (default) keeps the max-content width + horizontal scroll of a
+// wide table, on wraps cells to the current pane width so a narrowed split
+// column re-flows instead of overflowing. Opt-in: with it off the transcript
+// table renders exactly the pre-959 layout (铁律 2). Pure frontend gate: the
+// settings save re-applies the boot snapshot, so a change is visible without
+// a restart.
+func (c *Config) SetExperimentalTableWrap(enabled bool) error {
+	c.Desktop.ExperimentalTableWrap = enabled
+	return nil
+}
+
+// SetExperimentalSendTargetSelect toggles the composer split-pane send-target
+// picker form (任务 959 ②): off (default) keeps the three-button group (left
+// / right / both), on swaps it for a compact dropdown reusing the task-940
+// permission picker's form mechanism. Opt-in: with it off the composer meta
+// row renders exactly the pre-959 button group (铁律 2). Pure frontend gate:
+// the settings save re-applies the boot snapshot, so a change is visible
+// without a restart.
+func (c *Config) SetExperimentalSendTargetSelect(enabled bool) error {
+	c.Desktop.ExperimentalSendTargetSelect = enabled
+	return nil
+}
+
 // SetExperimentalPromptHistoryPicker gates the composer history-navigation
 // safety rework (task 261): clock-icon history picker + narrowed ArrowUp
 // trigger. Opt-in: with it off the composer keeps the legacy behaviour. The

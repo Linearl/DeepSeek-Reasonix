@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "renderArtifact";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "renderArtifact" | "tableWrap" | "sendTargetSelect";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -67,6 +67,16 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // （铁律 2——关闭时 render_artifact 工具行照旧渲染为普通工具卡，不出现
   // 卡片形态）；保存即换态免重启。
   renderArtifact: false,
+  // 任务 959 ①: transcript markdown-table re-flow (experimental_table_wrap)
+  // ships off (铁律 2) — with it off wide tables keep the exact max-content
+  // width + horizontal scroll of the pre-959 layout; on wraps cells to the
+  // current pane width. A flip applies on settings save (no restart).
+  tableWrap: false,
+  // 任务 959 ②: composer split-pane send-target picker form
+  // (experimental_send_target_select) ships off (铁律 2) — with it off the
+  // left/right/both button group is byte-for-byte unchanged. A flip applies
+  // on settings save (no restart).
+  sendTargetSelect: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -95,7 +105,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} renderArtifact=${flags.renderArtifact}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} renderArtifact=${flags.renderArtifact} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect}`,
   );
   for (const listener of listeners) listener();
 }

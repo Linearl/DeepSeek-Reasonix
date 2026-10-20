@@ -48,8 +48,10 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
     "register: the batch-1 four carry the stable tier");
   ok(LAB_TIER_ORDER[0] === "stable" && LAB_TIER_ORDER.length === 5,
     "LAB_TIER_ORDER puts stable first (strongest tier, 5 tiers)");
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 34 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/18 推荐/34 可选/13 未稳定/1 退役");
+  // 任务 959：① tableWrap + ② sendTargetSelect 入表——可选 34→36（计数
+  // pin 随表A 步进，562 同步）。
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 36 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/18 推荐/36 可选/13 未稳定/1 退役");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");

@@ -429,6 +429,15 @@ type SettingsView struct {
 	// dropdown). Rendered in both views for the 81/123 two-view lesson; pure
 	// frontend gate, settings save re-applies.
 	ExperimentalApprovalSelect bool `json:"experimentalApprovalSelect"`
+	// 任务 959 ①: transcript markdown-table re-flow gate (off = wide-table
+	// horizontal scroll unchanged, on = cells wrap to the pane width).
+	// Rendered in both views for the 81/123 two-view lesson; pure frontend
+	// gate, settings save re-applies.
+	ExperimentalTableWrap bool `json:"experimentalTableWrap"`
+	// 任务 959 ②: composer split-pane send-target picker form gate (button
+	// group vs compact dropdown). Rendered in both views for the 81/123
+	// two-view lesson; pure frontend gate, settings save re-applies.
+	ExperimentalSendTargetSelect bool `json:"experimentalSendTargetSelect"`
 	// 任务 686: the workflow visualization panel (command-palette entry opening
 	// the DAG flow view). Rendered in both views for the 81/123 two-view
 	// lesson; pure frontend gate, settings save re-applies.
@@ -734,6 +743,15 @@ type DesktopStartupSettingsView struct {
 	// 任务 940: composer permission-tier picker form gate, rendered in this
 	// view too (81/123 two-view lesson); pure frontend gate, no restart needed.
 	ExperimentalApprovalSelect bool `json:"experimentalApprovalSelect"`
+	// 任务 959 ①: transcript markdown-table re-flow gate (off = wide-table
+	// horizontal scroll unchanged, on = cells wrap to the pane width).
+	// Rendered in both views for the 81/123 two-view lesson; pure frontend
+	// gate, settings save re-applies.
+	ExperimentalTableWrap bool `json:"experimentalTableWrap"`
+	// 任务 959 ②: composer split-pane send-target picker form gate (button
+	// group vs compact dropdown). Rendered in both views for the 81/123
+	// two-view lesson; pure frontend gate, settings save re-applies.
+	ExperimentalSendTargetSelect bool `json:"experimentalSendTargetSelect"`
 	// 任务 686: the workflow visualization panel gate, rendered in this view
 	// too (81/123 two-view lesson); pure frontend gate, no restart needed.
 	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
@@ -1585,6 +1603,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSidebarHoverRight = cfg.Desktop.ExperimentalSidebarHoverRight
 		// 任务 940: composer permission-tier picker form readback (two-view lesson).
 		view.ExperimentalApprovalSelect = cfg.Desktop.ExperimentalApprovalSelect
+		// 任务 959 ①: transcript table re-flow readback (two-view lesson).
+		view.ExperimentalTableWrap = cfg.Desktop.ExperimentalTableWrap
+		// 任务 959 ②: send-target picker form readback (two-view lesson).
+		view.ExperimentalSendTargetSelect = cfg.Desktop.ExperimentalSendTargetSelect
 		// 任务 686: workflow visualization panel readback (two-view lesson).
 		view.ExperimentalWorkflowPanel = cfg.Desktop.ExperimentalWorkflowPanel
 		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel
@@ -1810,6 +1832,10 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSidebarHoverRight: cfg.Desktop.ExperimentalSidebarHoverRight,
 		// 任务 940: composer permission-tier picker form readback (two-view lesson).
 		ExperimentalApprovalSelect: cfg.Desktop.ExperimentalApprovalSelect,
+		// 任务 959 ①: transcript table re-flow readback (two-view lesson).
+		ExperimentalTableWrap: cfg.Desktop.ExperimentalTableWrap,
+		// 任务 959 ②: send-target picker form readback (two-view lesson).
+		ExperimentalSendTargetSelect: cfg.Desktop.ExperimentalSendTargetSelect,
 		// 任务 686: workflow visualization panel readback (two-view lesson).
 		ExperimentalWorkflowPanel:       cfg.Desktop.ExperimentalWorkflowPanel,
 		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,

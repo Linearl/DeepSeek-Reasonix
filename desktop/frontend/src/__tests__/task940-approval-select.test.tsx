@@ -252,9 +252,12 @@ console.log("\ntask 940 composer approval-select dropdown");
     "④ labLightKeys: the predicate is registered (yaml onKeys whitelist)");
   // yaml + 内置默认同构同值（724 硬约束）。任务 961：renderArtifact 并卡后
   // viewLayout 灯为六键——断言随卡演进（本 pin 2026-10-19 随 1005 窗口补
-  // 同步，961 并卡时漏跟）。
-  ok(yamlText.includes("experimentalApprovalSelect, experimentalRenderArtifact]") &&
-     labDefault.includes('"experimentalApprovalSelect", "experimentalRenderArtifact"]'),
+  // 同步，961 并卡时漏跟）。任务 959 ①：tableWrap 入卡为第七键，断言随卡
+  // 演进（同一演进授权）。
+  // 任务 959：①tableWrap、②sendTargetSelect 先后入卡——pin 改前缀形式
+  // （不带行尾 ]，后续成员入卡不再破本 pin）。
+  ok(yamlText.includes("experimentalApprovalSelect, experimentalRenderArtifact") &&
+     labDefault.includes('"experimentalApprovalSelect", "experimentalRenderArtifact"'),
     "④ layout data: the viewLayout card light covers the new key in yaml AND the built-in default");
   ok(yamlText.includes("- id: approvalSelect") &&
      labDefault.includes('{ id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" }'),

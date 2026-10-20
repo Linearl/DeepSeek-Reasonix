@@ -249,7 +249,10 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	// 聚合件，953/954/955 共用一键）自 labNonFeatureKeys 豁免表转正入表
 	// 按可选档（28→29、总数 60→61；前端注册表同步）。任务 992：runtimeReuse
 	// 移出（-1）与 editEvidenceRelaxed 升入（+1）抵消，29 不变。
-	want[LabTierOptional] = 29
+	// 任务 959：① tableWrap（对话表格按栏宽自动换行，默认关=宽表横滚不变）
+	// + ② sendTargetSelect（composer 发送目标形态二选一，默认关=三按钮组）
+	// 均按可选档入表（29→31、总数 61→63；前端注册表同步）。
+	want[LabTierOptional] = 31
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
 	for _, f := range labFeatureTiers {
@@ -269,7 +272,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 61 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 61", len(labFeatureTiers))
+	if len(labFeatureTiers) != 63 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 63", len(labFeatureTiers))
 	}
 }
