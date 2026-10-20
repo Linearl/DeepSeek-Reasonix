@@ -26,15 +26,35 @@ func hangReportForVerdict(verdict string, startedAgo time.Duration) doctor.Respo
 			TurnID:    "turn-1",
 			Open:      true,
 			StartedAt: started.UTC().Format(time.RFC3339),
+			// 任务 1028: the gate reads ledger activity too. The minimal shape
+			// these legacy cases exercise is "no write since the turn began"
+			// (LastEventAt == StartedAt), so age and silence rise together.
+			LastEventAt: started.UTC().Format(time.RFC3339),
 		}
 	}
 	return report
 }
 
+// hangReportFirstResponseWait builds a first_response_wait report with
+// INDEPENDENT age and ledger-silence clocks — the two dimensions 任务 1028
+// splits apart (issue #58: age counted compaction prep, silence was 83s).
+func hangReportFirstResponseWait(now, started, lastEvent time.Time) doctor.ResponsivenessReport {
+	return doctor.ResponsivenessReport{
+		Verdict: "first_response_wait",
+		Detail:  "detail for first_response_wait",
+		Active: &doctor.ResponsivenessTurn{
+			TurnID:      "turn-1",
+			Open:        true,
+			StartedAt:   started.UTC().Format(time.RFC3339),
+			LastEventAt: lastEvent.UTC().Format(time.RFC3339),
+		},
+	}
+}
+
 // The hang gate is the task-663 trigger definition: silent (ledger silent past
 // the stream-watchdog window) is hung; first_response_wait counts only once
-// the wait itself outlives the same threshold; everything alive or waiting on
-// the user must not trigger.
+// BOTH its age and its ledger silence outlive the same threshold (任务 1028);
+// everything alive or waiting on the user must not trigger.
 func TestResponsivenessVerdictIsHang(t *testing.T) {
 	now := time.Now()
 	cases := []struct {
@@ -56,6 +76,100 @@ func TestResponsivenessVerdictIsHang(t *testing.T) {
 		if got := responsivenessVerdictIsHang(tc.report, now); got != tc.want {
 			t.Errorf("%s: hung = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// 任务 1028 (fork issue #58) 验收①②: the first_response_wait gate is the
+// AND of two independent clocks — turn age ≥ ResponsivenessSilenceAfter AND
+// ledger silence ≥ the same threshold. Age alone let a long compaction prep
+// (两段 compaction 期间 ledger 持续落账) through the gate while the runtime
+// was demonstrably alive.
+//
+// 边界定义（验收③ 要求按实现写明）：两个条件都用闭区间 `>=` —— 静默恰好
+// 6m 且年龄恰好 6m 判 hang，与 silent 分支 `lastAge >= ResponsivenessSilenceAfter`
+// 同口径；任一条件差 1 秒不判。LastEventAt 缺失/不可解析时无法证明静默，
+// 按不报 hang 处理（本门的失效方向是误报）。
+func TestResponsivenessVerdictIsHangNeedsLedgerSilenceToo(t *testing.T) {
+	now := time.Now()
+	age := 7*time.Minute + 13*time.Second // issue #58 实测 turn 年龄 7m13s
+	cases := []struct {
+		name       string
+		startedAgo time.Duration
+		silenceAgo time.Duration // 最近 ledger 写入距今
+		want       bool
+	}{
+		{"长 compaction 准备期（年龄 7m13s、最后写 83s 前）不报", age, 83 * time.Second, false},
+		{"真死（年龄 7m13s、最后写 6m30s 前）报 hang", age, 6*time.Minute + 30*time.Second, true},
+		{"边界：年龄恰 6m 且静默恰 6m（闭区间）报 hang", doctor.ResponsivenessSilenceAfter, doctor.ResponsivenessSilenceAfter, true},
+		{"边界内侧：年龄 6m 但静默 5m59s 不报", doctor.ResponsivenessSilenceAfter, doctor.ResponsivenessSilenceAfter - time.Second, false},
+		{"边界内侧：静默 6m 但年龄 5m59s 不报", doctor.ResponsivenessSilenceAfter - time.Second, doctor.ResponsivenessSilenceAfter, false},
+		{"年龄远超阈值但 ledger 秒级活跃（看门狗恢复循环期）不报", 10 * time.Minute, 5 * time.Second, false},
+	}
+	for _, tc := range cases {
+		started := now.Add(-tc.startedAgo)
+		lastEvent := now.Add(-tc.silenceAgo)
+		report := hangReportFirstResponseWait(now, started, lastEvent)
+		if got := responsivenessVerdictIsHang(report, now); got != tc.want {
+			t.Errorf("%s: hung = %v, want %v (detail: %s)", tc.name, got, tc.want, report.Detail)
+		}
+	}
+
+	// LastEventAt 缺失 / 不可解析：无法证明静默 ⇒ 不报 hang（fail-safe 方向是
+	// 少报，因为本门缺陷史全部是误报方向）。
+	noLastEvent := doctor.ResponsivenessReport{
+		Verdict: "first_response_wait",
+		Active:  &doctor.ResponsivenessTurn{TurnID: "t", Open: true, StartedAt: now.Add(-age).UTC().Format(time.RFC3339)},
+	}
+	if responsivenessVerdictIsHang(noLastEvent, now) {
+		t.Error("first_response_wait without a parseable LastEventAt must not gate as hang — silence is unprovable")
+	}
+	noLastEvent.Active.LastEventAt = "not-a-timestamp"
+	if responsivenessVerdictIsHang(noLastEvent, now) {
+		t.Error("first_response_wait with an unparseable LastEventAt must not gate as hang")
+	}
+}
+
+// 任务 1028 验收③: replay of the issue #58 measured timeline (UTC) through a
+// REAL ledger — turn started 01:33:10, two compactions with the ledger
+// writing throughout, stream_attempt 01:39:00, last retained record 01:39:11,
+// doctor collected at 01:40:24 (age 7m13s, silence 73s). The verdict must be
+// first_response_wait AND the gate must refuse: runtime alive, not hung.
+func TestIssue58TimelineReplayDoesNotGateAsHang(t *testing.T) {
+	sessionPath := filepath.Join(t.TempDir(), "s.jsonl")
+	ledgerPath := store.SessionTurnEventLog(sessionPath)
+	if err := os.WriteFile(sessionPath, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	day := func(h, m, s, ms int) time.Time {
+		return time.Date(2026, 10, 16, h, m, s, ms*int(time.Millisecond), time.UTC)
+	}
+	inProgress := event.TurnInProgress
+	writeHangLedger(t, ledgerPath,
+		hangLedgerEnv("turn_58", 1, "turn_started", inProgress, day(1, 33, 10, 583), nil),
+		hangLedgerEnv("turn_58", 2, "turn_phase", inProgress, day(1, 33, 14, 548), nil),
+		hangLedgerEnv("turn_58", 3, "compaction_progress", inProgress, day(1, 35, 39, 436), nil),
+		hangLedgerEnv("turn_58", 4, "usage", inProgress, day(1, 35, 39, 436), nil),
+		hangLedgerEnv("turn_58", 5, "compaction_done", inProgress, day(1, 37, 7, 521), nil),
+		hangLedgerEnv("turn_58", 6, "compaction_started", inProgress, day(1, 37, 8, 370), nil),
+		hangLedgerEnv("turn_58", 7, "compaction_progress", inProgress, day(1, 38, 59, 188), nil),
+		hangLedgerEnv("turn_58", 8, "compaction_done", inProgress, day(1, 38, 59, 955), nil),
+		hangLedgerEnv("turn_58", 9, "context_maintenance", inProgress, day(1, 38, 59, 955), nil),
+		hangLedgerEnv("turn_58", 10, "stream_attempt", inProgress, day(1, 39, 0, 446), nil),
+		hangLedgerEnv("turn_58", 11, "stream_attempt", inProgress, day(1, 39, 11, 0), nil),
+	)
+	collectedAt := day(1, 40, 24, 0) // 采集点：age 7m13s ≥ 6m，silence 73s < 6m
+	report, err := doctor.CollectResponsiveness(sessionPath, collectedAt)
+	if err != nil {
+		t.Fatalf("CollectResponsiveness: %v", err)
+	}
+	if report.Verdict != "first_response_wait" {
+		t.Fatalf("verdict = %q, want first_response_wait (detail: %s)", report.Verdict, report.Detail)
+	}
+	if responsivenessVerdictIsHang(report, collectedAt) {
+		t.Fatalf("issue #58 timeline gated as hang — the runtime was alive the whole time (detail: %s)", report.Detail)
+	}
+	if err := hangGateError(report, collectedAt); err == nil {
+		t.Fatal("the hang gate must refuse the issue #58 compaction-prep session")
 	}
 }
 

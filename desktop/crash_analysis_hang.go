@@ -18,7 +18,9 @@ import (
 // is the doctor responsiveness verdict (task 370, a54890acd): verdict
 // "silent" (open turn, ledger silent past the stream-watchdog window with no
 // long-blocking tool in flight — task 879 split the legitimate wait out), or
-// "first_response_wait" that has itself outlived ResponsivenessSilenceAfter.
+// "first_response_wait" whose turn has BOTH outlived ResponsivenessSilenceAfter
+// AND gone ledger-silent for that long (task 1028 — age alone mis-fired on
+// live ledgers).
 // Verdicts that mean alive or waiting (working / idle / waiting_user /
 // waiting_tool) refuse with an explicit error instead of analyzing a healthy
 // session.
@@ -57,12 +59,14 @@ type HangAnalysisAvailabilityReport struct {
 
 // responsivenessVerdictIsHang is the task-663 hang gate over the doctor
 // report. "silent" is the hang verdict. "first_response_wait" counts only once
-// the wait itself outlives ResponsivenessSilenceAfter — below that it is the
-// legitimate prefill/thinking phase the doctor explicitly refuses to call
-// stuck. "waiting_tool" (task 879) is the doctor's split of a silent ledger
-// whose long-blocking tool call (wait/event_wait) is still executing: the
-// session waits for its background job, it is not hung, so a wait past six
-// minutes never surfaces the 会话疑似卡死 prompt again.
+// the turn is BOTH older than ResponsivenessSilenceAfter AND ledger-silent for
+// at least that long (task 1028, fork issue #58) — age alone let a long
+// compaction prep / watchdog-recovery loop (both keep writing the ledger) pass
+// the gate at six minutes while the runtime was demonstrably alive.
+// "waiting_tool" (task 879) is the doctor's split of a silent ledger whose
+// long-blocking tool call (wait/event_wait) is still executing: the session
+// waits for its background job, it is not hung, so a wait past six minutes
+// never surfaces the 会话疑似卡死 prompt again.
 func responsivenessVerdictIsHang(report doctor.ResponsivenessReport, now time.Time) bool {
 	switch report.Verdict {
 	case "silent":
@@ -74,7 +78,16 @@ func responsivenessVerdictIsHang(report doctor.ResponsivenessReport, now time.Ti
 			return false
 		}
 		started, err := time.Parse(time.RFC3339, report.Active.StartedAt)
-		return err == nil && now.Sub(started) >= doctor.ResponsivenessSilenceAfter
+		if err != nil || now.Sub(started) < doctor.ResponsivenessSilenceAfter {
+			return false
+		}
+		// 与 silent 分支同判据：最近 ledger 写入仍在 ResponsivenessSilenceAfter
+		// 窗口内 = runtime 活跃（compaction 准备期 / 看门狗恢复循环每次都落账，
+		// 结构性地不会越过 6m），不是卡死。真死时无人写账，lastAge 单调增长，
+		// 静默过 6m 后仍正确放行。LastEventAt 缺失/不可解析时无法证明静默 ——
+		// 按不报 hang 处理（本门的失效方向是误报，宁可少报）。
+		last, err := time.Parse(time.RFC3339, report.Active.LastEventAt)
+		return err == nil && now.Sub(last) >= doctor.ResponsivenessSilenceAfter
 	default:
 		return false
 	}
