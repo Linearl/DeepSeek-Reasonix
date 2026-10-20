@@ -830,7 +830,7 @@ func (e *HeartbeatEngine) finishTopicRotation(rot *heartbeatTopicRotation) error
 
 	// 2) The row relay (one CAS write: add successors, retire originals).
 	succIDs := map[string]bool{}
-	err := e.mutateTasks(func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
+	err := e.mutateTasks("rotation-relay", func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
 		changed := false
 		existing := make(map[string]bool, len(tasks))
 		for _, t := range tasks {
@@ -840,6 +840,15 @@ func (e *HeartbeatEngine) finishTopicRotation(rot *heartbeatTopicRotation) error
 		for _, t := range tasks {
 			if _, isRotating := present[t.ID]; isRotating {
 				succID := heartbeatRotationSuccessorID(t.ID, existing, now)
+				// Task 941 ③: the successor is a full-struct clone — every
+				// setting the user chose (approvalMode, time windows, notify
+				// channels, provider/model) is inherited verbatim, never
+				// re-defaulted. Only run state (topic, timestamps, counters,
+				// history) and the relay-owned id/title/enabled fields below
+				// are rewritten. The 20261017 incident — a successor waking
+				// under "ask" and stalling on approvals nobody answered — is
+				// what this contract pins; TestHeartbeatRotationRelayPreservesApprovalMode
+				// guards it.
 				succ := t
 				succ.ID = succID
 				succ.Title = rotationSuccessorTitle(t.Title, now)

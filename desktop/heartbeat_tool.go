@@ -139,7 +139,7 @@ func (a heartbeatManagerAdapter) UpsertTask(req builtin.HeartbeatUpsertRequest) 
 	if prev := heartbeatTaskByID(expected.cfg.Tasks, edited.ID); prev != nil && prev.GoalMode && !edited.GoalMode {
 		clearedGoal = prev.TopicID
 	}
-	if err := e.writeTasks(tasks, expected, true); err != nil {
+	if err := e.writeTasks(tasks, expected, true, "agent-upsert"); err != nil {
 		if errors.Is(err, ErrHeartbeatConfigConflict) {
 			return builtin.HeartbeatUpsertResult{}, heartbeatRevisionConflict(expected.cfg.Revision)
 		}
@@ -191,7 +191,7 @@ func (a heartbeatManagerAdapter) SetEnabled(req builtin.HeartbeatSetEnabledReque
 		return builtin.HeartbeatSetEnabledResult{}, fmt.Errorf("task id %q does not exist — call heartbeat_task_list for current ids", req.ID)
 	}
 	tasks[idx].Enabled = req.Enabled
-	if err := e.writeTasks(tasks, expected, true); err != nil {
+	if err := e.writeTasks(tasks, expected, true, "agent-set-enabled"); err != nil {
 		if errors.Is(err, ErrHeartbeatConfigConflict) {
 			return builtin.HeartbeatSetEnabledResult{}, heartbeatRevisionConflict(expected.cfg.Revision)
 		}

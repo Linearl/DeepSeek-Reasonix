@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"reasonix/internal/filelock"
@@ -111,12 +114,19 @@ func (e *HeartbeatEngine) adoptExternalEditsLocked() {
 	e.prunePendingTopicsLocked(e.tasks)
 }
 
-// saveTasks writes tasks to disk atomically.
+// saveTasks writes tasks to disk atomically. The default writer tag covers
+// test seeding and any caller that has no richer identity; production paths
+// pass their own (task 941).
 func (e *HeartbeatEngine) saveTasks(tasks []HeartbeatTask) error {
-	return e.writeTasks(tasks, heartbeatConfigSnapshot{}, false)
+	return e.writeTasks(tasks, heartbeatConfigSnapshot{}, false, "save-tasks")
 }
 
-func (e *HeartbeatEngine) writeTasks(tasks []HeartbeatTask, expected heartbeatConfigSnapshot, compare bool) error {
+// writeTasks persists the full task list. writer names the caller identity
+// (task 941: every config write is stamped with who wrote it — run-state
+// merge, panel save, agent upsert, guard sweep, rotation relay — so a
+// high-frequency write storm can be attributed from the log instead of a
+// snapshot-diff stakeout).
+func (e *HeartbeatEngine) writeTasks(tasks []HeartbeatTask, expected heartbeatConfigSnapshot, compare bool, writer string) error {
 	if tasks == nil {
 		tasks = []HeartbeatTask{}
 	}
@@ -218,7 +228,88 @@ func (e *HeartbeatEngine) writeTasks(tasks []HeartbeatTask, expected heartbeatCo
 		}
 		return err
 	}
+	// Task 941: stamp every config write with the writer's identity and a
+	// field-level change summary, so a high-frequency write storm (the
+	// 20261017 07:1x incident: revision 6439→6460+ in minutes) is attributable
+	// from the log alone instead of a snapshot-diff stakeout.
+	slog.Info("heartbeat config written",
+		"writer", writer,
+		"rev_from", current.cfg.Revision,
+		"rev_to", revision,
+		"changes", heartbeatConfigChangeSummary(current.cfg.Tasks, tasks))
 	return nil
+}
+
+// heartbeatConfigChangeSummary condenses one full-table save into a log-sized
+// string: added (+id) and removed (-id) rows, plus per changed row the JSON
+// field names that actually differ. Field names come from a JSON map diff, so
+// future task fields are covered without touching this helper.
+func heartbeatConfigChangeSummary(before, after []HeartbeatTask) string {
+	beforeByID := make(map[string]HeartbeatTask, len(before))
+	for _, t := range before {
+		beforeByID[t.ID] = t
+	}
+	afterByID := make(map[string]HeartbeatTask, len(after))
+	for _, t := range after {
+		afterByID[t.ID] = t
+	}
+	parts := make([]string, 0, len(after))
+	for _, t := range after {
+		prev, ok := beforeByID[t.ID]
+		if !ok {
+			parts = append(parts, "+"+t.ID)
+			continue
+		}
+		if fields := heartbeatTaskChangedFields(prev, t); len(fields) > 0 {
+			parts = append(parts, t.ID+":{"+strings.Join(fields, ",")+"}")
+		}
+	}
+	for _, t := range before {
+		if _, ok := afterByID[t.ID]; !ok {
+			parts = append(parts, "-"+t.ID)
+		}
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "; ")
+}
+
+// heartbeatTaskChangedFields lists the JSON field names that differ between
+// two versions of one task, derived by unmarshalling both into generic maps —
+// a structural diff that stays correct when the struct gains fields.
+func heartbeatTaskChangedFields(prev, next HeartbeatTask) []string {
+	prevJSON, err1 := json.Marshal(prev)
+	nextJSON, err2 := json.Marshal(next)
+	if err1 != nil || err2 != nil {
+		return nil // cannot diff — the write stamp still lands, just without field detail
+	}
+	var prevMap, nextMap map[string]any
+	if json.Unmarshal(prevJSON, &prevMap) != nil || json.Unmarshal(nextJSON, &nextMap) != nil {
+		return nil
+	}
+	fields := make([]string, 0, 4)
+	for key := range nextMap {
+		if !reflect.DeepEqual(prevMap[key], nextMap[key]) {
+			fields = append(fields, key)
+		}
+	}
+	for key := range prevMap {
+		if _, ok := nextMap[key]; !ok {
+			fields = append(fields, key)
+		}
+	}
+	sort.Strings(fields)
+	return fields
+}
+
+// heartbeatUpdateIDs condenses a run-state update map into a sorted,
+// comma-joined id list for log lines (task 941 observability).
+func heartbeatUpdateIDs(updates map[string]HeartbeatTask) string {
+	ids := make([]string, 0, len(updates))
+	for id := range updates {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, ",")
 }
 
 func (e *HeartbeatEngine) mergeRunUpdatesLocked(updates map[string]HeartbeatTask) {
@@ -228,7 +319,7 @@ func (e *HeartbeatEngine) mergeRunUpdatesLocked(updates map[string]HeartbeatTask
 	// Rebase onto the human/AI-editable disk list before saving. The engine owns
 	// only run-state fields; task definitions added, edited, or deleted outside
 	// this process remain authoritative.
-	for range 3 {
+	for attempt := 1; attempt <= 3; attempt++ {
 		expected, err := e.readConfigSnapshot()
 		if err != nil {
 			log.Printf("[heartbeat] cannot read config before run-state merge: %v", err)
@@ -253,8 +344,13 @@ func (e *HeartbeatEngine) mergeRunUpdatesLocked(updates map[string]HeartbeatTask
 			}
 		}
 		mergeHeartbeatRunUpdates(tasks, updates)
-		if err := e.writeTasks(tasks, expected, true); err != nil {
+		if err := e.writeTasks(tasks, expected, true, "run"); err != nil {
 			if errors.Is(err, ErrHeartbeatConfigConflict) {
+				// Task 941: an optimistic-lock steal used to retry silently —
+				// seven consecutive steals during the 20261017 write storm left
+				// no trace in the log. Every conflict retry is now visible.
+				slog.Warn("heartbeat run-state merge: config changed concurrently, retrying",
+					"attempt", attempt, "tasks", heartbeatUpdateIDs(updates))
 				continue
 			}
 			log.Printf("[heartbeat] run-state merge failed: %v", err)
@@ -270,7 +366,8 @@ func (e *HeartbeatEngine) mergeRunUpdatesLocked(updates map[string]HeartbeatTask
 		e.prunePendingTopicsLocked(tasks)
 		return
 	}
-	log.Printf("[heartbeat] run-state merge lost repeated config races; next tick will retry")
+	slog.Warn("heartbeat run-state merge lost repeated config races; next tick will retry",
+		"tasks", heartbeatUpdateIDs(updates))
 }
 
 func mergeHeartbeatRunUpdates(tasks []HeartbeatTask, updates map[string]HeartbeatTask) {

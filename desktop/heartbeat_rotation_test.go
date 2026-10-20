@@ -477,3 +477,111 @@ func TestHeartbeatRotationIdleAndDisabled(t *testing.T) {
 		t.Fatalf("disabled mechanism armed %v", state.Rotations)
 	}
 }
+
+// Task 941 ③ acceptance: the rotation relay must not silently change a task's
+// permission settings. The successor row inherits approvalMode (and the other
+// user-chosen gears) byte-for-byte from the original — the 20261017 incident
+// had a successor waking under "ask", stalling on approvals nobody answered,
+// and feeding a retry-write storm. A run normalizing the in-memory copy
+// (empty → "yolo") must never persist that normalization either.
+func TestHeartbeatRotationRelayPreservesApprovalMode(t *testing.T) {
+	f := newRotationRelayFixture(t, "task-manual")
+
+	// Give task-a an explicit non-default gear plus the other permission-ish
+	// settings, and re-save through the panel path. (Provider/Model come after
+	// the carry below: a carry run with a model override would exercise
+	// SetModelForTab, which the stub app cannot serve — production stamps them
+	// whenever the user picks them, and the relay clones the persisted row
+	// either way.)
+	notify := true
+	tasks := f.engine.ListTasks()
+	for i := range tasks {
+		if tasks[i].ID != "task-a" {
+			continue
+		}
+		tasks[i].ApprovalMode = "auto"
+		tasks[i].TimeWindowStart = "09:00"
+		tasks[i].TimeWindowEnd = "22:00"
+		tasks[i].NotifyChannels = &notify
+	}
+	if err := f.engine.ReplaceTasks(tasks); err != nil {
+		t.Fatal(err)
+	}
+
+	// Drive the relay: detection → handoff carry → valid marker → done.
+	f.engine.reconcileRotationsCheap()
+	rot := engineRotationState(t, f.engine).Rotations[f.topic]
+	if rot == nil || rot.Phase != rotationPhaseRequested {
+		t.Fatalf("rotation = %+v, want requested", rot)
+	}
+	injected := injectHeartbeatCtrl(t, f.app, f.ctrl)
+	f.engine.executeTask(f.taskByID(t, "task-a"))
+	<-injected
+	if err := os.MkdirAll(filepath.Dir(rot.MarkerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handoffPath := filepath.Join(t.TempDir(), "handoff.md")
+	if err := os.WriteFile(handoffPath, []byte("# 交接"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rot.MarkerPath, []byte(handoffPath+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idleAllHeartbeatConversations(t, f.app, f.ctrl)
+	// Stamp the model override now — still before the row relay, so the clone
+	// under test carries it.
+	tasks = f.engine.ListTasks()
+	for i := range tasks {
+		if tasks[i].ID == "task-a" {
+			tasks[i].Provider = "prov"
+			tasks[i].Model = "mod"
+		}
+	}
+	if err := f.engine.ReplaceTasks(tasks); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.reconcileRotationsCheap()
+	state := engineRotationState(t, f.engine)
+	if state.Rotations[f.topic].Phase != rotationPhaseDone {
+		t.Fatalf("phase = %q, want done", state.Rotations[f.topic].Phase)
+	}
+
+	snapshot, err := f.engine.readConfigSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var succ, retired *HeartbeatTask
+	for i := range snapshot.cfg.Tasks {
+		switch snapshot.cfg.Tasks[i].ID {
+		case "task-a":
+			retired = &snapshot.cfg.Tasks[i]
+		default:
+			for _, sid := range state.Rotations[f.topic].SuccessorIDs {
+				if snapshot.cfg.Tasks[i].ID == sid && strings.HasPrefix(sid, "task-a") {
+					succ = &snapshot.cfg.Tasks[i]
+				}
+			}
+		}
+	}
+	if succ == nil || retired == nil {
+		t.Fatalf("successor=%v retired=%v, want both rows", succ != nil, retired != nil)
+	}
+
+	// The pinned contract: permission settings survive the relay verbatim.
+	if succ.ApprovalMode != "auto" {
+		t.Fatalf("successor approvalMode = %q, want inherited \"auto\" (rotation must not silently change permissions)", succ.ApprovalMode)
+	}
+	if succ.TimeWindowStart != "09:00" || succ.TimeWindowEnd != "22:00" {
+		t.Fatalf("successor time window = %q..%q, want 09:00..22:00", succ.TimeWindowStart, succ.TimeWindowEnd)
+	}
+	if succ.NotifyChannels == nil || !*succ.NotifyChannels {
+		t.Fatalf("successor notifyChannels = %v, want inherited true", succ.NotifyChannels)
+	}
+	if succ.Provider != "prov" || succ.Model != "mod" {
+		t.Fatalf("successor provider/model = %q/%q, want prov/mod", succ.Provider, succ.Model)
+	}
+	// The retired original is a traceable archive — its gear stays untouched too.
+	if retired.ApprovalMode != "auto" {
+		t.Fatalf("retired original approvalMode = %q, want untouched \"auto\"", retired.ApprovalMode)
+	}
+}

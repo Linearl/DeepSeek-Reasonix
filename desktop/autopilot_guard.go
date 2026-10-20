@@ -276,15 +276,16 @@ func (a *App) resyncAutopilotGuardInterval(minutes int) {
 // operation goes through it so they share the conflict retry and the
 // in-memory/disk snapshot bookkeeping the panel's saves rely on — a guard write
 // that skipped recordConfigSnapshotLocked would make the next panel save report
-// a phantom conflict.
-func (e *HeartbeatEngine) mutateTasks(mutate func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error)) error {
+// a phantom conflict. writer names the caller (task 941) and is stamped into
+// every config write and conflict-retry log line this edit produces.
+func (e *HeartbeatEngine) mutateTasks(writer string, mutate func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error)) error {
 	if e == nil {
 		return nil
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 1; attempt <= 3; attempt++ {
 		expected, err := e.readConfigSnapshot()
 		if err != nil {
 			return err
@@ -302,8 +303,12 @@ func (e *HeartbeatEngine) mutateTasks(mutate func(tasks []HeartbeatTask) ([]Hear
 		if !changed {
 			return nil
 		}
-		if err := e.writeTasks(tasks, expected, true); err != nil {
+		if err := e.writeTasks(tasks, expected, true, writer); err != nil {
 			if errors.Is(err, ErrHeartbeatConfigConflict) {
+				// Task 941: a silent CAS retry hides exactly the storm this
+				// task exists to diagnose — every steal is now one log line.
+				slog.Warn("heartbeat config CAS conflict, retrying",
+					"writer", writer, "attempt", attempt)
 				lastErr = err
 				continue
 			}
@@ -334,7 +339,7 @@ func (e *HeartbeatEngine) EnsureAutopilotGuard(owner autopilotGuardOwner, interv
 	}
 	wantID := autopilotGuardID(owner.TopicID)
 	interval := autopilotGuardInterval(intervalMinutes)
-	return e.mutateTasks(func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
+	return e.mutateTasks("guard-ensure", func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
 		changed := false
 		out := make([]HeartbeatTask, 0, len(tasks)+1)
 		var found *HeartbeatTask
@@ -398,7 +403,7 @@ func (e *HeartbeatEngine) DisableAutopilotGuard(taskID string) error {
 	if e == nil || taskID == "" {
 		return nil
 	}
-	return e.mutateTasks(func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
+	return e.mutateTasks("guard-disable", func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
 		for i := range tasks {
 			if tasks[i].ID == taskID && tasks[i].Enabled {
 				tasks[i].Enabled = false
@@ -416,7 +421,7 @@ func (e *HeartbeatEngine) RemoveAutopilotGuard(taskID string) error {
 	if e == nil || taskID == "" {
 		return nil
 	}
-	return e.mutateTasks(func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
+	return e.mutateTasks("guard-remove", func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
 		for i := range tasks {
 			if tasks[i].ID == taskID {
 				out := append([]HeartbeatTask(nil), tasks[:i]...)
@@ -434,7 +439,7 @@ func (e *HeartbeatEngine) SyncAutopilotGuardInterval(intervalMinutes int) error 
 		return nil
 	}
 	interval := autopilotGuardInterval(intervalMinutes)
-	return e.mutateTasks(func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
+	return e.mutateTasks("guard-interval-sync", func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
 		changed := false
 		for i := range tasks {
 			if isAutopilotGuardTask(tasks[i]) && tasks[i].Interval != interval {
