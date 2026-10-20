@@ -68,6 +68,20 @@ func markFatalCrashCoveredForPID(pid int) {
 	}
 }
 
+// removeOwnFatalCrashSink deletes this process's own fatal-crash artifacts.
+// Installed as a defer in main: every VOLUNTARY exit (superseded relaunch,
+// refused remote window, normal shutdown) leaves no sink stub behind — a
+// voluntary exit never has dump content, because debug.SetCrashOutput writes
+// only when the process dies, and the death paths (fatal, os.Exit) never run
+// defers. The 45480/54304-class short-lived processes used to litter exactly
+// these header-only stubs into the next boot's scan surface (task 1018 ②); a
+// recovered panic's evidence lives in the crash-pending queue, never the sink,
+// so deleting the stub cannot lose crash data.
+func removeOwnFatalCrashSink() {
+	_ = os.Remove(fatalCrashPath())
+	_ = os.Remove(fatalCrashCoveredPath())
+}
+
 // capturePreviousFatalCrash converts runtime.SetCrashOutput dumps from dead
 // processes into the normal scrubbed queue. Per-PID files keep a routine second
 // launch from truncating or unlinking the running primary process's dump.

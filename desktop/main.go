@@ -145,6 +145,14 @@ func main() {
 	}
 	capturePreviousFatalCrash()
 	installFatalCrashOutput()
+	// Task 1018 ②: every voluntary exit from here on (superseded relaunch,
+	// refused remote window, normal shutdown) removes its own sink stub — a
+	// voluntary exit never carries dump content, so the stub would only litter
+	// the next boot's scan surface. The os.Exit paths (update install, zoom
+	// relaunch, shutdown watchdog) skip defers by design; their header-only
+	// stubs keep being cleaned by the next boot's scan, which never misreads
+	// them as crash evidence (task 377).
+	defer removeOwnFatalCrashSink()
 	// Task 188: register WER LocalDumps early so native/OOM deaths — the class
 	// debug.SetCrashOutput cannot see — still leave a minidump behind. Best
 	// effort; logs and continues.
