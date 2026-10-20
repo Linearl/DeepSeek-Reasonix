@@ -947,6 +947,10 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   SessionEventsInventory(): Promise<SessionEventsInventoryView>;
   CompactSessionEvents(path: string): Promise<SessionEventsCompactResult>;
   CompactAllSessionEvents(maxRounds: number): Promise<SessionEventsCompactResult[]>;
+  // 任务 997: 概览 events 卡片的「当前对话」读数——本 tab 会话自身 events
+  // 日志的字节数（Go 侧单文件 stat，零遍历）。0 = 无会话/读不到（前端渲染
+  // 为「-」，不冒充零大小）。
+  TabSessionEventsSize(tabID: string): Promise<number>;
   // Task 447 capsule: read-only directory of the persisted sub-agent
   // transcripts owned by one parent session (newest first, capped).
   ListSubagentsByParent(sessionPath: string): Promise<SubagentArtifactView[]>;
@@ -6190,6 +6194,8 @@ function makeMockApp(): AppBindings {
     },
     async CompactSessionEvents(path: string) { return { path, name: "", round: 1, before: 0, after: 0, freed: 0, elapsedMs: 0, skipped: false }; },
     async CompactAllSessionEvents() { return []; },
+    // 任务 997: dev shell 无会话——诚实 0（面板渲染为「-」）。
+    async TabSessionEventsSize() { return 0; },
     async HooksSettings(scope: string) {
       const key = scope === "project" ? "project" : "global";
       return JSON.parse(JSON.stringify(hookSettings[key])) as HooksSettingsView;
