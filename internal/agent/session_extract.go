@@ -284,8 +284,9 @@ func splitExtractChunks(msgs []provider.Message, overlap int, policy provider.Sh
 func (a *Agent) chunkedFoldSummary(ctx context.Context, fold []provider.Message, instructions string, progress func(done, total int)) (result foldSummary, err error) {
 	fold = modelInputMessages(fold)
 	result = foldSummary{
-		Mode:       CompactionModeChunked,
-		FoldTokens: summaryInputTokens(fold),
+		Mode: CompactionModeChunked,
+		// 任务 988 对账切片（随 1025 落地）: same calibrated ruler as src/proj.
+		FoldTokens: a.guardedSummaryInputTokens(fold),
 		InputMode:  SummaryInputChunked,
 	}
 	if len(fold) == 0 {

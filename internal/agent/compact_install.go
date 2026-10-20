@@ -32,6 +32,10 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 	if len(in.bodySuffix) > 0 {
 		projMsgs = append(projMsgs, projectionMessagesPreservingPinnedContext(in.bodySuffix)...)
 	}
+	// 任务 1025 ③: a carrier chain of stale full snapshot + superseding deltas
+	// collapses to one fresh full snapshot at the merged current state — the
+	// 217KB memory block was riding twice after a mid-session memory save.
+	projMsgs = collapseSessionContextChain(projMsgs, in.msgs)
 	tele.UserTurnsKept, tele.UserTurnsDropped = in.retention.Kept, in.retention.Dropped
 	projMsgs, spliced, projTokens, err := a.preparePinnedCheckpointCandidate(in.trigger, projMsgs, in.canonical, in.covered, in.sourceTokens, &tele)
 	if err != nil {

@@ -293,7 +293,11 @@ func (a *Agent) compressVisibleRange(
 		return tool.CompressResult{}, err
 	}
 
-	projection := buildVisibleCompressionProjection(snap.visible, plan, summary)
+	// 任务 1025 ③: collapse the retained carrier chain into one fresh snapshot so
+	// a stale full snapshot's memory block does not ride alongside the delta
+	// that superseded it.
+	projection := collapseSessionContextChain(
+		buildVisibleCompressionProjection(snap.visible, plan, summary), snap.visible)
 	projection, pinnedCheckpoint, err := rebasePinnedContextProjection(projection, snap.canonical, len(snap.canonical))
 	if err != nil {
 		a.emitCompactionAborted(trigger)

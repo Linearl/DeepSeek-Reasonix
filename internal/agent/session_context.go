@@ -282,6 +282,77 @@ func sessionContextCarrierIndexes(messages []provider.Message) []int {
 	return carriers
 }
 
+// collapseSessionContextChain rewrites the projection's session-context
+// carrier chain into ONE fresh full snapshot rendered from the view's merged
+// current sections (任务 1025 ③). Task 969's carrier set keeps the newest
+// snapshot per section, which after a memory save means the stale full
+// snapshot (with the OLD background-memory block, the 217KB bulk of the
+// post-compaction 631KB view) rides alongside a delta carrying the NEW block
+// in full — two memory copies, one of them dead. A fresh full snapshot
+// supersedes every earlier envelope wholesale, so one message resolves the
+// same merged state. Only the trailing chain (newest context back through the
+// newest full snapshot) is collapsed; older envelopes before that full stay
+// byte-identical for the provider prefix cache. A single carrier already at
+// the current state stays byte-identical too (Build∘Parse roundtrips).
+// view supplies the merged sections — the canonical tail (whose deltas may
+// supersede projection carriers) is not part of the assembled projection.
+func collapseSessionContextChain(projection, view []provider.Message) []provider.Message {
+	merged, found := mergedTurnContextSections(view)
+	if !found || merged == (sessioncontext.Sections{}) {
+		return projection
+	}
+	fresh := sessioncontext.Build(merged)
+	if fresh.Content == "" {
+		return projection
+	}
+	chain := trailingSessionContextChain(projection)
+	if len(chain) == 0 {
+		return projection
+	}
+	if len(chain) == 1 && projection[chain[0]].Content == fresh.Content {
+		return projection // already one carrier at the current state
+	}
+	out := make([]provider.Message, 0, len(projection)-len(chain)+1)
+	anchor := chain[0] // earliest chain member holds the position
+	collapsed := HostGeneratedUserMessage(fresh.Content)
+	dropped := make(map[int]bool, len(chain))
+	for _, idx := range chain[1:] {
+		dropped[idx] = true
+	}
+	for i, message := range projection {
+		if i == anchor {
+			out = append(out, collapsed)
+			continue
+		}
+		if dropped[i] {
+			continue
+		}
+		out = append(out, message)
+	}
+	return out
+}
+
+// trailingSessionContextChain returns the indexes of the trailing
+// session-context chain: every context message from the end back through the
+// newest full snapshot (inclusive). A full snapshot resolves every section, so
+// anything older is superseded and outside the chain. With no full snapshot in
+// the projection the chain is every context message — the carrier contract
+// (sessionContextCarrierIndexes) only ever keeps full-covering sets.
+func trailingSessionContextChain(projection []provider.Message) []int {
+	var chain []int
+	for i := len(projection) - 1; i >= 0; i-- {
+		if !isSessionContextMessage(projection[i]) {
+			continue
+		}
+		chain = append(chain, i)
+		if snapshot, ok := sessioncontext.Parse(projection[i].Content); ok && !snapshot.Delta {
+			break
+		}
+	}
+	slices.Reverse(chain)
+	return chain
+}
+
 func latestTurnContextSnapshot(messages []provider.Message) (sessioncontext.Snapshot, bool) {
 	for i := range slices.Backward(messages) {
 		message := messages[i]
