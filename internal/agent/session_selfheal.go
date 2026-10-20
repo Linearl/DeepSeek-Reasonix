@@ -39,7 +39,8 @@ const (
 const selfHealBackupSuffix = ".pre-repair-"
 
 // selfHealRepairLogSuffix 是修复记录文件的后缀：<stem>.repairlog.jsonl。
-const selfHealRepairLogSuffix = ".repairlog.jsonl"
+// 单一源在 store（分类侧不得自行拼写，守卫 TestSessionPathSpellingsSingleSource）。
+const selfHealRepairLogSuffix = store.SessionRepairLogSuffix
 
 // SelfHealOptions picks which repair steps run. Every step is independent and
 // idempotent: a step whose fault is absent is reported as skipped.
@@ -574,8 +575,8 @@ func sessionFileStem(path string) string {
 	for {
 		stripped := false
 		for _, suffix := range []string{
-			".repairlog.jsonl", ".events.jsonl.damaged", ".events.jsonl",
-			".turns.jsonl", ".context.json", ".recovery.json", ".meta", ".jsonl",
+			store.SessionRepairLogSuffix, store.SessionEventLogDamagedSuffix, store.SessionEventLogSuffix,
+			store.SessionTurnEventLogSuffix, ".context.json", ".recovery.json", ".meta", store.SessionTranscriptSuffix,
 		} {
 			if strings.HasSuffix(base, suffix) {
 				base = strings.TrimSuffix(base, suffix)

@@ -29,6 +29,9 @@ const (
 	SessionEventLogRotatingSuffix = SessionEventLogSuffix + ".rotating"
 	SessionTurnEventLogSuffix     = ".turns.jsonl"
 	SessionConflictLogSuffix      = ".conflicts.jsonl"
+	// SessionRepairLogSuffix 是会话自愈修复记录（任务 1011：<stem>.repairlog.jsonl）。
+	// 它属于会话侧车：分类侧不得自行拼写该后缀，删除会话时必须一并清掉。
+	SessionRepairLogSuffix        = ".repairlog.jsonl"
 	SessionEventIndexSuffix       = ".event-index.json"
 	SessionDisplayIndexSuffix     = ".display-index.json"
 	// SessionMetaFileSuffix is the full classification tail of SessionMeta
@@ -226,6 +229,16 @@ func SessionConflictLog(sessionPath string) string {
 	return sessionStem(sessionPath) + SessionConflictLogSuffix
 }
 
+// SessionRepairLog is the self-heal repair log of a session (task 1011:
+// <stem>.repairlog.jsonl). It stays beside the transcript like every other
+// sidecar so deleting the session removes the repair history too.
+func SessionRepairLog(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + SessionRepairLogSuffix
+}
+
 // SessionLockFile is the advisory save lock (<id>.jsonl.lock).
 func SessionLockFile(sessionPath string) string {
 	if sessionPath == "" {
@@ -321,6 +334,7 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionEventIndex(sessionPath),
 		SessionDisplayIndex(sessionPath),
 		SessionConflictLog(sessionPath),
+		SessionRepairLog(sessionPath),
 		SessionRecoveryState(sessionPath),
 		SessionContext(sessionPath),
 		SessionPinnedContext(sessionPath),

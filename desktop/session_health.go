@@ -12,6 +12,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/store"
 )
 
 // 任务 1011：桌面宿主的自愈接线与健康面板后端。
@@ -95,7 +96,7 @@ func (a *App) scanRecentSessionHealth() map[string]SessionHealthFindingView {
 			continue
 		}
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") || strings.HasSuffix(e.Name(), ".events.jsonl") || strings.HasSuffix(e.Name(), ".repairlog.jsonl") {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), store.SessionTranscriptSuffix) || strings.HasSuffix(e.Name(), store.SessionEventLogSuffix) || strings.HasSuffix(e.Name(), store.SessionRepairLogSuffix) {
 				continue
 			}
 			path := filepath.Join(dir, e.Name())
@@ -221,7 +222,7 @@ func (a *App) ListSessionVersionGroups() ([]SessionVersionGroupView, error) {
 			continue
 		}
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") || strings.HasSuffix(e.Name(), ".events.jsonl") || strings.HasSuffix(e.Name(), ".repairlog.jsonl") {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), store.SessionTranscriptSuffix) || strings.HasSuffix(e.Name(), store.SessionEventLogSuffix) || strings.HasSuffix(e.Name(), store.SessionRepairLogSuffix) {
 				continue
 			}
 			path := filepath.Join(dir, e.Name())
