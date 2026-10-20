@@ -10519,6 +10519,12 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 任务1033: the label strong now lives inside the Tooltip trigger (a flex
+   container) — without min-width: 0 its automatic minimum keeps the full
+   command width and the row ellipsis dies. */
+.capsule-panel__copy .tooltip-trigger strong {
+  min-width: 0;
+}
 .capsule-panel__copy small {
   color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
@@ -13223,6 +13229,62 @@ button.statusbar__mcp:focus-visible {
   max-height: 240px;
   overflow: auto;
   font-size: var(--text-xs);
+}
+/* 任务1033: interactive hover card for long command/task labels. Width is set
+   inline as min(maxWidthCh ch, 46vw); pointer-events flips on so the copy
+   button is reachable, and the text wraps per the JS line model. */
+.tooltip--interactive {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: none;
+  pointer-events: auto;
+}
+.tooltip__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-code-family);
+}
+.tooltip__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.tooltip__note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tooltip__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.tooltip__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: var(--text-xs);
+}
+.tooltip__copy:hover {
+  color: var(--fg);
 }
 /* past:chats hover preview (PR-C2). Inherits colors from the .tooltip container
 /* past:chats hover preview (PR-C2). Inherits colors from the .tooltip container
@@ -30094,6 +30156,13 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 任务1033: the row title is wrapped in a Tooltip trigger — the trigger takes
+   over the row's flex slot so the status/chevron keep their positions and the
+   inner span keeps its ellipsis. */
+.subagents-panel__row .tooltip-trigger {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .subagents-panel__row-status {

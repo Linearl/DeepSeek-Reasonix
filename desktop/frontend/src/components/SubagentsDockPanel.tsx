@@ -11,6 +11,7 @@ import {
   UnfoldHorizontal,
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
+import { Tooltip } from "./Tooltip";
 import { historyMessagesToItems } from "../lib/useController";
 import { subjectOf } from "../lib/tools";
 import type { HistoryMessage } from "../lib/types";
@@ -130,7 +131,11 @@ const DirectoryRow = memo(function DirectoryRow({
         onClick={handleClick}
       >
         <StatusIcon entry={entry} />
-        <span className="subagents-panel__row-title" title={title}>{title}</span>
+        {/* 任务1033: native title clipped long command subjects — wrap-mode
+            Tooltip shows the full text on hover instead. */}
+        <Tooltip label={title} wrap>
+          <span className="subagents-panel__row-title">{title}</span>
+        </Tooltip>
         <span className="subagents-panel__row-status">{t(statusLabelKey(entry))}</span>
         <ChevronRight size={12} aria-hidden="true" className="subagents-panel__chevron" />
       </button>
@@ -226,9 +231,12 @@ function SubagentDetailView({
           <span>{t("subagentPanel.back")}</span>
         </button>
       </div>
-      <div className="subagents-panel__detailview-title" title={title}>
+      {/* 任务1033: same native-title clipping as the row — wrap-mode Tooltip. */}
+      <div className="subagents-panel__detailview-title">
         <StatusIcon entry={entry} />
-        <span className="subagents-panel__detailview-name">{title}</span>
+        <Tooltip label={title} wrap>
+          <span className="subagents-panel__detailview-name">{title}</span>
+        </Tooltip>
       </div>
       <p className="subagents-panel__detailview-meta">
         <span>{t(statusLabelKey(entry))}</span>
