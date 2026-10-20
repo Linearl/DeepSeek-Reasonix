@@ -23,6 +23,13 @@ var mimoRequestEffortVocabulary = []string{"none", "low", "medium", "high"}
 // in sync with internal/config.normalizeGLMEffort.
 var zhipuRequestEffortVocabulary = []string{"disabled", "low", "medium", "high", "max"}
 
+// minimaxM31RequestEffortVocabulary is the wire domain of the MiniMax M3.1
+// family's reasoning_effort (task 1031): low|medium|high|xhigh|max, omission
+// defaulting to max. "adaptive"/"disabled" are M3-era thinking-knob values and
+// must not appear — thinking.type=disabled is a guaranteed 400 on M3.1 (error
+// 2013). Keep in sync with internal/config's M3.1 /effort levels.
+var minimaxM31RequestEffortVocabulary = []string{"low", "medium", "high", "xhigh", "max"}
+
 // requestEffortVocabularyFor picks the per-request EffortOverride vocabulary
 // for a client: MiMo gets its canonical four-level set when the entry declares
 // no supported_efforts of its own — the canonical set is exactly what
@@ -34,14 +41,18 @@ var zhipuRequestEffortVocabulary = []string{"disabled", "low", "medium", "high",
 // instead of the probe admitting a level the next request rejects; GLM gets
 // its canonical five-level set under the same condition — an explicit list
 // stays the probe face because internal/config's NormalizeEffort emits from it
-// verbatim; every other endpoint keeps the configured/derived vocabulary
-// unchanged.
-func requestEffortVocabularyFor(baseURL string, configured []string) []string {
+// verbatim; the MiniMax M3.1 family gets its reasoning_effort domain under the
+// same condition (task 1031); every other endpoint keeps the
+// configured/derived vocabulary unchanged.
+func requestEffortVocabularyFor(baseURL, model string, configured []string) []string {
 	if IsMiMo(baseURL) && !hasExplicitSupportedEfforts(configured) {
 		return mimoRequestEffortVocabulary
 	}
 	if IsZhipu(baseURL) && !hasExplicitSupportedEfforts(configured) {
 		return zhipuRequestEffortVocabulary
+	}
+	if IsMiniMax(baseURL) && IsMiniMaxM31(model) && !hasExplicitSupportedEfforts(configured) {
+		return minimaxM31RequestEffortVocabulary
 	}
 	return configured
 }

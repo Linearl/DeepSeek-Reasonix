@@ -21,7 +21,17 @@ func ReasoningForConfig(cfg provider.Config) provider.ReasoningCapability {
 	case protocol == "glm" || (protocol == "" && (IsZhipu(cfg.BaseURL) || IsLongCat(cfg.BaseURL))):
 		cap = provider.ReasoningOptions("enabled", "enabled", "disabled")
 	case protocol == "" && IsMiniMax(cfg.BaseURL):
-		cap = provider.ReasoningOptions("adaptive", "adaptive", "disabled")
+		if IsMiniMaxM31(cfg.Model) {
+			// Task 1031: the M3.1 family (MiniMax-M3.1 and its -flash suffix)
+			// replaced M3's binary thinking knob with the reasoning_effort
+			// depth scale (low|medium|high|xhigh|max; omission defaults to
+			// max). thinking.type=disabled is rejected outright by the
+			// endpoint (error 2013), so "disabled" is deliberately absent —
+			// listing it would promise a guaranteed 400.
+			cap = provider.ReasoningOptions("max", "low", "medium", "high", "xhigh", "max")
+		} else {
+			cap = provider.ReasoningOptions("adaptive", "adaptive", "disabled")
+		}
 	case protocol == "deepseek" || (protocol == "" && IsDeepSeek(cfg.BaseURL)):
 		cap = provider.ReasoningOptions("high", "disabled", "high", "max")
 		// The full-depth SKU family: the v4 names, their bare compatibility
@@ -67,10 +77,14 @@ func ReasoningForConfig(cfg provider.Config) provider.ReasoningCapability {
 	if protocol == "glm" || (protocol == "" && (IsZhipu(cfg.BaseURL) || IsLongCat(cfg.BaseURL))) {
 		cap = provider.RestrictReasoning(cap, "enabled", "disabled")
 	}
-	if protocol == "" && IsMiniMax(cfg.BaseURL) {
+	if protocol == "" && IsMiniMax(cfg.BaseURL) && !IsMiniMaxM31(cfg.Model) {
 		cap = provider.RestrictReasoning(cap, "adaptive", "disabled")
 	}
-	if configuredThinkingType(cfg) == "disabled" {
+	// Task 1031: an explicit `thinking = "disabled"` config cannot be honoured
+	// on the M3.1 family (the endpoint 400s thinking.type=disabled, error
+	// 2013), so the binary collapse is skipped there — the depth scale stays
+	// selectable and the wire simply omits the thinking field.
+	if configuredThinkingType(cfg) == "disabled" && !(protocol == "" && IsMiniMax(cfg.BaseURL) && IsMiniMaxM31(cfg.Model)) {
 		return provider.ReasoningOptions("disabled", "disabled")
 	}
 	return cap
@@ -139,6 +153,16 @@ func (c *client) applyReasoning(out *chatRequest, req provider.Request) {
 			out.ReasoningEffort = ""
 		}
 	case c.minimax:
+		if IsMiniMaxM31(c.model) {
+			// Task 1031: the M3.1 family drives depth through reasoning_effort
+			// (low|medium|high|xhigh|max; omission defaults to max) and rejects
+			// thinking.type=disabled outright (error 2013). buildRequest has
+			// already placed the resolved depth in ReasoningEffort, so this
+			// branch must NOT emit thinking.type at all — an explicit
+			// `thinking = "disabled"` config is ignored rather than producing
+			// a guaranteed 400.
+			break
+		}
 		// M3 uses a single `thinking.type` field with two valid values:
 		// "adaptive" (default, thinking on) and "disabled" (off). Reasoning
 		// depth is not a knob on M3, so reasoning_effort is omitted entirely.

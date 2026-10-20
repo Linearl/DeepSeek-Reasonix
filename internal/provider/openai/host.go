@@ -196,6 +196,23 @@ func IsMiniMax(baseURL string) bool {
 	return matchesVendorHost(baseURL, "minimaxi.com", "api.minimaxi.com")
 }
 
+// IsMiniMaxM31 reports whether model is a MiniMax M3.1-family SKU (task 1031):
+// "MiniMax-M3.1" or a suffixed variant such as "MiniMax-M3.1-Flash". The M3.1
+// generation replaced M3's binary thinking knob with a reasoning_effort depth
+// scale (low|medium|high|xhigh|max; omission defaults to max) and rejects
+// thinking.type=disabled outright, so wire mapping and effort validation must
+// branch on the family — never on the host alone. Matching runs on the ref
+// with any "provider/" prefix stripped and is case-insensitive, mirroring the
+// deepseek SKU checks; "MiniMax-M3" does not match.
+func IsMiniMaxM31(model string) bool {
+	m := strings.ToLower(modelWithoutProviderRef(model))
+	if !strings.HasPrefix(m, "minimax-m3.1") {
+		return false
+	}
+	rest := m[len("minimax-m3.1"):]
+	return rest == "" || strings.HasPrefix(rest, "-")
+}
+
 // IsMiMo reports whether baseURL points at Xiaomi MiMo's OpenAI-compatible API.
 // MiMo follows the OpenAI chat shape but authenticates with an `api-key` header
 // instead of the usual Authorization bearer header.

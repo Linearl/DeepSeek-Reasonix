@@ -37,9 +37,11 @@ func (c *client) requestEffort(req provider.Request) string {
 // clipped to enabled|disabled (upstream's binary contract), so the request
 // gate must bypass that clip for exactly the strengths the wire mapping
 // applies — the same fork exception configuredEffort already applies at boot.
-// MiniMax and LongCat have no strength knob and keep the hard rejection, so a
-// wrong level still fails before I/O instead of degrading silently on the
-// wire.
+// MiniMax M3 and LongCat have no strength knob and keep the hard rejection, so
+// a wrong level still fails before I/O instead of degrading silently on the
+// wire. MiniMax M3.1 needs no exception (task 1031): its low..max depth scale
+// is the declared capability itself, so a legal level passes Validate and an
+// illegal one (adaptive/disabled/none) is still rejected before I/O.
 func (c *client) admitsGLMStrengthOverride(effort string) bool {
 	if !c.zhipu {
 		return false
