@@ -316,6 +316,8 @@ export interface RecoveryChainView {
   lastActivity: string;
   bytes: number;
   preview: string;
+  /** 任务 1019：超出面板重放预算的病态大会话降级行——只有文件身份读数，计数全零。 */
+  degraded?: boolean;
 }
 
 /** In-memory preview of one candidate chain for the merge picker dialog.
