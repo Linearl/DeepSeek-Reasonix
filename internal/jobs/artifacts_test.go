@@ -910,6 +910,95 @@ func TestSetActiveSessionPathAdoptsUnscopedJobsOnMigrationFailure(t *testing.T) 
 	}
 }
 
+// 1030: a controller session rebind (resume, recovery branch, fork, branch
+// switch — every path change flows through SetActiveSessionPath) rotates the
+// branch id stamped on tool calls, while a background job keeps its start-time
+// owner. The rebind must adopt the previous active session's unfinished jobs,
+// or wait / bash_output / kill_shell all lose a running job: wait reports "No
+// background jobs to wait for", kill_shell "was not running", while the process
+// is alive. This is the deterministic form of the field failure (a long wsl
+// idf.py build surviving a session rebind), without any real subprocess.
+func TestSetActiveSessionPathAdoptsRunningJobsFromPreviousActive(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(event.Discard)
+	defer m.Close()
+	// The controller binds its transcript path at construction; the job starts
+	// under that owner.
+	m.SetActiveSessionPath("session-a", filepath.Join(root, "a.jsonl"))
+
+	release := make(chan struct{})
+	defer close(release)
+	j := m.StartForSession("session-a", "bash", "wsl idf.py build", func(jobCtx context.Context, out io.Writer) (string, error) {
+		_, _ = io.WriteString(out, "compiling\n")
+		select {
+		case <-release:
+		case <-jobCtx.Done():
+		}
+		return "", nil
+	})
+
+	// The transcript path rotates: the controller rebinds to a new branch id.
+	m.SetActiveSessionPath("session-b", filepath.Join(root, "b.jsonl"))
+
+	// wait (no ids) under the new session must still select the running job.
+	res := m.WaitForSession(context.Background(), "session-b", nil, 1)
+	if len(res) != 1 || res[0].ID != j.ID || res[0].Status != Running {
+		t.Fatalf("wait under new session = %+v, want running %s", res, j.ID)
+	}
+	// bash_output under the new session must find it running.
+	_, status, ok := m.OutputForSession("session-b", j.ID)
+	if !ok || status != Running {
+		t.Fatalf("output under new session ok/status = %v/%s, want true/running", ok, status)
+	}
+	// kill_shell under the new session must reach it.
+	if !m.KillForSession("session-b", j.ID) {
+		t.Fatal("kill under new session failed: job ownership did not follow the rebind")
+	}
+	// Ownership moved, not duplicated: the old scope no longer sees it.
+	if _, _, ok := m.OutputForSession("session-a", j.ID); ok {
+		t.Fatal("job still visible under the previous session after adoption")
+	}
+	// The kill settles under the new owner; its completion note must drain
+	// there, so the model is told the killed job ended.
+	if res := m.WaitForSession(context.Background(), "session-b", []string{j.ID}, 5); len(res) != 1 || res[0].Status != Killed {
+		t.Fatalf("post-kill wait under new session = %+v, want killed %s", res, j.ID)
+	}
+	if note := m.DrainCompletedNoteForSession("session-b"); !strings.Contains(note, j.ID) {
+		t.Fatalf("completion note under new session = %q, want job id %s", note, j.ID)
+	}
+}
+
+// A session rebind must not steal persisted terminal records: loaded tombstones
+// belong to the session path whose sidecar holds their artifacts, and a manager
+// may host several sessions' histories at once.
+func TestSetActiveSessionPathKeepsTombstonesInTheirSession(t *testing.T) {
+	root := t.TempDir()
+	pathA := filepath.Join(root, "a.jsonl")
+
+	first := NewManager(event.Discard)
+	first.SetActiveSessionPath("session-a", pathA)
+	j := first.StartForSession("session-a", "bash", "done work", func(_ context.Context, out io.Writer) (string, error) {
+		_, _ = io.WriteString(out, "from-a")
+		return "", nil
+	})
+	<-j.done
+	first.Close()
+
+	m := NewManager(event.Discard)
+	defer m.Close()
+	m.SetActiveSessionPath("session-a", pathA)
+	// A different branch id binds afterwards; the session-a tombstone stays put.
+	m.SetActiveSessionPath("session-b", filepath.Join(root, "b.jsonl"))
+
+	res := m.WaitForSession(context.Background(), "session-a", []string{j.ID}, 1)
+	if len(res) != 1 || res[0].Output != "from-a" {
+		t.Fatalf("session-a wait after rebind = %+v, want from-a", res)
+	}
+	if _, status, ok := m.OutputForSession("session-b", j.ID); ok && status == Done {
+		t.Fatal("tombstone was adopted into the new session; per-session history broke")
+	}
+}
+
 func TestSetActiveSessionPathReportsMigrationFailure(t *testing.T) {
 	dir := t.TempDir()
 	sessionPath := filepath.Join(dir, "session.jsonl")

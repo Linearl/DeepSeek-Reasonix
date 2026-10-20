@@ -68,7 +68,7 @@ func (m *Manager) StartForSession(parentSession, kind, label string, run func(ct
 	m.wg.Add(1)
 	if m.stalledWarning > 0 {
 		m.wg.Add(1)
-		go m.monitorStalled(parentSession, j)
+		go m.monitorStalled(j)
 	}
 	go m.runJob(ctx, j, run)
 	return j

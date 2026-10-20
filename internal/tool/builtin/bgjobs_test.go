@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -243,6 +244,64 @@ func TestKilledJobBashOutputDoesNotNoteLeaseBeforeEvidenceIsReady(t *testing.T) 
 	}
 	if leases := ledger.BackgroundLeases(); len(leases) != 1 {
 		t.Fatalf("leases = %+v, want exactly one lease recorded", leases)
+	}
+}
+
+// 1030: after a controller session rebind (resume / recovery branch / fork) the
+// agent's tool calls carry the NEW branch id while a background job started
+// before the rebind keeps its start-time owner. The three collection tools must
+// agree on that job: wait collects it, bash_output reads it, kill_shell stops
+// it — none of them may report it missing while it runs. The job is registered
+// directly through the manager (channel-gated) so the test triggers the
+//失联形态 deterministically, with no real subprocess.
+func TestBackgroundToolsTrackJobAcrossSessionRebind(t *testing.T) {
+	root := t.TempDir()
+	m := jobs.NewManager(event.Discard)
+	defer m.Close()
+	// The controller binds its transcript path before the job starts, so the
+	// job's owner is the branch id of session-a.
+	m.SetActiveSessionPath("session-a", filepath.Join(root, "a.jsonl"))
+
+	release := make(chan struct{})
+	defer close(release)
+	j := m.StartForSession("session-a", "bash", "wsl idf.py build", func(_ context.Context, out io.Writer) (string, error) {
+		_, _ = io.WriteString(out, "compiling\n")
+		<-release
+		return "", nil
+	})
+
+	// The transcript path rotates; the branch id stamped on tool calls changes.
+	m.SetActiveSessionPath("session-b", filepath.Join(root, "b.jsonl"))
+	ctx := jobs.WithSession(jobs.WithManager(context.Background(), m), "session-b")
+
+	// wait with no ids must not report "No background jobs to wait for."
+	wout, err := (waitJob{}).Execute(ctx, []byte(`{"timeout_seconds":1}`))
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if strings.Contains(wout, "No background jobs") {
+		t.Fatalf("wait lost the running job after a session rebind: %q", wout)
+	}
+	if !strings.Contains(wout, j.ID) || !strings.Contains(wout, "running") {
+		t.Fatalf("wait = %q, want running %s", wout, j.ID)
+	}
+
+	// bash_output reads it under the new session scope.
+	bo, err := (bashOutput{}).Execute(ctx, []byte(`{"job_id":"`+j.ID+`"}`))
+	if err != nil {
+		t.Fatalf("bash_output: %v", err)
+	}
+	if !strings.Contains(bo, "running") || !strings.Contains(bo, "compiling") {
+		t.Fatalf("bash_output = %q, want running with output", bo)
+	}
+
+	// kill_shell stops it under the new session scope.
+	kout, err := (killShell{}).Execute(ctx, []byte(`{"job_id":"`+j.ID+`"}`))
+	if err != nil {
+		t.Fatalf("kill_shell: %v", err)
+	}
+	if !strings.Contains(kout, "Killed") {
+		t.Fatalf("kill_shell = %q, want it to report Killed", kout)
 	}
 }
 
