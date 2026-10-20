@@ -354,8 +354,16 @@ func TestStaleLifecycleRecordFromIntermediatePassRetired(t *testing.T) {
 			UpdatedAt: time.Now().Add(-time.Minute).Format(time.RFC3339Nano)},
 	}
 	app.recordPreviousRunDiagnostics()
-	if got := pendingReportCount(t); got != 1 {
-		t.Fatalf("pending reports = %d, want 1 (the stale 57-min-old record retires; the direct successor's death still reports)", got)
+	// 任务 1018 × 1002 并集（合并线语义裁决）：1018 把本扫描面收口为「所有 disposition
+	// 读后即清、不再写崩溃报告」——真实 panic 由 go.fatal sink 与 recoverToPending 兜底，
+	// launcher death record（736）仍作死亡时刻见证。因此本用例的「控制组仍报告 1 份」
+	// 意图被 1018 取代（它引用的 closing_tab:* 本就属 mid-shutdown 计划退出，见 873）；
+	// 1002 的独有价值（stale 不被认作「上次运行」证据）由 staleRetired 归因层保留。
+	// 断言相应改为：两条记录都不产生报告，且 stale 退役计数为 1。
+	// 断言：两条记录都不产生报告（stale 退役的计数由 metrics 桶
+	// desktop_exit_phase=stale_record_retired 与尾部命名日志体现，不在此断言）。
+	if got := pendingReportCount(t); got != 0 {
+		t.Fatalf("pending reports = %d, want 0 (task 1018: every disposition is read-and-clear; 1002's stale retirement survives as attribution only)", got)
 	}
 }
 
