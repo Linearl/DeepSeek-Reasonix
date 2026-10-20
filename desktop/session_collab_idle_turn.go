@@ -150,6 +150,11 @@ type idleTurnTargetView struct {
 	// exhausted fires once per stuck item when the 3-strike budget is spent.
 	// Production records a 570 receipt; tests collect. nil keeps log-only.
 	exhausted func(contactID, itemID, collabMsgID, collabMailTo, source string, attempts int, lastErr error)
+	// retrying fires on every persistent failure BELOW the strike budget
+	// (任务1017 批C-D): the per-attempt intermediate state, recorded as a
+	// failed_retrying receipt so get_message_status can answer "retrying
+	// 1/3" while the bridge is still working the head. nil keeps log-only.
+	retrying func(contactID, itemID, collabMsgID, collabMailTo, source string, attempts int, lastErr error)
 }
 
 // idleTurnBridge is the pump-owned per-target state: when a target was first
@@ -496,6 +501,12 @@ func (b *idleTurnBridge) recordOpeningFailure(target idleTurnTargetView, itemID 
 		b.mu.Unlock()
 		log.Printf("[session-collab] idle-turn bridge: opening attempt %d/%d failed for contact %s item %s: %v",
 			attempts, idleTurnMaxAttempts, contactID, itemID, runErr)
+		// 任务1017 批C-D: the intermediate state the sender can query —
+		// failed_retrying with the attempt count, overwritten by a later
+		// success or by the terminal exhausted receipt at strike 3.
+		if hook := target.retrying; hook != nil {
+			hook(contactID, itemID, target.queuedCollabMsgID, target.queuedCollabMailTo, target.queuedSource, attempts, runErr)
+		}
 		return
 	}
 	b.exhausted[key] = true
@@ -829,9 +840,38 @@ func (p *sessionCollabPump) idleTurnTargetViews(live []sessionCollabTarget, fill
 			}
 		}
 		view.exhausted = exhausted
+		view.retrying = p.recordIdleTurnRetrying
 		views = append(views, view)
 	}
 	return views
+}
+
+// recordIdleTurnRetrying persists the per-attempt intermediate state as a
+// failed_retrying receipt (任务1017 批C-D), so get_message_status answers
+// "retrying N/3" while the budget is not yet spent — the 2026-10-19 现场's
+// silence (sender saw queued_followup forever, log-only attempts) is what
+// this closes. Best-effort like the exhausted receipt: a failure only costs
+// visibility. A later success or the terminal exhausted receipt overwrites it.
+func (p *sessionCollabPump) recordIdleTurnRetrying(contactID, itemID, collabMsgID, collabMailTo, source string, attempts int, lastErr error) {
+	if collabMsgID == "" {
+		return // local queue entry: no mail message to answer
+	}
+	mailDir := config.SessionCollabMailDir()
+	if mailDir == "" {
+		return
+	}
+	store := sessioncollab.NewMailStoreWithHopLimit(mailDir, sessionCollabHopLimit())
+	detail := fmt.Sprintf("目标空闲开轮第 %d/%d 次尝试未成功（%v）；消息保留在目标收件箱队列，未丢失，桥将自动重试", attempts, idleTurnMaxAttempts, lastErr)
+	if err := store.RecordDeliveryReceipt(context.Background(), sessioncollab.DeliveryReceipt{
+		MessageID: collabMsgID,
+		From:      strings.TrimPrefix(source, "collab:"),
+		To:        collabMailTo,
+		Outcome:   sessioncollab.ReceiptFailedRetrying,
+		Detail:    detail,
+		Attempts:  attempts,
+	}); err != nil {
+		log.Printf("[session-collab] idle-turn retrying receipt for %s: %v", collabMsgID, err)
+	}
 }
 
 // recordIdleTurnExhausted persists the spent opening budget as a 任务570

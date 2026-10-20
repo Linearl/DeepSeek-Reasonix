@@ -70,7 +70,9 @@ func receiptStatusSemantics(outcome string) string {
 	case sessioncollab.ReceiptRefusedCrossWire:
 		return "被拒绝并丢弃：thread_id 串线到另一条链。改用你收到的那条入向消息的 thread_id。"
 	case sessioncollab.ReceiptFailedRetrying:
-		return "投递暂时失败（目标不可用），消息仍在队列中将自动重试——非终态，后续成功会覆盖本状态。"
+		// 任务1017 批C-D：failed_retrying 现在也是空闲开轮的中间态（桥每次
+		// 持续失败都会写 receipt.attempts），语义与查询指引同步更新。
+		return "投递或目标空闲开轮暂时失败，消息仍保留在队列中将自动重试——非终态，后续成功会覆盖本状态。重试进度见 receipt.attempts（空闲开轮预算共 3 次，用尽会转为 open_retry_exhausted）；可用同一 messageId 稍后复查。"
 	default:
 		return ""
 	}
