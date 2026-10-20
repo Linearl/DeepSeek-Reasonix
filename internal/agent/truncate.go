@@ -18,6 +18,17 @@ const (
 	// truncateProtectShare bounds the verbatim tail to this fraction of the
 	// target so a rescue can always reclaim enough.
 	truncateProtectShare = 4
+	// 任务1029②: 内容级省略参数。truncate 的前两级（tool 结果 stub、整 replay
+	// unit 删除）都以消息为最小粒度，两类巨消息构成死角：落在保护尾里的巨
+	// unit（实测样本：单条 587K 字符的 tool 结果）和 drop 阶段刻意保留的
+	// session-context carrier（实测样本：7 条各 ~150K 字符）。 rescue 截到
+	// 1066351 >= hard 1048320 只差 18K 却永远失败，就是它们顶住的。本阶段把
+	// 单条超过 target/contentElideOversizedDiv 的消息中部省略、头尾保留；
+	// 阈值取 target/16，正常体量的消息（含当前轮输入）永远够不到。
+	contentElideOversizedDiv = 16
+	contentElideHeadChars    = 4000
+	contentElideTailChars    = 2000
+	contentElideMarkerPrefix = "[content elided to fit the context window"
 )
 
 func (a *Agent) truncateToProjectionLocked(trigger string, target int) (bool, error) {
@@ -63,6 +74,13 @@ func (a *Agent) truncateView(visible []provider.Message, target int) ([]provider
 		projected, dropped = a.dropOldestUnits(projected, head, protect, target)
 		affected += dropped
 	}
+	// 任务1029②: 前两级截不动时的消息级/内容级兜底——巨消息中部省略留头尾，
+	// 覆盖保护尾内的巨 unit 与 drop 保护的 carrier 死区。
+	if a.estimatedVisibleRequestTokens(projected) >= target {
+		var elided int
+		projected, elided = a.elideOversizedContents(projected, head, target)
+		affected += elided
+	}
 	if affected == 0 || a.estimatedVisibleRequestTokens(projected) >= total {
 		return nil, 0
 	}
@@ -83,6 +101,46 @@ func elideToolResult(m provider.Message) (provider.Message, bool) {
 	out.ProviderContent = ""
 	out.Images = nil
 	return out, true
+}
+
+// elideOversizedContents is the last rung of truncateView (任务1029②): any
+// message still above target/contentElideOversizedDiv tokens — typically a
+// giant tool result inside the protected tail or a drop-protected
+// session-context carrier — has its middle removed while head and tail stay
+// verbatim. RawContent keeps the full local original; ProviderContent is
+// cleared so it cannot re-introduce the elided bytes at the provider boundary
+// (projection.go swaps it over Content when set). Already-elided messages are
+// skipped so repeated rescues stay idempotent.
+func (a *Agent) elideOversizedContents(msgs []provider.Message, head, target int) ([]provider.Message, int) {
+	threshold := max(1, target/contentElideOversizedDiv)
+	affected := 0
+	for i := head; i < len(msgs); i++ {
+		m := msgs[i]
+		if m.LocalOnly || m.Content == "" ||
+			strings.HasPrefix(m.Content, contentElideMarkerPrefix) ||
+			strings.HasPrefix(m.Content, elidedToolResultPrefix) ||
+			isCompactionSummary(m) || IsPinnedContextRevision(m) {
+			continue
+		}
+		if a.messageTokens(m) <= threshold {
+			continue
+		}
+		// 短于"头+尾"保留量的消息切了没有净收益（省下的不够标记本身），
+		// 直接跳过——也避免极小窗口下 tail 区间越界。
+		if len(m.Content) <= contentElideHeadChars+contentElideTailChars {
+			continue
+		}
+		headPart := snapToRuneBoundary(m.Content, 0, contentElideHeadChars)
+		tailPart := snapToRuneBoundary(m.Content, len(m.Content)-contentElideTailChars, len(m.Content))
+		removed := len(m.Content) - len(headPart) - len(tailPart)
+		out := m
+		out.Content = fmt.Sprintf("%s: %d of %d bytes removed from the middle]\n%s\n[...]\n%s",
+			contentElideMarkerPrefix, removed, len(m.Content), headPart, tailPart)
+		out.ProviderContent = ""
+		msgs[i] = out
+		affected++
+	}
+	return msgs, affected
 }
 
 // dropOldestUnits removes whole replay units from the oldest end of the
