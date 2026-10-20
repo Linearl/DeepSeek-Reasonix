@@ -34,6 +34,11 @@ type RecoveryChainView struct {
 	LastActivity string `json:"lastActivity"`
 	Bytes        int64  `json:"bytes"`
 	Preview      string `json:"preview"`
+	// Degraded marks a chain listed without a full replay (任务 1019): the
+	// events log exceeded the panel replay budget, so the row carries the file
+	// identity only and every count stays zero rather than the panel hanging
+	// the settings page on the replay.
+	Degraded bool `json:"degraded,omitempty"`
 }
 
 // RecoveryChainSet is the answer to "which chains exist for this conversation",
@@ -80,19 +85,28 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 	}
 
 	for _, path := range candidates {
-		heads, err := agent.ListSessionHeads(path)
-		if err != nil {
-			// A copy that cannot be replayed is reported as an empty chain rather
-			// than failing the whole inventory: the other candidates are still
-			// usable, and the panel shows which one is unreadable.
-			continue
-		}
+		// 任务 1019：面板路径走限流缓存入口——命中零重放；超预算的病态大
+		// 日志降级为一行 Degraded 标记而不是把设置页挂在全量重放上。
 		info, statErr := os.Stat(path)
 		var bytes int64
 		if statErr == nil {
 			bytes = info.Size()
 		}
 		isMain := samePath(path, mainPath)
+		heads, degraded, err := panelSessionHeads(path)
+		if err != nil {
+			// A copy that cannot be replayed is reported as an empty chain rather
+			// than failing the whole inventory: the other candidates are still
+			// usable, and the panel shows which one is unreadable.
+			continue
+		}
+		if degraded {
+			set.Chains = append(set.Chains, RecoveryChainView{
+				Path: path, Label: recoveryDisplayName(path), IsMain: isMain,
+				Bytes: bytes, Degraded: true,
+			})
+			continue
+		}
 		if len(heads) == 0 {
 			// A schema-1 log has no heads. It is still a candidate chain - the
 			// whole file - so it is listed with the numbers the snapshot reports
@@ -139,9 +153,14 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 		}
 		return set.Chains[i].LastActivity > set.Chains[j].LastActivity
 	})
-	if len(set.Chains) > 0 {
-		set.LongestPath = set.Chains[0].Path
-		set.LongestHead = set.Chains[0].HeadID
+	// 任务 1019：longest（「更长且更新」推荐）只在真正重放过的链里选——
+	// 全部降级时留空，前端因此不标推荐，而不是把零读数的降级行推为赢家。
+	for _, chain := range set.Chains {
+		if !chain.Degraded {
+			set.LongestPath = chain.Path
+			set.LongestHead = chain.HeadID
+			break
+		}
 	}
 	return set, nil
 }

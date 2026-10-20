@@ -75,7 +75,9 @@ func (a *App) sessionHeadLineage(topic sessioncatalog.TopicRecord, selectedPath 
 	if !ok {
 		return RecoveryLineageView{}, false
 	}
-	heads, err := agent.ListSessionHeads(record.Path)
+	// 任务 1019：版本面板是只读视图，走面板级限流缓存入口——文件身份没变
+	// 就不再整链重放（写路径 cleanup 不走这里，保持全量直连保新鲜）。
+	heads, _, err := panelSessionHeads(record.Path)
 	if err != nil || len(heads) == 0 {
 		return RecoveryLineageView{}, false
 	}
