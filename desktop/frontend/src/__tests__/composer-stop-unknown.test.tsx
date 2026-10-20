@@ -293,5 +293,41 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
+// ── 任务1020：心跳单位回归兜底——秒/毫秒混用或超 24h 不得呈现荒谬大数 ──
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced", { phase: "executing" }));
+  runtimeStateStore.flush();
+  const { root } = await renderComposer({
+    running: true,
+    tabId: "t1020-epoch-seconds",
+    turnRuntimeState: "running",
+    currentToolLabel: "bash",
+    lastTurnEventAt: Math.floor(Date.now() / 1000), // 模拟 epoch 秒被当毫秒混入（1020 回归形态）
+  });
+  const stripText = document.querySelector(".composer-run-strip")?.textContent ?? "";
+  ok(!/[0-9]{6,}/.test(stripText), "epoch-seconds heartbeat renders no 10^9-scale number");
+  ok(stripText.includes("—"), "epoch-seconds heartbeat falls back to the em-dash guard");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced", { phase: "executing" }));
+  runtimeStateStore.flush();
+  const { root } = await renderComposer({
+    running: true,
+    tabId: "t1020-stale-day",
+    turnRuntimeState: "running",
+    currentToolLabel: "bash",
+    lastTurnEventAt: Date.now() - 25 * 60 * 60 * 1000, // 超 24h 的陈旧心跳
+  });
+  const stripText = document.querySelector(".composer-run-strip")?.textContent ?? "";
+  ok(!/[0-9]{6,}/.test(stripText), "stale (>24h) heartbeat renders no huge number");
+  ok(stripText.includes("—"), "stale (>24h) heartbeat falls back to the em-dash guard");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
 process.stdout.write(`\ncomposer stop unknown: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
