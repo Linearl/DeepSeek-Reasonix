@@ -11,8 +11,38 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/control"
 	"reasonix/internal/store"
 )
+
+// TabSessionEventsSize (task 997) is the current-conversation half of the
+// overview events card: the byte size of THIS tab session's own event log.
+// It is one os.Stat on the resolved log path — no walk, no sampler dependency
+// — so the panel can refresh it on every save without a disk scan (the total
+// half keeps riding the perf sampler's cached eventsMb walk, task 932).
+// Missing tab / booting controller / no session yet / stat failure all report
+// 0, which the frontend renders as a dash, never as a fake zero-size claim.
+func (a *App) TabSessionEventsSize(tabID string) int64 {
+	a.mu.RLock()
+	tab, ok := a.tabs[tabID]
+	var ctrl control.SessionAPI
+	if ok && tab != nil {
+		ctrl = tab.Ctrl
+	}
+	a.mu.RUnlock()
+	if ctrl == nil {
+		return 0
+	}
+	sp := strings.TrimSpace(ctrl.SessionPath())
+	if sp == "" {
+		return 0
+	}
+	info, err := os.Stat(store.SessionEventLog(sp))
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
 
 // SessionEventsEntry is one session's event-log footprint for the task-333
 // storage panel. Both byte counts are plain file stats — the same basis the
