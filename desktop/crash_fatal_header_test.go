@@ -75,6 +75,29 @@ func TestStripFatalCrashHeader(t *testing.T) {
 	}
 }
 
+// Task 1018 ②: the voluntary-exit defer removes the process's own sink stub
+// (and the covered marker) so short-lived processes — superseded relaunch,
+// refused remote windows — stop feeding the next boot's scan surface with
+// header-only litter (the 45480/54304-class stubs).
+func TestRemoveOwnFatalCrashSinkClearsStubAndCovered(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	if err := os.MkdirAll(fatalCrashDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stub := fatalCrashLogHeaderPrefix + " pid=1018 started=2026-10-20T01:00:00Z\n"
+	if err := os.WriteFile(fatalCrashPath(), []byte(stub), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	markFatalCrashCovered()
+
+	removeOwnFatalCrashSink()
+	for _, path := range []string{fatalCrashPath(), fatalCrashCoveredPath()} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("voluntary exit left own artifact behind: %s", path)
+		}
+	}
+}
+
 // pendingReportCount counts the structured crash-pending reports on disk.
 func pendingReportCount(t *testing.T) int {
 	t.Helper()

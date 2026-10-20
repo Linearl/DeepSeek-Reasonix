@@ -604,22 +604,28 @@ func newestPendingCrashQueueName(paths []string) string {
 // 队列里反复占位。修法：启动快照前把已判定非崩溃的报告（native.lifecycle 来
 // 源 + 退出相位于 shutting_down/healthy——377 定性 not crash evidence）从队
 // 列退役：不再面呈、不再上传、不再积压。其余报告一字节不动。
+//
+// Task 1018（20261020 装机实测）：源头已停写（recordPreviousRunDiagnostics
+// 读后即清、任何相位不再入队），队列里的 native.lifecycle 报告全部是 1018 之
+// 前的积压——包括 wedged 相位（10-19 事件的实锤弹窗正是 wedged 积压反复面
+// 呈）。退役面随之扩到全部相位：生命周期残留本身不是崩溃证据（真 panic 走
+// go.fatal / go panic 通道），一并退役。
 
-// benignLifecyclePendingReport reports whether a queued report is the already-
+// lifecycleResiduePendingReport reports whether a queued report is the already-
 // judged non-crash family: desktopLifecycleReport output (Source
-// "native.lifecycle") whose exit phase proves a clean shutdown was underway.
-// wedged/starting/running/closing_* phases stay — they are real abnormal exits.
-func benignLifecyclePendingReport(r crashReport) bool {
-	return r.Source == "native.lifecycle" && lifecycleNoiseBenign(r.ExitPhase)
+// "native.lifecycle"), any exit phase — the source stopped writing them in
+// task 1018, so every queued copy is pre-1018 backlog.
+func lifecycleResiduePendingReport(r crashReport) bool {
+	return r.Source == "native.lifecycle"
 }
 
-// sweepBenignLifecyclePendingReports retires the judged-non-crash reports from
+// sweepJudgedLifecyclePendingReports retires the judged-non-crash reports from
 // the queue before the prompt snapshot reads it, returning the survivors.
 // Best-effort both ways: a file that fails to read or parse is left alone (the
 // flush and diagnostics surfaces own it), and a removal failure just keeps the
 // file (it can be retired on a later launch). The retirements are named on the
 // log — a drop that nobody can see is indistinguishable from data loss.
-func sweepBenignLifecyclePendingReports(paths []string) []string {
+func sweepJudgedLifecyclePendingReports(paths []string) []string {
 	kept := paths[:0]
 	retired := 0
 	for _, path := range paths {
@@ -629,7 +635,7 @@ func sweepBenignLifecyclePendingReports(paths []string) []string {
 			continue
 		}
 		var r crashReport
-		if json.Unmarshal(body, &r) != nil || !benignLifecyclePendingReport(r) {
+		if json.Unmarshal(body, &r) != nil || !lifecycleResiduePendingReport(r) {
 			kept = append(kept, path)
 			continue
 		}
@@ -641,7 +647,7 @@ func sweepBenignLifecyclePendingReports(paths []string) []string {
 	}
 	if retired > 0 {
 		slog.Info("desktop: retired already-judged non-crash lifecycle reports from the pending queue",
-			"retired", retired, "phase", "shutting_down/healthy", "source", "native.lifecycle")
+			"retired", retired, "source", "native.lifecycle", "phases", "all (task 1018)")
 	}
 	return kept
 }
@@ -661,11 +667,12 @@ func (a *App) snapshotPendingCrashForAnalysis() {
 	if len(paths) == 0 {
 		return
 	}
-	// Task 847: already-judged non-crash residue (native.lifecycle + clean-
-	// shutdown phase) retires here — the same boot's recordPreviousRunDiagnostics
-	// may have just written it, so the watermark alone can never keep it off the
-	// prompt (new names always sort above the watermark).
-	paths = sweepBenignLifecyclePendingReports(paths)
+	// Task 847: already-judged non-crash residue (native.lifecycle) retires
+	// here — the same boot's recordPreviousRunDiagnostics may have just written
+	// it, so the watermark alone can never keep it off the prompt (new names
+	// always sort above the watermark). Task 1018: the family covers every
+	// exit phase; the source stopped writing these reports entirely.
+	paths = sweepJudgedLifecyclePendingReports(paths)
 	if len(paths) == 0 {
 		return
 	}
