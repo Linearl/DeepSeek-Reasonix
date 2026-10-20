@@ -20,6 +20,14 @@ export type NavigationSurfaceState = null | {
   targetSurfaceKey?: string;
 };
 
+/**
+ * 任务 1026（fork issue #61）：导航遮罩的超时兜底窗口。settle 只能由后端导航
+ * 回调驱动（App.tsx settleNavigationSurface），后端 hydrate/锁等待卡住不返回时
+ * 遮罩会永久悬挂（现场表现为「加载中」遮罩只能靠强退重启解开）。此前 begin/
+ * settle 只有两态、无任何前端自有出口——本常量是逃生口的时限，非加载预期时长。
+ */
+export const NAVIGATION_SURFACE_TIMEOUT_MS = 20_000;
+
 export type SurfacePaintProgress = { attempts: number; stableFrames: number; geometryKey?: string };
 export type SurfacePaintDecision = {
   progress: SurfacePaintProgress;

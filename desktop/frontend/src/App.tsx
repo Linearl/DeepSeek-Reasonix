@@ -83,6 +83,7 @@ import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type Cont
 import { reportFrontendLog } from "./lib/frontendLog";
 import { restoreComposerFocus } from "./lib/composerFocus";
 import { useRuntimeTransitionFocusRestore } from "./app-runtime/useLocalUiLifecycles";
+import { useNavigationSurfaceTimeoutWatch } from "./app-runtime/navigationSurfaceTimeoutWatch";
 import { app, onBackendTabActivated, onEvent, onReady, onRemoteForwards, onRemoteServer, onRemoteStatus, onRuntimeRebuilt, openExternal } from "./lib/bridge";
 import { useConfigLoadWarnings } from "./lib/useConfigLoadWarnings";
 import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-music";
@@ -264,8 +265,8 @@ import { refreshHistoryProjection } from "./app-runtime/historyViewProjection";
 import { hydrateDisplayMode } from "./lib/displayMode";
 import { recordFrontendDiagnostic } from "./lib/frontendDiagnosticBridge";
 import { paletteSessionDisplayTitle, paletteSessionHint, paletteSessionKeywords, sessionActivityTime } from "./lib/session";
-import { enqueueNavigationRequest, type PendingNavigationRequest } from "./lib/openTopicCoalescing";
-import { guardBackendNavigationResult, settleNavigationSurfaceIntent } from "./lib/navigationSurfaceTransition";
+import { enqueueNavigationRequest, forceUnlockNavigationQueue, type PendingNavigationRequest } from "./lib/openTopicCoalescing";
+import { guardBackendNavigationResult, NAVIGATION_SURFACE_TIMEOUT_MS, settleNavigationSurfaceIntent } from "./lib/navigationSurfaceTransition";
 import {
   applyTheme,
   clearLegacyThemePreference,
@@ -936,6 +937,9 @@ export default function App() {
   };
   const [preservedTranscriptSurface, setPreservedTranscriptSurface] = useState<PreservedTranscriptSurface | null>(null);
   const renderedTranscriptSurfaceRef = useRef<PreservedTranscriptSurface | null>(null);
+  // 任务 1026（fork issue #61）：遮罩超时兜底——超时发生时记录触发的那次 intent，
+  // 用于渲染「加载超时」横幅（重试 / 查看诊断 / 关闭）。null = 无活动超时。
+  const [navigationSurfaceTimedOut, setNavigationSurfaceTimedOut] = useState<number | null>(null);
   const beginNavigationSurface = useCallback((intent: number) => {
     recordFrontendDiagnostic("navigation", "navigation.begin", { phase: "begin" });
     const rendered = renderedTranscriptSurfaceRef.current;
@@ -946,15 +950,25 @@ export default function App() {
         setPreservedTranscriptSurface(null);
       }
       setNavigationSurfaceIntent(intent);
+      // 新一轮导航天然覆盖上一轮的超时横幅（用户重试 / 切会话即消失）。
+      setNavigationSurfaceTimedOut(null);
     });
   }, []);
   const settleNavigationSurface = useCallback((intent: number) => {
     recordFrontendDiagnostic("navigation", "navigation.settle", { phase: "settle" });
+    setNavigationSurfaceTimedOut(null);
     setNavigationSurfaceIntent((current) => {
       const next = settleNavigationSurfaceIntent(current, intent);
       if (next === null) setPreservedTranscriptSurface(null);
       return next;
     });
+  }, []);
+  // 任务 1026：hydrateError 降级不再被 runtimeTransitioning 短路后，遮罩仍挂着
+  // 时（后端导航迟迟不返回）给用户一个手动逃生口，语义与超时兜底一致。
+  const forceExitNavigationSurface = useCallback(() => {
+    recordFrontendDiagnostic("navigation", "navigation.surface-force-exit", { phase: "force-exit" });
+    setPreservedTranscriptSurface(null);
+    setNavigationSurfaceIntent(null);
   }, []);
   const mainView = useOverlayStore((s) => s.mainView);
   const startupSplashVisible = useOverlayStore((s) => s.startupSplashVisible);
@@ -4209,6 +4223,23 @@ export default function App() {
   const navigationSeqRef = useRef(0);
   const navigationRunningRef = useRef(false);
   const navigationPendingRef = useRef<PendingDesktopNavigationRequest | null>(null);
+  // 任务 1026（fork issue #61）：遮罩超时兜底。begin 后后端导航回调迟迟不返回
+  // （锁等待 / hydrate 卡死）时，遮罩会永久悬挂且导航队列被 runningRef 卡死，
+  // 后续导航全部进 pending 永不执行——现场只能强退重启两次。超时兜底做两件事：
+  // ①清遮罩给出降级视图 + 超时横幅（重试 / 查看诊断 / 关闭）；
+  // ②解锁导航队列（seq 前移 + running 复位 + 顶掉 pending）——挂死的旧请求
+  // 即使日后返回，latest()/intent 守卫已判其 stale，零 UI 污染。
+  const handleNavigationSurfaceTimeout = useCallback((timedOutIntent: number) => {
+    recordFrontendDiagnostic("navigation", "navigation.surface-timeout", {
+      intent: timedOutIntent,
+      timeoutMs: NAVIGATION_SURFACE_TIMEOUT_MS,
+    });
+    forceUnlockNavigationQueue({ seqRef: navigationSeqRef, runningRef: navigationRunningRef, pendingRef: navigationPendingRef });
+    setPreservedTranscriptSurface(null);
+    setNavigationSurfaceIntent((current) => settleNavigationSurfaceIntent(current, timedOutIntent));
+    setNavigationSurfaceTimedOut(timedOutIntent);
+  }, []);
+  useNavigationSurfaceTimeoutWatch(navigationSurfaceIntent, handleNavigationSurfaceTimeout);
   const runNavigationRequest = useCallback(async (request: PendingDesktopNavigationRequest) => {
     const latest = () => request.seq === navigationSeqRef.current && isNavigationIntentCurrent(request.navigationIntentSeq);
     if (!latest()) return;
@@ -5782,8 +5813,20 @@ export default function App() {
                       <span>{t("common.loading")}</span>
                     </div>
                   ) : null}
+                  {/* 任务 1026（fork issue #61）：遮罩超时兜底后的降级横幅——
+                      后端导航回调不返回时用户在此拿到逃生口，不再依赖强退重启。 */}
+                  {navigationSurfaceTimedOut !== null ? (
+                    <div className="history-load-error" role="alert">
+                      <span>{t("navigation.surfaceTimeout")}</span>
+                      <button type="button" className="btn btn--secondary btn--small" onClick={() => void retrySessionHistory(activeTabId)}>{t("common.retry")}</button>
+                      <button type="button" className="btn btn--secondary btn--small" onClick={() => openPage({ kind: "settings", tab: "diagnostics" })}>{t("navigation.viewDiagnostics")}</button>
+                      <button type="button" className="btn btn--secondary btn--small" onClick={() => setNavigationSurfaceTimedOut(null)}>{t("common.close")}</button>
+                    </div>
+                  ) : null}
                 </div>
-                {!runtimeTransitioning && state.hydrateError ? <div className="history-load-error" role="alert"><span>{state.hydrateError}</span><button type="button" className="btn btn--secondary btn--small" onClick={() => void retrySessionHistory(activeTabId)}>{t("common.retry")}</button></div> : null}
+                {/* 任务 1026：hydrateError 降级不再被 runtimeTransitioning 短路——
+                    遮罩挂着时错误也要可见，并附「强制退出遮罩」手动逃生口。 */}
+                {state.hydrateError ? <div className="history-load-error" role="alert"><span>{state.hydrateError}</span><button type="button" className="btn btn--secondary btn--small" onClick={() => void retrySessionHistory(activeTabId)}>{t("common.retry")}</button>{runtimeTransitioning ? <button type="button" className="btn btn--secondary btn--small" onClick={forceExitNavigationSurface}>{t("navigation.forceExitOverlay")}</button> : null}</div> : null}
               </>
             )}
           </main>
