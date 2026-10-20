@@ -397,12 +397,16 @@ func tailStart(msgs []provider.Message, head, budgetTokens int, tokPerChar float
 // tokPerChar derives a tokens-per-character ratio from the last turn's real
 // usage so per-message estimates track the provider's tokenizer without a local
 // one. Reasoning content is excluded from the char count to match the prompt
-// actually sent (the provider strips it). Falls back to ~4 chars/token before
-// any usage is known, and ignores absurd ratios.
+// actually sent (the provider strips it), and so are image tokens (任务 1025):
+// compactChars is text-only, so the numerator must be too, or an image session
+// inflates the ratio and over-prices every later text turn. Falls back to
+// ~4 chars/token before any usage is known, and ignores absurd ratios.
 func (a *Agent) tokPerChar() float64 {
 	if cal := a.sess.output.promptCalibration.Load(); cal != nil && cal.compactChars > 0 {
-		if r := float64(cal.promptTokens) / float64(cal.compactChars); r > 0.05 && r < 2 {
-			return r
+		if textTokens := cal.promptTokens - cal.imageTokens; textTokens > 0 {
+			if r := float64(textTokens) / float64(cal.compactChars); r > 0.05 && r < 2 {
+				return r
+			}
 		}
 	}
 	return fallbackTokPerChar
