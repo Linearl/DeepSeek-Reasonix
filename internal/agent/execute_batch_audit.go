@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -116,7 +117,25 @@ func (a *Agent) storeBatchToolResult(ctx context.Context, call provider.ToolCall
 		}
 	}
 	state := outcomeRunState(o)
-	msg := provider.Message{Role: provider.RoleTool, Content: o.output, Images: o.images, VisionSummary: o.visionSummary, ToolCallID: call.ID, Name: call.Name, ToolRunState: state, ToolExecution: toProviderToolExecution(o.execution)}
+	// 任务1029③: 源头侧大小上限——tool 结果写入历史时按 maxToolOutputBytes
+	// 封顶（与任务1010 单图 8KiB 估算封顶同族的安全侧口径，复用既有的
+	// truncateToolOutputFor 工具感知策略）。低于上限的字节级原样直通；超限
+	// 结果保留工具感知的头部预览，完整原件进 RawContent 供本地翻页。这是
+	// duplicate/recovery 路径既有先例的推广：不设源头闸，一次 587K 字符的
+	// 巨 tool 结果（1029 取证样本）就足以把会话顶过物理窗口。
+	visible, truncNotice := truncateToolOutputFor(o.output, call.Name, call.ID)
+	if truncNotice != "" {
+		slog.Warn("agent: oversized tool result capped at history write (任务1029③)",
+			"tool", call.Name, "bytes", len(o.output), "cap", maxToolOutputBytes)
+		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: truncNotice})
+	}
+	msg := provider.Message{Role: provider.RoleTool, Content: visible, Images: o.images, VisionSummary: o.visionSummary, ToolCallID: call.ID, Name: call.Name, ToolRunState: state, ToolExecution: toProviderToolExecution(o.execution)}
+	// 执行层未留原件时（不走 boundProviderVisibleResult 的直通路径），封顶在
+	// 历史里截掉的部分以 RawContent 本地留存——provider 边界会剥掉它，只有
+	// 本地翻页（session:tool_result）读得到。
+	if truncNotice != "" && o.rawOutput == "" {
+		msg.RawContent = o.output
+	}
 	if o.diagnostic != nil {
 		msg.ToolDiagnostic, _ = json.Marshal(o.diagnostic)
 		if o.diagnostic.Code == tool.WriteTargetAbsent && a.task.ledger != nil {
