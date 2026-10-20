@@ -372,18 +372,27 @@ func doctorSessionCommand(args []string, version string) int {
 	ref := ""
 	outPath := ""
 	exportPath := ""
+	unfiledOnly := false
+	unfiledJSON := false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
 		case "-h", "--help":
-			fmt.Fprintln(os.Stdout, "usage: reasonix doctor session <branch-id-or-path> [--zip] [--out PATH] [--export-v1 PATH.jsonl]")
+			fmt.Fprintln(os.Stdout, "usage: reasonix doctor session <branch-id-or-path> [--zip] [--out PATH] [--export-v1 PATH.jsonl] [--unfiled [--json]]")
 			fmt.Fprintln(os.Stdout, "")
 			fmt.Fprintln(os.Stdout, "Bundles the session transcript, persistence sidecars, conflict diagnostics,")
 			fmt.Fprintln(os.Stdout, "and the recovery parent chain into a zip for support. Unlike `reasonix doctor`,")
 			fmt.Fprintln(os.Stdout, "bundled transcripts are NOT redacted; share only with a trusted support channel.")
 			fmt.Fprintln(os.Stdout, "--export-v1 instead writes the session's current version as a schema-1 session")
 			fmt.Fprintln(os.Stdout, "that releases before v1.39.0 can open.")
+			fmt.Fprintln(os.Stdout, "--unfiled skips the bundle and prints the unfiled-input reconciliation (task 1023):")
+			fmt.Fprintln(os.Stdout, "checkpoint-recorded prompts with no matching transcript user message. Read-only.")
 			return 0
+		case "--unfiled":
+			unfiledOnly = true
+		case "--json":
+			// The bundle path has no --json today; the flag only affects --unfiled.
+			unfiledJSON = true
 		case "--export-v1":
 			i++
 			if i >= len(args) {
@@ -416,15 +425,18 @@ func doctorSessionCommand(args []string, version string) int {
 				return 2
 			}
 			if ref != "" {
-				fmt.Fprintln(os.Stderr, "usage: reasonix doctor session <branch-id-or-path> [--zip] [--out PATH]")
+				fmt.Fprintln(os.Stderr, "usage: reasonix doctor session <branch-id-or-path> [--zip] [--out PATH] [--unfiled [--json]]")
 				return 2
 			}
 			ref = arg
 		}
 	}
 	if ref == "" {
-		fmt.Fprintln(os.Stderr, "usage: reasonix doctor session <branch-id-or-path> [--zip] [--out PATH] [--export-v1 PATH.jsonl]")
+		fmt.Fprintln(os.Stderr, "usage: reasonix doctor session <branch-id-or-path> [--zip] [--out PATH] [--export-v1 PATH.jsonl] [--unfiled [--json]]")
 		return 2
+	}
+	if unfiledOnly {
+		return doctorSessionUnfiled(ref, unfiledJSON)
 	}
 	if exportPath != "" {
 		src, err := doctor.ResolveSessionRef(ref)

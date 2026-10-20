@@ -1151,6 +1151,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   HistoryCheckpointTurnsForTab(tabID: string): Promise<number[]>;
   Checkpoints(): Promise<CheckpointMeta[]>;
   CheckpointsForTab(tabID: string): Promise<CheckpointMeta[]>;
+  // 任务 1023：未入档输入对账（只读）——checkpoint 里有、transcript 里没有的 user 输入。
+  UnfiledInputsForTab(tabID: string): Promise<import("./types").UnfiledInputView[]>;
   Rewind(turn: number, scope: string): Promise<void>;
   RewindForTab(tabID: string, turn: number, scope: string): Promise<void>;
   PreviewRewindForTab(tabID: string, turn: number, scope: string): Promise<import("./types").RewindPlanView>;
@@ -4867,6 +4869,9 @@ function makeMockApp(): AppBindings {
     },
     async CheckpointsForTab() {
       return this.Checkpoints();
+    },
+    async UnfiledInputsForTab() {
+      return [];
     },
     async Rewind() {},
     async RewindForTab() {},

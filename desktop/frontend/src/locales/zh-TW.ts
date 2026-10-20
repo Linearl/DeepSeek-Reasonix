@@ -3270,6 +3270,7 @@ export const zhTW: Record<DictKey, string> = {
   "notice.completionUncertainBody": "目前結果未能確認已完成。目前回答與所有已完成的工作均已保留。傳送「繼續」可接著完成，也可以補充說明需要調整的內容。",
   "notice.deliveryIncompleteBody": "內容已經產生，但驗證和複審步驟尚未完成。",
   "notice.deliveryIncompleteContinue": "繼續檢查",
+  "unfiled.cardTitle": "未入檔輸入（已從檢查點恢復）",
   "notice.deliveryIncompleteAccept": "接受驗收",
   "notice.deliveryIncompleteContinuePrompt": "繼續完成剩餘的任務收尾檢查。",
   "notice.completionAttentionTitle": "本輪仍需處理",

@@ -188,6 +188,9 @@ type Goals interface {
 // operations (compact, summarize).
 type SessionHistory interface {
 	Checkpoints() []checkpoint.Meta
+	// UnfiledInputs reconciles checkpoint prompts against the transcript's user
+	// messages (task 1023 phase 0). Read-only; empty when everything filed.
+	UnfiledInputs() []UnfiledInput
 	CheckpointFileState(path string) (checkpoint.FileState, bool)
 	CheckpointTurnChanges(turn int) *checkpoint.TurnChanges
 	CheckpointTurnsByMessageIndex() map[int]int
