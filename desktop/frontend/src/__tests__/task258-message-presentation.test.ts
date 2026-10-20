@@ -174,17 +174,19 @@ function noticeItems(state: typeof initialState) {
   ok(s.running === false && s.turnActive === false, "a failed turn_done finalizes the local running state");
   ok(s.lastTurnIdAtDone === "t-1", "turn_done remembers the finalized turn id");
 
-  // The projected composer flag: a runtime snapshot still reporting THIS turn
-  // as running (stale push / lost refresh) must not resurrect the input lock.
-  ok(projectRunningState(s, { known: true, running: true, state: { turnId: "t-1" } }) === false,
-    "a stale snapshot reporting the just-finished turn as running cannot relock the input");
-  ok(projectRunningState(s, { known: true, running: true, state: { turnId: "" } }) === false,
-    "a running flag carrying no turn id contradicts itself and reads as stale");
-  ok(projectRunningState(s, { known: true, running: true, state: undefined }) === false,
-    "a running flag with no snapshot state falls back to the finalized local turn");
+  // The projected composer flag (任务1015 SSOT): the backend projection is the
+  // authority. A snapshot reporting THIS turn as running wins over the local
+  // finalize — the 30s same-turn rejection (task 796) is gone because it was
+  // the "local finalize overrides the backend" path behind the four-signal
+  // contradiction; a wedged fan-out is healed by the backend idle-turn bridge.
+  ok(projectRunningState(s, { known: true, running: true, state: { turnId: "t-1" } }) === true,
+    "验收2 权威性: a snapshot still reporting the finalized turn as running wins — the UI stays running");
+  ok(projectRunningState(s, { known: true, running: true, state: { turnId: "" } }) === true,
+    "a running flag with no turn id still wins (backend authority)");
+  ok(projectRunningState(s, { known: true, running: true, state: undefined }) === true,
+    "a running projection with no snapshot state wins (backend authority)");
 
-  // A genuinely NEW turn whose turn_started has not arrived yet still wins —
-  // the reconciliation must not swallow fresh evidence.
+  // A genuinely NEW turn whose turn_started has not arrived yet obviously wins.
   ok(projectRunningState(s, { known: true, running: true, state: { turnId: "t-2" } }) === true,
     "a new turn's snapshot still wins before its turn_started arrives");
 
@@ -196,24 +198,38 @@ function noticeItems(state: typeof initialState) {
   // Unknown snapshot → local event flow decides.
   ok(projectRunningState(s, { known: false }) === false, "an unknown runtime snapshot falls back to local state");
 
-  // ── 任务796 (第三形态渲染残留): the same-turn rejection is bounded. A
-  // backend whose TurnDone fan-out wedged reports its ONE finalized turn as
-  // running forever; past the grace window that snapshot IS the backend
-  // truth (healthy fan-outs are milliseconds) and must win, so the TodoPanel
-  // "继续" button cannot linger on a session that admits nothing. Both sides
-  // of the comparison run on promptEventClock (performance.now), NOT Date.now
-  // — turnLifecycleObservedAt is stamped with the relative clock.
+  // 任务1015: settle requires BOTH sources idle — no local-only finalize path.
+  ok(projectRunningState(s, { known: true, running: false, state: { turnId: "" } }) === false,
+    "both sources idle settles the turn");
+
+  // ── 任务1015: queued_followup 生命周期（验收3/5）─────────────────────────
   {
-    const finalized = { ...s, turnLifecycleObservedAt: 1000 };
-    ok(projectRunningState(finalized, { known: true, running: true, state: { turnId: "t-1" } }, 1000 + 29_999) === false,
-      "within the grace window the same-turn running snapshot is still rejected (task-258 contract)");
-    ok(projectRunningState(finalized, { known: true, running: true, state: { turnId: "t-1" } }, 1000 + 30_000) === true,
-      "past the grace window a snapshot insisting on the finalized turn wins (wedged backend truth)");
-    ok(projectRunningState(finalized, { known: true, running: false, state: { turnId: "" } }, 1000 + 60_000) === false,
-      "an idle snapshot stays idle regardless of the grace window");
-    // No stamp (older callers / replayed rows) keeps the task-258 rejection.
-    ok(projectRunningState(s, { known: true, running: true, state: { turnId: "t-1" } }) === false,
-      "a finalize without a turnLifecycleObservedAt stamp keeps the unconditional rejection");
+    // turn 在跑时提交被拒 → 降级 durable 队列（queued=true）→ 五态事实源。
+    let q = reducer(initialState, { type: "event", e: { kind: "turn_started", turnId: "t-q", status: "in_progress" } });
+    q = reducer(q, { type: "user", text: "hi", seq: 1, submissionId: "sub-1" });
+    q = reducer(q, { type: "submit_degraded", submissionId: "sub-1", text: "queued", queued: true });
+    ok(q.queuedFollowup === true, "降级回执（非 steer_accepted）置 queued_followup 事实源");
+    ok(q.running === true, "降级后 turn face 保持运行中（461-P6 ruling ② 不回退）");
+
+    // steer_accepted（本轮注入成功）不算排队。
+    let q2 = reducer(initialState, { type: "event", e: { kind: "turn_started", turnId: "t-q2", status: "in_progress" } });
+    q2 = reducer(q2, { type: "user", text: "hi", seq: 1, submissionId: "sub-2" });
+    q2 = reducer(q2, { type: "submit_degraded", submissionId: "sub-2", text: "steered", queued: false });
+    ok(q2.queuedFollowup === false, "steer_accepted（本轮注入成功）不置排队态");
+
+    // 验收3：新轮开始 = 排队消息被消费发出 → 排队态解除、转 running。
+    const q3 = reducer(q, { type: "event", e: { kind: "turn_started", turnId: "t-q-next", status: "in_progress" } });
+    ok(q3.queuedFollowup === false && q3.running === true, "新轮开始（排队消息已发出）→ queued_followup 转 running");
+
+    // reset / unsend 清排队态。
+    ok(reducer(q, { type: "reset" }).queuedFollowup === false, "reset 清排队态");
+    ok(reducer(q, { type: "unsend" }).queuedFollowup === false, "unsend（用户撤回）清排队态");
+
+    // 心跳：turn 活动事件刷新 lastTurnEventAt（长工具链可见性）。
+    const before = reducer(initialState, { type: "event", e: { kind: "turn_started", turnId: "t-h", status: "in_progress" } });
+    ok(before.lastTurnEventAt !== undefined, "turn_started 记心跳时间");
+    const after = reducer(before, { type: "event", e: { kind: "tool_dispatch", turnId: "t-h", name: "bash" } as never });
+    ok(after.lastTurnEventAt !== undefined, "tool_dispatch 刷新心跳时间（长工具链无输出期亦可见）");
   }
 }
 

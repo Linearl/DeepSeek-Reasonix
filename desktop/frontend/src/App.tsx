@@ -737,7 +737,17 @@ export default function App() {
     ensureBlankTab,
     ensureBlankSurface,
     itemsForTab,
+    turnRuntimeState,
   } = useController();
+  // 任务1015：长工具链可见性——最新一个 running 工具卡的名字（后端
+  // ToolDispatch 事件的镜像，非本地推断），供「正在执行 <工具>」展示。
+  const currentToolLabel = useMemo(() => {
+    for (let index = state.items.length - 1; index >= 0; index -= 1) {
+      const item = state.items[index];
+      if (item.kind === "tool" && item.status === "running") return item.resolvedName || item.name;
+    }
+    return undefined;
+  }, [state.items]);
   const { locale, setPref: setLocalePref } = useI18n();
   const t = useT();
 
@@ -5984,6 +5994,9 @@ export default function App() {
               running={state.running || rewindCommitting}
               stopLevel={state.stopLevel}
               stopDeadlineUnix={state.stopDeadlineUnix}
+              turnRuntimeState={turnRuntimeState}
+              currentToolLabel={currentToolLabel}
+              lastTurnEventAt={state.lastTurnEventAt}
               onEscalateStop={() => {
                 if (typeof app.CancelStopForTab === "function" && activeTabId) void app.CancelStopForTab(activeTabId);
               }}

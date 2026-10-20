@@ -3,6 +3,7 @@
 // render the active tab's state.
 import { runtimeStatusSnapshotIsStale } from "./runtimeStatusFreshness";
 import { useRuntimeSession } from "./useRuntimeState";
+import { deriveTurnRuntime, turnRuntimeSignals, recordTurnRuntimeTransition, type TurnRuntimeDerivation } from "./turnRuntimeState";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { asArray } from "./array";
 import { createControllerModelCommands } from "./controllerModelCommands";
@@ -104,52 +105,23 @@ import type {
 } from "./types";
 import { reportFrontendLog } from "./frontendLog";
 
-// Task 258 相4: the projected composer running flag. The runtime-state
-// snapshot (runtime-state:changed push) has no stale guard of its own, so it
-// used to win by precedence — a fail turn whose TurnDone finalized the local
-// event flow could be overridden by a snapshot still reporting the SAME turn
-// as running, locking the input after task_stopped. Accept the snapshot's
-// running=true only when it carries a turn id the local flow has not just
-// finalized; a local running turn always beats a pre-start idle snapshot.
+// 任务1015 会话运行态 SSOT：running 的判定收敛为「后端 RuntimeStatus 投影 ∪
+// 本地事件流」的并集。本地事件流（turn_started/turn_done Wire 事件）是后端事
+// 件的转发镜像，不是本地推断；它参与并集只为防投影推送延迟（400ms 合批/周期
+// 同步）造成的闪断。前端从此没有任何「本地宣布结束」的路径——结束必须投影与
+// 本地事件流一致收敛为 idle。
 //
-// 任务796 (第三形态渲染残留): the same-turn rejection above had no expiry, so
-// a backend whose TurnDone fan-out wedged (finishing-only leak; the gate is
-// healed by the idle-turn bridge after 90s) kept reporting its one finalized
-// turn as running FOREVER while the local flow showed idle — the TodoPanel
-// "继续" button surfaced on a session that could not admit anything
-// (20261011 合并线: button visible, manual activation needed). The rejection
-// is now bounded: past STALE_RUNNING_SNAPSHOT_GRACE_MS after the local
-// finalize, a snapshot still insisting on the same turn id is no pre-TurnDone
-// push any more (healthy fan-outs are milliseconds; the 30s periodic sync is
-// the floor) — it IS the backend truth and wins. The caller re-evaluates once
-// per grace window (staleGuardTick); the backend heal re-opens real work.
-export const STALE_RUNNING_SNAPSHOT_GRACE_MS = 30_000;
-
+// Task 258 相4 / 任务796 的「同 turn id 30s 宽限拒绝」随本件移除：那是本地
+// finalize 压过后端 running 的推断路径，正是四信号矛盾（停止按钮消失/可复制
+// 出现 vs 后端仍拒绝新 turn → 降级排队提示）的源头。fan-out 卡死（finishing
+// 泄漏）由后端 idle-turn bridge（90s）自愈投影，前端从此跟随后端。
 export function projectRunningState(
   active: Pick<State, "running" | "lastTurnIdAtDone" | "turnLifecycleObservedAt">,
   runtime: { known: boolean; running?: boolean; state?: { turnId?: string } | null },
-  nowMs: number = promptEventClock(),
 ): boolean {
   const local = Boolean(active.running);
   if (!runtime.known || runtime.running === undefined) return local;
-  if (Boolean(runtime.running) === local) return local;
-  if (runtime.running && !local) {
-    const snapshotTurnId = runtime.state?.turnId?.trim();
-    // A running flag with no turn id contradicts itself; the same id as the
-    // turn that just finished is a pre-TurnDone push — until the finalize is
-    // older than the grace window, when it reads as a wedged backend instead
-    // (任务796) and the snapshot wins.
-    if (!snapshotTurnId) return local;
-    if (snapshotTurnId === active.lastTurnIdAtDone) {
-      if (active.turnLifecycleObservedAt !== undefined
-        && nowMs - active.turnLifecycleObservedAt >= STALE_RUNNING_SNAPSHOT_GRACE_MS) {
-        return true;
-      }
-      return local;
-    }
-    return true; // A genuinely newer turn whose turn_started has not arrived.
-  }
-  return local; // Local event flow is fresher than a pre-start idle snapshot.
+  return Boolean(runtime.running) || local;
 }
 
 export { foregroundRunningFromRuntimeMeta } from "./runtimeMeta";
@@ -568,6 +540,12 @@ export interface State extends ReadStatusHost {
    * reports THIS turn as running after its terminal event (fail-turn input
    * lock) instead of rejecting a genuinely newer turn. */
   lastTurnIdAtDone?: string;
+  // 任务1015：投递层降级回执——消息在 durable 队列等待下一轮（steer 注入失败
+  // 降级）。五态 queued_followup 的事实源；turn_started/turn_done 清除。
+  queuedFollowup?: boolean;
+  // 任务1015：最后一个 turn 活动事件（TURN_ACTIVITY_KINDS）的到达时间——
+  // 长工具链「正在执行 <工具>」+ 心跳的展示数据；由后端事件驱动，非本地推断。
+  lastTurnEventAt?: number;
   /** Last runtime snapshot sequence accepted for this tab/epoch. */
   runtimeStatusEpoch?: string; runtimeStatusSeq?: number; runtimeStatusSnapshotAt?: number;
   // Completion tokens accumulated across executor usage events within the
@@ -699,6 +677,7 @@ export const initialState: State = {
   cancellable: false,
   stopLevel: 0,
   stopDeadlineUnix: 0,
+  queuedFollowup: false,
   activeTurnId: undefined,
   assistantSegmentOrdinal: 0,
   context: { used: 0, window: 0, sessionTokens: 0 },
@@ -968,7 +947,9 @@ type Action =
   // 任务461-P6: a "turn already running" rejection degrades into the durable
   // guidance queue — the bubble stays delivered, the notice names the
   // destination, and the turn face keeps the authoritative running facts.
-  | { type: "submit_degraded"; submissionId: string; text: string; inboxItemId?: string; turnId?: string }
+  // 任务1015: queued=true 时该回执是五态 queued_followup 的事实源（steer 注入
+  // 失败降级 durable 队列）；steer_accepted（本轮注入成功）不算排队。
+  | { type: "submit_degraded"; submissionId: string; text: string; inboxItemId?: string; turnId?: string; queued?: boolean }
   | { type: "turn_interrupted" }
   | { type: "backend_status"; running: boolean; turnStartedAt?: number; pendingPrompt?: boolean; backgroundJobs?: number; cancelRequested?: boolean; cancellable?: boolean; turnId?: string; turnStatus?: string; snapshotAt?: number; runtimeEpoch?: string; turnEventSeq?: number; stopLevel?: number; stopDeadlineUnix?: number }
   | { type: "cancel_requested" }
@@ -1721,6 +1702,8 @@ function reportAskPanelReceipt(e: WireEvent): void {
 }
 
 function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State {
+  // 任务1015：turn 活动心跳（后端事件到达时间，供「正在执行 <工具>」+ 心跳展示）。
+  if (TURN_ACTIVITY_KINDS.has(e.kind)) s = { ...s, lastTurnEventAt: promptEventClock() };
   if (s.discardTurn) {
     if (e.kind === "turn_done") {
       return {
@@ -1732,6 +1715,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         pendingPrompt: false,
         cancelRequested: false,
         cancellable: false,
+        queuedFollowup: false,
         turnLifecycleObservedAt: promptEventClock(),
         currentAssistant: undefined,
         assistantSegmentOrdinal: 0,
@@ -1818,6 +1802,9 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         pendingPrompt: false,
         cancelRequested: false,
         cancellable: true,
+        // 任务1015：新轮开始 = 上一轮的排队消息已被后端消费发出，排队态解除、
+        // 五态转 running。
+        queuedFollowup: false,
         lastStreamInterrupt: undefined,
         streamInterruptNoticeShown: undefined,
         turnLifecycleObservedAt: promptEventClock(),
@@ -2540,6 +2527,8 @@ export function reducer(s: State, a: Action): State {
         pendingPrompt: false,
         cancelRequested: true,
         cancellable: false,
+        // 任务1015：撤回即用户明确放弃本轮提交，排队态随之解除。
+        queuedFollowup: false,
         approval: undefined,
         ask: undefined,
         mcpInteraction: undefined,
@@ -2573,7 +2562,7 @@ export function reducer(s: State, a: Action): State {
         : s;
     case "turn_submit_rejected":
     case "send_failed": return reduceSubmitFailure(s, a.submissionId, a.error, a.type === "turn_submit_rejected", promptEventClock());
-    case "submit_degraded": return reduceSubmitDegraded(s, a.submissionId, a.text, a.inboxItemId, a.turnId);
+    case "submit_degraded": return reduceSubmitDegraded(s, a.submissionId, a.text, a.inboxItemId, a.turnId, a.queued);
     case "turn_interrupted": {
       return withRemoteTurnInterrupted(s);
     }
@@ -2958,6 +2947,8 @@ export function reducer(s: State, a: Action): State {
         pendingSubmissionId: undefined,
         resolvedPromptId: undefined,
         promptArrivedId: undefined,
+        // 任务1015：控制器重建后旧的投递回执不再可信，排队态归零待重评估。
+        queuedFollowup: false,
         promptArrivedAt: undefined,
         // 任务657: a rebuilt runtime restarts its ledger seqs from 1, so the
         // old epoch's watermark would silently swallow the new epoch's
@@ -4924,6 +4915,8 @@ export function useController() {
       text: `${STEER_NOTICE_PREFIX}${steered ? t("composer.degradedSteer") : t("composer.degradedQueued")}`,
       inboxItemId: receipt?.itemId,
       turnId,
+      // 任务1015：非 steer_accepted（降级 durable 队列）→ queued_followup 事实源。
+      queued: !steered,
     });
     reportFrontendLog("send", "submit degraded to guidance queue",
       `tab=${tabId} submission=${submissionId} disposition=${disposition}`);
@@ -6439,36 +6432,43 @@ export function useController() {
     } catch { /* ignore */ }
   }, []);
 
-  // 任务796: the same-turn snapshot rejection in projectRunningState is only
-  // bounded by wall time, and nothing else re-runs this memo once both the
-  // local flow and the (wedged) backend projection stop changing — without a
-  // re-evaluation tick the "继续" button残留 would outlive the grace window.
-  // When a rejection is active, re-evaluate once just past the grace window;
-  // any real state change re-arms or disarms this naturally.
-  const [staleGuardTick, setStaleGuardTick] = useState(0);
-  const staleGuardActive = useMemo(() => {
-    if (!runtimeState.known || runtimeState.running !== true || Boolean(activeState.running)) return false;
-    const snapshotTurnId = runtimeState.state?.turnId?.trim();
-    return Boolean(snapshotTurnId) && snapshotTurnId === activeState.lastTurnIdAtDone;
-  }, [runtimeState.known, runtimeState.running, runtimeState.state?.turnId, activeState.running, activeState.lastTurnIdAtDone]);
+  // 任务1015 会话运行态 SSOT：唯一的五态 TurnRuntimeState 在这里派生——
+  // 输入全部是后端事实（runtimeState 投影 + 本地事件流镜像 + 投递层降级回执），
+  // 四信号（停止按钮/可复制/send steer 形态/排队提示）经 turnRuntimeSignals
+  // 从它派生。state.running 由 signals.turnActive 替代本地 reducer 的原始值。
+  const turnRuntime = useMemo(() => deriveTurnRuntime({
+    known: runtimeState.known,
+    freshnessSynced: !runtimeState.unknown,
+    backendRunning: runtimeState.running,
+    localRunning: Boolean(activeState.running),
+    cancelRequested: Boolean(activeState.cancelRequested),
+    stopLevel: activeState.stopLevel,
+    queuedFollowup: Boolean(activeState.queuedFollowup),
+  }), [runtimeState.known, runtimeState.unknown, runtimeState.running, activeState.running, activeState.cancelRequested, activeState.stopLevel, activeState.queuedFollowup]);
+  // 981 同款引用纪律：signals 一并 memo，避免每渲染新引用打穿下游 projectedState memo。
+  const runtimeSignals = useMemo(() => turnRuntimeSignals(turnRuntime), [turnRuntime]);
+
+  // 迁移留痕（验收4）：from→to + 触发事实进环形缓冲 + desktop.log，事后可核对。
+  const lastTurnRuntimeRef = useRef<TurnRuntimeDerivation | null>(null);
   useEffect(() => {
-    if (!staleGuardActive) return;
-    const timer = window.setTimeout(
-      () => setStaleGuardTick(value => value + 1),
-      STALE_RUNNING_SNAPSHOT_GRACE_MS + 1000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [staleGuardActive, activeState.lastTurnIdAtDone]);
+    const previous = lastTurnRuntimeRef.current;
+    lastTurnRuntimeRef.current = turnRuntime;
+    if (!previous || previous.state === turnRuntime.state) return;
+    recordTurnRuntimeTransition({ at: Date.now(), from: previous.state, to: turnRuntime.state, reason: turnRuntime.reason });
+    reportFrontendLog("turn-runtime", "turn runtime state transition",
+      `from=${previous.state} to=${turnRuntime.state} reason=${turnRuntime.reason}`, "info");
+  }, [turnRuntime]);
 
   const projectedState = useMemo(() => {
-    if (!runtimeState.known) return activeState;
-    void staleGuardTick; // re-evaluates the Date.now() read once per grace window (任务796).
-    const projectedRunning = projectRunningState(activeState, runtimeState);
-    return projectedRunning === activeState.running ? activeState : { ...activeState, running: projectedRunning };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- staleGuardTick intentionally forces the wall-clock re-read above.
-  }, [activeState, runtimeState.known, runtimeState.running, runtimeState.state?.turnId, staleGuardTick]);
+    const turnActive = runtimeSignals.turnActive;
+    return turnActive === activeState.running ? activeState : { ...activeState, running: turnActive };
+  }, [activeState, runtimeSignals]);
   return {
     state: projectedState,
+    // 任务1015：五态 TurnRuntimeState 与四信号谓词——消费端（Composer 等）
+    // 从这里取，不得再用其它源推断。
+    turnRuntimeState: turnRuntime.state,
+    turnRuntimeSignals: runtimeSignals,
     // Read another tab's transcript without switching to it: the split view mounts
     // two transcripts at once, so the secondary pane cannot go through the active
     // tab's state (task 70).

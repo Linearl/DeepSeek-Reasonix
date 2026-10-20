@@ -1015,6 +1015,11 @@ export const zh: Record<DictKey, string> = {
   "composer.queueGuidance": "加入引导队列（{combo}）",
   "composer.steer": "追加到当前任务（Enter）",
   "composer.steerPlaceholder": "正在运行——输入补充指示，{combo} 加入队列",
+  // 任务1015：五态 queued_followup 与长工具链可见性。
+  "composer.queuedStrip": "消息已排队，本轮结束后自动发出",
+  "composer.queuedPlaceholder": "已排队——本轮结束后自动发出，可继续输入",
+  "composer.executingTool": "正在执行：{tool}",
+  "composer.lastEventAgo": "最后事件 {n}s 前",
   "composer.runWaitingApproval": "等待你批准 — {tool}",
   "composer.runWaitingAsk": "等待你回答",
   "composer.runAnnounceRunning": "正在运行",

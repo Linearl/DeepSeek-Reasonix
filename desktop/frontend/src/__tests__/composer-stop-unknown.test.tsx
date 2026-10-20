@@ -242,5 +242,56 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
+// ── 任务1015：五态 queued_followup（输入区排队态）与长工具链可见性 ──
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced", { phase: "executing" }));
+  runtimeStateStore.flush();
+  const { root, calls } = await renderComposer({
+    running: true,
+    tabId: "t1015-queued",
+    turnRuntimeState: "queued_followup",
+    currentToolLabel: "bash",
+    lastTurnEventAt: Date.now() - 5000,
+  });
+  // 排队态与 running 可区分：run strip + placeholder 呈现排队文案。
+  ok(Boolean(document.querySelector(".composer-run-strip")?.textContent?.includes(en["composer.queuedStrip"])),
+    "queued_followup run strip announces the queued state");
+  const input = document.querySelector("textarea.composer__input:not([aria-hidden=true])") as HTMLTextAreaElement;
+  eq(input?.getAttribute("placeholder"), en["composer.queuedPlaceholder"], "queued_followup placeholder announces the queued state");
+  // 四信号一致（验收1）：turn 真在跑 → 停止按钮在场 + steer 形态。
+  ok(stopButton() !== null, "queued_followup keeps the stop button visible (turn is genuinely running)");
+  ok(Boolean(document.querySelector(".composer__btn--send.composer__btn--steer")), "queued_followup keeps the steer send form");
+  eq(stopButton()?.disabled, false, "queued_followup stop button is enabled");
+  await act(async () => {
+    stopButton()?.click();
+    await flushTimers();
+  });
+  eq(calls.cancel, 1, "queued_followup stop click fires onCancel");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
+// ── 任务1015：长工具链「正在执行 <工具>」+ 心跳（无输出期不呈现为静止）──
+{
+  const dom = installDom();
+  runtimeStateStore.commit(projection("synced", { phase: "executing" }));
+  runtimeStateStore.flush();
+  const { root } = await renderComposer({
+    running: true,
+    tabId: "t1015-tool",
+    turnRuntimeState: "running",
+    currentToolLabel: "bash",
+    lastTurnEventAt: Date.now() - 5000,
+  });
+  const stripText = document.querySelector(".composer-run-strip")?.textContent ?? "";
+  ok(stripText.includes(en["composer.executingTool"].replace("{tool}", "bash")),
+    "running strip names the executing tool");
+  ok(stripText.includes("last event") && /[0-9]/.test(stripText),
+    "running strip shows the last-event heartbeat");
+  await act(async () => { root.unmount(); });
+  dom.window.close();
+}
+
 process.stdout.write(`\ncomposer stop unknown: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

@@ -1016,6 +1016,11 @@ export const en = {
   "composer.queueGuidance": "Add to guidance queue ({combo})",
   "composer.steer": "Add guidance to current turn (Enter)",
   "composer.steerPlaceholder": "Running — type guidance, {combo} adds it to the queue",
+  // Task 1015: queued_followup state + long tool-chain visibility.
+  "composer.queuedStrip": "Message queued — it will be sent when this turn finishes",
+  "composer.queuedPlaceholder": "Queued — sent after this turn; you can keep typing",
+  "composer.executingTool": "Running: {tool}",
+  "composer.lastEventAgo": "last event {n}s ago",
   "composer.runWaitingApproval": "Waiting for your approval — {tool}",
   "composer.runWaitingAsk": "Waiting for your answer",
   "composer.runAnnounceRunning": "Reasonix is working",

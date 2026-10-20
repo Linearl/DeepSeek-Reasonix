@@ -592,6 +592,9 @@ export function Composer({
   onCancel,
   stopLevel,
   stopDeadlineUnix,
+  turnRuntimeState,
+  currentToolLabel,
+  lastTurnEventAt,
   onEscalateStop,
   onCycleMode,
   onSetMode,
@@ -716,6 +719,12 @@ export function Composer({
    * 2 force grace, 3 force) + the grace countdown's authoritative end. */
   stopLevel?: number;
   stopDeadlineUnix?: number;
+  /** 任务1015：唯一五态 TurnRuntimeState（useController 从后端 RuntimeStatus
+   * 派生）。running prop 已是 turnActive；排队/降级提示只认这里的五态本体。 */
+  turnRuntimeState?: "idle" | "running" | "stopping" | "queued_followup" | "unknown";
+  /** 任务1015：长工具链可见性——正在执行的工具名（最新 running 工具卡）+ 最后事件时间。 */
+  currentToolLabel?: string;
+  lastTurnEventAt?: number;
   /** Escalation press (2nd+ click on stop): advances the backend level. */
   onEscalateStop?: () => void | Promise<void>;
   onCycleMode: () => void;
@@ -888,7 +897,10 @@ export function Composer({
     return t("composer.stopNormal");
   };
   const finishing = runtimeState.finishing;
-  if (runtimeState.known) running = runtimeState.running ?? running;
+  // 任务1015：投影以并集（OR）并入 running——宿主传入的 running 可能不含投
+  // 影事实（inbox 表面/收尾窗），投影说在跑就是在跑；但不再单独覆盖（旧
+  // `?? running` 会把 useController 的并集结果压回纯投影，重现闪断）。
+  if (runtimeState.known && runtimeState.running) running = true;
   if (runtimeState.unknown) disabled = true;
   const pendingKey = followupSessionKey(inboxSessionPath, inboxHostId, inboxWorkspace);
   const pendingKeyRef = useRef(pendingKey);
@@ -4870,15 +4882,25 @@ export function Composer({
   );
   const turnPhaseLabel = turnPhaseStatusLabel(turnPhase, t);
   const readStatusText = readStatusLabel(readStatuses, t);
+  // 任务1015：排队态（queued_followup）与 running 可区分——run strip 与
+  // placeholder 呈现排队文案，停止按钮/steer 形态保持（turn 真在跑）。
+  const queuedFollowup = turnRuntimeState === "queued_followup";
+  // 任务1015：长工具链心跳——最后一个 turn 活动事件距现在的秒数（无输出期
+  // 也不呈现为静止）。
+  const heartbeatSeconds = running && lastTurnEventAt
+    ? Math.max(0, Math.floor((now - lastTurnEventAt) / 1000))
+    : null;
   const runStateText = runtimeState.unknown ? t("runtime.unknown") : finishing ? t("runtime.finishing") : runtimeState.kind === "cancelling" ? t("status.jobStopping") : runtimeState.kind === "background_job" ? t("runtime.background", { count: runtimeState.state?.backgroundJobs ?? 0 }) : retry
     ? recoveryStatusText(t, retry, now)
     : waitingPrompt === "approval"
       ? t("composer.runWaitingApproval", { tool: pendingApprovalLabel ?? "" })
       : waitingPrompt === "ask"
         ? t("composer.runWaitingAsk")
-        : running && !suspendedByDecision
-          ? turnPhaseLabel
-          : null;
+          : queuedFollowup
+            ? t("composer.queuedStrip")
+            : running && !suspendedByDecision
+              ? [currentToolLabel ? t("composer.executingTool", { tool: currentToolLabel }) : turnPhaseLabel, heartbeatSeconds != null ? t("composer.lastEventAgo", { n: heartbeatSeconds }) : ""].filter(Boolean).join(" · ")
+              : null;
   const runMetrics = turnStartAt && (running || turnDoneAt)
     ? (() => {
         const metricsNow = turnDoneAt || now;
@@ -4916,13 +4938,15 @@ export function Composer({
     ? t("composer.readOnlyChannel")
     : disabled
       ? t("common.loading")
-      : running
-        ? t("composer.steerPlaceholder", { combo: sendComboLabel })
-        : goalModeOn && !activeGoal
-          ? t("composer.goalInputPlaceholder")
-          : planModeOn
-            ? t("composer.planInputPlaceholder")
-            : t("composer.placeholder");
+      : queuedFollowup
+        ? t("composer.queuedPlaceholder")
+        : running
+          ? t("composer.steerPlaceholder", { combo: sendComboLabel })
+          : goalModeOn && !activeGoal
+            ? t("composer.goalInputPlaceholder")
+            : planModeOn
+              ? t("composer.planInputPlaceholder")
+              : t("composer.placeholder");
   const composerMetaClass = [
     "composer-meta composer-meta--unified",
     hasEffort ? "composer-meta--has-effort" : "composer-meta--no-effort",
