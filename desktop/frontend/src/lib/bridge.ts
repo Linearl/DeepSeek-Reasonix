@@ -1156,6 +1156,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   Checkpoints(): Promise<CheckpointMeta[]>;
   CheckpointsForTab(tabID: string): Promise<CheckpointMeta[]>;
   // 任务 1023：未入档输入对账（只读）——checkpoint 里有、transcript 里没有的 user 输入。
+  // UnfiledInputs 是活跃 tab 的无参版本；1023 阶段0 漏声明，出包构建基于新 wailsjs
+  // 重新生成后被 _CheckGenToApp 防线抓出，此处补齐。
+  UnfiledInputs(): Promise<import("./types").UnfiledInputView[]>;
   UnfiledInputsForTab(tabID: string): Promise<import("./types").UnfiledInputView[]>;
   Rewind(turn: number, scope: string): Promise<void>;
   RewindForTab(tabID: string, turn: number, scope: string): Promise<void>;
@@ -4873,6 +4876,9 @@ function makeMockApp(): AppBindings {
     },
     async CheckpointsForTab() {
       return this.Checkpoints();
+    },
+    async UnfiledInputs() {
+      return [];
     },
     async UnfiledInputsForTab() {
       return [];
