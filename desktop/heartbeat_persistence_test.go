@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -553,5 +556,103 @@ func TestHeartbeatConfigForwardProtectionOnRead(t *testing.T) {
 	}
 	if tasks := engine.loadTasks(); tasks != nil {
 		t.Fatal("loadTasks should refuse to load a future schemaVersion")
+	}
+}
+
+// ── Task 941 ①: writer-identity stamp on every config write ─────────────────
+
+// heartbeatSlogCapture records slog records so a test can pin the write stamp
+// (writer / rev pair / change summary) without scraping stdout.
+type heartbeatSlogCapture struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *heartbeatSlogCapture) Enabled(context.Context, slog.Level) bool { return true }
+func (h *heartbeatSlogCapture) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+func (h *heartbeatSlogCapture) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *heartbeatSlogCapture) WithGroup(string) slog.Handler      { return h }
+
+func (h *heartbeatSlogCapture) find(msg string) (slog.Record, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.records {
+		if r.Message == msg {
+			return r, true
+		}
+	}
+	return slog.Record{}, false
+}
+
+// heartbeatSlogAttr returns one record attribute rendered as a string.
+func heartbeatSlogAttr(r slog.Record, key string) (string, bool) {
+	var out string
+	found := false
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			out = fmt.Sprint(a.Value.Any())
+			found = true
+			return false
+		}
+		return true
+	})
+	return out, found
+}
+
+// Task 941 ① acceptance: a heartbeat-tasks.json write emits one log record
+// carrying the writer identity ("run" for the run-state merge), the revision
+// transition and the field-level change summary — the 20261017 write storm
+// (revision 6439→6460+) must be attributable from the log alone.
+func TestHeartbeatConfigWriteStampsWriter(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	engine := newHeartbeatEngine(nil)
+	if err := engine.saveTasks([]HeartbeatTask{{ID: "watched", Title: "w", Interval: "1h", Enabled: true}}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := engine.readConfigSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.mu.Lock()
+	engine.recordConfigSnapshotLocked(snapshot)
+	engine.tasks = append([]HeartbeatTask(nil), snapshot.cfg.Tasks...)
+	revBefore := snapshot.cfg.Revision
+
+	capture := &heartbeatSlogCapture{}
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(capture))
+	engine.mergeRunUpdatesLocked(map[string]HeartbeatTask{"watched": {ID: "watched", LastRunAt: 1729200000000}})
+	slog.SetDefault(prevLogger)
+	engine.mu.Unlock()
+
+	record, ok := capture.find("heartbeat config written")
+	if !ok {
+		t.Fatal("run-state merge must emit the \"heartbeat config written\" stamp (task 941)")
+	}
+	if writer, _ := heartbeatSlogAttr(record, "writer"); writer != "run" {
+		t.Fatalf("writer = %q, want \"run\"", writer)
+	}
+	if from, _ := heartbeatSlogAttr(record, "rev_from"); from != fmt.Sprint(revBefore) {
+		t.Fatalf("rev_from = %q, want %d", from, revBefore)
+	}
+	if to, _ := heartbeatSlogAttr(record, "rev_to"); to != fmt.Sprint(revBefore+1) {
+		t.Fatalf("rev_to = %q, want %d", to, revBefore+1)
+	}
+	if changes, _ := heartbeatSlogAttr(record, "changes"); changes != "watched:{lastRunAt}" {
+		t.Fatalf("changes = %q, want \"watched:{lastRunAt}\"", changes)
+	}
+
+	// The stamp reflects reality: the persisted revision moved by exactly one.
+	after, err := engine.readConfigSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.cfg.Revision != revBefore+1 {
+		t.Fatalf("persisted revision = %d, want %d", after.cfg.Revision, revBefore+1)
 	}
 }

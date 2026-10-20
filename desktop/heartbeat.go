@@ -1133,7 +1133,7 @@ func (e *HeartbeatEngine) ReplaceTasks(tasks []HeartbeatTask) error {
 	// loaded: a stale panel save (e.g. toggling enabled) must not clear the
 	// runHistory that a background execution persisted meanwhile.
 	tasks = mergeHeartbeatDiskRunHistory(tasks, expected.cfg.Tasks)
-	if err := e.writeTasks(tasks, expected, true); err != nil {
+	if err := e.writeTasks(tasks, expected, true, "panel-save"); err != nil {
 		return err
 	}
 	latest, err := e.readConfigSnapshot()
@@ -1173,7 +1173,7 @@ func (e *HeartbeatEngine) ReplaceConfig(update HeartbeatConfigUpdate) (Heartbeat
 		return expected.view(), ErrHeartbeatConfigConflict
 	}
 	tasks := mergeHeartbeatDiskRunHistory(update.Tasks, expected.cfg.Tasks)
-	if err := e.writeTasks(tasks, expected, true); err != nil {
+	if err := e.writeTasks(tasks, expected, true, "panel-save-cas"); err != nil {
 		return expected.view(), err
 	}
 	latest, err := e.readConfigSnapshot()

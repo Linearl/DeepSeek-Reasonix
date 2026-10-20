@@ -294,7 +294,7 @@ func TestAutopilotGuardSelfClosePolicies(t *testing.T) {
 
 			// Mirror the engine: run state is merged, then the destroy policy
 			// removes the row.
-			if err := engine.mutateTasks(func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
+			if err := engine.mutateTasks("guard-test", func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error) {
 				for i := range tasks {
 					if tasks[i].ID == updated.ID {
 						tasks[i].Enabled = updated.Enabled
