@@ -1,9 +1,12 @@
 package collabinbox
 
 import (
+	"bytes"
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"reasonix/internal/baseproc/pidalive"
 )
@@ -34,10 +37,32 @@ import (
 // cleared sidecar content ("" when the sidecar was absent, live-owned, or
 // left alone as unjudgeable).
 func (s *Store) clearStaleHolderIfDead() string {
-	info := s.LockHolderInfo()
-	if info == "" {
+	return reclaimStaleHolderSidecar(s.mailDir, s.lockHolderPath())
+}
+
+// ReclaimStaleHolderSidecarAtBoot is the 任务1017 批A boot entry: a crash
+// restart used to leave a dead holder's sidecar in place until the NEXT pickup
+// attempt (2026-10-19 现场：pid=51264 的 sidecar 从 21:04 崩溃重启一路残留到
+// 22:47 第一次取件才被清——5 小时里每个读到它的排障者都被指向一个早已死亡的
+// 进程). Callers run this once per process boot so the stale diagnostic dies
+// with the boot, not with the next lucky read. Same recycle contract as
+// clearStaleHolderIfDead: only the sidecar is touched, never the lock file or
+// the OS lock; a live (or pid-reuse-looking) holder is never cleared.
+func ReclaimStaleHolderSidecarAtBoot(mailDir string) string {
+	if strings.TrimSpace(mailDir) == "" {
 		return ""
 	}
+	return reclaimStaleHolderSidecar(mailDir, filepath.Join(mailDir, lockName+".holder"))
+}
+
+// reclaimStaleHolderSidecar is the shared body: read the sidecar at path,
+// clear it iff the pid it names is provably dead, and log what was cleared.
+func reclaimStaleHolderSidecar(mailDir, holderPath string) string {
+	b, err := os.ReadFile(holderPath)
+	if err != nil || len(bytes.TrimSpace(b)) == 0 {
+		return ""
+	}
+	info := strings.TrimSpace(string(b))
 	pid := pidalive.ParseHolderPid(info)
 	if pid <= 0 {
 		return "" // unparsable: cannot judge — leave it, never guess
@@ -45,9 +70,9 @@ func (s *Store) clearStaleHolderIfDead() string {
 	if pidalive.Alive(pid) {
 		return "" // live holder (or pid reuse): NEVER touch a live holder's record
 	}
-	if err := os.Remove(s.lockHolderPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(holderPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Warn("collab inbox: stale lock holder sidecar removal failed",
-			"path", s.lockHolderPath(), "stale_holder", info, "pid", pid, "err", err)
+			"path", holderPath, "stale_holder", info, "pid", pid, "err", err)
 		return ""
 	}
 	slog.Info("collab inbox: stale lock holder sidecar cleared (recorded holder process is gone; the OS lock died with it)",

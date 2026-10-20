@@ -34,5 +34,6 @@ func (s *MailStore) Drain(ctx context.Context, contactID string, fn func(pending
 	for _, m := range refused {
 		settled = append(settled, m.ID)
 	}
-	return s.ackLocked(contactID, settled...)
+	// 任务1017 批C-E：同锁批量结算留下归属方，现场可归因。
+	return s.ackLockedWithOwner(contactID, AckOwnerDrainInbox, settled...)
 }

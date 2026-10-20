@@ -266,3 +266,62 @@ func TestTalkToSessionShowsPanelDegradation(t *testing.T) {
 		t.Fatalf("the effective mode must read followup: %s", out)
 	}
 }
+
+// TestGetMessageStatusFailedRetryingIntermediateState（任务1017 批C-D，验收
+// 判据③）：failed_retrying 是非终态中间态——空闲开轮桥每次持续失败都会带
+// attempts 写回执，发送方 get_message_status 必须能看到「重试 N/3」的进度，
+// 而不是永远停在 queued_followup 绿灯上（2026-10-19 现场的静默缺口）。
+func TestGetMessageStatusFailedRetryingIntermediateState(t *testing.T) {
+	env := newStatusTestEnv(t)
+	store := newMailStoreForTest(t, env.mailDir)
+	sent, err := store.Deliver(context.Background(), newMailMsgForTest(env.fromID, env.toID, "hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordDeliveryReceipt(context.Background(), sessioncollab.DeliveryReceipt{
+		MessageID: sent.ID,
+		From:      sent.From,
+		To:        sent.To,
+		Outcome:   sessioncollab.ReceiptFailedRetrying,
+		Attempts:  1,
+		Detail:    "目标空闲开轮第 1/3 次尝试未成功",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tool := NewGetMessageStatusTool(statusToolCfg(env, env.fromID))
+	out, err := tool.Execute(context.Background(), json.RawMessage(`{"message_id":"`+sent.ID+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"status":"failed_retrying"`) || !strings.Contains(out, `"known":true`) {
+		t.Fatalf("sender must see the intermediate retrying state: %s", out)
+	}
+	// 中间态必须带进度（attempts）与预算上限（3），可证伪地回答「还要重试吗」。
+	if !strings.Contains(out, `"attempts":1`) {
+		t.Fatalf("the retrying intermediate state must carry the attempt count: %s", out)
+	}
+	if !strings.Contains(out, "3 次") {
+		t.Fatalf("semantics must state the opening budget: %s", out)
+	}
+}
+
+// receiptStatusSemantics 的词表完整性：每个已知结局都必须有非空语义文案，
+// 拼错词必须落到空串（测试兜住「新结局忘了写人话」的回归）。
+func TestReceiptStatusSemanticsCoversVocabulary(t *testing.T) {
+	for _, outcome := range []string{
+		sessioncollab.ReceiptInjected,
+		sessioncollab.ReceiptQueuedFollowup,
+		sessioncollab.ReceiptRefusedHop,
+		sessioncollab.ReceiptRefusedProvenance,
+		sessioncollab.ReceiptRefusedCrossWire,
+		sessioncollab.ReceiptFailedRetrying,
+		sessioncollab.ReceiptOpenRetryExhausted,
+	} {
+		if receiptStatusSemantics(outcome) == "" {
+			t.Fatalf("outcome %q must have caller-facing semantics", outcome)
+		}
+	}
+	if receiptStatusSemantics("unknown_outcome") != "" {
+		t.Fatal("an unknown outcome must map to empty semantics")
+	}
+}

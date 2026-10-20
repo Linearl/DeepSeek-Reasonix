@@ -15,6 +15,7 @@
 package sessioncollab
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -742,10 +743,29 @@ func (s *MailStore) LockHolderInfo() string {
 // 各自治理各自的诊断文件）：只删诊断文件、绝不触碰锁文件与 OS 锁；pid 存活
 // （含复用后看似存活）或不可解析 ⇒ 一字不动。
 func (s *MailStore) clearStaleHolderIfDead() string {
-	info := s.LockHolderInfo()
-	if info == "" {
+	return reclaimMailHolderSidecar(s.lockHolderPath())
+}
+
+// ReclaimStaleMailHolderSidecarAtBoot is the 任务1017 批A boot entry, the
+// .mail.lock twin of collabinbox.ReclaimStaleHolderSidecarAtBoot: a crash
+// restart used to leave the dead holder's diagnostic in place until the next
+// mail-lock contention (2026-10-19 现场的 5h24m 残留即此形态). One call per
+// process boot reclaims it up front. Same contract: sidecar only — the lock
+// file and the OS lock are never touched; a live (or pid-reuse-looking)
+// holder is never cleared; unparsable content is left alone.
+func ReclaimStaleMailHolderSidecarAtBoot(mailDir string) string {
+	if strings.TrimSpace(mailDir) == "" {
 		return ""
 	}
+	return reclaimMailHolderSidecar(filepath.Join(mailDir, ".mail.lock.holder"))
+}
+
+func reclaimMailHolderSidecar(holderPath string) string {
+	b, err := os.ReadFile(holderPath)
+	if err != nil || len(bytes.TrimSpace(b)) == 0 {
+		return ""
+	}
+	info := strings.TrimSpace(string(b))
 	pid := pidalive.ParseHolderPid(info)
 	if pid <= 0 {
 		return "" // unparsable: cannot judge — leave it, never guess
@@ -753,9 +773,9 @@ func (s *MailStore) clearStaleHolderIfDead() string {
 	if pidalive.Alive(pid) {
 		return "" // live holder (or pid reuse): NEVER touch a live holder's record
 	}
-	if err := os.Remove(s.lockHolderPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(holderPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Warn("session collab mail: stale lock holder sidecar removal failed",
-			"path", s.lockHolderPath(), "stale_holder", info, "pid", pid, "err", err)
+			"path", holderPath, "stale_holder", info, "pid", pid, "err", err)
 		return ""
 	}
 	slog.Info("session collab mail: stale lock holder sidecar cleared (recorded holder process is gone; the OS lock died with it)",
@@ -973,17 +993,8 @@ func (s *MailStore) claimLocked(contactID string) (pending []MailMessage, refuse
 
 // Ack advances the cursor for IDs whose delivery is settled — delivered
 // successfully, or refused for good. Not acking leaves them for the next pass.
-func (s *MailStore) Ack(ctx context.Context, contactID string, ids ...string) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	unlock, err := s.lock(ctx)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	return s.ackLocked(contactID, ids...)
-}
+// 任务1017 批C-E: Ack and its ownership journal live in ack_owner.go;
+// production consumers should call AckWithOwner to name their path.
 
 // Settled reports whether messageID has already been consumed from the
 // contact's mailbox (the seen cursor). Task 263: the session-inbox recovery
@@ -998,15 +1009,11 @@ func (s *MailStore) Settled(contactID, messageID string) bool {
 	return s.readCursor(contactID)[messageID]
 }
 
-// ackLocked is Ack's body under the caller's lock (B1: same-lock Claim+Ack).
+// ackLocked is the drain-path Ack body under the caller's lock (B1: same-lock
+// Claim+Ack). 任务1017 批C-E: journal attribution moved to ackLockedWithOwner;
+// Drain passes its own owner tag.
 func (s *MailStore) ackLocked(contactID string, ids ...string) error {
-	seen := s.readCursor(contactID)
-	for _, id := range ids {
-		if strings.TrimSpace(id) != "" {
-			seen[id] = true
-		}
-	}
-	return s.writeCursor(contactID, seen)
+	return s.ackLockedWithOwner(contactID, AckOwnerUnattributed, ids...)
 }
 
 // AwaitReply waits for a message on threadID addressed to contactID and
@@ -1040,7 +1047,7 @@ func (s *MailStore) AwaitReplyContext(ctx context.Context, contactID, threadID s
 			for _, m := range all {
 				if m.ThreadID == threadID {
 					// Best-effort: a failed ack costs a duplicate, not a loss.
-					_ = s.Ack(ctx, contactID, m.ID)
+					_ = s.AckWithOwner(ctx, AckOwnerAwaitReply, contactID, m.ID)
 					return m, true
 				}
 			}
