@@ -3613,6 +3613,7 @@ export const zhTW: Record<DictKey, string> = {
   "context.other": "其他",
   "context.compositionTitle": "上下文構成",
   "context.segment.message": "訊息",
+  "context.segment.images": "圖片",
   "context.segment.builtinTools": "系統工具",
   "context.segment.skills": "技能",
   "context.segment.systemPrompt": "系統提示詞",

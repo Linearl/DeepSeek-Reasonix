@@ -34,6 +34,13 @@ type ContextComposition struct {
 	// MessageTokens is everything else: user/assistant content (reasoning
 	// bodies and tool-call arguments included) plus ordinary tool results.
 	MessageTokens int `json:"messageTokens"`
+	// ImageTokens is the resolution-derived price of every provider-visible
+	// image in the live view (任务1040): the headline gauge (ContextUsedTokens)
+	// bills images via requestCalibrationShape, but the segmented bar measured
+	// bytes only — a screenshot session showed images in the headline and an
+	// all-"消息" bar, so the two readouts could never be reconciled. Shares stay
+	// normalized to the same 100% by construction (frontend normalizeShares).
+	ImageTokens int `json:"imageTokens"`
 	// TotalTokens is the sum of the segments above — the composition's own
 	// total, kept separate from the calibrated gauge number.
 	TotalTokens int `json:"totalTokens"`
@@ -65,9 +72,20 @@ func (a *Agent) ContextComposition() ContextComposition {
 func computeContextComposition(messages []provider.Message, schemas []provider.ToolSchema) ContextComposition {
 	comp := ContextComposition{}
 	for _, msg := range messages {
+		if msg.LocalOnly {
+			continue
+		}
 		size := len(msg.Content) + len(msg.ReasoningContent)
 		for _, call := range msg.ToolCalls {
 			size += len(call.Arguments)
+		}
+		// 任务1040: images price by resolution, never by content bytes — the
+		// same caliber the headline gauge (requestCalibrationShape →
+		// imageEstimateTokensOf) speaks. Without this bucket a screenshot-only
+		// message contributed 0 bytes to the bar while the headline billed
+		// ~2K tokens per image.
+		for _, img := range msg.Images {
+			comp.ImageTokens += imageEstimateTokens(img)
 		}
 		switch {
 		case msg.Role == provider.RoleSystem:
@@ -89,6 +107,6 @@ func computeContextComposition(messages []provider.Message, schemas []provider.T
 			comp.BuiltinToolTokens += estimateTokens(string(b))
 		}
 	}
-	comp.TotalTokens = comp.SystemPromptTokens + comp.BuiltinToolTokens + comp.SkillTokens + comp.McpToolTokens + comp.MessageTokens
+	comp.TotalTokens = comp.SystemPromptTokens + comp.BuiltinToolTokens + comp.SkillTokens + comp.McpToolTokens + comp.MessageTokens + comp.ImageTokens
 	return comp
 }

@@ -8339,6 +8339,7 @@ type ContextCompositionInfo struct {
 	SkillTokens        int `json:"skillTokens"`
 	McpToolTokens      int `json:"mcpToolTokens"`
 	MessageTokens      int `json:"messageTokens"`
+	ImageTokens        int `json:"imageTokens"` // 任务1040: resolution-derived image price bucket
 	TotalTokens        int `json:"totalTokens"`
 }
 
@@ -8444,6 +8445,7 @@ func (a *App) ContextPanel(tabID string) ContextPanelInfo {
 				SkillTokens:        comp.SkillTokens,
 				McpToolTokens:      comp.McpToolTokens,
 				MessageTokens:      comp.MessageTokens,
+				ImageTokens:        comp.ImageTokens,
 				TotalTokens:        comp.TotalTokens,
 			}
 		}

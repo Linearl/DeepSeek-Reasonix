@@ -44,6 +44,7 @@ export function isOpencodeGoProvider(providerName: string | null | undefined): b
 
 export type CompositionSegmentKey =
   | "message"
+  | "images"
   | "builtinTools"
   | "skills"
   | "systemPrompt"
@@ -61,13 +62,22 @@ export interface CompositionSegment {
 // Display order follows the dispatch's category list. "other" is reserved for
 // content the host cannot attribute to a named segment; today every byte of a
 // request lands in a named bucket, so it renders at 0% until a host gains a
-// real other-source — the legend keeps the six categories the user asked for.
+// real other-source — the legend keeps the categories the user asked for.
+// 任务1040 adds "images": screenshots price by resolution (not content bytes),
+// and without their own bucket the bar showed an all-"消息" composition while
+// the headline billed ~2K tokens per image — the two readouts could never be
+// reconciled. Older hosts omit imageTokens → Math.max(0, undefined) = 0, the
+// segment disappears (same as "other") and the bar degrades gracefully.
 const SEGMENT_DEFS: ReadonlyArray<{
   key: CompositionSegmentKey;
   labelKey: DictKey;
+  /** Hidden until the host reports a non-zero value — this is what drops the
+   * reserved "other" row (and the images row on a pre-1040 host) instead of
+   * rendering a misleading 0.0%. */
   tokens: (c: ContextCompositionInfo) => number;
 }> = [
   { key: "message", labelKey: "context.segment.message", tokens: (c) => c.messageTokens },
+  { key: "images", labelKey: "context.segment.images", tokens: (c) => c.imageTokens ?? 0 },
   { key: "builtinTools", labelKey: "context.segment.builtinTools", tokens: (c) => c.builtinToolTokens },
   { key: "skills", labelKey: "context.segment.skills", tokens: (c) => c.skillTokens },
   { key: "systemPrompt", labelKey: "context.segment.systemPrompt", tokens: (c) => c.systemPromptTokens },
@@ -115,18 +125,21 @@ export function normalizeShares(tokens: number[]): number[] {
 }
 
 /**
- * compositionSegments returns the popup's six legend rows. An absent or empty
+ * compositionSegments returns the popup's legend rows. An absent or empty
  * composition (host predates the accessor, or no session yet) returns [] and
- * the popup hides the segmented bar instead of drawing zeros.
+ * the popup hides the segmented bar instead of drawing zeros. Zero-token
+ * buckets (the reserved "other" row today, "images" on a pre-1040 host) are
+ * dropped rather than rendered as a misleading 0.0% row.
  */
 export function compositionSegments(
   composition: ContextCompositionInfo | null | undefined,
 ): CompositionSegment[] {
   if (!composition || composition.totalTokens <= 0) return [];
-  const tokens = SEGMENT_DEFS.map((def) => Math.max(0, def.tokens(composition)));
-  if (tokens.every((value) => value === 0)) return [];
+  const visible = SEGMENT_DEFS.filter((def) => Math.max(0, def.tokens(composition)) > 0);
+  const tokens = visible.map((def) => Math.max(0, def.tokens(composition)));
+  if (tokens.length === 0) return [];
   const shares = normalizeShares(tokens);
-  return SEGMENT_DEFS.map((def, index) => ({
+  return visible.map((def, index) => ({
     key: def.key,
     labelKey: def.labelKey,
     tokens: tokens[index],
