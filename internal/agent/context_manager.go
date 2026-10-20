@@ -378,7 +378,9 @@ func (m ContextManager) summaryNoop(policy ContextPreparePolicy, inputHash strin
 	// physically-oversized session on a digest-less no-op forever.
 	switch {
 	case policy.Trigger == CompactionTriggerOverflow || est >= hard:
-		return m.rescueByTruncation(policy, hard, ErrNoFoldableRegion)
+		// 任务1029①: 无 foldable region 的超窗会话同样走换道阶梯——只截不换
+		// 会在"截不动"形态（保护尾巨 unit）下死循环到熔断。
+		return m.rescueByTruncationOrSlidingWindow(policy, hard, ErrNoFoldableRegion)
 	case policy.Force:
 		return PreparedContext{}, fmt.Errorf("%w: %w", ErrCompactionRequired, ErrNoFoldableRegion)
 	default:
@@ -388,17 +390,18 @@ func (m ContextManager) summaryNoop(policy ContextPreparePolicy, inputHash strin
 
 // rescueOrFail decides what a failed summary means: below the ceiling
 // automatic maintenance waits for the next view and a manual compact reports
-// the error; at or above the ceiling only the lossy truncation rescue is left.
-// 任务822: the ceiling read is per-trigger. Manual compaction is an explicit
-// demand that the session return to an in-window track, so it reads the
-// physical occupancy (est) — a clamped tail view never reaches hard, and the
-// rescue would never fire. 任务719 made the bounded view admissible for
-// automatic maintenance, so pressure keeps the view-sized read: the
-// truncation rescue loses its premise when the turn already leaves with an
+// the error; at or above the ceiling the lossy truncation rescue runs first
+// and the sliding-window cap takes over when even that cannot land the view
+// under the ceiling. 任务822: the ceiling read is per-trigger. Manual
+// compaction is an explicit demand that the session return to an in-window
+// track, so it reads the physical occupancy (est) — a clamped tail view never
+// reaches hard, and the rescue would never fire. 任务719 made the bounded view
+// admissible for automatic maintenance, so pressure keeps the view-sized read:
+// the truncation rescue loses its premise when the turn already leaves with an
 // admissible view (compact_summary_guard contract, 813 parked-episode pin).
 func (m ContextManager) rescueOrFail(policy ContextPreparePolicy, hard, est int, cause error) (PreparedContext, error) {
 	if policy.Trigger == CompactionTriggerOverflow {
-		return m.rescueByTruncation(policy, hard, cause)
+		return m.rescueByTruncationOrSlidingWindow(policy, hard, cause)
 	}
 	overCeiling := m.currentPrepared().InputTokens >= hard
 	if policy.Trigger == CompactionTriggerManual {
@@ -416,7 +419,38 @@ func (m ContextManager) rescueOrFail(policy ContextPreparePolicy, hard, est int,
 		}
 		return m.currentPrepared(), nil
 	}
-	return m.rescueByTruncation(policy, hard, cause)
+	return m.rescueByTruncationOrSlidingWindow(policy, hard, cause)
+}
+
+// rescueByTruncationOrSlidingWindow is the over-ceiling rescue ladder
+// (任务1029①): the two degradation paths used to be mutually deadlocked. The
+// truncation rescue cuts at replay-unit granularity, so a tail dominated by
+// one giant replay unit (the 587K-char tool result sample) or by drop-
+// protected session-context carriers stayed at e.g. 1066351 >= 1048320
+// forever; slidingWindowFallback was reachable only below the ceiling; the
+// turn kept failing and autopilot sealed the session (15 亿 tokens 烧穿).
+// When truncation cannot land the view under the ceiling, switch lanes to the
+// sliding-window cap — the same mechanism the below-ceiling path already
+// uses, but gated on the over-ceiling fact itself instead of the failure
+// streak: a view that physically cannot be sent is stronger evidence than
+// three failed summaries.
+func (m ContextManager) rescueByTruncationOrSlidingWindow(policy ContextPreparePolicy, hard int, cause error) (PreparedContext, error) {
+	capped, truncErr := m.rescueByTruncation(policy, hard, cause)
+	if truncErr == nil {
+		return capped, nil
+	}
+	// 视图本就低于物理天花板时不存在"发不出"的死锁——重复的 overflow 信号
+	// 落在已恢复的视图上属于无事可做，保持失败可见（同轮恢复契约：新的
+	// provider-visible 输入才允许再次动手，compact_same_turn_overflow 契约）。
+	if m.currentPrepared().InputTokens < hard {
+		return PreparedContext{}, truncErr
+	}
+	fallback, _ := m.slidingWindowCap(policy, slidingWindowCapCause(cause))
+	if fallback.InputTokens < hard {
+		m.agent.resetCompactionProgress()
+		return fallback, nil
+	}
+	return PreparedContext{}, truncErr
 }
 
 // rescueByTruncation installs the lossy truncation projection aimed at the
