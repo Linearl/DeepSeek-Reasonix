@@ -30949,21 +30949,32 @@ button.statusbar__mcp:focus-visible {
   flex: 1 1 auto;
 }
 
-/* 任务 932: 概览最下方 events 文件大小行（perf monitor 开启才渲染）。 */
-.context-panel__events-size {
+/* 任务 932: 概览最下方 events 文件大小卡（perf monitor 开启才渲染）。
+   任务 997: 升级为与会话指标同族的圆角卡片——外框复用
+   context-panel__section（同圆角/边框/底色），内部两行 label+数值。 */
+.context-panel__events-size-card {
+  min-width: 0;
+}
+
+.context-panel__events-size-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.context-panel__events-size-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
-  padding: 7px 0 2px;
-  border-top: 1px solid var(--border-soft);
   color: var(--fg-dim);
   font-size: var(--text-sm);
   line-height: 1.2;
 }
 
-.context-panel__events-size-label {
+.context-panel__events-size-row span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -30971,10 +30982,11 @@ button.statusbar__mcp:focus-visible {
   font-size: 11.5px;
 }
 
-.context-panel__events-size strong {
+.context-panel__events-size-row strong {
   color: var(--fg);
   font-weight: 600;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .context-panel__legend-row,

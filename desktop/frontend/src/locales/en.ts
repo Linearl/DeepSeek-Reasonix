@@ -5051,6 +5051,8 @@ export const en = {
   "context.sessionMetrics": "Session metrics",
   "context.sessionGroup": "Group",
   "context.eventsSizeLabel": "Events file size",
+  "context.eventsSizeAllLabel": "All conversations events",
+  "context.eventsSizeCurrentLabel": "Current conversation events",
   "context.mcpListTitle": "MCP tools/list",
   "context.mcpListSharedHost": "Shared host",
   "context.mcpListDiskCache": "Disk cache",

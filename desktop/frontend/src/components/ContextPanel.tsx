@@ -294,17 +294,21 @@ export function contextBreakdown(
 
 export { contextWindowStatus } from "../lib/contextPanelUtils";
 
-// 任务 932: 概览面板最下方的 events 文件大小行（可观测性展示件）。
+// 任务 932: 概览面板最下方的 events 文件大小卡（可观测性展示件）。
 // 门控 = 实验室「可观测性-监控」perf monitor 行（experimental_perf_monitor，
-// labFlags.perfMonitor）：关闭时本行零 DOM（概览与引入前一致），开启才
-// 渲染并读 PerfTimeSeries 落盘投影的 eventsMb（perf 采样器同一遍 walk 的
-// 读数，零新增 IO）。
+// labFlags.perfMonitor）：关闭时本卡零 DOM（概览与引入前一致），开启才
+// 渲染并读两个数据源（全部对话沿用 932 的 PerfTimeSeries 落盘投影
+// eventsMb——perf 采样器同一遍 walk 的读数，零新增 IO；当前对话走
+// TabSessionEventsSize——Go 侧单文件 stat，零遍历）。
 
-/** Human-readable MB→KB/MB rendering for the events file size row (task 932).
- *  Values below 1 MB render in KB so a small log never reads as "0.0 MB". */
+/** Human-readable MB→KB/MB/GB rendering for the events file size card
+ *  (task 932 KB/MB floor; task 997 adds the GB step so a multi-GB total
+ *  never reads as "1423.0 MB"). Values below 1 MB render in KB so a small
+ *  log never reads as "0.0 MB". */
 export function formatEventsSize(mb: number): string {
   if (!Number.isFinite(mb) || mb <= 0) return "-";
   if (mb < 1) return `${(mb * 1024).toFixed(0)} KB`;
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
   return `${mb.toFixed(1)} MB`;
 }
 
@@ -858,9 +862,10 @@ export function ContextPanel({
               </div>
             )}
           </section>
-          {/* 任务 932: 概览最下方 events 文件大小行——perf monitor 开启才渲染
-              （关闭时本节点不进 DOM，概览与引入前一致）。 */}
-          <EventsSizeRow />
+          {/* 任务 932: 概览最下方 events 文件大小卡——perf monitor 开启才渲染
+              （关闭时本节点不进 DOM，概览与引入前一致）。任务 997: 升级为
+              与会话指标同族的圆角卡片，两行数据（全部对话 + 当前对话）。 */}
+          <EventsSizeCard tabId={tabId} refreshKey={refreshKey} />
         </section>
       </div>
 
@@ -868,20 +873,27 @@ export function ContextPanel({
   );
 }
 
-// 任务 932: events 文件大小行。数据源 = PerfTimeSeries 落盘投影的最新一点
-// eventsMb（perf 采样器同一遍 walk 的读数，零新增 IO）；开关 = labFlags
-// .perfMonitor（监控卡 perf monitor 行，保存即换态）。关闭时返回 null——
-// 概览 DOM 零变化；开启时挂载才发一次只读桥调用，无轮询。
-export function EventsSizeRow() {
+// 任务 932: events 文件大小卡。开关 = labFlags.perfMonitor（监控卡 perf
+// monitor 行，保存即换态）。关闭时返回 null——概览 DOM 零变化；开启时
+// 发两个只读桥调用，无轮询：
+//   - 全部对话 events = PerfTimeSeries 落盘投影的最新一点 eventsMb（perf
+//     采样器同一遍 walk 的读数，932 原数据源，零新增 IO）；
+//   - 当前对话 events = TabSessionEventsSize(tabId)——Go 侧对本会话
+//     events 日志的单文件 stat（零遍历，可放心随保存刷新）。
+// 任务 997: 保存换态（refreshKey 随 turn_done 递增）时两项一并重取，满足
+// 「当前对话数值随保存更新」验收；挂载/开关翻转同样触发。
+export function EventsSizeCard({ tabId, refreshKey }: { tabId?: string; refreshKey?: number }) {
   const { t } = useI18n();
   const [enabled, setEnabled] = useState(() => labFlagEnabled("perfMonitor"));
-  const [eventsMb, setEventsMb] = useState<number | null>(null);
+  const [allMb, setAllMb] = useState<number | null>(null);
+  const [currentBytes, setCurrentBytes] = useState<number | null>(null);
 
   useEffect(() => onLabFlagsChange(() => setEnabled(labFlagEnabled("perfMonitor"))), []);
 
   useEffect(() => {
     if (!enabled) {
-      setEventsMb(null);
+      setAllMb(null);
+      setCurrentBytes(null);
       return;
     }
     let cancelled = false;
@@ -891,22 +903,41 @@ export function EventsSizeRow() {
         const view = await app.PerfTimeSeries(5);
         if (cancelled) return;
         const last = view?.points?.[view.points.length - 1];
-        setEventsMb(last && last.eventsMb > 0 ? last.eventsMb : null);
+        setAllMb(last && last.eventsMb > 0 ? last.eventsMb : null);
       } catch {
-        if (!cancelled) setEventsMb(null);
+        if (!cancelled) setAllMb(null);
+      }
+      try {
+        if (!tabId) {
+          if (!cancelled) setCurrentBytes(null);
+          return;
+        }
+        const bytes = await app.TabSessionEventsSize(tabId);
+        if (!cancelled) setCurrentBytes(bytes > 0 ? bytes : null);
+      } catch {
+        if (!cancelled) setCurrentBytes(null);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [enabled, tabId, refreshKey]);
 
   if (!enabled) return null;
   return (
-    <div className="context-panel__events-size" data-testid="context-events-size">
-      <span className="context-panel__events-size-label">{t("context.eventsSizeLabel")}</span>
-      <strong>{eventsMb === null ? "-" : formatEventsSize(eventsMb)}</strong>
-    </div>
+    <section className="context-panel__section context-panel__events-size-card" data-testid="context-events-size">
+      <SectionHeading title={t("context.eventsSizeLabel")} />
+      <div className="context-panel__events-size-rows">
+        <div className="context-panel__events-size-row">
+          <span>{t("context.eventsSizeAllLabel")}</span>
+          <strong>{allMb === null ? "-" : formatEventsSize(allMb)}</strong>
+        </div>
+        <div className="context-panel__events-size-row">
+          <span>{t("context.eventsSizeCurrentLabel")}</span>
+          <strong>{currentBytes === null ? "-" : formatEventsSize(currentBytes / (1 << 20))}</strong>
+        </div>
+      </div>
+    </section>
   );
 }
 
