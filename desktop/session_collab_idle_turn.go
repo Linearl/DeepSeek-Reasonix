@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -86,6 +87,14 @@ const idleTurnFinishingStuckTimeout = 90 * time.Second
 // waiting out its 45s window must not produce one log line per tick.
 const idleTurnSweepLogInterval = 60 * time.Second
 
+// idleTurnHeadStuckWarnTimeout is the 任务1017 批C queue-head stranding alarm
+// (2026-10-20 根因定位报告 §四-#5): a queue head that stays the head for this
+// long is no longer "waiting out its idle window" (45s) nor a normal turn —
+// it is the 579-family stranding shape (failed opening, wedged fan-out, or a
+// vanished target), and every later message queues behind it silently. The
+// WARN line is rate-limited to once per minute per contact.
+const idleTurnHeadStuckWarnTimeout = 10 * time.Minute
+
 // idleTurnTargetView is one pump pass's view of a live collab target, flattened
 // so the sweep core is unit-testable without a desktop App (same seam pattern
 // as collabDelivery).
@@ -157,10 +166,36 @@ type idleTurnBridge struct {
 	headItem   map[string]string
 	failCounts map[string]int
 	exhausted  map[string]bool
+	// headSeen tracks when the current queue head was first observed per
+	// contact (任务1017 批C): the age of an unchanged head is the stranding
+	// clock the >10min WARN reports. Keyed by the item itself so the clock
+	// survives across ticks regardless of budget bookkeeping; reset when the
+	// head changes or clears.
+	headSeen map[string]headObservation
+	// lastFailed records the most recent persistent opening failure per
+	// contact (任务1017 批B): {head item, time, error}. The sweep consults it
+	// to detect the "target vanished from the live list right after its
+	// opening attempt failed" shape (2026-10-19 17:31 现场) and say so out
+	// loud instead of letting the contact go silent.
+	lastFailed map[string]failedOpening
 	// idleTurnSweepLogKeys rate-limits the 任务796 sweep observability line:
 	// key = contactID + "\x00" + decision, value = last emit time. A target
 	// stuck in the same skip shape must not log one line per 4s pump tick.
 	sweepLog map[string]time.Time
+}
+
+// failedOpening is one contact's last persistent opening failure, kept so the
+// sweep can name the item and the error when the target later vanishes.
+type failedOpening struct {
+	itemID string
+	at     time.Time
+	err    error
+}
+
+// headObservation is one contact's unchanged-queue-head clock entry.
+type headObservation struct {
+	itemID string
+	since  time.Time
 }
 
 func newIdleTurnBridge() *idleTurnBridge {
@@ -170,6 +205,8 @@ func newIdleTurnBridge() *idleTurnBridge {
 		headItem:   map[string]string{},
 		failCounts: map[string]int{},
 		exhausted:  map[string]bool{},
+		headSeen:   map[string]headObservation{},
+		lastFailed: map[string]failedOpening{},
 		sweepLog:   map[string]time.Time{},
 	}
 }
@@ -191,20 +228,29 @@ const (
 	sweepSkipWarming     sweepDecision = "skip:idle_warming"
 	sweepSkipInFlight    sweepDecision = "skip:in_flight"
 	sweepSkipNoRun       sweepDecision = "skip:no_run_seam"
+	// 任务1017 批C: the queue head has held its position past the stranding
+	// threshold — the WARN-level "this line is being silently blocked" trace.
+	sweepWarnHeadStuck sweepDecision = "warn:head_stuck"
+	// 任务1017 批B: a target whose opening attempt just failed is no longer
+	// in this pass's target list at all — the 2026-10-19 17:31 shape where
+	// the contact went permanently silent. WARN so the next现场 reads the
+	// disappearance directly instead of deriving it from absent logs.
+	sweepWarnTargetVanished sweepDecision = "warn:target_vanished_after_failure"
 )
 
 // logSweepDecision emits the rate-limited observability line for one target's
 // evaluation. Pure formatting here; the rate-limit state lives on the bridge
-// so tests can assert on the produced lines directly.
-func (b *idleTurnBridge) logSweepDecision(target idleTurnTargetView, decision sweepDecision, idle time.Duration, tracked bool, now time.Time) {
+// so tests can assert on the produced lines directly. Returns whether a line
+// was emitted this call (任务1017 批C gates the paired slog.Warn on it).
+func (b *idleTurnBridge) logSweepDecision(target idleTurnTargetView, decision sweepDecision, idle time.Duration, tracked bool, now time.Time) bool {
 	if b == nil || target.contactID == "" {
-		return
+		return false
 	}
 	b.mu.Lock()
 	key := target.contactID + "\x00" + string(decision)
 	if last, ok := b.sweepLog[key]; ok && now.Sub(last) < idleTurnSweepLogInterval {
 		b.mu.Unlock()
-		return
+		return false
 	}
 	b.sweepLog[key] = now
 	b.mu.Unlock()
@@ -217,11 +263,114 @@ func (b *idleTurnBridge) logSweepDecision(target idleTurnTargetView, decision sw
 		target.running, target.finishing, target.finishingFor.Round(time.Second),
 		target.paused, target.autoPaused, target.activeTab,
 		target.itemsSummary, target.queuedID, idleText, b.inFlightNow(target.contactID))
+	return true
 }
 
 // idleTurnItemKey namespaces budget state to one (contact, head item) pair.
 func idleTurnItemKey(contactID, itemID string) string {
 	return contactID + "\x00" + itemID
+}
+
+// noteHeadSeen advances the stranding clock for one contact's queue head
+// (任务1017 批C). A new or changed head restarts the clock at now; an
+// unchanged head returns how long it has held the position. Nil-map safe:
+// a zero-value bridge treats the observation as new.
+func (b *idleTurnBridge) noteHeadSeen(contactID, itemID string, now time.Time) time.Duration {
+	if b == nil || contactID == "" {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.headSeen == nil {
+		b.headSeen = map[string]headObservation{}
+	}
+	if obs, ok := b.headSeen[contactID]; ok && obs.itemID == itemID {
+		return now.Sub(obs.since)
+	}
+	b.headSeen[contactID] = headObservation{itemID: itemID, since: now}
+	return 0
+}
+
+// clearHeadSeen drops one contact's stranding clock (head consumed or moved).
+func (b *idleTurnBridge) clearHeadSeen(contactID string) {
+	if b == nil || contactID == "" {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.headSeen, contactID)
+}
+
+// recordFailedOpening remembers one contact's latest persistent opening
+// failure (任务1017 批B) so the sweep can flag the target's later vanishing.
+func (b *idleTurnBridge) recordFailedOpening(contactID, itemID string, at time.Time, runErr error) {
+	if b == nil || contactID == "" {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.lastFailed == nil {
+		b.lastFailed = map[string]failedOpening{}
+	}
+	b.lastFailed[contactID] = failedOpening{itemID: itemID, at: at, err: runErr}
+}
+
+// clearFailedOpening forgets the failure marker once the contact is seen
+// again in a sweep pass (presence proves the live list owns it again).
+func (b *idleTurnBridge) clearFailedOpening(contactID string) {
+	if b == nil || contactID == "" {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.lastFailed, contactID)
+}
+
+// snapshotFailedOpenings copies the failure markers so the sweep can walk
+// them without holding the bridge lock.
+func (b *idleTurnBridge) snapshotFailedOpenings() map[string]failedOpening {
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.lastFailed) == 0 {
+		return nil
+	}
+	out := make(map[string]failedOpening, len(b.lastFailed))
+	for contactID, failure := range b.lastFailed {
+		out[contactID] = failure
+	}
+	return out
+}
+
+// warnTargetVanished emits the rate-limited WARN for a contact that dropped
+// out of the sweep's target list while its last opening attempt had failed
+// and its item is still the durable queue head — the exact 2026-10-19 17:31
+// shape (attempt 1 canceled → contact silent forever, zero skip logs because
+// a target outside the list never even reaches the noisy check). The
+// acceptance criterion "a failed attempt is followed by a next evaluation
+// record within 60s" is what this line guarantees for the vanished case: the
+// very next pump tick (4s) produces it when the normal sweep cannot.
+func (b *idleTurnBridge) warnTargetVanished(contactID string, failure failedOpening, now time.Time) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	key := contactID + "\x00" + string(sweepWarnTargetVanished)
+	if last, ok := b.sweepLog[key]; ok && now.Sub(last) < idleTurnSweepLogInterval {
+		b.mu.Unlock()
+		return
+	}
+	b.sweepLog[key] = now
+	b.mu.Unlock()
+	slog.Warn("[idle-turn-sweep] collab target vanished from sweep after opening failure",
+		"contact", contactID,
+		"item", failure.itemID,
+		"failed_at", failure.at.Format("15:04:05.000"),
+		"since_failure", now.Sub(failure.at).Round(time.Second),
+		"last_error", failure.err,
+		"hint", "该 contact 已不在本轮 sweep 目标列表（live+runtime-only+dormant 反查都没接住）；队列消息将无人评估。排查 tab detach/ctrl 丢失/contact 注销路径")
 }
 
 // observeIdle records the idle clock for one target: running resets it (and
@@ -334,8 +483,11 @@ func idleTurnRaceError(err error) bool {
 // recordOpeningFailure books one persistent failure against the head item's
 // budget. At the 3rd strike the item is suppressed (kept queued — never
 // dropped) and the exhaustion sink fires so the sender can see the state.
+// 任务1017 批B: every persistent failure is also remembered per contact so
+// the sweep can flag the target vanishing right after a failure.
 func (b *idleTurnBridge) recordOpeningFailure(target idleTurnTargetView, itemID string, runErr error) {
 	contactID := target.contactID
+	b.recordFailedOpening(contactID, itemID, time.Now(), runErr)
 	b.mu.Lock()
 	key := idleTurnItemKey(contactID, itemID)
 	b.failCounts[key]++
@@ -367,11 +519,53 @@ func (b *idleTurnBridge) recordOpeningFailure(target idleTurnTargetView, itemID 
 // finishing-only leak shape (wedged TurnDone fan-out, 579 family shape 3) is
 // healed through the controller seam instead of being skipped silently.
 func (b *idleTurnBridge) sweepTargets(targets []idleTurnTargetView, now time.Time) {
+	// 任务1017 批B: before anything else, check for targets that vanished
+	// from this pass right after their opening attempt failed (2026-10-19
+	// 17:31 shape: attempt 1 canceled, then zero sweep records ever again).
+	// Presence clears the marker; absence past the rate limit says so out
+	// loud — the "next evaluation" the acceptance criteria demand even when
+	// the live list has already dropped the contact.
+	present := make(map[string]bool, len(targets))
+	for _, target := range targets {
+		if target.contactID != "" {
+			present[target.contactID] = true
+		}
+	}
+	for contactID, failure := range b.snapshotFailedOpenings() {
+		if present[contactID] {
+			b.clearFailedOpening(contactID)
+			continue
+		}
+		b.warnTargetVanished(contactID, failure, now)
+	}
 	for _, target := range targets {
 		b.observeIdle(target.contactID, target.running, now)
 	}
 	for _, target := range targets {
 		idle, tracked := b.idleFor(target.contactID, now)
+		// 任务1017 批C: the queue-head stranding clock. A user-held pause is
+		// a person's will, not a strand — no alarm there. Every other held
+		// head (active tab, running, warming, exhausted budget) past the
+		// threshold gets one WARN per minute.
+		if target.queuedID != "" && !target.paused {
+			if stuck := b.noteHeadSeen(target.contactID, target.queuedID, now); stuck >= idleTurnHeadStuckWarnTimeout {
+				if b.logSweepDecision(target, sweepWarnHeadStuck, idle, tracked, now) {
+					slog.Warn("[idle-turn-sweep] inbox queue head stuck past stranding threshold",
+						"contact", target.contactID,
+						"tab", target.tabID,
+						"item", target.queuedID,
+						"stuck_for", stuck.Round(time.Second),
+						"threshold", idleTurnHeadStuckWarnTimeout,
+						"running", target.running,
+						"finishing", target.finishing,
+						"active_tab", target.activeTab,
+						"items", target.itemsSummary,
+						"hint", "后续消息全部排在这条队首之后；若 attempt 失败与 target 消失成对出现，见 warn:target_vanished_after_failure")
+				}
+			}
+		} else {
+			b.clearHeadSeen(target.contactID)
+		}
 		// 边界 2：active tab 是用户面前的会话，永不开轮。
 		if target.activeTab || target.contactID == "" {
 			if target.contactID != "" && target.queuedID != "" {

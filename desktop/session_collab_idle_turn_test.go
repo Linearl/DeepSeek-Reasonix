@@ -582,3 +582,122 @@ func TestSummarizeInboxItems(t *testing.T) {
 		t.Fatalf("stranded = %q, want uncertain:1", got)
 	}
 }
+
+// —— 任务1017 批A-C / 批B（2026-10-20）——
+// 现场（desktop.log.3, 10-19 17:30）：attempt 1 context canceled 后该 contact
+// 在全部日志卷里零命中——target 从 sweep 列表消失且无人留痕。批A-C 给「队首
+// 滞留」装时钟（>10min WARN）；批B 给「失败后消失」装哨兵（下一趟 pump tick
+// 必有一条记录，判据①的消失分支）。
+
+// sweepLogHas reads the bridge's rate-limit map under lock.
+func sweepLogHas(b *idleTurnBridge, key string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.sweepLog[key]
+	return ok
+}
+
+// TestIdleTurnBridgeWarnsOnStuckQueueHead（批A-C）：队首原地不动超过 10min ⇒
+// warn:head_stuck 决策入册（限频 1/min）；未满阈值不打；队首换人时钟归零；
+// 用户持有队列（paused=user）不算滞留，永不告警。
+func TestIdleTurnBridgeWarnsOnStuckQueueHead(t *testing.T) {
+	b := newIdleTurnBridge()
+	start := time.Now()
+	stuck := idleTurnTargetView{contactID: "c1", queuedID: "item-stuck", itemsSummary: "queued:1"}
+
+	// 第一趟：时钟起点，未满阈值，无告警。
+	b.sweepTargets([]idleTurnTargetView{stuck}, start)
+	if b.noteHeadSeen("c1", "item-stuck", start) != 0 {
+		t.Fatal("first observation must start the clock at zero")
+	}
+	b.sweepTargets([]idleTurnTargetView{stuck}, start.Add(idleTurnHeadStuckWarnTimeout-time.Second))
+	if sweepLogHas(b, "c1\x00"+string(sweepWarnHeadStuck)) {
+		t.Fatal("a head held below the threshold must not warn")
+	}
+
+	// 越过阈值：告警入册。
+	b.sweepTargets([]idleTurnTargetView{stuck}, start.Add(idleTurnHeadStuckWarnTimeout+time.Minute))
+	if !sweepLogHas(b, "c1\x00"+string(sweepWarnHeadStuck)) {
+		t.Fatal("a head held past 10min must raise warn:head_stuck")
+	}
+
+	// 队首换人：时钟归零（noteHeadSeen 对新 item 返回 0）。
+	if got := b.noteHeadSeen("c1", "item-new-head", start.Add(2*time.Minute)); got != 0 {
+		t.Fatalf("a changed head must restart the clock, got %s", got)
+	}
+
+	// 用户持有队列：就算持有一小时也不是滞留。
+	held := idleTurnTargetView{contactID: "c2", queuedID: "item-c2", paused: true, itemsSummary: "queued:1"}
+	b.sweepTargets([]idleTurnTargetView{held}, start)
+	b.sweepTargets([]idleTurnTargetView{held}, start.Add(time.Hour))
+	if sweepLogHas(b, "c2\x00"+string(sweepWarnHeadStuck)) {
+		t.Fatal("a user-held pause is will, not a strand — never warn")
+	}
+}
+
+// TestIdleTurnBridgeWarnsWhenTargetVanishesAfterFailure（批B-2，判据①的消失
+// 分支）：开轮失败后 target 从下一趟 sweep 的目标列表里消失 ⇒ 下一趟（一个
+// pump tick，4s）必须产生 warn:target_vanished_after_failure 记录；target
+// 重新出现后标记清除，恢复正常评估。
+func TestIdleTurnBridgeWarnsWhenTargetVanishesAfterFailure(t *testing.T) {
+	b := newIdleTurnBridge()
+	start := time.Now()
+	log := &runLog{}
+	failing := idleTurnIdleTarget("c1", log)
+	failing.run = func(context.Context, string) error { return context.Canceled }
+
+	// 先跑一趟起时钟（idle_warming），第二趟才满 N 开轮。
+	b.sweepTargets([]idleTurnTargetView{failing}, start)
+	// 开轮（异步 goroutine 失败并记入 lastFailed）。
+	b.sweepTargets([]idleTurnTargetView{failing}, start.Add(sessionCollabIdleTurnDelay))
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := b.snapshotFailedOpenings()["c1"]; ok {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, ok := b.snapshotFailedOpenings()["c1"]; !ok {
+		t.Fatal("the failed opening must be recorded for the contact")
+	}
+
+	// 第二趟：target 消失（live 列表不再含有它）⇒ 必有记录（判据①）。
+	b.sweepTargets(nil, start.Add(sessionCollabIdleTurnDelay+4*time.Second))
+	if !sweepLogHas(b, "c1\x00"+string(sweepWarnTargetVanished)) {
+		t.Fatal("a vanished target after a failed opening must be named out loud")
+	}
+
+	// 限频：同一分钟内重复消失不再刷屏（时间戳不前进）。
+	b.mu.Lock()
+	first := b.sweepLog["c1\x00"+string(sweepWarnTargetVanished)]
+	b.mu.Unlock()
+	b.sweepTargets(nil, start.Add(sessionCollabIdleTurnDelay+8*time.Second))
+	b.mu.Lock()
+	second := b.sweepLog["c1\x00"+string(sweepWarnTargetVanished)]
+	b.mu.Unlock()
+	if !first.Equal(second) {
+		t.Fatal("the vanish warning must be rate-limited to once per minute")
+	}
+
+	// target 回归：标记清除，不再告警。
+	back := idleTurnIdleTarget("c1", log)
+	b.sweepTargets([]idleTurnTargetView{back}, start.Add(sessionCollabIdleTurnDelay+12*time.Second))
+	if _, ok := b.snapshotFailedOpenings()["c1"]; ok {
+		t.Fatal("a re-present target must clear the vanish marker")
+	}
+}
+
+// TestIdleTurnBridgeNoVanishWarnWithoutFailure（批B-2 防误杀）：没有失败记录
+// 的 contact 从列表消失（队列已被正常消费后 tab 关闭等）⇒ 零告警。
+func TestIdleTurnBridgeNoVanishWarnWithoutFailure(t *testing.T) {
+	b := newIdleTurnBridge()
+	start := time.Now()
+	// 从未失败过：空桥直接跑一趟空列表。
+	b.sweepTargets(nil, start)
+	if len(b.snapshotFailedOpenings()) != 0 {
+		t.Fatal("no failures recorded, nothing to warn about")
+	}
+	if sweepLogHas(b, "c1\x00"+string(sweepWarnTargetVanished)) {
+		t.Fatal("no failure marker means no vanish warning")
+	}
+}
