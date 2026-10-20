@@ -2,10 +2,15 @@
 // 任务 1023 阶段 0：未入档输入前端整合——就地时间锚定、已处理过滤、
 // 去重铁律（transcript 已可见的永不再显示）的前端半边断言。
 
+import { JSDOM } from "jsdom";
 import { strict as assert } from "node:assert";
 import { countUnhandled, readHandledTurns, markHandledTurns, withUnfiledNoticeItems } from "../lib/unfiledInputs";
 import type { UnfiledInputView } from "../lib/types";
 import type { Item } from "../lib/useController";
+
+// jsdom provides localStorage（已处理标记的持久化半边用它验证）
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
+(globalThis as unknown as { localStorage: Storage }).localStorage = dom.window.localStorage;
 
 let passed = 0;
 let failed = 0;
