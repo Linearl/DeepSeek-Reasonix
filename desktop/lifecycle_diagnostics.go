@@ -24,6 +24,14 @@ const (
 	maxDesktopLifecycleRecords    = 20
 	desktopLifecycleReadRetries   = 12
 	desktopLifecycleReadBackoff   = 20 * time.Millisecond
+	// Task 1002: the consume-pass stamp (last-consume-pass.json) records when
+	// the most recent boot scanned this directory for dead-process evidence.
+	// Its schema version is deliberately NOT desktopLifecycleSchemaVersion:
+	// consumePrevious's future-format preservation then keeps the file
+	// verbatim instead of consuming it as a lifecycle record (same treatment
+	// as the launcher's last-abnormal-exit.json).
+	lifecycleConsumePassFile   = "last-consume-pass.json"
+	lifecycleConsumePassSchema = 1
 )
 
 type desktopLifecycleState struct {
@@ -62,6 +70,36 @@ type desktopLifecycleRuntime struct {
 	// crash-pending report for clean-shutdown phases (shutting_down/healthy).
 	// Default off — every dead-process record keeps reporting exactly as before.
 	noiseGate bool
+	// priorPassAt (task 1002) is when the PREVIOUS boot's consume pass scanned
+	// the lifecycle directory, read from the on-disk stamp before this boot
+	// overwrites it. recordPreviousRunDiagnostics uses it to distinguish a
+	// direct successor's first boot (real "上次运行" crash evidence) from a
+	// late claimant: a record whose last phase write predates that pass was
+	// already visible to an intermediate boot, which either reported it once
+	// or lost the claim race — either way this boot is NOT its successor and
+	// must not re-surface it as "last run's crash". Zero (no stamp, unparseable
+	// stamp) keeps today's report-always behavior.
+	priorPassAt time.Time
+}
+
+// lifecycleConsumePassStamp is the on-disk shape of the consume-pass stamp.
+type lifecycleConsumePassStamp struct {
+	SchemaVersion int    `json:"schemaVersion"`
+	RunID         string `json:"runId"`
+	At            string `json:"at"`
+}
+
+// desktopLifecycleDir is the single construction of the per-user lifecycle
+// evidence directory (tracker records, launcher death evidence, and the
+// consume-pass stamp all live here).
+func desktopLifecycleDir(root string) string {
+	return filepath.Join(root, "diagnostics", "lifecycle")
+}
+
+// lifecycleConsumePassPathForRoot builds the stamp path for an arbitrary
+// lifecycle root; the tracker's own method covers its configured dir.
+func lifecycleConsumePassPathForRoot(root string) string {
+	return filepath.Join(desktopLifecycleDir(root), lifecycleConsumePassFile)
 }
 
 type desktopLifecycleTracker struct {
@@ -77,12 +115,16 @@ type desktopLifecycleTracker struct {
 	writerOnce   sync.Once
 	stopOnce     sync.Once
 	writerActive bool
+	// priorPassAt (task 1002) is captured by consumePrevious from the stamp
+	// file BEFORE this pass writes its own; it is boot-time single-threaded
+	// state, so no lock guards it.
+	priorPassAt time.Time
 }
 
 func newDesktopLifecycleTracker(root, appVersion, appChannel string) *desktopLifecycleTracker {
 	now := time.Now().UTC()
 	runID := newDesktopLifecycleRunID()
-	dir := filepath.Join(root, "diagnostics", "lifecycle")
+	dir := desktopLifecycleDir(root)
 	return &desktopLifecycleTracker{
 		dir:  dir,
 		path: filepath.Join(dir, strconv.Itoa(os.Getpid())+"-"+runID+".json"),
@@ -173,6 +215,11 @@ func initializeLifecycleDiagnostics(app *App) {
 		app.lifecycle.previousRun = legacy
 	}
 	app.lifecycle.previousRuns = tracker.consumePrevious(enabled)
+	// Task 1002: hand the previous boot's consume-pass time to the reporting
+	// path so a late claimant can retire stale residue instead of surfacing it.
+	if tracker != nil {
+		app.lifecycle.priorPassAt = tracker.priorPassAt
+	}
 	// Task 377: the noise triage reads its own desktop switch; a load failure
 	// leaves the gate off (the default), never silently on.
 	if cfg, cfgErr := config.Load(); cfgErr == nil {
@@ -334,6 +381,11 @@ func (t *desktopLifecycleTracker) consumePrevious(emit bool) []desktopLifecycleO
 		return nil
 	}
 	now := t.now()
+	// Task 1002: read the PREVIOUS boot's pass stamp before this pass writes
+	// its own. The stamp is what lets recordPreviousRunDiagnostics tell a
+	// direct successor's first boot (genuine crash evidence) from a late
+	// claimant whose record was already visible to an intermediate boot.
+	priorPassAt := t.readConsumePassStamp()
 	observations := make([]desktopLifecycleObservation, 0)
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
@@ -386,9 +438,65 @@ func (t *desktopLifecycleTracker) consumePrevious(emit bool) []desktopLifecycleO
 			PID: state.PID, DetectedAt: now.Format(time.RFC3339Nano),
 		})
 	}
+	// Task 1002: the pass completed — stamp it so the NEXT boot knows a
+	// consume pass happened after any record this one saw (claimed or not).
+	t.writeConsumePassStamp(now)
+	t.priorPassAt = priorPassAt
 	t.applyLauncherDeathEvidence(observations)
 	t.pruneRecords()
 	return observations
+}
+
+// consumePassPath is where this tracker's directory records the most recent
+// consume pass.
+func (t *desktopLifecycleTracker) consumePassPath() string {
+	if t == nil || t.dir == "" {
+		return ""
+	}
+	return filepath.Join(t.dir, lifecycleConsumePassFile)
+}
+
+// readConsumePassStamp returns the time of the newest recorded consume pass,
+// or the zero time when no readable stamp exists (first install, or a stamp
+// this build cannot parse — the report-always default then applies).
+func (t *desktopLifecycleTracker) readConsumePassStamp() time.Time {
+	path := t.consumePassPath()
+	if path == "" {
+		return time.Time{}
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return time.Time{}
+	}
+	var stamp lifecycleConsumePassStamp
+	if json.Unmarshal(body, &stamp) != nil || stamp.SchemaVersion != lifecycleConsumePassSchema {
+		return time.Time{}
+	}
+	at, err := time.Parse(time.RFC3339Nano, stamp.At)
+	if err != nil {
+		return time.Time{}
+	}
+	return at
+}
+
+// writeConsumePassStamp records that a consume pass ran at `at`. Best-effort:
+// a missing stamp only makes the next boot treat every record as fresh
+// evidence (today's report-always behavior), so a write failure never hides
+// a crash.
+func (t *desktopLifecycleTracker) writeConsumePassStamp(at time.Time) {
+	path := t.consumePassPath()
+	if path == "" {
+		return
+	}
+	body, err := json.Marshal(lifecycleConsumePassStamp{
+		SchemaVersion: lifecycleConsumePassSchema,
+		RunID:         t.state.RunID,
+		At:            at.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return
+	}
+	_ = fileutil.AtomicWriteFile(path, body, 0o600)
 }
 
 // launcherDeathEvidence is the consume-once record the resident launcher
