@@ -30,9 +30,8 @@ func (a *App) recordPreviousRunDiagnostics() {
 	// quitting, so a residue in a clean-shutdown phase from that same PID is
 	// the marker-writer's clean()/exit race, not a crash. The marker vouches
 	// for exactly that record (fresh window + PID match), independent of the
-	// gate: gate=false installs (the field default, and every existing config
-	// renders the key explicitly false) must not re-surface the 0911 false
-	// "上次运行崩溃" banner on every update restart.
+	// gate: gate=false installs (the field default) must not re-surface the
+	// 0911 false "上次运行崩溃" banner on every update restart.
 	//
 	// Task 873: the marker check must precede the phase gate. A forced update
 	// restart (grace window expired → forced quit) can leave the record in a
@@ -40,24 +39,22 @@ func (a *App) recordPreviousRunDiagnostics() {
 	// "benign" in the task-377 sense, but the exit was still PLANNED (the
 	// marker writer is this exact PID handing off to an update relaunch).
 	//
-	// Task 1018 (20261020 装机实测): the record family is read-and-clear at
-	// the source, for EVERY disposition — marker-vouched, clean-shutdown, and
-	// abnormal phase alike. Nothing here writes a crash report anymore. The
-	// 10-19/10-20 incidents: a wedged-phase record (shutdown watchdog forced
-	// quit, desktop.log zero panic) sat in the crash queue and re-surfaced the
-	// 「上次运行遗留的崩溃报告」 banner on every launch while uploads were
-	// failing. A real panic never depended on this path — the crash-fatal sink
-	// dump (go.fatal) and recoverToPending (go panic) own that surface — so
-	// converting the scan to consume-and-clear cannot mask a real crash. The
-	// forensics stay observable (1545: never a silent drop): one line per
-	// record naming pid/phase/exit + the summary counters + metrics buckets;
-	// the launcher's death record (task 736) remains the death-moment witness.
+	// Task 1018 (20261020 装机实测): the planned-exit dispositions are read-and-
+	// clear at the source — a marker-vouched update restart or a benign-phase
+	// clean shutdown never writes a crash report (a wedged record had been
+	// re-surfacing the 「上次运行遗留的崩溃报告」 banner every launch). Forensics
+	// stay observable (1545): per-record log + summary + metrics + the 736
+	// launcher death record as the death-moment witness.
 	//
-	// Task 1002 并集（847 家族新形态）：先做一次归属时效判定——非直接前任留下的
-	// 记录（中间某一轮 boot 的 consume pass 已晚于它的最后一次 phase 写入）不
-	// 算本次的「上次运行」证据，单独退役计数（staleRetired，尾部分别命名日志 +
-	// metrics 桶）。归属判定（1002）与处置动作（1018：读后即清、不写报告）正
-	// 交，见下方循环内的前置分支。
+	// Task 1018-fix2 (20261020 协调线定案): 1018 over-shot — it silenced
+	// abnormal_phase too, but wedged/unknown have NO other sink (go.fatal and
+	// recoverToPending need a live process, which a force-kill never leaves).
+	// Restore abnormal-phase reports (删保护机制前必须有替代 — none here); the
+	// 1002 stale layer + 847/873 marker vouch still quiet the false banner.
+	//
+	// Task 1002 并集（847 家族新形态）：非直接前任留下的记录不算本次「上次运行」
+	// 证据，单独退役计数（staleRetired）。归属判定（1002）与处置动作（计划退出
+	// 读后即清、异常相位写报告）正交，见下方循环内的前置分支。
 	updateRestart, cleanShutdown, abnormalPhase := 0, 0, 0
 	staleRetired := 0
 	for _, lifecycle := range a.lifecycle.previousRuns {
@@ -72,29 +69,23 @@ func (a *App) recordPreviousRunDiagnostics() {
 		default:
 			abnormalPhase++
 		}
-		// Task 1002 (847 家族新形态, 20261019/20 装机实锤): the marker vouch
-		// only covers the exiting process's OWN record. A record left by an
-		// EARLIER abnormal death can survive its natural successor's boot (a
-		// lost Windows claim race, or a briefly-alive reused PID) and get
-		// claimed several boots later — by then the on-disk marker belongs to
-		// an unrelated process, the PID cross-check correctly refuses, and the
-		// stale record surfaced as "上次运行遗留的崩溃报告" right after an
-		// update the user read as the update's own crash. The consume-pass
-		// stamp settles the attribution: if an intermediate boot already ran
-		// its consume pass after this record's last phase write, THIS boot is
-		// not the record's direct successor — the record is not "上次运行"
-		// evidence here. Retire it (claim already removed it from disk) with a
-		// named log + metrics bucket, never silently (1545).
-		//
-		// 并集说明（1018 × 1002）：本前置分支只做「归属」判定；退役后的命名日志与
-		// metrics 桶在循环外的 staleRetired 汇总块统一出具。处置动作（不写崩溃
-		// 报告、读后即清）仍由下方的 1018 主分支负责——两边不互相覆盖。
+		// Task 1002 (847 家族新形态, 20261019/20 装机实锤): the marker vouch only
+		// covers the exiting process's OWN record — an EARLIER abnormal death's
+		// record survives its successor's boot and is claimed boots later, when
+		// the marker belongs to an unrelated process (PID cross-check refuses).
+		// The consume-pass stamp settles attribution; this pre-branch rules
+		// attribution only, never disposal.
 		if lifecycleRecordPredatesPass(lifecycle.UpdatedAt, a.lifecycle.priorPassAt) {
 			staleRetired++
 			continue
 		}
-		slog.Info("desktop: lifecycle residue consumed read-and-clear, no crash report (task 1018)",
+		if disposition == "abnormal_phase" {
+			// Task 1018-fix2: wedged/unknown have no other sink — report it.
+			_ = writePendingReport(desktopLifecycleReport(lifecycle), true)
+		}
+		slog.Info("desktop: lifecycle residue dispositioned (task 1018-fix2)",
 			"pid", lifecycle.PID, "phase", lifecycle.Phase, "disposition", disposition,
+			"reported", disposition == "abnormal_phase",
 			"exit_code", lifecycle.ExitCode, "death_at", lifecycle.DeathAt)
 		if m := a.metrics.Load(); m != nil {
 			m.inc("desktop_exit_phase", metricBucket(lifecycle.Phase))
@@ -106,15 +97,15 @@ func (a *App) recordPreviousRunDiagnostics() {
 					m.inc("desktop_exit_phase", "noise_gate_suppressed")
 				}
 			default:
-				m.inc("desktop_exit_phase", "abnormal_phase_cleared")
-				m.inc("desktop_exit", "residue_cleared")
+				m.inc("desktop_exit_phase", "abnormal_phase_reported")
+				m.inc("desktop_exit", "residue_reported")
 			}
 		}
 	}
 	if total := updateRestart + cleanShutdown + abnormalPhase; total > 0 {
-		slog.Info("desktop: lifecycle residue cleared without a crash report",
+		slog.Info("desktop: lifecycle residue dispositioned",
 			"total", total, "update_restart_suppressed", updateRestart,
-			"clean_shutdown", cleanShutdown, "abnormal_phase_cleared", abnormalPhase)
+			"clean_shutdown", cleanShutdown, "abnormal_phase_reported", abnormalPhase)
 		if m := a.metrics.Load(); m != nil {
 			m.persist()
 		}
@@ -201,10 +192,10 @@ update transition: %s`,
 }
 
 // desktopLifecycleReport builds the desktop.abnormal_exit.v2 report shape.
-// Since task 1018 the startup scan no longer writes these (read-and-clear at
-// the source); the builder stays as the canonical schema of the pre-1018
-// backlog files that sweepJudgedLifecyclePendingReports must recognize, and
-// as the field-mapping documentation for the task-736 attribution contract.
+// Task 1018 silenced every disposition; task 1018-fix2 restored the call for
+// the abnormal_phase disposition only (wedged/unknown have no other crash
+// sink), planned exits staying read-and-clear. It remains the canonical schema
+// for pre-1018 backlog and the task-736 attribution field-mapping doc.
 func desktopLifecycleReport(previous desktopLifecycleObservation) crashReport {
 	phase := metricBucket(previous.Phase)
 	// Task 736 (issue #39): occurredAt used to be the record's last phase

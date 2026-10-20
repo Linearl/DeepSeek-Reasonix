@@ -600,32 +600,32 @@ func newestPendingCrashQueueName(paths []string) string {
 // 763 复发#2（0911 装机实测）：同一次启动 recordPreviousRunDiagnostics 先把
 // clean-shutdown 误报写进队列（文件名 > 水位），随后的 snapshot 把它当 fresh
 // 面呈——「上次运行遗留的崩溃报告(3)」正是 maxPendingCrashAnalysisReports 的
-// 上限。水位只拦「已面呈过的旧文件」，对本启动新写的误报无能为力，积压也在
-// 队列里反复占位。修法：启动快照前把已判定非崩溃的报告（native.lifecycle 来
-// 源 + 退出相位于 shutting_down/healthy——377 定性 not crash evidence）从队
-// 列退役：不再面呈、不再上传、不再积压。其余报告一字节不动。
+// 上限。水位只拦「已面呈过的旧文件」，对本启动新写的误报无能为力。修法：启动
+// 快照前把已判定非崩溃的报告（native.lifecycle + benign 相位，377 定性 not
+// crash evidence）从队列退役：不再面呈、不再上传、不再积压；其余一字节不动。
 //
-// Task 1018（20261020 装机实测）：源头已停写（recordPreviousRunDiagnostics
-// 读后即清、任何相位不再入队），队列里的 native.lifecycle 报告全部是 1018 之
-// 前的积压——包括 wedged 相位（10-19 事件的实锤弹窗正是 wedged 积压反复面
-// 呈）。退役面随之扩到全部相位：生命周期残留本身不是崩溃证据（真 panic 走
-// go.fatal / go panic 通道），一并退役。
+// Task 1018 曾扩到全部相位（源头停写 ⇒ 队列皆旧积压）；1018-fix2 恢复了
+// abnormal_phase 的源头写报告（wedged/unknown 无其他崩溃上报通道），而同一次
+// 启动的 snapshot 紧接着跑到这里——若仍按全相位退役，刚写入的异常相位报告会
+// 被当场删掉（死信）。故退役面收回 benign-only：benign 件源头已停写仍算积压；
+// wedged/unknown 件是崩溃证据，留队交水位 + flush。
 
-// lifecycleResiduePendingReport reports whether a queued report is the already-
+// benignLifecyclePendingReport reports whether a queued report is the already-
 // judged non-crash family: desktopLifecycleReport output (Source
-// "native.lifecycle"), any exit phase — the source stopped writing them in
-// task 1018, so every queued copy is pre-1018 backlog.
-func lifecycleResiduePendingReport(r crashReport) bool {
-	return r.Source == "native.lifecycle"
+// "native.lifecycle") whose exit phase proves a clean shutdown was underway.
+// wedged/unknown phases stay — since task 1018-fix2 they are crash evidence
+// again (the source writes abnormal-phase reports once more).
+func benignLifecyclePendingReport(r crashReport) bool {
+	return r.Source == "native.lifecycle" && lifecycleNoiseBenign(r.ExitPhase)
 }
 
-// sweepJudgedLifecyclePendingReports retires the judged-non-crash reports from
+// sweepBenignLifecyclePendingReports retires the judged-non-crash reports from
 // the queue before the prompt snapshot reads it, returning the survivors.
 // Best-effort both ways: a file that fails to read or parse is left alone (the
 // flush and diagnostics surfaces own it), and a removal failure just keeps the
 // file (it can be retired on a later launch). The retirements are named on the
 // log — a drop that nobody can see is indistinguishable from data loss.
-func sweepJudgedLifecyclePendingReports(paths []string) []string {
+func sweepBenignLifecyclePendingReports(paths []string) []string {
 	kept := paths[:0]
 	retired := 0
 	for _, path := range paths {
@@ -635,7 +635,7 @@ func sweepJudgedLifecyclePendingReports(paths []string) []string {
 			continue
 		}
 		var r crashReport
-		if json.Unmarshal(body, &r) != nil || !lifecycleResiduePendingReport(r) {
+		if json.Unmarshal(body, &r) != nil || !benignLifecyclePendingReport(r) {
 			kept = append(kept, path)
 			continue
 		}
@@ -647,7 +647,7 @@ func sweepJudgedLifecyclePendingReports(paths []string) []string {
 	}
 	if retired > 0 {
 		slog.Info("desktop: retired already-judged non-crash lifecycle reports from the pending queue",
-			"retired", retired, "source", "native.lifecycle", "phases", "all (task 1018)")
+			"retired", retired, "source", "native.lifecycle", "phases", "shutting_down/healthy")
 	}
 	return kept
 }
@@ -667,12 +667,13 @@ func (a *App) snapshotPendingCrashForAnalysis() {
 	if len(paths) == 0 {
 		return
 	}
-	// Task 847: already-judged non-crash residue (native.lifecycle) retires
-	// here — the same boot's recordPreviousRunDiagnostics may have just written
-	// it, so the watermark alone can never keep it off the prompt (new names
-	// always sort above the watermark). Task 1018: the family covers every
-	// exit phase; the source stopped writing these reports entirely.
-	paths = sweepJudgedLifecyclePendingReports(paths)
+	// Task 847: already-judged non-crash residue (native.lifecycle, benign
+	// phase) retires here — the same boot's recordPreviousRunDiagnostics may
+	// have just written it, so the watermark alone can never keep it off the
+	// prompt (new names always sort above the watermark). Task 1018 kept
+	// benign suppression; task 1018-fix2 restored abnormal-phase writes, which
+	// stay in the queue as crash evidence (see the sweep predicate above).
+	paths = sweepBenignLifecyclePendingReports(paths)
 	if len(paths) == 0 {
 		return
 	}
