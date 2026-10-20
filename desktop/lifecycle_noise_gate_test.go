@@ -1,8 +1,11 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
+	"reasonix/internal/config"
 	"reasonix/internal/repair"
 )
 
@@ -61,5 +64,40 @@ func TestLifecycleNoiseGateLeavesLegacyObservationAlone(t *testing.T) {
 	app.recordPreviousRunDiagnostics()
 	if got := pendingReportCount(t); got != 1 {
 		t.Fatalf("legacy abnormal observation suppressed: %d reports, want 1", got)
+	}
+}
+
+// Task 1027 (issue #60): a wedged disposition writes a crash report carrying
+// the wedge point on its payload (task 1018-fix2 restored that path); the
+// metrics stream is the aggregatable companion surface — a wedged observation
+// bumps the named bucket (tab-ID suffix enumerated away) so remote cuts can
+// slice by wedge point without parsing report text. Planned-exit observations
+// never touch the signal.
+func TestLifecycleWedgedResidueBumpsWedgePointMetric(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	agg := newMetricsAggregator(config.MemoryUserDir())
+	if err := os.MkdirAll(filepath.Dir(agg.path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	app.metrics.Store(agg)
+	app.lifecycle.previousRuns = []desktopLifecycleObservation{
+		{Phase: "wedged", Version: "v1", Channel: "stable", PID: 4242, WedgePoint: "closing_tab:webview-abc"},
+		{Phase: "healthy", Version: "v1", Channel: "stable", PID: 4243},
+	}
+	app.recordPreviousRunDiagnostics()
+
+	m := app.metrics.Load()
+	if m == nil {
+		t.Fatal("metrics aggregator missing after NewApp")
+	}
+	// recordPreviousRunDiagnostics persists on completion — the counters
+	// have drained into the pending file by now.
+	pending := readCounters(m.path)
+	if got := pending["desktop_exit_wedge_point"]["closing_tab"]; got != 1 {
+		t.Fatalf("desktop_exit_wedge_point/closing_tab = %d, want 1 (enumerated stage bucket)", got)
+	}
+	if _, ok := pending["desktop_exit_wedge_point"]["healthy"]; ok {
+		t.Fatal("a non-wedged exit must never bump the wedge point signal")
 	}
 }

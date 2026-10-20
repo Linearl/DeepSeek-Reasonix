@@ -232,6 +232,61 @@ func TestDesktopLifecycleReportCarriesAttributionFields(t *testing.T) {
 	}
 }
 
+// Task 1027 (issue #60): the abnormal_exit.v2 payload must name the teardown
+// stage the watchdog was waiting on — enumerated (closing_tab:<id> collapses
+// to closing_tab for bounded remote aggregation), with the explicit "unknown"
+// when a wedged record predates the wedge-point field, and no field at all
+// for a non-wedged exit (no noise).
+func TestDesktopLifecycleReportCarriesWedgePoint(t *testing.T) {
+	wedged := desktopLifecycleReport(desktopLifecycleObservation{
+		Version: "v1.38.2", Channel: "stable", Phase: "wedged", PID: 15380,
+		DetectedAt: "2026-10-19T01:40:11Z", WedgePoint: "closing_tab:webview-abc",
+	})
+	if wedged.WedgePoint != "closing_tab" {
+		t.Fatalf("wedgePoint = %q, want the enumerated stage closing_tab", wedged.WedgePoint)
+	}
+	if !strings.Contains(wedged.Message, "wedge point: closing_tab (shutdown watchdog forced exit)") {
+		t.Fatalf("message missing the wedge point line: %q", wedged.Message)
+	}
+	body, err := json.Marshal(wedged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"wedgePoint":"closing_tab"`) {
+		t.Fatalf("payload missing wedgePoint in %s", body)
+	}
+
+	// A wedged record WITHOUT a wedge point (pre-1027 on-disk residue)
+	// reports the explicit unknown — never a missing field.
+	unknown := desktopLifecycleReport(desktopLifecycleObservation{
+		Phase: "wedged", PID: 15381, DetectedAt: "2026-10-19T01:40:11Z",
+	})
+	if unknown.WedgePoint != "unknown" {
+		t.Fatalf("wedgePoint = %q, want the explicit unknown for a wedge-point-less wedged record", unknown.WedgePoint)
+	}
+	if !strings.Contains(unknown.Message, "wedge point: unknown") {
+		t.Fatalf("message missing the unknown wedge point: %q", unknown.Message)
+	}
+
+	// A non-wedged exit has no wedge point: the wire field stays absent.
+	clean := desktopLifecycleReport(desktopLifecycleObservation{
+		Phase: "healthy", PID: 15382, DetectedAt: "2026-10-19T01:40:11Z",
+	})
+	if clean.WedgePoint != "" {
+		t.Fatalf("wedgePoint = %q, want empty for a non-wedged exit", clean.WedgePoint)
+	}
+	if strings.Contains(clean.Message, "wedge point") {
+		t.Fatalf("non-wedged message leaks a wedge point line: %q", clean.Message)
+	}
+	cleanBody, err := json.Marshal(clean)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(cleanBody), "wedgePoint") {
+		t.Fatalf("non-wedged payload carries a wedgePoint field: %s", cleanBody)
+	}
+}
+
 func TestCapturePreviousFatalCrashQueuesAndRemovesRawDump(t *testing.T) {
 	resetFatalCrashArtifacts(t)
 	const crashedPID = 424242

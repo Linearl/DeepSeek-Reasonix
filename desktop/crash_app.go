@@ -124,8 +124,15 @@ type crashReport struct {
 	// the dead desktop's PID and its last recorded lifecycle phase. Additive
 	// and omitempty, so pending payloads written by older builds decode
 	// unchanged and the ingest schema stays backward compatible.
-	ProcessPID int                   `json:"processPid,omitempty"`
-	ExitPhase  string                `json:"exitPhase,omitempty"`
+	ProcessPID int    `json:"processPid,omitempty"`
+	ExitPhase  string `json:"exitPhase,omitempty"`
+	// Task 1027 (issue #60): the teardown stage the shutdown watchdog was
+	// waiting on when it force-killed the process. ExitPhase alone ends as
+	// "wedged" and cannot name the stage; this field keeps the wedge point.
+	// Additive and omitempty on the wire for other report kinds — only
+	// desktop.abnormal_exit.v2 sets it (explicit "unknown" when the record
+	// has none, per the acceptance: no missing field, no silent default).
+	WedgePoint string                `json:"wedgePoint,omitempty"`
 	WebRuntime *webRuntimeDiagnostic `json:"webRuntime,omitempty"`
 	// WebView2 is retained only so pending reports written by preview builds can
 	// still be decoded and forwarded after upgrade. New reports use WebRuntime.
