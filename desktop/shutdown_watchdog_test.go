@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -115,6 +117,54 @@ func TestShutdownBodyWedgedTabDoesNotTripWatchdog(t *testing.T) {
 	}
 	if cleaned != 3 {
 		t.Fatalf("cleaned %d tabs, want 3 — a wedged tab must not skip the others", cleaned)
+	}
+}
+
+// Task 1027 (issue #60) end-to-end: when the watchdog force-kills a wedged
+// teardown, the stage it was waiting on must survive INTO THE RECORD — the
+// next boot's consume pass is the only remote-attribution surface, and it
+// used to see a bare phase=wedged because mark("wedged") overwrote the stage.
+// The record's wedge point and the local slog line must name the same stage.
+func TestShutdownWatchdogWedgePointReachesRecordAndLog(t *testing.T) {
+	oldExit, oldTimeout := shutdownExit, shutdownWatchdogTimeout
+	t.Cleanup(func() { shutdownExit, shutdownWatchdogTimeout = oldExit, oldTimeout })
+	shutdownWatchdogTimeout = 30 * time.Millisecond
+	exited := make(chan int, 1)
+	shutdownExit = func(code int) { exited <- code }
+
+	var logBuf bytes.Buffer
+	oldDefault := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
+	t.Cleanup(func() { slog.SetDefault(oldDefault) })
+
+	tracker := newDesktopLifecycleTracker(t.TempDir(), "v0-test", "test")
+
+	var record desktopLifecycleState
+	completeDesktopShutdown(tracker, func() {
+		// Teardown reaches the tab stage and wedges there.
+		tracker.mark("closing_tabs")
+		select {
+		case code := <-exited:
+			if code != 1 {
+				t.Errorf("watchdog exit code = %d, want 1", code)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("watchdog never fired: shutdown would hang forever")
+		}
+		// The forced exit is where a real process dies — clean() never runs.
+		// Inspect the exact record the next boot's consume pass would claim.
+		var err error
+		if record, err = readDesktopLifecycleState(tracker.path); err != nil {
+			t.Fatalf("wedged record unreadable: %v", err)
+		}
+	})
+
+	if record.Phase != "wedged" || record.WedgePoint != "closing_tabs" {
+		t.Fatalf("record = phase=%q wedgePoint=%q, want phase=wedged wedgePoint=closing_tabs (task 1027)", record.Phase, record.WedgePoint)
+	}
+	if !strings.Contains(logBuf.String(), "shutdown watchdog fired") ||
+		!strings.Contains(logBuf.String(), "phase=closing_tabs") {
+		t.Fatalf("watchdog log line lost the wedge point:\n%s", logBuf.String())
 	}
 }
 

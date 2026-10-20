@@ -72,9 +72,14 @@ func completeDesktopShutdown(tracker *desktopLifecycleTracker, body func()) {
 		case <-time.After(shutdownWatchdogTimeout):
 			// The phase is whatever shutdownBody last marked — each stage
 			// below stamps its own, so the log names the wedge point.
+			// Task 1027: markWedge persists that stage as the record's
+			// wedgePoint BEFORE the phase flips to "wedged" (one locked
+			// write) and returns it, so the log line and the on-disk
+			// record name the same stage by construction — remote
+			// attribution no longer depends on this local-only line.
+			wedgePoint := tracker.markWedge()
 			slog.Error("desktop: shutdown watchdog fired; forcing exit",
-				"phase", tracker.phase(), "timeout", shutdownWatchdogTimeout)
-			tracker.mark("wedged")
+				"phase", wedgePoint, "timeout", shutdownWatchdogTimeout)
 			shutdownExit(1)
 		}
 	}()
