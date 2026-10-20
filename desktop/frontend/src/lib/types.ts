@@ -1107,6 +1107,18 @@ export interface CheckpointMeta {
   disabledReason?: string;
 }
 
+// UnfiledInputView is one checkpoint-recovered prompt that never entered the
+// transcript (task 1023 phase 0). The backend reconciliation is read-only;
+// marking an entry handled stays frontend-local state.
+export interface UnfiledInputView {
+  turn: number;
+  msgIndex: number;
+  time: number; // unix ms; 0 when unknown
+  prompt: string;
+  anchorIndex: number;
+  anchorMessageId?: string;
+}
+
 export type { RewindPlanView } from "./rewindTypes";
 
 export interface RewindResultView {

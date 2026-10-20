@@ -305,6 +305,8 @@ import { markAppearanceReady, setAutopilotEnabled, useAppLifecycleStore } from "
 import { setStatusBarItems, setStatusBarStyle, useShellPrefsStore } from "./store/shellPrefs";
 import { setCollabAutoFold } from "./store/collabDisplay";
 import { useInvocationMetadata } from "./app-runtime/useInvocationMetadata";
+import { UnfiledInputsBanner } from "./components/UnfiledInputsBanner";
+import { countUnhandled, readHandledTurns, useUnfiledInputs, withUnfiledNoticeItems } from "./lib/unfiledInputs";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
@@ -3956,6 +3958,22 @@ export default function App() {
   const visibleTranscriptItems = visibleTranscriptSurface?.items ?? displayItems;
   const visibleTranscriptTabId = visibleTranscriptSurface?.tabId ?? activeTabId;
   const visibleTranscriptGeometryKey = visibleTranscriptSurface?.geometrySessionKey ?? transcriptGeometrySessionKey;
+  // 任务 1023 阶段 0：未入档输入（已从检查点恢复）——只读对账 + 就地呈现。
+  const unfiled = useUnfiledInputs(visibleTranscriptTabId);
+  const [unfiledHandledSeq, setUnfiledHandledSeq] = useState(0);
+  const unfiledSessionKey = (activeTab?.sessionPath ?? state.meta?.sessionPath ?? visibleTranscriptTabId ?? "").trim();
+  const unfiledHandledTurns = useMemo(
+    () => readHandledTurns(unfiledSessionKey),
+    // unfiledHandledSeq: the banner marks turns handled in localStorage directly;
+    // the bump re-reads the set so the in-place cards filter in step.
+    [unfiledSessionKey, unfiledHandledSeq],
+  );
+  const unfiledUnhandledCount = countUnhandled(unfiled.entries, unfiledHandledTurns);
+  const unfiledNoticeTitle = t("unfiled.cardTitle");
+  const unfiledVisibleItems = useMemo(
+    () => withUnfiledNoticeItems(visibleTranscriptItems, unfiled.entries, unfiledHandledTurns, unfiledNoticeTitle),
+    [visibleTranscriptItems, unfiled.entries, unfiledHandledTurns, unfiledNoticeTitle],
+  );
   // Task 151 (round 3): the render-side half of a tab switch, for desktop.log. The data
   // layer already reports its own stages (switch-tab `total=0ms` plus a
   // `history fetch skipped reason=local-snapshot` line), so the open question is only how
@@ -5641,6 +5659,17 @@ export default function App() {
               </Suspense>
             ) : (
               <>
+                {!runtimeTransitioning && unfiledUnhandledCount > 0 && (
+                  <UnfiledInputsBanner
+                    key={visibleTranscriptTabId}
+                    tabId={visibleTranscriptTabId}
+                    sessionKey={unfiledSessionKey}
+                    disabled={Boolean(activeTab?.readOnly)}
+                    onDraft={insertQuickCommand}
+                    onResend={handleTranscriptPrompt}
+                    onHandled={() => setUnfiledHandledSeq((v) => v + 1)}
+                  />
+                )}
                 <div className="transcript-navigation-surface" aria-busy={runtimeTransitioning}>
                   <div
                     className="transcript-navigation-content"
@@ -5657,7 +5686,7 @@ export default function App() {
                     >
                       <div className="transcript-split__pane transcript-split__pane--primary">
                                         {primaryTrajectory ?? (<Transcript
-                      items={visibleTranscriptItems}
+                      items={unfiledVisibleItems}
                       live={runtimeTransitioning ? undefined : state.live}
                       liveStore={liveStore}
                       tabId={visibleTranscriptTabId}

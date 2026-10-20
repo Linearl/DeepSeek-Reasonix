@@ -11,7 +11,7 @@ import (
 type UnfiledInputView struct {
 	Turn     int    `json:"turn"`
 	MsgIndex int    `json:"msgIndex"`
-	Time     int64  `json:"time"`  // unix milliseconds; 0 when the checkpoint predates timestamps
+	Time     int64  `json:"time"` // unix milliseconds; 0 when the checkpoint predates timestamps
 	Prompt   string `json:"prompt"`
 	// AnchorIndex is the transcript position the input belongs at (the
 	// checkpoint's msgIndex — recorded before the user message is appended).

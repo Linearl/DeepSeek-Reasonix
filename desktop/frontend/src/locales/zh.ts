@@ -4659,6 +4659,7 @@ export const zh: Record<DictKey, string> = {
   "notice.completionUncertainBody": "当前结果未能确认已完成。当前回答和所有已完成的工作均已保留。发送“继续”可接着完成，也可以补充说明需要调整的内容。",
   "notice.deliveryIncompleteBody": "内容已经生成，但验证和复审步骤尚未完成。",
   "notice.deliveryIncompleteContinue": "继续检查",
+  "unfiled.cardTitle": "未入档输入（已从检查点恢复）",
   "notice.deliveryIncompleteAccept": "接受验收",
   "notice.deliveryIncompleteContinuePrompt": "继续完成剩余的任务收尾检查。",
   "notice.completionAttentionTitle": "本轮仍需处理",

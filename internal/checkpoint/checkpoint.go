@@ -129,9 +129,9 @@ func (c *Checkpoint) revisions() []FileRevision {
 
 // Meta is the picker-facing summary of a checkpoint (no file contents).
 type Meta struct {
-	Turn               int
-	Time               time.Time
-	Prompt             string
+	Turn   int
+	Time   time.Time
+	Prompt string
 	// MsgIndex is the conversation boundary recorded at turn start (before the
 	// user message is appended). Task 1023: surfaced so the unfiled-input
 	// reconciliation can anchor recovered prompts in the transcript.

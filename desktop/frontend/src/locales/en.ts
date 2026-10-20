@@ -4666,6 +4666,7 @@ export const en = {
   "notice.completionUncertainTitle": "Completion not confirmed",
   "notice.completionUncertainBody": "The result could not be confirmed as complete. The current answer and all completed work are kept. Send “继续 / continue” to resume, or restate what should change.",
   "notice.deliveryIncompleteContinue": "Continue checks",
+  "unfiled.cardTitle": "Unfiled input (recovered from checkpoint)",
   "notice.deliveryIncompleteAccept": "Accept as done",
   "notice.deliveryIncompleteContinuePrompt": "Continue and complete the remaining task checks.",
   "notice.completionAttentionTitle": "This turn still needs attention",
