@@ -7037,6 +7037,20 @@ button.reasoning-summary:focus-visible {
   width: max-content;
   min-width: 100%;
 }
+/* 任务 959 ①：表格按栏宽自动换行（experimental_table_wrap 开时挂
+   .transcript-shell--table-wrap，940 两态同族）——宽表不再以 max-content
+   撑破栏宽横向滚动，改为占满当前栏宽、单元格内容随列压缩换行（含分栏拖
+   窄场景：栏宽变化由 CSS 自然重排，无需 JS 监听）。关（默认）时本组规则
+   零命中，宽表横滚布局与引入前逐字节一致（铁律 2）。overflow-wrap
+   anywhere 让超长不可断词（URL 等）在窄栏内也可断，杜绝断版。 */
+.transcript-shell--table-wrap .md-table-scroll > table {
+  width: 100%;
+}
+.transcript-shell--table-wrap .md th,
+.transcript-shell--table-wrap .md td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .md th,
 .md td {
   border: 1px solid var(--border);
@@ -9421,6 +9435,35 @@ body > .mermaid-diagram--fullscreen {
   border-color: var(--mode-autopilot-border);
   color: var(--mode-autopilot-fg);
   background: color-mix(in srgb, var(--mode-autopilot-bg) 55%, var(--surface-2));
+}
+/* 任务 959 ②：开关开＝发送目标下拉框（复用 940 形态机制的紧凑形态——
+   同高度/胶囊圆角/阴影族，菜单承载三目标）。关（默认）时本组规则零命中，
+   三按钮组样式与引入前逐字节一致（铁律 2）。 */
+.composer-meta__control--target--select {
+  min-width: 132px;
+  max-width: 200px;
+  flex: 0 0 auto;
+}
+
+.composer-send-target-select {
+  --wails-draggable: no-drag;
+  height: var(--composer-control-height);
+  min-height: var(--composer-control-height);
+  max-width: 200px;
+  padding: 0 8px 0 10px;
+  gap: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border-color: var(--border);
+  box-shadow: var(--app-graphite-shadow);
+  font-size: var(--composer-control-font-size);
+  font-weight: var(--composer-control-font-weight);
+  line-height: 14px;
+}
+
+.composer-send-target-select:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-2);
 }
 
 .composer-task-mode-trigger {
