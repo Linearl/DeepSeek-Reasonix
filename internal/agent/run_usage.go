@@ -113,7 +113,10 @@ func estimateSamplingRequestInputTokens(req provider.Request) int {
 		total += estimateTextTokens(msg.Name)
 		total += estimateTextTokens(msg.ToolCallID)
 		for _, image := range msg.Images {
-			total += estimateTextTokens(image)
+			// 任务 1025: images price by resolution like every other estimator
+			// face; the static chars/4 ruler used to read a 2MB screenshot as
+			// ~500K tokens in this accounting-only path.
+			total += imageEstimateTokens(image)
 		}
 		for _, call := range msg.ToolCalls {
 			total += 8 + estimateTextTokens(call.ID) + estimateTextTokens(call.Name) + estimateTextTokens(call.Arguments)

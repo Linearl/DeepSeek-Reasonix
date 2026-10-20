@@ -36,10 +36,10 @@ type foldSummary struct {
 	InputMode  string
 }
 
-func summaryInputTokens(msgs []provider.Message) int {
-	return estimateMessagesTokens(msgs)
-}
-
+// guardedSummaryInputTokens sizes the summarizer input on the same calibrated
+// ruler as the request-shape estimate (任务 988 对账切片, 随 1025 落地): telemetry
+// src/fold/proj must be three positions of ONE ruler or CJK sessions cannot
+// reconcile the compaction line.
 func (a *Agent) guardedSummaryInputTokens(msgs []provider.Message) int {
 	return a.estimatedVisibleRequestTokens(msgs)
 }
@@ -63,7 +63,10 @@ func (a *Agent) foldToSummary(ctx context.Context, fold []provider.Message, inst
 }
 
 func (a *Agent) foldToSummaryMode(ctx context.Context, fold []provider.Message, instructions, inputMode string) (foldSummary, error) {
-	res := foldSummary{Mode: CompactionModeSummarized, Spans: 1, FoldTokens: summaryInputTokens(fold), InputMode: inputMode}
+	// 任务 988 对账切片（随 1025 落地）：FoldTokens 与 src/proj 位同用校准尺
+	// （estimatedVisibleRequestTokens），静态 estimateMessagesTokens 只留内部
+	// 规划预算——否则 telemetry 一行里 fold/src/proj 三把尺，中文会话对账必歪。
+	res := foldSummary{Mode: CompactionModeSummarized, Spans: 1, FoldTokens: a.guardedSummaryInputTokens(fold), InputMode: inputMode}
 	if inputMode == SummaryInputSlim {
 		summary, usage, err := a.summarizeTranscript(ctx, fold, instructions)
 		res.Text, res.Usage = summary, usage

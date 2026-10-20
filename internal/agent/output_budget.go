@@ -82,6 +82,11 @@ type contextAdmission struct {
 
 type promptTokenCalibration struct {
 	promptTokens int
+	// imageTokens is the local image price carried by the calibrated request
+	// (任务 1025). Provider promptTokens bill images too, so the text ratio
+	// subtracts them: pairing all-in usage against image-free requestChars
+	// would inflate the per-char ratio and over-price later text turns.
+	imageTokens  int
 	requestChars int64
 	compactChars int64
 	cjkRunes     int64
@@ -90,10 +95,14 @@ type promptTokenCalibration struct {
 
 // requestCalibrationShape pairs the conservative provider-visible text and CJK
 // composition used for overflow protection with the legacy content-only shape
-// used by fold economics. Keeping them in one immutable pointer ensures readers
+// used by fold economics. Images are priced separately in imageTokens (任务
+// 1025: by resolution, like the provider's vision tokenizer — see
+// imageEstimateTokens), so the per-character calibration ratio stays a pure
+// text measurement. Keeping them in one immutable pointer ensures readers
 // never combine calibration fields from different prepared requests.
 type requestCalibrationShape struct {
 	requestChars int64
+	imageTokens  int
 	compactChars int64
 	cjkRunes     int64
 	cjkBytes     int64
@@ -115,6 +124,7 @@ func (a *Agent) setPromptTokenCalibration(promptTokens int, shape requestCalibra
 	}
 	a.sess.output.promptCalibration.Store(&promptTokenCalibration{
 		promptTokens: promptTokens,
+		imageTokens:  shape.imageTokens,
 		requestChars: shape.requestChars,
 		compactChars: shape.compactChars,
 		cjkRunes:     shape.cjkRunes,
@@ -252,45 +262,45 @@ func (a *Agent) requestCalibrationShape(req provider.Request) requestCalibration
 
 func requestCalibrationShapeWithPolicy(req provider.Request, policy provider.SharedWindowInputPolicy) requestCalibrationShape {
 	requestChars, cjkRunes, cjkBytes := requestCalibrationTextShape(req, policy)
-	// 任务 1010: the agent wire shape prices images in (capped per image); the
-	// bare text shape stays image-free because the chunk-budget plane
-	// (messageWireBytes) is built on it and counts full image bytes itself.
-	requestChars += cappedImageChars(req)
+	// 任务 1025: images price by resolution (imageEstimateTokens), not as base64
+	// characters — the text shape stays image-free because the chunk-budget
+	// plane (messageWireBytes) is built on it and counts full image bytes
+	// itself, and the char calibration ratio must stay a pure text measure.
 	return requestCalibrationShape{
 		requestChars: requestChars,
+		imageTokens:  imageEstimateTokensOf(req),
 		compactChars: int64(charsOfMessages(req.Messages)),
 		cjkRunes:     cjkRunes,
 		cjkBytes:     cjkBytes,
 	}
 }
 
-// cappedImageChars prices every image of a request at
-// requestImageEstimateByteCap bytes — see the constant's comment for why the
-// estimate cannot stay blind to images, and why it must not count them raw.
-func cappedImageChars(req provider.Request) int64 {
-	var n int64
+// imageEstimateTokensOf prices every provider-visible image of a request at
+// its resolution-derived token cost (任务 1025). Unreadable headers fall back
+// to the 任务 1010 flat cap so an unscannable image never turns invisible.
+func imageEstimateTokensOf(req provider.Request) int {
+	n := 0
 	for _, msg := range req.Messages {
 		if msg.LocalOnly {
 			continue
 		}
 		for _, img := range msg.Images {
-			if len(img) > requestImageEstimateByteCap {
-				n += requestImageEstimateByteCap
-				continue
-			}
-			n += int64(len(img))
+			n += imageEstimateTokens(img)
 		}
 	}
 	return n
 }
 
-// requestImageEstimateByteCap bounds how many bytes of one image ride into the
-// request-shape estimate (任务 1010). On the wire an image is a data URL or a
-// structured vision part priced by tiles (~1–2K tokens each), not by base64
-// length — but the ai-passport incident (2026-10-19) showed the failure mode of
-// counting them at ZERO: hundreds of accumulated screenshots were invisible to
-// every threshold, so the fold cap, admission and the truncation rescue all
-// believed a 2.1M-token view fit a 1M window and the freeze loop never broke.
+// requestImageEstimateByteCap is the flat per-image budget for images whose
+// dimensions cannot be sniffed (任务 1010, refined by 任务 1025: readable data
+// URLs now price by resolution via imageEstimateTokens; this cap remains the
+// conservative floor for HTTP URLs / file ids / unreadable headers). On the
+// wire an image is a data URL or a structured vision part priced by tiles
+// (~1–2K tokens each), not by base64 length — but the ai-passport incident
+// (2026-10-19) showed the failure mode of counting them at ZERO: hundreds of
+// accumulated screenshots were invisible to every threshold, so the fold cap,
+// admission and the truncation rescue all believed a 2.1M-token view fit a 1M
+// window and the freeze loop never broke.
 // The cap ≈ 2K tokens at the ~4-chars-per-token cold rate: real multi-image
 // pressure shows up (compaction fires, the summary prefix caps), while a single
 // 2 MB screenshot no longer estimates at ~500K tokens and over-folds healthy
@@ -372,7 +382,16 @@ func (a *Agent) calibratedPromptTokens(shape requestCalibrationShape) (int, bool
 		return 0, false
 	}
 	if cal := a.sess.output.promptCalibration.Load(); cal != nil && cal.requestChars > 0 {
-		ratio := float64(cal.promptTokens) / float64(cal.requestChars)
+		// Provider usage bills images; the ratio must stay a pure text measure
+		// (任务 1025), so the calibrated request's local image price is removed
+		// from the numerator. Over-subtracting our conservative image price
+		// leaves the text ratio at or below the true text ratio — the estimate
+		// stays conservative overall because images add their own price back.
+		textTokens := cal.promptTokens - cal.imageTokens
+		if textTokens <= 0 {
+			return 0, false
+		}
+		ratio := float64(textTokens) / float64(cal.requestChars)
 		if ratio > 0.05 && ratio < 2 {
 			trustedChars := shape.requestChars
 			excessCJKBytes := int64(0)
@@ -405,13 +424,20 @@ func (a *Agent) estimatedRequestTokens(req provider.Request) int {
 }
 
 func (a *Agent) estimatedShapeTokens(shape requestCalibrationShape) int {
-	if shape.requestChars <= 0 {
+	if shape.requestChars <= 0 && shape.imageTokens <= 0 {
 		return 0
 	}
+	// 任务 1025: text prices through the session's calibration ratio (or the
+	// cold ~4-chars-per-token fallback) and images add their resolution-derived
+	// token cost on top — one caliber for admission, the UI gauge and telemetry
+	// projection (任务 988's reconciliation slice).
+	text := 0
 	if calibrated, ok := a.calibratedPromptTokens(shape); ok {
-		return calibrated
+		text = calibrated
+	} else {
+		text = int(float64(shape.requestChars) * fallbackTokPerChar)
 	}
-	return int(float64(shape.requestChars) * fallbackTokPerChar)
+	return text + shape.imageTokens
 }
 
 func isCJKRune(r rune) bool {
