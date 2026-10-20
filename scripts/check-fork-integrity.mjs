@@ -26,7 +26,11 @@ const CHECKS = [
   { feature: "任务350 locale 三语", file: "desktop/frontend/src/locales/zh.ts", patterns: ["projectTree.nestGroupUnder", "projectTree.moveGroupToTopLevel"] },
   { feature: "任务368 关闭非活跃标签页（策略+菜单+三语）", file: "desktop/frontend/src/lib/tabClosePolicy.ts", patterns: ["selectCloseInactiveIds"] },
   { feature: "任务368 locale", file: "desktop/frontend/src/locales/zh.ts", patterns: ["tabBar.closeInactiveTabs"] },
-  { feature: "任务377 lifecycle 噪音门控（默认关）", file: "desktop/startup_diagnostics.go", patterns: ["lifecycleNoiseBenign", "if !lifecycleNoiseBenign(lifecycle.Phase) {"] },
+  // 任务 1002 合入（2026-10-20 合并线）：原第二个 pattern 是 1002 分支的
+  // `if !lifecycleNoiseBenign(lifecycle.Phase) {` 写法；1018 × 1002 并集解把判定
+  // 归入 switch 的 `case lifecycleNoiseBenign(...)` + metrics 侧的 `a.lifecycle.noiseGate`
+  // 分支（语义未变：benign 相位不报崩溃 + 门控抑制可观测）。锚点随实际形态同步。
+  { feature: "任务377 lifecycle 噪音门控（默认关）", file: "desktop/startup_diagnostics.go", patterns: ["lifecycleNoiseBenign", "a.lifecycle.noiseGate"] },
   { feature: "任务377 fatal log 头行（不再 0 字节）", file: "desktop/crash_fatal.go", patterns: ["fatalCrashLogHeaderPrefix", "stripFatalCrashHeader"] },
   { feature: "任务377 config 开关", file: "internal/config/desktop_preferences.go", patterns: ["experimental_lifecycle_noise_gate"] },
   { feature: "#9222 项目分组 CSS", file: "desktop/frontend/src/styles.css", patterns: [".project-tree__group", ".project-tree__group-count", ".project-tree__group-caret"] },
