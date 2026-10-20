@@ -58,6 +58,7 @@ import (
 	"reasonix/internal/productdocs"
 	"reasonix/internal/provider"
 	"reasonix/internal/recovery"
+	"reasonix/internal/reminder"
 	"reasonix/internal/rules"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/secrets"
@@ -2490,6 +2491,45 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}); tc != nil {
 			reg.Add(tc)
 		}
+		// Task 1001: the in-session delayed self-reminder tool. Same host-
+		// callback pattern as the card tool, but the callbacks resolve through
+		// ctrlRef (the controller is built later in this function): set/cancel/
+		// list route to the controller's durable reminder queue, and delivery
+		// rides the follow-up enqueue (任务579 idle-turn bridge) — never
+		// talk_to_session, so the cross-session receipt face (tl 1000) stays
+		// structurally untouched. With the switch off the tool is not in the
+		// registry at all; the boot snapshot decides, so a flip applies on
+		// restart.
+		if cfg.SessionRemindersEnabled() {
+			if sr := agent.NewSessionRemindTool(agent.RemindConfig{
+				Enabled:            true,
+				CurrentSessionPath: sessionPath,
+				ResolveSessionPath: executor.SessionPath,
+				Schedule: func(sessionPath, message string, dueAt time.Time) (reminder.Reminder, error) {
+					c := ctrlRef.Load()
+					if c == nil {
+						return reminder.Reminder{}, fmt.Errorf("session_remind: controller is not ready")
+					}
+					return c.ScheduleReminder(message, dueAt)
+				},
+				Cancel: func(sessionPath, id string) (bool, error) {
+					c := ctrlRef.Load()
+					if c == nil {
+						return false, fmt.Errorf("session_remind: controller is not ready")
+					}
+					return c.CancelReminder(id)
+				},
+				List: func(sessionPath string) ([]reminder.Reminder, error) {
+					c := ctrlRef.Load()
+					if c == nil {
+						return nil, fmt.Errorf("session_remind: controller is not ready")
+					}
+					return c.ListReminders()
+				},
+			}); sr != nil {
+				reg.Add(sr)
+			}
+		}
 		// 144: only a host that can create sessions gets the creator tool.
 		// Task 173 ⑦ additionally lets the panel withhold it even then.
 		if opts.OnCreateCollabSession != nil && cfg.Agent.SessionCollabAllowCreate {
@@ -2866,6 +2906,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	ctrl := control.New(ctrlOpts)
 	bootTime.mark("controller")
+	// Task 1001: snapshot the reminder switch and run the first durable-queue
+	// scan for the bound session (pending entries re-arm, overdue ones deliver
+	// late with the catch-up annotation).
+	ctrl.SetRemindersEnabled(cfg.SessionRemindersEnabled())
 	// The role inputs set the session quality floor: delivery/deliver/quality
 	// raise it, light and its aliases fold to standard, unknown stays default.
 	if p, err := agentpreset.Normalize(firstNonEmpty(opts.AgentPreset, opts.TokenMode)); err == nil && p == agentpreset.Delivery {
