@@ -357,7 +357,10 @@ func TestDesktopLifecycleJoinsLauncherDeathEvidence(t *testing.T) {
 	dead.stopWriter()
 
 	evidencePath := filepath.Join(root, "diagnostics", "lifecycle", "last-abnormal-exit.json")
-	body := `{"schemaVersion":1,"pid":4242,"exitCode":-1,"exitedAt":"2026-10-10T09:30:00.123456789Z"}`
+	// Relative time, not a fixed date: a hardcoded exitedAt older than the
+	// 7-day retention would be judged stale and break the join (task 1034).
+	exitedAt := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339Nano)
+	body := `{"schemaVersion":1,"pid":4242,"exitCode":-1,"exitedAt":"` + exitedAt + `"}`
 	if err := os.MkdirAll(filepath.Dir(evidencePath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +376,7 @@ func TestDesktopLifecycleJoinsLauncherDeathEvidence(t *testing.T) {
 	if got[0].PID != 4242 || got[0].DetectedAt == "" {
 		t.Fatalf("attribution basics missing: %+v", got[0])
 	}
-	if got[0].DeathAt != "2026-10-10T09:30:00.123456789Z" || got[0].ExitCode != -1 {
+	if got[0].DeathAt != exitedAt || got[0].ExitCode != -1 {
 		t.Fatalf("death evidence not joined: %+v", got[0])
 	}
 	if _, err := os.Stat(evidencePath); !os.IsNotExist(err) {
@@ -395,7 +398,10 @@ func TestDesktopLifecycleUnmatchedLauncherEvidenceIsKept(t *testing.T) {
 	}
 	// PID 9999 matches no dead lifecycle record — the evidence may belong to
 	// a record a previous instance already consumed; keep it until stale.
-	body := `{"schemaVersion":1,"pid":9999,"exitCode":1,"exitedAt":"2026-10-10T09:30:00Z"}`
+	// Relative time so the record stays inside the 7-day retention window
+	// regardless of when the test runs (task 1034).
+	exitedAt := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339Nano)
+	body := `{"schemaVersion":1,"pid":9999,"exitCode":1,"exitedAt":"` + exitedAt + `"}`
 	if err := os.WriteFile(evidencePath, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
