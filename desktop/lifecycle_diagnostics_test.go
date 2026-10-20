@@ -39,6 +39,68 @@ func TestDesktopLifecycleDeadRecordIsConsumedOnce(t *testing.T) {
 	}
 }
 
+// Task 1027 (issue #60): mark() must keep its contract — it stamps Phase
+// only — while markWedge() records the wedge point side by side, exactly
+// once (the first wedge wins), and the wedged record the consume pass reads
+// carries the wedge point through to the observation.
+func TestDesktopLifecycleMarkWedgeKeepsStageAlongsidePhase(t *testing.T) {
+	root := t.TempDir()
+	tracker := lifecycleTrackerForTest(t, root, 4242, "wedge-point")
+	if err := tracker.start(); err != nil {
+		t.Fatal(err)
+	}
+	tracker.mark("healthy")
+	tracker.mark("closing_tabs")
+
+	if got := tracker.markWedge(); got != "closing_tabs" {
+		t.Fatalf("markWedge returned %q, want the blocked stage closing_tabs", got)
+	}
+	// First wedge wins: a second forced-exit record must not overwrite the
+	// original stage with whatever phase came later.
+	tracker.mark("wedged_after_the_fact")
+	if got := tracker.markWedge(); got != "closing_tabs" {
+		t.Fatalf("second markWedge returned %q, want the original closing_tabs", got)
+	}
+	tracker.stopWriter()
+
+	state, err := readDesktopLifecycleState(tracker.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Phase != "wedged" || state.WedgePoint != "closing_tabs" {
+		t.Fatalf("record = phase=%q wedgePoint=%q, want phase=wedged wedgePoint=closing_tabs", state.Phase, state.WedgePoint)
+	}
+
+	reader := lifecycleTrackerForTest(t, root, os.Getpid(), "reader")
+	got := reader.consumePrevious(true)
+	if len(got) != 1 {
+		t.Fatalf("observations = %+v", got)
+	}
+	if got[0].Phase != "wedged" || got[0].WedgePoint != "closing_tabs" {
+		t.Fatalf("observation = phase=%q wedgePoint=%q, want the wedge point carried through consume", got[0].Phase, got[0].WedgePoint)
+	}
+}
+
+// Task 1027: mark() alone (every non-watchdog path) never writes the wedge
+// point — a plain phase=wedged from another source stays wedge-point-less
+// and the record decodes cleanly on older readers (additive omitempty).
+func TestDesktopLifecycleMarkDoesNotTouchWedgePoint(t *testing.T) {
+	tracker := lifecycleTrackerForTest(t, t.TempDir(), 4242, "mark-only")
+	if err := tracker.start(); err != nil {
+		t.Fatal(err)
+	}
+	tracker.mark("wedged")
+	tracker.stopWriter()
+
+	state, err := readDesktopLifecycleState(tracker.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Phase != "wedged" || state.WedgePoint != "" {
+		t.Fatalf("record = %+v, want phase=wedged with an empty wedgePoint (mark semantics unchanged)", state)
+	}
+}
+
 func TestDesktopLifecycleConcurrentConsumersClaimOnce(t *testing.T) {
 	root := t.TempDir()
 	dead := lifecycleTrackerForTest(t, root, 4242, "dead-concurrent")

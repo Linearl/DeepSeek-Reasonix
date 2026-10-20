@@ -86,9 +86,20 @@ func (a *App) recordPreviousRunDiagnostics() {
 		slog.Info("desktop: lifecycle residue dispositioned (task 1018-fix2)",
 			"pid", lifecycle.PID, "phase", lifecycle.Phase, "disposition", disposition,
 			"reported", disposition == "abnormal_phase",
-			"exit_code", lifecycle.ExitCode, "death_at", lifecycle.DeathAt)
+			"exit_code", lifecycle.ExitCode, "death_at", lifecycle.DeathAt,
+			"task_1027_wedge_point", wedgePointBucket(lifecycle.WedgePoint))
 		if m := a.metrics.Load(); m != nil {
 			m.inc("desktop_exit_phase", metricBucket(lifecycle.Phase))
+			// Task 1027 (issue #60): the crash-report surface carries the
+			// wedge point as a payload field (task 1018-fix2 restored the
+			// abnormal-phase report); the metrics stream is the aggregatable
+			// companion — a wedged exit gets its own named bucket instead of
+			// folding into the bare "wedged" phase count, so remote cuts can
+			// slice by wedge point without parsing report text. Planned exits
+			// carry no wedge point and never touch this signal.
+			if strings.EqualFold(strings.TrimSpace(lifecycle.Phase), "wedged") {
+				m.inc("desktop_exit_wedge_point", wedgePointBucket(lifecycle.WedgePoint))
+			}
 			switch disposition {
 			case "update_restart":
 				m.inc("desktop_exit_phase", "update_restart_suppressed")
@@ -191,6 +202,29 @@ update transition: %s`,
 	return report
 }
 
+// wedgePointEnum collapses a raw wedge point to its aggregatable stage name:
+// the per-tab teardown stage stamps a live tab ID (closing_tab:<id>), which
+// would fan the remote metric into unbounded cardinality — only the stage
+// prefix is kept. All other stage names pass through unchanged.
+func wedgePointEnum(point string) string {
+	if i := strings.IndexByte(point, ':'); i >= 0 {
+		return point[:i]
+	}
+	return point
+}
+
+// wedgePointBucket is the enumerated wedge point for remote surfaces (metrics
+// bucket, report payload field): the stage name normalized through
+// metricBucket, or the explicit "unknown" when the record carries none — the
+// task-1027 acceptance forbids a missing/blank value where the field is
+// emitted.
+func wedgePointBucket(point string) string {
+	if strings.TrimSpace(point) == "" {
+		return "unknown"
+	}
+	return metricBucket(wedgePointEnum(point))
+}
+
 // desktopLifecycleReport builds the desktop.abnormal_exit.v2 report shape.
 // Task 1018 silenced every disposition; task 1018-fix2 restored the call for
 // the abnormal_phase disposition only (wedged/unknown have no other crash
@@ -210,13 +244,28 @@ func desktopLifecycleReport(previous desktopLifecycleObservation) crashReport {
 	} else {
 		deathLine = fmt.Sprintf("\ndeath observed: %s (launcher, exit code %d)", previous.DeathAt, previous.ExitCode)
 	}
+	// Task 1027 (issue #60): the wedge point names the teardown stage the
+	// shutdown watchdog was waiting on. Enumerated for remote aggregation:
+	// the per-tab stage carries a live tab ID (closing_tab:<id>), which
+	// would fan out into unbounded buckets, so the ID suffix is dropped
+	// before metricBucket normalizes the name. A wedged exit WITHOUT a
+	// wedge point (a pre-1027 record) reports the explicit "unknown" — the
+	// acceptance forbids a missing field. A non-wedged exit has no wedge
+	// point at all, and the omitempty wire field stays absent rather than
+	// emitting noise.
+	wedgePoint := ""
+	wedgeLine := ""
+	if strings.EqualFold(strings.TrimSpace(previous.Phase), "wedged") {
+		wedgePoint = wedgePointBucket(previous.WedgePoint)
+		wedgeLine = fmt.Sprintf("\nwedge point: %s (shutdown watchdog forced exit)", wedgePoint)
+	}
 	message := fmt.Sprintf(`[desktop.abnormal_exit.v2]
 
 Reasonix found a per-process lifecycle record whose desktop process was no longer running.
 
 --- lifecycle context ---
 phase: %s
-pid: %d%s
+pid: %d%s%s
 previous version: %s
 previous channel: %s
 started at: %s
@@ -225,6 +274,7 @@ discovered at: %s`,
 		phase,
 		previous.PID,
 		deathLine,
+		wedgeLine,
 		sanitizeCrashField(previous.Version, 64),
 		sanitizeCrashField(previous.Channel, 32),
 		sanitizeCrashField(previous.StartedAt, 64),
@@ -242,6 +292,7 @@ discovered at: %s`,
 	report.OccurredAt = sanitizeCrashField(occurredAt, 64)
 	report.ProcessPID = previous.PID
 	report.ExitPhase = previous.Phase
+	report.WedgePoint = wedgePoint
 	report.Message = sanitizeCrashText(message, maxCrashDetailBytes)
 	return report
 }

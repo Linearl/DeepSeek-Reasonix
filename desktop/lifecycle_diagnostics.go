@@ -41,8 +41,15 @@ type desktopLifecycleState struct {
 	Version       string `json:"version,omitempty"`
 	Channel       string `json:"channel,omitempty"`
 	Phase         string `json:"phase"`
-	StartedAt     string `json:"startedAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	// Task 1027 (issue #60): the teardown stage the shutdown watchdog was
+	// waiting on when it force-killed the process. Phase alone ends as
+	// "wedged" and the stage name survives only in the local slog — this
+	// field keeps it on disk for the next boot's report. mark() never
+	// touches it (only markWedge writes it, once); additive omitempty, so
+	// no schema bump: old readers ignore it, old records decode as empty.
+	WedgePoint string `json:"wedgePoint,omitempty"`
+	StartedAt  string `json:"startedAt"`
+	UpdatedAt  string `json:"updatedAt"`
 }
 
 type desktopLifecycleObservation struct {
@@ -60,6 +67,10 @@ type desktopLifecycleObservation struct {
 	DetectedAt string
 	DeathAt    string
 	ExitCode   int
+	// Task 1027 (issue #60): the record's wedge point (teardown stage the
+	// watchdog was waiting on), carried through consume to the report.
+	// Empty when the process did not die of the shutdown watchdog.
+	WedgePoint string
 }
 
 type desktopLifecycleRuntime struct {
@@ -333,6 +344,28 @@ func (t *desktopLifecycleTracker) mark(phase string) {
 	_ = t.writeStateLocked()
 }
 
+// markWedge (task 1027) records the shutdown watchdog's forced exit without
+// losing the wedge point: the current phase — the teardown stage that blocked
+// — is copied into its own field before Phase flips to "wedged", in the same
+// locked write. First wedge wins: the watchdog fires once per process, and a
+// later mark must never overwrite the original stage. Returns the persisted
+// wedge point so the watchdog's log line and the record name the same stage
+// by construction (they used to be two separate phase() reads).
+func (t *desktopLifecycleTracker) markWedge() string {
+	if t == nil || t.path == "" {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.state.WedgePoint == "" {
+		t.state.WedgePoint = t.state.Phase
+	}
+	t.state.Phase = "wedged"
+	t.state.UpdatedAt = t.now().Format(time.RFC3339Nano)
+	_ = t.writeStateLocked()
+	return t.state.WedgePoint
+}
+
 // phase returns the last recorded phase for the shutdown watchdog's
 // wedge-point log (task 272 L1): shutdownBody stamps stage markers so a
 // forced exit names the section that blocked.
@@ -436,6 +469,7 @@ func (t *desktopLifecycleTracker) consumePrevious(emit bool) []desktopLifecycleO
 			Version: state.Version, Channel: state.Channel, Phase: state.Phase,
 			StartedAt: state.StartedAt, UpdatedAt: state.UpdatedAt,
 			PID: state.PID, DetectedAt: now.Format(time.RFC3339Nano),
+			WedgePoint: state.WedgePoint,
 		})
 	}
 	// Task 1002: the pass completed — stamp it so the NEXT boot knows a
