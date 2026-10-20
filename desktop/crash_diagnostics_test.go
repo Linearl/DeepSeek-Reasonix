@@ -287,6 +287,55 @@ func TestDesktopLifecycleReportCarriesWedgePoint(t *testing.T) {
 	}
 }
 
+// Task 1027 (issue #60, merge-adapt assertion): the report-surface wedge point
+// must survive the FULL disposition path — a wedged record flows through
+// recordPreviousRunDiagnostics (abnormal_phase, task 1018-fix2 restored the
+// write) into writePendingReport, and the ON-DISK pending report carries the
+// enumerated wedge point in both the payload field and the message line. The
+// builder-level test above covers the shape; this one covers the wiring.
+func TestWedgedResidueWritesPendingReportCarryingWedgePoint(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	removeAllPendingCrashes()
+	app := NewApp()
+	app.lifecycle.previousRuns = []desktopLifecycleObservation{
+		{Phase: "wedged", Version: "v1", Channel: "stable", PID: 4242, WedgePoint: "closing_tab:webview-abc"},
+	}
+	app.recordPreviousRunDiagnostics()
+
+	if got := pendingReportCount(t); got != 1 {
+		t.Fatalf("pending reports = %d, want 1 (wedged residue must be reported — task 1018-fix2)", got)
+	}
+	entries, err := os.ReadDir(pendingCrashDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body []byte
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		body, err = os.ReadFile(filepath.Join(pendingCrashDir(), entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		break
+	}
+	if len(body) == 0 {
+		t.Fatal("no pending report body read from the crash-pending queue")
+	}
+	var report crashReport
+	if err := json.Unmarshal(body, &report); err != nil {
+		t.Fatalf("unmarshal pending report: %v (body %s)", err, body)
+	}
+	if report.WedgePoint != "closing_tab" {
+		t.Fatalf("pending report wedgePoint = %q, want the enumerated stage closing_tab (never the raw tab ID)", report.WedgePoint)
+	}
+	if !strings.Contains(report.Message, "wedge point: closing_tab") {
+		t.Fatalf("pending report message missing the wedge point line: %q", report.Message)
+	}
+	removeAllPendingCrashes()
+}
+
 func TestCapturePreviousFatalCrashQueuesAndRemovesRawDump(t *testing.T) {
 	resetFatalCrashArtifacts(t)
 	const crashedPID = 424242
