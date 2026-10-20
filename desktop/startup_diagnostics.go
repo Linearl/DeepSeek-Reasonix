@@ -33,52 +33,61 @@ func (a *App) recordPreviousRunDiagnostics() {
 	// gate: gate=false installs (the field default, and every existing config
 	// renders the key explicitly false) must not re-surface the 0911 false
 	// "上次运行崩溃" banner on every update restart.
-	gateSuppressed, markerSuppressed := 0, 0
+	//
+	// Task 873: the marker check must precede the phase gate. A forced update
+	// restart (grace window expired → forced quit) can leave the record in a
+	// mid-shutdown phase (closing_*, waiting_runtime_locks): that phase is not
+	// "benign" in the task-377 sense, but the exit was still PLANNED (the
+	// marker writer is this exact PID handing off to an update relaunch).
+	//
+	// Task 1018 (20261020 装机实测): the record family is read-and-clear at
+	// the source, for EVERY disposition — marker-vouched, clean-shutdown, and
+	// abnormal phase alike. Nothing here wrote a crash report anymore. The
+	// 10-19/10-20 incidents: a wedged-phase record (shutdown watchdog forced
+	// quit, desktop.log zero panic) sat in the crash queue and re-surfaced the
+	// 「上次运行遗留的崩溃报告」 banner on every launch while uploads were
+	// failing. A real panic never depended on this path — the crash-fatal sink
+	// dump (go.fatal) and recoverToPending (go panic) own that surface — so
+	// converting the scan to consume-and-clear cannot mask a real crash. The
+	// forensics stay observable (1545: never a silent drop): one line per
+	// record naming pid/phase/exit + the summary counters + metrics buckets;
+	// the launcher's death record (task 736) remains the death-moment witness.
+	updateRestart, cleanShutdown, abnormalPhase := 0, 0, 0
 	for _, lifecycle := range a.lifecycle.previousRuns {
-		// Task 873: the marker check must precede the phase gate. A forced
-		// update restart (grace window expired → forced quit) can leave the
-		// record in a mid-shutdown phase (closing_*, waiting_runtime_locks):
-		// that phase is not "benign" in the task-377 sense, but the exit was
-		// still PLANNED (the marker writer is this exact PID handing off to an
-		// update relaunch). Task 847 only suppressed clean phases, so every
-		// forced-through install surfaced the "上次运行遗留的崩溃报告" banner.
-		// The PID-match + fresh-window vouching stays the same — a marker from
-		// an unrelated PID or an old window suppresses nothing.
-		if updateRestartMarkerFreshForLifecycle(lifecycle.PID) {
-			markerSuppressed++
-			continue
+		disposition := "abnormal_phase"
+		switch {
+		case updateRestartMarkerFreshForLifecycle(lifecycle.PID):
+			disposition = "update_restart"
+			updateRestart++
+		case lifecycleNoiseBenign(lifecycle.Phase):
+			disposition = "clean_shutdown"
+			cleanShutdown++
+		default:
+			abnormalPhase++
 		}
-		if !lifecycleNoiseBenign(lifecycle.Phase) {
-			_ = writePendingReport(desktopLifecycleReport(lifecycle), true)
-			if m := a.metrics.Load(); m != nil {
-				m.inc("desktop_exit", "abnormal")
-				m.inc("desktop_exit_phase", metricBucket(lifecycle.Phase))
-				m.persist()
-			}
-			continue
-		}
-		if a.lifecycle.noiseGate {
-			gateSuppressed++
-			continue
-		}
-		_ = writePendingReport(desktopLifecycleReport(lifecycle), true)
+		slog.Info("desktop: lifecycle residue consumed read-and-clear, no crash report (task 1018)",
+			"pid", lifecycle.PID, "phase", lifecycle.Phase, "disposition", disposition,
+			"exit_code", lifecycle.ExitCode, "death_at", lifecycle.DeathAt)
 		if m := a.metrics.Load(); m != nil {
-			m.inc("desktop_exit", "abnormal")
 			m.inc("desktop_exit_phase", metricBucket(lifecycle.Phase))
-			m.persist()
+			switch disposition {
+			case "update_restart":
+				m.inc("desktop_exit_phase", "update_restart_suppressed")
+			case "clean_shutdown":
+				if a.lifecycle.noiseGate {
+					m.inc("desktop_exit_phase", "noise_gate_suppressed")
+				}
+			default:
+				m.inc("desktop_exit_phase", "abnormal_phase_cleared")
+				m.inc("desktop_exit", "residue_cleared")
+			}
 		}
 	}
-	if gateSuppressed > 0 || markerSuppressed > 0 {
-		slog.Info("desktop: clean-shutdown lifecycle residue suppressed",
-			"gate_suppressed", gateSuppressed, "update_restart_suppressed", markerSuppressed,
-			"phases", "shutting_down/healthy")
+	if total := updateRestart + cleanShutdown + abnormalPhase; total > 0 {
+		slog.Info("desktop: lifecycle residue cleared without a crash report",
+			"total", total, "update_restart_suppressed", updateRestart,
+			"clean_shutdown", cleanShutdown, "abnormal_phase_cleared", abnormalPhase)
 		if m := a.metrics.Load(); m != nil {
-			if gateSuppressed > 0 {
-				m.inc("desktop_exit_phase", "noise_gate_suppressed")
-			}
-			if markerSuppressed > 0 {
-				m.inc("desktop_exit_phase", "update_restart_suppressed")
-			}
 			m.persist()
 		}
 	}
@@ -132,6 +141,11 @@ update transition: %s`,
 	return report
 }
 
+// desktopLifecycleReport builds the desktop.abnormal_exit.v2 report shape.
+// Since task 1018 the startup scan no longer writes these (read-and-clear at
+// the source); the builder stays as the canonical schema of the pre-1018
+// backlog files that sweepJudgedLifecyclePendingReports must recognize, and
+// as the field-mapping documentation for the task-736 attribution contract.
 func desktopLifecycleReport(previous desktopLifecycleObservation) crashReport {
 	phase := metricBucket(previous.Phase)
 	// Task 736 (issue #39): occurredAt used to be the record's last phase
