@@ -52,7 +52,14 @@ func (a *App) recordPreviousRunDiagnostics() {
 	// forensics stay observable (1545: never a silent drop): one line per
 	// record naming pid/phase/exit + the summary counters + metrics buckets;
 	// the launcher's death record (task 736) remains the death-moment witness.
+	//
+	// Task 1002 并集（847 家族新形态）：先做一次归属时效判定——非直接前任留下的
+	// 记录（中间某一轮 boot 的 consume pass 已晚于它的最后一次 phase 写入）不
+	// 算本次的「上次运行」证据，单独退役计数（staleRetired，尾部分别命名日志 +
+	// metrics 桶）。归属判定（1002）与处置动作（1018：读后即清、不写报告）正
+	// 交，见下方循环内的前置分支。
 	updateRestart, cleanShutdown, abnormalPhase := 0, 0, 0
+	staleRetired := 0
 	for _, lifecycle := range a.lifecycle.previousRuns {
 		disposition := "abnormal_phase"
 		switch {
@@ -64,6 +71,27 @@ func (a *App) recordPreviousRunDiagnostics() {
 			cleanShutdown++
 		default:
 			abnormalPhase++
+		}
+		// Task 1002 (847 家族新形态, 20261019/20 装机实锤): the marker vouch
+		// only covers the exiting process's OWN record. A record left by an
+		// EARLIER abnormal death can survive its natural successor's boot (a
+		// lost Windows claim race, or a briefly-alive reused PID) and get
+		// claimed several boots later — by then the on-disk marker belongs to
+		// an unrelated process, the PID cross-check correctly refuses, and the
+		// stale record surfaced as "上次运行遗留的崩溃报告" right after an
+		// update the user read as the update's own crash. The consume-pass
+		// stamp settles the attribution: if an intermediate boot already ran
+		// its consume pass after this record's last phase write, THIS boot is
+		// not the record's direct successor — the record is not "上次运行"
+		// evidence here. Retire it (claim already removed it from disk) with a
+		// named log + metrics bucket, never silently (1545).
+		//
+		// 并集说明（1018 × 1002）：本前置分支只做「归属」判定；退役后的命名日志与
+		// metrics 桶在循环外的 staleRetired 汇总块统一出具。处置动作（不写崩溃
+		// 报告、读后即清）仍由下方的 1018 主分支负责——两边不互相覆盖。
+		if lifecycleRecordPredatesPass(lifecycle.UpdatedAt, a.lifecycle.priorPassAt) {
+			staleRetired++
+			continue
 		}
 		slog.Info("desktop: lifecycle residue consumed read-and-clear, no crash report (task 1018)",
 			"pid", lifecycle.PID, "phase", lifecycle.Phase, "disposition", disposition,
@@ -91,6 +119,37 @@ func (a *App) recordPreviousRunDiagnostics() {
 			m.persist()
 		}
 	}
+	// Task 1002: stale retirements get their own named line — they are not a
+	// vouch (nothing "approves" the death) but an attribution ruling: an
+	// earlier boot already had its chance at this evidence.
+	if staleRetired > 0 {
+		slog.Info("desktop: stale lifecycle residue retired without a crash report",
+			"count", staleRetired,
+			"priorPassAt", a.lifecycle.priorPassAt.Format(time.RFC3339),
+			"rule", "an earlier boot's consume pass already ran after the record's last phase write")
+		if m := a.metrics.Load(); m != nil {
+			m.inc("desktop_exit_phase", "stale_record_retired")
+			m.persist()
+		}
+	}
+}
+
+// lifecycleRecordPredatesPass reports whether a claimed record's last phase
+// write happened before a PREVIOUS boot's consume pass — i.e. that pass
+// already saw this record (or an identical file), so the current boot is a
+// late claimant rather than the record's direct successor and the record
+// cannot honestly be surfaced as "上次运行" evidence here. Fail-open on
+// purpose: a missing or unparseable timestamp keeps the report-always
+// behavior (task 1002 — the false-banner fix must never eat a real crash).
+func lifecycleRecordPredatesPass(updatedAt string, priorPassAt time.Time) bool {
+	if priorPassAt.IsZero() {
+		return false
+	}
+	at, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(updatedAt))
+	if err != nil {
+		return false
+	}
+	return at.Before(priorPassAt)
 }
 
 // lifecycleNoiseBenign reports whether the phase proves the previous run was

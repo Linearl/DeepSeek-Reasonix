@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"reasonix/internal/config"
 )
 
 // ── task 847: 763 复发#2 回归钉 ─────────────────────────────────────────────
@@ -292,5 +294,147 @@ func TestUpdateRestartMarkerVouchesForMidShutdownPhaseResidue(t *testing.T) {
 	app.recordPreviousRunDiagnostics()
 	if got := pendingReportCount(t); got != 0 {
 		t.Fatalf("pending reports = %d, want 0 (task 1018: marker and markerless residue alike are read-and-clear)", got)
+	}
+}
+
+// ── task 1002: 847 家族新形态——迟到认领的陈旧 record 不再面呈 ──────────────
+// 20261019 1038 / 20261020 1058 装机实锤：一个更早异常死亡（watchdog 强杀）
+// 留下的 record 在其自然后继启动时未被认领（Windows 认领竞争落败 / PID 复用
+// 判活误真），跨若干次启动后才被某次更新重启的新进程认领——此刻盘上 marker
+// 属于别的进程，PID 交叉自证正确拒绝，陈旧 record 被写成崩溃报告并面呈
+// 「检测到上次运行遗留的崩溃报告」，用户在更新后看到即读成「更新崩了」。
+// 修法 = consume-pass 时戳：某 record 的最后一次相位写入早于「上一次启动的
+// 认领扫描」，则本次启动不是它的直接后继，「上次运行」的说法不成立——退役
+// 不写报告（认领已把文件从盘上删除），带命名日志 + metrics（1545 反静默）。
+
+// plantConsumePassAt writes a consume-pass stamp at an explicit time so tests
+// can simulate an intermediate boot's pass.
+func plantConsumePassAt(t *testing.T, at time.Time) {
+	t.Helper()
+	body, err := json.Marshal(lifecycleConsumePassStamp{
+		SchemaVersion: lifecycleConsumePassSchema,
+		RunID:         "prior-boot",
+		At:            at.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(lifecycleConsumePassPathForRoot(config.MemoryUserDir())), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lifecycleConsumePassPathForRoot(config.MemoryUserDir()), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 0911→1038 形态端到端：更新重启的启动（盘上有他人 PID 的新鲜 marker）认领
+// 到一份 57 分钟前强杀留下的 wedged record，而 10 分钟前的中间启动已经过手
+// 目录——该 record 退役不写报告；同一次扫描里「上次运行」的直接后继死亡
+// （相位写入晚于那次过手）照写——退役只吞陈旧件，不吞真崩溃。
+func TestStaleLifecycleRecordFromIntermediatePassRetired(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllCrashesAndMarker(t))
+
+	// The update-restart boot's marker belongs to another PID — the vouch
+	// correctly refuses the stale record (this is the 847/873 boundary).
+	plantMarkerAt(t, time.Now().Add(-time.Minute), 777)
+	priorPass := time.Now().Add(-10 * time.Minute)
+	plantConsumePassAt(t, priorPass)
+
+	app := NewApp()
+	app.lifecycle.priorPassAt = priorPass
+	app.lifecycle.previousRuns = []desktopLifecycleObservation{
+		// The 20261019 shape: an earlier force-kill's record, claimed late.
+		{Phase: "wedged", PID: 15380, Version: "v1.38.2", Channel: "stable",
+			UpdatedAt: time.Now().Add(-57 * time.Minute).Format(time.RFC3339Nano)},
+		// Control: the genuinely previous run's death (its last write is NEWER
+		// than the intermediate pass) keeps reporting in the same scan.
+		{Phase: "closing_tab:tab_x", PID: 9999, Version: "v1.38.2", Channel: "stable",
+			UpdatedAt: time.Now().Add(-time.Minute).Format(time.RFC3339Nano)},
+	}
+	app.recordPreviousRunDiagnostics()
+	if got := pendingReportCount(t); got != 1 {
+		t.Fatalf("pending reports = %d, want 1 (the stale 57-min-old record retires; the direct successor's death still reports)", got)
+	}
+}
+
+// 真崩溃路径零回归：无中间过手（首次安装/长时间关机后首启）时，任何相位的
+// record 照写报告——时戳缺失/不可解析同样 fail-open 照写，修复不得吞真崩溃。
+func TestDirectSuccessorCrashStillReported(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	reported := func(name string, priorPassAt time.Time, updatedAt string) {
+		t.Helper()
+		app := NewApp()
+		app.lifecycle.priorPassAt = priorPassAt
+		app.lifecycle.previousRuns = []desktopLifecycleObservation{
+			{Phase: "wedged", PID: 4242, Version: "v1.38.2", Channel: "stable", UpdatedAt: updatedAt},
+		}
+		app.recordPreviousRunDiagnostics()
+		if got := pendingReportCount(t); got != 1 {
+			t.Fatalf("%s: pending reports = %d, want 1 (the crash must keep reporting)", name, got)
+		}
+		removeAllPendingCrashes()
+	}
+
+	now := time.Now()
+	// No stamp at all: first install or a machine that only ever booted once —
+	// the boot IS the direct successor (also covers the overnight-crash boot).
+	reported("no prior pass", time.Time{}, now.Add(-time.Hour).Format(time.RFC3339Nano))
+	// A prior pass that predates the record's last write: the record was born
+	// after that pass, so this boot is the first to see it.
+	reported("pass older than record", now.Add(-2*time.Hour), now.Add(-time.Minute).Format(time.RFC3339Nano))
+	// Fail-open: an unparseable timestamp can never prove staleness.
+	reported("unparseable updatedAt", now.Add(-10*time.Minute), "not-a-time")
+	// Fail-open: a record without a timestamp (degenerate writer) reports.
+	reported("empty updatedAt", now.Add(-10*time.Minute), "")
+}
+
+// 时戳管道回归钉：consumePrevious 先读旧戳（存进 priorPassAt 交给报告面）、
+// 后写新戳；戳文件因 schema 不同不被当 lifecycle record 消费。
+func TestConsumePassStampRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	dir := desktopLifecycleDir(root)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	prior := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Second)
+	body, err := json.Marshal(lifecycleConsumePassStamp{
+		SchemaVersion: lifecycleConsumePassSchema,
+		RunID:         "prior-boot",
+		At:            prior.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stampPath := filepath.Join(dir, lifecycleConsumePassFile)
+	if err := os.WriteFile(stampPath, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tracker := newDesktopLifecycleTracker(root, "v1.39.0", "stable")
+	if err := tracker.start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(tracker.clean)
+	_ = tracker.consumePrevious(true)
+
+	if tracker.priorPassAt.IsZero() || !tracker.priorPassAt.Equal(prior) {
+		t.Fatalf("priorPassAt = %v, want the planted stamp %v", tracker.priorPassAt, prior)
+	}
+	survived, err := os.ReadFile(stampPath)
+	if err != nil {
+		t.Fatalf("consume-pass stamp must survive the pass (not consumed as a record): %v", err)
+	}
+	var stamp lifecycleConsumePassStamp
+	if json.Unmarshal(survived, &stamp) != nil || stamp.SchemaVersion != lifecycleConsumePassSchema {
+		t.Fatalf("stamp unreadable after the pass: %s", survived)
+	}
+	at, err := time.Parse(time.RFC3339Nano, stamp.At)
+	if err != nil || !at.After(prior) {
+		t.Fatalf("stamp after the pass = %q (err=%v), want a time after %v", stamp.At, err, prior)
 	}
 }
