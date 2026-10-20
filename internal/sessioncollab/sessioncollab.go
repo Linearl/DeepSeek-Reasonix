@@ -15,6 +15,7 @@
 package sessioncollab
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -742,10 +743,29 @@ func (s *MailStore) LockHolderInfo() string {
 // 各自治理各自的诊断文件）：只删诊断文件、绝不触碰锁文件与 OS 锁；pid 存活
 // （含复用后看似存活）或不可解析 ⇒ 一字不动。
 func (s *MailStore) clearStaleHolderIfDead() string {
-	info := s.LockHolderInfo()
-	if info == "" {
+	return reclaimMailHolderSidecar(s.lockHolderPath())
+}
+
+// ReclaimStaleMailHolderSidecarAtBoot is the 任务1017 批A boot entry, the
+// .mail.lock twin of collabinbox.ReclaimStaleHolderSidecarAtBoot: a crash
+// restart used to leave the dead holder's diagnostic in place until the next
+// mail-lock contention (2026-10-19 现场的 5h24m 残留即此形态). One call per
+// process boot reclaims it up front. Same contract: sidecar only — the lock
+// file and the OS lock are never touched; a live (or pid-reuse-looking)
+// holder is never cleared; unparsable content is left alone.
+func ReclaimStaleMailHolderSidecarAtBoot(mailDir string) string {
+	if strings.TrimSpace(mailDir) == "" {
 		return ""
 	}
+	return reclaimMailHolderSidecar(filepath.Join(mailDir, ".mail.lock.holder"))
+}
+
+func reclaimMailHolderSidecar(holderPath string) string {
+	b, err := os.ReadFile(holderPath)
+	if err != nil || len(bytes.TrimSpace(b)) == 0 {
+		return ""
+	}
+	info := strings.TrimSpace(string(b))
 	pid := pidalive.ParseHolderPid(info)
 	if pid <= 0 {
 		return "" // unparsable: cannot judge — leave it, never guess
@@ -753,9 +773,9 @@ func (s *MailStore) clearStaleHolderIfDead() string {
 	if pidalive.Alive(pid) {
 		return "" // live holder (or pid reuse): NEVER touch a live holder's record
 	}
-	if err := os.Remove(s.lockHolderPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(holderPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Warn("session collab mail: stale lock holder sidecar removal failed",
-			"path", s.lockHolderPath(), "stale_holder", info, "pid", pid, "err", err)
+			"path", holderPath, "stale_holder", info, "pid", pid, "err", err)
 		return ""
 	}
 	slog.Info("session collab mail: stale lock holder sidecar cleared (recorded holder process is gone; the OS lock died with it)",

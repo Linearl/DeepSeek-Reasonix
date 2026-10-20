@@ -179,3 +179,46 @@ func TestParseHolderPid(t *testing.T) {
 		}
 	}
 }
+
+// TestReclaimStaleMailHolderSidecarAtBoot (任务1017 批A): the boot entry must
+// reclaim a dead holder's sidecar WITHOUT waiting for the next pickup/lock
+// contention — the 2026-10-19 现场 left the diagnostic 1h43m past the crash
+// restart precisely because every recycle point sat behind a pickup. Same
+// 防误杀边界 as the contention-path recycle: live holder untouched, unparsable
+// left alone, absent/empty mailDir is a no-op.
+func TestReclaimStaleMailHolderSidecarAtBoot(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now().Format(time.RFC3339)
+
+	stale := fmt.Sprintf("pid=%d held_since=%s", stalePID, now)
+	holder := filepath.Join(dir, ".mail.lock.holder")
+	if err := os.WriteFile(holder, []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReclaimStaleMailHolderSidecarAtBoot(dir); got != stale {
+		t.Fatalf("boot reclaim must report the cleared content, got %q", got)
+	}
+	if _, err := os.Stat(holder); !os.IsNotExist(err) {
+		t.Fatalf("boot reclaim must remove the stale sidecar, stat err=%v", err)
+	}
+
+	live := fmt.Sprintf("pid=%d held_since=%s", os.Getpid(), now)
+	if err := os.WriteFile(holder, []byte(live), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReclaimStaleMailHolderSidecarAtBoot(dir); got != "" {
+		t.Fatalf("a live holder's sidecar must never be cleared at boot (防误杀), got %q", got)
+	}
+	b, err := os.ReadFile(holder)
+	if err != nil || string(b) != live {
+		t.Fatalf("live holder sidecar must survive boot reclaim verbatim, got %q err=%v", string(b), err)
+	}
+
+	// 空目录 / 空参数：no-op，绝不 panic。
+	if got := ReclaimStaleMailHolderSidecarAtBoot(t.TempDir()); got != "" {
+		t.Fatalf("absent sidecar must read as nothing-to-do, got %q", got)
+	}
+	if got := ReclaimStaleMailHolderSidecarAtBoot("  "); got != "" {
+		t.Fatalf("blank mailDir must be a no-op, got %q", got)
+	}
+}

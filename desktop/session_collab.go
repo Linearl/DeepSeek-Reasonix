@@ -16,6 +16,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/boot"
+	"reasonix/internal/collabinbox"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
@@ -143,11 +144,30 @@ func (p *sessionCollabPump) Start() {
 	p.stop = make(chan struct{})
 	stop := p.stop
 	p.mu.Unlock()
+	// 任务1017 批A：崩溃重启后立即回收 stale 锁 sidecar（不等下次取件）。
+	// 2026-10-19 现场：僵死进程 21:04 崩溃退出，其 collab inbox 锁 sidecar 一路
+	// 残留到 22:47 第一次取件才被清（5h24m 中的 1h43m 在重启之后）——旧回收点
+	// 只挂在「锁竞争失败」与「共享读」两条路上，重启后无人取件就无人回收。
+	// 两侧锁（collab-inbox 聚合锁 + mail 传输锁）各清一次；无锁、纯文件操作，
+	// 防误杀边界（存活持有者一字不动）由 reclaim 内部契约保证。
+	reclaimStaleCollabLockSidecarsAtBoot()
 	// Task 188: the pump owns the delivery path whose last words before the
 	// 2026-09-20 silent exit were "[session-collab] opened session" — wrap the
 	// loop so a panic inside a delivery pass is recovered with its stack in the
 	// rolling log instead of taking the whole process down unseen.
 	safego.Go("sessioncollab.pump.loop", func() { p.loop(stop) })
+}
+
+// reclaimStaleCollabLockSidecarsAtBoot reclaims both collab lock sidecars
+// (aggregate index + mail transport) once at pump start. Extracted from Start
+// so tests can exercise the reclaim without a running pump loop.
+func reclaimStaleCollabLockSidecarsAtBoot() {
+	mailDir := config.SessionCollabMailDir()
+	if strings.TrimSpace(mailDir) == "" {
+		return
+	}
+	collabinbox.ReclaimStaleHolderSidecarAtBoot(mailDir)
+	sessioncollab.ReclaimStaleMailHolderSidecarAtBoot(mailDir)
 }
 
 func (p *sessionCollabPump) Stop() {
