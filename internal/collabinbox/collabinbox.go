@@ -674,7 +674,8 @@ func (s *Store) MarkRead(ctx context.Context, ids []string) (Snapshot, error) {
 		}
 	}
 	for mailbox, mids := range perMailbox {
-		if err := s.mail.Ack(ctx, mailbox, mids...); err != nil {
+		// 任务1017 批C-E：聚合面板的批量结算留下归属方。
+		if err := s.mail.AckWithOwner(ctx, sessioncollab.AckOwnerCollabInboxIndex, mailbox, mids...); err != nil {
 			unlock()
 			return Snapshot{}, err
 		}

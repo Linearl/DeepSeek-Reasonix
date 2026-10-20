@@ -993,17 +993,8 @@ func (s *MailStore) claimLocked(contactID string) (pending []MailMessage, refuse
 
 // Ack advances the cursor for IDs whose delivery is settled — delivered
 // successfully, or refused for good. Not acking leaves them for the next pass.
-func (s *MailStore) Ack(ctx context.Context, contactID string, ids ...string) error {
-	if len(ids) == 0 {
-		return nil
-	}
-	unlock, err := s.lock(ctx)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	return s.ackLocked(contactID, ids...)
-}
+// 任务1017 批C-E: Ack and its ownership journal live in ack_owner.go;
+// production consumers should call AckWithOwner to name their path.
 
 // Settled reports whether messageID has already been consumed from the
 // contact's mailbox (the seen cursor). Task 263: the session-inbox recovery
@@ -1018,15 +1009,11 @@ func (s *MailStore) Settled(contactID, messageID string) bool {
 	return s.readCursor(contactID)[messageID]
 }
 
-// ackLocked is Ack's body under the caller's lock (B1: same-lock Claim+Ack).
+// ackLocked is the drain-path Ack body under the caller's lock (B1: same-lock
+// Claim+Ack). 任务1017 批C-E: journal attribution moved to ackLockedWithOwner;
+// Drain passes its own owner tag.
 func (s *MailStore) ackLocked(contactID string, ids ...string) error {
-	seen := s.readCursor(contactID)
-	for _, id := range ids {
-		if strings.TrimSpace(id) != "" {
-			seen[id] = true
-		}
-	}
-	return s.writeCursor(contactID, seen)
+	return s.ackLockedWithOwner(contactID, AckOwnerUnattributed, ids...)
 }
 
 // AwaitReply waits for a message on threadID addressed to contactID and
@@ -1060,7 +1047,7 @@ func (s *MailStore) AwaitReplyContext(ctx context.Context, contactID, threadID s
 			for _, m := range all {
 				if m.ThreadID == threadID {
 					// Best-effort: a failed ack costs a duplicate, not a loss.
-					_ = s.Ack(ctx, contactID, m.ID)
+					_ = s.AckWithOwner(ctx, AckOwnerAwaitReply, contactID, m.ID)
 					return m, true
 				}
 			}

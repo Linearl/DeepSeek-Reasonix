@@ -1207,7 +1207,8 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 		}
 	}
 
-	if aerr := mail.Ack(context.Background(), contactID, acked...); aerr != nil {
+	// 任务1017 批C-E：泵的结算留下归属方（「已读未开工」现场归因）。
+	if aerr := mail.AckWithOwner(context.Background(), sessioncollab.AckOwnerPump, contactID, acked...); aerr != nil {
 		note(aerr)
 	}
 	return delivered, refused, firstErr
