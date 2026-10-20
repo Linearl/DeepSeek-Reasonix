@@ -124,6 +124,13 @@ func EffortCapabilityForEntry(e *ProviderEntry) EffortCapability {
 		return openAIEffortCapability()
 	}
 	switch {
+	case isMiniMaxM31Entry(e):
+		// Task 1031: the M3.1 family exposes reasoning_effort
+		// (low|medium|high|xhigh|max; omission defaults to max) and rejects
+		// thinking.type=disabled outright (error 2013), so "disabled" is
+		// deliberately absent from the menu — offering it would promise a
+		// guaranteed 400. "auto" means "don't send reasoning_effort".
+		return EffortCapability{Supported: true, Levels: []string{"auto", "low", "medium", "high", "xhigh", "max"}, Default: "auto"}
 	case isMiniMaxEntry(e):
 		// MiniMax-M3 only exposes a binary thinking knob (adaptive|disabled)
 		// on its OpenAI-compatible endpoint, so /effort mirrors the API
@@ -218,6 +225,22 @@ func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
 		return normalizeGLMEffort(level)
 	}
 	switch {
+	case isMiniMaxM31Entry(e):
+		// Task 1031: M3.1's reasoning_effort domain passes through verbatim.
+		// "adaptive" is the M3-era value the old three-state menu offered
+		// M3.1 users; it means "provider default" exactly like auto, so it
+		// folds to "" instead of failing every already-persisted entry.
+		// "disabled"/"off"/"none" request thinking-off, which M3.1 rejects
+		// outright (thinking.type=disabled → 400, error 2013) — fail fast
+		// with the M3.1-specific hint rather than storing a doomed level.
+		switch level {
+		case "low", "medium", "high", "xhigh", "max":
+			return level, nil
+		case "adaptive":
+			return "", nil
+		default:
+			return "", fmt.Errorf("usage: /effort auto|low|medium|high|xhigh|max (MiniMax M3.1 cannot disable thinking)")
+		}
 	case isMiniMaxEntry(e):
 		// The M3 knob is binary; map Anthropic / OpenAI-style levels onto the
 		// nearest valid value so a stale /effort high|low still works. "off"
@@ -305,9 +328,10 @@ func EffectiveEffort(e *ProviderEntry) string {
 		if explicitReasoningProtocol(e) == ReasoningProtocolKimiK3 && !isKimiK3ReasoningEffort(effort) {
 			return ""
 		}
-		// Saved pre-contract aliases (medium/xhigh) keep working on official
-		// DeepSeek endpoints: resolve them to the declared high level.
-		return migrateStoredDeepSeekEffort(e, effort)
+		// Saved pre-contract aliases keep working: DeepSeek medium/xhigh
+		// resolve to the declared high level; a MiniMax M3.1 entry's
+		// M3-era "adaptive" resolves to auto (task 1031).
+		return migrateStoredMiniMaxEffort(e, migrateStoredDeepSeekEffort(e, effort))
 	}
 	if explicitReasoningProtocol(e) == ReasoningProtocolKimiK3 {
 		return ""
@@ -409,6 +433,16 @@ func isDeepSeekEntry(e *ProviderEntry) bool {
 // just gates on the openai kind.
 func isMiniMaxEntry(e *ProviderEntry) bool {
 	return e != nil && e.Kind == "openai" && openai.IsMiniMax(e.BaseURL)
+}
+
+// isMiniMaxM31Entry reports whether the entry points at MiniMax's endpoint with
+// an M3.1-family model (task 1031). M3.1 speaks reasoning_effort
+// (low|medium|high|xhigh|max) and cannot disable thinking; the M3 generation
+// keeps the binary adaptive|disabled knob. Mirrors the provider-layer branch in
+// internal/provider/openai/reasoning_capability.go so the menu, the /effort
+// validation and the wire never disagree.
+func isMiniMaxM31Entry(e *ProviderEntry) bool {
+	return isMiniMaxEntry(e) && openai.IsMiniMaxM31(e.Model)
 }
 
 // isZhipuEntry reports whether the entry points at Zhipu's OpenAI-compatible

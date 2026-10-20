@@ -4,8 +4,10 @@
 // code. Each instance picks the wire shape from its base URL:
 //   - api.deepseek.com → emits thinking.type=enabled (DeepSeek-flavor CoT) plus
 //     reasoning_effort as a depth hint.
-//   - api.minimaxi.com → emits thinking.type=adaptive|disabled (M3's binary
-//     knob) instead of reasoning_effort, since M3 has no level scale.
+//   - api.minimaxi.com → M3 emits thinking.type=adaptive|disabled (its binary
+//     knob) instead of reasoning_effort, since M3 has no level scale; the M3.1
+//     family (task 1031) is the inverse — it emits reasoning_effort
+//     low|medium|high|xhigh|max and never thinking.type, which it rejects.
 //   - open.bigmodel.cn / api.z.ai (Zhipu GLM) → emits thinking.type=enabled|
 //     disabled instead of reasoning_effort, which Zhipu silently ignores.
 //   - api.longcat.chat → emits thinking.type=enabled|disabled and omits
@@ -180,13 +182,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
 			}
 		}
 	case minimax:
-		// The adapter capability admits only the binary M3 vocabulary.
 		effort = strings.ToLower(strings.TrimSpace(effort))
-		switch effort {
-		case "": // auto — leave empty so the wire emits thinking.type=adaptive
-		case "adaptive", "disabled":
-		default:
-			return nil, fmt.Errorf("openai: provider %q uses MiniMax thinking; effort must be adaptive or disabled", name)
+		if IsMiniMaxM31(cfg.Model) {
+			// Task 1031: the M3.1 family speaks reasoning_effort, not the M3
+			// binary thinking knob. "adaptive"/"disabled" would either be a
+			// no-op or a guaranteed 400 (thinking.type=disabled, error 2013),
+			// so they are rejected here at boot instead of failing per-request.
+			switch effort {
+			case "": // auto — omit reasoning_effort; the model defaults to max
+			case "low", "medium", "high", "xhigh", "max":
+			default:
+				return nil, fmt.Errorf("openai: provider %q uses MiniMax M3.1 reasoning_effort; effort must be low, medium, high, xhigh, or max (thinking cannot be disabled on M3.1)", name)
+			}
+		} else {
+			// The adapter capability admits only the binary M3 vocabulary.
+			switch effort {
+			case "": // auto — leave empty so the wire emits thinking.type=adaptive
+			case "adaptive", "disabled":
+			default:
+				return nil, fmt.Errorf("openai: provider %q uses MiniMax thinking; effort must be adaptive or disabled", name)
+			}
 		}
 	case zhipu:
 		// Zhipu GLM gates chain-of-thought through `thinking.type`
@@ -294,7 +309,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		visionDetail:    visionDetail,
 		maxOutputTokens: maxOutputTokens,
 		effort:          effort,
-		requestEfforts:  requestEffortVocabularyFor(cfg.BaseURL, supportedEfforts), // task 354: MiMo probes its canonical four-level set.
+		requestEfforts:  requestEffortVocabularyFor(cfg.BaseURL, cfg.Model, supportedEfforts), // task 354: MiMo probes its canonical four-level set; task 1031: M3.1 probes its reasoning_effort domain.
 		http:            httpClient,
 		idleTimeout:     defaultStreamIdleTimeout,
 		// The official OpenCode Go chat gateway 400s any message-level `name`
@@ -344,7 +359,7 @@ type client struct {
 	model           string
 	http            *http.Client
 	deepseek        bool
-	minimax         bool   // true for api.minimaxi.com — emits MiniMax-M3's thinking knob instead of reasoning_effort
+	minimax         bool   // true for api.minimaxi.com — M3 emits its thinking knob, the M3.1 family emits reasoning_effort (task 1031)
 	zhipu           bool   // true for Zhipu GLM (bigmodel.cn / z.ai) — gates thinking via thinking.type, ignores reasoning_effort
 	longcat         bool   // true for LongCat — gates thinking via thinking.type, ignores reasoning_effort
 	kimiK3          bool   // true for the explicit K3 protocol or kimi-k3 on Moonshot's direct API hosts
