@@ -160,7 +160,7 @@
       "essay": 1
     },
     "desktop/crash_pending.go": {
-      "essay": 7
+      "essay": 29
     },
     "desktop/deferred_rebuild.go": {
       "essay": 2
@@ -377,8 +377,8 @@
       "essay": 1
     },
     "desktop/main.go": {
-      "essay": 10,
-      "function-size": 24
+      "essay": 15,
+      "function-size": 38
     },
     "desktop/main_test.go": {
       "essay": 7
@@ -674,7 +674,7 @@
       "function-size": 27
     },
     "desktop/startup_diagnostics.go": {
-      "essay": 1
+      "essay": 30
     },
     "desktop/startup_lease_contention_test.go": {
       "essay": 1
@@ -3148,6 +3148,9 @@
     },
     "workers/crash-report/src/index.ts": {
       "file-size": 886
+    },
+    "desktop/lifecycle_false_crash_regression_test.go": {
+      "essay": 15
     }
   }
 }
