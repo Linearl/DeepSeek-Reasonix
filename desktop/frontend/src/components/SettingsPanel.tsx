@@ -10178,7 +10178,7 @@ export function ProviderEditor({
       : current.filter(item => item !== draft.model));
     setModelOverrides(current => {
       const previous = current.find(item => item.model === draft.model);
-      return [...current.filter(item => item.model !== draft.model), {...previous, model:draft.model, reasoningProtocol:previous?.reasoningProtocol ?? "", supportedEfforts:previous?.supportedEfforts ?? [], defaultEffort:previous?.defaultEffort ?? "", vision:draft.vision, maxOutputTokens:draft.maxOutputTokens}];
+      return [...current.filter(item => item.model !== draft.model), {...previous, model:draft.model, reasoningProtocol:previous?.reasoningProtocol ?? "", supportedEfforts:previous?.supportedEfforts ?? [], defaultEffort:previous?.defaultEffort ?? "", vision:draft.vision, audio:draft.audio, maxOutputTokens:draft.maxOutputTokens}];
     });
     setModelDialog(null);
   };
@@ -10381,7 +10381,7 @@ export function ProviderEditor({
       {fetchFallback && <div role="alert" className="provider-fetch-status provider-fetch-status--warn">{fetchFallback}</div>}
       {modelDialog !== null && <Suspense fallback={null}><ProviderModelDialog
         baseURL={effectiveRequestUrl} candidates={modelCandidateNames} contextDefault={Number(ctx) || undefined}
-        initial={modelDialog ? {model:modelDialog, contextWindow:modelContextWindows[modelDialog] ?? "", maxOutputTokens:modelOverrides.find(item=>item.model === modelDialog)?.maxOutputTokens ?? 0, vision:modelOverrides.find(item=>item.model === modelDialog)?.vision ?? null, highSpeed:highSpeedModelNames.includes(modelDialog)} : undefined}
+        initial={modelDialog ? {model:modelDialog, contextWindow:modelContextWindows[modelDialog] ?? "", maxOutputTokens:modelOverrides.find(item=>item.model === modelDialog)?.maxOutputTokens ?? 0, vision:modelOverrides.find(item=>item.model === modelDialog)?.vision ?? null, audio:modelOverrides.find(item=>item.model === modelDialog)?.audio ?? null, highSpeed:highSpeedModelNames.includes(modelDialog)} : undefined}
         highSpeedSwitchOn={highSpeedSwitchOn}
         capability={modelCapabilities.find(item=>item.model === modelDialog)} busy={busy || fetchingModels}
         onClose={()=>setModelDialog(null)} onApply={applyModelDetails} onDelete={deleteModel}/></Suspense>}
@@ -10395,7 +10395,7 @@ export function ProviderEditor({
         visionModels={visionModelNames}
         visionModelsConfigured={visionModelsConfigured}
         highSpeedModels={highSpeedModelNames}
-        modelCapabilities={modelCandidateNames.map(model => { const override = modelOverrides.find(item=>item.model === model)?.vision; const info = modelCapabilities.find(item=>item.model === model); return override == null ? info : {...info, model, state:override ? "supported" : "unsupported", inputModalities:override ? ["text","image"] : ["text"], source:"override"}; }).filter((item): item is ProviderModelCapabilityView => Boolean(item))}
+        modelCapabilities={modelCandidateNames.map(model => { const override = modelOverrides.find(item=>item.model === model); const visionOverride = override?.vision; const audioOverride = override?.audio; const info = modelCapabilities.find(item=>item.model === model); if (visionOverride == null && audioOverride == null) return info; const modalities = new Set(info?.inputModalities ?? ["text"]); if (visionOverride != null) { visionOverride ? modalities.add("image") : modalities.delete("image"); } if (audioOverride != null) { audioOverride ? modalities.add("audio") : modalities.delete("audio"); } if (modalities.size === 0) modalities.add("text"); return {...info, model, state:visionOverride ? "supported" : visionOverride === false ? "unsupported" : info?.state ?? "unknown", inputModalities:[...modalities], source:"override"}; }).filter((item): item is ProviderModelCapabilityView => Boolean(item))}
         contextWindows={modelContextWindows}
         inheritedContextWindow={Number(ctx) || undefined}
         disabled={busy || fetchingModels}

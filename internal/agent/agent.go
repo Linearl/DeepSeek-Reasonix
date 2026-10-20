@@ -168,6 +168,8 @@ type parentSessionContextKey struct{}
 type subagentDepthContextKey struct{}
 type userImagesContextKey struct{}
 
+type userAudioContextKey struct{}
+
 // callContext is the per-call context a tool can read. parentID is the call being
 // executed and sink is the agent's event sink (the `task` tool uses both to nest
 // a sub-agent's events under this call); asker lets the `ask` tool reach the user.
@@ -283,6 +285,19 @@ func WithUserImages(ctx context.Context, images []string) context.Context {
 func userImages(ctx context.Context) []string {
 	images, _ := ctx.Value(userImagesContextKey{}).([]string)
 	return images
+}
+
+// WithUserAudio carries the inline audio data URLs the user attached to this
+// turn (task 1008). Same contract as WithUserImages: the controller resolves
+// and capability-gates them; the agent just embeds them on the user message
+// and the provider decides the wire shape.
+func WithUserAudio(ctx context.Context, audio []string) context.Context {
+	return context.WithValue(ctx, userAudioContextKey{}, audio)
+}
+
+func userAudio(ctx context.Context) []string {
+	audio, _ := ctx.Value(userAudioContextKey{}).([]string)
+	return audio
 }
 
 // Gate decides, per tool call, whether it may run. The agent consults it at

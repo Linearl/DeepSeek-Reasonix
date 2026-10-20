@@ -450,6 +450,17 @@ func (a *App) SavePastedFile(name, dataURL string) (string, error) {
 	})
 }
 
+// SavePastedAudio stores a pasted/dropped audio file (task 1008) under the
+// active tab's workspace .reasonix/attachments and returns the relative
+// @-reference path. The five accepted formats are validated here so a stray
+// binary never lands under an audio name; the 50 MB ceiling mirrors the
+// provider's inline audio limit (the generic 25 MB file cap does not apply).
+func (a *App) SavePastedAudio(name, dataURL string) (string, error) {
+	return a.withActiveWorkspace(func() (string, error) {
+		return control.SaveAudioAttachmentDataURL(name, dataURL)
+	})
+}
+
 // PickExportFile opens the native save dialog and returns the selected path. It
 // returns "" when the user cancels.
 func (a *App) PickExportFile(defaultFilename, mimeType string) (string, error) {
@@ -781,6 +792,15 @@ func (a *App) AttachDropped(path string) (DroppedItem, error) {
 				return nil
 			}
 		}
+		// Task 1008: an out-of-tree audio file copies into the attachments with
+		// the 50 MB audio ceiling; in-tree audio keeps the workspace @ref path
+		// (the controller resolves it as audio input when the model allows).
+		if isAudioExt(path) {
+			if rel, err := control.SaveAudioAttachmentFileIn(a.activeWorkspaceRoot(), path); err == nil {
+				item = DroppedItem{Kind: "attachment", Path: rel}
+				return nil
+			}
+		}
 		if rel, ok := workspaceRelativeIn(path, a.activeWorkspaceRoot()); ok {
 			item = DroppedItem{Kind: "workspace", Path: rel, IsDir: info.IsDir()}
 			return nil
@@ -819,6 +839,16 @@ func (a *App) AttachDropped(path string) (DroppedItem, error) {
 func isImageExt(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		return true
+	}
+	return false
+}
+
+// isAudioExt mirrors the task-1008 audio attachment whitelist (shared with the
+// kernel via control's provider helpers).
+func isAudioExt(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".mp3", ".wav", ".flac", ".m4a", ".ogg":
 		return true
 	}
 	return false

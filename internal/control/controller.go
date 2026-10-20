@@ -186,6 +186,7 @@ type Controller struct {
 	visionModelSelector     func(string, string) (string, bool)
 	modelCapabilityResolver func(*config.ProviderEntry) config.ResolvedModelCapability
 	frozenImageInput        *bool
+	frozenAudioInput        *bool
 	imageCapabilityChanged  func() bool
 	modelSettings           controllerModelSettings
 	prompt                  controllerPromptState
@@ -746,6 +747,9 @@ type Options struct {
 	ModelCapabilityResolver func(*config.ProviderEntry) config.ResolvedModelCapability
 	// FrozenImageInput belongs to the provider instance built for this runtime.
 	FrozenImageInput            *bool
+	// FrozenAudioInput is the task-1008 counterpart: the audio-input decision
+	// (protocol gate + modality + override) frozen for this runtime.
+	FrozenAudioInput            *bool
 	ImageCapabilityChanged      func() bool
 	ModelSettingsRevision       string
 	ModelSettingsSourceRevision string
@@ -1003,6 +1007,7 @@ func New(opts Options) *Controller {
 		memorySystemReload:                opts.MemorySystemReload,
 		modelCapabilityResolver:           opts.ModelCapabilityResolver,
 		frozenImageInput:                  opts.FrozenImageInput,
+		frozenAudioInput:                  opts.FrozenAudioInput,
 		imageCapabilityChanged:            opts.ImageCapabilityChanged,
 		modelSettings:                     newControllerModelSettings(opts),
 		prompt:                            newControllerPromptState(opts.SystemPrompt, opts.Executor),
@@ -1327,19 +1332,22 @@ type controllerModelIdentity struct {
 	// imageInput rebinds the frozen image-input gate; nil keeps the
 	// construction snapshot.
 	imageInput *bool
+	// audioInput rebinds the task-1008 frozen audio gate on the same seam.
+	audioInput *bool
 }
 
 // SetModelIdentity atomically rebinds the construction-time model identity:
 // the canonical ref (cache TTL, listing projections, vision resolution), the
 // human label (future branch file names), the wallet-balance endpoint, and
 // the frozen image-input gate. Zero/nil fields keep the construction value.
-func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput *bool) {
+func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput *bool) {
 	c.modelIdentitySwap.Store(&controllerModelIdentity{
 		modelRef:   strings.TrimSpace(ref),
 		label:      strings.TrimSpace(label),
 		balanceURL: balanceURL,
 		balanceKey: balanceKey,
 		imageInput: imageInput,
+		audioInput: audioInput,
 	})
 }
 
@@ -1376,6 +1384,14 @@ func (c *Controller) activeImageInput() *bool {
 		return id.imageInput
 	}
 	return c.frozenImageInput
+}
+
+// activeAudioInput mirrors activeImageInput for the task-1008 audio gate.
+func (c *Controller) activeAudioInput() *bool {
+	if id := c.modelIdentitySwap.Load(); id != nil && id.audioInput != nil {
+		return id.audioInput
+	}
+	return c.frozenAudioInput
 }
 
 func (c *Controller) markEditedForNewUser(startMessages int, original string) {

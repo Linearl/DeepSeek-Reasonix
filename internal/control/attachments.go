@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"reasonix/internal/proc"
+	"reasonix/internal/provider"
 	"reasonix/internal/secrets"
 )
 
@@ -99,6 +100,40 @@ func SaveAttachmentBytesInRoot(root, origName string, raw []byte) (string, error
 		ext = ".bin"
 	}
 	return saveAttachmentBytesInRoot(root, ext, raw)
+}
+
+// SaveAudioAttachmentDataURL stores a task-1008 audio attachment under
+// base/.reasonix/attachments. Unlike the generic file path it accepts up to
+// the provider's 50 MB inline audio ceiling and validates the five accepted
+// extensions, so an mp3 masquerading as .txt is rejected rather than silently
+// unsendable at the construction layer.
+func SaveAudioAttachmentDataURL(origName, dataURL string) (string, error) {
+	return SaveAudioAttachmentDataURLIn(".", origName, dataURL)
+}
+
+// SaveAudioAttachmentDataURLIn is the root-scoped variant of
+// SaveAudioAttachmentDataURL (same base semantics as SaveImageDataURLIn).
+func SaveAudioAttachmentDataURLIn(base, origName, dataURL string) (string, error) {
+	const marker = ";base64,"
+	if !strings.HasPrefix(dataURL, "data:") || !strings.Contains(dataURL, marker) {
+		return "", fmt.Errorf("unsupported pasted audio file")
+	}
+	if !provider.IsAudioAttachmentPath(origName) {
+		return "", fmt.Errorf("audio attachment must be one of: %s (got %q)", strings.Join(provider.AudioAttachmentExts, ", "), filepath.Ext(origName))
+	}
+	_, after, ok := strings.Cut(dataURL, marker)
+	if !ok {
+		return "", fmt.Errorf("unsupported pasted audio file")
+	}
+	raw, err := base64.StdEncoding.DecodeString(after)
+	if err != nil {
+		return "", fmt.Errorf("decode pasted audio file: %w", err)
+	}
+	if len(raw) == 0 || len(raw) > provider.MaxAudioAttachmentBytes {
+		return "", fmt.Errorf("audio attachment must be between 1 byte and 50 MB")
+	}
+	ext := strings.ToLower(filepath.Ext(origName))
+	return saveAttachmentBytesInRoot(base, ext, raw)
 }
 
 func SaveImageDataURL(dataURL string) (string, error) {
@@ -221,6 +256,31 @@ func SaveImageFileIn(base, path string) (string, error) {
 
 func SaveAttachmentFile(path string) (string, error) {
 	return SaveAttachmentFileIn(".", path)
+}
+
+// SaveAudioAttachmentFileIn stores a task-1008 audio file dropped from the OS
+// under base/.reasonix/attachments, with the same 50 MB ceiling and extension
+// whitelist as the pasted-audio path (the generic 25 MB file cap does not fit
+// inline audio).
+func SaveAudioAttachmentFileIn(base, path string) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("attachment path must not be a symlink")
+	}
+	if info.IsDir() || !provider.IsAudioAttachmentPath(path) {
+		return "", fmt.Errorf("not an accepted audio attachment")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) == 0 || len(raw) > provider.MaxAudioAttachmentBytes {
+		return "", fmt.Errorf("audio attachment must be between 1 byte and 50 MB")
+	}
+	return saveAttachmentBytesInRoot(base, strings.ToLower(filepath.Ext(path)), raw)
 }
 
 // SaveAttachmentFileIn stores the file under base/.reasonix/attachments.

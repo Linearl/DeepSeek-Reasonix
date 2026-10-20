@@ -35,9 +35,17 @@ func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpe
 	if err := config.ReasoningCapabilityForEntry(e).Validate(e.Model, config.EffectiveEffort(e)); err != nil {
 		return nil, err
 	}
-	if modelInfo == nil {
+	// Task 1008: the audio gate rides the same resolution as vision — the
+	// resolver folds the per-model override into the modality set and applies
+	// the Anthropic protocol blacklist. Adapters with a non-nil ModelInfo
+	// re-derive it from SupportsInput(audio), so both paths agree.
+	audioInput := false
+	if modelInfo != nil {
+		audioInput = modelInfo.SupportsInput(provider.ModalityAudio)
+	} else {
 		resolved := config.NewModelCapabilityResolver().Resolve(e)
 		modelInfo = &resolved.ModelInfo
+		audioInput = resolved.AudioInputEnabled
 	}
 	var tunnelClient *http.Client
 	if endpoint := e.CredentialProxyURL(); endpoint != "" {
@@ -69,6 +77,7 @@ func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpe
 			"auth_header":        e.AuthHeader,
 			"proxy_spec":         proxy,
 			"vision":             config.EffectiveVision(e),
+			"audio":              audioInput,
 			"vision_detail":      e.VisionDetail,
 			"web_search":         config.EffectiveWebSearch(e),
 			"client_web_search":  clientSearch,

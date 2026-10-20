@@ -53,6 +53,16 @@ type ResolvedModelCapability struct {
 	AutomaticSource         CapabilitySource
 	ImageInputEnableAllowed bool
 	ImageInputBlockReason   string
+	// AudioInputEnableAllowed is the protocol-level gate (task 1008): the
+	// Anthropic protocol has no audio content part, so audio stays hard-blocked
+	// there regardless of metadata. AudioInputBlockReason names the cause.
+	AudioInputEnableAllowed bool
+	AudioInputBlockReason   string
+	// AudioInputEnabled is the final decision: protocol gate AND the audio
+	// modality present after merging the automatic facts with the user's
+	// per-model override. It feeds boot's Extra["audio"] and the desktop
+	// attachment entry; it never feeds tools or the system prompt.
+	AudioInputEnabled bool
 }
 
 type ModelCapabilityCacheFile struct {
@@ -119,22 +129,42 @@ func (r *ModelCapabilityResolver) resolveWithCredentialRevision(entry *ProviderE
 	resolved := r.resolveAutomatic(entry, credentialsRevision)
 	resolved.AutomaticState, resolved.AutomaticSource = resolved.State, resolved.Source
 	resolved.ImageInputEnableAllowed = entry != nil
+	resolved.AudioInputEnableAllowed = entry != nil && !strings.EqualFold(strings.TrimSpace(entry.Kind), "anthropic")
+	if resolved.AudioInputBlockReason == "" && entry != nil && !resolved.AudioInputEnableAllowed {
+		resolved.AudioInputBlockReason = audioProtocolBlockReason(entry.Kind)
+	}
 	if entry == nil {
 		return resolved
 	}
 	// Read the exact model's override even when a catalog caller has not gone
 	// through Config.ResolveModel. Never reuse another selected model's value.
 	override := entry.visionOverride
+	audioOverride := entry.audioOverride
 	if len(entry.ModelOverrides) > 0 {
-		override = nil
+		override, audioOverride = nil, nil
 		if ov, ok := entry.modelOverrideForModel(entry.Model); ok {
-			override = ov.Vision
+			override, audioOverride = ov.Vision, ov.Audio
 		}
 	}
 	if override != nil {
 		value := capabilityFromBool(resolved.Model, *override, CapabilitySourceOverride)
-		resolved.State, resolved.Source, resolved.InputModalities = value.State, value.Source, value.InputModalities
+		resolved.State, resolved.Source = value.State, value.Source
+		// Task 1008: fold the vision bit into the automatic modality set instead
+		// of replacing it, so a vision override can no longer clobber a declared
+		// audio modality. An unknown automatic set keeps the historical
+		// capabilityFromBool shape ([text] / [text,image]).
+		resolved.InputModalities = mergeModalityOverride(resolved.InputModalities, provider.ModalityImage, *override, value.InputModalities)
 	}
+	if audioOverride != nil {
+		resolved.InputModalities = mergeModalityOverride(resolved.InputModalities, provider.ModalityAudio, *audioOverride, nil)
+	}
+	// The protocol blacklist wins over metadata and overrides alike: strip the
+	// audio modality so every downwind gate (adapter, UI) sees the same fact.
+	if !resolved.AudioInputEnableAllowed {
+		resolved.InputModalities = stripModality(resolved.InputModalities, provider.ModalityAudio)
+	}
+	resolved.AudioInputEnabled = resolved.AudioInputEnableAllowed &&
+		slices.Contains(resolved.InputModalities, provider.ModalityAudio)
 	requestURL := entry.RequestURL
 	if requestURL == "" && entry.Kind == "openai" {
 		requestURL = entry.ChatURL
@@ -148,6 +178,73 @@ func (r *ModelCapabilityResolver) resolveWithCredentialRevision(entry *ProviderE
 	resolved.ModelInfo.ID = resolved.Model
 	resolved.ModelInfo.InputModalities = append([]provider.ModelModality(nil), resolved.InputModalities...)
 	return resolved
+}
+
+// mergeModalityOverride sets or clears one modality inside the automatic set.
+// An unknown automatic set (nil) falls back to fallbackShape (the vision
+// override's historical [text]/[text,image] outcome); audio passes nil so an
+// unknown model only gains audio when the user forces it on. A set that would
+// end up empty keeps [text] — text input is always declared.
+func mergeModalityOverride(modalities []provider.ModelModality, modality provider.ModelModality, on bool, fallbackShape []provider.ModelModality) []provider.ModelModality {
+	if modalities == nil {
+		if fallbackShape == nil {
+			if !on {
+				return nil
+			}
+			fallbackShape = []provider.ModelModality{provider.ModalityText}
+		}
+		modalities = append([]provider.ModelModality(nil), fallbackShape...)
+	}
+	out := make([]provider.ModelModality, 0, len(modalities)+1)
+	found := false
+	for _, value := range modalities {
+		if value == modality {
+			found = true
+			if !on {
+				continue
+			}
+		}
+		out = append(out, value)
+	}
+	if on && !found {
+		out = append(out, modality)
+	}
+	if len(out) == 0 {
+		out = append(out, provider.ModalityText)
+	}
+	return out
+}
+
+func stripModality(modalities []provider.ModelModality, modality provider.ModelModality) []provider.ModelModality {
+	if !slices.Contains(modalities, modality) {
+		return modalities
+	}
+	out := make([]provider.ModelModality, 0, len(modalities))
+	for _, value := range modalities {
+		if value != modality {
+			out = append(out, value)
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, provider.ModalityText)
+	}
+	return out
+}
+
+func audioProtocolBlockReason(kind string) string {
+	return fmt.Sprintf("the %q provider protocol does not support audio input (no audio content part on the wire)", kind)
+}
+
+// EffectiveAudioInput resolves the selected model's audio-input decision
+// (task 1008): protocol gate AND resolved audio modality, with the user's
+// per-model override already folded in. Fallback for callers without a
+// controller-owned resolver; the desktop/CLI hot path passes its resolver to
+// avoid re-reading the sidecar cache.
+func EffectiveAudioInput(e *ProviderEntry) bool {
+	if e == nil {
+		return false
+	}
+	return NewModelCapabilityResolver().Resolve(e).AudioInputEnabled
 }
 
 func (r *ModelCapabilityResolver) resolveAutomatic(entry *ProviderEntry, credentialsRevision string) ResolvedModelCapability {
@@ -296,7 +393,7 @@ func normalizeInputModalities(values []provider.ModelModality) []provider.ModelM
 	out := make([]provider.ModelModality, 0, len(values))
 	for _, value := range values {
 		value = provider.ModelModality(strings.ToLower(strings.TrimSpace(string(value))))
-		if value != provider.ModalityText && value != provider.ModalityImage {
+		if value != provider.ModalityText && value != provider.ModalityImage && value != provider.ModalityAudio {
 			return nil
 		}
 		if !seen[value] {

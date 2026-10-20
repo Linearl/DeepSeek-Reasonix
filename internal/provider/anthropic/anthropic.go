@@ -324,6 +324,12 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 	if err := c.reasoning.Validate(c.model, req.EffortOverride); err != nil {
 		return nil, err
 	}
+	// Task 1008: the Anthropic protocol has no audio content part, so audio is
+	// hard-blocked here (mirrors the resolver-side protocol blacklist): an
+	// audio-carrying message fails loudly instead of dropping the bytes.
+	if err := provider.RejectAudioIfPresent(c.name, c.model, "the Anthropic protocol does not support audio input", req.Messages); err != nil {
+		return nil, err
+	}
 	requestCtx := provider.WithRequestAttemptCounter(ctx)
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()

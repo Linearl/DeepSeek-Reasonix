@@ -46,7 +46,7 @@ func TestSetModelIdentityRebindsActiveReads(t *testing.T) {
 		t.Fatalf("construction balance = (%q, %q), want old endpoint", url, key)
 	}
 
-	c.SetModelIdentity("b/two", "two", "https://new.example/balance", "k2", &off)
+	c.SetModelIdentity("b/two", "two", "https://new.example/balance", "k2", &off, nil)
 	if got := c.activeModelRef(); got != "b/two" {
 		t.Fatalf("activeModelRef = %q, want b/two after the identity swap", got)
 	}
@@ -70,7 +70,7 @@ func TestSetModelIdentityRebindsActiveReads(t *testing.T) {
 	}
 
 	// Zero/nil fields fall back to the construction identity per field.
-	c.SetModelIdentity("", "", "", "", nil)
+	c.SetModelIdentity("", "", "", "", nil, nil)
 	if got := c.activeModelRef(); got != "a/one" {
 		t.Fatalf("activeModelRef after zero swap = %q, want construction a/one", got)
 	}

@@ -3,11 +3,12 @@ import { createPortal } from "react-dom";
 import { LockKeyhole, RotateCcw } from "lucide-react";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import { imageInputHardBlocked, imageInputState } from "../lib/providerImageInput";
+import { audioInputHardBlocked, audioInputState } from "../lib/providerAudioInput";
 import { ModalCloseButton } from "./ModalCloseButton";
 import type { ProviderModelCapabilityView } from "../lib/types";
 import { modelDraftError } from "../lib/providerModelDraft";
 
-export interface ModelDetailsDraft { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; highSpeed: boolean; }
+export interface ModelDetailsDraft { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; audio: boolean | null; highSpeed: boolean; }
 export default function ProviderModelDialog({ initial, candidates, contextDefault, capability, baseURL, highSpeedSwitchOn, busy, onClose, onApply, onDelete }: {
   initial?: ModelDetailsDraft; candidates: string[]; contextDefault?: number;
   capability?: ProviderModelCapabilityView; baseURL?: string; highSpeedSwitchOn: boolean; busy: boolean; onClose: () => void; onApply: (draft: ModelDetailsDraft) => void;
@@ -19,6 +20,7 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
   const [context, setContext] = useState(initial?.contextWindow ?? "");
   const [output, setOutput] = useState(initial?.maxOutputTokens ? String(Math.max(-1, initial.maxOutputTokens)) : "");
   const [vision, setVision] = useState(initial?.vision == null ? "auto" : String(initial.vision));
+  const [audio, setAudio] = useState(initial?.audio == null ? "auto" : String(initial.audio));
   const [highSpeed, setHighSpeed] = useState(initial?.highSpeed ?? false);
   const [error, setError] = useState(false);
   useLayoutEffect(() => {
@@ -30,9 +32,12 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
   const validation = modelDraftError({model, context, output, vision: "auto"}, candidates, initial?.model);
   const imageBlocked = imageInputHardBlocked(baseURL, model, capability);
   const imageState = imageBlocked ? "unsupported" : imageInputState(vision === "auto" ? "auto" : vision === "true" ? "on" : "off", capability);
+  // 任务 1008：音频三态仿图片；协议黑名单（audioInputEnableAllowed=false）置灰。
+  const audioBlocked = audioInputHardBlocked(capability);
+  const audioState = audioBlocked ? "unsupported" : audioInputState(audio === "auto" ? "auto" : audio === "true" ? "on" : "off", capability);
   return createPortal(<dialog ref={dialog} className="provider-model-dialog" aria-labelledby={titleId}
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <form onSubmit={event => { event.preventDefault(); if (validation) { setError(true); return; } onApply({ model:model.trim(), contextWindow:context.trim(), maxOutputTokens:Number(output) || 0, vision:vision === "auto" ? null : !imageBlocked && vision === "true", highSpeed }); }}>
+    <form onSubmit={event => { event.preventDefault(); if (validation) { setError(true); return; } onApply({ model:model.trim(), contextWindow:context.trim(), maxOutputTokens:Number(output) || 0, vision:vision === "auto" ? null : !imageBlocked && vision === "true", audio:audio === "auto" ? null : !audioBlocked && audio === "true", highSpeed }); }}>
       <header><h2 id={titleId}>{t(initial ? "settings.modelDialog.edit" : "settings.models.add")}</h2><ModalCloseButton label={t("common.close")} disabled={busy} onClick={onClose}/></header>
       <label className="provider-model-dialog__id">{t("settings.modelDialog.id")}
         {initial ? <span><LockKeyhole size={16}/>{model}</span> : <input autoFocus className="mem-input" value={model} disabled={busy} onChange={e=>setModel(e.target.value)} placeholder="deepseek-v4-flash"/>}
@@ -53,6 +58,7 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
           <div className="provider-model-dialog__chips">
             <label><input type="checkbox" checked disabled/>{t("settings.textInput")}<LockKeyhole size={14}/></label>
             <label><input type="checkbox" checked={imageState === "supported"} disabled={busy || imageBlocked} onChange={event=>setVision(String(event.target.checked))}/>{t("settings.modelDialog.image")}</label>
+            <label title={audioBlocked ? t("settings.modelDialog.audioBlocked") : undefined}><input type="checkbox" checked={audioState === "supported"} disabled={busy || audioBlocked} onChange={event=>setAudio(String(event.target.checked))}/>{t("settings.modelDialog.audio")}</label>
             <label title={t("settings.modelDialog.unavailable")}><input type="checkbox" checked={false} disabled/>{t("settings.modelDialog.video")}</label>
             <label title={t("settings.modelDialog.unavailable")}><input type="checkbox" checked={false} disabled/>PDF</label>
           </div>

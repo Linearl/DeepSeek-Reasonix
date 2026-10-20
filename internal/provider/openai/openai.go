@@ -29,6 +29,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -91,6 +92,11 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	headers, _ := cfg.Extra["headers"].(map[string]string)
 	extraBody, _ := cfg.Extra["extra_body"].(map[string]any)
 	vision, _ := cfg.Extra["vision"].(bool)
+	// Task 1008: audio rides the same boot-injected flag. When the resolver
+	// supplied ModelInfo it already folded the user's per-model override into
+	// the modality set, so SupportsInput(audio) is the authority — mirroring
+	// how vision re-derives from SupportsInput(image) below.
+	audio, _ := cfg.Extra["audio"].(bool)
 	officialDeepSeek := IsDeepSeek(cfg.BaseURL)
 	modelInfo := provider.ModelInfo{ID: cfg.Model, InputModalities: []provider.ModelModality{provider.ModalityText}}
 	if cfg.ModelInfo != nil {
@@ -99,14 +105,23 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	}
 	if cfg.ModelInfo != nil {
 		vision = modelInfo.SupportsInput(provider.ModalityImage)
+		audio = modelInfo.SupportsInput(provider.ModalityAudio)
 	}
 	// Keep known text-only models blocked; unknown models use declared capability.
 	vision = DeepSeekImageInputAllowed(officialDeepSeek, chatURL, cfg.Model, cfg.ModelInfo != nil, vision)
+	// Rebuild the declared modality set from the final gates, preserving audio:
+	// a vision-off model keeps its audio modality (and vice versa). The set is
+	// capability metadata only — it never reaches the wire unless an attached
+	// payload needs it, so request bytes stay stable across capability states.
+	audioDeclared := modelInfo.SupportsInput(provider.ModalityAudio)
+	rebuilt := []provider.ModelModality{provider.ModalityText}
 	if vision {
-		modelInfo.InputModalities = []provider.ModelModality{provider.ModalityText, provider.ModalityImage}
-	} else if modelInfo.SupportsInput(provider.ModalityImage) {
-		modelInfo.InputModalities = []provider.ModelModality{provider.ModalityText}
+		rebuilt = append(rebuilt, provider.ModalityImage)
 	}
+	if audioDeclared {
+		rebuilt = append(rebuilt, provider.ModalityAudio)
+	}
+	modelInfo.InputModalities = rebuilt
 	visionDetail, _ := cfg.Extra["vision_detail"].(string)
 	visionDetail = strings.ToLower(strings.TrimSpace(visionDetail))
 	if visionDetail != "low" && visionDetail != "high" {
@@ -274,6 +289,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		mimo:            IsMiMo(cfg.BaseURL),
 		thinkingType:    thinkingType,
 		vision:          vision,
+		audio:           audio,
 		modelInfo:       modelInfo,
 		visionDetail:    visionDetail,
 		maxOutputTokens: maxOutputTokens,
@@ -335,6 +351,7 @@ type client struct {
 	mimo            bool   // true for MiMo — upgrades legacy tuple schemas to Draft 2020-12
 	thinkingType    string // explicit `thinking` config override (enabled|disabled); "" = no override
 	vision          bool   // model accepts image input — embed attached images as image_url parts
+	audio           bool   // model accepts audio input (task 1008) — embed attached audio as input_audio parts
 	modelInfo       provider.ModelInfo
 	visionDetail    string        // image_url detail hint (low|high); "" = auto/omit
 	maxOutputTokens int           // resolved total output budget; <=0 omits the optional field
@@ -527,6 +544,15 @@ var bufPool = sync.Pool{
 func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	if err := c.reasoning.Validate(c.model, req.EffortOverride); err != nil && !c.admitsGLMStrengthOverride(req.EffortOverride) {
 		return nil, err
+	}
+	// Task 1008: audio bytes reaching an audio-disabled model (model switch on
+	// a history that carries attachments, or direct message construction) must
+	// fail loudly here instead of silently dropping the payload or 400ing
+	// opaquely at the endpoint.
+	if !c.audio {
+		if err := provider.RejectAudioIfPresent(c.name, c.model, "audio input is not enabled for this model", req.Messages); err != nil {
+			return nil, err
+		}
 	}
 	stream, err := c.openStream(ctx, c.chatURL, c.buildRequest(req), req.Tools)
 	if err != nil {
@@ -827,6 +853,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
 			cm.ToolCalls = append(cm.ToolCalls, wire)
 		}
 		switch {
+		// Task 1008: audio-bearing user turns get an array part even without
+		// images. The branch fires only when m.Audio is non-empty, so every
+		// audio-free message keeps the exact historical byte shape below.
+		case m.Role == provider.RoleUser && len(m.Audio) > 0:
+			var parts []chatContentPart
+			if c.vision && len(m.Images) > 0 {
+				parts = imageContentParts(m.Content, m.Images, c.visionDetail)
+			} else if m.Content != "" {
+				parts = append(parts, chatContentPart{Type: "text", Text: m.Content})
+			}
+			parts = append(parts, audioContentParts(m.Audio)...)
+			cm.Content = parts
 		case c.vision && m.Role == provider.RoleUser && len(m.Images) > 0:
 			cm.Content = imageContentParts(m.Content, m.Images, c.visionDetail)
 		case m.Role != provider.RoleAssistant || len(cm.ToolCalls) == 0 || m.Content != "":
@@ -1253,6 +1291,17 @@ type chatContentPart struct {
 	Text     string        `json:"text,omitempty"`
 	ImageURL *chatImageURL `json:"image_url,omitempty"`
 	FileID   string        `json:"file_id,omitempty"`
+	// InputAudio carries the task-1008 inline audio part. omitempty keeps the
+	// key out of every non-audio part, so existing request bytes are unchanged.
+	InputAudio *chatInputAudio `json:"input_audio,omitempty"`
+}
+
+// chatInputAudio is the OpenAI-compatible input_audio payload. Data is the
+// full data URL (data:{mime};base64,…); Format names one of the five accepted
+// families (mp3/wav/flac/m4a/ogg).
+type chatInputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format"`
 }
 
 type chatImageURL struct {
@@ -1272,6 +1321,29 @@ func imageContentParts(text string, images []string, detail string) []chatConten
 		case provider.ImageDataURL, provider.ImageHTTPURL:
 			parts = append(parts, chatContentPart{Type: "image_url", ImageURL: &chatImageURL{URL: ref, Detail: detail}})
 		}
+	}
+	return parts
+}
+
+// audioContentParts turns inline audio data URLs into input_audio content
+// parts (task 1008). The wire format name prefers the data-URL MIME type and
+// falls back to the ref's file extension — mimo documents both shapes; the
+// extension fallback covers MIME variants mimo's format table does not name.
+func audioContentParts(audio []string) []chatContentPart {
+	parts := make([]chatContentPart, 0, len(audio))
+	for _, ref := range audio {
+		mimeType, _, ok := provider.ParseAudioDataURL(ref)
+		format := ""
+		if ok {
+			format = provider.AudioWireFormat(mimeType)
+		}
+		if format == "" {
+			format = strings.TrimPrefix(strings.ToLower(filepath.Ext(ref)), ".")
+		}
+		if format == "" {
+			continue
+		}
+		parts = append(parts, chatContentPart{Type: "input_audio", InputAudio: &chatInputAudio{Data: ref, Format: format}})
 	}
 	return parts
 }

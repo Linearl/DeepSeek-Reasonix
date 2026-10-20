@@ -426,6 +426,7 @@ func providerVisibleFingerprint(msgs []provider.Message) string {
 		Role               string                      `json:"r"`
 		Content            string                      `json:"c,omitempty"`
 		Images             []string                    `json:"img,omitempty"`
+		Audio              []string                    `json:"aud,omitempty"`
 		ReasoningContent   string                      `json:"rc,omitempty"`
 		ReasoningID        string                      `json:"rid,omitempty"`
 		ReasoningStatus    string                      `json:"rst,omitempty"`
@@ -443,6 +444,7 @@ func providerVisibleFingerprint(msgs []provider.Message) string {
 			Role:               string(m.Role),
 			Content:            m.Content,
 			Images:             append([]string(nil), m.Images...),
+			Audio:              append([]string(nil), m.Audio...),
 			ReasoningContent:   m.ReasoningContent,
 			ReasoningID:        m.ReasoningID,
 			ReasoningStatus:    m.ReasoningStatus,
@@ -578,6 +580,7 @@ func coalesceProjectionUserRuns(msgs []provider.Message) []provider.Message {
 		if len(out) == 0 || msg.Role != provider.RoleUser || out[len(out)-1].Role != provider.RoleUser {
 			clone := msg
 			clone.Images = append([]string(nil), msg.Images...)
+			clone.Audio = append([]string(nil), msg.Audio...)
 			clone.ToolCalls = append([]provider.ToolCall(nil), msg.ToolCalls...)
 			clone.ResponsesItems = append([]json.RawMessage(nil), msg.ResponsesItems...)
 			clone.ServerSearch = append([]provider.ServerSearchCall(nil), msg.ServerSearch...)
@@ -592,6 +595,7 @@ func coalesceProjectionUserRuns(msgs []provider.Message) []provider.Message {
 			prev.Content = strings.TrimRight(prev.Content, "\n") + "\n\n" + msg.Content
 		}
 		prev.Images = append(prev.Images, msg.Images...)
+		prev.Audio = append(prev.Audio, msg.Audio...)
 		prev.ToolCalls = append(prev.ToolCalls, msg.ToolCalls...)
 		prev.ResponsesItems = append(prev.ResponsesItems, msg.ResponsesItems...)
 		prev.ServerSearch = append(prev.ServerSearch, msg.ServerSearch...)
