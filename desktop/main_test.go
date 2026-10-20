@@ -114,6 +114,10 @@ func TestMain(m *testing.M) {
 	os.Setenv("XDG_CONFIG_HOME", dir+"/config")
 	os.Setenv("REASONIX_STATE_HOME", dir+"/state")
 	os.Setenv("REASONIX_CACHE_HOME", dir+"/cache")
+	// 任务 1032: config.UserConfigPath() 只认 REASONIX_HOME（其余全是 fallback），
+	// 不设它，写用户 config 的测试会落到开发者真实用户目录（连带真实
+	// lease/catalog/boot 快照与 ${HOME} 展开）。
+	os.Setenv("REASONIX_HOME", dir+"/reasonix")
 	os.Setenv("AppData", dir)
 	// Tests fail closed for telemetry. Any test that expects a request must
 	// replace the relevant endpoint with an httptest.Server explicitly.
