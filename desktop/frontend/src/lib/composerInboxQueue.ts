@@ -14,6 +14,9 @@ export type InboxSnapshotLike = {
     state?: string;
     intent?: string;
     source?: string;
+    /** 任务998：inbox CreatedAt（RFC3339/ISO 字符串，time.Time JSON）——
+     *  队列行入队时刻的来源；旧宿主不给此字段时保持 undefined。 */
+    createdAt?: string;
   }>;
 };
 
@@ -50,7 +53,18 @@ export function guidanceFromInboxSnapshot(snap: InboxSnapshotLike | null | undef
     recoveredCount: snap?.paused && snap?.recovered
       ? visible.length
       : undefined,
+    // 任务998：createdAt 透传（RFC3339 → epoch ms；解析失败保持 undefined，
+    // 队列行不渲染时间而不是显示 NaN）。
+    createdAt: parseInboxCreatedAt(it.createdAt),
   }));
+}
+
+// 任务998：inbox CreatedAt（RFC3339 UTC，time.Time JSON）→ epoch ms。非
+// RFC3339 的历史格式（Go 的 "2006-01-02T15:04:05Z"）Date 能直接解析。
+function parseInboxCreatedAt(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? at : undefined;
 }
 
 export async function hydrateEmptyGuidancePreviews(

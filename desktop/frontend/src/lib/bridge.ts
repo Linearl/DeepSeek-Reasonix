@@ -1027,6 +1027,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
       source?: string;
       position: number;
       blockReason?: string;
+      /** 任务998：inbox CreatedAt（RFC3339 UTC，time.Time JSON）——队列行入
+       *  队时刻；旧宿主缺此字段时前端不渲染时间。 */
+      createdAt?: string;
     }>;
     itemsCount: number;
     bytes: number;

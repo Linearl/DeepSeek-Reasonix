@@ -8,11 +8,15 @@ import {
   guidanceIsInFlight,
   guidanceNeedsRetry,
 } from "../lib/composerGuidance";
-import { useI18n } from "../lib/i18n";
+import { getLocale, useI18n } from "../lib/i18n";
 import type { StructuredInvocationSubmit } from "../lib/invocationDisplay";
 import { InboxRecoveryBanner } from "./InboxRecoveryBanner";
 import { Tooltip } from "./Tooltip";
 import { estimateUserMessageLines } from "../lib/messageFold";
+// 任务998：队列行补入队时刻——复用 1012 messageTimestamp 三档，与消息气泡
+// 同一格式化函数（不另起格式化逻辑）。
+import { formatMessageTimestamp } from "../lib/messageTimestamp";
+import { useTick } from "../lib/workStatus";
 
 export type PendingGuidance = {
   id: string;
@@ -24,6 +28,8 @@ export type PendingGuidance = {
   paused?: boolean;
   recoveredCount?: number;
   structured?: StructuredInvocationSubmit;
+  /** 任务998：inbox CreatedAt（epoch ms）——队列行右侧的入队时刻；无值不渲染。 */
+  createdAt?: number;
 };
 
 export type InboxRecoveryNotice = {
@@ -144,6 +150,10 @@ export function ComposerGuidanceShelf({
   onPreviewText?: (item: PendingGuidance) => Promise<string>;
 }) {
   const { t } = useI18n();
+  // 任务998：入队时刻的渲染锚点——仅当至少一行有 createdAt 时挂 tick（与
+  // 消息气泡同款「有时间才滴答」省电形态）。
+  const hasStampedRow = items.some((item) => item.createdAt != null);
+  const now = useTick(hasStampedRow);
   const visible = expanded ? items : items.slice(0, 2);
   const hiddenCount = Math.max(0, items.length - 2);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -568,6 +578,17 @@ export function ComposerGuidanceShelf({
                   >
                     {item.text.trim() || t("composer.guidanceEmptyPreview")}
                   </button>
+                  {/* 任务998：入队时刻（1012 三档）——同日只显时分；无 createdAt
+                      （本地草行/后端未给）不渲染，不占位。tick 在组件顶部挂
+                      （hooks 不能进 map 回调），仅在任一行有时间时滴答。 */}
+                  {(() => {
+                    const sentAt = item.createdAt == null ? null : new Date(item.createdAt);
+                    return sentAt ? (
+                      <time className="composer-guidance-item__time" dateTime={sentAt.toISOString()} title={sentAt.toLocaleString()}>
+                        {formatMessageTimestamp(sentAt, new Date(now), getLocale())}
+                      </time>
+                    ) : null;
+                  })()}
                   {canEdit && (
                     <Tooltip label={t("composer.guidanceEdit")}>
                       <button

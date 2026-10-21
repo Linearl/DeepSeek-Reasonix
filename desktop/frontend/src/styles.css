@@ -5680,6 +5680,27 @@ a[href] {
   color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
 }
+/* 任务998：steer/notice 卡的时间戳——与 .msg-meta__time 同款弱化字色 +
+   等宽数字（跨天档「10-15 22:09」不抖宽度）；气泡内右对齐贴尾。 */
+.steer-line__time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+}
+.notice-line__time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  align-self: flex-start;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+}
 .msg-meta__indicator {
   display: inline-flex;
   align-items: center;
@@ -25078,6 +25099,17 @@ button.statusbar__mcp:focus-visible {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+/* 任务998：队列行入队时刻——弱化字色 + 等宽数字（1012 三档同款）；行内右侧
+   独立一列，窄文本被 line-clamp 压缩时时间不被吞。 */
+.composer-guidance-item__time {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
 }
 
 .composer-guidance-item__text--button {

@@ -85,7 +85,7 @@ func (state *historyMessageConvertState) convertHistoryMessage(
 		// Mid-turn steer messages surface as a notice (matching the live
 		// Steer event look) rather than a user bubble or filtered synthetic
 		// (#4044); check the raw m.Content, not the trimmed display form.
-		if rows, handled := historySteerRows(m.Content, false); handled {
+		if rows, handled := historySteerRows(m, false); handled {
 			return append(out, rows...)
 		}
 		// Host guidance reaches the transcript as a notice row (task 172); internal

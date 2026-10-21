@@ -49,7 +49,7 @@ func historyLocalOnlyRows(m provider.Message) ([]HistoryMessage, bool) {
 			},
 		}), true
 	}
-	if steerRows, handled := historySteerRows(m.Content, true); handled {
+	if steerRows, handled := historySteerRows(m, true); handled {
 		return append(rows, steerRows...), true
 	}
 	return rows, len(rows) > 0

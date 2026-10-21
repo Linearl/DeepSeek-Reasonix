@@ -12,13 +12,13 @@ function inlineActionForCode(code?: string): "view_versions" | undefined {
   return code === "session_concurrent_writer" ? "view_versions" : undefined;
 }
 
-export function appendNoticeItem(items: Item[], seq: number, id: string, level: "info" | "warn", rawText: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt): { items: Item[]; seq: number } {
+export function appendNoticeItem(items: Item[], seq: number, id: string, level: "info" | "warn", rawText: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt, createdAt?: number): { items: Item[]; seq: number } {
   if (quietTranscriptNoticeKey(rawText, code)) return { items, seq };
   const trimmedDetail = detail?.trim();
   const text = localizedNoticeText(rawText, code, trimmedDetail);
   if (quietTranscriptNoticeKey(text, code)) return { items, seq };
   const inlineAction = inlineActionForCode(code);
-  return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(code ? { code } : {}), ...(decisionReceipt ? { decisionReceipt } : {}), ...(inlineAction ? { action: inlineAction } : {}) }], seq: seq + 1 };
+  return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(code ? { code } : {}), ...(decisionReceipt ? { decisionReceipt } : {}), ...(inlineAction ? { action: inlineAction } : {}), ...(createdAt ? { createdAt } : {}) }], seq: seq + 1 };
 }
 
 export function errorMessage(err: unknown): string {
@@ -253,7 +253,10 @@ export function historyNoticeItems(m: HistoryMessage, id: string): Item[] {
   if (quietTranscriptNoticeKey(text, m.code)) return [];
   const detail = m.detail?.trim();
   const inlineAction = inlineActionForCode(m.code);
+  // 任务998：notice 行补时间——后端 steer 行不带 createdAt（historySteerRows
+  // 零值），steer/未应用引导/未带时间的历史行统一打重建时刻，让三档契约
+  // 有锚点；带 createdAt 的历史行保留原始时间（跨天/跨年才显示日期）。
   return [{ kind: "notice", id, level: m.level === "warn" ? "warn" : "info", text,
     ...(detail ? { detail } : {}), ...(m.decisionReceipt ? { decisionReceipt: m.decisionReceipt } : {}),
-    ...(inlineAction ? { action: inlineAction } : {}) }];
+    ...(inlineAction ? { action: inlineAction } : {}), createdAt: m.createdAt ?? Date.now() }];
 }

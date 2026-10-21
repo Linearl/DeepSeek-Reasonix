@@ -16,6 +16,9 @@ import type { InboxSnapshotLike } from "./composerInboxQueue";
 export interface QueuedGuidanceBubble {
   inboxItemId: string;
   text: string;
+  /** 任务998：inbox CreatedAt（RFC3339 UTC）→ epoch ms，随 bubble 带给
+   *  guidance_bubble action；无值/解析失败保持 undefined。 */
+  createdAt?: number;
 }
 
 /**
@@ -40,7 +43,8 @@ export function missingQueuedGuidanceBubbles(
     if (!RECONCILED_INBOX_STATES.has(row.state ?? "")) continue;
     const preview = (row.preview ?? "").trim();
     if (!preview) continue;
-    bubbles.push({ inboxItemId: row.id, text: `${STEER_NOTICE_PREFIX}${preview}` });
+    const at = row.createdAt ? Date.parse(row.createdAt) : NaN;
+    bubbles.push({ inboxItemId: row.id, text: `${STEER_NOTICE_PREFIX}${preview}`, ...(Number.isFinite(at) ? { createdAt: at } : {}) });
   }
   return bubbles;
 }

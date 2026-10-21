@@ -20,8 +20,9 @@ export type ComposerRouterInput = {
   goalDraftActive: boolean;
   t: Translator;
   notice(message: string, kind?: "info" | "warn" | "error"): void;
-  /** Task 258: receipt-time transcript bubble for queued guidance. */
-  queueGuidanceBubble?(text: string, inboxItemId?: string, tabId?: string): void;
+  /** Task 258: receipt-time transcript bubble for queued guidance.
+   *  任务998: createdAt（epoch ms）随气泡走，卡片右侧显示入队时刻。 */
+  queueGuidanceBubble?(text: string, inboxItemId?: string, createdAt?: number, tabId?: string): void;
   showToast(message: string, level: "info" | "warn" | "error", options?: { durationMs?: number }): void;
   ports: {
     runShellForTab(tabId: string, cmd: string): Promise<void>;
