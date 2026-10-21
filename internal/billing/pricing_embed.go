@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -106,6 +107,33 @@ func OfficialCatalogEntries() []CatalogEntry {
 func OfficialScheduleEffectiveAt(scheduleID string) (time.Time, bool) {
 	at, ok := pricingScheduleEffectives[scheduleID]
 	return at, ok
+}
+
+// OfficialRateCardFor returns the embedded official base price for a vendor
+// model, preferring the row matching preferredCurrency when the table carries
+// one. Rows with an explicit rateBand are vendor-published peak rows and are
+// only reachable through a trusted schedule resolution, never by model name.
+func OfficialRateCardFor(provider, model, preferredCurrency string) (RateCard, bool) {
+	want := NormalizeCurrency(preferredCurrency)
+	var fallback RateCard
+	found := false
+	for _, e := range OfficialCatalogEntries() {
+		if e.ScheduleID != "" && e.RateBand != "" {
+			continue
+		}
+		if e.Provider != strings.ToLower(strings.TrimSpace(provider)) || e.Model != strings.TrimSpace(model) {
+			continue
+		}
+		card := RateCardFromCatalog(e)
+		if NormalizeCurrency(card.Currency) == want {
+			return card, true
+		}
+		if !found {
+			fallback = card
+			found = true
+		}
+	}
+	return fallback, found
 }
 
 func formatMultiplier(m float64) string {

@@ -476,6 +476,13 @@ func officialProviderKind(p *ProviderEntry) string {
 	if strings.EqualFold(u.Hostname(), "api.deepseek.com") {
 		return "deepseek"
 	}
+	switch host := u.Hostname(); {
+	case strings.EqualFold(host, "api.xiaomimimo.com"), strings.EqualFold(host, "token-plan-cn.xiaomimimo.com"),
+		strings.EqualFold(host, "token-plan-sgp.xiaomimimo.com"), strings.EqualFold(host, "token-plan-ams.xiaomimimo.com"):
+		return "mimo"
+	case strings.EqualFold(host, "open.bigmodel.cn"), strings.EqualFold(host, "api.z.ai"):
+		return "glm"
+	}
 	return ""
 }
 
