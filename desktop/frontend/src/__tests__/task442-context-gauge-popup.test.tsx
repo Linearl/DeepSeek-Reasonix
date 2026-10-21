@@ -25,6 +25,7 @@ import {
   normalizeShares,
   requestContextOverview,
 } from "../lib/contextGaugePopup";
+import { contextReadoutSource, contextReadoutSourceKey } from "../lib/contextPanelUtils";
 
 let passed = 0;
 let failed = 0;
@@ -231,6 +232,43 @@ console.log("\ntask 442 — context gauge popup");
   eq(events, 1, "requestContextOverview dispatches the App-level navigation event");
   window.removeEventListener(OPEN_CONTEXT_OVERVIEW_EVENT, () => {});
   dom.window.close();
+}
+
+// ── 任务1025 缺口6: 分段条百分比分母改用 totalTokens ──────────────────────
+{
+  // 分项和 850 < totalTokens 1000：补「其他」桶承载差额 150，Σtokens=1000、
+  // Σshare=100%。消息占比 = 700/1000 = 70%（而非 700/850 = 82.4%）。
+  const gap6 = compositionSegments({
+    systemPromptTokens: 100, builtinToolTokens: 50, skillTokens: 0,
+    mcpToolTokens: 0, messageTokens: 700, totalTokens: 1000,
+  });
+  eq(gap6.length, 4, "an 'other' bucket joins when segments under-count the total (缺口6)");
+  const other = gap6.find((s) => s.key === "other");
+  eq(other?.tokens, 150, "the 'other' bucket carries the 1000 − 850 = 150 remainder");
+  const tokenSum = gap6.reduce((sum, s) => sum + s.tokens, 0);
+  eq(tokenSum, 1000, "Σtokens equals totalTokens (缺口6: 分项和=总数)");
+  const shareSum = Math.round(gap6.reduce((sum, s) => sum + s.share, 0) * 10) / 10;
+  eq(shareSum, 100, "Σshare still sums to exactly 100.0 with the 'other' bucket");
+  eq(
+    Math.abs((gap6.find((s) => s.key === "message")?.share ?? 0) - 70) < 0.05,
+    true,
+    "the message share uses totalTokens as its denominator (700/1000 = 70%, not 700/850 = 82.4%)",
+  );
+  // 分项和 == totalTokens 时不补「其他」桶（向后兼容已修的 Go 侧）。
+  const exact = compositionSegments({
+    systemPromptTokens: 100, builtinToolTokens: 0, skillTokens: 0,
+    mcpToolTokens: 0, messageTokens: 900, totalTokens: 1000,
+  });
+  eq(exact.find((s) => s.key === "other"), undefined, "no 'other' bucket when segments already reach the total");
+}
+
+// ── 任务1025 读数来源标记: contextReadoutSource / contextReadoutSourceKey ──
+{
+  eq(contextReadoutSource(0), "estimated", "observedPrompt=0 (first turn / provider switch) reads as 估算");
+  eq(contextReadoutSource(undefined), "estimated", "an absent observedPrompt reads as 估算");
+  eq(contextReadoutSource(545900), "measured", "observedPrompt>0 (last response calibrated) reads as 实测");
+  eq(contextReadoutSourceKey("measured"), "context.readoutMeasured", "measured maps to the readoutMeasured key");
+  eq(contextReadoutSourceKey("estimated"), "context.readoutEstimated", "estimated maps to the readoutEstimated key");
 }
 
 // ── acceptance 1: segmented bar shares match the composition ───────────────

@@ -30599,6 +30599,23 @@ button.statusbar__mcp:focus-visible {
   cursor: help;
 }
 
+/* 任务1025: 读数来源标记——「实测」/「估算」，与投影失效标记同族小 pill。 */
+.context-panel__readout-source {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--fg-dim) 28%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--fg-dim) 10%, transparent);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .context-panel__capacity-top strong {
   min-width: 0;
   overflow: hidden;
@@ -37985,6 +38002,21 @@ button.statusbar__mcp:focus-visible {
   font-weight: 650;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
+}
+/* 任务1025: 读数来源标记——「实测」/「估算」，与 pct 同族小 pill。 */
+.context-ring-popover__readout-source {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--fg-dim) 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--fg-dim) 10%, transparent);
+  color: var(--fg-dim);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: help;
 }
 /* 进度条 */
 .context-ring-popover__gauge {

@@ -11,11 +11,10 @@ import { appendRateBand, normalizeRateBand, rateBandLabel, type DisplayRateBand 
 import type { BalanceInfo, ContextInfo, ContextPanelInfo, UsageSourceStats, WireUsage } from "../lib/types";
 import { contextSessionCache } from "../lib/contextSessionCache";
 import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
-import { ContextBudgetCard, resolveContextBudget } from "./ContextBudgetCard";
 import { PlanUsageCard } from "./PlanUsageCard";
 import { OpenCodeGoUsageSidebarCard } from "./OpenCodeGoUsageSidebarCard";
 import type { Item } from "../lib/useController";
-import { contextWindowStatus, formatCacheHitRate } from "../lib/contextPanelUtils";
+import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate } from "../lib/contextPanelUtils";
 import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
 import { normalizeRecoveryLineageView } from "../lib/sessionRecoveryVersions";
 export { contextSessionCache } from "../lib/contextSessionCache";
@@ -518,10 +517,18 @@ export function ContextPanel({
   // 任务549: 主读数以 projected（实际发送量）为准。投影有效时它就是真实发送
   // 视图；投影失效时它等于 canonical 全量——由下方「投影失效中」标注表达语义，
   // 而不是把全量记录的体积当作正常用量静默展示。
+  //
+  // 任务1025（显示层收口）：读数来源标记——admission.observedPrompt > 0 说明
+  //  provider 上次响应已校准（「实测」）；= 0 说明是新会话首轮 / 切 provider
+  //  首轮（「估算」）。窗口环与分段条共用同一权威值口径与标记。
   const projectedTokens = context?.maintenance?.projectedTokens ?? 0;
   const usedTokens = projectedTokens > 0
     ? projectedTokens
     : context?.used && context.used > 0 ? context.used : info?.usedTokens ?? 0;
+  const observedPrompt = info?.contextBudget?.observedPrompt ?? context?.contextBudget?.observedPrompt ?? context?.maintenance?.contextBudget?.observedPrompt ?? 0;
+  const readoutSource = contextReadoutSource(observedPrompt);
+  const readoutSourceLabel = t(contextReadoutSourceKey(readoutSource));
+  const readoutSourceTitle = t("context.readoutSourceTitle");
   const windowTokens = context?.window && context.window > 0 ? context.window : info?.windowTokens ?? 0;
   // Prefer live usage props (updated in real-time by the reducer during streaming)
   // over the async-fetched info snapshot (only refreshed on turn_done). Multi-
@@ -610,6 +617,7 @@ export function ContextPanel({
   const windowLabel = formatTokens(windowTokens);
   const compactRemainingLabel = tokensUntilCompact > 0 ? formatTokens(tokensUntilCompact) : "0";
   const compactMarkerPct = Math.max(0, Math.min(100, compactPct));
+  const compactLineTitle = t("context.windowCompactThresholdTitle");
   // 任务834: pin 位置与防重叠判定收敛进 capacityPinLayout——已用读数贴近
   // 压缩阈值时阈值 pin 的文字标签让位（竖线 marker 仍在），已用百分比不遮。
   const pinLayout = capacityPinLayout(usagePct, compactPct);
@@ -691,6 +699,11 @@ export function ContextPanel({
               <div className="context-panel__capacity-top">
                 <span className="context-panel__capacity-flags">
                   <span className="context-panel__capacity-status">{t(windowStatus.key)}</span>
+                  {/* 任务1025: 读数来源标记——「实测」=上次响应已校准；「估算」=
+                      新会话首轮/切 provider 首轮。窗口环与分段条同一权威值口径。 */}
+                  <span className="context-panel__readout-source" title={readoutSourceTitle}>
+                    {readoutSourceLabel}
+                  </span>
                   {projectionStale && (
                     <span className="context-panel__projection-stale" title={projectionStaleTitle}>
                       {t("context.projectionInvalid")}
@@ -705,12 +718,12 @@ export function ContextPanel({
                 <div className="context-panel__capacity-scale" aria-hidden="true">
                   <span className="context-panel__capacity-pin context-panel__capacity-pin--used" style={{ left: `${pinLayout.usagePct}%` }}>{rawUsagePct}%</span>
                   {pinLayout.compactLabelVisible && (
-                    <span className="context-panel__capacity-pin context-panel__capacity-pin--compact" style={{ left: `${pinLayout.compactPct}%` }}>{compactPct}%</span>
+                    <span className="context-panel__capacity-pin context-panel__capacity-pin--compact" style={{ left: `${pinLayout.compactPct}%` }} title={compactLineTitle}>{compactPct}%</span>
                   )}
                 </div>
                 <div className="context-panel__progress-track" aria-hidden="true">
                   <span className="context-panel__progress-fill" style={{ width: `${usagePct}%` }} />
-                  <span className="context-panel__compact-marker" style={{ left: `${compactMarkerPct}%` }} />
+                  <span className="context-panel__compact-marker" style={{ left: `${compactMarkerPct}%` }} title={compactLineTitle} />
                 </div>
               </div>
               <div className="context-panel__capacity-foot">
@@ -720,7 +733,7 @@ export function ContextPanel({
                   <strong>{compactRemainingLabel}</strong>
                 </span>
               </div>
-            </div><ContextBudgetCard budget={resolveContextBudget(context, info)} t={t} />
+            </div>
           </section>
           {/* Task 287: provider plan usage. Task 666: hidden entirely unless
               the tab's CURRENT model resolves to a plan-capable provider (the
