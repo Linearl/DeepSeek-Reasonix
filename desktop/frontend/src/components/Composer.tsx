@@ -1,4 +1,5 @@
 import { recoveryStatusText, type RecoveryRetry } from "../lib/recoveryStatus";
+import { turnHeartbeatSeconds } from "../lib/workStatus";
 import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { useRuntimeSession } from "../lib/useRuntimeState";
 import { stopButtonView, type StopButtonPhase } from "../lib/stopButton";
@@ -4943,10 +4944,10 @@ export function Composer({
   // placeholder 呈现排队文案，停止按钮/steer 形态保持（turn 真在跑）。
   const queuedFollowup = turnRuntimeState === "queued_followup";
   // 任务1015：长工具链心跳——最后一个 turn 活动事件距现在的秒数（无输出期
-  // 也不呈现为静止）。
-  const heartbeatSeconds = running && lastTurnEventAt
-    ? Math.max(0, Math.floor((now - lastTurnEventAt) / 1000))
-    : null;
+  // 也不呈现为静止）。任务1020：lastTurnEventAt 与 now 均为 epoch 毫秒；
+  // 缺失/非有限/时钟倒挂/超 24h 时为 null，渲染兜底为「—」，单位错不得
+  // 静默呈现为大数（曾出现「最后事件 1792460705s 前」）。
+  const heartbeatSeconds = running ? turnHeartbeatSeconds(now, lastTurnEventAt) : null;
   const runStateText = runtimeState.unknown ? t("runtime.unknown") : finishing ? t("runtime.finishing") : runtimeState.kind === "cancelling" ? t("status.jobStopping") : runtimeState.kind === "background_job" ? t("runtime.background", { count: runtimeState.state?.backgroundJobs ?? 0 }) : retry
     ? recoveryStatusText(t, retry, now)
     : waitingPrompt === "approval"
@@ -4956,7 +4957,7 @@ export function Composer({
           : queuedFollowup
             ? t("composer.queuedStrip")
             : running && !suspendedByDecision
-              ? [currentToolLabel ? t("composer.executingTool", { tool: currentToolLabel }) : turnPhaseLabel, heartbeatSeconds != null ? t("composer.lastEventAgo", { n: heartbeatSeconds }) : ""].filter(Boolean).join(" · ")
+              ? [currentToolLabel ? t("composer.executingTool", { tool: currentToolLabel }) : turnPhaseLabel, lastTurnEventAt ? (heartbeatSeconds != null ? t("composer.lastEventAgo", { n: heartbeatSeconds }) : "—") : ""].filter(Boolean).join(" · ")
               : null;
   const runMetrics = turnStartAt && (running || turnDoneAt)
     ? (() => {

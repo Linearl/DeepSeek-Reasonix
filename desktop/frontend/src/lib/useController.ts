@@ -545,6 +545,8 @@ export interface State extends ReadStatusHost {
   queuedFollowup?: boolean;
   // 任务1015：最后一个 turn 活动事件（TURN_ACTIVITY_KINDS）的到达时间——
   // 长工具链「正在执行 <工具>」+ 心跳的展示数据；由后端事件驱动，非本地推断。
+  // 任务1020：epoch 毫秒（Date.now()），与展示层 useTick 的 now 同基准；
+  // 禁用 promptEventClock()（页面起点毫秒，只可与自身比较）。
   lastTurnEventAt?: number;
   /** Last runtime snapshot sequence accepted for this tab/epoch. */
   runtimeStatusEpoch?: string; runtimeStatusSeq?: number; runtimeStatusSnapshotAt?: number;
@@ -1703,7 +1705,10 @@ function reportAskPanelReceipt(e: WireEvent): void {
 
 function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State {
   // 任务1015：turn 活动心跳（后端事件到达时间，供「正在执行 <工具>」+ 心跳展示）。
-  if (TURN_ACTIVITY_KINDS.has(e.kind)) s = { ...s, lastTurnEventAt: promptEventClock() };
+  // 任务1020：改用 Date.now()（epoch 毫秒）——该字段只供展示层与 useTick 的
+  // now（Date.now()）相减；此前 promptEventClock()（performance.now()，页面
+  // 起点毫秒，只可与自身比较）与 now 混用得出 10^9 量级秒数。
+  if (TURN_ACTIVITY_KINDS.has(e.kind)) s = { ...s, lastTurnEventAt: Date.now() };
   if (s.discardTurn) {
     if (e.kind === "turn_done") {
       return {
