@@ -177,6 +177,29 @@ console.log("\ntask 442 — context gauge popup");
     "a zero total hides the bar instead of drawing an empty legend",
   );
 
+  // 任务1040: images get their own resolution-priced bucket; an older host that
+  // omits imageTokens degrades to the pre-1040 six-row legend (undefined → 0).
+  const withImages = compositionSegments({
+    systemPromptTokens: 3000, builtinToolTokens: 1500, skillTokens: 500,
+    mcpToolTokens: 700, messageTokens: 4300, imageTokens: 2000, totalTokens: 12000,
+  });
+  eq(withImages.length, 6, "the image bucket joins the five non-zero rows (the zero 其他 row stays hidden)");
+  eq(withImages.find((s) => s.key === "images")?.tokens, 2000, "the image bucket carries the host's resolution-priced tokens");
+  eq(
+    Math.round(withImages.reduce((sum, s) => sum + s.share, 0) * 10) / 10,
+    100,
+    "shares with an image bucket still sum to exactly 100.0",
+  );
+  const legacyHost = compositionSegments({
+    systemPromptTokens: 3000, builtinToolTokens: 1500, skillTokens: 500,
+    mcpToolTokens: 700, messageTokens: 4300, totalTokens: 10000,
+  });
+  eq(
+    legacyHost.some((s) => s.key === "images"),
+    false,
+    "an older host without imageTokens hides the image row instead of showing a bogus 0.0%",
+  );
+
   const shares = normalizeShares([1, 1, 1]);
   eq(shares.length, 3, "three buckets keep three shares");
   eq(Math.round(shares.reduce((a, b) => a + b, 0) * 10) / 10, 100, "an even third splits to exactly 100.0");
@@ -231,7 +254,9 @@ console.log("\ntask 442 — context gauge popup");
   await openPopover();
 
   const legend = [...document.querySelectorAll(".context-composition__legend-item")];
-  eq(legend.length, 6, "six composition segments render (incl. the reserved 其他 row)");
+  // 任务1040: the reserved zero 其他 row is dropped — a 0.0% row taught readers
+  // the legend can under-count; hidden zero buckets keep shares meaningful.
+  eq(legend.length, 5, "five non-zero composition segments render (the zero 其他 row stays hidden)");
   const labels = legend.map((row) => row.querySelector(".context-composition__label")?.textContent);
   eq(
     labels.join("|"),
@@ -242,14 +267,13 @@ console.log("\ntask 442 — context gauge popup");
       t("context.segment.builtinTools"),
       t("context.segment.skills"),
       t("context.segment.systemPrompt"),
-      t("context.segment.other"),
       t("context.segment.mcpTools"),
     ].join("|"),
     "segments follow the dispatched category order",
   );
   const shares = legend.map((row) => Number((row.querySelector(".context-composition__share")?.textContent ?? "0").replace("%", "")));
   eq(shares.reduce((a, b) => a + b, 0), 100, "segment shares sum to exactly 100.0%");
-  const expected = [43, 15, 5, 30, 0, 7];
+  const expected = [43, 15, 5, 30, 7];
   eq(
     shares.every((value, index) => Math.abs(value - expected[index]) < 0.05),
     true,
@@ -257,10 +281,9 @@ console.log("\ntask 442 — context gauge popup");
   );
   const tokens = legend.map((row) => row.querySelector(".context-composition__tokens")?.textContent);
   eq(tokens[0], "4.3k", "the message segment prints its token count");
-  eq(tokens[4], "0", "the reserved 其他 segment prints zero today");
 
   const bar = [...document.querySelectorAll(".context-composition__seg")];
-  eq(bar.length, 6, "the bar draws one span per segment");
+  eq(bar.length, 5, "the bar draws one span per segment");
   const widthSum = bar.reduce((sum, el) => sum + Number((el as HTMLElement).style.width.replace("%", "")), 0);
   eq(Math.round(widthSum * 10) / 10, 100, "bar spans add up to the full track width");
   eq(

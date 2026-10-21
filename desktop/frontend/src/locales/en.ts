@@ -5076,6 +5076,7 @@ export const en = {
   "context.other": "Other",
   "context.compositionTitle": "Context composition",
   "context.segment.message": "Messages",
+  "context.segment.images": "Images",
   "context.segment.builtinTools": "Built-in tools",
   "context.segment.skills": "Skills",
   "context.segment.systemPrompt": "System prompt",

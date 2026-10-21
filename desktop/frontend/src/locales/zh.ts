@@ -5069,6 +5069,7 @@ export const zh: Record<DictKey, string> = {
   "context.other": "其他",
   "context.compositionTitle": "上下文构成",
   "context.segment.message": "消息",
+  "context.segment.images": "图片",
   "context.segment.builtinTools": "系统工具",
   "context.segment.skills": "技能",
   "context.segment.systemPrompt": "系统提示词",

@@ -857,6 +857,8 @@ export interface ContextCompositionInfo {
   skillTokens: number;
   mcpToolTokens: number;
   messageTokens: number;
+  /** 任务1040: resolution-derived image price as its own bucket; absent on older hosts (treated as 0). */
+  imageTokens?: number;
   totalTokens: number;
 }
 

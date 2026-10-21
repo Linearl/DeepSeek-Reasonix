@@ -122,6 +122,12 @@ func (a *Agent) elideOversizedContents(msgs []provider.Message, head, target int
 			isCompactionSummary(m) || IsPinnedContextRevision(m) {
 			continue
 		}
+		// 任务1040: 带图消息不可内容级省略——图片不在 Content 里，截 Content
+		// 只降账面不降发送量（elideToolResult 置空 Images 的同族陷阱）。其图片
+		// 预算由 drop（消息级）或 elideToolResult（仅限无图 tool 结果）覆盖。
+		if len(m.Images) > 0 {
+			continue
+		}
 		if a.messageTokens(m) <= threshold {
 			continue
 		}
