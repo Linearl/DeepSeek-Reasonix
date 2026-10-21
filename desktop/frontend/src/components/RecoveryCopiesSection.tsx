@@ -230,6 +230,9 @@ export function RecoveryCopiesSection() {
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
+  // 任务 1039：失败原因单独留一份——只显示「设置加载失败」时用户与日志都
+  // 无从判断是哪条链路断了（实测 49MB events 日志重放被拒）。
+  const [failedReason, setFailedReason] = useState("");
   // chains holds each expanded conversation's candidate chains, keyed by main path.
   // Loading them replays every log for that conversation, so it happens when a row
   // is opened rather than for the whole list at once.
@@ -304,6 +307,7 @@ export function RecoveryCopiesSection() {
 
   const load = useCallback(async () => {
     setFailed(false);
+    setFailedReason("");
     try {
       const list = await app.ListRecoveryCopyGroups();
       setGroups(list);
@@ -311,9 +315,12 @@ export function RecoveryCopiesSection() {
       // Collapsed by default: the summary line answers "which conversation has
       // copies", and the per-copy detail only matters once one is chosen.
       setExpanded(new Set());
-    } catch {
+    } catch (e) {
       setGroups(null);
       setFailed(true);
+      // 任务 1039：把后端原因带进横幅——「设置加载失败」单独出现时无法区分
+      // 是 bridge 断、后端拒还是重放超限，排查只能靠猜。
+      setFailedReason(e instanceof Error ? e.message : String(e));
     }
   }, []);
 
@@ -833,6 +840,9 @@ export function RecoveryCopiesSection() {
                 {failed ? (
                   <div className="banner banner--error" role="alert">
                     <span>{t("settings.loadFailed")}</span>
+                    {/* 任务 1039：横幅带上后端原因——否则「设置加载失败」是
+                        死话，用户与日志都定位不到是哪一步断了。 */}
+                    {failedReason && <span className="rc-failed-reason">{failedReason}</span>}
                     <button className="btn btn--secondary btn--small" type="button" onClick={() => void load()}>
                       {t("common.retry")}
                     </button>

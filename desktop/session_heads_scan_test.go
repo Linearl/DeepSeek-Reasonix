@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/store"
 )
 
@@ -273,5 +274,57 @@ func Test1019DesktopRecoveryChainsSamplePanel(t *testing.T) {
 	}
 	if hits := panelHeadsHits(); hits != 1 {
 		t.Fatalf("sample second expand must be a cache hit, hits=%d", hits)
+	}
+}
+
+// Test1039PanelHeadsReplayLimitErrorDegrades（任务 1039 验收①②）：
+// 重放内部撞资源上限（SessionReplayLimitError）时，面板不再整页失败——
+// panelSessionHeads 降级返回 degraded=true，ListRecoveryChains 保留
+// Degraded 行、计数全零、不推荐为最长链。
+//
+// 20261021 GC开发专员条目（49MB events 日志 / head_count=2）实测形态：
+// 1019 的降级只拦「文件大小 > 面板预算（256MB）」这一层，而真正的硬拒
+// 发生在重放内部（replaySessionDAG 的资源上限），错误一路传到前端
+// ListRecoveryChains reject ⇒ 整页「设置加载失败。重试」。这条测试把
+// 重放上限收窄到夹具尺寸之下，钉住「重放被拒 ⇒ 降级行」而不是「整页挂」。
+func Test1039PanelHeadsReplayLimitErrorDegrades(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	resetPanelHeadsScanForTest(t)
+	// 面板预算放行（夹具远小于 256MB），但把重放上限收窄到夹具之下：
+	// 重放走到 st.size > limits.maxBytes ⇒ SessionReplayLimitError。
+	shrinkPanelHeadsBudgetForTest(t, 1<<30)
+
+	dir := desktopSessionDir(globalWorkspaceRoot())
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 夹具先建（正常预算），再收窄重放上限——夹具自身的 Save 也要重放，
+	// 预先收窄会让夹具都建不出来。
+	path := desktopHealFixture(t, dir, "replaylimit1039.jsonl", 2)
+
+	limits := agent.DefaultSessionReplayLimitsForTest()
+	limits.MaxBytes = 8
+	t.Cleanup(agent.SetSessionReplayLimitsForTest(limits))
+
+	heads, degraded, err := panelSessionHeads(path)
+	if err != nil {
+		t.Fatalf("replay-limit refusal must degrade, not error: %v", err)
+	}
+	if !degraded || heads != nil {
+		t.Fatalf("replay-limit refusal must degrade: degraded=%v heads=%d", degraded, len(heads))
+	}
+
+	set, err := NewApp().ListRecoveryChains(path)
+	if err != nil {
+		t.Fatalf("ListRecoveryChains must not fail on a replay-limit refusal: %v", err)
+	}
+	if len(set.Chains) != 1 || !set.Chains[0].Degraded {
+		t.Fatalf("refused candidate must surface one degraded row: %+v", set.Chains)
+	}
+	if set.Chains[0].MessageCount != 0 || set.Chains[0].Turns != 0 {
+		t.Fatalf("degraded row must carry zero counts: %+v", set.Chains[0])
+	}
+	if set.LongestPath == set.Chains[0].Path {
+		t.Fatal("a degraded row must never be recommended as the longest chain")
 	}
 }

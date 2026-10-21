@@ -134,6 +134,40 @@ var defaultSessionReplayLimits = sessionReplayLimits{
 	maxCollectionItems: sessionEventReplayMaxCollectionItems,
 }
 
+// SessionReplayLimits is the exported mirror of the private replay budget so a
+// desktop-panel test can narrow it without a 1 GiB fixture (task 1039: the
+// panel must degrade when the replay is refused, not fail the whole page).
+type SessionReplayLimits struct {
+	MaxBytes           int64
+	MaxRecords         int
+	MaxMessages        int
+	MaxCollectionItems int
+}
+
+// DefaultSessionReplayLimitsForTest returns the current process-wide replay
+// budget as the exported mirror.
+func DefaultSessionReplayLimitsForTest() SessionReplayLimits {
+	return SessionReplayLimits{
+		MaxBytes:           defaultSessionReplayLimits.maxBytes,
+		MaxRecords:         defaultSessionReplayLimits.maxRecords,
+		MaxMessages:        defaultSessionReplayLimits.maxMessages,
+		MaxCollectionItems: defaultSessionReplayLimits.maxCollectionItems,
+	}
+}
+
+// SetSessionReplayLimitsForTest swaps the process-wide replay budget for one
+// test and returns the restore func. Production callers never touch it.
+func SetSessionReplayLimitsForTest(l SessionReplayLimits) (restore func()) {
+	saved := defaultSessionReplayLimits
+	defaultSessionReplayLimits = sessionReplayLimits{
+		maxBytes:           l.MaxBytes,
+		maxRecords:         l.MaxRecords,
+		maxMessages:        l.MaxMessages,
+		maxCollectionItems: l.MaxCollectionItems,
+	}
+	return func() { defaultSessionReplayLimits = saved }
+}
+
 // sessionReplayMaxBytesHard is the ceiling the adaptive allowance below will not
 // exceed, so a corrupt or absurdly large file still cannot exhaust memory.
 const sessionReplayMaxBytesHard = int64(1024 << 20)
