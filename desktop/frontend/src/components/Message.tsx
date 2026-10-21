@@ -10,7 +10,7 @@ import { app } from "../lib/bridge";
 import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactNames";
 import { collabAsImSource } from "../lib/collabMessage";
 import { replaySubmitTextPreservingSelectedContext } from "../lib/editReplay";
-import { useT } from "../lib/i18n";
+import { getLocale, useT } from "../lib/i18n";
 import { Tooltip } from "./Tooltip";
 // Task 234: restored with the edit-state image viewer JSX (the upstream
 // MessageAttachments move dropped the import while the state stayed).
@@ -229,17 +229,16 @@ function messageDate(value?: number): Date | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? new Date(value) : null;
 }
 
-function formatMessageTime(date: Date): string {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
 // Task 436: the fold gate (threshold + CJK-aware line estimator) lives in
 // lib/messageFold.ts so light consumers (task 446) can reuse it without
 // pulling this module's full graph; re-exported here to keep the 436 surface
 // (and its integrity anchors) where callers already expect it.
 import { COLLAB_MSG_FOLD_LINE_THRESHOLD, USER_MSG_FOLD_LINE_THRESHOLD, estimateUserMessageLines, firstDisplayLine } from "../lib/messageFold";
+// 任务1012: 消息时间补日期（同日 HH:mm / 跨天 MM-DD HH:mm / 跨年 YYYY-MM-DD
+// HH:mm）。分档与拼接规则与协作聊天面共用一份（lib/messageTimestamp.ts），
+// 此处只负责把消息发送时刻与渲染时刻（useTick 的 now）喂进去。
+import { formatMessageTimestamp } from "../lib/messageTimestamp";
+import { useTick } from "../lib/workStatus";
 import { useCollabDisplayStore } from "../store/collabDisplay";
 export {
   USER_MSG_FOLD_LINE_THRESHOLD,
@@ -302,6 +301,9 @@ export const UserMessage = memo(function UserMessage({
   const hasInvocationSegments = invocationSegments.some((segment) => segment.type === "invocation");
   const sourceLabel = imSource ? imSourceLabel(imSource, t) : "";
   const sentAt = createdAt === undefined ? null : messageDate(createdAt);
+  // 任务1012：分档需要「渲染时刻」。日期跨档只在跨天那一刻才需要重绘，
+  // 每秒滴答即可（useTick 既有形态；组件仅在有时间戳时挂 tick，省一次空转）。
+  const now = useTick(sentAt !== null);
   const canEdit = turn !== undefined && onEdit !== undefined && !editDisabled;
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(editableDisplayText);
@@ -745,7 +747,7 @@ export const UserMessage = memo(function UserMessage({
         <div className="msg-meta" role="group" aria-label={t("rewind.label")}>
           {sentAt && (
             <time className="msg-meta__time" dateTime={sentAt.toISOString()} title={sentAt.toLocaleString()}>
-              {formatMessageTime(sentAt)}
+              {formatMessageTimestamp(sentAt, new Date(now), getLocale())}
             </time>
           )}
           {hasMemoryCompiler && (

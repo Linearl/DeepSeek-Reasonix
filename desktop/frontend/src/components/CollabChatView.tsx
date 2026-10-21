@@ -22,7 +22,9 @@ import type { CollabDirectChainPairView, CollabDirectChainReadView } from "../li
 import { rememberCollabContactNames, collabTitleFor } from "../lib/collabContactNames";
 import { ChannelChatPanel, HUMAN_LOCAL } from "./ChannelChatPanel";
 import { CollabGroupPanel } from "./CollabGroupPanel";
-import { useT } from "../lib/i18n";
+import { getLocale, useT } from "../lib/i18n";
+// 任务1012：回放视图时间戳补日期——与消息气泡同一三档契约（lib/messageTimestamp.ts）。
+import { formatMessageTimestamp } from "../lib/messageTimestamp";
 
 // ── ⑦ 打开会话的模块信号（App.tsx 注册；组件树经此发起导航）────────
 const sessionJumpListeners = new Set<(contactId: string) => void>();
@@ -245,7 +247,7 @@ export function CollabChatView() {
                           <div className="collab-chat-view__msgmeta">
                             <span className="collab-chat-view__msgfrom" title={e.from}>{displayName(e.from)}</span>
                             <span className="collab-chat-view__typebadge">{t("collabGroup.chat.typeSession")}</span>
-                            <span className="collab-chat-view__msgtime">{new Date(e.at).toLocaleString()}</span>
+                            <span className="collab-chat-view__msgtime" title={new Date(e.at).toLocaleString()}>{formatMessageTimestamp(new Date(e.at), new Date(), getLocale())}</span>
                           </div>
                           <div className="collab-chat-view__bubble" title={t("collabHub.directs.jumpHint")}>{e.preview}</div>
                           <span className="collab-chat-view__msgpeer">→ {displayName(other)}</span>
