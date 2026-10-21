@@ -5398,6 +5398,10 @@ export const zhTW: Record<DictKey, string> = {
 "sessionMonitor.recentEvictions": "最近驅逐",
 "sessionMonitor.stageRow": "{stage} · {ms} ms",
   "collabInbox.channel": "群聊頻道",
+  // 任務 1016：意見箱來源標籤專屬說明（區別於群聊頻道）。
+  "collabInbox.channelFeedback": "意見箱來源",
+  // 任務 1016 增強項②：條目可點開對應 md（意見箱通知指向權威 md 檔案）。
+  "collabInbox.openSource": "打開來源",
   "collabInbox.title": "信件中心",
   "collabInbox.close": "關閉",
   "collabInbox.empty": "暫無信件",

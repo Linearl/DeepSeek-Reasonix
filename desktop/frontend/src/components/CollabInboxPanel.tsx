@@ -39,8 +39,12 @@ export type CollabMailEntry = {
   requireReply?: boolean;
   delivery?: string;
   bucket: string;
-  /** 任务 349n1 群标识：fan-out 来源频道名（空 = 点对点信）。 */
+  /** 任务 349n1 群标识：fan-out 来源频道名（空 = 点对点信）。
+   *  任务 1016：意见箱通知也走该字段（值为「意见箱」），渲染成来源标签。 */
   channel?: string;
+  /** 任务 1016：条目引用的文件绝对路径（意见箱通知=对应 md），非空时
+   *  渲染「打开来源」动作（复用 RevealPath）。 */
+  refPath?: string;
   preview: string;
   delivered: boolean;
   read: boolean;
@@ -84,6 +88,8 @@ export type CollabMailDetail = {
   bucket: string;
   channel?: string;
   preview: string;
+  /** 任务 1016：详情弹窗同样携带引用文件路径（意见箱通知=对应 md）。 */
+  refPath?: string;
   /** 完整正文，无截断。 */
   body: string;
 };
@@ -95,6 +101,8 @@ export type CollabMailChain = {
   firstAt: number;
   lastAt: number;
   preview: string;
+  /** 任务 1016：链首条目的引用文件路径（意见箱通知=对应 md）。 */
+  refPath?: string;
   entries: CollabMailEntry[];
 };
 
@@ -291,6 +299,26 @@ function contactHoverLabel(display: string, contactId: string): string {
   const id = contactId.trim();
   if (!id) return display;
   return display === id ? `contact_id=${id}` : `${display}（contact_id=${id}）`;
+}
+
+// 任务 1016：来源标签文案——意见箱频道给专属说明（区别于群聊频道的
+// 「群聊频道」title），其余频道沿用既有文案。
+function channelLabel(channel: string, t: ReturnType<typeof useT>): string {
+  if (channel === "意见箱") return t("collabInbox.channelFeedback");
+  return t("collabInbox.channel");
+}
+
+// 任务 1016 增强项②：打开条目引用的文件（意见箱通知=对应 md）。复用
+// RevealPath（文件管理器定位），失败走前端日志留痕（与 587 的静默失败防线
+// 同源——失败可见，不装作成功）。
+async function revealRef(refPath?: string): Promise<void> {
+  const path = (refPath ?? "").trim();
+  if (!path) return;
+  try {
+    await app.RevealPath(path);
+  } catch (err) {
+    reportFrontendLog("collab-inbox", "reveal ref failed", `${path} err=${String(err)}`, "warn");
+  }
 }
 
 export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?: CollabInboxBindings; directory?: CollabSessionDirectory; embedded?: boolean } = {}) {
@@ -897,7 +925,10 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
                   {t(`collabInbox.bucket.${entry.bucket as Bucket}` as "collabInbox.bucket.all")}
                 </span>
                 {entry.channel && (
-                  <span className="collab-inbox-panel__channel" title={t("collabInbox.channel")}>
+                  <span
+                    className="collab-inbox-panel__channel"
+                    title={channelLabel(entry.channel, t)}
+                  >
                     #{entry.channel}
                   </span>
                 )}
@@ -952,6 +983,18 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
                 >
                   {t("collabInbox.detail")}
                 </button>
+                {/* 任务 1016 增强项②：条目可点开对应 md（意见箱通知指向权威
+                    md 文件；复用 RevealPath 在文件管理器中定位）。 */}
+                {entry.refPath && (
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--small"
+                    onClick={() => void revealRef(entry.refPath)}
+                    title={entry.refPath}
+                  >
+                    {t("collabInbox.openSource")}
+                  </button>
+                )}
                 {entry.bucket === "approval" && !entry.decidedBy && !entry.dismissed && (
                   <button
                     type="button"
@@ -1132,9 +1175,20 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
                 {t(`collabInbox.bucket.${detail.entry.bucket as Bucket}` as "collabInbox.bucket.all")}
               </span>
               {detail.entry.channel && (
-                <span className="collab-inbox-panel__channel" title={t("collabInbox.channel")}>
+                <span className="collab-inbox-panel__channel" title={channelLabel(detail.entry.channel, t)}>
                   #{detail.entry.channel}
                 </span>
+              )}
+              {/* 任务 1016：详情弹窗同样可打开引用 md（与列表行同一动作）。 */}
+              {detail.entry.refPath && (
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--small"
+                  onClick={() => void revealRef(detail.entry.refPath)}
+                  title={detail.entry.refPath}
+                >
+                  {t("collabInbox.openSource")}
+                </button>
               )}
             </div>
             {detailError ? (
