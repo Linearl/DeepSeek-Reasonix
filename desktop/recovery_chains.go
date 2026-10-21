@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -98,6 +99,17 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 			// A copy that cannot be replayed is reported as an empty chain rather
 			// than failing the whole inventory: the other candidates are still
 			// usable, and the panel shows which one is unreadable.
+			//
+			// 任务 1039：重放超预算不再是「跳过该候选」——主转录被跳过时整个
+			// 集合为空，前端弹窗只有一句「设置加载失败」。与降级行同语义：
+			// 保留行、计数全零、不重放；其他候选（副本/正常会话）照旧枚举。
+			if errors.Is(err, agent.ErrSessionReplayLimitExceeded) {
+				set.Chains = append(set.Chains, RecoveryChainView{
+					Path: path, Label: recoveryDisplayName(path), IsMain: isMain,
+					Bytes: bytes, Degraded: true,
+				})
+				continue
+			}
 			continue
 		}
 		if degraded {

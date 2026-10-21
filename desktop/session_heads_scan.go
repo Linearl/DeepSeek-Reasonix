@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -118,7 +119,20 @@ func panelSessionHeads(path string) (heads []agent.SessionHead, degraded bool, e
 	}
 	heads, err = agent.ListSessionHeads(path)
 	if err != nil {
-		// 重放失败不缓存：文件下次变化或调用重试时按原样再试。
+		// 任务 1039：重放超预算（SessionReplayLimitError，含 limitsForSessionLog
+		// 自适应额度顶到 1 GiB 硬顶仍不够的病态日志）不再是整页错误——与上面
+		// 超面板预算的降级同语义：保留该会话行、计数全零、不重放。1019 的降级
+		// 只拦「文件大小 > 面板预算」这一层；真正的硬拒发生在重放内部，两层
+		// 之间漏了这条：49 MB 事件日志过面板预算、却在重放里撞硬顶，错误一路
+		// 传到前端整页「设置加载失败」（20261021 GC开发专员条目实测）。
+		if errors.Is(err, agent.ErrSessionReplayLimitExceeded) {
+			e := panelHeadsEntry{degraded: true}
+			if ok {
+				panelHeadsCacheStore(key, e)
+			}
+			return e.heads, e.degraded, nil
+		}
+		// 其余重放失败不缓存：文件下次变化或调用重试时按原样再试。
 		return nil, false, err
 	}
 	panelHeadsCacheStore(key, panelHeadsEntry{heads: heads})
