@@ -138,6 +138,18 @@ func boundedSamples(ids []string, n int) []string {
 // Queued/Blocked row and every row the callback cannot vouch for. The drop
 // mirrors SettleAppliedResidue: idempotency keys and receipts travel with the
 // row.
+//
+// 任务1004（1008 复发新形态）：停摆期积压的 steer 在恢复后其 durable 副本可能
+// 已越过 MarkSteerConsumed 交付边界（StateSteerConsumed），但既没有 park 原因
+// 也不是 Uncertain —— 既躲过 840 settle（只匹配 Uncertain+两 park 原因），又
+// 在下一次进程重启的 loadOrInit 里被有意跳过（P15 注释：留给
+// RecoverOrphanedInFlightOwnedBy 当 applied residue 丢弃，但那个 drop 只在
+// store open/rebind 时跑，1008 现场恢复路径不经过 store 重开，副本就留在
+// shelf 上重入显示）。本方法补上第三种形态：StateSteerConsumed 且交付已结算
+// 的行，在计划内恢复/清扫点直接丢弃——交付回执本身即应用证据（MarkSteerConsumed
+// 在指令交给 agent 之前落盘，与 589b 的"accept ≠ injection"论证无关：consume
+// 已经是 injection 之后的边界）。StateSteerConsumed 不检查 BlockReason（该
+// 状态本身即 admission-proven 的已消费形态，无 park 原因可查）。
 func (s *Store) SettlePlannedRestartResidue(delivered func(InboxItemMeta) bool) (int, error) {
 	if s == nil {
 		return 0, ErrClosed
@@ -160,9 +172,16 @@ func (s *Store) SettlePlannedRestartResidue(delivered func(InboxItemMeta) bool) 
 	var removed []InboxItemMeta
 	var droppedIDs map[string]string // idempotency key -> itemID (settle deletions)
 	for _, item := range next.Items {
-		if item.State != StateUncertain ||
-			(item.BlockReason != BlockReasonRestartOrphan && item.BlockReason != BlockReasonSteerUnapplied) ||
-			!delivered(item) {
+		// 任务1004: StateSteerConsumed 已越过 durable 交付边界（应用证据由
+		// 消费本身提供），交付回执确认来源消息已送达即可丢弃——无需 park
+		// 原因。其余状态维持 840 原判据（Uncertain + 两 park 原因）。
+		if item.State != StateSteerConsumed &&
+			(item.State != StateUncertain ||
+				(item.BlockReason != BlockReasonRestartOrphan && item.BlockReason != BlockReasonSteerUnapplied)) {
+			kept = append(kept, item)
+			continue
+		}
+		if !delivered(item) {
 			kept = append(kept, item)
 			continue
 		}
