@@ -252,7 +252,8 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 	// 任务 959：① tableWrap（对话表格按栏宽自动换行，默认关=宽表横滚不变）
 	// + ② sendTargetSelect（composer 发送目标形态二选一，默认关=三按钮组）
 	// 均按可选档入表（29→31、总数 61→63；前端注册表同步）。
-	want[LabTierOptional] = 31
+	// 任务 1024：draftRewrite（composer 草稿优化）叠加——31→32、总数 63→64。
+	want[LabTierOptional] = 32
 	got := map[LabTier]int{}
 	seen := map[string]bool{}
 	for _, f := range labFeatureTiers {
@@ -272,7 +273,7 @@ func TestLabFeatureTierCountsMatchTableA(t *testing.T) {
 			t.Errorf("tier %q count = %d, xlsx 表A says %d (任务562 验收：档位数量与表A完全一致)", tier, got[tier], n)
 		}
 	}
-	if len(labFeatureTiers) != 63 {
-		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 63", len(labFeatureTiers))
+	if len(labFeatureTiers) != 64 {
+		t.Errorf("labFeatureTiers has %d entries, 表A(同步后) has 64", len(labFeatureTiers))
 	}
 }

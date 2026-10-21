@@ -34,8 +34,8 @@ const (
 
 // LabBulkSkipReason 不进批量的原因码（前端按码映射文案）。
 const (
-	LabBulkSkipDangerGate   = "danger_gate"    // 需单项危险确认（fullAccess，task 257）
-	LabBulkSkipPrecondition = "precondition"   // 有前置条件门（autopilot 需 yolo 审批模式）
+	LabBulkSkipDangerGate   = "danger_gate"     // 需单项危险确认（fullAccess，task 257）
+	LabBulkSkipPrecondition = "precondition"    // 有前置条件门（autopilot 需 yolo 审批模式）
 	LabBulkSkipNotBool      = "not_bool_switch" // 主开关非布尔（三态/模式键），批量盲写会破坏语义
 	LabBulkSkipNoSetter     = "no_bulk_setter"  // 未登记批量写入器（参数卡/家族键/纯展示行），需单项设置
 )
@@ -60,9 +60,9 @@ func (c *Config) LabDeveloperModeOn() bool {
 type LabBulkPlan struct {
 	Scope         LabBulkScope
 	On            bool
-	Targets       []string   // 实际要写的特性 id（布尔主开关，档位在范围内）
-	StableInScope []string   // 目标中的稳定档 id（护栏①警示依据；dev-mode 跳过前）
-	SkippedStable []string   // 护栏②：开发者模式关 + 批量关 → 自动跳过的稳定档 id
+	Targets       []string      // 实际要写的特性 id（布尔主开关，档位在范围内）
+	StableInScope []string      // 目标中的稳定档 id（护栏①警示依据；dev-mode 跳过前）
+	SkippedStable []string      // 护栏②：开发者模式关 + 批量关 → 自动跳过的稳定档 id
 	Skipped       []LabBulkSkip // 范围内但不进批量的特性（逐项给原因码）
 }
 
@@ -85,51 +85,52 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// 会尝试 rebuild；批量走 config-only（重启选项兜底），字段直写。
 	"optimisticParallel": func(c *Config, on bool) error { c.Sandbox.OptimisticWrite = on; return nil },
 	// ── efficiency ──
-	"budgetControl":        func(c *Config, on bool) error { return c.SetExperimentalContextBudget(on) },
-	"compressOpt":          func(c *Config, on bool) error { return c.SetExperimentalProactiveCompact(on) },
-	"quickCommands":        func(c *Config, on bool) error { return c.SetExperimentalQuickCommands(on) },
-	"highSpeedModel":       func(c *Config, on bool) error { return c.SetExperimentalHighSpeedModel(on) },
-	"compactionParallel":   func(c *Config, on bool) error { return c.SetExperimentalCompactionParallel(on) },
-	"traceAsState":         func(c *Config, on bool) error { return c.SetExperimentalTraceAsState(on) },
-	"compactModel":         func(c *Config, on bool) error { return c.SetExperimentalCompactModel(on) },
-	"outputStyle":          func(c *Config, on bool) error { return c.SetExperimentalOutputStyleUI(on) },
-	"cacheTuning":          func(c *Config, on bool) error { return c.SetExperimentalCacheTuning(on) },
+	"budgetControl":         func(c *Config, on bool) error { return c.SetExperimentalContextBudget(on) },
+	"compressOpt":           func(c *Config, on bool) error { return c.SetExperimentalProactiveCompact(on) },
+	"quickCommands":         func(c *Config, on bool) error { return c.SetExperimentalQuickCommands(on) },
+	"highSpeedModel":        func(c *Config, on bool) error { return c.SetExperimentalHighSpeedModel(on) },
+	"compactionParallel":    func(c *Config, on bool) error { return c.SetExperimentalCompactionParallel(on) },
+	"traceAsState":          func(c *Config, on bool) error { return c.SetExperimentalTraceAsState(on) },
+	"compactModel":          func(c *Config, on bool) error { return c.SetExperimentalCompactModel(on) },
+	"outputStyle":           func(c *Config, on bool) error { return c.SetExperimentalOutputStyleUI(on) },
+	"cacheTuning":           func(c *Config, on bool) error { return c.SetExperimentalCacheTuning(on) },
 	"sessionCollabAutoFold": func(c *Config, on bool) error { return c.SetExperimentalSessionCollabAutoFold(on) },
 	// ── ui ──
-	"trajectoryView":       func(c *Config, on bool) error { return c.SetExperimentalTrajectoryView(on) },
-	"tabCompress":          func(c *Config, on bool) error { return c.SetExperimentalTabCompress(on) },
-	"todoSidebar":          func(c *Config, on bool) error { return c.SetExperimentalTodoSidebar(on) },
-	"promptHistoryPicker":  func(c *Config, on bool) error { return c.SetExperimentalPromptHistoryPicker(on) },
-	"restartUpdate":        func(c *Config, on bool) error { return c.SetExperimentalRestartUpdate(on) },
-	"sessionWall":          func(c *Config, on bool) error { return c.SetExperimentalSessionWall(on) },
-	"subagentPanel":        func(c *Config, on bool) error { return c.SetExperimentalSubagentPanel(on) },
-	"subagentDetail":       func(c *Config, on bool) error { return c.SetExperimentalSubagentDetail(on) },
-	"completionSummary":    func(c *Config, on bool) error { return c.SetExperimentalCompletionSummary(on) },
-	"autoLoadOlder":        func(c *Config, on bool) error { return c.SetExperimentalAutoLoadOlder(on) },
-	"splitView":            func(c *Config, on bool) error { return c.SetExperimentalSplitView(on) },
-	"draftPersistence":     func(c *Config, on bool) error { return c.SetExperimentalComposerDraft(on) },
-	"selectionActions":     func(c *Config, on bool) error { c.Agent.ExperimentalSelectionActions = on; return nil },
-	"questionSearch":       func(c *Config, on bool) error { return c.SetExperimentalQuestionSearch(on) },
-	"feedback":             func(c *Config, on bool) error { return c.SetExperimentalFeedback(on) },
+	"trajectoryView":      func(c *Config, on bool) error { return c.SetExperimentalTrajectoryView(on) },
+	"tabCompress":         func(c *Config, on bool) error { return c.SetExperimentalTabCompress(on) },
+	"todoSidebar":         func(c *Config, on bool) error { return c.SetExperimentalTodoSidebar(on) },
+	"promptHistoryPicker": func(c *Config, on bool) error { return c.SetExperimentalPromptHistoryPicker(on) },
+	"restartUpdate":       func(c *Config, on bool) error { return c.SetExperimentalRestartUpdate(on) },
+	"sessionWall":         func(c *Config, on bool) error { return c.SetExperimentalSessionWall(on) },
+	"subagentPanel":       func(c *Config, on bool) error { return c.SetExperimentalSubagentPanel(on) },
+	"subagentDetail":      func(c *Config, on bool) error { return c.SetExperimentalSubagentDetail(on) },
+	"completionSummary":   func(c *Config, on bool) error { return c.SetExperimentalCompletionSummary(on) },
+	"autoLoadOlder":       func(c *Config, on bool) error { return c.SetExperimentalAutoLoadOlder(on) },
+	"splitView":           func(c *Config, on bool) error { return c.SetExperimentalSplitView(on) },
+	"draftPersistence":    func(c *Config, on bool) error { return c.SetExperimentalComposerDraft(on) },
+	"selectionActions":    func(c *Config, on bool) error { c.Agent.ExperimentalSelectionActions = on; return nil },
+	"questionSearch":      func(c *Config, on bool) error { return c.SetExperimentalQuestionSearch(on) },
+	"feedback":            func(c *Config, on bool) error { return c.SetExperimentalFeedback(on) },
 	"sidebarHoverLeft":    func(c *Config, on bool) error { return c.SetExperimentalSidebarHoverLeft(on) },
 	"sidebarHoverRight":   func(c *Config, on bool) error { return c.SetExperimentalSidebarHoverRight(on) },
 	"approvalSelect":      func(c *Config, on bool) error { return c.SetExperimentalApprovalSelect(on) },
 	"tableWrap":           func(c *Config, on bool) error { return c.SetExperimentalTableWrap(on) },
 	"sendTargetSelect":    func(c *Config, on bool) error { return c.SetExperimentalSendTargetSelect(on) },
+	"draftRewrite":        func(c *Config, on bool) error { return c.SetExperimentalDraftRewrite(on) },
 	"renderArtifact":      func(c *Config, on bool) error { return c.SetExperimentalRenderArtifact(on) },
 	// ── observability ──
 	"monitoring":  func(c *Config, on bool) error { return c.SetExperimentalSessionMonitor(on) },
 	"subagentTps": func(c *Config, on bool) error { return c.SetExperimentalSubagentTps(on) },
 	// ── automation（记忆整理族）──
-	"dream":            func(c *Config, on bool) error { return c.SetExperimentalDream(on) },
-	"decisionPatterns": func(c *Config, on bool) error { return c.SetExperimentalDecisionPatterns(on) },
+	"dream":             func(c *Config, on bool) error { return c.SetExperimentalDream(on) },
+	"decisionPatterns":  func(c *Config, on bool) error { return c.SetExperimentalDecisionPatterns(on) },
 	"safetyCostControl": func(c *Config, on bool) error { return c.SetExperimentalSafetyCostControl(on) },
 	// ── infra / storage ──
-	"runtimeReuse":     func(c *Config, on bool) error { return c.SetExperimentalRuntimeReuse(on) },
-	"orphanHandling":   func(c *Config, on bool) error { return c.SetExperimentalOrphanHandling(on) },
+	"runtimeReuse":        func(c *Config, on bool) error { return c.SetExperimentalRuntimeReuse(on) },
+	"orphanHandling":      func(c *Config, on bool) error { return c.SetExperimentalOrphanHandling(on) },
 	"heartbeatBackground": func(c *Config, on bool) error { return c.SetExperimentalHeartbeatBackground(on) },
 	// ── tool-opt ──
-	"toolOptimizations":  func(c *Config, on bool) error { return c.SetExperimentalToolOptimizations(on) },
+	"toolOptimizations":   func(c *Config, on bool) error { return c.SetExperimentalToolOptimizations(on) },
 	"editEvidenceRelaxed": func(c *Config, on bool) error { return c.SetExperimentalEditEvidenceRelaxed(on) },
 	"multiEditInjection":  func(c *Config, on bool) error { return c.SetExperimentalMultiEditInjection(on) },
 	"capabilityGroups":    func(c *Config, on bool) error { return c.SetExperimentalCapabilityGroups(on) },
@@ -145,9 +146,9 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 //     「开」没有唯一布尔语义；
 //   - eventsRotation：主开关是三态键 events_auto_rotation（off|manual|…）。
 var labBulkExcluded = map[string]string{
-	"fullAccess":   LabBulkSkipDangerGate,
-	"autopilot":    LabBulkSkipPrecondition,
-	"messageMerge": LabBulkSkipNotBool,
+	"fullAccess":     LabBulkSkipDangerGate,
+	"autopilot":      LabBulkSkipPrecondition,
+	"messageMerge":   LabBulkSkipNotBool,
 	"eventsRotation": LabBulkSkipNotBool,
 }
 

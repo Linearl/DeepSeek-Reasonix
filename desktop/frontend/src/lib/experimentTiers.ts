@@ -34,6 +34,8 @@ export type TierFeatureId =
   | "decisionPatterns"
   // 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard，默认关）。
   | "renderArtifact"
+  // 任务 1024：composer 草稿优化（改写按钮，默认关）。
+  | "draftRewrite"
   // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
   // loopStreakNote 与 standalone eventWaitRecheck 三个表A id → 一个 id）。
   | "safetyCostControl"
@@ -192,6 +194,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── ui（界面，15 项）────────────────────────────────────────
   // 任务 944：对话内产物卡片。镜像 Go 档位——可选（不开启不影响核心体验）。
   renderArtifact: "optional",
+  // 任务 1024：composer 草稿优化。镜像 Go 档位——可选（默认关，输入栏零变化）。
+  draftRewrite: "optional",
   tabCompress: "recommended",
   todoSidebar: "recommended",
   promptHistoryPicker: "recommended",
@@ -345,11 +349,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 34 可选/13 未稳定/1 退役，总数不变 70（Go 侧 61 条目：runtimeReuse 992
  * 已升推荐，故 14 推荐/4 稳定/29 可选/14 未稳定）。 * 任务 959：① tableWrap（对话表格按栏宽自动换行，默认关）+ ②
  * sendTargetSelect（composer 发送目标形态二选一，默认关）按可选档入表
- * ——可选 34→36、总数 70→72（Go 侧同步 61→63）。 */
+ * ——可选 34→36、总数 70→72（Go 侧同步 61→63）。任务 1024：draftRewrite
+ * （composer 草稿优化）在其上叠加——可选 36→37、总数 72→73（Go 61→64）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 18,
-  optional: 36,
+  optional: 37,
   unstable: 13,
   retired: 1,
 };

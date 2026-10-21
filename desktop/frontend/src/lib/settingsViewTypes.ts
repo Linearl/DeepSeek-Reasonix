@@ -186,6 +186,9 @@ export interface SettingsView {
   decisionPatternAutoApprove?: boolean;
   // Task 944: render_artifact tool + ArtifactCard lab switch (default off).
   experimentalRenderArtifact?: boolean;
+  // 任务 1024: composer 草稿优化（改写按钮）lab switch (default off; 铁律 2
+  // —— off = 无按钮、布局零变化)。
+  experimentalDraftRewrite?: boolean;
   // Task 979: capability-group disclosure layer (tasks 953/954/955 shared
   // switch: use_capability group rows + group cards, session_hub L0
   // aggregation entry, standing-directory group attribution; default off).

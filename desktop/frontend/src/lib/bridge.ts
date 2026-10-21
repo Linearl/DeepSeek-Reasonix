@@ -1174,6 +1174,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SummarizeFromForTab(tabID: string, turn: number): Promise<void>;
   SummarizeUpTo(turn: number): Promise<void>;
   SummarizeUpToForTab(tabID: string, turn: number): Promise<void>;
+  // 任务 1024：草稿优化——辅助模型改写输入栏草稿（结构化+无歧义），
+  // 成功返回改写文本，失败/超时由 Go 侧静默降级返回空串。
+  RewriteDraftForTab(tabID: string, draft: string, context: string): Promise<string>;
   ListSessions(): Promise<SessionMeta[]>;
   ListSessionsForTab(tabID: string): Promise<SessionMeta[]>;
   ListTrashedSessions(): Promise<SessionMeta[]>;
@@ -1475,6 +1478,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // button group unchanged, on = dropdown; re-applied on settings save, no
   // restart).
   SetExperimentalSendTargetSelect(enabled: boolean): Promise<void>;
+  // 任务 1024: composer 草稿优化（发送左侧改写按钮；re-applied on settings
+  // save, no restart）。
+  SetExperimentalDraftRewrite(enabled: boolean): Promise<void>;
   // 任务 686: workflow visualization panel (palette entry opening the DAG flow
   // view; re-applied on settings save, no restart).
   SetExperimentalWorkflowPanel(enabled: boolean): Promise<void>;
@@ -4917,6 +4923,10 @@ function makeMockApp(): AppBindings {
     async SummarizeFromForTab() {},
     async SummarizeUpTo() {},
     async SummarizeUpToForTab() {},
+    async RewriteDraftForTab(_tabID: string, draft: string) {
+      // 浏览器 mock：原样回显，测试与 web 预览都能看到"改写生效"链路。
+      return draft;
+    },
         async History() {
           return [];
         },
@@ -6299,7 +6309,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSidebarHoverRight() {},
     async SetExperimentalApprovalSelect() {},
     async SetExperimentalTableWrap() {},
-    async SetExperimentalSendTargetSelect() {},
+    async SetExperimentalSendTargetSelect() {},    async SetExperimentalDraftRewrite() {},
     async SetExperimentalWorkflowPanel() {},
     async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},

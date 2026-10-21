@@ -7,7 +7,7 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, Search, Shield, ShieldAlert, ShieldCheck, Smile, Square, Target, Trash2, Users, X, Zap } from "lucide-react";
+import { ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, RefreshCw, Search, Shield, ShieldAlert, ShieldCheck, Smile, Square, Target, Trash2, Users, Wand2, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
 import { useWorkProcessFoldAggregate } from "../lib/workProcessFoldState";
 import { asArray } from "../lib/array";
@@ -1031,6 +1031,12 @@ export function Composer({
   const [historyPickerEntries, setHistoryPickerEntries] = useState<PromptHistoryEntry[]>([]);
   const [historyPickerHasMore, setHistoryPickerHasMore] = useState(false);
   const [historyPickerLoading, setHistoryPickerLoading] = useState(false);
+  // 任务 1024：草稿优化——发送左侧改写按钮（实验室-提效「草稿优化」开关控制，
+  // 默认关=按钮不出现、composer 工具栏布局零变化）。点击读草稿+最近 10KB 上下文，
+  // 辅助模型改写后回填输入框（不自动发送；失败/超时静默降级为不改写）。
+  const [draftRewriteOn, setDraftRewriteOn] = useState(() => labFlagEnabled("draftRewrite"));
+  useEffect(() => onLabFlagsChange(() => setDraftRewriteOn(labFlagEnabled("draftRewrite"))), []);
+  const [draftRewriting, setDraftRewriting] = useState(false);
   // 任务529：时钟按钮即弹层锚点。面板经 AnchoredPopover portal 到 body 渲染，
   // 不再受 .composer-meta（overflow:hidden）裁剪——此前 absolute 定位面板被
   // 裁成不可见，点击看似无反应。
@@ -2711,6 +2717,33 @@ export function Composer({
     } : draftsBySessionRef.current[key] ?? emptyComposerDraft();
     return JSON.stringify([draft.text, draft.invocations, draft.attachments, draft.workspaceRefs,
       draft.sessionRefs, draft.selectedTextRefs, draft.pastedBlocks]);
+  };
+
+  // 任务 1024：草稿优化——把当前草稿交给辅助模型改写（结构化+无歧义），
+  // 结果回填输入框、绝不自动发送（用户确认后才走正常 submit）。原稿被 setText
+  // 覆盖即持久化层已接管；改写失败/超时/空结果一律静默降级为「不改写」。
+  const rewriteDraft = async () => {
+    if (!draftRewriteOn || draftRewriting) return;
+    const current = textRef.current.trim();
+    if (!current) return;
+    setDraftRewriting(true);
+    try {
+      // 最近 10KB 上下文：取本 tab 最近若干条消息的文本尾巴（前端裁剪到
+      // 10KB，Go 侧 DraftRewriteBudgetBytes 是同一数字的第二道闸）。
+      const page = await app.HistoryPageForTab(tabId ?? "", 0, 8);
+      const recent = (page.messages ?? [])
+        .map((m) => (m.role === "user" ? `用户：${m.content}` : `助手：${m.content}`))
+        .join("\n")
+        .slice(-10 * 1024);
+      const rewritten = await app.RewriteDraftForTab(tabId ?? "", current, recent);
+      if (typeof rewritten === "string" && rewritten.trim() && rewritten.trim() !== current) {
+        setText(rewritten);
+      }
+    } catch {
+      // 静默降级：草稿保持原样，不打断输入。
+    } finally {
+      setDraftRewriting(false);
+    }
   };
 
   const submit = async () => {
@@ -6191,6 +6224,22 @@ export function Composer({
                     {stopView.phase === "grace" && stopView.countdownSeconds != null
                       ? <span className="composer__stop-countdown">{t("composer.stopCountdown", { n: stopView.countdownSeconds })}</span>
                       : <Square size={12} fill="currentColor" />}
+                  </button>
+                </Tooltip>
+              )}
+              {/* 任务 1024：草稿优化改写按钮——发送左侧（实验特性默认关=不渲染，
+                  工具栏与引入前逐字节一致）。点击读草稿+最近 10KB 上下文交辅助
+                  模型改写，回填输入框；不自动发送。 */}
+              {draftRewriteOn && (
+                <Tooltip label={t("composer.rewriteDraft")}>
+                  <button
+                    className="composer__btn composer__btn--rewrite"
+                    type="button"
+                    onClick={() => void rewriteDraft()}
+                    disabled={draftRewriting || readOnly}
+                    aria-label={t("composer.rewriteDraft")}
+                  >
+                    {draftRewriting ? <RefreshCw size={14} className="composer__rewrite-spin" /> : <Wand2 size={14} />}
                   </button>
                 </Tooltip>
               )}

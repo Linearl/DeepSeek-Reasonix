@@ -198,7 +198,7 @@ groups:
       - id: viewLayout
         labelKey: settings.viewLayout
         tier: optional
-        onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalRenderArtifact, experimentalTableWrap, experimentalSendTargetSelect]
+        onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalRenderArtifact, experimentalTableWrap, experimentalSendTargetSelect, experimentalDraftRewrite]
         members:
           - id: splitView
             labelKey: settings.splitView
@@ -226,6 +226,11 @@ groups:
           # 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。
           - id: sendTargetSelect
             labelKey: settings.sendTargetSelect
+            tier: optional
+          # 任务 1024：composer 草稿优化（改写按钮）——发送左侧新增改写入口，
+          # 辅助模型改写草稿回填输入框，不自动发送。默认关=按钮不出现、布局零变化。
+          - id: draftRewrite
+            labelKey: settings.draftRewrite
             tier: optional
       - id: todoSidebar
         labelKey: settings.todoSidebar

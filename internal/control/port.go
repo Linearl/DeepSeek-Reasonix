@@ -221,6 +221,11 @@ type SessionHistory interface {
 	ContextReport() (summary, detail string)
 	SummarizeFrom(ctx context.Context, turn int) error
 	SummarizeUpTo(ctx context.Context, turn int) error
+	// RewriteDraft (任务 1024 草稿优化) rewrites the composer draft through the
+	// auxiliary model channel — no transcript messages, no main-turn context.
+	// An error (or an empty rewrite) means "keep the original"; the host
+	// degrades silently instead of surfacing it.
+	RewriteDraft(ctx context.Context, draft, contextTail string) (string, error)
 }
 
 // MemoryControl covers session/project memory reads and mutations.

@@ -210,7 +210,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           id: "viewLayout",
           labelKey: "settings.viewLayout",
           tier: "optional",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalRenderArtifact", "experimentalTableWrap", "experimentalSendTargetSelect"],
+          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalRenderArtifact", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalDraftRewrite"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
             { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
@@ -223,6 +223,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "tableWrap", labelKey: "settings.tableWrap", tier: "optional" },
             // 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。
             { id: "sendTargetSelect", labelKey: "settings.sendTargetSelect", tier: "optional" },
+            // 任务 1024：composer 草稿优化（默认关=改写按钮不出现、布局零变化）。
+            { id: "draftRewrite", labelKey: "settings.draftRewrite", tier: "optional" },
           ],
         },
         { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },

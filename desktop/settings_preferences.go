@@ -427,6 +427,13 @@ func (a *App) SetExperimentalTableWrap(enabled bool) error {
 // change is visible without a restart.
 func (a *App) SetExperimentalSendTargetSelect(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSendTargetSelect(enabled) })
+// SetExperimentalDraftRewrite toggles the composer 草稿优化 lab switch
+// (任务 1024): off (default) renders no rewrite button and no layout change; on
+// adds it to the composer toolbar, left of the send button. Pure frontend gate:
+// the settings save re-applies the boot snapshot, no restart needed.
+func (a *App) SetExperimentalDraftRewrite(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDraftRewrite(enabled) })
+}
 }
 
 // SetExperimentalWorkflowPanel toggles the workflow visualization panel

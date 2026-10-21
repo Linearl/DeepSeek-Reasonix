@@ -1423,6 +1423,14 @@ func (c *Config) SetExperimentalRenderArtifact(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalDraftRewrite toggles the task-1024 草稿优化 lab switch. Pure
+// frontend gate riding the boot snapshot — the settings save re-applies it, so
+// a flip shows without a restart; off = no button and no layout change.
+func (c *Config) SetExperimentalDraftRewrite(enabled bool) error {
+	c.Agent.ExperimentalDraftRewrite = enabled
+	return nil
+}
+
 // SetDecisionPatternFilePath overrides the solidified decision-patterns file
 // location (task 801 修订七). Empty restores the default
 // global-workspace/docs/decision-patterns.md. A non-empty value must name a
