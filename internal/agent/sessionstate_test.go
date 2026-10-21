@@ -33,6 +33,10 @@ var sessionReset = map[string]bool{
 	// 任务549: a new conversation has no rebuild in flight; the flag belongs to
 	// the replaced lineage's invalidation window.
 	"rebuildPending": true,
+	// 任务 1021: the compression-session pass counter starts fresh with a new
+	// conversation — an old episode's round numbers must not ride into the new
+	// lineage's first compaction.
+	"compactionSessionPass": true,
 	// 任务719: a new conversation starts unbounded — the cached tail view
 	// belongs to the replaced lineage's degraded window.
 	"tailView": true,
