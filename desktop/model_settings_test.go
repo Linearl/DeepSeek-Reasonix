@@ -626,3 +626,58 @@ func TestModelSettingsApplyFailureKeepsSavedConfiguration(t *testing.T) {
 		t.Fatal("retry altered saved configuration")
 	}
 }
+
+// TestModelSettingsDefaultEffortPreference round-trips the default model's
+// reasoning-effort level (task 1042's model-preference surface): a level the
+// default model declares must persist and read back through Settings(); "auto"
+// clears it; an undeclared level must be refused before anything reaches disk.
+func TestModelSettingsDefaultEffortPreference(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	setDesktopTestCredential(t, "EFFORT_PREF_KEY", "sk-test")
+	cfg := config.Default()
+	cfg.DefaultModel = "gateway/model"
+	cfg.Desktop.ProviderAccess = []string{"gateway"}
+	cfg.Providers = []config.ProviderEntry{{
+		Name: "gateway", Kind: "openai", BaseURL: "https://api.example-gateway.com/v1",
+		Model: "model", APIKeyEnv: "EFFORT_PREF_KEY",
+		SupportedEfforts: []string{"low", "high"}, DefaultEffort: "high",
+	}}
+	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	app := NewApp()
+	app.ctx = context.Background()
+
+	// The declared default reads back through the panel view.
+	if got := app.Settings().DefaultEffort; got != "high" {
+		t.Fatalf("initial Settings().DefaultEffort = %q, want high", got)
+	}
+	// Pick a different declared level.
+	if err := app.ApplyModelSettings(ModelSettingsChange{Kind: "preference", Field: "default_effort", Ref: "low", RequestID: "low", ExpectedFingerprint: app.Settings().ModelSettingsFingerprint}).Persisted; !err {
+		t.Fatal("low save should persist")
+	}
+	if entry, ok := config.LoadForEdit(config.UserConfigPath()).ResolveModel("gateway/model"); !ok || entry.DefaultEffort != "low" {
+		t.Fatalf("persisted default_effort = %q (ok=%t), want low", entry.DefaultEffort, ok)
+	}
+	if got := app.Settings().DefaultEffort; got != "low" {
+		t.Fatalf("Settings().DefaultEffort after save = %q, want low", got)
+	}
+	// A level the model does not declare is refused before touching disk.
+	bad := app.ApplyModelSettings(ModelSettingsChange{Kind: "preference", Field: "default_effort", Ref: "ultra", RequestID: "bad", ExpectedFingerprint: app.Settings().ModelSettingsFingerprint})
+	if bad.Persisted || len(bad.Issues) == 0 {
+		t.Fatalf("undeclared level accepted: %+v", bad)
+	}
+	if entry, ok := config.LoadForEdit(config.UserConfigPath()).ResolveModel("gateway/model"); !ok || entry.DefaultEffort != "low" {
+		t.Fatalf("rejected save altered config: %q (ok=%t)", entry.DefaultEffort, ok)
+	}
+	// "auto" clears the level back to provider default.
+	if err := app.ApplyModelSettings(ModelSettingsChange{Kind: "preference", Field: "default_effort", Ref: "auto", RequestID: "auto", ExpectedFingerprint: app.Settings().ModelSettingsFingerprint}).Persisted; !err {
+		t.Fatal("auto save should persist")
+	}
+	if entry, ok := config.LoadForEdit(config.UserConfigPath()).ResolveModel("gateway/model"); !ok || entry.DefaultEffort != "" {
+		t.Fatalf("auto should clear default_effort, got %q (ok=%t)", entry.DefaultEffort, ok)
+	}
+	if got := app.Settings().DefaultEffort; got != "" {
+		t.Fatalf("Settings().DefaultEffort after auto = %q, want empty", got)
+	}
+}

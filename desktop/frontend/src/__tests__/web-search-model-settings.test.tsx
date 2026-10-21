@@ -70,7 +70,7 @@ await render();
 assert.ok(host.textContent?.includes("project/m"),"project override visible");
 assert.ok(host.querySelector('[role="status"]'),"stale global assignment remains visible under a valid project override");
 const helpButtons = host.querySelectorAll<HTMLButtonElement>(".model-setting-help");
-assert.equal(helpButtons.length, 6, "all model assignments and subagent effort have help");
+assert.equal(helpButtons.length, 8, "all model assignments, subagent reasoning, and the new default-model effort row have help");
 assert.equal(document.querySelector('[role="tooltip"]'), null, "help starts hidden");
 const searchHelp = Array.from(helpButtons).find(button => /Web search|网页搜索/.test(button.getAttribute("aria-label") ?? ""))!;
 await act(async () => searchHelp.focus());

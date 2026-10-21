@@ -344,11 +344,16 @@ type BotSettingsView struct {
 type SettingsView struct {
 	ModelSettingsFingerprint string `json:"modelSettingsFingerprint"`
 	DefaultModel             string `json:"defaultModel"`
-	PlannerModel             string `json:"plannerModel"`
-	GuardianModel            string `json:"guardianModel"`
-	Autopilot                bool   `json:"autopilot"`
-	AutopilotMaxRuntime      string `json:"autopilotMaxRuntime"`
-	AutopilotApprovalGrace   string `json:"autopilotApprovalGrace"`
+	// DefaultEffort is the reasoning-effort level assigned to the default
+	// model (task 1042) — empty means "auto"/model default. Levels offered by
+	// the panel come from the connection's declared supported_efforts, the
+	// same ProviderView round-trip the subagent effort row already uses.
+	DefaultEffort          string `json:"defaultEffort"`
+	PlannerModel           string `json:"plannerModel"`
+	GuardianModel          string `json:"guardianModel"`
+	Autopilot              bool   `json:"autopilot"`
+	AutopilotMaxRuntime    string `json:"autopilotMaxRuntime"`
+	AutopilotApprovalGrace string `json:"autopilotApprovalGrace"`
 	// Task 477: the experimental ask-timeout sub-option — the switch (default
 	// off) and its wait in seconds (effective value, so the panel never shows
 	// a bare 0; unset reads as the built-in 15).
@@ -1788,6 +1793,7 @@ func (a *App) Settings() SettingsView {
 	v := SettingsView{
 		ModelSettingsFingerprint:             modelSettingsEditFingerprint(cfg),
 		DefaultModel:                         cfg.DefaultModel,
+		DefaultEffort:                        desktopDefaultModelEffort(cfg),
 		PlannerModel:                         cfg.Agent.PlannerModel,
 		GuardianModel:                        cfg.Agent.GuardianModel,
 		Autopilot:                            cfg.Desktop.Autopilot,
@@ -3157,6 +3163,35 @@ func selectableDesktopVisionModelRef(c *config.Config, ref string) (string, erro
 		return "", fmt.Errorf("model %q does not support image input", ref)
 	}
 	return entry.Name + "/" + entry.Model, nil
+}
+
+// desktopDefaultModelEffort reads the reasoning-effort level assigned to the
+// default model (task 1042). It resolves the same way the panel's picker does
+// — default_model, falling back to the first configured chat model when
+// unset. Config.ResolveModel already folds the per-model override onto the
+// returned entry (applyModelOverride), so entry.DefaultEffort is the
+// effective level with the override applied — matching the subagent effort
+// row's level source. A provider with no declared vocabulary contributes ""
+// (auto), which is exactly what the panel renders as the disabled fallback
+// row.
+func desktopDefaultModelEffort(c *config.Config) string {
+	if c == nil {
+		return ""
+	}
+	ref := strings.TrimSpace(c.DefaultModel)
+	if ref == "" {
+		if resolved, _, ok := c.ResolveNewSessionChatModel(); ok {
+			ref = resolved
+		}
+	}
+	if ref == "" {
+		return ""
+	}
+	entry, ok := c.ResolveModel(ref)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(entry.DefaultEffort)
 }
 
 // SetSubagentEffort sets (or clears) the default effort used by subagent entry points.

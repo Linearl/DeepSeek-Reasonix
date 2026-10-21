@@ -99,6 +99,50 @@ func setSubagentEffortConfig(c *config.Config, level string) error {
 	return nil
 }
 
+// setDefaultModelEffortConfig writes the reasoning-effort level assigned to
+// the default model (task 1042). "auto"/empty clears it. The level is
+// validated against the exact entry the panel shows (per-model override
+// applied via ResolveModel, same as the read path) so a pick that would be
+// rejected by config.NormalizeEffort never reaches disk.
+func setDefaultModelEffortConfig(c *config.Config, level string) error {
+	level = strings.TrimSpace(level)
+	ref := strings.TrimSpace(c.DefaultModel)
+	if ref == "" {
+		if resolved, _, ok := c.ResolveNewSessionChatModel(); ok {
+			ref = resolved
+		}
+	}
+	if ref == "" {
+		return fmt.Errorf("no default model is configured")
+	}
+	entry, ok := c.ResolveModel(ref)
+	if !ok {
+		return fmt.Errorf("unknown default model %q", ref)
+	}
+	if level == "" || level == "auto" {
+		entry.DefaultEffort = ""
+	} else {
+		effort, err := config.NormalizeEffort(entry, level)
+		if err != nil {
+			return err
+		}
+		entry.DefaultEffort = effort
+	}
+	// UpsertProvider replaces the whole entry; ResolveModel returned a copy
+	// with the per-model override already folded in (applyModelOverride), so
+	// writing it back must not materialise the override as provider-level
+	// config. Only the default_effort field is edited on the untouched base
+	// entry; a per-model override's own default_effort (if any) keeps winning
+	// on read, exactly as before this edit.
+	base, ok := c.Provider(entry.Name)
+	if !ok {
+		return fmt.Errorf("unknown provider %q", entry.Name)
+	}
+	updated := *base
+	updated.DefaultEffort = entry.DefaultEffort
+	return c.UpsertProvider(updated)
+}
+
 func setSubagentProfileModelConfig(c *config.Config, name, ref string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
