@@ -31,6 +31,9 @@ type MailDetail struct {
 	Bucket      string `json:"bucket"`
 	Channel     string `json:"channel,omitempty"`
 	Preview     string `json:"preview"`
+	// RefPath mirrors the list entry's file reference (任务 1016 增强项②) —
+	// an 意见箱 notification's authoritative md, absolute path.
+	RefPath string `json:"refPath,omitempty"`
 	// Body is the complete mail body, untruncated — the reason this read path
 	// exists (任务 980 ③: 弹窗展示全文).
 	Body string `json:"body"`
@@ -67,6 +70,7 @@ func (s *Store) ReadMail(ctx context.Context, id string) (MailDetail, error) {
 			ThreadID:    firstNonEmpty(m.ThreadID, m.ID),
 			Bucket:      s.classify(m),
 			Channel:     m.Channel,
+			RefPath:     feedbackRefOf(m),
 			Preview:     previewOf(m.Body),
 			Body:        m.Body,
 		}, nil

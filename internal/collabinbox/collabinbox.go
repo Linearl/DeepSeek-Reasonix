@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"reasonix/internal/filelock"
@@ -129,11 +130,17 @@ type Entry struct {
 	Delivery     string `json:"delivery,omitempty"`
 	// Bucket is the five-way view classification (approval|mention|automation|system).
 	Bucket string `json:"bucket"`
-	// Channel is the task-349 group identifier (349 挂账 note①): the chat
-	// channel this mail was fanned out from (its name at delivery time).
-	// Empty = point-to-point mail. Presentation-only provenance — the bucket
-	// classification (task 320 d) is deliberately untouched by it.
-	Channel string `json:"channel,omitempty"`
+		// Channel is the task-349 group identifier (349 挂账 note①): the chat
+		// channel this mail was fanned out from (its name at delivery time).
+		// Empty = point-to-point mail. Presentation-only provenance — the bucket
+		// classification (task 320 d) is deliberately untouched by it.
+		Channel string `json:"channel,omitempty"`
+		// RefPath is an optional file the entry points at — currently the
+		// authoritative md behind an 意见箱 notification (任务 1016 增强项 ②：
+		// 条目可点开对应 md). The panel renders it as a reveal action; it is
+		// derived from the message body's `md: <filename>` line at build time,
+		// so the transport layer stays untouched.
+		RefPath string `json:"refPath,omitempty"`
 	// Preview is the first line of the body, rune-bounded — enough to triage,
 	// never a transcript dump.
 	Preview string `json:"preview"`
@@ -228,7 +235,10 @@ type Chain struct {
 	FirstAt      int64    `json:"firstAt"`
 	LastAt       int64    `json:"lastAt"`
 	Preview      string   `json:"preview"` // first entry's preview
-	Entries      []Entry  `json:"entries"` // chronological within the chain
+	// RefPath mirrors the first entry's file reference (任务 1016) — the chain
+	// row renders the same reveal action as its entries.
+	RefPath string  `json:"refPath,omitempty"`
+	Entries []Entry `json:"entries"` // chronological within the chain
 }
 
 // ChainSnapshot is the revision-stamped chain view.
@@ -464,6 +474,49 @@ func approverOf(m sessioncollab.MailMessage) string {
 	return m.From
 }
 
+// feedbackRefPathRoot resolves the directory holding feedback-*.md (the
+// transport layer cannot import tool/builtin — the seam is a settable root,
+// injected by the desktop alongside the store; tests inject a temp dir).
+var feedbackRefPathRoot struct {
+	sync.RWMutex
+	dir string
+}
+
+// SetFeedbackRefPathRoot injects the feedback-inbox directory used to turn a
+// notification's `md: <filename>` line into an absolute RefPath (tests / host
+// wiring). Empty disables the derivation (default: no RefPath anywhere).
+func SetFeedbackRefPathRoot(dir string) {
+	feedbackRefPathRoot.Lock()
+	defer feedbackRefPathRoot.Unlock()
+	feedbackRefPathRoot.dir = dir
+}
+
+// feedbackRefOf extracts an absolute md path from an 意见箱 notification body
+// (task 1016 增强项 ②). The body carries `md: <filename>` on its own line
+// (agent.feedbackInboxBody); only that shape is recognized, so no other mail
+// can accidentally expose a file reference.
+func feedbackRefOf(m sessioncollab.MailMessage) string {
+	feedbackRefPathRoot.RLock()
+	root := feedbackRefPathRoot.dir
+	feedbackRefPathRoot.RUnlock()
+	if strings.TrimSpace(root) == "" {
+		return ""
+	}
+	for _, line := range strings.Split(m.Body, "\n") {
+		line = strings.TrimSpace(line)
+		rest, ok := strings.CutPrefix(line, "md:")
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(rest)
+		if name == "" || strings.ContainsAny(name, `/\`) || !strings.HasSuffix(name, ".md") {
+			continue // a path or non-md name is not a notification reference
+		}
+		return filepath.Join(root, name)
+	}
+	return ""
+}
+
 // foldIndex is build's full output: the folded entry table plus what MarkRead
 // needs to settle a whole duplicate cluster (任务461 P8 ③).
 type foldIndex struct {
@@ -545,6 +598,7 @@ func (s *Store) buildIndex(ctx context.Context) (*foldIndex, error) {
 			Delivery:     m.Delivery,
 			Bucket:       s.classify(m),
 			Channel:      m.Channel,
+			RefPath:      feedbackRefOf(m),
 			Preview:      previewOf(m.Body),
 			Delivered:    true,
 			Read:         row.Read,
@@ -958,6 +1012,7 @@ func (s *Store) Chains(ctx context.Context, q Query) (ChainSnapshot, error) {
 			FirstAt:      group[0].At,
 			LastAt:       group[len(group)-1].At,
 			Preview:      group[0].Preview,
+			RefPath:      group[0].RefPath,
 			Entries:      group,
 		})
 	}
