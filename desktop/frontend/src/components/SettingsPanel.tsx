@@ -3153,6 +3153,46 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 959 ①：对话表格按栏宽自动换行（视图布局卡成员行，
+                  940 先例——读自己的键写自己的 setter）。关（默认）=宽表横滚
+                  布局零变化；开=单元格随当前栏宽换行。纯前端门：保存即生效，
+                  免重启（铁律 2）。 */}
+              <SettingsField label={labLabel("tableWrap", t("settings.tableWrap"))} hint={t("settings.tableWrapHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalTableWrap) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalTableWrap(on);
+                      })}
+                    >
+                      {t(on ? "settings.tableWrap.on" : "settings.tableWrap.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* 任务 959 ②：composer 发送目标选择器形态二选一（视图布局卡
+                  成员行，940 同族——读自己的键写自己的 setter）。关（默认）=
+                  三按钮组零变化；开=下拉框省空间，目标语义同链路。纯前端门：
+                  保存即生效，免重启（铁律 2）。 */}
+              <SettingsField label={labLabel("sendTargetSelect", t("settings.sendTargetSelect"))} hint={t("settings.sendTargetSelectHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSendTargetSelect) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetExperimentalSendTargetSelect(on);
+                      })}
+                    >
+                      {t(on ? "settings.sendTargetSelect.on" : "settings.sendTargetSelect.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {selected === "collabHub" && (

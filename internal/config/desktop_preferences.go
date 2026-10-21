@@ -235,6 +235,23 @@ type DesktopConfig struct {
 	// not worth a permanent 264px bar). It ships off (铁律 2); pure frontend
 	// gate: the settings save re-applies the boot snapshot, no restart.
 	ExperimentalApprovalSelect bool `toml:"experimental_approval_select"`
+	// ExperimentalTableWrap switches markdown-table layout in transcripts
+	// (任务 959 ①): zero value (default) keeps the wide-table behaviour —
+	// the table lays out at max-content width and the wrapper scrolls
+	// horizontally; on re-flows every table to the current pane width with
+	// cells wrapping instead of overflowing (分栏拖窄后随新宽度重排). It
+	// ships off (铁律 2): with the zero value the transcript renders exactly
+	// the pre-959 table layout. Pure frontend gate: the settings save
+	// re-applies the boot snapshot, no restart.
+	ExperimentalTableWrap bool `toml:"experimental_table_wrap"`
+	// ExperimentalSendTargetSelect switches the composer's split-pane send
+	// target picker between the two forms (任务 959 ②): zero value (default)
+	// keeps the three-button group (left / right / both) byte-for-byte as
+	// before; on swaps it for a compact dropdown (the task-940 permission
+	// picker's form mechanism, reused — send targets switch rarely, the
+	// buttons cost a whole meta slot). It ships off (铁律 2); pure frontend
+	// gate: the settings save re-applies the boot snapshot, no restart.
+	ExperimentalSendTargetSelect bool `toml:"experimental_send_target_select"`
 	// ExperimentalWorkflowPanel gates the workflow visualization panel (task
 	// 686): a command-palette entry opening the DAG flow view (plan preview
 	// plus live node-state lighting from the run event stream). It ships off

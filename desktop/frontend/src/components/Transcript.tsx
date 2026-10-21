@@ -19,6 +19,9 @@ import type { InvocationMetadataMap } from "../lib/invocationDisplay";
 import { useT } from "../lib/i18n";
 import { acquireMarkdownWorkerClient, releaseMarkdownWorkerClient } from "../lib/markdownWorkerClient";
 import { onSessionExperienceWillChange, useSessionExperience } from "../lib/sessionExperience";
+// 任务 959 ①：对话表格按栏宽换行（experimental_table_wrap 实验条目）——
+// 纯渲染形态门，订阅 labFlags：设置保存即换态免重启。
+import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { onToolGroupingWillChange, useToolGroupingEnabled } from "../lib/toolGroupingPreference";
 import { cachedSubcallsByParent, cachedTranscriptRowBlocks, cachedTurnModels } from "../lib/transcriptDerivedCache";
 import {
@@ -185,6 +188,11 @@ export function Transcript(props: TranscriptProps) {
   const committedSurfaceRef = useRef("");
   const experience = useSessionExperience();
   const toolGrouping = useToolGroupingEnabled();
+  // 任务 959 ①：表格按栏宽换行两态（实验室-界面-视图布局）。关（默认）=
+  // shell 不挂类、换行规则零命中（铁律 2，与引入前逐字节一致）；开=表格随
+  // 当前栏宽（含分栏拖窄）换行重排。订阅 labFlags：保存即换态免重启。
+  const [tableWrapOn, setTableWrapOn] = useState(() => labFlagEnabled("tableWrap"));
+  useEffect(() => onLabFlagsChange(() => setTableWrapOn(labFlagEnabled("tableWrap"))), []);
   const liveFlags = useMemo<TranscriptLiveFlags>(() => live?.id ? {
     id: live.id,
     hasAnswerText: Boolean(live.text.trim()),
@@ -762,7 +770,7 @@ export function Transcript(props: TranscriptProps) {
       {/* Task 735: renderRow travels by context so the memoized blocks/rows
           stop re-rendering on every renderer identity change. */}
       <TranscriptRowRendererProvider renderRow={renderRow}>
-      <div className="transcript-shell" aria-busy={loadingOlderHistory || undefined} data-protected-blocks={protectedBlockKeys.size}>
+      <div className={`transcript-shell${tableWrapOn ? " transcript-shell--table-wrap" : ""}`} aria-busy={loadingOlderHistory || undefined} data-protected-blocks={protectedBlockKeys.size}>
         {tabId && <Suspense fallback={null}><ToolRecoveryPanel key={resolvedSessionKey} tabId={tabId} sessionKey={resolvedSessionKey} running={running} refreshKey={items.length} /></Suspense>}
         {empty ? (
           <div className={`transcript transcript--empty${creationMode ? " transcript--creation-scrollbar" : ""}`} ref={setScroller} aria-busy={hydrating || undefined}>

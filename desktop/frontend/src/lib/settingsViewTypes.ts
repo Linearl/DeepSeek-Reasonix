@@ -82,6 +82,14 @@ export interface SettingsView {
   // 任务 940: composer permission-tier picker form (button group vs compact
   // dropdown); default off, pure frontend gate — settings save re-applies.
   experimentalApprovalSelect?: boolean;
+  // 任务 959 ①: transcript markdown-table re-flow (off = wide-table
+  // horizontal scroll unchanged, on = cells wrap to the pane width);
+  // default off, pure frontend gate — settings save re-applies.
+  experimentalTableWrap?: boolean;
+  // 任务 959 ②: composer split-pane send-target picker form (button group
+  // vs dropdown, task-940 mechanism reused); default off, pure frontend
+  // gate — settings save re-applies.
+  experimentalSendTargetSelect?: boolean;
   // 任务 686: workflow visualization panel (palette entry opening the DAG flow
   // view; default off, pure frontend gate — settings save re-applies).
   experimentalWorkflowPanel?: boolean;

@@ -204,11 +204,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // 任务 961：对话内产物卡片（renderArtifact，944 原 ui 组独立卡）
         // 并入本卡为成员行（条目级合并，782 先例——键/setter 零变化，
         // 独立 pane 退役为卡内行）。
+        // 任务 959 ①：对话表格按栏宽自动换行入卡为成员行（940 先例，默认
+        // 关=宽表横滚布局不变）。
         {
           id: "viewLayout",
           labelKey: "settings.viewLayout",
           tier: "optional",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalRenderArtifact"],
+          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalRenderArtifact", "experimentalTableWrap", "experimentalSendTargetSelect"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
             { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
@@ -217,6 +219,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" },
             // 任务 961：对话内产物卡片（默认关=工具不注册、卡片不渲染）。
             { id: "renderArtifact", labelKey: "settings.renderArtifact", tier: "optional" },
+            // 任务 959 ①：对话表格按栏宽自动换行（默认关=宽表横滚不变）。
+            { id: "tableWrap", labelKey: "settings.tableWrap", tier: "optional" },
+            // 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。
+            { id: "sendTargetSelect", labelKey: "settings.sendTargetSelect", tier: "optional" },
           ],
         },
         { id: "todoSidebar", labelKey: "settings.todoSidebar", tier: "recommended", onKeys: ["experimentalTodoSidebar"] },

@@ -1487,7 +1487,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalWorkflowPanel?: boolean; experimentalPerfMonitor?: boolean; experimentalRenderArtifact?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalOpenCodeGoUsage?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalWorkflowPanel?: boolean; experimentalPerfMonitor?: boolean; experimentalRenderArtifact?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1560,6 +1560,12 @@ export default function App() {
         // 任务 940: composer 权限选择器形态二选一（default-false — 铁律 2，
         // off 时 composer 权限区与引入前逐字节一致）；保存即换态免重启。
         approvalSelect: settings.experimentalApprovalSelect ?? false,
+        // 任务 959 ①：对话表格按栏宽自动换行（default-false — 铁律 2，
+        // off 时转录表格与引入前逐字节一致）；保存即换态免重启。
+        tableWrap: settings.experimentalTableWrap ?? false,
+        // 任务 959 ②：composer 发送目标选择器形态二选一（default-false —
+        // 铁律 2，off 时三按钮组与引入前逐字节一致）；保存即换态免重启。
+        sendTargetSelect: settings.experimentalSendTargetSelect ?? false,
         // 任务 686: workflow visualization panel gate (default-false — 铁律 2,
         // off = palette byte-for-byte unchanged, panel chunk never loads);
         // re-applied on settings save.

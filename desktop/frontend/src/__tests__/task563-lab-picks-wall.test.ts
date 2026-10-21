@@ -149,8 +149,9 @@ console.log("\ntask 563 lab picks wall");
   // multiEditInjection（族拆独立卡）→ 66；任务 944 renderArtifact → 67；
   // 任务 961 smartAutomation + interactionPresentation 两容器 → 69；任务
   // 979 capabilityGroups → 70（本 pin 2026-10-19 随 1005 窗口补步进，
-  // 943/944/961/979 落地时漏跟）；+1 simulated = 71.
-  ok(Object.keys(grown).length === 71 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
+  // 943/944/961/979 落地时漏跟）；任务 959 ① tableWrap + ② sendTargetSelect → 72；
+  //    +1 simulated = 73.
+  ok(Object.keys(grown).length === 73 && !LAB_WALL_PICKS.includes("demoFutureSwitch" as LabWallPickId),
     "simulated new tier item is absent from LAB_WALL_PICKS");
   ok(LAB_WALL_PICKS.every((id) => Object.prototype.hasOwnProperty.call(EXPERIMENT_FEATURE_TIERS, id)),
     "every wall pick is a registered tier item (no orphans)");

@@ -882,6 +882,11 @@ export function Composer({
   // 与按钮组同链路。订阅 labFlags：设置保存即换态，免重启。
   const [approvalSelectOn, setApprovalSelectOn] = useState(() => labFlagEnabled("approvalSelect"));
   useEffect(() => onLabFlagsChange(() => setApprovalSelectOn(labFlagEnabled("approvalSelect"))), []);
+  // 任务 959 ②：发送目标选择器形态二选一（实验室-界面-视图布局）。关（默
+  // 认）＝原三按钮组逐字节零变化；开＝下拉框（复用 940 形态机制）。
+  // 订阅 labFlags：设置保存即换态，免重启。
+  const [sendTargetSelectOn, setSendTargetSelectOn] = useState(() => labFlagEnabled("sendTargetSelect"));
+  useEffect(() => onLabFlagsChange(() => setSendTargetSelectOn(labFlagEnabled("sendTargetSelect"))), []);
   const draftKey = sessionKey || tabId || DEFAULT_COMPOSER_DRAFT_KEY;
   const runtimeState = useRuntimeSession(tabId, inboxSessionPath);
   // 任务461-P7 三级终止: the stop button mirrors the escalation level. The
@@ -5952,10 +5957,28 @@ export function Composer({
               </div>
             )}
             {!heroMode && splitActive && (
-              <div className="composer-meta__control composer-meta__control--target">
+              <div className={`composer-meta__control composer-meta__control--target${sendTargetSelectOn ? " composer-meta__control--target--select" : ""}`}>
                 {/* One composer, three targets (task 70, B) -- the same three-state
                     capsule the approval bar uses, so styling and keyboard behaviour are
                     the ones already in the app. */}
+                {/* 任务 959 ②两态：开关开＝下拉框（复用 940 形态机制——仓内
+                    select 家族 SettingsSelect，不新造组件）。目标语义与按钮组
+                    同链路（同一 onSplitTargetChange 回调）。开关关（默认）＝
+                    下方三按钮组逐字节零变化（铁律 2）。 */}
+                {sendTargetSelectOn ? (
+                  <SettingsSelect
+                    className="composer-send-target-select"
+                    value={splitTarget}
+                    title={t("composer.splitTargetMenuTitle")}
+                    aria-label={t("composer.splitTargetMenuTitle")}
+                    onValueChange={(next) => onSplitTargetChange?.(next as "primary" | "secondary" | "both")}
+                    options={[
+                      { value: "primary", label: t("composer.splitTargetPrimary") },
+                      { value: "secondary", label: t("composer.splitTargetSecondary") },
+                      { value: "both", label: t("composer.splitTargetBoth") },
+                    ]}
+                  />
+                ) : (
                 <div className="composer-modebar composer-modebar--split-target" data-target={splitTarget}>
                   <span className="composer-modebar__thumb" aria-hidden="true" />
                   <button
@@ -5989,6 +6012,7 @@ export function Composer({
                     <span>{t("composer.splitTargetBoth")}</span>
                   </button>
                 </div>
+                )}
               </div>
             )}
             {!heroMode && qualityFloor === "delivery" && (

@@ -69,8 +69,9 @@ ok(/\{"trajectoryView", LabTierOptional, \[\]string\{"experimental_trajectory_vi
 // 此后 783④/846/815/686/943/940/944/961/979/992 多轮演进未跟——Go 门禁
 // 现行口径：可选 22 起步 + want[LabTierOptional]=29 覆盖、总数 61（992 双
 // 升档 2026-10-19 补齐），1005 批1 转档不改总数。本 pin 随 1005 窗口补步进）。
-ok(goTierTest.includes("want[LabTierOptional] = 29") && goTierTest.includes("len(labFeatureTiers) != 61"),
-  "Go tier-count test at the current 口径 (optional override 29 / total 61)");
+// 任务 959：① tableWrap + ② sendTargetSelect → override 31 / 总数 63。
+ok(goTierTest.includes("want[LabTierOptional] = 31") && goTierTest.includes("len(labFeatureTiers) != 63"),
+  "Go tier-count test at the current 口径 (optional override 31 / total 63)");
 
 // 4. Both settings views carry the field (81/123: a view that omits it would
 //    read permanently off) and the boot snapshot fills it.
@@ -132,8 +133,8 @@ ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajec
 // 979 capabilityGroups → 34（961 注钉 20/33 后漏跟）；任务 1005 批1 转档
 // → 4 稳定/18 推荐/34 可选（992 漏同步三键同窗收口）。本 pin 随 1005
 // 窗口补步进）。
-ok(/stable: 4,\s*\n\s*recommended: 18,\s*\n\s*optional: 34,/.test(tiers),
-  "LAB_TIER_COUNTS at the 1005 口径 (4 stable / 18 recommended / 34 optional)");
+ok(/stable: 4,\s*\n\s*recommended: 18,\s*\n\s*optional: 36,/.test(tiers),
+  "LAB_TIER_COUNTS at the 959 口径 (4 stable / 18 recommended / 36 optional)");
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -149,10 +150,11 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 //    计数 pin 随每次表A 变更步进（704 落地时 21/50；727 → 22/51；742 → 24/53；
 //    815 → 29/63；686 → 29/64；940/943/944 → 32/67；961 → 33/69；979
 //    capabilityGroups → 34/70（961 后漏跟）；任务 1005 批1 转档总数不变 70。
-//    本 pin 随 1005 窗口补步进）。
+//    本 pin 随 1005 窗口补步进）。任务 959：① tableWrap + ②
+//    sendTargetSelect → 36/72（本 pin 随 959 步进）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 34") && tierTest.includes("length === 70"),
-  "task562 test pins the 70-entry register (1005 合并态口径)");
+ok(tierTest.includes("counts.optional === 36") && tierTest.includes("length === 72"),
+  "task562 test pins the 72-entry register (959 合并态口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");
