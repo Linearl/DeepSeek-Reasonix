@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/provider"
 	"reasonix/internal/sessioncatalog"
 )
 
@@ -223,9 +226,47 @@ func TestCatalogTopicTitleLocalizesAtSidebarBoundary(t *testing.T) {
 	app.projectTreeChangedHook = func() {}
 	app.setDesktopLocale("en-US")
 
+	// tl 1036 ⑤: the topic must be pinned so it is never treated as a
+	// recovery-only or blank-shell row and is guaranteed to render as one
+	// ordinary topic. The localization contract this test owns is the LABEL
+	// at the sidebar boundary, not recovery/blank-shell visibility.
 	if _, err := app.EnsureBlankTab("global", ""); err != nil {
 		t.Fatalf("EnsureBlankTab: %v", err)
 	}
+	sessionDir := desktopSessionDir(globalWorkspaceRoot())
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		t.Fatalf("mkdir global sessions: %v", err)
+	}
+	blank := filepath.Join(sessionDir, "blank-shell.jsonl")
+	sess := agent.NewSession("system")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "localize me"})
+	if err := sess.SaveSnapshot(blank); err != nil {
+		t.Fatalf("save blank-shell session: %v", err)
+	}
+	if err := agent.UpdateBranchMeta(blank, false, func(meta *agent.BranchMeta) error {
+		meta.TopicTitle = defaultTopicTitle
+		meta.TopicID = "blank-shell"
+		return nil
+	}); err != nil {
+		t.Fatalf("update branch meta: %v", err)
+	}
+	// Pin the topic through the topic-state registry so the catalog row
+	// carries TitleSource=auto (localized) and Pinned=true — a pinned row is
+	// never treated as recovery-only or a blank shell, so the sidebar always
+	// renders exactly this one ordinary topic.
+	if err := ensureTopicIndexedWithCreatedAt("global", "", "blank-shell", defaultTopicTitle, topicTitleSourceAuto, time.Now().UnixMilli()); err != nil {
+		t.Fatalf("index topic: %v", err)
+	}
+	if err := app.SetTopicPinned("blank-shell", true); err != nil {
+		t.Fatalf("pin topic: %v", err)
+	}
+	app.mu.Lock()
+	for _, tab := range app.tabs {
+		tab.TopicTitle = defaultTopicTitle
+		tab.TopicID = "blank-shell"
+		tab.SessionPath = blank
+	}
+	app.mu.Unlock()
 	catalog := installLocaleTestCatalog(t, app)
 	page, err := app.catalogTopicPage(catalog, ProjectTopicPageRequest{Scope: "global", WorkspaceRoot: "", Limit: 100})
 	if err != nil {
@@ -253,10 +294,26 @@ func TestCatalogManualDefaultTitleIsNotLocalized(t *testing.T) {
 	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
 		t.Fatalf("mkdir global sessions: %v", err)
 	}
-	writeTopicSessionWithPrompt(
-		t, sessionDir, "manual-default.jsonl", manual.ID, defaultTopicTitle, "",
-		"manual default title should remain unchanged", time.Now(),
-	)
+	// tl 1036 ⑥: the session carries one real turn so the topic is not a
+	// zero-turn blank shell — task 550 ③ hides exactly those. A MANUALLY
+	// named default-titled topic must stay visible with its literal title
+	// (isDefaultTopicTitle + topicTitleSourceManual is never localized). The
+	// contract under test is still "manual titles are left alone".
+	manualSession := filepath.Join(sessionDir, "manual-default.jsonl")
+	sess := agent.NewSession("system")
+	sess.Add(provider.Message{Role: provider.RoleUser, Content: "manual default title should remain unchanged"})
+	if err := sess.SaveSnapshot(manualSession); err != nil {
+		t.Fatalf("save manual-default session: %v", err)
+	}
+	if err := agent.SaveBranchMeta(manualSession, agent.BranchMeta{
+		CreatedAt:  time.Now().Add(-time.Minute),
+		UpdatedAt:  time.Now(),
+		Scope:      "global",
+		TopicID:    manual.ID,
+		TopicTitle: defaultTopicTitle,
+	}); err != nil {
+		t.Fatalf("save branch meta: %v", err)
+	}
 	catalog := installLocaleTestCatalog(t, app)
 	page, err := app.catalogTopicPage(catalog, ProjectTopicPageRequest{Scope: "global", WorkspaceRoot: "", Limit: 100})
 	if err != nil {

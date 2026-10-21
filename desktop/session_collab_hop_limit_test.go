@@ -51,8 +51,15 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	mail := sessioncollab.NewMailStore(config.SessionCollabMailDir())
 	pump := &sessionCollabPump{}
 
-	// Leg 1: the first message lands at hop 0.
-	start, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: "chain start"})
+	// Leg 1: the first message lands at hop 0. tl 1036 ③: it carries an
+	// explicit followup delivery, because the pump no longer delivers
+	// silently. Task 894 made a steer that could not inject degrade to a
+	// queued follow-up and surface a steer_degraded notice (retained per the
+	// user's 2026-10-14 ruling), and MailStore.Deliver's ValidateDelivery
+	// defaults an empty delivery to that same steer — so the fixture must ask
+	// for followup explicitly to keep this test on the hop-refusal contract
+	// it owns, rather than the steer-degradation one.
+	start, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{From: "sc_from", To: target, Body: "chain start", Delivery: "followup"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +86,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	// at the ceiling, so the reply itself still delivers. The sender fills the
 	// derived hop into the record, the way the tool side does before Deliver.
 	reply, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
-		From: target, To: "sc_from", Body: "at the ceiling", ThreadID: start.ID, Hop: 1,
+		From: target, To: "sc_from", Body: "at the ceiling", ThreadID: start.ID, Hop: 1, Delivery: "followup",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +99,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	// Leg 3: relaying onward derives 1+1 = 2, still inside the ceiling
 	// (MinHop clamps the configured 1 up to 3), so it delivers too.
 	relay, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
-		From: "sc_from", To: target, Body: "still inside", ThreadID: reply.ID, Hop: 2,
+		From: "sc_from", To: target, Body: "still inside", ThreadID: reply.ID, Hop: 2, Delivery: "followup",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +113,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	// further relay is where the chain exhausts: 3+1 = 4 > 3. The refusal must
 	// be the hop text with the configured ceiling — never the provenance text.
 	deep, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
-		From: target, To: "sc_from", Body: "at the ceiling", ThreadID: relay.ID, Hop: 3,
+		From: target, To: "sc_from", Body: "at the ceiling", ThreadID: relay.ID, Hop: 3, Delivery: "followup",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +124,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	}
 
 	deep2, err := mail.Deliver(context.Background(), sessioncollab.MailMessage{
-		From: "sc_from", To: target, Body: "one too deep", ThreadID: deep.ID, Hop: 4,
+		From: "sc_from", To: target, Body: "one too deep", ThreadID: deep.ID, Hop: 4, Delivery: "followup",
 	})
 	if err != nil {
 		t.Fatal(err)

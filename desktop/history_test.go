@@ -15,6 +15,7 @@ import (
 	"reasonix/internal/boot"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
+	"reasonix/internal/evidence"
 	"reasonix/internal/provider"
 	"reasonix/internal/store"
 	"reasonix/internal/tool"
@@ -884,8 +885,27 @@ func TestHistoryMessagesKeepTodoWriteArguments(t *testing.T) {
 	if call.ArgumentsArchived {
 		t.Fatalf("todo_write arguments must remain available for restored todo panel: %+v", call)
 	}
-	if call.Arguments != args {
-		t.Fatalf("todo_write arguments = %q, want %q", call.Arguments, args)
+	// tl 1036 ①: task 972 fix 2 makes the host assign a stable step_id to any
+	// item the model sent without one (AssignStableTodoStepIDs runs inside
+	// evidence.ReceiptFromToolCall, which the history replay path goes
+	// through), so the arguments shown to the restored todo panel carry the
+	// auto-assigned id. The contract this test owns is that the arguments
+	// survive untouched as JSON — not that they equal the raw input bytes.
+	var decoded struct {
+		Todos []struct {
+			Content string `json:"content"`
+			Status  string `json:"status"`
+			StepID  string `json:"step_id"`
+		} `json:"todos"`
+	}
+	if err := json.Unmarshal([]byte(call.Arguments), &decoded); err != nil {
+		t.Fatalf("todo_write arguments are not valid JSON: %v (%q)", err, call.Arguments)
+	}
+	if len(decoded.Todos) != 1 || decoded.Todos[0].Content != "A" || decoded.Todos[0].Status != "in_progress" {
+		t.Fatalf("todo_write arguments = %q, want the original todo list", call.Arguments)
+	}
+	if !strings.HasPrefix(decoded.Todos[0].StepID, evidence.AutoStepIDPrefix) {
+		t.Fatalf("todo_write arguments = %q, want the host-assigned stable step_id on the item", call.Arguments)
 	}
 }
 
