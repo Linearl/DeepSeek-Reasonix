@@ -32,6 +32,10 @@ const (
 	DisplayStatusFallbackOriginal = "fallback_original"
 	DisplayStatusBucketed         = "bucketed"
 	DisplayStatusUnavailable      = "unavailable"
+	// DisplayStatusPartialPriced marks a zero-price fallback: the usage has
+	// facts but no price table covered the model, so the segment bills 0
+	// instead of failing the whole session cost (task 1044).
+	DisplayStatusPartialPriced = "partial_priced"
 )
 
 // Aggregate modes describe how a session/run total was formed.
@@ -682,7 +686,7 @@ func NormalizeQuote(q CostQuote) CostQuote {
 		q.CostComplete = true
 		q.DisplayComplete = true
 	}
-	if q.DisplayStatus != "" && q.DisplayStatus != DisplayStatusMatched && q.DisplayStatus != DisplayStatusFallbackOriginal && q.DisplayStatus != DisplayStatusBucketed && q.DisplayStatus != DisplayStatusUnavailable {
+	if q.DisplayStatus != "" && q.DisplayStatus != DisplayStatusMatched && q.DisplayStatus != DisplayStatusFallbackOriginal && q.DisplayStatus != DisplayStatusBucketed && q.DisplayStatus != DisplayStatusUnavailable && q.DisplayStatus != DisplayStatusPartialPriced {
 		q.DisplayStatus = ""
 	}
 	if q.AggregateMode != "" && q.AggregateMode != AggregateModeSingleCurrency && q.AggregateMode != AggregateModeCommonValuation && q.AggregateMode != AggregateModeCurrencyBuckets {
@@ -735,6 +739,55 @@ func quoteHasCompleteCostFact(q CostQuote) bool {
 	}
 	valuation, ok := q.Valuations[currency]
 	return ok && SameCurrency(valuation.Money.Currency, currency)
+}
+
+// PartialPricedQuote builds the zero-price fallback quote for usage whose
+// model has no configured or embedded price (task 1044 零价兜底). The segment
+// bills 0 instead of failing the session: CostComplete/Complete stay true so
+// the aggregate keeps a usable total, while DisplayStatus=partial_priced and
+// IncompleteReason=missing_price_or_usage let surfaces mark 「含未计价段」.
+// preferredCurrency is the provider billing currency; empty falls back to CNY.
+func PartialPricedQuote(in QuoteInput, preferredCurrency string) CostQuote {
+	currency := NormalizeCurrency(preferredCurrency)
+	if currency == "" {
+		currency = "CNY"
+	}
+	in.Rates = RateCard{Currency: currency}
+	occurred := in.OccurredAt
+	if occurred.IsZero() {
+		occurred = time.Now().UTC()
+	} else {
+		occurred = occurred.UTC()
+	}
+	amount := OriginalCostAmount(in.Rates, in.Usage)
+	q := CostQuote{
+		Original:         MoneyOf(amount, currency),
+		Valuations:       map[string]Valuation{},
+		BillingMode:      normalizeBillingMode(in.BillingMode),
+		Estimated:        true,
+		CostComplete:     true,
+		DisplayComplete:  true,
+		Complete:         true,
+		DisplayStatus:    DisplayStatusPartialPriced,
+		AggregateMode:    AggregateModeSingleCurrency,
+		ModelRef:         strings.TrimSpace(in.ModelRef),
+		UsageSource:      strings.TrimSpace(in.UsageSource),
+		IncompleteReason: "missing_price_or_usage",
+		CatalogSource:    strings.TrimSpace(in.CatalogSource),
+	}
+	q.Valuations[currency] = Valuation{
+		Money: q.Original, Basis: BasisIdentity,
+		Source: firstNonEmpty(in.CatalogSource, "rate_card"),
+		AsOf:   occurred.Format("2006-01-02"),
+	}
+	if in.PricingFingerprint != "" {
+		q.PricingFingerprint = in.PricingFingerprint
+	} else {
+		q.PricingFingerprint = PricingFingerprint(in.Rates)
+	}
+	selected := q.Original
+	q.Selected = &selected
+	return q
 }
 
 func (a *quoteAccumulator) syncOriginalValuation() {
