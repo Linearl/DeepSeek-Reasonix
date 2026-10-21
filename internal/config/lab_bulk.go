@@ -8,7 +8,7 @@ import (
 // 任务 1006 — 实验室批量开关：范围×行为两轴（用户 2026-10-19 设计）。
 //
 // 范围三档（无「全部」档——未稳定项不进批量，仅可单项手动）：
-//   - stable      = 仅稳定档（1005 联调点：当前稳定档集合为空占位）
+//   - stable      = 仅稳定档（tl 1037 后集合从 labFeatureTiers 派生，恒非空）
 //   - recommended = 稳定 + 推荐
 //   - optional    = 稳定 + 推荐 + 可选
 // 行为两轴：on / off。
@@ -38,16 +38,31 @@ const (
 	LabBulkSkipPrecondition = "precondition"    // 有前置条件门（autopilot 需 yolo 审批模式）
 	LabBulkSkipNotBool      = "not_bool_switch" // 主开关非布尔（三态/模式键），批量盲写会破坏语义
 	LabBulkSkipNoSetter     = "no_bulk_setter"  // 未登记批量写入器（参数卡/家族键/纯展示行），需单项设置
+	// 稳定档不在所选范围（tier=stable 不落 recommended/optional 的 tier 分支）。
+	// tl 1037：此前走静默 continue，特性既不在 Targets 也不在任何 Skipped ⇒
+	// 「范围内却看不到该项」；补记录后弹窗按码给文案，不再无声消失。
+	LabBulkSkipStableScope = "stable_out_of_scope"
+	// 开发者模式关 + 批量关 → 稳定档自动跳过（护栏②），记入 Skipped 使
+	// skipCount 汇总含它（与 SkippedStable 并列，前端两处各司其职）。
+	LabBulkSkipDevMode = "dev_mode_off"
 )
 
-// LabStableFeatureIDs —— 稳定档集合占位（tl 1005 联调点）。
+// LabStableFeatureIDs —— 稳定档集合，**从 labFeatureTiers 派生**（tl 1037）。
 //
-// 1005「稳定档」尚未合入：当前返回空集，LabBulkScopeStable 计划 0 目标。
-// 1005 落地后在此（或改为读 1005 的权威注册表）填入批1 四项
-// sessionCollab / autopilot / fullAccess / runtimeReuse 的稳定档判定，
-// 护栏①②随集合非空自动生效，本包测试已用注入集合验证过两条护栏。
+// 1005 批1 把 autopilot / sessionCollab / fullAccess / runtimeReuse 升到
+// LabTierStable 后，档位声明的唯一权威就是 labFeatureTiers；这里若再手写
+// 一份集合就是双源（1037 缺陷根因：占位空 map 从未接线 ⇒ stable/recommended
+// 范围恒不含稳定档，四项批量不可达且被静默 continue 吞掉）。派生后声明与
+// 批量可达性同源，新条目升 stable 档自动进集合；一致性由
+// TestLabStableFeatureIDsMatchesTierRegistry 守卫断言。
 func LabStableFeatureIDs() map[string]bool {
-	return map[string]bool{}
+	stable := make(map[string]bool, 4)
+	for _, f := range labFeatureTiers {
+		if f.tier == LabTierStable {
+			stable[f.id] = true
+		}
+	}
+	return stable
 }
 
 // LabDeveloperModeOn —— 开发者模式占位（tl 1005「允许关闭稳定能力」单项
@@ -183,12 +198,21 @@ func labBulkScopeHas(scope LabBulkScope, id string, tier LabTier, stableIDs map[
 
 // PlanLabBulk 纯计划：范围×行为 → 目标集 + 护栏输出。不写配置。
 //
-// 稳定档集合与开发者模式都经参数注入（占位实现见 LabStableFeatureIDs /
-// LabDeveloperModeOn），测试可用真集合验证护栏，1005 联调后无需改判定逻辑。
+// 稳定档集合与开发者模式都经参数注入（LabStableFeatureIDs 从档位表派生 /
+// LabDeveloperModeOn 占位恒 false），测试可用注入集合验证护栏。
+// 任何不进 Targets 的特性都必须落在 Skipped / SkippedStable 之一并带原因
+// —— tl 1037：杜绝「静默 continue」（范围判定不命中时原先无任何记录）。
 func PlanLabBulk(scope LabBulkScope, on bool, stableIDs map[string]bool, devModeOn bool) LabBulkPlan {
 	plan := LabBulkPlan{Scope: scope, On: on}
 	for _, f := range labFeatureTiers {
 		if !labBulkScopeHas(scope, f.id, f.tier, stableIDs) {
+			// 范围外的推荐/可选项不进本范围是正常语义（不记）；但稳定档项
+			// 在 stableIDs 里却未命中范围，只可能是「所选范围不含稳定档」
+			// （stableIDs 注入与 scope 档位不一致的调用面）——记录并给原因，
+			// 保证「选了范围却看不到该项」必定有提示。
+			if stableIDs[f.id] {
+				plan.Skipped = append(plan.Skipped, LabBulkSkip{ID: f.id, Reason: LabBulkSkipStableScope})
+			}
 			continue
 		}
 		if reason, excluded := labBulkExcluded[f.id]; excluded {
@@ -205,6 +229,7 @@ func PlanLabBulk(scope LabBulkScope, on bool, stableIDs map[string]bool, devMode
 			// 护栏②：开发者模式关 + 批量关 → 稳定档自动跳过并提示。
 			if !on && !devModeOn {
 				plan.SkippedStable = append(plan.SkippedStable, f.id)
+				plan.Skipped = append(plan.Skipped, LabBulkSkip{ID: f.id, Reason: LabBulkSkipDevMode})
 				continue
 			}
 		}

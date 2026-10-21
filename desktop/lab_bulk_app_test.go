@@ -75,14 +75,42 @@ func TestLabBulkApplyWritesUserConfig(t *testing.T) {
 	}
 
 	// 反向关。
-	if _, err := app.LabBulkApply("recommended", false); err != nil {
+	vOff, err := app.LabBulkApply("recommended", false)
+	if err != nil {
 		t.Fatalf("LabBulkApply(recommended/off): %v", err)
 	}
 	cfg, err = config.Load()
 	if err != nil {
 		t.Fatalf("reload config after off: %v", err)
 	}
-	if cfg.Desktop.ExperimentalSessionWall || cfg.Agent.ExperimentalSessionCollab {
-		t.Fatalf("recommended/off must clear the master switches on disk")
+	// tl 1037：sessionCollab 已升「稳定」档（task 1005），批量关（devMode 恒
+	// false）被护栏②自动挡在 SkippedStable（原因 dev_mode_off），保持默认开
+	// —— 旧断言「recommended/off 必须清空 session_collab」与 1005 转档冲突，
+	// 改为「wall 必须关 + collab 必须保持 true」。
+	if cfg.Desktop.ExperimentalSessionWall {
+		t.Fatalf("recommended/off must clear session_wall on disk, got wall=%v", cfg.Desktop.ExperimentalSessionWall)
+	}
+	if !cfg.Agent.ExperimentalSessionCollab {
+		t.Fatalf("recommended/off must NOT clear stable sessionCollab (护栏② devMode off, stays default-on), got collab=%v", cfg.Agent.ExperimentalSessionCollab)
+	}
+	// 护栏②提示可见：sessionCollab 出现在 skippedStable，reason=dev_mode_off
+	// 出现在 skipped（杜绝静默消失）。
+	skippedStableSeen := false
+	for _, id := range vOff.SkippedStable {
+		if id == "sessionCollab" {
+			skippedStableSeen = true
+		}
+	}
+	if !skippedStableSeen {
+		t.Fatalf("recommended/off must auto-skip sessionCollab (护栏②), got skippedStable=%v", vOff.SkippedStable)
+	}
+	skipReasonSeen := false
+	for _, s := range vOff.Skipped {
+		if s.ID == "sessionCollab" && s.Reason == "dev_mode_off" {
+			skipReasonSeen = true
+		}
+	}
+	if !skipReasonSeen {
+		t.Fatalf("sessionCollab must carry dev_mode_off reason in skipped (tl 1037 非静默), got skipped=%+v", vOff.Skipped)
 	}
 }
