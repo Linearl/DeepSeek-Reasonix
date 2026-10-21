@@ -378,6 +378,8 @@ export const en = {
   "settings.renderArtifactHint": "render_artifact tool + artifact cards: the agent declares a deliverable file and the chat renders an openable card (markdown/text preview, HTML opens only). Off by default — with it off the tool is not registered and nothing changes. Takes effect after restarting Reasonix (tools are registered at process start).",
   "settings.draftRewrite": "Draft rewrite",
   "settings.draftRewriteHint": "Adds a rewrite button left of the composer's send button: it reads the current draft plus the last 10KB of context, has the auxiliary model rewrite it into a structured, unambiguous version, and fills the input box (never auto-sends). Failures and timeouts silently fall back to leaving the draft unchanged. Off by default — with it off the composer is byte-for-byte unchanged.",
+  "settings.draftRewrite.on": "On",
+  "settings.draftRewrite.off": "Off",
   "composer.rewriteDraft": "Rewrite draft",
   "richLink.menuAriaLabel": "Link actions",
   "richLink.openInBrowser": "Open in browser",

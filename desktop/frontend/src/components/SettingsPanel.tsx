@@ -3206,7 +3206,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       disabled={busy}
                       onClick={() => void apply(() => app.SetExperimentalDraftRewrite(on))}
                     >
-                      {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
+                      {t(on ? "settings.draftRewrite.on" : "settings.draftRewrite.off")}
                     </button>
                   ))}
                 </SettingsOptions>

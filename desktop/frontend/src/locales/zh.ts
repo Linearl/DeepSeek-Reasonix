@@ -378,6 +378,8 @@ export const zh: Record<DictKey, string> = {
   "settings.renderArtifactHint": "render_artifact 工具 + 产物卡片：agent 声明一份交付文件，对话中渲染为可直接打开的卡片（Markdown/文本带预览，HTML 仅打开）。默认关闭；关闭时工具不注册、行为零变化。打开后需重启 Reasonix 生效（工具在进程启动时注册）。",
   "settings.draftRewrite": "草稿优化",
   "settings.draftRewriteHint": "输入栏发送按钮左侧新增改写按钮：读取当前草稿和最近 10KB 上下文，交给辅助模型改写成结构化、无歧义的表达后回填输入框（不自动发送）。失败或超时静默降级为不改写。默认关闭；关闭时输入栏与引入前逐字节一致。",
+  "settings.draftRewrite.on": "开",
+  "settings.draftRewrite.off": "关",
   "composer.rewriteDraft": "改写草稿",
   "richLink.menuAriaLabel": "链接操作",
   "richLink.openInBrowser": "在浏览器中打开",
