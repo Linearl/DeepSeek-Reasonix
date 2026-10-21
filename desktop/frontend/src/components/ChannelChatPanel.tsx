@@ -31,7 +31,9 @@ import type {
   CollabChannelMessageView,
   CollabChannelView,
 } from "../lib/bridge";
-import { useT } from "../lib/i18n";
+import { getLocale, useT } from "../lib/i18n";
+// 任务1012：消息列表时间戳补日期——与消息气泡同一三档契约（lib/messageTimestamp.ts）。
+import { formatMessageTimestamp } from "../lib/messageTimestamp";
 
 /** 803 定稿：桌面端单用户固定身份（collabchannel.HumanLocal）。 */
 export const HUMAN_LOCAL = "human:local";
@@ -89,7 +91,10 @@ function writeLastSeenCounts(counts: Record<string, number>): void {
 
 function formatTime(ms: number): string {
   if (!ms) return "";
-  return new Date(ms).toLocaleString();
+  const date = new Date(ms);
+  // 任务1012：三档（同日 HH:mm / 跨天 MM-DD HH:mm / 跨年 YYYY-MM-DD HH:mm），
+  // 完整本地化日期留给 title 悬浮兜底。
+  return formatMessageTimestamp(date, new Date(), getLocale());
 }
 
 function shortId(id: string): string {
@@ -574,7 +579,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains }
                       <span className={`channel-chat__typebadge channel-chat__typebadge--${own ? "human" : "session"}`}>
                         {own ? t("collabGroup.identity.human") : t("collabGroup.chat.typeSession")}
                       </span>
-                      <span className="channel-chat__time">{formatTime(m.at)}</span>
+                      <span className="channel-chat__time" title={new Date(m.at).toLocaleString()}>{formatTime(m.at)}</span>
                     </div>
                     <div
                       className="channel-chat__bubble"
