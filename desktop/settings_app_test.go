@@ -205,8 +205,16 @@ func TestSettingsExposesEffectiveSandboxWriteRoots(t *testing.T) {
 	if !reflect.DeepEqual(got.EffectiveWriteRoots, want) {
 		t.Fatalf("EffectiveWriteRoots = %v, want %v", got.EffectiveWriteRoots, want)
 	}
-	if !reflect.DeepEqual(got.AllowWrite, cfg.Sandbox.AllowWrite) {
-		t.Fatalf("AllowWrite = %v, want raw configured paths %v", got.AllowWrite, cfg.Sandbox.AllowWrite)
+	// tl 1036 ②: task 634 (c7968b57f) makes the panel's AllowWrite the
+	// EXPANDED roots (cfg.AllowWriteRoots(), ${HOME} substituted), so the
+	// raw "${HOME}/.m2" strings are no longer what reaches the panel. The
+	// expanded values are the ones EffectiveWriteRoots already asserts above.
+	wantAllowWrite := []string{
+		home + "/.m2",
+		home + "/.m2/repository",
+	}
+	if !reflect.DeepEqual(got.AllowWrite, wantAllowWrite) {
+		t.Fatalf("AllowWrite = %v, want expanded configured paths %v", got.AllowWrite, wantAllowWrite)
 	}
 	if got.EffectiveShell == "" {
 		t.Fatal("EffectiveShell is empty")
