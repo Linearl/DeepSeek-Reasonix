@@ -5078,6 +5078,35 @@ a[href] {
   gap: 8px;
   margin-top: 8px;
 }
+/* 任务1045: 未入档恢复卡片——头部（标题+操作按钮）sticky 钉顶，正文默认折叠
+   （max-height=6 行）+ 超长内部滚动；展开后仍设上限（40 行），卡片永不越过
+   自身边界挡死 transcript，按钮也绝不随正文沉底（用户 2026-10-21 截图实证）。 */
+.unfiled-card__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-transcript-scene-overlay);
+  padding: 4px 0;
+  background: var(--surface);
+}
+.unfiled-card__head .notice-line__summary-toggle {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.unfiled-card__body {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 9.6em; /* 6 行 × 1.6 行高，与 FOLDED_LINES 同源 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.unfiled-card__body--open {
+  max-height: 64em; /* 展开后仍留上限（≈40 行）兜底，避免 50KB+ 全文再次撑爆 */
+}
 .notice-line__details {
   margin-top: 4px;
   color: var(--fg-faint);
