@@ -72,22 +72,78 @@ func (a *App) boundedContextUsageCompute(tabID string, ctrl control.SessionAPI) 
 	}()
 	select {
 	case compute := <-done:
+		a.contextUsageNoticeCleared(tabID)
 		return compute
 	case <-time.After(limit):
 		if cached, at, ok := a.cachedContextUsageForTab(tabID); ok {
 			// A fallback hit is not an error for the caller - the switch must
 			// go through - but it must leave a trace, or the multi-second
 			// stalls that motivated task 882 would stay invisible forever.
+			// 任务 1021: the notice trace is DEDUPED per tab — a session whose
+			// gauge read blocks for minutes (a live compaction recomputes the
+			// full transcript on every read) used to fire this notice once per
+			// ancillary batch, flooding the transcript with identical lines.
+			// The warn log keeps every occurrence; the notice reports the
+			// FIRST timeout and a folded count once a read finally succeeds
+			// (contextUsageNoticeCleared).
 			slog.Warn("desktop: context usage read timed out; serving cached value",
 				"tab", tabID, "stage", "switch-tab:ancillary context",
 				"limit", limit, "cache_age", time.Since(at).Round(time.Millisecond))
-			a.noticeForTab(tabID, fmt.Sprintf("context read timed out (>%s); showing last known value", limit))
+			if first, _ := a.contextUsageNoticeMarkTimeout(tabID); first {
+				a.noticeForTab(tabID, fmt.Sprintf("context read timed out (>%s); showing last known value", limit))
+			}
 			return cached
 		}
 		slog.Warn("desktop: context usage read timed out; no cached value, serving default",
 			"tab", tabID, "stage", "switch-tab:ancillary context", "limit", limit)
-		a.noticeForTab(tabID, fmt.Sprintf("context read timed out (>%s); showing default", limit))
+		if first, _ := a.contextUsageNoticeMarkTimeout(tabID); first {
+			a.noticeForTab(tabID, fmt.Sprintf("context read timed out (>%s); showing default", limit))
+		}
 		return contextUsageCompute{}
+	}
+}
+
+// contextUsageNotice state (任务 1021): per-tab "a timeout notice is already
+// showing" marker plus a suppressed-repeat counter. Guarded by
+// contextUsageCacheMu — the same lock the gauge cache uses, so the marker's
+// lifetime is shared with the cache entries that caused the timeouts.
+type contextUsageNoticeState struct {
+	armed    bool // a timeout notice was emitted and not yet cleared
+	suppress int  // timeouts folded into that notice since it was emitted
+}
+
+// contextUsageNoticeMarkTimeout records one timeout for tabID and reports
+// whether the caller should EMIT the user-facing notice: true only for the
+// first timeout of an armed window (subsequent timeouts are folded into the
+// same notice — their count surfaces via the clear message below).
+func (a *App) contextUsageNoticeMarkTimeout(tabID string) (emit bool, suppressed int) {
+	a.contextUsageCacheMu.Lock()
+	defer a.contextUsageCacheMu.Unlock()
+	if a.contextUsageNotices == nil {
+		a.contextUsageNotices = make(map[string]contextUsageNoticeState)
+	}
+	st := a.contextUsageNotices[tabID]
+	if st.armed {
+		st.suppress++
+		a.contextUsageNotices[tabID] = st
+		return false, st.suppress
+	}
+	a.contextUsageNotices[tabID] = contextUsageNoticeState{armed: true}
+	return true, 0
+}
+
+// contextUsageNoticeCleared runs on a successful (non-timeout) read: when
+// timeouts were folded into an already-showing notice, ONE follow-up notice
+// tells the user how many repeats it absorbed; then the marker disarms so the
+// next degraded window announces itself again. The first-success call
+// (suppressed == 0) is silent — the normal path must stay quiet (task 882).
+func (a *App) contextUsageNoticeCleared(tabID string) {
+	a.contextUsageCacheMu.Lock()
+	st := a.contextUsageNotices[tabID]
+	delete(a.contextUsageNotices, tabID)
+	a.contextUsageCacheMu.Unlock()
+	if st.suppress > 0 {
+		a.noticeForTab(tabID, fmt.Sprintf("context read recovered; %d repeat timeout(s) folded into the previous notice", st.suppress))
 	}
 }
 

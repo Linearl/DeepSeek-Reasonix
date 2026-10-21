@@ -166,6 +166,10 @@ type App struct {
 	contextUsageReadLimitOverride time.Duration
 	contextUsageCacheMu           sync.Mutex
 	contextUsageCache             map[string]contextUsageCacheEntry
+	// 任务 1021: per-tab dedupe state for the timeout notice (see
+	// context_usage_fetch.go) — a minute-long blocked read no longer fires one
+	// identical notice per ancillary batch. Shares contextUsageCacheMu.
+	contextUsageNotices map[string]contextUsageNoticeState
 
 	// Task 609: per-workspace-root config snapshots for the effort read path
 	// (see config_snapshot.go). Keys are cleaned roots; each snapshot reloads
