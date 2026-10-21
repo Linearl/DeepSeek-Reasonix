@@ -15,7 +15,26 @@ const (
 	webView2RecoveryFailed        = "reload_failed"
 	webView2RecoveryPending       = "reload_navigation_succeeded"
 	webView2RecoverySuppressed    = "reload_suppressed"
+
+	// exitCodeTerminatedExternally is Windows' DBG_TERMINATE_PROCESS: the
+	// process was force-terminated by TerminateProcess (session shutdown,
+	// Task Manager, an optimizer or security product), not a WebView2 crash.
+	// Real crashes carry NTSTATUS codes instead (0xC0000005 access violation,
+	// 0xC0000409 stack buffer overrun).
+	exitCodeTerminatedExternally = 0x40010004
+	// exitCodeStillActive is Windows' STILL_ACTIVE; a finished process cannot
+	// legitimately report it, so it says the exit code was never really
+	// observed. It is excluded from the fingerprint to keep that distinction.
+	exitCodeStillActive = 259
 )
+
+// externallyTerminatedBrowser reports whether a browser-process exit code
+// means "killed by someone else" rather than "crashed by itself". The exit
+// code is the only evidence available; anything unknown stays a crash so
+// genuine failures are never silently reclassified.
+func externallyTerminatedBrowser(event webView2NativeEvent) bool {
+	return event.Kind == 0 && event.ExitCodeAvailable && event.ExitCode == exitCodeTerminatedExternally
+}
 
 type webView2Diagnostic struct {
 	Kind                string `json:"kind"`
@@ -29,9 +48,12 @@ type webView2Diagnostic struct {
 }
 
 type webRuntimeDiagnostic struct {
-	Engine              string `json:"engine"`
-	Kind                string `json:"kind"`
-	Reason              string `json:"reason"`
+	Engine string `json:"engine"`
+	Kind   string `json:"kind"`
+	Reason string `json:"reason"`
+	// ExitCodeClass is a hand-free semantic bucket for ExitCode
+	// ("terminated_externally" for now) so reports read without decoding hex.
+	ExitCodeClass       string `json:"exitCodeClass,omitempty"`
 	ExitCode            *int32 `json:"exitCode,omitempty"`
 	ProcessDescription  string `json:"processDescription,omitempty"`
 	FailureSourceModule string `json:"failureSourceModule,omitempty"`
@@ -120,6 +142,12 @@ func normalizeWebView2Recovery(value string) string {
 func webView2Outcome(event webView2NativeEvent) (reportKind, outcome string) {
 	switch event.Kind {
 	case 0:
+		if externallyTerminatedBrowser(event) {
+			// Not a crash: keep it out of the crash bucket and the
+			// fatal_app_exit outcome so shutdown-driven terminations cannot
+			// drown real browser crashes in the crash rate.
+			return "performance", "terminated_externally"
+		}
 		return "crash", "fatal_app_exit"
 	case 1, 2:
 		switch event.Recovery {
@@ -164,9 +192,14 @@ func webView2NativeFailureReport(event webView2NativeEvent, runtimeVersion strin
 		exitCode := event.ExitCode
 		diagnostic.ExitCode = &exitCode
 	}
+	if externallyTerminatedBrowser(event) {
+		// A human-readable bucket next to the raw code: every new fingerprint
+		// must otherwise be decoded by hand before it can be triaged.
+		diagnostic.ExitCodeClass = "terminated_externally"
+	}
 
 	fingerprintExitCode := "unknown"
-	if event.ExitCodeAvailable && !(event.Kind == 2 && event.ExitCode == 259) {
+	if event.ExitCodeAvailable && !(event.Kind == 2 && event.ExitCode == exitCodeStillActive) {
 		fingerprintExitCode = strconv.FormatInt(int64(event.ExitCode), 10)
 	}
 	report := baseCrashReport(reportKind)
@@ -186,10 +219,20 @@ WebView2 reported a native process failure.
 process kind: %s
 reason: %s
 exit code: %s
+exit code class: %s
 runtime version: %s
 GPU mode: %s
 recovery: %s
 process description: %s
-failure source module: %s`, kind, reason, fingerprintExitCode, runtimeVersion, gpuMode, recovery, diagnostic.ProcessDescription, diagnostic.FailureSourceModule), maxCrashDetailBytes)
+failure source module: %s`, kind, reason, fingerprintExitCode, exitCodeClassLine(diagnostic.ExitCodeClass), runtimeVersion, gpuMode, recovery, diagnostic.ProcessDescription, diagnostic.FailureSourceModule), maxCrashDetailBytes)
 	return report, outcome
+}
+
+// exitCodeClassLine keeps the report text stable when no class was assigned
+// instead of leaking an empty line into every WebView2 report.
+func exitCodeClassLine(class string) string {
+	if class == "" {
+		return "unknown"
+	}
+	return class
 }

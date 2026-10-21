@@ -285,7 +285,20 @@ func (c *webView2RecoveryCoordinator) readyTimeout() {
 
 //lint:ignore U1000 Invoked by the Windows-only recovery path.
 func (c *webView2RecoveryCoordinator) requestRestart(reason string) {
+	// Aligned with the Linux renderer recovery: once the host is exiting, a
+	// relaunch is a fight against shutdown (system logoff kills WebView2 too),
+	// so keep the diagnostics and drop the restart.
+	if c.app != nil && (c.app.shuttingDown.Load() || c.app.forceQuit.Load()) {
+		_ = c.journal.append("restart_suppressed", reason)
+		return
+	}
 	c.restartOnce.Do(func() {
+		if c.app != nil && (c.app.shuttingDown.Load() || c.app.forceQuit.Load()) {
+			// The host can enter the exit flow between the check above and the
+			// relaunch below; never spawn a new process mid-shutdown.
+			_ = c.journal.append("restart_suppressed", reason)
+			return
+		}
 		now := c.now()
 		allowed, err := c.journal.automaticRestartAllowed(now)
 		if err != nil {

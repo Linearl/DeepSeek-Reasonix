@@ -67,6 +67,17 @@ func TestWebView2NativeFailureClassification(t *testing.T) {
 		{name: "renderer recovered", event: webView2NativeEvent{Kind: 1, Recovery: webView2RecoverySucceeded}, kind: "performance", outcome: "recovered", recovery: webView2RecoverySucceeded},
 		{name: "renderer recovery failed", event: webView2NativeEvent{Kind: 2, Recovery: webView2RecoveryFailed}, kind: "exception", outcome: "recovery_failed", recovery: webView2RecoveryFailed},
 		{name: "gpu degraded", event: webView2NativeEvent{Kind: 6}, kind: "performance", outcome: "degraded", recovery: webView2RecoveryNotApplicable},
+		// A browser exit code of 0x40010004 (DBG_TERMINATE_PROCESS) is the
+		// kernel's "someone called TerminateProcess on it" verdict, i.e. a
+		// system shutdown/logoff or an external killer, not a WebView2 crash.
+		// Task 1041: these must stay out of the crash bucket so real browser
+		// crashes are not diluted.
+		{name: "browser terminated externally", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 0, ExitCode: exitCodeTerminatedExternally, ExitCodeAvailable: true}, kind: "performance", outcome: "terminated_externally", recovery: webView2RecoveryNotApplicable},
+		{name: "browser access violation", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3, ExitCode: -1073741819, ExitCodeAvailable: true}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryNotApplicable},
+		{name: "browser stack buffer overrun", event: webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3, ExitCode: -1073740791, ExitCodeAvailable: true}, kind: "crash", outcome: "fatal_app_exit", recovery: webView2RecoveryNotApplicable},
+		// Renderer terminations never carry the browser-kill code's meaning:
+		// the helper only reclassifies browser (kind 0) events.
+		{name: "renderer with external code stays classified", event: webView2NativeEvent{Kind: 1, ExitCode: exitCodeTerminatedExternally, ExitCodeAvailable: true, Recovery: webView2RecoverySucceeded}, kind: "performance", outcome: "recovered", recovery: webView2RecoverySucceeded},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -75,6 +86,67 @@ func TestWebView2NativeFailureClassification(t *testing.T) {
 				t.Fatalf("report=%+v diagnostic=%+v outcome=%q", report, report.WebRuntime, outcome)
 			}
 		})
+	}
+}
+
+// Task 1041: exit-code semantics must survive into the report itself, so a
+// triager never has to hand-decode 1073807364 to learn "this was not a crash".
+func TestWebView2ExternallyTerminatedBrowserIsClassifiedInTheReport(t *testing.T) {
+	report, outcome := webView2NativeFailureReport(webView2NativeEvent{
+		Kind:              0,
+		Reason:            0,
+		ReasonAvailable:   true,
+		ExitCode:          exitCodeTerminatedExternally,
+		ExitCodeAvailable: true,
+	}, "155.0.4283.62", false)
+
+	if report.Kind != "performance" || outcome != "terminated_externally" {
+		t.Fatalf("kind=%q outcome=%q: a shutdown kill must not be reported as a crash", report.Kind, outcome)
+	}
+	if report.WebRuntime.ExitCodeClass != "terminated_externally" {
+		t.Fatalf("exit code class = %q", report.WebRuntime.ExitCodeClass)
+	}
+	if report.WebRuntime.ExitCode == nil || int64(*report.WebRuntime.ExitCode) != exitCodeTerminatedExternally {
+		t.Fatalf("raw exit code = %v, keep it for forensics", report.WebRuntime.ExitCode)
+	}
+	for _, want := range []string{"exit code: 1073807364", "exit code class: terminated_externally"} {
+		if !strings.Contains(report.Message, want) {
+			t.Fatalf("report message missing %q: %s", want, report.Message)
+		}
+	}
+	// Fingerprint still separates this bucket from genuine browser crashes.
+	if report.FingerprintHint != "web.runtime.webview2.browser_process_exited.unexpected.1073807364" {
+		t.Fatalf("fingerprint = %q", report.FingerprintHint)
+	}
+}
+
+// Task 1041: an unknown exit code must stay a crash. Reclassifying on a guess
+// would trade telemetry pollution for silently lost real crashes.
+func TestWebView2UnknownBrowserExitCodeStaysACrash(t *testing.T) {
+	for _, code := range []int32{0, 1, -1073741819 /* STATUS_ACCESS_VIOLATION */, -1073740791 /* STATUS_STACK_BUFFER_OVERRUN */, 0x40010006} {
+		event := webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3, ExitCode: code, ExitCodeAvailable: true}
+		report, outcome := webView2NativeFailureReport(event, "155.0.4283.62", false)
+		if report.Kind != "crash" || outcome != "fatal_app_exit" {
+			t.Fatalf("exit code %#x classified as kind=%q outcome=%q", code, report.Kind, outcome)
+		}
+		if report.WebRuntime.ExitCodeClass != "" {
+			t.Fatalf("exit code %#x must not claim a class, got %q", code, report.WebRuntime.ExitCodeClass)
+		}
+	}
+	// Without an observed exit code there is no evidence of external
+	// termination, so the crash classification is unchanged.
+	report, outcome := webView2NativeFailureReport(webView2NativeEvent{Kind: 0, ReasonAvailable: true, Reason: 3}, "155.0.4283.62", false)
+	if report.Kind != "crash" || outcome != "fatal_app_exit" {
+		t.Fatalf("exit-code-less browser failure = kind=%q outcome=%q", report.Kind, outcome)
+	}
+}
+
+func TestWebView2ExitCodeClassLineIsNeverEmpty(t *testing.T) {
+	if got := exitCodeClassLine(""); got != "unknown" {
+		t.Fatalf("empty class = %q", got)
+	}
+	if got := exitCodeClassLine("terminated_externally"); got != "terminated_externally" {
+		t.Fatalf("class = %q", got)
 	}
 }
 
