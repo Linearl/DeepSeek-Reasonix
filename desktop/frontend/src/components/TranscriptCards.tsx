@@ -312,7 +312,12 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
   // (pending=false) never start the interval.
   const now = useTick(item.pending);
   if (item.pending) {
-    const label = (item.total ?? 0) > 0 ? t("compaction.progress", { done: item.done ?? 0, total: (item.total ?? 0) }) : t("compaction.working");
+    // 任务 1021: a multi-pass compression session shows its round —「压缩中（第 2 轮…）」—
+    // so the user never reads a mid-session round as the final state. The
+    // round suffix appends to the chunk-progress label when both exist.
+    const base = (item.total ?? 0) > 0 ? t("compaction.progress", { done: item.done ?? 0, total: (item.total ?? 0) }) : t("compaction.working");
+    const round = (item.pass ?? 0) > 1 ? t("compaction.round", { n: item.pass ?? 0 }) : "";
+    const label = round ? `${base} ${round}` : base;
     const readout = compactionLiveReadout(item, now, t);
     return <div className="compaction compaction--pending" data-entrance={item.id} data-transcript-layout-variant="static"><ProcessCompactIcon size={12} /><span>{label + readout}</span></div>;
   }
@@ -334,7 +339,9 @@ export function CompactionCard({ item }: { item: CompactionItem }) {
       <button type="button" className="compaction__head" onClick={() => { beginUserResize(); setOpen((v) => !v); }} aria-expanded={open}>
         <ProcessCompactIcon size={12} />
         <span>{t("compaction.title")}</span>
-        <span className="compaction__meta">{t("compaction.messages", { n: item.messages })}{item.trigger ? ` · ${item.trigger}` : ""}</span>
+        {/* 任务 1021: the terminal card names the session's total pass count when
+            more than one round ran, so「已压缩」reads as the SESSION's result. */}
+        <span className="compaction__meta">{t("compaction.messages", { n: item.messages })}{(item.pass ?? 0) > 1 ? ` · ${t("compaction.rounds", { n: item.pass ?? 0 })}` : ""}{item.trigger ? ` · ${item.trigger}` : ""}</span>
         <ChevronRight className={open ? "compaction__chevron--open" : ""} size={12} />
       </button>
       {open && <pre className="compaction__body">{item.summary}</pre>}

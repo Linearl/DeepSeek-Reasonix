@@ -105,6 +105,11 @@ export interface WireCompaction {
   outcome?: string;
   attempt?: number; // failed: 1-based consecutive-failure counter
   reason?: string; // failed: short display-safe classification
+  // 任务 1021: 1-based pass number inside ONE compression session — rides
+  // compaction_started/progress/done. Absent/0 = legacy sender or outside a
+  // tracked session; the reducer keeps the card pending across a session's
+  // earlier passes so「上下文已压缩」never shows while a pass still runs.
+  pass?: number;
 }
 export interface WireProfile {
   model?: string;

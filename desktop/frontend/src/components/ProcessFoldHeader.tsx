@@ -54,17 +54,21 @@ export function ProcessFoldHeader({
     reasoningStartedAt: live?.reasoningStartedAt,
   });
 
-  const baseLabel = compactionItem
+  // 任务 1021: pending labels carry the multi-pass round (「第 N 轮」) so a
+  // mid-session round never reads as the final「已压缩」state; the resolved
+  // terminal card names its total rounds.
+  const compactionBaseLabel = compactionItem
     ? compactionItem.pending
-      ? (compactionItem.done ?? 0) > 0
-        ? t("compaction.progress", { done: (compactionItem.done ?? 0), total: (compactionItem.total ?? 0) })
-        : t("compaction.working")
+      ? ((compactionItem.done ?? 0) > 0
+          ? t("compaction.progress", { done: (compactionItem.done ?? 0), total: (compactionItem.total ?? 0) })
+          : t("compaction.working")) + ((compactionItem.pass ?? 0) > 1 ? ` ${t("compaction.round", { n: compactionItem.pass ?? 0 })}` : "")
       : compactionItem.failed
         ? (compactionItem.attempt ?? 0) > 0
           ? t("compaction.failedAttempt", { n: compactionItem.attempt ?? 0 })
           : t("compaction.failed")
-        : t("compaction.title")
-    : workStatusLabel(effectiveDurationMs, hasRunningWork, t);
+        : t("compaction.title") + ((compactionItem.pass ?? 0) > 1 ? ` · ${t("compaction.rounds", { n: compactionItem.pass ?? 0 })}` : "")
+    : undefined;
+  const baseLabel = compactionBaseLabel ?? workStatusLabel(effectiveDurationMs, hasRunningWork, t);
   // 任务 556/973: live "40s · 12.3k tokens · 45 tokens/s" readout while the
   // pass is pending, fed by throttled backend CompactionProgress events plus
   // the reducer's compaction_started stamp. The shared compactionLiveReadout

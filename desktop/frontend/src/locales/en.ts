@@ -4849,6 +4849,8 @@ export const en = {
   "compaction.working": "Compacting conversation…",
   "compaction.title": "Context compacted",
   "compaction.messages": "{n} messages",
+  "compaction.round": "(round {n})",
+  "compaction.rounds": "{n} rounds",
   "compaction.showSummary": "show summary",
   "compaction.hideSummary": "hide summary",
   "compaction.failed": "Context compaction failed",
