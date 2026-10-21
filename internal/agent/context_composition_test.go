@@ -8,6 +8,17 @@ import (
 	"reasonix/internal/provider"
 )
 
+// coldTextTokens pins the cold ~4-bytes-per-token fallback (no session
+// calibration), matching the byte-based estimator the pre-任务1025 composition
+// used — so bucketing tests keep their exact token arithmetic while the agent
+// method injects the session-calibrated ratio.
+func coldTextTokens(s string) int {
+	if s == "" {
+		return 0
+	}
+	return (len(s) + 3) / 4
+}
+
 // Task 442 — the composition segments must bucket the visible view exactly:
 // system messages → system prompt, skill-tool results → skills, mcp__ schemas
 // → MCP tools, other schemas → builtin tools, everything else → messages, and
@@ -29,7 +40,7 @@ func TestComputeContextCompositionBucketsAndSums(t *testing.T) {
 		{Name: "mcp__fs__read", Description: strings.Repeat("m", 200), Parameters: json.RawMessage(`{"type":"object","properties":{}}`)},
 	}
 
-	comp := computeContextComposition(messages, schemas)
+	comp := computeContextComposition(messages, schemas, coldTextTokens)
 
 	if comp.SystemPromptTokens != 100 {
 		t.Fatalf("system prompt segment = %d, want 100", comp.SystemPromptTokens)
@@ -55,8 +66,31 @@ func TestComputeContextCompositionBucketsAndSums(t *testing.T) {
 }
 
 func TestComputeContextCompositionEmptyViewIsEmpty(t *testing.T) {
-	comp := computeContextComposition(nil, nil)
+	comp := computeContextComposition(nil, nil, coldTextTokens)
 	if comp.TotalTokens != 0 || comp.SystemPromptTokens != 0 || comp.MessageTokens != 0 {
 		t.Fatalf("empty view must measure zero: %+v", comp)
+	}
+}
+
+// 任务1025（缺口5验收）：composition TotalTokens 与 gauge 主读数
+// （estimatedVisibleRequestTokens）同口径——用同一 normalized 视图与校准估算器
+// 后，分项和必须等于主读数，不再出现「566.3K vs 488.5K」的对不上。
+func TestContextCompositionTotalMatchesGaugeHeadline(t *testing.T) {
+	a := &Agent{sess: sessionRuntime{output: outputBudgetState{}}}
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: strings.Repeat("sys-prompt-", 100)},
+		{Role: provider.RoleUser, Content: strings.Repeat("question-", 200)},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("answer-", 150), ReasoningContent: strings.Repeat("think-", 60)},
+	}
+	a.sess.conversation = NewSession("")
+	a.sess.conversation.AddBatch(msgs...)
+
+	gauge := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
+	comp := a.ContextComposition()
+	if comp.TotalTokens <= 0 {
+		t.Fatalf("composition total = %d, want > 0", comp.TotalTokens)
+	}
+	if comp.TotalTokens != gauge {
+		t.Fatalf("composition total = %d, want the gauge headline %d (缺口5: 分项和必须等于主读数)", comp.TotalTokens, gauge)
 	}
 }

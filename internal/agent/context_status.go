@@ -30,6 +30,12 @@ type ContextMaintenanceSnapshot struct {
 
 // ContextBudgetSnapshot is the optional send-time admission view for the
 // desktop Context Panel. All fields are optional for older frontends.
+//
+// 任务1025（显示层收口）：Observed* 三字段是 provider 上次响应的实测值
+// （admission 权威源），估算链（PromptTokens / 窗口环已用）在两次请求之间
+// 是近似。前端按 ObservedPrompt 是否 >0 决定显示「实测」还是「估算」——
+// 切 provider 后 admission 随 reset 清空，首轮落估算并标记，新首轮响应回来
+// 取新实测切回「实测」。
 type ContextBudgetSnapshot struct {
 	WindowMode            string
 	LimitMode             string
