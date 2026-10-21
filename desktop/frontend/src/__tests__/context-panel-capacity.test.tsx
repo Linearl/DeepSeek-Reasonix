@@ -184,6 +184,43 @@ ok(!validStrong.includes("3.7"), "valid projection never surfaces the canonical 
 
 await unmountScenario(validRoot);
 
+// ── 任务1025: 读数来源标记——「实测」/「估算」+ 预算卡移除 + 压缩线 tooltip ──
+// observedPrompt>0（上次响应已校准）→ 「实测」标记；=0（新会话首轮/切 provider
+// 首轮）→ 「估算」标记。两场景都渲染在容量卡头部。
+{
+  const measuredRoot = await renderScenario({
+    used: 546_500, window: 1_000_000, sessionTokens: 546_500, compactRatio: 0.8,
+    maintenance: { projectedTokens: 546_500, projectionValid: true, triggerTokens: 800_000,
+      contextBudget: { windowTokens: 1_000_000, promptTokens: 545_900, observedPrompt: 545_900 } },
+  });
+  const measuredCapacity = document.querySelector(".context-panel__capacity-card");
+  const measuredBadge = measuredCapacity?.querySelector(".context-panel__readout-source");
+  const measuredBadgeText = measuredBadge?.textContent ?? "";
+  ok(["实测", "Measured", "實測"].includes(measuredBadgeText),
+    `measured scenario renders the 实测 marker (got ${JSON.stringify(measuredBadgeText)})`);
+  ok((measuredBadge as HTMLElement | null)?.getAttribute("title") !== null,
+    "the readout-source marker carries a tooltip explaining 实测/估算");
+  // 验收⑦: 预算卡已整卡移除——上下文面板不再有预算卡区段。
+  eq(document.querySelector(".context-panel__budget"), null, "the context budget card is removed (验收⑦)");
+  eq(document.querySelector(".context-panel__budget-grid"), null, "the budget grid is removed with the card");
+  // 验收③: 压缩线来源 tooltip 可见。
+  const compactMarker = measuredCapacity?.querySelector(".context-panel__compact-marker");
+  ok((compactMarker as HTMLElement | null)?.getAttribute("title")?.length ?? 0 > 0,
+    "the compact-line marker carries a tooltip naming its source (窗口×压缩比)");
+  await unmountScenario(measuredRoot);
+
+  const estimatedRoot = await renderScenario({
+    used: 1_200, window: 1_000_000, sessionTokens: 1_200, compactRatio: 0.8,
+    maintenance: { projectedTokens: 1_200, projectionValid: true, triggerTokens: 800_000,
+      contextBudget: { windowTokens: 1_000_000, promptTokens: 0, observedPrompt: 0 } },
+  });
+  const estimatedCapacity = document.querySelector(".context-panel__capacity-card");
+  const estimatedBadgeText = estimatedCapacity?.querySelector(".context-panel__readout-source")?.textContent ?? "";
+  ok(["估算", "Estimated", "估算"].includes(estimatedBadgeText),
+    `first-turn scenario renders the 估算 marker (got ${JSON.stringify(estimatedBadgeText)})`);
+  await unmountScenario(estimatedRoot);
+}
+
 // 任务834: 渲染场景钉——已用读数贴近压缩阈值（79% vs 80%）时阈值 pin 的
 // 文字标签让位，两个「NN%」不再互相遮挡；远离阈值时照常双 pin 显示。
 const nearRoot = await renderScenario({ used: 790, window: 1_000, sessionTokens: 790, compactRatio: 0.8 });

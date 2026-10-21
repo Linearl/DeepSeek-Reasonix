@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { app } from "../lib/bridge";
 import { contextWindowPercentages } from "../lib/contextWindow";
+import { contextReadoutSource, contextReadoutSourceKey } from "../lib/contextPanelUtils";
 import { useI18n } from "../lib/i18n";
 import type { DictKey } from "../locales/en";
 import { formatMoneyLocalized } from "../lib/money";
@@ -171,6 +172,12 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   const compactTokens = windowTokens > 0 ? Math.round(windowTokens * compactRatio) : 0;
   const tokensToCompact = compactTokens > used ? compactTokens - used : 0;
   const ringOffset = RING_C * (1 - usagePct / 100);
+  // 任务1025: 读数来源标记——「实测」=上次响应已校准；「估算」=新会话首轮/
+  // 切 provider 首轮。与右栏容量卡同一权威值口径与标记。
+  const observedPrompt = info?.contextBudget?.observedPrompt ?? context?.contextBudget?.observedPrompt ?? context?.maintenance?.contextBudget?.observedPrompt ?? 0;
+  const readoutSource = contextReadoutSource(observedPrompt);
+  const readoutSourceLabel = t(contextReadoutSourceKey(readoutSource));
+  const readoutSourceTitle = t("context.readoutSourceTitle");
   const elapsed = info?.elapsedMs && info.elapsedMs > 0 ? fmtDuration(info.elapsedMs, t) : undefined;
   const quoteStatus = info?.sessionCostQuote?.displayStatus;
   const sessionCostBucketed = quoteStatus === "bucketed" || info?.sessionCostQuote?.aggregateMode === "currency_buckets";
@@ -247,12 +254,16 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
             <span className="context-ring-popover__title">
               {fmtCompact(used)} / {fmtCompact(windowTokens)}
             </span>
+            {/* 任务1025: 读数来源标记——「实测」/「估算」，与右栏容量卡同一口径。 */}
+            <span className="context-ring-popover__readout-source" title={readoutSourceTitle}>
+              {readoutSourceLabel}
+            </span>
             <span className="context-ring-popover__pct">{rawUsagePct}%</span>
           </div>
           <div className="context-ring-popover__gauge">
             <div className="context-ring-popover__bar">
               <span className="context-ring-popover__fill" style={{ width: `${usagePct}%` }} />
-              <span className="context-ring-popover__mark context-ring-popover__mark--compact" style={{ left: `${compactPct}%` }} />
+              <span className="context-ring-popover__mark context-ring-popover__mark--compact" style={{ left: `${compactPct}%` }} title={t("context.windowCompactThresholdTitle")} />
               <span className="context-ring-popover__mark context-ring-popover__mark--attention" style={{ left: `30%` }} />
             </div>
           </div>

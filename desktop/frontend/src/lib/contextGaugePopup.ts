@@ -90,11 +90,14 @@ const SEGMENT_DEFS: ReadonlyArray<{
  * exactly 100.0. Largest-remainder distribution puts each leftover tenth on
  * the segment that lost the most to flooring, so the segmented bar can never
  * disagree with its own legend (rounding drift is a display bug, not data).
- * The denominator is the segment sum — shares describe the actual
- * composition even if a host ever reports a total the segments do not reach.
+ * The denominator defaults to the segment sum; pass an explicit totalTokens to
+ * make shares reflect the host-reported total (任务1025 缺口6: 分段条百分比
+ * 分母改用 totalTokens，消息 94.8% → 81.8% 对齐主读数)。
  */
-export function normalizeShares(tokens: number[]): number[] {
-  const total = tokens.reduce((sum, value) => sum + Math.max(0, value), 0);
+export function normalizeShares(tokens: number[], totalTokens?: number): number[] {
+  const segmentSum = tokens.reduce((sum, value) => sum + Math.max(0, value), 0);
+  const explicitTotal = totalTokens ?? 0;
+  const total = explicitTotal > 0 ? Math.max(explicitTotal, segmentSum) : segmentSum;
   if (total <= 0) return tokens.map(() => 0);
   const tenths = tokens.map((value) => Math.floor((Math.max(0, value) / total) * 1000));
   let assigned = tenths.reduce((sum, value) => sum + value, 0);
@@ -130,6 +133,10 @@ export function normalizeShares(tokens: number[]): number[] {
  * the popup hides the segmented bar instead of drawing zeros. Zero-token
  * buckets (the reserved "other" row today, "images" on a pre-1040 host) are
  * dropped rather than rendered as a misleading 0.0% row.
+ *
+ * 任务1025（缺口6）：分母改用 totalTokens（主读数口径），并在分项和小于
+ * totalTokens 时补一个「其他」桶承载差额，使 Σtokens = totalTokens 且
+ * Σshare = 100%——分段条百分比不再用分项和当分母（消息 94.8% → 81.8%）。
  */
 export function compositionSegments(
   composition: ContextCompositionInfo | null | undefined,
@@ -138,11 +145,20 @@ export function compositionSegments(
   const visible = SEGMENT_DEFS.filter((def) => Math.max(0, def.tokens(composition)) > 0);
   const tokens = visible.map((def) => Math.max(0, def.tokens(composition)));
   if (tokens.length === 0) return [];
-  const shares = normalizeShares(tokens);
-  return visible.map((def, index) => ({
+  const segmentSum = tokens.reduce((sum, value) => sum + value, 0);
+  const totalTokens = Math.max(composition.totalTokens, segmentSum);
+  // 补「其他」桶承载分项和与 totalTokens 的差额（缺口6：Σtokens = totalTokens）。
+  const remainder = totalTokens - segmentSum;
+  const rows: CompositionSegment[] = visible.map((def, index) => ({
     key: def.key,
     labelKey: def.labelKey,
     tokens: tokens[index],
-    share: shares[index],
+    share: 0,
   }));
+  if (remainder > 0) {
+    rows.push({ key: "other", labelKey: "context.segment.other", tokens: remainder, share: 0 });
+  }
+  const allTokens = rows.map((row) => row.tokens);
+  const shares = normalizeShares(allTokens, totalTokens);
+  return rows.map((row, index) => ({ ...row, share: shares[index] }));
 }

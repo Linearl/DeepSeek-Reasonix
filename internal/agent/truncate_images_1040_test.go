@@ -188,7 +188,7 @@ func TestContextCompositionBucketsImages(t *testing.T) {
 		{Role: provider.RoleSystem, Content: "sys"},
 		{Role: provider.RoleUser, Origin: provider.MessageOriginUser, Content: "screenshot", Images: []string{imgURL}},
 	}
-	comp := computeContextComposition(messages, nil)
+	comp := computeContextComposition(messages, nil, coldTextTokens)
 	oneImage := imageEstimateTokens(imgURL)
 	if comp.ImageTokens < oneImage || comp.ImageTokens > oneImage*len(messages) {
 		t.Fatalf("ImageTokens=%d，want 一张图 %d 的整数倍", comp.ImageTokens, oneImage)
@@ -202,14 +202,14 @@ func TestContextCompositionBucketsImages(t *testing.T) {
 	// LocalOnly 消息不进任何桶（与 headline 的 LocalOnly 过滤一致）。
 	local := computeContextComposition([]provider.Message{
 		{Role: provider.RoleTool, LocalOnly: true, Content: strings.Repeat("x", 100)},
-	}, nil)
+	}, nil, coldTextTokens)
 	if local.TotalTokens != 0 {
 		t.Fatalf("LocalOnly 消息进入了分段桶：total=%d", local.TotalTokens)
 	}
 	// 无图会话零变化：只带文本的消息不产生任何 ImageTokens。
 	plain := computeContextComposition([]provider.Message{
 		{Role: provider.RoleUser, Origin: provider.MessageOriginUser, Content: "hello"},
-	}, nil)
+	}, nil, coldTextTokens)
 	if plain.ImageTokens != 0 {
 		t.Fatalf("无图会话 ImageTokens=%d，want 0", plain.ImageTokens)
 	}
