@@ -16,12 +16,12 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.3
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
-	github.com/godbus/dbus/v5 v5.2.3
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
 	github.com/kevinburke/ssh_config v1.6.0
-	github.com/klauspost/compress v1.20.1
-	github.com/larksuite/oapi-sdk-go/v3 v3.12.0
+	github.com/klauspost/compress v1.20.3
+	github.com/larksuite/oapi-sdk-go/v3 v3.12.2
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/pkg/sftp v1.13.11
