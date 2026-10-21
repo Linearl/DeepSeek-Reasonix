@@ -205,19 +205,22 @@ func validateSerialSegment(todos []TodoItem, seg todoSegment) (string, error) {
 	switch headStatus {
 	case "completed":
 		if unfinished >= 0 {
-			return "", fmt.Errorf("phase %d %q is completed but sub-step %d %q is unfinished; complete every sub-step, then sign the phase off with complete_step", seg.head+1, head.Content, unfinished+1, todos[unfinished].Content)
+			// Task 1014, fix c: carry the judged header's level so the model
+			// sees WHAT it was judged by — a demoted level-1 sibling reads as a
+			// phase header and its real siblings become "sub-steps".
+			return "", fmt.Errorf("phase %d %q (level %d) is completed but sub-step %d %q is unfinished; complete every sub-step, then sign the phase off with complete_step — if this item is not meant to be a phase, check its level", seg.head+1, head.Content, head.Level, unfinished+1, todos[unfinished].Content)
 		}
 		return "completed", nil
 	case "archived":
 		// Task 152: archived phase = completed work kept for the record; the
 		// same convergence rule applies.
 		if unfinished >= 0 {
-			return "", fmt.Errorf("phase %d %q is archived but sub-step %d %q is unfinished; finish every sub-step (or abandon it), then archive the phase", seg.head+1, head.Content, unfinished+1, todos[unfinished].Content)
+			return "", fmt.Errorf("phase %d %q (level %d) is archived but sub-step %d %q is unfinished; finish every sub-step (or abandon it), then archive the phase", seg.head+1, head.Content, head.Level, unfinished+1, todos[unfinished].Content)
 		}
 		return "completed", nil
 	case "in_progress":
 		if unfinished >= 0 {
-			return "", fmt.Errorf("phase %d %q cannot be in_progress while sub-step %d %q is unfinished; keep the phase pending, finish its sub-steps in order, then mark the phase in_progress to sign it off", seg.head+1, head.Content, unfinished+1, todos[unfinished].Content)
+			return "", fmt.Errorf("phase %d %q (level %d) cannot be in_progress while sub-step %d %q is unfinished; keep the phase pending, finish its sub-steps in order, then mark the phase in_progress to sign it off", seg.head+1, head.Content, head.Level, unfinished+1, todos[unfinished].Content)
 		}
 		return "in_progress", nil
 	default: // pending head: its sub-steps carry the segment's progress

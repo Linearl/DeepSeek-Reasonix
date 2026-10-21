@@ -19,7 +19,7 @@ func TestApplyTodoOpsReplaceInsertDeleteMove(t *testing.T) {
 	// replace
 	list, err := applyTodoOps(base, []todoOp{{
 		Op: "replace", StepID: "s2",
-		Item: &todoItem{Content: "step two revised", Status: "completed", StepID: "s2"},
+		Item: &todoOpItem{Content: "step two revised", Status: "completed", StepID: "s2"},
 	}})
 	if err != nil || list[1].Content != "step two revised" {
 		t.Fatalf("replace: list=%+v err=%v", list, err)
@@ -27,7 +27,7 @@ func TestApplyTodoOpsReplaceInsertDeleteMove(t *testing.T) {
 	// insert after s1
 	list, err = applyTodoOps(base, []todoOp{{
 		Op: "insert", AfterStepID: "s1",
-		Item: &todoItem{Content: "new mid", Status: "pending", StepID: "s1b"},
+		Item: &todoOpItem{Content: "new mid", Status: "pending", StepID: "s1b"},
 	}})
 	if err != nil || len(list) != 4 || list[1].StepID != "s1b" {
 		t.Fatalf("insert: list=%+v err=%v", list, err)
@@ -47,7 +47,7 @@ func TestApplyTodoOpsReplaceInsertDeleteMove(t *testing.T) {
 		t.Fatalf("move: list=%+v err=%v", list, err)
 	}
 	// unknown step
-	if _, err := applyTodoOps(base, []todoOp{{Op: "replace", StepID: "nope", Item: &todoItem{Content: "x", Status: "pending"}}}); err == nil || !strings.Contains(err.Error(), "todo_read") {
+	if _, err := applyTodoOps(base, []todoOp{{Op: "replace", StepID: "nope", Item: &todoOpItem{Content: "x", Status: "pending"}}}); err == nil || !strings.Contains(err.Error(), "todo_read") {
 		t.Fatalf("unknown step should name todo_read, err=%v", err)
 	}
 }

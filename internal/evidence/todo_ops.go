@@ -14,13 +14,50 @@ import (
 // receipt recording (Ledger.Record) and transcript rebuild both replay ops
 // against the reconstructed baseline instead of recording an empty list.
 
+// TodoOpItem is an ops payload item (replace/insert). It mirrors todo_write's
+// ops item JSON but carries Level as a POINTER so "omitted" is distinguishable
+// from an explicit 0: task 1014 fix a — an omitted field inherits the baseline
+// entry's value on replace instead of resetting it. A nil Level means "keep
+// whatever the baseline had" (or, on insert, default to 0, a root/flat item).
+type TodoOpItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ActiveForm string `json:"activeForm,omitempty"`
+	Level      *int   `json:"level,omitempty"`
+	StepID     string `json:"step_id,omitempty"`
+	Owner      string `json:"owner,omitempty"`
+	Running    bool   `json:"running,omitempty"`
+	ParentID   string `json:"parent_id,omitempty"`
+	PlanID     string `json:"plan_id,omitempty"`
+}
+
+// toTodoItem converts an ops payload item into a baseline item, resolving an
+// omitted level to the fallback (the replace target's level, or 0 for insert).
+func (i *TodoOpItem) toTodoItem(levelFallback int) TodoItem {
+	level := levelFallback
+	if i.Level != nil {
+		level = *i.Level
+	}
+	return TodoItem{
+		Content:    i.Content,
+		Status:     i.Status,
+		ActiveForm: i.ActiveForm,
+		Level:      level,
+		StepID:     i.StepID,
+		Owner:      i.Owner,
+		Running:    i.Running,
+		ParentID:   i.ParentID,
+		PlanID:     i.PlanID,
+	}
+}
+
 // TodoOp is one incremental edit against the host's current todo baseline.
 // The JSON shape mirrors the todo_write tool's ops items.
 type TodoOp struct {
-	Op          string    `json:"op"` // replace | insert | delete | move
-	StepID      string    `json:"step_id,omitempty"`
-	AfterStepID string    `json:"after_step_id,omitempty"`
-	Item        *TodoItem `json:"item,omitempty"`
+	Op          string       `json:"op"` // replace | insert | delete | move
+	StepID      string       `json:"step_id,omitempty"`
+	AfterStepID string       `json:"after_step_id,omitempty"`
+	Item        *TodoOpItem  `json:"item,omitempty"`
 }
 
 // ApplyTodoOps mutates a copy of baseline according to ops and returns the
@@ -53,7 +90,29 @@ func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
 			if op.Item == nil {
 				return nil, fmt.Errorf("ops[%d] replace: item is required", i)
 			}
-			next := *op.Item
+			// Task 1014, fix a: replace is a PARTIAL update. The payload is
+			// resolved against the baseline entry BEFORE it overwrites: fields
+			// the item omits inherit the baseline value instead of resetting to
+			// zero — most damagingly level, where a level-1 sub-step silently
+			// became a level-0 root, its level-1 siblings then read as ITS
+			// sub-steps, and the write died on "phase completed but sub-step
+			// unfinished". An explicitly sent field (including level 0) wins.
+			next := op.Item.toTodoItem(list[idx].Level)
+			if op.Item.ActiveForm == "" {
+				next.ActiveForm = list[idx].ActiveForm
+			}
+			if op.Item.Owner == "" {
+				next.Owner = list[idx].Owner
+			}
+			if !op.Item.Running {
+				next.Running = list[idx].Running
+			}
+			if op.Item.ParentID == "" {
+				next.ParentID = list[idx].ParentID
+			}
+			if op.Item.PlanID == "" {
+				next.PlanID = list[idx].PlanID
+			}
 			if strings.TrimSpace(next.StepID) == "" {
 				next.StepID = list[idx].StepID
 			}
@@ -68,7 +127,9 @@ func ApplyTodoOps(baseline []TodoItem, ops []TodoOp) ([]TodoItem, error) {
 			if op.Item == nil || strings.TrimSpace(op.Item.Content) == "" {
 				return nil, fmt.Errorf("ops[%d] insert: item.content is required", i)
 			}
-			next := *op.Item
+			// Task 1014: a new item defaults to level 0 (a root/flat item) when
+			// the payload omits level; an explicit level wins.
+			next := op.Item.toTodoItem(0)
 			// Task 972, fix 2: an insert without step_id is no longer an error —
 			// the host assigns a stable id after the ops are applied, so the
 			// model is not required to mint ids itself.
