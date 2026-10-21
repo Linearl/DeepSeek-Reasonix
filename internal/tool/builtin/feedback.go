@@ -77,7 +77,72 @@ var (
 	feedbackMu     sync.Mutex
 	feedbackHomeMu sync.RWMutex
 	feedbackHome   string
+
+	// 任务1016：双写通知钩子。md 仍是权威源（写失败则整体失败），通知是
+	// 加投递的一半——意见箱会话/信件中心由此可见每条新意见。hook 为 nil
+	// （CLI/测试/未接线宿主）时行为与 1016 之前逐字节一致；hook 返回错误
+	// 同样不影响 md 落盘结果（通知是尽力而为，兜底由意见箱的定期扫描
+	// 按 md 补齐），只在返回体里如实标注。
+	feedbackNotifyMu sync.RWMutex
+	feedbackNotify   func(FeedbackNote) error
 )
+
+// FeedbackNote is what the notification half of a dual-write carries: the
+// authoritative md FILENAME (the note's idempotent key — the message cites it
+// so a redelivery never re-files the same note) plus a ≤3-line summary. The
+// full text deliberately does NOT ride the message: heavy content (screenshots,
+// logs) stays in the md only, keeping the message under the single-message
+// size ceiling (1016 采集层裁剪).
+type FeedbackNote struct {
+	// FileName is the base name of the md file just written (e.g.
+	// "feedback-20261020-093000-shortcut-for-panel.md"), never a path.
+	FileName string
+	Kind     string
+	Title    string
+	// Summary is the first ≤3 non-empty lines of the text — enough to triage
+	// in the mail preview, never the whole note.
+	Summary string
+}
+
+// SetFeedbackNotify wires the dual-write notification hook (host seam, same
+// shape as SetHeartbeatManager). Passing nil clears it (tests). Hook errors
+// never fail the submission — see feedbackNotifyNote.
+func SetFeedbackNotify(fn func(FeedbackNote) error) {
+	feedbackNotifyMu.Lock()
+	defer feedbackNotifyMu.Unlock()
+	feedbackNotify = fn
+}
+
+// feedbackSummary folds a note's text to at most maxSummaryLines non-empty
+// lines, trimmed — the message-side excerpt (1016: md carries the payload,
+// the message carries the pointer).
+func feedbackSummary(text string, maxLines int) string {
+	var kept []string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		kept = append(kept, line)
+		if len(kept) >= maxLines {
+			break
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+// feedbackNotifyNote invokes the installed hook, if any. It returns whether a
+// hook ran and any error; the caller never turns an error into a failed
+// submission (md is the authoritative half).
+func feedbackNotifyNote(note FeedbackNote) (bool, error) {
+	feedbackNotifyMu.RLock()
+	fn := feedbackNotify
+	feedbackNotifyMu.RUnlock()
+	if fn == nil {
+		return false, nil
+	}
+	return true, fn(note)
+}
 
 // SetFeedbackHome overrides the inbox directory (tests only).
 func SetFeedbackHome(dir string) {
@@ -442,6 +507,25 @@ func (submitFeedback) Execute(ctx context.Context, args json.RawMessage) (string
 	if err != nil {
 		return "", err
 	}
-	payload, _ := json.Marshal(map[string]any{"path": path, "kind": p.Kind})
-	return string(payload), nil
+	// 任务1016 双写：md 落盘之后向意见箱追加一条通知消息（引用 md 文件名 +
+	// ≤3 行摘要）。通知失败不影响提交结果——md 是权威源，兜底扫描会补齐。
+	note := FeedbackNote{
+		FileName: filepath.Base(path),
+		Kind:     p.Kind,
+		Title:    strings.TrimSpace(p.Title),
+		Summary:  feedbackSummary(p.Text, 3),
+	}
+	if note.Title == "" {
+		note.Title = firstLine(p.Text)
+	}
+	ran, notifyErr := feedbackNotifyNote(note)
+	payload := map[string]any{"path": path, "kind": p.Kind}
+	if ran {
+		payload["notified"] = notifyErr == nil
+		if notifyErr != nil {
+			payload["notifyError"] = notifyErr.Error()
+		}
+	}
+	result, _ := json.Marshal(payload)
+	return string(result), nil
 }

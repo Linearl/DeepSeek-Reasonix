@@ -338,9 +338,21 @@ func (a *App) startupStartBackgroundLoops() {
 	// validation chain the settings UI uses; CLI/serve sessions keep the tool
 	// failing with a "no store attached" error.
 	builtin.SetQuickCommandsStore(newQuickCommandsStoreAdapter(a))
+	// 任务 1016：意见箱并入信件中心——submit_feedback 的双写通知半边在此接线。
+	// md 已由工具自身落盘（权威源），这里投递一条引用 md 文件名的通知消息到
+	// 固定名「意见箱」会话（mint-once，地址注册表持久化）；通知失败不影响
+	// 提交结果（工具返回体标注），兜底由意见箱的定期扫描按 md 补齐。
+	feedbackNotifier := newFeedbackMailNotifier(a)
+	builtin.SetFeedbackNotify(func(note builtin.FeedbackNote) error {
+		return feedbackNotifier.NotifyFeedbackNote(a.bootContext(), note)
+	})
 
 	a.sessionCollab = newSessionCollabPump(a)
 	a.sessionCollab.Start()
+	// 任务 1016 兜底：周期性补投缺失的通知（md 缺 notified 标记 ⇒ 补投 + 打标）。
+	// 与泵无关（投递发生在 submit_feedback 调用内），这里只保证「消息丢失也能
+	// 最终一致」。
+	a.startFeedbackBackfillLoop(a.bootContext())
 	// 任务731: the abnormal-stop auto-resume watchdog is purely event-driven
 	// (no ticker): the S1 tap lives in tabEventSink.Emit, the S2 escalation
 	// in the 579 bridge's exhaustion hook.

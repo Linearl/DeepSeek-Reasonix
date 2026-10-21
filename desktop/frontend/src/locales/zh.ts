@@ -5402,6 +5402,10 @@ export const zh: Record<DictKey, string> = {
 "sessionMonitor.recentEvictions": "最近驱逐",
 "sessionMonitor.stageRow": "{stage} · {ms} ms",
   "collabInbox.channel": "群聊频道",
+  // 任务 1016：意见箱来源标签专属说明（区别于群聊频道）。
+  "collabInbox.channelFeedback": "意见箱来源",
+  // 任务 1016 增强项②：条目可点开对应 md（意见箱通知指向权威 md 文件）。
+  "collabInbox.openSource": "打开来源",
   "collabInbox.title": "信件中心",
   "collabInbox.close": "关闭",
   "collabInbox.empty": "暂无信件",

@@ -12,6 +12,7 @@ import (
 	"reasonix/internal/collabinbox"
 	"reasonix/internal/config"
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/tool/builtin"
 )
 
 // collabInboxCtx is the context every panel method hands down. Wails bindings
@@ -82,7 +83,20 @@ func scanIdentityDirectoryCached() []sessioncollab.Identity {
 // 任务 600：扫描结果在构店时查表成 map——resolver 必须 O(1)（与查询工具
 // query_collab_mail_tool 的既有注释契约对齐），绝不再对每条消息扫一遍目录。
 func collabInboxStore() *collabinbox.Store {
+	// 任务 1016：信件中心「可点开对应 md」——把意见箱目录注入给数据层，通知
+	// 条目据此把 `md: <filename>` 解析成绝对路径（refPath）。
+	collabinbox.SetFeedbackRefPathRoot(feedbackInboxDirPath())
 	return newCollabInboxStore(config.SessionCollabMailDir(), scanIdentityDirectoryCached)
+}
+
+// feedbackInboxDirPath resolves the feedback-inbox directory for the mail
+// center's refPath derivation (best-effort: an error just means no entries
+// carry a refPath).
+func feedbackInboxDirPath() string {
+	if dir, err := builtin.FeedbackInboxDir(); err == nil {
+		return dir
+	}
+	return ""
 }
 
 // newCollabInboxStore is the injectable constructor behind collabInboxStore

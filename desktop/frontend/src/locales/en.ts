@@ -5411,6 +5411,10 @@ export const en = {
 "sessionMonitor.recentEvictions": "Recent evictions",
 "sessionMonitor.stageRow": "{stage} · {ms} ms",
   "collabInbox.channel": "Group channel",
+  // 任务 1016: feedback-inbox source label (distinct from the group channel).
+  "collabInbox.channelFeedback": "Feedback inbox",
+  // 任务 1016 增强项②: an entry can open its referenced md file.
+  "collabInbox.openSource": "Open source",
   "collabInbox.title": "Mail Center",
   "collabInbox.close": "Close",
   "collabInbox.empty": "No mail yet",
