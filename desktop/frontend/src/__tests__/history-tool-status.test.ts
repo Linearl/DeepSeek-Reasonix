@@ -170,5 +170,31 @@ eq(
   true,
   "repeated __reasonix_local_only__ toolCallIds uniquify so transcript row keys cannot collide after restart",
 );
+
+// 任务1047 前端半侧钉（恢复重放不丢工具块）：backend 把 LocalOnly 恢复重放
+// 消息上挂的 ToolCalls 转成规范 assistant+toolCalls 行之后（Go 侧修复在
+// desktop/final_readiness_history.go），前端 item 转换必须把这些行转成工具
+// item——历史上这批调用在 backend 就被吞掉，前端无从渲染；本钉保证契约的
+// 前端半边不再回退（后端半边由 desktop/history_provider_failure_test.go 钉）。
+const recoveryRowCalls = toolItems([
+  { role: "user", content: "继续完成任务" },
+  {
+    role: "assistant",
+    content: "",
+    toolCalls: [
+      { id: "call-keep-1", name: "bash", arguments: "", argumentsArchived: true, subject: "ls" },
+      { id: "call-keep-2", name: "read_file", arguments: "", argumentsArchived: true, subject: "notes.txt" },
+    ],
+  },
+  { role: "notice", level: "info", code: "cancelled_turn_display", content: "This turn was interrupted." },
+  { role: "user", content: "继续" },
+] as HistoryMessage[]);
+eq(recoveryRowCalls.length, 2, "recovery-replay assistant rows keep both tool blocks (no block loss between thinking segments)");
+eq(
+  recoveryRowCalls[0]?.kind === "tool" && recoveryRowCalls[0].id === "call-keep-1" && recoveryRowCalls[1]?.kind === "tool" && recoveryRowCalls[1].id === "call-keep-2",
+  true,
+  "recovery-replay tool items keep their canonical toolCallId identity and order",
+);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
