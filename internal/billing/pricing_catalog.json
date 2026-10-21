@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "source": "tl 1044 首批三家内置价目（用户 2026-10-21 截图口径）；DeepSeek 高峰时段沿用既有北京工作日双窗判定（1-4/6-10 UTC），MiMo/GLM 平价无时段规则",
+  "schedules": {
+    "deepseek-v4-flash-2026-10-21": {
+      "id": "deepseek-v4-flash-2026-10-21",
+      "effectiveFrom": "2026-10-21T00:00:00Z",
+      "peakMultiplier": 2,
+      "peakBand": "deepseek_workday_peak",
+      "docURL": "https://api-docs.deepseek.com/quick_start/pricing",
+      "notes": "基础价=空闲时段价，高峰=基础价×2（DeepSeek 官方口径：周末与法定节假日全天空闲）"
+    }
+  },
+  "entries": [
+    {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "currency": "CNY",
+      "cacheHit": 0.02,
+      "input": 1,
+      "output": 4,
+      "scheduleId": "deepseek-v4-flash-2026-10-21",
+      "docURL": "https://api-docs.deepseek.com/quick_start/pricing",
+      "billingMode": "payg",
+      "notes": "V4.1-Flash-1017 空闲价；高峰按 scheduleId ×2（0.04/2/8）"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "currency": "CNY",
+      "cacheHit": 0.15,
+      "input": 4.5,
+      "output": 13.5,
+      "scheduleId": "deepseek-v4-flash-2026-10-21",
+      "docURL": "https://api-docs.deepseek.com/quick_start/pricing",
+      "billingMode": "payg",
+      "notes": "V4-Pro-0813 空闲价；高峰按 scheduleId ×2（0.30/9/27）"
+    },
+    {
+      "provider": "longcat",
+      "model": "LongCat-2.0",
+      "currency": "CNY",
+      "cacheHit": 0.04,
+      "input": 2,
+      "output": 8,
+      "docURL": "https://longcat.chat/platform/docs/zh/pricing/long-cat-2.0",
+      "billingMode": "payg",
+      "notes": "LongCat-2.0 平价（无峰谷）"
+    },
+    {
+      "provider": "longcat",
+      "model": "LongCat-2.0",
+      "currency": "USD",
+      "cacheHit": 0.006,
+      "input": 0.3,
+      "output": 1.2,
+      "docURL": "https://longcat.chat/platform/docs/Pricing/LongCat-2.0.html",
+      "billingMode": "payg",
+      "notes": "LongCat-2.0 平价（无峰谷）"
+    },
+    {
+      "provider": "mimo",
+      "model": "mimo-v2.5-pro",
+      "currency": "CNY",
+      "cacheHit": 0.025,
+      "input": 3,
+      "output": 6,
+      "docURL": "https://mimo.mi.com/docs/price/pay-as-you-go",
+      "billingMode": "payg",
+      "notes": "MiMo v2.5 Pro 平价（v2.5 已于 2026-10-21 下线，保留供历史会话回放）"
+    },
+    {
+      "provider": "mimo",
+      "model": "mimo-v2.5",
+      "currency": "CNY",
+      "cacheHit": 0.02,
+      "input": 1,
+      "output": 2,
+      "docURL": "https://mimo.mi.com/docs/price/pay-as-you-go",
+      "billingMode": "payg",
+      "notes": "MiMo v2.5 平价（v2.5 已于 2026-10-21 下线，保留供历史会话回放）"
+    },
+    {
+      "provider": "mimo",
+      "model": "mimo-v2-flash",
+      "currency": "CNY",
+      "cacheHit": 0.07,
+      "input": 0.7,
+      "output": 2.1,
+      "docURL": "https://mimo.mi.com/docs/price/pay-as-you-go",
+      "billingMode": "payg",
+      "notes": "MiMo v2 Flash 平价"
+    },
+    {
+      "provider": "mimo",
+      "model": "mimo-v2.5-pro",
+      "currency": "CNY",
+      "cacheHit": 0.025,
+      "input": 3,
+      "output": 6,
+      "docURL": "https://platform.xiaomimimo.com/token-plan",
+      "billingMode": "subscription_equivalent",
+      "notes": "Token Plan 计价等价于 PAYG（套餐额度与按量不互通）"
+    },
+    {
+      "provider": "mimo",
+      "model": "mimo-v2.5",
+      "currency": "CNY",
+      "cacheHit": 0.02,
+      "input": 1,
+      "output": 2,
+      "docURL": "https://platform.xiaomimimo.com/token-plan",
+      "billingMode": "subscription_equivalent",
+      "notes": "Token Plan 计价等价于 PAYG（套餐额度与按量不互通）"
+    }
+  ]
+}

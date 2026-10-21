@@ -119,10 +119,17 @@ func (e *ProviderEntry) ProviderBillingMode() string {
 	}
 }
 
-// RateCardForModel builds a billing.RateCard for the active model price.
+// RateCardForModel builds a billing.RateCard for the active model price. A
+// provider that never wrote a price for the model falls back to the embedded
+// official table (task 1044: 缺价回退内置表，不再以空 RateCard 直通导致
+// missing_price_or_usage 使整会话费用失效)。A configured zero price is a
+// deliberate custom rate and stays as-is.
 func (e *ProviderEntry) RateCardForModel(model string) billing.RateCard {
 	p := e.PriceForModel(model)
 	if p == nil {
+		if card, ok := billing.OfficialRateCardFor(officialProviderKind(e), strings.TrimSpace(model), e.ProviderBillingCurrency()); ok {
+			return card
+		}
 		return billing.RateCard{Currency: e.ProviderBillingCurrency()}
 	}
 	cur := billing.NormalizeCurrency(p.Currency)

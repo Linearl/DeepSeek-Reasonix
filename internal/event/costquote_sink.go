@@ -152,11 +152,17 @@ func EnsureCostQuote(e Event, ctx *QuoteContext) *billing.CostQuote {
 		return q
 	}
 	if e.Pricing == nil {
-		q := billing.CostQuote{
-			Estimated: true, CostComplete: false, DisplayComplete: false, Complete: false,
-			DisplayStatus: billing.DisplayStatusUnavailable, IncompleteReason: "no_price",
-			ModelRef: e.ModelRef, UsageSource: e.UsageSource,
-		}
+		// Task 1044 零价兜底: an unpriced model bills 0 and marks the quote
+		// partial_priced instead of failing the whole session cost. The
+		// provider billing currency is unknown at this layer, so the quote
+		// stays in the display request's currency (CNY when none was asked).
+		displayCurrency := billing.NormalizeCurrency(display.Currency)
+		q := billing.PartialPricedQuote(billing.QuoteInput{
+			Usage:       usageTokens(e.Usage),
+			OccurredAt:  now,
+			ModelRef:    e.ModelRef,
+			UsageSource: e.UsageSource,
+		}, displayCurrency)
 		return &q
 	}
 	pricingCtx := ctx.pricingContext(e.ModelRef)
