@@ -17,7 +17,7 @@ func TestTodoOpsCarryOwnerAndRunningMarkers(t *testing.T) {
 	ops := []todoOp{{
 		Op:     "replace",
 		StepID: "s1",
-		Item:   &todoItem{Content: "sub", Status: "pending", StepID: "s1", Owner: "subagent:api", Running: true},
+		Item:   &todoOpItem{Content: "sub", Status: "pending", StepID: "s1", Owner: "subagent:api", Running: true},
 	}}
 	list, err := applyTodoOps(baseline, ops)
 	if err != nil {

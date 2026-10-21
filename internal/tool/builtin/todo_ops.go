@@ -14,10 +14,29 @@ import (
 // tool-facing JSON shape and the conversion into the tool's item type.
 
 type todoOp struct {
-	Op          string    `json:"op"` // replace | insert | delete | move
-	StepID      string    `json:"step_id,omitempty"`
-	AfterStepID string    `json:"after_step_id,omitempty"`
-	Item        *todoItem `json:"item,omitempty"`
+	Op          string `json:"op"` // replace | insert | delete | move
+	StepID      string `json:"step_id,omitempty"`
+	AfterStepID string `json:"after_step_id,omitempty"`
+	// Item is the ops payload (task 1014): Level is a *int so the JSON layer
+	// distinguishes an omitted level (nil — inherit the baseline entry's value
+	// on replace, default to 0 on insert) from an explicit level 0. The rest of
+	// the payload shape matches todoItem's ops fields.
+	Item *todoOpItem `json:"item,omitempty"`
+}
+
+// todoOpItem is the tool-side ops payload item. It mirrors todoItem's fields
+// but carries Level as a pointer (task 1014): nil = omitted = inherit on
+// replace.
+type todoOpItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ActiveForm string `json:"activeForm,omitempty"`
+	Level      *int   `json:"level,omitempty"`
+	StepID     string `json:"step_id,omitempty"`
+	Owner      string `json:"owner,omitempty"`
+	Running    bool   `json:"running,omitempty"`
+	ParentID   string `json:"parent_id,omitempty"`
+	PlanID     string `json:"plan_id,omitempty"`
 }
 
 // applyTodoOps mutates a copy of baseline according to ops and returns the
@@ -42,8 +61,17 @@ func toEvidenceOps(ops []todoOp) []evidence.TodoOp {
 			AfterStepID: op.AfterStepID,
 		}
 		if op.Item != nil {
-			item := toEvidenceTodo(*op.Item)
-			converted.Item = &item
+			converted.Item = &evidence.TodoOpItem{
+				Content:    op.Item.Content,
+				Status:     op.Item.Status,
+				ActiveForm: op.Item.ActiveForm,
+				Level:      op.Item.Level, // pointer passes through: nil = omitted
+				StepID:     op.Item.StepID,
+				Owner:      op.Item.Owner,
+				Running:    op.Item.Running,
+				ParentID:   op.Item.ParentID,
+				PlanID:     op.Item.PlanID,
+			}
 		}
 		out = append(out, converted)
 	}
