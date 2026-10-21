@@ -381,11 +381,15 @@ func TestStartTopicActivationFailureDetachesPreviousAndReattaches(t *testing.T) 
 	app.activeTabID = tabA.ID
 
 	// An external holder makes topic B's build fail with the lease-held error.
-	externalLease, err := agent.TryAcquireSessionLease(sessionRuntimeKey(pathB))
-	if err != nil {
-		t.Fatalf("external lease for B: %v", err)
-	}
-	defer externalLease.Release()
+	// tl 1035 ②: the holder must be a FOREIGN pid so the surfaced message is
+	// the foreign branch contract (task 272 L3, "leftover background process") —
+	// an in-process TryAcquire publishes this test's own pid and would render
+	// the task485 self-holder wording, which this test does not own (self-holder
+	// text is pinned by TestSessionLeaseBusyErrorSelfHolderText). The foreign
+	// holder is constructed explicitly: OS lease lock held plus the foreign
+	// identity published inside .lease.lock, no in-process registry entry.
+	releaseForeignLease := holdSessionLeaseLockLikeAnotherProcess(t, sessionRuntimeKey(pathB))
+	defer releaseForeignLease()
 
 	ticketB, err := app.StartTopicActivation(TopicActivationRequest{
 		Scope:         "project",
@@ -400,8 +404,8 @@ func TestStartTopicActivationFailureDetachesPreviousAndReattaches(t *testing.T) 
 	if failed.TabID != ticketB.TabID {
 		t.Fatalf("failed event tab = %q, want %q", failed.TabID, ticketB.TabID)
 	}
-	if !strings.Contains(failed.Error, "already open in another Reasonix window") {
-		t.Fatalf("failed error = %q, want the sanitized lease-busy message", failed.Error)
+	if !strings.Contains(failed.Error, "leftover background process") {
+		t.Fatalf("failed error = %q, want the sanitized foreign-holder lease-busy message", failed.Error)
 	}
 	if strings.Contains(failed.Error, pathB) {
 		t.Fatalf("failed error leaks the session path: %q", failed.Error)

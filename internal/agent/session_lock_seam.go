@@ -58,3 +58,41 @@ func HoldForeignSessionLeaseForTest(path string) (release func(), err error) {
 		unlock()
 	}, nil
 }
+
+// HoldForeignSessionLeaseInLockForTest takes the lease lock the way another
+// process would AND publishes that foreign identity inside .lease.lock
+// itself, exactly like a real second instance does through
+// publishSessionLeaseOwner. The in-lock payload is what LoadSessionLeaseInfo
+// reads on current builds — an empty lock file reads as corrupt and does NOT
+// fall back to the .lease.json sidecar — so a test asserting the foreign
+// holder's busy wording must use this rather than SaveSessionLeaseInfo plus
+// a raw OS lock. tl 1035.
+func HoldForeignSessionLeaseInLockForTest(path, writerID, hostname string, pid int) (release func(), err error) {
+	path = canonicalSessionSavePath(path)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	lock, err := tryTakeSessionLeaseLock(path)
+	if err != nil {
+		return nil, err
+	}
+	info := SessionLeaseInfo{
+		SessionPath: path,
+		WriterID:    writerID,
+		Hostname:    hostname,
+		PID:         pid,
+		AcquiredAt:  time.Now().UTC(),
+	}
+	if err := writeSessionLeaseInfo(lock, info); err != nil {
+		lock.Unlock()
+		return nil, err
+	}
+	if err := SaveSessionLeaseInfo(path, info); err != nil {
+		lock.Unlock()
+		return nil, err
+	}
+	return func() {
+		_ = os.Remove(sessionLeaseInfoPath(path))
+		lock.Unlock()
+	}, nil
+}

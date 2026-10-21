@@ -888,6 +888,26 @@ func TestBuildTabControllerReusesOpenSessionPathRuntime(t *testing.T) {
 	}
 }
 
+// holdSessionLeaseLockLikeAnotherProcess stages path's session lease the way a
+// different Reasonix process would: the OS lease lock is held AND the foreign
+// writer identity (a pid that is not this process) is published inside
+// .lease.lock — the source LoadSessionLeaseInfo reads on current builds (an
+// empty lock file reads as corrupt and never falls back to the .lease.json
+// sidecar) — with no in-process lease registry entry. tl 1035: the
+// foreign-holder busy wording is only reachable when the holder is NOT this
+// process, so tests asserting it must use this instead of
+// agent.TryAcquireSessionLease (which publishes our own pid and renders the
+// self-holder message instead).
+func holdSessionLeaseLockLikeAnotherProcess(t *testing.T, path string) func() {
+	t.Helper()
+	release, err := agent.HoldForeignSessionLeaseInLockForTest(path,
+		"other-host-4242-cafebabe", "other-host", os.Getpid()+1)
+	if err != nil {
+		t.Fatalf("stage foreign lease holder: %v", err)
+	}
+	return release
+}
+
 func TestBuildTabControllerBlocksWhenSessionLeaseHeld(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	dir := desktopSessionDir(globalTabWorkspaceRoot())
@@ -898,11 +918,15 @@ func TestBuildTabControllerBlocksWhenSessionLeaseHeld(t *testing.T) {
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
 		t.Fatalf("write placeholder session: %v", err)
 	}
-	lease, err := agent.TryAcquireSessionLease(path)
-	if err != nil {
-		t.Fatalf("TryAcquireSessionLease: %v", err)
-	}
-	defer lease.Release()
+	// tl 1035 ①: the holder must be a FOREIGN pid so the busy text under test
+	// is the foreign branch ("leftover background process"); the self-holder
+	// branch is pinned by TestSessionLeaseBusyErrorSelfHolderText. An in-process
+	// TryAcquireSessionLease publishes this test's own pid and renders the
+	// task485 self-holder wording instead, so the foreign holder is constructed
+	// explicitly here: OS lease lock held plus the foreign identity published
+	// inside .lease.lock, no in-process lease registry entry.
+	releaseForeignLease := holdSessionLeaseLockLikeAnotherProcess(t, path)
+	defer releaseForeignLease()
 
 	app := NewApp()
 	tab := app.createTabEntryWithID("global", globalTabWorkspaceRoot(), "", "leased")
@@ -927,9 +951,12 @@ func TestBuildTabControllerBlocksWhenSessionLeaseHeld(t *testing.T) {
 	}
 	// The surfaced startup error is the sanitized busy message: the raw lease
 	// error would leak the session path and the holder's host-pid-writer id
-	// into the topbar banner.
-	if !strings.Contains(tab.StartupErr, "already open in another Reasonix window") {
-		t.Fatalf("startup error = %q, want user-facing busy message", tab.StartupErr)
+	// into the topbar banner. tl 1035 ①: the foreign-holder contract (task 272
+	// L3) names the leftover pid and hands over an existing next step — the
+	// task485 self-holder wording ("this Reasonix instance") is pinned by its
+	// own dedicated test, never asserted here.
+	if !strings.Contains(tab.StartupErr, "leftover background process") {
+		t.Fatalf("startup error = %q, want foreign-holder busy message naming the leftover pid", tab.StartupErr)
 	}
 	if strings.Contains(tab.StartupErr, agent.ErrSessionLeaseHeld.Error()) ||
 		strings.Contains(tab.StartupErr, path) {
