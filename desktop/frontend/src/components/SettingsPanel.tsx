@@ -3194,6 +3194,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 1024：composer 草稿优化（改写按钮）——发送左侧新增改写
+                  入口，辅助模型改写草稿回填输入框，不自动发送。默认关=无按钮、
+                  布局零变化；保存即换态免重启。 */}
+              <SettingsField label={labLabel("draftRewrite", t("settings.draftRewrite"))} hint={t("settings.draftRewriteHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalDraftRewrite) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalDraftRewrite(on))}
+                    >
+                      {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {selected === "collabHub" && (

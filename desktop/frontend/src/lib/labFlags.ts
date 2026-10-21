@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "renderArtifact" | "tableWrap" | "sendTargetSelect";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "renderArtifact" | "tableWrap" | "sendTargetSelect" | "draftRewrite";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -77,6 +77,9 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // left/right/both button group is byte-for-byte unchanged. A flip applies
   // on settings save (no restart).
   sendTargetSelect: false,
+  // 任务 1024：composer 草稿优化（发送左侧改写按钮）。默认关（铁律 2）——
+  // 关闭时 composer 工具栏与引入前逐字节一致；保存即换态免重启。
+  draftRewrite: false,
 };
 
 // Task 651: the tab permission indicator is a three-mode setting, not a bool,
@@ -105,7 +108,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} renderArtifact=${flags.renderArtifact} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} renderArtifact=${flags.renderArtifact} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} draftRewrite=${flags.draftRewrite}`,
   );
   for (const listener of listeners) listener();
 }

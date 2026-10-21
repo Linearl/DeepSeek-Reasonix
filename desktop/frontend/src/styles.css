@@ -9023,6 +9023,22 @@ body > .mermaid-diagram--fullscreen {
   background: var(--control-primary-bg);
   color: var(--control-primary-fg);
 }
+/* 任务 1024：草稿优化改写按钮——与 composer__btn 同族的次级动作按钮，
+   只在实验室「草稿优化」开启时渲染（默认关=本块与按钮 DOM 都不存在）。 */
+.composer__btn--rewrite:not(:disabled):hover {
+  color: var(--accent, var(--control-primary-fg));
+  background: color-mix(in srgb, var(--control-primary-bg) 12%, transparent);
+}
+.composer__btn--rewrite:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.composer__rewrite-spin {
+  animation: composer-rewrite-spin 0.9s linear infinite;
+}
+@keyframes composer-rewrite-spin {
+  to { transform: rotate(360deg); }
+}
 .composer__btn--send:not(:disabled):hover {
   background: color-mix(in srgb, var(--control-primary-bg) 88%, #000);
   transform: translateY(-1px);

@@ -13,10 +13,9 @@ import (
 // group 参数时行为与 task 285 完全一致；宿主探针缺席（CLI/测试形态）退回
 // 仅 title 匹配，id 拼法不再静默假命中。
 func TestDirectoryGroupFilterAcceptsTitleAndFlatID(t *testing.T) {
-	// 隔离机器级扫描根（archive / projects/*/sessions 都归 REASONIX_STATE_HOME），
-	// 否则 scanAddressable 会扫进本机真实会话，total 断言失真。
-	stateHome := t.TempDir()
-	t.Setenv("REASONIX_STATE_HOME", stateHome)
+	// 机器级扫描根（archive / projects/*/sessions）已由包级 TestMain 的
+	// testenv.IsolateUserState 统一隔离（任务 1009 门禁保养），本测试不再
+	// 自己 setenv——逐个 setenv 的旧做法会漏（667 黄金测试就漏了）。
 	cfg, refs := infoFixture(t)
 	other := filepath.Join(cfg.SessionDir, "other.jsonl")
 	if err := os.WriteFile(other, []byte("{}\n"), 0o644); err != nil {

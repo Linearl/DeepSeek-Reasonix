@@ -143,6 +143,9 @@ var labFeatureTiers = []labFeatureTier{
 	// 开关按 550 口径定档可选——不开启时工具不注册、前端不渲染卡片，对话与
 	// 引入前完全一致（铁律 2，默认关）。
 	{"renderArtifact", LabTierOptional, []string{"experimental_render_artifact"}},
+	// 任务 1024：composer 草稿优化（改写按钮）。展示类开关按 550 口径定档
+	// 可选——关闭时不渲染按钮、composer 布局零变化（铁律 2，默认关）。
+	{"draftRewrite", LabTierOptional, []string{"experimental_draft_rewrite"}},
 	// ── observability（可观测性，2 项）───────────────────────────
 	{"monitoring", LabTierRecommended, []string{"experimental_session_monitor", "experimental_perf_monitor", "experimental_heap_high_profile"}}, // heap_high_profile 为 task 501 家族子键（rides perf_monitor）
 	{"subagentTps", LabTierOptional, []string{"experimental_subagent_tps"}},
@@ -743,6 +746,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// 任务 944：render_artifact 产物卡片。显式渲染——同 81/123 丢档教训，
 	// omit-on-off 会在下一次渲染时把已保存的开关静默弹回。
 	fmt.Fprintf(&b, "experimental_render_artifact = %v   # task 944: render_artifact tool + ArtifactCard (md/text preview card, html open-only; off = tool unregistered, zero behaviour)\n", c.Agent.ExperimentalRenderArtifact)
+	// 任务 1024：composer 草稿优化（改写按钮）。显式渲染——同 81/123 丢档教训。
+	fmt.Fprintf(&b, "experimental_draft_rewrite = %v   # task 1024: composer rewrite button (auxiliary model rewrites the draft in place; off = no button, layout unchanged)\n", c.Agent.ExperimentalDraftRewrite)
 	// 任务 953/955：能力组披露面+组目录卡（Entry.Group 渲染 + 组卡 + route 推组、
 	// list 摘要档 30×240B + 两道体积闸、search 附组与 call_hint）。显式渲染
 	// ——同 81/123 丢档教训，omit-on-off 会在下一次渲染时把已保存的开关静默弹回。

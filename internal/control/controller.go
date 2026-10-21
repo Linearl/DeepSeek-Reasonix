@@ -4471,6 +4471,16 @@ func (c *Controller) SummarizeUpTo(ctx context.Context, turn int) error {
 	return c.summarizeAt(ctx, turn, false)
 }
 
+// RewriteDraft (任务 1024) hands the composer draft to the auxiliary model
+// channel. The rewrite never enters the turn: no transcript message, no main
+// context, and no admission beyond the auxiliary lane's own budget.
+func (c *Controller) RewriteDraft(ctx context.Context, draft, contextTail string) (string, error) {
+	if c.executor == nil {
+		return "", errors.New("rewrite unavailable: no executor")
+	}
+	return c.executor.RewriteDraft(ctx, draft, contextTail)
+}
+
 func (c *Controller) summarizeAt(ctx context.Context, turn int, from bool) error {
 	if c.executor == nil {
 		return c.rewindFail(fmt.Errorf("checkpoints unavailable"))

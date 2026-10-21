@@ -1703,6 +1703,12 @@ type AgentConfig struct {
 	// default (铁律 2): off = tool unregistered, frontend renders no card —
 	// zero behaviour.
 	ExperimentalRenderArtifact bool `toml:"experimental_render_artifact"`
+	// ExperimentalDraftRewrite (任务 1024 草稿优化) enables the composer's
+	// rewrite button: the auxiliary model rewrites the user's draft into a
+	// structured, unambiguous version that fills the input box — never sent
+	// without the user's confirmation. Off by default (铁律 2): off = no
+	// button, the composer layout is byte-for-byte unchanged.
+	ExperimentalDraftRewrite bool `toml:"experimental_draft_rewrite"`
 	// ExperimentalSessionCollab enables multi-session collaboration tools
 	// (task 19 / 141–145): contact addressing, talk_to_session, task cards.
 	// Off by default.
