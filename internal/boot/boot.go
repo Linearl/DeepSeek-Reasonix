@@ -633,8 +633,33 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		return nil, err
 	}
 	if opts.EffortOverride != nil {
-		entry.Effort = *opts.EffortOverride
-		if entry.Kind == "anthropic" && strings.TrimSpace(entry.Effort) != "" && strings.TrimSpace(entry.Thinking) == "" {
+		// Task 1042 (issue #62): EffortOverride can arrive as persisted residue
+		// (a desktop-tabs.json tab.effort restored onto a model whose current
+		// config declares no effort vocabulary, or a level outside a declared
+		// list) — it never passed through a live /effort command's
+		// NormalizeEffort gate. Passing it through raw hard-failed the whole
+		// session build (resolver.go's NormalizeEffort → errEffortNotConfigurable)
+		// and blocked every subsequent turn; the same-session model switch
+		// (app_model.go's SetModelForTab) already silently drops such a value.
+		// Mirror that contract here so every residual-effort path — startup,
+		// settings-apply, runtime reload, rebind — degrades to provider default
+		// instead of refusing to boot. Plugin-namespaced refs keep their
+		// residue untouched: their effort vocabulary is owned by the sidecar
+		// adapter, not by a config entry this layer can validate.
+		if providerext.PluginRefOwner(modelName) == "" {
+			if normalized, nerr := config.NormalizeEffort(entry, *opts.EffortOverride); nerr != nil {
+				sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn,
+					Text:   "Ignoring the saved reasoning-effort override: this model cannot configure it.",
+					Detail: fmt.Sprintf("saved effort %q is not supported by model %q; the session runs at the model's default depth instead.", *opts.EffortOverride, modelRef)})
+				opts.EffortOverride = nil
+			} else {
+				entry.Effort = normalized
+				opts.EffortOverride = &normalized
+			}
+		} else {
+			entry.Effort = *opts.EffortOverride
+		}
+		if opts.EffortOverride != nil && entry.Kind == "anthropic" && strings.TrimSpace(entry.Effort) != "" && strings.TrimSpace(entry.Thinking) == "" {
 			entry.Thinking = "adaptive"
 		}
 	}

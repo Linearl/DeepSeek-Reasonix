@@ -1033,6 +1033,7 @@ const PROXY_MODES = ["auto", "custom", "off"] as const;
 // user ruling on task 251: four honest tiers, wire keeps the eight-level set).
 // Re-exported here because the subagent pickers import them from this module.
 export { EFFORT_PRESETS, normalizeEffortForMenu } from "../lib/effortTiers";
+import { EFFORT_PRESETS } from "../lib/effortTiers";
 const COMPACT_RATIO_PRESETS = [
   [0.7, "settings.compactRatioPreset.70", "settings.compactRatioPresetEffect.70"],
   [0.8, "settings.compactRatioPreset.80", "settings.compactRatioPresetEffect.80"],
@@ -8063,6 +8064,43 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
             <span className="model-assignment-connection">{toRef(s.defaultModel, s) && toRef(s.defaultModel, s) !== "auto" ? modelOptionMeta(modelOptionFromRef(toRef(s.defaultModel, s), s)!, t) : t("settings.connectionAutomatic")}</span>
             </SettingsField>
 
+            {/* Task 1042 (issue #62): the default model's reasoning-effort
+                level. Levels come from the connection's declared
+                supported_efforts (mirrors the backend's
+                config.EffortCapabilityForEntry through the existing
+                ProviderView.round-trip) so a custom gateway that declares a
+                vocabulary is selectable here too — the exact gap the issue
+                reported. A connection with no declared vocabulary collapses
+                to the disabled "auto" and points at the connection settings
+                that would enable it. */}
+            {(() => {
+              const defaultOption = modelOptionFromRef(defaultRef, s);
+              const defaultOverride = defaultOption?.providerView?.modelOverrides?.find((item) => item.model === defaultOption.model);
+              const effortLevels = defaultRef
+                ? (defaultOverride?.supportedEfforts?.length ? defaultOverride.supportedEfforts : defaultOption?.providerView?.supportedEfforts ?? [])
+                : [];
+              return (
+                <SettingsField className="model-assignment-effort" label={<ModelSettingHelp label={t("settings.modelEffort")} text={t("settings.modelEffortHint")} />}>
+                  <SettingsSelect
+                    className="mem-select set-grow"
+                    aria-label={t("settings.modelEffort")}
+                    value={s.defaultEffort || ""}
+                    disabled={busy || effortLevels.length === 0}
+                    onValueChange={(value) => void apply(() => saveModelSettings(s, {kind: "preference", field: "default_effort", ref: value}))}
+                  >
+                    <option value="">{t("common.auto")}</option>
+                    {s.defaultEffort && !effortLevels.includes(s.defaultEffort) && <option value={s.defaultEffort} disabled>{s.defaultEffort}</option>}
+                    {effortLevels.map((level) => (
+                      <option key={level} value={level}>
+                        {level}
+                      </option>
+                    ))}
+                  </SettingsSelect>
+                  <span className="model-assignment-connection">{effortLevels.length === 0 ? t("settings.modelEffortUnsupported") : ""}</span>
+                </SettingsField>
+              );
+            })()}
+
             <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.plannerModel")} text={t("providerUI.plannerModelHelp")} />}>
               <ModelPicker
                 s={s}
@@ -9989,13 +10027,21 @@ export function ProviderEditor({
   const [reasoningProtocol, setReasoningProtocol] = useState(normalizeReasoningProtocol(initial?.reasoningProtocol));
   const [thinking, setThinking] = useState(normalizeThinkingMode(initial?.thinking));
   const [webSearch, setWebSearch] = useState(Boolean(initial?.webSearch));
-  const [supportedEfforts] = useState<string[]>(initial?.supportedEfforts ?? []);
-  const [defaultEffort] = useState(initial?.defaultEffort ?? "");
+  // Task 1042 (issue #62): these were read-only useState — the "simplified
+  // provider flow no longer edits these levels directly" comment described a
+  // regression, not a design: non-built-in providers had no way to declare an
+  // effort vocabulary at all, so every custom gateway stayed effort-less
+  // (errEffortNotConfigurable) with no way to fix it from the UI. They are
+  // draft state again, edited in the advanced section below and saved through
+  // the same ProviderView round-trip the backend already supports
+  // (settings_app.go's providerViewFromEntry/saveProviderConfig).
+  const [supportedEfforts, setSupportedEfforts] = useState<string[]>(initial?.supportedEfforts ?? []);
+  const [defaultEffort, setDefaultEffort] = useState(initial?.defaultEffort ?? "");
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchStatus, setFetchStatus] = useState<string | null>(null);
   const [fetchFallback, setFetchFallback] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const draftSnapshot = JSON.stringify([name, hideConnectionName ? "" : displayName, kind, requestUrl, models, modelsUrl, headersDraft, extraBodyDraft, authHeader, noProxy, keyDraft, balanceUrl, ctx, modelContextWindows, modelOverrides, modelCapabilities, legacyVisionModels, highSpeedModelNames, reasoningProtocol, thinking, webSearch]);
+  const draftSnapshot = JSON.stringify([name, hideConnectionName ? "" : displayName, kind, requestUrl, models, modelsUrl, headersDraft, extraBodyDraft, authHeader, noProxy, keyDraft, balanceUrl, ctx, modelContextWindows, modelOverrides, modelCapabilities, legacyVisionModels, highSpeedModelNames, reasoningProtocol, thinking, webSearch, supportedEfforts, defaultEffort]);
   const [savedSnapshot, setSavedSnapshot] = useState(draftSnapshot);
   const latestDraftSnapshot = useRef(draftSnapshot);
   const saveGeneration = useRef(0);
@@ -10059,9 +10105,11 @@ export function ProviderEditor({
     [modelNames, legacyVisionModels, modelOverrides, modelCapabilities],
   );
 
-  // Empty supportedEfforts means "use protocol defaults". The simplified
-  // provider flow no longer edits these levels directly, but it preserves
-  // existing advanced TOML unless the user explicitly disables reasoning.
+  // Empty supportedEfforts means "use protocol defaults" (Reasonix infers the
+  // vocabulary from Kind/BaseURL/model). Task 1042: the levels are editable
+  // draft state again in the advanced section; an explicitly-disabled
+  // reasoning protocol still collapses them to empty so a "none" provider can
+  // never save a phantom list that contradicts its own protocol.
   const cleanedSupportedEfforts = reasoningProtocol !== "none"
     ? uniqueStrings(
         supportedEfforts
@@ -10071,6 +10119,24 @@ export function ProviderEditor({
     : [];
   const normalizedDefaultEffort = defaultEffort.toLowerCase().trim();
   const cleanDefaultEffort = cleanedSupportedEfforts.includes(normalizedDefaultEffort) ? normalizedDefaultEffort : "";
+
+  // Task 1042: the advanced-section effort editor. "auto" is never stored —
+  // it is the composer-level alias for "provider default", which the wire
+  // represents as an empty supported_efforts list, not a stored level.
+  const presetEfforts = reasoningProtocol === "none" ? [] : [...EFFORT_PRESETS];
+  const customEfforts = cleanedSupportedEfforts.filter((level) => !presetEfforts.includes(level));
+  const toggleEffortLevel = (level: string) => {
+    const next = cleanedSupportedEfforts.includes(level)
+      ? cleanedSupportedEfforts.filter((item) => item !== level)
+      : [...cleanedSupportedEfforts, level];
+    setSupportedEfforts(next);
+    if (cleanDefaultEffort && !next.includes(cleanDefaultEffort)) setDefaultEffort("");
+  };
+  const addCustomEffort = (level: string) => {
+    const normalized = level.toLowerCase().trim();
+    if (!normalized || normalized === "auto" || cleanedSupportedEfforts.includes(normalized)) return;
+    setSupportedEfforts([...cleanedSupportedEfforts, normalized]);
+  };
 
   const fetchModels = async () => {
     if (extraBodyInvalid) return;
@@ -10332,6 +10398,52 @@ export function ProviderEditor({
           ))}
         </SettingsSelect>
         <div className="mem-hint">{t("settings.thinkingModeHint")}</div>
+        {/* Task 1042 (issue #62): the explicit effort-level editor. An empty
+            list means "protocol defaults" — Reasonix infers the vocabulary from
+            Kind/BaseURL/model (config.EffortCapabilityForEntry); a saved list
+            is the endpoint's own declared vocabulary (config.NormalizedEfforts
+            round-trips it verbatim) and is what makes /effort work at all on a
+            custom gateway. A "none" protocol collapses the editor — that
+            provider has no effort knob by definition. */}
+        <label className="set-label">{t("settings.effortBehavior")}</label>
+        <SettingsSelect className="mem-select" aria-label={t("settings.effortBehavior")}
+          value={reasoningProtocol === "none" || cleanedSupportedEfforts.length > 0 ? "custom" : "auto"}
+          disabled={reasoningProtocol === "none"}
+          onValueChange={() => setSupportedEfforts(cleanedSupportedEfforts.length > 0 ? [] : [...presetEfforts])}>
+          <option value="auto">{t("settings.effortUseProtocolDefaults")}</option>
+          <option value="custom">{t("settings.effortUseCustom")}</option>
+        </SettingsSelect>
+        <div className="mem-hint">{t(`settings.effortProtocolDefault.${reasoningProtocol || "auto"}` as DictKey)}</div>
+        {reasoningProtocol !== "none" && cleanedSupportedEfforts.length > 0 && <>
+          <label className="set-label">{t("settings.supportedEfforts")}</label>
+          <div className="provider-add-segmented" role="group" aria-label={t("settings.supportedEfforts")}>
+            {presetEfforts.map((level) => (
+              <button key={level} type="button"
+                aria-selected={cleanedSupportedEfforts.includes(level)}
+                className={`provider-add-segmented__item${cleanedSupportedEfforts.includes(level) ? " provider-add-segmented__item--active" : ""}`}
+                onClick={() => toggleEffortLevel(level)}>
+                {level}
+              </button>
+            ))}
+          </div>
+          {customEfforts.map((level) => (
+            <label key={level} className="set-check">
+              <input type="checkbox" checked onChange={() => toggleEffortLevel(level)} />
+              {level}
+            </label>
+          ))}
+          <input className="mem-input" placeholder={t("settings.supportedEffortsCustomPlaceholder")}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomEffort(e.currentTarget.value); e.currentTarget.value = ""; } }} />
+          <div className="mem-hint">{t("settings.supportedEffortsHint")}</div>
+          <label className="set-label">{t("settings.defaultEffort")}</label>
+          <SettingsSelect className="mem-select" aria-label={t("settings.defaultEffort")} value={cleanDefaultEffort} onValueChange={(value) => setDefaultEffort(value)}>
+            <option value="">{t("settings.defaultEffortAuto")}</option>
+            {cleanedSupportedEfforts.map((level) => (
+              <option key={level} value={level}>{level}</option>
+            ))}
+          </SettingsSelect>
+          <div className="mem-hint">{t("settings.defaultEffortHint")}</div>
+        </>}
         <label className="set-label">{t("settings.providerBalanceUrl")}</label>
         <input
           className="mem-input"

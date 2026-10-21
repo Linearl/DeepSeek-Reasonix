@@ -312,6 +312,8 @@ func applyModelPreference(c *config.Config, change ModelSettingsChange) error {
 		return setSubagentModelConfig(c, change.Ref)
 	case "subagent_effort":
 		return setSubagentEffortConfig(c, change.Ref)
+	case "default_effort":
+		return setDefaultModelEffortConfig(c, change.Ref)
 	case "profile_model":
 		return setSubagentProfileModelConfig(c, change.Name, change.Ref)
 	case "profile_effort":

@@ -4,6 +4,8 @@ import type { AgentView, BotSettingsView, NetworkView, PermissionsView, Provider
 export interface SettingsView {
   modelSettingsFingerprint?: string;
   defaultModel: string;
+  /** Task 1042: reasoning-effort level assigned to the default model; "" = auto. */
+  defaultEffort?: string;
   plannerModel: string;
   guardianModel: string;
   autopilot: boolean;
