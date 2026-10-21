@@ -4842,6 +4842,8 @@ export const zh: Record<DictKey, string> = {
   "compaction.working": "正在压缩对话…",
   "compaction.title": "上下文已压缩",
   "compaction.messages": "{n} 条消息",
+  "compaction.round": "（第 {n} 轮）",
+  "compaction.rounds": "共 {n} 轮",
   "compaction.showSummary": "展开摘要",
   "compaction.hideSummary": "收起摘要",
   "compaction.failed": "上下文压缩失败",

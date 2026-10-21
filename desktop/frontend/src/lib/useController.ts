@@ -351,6 +351,17 @@ export type Item =
       failed?: boolean;
       attempt?: number;
       reason?: string;
+      // 任务 1021: 1-based pass number inside ONE compression session, echoed
+      // by every CompactionStarted/compaction_done of that session (backend
+      // event.Compaction.Pass). While a session still has a later pass in
+      // flight, an ok compaction_done for an earlier pass keeps THIS card
+      // pending — the「上下文已压缩」terminal state shows only after the
+      // session's last pass resolves, never alongside a running one.
+      pass?: number;
+      // 任务 1021: the latest ok summary seen for this card while its session
+      // keeps running. The terminal card surfaces it once the session
+      // resolves; until then the card stays the in-progress surface.
+      interimSummary?: string;
     }
   | {
       kind: "tool";
@@ -548,6 +559,13 @@ export interface State extends ReadStatusHost {
   // 任务1020：epoch 毫秒（Date.now()），与展示层 useTick 的 now 同基准；
   // 禁用 promptEventClock()（页面起点毫秒，只可与自身比较）。
   lastTurnEventAt?: number;
+  // 任务 1021: the compression session's bookkeeping, driven entirely by the
+  // backend pass counter (event.Compaction.Pass) — the frontend never
+  // infers completion. compactionSessionOpen marks a live session whose
+  // latest ok pass resolved BEFORE its final pass; compactionSessionPass is
+  // the last pass number seen for that session.
+  compactionSessionOpen: boolean;
+  compactionSessionPass: number;
   /** Last runtime snapshot sequence accepted for this tab/epoch. */
   runtimeStatusEpoch?: string; runtimeStatusSeq?: number; runtimeStatusSnapshotAt?: number;
   // Completion tokens accumulated across executor usage events within the
@@ -696,6 +714,8 @@ export const initialState: State = {
   historyMutation: { seq: 0, kind: "replace" },
   backendActivationPending: false,
   deliveryRecoveryActive: false,
+  compactionSessionOpen: false,
+  compactionSessionPass: 0,
   promptEpoch: 0,
   turnStartAt: 0,
   turnDoneAt: 0,
@@ -2161,15 +2181,36 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // 任务 867: a retry after a failed pass reuses that pass's card — the
       // transcript shows one evolving attempt per episode instead of stacking
       // a fresh pending card under every failure.
+      // 任务 1021: a pressure episode over a very large transcript runs several
+      // back-to-back passes (the ladder plus follow-up Prepare rounds), and a
+      // pass's Started can arrive BEFORE the previous pass's Done lands
+      // (rounds alternate mid-ladder). Every Started carries its 1-based pass
+      // number; a NEW pass reuses the previous card whenever the event flow
+      // says it continues (higher pass number, or a pass-less legacy sender
+      // after any previous card), so「正在压缩」never stacks under a stale
+      //「上下文已压缩」. A pass 1 with a tracked session counter > 1 opens a
+      // fresh session (backend closed the previous one): a fresh terminal
+      // card stays terminal, a failed card restarts per 任务 867.
       const c = e.compaction;
-      const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && !(it as Extract<Item, { kind: "compaction" }>).pending && (it as Extract<Item, { kind: "compaction" }>).failed);
+      const tracked = c?.pass !== undefined && c.pass > 0;
+      const pass = tracked ? c!.pass! : 1;
+      const continuesSession = tracked
+        ? pass > s.compactionSessionPass
+        : s.items.some((it) => it.kind === "compaction");
+      const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && (continuesSession || !(it as Extract<Item, { kind: "compaction" }>).pending));
       if (idx >= 0) {
         const at = s.items.length - 1 - idx;
         const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
-        const restarted: Item = { ...cur, pending: true, failed: false, attempt: undefined, reason: undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0, startedAt: Date.now() };
-        return { ...s, seq: s.seq + 1, items: s.items.map((it, i) => (i === at ? restarted : it)) };
+        // 任务 867: a failed card restarts on the SAME card keeping its
+        // attempt counter (the retry's ok outcome clears it); a terminal card
+        // this pass continues restarts it clean with the new round number.
+        // 任务 1021: a legacy sender (no pass numbers, so the session
+        // bookkeeping is inert) keeps 867's historical clearing semantics.
+        const failed = cur.failed === true && tracked;
+        const restarted: Item = { ...cur, pending: true, failed, attempt: failed ? cur.attempt : undefined, reason: failed ? cur.reason : undefined, messages: 0, summary: "", archive: "", done: 0, total: 0, tokens: 0, tokensPerSec: 0, startedAt: Date.now(), pass, interimSummary: undefined };
+        return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items: s.items.map((it, i) => (i === at ? restarted : it)) };
       }
-      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "", startedAt: Date.now() }] };
+      return { ...s, seq: s.seq + 1, compactionSessionOpen: true, compactionSessionPass: pass, items: [...s.items, { kind: "compaction", id: `c${s.seq}`, pending: true, trigger: c?.trigger ?? "", messages: 0, summary: "", archive: "", startedAt: Date.now(), pass }] };
     }
     case "compaction_progress": {
       // 任务 556: live tokens/throughput + chunked-fold N/M on the pending
@@ -2182,30 +2223,60 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       if (idx < 0) return s;
       const at = s.items.length - 1 - idx;
       const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
-      const updated: Item = { ...cur, done: c.done ?? cur.done, total: c.total ?? cur.total, tokens: c.tokens ?? cur.tokens, tokensPerSec: c.tokensPerSec ?? cur.tokensPerSec };
+      const updated: Item = { ...cur, done: c.done ?? cur.done, total: c.total ?? cur.total, tokens: c.tokens ?? cur.tokens, tokensPerSec: c.tokensPerSec ?? cur.tokensPerSec, ...(c.pass && c.pass > 0 ? { pass: c.pass } : {}) };
       return { ...s, seq: s.seq + 1, items: s.items.map((it, i) => (i === at ? updated : it)) };
     }
     case "compaction_done": {
       const c = e.compaction;
       const idx = [...s.items].reverse().findIndex((it) => it.kind === "compaction" && it.pending);
       const at = idx < 0 ? -1 : s.items.length - 1 - idx;
+      // 任务 1021: an ok pass of a MULTI-PASS compression session resolves only
+      // ITSELF — a later pass is already in flight (its compaction_started
+      // arrived with a higher pass number), and flipping to the「上下文已
+      // 压缩」terminal state while it still runs is the misreport this task
+      // fixes. The interim summary is stashed so the terminal card can surface
+      // it once the session's last pass resolves; a legacy sender (no pass
+      // number anywhere — session bookkeeping inert) keeps the historical
+      // per-pass semantics.
+      const tracked = c?.pass !== undefined && c.pass > 0;
+      if (c?.outcome === "ok" && c.summary && tracked && s.compactionSessionOpen && c.pass! < s.compactionSessionPass) {
+        if (at < 0) return s;
+        const cur = s.items[at] as Extract<Item, { kind: "compaction" }>;
+        const stillRunning: Item = { ...cur, pending: true, failed: false, attempt: undefined, reason: undefined, interimSummary: c.summary, messages: c.messages ?? cur.messages, trigger: c.trigger || cur.trigger, pass: s.compactionSessionPass };
+        return { ...s, seq: s.seq + 1, items: s.items.map((it, i) => (i === at ? stillRunning : it)) };
+      }
+      // 任务 1021: the session's LAST ok pass resolves it. The terminal card
+      // leads with the latest summary.
+      const closesSession = c?.outcome === "ok" && (!tracked || c.pass! >= s.compactionSessionPass || !s.compactionSessionOpen);
       if (!c?.summary) {
         // 任务 867: a failed outcome stays on the transcript — the pass burned
         // its request while the watermark kept climbing, and the historical
         // silent card removal is exactly the blind spot this replaces. An
         // aborted outcome (planned skip, no request spent) keeps the legacy
         // drop-the-card behavior, as does a legacy sender with no outcome.
+        // 任务 1021: a failed pass does not close its session — the retry
+        // ladder re-runs and flips this SAME card back to pending, so the
+        // session bookkeeping stays open until an ok pass lands.
         if (c?.outcome === "failed") {
-          const failedCard: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : (s.items[at] as Extract<Item, { kind: "compaction" }>).id, pending: false, failed: true, attempt: c.attempt ?? 0, reason: c.reason ?? "", trigger: c.trigger ?? "", messages: 0, summary: "", archive: "" };
+          const prev = at < 0 ? undefined : (s.items[at] as Extract<Item, { kind: "compaction" }>);
+          const failedCard: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : prev!.id, pending: false, failed: true, attempt: c.attempt ?? 0, reason: c.reason ?? "", trigger: c.trigger || prev?.trigger || "", messages: 0, summary: "", archive: "", pass: (c.pass && c.pass > 0 ? c.pass : undefined) ?? prev?.pass };
           const items = at < 0 ? [...s.items, failedCard] : s.items.map((it, i) => (i === at ? failedCard : it));
           return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, items };
         }
         const items = at < 0 ? s.items : s.items.filter((_, i) => i !== at);
-        return { ...s, running: s.turnActive ? s.running : false, items };
+        return { ...s, running: s.turnActive ? s.running : false, compactionSessionOpen: false, compactionSessionPass: 0, items };
       }
-      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : (s.items[at] as Extract<Item, { kind: "compaction" }>).id, pending: false, trigger: c.trigger ?? "", messages: c.messages ?? 0, summary: c.summary, archive: c.archive ?? "" };
+      const cur = at < 0 ? undefined : (s.items[at] as Extract<Item, { kind: "compaction" }>);
+      // 任务 1021: the terminal card surfaces the session's final summary; a
+      // last pass that produced no summary (defensive) falls back to the
+      // interim one stashed by the previous pass, so the resolved card never
+      // reads as empty after a multi-pass session. The pass metadata prefers
+      // the DONE event's number (authoritative close) over a legacy 0.
+      const pass = c.pass && c.pass > 0 ? c.pass : undefined;
+      const summary = c.summary || cur?.interimSummary || "";
+      const filled: Item = { kind: "compaction", id: at < 0 ? `c${s.seq}` : cur!.id, pending: false, trigger: c.trigger || cur?.trigger || "", messages: c.messages || cur?.messages || 0, summary, archive: c.archive ?? "", pass };
       const items = at < 0 ? [...s.items, filled] : s.items.map((it, i) => (i === at ? filled : it));
-      return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, items };
+      return { ...s, running: s.turnActive ? s.running : false, seq: s.seq + 1, compactionSessionOpen: closesSession ? false : s.compactionSessionOpen, items };
     }
     case "steer":
       if (isHostRecoveryGuidance(e.text ?? "")) return s;

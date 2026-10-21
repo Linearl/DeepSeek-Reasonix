@@ -135,7 +135,7 @@ func ToWire(e event.Event) Event {
 			Summary: e.Compaction.Summary, Archive: e.Compaction.Archive,
 			Done: e.Compaction.Done, Total: e.Compaction.Total, Tokens: e.Compaction.Tokens,
 			TokensPerSec: e.Compaction.TokensPerSec, Outcome: e.Compaction.Outcome,
-			Attempt: e.Compaction.Attempt, Reason: e.Compaction.Reason,
+			Attempt: e.Compaction.Attempt, Reason: e.Compaction.Reason, Pass: e.Compaction.Pass,
 		}
 	case event.ContextMaintenanceEvent:
 		if m := e.Maintenance; m != nil {
@@ -337,6 +337,9 @@ type Compaction struct {
 	Outcome string `json:"outcome,omitempty"`
 	Attempt int    `json:"attempt,omitempty"`
 	Reason  string `json:"reason,omitempty"`
+	// 任务 1021: 1-based pass number within one compression session
+	// (event.Compaction.Pass). omitempty keeps legacy senders byte-identical.
+	Pass int `json:"pass,omitempty"`
 }
 
 // AskOption is one JSON-formatted choice in a structured ask request.

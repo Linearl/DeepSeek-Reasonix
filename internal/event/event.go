@@ -508,6 +508,16 @@ type Compaction struct {
 	Outcome string // Done: "" | "ok" | "failed" | "aborted"
 	Attempt int    // Done(failed): 1-based consecutive-failure counter for the session
 	Reason  string // Done(failed): short failure classification for display
+	// 任务 1021: 1-based pass counter WITHIN one compression session. A
+	// pressure episode over a very large transcript runs several back-to-back
+	// passes (the ladder plus follow-up Prepare rounds); every Started
+	// carries the pass number and every Done echoes it, so a frontend can
+	// hold ONE in-progress card until the session's LAST pass resolves
+	// instead of flipping to the「已压缩」terminal card after the first.
+	// A successful pass closes the session (the next Started restarts at
+	// 1); failed/aborted passes leave it open so the retry keeps the same
+	// card. 0 = legacy sender / not part of a tracked session.
+	Pass int
 }
 
 // ContextMaintenance is the typed wire-safe receipt for snip/prune/noop/

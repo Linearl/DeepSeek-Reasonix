@@ -260,7 +260,9 @@ func (a *Agent) compressVisibleRange(
 		inputMode = SummaryInputCachePrefix
 	}
 
-	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger}})
+	// 任务 1021: pass counter rides the Started event (see compactToProjectionLocked).
+	pass := a.sess.compactionSessionPass.Add(1)
+	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger, Pass: int(pass)}})
 	// 任务 556: meter the pass from Started to every exit (defer covers Done,
 	// aborts, panics) so live readout events never outlive the pending card.
 	a.compactionLiveBegin(trigger)
@@ -966,7 +968,12 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		return CompactionNoop, fmt.Errorf("%w: fixed prefix (%d tokens) already exceeds trigger (%d)", errCheckpointRejected, fixedPrefixTokens, a.compactTrigger())
 	}
 
-	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger}})
+	// 任务 1021: the Started event names its pass inside the ongoing
+	// compression session so the frontend keeps ONE in-progress card across
+	// back-to-back pressure rounds instead of showing an early round's
+	// terminal「已压缩」card while a later round still runs.
+	pass := a.sess.compactionSessionPass.Add(1)
+	a.svc.sink.Emit(event.Event{Kind: event.CompactionStarted, Compaction: event.Compaction{Trigger: trigger, Pass: int(pass)}})
 	// 任务 556: meter the pass from Started to every exit (defer covers Done,
 	// aborts, panics) so live readout events never outlive the pending card.
 	a.compactionLiveBegin(trigger)

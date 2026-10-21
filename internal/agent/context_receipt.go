@@ -178,7 +178,7 @@ func (a *Agent) emitCompactionTelemetry(t CompactionTelemetry) {
 }
 
 func (a *Agent) emitCompactionAborted(trigger string) {
-	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{Trigger: trigger, Outcome: "aborted"}})
+	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{Trigger: trigger, Pass: int(a.sess.compactionSessionPass.Load()), Outcome: "aborted"}})
 }
 
 // emitCompactionFailed closes a failed pass with a visible outcome (任务 867):
@@ -187,7 +187,7 @@ func (a *Agent) emitCompactionAborted(trigger string) {
 func (a *Agent) emitCompactionFailed(trigger string, err error) {
 	attempt := a.sess.compaction.failureStreak.Add(1)
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
-		Trigger: trigger, Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
+		Trigger: trigger, Pass: int(a.sess.compactionSessionPass.Load()), Outcome: "failed", Attempt: int(attempt), Reason: compactionFailureReason(err),
 	}})
 	// 任务 1011 检测路 3（运行中压缩连败）：连败达到阈值时发一条用户可见
 	// 提示——只报告读数，不改数据；修复动作（剥图+折叠饮食）由打开会话的
@@ -203,8 +203,18 @@ func (a *Agent) emitCompactionFailed(trigger string, err error) {
 // emitCompactionSucceeded stamps the success outcome and resets the streak.
 func (a *Agent) emitCompactionSucceeded(trigger string, messages int, summary, archive string) {
 	a.sess.compaction.failureStreak.Store(0)
+	// 任务 1021: a successful pass CLOSES its compression session — the next
+	// Started (same turn, another pressure round) opens a fresh session and a
+	// fresh pass counter, so the frontend never folds a later round into the
+	// terminal card that just landed.
+	pass := int(a.sess.compactionSessionPass.Load())
+	// Close the session BEFORE emitting: the frontend resolves the terminal
+	// card on this Done, and the next Started must open a fresh session
+	// counter so a later pressure round never counts as a round of the
+	// terminal card's session.
+	a.sess.compactionSessionPass.Store(0)
 	a.svc.sink.Emit(event.Event{Kind: event.CompactionDone, Compaction: event.Compaction{
-		Trigger: trigger, Messages: messages, Summary: summary, Archive: archive, Outcome: "ok",
+		Trigger: trigger, Pass: pass, Messages: messages, Summary: summary, Archive: archive, Outcome: "ok",
 	}})
 }
 

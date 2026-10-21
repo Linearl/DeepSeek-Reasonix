@@ -55,7 +55,15 @@ type sessionRuntime struct {
 	rebuildPending  atomic.Bool
 	compaction      compactionProgress
 	compactionState CompactionState
-	cacheState      string // legacy resume telemetry; never provider-visible
+	// 任务 1021: a compression SESSION spans every back-to-back pass of one
+	// over-threshold episode — the pressure ladder can run several summaries
+	// (foldContext's maxSummaries, plus follow-up Prepare rounds) and only the
+	// LAST one leaves the view under the trigger. compactionSessionPass counts
+	// Started emits since the session last closed; CompactionStarted/Done carry
+	// it so the frontend keeps ONE in-progress card instead of showing the
+	// first pass's「已压缩」terminal card while a later pass still runs.
+	compactionSessionPass atomic.Int64
+	cacheState            string // legacy resume telemetry; never provider-visible
 
 	// tailView caches the bounded recent-tail view (task 719): while the
 	// projection is invalid or missing AND the canonical transcript outgrows the
@@ -107,6 +115,7 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.compaction.consecutive = 0
 	r.compaction.failedTurn.Store(0)
 	r.compaction.lastTurn.Store(0)
+	r.compactionSessionPass.Store(0) // 任务 1021: a new lineage starts a fresh session count
 	r.rebuildPending.Store(false)
 	// 任务719: a new conversation starts unbounded — the tail view belongs to
 	// the replaced lineage's degraded window.
