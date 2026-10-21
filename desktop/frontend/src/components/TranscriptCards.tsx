@@ -3,7 +3,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, GitBranch, Info, MessageSquare, TriangleAlert } from "lucide-react";
-import { useT } from "../lib/i18n";
+import { getLocale, useT } from "../lib/i18n";
 import type { CompactionItem, NoticeItem } from "../lib/transcriptRows";
 import type { WireCompletionSummary } from "../lib/types";
 import { turnChangeText, turnCheckState, turnCheckText } from "../lib/turnResult";
@@ -12,6 +12,10 @@ import { TurnEditList } from "./TurnEditList";
 import { STEER_NOTICE_PREFIX } from "../lib/useController";
 import { collabAsImSource, type CollabImSourceMessage } from "../lib/collabMessage";
 import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactNames";
+// 任务998：引导块/steer 块补时间戳——复用 1012 的 messageTimestamp 三档契约
+// （同日 HH:mm / 跨天 MM-DD HH:mm / 跨年 YYYY-MM-DD HH:mm），与消息气泡
+// 同一函数、同一 useTick 渲染时刻源，不另起格式化逻辑。
+import { formatMessageTimestamp } from "../lib/messageTimestamp";
 // 任务811: steer 卡复用 705 的折叠门（同一开关/阈值/首行预览），让 ↪ notice
 // 实体与 user row 实体折叠行为一致。
 import { useCollabDisplayStore } from "../store/collabDisplay";
@@ -23,6 +27,20 @@ import { compactionLiveReadout } from "../lib/compactionLive";
 
 export function PhaseCard({ id, text }: { id: string; text: string }) {
   return <div className="phase" data-entrance={id}><ProcessPhaseIcon size={12} /><span>{text}</span></div>;
+}
+
+// 任务998：卡片时间戳元素——createdAt（epoch ms）→ 三档绝对时间，title 保留
+// 完整本地化日期兜底（与 Message.tsx 气泡同款契约）。useTick 只在有时间戳
+// 时挂（跨档只在跨天那一刻需要重绘）。
+function CardTime({ createdAt, className }: { createdAt: number | undefined; className: string }) {
+  const sentAt = createdAt == null ? null : new Date(createdAt);
+  const now = useTick(sentAt !== null);
+  if (!sentAt) return null;
+  return (
+    <time className={className} dateTime={sentAt.toISOString()} title={sentAt.toLocaleString()}>
+      {formatMessageTimestamp(sentAt, new Date(now), getLocale())}
+    </time>
+  );
 }
 
 // 任务462: contact_id → 会话名 的显示解析（缓存有名字用名字，查不到降级
@@ -133,7 +151,7 @@ function SteerCollabRouteSummary({ source }: { source: CollabImSourceMessage }) 
 // user row shows for the same message. The deferred placeholder keeps the 723
 // semantics: collapsed route summary (no bare contact_id), expanding reveals
 // the card below the toggle.
-export function SteerCard({ id, text, deferred = false }: { id: string; text: string; deferred?: boolean }) {
+export function SteerCard({ id, text, deferred = false, createdAt }: { id: string; text: string; deferred?: boolean; createdAt?: number }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
   const body = text.startsWith(STEER_NOTICE_PREFIX) ? text.slice(STEER_NOTICE_PREFIX.length) : text;
@@ -151,6 +169,8 @@ export function SteerCard({ id, text, deferred = false }: { id: string; text: st
         <div className="steer-line__bubble" title={t("transcript.steer")}>
           <span className="steer-line__icon" aria-hidden="true">↪</span>
           <span className="steer-line__text">{body}</span>
+          {/* 任务998：入队时刻走 1012 三档（同日只显时分，宽度冲击最小）。 */}
+          <CardTime createdAt={createdAt} className="steer-line__time" />
         </div>
       </div>
     );
@@ -170,6 +190,7 @@ export function SteerCard({ id, text, deferred = false }: { id: string; text: st
         <span className={`steer-line__text${collab || !expanded ? " steer-line__text--summary" : ""}`}>
           {collab ? <SteerCollabRouteSummary source={collab} /> : expanded ? body : firstLine}
         </span>
+        <CardTime createdAt={createdAt} className="steer-line__time" />
         <ChevronRight size={12} className="steer-line__chevron" aria-hidden="true" />
       </button>
       {/* 任务811: deferred 占位展开时用户已显式点开，卡片不再套 705 二次折叠。 */}
@@ -286,6 +307,8 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
           <>
             {item.title ? <div className="notice-line__title">{item.title}</div> : null}
             <div className="notice-line__body">{item.text}</div>
+            {/* 任务998：未应用 steer 块等 notice 补时间戳（1012 三档）。 */}
+            <CardTime createdAt={item.createdAt} className="notice-line__time" />
           </>
         )}
         {!result && actionsRow}

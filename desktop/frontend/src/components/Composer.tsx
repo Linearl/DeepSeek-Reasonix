@@ -733,7 +733,7 @@ export function Composer({
   onInvocationMetadataChange?: (metadata: Record<string, { kind: "skill" | "subagent"; color?: string }>) => void;
   onSteer?: (submitText: string, tabId?: string) => void | Promise<void>;
   /** Task 258: receipt-time transcript bubble for a queued steer/follow-up. */
-  onQueueGuidanceBubble?: (text: string, inboxItemId?: string) => void;
+  onQueueGuidanceBubble?: (text: string, inboxItemId?: string, createdAt?: number) => void;
   /** False when the owning surface provides its own durable remote inbox. */
   localDurableGuidance?: boolean;
   // Returns the un-sent text plus the exact durable queue IDs the backend
@@ -2909,7 +2909,9 @@ export function Composer({
             const rowStaysVisible = finishing || Boolean(receipt.paused);
             if (itemId && !rowStaysVisible) {
               submittedGuidanceIdsRef.current.add(itemId);
-              onQueueGuidanceBubble?.(guidanceText, itemId);
+              // 任务998：receipt 时刻即入队时刻——气泡时间戳用提交瞬间，不等
+              // 快照回读。
+              onQueueGuidanceBubble?.(guidanceText, itemId, Date.now());
             }
             if (!consumedBeforeReceipt && itemId && rowStaysVisible) {
               updatePendingGuidanceForDraft(submitDraftKey, (items) => {
@@ -3014,7 +3016,9 @@ export function Composer({
           const env = await app.ReadInboxItem(targetTabId || "", item.id);
           bubbleText = (env.displayText || env.submitText || bubbleText).trim() || bubbleText;
         } catch { /* preview-only shelf text */ }
-        onQueueGuidanceBubble?.(bubbleText, item.id);
+        // 任务998：队列行本身带 createdAt（快照入队时刻）——气泡沿用它，不退
+        // 化为发送瞬间（同一 item 的两个面时间一致）。
+        onQueueGuidanceBubble?.(bubbleText, item.id, item.createdAt);
         if (receipt?.disposition !== "steer_accepted") {
           // Rejected steers are follow-ups on disk now; let nonce consumers
           // re-read scope (the row stays suppressed by the submitted set).

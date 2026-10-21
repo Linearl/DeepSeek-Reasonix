@@ -323,7 +323,7 @@ export type Item =
   | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; createdAt?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[] }
   | { kind: "phase"; id: string; text: string }
-  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean }
+  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean; createdAt?: number }
   | {
       kind: "compaction";
       id: string;
@@ -1004,8 +1004,9 @@ type Action =
   | { type: "local_notice"; level: "info" | "warn"; text: string; preserveRuntime?: boolean }
   // Task 258: a queued steer/follow-up renders its transcript bubble at
   // receipt time (the durable hand-off already happened); inboxItemId dedupes
-  // against the agent's consume-time steer event.
-  | { type: "guidance_bubble"; text: string; inboxItemId?: string }
+  // against the agent's consume-time steer event. createdAt（任务998）来自
+  // inbox 快照的 CreatedAt，缺省时退化为渲染时刻。
+  | { type: "guidance_bubble"; text: string; inboxItemId?: string; createdAt?: number }
   | { type: "clearApproval" }
   | { type: "clearAsk" }
   | { type: "expire_prompt"; id: string; epoch: number; kind: "approval" | "ask" | "mcp" }
@@ -1120,7 +1121,7 @@ export function historyMessagesToItems(messages: HistoryMessage[], idPrefix: str
         continue;
       }
       if (m.content.trim() !== "" || m.decisionReceipt) {
-        const next = appendNoticeItem(items, seq, `${idPrefix}${seq}`, m.level === "warn" ? "warn" : "info", m.content, m.detail, m.code, m.decisionReceipt);
+        const next = appendNoticeItem(items, seq, `${idPrefix}${seq}`, m.level === "warn" ? "warn" : "info", m.content, m.detail, m.code, m.decisionReceipt, m.createdAt);
         items = next.items;
         seq = next.seq;
       }
@@ -2162,7 +2163,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     case "read_status":
       return applyReadStatusEvent(s, e);
     case "notice": {
-      const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt);
+      const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt, e.emittedAt ?? Date.now());
       return e.code?.startsWith("stream_interrupted_") ? { ...next, streamInterruptNoticeShown: true } : next;
     }
     case "context_maintenance": {
@@ -2283,7 +2284,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // Task 258: the receipt-time guidance_bubble already rendered this item;
       // the consume-time event must not double it.
       if (e.itemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === e.itemId)) return s;
-      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${e.text ?? ""}`, inboxItemId: e.itemId }] };
+      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${e.text ?? ""}`, inboxItemId: e.itemId, createdAt: e.emittedAt ?? Date.now() }] };
     case "user_input": {
       // 任务580: a durable inbox item just became a NEW turn's input. The wire
       // protocol has no other user-message channel (composer submissions
@@ -2948,7 +2949,8 @@ export function reducer(s: State, a: Action): State {
       if (a.inboxItemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === a.inboxItemId)) return s;
       // Append-only — this bubble rides an already-active turn, so it must
       // never touch running/turnActive/live the way local_notice does.
-      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${a.text}`, inboxItemId: a.inboxItemId }] };
+      // 任务998：气泡补入队时刻（inbox CreatedAt）；无入参时用渲染时刻兜底。
+      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${a.text}`, inboxItemId: a.inboxItemId, createdAt: a.createdAt ?? Date.now() }] };
     }
     case "clearApproval": {
       const next = { ...s, approval: undefined, pendingPrompt: Boolean(s.ask), resolvedPromptId: s.approval?.id ?? s.resolvedPromptId };
@@ -3099,8 +3101,8 @@ function latestTodosAllComplete(items: Item[]): boolean {
   return false;
 }
 
-function appendNoticeToState(s: State, level: "info" | "warn", text: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt): State {
-  const next = appendNoticeItem(s.items, s.seq, `n${s.seq}`, level, text, detail, code, decisionReceipt);
+function appendNoticeToState(s: State, level: "info" | "warn", text: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt, createdAt?: number): State {
+  const next = appendNoticeItem(s.items, s.seq, `n${s.seq}`, level, text, detail, code, decisionReceipt, createdAt);
   return { ...s, running: s.turnActive ? s.running : false, seq: next.seq, items: next.items };
 }
 
@@ -3541,7 +3543,7 @@ export function useController() {
         ? await hydrateQueuedGuidanceBubbles(previewBubbles, (id) => app.ReadInboxItem(tabId, id))
         : previewBubbles;
       for (const bubble of bubbles) {
-        dispatchTo(tabId, { type: "guidance_bubble", text: bubble.text, inboxItemId: bubble.inboxItemId });
+        dispatchTo(tabId, { type: "guidance_bubble", text: bubble.text, inboxItemId: bubble.inboxItemId, createdAt: bubble.createdAt });
       }
     })();
   }, [dispatchTo]);
@@ -5181,10 +5183,10 @@ export function useController() {
   // Task 258: the guidance shelf records a receipt-time transcript bubble for
   // a queued steer/follow-up (Composer owns the durable call, this owns the
   // display). Same inboxItemId as the later steer event keeps one bubble.
-  const queueGuidanceBubble = useCallback((text: string, inboxItemId?: string, tabId?: string) => {
+  const queueGuidanceBubble = useCallback((text: string, inboxItemId?: string, createdAt?: number, tabId?: string) => {
     const target = tabId || activeTabId;
     if (!target || !text.trim()) return;
-    dispatchTo(target, { type: "guidance_bubble", text: text.trim(), inboxItemId });
+    dispatchTo(target, { type: "guidance_bubble", text: text.trim(), inboxItemId, createdAt });
   }, [activeTabId, dispatchTo]);
 
   // Extension form dismissed/submitted locally: hide the surface. The backend

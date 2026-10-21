@@ -6134,7 +6134,7 @@ export default function App() {
               splitActive={splitTabId !== null}
               onInvocationMetadataChange={handleInvocationMetadataChange}
               onSteer={handleSteer}
-              onQueueGuidanceBubble={(text, itemId) => queueGuidanceBubble(text, itemId)}
+              onQueueGuidanceBubble={(text, itemId, createdAt) => queueGuidanceBubble(text, itemId, createdAt)}
               onCancel={cancel}
               onCycleMode={cycleMode}
               onSetMode={applyMode}

@@ -126,15 +126,18 @@ function noticeItems(state: typeof initialState) {
   const shelf = readFileSync(join(root, "components/ComposerGuidanceShelf.tsx"), "utf8").replace(/\n\s*/g, " ");
   const message = readFileSync(join(root, "components/Message.tsx"), "utf8").replace(/\n\s*/g, " ");
 
-  // 相1: both dispositions retire the row and render the bubble.
+  // 相1: both dispositions retire the row and render the bubble. 任务998: 第三
+  // 参 createdAt（入队时刻）透传给气泡——行为契约（退行 + 渲染气泡）不变。
   ok(/submittedGuidanceIdsRef\.current\.add\(item\.id\); updatePendingGuidanceForDraft\(targetDraftKey, \(items\) => items\.filter\(\(queued\) => queued\.id !== item\.id\)\)/.test(composer)
-    && /onQueueGuidanceBubble\?\.\(bubbleText, item\.id\)/.test(composer),
+    && /onQueueGuidanceBubble\?\.\(bubbleText, item\.id, item\.createdAt\)/.test(composer),
     "shelf send: accepted AND rejected steers retire the row and render the receipt bubble");
   ok(/retireSubmittedGuidance\(items, submittedGuidanceIdsRef\.current\)/.test(composer),
     "snapshot refresh filters through retireSubmittedGuidance (flash-and-return suppressed)");
 
   // 相2: Enter-queued follow-up renders a bubble instead of appending a row.
-  ok(/if \(itemId && !rowStaysVisible\) { submittedGuidanceIdsRef\.current\.add\(itemId\); onQueueGuidanceBubble\?\.\(guidanceText, itemId\); }/.test(composer),
+  // 任务998: 第三参 Date.now()（receipt 时刻）透传给气泡——块内可能夹注释，
+  // 用 [\s\S]*? 跨注释匹配。
+  ok(/if \(itemId && !rowStaysVisible\) { submittedGuidanceIdsRef\.current\.add\(itemId\);[\s\S]*?onQueueGuidanceBubble\?\.\(guidanceText, itemId, Date\.now\(\)\); }/.test(composer),
     "Enter follow-up: receipt renders the bubble and retires the row (paused/finishing keep theirs)");
   ok(/steerForTab receipt-time|dispatchTo\(tabId, \{ type: "guidance_bubble", text, inboxItemId: receipt\?\.itemId \}\)/.test(controller),
     "steerForTab dispatches the bubble at receipt time (Enter 补充同显)");
