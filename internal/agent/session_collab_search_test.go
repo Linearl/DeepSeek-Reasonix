@@ -16,9 +16,8 @@ func TestSearchSessionsByTitleKeyword(t *testing.T) {
 	// project session dir), which on a developer machine carry live
 	// conversations — the search then matched real sessions (e.g.
 	// "崩溃分析-20261011", "fork 开发主对话") and the exclusive Total==1
-	// assertion failed on an otherwise clean fixture. Point the state root at
-	// a temp dir so every global sweep lands inside the sandbox.
-	t.Setenv("REASONIX_STATE_HOME", t.TempDir())
+	// assertion failed on an otherwise clean fixture. 任务 1009 起该隔离由
+	// 包级 TestMain 的 testenv.IsolateUserState 统一承担，本测试不再自己 setenv。
 	dir := t.TempDir()
 	// A file whose title we control, plus one we do not match.
 	hit := filepath.Join(dir, "hit.jsonl")

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -396,12 +397,40 @@ func (c *rpcClient) callAsync(method string, params any) chan frame {
 	return ch
 }
 
+// acpLoadSlackFactor (任务 1009 门禁保养) relaxes the hard 2s gate waits in
+// this file under whole-package load. These gates guard in-process round-trips
+// against a fake factory — a healthy machine answers in milliseconds — but the
+// same gates go red on a loaded release runner (999 批跑 604.9s 与六支批跑
+// 53.8s 两轮都在 TestServeCancel 的 session/new 2s 门假红，单跑/复跑均绿).
+// A genuine hang still fails: the bound stays generous but finite and every
+// failure names the gate that missed. Override with REASONIX_TEST_GATE_SCALE
+// (>0, capped at 60) when diagnosing a specific scenario.
+func acpLoadSlackFactor() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("REASONIX_TEST_GATE_SCALE"))
+	if raw == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 1
+	}
+	if n > 60 {
+		n = 60
+	}
+	return time.Duration(n)
+}
+
+// acpGateAfter is the standard load-slackened wait bound for this file.
+func acpGateAfter() <-chan time.Time {
+	return time.After(2 * time.Second * acpLoadSlackFactor())
+}
+
 func (c *rpcClient) call(t *testing.T, method string, params any) frame {
 	t.Helper()
 	select {
 	case f := <-c.callAsync(method, params):
 		return f
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatalf("%s: timed out", method)
 		return frame{}
 	}
@@ -472,7 +501,7 @@ func (c *orderedRPCClient) next(t *testing.T) frame {
 			t.Fatal("ACP output closed")
 		}
 		return f
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("timed out waiting for ACP frame")
 		return frame{}
 	}
@@ -550,7 +579,7 @@ func drainPrompt(t *testing.T, c *rpcClient, promptCh chan frame) ([]frame, fram
 		// persistence path. Loaded Windows release runners can leave that
 		// asynchronous pipeline idle for more than two seconds, so keep a
 		// generous but bounded responsiveness limit for the end-to-end helper.
-		case <-time.After(5 * time.Second):
+		case <-time.After(5 * time.Second * acpLoadSlackFactor()):
 			t.Fatal("session/prompt: timed out")
 		}
 	}
@@ -765,7 +794,7 @@ func TestServeAdvertisesAndExpandsCustomCommands(t *testing.T) {
 				advertised = true
 			}
 		}
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("timed out waiting for available_commands_update")
 	}
 	if !advertised {
@@ -791,7 +820,7 @@ func TestServeAdvertisesAndExpandsCustomCommands(t *testing.T) {
 		if got != "Review src/main.go" {
 			t.Fatalf("runner input = %q, want expanded command", got)
 		}
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("runner did not receive prompt")
 	}
 }
@@ -1208,7 +1237,7 @@ func TestServeSessionConfigQueuesDuringActivePrompt(t *testing.T) {
 	})
 	select {
 	case <-started:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("prompt never started")
 	}
 
@@ -1275,7 +1304,7 @@ func TestServeSessionConfigRejectsBackgroundJobsWhileIdle(t *testing.T) {
 	}()
 	select {
 	case <-started:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("background job never started")
 	}
 
@@ -1396,7 +1425,7 @@ func TestQueuedRebuildPreservesControllerSideAxisDrift(t *testing.T) {
 	})
 	select {
 	case <-started:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("first prompt did not start")
 	}
 	requireDeprecatedConfigNoop(t, client, factory, nr.SessionID, "work_mode", "delivery", 1)
@@ -1459,7 +1488,7 @@ func TestServeQueuedSessionConfigDiscardedWhenPromptLeavesBackgroundJob(t *testi
 			})
 			select {
 			case <-startedJob:
-			case <-time.After(2 * time.Second):
+			case <-acpGateAfter():
 				t.Fatal("background job never started")
 			}
 			select {
@@ -1487,7 +1516,7 @@ func TestServeQueuedSessionConfigDiscardedWhenPromptLeavesBackgroundJob(t *testi
 	})
 	select {
 	case <-startedTurn:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("prompt never started")
 	}
 	setResp := client.call(t, "session/set_config_option", SetSessionConfigOptionParams{
@@ -1569,7 +1598,7 @@ func TestServeSessionConfigRejectsPendingAsk(t *testing.T) {
 	var req frame
 	select {
 	case req = <-client.reqs:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("ask request was not sent to client")
 	}
 
@@ -1769,7 +1798,7 @@ func TestServeCancel(t *testing.T) {
 
 	select {
 	case <-started:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("prompt never started")
 	}
 	client.notify("session/cancel", SessionCancelParams{SessionID: nr.SessionID})
@@ -1781,7 +1810,7 @@ func TestServeCancel(t *testing.T) {
 		if pr.StopReason != StopCancelled {
 			t.Errorf("stopReason = %q, want cancelled", pr.StopReason)
 		}
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("cancel did not end the prompt")
 	}
 }
@@ -1808,7 +1837,7 @@ func TestServeSteerInjectsIntoActivePrompt(t *testing.T) {
 	})
 	select {
 	case <-barrier.started:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("prompt never reached the tool boundary")
 	}
 
@@ -1880,7 +1909,7 @@ func TestServeRejectsConcurrentPromptForSameSession(t *testing.T) {
 	})
 	select {
 	case <-started:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("first prompt never started")
 	}
 
@@ -1901,7 +1930,7 @@ func TestServeRejectsConcurrentPromptForSameSession(t *testing.T) {
 		if resp.Error != nil {
 			t.Fatalf("first prompt errored: %+v", resp.Error)
 		}
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("first prompt did not finish")
 	}
 }
@@ -2118,7 +2147,7 @@ func startNonCooperativeACPJob(t *testing.T, jm *jobs.Manager, sessionPath strin
 	})
 	select {
 	case <-started:
-	case <-time.After(2 * time.Second):
+	case <-acpGateAfter():
 		t.Fatal("background job never started")
 	}
 	released := false
