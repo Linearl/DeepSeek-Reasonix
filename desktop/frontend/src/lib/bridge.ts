@@ -1322,6 +1322,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   OpenWorkspacePath(rel: string): Promise<void>;
   OpenWorkspacePathForTab(tabID: string, rel: string): Promise<void>;
   ResolveWorkspacePathForTab(tabID: string, rel: string): Promise<string>;
+  /** 任务 1060：转录选中路径菜单的存在性探针——返回可开的绝对路径，空串=不显示两项；契约对齐 desktop App.ResolveOpenablePathForTab（wails generate 禁用，手写对齐）。 */
+  ResolveOpenablePathForTab(tabID: string, path: string): Promise<string>;
   RenameWorkspaceEntryForTab(tabID: string, rel: string, newName: string): Promise<string>;
   TrashWorkspaceEntriesForTab(tabID: string, rels: string[]): Promise<WorkspaceFileOpsResult>;
   DeleteWorkspaceEntriesPermanentForTab(tabID: string, rels: string[]): Promise<WorkspaceFileOpsResult>;
@@ -2045,6 +2047,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RebuildHistoryIndex: typeof GeneratedApp.RebuildHistoryIndex;
   RebuildTaskCatalog: typeof GeneratedApp.RebuildTaskCatalog;
   RequeueTaskByKey: typeof GeneratedApp.RequeueTaskByKey;
+  ResolveOpenablePathForTab: typeof GeneratedApp.ResolveOpenablePathForTab;
   ResolveToolRecoveryForTab: typeof GeneratedApp.ResolveToolRecoveryForTab;
   SaveLocalPathAs: typeof GeneratedApp.SaveLocalPathAs;
   SearchHistoryContent: typeof GeneratedApp.SearchHistoryContent;
@@ -5862,6 +5865,8 @@ function makeMockApp(): AppBindings {
       await this.OpenWorkspacePath(rel);
     },
     async ResolveWorkspacePathForTab(_tabID: string, rel: string) { return `${cwd.replace(/[\\/]+$/, "")}/${rel.replace(/^[/\\]+/, "").replace(/[\\/]+$/, "")}`; },
+    // 任务 1060：mock 无本地盘判定，返回空串=选中菜单不显示路径两项（安全默认）。
+    async ResolveOpenablePathForTab(_tabID: string, _path: string) { return ""; },
     async RenameWorkspaceEntryForTab(_tabID: string, rel: string, newName: string) {
       const parent = rel.replace(/\/$/, "").split("/").slice(0, -1).join("/");
       return `${parent}${parent ? "/" : ""}${newName}`;

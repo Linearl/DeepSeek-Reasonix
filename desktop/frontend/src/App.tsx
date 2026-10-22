@@ -6704,6 +6704,7 @@ export default function App() {
         <TranscriptSelectionMenu
           enabled={Boolean(activeTabId && !activeTab?.readOnly && !decisionSurface && !sidebarImDetailConnection && !hydratePlaceholderActive)}
           resetKey={activeTabId ?? ""}
+          tabId={activeTabId ?? ""}
           onAddToChat={addSelectedTextToComposer}
           onQuickAction={(action, text, contextText) =>
             // Task 525: rejections must reach the result card's error branch

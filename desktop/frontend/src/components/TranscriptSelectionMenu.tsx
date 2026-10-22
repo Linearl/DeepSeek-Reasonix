@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { MessageSquare, Languages, Pin, Sparkles, X } from "lucide-react";
+import { ExternalLink, FolderOpen, MessageSquare, Languages, Pin, Sparkles, X } from "lucide-react";
+import { app } from "../lib/bridge";
 import { useSelectionActionsEnabled } from "../lib/selectionActionsPreference";
+import { selectionPathCandidate } from "../lib/selectionPathCandidate";
 import { ContextMenu, type ContextMenuPoint } from "./ContextMenu";
 import { messageSelectionContextText, TRANSCRIPT_COPY_FAILED_EVENT } from "../lib/messageSelectionCopy";
 import { writeClipboardText } from "../lib/clipboard";
@@ -75,12 +77,15 @@ function selectionActionOverlayReducer(
 export function TranscriptSelectionMenu({
   enabled = true,
   resetKey,
+  tabId,
   onAddToChat,
   onQuickAction,
   quickActionsEnabled: quickActionsEnabledProp,
 }: {
   enabled?: boolean;
   resetKey?: string | number;
+  /** 任务 1060：探针的目标会话（相对路径按该会话的项目根解析）。缺省回落 resetKey（两处挂载点里它就是 activeTabId）。 */
+  tabId?: string;
   onAddToChat?: (text: string) => void;
   /** Task 369: runs the one-shot side query; result renders in the floating card. */
   onQuickAction?: (action: string, text: string, contextText: string) => Promise<string>;
@@ -295,6 +300,70 @@ export function TranscriptSelectionMenu({
     [],
     Boolean(action) && enabled && Boolean(onAddToChat),
   );
+
+  // ── 任务 1060：选中文字是路径时增「用默认应用打开 / 打开所在目录」两项 ──
+  // 前端形态预筛（selectionPathCandidate）只过滤明显不像路径的文字；
+  // 存在性与可开性由后端探针权威判定（与 opener 家族同款门禁）：
+  // 探针返回空串 = 不显示（不存在的路径、Global 会话的相对路径、可执行目标…）。
+  // 异步竞态用修订号收口：菜单关/换选区后，迟到的一律作废。
+  const probeTabId = tabId ?? String(resetKey ?? "");
+  const [openablePath, setOpenablePath] = useState<string | null>(null);
+  const pathProbeRevisionRef = useRef(0);
+  useEffect(() => {
+    if (!action) {
+      setOpenablePath(null);
+      return;
+    }
+    const revision = ++pathProbeRevisionRef.current;
+    let cancelled = false;
+    void (async () => {
+      let text = "";
+      if (action.kind === "native") {
+        text = action.text;
+      } else {
+        text = (await transcriptSelectionStore.resolveText(action.snapshotId)) ?? "";
+      }
+      if (cancelled || revision !== pathProbeRevisionRef.current) return;
+      const candidate = selectionPathCandidate(text);
+      if (!candidate) {
+        setOpenablePath(null);
+        return;
+      }
+      try {
+        const resolved = await app.ResolveOpenablePathForTab(probeTabId, candidate.path);
+        if (cancelled || revision !== pathProbeRevisionRef.current) return;
+        setOpenablePath(resolved || null);
+      } catch {
+        if (!cancelled) setOpenablePath(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [action, probeTabId]);
+
+  const dismissAfterPathAction = useCallback((selection: SelectionAction) => {
+    if (selection.kind === "native") {
+      document.getSelection()?.removeAllRanges();
+    } else {
+      transcriptSelectionStore.clear("open-path");
+    }
+    closeAction();
+  }, [closeAction]);
+
+  const openPathWithDefaultApp = useCallback(() => {
+    if (!openablePath || !action) return;
+    void app.OpenLocalPath(openablePath).catch((error) => {
+      showToast(t("externalOpener.failed", { name: t("externalOpener.openDefault"), error: localPathErrorText(error) }), "error");
+    });
+    dismissAfterPathAction(action);
+  }, [openablePath, action, dismissAfterPathAction, showToast, t]);
+
+  const revealOpenablePath = useCallback(() => {
+    if (!openablePath || !action) return;
+    void app.RevealPath(openablePath).catch((error) => {
+      showToast(t("externalOpener.failed", { name: t("externalOpener.reveal"), error: localPathErrorText(error) }), "error");
+    });
+    dismissAfterPathAction(action);
+  }, [openablePath, action, dismissAfterPathAction, showToast, t]);
 
   useLayoutEffect(() => {
     if (actionOverlay.phase !== "positioning" || !action) return;
@@ -558,6 +627,35 @@ export function TranscriptSelectionMenu({
             </button>
           </>
         )}
+        {/*
+         * 任务 1060：选中文字是已存在的路径时追加两项，文案/图标语义与产物卡片、
+         * 右侧边栏同源（OpenLocalPath / RevealPath）。openablePath 为 null 时
+         * 整组不渲染——不存在/Global 相对路径/可执行目标零误报。
+         */}
+        {openablePath && (
+          <>
+            <button
+              type="button"
+              data-selection-path-action="open"
+              disabled={actionOverlay.phase !== "open"}
+              tabIndex={actionOverlay.phase === "open" ? 0 : -1}
+              onClick={openPathWithDefaultApp}
+            >
+              <ExternalLink size={14} aria-hidden="true" />
+              <span>{t("externalOpener.openDefault")}</span>
+            </button>
+            <button
+              type="button"
+              data-selection-path-action="reveal"
+              disabled={actionOverlay.phase !== "open"}
+              tabIndex={actionOverlay.phase === "open" ? 0 : -1}
+              onClick={revealOpenablePath}
+            >
+              <FolderOpen size={14} aria-hidden="true" />
+              <span>{t("externalOpener.reveal")}</span>
+            </button>
+          </>
+        )}
       </div>,
       document.body,
     )}
@@ -617,4 +715,9 @@ function menuPointFromEvent(event: MouseEvent): ContextMenuPoint {
   const rect = typeof range?.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null;
   if (rect && (rect.width > 0 || rect.height > 0)) return { left: rect.left, top: rect.bottom + 4 };
   return { left: 12, top: 12 };
+}
+
+// 任务 1060：与 ArtifactCard 同款错误文案提取（打开/定位失败的 toast 附原因）。
+function localPathErrorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
