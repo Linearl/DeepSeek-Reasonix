@@ -4493,6 +4493,10 @@ export const en = {
   "settings.sessionVersions.healthy": "Healthy: no repair needed.",
   "settings.sessionVersions.noRepairNeeded": "No repair needed.",
   "settings.sessionVersions.repaired": "Repaired ({actions}); backup: {backup}",
+  // 队尾体积列修复：修复回执的体积对比——瘦身类动作（diet）的收益要在面板上
+  // 看得见；体积不变时照实说「无变化」，不编造数字。
+  "settings.sessionVersions.volumeDelta": "size {before} → {after}",
+  "settings.sessionVersions.volumeUnchanged": "size unchanged",
   "settings.sessionVersions.repairLog": "Repair log:",
   "settings.sessionVersions.degraded": "Degraded",
   "settings.sessionVersions.degradedHint": "Reading this conversation's event log was refused or failed (for example a replay beyond the safety budget): in-row counts are unavailable; other sections are unaffected.",

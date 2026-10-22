@@ -3100,6 +3100,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersions.healthy": "健康：無需修復。",
   "settings.sessionVersions.noRepairNeeded": "無需修復。",
   "settings.sessionVersions.repaired": "已修復（{actions}）；備份：{backup}",
+  // 隊尾體積欄修復：修復回執的體積對比——瘦身類動作（diet）的收益要在面板上
+  // 看得見；體積不變時照實說「無變化」，不編造數字。
+  "settings.sessionVersions.volumeDelta": "體積 {before} → {after}",
+  "settings.sessionVersions.volumeUnchanged": "體積無變化",
   "settings.sessionVersions.repairLog": "修復記錄：",
   "settings.sessionVersions.degraded": "已降級",
   "settings.sessionVersions.degradedHint": "該會話的事件日誌讀取被拒或失敗（如重放超出安全預算）：行內計數不可用，其餘分區不受影響。",

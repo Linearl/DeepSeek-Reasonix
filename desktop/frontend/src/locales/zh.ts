@@ -4486,6 +4486,10 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.healthy": "健康：无需修复。",
   "settings.sessionVersions.noRepairNeeded": "无需修复。",
   "settings.sessionVersions.repaired": "已修复（{actions}）；备份：{backup}",
+  // 队尾体积列修复：修复回执的体积对比——瘦身类动作（diet）的收益要在面板上
+  // 看得见；体积不变时照实说「无变化」，不编造数字。
+  "settings.sessionVersions.volumeDelta": "体积 {before} → {after}",
+  "settings.sessionVersions.volumeUnchanged": "体积无变化",
   "settings.sessionVersions.repairLog": "修复记录：",
   "settings.sessionVersions.degraded": "已降级",
   "settings.sessionVersions.degradedHint": "该会话的事件日志读取被拒或失败（如重放超出安全预算）：行内计数不可用，其余分区不受影响。",

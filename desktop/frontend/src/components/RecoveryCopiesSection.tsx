@@ -40,6 +40,33 @@ function formatWhen(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** fileSizeOf reads a transcript's on-disk size via the bridge's chain listing
+ *  (the same reading the volume column shows), returning 0 when the file cannot
+ *  be stat'd — a repair receipt that cannot compare sizes says so rather than
+ *  inventing a delta. 任务 队尾体积列修复。 */
+async function fileSizeOf(path: string): Promise<number> {
+  try {
+    const set = await app.ListRecoveryChains(path);
+    const main = (set.chains ?? []).find((c) => c.isMain);
+    return main?.bytes ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** volumeDeltaText renders the repair receipt's before→after size comparison.
+ *  Both readings missing (0/0) means the file could not be stat'd either time;
+ *  the receipt then omits the volume line instead of showing "0 → 0". */
+function volumeDeltaText(before: number, after: number, t: Translator): string {
+  if (!before && !after) return "";
+  if (before === after) {
+    return ` · ${t("settings.sessionVersions.volumeUnchanged")}`;
+  }
+  return ` · ${t("settings.sessionVersions.volumeDelta")
+    .replace("{before}", formatBytes(before))
+    .replace("{after}", formatBytes(after))}`;
+}
+
 type Phase = "pending" | "unmerged" | "merged";
 
 /** copiesNeedingMeasurement is what stands between "not measured" and "mergeable".
@@ -290,18 +317,21 @@ function VersionRows({
   confirm,
   onReload,
   onError,
+  repairNote,
+  setRepairNote,
 }: {
   mainPath: string;
   t: Translator;
   confirm: ReturnType<typeof useConfirmDialog>["confirm"];
   onReload: () => void;
   onError: (message: string) => void;
+  repairNote: string;
+  setRepairNote: (note: string) => void;
 }) {
   const [chains, setChains] = useState<RecoveryChainSet | null>(null);
   const [health, setHealth] = useState<{ path: string; report: SessionHealthReportView | null }>({ path: "", report: null });
   const [repairing, setRepairing] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [repairNote, setRepairNote] = useState("");
   const [records, setRecords] = useState<SessionRepairRecordView[]>([]);
   // errorsVersion 与错误列表同源递增：外层的 onError 每来一条新错误就把本组件
   // 的加载 effect 重新触发一次（依赖数组含 onError）。链读数已在手时这只会
@@ -361,24 +391,43 @@ function VersionRows({
   const repair = async (diet: boolean) => {
     setRepairing(true);
     setRepairNote("");
+    let note = "";
+    let receiptWritten = false;
     try {
+      // 队尾体积列修复：修复前后文件读数对比——后端报告本身不带体积，这里在
+      // 调用前后各读一次磁盘大小（os.Stat 的同一读数，与链表的体积列同源），
+      // 瘦身类修复（diet）的收益才在面板上看得见；纯修复类动作体积不变时照实
+      // 显示「无变化」，不编造数字。
+      const beforeBytes = await fileSizeOf(mainPath);
       const report = await app.RepairSessionFor(mainPath, true, true, diet);
+      const afterBytes = await fileSizeOf(mainPath);
       if (!report.repaired) {
-        setRepairNote(t("settings.sessionVersions.noRepairNeeded"));
+        note = t("settings.sessionVersions.noRepairNeeded");
       } else {
-        setRepairNote(
-          t("settings.sessionVersions.repaired")
-            .replace("{actions}", report.actions.map((a) => a.action).join("+"))
-            .replace("{backup}", report.backupDir || "—"),
-        );
+        // 动作名标注 done/skipped（后端 SelfHealAction.Status 就是 done|skipped|
+        // failed）：一行回执说清「哪些做了、哪些没做」，而不是只报一串动作名。
+        const actionsText = report.actions
+          .map((a) => `${a.action}(${a.status})`)
+          .join("+");
+        const volumeText = volumeDeltaText(beforeBytes, afterBytes, t);
+        note = `${t("settings.sessionVersions.repaired")
+          .replace("{actions}", actionsText)
+          .replace("{backup}", report.backupDir || "—")}${volumeText}`;
+        setRepairNote(note);
+        receiptWritten = true;
         onReload();
       }
       const fresh = await app.InspectSessionHealthFor(mainPath).catch(() => null);
       if (fresh) setHealth({ path: mainPath, report: fresh });
     } catch (e) {
-      setRepairNote(String(e));
+      note = String(e);
     } finally {
       setRepairing(false);
+      if (note && !receiptWritten) {
+        // The success path wrote its receipt above (same tick as the repair);
+        // the no-repair-needed and error paths fall through here.
+        setRepairNote(note);
+      }
     }
   };
 
@@ -538,6 +587,10 @@ export function RecoveryCopiesSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [scanning, setScanning] = useState<Set<string>>(new Set());
+  // 队尾体积列修复回执：放在分区层（而非行内组件状态）——行随重载折叠时其本
+  // 身的状态会随子树卸载而丢，回执读不到是实测根因；分区层只有一份，切换会话
+  // 时由行的展开动作清空。
+  const [repairNote, setRepairNote] = useState("");
   const [busy, setBusy] = useState(false);
   // previewingPath names the chain whose preview is being built. Without it the
   // only feedback was every button greying out, which reads as a dead click
@@ -1399,6 +1452,8 @@ export function RecoveryCopiesSection() {
               confirm={confirm}
               onReload={() => { void load(); }}
               onError={(message) => setErrors((current) => [...current, message])}
+              repairNote={repairNote}
+              setRepairNote={setRepairNote}
             />
           </>
         )}
