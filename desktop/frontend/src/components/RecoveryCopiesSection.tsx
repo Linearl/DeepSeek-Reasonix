@@ -110,6 +110,21 @@ type DeleteOutcome = {
   detail?: string;
 };
 
+/** SynthesisOutcome is one synthesis run's record (任务 1065): what went in
+ *  (participants + their unique counts) and what the new main reads as afterwards,
+ *  so "总条数≈并集" is checkable on screen rather than asserted. */
+type SynthesisOutcome = {
+  label: string;
+  kind: "synthesized" | "failed";
+  participants?: number;
+  uniqueTotal?: number;
+  afterMessages?: number;
+  afterTurns?: number;
+  prefixed?: number;
+  trashed?: number;
+  detail?: string;
+};
+
 /** RecoveryCopiesSection is the one versions-and-copies panel on the storage page.
  *
  *  Opening it is one directory read per session folder, so it appears at once and
@@ -551,6 +566,10 @@ export function RecoveryCopiesSection() {
   // in one group never leaks into another.
   const [pickedChain, setPickedChain] = useState<Record<string, string>>({});
   const pickedChainCount = Object.values(pickedChain).filter(Boolean).length;
+  // 任务 1065：选 HEAD 反向合成——pickedChain（HEAD）+ 合成结果/进度各自成
+  // 线：合成中报「正在合成第 N/M 条」，完成后报合成前后读数（并集可核对）。
+  const [synthesizing, setSynthesizing] = useState<Record<string, string>>({});
+  const [synthesisOutcomes, setSynthesisOutcomes] = useState<SynthesisOutcome[]>([]);
   // Tail reveal: the summary carries ~12k chars of trailing messages; the first
   // Clicking a chain previews it in a wide dialog - sizes, how it starts and
   // ends, and what picking it keeps or drops against the main - and only a
@@ -1032,6 +1051,101 @@ export function RecoveryCopiesSection() {
     await load();
   };
 
+  /** synthesizeHeads is the 1065 one-key operation: given the HEAD the user
+   *  picked (or the current main when nothing is picked), fold every other
+   *  branch's unique events into that one chain. The panel's contribution over
+   *  the bare backend call is the progress line (participants read before the
+   *  run) and the outcome record (participants / unique total / new main's
+   *  readings), which is what makes "总条数≈并集" checkable on screen.
+   *
+   *  The 1.34 merge rules ride along untouched: the chain list already carries
+   *  the turn-priority recommendation (轮次优先, backend longestHead) and each
+   *  chain row offers the tail preview that lets a user judge which branch to
+   *  keep as the HEAD before pressing synthesize. */
+  const synthesizeHeads = async (mainPath: string, groupLabel: string) => {
+    const headId = pickedChain[mainPath] ?? "";
+    const participants = (chains.get(mainPath)?.chains ?? []).filter(
+      (c) => !(c.path === mainPath && c.headId === (headId || "")),
+    );
+    if (participants.length === 0) {
+      setSynthesisOutcomes((current) => [
+        ...current,
+        { label: groupLabel, kind: "failed", detail: t("settings.recoveryCopiesSynthesizeNoBranch") },
+      ]);
+      return;
+    }
+    const okToSynthesize = await confirm({
+      title: t("settings.recoveryCopiesSynthesizeTitle"),
+      message: (
+        <div>
+          <p>
+            {t("settings.recoveryCopiesSynthesizeLead")}：{groupLabel}
+            {headId ? ` · ${headId.slice(0, 8)}` : ""}
+          </p>
+          <ul className="rc-versions__issues">
+            {participants.map((c) => (
+              <li key={`${c.path}#${c.headId}`}>
+                {c.messageCount} · {c.turns} {t("settings.recoveryCopiesColTurns")} · {c.preview?.trim() || t("settings.recoveryCopiesPreviewEmpty")}
+              </li>
+            ))}
+          </ul>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesSynthesizeWarn")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesSynthesizeConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!okToSynthesize) return;
+    setBusy(true);
+    setSynthesizing((current) => ({ ...current, [mainPath]: `0/${participants.length}` }));
+    setStatus(`${t("settings.recoveryCopiesSynthesizing")} 0/${participants.length} · ${groupLabel}`);
+    try {
+      // The backend call is one atomic synthesis; the progress line the panel
+      // shows is the participant count it knew before the run (a real
+      // per-branch progress would need the backend to stream, which 1.34's
+      // merge never did either - the report arrives whole, then the panel
+      // reloads and shows what changed).
+      const report = await app.SynthesizeSessionHeads(mainPath, headId);
+      setSynthesizing((current) => ({ ...current, [mainPath]: `${participants.length}/${participants.length}` }));
+      const uniqueTotal = report.items.reduce((n, item) => n + item.unique, 0);
+      setSynthesisOutcomes((current) => [
+        ...current,
+        {
+          label: groupLabel,
+          kind: report.items.length > 0 ? "synthesized" : "failed",
+          participants: report.items.length,
+          uniqueTotal,
+          afterMessages: report.afterMessages,
+          afterTurns: report.afterTurns,
+          prefixed: report.prefixed,
+          trashed: report.trashed.length,
+          detail: report.items.length > 0 ? undefined : t("settings.recoveryCopiesSynthesizeNoBranch"),
+        },
+      ]);
+      // Named winners were consumed; the next run starts neutral.
+      setPickedChain((current) => {
+        const next = { ...current };
+        delete next[mainPath];
+        return next;
+      });
+    } catch (err) {
+      setSynthesisOutcomes((current) => [
+        ...current,
+        { label: groupLabel, kind: "failed", detail: err instanceof Error ? err.message : String(err) },
+      ]);
+    } finally {
+      setSynthesizing((current) => {
+        const next = { ...current };
+        delete next[mainPath];
+        return next;
+      });
+      setBusy(false);
+      setStatus("");
+      await load();
+    }
+  };
+
   const renderGroup = (group: RecoveryCopyGroupView) => {
     const isOpen = expanded.has(group.mainPath);
     const isScanning = scanning.has(group.mainPath);
@@ -1199,6 +1313,31 @@ export function RecoveryCopiesSection() {
               return (
                 <div className="rc-chains">
                   <div className="rc-chains__head">{t("settings.recoveryCopiesChains")}</div>
+                  {/* 任务 1065：合成入口与进度放链表头部——它需要用户先在链行
+                      里选定 HEAD（行内预览+选中徽标），行内按钮只负责「把这一
+                      行设为 HEAD 并预览」，一键合成是整表级操作（1.34 的「选
+                      HEAD → 反向合成最长链」语义：合成针对整条会话，不是单行）。 */}
+                  <div className="rc-chains__actions">
+                    <button
+                      className="btn btn--secondary btn--small"
+                      type="button"
+                      disabled={busy || scanning.size > 0 || Boolean(synthesizing[group.mainPath])}
+                      onClick={() => { void synthesizeHeads(group.mainPath, group.mainLabel); }}
+                    >
+                      {synthesizing[group.mainPath]
+                        ? `${t("settings.recoveryCopiesSynthesizing")} ${synthesizing[group.mainPath]}`
+                        : t("settings.recoveryCopiesSynthesizeBtn")}
+                    </button>
+                    {pickedChain[group.mainPath] ? (
+                      <span className="rc-chains__synth-hint">
+                        {t("settings.recoveryCopiesSynthesizeHeadHint")}
+                      </span>
+                    ) : (
+                      <span className="rc-chains__synth-hint">
+                        {t("settings.recoveryCopiesSynthesizePickHint")}
+                      </span>
+                    )}
+                  </div>
                   {set.chains.map((chain, index) => {
                     // 任务 1065：推荐按轮次优先（后端 longestPath/longestHead
                     // 已按轮次排序），全降级时留空 ⇒ 降级行永不被推荐。
@@ -1422,6 +1561,26 @@ export function RecoveryCopiesSection() {
                           ))}
                         </ul>
                         <p className="rc-result__hint">{t("settings.recoveryCopiesDeleteReopenHint")}</p>
+                      </div>
+                    )}
+                    {synthesisOutcomes.length > 0 && (
+                      <div className="rc-result">
+                        <ul className="rc-outcomes">
+                          {synthesisOutcomes.map((outcome) => (
+                            <li
+                              key={outcome.label}
+                              className={outcome.kind === "failed" ? "rc-outcome--failed" : "rc-outcome--ok"}
+                            >
+                              <span className="rc-outcome__label">{outcome.label}</span>
+                              <span>
+                                {outcome.kind === "failed"
+                                  ? outcome.detail ?? ""
+                                  : `${t("settings.recoveryCopiesOutcomeSynthesized")} ${outcome.participants} · ${t("settings.recoveryCopiesUnique")} ${outcome.uniqueTotal} → ${outcome.afterMessages} · ${outcome.afterTurns} ${t("settings.recoveryCopiesColTurns")}${outcome.prefixed ? ` · ${t("settings.recoveryCopiesSynthesizePrefixed")} ${outcome.prefixed}` : ""}${outcome.trashed ? ` · ${t("settings.recoveryCopiesArchived")} ${outcome.trashed}` : ""}`}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="rc-result__hint">{t("settings.recoveryCopiesSynthesizeReopenHint")}</p>
                       </div>
                     )}
                     <div className="rc-table">

@@ -4453,6 +4453,21 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesDeleting": "正在删除",
   "settings.recoveryCopiesOutcomeDeleted": "已删除",
   "settings.recoveryCopiesDeleteReopenHint": "删除已生效。请到项目中重新打开该会话（或刷新标签页）才能看到列表更新——被删内容还在回收站里。",
+  // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
+  //  tail 预览已在候选链行内），本组键只补「合成」这个一键式主操作：确认时
+  //  列出参与分支与读数、进度/结果报告合成前后条数与轮次（并集可核对）。
+  "settings.recoveryCopiesSynthesizeBtn": "以选定 HEAD 合成最长链",
+  "settings.recoveryCopiesSynthesizeHeadHint": "已选 HEAD：合成会把它当主线，其余分支的独有事件并入。",
+  "settings.recoveryCopiesSynthesizePickHint": "尚未选 HEAD：合成将以当前主线为 HEAD；也可先在下方链行里「预览并选中」一条分支再合成。",
+  "settings.recoveryCopiesSynthesizeTitle": "以该 HEAD 反向合成最长链",
+  "settings.recoveryCopiesSynthesizeLead": "即将以它为主线合成",
+  "settings.recoveryCopiesSynthesizeConfirm": "开始合成",
+  "settings.recoveryCopiesSynthesizeWarn": "其余分支的独有事件会并入这条链（重复事件零双份），落败分支进入回收站（可恢复）。",
+  "settings.recoveryCopiesSynthesizing": "正在合成",
+  "settings.recoveryCopiesSynthesizeNoBranch": "该会话只有一条链，没有可合成的分支。",
+  "settings.recoveryCopiesOutcomeSynthesized": "已合成",
+  "settings.recoveryCopiesSynthesizePrefixed": "拼接落败链前缀",
+  "settings.recoveryCopiesSynthesizeReopenHint": "合成已生效。请到项目中重新打开该会话（或刷新标签页）才能看到合成后的内容——落败分支还在回收站里。",
   "settings.sessionVersions.title": "工作阶段版本与修复（v3 事件日志）",
   "settings.sessionVersions.hint": "读取 v3 events 日志的版本（head）读数：条数 / 轮次 / 最后活动 / 预览，标注当前选中与「更长且更新」建议。切换可撤销；修复先备份再执行并留修复记录，全程纯本地不调用模型。",
   "settings.sessionVersions.empty": "没有发现多版本的会话。",

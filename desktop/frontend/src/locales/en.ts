@@ -4460,6 +4460,21 @@ export const en = {
   "settings.recoveryCopiesDeleting": "Deleting",
   "settings.recoveryCopiesOutcomeDeleted": "Deleted",
   "settings.recoveryCopiesDeleteReopenHint": "The deletion has taken effect. Reopen the conversation in its project (or refresh the tab) to see the updated list — deleted content is still in the trash.",
+  // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
+  //  tail 预览已在候选链行内），本组键只补「合成」这个一键式主操作：确认时
+  //  列出参与分支与读数、进度/结果报告合成前后条数与轮次（并集可核对）。
+  "settings.recoveryCopiesSynthesizeBtn": "Synthesize longest chain from the picked HEAD",
+  "settings.recoveryCopiesSynthesizeHeadHint": "HEAD picked: synthesis keeps it as the main line and folds every other branch's unique events in.",
+  "settings.recoveryCopiesSynthesizePickHint": "No HEAD picked: synthesis keeps the current main as the HEAD; or preview-and-pick a branch in the chain rows below first.",
+  "settings.recoveryCopiesSynthesizeTitle": "Synthesize the longest chain from this HEAD",
+  "settings.recoveryCopiesSynthesizeLead": "About to synthesize with it as the main line",
+  "settings.recoveryCopiesSynthesizeConfirm": "Start synthesis",
+  "settings.recoveryCopiesSynthesizeWarn": "Every other branch's unique events are folded into this chain (duplicates stay single), and losing branches move to the recoverable trash.",
+  "settings.recoveryCopiesSynthesizing": "Synthesizing",
+  "settings.recoveryCopiesSynthesizeNoBranch": "This conversation has only one chain; there is nothing to synthesize.",
+  "settings.recoveryCopiesOutcomeSynthesized": "Synthesized",
+  "settings.recoveryCopiesSynthesizePrefixed": "losing chain prefix grafted",
+  "settings.recoveryCopiesSynthesizeReopenHint": "The synthesis has taken effect. Reopen the conversation in its project (or refresh the tab) to see the merged content — losing branches are still in the trash.",
   "settings.sessionVersions.title": "Session versions and repair (v3 event log)",
   "settings.sessionVersions.hint": "Reads the v3 event-log heads: messages / turns / last activity / preview, marking the current selection and the longer-and-newer suggestion. Switching is reversible; repairs back up first and write a repair record — local only, no model calls.",
   "settings.sessionVersions.empty": "No multi-version conversations found.",

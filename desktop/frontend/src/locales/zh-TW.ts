@@ -3067,6 +3067,21 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesDeleting": "正在刪除",
   "settings.recoveryCopiesOutcomeDeleted": "已刪除",
   "settings.recoveryCopiesDeleteReopenHint": "刪除已生效。請到專案中重新開啟該工作階段（或重新整理標籤頁）才能看到列表更新——被刪內容還在回收站裡。",
+  // 任務 1065：選 HEAD 反向合成最長鏈——繼承 1.34 合併規則（輪次優先推薦 +
+  //  tail 預覽已在候選鏈行內），本組鍵只補「合成」這個一鍵式主操作：確認時
+  //  列出任與分支與讀數、進度/結果報告合成前後條數與輪次（並集可核對）。
+  "settings.recoveryCopiesSynthesizeBtn": "以選定 HEAD 合成最長鏈",
+  "settings.recoveryCopiesSynthesizeHeadHint": "已選 HEAD：合成會把它當主線，其餘分支的獨有事件併入。",
+  "settings.recoveryCopiesSynthesizePickHint": "尚未選 HEAD：合成將以當前主線為 HEAD；也可先在下方鏈行裡「預覽並選中」一條分支再合成。",
+  "settings.recoveryCopiesSynthesizeTitle": "以該 HEAD 反向合成最長鏈",
+  "settings.recoveryCopiesSynthesizeLead": "即將以它為主線合成",
+  "settings.recoveryCopiesSynthesizeConfirm": "開始合成",
+  "settings.recoveryCopiesSynthesizeWarn": "其餘分支的獨有事件會併入這條鏈（重複事件零雙份），落敗分支進入回收站（可恢復）。",
+  "settings.recoveryCopiesSynthesizing": "正在合成",
+  "settings.recoveryCopiesSynthesizeNoBranch": "該工作階段只有一條鏈，沒有可合成的分支。",
+  "settings.recoveryCopiesOutcomeSynthesized": "已合成",
+  "settings.recoveryCopiesSynthesizePrefixed": "拼接落敗鏈前綴",
+  "settings.recoveryCopiesSynthesizeReopenHint": "合成已生效。請到專案中重新開啟該工作階段（或重新整理標籤頁）才能看到合成後的內容——落敗分支還在回收站裡。",
   "settings.sessionVersions.title": "工作階段版本與修復（v3 事件日誌）",
   "settings.sessionVersions.hint": "讀取 v3 events 日誌的版本（head）讀數：條數 / 輪次 / 最後活動 / 預覽，標註當前選中與「更長且更新」建議。切換可撤銷；修復先備份再執行並留修復記錄，全程純本地不呼叫模型。",
   "settings.sessionVersions.empty": "沒有發現多版本的工作階段。",

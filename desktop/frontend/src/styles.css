@@ -45939,6 +45939,17 @@ button.statusbar__mcp:focus-visible {
    is what makes "the merge keeps the longest" checkable rather than a claim. */
 .rc-chains { margin: 8px 0 4px; padding: 8px 10px 4px; border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent); }
 .rc-chains__head { margin-bottom: 6px; font-size: 0.9em; font-weight: 600; opacity: 0.72; }
+/* 任务 1065：链表头部的合成入口与提示——合成是整表级一键操作（选 HEAD → 反
+   向合成最长链），所以按钮与状态提示挂在链表头部而不是单行里；行内只保留
+   1.34 的预览/选中语义。 */
+.rc-chains__actions {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.rc-chains__synth-hint { font-size: 0.86em; opacity: 0.7; }
 .rc-chain {
   display: flex;
   flex-wrap: wrap;
