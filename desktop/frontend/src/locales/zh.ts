@@ -5165,6 +5165,10 @@ export const zh: Record<DictKey, string> = {
   "hangPrompt.intro": "当前会话的对话长时间无进展（doctor responsiveness 判定卡顿）。可以对它运行同一套一键分析。",
   "pendingCrash.title": "检测到上次运行遗留的崩溃报告",
   "pendingCrash.intro": "上次运行在退出前捕获了一次崩溃。除了静默上报，现在可以对它一键分析。",
+  // 任务 1051：横幅「清空」（关闭右侧）——「关闭」只隐藏本次，报告留队列 14 天内每次启动都重弹；
+  // 「清空」把本地待上报的崩溃报告一次性删掉，之后不再弹。
+  "pendingCrash.clearAll": "清空",
+  "pendingCrash.clearUnavailable": "当前版本未提供清空功能，请升级后重试。",
   "crash.collapse": "收起",
   "crash.expand": "展开错误报告",
   "pendingCrash.previewNote": "以下为上次运行捕获的 panic 原文摘要（技术原文保留，供根因分析）：",

@@ -5173,6 +5173,11 @@ export const en = {
   "hangPrompt.intro": "The active session's open turn has made no progress (doctor responsiveness verdict: hang). You can run the same one-click analysis on it.",
   "pendingCrash.title": "Crash report left from the previous run",
   "pendingCrash.intro": "The previous run captured a panic before it died. Analyze it now instead of letting it ship silently.",
+  // Task 1051: banner 「Clear」 (right of 「Dismiss」) — Dismiss only hides the
+  // banner for this run, so a report inside the 14-day retention window
+  // resurfaced on every launch. Clear deletes the pending reports for good.
+  "pendingCrash.clearAll": "Clear all",
+  "pendingCrash.clearUnavailable": "Clearing is not available in this version. Please update and try again.",
   "crash.collapse": "Collapse",
   "crash.expand": "Expand error report",
   "pendingCrash.previewNote": "Panic summary captured by the previous run (kept verbatim):",
