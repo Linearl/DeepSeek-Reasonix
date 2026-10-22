@@ -143,6 +143,7 @@ func TestSessionPathSuffixArgsFromKnownSet(t *testing.T) {
 		"SessionEventLogSuffix":     "resolved event-log tail: classification and transcript recovery",
 		"SessionTurnEventLogSuffix": "turn-ledger classification",
 		"SessionConflictLogSuffix":  "conflict-log classification",
+		"SessionRepairLogSuffix":    "self-heal repair-log classification (task 1071: excluded from transcript-name classification so it never derives its own sidecars)",
 	}
 	checked := map[string]bool{
 		"TrimPrefix": true, "TrimSuffix": true,
