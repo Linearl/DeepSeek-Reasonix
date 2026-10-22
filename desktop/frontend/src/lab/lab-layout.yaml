@@ -73,7 +73,7 @@ groups:
       - id: smartAutomation
         labelKey: settings.smartAutomation
         tier: optional
-        onKeys: [experimentalDream, experimentalDecisionPatterns, experimentalHeartbeatBackground, stalledIntentNudge]
+        onKeys: [experimentalDream, experimentalDecisionPatterns, experimentalHeartbeatBackground, stalledIntentNudge, standardContinuation]
         members:
           # 梦境整理（原 automation 独立卡，961 并卡）。
           - id: dream
@@ -92,6 +92,10 @@ groups:
           # 首落地，本件补设置页入口）。默认关=现状一致。
           - id: stalledIntentNudge
             labelKey: settings.stalledIntentNudge
+          # 任务 1070：Standard 流续跑总闸——普通对话续跑通道开闸。默认关=
+          # 现状一致；开启后仍有界上限与各边界排除。
+          - id: standardContinuation
+            labelKey: settings.standardContinuation
             tier: optional
 
   # ── 提效（6 项；任务 722：安全/成本控制卡迁入本组；任务 961 三散条并交互与呈现卡）──

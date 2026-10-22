@@ -2317,6 +2317,11 @@ export const zhTW: Record<DictKey, string> = {
 "settings.heartbeatBackgroundHint": "控制心跳排程執行在標籤列的可見方式（實驗特性，預設關閉）。開啟：執行時仍會短暫打開對應話題標籤——提示詞透過它提交——提交後立即轉入背景駐留（任務 264 detached 語義），回合在背景繼續跑，該標籤在回合結束、介面重新整理時自動移出標籤列；即「執行期間短暫出現、不常駐」，而非全程不出現。你自己開啟過的話題永遠不會被收起；背景駐留期間機器人通道轉發照常運作，下一次執行會自動接回。關閉：每次執行保持原行為——話題標籤打開後照常留在標籤列。儲存後對下一次排程執行生效，無需重啟。",
 "settings.heartbeatBackground.on": "開",
 "settings.heartbeatBackground.off": "關",
+// 任務 1070：Standard 流續跑總閘（預設關 = 1070 前的行為）。
+"settings.standardContinuation": "一般對話續跑（實驗）",
+"settings.standardContinuationHint": "控制一般對話（Standard 流）是否允許有界的同回合續跑（實驗特性，預設關閉）。開啟：當模型「列了待辦卻沒執行」「宣布了下一步卻直接收尾」時，宿主會自動補一輪繼續，每次續跑都有提示，且受次數上限與「無進展即停」約束；計畫模式、唯讀、禁止變更、子代理等邊界一律不續跑。關閉（預設）：一般對話保持現狀——乾淨收尾即結束回合，不會自動續跑（Goal/評審/守護等專用流程不受此開關影響）。儲存後對下一次回合生效，無需重啟。",
+"settings.standardContinuation.on": "開",
+"settings.standardContinuation.off": "關",
 "settings.subagentDetail": "子代理詳情視圖",
 "settings.subagentDetailHint": "控制右欄「子代理」面板裡點擊一行的行為（雙態實驗特性，預設關閉）：關閉時為保底形態——點擊行在面板內展開內聯預覽，另加「加寬預覽 / 還原寬度」按鈕可一鍵把右欄調寬（拖曳調寬與雙擊復位不受影響）；開啟時為增強形態——點擊行切換到右欄內整頁唯讀詳情（含「返回列表」按鈕），寬度沿用右欄記憶寬度，詳情不提供任何輸入框、僅供查看。儲存後立即生效，無需重啟。",
 "settings.subagentDetail.on": "開",

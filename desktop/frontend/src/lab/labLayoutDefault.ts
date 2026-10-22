@@ -90,7 +90,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           id: "smartAutomation",
           labelKey: "settings.smartAutomation",
           tier: "optional",
-          onKeys: ["experimentalDream", "experimentalDecisionPatterns", "experimentalHeartbeatBackground", "stalledIntentNudge"],
+          // 任务 1070：补第四行「Standard 流续跑总闸」（默认关）。
+          onKeys: ["experimentalDream", "experimentalDecisionPatterns", "experimentalHeartbeatBackground", "stalledIntentNudge", "standardContinuation"],
           members: [
             // 梦境整理（原 automation 独立卡，961 并卡）。
             { id: "dream", labelKey: "settings.dream", tier: "optional" },
@@ -103,6 +104,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，
             // 117 首落地，本件补设置页入口）。默认关=现状一致。
             { id: "stalledIntentNudge", labelKey: "settings.stalledIntentNudge", tier: "optional" },
+            // 任务 1070：Standard 流续跑总闸——普通对话续跑通道（todo 续跑/
+            // stalled-intent 修复/executor-handoff nudge）开闸。默认关=现状
+            // 一致（普通对话永不自动续跑）；开启后仍有界上限与各边界排除。
+            { id: "standardContinuation", labelKey: "settings.standardContinuation", tier: "optional" },
           ],
         },
       ],

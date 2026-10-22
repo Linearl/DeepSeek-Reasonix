@@ -50,9 +50,9 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
     "LAB_TIER_ORDER puts stable first (strongest tier, 5 tiers)");
   // 任务 959：① tableWrap + ② sendTargetSelect 入表——可选 34→36（计数
   // pin 随表A 步进，562 同步；1024→37 后 1072 renderArtifact 移除回 36；
-  // 1069 stalledIntentNudge 叠加入表→37）。
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 37 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/18 推荐/37 可选/13 未稳定/1 退役");
+  // 1069 stalledIntentNudge 叠加入表→37；1070 standardContinuation → 38）。
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 38 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/18 推荐/38 可选/13 未稳定/1 退役");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");

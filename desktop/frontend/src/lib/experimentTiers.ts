@@ -111,6 +111,10 @@ export type TierFeatureId =
   // 任务 742: 心跳任务后台化（默认关；开启后心跳触发不进标签栏，复用
   // 264 detached 语义）。落 config.toml，Go 渲染表同档登记。
   | "heartbeatBackground"
+  // 任务 1070: Standard 流续跑总闸（默认关；开启后普通对话续跑通道可达，
+  // 有界上限/无进展即停/planMode 只读等边界不变）。落 config.toml
+  // standard_continuation，Go 渲染表同档登记。
+  | "standardContinuation"
   // 任务 782: 界面组三张条目级合并卡（742 tabManagement 先例）——
   // searchHistory（检索与历史：promptHistoryPicker+questionSearch+autoLoadOlder）、
   // inputSelection（输入与选区：draftPersistence+selectionActions）、
@@ -274,6 +278,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 742：心跳任务后台化（默认关）。按 550 口径定可选——不开启不影响
   // 任何调度行为，只是心跳会话照旧出现在标签栏。
   heartbeatBackground: "optional",
+  // 任务 1070：Standard 流续跑总闸（默认关）。不开启=续跑通道维持现状
+  // （普通对话永不自动续跑）；开启后才有界续跑。可选档。
+  standardContinuation: "optional",
   // 任务 782：界面组三张条目级合并卡的容器档 = 卡内成员最高档（774 聚合
   // 语义同源：searchHistory 三成员 两推荐一可选 → 推荐；inputSelection /
   // viewLayout 全可选成员 → 可选）。合并是入口层组织，不降级任何成员特性。
@@ -357,10 +364,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 总数 73→72（Go 侧同步 64→63）。
  * 任务 1069：stalledIntentNudge（模型提前结束判定器续轮提醒，默认关）按可选
  * 档入表——可选 36→37、总数 72→73（Go 侧同步 63→64）。 */
+ * 任务 1070：standardContinuation（Standard 流续跑总闸）按可选档入表——
+ * 可选 37→38、总数 73→74（Go 侧同步 64→65）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 18,
-  optional: 37,
+  optional: 38,
   unstable: 13,
   retired: 1,
 };
