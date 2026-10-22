@@ -176,8 +176,18 @@ func TestStreamReturnsRequestOnlyUsageOnProviderFailure(t *testing.T) {
 		t.Fatalf("failed stream usage = %+v, want tokens=0 requests=1", st.usage)
 	}
 	a.emitTurnUsage(st.usage, nil)
-	if len(events) != 1 || events[0].Kind != event.Usage || events[0].Usage.RequestCount != 1 {
-		t.Fatalf("request-only usage event = %+v", events)
+	// 任务1055: the turn's event stream now legitimately carries Connecting
+	// frames (attempt start + phase-end clear) from the same path — this
+	// test's subject is the usage event, so filter by kind instead of
+	// pinning the total event count.
+	var usageEvents []event.Event
+	for _, e := range events {
+		if e.Kind == event.Usage {
+			usageEvents = append(usageEvents, e)
+		}
+	}
+	if len(usageEvents) != 1 || usageEvents[0].Usage.RequestCount != 1 {
+		t.Fatalf("request-only usage event = %+v", usageEvents)
 	}
 }
 

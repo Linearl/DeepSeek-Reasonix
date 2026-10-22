@@ -2380,11 +2380,29 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	// emitting inline (任务927): SendWithRetry runs on the request-start
 	// goroutine now, and Sink.Emit is serial-call-only — the select loop
 	// below drains this channel and emits from the run loop.
-	retryNotice := make(chan provider.RetryInfo, 4)
+	// 任务1055: cap raised 4 → 16 (≥ MaxRetries+1 notices) AND the send made
+	// non-blocking. The notify fires on the request goroutine; a dial-class
+	// notice can land before this run loop first enters the select, and a
+	// full buffer there would park the producer inside the retry loop.
+	// Capacity alone cannot prove that never happens, so the send drops
+	// instead of blocking — a dropped notice costs one status update, a
+	// blocked one stalls the request.
+	retryNotice := make(chan provider.RetryInfo, 16)
 	ctx = provider.WithRetryNotify(ctx, func(info provider.RetryInfo) {
 		select {
 		case retryNotice <- info:
-		case <-ctx.Done():
+		default:
+		}
+	})
+	// 任务1055-A1: connecting notices ride a SEPARATE channel on purpose — the
+	// retry notify only fires after a failure (attempt > 0), so the immediate
+	// "connecting (attempt N)" status must not depend on that path. Same
+	// non-blocking contract: the request goroutine never waits on the UI.
+	connectNotice := make(chan provider.RetryInfo, 16)
+	ctx = provider.WithConnectNotify(ctx, func(info provider.RetryInfo) {
+		select {
+		case connectNotice <- info:
+		default:
 		}
 	})
 	// Reuse a parent attempt counter when present so stream retries accumulate
@@ -2534,6 +2552,11 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 		}
 		return stored, display
 	}
+	// 任务1055: one emit site for header-phase retry notices — the select's
+	// retryNotice case and the header-wait race guard (A3 exclusivity) share it.
+	emitRetry := func(info provider.RetryInfo) {
+		sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: info.Attempt, RetryMax: info.Max, RetryScope: event.RetryScopeHeaders})
+	}
 	for {
 		var chunk provider.Chunk
 		select {
@@ -2550,6 +2573,19 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			start = nil
 			stopHeader()
 			headerNotice = nil
+			// 任务1055-A1/A3: the connect phase is over — headers arrived or
+			// the start failed terminally. Drain any buffered connecting
+			// notice and emit the zero-attempt clear frame so the label
+			// cannot name the header-wait or prefill silence (three-stage
+			// exclusivity).
+			for clear := true; clear; {
+				select {
+				case <-connectNotice:
+				default:
+					clear = false
+				}
+			}
+			sink.Emit(event.Event{Kind: event.Connecting, RetryScope: event.RetryScopeConnect})
 			if s.panicValue != nil {
 				// A provider panic must keep propagating up the run-loop
 				// stack (task.go's recover sites emit the failed terminal,
@@ -2568,14 +2604,40 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			// with the elapsed wait, then re-arm at the repeat cadence. The
 			// start case above disarms this before prefill_slow can speak,
 			// so the two phases never overlap.
-			a.emitHeaderWaitSlowNotice(sink, time.Since(requestSentAt))
-			headerTimer.Reset(headerWaitNoticeRepeat)
+			// 任务1055-A3: a dial timeout landing this same instant (30s
+			// DialTimeout == headerWaitNoticeAfter) buffers its retry notice
+			// at the same moment the timer fires — serve that first, so
+			// header_wait_slow can never claim the connect-phase silence.
+			select {
+			case info := <-retryNotice:
+				emitRetry(info)
+			default:
+				a.emitHeaderWaitSlowNotice(sink, time.Since(requestSentAt))
+				headerTimer.Reset(headerWaitNoticeRepeat)
+			}
 			continue
 		case info := <-retryNotice:
 			// The header-retry notification, delivered from the start
 			// goroutine via WithRetryNotify and emitted here so Sink.Emit
-			// stays on the run loop (任务927 re-route).
-			sink.Emit(event.Event{Kind: event.Retrying, RetryAttempt: info.Attempt, RetryMax: info.Max, RetryScope: event.RetryScopeHeaders})
+			// stays on the run loop (任务927 re-route). 任务1055: the attempt
+			// failed, so the in-flight connecting label is now stale (the
+			// strip switches to "retrying n/m") — re-arm the header watch for
+			// the next attempt instead of letting it fire mid-backoff.
+			stopHeader()
+			headerTimer.Reset(headerWaitNoticeAfter)
+			headerNotice = headerTimer.C
+			emitRetry(info)
+			continue
+		case info := <-connectNotice:
+			// 任务1055-A1/A3: the attempt just started — name the in-flight
+			// silence ("connecting (attempt N)", scope connect) right away
+			// instead of leaving the dial unexplained until the first
+			// failure. Re-arm the header watch so header_wait_slow measures
+			// the CURRENT attempt and cannot fire during the dial phase.
+			stopHeader()
+			headerTimer.Reset(headerWaitNoticeAfter)
+			headerNotice = headerTimer.C
+			sink.Emit(event.Event{Kind: event.Connecting, RetryAttempt: info.Attempt, RetryMax: info.Max, RetryScope: event.RetryScopeConnect})
 			continue
 		case <-prefillNotice:
 			// 任务929 S3: no provider output for prefillNoticeAfter — say what

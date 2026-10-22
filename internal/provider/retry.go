@@ -67,6 +67,16 @@ type RetryNotify func(RetryInfo)
 
 type retryNotifyKey struct{}
 
+// ConnectNotify fires when an HTTP attempt STARTS — before the dial, not
+// after a failure (task 1055-A1). The RetryInfo carries Attempt = the 1-based
+// request ordinal from ctx's request-attempt counter (so agent-level sampling
+// retries and provider-level header retries share one increasing number) and
+// Max = the provider-layer attempt cap. Receivers must never block the
+// request goroutine: buffered channel plus a non-blocking send.
+type ConnectNotify func(RetryInfo)
+
+type connectNotifyKey struct{}
+
 type requestAttemptCounterKey struct{}
 
 type requestAttemptCounter struct {
@@ -84,6 +94,21 @@ func WithRetryNotify(ctx context.Context, fn RetryNotify) context.Context {
 
 func retryNotifyFromContext(ctx context.Context) RetryNotify {
 	fn, _ := ctx.Value(retryNotifyKey{}).(RetryNotify)
+	return fn
+}
+
+// WithConnectNotify attaches a callback that SendWithRetry invokes the moment
+// each HTTP attempt starts, so the agent can surface an immediate "connecting
+// (attempt N)" status instead of waiting for the first failure (task 1055-A1).
+func WithConnectNotify(ctx context.Context, fn ConnectNotify) context.Context {
+	if fn == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, connectNotifyKey{}, fn)
+}
+
+func connectNotifyFromContext(ctx context.Context) ConnectNotify {
+	fn, _ := ctx.Value(connectNotifyKey{}).(ConnectNotify)
 	return fn
 }
 
@@ -325,6 +350,7 @@ func readErrorBody(resp *http.Response) []byte {
 // failures are not retried (the model has already emitted tokens).
 func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOptions, newReq func(context.Context) (*http.Request, error)) (*http.Response, error) {
 	notify := retryNotifyFromContext(ctx)
+	connect := connectNotifyFromContext(ctx)
 	identity := RequestIdentity{Provider: opts.Provider, DisplayName: opts.ProviderDisplayName, Protocol: opts.Protocol}
 	var lastErr error
 	var retryAfter time.Duration
@@ -353,6 +379,13 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 			return nil, &RequestFailure{Identity: identity, Operation: "build request", Err: err}
 		}
 		recordRequestAttempt(ctx)
+		if connect != nil {
+			// 任务1055-A1: fired BEFORE the dial — the "connecting" status must
+			// be visible during the handshake silence, not after a failure.
+			// The ordinal comes from the request counter so the number keeps
+			// increasing across both retry layers.
+			connect(RetryInfo{Attempt: RequestAttemptCount(ctx), Max: limit + 1})
+		}
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			if !transientErr(err) {

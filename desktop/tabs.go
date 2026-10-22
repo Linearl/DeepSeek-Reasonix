@@ -1883,6 +1883,14 @@ func topicActivityStatusFromEvent(e event.Event) (string, bool) {
 	switch e.Kind {
 	case event.TurnStarted, event.Reasoning, event.ToolDispatch, event.ToolProgress, event.ToolResultPreview, event.ToolResult, event.CompactionStarted, event.Retrying:
 		return topicStatusThinking, true
+	case event.Connecting:
+		// 任务1055-A1: an in-flight attempt counts as activity (the project
+		// tree stays "thinking" through the dial silence); the zero-attempt
+		// clear frame is not activity.
+		if e.RetryAttempt > 0 {
+			return topicStatusThinking, true
+		}
+		return "", false
 	// CompactionDone is an ending state: the pass finished (successfully or was
 	// aborted). Reset the topic to idle instead of leaving it in "thinking",
 	// which would otherwise stay until a later TurnDone (manual /compact turns

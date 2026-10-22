@@ -169,6 +169,18 @@ const (
 	// up DAG nodes. Appended last to keep the Kind values before it
 	// wire-stable; older clients ignore unknown kinds.
 	WorkflowNode
+	// Connecting fires the moment one HTTP attempt starts (task 1055-A1): the
+	// request is initiated but the connection has not completed, so the UI can
+	// show "connecting (attempt N)" immediately instead of leaving the dial
+	// silence unnamed until the first failure. RetryAttempt carries the
+	// 1-based request ordinal from the turn's request-attempt counter;
+	// RetryScope is "connect". A zero attempt is the phase-end clear frame —
+	// headers arrived or the start failed — so frontends drop the label
+	// instead of letting it name the header-wait or prefill silence (the
+	// three silence stages stay mutually exclusive, task 1055-A3). Appended
+	// last to keep the Kind values before it wire-stable; older clients
+	// ignore unknown kinds.
+	Connecting
 	KindCount // Follows all real event kinds.
 )
 
@@ -631,9 +643,9 @@ type Event struct {
 	DecisionReceipt    *provider.DecisionReceipt // Notice: durable user decision receipt
 	WriteIntent        bool                      // local write-ahead checkpoint, not a user notice
 	Recovery           *RecoveryStatus           // optional local recovery details
-	RetryAttempt       int                       // Retrying: 1-based attempt about to be made
-	RetryMax           int                       // Retrying: total attempts before giving up
-	RetryScope         RetryScope                // Retrying: optional "headers" | "stream"; empty for older emitters
+	RetryAttempt       int                       // Retrying/Connecting: 1-based attempt (0 on the Connecting clear frame)
+	RetryMax           int                       // Retrying/Connecting: total attempts before giving up
+	RetryScope         RetryScope                // Retrying/Connecting: "connect" | "headers" | "stream" | "protocol"; empty for older emitters
 	StreamAttempt      StreamAttemptInfo         // StreamAttempt lifecycle
 	ReadStatus         *ReadStatusPayload        // ReadStatus: one logical read's delivery state
 	ReadPause          *provider.ReadPause       // TurnDone: durable display-only pause receipt
