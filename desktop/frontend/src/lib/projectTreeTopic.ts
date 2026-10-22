@@ -105,21 +105,61 @@ export function projectTreeShouldApplyShellSnapshot(options: {
   return projectTreeRevisionIsFresh(options.currentRevision, options.incomingRevision);
 }
 
+// projectTreeTopicRowIdentity is the identity a folder's topic list dedupes
+// on (task 1074). A conversation is ONE logical row keyed by its topicId, not
+// by its backing session: the same topic legitimately has several physical
+// session files (a collab contact file, a global-workspace copy, a recovery
+// replica), and the catalog projects each under the SAME topic id. Keying the
+// list on node.key therefore let the same conversation paint as multiple
+// rows — the "shadow entries" a single logical session showed three times in
+// the Global tree (数据层实测唯一: one catalog_topics row). Topic-less rows
+// (runtime-only shells before a topic id lands) fall back to their key.
+export function projectTreeTopicRowIdentity(node: ProjectNode): string | null {
+  if (!isTopicNode(node) && !isRuntimeSessionNode(node)) return null;
+  if (node.topicId) return `${node.kind.startsWith("global") ? "global" : "project"}:${node.topicId}`;
+  return node.key;
+}
+
+function projectTreeTopicRowKey(node: ProjectNode): string {
+  return projectTreeTopicRowIdentity(node) ?? node.key;
+}
+
+// projectTreeTopicRowsDeduped collapses same-identity rows within one list,
+// keeping the first-seen row. The append path feeds it the incoming list so
+// two pages that both carry the same topic (different backing sessions) cannot
+// each contribute a shadow row.
+function projectTreeTopicRowsDeduped(rows: ProjectNode[]): ProjectNode[] {
+  const seen = new Set<string>();
+  const out: ProjectNode[] = [];
+  for (const row of rows) {
+    const rowKey = projectTreeTopicRowKey(row);
+    if (seen.has(rowKey)) continue;
+    seen.add(rowKey);
+    out.push(row);
+  }
+  return out;
+}
+
 export function mergeProjectTopicPage(current: ProjectNode[], incoming: ProjectNode[], append: boolean): ProjectNode[] {
   if (!append) {
-    const incomingKeys = new Set(incoming.map((node) => node.key));
+    const incomingKeys = new Set(incoming.map(projectTreeTopicRowKey));
     // Project snapshots carry every pinned topic shell, while a lazy first
     // page is bounded. Keep off-page pins so expanding a busy project cannot
     // make its pinned section incomplete again.
-    const offPagePins = current.filter((node) => Boolean(node.pinned) && !incomingKeys.has(node.key));
-    return [...incoming, ...offPagePins];
+    const offPagePins = current.filter((node) => Boolean(node.pinned) && !incomingKeys.has(projectTreeTopicRowKey(node)));
+    return [...projectTreeTopicRowsDeduped(incoming), ...offPagePins];
   }
+  // Task 1074: the append path merges by logical identity, not node.key — two
+  // rows for the same topic (different backing sessions) collapse onto the
+  // first-seen row instead of accumulating as shadow entries, both within the
+  // incoming list and against the resident rows.
   const next = [...current];
-  const positions = new Map(next.map((node, index) => [node.key, index]));
-  for (const node of incoming) {
-    const index = positions.get(node.key);
+  const positions = new Map(next.map((node, index) => [projectTreeTopicRowKey(node), index]));
+  for (const node of projectTreeTopicRowsDeduped(incoming)) {
+    const rowKey = projectTreeTopicRowKey(node);
+    const index = positions.get(rowKey);
     if (index === undefined) {
-      positions.set(node.key, next.length);
+      positions.set(rowKey, next.length);
       next.push(node);
     } else {
       next[index] = node;
@@ -133,8 +173,8 @@ export function mergeProjectTopicPage(current: ProjectNode[], incoming: ProjectN
 // last complete resident rows byte-for-byte and append only newly discovered
 // keys until a complete page can replace the canonical first page.
 export function mergeIncompleteProjectTopicPage(current: ProjectNode[], incoming: ProjectNode[]): ProjectNode[] {
-  const residentKeys = new Set(current.map((node) => node.key));
-  const discovered = incoming.filter((node) => !residentKeys.has(node.key));
+  const residentKeys = new Set(current.map(projectTreeTopicRowKey));
+  const discovered = incoming.filter((node) => !residentKeys.has(projectTreeTopicRowKey(node)));
   return discovered.length === 0 ? current : [...current, ...discovered];
 }
 
@@ -153,11 +193,15 @@ export function mergeProjectTopicFirstPage(
   options: { nextCursor?: string },
 ): ProjectNode[] {
   if (!options.nextCursor) return mergeProjectTopicPage(current, incoming, false);
-  const incomingKeys = new Set(incoming.map((node) => node.key));
-  const offPagePins = current.filter((node) => Boolean(node.pinned) && !incomingKeys.has(node.key));
-  const pinKeys = new Set(offPagePins.map((node) => node.key));
-  const residentTail = current.filter((node) => !incomingKeys.has(node.key) && !pinKeys.has(node.key));
-  return [...incoming, ...offPagePins, ...residentTail];
+  const dedupedIncoming = projectTreeTopicRowsDeduped(incoming);
+  const incomingKeys = new Set(dedupedIncoming.map(projectTreeTopicRowKey));
+  const offPagePins = current.filter((node) => Boolean(node.pinned) && !incomingKeys.has(projectTreeTopicRowKey(node)));
+  const pinKeys = new Set(offPagePins.map(projectTreeTopicRowKey));
+  // Task 1074: the off-first-page resident tail keeps its rows unless their
+  // identity is already on the incoming first page — a second physical
+  // session for a topic the page just painted must not survive as a shadow.
+  const residentTail = current.filter((node) => !incomingKeys.has(projectTreeTopicRowKey(node)) && !pinKeys.has(projectTreeTopicRowKey(node)));
+  return [...dedupedIncoming, ...offPagePins, ...residentTail];
 }
 
 export function projectTreeTopicPageSignature(
