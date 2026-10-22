@@ -29,7 +29,7 @@ export type AppOverlayHostProps = {
   palette?: Region<ComponentProps<typeof CommandPalette>, "open" | "items" | "placeholder" | "emptyText">;
   shortcuts: Region<ComponentProps<typeof ShortcutsCheatsheet>, "open" | "platform" | "t">;
   startup?: Region<ComponentProps<typeof StartupSplash>, "hold">;
-  selection: Region<ComponentProps<typeof TranscriptSelectionMenu>, "enabled" | "resetKey">;
+  selection: Region<ComponentProps<typeof TranscriptSelectionMenu>, "enabled" | "resetKey" | "tabId">;
   worktree?: Region<ComponentProps<typeof WorktreeMergeModal>, "tabId" | "isOpen">;
 };
 

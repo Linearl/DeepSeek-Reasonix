@@ -93,6 +93,8 @@ export function buildOverlayHostProps(input: {
       view: {
         enabled: input.selectionEnabled,
         resetKey: input.activeTabId ?? "",
+        // 任务 1060：探针按该会话解析相对路径（与 resetKey 同源，显式传递语义）。
+        tabId: input.activeTabId ?? "",
       },
       commands: { onAddToChat: input.onAddSelectedText },
     },
