@@ -4916,6 +4916,37 @@ a[href] {
 .notice-line__body {
   min-width: 0;
 }
+/* 任务1066: 未应用引导 notice 块内正文/附件/复制按钮——与 steer 气泡同款
+   形态（图片复用 .msg-attachment，可点击放大）。 */
+.notice-line__body--unapplied-steer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.notice-line__text-body {
+  min-width: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.notice-line__body .msg-attachments {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  min-width: 0;
+  width: 100%;
+}
+.notice-line__body .steer-line__copy {
+  margin-top: 4px;
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+}
+.notice-line__body .steer-line__copy:hover:not(:disabled),
+.notice-line__body .steer-line__copy:focus-visible {
+  color: var(--fg);
+}
 .notice-line__decision-receipt {
   display: flex;
   align-items: baseline;
@@ -5151,6 +5182,72 @@ a[href] {
   min-width: 0;
   word-break: break-word;
   white-space: pre-wrap;
+}
+/* 任务1066: 引导块内附件（图片缩略图）与复制按钮——复用 .msg-attachment 形态
+   （与用户消息 MessageAttachments 同一份实现），气泡内纵向堆叠、靠右对齐。 */
+.steer-line__bubble .msg-attachments {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  min-width: 0;
+  width: 100%;
+}
+.steer-line__copy {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  margin-left: auto;
+}
+.steer-line__bubble .steer-line__copy {
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+}
+.steer-line__bubble .steer-line__copy:hover:not(:disabled),
+.steer-line__bubble .steer-line__copy:focus-visible {
+  color: var(--fg);
+}
+/* 任务1066: 723 deferred 展开态正文块（图片/复制按钮放 button 之外，避免
+   button 嵌套）——与气泡同款用户侧外观，纵向排列靠右对齐。 */
+.steer-line__expanded {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: 82%;
+  margin-top: 4px;
+  padding: 10px 16px;
+  border: 1px solid var(--chat-user-border);
+  border-radius: 14px; /* 833-radius-wl:large */
+  background: var(--chat-user-bg);
+  box-shadow: var(--chat-user-shadow);
+  color: var(--chat-user-fg);
+  line-height: 1.65;
+}
+.steer-line__expanded .steer-line__text--expanded {
+  min-width: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+  text-align: right;
+}
+.steer-line__expanded .msg-attachments {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  min-width: 0;
+  width: 100%;
+}
+.steer-line__expanded .steer-line__copy {
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+}
+.steer-line__expanded .steer-line__copy:hover:not(:disabled),
+.steer-line__expanded .steer-line__copy:focus-visible {
+  color: var(--fg);
 }
 /* 任务723: deferred steer placeholder — collapsed status row, click to expand. */
 .steer-line__bubble--deferred {
