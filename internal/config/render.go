@@ -52,7 +52,11 @@ type labFeatureTier struct {
 }
 
 var labFeatureTiers = []labFeatureTier{
-	// ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
+	// ── automation（自动化，7 项；任务 650：optimisticParallel 迁提效）──
+	// 任务 1069：stalledIntentNudge（模型提前结束判定器续轮提醒，默认关）——
+	// 此前仅手写 TOML（stalled_intent_nudge，117），无实验室设置页入口；本件
+	// 补入口（铁律 2，可选档），键语义/默认值零变化。
+	{"stalledIntentNudge", LabTierOptional, []string{"stalled_intent_nudge"}},
 	// 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（以及 infra
 	// 段 runtimeReuse）三推荐升「稳定」——C1~C5 判据见任务书；稳定 = 默认开
 	// （config.Default）+ 桌面开关禁用态（开发者模式解锁）+ 手写 false 保留。
@@ -225,6 +229,10 @@ var labSpecialKeys = map[string]bool{
 	"decision_pattern_file_path":    true,
 	"decision_pattern_threshold":    true,
 	"decision_pattern_auto_approve": true,
+	// 任务 1069：模型提前结束判定器续轮提醒主开关（无 experimental_ 前缀的
+	// 实验室特性键，117 首落地，本件补实验室设置页入口，随 stalledIntentNudge
+	// 档位族登记）。
+	"stalled_intent_nudge": true,
 }
 
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:

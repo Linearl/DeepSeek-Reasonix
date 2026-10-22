@@ -1628,6 +1628,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
   // Task 115: dream/distill memory-curation tools (experimental).
   SetExperimentalDream(enabled: boolean): Promise<void>;
+  // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，默认关）。
+  SetStalledIntentNudge(enabled: boolean): Promise<void>;
   // Task 801: decision-pattern extraction + solidification (experimental).
   SetExperimentalDecisionPatterns(enabled: boolean): Promise<void>;
   // Task 801: solidified decision-patterns file location (empty = default
@@ -6455,6 +6457,7 @@ function makeMockApp(): AppBindings {
     async SetColdCacheCompactIdleMinutes() {},
     async SetExperimentalTraceAsState() {},
     async SetExperimentalDream() {},
+    async SetStalledIntentNudge() {},
     async SetExperimentalDecisionPatterns() {},
     async SetDecisionPatternFilePath() {},
     async SetDecisionPatternThreshold() {},

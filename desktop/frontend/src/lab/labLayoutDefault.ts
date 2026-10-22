@@ -85,11 +85,12 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           // 任务 961：智能自动化（合并卡，742/782 条目级合并先例）——
           // 梦境整理 + 决策模式提取 + 心跳任务后台化三散条并卡。容器档 =
           // 成员最高档（全可选 → 可选）；卡内三行各读各的键、各写各的
-          // setter，配置键零变化，已存偏好零迁移。
+          // setter，配置键零变化，已存偏好零迁移。任务 1069：stalledIntentNudge
+          // （模型提前结束判定器续轮提醒）作为第四成员行入卡。
           id: "smartAutomation",
           labelKey: "settings.smartAutomation",
           tier: "optional",
-          onKeys: ["experimentalDream", "experimentalDecisionPatterns", "experimentalHeartbeatBackground"],
+          onKeys: ["experimentalDream", "experimentalDecisionPatterns", "experimentalHeartbeatBackground", "stalledIntentNudge"],
           members: [
             // 梦境整理（原 automation 独立卡，961 并卡）。
             { id: "dream", labelKey: "settings.dream", tier: "optional" },
@@ -99,6 +100,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 任务 742→961：心跳任务后台化——开启后心跳触发不进标签栏（264
             // detached 语义，提交成功后 park）。默认关=现状一致。
             { id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional" },
+            // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，
+            // 117 首落地，本件补设置页入口）。默认关=现状一致。
+            { id: "stalledIntentNudge", labelKey: "settings.stalledIntentNudge", tier: "optional" },
           ],
         },
       ],

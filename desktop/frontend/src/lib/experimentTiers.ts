@@ -32,6 +32,9 @@ export type TierFeatureId =
   | "dream"
   // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
   | "decisionPatterns"
+  // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117 首落地，
+  // 本件补实验室设置页入口，默认关）。
+  | "stalledIntentNudge"
   // 任务 1024：composer 草稿优化（改写按钮，默认关）。
   | "draftRewrite"
   // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
@@ -162,6 +165,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   dream: "optional",
   // 任务 801：决策模式（提取链+固化链）。归自动化组，档位可选。
   decisionPatterns: "optional",
+  // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge）——归自动化
+  // 组，档位可选（铁律 2，默认关）。
+  stalledIntentNudge: "optional",
   safetyCostControl: "optional",
   subagentPolicy: "unstable",
   // ── efficiency（提效，10 项；任务 517 B3 并入 safetyCostControl；────
@@ -348,11 +354,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * ——可选 34→36、总数 70→72（Go 侧同步 61→63）。任务 1024：draftRewrite
  * （composer 草稿优化）在其上叠加——可选 36→37、总数 72→73（Go 61→64）。
  * 任务 1072：renderArtifact（对话内产物卡片）整功能移除出表——可选 37→36、
- * 总数 73→72（Go 侧同步 64→63）。 */
+ * 总数 73→72（Go 侧同步 64→63）。
+ * 任务 1069：stalledIntentNudge（模型提前结束判定器续轮提醒，默认关）按可选
+ * 档入表——可选 36→37、总数 72→73（Go 侧同步 63→64）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 18,
-  optional: 36,
+  optional: 37,
   unstable: 13,
   retired: 1,
 };

@@ -107,11 +107,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 1024：draftRewrite（composer 草稿优化）在其上叠加——可选 36→37、
   // 总数 72→73（Go 侧同步 63→64）。任务 1072：renderArtifact（对话内产物
   // 卡片）整功能移除出表——可选 37→36、总数 73→72（Go 侧同步 64→63）。
-  ok(counts.stable === 4 && counts.recommended === 18 && counts.optional === 36 && counts.unstable === 13 && counts.retired === 1,
-    `register counts are 4 稳定/18/36/13/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 72, `register holds exactly 72 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 36 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/18/36/13/1");
+  // 任务 1069：stalledIntentNudge（模型提前结束判定器续轮提醒，默认关）按
+  // 可选档入表——可选 36→37、总数 72→73（Go 侧同步 63→64）。
+  ok(counts.stable === 4 && counts.recommended === 18 && counts.optional === 37 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 4 稳定/18/37/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 73, `register holds exactly 73 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 37 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/18/37/13/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -157,8 +159,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 任务 979：capabilityGroups 入表（两侧共享，自 Go 豁免表转正）——60→61。
   // 任务 959：① tableWrap + ② sendTargetSelect 入表（两侧共享）——61→63。
   // 任务 1024：draftRewrite 叠加入表——63→64。任务 1072：renderArtifact
-  // 整功能移除出表——64→63。
-  ok(Object.keys(goTiers).length === 63, `Go registry parses to 63 entries (got ${Object.keys(goTiers).length})`);
+  // 整功能移除出表——64→63。任务 1069：stalledIntentNudge（模型提前结束
+  // 判定器续轮提醒，默认关）入表——63→64。
+  ok(Object.keys(goTiers).length === 64, `Go registry parses to 64 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -195,8 +198,9 @@ console.log("\ntask 562 lab three-tier badges");
   // session_hub 聚合件）入聚合页成员行——成员总数 40→41。
   // 任务 959：viewLayout 卡 tableWrap + sendTargetSelect 计入——41→43。
   // 任务 1024：draftRewrite 并入 viewLayout 卡——43→44。任务 1072：
-  // renderArtifact 成员行随功能移除出卡——44→43。
-  ok(members.length === 43, `merged cards carry 43 member features (got ${members.length})`);
+  // renderArtifact 成员行随功能移除出卡——44→43。任务 1069：
+  // stalledIntentNudge 并入 smartAutomation 卡——43→44。
+  ok(members.length === 44, `merged cards carry 44 member features (got ${members.length})`);
   ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
@@ -209,8 +213,8 @@ console.log("\ntask 562 lab three-tier badges");
   // capabilityGroups 入表计入 → 70。
   // 任务 959：① tableWrap + ② sendTargetSelect 入表计入 → 72。
   // 任务 1024：draftRewrite 叠加入表 → 73。任务 1072：renderArtifact 移除
-  // → 72。
-  ok(covered.size === 72, "rail entries cover all 72 features");
+  // → 72。任务 1069：stalledIntentNudge 叠加入表 → 73。
+  ok(covered.size === 73, "rail entries cover all 73 features");
 
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构

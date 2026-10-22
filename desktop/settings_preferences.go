@@ -736,6 +736,13 @@ func (a *App) SetExperimentalDecisionPatterns(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDecisionPatterns(enabled) })
 }
 
+// SetStalledIntentNudge toggles the task-1069 stalled-intent nudge lab switch
+// (模型提前结束判定器续轮提醒). Applies on restart (boot snapshot), like every
+// boot-resolved switch.
+func (a *App) SetStalledIntentNudge(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetStalledIntentNudge(enabled) })
+}
+
 // SetDecisionPatternFilePath overrides the solidified decision-patterns file
 // location (task 801 修订七). Empty restores the default global-workspace/docs
 // path. The heartbeat solidification, its backups, and the autopilot injection

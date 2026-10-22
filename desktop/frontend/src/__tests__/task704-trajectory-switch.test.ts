@@ -131,9 +131,11 @@ ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajec
 // 收口 → optional 29；940 → 30；943 → 31；944 → 32；961 两容器 → 33；
 // 979 capabilityGroups → 34（961 注钉 20/33 后漏跟）；任务 1005 批1 转档
 // → 4 稳定/18 推荐/34 可选（992 漏同步三键同窗收口）。本 pin 随 1005
-// 窗口补步进）。
-ok(/stable: 4,\s*\n\s*recommended: 18,\s*\n\s*optional: 36,/.test(tiers),
-  "LAB_TIER_COUNTS at the 959 口径 (4 stable / 18 recommended / 36 optional)");
+// 窗口补步进）。任务 1024（draftRewrite）+ 1069（stalledIntentNudge）两次
+// 叠加入表 → optional 38；本 pin 此前漏跟 1024，随 1069 一并补齐。任务
+// 1072：renderArtifact 整功能移除出表 → optional 37（合并态实测口径）。
+ok(/stable: 4,\s*\n\s*recommended: 18,\s*\n\s*optional: 37,/.test(tiers),
+  "LAB_TIER_COUNTS at the 1069+1072 合并态口径 (4 stable / 18 recommended / 37 optional)");
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -150,10 +152,13 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 //    815 → 29/63；686 → 29/64；940/943/944 → 32/67；961 → 33/69；979
 //    capabilityGroups → 34/70（961 后漏跟）；任务 1005 批1 转档总数不变 70。
 //    本 pin 随 1005 窗口补步进）。任务 959：① tableWrap + ②
-//    sendTargetSelect → 36/72（本 pin 随 959 步进）。
+//    sendTargetSelect → 36/72（本 pin 随 959 步进）。任务 1024
+//    （draftRewrite）+ 1069（stalledIntentNudge）两次叠加入表 → 38/74
+//    （本 pin 此前漏跟 1024，随 1069 一并补齐）。任务 1072：renderArtifact
+//    整功能移除出表 → 37/73（合并态实测口径：36+1=37 可选、72+1=73 总数）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 36") && tierTest.includes("length === 72"),
-  "task562 test pins the 72-entry register (959 合并态口径)");
+ok(tierTest.includes("counts.optional === 37") && tierTest.includes("length === 73"),
+  "task562 test pins the 73-entry register (1069+1072 合并态口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");
