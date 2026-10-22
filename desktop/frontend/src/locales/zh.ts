@@ -4447,6 +4447,8 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.noRepairNeeded": "无需修复。",
   "settings.sessionVersions.repaired": "已修复（{actions}）；备份：{backup}",
   "settings.sessionVersions.repairLog": "修复记录：",
+  "settings.sessionVersions.degraded": "已降级",
+  "settings.sessionVersions.degradedHint": "该会话的事件日志读取被拒或失败（如重放超出安全预算）：行内计数不可用，其余分区不受影响。",
   "settings.recoveryCopiesHint": "列出所有带 recovery 副本的工作阶段；「独有」是仅存在于该副本、未并入主线的事件数——它大就说明那边有会丢的工作。先看清，再勾选合并。",
   "settings.recoveryCopiesEmpty": "没有发现 recovery 副本。",
   "settings.recoveryCopiesSummary": "共 工作阶段数 / 独有事件合计",
