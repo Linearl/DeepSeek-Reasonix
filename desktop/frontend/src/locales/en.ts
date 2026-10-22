@@ -4453,6 +4453,8 @@ export const en = {
   "settings.sessionVersions.noRepairNeeded": "No repair needed.",
   "settings.sessionVersions.repaired": "Repaired ({actions}); backup: {backup}",
   "settings.sessionVersions.repairLog": "Repair log:",
+  "settings.sessionVersions.degraded": "Degraded",
+  "settings.sessionVersions.degradedHint": "Reading this conversation's event log was refused or failed (for example a replay beyond the safety budget): in-row counts are unavailable; other sections are unaffected.",
   "settings.recoveryCopiesHint": "Every conversation with recovery copies. Unique counts the events that exist only in that copy and not in the canonical transcript - a large number means work would be lost by ignoring it. Read first, then select and merge.",
   "settings.recoveryCopiesEmpty": "No recovery copies found.",
   "settings.recoveryCopiesSummary": "conversations / unique events total",

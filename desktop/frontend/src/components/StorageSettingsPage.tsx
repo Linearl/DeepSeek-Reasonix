@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Component, Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Copy, Check } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
@@ -6,6 +6,59 @@ import { RecoveryCopiesSection } from "./RecoveryCopiesSection";
 import { SessionVersionsSection } from "./SessionVersionsSection";
 
 type StorageSettingsView = Awaited<ReturnType<typeof app.StorageSettings>>;
+
+/** SectionBoundary keeps one storage page section's crash local (任务 1039r).
+ *
+ * The settings surface boundary one level up is fail-closed by design: any
+ * throw anywhere in the settings tree used to replace the whole page - path
+ * fields, both panels and everything they had loaded - with a dead-end
+ * 「设置加载失败。重试」 (the 1039 face, seen again in the 0715 retest). No
+ * bridge rejection can land there (every expand path catches its own promises),
+ * so the survivor of such a crash is only this local bound: the failing
+ * section renders a reason banner with a retry that remounts just that
+ * section, and the rest of the page - including the untouched section's state
+ * - stays exactly as the user left it.
+ */
+export class SectionBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean; reason: string; attempt: number }
+> {
+  state = { failed: false, reason: "", attempt: 0 };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { failed: true, reason: error instanceof Error ? error.message : String(error) };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <SectionFailure
+          reason={this.state.reason}
+          onRetry={() =>
+            this.setState((current) => ({ failed: false, reason: "", attempt: current.attempt + 1 }))
+          }
+        />
+      );
+    }
+    // Keyed so a retry remounts the section from scratch: a crashed subtree may
+    // have failed mid-load, and a clean mount is the honest retry.
+    return <Fragment key={this.state.attempt}>{this.props.children}</Fragment>;
+  }
+}
+
+function SectionFailure({ reason, onRetry }: { reason: string; onRetry: () => void }) {
+  const t = useT();
+  return (
+    <div className="banner banner--error settings-section-failure" role="alert" data-testid="settings-section-failure">
+      <span>{t("settings.loadFailed")}</span>
+      {/* 原因随横幅走（1039 首轮教训）：只有死话时用户与日志都定位不到断点。 */}
+      <span className="rc-failed-reason">{reason}</span>
+      <button className="btn btn--secondary btn--small" type="button" onClick={onRetry}>
+        {t("common.retry")}
+      </button>
+    </div>
+  );
+}
 
 export function StorageSettingsPage() {
   const t = useT();
@@ -54,9 +107,16 @@ export function StorageSettingsPage() {
         <StoragePathField label={t("settings.storageCache")} value={view.cachePath} />
         <StoragePathField label={t("settings.storageExtensions")} value={view.extensionsPath} />
       </div>
+        {/* 任务 1039r：两个分区各自局部兜底——分区渲染抛错降级为该分区的
+            原因横幅+重试，不再上抛给设置 surface 的整页 fail-closed 边界
+            （「设置加载失败。重试」吞掉路径区与另一分区的实测形态）。 */}
+        <SectionBoundary>
           <RecoveryCopiesSection />
-          {/* 任务 1011 需求 E：v3 events heads 的版本与修复分区，与 legacy 副本扫描分区并存 */}
+        </SectionBoundary>
+        {/* 任务 1011 需求 E：v3 events heads 的版本与修复分区，与 legacy 副本扫描分区并存 */}
+        <SectionBoundary>
           <SessionVersionsSection />
+        </SectionBoundary>
 </section>
   );
 }

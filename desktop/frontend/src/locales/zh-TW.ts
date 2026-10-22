@@ -3060,6 +3060,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersions.noRepairNeeded": "無需修復。",
   "settings.sessionVersions.repaired": "已修復（{actions}）；備份：{backup}",
   "settings.sessionVersions.repairLog": "修復記錄：",
+  "settings.sessionVersions.degraded": "已降級",
+  "settings.sessionVersions.degradedHint": "該會話的事件日誌讀取被拒或失敗（如重放超出安全預算）：行內計數不可用，其餘分區不受影響。",
   "settings.recoveryCopiesHint": "列出所有帶 recovery 副本的工作階段；「獨有」是僅存在於該副本、未併入主線的事件數——它大就說明那邊有會丟的工作。先看清，再勾選合併。",
   "settings.recoveryCopiesEmpty": "沒有發現 recovery 副本。",
   "settings.recoveryCopiesSummary": "共 工作階段數 / 獨有事件合計",

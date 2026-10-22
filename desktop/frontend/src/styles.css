@@ -45818,6 +45818,16 @@ button.statusbar__mcp:focus-visible {
 /* 任务 1039：失败横幅上的后端原因——比横幅文案小一号、可换行，长错误
    （重放超限带 resource=value/limit）不撑破横幅。 */
 .rc-failed-reason { margin-left: 6px; font-size: 0.85em; opacity: 0.85; word-break: break-all; }
+/* 任务 1039r：v3 版本面板里的降级标记——零计数行必须说自己是降级（重放
+   被拒/枚举失败），不能和「空会话」混淆。悬停 title 给出完整原因。 */
+.sv-degraded {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+}
 .rc-result {
   margin-bottom: 10px;
   padding: 8px 10px;
