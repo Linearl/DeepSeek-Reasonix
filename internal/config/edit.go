@@ -1432,6 +1432,15 @@ func (c *Config) SetExperimentalDraftRewrite(enabled bool) error {
 	return nil
 }
 
+// SetStandardContinuation toggles the task-1070 Standard-flow continuation
+// total gate (lab switch standard_continuation, default off). Boot snapshot:
+// the agent reads it once at construction, so a flip applies to the next
+// session (new tab / restart). Off keeps the pre-1070 behaviour verbatim.
+func (c *Config) SetStandardContinuation(enabled bool) error {
+	c.Agent.StandardContinuation = enabled
+	return nil
+}
+
 // SetDecisionPatternFilePath overrides the solidified decision-patterns file
 // location (task 801 修订七). Empty restores the default
 // global-workspace/docs/decision-patterns.md. A non-empty value must name a

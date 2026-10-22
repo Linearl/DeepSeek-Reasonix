@@ -3635,6 +3635,26 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 1070：Standard 流续跑总闸——普通对话续跑通道开闸
+                  （todo 续跑/stalled-intent 修复/executor-handoff nudge）。默认
+                  关=普通对话永不自动续跑（现状一致）；开启后仍有界上限与各
+                  边界排除。保存即换态，下一次 run 生效（免重启）。 */}
+              <SettingsField label={labLabel("standardContinuation", t("settings.standardContinuation"))} hint={t("settings.standardContinuationHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.standardContinuation) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetStandardContinuation(on);
+                      })}
+                    >
+                      {t(on ? "settings.standardContinuation.on" : "settings.standardContinuation.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {/* 任务 782：检索与历史（合并卡，742 先例）——历史提问选择器 +

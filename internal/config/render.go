@@ -69,6 +69,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 整理族；档位按 550 口径可选（不开启零行为）。三个键同卡渲染：
 	// 文件位置/阈值/跳过人工批准为 801 家族子键（477 ask-timeout 先例）。
 	{"decisionPatterns", LabTierOptional, []string{"experimental_decision_patterns", "decision_pattern_file_path", "decision_pattern_threshold", "decision_pattern_auto_approve"}},
+	// 任务 1070：Standard 流续跑总闸（hostContinuationEnabled 解除专用流限制）。
+	// 与 1069（stalledIntent 判定器改造）同实验室-自动化族；默认关=关态逐字
+	// 等价现状（铁律 2）。开启后 Standard 会话续跑通道可达，但既有边界不变：
+	// 有界上限、无进展即停、planMode/只读/ForbidMutation/subagentDepth 排除。
+	{"standardContinuation", LabTierOptional, []string{"standard_continuation"}},
 	// 任务 517：B1/B2/B3 三开关合并为「安全 / 成本控制」单键；三个 legacy 键
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
 	// 任务 722：三个细粒度子开关（条件渲染，nil=跟随总开关不落盘）同归本卡。
@@ -233,6 +238,9 @@ var labSpecialKeys = map[string]bool{
 	// 实验室特性键，117 首落地，本件补实验室设置页入口，随 stalledIntentNudge
 	// 档位族登记）。
 	"stalled_intent_nudge": true,
+	// 任务 1070：standard_continuation 是 Standard 流续跑总闸的实验室特性键
+	// （无 experimental_ 前缀，随 standardContinuation 档位族登记）。
+	"standard_continuation": true,
 }
 
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
@@ -928,6 +936,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	}
 	fmt.Fprintf(&b, "trace_as_state = %v   # task 60: Trace-as-State compaction (reasoning in summaries, re-read routing, guarded folds)\n", c.Agent.TraceAsState)
 	fmt.Fprintf(&b, "stalled_intent_nudge = %v   # task 117: nudge when model announces next step instead of taking it\n", c.Agent.StalledIntentNudge)
+	fmt.Fprintf(&b, "standard_continuation = %v   # task 1070: open the Standard-flow same-Run continuation total gate (bounded todo / stalled-intent / handoff nudges); dedicated ExplicitFlow runs unaffected (default off)\n", c.Agent.StandardContinuation)
 	if c.Agent.StalledIntentNudgeLimit > 0 {
 		fmt.Fprintf(&b, "stalled_intent_nudge_limit = %d   # max stalled-intent nudges per run (1-3; default 1)\n", c.Agent.StalledIntentNudgeLimit)
 	}

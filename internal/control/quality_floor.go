@@ -86,4 +86,9 @@ func (c *Controller) qualityFloorConstraint() taskcontract.PolicyFloor {
 type sessionSettings struct {
 	planMode     bool
 	qualityFloor string
+	// standardContinuation (task 1070) mirrors the lab switch
+	// standard_continuation: when on, every Standard turn of this session is
+	// tagged ContinuationStandardFlow (the agent side still requires its own
+	// boot snapshot to act on the tag). Default off = pre-1070 verbatim.
+	standardContinuation bool
 }

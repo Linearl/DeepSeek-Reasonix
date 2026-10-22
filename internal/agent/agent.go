@@ -503,6 +503,13 @@ type Agent struct {
 
 	requireVisibleFinal bool // internal callers require final Content
 	continuationPolicy  ContinuationPolicy
+	// standardContinuation (task 1070) arms the Standard-flow continuation
+	// total gate: runs tagged ContinuationStandardFlow then reach the bounded
+	// host-continuation helpers (executor-handoff nudge, Standard todo
+	// continuation, stalled-intent repair, todo-progress nudge). Lab switch
+	// standard_continuation, default off; boot snapshot. ExplicitFlow runs are
+	// unaffected either way.
+	standardContinuation bool
 	// stalledIntentNudge enables the stalled-intent repair outside
 	// ContinuationExplicitFlow (task 117). stalledIntentNudgeLimit bounds it.
 	stalledIntentNudge      bool
@@ -1294,6 +1301,14 @@ type Options struct {
 	// ContinuationPolicy is the internal host policy for synthetic same-Run
 	// continuation. The zero value (ContinuationDisabled) is the product default.
 	ContinuationPolicy ContinuationPolicy
+	// StandardContinuation (task 1070) arms the lab switch standard_continuation
+	// (default off, boot snapshot): the Standard run tagged
+	// ContinuationStandardFlow reaches the bounded host-continuation helpers.
+	// ExplicitFlow runs ignore it. Off keeps the pre-1070 behaviour verbatim.
+	// The desktop never sets it: the controller owns the live toggle and tags
+	// each turn; boot snapshots it here so a live flip on an already-running
+	// agent still resolves (the tag is the authority, this is the kill switch).
+	StandardContinuation bool
 	// Gate is the per-call permission gate. nil disables gating.
 	Gate Gate
 	// ReadOnlyExecution enables a permanent host-side read-only boundary for
@@ -1682,6 +1697,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		},
 		requireVisibleFinal:     opts.RequireVisibleFinal,
 		continuationPolicy:      opts.ContinuationPolicy,
+		standardContinuation:    opts.StandardContinuation,
 		stalledIntentNudge:      opts.StalledIntentNudge,
 		stalledIntentNudgeLimit: normalizeStalledIntentNudgeLimit(opts.StalledIntentNudgeLimit),
 		readinessCatchUp:        opts.ReadinessCatchUp,

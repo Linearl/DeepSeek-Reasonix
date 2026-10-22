@@ -1517,6 +1517,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 1024: composer 草稿优化（发送左侧改写按钮；re-applied on settings
   // save, no restart）。
   SetExperimentalDraftRewrite(enabled: boolean): Promise<void>;
+  // 任务 1070: Standard 流续跑总闸（普通对话续跑通道开闸；re-applied on
+  // settings save + live controller mirror, next run applies）。
+  SetStandardContinuation(enabled: boolean): Promise<void>;
   // 任务 686: workflow visualization panel (palette entry opening the DAG flow
   // view; re-applied on settings save, no restart).
   SetExperimentalWorkflowPanel(enabled: boolean): Promise<void>;
@@ -6371,6 +6374,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalApprovalSelect() {},
     async SetExperimentalTableWrap() {},
     async SetExperimentalSendTargetSelect() {},    async SetExperimentalDraftRewrite() {},
+    async SetStandardContinuation() {},
     async SetExperimentalWorkflowPanel() {},
     async SetTabPermissionIndicator() {},
     async SetExperimentalSubagentDetail() {},

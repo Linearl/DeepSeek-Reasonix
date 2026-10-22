@@ -2945,6 +2945,11 @@ export const zh: Record<DictKey, string> = {
 "settings.heartbeatBackgroundHint": "控制心跳计划任务在标签栏的可见方式（实验特性，默认关闭）。开启：运行时仍会短暂打开对应话题标签——提示词要通过它提交——提交后立即转入后台驻留（任务 264 detached 语义），回合在后台继续跑，该标签在回合结束、界面刷新时自动移出标签栏；即「执行期间短暂出现、不常驻」，而非全程不出现。你自己打开过的话题永远不会被收起；后台驻留期间机器人通道转发照常工作，下一次运行会自动接回。关闭：每次运行保持原行为——话题标签打开后照常留在标签栏。保存后对下一次计划运行生效，无需重启。",
 "settings.heartbeatBackground.on": "开",
 "settings.heartbeatBackground.off": "关",
+// 任务 1070：Standard 流续跑总闸（默认关 = 1070 前的行为）。
+"settings.standardContinuation": "普通对话续跑（实验）",
+"settings.standardContinuationHint": "控制普通对话（Standard 流）是否允许有界的同回合续跑（实验特性，默认关闭）。开启：当模型「列了待办但没执行」「宣布了下一步却直接收尾」时，宿主会自动补一轮继续，每次续跑都有提示，且受次数上限与「无进展即停」约束；计划模式、只读、禁止变更、子代理等边界一律不续跑。关闭（默认）：普通对话保持现状——干净收尾即结束回合，不会自动续跑（Goal/评审/守护等专用流程不受此开关影响）。保存后对下一次回合生效，无需重启。",
+"settings.standardContinuation.on": "开",
+"settings.standardContinuation.off": "关",
 "settings.subagentDetail": "子代理详情视图",
 "settings.subagentDetailHint": "控制右栏「子代理」面板里点击一行的行为（双态实验特性，默认关闭）：关闭时为保底形态——点击行在面板内展开内联预览，另加「加宽预览 / 还原宽度」按钮可一键把右栏调宽（拖拽调宽与双击复位不受影响）；开启时为增强形态——点击行切换到右栏内整页只读详情（含「返回列表」按钮），宽度沿用右栏记忆宽度，详情不提供任何输入框、仅供查看。保存后立即生效，无需重启。",
 "settings.subagentDetail.on": "开",

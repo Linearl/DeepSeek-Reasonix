@@ -556,6 +556,10 @@ type SettingsView struct {
 	// 任务 1024: composer 草稿优化（改写按钮）lab switch readback. Boot snapshot;
 	// the settings save re-applies it, so a flip shows without a restart.
 	ExperimentalDraftRewrite bool `json:"experimentalDraftRewrite"`
+	// 任务 1070: Standard 流续跑总闸 readback. Boot snapshot; the settings save
+	// re-applies it (config + live controller mirror), so a flip shows without
+	// a restart.
+	StandardContinuation bool `json:"standardContinuation"`
 	// Task 979: capability-group disclosure layer readback (tasks 953/954/955
 	// shared switch: use_capability group rows + group cards, session_hub L0
 	// aggregation entry, standing-directory group attribution). Boot snapshot.
@@ -1906,6 +1910,8 @@ func (a *App) Settings() SettingsView {
 		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
 		// 任务 1024: composer 草稿优化（改写按钮）lab switch readback.
 		ExperimentalDraftRewrite: cfg.Agent.ExperimentalDraftRewrite,
+		// 任务 1070: Standard 流续跑总闸 readback.
+		StandardContinuation: cfg.Agent.StandardContinuation,
 		// Task 979: capability-group disclosure lab switch readback (953/954/955 shared).
 		ExperimentalCapabilityGroups: cfg.Agent.ExperimentalCapabilityGroups,
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).

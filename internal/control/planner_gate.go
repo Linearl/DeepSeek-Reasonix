@@ -70,6 +70,14 @@ func (c *Controller) withPlannerTurnMetadata(ctx context.Context, userText strin
 		ExecutionExpected: standardTodoExecutionExpected(text, synthetic, priorMessages, planMode, constraints),
 		ShouldYield:       c.hasPendingUserWork,
 	})
+	// 任务 1070：Standard 流续跑总闸——Standard 会话打 ContinuationStandardFlow
+	// 标（与 ExplicitFlow 专用流不同值）；agent 侧 hostContinuationEnabled 只在
+	// 实验室开关 standard_continuation（boot snapshot）为真时才认这个标，故
+	// 关态下这段等价于没打标（逐字等价现状）。控制端自己拥有的开关，不经
+	// Agent Options，会话内切换下一次 run 即生效。
+	if c != nil && c.standardContinuation {
+		ctx = agent.WithContinuationPolicy(ctx, agent.ContinuationStandardFlow)
+	}
 	return withPlannerTurnMetadata(ctx, plannerTurnMetadata{
 		UserText:               userText,
 		Synthetic:              synthetic,

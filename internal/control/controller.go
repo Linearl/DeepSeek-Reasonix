@@ -146,6 +146,12 @@ type Controller struct {
 	// recorded decision, instead of idling until the user sends "continue".
 	// Off (the zero value) keeps the idle stop byte-for-byte.
 	autopilotAskAutoContinue bool
+	// standardContinuation (task 1070) mirrors the lab switch
+	// standard_continuation: on = every Standard turn is tagged
+	// ContinuationStandardFlow so the bounded host-continuation helpers are
+	// reachable (agent side still requires its own boot snapshot). Off = zero
+	// tag = pre-1070 behaviour verbatim.
+	standardContinuation bool
 	// explicitAskGranted is the task-806b explicit ask grant: the user said,
 	// in this session, that the run must ask them instead of deciding alone —
 	// revoking the unattended premise every autopilot auto-answer rests on.
@@ -710,6 +716,14 @@ type Options struct {
 	// AutopilotAskTimeoutEnabled: that sub-option owns when a timeout counts
 	// as a refusal, this one owns what happens after an answer.
 	AutopilotAskAutoContinue bool
+	// StandardContinuation (task 1070) mirrors the lab switch
+	// standard_continuation (default off, 铁律 2): when on, every Standard
+	// turn of this session is tagged ContinuationStandardFlow so the bounded
+	// host-continuation helpers (executor-handoff nudge, Standard todo
+	// continuation, stalled-intent repair, todo-progress nudge) become
+	// reachable. The agent side still requires its own boot snapshot, so an
+	// off snapshot keeps the pre-1070 behaviour regardless.
+	StandardContinuation bool
 	// PreapproveManaged carries the task-231 master switch, its four category
 	// checkboxes, and the three home-derived paths the classifier matches on.
 	// Boot resolves it from config; the zero value keeps every approval prompt
@@ -751,7 +765,7 @@ type Options struct {
 	// the exact active model. Nil keeps the legacy config-only behavior.
 	ModelCapabilityResolver func(*config.ProviderEntry) config.ResolvedModelCapability
 	// FrozenImageInput belongs to the provider instance built for this runtime.
-	FrozenImageInput            *bool
+	FrozenImageInput *bool
 	// FrozenAudioInput is the task-1008 counterpart: the audio-input decision
 	// (protocol gate + modality + override) frozen for this runtime.
 	FrozenAudioInput            *bool
@@ -989,6 +1003,7 @@ func New(opts Options) *Controller {
 		autopilotAskWait:           opts.AutopilotAskWait,
 		autopilotAskTimeoutEnabled: opts.AutopilotAskTimeoutEnabled,
 		autopilotAskAutoContinue:   opts.AutopilotAskAutoContinue,
+		standardContinuation:       opts.StandardContinuation,
 		preapproveManaged:          opts.PreapproveManaged,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
@@ -3904,6 +3919,33 @@ func (c *Controller) emitPendingPrompts(sink event.Sink, approvals []event.Appro
 // the plan-mode marker to outgoing user turns.
 func (c *Controller) SetPlanMode(v bool) {
 	c.applyPlanMode(v)
+}
+
+// SetStandardContinuation (task 1070) mirrors the lab switch
+// standard_continuation into this session: when on, every Standard turn is
+// tagged ContinuationStandardFlow so the bounded host-continuation helpers
+// (executor-handoff nudge, Standard todo continuation, stalled-intent repair,
+// todo-progress nudge) become reachable. The agent side still requires its own
+// boot snapshot, so an off snapshot keeps the pre-1070 behaviour no matter
+// what this flag says. The next run applies it.
+func (c *Controller) SetStandardContinuation(v bool) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.sessionSettings.standardContinuation = v
+	c.mu.Unlock()
+}
+
+// StandardContinuation reports the task-1070 Standard-flow continuation gate
+// mirrored from the lab switch.
+func (c *Controller) StandardContinuation() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sessionSettings.standardContinuation
 }
 
 // SetAgentPreset writes the role through to the session quality floor:

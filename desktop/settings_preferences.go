@@ -437,6 +437,36 @@ func (a *App) SetExperimentalDraftRewrite(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDraftRewrite(enabled) })
 }
 
+// SetStandardContinuation (任务 1070) toggles the Standard-flow same-Run
+// continuation total gate (lab switch standard_continuation). The config save
+// is the durable half; the live half mirrors the flag into every running
+// controller so the next run of an already-open session applies it without a
+// restart. The agent side still requires its own boot snapshot (kill switch),
+// so an off snapshot keeps the pre-1070 behaviour regardless of this flag.
+func (a *App) SetStandardContinuation(enabled bool) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetStandardContinuation(enabled) }); err != nil {
+		return err
+	}
+	a.mirrorStandardContinuationToControllers(enabled)
+	return nil
+}
+
+// mirrorStandardContinuationToControllers pushes the task-1070 flag into every
+// live controller (same snapshot-mirror shape as applyResponseLanguageToLiveControllers).
+func (a *App) mirrorStandardContinuationToControllers(enabled bool) {
+	a.mu.RLock()
+	tabs := append([]*WorkspaceTab(nil), a.runtimeTabsLocked()...)
+	a.mu.RUnlock()
+	for _, tab := range tabs {
+		if tab == nil {
+			continue
+		}
+		if setter, ok := a.controllerForTab(tab).(interface{ SetStandardContinuation(bool) }); ok {
+			setter.SetStandardContinuation(enabled)
+		}
+	}
+}
+
 // SetExperimentalWorkflowPanel toggles the workflow visualization panel
 // (task 686): the command-palette entry opening the DAG flow view. Pure
 // frontend gate: the settings save re-applies the boot snapshot, so the
