@@ -11,6 +11,7 @@ import { stableStringHash } from "./stableStringHash";
 import { isBatchedReadOnlyTool, isSteerNoticeText, type ExtensionItem, type Item } from "./useController";
 import { appendTurnActionCopyText } from "./turnActionCopy";
 import { isCreationGroupableTool, toolGroupKind, type ToolGroupKind } from "../components/ToolGroup";
+import { isRenderArtifactToolItem } from "./artifactCard";
 import type { SessionExperience } from "./sessionExperience";
 import type { ProcessFoldPreference } from "./processFoldPreference";
 import type { ResolvedReasoningDisplayMode } from "./reasoningDisplayPreference";
@@ -670,6 +671,10 @@ function computeRowMeasurementVersion(row: TranscriptRow): string {
 
 export const OLDER_HISTORY_ROW_KEY = "older-history";
 
+// 任务 1054r：artifactSupersededIds 的稳定空集缺省——调用方缺席时不分配、
+// 身份恒定（cachedTranscriptRowBlocks 按 deps 身份比对）。
+const EMPTY_READONLY_STRING_SET: ReadonlySet<string> = new Set<string>();
+
 export function userRowKey(itemId: string): string {
   return `u:${itemId}`;
 }
@@ -684,11 +689,26 @@ function processBodyRows(
   sessionExperience: SessionExperience,
   subcallsByParent: ReadonlyMap<string, readonly ToolItem[]>,
   groupingEnabled: boolean,
+  artifactCardEnabled: boolean,
+  artifactSupersededIds: ReadonlySet<string>,
 ): TranscriptRowWithLayout[] {
   const rows: TranscriptRowWithLayout[] = [];
   let roBatch: ToolItem[] = [];
   let toolBatch: ToolItem[] = [];
   let toolBatchKind: ToolGroupKind | null = null;
+  // 任务 1054r：成卡产物行不得进任何聚合。render_artifact 经 use_capability
+  // 代理调用时工具行 resolved_read_only=true → 会被只读批量（ReadOnlyBatch）
+  // 吞掉；creation 模式下 toolGroupKind 回落 "explore" 还会进 ToolGroup——
+  // 两条聚合路都让渲染层 case "tool" 的产卡分支永远不经过（tl1054r 用户实测
+  // 卡片恒不可见的根因：1054 只修了判定族，行构建层仍吞行）。豁免行独立成
+  // tool 行，由渲染层同判定族挂 ArtifactCard（关卡/运行中/失败/被取代的行
+  // 不豁免，回退普通工具行形态）。
+  const standaloneArtifactCard = (item: ToolItem): boolean =>
+    artifactCardEnabled
+    && item.status === "done"
+    && !item.error
+    && isRenderArtifactToolItem(item)
+    && !artifactSupersededIds.has(item.id);
   const pushToolRow = (item: ToolItem) => {
     rows.push({
       kind: "tool",
@@ -717,7 +737,7 @@ function processBodyRows(
     toolBatchKind = null;
   };
   for (const it of segment.displayItems) {
-    if (creationMode && groupingEnabled && it.kind === "tool" && isCreationGroupableTool(it as ToolItem)) {
+    if (creationMode && groupingEnabled && it.kind === "tool" && isCreationGroupableTool(it as ToolItem) && !standaloneArtifactCard(it as ToolItem)) {
       const kind = toolGroupKind(it as ToolItem);
       if (kind) {
         if (toolBatchKind && toolBatchKind !== kind) flushToolBatch();
@@ -744,7 +764,14 @@ function processBodyRows(
       continue;
     }
     if (it.kind === "tool") flushToolBatch();
-    if (!creationMode && groupingEnabled && it.kind === "tool" && it.status !== "running" && isBatchedReadOnlyTool(it.name, it.readOnly)) {
+    if (
+      !creationMode
+      && groupingEnabled
+      && it.kind === "tool"
+      && it.status !== "running"
+      && isBatchedReadOnlyTool(it.name, it.readOnly)
+      && !standaloneArtifactCard(it as ToolItem)
+    ) {
       roBatch.push(it as ToolItem);
       continue;
     }
@@ -808,6 +835,14 @@ export interface BuildRowsOptions {
   /** 任务 668 消息流工具分组用户开关：false = 连续同类工具不聚合，逐条平铺。
    * 纯渲染层偏好，缺省 true 维持既有分组行为。 */
   toolGroupingEnabled?: boolean;
+  /** 任务 1054r：renderArtifact 实验室开关现值（成卡产物行脱离只读批量/
+   * creation 分组独立成行）。缺省 false——选项缺席时行结构与开关关逐字节
+   * 一致（铁律 2）；生产调用方 Transcript 订阅开关后显式传入（翻转即重建）。 */
+  artifactCardEnabled?: boolean;
+  /** 任务 944 幂等归并：被同 path 后续调用取代的旧卡 item id 集合。归并按
+   * 全量 items 计算（跨 segment），行构建按 segment 分片无法自算，由调用方
+   * 传入（Transcript 的 supersededArtifacts）。缺省空集。 */
+  artifactSupersededIds?: ReadonlySet<string>;
 }
 
 function numericRevision(value: string): number { return Number.parseInt(stableStringHash(value), 36) >>> 0; }
@@ -824,6 +859,8 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
   const renderExperience = options.sessionExperience ?? "standard";
   const subcallsByParent = options.subcallsByParent ?? new Map<string, readonly ToolItem[]>();
   const groupingEnabled = options.toolGroupingEnabled ?? true;
+  const artifactCardEnabled = options.artifactCardEnabled ?? false;
+  const artifactSupersededIds = options.artifactSupersededIds ?? EMPTY_READONLY_STRING_SET;
   for (let modelIndex = models.length - 1; modelIndex >= 0; modelIndex -= 1) {
     const model = models[modelIndex];
     const modelRows: TranscriptRowWithLayout[] = [];
@@ -838,7 +875,7 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
       if (segment.displayItems.length > 0) {
         const open = options.folds.get(segment.key)?.open ?? defaultFoldOpen(segment, foldExperience);
         modelRows.push({ kind: "process-header", key: `ph:${segment.key}`, segment, open, layoutVariant: "static" });
-        if (open) modelRows.push(...processBodyRows(segment, options.creationMode, renderExperience, subcallsByParent, groupingEnabled));
+        if (open) modelRows.push(...processBodyRows(segment, options.creationMode, renderExperience, subcallsByParent, groupingEnabled, artifactCardEnabled, artifactSupersededIds));
       }
       for (const item of segment.outsideItems) {
         if (item.kind === "extension") {

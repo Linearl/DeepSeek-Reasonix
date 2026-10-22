@@ -255,5 +255,80 @@ console.log("\nartifact card render + open chain");
   ok(labFlagEnabled("renderArtifact") === false, "可关闭");
 }
 
+// ── 8. 任务 1054r：行渲染层端到端——useTranscriptRowRenderer 的 case "tool"
+//    产卡分支（现场挂载链路的最后一环）。tl1054r 教训：1054 只直挂
+//    ArtifactCard 组件，从未经过行渲染分支——判定层全绿而现场不可见。
+//    此节把「转录 tool 行 → 行渲染分支 → 卡片」钉进 harness。──────────────
+{
+  const { useTranscriptRowRenderer } = await import("../components/useTranscriptRowRenderer");
+  type RowRenderer = (row: never) => { type: unknown } | null;
+  const latestRenderer: { current: RowRenderer | null } = { current: null };
+  function Probe({ superseded }: { superseded: ReadonlySet<string> }) {
+    latestRenderer.current = useTranscriptRowRenderer({
+      tabId: undefined,
+      checkpoints: [],
+      subcallsByParent: new Map(),
+      creationMode: false,
+      running: false,
+      actionPending: false,
+      rewindDisabled: false,
+      actionHoverMenus: false,
+      turnStartAt: undefined,
+      lastTurn: undefined,
+      supersededArtifacts: superseded,
+      onFoldToggle: () => {},
+      onReasoningManualOpen: () => {},
+      reasoningFoldIntent: () => undefined,
+      onReasoningFoldIntent: () => {},
+      onPrompt: () => {},
+    } as never) as unknown as RowRenderer;
+    return null;
+  }
+  const probeHost = window.document.createElement("div");
+  window.document.body.appendChild(probeHost);
+  const probeRoot = createRoot(probeHost);
+  const mountProbe = async (superseded: ReadonlySet<string>) => {
+    await act(async () => {
+      probeRoot.render(createElement(LocaleProvider, null, createElement(ToastProvider, null, createElement(Probe, { superseded }))));
+    });
+  };
+  const renderThroughBranch = async (item: Item, superseded: ReadonlySet<string> = new Set<string>()) => {
+    await mountProbe(superseded);
+    const node = latestRenderer.current?.({ kind: "tool", key: `t:${item.id}`, item, layoutVariant: "tool-collapsed" } as never);
+    const container = window.document.createElement("div");
+    window.document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(createElement(LocaleProvider, null, createElement(ToastProvider, null, node as never)));
+    });
+    return container;
+  };
+
+  const branchProxyItem = {
+    kind: "tool",
+    id: "branch-proxy",
+    name: "use_capability",
+    args: JSON.stringify({ action: "call", capability_id: "tool:render_artifact", arguments: { path: "D:\\out\\端到端.md", title: "端到端卡" } }),
+    readOnly: true,
+    status: "done",
+    output: JSON.stringify({ ok: true, path: "D:\\out\\端到端.md", title: "端到端卡", kind: "md", size: 2048, preview: "# e2e" }),
+    capabilityId: "tool:render_artifact",
+  } as Item;
+
+  applyLabFlags({ renderArtifact: true });
+  const cardContainer = await renderThroughBranch(branchProxyItem);
+  ok(cardContainer.querySelector(".artifact-card") !== null, "行渲染分支：开+未取代的代理行挂 ArtifactCard（端到端可见）");
+
+  applyLabFlags({ renderArtifact: false });
+  const fallbackContainer = await renderThroughBranch(branchProxyItem);
+  ok(fallbackContainer.querySelector(".artifact-card") === null, "行渲染分支：开关关回退普通工具卡（铁律 2）");
+
+  applyLabFlags({ renderArtifact: true });
+  const supersededContainer = await renderThroughBranch(branchProxyItem, new Set(["branch-proxy"]));
+  ok(supersededContainer.querySelector(".artifact-card") === null, "行渲染分支：被同 path 后续调用取代的旧调用不挂卡");
+  applyLabFlags({ renderArtifact: false });
+  await act(async () => { probeRoot.unmount(); });
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed, ${passed + failed} total\n`);
 if (failed > 0) process.exit(1);

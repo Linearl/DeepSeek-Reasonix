@@ -306,6 +306,12 @@ export function Transcript(props: TranscriptProps) {
   // 任务 944: render_artifact 幂等归并——同一 path 的旧调用渲染为普通工具行
   //（或隐藏），只有最后一次调用保留卡片形态。
   const supersededArtifacts = useMemo(() => supersededArtifactIds(items), [items]);
+  // 任务 1054r：成卡产物行要脱离只读批量独立成行——行结构依赖 renderArtifact
+  // 实验室开关，故订阅之（944 承诺「保存即换态免重启」，惯用法同 tableWrap）：
+  // 翻转经 deps 重建行块，行组件随新行对象重渲，渲染层 case "tool" 同判定族
+  // 挂卡/回退工具卡。
+  const [artifactCardOn, setArtifactCardOn] = useState(() => labFlagEnabled("renderArtifact"));
+  useEffect(() => onLabFlagsChange(() => setArtifactCardOn(labFlagEnabled("renderArtifact"))), []);
   const checkpointsByTurn = useMemo(() => new Map(checkpoints.map((checkpoint) => [checkpoint.turn, checkpoint])), [checkpoints]);
   const blocks = cachedTranscriptRowBlocks(turnModels, {
     folds,
@@ -316,7 +322,9 @@ export function Transcript(props: TranscriptProps) {
     hasCheckpointForTurn: (turn) => checkpointsByTurn.has(turn),
     subcallsByParent,
     toolGroupingEnabled: toolGrouping,
-  }, [checkpointsByTurn, creationMode, experience, folds, subcallsByParent, toolGrouping, turnForUser]);
+    artifactCardEnabled: artifactCardOn,
+    artifactSupersededIds: supersededArtifacts,
+  }, [checkpointsByTurn, creationMode, experience, folds, subcallsByParent, toolGrouping, turnForUser, artifactCardOn, supersededArtifacts]);
   const projection = useMemo(() => projectTranscriptTimeline(blocks, hasOlderHistory), [blocks, hasOlderHistory]);
   const renderMode = transcriptRenderMode(projection.completedBlocks.length, safeMode);
   const allRows = useMemo(() => blocks.flatMap((block) => block.rows), [blocks]);
