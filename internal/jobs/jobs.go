@@ -647,7 +647,7 @@ func (j *Job) moveArtifactToDirLocked(dir string) error {
 	return nil
 }
 
-func (m *Manager) monitorStalled(parentSession string, j *Job) {
+func (m *Manager) monitorStalled(j *Job) {
 	defer m.wg.Done()
 	timer := time.NewTimer(m.stalledWarning)
 	defer timer.Stop()
@@ -664,8 +664,11 @@ func (m *Manager) monitorStalled(parentSession string, j *Job) {
 			idle := time.Since(time.UnixMilli(j.activityAt))
 			if idle >= m.stalledWarning && !j.stalled {
 				j.stalled = true
+				// Session ownership follows a rebind (task 1030), so the warning
+				// must go to the job's CURRENT owner, not the start-time one.
+				session := j.SessionID
 				j.mu.Unlock()
-				m.recordStalled(parentSession, j.ID, j.Kind, j.Label)
+				m.recordStalled(session, j.ID, j.Kind, j.Label)
 				return
 			}
 			wait := m.stalledWarning - idle
@@ -1302,6 +1305,7 @@ func (m *Manager) SetActiveSessionPath(parentSession, sessionPath string) {
 		return
 	}
 	m.mu.Lock()
+	oldActive := m.active
 	m.active = parentSession
 	oldDir := m.artifactDirLocked(parentSession)
 	adoptDefault := false
@@ -1327,6 +1331,33 @@ func (m *Manager) SetActiveSessionPath(parentSession, sessionPath string) {
 		adopted := m.adoptUnscopedJobsLocked(parentSession)
 		m.mu.Unlock()
 		for _, j := range adopted {
+			j.mu.Lock()
+			st := j.artifactStatus
+			if st == "" {
+				st = j.status
+			}
+			if err := m.writeJobMetaLocked(j, st); err != nil {
+				j.noteArtifactErr("ownership metadata: " + err.Error())
+			}
+			j.mu.Unlock()
+		}
+	}
+	// A path change (Resume, recovery branch, fork, switch) rotates the branch
+	// id stamped onto every tool call, while a job keeps the owner it started
+	// under. Hand the previous active session's still-running jobs to the new
+	// owner so wait / bash_output / kill_shell keep tracking them (task 1030:
+	// "No background jobs to wait for" while the process is alive). A source in
+	// the destroy window is excluded structurally — clear/new cancelled its
+	// jobs first and the fresh session must not inherit them — and terminal
+	// records stay with their session: only Running jobs move.
+	if oldActive != "" && oldActive != parentSession {
+		m.mu.Lock()
+		var adoptedRunning []*Job
+		if !m.destroying[oldActive] {
+			adoptedRunning = m.adoptRunningJobsLocked(oldActive, parentSession)
+		}
+		m.mu.Unlock()
+		for _, j := range adoptedRunning {
 			j.mu.Lock()
 			st := j.artifactStatus
 			if st == "" {
@@ -1388,6 +1419,57 @@ func (m *Manager) adoptUnscopedJobsLocked(parentSession string) []*Job {
 		m.jobs[newKey] = j
 		for i, key := range m.order {
 			if key == oldKey {
+				m.order[i] = newKey
+			}
+		}
+	}
+	return adopted
+}
+
+// adoptRunningJobsLocked hands every still-Running job owned by fromSession to
+// toSession. Task 1030: tool calls carry the controller's current branch id,
+// which rotates on Resume/recovery/fork/switch, while a running job keeps the
+// owner stamped at StartForSession. Without this hand-off the three collection
+// tools disagree with reality right after a rebind — wait reports "No
+// background jobs to wait for", kill_shell "was not running" — while
+// bash_output on the stale id still reads the live process. Terminal records
+// stay with fromSession: their artifacts belong to that transcript's sidecar
+// and its history must keep them. The caller must hold m.mu; the returned jobs
+// are not locked.
+func (m *Manager) adoptRunningJobsLocked(fromSession, toSession string) []*Job {
+	fromSession = strings.TrimSpace(fromSession)
+	toSession = strings.TrimSpace(toSession)
+	if fromSession == "" || toSession == "" || fromSession == toSession {
+		return nil
+	}
+	var adopted []*Job
+	for _, key := range m.order {
+		j := m.jobs[key]
+		if j == nil || strings.TrimSpace(j.SessionID) != fromSession {
+			continue
+		}
+		j.mu.Lock()
+		running := j.status == Running
+		j.mu.Unlock()
+		if !running {
+			continue
+		}
+		newKey := jobKey(toSession, j.ID)
+		if existing := m.jobs[newKey]; existing != nil && existing != j {
+			// A restored tombstone in the target session already owns this id.
+			// Keep the running job where it is rather than shadow either record.
+			continue
+		}
+		delete(m.jobs, key)
+		// Manager readers and artifact writers use distinct locks. Ownership
+		// changes hold both, always in manager-before-job order.
+		j.mu.Lock()
+		j.SessionID = toSession
+		j.mu.Unlock()
+		adopted = append(adopted, j)
+		m.jobs[newKey] = j
+		for i, orderKey := range m.order {
+			if orderKey == key {
 				m.order[i] = newKey
 			}
 		}
