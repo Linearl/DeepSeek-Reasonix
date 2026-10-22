@@ -1153,6 +1153,28 @@ type ServeConfig struct {
 	// it was (铁律 2). Applies on restart, like every boot-resolved serve
 	// switch.
 	ExperimentalGCManageSessions bool `toml:"experimental_gc_manage_sessions"`
+	// Pool carries the [serve.pool] serve-pool timeouts (task 1049): the
+	// per-project lazily spawned serves behind the desktop/`serve --pool`
+	// gateway. Zero values keep the pool defaults, so existing configs are
+	// byte-for-byte unaffected.
+	Pool PoolConfig `toml:"pool"`
+}
+
+// PoolConfig is the [serve.pool] table: timeouts for the pool of lazily
+// spawned per-project serve processes behind the single-entry gateway. See
+// servepool.PoolTimeoutsFromSeconds for the mapping; both pool hosts (the
+// desktop embed and `serve --pool`) honor it.
+type PoolConfig struct {
+	// SpawnTimeoutSeconds bounds waiting for a lazily spawned project serve
+	// to become ready. The pool default is 30 (task 1049: a cold serve start
+	// measured ~9s on the dev machine and the previous 8s default timed out
+	// every lazy spawn); raise it on slow disks or heavily loaded machines.
+	// 0 keeps the default; negative values are ignored.
+	SpawnTimeoutSeconds int `toml:"spawn_timeout_seconds"`
+	// IdleTimeoutSeconds is how long a pooled serve may sit without traffic
+	// before being reclaimed. The pool default is 900 (15 minutes).
+	// 0 keeps the default; negative values are ignored.
+	IdleTimeoutSeconds int `toml:"idle_timeout_seconds"`
 }
 
 // BusMCPConfig is the [serve.bus_mcp] table. See [ServeConfig.BusMCP].

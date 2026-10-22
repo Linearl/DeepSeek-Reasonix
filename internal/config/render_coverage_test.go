@@ -98,8 +98,9 @@ func TestDesktopRenderTableCoversEveryKey(t *testing.T) {
 	}
 }
 
-// serveRenderOmissions lists [serve]/[serve.bus_mcp]/[serve.bus_worker] keys
-// that are deliberately not written to the config file. Empty on purpose: the
+// serveRenderOmissions lists [serve]/[serve.bus_mcp]/[serve.bus_worker]/
+// [serve.pool] keys that are deliberately not written to the config file.
+// Empty on purpose: the
 // task 432 bug was exactly a key with no entry in either list — enroll set
 // [serve.bus_mcp] and the renderer dropped it, so every future serve key must
 // either reach render.go or be named here with a reason.
@@ -119,6 +120,7 @@ func TestServeRenderTableCoversEveryKey(t *testing.T) {
 		{"serve", reflect.TypeOf(c.Serve)},
 		{"serve.bus_mcp", reflect.TypeOf(c.Serve.BusMCP)},
 		{"serve.bus_worker", reflect.TypeOf(c.Serve.BusWorker)},
+		{"serve.pool", reflect.TypeOf(c.Serve.Pool)},
 	}
 	for _, table := range tables {
 		var missing []string
