@@ -198,12 +198,10 @@ eq(
 );
 
 {
-  // ── 任务 1054r：跨重启重放链路端到端——history wire（现场真实形态）→
-  // historyMessagesToItems → 行构建。用户实测：出包台账 render_artifact 经
-  // use_capability 代理调用成功（ok/title/size/preview 全齐），两次重启后转录
-  // 始终无卡片。判别结论：事件日志与重放转换数据齐全（非 1047 重放丢失），
-  // 根因在行构建把 settled 的 read-only 代理行吞进 ReadOnlyBatch——本钉钉住
-  // 重放 item 字段齐 + 成卡行独立成 tool 行（重放后卡片可见）。
+  // ── 任务 1072（历史平滑退化）：旧转录里已落盘的 render_artifact 工具行
+  // （use_capability 代理形态，1054r 现场 wire）重放后按普通只读工具行渲染
+  // ——进只读批量、无卡片挂载点、无 undefined 组件错误（卡片功能已随 1072
+  // 整体移除，数据不删）。
   const okJson = JSON.stringify({ ok: true, path: "C:\\ws\\docs\\handoff\\出包台账-20261021.md", title: "出包台账-20261021.md", kind: "md", size: 20509, preview: "# 出包台账" });
   const replayItems = historyMessagesToItems([
     { role: "user", content: "出包台账渲染成卡片" },
@@ -227,7 +225,6 @@ eq(
   eq(replayArtifact?.capabilityId, "tool:render_artifact", "replay keeps the proxy capabilityId on the tool item");
   eq(replayArtifact?.readOnly, true, "replay keeps resolvedReadOnly=true on the proxy row");
   eq(replayArtifact?.status, "done", "replay marks the settled proxy call done");
-  eq(typeof replayArtifact?.output === "string" && replayArtifact.output.includes("\"ok\":true"), true, "replay carries the ok result payload for card parsing");
 
   const foldKey = buildTurnModels(replayItems)[0]?.segments[0]?.key ?? "";
   const folds = foldMapWithToggle(EMPTY_FOLDS, foldKey, false);
@@ -237,22 +234,11 @@ eq(
     hasOlderHistory: false,
     creationMode: false,
     turnForUser: () => undefined,
-    artifactCardEnabled: true,
   });
   const standalone = rows.some((row) => row.kind === "tool" && (row as { item: { id: string } }).item.id === replayArtifact?.id);
   const batched = rows.filter((row) => row.kind === "tool-batch").some((row) => (row as { items: Array<{ id: string }> }).items.some((it) => it.id === replayArtifact?.id));
-  eq(standalone, true, "replayed cardworthy artifact row stands alone as a tool row (card mounts after restart)");
-  eq(batched, false, "replayed cardworthy artifact row never enters the read-only batch");
-  // 开关关等价面：重放行结构与引入前一致（照旧进批量）。
-  const rowsFlagOff = buildTranscriptRows(buildTurnModels(replayItems), {
-    folds,
-    foldPreference: "expanded" as const,
-    hasOlderHistory: false,
-    creationMode: false,
-    turnForUser: () => undefined,
-  });
-  const batchedFlagOff = rowsFlagOff.filter((row) => row.kind === "tool-batch").some((row) => (row as { items: Array<{ id: string }> }).items.some((it) => it.id === replayArtifact?.id));
-  eq(batchedFlagOff, true, "flag-off replay keeps legacy batching (render parity with pre-944)");
+  eq(standalone, false, "historical render_artifact row no longer stands alone (card feature removed by 1072)");
+  eq(batched, true, "historical render_artifact row degrades to the plain read-only batch (no card, no crash)");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

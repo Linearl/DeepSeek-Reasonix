@@ -736,13 +736,6 @@ func (a *App) SetExperimentalDecisionPatterns(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDecisionPatterns(enabled) })
 }
 
-// SetExperimentalRenderArtifact toggles the task-944 render_artifact tool +
-// ArtifactCard lab switch. Applies on restart (boot snapshot): the tool is
-// registered at boot, and the frontend gate reads the same snapshot.
-func (a *App) SetExperimentalRenderArtifact(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRenderArtifact(enabled) })
-}
-
 // SetDecisionPatternFilePath overrides the solidified decision-patterns file
 // location (task 801 修订七). Empty restores the default global-workspace/docs
 // path. The heartbeat solidification, its backups, and the autopilot injection

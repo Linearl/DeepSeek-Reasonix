@@ -255,9 +255,10 @@ console.log("\ntask 940 composer approval-select dropdown");
   // 同步，961 并卡时漏跟）。任务 959 ①：tableWrap 入卡为第七键，断言随卡
   // 演进（同一演进授权）。
   // 任务 959：①tableWrap、②sendTargetSelect 先后入卡——pin 改前缀形式
-  // （不带行尾 ]，后续成员入卡不再破本 pin）。
-  ok(yamlText.includes("experimentalApprovalSelect, experimentalRenderArtifact") &&
-     labDefault.includes('"experimentalApprovalSelect", "experimentalRenderArtifact"'),
+  // （不带行尾 ]，后续成员入卡不再破本 pin）。任务 1072：renderArtifact
+  // 整功能移除出卡，前缀收回到 approvalSelect 后的 tableWrap。
+  ok(yamlText.includes("experimentalApprovalSelect, experimentalTableWrap") &&
+     labDefault.includes('"experimentalApprovalSelect", "experimentalTableWrap"'),
     "④ layout data: the viewLayout card light covers the new key in yaml AND the built-in default");
   ok(yamlText.includes("- id: approvalSelect") &&
      labDefault.includes('{ id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" }'),

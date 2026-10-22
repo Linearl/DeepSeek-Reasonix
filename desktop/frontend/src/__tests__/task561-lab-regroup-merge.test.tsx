@@ -192,10 +192,10 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // 读自己的键、写自己的 setter；聚合徽章断言在 562 测试。
   // 任务 856 ③：后继分支随两图标合一迁移改名（collabGroupView → collabHub）。
   // 任务 961：renderArtifact 成员行入卡（944 原独立卡并入，键/setter 零变化）。
+  // 任务 1072：renderArtifact 整功能移除，成员行随件退役（不再断言）。
   { id: "viewLayout", endMarker: '{selected === "collabHub" && (', members: [
     { label: "782 splitView", field: "s.experimentalSplitView", setter: "app.SetExperimentalSplitView(on)" },
     { label: "782 trajectoryView", field: "s.experimentalTrajectoryView", setter: "app.SetExperimentalTrajectoryView(on)" },
-    { label: "961 renderArtifact", field: "s.experimentalRenderArtifact", setter: "app.SetExperimentalRenderArtifact(on)" },
   ] },
   { id: "searchHistory", endMarker: '{selected === "localServer" && (', members: [
     { label: "782 promptHistoryPicker", field: "s.experimentalPromptHistoryPicker", setter: "app.SetExperimentalPromptHistoryPicker(on)" },
@@ -312,7 +312,6 @@ for (const id of [
   "quickCommands",
   "traceAsState",
   "outputStyle",
-  "renderArtifact",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);

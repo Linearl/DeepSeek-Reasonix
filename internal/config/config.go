@@ -1719,12 +1719,6 @@ type AgentConfig struct {
 	// heartbeat writes decision-patterns.md (task 801 修订六). Off by default:
 	// the default posture reports the patterns and waits for the user.
 	DecisionPatternAutoApprove bool `toml:"decision_pattern_auto_approve"`
-	// ExperimentalRenderArtifact enables the task-944 render_artifact tool +
-	// ArtifactCard: the agent declares a deliverable file and the transcript
-	// renders an openable card (md/text preview, html open-only). Off by
-	// default (铁律 2): off = tool unregistered, frontend renders no card —
-	// zero behaviour.
-	ExperimentalRenderArtifact bool `toml:"experimental_render_artifact"`
 	// ExperimentalDraftRewrite (任务 1024 草稿优化) enables the composer's
 	// rewrite button: the auxiliary model rewrites the user's draft into a
 	// structured, unambiguous version that fills the input box — never sent

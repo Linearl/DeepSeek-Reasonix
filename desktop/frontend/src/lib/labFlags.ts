@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "renderArtifact" | "tableWrap" | "sendTargetSelect" | "draftRewrite";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "draftRewrite";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -63,10 +63,7 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // ships off (铁律 2) — with it off the permission picker keeps the exact
   // segmented button group; on swaps it for a compact dropdown (zcode-style).
   // A flip applies on settings save (no restart).
-  approvalSelect: false,  // 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard）。默认关
-  // （铁律 2——关闭时 render_artifact 工具行照旧渲染为普通工具卡，不出现
-  // 卡片形态）；保存即换态免重启。
-  renderArtifact: false,
+  approvalSelect: false,
   // 任务 959 ①: transcript markdown-table re-flow (experimental_table_wrap)
   // ships off (铁律 2) — with it off wide tables keep the exact max-content
   // width + horizontal scroll of the pre-959 layout; on wraps cells to the
@@ -108,7 +105,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} renderArtifact=${flags.renderArtifact} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} draftRewrite=${flags.draftRewrite}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} draftRewrite=${flags.draftRewrite}`,
   );
   for (const listener of listeners) listener();
 }

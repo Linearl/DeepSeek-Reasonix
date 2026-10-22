@@ -3137,23 +3137,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              {/* 任务 961：对话内产物卡片（render_artifact 工具 + ArtifactCard，
-                  944 原 ui 组独立卡）——并入本卡为成员行（读自己的键、写自己
-                  的 setter）。默认关=工具不注册、卡片不渲染。 */}
-              <SettingsField label={labLabel("renderArtifact", t("settings.renderArtifact"))} hint={t("settings.renderArtifactHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalRenderArtifact) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalRenderArtifact(on))}
-                    >
-                      {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
               {/* 任务 959 ①：对话表格按栏宽自动换行（视图布局卡成员行，
                   940 先例——读自己的键写自己的 setter）。关（默认）=宽表横滚
                   布局零变化；开=单元格随当前栏宽换行。纯前端门：保存即生效，
