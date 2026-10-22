@@ -64,13 +64,34 @@ func TestStaleConcurrentHeadDecisionMatrix(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "写者未注册不 retire", c: stale, selected: SessionMainHead,
+			name: "写者未注册且非前缀链不 retire", c: stale, selected: SessionMainHead,
 			selectedActivity: selectedAt, w: nil, pidAlive: deadPID, selfHost: selfHost,
 			want: false,
 		},
 		{
-			name: "写者 pid 缺失不 retire", c: stale, selected: SessionMainHead,
+			name: "写者 pid 缺失且非前缀链不 retire", c: stale, selected: SessionMainHead,
 			selectedActivity: selectedAt, w: &staleHeadWriterFact{pid: 0, hostname: selfHost}, pidAlive: deadPID, selfHost: selfHost,
+			want: false,
+		},
+		{
+			// 任务 1075：rotation 重发老 writer 记录时 pid/hostname 被置空，现场
+			// 7-head 会话 5/7 头因此永久判 "writer pid unknown"。链是 selected
+			// 前缀（无独占字节）时保守回收——正是 events 折叠达标的前置。
+			name: "pid 缺失但链是 selected 前缀 → 保守回收", c: staleHeadCandidate{id: "h-prefix", kind: HeadKindConcurrent, writer: "w-dead", lastActivity: aged},
+			selected: SessionMainHead, selectedActivity: selectedAt,
+			w: &staleHeadWriterFact{pid: 0, hostname: selfHost}, pidAlive: deadPID, selfHost: selfHost,
+			want: true,
+		},
+		{
+			name: "pid 缺失且链不严格短于 selected（可能有独占字节）不 retire", c: staleHeadCandidate{id: "h-long", kind: HeadKindConcurrent, writer: "w-dead", lastActivity: aged},
+			selected: SessionMainHead, selectedActivity: selectedAt,
+			w: nil, pidAlive: deadPID, selfHost: selfHost,
+			want: false,
+		},
+		{
+			name: "pid 缺失且链等长（可能有独占字节）不 retire", c: staleHeadCandidate{id: "h-equal", kind: HeadKindConcurrent, writer: "w-dead", lastActivity: aged},
+			selected: SessionMainHead, selectedActivity: selectedAt,
+			w: nil, pidAlive: deadPID, selfHost: selfHost,
 			want: false,
 		},
 		{
@@ -89,9 +110,15 @@ func TestStaleConcurrentHeadDecisionMatrix(t *testing.T) {
 			want: false,
 		},
 	}
+	// 默认形态：写者无 pid 时链长 0（无证据）→ 不回收；仅显式给出链长的
+	// h-prefix/h-long/h-equal 走保守前缀判据（现场 7-head 会话 5/7 头正是
+	// 无 pid 形态，其中前缀链部分应被回收）。
+	chainLens := map[string]int{SessionMainHead: 4, "h-prefix": 2, "h-long": 9, "h-equal": 4}
+	selectedChain := func(string) int { return chainLens[SessionMainHead] }
+	candidateChain := func(id string) int { return chainLens[id] }
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := staleConcurrentHeadDecision(tt.c, tt.selected, tt.selectedActivity, tt.w, tt.pidAlive, tt.selfHost, now, staleConcurrentHeadMinAge)
+			got, _ := staleConcurrentHeadDecision(tt.c, tt.selected, tt.selectedActivity, tt.w, tt.pidAlive, tt.selfHost, now, staleConcurrentHeadMinAge, selectedChain, candidateChain)
 			if got != tt.want {
 				t.Fatalf("decision = %v, want %v", got, tt.want)
 			}
@@ -182,6 +209,52 @@ func TestRetireStaleConcurrentHeadsRetiresOnlyStale(t *testing.T) {
 	}
 	if st.heads["hlive"] == nil || st.heads["hlive"].retired {
 		t.Fatal("hlive（写者仍活着）不得被 retire")
+	}
+	if st.heads[SessionMainHead].retired {
+		t.Fatal("main 不得被 retire")
+	}
+}
+
+// 任务 1075：writer 记录无 pid（rotation 重发老 writer 把 pid/hostname 置空，
+// 现场 7-head 会话 5/7 头是此形态）时，链为 selected 前缀的并发头仍应被回收；
+// 有独占字节（链超 selected）的头不动。
+func TestRetireStaleConcurrentHeadsPidlessWriterFallback(t *testing.T) {
+	path := dagTestSession(t)
+	_, base := dagLinearLog(t, path) // main 链: S0,U1,A1,U2
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "test-host"
+	}
+	// hprefix: fork 自 U1 但不追加任何消息（链 = S0,U1，严格短于 main 的 5）。
+	// hlong: fork 自 U2 后追加独占消息（链长 6，不严格短于 main，无 pid 证据不动）。
+	dagAppend(t, path,
+		sessionDAGEntry{Type: sessionDAGTypeFork, Head: SessionMainHead, NewHead: "hprefix", From: "U1", Kind: HeadKindConcurrent, Writer: "w-nopid", At: base.Add(2 * time.Minute)},
+		sessionDAGEntry{Type: sessionDAGTypeFork, Head: SessionMainHead, NewHead: "hlong", From: "U2", Kind: HeadKindConcurrent, Writer: "w-nopid", At: base.Add(2 * time.Minute)},
+	)
+	l1 := dagMsg(provider.RoleAssistant, "long exclusive tail", "L1")
+	dagAppend(t, path, dagMessageEntry(t, "hlong", "U2", "t1", l1, base.Add(2*time.Minute+time.Second)))
+	// main 继续用，selected 取代两个头；writer 记录不带 pid（模拟 rotation 重发后的老形态）。
+	m5 := dagMsg(provider.RoleUser, "back on main", "U5")
+	dagAppend(t, path,
+		dagMessageEntry(t, SessionMainHead, "U2", "t2", m5, base.Add(10*time.Minute)),
+		sessionDAGEntry{Type: sessionDAGTypeSelect, Head: SessionMainHead, Reason: "user", At: base.Add(10*time.Minute + time.Second)},
+		sessionDAGEntry{Type: sessionDAGTypeWriter, Writer: "w-nopid", PID: 0, Hostname: "", At: base.Add(10*time.Minute + 2*time.Second)},
+	)
+
+	now := time.Date(2026, 1, 12, 10, 0, 0, 0, time.UTC)
+	retired, err := RetireStaleConcurrentHeads(path, now, func(int) bool { return true /* pid 不参与 */ }, host)
+	if err != nil {
+		t.Fatalf("retire: %v", err)
+	}
+	if len(retired) != 1 || retired[0] != "hprefix" {
+		t.Fatalf("retired = %v, want [hprefix]（前缀链回收；不严格短于 selected 的 hlong 不动）", retired)
+	}
+	st := dagReplay(t, path)
+	if !st.heads["hprefix"].retired {
+		t.Fatal("hprefix 应为 retired")
+	}
+	if st.heads["hlong"] == nil || st.heads["hlong"].retired {
+		t.Fatal("hlong 链不严格短于 selected，无 pid 证据时不得 retire")
 	}
 	if st.heads[SessionMainHead].retired {
 		t.Fatal("main 不得被 retire")
