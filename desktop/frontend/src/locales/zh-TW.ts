@@ -905,6 +905,7 @@ export const zhTW: Record<DictKey, string> = {
   "status.recoveryWaitProgress": "已等待 {waited} 分鐘，最多 {budget} 分鐘",
   "status.recoveryWaitHint": "會持續重試，直到等待預算用盡後本輪報錯結束。可檢查網路、代理或供應商狀態，也可立即停止。",
   "status.recoveryWaitStop": "停止等待",
+  "status.connectingAttempt": "正在連線（第 {attempt} 次）…",
   "status.retrying": "正在重試 ({attempt}/{max})…",
   "status.retryingBudget": "已自動重試 {used}/{limit} 次，恢復中…",
   "status.retryExhausted": "已終止（重試 {limit} 次後放棄，已試 {used} 次）",

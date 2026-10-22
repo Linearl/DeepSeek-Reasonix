@@ -659,6 +659,7 @@ export function Composer({
   liveStore,
   turnArgChars = 0,
   retry,
+  connecting,
   suspendedByDecision = false,
   pendingApprovalLabel,
   pendingAsk = false,
@@ -811,6 +812,10 @@ export function Composer({
   // Streaming argument characters provide estimated progress before usage arrives.
   turnArgChars?: number;
   retry?: RecoveryRetry;
+  // 任务1055-A1: the in-flight "connecting (attempt N)" face. Present while an
+  // HTTP attempt is running the dial; outranks retry in the run strip because
+  // it is the newer, still-true signal.
+  connecting?: { attempt: number; max: number; observedAt: number };
   // True while a footer decision surface (approval / ask / clear context) owns
   // the UI. Pauses the model-work ticker without rendering a "waiting approval"
   // run strip (the decision card already conveys that state).
@@ -4820,7 +4825,7 @@ export function Composer({
   // readings into the context-ring popover, leaving the composer without any
   // throughput readout (user-reported regression). Following upstream
   // 196dd3bae, the running strip returns and renders the readings inline.
-  const showRunStrip = Boolean((running && !suspendedByDecision) || retry || waitingPrompt || finishing || runtimeState.unknown || runtimeState.kind === "background_job" || runtimeState.kind === "cancelling");
+  const showRunStrip = Boolean((running && !suspendedByDecision) || retry || connecting || waitingPrompt || finishing || runtimeState.unknown || runtimeState.kind === "background_job" || runtimeState.kind === "cancelling");
   const effectiveComposerHeight = composerHeight === null
     ? null
     : resolveComposerContentSizing({
@@ -4990,8 +4995,15 @@ export function Composer({
   // 缺失/非有限/时钟倒挂/超 24h 时为 null，渲染兜底为「—」，单位错不得
   // 静默呈现为大数（曾出现「最后事件 1792460705s 前」）。
   const heartbeatSeconds = running ? turnHeartbeatSeconds(now, lastTurnEventAt) : null;
-  const runStateText = runtimeState.unknown ? t("runtime.unknown") : finishing ? t("runtime.finishing") : runtimeState.kind === "cancelling" ? t("status.jobStopping") : runtimeState.kind === "background_job" ? t("runtime.background", { count: runtimeState.state?.backgroundJobs ?? 0 }) : retry
-    ? recoveryStatusText(t, retry, now)
+  // Run-strip state word (任务1055/G1): the connecting and retry faces come
+  // FIRST — retry visibility must not be short-circuited by runtimeState
+  // unknown/finishing/cancelling (the "worked N minutes with no explanation"
+  // incident). A runtime label only speaks when no network-retry face is live.
+  const runStateText = connecting
+    ? t("status.connectingAttempt", { attempt: connecting.attempt })
+    : retry
+      ? recoveryStatusText(t, retry, now)
+      : runtimeState.unknown ? t("runtime.unknown") : finishing ? t("runtime.finishing") : runtimeState.kind === "cancelling" ? t("status.jobStopping") : runtimeState.kind === "background_job" ? t("runtime.background", { count: runtimeState.state?.backgroundJobs ?? 0 })
     : waitingPrompt === "approval"
       ? t("composer.runWaitingApproval", { tool: pendingApprovalLabel ?? "" })
       : waitingPrompt === "ask"

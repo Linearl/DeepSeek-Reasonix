@@ -632,6 +632,12 @@ export interface State extends ReadStatusHost {
   sessionCost: number;
   sessionCurrency: string;
   retry?: { attempt: number; max: number; observedAt: number; recovery?: WireEvent["recovery"] };
+  // 任务1055-A1: the in-flight "connecting (attempt N)" label. Set the moment
+  // an HTTP attempt starts (NOT after a failure — that is what retry covers);
+  // attempt 0 is the phase-end clear frame (headers arrived or the start
+  // failed). The run strip prefers it over retry: it is the newer, still-true
+  // signal; the retry face returns during backoff and after the final failure.
+  connecting?: { attempt: number; max: number; observedAt: number };
   seq: number;
   sessionGen: number;
   // Per-session counter bumped after hydration ancillary data (context, effort,
@@ -778,11 +784,14 @@ export function runtimeSnapshotPredatesPrompt(
   return snapshotAt <= state.promptArrivedAt;
 }
 function runtimeSnapshotPredatesRetry(
-  state: Pick<State, "retry"> | undefined,
+  state: Pick<State, "retry" | "connecting"> | undefined,
   snapshotAt: number | undefined,
 ): boolean {
-  if (snapshotAt === undefined || state?.retry?.observedAt === undefined) return false;
-  return snapshotAt <= state.retry.observedAt;
+  // 任务1055: a connecting label is activity evidence too — an idle snapshot
+  // that started before it is stale and must not clear the in-flight face.
+  if (snapshotAt === undefined) return false;
+  if (state?.retry?.observedAt !== undefined && snapshotAt <= state.retry.observedAt) return true;
+  return state?.connecting?.observedAt !== undefined && snapshotAt <= state.connecting.observedAt;
 }
 function updatesContextGauge(usage?: WireUsage): boolean {
   const source = usage?.source?.trim();
@@ -1368,7 +1377,7 @@ function applyDeltaSegments(s: State, segments: StreamSegment[]): State {
 // pass, one notification. Mirrors applyEvent's preamble for delta events.
 function applyStreamBatch(s: State, segments: StreamSegment[]): State {
   if (s.discardTurn) return s;
-  if (s.retry) s = { ...s, retry: undefined };
+  if (s.retry || s.connecting) s = { ...s, retry: undefined, connecting: undefined };
   return applyDeltaSegments(s, segments);
 }
 
@@ -1774,6 +1783,28 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         max: e.retryMax ?? 0,
         observedAt: promptEventClock(),
       },
+      // 任务1055: the attempt just failed — the in-flight connecting label is
+      // stale; the strip switches to the retrying (n/m) face for the backoff.
+      connecting: undefined,
+      running: true,
+      turnActive: true,
+      cancellable: true,
+      turnStartAt: s.turnStartAt || Date.now(),
+    };
+  }
+  if (e.kind === "connecting") {
+    const attempt = e.retryAttempt ?? 0;
+    if (attempt <= 0) {
+      // 任务1055-A1/A3: the phase-end clear frame — headers arrived or the
+      // start failed. Drop the label so it cannot name the header-wait or
+      // prefill silence; a no-op stays reference-equal for the reducer.
+      return s.connecting ? { ...s, connecting: undefined } : s;
+    }
+    // Same face as the retrying handler: Stop/Escape stay available despite
+    // stale idle snapshots.
+    return {
+      ...s,
+      connecting: { attempt, max: e.retryMax ?? 0, observedAt: promptEventClock() },
       running: true,
       turnActive: true,
       cancellable: true,
@@ -1787,7 +1818,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
   if (e.kind === "stream_attempt") {
     return applyStreamAttempt(s, e);
   }
-  if (s.retry) s = { ...s, retry: undefined };
+  if (s.retry || s.connecting) s = { ...s, retry: undefined, connecting: undefined };
   switch (e.kind) {
     case "turn_started": {
       // Pre-create an empty assistant bubble
@@ -2549,6 +2580,8 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         // recovered turn drops the "retrying" line (scope 3: recover →
         // downgrade/vanish) and an exhausted one leaves only the notice card.
         retry: undefined,
+        // 任务1055-A1: same per-turn scope for the connecting label.
+        connecting: undefined,
       };
       // Close user-wait unless the plan approval gate remains open.
       next = keepPlanApproval ? beginPromptWait(next, now) : endPromptWait(next, now);
@@ -2684,7 +2717,7 @@ export function reducer(s: State, a: Action): State {
       // 645b: 同上——本拒收也发生在投影器清游标之后，epoch 变更的归零必须随行。
       if (!foregroundRunning && runtimeSnapshotPredatesRetry(s, a.snapshotAt)) return epochZeroed;
       const cancellable = foregroundRunning;
-      const clearsRetry = !foregroundRunning && s.retry !== undefined;
+      const clearsRetry = !foregroundRunning && (s.retry !== undefined || s.connecting !== undefined);
       if (
         foregroundRunning === s.running &&
         pendingPrompt === s.pendingPrompt &&
@@ -2743,6 +2776,7 @@ export function reducer(s: State, a: Action): State {
         ask: undefined,
         mcpInteraction: undefined,
         retry: undefined,
+        connecting: undefined,
       });
     }
     case "meta": {
@@ -3279,7 +3313,8 @@ export function useController() {
         prev.items === next.items &&
         prev.currentAssistant === next.currentAssistant &&
         prev.pendingUser === next.pendingUser &&
-        prev.retry === next.retry;
+        prev.retry === next.retry &&
+        prev.connecting === next.connecting;
       // Text/reasoning-only deltas only update the live stream — which the
       // frontend reads through its own subscription — so they must not bump the
       // full controller tree (the run-strip TPS estimate subscribes to the live
