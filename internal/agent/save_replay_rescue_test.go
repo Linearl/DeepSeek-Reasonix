@@ -297,6 +297,11 @@ func TestRescueRechecksRevisionUnderLedgerLock(t *testing.T) {
 // only when it actually shrinks the log; an already-compact log over the cap
 // is left in place with a greppable WARN instead of being rewritten on every
 // save. The factor branch and manual mode stay byte-for-byte as before.
+//
+// 任务 1073 P1-a: the over-cap branch now accepts any fold saving ≥10%, not
+// only halving folds — the 124MB-in-open-tab incident was this branch refusing
+// a 42% saving because the session could never reach cap, pinning the log
+// forever (save is the only route a busy session gets).
 func TestEventsRotationAutoCapFoldsOnlyWhenItShrinks(t *testing.T) {
 	resetEventsRotation(t)
 	var buf bytes.Buffer
@@ -305,14 +310,22 @@ func TestEventsRotationAutoCapFoldsOnlyWhenItShrinks(t *testing.T) {
 	defer slog.SetDefault(prev)
 
 	SetEventsAutoRotation("auto", 16, 1)
-	const content int64 = 900 << 10 // 900 KiB live content
-	// Over the cap and the fold at least halves the log: fold fires.
+	// 1000KiB live content; the 1MiB auto cap keeps every probe below the
+	// factor branch (content×16) so only the cap+shrink logic is exercised.
+	const content int64 = 1000 << 10
+	// Over the cap and the fold halves the log: fold fires.
 	if !gateJudges(3<<20, content) {
 		t.Fatal("auto cap must fold when the fold halves the log")
 	}
-	// Over the cap but the folded log would land at or above half the size it
-	// replaces: leave it, with a greppable WARN naming the session path.
-	if gateJudges((1500<<10)+1, content) {
+	// Over the cap, fold saves ~38% but cannot land under cap: task 1073 P1-a
+	// now folds (a 124→90MB-class saving beats pinning the log forever).
+	if !gateJudges(1600<<10, content) {
+		t.Fatal("auto cap must fold a >=10% saving rewrite even when it cannot reach cap")
+	}
+	// Over the cap but the fold saves <10% even against the 80%-relaxed line:
+	// leave it, greppable WARN. This is the 73 no-gain sweep shape
+	// (freed ∈ [−217, 0]).
+	if gateJudges(1049000, content) {
 		t.Fatal("auto cap must not rewrite a log the fold cannot shrink")
 	}
 	if !strings.Contains(buf.String(), "fold would not shrink it") {

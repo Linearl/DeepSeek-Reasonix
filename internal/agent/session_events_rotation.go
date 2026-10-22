@@ -106,6 +106,24 @@ func EventsLogAboveThreshold(logSize, contentBytes int64, factor float64, capMB 
 		(capMB > 0 && logSize > capMB<<20)
 }
 
+// EventsFoldProfitable is the shared "would folding actually save bytes"
+// guard (task 1073 P0-1): the folded log lands at ~contentBytes, so folding
+// only pays when that is at least 10% under the current log size. A fold at
+// or above that line only appends a replace-record header of pure IO
+// (measured: freedBytes ∈ [−217, 0] across 73 no-gain sweeps). The save path
+// already carried this guard inside sessionEventLogOversized; the desktop
+// idle sweep ran WITHOUT it and burned its per-pass budget on rewrites that
+// freed nothing. Both call sites share this one expression so they cannot
+// drift. The 10% margin sits just above the replace header's ~200-byte cost
+// (the 73 no-gain sweeps freed −217..0 bytes) so a rewrite that would net
+// zero or negative bytes is refused before it is attempted.
+func EventsFoldProfitable(logSize, contentBytes int64) bool {
+	if logSize <= 0 {
+		return false
+	}
+	return float64(contentBytes) <= float64(logSize)*0.9
+}
+
 // EventsAutoRotationSnapshot reports the gate settings currently live in the
 // save path. Host-side tests use it to verify a settings push landed; a nil
 // store reads as the default configuration (manual, 4x, no cap).

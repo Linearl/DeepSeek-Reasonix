@@ -152,6 +152,14 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
       {/* Statistic card: over-limit total + the three largest offenders, with
           per-row repair and an all-session multi-round repair on top. */}
       <div className="events-rotation-panel__card">
+        {/* 任务 1073: cap=0 in auto mode silently disabled the whole idle
+            sweep — the operator saw "上限 0" with no hint that automatic
+            maintenance was off. Say so instead. */}
+        {mode === "auto" && inventory?.idleSweepOff ? (
+          <p className="settings-field__hint-line" role="status">
+            {t("settings.eventsRotation.card.idleSweepOff")}
+          </p>
+        ) : null}
         <div className="events-rotation-panel__card-head">
           <span className="settings-field__hint-line">
             {t("settings.eventsRotation.card.overCount", { count: inventory?.overCount ?? 0 })}

@@ -100,12 +100,23 @@ type eventsIdleSweepCandidate struct {
 // under cap) must not be rewritten every tick — the rewrite freed everything
 // it could, doing it again frees nothing but IO. New activity or ~10% regrowth
 // is the re-arm signal.
-func eventsIdleSweepDecision(enabled bool, overLimit, busy bool, currentSize int64, park *eventsIdleSweepPark, lastActivityAt int64) (bool, string) {
+//
+// Task 1073 P0-1: a fold-profitability gate (agent.EventsFoldProfitable, the
+// SAME expression the save path uses) sits here as a second over-limit line:
+// over the cap but the fold would save <10% ⇒ skip ("fold would not shrink"),
+// because a rewrite that cannot shrink the log frees nothing but IO (73
+// measured no-gain sweeps freed [−217, 0] bytes each). This guard was missing
+// on the sweep path — the save path had it since task 339 — which is why the
+// sweep kept re-attempting sessions that were already at the fold floor.
+func eventsIdleSweepDecision(enabled bool, overLimit, busy, foldProfitable bool, currentSize int64, park *eventsIdleSweepPark, lastActivityAt int64) (bool, string) {
 	if !enabled {
 		return false, "auto rotation off"
 	}
 	if !overLimit {
 		return false, "under limit"
+	}
+	if !foldProfitable {
+		return false, "fold would not shrink"
 	}
 	if busy {
 		return false, "session busy"
@@ -120,6 +131,15 @@ func eventsIdleSweepDecision(enabled bool, overLimit, busy bool, currentSize int
 // eventsIdleSweepResult reports one sweep attempt for the accounting log,
 // reusing the storage-panel result shape so both surfaces read the same.
 type eventsIdleSweepResult = SessionEventsCompactResult
+
+// eventsIdleSweepSkipReasons is the fixed skip taxonomy the pass counts per
+// tick (task 1073 P0-2). "under limit" gets its own bucket because it is the
+// overwhelming majority of the ~130 candidates a tick walks — folding it into
+// one total would drown the rare, actionable reasons (busy/parked/no-gain).
+var eventsIdleSweepSkipReasons = []string{
+	"auto rotation off", "under limit", "fold would not shrink",
+	"session busy", "parked: awaiting regrowth or new activity",
+}
 
 // runEventsIdleSweepPass runs one sweep pass over pre-collected candidates:
 // over-limit judgment, decision, then the injected compact action — largest
@@ -141,6 +161,7 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 		return sorted[i].EventsBytes > sorted[j].EventsBytes
 	})
 	results := []eventsIdleSweepResult{}
+	skips := make(map[string]int, len(eventsIdleSweepSkipReasons))
 	rewrites := 0
 	for _, c := range sorted {
 		if rewrites >= eventsIdleSweepMaxPerPass {
@@ -152,9 +173,16 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 		if hasPark {
 			parkPtr = &p
 		}
-		ok, reason := eventsIdleSweepDecision(knobs.enabled, overLimit, c.Busy, c.EventsBytes, parkPtr, c.LastActivityAt)
+		// Task 1073 P0-1: the sweep now shares the save path's profitability
+		// guard — a fold that would save <10% of the log is refused here too,
+		// so the pass no longer burns its 3-rewrite budget on rewrites that
+		// free nothing (73 measured no-gain sweeps). The LiveBytes proxy is
+		// the main transcript the candidate already carries.
+		profitable := agent.EventsFoldProfitable(c.EventsBytes, c.LiveBytes)
+		ok, reason := eventsIdleSweepDecision(knobs.enabled, overLimit, c.Busy, profitable, c.EventsBytes, parkPtr, c.LastActivityAt)
 		if !ok {
-			if reason != "under limit" { // under-limit rows are noise at pass volume
+			skips[reason]++
+			if reason != "under limit" && reason != "auto rotation off" {
 				results = append(results, eventsIdleSweepResult{Path: c.Path, Skipped: true, Error: reason})
 			}
 			continue
@@ -188,6 +216,17 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 				"freedBytes", before-after)
 		}
 		results = append(results, res)
+	}
+	// Task 1073 P0-2: one INFO per pass with every skip reason bucketed, so
+	// "why was this session never swept" is answerable from the log alone
+	// (the cooking-20260804-085122 investigation was blocked precisely because
+	// the skip branches were silent). Under-limit is its own bucket.
+	if len(skips) > 0 || rewrites > 0 {
+		fields := make([]any, 0, len(eventsIdleSweepSkipReasons)*2+2)
+		for _, reason := range eventsIdleSweepSkipReasons {
+			fields = append(fields, "skipped_"+reason, skips[reason])
+		}
+		slog.Info("desktop: events idle sweep skip summary", fields...)
 	}
 	return results
 }

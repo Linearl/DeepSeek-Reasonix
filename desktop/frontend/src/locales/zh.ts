@@ -2857,6 +2857,7 @@ export const zh: Record<DictKey, string> = {
 "settings.eventsRotation.cap": "绝对上限（MiB，0=不启用）",
 "settings.eventsRotation.apply": "应用阈值",
 "settings.eventsRotation.card.overCount": "超出阈值的对话：{count} 个",
+	"settings.eventsRotation.card.idleSweepOff": "绝对上限为 0：空闲自动折叠已关闭，仅倍数判据生效。",
 "settings.eventsRotation.card.refresh": "刷新",
 "settings.eventsRotation.card.repairAll": "全部修复",
 "settings.eventsRotation.card.repair": "修复",

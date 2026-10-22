@@ -88,10 +88,11 @@ func TestSessionEventLogOversizedFoldNoShrinkWarnsOnce(t *testing.T) {
 	t.Cleanup(func() { SetEventsAutoRotation("manual", 4, 0) })
 	SetEventsAutoRotation("auto", 4, 50)
 
-	// logSize 100MB，cap 50MB 超限；content 60MB → 60*2 >= 100 → fold 不回本。
+	// 任务 1073 P1-a 之后 over-cap 折叠只要求省 ≥10%：content/log > 0.9 才是
+	// 「折不回本」。取 logSize 100MB（> cap 50MB）、content 95MB → 95% 省 5% <10%。
 	const path = `C:\p\sessions\whale.events.jsonl`
 	const logSize = int64(100) << 20
-	const content = int64(60) << 20
+	const content = int64(95) << 20
 	for i := 0; i < 3; i++ {
 		if sessionEventLogOversized(path, logSize, content) {
 			t.Fatal("fold-no-shrink log must not rotate (gate returns false)")
@@ -101,14 +102,15 @@ func TestSessionEventLogOversizedFoldNoShrinkWarnsOnce(t *testing.T) {
 		t.Fatalf("fold-no-shrink warn count = %d, want exactly 1 across 3 saves", got)
 	}
 	// 同路径换 off 模式文案：键不同，首警独立必发（off 文案的判定走 4x 因子，
-	// 250MB log / 60MB content 超因子）。
+	// 250MB log / 60MB content 超因子——off 分支与 P1-a 的 auto cap 分支无关，
+	// 这里用 60MB content 走纯因子判据）。
 	SetEventsAutoRotation("off", 4, 0)
-	sessionEventLogOversized(path, int64(250)<<20, content)
+	sessionEventLogOversized(path, int64(250)<<20, int64(60)<<20)
 	if got := strings.Count(buf.String(), "events auto rotation off"); got != 1 {
 		t.Fatalf("off-mode warn must warn independently per message key: count = %d, want 1", got)
 	}
 	// off 模式连续判定：同键第二判走冷却，不再出现第二条。
-	sessionEventLogOversized(path, int64(250)<<20, content)
+	sessionEventLogOversized(path, int64(250)<<20, int64(60)<<20)
 	if got := strings.Count(buf.String(), "events auto rotation off"); got != 1 {
 		t.Fatalf("off-mode warn repeat must stay suppressed: count = %d, want 1", got)
 	}
