@@ -43,9 +43,12 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/event"
 	"reasonix/internal/secrets"
+	"reasonix/internal/tool/builtin"
 )
 
 // autopilotGuardIDPrefix marks a heartbeat task as an autopilot guard. The id
@@ -166,6 +169,62 @@ func (a *App) ownerTabAutopilot(topicID string) (found, autopilot bool) {
 		}
 	}
 	return false, false
+}
+
+// noticeCodeForCallerTab emits the guard notice on the exempted caller's tab,
+// detached pool included: a task-742 background run parks its tab outside the
+// strip, and the 1062 exemption must never be silent just because the session
+// left the strip (拍板：notice 必须 panel 面可见). Best effort like
+// noticeCodeForTab — a missing tab or sink drops it.
+func (a *App) noticeCodeForCallerTab(tabID string, level event.Level, code, text string) {
+	if a == nil {
+		return
+	}
+	a.mu.RLock()
+	tab := a.tabByIDLocked(tabID)
+	if tab == nil {
+		tab = a.detachedSessions[tabID]
+	}
+	sink := tab.sink
+	a.mu.RUnlock()
+	if tab != nil && sink != nil {
+		sink.Emit(event.Event{Kind: event.Notice, Level: level, Code: code, Text: text})
+	}
+}
+
+// autopilotGuardCreateExempt implements the task-1062 recursion guard at the
+// heartbeat-tool creation entry: a session running IN autopilot must not
+// create NEW scheduled (heartbeat/守护) tasks — each new layer could itself
+// end up in autopilot and spawn the next layer (守护再开 autopilot 再建守护…),
+// and the host-side auto-creation half (task 547) already covers the designed
+// one-guard-per-autopilot-session shape. Returns the exempted caller's tab id
+// so the adapter can place the panel notice on the right tab; ok=false means
+// the creation proceeds. Narrow by construction: only a CREATION (empty patch
+// id) from a RESOLVABLE live tab currently in autopilot is exempted — updates
+// to existing tasks and every non-autopilot caller keep today's behavior
+// (验收3：非 autopilot 上下文创建守护对话行为不变).
+func (a *App) autopilotGuardCreateExempt(req builtin.HeartbeatUpsertRequest) (tabID string, exempt bool) {
+	if a == nil {
+		return "", false
+	}
+	if strings.TrimSpace(req.Patch.ID) != "" {
+		return "", false // update of an existing task: allowed, no recursion
+	}
+	caller := strings.TrimSpace(req.CallerSession)
+	if caller == "" {
+		return "", false // no live-caller identity (tests, CLI): not exempted
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, tab := range a.runtimeTabsLocked() {
+		if tab == nil || tab.Ctrl == nil || !tab.autopilot {
+			continue
+		}
+		if agent.BranchID(tab.Ctrl.SessionPath()) == caller {
+			return tab.ID, true
+		}
+	}
+	return "", false
 }
 
 // ensureAutopilotGuard creates or refreshes the guard for one autopilot
