@@ -3,10 +3,19 @@
 // 任务 1024 acceptance harness (composer 草稿优化):
 //  ① 开关关（默认）：发送按钮左侧不出现改写按钮，composer 工具栏与引入前
 //     逐字节一致（铁律 2）；
-//  ② 开关开：改写按钮出现在发送按钮左侧，点击读草稿 + 最近 10KB 上下文
+//  ② 开关开：改写按钮出现在发送按钮左侧，点击读草稿 + 最近上下文
 //     调 RewriteDraftForTab，结果回填输入框且**不自动发送**（onSend 零调用）；
 //  ③ 空草稿：按钮 disabled，不发请求；
 //  ④ 改写返回空串（后端静默降级形态）：输入框保持原样，不弹错、不打断。
+//
+// 任务 1052 acceptance harness (档位弹窗):
+//  ⑤ 点击改写先弹档位弹窗（2KB/5KB/10KB/20KB 四档 + 取消），弹窗出现时
+//     **零请求**（不立即改写）；
+//  ⑥ 点某档 → 按档调 RewriteDraftForTab（contextBudgetKB 收到所选档），
+//     注入上下文 ≤ 所选档字节数，回填不自动发送；
+//  ⑦ 取消按钮/遮罩点击 → 关弹窗、零请求；
+//  ⑧ 记住上次选择：选档写入 localStorage，重开弹窗默认高亮上次档；
+//  ⑨ 空草稿点改写 → 弹窗不出现（与 1024 空态保护一致）、零请求。
 
 import { JSDOM } from "jsdom";
 
@@ -203,6 +212,20 @@ function rewriteButton(): HTMLButtonElement | null {
   return document.querySelector<HTMLButtonElement>("button.composer__btn--rewrite");
 }
 
+// 档位弹窗（任务 1052）：portal 到 body 的 dialog；四档按钮带 aria-pressed，
+// 取消按钮在 __actions 区。
+function budgetDialog(): HTMLElement | null {
+  return document.querySelector<HTMLElement>("div.lab-pick-dialog[role=\"dialog\"]");
+}
+
+function budgetTierButtons(): HTMLButtonElement[] {
+  return [...document.querySelectorAll<HTMLButtonElement>("div.lab-pick-dialog[role=\"dialog\"] button[aria-pressed]")];
+}
+
+function budgetCancelButton(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>("div.lab-pick-dialog[role=\"dialog\"] .lab-bulk-dialog__actions .btn");
+}
+
 function sendButton(): HTMLButtonElement | null {
   return document.querySelector<HTMLButtonElement>("button.composer__btn--send");
 }
@@ -227,12 +250,13 @@ function clickControl(node: HTMLElement | null) {
   dom.window.close();
 }
 
-// ── ② 开关开：按钮在发送左侧，点击改写回填、不自动发送 ────────────────
+// ── ②⑤⑥⑦⑧⑨ 开关开：按钮在发送左侧；点击先弹档位弹窗，选档才改写 ────
 {
   const dom = installDom();
   applyLabFlags({ draftRewrite: true });
   stubBridge();
   calls.length = 0;
+  localStorage.clear();
   let sent = 0;
   const { root } = await renderComposer({ onSend: () => { sent += 1; } });
   const btn = rewriteButton();
@@ -247,12 +271,13 @@ function clickControl(node: HTMLElement | null) {
       ok(positions.indexOf(btn) < positions.indexOf(send),
         "the rewrite button sits LEFT of the send button");
     }
-    // 空草稿：点击不发请求（改写入口的空态保护）。
+    // ⑨ 空草稿：点击不弹窗、不发请求（改写入口的空态保护）。
     calls.length = 0;
     await act(async () => { clickControl(rewriteButton()); await flushTimers(); });
     await act(async () => { await flushTimers(); });
     eq(calls.filter((c) => c.method === "RewriteDraftForTab").length, 0,
       "empty draft: clicking the rewrite button sends nothing");
+    eq(budgetDialog(), null, "empty draft: no budget dialog opens");
 
     // 填入草稿（走 composer 自己的 paste 通道——与 context-menu-clipboard /
     // session-draft 测试同一路径；insertRequest 那条路在本 jsdom 布景下只改
@@ -267,22 +292,62 @@ function clickControl(node: HTMLElement | null) {
     });
     eq(composerValue(), "帮我看看那个 CI 报错", "the draft lands in the composer via its paste handler");
 
+    // ⑤ 点击改写 → 弹窗出现（四档+取消），此刻零请求（不立即改写）。
     await act(async () => { clickControl(rewriteButton()); await flushTimers(); });
     await act(async () => { await flushTimers(); });
+    ok(budgetDialog() !== null, "clicking rewrite opens the budget dialog (no rewrite yet)");
+    eq(calls.filter((c) => c.method === "RewriteDraftForTab").length, 0,
+      "the dialog opening sends nothing");
+    const tiers = budgetTierButtons();
+    eq(tiers.length, 4, "the dialog offers exactly four budget tiers");
+    eq(tiers.map((b) => b.textContent?.trim()).join(","), "2 KB,5 KB,10 KB,20 KB",
+      "the four tiers read 2KB/5KB/10KB/20KB");
+    ok(budgetCancelButton() !== null, "the dialog has a cancel button");
+    eq(tiers.filter((b) => b.getAttribute("aria-pressed") === "true").length, 1,
+      "exactly one tier is highlighted by default");
+    eq(tiers.find((b) => b.getAttribute("aria-pressed") === "true")?.textContent?.trim(), "10 KB",
+      "the default highlighted tier is 10KB (first use, matching the 1024 behavior)");
 
-    // 判据：按钮此刻是否真的还在 DOM 里（排除「按钮早被卸载」的假象），
-    // 以及点击后 spin 图标是否出现过（= rewriteDraft 真的进了 setDraftRewriting
-    // 分支——spin 一闪而过的话这里抓不到，就只钉按钮仍在）。
-    ok(rewriteButton() !== null, "the rewrite button is still mounted when clicked");
+    // ⑦ 取消 → 关弹窗、零请求。
+    clickControl(budgetCancelButton());
+    await act(async () => { await flushTimers(); });
+    eq(budgetDialog(), null, "cancel closes the budget dialog");
+    eq(calls.filter((c) => c.method === "RewriteDraftForTab").length, 0,
+      "cancel sends nothing");
 
+    // ⑥ 重新打开，点 2KB 档 → 按档发起改写。
+    await act(async () => { clickControl(rewriteButton()); await flushTimers(); });
+    await act(async () => { await flushTimers(); });
+    ok(budgetDialog() !== null, "the dialog reopens on the next click");
+    const twoKB = budgetTierButtons().find((b) => b.textContent?.trim() === "2 KB") ?? null;
+    clickControl(twoKB);
+    await act(async () => { await flushTimers(); });
+    await act(async () => { await flushTimers(); });
+
+    eq(budgetDialog(), null, "choosing a tier closes the dialog");
     const rewriteCalls = calls.filter((c) => c.method === "RewriteDraftForTab");
-    eq(rewriteCalls.length, 1, "clicking sends exactly one RewriteDraftForTab request");
+    eq(rewriteCalls.length, 1, "choosing a tier sends exactly one RewriteDraftForTab request");
     const args = rewriteCalls[0]?.args as unknown[] | undefined;
     ok(Array.isArray(args) && args[1] === "帮我看看那个 CI 报错", "the request carries the draft verbatim");
     ok(Array.isArray(args) && typeof args[2] === "string" && (args[2] as string).includes("CI 又红了"),
       "the request carries the recent conversation context");
+    ok(Array.isArray(args) && args[3] === 2,
+      "the request carries the chosen tier as contextBudgetKB (2)");
+    ok(Array.isArray(args) && typeof args[2] === "string" && (args[2] as string).length <= 2 * 1024,
+      "the injected context is trimmed to the chosen 2KB tier");
     eq(composerValue(), rewriteResult, "the rewritten draft fills the input box");
     eq(sent, 0, "the rewrite NEVER auto-sends (onSend stays at zero calls)");
+
+    // ⑧ 记住上次选择：上一步选了 2KB，重开弹窗默认高亮 2KB（刷新后同 key）。
+    ok(localStorage.getItem("composer:draftRewriteBudgetKB") === "2",
+      "the chosen tier is persisted to localStorage");
+    await act(async () => { clickControl(rewriteButton()); await flushTimers(); });
+    await act(async () => { await flushTimers(); });
+    eq(budgetTierButtons().find((b) => b.getAttribute("aria-pressed") === "true")?.textContent?.trim(), "2 KB",
+      "the next open defaults to the remembered tier");
+    // 收尾：Esc 关弹窗，不留下挂起的 dialog 影响卸载。
+    document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await act(async () => { await flushTimers(); });
   }
   await act(async () => root.unmount());
   dom.window.close();
@@ -294,6 +359,7 @@ function clickControl(node: HTMLElement | null) {
   applyLabFlags({ draftRewrite: true });
   stubBridge();
   rewriteResult = "";
+  localStorage.clear();
   const { root } = await renderComposer();
   await act(async () => {
     const node = document.querySelector<HTMLTextAreaElement>("textarea");
@@ -304,9 +370,21 @@ function clickControl(node: HTMLElement | null) {
     await flushTimers();
   });
   eq(composerValue(), "原始草稿", "the draft lands in the composer via its paste handler");
+  calls.length = 0;
   await act(async () => { clickControl(rewriteButton()); await flushTimers(); });
   await act(async () => { await flushTimers(); });
+  // 1052：先弹档位弹窗，选档（默认 10KB）后才改写。
+  ok(budgetDialog() !== null, "the budget dialog opens before rewriting");
+  const defaultTier = budgetTierButtons().find((b) => b.getAttribute("aria-pressed") === "true") ?? null;
+  clickControl(defaultTier);
+  await act(async () => { await flushTimers(); });
+  await act(async () => { await flushTimers(); });
+  const rewriteCalls = calls.filter((c) => c.method === "RewriteDraftForTab");
+  eq(rewriteCalls.length, 1, "the chosen tier sends exactly one rewrite request");
+  ok(Array.isArray(rewriteCalls[0]?.args) && (rewriteCalls[0]?.args as unknown[])[3] === 10,
+    "the default tier carries contextBudgetKB=10");
   eq(composerValue(), "原始草稿", "an empty rewrite degrades silently: the draft stays untouched");
+  rewriteResult = "改写后的结构化草稿";
   await act(async () => root.unmount());
   dom.window.close();
 }
