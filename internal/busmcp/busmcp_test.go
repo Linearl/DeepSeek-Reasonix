@@ -196,6 +196,165 @@ func TestTaskCardLifecycle(t *testing.T) {
 	}
 }
 
+// TestTaskCardListAndGet pins the read-side surface (task 1050): a runtime can
+// enumerate cards with filters and fetch one card's full detail including the
+// note chain — the precondition for autonomous card claiming.
+func TestTaskCardListAndGet(t *testing.T) {
+	s := newTestServer(t)
+	srv := httptest.NewServer(s.Handler())
+	t.Cleanup(func() { srv.Close() }) // after cs.Close, see TestEndToEndInboxAndSend
+	cs := connectAs(t, srv.URL, testTokenDev)
+
+	// An empty store lists as an empty array, never null.
+	var empty taskListOut
+	if err := callTool(t, cs, "collab_task_list", map[string]any{}, &empty); err != nil {
+		t.Fatalf("empty list: %v", err)
+	}
+	if empty.Cards == nil || len(empty.Cards) != 0 {
+		t.Fatalf("empty list: want non-nil empty slice, got %+v", empty.Cards)
+	}
+
+	// Two cards with different statuses and assignees.
+	var a taskCreateOut
+	if err := callTool(t, cs, "collab_task_create", map[string]any{
+		"title": "card A", "body": "acceptance: A green", "assignee": "zcode-dev",
+	}, &a); err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	var b taskCreateOut
+	if err := callTool(t, cs, "collab_task_create", map[string]any{
+		"title": "card B", "body": "acceptance: B green",
+	}, &b); err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+	var upd taskUpdateOut
+	if err := callTool(t, cs, "collab_task_update", map[string]any{
+		"card_id": b.CardID, "status": "running", "note": "picked up B",
+	}, &upd); err != nil {
+		t.Fatalf("running B: %v", err)
+	}
+
+	// Unfiltered list: both cards, summaries only (no body/chain leakage).
+	var all taskListOut
+	if err := callTool(t, cs, "collab_task_list", map[string]any{}, &all); err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(all.Cards) != 2 {
+		t.Fatalf("list all: want 2 cards, got %+v", all.Cards)
+	}
+	byID := map[string]cardSummary{}
+	for _, c := range all.Cards {
+		if c.ID == "" || c.Title == "" || c.Status == "" {
+			t.Fatalf("summary missing required field: %+v", c)
+		}
+		byID[c.ID] = c
+	}
+	if got := byID[a.CardID]; got.Status != "pending" || got.Assignee != "zcode-dev" {
+		t.Fatalf("card A summary: %+v", got)
+	}
+	if got := byID[b.CardID]; got.Status != "running" {
+		t.Fatalf("card B summary: %+v", got)
+	}
+
+	// Filtered lists.
+	var running taskListOut
+	if err := callTool(t, cs, "collab_task_list", map[string]any{"status": "running"}, &running); err != nil {
+		t.Fatalf("list running: %v", err)
+	}
+	if len(running.Cards) != 1 || running.Cards[0].ID != b.CardID {
+		t.Fatalf("list running: want only card B, got %+v", running.Cards)
+	}
+	var assigned taskListOut
+	if err := callTool(t, cs, "collab_task_list", map[string]any{"assignee": "zcode-dev"}, &assigned); err != nil {
+		t.Fatalf("list assignee: %v", err)
+	}
+	if len(assigned.Cards) != 1 || assigned.Cards[0].ID != a.CardID {
+		t.Fatalf("list assignee: want only card A, got %+v", assigned.Cards)
+	}
+
+	// Invalid filter is rejected, not silently widened.
+	result, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "collab_task_list",
+		Arguments: map[string]any{"status": "bogus"},
+	})
+	if err != nil {
+		t.Fatalf("bogus status call: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("bogus status: want IsError, got %+v", result)
+	}
+
+	// Get returns the full detail with the note chain appended by updates.
+	var detail taskGetOut
+	if err := callTool(t, cs, "collab_task_get", map[string]any{"card_id": b.CardID}, &detail); err != nil {
+		t.Fatalf("get B: %v", err)
+	}
+	c := detail.Card
+	if c.ID != b.CardID || c.Title != "card B" || c.Status != "running" || c.Body != "acceptance: B green" {
+		t.Fatalf("get B detail: %+v", c)
+	}
+	if c.Initiator != "zcode-dev" {
+		t.Fatalf("get B initiator: %+v", c)
+	}
+	if c.CreatedAt == 0 || c.UpdatedAt == 0 {
+		t.Fatalf("get B timestamps: %+v", c)
+	}
+	if len(c.Nodes) == 0 || c.Nodes[len(c.Nodes)-1].ContactID != "zcode-dev" || c.Nodes[len(c.Nodes)-1].Note != "picked up B" {
+		t.Fatalf("get B chain: %+v", c.Nodes)
+	}
+
+	// Missing card and missing card_id are tool errors, not Go panics.
+	if err := callTool(t, cs, "collab_task_get", map[string]any{"card_id": "card_nope"}, &detail); err == nil {
+		t.Fatal("get missing card: want error, got nil")
+	}
+	result, err = cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "collab_task_get",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("missing card_id call: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("missing card_id: want IsError, got %+v", result)
+	}
+}
+
+// TestToolsSurfaceAndSpawnStaysGated pins the registration surface (task 1050):
+// the six always-on tools including the two new read tools are advertised with
+// non-empty schemas, and collab_spawn is absent unless the role is in
+// spawn_roles (the shipped config default denies every role).
+func TestToolsSurfaceAndSpawnStaysGated(t *testing.T) {
+	s := newTestServer(t) // SpawnRoles unset → spawn closed for every role
+	srv := httptest.NewServer(s.Handler())
+	t.Cleanup(func() { srv.Close() })
+	cs := connectAs(t, srv.URL, testTokenDev)
+
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	names := map[string]*mcp.Tool{}
+	for _, tool := range res.Tools {
+		names[tool.Name] = tool
+	}
+	for _, want := range []string{
+		"collab_inbox_read", "collab_send",
+		"collab_task_create", "collab_task_update",
+		"collab_task_list", "collab_task_get",
+	} {
+		tool, ok := names[want]
+		if !ok {
+			t.Fatalf("tools/list missing %q (have %d tools)", want, len(names))
+		}
+		if tool.Description == "" || tool.InputSchema == nil {
+			t.Fatalf("tool %q: empty description or schema", want)
+		}
+	}
+	if _, ok := names["collab_spawn"]; ok {
+		t.Fatal("collab_spawn must stay unregistered when spawn_roles is empty")
+	}
+}
+
 func TestHandleEvent(t *testing.T) {
 	s := newTestServer(t)
 	srv := httptest.NewServer(http.HandlerFunc(s.HandleEvent))

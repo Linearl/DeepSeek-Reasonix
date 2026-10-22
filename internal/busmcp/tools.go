@@ -20,6 +20,8 @@ const (
 	sendDesc       = "Send a message to a bus contact (e.g. zcode-heartbeat, or any Reasonix session contact id). Messages wait durably until the target reads them."
 	taskCreateDesc = "Create a bus task card. State machine: pending → running → done/failed/blocked; blocked returns via running. Title is required."
 	taskUpdateDesc = "Update a bus task card's status. Illegal transitions (e.g. done → running) are rejected; reopening terminal cards goes through pending."
+	taskListDesc   = "List bus task cards visible to this runtime's shared store, newest updated first. Filter by status and/or assignee to scope the scan (e.g. pending cards assigned to this contact)."
+	taskGetDesc    = "Fetch one bus task card by id: full fields plus the note/result chain, so a worker can reconstruct what happened without replaying mail."
 	spawnDesc      = "Create a task card AND dispatch its assignment mail to a target contact in one step (e.g. to zcode-worker for unattended headless execution). Gated to spawn-authorized roles with a daily quota."
 )
 
@@ -219,6 +221,123 @@ func (rt roleRuntime) taskUpdate(ctx context.Context, _ *mcp.CallToolRequest, in
 	return nil, taskUpdateOut{CardID: card.ID, Status: string(card.Status)}, nil
 }
 
+// ── collab_task_list ─────────────────────────────────────────────────────────
+
+type taskListIn struct {
+	Status   string `json:"status,omitempty" jsonschema:"only return cards in this status (pending|running|blocked|done|failed); empty returns all"`
+	Assignee string `json:"assignee,omitempty" jsonschema:"only return cards assigned to this contact id; empty returns all"`
+}
+
+// cardSummary is the list-row shape: enough to decide which card to fetch,
+// deliberately without the body/note chain to keep scans cheap to read.
+type cardSummary struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Status    string `json:"status"`
+	Initiator string `json:"initiator,omitempty"`
+	Assignee  string `json:"assignee,omitempty"`
+	UpdatedAt int64  `json:"updated_at,omitempty"`
+}
+
+type taskListOut struct {
+	Cards []cardSummary `json:"cards"`
+}
+
+func (rt roleRuntime) taskList(_ context.Context, _ *mcp.CallToolRequest, in taskListIn) (*mcp.CallToolResult, taskListOut, error) {
+	if in.Status != "" && !sessioncollab.StatusAllowed(sessioncollab.CardStatus(in.Status)) {
+		return nil, taskListOut{}, fmt.Errorf("unknown status %q (want pending|running|blocked|done|failed)", in.Status)
+	}
+	all, err := rt.bus.cards.List()
+	if err != nil {
+		return nil, taskListOut{}, fmt.Errorf("list cards: %w", err)
+	}
+	out := taskListOut{Cards: []cardSummary{}}
+	for _, c := range all {
+		if in.Status != "" && string(c.Status) != in.Status {
+			continue
+		}
+		if in.Assignee != "" && c.Assignee != in.Assignee {
+			continue
+		}
+		out.Cards = append(out.Cards, cardSummary{
+			ID:        c.ID,
+			Title:     c.Title,
+			Status:    string(c.Status),
+			Initiator: c.Initiator,
+			Assignee:  c.Assignee,
+			UpdatedAt: c.UpdatedAt,
+		})
+	}
+	return nil, out, nil
+}
+
+// ── collab_task_get ──────────────────────────────────────────────────────────
+
+type taskGetIn struct {
+	CardID string `json:"card_id" jsonschema:"card id from collab_task_create/collab_task_list"`
+}
+
+// cardNodeView mirrors sessioncollab.CardNode for the tool surface.
+type cardNodeView struct {
+	ContactID string `json:"contact_id,omitempty"`
+	Role      string `json:"role,omitempty"`
+	At        int64  `json:"at,omitempty"`
+	Note      string `json:"note,omitempty"`
+}
+
+// cardDetail is the full-card shape: every durable field plus the note chain,
+// so a worker can reconstruct the card's history without replaying the mail.
+type cardDetail struct {
+	ID        string         `json:"id"`
+	Title     string         `json:"title"`
+	Status    string         `json:"status"`
+	Initiator string         `json:"initiator,omitempty"`
+	Assignee  string         `json:"assignee,omitempty"`
+	Workspace string         `json:"workspace,omitempty"`
+	Body      string         `json:"body,omitempty"`
+	Result    string         `json:"result,omitempty"`
+	Error     string         `json:"error,omitempty"`
+	Nodes     []cardNodeView `json:"nodes,omitempty"`
+	CreatedAt int64          `json:"created_at,omitempty"`
+	UpdatedAt int64          `json:"updated_at,omitempty"`
+}
+
+type taskGetOut struct {
+	Card cardDetail `json:"card"`
+}
+
+func (rt roleRuntime) taskGet(_ context.Context, _ *mcp.CallToolRequest, in taskGetIn) (*mcp.CallToolResult, taskGetOut, error) {
+	if strings.TrimSpace(in.CardID) == "" {
+		return nil, taskGetOut{}, fmt.Errorf("card_id is required")
+	}
+	c, err := rt.bus.cards.Get(in.CardID)
+	if err != nil {
+		return nil, taskGetOut{}, fmt.Errorf("get card %s: %w", in.CardID, err)
+	}
+	detail := cardDetail{
+		ID:        c.ID,
+		Title:     c.Title,
+		Status:    string(c.Status),
+		Initiator: c.Initiator,
+		Assignee:  c.Assignee,
+		Workspace: c.Workspace,
+		Body:      c.Body,
+		Result:    c.Result,
+		Error:     c.Error,
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
+	}
+	for _, n := range c.Nodes {
+		detail.Nodes = append(detail.Nodes, cardNodeView{
+			ContactID: n.ContactID,
+			Role:      n.Role,
+			At:        n.At,
+			Note:      n.Note,
+		})
+	}
+	return nil, taskGetOut{Card: detail}, nil
+}
+
 // ── collab_spawn ─────────────────────────────────────────────────────────────
 
 type spawnIn struct {
@@ -328,6 +447,12 @@ func (s *Server) newRoleServer(role, contact string, canSpawn bool) *mcp.Server 
 	mcp.AddTool(srv, &mcp.Tool{Name: "collab_send", Description: sendDesc}, rt.send)
 	mcp.AddTool(srv, &mcp.Tool{Name: "collab_task_create", Description: taskCreateDesc}, rt.taskCreate)
 	mcp.AddTool(srv, &mcp.Tool{Name: "collab_task_update", Description: taskUpdateDesc}, rt.taskUpdate)
+	mcp.AddTool(srv, &mcp.Tool{Name: "collab_task_list", Description: taskListDesc}, rt.taskList)
+	mcp.AddTool(srv, &mcp.Tool{Name: "collab_task_get", Description: taskGetDesc}, rt.taskGet)
+	// collab_spawn stays gated: spawn_roles empty in [serve.bus_mcp] (the
+	// shipped default) means every role fails canSpawn and the tool is never
+	// registered — spawn hands out work, so it is closed until the config
+	// names roles explicitly (evaluated after task 1046's full acceptance).
 	if canSpawn {
 		mcp.AddTool(srv, &mcp.Tool{Name: "collab_spawn", Description: spawnDesc}, rt.spawn)
 	}
