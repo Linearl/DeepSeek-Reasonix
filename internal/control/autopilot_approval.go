@@ -123,7 +123,10 @@ func (c *Controller) reviewUnattendedApproval(ctx context.Context, tool, subject
 			// source's own Ask semantics and has no bound of its own, so the
 			// silent window it used to leave is the largest of the three.
 			c.markCascadeWaitBegin(source, 1)
-			answers, askErr := delegate.Ask(agent.WithCascadeHop(ctx), []event.AskQuestion{question})
+			// Task 1062: same marker strip as the other two cascade sites —
+			// the source's own Ask semantics decide, the child's scheduled-run
+			// backstop must not travel with the hop.
+			answers, askErr := delegate.Ask(withoutHeartbeatTurn(agent.WithCascadeHop(ctx)), []event.AskQuestion{question})
 			c.markCascadeWaitEnd()
 			if askErr == nil && len(answers) == 1 {
 				selection := strings.Join(answers[0].Selected, " ")

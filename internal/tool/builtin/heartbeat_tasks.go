@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"reasonix/internal/jobs"
 	"reasonix/internal/tool"
 )
 
@@ -104,6 +105,13 @@ type HeartbeatTaskPatch struct {
 type HeartbeatUpsertRequest struct {
 	Patch            HeartbeatTaskPatch
 	ExpectedRevision uint64
+	// CallerSession is the task-1062 caller identity: the session branch of
+	// the conversation that issued the tool call (jobs.SessionFromContext —
+	// the controller's parentSessionID). It is host-filled by the tools and
+	// consumed by the desktop adapter's recursion guard (an autopilot session
+	// is exempted from creating NEW scheduled tasks); the model cannot set it
+	// because it is not part of the tool's argument schema.
+	CallerSession string
 }
 
 // HeartbeatUpsertResult echoes what the caller needs to verify the edit:
@@ -269,7 +277,13 @@ func (heartbeatTaskUpsert) Execute(ctx context.Context, args json.RawMessage) (s
 	if err != nil {
 		return "", err
 	}
-	result, err := mgr.UpsertTask(HeartbeatUpsertRequest{Patch: patch, ExpectedRevision: expected})
+	result, err := mgr.UpsertTask(HeartbeatUpsertRequest{
+		Patch:            patch,
+		ExpectedRevision: expected,
+		// Task 1062: host-filled caller identity for the desktop recursion
+		// guard; empty outside a live session (tests, CLI).
+		CallerSession: jobs.SessionFromContext(ctx),
+	})
 	if err != nil {
 		return "", err
 	}

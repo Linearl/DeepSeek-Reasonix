@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"reasonix/internal/jobs"
 	"context"
 	"encoding/json"
 	"errors"
@@ -181,5 +182,29 @@ func TestHeartbeatManagerErrorsPassThrough(t *testing.T) {
 	_, err := heartbeatTaskUpsert{}.Execute(context.Background(), json.RawMessage(`{"expected_revision":3,"title":"t"}`))
 	if err == nil || !strings.Contains(err.Error(), "current revision is 4") {
 		t.Fatalf("manager conflict error must pass through verbatim, got %v", err)
+	}
+}
+
+// Task 1062: the upsert tool forwards the caller's session identity (the
+// turn context's jobs session — the controller's parentSessionID) so the
+// desktop adapter can judge the recursion guard on a live, resolvable tab.
+// The identity is host-filled; the model cannot set it (not in the arg
+// schema), and outside a live session it stays empty.
+func TestHeartbeatUpsertForwardsCallerSession(t *testing.T) {
+	fake := withFakeManager(t)
+	ctx := jobs.WithSession(context.Background(), "branch_guardex")
+	_, err := heartbeatTaskUpsert{}.Execute(ctx, json.RawMessage(`{"expected_revision":1,"title":"t","prompt":"p","interval":"30m"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fake.upsert.CallerSession != "branch_guardex" {
+		t.Fatalf("CallerSession = %q, want the jobs session identity forwarded", fake.upsert.CallerSession)
+	}
+	fake2 := withFakeManager(t)
+	if _, err := (heartbeatTaskUpsert{}).Execute(context.Background(), json.RawMessage(`{"expected_revision":1,"title":"t","prompt":"p","interval":"30m"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if fake2.upsert.CallerSession != "" {
+		t.Fatalf("CallerSession = %q, want empty outside a live session ctx", fake2.upsert.CallerSession)
 	}
 }

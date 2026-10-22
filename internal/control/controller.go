@@ -3168,6 +3168,10 @@ func (c *Controller) autopilotAskWaitFor() time.Duration {
 // Unlike tool-approval gates, Ask is NOT bypassed in YOLO mode — the `ask`
 // tool exists to get a genuine user decision, and YOLO only auto-approves
 // tool calls; it must not answer the user's questions for them.
+// Task 1062 adds a third wait regime alongside attended and autopilot: an ask
+// on a heartbeat-driven turn (SubmitHeartbeatTurn) runs unattended with no
+// autopilot gear, so it is refused outright — zero wait, no panel — instead of
+// hanging the scheduled run on a dialog nobody watches.
 func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]event.AskAnswer, error) {
 	// Registering after the lock left a queued question invisible everywhere:
 	// no event, absent from the snapshot, unreachable by ReplayPendingPrompts.
@@ -3231,7 +3235,11 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			// doctor read as a hang. Stamp the wait window into the ledger.
 			c.markCascadeWaitBegin(source, len(questions))
 			delegateCtx, cancelDelegate := context.WithTimeout(ctx, DefaultAutopilotAskWait)
-			answers, err := delegate.Ask(agent.WithCascadeHop(delegateCtx), questions)
+			// Task 1062: strip the heartbeat-turn marker before the hop — the
+			// parent's Ask must decide by the parent's own posture (attended
+			// parent answers; autopilot parent applies its 477 waits), never
+			// inherit the child's scheduled-run backstop.
+			answers, err := delegate.Ask(withoutHeartbeatTurn(agent.WithCascadeHop(delegateCtx)), questions)
 			cancelDelegate()
 			c.markCascadeWaitEnd()
 			if err != nil {
@@ -3241,6 +3249,37 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 				return answers, nil
 			}
 		}
+	}
+
+	// Task 1062 (拍板变更 20261022：立即拒绝，零等待): a heartbeat-driven turn
+	// runs unattended with no autopilot gear — without the backstop its asks
+	// land in the attended unbounded wait and the scheduled run hangs on a
+	// panel nobody watches (20261022 协调线实锤). The refusal is answered
+	// BEFORE any panel is registered: no AskRequest is emitted, no lock is
+	// taken, the scheduled run loses zero time (心跳 20 分钟一轮，等待纯属浪费
+	// 回合预算). It arms ONLY where the autopilot branches did not take over —
+	// an autopilot session woken by a guard run keeps its own 477/109 waits,
+	// and a heartbeat ask with a task-225 parent was already offered the
+	// delegation hop above. Both risk tiers take it: refusing (not deciding)
+	// is the safe direction for a run nobody watches.
+	if heartbeatTurnRequested(ctx) && !(c.autopilot && !reversibleAsk) {
+		// 判据锚: one grep-able log line plus one notice, same shape as the
+		// task-477 anchor — "did the heartbeat backstop fire and what did it
+		// decide" is answerable from the log and the transcript alone.
+		log.Printf("[heartbeat-ask] scheduled-run ask refused immediately, no panel emitted (task 1062) questions=%d", len(questions))
+		c.sink.Emit(event.Event{
+			Kind:  event.Notice,
+			Level: event.LevelWarn,
+			Code:  "heartbeat_ask_timeout",
+			Text:  "heartbeat · ask — no human is watching this scheduled run; question refused immediately (no wait, no panel), the turn continues",
+			Detail: "心跳会话无人值守，ask 不可用：已立即拒绝（零等待，面板未弹出），回合继续。" +
+				"请改用 talk_to_session 或板面汇报，不要在定时回合里等待面板",
+		})
+		answers := heartbeatAskRefusalAnswers(questions)
+		// Task 544 twin: the refusal is a host auto-answer, so a terminal stop
+		// later in the same turn can still be resumed.
+		c.markTurnAskAnswered(askDecisionSummary(questions, answers))
+		return answers, nil
 	}
 
 	// Task 806: a reversible ask under autopilot registers with the
@@ -3335,7 +3374,9 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	var askWait time.Duration
 	// askTimer stays in scope so the 任务178 reattach case below can re-arm the
 	// high-risk window in place; nil means this ask carries no timer (attended
-	// wait), and the reattach signal is then inert.
+	// wait), and the reattach signal is then inert. Task 1062 heartbeat asks
+	// never reach this point with a timer: the immediate refusal above answers
+	// them before registration, so no heartbeat ask can park this loop.
 	var askTimer *time.Timer
 	if c.autopilot && !reversibleAsk {
 		askWait = c.autopilotAskWaitFor()
@@ -7249,7 +7290,10 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 			// as a hang in the doctor otherwise.
 			c.markCascadeWaitBegin(source, 1)
 			delegateCtx, cancelDelegate := context.WithTimeout(ctx, DefaultAutopilotAskWait)
-			answers, err := delegate.Ask(agent.WithCascadeHop(delegateCtx), []event.AskQuestion{question})
+			// Task 1062: same marker strip as the ask cascade — the parent's
+			// posture decides, the child's scheduled-run backstop must not
+			// travel with the hop.
+			answers, err := delegate.Ask(withoutHeartbeatTurn(agent.WithCascadeHop(delegateCtx)), []event.AskQuestion{question})
 			cancelDelegate()
 			c.markCascadeWaitEnd()
 			if err != nil || len(answers) != 1 {

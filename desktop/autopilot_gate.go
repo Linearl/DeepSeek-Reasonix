@@ -44,6 +44,11 @@ const (
 	// yourself, record the decision, and continue": this notice plus the
 	// autopilot-toggle log line are that record.
 	NoticeCodeAutopilotAssumedYolo = "autopilot_assumed_yolo"
+	// NoticeCodeAutopilotGuardCreateExempt: an autopilot session's attempt to
+	// create a scheduled (heartbeat/守护) task was exempted by the task-1062
+	// recursion guard — the creation is refused and the attempt is surfaced
+	// here, never silently dropped (拍板 20261022：豁免时给 notice 不留静默).
+	NoticeCodeAutopilotGuardCreateExempt = "autopilot_guard_create_exempt"
 )
 
 const (

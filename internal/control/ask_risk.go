@@ -205,3 +205,24 @@ func autopilotAskTimeoutRefusalAnswers(questions []event.AskQuestion, wait time.
 	}
 	return out
 }
+
+// heartbeatAskRefusalFormat is what a scheduled run answers with when the
+// task-1062 backstop fires. Same refusal shape as the task-477 format -
+// declined, never approved, travels in Selected (#6869) - plus the sanctioned
+// way out: the run reaches the user through talk_to_session or a board/report
+// message instead of holding a panel nobody watches (任务书措辞：「心跳会话
+// 无人值守，ask 不可用，请改用 talk_to_session/板面汇报」). 拍板变更
+// 20261022：零等待立即拒绝——心跳 20 分钟一轮无人值守，等待纯属浪费回合时间。
+const heartbeatAskRefusalFormat = "heartbeat: no human is watching this scheduled run - ask is unavailable here (refused immediately, no wait); record that it was declined, and reach the user via talk_to_session or a board/report message instead of waiting on a panel"
+
+// heartbeatAskRefusalAnswers builds the heartbeat backstop reply: one explicit
+// refusal per question, every risk tier included - a scheduled run must never
+// hold a panel open, and refusing (not deciding) is the safe direction for a
+// run nobody watches.
+func heartbeatAskRefusalAnswers(questions []event.AskQuestion) []event.AskAnswer {
+	out := make([]event.AskAnswer, 0, len(questions))
+	for _, q := range questions {
+		out = append(out, event.AskAnswer{QuestionID: q.ID, Selected: []string{heartbeatAskRefusalFormat}})
+	}
+	return out
+}
