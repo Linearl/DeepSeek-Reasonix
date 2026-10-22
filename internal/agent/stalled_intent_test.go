@@ -356,5 +356,4 @@ func TestHostContinuationStandardFlowGate(t *testing.T) {
 	if !(&Agent{standardContinuation: true}).stalledIntentNudgeEnabled(ctxStandard) {
 		t.Error("stalled-intent repair must open with the lab switch + StandardFlow tag")
 	}
- (1070 引擎侧：新增 ContinuationStandardFlow（与 ExplicitFlow 不同值）+ hostContinuationEnabled 双门（控制端 Standard 标签 ∧ agent boot 快照 standardContinuation，默认关=关态逐字等价现状）；4 个专用流设置点（只读子代理/pinned context/guardian/agent Options）零改动零回归；EBM 与 goal 边界仍只认 ExplicitFlow；测试：两态矩阵（标签无快照不生效/快照无标签不生效/开闸两门齐备才开）+ ExplicitFlow 两态不受开关影响 + Standard todo 续跑同脚本 4 调用 + stalledIntent（1069 判定器面）经 Standard 标签开闸后 1 次修复联调断言)
 }

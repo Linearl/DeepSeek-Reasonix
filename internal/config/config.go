@@ -2225,6 +2225,13 @@ type AgentConfig struct {
 	// 任务 1069：实验室-自动化组新增开关入口（此前仅手写 TOML，无设置页
 	// 入口）——键语义/默认值零变化，setter 经 lab_bulk/edit.go 接入。
 	StalledIntentNudge bool `toml:"stalled_intent_nudge"`
+	// StandardContinuation (task 1070) opens the same-Run continuation total
+	// gate for ordinary Standard sessions: runs tagged ContinuationStandardFlow
+	// reach the bounded helpers (executor-handoff nudge, Standard todo
+	// continuation, stalled-intent repair, todo-progress nudge). Lab switch
+	// standard_continuation, default off — off keeps the pre-1070 behaviour
+	// verbatim. Off does not touch the ExplicitFlow dedicated flows.
+	StandardContinuation bool `toml:"standard_continuation"`
 	// StalledIntentNudgeLimit caps the stalled-intent repair per run.
 	// 0 keeps the built-in default (1). Values above 3 are clamped.
 	StalledIntentNudgeLimit int `toml:"stalled_intent_nudge_limit"`
