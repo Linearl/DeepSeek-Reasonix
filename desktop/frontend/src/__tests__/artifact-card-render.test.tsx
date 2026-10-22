@@ -204,7 +204,47 @@ console.log("\nartifact card render + open chain");
   }
 }
 
-// ── 5. labFlag 关闭态：卡片组件本身不感知门控（门控在行渲染层），此处验证
+// ── 5. 任务 1054：use_capability 能力代理路径（fork 主路径）——工具行
+//    name=use_capability + capability_id=tool:render_artifact，output 为内层
+//    工具输出原样透传 → 同款卡片渲染 + 打开链路。────────────────────────────
+{
+  const proxyItem = {
+    kind: "tool",
+    id: "t6",
+    name: "use_capability",
+    args: JSON.stringify({ action: "call", capability_id: "tool:render_artifact", arguments: { path: "D:\\out\\weekly.md", title: "代理周报" } }),
+    readOnly: true,
+    status: "done",
+    output: JSON.stringify({ ok: true, path: "D:\\out\\weekly.md", title: "代理周报", kind: "md", size: 4096, preview: "# 代理产出", previewTruncated: false }),
+    capabilityId: "tool:render_artifact",
+  } as Item;
+  const container = await renderCard(proxyItem);
+  ok(container.querySelector(".artifact-card") !== null, "代理路径（use_capability 行）渲染 artifact-card");
+  ok(container.querySelector(".artifact-card__title")?.textContent === "代理周报", "代理卡头部显示 title");
+  ok(container.querySelector(".artifact-card__size")?.textContent === "4.0 KB", "代理卡头部显示文件大小（output 透传解析）");
+  const openedBeforeProxy = opened.length;
+  await click(container.querySelector(".artifact-card__open")!);
+  ok(opened.length === openedBeforeProxy + 1 && opened[opened.length - 1] === "D:\\out\\weekly.md", "代理卡主按钮 OpenLocalPath 直开");
+}
+
+// ── 6. 代理路径 args 兜底：output 归档缺失 → 信封内层 arguments 出卡 ──────
+{
+  const proxyFallbackItem = {
+    kind: "tool",
+    id: "t7",
+    name: "use_capability",
+    args: JSON.stringify({ action: "call", capability_id: "tool:render_artifact", arguments: { path: "D:\\out\\r.md", title: "兜底卡" } }),
+    readOnly: true,
+    status: "done",
+    dataArchived: true,
+  } as Item;
+  const container = await renderCard(proxyFallbackItem);
+  ok(container.querySelector(".artifact-card") !== null, "代理 output 归档 → 内层 arguments 兜底出卡");
+  ok(container.querySelector(".artifact-card__title")?.textContent === "兜底卡", "兜底卡显示 title");
+  ok(container.querySelector(".artifact-card__size") === null, "兜底卡无 size（result 缺失的既有降级语义）");
+}
+
+// ── 7. labFlag 关闭态：卡片组件本身不感知门控（门控在行渲染层），此处验证
 //    flag 默认关且可翻——门控接线由 useTranscriptRowRenderer 的条件承担。────
 {
   const { labFlagEnabled } = await import("../lib/labFlags");
