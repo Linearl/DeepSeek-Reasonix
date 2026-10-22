@@ -57,15 +57,18 @@ func TestHeartbeatTurnAskBackstopEndToEnd(t *testing.T) {
 	ag := agent.New(prov, reg, agent.NewSession(""), agent.Options{}, event.Discard)
 
 	var notices []event.Event
+	var sawAskPanel bool
 	c := New(Options{
-		Runner:           ag,
-		Executor:         ag,
+		Runner:   ag,
+		Executor: ag,
 		Sink: event.FuncSink(func(e event.Event) {
 			if e.Kind == event.Notice {
 				notices = append(notices, e)
 			}
+			if e.Kind == event.AskRequest {
+				sawAskPanel = true
+			}
 		}),
-		HeartbeatAskWait: 30 * time.Millisecond,
 	})
 	// Production wires the controller in as the agent's asker (boot); without
 	// it the ask tool takes its own headless fallback and the backstop is
@@ -106,6 +109,9 @@ func TestHeartbeatTurnAskBackstopEndToEnd(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("notices = %+v, want heartbeat_ask_timeout (可检索判据锚)", notices)
+	}
+	if sawAskPanel {
+		t.Fatal("a heartbeat ask must not surface an ask panel (立即拒绝，面板未弹出)")
 	}
 	msgs := ag.Session().Messages
 	if got := lastAssistantText(msgs); got != "refusal recorded; continuing with the board report" {
