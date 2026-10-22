@@ -1194,6 +1194,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   TakeoverSession(tabId: string, mode: "wait" | "interrupt"): Promise<void>;
   DeleteSession(path: string): Promise<void>;
   DeleteRecoveryCopy(path: string): Promise<void>;
+  /** 任务 1064：版本面板手动删除分支（用户显式选择，不要求覆盖证明，落回收站）。 */
+  DeleteRecoveryBranch(path: string): Promise<void>;
+  /** 任务 1064：版本面板删除 v3 head（retire 标记；当前选中 head 后端拒绝）。 */
+  DeleteSessionVersionHead(mainPath: string, headId: string): Promise<void>;
   GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<RecoveryLineageView>;
   GetSessionVersionState(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<import("./types").SessionVersionStateView>;
   SetActiveSessionVersion(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
@@ -5079,6 +5083,12 @@ function makeMockApp(): AppBindings {
     async DeleteRecoveryCopy(path: string) {
       return this.DeleteSession(path);
     },
+    // 任务 1064：dev mock 里「删除分支」与删除副本同义——mock 没有回收站可言，
+    // 两个入口都从列表里摘掉该会话即可。
+    async DeleteRecoveryBranch(path: string) {
+      return this.DeleteSession(path);
+    },
+    async DeleteSessionVersionHead() {},
     async GetRecoveryLineage(key) {
       const topic = findMockTopic(key.topicId);
       return {

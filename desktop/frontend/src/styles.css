@@ -45885,6 +45885,14 @@ button.statusbar__mcp:focus-visible {
 }
 .rc-versions__health { margin-top: 6px; }
 .rc-versions__issues { margin: 0; padding-left: 18px; }
+/* 任务 1064：删除入口——危险动作用 danger 色区分于普通次级按钮，但按钮本体
+   仍是常规尺寸（面板里的行内操作，不做大红块）。副本行的操作格里复选框与
+   按钮并排，右对齐贴住列尾。 */
+.rc-delete {
+  color: var(--danger, #e5484d);
+  border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, transparent);
+}
+.rc-action { gap: 8px; }
 .rc-result {
   margin-bottom: 10px;
   padding: 8px 10px;

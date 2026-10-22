@@ -101,6 +101,15 @@ type Outcome = {
   detail?: string;
 };
 
+/** DeleteOutcome is one branch's delete result (任务 1064). Kept separate from
+ *  Outcome because "deleted" is not a merge shape - the panel's merge vocabulary
+ *  ("merged"/"forced"/"blocked") would misreport a delete as a content move. */
+type DeleteOutcome = {
+  label: string;
+  kind: "deleted" | "failed";
+  detail?: string;
+};
+
 /** RecoveryCopiesSection is the one versions-and-copies panel on the storage page.
  *
  *  Opening it is one directory read per session folder, so it appears at once and
@@ -263,17 +272,20 @@ function degradedChainSet(mainPath: string): RecoveryChainSet {
 function VersionRows({
   mainPath,
   t,
+  confirm,
   onReload,
   onError,
 }: {
   mainPath: string;
   t: Translator;
+  confirm: ReturnType<typeof useConfirmDialog>["confirm"];
   onReload: () => void;
   onError: (message: string) => void;
 }) {
   const [chains, setChains] = useState<RecoveryChainSet | null>(null);
   const [health, setHealth] = useState<{ path: string; report: SessionHealthReportView | null }>({ path: "", report: null });
   const [repairing, setRepairing] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [repairNote, setRepairNote] = useState("");
   const [records, setRecords] = useState<SessionRepairRecordView[]>([]);
   // errorsVersion 与错误列表同源递增：外层的 onError 每来一条新错误就把本组件
@@ -364,6 +376,37 @@ function VersionRows({
     }
   };
 
+  /** 任务 1064：v3 版本块里的单版本删除。与父级的批量删除共用同一条确认与
+   *  回收语义（后端 retire 标记：不选中就不可删，删后条目从列表消失、独有
+   *  事件在下一次单写轮换前仍可通过重放找回）。 */
+  const deleteHead = async (headId: string) => {
+    const okToDelete = await confirm({
+      title: t("settings.recoveryCopiesDeleteHeadTitle"),
+      message: (
+        <div>
+          <p>
+            {t("settings.recoveryCopiesDeleteHeadLead")}
+            ：{headId ? headId.slice(0, 8) : "main"}
+          </p>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesDeleteHeadWarn")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesDeleteConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!okToDelete) return;
+    setDeleting(headId);
+    try {
+      await app.DeleteSessionVersionHead(mainPath, headId);
+      onReload();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   if (!chains) return <div className="empty">{t("settings.loading")}</div>;
   return (
     <div className="rc-versions">
@@ -412,6 +455,19 @@ function VersionRows({
                       onClick={() => void activate(c.headId)}
                     >
                       {t("settings.sessionVersions.activate")}
+                    </button>
+                  )}
+                  {/* 任务 1064：非当前版本行加删除入口——当前选中版本不可选不
+                      可删（后端也拒绝），删除走确认+回收语义。降级行没有 head
+                      身份可言，不提供删除。 */}
+                  {!c.selected && !c.degraded && c.headId && (
+                    <button
+                      className="btn btn--secondary btn--small rc-delete"
+                      type="button"
+                      disabled={repairing || deleting !== null}
+                      onClick={() => void deleteHead(c.headId)}
+                    >
+                      {deleting === c.headId ? "…" : t("settings.recoveryCopiesDelete")}
                     </button>
                   )}
                 </td>
@@ -474,6 +530,9 @@ export function RecoveryCopiesSection() {
   const [previewingPath, setPreviewingPath] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
+  // 任务 1064：删除结果单独留一份——「已删除 N 条」与合并结果的词汇不同
+  // （merged/forced 会把删除误报成内容搬迁），两条结果线各自成列。
+  const [deletedOutcomes, setDeletedOutcomes] = useState<DeleteOutcome[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   // 任务 1039：失败原因单独留一份——只显示「设置加载失败」时用户与日志都
@@ -908,6 +967,71 @@ export function RecoveryCopiesSection() {
   const needingCount = selectedGroups.reduce((n, g) => n + copiesNeedingMeasurement(g).length, 0);
   const anyMerged = outcomes.some((o) => o.kind === "merged" || o.kind === "forced");
 
+  // 任务 1064：复选框批量选中——勾选的是**分支**（副本文件），不是会话行本身。
+  // 会话行左侧的复选框仍是「勾选要合并的会话」，两套选择互不干扰：批量删除
+  // 只看 branchesSelected。当前版本（主线转录本）永远不在候选里——它没有
+  // 「分支」身份可删（1064 安全约束①的前端面，后端 DeleteRecoveryBranch 也
+  // 会拒绝非副本路径）。
+  const [branchesSelected, setBranchesSelected] = useState<Set<string>>(new Set());
+  const toggleBranch = (path: string) =>
+    setBranchesSelected((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+
+  /** deleteBranches archives the checked copy branches in one confirmation. The
+   *  backend moves each into the recoverable .trash (no coverage proof required:
+   *  the user has seen each branch's reading and decided), so the batch is one
+   *  list of paths with per-path error collection - a single unreadable branch
+   *  must not abort the rest. The outcomes reuse the panel's existing result
+   *  vocabulary: "merged" reads as success-with-counts elsewhere, so a dedicated
+   *  kind keeps the delete result honest ("deleted", not "merged"). */
+  const deleteBranches = async () => {
+    const chosen = (groups ?? [])
+      .flatMap((g) => g.copies.map((c) => ({ path: c.path, label: `${g.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${g.copies.indexOf(c) + 1}` })))
+      .filter((c) => branchesSelected.has(c.path));
+    if (!chosen.length) return;
+    const okToDelete = await confirm({
+      title: t("settings.recoveryCopiesDeleteBatchTitle"),
+      message: (
+        <div>
+          <p>
+            {t("settings.recoveryCopiesDeleteBatchLead")}：{chosen.length}
+          </p>
+          <ul className="rc-versions__issues">
+            {chosen.map((c) => (
+              <li key={c.path}>{c.label}</li>
+            ))}
+          </ul>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesDeleteBatchWarn")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesDeleteConfirm"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!okToDelete) return;
+    setBusy(true);
+    setErrors([]);
+    const collected: DeleteOutcome[] = [];
+    for (const [index, item] of chosen.entries()) {
+      setStatus(`${t("settings.recoveryCopiesDeleting")} ${index + 1}/${chosen.length} · ${item.label}`);
+      try {
+        await app.DeleteRecoveryBranch(item.path);
+        collected.push({ label: item.label, kind: "deleted" });
+      } catch (err) {
+        collected.push({ label: item.label, kind: "failed", detail: err instanceof Error ? err.message : String(err) });
+      }
+      setDeletedOutcomes([...collected]);
+    }
+    setBranchesSelected(new Set());
+    setBusy(false);
+    setStatus("");
+    await load();
+  };
+
   const renderGroup = (group: RecoveryCopyGroupView) => {
     const isOpen = expanded.has(group.mainPath);
     const isScanning = scanning.has(group.mainPath);
@@ -1004,7 +1128,68 @@ export function RecoveryCopiesSection() {
                   <span className={copy.unique > 0 ? "rc-unique" : "rc-muted"}>
                     {copy.scanned ? copy.unique : "—"}
                   </span>
-                  <span />
+                  {/* 任务 1064：副本行的复选框+删除入口。孤立副本（orphan，主线
+                      已缺失）没有「另一条链可以兜底」的前提，删除即真正丢内容，
+                      因此不提供删除入口——它只能被合并（作为新主线）而非删除。 */}
+                  <span className="rc-action">
+                    {!copy.orphan && (
+                      <>
+                        <input
+                          type="checkbox"
+                          checked={branchesSelected.has(copy.path)}
+                          disabled={busy}
+                          onChange={() => toggleBranch(copy.path)}
+                          aria-label={`${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`}
+                        />
+                        <button
+                          className="btn btn--secondary btn--small rc-delete"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            void (async () => {
+                              const okToDelete = await confirm({
+                                title: t("settings.recoveryCopiesDeleteTitle"),
+                                message: (
+                                  <div>
+                                    <p>
+                                      {t("settings.recoveryCopiesDeleteLead")}：{group.mainLabel} · {t("settings.recoveryCopiesCopy")} {index + 1}
+                                    </p>
+                                    <p className="rc-preview__warn">{t("settings.recoveryCopiesDeleteWarn")}</p>
+                                  </div>
+                                ),
+                                confirmLabel: t("settings.recoveryCopiesDeleteConfirm"),
+                                cancelLabel: t("common.cancel"),
+                                tone: "danger",
+                              });
+                              if (!okToDelete) return;
+                              setBusy(true);
+                              try {
+                                await app.DeleteRecoveryBranch(copy.path);
+                                setDeletedOutcomes((current) => [
+                                  ...current,
+                                  { label: `${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`, kind: "deleted" },
+                                ]);
+                              } catch (err) {
+                                setDeletedOutcomes((current) => [
+                                  ...current,
+                                  {
+                                    label: `${group.mainLabel} · ${t("settings.recoveryCopiesCopy")} ${index + 1}`,
+                                    kind: "failed",
+                                    detail: err instanceof Error ? err.message : String(err),
+                                  },
+                                ]);
+                              } finally {
+                                setBusy(false);
+                                void load();
+                              }
+                            })();
+                          }}
+                        >
+                          {t("settings.recoveryCopiesDelete")}
+                        </button>
+                      </>
+                    )}
+                  </span>
                 </div>
               );
             })}
@@ -1072,6 +1257,7 @@ export function RecoveryCopiesSection() {
             <VersionRows
               mainPath={group.mainPath}
               t={t}
+              confirm={confirm}
               onReload={() => { void load(); }}
               onError={(message) => setErrors((current) => [...current, message])}
             />
@@ -1218,6 +1404,26 @@ export function RecoveryCopiesSection() {
                         ) : null}
                       </div>
                     )}
+                    {deletedOutcomes.length > 0 && (
+                      <div className="rc-result">
+                        <ul className="rc-outcomes">
+                          {deletedOutcomes.map((outcome) => (
+                            <li
+                              key={outcome.label}
+                              className={outcome.kind === "failed" ? "rc-outcome--failed" : "rc-outcome--ok"}
+                            >
+                              <span className="rc-outcome__label">{outcome.label}</span>
+                              <span>
+                                {outcome.kind === "deleted"
+                                  ? t("settings.recoveryCopiesOutcomeDeleted")
+                                  : outcome.detail ?? ""}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="rc-result__hint">{t("settings.recoveryCopiesDeleteReopenHint")}</p>
+                      </div>
+                    )}
                     <div className="rc-table">
                       <div className="rc-row rc-row--head">
                         <span />
@@ -1268,6 +1474,18 @@ export function RecoveryCopiesSection() {
                 >
                   {t("settings.recoveryCopiesScanAll")}
                 </button>
+                {/* 任务 1064：批量删除所选分支——勾选的是副本行左侧的复选框
+                    （branchesSelected），与会话行的合并勾选互不干扰。 */}
+                {branchesSelected.size > 0 ? (
+                  <button
+                    className="btn btn--secondary btn--small rc-delete"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void deleteBranches()}
+                  >
+                    {`${t("settings.recoveryCopiesDeleteSelected")} (${branchesSelected.size})`}
+                  </button>
+                ) : null}
                 {selected.size > 0 ? (
                   <button
                     className="btn btn--secondary btn--small"
