@@ -13,16 +13,17 @@ import (
 )
 
 // heartbeatAskController builds a plain attended controller (no autopilot
-// gear — the heartbeat-session posture). The task-1062 backstop is a zero-wait
-// immediate refusal (拍板变更 20261022), so no duration injection is needed.
-func heartbeatAskController(t *testing.T) (*Controller, *askTimeoutSink) {
+// gear — the heartbeat-session posture) with the task-1062 explicit ask wait
+// injected short so the backstop is exercisable without sleeping 10s.
+func heartbeatAskController(t *testing.T, wait time.Duration) (*Controller, *askTimeoutSink) {
 	t.Helper()
 	ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
 	sink := &askTimeoutSink{}
 	c := New(Options{
-		Runner:   ag,
-		Executor: ag,
-		Sink:     sink,
+		Runner:           ag,
+		Executor:         ag,
+		Sink:             sink,
+		HeartbeatAskWait: wait,
 	})
 	return c, sink
 }
@@ -38,12 +39,12 @@ var heartbeatReversibleQuestion = []event.AskQuestion{{
 	Options: []event.AskOption{{Label: ".retry"}, {Label: "hand-rolled"}},
 }}
 
-// Task 1062 acceptance (heartbeat ask backstop, 拍板变更: 立即拒绝): a
-// scheduled run's ask is refused IMMEDIATELY — no wait, no panel emitted —
-// with no error (the turn continues) and a searchable notice. The refusal
-// names the sanctioned way out (talk_to_session / 板面汇报).
-func TestHeartbeatAskBackstopRefusesImmediately(t *testing.T) {
-	c, sink := heartbeatAskController(t)
+// Task 1062 acceptance (heartbeat ask backstop): a scheduled run's ask is
+// refused after the short wait, with no error (the turn continues) and a
+// searchable notice — the 477 refusal shape applied to the unattended-by-
+// design posture heartbeat sessions run under.
+func TestHeartbeatAskBackstopRefusesAndContinues(t *testing.T) {
+	c, sink := heartbeatAskController(t, 20*time.Millisecond)
 	started := time.Now()
 	answers, err := c.Ask(withHeartbeatTurn(context.Background()), heartbeatHighRiskQuestion)
 	if err != nil {
@@ -52,8 +53,8 @@ func TestHeartbeatAskBackstopRefusesImmediately(t *testing.T) {
 	if errors.Is(err, ErrAutopilotAskUnanswered) {
 		t.Fatal("the heartbeat backstop must never surface the task-109 B4 terminal stop")
 	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
-		t.Fatalf("refusal took %s, want an immediate zero-wait answer", elapsed)
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("backstop took %s, want the injected short wait", elapsed)
 	}
 	if len(answers) != 1 || answers[0].QuestionID != "q1" {
 		t.Fatalf("answers = %+v, want one refusal for q1", answers)
@@ -61,14 +62,8 @@ func TestHeartbeatAskBackstopRefusesImmediately(t *testing.T) {
 	if len(answers[0].Selected) != 1 || !strings.Contains(answers[0].Selected[0], "talk_to_session") {
 		t.Fatalf("refusal = %+v, want the sanctioned way out (talk_to_session) named", answers[0].Selected)
 	}
-	if !strings.Contains(answers[0].Selected[0], "refused immediately") {
-		t.Fatalf("refusal = %q, want the zero-wait wording", answers[0].Selected[0])
-	}
-	// 零等待的另一半：面板零出现——AskRequest 不发，等待循环不进。
-	for _, e := range sink.all() {
-		if e.Kind == event.AskRequest {
-			t.Fatal("a heartbeat ask must not surface an ask panel (立即拒绝，面板未弹出)")
-		}
+	if strings.Contains(answers[0].Selected[0], "approved") && !strings.Contains(answers[0].Selected[0], "not approved") {
+		t.Fatalf("refusal must never read as permission: %q", answers[0].Selected[0])
 	}
 	notices := sink.notices()
 	found := false
@@ -87,7 +82,7 @@ func TestHeartbeatAskBackstopRefusesImmediately(t *testing.T) {
 // autopilot-gated so a heartbeat reversible ask must not fall through it into
 // the attended wait.
 func TestHeartbeatAskBackstopCoversReversibleTier(t *testing.T) {
-	c, _ := heartbeatAskController(t)
+	c, _ := heartbeatAskController(t, 20*time.Millisecond)
 	answers, err := c.Ask(withHeartbeatTurn(context.Background()), heartbeatReversibleQuestion)
 	if err != nil {
 		t.Fatalf("ask err = %v, want refusal answers", err)
@@ -97,10 +92,10 @@ func TestHeartbeatAskBackstopCoversReversibleTier(t *testing.T) {
 	}
 }
 
-// Precedence pinned by the ruling (拍板：仅挂死路径): an autopilot session
-// woken by a guard run keeps its own 477/109 waits — the heartbeat marker must
-// not refuse an ask the autopilot branches own. With 477 off this is the
-// task-109 B4 terminal stop, byte-for-byte.
+// Precedence pinned by the ruling (拍板 20261022: 仅挂死路径兜底): an
+// autopilot session woken by a guard run keeps its own 477/109 waits — the
+// heartbeat marker must not override the timer the autopilot branch installed.
+// With 477 off this is the task-109 B4 terminal stop, byte-for-byte.
 func TestHeartbeatMarkerDoesNotOverrideAutopilotWait(t *testing.T) {
 	c, sink := askTimeoutController(t, false, 20*time.Millisecond)
 	_, err := c.Ask(withHeartbeatTurn(context.Background()), heartbeatHighRiskQuestion)
@@ -118,7 +113,7 @@ func TestHeartbeatMarkerDoesNotOverrideAutopilotWait(t *testing.T) {
 // waits attended (no timer) — the panel is answered by the user, no backstop
 // fires, no refusal is fabricated.
 func TestAttendedAskUnchangedWithoutHeartbeatMarker(t *testing.T) {
-	c, sink := heartbeatAskController(t)
+	c, sink := heartbeatAskController(t, 20*time.Millisecond)
 	done := make(chan struct{})
 	var answers []event.AskAnswer
 	var err error
@@ -126,15 +121,11 @@ func TestAttendedAskUnchangedWithoutHeartbeatMarker(t *testing.T) {
 		defer close(done)
 		answers, err = c.Ask(context.Background(), heartbeatHighRiskQuestion)
 	}()
-	// Let the attended panel register, then answer as the user would.
-	deadline := time.Now().Add(5 * time.Second)
-	var askID string
-	for askID == "" && time.Now().Before(deadline) {
-		askID = sink.lastAskID()
-		if askID == "" {
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
+	// The attended wait arms no timer: well past the injected backstop wait
+	// the ask must still be pending, proving the marker (not the controller
+	// posture) gates the backstop.
+	time.Sleep(80 * time.Millisecond)
+	askID := sink.lastAskID()
 	if askID == "" {
 		t.Fatal("no pending ask panel; the attended ask never surfaced")
 	}
@@ -155,15 +146,16 @@ func TestAttendedAskUnchangedWithoutHeartbeatMarker(t *testing.T) {
 
 // Delegation strip: a heartbeat child's ask forwarded to its task source (task
 // 225) must arrive WITHOUT the marker, so the parent decides by its own
-// posture — the delegation hop stays the sanctioned escape hatch.
+// posture.
 func TestHeartbeatAskDelegationStripsMarker(t *testing.T) {
 	enableCascadeApproval(t)
 	ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
 	sink := &askTimeoutSink{}
 	child := New(Options{
-		Runner:   ag,
-		Executor: ag,
-		Sink:     sink,
+		Runner:           ag,
+		Executor:         ag,
+		Sink:             sink,
+		HeartbeatAskWait: 20 * time.Millisecond,
 	})
 	delegateCtxCh := make(chan context.Context, 1)
 	var delegateAsker agent.Asker = delegateFunc(func(ctx context.Context, questions []event.AskQuestion) ([]event.AskAnswer, error) {
@@ -210,5 +202,20 @@ func TestHeartbeatTurnMarkerRoundTrip(t *testing.T) {
 	}
 	if heartbeatTurnRequested(nil) {
 		t.Fatal("nil ctx must read as not-heartbeat")
+	}
+}
+
+// Wait resolution (拍板 20261022: 显式时长存在时优先，10s 仅缺失/非法 fallback).
+func TestHeartbeatAskWaitResolution(t *testing.T) {
+	c, _ := heartbeatAskController(t, 0)
+	if got := c.heartbeatAskWaitFor(); got != DefaultHeartbeatAskWait {
+		t.Fatalf("zero wait resolved to %s, want DefaultHeartbeatAskWait", got)
+	}
+	if DefaultHeartbeatAskWait != 10*time.Second {
+		t.Fatalf("DefaultHeartbeatAskWait = %s, want the 10s ruling constant", DefaultHeartbeatAskWait)
+	}
+	c2, _ := heartbeatAskController(t, 250*time.Millisecond)
+	if got := c2.heartbeatAskWaitFor(); got != 250*time.Millisecond {
+		t.Fatalf("explicit wait resolved to %s, want the explicit value to win", got)
 	}
 }
