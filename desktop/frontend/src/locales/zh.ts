@@ -1248,6 +1248,7 @@ export const zh: Record<DictKey, string> = {
   "status.recoveryWaitProgress": "已等待 {waited} 分钟，最多 {budget} 分钟",
   "status.recoveryWaitHint": "会持续重试，直到等待预算用尽后本轮报错结束。可检查网络、代理或供应商状态，也可立即停止。",
   "status.recoveryWaitStop": "停止等待",
+  "status.connectingAttempt": "正在连接（第 {attempt} 次）…",
   "status.retrying": "正在重试 ({attempt}/{max})…",
   "status.retryingBudget": "已自动重试 {used}/{limit} 次，恢复中…",
   "status.retryExhausted": "已终止（重试 {limit} 次后放弃，已试 {used} 次）",

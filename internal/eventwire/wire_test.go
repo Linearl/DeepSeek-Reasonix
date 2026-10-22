@@ -28,6 +28,35 @@ func TestToWireRetryingJSON(t *testing.T) {
 	}
 }
 
+// 任务1055-A1: the connecting frame carries the attempt ordinal and the
+// connect scope; the phase-end clear frame (attempt 0) omits retryAttempt —
+// the frontend reads a missing attempt as "clear".
+func TestToWireConnectingJSON(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.Connecting, RetryAttempt: 2, RetryMax: 11, RetryScope: event.RetryScopeConnect})
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	s := string(b)
+	for _, want := range []string{`"kind":"connecting"`, `"retryAttempt":2`, `"retryMax":11`, `"retryScope":"connect"`} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("connecting JSON = %s, want it to contain %s", s, want)
+		}
+	}
+	clear := ToWire(event.Event{Kind: event.Connecting, RetryScope: event.RetryScopeConnect})
+	cb, err := json.Marshal(clear)
+	if err != nil {
+		t.Fatalf("marshal clear: %v", err)
+	}
+	cs := string(cb)
+	if strings.Contains(cs, "retryAttempt") {
+		t.Fatalf("clear frame JSON = %s, want retryAttempt omitted (attempt 0 reads as clear)", cs)
+	}
+	if !strings.Contains(cs, `"kind":"connecting"`) {
+		t.Fatalf("clear frame JSON = %s, want kind connecting", cs)
+	}
+}
+
 func TestToWireStreamAttemptJSON(t *testing.T) {
 	w := ToWire(event.Event{
 		Kind: event.StreamAttempt,

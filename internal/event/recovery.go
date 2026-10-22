@@ -1,13 +1,21 @@
 package event
 
-// RetryScope distinguishes connection+header retries, body-phase stream
-// retries, and host-classified protocol recovery. Older clients ignore an
-// unknown value and still render the generic retry state.
+// RetryScope distinguishes dial/connect-phase attempts, connection+header
+// retries, body-phase stream retries, and host-classified protocol recovery.
+// Older clients ignore an unknown value and still render the generic retry
+// state.
 type RetryScope string
 
 const (
-	RetryScopeHeaders  RetryScope = "headers"
-	RetryScopeStream   RetryScope = "stream"
+	// RetryScopeConnect marks the dial/connect phase (task 1055-A3): the
+	// request is initiated but the TCP/TLS handshake has not completed. It is
+	// a distinct silence stage — never reused for the header wait
+	// (header_wait_slow) or the first-token wait (prefill_slow) — so each
+	// stretch of silence has exactly one name.
+	RetryScopeConnect RetryScope = "connect"
+	RetryScopeHeaders RetryScope = "headers"
+	RetryScopeStream  RetryScope = "stream"
+	// RetryScopeProtocol marks host-classified protocol recovery.
 	RetryScopeProtocol RetryScope = "protocol"
 )
 

@@ -6164,6 +6164,7 @@ export default function App() {
               liveStore={liveStore}
               turnArgChars={state.turnArgChars}
               retry={state.retry}
+              connecting={state.connecting}
               suspendedByDecision={Boolean(decisionSurface)}
               transientDismissSignal={transientOverlayDismissSignal}
               sessionKey={composerSessionKey}

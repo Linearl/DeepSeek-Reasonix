@@ -1249,6 +1249,7 @@ export const en = {
   "status.recoveryWaitProgress": "Waited {waited} min of {budget} min",
   "status.recoveryWaitHint": "Retries continue until the wait budget runs out, then the turn fails. Check your network, proxy, or provider status, or stop now.",
   "status.recoveryWaitStop": "Stop waiting",
+  "status.connectingAttempt": "connecting (attempt {attempt})…",
   "status.retrying": "retrying ({attempt}/{max})…",
   "status.retryingBudget": "auto-retried {used}/{limit} times, recovering…",
   "status.retryExhausted": "terminated (gave up after {limit} retries; {used} tried)",

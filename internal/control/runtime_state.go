@@ -187,6 +187,12 @@ func runtimeActivity(state event.RuntimeStateSnapshot, e event.Event, activity s
 				activity = "streaming"
 			case event.TurnStarted, event.Reasoning, event.ToolDispatch, event.ToolProgress, event.ToolResult, event.CompactionStarted, event.Retrying:
 				activity = "thinking"
+			case event.Connecting:
+				// 任务1055-A1: an in-flight attempt is activity; the
+				// zero-attempt clear frame changes nothing.
+				if e.RetryAttempt > 0 {
+					activity = "thinking"
+				}
 			}
 		}
 		if activity == "" {

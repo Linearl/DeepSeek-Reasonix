@@ -173,6 +173,14 @@ func ToWire(e event.Event) Event {
 		if e.RetryScope != "" {
 			w.RetryScope = string(e.RetryScope)
 		}
+	case event.Connecting:
+		// 任务1055-A1: attempt 0 (the phase-end clear) drops out of the JSON
+		// via omitempty — the reducer reads a missing attempt as "clear".
+		w.RetryAttempt = e.RetryAttempt
+		w.RetryMax = e.RetryMax
+		if e.RetryScope != "" {
+			w.RetryScope = string(e.RetryScope)
+		}
 	case event.StreamAttempt:
 		w.StreamAttempt = &StreamAttempt{
 			ID:      e.StreamAttempt.ID,
@@ -622,6 +630,7 @@ var kindNames = map[event.Kind]string{
 	event.ToolProgress:            "tool_progress",
 	event.MCPSurfaceReady:         "mcp_surface_ready",
 	event.Retrying:                "retrying",
+	event.Connecting:              "connecting",
 	event.Steer:                   "steer",
 	event.GuardianAssessment:      "guardian_assessment",
 	event.ExtensionSurface:        "extension_surface",

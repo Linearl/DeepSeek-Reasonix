@@ -40,6 +40,8 @@ export type EventKind =
   | "compaction_progress"
   | "mcp_surface_ready"
   | "retrying"
+  /** 任务1055-A1: one HTTP attempt started (dial/connect phase). attempt 0 = phase-end clear frame. */
+  | "connecting"
   | "steer"
   | "guardian_assessment"
   | "extension_surface"
@@ -458,8 +460,8 @@ export interface WireEvent extends RecoveryEventFields {
   readiness?: WireFinalReadiness;
   protocolRecovery?: { id: string };
   diagnostic?: { kind: string; status?: number; traceId?: string; providerId?: string; providerDisplayName?: string; protocol?: string; requestPath?: string };
-  /** Optional: "headers" | "stream". Older clients ignore unknown fields. */
-  retryScope?: "headers" | "stream" | "protocol";
+  /** Optional: "connect" | "headers" | "stream" | "protocol". Older clients ignore unknown fields. */
+  retryScope?: "connect" | "headers" | "stream" | "protocol";
   streamAttempt?: WireStreamAttempt;
   /** Durable session-inbox item id for steer / TurnDone correlation. */
   itemId?: string;
