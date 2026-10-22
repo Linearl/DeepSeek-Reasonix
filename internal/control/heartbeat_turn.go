@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"time"
 )
 
 // Task 1062 — heartbeat sessions run unattended but carry no autopilot gear
@@ -52,8 +51,8 @@ func heartbeatTurnRequested(ctx context.Context) bool {
 // SubmitHeartbeatTurn starts a scheduled turn: identical to SubmitUserTurn
 // (plain user turn, no shell/slash interpretation, references resolved)
 // except the turn context carries the heartbeat-turn marker, which gives
-// every ask fired during the turn the short unattended backstop instead of
-// the attended unbounded wait. The desktop heartbeat engine calls this for
+// every ask fired during the turn the unattended backstop instead of the
+// attended unbounded wait. The desktop heartbeat engine calls this for
 // every scheduled run, autopilot-guard wakes included. Nothing else changes:
 // the turn still runs with the tab's own approval posture, and the session
 // still has no autopilot gear (acceptance: 心跳会话仍无 autopilot 档位).
@@ -61,15 +60,4 @@ func (c *Controller) SubmitHeartbeatTurn(input, display string) {
 	c.runGuarded(func(ctx context.Context) error {
 		return c.runRefTurnWithResolverSync(withHeartbeatTurn(ctx), input, input, display, "", c.ResolveRefs)
 	})
-}
-
-// heartbeatAskWaitFor resolves the effective heartbeat ask wait: an
-// explicitly set duration wins (tests inject short waits; a future config
-// dial would land here), else the DefaultHeartbeatAskWait backstop constant
-// (拍板 20261022：显式时长存在时优先，10s 仅缺失/非法 fallback).
-func (c *Controller) heartbeatAskWaitFor() time.Duration {
-	if c.heartbeatAskWait > 0 {
-		return c.heartbeatAskWait
-	}
-	return DefaultHeartbeatAskWait
 }
