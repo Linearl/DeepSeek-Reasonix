@@ -363,7 +363,7 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 任务 1072：renderArtifact（对话内产物卡片）整功能移除出表——可选 37→36、
  * 总数 73→72（Go 侧同步 64→63）。
  * 任务 1069：stalledIntentNudge（模型提前结束判定器续轮提醒，默认关）按可选
- * 档入表——可选 36→37、总数 72→73（Go 侧同步 63→64）。 */
+ * 档入表——可选 36→37、总数 72→73（Go 侧同步 63→64）。
  * 任务 1070：standardContinuation（Standard 流续跑总闸）按可选档入表——
  * 可选 37→38、总数 73→74（Go 侧同步 64→65）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {

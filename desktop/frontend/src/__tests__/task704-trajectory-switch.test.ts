@@ -155,9 +155,11 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 //    （draftRewrite）+ 1069（stalledIntentNudge）两次叠加入表 → 38/74
 //    （本 pin 此前漏跟 1024，随 1069 一并补齐）。任务 1072：renderArtifact
 //    整功能移除出表 → 37/73（合并态实测口径：36+1=37 可选、72+1=73 总数）。
+//    任务 1070：standardContinuation 叠加入表 → 38/74（合并态实测真值：
+//    562 门禁 44/0 直读 optional=38、length=74，禁推演）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 37") && tierTest.includes("length === 73"),
-  "task562 test pins the 73-entry register (1069+1072 合并态口径)");
+ok(tierTest.includes("counts.optional === 38") && tierTest.includes("length === 74"),
+  "task562 test pins the 74-entry register (1069+1072+1070 合并态实测口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");
