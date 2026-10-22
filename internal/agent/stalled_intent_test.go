@@ -306,3 +306,55 @@ func countStalledIntentMessages(a *Agent) int {
 	}
 	return n
 }
+
+// Task 1070: the Standard-flow continuation total gate opens the bounded
+// helpers for runs tagged ContinuationStandardFlow, but only when the agent's
+// boot snapshot armed it; a tag without the snapshot is inert, an armed
+// snapshot without a tag (ordinary run) stays closed, and the ExplicitFlow
+// dedicated flows never depend on the switch.
+func TestHostContinuationStandardFlowGate(t *testing.T) {
+	ctxStandard := WithContinuationPolicy(context.Background(), ContinuationStandardFlow)
+	ctxExplicit := WithContinuationPolicy(context.Background(), ContinuationExplicitFlow)
+
+	// Default off: the tag alone must not open the gate (关态 = 现状逐字等价).
+	if (&Agent{}).hostContinuationEnabled(ctxStandard) {
+		t.Error("StandardFlow tag without the lab switch must keep the gate closed")
+	}
+	// Default off, no tag: pre-1070 behaviour (nothing reaches the gate).
+	if (&Agent{}).hostContinuationEnabled(context.Background()) {
+		t.Error("an agent with no policy and no tag must keep the gate closed")
+	}
+	// Lab switch on: the tag opens the gate.
+	armed := &Agent{standardContinuation: true}
+	if !armed.hostContinuationEnabled(ctxStandard) {
+		t.Error("lab switch on + StandardFlow tag must open the gate")
+	}
+	// Lab switch on, no tag: still closed (the controller owns the tag).
+	if armed.hostContinuationEnabled(context.Background()) {
+		t.Error("lab switch on without a StandardFlow tag must keep the gate closed")
+	}
+	// ExplicitFlow dedicated flows are unaffected by the switch in either state.
+	if !(&Agent{}).hostContinuationEnabled(ctxExplicit) {
+		t.Error("ExplicitFlow must open the gate regardless of the lab switch (off)")
+	}
+	if !armed.hostContinuationEnabled(ctxExplicit) {
+		t.Error("ExplicitFlow must open the gate regardless of the lab switch (on)")
+	}
+	// Agent-level policy (non-context) follows the same rules.
+	if (&Agent{continuationPolicy: ContinuationStandardFlow}).hostContinuationEnabled(context.Background()) {
+		t.Error("agent-level StandardFlow policy without the lab switch must stay closed")
+	}
+	if !(&Agent{continuationPolicy: ContinuationStandardFlow, standardContinuation: true}).hostContinuationEnabled(context.Background()) {
+		t.Error("agent-level StandardFlow policy with the lab switch must open the gate")
+	}
+
+	// stalledIntentNudgeEnabled rides the same gate（1069 判定器联调路径：
+	// Standard 开闸后无需单独打开 stalled_intent_nudge 也能修复）。
+	if (&Agent{}).stalledIntentNudgeEnabled(ctxStandard) {
+		t.Error("stalled-intent repair must stay closed on a bare StandardFlow tag")
+	}
+	if !(&Agent{standardContinuation: true}).stalledIntentNudgeEnabled(ctxStandard) {
+		t.Error("stalled-intent repair must open with the lab switch + StandardFlow tag")
+	}
+ (1070 引擎侧：新增 ContinuationStandardFlow（与 ExplicitFlow 不同值）+ hostContinuationEnabled 双门（控制端 Standard 标签 ∧ agent boot 快照 standardContinuation，默认关=关态逐字等价现状）；4 个专用流设置点（只读子代理/pinned context/guardian/agent Options）零改动零回归；EBM 与 goal 边界仍只认 ExplicitFlow；测试：两态矩阵（标签无快照不生效/快照无标签不生效/开闸两门齐备才开）+ ExplicitFlow 两态不受开关影响 + Standard todo 续跑同脚本 4 调用 + stalledIntent（1069 判定器面）经 Standard 标签开闸后 1 次修复联调断言)
+}

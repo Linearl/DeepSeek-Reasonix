@@ -30,6 +30,58 @@ func standardTodoContext() context.Context {
 	return WithStandardTodoContinuation(ctx, StandardTodoContinuationPolicy{ExecutionExpected: true})
 }
 
+// standardTodoStandardContext is the task-1070 Standard-flow shape: the same
+// trusted host policy, but tagged ContinuationStandardFlow instead of the
+// dedicated ExplicitFlow, with the lab switch arming the agent.
+func standardTodoStandardContext() context.Context {
+	ctx := WithContinuationPolicy(context.Background(), ContinuationStandardFlow)
+	return WithStandardTodoContinuation(ctx, StandardTodoContinuationPolicy{ExecutionExpected: true})
+}
+
+// Task 1070 ①/④: 开闸后 Standard 流的 todo 续跑通道可用（与 ExplicitFlow
+// 路径同一脚本、同一调用数），且 stalled-intent 判定器（1069 面）在同一条
+// Standard 标签下可达——两通道互补，都在同一个总闸后面。
+func TestStandardFlowContinuationOpensWithLabSwitch(t *testing.T) {
+	t.Run("todo continuation fires on the open gate", func(t *testing.T) {
+		a, prov := standardTodoTestAgent(t, [][]provider.Chunk{
+			{toolCallChunk("todo-1", "todo_write", `{"todos":[{"content":"Edit code","status":"in_progress"}]}`), {Type: provider.ChunkDone}},
+			{{Type: provider.ChunkText, Text: "I will edit it next."}, {Type: provider.ChunkDone}},
+			{
+				toolCallChunk("write-1", "write_file", `{"path":"main.go"}`),
+				toolCallChunk("todo-2", "todo_write", `{"todos":[{"content":"Edit code","status":"completed"}]}`),
+				{Type: provider.ChunkDone},
+			},
+			{{Type: provider.ChunkText, Text: "Implemented."}, {Type: provider.ChunkDone}},
+		})
+		a.standardContinuation = true
+
+		if err := a.Run(standardTodoStandardContext(), "实施这个修改"); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if prov.call != 4 {
+			t.Fatalf("provider calls = %d, want 4 (Standard-flow continuation must run the same script as ExplicitFlow)", prov.call)
+		}
+	})
+
+	t.Run("stalled-intent repair reaches the same gate", func(t *testing.T) {
+		// 无 todo 的场景：1069 判定器（尾句未来时+动词）应经由 Standard 标签
+		// + 开闸修复一次，然后正常收尾。
+		a, prov := standardTodoTestAgent(t, [][]provider.Chunk{
+			{{Type: provider.ChunkText, Text: "Next, I will check the failing package."}, {Type: provider.ChunkDone}},
+			{{Type: provider.ChunkText, Text: "Done: the package passes."}, {Type: provider.ChunkDone}},
+			{{Type: provider.ChunkText, Text: "must not be consumed"}, {Type: provider.ChunkDone}},
+		})
+		a.standardContinuation = true
+
+		if err := a.Run(standardTodoStandardContext(), "检查这个包"); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if prov.call != 2 {
+			t.Fatalf("provider calls = %d, want 2 (one stalled-intent repair round on the open gate)", prov.call)
+		}
+	})
+}
+
 func TestStandardTodoContinuationDisabledByDefault(t *testing.T) {
 	a, prov := standardTodoTestAgent(t, [][]provider.Chunk{
 		{toolCallChunk("todo-1", "todo_write", `{"todos":[{"content":"Edit code","status":"in_progress"}]}`), {Type: provider.ChunkDone}},
