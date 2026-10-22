@@ -49,7 +49,7 @@ export class SectionBoundary extends Component<
 function SectionFailure({ reason, onRetry }: { reason: string; onRetry: () => void }) {
   const t = useT();
   return (
-    <div className="banner banner--error settings-section-failure" role="alert" data-testid="settings-section-failure">
+    <div className="banner banner--error" role="alert" data-testid="settings-section-failure">
       <span>{t("settings.loadFailed")}</span>
       {/* 原因随横幅走（1039 首轮教训）：只有死话时用户与日志都定位不到断点。 */}
       <span className="rc-failed-reason">{reason}</span>
