@@ -2238,6 +2238,7 @@ export const zhTW: Record<DictKey, string> = {
 "settings.eventsRotation.cap": "絕對上限（MiB，0=不啟用）",
 "settings.eventsRotation.apply": "套用閾值",
 "settings.eventsRotation.card.overCount": "超出閾值的對話：{count} 個",
+	"settings.eventsRotation.card.idleSweepOff": "絕對上限為 0：閒置自動摺疊已關閉，僅倍數判據生效。",
 "settings.eventsRotation.card.refresh": "重新整理",
 "settings.eventsRotation.card.repairAll": "全部修復",
 "settings.eventsRotation.card.repair": "修復",

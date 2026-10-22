@@ -429,7 +429,20 @@ func sessionEventLogOversized(path string, logSize, contentBytes int64) bool {
 			// Leave it with a greppable WARN like off mode; the explicit
 			// slimming entries still force the fold, and the storage inventory
 			// keeps flagging the log as over its cap.
-			if contentBytes*2 >= logSize {
+			if !EventsFoldProfitable(logSize, contentBytes) {
+				// Task 1073 P1-a: the 124MB-in-an-open-tab incident (面板第 1 条
+				// 「使用中」×5.6) is exactly this branch refusing the fold: the
+				// session's LIVE content is already most of the log, so the old
+				// "must land under cap" line could never be met and the log was
+				// pinned forever. The save path is the only route a busy session
+				// ever gets (the idle sweep skips busy), so a fold that saves
+				// ≥10% is accepted HERE even when it cannot reach cap: better a
+				// 124→90MB rewrite than 124MB forever. A fold saving <10% keeps
+				// the no-gain WARN and stays untouched (73 no-gain sweeps proved
+				// that rewrite is pure IO).
+				if EventsFoldProfitable(logSize*8/10, contentBytes) {
+					return true
+				}
 				warnFoldWouldNotShrink(path, logSize, contentBytes, cfg.capMB)
 				return false
 			}

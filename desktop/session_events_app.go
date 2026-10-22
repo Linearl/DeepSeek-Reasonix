@@ -83,6 +83,13 @@ type SessionEventsInventoryView struct {
 	Mode      string               `json:"mode"`
 	Factor    float64              `json:"factor"` // judgment factor (auto: configured; off/manual: built-in default)
 	CapMB     int64                `json:"capMB"`  // judgment cap in MiB (auto only; 0 = none)
+	// IdleSweepOff (task 1073): explicit notice when cap=0 in auto mode — the
+	// idle sweep is disabled entirely (eventsIdleSweepFromConfig enabled =
+	// capMB>0) and only the factor judgment remains. This used to be silent:
+	// the user saw "上限 0" with no hint that the automatic maintenance rewrite
+	// was off, while config.toml said 50. The panel now says so instead of
+	// leaving the operator guessing.
+	IdleSweepOff bool `json:"idleSweepOff"`
 }
 
 // SessionEventsCompactResult reports one compact attempt: the byte delta the
@@ -134,10 +141,22 @@ func sessionEventsEntryJudgment(entry *SessionEventsEntry, mode string, capMB in
 		entry.LiveBytes > capMB<<20
 }
 
-// SessionEventsInventory lists the active directory's sessions with their
-// event-log sizes (largest first) and the over-limit marks (task 333).
+// SessionEventsInventory lists every session across every known session
+// directory with their event-log sizes (largest first) and the over-limit
+// marks (task 333). Task 1073: the enumeration used to be a.ListSessions(),
+// which only covers the ACTIVE tab's directory — the user's >50MiB count was
+// 9 disk-wide but the panel only showed 3 because the other 6 sat in
+// project/session directories the active tab does not own. The idle sweep
+// already walks knownSessionDirs(); this now matches so the panel's count can
+// reconcile with a disk-wide scan. Busy/open marks come from the same
+// runtime+lease facts the sweep uses (cross-directory), not just the active
+// tab's "open" flag.
 func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 	cfg, loadErr := config.Load()
+	// 任务 1073 面板值一致性：loadErr 时三个字段全部落回默认/manual，与
+	// eventsRotationJudgmentFrom(nil) 同一取值口径——此前 mode 默认 manual
+	// 而 factor 落回 DefaultFactor(4.0)、cap 落回 0，与 config 生效值
+	// (auto,3.0,50) 出现过用户看到的「4/0 vs 3/50」错位。
 	mode := config.EventsAutoRotationManual
 	factor := config.EventsRotationFactorDefault
 	var capMB int64
@@ -146,7 +165,10 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 		factor, capMB = eventsRotationJudgmentFrom(cfg)
 	}
 	view := SessionEventsInventoryView{Entries: []SessionEventsEntry{}, Mode: mode, Factor: factor, CapMB: capMB}
-	for _, meta := range a.ListSessions() {
+	// Task 1073: cap=0 in auto mode means the idle sweep is off; say so instead
+	// of silently disabling the maintenance rewrite.
+	view.IdleSweepOff = mode == config.EventsAutoRotationAuto && capMB == 0
+	for _, meta := range a.allSessionMetasAcrossDirs() {
 		if meta.DeletedAt != 0 {
 			continue
 		}
@@ -164,7 +186,9 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 		// blocks CompactSessionFile - surface it before the click.
 		busy := meta.Open
 		if !busy {
-			if info, leaseErr := agent.LoadSessionLeaseInfo(meta.Path); leaseErr == nil && info != nil {
+			if _, ctrl := a.controllerForSessionPath(meta.Path); ctrl != nil {
+				busy = true
+			} else if info, leaseErr := agent.LoadSessionLeaseInfo(meta.Path); leaseErr == nil && info != nil {
 				busy = true
 			}
 		}
@@ -198,6 +222,29 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 		return a.EventsBytes > b.EventsBytes
 	})
 	return view
+}
+
+// allSessionMetasAcrossDirs enumerates every session across every known
+// session directory (task 1073 panel enumeration), deduplicating by cleaned
+// path so a session reachable from two directories is only counted once.
+// Sessions whose listSessionsFromDir probe errors (a damaged sidecar, a
+// directory mid-reconcile) are skipped with their error surfaced by the
+// caller's own logging; a directory error is skipped the same way the sweep
+// skips it.
+func (a *App) allSessionMetasAcrossDirs() []SessionMeta {
+	seen := make(map[string]bool)
+	out := []SessionMeta{}
+	for _, dir := range a.knownSessionDirs() {
+		for _, meta := range a.listSessionsFromDir(dir, "") {
+			key := strings.ToLower(filepath.Clean(meta.Path))
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, meta)
+		}
+	}
+	return out
 }
 
 // sessionEventsDisplayTitle is tl 1076's name chain: the topic title (the

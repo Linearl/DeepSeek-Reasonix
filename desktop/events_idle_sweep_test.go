@@ -34,8 +34,9 @@ func TestEventsIdleSweepFromConfig(t *testing.T) {
 	}
 }
 
-// 任务 921 验收④：决策矩阵——门/超限/忙/park 四道判定各守各的；park 重入
-// 信号是「再涨 10% 或新活动」，与 710 的重警增长同一语义。
+// 任务 921 验收④：决策矩阵——门/超限/收益/忙/park 五道判定各守各的；park
+// 重入信号是「再涨 10% 或新活动」，与 710 的重警增长同一语义。任务 1073
+// P0-1 在超限之后插入收益护栏：折不回本（<10% 收益）与 save 路径同一判据。
 func TestEventsIdleSweepDecision(t *testing.T) {
 	const mb = int64(1) << 20
 	activity := int64(1790600000000)
@@ -46,22 +47,24 @@ func TestEventsIdleSweepDecision(t *testing.T) {
 		enabled    bool
 		overLimit  bool
 		busy       bool
+		profitable bool
 		size       int64
 		park       *eventsIdleSweepPark
 		activityAt int64
 		wantDo     bool
 		wantWhy    string
 	}{
-		{"switch off is zero behaviour", false, true, false, 100 * mb, nil, activity, false, "auto rotation off"},
-		{"under limit skipped", true, false, false, 40 * mb, nil, activity, false, "under limit"},
-		{"busy skipped", true, true, true, 100 * mb, nil, activity, false, "session busy"},
-		{"eligible: over limit, no prior sweep", true, true, false, 100 * mb, nil, activity, true, "eligible"},
-		{"parked: swept to 65MB, no regrowth yet", true, true, false, 70 * mb, parked, activity, false, "parked: awaiting regrowth or new activity"},
-		{"re-arm: regrowth past 10%", true, true, false, 72 * mb, parked, activity, true, "eligible"},
-		{"re-arm: new activity stamp", true, true, false, 70 * mb, parked, activity + 1, true, "eligible"},
+		{"switch off is zero behaviour", false, true, true, true, 100 * mb, nil, activity, false, "auto rotation off"},
+		{"under limit skipped", true, false, false, true, 40 * mb, nil, activity, false, "under limit"},
+		{"fold would not shrink skipped (task 1073 P0-1)", true, true, false, false, 100 * mb, nil, activity, false, "fold would not shrink"},
+		{"busy skipped", true, true, true, true, 100 * mb, nil, activity, false, "session busy"},
+		{"eligible: over limit, no prior sweep", true, true, false, true, 100 * mb, nil, activity, true, "eligible"},
+		{"parked: swept to 65MB, no regrowth yet", true, true, false, true, 70 * mb, parked, activity, false, "parked: awaiting regrowth or new activity"},
+		{"re-arm: regrowth past 10%", true, true, false, true, 72 * mb, parked, activity, true, "eligible"},
+		{"re-arm: new activity stamp", true, true, false, true, 70 * mb, parked, activity + 1, true, "eligible"},
 	}
 	for _, tc := range cases {
-		ok, why := eventsIdleSweepDecision(tc.enabled, tc.overLimit, tc.busy, tc.size, tc.park, tc.activityAt)
+		ok, why := eventsIdleSweepDecision(tc.enabled, tc.overLimit, tc.busy, tc.profitable, tc.size, tc.park, tc.activityAt)
 		if ok != tc.wantDo || why != tc.wantWhy {
 			t.Fatalf("%s: got (%v, %q), want (%v, %q)", tc.name, ok, why, tc.wantDo, tc.wantWhy)
 		}
@@ -322,5 +325,46 @@ func TestEventsIdleSweepPassRetireRunsBeforeCompactPerSession(t *testing.T) {
 	runEventsIdleSweepPass(cands, sweepKnobs, map[string]eventsIdleSweepPark{}, retire, compact)
 	if len(seq) != 2 || seq[0] != "retire:m.jsonl" || seq[1] != "compact:m.jsonl" {
 		t.Fatalf("retire must precede compact within one session: %v", seq)
+	}
+}
+
+// 任务 1073 P0-1（sweep 入口收益护栏）：events/live ≈ 1.0–1.14× 的会话（T1 无
+// 冗余类，现场 5/7 会话形态，实测 freed ∈ [−217, 0]）过 cap 但折不回本，pass
+// 不得对其发起 compact（空转归零）；而 events/live ≈ 2× 的高冗余会话照常折。
+func TestEventsIdleSweepPassSkipsNoGainFold(t *testing.T) {
+	const mb = int64(1) << 20
+	activity := int64(1790600000000)
+	cands := []eventsIdleSweepCandidate{
+		// T1 无冗余：102MB events / 64MB live ≈ 1.59× —— 低于 1/0.9≈1.11× 之下? 不，1.59>1.11 ⇒ profitable ⇒ 会折。
+		{Path: "true-over.jsonl", EventsBytes: 102 * mb, LiveBytes: 64 * mb, LastActivityAt: activity},
+		// T1 更贴现场：100MB / 96MB ≈ 1.04× ⇒ 折后仅省 4% <10% ⇒ 拒折。
+		{Path: "no-gain.jsonl", EventsBytes: 100 * mb, LiveBytes: 96 * mb, LastActivityAt: activity},
+		// T2 高冗余：170MB / 97MB ≈ 1.75× ⇒ 省 43% ⇒ 折。
+		{Path: "high-gain.jsonl", EventsBytes: 170 * mb, LiveBytes: 97 * mb, LastActivityAt: activity},
+	}
+	h := &sweepPassHarness{byPath: map[string][2]int64{
+		"true-over.jsonl": {102 * mb, 65 * mb},
+		"no-gain.jsonl":   {100 * mb, 99 * mb}, // 不应被问到
+		"high-gain.jsonl": {170 * mb, 97 * mb},
+	}}
+	park := map[string]eventsIdleSweepPark{}
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact)
+
+	for _, asked := range h.asked {
+		if asked == "no-gain.jsonl" {
+			t.Fatalf("no-gain fold must never reach compact (P0-1 护栏): asked=%v", h.asked)
+		}
+	}
+	if len(h.asked) != 2 {
+		t.Fatalf("profitable folds must still run: asked=%v", h.asked)
+	}
+	skippedNoGain := 0
+	for _, res := range results {
+		if res.Path == "no-gain.jsonl" && res.Skipped && res.Error == "fold would not shrink" {
+			skippedNoGain++
+		}
+	}
+	if skippedNoGain != 1 {
+		t.Fatalf("no-gain candidate must land a skip row: %+v", results)
 	}
 }

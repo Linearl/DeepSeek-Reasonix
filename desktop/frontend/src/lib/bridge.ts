@@ -194,6 +194,9 @@ export interface SessionEventsInventoryView {
   mode: string;
   factor: number;
   capMB: number;
+  /** task 1073: auto mode with cap=0 means the idle sweep is off — the panel
+      shows an explicit notice instead of silently disabling maintenance. */
+  idleSweepOff: boolean;
 }
 
 export interface SessionEventsCompactResult {
@@ -6278,7 +6281,9 @@ function makeMockApp(): AppBindings {
     async SetEventsAutoRotation(mode: string) { settings.eventsAutoRotation = mode; },
     async SetEventsRotation(factor: number, capMB: number) { settings.eventsRotationFactor = factor; settings.eventsRotationCapMB = capMB; },
     async SessionEventsInventory() {
-      return { entries: [], overCount: 0, mode: settings.eventsAutoRotation ?? "manual", factor: settings.eventsRotationFactor ?? 4, capMB: settings.eventsRotationCapMB ?? 0 };
+      const capMB = settings.eventsRotationCapMB ?? 0;
+      return { entries: [], overCount: 0, mode: settings.eventsAutoRotation ?? "manual", factor: settings.eventsRotationFactor ?? 4, capMB,
+        idleSweepOff: (settings.eventsAutoRotation ?? "manual") === "auto" && capMB === 0 };
     },
     async CompactSessionEvents(path: string) { return { path, name: "", round: 1, before: 0, after: 0, freed: 0, elapsedMs: 0, skipped: false }; },
     async CompactAllSessionEvents() { return []; },

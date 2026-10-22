@@ -2868,6 +2868,7 @@ export const en = {
 "settings.eventsRotation.cap": "Absolute cap (MiB, 0 = off)",
 "settings.eventsRotation.apply": "Apply thresholds",
 "settings.eventsRotation.card.overCount": "Conversations over threshold: {count}",
+	"settings.eventsRotation.card.idleSweepOff": "Absolute cap is 0: the idle auto-fold is off; only the multiple threshold applies.",
 "settings.eventsRotation.card.refresh": "Refresh",
 "settings.eventsRotation.card.repairAll": "Repair all",
 "settings.eventsRotation.card.repair": "Repair",
