@@ -24,7 +24,19 @@ import (
 // desktop-projects.json registry.
 func runServePool(addr, tokenFile, token string) int {
 	roots := readDesktopProjectRoots()
-	mgr, err := servepool.NewManager(servepool.Config{ProjectRoots: roots})
+	// Task 1049: [serve.pool] spawn/idle timeouts, same keys as the desktop
+	// embed. A config load failure keeps the pool defaults.
+	spawnSeconds, idleSeconds := 0, 0
+	if cfg, err := config.Load(); err == nil && cfg != nil {
+		spawnSeconds = cfg.Serve.Pool.SpawnTimeoutSeconds
+		idleSeconds = cfg.Serve.Pool.IdleTimeoutSeconds
+	}
+	spawnTimeout, idleTimeout := servepool.PoolTimeoutsFromSeconds(spawnSeconds, idleSeconds)
+	mgr, err := servepool.NewManager(servepool.Config{
+		ProjectRoots: roots,
+		IdleTimeout:  idleTimeout,
+		SpawnTimeout: spawnTimeout,
+	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
