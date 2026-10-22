@@ -174,6 +174,9 @@ export interface SettingsView {
   experimentalTraceAsState?: boolean;
   // Task 115: dream/distill memory-curation experiment.
   experimentalDream?: boolean;
+  // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117 首落地，
+  // 本件补实验室设置页入口，默认关）。
+  stalledIntentNudge?: boolean;
   // Task 801: decision-pattern extraction + solidification (default off).
   experimentalDecisionPatterns?: boolean;
   // Task 801: resolved solidified decision-patterns file path (empty config

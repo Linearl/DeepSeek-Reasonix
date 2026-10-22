@@ -2222,6 +2222,8 @@ type AgentConfig struct {
 	// StalledIntentNudge enables the "you announced the next step instead of
 	// taking it" repair for ordinary sessions (task 117). Off by default:
 	// upstream only fires this under ContinuationExplicitFlow (Goal/review).
+	// 任务 1069：实验室-自动化组新增开关入口（此前仅手写 TOML，无设置页
+	// 入口）——键语义/默认值零变化，setter 经 lab_bulk/edit.go 接入。
 	StalledIntentNudge bool `toml:"stalled_intent_nudge"`
 	// StalledIntentNudgeLimit caps the stalled-intent repair per run.
 	// 0 keeps the built-in default (1). Values above 3 are clamped.
