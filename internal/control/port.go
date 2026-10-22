@@ -223,9 +223,11 @@ type SessionHistory interface {
 	SummarizeUpTo(ctx context.Context, turn int) error
 	// RewriteDraft (任务 1024 草稿优化) rewrites the composer draft through the
 	// auxiliary model channel — no transcript messages, no main-turn context.
-	// An error (or an empty rewrite) means "keep the original"; the host
-	// degrades silently instead of surfacing it.
-	RewriteDraft(ctx context.Context, draft, contextTail string) (string, error)
+	// budgetKB is the context-length tier the user picked in the composer
+	// dialog (任务 1052: 2/5/10/20; 0 = default 10KB). An error (or an empty
+	// rewrite) means "keep the original"; the host degrades silently instead of
+	// surfacing it.
+	RewriteDraft(ctx context.Context, draft, contextTail string, budgetKB int) (string, error)
 }
 
 // MemoryControl covers session/project memory reads and mutations.
