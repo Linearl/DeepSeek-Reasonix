@@ -73,6 +73,15 @@ func RepairSessionListingProjection(ctx context.Context, path string) (result Se
 	if path == "" {
 		return SessionListingRepairResult{}, fmt.Errorf("empty session path")
 	}
+	// 任务 1071：分类闸门。只有真正的转录文件才允许进入「读入→重写」的投影
+	// 修复通路。此前 .repairlog.jsonl（修复日志侧车）被 IsSessionTranscriptName
+	// 误判为会话（见 store 分类排除），于是 catalog 修复队列把它当转录读入、
+	// 再经 writeSessionMessagesContext 原子重写为「只剩 role 字段」的消息行——
+	// 审计记录被清成 {"role":""}。防御纵深：即便旧版本 catalog 队列仍塞进了
+	// 这类路径，这里也直接拒绝，绝不重写侧车。
+	if !store.IsSessionTranscriptName(filepath.Base(path)) {
+		return SessionListingRepairResult{Status: SessionListingRepairUnsupported}, nil
+	}
 	if err := ctx.Err(); err != nil {
 		return SessionListingRepairResult{}, err
 	}

@@ -73,6 +73,7 @@ func TestIsSessionTranscriptName(t *testing.T) {
 		{"session.events.jsonl", false},
 		{"session.turns.jsonl", false},
 		{"session.conflicts.jsonl", false},
+		{"session.repairlog.jsonl", false},
 		{"session.guardian.jsonl", false},
 		{"session.guardian.events.jsonl", false},
 		{"session.events.jsonl.damaged", false},
@@ -84,6 +85,42 @@ func TestIsSessionTranscriptName(t *testing.T) {
 		if got := IsSessionTranscriptName(c.name); got != c.want {
 			t.Errorf("IsSessionTranscriptName(%q) = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// TestIsSessionTranscriptNameRepairLogNoSidecar (task 1071) pins the
+// classification that caused the original bug: the self-heal repair log
+// (<stem>.repairlog.jsonl) must never classify as a transcript, so no
+// downstream scan (desktop health, catalog reconcile, GC) ever derives
+// display-index/meta/lock sidecars beside it, or rewrites it through the
+// transcript save path.
+func TestIsSessionTranscriptNameRepairLogNoSidecar(t *testing.T) {
+	// A real repair-log name must not classify as a transcript.
+	for _, name := range []string{
+		"abc.repairlog.jsonl",
+		"20260831-035608.215282300-deepseek-deepseek-v4-flash-vision-exp.repairlog.jsonl",
+	} {
+		if IsSessionTranscriptName(name) {
+			t.Errorf("IsSessionTranscriptName(%q) = true, must be false — a repair log is a sidecar, not a transcript", name)
+		}
+	}
+
+	// SessionSidecarFiles must list the repair log as a sidecar (so deleting
+	// the session removes it) and must never derive a nested "transcript" name
+	// from the repair log itself — nothing downstream can mistake the repair
+	// log's own name or its derived sidecars for a session.
+	const transcript = "/home/u/.reasonix/sessions/abc.jsonl"
+	sawRepairLog := false
+	for _, sidecar := range SessionSidecarFiles(transcript) {
+		if sidecar == SessionRepairLog(transcript) {
+			sawRepairLog = true
+		}
+		if IsSessionTranscriptName(sidecar) {
+			t.Errorf("SessionSidecarFiles derived %q, which still classifies as a transcript — a sidecar must never re-enter transcript classification", sidecar)
+		}
+	}
+	if !sawRepairLog {
+		t.Error("SessionSidecarFiles does not list the repair log — deleting a session would leak its repair history")
 	}
 }
 

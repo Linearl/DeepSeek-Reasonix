@@ -1742,6 +1742,14 @@ func CanonicalSessionPath(path string) string {
 // Missing files surface as os.IsNotExist so callers can fall through to a
 // new session.
 func LoadSession(path string) (*Session, error) {
+	// 任务 1071：LoadSession 是所有「读入→重写」链路（保存/自愈/投影修复）的
+	// 共同入口。侧车文件（如 .repairlog.jsonl，修复日志审计记录）不得被当成
+	// 会话加载——一旦加载，后续任何一次 Save 都会把它重写成只剩 role 字段的
+	// 消息行（writeSessionMessages 原子覆盖），审计内容即被清空。分类闸门在
+	// 锁之前：不给侧车文件留任何被「顺手保存」的机会。
+	if path != "" && !store.IsSessionTranscriptName(filepath.Base(path)) {
+		return nil, fmt.Errorf("load session: %s is not a session transcript", filepath.Base(path))
+	}
 	unlock, err := lockSessionSavePath(path)
 	if err != nil {
 		return nil, err

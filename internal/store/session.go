@@ -52,6 +52,7 @@ func IsSessionTranscriptName(name string) bool {
 		!strings.HasSuffix(name, SessionEventLogSuffix) &&
 		!strings.HasSuffix(name, SessionTurnEventLogSuffix) &&
 		!strings.HasSuffix(name, SessionConflictLogSuffix) &&
+		!strings.HasSuffix(name, SessionRepairLogSuffix) &&
 		!strings.HasSuffix(name, ".guardian.jsonl")
 }
 
