@@ -27,6 +27,10 @@ const newestPayload = JSON.stringify({
 
 let snapshot: Record<string, unknown> | null = { count: 1, reports: [newestPayload] };
 let startCalls: Array<[string, string]> = [];
+let clearCalls = 0;
+// When true, the clear binding rejects — used to pin the failure path (button
+// stays enabled, the reason surfaces in the note, banner stays up).
+let clearRejects = false;
 
 function installBindings() {
   (window as unknown as { go?: unknown }).go = {
@@ -42,6 +46,13 @@ function installBindings() {
         StartCrashAnalysis: async (kind: string, detail: string) => {
           startCalls.push([kind, detail]);
           return "YOLO 分析会话已启动";
+        },
+        // Task 1051: 「清空」binding — returns the dropped count like the Go side.
+        ClearPendingCrashReports: async () => {
+          clearCalls += 1;
+          if (clearRejects) throw new Error("clear failed: disk locked");
+          snapshot = { count: 0 };
+          return 1;
         },
       },
     },
@@ -105,19 +116,41 @@ ok(
 );
 
 const analyze = host?.querySelector(".pending-crash__analyze") as HTMLButtonElement;
+// Task 1051: the banner now renders three action buttons — 查看 / 清空 / 关闭 —
+// with 「清空」 immediately right of 「关闭」's left neighbour, i.e. the middle slot
+// of [查看, 清空, 关闭].
+const clearBtn = host?.querySelector(".pending-crash__clear") as HTMLButtonElement;
+const dismissBtn = host?.querySelector(".pending-crash__dismiss") as HTMLButtonElement;
+ok(Boolean(analyze && clearBtn && dismissBtn), "the banner renders all three action buttons (查看/清空/关闭)");
+ok(
+  clearBtn.previousElementSibling === analyze && dismissBtn.previousElementSibling === clearBtn,
+  "「清空」 sits between 查看 and 关闭 (right of nothing but preceding 关闭)",
+);
+ok(clearBtn.textContent === "Clear all", "the clear button carries the en locale copy");
+
 analyze.click();
+// The availability probe and the spend-confirmation are both async; the click
+// handler awaits two ticks before the confirm button lands in the note.
+await tick();
+await tick();
 await tick();
 await tick();
 ok((host?.querySelector(".pending-crash__note")?.textContent ?? "").includes("consumes token quota"), "the entry reaches the shared spend confirmation");
 ok(startCalls.length === 0, "the confirmation alone does not start the analysis");
 
-const go = host?.querySelector(".pending-crash__note button") as HTMLButtonElement;
-go.click();
+// NOTE (pre-existing red, NOT task 1051): this block asserts a spend-confirmation
+// step that task 674 removed from analyzeEntryButton (the copy "consumes token
+// quota" is gone from en.ts). Verified against a clean HEAD checkout of this same
+// file — the two assertions below fail there too. Guarded with ?. so the crash
+// does not halt the rest of the suite (the clear-path checks further down run
+// regardless).
+const go = host?.querySelector(".pending-crash__note button") as HTMLButtonElement | null;
+go?.click();
 await tick();
 await tick();
-ok(startCalls.length === 1, "confirming starts exactly one analysis");
-ok(startCalls[0]?.[0] === "crash", "the started analysis carries the crash kind");
-ok(startCalls[0]?.[1] === newestPayload, "the queued payload travels to StartCrashAnalysis verbatim");
+ok(startCalls.length === 1, "confirming starts exactly one analysis (pre-existing red)");
+ok(startCalls[0]?.[0] === "crash", "the started analysis carries the crash kind (pre-existing red)");
+ok(startCalls[0]?.[1] === newestPayload, "the queued payload travels to StartCrashAnalysis verbatim (pre-existing red)");
 
 // Task 694: the banner paints before LocaleProvider settles the locale at boot
 // (imperative DOM, painted once), so it must re-render when <html lang> flips.
@@ -136,6 +169,10 @@ ok(
 ok(
   host?.querySelector(".pending-crash__dismiss")?.textContent === "关闭",
   "the dismiss button re-renders localized instead of freezing in English",
+);
+ok(
+  host?.querySelector(".pending-crash__clear")?.textContent === "清空",
+  "the clear button re-renders localized (zh) too",
 );
 ok(
   (host?.querySelector(".pending-crash__body")?.previousElementSibling?.textContent ?? "").includes("技术原文保留"),
@@ -164,6 +201,60 @@ resetPendingCrashEntryForTest();
 installPendingCrashAnalysisEntry();
 await tick();
 ok(document.getElementById("pending-crash-entry") === null, "an empty queue paints nothing");
+
+// Task 1051: the clear path — a failure keeps the banner up and the button live,
+// then a success wipes the queue and closes with the same tail as dismiss.
+resetPendingCrashEntryForTest();
+snapshot = { count: 1, reports: [newestPayload] };
+clearCalls = 0;
+installPendingCrashAnalysisEntry();
+await tick();
+await tick();
+ok(document.getElementById("pending-crash-entry") !== null, "the banner paints for the clear-path scenario");
+
+clearRejects = true;
+const clearFail = document.querySelector(".pending-crash__clear") as HTMLButtonElement;
+clearFail.click();
+await tick();
+await tick();
+ok(clearCalls === 1, "the clear button calls ClearPendingCrashReports exactly once per click");
+ok(document.getElementById("pending-crash-entry") !== null, "a failed clear keeps the banner up");
+ok(clearFail.disabled === false, "a failed clear re-enables the button for a retry");
+ok(
+  (document.querySelector(".pending-crash__note")?.textContent ?? "").includes("disk locked"),
+  "a failed clear surfaces the backend reason in the note",
+);
+
+clearRejects = false;
+const clearOkBtn = document.querySelector(".pending-crash__clear") as HTMLButtonElement;
+clearOkBtn.click();
+await tick();
+await tick();
+ok(clearCalls === 2, "the retry calls the binding again");
+ok(document.getElementById("pending-crash-entry") === null, "a successful clear removes the banner");
+ok(pendingCrashDismissedThisRun(), "a successful clear persists the dismissed marker (no repaint this run)");
+installPendingCrashAnalysisEntry();
+await tick();
+ok(document.getElementById("pending-crash-entry") === null, "a cleared run does not re-paint");
+
+// Task 1051: no clear binding (older backend) — the button still renders but
+// says so instead of throwing into the boot path.
+resetPendingCrashEntryForTest();
+snapshot = { count: 1, reports: [newestPayload] };
+installBindings();
+delete ((window as unknown as { go?: { main?: { App?: Record<string, unknown> } } }).go?.main?.App as Record<string, unknown>).ClearPendingCrashReports;
+installPendingCrashAnalysisEntry();
+await tick();
+await tick();
+const noBindBtn = document.querySelector(".pending-crash__clear") as HTMLButtonElement;
+ok(Boolean(noBindBtn), "the clear button renders even without the backend binding");
+noBindBtn?.click();
+await tick();
+ok(
+  (document.querySelector(".pending-crash__note")?.textContent ?? "").includes("not available in this version"),
+  "a missing binding surfaces the 'not available' copy instead of throwing",
+);
+ok(document.getElementById("pending-crash-entry") !== null, "a missing binding leaves the banner up");
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

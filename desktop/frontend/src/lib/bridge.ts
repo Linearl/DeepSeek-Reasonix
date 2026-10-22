@@ -1906,6 +1906,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 663 gap ④: the boot-time pending-crash snapshot behind the startup
   // analysis entry (survives flushPendingCrash shipping or dropping the files).
   PendingCrashSnapshot(): Promise<PendingCrashSnapshotReport>;
+  // 任务 1051: 横幅「清空」—— 真删本地待上报的崩溃报告（队列目录 + legacy 文件），
+  // 一次性告别 14 天保留期内每次启动重弹；返回删掉的报告数。
+  ClearPendingCrashReports(): Promise<number>;
   RecordUIPerf(signals: Record<string, string>): Promise<void>;
   ListTabs(): Promise<TabMeta[]>;
   OpenProjectTab(workspaceRoot: string, topicID: string): Promise<TabMeta>;
@@ -7255,6 +7258,7 @@ function makeMockApp(): AppBindings {
     async StartHangAnalysis() { throw new Error("hang analysis is unavailable in the browser mock"); },
     async CrashAnalysisProgress() { return { active: false, running: false, done: false }; },
     async PendingCrashSnapshot() { return { count: 0 }; },
+    async ClearPendingCrashReports() { return 0; },
     async RecordUIPerf() {},
     // Tab management mocks.
     async ListTabs() {

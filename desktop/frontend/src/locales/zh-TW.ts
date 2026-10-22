@@ -5216,6 +5216,10 @@ export const zhTW: Record<DictKey, string> = {
   "hangPrompt.intro": "目前工作階段的對話長時間無進展（doctor responsiveness 判定卡頓）。可以對它執行同一套一鍵分析。",
   "pendingCrash.title": "偵測到上次執行遺留的當機報告",
   "pendingCrash.intro": "上次執行在結束前擷取了一次崩潰。除了靜默上報，現在可以對它一鍵分析。",
+  // 任務 1051：橫幅「清空」（關閉右側）——「關閉」只隱藏本次，報告留佇列 14 天內每次啟動都重彈；
+  // 「清空」把本機待上報的當機報告一次性刪除，之後不再彈。
+  "pendingCrash.clearAll": "清空",
+  "pendingCrash.clearUnavailable": "目前版本未提供清空功能，請升級後重試。",
   "crash.collapse": "收起",
   "crash.expand": "展開錯誤報告",
   "pendingCrash.previewNote": "以下為上次執行擷取的 panic 原文摘要（技術原文保留，供根因分析）：",

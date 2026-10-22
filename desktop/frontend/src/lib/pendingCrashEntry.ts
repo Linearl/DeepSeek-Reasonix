@@ -135,9 +135,31 @@ function renderPendingCrashBanner(host: HTMLElement, report: PendingCrashSnapsho
     visibleReport = null;
     host.remove();
   };
+  // Task 1051: 「关闭」只写 sessionStorage 隐藏本次，报告仍留队列 —— 14 天
+  // 保留期内每次启动都重弹。「清空」（关闭右侧）调后端把队列真删掉，才是一次性
+  // 告别。收尾与「关闭」同款：置 dismissed + 摘横幅；失败时按钮保持可用并把
+  // 后端原因写进 note（不静默吞掉，用户才知道为什么没清掉）。
+  const clearAll = document.createElement("button");
+  clearAll.className = "pending-crash__clear rt-btn";
+  clearAll.textContent = tt("pendingCrash.clearAll");
+  clearAll.onclick = async () => {
+    const clear = window.go?.main?.App?.ClearPendingCrashReports;
+    if (!clear) {
+      analysisNote.textContent = tt("pendingCrash.clearUnavailable");
+      return;
+    }
+    clearAll.disabled = true;
+    try {
+      await clear();
+      closeEntry();
+    } catch (err) {
+      clearAll.disabled = false;
+      analysisNote.textContent = err instanceof Error && err.message ? err.message : String(err);
+    }
+  };
   dismiss.onclick = closeEntry;
   if (analyze) actions.append(analyze);
-  actions.append(dismiss);
+  actions.append(clearAll, dismiss);
   slots.push(actions, analysisNote);
   // 任务 910：崩溃=danger 档（红，语义归位——过去是硬编码橙边框 + --accent
   // 橙标题两种来源，现统一走 danger token，见 rtNotice.ts）。
