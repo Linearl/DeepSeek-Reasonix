@@ -201,9 +201,10 @@ console.log("\ntask 826 sidebar hover-to-expand + delayed re-collapse");
   // 任务 940：viewLayout 卡灯追加 experimentalApprovalSelect（成员行入卡），
   // 本断言随卡演进为五键。任务 961：renderArtifact 并卡 → 六键（本 pin
   // 2026-10-19 随 1005 窗口补同步，961 并卡时漏跟）。任务 959：①
-  // tableWrap + ② sendTargetSelect 入卡 → 八键（同一随卡演进授权）。
-  ok(yamlText.includes("onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalRenderArtifact, experimentalTableWrap, experimentalSendTargetSelect]") &&
-     labDefault.includes('onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalRenderArtifact", "experimentalTableWrap", "experimentalSendTargetSelect"]'),
+  // tableWrap + ② sendTargetSelect 入卡 → 八键（同一随卡演进授权）。任务
+  // 1072：renderArtifact 整功能移除出卡 → 七键（含 draftRewrite 时九键）。
+  ok(yamlText.includes("onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalDraftRewrite]") &&
+     labDefault.includes('onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalDraftRewrite"]'),
     "② layout data: the viewLayout card light covers all eight keys in yaml AND the built-in default");
   ok(yamlText.includes('- id: sidebarHoverLeft') && yamlText.includes('- id: sidebarHoverRight') &&
      labDefault.includes('{ id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" }') &&

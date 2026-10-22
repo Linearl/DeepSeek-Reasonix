@@ -550,8 +550,6 @@ type SettingsView struct {
 	DecisionPatternFilePath      string `json:"decisionPatternFilePath"`
 	DecisionPatternThreshold     int    `json:"decisionPatternThreshold"`
 	DecisionPatternAutoApprove   bool   `json:"decisionPatternAutoApprove"`
-	// Task 944: render_artifact tool + ArtifactCard lab switch readback.
-	ExperimentalRenderArtifact bool `json:"experimentalRenderArtifact"`
 	// 任务 1024: composer 草稿优化（改写按钮）lab switch readback. Boot snapshot;
 	// the settings save re-applies it, so a flip shows without a restart.
 	ExperimentalDraftRewrite bool `json:"experimentalDraftRewrite"`
@@ -1896,8 +1894,6 @@ func (a *App) Settings() SettingsView {
 		DecisionPatternFilePath:      decisionPatternPathForView(cfg),
 		DecisionPatternThreshold:     cfg.Agent.DecisionPatternThreshold,
 		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
-		// Task 944: render_artifact lab switch readback.
-		ExperimentalRenderArtifact: cfg.Agent.ExperimentalRenderArtifact,
 		// 任务 1024: composer 草稿优化（改写按钮）lab switch readback.
 		ExperimentalDraftRewrite: cfg.Agent.ExperimentalDraftRewrite,
 		// Task 979: capability-group disclosure lab switch readback (953/954/955 shared).

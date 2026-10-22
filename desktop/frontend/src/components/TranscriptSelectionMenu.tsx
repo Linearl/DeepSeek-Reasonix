@@ -717,7 +717,7 @@ function menuPointFromEvent(event: MouseEvent): ContextMenuPoint {
   return { left: 12, top: 12 };
 }
 
-// 任务 1060：与 ArtifactCard 同款错误文案提取（打开/定位失败的 toast 附原因）。
+// 任务 1060：打开/定位失败的 toast 附原因（错误文案就地提取）。
 function localPathErrorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

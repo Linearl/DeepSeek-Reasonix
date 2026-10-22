@@ -1415,13 +1415,7 @@ func (c *Config) SetExperimentalDecisionPatterns(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalRenderArtifact toggles the task-944 render_artifact tool +
-// ArtifactCard lab switch. Applies on restart (boot snapshot): the tool is
-// registered at boot and the frontend gate reads the same boot snapshot.
-func (c *Config) SetExperimentalRenderArtifact(enabled bool) error {
-	c.Agent.ExperimentalRenderArtifact = enabled
-	return nil
-}
+
 
 // SetExperimentalDraftRewrite toggles the task-1024 草稿优化 lab switch. Pure
 // frontend gate riding the boot snapshot — the settings save re-applies it, so

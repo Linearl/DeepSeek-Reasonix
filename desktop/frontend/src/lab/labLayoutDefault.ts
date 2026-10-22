@@ -201,24 +201,19 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // 300ms 防误触 + 离开 15s 延时折叠，只回收 hover 自动展开的）。
         // 任务 940：composer 权限选择器形态二选一行入卡（默认关=现按钮组，
         // 开=zcode 同款下拉框省空间）。
-        // 任务 961：对话内产物卡片（renderArtifact，944 原 ui 组独立卡）
-        // 并入本卡为成员行（条目级合并，782 先例——键/setter 零变化，
-        // 独立 pane 退役为卡内行）。
         // 任务 959 ①：对话表格按栏宽自动换行入卡为成员行（940 先例，默认
         // 关=宽表横滚布局不变）。
         {
           id: "viewLayout",
           labelKey: "settings.viewLayout",
           tier: "optional",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalRenderArtifact", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalDraftRewrite"],
+          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalDraftRewrite"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
             { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
             { id: "sidebarHoverLeft", labelKey: "settings.sidebarHoverLeft", tier: "optional" },
             { id: "sidebarHoverRight", labelKey: "settings.sidebarHoverRight", tier: "optional" },
             { id: "approvalSelect", labelKey: "settings.approvalSelect", tier: "optional" },
-            // 任务 961：对话内产物卡片（默认关=工具不注册、卡片不渲染）。
-            { id: "renderArtifact", labelKey: "settings.renderArtifact", tier: "optional" },
             // 任务 959 ①：对话表格按栏宽自动换行（默认关=宽表横滚不变）。
             { id: "tableWrap", labelKey: "settings.tableWrap", tier: "optional" },
             // 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。

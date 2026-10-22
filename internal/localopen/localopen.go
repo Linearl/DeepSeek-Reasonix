@@ -1,9 +1,8 @@
 // Package localopen holds the shared path-safety gate for "hand an
 // AI-generated local path to the OS" flows. It exists so that both the
 // desktop shell (OpenLocalPath / OpenLocalPathInExternalOpener) and builtin
-// tools (render_artifact, task 944) enforce the SAME gate: a prompt-injected
-// or hallucinated path must never become an executable launch, and a card
-// must never be produced for one either.
+// tools enforce the SAME gate: a prompt-injected
+// or hallucinated path must never become an executable launch.
 //
 // The desktop package previously owned these functions; they moved here
 // verbatim (task 944) so internal/tool/builtin can import them without

@@ -132,7 +132,6 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"tableWrap":           func(c *Config, on bool) error { return c.SetExperimentalTableWrap(on) },
 	"sendTargetSelect":    func(c *Config, on bool) error { return c.SetExperimentalSendTargetSelect(on) },
 	"draftRewrite":        func(c *Config, on bool) error { return c.SetExperimentalDraftRewrite(on) },
-	"renderArtifact":      func(c *Config, on bool) error { return c.SetExperimentalRenderArtifact(on) },
 	// ── observability ──
 	"monitoring":  func(c *Config, on bool) error { return c.SetExperimentalSessionMonitor(on) },
 	"subagentTps": func(c *Config, on bool) error { return c.SetExperimentalSubagentTps(on) },

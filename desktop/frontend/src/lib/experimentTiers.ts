@@ -2,7 +2,7 @@
 //
 // 权威源是 Go 侧 `labFeatureTiers`（internal/config/render.go，xlsx 表A
 // 「实验室特性-档位与图墙-20261006」推荐等级列：推荐 15 / 可选 20 / 未稳定
-// 10 / 已退役 1 = 46）。Go 侧有门禁（render_lab_tiers_test.go：渲染表新出现
+// 10 / 已退役 1 = 46）。Go 侧有门禁（render.go 条目对账：渲染表新出现
 // 未标档位的实验室键 ⇒ 测试失败）；本模块是唯一的展示事实源——设置页实验室
 // tab（rail + 详情卡）与会话图墙（ForkFeaturesIntroDialog 精选区）两视图都
 // 从这里取档位，徽章在两个视图间不可能失配。
@@ -32,8 +32,6 @@ export type TierFeatureId =
   | "dream"
   // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
   | "decisionPatterns"
-  // 任务 944：对话内产物卡片（render_artifact 工具 + ArtifactCard，默认关）。
-  | "renderArtifact"
   // 任务 1024：composer 草稿优化（改写按钮，默认关）。
   | "draftRewrite"
   // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
@@ -191,9 +189,7 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 550 口径定档可选——不开启时标题栏与转录视图与引入前完全一致（铁律 2，
   // 默认关）。
   trajectoryView: "optional",
-  // ── ui（界面，15 项）────────────────────────────────────────
-  // 任务 944：对话内产物卡片。镜像 Go 档位——可选（不开启不影响核心体验）。
-  renderArtifact: "optional",
+  // ── ui（界面，14 项）────────────────────────────────────────
   // 任务 1024：composer 草稿优化。镜像 Go 档位——可选（默认关，输入栏零变化）。
   draftRewrite: "optional",
   tabCompress: "recommended",
@@ -301,8 +297,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   interactionPresentation: "recommended",
 };
 
-/** 表A distribution, pinned by tests on BOTH sides (Go: render_lab_tiers_test.go,
- * frontend: experimentTiers.test.ts) — 推荐 15 / 可选 20 / 未稳定 13 / 已退役 1.
+/** 表A distribution, pinned by tests on BOTH sides (Go: render.go labFeatureTiers,
+ * frontend: task562 test) — 推荐 15 / 可选 20 / 未稳定 13 / 已退役 1.
  * (任务 621 修正：原钉 46 项未收 toolOptimizations（603）与 tabModeTint（504，
  * Go 侧一直有档），漏收使实验室页出现无徽章特性。任务 517：B1/B2/B3（可选×3）
  * 合并为 safetyCostControl（可选×1），可选 20→18、总数 48→46。任务 677：
@@ -350,11 +346,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 已升推荐，故 14 推荐/4 稳定/29 可选/14 未稳定）。 * 任务 959：① tableWrap（对话表格按栏宽自动换行，默认关）+ ②
  * sendTargetSelect（composer 发送目标形态二选一，默认关）按可选档入表
  * ——可选 34→36、总数 70→72（Go 侧同步 61→63）。任务 1024：draftRewrite
- * （composer 草稿优化）在其上叠加——可选 36→37、总数 72→73（Go 61→64）。 */
+ * （composer 草稿优化）在其上叠加——可选 36→37、总数 72→73（Go 61→64）。
+ * 任务 1072：renderArtifact（对话内产物卡片）整功能移除出表——可选 37→36、
+ * 总数 73→72（Go 侧同步 64→63）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 18,
-  optional: 37,
+  optional: 36,
   unstable: 13,
   retired: 1,
 };

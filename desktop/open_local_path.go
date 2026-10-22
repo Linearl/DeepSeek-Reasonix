@@ -8,7 +8,7 @@ import (
 )
 
 // The path-safety gate moved to internal/localopen (task 944) so builtin
-// tools (render_artifact) can enforce the SAME gate as the opener family
+// tools can enforce the SAME gate as the opener family
 // without importing package main. The wrappers below keep the desktop call
 // sites and tests on their original names; behavior is byte-identical.
 

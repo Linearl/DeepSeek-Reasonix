@@ -2652,8 +2652,6 @@ export interface DesktopStartupSettingsView {
   decisionPatternThreshold?: number;
   /** Task 801: skip the approval gate before writing (default off). */
   decisionPatternAutoApprove?: boolean;
-  /** Task 944: render_artifact tool + ArtifactCard; off unless the user opts in. */
-  experimentalRenderArtifact?: boolean;
   /** 任务 1024: composer 草稿优化（改写按钮）；默认关（铁律 2——off 时无按钮、布局零变化）。 */
   experimentalDraftRewrite?: boolean;
   /** Task 979: capability-group disclosure layer (tasks 953/954/955 shared switch); off unless the user opts in. */

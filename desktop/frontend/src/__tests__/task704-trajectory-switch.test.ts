@@ -41,7 +41,6 @@ const settingsPrefs = fs.readFileSync(path.join(repoRoot, "desktop/settings_pref
 const goConfig = fs.readFileSync(path.join(repoRoot, "internal/config/desktop_preferences.go"), "utf8");
 const goEdit = fs.readFileSync(path.join(repoRoot, "internal/config/edit.go"), "utf8");
 const goRender = fs.readFileSync(path.join(repoRoot, "internal/config/render.go"), "utf8");
-const goTierTest = fs.readFileSync(path.join(repoRoot, "internal/config/render_lab_tiers_test.go"), "utf8");
 // 任务 742 修复预存红：724 起 rail 布局由 lab-layout.yaml + 内置默认数据驱动，
 // SettingsPanel 不再硬编码 render table——trajectoryView 的布局锚随迁两文件。
 const labDefaultLayout = fs.readFileSync(path.join(frontendRoot, "src/lab/labLayoutDefault.ts"), "utf8");
@@ -70,8 +69,8 @@ ok(/\{"trajectoryView", LabTierOptional, \[\]string\{"experimental_trajectory_vi
 // 现行口径：可选 22 起步 + want[LabTierOptional]=29 覆盖、总数 61（992 双
 // 升档 2026-10-19 补齐），1005 批1 转档不改总数。本 pin 随 1005 窗口补步进）。
 // 任务 959：① tableWrap + ② sendTargetSelect → override 31 / 总数 63。
-ok(goTierTest.includes("want[LabTierOptional] = 31") && goTierTest.includes("len(labFeatureTiers) != 63"),
-  "Go tier-count test at the current 口径 (optional override 31 / total 63)");
+// 任务 1072：render_artifact 相关测试（render_lab_tiers_test.go）随件移除，
+// 表A 计数门禁迁至前端 task562 双侧 pin（render.go 条目数 63 与注册表对账）。
 
 // 4. Both settings views carry the field (81/123: a view that omits it would
 //    read permanently off) and the boot snapshot fills it.
