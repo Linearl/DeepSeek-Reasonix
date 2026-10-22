@@ -193,7 +193,17 @@ func (a *App) ListSessionRepairRecordsFor(path string) ([]agent.RepairRecord, er
 	if err != nil {
 		return nil, err
 	}
-	return agent.ListSessionRepairRecordsFor(path)
+	records, err := agent.ListSessionRepairRecordsFor(path)
+	if err != nil {
+		return nil, err
+	}
+	// 任务 1039r2：无修复日志是常态（agent 层返回 nil, nil），nil 切片会序列
+	// 化成 JSON null，前端展开区的 .length 读数渲染期崩溃（实测分区横幅报
+	// "Cannot read properties of null (reading 'length')"）。空日志一律回空数组。
+	if records == nil {
+		records = []agent.RepairRecord{}
+	}
+	return records, nil
 }
 
 // SessionVersionGroupView is one multi-head conversation for the 需求 E

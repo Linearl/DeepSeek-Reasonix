@@ -357,7 +357,10 @@ export function RecoveryCopiesSection() {
   const loadChains = useCallback(async (mainPath: string) => {
     try {
       const set = await app.ListRecoveryChains(mainPath);
-      setChains((current) => new Map(current).set(mainPath, set));
+      // 任务 1039r2：后端 nil 切片会以 null 到达（全候选被非限额错误跳过时
+      // chains 为 null）——落进 state 前归一成空数组，渲染树的 .length 读数
+      // 才有定义（实测 chains:null 直通让分区横幅报 null.length）。
+      setChains((current) => new Map(current).set(mainPath, { ...set, chains: set.chains ?? [] }));
     } catch (err) {
       setChains((current) =>
         new Map(current).set(mainPath, {

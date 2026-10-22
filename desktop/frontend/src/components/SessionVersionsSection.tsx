@@ -69,7 +69,8 @@ export function SessionVersionsSection() {
 
   const reload = useCallback(async () => {
     try {
-      setGroups(await app.ListSessionVersionGroups());
+      // 任务 1039r2：列表空值归一——bridge 返回 null 时 .length 读数渲染期崩。
+      setGroups((await app.ListSessionVersionGroups()) ?? []);
     } catch (e) {
       setError(String(e));
     }
@@ -96,7 +97,9 @@ export function SessionVersionsSection() {
         app.ListSessionRepairRecordsFor(path).catch(() => [] as SessionRepairRecordView[]),
       ]);
       setChains({ chains: set });
-      setRecords(recs);
+      // 任务 1039r2：无修复日志时后端成功返回 null（nil 切片直通），catch 只
+      // 拦拒绝——空值必须在这里归一，否则展开区 records.length 渲染期崩。
+      setRecords(recs ?? []);
     } catch (e) {
       // 任务 1039r：枚举被拒不再渲染空表——与后端降级同语义的一面 Degraded 行
       // + 原因横幅。失败是局部的：列表与其他分区原样保留，整页错误边界永不参与。

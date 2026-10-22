@@ -63,7 +63,12 @@ type RecoveryChainSet struct {
 // list at once.
 func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 	mainPath = strings.TrimSpace(mainPath)
-	set := RecoveryChainSet{MainPath: mainPath}
+	// 任务 1039r2：Chains 以空切片起底——全部候选（主转录+副本）的探测/重放
+	// 都以非限额错误失败时，nil 切片会序列化成 JSON null，前端展开行的
+	// .length 读数直接渲染期崩溃（实测 GC开发专员会话分区横幅报
+	// "Cannot read properties of null (reading 'length')"）。空数组才是
+	// 「没有候选链」的合法形状。
+	set := RecoveryChainSet{MainPath: mainPath, Chains: []RecoveryChainView{}}
 	if mainPath == "" {
 		return set, fmt.Errorf("no session path given")
 	}
