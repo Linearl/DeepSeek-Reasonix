@@ -158,7 +158,7 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 		if info, err := os.Stat(meta.Path); err == nil {
 			liveBytes = info.Size()
 		}
-		name := sessionEventsDisplayTitle(meta.Title, meta.Preview, meta.TopicTitle, meta.Path)
+		name := sessionEventsDisplayTitle(a.localizedTopicTitle(meta.TopicTitle, topicTitleSourceAuto), meta.Title, meta.Preview, meta.Path)
 		// Task 345: an open tab keeps this process's lease on the session and
 		// any live lease record (foreign writer, serve, or stale holder)
 		// blocks CompactSessionFile - surface it before the click.
@@ -200,13 +200,18 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 	return view
 }
 
-// sessionEventsDisplayTitle is task 345's name chain: user title, then the
-// first-message preview, then the topic title, then a human-readable stamp
-// carved from the session file name (20260927-030006.576166300-... -> "0927
-// 03:00"). A bare jsonl path is what the user rejected - the last resort is
-// a short recognizable label, never the full path.
-func sessionEventsDisplayTitle(title, preview, topic, path string) string {
-	for _, candidate := range []string{title, preview, topic} {
+// sessionEventsDisplayTitle is tl 1076's name chain: the topic title (the
+// same name the sidebar project tree shows for this conversation) first, then
+// a user-chosen session title, then the first-message preview, then a
+// human-readable stamp carved from the session file name (20260927-030006.576
+// 166300-... -> "0927 03:00"). A bare jsonl path is what the user rejected -
+// the last resort is a short recognizable label, never the full path.
+//
+// 任务书（tl 1076）验收锚点是"topic > Title > Preview"三级顺序：pre-1076 的
+// task-345 顺序（title > preview > topic）导致未被单独命名的会话显示成首条
+// 用户消息的截断（"已经安装驱动了，稍后我…"），用户无法据此识别会话。
+func sessionEventsDisplayTitle(topic, title, preview, path string) string {
+	for _, candidate := range []string{topic, title, preview} {
 		if s := strings.TrimSpace(candidate); s != "" {
 			if runecount := len([]rune(s)); runecount > 40 {
 				return string([]rune(s)[:40]) + "…"
@@ -227,15 +232,16 @@ func sessionEventsDisplayTitle(title, preview, topic, path string) string {
 }
 
 // sessionEventsName resolves a display name for a path from the current list.
+// tl 1076: the panel and the per-row repair result share this single chain, so
+// a compact result row names the same topic the inventory card just showed
+// (pre-1076 the two disagreed whenever the session carried no custom title).
 func (a *App) sessionEventsName(path string) string {
 	for _, meta := range a.ListSessions() {
 		if meta.Path != path {
 			continue
 		}
-		if title := strings.TrimSpace(meta.Title); title != "" {
-			return title
-		}
-		return strings.TrimSpace(meta.Preview)
+		return sessionEventsDisplayTitle(a.localizedTopicTitle(meta.TopicTitle, topicTitleSourceAuto),
+			meta.Title, meta.Preview, meta.Path)
 	}
 	return ""
 }

@@ -13,3 +13,11 @@
 .events-rotation-panel__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .events-rotation-panel__stat { color: var(--fg-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .events-rotation-panel__results { border-top: 1px solid var(--border); padding-top: 8px; }
+/* tl 1076: the second-level repair dialog overrides the shared .modal 440px
+   cap — the settings right column was too narrow for the full list, so the
+   dialog gets ≥760px (and 80vh height with its own scroll) to hold every row,
+   its status badge, and the per-row repair button. */
+.events-repair-dialog-backdrop { z-index: 90; }
+.events-repair-dialog { max-width: 860px; width: 90vw; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
+.events-repair-dialog__title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
+.events-repair-dialog__list { overflow-y: auto; min-height: 0; }

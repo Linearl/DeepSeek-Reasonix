@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const panel = readFileSync(resolve(testDir, "../components/SessionEventsPanel.tsx"), "utf8");
+const panelCss = readFileSync(resolve(testDir, "../components/SessionEventsPanel.css"), "utf8");
 const settings = readFileSync(resolve(testDir, "../components/SettingsPanel.tsx"), "utf8");
 const bridge = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
 const viewTypes = readFileSync(resolve(testDir, "../lib/settingsViewTypes.ts"), "utf8");
@@ -101,8 +102,20 @@ ok(panel.includes('const ROTATION_MODES = ["off", "manual", "auto"] as const'), 
 ok(panel.includes("await app.SetEventsAutoRotation(candidate)"), "Seg buttons save the selected mode");
 ok(panel.includes("await app.SetEventsRotation(Number(factor), Number(capMB))"), "Auto mode saves both thresholds");
 ok(panel.includes("app.CompactAllSessionEvents(3)"), "Repair-all runs the bounded multi-round batch");
-ok(panel.includes("overCount") && panel.includes("overLimit") && panel.includes("topThree"), "Statistic card reads over-count + top offenders");
+ok(panel.includes("overCount") && panel.includes("overLimit"), "Statistic card reads over-count + top offenders");
 ok(panel.includes("settings.eventsRotation.desc.${mode}") && panel.includes("settings.eventsRotation.mode.${candidate}"), "Mode copy resolves through the typed locale keys");
+
+// tl 1076: the settings inline card is a summary (over-count + summary line +
+// open-panel button); the full list moved into a second-level dialog with its
+// own ≥760px modal width and its own threshold controls + per-row repair.
+ok(panel.includes("settings.eventsRotation.card.openPanel"), "Settings card exposes the open-repair-panel button");
+ok(panel.includes("settings.eventsRotation.card.summary"), "Settings card shows a session-count summary line");
+ok(panel.includes("settings.eventsRotation.card.dialogTitle"), "Repair dialog has its own aria-label title");
+ok(panel.includes("SessionEventsRepairDialog"), "Full repair list lives in a dedicated dialog component");
+ok(panel.includes("className=\"modal events-repair-dialog\"") && panel.includes("aria-modal=\"true\""), "Dialog is a modal dialog with aria-modal");
+ok(panel.includes("events-repair-dialog__list") && panel.includes("overEntries.map"), "Dialog renders the full over-limit list (not just top three)");
+ok(/\.events-repair-dialog \{[^}]*max-width: 860px/.test(panelCss), "Dialog overrides the shared 440px modal cap with ≥760px width");
+ok(panel.includes("onClose") && panel.includes("setDialogOpen(false)"), "Dialog closes back to the settings summary card");
 
 // Task 362: the LEFT-MENU entry mirrors the switch state itself (the 356
 // card-button split is about busy, the menu must not gray out on
@@ -146,10 +159,14 @@ const requiredKeys = [
   // Task 356: manual-mode risk copy split off the shared hint.
   "settings.eventsRotation.card.busyHintManual",
   "settings.eventsRotation.card.busyConfirm",
+  // tl 1076: open-panel button + dialog title + summary line.
+  "settings.eventsRotation.card.openPanel",
+  "settings.eventsRotation.card.dialogTitle",
+  "settings.eventsRotation.card.summary",
 ];
 ok(
   locales.every((locale) => requiredKeys.every((key) => locale.includes(`"${key}"`))),
-  "zh, zh-TW and en each define all 25 task-333/345/356 keys",
+  "zh, zh-TW and en each define all task-333/345/356/1076 keys",
 );
 
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
