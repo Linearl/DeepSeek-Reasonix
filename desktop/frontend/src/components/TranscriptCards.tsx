@@ -1,7 +1,7 @@
 // Small transcript row cards: phase lines, steer bubbles, notice cards with
 // decision receipts, and compaction cards.
 
-import { useCallback, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import { CheckCheck, ChevronDown, ChevronRight, CirclePlay, ClipboardCheck, FileSearch, GitBranch, Info, MessageSquare, TriangleAlert } from "lucide-react";
 import { getLocale, useT } from "../lib/i18n";
 import type { CompactionItem, NoticeItem } from "../lib/transcriptRows";
@@ -12,6 +12,11 @@ import { TurnEditList } from "./TurnEditList";
 import { STEER_NOTICE_PREFIX } from "../lib/useController";
 import { collabAsImSource, type CollabImSourceMessage } from "../lib/collabMessage";
 import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactNames";
+import { parseAttachmentRefsForDisplay } from "../lib/attachmentDisplay";
+import { CopyButton } from "./CopyButton";
+// 任务1066：MessageAttachments 复用 234 的 React.lazy 模式（Message.tsx 同款），
+// 避免 TranscriptCards 首屏 bundle 静载图片预览模块。
+const MessageAttachments = lazy(() => import("./MessageAttachments").then((module) => ({ default: module.MessageAttachments })));
 // 任务998：引导块/steer 块补时间戳——复用 1012 的 messageTimestamp 三档契约
 // （同日 HH:mm / 跨天 MM-DD HH:mm / 跨年 YYYY-MM-DD HH:mm），与消息气泡
 // 同一函数、同一 useTick 渲染时刻源，不另起格式化逻辑。
@@ -151,6 +156,21 @@ function SteerCollabRouteSummary({ source }: { source: CollabImSourceMessage }) 
 // user row shows for the same message. The deferred placeholder keeps the 723
 // semantics: collapsed route summary (no bare contact_id), expanding reveals
 // the card below the toggle.
+// 任务1066: steer 正文剥除 @引用 + 图片缩略图 + 复制按钮——与用户消息
+// （Message.tsx）同款形态，三处引导场景（steer 气泡/723 deferred 展开/未
+// 应用引导 notice 块）复用同一组件保证一致性。
+function SteerGuidanceBody({ body, className }: { body: string; className?: string }) {
+  const { text: displayText, attachments } = parseAttachmentRefsForDisplay(body);
+  return (
+    <>
+      <span className={className ?? "steer-line__text"}>{displayText}</span>
+      {attachments.length > 0 && <Suspense fallback={null}><MessageAttachments attachments={attachments} /></Suspense>}
+      {/* 复制 payload = 原文含 @引用（与用户消息 CopyButton 的 actionText 语义一致，便于直接重发）。 */}
+      <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
+    </>
+  );
+}
+
 export function SteerCard({ id, text, deferred = false, createdAt }: { id: string; text: string; deferred?: boolean; createdAt?: number }) {
   const t = useT();
   const [expanded, setExpanded] = useState(false);
@@ -168,7 +188,7 @@ export function SteerCard({ id, text, deferred = false, createdAt }: { id: strin
       <div className="steer-line" data-entrance={id}>
         <div className="steer-line__bubble" title={t("transcript.steer")}>
           <span className="steer-line__icon" aria-hidden="true">↪</span>
-          <span className="steer-line__text">{body}</span>
+          <SteerGuidanceBody body={body} />
           {/* 任务998：入队时刻走 1012 三档（同日只显时分，宽度冲击最小）。 */}
           <CardTime createdAt={createdAt} className="steer-line__time" />
         </div>
@@ -188,13 +208,19 @@ export function SteerCard({ id, text, deferred = false, createdAt }: { id: strin
         <span className="steer-line__icon" aria-hidden="true">↪</span>
         <span className="steer-line__status">{t("transcript.steerDeferred")}</span>
         <span className={`steer-line__text${collab || !expanded ? " steer-line__text--summary" : ""}`}>
-          {collab ? <SteerCollabRouteSummary source={collab} /> : expanded ? body : firstLine}
+          {collab ? <SteerCollabRouteSummary source={collab} /> : expanded ? parseAttachmentRefsForDisplay(body).text : firstLine}
         </span>
         <CardTime createdAt={createdAt} className="steer-line__time" />
         <ChevronRight size={12} className="steer-line__chevron" aria-hidden="true" />
       </button>
       {/* 任务811: deferred 占位展开时用户已显式点开，卡片不再套 705 二次折叠。 */}
       {expanded && collab && <SteerCollabCard source={collab} foldable={false} />}
+      {/* 任务1066: 展开态与①同款形态（图片缩略图+复制按钮）。 */}
+      {expanded && !collab && (
+        <div className="steer-line__expanded">
+          <SteerGuidanceBody body={body} className="steer-line__text steer-line__text--expanded" />
+        </div>
+      )}
     </div>
   );
 }
@@ -306,7 +332,14 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
         ) : (
           <>
             {item.title ? <div className="notice-line__title">{item.title}</div> : null}
-            <div className="notice-line__body">{item.text}</div>
+            {/* 任务1066: unapplied_steer 复用 SteerGuidanceBody——与 steer 气泡同款形态（图片缩略图+复制按钮）。 */}
+            {item.code === "unapplied_steer" ? (
+              <div className="notice-line__body notice-line__body--unapplied-steer">
+                <SteerGuidanceBody body={item.text} className="notice-line__text-body" />
+              </div>
+            ) : (
+              <div className="notice-line__body">{item.text}</div>
+            )}
             {/* 任务998：未应用 steer 块等 notice 补时间戳（1012 三档）。 */}
             <CardTime createdAt={item.createdAt} className="notice-line__time" />
           </>
