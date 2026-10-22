@@ -431,6 +431,28 @@ export interface SessionRepairRecordView {
   after: string;
 }
 
+// 任务 1065：合成一次的参与分支读数（mirrors agent.HeadSynthesisItem）。
+export interface HeadSynthesisItemView {
+  path: string;
+  unique: number;
+  shared: number;
+  uniqueToHead: number;
+  archived: boolean;
+}
+// 任务 1065：合成结果报告（mirrors agent.HeadSynthesisReport）。
+export interface HeadSynthesisReport {
+  mainPath: string;
+  headId?: string;
+  winnerPath?: string;
+  promoted: boolean;
+  prefixed?: number;
+  trashed: string[];
+  items: HeadSynthesisItemView[];
+  afterMessages: number;
+  afterTurns: number;
+  skipped: string[];
+}
+
 export interface DesktopShellStatusView {
   trayState: "probing" | "ready" | "unavailable";
   backgroundCloseAvailable: boolean;
@@ -1196,9 +1218,16 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   TakeoverSession(tabId: string, mode: "wait" | "interrupt"): Promise<void>;
   DeleteSession(path: string): Promise<void>;
   DeleteRecoveryCopy(path: string): Promise<void>;
+  /** 任务 1064：版本面板手动删除分支（用户显式选择，不要求覆盖证明，落回收站）。 */
+  DeleteRecoveryBranch(path: string): Promise<void>;
+  /** 任务 1064：版本面板删除 v3 head（retire 标记；当前选中 head 后端拒绝）。 */
+  DeleteSessionVersionHead(mainPath: string, headId: string): Promise<void>;
   GetRecoveryLineage(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<RecoveryLineageView>;
   GetSessionVersionState(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string; recordClassification?: boolean }): Promise<import("./types").SessionVersionStateView>;
   SetActiveSessionVersion(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
+  /** 任务 1065：选 HEAD 反向合成最长链（继承 1.34 合并规则：轮次优先推荐 +
+   *  tail 预览 + 选定 HEAD 后把其余分支独有事件并入主线，重复事件零双份）。 */
+  SynthesizeSessionHeads(mainPath: string, headId: string): Promise<HeadSynthesisReport>;
   RetrySessionRecovery(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
   ReconcileRecoveryVersions(key: { scope: string; workspaceRoot?: string; topicId: string; path?: string }): Promise<void>;
   ChooseRecoveryBranch(request: import("./types").RecoveryPreferenceRequest): Promise<void>;
@@ -5084,6 +5113,12 @@ function makeMockApp(): AppBindings {
     async DeleteRecoveryCopy(path: string) {
       return this.DeleteSession(path);
     },
+    // 任务 1064：dev mock 里「删除分支」与删除副本同义——mock 没有回收站可言，
+    // 两个入口都从列表里摘掉该会话即可。
+    async DeleteRecoveryBranch(path: string) {
+      return this.DeleteSession(path);
+    },
+    async DeleteSessionVersionHead() {},
     async GetRecoveryLineage(key) {
       const topic = findMockTopic(key.topicId);
       return {
@@ -5100,6 +5135,19 @@ function makeMockApp(): AppBindings {
       return { conversationId: key.topicId, canContinue: true, requiresChoice: lineage.state === "diverged" && lineage.unresolved > 0, lineage };
     },
     async SetActiveSessionVersion() {},
+    // 任务 1065：dev mock 的合成是一次性的假读数——mock 没有真实分支可折，
+    // 报告空 items 让面板走「无可合成」分支，不假装成功。
+    async SynthesizeSessionHeads(mainPath: string): Promise<HeadSynthesisReport> {
+      return {
+        mainPath,
+        promoted: false,
+        trashed: [],
+        items: [],
+        afterMessages: 0,
+        afterTurns: 0,
+        skipped: [],
+      };
+    },
     async RetrySessionRecovery() {},
     async ReconcileRecoveryVersions() {},
     async ChooseRecoveryBranch() {},

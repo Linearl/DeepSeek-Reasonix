@@ -4434,6 +4434,45 @@ export const zh: Record<DictKey, string> = {
   "settings.storageTitle": "数据位置",
   "settings.storageHint": "查看 Reasonix 的工作区和应用数据位置。",
   "settings.recoveryCopiesTitle": "工作阶段版本与副本",
+  // 任务 1063：两个分区合并成一个——badge 在会话行内标注 v3 多 heads 版本数，
+  // unique 徽标标注副本里的独有事件；两者都是分级展示的可见性基础（体积列
+  // 见 recoveryCopiesColSize）。
+  "settings.recoveryCopiesVersionsBadge": "{count} 个 v3 版本",
+  "settings.recoveryCopiesVersionsBadgeHint": "该会话的 v3 事件日志有 {count} 个存活 heads；展开行可查看读数并切换。",
+  "settings.recoveryCopiesUniqueBadge": "{n} 条独有事件",
+  // 任务 1064：版本面板手动删除分支（单删/批量）——当前版本不可选不可删；
+  // 删除走确认+回收语义（副本进 .trash 可恢复；v3 head 打 retire 标记，轮换
+  // 前仍可切回）；删除后列表即时刷新。
+  "settings.recoveryCopiesDelete": "删除",
+  "settings.recoveryCopiesDeleteTitle": "删除该分支",
+  "settings.recoveryCopiesDeleteLead": "即将删除的分支",
+  "settings.recoveryCopiesDeleteWarn": "该分支会被移入回收站（可恢复），不会永久删除。",
+  "settings.recoveryCopiesDeleteConfirm": "确认删除",
+  "settings.recoveryCopiesDeleteHeadTitle": "删除该版本",
+  "settings.recoveryCopiesDeleteHeadLead": "即将删除的版本",
+  "settings.recoveryCopiesDeleteHeadWarn": "该版本会被标记为已删除（下次单写轮换前仍可切回，不会立即丢内容）。",
+  "settings.recoveryCopiesDeleteBatchTitle": "批量删除所选分支",
+  "settings.recoveryCopiesDeleteBatchLead": "即将删除的分支",
+  "settings.recoveryCopiesDeleteBatchWarn": "所选分支会被移入回收站（可恢复），不会永久删除。",
+  "settings.recoveryCopiesDeleteSelected": "删除所选",
+  "settings.recoveryCopiesDeleting": "正在删除",
+  "settings.recoveryCopiesOutcomeDeleted": "已删除",
+  "settings.recoveryCopiesDeleteReopenHint": "删除已生效。请到项目中重新打开该会话（或刷新标签页）才能看到列表更新——被删内容还在回收站里。",
+  // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
+  //  tail 预览已在候选链行内），本组键只补「合成」这个一键式主操作：确认时
+  //  列出参与分支与读数、进度/结果报告合成前后条数与轮次（并集可核对）。
+  "settings.recoveryCopiesSynthesizeBtn": "以选定 HEAD 合成最长链",
+  "settings.recoveryCopiesSynthesizeHeadHint": "已选 HEAD：合成会把它当主线，其余分支的独有事件并入。",
+  "settings.recoveryCopiesSynthesizePickHint": "尚未选 HEAD：合成将以当前主线为 HEAD；也可先在下方链行里「预览并选中」一条分支再合成。",
+  "settings.recoveryCopiesSynthesizeTitle": "以该 HEAD 反向合成最长链",
+  "settings.recoveryCopiesSynthesizeLead": "即将以它为主线合成",
+  "settings.recoveryCopiesSynthesizeConfirm": "开始合成",
+  "settings.recoveryCopiesSynthesizeWarn": "其余分支的独有事件会并入这条链（重复事件零双份），落败分支进入回收站（可恢复）。",
+  "settings.recoveryCopiesSynthesizing": "正在合成",
+  "settings.recoveryCopiesSynthesizeNoBranch": "该会话只有一条链，没有可合成的分支。",
+  "settings.recoveryCopiesOutcomeSynthesized": "已合成",
+  "settings.recoveryCopiesSynthesizePrefixed": "拼接落败链前缀",
+  "settings.recoveryCopiesSynthesizeReopenHint": "合成已生效。请到项目中重新打开该会话（或刷新标签页）才能看到合成后的内容——落败分支还在回收站里。",
   "settings.sessionVersions.title": "工作阶段版本与修复（v3 事件日志）",
   "settings.sessionVersions.hint": "读取 v3 events 日志的版本（head）读数：条数 / 轮次 / 最后活动 / 预览，标注当前选中与「更长且更新」建议。切换可撤销；修复先备份再执行并留修复记录，全程纯本地不调用模型。",
   "settings.sessionVersions.empty": "没有发现多版本的会话。",
@@ -4452,6 +4491,10 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.healthy": "健康：无需修复。",
   "settings.sessionVersions.noRepairNeeded": "无需修复。",
   "settings.sessionVersions.repaired": "已修复（{actions}）；备份：{backup}",
+  // 队尾体积列修复：修复回执的体积对比——瘦身类动作（diet）的收益要在面板上
+  // 看得见；体积不变时照实说「无变化」，不编造数字。
+  "settings.sessionVersions.volumeDelta": "体积 {before} → {after}",
+  "settings.sessionVersions.volumeUnchanged": "体积无变化",
   "settings.sessionVersions.repairLog": "修复记录：",
   "settings.sessionVersions.degraded": "已降级",
   "settings.sessionVersions.degradedHint": "该会话的事件日志读取被拒或失败（如重放超出安全预算）：行内计数不可用，其余分区不受影响。",

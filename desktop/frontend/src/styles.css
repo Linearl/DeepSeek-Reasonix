@@ -45828,6 +45828,71 @@ button.statusbar__mcp:focus-visible {
   color: var(--warn);
   border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
 }
+/* 任务 1063：两个分区合并成一个——副本行与 v3 版本徽标在行内共存；v3 版本
+   块（heads 表 + 切换/健康/修复）与候选链块并列在展开区内，读数含体积列
+   （rc-num 让数字列右对齐，与 .rc-row 的列语义一致）。 */
+.rc-versions__badge {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 500;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  white-space: nowrap;
+}
+.rc-copy__unique-badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  white-space: nowrap;
+}
+.rc-versions {
+  margin: 8px 0 4px;
+  padding: 8px 10px 4px;
+  border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent);
+}
+.rc-versions__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+.rc-versions__table th,
+.rc-versions__table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+  text-align: left;
+  vertical-align: baseline;
+}
+.rc-versions__table th { font-weight: 600; opacity: 0.72; }
+.rc-num { text-align: right; font-variant-numeric: tabular-nums; }
+.rc-cell-ellipsis {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rc-cell-nowrap { white-space: nowrap; }
+.rc-versions__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.rc-versions__health { margin-top: 6px; }
+.rc-versions__issues { margin: 0; padding-left: 18px; }
+/* 任务 1064：删除入口——危险动作用 danger 色区分于普通次级按钮，但按钮本体
+   仍是常规尺寸（面板里的行内操作，不做大红块）。副本行的操作格里复选框与
+   按钮并排，右对齐贴住列尾。 */
+.rc-delete {
+  color: var(--danger, #e5484d);
+  border-color: color-mix(in srgb, var(--danger, #e5484d) 45%, transparent);
+}
+.rc-action { gap: 8px; }
 .rc-result {
   margin-bottom: 10px;
   padding: 8px 10px;
@@ -45874,6 +45939,17 @@ button.statusbar__mcp:focus-visible {
    is what makes "the merge keeps the longest" checkable rather than a claim. */
 .rc-chains { margin: 8px 0 4px; padding: 8px 10px 4px; border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent); }
 .rc-chains__head { margin-bottom: 6px; font-size: 0.9em; font-weight: 600; opacity: 0.72; }
+/* 任务 1065：链表头部的合成入口与提示——合成是整表级一键操作（选 HEAD → 反
+   向合成最长链），所以按钮与状态提示挂在链表头部而不是单行里；行内只保留
+   1.34 的预览/选中语义。 */
+.rc-chains__actions {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.rc-chains__synth-hint { font-size: 0.86em; opacity: 0.7; }
 .rc-chain {
   display: flex;
   flex-wrap: wrap;

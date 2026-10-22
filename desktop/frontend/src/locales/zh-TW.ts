@@ -3043,6 +3043,45 @@ export const zhTW: Record<DictKey, string> = {
   "settings.storageTitle": "資料位置",
   "settings.storageHint": "檢視 Reasonix 的工作區與應用程式資料位置。",
   "settings.recoveryCopiesTitle": "工作階段版本與副本",
+  // 任務 1063：兩個分區合併成一個——badge 在工作階段行內標註 v3 多 heads 版
+  // 本數，unique 徽標標註副本裡的獨有事件；兩者都是分級展示的可見性基礎（體
+  // 積欄見 recoveryCopiesColSize）。
+  "settings.recoveryCopiesVersionsBadge": "{count} 個 v3 版本",
+  "settings.recoveryCopiesVersionsBadgeHint": "該工作階段的 v3 事件日誌有 {count} 個存活 heads；展開行可查看讀數並切換。",
+  "settings.recoveryCopiesUniqueBadge": "{n} 條獨有事件",
+  // 任務 1064：版本面板手動刪除分支（單刪/批量）——當前版本不可選不可刪；
+  // 刪除走確認+回收語義（副本進 .trash 可恢復；v3 head 打 retire 標記，輪換
+  // 前仍可切回）；刪除後列表即時重新整理。
+  "settings.recoveryCopiesDelete": "刪除",
+  "settings.recoveryCopiesDeleteTitle": "刪除該分支",
+  "settings.recoveryCopiesDeleteLead": "即將刪除的分支",
+  "settings.recoveryCopiesDeleteWarn": "該分支會被移入回收站（可恢復），不會永久刪除。",
+  "settings.recoveryCopiesDeleteConfirm": "確認刪除",
+  "settings.recoveryCopiesDeleteHeadTitle": "刪除該版本",
+  "settings.recoveryCopiesDeleteHeadLead": "即將刪除的版本",
+  "settings.recoveryCopiesDeleteHeadWarn": "該版本會被標記為已刪除（下次單寫輪換前仍可切回，不會立即丟內容）。",
+  "settings.recoveryCopiesDeleteBatchTitle": "批量刪除所選分支",
+  "settings.recoveryCopiesDeleteBatchLead": "即將刪除的分支",
+  "settings.recoveryCopiesDeleteBatchWarn": "所選分支會被移入回收站（可恢復），不會永久刪除。",
+  "settings.recoveryCopiesDeleteSelected": "刪除所選",
+  "settings.recoveryCopiesDeleting": "正在刪除",
+  "settings.recoveryCopiesOutcomeDeleted": "已刪除",
+  "settings.recoveryCopiesDeleteReopenHint": "刪除已生效。請到專案中重新開啟該工作階段（或重新整理標籤頁）才能看到列表更新——被刪內容還在回收站裡。",
+  // 任務 1065：選 HEAD 反向合成最長鏈——繼承 1.34 合併規則（輪次優先推薦 +
+  //  tail 預覽已在候選鏈行內），本組鍵只補「合成」這個一鍵式主操作：確認時
+  //  列出任與分支與讀數、進度/結果報告合成前後條數與輪次（並集可核對）。
+  "settings.recoveryCopiesSynthesizeBtn": "以選定 HEAD 合成最長鏈",
+  "settings.recoveryCopiesSynthesizeHeadHint": "已選 HEAD：合成會把它當主線，其餘分支的獨有事件併入。",
+  "settings.recoveryCopiesSynthesizePickHint": "尚未選 HEAD：合成將以當前主線為 HEAD；也可先在下方鏈行裡「預覽並選中」一條分支再合成。",
+  "settings.recoveryCopiesSynthesizeTitle": "以該 HEAD 反向合成最長鏈",
+  "settings.recoveryCopiesSynthesizeLead": "即將以它為主線合成",
+  "settings.recoveryCopiesSynthesizeConfirm": "開始合成",
+  "settings.recoveryCopiesSynthesizeWarn": "其餘分支的獨有事件會併入這條鏈（重複事件零雙份），落敗分支進入回收站（可恢復）。",
+  "settings.recoveryCopiesSynthesizing": "正在合成",
+  "settings.recoveryCopiesSynthesizeNoBranch": "該工作階段只有一條鏈，沒有可合成的分支。",
+  "settings.recoveryCopiesOutcomeSynthesized": "已合成",
+  "settings.recoveryCopiesSynthesizePrefixed": "拼接落敗鏈前綴",
+  "settings.recoveryCopiesSynthesizeReopenHint": "合成已生效。請到專案中重新開啟該工作階段（或重新整理標籤頁）才能看到合成後的內容——落敗分支還在回收站裡。",
   "settings.sessionVersions.title": "工作階段版本與修復（v3 事件日誌）",
   "settings.sessionVersions.hint": "讀取 v3 events 日誌的版本（head）讀數：條數 / 輪次 / 最後活動 / 預覽，標註當前選中與「更長且更新」建議。切換可撤銷；修復先備份再執行並留修復記錄，全程純本地不呼叫模型。",
   "settings.sessionVersions.empty": "沒有發現多版本的工作階段。",
@@ -3061,6 +3100,10 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersions.healthy": "健康：無需修復。",
   "settings.sessionVersions.noRepairNeeded": "無需修復。",
   "settings.sessionVersions.repaired": "已修復（{actions}）；備份：{backup}",
+  // 隊尾體積欄修復：修復回執的體積對比——瘦身類動作（diet）的收益要在面板上
+  // 看得見；體積不變時照實說「無變化」，不編造數字。
+  "settings.sessionVersions.volumeDelta": "體積 {before} → {after}",
+  "settings.sessionVersions.volumeUnchanged": "體積無變化",
   "settings.sessionVersions.repairLog": "修復記錄：",
   "settings.sessionVersions.degraded": "已降級",
   "settings.sessionVersions.degradedHint": "該會話的事件日誌讀取被拒或失敗（如重放超出安全預算）：行內計數不可用，其餘分區不受影響。",
