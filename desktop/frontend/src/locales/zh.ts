@@ -4429,6 +4429,12 @@ export const zh: Record<DictKey, string> = {
   "settings.storageTitle": "数据位置",
   "settings.storageHint": "查看 Reasonix 的工作区和应用数据位置。",
   "settings.recoveryCopiesTitle": "工作阶段版本与副本",
+  // 任务 1063：两个分区合并成一个——badge 在会话行内标注 v3 多 heads 版本数，
+  // unique 徽标标注副本里的独有事件；两者都是分级展示的可见性基础（体积列
+  // 见 recoveryCopiesColSize）。
+  "settings.recoveryCopiesVersionsBadge": "{count} 个 v3 版本",
+  "settings.recoveryCopiesVersionsBadgeHint": "该会话的 v3 事件日志有 {count} 个存活 heads；展开行可查看读数并切换。",
+  "settings.recoveryCopiesUniqueBadge": "{n} 条独有事件",
   "settings.sessionVersions.title": "工作阶段版本与修复（v3 事件日志）",
   "settings.sessionVersions.hint": "读取 v3 events 日志的版本（head）读数：条数 / 轮次 / 最后活动 / 预览，标注当前选中与「更长且更新」建议。切换可撤销；修复先备份再执行并留修复记录，全程纯本地不调用模型。",
   "settings.sessionVersions.empty": "没有发现多版本的会话。",

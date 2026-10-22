@@ -45828,6 +45828,63 @@ button.statusbar__mcp:focus-visible {
   color: var(--warn);
   border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
 }
+/* 任务 1063：两个分区合并成一个——副本行与 v3 版本徽标在行内共存；v3 版本
+   块（heads 表 + 切换/健康/修复）与候选链块并列在展开区内，读数含体积列
+   （rc-num 让数字列右对齐，与 .rc-row 的列语义一致）。 */
+.rc-versions__badge {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 500;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  white-space: nowrap;
+}
+.rc-copy__unique-badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  white-space: nowrap;
+}
+.rc-versions {
+  margin: 8px 0 4px;
+  padding: 8px 10px 4px;
+  border-top: 1px dashed color-mix(in srgb, currentColor 16%, transparent);
+}
+.rc-versions__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94em;
+}
+.rc-versions__table th,
+.rc-versions__table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+  text-align: left;
+  vertical-align: baseline;
+}
+.rc-versions__table th { font-weight: 600; opacity: 0.72; }
+.rc-num { text-align: right; font-variant-numeric: tabular-nums; }
+.rc-cell-ellipsis {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rc-cell-nowrap { white-space: nowrap; }
+.rc-versions__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.rc-versions__health { margin-top: 6px; }
+.rc-versions__issues { margin: 0; padding-left: 18px; }
 .rc-result {
   margin-bottom: 10px;
   padding: 8px 10px;

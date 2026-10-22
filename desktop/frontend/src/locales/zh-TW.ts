@@ -3043,6 +3043,12 @@ export const zhTW: Record<DictKey, string> = {
   "settings.storageTitle": "資料位置",
   "settings.storageHint": "檢視 Reasonix 的工作區與應用程式資料位置。",
   "settings.recoveryCopiesTitle": "工作階段版本與副本",
+  // 任務 1063：兩個分區合併成一個——badge 在工作階段行內標註 v3 多 heads 版
+  // 本數，unique 徽標標註副本裡的獨有事件；兩者都是分級展示的可見性基礎（體
+  // 積欄見 recoveryCopiesColSize）。
+  "settings.recoveryCopiesVersionsBadge": "{count} 個 v3 版本",
+  "settings.recoveryCopiesVersionsBadgeHint": "該工作階段的 v3 事件日誌有 {count} 個存活 heads；展開行可查看讀數並切換。",
+  "settings.recoveryCopiesUniqueBadge": "{n} 條獨有事件",
   "settings.sessionVersions.title": "工作階段版本與修復（v3 事件日誌）",
   "settings.sessionVersions.hint": "讀取 v3 events 日誌的版本（head）讀數：條數 / 輪次 / 最後活動 / 預覽，標註當前選中與「更長且更新」建議。切換可撤銷；修復先備份再執行並留修復記錄，全程純本地不呼叫模型。",
   "settings.sessionVersions.empty": "沒有發現多版本的工作階段。",

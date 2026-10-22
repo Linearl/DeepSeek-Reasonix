@@ -3,7 +3,6 @@ import { Copy, Check } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { RecoveryCopiesSection } from "./RecoveryCopiesSection";
-import { SessionVersionsSection } from "./SessionVersionsSection";
 
 type StorageSettingsView = Awaited<ReturnType<typeof app.StorageSettings>>;
 
@@ -107,15 +106,14 @@ export function StorageSettingsPage() {
         <StoragePathField label={t("settings.storageCache")} value={view.cachePath} />
         <StoragePathField label={t("settings.storageExtensions")} value={view.extensionsPath} />
       </div>
-        {/* 任务 1039r：两个分区各自局部兜底——分区渲染抛错降级为该分区的
+        {/* 任务 1039r：分区各自局部兜底——分区渲染抛错降级为该分区的
             原因横幅+重试，不再上抛给设置 surface 的整页 fail-closed 边界
-            （「设置加载失败。重试」吞掉路径区与另一分区的实测形态）。 */}
+            （「设置加载失败。重试」吞掉路径区与另一分区的实测形态）。
+            任务 1063：两个版本分区（副本扫描 + v3 events heads）合并为一个，
+            原 1011 需求 E 的「工作阶段版本与修复」分区随之并入此面板的展开
+            行内，不再单独渲染。 */}
         <SectionBoundary>
           <RecoveryCopiesSection />
-        </SectionBoundary>
-        {/* 任务 1011 需求 E：v3 events heads 的版本与修复分区，与 legacy 副本扫描分区并存 */}
-        <SectionBoundary>
-          <SessionVersionsSection />
         </SectionBoundary>
 </section>
   );

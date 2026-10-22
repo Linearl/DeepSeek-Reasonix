@@ -93,12 +93,26 @@ const BASE_GROUPS = [
 ];
 
 /** stubBridge installs the storage-page face of the bindings; callers override
- *  the per-scenario methods on the returned object. */
+ *  the per-scenario methods on the returned object.
+ *
+ *  任务 1063：v3 版本行并入副本面板后，列表行的来源是 ListRecoveryCopyGroups
+ *  （副本扫描），ListSessionVersionGroups 只负责行内叠加的版本徽标读数——两
+ *  者都保留，harness 才能同时钉住「副本行可展开」与「版本徽标不缺席」。 */
 function stubBridge(overrides: Partial<AppBindings>) {
   const base = {
     StorageSettings: async () => ({
       defaultWorkspace: "C:/work", statePath: "C:/state", cachePath: "C:/cache", extensionsPath: "C:/plugins",
     }),
+    ListRecoveryCopyGroups: async () => BASE_GROUPS.map((g) => ({
+      mainPath: g.mainPath,
+      mainLabel: g.mainLabel,
+      directory: g.directory,
+      mainExists: true,
+      mainMessages: 0,
+      mainBytes: 49_210_175,
+      mainModified: "2026-10-21T00:33:00Z",
+      copies: [],
+    })),
     ListSessionVersionGroups: async () => BASE_GROUPS,
     ListRecoveryChains: async () => { throw new Error("unreachable"); },
     ListSessionRepairRecordsFor: async () => [],
@@ -122,10 +136,14 @@ console.log("\nsession versions degraded expand + section boundary (1039r)");
   });
 
   const { root } = await renderPage(<StorageSettingsPage />);
-  ok(bodyText().includes("GC开发专员"), "① panel list renders before the expand");
   ok(Boolean(document.querySelector("input.mem-input")), "① storage path fields are on the page");
+  // 任务 1063：v3 版本块并入副本面板的展开行——先开面板，再展开那一行。
+  const openBtn = buttonByText("Review and merge");
+  ok(Boolean(openBtn), "① the copies panel open button renders");
+  await act(async () => { openBtn!.click(); });
+  await flush();
 
-  const expand = buttonByText("GC开发专员");
+  const expand = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
   ok(Boolean(expand), "① expand button for the incident row exists");
   await act(async () => { expand!.click(); });
   await flush();
@@ -155,7 +173,10 @@ console.log("\nsession versions degraded expand + section boundary (1039r)");
   });
 
   const { root } = await renderPage(<StorageSettingsPage />);
-  const expand = buttonByText("GC开发专员");
+  const openBtn = buttonByText("Review and merge");
+  await act(async () => { openBtn!.click(); });
+  await flush();
+  const expand = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
   await act(async () => { expand!.click(); });
   await flush();
 

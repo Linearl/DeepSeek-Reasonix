@@ -152,15 +152,20 @@ console.log("\nrecovery nil-slice arrays never crash the section render (1039r2)
   await unmount(root);
 }
 
-// ② ListSessionRepairRecordsFor 成功返回 null（无修复日志的常态）⇒ 版本
-//    面板展开该行不得崩、分区失败横幅不得出现，展开区照常渲染。
+// ② ListSessionRepairRecordsFor 成功返回 null（无修复日志的常态）⇒ 副本面板
+//    （任务 1063 合并后 v3 版本块也长在这一行内）展开该行不得崩、分区失败横
+//    幅不得出现，展开区照常渲染。
 {
   stubBridge({
     ListSessionRepairRecordsFor: async () => null,
   } as Partial<AppBindings>);
 
   const { root } = await renderPage(<StorageSettingsPage />);
-  const expand = buttonByText("GC开发专员");
+  const openBtn = buttonByText("Review and merge");
+  ok(Boolean(openBtn), "② the copies panel open button renders");
+  await act(async () => { openBtn!.click(); });
+  await flush();
+  const expand = document.querySelector<HTMLButtonElement>(".rc-modal .rc-toggle");
   ok(Boolean(expand), "② the versions panel row renders");
   await act(async () => { expand!.click(); });
   await flush();

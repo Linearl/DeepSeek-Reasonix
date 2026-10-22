@@ -4436,6 +4436,12 @@ export const en = {
   "settings.storageTitle": "Data locations",
   "settings.storageHint": "Review where Reasonix stores workspaces and application data.",
   "settings.recoveryCopiesTitle": "Session versions and copies",
+  // 任务 1063：两个分区合并成一个——badge 在会话行内标注 v3 多 heads 版本数，
+  // unique 徽标标注副本里的独有事件；两者都是分级展示的可见性基础（体积列
+  // 见 recoveryCopiesColSize）。
+  "settings.recoveryCopiesVersionsBadge": "{count} v3 versions",
+  "settings.recoveryCopiesVersionsBadgeHint": "This conversation's v3 event log holds {count} live heads. Expand the row to read them and switch.",
+  "settings.recoveryCopiesUniqueBadge": "{n} unique events",
   "settings.sessionVersions.title": "Session versions and repair (v3 event log)",
   "settings.sessionVersions.hint": "Reads the v3 event-log heads: messages / turns / last activity / preview, marking the current selection and the longer-and-newer suggestion. Switching is reversible; repairs back up first and write a repair record — local only, no model calls.",
   "settings.sessionVersions.empty": "No multi-version conversations found.",
