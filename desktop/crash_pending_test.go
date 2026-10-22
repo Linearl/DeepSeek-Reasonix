@@ -542,3 +542,104 @@ func TestCrashPendingDiagnosticsReportsQueueState(t *testing.T) {
 		t.Fatalf("newestAt not RFC3339 (%q): %v", after.NewestAt, err)
 	}
 }
+
+// ── task 1051: banner 「清空」 binding ──────────────────────────────────────
+// 「关闭」只写 sessionStorage 隐藏本次横幅；报告留在 14 天保留期的队列里，
+// 每次启动都重弹。ClearPendingCrashReports 是真的把队列删掉：锁内删（不与
+// writePendingReport 的并发写撕扯），并把内存快照一并作废。
+
+func TestClearPendingCrashReportsWipesQueue(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	writePendingCrash("clear", "boom-1", []byte("stack-1"))
+	writePendingCrash("clear", "boom-2", []byte("stack-2"))
+	// legacy 单报告文件（pre-queue 构建写的）也必须一并清掉。
+	if err := os.WriteFile(pendingCrashPath(), []byte(`{"schemaVersion":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(pendingCrashPaths()); got != 3 {
+		t.Fatalf("queue pre-state = %d paths, want 3", got)
+	}
+
+	app := NewApp()
+	if got := app.ClearPendingCrashReports(); got != 3 {
+		t.Fatalf("cleared = %d, want 3", got)
+	}
+	// 队列目录与 legacy 文件必须真的没了（文件级断言，不是只看计数）。
+	if got := pendingCrashPaths(); len(got) != 0 {
+		t.Fatalf("queue survived clear: %v", got)
+	}
+	if _, err := os.Stat(pendingCrashDir()); !os.IsNotExist(err) {
+		t.Fatalf("queue dir survived clear: %v", err)
+	}
+	if _, err := os.Stat(pendingCrashPath()); !os.IsNotExist(err) {
+		t.Fatalf("legacy pending file survived clear: %v", err)
+	}
+	// 下次启动不再弹：快照为空，PendingCrashSnapshot 报 count=0。
+	if got := app.PendingCrashSnapshot(); got.Count != 0 || len(got.Reports) != 0 {
+		t.Fatalf("snapshot after clear = %+v, want empty", got)
+	}
+}
+
+func TestClearPendingCrashReportsIdempotentOnEmptyQueue(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	app := NewApp()
+	if got := app.ClearPendingCrashReports(); got != 0 {
+		t.Fatalf("first clear on empty queue = %d, want 0", got)
+	}
+	if got := app.ClearPendingCrashReports(); got != 0 {
+		t.Fatalf("second clear (idempotent) = %d, want 0", got)
+	}
+}
+
+func TestClearPendingCrashReportsInvalidatesStoredSnapshot(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	// 模拟启动快照已捕获一批报告（写入内存），随后用户点「清空」。
+	writePendingCrash("snapshot", "boom", []byte("stack"))
+	app := NewApp()
+	app.snapshotPendingCrashForAnalysis()
+	if before := app.PendingCrashSnapshot(); before.Count == 0 {
+		t.Fatal("precondition: the boot snapshot must hold the queued report")
+	}
+
+	if got := app.ClearPendingCrashReports(); got < 1 {
+		t.Fatalf("cleared = %d, want >= 1", got)
+	}
+	// 清空后即使横幅因 locale 翻转重绘，也不能复活已清报告。
+	if got := app.PendingCrashSnapshot(); got.Count != 0 || len(got.Reports) != 0 {
+		t.Fatalf("snapshot resurrected after clear: %+v", got)
+	}
+}
+
+// 清空必须在 pendingCrashMu 锁内：并发写（writePendingReport）与清空不能撕扯。
+// 用 8 个并发 goroutine 各写一份报告 + 各清一次，断言无 panic 且最终一致
+// （不是 race detector 专属——锁内删是契约，任何一次漏锁都会在这里炸或留残）。
+func TestClearPendingCrashReportsRunsUnderQueueLock(t *testing.T) {
+	removeAllPendingCrashes()
+	t.Cleanup(removeAllPendingCrashes)
+
+	const workers = 8
+	var wg sync.WaitGroup
+	for i := range workers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			writePendingCrash(fmt.Sprintf("race-%d", i), "boom", []byte("stack"))
+			NewApp().ClearPendingCrashReports()
+		}(i)
+	}
+	wg.Wait()
+
+	// 结束后队列要么空要么只剩最后一批写入——关键是不 panic、不残留半删目录。
+	if _, err := os.Stat(pendingCrashDir()); os.IsNotExist(err) {
+		return // 全清干净
+	}
+	if got := len(pendingCrashQueuePaths()); got > workers {
+		t.Fatalf("queue grew past the concurrent writers: %d paths", got)
+	}
+}

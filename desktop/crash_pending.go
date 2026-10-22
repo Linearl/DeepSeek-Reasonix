@@ -231,6 +231,16 @@ func pendingCrashPaths() []string {
 }
 
 func removeAllPendingCrashes() {
+	pendingCrashMu.Lock()
+	removeAllPendingCrashesLocked()
+	pendingCrashMu.Unlock()
+}
+
+// removeAllPendingCrashesLocked is removeAllPendingCrashes' body; the exported
+// ClearPendingCrashReports binding and the telemetry-off flush drop both run it
+// under pendingCrashMu so a clear can never race a concurrent queue write
+// (task 1051). Do not call it without the lock held.
+func removeAllPendingCrashesLocked() {
 	_ = os.Remove(pendingCrashPath())
 	_ = os.RemoveAll(pendingCrashDir())
 	_ = os.Remove(fatalCrashCoveredPath())
@@ -240,6 +250,32 @@ func removeAllPendingCrashes() {
 	// could never suppress a fresh report (new names sort higher), but a reset
 	// keeps "no queue = nothing seen" literally true.
 	_ = os.Remove(crashPromptWatermarkPath())
+}
+
+// ClearPendingCrashReports is the pending-crash banner's 「清空」 action (task
+// 1051). The banner's 「关闭」 only hides it for the current run
+// (sessionStorage), so a report inside the 14-day retention window re-surfaced
+// on every launch; the user asked to be able to dismiss the batch for good.
+// It wipes the queue (dir + legacy file) for real, under pendingCrashMu, so a
+// fresh crash written concurrently is either kept (written after the wipe) or
+// deliberately discarded (written before it) — never half-deleted. Idempotent:
+// clearing an empty queue returns 0. Returns the number of reports dropped.
+func (a *App) ClearPendingCrashReports() int {
+	paths := pendingCrashPaths()
+	pendingCrashMu.Lock()
+	removeAllPendingCrashesLocked()
+	pendingCrashMu.Unlock()
+	// The snapshot handed to the frontend banner this run is in-memory only;
+	// without this the banner could re-paint the very reports just wiped (a
+	// later locale flip re-renders visibleReport).
+	a.crashAnalysisMu.Lock()
+	a.pendingCrashReports = nil
+	a.pendingCrashSnapshotTaken = true
+	a.crashAnalysisMu.Unlock()
+	if len(paths) > 0 {
+		slog.Info("desktop: pending crash reports cleared from the startup banner", "cleared", len(paths))
+	}
+	return len(paths)
 }
 
 // CrashPendingDiagnosticsReport is the diagnostics-settings view of the local
