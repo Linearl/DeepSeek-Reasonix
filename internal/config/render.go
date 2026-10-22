@@ -2353,6 +2353,22 @@ func renderServeConfig(b *strings.Builder, c *Config, scope RenderScope) {
 		b.WriteString("# result_dir = \"\"   # empty = <mail_dir>/bus-results\n")
 	}
 	b.WriteString("\n")
+
+	// 任务1049: [serve.pool] — timeouts for the lazily spawned per-project
+	// serves behind the desktop / `serve --pool` gateway. Zero keeps the
+	// pool default, so the absent block behaves exactly like before.
+	b.WriteString("[serve.pool]\n")
+	if c.Serve.Pool.SpawnTimeoutSeconds != 0 {
+		fmt.Fprintf(b, "spawn_timeout_seconds = %d   # wait ceiling for a cold serve start; 0 keeps the default (30)\n", c.Serve.Pool.SpawnTimeoutSeconds)
+	} else {
+		b.WriteString("# spawn_timeout_seconds = 30   # wait ceiling for a cold serve start; 0 keeps the default (30)\n")
+	}
+	if c.Serve.Pool.IdleTimeoutSeconds != 0 {
+		fmt.Fprintf(b, "idle_timeout_seconds = %d   # idle serve reclaim window; 0 keeps the default (900 = 15min)\n", c.Serve.Pool.IdleTimeoutSeconds)
+	} else {
+		b.WriteString("# idle_timeout_seconds = 900   # idle serve reclaim window; 0 keeps the default (900 = 15min)\n")
+	}
+	b.WriteString("\n")
 }
 
 func renderTOMLKeyPart(key string) string {

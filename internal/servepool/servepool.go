@@ -36,10 +36,14 @@ type Config struct {
 	// written; defaults to the project's .reasonix directory.
 	PortFileDir string
 	// IdleTimeout is how long a project serve may sit without traffic before
-	// being reclaimed. Default 15 minutes.
+	// being reclaimed. Default 15 minutes; the [serve.pool] config key
+	// idle_timeout_seconds overrides it.
 	IdleTimeout time.Duration
 	// SpawnTimeout bounds waiting for a spawned serve to become ready.
-	// Default 8 seconds.
+	// Default 30 seconds; the [serve.pool] config key spawn_timeout_seconds
+	// overrides it. 30s (task 1049): a cold serve start — including the
+	// skill/memory canonical probe scan — measured ~9s on the dev machine,
+	// and the previous 8s default timed out EVERY lazy spawn at the gateway.
 	SpawnTimeout time.Duration
 	// ProjectRoots is the initial project list (desktop-projects.json roots
 	// or CLI config); RefreshProjects can update it later.
@@ -126,13 +130,40 @@ type project struct {
 	err           string
 }
 
+// Pool timeout defaults. SpawnTimeout must cover a cold serve start,
+// including the skill/memory canonical probe scan: ~9s on the dev machine
+// made the old 8s default time out every lazy spawn while the serve itself
+// was healthy (task 1049), so the default is 30s — headroom for slow disks
+// and loaded machines. IdleTimeout keeps its historical 15 minutes.
+const (
+	DefaultIdleTimeout  = 15 * time.Minute
+	DefaultSpawnTimeout = 30 * time.Second
+)
+
+// PoolTimeoutsFromSeconds maps the [serve.pool] config second counts onto the
+// (spawn, idle) pool timeouts. Zero or negative values keep the pool default,
+// so an absent key behaves exactly like before. Both pool hosts (the desktop
+// embed and `serve --pool`) resolve their servepool.Config through this so
+// the keys behave identically in both.
+func PoolTimeoutsFromSeconds(spawnSeconds, idleSeconds int) (spawn, idle time.Duration) {
+	spawn = DefaultSpawnTimeout
+	idle = DefaultIdleTimeout
+	if spawnSeconds > 0 {
+		spawn = time.Duration(spawnSeconds) * time.Second
+	}
+	if idleSeconds > 0 {
+		idle = time.Duration(idleSeconds) * time.Second
+	}
+	return spawn, idle
+}
+
 // NewManager builds a pool manager with the given config.
 func NewManager(cfg Config) (*Manager, error) {
 	if cfg.IdleTimeout == 0 {
-		cfg.IdleTimeout = 15 * time.Minute
+		cfg.IdleTimeout = DefaultIdleTimeout
 	}
 	if cfg.SpawnTimeout == 0 {
-		cfg.SpawnTimeout = 8 * time.Second
+		cfg.SpawnTimeout = DefaultSpawnTimeout
 	}
 	bin := cfg.ReasonixBin
 	if bin == "" {
@@ -582,7 +613,15 @@ func (m *Manager) spawn(p *project) error {
 	_, _ = cmd.Process.Wait()
 	p.cmd = nil
 	p.job = 0
-	m.markFailed(p, fmt.Errorf("serve did not become ready within %s", m.cfg.SpawnTimeout))
+	// Task 1049: a bare "did not become ready within Xs" forced every
+	// diagnosis through the desktop log. The tailBuffer already holds the
+	// reason (task 248); fold a one-line summary into the error so the
+	// gateway 503 body carries it to where the user is actually looking.
+	msg := fmt.Sprintf("serve did not become ready within %s", m.cfg.SpawnTimeout)
+	if s := serveOutputSummary(out.String(), 400); s != "" {
+		msg += "; serve output: " + s
+	}
+	m.markFailed(p, errors.New(msg))
 	return errors.New("servepool: " + p.err)
 }
 
@@ -627,6 +666,29 @@ func (t *tailBuffer) String() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return strings.TrimRight(string(t.buf), "\n")
+}
+
+// serveOutputSummary flattens captured serve output into a single short line
+// for the spawn-failure error message (task 1049): control characters and
+// whitespace runs collapse to single spaces (the summary rides through a JSON
+// error body), and only the LAST maxRunes runes survive — the interesting
+// failure output ("unknown command", bind errors, panics) is what a dying
+// serve prints last, same reasoning as tailBuffer's tail retention.
+func serveOutputSummary(s string, maxRunes int) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, s)
+	s = strings.Join(strings.Fields(s), " ")
+	if s == "" {
+		return ""
+	}
+	if r := []rune(s); len(r) > maxRunes {
+		return "…" + string(r[len(r)-maxRunes:])
+	}
+	return s
 }
 
 func (m *Manager) markFailed(p *project, err error) {

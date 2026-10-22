@@ -34,10 +34,15 @@ func (a *App) ServePoolAddress() string {
 // taken) and log a warning.
 func (a *App) startServePool(ctx context.Context) {
 	roots := projectRootsFromRegistry()
+	spawnTimeout, idleTimeout := servePoolTimeoutsFromConfig()
 	mgr, err := servepool.NewManager(servepool.Config{
 		ProjectRoots:  roots,
 		ProjectColors: projectColorsFromRegistry(),
 		ProjectGroups: projectGroupsFromRegistry(),
+		// Task 1049: [serve.pool] spawn/idle timeouts — the hardcoded 8s
+		// spawn default timed out every lazy spawn against a ~9s cold start.
+		IdleTimeout:  idleTimeout,
+		SpawnTimeout: spawnTimeout,
 		// The desktop "global" session scope (config.SessionDir()) is not a
 		// project root, so GrandCouncil could never see it (#task16). Expose
 		// it as a manifest-only virtual project whose /sessions the gateway
@@ -109,6 +114,18 @@ func projectRootsFromRegistry() []string {
 		}
 	}
 	return roots
+}
+
+// servePoolTimeoutsFromConfig resolves the [serve.pool] config keys onto the
+// pool timeouts (task 1049). A config load failure keeps the pool defaults —
+// a broken config.toml must not disable the gateway.
+func servePoolTimeoutsFromConfig() (spawnTimeout, idleTimeout time.Duration) {
+	spawnSeconds, idleSeconds := 0, 0
+	if cfg, err := config.Load(); err == nil && cfg != nil {
+		spawnSeconds = cfg.Serve.Pool.SpawnTimeoutSeconds
+		idleSeconds = cfg.Serve.Pool.IdleTimeoutSeconds
+	}
+	return servepool.PoolTimeoutsFromSeconds(spawnSeconds, idleSeconds)
 }
 
 // globalServePoolSessions lists the desktop global-scope sessions
