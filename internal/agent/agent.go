@@ -91,7 +91,8 @@ const maxReadinessCatchUpHardCap = 2
 
 // stalledIntentPhrases catch the shape where the model narrates the next step
 // and stops. Only the answer tail is inspected: a final answer may legitimately
-// quote such phrasing earlier in its text.
+// quote such phrasing earlier in its text. (Task 1069: English entries keep the
+// original tail-scan semantics; the Chinese entries below are sentence-scoped.)
 var stalledIntentPhrases = []string{
 	"i will now ", "i'll now ", "i am going to ", "next, i ", "next i ", "let me now ",
 	"i will ", "i'll ", "about to ",
@@ -102,12 +103,81 @@ var stalledIntentVerbs = []string{
 	"test", "apply", "install", "review", "build", "patch", "investigate", "examine", "look",
 }
 
+// 任务 1069：中文会话的「宣布下一步就停」形状。英文侧只需短语+动词双命中，
+// 中文里单字词（看/改/做/查）做 contains 必然误伤正常叙述，所以动词表只收
+// 双字词；短语表收「未来时标记」——这些词单独出现（尤其在句首/句中转述）
+// 不构成承诺，只有与双字动词落在同一句、且该句本身不带完成态/转述否定标记
+// 时才算「承诺句」。承诺句必须落在答案尾部（最后一句），因为正文中部出现
+// 再正常不过（复述计划、引用他人说法），只有收尾处的承诺句才说明模型把
+// 「宣布」当成了「收工」。
+var stalledIntentCNPromptPhrases = []string{
+	"将", "要", "接下来", "现在", "先", "我来", "接着",
+}
+
+var stalledIntentCNVerbs = []string{
+	"检查", "验证", "修复", "更新", "测试", "安装", "审查", "编写", "调整",
+	"排查", "实现", "补充", "优化",
+}
+
+// stalledIntentCNNegations双向排除承诺句：完成态（这件事其实已经做完，
+// 无需再做）+ 主语排除（「你需要…」是转述要求用户，不是模型自己的承诺）。
+var stalledIntentCNNegations = []string{
+	"已", "已经", "完成", "完毕", "不需要", "无需", "不必", "此前", "刚才",
+	"你需要", "用户需",
+}
+
+// isStalledIntentCNSentence 判断单个中文句是否构成「承诺句」：未来时标记 ∧
+// 双字动词 ∧ 否定排除，三条件必须同句成立。
+func isStalledIntentCNSentence(sent string) bool {
+	hasPhrase := false
+	for _, phrase := range stalledIntentCNPromptPhrases {
+		if strings.Contains(sent, phrase) {
+			hasPhrase = true
+			break
+		}
+	}
+	if !hasPhrase {
+		return false
+	}
+	hasVerb := false
+	for _, verb := range stalledIntentCNVerbs {
+		if strings.Contains(sent, verb) {
+			hasVerb = true
+			break
+		}
+	}
+	if !hasVerb {
+		return false
+	}
+	for _, neg := range stalledIntentCNNegations {
+		if strings.Contains(sent, neg) {
+			return false
+		}
+	}
+	return true
+}
+
+// lastCNSentence 取尾部最后一个非空中文句（按 。！？\n 切分，任务 1069）。
+func lastCNSentence(tail string) string {
+	seps := strings.FieldsFunc(tail, func(r rune) bool {
+		return r == '。' || r == '！' || r == '？' || r == '\n'
+	})
+	for i := len(seps) - 1; i >= 0; i-- {
+		if s := strings.TrimSpace(seps[i]); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
 func shouldNudgeStalledIntent(text string) bool {
 	tail := text
 	if len(tail) > 400 {
 		tail = tail[len(tail)-400:]
 	}
 	lower := strings.ToLower(tail)
+	// 英文路径：保留原「短语 contains ∧ 动词 contains」双命中语义，不做同句
+	// 切分（英文短语自带明确句法边界，误伤面已由历史行为实证收窄）。
 	for _, phrase := range stalledIntentPhrases {
 		if !strings.Contains(lower, phrase) {
 			continue
@@ -118,7 +188,8 @@ func shouldNudgeStalledIntent(text string) bool {
 			}
 		}
 	}
-	return false
+	// 中文路径（任务 1069）：承诺句必须落在尾部最后一句，句内三条件同句判定。
+	return isStalledIntentCNSentence(lastCNSentence(tail))
 }
 
 func stalledIntentRetryMessage() string {
