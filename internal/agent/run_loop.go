@@ -693,7 +693,10 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	// once before accepting this as a final answer (#6 P0-c, task 117).
 	if a.stalledIntentNudgeEnabled(ctx) && state.terminal.intentNudges < a.stalledIntentNudgeCap() && shouldNudgeStalledIntent(text) {
 		state.terminal.intentNudges++
-		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeExecutorHandoff,
+		// 任务 1069：notice code 独立化——stalled-intent 提醒不再与
+		// executor-handoff（run_loop 279/300/682 三处不变）复用同一 code，
+		// 日志/前端可单独检索 stalled_intent。
+		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeStalledIntent,
 			Text: executorHandoffNoticeText(), Detail: "model announced the next step without taking it; nudged once"})
 		a.sess.conversation.Add(HostGeneratedUserMessage(a.withTurnPreferences(stalledIntentRetryMessage())))
 		a.contextManager().ObserveUsage(usage)

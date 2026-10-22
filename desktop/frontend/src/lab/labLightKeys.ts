@@ -24,6 +24,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalDream: (s: SettingsView) => Boolean(s.experimentalDream),
   // 任务 801：决策模式自动提取+固化（默认关）。
   experimentalDecisionPatterns: (s: SettingsView) => Boolean(s.experimentalDecisionPatterns),
+  // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，默认关）。
+  stalledIntentNudge: (s: SettingsView) => Boolean(s.stalledIntentNudge),
   // 任务 1024：composer 草稿优化（改写按钮，默认关）。
   experimentalDraftRewrite: (s: SettingsView) => Boolean(s.experimentalDraftRewrite),
   experimentalSafetyCostControl: (s: SettingsView) => Boolean(s.experimentalSafetyCostControl),

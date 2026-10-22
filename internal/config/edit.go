@@ -1415,7 +1415,14 @@ func (c *Config) SetExperimentalDecisionPatterns(enabled bool) error {
 	return nil
 }
 
-
+// SetStalledIntentNudge toggles the task-1069 stalled-intent nudge lab switch
+// (模型提前结束判定器续轮提醒). Key semantics unchanged from task 117's
+// hand-written `stalled_intent_nudge = true`: the agent reads the boot
+// snapshot, so a flip applies on the next restart.
+func (c *Config) SetStalledIntentNudge(enabled bool) error {
+	c.Agent.StalledIntentNudge = enabled
+	return nil
+}
 
 // SetExperimentalDraftRewrite toggles the task-1024 草稿优化 lab switch. Pure
 // frontend gate riding the boot snapshot — the settings save re-applies it, so

@@ -12,7 +12,11 @@ const (
 	NoticeCodeFallbackModelSwitched            = "fallback_model_switched"
 	NoticeCodeReadinessAdvisory                = "readiness_advisory"
 	NoticeCodeExecutorHandoff                  = "executor_handoff"
-	NoticeCodeToolBudget                       = "tool_budget"
+	// NoticeCodeStalledIntent (任务 1069)：模型「宣布下一步就停」触发的续轮
+	// 提醒——此前复用 executor_handoff，日志/前端无法单独检索本类事件，现独立
+	// 成码（executor-handoff 自身的 run_loop 279/300/682 三处不变）。
+	NoticeCodeStalledIntent = "stalled_intent"
+	NoticeCodeToolBudget    = "tool_budget"
 	NoticeCodePromptQueued                     = "prompt_queued"
 	NoticeCodeLoopGuard                        = "loop_guard"
 	NoticeCodeProgressGuard                    = "progress_guard"

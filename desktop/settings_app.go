@@ -542,6 +542,9 @@ type SettingsView struct {
 	MarkdownBudgetMb        int  `json:"markdownBudgetMb"`
 	ExperimentalCacheTuning bool `json:"experimentalCacheTuning"`
 	ExperimentalDream       bool `json:"experimentalDream"`
+	// 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117 首落地，
+	// 本件补实验室设置页入口）。
+	StalledIntentNudge      bool `json:"stalledIntentNudge"`
 	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
 	// Task 801: decision-pattern extraction + solidification readback. The
 	// file path resolves to the default global-workspace/docs location when
@@ -844,7 +847,10 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTraceAsState exposes Trace-as-State compaction (task 60).
 	ExperimentalTraceAsState bool `json:"experimentalTraceAsState"`
 	// ExperimentalDream exposes dream/distill memory-curation tools (task 115).
-	ExperimentalDream       bool `json:"experimentalDream"`
+	ExperimentalDream bool `json:"experimentalDream"`
+	// 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge）readback。
+	// 该键原为纯 TOML（117），本件补实验室设置页入口后纳入 SettingsView。
+	StalledIntentNudge      bool `json:"stalledIntentNudge"`
 	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
@@ -1664,6 +1670,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalEditEvidenceRelaxed = cfg.Agent.ExperimentalEditEvidenceRelaxed
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
 		view.ExperimentalDream = cfg.Agent.ExperimentalDream
+		// 任务 1069：模型提前结束判定器续轮提醒 readback（stalled_intent_nudge）。
+		view.StalledIntentNudge = cfg.Agent.StalledIntentNudge
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
 		view.ExperimentalSafetyCostControl = cfg.Agent.ExperimentalSafetyCostControl
 		// Task 722: sub-switch override readback (nil stays nil = inherit).
@@ -1889,6 +1897,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalEditEvidenceRelaxed: cfg.Agent.ExperimentalEditEvidenceRelaxed,
 		ExperimentalTraceAsState:        cfg.Agent.TraceAsState,
 		ExperimentalDream:               cfg.Agent.ExperimentalDream,
+		// 任务 1069：模型提前结束判定器续轮提醒 readback。
+		StalledIntentNudge: cfg.Agent.StalledIntentNudge,
 		// Task 801: decision-pattern readback (empty path resolves to default).
 		ExperimentalDecisionPatterns: cfg.Agent.ExperimentalDecisionPatterns,
 		DecisionPatternFilePath:      decisionPatternPathForView(cfg),

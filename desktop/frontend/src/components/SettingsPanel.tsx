@@ -3616,6 +3616,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，
+                  117 首落地，本件补设置页入口）。Boot snapshot 读闸：保存后
+                  需重启生效（决策模式提取/固化同款先例）。 */}
+              <SettingsField label={labLabel("stalledIntentNudge", t("settings.stalledIntentNudge"))} hint={t("settings.stalledIntentNudgeHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.stalledIntentNudge) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        await app.SetStalledIntentNudge(on);
+                      })}
+                    >
+                      {t(on ? "settings.stalledIntentNudge.on" : "settings.stalledIntentNudge.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {/* 任务 782：检索与历史（合并卡，742 先例）——历史提问选择器 +
