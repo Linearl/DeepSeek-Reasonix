@@ -1179,7 +1179,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SummarizeUpToForTab(tabID: string, turn: number): Promise<void>;
   // 任务 1024：草稿优化——辅助模型改写输入栏草稿（结构化+无歧义），
   // 成功返回改写文本，失败/超时由 Go 侧静默降级返回空串。
-  RewriteDraftForTab(tabID: string, draft: string, context: string): Promise<string>;
+  // 任务 1052：contextBudgetKB 是用户在弹窗里选的上下文长度档
+  // （2/5/10/20KB；0 = 默认 10KB，Go 侧守 20KB 上界）。
+  RewriteDraftForTab(tabID: string, draft: string, context: string, contextBudgetKB: number): Promise<string>;
   ListSessions(): Promise<SessionMeta[]>;
   ListSessionsForTab(tabID: string): Promise<SessionMeta[]>;
   ListTrashedSessions(): Promise<SessionMeta[]>;
