@@ -918,7 +918,10 @@ func (e *HeartbeatEngine) executeTaskOwned(t HeartbeatTask) HeartbeatTask {
 
 	// Submit as a plain user turn so scheduled prompts cannot invoke desktop
 	// shell or slash-command handlers such as "!cmd", "/clear", or "/compact".
-	if !e.app.submitUserTurnToTabWithSink(tabMeta.ID, prompt, botForwarder) {
+	// Task 1062: submitted through the heartbeat variant so the turn context
+	// carries the heartbeat-turn marker — asks fired during the run take the
+	// short unattended backstop instead of hanging on an unwatched panel.
+	if !e.app.submitHeartbeatTurnToTabWithSink(tabMeta.ID, prompt, botForwarder) {
 		log.Printf("[heartbeat] submit skipped for %q", t.Title)
 		e.rotationPromptSubmitFailed(t, rotationKind)
 		return t

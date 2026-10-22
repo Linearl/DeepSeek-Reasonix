@@ -272,6 +272,14 @@ func (s *heartbeatSignalingCtrlStub) SubmitUserTurn(input, display string) {
 	close(s.submittedSignal)
 }
 
+// Task 1062: the engine now submits through the heartbeat entry; the stubs
+// route it onto the same recording path so every executeTask expectation
+// (submitted prompts, signaling, Running state) keeps holding verbatim.
+func (s *heartbeatSignalingCtrlStub) SubmitHeartbeatTurn(input, display string) {
+	s.heartbeatExecuteTaskCtrlStub.SubmitHeartbeatTurn(input, display)
+	close(s.submittedSignal)
+}
+
 func (s *heartbeatExecuteTaskCtrlStub) RuntimeStatus() control.RuntimeStatus {
 	return s.status
 }
@@ -279,6 +287,10 @@ func (s *heartbeatExecuteTaskCtrlStub) RuntimeStatus() control.RuntimeStatus {
 func (s *heartbeatExecuteTaskCtrlStub) SubmitUserTurn(input, display string) {
 	s.submitted = append(s.submitted, input)
 	s.status.Running = true
+}
+
+func (s *heartbeatExecuteTaskCtrlStub) SubmitHeartbeatTurn(input, display string) {
+	s.SubmitUserTurn(input, display)
 }
 
 func (s *heartbeatExecuteTaskCtrlStub) SetToolApprovalMode(mode string) {

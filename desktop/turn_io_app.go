@@ -173,6 +173,32 @@ func (a *App) submitUserTurnToTabWithSink(tabID, input string, forwarder event.S
 	return started
 }
 
+// submitHeartbeatTurnToTabWithSink is submitUserTurnToTabWithSink for
+// scheduled runs (task 1062): the turn is identical in every respect except
+// its context carries the heartbeat-turn marker, which gives asks fired during
+// the run the short unattended backstop instead of the attended unbounded
+// wait. Called by the heartbeat engine for every run — regular tasks and
+// autopilot-guard wakes alike.
+func (a *App) submitHeartbeatTurnToTabWithSink(tabID, input string, forwarder event.Sink) bool {
+	admission, ctrl, err := a.beginTabTurn(tabID, false)
+	if err != nil {
+		return false
+	}
+	defer admission.abort()
+	tab := admission.tab
+	var generation uint64
+	if forwarder != nil {
+		generation = tab.sink.SetBotSink(forwarder)
+	}
+	a.ensureTabTopicIndexedForUserTurn(tab)
+	ctrl.SubmitHeartbeatTurn(input, input)
+	started := admission.finish(ctrl)
+	if !started && forwarder != nil {
+		tab.sink.clearBotSink(generation)
+	}
+	return started
+}
+
 // RunShell executes a shell command directly (bypassing the model) and streams
 // output as events on eventChannel.
 func (a *App) RunShell(command string) error {

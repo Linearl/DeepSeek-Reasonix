@@ -74,6 +74,10 @@ type TurnControl interface {
 	SubmitHTTP(input string)
 	SubmitHTTPFormat(input, format string)
 	SubmitUserTurn(input, display string)
+	// SubmitHeartbeatTurn is the task-1062 scheduled-run entry: identical to
+	// SubmitUserTurn except the turn context carries the heartbeat-turn
+	// marker, arming the short unattended ask backstop (DefaultHeartbeatAskWait).
+	SubmitHeartbeatTurn(input, display string)
 	Send(input string)
 	SendWithRaw(input, raw string)
 	Run(ctx context.Context, input string) error
