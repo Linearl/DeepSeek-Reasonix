@@ -7,6 +7,7 @@ export const en = {
   "toolRecovery.title": "Interrupted tool calls (record only)",
   "toolRecovery.unknown": "Outcome unknown (recorded)",
   "toolRecovery.details": "View action details",
+  "toolRecovery.dismiss": "Dismiss",
   "toolRecovery.present": "The current effect or file postcondition is present. This does not establish the original execution result.",
   "toolRecovery.absent": "The tool verified the effect is absent and the previous attempt cannot commit.",
   "toolRecovery.unproven": "Automatic inspection cannot establish the outcome. Check the affected workspace or external service before confirming.",
