@@ -38,6 +38,15 @@ import {
   X,
   TerminalSquare,
   ListTodo,
+  ListTree,
+  Layers,
+  FlaskConical,
+  BookOpen,
+  Lightbulb,
+  Bug,
+  Info,
+  FileDown,
+  FolderOpen,
   FilePlus2,
   Bot,
   LayoutGrid,
@@ -45,12 +54,14 @@ import {
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { buildSubagentDirectory, subagentsTabLabel } from "./lib/subagentDirectory";
-import { insertSessionWallEntry } from "./lib/sessionWall";
 // 任务 686: 工作流可视化面板的 palette 插条（flag 关=原数组逐字节不变）。
 // 单独轻量模块：workflowDag 的 fixture/布局只随面板懒加载 chunk 走，不进
 // initial 面（首版实测炸 initial 线的教训）。
-import { insertWorkflowPanelEntry } from "./lib/workflowPanelEntry";
 import { WorkflowPanelBoundary } from "./components/WorkflowPanelBoundary";
+// tl 1101：命令面板分组后仍沿用两条既有 lab 门控插条（task 505 / 任务 686）——
+// flag 关 = 原数组逐字节不变，flag 开 = 在「重载运行时」后插入对应入口。
+import { insertSessionWallEntry } from "./lib/sessionWall";
+import { insertWorkflowPanelEntry } from "./lib/workflowPanelEntry";
 import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
 import { useGoalActionHandler } from "./lib/goalAction";
@@ -285,7 +296,7 @@ import { applyTextSize, DEFAULT_TEXT_SIZE, getTextSize, nextTextSize } from "./l
 import { useViewportHeightVar, useWindowStatePersistence } from "./lib/windowState";
 import { availableWorkspacePanelWidth, resolveLiveWorkspacePanelWidth, resolveWorkspacePanelPlacement, workspacePanelAriaMinWidth } from "./lib/workspaceLayout";
 import { createPointerResizeLifecycle, createRafResizeUpdater } from "./lib/resizeDrag";
-import { useGlobalShortcut } from "./lib/keyboardShortcuts";
+import { defaultShortcutCombo, formatShortcutCombo, useGlobalShortcut } from "./lib/keyboardShortcuts";
 import { shouldIgnoreFindShortcutTarget } from "./lib/transcriptFind";
 import { useWarmTerminalPanel } from "./lib/useWarmTerminalPanel";
 import { topicShortcutIndexFromEvent, useTopicShortcuts, type TopicShortcutEntry } from "./lib/topicShortcuts";
@@ -882,6 +893,10 @@ export default function App() {
   // costs the startup bundle nothing.
   const [sessionWallEnabled, setSessionWallEnabled] = useState(labFlagEnabled("sessionWall"));
   useEffect(() => onLabFlagsChange(() => setSessionWallEnabled(labFlagEnabled("sessionWall"))), []);
+  // Task 265/1101：提问搜索 lab 开关。topicbar 入口移除后，命令面板宫格的
+  //「搜索历史提问」项与 Ctrl+Shift+F 快捷键继续受它门控（关 = 不渲染/不生效）。
+  const [questionSearchEnabled, setQuestionSearchEnabled] = useState(labFlagEnabled("questionSearch"));
+  useEffect(() => onLabFlagsChange(() => setQuestionSearchEnabled(labFlagEnabled("questionSearch"))), []);
   // 任务 677: the group-chat entry rides the same lab-flag snapshot — off
   // (default) renders the utility row exactly as before task 409.
   // 任务 856 ③：协作中心入口总开关（677 collabGroupView 随两图标合一迁移改名）。
@@ -4682,12 +4697,41 @@ export default function App() {
     setPaletteSessions(await listSessions().catch(() => []));
     setPaletteExtensionActions(await app.ExtensionActions(activeTabIdRef.current ?? "").catch(() => []));
   }, [closeTransientOverlays, listSessions, setPaletteExtensionActions]);
+  // tl 1101：命令面板内部视图（宫格 / 跳转标签页）。视图切换不关闭面板；Esc
+  // 关面板时一并复位到宫格（下次打开仍是默认视图）。
+  const [paletteView, setPaletteView] = useState<"grid" | "tabs">("grid");
+  useEffect(() => {
+    if (!paletteOpen) setPaletteView("grid");
+  }, [paletteOpen]);
+  // 面板视图消费点（宫格 / 标签页列表按 paletteView 分支渲染）。
+  const paletteActiveView = paletteView;
   useGlobalShortcut("commandPalette.open", () => {
     setPaletteOpen((current) => {
       if (!current) void openPalette();
       return !current; // ← fix: toggle the state so the palette actually opens/closes
     });
   }, [openPalette]);
+  // tl 1101：跳转标签页（Ctrl+Shift+T）——直接打开面板并切到标签页视图，不等
+  // 输入关键词；跳转会话（Ctrl+P）同理直达会话图墙。
+  useGlobalShortcut("palette.gotoTab", () => {
+    void openPalette().then(() => setPaletteView("tabs"));
+  }, [openPalette]);
+  useGlobalShortcut("palette.gotoTopic", () => {
+    void openPalette().then(() => setSessionWallOpen(true));
+  }, [openPalette]);
+  useGlobalShortcut("palette.searchQuestions", () => {
+    if (!questionSearchEnabled || !activeTabId) return;
+    void openPalette().then(() => setQuestionSearchOpen(true));
+  }, [openPalette, questionSearchEnabled, activeTabId]);
+  useGlobalShortcut("palette.openLab", () => {
+    closeTransientOverlays("lab shortcut");
+    setSettingsTarget("experimental");
+  }, [closeTransientOverlays]);
+  useGlobalShortcut("palette.docs", () => {
+    closeTransientOverlays("docs shortcut");
+    openExternal("https://github.com/esengine/DeepSeek-Reasonix#readme");
+  }, [closeTransientOverlays]);
+  useGlobalShortcut("view.rightDock", () => toggleWorkspacePanel(), [toggleWorkspacePanel]);
   useGlobalShortcut("app.newSession", () => void handleNewTab(), [handleNewTab]);
   useGlobalShortcut("settings.open", () => {
     closeTransientOverlays("settings shortcut");
@@ -4734,16 +4778,67 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKeydown);
   }, [sidebarCollapsed, managementActive, desktopPlatform, handleNavigateTopic]);
 
+  // tl 1101：命令面板升级为「搜索 + 工作台」——宫格保持（用户明确「图墙比线性
+  // 菜单美观、能放更多内容」），按功能重新分 5 组（会话 / 设置与偏好 / 工具与
+  // 诊断 / 帮助与支持 / 远程 SSH）+ 最近会话线性列表沿用。快捷键全表校验过与
+  // 既有键不冲突（Ctrl+P / Ctrl+Shift+T / Ctrl+Shift+F / Ctrl+Shift+L / F1 /
+  // Ctrl+Alt+B 均空闲；Ctrl+K 已归 commandPalette.open，不重复注册）。
   const paletteItems = useMemo<PaletteItem[]>(() => {
-    const cmds: PaletteItem[] = [
-      { id: "cmd-new", group: t("palette.group.commands"), title: t("palette.cmd.newSession"), icon: <SquarePen size={15} />, compact: true, keywords: ["new", "新建"], run: () => void handleNewTab() },
-      { id: "cmd-automation", group: t("palette.group.commands"), title: t("heartbeat.scheduler"), icon: <AlarmClock size={15} />, compact: true, keywords: ["automation", "自动化"], run: () => openPage({ kind: "automation" }) },
-      { id: "cmd-trash", group: t("palette.group.commands"), title: t("palette.cmd.trash"), icon: <Trash2 size={15} />, compact: true, keywords: ["trash", "回收站"], run: () => void openTrash() },
-      { id: "cmd-settings", group: t("palette.group.commands"), title: t("palette.cmd.settings"), icon: <SettingsIcon size={15} />, compact: true, keywords: ["settings", "设置"], run: () => setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget) },
-      { id: "cmd-appearance", group: t("palette.group.commands"), title: t("palette.cmd.appearance"), icon: <Palette size={15} />, compact: true, keywords: ["theme", "appearance", "外观", "主题"], run: () => setSettingsTarget("appearance") },
+    // 会话组：跳转标签页 / 搜索历史提问 / 定时任务（跳转会话走下方 lab 门控插条，
+    // 与 task 505 的 insertSessionWallEntry 同一条语义）。
+    const sessionCmds: PaletteItem[] = [
+      {
+        id: "cmd-goto-tab",
+        group: t("palette.group.session"),
+        title: t("palette.cmd.gotoTab"),
+        icon: <Layers size={15} />,
+        compact: true,
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.gotoTab", desktopPlatform), desktopPlatform),
+        keywords: ["tab", "tabs", "goto", "标签", "标签页", "跳转"],
+        run: () => setPaletteView("tabs"),
+      },
+      {
+        id: "cmd-search-questions",
+        group: t("palette.group.session"),
+        title: t("palette.cmd.searchQuestions"),
+        icon: <ListTree size={15} />,
+        compact: true,
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.searchQuestions", desktopPlatform), desktopPlatform),
+        keywords: ["question", "questions", "search", "history", "提问", "搜索", "历史"],
+        run: () => {
+          if (!questionSearchEnabled || !activeTab?.id) return;
+          setQuestionSearchOpen(true);
+        },
+      },
+      {
+        id: "cmd-automation",
+        group: t("palette.group.session"),
+        title: t("heartbeat.scheduler"),
+        icon: <AlarmClock size={15} />,
+        compact: true,
+        keywords: ["automation", "定时", "自动化", "调度"],
+        run: () => openPage({ kind: "automation" }),
+      },
+    ];
+    // 设置与偏好组：设置 / 外观 / 记忆 / 模型 / 实验室 / 恢复默认。
+    const settingsCmds: PaletteItem[] = [
+      { id: "cmd-settings", group: t("palette.group.settings"), title: t("palette.cmd.settings"), icon: <SettingsIcon size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("settings.open", desktopPlatform), desktopPlatform), keywords: ["settings", "设置"], run: () => setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget) },
+      { id: "cmd-appearance", group: t("palette.group.settings"), title: t("palette.cmd.appearance"), icon: <Palette size={15} />, compact: true, keywords: ["theme", "appearance", "外观", "主题"], run: () => setSettingsTarget("appearance") },
+      { id: "cmd-memory", group: t("palette.group.settings"), title: t("palette.cmd.memory"), icon: <Brain size={15} />, compact: true, keywords: ["memory", "记忆"], run: () => setSettingsTarget("memory") },
+      { id: "cmd-models", group: t("palette.group.settings"), title: t("palette.cmd.models"), icon: <Cpu size={15} />, compact: true, keywords: ["model", "模型"], run: () => setSettingsTarget("models") },
+      {
+        id: "cmd-lab",
+        group: t("palette.group.settings"),
+        title: t("palette.cmd.lab"),
+        icon: <FlaskConical size={15} />,
+        compact: true,
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.openLab", desktopPlatform), desktopPlatform),
+        keywords: ["lab", "experiment", "experimental", "实验室", "实验"],
+        run: () => setSettingsTarget("experimental"),
+      },
       {
         id: "cmd-theme-reset",
-        group: t("palette.group.commands"),
+        group: t("palette.group.settings"),
         title: t("settings.themeLibrary.reset"),
         icon: <Palette size={15} />,
         compact: true,
@@ -4757,11 +4852,12 @@ export default function App() {
             .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
         },
       },
-      { id: "cmd-memory", group: t("palette.group.commands"), title: t("palette.cmd.memory"), icon: <Brain size={15} />, compact: true, keywords: ["memory", "记忆"], run: () => setSettingsTarget("memory") },
-      { id: "cmd-models", group: t("palette.group.commands"), title: t("palette.cmd.models"), icon: <Cpu size={15} />, compact: true, keywords: ["model", "模型"], run: () => setSettingsTarget("models") },
+    ];
+    // 工具与诊断组：使用统计 / 终端 / 重载运行时 / 工作流面板 / 回收站。
+    const toolsCmds: PaletteItem[] = [
       {
         id: "cmd-usage-stats",
-        group: t("palette.group.commands"),
+        group: t("palette.group.tools"),
         title: t("palette.cmd.usageStats"),
         icon: <BarChart3 size={15} />,
         compact: true,
@@ -4774,11 +4870,12 @@ export default function App() {
           setSettingsTarget("models");
         },
       },
-      { id: "cmd-task-center", group: t("palette.group.commands"), title: t("palette.cmd.taskCenter"), icon: <Activity size={15} />, compact: true, keywords: ["task", "tasks", "center", "任务", "任务中心"], run: () => setTasksOpen("all") },
-      { id: "cmd-terminal", group: t("palette.group.commands"), title: t("rightDock.terminal"), icon: <TerminalSquare size={15} />, compact: true, keywords: ["terminal", "shell", "终端"], run: () => toggleTerminalPanel() },
+      { id: "cmd-terminal", group: t("palette.group.tools"), title: t("rightDock.terminal"), icon: <TerminalSquare size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("terminal.toggle", desktopPlatform), desktopPlatform), keywords: ["terminal", "shell", "终端"], run: () => toggleTerminalPanel() },
+      { id: "cmd-task-center", group: t("palette.group.tools"), title: t("palette.cmd.taskCenter"), icon: <Activity size={15} />, compact: true, keywords: ["task", "tasks", "center", "任务", "任务中心"], run: () => setTasksOpen("all") },
+      { id: "cmd-right-dock", group: t("palette.group.tools"), title: t("palette.cmd.toggleRightDock"), icon: <PanelRight size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("view.rightDock", desktopPlatform), desktopPlatform), keywords: ["right", "dock", "panel", "右", "面板", "工作区"], run: () => toggleWorkspacePanel() },
       {
         id: "cmd-reload-runtime",
-        group: t("palette.group.commands"),
+        group: t("palette.group.tools"),
         title: t("palette.cmd.reloadRuntime"),
         icon: <RotateCw size={15} />,
         compact: true,
@@ -4789,6 +4886,59 @@ export default function App() {
           // Success/queued feedback arrives as a tab notice; only hard failures need a toast.
           void app.ReloadRuntime(tabID).catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
         },
+      },
+      { id: "cmd-trash", group: t("palette.group.tools"), title: t("palette.cmd.trash"), icon: <Trash2 size={15} />, compact: true, keywords: ["trash", "回收站"], run: () => void openTrash() },
+    ];
+    // 帮助与支持组（tl 1101 新增）：产品文档 / 问题反馈 / 提需求 / 提交漏洞 /
+    // 关于·版本 / 导出日志 / 打开日志目录。跳转目标走 GitHub 仓库对应入口
+    //（fork 的 README 指向 esengine/DeepSeek-Reasonix；导出日志/打开日志目录走
+    // Go 侧 RevealPath）。
+    const helpCmds: PaletteItem[] = [
+      {
+        id: "cmd-docs",
+        group: t("palette.group.help"),
+        title: t("palette.cmd.docs"),
+        icon: <BookOpen size={15} />,
+        compact: true,
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.docs", desktopPlatform), desktopPlatform),
+        keywords: ["docs", "documentation", "help", "文档", "帮助"],
+        run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix#readme"),
+      },
+      { id: "cmd-feedback", group: t("palette.group.help"), title: t("palette.cmd.feedback"), icon: <MessageSquare size={15} />, compact: true, keywords: ["feedback", "反馈", "意见"], run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues/new") },
+      { id: "cmd-feature-request", group: t("palette.group.help"), title: t("palette.cmd.featureRequest"), icon: <Lightbulb size={15} />, compact: true, keywords: ["feature", "request", "需求", "建议"], run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues/new?template=feature_request.md") },
+      { id: "cmd-report-bug", group: t("palette.group.help"), title: t("palette.cmd.reportBug"), icon: <Bug size={15} />, compact: true, keywords: ["bug", "report", "漏洞", "报告"], run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix/issues/new?template=bug_report.md") },
+      {
+        id: "cmd-about",
+        group: t("palette.group.help"),
+        title: t("palette.cmd.about"),
+        icon: <Info size={15} />,
+        compact: true,
+        keywords: ["about", "version", "版本", "关于"],
+        run: () => setSettingsTarget("updates"),
+      },
+      {
+        id: "cmd-export-logs",
+        group: t("palette.group.help"),
+        title: t("palette.cmd.exportLogs"),
+        icon: <FileDown size={15} />,
+        compact: true,
+        keywords: ["log", "logs", "export", "日志", "导出"],
+        // 导出日志：走既有诊断页的导出入口（复用设置→诊断的同一条链路，
+        // 不新造 Go binding——导出报告是诊断页的既有能力）。
+        run: () => {
+          setSettingsFocus((current) => ({ target: "model-stats", requestId: (current?.requestId ?? 0) + 1 }));
+          setSettingsTarget("diagnostics");
+        },
+      },
+      {
+        id: "cmd-open-log-dir",
+        group: t("palette.group.help"),
+        title: t("palette.cmd.openLogDir"),
+        icon: <FolderOpen size={15} />,
+        compact: true,
+        keywords: ["log", "dir", "folder", "日志", "目录"],
+        // 打开日志目录：复用 Go 侧 RevealPath（后台化打开，explorer 不阻塞）。
+        run: () => void app.RevealPath(topicbarLogDirectory).catch((err) => showToast(err instanceof Error ? err.message : String(err), "error")),
       },
     ];
     const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -4846,37 +4996,40 @@ export default function App() {
           .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
       },
     }));
-    // Task 505: the session-wall entry rides the command grid to the right of
-    // "重载运行时" — but only while the lab switch is on. Off (the default)
-    // returns the cmds array unchanged, so the palette is byte-for-byte
-    // identical to the legacy behaviour.
-    const cmdsWithWall = insertSessionWallEntry(
-      cmds,
-      sessionWallEnabled,
-      {
-        id: "cmd-session-wall",
-        group: t("palette.group.commands"),
-        title: t("palette.cmd.sessionWall"),
-        icon: <LayoutGrid size={15} />,
-        compact: true,
-        keywords: ["session", "wall", "jump", "sessions", "跳转", "会话", "图墙"],
-        run: () => {
-          // Task 627: entry provably fired — log it so a silent close right
-          // after this line is attributable in desktop.log.
-          reportFrontendLog("sessionWall", "open requested", "palette entry");
-          setSessionWallOpen(true);
-        },
-      },
-    );
-    // 任务 686: 工作流面板插条跟在会话图墙后（sessionWall 的 insert 同款
-    // 语义）——flag 关（默认）= cmdsWithWall 原样返回，palette 逐字节不变。
-    // 685 引擎落地后此入口迁移为会话内 workflow 卡片（handoff-686 等待点③）。
+    // tl 1101 分组后仍沿用两条既有 lab 门控插条（task 505 / 任务 686）：flag 关
+    // = 返回原数组逐字节不变，flag 开 = 在「重载运行时」后插入对应入口。
     const cmdsWithWorkflow = insertWorkflowPanelEntry(
-      cmdsWithWall,
+      insertSessionWallEntry(
+        [
+          ...sessionCmds,
+          ...settingsCmds,
+          ...toolsCmds,
+          ...helpCmds,
+          ...extensionItems,
+          ...remoteItems,
+          ...sessionItems,
+        ],
+        sessionWallEnabled,
+        {
+          id: "cmd-session-wall",
+          group: t("palette.group.session"),
+          title: t("palette.cmd.sessionWall"),
+          icon: <LayoutGrid size={15} />,
+          compact: true,
+          shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.gotoTopic", desktopPlatform), desktopPlatform),
+          expandable: true,
+          expand: () => setSessionWallOpen(true),
+          keywords: ["session", "wall", "jump", "sessions", "跳转", "会话", "图墙"],
+          run: () => {
+            reportFrontendLog("sessionWall", "open requested", "palette entry");
+            setSessionWallOpen(true);
+          },
+        },
+      ),
       workflowPanelEnabled,
       {
         id: "cmd-workflow-panel",
-        group: t("palette.group.commands"),
+        group: t("palette.group.tools"),
         title: t("palette.cmd.workflowPanel"),
         icon: <GitBranch size={15} />,
         compact: true,
@@ -4887,8 +5040,22 @@ export default function App() {
         },
       },
     );
-    return [...cmdsWithWorkflow, ...extensionItems, ...remoteItems, ...sessionItems];
-  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled]);
+    return cmdsWithWorkflow;
+  }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled, questionSearchEnabled, desktopPlatform]);
+  // tl 1101「跳转标签页」：列全部打开的标签页（含浮动标签）+ 就地切换；右侧边栏
+  // 不单独做搜索（用户明确统一走这里），palette 输入框的模糊筛选天然覆盖。
+  const paletteTabItems = useMemo<PaletteItem[]>(() => {
+    return visibleTabs.map((tab) => ({
+      id: `tab-${tab.id}`,
+      group: t("palette.group.tabs"),
+      title: tab.topicTitle || tab.filePath?.split("/").filter(Boolean).pop() || t("palette.tab.untitled"),
+      hint: tab.workspaceName || tab.scope,
+      icon: <Layers size={15} />,
+      compact: true,
+      keywords: [tab.topicTitle, tab.workspaceName, tab.scope].filter(Boolean) as string[],
+      run: () => void handleTabChange(tab.id),
+    }));
+  }, [visibleTabs, t, handleTabChange]);
   // Delete / rename act on disk, then re-fetch so the panel reflects the change.
   const onDeleteSession = useCallback(
     async (path: string) => {
@@ -6642,9 +6809,9 @@ export default function App() {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        items={paletteItems}
-        placeholder={t("palette.placeholder")}
-        emptyText={t("palette.empty")}
+        items={paletteActiveView === "tabs" ? paletteTabItems : paletteItems}
+        placeholder={paletteActiveView === "tabs" ? t("palette.gotoTab.placeholder") : t("palette.placeholder")}
+        emptyText={paletteActiveView === "tabs" ? t("palette.gotoTab.empty") : t("palette.empty")}
       />
 
       {/* Task 505: the session graph wall, reachable only through the gated

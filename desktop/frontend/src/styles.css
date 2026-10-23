@@ -14278,9 +14278,10 @@ button.statusbar__mcp:focus-visible {
 
 /* ── command palette (⌘K) — centered modal over a dimmed backdrop ─────────── */
 .drawer-backdrop:has(> .palette) {
+  /* tl 1101：命令面板屏幕居中 + 半透明遮罩（用户明确「放在偏僻位置预期就是
+     用户用快捷键」，所以呼出后不再贴着按钮弹出）。 */
   justify-content: center;
-  align-items: flex-start;
-  padding-top: 12vh;
+  align-items: center;
   background: rgba(0, 0, 0, 0.42);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
@@ -14421,6 +14422,47 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+}
+/* tl 1101：宫格项 hover 快捷键角标（右上角）；无键项显示 "—"（方案明确要求）。 */
+.palette__chip {
+  position: relative;
+}
+.palette__chip-kbd {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--fg-faint);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.palette__chip:hover .palette__chip-kbd,
+.palette__chip--on .palette__chip-kbd {
+  opacity: 1;
+}
+.palette__chip-expand {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+.palette__chip-expand:hover,
+.palette__chip-expand:focus-visible {
+  color: var(--fg);
+  background: var(--button-bg);
 }
 .palette__item {
   --wails-draggable: no-drag;

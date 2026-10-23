@@ -11,6 +11,12 @@ import { useMountTransition } from "../lib/useMountTransition";
 // same component will work for skills, MCP servers, and future surfaces
 // once a buildItems() helper is added for them.
 //
+// tl 1101：命令面板升级为「搜索 + 工作台」——保持宫格（图墙）排布但按功能
+// 分组；hover 快捷键角标（无键项显示 "—"）；跳转会话保留「展开 ⌄」快路径
+// （点它直接进会话图墙，不进输入关键词）。呼出形态为屏幕居中 + 半透明遮罩
+//（styles.css 的 .drawer-backdrop:has(> .palette) 已居中；本组件只负责遮罩点击
+// 关闭，面板内点击不关闭）。
+//
 // Interaction model:
 //   - Input is auto-focused on open; the first match is highlighted.
 //   - ↑/↓ move the highlight (wraps at the edges).
@@ -41,6 +47,14 @@ export interface PaletteItem {
   group: string;
   // keywords add to the searchable text (e.g. slash-command aliases).
   keywords?: string[];
+  // shortcutLabel is the hover badge text for this item (e.g. "Ctrl+P");
+  // undefined renders "—" per the workbench spec.
+  shortcutLabel?: string;
+  // expandable adds a trailing ⌄ affordance on the chip (跳转会话 快路径);
+  // clicking it runs expand instead of run, without closing the palette.
+  expandable?: boolean;
+  // expand is the ⌄ 快路径 handler (跳转会话 → 直接进会话图墙).
+  expand?: () => void;
   // run closes the palette and dispatches the action.
   run: () => void | Promise<void>;
 }
@@ -255,6 +269,24 @@ export function CommandPalette({
                           onClose();
                         }}
                       >
+                        {it.shortcutLabel !== undefined && (
+                          <span className="palette__chip-kbd" aria-hidden="true">{it.shortcutLabel || "—"}</span>
+                        )}
+                        {it.expandable && (
+                          <span
+                            className="palette__chip-expand"
+                            role="button"
+                            tabIndex={-1}
+                            aria-label={t("palette.expand")}
+                            title={t("palette.expand")}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              it.expand?.();
+                            }}
+                          >
+                            ⌄
+                          </span>
+                        )}
                         <span className="palette__chip-icon" aria-hidden="true">
                           {it.icon ?? <Command size={15} />}
                         </span>

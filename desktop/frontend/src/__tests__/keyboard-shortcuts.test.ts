@@ -96,6 +96,30 @@ eq(shortcutConflict("app.newSession", { key: "l", ctrl: true }, "linux")?.action
 eq(shortcutDefinition("settings.open").allowInEditable, true, "task 622: settings chord fires from editable targets (composer, rich input, terminal textarea, search boxes)");
 eq(shortcutConflict("settings.open", defaultShortcutCombo("settings.open", "windows"), "windows"), null, "Ctrl+, settings chord conflicts with no other default");
 eq(shortcutConflict("shortcuts.show", defaultShortcutCombo("shortcuts.show", "windows"), "windows"), null, "Ctrl+/ help chord conflicts with no other default");
+
+// tl 1101：命令面板工作台新增快捷键全表校验——每个新键都必须与既有表零冲突
+//（Ctrl+P / Ctrl+Shift+T / Ctrl+Shift+F / Ctrl+Shift+L / F1 / Ctrl+Alt+B 均空闲；
+// Ctrl+K 已归 commandPalette.open，不重复注册）。
+for (const [platform, action, label] of [
+  ["windows", "palette.gotoTopic", "Ctrl+P 跳转会话"],
+  ["windows", "palette.gotoTab", "Ctrl+Shift+T 跳转标签页"],
+  ["windows", "palette.searchQuestions", "Ctrl+Shift+F 搜索历史提问"],
+  ["windows", "palette.openLab", "Ctrl+Shift+L 实验室"],
+  ["windows", "palette.docs", "F1 产品文档"],
+  ["windows", "view.rightDock", "Ctrl+Alt+B 右侧面板"],
+  ["darwin", "palette.gotoTopic", "Cmd+P 跳转会话"],
+  ["darwin", "palette.gotoTab", "Cmd+Shift+T 跳转标签页"],
+  ["darwin", "palette.searchQuestions", "Cmd+Shift+F 搜索历史提问"],
+  ["darwin", "palette.openLab", "Cmd+Shift+L 实验室"],
+  ["darwin", "palette.docs", "F1 产品文档"],
+  ["darwin", "view.rightDock", "Cmd+Alt+B 右侧面板"],
+] as const) {
+  eq(shortcutConflict(action, defaultShortcutCombo(action, platform), platform), null, `${label} 不与既有快捷键冲突`);
+  eq(shortcutDefinition(action).preventDefault, true, `${label} 注册 preventDefault`);
+}
+eq(JSON.stringify(shortcutDefinition("palette.docs").defaults.windows), JSON.stringify({ key: "F1" }), "F1 是裸键（无修饰键）");
+eq(JSON.stringify(shortcutDefinition("view.rightDock").defaults.windows), JSON.stringify({ key: "b", ctrl: true, alt: true }), "Ctrl+Alt+B 是右侧面板开关");
+
 eq(topicShortcutIndexFromEvent(event("1", { metaKey: true }), "darwin"), 0, "Cmd+1 maps to the first topic shortcut on macOS");
 eq(topicShortcutIndexFromEvent(event("1", { ctrlKey: true }), "darwin"), null, "Ctrl+1 is not a topic shortcut on macOS");
 eq(topicShortcutIndexFromEvent(event("9", { ctrlKey: true }), "windows"), 8, "Ctrl+9 maps to the ninth topic shortcut on Windows");
