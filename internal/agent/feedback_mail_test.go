@@ -156,6 +156,56 @@ func TestNotifyFeedbackNoteMintsOnceAndReuses(t *testing.T) {
 	}
 }
 
+// 任务 1058：通知的 From 必须是真实铸造地址（与注册表/寻址同源），不得是硬编
+// 码幽灵地址——收信方按此 From 回信必须真正可达。回归钉：把 From 换回硬编码
+// 常量（历史 bug 形态），下面两条断言必须同时失败；常量已删除，改用等价字面量
+// 复现同一 bug 形态。
+func TestNotifyFeedbackNoteFromIsMintedAddressAndOneWay(t *testing.T) {
+	f := newFeedbackMailFixture(t)
+	if err := f.cfg.NotifyFeedbackNote(context.Background(), builtin.FeedbackNote{
+		FileName: "feedback-20261022-105800-a.md", Kind: "bug", Title: "寻址回归", Summary: "摘要",
+	}); err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	if len(f.minted) != 1 {
+		t.Fatalf("factory must mint exactly one address: %v", f.minted)
+	}
+	inboxContact := f.minted[0]
+
+	// 反例对照钉：修复前的 bug 形态（幽灵字面量冒充 From）必须被下面两条断言
+	// 捕获——From 改回不可寻址的常量时，第一条（From==minted）立刻失败。
+	const ghost = "sc_feedback_inbox" // 历史 bug 的常量值，仅用于对照，非当前实现
+	if ghost == inboxContact {
+		t.Fatalf("test premise broken: the minted address must never equal the old ghost literal")
+	}
+
+	msgs := readInbox(t, f.mailDir, inboxContact)
+	if len(msgs) != 1 {
+		t.Fatalf("inbox messages = %d, want 1", len(msgs))
+	}
+	m := msgs[0]
+	if m.From != inboxContact {
+		t.Fatalf("From must be the minted address (same source as the registry/resolve path), got %q want %q", m.From, inboxContact)
+	}
+	if !strings.Contains(m.Body, FeedbackInboxOneWayNotice) {
+		t.Fatalf("body must carry the explicit one-way notice (tl 1058): %s", m.Body)
+	}
+
+	// 可寻址性：收信方按 From 回信必须真的能投递成功——目录扫描（talk_to_
+	// session 的寻址同一条路径）必须能按该 From 解析出会话，不是仅字符串断言。
+	ids := scanAddressable(f.sessDir, "")
+	found := false
+	for _, id := range ids {
+		if id.ContactID == m.From {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("From %q must be resolvable in the contact directory scan: %+v", m.From, ids)
+	}
+}
+
 // 无工厂宿主（CLI/serve）：未钉住地址时通知报错但不影响 md（Execute 层契约在
 // builtin 测试里；这里断言错误信息可辨识且不落盘半成品注册表）。
 func TestNotifyWithoutFactoryRefusesCleanly(t *testing.T) {
