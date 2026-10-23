@@ -31,7 +31,7 @@ func addWebSearch(reg *tool.Registry, cfg *config.Config, current *config.Provid
 			}
 		},
 		Factory: func() (provider.Provider, error) {
-			return newProviderWithSearchMode(entry, proxy, nil, false)
+			return newProviderWithSearchMode(entry, proxy, nil, false, cfg)
 		},
 		ReportUsage: func(usage *provider.Usage) {
 			if sink != nil {

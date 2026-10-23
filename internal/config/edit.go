@@ -2050,6 +2050,27 @@ func (c *Config) SetNetwork(n NetworkConfig) error {
 	return netclient.Validate(c.NetworkProxySpec())
 }
 
+// SetNetworkRetryBudget writes the task-1056 retry-budget lab switch family.
+// Boot snapshot: the retry loop reads it once per provider construction, so a
+// flip applies on the next session/restart — like every boot-resolved switch.
+// Off (the default) keeps every hard-coded retry default byte-for-byte.
+func (c *Config) SetNetworkRetryBudget(b RetryBudgetConfig) error {
+	if b.MaxRetries < 0 {
+		return fmt.Errorf("network.retry_budget.max_retries must be >= 0, got %d", b.MaxRetries)
+	}
+	if b.DialTimeoutSeconds < 0 {
+		return fmt.Errorf("network.retry_budget.dial_timeout_seconds must be >= 0, got %d", b.DialTimeoutSeconds)
+	}
+	if b.FastBackoffSeconds < 0 {
+		return fmt.Errorf("network.retry_budget.fast_backoff_seconds must be >= 0, got %d", b.FastBackoffSeconds)
+	}
+	if b.WallClockSeconds < 0 {
+		return fmt.Errorf("network.retry_budget.wall_clock_seconds must be >= 0, got %d", b.WallClockSeconds)
+	}
+	c.Network.RetryBudget = b
+	return nil
+}
+
 // ModelRefsProvider reports whether ref targets the named provider. It matches
 // both bare provider names ("deepseek") and "provider/model" refs.
 func ModelRefsProvider(ref, name string) bool {

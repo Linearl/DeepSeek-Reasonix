@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"log/slog"
 	fileencoding "reasonix/internal/fileutil/encoding"
@@ -1259,6 +1260,37 @@ type NetworkConfig struct {
 	// process environment instead.
 	NoProxy string             `toml:"no_proxy"`
 	Proxy   NetworkProxyConfig `toml:"proxy"`
+
+	// RetryBudget (task 1056, default off) is the lab-switch-gated retry tuning
+	// layer — see RetryBudgetConfig for each knob's meaning. Off keeps every
+	// hard-coded default byte-for-byte.
+	RetryBudget RetryBudgetConfig `toml:"retry_budget"`
+}
+
+// RetryBudgetConfig (task 1056 方案 B) is the lab-switch-gated retry tuning
+// family under [network]. Enabled defaults to false — off keeps the historical
+// 30s dial timeout, MaxRetries=10, exponential backoff, and no wall-clock cap.
+// A non-default value for any of the three knobs is only honored while Enabled
+// is true (see NetworkRetryBudget), so flipping only a knob without flipping
+// the switch changes nothing.
+type RetryBudgetConfig struct {
+	// Enabled gates the whole family (task 1056 lab switch, default off).
+	Enabled bool `toml:"enabled"`
+	// MaxRetries replaces the hard-coded retry.go MaxRetries (10). 0 keeps the
+	// const; values >0 take effect only while Enabled is true.
+	MaxRetries int `toml:"max_retries"`
+	// DialTimeoutSeconds replaces the hard-coded per-attempt dial deadline
+	// (30s). 0 keeps the const; a positive value shortens it (e.g. 8s) so a
+	// dead dial path fails fast instead of burning 30s per attempt. Only
+	// meaningful while Enabled is true — off-state keeps 30s regardless.
+	DialTimeoutSeconds int `toml:"dial_timeout_seconds"`
+	// FastBackoffSeconds caps the backoff ramp for dial-timeout failures only
+	// (not generic transient errors). 0 keeps the default exponential ramp.
+	FastBackoffSeconds int `toml:"fast_backoff_seconds"`
+	// WallClockSeconds bounds the whole retry loop (all attempts + backoff
+	// sleeps) for one SendWithRetry call. 0 disables the cap (today's
+	// behaviour). Exceeding it returns a RetryBudgetExhaustedError.
+	WallClockSeconds int `toml:"wall_clock_seconds"`
 }
 
 // NetworkProxyConfig is the structured custom-proxy editor shape. Password is
@@ -1283,6 +1315,32 @@ func (c *Config) NetworkProxySpec() netclient.ProxySpec {
 		Username:    c.expandVars(c.Network.Proxy.Username),
 		Password:    c.expandVars(c.Network.Proxy.Password),
 		DirectHosts: c.directProxyHosts(),
+	}
+}
+
+// NetworkRetryBudget resolves the [network.retry_budget] family into the
+// runtime budget the retry loop reads. Enabled=false (the default) collapses
+// every knob to its hard-coded zero so no caller has to re-check the switch —
+// provider.TransportTuning and provider.RetryBudgetFromContext both treat the
+// zero Budget as "today's behaviour".
+type ResolvedRetryBudget struct {
+	Enabled     bool
+	MaxRetries  int
+	DialTimeout time.Duration
+	FastBackoff time.Duration
+	WallClock   time.Duration
+}
+
+func (c *Config) NetworkRetryBudget() ResolvedRetryBudget {
+	if c == nil || !c.Network.RetryBudget.Enabled {
+		return ResolvedRetryBudget{}
+	}
+	return ResolvedRetryBudget{
+		Enabled:     true,
+		MaxRetries:  c.Network.RetryBudget.MaxRetries,
+		DialTimeout: time.Duration(c.Network.RetryBudget.DialTimeoutSeconds) * time.Second,
+		FastBackoff: time.Duration(c.Network.RetryBudget.FastBackoffSeconds) * time.Second,
+		WallClock:   time.Duration(c.Network.RetryBudget.WallClockSeconds) * time.Second,
 	}
 }
 

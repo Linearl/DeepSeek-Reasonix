@@ -44,12 +44,18 @@ type ProxySpec struct {
 // TransportOptions lets callers keep their existing network timeouts while
 // sharing proxy behavior. ForceIPv4 pins the dialer to tcp4 — the desktop updater
 // uses it to retry over IPv4 when an IPv6 route (CN → Cloudflare) resets mid-transfer.
+// ForceDNSRefresh attaches a fresh net.Resolver to the dialer on every dial: a
+// fresh resolver has no in-process lookup cache, so consecutive retries actually
+// re-resolve the hostname instead of reusing the exact IP that just failed
+// (task 1056 B4 — Go 1.26 has no exported CacheDNSForceRefresh knob, so this
+// is the portable equivalent).
 type TransportOptions struct {
 	DialTimeout           time.Duration
 	KeepAlive             time.Duration
 	TLSHandshakeTimeout   time.Duration
 	ResponseHeaderTimeout time.Duration
 	ForceIPv4             bool
+	ForceDNSRefresh       bool
 }
 
 // NormalizeMode maps empty and unknown modes to auto, preserving a fail-open
@@ -98,8 +104,15 @@ func NewTransport(spec ProxySpec, opts TransportOptions) (*http.Transport, error
 		return nil, err
 	}
 	tr.Proxy = proxy
-	if opts.DialTimeout != 0 || opts.KeepAlive != 0 || opts.ForceIPv4 {
+	if opts.DialTimeout != 0 || opts.KeepAlive != 0 || opts.ForceIPv4 || opts.ForceDNSRefresh {
 		d := &net.Dialer{Timeout: opts.DialTimeout, KeepAlive: opts.KeepAlive}
+		if opts.ForceDNSRefresh {
+			// net.Resolver caches lookups for the lifetime of one resolver
+			// instance; a per-dial fresh resolver bypasses that cache so a
+			// retry after a dial failure actually re-resolves the hostname
+			// instead of retrying the same dead IP (task 1056 B4).
+			d.Resolver = &net.Resolver{}
+		}
 		if opts.ForceIPv4 {
 			// Default-transport dialer uses 30s/30s; keep those when no explicit
 			// timeout is set so forcing IPv4 doesn't drop the dial deadline.

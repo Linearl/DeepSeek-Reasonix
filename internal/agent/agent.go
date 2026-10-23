@@ -2680,6 +2680,25 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 				panic(s.panicValue)
 			}
 			if s.err != nil {
+				// 任务1056 方案 C: the provider's whole retry budget is spent —
+				// the start goroutine only returns a terminal error once
+				// SendWithRetry has exhausted every attempt (or the wall-clock
+				// cap fired). Emit the "provider unreachable" notice here,
+				// before returning the error, so the frontend's existing
+				// provider_unreachable consumer renders "服务不可达" without any
+				// frontend change. The turn is about to fail anyway; this is a
+				// "why" notice, not a recoverable retry — so it does not touch
+				// the retry/connecting labels (already cleared by the drain
+				// above) and never blocks the run loop.
+				if ctx.Err() == nil {
+					sink.Emit(event.Event{
+						Kind:         event.ProviderUnreachable,
+						Text:         s.err.Error(),
+						RetryAttempt: provider.RequestAttemptCount(ctx),
+						RetryMax:     provider.MaxRetries,
+						RetryScope:   event.RetryScopeHeaders,
+					})
+				}
 				return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: s.err}
 			}
 			ch = s.ch

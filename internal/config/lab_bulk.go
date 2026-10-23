@@ -132,6 +132,14 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"tableWrap":           func(c *Config, on bool) error { return c.SetExperimentalTableWrap(on) },
 	"sendTargetSelect":    func(c *Config, on bool) error { return c.SetExperimentalSendTargetSelect(on) },
 	"draftRewrite":        func(c *Config, on bool) error { return c.SetExperimentalDraftRewrite(on) },
+	// 任务 1056：网络重试预算分级（[network.retry_budget] 总开关；family 子键
+	// （max_retries/dial_timeout_seconds 等）不进批量——批量只翻 enabled，
+	// 细粒度旋钮保持用户现值）。
+	"networkRetryBudget": func(c *Config, on bool) error {
+		b := c.Network.RetryBudget
+		b.Enabled = on
+		return c.SetNetworkRetryBudget(b)
+	},
 	// ── observability ──
 	"monitoring":  func(c *Config, on bool) error { return c.SetExperimentalSessionMonitor(on) },
 	"subagentTps": func(c *Config, on bool) error { return c.SetExperimentalSubagentTps(on) },

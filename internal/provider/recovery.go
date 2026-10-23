@@ -80,6 +80,13 @@ func ClassifyRecovery(err error) RecoveryFailure {
 		f.Phase, f.Status, f.Code = exhausted.Phase, exhausted.Status, exhausted.Code
 		return f
 	}
+	// 任务1056: a budget-exhausted terminal error is the same "headers, retryable"
+	// lane a bare APIError(503) would land in — ClassifyRecovery just needs to
+	// see through the wrapper so the agent's managed-recovery logic doesn't
+	// misfile it as Phase "unknown"/Retryable=false.
+	if budget := AsRetryBudgetExhausted(err); budget != nil {
+		return ClassifyRecovery(budget.Cause)
+	}
 	if q := AsQuotaError(err); q != nil {
 		// Task 845: carry the provider-stated Retry-After so the agent's
 		// quota wait lane can schedule its next probe from it.

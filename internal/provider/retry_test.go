@@ -144,20 +144,157 @@ func TestIsResponseHeaderTimeout(t *testing.T) {
 }
 
 func TestBackoffDelay(t *testing.T) {
-	if d := backoffDelay(1, 0); d < 500*time.Millisecond || d >= 750*time.Millisecond {
+	// 任务1056: the signature grew a (budget, lastErr) pair; the off-state
+	// (zero budget) must produce the exact pre-1056 curve, byte-for-byte.
+	if d := backoffDelay(1, 0, RetryBudget{}, nil); d < 500*time.Millisecond || d >= 750*time.Millisecond {
 		t.Errorf("attempt 1 base delay = %v, want [500ms,750ms)", d)
 	}
-	if d := backoffDelay(20, 0); d > maxBackoff+250*time.Millisecond {
+	if d := backoffDelay(20, 0, RetryBudget{}, nil); d > maxBackoff+250*time.Millisecond {
 		t.Errorf("delay %v exceeds cap+jitter", d)
 	}
-	if d := backoffDelay(5, 3*time.Second); d != 3*time.Second {
+	if d := backoffDelay(5, 3*time.Second, RetryBudget{}, nil); d != 3*time.Second {
 		t.Errorf("Retry-After should win: %v", d)
 	}
-	if d := backoffDelay(1, 45*time.Second); d != 45*time.Second {
+	if d := backoffDelay(1, 45*time.Second, RetryBudget{}, nil); d != 45*time.Second {
 		t.Errorf("Retry-After beyond the backoff cap should still be honored: %v", d)
 	}
-	if d := backoffDelay(1, time.Hour); d != maxRetryAfter {
+	if d := backoffDelay(1, time.Hour, RetryBudget{}, nil); d != maxRetryAfter {
 		t.Errorf("Retry-After should be capped to %v, got %v", maxRetryAfter, d)
+	}
+	// Fast-backoff only engages on a dial-timeout error — a generic transient
+	// error (or a non-dial-timeout error with the budget set) keeps the ramp.
+	dialErr := &DialTimeoutError{Timeout: 30 * time.Second, Err: errors.New("dial tcp: i/o timeout")}
+	if d := backoffDelay(5, 0, RetryBudget{FastBackoff: 500 * time.Millisecond}, dialErr); d > 500*time.Millisecond+250*time.Millisecond {
+		t.Errorf("dial-timeout fast backoff exceeded its cap: %v", d)
+	}
+	if d := backoffDelay(5, 0, RetryBudget{FastBackoff: 500 * time.Millisecond}, errors.New("connection reset")); d < time.Second {
+		t.Errorf("generic transient error must not fast-back-off (got %v)", d)
+	}
+}
+
+// B2: a dial-timeout failure must burn its budget fast — with the budget's
+// fast-backoff set, 3 dial timeouts + sleeps must complete in well under the
+// ~7 minutes the incident log showed (30s × 11 + exponential ramp). This test
+// is the executable form of "单次 dial 失败耗时 ≤10s" at the retry-loop level.
+func TestSendWithRetryFastBackoffOnDialTimeout(t *testing.T) {
+	calls := 0
+	cl := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return nil, &DialTimeoutError{Timeout: 8 * time.Second, Err: errors.New("dial tcp: i/o timeout")}
+	})}
+	ctx := WithRetryBudget(context.Background(), RetryBudget{
+		MaxRetries:  3,
+		DialTimeout: 8 * time.Second,
+		FastBackoff: 50 * time.Millisecond,
+	})
+	start := time.Now()
+	_, err := SendWithRetry(ctx, cl, SendOptions{Provider: "p"}, newDummyReq)
+	elapsed := time.Since(start)
+	if calls != 4 {
+		t.Fatalf("calls = %d, want 4 (1 initial + 3 retries)", calls)
+	}
+	// Fast-backoff (not wrap-exhausted) must preserve the pre-1056 terminal
+	// error shape — the RequestFailure carrying the dial timeout — while
+	// burning its budget in well under the 8.5-minute incident total.
+	var reqErr *RequestFailure
+	if !errors.As(err, &reqErr) {
+		t.Fatalf("want the pre-1056 terminal shape (*RequestFailure), got %T: %v", err, err)
+	}
+	if !IsDialTimeout(reqErr.Err) {
+		t.Fatalf("terminal error must still carry the dial-timeout shape: %v", reqErr.Err)
+	}
+	if elapsed > 10*time.Second {
+		t.Fatalf("fast-backoff retry loop took %v; budget promised a sub-10s burn", elapsed)
+	}
+}
+
+// B3: the wall-clock cap must terminate a retry loop whose every attempt
+// individually fails "in time" (transient, not a dial timeout) but which keeps
+// failing — without it this loop would ride the exponential ramp to maxBackoff.
+func TestSendWithRetryWallClockCap(t *testing.T) {
+	calls := 0
+	cl := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("dial tcp: i/o timeout")
+	})}
+	ctx := WithRetryBudget(context.Background(), RetryBudget{
+		MaxRetries:    MaxRetries, // a high cap the wall-clock must cut short
+		WallClock:      300 * time.Millisecond,
+		WrapExhausted: true,
+	})
+	start := time.Now()
+	_, err := SendWithRetry(ctx, cl, SendOptions{Provider: "p"}, newDummyReq)
+	elapsed := time.Since(start)
+	var exhaustedErr *RetryBudgetExhaustedError
+	if !errors.As(err, &exhaustedErr) {
+		t.Fatalf("want *RetryBudgetExhaustedError when the wall-clock cap fires, got %T: %v", err, err)
+	}
+	if elapsed > 3*time.Second {
+		t.Fatalf("wall-clock cap let the loop run for %v (budget 300ms)", elapsed)
+	}
+	if calls >= MaxRetries {
+		t.Fatalf("wall-clock cap should have cut the loop short, but it made %d calls", calls)
+	}
+}
+
+// Off-state contract: no budget on the context must reproduce today's
+// semantics exactly — MaxRetries=10 retries, the pre-1056 exponential ramp,
+// and no RetryBudgetExhaustedError wrap on exhaustion.
+func TestSendWithRetryDefaultBudgetKeepsBaselineSemantics(t *testing.T) {
+	calls := 0
+	cl := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return statusResp(http.StatusServiceUnavailable, nil), nil
+	})}
+	start := time.Now()
+	_, err := SendWithRetry(context.Background(), cl, SendOptions{Provider: "p"}, newDummyReq)
+	elapsed := time.Since(start)
+	if calls != MaxRetries+1 {
+		t.Fatalf("calls = %d, want %d (initial + MaxRetries)", calls, MaxRetries+1)
+	}
+	var exhaustedErr *RetryBudgetExhaustedError
+	if errors.As(err, &exhaustedErr) {
+		t.Fatalf("off-state must not wrap the terminal error in RetryBudgetExhaustedError: %v", err)
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusServiceUnavailable {
+		t.Fatalf("want bare *APIError(503), got %T: %v", err, err)
+	}
+	// The pre-1056 ramp's last backoff is 15s+jitter; the loop must have
+	// waited on that order, not the sub-second fast-backoff lane.
+	if elapsed < 10*time.Second {
+		t.Fatalf("off-state elapsed %v; expected the pre-1056 exponential ramp (~30s), not a fast lane", elapsed)
+	}
+}
+
+// TransportTuning: off-state (nil Extra, or Extra without the key) must return
+// the hard-coded 30s default and no DNS-refresh override.
+func TestTransportTuningDefaults(t *testing.T) {
+	for name, extra := range map[string]map[string]any{
+		"nil":       nil,
+		"empty":     {},
+		"unrelated": {"proxy_spec": struct{}{}},
+	} {
+		dialTimeout, forceDNS := TransportTuning(extra)
+		if dialTimeout != DefaultDialTimeout || forceDNS {
+			t.Errorf("%s: got (%v, %v), want (%v, false)", name, dialTimeout, forceDNS, DefaultDialTimeout)
+		}
+	}
+	// On-state: a positive budget shortens the dial deadline and forces the
+	// DNS re-resolve.
+	dialTimeout, forceDNS := TransportTuning(map[string]any{
+		"retry_budget": TransportBudget{DialTimeout: 8 * time.Second, ForceDNSRefresh: true},
+	})
+	if dialTimeout != 8*time.Second || !forceDNS {
+		t.Fatalf("on-state tuning = (%v, %v), want (8s, true)", dialTimeout, forceDNS)
+	}
+	// A zero-valued budget (switch configured but knob unset) collapses to
+	// the default — the "0 keeps the hard-coded default" contract.
+	dialTimeout, forceDNS = TransportTuning(map[string]any{
+		"retry_budget": TransportBudget{},
+	})
+	if dialTimeout != DefaultDialTimeout || forceDNS {
+		t.Fatalf("zero budget = (%v, %v), want (%v, false)", dialTimeout, forceDNS, DefaultDialTimeout)
 	}
 }
 

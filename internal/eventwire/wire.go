@@ -650,6 +650,7 @@ var kindNames = map[event.Kind]string{
 	event.PromptClosed:            "prompt_closed",
 	event.UserInput:               "user_input",
 	event.WorkflowNode:            "workflow_node",
+	event.ProviderUnreachable:     "provider_unreachable",
 }
 
 // ContextMaintenance is the JSON form of event.ContextMaintenance.

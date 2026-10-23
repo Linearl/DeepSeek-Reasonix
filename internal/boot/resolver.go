@@ -116,7 +116,7 @@ func (r *LocalProviderResolver) Resolve(selection provider.Selection) (provider.
 		}
 		modelInfo = &info
 	}
-	return NewProviderWithProxyAndModelInfo(entry, r.proxy, modelInfo)
+	return newProviderWithSearchMode(entry, r.proxy, modelInfo, true, r.cfg)
 }
 
 func resolveProvider(resolver provider.Resolver, cfg *config.Config, proxy netclient.ProxySpec, selection provider.Selection) (provider.Provider, error) {

@@ -23,12 +23,23 @@ func NewProviderWithProxy(e *config.ProviderEntry, proxy netclient.ProxySpec) (p
 // NewProviderWithProxyAndModelInfo builds a provider while preserving the
 // adapter-resolved metadata for the exact model instance.
 func NewProviderWithProxyAndModelInfo(e *config.ProviderEntry, proxy netclient.ProxySpec, modelInfo *provider.ModelInfo) (provider.Provider, error) {
-	return newProviderWithSearchMode(e, proxy, modelInfo, true)
+	return newProviderWithSearchMode(e, proxy, modelInfo, true, nil)
+}
+
+// NewProviderWithProxyConfig is the config-aware variant (task 1056): it takes
+// the loaded *config.Config so the [network.retry_budget] lab switch (default
+// off) can stamp its transport knob into the provider's Extra. Callers that
+// have a *config.Config should prefer this over NewProviderWithProxy — the
+// legacy wrapper stays signature-compatible for callers with no config in
+// scope (passing nil is safe: providerBudgetFromConfig treats nil as "switch
+// off", today's behaviour).
+func NewProviderWithProxyConfig(e *config.ProviderEntry, proxy netclient.ProxySpec, cfg *config.Config) (provider.Provider, error) {
+	return newProviderWithSearchMode(e, proxy, nil, true, cfg)
 }
 
 // clientSearch suppresses new native searches while retaining the adapter's
 // ability to read and replay existing native search history.
-func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpec, modelInfo *provider.ModelInfo, clientSearch bool) (provider.Provider, error) {
+func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpec, modelInfo *provider.ModelInfo, clientSearch bool, cfg *config.Config) (provider.Provider, error) {
 	if err := config.ValidateProviderEndpoint(e); err != nil {
 		return nil, err
 	}
@@ -55,37 +66,57 @@ func newProviderWithSearchMode(e *config.ProviderEntry, proxy netclient.ProxySpe
 			return nil, err
 		}
 	}
+	// 任务1056-B: the retry-budget lab switch (default off) stamps the
+	// transport-budget knob into Extra so the concrete dialer (openai/
+	// anthropic/responses newHTTPClient) can pick up a short dial timeout and
+	// force a fresh DNS lookup per attempt. Off-state: no key, no change.
+	extra := map[string]any{
+		"api_key_env":        e.APIKeyEnv,
+		"api_key_source":     e.APIKeySourceLabel(),
+		"thinking":           e.Thinking,
+		"effort":             config.EffectiveEffort(e),
+		"supported_efforts":  e.SupportedEfforts,
+		"reasoning_protocol": config.ReasoningProtocolForEntry(e),
+		"max_output_tokens":  e.MaxOutputTokens,
+		"chat_url":           e.ChatURL,
+		"request_url":        e.RequestURL,
+		"headers":            e.Headers,
+		"extra_body":         e.ExtraBody,
+		"auth_header":        e.AuthHeader,
+		"proxy_spec":         proxy,
+		"vision":             config.EffectiveVision(e),
+		"audio":              audioInput,
+		"vision_detail":      e.VisionDetail,
+		"web_search":         config.EffectiveWebSearch(e),
+		"client_web_search":  clientSearch,
+		"reject_redirects":   !clientSearch,
+		"mode":               e.ResponsesMode,
+		// Keep nil as nil so the responses provider can vendor-detect its
+		// default instead of accidentally treating every endpoint as stateful.
+		"stateful": e.ResponsesStateful,
+	}
+	if budget := providerBudgetFromConfig(cfg); budget != nil {
+		extra["retry_budget"] = *budget
+	}
 	return provider.New(e.Kind, provider.Config{
 		HTTPClient: tunnelClient,
 		Name:       e.Name, DisplayName: e.DisplayName, Protocol: e.Kind,
 		BaseURL: e.BaseURL, Model: e.Model, APIKey: e.APIKey(), ModelInfo: modelInfo,
-		// Pass the key's env var so auth failures can name where to fix it, plus
-		// provider-kind-specific knobs. EffectiveEffort applies a configured
-		// default_effort when the user has not explicitly selected /effort.
-		Extra: map[string]any{
-			"api_key_env":        e.APIKeyEnv,
-			"api_key_source":     e.APIKeySourceLabel(),
-			"thinking":           e.Thinking,
-			"effort":             config.EffectiveEffort(e),
-			"supported_efforts":  e.SupportedEfforts,
-			"reasoning_protocol": config.ReasoningProtocolForEntry(e),
-			"max_output_tokens":  e.MaxOutputTokens,
-			"chat_url":           e.ChatURL,
-			"request_url":        e.RequestURL,
-			"headers":            e.Headers,
-			"extra_body":         e.ExtraBody,
-			"auth_header":        e.AuthHeader,
-			"proxy_spec":         proxy,
-			"vision":             config.EffectiveVision(e),
-			"audio":              audioInput,
-			"vision_detail":      e.VisionDetail,
-			"web_search":         config.EffectiveWebSearch(e),
-			"client_web_search":  clientSearch,
-			"reject_redirects":   !clientSearch,
-			"mode":               e.ResponsesMode,
-			// Keep nil as nil so the responses provider can vendor-detect its
-			// default instead of accidentally treating every endpoint as stateful.
-			"stateful": e.ResponsesStateful,
-		},
+		Extra: extra,
 	})
+}
+
+// providerBudgetFromConfig resolves the task-1056-B retry-budget lab switch to
+// the transport-knob half of the budget. Nil (no Extra key) when the switch is
+// off, unset, or no config is available — the default-off contract every
+// other piece of this task depends on.
+func providerBudgetFromConfig(cfg *config.Config) *provider.TransportBudget {
+	if cfg == nil {
+		return nil
+	}
+	b := cfg.NetworkRetryBudget()
+	if !b.Enabled {
+		return nil
+	}
+	return &provider.TransportBudget{DialTimeout: b.DialTimeout, ForceDNSRefresh: true}
 }

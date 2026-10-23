@@ -3308,7 +3308,7 @@ export const zhTW: Record<DictKey, string> = {
   "transcript.processedDuration": "已處理 {s}s",
   "notice.info": "提示",
   "notice.remoteTurnInterrupted": "遠端連線已中斷，本輪對話的狀態暫不可知；重連後會話將從伺服器恢復。",
-  "notice.remoteProviderUnreachable": "憑證通道（桌面金鑰代理）不可達，正在重試：{detail}",
+  "notice.remoteProviderUnreachable": "憑證通道或模型服務無法連線，已停止重試：{detail}",
   "notice.warning": "警告",
   "notice.askSubmitFailed": "提交回答失敗：{error}",
   "notice.details": "詳情",

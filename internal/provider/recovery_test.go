@@ -55,6 +55,26 @@ func TestRecoveryWaitExhaustedIsTerminalAndDiagnosable(t *testing.T) {
 	}
 }
 
+// 任务1056: a budget-exhausted terminal error must not be misfiled as
+// Phase "unknown"/Retryable=false — ClassifyRecovery sees through the
+// RetryBudgetExhaustedError wrapper to the underlying APIError(503) lane,
+// and DiagnoseFailure reports the dedicated "retry_budget_exhausted" kind.
+func TestRetryBudgetExhaustedClassifiesThroughWrapper(t *testing.T) {
+	cause := &APIError{Provider: "p", Status: 503, Body: `{"error":{"code":"overloaded"}}`, TraceID: "trace_1"}
+	err := &RetryBudgetExhaustedError{Attempts: 4, Elapsed: 90 * time.Second, WallClock: 2 * time.Minute, Cause: cause}
+	f := ClassifyRecovery(err)
+	if f.Phase != "headers" || f.Status != 503 || !f.Retryable {
+		t.Fatalf("budget-exhausted should classify as the underlying retryable headers lane, got %+v", f)
+	}
+	d := DiagnoseFailure(err)
+	if d.Kind != "retry_budget_exhausted" || d.Status != 503 {
+		t.Fatalf("diagnostic=%+v, want kind retry_budget_exhausted status 503", d)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatal("RetryBudgetExhaustedError must expose the cause for errors.Is")
+	}
+}
+
 func TestOpaqueGoBadRequestDoesNotGuessReplayFailure(t *testing.T) {
 	// Observed from Go's custom DeepSeek Anthropic route after an invalid
 	// replay. The same opaque body cannot establish the cause for real users.
