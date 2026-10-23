@@ -681,3 +681,60 @@ func TestModelSettingsDefaultEffortPreference(t *testing.T) {
 		t.Fatalf("Settings().DefaultEffort after auto = %q, want empty", got)
 	}
 }
+
+// TestModelSettingsPerModelEffortPreference round-trips a per-model effort
+// level (task 1053): two models under one connection, one carrying its own
+// vocabulary via model_overrides and one inheriting the connection list, each
+// persisting and reading back its own level through Settings().ModelEfforts;
+// a level outside the model's vocabulary is refused before anything reaches
+// disk; "auto" clears it back to connection/protocol default.
+func TestModelSettingsPerModelEffortPreference(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	setDesktopTestCredential(t, "MODEL_EFFORT_KEY", "sk-test")
+	cfg := config.Default()
+	cfg.DefaultModel = "gateway/chat-model"
+	cfg.Desktop.ProviderAccess = []string{"gateway"}
+	cfg.Providers = []config.ProviderEntry{{
+		Name: "gateway", Kind: "openai", BaseURL: "https://api.example-gateway.com/v1",
+		Models: []string{"chat-model", "reasoning-model"}, APIKeyEnv: "MODEL_EFFORT_KEY",
+		SupportedEfforts: []string{"low", "high", "max"},
+		ModelOverrides: map[string]config.ProviderModelOverride{
+			"reasoning-model": {SupportedEfforts: []string{"low", "xhigh", "max"}},
+		},
+	}}
+	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	app := NewApp()
+	app.ctx = context.Background()
+
+	// A level from the connection vocabulary lands on the inherited model.
+	if err := app.ApplyModelSettings(ModelSettingsChange{Kind: "preference", Field: "model_effort", Ref: "gateway/chat-model=max", RequestID: "chat-max", ExpectedFingerprint: app.Settings().ModelSettingsFingerprint}).Persisted; !err {
+		t.Fatal("chat-model max save should persist")
+	}
+	if entry, ok := config.LoadForEdit(config.UserConfigPath()).ResolveModel("gateway/chat-model"); !ok || entry.DefaultEffort != "max" {
+		t.Fatalf("persisted chat-model default_effort = %q (ok=%t), want max", entry.DefaultEffort, ok)
+	}
+	// A level from the model's own vocabulary lands on the overridden model.
+	if err := app.ApplyModelSettings(ModelSettingsChange{Kind: "preference", Field: "model_effort", Ref: "gateway/reasoning-model=xhigh", RequestID: "reason-xhigh", ExpectedFingerprint: app.Settings().ModelSettingsFingerprint}).Persisted; !err {
+		t.Fatal("reasoning-model xhigh save should persist")
+	}
+	if got := app.Settings().ModelEfforts["gateway/reasoning-model"]; got != "xhigh" {
+		t.Fatalf("Settings().ModelEfforts[gateway/reasoning-model] = %q, want xhigh", got)
+	}
+	// A level outside the model's own vocabulary is refused before disk.
+	bad := app.ApplyModelSettings(ModelSettingsChange{Kind: "preference", Field: "model_effort", Ref: "gateway/reasoning-model=high", RequestID: "bad-level", ExpectedFingerprint: app.Settings().ModelSettingsFingerprint})
+	if bad.Persisted || len(bad.Issues) == 0 {
+		t.Fatalf("level outside the model's vocabulary accepted: %+v", bad)
+	}
+	// "auto" clears the level back to connection/protocol default.
+	if err := app.ApplyModelSettings(ModelSettingsChange{Kind: "preference", Field: "model_effort", Ref: "gateway/chat-model=auto", RequestID: "chat-auto", ExpectedFingerprint: app.Settings().ModelSettingsFingerprint}).Persisted; !err {
+		t.Fatal("chat-model auto save should persist")
+	}
+	if entry, ok := config.LoadForEdit(config.UserConfigPath()).ResolveModel("gateway/chat-model"); !ok || entry.DefaultEffort != "" {
+		t.Fatalf("auto should clear chat-model default_effort, got %q (ok=%t)", entry.DefaultEffort, ok)
+	}
+	if _, ok := app.Settings().ModelEfforts["gateway/chat-model"]; ok {
+		t.Fatal("cleared chat-model should not appear in Settings().ModelEfforts")
+	}
+}
