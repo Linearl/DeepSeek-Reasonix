@@ -306,3 +306,69 @@ func TestFeedbackSupersededByRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// ---- task 1057: rune-safe summary clipping (UTF-8 multi-byte cut) ----
+
+func TestClipRunesRuneSafeCutsOnRuneBoundary(t *testing.T) {
+	// Chinese text: each rune is 3 bytes. A naive byte-slice at 10 bytes would
+	// split the 4th character (bytes 10..12) mid-sequence → U+FFFD.
+	s := "一二三四五六七八九十"
+	got := clipRunesRuneSafe(s, 4)
+	if got != "一二三四" {
+		t.Fatalf("clipRunesRuneSafe(4 runes) = %q, want %q", got, "一二三四")
+	}
+	if strings.ContainsRune(got, '�') {
+		t.Fatalf("rune-safe clip leaked U+FFFD: %q", got)
+	}
+}
+
+func TestClipRunesByteSafeCutsOnRuneBoundary(t *testing.T) {
+	// 3-byte chars: byte 10 splits the 4th char. clipRunesByteSafe must back up
+	// to byte 9 (= 3 complete runes).
+	s := "一二三四五六七八九十"
+	got := clipRunesByteSafe(s, 10)
+	if got != "一二三" {
+		t.Fatalf("clipRunesByteSafe(10 bytes) = %q, want %q", got, "一二三")
+	}
+	if strings.ContainsRune(got, '�') {
+		t.Fatalf("byte-safe clip leaked U+FFFD: %q", got)
+	}
+	// No truncation when under the cap.
+	if got := clipRunesByteSafe("abc", 10); got != "abc" {
+		t.Fatalf("clip under cap changed text: %q", got)
+	}
+}
+
+func TestFeedbackSummaryBoundedLongSingleLineRuneSafe(t *testing.T) {
+	// A single very long Chinese line (>512 bytes) — the byte ceiling kicks in
+	// and must cut on a rune boundary, never producing U+FFFD.
+	long := strings.Repeat("压缩后工具清单固化提示文案", 200) // 12 runes × 3B × 200 = 7200B
+	got := FeedbackSummaryBounded(long, 3)
+	if len(got) == 0 {
+		t.Fatal("expected non-empty summary")
+	}
+	if len(got) > feedbackSummaryMaxBytes {
+		t.Fatalf("summary exceeds byte ceiling: %d > %d", len(got), feedbackSummaryMaxBytes)
+	}
+	if strings.ContainsRune(got, '�') {
+		t.Fatalf("summary leaked U+FFFD: %q", got)
+	}
+	// Must be valid UTF-8 (no torn multi-byte sequence).
+	if strings.ToValidUTF8(got, "") != got {
+		t.Fatalf("summary is not valid UTF-8: %q", got)
+	}
+}
+
+func TestFeedbackSummaryBoundedEnglishRegression(t *testing.T) {
+	// English/mixed content: rune-safe cut must not change behavior for pure
+	// ASCII (each rune = 1 byte).
+	got := FeedbackSummaryBounded("hello world this is a long english line", 3)
+	if got != "hello world this is a long english line" {
+		t.Fatalf("english summary changed: %q", got)
+	}
+	// Mixed CJK + ASCII under the byte ceiling — untouched.
+	mixed := "中文 mixed 内容 test"
+	if got := FeedbackSummaryBounded(mixed, 3); got != mixed {
+		t.Fatalf("mixed summary changed: %q", got)
+	}
+}
