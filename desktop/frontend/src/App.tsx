@@ -43,6 +43,7 @@ import {
   Bot,
   LayoutGrid,
   Check,
+  BookOpen,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { buildSubagentDirectory, subagentsTabLabel } from "./lib/subagentDirectory";
@@ -51,6 +52,7 @@ import { insertSessionWallEntry } from "./lib/sessionWall";
 // 单独轻量模块：workflowDag 的 fixture/布局只随面板懒加载 chunk 走，不进
 // initial 面（首版实测炸 initial 线的教训）。
 import { insertWorkflowPanelEntry } from "./lib/workflowPanelEntry";
+import { openProductDocs } from "./lib/docsSite";
 import { WorkflowPanelBoundary } from "./components/WorkflowPanelBoundary";
 import { applyLabFlags, applyTabPermissionIndicator, labFlagEnabled, onLabFlagsChange } from "./lib/labFlags";
 import { useToast } from "./lib/toast";
@@ -4657,6 +4659,8 @@ export default function App() {
     else if (activeTabId) void handleTabClose(activeTabId);
   }, [activeTabId, handleTabClose, managementActive, returnToWorkspace], managementActive || Boolean(activeTabId));
   useGlobalShortcut("shortcuts.show", () => setShortcutsOpen(true));
+  // 任务 1102：F1 打开产品文档静态站（命令面板「产品文档」同源，走系统浏览器）。
+  useGlobalShortcut("help.docs.open", () => openProductDocs());
   useGlobalShortcut("sidebar.toggle", toggleSidebar, [toggleSidebar], !managementActive);
   // Task 399: Ctrl+F opens the transcript find bar. Yield to code blocks —
   // LineNumberCode owns Ctrl+F inside .code-block__wrap (its capture handler
@@ -4748,6 +4752,17 @@ export default function App() {
           // Success/queued feedback arrives as a tab notice; only hard failures need a toast.
           void app.ReloadRuntime(tabID).catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
         },
+      },
+      // 任务 1102：命令面板「产品文档」——打开产品文档静态站（GitHub Pages）。
+      // 与 F1 快捷键（help.docs.open）同源，都走 openProductDocs()。
+      {
+        id: "cmd-product-docs",
+        group: t("palette.group.commands"),
+        title: t("palette.cmd.productDocs"),
+        icon: <BookOpen size={15} />,
+        compact: true,
+        keywords: ["docs", "documentation", "help", "manual", "文档", "帮助", "说明书"],
+        run: () => openProductDocs(),
       },
     ];
     const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();

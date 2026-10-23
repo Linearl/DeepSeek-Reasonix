@@ -1546,6 +1546,16 @@ const CHECKS = [
   { feature: "任务805 迁移 UI（两段确认+进度+反馈）", file: "desktop/frontend/src/components/SessionMigrationSection.tsx", patterns: ["app.PlanSessionV4Backfill", "app.RunSessionV4Backfill", "sessionStorageMigrationProgress", "settings.migration.backupDone"] },
   { feature: "任务805 推荐档=v3（徽章+文案+档位锁）", file: "desktop/frontend/src/components/SettingsPanel.tsx", patterns: ['mode === "v3_only" ? <TierBadge tier="recommended" translator={t} /> : null', "migrationRunning"] },
 
+  // ── 任务1102 产品文档静态站（GitHub Pages）接入 ─────────────────────
+  // 前端接线点：docsSite.ts 持有跳转常量与 openProductDocs；命令面板「产品文档」
+  // 项（cmd-product-docs）与 F1 快捷键（help.docs.open）都经它打开系统浏览器。
+  // 静态站本体（docs-site/）另有 docs-site-pages.yml 发布链路，合并上游时若被
+  // 静默删掉这两个文件，产品文档入口会变死链。
+  { feature: "任务1102 前端接线点（URL 常量 + openProductDocs）", file: "desktop/frontend/src/lib/docsSite.ts", patterns: ["export const DOCS_SITE_BASE_URL", "export function openProductDocs", "openExternal(DOCS_SITE_BASE_URL)"] },
+  { feature: "任务1102 命令面板「产品文档」项 + F1 快捷键接线", file: "desktop/frontend/src/App.tsx", patterns: ["cmd-product-docs", "openProductDocs()", "help.docs.open"] },
+  { feature: "任务1102 F1 快捷键定义（help.docs.open）", file: "desktop/frontend/src/lib/keyboardShortcuts.ts", patterns: ['action: "help.docs.open"', 'allPlatforms({ key: "F1" })'] },
+  { feature: "任务1102 静态站发布链路（GitHub Pages workflow）", file: ".github/workflows/docs-site-pages.yml", patterns: ["docs-site/", "actions/deploy-pages"] },
+
 ];
 
 let failed = 0;
