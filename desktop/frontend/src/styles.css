@@ -4917,7 +4917,8 @@ a[href] {
   min-width: 0;
 }
 /* 任务1066: 未应用引导 notice 块内正文/附件/复制按钮——与 steer 气泡同款
-   形态（图片复用 .msg-attachment，可点击放大）。 */
+   形态（图片复用 .msg-attachment，可点击放大）。
+   任务1091: 附件区块对齐用户消息 .msg-attachments——并排横排（不再竖排）。 */
 .notice-line__body--unapplied-steer {
   display: flex;
   flex-direction: column;
@@ -4929,15 +4930,19 @@ a[href] {
   white-space: pre-wrap;
 }
 .notice-line__body .msg-attachments {
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 6px;
-  margin-top: 4px;
-  min-width: 0;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: min(300px, 100%);
   width: 100%;
 }
+/* 任务1091: unapplied notice 块保留旧版复制按钮在卡片内右下（notice 块无
+   独立 meta 行，气泡/展开态的按钮移出卡片不波及此处）。 */
 .notice-line__body .steer-line__copy {
   margin-top: 4px;
+  align-self: flex-end;
   color: var(--fg-faint);
   background: transparent;
   border: none;
@@ -5184,19 +5189,48 @@ a[href] {
   white-space: pre-wrap;
 }
 /* 任务1066: 引导块内附件（图片缩略图）与复制按钮——复用 .msg-attachment 形态
-   （与用户消息 MessageAttachments 同一份实现），气泡内纵向堆叠、靠右对齐。 */
+   （与用户消息 MessageAttachments 同一份实现）。
+   任务1091: 附件区块对齐用户消息 .msg-attachments——并排横排（flex-wrap，
+   图片缩略图一行排开），不再 flex-direction:column 竖排（旧版把正文挤成竖排
+   窄条的根因）。文字块（.steer-line__text）与附件块上下分离，各占一层。 */
 .steer-line__bubble .msg-attachments {
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 6px;
-  margin-top: 4px;
-  min-width: 0;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: min(300px, 100%);
   width: 100%;
 }
+/* 任务1091: 复制按钮移出卡片（.steer-meta 行，卡片外下方，与用户消息
+   msg-meta 同位）。 */
 .steer-line__copy {
   flex: 0 0 auto;
   align-self: flex-end;
   margin-left: auto;
+}
+.steer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin-top: 4px;
+  margin-right: 10px;
+  color: var(--fg-faint);
+  font-size: var(--font-status);
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.steer-meta .steer-line__copy {
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+}
+.steer-meta .steer-line__copy:hover:not(:disabled),
+.steer-meta .steer-line__copy:focus-visible {
+  color: var(--fg);
 }
 .steer-line__bubble .steer-line__copy {
   color: var(--fg-faint);
@@ -5232,11 +5266,12 @@ a[href] {
   text-align: right;
 }
 .steer-line__expanded .msg-attachments {
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 6px;
-  margin-top: 4px;
-  min-width: 0;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: min(300px, 100%);
   width: 100%;
 }
 .steer-line__expanded .steer-line__copy {
