@@ -8678,6 +8678,14 @@ body > .mermaid-diagram--fullscreen {
 .composer-run-strip__metrics {
   color: var(--fg-dim);
 }
+/* 任务 1082：本轮工具/文件/检索汇总——与 metrics 同维度的次级读数，
+   自带 8px 左距（不依赖 flex gap 语义），不挤压状态文本的省略号行为。 */
+.composer-run-strip__tally {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
 .composer-run-strip--waiting {
   color: color-mix(in srgb, var(--warn) 74%, var(--fg));
 }

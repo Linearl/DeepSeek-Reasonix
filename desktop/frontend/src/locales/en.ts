@@ -4706,6 +4706,10 @@ export const en = {
   "chat.loadOlder": "Load earlier messages",
   "transcript.toolCount": "{n} tools",
   "transcript.thoughtCount": "{n} thoughts",
+  // Task 1082: run-strip turn tally (tools/files/searches); fold header copy untouched.
+  "transcript.tally.tools": "{n} tools",
+  "transcript.tally.files": "{n} files",
+  "transcript.tally.searches": "{n} searches",
   "transcript.steer": "Mid-turn steer",
   "transcript.steerDeferred": "Sent · queued for the next turn",
   "transcript.working": "Working",

@@ -4699,6 +4699,10 @@ export const zh: Record<DictKey, string> = {
   "chat.loadOlder": "加载更早的消息",
   "transcript.toolCount": "{n} 个工具",
   "transcript.thoughtCount": "{n} 段思考",
+  // 任务 1082：run strip 的本轮工具/文件/检索汇总（折叠头文案不动）。
+  "transcript.tally.tools": "{n} 工具",
+  "transcript.tally.files": "{n} 文件",
+  "transcript.tally.searches": "{n} 检索",
   "transcript.steer": "中途引导",
   "transcript.steerDeferred": "已发出 · 待下一轮处理",
   "transcript.working": "工作中",

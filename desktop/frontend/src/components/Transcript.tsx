@@ -292,8 +292,12 @@ export function Transcript(props: TranscriptProps) {
     publishWorkProcessFoldState(tabId, {
       hasFoldables: workProcessesHasFoldables,
       allCollapsed: workProcessesCollapsed,
+      // 任务 1082：整轮 items 随上报带给 composer（run strip 的工具/文件/检索
+      // 汇总数据源）。tabId 是当前会话的稳定标识，preview/historical 面因
+      // tabId 缺失不上报，不会污染真实会话的读数。
+      activeItems: items,
     });
-  }, [tabId, workProcessesHasFoldables, workProcessesCollapsed]);
+  }, [tabId, workProcessesHasFoldables, workProcessesCollapsed, items]);
   // 卸载（或换绑 tabId）时注销上报：陈旧表面不得让按钮停在「展开」。
   useEffect(() => {
     if (!tabId) return;

@@ -3299,6 +3299,10 @@ export const zhTW: Record<DictKey, string> = {
   "chat.loadOlder": "載入更早的訊息",
   "transcript.toolCount": "{n} 個工具",
   "transcript.thoughtCount": "{n} 段思考",
+  // 任務 1082：run strip 的本輪工具/檔案/搜尋彙總（折疊頭文案不動）。
+  "transcript.tally.tools": "{n} 工具",
+  "transcript.tally.files": "{n} 檔案",
+  "transcript.tally.searches": "{n} 搜尋",
   "transcript.steer": "中途引導",
   "transcript.steerDeferred": "已發出 · 待下一輪處理",
   "transcript.working": "工作中",
