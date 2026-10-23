@@ -27,6 +27,11 @@ export type CollabImSourceMessage = {
   sender: string;
   chat: string;
   text: string;
+  // 任务1092: 投递 header 里 backend stamping 的「，发送于 <RFC3339 周几>」
+  // 解析为 epoch ms，供卡片时间戳渲染（发送方墙上时钟，而非本端接收时刻）。
+  // 旧投递文本/单行 preview 没有可解析时间时为 undefined——卡片退回「无时间」
+  // 而非渲染错误时间，与 Message.tsx 气泡的 createdAt 语义一致。
+  sentAt?: number;
 };
 
 /** 投递文本 header 的字面前缀（sessionCollabDeliveryText 保证）。 */
@@ -42,6 +47,19 @@ const HOP_TAIL_RE = /^\s*\(hop=\d+\)\s*/;
 // 任务811: 从单行 header 余量里剥掉「，发送于 <时间>」尾巴。锚定日期形态，
 // 容忍 `…` 截断尾，不会误伤正文首词。
 const SENT_TIME_TAIL_RE = /^，发送于\s*\d{4}-\d{2}-\d{2}T\S*(?:\s+[A-Za-z]{3})?/;
+// 任务1092: 从 header 里提取「，发送于 <RFC3339 带周几>」（866/1553 stamping）。
+// 周三后缀（` Mon`…）可有可无——单行 preview 截断可能削掉它。
+const SENT_TIME_STAMP_RE = /，发送于\s*(\d{4}-\d{2}-\d{2}T\S*(?:\s+[A-Za-z]{3})?)/;
+
+/** header stamping 的发送时刻（epoch ms）；时间缺失或不可解析返回 undefined。 */
+export function parseCollabSentAt(header: string): number | undefined {
+  // 周几后缀（` Mon`…）是给人读的标注，Date.parse 不认——剥掉再解析（stamp
+  // 主体是 RFC3339 带时区偏移，跨时区渲染不会错位）。
+  const stamp = SENT_TIME_STAMP_RE.exec(header)?.[1].replace(/\s+[A-Za-z]{3}$/, "");
+  if (!stamp) return undefined;
+  const parsed = Date.parse(stamp);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
 
 export function collabAsImSource(text: string): CollabImSourceMessage | null {
   const normalized = text.replace(/^[\uFEFF\u200B]+/, "");
@@ -59,5 +77,8 @@ export function collabAsImSource(text: string): CollabImSourceMessage | null {
     // 「，发送于 <时间>」都属于 header，剥掉后剩下的才是正文（任务811）。
     ? header.slice(match.index + match[0].length).replace(HOP_TAIL_RE, "").replace(SENT_TIME_TAIL_RE, "").trim()
     : rest.slice(newline + 1).replace(/^\r?\n/, "");
-  return { provider: "collab", label: "", sender: match[1], chat: match[2], text: body };
+  // 任务1092: 发送时刻只从 header 行取（866/1553 的 stamping 位置）——多行投递
+  // 的正文/元数据尾里出现同形片段也不会误解析。两种形态的 header 变量都是同一
+  // 条头行：单行形态 = 整条折叠后的一行；多行形态 = 首行（prefix 已剥）。
+  return { provider: "collab", label: "", sender: match[1], chat: match[2], text: body, sentAt: parseCollabSentAt(header) };
 }

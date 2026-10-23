@@ -8,7 +8,7 @@ import { formatAttachmentRefForDisplay, formatAttachmentRefForSubmit, parseAttac
 import type { DisplayAttachment } from "../lib/attachmentDisplay";
 import { app } from "../lib/bridge";
 import { collabDisplayLabel, useCollabContactNames } from "../lib/collabContactNames";
-import { collabAsImSource } from "../lib/collabMessage";
+import { collabAsImSource, type CollabImSourceMessage } from "../lib/collabMessage";
 import { replaySubmitTextPreservingSelectedContext } from "../lib/editReplay";
 import { getLocale, useT } from "../lib/i18n";
 import { Tooltip } from "./Tooltip";
@@ -304,6 +304,11 @@ export const UserMessage = memo(function UserMessage({
   // 任务1012：分档需要「渲染时刻」。日期跨档只在跨天那一刻才需要重绘，
   // 每秒滴答即可（useTick 既有形态；组件仅在有时间戳时挂 tick，省一次空转）。
   const now = useTick(sentAt !== null);
+  // 任务1092: 跨会话卡 foot 行的发送时刻——同样只在有时间戳时挂 tick；三档契约
+  // 与 1012/998 同源（messageTimestamp 同一函数）。
+  const collabSentAtMs = imSource?.provider === "collab" ? (imSource as CollabImSourceMessage).sentAt : undefined;
+  const collabSentAt = collabSentAtMs == null ? null : messageDate(collabSentAtMs);
+  const collabNow = useTick(collabSentAt !== null);
   const canEdit = turn !== undefined && onEdit !== undefined && !editDisabled;
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState(editableDisplayText);
@@ -642,6 +647,18 @@ export const UserMessage = memo(function UserMessage({
                     {imSource.chat && <span>{imSource.chat}</span>}
                   </>
                 )}
+                {/* 任务1092: 跨会话卡片与下方 msg-meta 对齐——发送时刻 + 复制正文。
+                    普通（非跨会话）im 卡片无 sentAt，时间戳自然缺省、复制正文照常。 */}
+                {collabSentAt && (
+                  <time
+                    className="im-source-card__time"
+                    dateTime={collabSentAt.toISOString()}
+                    title={collabSentAt.toLocaleString()}
+                  >
+                    {formatMessageTimestamp(collabSentAt, new Date(collabNow), getLocale())}
+                  </time>
+                )}
+                <CopyButton text={imSource.text} label={t("msg.copy")} showInlineLabel={false} className="im-source-card__copy" />
               </div>
             )}
           </div>
