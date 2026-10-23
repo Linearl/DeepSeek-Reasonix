@@ -765,6 +765,13 @@ type DesktopStartupSettingsView struct {
 	// group vs compact dropdown). Rendered in both views for the 81/123
 	// two-view lesson; pure frontend gate, settings save re-applies.
 	ExperimentalSendTargetSelect bool `json:"experimentalSendTargetSelect"`
+	// 任务 1024: composer 草稿优化（改写按钮）lab switch, rendered in this view
+	// too (81/123 two-view lesson, tl 1067 root cause). The field was missing
+	// here, so every boot snapshot read serialized experimentalDraftRewrite as
+	// JSON zero (false) and applyDesktopPreferences overwrote the true flag
+	// with `?? false` — the wand button vanished even though the switch (full
+	// Settings() view) read on. Pure frontend gate, settings save re-applies.
+	ExperimentalDraftRewrite bool `json:"experimentalDraftRewrite"`
 	// 任务 686: the workflow visualization panel gate, rendered in this view
 	// too (81/123 two-view lesson); pure frontend gate, no restart needed.
 	ExperimentalWorkflowPanel bool `json:"experimentalWorkflowPanel"`
@@ -1623,6 +1630,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalTableWrap = cfg.Desktop.ExperimentalTableWrap
 		// 任务 959 ②: send-target picker form readback (two-view lesson).
 		view.ExperimentalSendTargetSelect = cfg.Desktop.ExperimentalSendTargetSelect
+		// 任务 1024: composer 草稿优化 readback（双视图教训，tl 1067 根因——
+		// 缺此行时启动快照恒为 false，前端 applyDesktopPreferences 用
+		// `?? false` 把已开的 flag 覆盖成 false，按钮消失）。
+		view.ExperimentalDraftRewrite = cfg.Agent.ExperimentalDraftRewrite
 		// 任务 686: workflow visualization panel readback (two-view lesson).
 		view.ExperimentalWorkflowPanel = cfg.Desktop.ExperimentalWorkflowPanel
 		view.ExperimentalSubagentPanel = cfg.Desktop.ExperimentalSubagentPanel

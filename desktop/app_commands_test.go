@@ -549,6 +549,26 @@ func TestDesktopStartupSettingsCarriesQuickCommandSnippets(t *testing.T) {
 	}
 }
 
+// tl 1067（任务 1024 草稿优化改写按钮「开但按钮消失」用户实测）：启动快照
+// 必须携带 experimentalDraftRewrite。DesktopStartupSettingsView 缺此字段时，
+// 每次启动快照序列化恒为 JSON 零值 false，前端 applyDesktopPreferences 用
+// `?? false` 把已开的 flag 覆盖成 false——开关显示「开」但改写按钮不渲染，
+// 再点一次开关才恢复（用户实测的「二连击」）。同 81/123 双视图教训。
+func TestDesktopStartupSettingsCarriesDraftRewriteGate(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	userCfg := config.LoadForEdit(config.UserConfigPath())
+	userCfg.Agent.ExperimentalDraftRewrite = true
+	if err := userCfg.SaveTo(config.UserConfigPath()); err != nil {
+		t.Fatalf("save user config: %v", err)
+	}
+
+	got := NewApp().DesktopStartupSettings()
+	if !got.ExperimentalDraftRewrite {
+		t.Fatalf("DesktopStartupSettings.ExperimentalDraftRewrite = false, want true (boot snapshot must carry the task-1024 gate; tl 1067)")
+	}
+}
+
 func BenchmarkDesktopSettingsPayloads(b *testing.B) {
 	home := b.TempDir()
 	xdg := filepath.Join(home, ".config")
