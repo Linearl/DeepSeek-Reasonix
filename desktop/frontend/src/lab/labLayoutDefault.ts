@@ -68,7 +68,18 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（及 infra
         // 段 runtimeReuse）四项 tier 升「稳定」——镜像档位注册表（562 双侧
         // 一致门禁）；桌面开关禁用态与开发者模式解锁见 SettingsPanel。
-        { id: "autopilot", labelKey: "settings.autopilot", tier: "stable", onKeys: ["autopilot"] },
+        // 任务 1084：autopilot 条目下加 5 个高风险授权 checkbox（默认全不勾，
+        // 5 checkbox 走 autopilot pane 硬编码渲染）+ 1 个 ask 轮次上限数值字段
+        // （fields 驱动渲染，kind 仍为 feature）。
+        {
+          id: "autopilot",
+          labelKey: "settings.autopilot",
+          tier: "stable",
+          onKeys: ["autopilot"],
+          fields: [
+            { id: "askRoundLimit", input: "number" },
+          ],
+        },
         {
           id: "sessionCollab",
           labelKey: "settings.sessionCollab",

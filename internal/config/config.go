@@ -3076,6 +3076,10 @@ func Default() *Config {
 			ConversationWidth:       "standard",
 			Autopilot:               true,
 			AutopilotMaxRuntime:     "8h",
+			// 任务 1084：ask 轮次上限默认 3（Default() 打底；显式 0 = 无限制，
+			// AskRoundLimitEffective 原样返回 0 不回落 3——语义与 task 477 的
+			// 0 读「默认 15s」相反）。
+			AskRoundLimit: AskRoundLimitDefault,
 		},
 		Billing: BillingConfig{},
 		Notifications: NotificationsConfig{

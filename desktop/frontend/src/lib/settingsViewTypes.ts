@@ -17,6 +17,18 @@ export interface SettingsView {
   autopilotAskWaitSeconds?: number;
   /** Task 544: the experimental ask auto-continue sub-option switch (default off). */
   experimentalAutopilotAskAutoContinue?: boolean;
+  /** Task 1084: 高风险操作授权清单（5 checkbox，默认全不勾）+ ask 轮次上限。
+   *  高风险五类判定可靠性分级：对外发送 高/数据迁移删除 高/破坏性变更 中/
+   *  新技术路线 低/付费额度 低。本机制靠模型理解规则判断动作属哪类，非字符串
+   *  硬匹配；后两类必然漏判误判，漏判兜底是轮次上限+复盘。 */
+  authorizeOutboundSend?: boolean;
+  authorizeDataMigrationDelete?: boolean;
+  authorizeDestructiveChange?: boolean;
+  authorizeNewTechRoute?: boolean;
+  authorizePaidQuotaAlloc?: boolean;
+  /** Task 1084: ask 轮次上限实验开关 + 数值（0=无限制，有效 0 或 2..100）。 */
+  experimentalAskRoundLimit?: boolean;
+  askRoundLimit?: number;
   /** Task 547: whether autopilot auto-creates its guard task at all (default off; off = never create). */
   experimentalAutopilotGuardAutocreate?: boolean;
   /** Task 326: the autopilot guard task's run interval, in minutes (effective value). */

@@ -63,6 +63,15 @@ export const LAB_PARAM_FIELDS: Readonly<Record<string, LabParamFieldBinding>> = 
     read: (s) => s.goMemLimitMB ?? 0,
     write: (value) => app.SetGoMemLimitMB(Number(value)),
   },
+  // 任务 1084：ask 轮次上限（0 = 无限制；有效值 0 或 2~100；1 非法）。
+  askRoundLimit: {
+    input: "number",
+    hintKey: "settings.askRoundLimitHint",
+    min: 0,
+    max: 100,
+    read: (s) => s.askRoundLimit ?? 3,
+    write: (value) => app.SetAskRoundLimit(Number(value)),
+  },
 };
 
 /** Registry key union — the compile gate for default-layout field refs. */

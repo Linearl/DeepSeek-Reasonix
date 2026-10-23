@@ -46,10 +46,15 @@ groups:
     entries:
       # 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（及 infra 段
       # runtimeReuse）四项 tier 升「稳定」——与内置默认同构（724 回退安全网）。
+      # 任务 1084：autopilot 条目下加 5 个高风险授权 checkbox（默认全不勾，
+      # autopilot pane 硬编码渲染）+ 1 个 ask 轮次上限数值字段。
       - id: autopilot
         labelKey: settings.autopilot
         tier: stable
         onKeys: [autopilot]
+        fields:
+          - id: askRoundLimit
+            input: number
       - id: sessionCollab
         labelKey: settings.sessionCollab
         tier: stable

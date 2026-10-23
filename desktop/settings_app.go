@@ -363,6 +363,20 @@ type SettingsView struct {
 	// after an ask was answered, a turn that stops anyway is resumed once with
 	// the recorded decision instead of waiting for the user's "continue".
 	ExperimentalAutopilotAskAutoContinue bool `json:"experimentalAutopilotAskAutoContinue"`
+
+	// 任务 1084：高风险操作授权清单（5 checkbox，默认全不勾）+ 决策模式二级
+	// 授权 + ask 轮次上限。授权两级由硬到软：①实验室勾选（最硬）②决策模式
+	// 条目（次硬）；记忆不算授权源。默认不勾 = 出厂五类全要问（保守）。
+	AuthorizeOutboundSend      bool `json:"authorizeOutboundSend"`
+	AuthorizeDataMigrationDel  bool `json:"authorizeDataMigrationDelete"`
+	AuthorizeDestructiveChange bool `json:"authorizeDestructiveChange"`
+	AuthorizeNewTechRoute      bool `json:"authorizeNewTechRoute"`
+	AuthorizePaidQuotaAlloc    bool `json:"authorizePaidQuotaAlloc"`
+
+	// ExperimentalAskRoundLimit 是 ask 轮次上限实验开关；AskRoundLimit 是数值
+	// （0=无限制，有效值 0 或 2..100，1 非法）。
+	ExperimentalAskRoundLimit bool `json:"experimentalAskRoundLimit"`
+	AskRoundLimit             int  `json:"askRoundLimit"`
 	// Task 326: autopilot guard task dials — interval in minutes (effective
 	// value, so the panel never shows a bare 0) and the self-close policy for a
 	// watched session that goes quiet. Task 547 gates them behind the
@@ -1865,6 +1879,14 @@ func (a *App) Settings() SettingsView {
 		ExperimentalAutopilotAskTimeout:      cfg.Desktop.ExperimentalAutopilotAskTimeout,
 		AutopilotAskWaitSeconds:              cfg.AutopilotAskWaitSecondsEffective(),
 		ExperimentalAutopilotAskAutoContinue: cfg.Desktop.ExperimentalAutopilotAskAutoContinue,
+		// 任务 1084：高风险操作授权清单 + ask 轮次上限。
+		AuthorizeOutboundSend:        cfg.Desktop.AuthorizeOutboundSend,
+		AuthorizeDataMigrationDel:    cfg.Desktop.AuthorizeDataMigrationDelete,
+		AuthorizeDestructiveChange:   cfg.Desktop.AuthorizeDestructiveChange,
+		AuthorizeNewTechRoute:        cfg.Desktop.AuthorizeNewTechRoute,
+		AuthorizePaidQuotaAlloc:      cfg.Desktop.AuthorizePaidQuotaAlloc,
+		ExperimentalAskRoundLimit:    cfg.Desktop.ExperimentalAskRoundLimit,
+		AskRoundLimit:                cfg.AskRoundLimitEffective(),
 		ExperimentalAutopilotGuardAutocreate: cfg.Desktop.ExperimentalAutopilotGuardAutocreate,
 		AutopilotGuardInterval:               cfg.AutopilotGuardIntervalMinutes(),
 		AutopilotGuardQuiescent:              cfg.AutopilotGuardQuiescentPolicy(),
@@ -3426,6 +3448,59 @@ func (a *App) SetDesktopAutopilotAskTimeout(enabled bool, seconds int) error {
 func (a *App) SetDesktopAutopilotAskAutoContinue(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error {
 		return c.SetExperimentalAutopilotAskAutoContinue(enabled)
+	})
+}
+
+// 任务 1084：高风险操作授权清单（5 checkbox）+ ask 轮次上限。授权两级由硬
+// 到软：①实验室勾选（最硬）②决策模式条目（次硬）；记忆不算授权源。默认
+// 全不勾 = 出厂五类全要问（保守）；勾选 = 该类高风险动作免 ask 直接执行。
+
+// SetAuthorizeOutboundSend 勾选/取消「对外发送」授权。
+func (a *App) SetAuthorizeOutboundSend(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetAuthorizeOutboundSend(enabled)
+	})
+}
+
+// SetAuthorizeDataMigrationDelete 勾选/取消「数据迁移与删除」授权。
+func (a *App) SetAuthorizeDataMigrationDelete(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetAuthorizeDataMigrationDelete(enabled)
+	})
+}
+
+// SetAuthorizeDestructiveChange 勾选/取消「破坏性变更」授权。
+func (a *App) SetAuthorizeDestructiveChange(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetAuthorizeDestructiveChange(enabled)
+	})
+}
+
+// SetAuthorizeNewTechRoute 勾选/取消「新技术路线选择」授权。
+func (a *App) SetAuthorizeNewTechRoute(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetAuthorizeNewTechRoute(enabled)
+	})
+}
+
+// SetAuthorizePaidQuotaAlloc 勾选/取消「付费额度分配」授权。
+func (a *App) SetAuthorizePaidQuotaAlloc(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetAuthorizePaidQuotaAlloc(enabled)
+	})
+}
+
+// SetExperimentalAskRoundLimit 开关 ask 轮次上限实验功能。
+func (a *App) SetExperimentalAskRoundLimit(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalAskRoundLimit(enabled)
+	})
+}
+
+// SetAskRoundLimit 设置 ask 轮次上限数值（0=无限制，有效值 0 或 2..100；1 非法）。
+func (a *App) SetAskRoundLimit(limit int) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetAskRoundLimit(limit)
 	})
 }
 
