@@ -17,12 +17,24 @@ import type { SettingsView } from "./types";
 /** 预取结果的有效期：超时未消费即作废，面板自行重新拉取，避免吃到旧快照。 */
 export const SETTINGS_PREFETCH_TTL_MS = 10_000;
 
+// 任务 1098（阶段 1 补打点）：入口点击→首屏可交互的真实起点是「预取发出的
+// 那一刻」（本模块），不是面板挂载后 reload() 才开始计时——否则「点击后
+// 主线程被长任务饿死、面板迟迟挂不上」这段最可疑的空窗会被计时完全漏掉。
+// 因此预取发起时在全局留下一个时间戳，面板挂载/首屏可交互时读取并上报。
+let prefetchStartedAtMs: number | null = null;
+
+/** 预取发起时刻（epoch ms）；未发起过返回 null。 */
+export function peekSettingsPrefetchStartedAt(): number | null {
+  return prefetchStartedAtMs;
+}
+
 let cached: { at: number; promise: Promise<SettingsView> } | null = null;
 
 /** 在入口点击的同步帧发出 Settings 请求；TTL 内重复调用复用同一请求。 */
 export function prefetchSettingsView(): void {
   if (cached && Date.now() - cached.at < SETTINGS_PREFETCH_TTL_MS) return;
   const at = Date.now();
+  prefetchStartedAtMs = at;
   const promise = app.Settings();
   // 失败即弃：下次点击重新发，不把拒绝态缓存留给面板消费。接管必须静默
   // （不 rethrow）——预取发出后面板可能永远不消费它（用户又点回工作区），

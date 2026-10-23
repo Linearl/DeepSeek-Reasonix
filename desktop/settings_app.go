@@ -1785,6 +1785,17 @@ func (a *App) mergedSandboxWriteRoots(userCfg *config.Config, root string) (allo
 	return allowWrite, effectiveRoots
 }
 
+// itoaCount / boolLabel: tiny formatting helpers for the task-1098 settings
+// timing log lines (avoid pulling strconv into call sites just for counts).
+func itoaCount(n int) string { return fmt.Sprintf("%d", n) }
+
+func boolLabel(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
 // Settings returns the current configuration for the Settings panel.
 func (a *App) Settings() SettingsView {
 	// 任务 739：设置面板此前在这条链路上零日志——「点了设置但一直加载中」时
@@ -1800,10 +1811,25 @@ func (a *App) Settings() SettingsView {
 	// 慢」。每次读取落四段耗时，desktop.log 直接回答慢在哪一步；快路径
 	// （各段 <50ms）静默。
 	cfgStarted := time.Now()
+	// 任务 1098（阶段 1 补打点）：实验室页「一直加载中」此前查不出原因——这条
+	// 链路上只有上面一条总数，分不清「哪一块慢」。下面对各数据块单独计时落
+	// 一条 slog（块名恒定，可 grep：desktop: settings step），并把「等锁」与
+	// 「纯计算」分开记（lock_wait_ms 表示阻塞等待，ms 表示拿到后本块自身的
+	// 执行时长）。计时只是 time.Now/Since + 每块一条日志，开销可忽略，不做
+	// 采样开关（打点本身不能成为新的性能负担）。
+	settingsBlock := func(name string, lockWait, since time.Duration, detail string) {
+		slog.Info("desktop: settings step",
+			"block", name,
+			"lock_wait_ms", lockWait.Milliseconds(),
+			"ms", since.Milliseconds(),
+			"detail", detail)
+	}
 	cfg, cfgPath, err := a.loadDesktopUserConfigForView()
 	if err != nil {
+		settingsBlock("config_load", 0, time.Since(cfgStarted), "err="+err.Error())
 		return a.defaultSettingsView()
 	}
+	settingsBlock("config_load", 0, time.Since(cfgStarted), "path="+cfgPath)
 	logSettingsStage("user-config", cfgStarted)
 	root := a.activeWorkspaceRoot()
 	// 任务 634：写目录面板的项目列与「实际可写根」必须显示运行时真正生效的
@@ -1815,11 +1841,16 @@ func (a *App) Settings() SettingsView {
 	mergedStarted := time.Now()
 	allowWrite, writeRoots := a.mergedSandboxWriteRoots(cfg, root)
 	logSettingsStage("merged-write-roots", mergedStarted)
+	// ② merged 写目录加载（项目遮蔽配置的第二次磁盘加载 + .env 合并）。
+	settingsBlock("write_roots_load", 0, time.Since(mergedStarted), "roots="+itoaCount(len(writeRoots)))
 	effectiveWorkspaceRoot := ""
 	if len(writeRoots) > 0 {
 		effectiveWorkspaceRoot = writeRoots[0]
 	}
+	// ③ activeCtrl（a.mu.RLock；session 保存族长时持锁会在此排队）。
+	activeCtrlStart := time.Now()
 	ctrl := a.activeCtrl()
+	settingsBlock("active_ctrl_lock", time.Since(activeCtrlStart), 0, "ctrl_present="+boolLabel(ctrl != nil))
 	storageMode := config.SessionStorageMode(cfg)
 	storageEffective := a.sessionStorageBootMode(storageMode)
 	v := SettingsView{
@@ -2066,17 +2097,30 @@ func (a *App) Settings() SettingsView {
 		AutoApproveTools:             ctrl != nil && ctrl.AutoApproveTools(),
 		Bypass:                       ctrl != nil && ctrl.AutoApproveTools(),
 	}
+	// view_build 计时从 activeCtrl 结束起算（与 ②③④⑤⑥⑦同为单调递增分段），
+	// 覆盖上面这整段结构体字面量赋值（纯内存读取 + 求值，无 IO）。
+	settingsBlock("view_build", 0, time.Since(activeCtrlStart), "")
 	if ctrl != nil {
 		if effective := ctrl.CompactRatio(); effective > 0 {
 			v.Agent.EffectiveCompactRatio = effective
 			v.Agent.CompactRatioOverridden = math.Abs(effective-v.Agent.CompactRatio) > 0.0001
 		}
 	}
+	// ④ web-search 模型设置填充（模型能力缓存/发现）。
+	webSearchStart := time.Now()
 	a.populateWebSearchSettings(&v, cfg, root)
 	providersStarted := time.Now()
+	settingsBlock("web_search", 0, time.Since(webSearchStart), "")
+
+	// ⑤ 凭据仓库 revision（读取凭据文件并做 sha256；文件大或慢盘时可观）。
+	credentialsStart := time.Now()
 	added := providerAccessSet(cfg.Desktop.ProviderAccess)
 	resolver := config.NewCredentialResolverForRoot(root)
 	credentialsRevision := providerCredentialsRevision()
+	settingsBlock("credentials_revision", 0, time.Since(credentialsStart), "len="+itoaCount(len(credentialsRevision)))
+
+	// ⑥ 三段 provider 视图（官方 + 预设 + 已配置；含模型能力解析）。
+	providersStart := time.Now()
 	v.OfficialProviders = officialProviderViewsForRootWithResolver(officialProviderAddedSet(cfg), a.desktopOfficialPricingLanguage(cfg), root, resolver)
 	v.ProviderPresets = providerPresetViewsForRootWithResolver(cfg, root, resolver)
 	for i := range cfg.Providers {
@@ -2086,6 +2130,13 @@ func (a *App) Settings() SettingsView {
 		v.Providers = append(v.Providers, providerView)
 	}
 	logSettingsStage("provider-views", providersStarted)
+	settingsBlock("providers", 0, time.Since(providersStart), "official="+itoaCount(len(v.OfficialProviders))+" presets="+itoaCount(len(v.ProviderPresets))+" configured="+itoaCount(len(v.Providers)))
+
+	// ⑦ sandbox shell 能力探测（首次走 exec.LookPath/注册表/安装根扫描，之后
+	// 进程内缓存；冷缓存时是本链路已知的少数真·磁盘/进程探测步骤之一）。
+	sandboxStart := time.Now()
+	v.Sandbox = a.sandboxViewFor(cfg, ctrl, writeRoots, effectiveWorkspaceRoot, allowWrite)
+	settingsBlock("sandbox_shell_scan", 0, time.Since(sandboxStart), "shells="+itoaCount(len(v.Sandbox.ShellCapabilities)))
 	return v
 }
 
