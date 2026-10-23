@@ -35,6 +35,16 @@ var desktopRenderOmissions = map[string]string{
 	// Task 544: rendered inside the autopilot block only while the ask
 	// auto-continue sub-option is on (default off).
 	"experimental_autopilot_ask_auto_continue": "task 544: rendered inside the autopilot block, only when the sub-option is on",
+	// 任务 1084：五个高风险授权 checkbox 与 ask 轮次上限——rendered inside the
+	// autopilot block only when non-default（默认全不勾 + 默认 3 落盘为空，
+	// 出厂五类全要问的保守姿态 = config 不含这些键）。
+	"authorize_outbound_send":       "task 1084: rendered inside the autopilot block, only when the 对外发送 authorization checkbox is checked",
+	"authorize_data_migration_delete": "task 1084: rendered inside the autopilot block, only when the 数据迁移与删除 authorization checkbox is checked",
+	"authorize_destructive_change":  "task 1084: rendered inside the autopilot block, only when the 破坏性变更 authorization checkbox is checked",
+	"authorize_new_tech_route":      "task 1084: rendered inside the autopilot block, only when the 新技术路线选择 authorization checkbox is checked",
+	"authorize_paid_quota_alloc":    "task 1084: rendered inside the autopilot block, only when the 付费额度分配 authorization checkbox is checked",
+	"experimental_ask_round_limit":  "task 1084: rendered inside the autopilot block, only when the ask-round-limit sub-option is on",
+	"ask_round_limit":               "task 1084: rendered inside the autopilot block, only when the round limit leaves the default 3; 0 = unlimited",
 	// Task 547: rendered inside the autopilot block only while the opt-in is
 	// on; off/absent = autopilot never creates guard tasks (byte-identical
 	// config for a user who never touched the switch).
