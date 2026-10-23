@@ -1,13 +1,19 @@
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
-import { useEffect, useRef, useState } from "react";
-import { Pencil, Plus, Plug, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import type { ModelDetailsDraft } from "./ProviderModelDialog";
+import { Plus, Plug, RefreshCw, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import type { ProviderModelCapabilityView, ProviderModelOverrideView, ProviderView } from "../lib/types";
-import { applyModelDraft, modelDraftError, type ModelDraft } from "../lib/providerModelDraft";
+import { applyModelDraft } from "../lib/providerModelDraft";
 import { providerVisionModelsForView } from "../lib/providerVisionCapability";
 import { ModelImageInputControl } from "./ModelImageInputControl";
 import { imageInputModeForModel, imageInputModes, mergeImageInputModes, modelCapabilityForModel, matchingModelKey } from "../lib/providerImageInput";
 import { ProviderDialog } from "./ProviderDialog";
+
+// tl 1104: 上区（ProviderEditorModelPicker）与本组件是同一「模型设置」入口的两个挂载点，
+// 编辑弹窗统一为功能更多的 ProviderModelDialog（含音频输入 / 高速模型）。lazy 与上区
+// 同款——弹窗代码不进启动包。
+const ProviderModelDialog = lazy(() => import("./ProviderModelDialog"));
 
 // #33: what the probe measures on top of connectivity. Zero timing means the
 // endpoint did not stream, so the row keeps showing plain success.
@@ -15,14 +21,14 @@ export type ModelProbeResult = {
   ok: boolean; ttftMs?: number; generationMs?: number; outputTokens?: number; tps?: number; preview?: string; error?: string;
 };
 
-export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, onFetch, onTest, probeKey, draft = false }: {
-  provider: ProviderView; probeKey?: string; disabled: boolean; canFetch: boolean; draft?: boolean;
+export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, onFetch, onTest, probeKey }: {
+  provider: ProviderView; probeKey?: string; disabled: boolean; canFetch: boolean;
   onChange: (models: string[], overrides: ProviderModelOverrideView[], capabilities: ProviderModelCapabilityView[]) => void;
   onFetch: () => Promise<ProviderModelCapabilityView[]>;
   onTest: (model: string) => Promise<ModelProbeResult>;
 }) {
   const t = useT();
-  const [editor, setEditor] = useState<{ original?: string; value: ModelDraft } | null>(null);
+  const [editor, setEditor] = useState<{ original?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [discovery, setDiscovery] = useState<ProviderModelCapabilityView[] | null>(null);
   const [selection, setSelection] = useState<string[]>([]);
@@ -40,14 +46,19 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
   const capabilities = provider.modelCapabilities ?? [];
   const vision = providerVisionModelsForView(provider);
   const openEditor = (model?: string) => {
-    const override = overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), model ?? ""));
     setError(null);
-    setEditor({ original: model, value: {
-      model: model ?? "", context: override?.contextWindow ? String(override.contextWindow) : "",
-      output: override?.maxOutputTokens ? String(override.maxOutputTokens) : "",
-      vision: override?.vision == null ? "auto" : override.vision ? "yes" : "no",
-    } });
+    setEditor({ original: model });
   };
+  const contextWindowOf = (model: string) => {
+    const override = overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), model));
+    return override?.contextWindow ? String(override.contextWindow) : "";
+  };
+  const outputTokensOf = (model: string) => {
+    const override = overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), model));
+    return override?.maxOutputTokens ?? 0;
+  };
+  const visionOf = (model: string): boolean | null => overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), model))?.vision ?? null;
+  const audioOf = (model: string): boolean | null => overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), model))?.audio ?? null;
   const fetchModels = async () => {
     const generation = epoch.current, fingerprint = identity;
     setFetching(true); setError(null);
@@ -70,15 +81,14 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
       if (generation === epoch.current && identityRef.current === fingerprint) setTests((prev) => ({ ...prev, [model]: { busy: false, error: String((e as Error).message ?? e) } }));
     }
   };
-  const saveModel = () => {
+  // tl 1104：与上区 applyModelDetails 同语义的应用——模型 ID 改名时，发现的
+  // capability 描述属于旧 ID（远端描述不能随 ID 搬运），丢弃它。
+  const applyModel = (draft: ModelDetailsDraft) => {
     if (!editor) return;
-    const invalid = modelDraftError(editor.value, provider.models, editor.original);
-    if (invalid) { setError(t(`providerUI.validation.${invalid}`)); return; }
-    const model = editor.value.model.trim();
+    const model = draft.model.trim();
     const models = editor.original ? provider.models.map((name) => name === editor.original ? model : name) : [...provider.models, model];
-    // Discovery describes a remote ID; it cannot be transferred to a renamed ID.
     const nextCapabilities = model !== editor.original ? capabilities.filter((item) => item.model !== editor.original) : capabilities;
-    onChange(models, applyModelDraft(overrides, editor.value, editor.original), nextCapabilities);
+    onChange(models, applyModelDraft(overrides, draft, editor.original), nextCapabilities);
     setEditor(null); setError(null);
   };
   return <section className="provider-models-editor">
@@ -97,7 +107,9 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
             <span className="badge badge--neutral" title={t("providerUI.context")}>{override?.contextWindow ? override.contextWindow.toLocaleString() : t("providerUI.auto")}</span>
             <span className="badge badge--neutral">{t(vision.includes(model) ? "providerUI.image" : "providerUI.text")}</span>
             <button type="button" className="btn btn--small" aria-label={`${t("providerUI.test")} ${model}`} title={t("providerUI.test")} disabled={disabled || !canFetch || result?.busy} onClick={() => void test(model)}><Plug size={14} /></button>
-            <button type="button" className="btn btn--small" aria-label={`${t("providerUI.editModel")} ${model}`} title={t("providerUI.editModel")} disabled={disabled} onClick={() => openEditor(model)}><Pencil size={14} /></button>
+            {/* tl 1104: 图标/tooltip 与上区 ProviderEditorModelPicker 对齐——
+                SlidersHorizontal 17 + 「模型设置」，弹窗为 ProviderModelDialog。 */}
+            <button type="button" className="btn provider-icon-action" title={t("settings.models.options")} aria-label={`${t("settings.models.options")}: ${model}`} aria-haspopup="dialog" disabled={disabled} onClick={() => openEditor(model)}><SlidersHorizontal size={17}/></button>
             <button type="button" className="btn btn--small" aria-label={`${t("common.delete")} ${model}`} title={t("common.delete")} disabled={disabled} onClick={() => onChange(provider.models.filter((name) => name !== model), overrides.filter((item) => item.model !== model), capabilities.filter((item) => item.model !== model))}><Trash2 size={14} /></button>
           </div>
           <ModelImageInputControl model={model} baseURL={provider.baseUrl} capability={modelCapabilityForModel(capabilities, model)} mode={imageInputModeForModel(imageInputModes(overrides), model)} disabled={disabled}
@@ -114,17 +126,17 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
         </div>;
       })}
     </div>
-    {editor && <ProviderDialog title={t(editor.original ? "providerUI.editModel" : "providerUI.addModel")} onClose={() => { setEditor(null); setError(null); }}>
-      <form onSubmit={(e) => { e.preventDefault(); saveModel(); }}>
-        <label className="provider-field">{t("providerUI.modelID")}<input className="mem-input" value={editor.value.model} onChange={(e) => setEditor({ ...editor, value: { ...editor.value, model: e.target.value } })} /></label>
-        <div className="provider-field-grid">{(["context", "output"] as const).map((field) => <label className="provider-field" key={field}>{t(field === "context" ? "providerUI.context" : "providerUI.output")}<input className="mem-input" inputMode="numeric" placeholder={t("providerUI.auto")} value={editor.value[field]} onChange={(e) => setEditor({ ...editor, value: { ...editor.value, [field]: e.target.value } })} /><small>{t(field === "output" ? "providerUI.outputHint" : "providerUI.inherit")}</small></label>)}</div>
-        <ModelImageInputControl model={editor.value.model} baseURL={provider.baseUrl} capability={modelCapabilityForModel(capabilities, editor.value.model)}
-          mode={editor.value.vision === "yes" ? "on" : editor.value.vision === "no" ? "off" : "auto"} disabled={disabled}
-          onChange={(mode) => setEditor({ ...editor, value: { ...editor.value, vision: mode === "on" ? "yes" : mode === "off" ? "no" : "auto" } })} />
-        {error && <p role="alert" className="provider-fetch-status provider-fetch-status--warn">{error}</p>}
-        <footer><button type="button" className="btn btn--small" onClick={() => { setEditor(null); setError(null); }}>{t("common.cancel")}</button><button type="submit" className="btn btn--primary btn--small" disabled={disabled}>{t(draft ? "providerUI.saveDraft" : "providerUI.applyModel")}</button></footer>
-      </form>
-    </ProviderDialog>}
+    {editor && <Suspense fallback={null}><ProviderModelDialog
+      baseURL={provider.baseUrl} candidates={provider.models} contextDefault={provider.contextWindow || undefined}
+      initial={editor.original ? { model: editor.original, contextWindow: contextWindowOf(editor.original), maxOutputTokens: outputTokensOf(editor.original), vision: visionOf(editor.original), audio: audioOf(editor.original), highSpeed: (provider.highSpeedModels ?? []).includes(editor.original) } : undefined}
+      // 高速模型是上区 318.1 实验开关（318.1 off 时整个条目隐藏）维护的标记；下区没有
+      // 那个开关，关掉本弹窗的高速入口避免出现「能勾、但存不到连接草稿」的假开关。
+      highSpeedSwitchOn={false}
+      capability={editor.original ? modelCapabilityForModel(capabilities, editor.original) : undefined}
+      busy={disabled}
+      onClose={() => { setEditor(null); setError(null); }}
+      onApply={applyModel} />
+    </Suspense>}
     {discovery && <ProviderDialog title={t("settings.fetchModels")} onClose={() => setDiscovery(null)}>
       <label className="provider-catalog-search"><Search size={15} /><input className="mem-input" placeholder={t("settings.modelCandidateSearch")} value={query} onChange={(e) => setQuery(e.target.value)} /></label>
       <div className="provider-discovery-list">{filteredDiscovery.map((item) => <label key={item.model} className="provider-discovery-row"><input type="checkbox" disabled={provider.models.includes(item.model)} checked={provider.models.includes(item.model) || selection.includes(item.model)} onChange={(e) => setSelection((prev) => e.target.checked ? [...prev, item.model] : prev.filter((name) => name !== item.model))} /><span>{item.model}</span>{provider.models.includes(item.model) && <small>{t("providerUI.alreadyAdded")}</small>}</label>)}{!filteredDiscovery.length && <p>{t(discovery.length ? "settings.noMatchingCandidateModels" : "providerUI.noDiscoveredModels")}</p>}</div>

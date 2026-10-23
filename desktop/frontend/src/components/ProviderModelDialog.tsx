@@ -29,7 +29,7 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
     dialog.current?.querySelector<HTMLInputElement>("input:not(:disabled)")?.focus();
     return () => { if (previous?.isConnected) previous.focus(); };
   }, []);
-  const validation = modelDraftError({model, context, output, vision: "auto"}, candidates, initial?.model);
+  const validation = modelDraftError({model, contextWindow: context || "0", maxOutputTokens: output === "" ? -1 : Number(output)}, candidates, initial?.model);
   const imageBlocked = imageInputHardBlocked(baseURL, model, capability);
   const imageState = imageBlocked ? "unsupported" : imageInputState(vision === "auto" ? "auto" : vision === "true" ? "on" : "off", capability);
   // 任务 1008：音频三态仿图片；协议黑名单（audioInputEnableAllowed=false）置灰。
