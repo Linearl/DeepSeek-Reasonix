@@ -53,10 +53,8 @@ type PersistenceBinding struct {
 	// metadataSource rebuilds the list projection for the catalog cache once
 	// the accepted prefix is fully durable. Session supplies it so the binding
 	// never holds a projection of its own.
-	metadataSource         func(durable uint64) (catalogMetadata, bool)
-	recoverySource         func(durable uint64) (recoveryPublishState, bool)
-	recoveryPublished      func(durable uint64)
-	disableRecoveryPublish bool
+	metadataSource    func(durable uint64) (catalogMetadata, bool)
+	recoveryPublished func(durable uint64)
 
 	mu            sync.Mutex
 	queue         []Commit
@@ -385,22 +383,19 @@ func (b *PersistenceBinding) refreshCatalogMetadata() {
 	}
 	durable := b.durable
 	b.mu.Unlock()
-	recoveryPublished := false
-	if !b.disableRecoveryPublish && b.recoverySource != nil {
-		if state, ok := b.recoverySource(durable); ok {
-			if store, ok := b.handle.(*Store); ok && store.recovery != nil {
-				if err := store.recovery.publish(context.Background(), state.checkpoint, state.operations); err == nil {
-					recoveryPublished = true
-				}
-			}
-		}
+	// Task 1013: the removed bolt cache took the checkpoint publication with
+	// it. The durability point now only maintains the storage identity
+	// (log-prefix digest) through the store's recovery handle, then runs the
+	// same post-durable bookkeeping the publish seam used to gate.
+	if store, ok := b.handle.(*Store); ok && store.recovery != nil {
+		_ = store.recovery.publish(context.Background())
 	}
 	if b.metadataSource != nil {
 		if metadata, ok := b.metadataSource(durable); ok {
 			_ = writeCatalogMetadataForSession(filepath.Join(filepath.Dir(b.dir), ".query-cache", filepath.Base(b.dir)), b.dir, metadata)
 		}
 	}
-	if (recoveryPublished || b.disableRecoveryPublish || b.recoverySource == nil) && b.recoveryPublished != nil {
+	if b.recoveryPublished != nil {
 		b.recoveryPublished(durable)
 	}
 }

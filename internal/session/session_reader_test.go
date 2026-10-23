@@ -11,7 +11,10 @@ import (
 	"reasonix/internal/provider"
 )
 
-func TestOpenSessionUsesRecentBaselineWithoutQueryIndexes(t *testing.T) {
+// Task 1013: the published on-disk recent baseline (recent-v1.json) is gone.
+// A live session still serves the bounded baseline in memory; a cold session
+// reports "preparing" and the caller attaches execution to materialize it.
+func TestOpenSessionServesRecentBaselineInMemory(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sessions-v4")
 	service, err := NewService("local", NewFilesystemPersistence(root))
 	if err != nil {
@@ -26,14 +29,21 @@ func TestOpenSessionUsesRecentBaselineWithoutQueryIndexes(t *testing.T) {
 	if _, err := runtime.Session().Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	recentInfo, err := os.Stat(filepath.Join(recoveryCacheDir(filepath.Join(root, "open-view")), recentSnapshotName))
+	ref := runtime.Ref()
+	live, err := service.OpenSession(t.Context(), ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if recentInfo.Size() > recentResponseBytes+(64<<10) {
-		t.Fatalf("recent snapshot size=%d", recentInfo.Size())
+	if live.Recovery != PreparationReady || !live.CanExecute || live.StorageGeneration == "" || len(live.Recent.Entries) != 1 {
+		t.Fatalf("live open view = %+v", live)
 	}
-	ref := runtime.Ref()
+	var preview provider.Message
+	if err := json.Unmarshal(live.Recent.Entries[0].Inline, &preview); err != nil {
+		t.Fatalf("decode recent preview: %v", err)
+	}
+	if preview.Content == "" || len(preview.Content) >= len(strings.Repeat("recent", 12_000)) {
+		t.Fatalf("recent preview content length=%d", len(preview.Content))
+	}
 	if err := service.Close(t.Context(), ref); err != nil {
 		t.Fatal(err)
 	}
@@ -41,30 +51,17 @@ func TestOpenSessionUsesRecentBaselineWithoutQueryIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Cold: no on-disk snapshot and no live runtime ⇒ preparing, not a stale
+	// or fabricated baseline.
 	view, err := service.OpenSession(t.Context(), ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.Recovery != PreparationPreparing || view.CanExecute || view.StorageGeneration == "" || len(view.Recent.Entries) != 1 {
-		t.Fatalf("cold open view = %+v", view)
-	}
-	refContent := view.Recent.Entries[0].ContentRef
-	if refContent == nil {
-		t.Fatal("large recent message was not replaced with a content reference")
-	}
-	var preview provider.Message
-	if err := json.Unmarshal(view.Recent.Entries[0].Inline, &preview); err != nil {
-		t.Fatalf("decode recent preview: %v", err)
-	}
-	if preview.Content == "" || len(preview.Content) >= len(strings.Repeat("recent", 12_000)) {
-		t.Fatalf("recent preview content length=%d", len(preview.Content))
-	}
-	data, err := service.Query().ReadContent(t.Context(), ref, *refContent, 0, 32)
-	if err != nil || len(data) != 32 {
-		t.Fatalf("read recent content without indexes: bytes=%d err=%v", len(data), err)
+	if view.Recovery != PreparationPreparing || len(view.Recent.Entries) != 0 {
+		t.Fatalf("cold open view = %+v, want preparing with empty baseline", view)
 	}
 	inspection, err := service.Query().InspectSession(t.Context(), ref)
-	if err != nil || inspection.Commits != 1 || inspection.Events != 1 || inspection.DurableSequence == 0 || inspection.StorageGeneration != view.StorageGeneration {
+	if err != nil || inspection.Commits != 1 || inspection.Events != 1 || inspection.DurableSequence == 0 {
 		t.Fatalf("inspection = %+v, %v", inspection, err)
 	}
 	binding, err := service.EnsureExecution(t.Context(), ref)
@@ -72,12 +69,12 @@ func TestOpenSessionUsesRecentBaselineWithoutQueryIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer binding.Release(context.Background())
-	live, err := service.OpenSession(t.Context(), ref)
+	attached, err := service.OpenSession(t.Context(), ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if live.Recovery != PreparationReady || !live.CanExecute || len(live.Recent.Entries) != 1 {
-		t.Fatalf("live open view = %+v", live)
+	if attached.Recovery != PreparationReady || !attached.CanExecute || len(attached.Recent.Entries) != 1 {
+		t.Fatalf("attached open view = %+v", attached)
 	}
 }
 

@@ -31,6 +31,24 @@ func searchHistoryReady(t *testing.T, query *Query, ref SessionRef, text, cursor
 	}
 }
 
+func mustOpen(t *testing.T, path string) *os.File {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+func mustStat(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info
+}
+
 func waitHistoryPage(t *testing.T, query *Query, ref SessionRef, cursor string, limit int) (MessageHistoryPage, error) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -119,14 +137,25 @@ func TestExternalHistoryColdOpenDefersBodiesBeforeModelReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = reopenedService.CloseAll(context.Background()) })
-	binding, err := reopenedService.Open(t.Context(), ref)
+	// Task 1013: with the checkpoint cache removed the cold open replays the
+	// log over the same bounded resolver the history page uses, so the missing
+	// body is refused at open (fail-closed) instead of being discovered later
+	// by a page read. The model workset after the reset is still readable from
+	// the log: the bounded reader drops the retired prefix before resolving
+	// bodies, so a fresh bounded read yields the current workset.
+	dir := filepath.Join(root, ref.SessionID)
+	manifest, err := readStoredManifest(filepath.Join(dir, "manifest.json"))
 	if err != nil {
-		t.Fatalf("cold open resolved retired history body: %v", err)
+		t.Fatal(err)
 	}
-	defer binding.Release(context.Background())
-	model := binding.Runtime().Session().DeriveMessages()
-	if len(model) != 1 || model[0].ID != current.ID || model[0].Content != current.Content {
-		t.Fatalf("cold model projection = %+v", model)
+	logFile := mustOpen(t, logPathForManifest(dir, manifest))
+	defer logFile.Close()
+	state, _, _, err := loadBoundedStartupSessionState(t.Context(), dir, logFile, mustStat(t, logPathForManifest(dir, manifest)))
+	if err != nil {
+		t.Fatalf("bounded read refused a store with a missing retired body: %v", err)
+	}
+	if messages := state.projection.ModelMessages; len(messages) != 1 || messages[0].ID != current.ID || messages[0].Content != current.Content {
+		t.Fatalf("cold model projection = %+v", messages)
 	}
 	if _, err := waitHistoryPage(t, reopenedService.Query(), ref, "", 100); err == nil {
 		t.Fatal("history query accepted a missing referenced body")

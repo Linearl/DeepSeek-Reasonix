@@ -160,11 +160,14 @@ type OpenOptions struct {
 	// Production SessionService enables it; low-level compatibility callers
 	// retain the historical full-projection behavior unless requested.
 	ExternalHistory bool
-	// ObserveRecovery receives bounded open-path I/O counters after recovery.
-	// Capacity tests use it to distinguish checkpoint recovery from prefix replay.
+	// ObserveRecovery receives bounded open-path I/O counters after the open
+	// path runs. Since task 1013 removed the checkpoint cache it always
+	// reports a full-prefix replay (LogBytesRead == LogBytesTotal).
 	ObserveRecovery func(RecoveryOpenStats)
-	// DisableRecoveryPublish is a fault-injection hook used to verify that a
-	// durable log tail is replayed from the previous checkpoint.
+	// DisableRecoveryPublish was the fault-injection hook for the removed
+	// checkpoint cache (task 1013). The field stays so existing low-level
+	// callers keep compiling; setting it changes nothing (a reopen always
+	// replays the durable log).
 	DisableRecoveryPublish bool
 }
 
@@ -433,8 +436,9 @@ func openExistingHandle(dir, sessionID string, opts OpenOptions) (*Store, error)
 		}
 	}
 	if !usedCheckpoint {
-		checkpoint := checkpointFromStartup(manifest, identity, startup)
-		if err := recovery.publish(context.Background(), checkpoint, startup.operations); err == nil {
+		// Task 1013: the removed bolt cache took checkpoint+operations with it.
+		// Publish now only maintains the storage identity (log-prefix digest).
+		if err := recovery.publish(context.Background()); err == nil {
 			startup.operations = map[string]operationRecord{}
 		}
 	}
@@ -527,6 +531,26 @@ func loadStartupSessionState(ctx context.Context, dir, eventsPath string, extern
 	return state, durableEnd, durableEnd < info.Size(), stats, false, nil
 }
 
+// firstUnresolved reports the lowest unresolved event sequence and whether any
+// exists; the lowest one is the body a downstream apply hit first.
+func firstUnresolved(unresolved map[uint64]error) (uint64, bool) {
+	var (
+		lowest  uint64
+		present bool
+	)
+	for sequence := range unresolved {
+		if !present || sequence < lowest {
+			lowest, present = sequence, true
+		}
+	}
+	return lowest, present
+}
+
+func firstUnresolvedErr(unresolved map[uint64]error) error {
+	sequence, _ := firstUnresolved(unresolved)
+	return unresolved[sequence]
+}
+
 // loadBoundedStartupSessionState separates lightweight business recovery from
 // model-context recovery. The first pass validates every transaction without
 // resolving historical message bodies and locates the newest context reset.
@@ -538,7 +562,34 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 	var durableEnd int64
 	var projectionErr error
 	sawModelEvent := false
+	// Task 1013: without the checkpoint cache the bounded reader is also the
+	// writer-open path for external-history sessions, so it admits message ids
+	// and operation records itself. An unreadable body is tolerated only for
+	// events a later reset retires (the history page reports them per page); a
+	// body that survives every reset is still fatal, which is the fail-closed
+	// policy the missing-body test pins.
+	latestResetSequence := uint64(0)
+	unresolved := map[uint64]error{}
+	admit := func(commit Commit) {
+		recent := commit
+		recent.Events = nil
+		for _, event := range commit.Events {
+			switch event.Kind {
+			case "message/complete", "message/upsert", "history/replace", "legacy/import":
+				recent.Events = append(recent.Events, event)
+			}
+		}
+		// The recent pass sees every message-affecting event from offset 0 in
+		// log order, which is exactly the identity set the writer needs even
+		// though the bounded projection drops the bodies (task 398).
+		state.messageIDs.admit(recent)
+		state.operations[commit.OperationID] = compactOperationRecord(commit)
+		state.durable = commit.LastSequence()
+	}
 	content := contentStoreForSessionDir(dir)
+	// The scan walks every commit including model events; business and recent
+	// extraction happen inside the visitor, so the scan itself never resolves
+	// bodies (scanV4CommitFile keeps PayloadRef intact).
 	err := scanV4CommitFileRefs(ctx, file, 0, 1, content, nil, func(offset int64, commit Commit) bool {
 		business := commit
 		business.Events = nil
@@ -547,18 +598,29 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 				sawModelEvent = true
 				if modelProjectionReset(event.Kind) {
 					modelOffset, modelSequence = offset, commit.FirstSequence
+					latestResetSequence = commit.FirstSequence
 				}
 				continue
 			}
 			resolved, err := resolveProjectionEvent(ctx, content, event)
 			if err != nil {
-				projectionErr = err
-				return false
+				unresolved[event.Sequence] = err
+				continue
 			}
 			business.Events = append(business.Events, resolved)
 		}
 		if err := applyProjectionCommit(&state.projection, business); err != nil {
-			projectionErr = err
+			// A business apply that needs a body the resolver refused is a
+			// consequence of the same unreadable reference: report it as that,
+			// not as a second decode failure. The scan's own decode errors keep
+			// their own text and stay fatal.
+			if projectionErr == nil {
+				if seq, broken := firstUnresolved(unresolved); broken && seq >= commit.FirstSequence && seq <= commit.LastSequence() {
+					projectionErr = firstUnresolvedErr(unresolved)
+				} else {
+					projectionErr = err
+				}
+			}
 			return false
 		}
 		recent := commit
@@ -566,28 +628,49 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 		for _, event := range commit.Events {
 			switch event.Kind {
 			case "message/complete", "message/upsert", "history/replace", "legacy/import":
-				resolved, err := resolveProjectionEvent(ctx, content, event)
-				if err != nil {
-					projectionErr = err
-					return false
+				if _, broken := unresolved[event.Sequence]; broken {
+					// The id pass cannot see a body it never resolved; the
+					// resolve error above already reported the unreadable
+					// reference, and the history page reports it per page.
+					continue
 				}
-				recent.Events = append(recent.Events, resolved)
+				recent.Events = append(recent.Events, event)
 			}
 		}
-		if err := applyRecentCommit(&state.recentMessages, recent); err != nil {
-			projectionErr = err
+		// Resolve each recent event's body before the apply: the bounded reader
+		// (writer open without the checkpoint cache) must skip one unreadable
+		// external body rather than fail the whole recent pass.
+		resolvedRecent := commit
+		resolvedRecent.Events = nil
+		for _, event := range recent.Events {
+			resolved, resolveErr := resolveProjectionEvent(ctx, content, event)
+			if resolveErr != nil {
+				unresolved[event.Sequence] = resolveErr
+				continue
+			}
+			resolvedRecent.Events = append(resolvedRecent.Events, resolved)
+		}
+		if err := applyRecentCommit(&state.recentMessages, resolvedRecent); err != nil {
+			// A recent apply that fails because an external body is gone (the
+			// resolver refused it above) is the same unreadable-reference
+			// condition: report that error, not a second decode failure.
+			if projectionErr == nil {
+				if seq, broken := firstUnresolved(unresolved); broken && seq >= commit.FirstSequence && seq <= commit.LastSequence() {
+					projectionErr = firstUnresolvedErr(unresolved)
+				} else {
+					projectionErr = err
+				}
+			}
 			return false
 		}
-		// The recent pass sees every message-affecting event from offset 0 in
-		// log order, which is exactly the identity set the writer needs even
-		// though the bounded projection drops the bodies (task 398).
-		state.messageIDs.admit(recent)
-		state.operations[commit.OperationID] = compactOperationRecord(commit)
-		state.durable = commit.LastSequence()
+		admit(commit)
 		durableEnd, _ = file.Seek(0, io.SeekCurrent)
 		state.tip = durableTip{LogOffset: durableEnd, AnchorOffset: offset, AnchorFirst: commit.FirstSequence, AnchorCommitID: commit.ID, AnchorHash: commit.OperationHash}
 		return true
 	})
+	// A visitor stop caused by a projection apply is reported through the scan
+	// return as ErrDamagedStore; the recorded projectionErr carries the more
+	// precise unreadable-reference error in that case.
 	if err != nil {
 		return nil, 0, false, err
 	}
@@ -598,6 +681,11 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 		if err := loadCurrentModelProjection(ctx, file, content, state, modelOffset, modelSequence); err != nil {
 			return nil, 0, false, err
 		}
+	}
+	// Unresolved bodies the newest reset retired are legal (the history page
+	// reports them individually); one that survives the reset stays fatal.
+	if sequence, broken := firstUnresolved(unresolved); broken && sequence >= latestResetSequence {
+		return nil, 0, false, firstUnresolvedErr(unresolved)
 	}
 	state.projection.Messages = nil
 	state.projection.CommittedSequence = state.durable
@@ -688,9 +776,7 @@ func bindSession(handle *Store, opts OpenOptions) (*Session, error) {
 	session.storageGeneration = handle.identity.Generation
 	session.recovery = handle.recovery
 	binding.metadataSource = session.metadataForDurable
-	binding.recoverySource = session.recoveryForDurable
 	binding.recoveryPublished = session.recoveryPublished
-	binding.disableRecoveryPublish = opts.DisableRecoveryPublish
 	return session, nil
 }
 

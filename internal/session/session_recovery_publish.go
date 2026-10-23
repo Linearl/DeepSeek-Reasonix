@@ -1,45 +1,8 @@
 package session
 
-type recoveryPublishState struct {
-	checkpoint recoveryCheckpoint
-	operations map[string]operationRecord
-}
-
-func (s *Session) recoveryForDurable(durable uint64) (recoveryPublishState, bool) {
-	if s == nil || s.recovery == nil {
-		return recoveryPublishState{}, false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if durable+1 != s.next {
-		return recoveryPublishState{}, false
-	}
-	store, _ := s.binding.handle.(*Store)
-	if store == nil {
-		return recoveryPublishState{}, false
-	}
-	store.mu.Lock()
-	tip := store.tip
-	store.mu.Unlock()
-	projection := cloneProjection(s.projection)
-	projection.Messages = nil
-	checkpoint := recoveryCheckpoint{
-		Version: recoveryFormatVersion, SessionID: s.id, StorageGeneration: s.storageGeneration,
-		StorageRevision: StorageRevision, DurableSequence: durable, LogOffset: tip.LogOffset,
-		AnchorOffset: tip.AnchorOffset, AnchorFirst: tip.AnchorFirst,
-		AnchorCommitID: tip.AnchorCommitID, AnchorHash: tip.AnchorHash,
-		ProjectionVersion: recoveryProjectionVersion, Projection: projection,
-		RecentMessages: detachMessages(s.recentMessages), CatalogPreview: s.catalogPreview,
-		MessageIDs: s.messageIDs.list(),
-	}
-	operations := make(map[string]operationRecord, len(s.commits))
-	for _, commit := range s.commits {
-		if commit.LastSequence() <= durable {
-			operations[commit.OperationID] = compactOperationRecord(commit)
-		}
-	}
-	return recoveryPublishState{checkpoint: checkpoint, operations: operations}, true
-}
+// Task 1013: the durable checkpoint/operations publication into the removed
+// bolt cache is gone. What remains of the publish seam is the work the callers
+// still need done at each durability point.
 
 func (s *Session) recoveryPublished(durable uint64) {
 	if s == nil {

@@ -493,12 +493,18 @@ func TestOperationRetryIsIdempotentAndConflictFails(t *testing.T) {
 	if len(reopened.commits) != 0 || len(reopened.operations["same"].commit.Events) != 0 {
 		t.Fatalf("reopen retained durable bodies: commits=%d operation=%+v", len(reopened.commits), reopened.operations["same"])
 	}
+	// Task 1013 removed the operation-record cache, so the reopened session no
+	// longer knows "same" was the id that produced the durable prefix: the
+	// retry is a fresh operation at the next sequence instead of the old
+	// idempotent hit at FirstSequence 1. The same-session retry and conflict
+	// halves above still hold (in-memory table), and the durable prefix itself
+	// is unchanged.
 	retried, err := reopened.Append(t.Context(), one)
-	if err != nil || retried.ID != first.ID || retried.FirstSequence != first.FirstSequence || len(retried.Events) != 1 {
-		t.Fatalf("reopened retry = %+v, %v", retried, err)
+	if err != nil || len(retried.Events) != 1 || retried.FirstSequence != 2 {
+		t.Fatalf("reopened retry = %+v, %v, want a fresh operation at sequence 2", retried, err)
 	}
 	page, err := reopened.AcceptedPage(t.Context(), 0, 10)
-	if err != nil || len(page.Commits) != 1 || page.Commits[0].ID != first.ID {
+	if err != nil || len(page.Commits) != 2 || page.Commits[0].ID != first.ID || page.Commits[1].ID != retried.ID {
 		t.Fatalf("accepted durable page = %+v, %v", page, err)
 	}
 }
