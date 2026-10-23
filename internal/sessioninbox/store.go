@@ -179,12 +179,16 @@ func (s *Store) loadOrInitLocked() error {
 		s.man.Recovered = true
 		s.man.RecoveredN = len(salvaged)
 		s.man.Items = salvaged
+		// 任务1094缺陷C：观测补强——manifest_corrupt 触发点单独可检索。
+		s.logRecoveryEmit(RecoveryTriggerManifestCorrupt, "", len(salvaged), salvaged)
 		return s.commitManifestLocked(s.man)
 	}
 	if man.SchemaVersion > SchemaVersion {
 		s.man = man
 		s.readonly = true
 		s.man.Paused = true
+		// 任务1094缺陷C：观测补强——schema_upgrade 触发点单独可检索。
+		s.logRecoveryEmit(RecoveryTriggerSchemaUpgrade, man.RunID, 0, man.Items)
 		return nil
 	}
 	migrated := man.SchemaVersion < SchemaVersion
@@ -222,6 +226,11 @@ func (s *Store) loadOrInitLocked() error {
 	// Uncertain）照旧弹门，868 原行为逐字不退。
 	recovered := 0
 	if man.RunID != "" && man.RunID != s.runID {
+		// 任务1094缺陷C：观测补强——先留一份 RunID 变更前的旧值与条目快照，
+		// 供 slog + recovery.jsonl 快照记录「谁把信箱标成 Paused」。
+		oldRunID := man.RunID
+		preRecoveryItems := make([]InboxItemMeta, len(man.Items))
+		copy(preRecoveryItems, man.Items)
 		for i := range man.Items {
 			switch man.Items[i].State {
 			case StateSteerAccepted:
@@ -258,6 +267,8 @@ func (s *Store) loadOrInitLocked() error {
 			man.Recovered = true
 			man.RecoveredN = recovered
 		}
+		// 任务1094缺陷C：观测补强——cross_process_recovery 触发点单独可检索。
+		s.logRecoveryEmit(RecoveryTriggerCrossProcess, oldRunID, recovered, preRecoveryItems)
 	}
 	man.RunID = s.runID
 	s.man = man
