@@ -1370,7 +1370,7 @@ export interface FilePreview {
   size: number;
   truncated: boolean;
   binary: boolean;
-  kind?: "image" | "pdf";
+  kind?: "image" | "pdf" | "html";
   mime?: string;
   url?: string;
   err?: string;

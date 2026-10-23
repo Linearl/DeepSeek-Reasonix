@@ -414,6 +414,8 @@ export const zh: Record<DictKey, string> = {
   "workspace.loading": "正在加载文件…",
   "workspace.binary": "暂不支持预览二进制文件。",
   "workspace.truncated": "预览已截断到前 2 MiB。",
+  "workspace.htmlScriptsOff": "允许脚本运行（页面可访问应用）",
+  "workspace.htmlScriptsOn": "⚠ 脚本运行中 — 页面可能访问应用（allow-same-origin 已禁用）",
   "workspace.searchPlaceholder": "查找",
   "workspace.searchCount": "{current} / {total}",
   "workspace.searchPrevious": "上一个匹配项",
