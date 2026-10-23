@@ -1784,10 +1784,16 @@ func (a *App) Settings() SettingsView {
 	defer func() {
 		slog.Info("desktop: settings view loaded", "ms", time.Since(started).Milliseconds())
 	}()
+	// 任务 1090：分段计时——此前这条链只有总耗时，3-5s 的慢例无法区分
+	// 「用户配置解码慢」「项目合并慢」还是「provider 视图逐 key 读 .env
+	// 慢」。每次读取落四段耗时，desktop.log 直接回答慢在哪一步；快路径
+	// （各段 <50ms）静默。
+	cfgStarted := time.Now()
 	cfg, cfgPath, err := a.loadDesktopUserConfigForView()
 	if err != nil {
 		return a.defaultSettingsView()
 	}
+	logSettingsStage("user-config", cfgStarted)
 	root := a.activeWorkspaceRoot()
 	// 任务 634：写目录面板的项目列与「实际可写根」必须显示运行时真正生效的
 	// 列表。此前两处都从用户级配置计算——项目 reasonix.toml 定义
@@ -1795,7 +1801,9 @@ func (a *App) Settings() SettingsView {
 	// 注入基线（boot.go appendUniquePaths(cfg.GlobalAllowRoots())），面板
 	// 因此显示失真（用户加了全局允许目录也看不见）。这里按 boot 同源读
 	// merged 配置；读不到时退回用户级（无项目配置时两者本就一致）。
+	mergedStarted := time.Now()
 	allowWrite, writeRoots := a.mergedSandboxWriteRoots(cfg, root)
+	logSettingsStage("merged-write-roots", mergedStarted)
 	effectiveWorkspaceRoot := ""
 	if len(writeRoots) > 0 {
 		effectiveWorkspaceRoot = writeRoots[0]
@@ -2054,6 +2062,7 @@ func (a *App) Settings() SettingsView {
 		}
 	}
 	a.populateWebSearchSettings(&v, cfg, root)
+	providersStarted := time.Now()
 	added := providerAccessSet(cfg.Desktop.ProviderAccess)
 	resolver := config.NewCredentialResolverForRoot(root)
 	credentialsRevision := providerCredentialsRevision()
@@ -2065,7 +2074,20 @@ func (a *App) Settings() SettingsView {
 		providerView.RecommendedUpgradeAvailable = providerView.RecommendedUpgradeAvailable && config.CanUpgradeDeepSeekProviderProtocolUserConfig(p.Name)
 		v.Providers = append(v.Providers, providerView)
 	}
+	logSettingsStage("provider-views", providersStarted)
 	return v
+}
+
+// logSettingsStage is 任务 1090's per-stage timing probe on the Settings()
+// chain: fast paths stay silent so desktop.log only gains lines on slow reads.
+// 任务 1090 diagnosis traced the recurring 3-5s "settings stuck loading" case
+// to the provider-views stage below (credential .env re-read + parse per
+// provider key), so the log must be able to attribute any future slow read to
+// a stage without a rebuild.
+func logSettingsStage(stage string, started time.Time) {
+	if ms := time.Since(started).Milliseconds(); ms >= 50 {
+		slog.Info("desktop: settings stage slow", "stage", stage, "ms", ms)
+	}
 }
 
 func botSettingsView(b config.BotConfig) BotSettingsView {
