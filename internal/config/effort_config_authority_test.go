@@ -74,3 +74,103 @@ model_overrides   = { "deepseek-v4-flash" = { supported_efforts = ["disabled", "
 		}
 	}
 }
+
+// TestModelLevelEffortVocabularyOverride pins task 1053's precedence chain for
+// a single provider serving two models with different effort vocabularies:
+// a model's own model_overrides supported_efforts wins over the connection
+// list, and a model with no declaration of its own falls back to the
+// connection vocabulary untouched (zero-migration compatibility).
+func TestModelLevelEffortVocabularyOverride(t *testing.T) {
+	cfg := &Config{Providers: []ProviderEntry{{
+		Name: "gateway", Kind: "openai", BaseURL: "https://api.example-gateway.com/v1",
+		Models: []string{"chat-model", "reasoning-model", "plain-model"},
+		SupportedEfforts: []string{"low", "high", "max"}, DefaultEffort: "high",
+		ModelOverrides: map[string]ProviderModelOverride{
+			"reasoning-model": {SupportedEfforts: []string{"low", "xhigh", "max"}, DefaultEffort: "max"},
+		},
+	}}}
+	normalizeEffortConfig(cfg)
+
+	for _, tc := range []struct {
+		model       string
+		wantLevels  []string
+		wantDefault string
+	}{
+		{"chat-model", []string{"auto", "low", "high", "max"}, "high"},
+		{"reasoning-model", []string{"auto", "low", "xhigh", "max"}, "max"},
+		{"plain-model", []string{"auto", "low", "high", "max"}, "high"},
+	} {
+		entry, ok := cfg.ResolveModel("gateway/" + tc.model)
+		if !ok {
+			t.Fatalf("gateway/%s did not resolve", tc.model)
+		}
+		cap := EffortCapabilityForEntry(entry)
+		if len(cap.Levels) != len(tc.wantLevels) {
+			t.Fatalf("%s levels = %v, want %v", tc.model, cap.Levels, tc.wantLevels)
+		}
+		for i := range tc.wantLevels {
+			if cap.Levels[i] != tc.wantLevels[i] {
+				t.Fatalf("%s levels = %v, want %v", tc.model, cap.Levels, tc.wantLevels)
+			}
+		}
+		if cap.Default != tc.wantDefault {
+			t.Fatalf("%s default = %q, want %q", tc.model, cap.Default, tc.wantDefault)
+		}
+	}
+}
+
+// TestSetProviderModelEffort pins the write side: the setter edits only the
+// named model's override, validates the level against the model's effective
+// vocabulary, and refuses a level outside it before anything reaches disk.
+func TestSetProviderModelEffort(t *testing.T) {
+	cfg := &Config{Providers: []ProviderEntry{{
+		Name: "gateway", Kind: "openai", BaseURL: "https://api.example-gateway.com/v1",
+		Models: []string{"chat-model", "reasoning-model"},
+		SupportedEfforts: []string{"low", "high", "max"},
+		ModelOverrides: map[string]ProviderModelOverride{
+			"reasoning-model": {SupportedEfforts: []string{"low", "xhigh", "max"}},
+		},
+	}}}
+	normalizeEffortConfig(cfg)
+
+	// A level from the connection vocabulary lands on a model with no
+	// override of its own.
+	if err := cfg.SetProviderModelEffort("gateway", "chat-model", "max"); err != nil {
+		t.Fatalf("set chat-model effort: %v", err)
+	}
+	if got := cfg.Providers[0].ModelOverrides["chat-model"].DefaultEffort; got != "max" {
+		t.Fatalf("chat-model override default_effort = %q, want max", got)
+	}
+	// A level from the model's own vocabulary lands on the overridden model.
+	if err := cfg.SetProviderModelEffort("gateway", "reasoning-model", "xhigh"); err != nil {
+		t.Fatalf("set reasoning-model effort: %v", err)
+	}
+	if got := cfg.Providers[0].ModelOverrides["reasoning-model"].DefaultEffort; got != "xhigh" {
+		t.Fatalf("reasoning-model override default_effort = %q, want xhigh", got)
+	}
+	// A level outside the model's own vocabulary is refused.
+	if err := cfg.SetProviderModelEffort("gateway", "", "high"); err == nil {
+		t.Fatal("empty model should be refused")
+	}
+	if err := cfg.SetProviderModelEffort("gateway", "reasoning-model", "high"); err == nil {
+		t.Fatal("level outside the model's own vocabulary should be refused")
+	}
+	// Unknown models and providers error instead of silently no-op.
+	if err := cfg.SetProviderModelEffort("gateway", "ghost-model", "max"); err == nil {
+		t.Fatal("unknown model should be refused")
+	}
+	if err := cfg.SetProviderModelEffort("ghost", "chat-model", "max"); err == nil {
+		t.Fatal("unknown provider should be refused")
+	}
+	// Clearing with "auto" removes the override entry it emptied.
+	if err := cfg.SetProviderModelEffort("gateway", "chat-model", "auto"); err != nil {
+		t.Fatalf("clear chat-model effort: %v", err)
+	}
+	if _, ok := cfg.Providers[0].ModelOverrides["chat-model"]; ok {
+		t.Fatal("cleared chat-model override should be removed, not kept empty")
+	}
+	// The override's default survives a round-trip through ResolveModel.
+	if entry, ok := cfg.ResolveModel("gateway/reasoning-model"); !ok || entry.DefaultEffort != "xhigh" {
+		t.Fatalf("resolved reasoning-model default_effort = %q (ok=%t), want xhigh", entry.DefaultEffort, ok)
+	}
+}

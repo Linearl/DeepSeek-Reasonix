@@ -2656,7 +2656,14 @@ func (e *ProviderEntry) applyModelOverride() {
 	if ov.SupportedEfforts != nil {
 		e.SupportedEfforts = append([]string(nil), ov.SupportedEfforts...)
 	}
-	if ov.DefaultEffort != "" || ov.SupportedEfforts != nil {
+	// A model override's own vocabulary replaces the connection list
+	// wholesale (including its default). A default_effort with no list of its
+	// own (task 1053) pins one level on the inherited connection vocabulary —
+	// it must not erase that vocabulary, otherwise the row it was picked from
+	// would collapse the moment it is saved.
+	if ov.SupportedEfforts != nil {
+		e.DefaultEffort = ov.DefaultEffort
+	} else if ov.DefaultEffort != "" {
 		e.DefaultEffort = ov.DefaultEffort
 	}
 	if ov.Vision != nil {
