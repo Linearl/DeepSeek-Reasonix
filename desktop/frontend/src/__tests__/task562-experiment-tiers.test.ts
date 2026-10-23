@@ -165,11 +165,16 @@ console.log("\ntask 562 lab three-tier badges");
   // 判定器续轮提醒，默认关）入表——63→64。
   // 任务 1024：draftRewrite 叠加入表——63→64。
   // 任务 1070：standardContinuation 叠加入表（两侧共享）——64→65。
-  ok(Object.keys(goTiers).length === 65, `Go registry parses to 65 entries (got ${Object.keys(goTiers).length})`);  const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
+  // 任务 1056：networkRetryBudget（网络重试预算分级，[network.retry_budget] 总开关）
+  // 只在 Go 侧登记（labFeatureTiers 65→66），前端 experimentTiers 暂无该 id——
+  // 同 sessionCwdFollow 口径计入 Go-only config-only 豁免（后续设置页入口补
+  // 前端注册时两侧转共享，此处同步收回）。
+  ok(Object.keys(goTiers).length === 66, `Go registry parses to 66 entries (got ${Object.keys(goTiers).length})`);
+  const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
   const feOnly = feIds.filter((id) => !goIds.includes(id));
-  ok(JSON.stringify(goOnly) === JSON.stringify(["sessionCwdFollow"]),
+  ok(JSON.stringify(goOnly) === JSON.stringify(["networkRetryBudget", "sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
   ok(JSON.stringify(feOnly) === JSON.stringify(["glmPlanUsage", "heartbeatRotation", "inputSelection", "interactionPresentation", "modelCapabilityFilter", "searchHistory", "smartAutomation", "tabManagement", "usageMonitoring", "viewLayout"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
