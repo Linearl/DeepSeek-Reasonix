@@ -159,14 +159,35 @@ function SteerCollabRouteSummary({ source }: { source: CollabImSourceMessage }) 
 // 任务1066: steer 正文剥除 @引用 + 图片缩略图 + 复制按钮——与用户消息
 // （Message.tsx）同款形态，三处引导场景（steer 气泡/723 deferred 展开/未
 // 应用引导 notice 块）复用同一组件保证一致性。
-function SteerGuidanceBody({ body, className }: { body: string; className?: string }) {
+//
+// 任务1091: 排版对齐用户消息——文字块与附件区块**上下分离**（附件区块是文
+// 字下方独立块，图片并排横排，不再嵌进文字流把正文挤成竖排窄条）；复制按钮
+// 移出卡片，落在卡片下方的 meta 行（`.steer-meta`，与用户消息 msg-meta 同
+// 位）。`renderCopy=false` 场景（steer 气泡/deferred 展开）按钮由 wrapper
+// meta 行统一渲染在卡片之后，避免同一按钮渲染两次；`asCardBottom` 场景
+// （未应用引导 notice 块）保留旧版按钮在卡片内右下的形态。
+function SteerGuidanceBody({ body, className, asCardBottom = false, renderCopy = true }: {
+  body: string;
+  className?: string;
+  asCardBottom?: boolean;
+  renderCopy?: boolean;
+}) {
   const { text: displayText, attachments } = parseAttachmentRefsForDisplay(body);
-  return (
+  const copyButton = (
+    /* 复制 payload = 原文含 @引用（与用户消息 CopyButton 的 actionText 语义一致，便于直接重发）。 */
+    <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
+  );
+  const content = (
     <>
       <span className={className ?? "steer-line__text"}>{displayText}</span>
       {attachments.length > 0 && <Suspense fallback={null}><MessageAttachments attachments={attachments} /></Suspense>}
-      {/* 复制 payload = 原文含 @引用（与用户消息 CopyButton 的 actionText 语义一致，便于直接重发）。 */}
-      <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
+    </>
+  );
+  if (!renderCopy) return content;
+  return (
+    <>
+      {asCardBottom ? content : copyButton}
+      {asCardBottom ? copyButton : content}
     </>
   );
 }
@@ -186,11 +207,18 @@ export function SteerCard({ id, text, deferred = false, createdAt }: { id: strin
     }
     return (
       <div className="steer-line" data-entrance={id}>
+        {/* 任务1091: 复制按钮移出卡片，落在卡片下方 meta 行——与用户消息
+            （msg-meta 的 CopyButton）同位；meta 行渲染在卡片之后（DOM 顺序
+            即视觉上下），右对齐。 */}
         <div className="steer-line__bubble" title={t("transcript.steer")}>
           <span className="steer-line__icon" aria-hidden="true">↪</span>
-          <SteerGuidanceBody body={body} />
+          {/* 任务1066: 正文剥除 @引用 + 图片缩略图（1091 起与文字上下分离、并排横排）。 */}
+          <SteerGuidanceBody body={body} renderCopy={false} />
           {/* 任务998：入队时刻走 1012 三档（同日只显时分，宽度冲击最小）。 */}
           <CardTime createdAt={createdAt} className="steer-line__time" />
+        </div>
+        <div className="steer-meta">
+          <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
         </div>
       </div>
     );
@@ -215,11 +243,17 @@ export function SteerCard({ id, text, deferred = false, createdAt }: { id: strin
       </button>
       {/* 任务811: deferred 占位展开时用户已显式点开，卡片不再套 705 二次折叠。 */}
       {expanded && collab && <SteerCollabCard source={collab} foldable={false} />}
-      {/* 任务1066: 展开态与①同款形态（图片缩略图+复制按钮）。 */}
+      {/* 任务1066: 展开态与①同款形态（图片缩略图+复制按钮）。
+          任务1091: 复制按钮移出卡片、落卡片下方 meta 行（与用户消息 msg-meta 同位）。 */}
       {expanded && !collab && (
-        <div className="steer-line__expanded">
-          <SteerGuidanceBody body={body} className="steer-line__text steer-line__text--expanded" />
-        </div>
+        <>
+          <div className="steer-line__expanded">
+            <SteerGuidanceBody body={body} className="steer-line__text steer-line__text--expanded" renderCopy={false} />
+          </div>
+          <div className="steer-meta">
+            <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
+          </div>
+        </>
       )}
     </div>
   );
@@ -332,10 +366,11 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
         ) : (
           <>
             {item.title ? <div className="notice-line__title">{item.title}</div> : null}
-            {/* 任务1066: unapplied_steer 复用 SteerGuidanceBody——与 steer 气泡同款形态（图片缩略图+复制按钮）。 */}
+            {/* 任务1066: unapplied_steer 复用 SteerGuidanceBody——与 steer 气泡同款形态（图片缩略图+复制按钮）。
+                任务1091: 文字与附件上下分离（图片并排横排）；复制按钮保留卡片内右下（notice 块无独立 meta 行，1091 气泡/展开态按钮移出卡片不波及此处）。 */}
             {item.code === "unapplied_steer" ? (
               <div className="notice-line__body notice-line__body--unapplied-steer">
-                <SteerGuidanceBody body={item.text} className="notice-line__text-body" />
+                <SteerGuidanceBody body={item.text} className="notice-line__text-body" asCardBottom />
               </div>
             ) : (
               <div className="notice-line__body">{item.text}</div>

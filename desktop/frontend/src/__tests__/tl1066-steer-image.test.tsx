@@ -157,6 +157,22 @@ console.log("\ntl1066 steer image + copy");
     // preview data URL 异步加载，JSDOM 下不保证渲染，属环境噪声非行为回归）。
     const thumb = host.querySelector(".msg-attachment--image") as HTMLElement | null;
     ok(thumb !== null, "① 图片缩略图是可点击卡片");
+    // 任务1091: 文字/附件上下分离 + 按钮出卡片——文字块在附件块之前（视觉
+    // 上文字在上、图片统一放下），复制按钮在卡片（.steer-line__bubble）之外
+    // 的 .steer-meta 行（与用户消息 msg-meta 同位）。
+    const bubble = host.querySelector(".steer-line__bubble");
+    const textSpan = host.querySelector(".steer-line__text");
+    const attachments = host.querySelector(".msg-attachments");
+    ok(bubble !== null && textSpan !== null && attachments !== null, "① 卡片/文字块/附件块均渲染");
+    ok(
+      bubble !== null && textSpan !== null && attachments !== null
+        && Boolean(textSpan.compareDocumentPosition(attachments) & Node.DOCUMENT_POSITION_FOLLOWING),
+      "① 文字块在附件块之前（上下分离，非嵌进文字流）",
+    );
+    const meta = host.querySelector(".steer-meta");
+    ok(meta !== null && bubble !== null && !bubble.contains(meta as Node), "① 复制按钮行在卡片之外");
+    ok(meta !== null && meta.contains(host.querySelector(".steer-line__copy") as Node), "① 复制按钮落在卡片下方 .steer-meta 行");
+    ok(host.querySelector(".steer-line__bubble .steer-line__copy") === null, "① 卡片内不再渲染复制按钮");
     if (thumb) {
       await act(async () => {
         thumb.click();
@@ -198,6 +214,10 @@ console.log("\ntl1066 steer image + copy");
       const expandedText = host.querySelector(".steer-line__expanded .steer-line__text--expanded")?.textContent ?? "";
       ok(expandedText.includes("第二行只有展开才可见") && !expandedText.includes("@[shot.png]"), "② 展开态正文剥除 @引用");
       ok(host.querySelector(".steer-line__copy") !== null, "② 展开态带复制按钮");
+      // 任务1091: 展开态复制按钮也移出卡片、落卡片下方 .steer-meta 行。
+      const expandedCard = host.querySelector(".steer-line__expanded");
+      const expandedMeta = host.querySelector(".steer-meta");
+      ok(expandedMeta !== null && expandedCard !== null && !expandedCard.contains(expandedMeta as Node), "② 展开态复制按钮在卡片之外");
       const thumb = host.querySelector(".msg-attachment--image") as HTMLElement | null;
       if (thumb) {
         await act(async () => {
