@@ -48,11 +48,13 @@ jobs:
             if [ -n "$files" ]; then
               code=false; desktop=false; site=false; sdk=false
               # Root-module CI: desktop/ is a separate module, so only the
-              # clearly unrelated paths below can skip it.
-              if echo "$files" | grep -qvE '^(docs/|site/|release-notes/|desktop/|workers/|[^/]+\.md$)'; then code=true; fi
+              # clearly unrelated paths below can skip it. docs-site/ (task
+              # 1102 product-docs static site) is a self-contained Node build
+              # with no Go/desktop coupling, so it joins the skip set.
+              if echo "$files" | grep -qvE '^(docs/|docs-site/|site/|release-notes/|desktop/|workers/|[^/]+\.md$)'; then code=true; fi
               # desktop/ imports the root kernel via `replace reasonix => ../`,
               # so only this clearly-unrelated set is safe to skip.
-              if echo "$files" | grep -qvE '^(docs/|site/|release-notes/|workers/|benchmarks/|npm/|[^/]+\.md$)'; then desktop=true; fi
+              if echo "$files" | grep -qvE '^(docs/|docs-site/|site/|release-notes/|workers/|benchmarks/|npm/|[^/]+\.md$)'; then desktop=true; fi
               if echo "$files" | grep -q '^site/'; then site=true; fi
               # sdk/go is a nested module invisible to root `go test ./...`;
               # its DTOs are generated from internal/extension/protocol, so

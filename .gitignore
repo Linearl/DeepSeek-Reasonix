@@ -10,6 +10,9 @@
 
 # Website (Astro) build output
 /site/dist/
+
+# 产品文档静态站 build output（docs-site/scripts/build.mjs → dist）
+/docs-site/dist/
 /site/.astro/
 /site/_preview.png
 
