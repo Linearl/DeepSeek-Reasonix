@@ -210,6 +210,16 @@ func (s *Store) loadOrInitLocked() error {
 		man.SchemaVersion = SchemaVersion
 	}
 	// Cross-process recovery: another run left in-flight items.
+	//
+	// 任务1094缺陷A：判据从「recovered > 0 || len(man.Items) > 0」收窄为
+	// 「recovered > 0」——「队列非空」不等于「有待恢复的指令」。旧判据把任何
+	// 一次 RunID 变更后的普通排队条目（哪怕就是用户刚打的一条引导）也标成
+	// Paused+Recovered，弹出「收件箱已暂停」却无从解释（RecoveredN==0 时横幅
+	// 走 pausedTitle、不显示 N），这就是 1508 现场「已恢复 0 条」类错配与
+	// 1094 现场「回合内引导不进引导、必须点恢复执行才能发」的共同根因。
+	// 收窄后：纯排队（recovered==0 && items>0）走「正常排队」语义不弹门；
+	// 真 recovered（StateQueued/Blocked/Uncertain/Running/SteerAccepted→
+	// Uncertain）照旧弹门，868 原行为逐字不退。
 	recovered := 0
 	if man.RunID != "" && man.RunID != s.runID {
 		for i := range man.Items {
@@ -241,7 +251,9 @@ func (s *Store) loadOrInitLocked() error {
 				recovered++
 			}
 		}
-		if recovered > 0 || len(man.Items) > 0 {
+		// 任务1094缺陷A：只在真有恢复计数时置 Paused+Recovered；纯残留
+		// 队列（如仅剩 StateSteerConsumed，按 P15 不计入 recovered）不再误暂停。
+		if recovered > 0 {
 			man.Paused = true
 			man.Recovered = true
 			man.RecoveredN = recovered
