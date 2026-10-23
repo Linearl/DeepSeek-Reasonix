@@ -39,6 +39,7 @@ var Chinese = Messages{
 	ProviderDeterministicReject:      "网关已连续 %d 次以相同原因中断本请求，且每次耗时几乎一致——判定为对本请求的确定性拒绝，疑似超出网关单请求处理上限。建议拆分会话、等待上下文压缩后再重试，或改用其他模型。",
 	PrefillSlowNoticeFmt:             "模型正在处理超大上下文（约 %d tokens），预计需要较长时间；这是正常的预填充阶段，可继续等待，无需取消。",
 	HeaderWaitSlowNoticeFmt:          "正在处理超大上下文（约 %d tokens），上游响应较慢，已等待 %d 秒仍未返回——请耐心等待，通常无需取消。",
+	HeaderWaitLightNotice:            "正在等待模型响应…（通常几十秒内会开始输出；若长时间无响应可按 Esc 取消）",
 	HeaderTimeoutRetryFmt:            "网关等待响应头超时，这是第 %d/%d 次尝试；每次重试都会从头处理全部上下文。建议：等待上下文压缩后重试、拆分会话，或改用其他模型。",
 	HeaderTimeoutGiveupFmt:           "网关连续多次未在等待窗口内返回响应头（已尝试 %d 次，每次均超时），判定为对本请求的持续超时，已停止自动重试。建议：等待上下文压缩后重试、拆分会话，或改用其他模型。",
 	ToolOutputTruncatedFmt:           "工具输出已截断：省略 %d 字节（共 %d 字节）",

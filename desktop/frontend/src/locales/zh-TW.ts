@@ -30,6 +30,15 @@ export const zhTW: Record<DictKey, string> = {
   // 通用動詞 / 框架
   "common.close": "關閉",
   "navigation.surfaceTimeout": "載入逾時：已退出載入遮罩，可重試、查看診斷或繼續瀏覽。",
+  // 任務1079：六條高頻失敗提示的「怎麼辦」行（suggestion 欄位）。
+  "notice.suggestion.surfaceTimeout": "可先嘗試切換 tab 再切回；若仍無回應，重啟應用（會話已落盤，不會遺失）。",
+  "notice.suggestion.finalReadiness": "本輪輸出可能不完整：可回覆「繼續」讓它接著做，或直接告訴我缺口。",
+  "notice.suggestion.recoveryPaused": "恢復已暫停：關閉佔用該會話的視窗後重試；或回覆「繼續」重新嘗試。",
+  "notice.suggestion.providerRejection": "供應商側拒絕：換一種措辭重發一次；二次被拒建議換模型。",
+  "notice.suggestion.leaseBusy": "該會話正在被使用（活躍 tab 或另一個視窗）：先關掉那個 tab 或視窗再操作。",
+  "notice.suggestion.oversizedEventLog": "日誌過大導致保底跳過：可在「設定 → 修復會話」裡單獨處理該會話。",
+  "notice.suggestion.headerWaitLight": "正在等待模型回應…（通常幾十秒內會開始輸出；若長時間無回應可按 Esc 取消）",
+  "notice.suggestion.autopilotResumeExhausted": "已連續續輪多次仍未成功：可回覆「繼續」手動再試一次，或直接告知缺口。",
   "navigation.viewDiagnostics": "查看診斷",
   "navigation.forceExitOverlay": "強制退出遮罩",
   "common.moreActions": "更多操作",

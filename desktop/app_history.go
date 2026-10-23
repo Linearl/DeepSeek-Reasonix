@@ -24,6 +24,9 @@ type HistoryMessage struct {
 	Content            string                       `json:"content"`
 	Detail             string                       `json:"detail,omitempty"`
 	Code               string                       `json:"code,omitempty"`
+	// Suggestion (任务1079)：notice 的可选「怎么办」行；空值省略，历史重放
+	// 与新 notice 同一条渲染路径。
+	Suggestion         string                       `json:"suggestion,omitempty"`
 	SubmitText         string                       `json:"submitText,omitempty"`
 	CheckpointTurn     *int                         `json:"checkpointTurn,omitempty"`
 	CreatedAt          int64                        `json:"createdAt,omitempty"`

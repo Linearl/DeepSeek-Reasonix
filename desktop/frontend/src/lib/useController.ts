@@ -323,7 +323,7 @@ export type Item =
   | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string }
   | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; createdAt?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[] }
   | { kind: "phase"; id: string; text: string }
-  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean; createdAt?: number }
+  | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; suggestion?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean; createdAt?: number }
   | {
       kind: "compaction";
       id: string;
@@ -1130,7 +1130,7 @@ export function historyMessagesToItems(messages: HistoryMessage[], idPrefix: str
         continue;
       }
       if (m.content.trim() !== "" || m.decisionReceipt) {
-        const next = appendNoticeItem(items, seq, `${idPrefix}${seq}`, m.level === "warn" ? "warn" : "info", m.content, m.detail, m.code, m.decisionReceipt, m.createdAt);
+        const next = appendNoticeItem(items, seq, `${idPrefix}${seq}`, m.level === "warn" ? "warn" : "info", m.content, m.detail, m.code, m.decisionReceipt, m.createdAt, m.suggestion);
         items = next.items;
         seq = next.seq;
       }
@@ -2194,7 +2194,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
     case "read_status":
       return applyReadStatusEvent(s, e);
     case "notice": {
-      const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt, e.emittedAt ?? Date.now());
+      const next = appendNoticeToState(s, e.level ?? "info", e.text ?? "", e.detail, e.code, e.decisionReceipt, e.emittedAt ?? Date.now(), e.suggestion);
       return e.code?.startsWith("stream_interrupted_") ? { ...next, streamInterruptNoticeShown: true } : next;
     }
     case "context_maintenance": {
@@ -3135,8 +3135,8 @@ function latestTodosAllComplete(items: Item[]): boolean {
   return false;
 }
 
-function appendNoticeToState(s: State, level: "info" | "warn", text: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt, createdAt?: number): State {
-  const next = appendNoticeItem(s.items, s.seq, `n${s.seq}`, level, text, detail, code, decisionReceipt, createdAt);
+function appendNoticeToState(s: State, level: "info" | "warn", text: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt, createdAt?: number, suggestion?: string): State {
+  const next = appendNoticeItem(s.items, s.seq, `n${s.seq}`, level, text, detail, code, decisionReceipt, createdAt, suggestion);
   return { ...s, running: s.turnActive ? s.running : false, seq: next.seq, items: next.items };
 }
 

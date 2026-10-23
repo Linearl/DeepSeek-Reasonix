@@ -2554,6 +2554,26 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	// repeat cadence while the wait continues; disarmed the moment headers
 	// arrive. Emission stays in this select: Sink.Emit is serial-call-only,
 	// so no goroutine may touch it.
+	//
+	// 任务1080: the same phase gets a LIGHT tier at the 3~5s mark so the
+	// first seconds of a wait never read as "nothing is happening". It is a
+	// separate one-shot timer (once per TURN via a.turn.headerWaitLightShown,
+	// not once per attempt) so the two tiers stay independent: a fast answer
+	// (<4s) emits nothing, an ordinary wait gets exactly one light line, and a
+	// slow wait still gets the unchanged 30s header_wait_slow line. On a retry
+	// the light tier is NOT re-armed — the user already saw it this turn.
+	headerLightTimer := time.NewTimer(headerWaitLightNoticeAfter)
+	headerLightNotice := (<-chan time.Time)(headerLightTimer.C)
+	stopHeaderLight := func() {
+		if headerLightTimer.Stop() {
+			return
+		}
+		select {
+		case <-headerLightTimer.C:
+		default:
+		}
+	}
+	defer stopHeaderLight()
 	headerTimer := time.NewTimer(headerWaitNoticeAfter)
 	headerNotice := (<-chan time.Time)(headerTimer.C)
 	stopHeader := func() {
@@ -2660,6 +2680,11 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			start = nil
 			stopHeader()
 			headerNotice = nil
+			// 任务1080: headers are back (or the start failed) — the light
+			// wait tier is over too; a chunk that arrives in the same select
+			// turn must never emit it.
+			stopHeaderLight()
+			headerLightNotice = nil
 			// 任务1055-A1/A3: the connect phase is over — headers arrived or
 			// the start failed terminally. Drain any buffered connecting
 			// notice and emit the zero-attempt clear frame so the label
@@ -2704,6 +2729,32 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			ch = s.ch
 			prefillTimer = time.NewTimer(prefillNoticeAfter)
 			prefillNotice = prefillTimer.C
+			// 任务1080: headers are back — re-arm the light tier for the BODY
+			// wait (a big prefill can also sit silent for seconds). The
+			// once-per-turn flag keeps a second fire impossible; a turn that
+			// already spoke during phase 1 stays quiet here.
+			if !a.turn.headerWaitLightShown {
+				headerLightTimer.Reset(headerWaitLightNoticeAfter)
+				headerLightNotice = headerLightTimer.C
+			}
+			continue
+		case <-headerLightNotice:
+			// 任务1080: 3~5s 轻提示档——首字节还没到，说一句「正在等待模型响应」
+			// 让静止的前几秒有了状态。只发一次/回合（turn.flag），发完不再 re-arm；
+			// 30s 档（下面的 headerNotice）继续由自己的计时器驱动，互不影响。
+			// 与 1055-A3 同款竞态防护：dial 超时恰好同时落地时先发 retry 帧，
+			// 轻提示不得抢占连接期的静默归因。
+			select {
+			case info := <-retryNotice:
+				emitRetry(info)
+			default:
+				if !a.turn.headerWaitLightShown {
+					a.turn.headerWaitLightShown = true
+					a.emitHeaderWaitLightNotice(sink, time.Since(requestSentAt))
+				}
+			}
+			// 一次性计时器：发或不发都不 re-arm（每回合最多一条轻提示）。
+			headerLightNotice = nil
 			continue
 		case <-headerNotice:
 			// 任务927: still awaiting response headers — name the silence
@@ -2732,6 +2783,11 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			stopHeader()
 			headerTimer.Reset(headerWaitNoticeAfter)
 			headerNotice = headerTimer.C
+			// 任务1080: the light tier does NOT re-arm on retry — its flag is
+			// per-turn, and re-arming here would let a mid-backoff tick claim
+			// the retry silence. Disarm until the next attempt's start case.
+			stopHeaderLight()
+			headerLightNotice = nil
 			emitRetry(info)
 			continue
 		case info := <-connectNotice:
@@ -2743,6 +2799,11 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			stopHeader()
 			headerTimer.Reset(headerWaitNoticeAfter)
 			headerNotice = headerTimer.C
+			// 任务1080: the dial is now naming its own silence (the connecting
+			// frame above), so the light wait tier is disarmed during it; the
+			// next attempt's start case re-arms the whole phase-1 watch.
+			stopHeaderLight()
+			headerLightNotice = nil
 			sink.Emit(event.Event{Kind: event.Connecting, RetryAttempt: info.Attempt, RetryMax: info.Max, RetryScope: event.RetryScopeConnect})
 			continue
 		case <-prefillNotice:
@@ -2808,6 +2869,11 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 			if prefillNotice != nil {
 				prefillNotice = nil
 				stopPrefill()
+			}
+			// 任务1080: any chunk also ends the light wait tier (both phases).
+			if headerLightNotice != nil {
+				headerLightNotice = nil
+				stopHeaderLight()
 			}
 			chunk = c
 		}

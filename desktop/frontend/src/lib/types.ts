@@ -440,6 +440,9 @@ export interface WireEvent extends RecoveryEventFields {
   detail?: string;
   // Stable notice id for localization; empty/absent = localize by text match.
   code?: string;
+  // 任务1079：notice 的可选「怎么办」行——与 detail 同级、常显（不折叠），
+  // 空值省略时前端完全不渲染该行（与改动前逐字一致）。
+  suggestion?: string;
   reasoning?: string;
   memoryCitations?: MemoryCitation[];
   level?: "info" | "warn";
@@ -933,6 +936,8 @@ export interface HistoryMessage {
   content: string;
   detail?: string;
   code?: string;
+  // 任务1079：历史重放的 notice 同样携带「怎么办」行（与新 notice 一条路径）。
+  suggestion?: string;
   submitText?: string;
   checkpointTurn?: number;
   createdAt?: number;

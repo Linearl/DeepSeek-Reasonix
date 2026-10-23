@@ -181,6 +181,7 @@ func recordHistoryDisplayEvent(buffer *displayTurnBuffer, e event.Event) {
 				Content:         e.Text,
 				Detail:          e.Detail,
 				Code:            e.Code,
+				Suggestion:      e.Suggestion,
 				DecisionReceipt: cloneDecisionReceipt(e.DecisionReceipt),
 			}})
 		}

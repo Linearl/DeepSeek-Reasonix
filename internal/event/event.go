@@ -618,6 +618,12 @@ type Event struct {
 	ModelRef         string                    // Usage: canonical "provider/model" ref that produced this usage
 	Detail           string                    // Notice: optional diagnostic text for expandable details
 	Code             string                    // Notice: stable id for frontend localization; empty = unmapped
+	// Suggestion (任务 1079)：Notice 专属的可选「怎么办」行——「发生了什么」
+	// 之外的下一步建议（切 tab / 换措辞 / 关窗口…）。为空时前端完全不渲染
+	// 该行（默认关语义，与改动前逐字一致）。1079-b：文案不在 Go 侧回填，
+	// 前端按 Code 从 locale 词典（notice.suggestion.*，三语）取；本字段仅供
+	// 发射方显式硬指定。非 Notice 的 Kind 忽略此字段。
+	Suggestion       string                    // Notice: optional "what to do next" line (tl1079)
 	Reasoning        string                    // Message: the full reasoning chain
 	MemoryCitations  []provider.MemoryCitation // Message: local memory references displayed by rich frontends
 	Tool             Tool                      // ToolDispatch / ToolResult

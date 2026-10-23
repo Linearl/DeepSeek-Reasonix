@@ -38,6 +38,7 @@ var English = Messages{
 	ProviderDeterministicReject:      "The gateway cut this request %d times in a row with the same reason and near-identical timing — a deterministic rejection of this request, most likely beyond the gateway's single-request processing limit. Split the session, wait for context compaction before retrying, or switch to another model.",
 	PrefillSlowNoticeFmt:             "The model is processing a very large context (~%d tokens); a long wait is expected. This is the normal prefill phase — keep waiting, no need to cancel.",
 	HeaderWaitSlowNoticeFmt:          "Processing a very large context (~%d tokens); the upstream is responding slowly, %d seconds elapsed with no response yet — usually safe to keep waiting, no need to cancel.",
+	HeaderWaitLightNotice:            "Waiting for the model to respond… (output usually starts within seconds; press Esc to cancel if it takes much longer.)",
 	HeaderTimeoutRetryFmt:            "The gateway timed out waiting for response headers; retrying (attempt %d of %d). Each retry reprocesses the whole context from scratch — consider waiting for context compaction, splitting the session, or switching to another model.",
 	HeaderTimeoutGiveupFmt:           "The gateway kept timing out before returning response headers (%d attempts, every one timed out) — persistent timeout for this request, automatic retries stopped. Consider waiting for context compaction, splitting the session, or switching to another model.",
 	ToolOutputTruncatedFmt:           "tool output truncated: %d of %d bytes elided",

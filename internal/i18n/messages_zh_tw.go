@@ -39,6 +39,7 @@ var ChineseTraditional = Messages{
 	ProviderDeterministicReject:      "閘道已連續 %d 次以相同原因中斷本請求，且每次耗時幾乎一致——判定為對本請求的確定性拒絕，疑似超出閘道單請求處理上限。建議拆分會話、等待上下文壓縮後再重試，或改用其他模型。",
 	PrefillSlowNoticeFmt:             "模型正在處理超大上下文（約 %d tokens），預計需要較長時間；這是正常的預填階段，可繼續等待，無需取消。",
 	HeaderWaitSlowNoticeFmt:          "正在處理超大上下文（約 %d tokens），上游響應較慢，已等待 %d 秒仍未返回——請耐心等待，通常無需取消。",
+	HeaderWaitLightNotice:            "正在等待模型回應…（通常幾十秒內會開始輸出；若長時間無回應可按 Esc 取消）",
 	HeaderTimeoutRetryFmt:            "閘道等待回應標頭逾時，這是第 %d/%d 次嘗試；每次重試都會從頭處理全部上下文。建議：等待上下文壓縮後重試、拆分會話，或改用其他模型。",
 	HeaderTimeoutGiveupFmt:           "閘道連續多次未在等待視窗內返回回應標頭（已嘗試 %d 次，每次均逾時），判定為對本請求的持續逾時，已停止自動重試。建議：等待上下文壓縮後重試、拆分會話，或改用其他模型。",
 	ToolOutputTruncatedFmt:           "工具輸出已截斷：省略 %d 位元組（共 %d 位元組）",

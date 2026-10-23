@@ -43,6 +43,11 @@ type turnRuntime struct {
 	// first-token watch, but a sentence the user already read would only repeat
 	// per replay. Zeroed with the turn.
 	prefillNoticeShown bool
+	// headerWaitLightShown (任务1080): one light "waiting for the model" notice
+	// per turn, at the 3~5s mark. Retry attempts re-arm the watch, but the
+	// light tier names an ordinary wait — repeating it per replay would nag
+	// without new information. Zeroed with the turn.
+	headerWaitLightShown bool
 	// unattended marks a turn nobody can answer a readiness recovery card for
 	// (task 283): autopilot, or a tool-approval posture that already delegates
 	// writes to policy (auto/yolo) / an unattended host run — the same

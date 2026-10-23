@@ -5149,6 +5149,14 @@ a[href] {
   font-size: var(--text-sm);
   line-height: 1.45;
 }
+/* 任务1079：notice 的「怎么办」行——弱化样式（同 detail 档的字色/字号），
+   常显不折叠，位于正文下方、details 折叠区上方。 */
+.notice-line__suggestion {
+  margin-top: 2px;
+  color: var(--fg-faint);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
 .notice-line__details summary {
   cursor: pointer;
   user-select: none;
