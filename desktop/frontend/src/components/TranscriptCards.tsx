@@ -37,7 +37,7 @@ export function PhaseCard({ id, text }: { id: string; text: string }) {
 // 任务998：卡片时间戳元素——createdAt（epoch ms）→ 三档绝对时间，title 保留
 // 完整本地化日期兜底（与 Message.tsx 气泡同款契约）。useTick 只在有时间戳
 // 时挂（跨档只在跨天那一刻需要重绘）。
-function CardTime({ createdAt, className }: { createdAt: number | undefined; className: string }) {
+export function CardTime({ createdAt, className }: { createdAt: number | undefined; className: string }) {
   const sentAt = createdAt == null ? null : new Date(createdAt);
   const now = useTick(sentAt !== null);
   if (!sentAt) return null;
@@ -118,15 +118,18 @@ function SteerCollabCard({ source, foldable = true }: { source: CollabImSourceMe
           )}
         </div>
       ))}
-      {(source.sender || source.chat) && (
-        <div
-          className="im-source-card__meta"
-          data-transcript-selection-ignore
-          title={[source.sender, source.chat].filter(Boolean).map((id) => `contact_id=${id.trim()}`).join(" → ")}
-        >
-          <span>{t("msg.collabRoute", { from: collabLabel(source.sender), to: collabLabel(source.chat) })}</span>
-        </div>
-      )}
+      {/* 任务1092: 发送时刻（header stamping 解析）+ 复制正文——与普通消息卡片
+          （Message.tsx msg-meta 的 time + CopyButton）同款形态。独立 foot 行，
+          即便旧投递文本无 sender/chat 也保证时间+复制入口存在。 */}
+      <div className="im-source-card__meta" data-transcript-selection-ignore>
+        {(source.sender || source.chat) && (
+          <span title={[source.sender, source.chat].filter(Boolean).map((id) => `contact_id=${id.trim()}`).join(" → ")}>
+            {t("msg.collabRoute", { from: collabLabel(source.sender), to: collabLabel(source.chat) })}
+          </span>
+        )}
+        <CardTime createdAt={source.sentAt} className="im-source-card__time" />
+        <CopyButton text={source.text} label={t("msg.copy")} showInlineLabel={false} className="im-source-card__copy" />
+      </div>
     </div>
   );
 }
