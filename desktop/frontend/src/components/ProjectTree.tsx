@@ -441,7 +441,12 @@ export function ProjectTree({
             ? mergeIncompleteProjectTopicPage(asArray(node.children), items)
             : full
               ? mergeProjectTopicPage(asArray(node.children), items, pageAppend)
-              : mergeProjectTopicFirstPage(asArray(node.children), items, { nextCursor: page.nextCursor });
+              // Task 1093: an empty INCOMPLETE first page is a mid-scan
+              // snapshot, not a verdict — keep the resident rows so a
+              // directory-scan batch cannot collapse a group whose count is
+              // unchanged; an EMPTY complete page still replaces (the
+              // "folder is empty" case). See mergeProjectTopicFirstPage.
+              : mergeProjectTopicFirstPage(asArray(node.children), items, { nextCursor: page.nextCursor, complete: page.complete !== false });
           return children === node.children ? node : { ...node, children };
         })));
         const continues = projectTreeBrowsePageContinues({
