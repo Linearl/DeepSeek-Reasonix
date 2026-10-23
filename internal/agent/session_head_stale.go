@@ -65,11 +65,18 @@ func staleConcurrentHeadDecision(c staleHeadCandidate, selected string, selected
 		return false, "not superseded by the selected head"
 	}
 	// pid-backed path (task 945 原判据): positive evidence the writer is gone.
+	// minAge == 0 is the manual repair's zero-age gate: the lease (idleness
+	// check) already verified no other runtime holds the session, so the
+	// pid-alive check is redundant here — a pid that happens to still be alive
+	// in this process's namespace is not evidence the session is in use (the
+	// lease is). Skip it when minAge == 0 so the repair can retire abandoned
+	// heads created seconds ago (the 72h gate only exists for the sweep's
+	// automatic background path, where the lease cannot be held).
 	if w != nil && w.pid > 0 {
 		switch {
 		case w.hostname == "" || w.hostname != selfHost:
 			return false, "writer on another host"
-		case pidAlive(w.pid):
+		case minAge > 0 && pidAlive(w.pid):
 			return false, "writer still alive"
 		}
 		return true, "stale concurrent head"
@@ -105,6 +112,15 @@ func staleConcurrentHeadDecision(c staleHeadCandidate, selected string, selected
 // pidAlive and selfHost are injected so tests can drive the judgment; the
 // production wrapper is RetireStaleConcurrentHeadsNow.
 func RetireStaleConcurrentHeads(path string, now time.Time, pidAlive func(int) bool, selfHost string) ([]string, error) {
+	return retireStaleConcurrentHeads(path, now, pidAlive, selfHost, staleConcurrentHeadMinAge)
+}
+
+// retireStaleConcurrentHeads is the shared body with an injected age gate. The
+// production entry (RetireStaleConcurrentHeads) passes the 72h sweep gate;
+// the manual repair path (sessionCompactRepairDAG) passes a zero gate because
+// the user explicitly asked to slim THIS session and the repair already
+// verified idleness via the lease.
+func retireStaleConcurrentHeads(path string, now time.Time, pidAlive func(int) bool, selfHost string, minAge time.Duration) ([]string, error) {
 	probe, err := probeSessionEventLog(path)
 	if err != nil {
 		return nil, err
@@ -151,7 +167,7 @@ func RetireStaleConcurrentHeads(path string, now time.Time, pidAlive func(int) b
 
 	var retired []string
 	for _, c := range candidates {
-		ok, reason := staleConcurrentHeadDecision(c, selected, selectedActivity, writerFacts[c.writer], pidAlive, selfHost, now, staleConcurrentHeadMinAge,
+		ok, reason := staleConcurrentHeadDecision(c, selected, selectedActivity, writerFacts[c.writer], pidAlive, selfHost, now, minAge,
 			func(string) int { return len(selectedChainIDs) },
 			func(headID string) int { return chainLens[headID] })
 		if !ok {

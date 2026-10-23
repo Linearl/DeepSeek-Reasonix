@@ -99,6 +99,14 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
       await refresh();
     });
 
+  // tl 1086 现象 a 根治: 刷新必须回到列表视图并重置 outcomes。修复前点「刷新」
+  // 只重载 inventory, 结果列表(outcomes)累积重复堆叠——用户看到的是「刷新不回
+  // 列表」。现在刷新按钮清空 results 再重载。
+  const refreshAndClear = useCallback(async () => {
+    setResults([]);
+    await refresh();
+  }, [refresh]);
+
   return (
     <div className="events-rotation-panel">
       {/* Three-way gate: off skips the automatic rotation entirely, manual is
@@ -173,7 +181,7 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
             {t("settings.eventsRotation.card.overCount", { count: inventory?.overCount ?? 0 })}
           </span>
           <span className="events-rotation-panel__actions">
-            <button type="button" className="btn btn--secondary btn--small" disabled={busy || !inventory} onClick={() => void refresh()}>
+            <button type="button" className="btn btn--secondary btn--small" disabled={busy || !inventory} onClick={() => void refreshAndClear()}>
               {t("settings.eventsRotation.card.refresh")}
             </button>
             <button
@@ -237,7 +245,7 @@ export function SessionEventsPanel({ mode, busy, apply }: { mode: RotationMode; 
           capMB={capMB}
           setFactor={setFactor}
           setCapMB={setCapMB}
-          onRefresh={refresh}
+          onRefreshAndClear={refreshAndClear}
           onCompactOne={compactOne}
           onCompactAll={compactAll}
           onClose={() => setDialogOpen(false)}
@@ -267,7 +275,7 @@ function SessionEventsRepairDialog({
   capMB,
   setFactor,
   setCapMB,
-  onRefresh,
+  onRefreshAndClear,
   onCompactOne,
   onCompactAll,
   onClose,
@@ -282,7 +290,7 @@ function SessionEventsRepairDialog({
   capMB: string;
   setFactor: (v: string) => void;
   setCapMB: (v: string) => void;
-  onRefresh: () => Promise<void>;
+  onRefreshAndClear: () => Promise<void>;
   onCompactOne: (path: string) => void;
   onCompactAll: () => void;
   onClose: () => void;
@@ -337,7 +345,7 @@ function SessionEventsRepairDialog({
               onClick={() =>
                 void apply(async () => {
                   await app.SetEventsRotation(Number(factor), Number(capMB));
-                  await onRefresh();
+                  await onRefreshAndClear();
                 })
               }
             >
@@ -350,7 +358,7 @@ function SessionEventsRepairDialog({
             {t("settings.eventsRotation.card.overCount", { count: inventory?.overCount ?? 0 })}
           </span>
           <span className="events-rotation-panel__actions">
-            <button type="button" className="btn btn--secondary btn--small" disabled={busy || !inventory} onClick={() => void onRefresh()}>
+            <button type="button" className="btn btn--secondary btn--small" disabled={busy || !inventory} onClick={() => void onRefreshAndClear()}>
               {t("settings.eventsRotation.card.refresh")}
             </button>
             <button

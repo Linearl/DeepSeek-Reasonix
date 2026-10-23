@@ -87,6 +87,12 @@ type sessionDAGState struct {
 	lastGoodEnd     int64
 	damaged         bool
 	holes           int // unreadable lines skipped between good entries
+	// repairRotated marks that the manual repair (CompactSessionFile) retired
+	// stale concurrent heads and therefore needs a forced rotation to drop
+	// their bytes; false when no heads were retired (SaveRewriteCompact's own
+	// maintainDAGLog already rotates when needed, and an unconditional second
+	// rotation would bump the generation twice for 921's dead-session fixture).
+	repairRotated bool
 	// tailTruncated marks a state replayed from a trailing window of a large log
 	// instead of from the beginning: the chain is complete only from windowStart
 	// onwards, and the reader must page the earlier history in. It is never set
