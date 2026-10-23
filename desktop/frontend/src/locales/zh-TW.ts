@@ -3122,6 +3122,9 @@ export const zhTW: Record<DictKey, string> = {
   "settings.sessionVersions.degradedHint": "該會話的事件日誌讀取被拒或失敗（如重放超出安全預算）：行內計數不可用，其餘分區不受影響。",
   "settings.recoveryCopiesHint": "列出所有帶 recovery 副本的工作階段；「獨有」是僅存在於該副本、未併入主線的事件數——它大就說明那邊有會丟的工作。先看清，再勾選合併。",
   "settings.recoveryCopiesEmpty": "沒有發現 recovery 副本。",
+  // 任務 1085：兩種空態要分清——「沒有副本檔」（recovery 掃描為空）與「有
+  // 副本列但 v3 無多 heads」（v3 版本列表為空）是兩回事，不能用同一句話糊住。
+  "settings.recoveryCopiesEmptyNoHeads": "沒有發現 recovery 副本，也沒有多 heads 工作階段。",
   "settings.recoveryCopiesSummary": "共 工作階段數 / 獨有事件合計",
   "settings.recoveryCopiesMain": "主線",
   "settings.recoveryCopiesTotal": "總計",

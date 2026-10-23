@@ -4506,6 +4506,9 @@ export const en = {
   "settings.sessionVersions.degradedHint": "Reading this conversation's event log was refused or failed (for example a replay beyond the safety budget): in-row counts are unavailable; other sections are unaffected.",
   "settings.recoveryCopiesHint": "Every conversation with recovery copies. Unique counts the events that exist only in that copy and not in the canonical transcript - a large number means work would be lost by ignoring it. Read first, then select and merge.",
   "settings.recoveryCopiesEmpty": "No recovery copies found.",
+  // 任务 1085：两种空态要分清——「没有副本文件」（recovery 扫描为空）与「有
+  // 副本行但 v3 无多 heads」（v3 版本列表为空）是两回事，不能用同一句话糊住。
+  "settings.recoveryCopiesEmptyNoHeads": "No recovery copies found, and no multi-head conversations.",
   "settings.recoveryCopiesSummary": "conversations / unique events total",
   "settings.recoveryCopiesMain": "main",
   "settings.recoveryCopiesTotal": "total",
