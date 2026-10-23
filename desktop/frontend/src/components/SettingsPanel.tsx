@@ -30,7 +30,7 @@ import { catalogForPreset } from "../lib/providerCatalog";
 import { ProviderCatalogPicker, type CatalogChoice } from "./ProviderCatalogPicker";
 import { Eye, EyeOff, Files } from "lucide-react";
 import { lazy, memo, Suspense, startTransition, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
-import { ArrowRight, Activity, Check, FlaskConical, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Trash2, Volume2, Zap } from "lucide-react";
+import { ArrowRight, Activity, Check, FlaskConical, Folder, Network, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clipboard, ExternalLink, FolderLock, KeyRound, Languages, ListChecks, Loader2, Monitor, MoreHorizontal, PanelBottom, Play, Power, QrCode, RefreshCw, Send, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Trash2, Volume2, Zap } from "lucide-react";
 import { asArray } from "../lib/array";
 import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
@@ -2005,6 +2005,11 @@ type ExperimentFeatureId =
   // （LabParamFieldsCard；字段绑定在 labParamFields 注册表）。
   | "idleReleaseMinutes"
   | "goMemLimit"
+  // tl 1097：日志管理参数卡 id（可观测性组）——pane 由专用
+  // LogManagementLabPane 承接（含当前占用行 + 打开目录按钮 + 「永久+无限制」
+  // 警示行，超出通用参数渲染器覆盖面）；两个 segment 字段仍走 labParamFields
+  // 注册表读写。
+  | "logManagement"
   // 任务 783：「用量监测」合并卡（可观测性组）——GLM Plan 用量 + OpenCode
   // Go 用量（opencodeGoUsage 独立 pane 并入此卡，742 先例）。
   | "usageMonitoring";
@@ -2061,6 +2066,8 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   // 白名单外 id ⇒ 整份回退默认）。
   "idleReleaseMinutes",
   "goMemLimit",
+  // tl 1097：日志管理参数卡（可观测性组）。
+  "logManagement",
 ]);
 
 // 任务 764：设置搜索覆盖实验室——rail 用什么布局，搜索词表就用什么布局。
@@ -2147,6 +2154,89 @@ function LabParamFieldsCard({ entry, s, busy, apply }: { entry: LabLayoutEntry; 
           </SettingsField>
         );
       })}
+    </>
+  );
+}
+
+/** tl 1097 — 日志管理 pane（可观测性组 kind:param 卡专用渲染）。
+ *
+ * 通用 LabParamFieldsCard 只能渲染「一行一字段」，无法承载本卡多出来的三样：
+ *   ① 区块说明固定行（「全量日志保留最近约 2 天……」）；
+ *   ② 「当前占用」实时统计行（需调 AlertLogUsage 桥）；
+ *   ③ 「打开日志目录」按钮 + 「永久+无限制」警示行（需要跨两个字段联动判断，
+ *      通用渲染器的每字段独立渲染做不到）。
+ * 两个 segment 档位的读写仍走 labParamFields 注册表（值语义单源），本组件只
+ * 负责「把注册表里的 segment 字段渲成按钮行 + 叠加这三样」。 */
+function LogManagementLabPane({ s, busy, apply }: { s: SettingsView; busy: boolean; apply: (fn: () => Promise<unknown>) => Promise<boolean> }) {
+  const t = useT();
+  const [usage, setUsage] = useState<{ bytes: number; files: number } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void app.AlertLogUsage().then((u) => { if (alive) setUsage({ bytes: u.bytes, files: u.files }); }).catch(() => {});
+    return () => { alive = false; };
+  }, [s.desktopAlertLogRetentionDays, s.desktopAlertLogMaxTotalMB]);
+  const retentionBinding = LAB_PARAM_FIELDS.alertLogRetentionDays;
+  const sizeBinding = LAB_PARAM_FIELDS.alertLogMaxTotalMB;
+  // 语义③：「永久（-1）+ 无限制（-1）」= 真无限增长 ⇒ 必须显示警示行；只选其
+  // 一「无限」时不显示（另一个维度仍在兜底）。
+  const foreverUnlimited = (s.desktopAlertLogRetentionDays ?? 0) === -1 && (s.desktopAlertLogMaxTotalMB ?? 0) === -1;
+  const usageMB = usage ? (usage.bytes / (1024 * 1024)) : 0;
+  const usageText = usage
+    ? t("settings.logManagement.usage", { size: usageMB.toFixed(1), n: String(usage.files) })
+    : "";
+  return (
+    <>
+      <SettingsField label={t("settings.logManagement")} icon={<Activity size={18} />} stacked>
+        <p className="settings-field__hint">{t("settings.logManagement.hint")}</p>
+      </SettingsField>
+      <SettingsField label={t(retentionBinding.labelKey ?? "settings.alertLogRetention.label")} hint={t(retentionBinding.hintKey)} icon={<Activity size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {(retentionBinding.options ?? []).map((option) => (
+            <button
+              key={String(option.value)}
+              type="button"
+              className={`set-seg__btn${retentionBinding.read(s) === option.value ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => retentionBinding.write(option.value))}
+            >
+              {t(option.labelKey)}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
+      <SettingsField label={t(sizeBinding.labelKey ?? "settings.alertLogMaxTotal.label")} hint={t(sizeBinding.hintKey)} icon={<Activity size={18} />}>
+        <SettingsOptions layout="field" className="set-seg">
+          {(sizeBinding.options ?? []).map((option) => (
+            <button
+              key={String(option.value)}
+              type="button"
+              className={`set-seg__btn${sizeBinding.read(s) === option.value ? " set-seg__btn--on" : ""}`}
+              disabled={busy}
+              onClick={() => void apply(() => sizeBinding.write(option.value))}
+            >
+              {t(option.labelKey)}
+            </button>
+          ))}
+        </SettingsOptions>
+      </SettingsField>
+      {foreverUnlimited && (
+        <p className="settings-field__hint-line experimental-lab__stable-warning" role="status">
+          {t("settings.logManagement.foreverUnlimitedWarning")}
+        </p>
+      )}
+      {usageText !== "" && (
+        <p className="settings-field__hint" data-testid="alert-log-usage">{usageText}</p>
+      )}
+      <SettingsField label={t("settings.logManagement.openDirLabel")} icon={<Folder size={18} />} stacked>
+        <button
+          type="button"
+          className="set-seg__btn"
+          disabled={busy}
+          onClick={() => void apply(async () => { await app.OpenLogDir(); })}
+        >
+          {t("settings.logManagement.openDir")}
+        </button>
+      </SettingsField>
     </>
   );
 }
@@ -2709,8 +2799,16 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           {/* 任务 775：kind:param 参数卡通用 pane——布局里已登记的参数卡走
               这份数据渲染（字段形态按 field.input 分派，值读写走注册表）；
               未登记参数仍走下方各硬编码分支兜底（渐进迁移，登记一张删一张）。 */}
-          {selectedEntry?.kind === "param" && (
+          {selectedEntry?.kind === "param" && selected !== "logManagement" && (
             <LabParamFieldsCard entry={selectedEntry} s={s} busy={busy} apply={apply} />
+          )}
+          {/* tl 1097：日志管理（可观测性组参数卡）——专用 pane，比通用
+              参数渲染器多三样：区块说明固定行、「当前占用」实时统计行、
+              「打开日志目录」按钮 + 「永久+无限制」警示行（通用渲染器
+              无跨字段联动，无法承载 7.3 三条边界语义）。两个 segment
+              档位本身仍走 labParamFields 注册表读写（值语义单源）。 */}
+          {selected === "logManagement" && (
+            <LogManagementLabPane s={s} busy={busy} apply={apply} />
           )}
           {selected === "fullAccess" && (
             <>

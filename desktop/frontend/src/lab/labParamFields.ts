@@ -63,6 +63,36 @@ export const LAB_PARAM_FIELDS: Readonly<Record<string, LabParamFieldBinding>> = 
     read: (s) => s.goMemLimitMB ?? 0,
     write: (value) => app.SetGoMemLimitMB(Number(value)),
   },
+  // tl 1097：告警日志保留时间档（只作用于 WARN/ERROR；全量日志不受影响）。
+  // 0 = 内置默认 7 天；-1 = 永久。
+  alertLogRetentionDays: {
+    input: "segment",
+    labelKey: "settings.alertLogRetention.label",
+    hintKey: "settings.alertLogRetention.hint",
+    read: (s) => s.desktopAlertLogRetentionDays ?? 0,
+    write: (value) => app.SetDesktopAlertLogRetentionDays(Number(value)),
+    options: [
+      { value: 0, labelKey: "settings.alertLogRetention.opt7d" },
+      { value: 30, labelKey: "settings.alertLogRetention.opt30d" },
+      { value: 90, labelKey: "settings.alertLogRetention.opt90d" },
+      { value: -1, labelKey: "settings.alertLogRetention.optForever" },
+    ],
+  },
+  // tl 1097：告警日志空间上限档（只作用于 WARN/ERROR；0 = 内置默认 100MB；
+  // -1 = 无限制）。
+  alertLogMaxTotalMB: {
+    input: "segment",
+    labelKey: "settings.alertLogMaxTotal.label",
+    hintKey: "settings.alertLogMaxTotal.hint",
+    read: (s) => s.desktopAlertLogMaxTotalMB ?? 0,
+    write: (value) => app.SetDesktopAlertLogMaxTotalMB(Number(value)),
+    options: [
+      { value: 0, labelKey: "settings.alertLogMaxTotal.opt100mb" },
+      { value: 300, labelKey: "settings.alertLogMaxTotal.opt300mb" },
+      { value: 1024, labelKey: "settings.alertLogMaxTotal.opt1gb" },
+      { value: -1, labelKey: "settings.alertLogMaxTotal.optUnlimited" },
+    ],
+  },
 };
 
 /** Registry key union — the compile gate for default-layout field refs. */

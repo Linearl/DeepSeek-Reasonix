@@ -131,6 +131,10 @@ export type TierFeatureId =
   // 表无条目，同 tabManagement 豁免）。
   | "usageMonitoring"
   | "glmPlanUsage"
+  // tl 1097: 可观测性组「日志管理」参数卡容器 id（纯前端，无配置键）——
+  // 两个 segment 档位 + 当前占用 + 打开目录按钮，Go 渲染表无条目（同
+  // tabManagement 豁免）。
+  | "logManagement"
   // 任务 789: 编辑证据门宽松模式（toolOptimizations 卡成员；默认关=严格
   // 行为逐字节一致）。lab-layout.yaml members + 本表双登记（562 口径）。
   | "editEvidenceRelaxed"
@@ -224,9 +228,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 有档（unstable），但前端注册表漏收——实验室页渲染却无徽章，621 验收
   // 「每项特性有且仅有一个徽章」不允许。档位镜像 Go 侧。
   tabModeTint: "unstable",
-  // ── observability（可观测性，2 项）───────────────────────────
+  // ── observability（可观测性，2 项；tl 1097 增 logManagement 参数卡）──
   monitoring: "recommended",
   subagentTps: "optional",
+  // tl 1097: 日志管理（logManagement）——告警日志时间/大小档位参数卡（纯前端
+  // rail 容器 id，无配置键，同 tabManagement/usageMonitoring 豁免口径）。档位
+  // 按任务书建议 optional（不开启只影响日志留存，不影响主流程）。
+  logManagement: "optional",
   // 任务 783：「用量监测」合并卡容器档 = 成员最高档（GLM Plan 用量=推荐、
   // OpenCode Go 用量=未稳定 → 推荐）。coding plan 架构子项按需扩展。
   usageMonitoring: "recommended",
@@ -365,11 +373,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 任务 1069：stalledIntentNudge（模型提前结束判定器续轮提醒，默认关）按可选
  * 档入表——可选 36→37、总数 72→73（Go 侧同步 63→64）。
  * 任务 1070：standardContinuation（Standard 流续跑总闸）按可选档入表——
- * 可选 37→38、总数 73→74（Go 侧同步 64→65）。 */
+ * 可选 37→38、总数 73→74（Go 侧同步 64→65）。
+ * tl 1097：logManagement（日志管理，纯前端容器 id，无配置键）按可选档入表
+ * ——可选 38→39、总数 74→75（Go 渲染表无条目，同 tabManagement 豁免）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 18,
-  optional: 38,
+  optional: 39,
   unstable: 13,
   retired: 1,
 };

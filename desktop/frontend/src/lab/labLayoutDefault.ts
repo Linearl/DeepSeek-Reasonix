@@ -320,6 +320,20 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "opencodeGoUsage", labelKey: "settings.opencodeGoUsage", tier: "unstable" },
           ],
         },
+        // tl 1097：日志管理——kind:param 参数卡（无开关）。两个 segment 档位
+        // （告警日志保留时间 + 空间上限）+ 当前占用行 + 打开日志目录按钮；
+        // 全量日志不受此卡影响（固定 25 份 ≈ 2 天）。775 参数卡基建同款。
+        {
+          id: "logManagement",
+          labelKey: "settings.logManagement",
+          kind: "param",
+          tier: "optional",
+          onKeys: [],
+          fields: [
+            { id: "alertLogRetentionDays", input: "segment" },
+            { id: "alertLogMaxTotalMB", input: "segment" },
+          ],
+        },
       ],
     },
     {
