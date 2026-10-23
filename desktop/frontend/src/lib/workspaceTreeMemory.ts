@@ -13,6 +13,8 @@ export interface WorkspaceTreeMemorySnapshot {
   dockTreeWidth: number | null;
   dockPreviewWidth: number | null;
   recentPaths: string[];
+  /** tl1108: 「隐藏文件树」状态持久化（重启后仍隐藏）。缺省 true=显示。 */
+  treeVisible: boolean;
 }
 
 type PersistedWorkspaceState = Omit<WorkspaceTreeMemorySnapshot, "openDirs" | "visitId"> & {
@@ -45,6 +47,7 @@ function defaultSnapshot(visitId = 0): WorkspaceTreeMemorySnapshot {
     dockTreeWidth: null,
     dockPreviewWidth: null,
     recentPaths: [],
+    treeVisible: true,
   };
 }
 
@@ -86,6 +89,7 @@ function hydrateWorkspaceTreeMemory(): void {
         recentPaths: Array.isArray(state.recentPaths)
           ? state.recentPaths.filter((path): path is string => typeof path === "string").slice(0, MAX_RECENT_PATHS)
           : [],
+        treeVisible: state.treeVisible !== false,
       });
     }
   } catch {
@@ -110,6 +114,7 @@ function persistWorkspaceTreeMemory(recentKey: string): void {
           dockTreeWidth: snapshot.dockTreeWidth,
           dockPreviewWidth: snapshot.dockPreviewWidth,
           recentPaths: snapshot.recentPaths,
+          treeVisible: snapshot.treeVisible,
           updatedAt: key === recentKey ? now : 0,
         },
       }))

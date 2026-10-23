@@ -48,10 +48,16 @@ export type WorkspaceSplitTreeWidthMode = "even" | "manual";
 export function shouldInitializeWorkspaceSplitOnFileSelect({
   previewVisible,
   treeVisible,
+  treeWidthMode,
 }: {
   previewVisible: boolean;
   treeVisible: boolean;
+  /** tl1108: 首次开文件（从未拖过分栏）才做均分；用户拖过（manual）后
+   *  任何选中都保留手动宽度 —— 消除 selectFile 里「设了保留值又强制
+   *  even」的自相矛盾。 */
+  treeWidthMode?: WorkspaceSplitTreeWidthMode;
 }): boolean {
+  if (treeWidthMode === "manual") return !treeVisible;
   return !previewVisible || !treeVisible;
 }
 

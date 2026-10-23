@@ -82,7 +82,7 @@ Object.defineProperty(dom.window.HTMLElement.prototype, "getBoundingClientRect",
   },
 });
 
-console.log("\nworkspace right-side tree resize interaction");
+console.log("\nworkspace left-side tree resize interaction (tl1108 树左内容右)");
 
 resetWorkspaceTreeMemoryForTests();
 window.go = {
@@ -134,13 +134,13 @@ await act(async () => {
   separator.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowRight" }));
   await flushTimers();
 });
-eq(Number(separator.getAttribute("aria-valuenow")), initialWidth - 16, "ArrowRight moves the separator right and narrows the right-side tree");
+eq(Number(separator.getAttribute("aria-valuenow")), initialWidth + 16, "ArrowRight widens the left-side tree (tl1108 树在左)");
 
 await act(async () => {
   separator.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowLeft" }));
   await flushTimers();
 });
-eq(Number(separator.getAttribute("aria-valuenow")), initialWidth, "ArrowLeft moves the separator left and widens the right-side tree");
+eq(Number(separator.getAttribute("aria-valuenow")), initialWidth, "ArrowLeft narrows the left-side tree back (tl1108 树在左)");
 
 await act(async () => {
   separator.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientX: 600 }));
@@ -148,7 +148,7 @@ await act(async () => {
   window.dispatchEvent(new window.MouseEvent("pointerup", { bubbles: true, clientX: 650 }));
   await flushTimers();
 });
-eq(Number(separator.getAttribute("aria-valuenow")), 250, "pointer position measures tree width from the panel's right edge");
+eq(Number(separator.getAttribute("aria-valuenow")), 550, "pointer position measures tree width from the panel's left edge (tl1108 树在左)");
 
 await act(async () => {
   separator.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "End" }));

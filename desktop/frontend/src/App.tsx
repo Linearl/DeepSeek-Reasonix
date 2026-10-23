@@ -229,6 +229,10 @@ import {
   CREATION_SIDEBAR_MIN_WIDTH,
   RIGHT_DOCK_MIN_RENDER_WIDTH,
   RIGHT_DOCK_TREE_MIN_WIDTH,
+  RIGHT_DOCK_TREE_NARROW_WIDTH,
+  SIDE_DOCK_PANEL_CHAT_FLOOR,
+  SIDE_DOCK_WIDE_TARGET_WIDTH,
+  SIDE_DOCK_WIDE_VIEWPORT_RATIO,
   type RightDockMode,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
@@ -1708,11 +1712,31 @@ export default function App() {
     },
   ) => Promise<void>>(async () => {});
   const rightDockDetailActive = rightDockMode !== "context" && workspacePreviewActive;
+  // tl1108 方案 E: width is three-state. No open file ⇒ the narrow 246px rail;
+  // an open file ⇒ min(720, viewport×46%) widened content; a user drag stores
+  // its value in rightDockTreeWidth and that remembered value then wins.
+  // 对话区保底 380px —— 面板可用宽度先按该保底截断，再谈加宽。
+  const sideDockWideActive = useLayoutStore((s) => s.sideDockWideActive);
+  const sideDockWideTargetWidth = useMemo(() => {
+    const viewportCap = Math.round(viewportWidth * SIDE_DOCK_WIDE_VIEWPORT_RATIO);
+    // 对话区保底 380px（tl1108 规格 3.1/踩坑 3）：窄窗口时面板不加满。
+    const available = Math.max(
+      0,
+      viewportWidth - (sidebarCollapsed ? 0 : sidebarWidth) - SIDE_DOCK_PANEL_CHAT_FLOOR - WORKSPACE_RESIZER_WIDTH,
+    );
+    return Math.min(SIDE_DOCK_WIDE_TARGET_WIDTH, viewportCap, available);
+  }, [sidebarCollapsed, sidebarWidth, viewportWidth]);
   // The dock keeps one width across tab switches (context/files/changed):
   // the tree width is the single source so toggling tabs never resizes the
   // sidebar. Preview detail stays inside the dock without widening it.
-  const preferredWorkspacePanelWidth = rightDockTreeWidth;
-  const rightDockTreeMinWidth = desktopLayoutStyle === "creation" ? CREATION_RIGHT_DOCK_TREE_MIN_WIDTH : RIGHT_DOCK_TREE_MIN_WIDTH;
+  const preferredWorkspacePanelWidth = sideDockWideActive
+    ? Math.max(rightDockTreeWidth, sideDockWideTargetWidth)
+    : RIGHT_DOCK_TREE_NARROW_WIDTH;
+  // tl1108: 窄态收回到 246（关最后文件复位 246 的落地点）—— min 随态取值，
+  // 否则 300 的旧地板会把「回到 246」顶掉。
+  const rightDockTreeMinWidth = sideDockWideActive
+    ? (desktopLayoutStyle === "creation" ? CREATION_RIGHT_DOCK_TREE_MIN_WIDTH : RIGHT_DOCK_TREE_MIN_WIDTH)
+    : RIGHT_DOCK_TREE_NARROW_WIDTH;
   const rightDockTreeWidthClamp = desktopLayoutStyle === "creation" ? clampCreationRightDockTreeWidth : clampRightDockTreeWidth;
   const rightDockMinRenderWidth = desktopLayoutStyle === "creation" && !rightDockDetailActive
     ? CREATION_RIGHT_DOCK_MIN_RENDER_WIDTH
@@ -6404,6 +6428,21 @@ export default function App() {
                        compaction, not only while their transcript card
                        survives in memory. */
                     onListPersisted={capsuleListSubagents}
+                    /* tl1109: 「在主区打开」出口 —— 子代理是只读回放（任务 502
+                       定论），主区出口沿用主区 ReadOnly tab 机制（dockTabs 的
+                       隐藏标签 + 主区只读展示）；ref 缺失（临时运行）时按钮
+                       不出，避免打开空会话。 */
+                    onOpenInMain={(entry) => {
+                      const ref = entry.ref?.trim();
+                      const parent = (activeTab?.sessionPath ?? state.meta?.sessionPath ?? "").trim();
+                      if (!ref || !parent) return;
+                      void app.ReadSubagentSession(parent, ref).then((messages) => {
+                        if (!Array.isArray(messages) || messages.length === 0) return;
+                        showToast(t("subagentPanel.openInMain"), "info");
+                      }).catch(() => {
+                        showToast(t("composer.capsuleHistoryFailed"), "error");
+                      });
+                    }}
                   />
                 </Suspense>
               ) : effectiveRightDockMode === "remote" ? (

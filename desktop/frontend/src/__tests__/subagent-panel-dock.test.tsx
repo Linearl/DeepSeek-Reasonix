@@ -235,11 +235,14 @@ console.log("\nsubagent panel dock (task 495)");
   ok(container.querySelector(".subagents-panel__detailview-meta")?.textContent?.includes(statusesBefore[1] ?? "##missing##"), "detail: meta carries the SAME status the row showed");
 
   // …and going back restores the list with byte-identical status labels.
+  // tl1109 同屏改版: detailEnabled 下列表与内容同屏，返回=取消选中（内容区
+  // 回到提示态），列表常驻。
   const back = container.querySelector<HTMLButtonElement>(".subagents-panel__back");
   ok(back !== null, "detail: back button rendered");
   await act(async () => { back!.click(); });
   eq(rowStatuses().join("|"), statusesBefore.join("|"), "detail: back restores identical status display");
-  eq(container.querySelectorAll(".subagents-panel__detailview").length, 0, "detail: detail view closed");
+  eq(container.querySelector(".subagents-panel__detailview-note") !== null, true,
+    "detail: same-screen back lands on the pick-entry note (list stays)");
   eq(JSON.stringify(directory), directorySnapshot, "detail: viewing never mutates the directory data");
 
   await act(async () => { root.unmount(); });

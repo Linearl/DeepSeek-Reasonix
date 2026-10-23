@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleAlert,
   CircleDashed,
+  ExternalLink,
   FoldHorizontal,
   LoaderCircle,
   UnfoldHorizontal,
@@ -169,11 +170,14 @@ function SubagentDetailView({
   onBack,
   sessionPath,
   onReadSubagent,
+  onOpenInMain,
 }: {
   entry: SubagentDirectoryEntry;
   onBack: () => void;
   sessionPath?: string;
   onReadSubagent?: (sessionPath: string, ref: string) => Promise<HistoryMessage[]>;
+  /** tl1109: 「在主区打开」出口 —— 大屏/长文阅读走主区 ReadOnly tab。 */
+  onOpenInMain?: (entry: SubagentDirectoryEntry) => void;
 }) {
   const t = useT();
   const title = rowTitle(entry);
@@ -230,6 +234,17 @@ function SubagentDetailView({
           <ArrowLeft size={13} aria-hidden="true" />
           <span>{t("subagentPanel.back")}</span>
         </button>
+        {onOpenInMain && (
+          <button
+            type="button"
+            className="subagents-panel__openmain"
+            data-subagent-open-main={entry.item.id}
+            onClick={() => onOpenInMain(entry)}
+          >
+            <ExternalLink size={12} aria-hidden="true" />
+            <span>{t("subagentPanel.openInMain")}</span>
+          </button>
+        )}
       </div>
       {/* 任务1033: same native-title clipping as the row — wrap-mode Tooltip. */}
       <div className="subagents-panel__detailview-title">
@@ -312,6 +327,7 @@ export function SubagentsDockPanel({
   sessionPath,
   onReadSubagent,
   onListPersisted,
+  onOpenInMain,
 }: {
   directory: SubagentDirectory;
   /** Task 507 plan-A gate: row clicks open the read-only detail view. */
@@ -335,6 +351,8 @@ export function SubagentsDockPanel({
    *  panel stays the transcript-only projection (the 备用视图 passes nothing,
    *  byte-for-byte the 495 body there). */
   onListPersisted?: (sessionPath: string) => Promise<SubagentArtifactView[]>;
+  /** tl1109: 「在主区打开」出口（App 注入现有 ReadOnly tab 路径）。 */
+  onOpenInMain?: (entry: SubagentDirectoryEntry) => void;
 }) {
   const t = useT();
   // Task 495 ④: reveal the ended list 20 rows at a time (zcode's PAGE_SIZE).
@@ -409,20 +427,64 @@ export function SubagentsDockPanel({
       </div>
     );
   }
-  if (detailEnabled && selected) {
+  // tl1109 方案 E: detailEnabled 时列表与内容同屏（左列列表、右列只读回放），
+  // 复用 1108 的容器与标签组件语义；detailview 原有的返回按钮在同屏形态下
+  // 无意义（列表就在旁边），点击它等价于取消选中。
+  if (detailEnabled) {
     return (
-      <div className="subagents-panel" aria-label={t("workspace.subagentsTab")}>
+      <div className="subagents-panel subagents-panel--split" aria-label={t("workspace.subagentsTab")}>
         {widenToolbar}
-        {/* 任务440: keyed per selection so the live transcript state resets
-            cleanly when the user switches rows — no stale stream of the
-            previous child bleeds into the next detail view. */}
-        <SubagentDetailView
-          key={selected.item.id}
-          entry={selected}
-          onBack={() => setSelectedId(null)}
-          sessionPath={sessionPath}
-          onReadSubagent={onReadSubagent}
-        />
+        <div className="subagents-panel__listpane">
+          <section className="subagents-panel__section">
+            <h3 className="subagents-panel__section-title">
+              {t("subagent.phase.running")} · {directory.running.length}
+            </h3>
+            {directory.running.length === 0 ? (
+              <p className="subagents-panel__section-empty">{t("subagentPanel.runningEmpty")}</p>
+            ) : (
+              <ul className="subagents-panel__list">
+                {directory.running.map((entry) => (
+                  <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} />
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="subagents-panel__section">
+            <h3 className="subagents-panel__section-title">
+              {t("subagentPanel.ended")} · {ended.length}
+            </h3>
+            {visibleEnded.length === 0 ? (
+              <p className="subagents-panel__section-empty">{t("subagentPanel.endedEmpty")}</p>
+            ) : (
+              <ul className="subagents-panel__list">
+                {visibleEnded.map((entry) => (
+                  <DirectoryRow key={entry.item.id} entry={entry} onSelect={() => setSelectedId(entry.item.id)} />
+                ))}
+              </ul>
+            )}
+            {hiddenEnded > 0 && (
+              <div className="subagents-panel__foot">
+                <button type="button" className="btn btn--small" onClick={() => setRevealed((value) => value + SUBAGENT_DIRECTORY_PAGE_SIZE)}>
+                  {t("subagentPanel.showMore", { count: hiddenEnded })}
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
+        {selected ? (
+          <SubagentDetailView
+            key={selected.item.id}
+            entry={selected}
+            onBack={() => setSelectedId(null)}
+            sessionPath={sessionPath}
+            onReadSubagent={onReadSubagent}
+            onOpenInMain={onOpenInMain}
+          />
+        ) : (
+          <div className="subagents-panel__detailview">
+            <p className="subagents-panel__detailview-note">{t("subagentPanel.pickEntry")}</p>
+          </div>
+        )}
       </div>
     );
   }

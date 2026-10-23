@@ -70,10 +70,10 @@ console.log("\nsubagent detail dual state (task 507)");
 {
   const { clampSubagentsWideWidth, SUBAGENTS_WIDE_TARGET_WIDTH, RIGHT_DOCK_TREE_MIN_WIDTH } = layout;
   eq(SUBAGENTS_WIDE_TARGET_WIDTH, 620, "widen: reading-width target is 620");
-  eq(RIGHT_DOCK_TREE_MIN_WIDTH, 300, "widen: the dock minimum is unchanged (300)");
-  eq(clampSubagentsWideWidth(300, 1200), 620, "widen: roomy viewport hits the 620 target");
-  eq(clampSubagentsWideWidth(300, 450), 450, "widen: a narrow viewport caps at the available width");
-  eq(clampSubagentsWideWidth(300, 200), 300, "widen: a tiny viewport floors at the dock minimum");
+  eq(RIGHT_DOCK_TREE_MIN_WIDTH, 246, "widen: the dock minimum follows tl1108 的窄态地板 246");
+  eq(clampSubagentsWideWidth(246, 1200), 620, "widen: roomy viewport hits the 620 target");
+  eq(clampSubagentsWideWidth(246, 450), 450, "widen: a narrow viewport caps at the available width");
+  eq(clampSubagentsWideWidth(246, 200), 246, "widen: a tiny viewport floors at the dock minimum");
   eq(clampSubagentsWideWidth(700, 1200), 700, "widen: an already-wider dock stays untouched");
 }
 
@@ -204,10 +204,10 @@ async function mountPanel(props: Record<string, unknown>) {
   eq(panel.container.querySelectorAll(".subagents-panel__detailview-text").length >= 2, true,
     "on: running entry shows the progress preview blocks");
 
-  // Back returns to the list.
+  // Back returns to the pick-entry state (tl1109 同屏: 列表常驻，内容区回提示态).
   await panel.click(".subagents-panel__back");
-  eq(panel.container.querySelector(".subagents-panel__detailview") === null, true,
-    "on: back returns to the list");
+  eq(panel.container.querySelector(".subagents-panel__detailview-note") !== null, true,
+    "on: back lands on the pick-entry note (same-screen)");
   eq(panel.container.querySelectorAll(".subagents-panel__row").length, 3,
     "on: the list is intact after back");
 
@@ -233,16 +233,16 @@ async function mountPanel(props: Record<string, unknown>) {
 }
 
 // 6. ON state: selection is component state — a remount lands back on the
-//    list (不持久化; the preview itself is memory-only).
+//    pick-entry state (不持久化; the preview itself is memory-only).
 {
   const panel = await mountPanel({ detailEnabled: true });
   await panel.click(".subagents-panel__list .subagents-panel__row");
-  eq(panel.container.querySelector(".subagents-panel__detailview") !== null, true,
+  eq(panel.container.querySelector(".subagents-panel__detailview-note") === null, true,
     "persist: detail open before remount");
   await panel.unmount();
   const fresh = await mountPanel({ detailEnabled: true });
-  eq(fresh.container.querySelector(".subagents-panel__detailview") === null, true,
-    "persist: a remount lands back on the list");
+  eq(fresh.container.querySelector(".subagents-panel__detailview-note") !== null, true,
+    "persist: a remount lands back on the pick-entry note");
   await fresh.unmount();
 }
 

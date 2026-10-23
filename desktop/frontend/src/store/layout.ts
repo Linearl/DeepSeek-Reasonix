@@ -28,12 +28,21 @@ export const SIDEBAR_MAX_WIDTH = 300;
 const SIDEBAR_VIEWPORT_RATIO = 0.18;
 
 const RIGHT_DOCK_TREE_DEFAULT_WIDTH = 300;
-export const RIGHT_DOCK_TREE_MIN_WIDTH = 300;
+// tl1108: 无打开文件时的窄态宽度（用户口径「246px」；树+工具条足够，内容区
+// 尚不存在）。有文件时走 SIDE_DOCK_WIDE_* 宽态；关闭全部文件回落到这里。
+export const RIGHT_DOCK_TREE_NARROW_WIDTH = 246;
+export const RIGHT_DOCK_TREE_MIN_WIDTH = 246;
 // Creation file-tree dock stays tighter than classic 300. With Creation's
 // narrower Windows caption strip (~108px), 252 is enough for icon+label tabs.
 export const CREATION_RIGHT_DOCK_TREE_MIN_WIDTH = 252;
 export const CREATION_RIGHT_DOCK_TREE_DEFAULT_WIDTH = CREATION_RIGHT_DOCK_TREE_MIN_WIDTH;
 export const RIGHT_DOCK_TREE_MAX_WIDTH = 560;
+// tl1108 方案 E 宽态：min(720, 窗口×46%)；用户拖过则记住用户值（store 的
+// rightDockTreeWidth 继续承载用户拖动值）。
+export const SIDE_DOCK_WIDE_TARGET_WIDTH = 720;
+export const SIDE_DOCK_WIDE_VIEWPORT_RATIO = 0.46;
+/** tl1108: 边栏方案 E 的对话区保底（对话区不得被压到该值以下）。 */
+export const SIDE_DOCK_PANEL_CHAT_FLOOR = 380;
 export const RIGHT_DOCK_PREVIEW_DEFAULT_WIDTH = 660;
 export const RIGHT_DOCK_PREVIEW_MIN_WIDTH = 420;
 export const RIGHT_DOCK_MIN_RENDER_WIDTH = 280;
@@ -334,6 +343,10 @@ export type LayoutState = {
   workspacePanelOpen: boolean;
   workspacePanelMaximized: boolean;
   workspacePreviewActive: boolean;
+  /** tl1108/1109: 边栏方案 E 的「加宽」指示 —— 文件/子代理面板有活动标签时
+   *  由面板上报，App 据此把面板宽度抬到 min(720, vw×46%)/用户值；关闭全部
+   *  标签后回落 246。会话内状态（不持久化）。 */
+  sideDockWideActive: boolean;
   rightDockMode: RightDockMode;
   terminalPanelOpen: boolean;
   terminalHeight: number;
@@ -352,6 +365,7 @@ export type LayoutState = {
   setWorkspacePanelOpen: Dispatch<SetStateAction<boolean>>;
   setWorkspacePanelMaximized: Dispatch<SetStateAction<boolean>>;
   setWorkspacePreviewActive: Dispatch<SetStateAction<boolean>>;
+  setSideDockWideActive: (active: boolean) => void;
   setRightDockMode: Dispatch<SetStateAction<RightDockMode>>;
   setTerminalPanelOpen: Dispatch<SetStateAction<boolean>>;
   setTerminalHeight: (height: number) => void;
@@ -372,6 +386,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   workspacePanelOpen: loadWorkspacePanelOpen(""),
   workspacePanelMaximized: false,
   workspacePreviewActive: false,
+  sideDockWideActive: false,
   rightDockMode: loadRightDockMode(""),
   terminalPanelOpen: loadTerminalPanelOpen(),
   terminalHeight: loadTerminalHeight(),
@@ -389,6 +404,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   setWorkspacePanelOpen: (update) => set((s) => ({ workspacePanelOpen: applySetState(s.workspacePanelOpen, update) })),
   setWorkspacePanelMaximized: (update) => set((s) => ({ workspacePanelMaximized: applySetState(s.workspacePanelMaximized, update) })),
   setWorkspacePreviewActive: (update) => set((s) => ({ workspacePreviewActive: applySetState(s.workspacePreviewActive, update) })),
+  setSideDockWideActive: (active) => set((s) => (s.sideDockWideActive === active ? s : { sideDockWideActive: active })),
   setRightDockMode: (update) => set((s) => ({ rightDockMode: applySetState(s.rightDockMode, update) })),
   setTerminalPanelOpen: (update) => set((s) => ({ terminalPanelOpen: applySetState(s.terminalPanelOpen, update) })),
   setTerminalHeight: (height) => set({ terminalHeight: height }),

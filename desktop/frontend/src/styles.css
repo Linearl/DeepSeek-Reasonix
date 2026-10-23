@@ -12857,8 +12857,8 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   min-height: 0;
   display: grid;
-  /* Preview on the left, file tree on the right (user preference). */
-  grid-template-columns: minmax(var(--workspace-preview-min-width), 1fr) var(--workspace-tree-width);
+  /* tl1108: 树在左、内容在右（对齐 Win/VSCode；此前相反）。 */
+  grid-template-columns: var(--workspace-tree-width) minmax(var(--workspace-preview-min-width), 1fr);
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
   background: var(--workspace-preview-bg);
@@ -12898,9 +12898,17 @@ button.statusbar__mcp:focus-visible {
   min-width: 0;
   min-height: 0;
 }
-.workspace-preview {
+.workspace-files {
   grid-row: 1;
   grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--workspace-files-bg);
+  border-right: 1px solid var(--border-soft);
+}
+.workspace-preview {
+  grid-row: 1;
+  grid-column: 2;
   display: flex;
   flex-direction: column;
   background: var(--workspace-preview-bg);
@@ -12912,9 +12920,8 @@ button.statusbar__mcp:focus-visible {
   --wails-draggable: no-drag;
   position: absolute;
   top: 0;
-  /* Tree sits on the right after the files/preview swap, so the resizer
-     rides the tree's left edge. */
-  left: calc(100% - var(--workspace-tree-width) - 4px);
+  /* tl1108: 树在左 ⇒ 分隔条贴树的右缘。 */
+  left: calc(var(--workspace-tree-width) - 4px);
   bottom: 0;
   z-index: var(--z-layout-resizer-active);
   width: 8px;
@@ -13595,9 +13602,11 @@ button.statusbar__mcp:focus-visible {
 .workspace-empty--error {
   color: var(--err);
 }
+/* tl1108: 树在左——此规则与 12897 的 .workspace-files 同源（历史重复块），
+   两处必须同步树左内容右，后者（本块）cascade 胜出。 */
 .workspace-files {
   grid-row: 1;
-  grid-column: 2;
+  grid-column: 1;
   display: flex;
   flex-direction: column;
   background: var(--workspace-files-bg);
@@ -30618,6 +30627,152 @@ button.statusbar__mcp:focus-visible {
 
 .workbench-dock__body > .workspace-panel {
   border-left: none;
+}
+
+/* tl1108: 边栏宽度三态切换的 200ms 过渡（宽度是容器属性，动画落在
+   layout 的 grid 列宽上；拖拽中由 --workspace-resizing 抑制）。 */
+.layout:not(.layout--workspace-resizing) {
+  transition: grid-template-columns 0.2s ease, min-width 0.2s ease;
+}
+
+/* tl1108/1109: 方案 E 浮动标签条（文件/子代理面板共用）。 */
+.side-dock-tabstrip {
+  --wails-draggable: no-drag;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--workspace-files-bg);
+}
+
+.side-dock-tab {
+  --wails-draggable: no-drag;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 180px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 11.5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.side-dock-tab__label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.side-dock-tab--preview .side-dock-tab__label {
+  font-style: italic;
+}
+
+.side-dock-tab:hover {
+  color: var(--fg-dim);
+}
+
+.side-dock-tab--active {
+  background: var(--bg-elev);
+  border-color: var(--border-soft);
+  color: var(--fg);
+}
+
+.side-dock-tab--drop-before::before,
+.side-dock-tab--drop-after::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.side-dock-tab--drop-before::before {
+  left: -2px;
+}
+
+.side-dock-tab--drop-after::after {
+  right: -2px;
+}
+
+.side-dock-tab__close {
+  --wails-draggable: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+
+.side-dock-tab__close:hover {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+
+/* tl1109: 子代理面板「列表(左) + 内容(右)」同屏布局（复用方案 E 容器宽度）。 */
+.subagents-panel--split {
+  display: grid;
+  grid-template-columns: minmax(180px, 34%) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.subagents-panel--split .subagents-panel__listpane {
+  grid-row: 2;
+  grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--border-soft);
+}
+
+.subagents-panel--split .subagents-panel__detailview {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.subagents-panel__openmain {
+  --wails-draggable: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.subagents-panel__openmain:hover {
+  color: var(--fg);
+  background: var(--bg-soft);
 }
 
 .layout--workspace-maximized .context-inspector,
