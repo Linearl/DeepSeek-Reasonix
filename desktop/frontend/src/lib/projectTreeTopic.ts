@@ -187,11 +187,18 @@ export function mergeIncompleteProjectTopicPage(current: ProjectNode[], incoming
 //   ·首页仍是窗口（nextCursor 存在）：首页行以新数据替换在前，不在首页的
 //     驻留行按原序保留在后；这些行的变更等下一次全量加载（用户展开/重开）
 //     收敛，与 741 背景刷新不翻分页指示器的降级口径一致。
+//   ·首页为空且不完全（complete=false，目录扫描分批提交中）：驻留行**全部
+//     保留**。空的不完全首页不是「列表为空」的权威信号——分批提交期间一页
+//     可以真的没有可渲染行，而分组计数（按 roster 渲染）不变；按「空页即
+//     全量」整体替换会让组内已渲染行整组消失，正是任务 1093 的「计数 17 /
+//     只渲染 5 行、折叠重载才恢复」现象。下一次非空首页或用户展开的全量加
+//     载照常收敛；空的**完全**首页（用户清空文件夹）仍整体替换。
 export function mergeProjectTopicFirstPage(
   current: ProjectNode[],
   incoming: ProjectNode[],
-  options: { nextCursor?: string },
+  options: { nextCursor?: string; complete?: boolean },
 ): ProjectNode[] {
+  if (incoming.length === 0 && !options.nextCursor && options.complete === false) return current;
   if (!options.nextCursor) return mergeProjectTopicPage(current, incoming, false);
   const dedupedIncoming = projectTreeTopicRowsDeduped(incoming);
   const incomingKeys = new Set(dedupedIncoming.map(projectTreeTopicRowKey));

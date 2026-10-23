@@ -115,8 +115,15 @@ ok(/projectTreeEventAffectsFolder\(project, affected\)\) void loadProjectTopics\
   "事件驱动刷新路径传 full=false（只取首页）");
 ok(/const continues = projectTreeBrowsePageContinues\(\{[\s\S]*?full,[\s\S]*?requestCursor: currentCursor,/.test(source),
   "续拉判定把 full 传入纯函数（分场景决策集中可测）");
-ok(/: full\n\s+\? mergeProjectTopicPage\(asArray\(node\.children\), items, pageAppend\)\n\s+: mergeProjectTopicFirstPage\(asArray\(node\.children\), items, \{ nextCursor: page\.nextCursor \}\)/.test(source),
-  "full=false 首页合并走保尾部的 mergeProjectTopicFirstPage");
+{
+  // The full=false merge arm: the ternary chain must still route through the
+  // tail-preserving first-page merge (task 1093 widened its options with a
+  // complete flag — the route, not the exact call shape, is the contract).
+  const armStart = source.indexOf("? mergeProjectTopicPage(asArray(node.children), items, pageAppend)");
+  const armEnd = source.indexOf("mergeProjectTopicFirstPage", armStart);
+  ok(armStart >= 0 && armEnd > armStart && armEnd - armStart < 500,
+    "full=false 首页合并走保尾部的 mergeProjectTopicFirstPage");
+}
 ok((source.match(/void loadProjectTopics\(project\);/g) ?? []).length === 3,
   "用户主动路径（排序切换 / 防抖重载 / 展开文件夹）仍默认取全（3 处裸调用）");
 ok(/void loadProjectTopics\(node, true\)/.test(source),
