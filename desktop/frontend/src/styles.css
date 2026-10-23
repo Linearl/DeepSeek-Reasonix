@@ -19523,6 +19523,53 @@ button.statusbar__mcp:focus-visible {
   max-width: 100%;
 }
 
+/* ── 任务 1099：实验室 pane 功能族分组卡（LabSectionCard）─────────────────────
+   把同一族的成员行（settings-field）收进边界明显的容器：卡片边框即族边界，
+   卡内行间保留原细分割线。分层刻意低于外层 settings-section（浅边框+更淡
+   背景+无阴影），一个容器一个视觉层次，不与卡头抢层级。全部走 theme token。 */
+.lab-section-card {
+  min-width: 0;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-soft) 55%, transparent);
+}
+.lab-section-card:last-child {
+  margin-bottom: 0;
+}
+.lab-section-card__head {
+  margin-bottom: 4px;
+  padding: 0 2px;
+}
+.lab-section-card__title {
+  font-size: var(--font-control-small);
+  font-weight: 700;
+  color: var(--fg-dim);
+}
+.lab-section-card__hint {
+  margin-top: 2px;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+/* 卡内首行去掉顶部细分割线（settings-field 原有 :first-child 行为因插入了
+   __head 容器而失效，这里显式恢复）；末行底部内边距同理。 */
+.lab-section-card__body > .settings-field:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.lab-section-card__body > .settings-field:last-child {
+  padding-bottom: 0;
+}
+@media (max-width: 800px) {
+  /* 窄屏下 settings-field 栈化（列塌缩），卡片内边距随之收紧，容器宽度
+     始终跟随 pane 内容宽度，不溢出不重叠。 */
+  .lab-section-card {
+    padding: 10px 12px;
+  }
+}
+
 .settings-inline-controls {
   display: flex;
   align-items: center;
