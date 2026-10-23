@@ -1,22 +1,24 @@
 package event
 
+import "reasonix/internal/nilutil"
+
 // Notice codes are stable machine-readable identifiers for known notices.
 // Frontends localize a notice's main copy by Code and fall back to matching
 // the English Text (or showing it raw) when Code is empty or unknown, so
 // wording edits in Go no longer silently break localization. Values are
 // wire-stable: never rename or reuse one once shipped.
 const (
-	NoticeCodeFinalReadiness                   = "final_readiness"
-	NoticeCodeEmptyFinal                       = "empty_final"
-	NoticeCodeProviderRejection                = "provider_rejection"
-	NoticeCodeFallbackModelSwitched            = "fallback_model_switched"
-	NoticeCodeReadinessAdvisory                = "readiness_advisory"
-	NoticeCodeExecutorHandoff                  = "executor_handoff"
+	NoticeCodeFinalReadiness        = "final_readiness"
+	NoticeCodeEmptyFinal            = "empty_final"
+	NoticeCodeProviderRejection     = "provider_rejection"
+	NoticeCodeFallbackModelSwitched = "fallback_model_switched"
+	NoticeCodeReadinessAdvisory     = "readiness_advisory"
+	NoticeCodeExecutorHandoff       = "executor_handoff"
 	// NoticeCodeStalledIntent (任务 1069)：模型「宣布下一步就停」触发的续轮
 	// 提醒——此前复用 executor_handoff，日志/前端无法单独检索本类事件，现独立
 	// 成码（executor-handoff 自身的 run_loop 279/300/682 三处不变）。
-	NoticeCodeStalledIntent = "stalled_intent"
-	NoticeCodeToolBudget    = "tool_budget"
+	NoticeCodeStalledIntent                    = "stalled_intent"
+	NoticeCodeToolBudget                       = "tool_budget"
 	NoticeCodePromptQueued                     = "prompt_queued"
 	NoticeCodeLoopGuard                        = "loop_guard"
 	NoticeCodeProgressGuard                    = "progress_guard"
@@ -55,9 +57,9 @@ const (
 	// NoticeCodeSessionConcurrentDualTab (task 203): the competing writer was
 	// an in-process second tab on the same conversation — the real dual-writer
 	// case, phrased as such instead of blaming another window or process.
-	NoticeCodeSessionConcurrentDualTab                          = "session_concurrent_dual_tab"
-	NoticeCodeSessionHeadSwitched                               = "session_head_switched"
-	NoticeCodeSessionHeadSelected                               = "session_head_selected"
+	NoticeCodeSessionConcurrentDualTab = "session_concurrent_dual_tab"
+	NoticeCodeSessionHeadSwitched      = "session_head_switched"
+	NoticeCodeSessionHeadSelected      = "session_head_selected"
 	// 任务 1010 需求 4: the open landed on a head that another live head
 	// strictly dominates (fewer messages AND older activity). The notice
 	// carries both chains' readings; switching stays a manual versions action.
@@ -76,7 +78,7 @@ const (
 	// 任务 1011: consecutive compaction passes keep failing at runtime. The
 	// notice only reports the streak; the local projection diet runs on the
 	// open-session heal or a manual repair, never mid-turn.
-	NoticeCodeSessionCompactFailStreak = "session_compact_fail_streak"
+	NoticeCodeSessionCompactFailStreak                          = "session_compact_fail_streak"
 	NoticeCodeSessionAlsoOpen                                   = "session_also_open"
 	NoticeCodeCompletionUncertain                               = "completion_uncertain"
 	NoticeCodeIncompleteReadDetected                            = "incomplete_read_detected"
@@ -124,6 +126,47 @@ const (
 	// notice, never an injected model message.
 	NoticeCodeInboxLargeItem = "inbox_large_item"
 )
+
+// 任务1079: high-frequency failure notices now carry an actionable next step
+// ("怎么办") instead of only naming what happened. The wire field is
+// Event.Suggestion; the copy itself lives in the FRONTEND locale dictionaries
+// keyed by code (notice.suggestion.* in zh/en/zh-TW, resolved by
+// noticeSuggestions.ts) so it follows the three-locale contract and language
+// switches apply. Go keeps only the stable codes below plus the Suggestion
+// pass-through field — any notice without a suggestion renders exactly as
+// before (empty field, no line).
+const (
+	// NoticeCodeSurfaceTimeout (任务1026 导航遮罩超时)：加载遮罩超时已释放，
+	// 用户不知道还能做什么。此前只有前端文案键（navigation.surfaceTimeout），
+	// 没有 notice 码；1079 给它一个稳定码以便统一挂「怎么办」。
+	NoticeCodeSurfaceTimeout = "surface_timeout"
+	// NoticeCodeHeaderWaitLight (任务1080)：首字节等待的 3~5s 轻提示档，
+	// 与 30s 的 header_wait_slow（927）区分：轻提示只说「正在等待响应」，
+	// 不带「响应较慢」的告警语义。
+	NoticeCodeHeaderWaitLight = "header_wait_light"
+)
+
+// EmitEvent is the notice 统一 Emit 入口（任务1079-b 保留）：仅做非 nil 保护，
+// 行为与直接 s.Emit 等价。历史上这里曾按 code 回填双语 Suggestion 常量——
+// 已改为前端按 code 从 locale 词典取（见下方口径说明）。
+func EmitEvent(s Sink, e Event) {
+	if nilutil.IsNil(s) {
+		return
+	}
+	s.Emit(e)
+}
+
+// 任务1079（1079-b，2026-10-23 改口径）：不再在 EmitEvent 里按 code 回填
+// Suggestion。旧方案把「怎么办」硬编码成 Go 侧中英双语常量，与本仓库「文案
+// 一律走 locale 三语（zh/en/zh-TW）」的规范相悖——同一句话会绕过前端 i18n
+// 词典，语言切换不生效，且双语混排在任一语言下都读不干净。
+//
+// 现口径：前端（desktop/frontend/src/lib/noticeSuggestions.ts）按 code 从
+// locale 词典（notice.suggestion.* 键）取「怎么办」，Go 侧只保留 Event.
+// Suggestion 字段与 wire 透传（发射方需要硬指定时仍可手填）。EmitEvent 仅
+// 作为 notice 统一入口保留（非 nil 保护），行为与直接 s.Emit 等价。
+// NoticeCodeSuggestionTexts 同步移除——任何按 code 查文案的逻辑收敛到前端
+// 一处，避免两份文案漂移。
 
 // 任务553: wake-yield code lives in its own block so the wire-stable table
 // above keeps its alignment history intact.

@@ -16,6 +16,17 @@ export const en = {
   // shared verbs / chrome
   "common.close": "Close",
   "navigation.surfaceTimeout": "Loading timed out. The overlay was released — retry, view diagnostics, or keep browsing.",
+  // 任务1079：六条高频失败提示的「怎么办」行（suggestion 字段）。后端按 code
+  // 提供双语兜底；这里三语各给一份按 locale 的定稿文案，代码命中时优先。
+  "notice.suggestion.surfaceTimeout": "Try switching to another tab and back; if it still hangs, restart the app (the session is already saved and will not be lost).",
+  "notice.suggestion.finalReadiness": "This round may be incomplete: reply \"continue\" to resume, or just tell me the gap.",
+  "notice.suggestion.recoveryPaused": "Recovery is paused: close the window holding this session and retry, or reply \"continue\" to try again.",
+  "notice.suggestion.providerRejection": "The provider rejected this reply: rephrase and resend once; if rejected again, switch models.",
+  "notice.suggestion.leaseBusy": "This session is in use (an active tab or another window): close that tab or window first.",
+  "notice.suggestion.oversizedEventLog": "The oversized event log was skipped as a fallback: handle this session separately under Settings → Repair conversation.",
+  "notice.suggestion.headerWaitLight": "Waiting for the model to respond… (output usually starts within seconds; press Esc to cancel if it takes much longer.)",
+  "notice.suggestion.autopilotResumeExhausted": "Tried several continuation turns and the last one still ended abnormally. Reply \"continue\" to retry once manually, or tell me what is missing so I can change direction.",
+
   "navigation.viewDiagnostics": "View diagnostics",
   "navigation.forceExitOverlay": "Force exit overlay",
   "settings.providerProtocolMismatch": "The endpoint does not match the selected API format.",

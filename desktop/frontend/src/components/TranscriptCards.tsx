@@ -340,6 +340,11 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
             ) : (
               <div className="notice-line__body">{item.text}</div>
             )}
+            {/* 任务1079：notice 的「怎么办」行——detail 上方常显、弱化样式；
+                空值时不渲染（与改动前逐字一致）。 */}
+            {item.suggestion ? (
+              <div className="notice-line__suggestion">{item.suggestion}</div>
+            ) : null}
             {/* 任务998：未应用 steer 块等 notice 补时间戳（1012 三档）。 */}
             <CardTime createdAt={item.createdAt} className="notice-line__time" />
           </>

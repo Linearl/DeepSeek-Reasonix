@@ -17,6 +17,15 @@ export const zh: Record<DictKey, string> = {
   // 通用动词 / 框架
   "common.close": "关闭",
   "navigation.surfaceTimeout": "加载超时：已退出加载遮罩，可重试、查看诊断或继续浏览。",
+  // 任务1079：六条高频失败提示的「怎么办」行（suggestion 字段）。
+  "notice.suggestion.surfaceTimeout": "可先尝试切换 tab 再切回；若仍无响应，重启应用（会话已落盘，不会丢失）。",
+  "notice.suggestion.finalReadiness": "本轮输出可能不完整：可回复「继续」让它接着做，或直接告诉我缺口。",
+  "notice.suggestion.recoveryPaused": "恢复已暂停：关闭占用该会话的窗口后重试；或回复「继续」重新尝试。",
+  "notice.suggestion.providerRejection": "供应商侧拒绝：换一种措辞重发一次；二次被拒建议换模型。",
+  "notice.suggestion.leaseBusy": "该会话正在被使用（活跃 tab 或另一个窗口）：先关掉那个 tab 或窗口再操作。",
+  "notice.suggestion.oversizedEventLog": "日志过大导致保底跳过：可在「设置 → 修复会话」里单独处理该会话。",
+  "notice.suggestion.headerWaitLight": "正在等待模型响应…（通常几十秒内会开始输出；若长时间无响应可按 Esc 取消）",
+  "notice.suggestion.autopilotResumeExhausted": "已连续续轮多次仍未成功：可回复「继续」手动再试一次，或直接告知缺口。",
   "navigation.viewDiagnostics": "查看诊断",
   "navigation.forceExitOverlay": "强制退出遮罩",
   "settings.providerProtocolMismatch": "API 地址与所选协议不一致。",

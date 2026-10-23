@@ -115,9 +115,11 @@ func closeAutopilotForTier(tab *WorkspaceTab) bool {
 
 // noticeCodeForTab emits one notice frame on the tab's event channel with a
 // stable machine-readable code (best effort: a missing tab or sink drops it).
+// 任务1079：走 event.EmitEvent 统一 notice 入口（「怎么办」文案由前端按 code
+// 从 locale 词典取，Go 侧不再回填）。
 func (a *App) noticeCodeForTab(tabID string, level event.Level, code, text string) {
 	tab := a.tabByID(tabID)
 	if tab != nil && tab.sink != nil {
-		tab.sink.Emit(event.Event{Kind: event.Notice, Level: level, Code: code, Text: text})
+		event.EmitEvent(tab.sink, event.Event{Kind: event.Notice, Level: level, Code: code, Text: text})
 	}
 }

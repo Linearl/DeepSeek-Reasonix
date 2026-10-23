@@ -20,6 +20,9 @@ type Event struct {
 	Text             string                           `json:"text,omitempty" externalizable:"true"`
 	Detail           string                           `json:"detail,omitempty" externalizable:"true"`
 	Code             string                           `json:"code,omitempty"`
+	// Suggestion (任务 1079)：notice 的可选「怎么办」行；空值省略——旧前端
+	// 忽略未知字段，行为与改动前一致。
+	Suggestion       string                           `json:"suggestion,omitempty" externalizable:"true"`
 	Reasoning        string                           `json:"reasoning,omitempty" externalizable:"true"`
 	MemoryCitations  []MemoryCitation                 `json:"memoryCitations,omitempty"`
 	Level            string                           `json:"level,omitempty"`

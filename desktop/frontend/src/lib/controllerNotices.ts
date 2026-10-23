@@ -12,13 +12,49 @@ function inlineActionForCode(code?: string): "view_versions" | undefined {
   return code === "session_concurrent_writer" ? "view_versions" : undefined;
 }
 
-export function appendNoticeItem(items: Item[], seq: number, id: string, level: "info" | "warn", rawText: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt, createdAt?: number): { items: Item[]; seq: number } {
+// 任务1079：六条高频失败提示的「怎么办」行——按 notice code 从 locale 词典
+// （notice.suggestion.*，三语齐全）取文案。后端 Event.Suggestion 为空时兜底；
+// 后端显式携带时（未来某个发射点硬指定）以后端为准。code 不在表内 → undefined，
+// notice 渲染与改动前逐字一致（不渲染该行）。
+const noticeSuggestionKeys: Record<string, DictKey> = {
+  // 导航遮罩超时（任务1026 现场例①：「加载超时，重试无效」用户不知能做什么）。
+  surface_timeout: "notice.suggestion.surfaceTimeout",
+  // final_readiness 未通过（本轮输出可能不完整）。
+  final_readiness: "notice.suggestion.finalReadiness",
+  // recovery_paused（自动重试已暂停；关闭占用窗口后重试）。
+  recovery_paused: "notice.suggestion.recoveryPaused",
+  // provider_rejection（供应商侧拒绝：换措辞重发；二次被拒换模型）。
+  provider_rejection: "notice.suggestion.providerRejection",
+  // 修复会话面板「使用中」/ lease busy（任务1079 现场例②：124MB 会话按钮
+  // 置灰无说明——这里是那句「为什么不能点、该怎么办」）。
+  session_also_open: "notice.suggestion.leaseBusy",
+  // oversized event log 保底跳过（设置→修复会话单独处理）。
+  session_compact_fail_streak: "notice.suggestion.oversizedEventLog",
+  // 任务1080：首字节等待 3~5s 轻提示——与 30s 档区分，只说「正在等待」。
+  header_wait_light: "notice.suggestion.headerWaitLight",
+  // 任务1081：续轮耗尽转人工时的「建议下一步」行（试过什么的摘要走 errText）。
+  autopilot_resume_exhausted: "notice.suggestion.autopilotResumeExhausted",
+};
+
+// noticeSuggestion resolves the localized "怎么办" line for a code, or
+// undefined when the code has no suggestion (renders nothing — identical to
+// pre-1079 output).
+export function noticeSuggestion(code?: string): string | undefined {
+  if (!code) return undefined;
+  const key = noticeSuggestionKeys[code];
+  return key ? t(key) : undefined;
+}
+
+export function appendNoticeItem(items: Item[], seq: number, id: string, level: "info" | "warn", rawText: string, detail?: string, code?: string, decisionReceipt?: WireDecisionReceipt, createdAt?: number, backendSuggestion?: string): { items: Item[]; seq: number } {
   if (quietTranscriptNoticeKey(rawText, code)) return { items, seq };
   const trimmedDetail = detail?.trim();
   const text = localizedNoticeText(rawText, code, trimmedDetail);
   if (quietTranscriptNoticeKey(text, code)) return { items, seq };
   const inlineAction = inlineActionForCode(code);
-  return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(code ? { code } : {}), ...(decisionReceipt ? { decisionReceipt } : {}), ...(inlineAction ? { action: inlineAction } : {}), ...(createdAt ? { createdAt } : {}) }], seq: seq + 1 };
+  // 1079：「怎么办」行——后端显式携带优先，否则按 code 从 locale 词典取；
+  // 两者皆空 → 不渲染该行（与改动前逐字一致）。
+  const suggestion = backendSuggestion?.trim() || noticeSuggestion(code);
+  return { items: [...items, { kind: "notice", id, level, text, ...(trimmedDetail ? { detail: trimmedDetail } : {}), ...(code ? { code } : {}), ...(suggestion ? { suggestion } : {}), ...(decisionReceipt ? { decisionReceipt } : {}), ...(inlineAction ? { action: inlineAction } : {}), ...(createdAt ? { createdAt } : {}) }], seq: seq + 1 };
 }
 
 export function errorMessage(err: unknown): string {

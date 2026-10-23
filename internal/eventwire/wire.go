@@ -394,6 +394,8 @@ type MCPInteraction struct {
 // applyNotice fills the Notice-specific wire fields.
 func (w *Event) applyNotice(e event.Event) {
 	w.Code = e.Code
+	// 任务1079：非 notice 不携带 suggestion（字段只属于 notice 面）。
+	w.Suggestion = e.Suggestion
 	if e.DecisionReceipt != nil {
 		w.DecisionReceipt = ToWireDecisionReceipt(e.DecisionReceipt)
 	}
