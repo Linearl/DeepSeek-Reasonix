@@ -352,12 +352,37 @@ func (l *coldCacheCompactLoop) compactOne(path, workspaceRoot string, size int64
 	l.mu.Lock()
 	l.done[path] = lastActivityAt
 	l.mu.Unlock()
+	// Task 1077 (378-B2 ②)：headless 预热完成后立即释放该会话的物化数据
+	// （graph cache 精准剔除），用完即走不积内存。live 路径（ctrl != nil）不
+	// 走这里——live tab 的 Session 由 tab 自己管，关 tab 链（tabs.go）负责释放。
+	// 开关关态 tick 在 knobs.Enabled 处早退，本函数根本不会被调用，逐字节不变。
+	if mode == coldCacheCompactModeHeadless {
+		l.releasePrewarmedSession(path)
+	}
 	fields := append([]any{
 		"path", path, "mode", mode,
 		"bytesBefore", size, "bytesAfter", sessionContextBytes(path),
 		"idleMinutes", int(idle.Minutes()), "durationMs", duration.Milliseconds(),
 	}, usage.logFields()...)
 	slog.Info("desktop: cold cache compact completed", fields...)
+}
+
+// releasePrewarmedSession drops the process-wide materialized session data that
+// the headless prewarm just touched: the DAG graph cache entry for this
+// session (agent.InvalidateSessionGraph — the same precise invalidation the
+// tab-close and detached-release paths use) plus any other session-scoped
+// caches that would otherwise retain the replayed graph after the throwaway
+// controller is gone. The prewarm build's ctrl.Close() already tore down the
+// controller; what remains in the process is the shared cache, which is
+// exactly what this function releases. Called only on the ON switch path
+// (headless compact success), so the default-OFF state never runs it.
+func (l *coldCacheCompactLoop) releasePrewarmedSession(path string) {
+	freed, ok := agent.InvalidateSessionGraph(path)
+	if !ok {
+		return
+	}
+	slog.Info("desktop: released prewarmed session graph cache after cold compact",
+		"path", path, "freed_bytes", freed)
 }
 
 // parkNoFoldable records the task-424 park stamp: the compact attempt for
