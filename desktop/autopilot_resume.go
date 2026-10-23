@@ -93,6 +93,26 @@ const (
 	autopilotResumeExhaustedText   = "Autopilot auto-resume stopped: consecutive resumes kept ending abnormally, so no more will be submitted to avoid an unbounded loop. The session will not be auto-resumed again until a turn completes cleanly; please check it manually (无人值守自动续轮已停止，请人工检查)."
 )
 
+// autopilotResumeExhaustedTextWith (任务1081)：耗尽告警在原模板上补三行
+// 「试过什么」——① 已连续续轮几次；② 最近一次卡在哪（脱敏、截断到一行的
+// 错误摘要）；③ 建议下一步。数据来自 observeTurnDone 落的 lastAbnormal 摘要
+// （现成的 TurnDone.Err，不新增采集）。无摘要时退回原文案（行为等价）。
+// 文案与 1079 同规范走前端 locale（notice.suggestion.autopilotResumeExhausted），
+// 此处只保证 Go 侧双语兜底在无前端时也可读。
+func autopilotResumeExhaustedTextWith(summary autopilotAbnormalSummary) string {
+	if summary.errText == "" {
+		return autopilotResumeExhaustedText
+	}
+	return fmt.Sprintf(
+		"Autopilot auto-resume stopped: tried %d continuation turns, the last one still ended abnormally. "+
+			"Stuck at: %s. "+
+			"Suggested next step: reply \"continue\" to retry once manually, or tell me what is missing so I can change direction.\n"+
+			"(已连续续轮 %d 次仍未成功；最近一次卡在：%s；建议：回复「继续」手动再试一次，或直接告知缺口。)",
+		autopilotResumeMaxStrikes, summary.errText,
+		autopilotResumeMaxStrikes, summary.errText,
+	)
+}
+
 // autopilotResumeState is one tab's episode bookkeeping.
 type autopilotResumeState struct {
 	timer   *time.Timer
@@ -109,6 +129,18 @@ type autopilotResumeWatchdog struct {
 	mu     sync.Mutex
 	states map[string]*autopilotResumeState
 
+	// lastAbnormal (任务1081): per-tab snapshot of the most recent abnormal
+	// TurnDone, kept so the budget-exhausted warning can tell the user WHAT
+	// was tried and WHERE it got stuck (三段式：做了什么/卡在哪/下一步).
+	// Display-only copy of the error string — never persisted, never prompted.
+	lastAbnormal map[string]autopilotAbnormalSummary
+
+	// recordedNotices (任务1081, test-only seam): every notifyFn invocation
+	// is mirrored here under mu so a test can assert the exhausted warning's
+	// exact copy. Production ignores it; tests that install their own notify
+	// seam (newResumeHarness) append here too via recordNotice.
+	recordedNotices []recordedNotice
+
 	// Test seams (579 idleTurnTargetView pattern): production leaves them
 	// nil and the defaults below are used.
 	now    func() time.Time
@@ -117,8 +149,20 @@ type autopilotResumeWatchdog struct {
 	notify func(tabID string, level event.Level, code, text string)
 }
 
+// autopilotAbnormalSummary is the display-only digest of one abnormal stop
+// (任务1081). ErrText is already redacted at the record site.
+type autopilotAbnormalSummary struct {
+	strikes    int
+	errText    string
+	recordedAt time.Time
+}
+
 func newAutopilotResumeWatchdog(app *App) *autopilotResumeWatchdog {
-	return &autopilotResumeWatchdog{app: app, states: map[string]*autopilotResumeState{}}
+	return &autopilotResumeWatchdog{
+		app:          app,
+		states:       map[string]*autopilotResumeState{},
+		lastAbnormal: map[string]autopilotAbnormalSummary{},
+	}
 }
 
 func (w *autopilotResumeWatchdog) clock() time.Time {
@@ -142,11 +186,39 @@ func (w *autopilotResumeWatchdog) submitFn() func(tabID, prompt string) error {
 	return w.app.SubmitToTab
 }
 
+// recordNotice mirrors one notify invocation into the test-only seam (任务1081:
+// lets a test assert the exhausted warning's exact copy regardless of which
+// notify implementation is installed). No-op in production reads.
+func (w *autopilotResumeWatchdog) recordNotice(code, text string) {
+	w.mu.Lock()
+	w.recordedNotices = append(w.recordedNotices, recordedNotice{code: code, text: text})
+	w.mu.Unlock()
+}
+
+// notices returns a snapshot of the recorded notice invocations for tests
+// (任务1081 验收读数：耗尽告警文案含三段具体内容).
+func (w *autopilotResumeWatchdog) notices() []recordedNotice {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]recordedNotice(nil), w.recordedNotices...)
+}
+
+type recordedNotice struct {
+	code string
+	text string
+}
+
 func (w *autopilotResumeWatchdog) notifyFn() func(tabID string, level event.Level, code, text string) {
 	if w.notify != nil {
-		return w.notify
+		return func(tabID string, level event.Level, code, text string) {
+			w.recordNotice(code, text)
+			w.notify(tabID, level, code, text)
+		}
 	}
-	return w.app.noticeCodeForTab
+	return func(tabID string, level event.Level, code, text string) {
+		w.recordNotice(code, text)
+		w.app.noticeCodeForTab(tabID, level, code, text)
+	}
 }
 
 // stateFor returns (creating) the state for one tab. Caller holds mu.
@@ -220,7 +292,42 @@ func (w *autopilotResumeWatchdog) observeTurnDone(tabID string, e event.Event) {
 	if !autopilotAbnormalStop(e) {
 		return
 	}
+	// 任务1081：记录本次异常摘要（做了什么/卡在哪），供预算用尽告警引用。
+	// 显示专用副本：只存脱敏后的错误串，不落盘、不进 prompt。
+	w.mu.Lock()
+	if w.lastAbnormal == nil {
+		w.lastAbnormal = map[string]autopilotAbnormalSummary{}
+	}
+	strikes := 0
+	if st, ok := w.states[tabID]; ok {
+		strikes = st.strikes
+	}
+	w.lastAbnormal[tabID] = autopilotAbnormalSummary{
+		strikes:    strikes,
+		errText:    clipAbnormalErrText(secrets.RedactError(e.Err)),
+		recordedAt: w.clock(),
+	}
+	w.mu.Unlock()
 	w.schedule(tabID, "turn_abnormal_stop")
+}
+
+// clipAbnormalErrText bounds the "stuck at" line to roughly one row so the
+// exhausted warning stays readable (任务1081: 错误摘要截断到 1 行).
+func clipAbnormalErrText(s string) string {
+	const limit = 160
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "（无错误信息）"
+	}
+	if len(s) <= limit {
+		return s
+	}
+	// 先按 rune 截断避免切碎多字节字符，再补省略号。
+	runes := []rune(s)
+	if len(runes) <= limit {
+		return s
+	}
+	return string(runes[:limit]) + "…"
 }
 
 // autopilotAbnormalStop classifies one failed terminal turn as an abnormal
@@ -337,9 +444,10 @@ func (w *autopilotResumeWatchdog) fire(tabID, reason string) {
 	}
 	if st.strikes >= autopilotResumeMaxStrikes {
 		st.sealed = true
+		summary := w.lastAbnormal[tabID]
 		w.mu.Unlock()
 		log.Printf("[autopilot-resume] budget exhausted for tab %s after %d consecutive resumes; sealed until a turn completes cleanly (reason %s)", tabID, autopilotResumeMaxStrikes, reason)
-		w.notifyFn()(tabID, event.LevelWarn, noticeCodeAutopilotResumeExhausted, autopilotResumeExhaustedText)
+		w.notifyFn()(tabID, event.LevelWarn, noticeCodeAutopilotResumeExhausted, autopilotResumeExhaustedTextWith(summary))
 		return
 	}
 	st.pending = true

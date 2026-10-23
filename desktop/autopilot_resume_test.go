@@ -377,3 +377,72 @@ func TestSinkEmitFeedsAutopilotResumeWatchdog(t *testing.T) {
 		t.Fatalf("sink tap failed to feed the watchdog: %v", got)
 	}
 }
+
+// 任务1081（新增）：未观测到任何异常 TurnDone（如 S2 直通升级路径）时，
+// 摘要字段为空，耗尽告警退回原文案——不编造「卡在哪」。
+func TestAutopilotResumeExhaustedWithoutSummaryFallsBack(t *testing.T) {
+	if got := autopilotResumeExhaustedTextWith(autopilotAbnormalSummary{}); got != autopilotResumeExhaustedText {
+		t.Fatalf("an empty summary must fall back to the original copy, got %q", got)
+	}
+}
+
+// 任务1081（新增）：错误摘要截断到一行（160 rune），多字节字符不被切碎。
+func TestClipAbnormalErrTextBoundsToOneLine(t *testing.T) {
+	long := strings.Repeat("错误", 200) // 400 runes
+	clipped := clipAbnormalErrText(long)
+	if len([]rune(clipped)) > 161 { // 160 + the appended ellipsis
+		t.Fatalf("clipped text too long: %d runes", len([]rune(clipped)))
+	}
+	if !strings.HasSuffix(clipped, "…") {
+		t.Fatal("clipped text must end with an ellipsis")
+	}
+	if got := clipAbnormalErrText("  short error  "); got != "short error" {
+		t.Fatalf("short text must be trimmed verbatim, got %q", got)
+	}
+	if got := clipAbnormalErrText(""); got != "（无错误信息）" {
+		t.Fatalf("empty error must get a placeholder, got %q", got)
+	}
+}
+
+// waitExhaustedNotice blocks until the exhausted notice's text is recorded and
+// returns it (empty string if it never arrived).
+func waitExhaustedNotice(t *testing.T, h *resumeHarness) string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, n := range h.w.notices() {
+			if n.code == noticeCodeAutopilotResumeExhausted {
+				return n.text
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return ""
+}
+
+// 任务1081（新增）：预算用尽的耗尽告警不再只有「已停止续轮」——它带「试过
+// 什么」摘要：已连续续轮 N 次 + 最近一次卡在哪（错误摘要）。无摘要（未观测
+// 到异常 TurnDone）时退回原文案，行为等价。
+func TestAutopilotResumeExhaustedCarriesAttemptSummary(t *testing.T) {
+	h := newResumeHarness(t, true)
+
+	// 三轮续轮，最后再异常一次：预算耗尽 → 封存 + 带摘要的告警。
+	for i := 1; i <= 3; i++ {
+		h.w.observeTurnDone(h.tab.ID, abnormalStopEvent())
+		waitResumeSubmits(t, h, i)
+	}
+	h.w.observeTurnDone(h.tab.ID, event.Event{Kind: event.TurnDone, Err: errors.New("gateway returned HTTP 502 mid-stream")})
+	exhaustedText := waitExhaustedNotice(t, h)
+	if exhaustedText == "" {
+		t.Fatal("expected the exhausted notice to fire after the budget ran out")
+	}
+	if !strings.Contains(exhaustedText, "3 continuation turns") {
+		t.Errorf("exhausted notice must state how many continuation turns were tried, got %q", exhaustedText)
+	}
+	if !strings.Contains(exhaustedText, "gateway returned HTTP 502 mid-stream") {
+		t.Errorf("exhausted notice must name where the last attempt got stuck, got %q", exhaustedText)
+	}
+	if !strings.Contains(exhaustedText, "reply \"continue\"") {
+		t.Errorf("exhausted notice must suggest a next step, got %q", exhaustedText)
+	}
+}
