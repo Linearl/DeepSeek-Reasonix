@@ -36,7 +36,7 @@ import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
-import { takeSettingsViewPrefetch } from "../lib/settingsPrefetch";
+import { takeSettingsViewPrefetch, peekSettingsPrefetchStartedAt } from "../lib/settingsPrefetch";
 import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionMonitor";
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
@@ -213,6 +213,14 @@ export function SettingsPanel({
   // through one queue, so narrowing the flag cannot let two saves race and
   // swallow each other's reload.
   const [settingsLoadFailed, setSettingsLoadFailed] = useState(false);
+  // 任务 1098（阶段 1 补打点）：lab/设置面板「首屏可交互」计时的起点/终点。
+  // reload() 里记下（从预取入口点击起算的）数据就绪耗时，等真正把面板内容
+  // 渲染出来（下一次 paint 之后）再上报一次总耗时，避免只测到「数据到了」
+  // 而漏掉「渲染出第一屏」这段——正是用户看到「一直加载中」时最想知道的
+  // 空窗在哪一段。reportFrontendLog 同款通道（frontend:lab）。
+  const labLoadReportedAt = useRef<number | null>(null);
+  const labFirstPaintPending = useRef(false);
+  const labDataReadyMs = useRef(0);
   const [pendingScopes, setPendingScopes] = useState<Record<string, number>>({});
   const [err, setErr] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -250,6 +258,11 @@ export function SettingsPanel({
   const reload = useCallback(async () => {
     const seq = ++settingsLoadSeq.current;
     const applicationSeq = ++modelApplicationSeq.current;
+    // 任务 1098（阶段 1 补打点）：起点优先取预取发起时刻（入口点击），没有
+    // 预取（保存后 reload / TTL 过期）才退化为「本次调用发起」——两者都对应
+    // 用户主观感知的「点了之后多久能看到内容」，不是组件内部的相对时间。
+    const prefetchStart = peekSettingsPrefetchStartedAt();
+    const reloadStart = prefetchStart ?? Date.now();
     setLoadingSettings(true);
     setSettingsLoadFailed(false);
     try {
@@ -260,7 +273,13 @@ export function SettingsPanel({
         Promise.resolve().then(() => app.GetModelSettingsApplication()).catch(() => null),
       ]);
       const next = normalizeSettingsView(view);
+      const dataReadyMs = Date.now() - reloadStart;
+      // 每次数据就绪都落一条（数据到达耗时），不区分 tab——lab 页本身也走这
+      // 条 reload，且保存后 reload 同样能从这条线看出是「后端慢」还是「没变慢」。
+      reportFrontendLog("lab", "settings data ready", `dataReadyMs=${dataReadyMs} prefetchStart=${prefetchStart != null}`);
       if (seq !== settingsLoadSeq.current) return next;
+      labDataReadyMs.current = dataReadyMs;
+      labFirstPaintPending.current = true;
       setS(next);
       if (application && applicationSeq === modelApplicationSeq.current) setModelApplication(application);
       return next;
@@ -280,6 +299,28 @@ export function SettingsPanel({
   useEffect(() => {
     void reload();
   }, [reload]);
+  // 任务 1098（阶段 1 补打点）：reload() 只在「数据就绪」时打了一半（dataReady），
+  // 这里在数据就绪后、内容真正画出来（下一次 paint）再补一条「首屏可交互」总
+  // 耗时——从入口点击（预取发起）起算，覆盖「点击→数据→第一屏渲染」全链路。
+  // 只在有内容可画（s 已就绪）时触发一次，不随 s 后续更新重复上报。
+  useEffect(() => {
+    if (!s || !labFirstPaintPending.current) return undefined;
+    labFirstPaintPending.current = false;
+    let cancelled = false;
+    const raf = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      const prefetchStart = peekSettingsPrefetchStartedAt();
+      const readyAt = Date.now() - labDataReadyMs.current;
+      const firstPaintTotal = Date.now() - (prefetchStart ?? readyAt);
+      // 面板页签也带上：默认 general，从 lab 入口直接开则是 experimental。
+      reportFrontendLog("lab", "settings first paint", `tab=${tab} totalMs=${firstPaintTotal} dataReadyMs=${labDataReadyMs.current}`);
+      labLoadReportedAt.current = Date.now();
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+    };
+  }, [s, tab]);
   // 任务 915：工具优化族键缺省时（后端 *bool nil → JSON null）面板按默认开
   // 渲染，首载即写入 true 落盘（write-on-show，670 AcknowledgeForkNotice
   // 同款 best-effort：失败不打断设置页，下次打开重试；显式关恒为 false
@@ -2111,6 +2152,28 @@ function LabParamFieldsCard({ entry, s, busy, apply }: { entry: LabLayoutEntry; 
 }
 
 function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps & { focusEntry?: ExperimentFeatureId | null }) {
+  // 任务 1098（阶段 1 补打点）：实验室页专属的「首屏可交互」计时——上面那层
+  // 的 first paint 只覆盖到「设置面板骨架出现」，这里再量一次从实验室入口被
+  // 打开（reload 记下的 dataReady 基准）到实验室卡片（rail/分组树）真正画出
+  // 来的耗时，覆盖 resolveLabLayout 解析 + 全部开关卡片渲染这段可能很重的
+  // 前端工作。只在本实验室页每次挂载时上报一次，不随后续 state 抖动重复打。
+  const labMountedAt = useRef<number | null>(null);
+  const labPaintReported = useRef(false);
+  if (labMountedAt.current === null) labMountedAt.current = Date.now();
+  useEffect(() => {
+    if (labPaintReported.current) return undefined;
+    labPaintReported.current = true;
+    const mountedAt = labMountedAt.current ?? Date.now();
+    let cancelled = false;
+    const raf = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      reportFrontendLog("lab", "experimental first paint", `mountToPaintMs=${Date.now() - mountedAt}`);
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+    };
+  }, []);
   // Set when a boot-time setting is saved: apply() reloads the view, so the fact that a
   // restart is pending has to live outside the data being reloaded.
   const [restartNeeded, setRestartNeeded] = useState(false);
