@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"reasonix/internal/config"
 	"reasonix/internal/tool"
@@ -117,6 +118,19 @@ func SetFeedbackNotify(fn func(FeedbackNote) error) {
 // lines, trimmed — the message-side excerpt (1016: md carries the payload,
 // the message carries the pointer).
 func feedbackSummary(text string, maxLines int) string {
+	return feedbackSummaryBounded(text, maxLines, feedbackSummaryMaxBytes)
+}
+
+// feedbackSummaryMaxBytes is the byte ceiling for the folded summary — the
+// notification rides a single message, so the summary must stay bounded (1016
+// size ceiling). The cut is rune-safe (task 1057): a multi-byte character is
+// never sliced mid-sequence.
+const feedbackSummaryMaxBytes = 512
+
+// feedbackSummaryBounded is feedbackSummary with an extra byte ceiling: the
+// ≤3-line fold runs first, then the joined result is clipped to at most
+// maxBytes bytes on a rune boundary.
+func feedbackSummaryBounded(text string, maxLines int, maxBytes int) string {
 	var kept []string
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
@@ -128,7 +142,51 @@ func feedbackSummary(text string, maxLines int) string {
 			break
 		}
 	}
-	return strings.Join(kept, "\n")
+	joined := strings.Join(kept, "\n")
+	if maxBytes > 0 && len(joined) > maxBytes {
+		joined = clipRunesByteSafe(joined, maxBytes)
+	}
+	return joined
+}
+
+// FeedbackSummaryBounded exposes feedbackSummaryBounded for the backfill
+// mirror in internal/agent (feedback_mail.go) so both the submit path and the
+// scan-backfill path fold text identically (task 1057: rune-safe cut).
+func FeedbackSummaryBounded(text string, maxLines int) string {
+	return feedbackSummaryBounded(text, maxLines, feedbackSummaryMaxBytes)
+}
+
+// clipRunesRuneSafe truncates s to at most max runes, returning the truncated
+// string. It preserves complete UTF-8 sequences (rune boundaries) so a
+// multi-byte character is never cut mid-sequence.
+func clipRunesRuneSafe(s string, max int) string {
+	if max <= 0 || s == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
+}
+
+// clipRunesByteSafe truncates s to at most maxBytes bytes, backing up to the
+// nearest rune boundary so no multi-byte character is split (task 1057).
+func clipRunesByteSafe(s string, maxBytes int) string {
+	if maxBytes <= 0 || s == "" {
+		return ""
+	}
+	if len(s) <= maxBytes {
+		return s
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 // feedbackNotifyNote invokes the installed hook, if any. It returns whether a

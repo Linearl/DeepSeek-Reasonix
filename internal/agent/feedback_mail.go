@@ -411,18 +411,7 @@ func (c FeedbackMailConfig) notifyEntry(ctx context.Context, p FeedbackEntryFile
 
 // feedbackSummaryOf mirrors builtin's ≤3-line fold for a parsed entry's text.
 func feedbackSummaryOf(text string) string {
-	var kept []string
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		kept = append(kept, line)
-		if len(kept) >= 3 {
-			break
-		}
-	}
-	return strings.Join(kept, "\n")
+	return builtin.FeedbackSummaryBounded(text, 3)
 }
 
 // feedbackFileFor locates the md file matching a parsed entry by scanning the
