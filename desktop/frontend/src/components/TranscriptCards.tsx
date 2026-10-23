@@ -120,10 +120,16 @@ function SteerCollabCard({ source, foldable = true }: { source: CollabImSourceMe
       ))}
       {/* 任务1092: 发送时刻（header stamping 解析）+ 复制正文——与普通消息卡片
           （Message.tsx msg-meta 的 time + CopyButton）同款形态。独立 foot 行，
-          即便旧投递文本无 sender/chat 也保证时间+复制入口存在。 */}
-      <div className="im-source-card__meta" data-transcript-selection-ignore>
+          即便旧投递文本无 sender/chat 也保证时间+复制入口存在；hover 全量
+          contact_id 契约（462/758）留在整条 foot 行（不因 title 挪进内层 span
+          而丢）。 */}
+      <div
+        className="im-source-card__meta"
+        data-transcript-selection-ignore
+        title={(source.sender || source.chat) && [source.sender, source.chat].filter(Boolean).map((id) => `contact_id=${id.trim()}`).join(" → ") || undefined}
+      >
         {(source.sender || source.chat) && (
-          <span title={[source.sender, source.chat].filter(Boolean).map((id) => `contact_id=${id.trim()}`).join(" → ")}>
+          <span>
             {t("msg.collabRoute", { from: collabLabel(source.sender), to: collabLabel(source.chat) })}
           </span>
         )}
