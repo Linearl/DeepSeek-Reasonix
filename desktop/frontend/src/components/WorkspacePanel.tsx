@@ -1267,7 +1267,12 @@ export function WorkspacePanel({
   // 面板同判据（sideDockHasActiveTabs 共用），此处是文件面板的上报点。
   const setSideDockWideActive = useLayoutStore((s) => s.setSideDockWideActive);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // 卸载/关闭也要把加宽指示清干净——否则残留 wide 态会把面板宽度钉在
+      // 宽档，「关最后文件回落 246」在切 tab 后看似失效。
+      setSideDockWideActive(false);
+      return;
+    }
     setSideDockWideActive(openTabs.length > 0);
   }, [open, openTabs.length, setSideDockWideActive]);
   const showFileTools = true;

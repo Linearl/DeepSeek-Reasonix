@@ -3195,6 +3195,9 @@ export default function App() {
       closeTransientOverlays("workspace panel open");
       if (mode === "context" || mode !== rightDockMode) {
         setWorkspacePreviewActive(false);
+        // tl1108/1109: 切走文件/子代理 tab ⇒ 该 tab 的方案 E 加宽指示一并清
+        // （切回时由面板重新上报），避免宽态残留把「关最后文件回落 246」盖掉。
+        useLayoutStore.getState().setSideDockWideActive(false);
       }
       setRightDockMode(mode);
       saveRightDockMode(mode, activeWorkspaceRoot);

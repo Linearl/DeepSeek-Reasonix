@@ -12,6 +12,7 @@ import {
   UnfoldHorizontal,
 } from "lucide-react";
 import { useT, type DictKey } from "../lib/i18n";
+import { useLayoutStore } from "../store/layout";
 import { Tooltip } from "./Tooltip";
 import { historyMessagesToItems } from "../lib/useController";
 import { subjectOf } from "../lib/tools";
@@ -359,6 +360,10 @@ export function SubagentsDockPanel({
   // The parent keys this panel per session, so a session switch remounts and
   // the reveal resets; live transcript updates must NOT reset it.
   const [revealed, setRevealed] = useState(SUBAGENT_DIRECTORY_PAGE_SIZE);
+  // tl1109 方案 E: 打开了子代理内容（detailEnabled 同屏形态下 selected 非空）
+  // 时上报加宽指示——与文件面板共用同一 sideDockWideActive 判据（超时自动
+  // 折叠抑制同源），关闭内容（back/取消选中）后回落。
+  const setSideDockWideActive = useLayoutStore((s) => s.setSideDockWideActive);
   // Task 507 plan A: the open detail's item id. Component state only — never
   // persisted, so a restart lands back on the list (语义诚实: the preview
   // content itself is memory-only).
@@ -400,6 +405,11 @@ export function SubagentsDockPanel({
     ? directory.running.find((entry) => entry.item.id === selectedId)
       ?? ended.find((entry) => entry.item.id === selectedId)
     : undefined;
+  // tl1109 方案 E: 有打开的子代理内容 ⇒ 抬宽边栏；卸载/取消选中 ⇒ 回落。
+  useEffect(() => {
+    setSideDockWideActive(detailEnabled && Boolean(selected));
+    return () => setSideDockWideActive(false);
+  }, [detailEnabled, selected, setSideDockWideActive]);
   const widenToolbar = onToggleWide ? (
     <div className="subagents-panel__toolbar">
       <button
