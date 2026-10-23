@@ -58,6 +58,24 @@ export function dismissToolRecoveryCall(scope: string, key: string): void {
   commit();
 }
 
+// 1089（1068 返修）：外层摘要块折叠态的「忽略（全部）」入口——一次忽略当前
+// 快照的全部记录键。语义边界与单条忽略完全一致（纯前端、per-session、不
+// 持久化、零 binding 调用），只是作用域从一个键扩到调用方给的一组键；未在
+// 集合内的键不会被触碰（不预置、不猜测后端可能再发什么）。
+export function dismissToolRecoveryCalls(scope: string, keys: readonly string[]): void {
+  if (keys.length === 0) return;
+  let set = dismissedByScope.get(scope);
+  if (!set) {
+    set = new Set();
+    dismissedByScope.set(scope, set);
+  }
+  let changed = false;
+  for (const key of keys) {
+    if (!set!.has(key)) { set!.add(key); changed = true; }
+  }
+  if (changed) commit();
+}
+
 // 已忽略键并入指定 scope（不 commit，调用方负责在自己的渲染批次里用）。用于
 // 快照到达后即时并入 tab 键下的旧账（rekeyToolRecoveryDismissals 的异步窗口
 // 里点击忽略的极端时序），避免「点击后一次渲染闪现再消失」。

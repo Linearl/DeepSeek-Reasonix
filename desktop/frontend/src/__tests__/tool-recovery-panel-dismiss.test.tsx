@@ -1,8 +1,9 @@
 // Run: tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/tool-recovery-panel-dismiss.test.tsx
 //
-// 任务 1061（中断的工具调用记录加「忽略」按钮）前端契约 + 任务 1068 返修。
+// 任务 1061（中断的工具调用记录加「忽略」按钮）前端契约 + 任务 1068 返修
+// + 任务 1089（1068 返修四修）。
 //
-// 钉住验收（1061 四条 + 1068 三修，零回归）：
+// 钉住验收（1061 四条 + 1068 三修 + 1089 一条，零回归）：
 //   ① 每条记录出现「忽略」按钮，点击即从块中移除，无残留占位（1061）；
 //   ② 全部忽略后折叠块整体不渲染（1061）；
 //   ③ 忽略是纯前端状态：点击不触发任何 binding 调用（不发起新一轮对话、
@@ -18,7 +19,11 @@
 //      （1068①，与协作中心「关闭」同族）；
 //   ⑦ 后端结算后新快照（新 sessionPath/新 revision）如实再显示：旧快照的
 //      忽略集合不跨快照继承——「新 turn 留下的中断如实显示」的 1061 语义
-//      不被旧账拖累（per-snapshot 记账的语义对齐，717/turn-end-cleanup 家族契约）。
+//      不被旧账拖累（per-snapshot 记账的语义对齐，717/turn-end-cleanup 家族契约）；
+//   ⑧ 外层摘要块折叠态的清理入口（1089，1068② 的返修）：外层 <details>
+//      收起时（整块只有 summary 行可见），summary 行右侧有「忽略（全部）」
+//      入口、可点击——点击后当前快照全部记录被忽略、整块消失；展开态逐条
+//      忽略按钮（record-head 右侧）保留，1068 原 20 断言零回归。
 
 import { JSDOM } from "jsdom";
 import { registerHooks } from "node:module";
@@ -206,6 +211,62 @@ ok(firstHead?.querySelector("details")?.hasAttribute("open") !== true,
 ok(firstDismiss?.className.split(/\s+/).includes("btn--ghost") === true
   && firstDismiss?.className.split(/\s+/).includes("btn--small") === true,
   "the dismiss button reuses the global btn--ghost btn--small family (task 591)");
+
+// ── 1089 验收⑧：外层摘要块折叠态的「忽略（全部）」入口 ────────────────
+// 1068② 钉错了「折叠」的层：它钉的是内层「查看操作详情」details（每条记录
+// 自己的折叠），而用户实测的「折叠」是外层摘要块整体（本组件最外层
+// <details>）——外层收起时逐条记录的忽略按钮整块不可见，等于没有清理入口。
+// 本段钉：外层 details 未 open 时 summary 行右侧有入口、点击即清空全部记录；
+// 展开态逐条忽略按钮不受影响。
+probeResult.snapshot = snapshotWith(["a1", "a2"], "/s/collapsed-summary.jsonl", "r9");
+await renderPanel({ running: false, refreshKey: 0, tabId: "tab-1" });
+const outerDetails = host.querySelector<HTMLDetailsElement>(".tool-recovery-panel > details");
+ok(Boolean(outerDetails), "the outer fold-out details node exists");
+ok(outerDetails?.hasAttribute("open") !== true,
+  "the outer fold-out starts collapsed (the state the user reported having no dismiss entry in)");
+const summaryDismissAll = outerDetails?.querySelector<HTMLButtonElement>("summary .tool-recovery-panel__dismiss-all");
+ok(Boolean(summaryDismissAll), "the collapsed summary row carries a dismiss-all entry");
+ok(summaryDismissAll?.className.split(/\s+/).includes("btn--ghost") === true
+  && summaryDismissAll?.className.split(/\s+/).includes("btn--small") === true,
+  "the dismiss-all entry reuses the same global btn--ghost btn--small family");
+// 折叠态下逐条忽略钮也在 DOM 里但被外层 details 收起遮住（display:none 语义），
+// 这正是 1068② 的盲区：可点性只在展开态成立。折叠态唯一露出的清理入口必须是
+// summary 行内这个。
+const probesBeforeDismissAll = probeCalls;
+const resolvesBeforeDismissAll = resolveCalls;
+await act(async () => {
+  summaryDismissAll!.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(!visible(), "clicking the collapsed dismiss-all entry clears every record and hides the whole fold-out");
+ok(probeCalls === probesBeforeDismissAll && resolveCalls === resolvesBeforeDismissAll,
+  "the dismiss-all click still fires zero bindings (1061 pure-frontend rule, same as per-record dismiss)");
+
+// 展开态逐条忽略入口保留：换一份快照、展开外层 details，逐条忽略按钮照旧
+// 可点（1068 原语义）。换 tab-3（与上一段 tab-1 是不同 tab）＋新 sessionPath
+// 保证忽略集合是干净的——store 按 sessionPath 记账，复用上一段的会话会让
+// 新快照的记录直接被判为已忽略（不是本段要验的场景）。
+probeResult.snapshot = snapshotWith(["a1", "a2"], "/s/expanded-records.jsonl", "r9");
+await renderPanel({ running: false, refreshKey: 0, tabId: "tab-3", sessionKey: "k3" });
+const expandedOuter = host.querySelector<HTMLDetailsElement>(".tool-recovery-panel > details");
+await act(async () => { if (expandedOuter) expandedOuter.open = true; });
+ok(expandedOuter?.hasAttribute("open") === true, "the outer fold-out can be expanded");
+const expandedRecordDismiss = host.querySelectorAll<HTMLButtonElement>(".tool-recovery-panel__record-head .tool-recovery-panel__dismiss");
+ok(expandedRecordDismiss.length === 2, "in the expanded state each record row keeps its own dismiss button");
+await act(async () => {
+  expandedRecordDismiss[0].dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(recordCount() === 1 && !panelHtml().includes("tool-a1") && panelHtml().includes("tool-a2"),
+  "the expanded-state per-record dismiss button still works (1068 zero regression)");
+// 收尾：清掉本段遗留（第二条记录），保持 harness 收尾时集合为空（沿文件末尾
+// 原有清理语义，不给后续串行 harness 留隐性泄漏）。
+const remainingDismiss = host.querySelectorAll<HTMLButtonElement>(".tool-recovery-panel__record-head .tool-recovery-panel__dismiss");
+await act(async () => {
+  remainingDismiss[0].dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
+ok(!visible(), "after the last per-record dismiss the fold-out is gone (cleanup restored)");
 
 // 收尾：清理模块级集合，避免对其他串行 harness 的隐性泄漏（本 harness 自身
 // 到此为止不再断言）。

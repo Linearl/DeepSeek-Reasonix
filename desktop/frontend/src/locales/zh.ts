@@ -9,6 +9,7 @@ export const zh: Record<DictKey, string> = {
   "toolRecovery.unknown": "结果未知（已记录）",
   "toolRecovery.details": "查看操作详情",
   "toolRecovery.dismiss": "忽略",
+  "toolRecovery.dismissAll": "忽略（全部）",
   "toolRecovery.present": "当前效果或文件后置条件已存在，但这不能证明原调用的执行结果。",
   "toolRecovery.absent": "工具已核实效果不存在，且旧尝试已无法再提交。",
   "toolRecovery.unproven": "自动检查无法确认结果。请核实受影响的工作区或外部服务后再确认。",

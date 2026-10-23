@@ -23,6 +23,15 @@
 }
 .tool-recovery-panel > details { width: 100%; }
 .tool-recovery-panel summary { cursor: pointer; }
+/* 任务 1089：外层摘要块的 summary 行——标题文字贴左、「忽略（全部）」入口
+   贴右（flex + margin-inline-start:auto 把按钮推到行尾），与每条记录的
+   record-head 同族排版；summary 是折叠态唯一露出的部分，按钮必须一直在行内。 */
+.tool-recovery-panel__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tool-recovery-panel__summary > span { margin-inline-end: auto; }
 /* 任务 1061：单条记录的头部行——记录文本与「忽略」按钮同行，按钮贴右。
    按钮本体复用全局 .btn--ghost.btn--small（591），此处只管排版。 */
 .tool-recovery-panel__record-head {
@@ -32,6 +41,7 @@
 }
 .tool-recovery-panel__record-head > p { margin-inline-end: auto; }
 .tool-recovery-panel__dismiss { flex: none; }
+.tool-recovery-panel__dismiss-all { flex: none; }
 .tool-recovery-panel pre {
   max-height: 160px;
   overflow: auto;
