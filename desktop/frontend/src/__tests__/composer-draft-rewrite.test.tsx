@@ -389,5 +389,37 @@ function clickControl(node: HTMLElement | null) {
   dom.window.close();
 }
 
+// ── tl 1067 ⑤ 开关切换后按钮即时正确（无二连击）+ 双态回原状 ──────────
+// 根因形态：设置面板保存后 onChanged 链路喂进来的 settings 若缺
+// experimentalDraftRewrite（启动快照 DesktopStartupSettingsView 少该字段时
+// 即如此），applyDesktopPreferences 用 `?? false` 把已开的 flag 覆盖成
+// false——开关显示「开」但按钮消失，再点一次开关才恢复（用户实测的「二连击」）。
+// 本用例直接驱动同一条 onLabFlagsChange 事件链（applyLabFlags 广播）钉双态：
+// 关→按钮逐字节消失、开→按钮即时出现，且切换无需重新挂载 Composer。
+{
+  const dom = installDom();
+  applyLabFlags({ draftRewrite: false });
+  stubBridge();
+  const { root } = await renderComposer();
+  ok(rewriteButton() === null, "1067 pre: flag off renders no rewrite button");
+  await act(async () => {
+    applyLabFlags({ draftRewrite: true });
+    await flushTimers();
+  });
+  ok(rewriteButton() !== null, "1067: flipping the lab flag ON shows the button immediately (no re-mount, no second click)");
+  await act(async () => {
+    applyLabFlags({ draftRewrite: false });
+    await flushTimers();
+  });
+  ok(rewriteButton() === null, "1067: flipping the lab flag OFF removes the button again (byte-for-byte back to off state)");
+  await act(async () => {
+    applyLabFlags({ draftRewrite: true });
+    await flushTimers();
+  });
+  ok(rewriteButton() !== null, "1067: flipping back ON restores the button on the first flip (single-toggle contract)");
+  await act(async () => root.unmount());
+  dom.window.close();
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
