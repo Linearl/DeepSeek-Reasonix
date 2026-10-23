@@ -262,6 +262,18 @@ func repairIndexedSessionTopicsWithGate(dir string, repairDone func(string) bool
 		if indexedSet[topicID] && strings.TrimSpace(topicTitles[topicID]) != "" {
 			continue // fully indexed already — nothing to repair, skip the meta read
 		}
+		// Task 1095 (跨项目影子条目): topic ids are process-global conversation
+		// identities, so a topic whose registry filing already lists it under
+		// ANOTHER workspace's sidebar index must never be repaired into this
+		// workspace's index too. Two index entries for one topic paint the SAME
+		// conversation on both trees — the "shadow entry" that showed the same
+		// session under its own project and under Global (one physical file).
+		// The check reads the live registry on every pass, so when that
+		// foreign filing later disappears the first repair pass owns the topic
+		// again; existing local indexing above is unaffected.
+		if otherWorkspaceSidebarIndexHoldsTopic(workspaceRoot, topicID) {
+			continue
+		}
 		meta, ok, err := agent.LoadBranchMeta(info.Path)
 		if err != nil {
 			deferred = true
@@ -397,6 +409,32 @@ func sessionInfoIsUnmodifiedRecoveryCopy(info agent.SessionInfo, parentDir strin
 
 func isAutomaticRecoverySessionPath(path string) bool {
 	return agent.LooksLikeRecoveryFilename(path)
+}
+
+// otherWorkspaceSidebarIndexHoldsTopic reports whether topicID is already
+// indexed in ANOTHER workspace's sidebar list ("global" = Global section,
+// anything else = that project's root). Topic ids are process-global
+// conversation identities, so repairing one topic into two workspaces' lists
+// paints the same conversation on two trees — task 1095's cross-project
+// shadow entry. Reads the live registry on every pass so ownership can move
+// back once the other list stops holding the topic.
+func otherWorkspaceSidebarIndexHoldsTopic(workspaceRoot, topicID string) bool {
+	workspaceRoot = strings.TrimSpace(workspaceRoot)
+	f := loadProjectsFile()
+	if !sameProjectRoot(strings.TrimSpace(f.GlobalTitle), workspaceRoot) {
+		if containsDesktopString(f.GlobalTopics, topicID) {
+			return true
+		}
+	}
+	for _, p := range f.Projects {
+		if sameProjectRoot(strings.TrimSpace(p.Root), workspaceRoot) {
+			continue
+		}
+		if containsDesktopString(p.Topics, topicID) {
+			return true
+		}
+	}
+	return false
 }
 
 func legacyMigrationTargetForDir(dir string) (scope, workspaceRoot, topicTitleRoot string, ok bool) {
