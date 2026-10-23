@@ -134,8 +134,12 @@ items:
   const eff = yamlText.indexOf("key: efficiency");
   const safety = yamlText.indexOf("id: safetyCostControl");
   ok(auto < eff && eff < safety, "点6: the safety/cost card sits in the efficiency group (after automation)");
-  // 全部 onKeys 引用都在注册表里。
-  const onKeys = [...yamlText.matchAll(/^ {8}onKeys: \[([^\]]*)\]/gm)].flatMap((m) => m[1].split(",").map((s) => s.trim()));
+  // 全部 onKeys 引用都在注册表里（空 onKeys 合法——tl 1097 kind:param 参数卡
+  // 如 logManagement 没有开关灯，onKeys: [] 是「无开关参数卡」的正常形态，
+  // split 后得 [""] 需剔除）。
+  const onKeys = [...yamlText.matchAll(/^ {8}onKeys: \[([^\]]*)\]/gm)]
+    .flatMap((m) => m[1].split(",").map((s) => s.trim()))
+    .filter((k) => k !== "");
   ok(onKeys.length > 0 && onKeys.every((k) => LAB_LIGHT_KEY_IDS.has(k)),
     `every yaml onKeys reference is a registered light key (${onKeys.length} refs)`);
   // 组键受控词表。任务 992：工具优化并入 infra、原独立 tool-opt 组退役——

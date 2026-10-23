@@ -2675,6 +2675,10 @@ export interface DesktopStartupSettingsView {
   detachedIdleReleaseMinutes?: number;
   /** Task 308-O3: soft memory limit in MB via debug.SetMemoryLimit (0 = unbounded). */
   goMemLimitMB?: number;
+  /** tl 1097: WARN/ERROR alert-log retention dial (days; 0 = default 7; -1 = forever). */
+  desktopAlertLogRetentionDays?: number;
+  /** tl 1097: WARN/ERROR alert-log total size ceiling in MB (0 = default 100; -1 = unlimited). */
+  desktopAlertLogMaxTotalMB?: number;
   /** Fork task 160: scroll-driven "load older" trigger at the transcript top. */
   experimentalAutoLoadOlder?: boolean;
   /** Task 221: inbox drain merge tri-state (off | same_sender | all). */

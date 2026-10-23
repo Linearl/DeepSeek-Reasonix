@@ -1683,6 +1683,14 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetDetachedIdleReleaseMinutes(minutes: number): Promise<void>;
   // Task 308-O3: soft memory limit in MB (0 = unbounded).
   SetGoMemLimitMB(mb: number): Promise<void>;
+  // tl 1097: WARN/ERROR alert-log retention dial (days; 0 = default 7; -1 = forever).
+  SetDesktopAlertLogRetentionDays(days: number): Promise<void>;
+  // tl 1097: WARN/ERROR alert-log total size ceiling in MB (0 = default 100; -1 = unlimited).
+  SetDesktopAlertLogMaxTotalMB(mb: number): Promise<void>;
+  // tl 1097: current on-disk usage of the alert-log family (bytes + file count).
+  AlertLogUsage(): Promise<{ bytes: number; files: number; dir: string }>;
+  // tl 1097: open logs/desktop in the system file manager (non-blocking).
+  OpenLogDir(): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
   // Task 264: background-woken sessions stay out of the tab bar (detached
@@ -6503,6 +6511,10 @@ function makeMockApp(): AppBindings {
     async SetSessionCollabHopLimit() {},
     async SetDetachedIdleReleaseMinutes() {},
     async SetGoMemLimitMB() {},
+    async SetDesktopAlertLogRetentionDays() {},
+    async SetDesktopAlertLogMaxTotalMB() {},
+    async AlertLogUsage() { return { bytes: 0, files: 0, dir: "" }; },
+    async OpenLogDir() { console.info("mock OpenLogDir"); },
     async SetSessionCollabGates() {},
     async SetSessionCollabBackground() {},
     async SetSessionCollabReplyNudge() {},

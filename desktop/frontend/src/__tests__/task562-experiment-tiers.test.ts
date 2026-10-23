@@ -111,11 +111,13 @@ console.log("\ntask 562 lab three-tier badges");
   // 可选档入表——可选 36→37、总数 72→73（Go 侧同步 63→64）。
   // 任务 1070：standardContinuation（Standard 流续跑总闸）按可选档入表——
   // 可选 37→38、总数 73→74（Go 侧同步 64→65）。
-  ok(counts.stable === 4 && counts.recommended === 18 && counts.optional === 38 && counts.unstable === 13 && counts.retired === 1,
-    `register counts are 4 稳定/18/38/13/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 74, `register holds exactly 74 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 38 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/18/38/13/1");
+  // tl 1097：logManagement（日志管理，纯前端容器 id，无配置键）按可选档入表
+  // ——可选 38→39、总数 74→75（Go 渲染表无条目，同 tabManagement 豁免）。
+  ok(counts.stable === 4 && counts.recommended === 18 && counts.optional === 39 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 4 稳定/18/39/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 75, `register holds exactly 75 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 39 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/18/39/13/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -169,6 +171,8 @@ console.log("\ntask 562 lab three-tier badges");
   // 只在 Go 侧登记（labFeatureTiers 65→66），前端 experimentTiers 暂无该 id——
   // 同 sessionCwdFollow 口径计入 Go-only config-only 豁免（后续设置页入口补
   // 前端注册时两侧转共享，此处同步收回）。
+  // tl 1097：logManagement（日志管理，纯前端容器 id，无配置键，同 tabManagement
+  // 豁免）——Go 渲染表无条目，registry 计数不变（仍 66）。
   ok(Object.keys(goTiers).length === 66, `Go registry parses to 66 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
@@ -176,7 +180,7 @@ console.log("\ntask 562 lab three-tier badges");
   const feOnly = feIds.filter((id) => !goIds.includes(id));
   ok(JSON.stringify(goOnly) === JSON.stringify(["networkRetryBudget", "sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
-  ok(JSON.stringify(feOnly) === JSON.stringify(["glmPlanUsage", "heartbeatRotation", "inputSelection", "interactionPresentation", "modelCapabilityFilter", "searchHistory", "smartAutomation", "tabManagement", "usageMonitoring", "viewLayout"]),
+  ok(JSON.stringify(feOnly) === JSON.stringify(["glmPlanUsage", "heartbeatRotation", "inputSelection", "interactionPresentation", "logManagement", "modelCapabilityFilter", "searchHistory", "smartAutomation", "tabManagement", "usageMonitoring", "viewLayout"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
@@ -225,7 +229,7 @@ console.log("\ntask 562 lab three-tier badges");
   // → 72。任务 1069：stalledIntentNudge 叠加入表 → 73。
   // 任务 1024：draftRewrite 叠加入表 → 73。
   // 任务 1070：standardContinuation 叠加入表 → 74。
-  ok(covered.size === 74, "rail entries cover all 74 features");
+  ok(covered.size === 75, "rail entries cover all 75 features");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
@@ -320,8 +324,12 @@ console.log("\ntask 562 lab three-tier badges");
   const missing: string[] = [];
   for (const id of Object.keys(EXPERIMENT_FEATURE_TIERS) as TierFeatureId[]) {
     // opencodeGoUsage：独立用量卡自带徽章；modelCapabilityFilter：任务 722
-    // 点2 移除「已退役」徽章（只读展示行保留，无徽章）。
-    if (id !== "opencodeGoUsage" && id !== "modelCapabilityFilter" && !wrapped.has(id)) missing.push(id);
+    // 点2 移除「已退役」徽章（只读展示行保留，无徽章）；
+    // logManagement（tl 1097）：kind:param 参数卡的 pane 由专用
+    // LogManagementLabPane 承接（当前占用行 + 打开目录按钮 + 永久+无限制
+    // 警示行，超出通用 labLabel 包裹模式），徽章在组件内直接渲染——同
+    // opencodeGoUsage 自带徽章的豁免口径。
+    if (id !== "opencodeGoUsage" && id !== "modelCapabilityFilter" && id !== "logManagement" && !wrapped.has(id)) missing.push(id);
   }
   ok(missing.length === 0, `pane labels wrap every non-card id in SettingsPanel + the usage card covers opencodeGoUsage (missing: ${JSON.stringify(missing)})`);
   // 任务 774：rail 行渲染单枚聚合徽章（features 表预解析 badgeTier），
