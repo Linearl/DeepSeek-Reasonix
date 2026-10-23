@@ -23,6 +23,10 @@ type ScrollbarState = {
   hot: boolean;
   thumbTop: number;
   thumbHeight: number;
+  /** 任务 1096：rail 上「已加载」区段的像素高度（0 = 不显示区段）。 */
+  loadedHeight: number;
+  /** 任务 1096：历史已全部加载（rail 整条变深 + 顶端收口标记）。 */
+  exhausted: boolean;
 };
 
 type DragGeometry = {
@@ -35,7 +39,7 @@ type DragGeometry = {
   thumbHeight: number;
 };
 
-const HIDDEN_STATE: ScrollbarState = { visible: false, hot: false, thumbTop: 0, thumbHeight: 0 };
+const HIDDEN_STATE: ScrollbarState = { visible: false, hot: false, thumbTop: 0, thumbHeight: 0, loadedHeight: 0, exhausted: false };
 
 export function readCreationScrollbarGeometry(clientHeight: number, scrollHeight: number) {
   const overflow = scrollHeight - clientHeight;
@@ -47,6 +51,28 @@ export function readCreationScrollbarGeometry(clientHeight: number, scrollHeight
 
 function readGeometry(element: HTMLElement) {
   return readCreationScrollbarGeometry(element.clientHeight, element.scrollHeight);
+}
+
+/**
+ * 任务 1096：「已加载」区段的几何映射。
+ *
+ * 滚动条语义只表达「视口 / 内容」比例，加载更多历史后 scrollHeight 增大、
+ * thumb 反而变短（方向与用户直觉相反）。此函数在 rail 上叠加第二层语义：
+ *   - `exhausted`（已到头）⇒ rail 整条变深 + 顶端 3px 收口标记；
+ *   - 否则已加载区间 = `loadedRatio` × rail 高度（像素值供 CSS height 用）。
+ *
+ * 输入 `loadedRatio` = (historyStartTurn − 1) / historyTotalTurns（[0,1]）。
+ * 分母为 0 或 ratio 未定义 ⇒ loadedHeight = 0（不画区段，保持旧观感）。
+ */
+export function mapCreationLoadedGeometry(
+  loadedRatio: number | undefined,
+  exhausted: boolean | undefined,
+  clientHeight: number,
+): { loadedHeight: number; exhausted: boolean } {
+  if (exhausted) return { loadedHeight: clientHeight, exhausted: true };
+  if (loadedRatio == null || !Number.isFinite(loadedRatio) || clientHeight <= 0) return { loadedHeight: 0, exhausted: false };
+  const clamped = Math.max(0, Math.min(1, loadedRatio));
+  return { loadedHeight: Math.round(clamped * clientHeight), exhausted: false };
 }
 
 export function mapFrozenScrollbarDrag(
@@ -86,6 +112,8 @@ export function useCreationTranscriptScrollbar({
   setScrollMode,
   writeOffset,
   finishProgrammaticScroll,
+  historyLoadedRatio,
+  historyExhausted,
 }: {
   enabled: boolean;
   contentRevision: number;
@@ -94,6 +122,14 @@ export function useCreationTranscriptScrollbar({
   setScrollMode: (mode: TranscriptScrollMode, reason?: string) => void;
   writeOffset: (owner: TranscriptScrollOwner, top: number, behavior?: ScrollBehavior) => boolean;
   finishProgrammaticScroll: () => void;
+  /**
+   * 任务 1096：已加载区间在 rail 上的几何。`historyLoadedRatio` = 已加载
+   * (historyStartTurn − 1) / 全部 (historyTotalTurns)，取值 [0,1]；由
+   * `mapCreationLoadedGeometry` 纯函数算出后传给 ScrollbarState，供 CSS
+   * 渲染「已加载」区段。`historyExhausted` = 已到头（historyHasOlder=false）。
+   */
+  historyLoadedRatio?: number;
+  historyExhausted?: boolean;
 }) {
   const [state, setState] = useState<ScrollbarState>(HIDDEN_STATE);
   const hotRef = useRef(false);
@@ -127,13 +163,16 @@ export function useCreationTranscriptScrollbar({
     const maxThumbTop = drag?.maxThumbTop ?? geometry.maxThumbTop;
     const thumbHeight = drag?.thumbHeight ?? geometry.thumbHeight;
     const thumbTop = Math.round(Math.min(maxThumbTop, Math.max(0, (element.scrollTop / overflow) * maxThumbTop)));
+    const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, element.clientHeight);
     setState((previous) => (
       previous.visible
       && previous.hot === hotRef.current
       && previous.thumbTop === thumbTop
       && previous.thumbHeight === thumbHeight
-    ) ? previous : { visible: true, hot: hotRef.current, thumbTop, thumbHeight });
-  }, [enabled, scrollRef]);
+      && previous.loadedHeight === loaded.loadedHeight
+      && previous.exhausted === loaded.exhausted
+    ) ? previous : { visible: true, hot: hotRef.current, thumbTop, thumbHeight, loadedHeight: loaded.loadedHeight, exhausted: loaded.exhausted });
+  }, [enabled, scrollRef, historyLoadedRatio, historyExhausted]);
 
   const finishDrag = useCallback((event?: PointerEvent) => {
     const drag = dragRef.current;
@@ -165,7 +204,8 @@ export function useCreationTranscriptScrollbar({
         const { thumbTop, scrollTop } = mapFrozenScrollbarDrag(drag, event.clientY);
         drag.lastClientY = event.clientY;
         writeOffset("custom-scrollbar", scrollTop);
-        setState({ visible: true, hot: true, thumbTop: Math.round(thumbTop), thumbHeight: drag.thumbHeight });
+        const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, element.clientHeight);
+        setState({ visible: true, hot: true, thumbTop: Math.round(thumbTop), thumbHeight: drag.thumbHeight, loadedHeight: loaded.loadedHeight, exhausted: loaded.exhausted });
         setHot(true);
         return;
       }
@@ -196,7 +236,7 @@ export function useCreationTranscriptScrollbar({
       dragRef.current = null;
       hotRef.current = false;
     };
-  }, [enabled, finishDrag, scrollRef, setHot, syncMetrics, writeOffset]);
+  }, [enabled, finishDrag, historyExhausted, historyLoadedRatio, scrollRef, setHot, syncMetrics, writeOffset]);
 
   const handleScroll = useCallback(() => {
     onScroll();
@@ -236,7 +276,8 @@ export function useCreationTranscriptScrollbar({
     const thumbTop = Math.min(geometry.maxThumbTop, Math.max(0, event.clientY - rect.top - geometry.thumbHeight / 2));
     setScrollMode("restoring", "custom-scrollbar-rail");
     writeOffset("custom-scrollbar", geometry.maxThumbTop > 0 ? (thumbTop / geometry.maxThumbTop) * geometry.overflow : 0);
-    setState({ visible: true, hot: true, thumbTop: Math.round(thumbTop), thumbHeight: geometry.thumbHeight });
+    const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, element.clientHeight);
+    setState({ visible: true, hot: true, thumbTop: Math.round(thumbTop), thumbHeight: geometry.thumbHeight, loadedHeight: loaded.loadedHeight, exhausted: loaded.exhausted });
     setHot(true);
     if (settleFrameRef.current !== null) cancelAnimationFrame(settleFrameRef.current);
     let stableFrames = 0;
@@ -259,7 +300,7 @@ export function useCreationTranscriptScrollbar({
       syncMetrics();
     };
     settleFrameRef.current = requestAnimationFrame(settle);
-  }, [enabled, finishProgrammaticScroll, scrollRef, setHot, setScrollMode, syncMetrics, writeOffset]);
+  }, [enabled, finishProgrammaticScroll, historyExhausted, historyLoadedRatio, scrollRef, setHot, setScrollMode, syncMetrics, writeOffset]);
 
   return { state, handleScroll, onThumbPointerDown, onRailPointerDown };
 }

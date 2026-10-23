@@ -2,6 +2,7 @@
 
 import {
   mapFrozenScrollbarDrag,
+  mapCreationLoadedGeometry,
   rebaseFrozenScrollbarDrag,
   readCreationScrollbarGeometry,
 } from "../lib/useCreationTranscriptScrollbar";
@@ -50,6 +51,37 @@ eq(mapFrozenScrollbarDrag(rebased, 300).scrollTop, 3_100, "subsequent drag movem
 
 eq(mapFrozenScrollbarDrag(drag, -1_000).thumbTop, 0, "drag clamps at the top");
 eq(mapFrozenScrollbarDrag(drag, 2_000).thumbTop, 640, "drag clamps at the bottom");
+
+// 任务 1096：已加载区段几何映射（比例 → 像素）。断言具体数值，非 bool。
+const loadedRatio = 0.25;
+const partial = mapCreationLoadedGeometry(loadedRatio, false, 800);
+eq(partial.loadedHeight, 200, "loaded segment = ratio × rail height");
+eq(partial.exhausted, false, "partial load is not exhausted");
+
+const moreLoaded = mapCreationLoadedGeometry(0.6, false, 800);
+eq(moreLoaded.loadedHeight, 480, "more loaded history grows the segment");
+
+const allLoaded = mapCreationLoadedGeometry(1, false, 800);
+eq(allLoaded.loadedHeight, 800, "fully loaded ratio fills the rail");
+
+const exhausted = mapCreationLoadedGeometry(0.25, true, 800);
+eq(exhausted.loadedHeight, 800, "exhausted overrides ratio to fill the rail");
+eq(exhausted.exhausted, true, "exhausted flag carries through");
+
+const zeroRatio = mapCreationLoadedGeometry(0, false, 800);
+eq(zeroRatio.loadedHeight, 0, "zero ratio renders no loaded segment");
+
+const unknownRatio = mapCreationLoadedGeometry(undefined, false, 800);
+eq(unknownRatio.loadedHeight, 0, "undefined ratio renders no segment");
+
+const negativeRatio = mapCreationLoadedGeometry(-0.5, false, 800);
+eq(negativeRatio.loadedHeight, 0, "negative ratio clamps to 0");
+
+const overRatio = mapCreationLoadedGeometry(1.5, false, 800);
+eq(overRatio.loadedHeight, 800, "ratio > 1 clamps to the rail height");
+
+const noViewport = mapCreationLoadedGeometry(0.5, false, 0);
+eq(noViewport.loadedHeight, 0, "zero-height rail renders no segment");
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

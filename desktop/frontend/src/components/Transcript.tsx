@@ -592,6 +592,14 @@ export function Transcript(props: TranscriptProps) {
     setScrollMode: setScrollMode,
     writeOffset: writeOffset,
     finishProgrammaticScroll: endGesture,
+    // 任务 1096：「已加载」区段比例 = 已加载轮次 / 全部轮次（historyStartTurn
+    // 是 1-based、totalTurns 是全部，故分子是 startTurn-1）。hasOlderHistory
+    // 由 App 传入，已含「rewindState / runtimeTransitioning 时置 false」的
+    // 语义；exhausted 时 mapCreationLoadedGeometry 直接整条 rail 变深。
+    historyLoadedRatio: historyTotalTurns > 0 && historyStartTurn > 0
+      ? (historyStartTurn - 1) / historyTotalTurns
+      : undefined,
+    historyExhausted: !hasOlderHistory,
   });
 
   const setScroller = useMemo(() => composeDomRef(setKernelScroller, entranceRef), [setKernelScroller, entranceRef]);
@@ -818,6 +826,15 @@ export function Transcript(props: TranscriptProps) {
           </LiveStreamContext.Provider>
         )}
         {creationMode && creationScrollbar.visible && <div className={`transcript__scrollbar${creationScrollbar.hot ? " transcript__scrollbar--hot" : ""}`} onPointerDown={handleCreationScrollbarRailPointerDown} aria-hidden="true">
+          {/* 任务 1096：rail 上叠「已加载」区段（深色）+ 未加载留白（浅色）。
+              exhausted 时 loadedHeight=clientHeight ⇒ 整条 rail 变深，顶端
+              收口标记（--exhausted 类）与「还能加载」可区分。 */}
+          {creationScrollbar.loadedHeight > 0 && (
+            <div
+              className={`transcript__scrollbar-loaded${creationScrollbar.exhausted ? " transcript__scrollbar-loaded--exhausted" : ""}`}
+              style={{ height: creationScrollbar.loadedHeight } as CSSProperties}
+            />
+          )}
           <div className="transcript__scrollbar-thumb" style={{ top: creationScrollbar.thumbTop, height: creationScrollbar.thumbHeight } as CSSProperties} onPointerDown={handleCreationScrollbarThumbPointerDown} />
         </div>}
         {!empty && showQuestionNav && <Suspense fallback={null}><TranscriptQuestionNavigator ref={questionNavigatorRef} kernel={transcriptKernel}
