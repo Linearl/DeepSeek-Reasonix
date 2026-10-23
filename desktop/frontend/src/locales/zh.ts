@@ -4630,6 +4630,9 @@ export const zh: Record<DictKey, string> = {
   "todo.expand": "展开子任务",
   "todo.archiveToggle": "已归档批次（{n}）",
   "todo.continue": "继续",
+  // Task 1107: focus-mode group headers (collapsed rows with hover preview).
+  "todo.doneGroup": "已完成 {n} 项",
+  "todo.pendingGroup": "待处理 {n} 项",
 
   // 斜杠菜单标签
   "slash.project": "项目",

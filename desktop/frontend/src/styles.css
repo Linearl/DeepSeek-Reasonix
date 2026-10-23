@@ -24822,6 +24822,24 @@ button.statusbar__mcp:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 32%, var(--border-soft));
   color: var(--accent);
 }
+/* Task 1107: the current item's static arrow marker (no spinner — a todo row
+   is long-lived page chrome, and a loading animation would read as a turn
+   state). Width-matched to the status chips so rows keep one grid rhythm. */
+.todobar__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  color: var(--accent);
+  font-size: var(--text-md);
+  line-height: 1.35;
+}
+.todobar__mark--waiting {
+  color: var(--warn);
+}
+.todobar__mark--paused {
+  color: var(--fg-dim);
+}
 .todobar__status--waiting {
   border-color: color-mix(in srgb, var(--warn) 32%, var(--border-soft));
   color: var(--warn);
@@ -24900,6 +24918,98 @@ button.statusbar__mcp:focus-visible {
 }
 .todobar__item--archived .todobar__text {
   color: var(--fg-faint);
+}
+/* Task 1107: focus-mode group headers — collapsed rows that stand for every
+   terminal (done group) or out-of-window (pending group) subtree. */
+.todobar__group-head {
+  padding-block: 2px;
+}
+.todobar__group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  background: var(--bg-soft);
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  cursor: pointer;
+}
+.todobar__group-toggle:hover {
+  color: var(--fg);
+}
+.todobar__group-caret {
+  font-size: var(--text-xs);
+}
+.todobar__group--done .todobar__group-toggle {
+  border-color: color-mix(in srgb, var(--ok) 26%, var(--border-soft));
+  color: var(--fg-faint);
+}
+.todobar__group-list {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+/* Task 1107 pit ②: the hover preview is position:fixed (React never appends
+   it into the scrolling list) — the head measures the header on enter and
+   writes left/top/width/transform inline so the card expands leftward with
+   an 8px edge correction (the shelf pins to the right edge). */
+.todobar__group-preview {
+  position: fixed;
+  z-index: var(--z-local-popover);
+  max-width: 360px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 28%, transparent);
+  pointer-events: auto;
+}
+.todobar__group-preview-title {
+  margin-bottom: 6px;
+  color: var(--fg-dim);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.todobar__group-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.todobar__group-preview-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.todobar__group-preview-item--completed .todobar__group-preview-text,
+.todobar__group-preview-item--abandoned .todobar__group-preview-text {
+  color: var(--fg-faint);
+  text-decoration: line-through;
+}
+.todobar__group-preview-item--archived .todobar__group-preview-text {
+  color: var(--fg-faint);
+}
+.todobar__group-preview-icon--completed {
+  color: var(--ok);
+}
+.todobar__group-preview-icon--abandoned {
+  color: var(--warn);
+}
+.todobar__group-preview-icon--pending,
+.todobar__group-preview-icon--archived {
+  color: var(--fg-dim);
 }
 /* Task 152: collapsed record of earlier fully-finished batches — completing no
    longer means the history is transcript-only. */

@@ -111,20 +111,44 @@ console.log("\ntask 270 todo wrap + panel growth");
     ));
   });
 
-  const items = host.querySelectorAll(".todobar__item");
-  ok(items.length === 14, "④ 14-item list renders every row (large-list face verified in harness)");
+  // Task 1107 focus mode: the same 14-item batch collapses into 5 rows
+  // (done group + current + LOOKAHEAD=2 pending + pending group). The 270
+  // contract — wrap rule, dock cap lift, chip nowrap — is re-anchored on the
+  // collapsed face; the plain-row face reappears when the pending group is
+  // expanded (asserted below).
+  const rows = host.querySelectorAll(".todobar__item, .todobar__group");
+  ok(rows.length === 5, "④ 14-item batch renders 5 focus rows (done group + current + lookahead + pending group)");
   const texts = [...host.querySelectorAll(".todobar__text")];
-  ok(texts.length === 14 && texts.every((n) => (n.textContent || "").length > 0), "④ every row has a non-empty .todobar__text node");
-  ok(texts.some((n) => (n.textContent || "").includes("AAAAABBBBB")), "④ the long unbreakable token reaches the DOM intact (wrap rule applies to it, no truncation)");
+  // 3 plain rows: current + 2 lookahead units (unit 0 is the current one).
+  ok(texts.length === 3 && texts.every((n) => (n.textContent || "").length > 0), "④ every plain row has a non-empty .todobar__text node");
+  ok(!texts.some((n) => (n.textContent || "").includes("任务 14")), "④ the deepest sub-steps stay folded inside the pending group");
 
   const list = host.querySelector(".todobar__list");
   ok(!!list, "④ .todobar__list present under the dock-shaped mount (class contract for the CSS override)");
 
   const subs = host.querySelectorAll(".todobar__item--sub");
-  ok(subs.length === 2, "④ sub-level rows keep their indent class (259 hierarchy zero-regression)");
+  ok(subs.length === 0, "④ sub-level rows stay inside the collapsed pending group (no indent row leaks)");
 
+  // 3 plain rows: the current row carries the static arrow marker instead of
+  // a status chip (task 1107: no spinner on a long-lived row).
   const chips = host.querySelectorAll(".todobar__status");
-  ok(chips.length === 14, "④ status chips render per row (unchanged single-line elements)");
+  ok(chips.length === 2, "④ status chips render per plain row (unchanged single-line elements)");
+
+  // Expand the pending group: the plain tree rows reappear with the long
+  // token intact (the wrap face 270 originally pinned) and the sub-level
+  // indent classes back.
+  const pendingToggle = [...host.querySelectorAll(".todobar__group-toggle")]
+    .find((b) => (b.textContent || "").includes("待处理") || (b.textContent || "").includes("Pending"));
+  ok(!!pendingToggle, "④ the pending group header renders its toggle");
+  await act(async () => { (pendingToggle as HTMLButtonElement).click(); });
+  const expandedTexts = [...host.querySelectorAll(".todobar__text")];
+  ok(expandedTexts.some((n) => (n.textContent || "").includes("AAAAABBBBB")), "④ the long unbreakable token reaches the DOM intact after expand (wrap rule applies to it, no truncation)");
+  // The lookahead window keeps two sibling units plain; the sub-steps at
+  // list tail stay inside the pending group even after expand (the group
+  // renders them, but SubtreeRows mounts them without the sub indent class
+  // only when their parent was collapsed — here they render with it).
+  ok(host.querySelectorAll(".todobar__item--sub").length >= 1, "④ sub-level rows keep their indent class after expand (259 hierarchy zero-regression)");
+  ok(host.querySelectorAll(".todobar__status").length === 14, "④ status chips render per row after expand (14 plain rows)");
 
   await act(async () => { root.unmount(); });
   host.remove();
