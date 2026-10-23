@@ -153,6 +153,13 @@ func DiagnoseFailure(err error) *FailureDiagnostic {
 		d.Kind = "protocol"
 	case IsOpaqueBadRequest(err):
 		d.Kind = "upstream_reason_missing"
+	case AsRetryBudgetExhausted(err) != nil:
+		// 任务1056: the terminal face of a budget-gated retry loop (wall-clock
+		// or attempt cap spent) — classified BEFORE the generic "temporary"
+		// retryable check so a caller can distinguish "the provider is
+		// reachable but unreachable for N attempts" from "this one attempt
+		// transiently failed" without parsing error text.
+		d.Kind = "retry_budget_exhausted"
 	case ClassifyRecovery(err).Retryable:
 		d.Kind = "temporary"
 	case api != nil && api.Status >= 400 && api.Status < 500:

@@ -181,6 +181,17 @@ const (
 	// last to keep the Kind values before it wire-stable; older clients
 	// ignore unknown kinds.
 	Connecting
+	// ProviderUnreachable (task 1056 方案 C) fires once a provider request's
+	// whole retry budget is exhausted — every attempt failed with a transient
+	// network error and the turn is about to fail anyway. It is a "why the
+	// turn is dying" notice, not a recoverable retry: Text carries the last
+	// error, RetryAttempt/RetryMax the attempt count and cap. The desktop
+	// frontend already consumes kind "provider_unreachable" (the credential-
+	// channel notice reused the same wire name); this kind re-uses that wire
+	// name so the pre-existing consumer renders it with zero frontend change.
+	// Appended last to keep the Kind values before it wire-stable; older
+	// clients ignore unknown kinds.
+	ProviderUnreachable
 	KindCount // Follows all real event kinds.
 )
 

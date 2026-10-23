@@ -64,7 +64,7 @@ func reviewCommand(args []string) int {
 	}
 
 	// 3. Create provider.
-	prov, err := boot.NewProviderWithProxy(entry, cfg.NetworkProxySpec())
+	prov, err := boot.NewProviderWithProxyConfig(entry, cfg.NetworkProxySpec(), cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error: failed to create provider:", err)
 		return 1

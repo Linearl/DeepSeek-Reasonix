@@ -19,6 +19,12 @@ import (
 // header phase after the initial try (so up to MaxRetries+1 total attempts).
 const MaxRetries = 10
 
+// DefaultDialTimeout is the hard-coded dial timeout the three HTTP providers
+// (anthropic/openai/responses) use when no experimental retry budget is in
+// effect — task 1056 only changes this number behind its lab switch, so the
+// off-state keeps today's exact 30s behaviour.
+const DefaultDialTimeout = 30 * time.Second
+
 const maxBackoff = 15 * time.Second
 
 // maxRetryAfter bounds a server-supplied Retry-After. Rate-limit windows are
@@ -52,6 +58,144 @@ type SendOptions struct {
 	KeySource           string // human-readable source of KeyEnv, when known
 	KeyPresent          bool   // a non-empty key is being sent — separates "rejected" from "missing"
 	RetryAuth           bool   // the key has authenticated before — retry transient 401s instead of failing fast
+}
+
+// RetryBudget (task 1056 方案 B) is the lab-switch-gated retry tuning layer.
+// It rides a context value so SendWithRetry — the single choke point every HTTP
+// provider shares — can read it without touching any provider signature or the
+// wire bytes, exactly like WithManagedRecovery's ctx-value precedent.
+//
+// Off-state contract: a zero Budget (no WithRetryBudget on the context) keeps
+// every field at its current hard-coded behaviour, byte-for-byte — this is
+// pinned by TestSendWithRetryDefaultBudgetKeepsBaselineSemantics.
+type RetryBudget struct {
+	// MaxRetries replaces the package const MaxRetries as the header-phase
+	// retry cap. 0 means "use the const" — there is no way to configure
+	// "retry zero times" through the budget (ManagedRecovery already covers
+	// the retry-ownership case), so an absent field never silently disables
+	// retries.
+	MaxRetries int
+	// DialTimeout is the per-attempt dial deadline, advertised on
+	// DialTimeoutError so the provider's transport options can pick it up —
+	// SendWithRetry itself does not dial, it only classifies and enforces
+	// the budget.
+	DialTimeout time.Duration
+	// FastBackoff caps the exponential backoff ramp for a DialTimeoutError,
+	// so a flapping dial path (the 2026-10-21 incident: 8.5 minutes of 11 ×
+	// 30s dials) burns through attempts in seconds instead of riding the
+	// 0.5s→15s ramp. Unset (0) keeps today's curve.
+	FastBackoff time.Duration
+	// WallClock bounds the whole retry loop (all attempts + backoff sleeps,
+	// from the first attempt to exhaustion) so a bad network fails the turn
+	// with a clear error instead of hanging the session indefinitely.
+	WallClock time.Duration
+	// WrapExhausted, when true, wraps the terminal error of a budget-gated
+	// retry loop in a RetryBudgetExhaustedError ("network retries exhausted
+	// after N attempt(s) / duration (budget X)") instead of returning the bare
+	// last error. Without it the wire bytes of a given provider request stay
+	// unchanged even while the budget's timing behaviour is on — a
+	// conservative default for a switch that ships off: timing and wrapping
+	// are separately gated so a user can tighten their retry timing without
+	// also opting into the error-shape change.
+	WrapExhausted bool
+}
+
+type retryBudgetKey struct{}
+
+// WithRetryBudget attaches a non-nil budget to ctx for SendWithRetry to read.
+func WithRetryBudget(ctx context.Context, b RetryBudget) context.Context {
+	return context.WithValue(ctx, retryBudgetKey{}, b)
+}
+
+// RetryBudgetFromContext returns the attached budget, or the zero Budget when
+// none is attached (the off-state: every field falls back to its hard-coded
+// default).
+func RetryBudgetFromContext(ctx context.Context) RetryBudget {
+	if ctx == nil {
+		return RetryBudget{}
+	}
+	b, _ := ctx.Value(retryBudgetKey{}).(RetryBudget)
+	return b
+}
+
+// DialTimeoutError is returned when a single attempt's dial (TCP handshake)
+// exceeded RetryBudget.DialTimeout. It carries the configured dial deadline so
+// an outer classification site can distinguish "the network path is dead right
+// now" (fast-backoff candidate) from "the server refused us immediately"
+// (keep the existing ramp).
+type DialTimeoutError struct {
+	Timeout time.Duration
+	Err     error
+}
+
+func (e *DialTimeoutError) Error() string {
+	return fmt.Sprintf("dial timeout after %s: %v", e.Timeout.Round(time.Millisecond), e.Err)
+}
+
+func (e *DialTimeoutError) Unwrap() error { return e.Err }
+
+// RetryBudgetExhaustedError wraps the last error of a budget-gated retry loop
+// once either the attempt cap or the wall-clock budget is spent. It is the
+// terminal face of 方案 B's wall-clock cap: the turn fails here with a clear
+// "network retries exhausted" instead of hanging.
+type RetryBudgetExhaustedError struct {
+	Attempts  int
+	Elapsed   time.Duration
+	WallClock time.Duration
+	Cause     error
+}
+
+func (e *RetryBudgetExhaustedError) Error() string {
+	return fmt.Sprintf("network retries exhausted after %d attempt(s) / %s (budget %s)", e.Attempts, e.Elapsed.Round(time.Second), e.WallClock.Round(time.Second))
+}
+
+func (e *RetryBudgetExhaustedError) Unwrap() error { return e.Cause }
+
+// AsRetryBudgetExhausted unwraps err to the terminal RetryBudgetExhaustedError
+// when present, or nil.
+func AsRetryBudgetExhausted(err error) *RetryBudgetExhaustedError {
+	var exhausted *RetryBudgetExhaustedError
+	if errors.As(err, &exhausted) {
+		return exhausted
+	}
+	return nil
+}
+
+// IsDialTimeout reports whether err (or anything it wraps) is the
+// task-1056-B dial-timeout marker — the shape a fast-backoff lane keys on.
+func IsDialTimeout(err error) bool {
+	var dialErr *DialTimeoutError
+	return errors.As(err, &dialErr)
+}
+
+// TransportTuning reads the task-1056-B "retry_budget" transport knob out of a
+// provider.Config.Extra map: when the lab switch is on, boot stamps a
+// provider.TransportBudget there (see boot/model_provider.go) so the concrete
+// dialer can shorten DialTimeout and force a fresh DNS lookup per attempt.
+// Off-state contract: no key, or a zero-valued budget, returns
+// (DefaultDialTimeout, false) — exactly today's hard-coded 30s behaviour with
+// no DNS-refresh override.
+func TransportTuning(extra map[string]any) (dialTimeout time.Duration, forceDNSRefresh bool) {
+	if extra == nil {
+		return DefaultDialTimeout, false
+	}
+	b, ok := extra["retry_budget"].(TransportBudget)
+	if !ok {
+		return DefaultDialTimeout, false
+	}
+	if b.DialTimeout <= 0 {
+		return DefaultDialTimeout, false
+	}
+	return b.DialTimeout, b.ForceDNSRefresh
+}
+
+// TransportBudget is the transport-knob half of the task-1056-B retry budget
+// — the part a provider's newHTTPClient needs to pick up a lab-switched dial
+// deadline without dragging the whole RetryBudget type (backoff/wall-clock are
+// retry-loop concerns, not transport concerns) into every constructor.
+type TransportBudget struct {
+	DialTimeout     time.Duration
+	ForceDNSRefresh bool
 }
 
 // RetryInfo describes a backoff about to happen: Attempt is the 1-based retry
@@ -290,7 +434,7 @@ func IsResponseHeaderTimeout(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), responseHeaderTimeoutMarker)
 }
 
-func backoffDelay(attempt int, retryAfter time.Duration) time.Duration {
+func backoffDelay(attempt int, retryAfter time.Duration, budget RetryBudget, lastErr error) time.Duration {
 	if retryAfter > 0 {
 		if retryAfter > maxRetryAfter {
 			return maxRetryAfter
@@ -298,6 +442,12 @@ func backoffDelay(attempt int, retryAfter time.Duration) time.Duration {
 		return retryAfter
 	}
 	d := min(time.Duration(1<<(attempt-1))*500*time.Millisecond, maxBackoff)
+	// 任务1056-B: a dial-timeout (the path itself is dead, not the server)
+	// fast-backs-off instead of riding the exponential ramp — the incident
+	// this budget was built for was 8.5 minutes of the latter.
+	if budget.FastBackoff > 0 && IsDialTimeout(lastErr) && d > budget.FastBackoff {
+		d = budget.FastBackoff
+	}
 	return d + time.Duration(rand.Intn(250))*time.Millisecond
 }
 
@@ -348,23 +498,53 @@ func readErrorBody(resp *http.Response) []byte {
 // statuses become *APIError. A RetryNotify in ctx fires before each sleep.
 // Retries cover only the header phase — once the body streams, mid-stream
 // failures are not retried (the model has already emitted tokens).
+//
+// Task 1056 方案 B: when a RetryBudget is attached to ctx (lab switch, default
+// off) this loop additionally enforces a wall-clock cap (RetryBudget.WallClock)
+// over the whole retry sequence and can fast-back-off a dial-timeout-class
+// failure (RetryBudget.FastBackoff + DialTimeoutError). Off-state (no budget on
+// ctx) is byte-for-byte identical to the pre-1056 loop.
 func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOptions, newReq func(context.Context) (*http.Request, error)) (*http.Response, error) {
 	notify := retryNotifyFromContext(ctx)
 	connect := connectNotifyFromContext(ctx)
 	identity := RequestIdentity{Provider: opts.Provider, DisplayName: opts.ProviderDisplayName, Protocol: opts.Protocol}
+	budget := RetryBudgetFromContext(ctx)
 	var lastErr error
 	var retryAfter time.Duration
 	authRetries := 0
 
 	limit := MaxRetries
+	if budget.MaxRetries > 0 {
+		limit = budget.MaxRetries
+	}
 	if ManagedRecovery(ctx) {
 		limit = 0
 	}
+	var deadline time.Time
+	if budget.WallClock > 0 {
+		deadline = time.Now().Add(budget.WallClock)
+	}
+	exhausted := func(attempts int, started time.Time) error {
+		if !budget.WrapExhausted {
+			return lastErr
+		}
+		return &RetryBudgetExhaustedError{Attempts: attempts, Elapsed: time.Since(started), WallClock: budget.WallClock, Cause: lastErr}
+	}
+	started := time.Now()
 	for attempt := 0; attempt <= limit; attempt++ {
 		if attempt > 0 {
-			delay := backoffDelay(attempt, retryAfter)
+			delay := backoffDelay(attempt, retryAfter, budget, lastErr)
+			if !deadline.IsZero() && time.Now().Add(delay).After(deadline) {
+				// The backoff itself would overrun the wall-clock budget:
+				// cut it to the remaining time (a still-positive remainder
+				// is honored below; a zero/negative one fails immediately).
+				delay = time.Until(deadline)
+				if delay <= 0 {
+					return nil, exhausted(attempt, started)
+				}
+			}
 			if notify != nil {
-				notify(RetryInfo{Attempt: attempt, Max: MaxRetries, Delay: delay, Err: lastErr})
+				notify(RetryInfo{Attempt: attempt, Max: limit, Delay: delay, Err: lastErr})
 			}
 			select {
 			case <-ctx.Done():
@@ -392,6 +572,9 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 				return nil, &RequestFailure{Identity: identity, Operation: "request failed", Err: err}
 			}
 			lastErr = &RequestFailure{Identity: identity, Operation: "request failed", Err: err}
+			if !deadline.IsZero() && time.Now().After(deadline) {
+				return nil, exhausted(attempt+1, started)
+			}
 			continue
 		}
 		if resp.StatusCode == http.StatusOK {
@@ -440,6 +623,12 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 			return nil, apiErr
 		}
 		lastErr = apiErr
+	}
+	if !deadline.IsZero() && time.Now().After(deadline) {
+		// Wall-clock budget spent across attempts that each individually
+		// returned a retryable failure in time — fail clearly instead of
+		// handing back the bare last error with no explanation.
+		return nil, exhausted(limit+1, started)
 	}
 	return nil, lastErr
 }

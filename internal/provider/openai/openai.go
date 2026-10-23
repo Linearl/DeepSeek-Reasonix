@@ -335,11 +335,15 @@ func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 		return cfg.HTTPClient, nil
 	}
 	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
+	// 任务1056-B: DialTimeout is config-driven only when the retry-budget lab
+	// switch is on; off-state keeps the historical 30s.
+	dialTimeout, forceDNSRefresh := provider.TransportTuning(cfg.Extra)
 	return netclient.NewHTTPClient(spec, netclient.TransportOptions{
-		DialTimeout:           30 * time.Second,
+		DialTimeout:           dialTimeout,
 		KeepAlive:             30 * time.Second,
 		TLSHandshakeTimeout:   15 * time.Second,
 		ResponseHeaderTimeout: 300 * time.Second, // unified provider response-header idle guard
+		ForceDNSRefresh:       forceDNSRefresh,
 	})
 }
 

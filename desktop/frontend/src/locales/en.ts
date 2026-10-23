@@ -4716,7 +4716,7 @@ export const en = {
   "transcript.processedDuration": "Processed {s}s",
   "notice.info": "Notice",
   "notice.remoteTurnInterrupted": "The remote connection dropped mid-turn; the session will re-sync from the server after reconnecting.",
-  "notice.remoteProviderUnreachable": "The credential channel (desktop key proxy) is unreachable, retrying: {detail}",
+  "notice.remoteProviderUnreachable": "The credential channel or model service is unreachable, retries exhausted: {detail}",
   "notice.warning": "Warning",
   "notice.askSubmitFailed": "Unable to submit answer: {error}",
   "notice.details": "Details",

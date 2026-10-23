@@ -137,10 +137,14 @@ func New(cfg Config) provider.Provider {
 	// Official DeepSeek image input is pinned to one SKU. Ignore metadata or
 	// Extra["vision"] for Flash/Pro.
 	vision = openai.DeepSeekImageInputAllowed(vendor == "deepseek", cfg.RequestURL, cfg.Model, cfg.ModelInfo != nil, vision)
+	// 任务1056-B: DialTimeout is config-driven only when the retry-budget lab
+	// switch is on; off-state keeps the historical 30s.
+	dialTimeout, forceDNSRefresh := provider.TransportTuning(cfg.Extra)
 	httpClient := &http.Client{}
 	if built, err := netclient.NewHTTPClient(cfg.Proxy, netclient.TransportOptions{
-		DialTimeout: 30 * time.Second, KeepAlive: 30 * time.Second,
+		DialTimeout: dialTimeout, KeepAlive: 30 * time.Second,
 		TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 300 * time.Second,
+		ForceDNSRefresh: forceDNSRefresh,
 	}); err == nil {
 		httpClient = built
 	}

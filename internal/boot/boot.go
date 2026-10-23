@@ -2899,7 +2899,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			if !ok {
 				return nil, fmt.Errorf("recovery_model %q is not a configured provider", recoveryModel)
 			}
-			rProv, err := NewProviderWithProxy(re, proxySpec)
+			rProv, err := NewProviderWithProxyConfig(re, proxySpec, cfg)
 			if err != nil {
 				return nil, fmt.Errorf("recovery_model %q: %w", recoveryModel, err)
 			}

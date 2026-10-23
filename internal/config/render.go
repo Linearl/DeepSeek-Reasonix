@@ -188,6 +188,13 @@ var labFeatureTiers = []labFeatureTier{
 	// 三件共用一键，config.go 用户拍板「提效类可选档」）——979 补设置页入口
 	// 自豁免表转正；工具优化聚合页成员行，重启生效（boot 快照三处门控）。
 	{"capabilityGroups", LabTierOptional, []string{"experimental_capability_groups"}},
+	// ── network（网络，1 项）────────────────────────────────────
+	// 任务 1056：网络重试预算分级（dial 短超时快退避 + MaxRetries/DialTimeout
+	// 配置化 + 强制重解析 DNS + turn 级 wall-clock 上限）。未稳定档默认关——
+	// 涉及全 provider 共享路径语义变更（retry.go 是 anthropic/openai/responses
+	// 共用的 SendWithRetry  chokepoint），铁律 2：不开启时请求序列与失败语义
+	// 与现状一致（[network.retry_budget] 默认不渲染任何非默认值）。
+	{"networkRetryBudget", LabTierUnstable, []string{"network_retry_budget"}},
 }
 
 // labNonFeatureKeys：渲染表里存在、但不属于表A 46 项的实验室族键（豁免门禁，
@@ -241,6 +248,9 @@ var labSpecialKeys = map[string]bool{
 	// 任务 1070：standard_continuation 是 Standard 流续跑总闸的实验室特性键
 	// （无 experimental_ 前缀，随 standardContinuation 档位族登记）。
 	"standard_continuation": true,
+	// 任务 1056：network_retry_budget 是 [network.retry_budget] 实验室特性键
+	// （无 experimental_ 前缀，随 networkRetryBudget 档位族登记）。
+	"network_retry_budget": true,
 }
 
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
@@ -660,6 +670,29 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			fmt.Fprintf(&b, "password = %q   # supports ${VAR} expansion\n", c.Network.Proxy.Password)
 		} else {
 			b.WriteString("# password = \"${REASONIX_PROXY_PASSWORD}\"   # optional; supports ${VAR} expansion\n")
+		}
+		b.WriteString("\n[network.retry_budget]\n")
+		rb := c.Network.RetryBudget
+		fmt.Fprintf(&b, "enabled = %v   # task 1056: lab switch — off (default) keeps today's retry semantics byte-for-byte\n", rb.Enabled)
+		if rb.MaxRetries > 0 {
+			fmt.Fprintf(&b, "max_retries = %d   # 0 keeps the hard-coded default (10)\n", rb.MaxRetries)
+		} else {
+			b.WriteString("# max_retries = 0   # 0 keeps the hard-coded default (10)\n")
+		}
+		if rb.DialTimeoutSeconds > 0 {
+			fmt.Fprintf(&b, "dial_timeout_seconds = %d   # 0 keeps the hard-coded default (30s); e.g. 8 for a short-dial fast-fail lane\n", rb.DialTimeoutSeconds)
+		} else {
+			b.WriteString("# dial_timeout_seconds = 0   # 0 keeps the hard-coded default (30s)\n")
+		}
+		if rb.FastBackoffSeconds > 0 {
+			fmt.Fprintf(&b, "fast_backoff_seconds = %d   # caps backoff ramp for dial-timeout failures only; 0 keeps the default exponential ramp\n", rb.FastBackoffSeconds)
+		} else {
+			b.WriteString("# fast_backoff_seconds = 0   # 0 keeps the default exponential ramp\n")
+		}
+		if rb.WallClockSeconds > 0 {
+			fmt.Fprintf(&b, "wall_clock_seconds = %d   # bounds the whole retry loop per request; 0 = uncapped (today's behaviour)\n", rb.WallClockSeconds)
+		} else {
+			b.WriteString("# wall_clock_seconds = 0   # 0 = uncapped (today's behaviour)\n")
 		}
 		b.WriteString("\n")
 	}
@@ -1667,6 +1700,23 @@ func RenderTOMLProjectDelta(c *Config) string {
 			}
 			if c.Network.Proxy.Password != "" {
 				fmt.Fprintf(&b, "password = %q\n", c.Network.Proxy.Password)
+			}
+		}
+		if c.Network.RetryBudget != d.Network.RetryBudget {
+			rb := c.Network.RetryBudget
+			b.WriteString("[network.retry_budget]\n")
+			fmt.Fprintf(&b, "enabled = %v\n", rb.Enabled)
+			if rb.MaxRetries != 0 {
+				fmt.Fprintf(&b, "max_retries = %d\n", rb.MaxRetries)
+			}
+			if rb.DialTimeoutSeconds != 0 {
+				fmt.Fprintf(&b, "dial_timeout_seconds = %d\n", rb.DialTimeoutSeconds)
+			}
+			if rb.FastBackoffSeconds != 0 {
+				fmt.Fprintf(&b, "fast_backoff_seconds = %d\n", rb.FastBackoffSeconds)
+			}
+			if rb.WallClockSeconds != 0 {
+				fmt.Fprintf(&b, "wall_clock_seconds = %d\n", rb.WallClockSeconds)
 			}
 		}
 		b.WriteString("\n")
