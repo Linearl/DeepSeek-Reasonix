@@ -72,6 +72,9 @@ type Messages struct {
 	// request is out but no headers arrived; %d = estimated prompt tokens,
 	// %d = seconds already waited (repeats stay informative, not a frozen line).
 	HeaderWaitSlowNoticeFmt string
+	// HeaderWaitLightNotice (任务1080): the 3~5s light tier of the same wait —
+	// an ordinary "still working" line without the slow-response tone.
+	HeaderWaitLightNotice string
 	// HeaderTimeoutRetryFmt (任务927): a response-header timeout consumed one
 	// retry; %d = attempt number, %d = max attempts. Actionable advice before
 	// the next full-prefill replay.

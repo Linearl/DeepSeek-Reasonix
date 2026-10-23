@@ -18,6 +18,16 @@ func shrinkHeaderWaitForTest(t *testing.T, after, repeat time.Duration) {
 	t.Cleanup(func() { headerWaitNoticeAfter, headerWaitNoticeRepeat = oldAfter, oldRepeat })
 }
 
+// shrinkHeaderWaitLightForTest shrinks ONLY the 任务1080 light-tier threshold
+// so a test can drive the 3~5s mark in milliseconds without touching the 30s
+// slow tier (the two knobs are independent by design).
+func shrinkHeaderWaitLightForTest(t *testing.T, after time.Duration) {
+	t.Helper()
+	old := headerWaitLightNoticeAfter
+	headerWaitLightNoticeAfter = after
+	t.Cleanup(func() { headerWaitLightNoticeAfter = old })
+}
+
 // slowStartProvider delays returning its stream channel — simulating the
 // response-header wait — then either replies or hangs. The delay honours ctx
 // so a cancelled turn unblocks the start goroutine (goleak-clean).
@@ -160,5 +170,72 @@ func TestCancelDuringHeaderWaitReturnsContextCanceled(t *testing.T) {
 	got := a.streamWithSamplingRecovery(ctx, 1)
 	if !errors.Is(got.err, context.DeadlineExceeded) && !errors.Is(got.err, context.Canceled) {
 		t.Fatalf("err = %v, want the test's own deadline", got.err)
+	}
+}
+
+// 任务1080 ①: the light tier fires during the header wait (well before the
+// 30s slow tier) and names the wait with the light code — not the slow code.
+func TestHeaderWaitLightNoticeFiresDuringHeaderWait(t *testing.T) {
+	shrinkHeaderWaitForTest(t, 300*time.Millisecond, 300*time.Millisecond) // slow tier far away
+	shrinkHeaderWaitLightForTest(t, 50*time.Millisecond)
+	prov := &slowStartProvider{delay: 250 * time.Millisecond, reply: "ok"}
+	sink := &recordingSink{}
+	a := newBreakerAgent(t, prov, sink)
+
+	got := a.streamWithSamplingRecovery(context.Background(), 1)
+	if got.err != nil {
+		t.Fatalf("turn failed: %v", got.err)
+	}
+	if !hasNoticeCode(sink, event.NoticeCodeHeaderWaitLight) {
+		t.Fatalf("notice codes = %v, want %s during a %s header wait", noticeCodes(sink), event.NoticeCodeHeaderWaitLight, prov.delay)
+	}
+	// The slow tier's threshold was NOT reached in this wait — it must stay
+	// quiet, so the two tiers cannot double-fire on the same stretch.
+	if hasNoticeCode(sink, event.NoticeCodeHeaderWaitSlow) {
+		t.Fatalf("notice codes = %v: header_wait_slow must not fire below its threshold", noticeCodes(sink))
+	}
+}
+
+// 任务1080 ②: fast headers + fast reply → zero light-tier notice (不打扰).
+func TestHeaderWaitLightNoticeStaysQuietOnFastTurn(t *testing.T) {
+	shrinkHeaderWaitForTest(t, 40*time.Millisecond, 40*time.Millisecond)
+	shrinkHeaderWaitLightForTest(t, 40*time.Millisecond)
+	prov := &slowStartProvider{reply: "instant"}
+	sink := &recordingSink{}
+	a := newBreakerAgent(t, prov, sink)
+
+	got := a.streamWithSamplingRecovery(context.Background(), 1)
+	if got.err != nil {
+		t.Fatalf("turn failed: %v", got.err)
+	}
+	if hasNoticeCode(sink, event.NoticeCodeHeaderWaitLight) {
+		t.Fatalf("notice codes = %v: a fast turn must not emit the light wait notice", noticeCodes(sink))
+	}
+}
+
+// 任务1080 ③: once per TURN — a wait long enough to cross the threshold twice
+// (via the repeat cadence) still emits the light notice exactly once.
+func TestHeaderWaitLightNoticeEmittedOncePerTurn(t *testing.T) {
+	shrinkHeaderWaitForTest(t, 40*time.Millisecond, 40*time.Millisecond) // slow tier repeats fast
+	shrinkHeaderWaitLightForTest(t, 30*time.Millisecond)
+	prov := &slowStartProvider{delay: 200 * time.Millisecond, reply: "ok"}
+	sink := &recordingSink{}
+	a := newBreakerAgent(t, prov, sink)
+
+	got := a.streamWithSamplingRecovery(context.Background(), 1)
+	if got.err != nil {
+		t.Fatalf("turn failed: %v", got.err)
+	}
+	count := 0
+	for _, c := range noticeCodes(sink) {
+		if c == event.NoticeCodeHeaderWaitLight {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("header_wait_light notices = %d, want exactly 1 per turn during a %s wait", count, prov.delay)
+	}
+	if !a.turn.headerWaitLightShown {
+		t.Fatal("the turn flag must be set so the light notice stays at one per turn")
 	}
 }
