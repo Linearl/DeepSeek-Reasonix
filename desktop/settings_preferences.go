@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"os"
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/sentinel"
@@ -945,6 +947,62 @@ func (a *App) SetGoMemLimitMB(mb int) error {
 		}
 	}
 	return nil
+}
+
+// SetDesktopAlertLogRetentionDays sets the tl-1097 alert-log retention dial
+// (0 = built-in default 7 days; -1 = forever; explicit values clamped into
+// [1, 90]). After the config write it triggers an immediate prune so the next
+// tick of the alert-log writer (or this call, for a shrink) already reflects
+// the new policy.
+func (a *App) SetDesktopAlertLogRetentionDays(days int) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopAlertLogRetentionDays(days) }); err != nil {
+		return err
+	}
+	pruneAlertLogNow()
+	return nil
+}
+
+// SetDesktopAlertLogMaxTotalMB sets the tl-1097 alert-log size ceiling
+// (0 = built-in default 100MB; -1 = unlimited; explicit values clamped into
+// [1, 10240]). Same immediate-prune behaviour as the retention setter.
+func (a *App) SetDesktopAlertLogMaxTotalMB(mb int) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetDesktopAlertLogMaxTotalMB(mb) }); err != nil {
+		return err
+	}
+	pruneAlertLogNow()
+	return nil
+}
+
+// AlertLogUsage reports the current on-disk usage of the WARN/ERROR alert log
+// family (desktop-alerts.log + rolled .N files) in bytes and file count, for
+// the 「当前占用：X MB（N 个文件）」 display row.
+func (a *App) AlertLogUsage() AlertLogUsageView {
+	bytes, count := alertLogDirUsage(alertLogDirPath())
+	return AlertLogUsageView{Bytes: bytes, Files: count, Dir: alertLogDirPath()}
+}
+
+// AlertLogUsageView is the JSON payload for AlertLogUsage.
+type AlertLogUsageView struct {
+	Bytes int64  `json:"bytes"`
+	Files int    `json:"files"`
+	Dir   string `json:"dir"`
+}
+
+// OpenLogDir opens the logs directory (logs/desktop) in the system file
+// manager, non-blocking: revealPath launches explorer via a detached command
+// (see workspace_files_app.go defaultRevealPath — it never Waits on the child),
+// so this returns immediately and never hangs the frontend bridge call.
+func (a *App) OpenLogDir() error {
+	dir := alertLogDirPath()
+	if dir == "" {
+		return fmt.Errorf("log directory is unavailable")
+	}
+	// Create the directory if it does not exist yet (fresh install) so the
+	// file manager opens a real folder instead of erroring.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return a.RevealPath(dir)
 }
 
 // SetExperimentalAutoLoadOlder toggles the scroll-driven history trigger (fork

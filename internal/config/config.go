@@ -1971,6 +1971,16 @@ type AgentConfig struct {
 	// aggressively once the heap crosses the limit (heapSys 3-4GB never
 	// returning was the measured driver). Clamped into [0, 65536] on write.
 	GoMemLimitMB int `toml:"go_mem_limit_mb"`
+	// DesktopAlertLogRetentionDays is the tl-1097 retention dial for the
+	// WARN/ERROR-only alert log (desktop-alerts.log). 0 (default) = built-in
+	// 7 days; explicit values are clamped into [0, 90] on write and 0 means
+	// the built-in 7-day default (not "keep forever" — "forever" is -1).
+	DesktopAlertLogRetentionDays int `toml:"alert_log_retention_days"`
+	// DesktopAlertLogMaxTotalMB is the size ceiling for the alert log family
+	// (current + rolled files). 0 (default) = built-in 100MB; explicit values
+	// are clamped into [0, 10240] on write and 0 means the built-in 100MB
+	// default (not "unlimited" — "unlimited" is -1).
+	DesktopAlertLogMaxTotalMB int `toml:"alert_log_max_total_mb"`
 	// Task 173: per-capability gates for the collaboration toolset. All ship
 	// off (the cautious reading of "the panel decides what is allowed"): a
 	// gate off means the capability is withheld — tool-level gates keep the

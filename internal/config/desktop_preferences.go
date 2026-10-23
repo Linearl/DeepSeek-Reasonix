@@ -328,6 +328,12 @@ type DesktopConfig struct {
 	// GoMemLimitMB is the settings-view mirror for the [agent] runtime value
 	// of task 308-O3 (soft memory limit in MB, 0 = unbounded).
 	GoMemLimitMB int `toml:"go_mem_limit_mb"`
+	// DesktopAlertLogRetentionDays is the settings-view mirror for the tl-1097
+	// alert-log retention dial (0 = built-in default 7 days; -1 = forever).
+	DesktopAlertLogRetentionDays int `toml:"alert_log_retention_days"`
+	// DesktopAlertLogMaxTotalMB is the settings-view mirror for the tl-1097
+	// alert-log size ceiling (0 = built-in default 100MB; -1 = unlimited).
+	DesktopAlertLogMaxTotalMB int `toml:"alert_log_max_total_mb"`
 	// ExperimentalAutoLoadOlder mirrored Agent.ExperimentalAutoLoadOlder
 	// (fork task 160).
 	ExperimentalAutoLoadOlder bool `toml:"experimental_auto_load_older"`

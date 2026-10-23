@@ -574,6 +574,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "session_collab_hop_limit = %d   # desktop: settings-view mirror of [agent] session_collab_hop_limit (task 204)\n", c.Desktop.SessionCollabHopLimit)
 		fmt.Fprintf(&b, "detached_idle_release_minutes = %d   # desktop: settings-view mirror of [agent] detached_idle_release_minutes (task 308-O4; 0 = never release)\n", c.Desktop.DetachedIdleReleaseMinutes)
 		fmt.Fprintf(&b, "go_mem_limit_mb = %d   # desktop: settings-view mirror of [agent] go_mem_limit_mb (task 308-O3; 0 = unbounded)\n", c.Desktop.GoMemLimitMB)
+		// tl 1097: alert-log retention dials. Unconditional render — omit-on-
+		// default would let a hand-added line vanish on the next save.
+		fmt.Fprintf(&b, "alert_log_retention_days = %d   # desktop: WARN/ERROR alert-log retention in days (0 = default 7, -1 = forever, clamped -1..90)\n", c.Desktop.DesktopAlertLogRetentionDays)
+		fmt.Fprintf(&b, "alert_log_max_total_mb = %d   # desktop: WARN/ERROR alert-log total size ceiling in MB (0 = default 100, -1 = unlimited, clamped -1..10240)\n", c.Desktop.DesktopAlertLogMaxTotalMB)
 		fmt.Fprintf(&b, "collab_inbox_merge = %q   # desktop: settings-view mirror of [agent] collab_inbox_merge (task 221; off | same_sender | all)\n", NormalizeCollabInboxMerge(c.Desktop.CollabInboxMerge))
 		fmt.Fprintf(&b, "telemetry = %v   # desktop: anonymous launch ping + scrubbed next-launch native crash diagnostics; never content\n", c.DesktopTelemetry())
 		fmt.Fprintf(&b, "metrics = %v   # desktop: aggregate quality/lifecycle metrics (anonymous signal/bucket counts); never content\n", c.DesktopMetrics())

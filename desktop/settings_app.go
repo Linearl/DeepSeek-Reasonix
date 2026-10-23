@@ -573,6 +573,10 @@ type SettingsView struct {
 	SessionCollabHopLimit          int  `json:"sessionCollabHopLimit"`
 	DetachedIdleReleaseMinutes     int  `json:"detachedIdleReleaseMinutes"`
 	GoMemLimitMB                   int  `json:"goMemLimitMB"`
+	// tl 1097: 告警日志（WARN/ERROR）时间/大小档位读数（0 = 内置默认 7 天 /
+	// 100MB；-1 = 永久 / 无限制）。全量日志不受此两项影响。
+	DesktopAlertLogRetentionDays int `json:"desktopAlertLogRetentionDays"`
+	DesktopAlertLogMaxTotalMB    int `json:"desktopAlertLogMaxTotalMB"`
 	ExperimentalSessionCollab      bool `json:"experimentalSessionCollab"`
 	ExperimentalAutoLoadOlder      bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
@@ -866,6 +870,10 @@ type DesktopStartupSettingsView struct {
 	DetachedIdleReleaseMinutes     int `json:"detachedIdleReleaseMinutes"`
 	// GoMemLimitMB is the task-308-O3 soft memory limit in MB (0 = unbounded).
 	GoMemLimitMB int `json:"goMemLimitMB"`
+	// tl 1097: 告警日志（WARN/ERROR）时间/大小档位读数（0 = 内置默认 7 天 /
+	// 100MB；-1 = 永久 / 无限制）。全量日志不受此两项影响。
+	DesktopAlertLogRetentionDays int `json:"desktopAlertLogRetentionDays"`
+	DesktopAlertLogMaxTotalMB    int `json:"desktopAlertLogMaxTotalMB"`
 	// ExperimentalSessionCollab exposes multi-session collaboration (task 19).
 	ExperimentalSessionCollab bool `json:"experimentalSessionCollab"`
 	// ExperimentalAutoLoadOlder exposes the scroll-driven history trigger (fork
@@ -1697,6 +1705,10 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.SessionCollabHopLimit = cfg.Desktop.SessionCollabHopLimit
 		view.DetachedIdleReleaseMinutes = cfg.Desktop.DetachedIdleReleaseMinutes
 		view.GoMemLimitMB = cfg.Desktop.GoMemLimitMB
+		// tl 1097: 告警日志时间/大小档位 readback（读到的是原始配置值；
+		// 0 = 内置默认，前端据此渲染「7 天 / 100 MB」选中态）。
+		view.DesktopAlertLogRetentionDays = cfg.Desktop.DesktopAlertLogRetentionDays
+		view.DesktopAlertLogMaxTotalMB = cfg.Desktop.DesktopAlertLogMaxTotalMB
 		view.ExperimentalSessionCollab = cfg.Agent.ExperimentalSessionCollab
 		view.ExperimentalAutoLoadOlder = cfg.Agent.ExperimentalAutoLoadOlder
 		view.CollabInboxMerge = config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge)
@@ -1934,6 +1946,9 @@ func (a *App) Settings() SettingsView {
 		SessionCollabHopLimit:          cfg.Desktop.SessionCollabHopLimit,
 		DetachedIdleReleaseMinutes:     cfg.Desktop.DetachedIdleReleaseMinutes,
 		GoMemLimitMB:                   cfg.Desktop.GoMemLimitMB,
+		// tl 1097: 告警日志时间/大小档位 readback（启动快照）。
+		DesktopAlertLogRetentionDays: cfg.Desktop.DesktopAlertLogRetentionDays,
+		DesktopAlertLogMaxTotalMB:    cfg.Desktop.DesktopAlertLogMaxTotalMB,
 		ExperimentalSessionCollab:      cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
 		ExperimentalAutoLoadOlder:      cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
 		CollabInboxMerge:               config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),

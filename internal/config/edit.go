@@ -583,6 +583,35 @@ func (c *Config) SetGoMemLimitMB(mb int) error {
 	return nil
 }
 
+// SetDesktopAlertLogRetentionDays sets the tl-1097 alert-log retention dial
+// (0 = built-in default 7 days; -1 = keep forever; explicit values clamped
+// into [1, 90]). Written to [desktop] only — the CLI [agent] config has no
+// alert-log writer, so there is no mirror to keep in sync.
+func (c *Config) SetDesktopAlertLogRetentionDays(days int) error {
+	if days < -1 {
+		days = -1
+	}
+	if days > 90 {
+		days = 90
+	}
+	c.Desktop.DesktopAlertLogRetentionDays = days
+	return nil
+}
+
+// SetDesktopAlertLogMaxTotalMB sets the tl-1097 alert-log size ceiling in MB
+// (0 = built-in default 100MB; -1 = unlimited; explicit values clamped into
+// [1, 10240]). Written to [desktop] only (see the retention setter above).
+func (c *Config) SetDesktopAlertLogMaxTotalMB(mb int) error {
+	if mb < -1 {
+		mb = -1
+	}
+	if mb > 10240 {
+		mb = 10240
+	}
+	c.Desktop.DesktopAlertLogMaxTotalMB = mb
+	return nil
+}
+
 // SetSessionCollabBackground toggles the task-264 background mode: on,
 // pump stand-ups build a detached runtime instead of a visible tab (delivery
 // semantics unchanged); off is the byte-for-byte baseline. A regular panel
