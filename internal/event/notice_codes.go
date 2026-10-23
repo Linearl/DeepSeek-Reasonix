@@ -123,6 +123,14 @@ const (
 	// nothing needs action, so it follows the 任务894 no-action tier: a UI
 	// notice, never an injected model message.
 	NoticeCodeInboxLargeItem = "inbox_large_item"
+	// NoticeCodeSteerDegraded (任务1094缺陷B): a same-session composer steer
+	// (EnqueueInboxSteerForTurn / SteerInboxItemForTurn) was rejected by the
+	// mid-turn admission gate and degraded to a queued follow-up — the exact
+	// semantic the cross-session pump already surfaces as a "steer_degraded"
+	// notice (session_collab.go). 任务894 no-action tier: UI notice only, the
+	// durable queue keeps the item (it runs as the next turn's input), and the
+	// model never sees the notice.
+	NoticeCodeSteerDegraded = "steer_degraded"
 )
 
 // 任务553: wake-yield code lives in its own block so the wire-stable table

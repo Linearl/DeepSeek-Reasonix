@@ -65,6 +65,10 @@ const noticeCodeKeys: Record<string, DictKey> = {
   unattended_gate_auto_continue: "notice.unattendedGateAutoContinue",
   // 任务999：单条 >4MiB 软提醒——已入队、无需行动，只作提示（不打断、不注入模型）。
   inbox_large_item: "notice.inboxLargeItem",
+  // 任务1094缺陷B：本会话 composer 引导降级为排队 follow-up——语义与跨会话
+  // 路径的 steer_degraded notice 相同（消息将在下一轮发送，不会丢失），仅是
+  // same-session 适配文案（无 messageId / get_message_status）。
+  steer_degraded: "notice.steerDegraded",
 };
 
 const streamInterruptReasonCodeKeys: Record<string, DictKey> = {

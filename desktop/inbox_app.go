@@ -8,11 +8,33 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/event"
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/sessioninbox"
 )
 
 const inboxWailsErrorPrefix = "reasonix_error:"
+
+// inboxSteerDegradedNoticeText describes a same-session composer steer that
+// failed the mid-turn admission gate and degraded to a queued follow-up —
+// the same semantic the cross-session pump surfaces as a "steer_degraded"
+// notice (session_collab.go:sessionCollabSteerDegradedText), adapted to
+// same-session wording: no messageId / get_message_status, no cross-process
+// retry-exhausted face — the Controller itself dispatches the queued
+// follow-up on the next turn.
+func inboxSteerDegradedNoticeText() string {
+	return "你发送的引导未能注入当前回合（回合不可注入或已结束），已自动降级为排队 follow-up。" +
+		"当前回合结束后会自动作为下一轮输入处理，消息不会丢失。"
+}
+
+// emitInboxSteerDegradedNotice emits the same-session composer steer
+// degradation notice on the tab's event channel. 任务894 no-action tier:
+// UI-layer notice only (model never sees it); the durable queue keeps the
+// item for the next turn's input. Best effort — a missing tab or sink drops
+// the notice silently, matching noticeCodeForTab's existing contract.
+func (a *App) emitInboxSteerDegradedNotice(tabID string) {
+	a.noticeCodeForTab(tabID, event.LevelInfo, event.NoticeCodeSteerDegraded, inboxSteerDegradedNoticeText())
+}
 
 type inboxCodedError struct {
 	code  string
@@ -257,6 +279,12 @@ func (a *App) SteerInboxItemForTurn(tabID, turnID, itemID string) (InboxReceiptV
 		return InboxReceiptView{Error: err.Error()}, err
 	}
 	a.emitInboxChanged(tabID)
+	// 任务1094缺陷B：steer 降级为 queued_followup 时补 notice（同
+	// enqueueInboxWithController 的降级分支），与 enqueueInboxWithController
+	// 同款判据。
+	if rec.Disposition == sessioninbox.DispositionQueuedFollowup && !rec.Idempotent {
+		a.emitInboxSteerDegradedNotice(tabID)
+	}
 	return InboxReceiptView{
 		ItemID: rec.ItemID, Disposition: string(rec.Disposition), Position: rec.Position,
 		Paused: rec.Paused, Idempotent: rec.Idempotent,
@@ -310,7 +338,19 @@ func (a *App) enqueueInbox(tabID string, intent sessioninbox.InboxIntent, displa
 }
 
 func (a *App) enqueueInboxWithController(tabID string, ctrl control.SessionAPI, intent sessioninbox.InboxIntent, display, submit string, invocations []InvocationRequest, idempotency string, trySteer bool, turnID, expectedPath string) (InboxReceiptView, error) {
-	return a.enqueueInboxWithControllerSource(tabID, ctrl, intent, display, submit, invocations, idempotency, trySteer, turnID, expectedPath, "desktop", false, "", "")
+	view, err := a.enqueueInboxWithControllerSource(tabID, ctrl, intent, display, submit, invocations, idempotency, trySteer, turnID, expectedPath, "desktop", false, "", "")
+	// 任务1094缺陷B：本会话 composer 引导降级（EnqueueInboxSteerForTurn /
+	// SteerInboxItemForTurn 复用本路径，trySteer=true + disposition
+	// queued_followup = mid-turn 注入未成功、降级为下一轮输入）此前完全静默，
+	// 用户只看到「必须点恢复执行才能发」。补一条与跨会话路径 steer_degraded
+	// 同语义的 notice（session_collab.go:sessionCollabSteerDegradedText 的
+	// same-session 适配版），文案说明「消息将在下一轮发送，不会丢失」。
+	// 只在 trySteer 且降级时 emit——非 steer（followup 入队）不触发，跨会话
+	// collab pump 走 enqueueInboxWithControllerSource 而非本函数，不会双发。
+	if trySteer && err == nil && view.Disposition == string(sessioninbox.DispositionQueuedFollowup) && !view.Idempotent {
+		a.emitInboxSteerDegradedNotice(tabID)
+	}
+	return view, err
 }
 
 // enqueueInboxWithControllerSource is enqueueInboxWithController with an

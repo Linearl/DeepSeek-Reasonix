@@ -4890,6 +4890,7 @@ export const zh: Record<DictKey, string> = {
   "notice.autopilotResumeExhausted": "无人值守自动续轮已停止：连续续轮仍异常终止，为避免无限循环暂停续轮；回合正常完成前不再自动续轮，请人工检查该会话。",
   "notice.unattendedGateAutoContinue": "无人值守自动继续：重启恢复门已自动解除，积压队列照常消化；队列内容可在 /queue 查看。",
   "notice.inboxLargeItem": "这条指令超过 4 MiB：大量图片会增加传输开销，可能造成响应变慢。已正常入队，无需处理。",
+  "notice.steerDegraded": "你发送的引导未能注入当前回合（回合不可注入或已结束），已自动降级为排队 follow-up。当前回合结束后会自动作为下一轮输入处理，消息不会丢失。",
   "notice.turnStalled": "已经有一段时间没有任何进展。回合仍在运行；如果看起来卡住了，请点击停止。",
   "questionNav.label": "问题导航",
   "questionNav.progress": "问题 {current} / {total}",
