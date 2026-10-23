@@ -522,6 +522,91 @@ func TestCrossProcessRecoveryPauses(t *testing.T) {
 	}
 }
 
+// 任务1094缺陷A（场景①）：RunID 变更后队列里只有 StateSteerConsumed 残留
+// （按 P15 不计入 recovered）时，不得误置 Paused+Recovered——否则
+// InboxRecoveryBanner 走 pausedTitle「收件箱已暂停」，用户看到横幅却无从知道
+// 为什么（RecoveredN==0，不显示 N）。纯残留不是「待恢复指令」。
+func TestCrossRunOpenWithConsumedResidueOnlyDoesNotPauseOrMarkRecovered(t *testing.T) {
+	dir := t.TempDir()
+	session := filepath.Join(dir, "s.jsonl")
+	_ = os.WriteFile(session, []byte("{}\n"), 0o644)
+	s, err := Open(session, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := s.Enqueue(EnqueueRequest{Envelope: PromptEnvelope{SubmitText: "already consumed guidance"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetState(rec.ItemID, StateSteerConsumed, ""); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	manPath := filepath.Join(store.SessionInboxDir(session), "manifest.json")
+	data, _ := os.ReadFile(manPath)
+	data = []byte(strings.Replace(string(data), ProcessRunID(), "other-run-id-0000", 1))
+	_ = os.WriteFile(manPath, data, 0o600)
+
+	s2, err := Open(session, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	snap := s2.Snapshot()
+	if snap.Paused {
+		t.Fatalf("consumed-residue-only backlog must not pause the inbox: %+v", snap)
+	}
+	if snap.Recovered || snap.RecoveredN != 0 {
+		t.Fatalf("consumed-residue-only backlog must not be marked recovered: %+v", snap)
+	}
+	if len(snap.Items) != 1 || snap.Items[0].State != StateSteerConsumed {
+		t.Fatalf("consumed residue row must be preserved as-is (not resurrected): %+v", snap.Items)
+	}
+}
+
+// 任务1094缺陷A（场景②，868 原行为逐字不退）：真 recovered——RunID 变更 +
+// StateQueued→StateUncertain（旧判据下 Queued 直接计入 recovered）——必须照旧
+// Paused+Recovered，恢复门出现且 ClaimItem 拒绝派发（ErrPaused）。
+func TestCrossRunOpenWithTrueRecoveredQueuedStillPauses(t *testing.T) {
+	dir := t.TempDir()
+	session := filepath.Join(dir, "s.jsonl")
+	_ = os.WriteFile(session, []byte("{}\n"), 0o644)
+	s, err := Open(session, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := s.Enqueue(EnqueueRequest{Envelope: PromptEnvelope{SubmitText: "queued follow-up left behind"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	manPath := filepath.Join(store.SessionInboxDir(session), "manifest.json")
+	data, _ := os.ReadFile(manPath)
+	data = []byte(strings.Replace(string(data), ProcessRunID(), "other-run-id-0000", 1))
+	_ = os.WriteFile(manPath, data, 0o600)
+
+	s2, err := Open(session, Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	snap := s2.Snapshot()
+	if !snap.Paused || !snap.Recovered || snap.RecoveredN != 1 {
+		t.Fatalf("true recovered work must still pause+mark recovered (868 behaviour), got %+v", snap)
+	}
+	// StateQueued 在 loadOrInit 的恢复分支只被计入 recovered 计数，不改写状态
+	// （改写只发生在 StateRunning / StateSteerAccepted）——队列内容原样保留。
+	if len(snap.Items) != 1 || snap.Items[0].State != StateQueued {
+		t.Fatalf("queued item must survive cross-run open as queued, got %+v", snap.Items)
+	}
+	// ClaimItem 必须拒绝——恢复门阻断派发是 868 的核心保护（人不确认不派发）。
+	if err := s2.ClaimItem(rec.ItemID); !errors.Is(err, ErrPaused) {
+		t.Fatalf("ClaimItem on a recovered-paused inbox = %v, want ErrPaused", err)
+	}
+}
+
 // Task 589b: a kill between steer accept and steer consume leaves the row in
 // StateSteerAccepted, and the run id changes with every process — so this
 // loadOrInit branch, not the recovery pass's in-flight face, is the deletion

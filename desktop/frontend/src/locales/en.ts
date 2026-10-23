@@ -4900,6 +4900,7 @@ export const en = {
   "notice.autopilotResumeExhausted": "Autopilot auto-resume stopped: consecutive resumes kept ending abnormally, so no more will be submitted to avoid an unbounded loop. The session stays un-resumed until a turn completes cleanly; please check it manually.",
   "notice.unattendedGateAutoContinue": "Unattended auto-continue: the restart recovery gate was cleared automatically; the queued backlog keeps flowing. Review the queue any time with /queue.",
   "notice.inboxLargeItem": "This instruction is over 4 MiB; many images add transfer overhead and may slow the response. It was queued normally — no action needed.",
+  "notice.steerDegraded": "The guidance you sent could not be injected into the current turn (the turn is not injectable or has ended). It was automatically downgraded to a queued follow-up and will be handled as the next turn's input once the current turn finishes; the message will not be lost.",
   "notice.turnStalled": "No progress for a while. The turn is still running; if it looks stuck, press Stop.",
   "questionNav.label": "Question navigation",
   "questionNav.progress": "Question {current} / {total}",

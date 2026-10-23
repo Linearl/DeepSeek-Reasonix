@@ -179,12 +179,16 @@ func (s *Store) loadOrInitLocked() error {
 		s.man.Recovered = true
 		s.man.RecoveredN = len(salvaged)
 		s.man.Items = salvaged
+		// 任务1094缺陷C：观测补强——manifest_corrupt 触发点单独可检索。
+		s.logRecoveryEmit(RecoveryTriggerManifestCorrupt, "", len(salvaged), salvaged)
 		return s.commitManifestLocked(s.man)
 	}
 	if man.SchemaVersion > SchemaVersion {
 		s.man = man
 		s.readonly = true
 		s.man.Paused = true
+		// 任务1094缺陷C：观测补强——schema_upgrade 触发点单独可检索。
+		s.logRecoveryEmit(RecoveryTriggerSchemaUpgrade, man.RunID, 0, man.Items)
 		return nil
 	}
 	migrated := man.SchemaVersion < SchemaVersion
@@ -210,8 +214,23 @@ func (s *Store) loadOrInitLocked() error {
 		man.SchemaVersion = SchemaVersion
 	}
 	// Cross-process recovery: another run left in-flight items.
+	//
+	// 任务1094缺陷A：判据从「recovered > 0 || len(man.Items) > 0」收窄为
+	// 「recovered > 0」——「队列非空」不等于「有待恢复的指令」。旧判据把任何
+	// 一次 RunID 变更后的普通排队条目（哪怕就是用户刚打的一条引导）也标成
+	// Paused+Recovered，弹出「收件箱已暂停」却无从解释（RecoveredN==0 时横幅
+	// 走 pausedTitle、不显示 N），这就是 1508 现场「已恢复 0 条」类错配与
+	// 1094 现场「回合内引导不进引导、必须点恢复执行才能发」的共同根因。
+	// 收窄后：纯排队（recovered==0 && items>0）走「正常排队」语义不弹门；
+	// 真 recovered（StateQueued/Blocked/Uncertain/Running/SteerAccepted→
+	// Uncertain）照旧弹门，868 原行为逐字不退。
 	recovered := 0
 	if man.RunID != "" && man.RunID != s.runID {
+		// 任务1094缺陷C：观测补强——先留一份 RunID 变更前的旧值与条目快照，
+		// 供 slog + recovery.jsonl 快照记录「谁把信箱标成 Paused」。
+		oldRunID := man.RunID
+		preRecoveryItems := make([]InboxItemMeta, len(man.Items))
+		copy(preRecoveryItems, man.Items)
 		for i := range man.Items {
 			switch man.Items[i].State {
 			case StateSteerAccepted:
@@ -241,11 +260,15 @@ func (s *Store) loadOrInitLocked() error {
 				recovered++
 			}
 		}
-		if recovered > 0 || len(man.Items) > 0 {
+		// 任务1094缺陷A：只在真有恢复计数时置 Paused+Recovered；纯残留
+		// 队列（如仅剩 StateSteerConsumed，按 P15 不计入 recovered）不再误暂停。
+		if recovered > 0 {
 			man.Paused = true
 			man.Recovered = true
 			man.RecoveredN = recovered
 		}
+		// 任务1094缺陷C：观测补强——cross_process_recovery 触发点单独可检索。
+		s.logRecoveryEmit(RecoveryTriggerCrossProcess, oldRunID, recovered, preRecoveryItems)
 	}
 	man.RunID = s.runID
 	s.man = man
