@@ -63,7 +63,7 @@ function fallbackOpenerIcon(opener: ExternalOpenerView) {
   return <Code2 size={15} strokeWidth={1.9} />;
 }
 
-function OpenerIcon({ opener }: { opener: ExternalOpenerView }) {
+export function OpenerIcon({ opener }: { opener: ExternalOpenerView }) {
   return (
     <span className={`external-opener__app-icon external-opener__app-icon--${opener.kind}`} aria-hidden="true">
       <span className="external-opener__fallback-icon">{fallbackOpenerIcon(opener)}</span>
@@ -83,6 +83,34 @@ function OpenerIcon({ opener }: { opener: ExternalOpenerView }) {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+// tl 1100「打开方式 ▸」：`…` 菜单二级项打开工作区时走的偏好回写链（与下方
+// split-button 的 openIn 同一条语义：先启动、成功后才持久化，默认项不写偏好）。
+// 打开失败/偏好写失败由调用方负责提示，这里只如实返回。
+export async function openWorkspaceWithOpener(
+  bridge: ExternalOpenerBridge,
+  tabId: string,
+  opener: ExternalOpenerView,
+  persist: boolean,
+): Promise<void> {
+  const preferenceCoordinator = persist ? preferenceCoordinatorFor(bridge) : undefined;
+  const preferenceIntent = preferenceCoordinator ? ++preferenceCoordinator.nextIntent : 0;
+  await bridge.OpenWorkspaceInExternalOpenerForTab(tabId, opener.id);
+  if (!preferenceCoordinator) return;
+  preferenceCoordinator.latestSuccessfulIntent = Math.max(
+    preferenceCoordinator.latestSuccessfulIntent,
+    preferenceIntent,
+  );
+  const persisted = await persistPreferredExternalOpener(
+    bridge,
+    opener.id,
+    preferenceCoordinator,
+    preferenceIntent,
+  );
+  if (persisted) {
+    for (const listener of preferenceCoordinator.listeners) listener(opener.id);
+  }
 }
 
 function normalizeOpeners(next: ExternalOpenersView): ExternalOpenersView {

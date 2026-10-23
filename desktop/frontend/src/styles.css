@@ -27774,6 +27774,9 @@ button.statusbar__mcp:focus-visible {
   padding: 0;
 }
 
+/* tl 1100：`…` 菜单里的外部打开（打开方式 ▸ 二级项图标）沿用原 split-button 的
+   18px 图标几何，只是从 topicbar 直出按钮缩进菜单行里。 */
+
 .topicbar__action-btn:hover:not(:disabled),
 .topicbar__action-btn:focus-visible:not(:disabled),
 .topicbar__export--open .topicbar__action-btn {

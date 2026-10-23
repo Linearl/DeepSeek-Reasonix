@@ -17,7 +17,6 @@ import {
   Copy as RestoreIcon,
   Minus,
   Search,
-  ListTree,
   Server,
   Square,
   SquarePen,
@@ -114,8 +113,7 @@ const RemoteSessionSurface = lazy(() => import("./components/RemoteSessionSurfac
 // 任务 704: the trajectory surface is a lab-gated lazy chunk — with the switch
 // off (default, 铁律 2) it costs the startup bundle nothing.
 const TrajectoryView = lazy(() => import("./components/TrajectoryView").then((module) => ({ default: module.TrajectoryView })));
-import { TopicbarSurfaceSwitch } from "./app-shell/TopicbarSurfaceSwitch";
-import { setSurfaceViewTab, useSurfaceView } from "./lib/trajectoryViewPreference";
+import { setSurfaceViewTab, useSurfaceView, setSurfaceView } from "./lib/trajectoryViewPreference";
 /** Footer decision surface kinds. Runtime blockers are explicit recovery choices. */
 import { StatusBar } from "./components/StatusBar";
 import { RemoteHostKeyDialog } from "./components/RemoteHostKeyDialog";
@@ -135,7 +133,7 @@ import { pruneRecentClosedTabs, pushRecentClosedTab, type RecentClosedTab } from
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet";
 import { WorktreeBadge } from "./components/WorktreeBadge";
 import { CopyButton } from "./components/CopyButton";
-import { ExternalOpener, shouldMountExternalOpener } from "./components/ExternalOpener";
+import { shouldMountExternalOpener, openWorkspaceWithOpener, type ExternalOpenerBridge } from "./components/ExternalOpener";
 import { TopicbarMoreMenu } from "./components/TopicbarMoreMenu";
 import { RemoteReclaimBanner } from "./components/RemoteReclaimBanner";
 import { startTerminalEventBridge } from "./lib/terminalEvents";
@@ -170,6 +168,8 @@ import {
   type LastSessionWorkspaceInfo,
   type RemoteTabRefView,
   type SessionMeta,
+  type ExternalOpenersView,
+  type ExternalOpenerView,
   type SettingsView,
   type QualityFloor,
   type TabMeta,
@@ -285,7 +285,7 @@ import { applyTextSize, DEFAULT_TEXT_SIZE, getTextSize, nextTextSize } from "./l
 import { useViewportHeightVar, useWindowStatePersistence } from "./lib/windowState";
 import { availableWorkspacePanelWidth, resolveLiveWorkspacePanelWidth, resolveWorkspacePanelPlacement, workspacePanelAriaMinWidth } from "./lib/workspaceLayout";
 import { createPointerResizeLifecycle, createRafResizeUpdater } from "./lib/resizeDrag";
-import { formatShortcutCombo, resolvedShortcutCombo, useGlobalShortcut } from "./lib/keyboardShortcuts";
+import { useGlobalShortcut } from "./lib/keyboardShortcuts";
 import { shouldIgnoreFindShortcutTarget } from "./lib/transcriptFind";
 import { useWarmTerminalPanel } from "./lib/useWarmTerminalPanel";
 import { topicShortcutIndexFromEvent, useTopicShortcuts, type TopicShortcutEntry } from "./lib/topicShortcuts";
@@ -877,9 +877,6 @@ export default function App() {
   // Task 259: per-tab visibility inside the right dock; applies live.
   const [hiddenDockTabs, setHiddenDockTabs] = useState<readonly DockTabId[]>(loadHiddenDockTabs);
   useEffect(() => onHiddenDockTabsChange(setHiddenDockTabs), []);
-  // Task 265: the question-search entry hides while its lab flag is off.
-  const [questionSearchEnabled, setQuestionSearchEnabled] = useState(labFlagEnabled("questionSearch"));
-  useEffect(() => onLabFlagsChange(() => setQuestionSearchEnabled(labFlagEnabled("questionSearch"))), []);
   // Task 505: the session wall (palette entry + grid) rides the same boot
   // snapshot; the wall overlay itself is lazy so the closed-by-default switch
   // costs the startup bundle nothing.
@@ -3258,6 +3255,50 @@ export default function App() {
     [openWorkspacePanel],
   );
 
+  // tl 1100「打开方式 ▸」：原 ExternalOpener 黄色文件夹 ▾ 的发现/打开链迁到
+  // `…` 菜单。发现（ExternalOpenersForTab）按 tab 变化拉取；打开走
+  // openWorkspaceWithOpener（先启动、成功后才持久化偏好），失败用同一套
+  // externalOpener.failed 文案提示。explorer 后台化由 Go 侧 ShellExecute 保证，
+  // 前端不参与（2026-10-08 explorer 前台阻塞事故的教训）。
+  const [topicbarOpeners, setTopicbarOpeners] = useState<ExternalOpenersView | null>(null);
+  useEffect(() => {
+    const tabID = activeTab?.id;
+    if (!tabID || !shouldMountExternalOpener(activeTab, Boolean(sidebarImDetailConnection))) {
+      setTopicbarOpeners(null);
+      return;
+    }
+    let cancelled = false;
+    void app.ExternalOpenersForTab(tabID)
+      .then((view) => {
+        if (!cancelled) setTopicbarOpeners(view);
+      })
+      .catch((error) => {
+        console.error("Failed to discover external openers", error);
+        if (!cancelled) setTopicbarOpeners(null);
+      });
+    return () => { cancelled = true; };
+  }, [activeTab?.id, sidebarImDetailConnection]);
+  const topicbarOpenersView = useMemo(() => {
+    const tabID = activeTab?.id;
+    if (!tabID || !topicbarOpeners?.workspaceOpenable || topicbarOpeners.openers.length === 0) return undefined;
+    return {
+      views: topicbarOpeners.openers,
+      preferred: topicbarOpeners.preferred,
+      workspaceOpenable: true,
+      onOpen: (opener: ExternalOpenerView, persist: boolean) => {
+        void openWorkspaceWithOpener(app as unknown as ExternalOpenerBridge, tabID, opener, persist)
+          .catch((error) => showToast(t("externalOpener.failed", {
+            name: opener.name,
+            error: error instanceof Error ? error.message : String(error),
+          }), "error"));
+      },
+    };
+  }, [activeTab?.id, topicbarOpeners, showToast, t]);
+  const topicbarLogDirectory = useMemo(() => {
+    const cwd = state.meta?.cwd?.trim();
+    return cwd ? `${cwd.replace(/[\\/]+$/, "")}/logs/desktop` : "";
+  }, [state.meta?.cwd]);
+
   // Task 442: the composer gauge popup's 「更多 >」 entry. The gauge lives
   // inside the composer, so the request travels as a window event; this spot
   // is the one that knows both the dock opener and the layout's rules — the
@@ -4973,11 +5014,8 @@ export default function App() {
   const workspacePanelResizeMinWidth = workspacePanelAriaMinWidth(workspacePanelMinWidth, workspacePanelRenderWidth);
   const workspacePanelResizeMaxWidth = workspacePanelAvailableWidth;
   const sidebarCreation = desktopLayoutStyle === "creation";
-  // Command palette shortcut label (⌘K / Ctrl+K), platform-aware.
-  const commandPaletteShortcut = formatShortcutCombo(
-    resolvedShortcutCombo("commandPalette.open", desktopPlatform),
-    desktopPlatform,
-  );
+  // tl 1101：命令面板入口迁到 tab 栏右侧（AppChrome/TabBar），topicbar 不再显示
+  // ⌘K 标签，commandPaletteShortcut 的展示位置随之移到 palette 角标（hover）。
   // Dock collapse/expand toggle. Rendered in the dock's own tools row when the
   // dock is open (its top-right corner), and in the topic bar when closed.
   const dockToggleButton = (
@@ -5523,38 +5561,10 @@ export default function App() {
               )}
             </div>
             <div className="topicbar__spacer" />
-            {/* 任务 704: 转录|轨迹 view switch — between the spacer and the
-                actions stack; local sessions only (一期). */}
-            {trajectoryViewEnabled && Boolean(activeTabId) && !activeTab?.remote && !sidebarImDetailConnection && (
-              <TopicbarSurfaceSwitch />
-            )}
             <div className="topicbar__actions">
-              <Tooltip label={`${t("shortcuts.action.commandPalette")} ${commandPaletteShortcut}`}>
-                <button
-                  className="topicbar__action-btn topicbar__action-btn--icon topicbar__action-btn--utility"
-                  type="button"
-                  aria-label={t("shortcuts.action.commandPalette")}
-                  onClick={() => void openPalette()}
-                >
-                  <Search size={15} />
-                </button>
-              </Tooltip>
-              {questionSearchEnabled && (
-              <Tooltip label={t("questionSearch.label")}>
-                <button
-                  className="topicbar__action-btn topicbar__action-btn--icon topicbar__action-btn--utility"
-                  type="button"
-                  aria-label={t("questionSearch.label")}
-                  aria-expanded={questionSearchOpen}
-                  onClick={() => setQuestionSearchOpen((open) => !open)}
-                >
-                  <ListTree size={15} />
-                </button>
-              </Tooltip>
-              )}
-              {shouldMountExternalOpener(activeTab, Boolean(sidebarImDetailConnection)) && activeTab && (
-                <ExternalOpener key={`external-opener:${activeTab.id}`} tabId={activeTab.id} dismissSignal={transientOverlayDismissSignal} />
-              )}
+              {/* tl 1100: topicbar 右侧只剩「…」——转录|轨迹（任务 704）、搜索、
+                  提问搜索、外部打开全部收进 `…` 菜单（1101 再收搜索）；1100 只动
+                  分段控件、提问搜索、外部打开三项。 */}
               {!sidebarImDetailConnection && (
                 <TopicbarMoreMenu
                   sessionHasContent={sessionHasContent}
@@ -5565,6 +5575,14 @@ export default function App() {
                   prefetchTerminal={prefetchTerminalPanel}
                   openSessionSummary={() => setTasksOpen((open) => open ? false : "session")}
                   tasksOpen={Boolean(tasksOpen)}
+                  activeTab={activeTab ? { id: activeTab.id, scope: activeTab.scope, topicId: activeTab.topicId, sessionPath: activeTab.sessionPath } : undefined}
+                  logDirectory={topicbarLogDirectory}
+                  surfaceView={
+                    trajectoryViewEnabled && Boolean(activeTabId) && !activeTab?.remote && !sidebarImDetailConnection
+                      ? { value: surfaceView, setView: setSurfaceView }
+                      : undefined
+                  }
+                  openers={topicbarOpenersView}
                 />
               )}
               {sidebarCreation && dockToggleButton}
