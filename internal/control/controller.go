@@ -245,6 +245,15 @@ type Controller struct {
 	// onCascadeDelegate (task 225): resolves the task-source parent's Ask
 	// channel for approval forwarding. nil keeps every prompt local.
 	onCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
+	// onCascadeSourceCapability (task 1022): reports what the host knows
+	// about a task source's declared ask-responder capability — the tl 994
+	// routeAsk screen (heartbeat source / undeclared capability → local
+	// panel fail-closed). nil declares nothing, which fails closed local.
+	onCascadeSourceCapability func(source string) *CascadeSource
+	// cascadeAskWait (task 1022): the cascade hop's own wait semantic —
+	// deliberately separate from the autopilot high-risk wait. 0 = default
+	// (cascadeAskWaitFor: env override or DefaultCascadeAskWait).
+	cascadeAskWait time.Duration
 	// onFallbackSwitch (task 242) swaps the session's model to the configured
 	// fallback after a quota-class error exhausts the sampling retries. The
 	// controller only decides WHEN (quota + target live + not already on the
@@ -900,6 +909,16 @@ type Options struct {
 	// answers; otherwise its user is asked). nil or ok=false keeps every
 	// prompt local.
 	OnCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
+	// OnCascadeSourceCapability (task 1022) reports a task source's declared
+	// ask-responder capability so routeAsk can screen the hop before it
+	// happens (tl 994: heartbeat sources and undeclared sources never take a
+	// forwarded ask). nil declares nothing → every prompt stays local.
+	OnCascadeSourceCapability func(source string) *CascadeSource
+	// CascadeAskWait (task 1022) overrides the cascade hop's wait. 0 keeps
+	// the cascadeWait default (env REASONIX_CASCADE_ASK_WAIT_SECONDS or
+	// DefaultCascadeAskWait) — the cascade's own semantic, never the
+	// autopilot high-risk wait.
+	CascadeAskWait time.Duration
 	// OnFallbackSwitch (task 242) executes the model swap to the fallback
 	// target when the controller has decided a quota error qualifies. Host-
 	// injected because the swap is a host-layer rebuild; selfPath says WHICH
@@ -1054,6 +1073,8 @@ func New(opts Options) *Controller {
 		onRemember:                        opts.OnRemember,
 		onRememberPlanModeReadOnlyCommand: opts.OnRememberPlanModeReadOnlyCommand,
 		onCascadeDelegate:                 opts.OnCascadeDelegate,
+		onCascadeSourceCapability:         opts.OnCascadeSourceCapability,
+		cascadeAskWait:                    opts.CascadeAskWait,
 		onFallbackSwitch:                  opts.OnFallbackSwitch,
 		writeAccess:                       newControllerWriteAccess(opts),
 		sessionRecoveryMeta:               opts.SessionRecoveryMeta,
