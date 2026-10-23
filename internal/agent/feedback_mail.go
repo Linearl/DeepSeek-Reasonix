@@ -84,6 +84,16 @@ const FeedbackInboxSystemStamp = "[意见箱]"
 // "sc_feedback_inbox" and got not-found).
 const FeedbackInboxOneWayNotice = "本条为通知，无需回信（发送方是意见箱系统入口，不是可对话会话）。"
 
+// FeedbackInboxOneWay (任务 1058) reports whether a message body carries the
+// explicit one-way stamp FeedbackInboxOneWayNotice. Both delivery renderers
+// (desktop/session_collab.go sessionCollabDeliveryText and the drain_inbox
+// mirror) consult this before falling back to "reply to the sender's
+// contact_id" — a sender that declared its mail unreplyable must never be
+// handed a reply path, even when its contact_id happens to be registered.
+func FeedbackInboxOneWay(body string) bool {
+	return strings.Contains(body, FeedbackInboxOneWayNotice)
+}
+
 // feedbackInboxBody renders the notification message body: the stamp line, the
 // md file name (the idempotent key), the ≤3-line summary, and (任务1058) an
 // explicit one-way notice so a reader never wastes a turn hunting for a reply
