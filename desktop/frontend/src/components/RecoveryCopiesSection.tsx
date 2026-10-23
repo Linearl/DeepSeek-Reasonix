@@ -728,18 +728,44 @@ export function RecoveryCopiesSection() {
     if (open) void load();
   }, [open, load]);
 
+  // 任务 1085：v3-only 会话补行——groups（recovery 副本扫描）只含「有副本文件
+  // 的会话」，v3 多 heads 会话若没有副本文件就不在其中，整行连同 1064 删除/
+  // 1065 合成入口一起消失。这里把 versionGroups 中缺席的会话合成「无副本」的
+  // 占位行（copies: []），使整行（含 v3 版本徽标与展开后的链表块/VersionRows
+  // 的全部入口）照常渲染。mainBytes/mainModified 为 0/""——副本扫描链路从不
+  // 读这类会话的 stat，不编造数字，行内照实显示「—」。
+  const composedGroups = useMemo(() => {
+    const list = groups ?? [];
+    const seen = new Set(list.map((g) => g.mainPath));
+    const extras: RecoveryCopyGroupView[] = [];
+    for (const [mainPath, versionGroup] of versionGroups) {
+      if (seen.has(mainPath)) continue;
+      extras.push({
+        mainPath,
+        mainLabel: versionGroup.mainLabel,
+        directory: versionGroup.directory,
+        mainExists: true,
+        mainMessages: 0,
+        mainBytes: 0,
+        mainModified: "",
+        copies: [],
+      });
+    }
+    return extras.length > 0 ? [...list, ...extras] : list;
+  }, [groups, versionGroups]);
+
   const phased = useMemo(() => {
     const pending: RecoveryCopyGroupView[] = [];
     const unmerged: RecoveryCopyGroupView[] = [];
     const merged: RecoveryCopyGroupView[] = [];
-    for (const group of groups ?? []) {
+    for (const group of composedGroups) {
       const phase = phaseOf(group);
       if (phase === "pending") pending.push(group);
       else if (phase === "unmerged") unmerged.push(group);
       else merged.push(group);
     }
     return { pending, unmerged, merged };
-  }, [groups]);
+  }, [composedGroups]);
 
   const toggle = (path: string) =>
     setSelected((current) => {
@@ -832,7 +858,10 @@ export function RecoveryCopiesSection() {
 
   const scanAll = async () => {
     setErrors([]);
-    for (const group of groups ?? []) {
+    // 任务 1085：只扫真有副本的行——v3-only 占位行（copies 为空）没有可测的
+    // 副本文件，ScanRecoveryCopyGroup 对它只会空跑一轮目录扫描。
+    for (const group of composedGroups) {
+      if (group.copies.length === 0) continue;
       await scanOne(group.mainPath);
     }
   };
@@ -1531,8 +1560,15 @@ export function RecoveryCopiesSection() {
                   </div>
                 ) : groups === null ? (
                   <div className="empty">{t("settings.loading")}</div>
-                ) : groups.length === 0 ? (
-                  <div className="empty">{t("settings.recoveryCopiesEmpty")}</div>
+                ) : composedGroups.length === 0 ? (
+                  /* 任务 1085：空态文案区分——「真没副本文件」与「有副本但 v3
+                     无 heads」是两种情况，一句「没有发现 recovery 副本」盖住
+                     后者会让用户以为面板坏了。 */
+                  <div className="empty">
+                    {groups.length === 0
+                      ? t("settings.recoveryCopiesEmpty")
+                      : t("settings.recoveryCopiesEmptyNoHeads")}
+                  </div>
                 ) : (
                   <>
                     {errors.length > 0 && (

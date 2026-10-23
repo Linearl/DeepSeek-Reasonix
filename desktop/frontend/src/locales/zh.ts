@@ -4499,6 +4499,9 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.degradedHint": "该会话的事件日志读取被拒或失败（如重放超出安全预算）：行内计数不可用，其余分区不受影响。",
   "settings.recoveryCopiesHint": "列出所有带 recovery 副本的工作阶段；「独有」是仅存在于该副本、未并入主线的事件数——它大就说明那边有会丢的工作。先看清，再勾选合并。",
   "settings.recoveryCopiesEmpty": "没有发现 recovery 副本。",
+  // 任务 1085：两种空态要分清——「没有副本文件」（recovery 扫描为空）与「有
+  // 副本行但 v3 无多 heads」（v3 版本列表为空）是两回事，不能用同一句话糊住。
+  "settings.recoveryCopiesEmptyNoHeads": "没有发现 recovery 副本，且没有多 heads 会话。",
   "settings.recoveryCopiesSummary": "共 工作阶段数 / 独有事件合计",
   "settings.recoveryCopiesMain": "主线",
   "settings.recoveryCopiesTotal": "总计",
