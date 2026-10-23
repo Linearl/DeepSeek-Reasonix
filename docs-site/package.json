@@ -1,0 +1,11 @@
+{
+  "name": "reasonix-docs-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reasonix 产品文档静态站（GitHub Pages）。零运行时依赖，纯 Markdown + 一个构建脚本。",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "preview": "npx serve dist"
+  }
+}

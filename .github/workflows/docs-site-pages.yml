@@ -1,0 +1,56 @@
+# 任务 1102：产品文档静态站（docs-site/）的 GitHub Pages 发布链路。
+#
+# 与既有 site/（Astro 官网，pages.yml，custom domain reasonix.io）相互独立：
+# 那个是营销/官网站，这个是随仓库更新、不绑应用发版的产品文档。两者各自
+# 用 GitHub Actions 部署到 Pages，互不覆盖（同一 repo 的 Pages 只能有一个
+# 发布源——这里用独立 workflow + 独立 artifact 路径，实际能否共存取决于
+# repo 的 Pages 配置；若冲突，退路是把 docs-site 发布到独立仓库，方案源已
+# 记录该退路）。
+#
+# 触发分支跟随 fork 默认分支 main-v2-stable。构建零依赖（node 标准库 +
+# docs-site/scripts/build.mjs），无需 npm ci。
+name: Deploy docs site
+
+on:
+  push:
+    branches: [main-v2-stable]
+    paths: ['docs-site/**', '.github/workflows/docs-site-pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-site-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Build docs site
+        working-directory: docs-site
+        # DOCS_BASE_URL 与前端 docsSite.ts 的占位 URL 对齐；Pages 启用后若
+        # 实际路径不同，改这里 + 前端常量两处。
+        env:
+          DOCS_BASE_URL: /DeepSeek-Reasonix/docs-site/
+        run: node scripts/build.mjs
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs-site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

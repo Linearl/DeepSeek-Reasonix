@@ -24,6 +24,7 @@ export type ShortcutAction =
   | "textSize.reset"
   | "toolApproval.yolo"
   | "shortcuts.show"
+  | "help.docs.open"
   | "topic.goto.1"
   | "topic.goto.2"
   | "topic.goto.3"
@@ -255,6 +256,16 @@ export const SHORTCUT_DEFINITIONS: readonly ShortcutDefinition[] = [
     // the sheet with no modifier intent. Ctrl|Cmd+/ is the convention
     // (VS Code, GitHub, Slack) and cannot clash with plain typing.
     defaults: modCombo("/"),
+    preventDefault: true,
+  },
+  {
+    action: "help.docs.open",
+    section: "help",
+    labelKey: "shortcuts.action.openProductDocs",
+    descriptionKey: "shortcuts.desc.openProductDocs",
+    // 任务 1102：F1 是帮助文档的行业惯例键（VS Code、浏览器 F1 均如此）。
+    // 裸键无修饰符，全平台统一。
+    defaults: allPlatforms({ key: "F1" }),
     preventDefault: true,
   },
   {
@@ -537,7 +548,7 @@ export function useGlobalShortcut(
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (isShortcutRecorderTarget(event.target)) return;
       if (useAppNavigationStore.getState().page.kind !== "workspace") {
-        if (!["commandPalette.open", "settings.open", "app.newSession", "tab.close", "shortcuts.show", "textSize.increase", "textSize.decrease", "textSize.reset"].includes(action)) return;
+        if (!["commandPalette.open", "settings.open", "app.newSession", "tab.close", "shortcuts.show", "textSize.increase", "textSize.decrease", "textSize.reset", "help.docs.open"].includes(action)) return;
         if (document.querySelector('[aria-modal="true"]') && !action.startsWith("textSize.")) return;
       }
       const editableTarget = isEditableTarget(event.target);
