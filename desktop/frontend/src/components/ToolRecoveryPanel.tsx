@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import type { RecoveryCall, ToolRecoveryBindings, ToolRecoverySnapshot } from "../lib/toolRecovery";
-import { dismissToolRecoveryCall, isToolRecoveryDismissed, rekeyToolRecoveryDismissals, subscribeToolRecoveryDismissals, toolRecoveryDismissalRevision, toolRecoveryDismissalScope } from "../lib/toolRecoveryDismissalStore";
+import { dismissToolRecoveryCall, dismissToolRecoveryCalls, isToolRecoveryDismissed, rekeyToolRecoveryDismissals, subscribeToolRecoveryDismissals, toolRecoveryDismissalRevision, toolRecoveryDismissalScope } from "../lib/toolRecoveryDismissalStore";
 import "./ToolRecoveryPanel.css";
 
 // Task 519（核实卡移除）：本面板不再是「中断的工具需要核实」交互卡片。人工
@@ -23,6 +23,16 @@ import "./ToolRecoveryPanel.css";
 // 展开详情即可点；③按钮本体复用全局 .btn--ghost.btn--small（与协作中心
 // 「关闭」、SessionRecoveryBanner 详情钮同族）。store 不持久化，重启后记录
 // 重现（1061 语义不变，任务书明示可接受）。
+//
+// Task 1089（1068 返修四修）：1068② 的「折叠态」钉错了层——它钉的是内层
+// 「查看操作详情」折叠（每条记录自己的 details），而用户实测的「折叠」是外层
+// 摘要块整体（本组件最外层 <details>）：外层收起时整块（含每条记录的忽略按钮）
+// 都不可见，等于「看到折叠块却没有任何清理入口」。修法：外层 summary 行右侧
+// 加一个「忽略（全部）」入口（.btn--ghost.btn--small 同族，按钮本体带
+// tool-recovery-panel__dismiss-all 装饰类以与逐条钮区分），点击一次性忽略当前
+// 快照的全部记录键；展开态逐条忽略按钮保留（每条记录 record-head 右侧，
+// 1068 原 20 断言零回归）。语义边界与单条忽略一致：纯前端、per-session、
+// 不持久化、零 binding 调用。
 export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, bindings = app }: {
   tabId: string; sessionKey: string; running: boolean; refreshKey: number;
   bindings?: ToolRecoveryBindings;
@@ -71,9 +81,20 @@ export function ToolRecoveryPanel({ tabId, sessionKey, running, refreshKey, bind
   const calls = snapshot?.calls?.filter((call, index) =>
     !isToolRecoveryDismissed(dismissalScope, dismissKey(call, index)));
   if (!calls?.length) return null;
+  // 1089：外层摘要块折叠态的清理入口——外层 <details> 收起时，下方逐条记录
+  // （含各自 record-head 的忽略按钮）整块不可见，用户「看到折叠块不想展开就
+  // 清掉」的场景没有落点。把「忽略（全部）」放在 summary 行内、贴右侧：summary
+  // 永远可见（它是折叠态唯一露出的部分），点击即一键忽略当前快照全部记录键。
+  // summary 里的 <button> 点击会顺带切换 details 开合（浏览器默认行为），用
+  // stopPropagation 阻断——用户点的是「忽略」，不是「展开」；忽略后 calls 为空
+  // → 整块消失，展开态自然无从谈起。
+  const dismissAllKeys = calls.map((call, index) => dismissKey(call, index));
   return <section className="notice-line tool-recovery-panel" aria-label={t("toolRecovery.title")}>
     <details>
-    <summary className="notice-line__title">{t("toolRecovery.title")}</summary>
+    <summary className="notice-line__title tool-recovery-panel__summary">
+      <span>{t("toolRecovery.title")}</span>
+      <button type="button" className="btn btn--ghost btn--small tool-recovery-panel__dismiss-all" onClick={(event) => { event.stopPropagation(); dismissToolRecoveryCalls(dismissalScope, dismissAllKeys); }}>{t("toolRecovery.dismissAll")}</button>
+    </summary>
     <div className="notice-line__text">
       {calls.map((call, index) => <div key={dismissKey(call, index)}>
         <div className="tool-recovery-panel__record-head">
