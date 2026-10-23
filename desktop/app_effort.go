@@ -230,6 +230,7 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 		OnSessionSetModel:          a.collabSessionSetModel,
 		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
+		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRenameSession:            a.renameCollabSession,
