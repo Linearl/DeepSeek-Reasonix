@@ -112,7 +112,25 @@ func elideToolResult(m provider.Message) (provider.Message, bool) {
 // (projection.go swaps it over Content when set). Already-elided messages are
 // skipped so repeated rescues stay idempotent.
 func (a *Agent) elideOversizedContents(msgs []provider.Message, head, target int) ([]provider.Message, int) {
-	threshold := max(1, target/contentElideOversizedDiv)
+	return a.elideOversizedContentsAt(msgs, head, target, max(1, target/contentElideOversizedDiv), contentElideHeadChars)
+}
+
+// elideOversizedContentsAt is elideOversizedContents with an explicit token
+// threshold and head cut length. 任务 1003: the summary pre-fold needs its own
+// threshold and cut length — the default (target/16, 4000-char head) only
+// catches one giant message, while a fold of many mid-size messages that
+// together overshoot the budget needs every message priced down, and a message
+// shorter than the default's head+tail skip-guard would otherwise survive whole
+// (the incident's 2000-char messages). Everything else — the exclusion
+// discipline, the idempotency guards — is exactly the visible-view rung.
+func (a *Agent) elideOversizedContentsAt(msgs []provider.Message, head, target, threshold, cutChars int) ([]provider.Message, int) {
+	if threshold <= 0 {
+		threshold = 1
+	}
+	if cutChars <= 0 {
+		cutChars = contentElideHeadChars
+	}
+	tailChars := min(contentElideTailChars, cutChars/2)
 	affected := 0
 	for i := head; i < len(msgs); i++ {
 		m := msgs[i]
@@ -133,11 +151,11 @@ func (a *Agent) elideOversizedContents(msgs []provider.Message, head, target int
 		}
 		// 短于"头+尾"保留量的消息切了没有净收益（省下的不够标记本身），
 		// 直接跳过——也避免极小窗口下 tail 区间越界。
-		if len(m.Content) <= contentElideHeadChars+contentElideTailChars {
+		if len(m.Content) <= cutChars+tailChars {
 			continue
 		}
-		headPart := snapToRuneBoundary(m.Content, 0, contentElideHeadChars)
-		tailPart := snapToRuneBoundary(m.Content, len(m.Content)-contentElideTailChars, len(m.Content))
+		headPart := snapToRuneBoundary(m.Content, 0, cutChars)
+		tailPart := snapToRuneBoundary(m.Content, len(m.Content)-tailChars, len(m.Content))
 		removed := len(m.Content) - len(headPart) - len(tailPart)
 		out := m
 		out.Content = fmt.Sprintf("%s: %d of %d bytes removed from the middle]\n%s\n[...]\n%s",

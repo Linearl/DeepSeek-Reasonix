@@ -189,11 +189,12 @@ func TestSessionSwapKeepsPromptCalibration(t *testing.T) {
 	}
 }
 
-func TestSharedWindowFoldDoesNotPrivatelyShortenOversizedInput(t *testing.T) {
+func TestSharedWindowFoldPrivatelyFoldsOversizedInput(t *testing.T) {
 	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
 	a := &Agent{agentConfig: agentConfig{contextWindow: 100_000}, svc: agentServices{prov: prov, sink: event.Discard}, sess: sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}}}
-	// Manual summary input is not privately shortened. An unfittable request is
-	// rejected before the provider call.
+	// 任务 1003: an unfittable fold is privately folded (not rejected) to the
+	// summary input budget before the provider call — the request that reaches
+	// the provider must fit the window.
 	toolBody := strings.Repeat("file line content here. ", 20_000) // ~480K chars
 	fold := []provider.Message{
 		{Role: provider.RoleUser, Content: "read large files"},
@@ -203,26 +204,27 @@ func TestSharedWindowFoldDoesNotPrivatelyShortenOversizedInput(t *testing.T) {
 		{Role: provider.RoleTool, ToolCallID: "2", Name: "read_file", Content: toolBody},
 	}
 
-	if _, err := a.foldToSummary(context.Background(), fold, ""); !errors.Is(err, ErrCompactionRequired) {
-		t.Fatalf("foldToSummary = %v, want admission failure", err)
+	if _, err := a.foldToSummary(context.Background(), fold, ""); err != nil {
+		t.Fatalf("foldToSummary = %v, want a folded request sent (no rejection)", err)
 	}
-	if prov.calls != 0 {
-		t.Fatalf("unfittable fold called provider %d times", prov.calls)
+	if prov.calls != 1 {
+		t.Fatalf("folded fold called provider %d times, want 1", prov.calls)
 	}
 }
 
-// A single unshortenable fold that still exceeds the single-request budget after
-// all deterministic shorteners must fail once (no multi-span split).
-func TestSharedWindowFoldRejectsUnshortenableOverBudgetInput(t *testing.T) {
+// A single unshortenable fold that still exceeds the single-request budget is
+// folded down to the budget instead of being rejected (任务 1003), so the
+// shrink chain never breaks on an over-window input.
+func TestSharedWindowFoldPrivatelyFoldsUnshortenableOverBudgetInput(t *testing.T) {
 	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
 	a := &Agent{agentConfig: agentConfig{contextWindow: 100_000}, svc: agentServices{prov: prov, sink: event.Discard}, sess: sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}}}
 	fold := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 200_000)}}
 	_, err := a.foldToSummary(context.Background(), fold, "")
-	if !errors.Is(err, ErrCompactionRequired) {
-		t.Fatalf("foldToSummary err = %v, want context admission failure", err)
+	if err != nil {
+		t.Fatalf("foldToSummary err = %v, want a folded request sent (no rejection)", err)
 	}
-	if prov.calls != 0 {
-		t.Fatalf("over-budget unshortenable fold still called summarizer %d times", prov.calls)
+	if prov.calls != 1 {
+		t.Fatalf("over-budget fold called summarizer %d times, want 1", prov.calls)
 	}
 }
 
