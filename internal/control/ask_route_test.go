@@ -129,12 +129,30 @@ func TestRouteAskExplicitGrantReachesCascade(t *testing.T) {
 	}
 }
 
-// A heartbeat-driven turn is the task-1062 posture: never a cascade hop.
-func TestRouteAskHeartbeatTurnNeverCascades(t *testing.T) {
+// A heartbeat-driven turn is the task-1062 posture: with no legal hop it
+// never leaves the local lane (the immediate refusal owns it), and with a
+// legal hop it cascades with the marker stripped (the sanctioned escape
+// hatch — TestHeartbeatAskDelegationStripsMarker covers the strip end to end).
+func TestRouteAskHeartbeatTurn(t *testing.T) {
 	in := routeBase()
 	in.heartbeatTurn = true
+	in.source = CascadeSource{} // no task source → no legal hop
+	route := routeAsk(in)
+	if route.Channel != AskChannelLocalPanel {
+		t.Fatalf("heartbeat turn without a legal source = %s, want localPanel (task 1062 owns it)", route.Channel)
+	}
+	if !strings.Contains(route.Reason, "heartbeatTurn") {
+		t.Fatalf("reason = %q, want the heartbeat-turn posture named", route.Reason)
+	}
+	// With a declared, alive source the hop is legal and the turn cascades.
+	in.source = routeBase().source
+	if route := routeAsk(in); route.Channel != AskChannelCascade {
+		t.Fatalf("heartbeat turn with a legal source = %s (%s), want cascade (1062 escape hatch)", route.Channel, route.Reason)
+	}
+	// The heartbeat SOURCE exclusion still wins: no hop to a 守护线.
+	in.source.Heartbeat = true
 	if route := routeAsk(in); route.Channel != AskChannelLocalPanel {
-		t.Fatalf("heartbeat turn route = %s, want localPanel (task 1062 owns it)", route.Channel)
+		t.Fatalf("heartbeat turn + heartbeat source = %s, want localPanel (tl 994 止血)", route.Channel)
 	}
 }
 

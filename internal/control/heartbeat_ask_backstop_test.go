@@ -173,6 +173,12 @@ func TestHeartbeatAskDelegationStripsMarker(t *testing.T) {
 	child.onCascadeDelegate = func(selfPath string) (delegate agent.Asker, source string, ok bool) {
 		return delegateAsker, "parent-session", true
 	}
+	// Task 1022: the parent must declare the ask-responder capability for the
+	// hop to be legal — the marker-strip test is about the hop itself, and
+	// an undeclared source now fails closed local (tl 994 routeAsk screen).
+	child.onCascadeSourceCapability = func(string) *CascadeSource {
+		return &CascadeSource{Contact: "parent-session", AskResponder: true, Liveness: true}
+	}
 	answers, err := child.Ask(withHeartbeatTurn(context.Background()), heartbeatHighRiskQuestion)
 	if err != nil {
 		t.Fatalf("ask err = %v, want the delegated answer", err)

@@ -162,15 +162,32 @@ func routeAsk(in askRouteInputs) AskRoute {
 }
 
 func routeAskDecision(in askRouteInputs) AskRoute {
-	// 1. A heartbeat-driven turn is never a cascade source or target: task
-	// 1062's immediate refusal owns this posture (the caller answers before
-	// any panel exists). Reporting it keeps the ordering explicit.
-	if in.heartbeatTurn {
+	// 1. Cascade legality is one reusable screen: the chain bound, the
+	// switch, the source existence, the heartbeat-source exclusion (tl 994
+	// 止血), the undeclared-capability fail-closed (tl 1022) and source
+	// liveness. The first miss keeps the prompt local.
+	if !cascadeLegal(in) {
+		// A heartbeat-driven turn with no legal hop is the task-1062
+		// posture: the caller's immediate refusal owns it (no panel, no
+		// wait). Named first so the routing log reads the real cause.
+		if in.heartbeatTurn {
+			return AskRoute{Channel: AskChannelLocalPanel, Deadline: in.cascadeWait,
+				Reason: "heartbeatTurn: scheduled-run ask, refused by the task-1062 backstop (no legal cascade target)"}
+		}
 		return AskRoute{Channel: AskChannelLocalPanel, Deadline: in.cascadeWait,
-			Reason: "heartbeatTurn: scheduled-run ask, refused by the task-1062 backstop"}
+			Reason: cascadeScreenReason(in)}
 	}
 
-	// 2. Risk → grant: a reversible ask under autopilot without the user's
+	// 2. A heartbeat-driven turn WITH a legal hop cascades (task 1062's
+	// sanctioned escape hatch): the hop strips the marker
+	// (withoutHeartbeatTurn at the call site) so the PARENT's posture
+	// decides — an attended parent answers, an autopilot parent applies its
+	// own waits.
+	if in.heartbeatTurn {
+		return cascadeRoute(in)
+	}
+
+	// 3. Risk → grant: a reversible ask under autopilot without the user's
 	// explicit grant (task 806b) is the autoDecide lane. The grant revokes
 	// the unattended premise, and the high-risk tier is never self-decidable.
 	if in.risk == askRiskReversible && in.autopilot && !in.explicitGrant {
@@ -178,43 +195,16 @@ func routeAskDecision(in askRouteInputs) AskRoute {
 			Reason: "reversible ask under autopilot answers itself (task 806)"}
 	}
 
-	// 3. Cascade screening — every gate must pass or the hop is illegal.
-	if !in.cascadeLive {
-		return AskRoute{Channel: AskChannelLocalPanel, Deadline: in.cascadeWait,
-			Reason: "cascade switch off (task 225)"}
-	}
-	if in.hopExhausted {
-		return AskRoute{Channel: AskChannelLocalPanel, Deadline: in.cascadeWait,
-			Reason: "cascade hop chain bound reached (task 225 round-2)"}
-	}
-	if strings.TrimSpace(in.source.Contact) == "" {
-		return AskRoute{Channel: AskChannelLocalPanel, Deadline: in.cascadeWait,
-			Reason: "no task source dispatched this session"}
-	}
-	// 3a. 止血段 (tl 994): a heartbeat/守护线 source watches no panel —
-	// forwarding to it GUARANTEES the full cascade wait followed by a local
-	// fall-through, i.e. the defect itself. Never a legal target.
-	if in.source.Heartbeat {
-		return AskRoute{Channel: AskChannelLocalPanel, Deadline: in.cascadeWait,
-			Reason: "heartbeat source is not a legal cascade target (tl 994 止血; keep the prompt local)"}
-	}
-	// 3b. 能力声明 fail-closed (仿 MCP initialize): a source that never
-	// declared the ask-responder capability cannot be assumed able to
-	// answer — forwarding would burn the wait on a maybe. Unproven = local.
-	if !in.source.AskResponder {
-		return AskRoute{Channel: AskChannelLocalPanel, Deadline: in.cascadeWait,
-			Reason: "source did not declare ask-responder capability; fail-closed local panel (tl 1022)"}
-	}
-	// 3c. A dead source has no panel to answer on either; liveness is the
-	// doctor 六态活性读数.
-	if !in.source.Liveness {
-		return AskRoute{Channel: AskChannelLocalPanel, Deadline: in.cascadeWait,
-			Reason: "source liveness check failed; keep the prompt local"}
-	}
-
-	// Cascade legal: wait per the cascade's own configurable semantics. A
+	// 4. Cascade legal: wait per the cascade's own configurable semantics. A
 	// source that declared a sane latency budget caps the wait at that —
 	// no point waiting ten minutes on a source that answers in seconds.
+	return cascadeRoute(in)
+}
+
+// cascadeRoute renders the legal-hop verdict with the cascade's own wait
+// semantics (task 1022): the configured cascadeWait, capped by the source's
+// declared latency budget, plus the user-visible cancel notice.
+func cascadeRoute(in askRouteInputs) AskRoute {
 	deadline := in.cascadeWait
 	if in.source.LatencyBudget > 0 && in.source.LatencyBudget < deadline {
 		deadline = in.source.LatencyBudget
@@ -223,6 +213,57 @@ func routeAskDecision(in askRouteInputs) AskRoute {
 		Reason:       "legal cascade target: responder declared, alive, not a heartbeat source",
 		Source:       in.source.Contact,
 		CancelNotice: cascadeCancelNotice(in.source.Contact, deadline)}
+}
+
+// cascadeLegal runs the task-1022 screens before any hop. Every gate must
+// pass; the first miss keeps the prompt local (the fail-closed default).
+func cascadeLegal(in askRouteInputs) bool {
+	if !in.cascadeLive {
+		return false
+	}
+	if in.hopExhausted {
+		return false
+	}
+	if strings.TrimSpace(in.source.Contact) == "" {
+		return false
+	}
+	// 止血段 (tl 994): a heartbeat/守护线 source watches no panel —
+	// forwarding to it GUARANTEES the full cascade wait followed by a local
+	// fall-through, i.e. the defect itself. Never a legal target.
+	if in.source.Heartbeat {
+		return false
+	}
+	// 能力声明 fail-closed (仿 MCP initialize): a source that never declared
+	// the ask-responder capability cannot be assumed able to answer —
+	// forwarding would burn the wait on a maybe. Unproven = local.
+	if !in.source.AskResponder {
+		return false
+	}
+	// A dead source has no panel to answer on either; liveness is the
+	// doctor 六态活性读数.
+	if !in.source.Liveness {
+		return false
+	}
+	return true
+}
+
+// cascadeScreenReason names why the cascade screen failed, mirroring
+// cascadeLegal gate-for-gate so the routing log stays explanatory.
+func cascadeScreenReason(in askRouteInputs) string {
+	switch {
+	case !in.cascadeLive:
+		return "cascade switch off (task 225)"
+	case in.hopExhausted:
+		return "cascade hop chain bound reached (task 225 round-2)"
+	case strings.TrimSpace(in.source.Contact) == "":
+		return "no task source dispatched this session"
+	case in.source.Heartbeat:
+		return "heartbeat source is not a legal cascade target (tl 994 止血; keep the prompt local)"
+	case !in.source.AskResponder:
+		return "source did not declare ask-responder capability; fail-closed local panel (tl 1022)"
+	default:
+		return "source liveness check failed; keep the prompt local"
+	}
 }
 
 func askRouteRiskName(r askRiskClass) string {
