@@ -33,9 +33,19 @@ type askProbeSink struct {
 	ctrl *Controller
 }
 
+// snapshotNotices returns a copy of every Notice event the sink has seen, so
+// tests can scan for the task-1022 routing/cancel notices without racing the
+// emitter.
+func (s *askProbeSink) snapshotNotices() []event.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]event.Event(nil), s.notices...)
+}
+
 func (s *askProbeSink) Emit(e event.Event) {
 	s.mu.Lock()
-	if e.Kind != event.AskRequest && !(e.Kind == event.Notice && e.Code == event.NoticeCodePromptQueued) {
+	if e.Kind != event.AskRequest &&
+		!(e.Kind == event.Notice && (e.Code == event.NoticeCodePromptQueued || e.Code == "cascade_ask_forwarded")) {
 		s.mu.Unlock()
 		return
 	}
