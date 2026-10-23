@@ -888,6 +888,11 @@ const (
 	AutopilotAskWaitMaxSeconds = 3600
 )
 
+// AskRoundLimitDefault 是 ask 轮次上限的默认值（任务 1084）。0 = 无限制
+// （语义与 AutopilotAskWaitSecondsEffective 里 0 读「默认 15s」相反，不可
+// 照抄）；有效配置值为 0 或 2~100；1 非法。
+const AskRoundLimitDefault = 3
+
 // SetExperimentalAutopilotAskTimeout toggles the task-477 ask-timeout
 // sub-option. The flag alone changes nothing unless the run is autopilot; the
 // off state keeps the task-109 B4 terminal stop byte-for-byte.
@@ -930,6 +935,79 @@ func (c *Config) AutopilotAskWaitSecondsEffective() int {
 		return AutopilotAskWaitMaxSeconds
 	}
 	return c.Desktop.AutopilotAskWaitSeconds
+}
+
+// ── 任务 1084：高风险操作授权清单 + 决策模式二级授权 + ask 轮次上限 ──
+//
+// 五类授权 setter：勾选 = 授权 = 该类高风险动作可直接执行（输出依据）。
+// 默认全不勾 = 出厂五类全要问（保守）。全勾 = 机制失效（用户选择）。
+// 高风险五类判定可靠性分级（诚实声明）：对外发送 高/数据迁移删除 高/破坏
+// 性变更 中/新技术路线 低/付费额度 低。本机制实质靠模型理解规则判断动作
+// 属哪类，不是字符串硬匹配；后两类必然存在漏判误判，漏判兜底是轮次上限
+// 与复盘而非宣称零漏判。
+
+// SetAuthorizeOutboundSend 勾选/取消「对外发送」授权（邮件/公开发布/对外
+// 消息）。勾选 = 该类高风险动作免 ask 直接执行（输出「依据：你勾选了…」）。
+func (c *Config) SetAuthorizeOutboundSend(enabled bool) error {
+	c.Desktop.AuthorizeOutboundSend = enabled
+	return nil
+}
+
+// SetAuthorizeDataMigrationDelete 勾选/取消「数据迁移与删除」授权。
+func (c *Config) SetAuthorizeDataMigrationDelete(enabled bool) error {
+	c.Desktop.AuthorizeDataMigrationDelete = enabled
+	return nil
+}
+
+// SetAuthorizeDestructiveChange 勾选/取消「破坏性变更」授权（覆盖未提交/
+// 强推）。
+func (c *Config) SetAuthorizeDestructiveChange(enabled bool) error {
+	c.Desktop.AuthorizeDestructiveChange = enabled
+	return nil
+}
+
+// SetAuthorizeNewTechRoute 勾选/取消「新技术路线选择」授权。判定可靠性
+// 「低」，用户勾选前应知情必然漏判误判。
+func (c *Config) SetAuthorizeNewTechRoute(enabled bool) error {
+	c.Desktop.AuthorizeNewTechRoute = enabled
+	return nil
+}
+
+// SetAuthorizePaidQuotaAlloc 勾选/取消「付费额度分配」授权。判定可靠性
+// 「低」。
+func (c *Config) SetAuthorizePaidQuotaAlloc(enabled bool) error {
+	c.Desktop.AuthorizePaidQuotaAlloc = enabled
+	return nil
+}
+
+// SetExperimentalAskRoundLimit 开关 ask 轮次上限实验功能。开启后 ask 工具
+// 在单 turn 内被调用的次数受 AskRoundLimit 限制；高风险确认类 ask 不计入
+// 上限；信息补充类 ask 受上限约束，耗尽后返回耗尽提示。
+func (c *Config) SetExperimentalAskRoundLimit(enabled bool) error {
+	c.Desktop.ExperimentalAskRoundLimit = enabled
+	return nil
+}
+
+// SetAskRoundLimit 设置 ask 轮次上限数值。⚠️语义陷阱：0 = 「无限制」（不是
+// 回落默认 3）；有效值 0 或 2~100；1 非法（具名拒绝不静默改写配置）。
+func (c *Config) SetAskRoundLimit(limit int) error {
+	if limit != 0 && (limit < 2 || limit > 100) {
+		return fmt.Errorf("ask_round_limit must be 0 (unlimited) or 2..100, got %d", limit)
+	}
+	c.Desktop.AskRoundLimit = limit
+	return nil
+}
+
+// AskRoundLimitEffective 返回 ask 轮次上限的有效值。0 原样返回 0（无限制，
+// 不回落默认 3）；负值按 0 处理。默认（配置未设置时）为 3。
+func (c *Config) AskRoundLimitEffective() int {
+	if c == nil {
+		return AskRoundLimitDefault
+	}
+	if c.Desktop.AskRoundLimit <= 0 {
+		return c.Desktop.AskRoundLimit // 0 原样返回（无限制），不回落
+	}
+	return c.Desktop.AskRoundLimit
 }
 
 // AutonomousUpdateResumeMode returns the normalized resume scope. Empty and

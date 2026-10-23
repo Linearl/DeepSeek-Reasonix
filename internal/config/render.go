@@ -60,7 +60,7 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（以及 infra
 	// 段 runtimeReuse）三推荐升「稳定」——C1~C5 判据见任务书；稳定 = 默认开
 	// （config.Default）+ 桌面开关禁用态（开发者模式解锁）+ 手写 false 保留。
-	{"autopilot", LabTierStable, []string{"autopilot", "experimental_autopilot_ask_timeout"}}, // ask-timeout 为 task 477 家族子键
+	{"autopilot", LabTierStable, []string{"autopilot", "experimental_autopilot_ask_timeout", "authorize_outbound_send", "authorize_data_migration_delete", "authorize_destructive_change", "authorize_new_tech_route", "authorize_paid_quota_alloc", "experimental_ask_round_limit", "ask_round_limit"}}, // ask-timeout 为 task 477 家族子键；authorize_* 与 ask_round_limit 为 task 1084 家族子键
 	{"sessionCollab", LabTierStable, []string{"experimental_session_collab"}},
 	{"fullAccess", LabTierStable, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
 	{"dream", LabTierOptional, []string{"experimental_dream"}},
@@ -372,7 +372,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// together. Writing the flag without the limit used to lose both: this renderer
 		// writes a fixed set of keys, so an unlisted one was dropped and the settings
 		// switch flipped straight back to off.
-		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue || c.Desktop.ExperimentalAutopilotGuardAutocreate || c.AutopilotBatchContextLevel() != "" || strings.TrimSpace(c.Desktop.AutopilotBatchPlan) != "" {
+		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.AutopilotGuardInterval != 0 || strings.TrimSpace(c.Desktop.AutopilotGuardQuiescent) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue || c.Desktop.ExperimentalAutopilotGuardAutocreate || c.AutopilotBatchContextLevel() != "" || strings.TrimSpace(c.Desktop.AutopilotBatchPlan) != "" || c.Desktop.AuthorizeOutboundSend || c.Desktop.AuthorizeDataMigrationDelete || c.Desktop.AuthorizeDestructiveChange || c.Desktop.AuthorizeNewTechRoute || c.Desktop.AuthorizePaidQuotaAlloc || c.Desktop.ExperimentalAskRoundLimit || c.Desktop.AskRoundLimit != 0 {
 			fmt.Fprintf(&b, "autopilot = %v   # desktop: start new sessions unattended (requires autopilot_max_runtime)\n", c.Desktop.Autopilot)
 			if runtime := strings.TrimSpace(c.Desktop.AutopilotMaxRuntime); runtime != "" {
 				fmt.Fprintf(&b, "autopilot_max_runtime = %q   # desktop: wall-clock bound for an unattended run, e.g. 8h\n", runtime)
@@ -409,6 +409,30 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 			// whenever it is on, even with the timeout pair absent.
 			if c.Desktop.ExperimentalAutopilotAskAutoContinue {
 				fmt.Fprintf(&b, "experimental_autopilot_ask_auto_continue = %v   # desktop: a turn that stops right after an ask was answered is resumed once with the recorded decision (task 544)\n", c.Desktop.ExperimentalAutopilotAskAutoContinue)
+			}
+			// 任务 1084：高风险操作授权清单 + 决策模式二级授权 + ask 轮次
+			// 上限。默认全不勾（= 五类全要问，保守）；勾选 = 授权 = 该类免
+			// ask 直接执行。
+			if c.Desktop.AuthorizeOutboundSend {
+				fmt.Fprintf(&b, "authorize_outbound_send = %v   # desktop: 对外发送（邮件/公开发布/对外消息）已授权，免 ask 直接执行（task 1084）\n", c.Desktop.AuthorizeOutboundSend)
+			}
+			if c.Desktop.AuthorizeDataMigrationDelete {
+				fmt.Fprintf(&b, "authorize_data_migration_delete = %v   # desktop: 数据迁移与删除已授权，免 ask 直接执行（task 1084）\n", c.Desktop.AuthorizeDataMigrationDelete)
+			}
+			if c.Desktop.AuthorizeDestructiveChange {
+				fmt.Fprintf(&b, "authorize_destructive_change = %v   # desktop: 破坏性变更（覆盖未提交/强推）已授权，免 ask 直接执行（task 1084）\n", c.Desktop.AuthorizeDestructiveChange)
+			}
+			if c.Desktop.AuthorizeNewTechRoute {
+				fmt.Fprintf(&b, "authorize_new_tech_route = %v   # desktop: 新技术路线选择已授权，免 ask 直接执行（task 1084；判定可靠性低）\n", c.Desktop.AuthorizeNewTechRoute)
+			}
+			if c.Desktop.AuthorizePaidQuotaAlloc {
+				fmt.Fprintf(&b, "authorize_paid_quota_alloc = %v   # desktop: 付费额度分配已授权，免 ask 直接执行（task 1084；判定可靠性低）\n", c.Desktop.AuthorizePaidQuotaAlloc)
+			}
+			if c.Desktop.ExperimentalAskRoundLimit {
+				fmt.Fprintf(&b, "experimental_ask_round_limit = %v   # desktop: ask 轮次上限实验开关（task 1084）\n", c.Desktop.ExperimentalAskRoundLimit)
+			}
+			if c.Desktop.AskRoundLimit != 0 {
+				fmt.Fprintf(&b, "ask_round_limit = %d   # desktop: ask 轮次上限，0=无限制，有效值 0 或 2..100；1 非法（task 1084）\n", c.Desktop.AskRoundLimit)
 			}
 			// Task 394: batch-round context injection rides the same block.
 			// Off (the default) writes nothing — an untouched config stays
