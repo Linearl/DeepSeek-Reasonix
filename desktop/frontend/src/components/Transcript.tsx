@@ -592,14 +592,19 @@ export function Transcript(props: TranscriptProps) {
     setScrollMode: setScrollMode,
     writeOffset: writeOffset,
     finishProgrammaticScroll: endGesture,
-    // 任务 1096：「已加载」区段比例 = 已加载轮次 / 全部轮次（historyStartTurn
-    // 是 1-based、totalTurns 是全部，故分子是 startTurn-1）。hasOlderHistory
-    // 由 App 传入，已含「rewindState / runtimeTransitioning 时置 false」的
-    // 语义；exhausted 时 mapCreationLoadedGeometry 直接整条 rail 变深。
+    // 任务 1096：「已加载」区段比例 = 已加载轮次 / 全部轮次。口径（与后端
+    // desktop/app_history.go `historyPageFromMessages` 对齐）：totalTurns =
+    // 全部可见 user 轮次，startTurn = 本页最老的轮次编号（1-based；0 = 无）。
+    // 轮次 [startTurn, totalTurns] 已加载 ⇒ 分子 = totalTurns − startTurn + 1。
+    // 分母为 0（尚未翻页/legacy history）⇒ undefined，rail 上不画区段。
     historyLoadedRatio: historyTotalTurns > 0 && historyStartTurn > 0
-      ? (historyStartTurn - 1) / historyTotalTurns
+      ? (historyTotalTurns - historyStartTurn + 1) / historyTotalTurns
       : undefined,
-    historyExhausted: !hasOlderHistory,
+    // hasOlderHistory 由调用方传入并已含「rewindState / runtimeTransitioning
+    // 时置 false」语义；此时比例语义上不可信，因此 exhausted 只在 totalTurns
+    // 可信（>0）时成立，过渡态维持 partial 观感。
+    historyExhausted: !hasOlderHistory && historyTotalTurns > 0 && historyStartTurn > 0,
+    historyLoadingOlder: loadingOlderHistory,
   });
 
   const setScroller = useMemo(() => composeDomRef(setKernelScroller, entranceRef), [setKernelScroller, entranceRef]);
@@ -826,12 +831,13 @@ export function Transcript(props: TranscriptProps) {
           </LiveStreamContext.Provider>
         )}
         {creationMode && creationScrollbar.visible && <div className={`transcript__scrollbar${creationScrollbar.hot ? " transcript__scrollbar--hot" : ""}`} onPointerDown={handleCreationScrollbarRailPointerDown} aria-hidden="true">
-          {/* 任务 1096：rail 上叠「已加载」区段（深色）+ 未加载留白（浅色）。
-              exhausted 时 loadedHeight=clientHeight ⇒ 整条 rail 变深，顶端
-              收口标记（--exhausted 类）与「还能加载」可区分。 */}
+          {/* 任务 1096：rail 上叠「已加载」区段（深色）+ 未加载留白（rail 自身
+              浅色）。phase 决定观感：partial = 深色段按比例；loading = 同高度
+              虚线态（在途，不假装完成）；exhausted = 整条变深 + 顶端收口标记，
+              与「还能加载」可区分。 */}
           {creationScrollbar.loadedHeight > 0 && (
             <div
-              className={`transcript__scrollbar-loaded${creationScrollbar.exhausted ? " transcript__scrollbar-loaded--exhausted" : ""}`}
+              className={`transcript__scrollbar-loaded transcript__scrollbar-loaded--${creationScrollbar.loadedPhase}`}
               style={{ height: creationScrollbar.loadedHeight } as CSSProperties}
             />
           )}

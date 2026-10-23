@@ -10,6 +10,14 @@ import {
 import { observeScrollContentSize } from "./scrollContentObserver";
 import type { TranscriptScrollMode, TranscriptScrollOwner } from "./transcriptKernel";
 
+// 任务 1096：「已加载区间」指示的状态枚举（测试与 CSS 类名的唯一来源）。
+// - "none"：没有历史加载语义（从未请求 / 无 totalTurns）⇒ rail 上无区段；
+// - "partial"：还能往更早加载 ⇒ 区段 = loadedRatio × rail 高度；
+// - "exhausted"：历史已全部加载（hasOlder=false）⇒ 整条 rail 变深 + 收口标记；
+// - "loading"：一次更早页在途 ⇒ 区段维持上一次的值，只翻转旗标（可与
+//   partial/exhausted 区分：CSS 画虚线态；失败不回退 = 旗标清除后仍是原值）。
+export type CreationHistoryLoadedPhase = "none" | "partial" | "loading" | "exhausted";
+
 const HOT_ZONE_PX = 18;
 const MIN_THUMB_PX = 28;
 // A rail click lands while rows may still be measuring. Wait for quiet
@@ -25,8 +33,8 @@ type ScrollbarState = {
   thumbHeight: number;
   /** 任务 1096：rail 上「已加载」区段的像素高度（0 = 不显示区段）。 */
   loadedHeight: number;
-  /** 任务 1096：历史已全部加载（rail 整条变深 + 顶端收口标记）。 */
-  exhausted: boolean;
+  /** 任务 1096：已加载区间的状态枚举（none/partial/loading/exhausted）。 */
+  loadedPhase: CreationHistoryLoadedPhase;
 };
 
 type DragGeometry = {
@@ -39,7 +47,7 @@ type DragGeometry = {
   thumbHeight: number;
 };
 
-const HIDDEN_STATE: ScrollbarState = { visible: false, hot: false, thumbTop: 0, thumbHeight: 0, loadedHeight: 0, exhausted: false };
+const HIDDEN_STATE: ScrollbarState = { visible: false, hot: false, thumbTop: 0, thumbHeight: 0, loadedHeight: 0, loadedPhase: "none" };
 
 export function readCreationScrollbarGeometry(clientHeight: number, scrollHeight: number) {
   const overflow = scrollHeight - clientHeight;
@@ -54,25 +62,32 @@ function readGeometry(element: HTMLElement) {
 }
 
 /**
- * 任务 1096：「已加载」区段的几何映射。
+ * 任务 1096：「已加载」区段的几何映射（纯函数，测试直接断言）。
  *
  * 滚动条语义只表达「视口 / 内容」比例，加载更多历史后 scrollHeight 增大、
  * thumb 反而变短（方向与用户直觉相反）。此函数在 rail 上叠加第二层语义：
- *   - `exhausted`（已到头）⇒ rail 整条变深 + 顶端 3px 收口标记；
- *   - 否则已加载区间 = `loadedRatio` × rail 高度（像素值供 CSS height 用）。
+ *   - `exhausted`（已到头）⇒ rail 整条变深（loadedHeight = clientHeight），
+ *     phase="exhausted"，CSS 画收口标记，与「还能加载」可区分；
+ *   - 否则已加载区间 = `loadedRatio` × rail 高度，phase="partial"；
+ *   - ratio 缺失（无 totalTurns / 从未翻页）⇒ loadedHeight=0，phase="none"；
+ *   - `loading=true` 时高度维持 ratio 的映射（不假装加载完成），phase="loading"，
+ *     CSS 画虚线态；失败后 loading 清除 ⇒ phase 回到 partial/exhausted 且高度
+ *     不回退（reducer 不改 startTurn/totalTurns，见 useController
+ *     `history_older_error`）。
  *
- * 输入 `loadedRatio` = (historyStartTurn − 1) / historyTotalTurns（[0,1]）。
- * 分母为 0 或 ratio 未定义 ⇒ loadedHeight = 0（不画区段，保持旧观感）。
+ * 输入 `loadedRatio` = 已加载轮次 / 全部轮次（见 Transcript 里的口径注释）。
  */
 export function mapCreationLoadedGeometry(
   loadedRatio: number | undefined,
   exhausted: boolean | undefined,
+  loading: boolean | undefined,
   clientHeight: number,
-): { loadedHeight: number; exhausted: boolean } {
-  if (exhausted) return { loadedHeight: clientHeight, exhausted: true };
-  if (loadedRatio == null || !Number.isFinite(loadedRatio) || clientHeight <= 0) return { loadedHeight: 0, exhausted: false };
+): { loadedHeight: number; phase: CreationHistoryLoadedPhase } {
+  if (clientHeight <= 0) return { loadedHeight: 0, phase: "none" };
+  if (exhausted) return { loadedHeight: clientHeight, phase: loading ? "loading" : "exhausted" };
+  if (loadedRatio == null || !Number.isFinite(loadedRatio)) return { loadedHeight: 0, phase: loading ? "loading" : "none" };
   const clamped = Math.max(0, Math.min(1, loadedRatio));
-  return { loadedHeight: Math.round(clamped * clientHeight), exhausted: false };
+  return { loadedHeight: Math.round(clamped * clientHeight), phase: loading ? "loading" : "partial" };
 }
 
 export function mapFrozenScrollbarDrag(
@@ -114,6 +129,7 @@ export function useCreationTranscriptScrollbar({
   finishProgrammaticScroll,
   historyLoadedRatio,
   historyExhausted,
+  historyLoadingOlder,
 }: {
   enabled: boolean;
   contentRevision: number;
@@ -124,12 +140,14 @@ export function useCreationTranscriptScrollbar({
   finishProgrammaticScroll: () => void;
   /**
    * 任务 1096：已加载区间在 rail 上的几何。`historyLoadedRatio` = 已加载
-   * (historyStartTurn − 1) / 全部 (historyTotalTurns)，取值 [0,1]；由
+   * 轮次 / 全部轮次（口径见 Transcript 调用处注释），取值 [0,1]；由
    * `mapCreationLoadedGeometry` 纯函数算出后传给 ScrollbarState，供 CSS
-   * 渲染「已加载」区段。`historyExhausted` = 已到头（historyHasOlder=false）。
+   * 渲染「已加载」区段。`historyExhausted` = 已到头（hasOlderHistory=false）。
+   * `historyLoadingOlder` = 一次更早页在途（loading 态虚线，不推进高度）。
    */
   historyLoadedRatio?: number;
   historyExhausted?: boolean;
+  historyLoadingOlder?: boolean;
 }) {
   const [state, setState] = useState<ScrollbarState>(HIDDEN_STATE);
   const hotRef = useRef(false);
@@ -163,16 +181,16 @@ export function useCreationTranscriptScrollbar({
     const maxThumbTop = drag?.maxThumbTop ?? geometry.maxThumbTop;
     const thumbHeight = drag?.thumbHeight ?? geometry.thumbHeight;
     const thumbTop = Math.round(Math.min(maxThumbTop, Math.max(0, (element.scrollTop / overflow) * maxThumbTop)));
-    const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, element.clientHeight);
+    const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, historyLoadingOlder, element.clientHeight);
     setState((previous) => (
       previous.visible
       && previous.hot === hotRef.current
       && previous.thumbTop === thumbTop
       && previous.thumbHeight === thumbHeight
       && previous.loadedHeight === loaded.loadedHeight
-      && previous.exhausted === loaded.exhausted
-    ) ? previous : { visible: true, hot: hotRef.current, thumbTop, thumbHeight, loadedHeight: loaded.loadedHeight, exhausted: loaded.exhausted });
-  }, [enabled, scrollRef, historyLoadedRatio, historyExhausted]);
+      && previous.loadedPhase === loaded.phase
+    ) ? previous : { visible: true, hot: hotRef.current, thumbTop, thumbHeight, loadedHeight: loaded.loadedHeight, loadedPhase: loaded.phase });
+  }, [enabled, scrollRef, historyLoadedRatio, historyExhausted, historyLoadingOlder]);
 
   const finishDrag = useCallback((event?: PointerEvent) => {
     const drag = dragRef.current;
@@ -204,8 +222,8 @@ export function useCreationTranscriptScrollbar({
         const { thumbTop, scrollTop } = mapFrozenScrollbarDrag(drag, event.clientY);
         drag.lastClientY = event.clientY;
         writeOffset("custom-scrollbar", scrollTop);
-        const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, element.clientHeight);
-        setState({ visible: true, hot: true, thumbTop: Math.round(thumbTop), thumbHeight: drag.thumbHeight, loadedHeight: loaded.loadedHeight, exhausted: loaded.exhausted });
+        const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, historyLoadingOlder, element.clientHeight);
+        setState({ visible: true, hot: true, thumbTop: Math.round(thumbTop), thumbHeight: drag.thumbHeight, loadedHeight: loaded.loadedHeight, loadedPhase: loaded.phase });
         setHot(true);
         return;
       }
@@ -236,7 +254,7 @@ export function useCreationTranscriptScrollbar({
       dragRef.current = null;
       hotRef.current = false;
     };
-  }, [enabled, finishDrag, historyExhausted, historyLoadedRatio, scrollRef, setHot, syncMetrics, writeOffset]);
+  }, [enabled, finishDrag, historyExhausted, historyLoadedRatio, historyLoadingOlder, scrollRef, setHot, syncMetrics, writeOffset]);
 
   const handleScroll = useCallback(() => {
     onScroll();
@@ -276,8 +294,8 @@ export function useCreationTranscriptScrollbar({
     const thumbTop = Math.min(geometry.maxThumbTop, Math.max(0, event.clientY - rect.top - geometry.thumbHeight / 2));
     setScrollMode("restoring", "custom-scrollbar-rail");
     writeOffset("custom-scrollbar", geometry.maxThumbTop > 0 ? (thumbTop / geometry.maxThumbTop) * geometry.overflow : 0);
-    const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, element.clientHeight);
-    setState({ visible: true, hot: true, thumbTop: Math.round(thumbTop), thumbHeight: geometry.thumbHeight, loadedHeight: loaded.loadedHeight, exhausted: loaded.exhausted });
+    const loaded = mapCreationLoadedGeometry(historyLoadedRatio, historyExhausted, historyLoadingOlder, element.clientHeight);
+    setState({ visible: true, hot: true, thumbTop: Math.round(thumbTop), thumbHeight: geometry.thumbHeight, loadedHeight: loaded.loadedHeight, loadedPhase: loaded.phase });
     setHot(true);
     if (settleFrameRef.current !== null) cancelAnimationFrame(settleFrameRef.current);
     let stableFrames = 0;
@@ -300,7 +318,7 @@ export function useCreationTranscriptScrollbar({
       syncMetrics();
     };
     settleFrameRef.current = requestAnimationFrame(settle);
-  }, [enabled, finishProgrammaticScroll, historyExhausted, historyLoadedRatio, scrollRef, setHot, setScrollMode, syncMetrics, writeOffset]);
+  }, [enabled, finishProgrammaticScroll, historyExhausted, historyLoadedRatio, historyLoadingOlder, scrollRef, setHot, setScrollMode, syncMetrics, writeOffset]);
 
   return { state, handleScroll, onThumbPointerDown, onRailPointerDown };
 }
