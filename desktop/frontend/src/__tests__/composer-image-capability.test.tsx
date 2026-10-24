@@ -9,6 +9,7 @@ import { Composer } from "../components/Composer";
 import { UserMessage } from "../components/Message";
 import { LocaleProvider } from "../lib/i18n";
 import { ToastProvider } from "../lib/toast";
+import { setCollabContactDirectory } from "../lib/collabContactNames";
 import type { CollaborationMode, ToolApprovalMode } from "../lib/types";
 
 let passed = 0;
@@ -91,6 +92,13 @@ function installDom() {
   return dom;
 }
 
+// 任务1121: UserMessage 内 useCollabContactNames hook 会调用
+// Directory.ListAddressableSessions（462/758 既有逻辑）——本测试此前未 stub
+// Directory，历史用例未触达 UserMessage 渲染路径所以未暴露；1121 gallery
+// 选择器同步后新增的 UserMessage 渲染用例触发该 hook，与 tl1066/tl1092/
+// tl1121 测试同一注入形态（setCollabContactDirectory 覆盖 directory 默认值）。
+setCollabContactDirectory({ ListAddressableSessions: async () => [] });
+
 function installBridgeApp(methods: Record<string, unknown>) {
   (window as unknown as { go: { main: { App: Record<string, unknown> } } }).go = {
     main: {
@@ -99,6 +107,15 @@ function installBridgeApp(methods: Record<string, unknown>) {
         Models: async () => [],
         ModelsForTab: async () => [],
         ...methods,
+      },
+      // 任务1121: UserMessage 内 useCollabContactNames hook 会调用
+      // Directory.ListAddressableSessions（462/758 既有逻辑）——本测试此前
+      // 只 stub 了 App，未 stub Directory，历史用例未触达 UserMessage 渲染路径
+      // 所以未暴露；1121 gallery 选择器同步后新增的 UserMessage 渲染用例
+      // 触发该 hook，补 stub 让测试闭环（与 tl1066/tl1092/tl1121 测试同一
+      // installBridgeApp 形态）。
+      Directory: {
+        ListAddressableSessions: async () => [],
       },
     },
   };
