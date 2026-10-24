@@ -122,7 +122,9 @@ function SteerCollabCard({ source, foldable = true }: { source: CollabImSourceMe
           （Message.tsx msg-meta 的 time + CopyButton）同款形态。独立 foot 行，
           即便旧投递文本无 sender/chat 也保证时间+复制入口存在；hover 全量
           contact_id 契约（462/758）留在整条 foot 行（不因 title 挪进内层 span
-          而丢）。 */}
+          而丢）。
+          任务1122: 时间戳移出 foot 行——统一放卡片下方 meta-time 行（用户
+          15:06 裁定，foot 行保留复制按钮）。 */}
       <div
         className="im-source-card__meta"
         data-transcript-selection-ignore
@@ -133,8 +135,12 @@ function SteerCollabCard({ source, foldable = true }: { source: CollabImSourceMe
             {t("msg.collabRoute", { from: collabLabel(source.sender), to: collabLabel(source.chat) })}
           </span>
         )}
-        <CardTime createdAt={source.sentAt} className="im-source-card__time" />
         <CopyButton text={source.text} label={t("msg.copy")} showInlineLabel={false} className="im-source-card__copy" />
+      </div>
+      {/* 任务1122: 时间戳统一卡片下方 meta-time 行（与用户消息 msg-meta 同一
+          位置样式）。 */}
+      <div className="im-source-card__time-row" data-transcript-selection-ignore>
+        <CardTime createdAt={source.sentAt} className="msg-meta__time" />
       </div>
     </div>
   );
@@ -218,13 +224,17 @@ export function SteerCard({ id, text, deferred = false, createdAt }: { id: strin
       <div className="steer-line" data-entrance={id}>
         {/* 任务1091: 复制按钮移出卡片，落在卡片下方 meta 行——与用户消息
             （msg-meta 的 CopyButton）同位；meta 行渲染在卡片之后（DOM 顺序
-            即视觉上下），右对齐。 */}
+            即视觉上下），右对齐。
+            任务1122: 时间戳同样移出卡片（998 原在气泡内右对齐），统一放
+            卡片下方 meta-time 行——与用户消息 msg-meta 同位同款。 */}
         <div className="steer-line__bubble" title={t("transcript.steer")}>
           <span className="steer-line__icon" aria-hidden="true">↪</span>
           {/* 任务1066: 正文剥除 @引用 + 图片缩略图（1091 起与文字上下分离、并排横排）。 */}
           <SteerGuidanceBody body={body} renderCopy={false} />
-          {/* 任务998：入队时刻走 1012 三档（同日只显时分，宽度冲击最小）。 */}
-          <CardTime createdAt={createdAt} className="steer-line__time" />
+        </div>
+        {/* 任务998：入队时刻走 1012 三档（同日只显时分，宽度冲击最小）。 */}
+        <div className="steer-meta steer-meta--time" data-transcript-selection-ignore>
+          <CardTime createdAt={createdAt} className="msg-meta__time" />
         </div>
         <div className="steer-meta">
           <CopyButton text={body} label="复制" showInlineLabel={false} className="steer-line__copy" />
@@ -247,9 +257,14 @@ export function SteerCard({ id, text, deferred = false, createdAt }: { id: strin
         <span className={`steer-line__text${collab || !expanded ? " steer-line__text--summary" : ""}`}>
           {collab ? <SteerCollabRouteSummary source={collab} /> : expanded ? parseAttachmentRefsForDisplay(body).text : firstLine}
         </span>
-        <CardTime createdAt={createdAt} className="steer-line__time" />
+        {/* 任务1122: 时间戳移出折叠占位按钮（按钮内嵌 time 语义不合法，且与
+            「卡片下方」统一位置不符）——放按钮下方 meta-time 行，与非 deferred
+            steer 同位同款。 */}
         <ChevronRight size={12} className="steer-line__chevron" aria-hidden="true" />
       </button>
+      <div className="steer-meta steer-meta--time" data-transcript-selection-ignore>
+        <CardTime createdAt={createdAt} className="msg-meta__time" />
+      </div>
       {/* 任务811: deferred 占位展开时用户已显式点开，卡片不再套 705 二次折叠。 */}
       {expanded && collab && <SteerCollabCard source={collab} foldable={false} />}
       {/* 任务1066: 展开态与①同款形态（图片缩略图+复制按钮）。
@@ -389,11 +404,14 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
             {item.suggestion ? (
               <div className="notice-line__suggestion">{item.suggestion}</div>
             ) : null}
-            {/* 任务998：未应用 steer 块等 notice 补时间戳（1012 三档）。 */}
-            <CardTime createdAt={item.createdAt} className="notice-line__time" />
           </>
         )}
         {!result && actionsRow}
+        {/* 任务998：未应用 steer 块等 notice 补时间戳（1012 三档）。
+            任务1122: 时间戳统一「卡片下方」——从 .notice-line__text 内末尾
+            移到卡片容器末尾（actionsRow/detail 之后），与三类消息时间戳同一
+            位置口径。 */}
+        {!result && <CardTime createdAt={item.createdAt} className="notice-line__time" />}
         {item.detail ? (
           <details className="notice-line__details">
             <summary>{t("notice.details")}</summary>

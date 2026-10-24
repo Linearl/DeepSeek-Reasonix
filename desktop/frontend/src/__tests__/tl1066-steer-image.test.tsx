@@ -1,12 +1,12 @@
 // Run: npx tsx --tsconfig tsconfig.tsx-runner.json --import ./scripts/css-stub-register.mjs src/__tests__/tl1066-steer-image.test.tsx
 //
 // 任务1066（P2）：引导消息图片增强——引导块内图片对齐用户消息渲染形态
-// （56px 缩略图 + 点击 ImageViewer 放大预览）+ 补复制按钮（复制原文含
+// （1121 起为独立大图块 .msg-attachment-gallery，点击 ImageViewer 放大预览）+ 补复制按钮（复制原文含
 // @引用，与用户消息 CopyButton 的 actionText 语义一致，便于直接重发）。
 //
 // 本文件钉三处引导场景的一致性（可证伪）：
-//  ① steer 气泡（SteerCard 非 deferred）：正文剥除 @引用、图片缩略图出现、
-//     点击缩略图打开 ImageViewer（.image-viewer-backdrop）、复制按钮存在；
+//  ① steer 气泡（SteerCard 非 deferred）：正文剥除 @引用、图片图块出现、
+//     点击图块打开 ImageViewer（.image-viewer-backdrop）、复制按钮存在；
 //  ② 723 deferred 占位：折叠态不渲染图片/复制按钮；展开态与 ① 同款形态；
 //  ③ 未应用引导 notice 块（NoticeCard code="unapplied_steer"）：同款形态。
 //
@@ -147,31 +147,37 @@ console.log("\ntl1066 steer image + copy");
     const { host, root } = freshHost();
     const steerText = `${STEER_NOTICE_PREFIX}看看这张截图 ${IMG_REF}`;
     await render(host, root, <SteerCard id="s-1066" text={steerText} />);
-    await waitFor(() => Boolean(host.querySelector(".msg-attachment--image")));
-    ok(host.querySelector(".msg-attachment--image") !== null, "① steer 气泡图片缩略图出现（复用 .msg-attachment 形态）");
+    await waitFor(() => Boolean(host.querySelector(".msg-attachment-gallery__item")));
+    ok(host.querySelector(".msg-attachment-gallery__item") !== null, "① steer 气泡图片图块出现（1121 独立大图块 .msg-attachment-gallery 形态）");
     ok(host.querySelector(".steer-line__text")?.textContent?.includes("看看这张截图") === true, "① 正文保留引导文字");
     ok(host.querySelector(".steer-line__text")?.textContent?.includes("@[shot.png]") !== true, "① 正文剥除 @引用");
     ok(host.querySelector("button.copybtn, .steer-line__copy") !== null, "① steer 气泡带复制按钮");
-    // 点击缩略图 → ImageViewer（portal 到 .chat-pane）——断言与 ②③ 同款口径
-    // （.msg-attachment--image 存在即可点击，不要求 img 子元素——img 由
+    // 点击图块 → ImageViewer（portal 到 .chat-pane）——断言与 ②③ 同款口径
+    // （.msg-attachment-gallery__item 存在即可点击，不要求 img 子元素——img 由
     // preview data URL 异步加载，JSDOM 下不保证渲染，属环境噪声非行为回归）。
-    const thumb = host.querySelector(".msg-attachment--image") as HTMLElement | null;
-    ok(thumb !== null, "① 图片缩略图是可点击卡片");
+    const thumb = host.querySelector(".msg-attachment-gallery__item") as HTMLElement | null;
+    ok(thumb !== null, "① 图块是可点击按钮（gallery item）");
     // 任务1091: 文字/附件上下分离 + 按钮出卡片——文字块在附件块之前（视觉
     // 上文字在上、图片统一放下），复制按钮在卡片（.steer-line__bubble）之外
     // 的 .steer-meta 行（与用户消息 msg-meta 同位）。
+    // 任务1122: 图片走独立大图块（.msg-attachment-gallery），纯图片场景不再
+    // 渲染 .msg-attachments 文件卡；1091 的「文字在上、图在下」分离语义改由
+    // gallery 容器承担，断言改查 .msg-attachment-gallery。
     const bubble = host.querySelector(".steer-line__bubble");
     const textSpan = host.querySelector(".steer-line__text");
-    const attachments = host.querySelector(".msg-attachments");
-    ok(bubble !== null && textSpan !== null && attachments !== null, "① 卡片/文字块/附件块均渲染");
+    const gallery = host.querySelector(".msg-attachment-gallery");
+    ok(bubble !== null && textSpan !== null && gallery !== null, "① 卡片/文字块/图块均渲染");
     ok(
-      bubble !== null && textSpan !== null && attachments !== null
-        && Boolean(textSpan.compareDocumentPosition(attachments) & Node.DOCUMENT_POSITION_FOLLOWING),
-      "① 文字块在附件块之前（上下分离，非嵌进文字流）",
+      bubble !== null && textSpan !== null && gallery !== null
+        && Boolean(textSpan.compareDocumentPosition(gallery) & Node.DOCUMENT_POSITION_FOLLOWING),
+      "① 文字块在图块之前（上下分离，非嵌进文字流）",
     );
-    const meta = host.querySelector(".steer-meta");
-    ok(meta !== null && bubble !== null && !bubble.contains(meta as Node), "① 复制按钮行在卡片之外");
-    ok(meta !== null && meta.contains(host.querySelector(".steer-line__copy") as Node), "① 复制按钮落在卡片下方 .steer-meta 行");
+    // 1122: steer 卡现在有两张 meta 行（meta-time 时间戳行 + 复制按钮行），
+    // 只有最后一张带 .steer-line__copy。
+    const metaRows = Array.from(host.querySelectorAll(".steer-meta"));
+    const copyMeta = metaRows.find(row => row.querySelector(".steer-line__copy")) ?? null;
+    ok(copyMeta !== null && bubble !== null && !bubble.contains(copyMeta as Node), "① 复制按钮行在卡片之外");
+    ok(copyMeta !== null && copyMeta.contains(host.querySelector(".steer-line__copy") as Node), "① 复制按钮落在卡片下方 .steer-meta 行");
     ok(host.querySelector(".steer-line__bubble .steer-line__copy") === null, "① 卡片内不再渲染复制按钮");
     if (thumb) {
       await act(async () => {
@@ -179,7 +185,7 @@ console.log("\ntl1066 steer image + copy");
         await flushTimers();
       });
       await waitFor(() => Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")));
-      ok(Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")), "① 点击缩略图打开 ImageViewer 放大预览");
+      ok(Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")), "① 点击图块打开 ImageViewer 放大预览");
     }
     // 复制 payload = 原文含 @引用
     const copyBtn = host.querySelector(".steer-line__copy") as HTMLButtonElement | null;
@@ -200,14 +206,14 @@ console.log("\ntl1066 steer image + copy");
     const steerText = `${STEER_NOTICE_PREFIX}看看 723 的截图 ${IMG_REF}\n第二行只有展开才可见`;
     await render(host, root, <SteerCard id="s-def-1066" text={steerText} deferred={true} />);
     // 折叠态：不渲染图片/复制按钮（723 原语义）
-    eq(host.querySelector(".msg-attachment--image") === null, true, "② 折叠态不渲染图片缩略图");
+    eq(host.querySelector(".msg-attachment-gallery__item") === null, true, "② 折叠态不渲染图片图块");
     eq(host.querySelector(".steer-line__copy") === null, true, "② 折叠态不渲染复制按钮");
     const button = host.querySelector("button.steer-line__bubble--deferred") as HTMLButtonElement | null;
     ok(button !== null, "② 折叠态仍是 723 占位按钮");
     if (button) {
       await act(async () => { button.click(); });
-      await waitFor(() => Boolean(host.querySelector(".msg-attachment--image")));
-      ok(host.querySelector(".msg-attachment--image") !== null, "② 展开态图片缩略图出现");
+      await waitFor(() => Boolean(host.querySelector(".msg-attachment-gallery__item")));
+      ok(host.querySelector(".msg-attachment-gallery__item") !== null, "② 展开态图片图块出现");
       ok(host.querySelector(".steer-line__text")?.textContent?.includes("第二行只有展开才可见") === true, "② 展开态显示完整正文");
       // 展开态正文在 .steer-line__expanded 内的 .steer-line__text--expanded
       // span（button 内保留的是全文纯文本，剥除动作发生在展开块内）。
@@ -218,14 +224,14 @@ console.log("\ntl1066 steer image + copy");
       const expandedCard = host.querySelector(".steer-line__expanded");
       const expandedMeta = host.querySelector(".steer-meta");
       ok(expandedMeta !== null && expandedCard !== null && !expandedCard.contains(expandedMeta as Node), "② 展开态复制按钮在卡片之外");
-      const thumb = host.querySelector(".msg-attachment--image") as HTMLElement | null;
+      const thumb = host.querySelector(".msg-attachment-gallery__item") as HTMLElement | null;
       if (thumb) {
         await act(async () => {
           thumb.click();
           await flushTimers();
         });
         await waitFor(() => Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")));
-        ok(Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")), "② 展开态点击缩略图打开 ImageViewer");
+        ok(Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")), "② 展开态点击图块打开 ImageViewer");
       }
     }
     await act(async () => { root.unmount(); });
@@ -244,19 +250,19 @@ console.log("\ntl1066 steer image + copy");
       createdAt: Date.now(),
     };
     await render(host, root, <NoticeCard item={noticeItem as never} />);
-    await waitFor(() => Boolean(host.querySelector(".msg-attachment--image")));
-    ok(host.querySelector(".msg-attachment--image") !== null, "③ 未应用引导块图片缩略图出现");
+    await waitFor(() => Boolean(host.querySelector(".msg-attachment-gallery__item")));
+    ok(host.querySelector(".msg-attachment-gallery__item") !== null, "③ 未应用引导块图片图块出现");
     ok(host.querySelector(".notice-line__text-body")?.textContent?.includes("看看这张截图") === true, "③ 正文保留引导文字");
     ok(host.querySelector(".notice-line__text-body")?.textContent?.includes("@[shot.png]") !== true, "③ 正文剥除 @引用");
     ok(host.querySelector(".steer-line__copy") !== null, "③ 未应用引导块带复制按钮");
-    const thumb = host.querySelector(".msg-attachment--image") as HTMLElement | null;
+    const thumb = host.querySelector(".msg-attachment-gallery__item") as HTMLElement | null;
     if (thumb) {
       await act(async () => {
         thumb.click();
         await flushTimers();
       });
       await waitFor(() => Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")));
-      ok(Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")), "③ 点击缩略图打开 ImageViewer");
+      ok(Boolean(document.querySelector(".chat-pane > .image-viewer-backdrop")), "③ 点击图块打开 ImageViewer");
     }
     await act(async () => { root.unmount(); });
     host.remove();

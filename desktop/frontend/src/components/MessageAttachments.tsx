@@ -27,7 +27,12 @@ export function MessageImageGallery({ images, previews, onOpenViewer }: {
             className="msg-attachment-gallery__item"
             onClick={() => onOpenViewer(attachment)}
           >
-            <img src={previews[attachment.path] ?? ""} alt={attachment.name} draggable={false} />
+            {/* src 为空串时 JSDOM/浏览器会告警「empty src 会触发整页重下」——
+                预览 URL 尚未就绪时渲染占位 span，不渲染 <img>。 */}
+            {previews[attachment.path]
+              ? <img src={previews[attachment.path]} alt={attachment.name} draggable={false} />
+              : <span className="msg-attachment-gallery__placeholder" aria-label={attachment.name} />}
+          
           </button>
         </Tooltip>
       ))}
