@@ -31,23 +31,50 @@ type ScreenShotCapture struct {
 
 var screenshotCaptureSeq uint64
 
+// captureScreenshotTempDir creates the per-capture temp directory both
+// capture entry points share.
+func captureScreenshotTempDir() (string, string, error) {
+	dir, err := os.MkdirTemp("", "reasonix-screenshot-*")
+	if err != nil {
+		return "", "", fmt.Errorf("create screenshot temp dir: %w", err)
+	}
+	screenshotCaptureSeq++
+	return dir, filepath.Join(dir, fmt.Sprintf("screen-%06d.png", screenshotCaptureSeq)), nil
+}
+
 // CaptureScreenshotAtCursor captures the full screen of the monitor that
 // currently holds the mouse cursor and returns the temp PNG location plus
 // geometry. The caller owns the temp file and must call
 // ReleaseScreenshotCapture when the overlay closes.
 func (a *App) CaptureScreenshotAtCursor() (ScreenShotCapture, error) {
-	dir, err := os.MkdirTemp("", "reasonix-screenshot-*")
+	dir, path, err := captureScreenshotTempDir()
 	if err != nil {
-		return ScreenShotCapture{}, fmt.Errorf("create screenshot temp dir: %w", err)
+		return ScreenShotCapture{}, err
 	}
-	screenshotCaptureSeq++
-	path := filepath.Join(dir, fmt.Sprintf("screen-%06d.png", screenshotCaptureSeq))
 	w, h, originX, originY, err := captureScreenAtCursor(path)
 	if err != nil {
 		_ = os.RemoveAll(dir)
 		return ScreenShotCapture{}, err
 	}
 	return ScreenShotCapture{Path: path, Width: w, Height: h, X: originX, Y: originY}, nil
+}
+
+// CaptureScreenshotVirtualDesktop captures the whole virtual desktop (all
+// monitors) so a selection can span displays (tl 1088 cross-monitor capture).
+// Geometry comes back in virtual-desktop coordinates; the overlay maps its
+// client coordinates onto these pixels exactly as it does for the single
+// monitor path.
+func (a *App) CaptureScreenshotVirtualDesktop() (ScreenShotCapture, error) {
+	dir, path, err := captureScreenshotTempDir()
+	if err != nil {
+		return ScreenShotCapture{}, err
+	}
+	metrics, err := captureVirtualScreenPNG(path)
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return ScreenShotCapture{}, err
+	}
+	return ScreenShotCapture{Path: path, Width: metrics.Width, Height: metrics.Height, X: metrics.X, Y: metrics.Y}, nil
 }
 
 // ReleaseScreenshotCapture removes a capture's temp directory. A missing or

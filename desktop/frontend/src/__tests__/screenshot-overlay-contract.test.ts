@@ -120,5 +120,53 @@ ok(
   "the temp-dir guard prefix matches what CaptureScreenshotAtCursor creates",
 );
 
+console.log("\ntl 1088 screenshot overlay contract");
+
+ok(
+  /"ellipse" \| "pen" \| "number"/.test(modelSource) && /"ellipse",\s*"pen",\s*"number"/.test(modelSource),
+  "the tl 1088 tool union and toolbar order include ellipse/pen/number",
+);
+
+ok(
+  /buildPenAnnotation/.test(overlaySource) && /penPointsRef/.test(overlaySource),
+  "the pen tool accumulates a polyline through a ref (off the render path)",
+);
+
+ok(
+  /buildNumberAnnotation/.test(overlaySource) && /stampNumber\(numberCounter\)/.test(overlaySource),
+  "the number tool stamps an auto-incrementing badge at the click point",
+);
+
+ok(
+  /case "ellipse"/.test(overlaySource) && /ctx\.ellipse\(/.test(overlaySource),
+  "the ellipse tool strokes an ellipse through the canvas",
+);
+
+ok(
+  /copyToClipboard/.test(overlaySource) && /CopyScreenshotToClipboard\(dataUrl\)/.test(overlaySource),
+  "the toolbar's copy button writes the final PNG through the backend clipboard path",
+);
+
+ok(
+  /navigator\.clipboard\.write\(\[new ClipboardItem/.test(overlaySource),
+  "clipboard copy falls back to the browser Clipboard API when the backend path is unavailable",
+);
+
+ok(
+  /CaptureScreenshotVirtualDesktop\(\)/.test(overlaySource) && /crossMonitor/.test(overlaySource),
+  "the cross-monitor toggle re-captures through the virtual-desktop binding",
+);
+
+ok(
+  /func \(a \*App\) CaptureScreenshotVirtualDesktop\(/.test(backendSource),
+  "the backend exposes the virtual-desktop capture binding",
+);
+
+ok(
+  /func \(a \*App\) CopyScreenshotToClipboard\(/.test(backendSource) ||
+    readFileSync(resolve(here, "../../../screenshot_clipboard_windows.go"), "utf8").includes("func writeClipboardImage("),
+  "the backend clipboard write path exists (CF_PNG + CF_DIB via syscall)",
+);
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

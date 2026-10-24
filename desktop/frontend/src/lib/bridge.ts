@@ -1382,6 +1382,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // contract (wails generate disabled); backend App methods live in
   // desktop/screenshot_app.go.
   CaptureScreenshotAtCursor(): Promise<{ path: string; width: number; height: number; x: number; y: number }>;
+  /** tl 1088: capture the whole virtual desktop so a selection can span displays. */
+  CaptureScreenshotVirtualDesktop(): Promise<{ path: string; width: number; height: number; x: number; y: number }>;
   ReleaseScreenshotCapture(path: string): Promise<void>;
   SaveScreenshotAttachment(dataUrl: string): Promise<string>;
   SaveScreenshotToPath(path: string, dataUrl: string): Promise<void>;
@@ -6051,6 +6053,12 @@ function makeMockApp(): AppBindings {
       const path = `.reasonix/attachments/mock-screen-${mockAttachmentDataURLs.size + 1}.png`;
       mockAttachmentDataURLs.set(path, mockPreviewImageDataURL);
       return { path, width: 160, height: 120, x: 0, y: 0 };
+    },
+    async CaptureScreenshotVirtualDesktop() {
+      const path = `.reasonix/attachments/mock-screen-virtual-${mockAttachmentDataURLs.size + 1}.png`;
+      mockAttachmentDataURLs.set(path, mockPreviewImageDataURL);
+      // A two-monitor virtual desktop: the second display sits to the right.
+      return { path, width: 320, height: 120, x: 0, y: 0 };
     },
     async ReleaseScreenshotCapture(_path: string) {},
     async SaveScreenshotAttachment(dataUrl: string) {

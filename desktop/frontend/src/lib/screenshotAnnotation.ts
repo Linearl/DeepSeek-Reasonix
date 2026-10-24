@@ -1,13 +1,14 @@
-// Screenshot annotation model for the desktop screenshot overlay (tl 1087).
+// Screenshot annotation model for the desktop screenshot overlay (tl 1087
+// phase one, extended by tl 1088 phase two).
 //
 // Pure functions only — no DOM, no React — so the selection/undo/redo rules
 // the overlay depends on are unit-testable without a canvas. The overlay
 // component owns pointer events and rendering; this module owns the facts.
 
-// One annotation the user drew on top of the screenshot. tl 1087 ships four
-// tool kinds; tl 1088 extends the union with ellipse/pen/number without
-// touching the undo-stack shape.
-export type AnnotationKind = "rect" | "arrow" | "text" | "mosaic";
+// One annotation the user drew on top of the screenshot. tl 1087 shipped
+// four tool kinds; tl 1088 adds ellipse / pen / number without touching the
+// undo-stack shape (they are drag-shaped or click-placed like the originals).
+export type AnnotationKind = "rect" | "arrow" | "text" | "mosaic" | "ellipse" | "pen" | "number";
 
 export interface AnnotationPoint {
   x: number;
@@ -17,13 +18,19 @@ export interface AnnotationPoint {
 export interface Annotation {
   kind: AnnotationKind;
   // Start/end are drag extremes in screenshot-pixel space; text uses
-  // start as its anchor and end as the caret's opposite corner.
+  // start as its anchor and end as the caret's opposite corner; number uses
+  // start as its center and ignores end.
   start: AnnotationPoint;
   end: AnnotationPoint;
   // text carries the typed content for the text tool; empty for the rest.
   text?: string;
   // color is the stroke/fill color the user picked (or the default).
   color: string;
+  // points carries the freehand pen's polyline (tl 1088); empty for the
+  // drag-shaped tools, which are fully described by start/end.
+  points?: AnnotationPoint[];
+  // number carries the tl 1088 auto-increment badge index (1, 2, 3 …).
+  number?: number;
 }
 
 // A normalized rectangle: x/y are the top-left, width/height are positive.
@@ -36,7 +43,16 @@ export interface SelectionRect {
 
 export type ScreenshotTool = AnnotationKind;
 
-export const SCREENSHOT_TOOLS: ScreenshotTool[] = ["rect", "arrow", "text", "mosaic"];
+// The toolbar's tool order: tl 1087's four first, then tl 1088's three.
+export const SCREENSHOT_TOOLS: ScreenshotTool[] = [
+  "rect",
+  "arrow",
+  "text",
+  "mosaic",
+  "ellipse",
+  "pen",
+  "number",
+];
 
 export const DEFAULT_ANNOTATION_COLOR = "#ff3b30";
 
@@ -219,4 +235,58 @@ export function buildAnnotation(
   text = "",
 ): Annotation {
   return { kind, start, end, color, text };
+}
+
+// tl 1088: a freehand pen stroke is a polyline, not a two-point shape. The
+// overlay appends to `points` while the pointer is down; this helper trims a
+// degenerate stroke (fewer than two distinct points) so a stray click never
+// commits an invisible mark into the undo stack.
+export function buildPenAnnotation(
+  points: AnnotationPoint[],
+  color: string,
+): Annotation | null {
+  const trimmed = dedupeNearbyPoints(points, 1.5);
+  if (trimmed.length < 2) return null;
+  return { kind: "pen", start: trimmed[0], end: trimmed[trimmed.length - 1], color, points: trimmed };
+}
+
+// Drop consecutive points closer than `minDistance` — a freehand drag emits
+// dozens of nearly-identical samples per pixel of movement, and the raw list
+// bloats the undo stack without adding visible fidelity.
+export function dedupeNearbyPoints(points: AnnotationPoint[], minDistance: number): AnnotationPoint[] {
+  const out: AnnotationPoint[] = [];
+  for (const point of points) {
+    const last = out[out.length - 1];
+    if (!last || Math.hypot(point.x - last.x, point.y - last.y) >= minDistance) out.push(point);
+  }
+  return out;
+}
+
+// tl 1088: the number badge (WeChat-style auto-increment marker). Clicking
+// stamps the next index; the overlay owns the counter, this helper centers
+// the badge geometry and exposes the radius the renderer and hit-test share.
+export const NUMBER_BADGE_RADIUS = 14;
+
+export function buildNumberAnnotation(center: AnnotationPoint, number: number, color: string): Annotation {
+  return { kind: "number", start: center, end: center, color, number };
+}
+
+// The auto-increment counter the number tool drives: a click stamps the next
+// integer; the overlay resets it whenever a fresh selection starts.
+export interface NumberCounter {
+  next: number;
+}
+
+export function emptyNumberCounter(): NumberCounter {
+  return { next: 1 };
+}
+
+export function stampNumber(counter: NumberCounter): { counter: NumberCounter; value: number } {
+  return { counter: { next: counter.next + 1 }, value: counter.next };
+}
+
+// tl 1088: the ellipse's bounding box, shared by the renderer (ctx.ellipse)
+// and any future hit-testing.
+export function ellipseBounds(annotation: Annotation): SelectionRect {
+  return normalizeSelection(annotation.start, annotation.end, { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER });
 }

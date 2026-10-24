@@ -4,15 +4,27 @@
 // selection normalization/clamping, the eight-handle resize algebra, the
 // undo/redo stack's linear-history rule, and the arrow head geometry. The
 // DOM/canvas side of the overlay lives in composer-screenshot.test.tsx.
+//
+// tl 1088 phase one adds coverage for the ellipse / pen / number tools: the
+// pen's polyline trimming, the number tool's auto-increment counter, the
+// ellipse's bounding box, and the fact that the tool list grew from four to
+// seven without disturbing the four originals.
 
 import {
   ANNOTATION_HISTORY_LIMIT,
+  NUMBER_BADGE_RADIUS,
+  SCREENSHOT_TOOLS,
   arrowHeadPoints,
   buildAnnotation,
+  buildNumberAnnotation,
+  buildPenAnnotation,
   canRedo,
   canUndo,
   clampSelectionRect,
+  dedupeNearbyPoints,
+  ellipseBounds,
   emptyHistory,
+  emptyNumberCounter,
   handlePositions,
   hitTestSelectionHandle,
   liveAnnotations,
@@ -21,6 +33,7 @@ import {
   redoAnnotation,
   resizeSelectionByHandle,
   selectionContains,
+  stampNumber,
   undoAnnotation,
   type Annotation,
   type AnnotationPoint,
@@ -209,6 +222,69 @@ console.log("\ntl 1087 arrow geometry");
   const [left, right] = arrowHeadPoints(start, end);
   ok(left.x > end.x && right.x < end.x, "downward arrow head wings straddle the shaft");
   ok(left.y < end.y && right.y < end.y, "both wings sit behind the tip");
+}
+
+console.log("\ntl 1088 tool list");
+
+{
+  eq(SCREENSHOT_TOOLS.length, 7, "the toolbar ships seven tools after tl 1088");
+  ok(SCREENSHOT_TOOLS.includes("rect") && SCREENSHOT_TOOLS.includes("arrow") && SCREENSHOT_TOOLS.includes("text") && SCREENSHOT_TOOLS.includes("mosaic"), "the tl 1087 four tools survive");
+  ok(SCREENSHOT_TOOLS.includes("ellipse") && SCREENSHOT_TOOLS.includes("pen") && SCREENSHOT_TOOLS.includes("number"), "the tl 1088 three tools are added");
+  eq(SCREENSHOT_TOOLS[0], "rect", "rect stays first in the toolbar order");
+}
+
+console.log("\ntl 1088 pen polyline");
+
+{
+  // A real drag produces a polyline; nearby samples collapse to one point.
+  const raw: AnnotationPoint[] = [
+    { x: 0, y: 0 },
+    { x: 0.4, y: 0.2 }, // closer than 1.5 → dropped
+    { x: 10, y: 5 },
+    { x: 20, y: 9 },
+  ];
+  const trimmed = dedupeNearbyPoints(raw, 1.5);
+  eq(trimmed.length, 3, "near-duplicate samples collapse to distinct points");
+  eq(trimmed[0], { x: 0, y: 0 }, "the first sample is kept");
+}
+
+{
+  // A stroke with fewer than two distinct points never commits.
+  eq(buildPenAnnotation([{ x: 3, y: 3 }], "#fff"), null, "a single-point stroke is rejected");
+  eq(buildPenAnnotation([{ x: 3, y: 3 }, { x: 3.2, y: 3.1 }], "#fff"), null, "a sub-threshold stroke is rejected");
+  const stroke = buildPenAnnotation([{ x: 0, y: 0 }, { x: 12, y: 8 }], "#fff");
+  ok(stroke !== null && stroke.kind === "pen", "a two-point stroke commits as a pen annotation");
+  eq(stroke?.points?.length, 2, "the committed stroke carries both points");
+  eq(stroke?.end, { x: 12, y: 8 }, "the stroke's end is its last sample");
+}
+
+console.log("\ntl 1088 number badge");
+
+{
+  let counter = emptyNumberCounter();
+  const first = stampNumber(counter);
+  counter = first.counter;
+  const second = stampNumber(counter);
+  counter = second.counter;
+  const third = stampNumber(counter);
+  counter = third.counter;
+  eq([first.value, second.value, third.value], [1, 2, 3], "three clicks stamp 1/2/3");
+  eq(counter.next, 4, "the counter keeps advancing after the third stamp");
+  const annotation = buildNumberAnnotation({ x: 40, y: 60 }, 2, "#fff");
+  eq(annotation.kind, "number", "the number tool commits a number annotation");
+  eq(annotation.number, 2, "the badge carries its index");
+  eq(annotation.start, { x: 40, y: 60 }, "the badge is anchored at its click point");
+  ok(NUMBER_BADGE_RADIUS > 0, "the badge radius is a positive constant");
+}
+
+console.log("\ntl 1088 ellipse");
+
+{
+  const ellipse = buildAnnotation("ellipse", { x: 10, y: 20 }, { x: 110, y: 220 }, "#fff");
+  const bounds = ellipseBounds(ellipse);
+  eq(bounds, { x: 10, y: 20, width: 100, height: 200 }, "the ellipse's bounds are its drag extremes");
+  const flipped = ellipseBounds(buildAnnotation("ellipse", { x: 110, y: 220 }, { x: 10, y: 20 }, "#fff"));
+  eq(flipped, { x: 10, y: 20, width: 100, height: 200 }, "a reversed drag normalizes to the same bounds");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

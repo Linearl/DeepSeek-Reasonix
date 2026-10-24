@@ -48456,6 +48456,11 @@ button.statusbar__mcp:focus-visible {
   background: var(--accent, #22c55e);
   color: var(--fg);
 }
+/* tl 1088：跨屏开关的激活态——与工具按钮同款高亮，但不参与工具选中互斥。 */
+.screenshot-overlay__action--on {
+  background: color-mix(in srgb, var(--accent, #22c55e) 25%, transparent);
+  color: var(--accent, #22c55e);
+}
 .screenshot-overlay__tool:disabled,
 .screenshot-overlay__action:disabled,
 .screenshot-overlay__confirm:disabled {
@@ -48541,6 +48546,41 @@ button.statusbar__mcp:focus-visible {
     linear-gradient(45deg, transparent 75%, currentColor 75%) 4px -4px / 8px 8px,
     linear-gradient(-45deg, transparent 75%, currentColor 75%) -4px 0 / 8px 8px;
   opacity: 0.85;
+}
+/* tl 1088：椭圆/画笔/序号 三工具字形。 */
+.screenshot-overlay__tool-glyph--ellipse {
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+.screenshot-overlay__tool-glyph--pen {
+  position: relative;
+}
+.screenshot-overlay__tool-glyph--pen::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  bottom: 2px;
+  width: 13px;
+  height: 13px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  border-radius: 0 0 8px 0;
+  transform: rotate(-12deg);
+}
+.screenshot-overlay__tool-glyph--number {
+  position: relative;
+}
+.screenshot-overlay__tool-glyph--number::before {
+  content: "1";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: currentColor;
+  color: var(--panel);
+  font: 700 10px/1 system-ui, sans-serif;
 }
 /* Composer toolbar screenshot trigger — same family as the content "+". */
 .composer-screenshot-trigger {

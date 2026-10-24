@@ -13,17 +13,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Redo2, Save, Type, Undo2, X } from "lucide-react";
+import { Check, Copy, PanelsTopLeft, Redo2, Save, Type, Undo2, X } from "lucide-react";
 import { useT, type Translator } from "../lib/i18n";
+import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
 import {
   DEFAULT_ANNOTATION_COLOR,
+  NUMBER_BADGE_RADIUS,
   SCREENSHOT_TOOLS,
   arrowHeadPoints,
   buildAnnotation,
+  buildNumberAnnotation,
+  buildPenAnnotation,
   canRedo,
   canUndo,
+  ellipseBounds,
   emptyHistory,
+  emptyNumberCounter,
   handlePositions,
   hitTestSelectionHandle,
   liveAnnotations,
@@ -32,9 +38,11 @@ import {
   redoAnnotation,
   resizeSelectionByHandle,
   selectionContains,
+  stampNumber,
   undoAnnotation,
   type Annotation,
   type AnnotationPoint,
+  type NumberCounter,
   type ScreenshotTool,
   type SelectionHandle,
 } from "../lib/screenshotAnnotation";
@@ -64,6 +72,7 @@ type DragMode = "select" | "resize" | "annotate" | null;
 
 export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverlayProps) {
   const t = useT();
+  const { showToast } = useToast();
   const [capture, setCapture] = useState<Capture | null>(null);
   const [captureError, setCaptureError] = useState(false);
   const [selection, setSelection] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -75,6 +84,9 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
   const [dragOrigin, setDragOrigin] = useState<AnnotationPoint | null>(null);
   const [textInput, setTextInput] = useState<{ x: number; y: number; value: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  // tl 1088: the number tool's auto-increment counter (a click stamps the
+  // next badge); it resets whenever a fresh selection starts.
+  const [numberCounter, setNumberCounter] = useState<NumberCounter>(emptyNumberCounter);
 
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -84,6 +96,17 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
   historyRef.current = history;
   const toolRef = useRef(tool);
   toolRef.current = tool;
+  // The pen's in-flight polyline lives in a ref, not state: it changes on
+  // every pointermove (dozens per second) and only needs to reach the canvas
+  // on the next repaint, not trigger a React render per sample.
+  const penPointsRef = useRef<AnnotationPoint[]>([]);
+  // tl 1088: cross-monitor capture toggle. Off = the monitor under the cursor
+  // (tl 1087 plan A); on = the whole virtual desktop, so one selection can
+  // span displays. Flipping it re-captures and clears any in-progress
+  // selection/annotations (the pixels underneath changed).
+  const [crossMonitor, setCrossMonitor] = useState(false);
+  const crossMonitorRef = useRef(crossMonitor);
+  crossMonitorRef.current = crossMonitor;
 
   // Kick off the capture the first time the overlay opens; release the temp
   // file when it closes (Esc / confirm) so no stray PNG outlives the gesture.
@@ -96,6 +119,8 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
     setHistory(emptyHistory());
     setDraftAnnotation(null);
     setTextInput(null);
+    setNumberCounter(emptyNumberCounter());
+    setCrossMonitor(false);
     (async () => {
       try {
         const shot = await app.CaptureScreenshotAtCursor();
@@ -125,6 +150,32 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
       cancelled = true;
     };
   }, [open]);
+
+  // Re-capture when the cross-monitor toggle flips (tl 1088). The previous
+  // capture's temp file is released so a toggle storm cannot leak directories.
+  const recapture = useCallback(async (virtual: boolean) => {
+    const previous = capturePathRef.current;
+    if (previous) {
+      void app.ReleaseScreenshotCapture(previous).catch(() => {});
+      capturePathRef.current = "";
+    }
+    setSelection(null);
+    setHistory(emptyHistory());
+    setDraftAnnotation(null);
+    setTextInput(null);
+    setNumberCounter(emptyNumberCounter());
+    try {
+      const shot = virtual ? await app.CaptureScreenshotVirtualDesktop() : await app.CaptureScreenshotAtCursor();
+      capturePathRef.current = shot.path;
+      const dataUrl = await app.AttachmentDataURL(shot.path).catch(() => "");
+      await primeScreenshotImageCache(dataUrl);
+      setCapture({ path: shot.path, width: shot.width, height: shot.height, x: shot.x, y: shot.y, dataUrl });
+      setCaptureError(false);
+    } catch (error) {
+      console.warn("[screenshot] re-capture failed", error);
+      setCaptureError(true);
+    }
+  }, []);
 
   // Release the backend temp file once the overlay unmounts or closes. The
   // capture path lives in a ref so the cleanup sees the final value even
@@ -231,9 +282,25 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
       }
       if (selectionContains(current, point)) {
         // The text tool anchors a text box at the click point instead of
-        // dragging a shape; the others draw from press to release.
+        // dragging a shape; the number tool (tl 1088) stamps an
+        // auto-incrementing badge at the click point with no drag at all.
         if (toolRef.current === "text") {
           setTextInput({ x: point.x - current.x, y: point.y - current.y, value: "" });
+          return;
+        }
+        if (toolRef.current === "number") {
+          const stamped = stampNumber(numberCounter);
+          const anchor = { x: point.x, y: point.y };
+          setHistory((prev) => pushAnnotation(prev, buildNumberAnnotation(anchor, stamped.value, DEFAULT_ANNOTATION_COLOR)));
+          setNumberCounter(stamped.counter);
+          return;
+        }
+        // The pen (tl 1088) accumulates a polyline rather than a two-point
+        // shape: seed the ref with the press point and start collecting.
+        if (toolRef.current === "pen") {
+          penPointsRef.current = [point];
+          setDragMode("annotate");
+          setDraftAnnotation(buildAnnotation("pen", point, point, DEFAULT_ANNOTATION_COLOR));
           return;
         }
         setDragMode("annotate");
@@ -262,6 +329,13 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
       return;
     }
     if (dragMode === "annotate" && draftAnnotation) {
+      // The pen accumulates its polyline in the ref (see pointerdown) so the
+      // per-sample state updates stay off the React render path.
+      if (draftAnnotation.kind === "pen") {
+        penPointsRef.current = [...penPointsRef.current, point];
+        setDraftAnnotation({ ...draftAnnotation, end: point, points: penPointsRef.current });
+        return;
+      }
       setDraftAnnotation({ ...draftAnnotation, end: point });
     }
   };
@@ -270,10 +344,16 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
     if (dragMode === "annotate" && draftAnnotation) {
       // A zero-length drag would commit a degenerate shape; treat it as a
       // cancelled gesture so a stray click never leaves a speck behind.
-      const moved = Math.hypot(draftAnnotation.end.x - draftAnnotation.start.x, draftAnnotation.end.y - draftAnnotation.start.y);
-      if (moved >= 3) {
-        setHistory((prev) => pushAnnotation(prev, draftAnnotation));
+      if (draftAnnotation.kind === "pen") {
+        const committed = buildPenAnnotation(penPointsRef.current, draftAnnotation.color);
+        if (committed) setHistory((prev) => pushAnnotation(prev, committed));
+      } else {
+        const moved = Math.hypot(draftAnnotation.end.x - draftAnnotation.start.x, draftAnnotation.end.y - draftAnnotation.start.y);
+        if (moved >= 3) {
+          setHistory((prev) => pushAnnotation(prev, draftAnnotation));
+        }
       }
+      penPointsRef.current = [];
       setDraftAnnotation(null);
     }
     setDragMode(null);
@@ -351,6 +431,29 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
       return;
     }
     onConfirm(dataUrl, width, height);
+  };
+
+  // tl 1088: copy the final PNG to the OS clipboard so external apps can paste
+  // it as a real image. The backend writes CF_PNG + CF_DIB through syscall;
+  // if that path is unavailable (non-Windows, or the webview lacks the
+  // binding) fall back to the browser Clipboard API.
+  const copyToClipboard = async () => {
+    const dataUrl = renderFinalDataURL();
+    if (!dataUrl) return;
+    try {
+      await app.CopyScreenshotToClipboard(dataUrl);
+      showToast(t("screenshot.copied"), "info");
+    } catch (error) {
+      console.warn("[screenshot] backend clipboard copy failed", error);
+      try {
+        const blob = await (await fetch(dataUrl)).blob();
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+        showToast(t("screenshot.copied"), "info");
+      } catch (fallbackError) {
+        console.warn("[screenshot] clipboard copy failed", fallbackError);
+        showToast(t("screenshot.copyFailed"), "warn");
+      }
+    }
   };
 
   // ---- render -----------------------------------------------------------
@@ -469,8 +572,31 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
               <Redo2 size={16} />
             </button>
             <span className="screenshot-overlay__divider" />
+            {/* tl 1088：跨屏开关——抓整个虚拟桌面，选区可横跨显示器。翻转会
+                重新抓图并清掉当前选区/标注（底下的像素变了）。 */}
+            <button
+              type="button"
+              className={`screenshot-overlay__action${crossMonitor ? " screenshot-overlay__action--on" : ""}`}
+              onClick={() => {
+                const next = !crossMonitor;
+                setCrossMonitor(next);
+                void recapture(next);
+              }}
+              aria-pressed={crossMonitor}
+              aria-label={t("screenshot.crossMonitor")}
+              title={t("screenshot.crossMonitorHint")}
+            >
+              <PanelsTopLeft size={16} />
+            </button>
+            <span className="screenshot-overlay__divider" />
             <button type="button" className="screenshot-overlay__action" onClick={() => void saveToFile()} disabled={saving || !selection} aria-label={t("screenshot.save")} title={t("screenshot.saveHint")}>
               <Save size={16} />
+            </button>
+            {/* tl 1088：复制到剪贴板——除「进输入框附件」外的第二个出口。走后端
+                CF_PNG/CF_DIB syscall（外部程序可直接粘贴为图片），失败时退回
+                前端 navigator.clipboard。 */}
+            <button type="button" className="screenshot-overlay__action" onClick={() => void copyToClipboard()} disabled={!selection} aria-label={t("screenshot.copy")} title={t("screenshot.copyHint")}>
+              <Copy size={16} />
             </button>
             <button
               type="button"
@@ -509,6 +635,12 @@ function toolLabel(t: Translator, tool: ScreenshotTool): string {
       return t("screenshot.tool.text");
     case "mosaic":
       return t("screenshot.tool.mosaic");
+    case "ellipse":
+      return t("screenshot.tool.ellipse");
+    case "pen":
+      return t("screenshot.tool.pen");
+    case "number":
+      return t("screenshot.tool.number");
   }
 }
 
@@ -568,6 +700,48 @@ function drawAnnotation(ctx: CanvasRenderingContext2D, annotation: Annotation) {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(tiny, x, y, w, h);
       ctx.imageSmoothingEnabled = true;
+      break;
+    }
+    // tl 1088 additions — same stroke/fill conventions as the tl 1087 tools.
+    case "ellipse": {
+      const bounds = ellipseBounds(annotation);
+      ctx.beginPath();
+      ctx.ellipse(
+        bounds.x + bounds.width / 2,
+        bounds.y + bounds.height / 2,
+        Math.abs(bounds.width / 2),
+        Math.abs(bounds.height / 2),
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.stroke();
+      break;
+    }
+    case "pen": {
+      // Freehand: stroke the polyline as one continuous path. A stroke with
+      // fewer than two samples is a no-op (buildPenAnnotation filters these,
+      // but the live draft can be a single point mid-drag).
+      const points = annotation.points ?? [];
+      if (points.length < 2) break;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y);
+      ctx.stroke();
+      break;
+    }
+    case "number": {
+      // WeChat-style numbered badge: a filled disc with the index in white.
+      ctx.beginPath();
+      ctx.arc(start.x, start.y, NUMBER_BADGE_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 16px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(annotation.number ?? ""), start.x, start.y);
+      ctx.textAlign = "start";
+      ctx.textBaseline = "alphabetic";
       break;
     }
   }
