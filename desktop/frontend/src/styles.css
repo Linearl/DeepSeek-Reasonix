@@ -5143,6 +5143,44 @@ a[href] {
 .unfiled-card__body--open {
   max-height: 64em; /* 展开后仍留上限（≈40 行）兜底，避免 50KB+ 全文再次撑爆 */
 }
+/* tl 1127: 未导入消息大窗口浏览——「查看」从内联展开改为大模态（41 条实例：
+   内联列表被 .main 的 overflow:hidden 裁掉且无滚动）。覆盖 .modal 默认 440px
+   窄帽，尺寸受视口约束（宽 min(960px, 90vw)、高 min(640px, 85vh)）；列表
+   沿 events-repair-dialog 的 flex 高度链独立滚动（min-height:0 是关键），
+   overscroll-behavior: contain（参照 settings-select-menu__list）隔离滚动链，
+   滚到底不带动底层 transcript。 */
+.unfiled-viewer-backdrop {
+  z-index: var(--z-modal);
+}
+.unfiled-viewer {
+  width: min(960px, 90vw);
+  max-width: min(960px, 90vw);
+  height: min(640px, 85vh);
+  max-height: min(640px, 85vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.unfiled-viewer__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.unfiled-viewer__head-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.unfiled-viewer__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
 .notice-line__details {
   margin-top: 4px;
   color: var(--fg-faint);
