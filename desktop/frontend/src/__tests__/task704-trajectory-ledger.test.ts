@@ -12,6 +12,7 @@ import {
   formatTrajectoryDuration,
   pointerRangeToDomain,
   recordIdsInFocus,
+  trajectorySpanRect,
 } from "../lib/trajectoryTimeline";
 import { historySearchAndAnswer } from "../lib/searchTranscript";
 import type { Item } from "../lib/useController";
@@ -128,8 +129,9 @@ console.log("\n任务 704 trajectory ledger + timeline projections");
   ok(c1.kind === "compaction" && c1.at === 1100 && !c1.atKnown, "compaction inherits anchor");
 }
 
-// ⑥ Timeline: fractions on a padded domain; zero-duration records become
-//    markers; ttftFraction projects the live-only split.
+// ⑥ Timeline: raw-ms model domain (1131: spans share the t0/t1 unit; the
+//    render layer normalizes via trajectorySpanRect); zero-duration records
+//    become markers; ttftFraction projects the live-only split.
 {
   const ledger = buildTrajectoryLedger([
     user("u1", "hi", { createdAt: 1000 }),
@@ -146,13 +148,15 @@ console.log("\n任务 704 trajectory ledger + timeline projections");
     const span = model.spans.find((s) => s.recordId === "a1");
     ok(!!span, "assistant projected as span");
     if (span) {
-      ok(span.start > 0 && span.start < 0.6, "span starts inside the padded domain");
-      ok(Math.abs((span.width + span.start) - span.start - span.width) < 1e-9, "span width finite");
-      ok(span.width > 0.3 && span.width < 0.6, "span covers half the domain within padding");
+      ok(span.start === 2000, "span starts at its epoch-ms anchor (raw domain, DSH 同款)");
+      ok(span.width === 1000, "span width is the raw ms duration");
       ok(Math.abs(span.ttftFraction! - 0.25) < 1e-9, "ttft fraction = 250/1000");
+      const rect = trajectorySpanRect(model, span);
+      ok(Math.abs(rect.leftPct - (1000 / 3000) * 100) < 1e-9 && Math.abs(rect.widthPct - (1000 / 3000) * 100) < 1e-9,
+        "trajectorySpanRect normalizes the raw-ms span to container percents");
     }
     const marker = model.markers.find((m) => m.recordId === "t1");
-    ok(!!marker && marker.width === 0 && marker.start > 0.9, "anchor-less-duration record is a late marker");
+    ok(!!marker && marker.width === 0 && marker.start === 4000, "anchor-less-duration record is a marker at its anchor");
     ok(!model.spans.some((s) => s.recordId === "u2") && !model.markers.some((m) => m.recordId === "u2"),
       "unanchored record stays off the timeline");
   }
@@ -167,7 +171,8 @@ console.log("\n任务 704 trajectory ledger + timeline projections");
     "no anchors: timeline is null (empty-state view)");
 }
 
-// ⑧ Focus helpers: drag range normalization + membership.
+// ⑧ Focus helpers: drag range normalization + span-overlap membership (1131:
+//    membership follows projected spans in the model domain, DSH 同款).
 {
   const ledger = buildTrajectoryLedger([
     user("u1", "hi", { createdAt: 1000 }),
@@ -176,11 +181,11 @@ console.log("\n任务 704 trajectory ledger + timeline projections");
   ]);
   const model = buildTrajectoryTimeline(ledger.records)!;
   // Domain 1000..2700 (t1 ends at 2700). Fractions 0.3/0.95 map to ~1510/2615,
-  // which covers a1 (2000) and t1 (2600) but not u1 (1000).
+  // which overlaps a1 (2000..2500) and t1 (2600..2700) but not u1 (1000).
   const range = pointerRangeToDomain(0.95, 0.3, model);
   ok(range.start < range.end, "pointer range normalized start<=end");
-  const ids = recordIdsInFocus(ledger.records, range);
-  ok(ids.has("a1") && ids.has("t1") && !ids.has("u1"), "focus covers anchored records inside the range only");
+  const ids = recordIdsInFocus(model, range);
+  ok(ids.has("a1") && ids.has("t1") && !ids.has("u1"), "focus covers projected records overlapping the range only");
 }
 
 // ⑨ Hydrate path: assistant items pick up wire createdAt, and stay

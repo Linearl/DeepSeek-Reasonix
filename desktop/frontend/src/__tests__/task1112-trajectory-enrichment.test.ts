@@ -81,7 +81,8 @@ console.log("\n任务 1112 trajectory enrichment: lanes, filters, summaries, sea
 }
 
 // ④ Duration mode: real durations take proportional width, missing durations
-//    take 1 minimum unit, no idle gaps (compressIdle semantics).
+//    are 0-width point markers (1131: no fake 1-unit filler in the ms domain),
+//    no idle gaps (compressIdle semantics).
 {
   const items: Item[] = [
     user("u1", "hi", { createdAt: 1000 }),
@@ -95,10 +96,10 @@ console.log("\n任务 1112 trajectory enrichment: lanes, filters, summaries, sea
   const markers = new Map(dur.markers.map((marker) => [marker.recordId, marker]));
   ok(dur.spans.length === 2 && markers.size === 2, "duration spans (a1/t1) + markers for the duration-less u1/t2");
   const total = dur.t1 - dur.t0;
-  ok(total === 1502, "duration domain = 1000ms + 500ms + two 1-unit markers (compressed idle)");
+  ok(total === 1500, "duration domain = raw ms total only (1000 + 500; no per-marker filler unit)");
   ok(dur.unitScale != null && Math.abs(dur.unitScale - 1 / total) < 1e-12, "unitScale = 1 序位 / 归一化域总长");
   ok(spans.get("a1")!.width === 1000 && spans.get("t1")!.width === 500, "span widths are the raw ms proportions");
-  ok(markers.has("t2"), "no-duration record is a point marker, not a span");
+  ok(markers.has("t2") && markers.get("t2")!.width === 0, "no-duration record is a 0-width point marker, not a span");
   ok(Math.abs(spans.get("t1")!.start - (spans.get("a1")!.start + spans.get("a1")!.width)) < 1e-9,
     "idle time is compressed out (no gap between records)");
 }

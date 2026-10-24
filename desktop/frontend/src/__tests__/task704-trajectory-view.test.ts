@@ -132,8 +132,10 @@ ok(trajView.includes("item?.kind === \"tool\" ? item.args : undefined") || trajV
 //    (out-of-range rows dim), click/right-click clears, running records draw
 //    start markers only.
 const timelineLib = fs.readFileSync(path.join(frontendRoot, "src/lib/trajectoryTimeline.ts"), "utf8");
-ok(trajView.includes("<TrajectoryTimelineBar") && trajView.includes("buildTrajectoryTimeline(windowedRecords)"),
+ok(trajView.includes("<TrajectoryTimelineBar") && trajView.includes('buildTrajectorySequenceTimeline(windowedRecords, "sequence")'),
   "the view mounts the timeline bar over the loaded window (DOM bounded)");
+ok(trajView.includes('buildTrajectorySequenceTimeline(windowedRecords, "duration")'),
+  "the duration toggle projects real-ms proportions (1131: DSH 'duration' 同款)");
 ok(timelineLib.includes("running: boolean"),
   "timeline module exposes running on spans (marker rendering keys off it)");
 ok(trajView.includes("pointerRangeToDomain") && trajView.includes("recordIdsInFocus"),
@@ -143,7 +145,11 @@ ok(trajView.includes("traj-row--dimmed") && trajView.includes("dimmed={(focusIds
   "out-of-focus ledger rows dim (anchor-less records never focus; search misses dim too — 1112)");
 ok(trajView.includes("traj-timeline__ttft") && trajView.includes("span.ttftFraction"),
   "assistant spans split TTFT/decode when live-only TTFT data exists");
-ok(timelineLib.includes("PADDING_FRACTION") && timelineLib.includes("if (t1 <= t0) t1 = t0 + 1;"), "domain stays padded and non-degenerate");
+ok(timelineLib.includes("if (t1 <= t0) t1 = t0 + 1;"), "degenerate domains stay valid (single instant)");
+// 1131: minimum visible width is pure CSS, never a JS domain computation.
+ok(trajView.includes("trajectorySpanRect(model, span)") && !trajView.includes("span.width * 100"),
+  "span rectangles normalize through trajectorySpanRect (no raw-unit × percent mixing)");
+ok(trajView.includes("max(2px, calc("), "spans keep a CSS-enforced minimum visible width");
 
 // ⑨ Long history (⑤): tail window + two-stage load-earlier (view window,
 //    then controller paging) with scroll anchoring; per-session remount.
