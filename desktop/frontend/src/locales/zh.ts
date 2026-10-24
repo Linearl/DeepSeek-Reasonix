@@ -3087,6 +3087,9 @@ export const zh: Record<DictKey, string> = {
   "settings.autopilotAskAutoContinue.on": "开",
   "settings.autopilotAskAutoContinue.off": "关",
   // 任务 1084：高风险操作授权清单（5 checkbox，默认全不勾）+ ask 轮次上限。
+  // 任务 1124：五开关聚合为一张卡——卡头标题 + 总说明（行级说明沿用各 Hint）。
+  "settings.highRiskAuthorize": "高风险操作授权",
+  "settings.highRiskAuthorizeHint": "五类高风险动作的两级授权清单（实验室勾选最硬，其次决策模式条目）。默认全不勾（保守）：出厂状态下五类高风险动作全部会先询问。",
   "settings.authorizeOutboundSend": "授权对外发送",
   "settings.authorizeOutboundSendHint": "勾选=授权：邮件/公开发布/对外消息类高风险动作可免询问直接执行。默认不勾（保守）。",
   "settings.authorizeDataMigrationDelete": "授权数据迁移与删除",

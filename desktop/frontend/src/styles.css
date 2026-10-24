@@ -21768,6 +21768,63 @@ button.statusbar__mcp:focus-visible {
     justify-self: start;
   }
 }
+/* 任务 1124：高风险授权五开关聚合卡（.set-preapprove 先例的 1084 版）——
+   autopilot 卡内一张边界明显的子卡：卡头（标题 + 总说明）+ 五条清单行
+   （checkbox + 标签 + 保留的说明文案），行式布局与 preapprove 四分类块
+   同构（tokens only，无新色板）。语义零变化：五项各写各的配置键、各走各
+   的 setter，聚合只改入口层组织。 */
+.set-highrisk-authorize {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 2px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.set-highrisk-authorize__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.set-highrisk-authorize__title {
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.set-highrisk-authorize__hint {
+  color: var(--fg-dim);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
+.set-highrisk-authorize__row {
+  /* 每个授权类别独占一行（与 .set-preapprove__row 同构：flex 占满卡宽）。 */
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--fg-dim);
+  font-size: var(--font-control-small);
+  cursor: pointer;
+}
+.set-highrisk-authorize__row input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.set-highrisk-authorize__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.set-highrisk-authorize__label {
+  color: var(--fg);
+}
+.set-highrisk-authorize__rowhint {
+  color: var(--fg-dim);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+}
 /* 任务 800：OpenCode Go 设置卡明细退役（三窗口/刷新/降级提示）——
    783 起右侧边栏卡是权威展示位，799 起按 plan family 门控；设置卡只留
    开关行，走 settings-field 默认双列（说明左/开关右），346/337/163 三代
