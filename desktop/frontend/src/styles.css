@@ -48346,3 +48346,222 @@ button.statusbar__mcp:focus-visible {
   font-size: 10px;
   color: var(--text-muted, inherit);
 }
+
+/* tl 1087 桌面截图覆盖层：全屏选区 + 标注画布 + 浮动工具条。挂载在
+   document.body（createPortal），z-index 沿用 --z-onboarding（最高档），
+   与 image-viewer 同族，保证盖过 app chrome / popover / toast。 */
+.screenshot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-onboarding);
+  cursor: crosshair;
+  user-select: none;
+  background: #000;
+}
+.screenshot-overlay__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+.screenshot-overlay__stage {
+  position: absolute;
+  inset: 0;
+}
+.screenshot-overlay__selection {
+  position: absolute;
+  border: 1px solid var(--accent, #22c55e);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.screenshot-overlay__handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 2px;
+  background: var(--accent, #22c55e);
+  pointer-events: auto;
+}
+.screenshot-overlay__canvas {
+  position: absolute;
+  pointer-events: none;
+}
+.screenshot-overlay__text-input {
+  position: absolute;
+  min-width: 120px;
+  padding: 2px 6px;
+  border: 1px solid var(--accent, #22c55e);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #111;
+  font: 600 20px system-ui, sans-serif;
+  outline: none;
+}
+.screenshot-overlay__size {
+  position: absolute;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font: 12px/1.4 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.screenshot-overlay__toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(20, 20, 20, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.screenshot-overlay__tool,
+.screenshot-overlay__action,
+.screenshot-overlay__confirm,
+.screenshot-overlay__cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #ddd;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.screenshot-overlay__tool:hover:not(:disabled),
+.screenshot-overlay__action:hover:not(:disabled),
+.screenshot-overlay__confirm:hover:not(:disabled),
+.screenshot-overlay__cancel:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.screenshot-overlay__tool--active {
+  background: var(--accent, #22c55e);
+  color: #fff;
+}
+.screenshot-overlay__tool:disabled,
+.screenshot-overlay__action:disabled,
+.screenshot-overlay__confirm:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.screenshot-overlay__confirm {
+  background: var(--control-primary-bg, #22c55e);
+  color: var(--control-primary-fg, #fff);
+}
+.screenshot-overlay__divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+}
+.screenshot-overlay__count {
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font: 11px/18px system-ui, sans-serif;
+  text-align: center;
+}
+.screenshot-overlay__loading,
+.screenshot-overlay__error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #eee;
+  font: 14px system-ui, sans-serif;
+}
+.screenshot-overlay__error button {
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 7px;
+  background: transparent;
+  color: #eee;
+  cursor: pointer;
+}
+/* Tool glyphs: rect/arrow/mosaic are drawn with CSS (no per-tool icon asset);
+   the text tool uses the lucide Type icon in the component itself. */
+.screenshot-overlay__tool-glyph {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+.screenshot-overlay__tool-glyph--rect {
+  border: 2px solid currentColor;
+}
+.screenshot-overlay__tool-glyph--arrow {
+  position: relative;
+}
+.screenshot-overlay__tool-glyph--arrow::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 2px;
+  background: currentColor;
+  transform: translateY(-50%);
+}
+.screenshot-overlay__tool-glyph--arrow::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  transform: translateY(-50%) rotate(45deg);
+}
+.screenshot-overlay__tool-glyph--mosaic {
+  background:
+    linear-gradient(45deg, currentColor 25%, transparent 25%) 0 0 / 8px 8px,
+    linear-gradient(-45deg, currentColor 25%, transparent 25%) 0 4px / 8px 8px,
+    linear-gradient(45deg, transparent 75%, currentColor 75%) 4px -4px / 8px 8px,
+    linear-gradient(-45deg, transparent 75%, currentColor 75%) -4px 0 / 8px 8px;
+  opacity: 0.85;
+}
+/* Composer toolbar screenshot trigger — same family as the content "+". */
+.composer-screenshot-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--composer-control-radius, 7px);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.composer-screenshot-trigger:hover:not(:disabled),
+.composer-screenshot-trigger:focus-visible {
+  outline: none;
+  color: var(--fg);
+  border-color: var(--border);
+  background: var(--bg-soft);
+}
+.composer-screenshot-trigger:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.composer-screenshot-trigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

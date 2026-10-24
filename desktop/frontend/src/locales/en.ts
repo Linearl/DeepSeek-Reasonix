@@ -5668,6 +5668,27 @@ export const en = {
   "settings.collabInbox": "Mail Center",
   "settings.collabInboxHint": "Mail history query, five-bucket views and retention (task 320)",
   "settings.collabInbox.open": "Open Mail Center",
+  // tl 1087 desktop screenshot overlay: capture → select → annotate → confirm
+  "screenshot.title": "Screenshot",
+  "screenshot.capturing": "Capturing the screen…",
+  "screenshot.captureFailed": "Screen capture failed. Check that a display is connected and try again.",
+  "screenshot.close": "Close",
+  "screenshot.toolbarLabel": "Screenshot tools",
+  "screenshot.tool.rect": "Rectangle",
+  "screenshot.tool.arrow": "Arrow",
+  "screenshot.tool.text": "Text",
+  "screenshot.tool.mosaic": "Mosaic",
+  "screenshot.undo": "Undo",
+  "screenshot.redo": "Redo",
+  "screenshot.save": "Save as file",
+  "screenshot.saveHint": "Save the annotated screenshot to a file (Ctrl+S)",
+  "screenshot.confirm": "Confirm",
+  "screenshot.confirmHint": "Attach to the message (double-click the selection)",
+  "screenshot.cancel": "Cancel",
+  "screenshot.cancelHint": "Discard the screenshot (Esc)",
+  "composer.screenshotButton": "Screenshot",
+  "composer.screenshotButtonHint": "Capture the screen, select a region, annotate, and attach",
+  "composer.screenshotFailed": "Screenshot failed",
 };
 
 export type DictKey = keyof typeof en;
