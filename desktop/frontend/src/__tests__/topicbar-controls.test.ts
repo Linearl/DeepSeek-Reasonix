@@ -15,19 +15,17 @@ const moreMenuSource = [
 assert.doesNotMatch(appSource, /t\("shortcuts\.cheatsheetTitle"\)|t\("topicBar\.command"\)/);
 
 const taskSummaryControlIndex = moreMenuSource.indexOf('t("summary.session")');
-const workspaceToggleIndex = appSource.indexOf('<Tooltip label={surfaceWorkspacePanelRenderable ? t("rightDock.collapse") : t("rightDock.expand")}>');
 assert.ok(taskSummaryControlIndex >= 0, "topic bar renders the localized Session summary control");
-assert.ok(workspaceToggleIndex >= 0, "topic bar keeps the right-edge workspace toggle");
-assert.match(
-  appSource,
-  /const localWorkspaceDockBlocked = remoteSurfaceActive && \(rightDockMode === "files" \|\| rightDockMode === "changed"\);/,
-  "remote sessions block local Files and Changes surfaces",
-);
-assert.match(
-  appSource,
-  /const surfaceWorkspacePanelRenderable = effectiveWorkspacePanelRenderable && !localWorkspaceDockBlocked;/,
-  "the topic bar projects the workspace toggle through the active surface boundary",
-);
 assert.ok(!moreMenuSource.includes('aria-label="Session summary"'), "Session summary does not use a hard-coded English label");
+
+// tl 1100：topicbar 右侧只剩「…」——移出的三项（分段控件/提问搜索/外部打开）
+// 不再在 topicbar 渲染，能力全部并入 `…` 菜单。
+assert.ok(!appSource.includes("<TopicbarSurfaceSwitch />"), "topicbar no longer renders the transcript|trajectory segment switch (moved into the … menu)");
+assert.ok(!appSource.includes('aria-label={t("questionSearch.label")}'), "topicbar no longer renders the question-search button");
+assert.ok(!appSource.includes("<ExternalOpener "), "topicbar no longer renders the yellow-folder external opener button");
+assert.ok(moreMenuSource.includes('t("topicBar.openIn")'), "the … menu exposes Open in… (openers moved in)");
+assert.ok(moreMenuSource.includes('t("topicBar.copyInfo")'), "the … menu exposes Copy ▸ (new)");
+assert.ok(moreMenuSource.includes('t("trajectory.view.transcript")') && moreMenuSource.includes('t("trajectory.view.trajectory")'), "the … menu exposes transcript/trajectory view items (switch moved in)");
+assert.ok(moreMenuSource.includes('t("topicBar.export")') && moreMenuSource.includes('t("summary.session")'), "original export/summary capabilities stay in the … menu");
 
 process.stdout.write("topicbar static presentation contracts passed\n");

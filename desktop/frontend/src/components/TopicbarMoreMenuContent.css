@@ -79,3 +79,84 @@
   color: var(--fg);
   background: var(--button-bg);
 }
+
+/* tl 1100「打开方式 ▸」「复制 ▸」「导出会话 ▸」共用的二级子菜单容器。 */
+.topicbar__more-submenu-host {
+  position: relative;
+}
+
+.topicbar__more-submenu {
+  position: absolute;
+  /* 向左展开（right: calc(100% + 4px)）——菜单贴屏幕右侧，向右展开会弹出屏幕外。 */
+  right: calc(100% + 4px);
+  top: -5px;
+  z-index: var(--z-topicbar-menu);
+  min-width: 168px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--overlay-surface-bg);
+  /* 用现成的 theme 阴影 token（--shadow-2），避免新增裸色值触发 class-contract。 */
+  box-shadow: var(--shadow-2);
+  --wails-draggable: no-drag;
+}
+
+.topicbar__more-submenu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.topicbar__more-submenu-item:hover,
+.topicbar__more-submenu-item:focus-visible {
+  color: var(--fg);
+  background: var(--button-bg);
+}
+
+.topicbar__more-submenu-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.topicbar__more-submenu-item--checked {
+  color: var(--fg);
+}
+
+.topicbar__more-submenu-check {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+/* 二级项里的原生应用图标（打开方式 ▸）：18px 方块，跟随菜单字号缩放。 */
+.topicbar__more-submenu .external-opener__app-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.topicbar__more-submenu .external-opener__app-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.topicbar__more-submenu .external-opener__fallback-icon {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+/* 转录/轨迹视图标记「当前」。 */
+.topicbar__menu-item-badge {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--fg-faint);
+}

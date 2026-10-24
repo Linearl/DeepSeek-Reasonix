@@ -70,42 +70,21 @@ console.log("\nexternal opener");
 
 const stylesSource = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-// The App layering split (#9777) renders these actions inside the topicbar
-// actions region; the key namespace contract lives there.
+// tl 1100：topicbar 的外部打开（黄色文件夹 ▾）按钮移除，能力并入 `…` 菜单的
+// 「打开方式 ▸」二级项；key namespace 契约仍在 TopicbarActionsRegion（旧 layering
+// split 的死代码保留，不因本次改动删除）。
 const topicbarActionsSource = readFileSync(new URL("../app-shell/TopicbarActionsRegion.tsx", import.meta.url), "utf8");
-const sharedControlRule = stylesSource.match(/(?:^|\n)\.external-opener\s*\{([^}]*)\}/)?.[1] ?? "";
-const sharedSegmentRule = stylesSource.match(
-  /\.external-opener__primary,\s*\.external-opener__menu-trigger\s*\{([^}]*)\}/,
-)?.[1] ?? "";
-const creationControlRule = stylesSource.match(
-  /\.app--creation \.topicbar__actions \.external-opener,\s*:root\[data-theme-style\] \.app--creation \.topicbar__actions \.external-opener\s*\{([^}]*)\}/,
-)?.[1] ?? "";
+ok(topicbarActionsSource.includes('key="external-opener"') && topicbarActionsSource.includes("key={external.tabId}"), "external opener has a distinct React key namespace");
+ok(topicbarActionsSource.includes('key="session-actions"') && topicbarActionsSource.includes("key={sessionIdentity}"), "session actions have a distinct React key namespace");
+ok(!appSource.includes("<ExternalOpener "), "topicbar no longer renders the yellow-folder opener button (moved into the … menu)");
+ok(appSource.includes('topicbarOpenersView'), "App feeds the discovered openers into the … menu");
+
 const sharedIconRule = stylesSource.match(/(?:^|\n)\.external-opener__app-icon\s*\{([^}]*)\}/)?.[1] ?? "";
-const creationIconRule = stylesSource.match(
-  /\.app--creation \.topicbar__actions \.external-opener__app-icon,\s*:root\[data-theme-style\] \.app--creation \.topicbar__actions \.external-opener__app-icon\s*\{([^}]*)\}/,
-)?.[1] ?? "";
-ok(
-  /height:\s*28px;/.test(sharedControlRule)
-    && /border-radius:\s*7px;/.test(sharedControlRule)
-    && /box-shadow:\s*none;/.test(sharedControlRule),
-  "uses the shared 28px / 7px topic-bar control geometry without an extra shadow",
-);
-ok(/height:\s*100%;/.test(sharedSegmentRule), "keeps both split-button segments within the shared control height");
-ok(
-  /height:\s*28px;/.test(creationControlRule) && /border-radius:\s*7px;/.test(creationControlRule),
-  "keeps Creation topic bars on the same 28px / 7px geometry",
-);
 ok(
   /width:\s*18px;/.test(sharedIconRule) && /height:\s*18px;/.test(sharedIconRule),
   "fits Workbench application artwork to the compact topic-bar control",
 );
-ok(
-  /width:\s*15px;/.test(creationIconRule) && /height:\s*15px;/.test(creationIconRule),
-  "preserves the slimmer Creation application artwork size",
-);
 
-ok(topicbarActionsSource.includes('key="external-opener"') && topicbarActionsSource.includes("key={external.tabId}"), "external opener has a distinct React key namespace");
-ok(topicbarActionsSource.includes('key="session-actions"') && topicbarActionsSource.includes("key={sessionIdentity}"), "session actions have a distinct React key namespace");
 ok(shouldMountExternalOpener({ id: "tab-project", scope: "project" }, false), "mounts for a Project tab");
 ok(shouldMountExternalOpener({ id: "tab-global", scope: "global" }, false), "mounts for a Global tab without guessing from scope");
 ok(!shouldMountExternalOpener({ id: "tab-global", scope: "global" }, true), "stays hidden while an IM detail surface owns the header");

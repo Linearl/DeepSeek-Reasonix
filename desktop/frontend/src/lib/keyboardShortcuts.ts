@@ -25,6 +25,14 @@ export type ShortcutAction =
   | "toolApproval.yolo"
   | "shortcuts.show"
   | "help.docs.open"
+  // tl 1101：命令面板工作台新增的跳转/入口快捷键。全表校验过与既有键不冲突
+  // （Ctrl+P / Ctrl+Shift+T / Ctrl+Shift+F / Ctrl+Shift+L / F1 / Ctrl+Alt+B 均空闲）。
+  | "palette.gotoTopic"
+  | "palette.gotoTab"
+  | "palette.searchQuestions"
+  | "palette.openLab"
+  | "palette.docs"
+  | "view.rightDock"
   | "topic.goto.1"
   | "topic.goto.2"
   | "topic.goto.3"
@@ -256,6 +264,73 @@ export const SHORTCUT_DEFINITIONS: readonly ShortcutDefinition[] = [
     // the sheet with no modifier intent. Ctrl|Cmd+/ is the convention
     // (VS Code, GitHub, Slack) and cannot clash with plain typing.
     defaults: modCombo("/"),
+    preventDefault: true,
+  },
+  // tl 1101：命令面板工作台新增快捷键。全表校验过与既有键不冲突（Ctrl+P /
+  // Ctrl+Shift+T / Ctrl+Shift+F / Ctrl+Shift+L / F1 / Ctrl+Alt+B 均空闲；Ctrl+K
+  // 已归 commandPalette.open，不重复注册）。
+  {
+    action: "palette.gotoTopic",
+    section: "session",
+    labelKey: "shortcuts.action.paletteGotoTopic",
+    descriptionKey: "shortcuts.desc.paletteGotoTopic",
+    defaults: modCombo("p"),
+    preventDefault: true,
+  },
+  {
+    action: "palette.gotoTab",
+    section: "session",
+    labelKey: "shortcuts.action.paletteGotoTab",
+    descriptionKey: "shortcuts.desc.paletteGotoTab",
+    defaults: {
+      darwin: { key: "t", meta: true, shift: true },
+      windows: { key: "t", ctrl: true, shift: true },
+      linux: { key: "t", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "palette.searchQuestions",
+    section: "session",
+    labelKey: "shortcuts.action.paletteSearchQuestions",
+    descriptionKey: "shortcuts.desc.paletteSearchQuestions",
+    defaults: {
+      darwin: { key: "f", meta: true, shift: true },
+      windows: { key: "f", ctrl: true, shift: true },
+      linux: { key: "f", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "palette.openLab",
+    section: "global",
+    labelKey: "shortcuts.action.paletteOpenLab",
+    descriptionKey: "shortcuts.desc.paletteOpenLab",
+    defaults: {
+      darwin: { key: "l", meta: true, shift: true },
+      windows: { key: "l", ctrl: true, shift: true },
+      linux: { key: "l", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "palette.docs",
+    section: "help",
+    labelKey: "shortcuts.action.paletteDocs",
+    descriptionKey: "shortcuts.desc.paletteDocs",
+    defaults: allPlatforms({ key: "F1" }),
+    preventDefault: true,
+  },
+  {
+    action: "view.rightDock",
+    section: "view",
+    labelKey: "shortcuts.action.viewRightDock",
+    descriptionKey: "shortcuts.desc.viewRightDock",
+    defaults: {
+      darwin: { key: "b", meta: true, alt: true },
+      windows: { key: "b", ctrl: true, alt: true },
+      linux: { key: "b", ctrl: true, alt: true },
+    },
     preventDefault: true,
   },
   {

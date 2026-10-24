@@ -168,8 +168,9 @@ ok(appTsx.includes('const TrajectoryView = lazy(() => import("./components/Traje
   "the live tree lazy-loads the trajectory surface");
 ok(appTsx.includes("useState(labFlagEnabled(\"trajectoryView\"))") && appTsx.includes("setSurfaceViewTab(activeTabId ?? \"\")") && appTsx.includes("useSurfaceView()"),
   "the live tree owns the flag subscription + per-tab view store");
-ok(/trajectoryViewEnabled && Boolean\(activeTabId\) && !activeTab\?\.remote && !sidebarImDetailConnection && \(\n\s*<TopicbarSurfaceSwitch \/>/.test(appTsx),
-  "the live topicbar gates the switch on the flag + local session");
+ok(/trajectoryViewEnabled && Boolean\(activeTabId\) && !activeTab\?\.remote && !sidebarImDetailConnection\s*\n?\s*\? \{ value: surfaceView, setView: setSurfaceView \}/.test(appTsx)
+  && appTsx.includes('setSurfaceView') && !appTsx.includes("<TopicbarSurfaceSwitch />"),
+  "tl 1100: the topicbar feeds transcript|trajectory into the … menu (gated on flag + local session) instead of a segment switch");
 ok(appTsx.includes("{primaryTrajectory ?? (<Transcript"), "the primary pane branches transcript|trajectory");
 ok(appTsx.includes('key={visibleTranscriptTabId}') && appTsx.includes("onLoadOlderHistory={handleLoadOlderHistory}"),
   "the live surface remounts per session and rides the existing controller paging");
