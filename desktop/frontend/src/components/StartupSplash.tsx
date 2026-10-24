@@ -7,8 +7,20 @@ const MIN_VISIBLE_MS = 1400;
 const FADE_OUT_MS = 420;
 const MAX_HOLD_MS = 6000;
 
-export function StartupSplash({ hold, onDone }: { hold: boolean; onDone: () => void }) {
+// tl 1132: the timing constants are injectable for the harness only — every
+// default keeps the exact upstream value, so production behaviour is
+// byte-for-byte unchanged.
+export type StartupSplashTiming = {
+  minVisibleMs?: number;
+  fadeOutMs?: number;
+  maxHoldMs?: number;
+};
+
+export function StartupSplash({ hold, onDone, timing }: { hold: boolean; onDone: () => void; timing?: StartupSplashTiming }) {
   const t = useT();
+  const minVisibleMs = timing?.minVisibleMs ?? MIN_VISIBLE_MS;
+  const fadeOutMs = timing?.fadeOutMs ?? FADE_OUT_MS;
+  const maxHoldMs = timing?.maxHoldMs ?? MAX_HOLD_MS;
   const [minElapsed, setMinElapsed] = useState(false);
   const [forceRelease, setForceRelease] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -24,12 +36,12 @@ export function StartupSplash({ hold, onDone }: { hold: boolean; onDone: () => v
     window.setTimeout(() => {
       markSplashShown();
       onDoneRef.current();
-    }, FADE_OUT_MS);
+    }, fadeOutMs);
   };
 
   useEffect(() => {
-    const minTimer = window.setTimeout(() => setMinElapsed(true), MIN_VISIBLE_MS);
-    const maxTimer = window.setTimeout(() => setForceRelease(true), MAX_HOLD_MS);
+    const minTimer = window.setTimeout(() => setMinElapsed(true), minVisibleMs);
+    const maxTimer = window.setTimeout(() => setForceRelease(true), maxHoldMs);
     return () => {
       window.clearTimeout(minTimer);
       window.clearTimeout(maxTimer);
