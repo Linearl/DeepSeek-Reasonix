@@ -219,6 +219,14 @@ func InspectSessionHealthContext(ctx context.Context, path string, opts HealthIn
 // base64 vision payloads ride the wire even though estimateTextTokens cannot
 // see them (the 1010 finding: images were the main bloat and the full-chain
 // estimate was blind to them). bytes/4 keeps the same conservative shape.
+//
+// 任务 1116 件 3-5d（口径互指，勿"统一"）：这里是**判据口径**（Diet 触发、
+// 健康检查用）——base64 长度 ÷4 的保守上界估计，宁高勿低（1010 教训：图片被
+// 低估会让每个阈值失明）。与之相对，**计价口径**在 image_estimate.go（任务
+// 1025/1040：按分辨率折算，喂给 ContextUsedTokens 主读数）。两套口径用途不
+// 同、故意不同：判据要保守上界，计价要贴近 provider 实账。改任何一套前先读
+// 另一套的注释，禁止把它们"统一"成一个数字——那会把 Diet 判据改盲（低估 ⇒
+// 超窗不触发）或把显示读数改虚高。
 func estimateProjectionTokens(msgs []provider.Message) int {
 	tokens := estimateMessagesTokens(msgs)
 	for _, m := range msgs {

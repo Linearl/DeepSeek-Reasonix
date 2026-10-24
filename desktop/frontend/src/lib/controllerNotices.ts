@@ -84,6 +84,8 @@ const noticeCodeKeys: Record<string, DictKey> = {
   session_concurrent_dual_tab: "recovery.noticeConcurrentDualTab",
   session_head_switched: "recovery.noticeHeadSwitched",
   session_head_selected: "recovery.noticeHeadSelected",
+  // 任务 1116 件 1：修复回填了检查点但 diet 没跑、投影仍超窗——面板告警。
+  session_repair_still_over_window: "recovery.noticeRepairStillOverWindow",
   session_also_open: "recovery.noticeAlsoOpen",
   decision_receipt: "notice.decisionReceiptTitle",
   context_editing_fallback: "notice.contextEditingFallback",

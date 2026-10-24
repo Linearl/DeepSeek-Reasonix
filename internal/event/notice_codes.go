@@ -60,6 +60,12 @@ const (
 	NoticeCodeSessionConcurrentDualTab = "session_concurrent_dual_tab"
 	NoticeCodeSessionHeadSwitched      = "session_head_switched"
 	NoticeCodeSessionHeadSelected      = "session_head_selected"
+	// 任务 1116 件 1: a repair refilled the checkpoint (hydrate=done) but the
+	// diet never ran and the projection is still over the model window — the
+	// 20261024 新9 shape (312KB → 33.7MB, source 298%) produced silently. The
+	// notice tells the user the repair is not finished and names the one-step
+	// remedy (run repair again with Diet checked).
+	NoticeCodeSessionRepairStillOverWindow = "session_repair_still_over_window"
 	// 任务 1010 需求 4: the open landed on a head that another live head
 	// strictly dominates (fewer messages AND older activity). The notice
 	// carries both chains' readings; switching stays a manual versions action.

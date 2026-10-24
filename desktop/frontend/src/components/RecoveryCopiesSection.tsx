@@ -413,6 +413,12 @@ function VersionRows({
         note = `${t("settings.sessionVersions.repaired")
           .replace("{actions}", actionsText)
           .replace("{backup}", report.backupDir || "—")}${volumeText}`;
+        // 任务 1116 件 1：hydrate 回填了检查点但 diet 没跑、投影仍超窗 ⇒ 回执
+        // 不能停在「修复完成」。追加显式告警与下一步（勾 Diet 再跑一次），与
+        // 后端 report.warning / repairlog / notice 三方一致。
+        if (report.warning) {
+          note += ` — ${t("settings.sessionVersions.repairStillOverWindow")}`;
+        }
         setRepairNote(note);
         receiptWritten = true;
         onReload();

@@ -12,6 +12,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/event"
 	"reasonix/internal/store"
 )
 
@@ -183,6 +184,22 @@ func (a *App) RepairSessionFor(path string, promoteHead, hydrate, diet bool) (ag
 	})
 	if err == nil && report.Repaired {
 		a.emitProjectTreeChangedForSessionDirs(filepath.Dir(path))
+	}
+	// 任务 1116 件 1：hydrate=done 而 diet 未跑、复检仍超窗 ⇒ 显式 GUI 告警。
+	// 不允许「修复完了」的假象：用户跑修复反而拿到 33.7MB 超窗会话且毫不知情
+	// （新9 现场）。告警同时落 repairlog（agent 层已写），这里补 GUI 侧。
+	if err == nil && report.Warning != nil {
+		notice := event.Event{
+			Kind:     event.Notice,
+			Level:    event.LevelWarn,
+			Audience: event.NoticeAudienceOperator,
+			Code:     event.NoticeCodeSessionRepairStillOverWindow,
+			Text:     agent.SelfHealStillOverWindowNoticeText,
+			Detail:   report.Warning.Detail,
+		}
+		if a != nil && a.ctx != nil {
+			a.runtimeEvents.Emit(a.ctx, "agent:event", notice)
+		}
 	}
 	return report, err
 }

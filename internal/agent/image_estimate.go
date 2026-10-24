@@ -45,6 +45,14 @@ const (
 // providers do — by pixel area after long-edge downscale, not by base64
 // length. Data URLs are sniffed from their header bytes; anything unreadable
 // falls back to the 任务 1010 flat cap.
+//
+// 任务 1116 件 3-5d（口径互指，勿"统一"）：这里是**计价口径**（任务 1025/1040
+// 的显示读数：ContextUsedTokens 主读数用它）。与之相对，**判据口径**在
+// session_health.go 的 estimateProjectionTokens（Diet 触发、健康检查用
+// base64 ÷4 的保守上界）。两套口径用途不同、故意不同：计价要贴近 provider
+// 实账，判据要保守上界（宁高勿低）。改任何一套前先读另一套的注释，禁止把
+// 它们"统一"成一个数字——那会把 Diet 判据改盲（低估 ⇒ 超窗不触发）或把显示
+// 读数改虚高。
 func imageEstimateTokens(imageRef string) int {
 	_, payload, ok := provider.ParseImageDataURL(imageRef)
 	if !ok {

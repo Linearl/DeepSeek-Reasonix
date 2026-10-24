@@ -1692,6 +1692,7 @@ export const en = {
   "settings.recoveryCopiesDualOpen": "This conversation is open in two tabs of this window — merging is paused. Close one tab (resolve the dual writer) and run the merge again.",
   "recovery.noticeAlsoOpen": "This session is also open in another Reasonix instance. Both may save; conflicts will fork a recovery copy.",
   "recovery.noticeHeadSwitched": "Opened the newest version of this conversation. Other saved versions are available in View versions.",
+  "recovery.noticeRepairStillOverWindow": "This repair refilled the checkpoint, but the conversation is still over the model window — run repair again with Diet checked to strip images and fold old messages.",
   "recovery.noticeSelectedHeadBehind": "Opened an older version ({selectedMessages} messages), while another version is longer and newer ({otherMessages} messages); switch in View versions if that is the chain you want.",
   "recovery.noticeMaterializationLag": "{gap} messages of this conversation are not materialized into the local transcript (events: {eventChain}, transcript: {materialized}); right-click the session and choose the repair-conversation action.",
   "recovery.noticeSelfHealed": "This conversation was repaired automatically and is usable again ({actions}); the previous version is kept and reversible from View versions.",
@@ -4614,6 +4615,7 @@ export const en = {
   "settings.sessionVersions.healthy": "Healthy: no repair needed.",
   "settings.sessionVersions.noRepairNeeded": "No repair needed.",
   "settings.sessionVersions.repaired": "Repaired ({actions}); backup: {backup}",
+  "settings.sessionVersions.repairStillOverWindow": "The checkpoint was refilled but the conversation is still over the model window; run repair again with Diet checked to strip images and fold old messages.",
   // 队尾体积列修复：修复回执的体积对比——瘦身类动作（diet）的收益要在面板上
   // 看得见；体积不变时照实说「无变化」，不编造数字。
   "settings.sessionVersions.volumeDelta": "size {before} → {after}",

@@ -414,6 +414,20 @@ export interface SelfHealActionView {
   status: string;
   detail?: string;
 }
+/**
+ * 任务 1116 件 1: the repair refilled the checkpoint (hydrate=done) but the
+ * diet never ran and the projection is still over the model window. The panel
+ * must not report a clean fix — it tells the user to rerun with Diet checked.
+ */
+export interface SelfHealOverflowWarningView {
+  code: string;
+  detail: string;
+  suggestedAction: string;
+  projectionTokens: number;
+  windowTokens: number;
+  dietActionNotRun: boolean;
+  hydrateActionDone: boolean;
+}
 /** What one repair run produced (mirrors agent.SelfHealReport). */
 export interface SelfHealReportView {
   path: string;
@@ -423,6 +437,8 @@ export interface SelfHealReportView {
   headTo?: string;
   healthy: boolean;
   repaired: boolean;
+  /** 任务 1116 件 1: present when the repair left an over-window projection behind. */
+  warning?: SelfHealOverflowWarningView;
 }
 /** One repair-log line (mirrors agent.RepairRecord). */
 export interface SessionRepairRecordView {

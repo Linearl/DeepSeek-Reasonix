@@ -307,6 +307,7 @@ func (a *App) startupStartBackgroundLoops() {
 	// read-only and badges the flagged ones; repairs stay on the open path
 	// and the panel button, never in this sweep.
 	a.startupStartSessionHealthScan()
+
 	// Task 244 B1: call-time evaluation (S4) -- the burn guard reads the
 	// saved switch on every run, so toggling it in settings applies without a
 	// restart. Missing config = off.
