@@ -1377,6 +1377,19 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   PickExportFile(defaultFilename: string, mimeType: string): Promise<string>;
   SaveExportFile(path: string, payload: string, base64Encoded: boolean): Promise<void>;
   SaveExportImageFiles(path: string, payloads: string[]): Promise<void>;
+  // tl 1087 desktop screenshot: full-screen capture at the cursor's monitor,
+  // temp-file lifecycle, attachment save, and Ctrl+S file save. Hand-written
+  // contract (wails generate disabled); backend App methods live in
+  // desktop/screenshot_app.go.
+  CaptureScreenshotAtCursor(): Promise<{ path: string; width: number; height: number; x: number; y: number }>;
+  /** tl 1088: capture the whole virtual desktop so a selection can span displays. */
+  CaptureScreenshotVirtualDesktop(): Promise<{ path: string; width: number; height: number; x: number; y: number }>;
+  ReleaseScreenshotCapture(path: string): Promise<void>;
+  SaveScreenshotAttachment(dataUrl: string): Promise<string>;
+  SaveScreenshotToPath(path: string, dataUrl: string): Promise<void>;
+  PickScreenshotExportFile(): Promise<string>;
+  /** tl 1088: put the final PNG on the OS clipboard as a real image. */
+  CopyScreenshotToClipboard(dataUrl: string): Promise<void>;
   AttachDropped(path: string): Promise<DroppedItem>;
   AttachmentDataURL(path: string): Promise<string>;
   Models(): Promise<ModelInfo[]>;
@@ -6050,6 +6063,32 @@ function makeMockApp(): AppBindings {
       mockAttachmentDataURLs.set(attachmentPath, mockPreviewImageDataURL);
       return { kind: "attachment" as const, path: attachmentPath };
     },
+    // tl 1087 browser dev mock: the "screen" is a fixed-size SVG so the
+    // overlay's selection→pixel mapping is exercisable without a real display.
+    async CaptureScreenshotAtCursor() {
+      const path = `.reasonix/attachments/mock-screen-${mockAttachmentDataURLs.size + 1}.png`;
+      mockAttachmentDataURLs.set(path, mockPreviewImageDataURL);
+      return { path, width: 160, height: 120, x: 0, y: 0 };
+    },
+    async CaptureScreenshotVirtualDesktop() {
+      const path = `.reasonix/attachments/mock-screen-virtual-${mockAttachmentDataURLs.size + 1}.png`;
+      mockAttachmentDataURLs.set(path, mockPreviewImageDataURL);
+      // A two-monitor virtual desktop: the second display sits to the right.
+      return { path, width: 320, height: 120, x: 0, y: 0 };
+    },
+    async ReleaseScreenshotCapture(_path: string) {},
+    async SaveScreenshotAttachment(dataUrl: string) {
+      const path = `.reasonix/attachments/mock-screenshot-${mockAttachmentDataURLs.size + 1}.png`;
+      mockAttachmentDataURLs.set(path, dataUrl);
+      return path;
+    },
+    async SaveScreenshotToPath(path: string, dataUrl: string) {
+      await this.SaveExportFile(path, dataUrl.slice(dataUrl.indexOf(",") + 1), true);
+    },
+    async PickScreenshotExportFile() {
+      return "screenshot-mock.png";
+    },
+    async CopyScreenshotToClipboard(_dataUrl: string) {},
     async AttachmentDataURL(path: string) {
       return mockAttachmentDataURLs.get(path) ?? mockPreviewImageDataURL;
     },

@@ -7,7 +7,7 @@ import { pendingFollowups, confirmFollowup, followupNotSubmitted, followupSessio
 import { useAppNavigationStore } from "../store/appNavigation";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, ClipboardEvent, DragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, RefreshCw, Search, Shield, ShieldAlert, ShieldCheck, Smile, Square, Target, Trash2, Users, Wand2, X, Zap } from "lucide-react";
+import { ArrowUp, ChevronsDown, ChevronsUp, Columns2, Brain, Check, Clock, CornerDownRight, Crop, Eye, FileText, Folder, Lightbulb, List, MessageSquare, Plus, RefreshCw, Search, Shield, ShieldAlert, ShieldCheck, Smile, Square, Target, Trash2, Users, Wand2, X, Zap } from "lucide-react";
 import { useSessionExperience } from "../lib/sessionExperience";
 import { useWorkProcessFoldAggregate } from "../lib/workProcessFoldState";
 import { asArray } from "../lib/array";
@@ -86,6 +86,7 @@ import { Markdown } from "./Markdown";
 import { CodeViewer } from "./CodeViewer";
 import { ContextWindowRing } from "./ContextWindowRing";
 import { ImageViewer } from "./ImageViewer";
+import { ScreenshotOverlay } from "./ScreenshotOverlay";
 import type { PendingGuidance } from "./ComposerGuidanceShelf";
 import {
   RichComposerInput,
@@ -954,6 +955,39 @@ export function Composer({
   const closeComposerImageViewer = useCallback(() => {
     setImageViewer((prev) => (prev.open ? { ...prev, open: false } : prev));
   }, []);
+
+  // tl 1087: the screenshot overlay's open flag and the confirm callback that
+  // receives the final PNG. The overlay owns the capture/annotate flow; the
+  // Composer only owns the button, the open state, and inserting the result
+  // into the active draft through the same attachment link the paste/drop
+  // image chain uses.
+  const [screenshotOverlayOpen, setScreenshotOverlayOpen] = useState(false);
+  const closeScreenshotOverlay = useCallback(() => {
+    setScreenshotOverlayOpen(false);
+    requestActiveDraftFrame(() => taRef.current?.focus());
+  }, []);
+  const onScreenshotConfirmed = useCallback(async (dataUrl: string) => {
+    // The backend already stored the attachment during confirm; this mirrors
+    // the paste path's bookkeeping (dedup key + preview URL) so the chip
+    // lands in the active draft exactly like a pasted image would.
+    const sourceDraftKey = activeDraftKeyRef.current;
+    updatePendingPasteForDraft(sourceDraftKey, 1);
+    try {
+      const path = await app.SaveScreenshotAttachment(dataUrl);
+      const previewUrl = await app.AttachmentDataURL(path);
+      const key = { hash: await dataURLHash(previewUrl), source: `screenshot:${path}` };
+      if (!attachmentSeenInDraft(sourceDraftKey, key)) {
+        addAttachmentToDraft(sourceDraftKey, { path, previewUrl }, key);
+      }
+    } catch (error) {
+      console.warn("[composer] failed to attach screenshot", error);
+      showToast(t("composer.screenshotFailed"), "warn");
+    } finally {
+      updatePendingPasteForDraft(sourceDraftKey, -1);
+      setScreenshotOverlayOpen(false);
+      requestActiveDraftFrame(() => taRef.current?.focus());
+    }
+  }, [showToast, t]);
 
   const [workspaceRefs, setWorkspaceRefs] = useState<WorkspaceReference[]>([]);
   const [invocations, setInvocations] = useState<ComposerInvocation[]>([]);
@@ -4545,6 +4579,15 @@ export function Composer({
     });
 
     if (e.key === "Enter" && composing) return;
+    // tl 1087: while the screenshot overlay is up, Esc belongs to it (cancel
+    // the capture, no side effects) — swallow the key here so it never reaches
+    // the composer's stop shortcut underneath the overlay.
+    if (e.key === "Escape" && screenshotOverlayOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeScreenshotOverlay();
+      return;
+    }
     // Task 181: Esc leaves guidance-edit mode and restores the stashed draft. It
     // must not also reach the composer's stop shortcut, so it returns here.
     if (e.key === "Escape" && guidanceCompose && !composing) {
@@ -5675,6 +5718,11 @@ export function Composer({
         imageName={imageViewer.name}
         onClose={closeComposerImageViewer}
       />
+      <ScreenshotOverlay
+        open={screenshotOverlayOpen}
+        onClose={closeScreenshotOverlay}
+        onConfirm={(dataUrl) => void onScreenshotConfirmed(dataUrl)}
+      />
       {activePastedBlocks.length > 0 && (
         <div className="composer__pasted">
           {activePastedBlocks.map((block) => {
@@ -5922,6 +5970,24 @@ export function Composer({
                     aria-label={t("composer.contentMenuTitle")}
                   >
                     <Plus size={17} strokeWidth={1.8} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              </div>
+            )}
+            {/* tl 1087：输入框工具栏的「截图」按钮（只做按钮，不做全局快捷键）。
+                点击 → 后端抓鼠标所在屏全屏 → 覆盖层框选+标注 → 双击确认进附件。
+                与上面的「+」菜单同族：draft-only 编辑动作，运行中仍可用。 */}
+            {attachmentInputEnabled && !heroMode && (
+              <div className="composer-meta__control composer-meta__control--screenshot">
+                <Tooltip label={t("composer.screenshotButtonHint")}>
+                  <button
+                    type="button"
+                    className="composer-screenshot-trigger"
+                    onClick={() => setScreenshotOverlayOpen(true)}
+                    disabled={disabled || readOnly}
+                    aria-label={t("composer.screenshotButton")}
+                  >
+                    <Crop size={16} aria-hidden="true" />
                   </button>
                 </Tooltip>
               </div>
