@@ -111,9 +111,9 @@ console.log("\nunfiled inputs: large-window viewer (tl 1127, 方案 A)");
   // 验收 1：列表独立滚动 + flex 高度链（min-height:0，否则 flex 子项不收缩滚不动）
   ok(/\.unfiled-viewer__list\s*{[^}]*overflow-y:\s*auto/.test(listCss), "viewer list scrolls independently (overflow-y: auto)");
   ok(/\.unfiled-viewer__list\s*{[^}]*min-height:\s*0/.test(listCss), "flex chain min-height: 0 so the list can actually shrink and scroll to the last entry");
-  // 验收 2：视口约束 + 关闭入口
-  ok(/width:\s*min\(960px,\s*90vw\)/.test(dialogCss) && /max-width:\s*min\(960px,\s*90vw\)/.test(dialogCss), "dialog width capped at min(960px, 90vw)");
-  ok(/height:\s*min\(640px,\s*85vh\)/.test(dialogCss) && /max-height:\s*min\(640px,\s*85vh\)/.test(dialogCss), "dialog height capped at min(640px, 85vh) ≤ 85vh");
+  // 验收 2：视口约束 + 关闭入口（.modal 的 width:100% 继承，max-width 封顶）
+  ok(/max-width:\s*min\(960px,\s*90vw\)/.test(dialogCss), "dialog width capped at min(960px, 90vw)");
+  ok(/height:\s*min\(640px,\s*85vh\)/.test(dialogCss), "dialog height capped at min(640px, 85vh) ≤ 85vh");
   ok(banner.includes("<ModalCloseButton") && banner.includes("t.close"), "X close button present in the viewer head");
   // 验收 4：滚动链隔离——列表滚到底不带动底层 transcript
   ok(/overscroll-behavior:\s*contain/.test(listCss), "scroll chain isolated (overscroll-behavior: contain) — the transcript underneath never scrolls along");
