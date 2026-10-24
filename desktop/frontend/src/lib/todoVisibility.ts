@@ -71,7 +71,13 @@ export function todoTreeDepths(todos: Todo[]): number[] {
     const id = String(todo.step_id ?? "").trim();
     if (id) indexOfStepID.set(id, index);
   });
-  let lastRoot = -1;
+  // Task 1107 pit ①: level is a 0/1 flag, not a nesting level — a level-1
+  // item attaches to the nearest preceding DEPTH-0 root, never to the
+  // root's child (which would grow a phantom second level and split the
+  // root away from its sub-step in grouping). Roots are recorded wherever
+  // the item resolves to depth 0 (explicit parent chains included), so a
+  // root's own level-1 sub-steps do not detach their later siblings.
+  const depthZeroIndices: number[] = [];
   todos.forEach((todo, index) => {
     const parentID = String(todo.parent_id ?? "").trim();
     if (parentID) {
@@ -79,12 +85,11 @@ export function todoTreeDepths(todos: Todo[]): number[] {
       if (parent !== undefined && parent < index) {
         depths[index] = depths[parent] + 1;
       }
-    } else if (Number(todo.level) === 1 && lastRoot >= 0) {
-      depths[index] = depths[lastRoot] + 1;
+    } else if (Number(todo.level) === 1 && depthZeroIndices.length > 0) {
+      const parent = depthZeroIndices[depthZeroIndices.length - 1]!;
+      depths[index] = depths[parent]! + 1;
     }
-    if (Number(todo.level) === 0 && depths[index] === 0 && !parentID) {
-      lastRoot = index;
-    }
+    if (depths[index] === 0) depthZeroIndices.push(index);
   });
   return depths;
 }
@@ -104,6 +109,232 @@ export function todoHierarchyCodes(todos: Todo[]): string[] {
     codes[index] = `T${counters.slice(0, depth + 1).join(".")}`;
   });
   return codes;
+}
+
+// ---- Task 1107: focus-mode grouping (borrowed presentation idea from ZCode
+// 3.16.2's task panel, reimplemented on our own tree layer) ----
+//
+// A live batch renders as at most five rows: the terminal group collapsed to
+// one header, the lookahead window (current + the LOOKAHEAD pending items
+// after it — the number the user pinned on 2026-10-23: do not change), the
+// current item always visible, then the remaining pending group collapsed to
+// one header. The headers carry the hover-preview affordance; expanding a
+// group (persisted per stateKey, same store family as the shelf open state)
+// reuses the plain tree rows underneath.
+
+/**
+ * Items rendered after the current one inside the focus window — the number
+ * the user pinned on 2026-10-23 (do not change).
+ */
+export const TODO_FOCUS_LOOKAHEAD = 2;
+
+export type TodoFocusGroupKind = "done" | "focus" | "current" | "pending";
+
+export interface TodoFocusRow {
+  kind: TodoFocusGroupKind;
+  /** Item indices this row stands for (a single index for plain rows). */
+  indices: number[];
+}
+
+// todoFocusRows builds the focus-mode row layout. Tree integrity (task 152)
+// is the first constraint: a subtree travels with its parent, so a row can
+// never be split away from its children. Anchors are therefore root-level
+// (depth 0) items, and an item's anchor is its topmost ancestor — a child of
+// the current item stays in the current/focus rows even when the current root
+// itself sits in the done group.
+//
+// The current anchor and the anchors in the lookahead window become plain
+// rows; every other anchor compresses into a group header (terminal group
+// first when it has any items, pending group last when it has any). A batch
+// that is all-terminal keeps the plain list — task 893-C's signed-off panel
+// shows its items, not two empty group headers.
+export function todoFocusRows(todos: Todo[]): TodoFocusRow[] {
+  if (todos.length === 0) return [];
+  const { anchors, anchorOf } = todoFocusUnits(todos);
+  const anchorMembers = new Map<number, number[]>();
+  todos.forEach((_, index) => {
+    const anchor = anchorOf[index];
+    const list = anchorMembers.get(anchor);
+    if (list) list.push(index);
+    else anchorMembers.set(anchor, [index]);
+  });
+  const anchorOpen = new Map<number, boolean>();
+  anchors.forEach((anchor) => {
+    anchorOpen.set(anchor, !anchorMembers.get(anchor)!.every((i) => todoTerminalStatus(todos[i].status)));
+  });
+  // The window always contains the current item's UNIT: the unit root anchors
+  // the plain row (its subtree renders with it); when the in-progress item is
+  // itself a child, that child's position inside the unit sets the window —
+  // so the LOOKAHEAD items follow the actual current item, not the root.
+  let currentAnchor = -1;
+  let currentPosition = -1;
+  anchors.forEach((anchor) => {
+    const member = anchorMembers.get(anchor)!.find((i) => todoStatus(todos[i]!.status) === "in_progress");
+    if (member !== undefined) {
+      currentAnchor = anchor;
+      currentPosition = member;
+    }
+  });
+
+  const rows: TodoFocusRow[] = [];
+  if (currentAnchor < 0) {
+    // No in-progress item (a stale restored batch): the whole list keeps the
+    // plain face — with no current anchor a "current row" cannot exist.
+    anchors.forEach((anchor) => rows.push({ kind: "focus", indices: [anchor] }));
+    return rows;
+  }
+  // Pass 1: the terminal group. Done anchors before the focus window collect
+  // into one header; done anchors after it are folded into the pending
+  // group so the rows keep list order (a done item between the lookahead
+  // tail and the tail pending items stays reachable at its own position).
+  const doneIndices = anchors.filter((anchor) => !anchorOpen.get(anchor) && anchor < currentPosition);
+  if (doneIndices.length > 0) rows.push({ kind: "done", indices: doneIndices });
+  // Pass 2: the focus window — the current unit's root (its subtree renders
+  // with it), then the LOOKAHEAD units AFTER the current item, measured in
+  // items (anchor index), not unit slots, so a multi-item unit never
+  // shortens the window. A done unit among them stays a plain row, keeping
+  // the row count stable while the item is still in view.
+  // The window holds the current UNIT's anchors plus the LOOKAHEAD units
+  // after it — everything the user keeps seeing without opening a group.
+  const windowUnits = new Set<number>([currentAnchor]);
+  for (const anchor of anchors) {
+    if (windowUnits.size >= 1 + TODO_FOCUS_LOOKAHEAD) break;
+    if (anchor > currentPosition) windowUnits.add(anchor);
+  }
+  const tailIndices: number[] = [];
+  anchors.forEach((anchor) => {
+    if (anchor === currentAnchor) {
+      rows.push({ kind: "current", indices: [anchor] });
+      return;
+    }
+    if (windowUnits.has(anchor)) {
+      rows.push({ kind: "focus", indices: [anchor] });
+      return;
+    }
+    // Everything outside the window folds into the tail group; a terminal
+    // unit BEFORE the current item is already covered by the done header.
+    if (!anchorOpen.get(anchor) && anchor < currentPosition) return;
+    tailIndices.push(anchor);
+  });
+  // Pass 3: everything outside the window (open or done) folds into one
+  // pending-group header at the tail — list order preserved, one header.
+  if (tailIndices.length > 0) rows.push({ kind: "pending", indices: tailIndices });
+  return rows;
+}
+
+// todoFocusGroupTodos collects every item a group header stands for, in list
+// order — the hover preview lists them all. Unit membership (anchorOf) is
+// recomputed the same way todoFocusRows derives it, so a child reported by
+// its explicit parent_id chain never escapes its unit.
+export function todoFocusGroupTodos(todos: Todo[], row: TodoFocusRow): Todo[] {
+  const { anchorOf } = todoFocusUnits(todos);
+  const units = new Set(row.indices);
+  return todos.filter((_, index) => units.has(anchorOf[index]!));
+}
+
+// todoFocusUnits derives the grouping units (task 1107 pit ①: a subtree always
+// travels with its parent). Each unit root is either a depth-0 root itself or
+// a direct child of one — an explicit parent_id chain wins over position,
+// same precedence as the depth pass, so a child reported by step_id never
+// escapes its unit. Deeper descendants join their nearest preceding unit;
+// malformed shapes still produce a unit per item.
+function todoFocusUnits(todos: Todo[]): { anchors: number[]; anchorOf: number[] } {
+  const depths = todoTreeDepths(todos);
+  const anchors: number[] = [];
+  const anchorOf = new Array<number>(todos.length).fill(-1);
+  const parentOf = new Array<number>(todos.length).fill(-1);
+  todos.forEach((todo, index) => {
+    const parentID = String(todo.parent_id ?? "").trim();
+    if (parentID) {
+      const byID = todos.findIndex((other, otherIndex) => otherIndex < index && String(other.step_id ?? "").trim() === parentID);
+      if (byID >= 0) {
+        parentOf[index] = byID;
+        // The chain pass also fixes the depth: a chained child of a root
+        // sits at depth 1 like its legacy siblings (pit ①: no phantom
+        // depth from the position fallback).
+        depths[index] = depths[byID]! + 1;
+        return;
+      }
+    }
+    const parent = parentIndexOf(depths, index);
+    if (parent >= 0) parentOf[index] = parent;
+  });
+  // Unit roots in one pass. Pit ① (a subtree never splits from its parent):
+  //  - a depth-0 root starts its unit;
+  //  - a chain-less item right after the previous ROOT is its legacy
+  //    level-1 sibling and starts its own unit (the Go segment machine's
+  //    shape: each level-0 phase owns its level-1 run);
+  //  - a chained child of a NON-root parent joins that parent's unit, but a
+  //    chained child of a ROOT starts its own unit (it renders as its own
+  //    focus row under the root's row, never split from the root's group).
+  // Everything else joins its nearest preceding ancestor's unit.
+  let lastRoot = -1;
+  todos.forEach((todo, index) => {
+    const hasChain = !!String(todo.parent_id ?? "").trim();
+    // Chain-less items attach to the nearest preceding DEPTH-0 root; the
+    // depths array is authoritative (a legacy level-1 run under a root
+    // keeps its sub-steps inside that root's unit, pit ①).
+    const parent = parentOf[index]!;
+    const isRoot = parent < 0;
+    // A depth-0 root, a direct child of one, or the legacy level-1 item
+    // right after the previous root starts its unit; everything else joins
+    // the unit of its nearest preceding ancestor (pit ①: a chained child
+    // of a NON-root parent never splits from that parent).
+    // A chain-less item right after the previous ROOT is its legacy
+    // level-1 sibling (the Go segment machine's shape). A chained child of
+    // a NON-root parent never takes this branch (pit ①: no split), and a
+    // chained child of a ROOT is its own unit — its row renders directly
+    // under the root's row (pit ①: it stays in the root's window).
+    // A chain-less item right after the previous ROOT is its legacy
+    // level-1 sibling (the Go segment machine's shape); the depth pass
+    // already placed chained children correctly, so `parentIsDepthZero`
+    // covers both plain and chained children of a root.
+    // A depth-0 root, a direct child of one (plain or chained — the depth
+    // pass already placed chained children correctly), or the legacy
+    // level-1 item right after the previous root starts its unit.
+    const parentIsDepthZero = parent >= 0 && depths[parent] === 0;
+    // Legacy adjacency uses the position parent: for a chain-less item the
+    // chain pass left `parent` as the position parent (pit ①: chained
+    // children of a NON-root parent never take this branch, so their
+    // sibling runs stay inside their parent's unit).
+    // The legacy sibling run attaches to the last ROOT: a chain-less item
+    // at depth 1 right after a depth-0 root (the Go segment machine's
+    // shape). Pit ①: a chained child of a NON-root parent never takes this
+    // branch, so its subtree stays inside its parent's unit.
+    // Pit ①: a chain-less item inside the last ROOT's subtree run (depth 1)
+    // is its legacy level-1 sibling — the run starts right after the root.
+    const legacySibling = !hasChain && lastRoot >= 0
+      && depths[lastRoot] === 0 && depths[index] === 1 && index > lastRoot;
+    // A chained child of a ROOT starts its own unit too — pit ① keeps it
+    // inside the root's window (the root's row renders the subtree with it).
+    const chainedChildOfRoot = hasChain && parentIsDepthZero;
+    if (isRoot || parentIsDepthZero || legacySibling || chainedChildOfRoot) {
+      anchors.push(index);
+      anchorOf[index] = index;
+      // The legacy adjacency base is the last ROOT — a unit root that is
+      // itself a child must not become the base (its own next sibling would
+      // otherwise split away from it, pit ①).
+      if (isRoot) lastRoot = index;
+      return;
+    }
+    for (let ancestor = parent; ancestor >= 0; ancestor = parentOf[ancestor]!) {
+      if (anchorOf[ancestor] >= 0) {
+        anchorOf[index] = anchorOf[ancestor];
+        return;
+      }
+    }
+    anchors.push(index); // malformed shape still renders
+    anchorOf[index] = index;
+  });
+  return { anchors, anchorOf };
+}
+
+function parentIndexOf(depths: readonly number[], index: number): number {
+  const depth = depths[index]!;
+  for (let i = index - 1; i >= 0; i--) {
+    if (depths[i]! < depth) return i;
+  }
+  return -1;
 }
 
 export interface TodoBatch {

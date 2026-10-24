@@ -4723,6 +4723,9 @@ export const en = {
   "todo.expand": "Expand subtasks",
   "todo.archiveToggle": "Archived batches ({n})",
   "todo.continue": "Continue",
+  // Task 1107: focus-mode group headers (collapsed rows with hover preview).
+  "todo.doneGroup": "Completed ({n})",
+  "todo.pendingGroup": "Pending ({n})",
 
   // slash menu tags
   "slash.project": "project",

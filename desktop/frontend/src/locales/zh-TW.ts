@@ -3287,6 +3287,9 @@ export const zhTW: Record<DictKey, string> = {
   "todo.expand": "展開子任務",
   "todo.archiveToggle": "已歸檔批次（{n}）",
   "todo.continue": "繼續",
+  // Task 1107: focus-mode group headers (collapsed rows with hover preview).
+  "todo.doneGroup": "已完成 {n} 項",
+  "todo.pendingGroup": "待處理 {n} 項",
 
   // 斜線選單標籤
   "slash.project": "專案",
