@@ -29,7 +29,10 @@ const chatPane = fs.readFileSync(path.join(frontendRoot, "src/app-shell/ChatPane
 const runtimeView = fs.readFileSync(path.join(frontendRoot, "src/app-shell/AppRuntimeView.tsx"), "utf8");
 const appRuntime = fs.readFileSync(path.join(frontendRoot, "src/AppRuntime.tsx"), "utf8");
 const switchSrc = fs.readFileSync(path.join(frontendRoot, "src/app-shell/TopicbarSurfaceSwitch.tsx"), "utf8");
-const trajView = fs.readFileSync(path.join(frontendRoot, "src/components/TrajectoryView.tsx"), "utf8");
+// 1112: the component body moved to trajectoryViewBody.tsx (CSS-free, tsx-runnable);
+// TrajectoryView.tsx is now the CSS-mounting re-export shim.
+const trajViewEntry = fs.readFileSync(path.join(frontendRoot, "src/components/TrajectoryView.tsx"), "utf8");
+const trajView = fs.readFileSync(path.join(frontendRoot, "src/components/trajectoryViewBody.tsx"), "utf8");
 const ledger = fs.readFileSync(path.join(frontendRoot, "src/lib/trajectoryLedger.ts"), "utf8");
 
 console.log("\n任务 704 surface-view store + trajectory mount contract");
@@ -101,6 +104,8 @@ ok(trajView.includes("buildTrajectoryLedger(items)"), "the view projects through
 ok(!trajView.includes("from \"../lib/bridge\""), "the view does not import the bridge");
 ok(!trajView.includes("localStorage"), "the view does not read storage");
 ok(!trajView.includes("readFileSync") && !trajView.includes("wailsjs"), "the view does not read session files");
+ok(trajViewEntry.includes("import \"./TrajectoryView.css\"") && trajViewEntry.includes("from \"./trajectoryViewBody\""),
+  "the entry shim mounts the CSS and re-exports the body (lazy chunk keeps its stylesheet)");
 ok(ledger.includes("import type { Item } from \"./useController\""), "the ledger consumes the Item read projection");
 
 // ⑥ Default-off regression: with the flag off nothing mounts — the switch is
@@ -134,8 +139,8 @@ ok(timelineLib.includes("running: boolean"),
 ok(trajView.includes("pointerRangeToDomain") && trajView.includes("recordIdsInFocus"),
   "drag selection maps fractions onto the domain and focuses ledger records");
 ok(trajView.includes("onFocus(null)"), "plain click / right-click clears the focus range (DSH 同款)");
-ok(trajView.includes("traj-row--dimmed") && trajView.includes("dimmed={focusIds != null && !focusIds.has(record.id)}"),
-  "out-of-focus ledger rows dim (anchor-less records never focus)");
+ok(trajView.includes("traj-row--dimmed") && trajView.includes("dimmed={(focusIds != null && !focusIds.has(entry.record.id)) || (searchMatchIds != null && !searchMatchIds.has(entry.record.id))}"),
+  "out-of-focus ledger rows dim (anchor-less records never focus; search misses dim too — 1112)");
 ok(trajView.includes("traj-timeline__ttft") && trajView.includes("span.ttftFraction"),
   "assistant spans split TTFT/decode when live-only TTFT data exists");
 ok(timelineLib.includes("PADDING_FRACTION") && timelineLib.includes("if (t1 <= t0) t1 = t0 + 1;"), "domain stays padded and non-degenerate");
