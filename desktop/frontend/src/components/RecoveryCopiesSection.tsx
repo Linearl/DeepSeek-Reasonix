@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { app, type ConsolidationReport, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
@@ -319,6 +319,7 @@ function VersionRows({
   onError,
   repairNote,
   setRepairNote,
+  dataVersion,
 }: {
   mainPath: string;
   t: Translator;
@@ -327,6 +328,11 @@ function VersionRows({
   onError: (message: string) => void;
   repairNote: string;
   setRepairNote: (note: string) => void;
+  /** 任务 1146：load() 的代际号。行保持展开时组件不重挂载，本 effect 若只看
+   *  mainPath 就永远不重拉——合成/切换/删除版本后列表已换代，版本表必须跟
+   *  着重读一次，否则用户看到的是操作前的旧表（实测：合成已生效，版本表仍
+   *  显示旧版本）。 */
+  dataVersion: number;
 }) {
   const [chains, setChains] = useState<RecoveryChainSet | null>(null);
   const [health, setHealth] = useState<{ path: string; report: SessionHealthReportView | null }>({ path: "", report: null });
@@ -337,14 +343,25 @@ function VersionRows({
   // 的加载 effect 重新触发一次（依赖数组含 onError）。链读数已在手时这只会
   // 重读一次修复日志，但链枚举被拒时会陷入「读链被拒→报错→effect 重跑→再被
   // 拒→再报错」的循环（实测 harness 里进程被这个循环挂死）。本组件自己的加
-  // 载只认 mainPath：报错走 onError 的通道，不再反向触发重载。
+  // 载只认 mainPath 与 dataVersion（后者是显式的全量刷新信号，见 props 注释）：
+  // 报错走 onError 的通道，不再反向触发重载。
   const [errorsVersion] = useState(0);
+  // 任务 1146：区分「换行」与「同行的数据刷新」。mainPath 变化才把读数打回
+  // loading；dataVersion 触发的重拉保留旧读数渲染（stale-while-revalidate），
+  // 新读数到达后原地替换——否则修复回执/健康检查结果会在每次刷新时闪失
+  // （1064b 当初就是把回执提升到分区层来躲「行重载丢回执」的，这里不能再
+  // 把它藏回 loading 里）。
+  const prevMainRef = useRef(mainPath);
 
   useEffect(() => {
+    const mainChanged = prevMainRef.current !== mainPath;
+    prevMainRef.current = mainPath;
     let cancelled = false;
-    setChains(null);
-    setHealth({ path: "", report: null });
-    setRecords([]);
+    if (mainChanged) {
+      setChains(null);
+      setHealth({ path: "", report: null });
+      setRecords([]);
+    }
     void (async () => {
       let chainSet: RecoveryChainSet | null = null;
       try {
@@ -357,8 +374,8 @@ function VersionRows({
       }
       // 修复日志与链枚举**串行**（不是并行）：同一个闭包里两个 reject 的 Promise
       // 会让 Node 的 unhandledRejection 判定在 catch 附着前抢先标记第二个——
-      // 实测 harness 里链枚举 reject 时进程被这条「其实已被处理」的 rejection
-      // 打崩。串行让每个 rejection 在下一个调用发出前就被消费。
+      // 实测 harness 里链枚举 reject 时进程被这个循环挂死。串行让每个 rejection
+      // 在下一个调用发出前就被消费。
       let recs: SessionRepairRecordView[] = [];
       try {
         recs = (await app.ListSessionRepairRecordsFor(mainPath)) ?? [];
@@ -375,9 +392,9 @@ function VersionRows({
       cancelled = true;
     };
     // errorsVersion 不参与触发条件（见上方注释），只为满足 exhaustive-deps
-    // 保留占位；实际行为与「只看 mainPath」一致。
+    // 保留占位；dataVersion 是显式刷新信号，参与触发。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mainPath, errorsVersion]);
+  }, [mainPath, dataVersion, errorsVersion]);
 
   const inspect = async () => {
     try {
@@ -658,6 +675,11 @@ export function RecoveryCopiesSection() {
   // 需求 E), fetched alongside the copies list so the two readings of one
   // conversation can be merged into the same row (任务 1063).
   const [versionGroups, setVersionGroups] = useState<Map<string, SessionVersionGroupView>>(new Map());
+  // 任务 1146：dataVersion 是全量刷新的代际号——load() 每成功一轮就自增。
+  // VersionRows 的加载 effect 只看 mainPath 的话，行保持展开时（本件起 load()
+  // 不再折叠行）切换/删除版本后的重拉没有触发条件；把这个号传进去，列表数据
+  // 每换一代，版本表就跟着重读一次。
+  const [dataVersion, setDataVersion] = useState(0);
   // pickedChain names the branch the user chose to win, keyed by main path. Empty
   // means "let the engine take the fullest one". Keyed per conversation so a pick
   // in one group never leaks into another.
@@ -756,9 +778,14 @@ export function RecoveryCopiesSection() {
       setGroups(list);
       setVersionGroups(new Map((versions ?? []).map((g) => [g.mainPath, g])));
       setSelected(new Set());
-      // Collapsed by default: the summary line answers "which conversation has
-      // copies", and the per-copy detail only matters once one is chosen.
-      setExpanded(new Set());
+      // 任务 1146：候选链缓存一并作废。合成/删除/合并之后链清单已经变了，但
+      // 这份 Map 只在行展开时写入：load() 不清它，惰性加载 effect 的
+      // chains.has(path) 守卫就会命中合成前的旧缓存而跳过重拉——这正是用户
+      // 实测「合成已生效，候选链区仍显示两条旧链」的根因。清空后仍展开的行
+      // 由下方 effect 立即重拉，折叠中的行在重新展开时重拉。
+      setChains(new Map());
+      setChainLoads(new Set());
+      setDataVersion((v) => v + 1);
     } catch (e) {
       setGroups(null);
       setFailed(true);
@@ -769,7 +796,16 @@ export function RecoveryCopiesSection() {
   }, []);
 
   useEffect(() => {
-    if (open) void load();
+    if (open) {
+      // 任务 1146：默认折叠是「打开面板」的语义（Collapsed by default: the
+      // summary line answers "which conversation has copies", and the per-copy
+      // detail only matters once one is chosen），不是每次数据刷新的副作用。
+      // 放在这里而非 load()：面板内合成/删除/合并/手动刷新触发的 load() 保持
+      // 行展开，候选链与版本表在原地重拉，用户不再需要重新展开行或重开面板
+      // 才能看到操作后的状态。
+      setExpanded(new Set());
+      void load();
+    }
   }, [open, load]);
 
   // 任务 1085：v3-only 会话补行——groups（recovery 副本扫描）只含「有副本文件
@@ -1174,9 +1210,14 @@ export function RecoveryCopiesSection() {
       setDeletedOutcomes([...collected]);
     }
     setBranchesSelected(new Set());
-    setBusy(false);
-    setStatus("");
-    await load();
+    // 任务 1146：与合成路径同理——列表重取完成后再释放 busy，删除期间底部
+    // 保持加载指示，避免「已删除回执 + 旧列表」并存的静止中间态。
+    try {
+      await load();
+    } finally {
+      setBusy(false);
+      setStatus("");
+    }
   };
 
   /** synthesizeHeads is the 1065 one-key operation: given the HEAD the user
@@ -1297,9 +1338,20 @@ export function RecoveryCopiesSection() {
         delete next[mainPath];
         return next;
       });
-      setBusy(false);
+      // 任务 1146：busy 保持到列表重取完成。原先在这里先关 busy 再 await
+      // load()，全量列表还在飞行时面板已呈「就绪」相——按钮可点、无加载
+      // 指示，用户看到的就是成功横幅配一整套旧列表（旧链/旧版本表/旧分
+      // 区），截图成了「合成已生效但列表不刷新」的现场。让 load() 完成后再
+      // 释放，刷新期间底部显示加载中、按钮保持禁用，中间态不再以静止旧数
+      // 据的样子出现。进度文案也在这里停更：合成已经结束，「正在合成 0/N」
+      // 不能陪跑刷新段，rc-note 会落回通用加载指示。
       setStatus("");
-      await load();
+      try {
+        await load();
+      } finally {
+        setBusy(false);
+        setStatus("");
+      }
     }
   };
 
@@ -1450,8 +1502,10 @@ export function RecoveryCopiesSection() {
                                   },
                                 ]);
                               } finally {
+                                // 任务 1146：列表重取完成后再释放 busy（与合成/
+                                // 批量删除路径同口径）。
+                                await load();
                                 setBusy(false);
-                                void load();
                               }
                             })();
                           }}
@@ -1466,6 +1520,18 @@ export function RecoveryCopiesSection() {
             })}
             {(() => {
               const set = chains.get(group.mainPath);
+              // 任务 1146：链清单重拉期间显示加载占位而不是整块消失——合成/
+              // 删除后的自动刷新会清空链缓存再重读，占位让「正在刷新」可见，
+              // 链区不闪烁。空集（拉取被拒时的降级落点，1039r 的错误横幅已
+              // 另行报告）保持旧的不渲染行为，不把它误报成「加载中」。
+              if (chainLoads.has(group.mainPath) && !set) {
+                return (
+                  <div className="rc-chains">
+                    <div className="rc-chains__head">{t("settings.recoveryCopiesChains")}</div>
+                    <div className="empty">{t("settings.loading")}</div>
+                  </div>
+                );
+              }
               if (!set || set.chains.length === 0) return null;
               return (
                 <div className="rc-chains">
@@ -1558,6 +1624,7 @@ export function RecoveryCopiesSection() {
               onError={(message) => setErrors((current) => [...current, message])}
               repairNote={repairNote}
               setRepairNote={setRepairNote}
+              dataVersion={dataVersion}
             />
           </>
         )}
