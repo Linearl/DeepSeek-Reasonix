@@ -42,6 +42,37 @@ const selfHealBackupSuffix = ".pre-repair-"
 // 单一源在 store（分类侧不得自行拼写，守卫 TestSessionPathSpellingsSingleSource）。
 const selfHealRepairLogSuffix = store.SessionRepairLogSuffix
 
+// sessionBackupAllowlist 是 backupSessionFiles 的**数据侧车白名单**（任务
+// 1116 架构终裁：白名单替代黑名单）。来源：需求线 136 会话实测的 29 种侧车。
+// 运行时句柄（.jsonl.lock / .jsonl.lease.lock / *.tmp / *.selfheal-tmp）与
+// 修复记录（repairlog）**天然不在名单**：它们不是会话内容，是 OS 句柄 / 审计
+// 轨迹；复制它们要么失败（持租约时 Windows 上 sharing violation）、要么没有
+// 证据价值。将来新增数据侧车必须在此显式登记一条——这正是白名单的意义
+// （黑名单会随新类型漏网：.jsonl.lock 的 8 会话漏网就是黑名单式判断的教训）。
+// 键是 TrimPrefix(name, stemBase+".") 之后的裸 rel（无前导点）——主转录的
+// rel 是 "jsonl"，sidecar 的 rel 是 "jsonl.meta" 等。带前导点的键会全部 miss。
+var sessionBackupAllowlist = map[string]struct{}{
+	"jsonl":                       {}, // 主转录自身（stem+".jsonl" ⇒ rel = "jsonl"）
+	"jsonl.meta":                  {},
+	"jsonl.telemetry.json":        {},
+	"jsonl.toolstats.json":        {},
+	"events.jsonl":                {},
+	"events.jsonl.damaged":        {},
+	"context.json":                {},
+	"turns.jsonl":                 {},
+	"goal-state.json":             {},
+	"recovery.json":               {},
+	"display-index.json":          {},
+	"event-index.json":            {},
+	"conflicts.jsonl":             {},
+	"guardian.jsonl":              {},
+	"guardian.jsonl.meta":         {},
+	"guardian.events.jsonl":       {},
+	"guardian.display-index.json": {},
+	"guardian.event-index.json":   {},
+	"guardian.cursor.json":        {},
+}
+
 // SelfHealOptions picks which repair steps run. Every step is independent and
 // idempotent: a step whose fault is absent is reported as skipped.
 type SelfHealOptions struct {
@@ -84,6 +115,87 @@ type SelfHealReport struct {
 	// caller must surface "no repair needed" and must not have written
 	// anything, including the backup directory.
 	Repaired bool `json:"repaired"`
+	// Warning is set (任务 1116 件 1) when the run hydrated the checkpoint but
+	// skipped the diet and the re-inspection still reads over-window: the
+	// repair left an over-window session behind and the caller must tell the
+	// user to rerun with Diet checked instead of reporting a clean fix.
+	Warning *SelfHealOverflowWarning `json:"warning,omitempty"`
+}
+
+// SelfHealOverflowWarning reports a repair that hydrated the checkpoint but
+// left the projection over the window (任务 1116 件 1). Hydrate is a faithful
+// materialization and deliberately keeps image payloads, so a hydrate-only run
+// against an image-heavy chain can land at 3M/1M (the 20261024 新9 incident:
+// 312KB → 33.7MB with diet never asked for). Without this field the repair
+// silently delivers an over-window session the user believed was fixed; the
+// remedy is one more repair run with Diet checked. Hydrate never strips
+// payloads itself — the layering ruling stands: hydrate = faithful fill,
+// Diet = slimming, the over-window verdict stays in the health estimate.
+type SelfHealOverflowWarning struct {
+	Code              string `json:"code"`
+	Detail            string `json:"detail"`
+	SuggestedAction   string `json:"suggested_action"`
+	ProjectionTokens  int    `json:"projection_tokens"`
+	WindowTokens      int    `json:"window_tokens"`
+	DietActionNotRun  bool   `json:"diet_action_not_run"`
+	HydrateActionDone bool   `json:"hydrate_action_done"`
+}
+
+// SelfHealWarningHydrateStillOverWindow is the warning's stable code (GUI
+// copy keys off it; repair-log readers grep it).
+const SelfHealWarningHydrateStillOverWindow = "hydrate_still_over_window"
+
+// SelfHealStillOverWindowNoticeText is the operator notice body for the
+// warning; hosts append it verbatim after the repair receipt.
+const SelfHealStillOverWindowNoticeText = "the checkpoint was refilled but the conversation is still over the model window; run repair again with Diet checked to strip images and fold old messages"
+
+// SelfHealActionByName returns the first recorded action of one name and
+// whether it is present at all. The 件 1 warning judges exactly two steps
+// through it: hydrate done, diet absent-or-skipped.
+func SelfHealActionByName(actions []SelfHealAction, name string) (SelfHealAction, bool) {
+	for _, a := range actions {
+		if a.Action == name {
+			return a, true
+		}
+	}
+	return SelfHealAction{}, false
+}
+
+// detectHydrateStillOverWindow is the 件 1 criterion as a pure function:
+// hydrate ran to done, the diet step did not run (option off or reported
+// skipped), and the post-repair re-inspection still reads over-window (the
+// projection_overflow issue specifically — head_lag/watermark left untouched
+// by a hydrate-only run are not "the repair manufactured an over-window
+// session"). It is evaluated in SelfHealSessionContext right before the
+// repair-log line, so the warning is persisted alongside the actions that
+// caused it.
+func detectHydrateStillOverWindow(actions []SelfHealAction, stillOverWindow bool, windowTokens, projectionTokens int) (SelfHealOverflowWarning, bool) {
+	hydrate, hasHydrate := SelfHealActionByName(actions, HealActionHydrate)
+	if !hasHydrate || hydrate.Status != "done" {
+		return SelfHealOverflowWarning{}, false
+	}
+	dietRan := false
+	if diet, ok := SelfHealActionByName(actions, HealActionStripImages); ok && diet.Status == "done" {
+		dietRan = true
+	}
+	if fold, ok := SelfHealActionByName(actions, HealActionFold); ok && fold.Status == "done" {
+		dietRan = true
+	}
+	if dietRan || !stillOverWindow {
+		return SelfHealOverflowWarning{}, false
+	}
+	if windowTokens <= 0 {
+		windowTokens = defaultHealthWindowTokens
+	}
+	return SelfHealOverflowWarning{
+		Code:              SelfHealWarningHydrateStillOverWindow,
+		Detail:            fmt.Sprintf("hydrate=done diet=not_run still_over_window=true projection_tokens=%d window_tokens=%d", projectionTokens, windowTokens),
+		SuggestedAction:   "diet",
+		ProjectionTokens:  projectionTokens,
+		WindowTokens:      windowTokens,
+		DietActionNotRun:  true,
+		HydrateActionDone: true,
+	}, true
 }
 
 // RepairRecord is one line of <stem>.repairlog.jsonl.
@@ -94,6 +206,10 @@ type RepairRecord struct {
 	Actions   []SelfHealAction `json:"actions"`
 	Before    string           `json:"before"`
 	After     string           `json:"after"`
+	// Warning is the 件 1 overflow warning when the run refilled the
+	// checkpoint yet the re-inspection stayed over-window. Absent otherwise,
+	// so healthy/half-fixed records keep their exact previous shape.
+	Warning *SelfHealOverflowWarning `json:"warning,omitempty"`
 }
 
 // SelfHealSession runs the chosen repair steps against one closed session
@@ -131,6 +247,11 @@ func SelfHealSessionContext(ctx context.Context, path string, opts SelfHealOptio
 	// 第一步永远是备份：后面任何动作落笔之前，原件字节已在备份目录里。
 	backupDir, err := backupSessionFiles(path)
 	if err != nil {
+		// 协调线 1556 终裁：备份失败必须显式暴露，不能静默降级为「继续 Diet」。
+		// ERROR 级别 + 调用方（control 层 / 启动扫描）负责上报 GUI notice——
+		// 本次事故（新9）静默失败拖 5 小时的直接教训。
+		slog.Error("session: self-heal backup failed; refusing to repair without a backup",
+			"path", path, "err", err)
 		return report, fmt.Errorf("self-heal: backup: %w", err)
 	}
 	report.BackupDir = backupDir
@@ -177,6 +298,26 @@ func SelfHealSessionContext(ctx context.Context, path string, opts SelfHealOptio
 	after := InspectSessionHealthContext(ctx, path, HealthInspectOptions{WindowTokens: opts.WindowTokens})
 	report.Healthy = after.Healthy
 
+	// 件 1（1116 缺口 A）：hydrate=done 而 diet 未开/skipped、复检仍超窗 ⇒
+	// 显式告警——修复不能静默交付超窗会话（新9 现场：312KB→33.7MB 无人知情）。
+	// 判据必须是「复检仍投影超窗」这一条 issue，而不是笼统的 healthy=false：
+	// head_lag/watermark 未修不构成「制造了超窗会话」，只有 projection_overflow
+	// 才是缺口 A 的现场。
+	stillOverWindow := false
+	for _, issue := range after.Issues {
+		if issue.Code == HealthProjectionOverflow {
+			stillOverWindow = true
+			break
+		}
+	}
+	if warning, ok := detectHydrateStillOverWindow(report.Actions, stillOverWindow, opts.WindowTokens, after.ProjectionTokens); ok {
+		w := warning
+		report.Warning = &w
+		slog.Warn("session: self-heal refilled but projection still over window",
+			"path", path, "projection_tokens", w.ProjectionTokens, "window_tokens", w.WindowTokens,
+			"detail", w.Detail)
+	}
+
 	// 修复记录：判据读数、动作、前后状态、备份路径，一行一条追加。
 	writeRepairLogRecord(path, RepairRecord{
 		At:        time.Now().UTC().Format(time.RFC3339),
@@ -185,6 +326,7 @@ func SelfHealSessionContext(ctx context.Context, path string, opts SelfHealOptio
 		Actions:   report.Actions,
 		Before:    issueCodesLine(before),
 		After:     issueCodesLine(after),
+		Warning:   report.Warning,
 	})
 	return report, nil
 }
@@ -215,8 +357,28 @@ func backupSessionFiles(path string) (string, error) {
 		return "", err
 	}
 	copied := 0
+	// stem 是完整路径；e.Name() 是裸文件名——前缀匹配必须用裸 stem，
+	// 否则 HasPrefix 恒 false（实测：整个备份静默为空 ⇒ backup 失败）。
+	stemBase := filepath.Base(stem)
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasPrefix(e.Name(), stem+".") {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), stemBase+".") {
+			continue
+		}
+		// 任务 1116 架构终裁（白名单替代黑名单）：只复制数据侧车白名单内的
+		// 文件——.jsonl.lock / .lease.lock / *.tmp / repairlog 天然不在名单，
+		// 免疫未来新增类型（黑名单会随新类型漏网；白名单只在有新数据侧车时
+		// 需要一次显式登记）。锁文件持有租约的调用方（启动 Diet 扫描）正持着
+		// OS 句柄，Windows 上复制会直接失败——白名单让它连进入复制的机会都
+		// 没有，这正是「活会话安全」的结构性保证。
+		// 同上：rel 也必须用裸 stem 前缀剥离，否则 rel 恒为完整文件名（带
+		// stem 前缀），白名单 lookup 全部 miss ⇒ 备份静默为空。
+		rel := strings.TrimPrefix(e.Name(), stemBase+".")
+		// 主 .jsonl 自身（rel == ""）永远是备份的核心内容——白名单的其余项
+		// 都是 sidecar；空 rel 特判，避免把主转录漏在名单外。
+		if _, allowed := sessionBackupAllowlist[rel]; !allowed {
+			// 不在白名单：跳过，记一次（白名单过时的排查痕迹——若将来新增
+			// 数据侧车，这里会留下「我们见过但没登记」的记录，不是静默丢失）。
+			slog.Info("session: backup allowlist skipped sibling", "path", path, "sibling", e.Name())
 			continue
 		}
 		src := filepath.Join(dir, e.Name())
@@ -224,6 +386,9 @@ func backupSessionFiles(path string) (string, error) {
 		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
+		// fail-fast（保持 1011 原语义）：白名单内文件复制失败 = 真异常（如
+		// 磁盘满时投影本体复制失败）⇒ 整体失败、不 Diet。「单文件失败 WARN
+		// 继续」作废（协调线 1556 终裁）。
 		if err := copyFile(src, filepath.Join(backupDir, e.Name())); err != nil {
 			return "", err
 		}

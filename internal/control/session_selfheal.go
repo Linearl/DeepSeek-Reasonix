@@ -122,8 +122,14 @@ func (c *Controller) SelfHealOpenSession(windowTokens int) SelfHealOpenOutcome {
 		if s != nil {
 			backupDir, err := agent.BackupSessionFiles(path)
 			if err != nil {
-				slog.Warn("selfheal: backup before diet failed", "path", path, "err", err)
+				// 协调线 1556 终裁：备份失败是真异常（不是「跳过备份继续修复」
+				// 的合法降级）——升 ERROR 并上报 GUI notice，不许静默。事故教训：
+				// 新9 静默失败拖 5 小时。
+				slog.Error("selfheal: backup before diet failed; refusing to diet without a backup",
+					"path", path, "err", err)
 				out.Detail = strings.TrimPrefix(out.Detail+"&", "&") + "backup_failed"
+				c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionSelfHealed,
+					"repair could not back up this conversation's files first, so nothing was changed; check disk space and try again"))
 			} else {
 				out.BackupDir = backupDir
 				folded, actions, changed := agent.DietSessionMessages(s.Snapshot(), windowTokens)

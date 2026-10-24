@@ -1689,6 +1689,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesDualOpen": "该会话正在本窗口的两个标签页中打开，已暂停合并——请先关闭其中一个标签页（解决双写入）再重新合并。",
   "recovery.noticeAlsoOpen": "这个会话也在另一个 Reasonix 实例中打开。双方都可能保存；发生冲突时会分出恢复副本。",
   "recovery.noticeHeadSwitched": "已打开该会话的最新版本，其他保存版本可在“查看版本”中查看。",
+  "recovery.noticeRepairStillOverWindow": "这次修复把检查点补了回来，但会话仍超出模型窗口——请再跑一次修复并勾选 Diet（减肥），剥图折叠后即可恢复可用。",
   "recovery.noticeSelectedHeadBehind": "已打开一个较旧的版本（{selectedMessages} 条），另一版本更长且更新（{otherMessages} 条）；如需那条链，可在“查看版本”中手动切换。",
   "recovery.noticeMaterializationLag": "本会话有 {gap} 条历史未落入本地记录（事件日志 {eventChain} 条，本地记录 {materialized} 条）；可右键该会话选择“修复对话”。",
   "recovery.noticeSelfHealed": "会话已自动修复并恢复可用（{actions}）；原版本保留，可在「查看版本」中切回。",
@@ -4605,6 +4606,7 @@ export const zh: Record<DictKey, string> = {
   "settings.sessionVersions.healthy": "健康：无需修复。",
   "settings.sessionVersions.noRepairNeeded": "无需修复。",
   "settings.sessionVersions.repaired": "已修复（{actions}）；备份：{backup}",
+  "settings.sessionVersions.repairStillOverWindow": "会话已回填但仍超出模型窗口；请勾选 Diet（减肥）再修复一次，剥图并折叠旧消息后即可恢复可用。",
   // 队尾体积列修复：修复回执的体积对比——瘦身类动作（diet）的收益要在面板上
   // 看得见；体积不变时照实说「无变化」，不编造数字。
   "settings.sessionVersions.volumeDelta": "体积 {before} → {after}",
