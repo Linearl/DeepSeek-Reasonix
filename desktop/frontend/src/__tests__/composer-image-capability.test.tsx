@@ -359,9 +359,9 @@ console.log("\ncomposer image capability");
   });
   const { root, paint } = renderUserMessage("check @[photo.png](.reasonix/attachments/mock.png)");
   await paint();
-  await waitFor(() => Boolean(document.querySelector(".msg-attachment--image img")));
-  const thumb = document.querySelector(".msg-attachment--image") as HTMLElement | null;
-  if (!thumb) throw new Error("missing message image thumbnail");
+  await waitFor(() => Boolean(document.querySelector(".msg-attachment-gallery__item img")));
+  const thumb = document.querySelector(".msg-attachment-gallery__item") as HTMLElement | null;
+  if (!thumb) throw new Error("missing message image gallery item");
   await act(async () => {
     thumb.click();
     await flushTimers();
@@ -394,7 +394,7 @@ console.log("\ncomposer image capability");
     onEdit: () => true,
   });
   await paint();
-  await waitFor(() => Boolean(document.querySelector(".msg-attachment--image img")));
+  await waitFor(() => Boolean(document.querySelector(".msg-attachment-gallery__item img")));
   const edit = document.querySelector("button.msg-meta__btn:not(.msg-meta__copy)") as HTMLButtonElement | null;
   if (!edit) throw new Error("missing message edit button");
   await act(async () => {

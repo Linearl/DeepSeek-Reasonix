@@ -5839,8 +5839,8 @@ a[href] {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   user-select: none;
-  /* 任务1122: 时间戳移出 .notice-line__text 内末尾、落卡片容器末尾（容器是
-     flex column），右对齐贴尾与三类消息时间戳同一位置口径。 */
+  /* 任务1122: 时间戳移到 .notice-line 卡片容器末尾（actionsRow/detail 之后，
+     卡片是 flex column，时间戳落在正文下方）。 */
   margin-top: 4px;
 }
 .msg-meta__indicator {

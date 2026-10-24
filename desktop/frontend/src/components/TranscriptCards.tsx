@@ -407,11 +407,6 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
           </>
         )}
         {!result && actionsRow}
-        {/* 任务998：未应用 steer 块等 notice 补时间戳（1012 三档）。
-            任务1122: 时间戳统一「卡片下方」——从 .notice-line__text 内末尾
-            移到卡片容器末尾（actionsRow/detail 之后），与三类消息时间戳同一
-            位置口径。 */}
-        {!result && <CardTime createdAt={item.createdAt} className="notice-line__time" />}
         {item.detail ? (
           <details className="notice-line__details">
             <summary>{t("notice.details")}</summary>
@@ -419,6 +414,11 @@ export function NoticeCard({ item, onAction, onAccept, onOpenVerification, onUnd
           </details>
         ) : null}
       </div>
+      {/* 任务998：未应用 steer 块等 notice 补时间戳（1012 三档）。
+          任务1122: 时间戳统一「卡片下方」——从 .notice-line__text 内末尾
+          移到 .notice-line 卡片之外的末尾（flex column 容器，卡片最末尾
+          一行，与三类消息时间戳同一位置口径：卡片下方）。 */}
+      {!result && <CardTime createdAt={item.createdAt} className="notice-line__time" />}
     </div>
   );
 }
