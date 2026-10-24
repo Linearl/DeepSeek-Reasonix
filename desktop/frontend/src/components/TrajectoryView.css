@@ -298,7 +298,7 @@
 .traj-timeline {
   position: relative;
   flex: none;
-  height: 34px;
+  height: 50px;
   margin: 0 14px;
   border-bottom: 1px solid var(--border-soft);
   background:
@@ -308,11 +308,27 @@
   user-select: none;
 }
 
+.traj-timeline__lane-label {
+  position: absolute;
+  left: 0;
+  width: 44px;
+  text-align: right;
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  line-height: 14px;
+}
+
+.traj-timeline__plot {
+  position: absolute;
+  left: 44px;
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+
 .traj-timeline__span {
   position: absolute;
-  top: 50%;
   height: 8px;
-  transform: translateY(-50%);
   min-width: 2px;
   border-radius: 2px; /* 833-radius-wl:micro */
   background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
@@ -320,7 +336,7 @@
 }
 
 .traj-timeline__span--user {
-  background: color-mix(in srgb, var(--fg) 45%, transparent);
+  background: var(--info);
 }
 
 .traj-timeline__span--assistant {
@@ -328,17 +344,22 @@
 }
 
 .traj-timeline__span--tool {
-  background: color-mix(in srgb, var(--fg-faint) 45%, transparent);
+  background: var(--warn);
 }
 
 .traj-timeline__span--compaction {
-  background: color-mix(in srgb, var(--warn) 60%, transparent);
+  background: color-mix(in srgb, var(--ok) 60%, transparent);
 }
 
 .traj-timeline__span--running {
   min-width: 4px;
   background: transparent;
   border: 1px dashed var(--accent);
+}
+
+.traj-timeline__span--search-dim,
+.traj-timeline__marker--search-dim {
+  opacity: 0.14;
 }
 
 .traj-timeline__ttft {
@@ -349,7 +370,6 @@
 
 .traj-timeline__marker {
   position: absolute;
-  top: 50%;
   width: 2px;
   height: 10px;
   transform: translate(-50%, -50%);
@@ -357,17 +377,34 @@
   background: var(--fg-faint);
 }
 
+.traj-timeline__marker--user {
+  background: var(--info);
+}
+
 .traj-timeline__marker--assistant {
   background: var(--accent);
 }
 
-.traj-timeline__marker--compaction {
+.traj-timeline__marker--tool {
   background: var(--warn);
+}
+
+.traj-timeline__marker--compaction {
+  background: var(--ok);
 }
 
 .traj-timeline__marker--failed,
 .traj-timeline__span--failed {
   background: var(--err);
+}
+
+.traj-timeline__turn-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--fg-faint) 30%, transparent);
+  pointer-events: none;
 }
 
 .traj-timeline__focus,
@@ -387,6 +424,121 @@
 .traj-timeline__drag {
   background: color-mix(in srgb, var(--fg) 10%, transparent);
   border: 1px dashed var(--fg-faint);
+}
+
+.traj-timeline__crosshair {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
+}
+
+/* ── 工具栏（③）：sticky 三开关 + 搜索框（DSH 同款，任务 1112） ── */
+
+.traj__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: 3px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: var(--text-sm);
+}
+
+.traj__toggle {
+  height: 20px;
+  padding: 0 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.traj__toggle:hover,
+.traj__toggle[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.traj__toggle[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.traj__toggle-icon {
+  margin-right: 4px;
+}
+
+.traj__search {
+  flex: 0 1 164px;
+  min-width: 84px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+.traj__search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* 行可读摘要（③）：类型彩色标签 + 单行摘要 + 耗时（任务 1112） */
+.traj-row__tag {
+  display: inline-flex;
+  align-items: center;
+  height: 19px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-strong);
+  letter-spacing: 0.035em;
+}
+
+.traj-row__tag--user {
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  color: var(--info);
+}
+
+.traj-row__tag--assistant {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.traj-row__tag--tool {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: var(--warn);
+}
+
+.traj-row__tag--compaction,
+.traj-row__tag--notice,
+.traj-row__tag--phase {
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
+}
+
+.traj-row__tag--turn,
+.traj-row__tag--calls {
+  background: color-mix(in srgb, var(--fg-faint) 12%, transparent);
+  color: var(--fg-faint);
+}
+
+.traj-row__duration {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 折叠摘要行（轮次/调用）：灰化占位语义，与实录行区分。 */
+.traj-row__placeholder {
+  color: var(--text-3);
 }
 
 /* ── 长历史（⑤）：窗口化加载控件（视图窗口 → 后端分页两段式） ── */
