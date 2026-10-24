@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -288,12 +287,8 @@ func TestDuplicateCompleteOnDiskKeepsFirstOccurrence(t *testing.T) {
 	}
 
 	// Compatibility full-scan open (non-external) must also keep the first.
-	// Drop the recovery checkpoint first: a checkpoint carries
-	// projection.Messages = nil by design, and reusing it would bypass the
-	// full replay this sub-check exists to cover.
-	if err := os.RemoveAll(recoveryCacheDir(filepath.Join(root, ref.SessionID))); err != nil {
-		t.Fatal(err)
-	}
+	// Task 1013 removed the checkpoint cache, so the open always replays the
+	// full log — the sub-check now asserts that plain behaviour.
 	full, err := Open(filepath.Join(root, ref.SessionID), ref.SessionID)
 	if err != nil {
 		t.Fatalf("full scan open of duplicate log: %v", err)
@@ -310,26 +305,31 @@ func TestDuplicateCompleteOnDiskKeepsFirstOccurrence(t *testing.T) {
 	}
 }
 
-// TestRecoveryCheckpointCarriesMessageIDs pins the checkpoint contract: the
-// live id set rides in the checkpoint (projection.Messages is emptied there),
-// and the projection version bump forces pre-fix checkpoints — which lack the
-// field — to rebuild from the log instead of seeding an empty set.
-func TestRecoveryCheckpointCarriesMessageIDs(t *testing.T) {
-	projection, _ := Project(nil)
-	state := &startupSessionState{
-		projection: projection,
-		messageIDs: identitiesOf([]string{"alpha-id", "beta-id"}),
+// TestRecoveryReopenSeedsDurableIDSetFromLog pins the post-removal half of the
+// task-398 contract the checkpoint used to carry: after a close and reopen, the
+// replayed log seeds the writer's durable-id set, so a reuse is refused rather
+// than appended again. (The checkpoint itself went away with task 1013.)
+func TestRecoveryReopenSeedsDurableIDSetFromLog(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "carry")
+	s, err := Open(dir, "carry")
+	if err != nil {
+		t.Fatal(err)
 	}
-	checkpoint := checkpointFromStartup(Manifest{SessionID: "carry"}, storageIdentity{}, state)
-	got := map[string]bool{}
-	for _, id := range checkpoint.MessageIDs {
-		got[id] = true
+	if err := appendUserComplete(t, s, "first", "alpha-id", "alpha content"); err != nil {
+		t.Fatalf("first completion: %v", err)
 	}
-	if !got["alpha-id"] || !got["beta-id"] || len(checkpoint.MessageIDs) != 2 {
-		t.Fatalf("checkpoint MessageIDs = %v, want exactly the live set", checkpoint.MessageIDs)
+	if _, err := s.Flush(t.Context()); err != nil {
+		t.Fatal(err)
 	}
-	if checkpoint.ProjectionVersion != recoveryProjectionVersion || recoveryProjectionVersion != 3 {
-		t.Fatalf("projection version = %d (const %d), want 3 so pre-fix checkpoints rebuild once",
-			checkpoint.ProjectionVersion, recoveryProjectionVersion)
+	if err := s.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(dir, "carry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close(context.Background()) })
+	if err := appendUserComplete(t, reopened, "second", "alpha-id", "reused content"); !errors.Is(err, ErrDuplicateMessageID) {
+		t.Fatalf("duplicate after reopen = %v, want ErrDuplicateMessageID", err)
 	}
 }

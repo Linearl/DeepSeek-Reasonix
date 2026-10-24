@@ -844,13 +844,14 @@ func (m *perfMonitor) collectFiles() map[string]float64 {
 	return out
 }
 
-// defaultPerfMonitorPaths covers the four families this monitor exists for: the
-// v4 recovery caches (one bolt per bridge session), the desktop log, and the
-// transcripts a live session keeps rewriting.
+// defaultPerfMonitorPaths covers the three families this monitor exists for:
+// the desktop log and the transcripts a live session keeps rewriting. (Task
+// 1013 removed the v4 recovery cache, so the bolt glob is gone with it; a
+// leftover .recovery-cache directory from an older build simply stops being
+// watched rather than deleted.)
 func defaultPerfMonitorPaths() []string {
 	memoryRoot := config.MemoryUserDir()
 	return []string{
-		filepath.Join(config.SessionStoreDir(), ".recovery-cache", "*", "recovery-v1.bolt"),
 		filepath.Join(memoryRoot, desktopLogDirName, desktopLogSubDir, "*.log"),
 		filepath.Join(memoryRoot, "projects", "*", "sessions", "*.jsonl"),
 		filepath.Join(memoryRoot, "projects", "*", "sessions", "*"+store.SessionEventLogSuffix),

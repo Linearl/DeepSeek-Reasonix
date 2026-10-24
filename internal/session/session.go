@@ -411,12 +411,25 @@ func (s *Session) snapshot(includeHistory, includeModel bool) Snapshot {
 	}
 	s.mu.Unlock()
 	truncatedHistory := false
+	var historyError error
 	if includeHistory && externalHistory {
 		// Snapshot is the explicit full-history compatibility boundary. Service
 		// progress and Goal paths use StateSnapshot; paged clients use Query.
 		// Reconstructing here preserves existing callers without keeping a second
 		// durable UI transcript resident in every runtime.
-		if messages, truncated, err := materializeSnapshotMessages(history, accepted, sequence, snapshotHistoryByteBudget); err == nil {
+		//
+		// Task 1013: the checkpoint fast path is gone, so this reconstruction is
+		// the only remaining way the compatibility boundary sees history. It runs
+		// over the durable log and resolves external bodies; when one is
+		// unreadable (a removed or corrupted content object) the snapshot fails
+		// instead of silently returning an empty transcript that would read as
+		// "no messages". Paged Query clients keep their own per-page error
+		// reporting on the same store.
+		messages, truncated, err := materializeSnapshotMessages(history, accepted, sequence, snapshotHistoryByteBudget)
+		if err != nil {
+			slog.Warn("session: full history snapshot unavailable", "session", s.id, "err", err)
+			historyError = err
+		} else {
 			projection.Messages = messages
 			truncatedHistory = truncated
 		}
@@ -433,6 +446,13 @@ func (s *Session) snapshot(includeHistory, includeModel bool) Snapshot {
 		snapshot.DurableSequence, snapshot.PersistenceStatus, snapshot.PersistenceError = durable, status, detail
 	} else {
 		snapshot.PersistenceStatus = PersistenceReady
+	}
+	// The failed history reconstruction does not erase the model workset: the
+	// live projection stays readable so a caller can still act on the current
+	// turn; only the UI transcript is reported failed.
+	if historyError != nil {
+		snapshot.PersistenceStatus = PersistenceFailed
+		snapshot.PersistenceError = historyError.Error()
 	}
 	// Nested provider metadata is immutable internally but Go cannot freeze
 	// returned slices. Detach it outside the commit lock before exposing it.
