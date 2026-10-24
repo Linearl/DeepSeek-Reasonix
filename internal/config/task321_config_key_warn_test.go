@@ -41,6 +41,7 @@ func task321LoadReadOnly(t *testing.T, path string) *Config {
 }
 
 func TestTask321UnknownKeyWarnsAndLoadContinues(t *testing.T) {
+	resetUnknownKeyWarnDedupeForTest()
 	body := "default_model = \"custom\"\n[agent]\ntemperature = 0.2\nfuture_upstream_key = 1\n"
 	path := task321WriteConfig(t, body)
 	before, err := os.ReadFile(path)
@@ -89,6 +90,7 @@ func TestTask321KnownKeysZeroWarnNoise(t *testing.T) {
 }
 
 func TestTask321DeprecatedKeyListHit(t *testing.T) {
+	resetUnknownKeyWarnDedupeForTest()
 	body := "[agent]\nauto_plan = \"off\"\ncompact_force_ratio = 0.9\n"
 	path := task321WriteConfig(t, body)
 
