@@ -4,12 +4,14 @@
 // 约束 / 用户拖过则记住用户值。
 
 import {
+  RIGHT_DOCK_MIN_RENDER_WIDTH,
   RIGHT_DOCK_TREE_NARROW_WIDTH,
   SIDE_DOCK_PANEL_CHAT_FLOOR,
   SIDE_DOCK_WIDE_TARGET_WIDTH,
   SIDE_DOCK_WIDE_VIEWPORT_RATIO,
   clampRightDockTreeWidth,
 } from "../store/layout";
+import { resolveWorkspacePanelPlacement } from "../lib/workspaceLayout";
 
 let passed = 0;
 let failed = 0;
@@ -63,6 +65,50 @@ eq(
 // max(用户值, wide 目标)——用户拖得比 720 更宽时以用户为准。
 eq("user value above the target wins", Math.max(clampRightDockTreeWidth(800, 1200), wideTarget(1920, 264, false)), 800);
 eq("user value below the target is lifted", Math.max(clampRightDockTreeWidth(300, 1200), wideTarget(1920, 264, false)), 720);
+
+// tl1118 回归断言：窄态 rail 246 必须能以网格形态挂载（layout--workspace-open）。
+// 旧代码把 minRenderWidth 固定在 280，246 < 280 使 placement 恒进 overlay 分支，
+// 右侧 dock（概览/文件/改动/任务）整体打不开。门槛必须随态取
+// min(RIGHT_DOCK_MIN_RENDER_WIDTH, RIGHT_DOCK_TREE_NARROW_WIDTH) = 246。
+const NARROW_MIN_RENDER_WIDTH = Math.min(RIGHT_DOCK_MIN_RENDER_WIDTH, RIGHT_DOCK_TREE_NARROW_WIDTH);
+
+/** 与 App.tsx 窄态（sideDockWideActive=false）的 placement 参数同式。 */
+function narrowPlacement() {
+  return resolveWorkspacePanelPlacement({
+    viewportWidth: 1440,
+    sidebarCollapsed: false,
+    sidebarWidth: 264,
+    chatMinWidth: 400,
+    resizerWidth: 8,
+    open: true,
+    maximized: false,
+    preferredWidth: RIGHT_DOCK_TREE_NARROW_WIDTH,
+    minWidth: RIGHT_DOCK_TREE_NARROW_WIDTH,
+    minRenderWidth: NARROW_MIN_RENDER_WIDTH,
+  });
+}
+
+const narrow = narrowPlacement();
+eq("narrow: render floor follows the rail (246)", NARROW_MIN_RENDER_WIDTH, 246);
+eq("narrow: dock is renderable", narrow.renderable, true);
+eq("narrow: dock mounts the grid form (layout--workspace-open)", narrow.gridOpen, true);
+eq("narrow: dock is not stuck in the overlay branch", narrow.overlay, false);
+
+// 宽态门槛维持 280，真实空间不足时才回落 overlay（对话语义不回归）。
+const squeezed = resolveWorkspacePanelPlacement({
+  viewportWidth: 700,
+  sidebarCollapsed: false,
+  sidebarWidth: 264,
+  chatMinWidth: 400,
+  resizerWidth: 8,
+  open: true,
+  maximized: false,
+  preferredWidth: 720,
+  minWidth: 246,
+  minRenderWidth: RIGHT_DOCK_MIN_RENDER_WIDTH,
+});
+eq("wide: a genuinely squeezed viewport still overlays", squeezed.overlay, true);
+eq("wide: overlay stays renderable", squeezed.renderable, true);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

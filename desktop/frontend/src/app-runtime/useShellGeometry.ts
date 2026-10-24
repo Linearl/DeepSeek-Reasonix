@@ -77,9 +77,12 @@ export function useShellGeometry(input: { appRef: RefObject<HTMLDivElement | nul
   const preferredWorkspacePanelWidth = rightDockTreeWidth;
   const rightDockTreeMinWidth = desktopLayoutStyle === "creation" ? CREATION_RIGHT_DOCK_TREE_MIN_WIDTH : RIGHT_DOCK_TREE_MIN_WIDTH;
   const rightDockTreeWidthClamp = desktopLayoutStyle === "creation" ? clampCreationRightDockTreeWidth : clampRightDockTreeWidth;
+  // tl1118 回归修复：与 App.tsx 的三态公式对齐——渲染门槛不得超过本路径的
+  // min 宽度，否则 storedWidth(可低至 246/252) < 280 时 placement 恒进
+  // overlay，dock 网格形态（layout--workspace-open）永不挂载。
   const rightDockMinRenderWidth = desktopLayoutStyle === "creation" && !rightDockDetailActive
     ? CREATION_RIGHT_DOCK_MIN_RENDER_WIDTH
-    : RIGHT_DOCK_MIN_RENDER_WIDTH;
+    : Math.min(RIGHT_DOCK_MIN_RENDER_WIDTH, rightDockTreeMinWidth);
   const workspacePanelMinWidth = rightDockTreeMinWidth;
   const chatReservedWidth = CHAT_MIN_WIDTH;
   const workspacePanelAvailableWidth = availableWorkspacePanelWidth({

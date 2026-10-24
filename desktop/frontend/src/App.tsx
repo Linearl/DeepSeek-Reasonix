@@ -1749,9 +1749,16 @@ export default function App() {
     ? (desktopLayoutStyle === "creation" ? CREATION_RIGHT_DOCK_TREE_MIN_WIDTH : RIGHT_DOCK_TREE_MIN_WIDTH)
     : RIGHT_DOCK_TREE_NARROW_WIDTH;
   const rightDockTreeWidthClamp = desktopLayoutStyle === "creation" ? clampCreationRightDockTreeWidth : clampRightDockTreeWidth;
-  const rightDockMinRenderWidth = desktopLayoutStyle === "creation" && !rightDockDetailActive
-    ? CREATION_RIGHT_DOCK_MIN_RENDER_WIDTH
-    : RIGHT_DOCK_MIN_RENDER_WIDTH;
+  // tl1118 回归修复（v1.38.3-20261024-1102）：minRenderWidth 同样要随态取值。
+  // tl1108 把窄态 rail 压到 246 却保留了 280 的渲染门槛，导致
+  // resolvedWidth(246) < minRenderWidth(280) 恒成立——placement 永远进
+  // overlay 分支，layout--workspace-open 永不挂载，右侧 dock（概览/文件/
+  // 改动/任务）整体打不开。窄态门槛取 min(280, 246)=246，宽态维持 280。
+  const rightDockMinRenderWidth = sideDockWideActive
+    ? (desktopLayoutStyle === "creation" && !rightDockDetailActive
+        ? CREATION_RIGHT_DOCK_MIN_RENDER_WIDTH
+        : RIGHT_DOCK_MIN_RENDER_WIDTH)
+    : Math.min(RIGHT_DOCK_MIN_RENDER_WIDTH, RIGHT_DOCK_TREE_NARROW_WIDTH);
   const workspacePanelMinWidth = rightDockTreeMinWidth;
   const chatReservedWidth = CHAT_MIN_WIDTH;
   const workspacePanelAvailableWidth = availableWorkspacePanelWidth({
