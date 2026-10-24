@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/runtimepolicy"
 	"reasonix/internal/sessioncollab"
 )
@@ -462,5 +463,38 @@ func TestSessionCollabDeliveryTextReadReceiptSenderConsistent(t *testing.T) {
 	}, 0)
 	if !strings.Contains(oneway, "未登记") || !strings.Contains(oneway, "无法回信") {
 		t.Fatalf("an empty From must keep the one-way notice: %s", oneway)
+	}
+}
+
+// 任务 1058：发件人已在正文里声明「本条为通知，无需回信」的系统发件方
+//（如意见箱 feedback_inbox 通知），模板不得再按「无 ReplyTo + 有 From」的
+// 普通回退逻辑给它拼一条「回信到 contact_id=...」——那是自相矛盾：正文说不
+// 用回信，脚注却给了一个回信地址，收信方按地址回信才发现根本没人接（20261022
+// 意见箱线实测：地址 sc_feedback_inbox 从不在通讯录，talk_to_session 报
+// not found）。普通 From 消息（无此声明）不受影响，仍走原回退指示。
+func TestDeliveryTextOneWayNoticeOverridesReplyFallback(t *testing.T) {
+	// feedback 通知形态：From 已登记（真实铸造地址），但正文自带单向声明戳。
+	oneWay := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID:   "msg_1058",
+		From: "sc_minted_inbox_addr", // 真实铸造地址（不再是幽灵 sc_feedback_inbox）
+		To:   "sc_worker",
+		Body: "[意见箱] 新反馈（bug）：示例标题\nmd: feedback-x.md\n" + agent.FeedbackInboxOneWayNotice,
+	}, 0)
+	if strings.Contains(oneWay, "回信到 contact_id=") {
+		t.Fatalf("a body that declares 无需回信 must NOT get a reply-address fallback: %s", oneWay)
+	}
+	if !strings.Contains(oneWay, "单向通知") || !strings.Contains(oneWay, "无需回信") {
+		t.Fatalf("the one-way trailer must name the no-reply state: %s", oneWay)
+	}
+
+	// 对照：普通 From 消息（无声明戳）仍走原回退指示，回归不被误伤。
+	ordinary := sessionCollabDeliveryText(sessioncollab.MailMessage{
+		ID:   "msg_ordinary",
+		From: "sc_main",
+		To:   "sc_worker",
+		Body: "普通系统消息",
+	}, 0)
+	if !strings.Contains(ordinary, "回信到 contact_id=sc_main") {
+		t.Fatalf("an ordinary registered sender must keep the reply fallback: %s", ordinary)
 	}
 }

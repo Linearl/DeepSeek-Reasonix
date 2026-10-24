@@ -1581,15 +1581,29 @@ func sessionCollabDeliveryText(msg sessioncollab.MailMessage, effectiveHop int) 
 			b.WriteString("\n⚠ 发件人要求回信（require_reply）：完成本信的工作后，必须按上面的回复方式回信；无法完成也请回信说明，不要只在本会话里写下结论。")
 		}
 	} else if msg.From != "" {
-		// Task 487: an empty ReplyTo with a registered From is a system
-		// message (the task-309 read receipt looks exactly like this), not an
-		// unregistered sender. The old catch-all called the sender "未登记"
-		// right under a header that printed its contact_id, and sent the
-		// recipient chasing a remediation that had already happened. The
-		// sender IS addressable: fall back to From as the reply address.
-		b.WriteString("回复方式：完成后用 talk_to_session 回信到 contact_id=" + msg.From +
-			"，hop 传 " + strconv.Itoa(effectiveHop+1) +
-			"。（发送方未指定专用回信地址，回信到其登记的 contact_id 即可。）")
+		// 任务 1058：a system-identity sender that stamps its mail as explicitly
+		// one-way (e.g. the feedback-inbox notification, which is a collect-only
+		// system entry point — nobody is on the other end of a reply) must NOT
+		// be given a "reply to the sender" instruction just because its contact_id
+		// happens to be registered. Before this fix, such a message read
+		// 「回信到 contact_id=...」 at the bottom while the body itself said
+		// 「无需回复」 — a contradiction that burned a recipient turn on a
+		// pointless talk_to_session call that could never be answered (tl 1058:
+		// 20261022 意见箱线实测). The sender already declared no reply is needed;
+		// honor that declaration instead of inventing a reply path.
+		if agent.FeedbackInboxOneWay(msg.Body) {
+			b.WriteString("这是一条单向通知：发送方已声明无需回信（系统通知类发件方，非可对话会话）。如需跟进，请改走该发件方对应的业务流程（例如意见箱走 submit_feedback 对应的处理线程），不要试图回信——本消息的回信通道不可用。")
+		} else {
+			// Task 487: an empty ReplyTo with a registered From is a system
+			// message (the task-309 read receipt looks exactly like this), not an
+			// unregistered sender. The old catch-all called the sender "未登记"
+			// right under a header that printed its contact_id, and sent the
+			// recipient chasing a remediation that had already happened. The
+			// sender IS addressable: fall back to From as the reply address.
+			b.WriteString("回复方式：完成后用 talk_to_session 回信到 contact_id=" + msg.From +
+				"，hop 传 " + strconv.Itoa(effectiveHop+1) +
+				"。（发送方未指定专用回信地址，回信到其登记的 contact_id 即可。）")
+		}
 	} else {
 		// Task 156.D: the old wording ("请先让发送方登记") told the *recipient*
 		// to fix something only the sender can do. State the fact and what the

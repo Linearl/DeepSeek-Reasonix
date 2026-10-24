@@ -246,3 +246,32 @@ func TestDrainInboxRenderTextReadReceiptSenderConsistent(t *testing.T) {
 		t.Fatalf("an empty From must keep the one-way notice: %s", oneway)
 	}
 }
+
+// 任务 1058（drain 路径镜像，与 desktop sessionCollabDeliveryText 同一修复）：
+// 正文自带「无需回信」声明戳的系统发件方（意见箱 feedback_inbox 通知），drain
+// 渲染不得再按「无 ReplyTo + 有 From」普通回退拼出「回信到 contact_id=...」。
+func TestDrainInboxRenderTextOneWayNoticeOverridesReplyFallback(t *testing.T) {
+	oneWay := drainInboxRenderText(sessioncollab.MailMessage{
+		ID:   "msg_1058",
+		From: "sc_minted_inbox_addr",
+		To:   "sc_worker",
+		Body: "[意见箱] 新反馈（bug）：示例标题\nmd: feedback-x.md\n" + FeedbackInboxOneWayNotice,
+	}, 0)
+	if strings.Contains(oneWay, "回信到 contact_id=") {
+		t.Fatalf("a body that declares 无需回信 must NOT get a reply-address fallback: %s", oneWay)
+	}
+	if !strings.Contains(oneWay, "单向通知") || !strings.Contains(oneWay, "无需回信") {
+		t.Fatalf("the one-way trailer must name the no-reply state: %s", oneWay)
+	}
+
+	// 对照：普通 From 消息（无声明戳）仍走原回退指示。
+	ordinary := drainInboxRenderText(sessioncollab.MailMessage{
+		ID:   "msg_ordinary",
+		From: "sc_main",
+		To:   "sc_worker",
+		Body: "普通系统消息",
+	}, 0)
+	if !strings.Contains(ordinary, "回信到 contact_id=sc_main") {
+		t.Fatalf("an ordinary registered sender must keep the reply fallback: %s", ordinary)
+	}
+}

@@ -28,16 +28,22 @@ import (
 //   - 兜底：意见箱会话的定期扫描（后续批次）按 md 补齐，不依赖消息送达；
 //     Deliver 层的重发窗口 + 消息内 md 文件名引用保证重复投递不重复建任务。
 //
-// 固定名会话（意见箱实体）：contactId 固定为 "sc_feedback_inbox"（地址注册
-// 表的锚点），会话标题固定「意见箱」。地址注册表（<mailDir>/contact-registry.
-// json）把 name → contactId 落盘：转线（归档旧会话 + 新建同名）时只更新注册
-// 表，工具侧寻址永远经注册表，不会因标题寻址撞上「已归档」的同名旧会话。
+// 固定名会话（意见箱实体）：会话标题固定「意见箱」，contactId 由宿主工厂
+// 首次创建时铸造（随机 sc_ 前缀地址），随后钉进地址注册表
+// （<mailDir>/contact-registry.json 的 name → contactId 映射）。转线（归档
+// 旧会话 + 新建同名）时只更新注册表——收件方寻址经注册表解析出的地址，
+// 不会因标题寻址撞上「已归档」的同名旧会话。
+//
+// 任务 1058（2026-10-22 实测缺口）：通知的 From 字段曾被硬编码成一个固定
+// 字面量 "sc_feedback_inbox"（幽灵地址，从未真正铸造）——收信方拿到的通知
+// 模板因此指示「回信到 contact_id=sc_feedback_inbox」，但该 id 从来不在通
+// 讯录里（实际铸造的是工厂返回的随机地址），收信方 talk_to_session 报
+// not found，无法回执（20261022 意见箱线实测，tl 1058）。根因是「发件方身
+// 份」与「寻址可达地址」在代码里被拆成了两个不一致的值：From 写死锚点字面
+// 量，寻址经注册表拿真实铸造地址。修复：From 必须是真实铸造地址
+// （ensureInbox 返回的 contactID），与注册表/寻址完全同源；「sc_feedback_
+// inbox」这个字面量从代码里彻底删除，不再冒充一个可寻址地址。
 const (
-	// FeedbackInboxContactID is the fixed address of the feedback inbox
-	// session. It is minted exactly once (the first EnsureFeedbackInboxSession
-	// call) and pinned in the address registry; every later submission resolves
-	// through the registry, so a 转线 only re-points the registry entry.
-	FeedbackInboxContactID = "sc_feedback_inbox"
 	// FeedbackInboxTitle is the fixed session title (转线时新会话沿用同名，
 	// 旧会话改名「意见箱（已归档）」保持标题唯一).
 	FeedbackInboxTitle = "意见箱"
@@ -66,8 +72,32 @@ const (
 // body so the mail preview itself is recognizable even in a raw jsonl read.
 const FeedbackInboxSystemStamp = "[意见箱]"
 
+// FeedbackInboxOneWayNotice (任务 1058) is appended to every notification
+// body. It tells the recipient, in plain text, that no reply is expected and
+// the message cannot be replied to — closing the loop the moment the generic
+// delivery template (sessionCollabDeliveryText / drainInboxRenderText) would
+// otherwise offer a "reply to the sender" fallback. Without this stamp, a
+// system-identity sender that never registers a ReplyTo reads as an ordinary
+// "replyable" peer: the generic template falls back to the sender's contact_id
+// as the reply address, and the recipient burns a turn discovering that
+// address is unreachable (tl 1058 root cause: the recipient tried to reply to
+// "sc_feedback_inbox" and got not-found).
+const FeedbackInboxOneWayNotice = "本条为通知，无需回信（发送方是意见箱系统入口，不是可对话会话）。"
+
+// FeedbackInboxOneWay (任务 1058) reports whether a message body carries the
+// explicit one-way stamp FeedbackInboxOneWayNotice. Both delivery renderers
+// (desktop/session_collab.go sessionCollabDeliveryText and the drain_inbox
+// mirror) consult this before falling back to "reply to the sender's
+// contact_id" — a sender that declared its mail unreplyable must never be
+// handed a reply path, even when its contact_id happens to be registered.
+func FeedbackInboxOneWay(body string) bool {
+	return strings.Contains(body, FeedbackInboxOneWayNotice)
+}
+
 // feedbackInboxBody renders the notification message body: the stamp line, the
-// md file name (the idempotent key), and the ≤3-line summary.
+// md file name (the idempotent key), the ≤3-line summary, and (任务1058) an
+// explicit one-way notice so a reader never wastes a turn hunting for a reply
+// address.
 func feedbackInboxBody(note builtin.FeedbackNote) string {
 	var b strings.Builder
 	b.WriteString(FeedbackInboxSystemStamp + " ")
@@ -75,7 +105,9 @@ func feedbackInboxBody(note builtin.FeedbackNote) string {
 	fmt.Fprintf(&b, "md: %s\n", note.FileName)
 	if s := strings.TrimSpace(note.Summary); s != "" {
 		b.WriteString(s)
+		b.WriteString("\n")
 	}
+	b.WriteString(FeedbackInboxOneWayNotice)
 	return b.String()
 }
 
@@ -267,7 +299,9 @@ func (c FeedbackMailConfig) NotifyFeedbackNote(ctx context.Context, note builtin
 	}
 	mail := sessioncollab.NewMailStore(c.mailDirOrDefault())
 	_, derr := mail.Deliver(ctx, sessioncollab.MailMessage{
-		From:    FeedbackInboxContactID,
+		// 任务 1058：From 必须是真实铸造地址（与注册表/寻址同源），不再是硬
+		// 编码的幽灵字面量——收信方按此 From 回信才真正可达。
+		From:    contactID,
 		To:      contactID,
 		ToTitle: title,
 		Body:    feedbackInboxBody(note),
