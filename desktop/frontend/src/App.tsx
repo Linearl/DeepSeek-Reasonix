@@ -1728,6 +1728,10 @@ export default function App() {
   // its value in rightDockTreeWidth and that remembered value then wins.
   // 对话区保底 380px —— 面板可用宽度先按该保底截断，再谈加宽。
   const sideDockWideActive = useLayoutStore((s) => s.sideDockWideActive);
+  // tl1129: 用户显式调过宽度（拖动/键盘/双击复位写入 rightDockTreeWidth）后，
+  // 窄态不再把 preferred 钉死在 246——否则拖宽松手瞬间被公式打回 rail（装机
+  // 反馈的「宽度调整好后自动回缩」）。用户值随面板会话存活：关面板才清。
+  const sideDockUserWidthActive = useLayoutStore((s) => s.sideDockUserWidthActive);
   const sideDockWideTargetWidth = useMemo(() => {
     const viewportCap = Math.round(viewportWidth * SIDE_DOCK_WIDE_VIEWPORT_RATIO);
     // 对话区保底 380px（tl1108 规格 3.1/踩坑 3）：窄窗口时面板不加满。
@@ -1742,7 +1746,9 @@ export default function App() {
   // sidebar. Preview detail stays inside the dock without widening it.
   const preferredWorkspacePanelWidth = sideDockWideActive
     ? Math.max(rightDockTreeWidth, sideDockWideTargetWidth)
-    : RIGHT_DOCK_TREE_NARROW_WIDTH;
+    : sideDockUserWidthActive
+      ? rightDockTreeWidth
+      : RIGHT_DOCK_TREE_NARROW_WIDTH;
   // tl1108: 窄态收回到 246（关最后文件复位 246 的落地点）—— min 随态取值，
   // 否则 300 的旧地板会把「回到 246」顶掉。
   const rightDockTreeMinWidth = sideDockWideActive
@@ -3036,6 +3042,9 @@ export default function App() {
       const next = rightDockTreeWidthClamp(width, workspacePanelAvailableWidth);
       setRightDockTreeWidth(next);
       saveRightDockTreeWidth(next);
+      // tl1129: 显式写入 dock 宽度（拖动松手/键盘/双击复位）= 用户意图，置位后
+      // 窄态 preferred 尊重该值，不再被 246 rail 公式打回（拖宽松手即缩的根因）。
+      useLayoutStore.getState().setSideDockUserWidthActive(true);
     },
     [closeTransientOverlays, rightDockTreeWidthClamp, workspacePanelAvailableWidth],
   );
@@ -3268,6 +3277,10 @@ export default function App() {
     setWorkspacePanelMaximized(false);
     setWorkspacePanelOpen(false);
     saveWorkspacePanelOpen(false, activeWorkspaceRoot);
+    // tl1129: 关面板 = 一次收口——用户宽度指示一并清，重开回落 246 rail
+    // （与「关最后文件回落」同族的收口语义；切 tab 不在此列，dock 宽度跨
+    // tab 一致）。
+    useLayoutStore.getState().setSideDockUserWidthActive(false);
   }, [activeWorkspaceRoot, closeTransientOverlays, rightDockHover, workspacePanelOpen]);
   closeWorkspacePanelRef.current = closeWorkspacePanel;
 
@@ -6689,6 +6702,8 @@ export default function App() {
                       );
                       setRightDockTreeWidth(next);
                       saveRightDockTreeWidth(next);
+                      // tl1129: 预设档同样是用户显式宽度意图，与拖动同权置位。
+                      useLayoutStore.getState().setSideDockUserWidthActive(true);
                       if (workspacePanelMaximized) setWorkspacePanelMaximized(false);
                     }}
                     onPreviewModeChange={handleWorkspacePreviewModeChange}

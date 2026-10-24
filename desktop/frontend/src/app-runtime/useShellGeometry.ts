@@ -239,6 +239,11 @@ export function useShellGeometry(input: { appRef: RefObject<HTMLDivElement | nul
     const next = rightDockTreeWidthClamp(width, workspacePanelAvailableWidth);
     setRightDockTreeWidth(next);
     saveRightDockTreeWidth(next);
+    // tl1129: 与 App.tsx 的同名命令保持同一语义——显式写入 dock 宽度 = 用户
+    // 意图，置位 sideDockUserWidthActive，窄态 preferred 尊重用户值（本文件
+    // 是 app-runtime 平行实现，尚未挂载；三态公式的迁移随架构切换一起做，
+    // 这里先保证数据层语义一致，避免切换后 bug 复活）。
+    useLayoutStore.getState().setSideDockUserWidthActive(true);
   });
 
   const ensureWorkspacePanelWidth = useCommittedCommand((width: number) => {

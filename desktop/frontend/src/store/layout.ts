@@ -347,6 +347,13 @@ export type LayoutState = {
    *  由面板上报，App 据此把面板宽度抬到 min(720, vw×46%)/用户值；关闭全部
    *  标签后回落 246。会话内状态（不持久化）。 */
   sideDockWideActive: boolean;
+  /** tl1129: 用户显式调过 dock 宽度的指示（拖动分隔条松手 / 键盘 resize /
+   *  双击复位经 setSavedWorkspacePanelWidth 写入时置位）。置位后窄态不再把
+   *  preferred 钉死在 246 rail，而是尊重 rightDockTreeWidth 里的用户值——
+   *  修复「拖宽后自动回缩」。清位只在关面板收口（closeWorkspacePanel），
+   *  切 tab / 宽态翻窄不清（dock 宽度跨 tab 一致是既有语义）。会话内状态
+   *  （不持久化）。 */
+  sideDockUserWidthActive: boolean;
   rightDockMode: RightDockMode;
   terminalPanelOpen: boolean;
   terminalHeight: number;
@@ -366,6 +373,7 @@ export type LayoutState = {
   setWorkspacePanelMaximized: Dispatch<SetStateAction<boolean>>;
   setWorkspacePreviewActive: Dispatch<SetStateAction<boolean>>;
   setSideDockWideActive: (active: boolean) => void;
+  setSideDockUserWidthActive: (active: boolean) => void;
   setRightDockMode: Dispatch<SetStateAction<RightDockMode>>;
   setTerminalPanelOpen: Dispatch<SetStateAction<boolean>>;
   setTerminalHeight: (height: number) => void;
@@ -387,6 +395,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   workspacePanelMaximized: false,
   workspacePreviewActive: false,
   sideDockWideActive: false,
+  sideDockUserWidthActive: false,
   rightDockMode: loadRightDockMode(""),
   terminalPanelOpen: loadTerminalPanelOpen(),
   terminalHeight: loadTerminalHeight(),
@@ -405,6 +414,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   setWorkspacePanelMaximized: (update) => set((s) => ({ workspacePanelMaximized: applySetState(s.workspacePanelMaximized, update) })),
   setWorkspacePreviewActive: (update) => set((s) => ({ workspacePreviewActive: applySetState(s.workspacePreviewActive, update) })),
   setSideDockWideActive: (active) => set((s) => (s.sideDockWideActive === active ? s : { sideDockWideActive: active })),
+  setSideDockUserWidthActive: (active) => set((s) => (s.sideDockUserWidthActive === active ? s : { sideDockUserWidthActive: active })),
   setRightDockMode: (update) => set((s) => ({ rightDockMode: applySetState(s.rightDockMode, update) })),
   setTerminalPanelOpen: (update) => set((s) => ({ terminalPanelOpen: applySetState(s.terminalPanelOpen, update) })),
   setTerminalHeight: (height) => set({ terminalHeight: height }),
