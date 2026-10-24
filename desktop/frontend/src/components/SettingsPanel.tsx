@@ -23,6 +23,7 @@ export { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { ManagementPageShell } from "./ManagementPageShell";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import type { ModelDetailsDraft } from "./ProviderModelDialog";
+import { normalizedEffortSelection } from "../lib/providerModelDraft";
 import { ConnectionTitle } from "./ConnectionTitle";
 import { QuickCommandsManagerDialog } from "./QuickCommandsManagerDialog";
 import { ProviderConnections } from "./ProviderConnections";
@@ -8406,26 +8407,59 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
                 ? (defaultOverride?.supportedEfforts?.length ? defaultOverride.supportedEfforts : defaultOption?.providerView?.supportedEfforts ?? [])
                 : [];
               return (
-                <SettingsField className="model-assignment-effort" label={<ModelSettingHelp label={t("settings.modelEffort")} text={t("settings.modelEffortHint")} />}>
+            <SettingsField className="model-assignment-effort" label={<ModelSettingHelp label={t("settings.modelEffort")} text={t("settings.modelEffortHint")} />}>
+              <SettingsSelect
+                className="mem-select set-grow"
+                aria-label={t("settings.modelEffort")}
+                value={s.defaultEffort || ""}
+                disabled={busy || effortLevels.length === 0}
+                onValueChange={(value) => void apply(() => saveModelSettings(s, {kind: "preference", field: "default_effort", ref: value}))}
+              >
+                <option value="">{t("common.auto")}</option>
+                {s.defaultEffort && !effortLevels.includes(s.defaultEffort) && <option value={s.defaultEffort} disabled>{s.defaultEffort}</option>}
+                {effortLevels.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </SettingsSelect>
+              <span className="model-assignment-connection">{effortLevels.length === 0 ? t("settings.modelEffortUnsupported") : ""}</span>
+            </SettingsField>
+              );
+            })()}
+
+            {/* Task 1053: the per-model effort rows — every configured model
+                gets the same effort picker the default model already had
+                (1042). Levels resolve exactly like the backend does: the
+                model's own supported_efforts (modelOverrides round-trip)
+                wins, otherwise the connection vocabulary, otherwise auto. */}
+            {refs.filter((ref) => ref !== defaultRef).map((ref) => {
+              const option = modelOptionFromRef(ref, s);
+              if (!option) return null;
+              const override = option.providerView?.modelOverrides?.find((item) => item.model === option.model);
+              const levels = override?.supportedEfforts?.length ? override.supportedEfforts : option.providerView?.supportedEfforts ?? [];
+              const level = s.modelEfforts?.[ref] ?? s.modelEfforts?.[`${option.provider}/${option.model}`] ?? "";
+              return (
+                <SettingsField key={ref} className="model-assignment-effort" label={<ModelSettingHelp label={`${t("settings.modelEffortRow", { model: option.model })}`} text={t("settings.modelEffortRowHint")} />}>
                   <SettingsSelect
                     className="mem-select set-grow"
-                    aria-label={t("settings.modelEffort")}
-                    value={s.defaultEffort || ""}
-                    disabled={busy || effortLevels.length === 0}
-                    onValueChange={(value) => void apply(() => saveModelSettings(s, {kind: "preference", field: "default_effort", ref: value}))}
+                    aria-label={t("settings.modelEffortRow", { model: option.model })}
+                    value={level}
+                    disabled={busy || levels.length === 0}
+                    onValueChange={(value) => void apply(() => saveModelSettings(s, {kind: "preference", field: "model_effort", ref: `${option.provider}/${option.model}=${value}`}))}
                   >
                     <option value="">{t("common.auto")}</option>
-                    {s.defaultEffort && !effortLevels.includes(s.defaultEffort) && <option value={s.defaultEffort} disabled>{s.defaultEffort}</option>}
-                    {effortLevels.map((level) => (
-                      <option key={level} value={level}>
-                        {level}
+                    {level && !levels.includes(level) && <option value={level} disabled>{level}</option>}
+                    {levels.map((effortLevel) => (
+                      <option key={effortLevel} value={effortLevel}>
+                        {effortLevel}
                       </option>
                     ))}
                   </SettingsSelect>
-                  <span className="model-assignment-connection">{effortLevels.length === 0 ? t("settings.modelEffortUnsupported") : ""}</span>
+                  <span className="model-assignment-connection">{levels.length === 0 ? t("settings.modelEffortUnsupported") : ""}</span>
                 </SettingsField>
               );
-            })()}
+            })}
 
             <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.plannerModel")} text={t("providerUI.plannerModelHelp")} />}>
               <ModelPicker
@@ -10610,7 +10644,15 @@ export function ProviderEditor({
       : current.filter(item => item !== draft.model));
     setModelOverrides(current => {
       const previous = current.find(item => item.model === draft.model);
-      return [...current.filter(item => item.model !== draft.model), {...previous, model:draft.model, reasoningProtocol:previous?.reasoningProtocol ?? "", supportedEfforts:previous?.supportedEfforts ?? [], defaultEffort:previous?.defaultEffort ?? "", vision:draft.vision, audio:draft.audio, maxOutputTokens:draft.maxOutputTokens}];
+      // Task 1053: the dialog's per-model effort vocabulary lands here with
+      // the same semantics as the lower-zone applyModelDraft — absent field
+      // keeps the stored list, empty list inherits the connection vocabulary
+      // (default_effort pinned), a saved list drops an out-of-vocabulary
+      // default up front.
+      const efforts = draft.efforts !== undefined
+        ? normalizedEffortSelection(draft.efforts, previous?.defaultEffort ?? "")
+        : null;
+      return [...current.filter(item => item.model !== draft.model), {...previous, model:draft.model, reasoningProtocol:previous?.reasoningProtocol ?? "", supportedEfforts: efforts ? efforts.supportedEfforts : (previous?.supportedEfforts ?? []), defaultEffort: efforts ? efforts.defaultEffort : (previous?.defaultEffort ?? ""), vision:draft.vision, audio:draft.audio, maxOutputTokens:draft.maxOutputTokens}];
     });
     setModelDialog(null);
   };
@@ -10859,7 +10901,8 @@ export function ProviderEditor({
       {fetchFallback && <div role="alert" className="provider-fetch-status provider-fetch-status--warn">{fetchFallback}</div>}
       {modelDialog !== null && <Suspense fallback={null}><ProviderModelDialog
         baseURL={effectiveRequestUrl} candidates={modelCandidateNames} contextDefault={Number(ctx) || undefined}
-        initial={modelDialog ? {model:modelDialog, contextWindow:modelContextWindows[modelDialog] ?? "", maxOutputTokens:modelOverrides.find(item=>item.model === modelDialog)?.maxOutputTokens ?? 0, vision:modelOverrides.find(item=>item.model === modelDialog)?.vision ?? null, audio:modelOverrides.find(item=>item.model === modelDialog)?.audio ?? null, highSpeed:highSpeedModelNames.includes(modelDialog)} : undefined}
+        initial={modelDialog ? {model:modelDialog, contextWindow:modelContextWindows[modelDialog] ?? "", maxOutputTokens:modelOverrides.find(item=>item.model === modelDialog)?.maxOutputTokens ?? 0, vision:modelOverrides.find(item=>item.model === modelDialog)?.vision ?? null, audio:modelOverrides.find(item=>item.model === modelDialog)?.audio ?? null, highSpeed:highSpeedModelNames.includes(modelDialog), efforts:modelOverrides.find(item=>item.model === modelDialog)?.supportedEfforts ?? []} : undefined}
+        connectionEfforts={cleanedSupportedEfforts}
         highSpeedSwitchOn={highSpeedSwitchOn}
         capability={modelCapabilities.find(item=>item.model === modelDialog)} busy={busy || fetchingModels}
         onClose={()=>setModelDialog(null)} onApply={applyModelDetails} onDelete={deleteModel}/></Suspense>}

@@ -29,7 +29,12 @@ const override = { model: "existing", contextWindow: 32768, maxOutputTokens: 409
 const result = applyModelDraft([override], { model: "renamed", contextWindow: "", maxOutputTokens: -1, vision: null, audio: null }, "existing")[0];
 assert.equal(result.reasoningProtocol, "kimi");
 assert.deepEqual(result.supportedEfforts, ["high"]);
-assert.equal(result.contextWindow, 0);
+// Task 1053: an empty context draft keeps the stored window (a blank field
+// in the model dialog means "unchanged", not "clear"), while an explicit
+// output value replaces it. Before 1053 the blank context silently zeroed
+// the override — a saved window vanished the moment any other field was
+// edited.
+assert.equal(result.contextWindow, 32768);
 assert.equal(result.maxOutputTokens, -1);
 assert.equal(result.vision, null);
 // tl 1104: 音频三态随弹窗应用落地，且不动其它 override 字段。

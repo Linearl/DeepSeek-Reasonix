@@ -170,21 +170,15 @@ eq(
   "loads positive per-model context windows into editable drafts",
 );
 
+const mergedContextOverrides = mergeProviderModelContextWindows(contextOverrides, ["short-model", "new-model"], {
+  "short-model": "65536",
+  "new-model": "131072",
+});
 eq(
-  mergeProviderModelContextWindows(contextOverrides, ["short-model", "new-model"], {
-    "short-model": "65536",
-    "new-model": "131072",
-  }),
+  mergedContextOverrides.map((item) => ({ model: item.model, contextWindow: item.contextWindow, maxOutputTokens: item.maxOutputTokens, supportedEfforts: item.supportedEfforts, audio: item.audio, vision: item.vision })),
   [
-    { ...contextOverrides[0], contextWindow: 65536 },
-    {
-      model: "new-model",
-      reasoningProtocol: "",
-      supportedEfforts: [],
-      defaultEffort: "",
-      vision: null,
-      contextWindow: 131072,
-    },
+    { model: "short-model", contextWindow: 65536, maxOutputTokens: -1, supportedEfforts: [], audio: null, vision: null },
+    { model: "new-model", contextWindow: 131072, maxOutputTokens: undefined, supportedEfforts: [], audio: null, vision: null },
   ],
   "merges model context edits while preserving other overrides and dropping removed models",
 );
@@ -212,6 +206,7 @@ eq(
     supportedEfforts: [],
     defaultEffort: "",
     vision: null,
+    audio: null,
     contextWindow: 0,
     maxOutputTokens: 4096,
   }],

@@ -6,6 +6,8 @@ export interface SettingsView {
   defaultModel: string;
   /** Task 1042: reasoning-effort level assigned to the default model; "" = auto. */
   defaultEffort?: string;
+  /** Task 1053: per-model default effort levels, keyed by "provider/model" ref; missing/"" = auto. */
+  modelEfforts?: Record<string, string>;
   plannerModel: string;
   guardianModel: string;
   autopilot: boolean;
