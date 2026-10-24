@@ -457,6 +457,10 @@ type SettingsView struct {
 	// group vs compact dropdown). Rendered in both views for the 81/123
 	// two-view lesson; pure frontend gate, settings save re-applies.
 	ExperimentalSendTargetSelect bool `json:"experimentalSendTargetSelect"`
+	// tl 1132: DSH-style startup splash overlay gate (off = never renders).
+	// Rendered in both views for the 81/123 two-view lesson; pure frontend
+	// gate, settings save re-applies.
+	ExperimentalStartupSplash bool `json:"experimentalStartupSplash"`
 	// 任务 686: the workflow visualization panel (command-palette entry opening
 	// the DAG flow view). Rendered in both views for the 81/123 two-view
 	// lesson; pure frontend gate, settings save re-applies.
@@ -783,6 +787,11 @@ type DesktopStartupSettingsView struct {
 	// group vs compact dropdown). Rendered in both views for the 81/123
 	// two-view lesson; pure frontend gate, settings save re-applies.
 	ExperimentalSendTargetSelect bool `json:"experimentalSendTargetSelect"`
+	// tl 1132: the startup splash overlay gate, rendered in this view too
+	// (81/123 two-view lesson) — the boot snapshot is what the splash
+	// decision reads, so omitting it here would pin the splash off forever.
+	// Pure frontend gate, settings save re-applies.
+	ExperimentalStartupSplash bool `json:"experimentalStartupSplash"`
 	// 任务 1024: composer 草稿优化（改写按钮）lab switch, rendered in this view
 	// too (81/123 two-view lesson, tl 1067 root cause). The field was missing
 	// here, so every boot snapshot read serialized experimentalDraftRewrite as
@@ -1652,6 +1661,9 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalTableWrap = cfg.Desktop.ExperimentalTableWrap
 		// 任务 959 ②: send-target picker form readback (two-view lesson).
 		view.ExperimentalSendTargetSelect = cfg.Desktop.ExperimentalSendTargetSelect
+		// tl 1132: startup splash overlay readback (two-view lesson) — the
+		// boot snapshot gates whether the splash renders at all.
+		view.ExperimentalStartupSplash = cfg.Desktop.ExperimentalStartupSplash
 		// 任务 1024: composer 草稿优化 readback（双视图教训，tl 1067 根因——
 		// 缺此行时启动快照恒为 false，前端 applyDesktopPreferences 用
 		// `?? false` 把已开的 flag 覆盖成 false，按钮消失）。
@@ -1939,6 +1951,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalTableWrap: cfg.Desktop.ExperimentalTableWrap,
 		// 任务 959 ②: send-target picker form readback (two-view lesson).
 		ExperimentalSendTargetSelect: cfg.Desktop.ExperimentalSendTargetSelect,
+		// tl 1132: startup splash overlay readback (two-view lesson).
+		ExperimentalStartupSplash: cfg.Desktop.ExperimentalStartupSplash,
 		// 任务 686: workflow visualization panel readback (two-view lesson).
 		ExperimentalWorkflowPanel:       cfg.Desktop.ExperimentalWorkflowPanel,
 		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,

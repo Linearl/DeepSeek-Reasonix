@@ -252,6 +252,16 @@ type DesktopConfig struct {
 	// buttons cost a whole meta slot). It ships off (铁律 2); pure frontend
 	// gate: the settings save re-applies the boot snapshot, no restart.
 	ExperimentalSendTargetSelect bool `toml:"experimental_send_target_select"`
+	// ExperimentalStartupSplash gates the DSH-style startup splash (tl 1132):
+	// the centred logo + subtitle + pulse-dots overlay that covers the main
+	// region until the core UI (tab strip / draft / composer / transcript) is
+	// mounted, then fades out. It ships off (铁律 2; user steer 2026-10-24:
+	// "做成实验特性，允许开关，方便对比"): with the zero value the splash
+	// never renders, so startup stays exactly the pre-gate behaviour — the
+	// index.html boot shell that covers bundle parse is a separate always-on
+	// layer and is not gated by this switch. Pure frontend gate: the settings
+	// save re-applies the boot snapshot, no restart.
+	ExperimentalStartupSplash bool `toml:"experimental_startup_splash"`
 	// ExperimentalWorkflowPanel gates the workflow visualization panel (task
 	// 686): a command-palette entry opening the DAG flow view (plan preview
 	// plus live node-state lighting from the run event stream). It ships off

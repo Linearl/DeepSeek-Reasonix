@@ -132,6 +132,8 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"tableWrap":           func(c *Config, on bool) error { return c.SetExperimentalTableWrap(on) },
 	"sendTargetSelect":    func(c *Config, on bool) error { return c.SetExperimentalSendTargetSelect(on) },
 	"draftRewrite":        func(c *Config, on bool) error { return c.SetExperimentalDraftRewrite(on) },
+	// tl 1132：启动遮罩（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
+	"startupSplash": func(c *Config, on bool) error { return c.SetExperimentalStartupSplash(on) },
 	// 任务 1056：网络重试预算分级（[network.retry_budget] 总开关；family 子键
 	// （max_retries/dial_timeout_seconds 等）不进批量——批量只翻 enabled，
 	// 细粒度旋钮保持用户现值）。
