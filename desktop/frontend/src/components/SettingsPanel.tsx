@@ -3603,7 +3603,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               门，设置保存后的 onChanged 重放快照（applyLabFlags）即换态。 */}
           {selected === "startupLoading" && (
             <>
-              <SettingsField label={labLabel("startupLoading", t("settings.startupLoading"))} hint={t("settings.startupLoadingHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField label={labLabel("startupLoading", t("settings.startupLoading"))} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
               <SettingsField label={labLabel("startupSplash", t("settings.startupSplash"))} hint={t("settings.startupSplashHint")} icon={<Monitor size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (

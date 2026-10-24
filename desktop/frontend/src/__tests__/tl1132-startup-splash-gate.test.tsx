@@ -242,8 +242,8 @@ const readSrc = (p: string) => readFileSync(resolve(here, "..", p), "utf8");
   // 三语六键。
   for (const [name, file] of [["zh", "locales/zh.ts"], ["zh-TW", "locales/zh-TW.ts"], ["en", "locales/en.ts"]] as const) {
     const src = readSrc(file);
-    const keys = ["settings.startupLoading", "settings.startupLoadingHint", "settings.startupSplash", "settings.startupSplashHint", "settings.startupSplash.on", "settings.startupSplash.off"];
-    ok(keys.every((k) => src.includes(`"${k}"`)), `${name} locale carries all six startup-splash keys`);
+    const keys = ["settings.startupLoading", "settings.startupSplash", "settings.startupSplashHint", "settings.startupSplash.on", "settings.startupSplash.off"];
+    ok(keys.every((k) => src.includes(`"${k}"`)), `${name} locale carries all five startup-splash keys (card-head hint omitted: zh ratchet 78B)`);
   }
 }
 
