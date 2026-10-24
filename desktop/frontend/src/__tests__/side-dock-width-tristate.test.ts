@@ -110,5 +110,26 @@ const squeezed = resolveWorkspacePanelPlacement({
 eq("wide: a genuinely squeezed viewport still overlays", squeezed.overlay, true);
 eq("wide: overlay stays renderable", squeezed.renderable, true);
 
+// tl1129: preferred 公式升四态——宽态不变（自动加宽 + 用户值取大），窄态区分
+// 「用户拖过」（尊重 rightDockTreeWidth，拖宽不再被打回 rail）与「没拖过」
+// （初始 246 rail）。与 App.tsx 的 preferredWorkspacePanelWidth 三元链同式。
+function preferredWidth(input: { wideActive: boolean; userWidthActive: boolean; storedWidth: number; targetWidth: number }): number {
+  return input.wideActive
+    ? Math.max(input.storedWidth, input.targetWidth)
+    : input.userWidthActive
+      ? input.storedWidth
+      : 246;
+}
+
+// 宽态：公式与 tl1108 语义一致（用户值高于目标以用户为准，低于目标被抬升）。
+eq("tl1129 wide+user: value above target wins", preferredWidth({ wideActive: true, userWidthActive: true, storedWidth: 800, targetWidth: 720 }), 800);
+eq("tl1129 wide+user: value below target is lifted", preferredWidth({ wideActive: true, userWidthActive: true, storedWidth: 300, targetWidth: 720 }), 720);
+eq("tl1129 wide without user: auto wide target applies", preferredWidth({ wideActive: true, userWidthActive: false, storedWidth: 246, targetWidth: 720 }), 720);
+// 窄态 + 用户拖过：用户值接管——拖宽松手后不再回缩（tl1129 验收 2）。
+eq("tl1129 narrow+user: remembered width survives", preferredWidth({ wideActive: false, userWidthActive: true, storedWidth: 500, targetWidth: 720 }), 500);
+eq("tl1129 narrow+user: stored keeps the 246 floor via clamp", Math.max(246, preferredWidth({ wideActive: false, userWidthActive: true, storedWidth: 246, targetWidth: 720 })), 246);
+// 窄态 + 没拖过：初始 246 rail 不回归（tl1108 语义保留，tl1129 验收 3）。
+eq("tl1129 narrow without user: stays the 246 rail", preferredWidth({ wideActive: false, userWidthActive: false, storedWidth: 500, targetWidth: 720 }), 246);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
