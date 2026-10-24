@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CheckCheck, ChevronDown, ChevronRight, ClipboardCopy, ClipboardPaste, Eye, EyeOff, SendHorizontal, Undo2 } from "lucide-react";
 import { writeClipboardText } from "../lib/clipboard";
 import { countUnhandled, markHandledTurns, readHandledTurns, useUnfiledInputs } from "../lib/unfiledInputs";
 import { useToast } from "../lib/toast";
 import { useI18n } from "../lib/i18n";
+import { ModalCloseButton } from "./ModalCloseButton";
 import type { UnfiledInputView } from "../lib/types";
 
 // 任务 1023 阶段 0：未入档输入（已从检查点恢复）横幅 + 面板。
 // 呈现与操作都只读后端：复制走剪贴板，转草稿走 composer 插入通道，
 // 重发走与 transcript 输入相同的提交通道；「已处理」仅存前端 localStorage，
 // 不回写 transcript、不改事件日志。
+// tl 1127：「查看」从内联展开改为大窗口模态——41 条实例中内联列表被
+// .main 的 overflow:hidden 裁掉且无滚动，后面的条目必须先处理前面的才可见。
+// 大窗口 portal 到 body、列表独立滚动（详见 .unfiled-viewer 样式段注释）。
 
 const COPY = {
   en: {
@@ -33,6 +38,7 @@ const COPY = {
     resendUnavailable: "Resend unavailable here",
     turnLabel: (turn: number) => `Turn ${turn}`,
     timeUnknown: "time unknown",
+    close: "Close",
   },
   zh: {
     banner: (n: number) => `检测到 ${n} 条输入未进入对话`,
@@ -55,6 +61,7 @@ const COPY = {
     resendUnavailable: "当前不可重发",
     turnLabel: (turn: number) => `轮次 ${turn}`,
     timeUnknown: "时间未知",
+    close: "关闭",
   },
   "zh-TW": {
     banner: (n: number) => `偵測到 ${n} 條輸入未進入對話`,
@@ -77,6 +84,7 @@ const COPY = {
     resendUnavailable: "目前不可重發",
     turnLabel: (turn: number) => `輪次 ${turn}`,
     timeUnknown: "時間未知",
+    close: "關閉",
   },
 } as const;
 
@@ -103,7 +111,7 @@ export function UnfiledInputsBanner({
   const { showToast } = useToast();
   const { entries } = useUnfiledInputs(tabId);
   const [handled, setHandled] = useState<Set<number>>(() => readHandledTurns(sessionKey));
-  const [open, setOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   useEffect(() => {
     setHandled(readHandledTurns(sessionKey));
   }, [sessionKey]);
@@ -135,6 +143,8 @@ export function UnfiledInputsBanner({
     showToast(t.handledAllDone, "info");
   }, [entries, handled, sessionKey, showToast, t, onHandled]);
 
+  // tl 1127 空态铁律：全部处理完（unhandledCount===0）时横幅与大窗口一起消失，
+  // 不残留空白窗口。App.tsx 外层还有 unfiledUnhandledCount>0 的闸门双保险。
   if (unhandledCount === 0) return null;
 
   return (
@@ -152,13 +162,128 @@ export function UnfiledInputsBanner({
             <span>{t.markAllHandled}</span>
           </button>
         )}
-        <button className="btn btn--secondary btn--small" type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-          {open ? <EyeOff size={13} aria-hidden="true" /> : <Eye size={13} aria-hidden="true" />}
-          <span>{open ? t.collapse : t.view}</span>
+        <button
+          className="btn btn--secondary btn--small"
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => setViewerOpen(true)}
+        >
+          <Eye size={13} aria-hidden="true" />
+          <span>{t.view}</span>
         </button>
       </div>
-      {open && (
-        <div className="composer-guidance-shelf" aria-label={t.banner(unhandledCount)}>
+      {viewerOpen && (
+        <UnfiledInputsViewer
+          count={unhandledCount}
+          pending={pending}
+          t={t}
+          disabled={disabled}
+          onDraft={onDraft}
+          onResend={onResend}
+          onMarkHandled={markHandled}
+          onMarkAllHandled={markAllHandled}
+          onClose={() => setViewerOpen(false)}
+        />
+      )}
+    </section>
+  );
+}
+
+// tl 1127 大窗口浏览：点「查看」打开的大模态（portal 到 body，不受 .main
+// overflow:hidden 裁剪）。结构与焦点管理照 BlankProjectDialog 的项目规范：
+// Esc 关闭、Tab 在窗口内循环（焦点陷阱）、关闭后焦点还给横幅上的触发按钮；
+// 尺寸与独立滚动见 styles.css 的 .unfiled-viewer 段（参照 events-repair-dialog
+// 的 flex 高度链：列表 min-height:0 + overflow-y:auto，滚动链 contain 不带动
+// 底层 transcript）。条目卡片复用 UnfiledEntryCard，操作行为与横幅面完全一致。
+function UnfiledInputsViewer({
+  count,
+  pending,
+  t,
+  disabled,
+  onDraft,
+  onResend,
+  onMarkHandled,
+  onMarkAllHandled,
+  onClose,
+}: {
+  count: number;
+  pending: UnfiledInputView[];
+  t: (typeof COPY)[keyof typeof COPY];
+  disabled?: boolean;
+  onDraft?: (text: string) => void;
+  onResend?: (text: string) => void;
+  onMarkHandled: (turn: number, toast?: string) => void;
+  onMarkAllHandled: () => void;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    return () => {
+      if (restoreFocusRef.current?.isConnected) restoreFocusRef.current.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      ) ?? []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="modal-backdrop unfiled-viewer-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="modal unfiled-viewer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t.banner(count)}
+      >
+        <div className="unfiled-viewer__head">
+          <span className="unfiled-viewer__head-title">
+            <strong>{t.banner(count)}</strong>
+            {` — ${t.bannerSuffix}`}
+          </span>
+          {pending.length > 1 && (
+            <button className="btn btn--secondary btn--small" type="button" onClick={onMarkAllHandled}>
+              <CheckCheck size={13} aria-hidden="true" />
+              <span>{t.markAllHandled}</span>
+            </button>
+          )}
+          <ModalCloseButton ref={closeButtonRef} label={t.close} onClick={onClose} />
+        </div>
+        <div className="unfiled-viewer__list">
           {pending.map((entry) => (
             <UnfiledEntryCard
               key={entry.turn}
@@ -167,13 +292,14 @@ export function UnfiledInputsBanner({
               disabled={disabled}
               onDraft={onDraft}
               onResend={onResend}
-              onMarkHandled={markHandled}
+              onMarkHandled={onMarkHandled}
             />
           ))}
           {pending.length === 0 && <div className="banner banner--info"><span className="banner__msg">{t.emptyBody}</span></div>}
         </div>
-      )}
-    </section>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
