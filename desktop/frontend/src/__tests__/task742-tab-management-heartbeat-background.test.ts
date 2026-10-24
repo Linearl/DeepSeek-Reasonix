@@ -53,8 +53,10 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
     "yaml retires the standalone tabCompress/tabModeTint entries");
   ok(yamlEntryIds.includes("tabManagement"), "yaml registers the tabManagement merged entry");
   // 内置默认与 yaml 同构（722 ① 已钉全量同构，这里钉 742 面避免回归假绿）。
-  ok(labDefault.includes('{ id: "tabManagement", labelKey: "settings.tabManagement", tier: "optional", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] }'),
-    "built-in default carries the tabManagement merged entry with the OR light");
+  // tl 1125：容器档位「可选 → 推荐」（用户 2026-10-24 指令：标签管理徽章
+  // 档位提升为推荐）——本行 pin 随档位步进，OR light 与配置键零变化。
+  ok(labDefault.includes('{ id: "tabManagement", labelKey: "settings.tabManagement", tier: "recommended", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] }'),
+    "built-in default carries the tabManagement merged entry with the OR light (tl 1125: recommended tier)");
   ok(!labDefault.includes('{ id: "tabCompress"') && !labDefault.includes('{ id: "tabModeTint"'),
     "built-in default retires the standalone entries too");
   // 合并卡灯 = 两键 OR（自适应压缩开 或 权限指示离默认档）。
@@ -151,10 +153,13 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
     "the pane row reads + writes its own key");
 }
 
-// ── ④ 徽章：两新条目均可选档 ──
+// ── ④ 徽章：742 落地时两新条目均可选档 ──
 {
-  ok(tiers.includes('tabManagement: "optional"') && tiers.includes('heartbeatBackground: "optional"'),
-    "tier register pins both new ids to optional (任务书指定)");
+  // tl 1125：tabManagement 容器档位「可选 → 推荐」（用户 2026-10-24 指令：
+  // 标签管理徽章档位提升为推荐；成员 tabCompress 仍推荐、tabModeTint 仍未
+  // 稳定，卡内成员档位零变化）。heartbeatBackground 保持 742 任务书指定可选。
+  ok(tiers.includes('tabManagement: "recommended"') && tiers.includes('heartbeatBackground: "optional"'),
+    "tier register pins tabManagement to recommended (tl 1125) and heartbeatBackground to optional (742 任务书)");
 }
 
 // ── ⑤ 三语 ──

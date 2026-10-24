@@ -206,7 +206,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离
         // 默认档；卡徽章可选。卡内两行各自读自己的键、写自己的 setter
         // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。
-        { id: "tabManagement", labelKey: "settings.tabManagement", tier: "optional", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] },
+        // tl 1125：标签页管理合并卡升「推荐」（用户 2026-10-24 指令，与视图
+        // 布局一并；配置键/默认值/卡内成员档位零变化，只动容器徽章档）。
+        { id: "tabManagement", labelKey: "settings.tabManagement", tier: "recommended", onKeys: ["experimentalTabCompress", "tabModeTintNonDefault"] },
         // 任务 782：视图布局（合并卡，742 先例）——分栏 + 轨迹视图。容器档
         // =成员最高档（可选）；卡内两行各读各键各写各 setter，配置键零变化。
         // 任务 826：左右边栏 hover 展开两行入卡（左右独立两键两行，默认关；
@@ -218,7 +220,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "viewLayout",
           labelKey: "settings.viewLayout",
-          tier: "optional",
+          // tl 1125：视图布局合并卡升「推荐」（与标签页管理一并，同指令）。
+          tier: "recommended",
           onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalDraftRewrite"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },

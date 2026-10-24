@@ -3097,6 +3097,9 @@ export const en = {
   "settings.autopilotAskAutoContinue.on": "On",
   "settings.autopilotAskAutoContinue.off": "Off",
   // 任务 1084：高风险操作授权清单 + ask 轮次上限。
+  // 任务 1124：五开关聚合为一张卡——卡头标题 + 总说明（行级说明沿用各 Hint）。
+  "settings.highRiskAuthorize": "High-risk action authorization",
+  "settings.highRiskAuthorizeHint": "The two-level authorization list for five categories of high-risk actions (a lab checkbox is the hardest grant; a decision-pattern entry ranks below it). All unchecked by default (conservative): every high-risk action asks first out of the box.",
   "settings.authorizeOutboundSend": "Authorize outbound sends",
   "settings.authorizeOutboundSendHint": "Checked = authorized: outbound-send high-risk actions (email / public release / external messages) execute without asking. Unchecked (default, conservative).",
   "settings.authorizeDataMigrationDelete": "Authorize data migration & deletion",

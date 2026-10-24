@@ -4597,47 +4597,48 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   高风险五类判定可靠性分级：对外发送 高/数据迁移删除 高/破坏性
                   变更 中/新技术路线 低/付费额度 低；本机制靠模型理解规则判断动
                   作属哪类，非字符串硬匹配；后两类必然漏判误判，漏判兜底是轮次
-                  上限+复盘。 */}
-              <SettingsField label={t("settings.authorizeOutboundSend")} hint={t("settings.authorizeOutboundSendHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(s.authorizeOutboundSend)}
-                  disabled={busy}
-                  onChange={(e) => void apply(() => app.SetAuthorizeOutboundSend(e.target.checked))}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.authorizeDataMigrationDelete")} hint={t("settings.authorizeDataMigrationDeleteHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(s.authorizeDataMigrationDelete)}
-                  disabled={busy}
-                  onChange={(e) => void apply(() => app.SetAuthorizeDataMigrationDelete(e.target.checked))}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.authorizeDestructiveChange")} hint={t("settings.authorizeDestructiveChangeHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(s.authorizeDestructiveChange)}
-                  disabled={busy}
-                  onChange={(e) => void apply(() => app.SetAuthorizeDestructiveChange(e.target.checked))}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.authorizeNewTechRoute")} hint={t("settings.authorizeNewTechRouteHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(s.authorizeNewTechRoute)}
-                  disabled={busy}
-                  onChange={(e) => void apply(() => app.SetAuthorizeNewTechRoute(e.target.checked))}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.authorizePaidQuotaAlloc")} hint={t("settings.authorizePaidQuotaAllocHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(s.authorizePaidQuotaAlloc)}
-                  disabled={busy}
-                  onChange={(e) => void apply(() => app.SetAuthorizePaidQuotaAlloc(e.target.checked))}
-                />
-              </SettingsField>
+                  上限+复盘。
+                  任务 1124：五个授权开关从五个独立 SettingsField 聚合为一张
+                  卡（.set-highrisk-authorize 清单块，231/527 preapprove 先例的
+                  1084 版）——聚合的是**入口层组织**，五项的配置键（config
+                  读写路径）、默认值（全不勾）、setter（五个独立 bridge 方法，
+                  一次点击只写一项，不合并批量写）与说明文案（各带自己的 hint
+                  行）逐字节不变。 */}
+              <div className="set-highrisk-authorize">
+                <div className="set-highrisk-authorize__head">
+                  <div className="set-highrisk-authorize__title">{t("settings.highRiskAuthorize")}</div>
+                  <div className="set-highrisk-authorize__hint">{t("settings.highRiskAuthorizeHint")}</div>
+                </div>
+                {([
+                  { key: "authorizeOutboundSend", label: t("settings.authorizeOutboundSend"), hint: t("settings.authorizeOutboundSendHint"), checked: Boolean(s.authorizeOutboundSend) },
+                  { key: "authorizeDataMigrationDelete", label: t("settings.authorizeDataMigrationDelete"), hint: t("settings.authorizeDataMigrationDeleteHint"), checked: Boolean(s.authorizeDataMigrationDelete) },
+                  { key: "authorizeDestructiveChange", label: t("settings.authorizeDestructiveChange"), hint: t("settings.authorizeDestructiveChangeHint"), checked: Boolean(s.authorizeDestructiveChange) },
+                  { key: "authorizeNewTechRoute", label: t("settings.authorizeNewTechRoute"), hint: t("settings.authorizeNewTechRouteHint"), checked: Boolean(s.authorizeNewTechRoute) },
+                  { key: "authorizePaidQuotaAlloc", label: t("settings.authorizePaidQuotaAlloc"), hint: t("settings.authorizePaidQuotaAllocHint"), checked: Boolean(s.authorizePaidQuotaAlloc) },
+                ]).map((row) => (
+                  <label key={row.key} className="set-highrisk-authorize__row">
+                    <input
+                      type="checkbox"
+                      checked={row.checked}
+                      disabled={busy}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        // 五个 setter 语义零变化：一次点击只调用该项自己的
+                        // 桥接写入器（与聚合前的独立 checkbox 行为一致）。
+                        if (row.key === "authorizeOutboundSend") void apply(() => app.SetAuthorizeOutboundSend(next));
+                        else if (row.key === "authorizeDataMigrationDelete") void apply(() => app.SetAuthorizeDataMigrationDelete(next));
+                        else if (row.key === "authorizeDestructiveChange") void apply(() => app.SetAuthorizeDestructiveChange(next));
+                        else if (row.key === "authorizeNewTechRoute") void apply(() => app.SetAuthorizeNewTechRoute(next));
+                        else void apply(() => app.SetAuthorizePaidQuotaAlloc(next));
+                      }}
+                    />
+                    <span className="set-highrisk-authorize__copy">
+                      <span className="set-highrisk-authorize__label">{row.label}</span>
+                      <span className="set-highrisk-authorize__rowhint">{row.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
               <SettingsField label={t("settings.experimentalAskRoundLimit")} hint={t("settings.experimentalAskRoundLimitHint")} icon={<ShieldCheck size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (

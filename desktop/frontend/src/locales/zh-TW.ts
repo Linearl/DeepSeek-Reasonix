@@ -2459,6 +2459,9 @@ export const zhTW: Record<DictKey, string> = {
   "settings.autopilotAskAutoContinue.on": "開",
   "settings.autopilotAskAutoContinue.off": "關",
   // 任務 1084：高風險操作授權清單 + ask 輪次上限。
+  // 任務 1124：五開關聚合為一張卡——卡頭標題 + 總說明（行級說明沿用各 Hint）。
+  "settings.highRiskAuthorize": "高風險操作授權",
+  "settings.highRiskAuthorizeHint": "五類高風險動作的兩級授權清單（實驗室勾選最硬，其次決策模式條目）。預設全不勾（保守）：出廠狀態下五類高風險動作全部會先詢問。",
   "settings.authorizeOutboundSend": "授權對外發送",
   "settings.authorizeOutboundSendHint": "勾選=授權：郵件/公開發布/對外消息類高風險動作可免詢問直接執行。預設不勾（保守）。",
   "settings.authorizeDataMigrationDelete": "授權資料遷移與刪除",
