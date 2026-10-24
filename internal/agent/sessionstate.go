@@ -52,7 +52,11 @@ type sessionRuntime struct {
 	// rebuildPending deduplicates the post-invalidation background rebuild
 	// (task 549): a burst of history rewrites must not queue one summary per
 	// invalidation. CAS false→true arms exactly one rebuild goroutine.
-	rebuildPending  atomic.Bool
+	rebuildPending atomic.Bool
+	// dietPending deduplicates the 任务1114 overflow diet kick: one projection
+	// fallback episode arms at most one automatic strip+fold rewrite, the same
+	// way rebuildPending arms at most one summary rebuild.
+	dietPending     atomic.Bool
 	compaction      compactionProgress
 	compactionState CompactionState
 	// 任务 1021: a compression SESSION spans every back-to-back pass of one
@@ -117,6 +121,9 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.compaction.lastTurn.Store(0)
 	r.compactionSessionPass.Store(0) // 任务 1021: a new lineage starts a fresh session count
 	r.rebuildPending.Store(false)
+	// 任务1114: a new conversation has no overflow diet in flight — the flag
+	// belongs to the replaced lineage's fallback episode, same as rebuildPending.
+	r.dietPending.Store(false)
 	// 任务719: a new conversation starts unbounded — the tail view belongs to
 	// the replaced lineage's degraded window.
 	r.tailView = tailViewState{}

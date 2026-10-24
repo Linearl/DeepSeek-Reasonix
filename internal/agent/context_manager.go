@@ -616,4 +616,9 @@ func (a *Agent) warnProjectionFallback(reason string, st CompactionState, est, w
 		"reason", reason, "view_tokens", est, "window", window,
 		"projection_version", st.Projection.ProjectionVersion,
 		"prompt_cache_key", st.PromptCacheKey)
+	// 任务1114: a real fallback episode with the canonical at or above the hard
+	// ceiling is the 新9 shape (3.02M/1M with no auto convergence until manual
+	// help) — arm the local overflow diet so the episode converges on its own.
+	// The kick re-checks the ceiling, dedupes, and runs in the background.
+	a.kickOverflowDiet(reason, est)
 }
