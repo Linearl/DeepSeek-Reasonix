@@ -48,6 +48,9 @@ const ALLOWED_RAW_SCROLLTOP = new Set([
   // (task 704) — an independent surface beside the transcript, never the
   // transcript viewport itself.
   "components/TrajectoryView.tsx",
+  // components/trajectoryViewBody.tsx: 1112 从 TrajectoryView 拆出的同
+  // surface 实现体（保 lazy chunk），scrollTop 语义完全一致。
+  "components/trajectoryViewBody.tsx",
 ]);
 const IMPERATIVE_SCROLL_RE = /\.scroll(?:To|By)\s*\(|\.scrollTo(?:Offset|Index)\s*\(/;
 const RAW_SCROLLTOP_WRITE_RE = /\.scrollTop\s*=(?!=)/;
