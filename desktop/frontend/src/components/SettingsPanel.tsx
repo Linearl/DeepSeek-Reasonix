@@ -10756,7 +10756,7 @@ export function ProviderEditor({
         onSelectAll={selectAllEditorModels}
         onClear={clearEditorModels}
       />
-      <ProviderModelsEditor provider={modelProvider} draft={!initial} disabled={busy} canFetch={canFetch} probeKey={keyDraft}
+      <ProviderModelsEditor provider={modelProvider} disabled={busy} canFetch={canFetch} probeKey={keyDraft}
         onChange={(nextModels, nextOverrides, nextCapabilities) => {
           setModels(nextModels.join(", ")); setModelOverrides(nextOverrides); setModelCapabilities(nextCapabilities); setCapabilitiesIdentity(discoveryIdentity);
           setModelContextWindows(providerModelContextWindowDrafts(nextOverrides));
