@@ -103,7 +103,6 @@ export const LAB_PARAM_FIELDS: Readonly<Record<string, LabParamFieldBinding>> = 
     read: (s) => s.askRoundLimit ?? 3,
     write: (value) => app.SetAskRoundLimit(Number(value)),
   },
-  },
 };
 
 /** Registry key union — the compile gate for default-layout field refs. */
