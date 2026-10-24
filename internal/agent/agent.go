@@ -317,6 +317,22 @@ func WithParentSession(ctx context.Context, parentSession string) context.Contex
 	return context.WithValue(ctx, parentSessionContextKey{}, strings.TrimSpace(parentSession))
 }
 
+// askRoundContextKey 承载本 turn 的 ask 轮次计数器（任务 1084）。计数器为
+// *int，跨多次 Execute 共享；Run 入口注入，turn 结束随 ctx 丢弃。
+type askRoundContextKey struct{}
+
+// WithAskRoundCounter 注入本 turn 的 ask 轮次计数器（任务 1084）。nil 或
+// 非 *int 时 Execute 不做轮次检查（向后兼容）。
+func WithAskRoundCounter(ctx context.Context, counter *int) context.Context {
+	return context.WithValue(ctx, askRoundContextKey{}, counter)
+}
+
+// AskRoundCounterFromContext 取回本 turn 的 ask 轮次计数器。
+func AskRoundCounterFromContext(ctx context.Context) *int {
+	counter, _ := ctx.Value(askRoundContextKey{}).(*int)
+	return counter
+}
+
 // ParentSession returns the active parent session ID carried by a turn context.
 func ParentSession(ctx context.Context) string {
 	parentSession, _ := ctx.Value(parentSessionContextKey{}).(string)
@@ -1893,6 +1909,10 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	}
 	a.restoreProtocolProjection()
 	ctx = a.withProviderCacheSession(ctx)
+	// 任务 1084：注入本 turn 的 ask 轮次计数器（AskTool.WithAskRoundLimit 开启
+	// 时才生效；turn 结束随 ctx 丢弃，跨 turn 不累计）。
+	askRoundCounter := 0
+	ctx = WithAskRoundCounter(ctx, &askRoundCounter)
 	// The read-only research budget can be doubled from inside the turn via
 	// extend_research_budget; stamp the extender so the tool is provider-visible
 	// and reaches this turn's soft-budget state. Task 265: with the lab switch

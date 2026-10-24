@@ -4591,6 +4591,80 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* 任务 1084：高风险操作授权清单（5 checkbox，默认全不勾）+ ask
+                  轮次上限。授权两级由硬到软：①实验室勾选（最硬）②决策模式条目
+                  （次硬）；记忆不算授权源。默认不勾 = 出厂五类全要问（保守）。
+                  高风险五类判定可靠性分级：对外发送 高/数据迁移删除 高/破坏性
+                  变更 中/新技术路线 低/付费额度 低；本机制靠模型理解规则判断动
+                  作属哪类，非字符串硬匹配；后两类必然漏判误判，漏判兜底是轮次
+                  上限+复盘。 */}
+              <SettingsField label={t("settings.authorizeOutboundSend")} hint={t("settings.authorizeOutboundSendHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(s.authorizeOutboundSend)}
+                  disabled={busy}
+                  onChange={(e) => void apply(() => app.SetAuthorizeOutboundSend(e.target.checked))}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.authorizeDataMigrationDelete")} hint={t("settings.authorizeDataMigrationDeleteHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(s.authorizeDataMigrationDelete)}
+                  disabled={busy}
+                  onChange={(e) => void apply(() => app.SetAuthorizeDataMigrationDelete(e.target.checked))}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.authorizeDestructiveChange")} hint={t("settings.authorizeDestructiveChangeHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(s.authorizeDestructiveChange)}
+                  disabled={busy}
+                  onChange={(e) => void apply(() => app.SetAuthorizeDestructiveChange(e.target.checked))}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.authorizeNewTechRoute")} hint={t("settings.authorizeNewTechRouteHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(s.authorizeNewTechRoute)}
+                  disabled={busy}
+                  onChange={(e) => void apply(() => app.SetAuthorizeNewTechRoute(e.target.checked))}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.authorizePaidQuotaAlloc")} hint={t("settings.authorizePaidQuotaAllocHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(s.authorizePaidQuotaAlloc)}
+                  disabled={busy}
+                  onChange={(e) => void apply(() => app.SetAuthorizePaidQuotaAlloc(e.target.checked))}
+                />
+              </SettingsField>
+              <SettingsField label={t("settings.experimentalAskRoundLimit")} hint={t("settings.experimentalAskRoundLimitHint")} icon={<ShieldCheck size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAskRoundLimit) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalAskRoundLimit(on))}
+                    >
+                      {t(on ? "settings.experimentalAskRoundLimit.on" : "settings.experimentalAskRoundLimit.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              <SettingsField label={t("settings.askRoundLimit")} hint={t("settings.askRoundLimitHint")} icon={<ShieldCheck size={18} />}>
+                <input
+                  className="set-input"
+                  type="number"
+                  min={0}
+                  max={100}
+                  defaultValue={String(s.askRoundLimit ?? 3)}
+                  disabled={busy || !Boolean(s.experimentalAskRoundLimit)}
+                  placeholder="3"
+                  aria-label={t("settings.askRoundLimit")}
+                  onBlur={(e) => void apply(() => app.SetAskRoundLimit(Number(e.target.value)))}
+                />
+              </SettingsField>
               {/* Task 547: guard auto-creation is an opt-in sub-option (default
                   off). Off means autopilot never creates a guard; guards an
                   older version already created are disabled at the next sweep.

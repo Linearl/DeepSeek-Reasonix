@@ -1439,6 +1439,14 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetDesktopAutopilotAskTimeout(enabled: boolean, seconds: number): Promise<void>;
   /** Task 544: the experimental ask auto-continue sub-option (off = the idle stop after an answered ask). */
   SetDesktopAutopilotAskAutoContinue(enabled: boolean): Promise<void>;
+  // 任务 1084：高风险操作授权清单 + ask 轮次上限。
+  SetAuthorizeOutboundSend(enabled: boolean): Promise<void>;
+  SetAuthorizeDataMigrationDelete(enabled: boolean): Promise<void>;
+  SetAuthorizeDestructiveChange(enabled: boolean): Promise<void>;
+  SetAuthorizeNewTechRoute(enabled: boolean): Promise<void>;
+  SetAuthorizePaidQuotaAlloc(enabled: boolean): Promise<void>;
+  SetExperimentalAskRoundLimit(enabled: boolean): Promise<void>;
+  SetAskRoundLimit(limit: number): Promise<void>;
   // Task 326: autopilot guard task dials — interval in minutes, and the
   // self-close policy applied once the watched session goes quiet. Task 547
   // gates both behind the auto-creation opt-in (off = never create).
@@ -3127,6 +3135,14 @@ function makeMockApp(): AppBindings {
     experimentalAutopilotAskTimeout: false,
     autopilotAskWaitSeconds: 15,
     experimentalAutopilotAskAutoContinue: false,
+    // 任务 1084：高风险操作授权清单 + ask 轮次上限（默认全不勾/默认 3）。
+    authorizeOutboundSend: false,
+    authorizeDataMigrationDelete: false,
+    authorizeDestructiveChange: false,
+    authorizeNewTechRoute: false,
+    authorizePaidQuotaAlloc: false,
+    experimentalAskRoundLimit: false,
+    askRoundLimit: 3,
     experimentalAutopilotGuardAutocreate: false,
     autopilotGuardInterval: 30,
     autopilotGuardQuiescent: "disable",
@@ -6682,6 +6698,31 @@ function makeMockApp(): AppBindings {
     },
     async SetDesktopAutopilotAskAutoContinue(enabled: boolean) {
       settings.experimentalAutopilotAskAutoContinue = enabled;
+    },
+    // 任务 1084：高风险操作授权清单 + ask 轮次上限。
+    async SetAuthorizeOutboundSend(enabled: boolean) {
+      settings.authorizeOutboundSend = enabled;
+    },
+    async SetAuthorizeDataMigrationDelete(enabled: boolean) {
+      settings.authorizeDataMigrationDelete = enabled;
+    },
+    async SetAuthorizeDestructiveChange(enabled: boolean) {
+      settings.authorizeDestructiveChange = enabled;
+    },
+    async SetAuthorizeNewTechRoute(enabled: boolean) {
+      settings.authorizeNewTechRoute = enabled;
+    },
+    async SetAuthorizePaidQuotaAlloc(enabled: boolean) {
+      settings.authorizePaidQuotaAlloc = enabled;
+    },
+    async SetExperimentalAskRoundLimit(enabled: boolean) {
+      settings.experimentalAskRoundLimit = enabled;
+    },
+    async SetAskRoundLimit(limit: number) {
+      if (limit !== 0 && (!Number.isFinite(limit) || !Number.isInteger(limit) || limit < 2 || limit > 100)) {
+        throw new Error(`ask_round_limit must be 0 (unlimited) or 2..100, got ${limit}`);
+      }
+      settings.askRoundLimit = Math.trunc(limit);
     },
     async SetDesktopAutopilotGuardAutocreate(enabled: boolean) {
       settings.experimentalAutopilotGuardAutocreate = enabled;

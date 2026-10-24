@@ -393,6 +393,45 @@ type DesktopConfig struct {
 	// timed-out ask counts as a refusal, this owns what happens after an
 	// answer.
 	ExperimentalAutopilotAskAutoContinue bool `toml:"experimental_autopilot_ask_auto_continue"`
+
+	// ── 任务 1084：高风险操作授权清单 + 决策模式二级授权 + ask 轮次上限 ──
+	//
+	// 一句话口径（用户定稿）：「遇到对外发送类/高风险操作时，先查授权；授权过就
+	// 可以做。」授权只有两级由硬到软：①实验室勾选（最硬）②决策模式条目（次
+	// 硬）。记忆不算授权源。默认不勾 = 出厂五类全要问（保守）。
+	//
+	// 高风险五类判定可靠性分级（诚实声明，必须写进代码注释与文档）：
+	//   对外发送 高 / 数据迁移删除 高 / 破坏性变更 中 / 新技术路线 低 / 付费额度 低。
+	// 本机制实质靠模型理解规则判断「动作属哪类」，不是字符串硬匹配。允许工具
+	// 名/命令特征辅助初筛，不得简化为 strings.Contains 白名单就宣称覆盖完备。
+	// 后两类（新技术路线/付费额度）必然存在漏判误判，漏判兜底是轮次上限+复盘
+	// 而非宣称零漏判。
+
+	// AuthorizeOutboundSend (对外发送) — 邮件发送、公开发布、对外消息。
+	// 勾选 = 授权 = 该类高风险动作可直接执行（输出「依据：你勾选了…」）。
+	AuthorizeOutboundSend bool `toml:"authorize_outbound_send"`
+	// AuthorizeDataMigrationDelete (数据迁移与删除) — 批量删除、schema 迁移、
+	// git reset --hard、清空会话。
+	AuthorizeDataMigrationDelete bool `toml:"authorize_data_migration_delete"`
+	// AuthorizeDestructiveChange (破坏性变更) — 覆盖未提交内容、强推、
+	// git checkout -- 丢改动。
+	AuthorizeDestructiveChange bool `toml:"authorize_destructive_change"`
+	// AuthorizeNewTechRoute (新技术路线选择) — 判定可靠性「低」，语义判断，
+	// 无可靠机械判据。勾选前用户应知情必然漏判误判。
+	AuthorizeNewTechRoute bool `toml:"authorize_new_tech_route"`
+	// AuthorizePaidQuotaAlloc (付费额度分配) — 判定可靠性「低」，计费 API
+	// 调用可判但「分配决策」是语义的。
+	AuthorizePaidQuotaAlloc bool `toml:"authorize_paid_quota_alloc"`
+
+	// ExperimentalAskRoundLimit (ask 轮次上限开关) — 开启后 ask 工具在单
+	// turn 内被调用的次数受 AskRoundLimit 限制；信息补充类 ask 到达上限后
+	// 返回耗尽提示，高风险确认类 ask 不计入上限（必须问的不该被次数拦）。
+	ExperimentalAskRoundLimit bool `toml:"experimental_ask_round_limit"`
+	// AskRoundLimit 是 ask 轮次上限数值（任务 1084）。⚠️语义陷阱：本处的 0
+	// = 「无限制」，与 AutopilotAskWaitSecondsEffective 里 0 读「默认 15s」
+	// 语义相反，不可照抄。有效值 0 或 2~100；1 非法（具名拒绝不静默 clamp）。
+	AskRoundLimit int `toml:"ask_round_limit"`
+
 	// ExperimentalAutopilotGuardAutocreate is the task-547 sub-option of the
 	// autopilot experiment feature (user ruling 2026-10-06, 铁律 2 default
 	// off): when on, an autopilot session keeps the auto-created guard task of
