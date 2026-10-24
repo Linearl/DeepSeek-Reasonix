@@ -2012,7 +2012,10 @@ type ExperimentFeatureId =
   | "logManagement"
   // 任务 783：「用量监测」合并卡（可观测性组）——GLM Plan 用量 + OpenCode
   // Go 用量（opencodeGoUsage 独立 pane 并入此卡，742 先例）。
-  | "usageMonitoring";
+  | "usageMonitoring"
+  // tl 1132：启动与加载合并卡（界面组）——首项=启动遮罩（DSH 式启动画面），
+  // 为 tl 1133 后续启动优化开关预留成员位（742 条目级合并先例）。
+  | "startupLoading";
 
 // 任务 724：pane 白名单——布局文档（yaml/默认）里的 entry.id 必须在此登记
 // （一个 id 一个可点开的卡片分支）；yaml 引用白名单外的 id ⇒ 整份回退默认
@@ -2036,6 +2039,8 @@ const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "safetyCostControl",
   "modelStrategy",
   "collabHub",
+  // tl 1132：启动与加载合并卡（首项=启动遮罩，1133 预留成员位）。
+  "startupLoading",
   "tabManagement",
   "viewLayout",
   "todoSidebar",
@@ -3589,6 +3594,35 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
+          )}
+          {/* tl 1132：启动与加载（合并卡，742/782 条目级合并先例）——首项=
+              启动遮罩（DSH 式启动画面：logo+副文案+点动画，覆盖主区待核心
+              UI 挂载完成后淡出）；为 tl 1133 后续启动优化开关预留成员位。
+              默认关（用户 2026-10-24 steer：做成实验特性允许开关方便 A/B
+              对比）=splash 不渲染、启动行为与引入前一致（铁律 2）；纯前端
+              门，设置保存后的 onChanged 重放快照（applyLabFlags）即换态。 */}
+          {selected === "startupLoading" && (
+            <>
+              <SettingsField label={labLabel("startupLoading", t("settings.startupLoading"))} hint={t("settings.startupLoadingHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField label={labLabel("startupSplash", t("settings.startupSplash"))} hint={t("settings.startupSplashHint")} icon={<Monitor size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalStartupSplash) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(async () => {
+                        // tl 1132：纯前端门——设置保存后的 onChanged 会重放
+                        // 快照（applyLabFlags），开关即时生效，无需重启。
+                        await app.SetExperimentalStartupSplash(on);
+                      })}
+                    >
+                      {t(on ? "settings.startupSplash.on" : "settings.startupSplash.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+            </>
           )}
           {/* 任务 742：标签页管理（合并卡）——506 标签栏自适应压缩 + 651
               标签权限指示的条目级合并。两行各读各的键、各写各的 setter

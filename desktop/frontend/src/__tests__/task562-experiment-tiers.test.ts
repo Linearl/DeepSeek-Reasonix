@@ -117,11 +117,14 @@ console.log("\ntask 562 lab three-tier badges");
   // 两特性档位「可选 → 推荐」（用户 2026-10-24 指令：推荐 = 核心特性，不开启
   // 体验有缺口）——推荐 18→20、可选 39→37、总数不变 75（两 id 均为纯前端
   // 容器 id，Go 渲染表无条目，registry 计数不变仍 66，同 tabManagement 豁免）。
-  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 37 && counts.unstable === 13 && counts.retired === 1,
-    `register counts are 4 稳定/20/37/13/1 (got ${JSON.stringify(counts)})`);
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 75, `register holds exactly 75 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 37 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/20/37/13/1");
+  // tl 1132：startupSplash（启动遮罩，可选）+ startupLoading（「启动与加载」
+  // 纯前端容器 id，无配置键，同 tabManagement 豁免）按可选档入表——
+  // 可选 37→39、总数 75→77（Go 侧同步 +startupSplash 一条 → 67）。
+  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 39 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 4 稳定/20/39/13/1 (got ${JSON.stringify(counts)})`);
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 77, `register holds exactly 77 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 39 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/20/39/13/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -177,14 +180,17 @@ console.log("\ntask 562 lab three-tier badges");
   // 前端注册时两侧转共享，此处同步收回）。
   // tl 1097：logManagement（日志管理，纯前端容器 id，无配置键，同 tabManagement
   // 豁免）——Go 渲染表无条目，registry 计数不变（仍 66）。
-  ok(Object.keys(goTiers).length === 66, `Go registry parses to 66 entries (got ${Object.keys(goTiers).length})`);
+  // tl 1132：startupSplash 入表（两侧共享）——Go registry 66→67。
+  ok(Object.keys(goTiers).length === 67, `Go registry parses to 67 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
   const feOnly = feIds.filter((id) => !goIds.includes(id));
   ok(JSON.stringify(goOnly) === JSON.stringify(["networkRetryBudget", "sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
-  ok(JSON.stringify(feOnly) === JSON.stringify(["glmPlanUsage", "heartbeatRotation", "inputSelection", "interactionPresentation", "logManagement", "modelCapabilityFilter", "searchHistory", "smartAutomation", "tabManagement", "usageMonitoring", "viewLayout"]),
+  // tl 1132：startupLoading（「启动与加载」纯前端容器 id，Go 渲染表无条目，
+  // 同 tabManagement 豁免）加入 feOnly。
+  ok(JSON.stringify(feOnly) === JSON.stringify(["glmPlanUsage", "heartbeatRotation", "inputSelection", "interactionPresentation", "logManagement", "modelCapabilityFilter", "searchHistory", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
@@ -218,7 +224,8 @@ console.log("\ntask 562 lab three-tier badges");
   // stalledIntentNudge 并入 smartAutomation 卡——43→44。
   // 任务 1024：draftRewrite 并入 viewLayout 卡——43→44。
   // 任务 1070：smartAutomation 卡补 standardContinuation 成员行——44→45。
-  ok(members.length === 45, `merged cards carry 45 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl 1132：startupLoading 卡补 startupSplash 成员行——45→46。
+  ok(members.length === 46, `merged cards carry 46 member features (got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -233,7 +240,8 @@ console.log("\ntask 562 lab three-tier badges");
   // → 72。任务 1069：stalledIntentNudge 叠加入表 → 73。
   // 任务 1024：draftRewrite 叠加入表 → 73。
   // 任务 1070：standardContinuation 叠加入表 → 74。
-  ok(covered.size === 75, "rail entries cover all 75 features");
+  // tl 1132：startupSplash + startupLoading 叠加入表 → 77。
+  ok(covered.size === 77, "rail entries cover all 77 features");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含

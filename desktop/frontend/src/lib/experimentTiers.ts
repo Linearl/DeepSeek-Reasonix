@@ -37,6 +37,15 @@ export type TierFeatureId =
   | "stalledIntentNudge"
   // 任务 1024：composer 草稿优化（改写按钮，默认关）。
   | "draftRewrite"
+  // tl 1132: DSH 式启动遮罩（默认关——关时 splash 不渲染，启动行为与
+  // 引入前一致）。落 config.toml experimental_startup_splash，Go 渲染表
+  // 同档登记（可选）。
+  | "startupSplash"
+  // tl 1132: 「启动与加载」合并卡容器（首项=启动遮罩；为 tl 1133 后续
+  // 启动优化开关预留成员位）。纯前端 rail 卡 id——没有自有配置键，卡内
+  // 各行写各的键；Go 渲染表无条目（562 测试 ③ 的前端独有豁免，
+  // tabManagement 先例）。
+  | "startupLoading"
   // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
   // loopStreakNote 与 standalone eventWaitRecheck 三个表A id → 一个 id）。
   | "safetyCostControl"
@@ -206,6 +215,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── ui（界面，14 项）────────────────────────────────────────
   // 任务 1024：composer 草稿优化。镜像 Go 档位——可选（默认关，输入栏零变化）。
   draftRewrite: "optional",
+  // tl 1132：启动遮罩。镜像 Go 档位——可选（默认关，用户 steer A/B 对比）。
+  startupSplash: "optional",
+  // tl 1132：「启动与加载」合并卡容器（纯前端 rail 卡，成员最高档=可选）。
+  startupLoading: "optional",
   tabCompress: "recommended",
   todoSidebar: "recommended",
   promptHistoryPicker: "recommended",
@@ -383,11 +396,14 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * （视图布局合并卡，同为纯前端容器 id）两特性档位「可选 → 推荐」（用户
  * 2026-10-24 指令：推荐 = 核心特性，不开启体验有缺口）——推荐 18→20、
  * 可选 39→37、总数不变 75（两 id 均为纯前端容器，Go 渲染表无条目，registry
- * 计数不变仍 66，同 tabManagement 豁免）。 */
+ * 计数不变仍 66，同 tabManagement 豁免）。
+ * tl 1132：startupSplash（启动遮罩，可选，Go 渲染表同步 +1 → 67）+
+ * startupLoading（「启动与加载」纯前端容器 id，同 tabManagement 豁免）——
+ * 可选 37→39、总数 75→77。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 20,
-  optional: 37,
+  optional: 39,
   unstable: 13,
   retired: 1,
 };

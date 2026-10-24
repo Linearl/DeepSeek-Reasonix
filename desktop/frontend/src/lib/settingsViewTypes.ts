@@ -104,6 +104,10 @@ export interface SettingsView {
   // vs dropdown, task-940 mechanism reused); default off, pure frontend
   // gate — settings save re-applies.
   experimentalSendTargetSelect?: boolean;
+  // tl 1132: DSH-style startup splash overlay (off = never renders, on =
+  // covers the main region until the core UI is mounted then fades out);
+  // default off, pure frontend gate — settings save re-applies.
+  experimentalStartupSplash?: boolean;
   // 任务 686: workflow visualization panel (palette entry opening the DAG flow
   // view; default off, pure frontend gate — settings save re-applies).
   experimentalWorkflowPanel?: boolean;

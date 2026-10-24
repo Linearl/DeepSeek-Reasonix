@@ -203,6 +203,19 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "ui",
       labelKey: "settings.labGroup.ui",
       entries: [
+        // tl 1132：启动与加载（合并卡，742/782 条目级合并先例）——首项=
+        // 启动遮罩；为 tl 1133 后续启动优化开关预留成员位。容器档 = 成员
+        // 最高档（可选）。默认关（用户 2026-10-24 steer：做成实验特性允许
+        // 开关方便 A/B 对比；铁律 2——关时 splash 不渲染）。
+        {
+          id: "startupLoading",
+          labelKey: "settings.startupLoading",
+          tier: "optional",
+          onKeys: ["experimentalStartupSplash"],
+          members: [
+            { id: "startupSplash", labelKey: "settings.startupSplash", tier: "optional" },
+          ],
+        },
         // 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离
         // 默认档；卡徽章可选。卡内两行各自读自己的键、写自己的 setter
         // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。

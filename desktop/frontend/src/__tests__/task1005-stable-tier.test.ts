@@ -53,9 +53,11 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // 1069 stalledIntentNudge 叠加入表→37；1070 standardContinuation → 38；
   // 1097 logManagement 叠加入表→39，主线漏跟本 pin；tl 1125 tabManagement +
   // viewLayout 两容器「可选 → 推荐」——推荐 18→20、可选 39→37、总数不变
-  // 75，合并态实测真值一并收口）。
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 37 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/20 推荐/37 可选/13 未稳定/1 退役 (tl 1125 步进)");
+  // 75，合并态实测真值一并收口）。tl 1132：startupSplash（可选）+
+  // startupLoading（纯前端容器，同 tabManagement 豁免）叠加入表——
+  // 可选 37→39、总数 75→77。
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 39 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/20 推荐/39 可选/13 未稳定/1 退役 (tl 1132 步进)");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");

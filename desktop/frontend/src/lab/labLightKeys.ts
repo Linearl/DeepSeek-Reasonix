@@ -28,6 +28,8 @@ export const LAB_LIGHT_KEYS = {
   stalledIntentNudge: (s: SettingsView) => Boolean(s.stalledIntentNudge),
   // 任务 1024：composer 草稿优化（改写按钮，默认关）。
   experimentalDraftRewrite: (s: SettingsView) => Boolean(s.experimentalDraftRewrite),
+  // tl 1132：DSH 式启动遮罩（默认关——关时 splash 不渲染）。
+  experimentalStartupSplash: (s: SettingsView) => Boolean(s.experimentalStartupSplash),
   // 任务 1070：Standard 流续跑总闸（默认关）。
   standardContinuation: (s: SettingsView) => Boolean(s.standardContinuation),
   experimentalSafetyCostControl: (s: SettingsView) => Boolean(s.experimentalSafetyCostControl),
