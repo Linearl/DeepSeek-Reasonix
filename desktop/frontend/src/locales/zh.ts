@@ -4796,6 +4796,7 @@ export const zh: Record<DictKey, string> = {
   "msg.sendFailed": "发送失败 — 消息未送达",
   "msg.fileAttachment": "文件",
   "msg.imageAttachment": "图片",
+  "msg.images": "图片",
   "msg.workspaceReference": "工作区引用",
   "notice.protocolRecoveryAction": "从有效历史恢复",
   "notice.protocolRecoveryBody": "上游未提供具体原因。可以重建请求中的历史视图并继续，保留已完成结果。",

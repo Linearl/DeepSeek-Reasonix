@@ -184,30 +184,40 @@ console.log("\ntl1092 collab card time + copy");
     };
   };
 
-  // ② steer 卡：foot 行时间 + 复制按钮
+  // ② steer 卡：meta-time 行时间（1122 卡片下方）+ foot 行复制按钮
   {
     const { host, cleanup } = await renderIn(
       React.createElement(SteerCard, { id: "s-1092", text: `${STEER_NOTICE_PREFIX}${stampedText("帮我看下 758 的两张截图")}` }),
     );
     ok(host.querySelector(".im-source-card--steer") !== null, "② 跨会话 steer notice 渲染 im-source 卡");
-    const time = host.querySelector(".im-source-card__time") as HTMLTimeElement | null;
-    ok(time !== null, "② 卡片 foot 行渲染 .im-source-card__time");
+    // 任务1122: 时间戳统一卡片下方 meta-time 行（.im-source-card__time-row，
+    // 复用 .msg-meta__time 样式），不再渲染 foot 行内 .im-source-card__time。
+    const timeRow = host.querySelector(".im-source-card__time-row") as HTMLElement | null;
+    ok(timeRow !== null, "② 卡片下方渲染 .im-source-card__time-row（1122 统一位置）");
+    const time = timeRow?.querySelector(".msg-meta__time") as HTMLTimeElement | null;
+    ok(time !== null, "② meta-time 行渲染 .msg-meta__time（与用户消息同款样式）");
     const expected = formatMessageTimestamp(new Date(SENT_MS), new Date(Date.now()), "zh");
     eq(time?.textContent, expected, "② 时间文案与 formatMessageTimestamp 三档同源");
     ok(Boolean(time?.getAttribute("datetime")), "② <time> 带 datetime 属性");
+    eq(host.querySelector(".im-source-card__time"), null, "② foot 行内旧 .im-source-card__time 不再渲染（1122 收敛）");
     const copy = host.querySelector(".im-source-card__copy") as HTMLButtonElement | null;
-    ok(copy !== null && copy.getAttribute("type") === "button", "② 卡片 foot 行渲染复制按钮");
+    ok(copy !== null && copy.getAttribute("type") === "button", "② 卡片 foot 行渲染复制按钮（1109/1122 保留）");
     await cleanup();
   }
 
-  // ③ user-row 卡（Message.tsx）：同款 foot 时间 + 复制按钮
+  // ③ user-row 卡（Message.tsx）：同款 msg-meta 时间 + foot 复制按钮
   {
     const { host, cleanup } = await renderIn(
       React.createElement(UserMessage, { id: "u-1092", text: stampedText("跨会话正文在 user row") }),
     );
     ok(host.querySelector(".im-source-card") !== null && host.querySelector(".msg--im-source") !== null, "③ user row 跨会话消息卡片化");
-    ok(host.querySelector(".im-source-card__time") !== null, "③ user-row 卡 foot 行渲染时间戳");
-    ok(host.querySelector(".im-source-card__copy") !== null, "③ user-row 卡 foot 行渲染复制按钮");
+    // 任务1122: 时间戳统一用户消息 msg-meta 行（不再渲染 foot 行内
+    // .im-source-card__time）。
+    const metaTime = host.querySelector(".msg-meta .msg-meta__time") as HTMLTimeElement | null;
+    ok(metaTime !== null, "③ user-row 卡时间戳渲染在下方 msg-meta 行（1122 统一位置）");
+    eq(metaTime?.textContent, formatMessageTimestamp(new Date(SENT_MS), new Date(Date.now()), "zh"), "③ 时间文案与 formatMessageTimestamp 三档同源（1012 契约不变）");
+    eq(host.querySelector(".im-source-card__time"), null, "③ foot 行内旧 .im-source-card__time 不再渲染（1122 收敛）");
+    ok(host.querySelector(".im-source-card__copy") !== null, "③ user-row 卡 foot 行渲染复制按钮（保留）");
     await cleanup();
   }
 
@@ -219,7 +229,7 @@ console.log("\ntl1092 collab card time + copy");
       React.createElement(SteerCard, { id: "s-1092-fold", text: `${STEER_NOTICE_PREFIX}${stampedText(longBody)}` }),
     );
     ok(host.querySelector(".im-source-card__text--folded") !== null, "④ 超长正文折叠为摘要条");
-    ok(host.querySelector(".im-source-card__time") !== null, "④ 折叠态 foot 行仍有时间戳");
+    ok(host.querySelector(".im-source-card__time-row .msg-meta__time") !== null, "④ 折叠态卡片下方 meta-time 行仍有时间戳");
     ok(host.querySelector(".im-source-card__copy") !== null, "④ 折叠态 foot 行仍有复制按钮");
     await cleanup();
     useCollabDisplayStore.setState({ autoFold: false });

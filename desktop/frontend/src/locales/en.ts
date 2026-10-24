@@ -4805,6 +4805,7 @@ export const en = {
   "msg.sendFailed": "Send failed — message was not delivered",
   "msg.fileAttachment": "File",
   "msg.imageAttachment": "Image",
+  "msg.images": "Images",
   "msg.workspaceReference": "Workspace reference",
   "notice.protocolRecoveryAction": "Recover from valid history",
   "notice.protocolRecoveryBody": "The upstream did not provide a specific cause. You can rebuild its history view and continue while preserving completed results.",

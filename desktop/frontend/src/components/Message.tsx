@@ -24,6 +24,9 @@ import type { CheckpointMeta } from "../lib/types";
 import { InvocationBadge } from "./InvocationBadge";
 import { CodeViewer } from "./CodeViewer";
 import { formatSelectionLabels, languageFor, parseSelectedTextContext, stripSelectionLabels } from "../lib/selectedTextContext";
+// 任务1122: 助手消息时间戳复用 TranscriptCards 的 CardTime（998 同款三档
+// 契约），避免两处重复实现格式化逻辑。
+import { CardTime } from "./TranscriptCards";
 
 const AssistantReasoningPanel = lazy(() => import("./AssistantReasoningPanel").then((module) => ({ default: module.AssistantReasoningPanel })));
 const MemoryCitations = lazy(() => import("./MemoryCitations").then((module) => ({ default: module.MemoryCitations })));
@@ -647,17 +650,10 @@ export const UserMessage = memo(function UserMessage({
                     {imSource.chat && <span>{imSource.chat}</span>}
                   </>
                 )}
-                {/* 任务1092: 跨会话卡片与下方 msg-meta 对齐——发送时刻 + 复制正文。
-                    普通（非跨会话）im 卡片无 sentAt，时间戳自然缺省、复制正文照常。 */}
-                {collabSentAt && (
-                  <time
-                    className="im-source-card__time"
-                    dateTime={collabSentAt.toISOString()}
-                    title={collabSentAt.toLocaleString()}
-                  >
-                    {formatMessageTimestamp(collabSentAt, new Date(collabNow), getLocale())}
-                  </time>
-                )}
+                {/* 任务1122: 时间戳移出卡片 foot 行——统一放卡片下方 meta-time 行
+                    （与普通消息 msg-meta 同位同款）。任务1092 原版在 foot 行内
+                    渲染 im-source-card__time，已按用户 15:06 裁定回退；复制按钮
+                    留 foot 行右对齐（.im-source-card__copy margin-left:auto）。 */}
                 <CopyButton text={imSource.text} label={t("msg.copy")} showInlineLabel={false} className="im-source-card__copy" />
               </div>
             )}
@@ -760,11 +756,20 @@ export const UserMessage = memo(function UserMessage({
           onClose={closeImageViewer}
         />
       </div>
+      {/* 任务1122: 时间戳统一放消息卡片下方 meta-time 行（与正常消息 msg-meta
+          同一位置样式——用户 15:06 裁定：三类消息时间戳统一「卡片下方」，
+          foot 行内/右上角/卡片右下外侧三处不一致的历史形态全部收敛到这）。 */}
       {!editing && (
         <div className="msg-meta" role="group" aria-label={t("rewind.label")}>
-          {sentAt && (
-            <time className="msg-meta__time" dateTime={sentAt.toISOString()} title={sentAt.toLocaleString()}>
-              {formatMessageTimestamp(sentAt, new Date(now), getLocale())}
+          {/* 1012 三档契约不变；1092 跨会话卡 sentAt 走同一 msg-meta__time
+              样式（原 foot 行内 im-source-card__time 已按 1122 裁定回退）。 */}
+          {(imSource ? collabSentAt : sentAt) && (
+            <time
+              className="msg-meta__time"
+              dateTime={(imSource ? collabSentAt : sentAt)!.toISOString()}
+              title={(imSource ? collabSentAt : sentAt)!.toLocaleString()}
+            >
+              {formatMessageTimestamp(imSource ? collabSentAt! : sentAt!, new Date(imSource ? collabNow : now), getLocale())}
             </time>
           )}
           {hasMemoryCompiler && (
@@ -1065,6 +1070,12 @@ export const AssistantMessage = memo(function AssistantMessage({
         </div>
       )}
       {Boolean(item.memoryCitations?.length) && <Suspense fallback={null}><MemoryCitations citations={item.memoryCitations} /></Suspense>}
+      {/* 任务1122: 助手消息补时间戳——与用户消息 msg-meta 同一位置样式（卡片
+          下方、弱化字色、等宽数字）。createdAt 缺失时 CardTime 返回 null，
+          不渲染错误时间（与 1012/1092 同契约）。 */}
+      <div className="msg-meta">
+        <CardTime createdAt={item.createdAt} className="msg-meta__time" />
+      </div>
     </div>
   );
 });
