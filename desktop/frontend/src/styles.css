@@ -5174,6 +5174,10 @@ a[href] {
 }
 .steer-line__bubble {
   display: inline-flex;
+  /* 任务1136: 文字与附件上下分离——附件容器（.msg-attachments）flex-basis:100%
+     独占下一层，文字/icon 留在第一层（对齐用户消息 msg__body 的「文字块在
+     上、附件块在下」两层结构；此前 inline-flex 单行排布把正文挤成竖排窄条）。 */
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 6px;
   max-width: 82%;
@@ -5209,6 +5213,10 @@ a[href] {
   margin-top: 8px;
   min-width: min(300px, 100%);
   width: 100%;
+  /* 任务1136: flex-basis:100% 配合气泡 flex-wrap:wrap——附件容器强制换到
+     文字下一层（与用户消息「文字上/图下」同一结构），不再与正文同层互相
+     挤压。 */
+  flex-basis: 100%;
 }
 /* 任务1091: 复制按钮移出卡片（.steer-meta 行，卡片外下方，与用户消息
    msg-meta 同位）。 */
@@ -6175,6 +6183,18 @@ a[href] {
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-soft) 78%, transparent);
 }
+.msg-attachment--image {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  padding: 4px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.msg-attachment--image:hover {
+  transform: scale(1.08);
+}
 .msg-attachment__icon {
   display: inline-flex;
   align-items: center;
@@ -6185,9 +6205,21 @@ a[href] {
   color: var(--fg-dim);
   background: var(--bg-elev);
 }
-/* 任务1121: .msg-attachment--image / .msg-attachment__icon--image（56px 缩略图）
-   两条死规则一并删除——图片改走 .msg-attachment-gallery 独立大图块，文件卡
-   只剩 folder/file 两态。 */
+.msg-attachment__icon--image {
+  width: 56px;
+  height: 56px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, var(--bg-elev));
+}
+.msg-attachment__icon--image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+.msg-attachment--image .msg-attachment__main {
+  display: none;
+}
 .msg-attachment__icon--folder {
   color: var(--warn);
   background: color-mix(in srgb, var(--warn) 13%, var(--bg-elev));
@@ -6216,51 +6248,6 @@ a[href] {
   font-size: var(--text-xs);
   line-height: 1.25;
 }
-/* 任务1121: 图片独立大图块——与文字块上下分离（1091 steer 口径延伸到用户
-   消息全场景）；窄容器下 img max-width:100% + display:block 防「图 inline
-   挤压正文成竖排单字」（block 化后 img 不再与首字同行，宽度被容器夹住
-   不溢出）。 */
-.msg-attachment-gallery {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 8px;
-  min-width: 0;
-  max-width: 100%;
-}
-.msg-attachment-gallery__item {
-  display: block;
-  max-width: min(320px, 100%);
-  padding: 0;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--bg-soft) 78%, transparent);
-  cursor: pointer;
-  overflow: hidden;
-  transition: transform 0.15s ease;
-}
-.msg-attachment-gallery__item:hover,
-.msg-attachment-gallery__item:focus-visible {
-  transform: scale(1.02);
-}
-.msg-attachment-gallery__item img {
-  display: block;
-  max-width: 100%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-}
-/* 任务1121: 预览 URL 未就绪时的占位块——占住图块尺寸不塌，不渲染空 src <img>。 */
-.msg-attachment-gallery__placeholder {
-  display: block;
-  min-width: 160px;
-  min-height: 120px;
-  background: color-mix(in srgb, var(--bg-soft) 78%, transparent);
-}
-/* 任务1121: .msg-attachments 内的文件夹/文件图标——原 .msg-attachment__icon
-   --folder/--image 分支中 --image 大图缩略图已随 1121 删除，保留文件夹与
-   文件两态。 */
 
 /* pasted text blocks in user messages (mirroring .composer__pasted-*) */
 .msg-pasted {

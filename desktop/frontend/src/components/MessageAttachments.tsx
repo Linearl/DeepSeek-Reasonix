@@ -6,40 +6,6 @@ import { useT } from "../lib/i18n";
 import { ImageViewer } from "./ImageViewer";
 import { Tooltip } from "./Tooltip";
 
-// 任务1121: 图片缩略图升级为独立大图块（.msg-attachment-gallery），不再与
-// 文字/文件卡混排——文字块与图块上下分离（1091 steer 口径延伸到用户消息
-// 全场景）；窄容器靠 .msg-attachment-gallery img 的 max-width 约束防「图挤
-// 正文成竖排单字」（容器再窄，图也是块级 max-width:100% 缩放，不 inline
-// 挤压文字流）。
-export function MessageImageGallery({ images, previews, onOpenViewer }: {
-  images: DisplayAttachment[];
-  previews: Record<string, string>;
-  onOpenViewer: (attachment: DisplayAttachment) => void;
-}) {
-  const t = useT();
-  if (images.length === 0) return null;
-  return (
-    <div className="msg-attachment-gallery" aria-label={t("msg.images")} data-transcript-selection-ignore>
-      {images.map((attachment) => (
-        <Tooltip key={attachment.path} label={`${t("imageViewer.clickToPreview")} — ${attachment.name}`} block>
-          <button
-            type="button"
-            className="msg-attachment-gallery__item"
-            onClick={() => onOpenViewer(attachment)}
-          >
-            {/* src 为空串时 JSDOM/浏览器会告警「empty src 会触发整页重下」——
-                预览 URL 尚未就绪时渲染占位 span，不渲染 <img>。 */}
-            {previews[attachment.path]
-              ? <img src={previews[attachment.path]} alt={attachment.name} draggable={false} />
-              : <span className="msg-attachment-gallery__placeholder" aria-label={attachment.name} />}
-          
-          </button>
-        </Tooltip>
-      ))}
-    </div>
-  );
-}
-
 function loadPreview(tabId: string, attachment: DisplayAttachment): Promise<string> {
   const { path } = attachment;
   if (path.startsWith("draft:") && typeof app.ReadDraftImageForTab === "function") {
@@ -68,10 +34,6 @@ function attachmentIcon(kind: DisplayAttachment["kind"]) {
   if (kind === "folder") return <Folder size={15} />;
   return <FileText size={15} />;
 }
-// 任务1121: 1091 旧缩略图形态的点击语义（整卡可点打开 ImageViewer + 键盘
-// Enter/Space）整体删除——图片改走 MessageImageGallery 独立大图块，文件卡
-// 不可点（无点击语义，纯展示）。CSS 侧 .msg-attachment--image / .msg-attachment__icon--image
-// 两条死规则一并删除（无 JSX 引用）。
 
 export function MessageAttachments({ attachments, tabId = "" }: {
   attachments: DisplayAttachment[];
@@ -92,8 +54,6 @@ export function MessageAttachments({ attachments, tabId = "" }: {
     setViewer({ open: true, url, name: attachment.name });
   }, [previews, tabId]);
 
-  const files = ordered.filter(item => item.kind !== "image");
-
   const previewKey = ordered.filter(item => item.kind === "image" && item.source === "attachment").map(item => item.path).join("\n");
   useEffect(() => {
     let cancelled = false;
@@ -109,34 +69,37 @@ export function MessageAttachments({ attachments, tabId = "" }: {
   }, [previewKey, tabId]);
 
   return (
-    <>
-      {/* 任务1121: 图片走独立大图块（.msg-attachment-gallery），文件卡仍走
-          .msg-attachments 横排卡片——图文上下分离，不再 56px 缩略图混排。 */}
-      <MessageImageGallery images={ordered.filter(item => item.kind === "image")} previews={previews} onOpenViewer={openViewer} />
-      {files.length > 0 && (
-        <div className="msg-attachments" aria-label={t("msg.attachments")} data-transcript-selection-ignore>
-          {files.map((attachment, index) => (
-            <div
-              className={`msg-attachment msg-attachment--${attachment.kind}`}
-              key={`${attachment.path}:${index}`}
-              title={attachment.path}
-            >
-              <span className={`msg-attachment__icon msg-attachment__icon--${attachment.kind}`} aria-hidden="true">
-                {attachmentIcon(attachment.kind)}
+    <div className="msg-attachments" aria-label={t("msg.attachments")} data-transcript-selection-ignore>
+      {ordered.map((attachment, index) => {
+        const image = attachment.kind === "image";
+        const card = (
+          <div
+            className={`msg-attachment msg-attachment--${attachment.kind}`}
+            key={image ? undefined : `${attachment.path}:${index}`}
+            title={image ? undefined : attachment.path}
+            onClick={image ? () => openViewer(attachment) : undefined}
+            role={image ? "button" : undefined}
+            tabIndex={image ? 0 : undefined}
+            onKeyDown={image ? event => {
+              if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openViewer(attachment); }
+            } : undefined}
+          >
+            <span className={`msg-attachment__icon msg-attachment__icon--${attachment.kind}`} aria-hidden="true">
+              {image && previews[attachment.path] ? <img src={previews[attachment.path]} alt="" draggable={false} /> : attachmentIcon(attachment.kind)}
+            </span>
+            <span className="msg-attachment__main">
+              <span className="msg-attachment__name">{attachment.name}</span>
+              <span className="msg-attachment__meta">
+                {attachment.kind === "folder"
+                  ? t("msg.folderReference")
+                  : `${attachment.ext || t("msg.fileAttachment")} · ${attachment.source === "workspace" ? t("msg.workspaceReference") : image ? t("msg.imageAttachment") : t("msg.fileAttachment")}`}
               </span>
-              <span className="msg-attachment__main">
-                <span className="msg-attachment__name">{attachment.name}</span>
-                <span className="msg-attachment__meta">
-                  {attachment.kind === "folder"
-                    ? t("msg.folderReference")
-                    : `${attachment.ext || t("msg.fileAttachment")} · ${attachment.source === "workspace" ? t("msg.workspaceReference") : t("msg.fileAttachment")}`}
-                </span>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+            </span>
+          </div>
+        );
+        return image ? <Tooltip key={`${attachment.path}:${index}`} label={t("imageViewer.clickToPreview")} block>{card}</Tooltip> : card;
+      })}
       <ImageViewer open={viewer.open} imageUrl={viewer.url} imageName={viewer.name} onClose={() => setViewer(value => value.open ? { ...value, open: false } : value)} />
-    </>
+    </div>
   );
 }
