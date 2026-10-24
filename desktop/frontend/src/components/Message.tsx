@@ -114,10 +114,24 @@ export function parseMergedMessage(text: string): MergedMessage | null {
       segments[segments.length - 1].body.push(line);
     }
   }
+  // Task 1106: a carrier that re-entered a merge group (failed admission kept
+  // it queued holding a merged body) produced NESTED merged bodies — the old
+  // title and segment headers survived verbatim inside a member's body. Flatten
+  // them for display: a segment whose body parses as a merged message is a
+  // carrier shell, so it is replaced by the originals it carried.
+  const flat: { header: string; body: string }[] = [];
+  for (const segment of segments) {
+    const inner = parseMergedMessage(segment.body.join("\n"));
+    if (inner) {
+      flat.push(...inner.segments);
+      continue;
+    }
+    flat.push({ header: segment.header, body: segment.body.join("\n") });
+  }
   return {
     title,
-    count: Number(match[1]),
-    segments: segments.map((segment) => ({ header: segment.header, body: segment.body.join("\n") })),
+    count: flat.length,
+    segments: flat,
   };
 }
 

@@ -2,6 +2,7 @@ package control
 
 import (
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -141,19 +142,109 @@ func parseMergedSteerSegments(text string) (ids []string, bodies []string, ok bo
 	return ids, bodies, ok
 }
 
-// mergeInboxEnvelope concatenates the members' submit bodies in dispatch order.
-// The merged body is mechanical — no summarisation, no rephrasing — so nothing
-// is lost and the model reads every original verbatim under its own header.
+// Task 1106: a merge carrier can re-enter a merge group. When a merged
+// dispatch fails to admit (busy turn, unpublished runtime, crash recovery) the
+// carrier STAYS queued holding the full merged body; the next dispatch that
+// picks it up with more company merged it again verbatim — title and segment
+// headers ended up duplicated inside the message body while the data itself
+// was never lost. flattenMergedBody unpacks such a member back into its leaf
+// segments so a merged body is always ONE title plus exactly one header per
+// original inbox item, no matter how many times a carrier re-enters a group.
+
+// mergedTitleLineRe matches the "[合并消息 ×N]" title line mergeInboxEnvelope
+// writes; writer and reader share the literal shape so the format cannot drift.
+var mergedTitleLineRe = regexp.MustCompile(`^\[合并消息 ×\d+\]$`)
+
+// mergedLeafSegment is one flattened segment: a single original inbox item's
+// header line and body, ready to be written into a merged envelope.
+type mergedLeafSegment struct {
+	header string // full "── 合并自 inbox 条目 <id>… ──" line
+	id     string // item id parsed from the header ("" when unparsable)
+	body   string
+}
+
+// flattenMergedSegments splits one already-merged body into leaf segments,
+// recursing through nested merged bodies (a carrier merged into a carrier).
+// Plain text yields ok=false so the caller treats it as one ordinary segment.
+func flattenMergedSegments(text string) ([]mergedLeafSegment, bool) {
+	lines := strings.Split(text, "\n")
+	if len(lines) == 0 || !mergedTitleLineRe.MatchString(strings.TrimSpace(lines[0])) {
+		return nil, false
+	}
+	var segs []mergedLeafSegment
+	var current *mergedLeafSegment
+	var body strings.Builder
+	flush := func() {
+		if current != nil {
+			current.body = strings.TrimSpace(body.String())
+			segs = append(segs, *current)
+			current = nil
+		}
+		body.Reset()
+	}
+	for _, line := range lines[1:] {
+		if id, isHeader := parseMergedSegmentHeader(strings.TrimSpace(line)); isHeader {
+			flush()
+			current = &mergedLeafSegment{header: strings.TrimSpace(line), id: id}
+			continue
+		}
+		if current != nil {
+			body.WriteString(line)
+			body.WriteByte('\n')
+		}
+	}
+	flush()
+	// A nested merged body replaces its carrier shell: the shell's own header
+	// names no original item, its members do. Recursion depth is bounded by
+	// how often carriers stacked up before this fix (each layer was one failed
+	// admission), so it always terminates on real data.
+	flat := make([]mergedLeafSegment, 0, len(segs))
+	for _, seg := range segs {
+		if inner, ok := flattenMergedSegments(seg.body); ok {
+			flat = append(flat, inner...)
+			continue
+		}
+		flat = append(flat, seg)
+	}
+	return flat, true
+}
+
+// mergeInboxEnvelope concatenates the members' bodies in dispatch order —
+// flattening any member that already carries a merged body (task 1106) — with
+// one header per original inbox item and no duplicated item id. The merged
+// body is mechanical — no summarisation, no rephrasing — so nothing is lost
+// and the model reads every original verbatim under its own header.
 func mergeInboxEnvelope(metas []sessioninbox.InboxItemMeta, envelopes []sessioninbox.PromptEnvelope, mode string) sessioninbox.PromptEnvelope {
+	var segments []mergedLeafSegment
+	seen := make(map[string]struct{}, len(envelopes))
+	appendSegment := func(seg mergedLeafSegment) {
+		if seg.id != "" {
+			if _, dup := seen[seg.id]; dup {
+				return // one original item, one header — never twice (tl 1106)
+			}
+			seen[seg.id] = struct{}{}
+		}
+		segments = append(segments, seg)
+	}
+	for i, env := range envelopes {
+		text := strings.TrimSpace(firstNonEmptyStr(env.SubmitText, env.RawText, env.DisplayText))
+		if leaves, ok := flattenMergedSegments(text); ok {
+			for _, leaf := range leaves {
+				appendSegment(leaf)
+			}
+			continue
+		}
+		appendSegment(mergedLeafSegment{header: mergeSegmentHeader(metas[i]), id: metas[i].ID, body: text})
+	}
 	var b strings.Builder
 	b.WriteString("[合并消息 ×")
-	b.WriteString(strconv.Itoa(len(metas)))
+	b.WriteString(strconv.Itoa(len(segments)))
 	b.WriteString("]\n")
-	for i, env := range envelopes {
+	for _, seg := range segments {
 		b.WriteString("\n")
-		b.WriteString(mergeSegmentHeader(metas[i]))
+		b.WriteString(seg.header)
 		b.WriteString("\n")
-		b.WriteString(strings.TrimSpace(firstNonEmptyStr(env.SubmitText, env.RawText, env.DisplayText)))
+		b.WriteString(seg.body)
 		b.WriteString("\n")
 	}
 	merged := strings.TrimSpace(b.String())
@@ -169,8 +260,19 @@ func mergeInboxEnvelope(metas []sessioninbox.InboxItemMeta, envelopes []sessioni
 		FrozenRefBlock: first.FrozenRefBlock,
 		FrozenImages:   first.FrozenImages,
 		ExplicitRefs:   first.ExplicitRefs,
-		Extra:          mergeExtra(metas, mode),
+		Extra:          mergeExtra(leafIDs(segments), mode),
 	}
+}
+
+// leafIDs lists the deduplicated item ids of the flattened segments in order;
+// mergeExtra's mergedFrom stays the authoritative member list for residue
+// settling (task 543), which reads these very ids out of the segment headers.
+func leafIDs(segments []mergedLeafSegment) []sessioninbox.InboxItemMeta {
+	metas := make([]sessioninbox.InboxItemMeta, 0, len(segments))
+	for _, seg := range segments {
+		metas = append(metas, sessioninbox.InboxItemMeta{ID: seg.id})
+	}
+	return metas
 }
 
 // envelopeBodiesAllEmpty reports that every member renders to nothing but the

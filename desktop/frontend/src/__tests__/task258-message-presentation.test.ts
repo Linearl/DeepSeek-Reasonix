@@ -116,6 +116,36 @@ function noticeItems(state: typeof initialState) {
   ok(parseMergedMessage("[合并消息 ×1]")?.segments.length === 0, "a header-only injection still folds with zero segments");
   ok(parseMergedMessage("[合并消息 ×2]\nbody without marker")?.segments.length === 0,
     "segments without a ── marker stay empty rather than being invented");
+
+  // 任务1106: a carrier that re-entered a merge group left NESTED merged bodies
+  // (old title + segment headers verbatim inside a member's body). The parser
+  // flattens them so each original renders once — no repeated title, no
+  // repeated 块头 separator.
+  const nested = [
+    "[合并消息 ×2]",
+    "",
+    "── 合并自 inbox 条目 12ba92b9（来源 collab:sc_a）──",
+    "[合并消息 ×2]",
+    "",
+    "── 合并自 inbox 条目 12ba92b9（来源 collab:sc_a）──",
+    "原文A",
+    "",
+    "── 合并自 inbox 条目 id-b ──",
+    "原文B",
+    "",
+    "── 合并自 inbox 条目 id-c ──",
+    "原文C",
+  ].join("\n");
+  const flattened = parseMergedMessage(nested);
+  assert.ok(flattened, "a nested merged body still folds");
+  ok(flattened.count === 3, "count reports the flattened leaf segments, not the stale title number");
+  ok(flattened.segments.length === 3, "the carrier shell segment is replaced by the originals it carried");
+  ok(flattened.segments.every((s) => !s.body.includes("[合并消息 ×")), "no nested title line survives inside any segment body");
+  ok(flattened.segments.map((s) => s.header).filter((h) => h.includes("12ba92b9")).length === 1,
+    "12ba92b9 renders exactly one 块头");
+  ok(flattened.segments[0]?.header.includes("12ba92b9") && flattened.segments[0]?.body === "原文A", "first leaf keeps id + verbatim body");
+  ok(flattened.segments[1]?.header.includes("id-b") && flattened.segments[1]?.body === "原文B", "second leaf keeps id + verbatim body");
+  ok(flattened.segments[2]?.header.includes("id-c") && flattened.segments[2]?.body === "原文C", "third leaf keeps id + verbatim body");
 }
 
 // ── source-level pins: the Composer wiring the reducer tests cannot reach ───
