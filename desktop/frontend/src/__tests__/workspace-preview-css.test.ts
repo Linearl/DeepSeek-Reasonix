@@ -7,9 +7,10 @@ import { JSDOM } from "jsdom";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
-const appGo = readFileSync(resolve(testDir, "../../../app.go"), "utf8");
 // tl 1110 moved the preview media MIME map (and the 2 MiB filePreviewLimit)
 // into app_misc_ui.go; the assertion below reads whichever file declares it.
+// tl1108/1109 同款预存红修复（1109 顺手修申报）：原断言只读 app.go 必然红——双读兼容实际定义处。
+const appGo = readFileSync(resolve(testDir, "../../../app.go"), "utf8");
 const appMiscUIGo = readFileSync(resolve(testDir, "../../../app_misc_ui.go"), "utf8");
 const localeNotices = [
   [readFileSync(resolve(testDir, "../locales/en.ts"), "utf8"), '"workspace.truncated": "Preview truncated to the first 2 MiB."'],
@@ -123,15 +124,15 @@ eq(
 const splitDom = `<html><head></head><body><aside class="workspace-panel"><section class="workspace-files"></section><section class="workspace-preview"></section><button class="workspace-tree-resizer"></button></aside></body></html>`;
 eq(
   computedDeclaration(splitDom, ".workspace-panel", "grid-template-columns"),
-  "minmax(var(--workspace-preview-min-width), 1fr) var(--workspace-tree-width)",
-  "split mode is a two-column layout: preview on the left, file tree on the right (the tree toggle rail is gone)",
+  "var(--workspace-tree-width) minmax(var(--workspace-preview-min-width), 1fr)",
+  "split mode is a two-column layout: file tree on the left, content on the right (tl1108 树左内容右)",
 );
-eq(computedDeclaration(splitDom, ".workspace-files", "grid-column"), "2", "file tree sits at the far right after the preview");
-eq(computedDeclaration(splitDom, ".workspace-preview", "grid-column"), "1", "preview sits to the left of the tree");
+eq(computedDeclaration(splitDom, ".workspace-files", "grid-column"), "1", "file tree sits at the far left (tl1108)");
+eq(computedDeclaration(splitDom, ".workspace-preview", "grid-column"), "2", "content sits to the right of the tree (tl1108)");
 eq(
   computedDeclaration(splitDom, ".workspace-tree-resizer", "left"),
-  "calc(100% - var(--workspace-tree-width) - 4px)",
-  "tree resizer sits at the tree's left edge (tree is on the right)",
+  "calc(var(--workspace-tree-width) - 4px)",
+  "tree resizer sits at the tree's right edge (tree is on the left, tl1108)",
 );
 eq(
   finalDeclaration(".workspace-panel--tree-hidden", "grid-template-columns"),

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { asArray } from "../lib/array";
 import { app } from "../lib/bridge";
+import { useLayoutStore } from "../store/layout";
 import { useT } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
@@ -36,6 +37,15 @@ import {
 } from "../lib/workspaceSplit";
 import { createRafResizeUpdater } from "../lib/resizeDrag";
 import { closeWorkspacePreviewTab } from "../lib/workspacePreviewTabs";
+import {
+  closeOtherSideDockTabs,
+  closeRightSideDockTabs,
+  closeSideDockTab,
+  reorderSideDockTabs,
+  SIDE_DOCK_CLICK_DOUBLE_MS,
+  type SideDockTabsState,
+} from "../lib/sideDockTabs";
+import { SideDockTabStrip } from "./SideDockTabStrip";
 import { useWorkspaceRefresh } from "../lib/workspaceRefreshStore";
 import { useWorkspaceRefreshInvalidation, workspaceRefreshFallbackSequence } from "../lib/workspaceRefreshInvalidation";
 import { createWorkspaceRefreshScheduler } from "../lib/workspaceRefreshScheduler";
@@ -241,6 +251,28 @@ export function WorkspacePanel({
     () => initialWorkspaceMemory?.selectedChangePath ?? null,
   );
   const [openTabs, setOpenTabs] = useState<string[]>([]);
+  // tl1108 方案 E：标签的预览/钉住形态。顺序与 openTabs 一致（openTabs 仍是
+  // 打开集合的事实源，标签条只做形态投影）。id = 文件相对路径。
+  const [tabKinds, setTabKinds] = useState<Record<string, "preview" | "pinned">>({});
+  const tabStripState: SideDockTabsState<string> = useMemo(
+    () => ({
+      tabs: openTabs.map((path) => ({ id: path, kind: tabKinds[path] ?? "preview" })),
+      activeId: selectedFilePath,
+    }),
+    [openTabs, tabKinds, selectedFilePath],
+  );
+  const tabKindsRef = useRef(tabKinds);
+  tabKindsRef.current = tabKinds;
+  // tl1108: 单击/双击区分定时器（双击必须 clearTimeout，否则先闪一次预览再钉住）。
+  const fileClickTimerRef = useRef<number | null>(null);
+  const fileClickPathRef = useRef<string | null>(null);
+  const clearFileClickTimer = useCallback(() => {
+    if (fileClickTimerRef.current !== null) {
+      window.clearTimeout(fileClickTimerRef.current);
+      fileClickTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => () => clearFileClickTimer(), [clearFileClickTimer]);
   // Independent "recently opened" history: survives closing all preview tabs
   // (openTabs is the live preview state) and app restarts, so the recent-files
   // menu keeps the user's file history even after the previews are dismissed.
@@ -275,7 +307,7 @@ export function WorkspacePanel({
   const [searchResults, setSearchResults] = useState<DirEntry[] | null>(null);
   const [scopedFilePaths, setScopedFilePaths] = useState<string[] | null>(null);
   const [scopedChangeRows, setScopedChangeRows] = useState<WorkspaceChangeListEntry[] | null>(null);
-  const [treeVisible, setTreeVisible] = useState(true);
+  const [treeVisible, setTreeVisible] = useState(initialWorkspaceMemory?.treeVisible ?? true);
   const [treeWidth, setTreeWidth] = useState(initialWorkspaceMemory?.treeWidth ?? legacyTreeWidth ?? WORKSPACE_TREE_DEFAULT_WIDTH);
   const [treeWidthMode, setTreeWidthMode] = useState<WorkspaceSplitTreeWidthMode>(
     initialWorkspaceMemory?.treeWidthMode ?? "manual",
@@ -517,6 +549,7 @@ export function WorkspacePanel({
       const initializeSplit = shouldInitializeWorkspaceSplitOnFileSelect({
         previewVisible: openTabs.length > 0 || selectedPath !== null,
         treeVisible,
+        treeWidthMode,
       });
       if (initializeSplit) {
         setTreeWidth(initialWorkspaceSplitTreeWidth({
@@ -543,13 +576,20 @@ export function WorkspacePanel({
         return null;
       });
       setFilter("");
-      setOpenTabs((tabs) => [...tabs.filter((tab) => tab !== path), path].slice(-WORKSPACE_MAX_PREVIEW_TABS));
+      // tl1108 方案 E：选中=预览。单击只切换选中（不静默关闭/钉住）；新标签
+      // 以 preview 形态追加，关闭由再单击/标签 ×/批量关闭承担（与标签条共用
+      // activateSideDockTab 语义）。
+      setOpenTabs((tabs) => {
+        const next = tabs.includes(path) ? tabs : [...tabs, path];
+        return next.slice(-WORKSPACE_MAX_PREVIEW_TABS);
+      });
+      setTabKinds((kinds) => (kinds[path] ? kinds : { ...kinds, [path]: "preview" }));
       setRecentPaths((paths) => [...paths.filter((p) => p !== path), path].slice(-WORKSPACE_MAX_PREVIEW_TABS));
       const dirs = parentDirs(path);
       updateOpenDirs((prev) => new Set([...Array.from(prev), ...dirs]));
       dirs.forEach((dir) => void loadDir(dir));
     },
-    [loadDir, openTabs.length, panelWidth, selectedPath, treeVisible, updateOpenDirs, viewMode],
+    [loadDir, openTabs.length, panelWidth, selectedPath, treeVisible, treeWidthMode, updateOpenDirs, viewMode],
   );
 
   useEffect(() => {
@@ -1222,6 +1262,19 @@ export function WorkspacePanel({
   const actualTreeVisible = changedMode ? false : treeVisible && (!previewVisible || splitPanesFit);
   const previewModeActive = open && (filePreviewActive || changeDetailActive);
   const embeddedDockMode = !showViewTabs;
+  // tl1108/1109: 方案 E 宽态指示 —— 有打开的文件标签时上报 store，App 把
+  // 边栏宽度抬到 min(720, vw×46%)/用户值；关闭全部标签回落 246。子代理
+  // 面板同判据（sideDockHasActiveTabs 共用），此处是文件面板的上报点。
+  const setSideDockWideActive = useLayoutStore((s) => s.setSideDockWideActive);
+  useEffect(() => {
+    if (!open) {
+      // 卸载/关闭也要把加宽指示清干净——否则残留 wide 态会把面板宽度钉在
+      // 宽档，「关最后文件回落 246」在切 tab 后看似失效。
+      setSideDockWideActive(false);
+      return;
+    }
+    setSideDockWideActive(openTabs.length > 0);
+  }, [open, openTabs.length, setSideDockWideActive]);
   const showFileTools = true;
   const effectiveTreeWidth = useMemo(
     () =>
@@ -1274,10 +1327,12 @@ export function WorkspacePanel({
   const hideTreeOrClosePanel = useCallback(() => {
     if (previewVisible) {
       setTreeVisible(false);
+      // tl1108: 隐藏状态持久化（重启后仍隐藏）。
+      rememberWorkspaceTreeState(workspaceMemoryKey, { treeVisible: false });
     } else {
       onClose();
     }
-  }, [onClose, previewVisible]);
+  }, [onClose, previewVisible, workspaceMemoryKey]);
 
   const showTreeEvenSplit = useCallback(() => {
     setTreeWidth(initialWorkspaceSplitTreeWidth({
@@ -1293,10 +1348,21 @@ export function WorkspacePanel({
   const toggleTreeRail = useCallback(() => {
     if (actualTreeVisible) {
       setTreeVisible(false);
+      // tl1108: 隐藏状态持久化（重启后仍隐藏）。
+      rememberWorkspaceTreeState(workspaceMemoryKey, { treeVisible: false });
+      return;
+    }
+    // tl1108 真缺陷修复（用户线 commit 8039f69 证据链）：恢复时若存在用户
+    // 手动宽度（treeWidthMode==="manual"），只置回显示、保留 treeWidth；
+    // 无手动记录时才走 showTreeEvenSplit() 均分。
+    if (treeWidthMode === "manual") {
+      setTreeVisible(true);
+      rememberWorkspaceTreeState(workspaceMemoryKey, { treeVisible: true });
       return;
     }
     showTreeEvenSplit();
-  }, [actualTreeVisible, showTreeEvenSplit]);
+    rememberWorkspaceTreeState(workspaceMemoryKey, { treeVisible: true });
+  }, [actualTreeVisible, showTreeEvenSplit, treeWidthMode, workspaceMemoryKey]);
 
   const closePreviewArea = useCallback(() => {
     if (lastRevealRequestIdRef.current === revealPathRequest?.id) {
@@ -1311,13 +1377,20 @@ export function WorkspacePanel({
       const nextPreviewTabs = closeWorkspacePreviewTab(openTabs, selectedFilePath);
       setSelectedFilePath(nextPreviewTabs.selectedPath);
       setOpenTabs(nextPreviewTabs.openTabs);
+      setTabKinds((kinds) => {
+        if (!selectedFilePath || !(selectedFilePath in kinds)) return kinds;
+        const next = { ...kinds };
+        delete next[selectedFilePath];
+        return next;
+      });
     }
     setPreviewResource(emptyKeyedResource());
     setSelectionMenu(null);
     setTreeMenu(null);
     setRecentOpen(false);
     setTreeVisible(true);
-  }, [changeRevealRequest, openTabs, revealPathRequest, selectedFilePath, viewMode]);
+    rememberWorkspaceTreeState(workspaceMemoryKey, { treeVisible: true });
+  }, [changeRevealRequest, openTabs, revealPathRequest, selectedFilePath, viewMode, workspaceMemoryKey]);
 
   const setSavedTreeWidth = useCallback(
     (width: number) => {
@@ -1352,7 +1425,8 @@ export function WorkspacePanel({
           panelWidth: rect.width,
           treeMinWidth: WORKSPACE_TREE_MIN_WIDTH,
           previewMinWidth: WORKSPACE_PREVIEW_MIN_WIDTH,
-          treeOnRight: true,
+          // tl1108: 树在左 ⇒ 用左侧量法（clientX - panelLeft）。
+          treeOnRight: false,
         });
         liveResize.schedule(nextWidth);
       };
@@ -1379,7 +1453,8 @@ export function WorkspacePanel({
     (event: KeyboardEvent<HTMLButtonElement>) => {
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
-        setSavedTreeWidth(effectiveTreeWidth + (event.key === "ArrowLeft" ? 16 : -16));
+        // tl1108: 树在左 ⇒ 向右箭头加宽（贴面板右缘是缩小语义的旧实现，已随布局翻转）。
+        setSavedTreeWidth(effectiveTreeWidth + (event.key === "ArrowRight" ? 16 : -16));
       } else if (event.key === "Home") {
         event.preventDefault();
         setSavedTreeWidth(WORKSPACE_TREE_MIN_WIDTH);
@@ -1564,11 +1639,37 @@ export function WorkspacePanel({
     setSelectionAnchorPath(row.path);
     if (row.entry.isDir) {
       toggleDir(row.path, row.compactPaths ?? [row.path]);
-    } else if (selectedPath === row.path) {
-      setSelectedFilePath(null);
-    } else {
-      selectFile(row.path);
+      return;
     }
+    // tl1108: 单击=选中=预览、双击=钉住（VSCode 式；200ms 定时器区分，双击
+    // 必须 clearTimeout 否则先闪一次预览再钉住）。
+    if (fileClickTimerRef.current !== null && fileClickPathRef.current === row.path) {
+      clearFileClickTimer();
+      fileClickPathRef.current = null;
+      selectFile(row.path);
+      setTabKinds((kinds) => ({ ...kinds, [row.path]: "pinned" }));
+      return;
+    }
+    fileClickPathRef.current = row.path;
+    fileClickTimerRef.current = window.setTimeout(() => {
+      fileClickTimerRef.current = null;
+      fileClickPathRef.current = null;
+      if (selectedFilePath === row.path) {
+        // 再单击已选中=取消选中=等同关闭预览：收尾不留空白区（内容区回落
+        // 上一个活动标签或空态），面板宽度随 openTabs 变化恢复。
+        const next = closeSideDockTab(tabStripState, row.path);
+        setSelectedFilePath(next.activeId);
+        setOpenTabs(next.tabs.map((tab) => tab.id));
+        setTabKinds((kinds) => {
+          const copy = { ...kinds };
+          delete copy[row.path];
+          return copy;
+        });
+        setPreviewResource(emptyKeyedResource());
+        return;
+      }
+      selectFile(row.path);
+    }, SIDE_DOCK_CLICK_DOUBLE_MS);
   };
 
   // Task 855 recycle-bin deletion: the backend routes every entry through the
@@ -1712,6 +1813,73 @@ export function WorkspacePanel({
       }}
     >
       {previewVisible && <section className="workspace-preview">
+        {/* tl1108: 文件标签条（斜体=预览、正体=钉住；右键批量关闭、拖拽排序）。 */}
+        {!changedMode && (
+          <SideDockTabStrip
+            state={tabStripState}
+            labelOf={(path) => basename(path)}
+            onSelect={(path) => {
+              // 单击标签=选中（预览）。已选中再单击=取消选中=等同关闭预览：
+              // 内容区回落上一个活动标签或空态，面板宽度随 openTabs 变化恢复。
+              if (selectedFilePath === path) {
+                const next = closeSideDockTab(tabStripState, path);
+                setSelectedFilePath(next.activeId);
+                setOpenTabs(next.tabs.map((tab) => tab.id));
+                setTabKinds((kinds) => {
+                  const copy = { ...kinds };
+                  delete copy[path];
+                  return copy;
+                });
+                setPreviewResource(emptyKeyedResource());
+                return;
+              }
+              selectFile(path);
+            }}
+            onClose={(path) => {
+              const next = closeSideDockTab(tabStripState, path);
+              setSelectedFilePath(next.activeId);
+              setOpenTabs(next.tabs.map((tab) => tab.id));
+              setTabKinds((kinds) => {
+                const copy = { ...kinds };
+                delete copy[path];
+                return copy;
+              });
+              if (next.activeId === null) setPreviewResource(emptyKeyedResource());
+            }}
+            onCloseAll={() => {
+              setOpenTabs([]);
+              setSelectedFilePath(null);
+              setTabKinds({});
+              setPreviewResource(emptyKeyedResource());
+            }}
+            onCloseOthers={(keepId) => {
+              const next = closeOtherSideDockTabs(tabStripState, keepId);
+              setOpenTabs(next.tabs.map((tab) => tab.id));
+              setTabKinds((kinds) => {
+                const copy: Record<string, "preview" | "pinned"> = {};
+                if (keepId in kinds) copy[keepId] = kinds[keepId];
+                return copy;
+              });
+              setSelectedFilePath(next.activeId);
+            }}
+            onCloseRight={(targetId) => {
+              const next = closeRightSideDockTabs(tabStripState, targetId);
+              setOpenTabs(next.tabs.map((tab) => tab.id));
+              setTabKinds((kinds) => {
+                const copy: Record<string, "preview" | "pinned"> = {};
+                next.tabs.forEach((tab) => {
+                  if (kinds[tab.id]) copy[tab.id] = kinds[tab.id];
+                });
+                return copy;
+              });
+              setSelectedFilePath(next.activeId);
+            }}
+            onReorder={(id, targetId, before) => {
+              const next = reorderSideDockTabs(tabStripState, id, targetId, before);
+              setOpenTabs(next.tabs.map((tab) => tab.id));
+            }}
+          />
+        )}
         <header className="workspace-preview__head">
           <div className="workspace-current-file" aria-label={t("workspace.currentFile")}>
             {changedMode && !selectedPath ? (
@@ -2205,9 +2373,9 @@ export function WorkspacePanel({
           aria-valuemin={WORKSPACE_TREE_MIN_WIDTH}
           aria-valuemax={maxTreeWidthForPanel}
           aria-valuenow={effectiveTreeWidth}
-          onPointerDown={startTreeResize}
-          onKeyDown={resizeTreeWithKeyboard}
-          onDoubleClick={() => setSavedTreeWidth(WORKSPACE_TREE_DEFAULT_WIDTH)}
+      onPointerDown={startTreeResize}
+      onKeyDown={resizeTreeWithKeyboard}
+      onDoubleClick={() => setSavedTreeWidth(WORKSPACE_TREE_DEFAULT_WIDTH)}
         />
       )}
 
