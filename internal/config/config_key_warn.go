@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/BurntSushi/toml"
 )
@@ -28,6 +29,25 @@ var deprecatedConfigKeys = map[string]string{
 	"agent.compact_force_ratio":    "retired multi-threshold compaction key; agent.compact_ratio is the single knob",
 	"agent.cold_resume_prune":      "retired key; stale tool results are no longer elided through a config switch",
 	"agent.context_editing":        "retired key; native tool clearing is no longer an auto path",
+}
+
+// unknownKeyWarned tracks which unrecognized keys this process has already
+// warned about, so a long-lived desktop process re-loading the same config
+// file thousands of times (settings reads, heartbeat ticks, session rebuilds)
+// emits one line per key instead of one line per load. tl 1113: the raw
+// per-load WARN was 209,197 of 403,038 lines (52.5%) in 25 rotated desktop
+// logs — a single leftover key in the user's config.toml, re-warned on every
+// decode.
+//
+// Only the unrecognized-key branch deduplicates: deprecated keys keep their
+// per-load WARN because each carries a migration hint the user should still
+// see, and there are at most a handful of them.
+var unknownKeyWarned sync.Map // key string -> struct{}
+
+// resetUnknownKeyWarnDedupeForTest clears the process-level dedupe so tests
+// can assert first-report and repeat-load behaviour independently.
+func resetUnknownKeyWarnDedupeForTest() {
+	unknownKeyWarned = sync.Map{}
 }
 
 // warnUnknownConfigKeys reports retired and unrecognized keys found in one
@@ -56,6 +76,9 @@ func warnUnknownConfigKeys(meta toml.MetaData, path string) {
 		reportedUnknown[name] = true
 		if hint, ok := deprecatedConfigKeys[name]; ok {
 			slog.Warn("config: deprecated key ignored (no longer read)", "path", path, "key", name, "hint", hint)
+			continue
+		}
+		if _, loaded := unknownKeyWarned.LoadOrStore(name, struct{}{}); loaded {
 			continue
 		}
 		slog.Warn("config: unknown key ignored (typo, leftover, or key added by a newer version?)", "path", path, "key", name)
