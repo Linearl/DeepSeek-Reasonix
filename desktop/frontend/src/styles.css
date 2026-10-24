@@ -39572,6 +39572,46 @@ button.statusbar__mcp:focus-visible {
   cursor: grabbing;
 }
 
+/* 任务 1096：rail 上「已加载」区段。深色段 = 已加载历史占的比例，浅色段 =
+   还没加载的（rail 自身留白）。phase 由 loadedPhase 枚举决定观感：
+   --partial 正常深色段；--loading 虚线态（一次更早页在途，不推进高度）；
+   --exhausted 整条变深 + 顶端收口标记，与「还能加载」可区分。
+   不承载拖拽：pointer-events none。 */
+.app--creation .transcript__scrollbar-loaded,
+:root[data-theme-style] .app--creation .transcript__scrollbar-loaded {
+  position: absolute;
+  top: 0;
+  right: 1px;
+  left: auto;
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--fg-dim) 52%, transparent);
+  pointer-events: none;
+}
+.app--creation .transcript__scrollbar-loaded--loading,
+:root[data-theme-style] .app--creation .transcript__scrollbar-loaded--loading {
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--fg-dim) 52%, transparent) 0 4px,
+    transparent 4px 8px
+  );
+}
+.app--creation .transcript__scrollbar-loaded--exhausted,
+:root[data-theme-style] .app--creation .transcript__scrollbar-loaded--exhausted {
+  background: color-mix(in srgb, var(--fg-dim) 68%, transparent);
+}
+.app--creation .transcript__scrollbar-loaded--exhausted::before,
+:root[data-theme-style] .app--creation .transcript__scrollbar-loaded--exhausted::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
 .app--creation .transcript--empty {
   justify-content: center;
   padding: 24px 32px clamp(180px, 22vh, 260px);
