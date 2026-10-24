@@ -7178,6 +7178,28 @@ button.reasoning-summary:focus-visible {
   content: attr(data-display-label);
   font-size: var(--font-content);
 }
+/* Task 1138: local paths render as inline-code chips (DSH alignment) —
+   monospace on an elevated background with a hairline border; the folder/file
+   icon comes from LocalPathMarkdownLink. Hover lifts the border to the accent
+   instead of the global underline so the chip reads as one unit. */
+.md .md-rich-link--local {
+  font-family: var(--font-code-family);
+  font-size: var(--font-code);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  align-items: center;
+  color: var(--accent);
+}
+.md .md-rich-link--local:hover {
+  color: var(--accent);
+  text-decoration: none;
+  border-color: var(--accent);
+}
+.md .md-rich-link--local svg {
+  color: var(--fg-dim);
+}
 .md blockquote {
   margin: 0 0 12px;
   padding: 2px 14px;

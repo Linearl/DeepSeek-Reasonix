@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Copy, ExternalLink, FolderOpen, Hash, Mail, Save } from "lucide-react";
+import { Copy, ExternalLink, File, Folder, FolderOpen, Hash, Mail, Save } from "lucide-react";
 import { app, openExternal } from "../lib/bridge";
 import { writeClipboardText } from "../lib/clipboard";
 import { t } from "../lib/i18n";
@@ -110,12 +110,16 @@ function LinkMark({ kind }: { kind: LinkIconKind }) {
   return <ExternalLink aria-hidden="true" size={13} strokeWidth={2} />;
 }
 
-function openLink(href: string | undefined) {
+function openLink(href: string | undefined, showToast?: (text: string, level?: "info" | "error") => void) {
   const local = localPathFromHref(href);
   if (local !== null) {
     // Local paths (linkified plain text or explicit file:/// links) open in
     // the OS default app via the native binding, never in the system browser.
-    void app.OpenLocalPath(local).catch(() => {});
+    // Task 1138: a failed open (missing path, denied target) must surface a
+    // toast — a silent catch reads as a dead click.
+    void app.OpenLocalPath(local).catch((error) => {
+      showToast?.(t("localPath.openFailed", { path: local, error: localPathErrorText(error) }), "error");
+    });
     return;
   }
   if (href) openExternal(href);
@@ -234,7 +238,7 @@ function LocalPathMarkdownLink({
         label: t("externalOpener.openDefault"),
         onSelect: () => {
           closeMenu();
-          openLink(href);
+          openLink(href, showToast);
         },
       },
       ...(openerItems.length > 0
@@ -279,20 +283,24 @@ function LocalPathMarkdownLink({
     ];
   }, [closeMenu, href, openWith, openers.openers, path, showToast]);
 
+  // Task 1138: the chip carries a file-type hint — a trailing separator marks
+  // a directory ("templates/", "D:\docs\"), anything else renders as a file.
+  const isDirectoryHint = /[\\/]$/.test(path);
   return (
     <>
       <a
         className="md-rich-link md-rich-link--local"
         href={href}
+        data-path-kind={isDirectoryHint ? "directory" : "file"}
         onClick={(event) => {
           event.preventDefault();
           closeMenu();
-          openLink(href);
+          openLink(href, showToast);
         }}
         onAuxClick={(event) => {
           if (event.button !== 1) return;
           event.preventDefault();
-          openLink(href);
+          openLink(href, showToast);
         }}
         onMouseDown={(event) => {
           if (event.button === 1) event.preventDefault();
@@ -304,7 +312,9 @@ function LocalPathMarkdownLink({
           refreshOpeners();
         }}
       >
-        <ExternalLink aria-hidden="true" size={13} strokeWidth={2} />
+        {isDirectoryHint
+          ? <Folder aria-hidden="true" size={13} strokeWidth={2} />
+          : <File aria-hidden="true" size={13} strokeWidth={2} />}
         <span className="md-rich-link__label">{children}</span>
       </a>
       <ContextMenu

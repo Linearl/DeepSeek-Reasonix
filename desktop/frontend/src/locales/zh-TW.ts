@@ -3949,6 +3949,7 @@ export const zhTW: Record<DictKey, string> = {
   "topicBar.menuCurrent": "當前",
   "topicBar.copyAndExport": "複製和匯出",
   "topicBar.sessionView": "會話檢視",
+  "localPath.openFailed": "無法開啟 {path}：{error}",
   "externalOpener.openIn": "使用 {name} 開啟",
   "externalOpener.openDefault": "使用預設應用程式開啟",
   "externalOpener.reveal": "在檔案管理器中顯示",
