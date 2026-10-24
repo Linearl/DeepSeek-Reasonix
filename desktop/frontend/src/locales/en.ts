@@ -373,6 +373,8 @@ export const en = {
   "topicBar.copyLogPath": "Log path",
   "topicBar.copySessionId": "Session ID",
   "topicBar.menuCurrent": "Current",
+  "topicBar.copyAndExport": "Copy and export",
+  "topicBar.sessionView": "Session view",
   "externalOpener.openIn": "Open in {name}",
   "externalOpener.openDefault": "Open with default application",
   "externalOpener.reveal": "Reveal in file manager",
