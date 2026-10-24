@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"reasonix/internal/agent"
+	"reasonix/internal/control"
 )
 
 // Task 225: contact-bound task-source grants. A dispatch from sourceContact
@@ -69,4 +70,54 @@ func cascadeDelegateFor(selfPath string) (agent.Asker, string, bool) {
 		}
 	}
 	return nil, "", false
+}
+
+// cascadeSourceCapabilityFor (task 1022) reports what the desktop knows about
+// a task source's ability to answer a forwarded ask — the tl 994 routeAsk
+// screen's capability input. A heartbeat/守护线 source watches no panel, so it
+// is never a legal cascade target even though it is a live runtime; the
+// control layer keeps the prompt local fail-closed when this returns nil or
+// an undeclared capability. Reachable only when cascadeDelegateFor already
+// found a live runtime with that contact, so Liveness is true here.
+func cascadeSourceCapabilityFor(source string) *control.CascadeSource {
+	if cascadeApp == nil {
+		return nil
+	}
+	contact := strings.TrimSpace(source)
+	if contact == "" {
+		return nil
+	}
+	for _, t := range cascadeApp.sessionCollabLiveTargets(nil) {
+		if t.contactID != contact || t.ctrl == nil {
+			continue
+		}
+		return &control.CascadeSource{
+			Contact:       contact,
+			Heartbeat:     cascadeApp.isHeartbeatTopicSession(t.topicID),
+			AskResponder:  true,
+			LatencyBudget: 0, // no declared latency yet; routeAsk keeps the configured wait
+			Liveness:      true,
+		}
+	}
+	return nil
+}
+
+// isHeartbeatTopicSession reports whether a tab/detached-runtime's bound topic
+// was stamped by the automation scheduler (task 17 origin stamp). A heartbeat
+// topic's controller is a live runtime but nobody watches its panel, so
+// cascadeSourceCapabilityFor flags it as Heartbeat and the control layer's
+// routeAsk screen keeps the child's prompt local instead of forwarding.
+// Unknown/absent topicID is NOT a heartbeat — it is the "human by default"
+// posture the pre-1022 code had, and the liveness/capability gates still
+// guard it.
+func (a *App) isHeartbeatTopicSession(topicID string) bool {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" || a == nil || a.topicState == nil {
+		return false
+	}
+	raw, err := a.topicState.autoMetaRaw("", topicID)
+	if err != nil || len(raw) == 0 {
+		return false
+	}
+	return topicOriginIsHeartbeat(raw)
 }

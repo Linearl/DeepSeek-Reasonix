@@ -202,6 +202,7 @@ func (a *App) clearSessionBuildOptions(tab *WorkspaceTab, snap tabRuntimeSnapsho
 		OnSessionSetModel:          a.collabSessionSetModel,
 		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
+		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRenameSession:            a.renameCollabSession,

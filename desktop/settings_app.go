@@ -3105,6 +3105,7 @@ func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRunti
 		OnSessionSetModel:        a.collabSessionSetModel,
 		OnSessionTurnStatus:      a.collabSessionTurnStatus,
 		OnCascadeDelegate:        cascadeDelegateFor,
+		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
 		OnDeleteSession:          a.deleteCollabSession,
 		OnRenameSession:          a.renameCollabSession,
 		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,

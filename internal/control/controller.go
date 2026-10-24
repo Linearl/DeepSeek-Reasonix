@@ -245,6 +245,15 @@ type Controller struct {
 	// onCascadeDelegate (task 225): resolves the task-source parent's Ask
 	// channel for approval forwarding. nil keeps every prompt local.
 	onCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
+	// onCascadeSourceCapability (task 1022): reports what the host knows
+	// about a task source's declared ask-responder capability — the tl 994
+	// routeAsk screen (heartbeat source / undeclared capability → local
+	// panel fail-closed). nil declares nothing, which fails closed local.
+	onCascadeSourceCapability func(source string) *CascadeSource
+	// cascadeAskWait (task 1022): the cascade hop's own wait semantic —
+	// deliberately separate from the autopilot high-risk wait. 0 = default
+	// (cascadeAskWaitFor: env override or DefaultCascadeAskWait).
+	cascadeAskWait time.Duration
 	// onFallbackSwitch (task 242) swaps the session's model to the configured
 	// fallback after a quota-class error exhausts the sampling retries. The
 	// controller only decides WHEN (quota + target live + not already on the
@@ -900,6 +909,16 @@ type Options struct {
 	// answers; otherwise its user is asked). nil or ok=false keeps every
 	// prompt local.
 	OnCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
+	// OnCascadeSourceCapability (task 1022) reports a task source's declared
+	// ask-responder capability so routeAsk can screen the hop before it
+	// happens (tl 994: heartbeat sources and undeclared sources never take a
+	// forwarded ask). nil declares nothing → every prompt stays local.
+	OnCascadeSourceCapability func(source string) *CascadeSource
+	// CascadeAskWait (task 1022) overrides the cascade hop's wait. 0 keeps
+	// the cascadeWait default (env REASONIX_CASCADE_ASK_WAIT_SECONDS or
+	// DefaultCascadeAskWait) — the cascade's own semantic, never the
+	// autopilot high-risk wait.
+	CascadeAskWait time.Duration
 	// OnFallbackSwitch (task 242) executes the model swap to the fallback
 	// target when the controller has decided a quota error qualifies. Host-
 	// injected because the swap is a host-layer rebuild; selfPath says WHICH
@@ -1054,6 +1073,8 @@ func New(opts Options) *Controller {
 		onRemember:                        opts.OnRemember,
 		onRememberPlanModeReadOnlyCommand: opts.OnRememberPlanModeReadOnlyCommand,
 		onCascadeDelegate:                 opts.OnCascadeDelegate,
+		onCascadeSourceCapability:         opts.OnCascadeSourceCapability,
+		cascadeAskWait:                    opts.CascadeAskWait,
 		onFallbackSwitch:                  opts.OnFallbackSwitch,
 		writeAccess:                       newControllerWriteAccess(opts),
 		sessionRecoveryMeta:               opts.SessionRecoveryMeta,
@@ -3226,6 +3247,15 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			"detail", "the user's explicit ask grant is active; the reversible ask waits attended, no auto-decide (task 806b)")
 	}
 
+	// Task 1022 (994 方案二): the routing decision is explicit — routeAsk
+	// screens risk → grant → cascade legality → local panel in one place.
+	// Before this task the cascade hop ran unconditionally on any resolved
+	// task source, and a heartbeat/守护线 source (nobody watching) burned the
+	// whole bounded wait before the local fallback surfaced the panel — the
+	// tl 994 defect. routeAsk's screen makes that hop illegal: heartbeat
+	// sources, undeclared ask-responder capability, and dead sources all keep
+	// the prompt local fail-closed.
+	//
 	// Task 225: a session working on a task dispatched by an autopilot parent
 	// forwards its prompts to that parent's Ask channel — the parent's own
 	// semantics decide (its autopilot answers, or its user is asked), which is
@@ -3236,32 +3266,63 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// Round-2 hardening (task 225): the delegate wait is bounded and the
 	// chain is depth-limited. Without the deadline a source that is itself
 	// unattended (or long-running) freezes the child forever — the 264 stall
-	// shape; after DefaultAutopilotAskWait we fall back to the local prompt
-	// instead. Without the hop stamp two sessions granting each other would
-	// stack Ask frames until the process died; maxCascadeHops terminates the
-	// cycle and keeps the prompt local, again the pre-225 behavior.
+	// shape; after the cascade wait we fall back to the local prompt instead.
+	// Without the hop stamp two sessions granting each other would stack Ask
+	// frames until the process died; maxCascadeHops terminates the cycle and
+	// keeps the prompt local, again the pre-225 behavior.
+	//
+	// The wait below is the route's own cascadeWait semantic (task 1022) —
+	// configurable per run, never borrowed from the autopilot high-risk timer.
 	if c.onCascadeDelegate != nil && config.CascadeApprovalLive() {
-		if agent.CascadeHopExhausted(ctx) {
-			log.Printf("[cascade-approval] hop limit reached (%d); keeping prompt local (task 225)", agent.MaxCascadeHops())
-		} else if delegate, source, ok := c.onCascadeDelegate(c.SessionPath()); ok && delegate != nil {
-			log.Printf("[cascade-approval] forwarding %d prompt(s) to task source %s (task 225)", len(questions), source)
-			// Task 732 (issue #40): the bounded wait can run the full
-			// DefaultAutopilotAskWait with no local ask record, which the
-			// doctor read as a hang. Stamp the wait window into the ledger.
-			c.markCascadeWaitBegin(source, len(questions))
-			delegateCtx, cancelDelegate := context.WithTimeout(ctx, DefaultAutopilotAskWait)
-			// Task 1062: strip the heartbeat-turn marker before the hop — the
-			// parent's Ask must decide by the parent's own posture (attended
-			// parent answers; autopilot parent applies its 477 waits), never
-			// inherit the child's scheduled-run backstop.
-			answers, err := delegate.Ask(withoutHeartbeatTurn(agent.WithCascadeHop(delegateCtx)), questions)
-			cancelDelegate()
-			c.markCascadeWaitEnd()
-			if err != nil {
-				log.Printf("[cascade-approval] delegate %s failed (%v); falling back to the local prompt", source, err)
+		if delegate, source, ok := c.onCascadeDelegate(c.SessionPath()); ok && delegate != nil {
+			route := routeAsk(askRouteInputs{
+				risk:          askRisk,
+				explicitGrant: explicitAskGranted,
+				autopilot:     c.autopilot,
+				// Task 1062: the hop strips the heartbeat-turn marker — the
+				// parent's Ask must decide by the parent's own posture
+				// (attended parent answers; autopilot parent applies its 477
+				// waits), never inherit the child's scheduled-run backstop.
+				// routeAsk screens the hop itself (hop bound, source
+				// capability, heartbeat source, liveness — task 1022).
+				heartbeatTurn: heartbeatTurnRequested(ctx),
+				cascadeLive:   true,
+				hopExhausted:  agent.CascadeHopExhausted(ctx),
+				source:        c.cascadeSourceFor(ctx),
+				cascadeWait:   c.cascadeAskWaitFromContext(),
+			})
+			if route.Channel == AskChannelCascade {
+				// 验收 3 (task 1022): the user-visible escape hatch. The
+				// forwarded wait is bounded by route.Deadline; this notice
+				// names the bound and the cancel paths (Cancel / steer /
+				// Esc — cancelling the turn aborts the bounded wait, and the
+				// local panel is re-registered by the fall-through below).
+				c.sink.Emit(event.Event{
+					Kind:   event.Notice,
+					Level:  event.LevelInfo,
+					Code:   "cascade_ask_forwarded",
+					Text:   route.CancelNotice,
+					Detail: "问题已转发给任务源会话代答；如需亲自处理可在等待期内取消（取消回合 / steer / Esc），超时自动回退到本会话面板。取消入口在 " + route.Deadline.Round(time.Second).String() + " 兜底内始终可见（任务 1022 验收③）",
+				})
+				log.Printf("[cascade-approval] forwarding %d prompt(s) to task source %s (task 225; wait=%s task 1022)", len(questions), source, route.Deadline)
+				// Task 732 (issue #40): the bounded wait can run the full
+				// window with no local ask record, which the doctor read as a
+				// hang. Stamp the wait window into the ledger.
+				c.markCascadeWaitBegin(source, len(questions))
+				delegateCtx, cancelDelegate := context.WithTimeout(ctx, route.Deadline)
+				answers, err := delegate.Ask(withoutHeartbeatTurn(agent.WithCascadeHop(delegateCtx)), questions)
+				cancelDelegate()
+				c.markCascadeWaitEnd()
+				if err != nil {
+					log.Printf("[cascade-approval] delegate %s failed (%v); falling back to the local prompt", source, err)
+				} else {
+					log.Printf("[cascade-approval] delegate %s answered %d prompt(s)", source, len(answers))
+					return answers, nil
+				}
 			} else {
-				log.Printf("[cascade-approval] delegate %s answered %d prompt(s)", source, len(answers))
-				return answers, nil
+				// 判据锚 (task 1022): why this ask did NOT cascade — the same
+				// grep-able shape as the explicit_grant anchor above.
+				log.Printf("[cascade-approval] prompt kept local: %s (task 1022 route=%s)", route.Reason, route.Channel)
 			}
 		}
 	}

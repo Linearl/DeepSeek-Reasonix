@@ -57,6 +57,13 @@ func (s *cascadeStubAsker) Ask(ctx context.Context, questions []event.AskQuestio
 	return s.answers, nil
 }
 
+// cascadeStubSource declares the task source's capability for routeAsk
+// (task 1022): a live, human, ask-responder source — the shape the old
+// fixtures used to get implicitly from the ambient switch alone.
+func cascadeStubSource() *CascadeSource {
+	return &CascadeSource{Contact: "src-contact", AskResponder: true, Liveness: true}
+}
+
 func cascadeAskFixture(t *testing.T, stub *cascadeStubAsker) *Controller {
 	t.Helper()
 	c := New(Options{Sink: &askProbeSink{}, SessionDir: t.TempDir(), ApprovalTimeout: 120 * time.Millisecond})
@@ -64,6 +71,7 @@ func cascadeAskFixture(t *testing.T, stub *cascadeStubAsker) *Controller {
 		c.onCascadeDelegate = func(string) (agent.Asker, string, bool) {
 			return stub, "src-contact", true
 		}
+		c.onCascadeSourceCapability = func(string) *CascadeSource { return cascadeStubSource() }
 	}
 	return c
 }
@@ -248,6 +256,7 @@ func TestCascadeWaitLedgerMarksWaitingUserDuringDelegateWait(t *testing.T) {
 	c.onCascadeDelegate = func(string) (agent.Asker, string, bool) {
 		return stub, "src-contact", true
 	}
+	c.onCascadeSourceCapability = func(string) *CascadeSource { return cascadeStubSource() }
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	askDone := make(chan struct{})
@@ -325,6 +334,7 @@ func TestCascadeWaitLedgerRestoresWhenDelegateAnswers(t *testing.T) {
 	c.onCascadeDelegate = func(string) (agent.Asker, string, bool) {
 		return stub, "src-contact", true
 	}
+	c.onCascadeSourceCapability = func(string) *CascadeSource { return cascadeStubSource() }
 
 	got, err := c.Ask(context.Background(), askProbeQuestions())
 	if err != nil {

@@ -21,17 +21,52 @@ type askProbeSink struct {
 	mu      sync.Mutex
 	asks    []event.Ask
 	notices []event.Event
+
+	// autoAnswers (task 1022): the sink-side responder a delegated Ask needs
+	// once routeAsk screens the cascade. Fixtures that used to rely on the
+	// ambient cascade switch now answer the AskRequest this sink sees,
+	// mirroring what the delegate session's own panel would do. Empty keeps
+	// the old passive behaviour.
+	autoAnswers []event.AskAnswer
+	// ctrl points the sink at the controller whose AskRequest it answers;
+	// set right after New(Options{Sink: s, ...}).
+	ctrl *Controller
+}
+
+// snapshotNotices returns a copy of every Notice event the sink has seen, so
+// tests can scan for the task-1022 routing/cancel notices without racing the
+// emitter.
+func (s *askProbeSink) snapshotNotices() []event.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]event.Event(nil), s.notices...)
 }
 
 func (s *askProbeSink) Emit(e event.Event) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	switch {
-	case e.Kind == event.AskRequest:
+	if e.Kind != event.AskRequest &&
+		!(e.Kind == event.Notice && (e.Code == event.NoticeCodePromptQueued || e.Code == "cascade_ask_forwarded")) {
+		s.mu.Unlock()
+		return
+	}
+	if e.Kind == event.AskRequest {
 		s.asks = append(s.asks, e.Ask)
-	case e.Kind == event.Notice && e.Code == event.NoticeCodePromptQueued:
+	} else {
 		s.notices = append(s.notices, e)
 	}
+	auto := s.autoAnswers
+	ctrl := s.ctrl
+	s.mu.Unlock()
+	if len(auto) == 0 || e.Kind != event.AskRequest || ctrl == nil || e.ItemID == "" {
+		return
+	}
+	// The controller registers the ask BEFORE emitting, so the reply channel
+	// is ready; answer on a goroutine so the emitter is never re-entered.
+	answers := make([]event.AskAnswer, 0, len(e.Ask.Questions))
+	for _, q := range e.Ask.Questions {
+		answers = append(answers, event.AskAnswer{QuestionID: q.ID, Selected: []string{auto[0].Selected[0]}})
+	}
+	go ctrl.AnswerQuestion(e.ItemID, answers)
 }
 
 func (s *askProbeSink) counts() (asks, notices int) {

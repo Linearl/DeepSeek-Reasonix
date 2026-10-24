@@ -273,6 +273,11 @@ type Options struct {
 	// channel for THIS session's approval prompts — the host owns the
 	// contact-bound grant registry (24h). Nil keeps every prompt local.
 	OnCascadeDelegate func(selfPath string) (delegate agent.Asker, source string, ok bool)
+	// OnCascadeSourceCapability (task 1022) reports a task source's declared
+	// ask-responder capability so routeAsk can screen the hop before it
+	// happens (tl 994: heartbeat sources and undeclared sources never take a
+	// forwarded ask). Nil declares nothing → every prompt stays local.
+	OnCascadeSourceCapability func(source string) *control.CascadeSource
 	// OnFallbackSwitch (task 242) executes the model swap to the configured
 	// fallback after a quota-class error exhausts the sampling retries (the
 	// host swaps exactly the session identified by selfPath). Nil keeps quota
@@ -2831,13 +2836,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		},
 		// Task 225: the host resolves the task-source parent's Ask channel for
 		// a dispatched session's approval prompts (contact-bound grant, 24h).
-		OnCascadeDelegate:        opts.OnCascadeDelegate,
-		OnFallbackSwitch:         opts.OnFallbackSwitch,
-		SessionRecoveryMeta:      opts.SessionRecoveryMeta,
-		OnSessionRecovered:       opts.OnSessionRecovered,
-		OnSessionTransition:      opts.OnSessionTransition,
-		BeforeInboxDispatch:      opts.BeforeInboxDispatch,
-		OnInboxDispatchExhausted: opts.OnInboxDispatchExhausted,
+		OnCascadeDelegate:         opts.OnCascadeDelegate,
+		OnCascadeSourceCapability: opts.OnCascadeSourceCapability,
+		OnFallbackSwitch:          opts.OnFallbackSwitch,
+		SessionRecoveryMeta:       opts.SessionRecoveryMeta,
+		OnSessionRecovered:        opts.OnSessionRecovered,
+		OnSessionTransition:       opts.OnSessionTransition,
+		BeforeInboxDispatch:       opts.BeforeInboxDispatch,
+		OnInboxDispatchExhausted:  opts.OnInboxDispatchExhausted,
 		// The merged catalog lets frontends enumerate sidecar providers.
 		ProviderResolver:  extensionResolver,
 		RuntimeGeneration: generation,

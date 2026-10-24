@@ -938,7 +938,12 @@ type sessionCollabTarget struct {
 	// invisible in the transcript until the turn finishes, so delivery prefers
 	// a mid-turn steer.
 	activeTab bool
-	ctrl      control.SessionAPI
+	// topicID (task 1022) is the conversation this target's controller is
+	// bound to. The cascade routeAsk screen reads it to tell a
+	// heartbeat/守护线 topic (never a legal ask-responder target) from a
+	// human one; empty means "unknown" and fails closed in the control layer.
+	topicID string
+	ctrl    control.SessionAPI
 }
 
 // collabDelivery is the injectable seam for one tab's delivery pass, so the
@@ -1950,6 +1955,7 @@ func (a *App) sessionCollabLiveTargets(pendingContacts []string) []sessionCollab
 			tabID:     tab.ID,
 			contactID: contact,
 			detached:  true,
+			topicID:   strings.TrimSpace(tab.TopicID),
 			ctrl:      tab.Ctrl,
 		})
 	}
@@ -2007,6 +2013,7 @@ func (a *App) sessionCollabTargets() []sessionCollabTarget {
 			tabID:     tab.ID,
 			contactID: contact,
 			activeTab: tab.ID == activeTabID,
+			topicID:   strings.TrimSpace(tab.TopicID),
 		})
 	}
 	return out
