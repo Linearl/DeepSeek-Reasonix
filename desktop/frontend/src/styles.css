@@ -31134,6 +31134,45 @@ button.statusbar__mcp:focus-visible {
   overflow-y: auto;
   padding: 8px var(--context-panel-gutter) 12px;
   scrollbar-gutter: stable;
+  /* tl1129: 指标卡按面板实际宽度自适应（246px 窄态 rail 单列展开，宽态保持
+     多列）——面板宽度不随视口，媒体查询不可用，用容器查询。inline-size
+     containment 只锁宽度轴，纵向滚动布局不受影响。 */
+  container-type: inline-size;
+  container-name: context-panel-body;
+}
+
+/* tl1129: 246px 窄态 rail（内容区 ~222px）下指标网格单列展开——会话指标
+   「费用不可估算」「196分5秒」与用量分析「总计 107,164,532」不再被 2/3 列
+   挤裁。断点 319px：低于它单列（每列拿到全部行宽），达到即恢复多列（宽态
+   720px 与中间拖宽态观感不变）。 */
+@container context-panel-body (max-width: 319px) {
+  .context-panel__summary-rows,
+  /* creation 覆写段（.app--creation 前缀）特异性更高，窄容器单列须同规则
+     对齐，否则 creation 布局下仍被钉在 2 列。 */
+  .app--creation .context-panel__summary-rows {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 单列后奇偶项的左右 padding / 分隔竖线不再有意义，恢复对称行。 */
+  .context-panel__mini-stat:nth-child(odd),
+  .app--creation .context-panel__mini-stat:nth-child(odd) {
+    padding-right: 0;
+  }
+
+  .context-panel__mini-stat:nth-child(even),
+  .app--creation .context-panel__mini-stat:nth-child(even) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .context-panel__source-summary,
+  .context-panel__source-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .context-panel__source-legend {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .context-panel__overview {
@@ -31709,18 +31748,19 @@ button.statusbar__mcp:focus-visible {
   color: var(--ok);
 }
 
+/* tl1129: 数值列不再静默截断——246px 窄态 rail 下「费用不可估算」「196分5秒」
+   曾被 nowrap+ellipsis 硬裁。允许数值换行（overflow-wrap anywhere 兜底超长
+   token 数），宽度足够时天然单行，宽态观感不变。 */
 .context-panel__mini-stat strong {
   order: 2;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
   color: var(--fg);
   font-size: 16px;
   font-weight: 680;
   line-height: 1.18;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
@@ -32108,12 +32148,19 @@ button.statusbar__mcp:focus-visible {
 
 .context-panel__source-head span,
 .context-panel__source-head em,
-.context-panel__source-metric span,
-.context-panel__source-metric strong {
+.context-panel__source-metric span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* tl1129: 数值列（总计/输入/输出等 token 数）不再静默截断——246px 窄态 rail
+   的 3 列布局每列 ~65px，「总计 107,16…」曾被硬裁。允许换行兜底（anywhere），
+   配合容器查询单列后宽态/窄态均完整可读。 */
+.context-panel__source-metric strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .context-panel__source-head span {
@@ -41424,18 +41471,17 @@ button.statusbar__mcp:focus-visible {
   font-weight: 430;
 }
 
+/* tl1129: creation 覆写段与基础段同步——数值列允许换行，不静默截断。 */
 .app--creation .context-panel__mini-stat strong {
   order: 2;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--fg);
   font-size: calc(16px * var(--font-scale));
   font-weight: 680;
   line-height: 1.18;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
