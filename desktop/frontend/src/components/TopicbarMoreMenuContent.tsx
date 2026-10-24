@@ -1,9 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import {
   Check,
+  ChevronRight,
   ClipboardList,
   Copy,
-  Download,
+  FileDown,
+  FileImage,
   FileJson,
   FileText,
   Folder,
@@ -24,13 +26,11 @@ import { useToast } from "../lib/toast";
 import { OpenerIcon, openWorkspaceWithOpener, type ExternalOpenerBridge } from "./ExternalOpener";
 import type { ExternalOpenerView, TabMeta } from "../lib/types";
 
-const loadExportMenu = () => import("./TopicbarExportMenu");
-const TopicbarExportMenu = lazy(async () => ({ default: (await loadExportMenu()).TopicbarExportMenu }));
-
-// tl 1100：topicbar 右侧从 5 个元素精简到只剩「…」——原分段控件（转录|轨迹）、
-// 外部打开（黄色文件夹 ▾）的能力全部收进这份菜单，新增「复制 ▸」。一级固定
-// 9 项：复制会话 / 导出会话 ▸ / 会话摘要 / 转录视图 / 轨迹视图 / 改动 / 终端 /
-// 打开方式 ▸ / 复制 ▸。
+// tl 1119+1120：在 tl 1100「topicbar 右侧只剩 …」的基础上，把会话更多菜单一级
+// 收敛为 7 项：会话摘要 / 复制和导出 ▸ / 会话视图 ▸ / 改动 / 终端 / 打开方式 ▸ 。
+// 二级可达零丢失：复制会话·导出会话（MD/JSON/PDF/图片）·路径·日志路径·会话ID
+// 全并入「复制和导出 ▸」；转录·轨迹并入「会话视图 ▸」；每个含二级子菜单的一级
+// 项右侧固定渲染一个 ChevronRight（▶）展开引导。
 //
 // 已知坑（方案文档踩坑清单，勿"优化"回去）：
 //   · 二级菜单必须向左展开（right: calc(100% + 4px)）——菜单贴屏幕右侧，
@@ -66,10 +66,10 @@ export interface TopicbarMoreMenuContentProps {
   };
 }
 
-type SubmenuId = "export" | "openers" | "copyInfo";
+type SubmenuId = "copyExport" | "views" | "openers";
 
 function enabledItems(menu: HTMLElement): HTMLButtonElement[] {
-  return Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
+  return Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"],[role="menuitemradio"]'))
     .filter((item) => !item.disabled && item.closest('[role="menu"]') === menu);
 }
 
@@ -137,16 +137,16 @@ export function TopicbarMoreMenuContent({
 }: TopicbarMoreMenuContentProps) {
   const { showToast } = useToast();
   const menuRef = useRef<HTMLDivElement>(null);
-  const exportTriggerRef = useRef<HTMLButtonElement>(null);
+  const copyExportTriggerRef = useRef<HTMLButtonElement>(null);
+  const viewsTriggerRef = useRef<HTMLButtonElement>(null);
   const openersTriggerRef = useRef<HTMLButtonElement>(null);
-  const copyInfoTriggerRef = useRef<HTMLButtonElement>(null);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const copyExportMenuRef = useRef<HTMLDivElement>(null);
+  const viewsMenuRef = useRef<HTMLDivElement>(null);
   const openersMenuRef = useRef<HTMLDivElement>(null);
-  const copyInfoMenuRef = useRef<HTMLDivElement>(null);
   const [submenu, setSubmenu] = useState<SubmenuId | null>(null);
 
   const focusSubmenu = (id: SubmenuId) => {
-    const ref = id === "export" ? exportMenuRef : id === "openers" ? openersMenuRef : copyInfoMenuRef;
+    const ref = id === "copyExport" ? copyExportMenuRef : id === "views" ? viewsMenuRef : openersMenuRef;
     requestAnimationFrame(() => {
       const items = ref.current ? enabledItems(ref.current) : [];
       items[0]?.focus();
@@ -165,7 +165,7 @@ export function TopicbarMoreMenuContent({
 
   const closeSubmenu = useCallback((id: SubmenuId) => {
     setSubmenu(null);
-    const trigger = id === "export" ? exportTriggerRef : id === "openers" ? openersTriggerRef : copyInfoTriggerRef;
+    const trigger = id === "copyExport" ? copyExportTriggerRef : id === "views" ? viewsTriggerRef : openersTriggerRef;
     trigger.current?.focus();
   }, []);
 
@@ -211,6 +211,8 @@ export function TopicbarMoreMenuContent({
     moveMenuFocus(event);
   };
 
+  // 会话视图 ▸ 的候选项（转录|轨迹）。surfaceView 缺失时视图子菜单整体不渲染
+  // （与 tl 1100 行为一致，避免在无该能力的场景暴露一个空的二级入口）。
   const surfaceViews: { id: "transcript" | "trajectory"; label: string; icon: LucideIcon }[] = surfaceView ? [
     { id: "transcript", label: t("trajectory.view.transcript"), icon: MessageSquareText },
     { id: "trajectory", label: t("trajectory.view.trajectory"), icon: GitBranch },
@@ -218,60 +220,152 @@ export function TopicbarMoreMenuContent({
 
   return (
     <div ref={menuRef} className="topicbar__more-menu" role="menu" aria-label={t("topicBar.more")} onKeyDown={onMainMenuKeyDown}>
-      <button tabIndex={-1} className={`topicbar__menu-item${copied ? " topicbar__menu-item--active" : ""}`} type="button" role="menuitem" onClick={() => closeAndRun(() => { void copySession(); })}>
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-        <span>{copied ? t("msg.copied") : t("topicBar.copyAll")}</span>
+      <button tabIndex={-1} className={`topicbar__menu-item${tasksOpen ? " topicbar__menu-item--active" : ""}`} type="button" role="menuitem" aria-pressed={tasksOpen} onClick={() => closeAndRun(openSessionSummary)}>
+        <ClipboardList size={14} />
+        <span>{t("summary.session")}</span>
       </button>
-      <div className={`topicbar__more-submenu-host${submenu === "export" ? " topicbar__more-submenu-host--open" : ""}`}>
+      {/* tl 1120：复制和导出 ▸——原一级「复制会话」「导出会话 ▸」「复制 ▸」三项合并为一项，
+          二级覆盖：复制会话 / 导出 MD·JSON·PDF·图片 / 会话路径 / 日志路径 / 会话ID。 */}
+      <div className={`topicbar__more-submenu-host${submenu === "copyExport" ? " topicbar__more-submenu-host--open" : ""}`}>
         <button
-          ref={exportTriggerRef}
+          ref={copyExportTriggerRef}
           tabIndex={-1}
           className="topicbar__menu-item"
           type="button"
           role="menuitem"
           aria-haspopup="menu"
-          aria-expanded={submenu === "export"}
-          disabled={!sessionHasContent}
+          aria-expanded={submenu === "copyExport"}
           onKeyDown={(event) => {
             if (event.key !== "ArrowRight") return;
             event.preventDefault();
             event.stopPropagation();
-            openSubmenu("export");
+            openSubmenu("copyExport");
           }}
-          onClick={() => (submenu === "export" ? closeSubmenu("export") : openSubmenu("export"))}
+          onClick={() => (submenu === "copyExport" ? closeSubmenu("copyExport") : openSubmenu("copyExport"))}
         >
-          <Download size={14} />
-          <span>{t("topicBar.export")}</span>
+          <Copy size={14} />
+          <span>{t("topicBar.copyAndExport")}</span>
+          {/* tl 1119：含二级子菜单的一级项固定渲染 ▶ 展开引导。 */}
+          <ChevronRight className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />
         </button>
-        {submenu === "export" && (
-          <Suspense fallback={null}>
-            <TopicbarExportMenu initialFocus="first" exportSession={exportSession} onClose={(restoreFocus) => { setSubmenu(null); if (restoreFocus) exportTriggerRef.current?.focus(); }} />
-          </Suspense>
+        {submenu === "copyExport" && (
+          <SubmenuShell label={t("topicBar.copyAndExport")} submenuRef={copyExportMenuRef} onCloseSubmenu={() => closeSubmenu("copyExport")}>
+            <button
+              tabIndex={-1}
+              className="topicbar__more-submenu-item"
+              type="button"
+              role="menuitem"
+              disabled={!sessionHasContent}
+              onClick={() => closeAndRun(() => { void copySession(); })}
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              <span>{copied ? t("msg.copied") : t("topicBar.copyAll")}</span>
+            </button>
+            {([
+              ["markdown", FileText, t("topicBar.exportMarkdown")],
+              ["json", FileJson, t("topicBar.exportJson")],
+              ["pdf", FileDown, t("topicBar.exportPdf")],
+              ["image", FileImage, t("topicBar.exportImage")],
+            ] as const).map(([format, Icon, label]) => (
+              <button
+                key={format}
+                tabIndex={-1}
+                className="topicbar__more-submenu-item"
+                type="button"
+                role="menuitem"
+                disabled={!sessionHasContent}
+                onClick={() => closeAndRun(() => exportSession(format))}
+              >
+                <Icon size={13} />
+                <span>{label}</span>
+              </button>
+            ))}
+            <button
+              tabIndex={-1}
+              className="topicbar__more-submenu-item"
+              type="button"
+              role="menuitem"
+              disabled={!activeTab?.sessionPath}
+              onClick={() => closeAndRun(() => { void copyInfoValue(activeTab?.sessionPath ?? ""); })}
+            >
+              <Folder size={13} />
+              <span>{t("topicBar.copySessionPath")}</span>
+            </button>
+            <button
+              tabIndex={-1}
+              className="topicbar__more-submenu-item"
+              type="button"
+              role="menuitem"
+              disabled={!logDirectory}
+              onClick={() => closeAndRun(() => { void copyInfoValue(logDirectory ?? ""); })}
+            >
+              <FileText size={13} />
+              <span>{t("topicBar.copyLogPath")}</span>
+            </button>
+            <button
+              tabIndex={-1}
+              className="topicbar__more-submenu-item"
+              type="button"
+              role="menuitem"
+              disabled={!activeTab}
+              onClick={() => closeAndRun(() => { void copyInfoValue(activeTab?.topicId || activeTab?.id || ""); })}
+            >
+              <FileJson size={13} />
+              <span>{t("topicBar.copySessionId")}</span>
+            </button>
+          </SubmenuShell>
         )}
       </div>
-      <button tabIndex={-1} className={`topicbar__menu-item${tasksOpen ? " topicbar__menu-item--active" : ""}`} type="button" role="menuitem" aria-pressed={tasksOpen} onClick={() => closeAndRun(openSessionSummary)}>
-        <ClipboardList size={14} />
-        <span>{t("summary.session")}</span>
-      </button>
-      {surfaceViews.map((view) => {
-        const active = surfaceView?.value === view.id;
-        const Icon = view.icon;
-        return (
+      {/* tl 1120：会话视图 ▸——原一级「转录视图」「轨迹视图」两项并入此子菜单，
+          带「当前」标记与单选语义（radio）。 */}
+      {surfaceViews.length > 0 && (
+        <div className={`topicbar__more-submenu-host${submenu === "views" ? " topicbar__more-submenu-host--open" : ""}`}>
           <button
-            key={view.id}
+            ref={viewsTriggerRef}
             tabIndex={-1}
-            className={`topicbar__menu-item${active ? " topicbar__menu-item--active" : ""}`}
+            className="topicbar__menu-item"
             type="button"
-            role="menuitemradio"
-            aria-checked={active}
-            onClick={() => closeAndRun(() => surfaceView?.setView(view.id))}
+            role="menuitem"
+            aria-haspopup="menu"
+            aria-expanded={submenu === "views"}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowRight") return;
+              event.preventDefault();
+              event.stopPropagation();
+              openSubmenu("views");
+            }}
+            onClick={() => (submenu === "views" ? closeSubmenu("views") : openSubmenu("views"))}
           >
-            <Icon size={14} />
-            <span>{view.label}</span>
-            {active && <span className="topicbar__menu-item-badge">{t("topicBar.menuCurrent")}</span>}
+            <MessageSquareText size={14} />
+            <span>{t("topicBar.sessionView")}</span>
+            {/* tl 1119：含二级子菜单的一级项固定渲染 ▶ 展开引导。 */}
+            <ChevronRight className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />
           </button>
-        );
-      })}
+          {submenu === "views" && (
+            <SubmenuShell label={t("topicBar.sessionView")} submenuRef={viewsMenuRef} onCloseSubmenu={() => closeSubmenu("views")}>
+              {surfaceViews.map((view) => {
+                const active = surfaceView?.value === view.id;
+                const Icon = view.icon;
+                return (
+                  <button
+                    key={view.id}
+                    tabIndex={-1}
+                    className={`topicbar__more-submenu-item${active ? " topicbar__more-submenu-item--checked" : ""}`}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={active}
+                    onClick={() => closeAndRun(() => surfaceView?.setView(view.id))}
+                  >
+                    <Icon size={13} />
+                    <span>{view.label}</span>
+                    {active && <Check className="topicbar__more-submenu-check" size={13} aria-hidden="true" />}
+                  </button>
+                );
+              })}
+            </SubmenuShell>
+          )}
+        </div>
+      )}
       <button tabIndex={-1} className="topicbar__menu-item" type="button" role="menuitem" onClick={() => closeAndRun(openChangedDock)}>
         <GitCompare size={14} />
         <span>{t("workspace.changedTab")}</span>
@@ -309,6 +403,8 @@ export function TopicbarMoreMenuContent({
         >
           <FolderOpen size={14} />
           <span>{t("topicBar.openIn")}</span>
+          {/* tl 1119：含二级子菜单的一级项固定渲染 ▶ 展开引导。 */}
+          <ChevronRight className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />
         </button>
         {submenu === "openers" && openers && (
           <SubmenuShell label={t("topicBar.openIn")} submenuRef={openersMenuRef} onCloseSubmenu={() => closeSubmenu("openers")}>
@@ -327,64 +423,6 @@ export function TopicbarMoreMenuContent({
                 {opener.id === openers.preferred && <Check className="topicbar__more-submenu-check" size={13} aria-hidden="true" />}
               </button>
             ))}
-          </SubmenuShell>
-        )}
-      </div>
-      <div className={`topicbar__more-submenu-host${submenu === "copyInfo" ? " topicbar__more-submenu-host--open" : ""}`}>
-        <button
-          ref={copyInfoTriggerRef}
-          tabIndex={-1}
-          className="topicbar__menu-item"
-          type="button"
-          role="menuitem"
-          aria-haspopup="menu"
-          aria-expanded={submenu === "copyInfo"}
-          onKeyDown={(event) => {
-            if (event.key !== "ArrowRight") return;
-            event.preventDefault();
-            event.stopPropagation();
-            openSubmenu("copyInfo");
-          }}
-          onClick={() => (submenu === "copyInfo" ? closeSubmenu("copyInfo") : openSubmenu("copyInfo"))}
-        >
-          <Copy size={14} />
-          <span>{t("topicBar.copyInfo")}</span>
-        </button>
-        {submenu === "copyInfo" && (
-          <SubmenuShell label={t("topicBar.copyInfo")} submenuRef={copyInfoMenuRef} onCloseSubmenu={() => closeSubmenu("copyInfo")}>
-            <button
-              tabIndex={-1}
-              className="topicbar__more-submenu-item"
-              type="button"
-              role="menuitem"
-              disabled={!activeTab?.sessionPath}
-              onClick={() => closeAndRun(() => { void copyInfoValue(activeTab?.sessionPath ?? ""); })}
-            >
-              <Folder size={13} />
-              <span>{t("topicBar.copySessionPath")}</span>
-            </button>
-            <button
-              tabIndex={-1}
-              className="topicbar__more-submenu-item"
-              type="button"
-              role="menuitem"
-              disabled={!logDirectory}
-              onClick={() => closeAndRun(() => { void copyInfoValue(logDirectory ?? ""); })}
-            >
-              <FileText size={13} />
-              <span>{t("topicBar.copyLogPath")}</span>
-            </button>
-            <button
-              tabIndex={-1}
-              className="topicbar__more-submenu-item"
-              type="button"
-              role="menuitem"
-              disabled={!activeTab}
-              onClick={() => closeAndRun(() => { void copyInfoValue(activeTab?.topicId || activeTab?.id || ""); })}
-            >
-              <FileJson size={13} />
-              <span>{t("topicBar.copySessionId")}</span>
-            </button>
           </SubmenuShell>
         )}
       </div>

@@ -371,6 +371,8 @@ export const zh: Record<DictKey, string> = {
   "topicBar.copyLogPath": "日志路径",
   "topicBar.copySessionId": "会话 ID",
   "topicBar.menuCurrent": "当前",
+  "topicBar.copyAndExport": "复制和导出",
+  "topicBar.sessionView": "会话视图",
   "externalOpener.openIn": "使用 {name} 打开",
   "externalOpener.openDefault": "使用默认应用打开",
   "externalOpener.reveal": "在文件管理器中显示",

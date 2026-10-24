@@ -136,6 +136,15 @@
   color: var(--accent);
 }
 
+/* tl 1119：含二级子菜单的一级项右侧固定 ▶ 展开引导——不参与 gap 挤占、靠右贴齐
+   （原「文字+图标」flex 自然排布已占满左侧，单独 margin-left:auto 把指示器推到
+   右边缘，避免与标签文本被 8px gap 分开后看起来像独立按钮的一部分）。 */
+.topicbar__more-submenu-indicator {
+  margin-left: auto;
+  flex: none;
+  color: var(--fg-faint);
+}
+
 /* 二级项里的原生应用图标（打开方式 ▸）：18px 方块，跟随菜单字号缩放。 */
 .topicbar__more-submenu .external-opener__app-icon {
   width: 18px;
