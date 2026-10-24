@@ -2742,6 +2742,12 @@ export const en = {
 "settings.stalledIntentNudgeHint": "Enables the stalled-intent detector ([agent] stalled_intent_nudge): when the model announces the next step but stops without issuing any tool call, one follow-up nudge round is appended. Off by default; with it off behavior is byte-identical to before. Takes effect after restarting Reasonix (reads the boot snapshot).",
 "settings.stalledIntentNudge.on": "On",
 "settings.stalledIntentNudge.off": "Off",
+// 任务 1099：实验室 pane 功能族分组卡标题（首期试点 smartAutomation 三族）。
+"settings.lab.family.dream": "Dream",
+"settings.lab.family.dreamHint": "Dream curation and its scheduled task: turn the curation tools on, then create the daily task in one click.",
+"settings.lab.family.decisionPatterns": "Decision patterns",
+"settings.lab.family.decisionPatternsHint": "Automatic extraction, solidification and threshold settings for decision patterns.",
+"settings.lab.family.backgroundContinuation": "Background & continuation",
 "settings.dreamCreateTask": "Create scheduled task",
 "settings.dreamCreateTaskHint": "Creates a default daily dream task in the automation panel. Adjust frequency, scope and prompt there afterwards.",
 "settings.dreamCreateTaskAction": "Create dream scheduled task",

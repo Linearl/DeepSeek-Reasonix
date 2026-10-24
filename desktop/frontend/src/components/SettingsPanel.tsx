@@ -88,7 +88,7 @@ import {
 } from "../lib/fontFamily";
 import { SessionExperienceSettings } from "./SessionExperienceSettings";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { SettingsField, SettingsSection } from "./SettingsForm";
+import { LabSectionCard, SettingsField, SettingsSection } from "./SettingsForm";
 import { SettingsOpenCodeGoUsageCard } from "./SettingsOpenCodeGoUsageCard";
 // 任务 562: lab three-tier badges — the tier source is lib/experimentTiers
 // (display mirror of the Go labFeatureTiers register in internal/config/render.go,
@@ -3644,178 +3644,195 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           {/* 任务 961：智能自动化（合并卡，742/782 条目级合并先例）——梦境整理 +
               决策模式提取 + 心跳任务后台化三散条并卡。卡内三行各读各的键、
               各写各的 setter；行级徽章经 labLabel 保留，rail 卡头聚合徽章取
-              成员最高档（可选）。已存偏好零迁移：三键原样保留。 */}
+              成员最高档（可选）。已存偏好零迁移：三键原样保留。
+              任务 1099（首期试点）：卡内子项按功能族聚合成 LabSectionCard
+              容器——梦境族 / 决策模式族 / 后台与续跑族三张分组卡，卡片边框
+              即族边界（替代细分割线的弱分组）。纯视觉分组：各成员行仍读
+              自己的键、写自己的 setter，徽章语义不变（621 成员徽章留行、
+              774 rail 聚合徽章不动）。 */}
           {selected === "smartAutomation" && (
             <>
               <SettingsField label={labLabel("smartAutomation", t("settings.smartAutomation"))} hint={t("settings.smartAutomationHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              <SettingsField label={labLabel("dream", t("settings.dream"))} hint={t("settings.dreamHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalDream) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalDream(on))}
-                    >
-                      {t(on ? "settings.dream.on" : "settings.dream.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.dreamCreateTask")} hint={t("settings.dreamCreateTaskHint")} icon={<Sparkles size={18} />}>
-                <button
-                  type="button"
-                  className="btn btn--secondary btn--small"
-                  disabled={busy || !Boolean(s.experimentalDream)}
-                  onClick={() => void apply(async () => {
-                    const created = await app.CreateDreamHeartbeatTask();
-                    if (created) setDreamTaskCreated(true);
-                  })}
-                >
-                  {t("settings.dreamCreateTaskAction")}
-                </button>
-              </SettingsField>
-              {dreamTaskCreated ? (
-                <div className="banner settings-restart-banner" role="status">
-                  <span>{t("settings.dreamCreateTaskDone")}</span>
-                </div>
-              ) : null}
-              <SettingsField label={labLabel("decisionPatterns", t("settings.decisionPatterns"))} hint={t("settings.decisionPatternsHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalDecisionPatterns) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalDecisionPatterns(on))}
-                    >
-                      {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.decisionPatternsCreateTask")} hint={t("settings.decisionPatternsCreateTaskHint")} icon={<Sparkles size={18} />}>
-                <button
-                  type="button"
-                  className="btn btn--secondary btn--small"
-                  disabled={busy || !Boolean(s.experimentalDecisionPatterns)}
-                  onClick={() => void apply(async () => {
-                    const created = await app.CreateDecisionPatternHeartbeatTask();
-                    if (created) setDecisionTaskCreated(true);
-                  })}
-                >
-                  {t("settings.decisionPatternsCreateTaskAction")}
-                </button>
-              </SettingsField>
-              {decisionTaskCreated ? (
-                <div className="banner settings-restart-banner" role="status">
-                  <span>{t("settings.decisionPatternsCreateTaskDone")}</span>
-                </div>
-              ) : null}
-              <SettingsField label={t("settings.decisionPatternsThreshold")} hint={t("settings.decisionPatternsThresholdHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  className="settings-input"
-                  value={decisionThresholdDraft}
-                  disabled={busy}
-                  onChange={(e) => setDecisionThresholdDraft(e.target.value)}
-                  onBlur={() => void apply(async () => {
-                    const n = Number.parseInt(decisionThresholdDraft, 10);
-                    if (Number.isFinite(n) && n >= 1 && n <= 500 && n !== s.decisionPatternThreshold) {
-                      await app.SetDecisionPatternThreshold(n);
-                    }
-                  })}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.decisionPatternsFilePath")} hint={t("settings.decisionPatternsFilePathHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
-                <input
-                  type="text"
-                  className="settings-input"
-                  placeholder={t("settings.decisionPatternsFilePathPlaceholder")}
-                  value={decisionPathDraft}
-                  disabled={busy}
-                  onChange={(e) => setDecisionPathDraft(e.target.value)}
-                  onBlur={() => void apply(async () => {
-                    const v = decisionPathDraft.trim();
-                    if (v !== s.decisionPatternFilePath) {
-                      await app.SetDecisionPatternFilePath(v);
-                    }
-                  })}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.decisionPatternsAutoApprove")} hint={t("settings.decisionPatternsAutoApproveHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.decisionPatternAutoApprove) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetDecisionPatternAutoApprove(on))}
-                    >
-                      {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={labLabel("heartbeatBackground", t("settings.heartbeatBackground"))} hint={t("settings.heartbeatBackgroundHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalHeartbeatBackground) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        // Call-time gate（244 B1 S4 先例）：引擎每次运行现读
-                        // 配置，保存后下一次调度即生效，无需重启。
-                        await app.SetExperimentalHeartbeatBackground(on);
-                      })}
-                    >
-                      {t(on ? "settings.heartbeatBackground.on" : "settings.heartbeatBackground.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，
-                  117 首落地，本件补设置页入口）。Boot snapshot 读闸：保存后
-                  需重启生效（决策模式提取/固化同款先例）。 */}
-              <SettingsField label={labLabel("stalledIntentNudge", t("settings.stalledIntentNudge"))} hint={t("settings.stalledIntentNudgeHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.stalledIntentNudge) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetStalledIntentNudge(on);
-                      })}
-                    >
-                      {t(on ? "settings.stalledIntentNudge.on" : "settings.stalledIntentNudge.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 任务 1070：Standard 流续跑总闸——普通对话续跑通道开闸
-                  （todo 续跑/stalled-intent 修复/executor-handoff nudge）。默认
-                  关=普通对话永不自动续跑（现状一致）；开启后仍有界上限与各
-                  边界排除。保存即换态，下一次 run 生效（免重启）。 */}
-              <SettingsField label={labLabel("standardContinuation", t("settings.standardContinuation"))} hint={t("settings.standardContinuationHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.standardContinuation) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetStandardContinuation(on);
-                      })}
-                    >
-                      {t(on ? "settings.standardContinuation.on" : "settings.standardContinuation.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
+              {/* 族 1：梦境——整理开关 + 创建自动任务（任务书 1.3 红框 1）。 */}
+              <LabSectionCard title={t("settings.lab.family.dream")} hint={t("settings.lab.family.dreamHint")}>
+                <SettingsField label={labLabel("dream", t("settings.dream"))} hint={t("settings.dreamHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalDream) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalDream(on))}
+                      >
+                        {t(on ? "settings.dream.on" : "settings.dream.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField label={t("settings.dreamCreateTask")} hint={t("settings.dreamCreateTaskHint")} icon={<Sparkles size={18} />}>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--small"
+                    disabled={busy || !Boolean(s.experimentalDream)}
+                    onClick={() => void apply(async () => {
+                      const created = await app.CreateDreamHeartbeatTask();
+                      if (created) setDreamTaskCreated(true);
+                    })}
+                  >
+                    {t("settings.dreamCreateTaskAction")}
+                  </button>
+                </SettingsField>
+                {dreamTaskCreated ? (
+                  <div className="banner settings-restart-banner" role="status">
+                    <span>{t("settings.dreamCreateTaskDone")}</span>
+                  </div>
+                ) : null}
+              </LabSectionCard>
+              {/* 族 2：决策模式——提取开关 + 创建自动任务 + 阈值 + 文件位置 +
+                  跳过人工批准（任务书 1.3 红框 2）。 */}
+              <LabSectionCard title={t("settings.lab.family.decisionPatterns")} hint={t("settings.lab.family.decisionPatternsHint")}>
+                <SettingsField label={labLabel("decisionPatterns", t("settings.decisionPatterns"))} hint={t("settings.decisionPatternsHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalDecisionPatterns) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalDecisionPatterns(on))}
+                      >
+                        {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField label={t("settings.decisionPatternsCreateTask")} hint={t("settings.decisionPatternsCreateTaskHint")} icon={<Sparkles size={18} />}>
+                  <button
+                    type="button"
+                    className="btn btn--secondary btn--small"
+                    disabled={busy || !Boolean(s.experimentalDecisionPatterns)}
+                    onClick={() => void apply(async () => {
+                      const created = await app.CreateDecisionPatternHeartbeatTask();
+                      if (created) setDecisionTaskCreated(true);
+                    })}
+                  >
+                    {t("settings.decisionPatternsCreateTaskAction")}
+                  </button>
+                </SettingsField>
+                {decisionTaskCreated ? (
+                  <div className="banner settings-restart-banner" role="status">
+                    <span>{t("settings.decisionPatternsCreateTaskDone")}</span>
+                  </div>
+                ) : null}
+                <SettingsField label={t("settings.decisionPatternsThreshold")} hint={t("settings.decisionPatternsThresholdHint")} icon={<Sparkles size={18} />}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    className="settings-input"
+                    value={decisionThresholdDraft}
+                    disabled={busy}
+                    onChange={(e) => setDecisionThresholdDraft(e.target.value)}
+                    onBlur={() => void apply(async () => {
+                      const n = Number.parseInt(decisionThresholdDraft, 10);
+                      if (Number.isFinite(n) && n >= 1 && n <= 500 && n !== s.decisionPatternThreshold) {
+                        await app.SetDecisionPatternThreshold(n);
+                      }
+                    })}
+                  />
+                </SettingsField>
+                <SettingsField label={t("settings.decisionPatternsFilePath")} hint={t("settings.decisionPatternsFilePathHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+                  <input
+                    type="text"
+                    className="settings-input"
+                    placeholder={t("settings.decisionPatternsFilePathPlaceholder")}
+                    value={decisionPathDraft}
+                    disabled={busy}
+                    onChange={(e) => setDecisionPathDraft(e.target.value)}
+                    onBlur={() => void apply(async () => {
+                      const v = decisionPathDraft.trim();
+                      if (v !== s.decisionPatternFilePath) {
+                        await app.SetDecisionPatternFilePath(v);
+                      }
+                    })}
+                  />
+                </SettingsField>
+                <SettingsField label={t("settings.decisionPatternsAutoApprove")} hint={t("settings.decisionPatternsAutoApproveHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.decisionPatternAutoApprove) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetDecisionPatternAutoApprove(on))}
+                      >
+                        {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+              </LabSectionCard>
+              {/* 族 3：后台与续跑——心跳后台化（961）+ 续轮提醒（1069）+
+                  Standard 流续跑总闸（1070）：三条均为「后台/续跑」主题，且都不
+                  属于用户框定的两族，聚成第三张卡保持全部子项有明确族归属。 */}
+              <LabSectionCard title={t("settings.lab.family.backgroundContinuation")}>
+                <SettingsField label={labLabel("heartbeatBackground", t("settings.heartbeatBackground"))} hint={t("settings.heartbeatBackgroundHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalHeartbeatBackground) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          // Call-time gate（244 B1 S4 先例）：引擎每次运行现读
+                          // 配置，保存后下一次调度即生效，无需重启。
+                          await app.SetExperimentalHeartbeatBackground(on);
+                        })}
+                      >
+                        {t(on ? "settings.heartbeatBackground.on" : "settings.heartbeatBackground.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                {/* 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，
+                    117 首落地，本件补设置页入口）。Boot snapshot 读闸：保存后
+                    需重启生效（决策模式提取/固化同款先例）。 */}
+                <SettingsField label={labLabel("stalledIntentNudge", t("settings.stalledIntentNudge"))} hint={t("settings.stalledIntentNudgeHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.stalledIntentNudge) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          await app.SetStalledIntentNudge(on);
+                        })}
+                      >
+                        {t(on ? "settings.stalledIntentNudge.on" : "settings.stalledIntentNudge.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                {/* 任务 1070：Standard 流续跑总闸——普通对话续跑通道开闸
+                    （todo 续跑/stalled-intent 修复/executor-handoff nudge）。默认
+                    关=普通对话永不自动续跑（现状一致）；开启后仍有界上限与各
+                    边界排除。保存即换态，下一次 run 生效（免重启）。 */}
+                <SettingsField label={labLabel("standardContinuation", t("settings.standardContinuation"))} hint={t("settings.standardContinuationHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.standardContinuation) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(async () => {
+                          await app.SetStandardContinuation(on);
+                        })}
+                      >
+                        {t(on ? "settings.standardContinuation.on" : "settings.standardContinuation.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+              </LabSectionCard>
             </>
           )}
           {/* 任务 782：检索与历史（合并卡，742 先例）——历史提问选择器 +

@@ -2733,6 +2733,12 @@ export const zh: Record<DictKey, string> = {
 "settings.stalledIntentNudgeHint": "启用模型提前结束判定器（[agent] stalled_intent_nudge）：当模型宣布下一步但没有实际发出工具调用就停下时，追加一次续轮提醒。默认关闭；关闭时行为与现状完全一致。打开后需重启 Reasonix 生效（读取启动快照）。",
 "settings.stalledIntentNudge.on": "开",
 "settings.stalledIntentNudge.off": "关",
+// 任务 1099：实验室 pane 功能族分组卡标题（首期试点 smartAutomation 三族）。
+"settings.lab.family.dream": "梦境",
+"settings.lab.family.dreamHint": "梦境整理与自动任务：开启整理工具后可一键创建每日定时任务。",
+"settings.lab.family.decisionPatterns": "决策模式",
+"settings.lab.family.decisionPatternsHint": "决策模式的自动提取、固化与阈值设置。",
+"settings.lab.family.backgroundContinuation": "后台与续跑",
 "settings.dreamCreateTask": "创建自动任务",
 "settings.dreamCreateTaskHint": "在自动化面板创建一条默认的 dream 定时任务（每日一轮）。创建后可在自动化面板调整频率、作用域与提示词。",
 "settings.dreamCreateTaskAction": "创建 dream 自动任务",
