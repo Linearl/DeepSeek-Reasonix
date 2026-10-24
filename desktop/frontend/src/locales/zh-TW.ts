@@ -3336,6 +3336,7 @@ export const zhTW: Record<DictKey, string> = {
   "msg.attachments": "附件",
   "msg.fileAttachment": "檔案",
   "msg.imageAttachment": "圖片",
+  "msg.images": "圖片",
   "msg.workspaceReference": "工作區引用",
   "notice.protocolRecoveryAction": "從有效歷史恢復",
   "notice.protocolRecoveryBody": "上游未提供具體原因。可以重建請求中的歷史視圖並繼續，保留已完成結果。",
