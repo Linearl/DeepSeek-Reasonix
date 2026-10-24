@@ -587,16 +587,16 @@ type SettingsView struct {
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
 	// Task 528: heap-high trigger threshold readback (MiB; 0 = built-in
 	// default 6GB) for the settings-panel numeric input. Boot snapshot.
-	PerfMonitorHeapHighThresholdMB int  `json:"perfMonitorHeapHighThresholdMB"`
-	SessionCollabHopLimit          int  `json:"sessionCollabHopLimit"`
-	DetachedIdleReleaseMinutes     int  `json:"detachedIdleReleaseMinutes"`
-	GoMemLimitMB                   int  `json:"goMemLimitMB"`
+	PerfMonitorHeapHighThresholdMB int `json:"perfMonitorHeapHighThresholdMB"`
+	SessionCollabHopLimit          int `json:"sessionCollabHopLimit"`
+	DetachedIdleReleaseMinutes     int `json:"detachedIdleReleaseMinutes"`
+	GoMemLimitMB                   int `json:"goMemLimitMB"`
 	// tl 1097: 告警日志（WARN/ERROR）时间/大小档位读数（0 = 内置默认 7 天 /
 	// 100MB；-1 = 永久 / 无限制）。全量日志不受此两项影响。
-	DesktopAlertLogRetentionDays int `json:"desktopAlertLogRetentionDays"`
-	DesktopAlertLogMaxTotalMB    int `json:"desktopAlertLogMaxTotalMB"`
-	ExperimentalSessionCollab      bool `json:"experimentalSessionCollab"`
-	ExperimentalAutoLoadOlder      bool `json:"experimentalAutoLoadOlder"`
+	DesktopAlertLogRetentionDays int  `json:"desktopAlertLogRetentionDays"`
+	DesktopAlertLogMaxTotalMB    int  `json:"desktopAlertLogMaxTotalMB"`
+	ExperimentalSessionCollab    bool `json:"experimentalSessionCollab"`
+	ExperimentalAutoLoadOlder    bool `json:"experimentalAutoLoadOlder"`
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
@@ -1904,13 +1904,13 @@ func (a *App) Settings() SettingsView {
 		AutopilotAskWaitSeconds:              cfg.AutopilotAskWaitSecondsEffective(),
 		ExperimentalAutopilotAskAutoContinue: cfg.Desktop.ExperimentalAutopilotAskAutoContinue,
 		// 任务 1084：高风险操作授权清单 + ask 轮次上限。
-		AuthorizeOutboundSend:        cfg.Desktop.AuthorizeOutboundSend,
-		AuthorizeDataMigrationDel:    cfg.Desktop.AuthorizeDataMigrationDelete,
-		AuthorizeDestructiveChange:   cfg.Desktop.AuthorizeDestructiveChange,
-		AuthorizeNewTechRoute:        cfg.Desktop.AuthorizeNewTechRoute,
-		AuthorizePaidQuotaAlloc:      cfg.Desktop.AuthorizePaidQuotaAlloc,
-		ExperimentalAskRoundLimit:    cfg.Desktop.ExperimentalAskRoundLimit,
-		AskRoundLimit:                cfg.AskRoundLimitEffective(),
+		AuthorizeOutboundSend:                cfg.Desktop.AuthorizeOutboundSend,
+		AuthorizeDataMigrationDel:            cfg.Desktop.AuthorizeDataMigrationDelete,
+		AuthorizeDestructiveChange:           cfg.Desktop.AuthorizeDestructiveChange,
+		AuthorizeNewTechRoute:                cfg.Desktop.AuthorizeNewTechRoute,
+		AuthorizePaidQuotaAlloc:              cfg.Desktop.AuthorizePaidQuotaAlloc,
+		ExperimentalAskRoundLimit:            cfg.Desktop.ExperimentalAskRoundLimit,
+		AskRoundLimit:                        cfg.AskRoundLimitEffective(),
 		ExperimentalAutopilotGuardAutocreate: cfg.Desktop.ExperimentalAutopilotGuardAutocreate,
 		AutopilotGuardInterval:               cfg.AutopilotGuardIntervalMinutes(),
 		AutopilotGuardQuiescent:              cfg.AutopilotGuardQuiescentPolicy(),
@@ -2035,10 +2035,10 @@ func (a *App) Settings() SettingsView {
 		// tl 1097: 告警日志时间/大小档位 readback（启动快照）。
 		DesktopAlertLogRetentionDays: cfg.Desktop.DesktopAlertLogRetentionDays,
 		DesktopAlertLogMaxTotalMB:    cfg.Desktop.DesktopAlertLogMaxTotalMB,
-		ExperimentalSessionCollab:      cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
-		ExperimentalAutoLoadOlder:      cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
-		CollabInboxMerge:               config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
-		CollabGuidanceMerge:            cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
+		ExperimentalSessionCollab:    cfg.Desktop.ExperimentalSessionCollab || cfg.Agent.ExperimentalSessionCollab,
+		ExperimentalAutoLoadOlder:    cfg.Desktop.ExperimentalAutoLoadOlder || cfg.Agent.ExperimentalAutoLoadOlder,
+		CollabInboxMerge:             config.NormalizeCollabInboxMerge(cfg.Agent.CollabInboxMerge),
+		CollabGuidanceMerge:          cfg.Desktop.CollabGuidanceMerge || cfg.Agent.CollabGuidanceMerge,
 		// Task 173: the collaboration panel gates (single source = [agent]).
 		SessionCollabAllowDelete:       cfg.Agent.SessionCollabAllowDelete,
 		SessionCollabAllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
