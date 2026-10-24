@@ -104,9 +104,9 @@ console.log("\nunfiled inputs: large-window viewer (tl 1127, 方案 A)");
   // CSS 关键声明与组件关键行为（同上方 fold contract 的交叉核对模式）。
   const banner = await readFile(new URL("../components/UnfiledInputsBanner.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../styles.css", import.meta.url), "utf8");
-  const viewerCss = styles.slice(styles.indexOf(".unfiled-viewer-backdrop"));
-  const listCss = styles.slice(styles.indexOf(".unfiled-viewer__list"));
-  const dialogCss = styles.slice(styles.indexOf(".unfiled-viewer {"), styles.indexOf(".unfiled-viewer__head"));
+  const viewerCss = await readFile(new URL("../components/UnfiledInputsViewer.css", import.meta.url), "utf8");
+  const listCss = viewerCss.slice(viewerCss.indexOf(".unfiled-viewer__list"));
+  const dialogCss = viewerCss.slice(viewerCss.indexOf(".unfiled-viewer {"), viewerCss.indexOf(".unfiled-viewer__head"));
 
   // 验收 1：列表独立滚动 + flex 高度链（min-height:0，否则 flex 子项不收缩滚不动）
   ok(/\.unfiled-viewer__list\s*{[^}]*overflow-y:\s*auto/.test(listCss), "viewer list scrolls independently (overflow-y: auto)");
@@ -118,6 +118,8 @@ console.log("\nunfiled inputs: large-window viewer (tl 1127, 方案 A)");
   // 验收 4：滚动链隔离——列表滚到底不带动底层 transcript
   ok(/overscroll-behavior:\s*contain/.test(listCss), "scroll chain isolated (overscroll-behavior: contain) — the transcript underneath never scrolls along");
   ok(/\.unfiled-viewer-backdrop\s*{[^}]*z-index:\s*var\(--z-modal\)/.test(viewerCss), "backdrop rides the --z-modal token (z-index token contract)");
+  // 预算面：viewer 样式走动态 import 独立 chunk（SessionEventsPanel.css 先例），不占 app-shell 棘轮
+  ok(banner.includes('void import("./UnfiledInputsViewer.css")'), "viewer CSS rides a dynamic-import chunk — no app-shell budget cost");
   // 验收 1（续）：portal 到 body，不受 .main overflow:hidden 裁剪
   ok(banner.includes("createPortal(") && banner.includes("document.body"), "viewer portals to document.body — immune to .main overflow: hidden clipping");
   // 验收 7：键盘可达——焦点进窗口、Esc 关、还原焦点、Tab 循环

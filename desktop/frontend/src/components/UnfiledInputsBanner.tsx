@@ -8,6 +8,10 @@ import { useI18n } from "../lib/i18n";
 import { ModalCloseButton } from "./ModalCloseButton";
 import type { UnfiledInputView } from "../lib/types";
 
+// 大窗口样式走动态 import 独立 chunk（同 SessionEventsPanel.css 先例），
+// 不占 styles.css 的 app-shell 预算。
+if (import.meta.env?.MODE) void import("./UnfiledInputsViewer.css");
+
 // 任务 1023 阶段 0：未入档输入（已从检查点恢复）横幅 + 面板。
 // 呈现与操作都只读后端：复制走剪贴板，转草稿走 composer 插入通道，
 // 重发走与 transcript 输入相同的提交通道；「已处理」仅存前端 localStorage，
