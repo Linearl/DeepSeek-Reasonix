@@ -98,26 +98,28 @@ eq(shortcutConflict("settings.open", defaultShortcutCombo("settings.open", "wind
 eq(shortcutConflict("shortcuts.show", defaultShortcutCombo("shortcuts.show", "windows"), "windows"), null, "Ctrl+/ help chord conflicts with no other default");
 
 // tl 1101：命令面板工作台新增快捷键全表校验——每个新键都必须与既有表零冲突
-//（Ctrl+P / Ctrl+Shift+T / Ctrl+Shift+F / Ctrl+Shift+L / F1 / Ctrl+Alt+B 均空闲；
-// Ctrl+K 已归 commandPalette.open，不重复注册）。
+//（Ctrl+P / Ctrl+Shift+T / Ctrl+Shift+F / Ctrl+Shift+L / Ctrl+Alt+B 均空闲；
+// Ctrl+K 已归 commandPalette.open，不重复注册；F1 归 help.docs.open 产品文档站
+//——1100+1101 合并并集解：1101 原持的 palette.docs F1 已降为无键菜单项，避免
+// 与 1102/docs 件的 F1 双注册双触发，唯一拥有者断言见 docs-site-entry.test.ts）。
 for (const [platform, action, label] of [
   ["windows", "palette.gotoTopic", "Ctrl+P 跳转会话"],
   ["windows", "palette.gotoTab", "Ctrl+Shift+T 跳转标签页"],
   ["windows", "palette.searchQuestions", "Ctrl+Shift+F 搜索历史提问"],
   ["windows", "palette.openLab", "Ctrl+Shift+L 实验室"],
-  ["windows", "palette.docs", "F1 产品文档"],
+  ["windows", "help.docs.open", "F1 产品文档站"],
   ["windows", "view.rightDock", "Ctrl+Alt+B 右侧面板"],
   ["darwin", "palette.gotoTopic", "Cmd+P 跳转会话"],
   ["darwin", "palette.gotoTab", "Cmd+Shift+T 跳转标签页"],
   ["darwin", "palette.searchQuestions", "Cmd+Shift+F 搜索历史提问"],
   ["darwin", "palette.openLab", "Cmd+Shift+L 实验室"],
-  ["darwin", "palette.docs", "F1 产品文档"],
+  ["darwin", "help.docs.open", "F1 产品文档站"],
   ["darwin", "view.rightDock", "Cmd+Alt+B 右侧面板"],
 ] as const) {
   eq(shortcutConflict(action, defaultShortcutCombo(action, platform), platform), null, `${label} 不与既有快捷键冲突`);
   eq(shortcutDefinition(action).preventDefault, true, `${label} 注册 preventDefault`);
 }
-eq(JSON.stringify(shortcutDefinition("palette.docs").defaults.windows), JSON.stringify({ key: "F1" }), "F1 是裸键（无修饰键）");
+eq(JSON.stringify(shortcutDefinition("help.docs.open").defaults.windows), JSON.stringify({ key: "F1" }), "F1 是裸键（无修饰键）");
 eq(JSON.stringify(shortcutDefinition("view.rightDock").defaults.windows), JSON.stringify({ key: "b", ctrl: true, alt: true }), "Ctrl+Alt+B 是右侧面板开关");
 
 eq(topicShortcutIndexFromEvent(event("1", { metaKey: true }), "darwin"), 0, "Cmd+1 maps to the first topic shortcut on macOS");

@@ -51,7 +51,6 @@ import {
   Bot,
   LayoutGrid,
   Check,
-  BookOpen,
 } from "lucide-react";
 import { loadHiddenDockTabs, onHiddenDockTabsChange, type DockTabId } from "./lib/dockTabs";
 import { buildSubagentDirectory, subagentsTabLabel } from "./lib/subagentDirectory";
@@ -4729,10 +4728,6 @@ export default function App() {
     closeTransientOverlays("lab shortcut");
     setSettingsTarget("experimental");
   }, [closeTransientOverlays]);
-  useGlobalShortcut("palette.docs", () => {
-    closeTransientOverlays("docs shortcut");
-    openExternal("https://github.com/esengine/DeepSeek-Reasonix#readme");
-  }, [closeTransientOverlays]);
   useGlobalShortcut("view.rightDock", () => toggleWorkspacePanel(), [toggleWorkspacePanel]);
   useGlobalShortcut("app.newSession", () => void handleNewTab(), [handleNewTab]);
   useGlobalShortcut("settings.open", () => {
@@ -4915,7 +4910,6 @@ export default function App() {
         title: t("palette.cmd.docs"),
         icon: <BookOpen size={15} />,
         compact: true,
-        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.docs", desktopPlatform), desktopPlatform),
         keywords: ["docs", "documentation", "help", "文档", "帮助"],
         run: () => openExternal("https://github.com/esengine/DeepSeek-Reasonix#readme"),
       },

@@ -31,7 +31,6 @@ export type ShortcutAction =
   | "palette.gotoTab"
   | "palette.searchQuestions"
   | "palette.openLab"
-  | "palette.docs"
   | "view.rightDock"
   | "topic.goto.1"
   | "topic.goto.2"
@@ -311,14 +310,6 @@ export const SHORTCUT_DEFINITIONS: readonly ShortcutDefinition[] = [
       windows: { key: "l", ctrl: true, shift: true },
       linux: { key: "l", ctrl: true, shift: true },
     },
-    preventDefault: true,
-  },
-  {
-    action: "palette.docs",
-    section: "help",
-    labelKey: "shortcuts.action.paletteDocs",
-    descriptionKey: "shortcuts.desc.paletteDocs",
-    defaults: allPlatforms({ key: "F1" }),
     preventDefault: true,
   },
   {
