@@ -425,6 +425,8 @@ export const en = {
   "workspace.loading": "Loading file…",
   "workspace.binary": "Binary file preview is not available.",
   "workspace.truncated": "Preview truncated to the first 2 MiB.",
+  "workspace.htmlScriptsOff": "Allow scripts to run (page can access the app)",
+  "workspace.htmlScriptsOn": "⚠ Scripts running — page may access the app (allow-same-origin disabled)",
   "workspace.searchPlaceholder": "Find",
   "workspace.searchCount": "{current} of {total}",
   "workspace.searchPrevious": "Previous match",

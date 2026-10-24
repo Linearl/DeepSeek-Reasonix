@@ -211,6 +211,19 @@ func (a *App) workspaceMediaMiddleware() func(http.Handler) http.Handler {
 				w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 				w.Header().Set("Referrer-Policy", "no-referrer")
 			}
+			// HTML previews (tl 1110) ride the same token route but must never
+			// carry a script-executing response: the route is same-origin with
+			// the app shell, so a served <script> could reach the parent window.
+			// Defense in depth behind the iframe sandbox attribute: the sandbox
+			// directive forces the document into an opaque origin regardless of
+			// what the embedding iframe declares, so a bug widening the iframe
+			// sandbox still cannot hand the page a same-origin handle on the
+			// app. Inline style/image allowances keep static HTML rendering.
+			if entry.kind == "html" {
+				w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+				w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+				w.Header().Set("Referrer-Policy", "no-referrer")
+			}
 			http.ServeContent(w, r, entry.filename, entry.modTime, content)
 		})
 	}

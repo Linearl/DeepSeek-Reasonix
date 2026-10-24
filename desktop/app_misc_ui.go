@@ -67,6 +67,8 @@ const fileRefSearchLimit = 20
 var previewMediaMIMEs = map[string]string{
 	".bmp":  "image/bmp",
 	".gif":  "image/gif",
+	".htm":  "text/html",
+	".html": "text/html",
 	".jpeg": "image/jpeg",
 	".jpg":  "image/jpeg",
 	".pdf":  "application/pdf",

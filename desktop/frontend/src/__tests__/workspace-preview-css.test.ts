@@ -8,6 +8,9 @@ import { JSDOM } from "jsdom";
 const testDir = dirname(fileURLToPath(import.meta.url));
 const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
 const appGo = readFileSync(resolve(testDir, "../../../app.go"), "utf8");
+// tl 1110 moved the preview media MIME map (and the 2 MiB filePreviewLimit)
+// into app_misc_ui.go; the assertion below reads whichever file declares it.
+const appMiscUIGo = readFileSync(resolve(testDir, "../../../app_misc_ui.go"), "utf8");
 const localeNotices = [
   [readFileSync(resolve(testDir, "../locales/en.ts"), "utf8"), '"workspace.truncated": "Preview truncated to the first 2 MiB."'],
   [readFileSync(resolve(testDir, "../locales/zh.ts"), "utf8"), '"workspace.truncated": "预览已截断到前 2 MiB。"'],
@@ -137,7 +140,7 @@ eq(
 );
 eq(finalDeclaration(".workspace-panel--tree-hidden .workspace-preview", "grid-column"), "1", "preview fills the panel when the tree is hidden");
 eq(
-  /const filePreviewLimit = 2 \* 1024 \* 1024/.test(appGo),
+  /const filePreviewLimit = 2 \* 1024 \* 1024/.test(appGo) || /const filePreviewLimit = 2 \* 1024 \* 1024/.test(appMiscUIGo),
   true,
   "backend workspace preview limit remains 2 MiB",
 );

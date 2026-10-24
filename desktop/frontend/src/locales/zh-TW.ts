@@ -298,6 +298,8 @@ export const zhTW: Record<DictKey, string> = {
   "workspace.loading": "正在載入檔案…",
   "workspace.binary": "暫不支援預覽二進位檔案。",
   "workspace.truncated": "預覽已截斷到前 2 MiB。",
+  "workspace.htmlScriptsOff": "允許腳本執行（頁面可存取應用程式）",
+  "workspace.htmlScriptsOn": "⚠ 腳本執行中 — 頁面可能存取應用程式（allow-same-origin 已停用）",
   "workspace.searchPlaceholder": "尋找",
   "workspace.searchCount": "{current} / {total}",
   "workspace.searchPrevious": "上一個符合項目",

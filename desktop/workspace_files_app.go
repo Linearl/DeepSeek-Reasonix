@@ -52,6 +52,9 @@ func previewMediaKind(path string) (kind string, mime string) {
 	if mime == "application/pdf" {
 		return "pdf", mime
 	}
+	if mime == "text/html" {
+		return "html", mime
+	}
 	return "", ""
 }
 
