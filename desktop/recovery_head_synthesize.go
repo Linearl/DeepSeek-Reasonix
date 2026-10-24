@@ -134,24 +134,55 @@ func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisRepo
 		}
 		report.Items = append(report.Items, item)
 	}
-	if headID != "" && headID != agent.SessionMainHead {
-		// Heads of the canonical log are already inside the main transcript;
-		// their "unique" reading is what ListRecoveryChains reports per head.
-		// Nothing to fold file-wise, so they are recorded as archived=false and
-		// left for 1064's delete entry if the user wants them gone.
-		heads, _, headErr := panelSessionHeads(mainPath)
-		if headErr == nil {
-			for _, h := range heads {
-				if h.ID == headID || h.Selected {
-					continue
-				}
-				item := HeadSynthesisItem{Path: mainPath, Unique: 0, Shared: h.MessageCount, UniqueToHead: 0}
-				report.Items = append(report.Items, item)
+	// 任务 1117：heads 扫描面不再只在「选了命名 head」时才补——纯 v3 头会话
+	// （副本已入回收站/已包含，recoveryCopiesByMain 为空）在「未选 HEAD」路径
+	// 下曾经 len(Items)==0 直接误报 errHeadSynthesisNoBranch，而会话实际有多
+	// 条链（现场：fork开发-新8，3 个 v3 版本 1691/966/254 轮）。v3 heads 住在
+	// canonical transcript 自己的 event log 里（无文件可搬，file-wise 无事可
+	// 做），但必须被计入「还有别的链」的存在性判断——不能让「文件级合并无事
+	// 可做」被误读成「这个会话只有一条链」。
+	//
+	// 两类 Items 分开算：copyItems（前面 recoveryCopiesByMain 扫出来的副本
+	// 文件，真正能走文件级合并引擎的东西）与 headItems（canonical event log
+	// 里的 v3 heads，同一份 log 里的另一条链，不是文件级合并的材料）。跳过
+	// 条件：① 已退休（retired）不算活链；② 是用户显式选中的那个 head 自身
+	// （headID 非空时它就是这次合成的保留对象）；③ 只有一个 head（连"另一条
+	// 链"都谈不上，不需要计入）。未选（headID 为空）时不按 Selected 过滤——
+	// panelSessionHeads 的 Selected 读数在合成前后不稳定，按它过滤实测会漏
+	// 掉唯一一条真正分叉的链。
+	heads, _, headErr := panelSessionHeads(mainPath)
+	headItems := []HeadSynthesisItem{}
+	if headErr == nil && len(heads) > 1 {
+		for _, h := range heads {
+			if h.Retired || h.MessageCount == 0 {
+				continue
 			}
+			if h.ID != "" && h.ID == headID {
+				continue
+			}
+			// Heads of the canonical log are already inside the main transcript;
+			// their "unique" reading is what ListRecoveryChains reports per head.
+			// Nothing to fold file-wise, so they are recorded as archived=false
+			// and left for 1064's delete entry if the user wants them gone.
+			headItems = append(headItems, HeadSynthesisItem{Path: mainPath, Unique: 0, Shared: h.MessageCount, UniqueToHead: 0})
 		}
 	}
-	if len(report.Items) == 0 {
+	// 「只有一条链」的判断只看文件级的副本合并材料（copyItems）与 v3 heads
+	// 扫描面（headItems）是否都为空——headItems 代表同一个 event log 里的另
+	// 一条链，它们的存在本身就是「不止一条链」的证据，不能拿来反证「没什
+	// 么可合成」。只看 copyItems 为空就误报只有一条链，正是这个 bug 的成因。
+	if len(copies) == 0 && len(headItems) == 0 {
 		return report, errHeadSynthesisNoBranch
+	}
+	report.Items = append(report.Items, headItems...)
+	if len(copies) == 0 {
+		// 无文件级副本、只有 v3 heads：文件级合并引擎（Consolidate...）只会
+		// 因为「没有副本文件」报 ErrNoRecoveryBranches，那不是本次调用的失
+		// 败——「还有别的链」的判断已经在上面做完（能走到这行意味着
+		// len(headItems)>0），这里只是文件级引擎对「v3-only 无副本可搬」这
+		// 一合法形态的固有反应，不是用户看到的「合成失败」。直接返回报告
+		// （错误为 nil），面板据此渲染「还有 N 条链（v3 版本）」。
+		return report, nil
 	}
 
 	// Run the merge under the same mutation locks the desktop merge uses.
@@ -171,6 +202,10 @@ func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisRepo
 	}()
 	if runErr != nil {
 		if errors.Is(runErr, agent.ErrNoRecoveryBranches) {
+			// 走到这里意味着「有副本文件」（len(copies)>0 才会调引擎），引擎
+			// 却说没有可合并的分支——通常是副本都在扫描与加锁之间被别的路径
+			//（回收站清理/另一次合并）抢先处理掉了，这不是纯 v3 头会话的
+			// 误报路径（那条在上面 len(copies)==0 时已经提前返回了）。
 			return report, errHeadSynthesisNoBranch
 		}
 		return report, friendlySessionFileError(runErr)

@@ -43,16 +43,34 @@ type RecoveryChainView struct {
 }
 
 // RecoveryChainSet is the answer to "which chains exist for this conversation",
-// with the longest one marked so the panel can recommend it.
+// with each chain's own strengths marked separately so the panel can recommend
+// without overclaiming (任务 1123).
+//
+// 任务 1123（用户 20261024 反馈）：旧形态只有一个 LongestPath/LongestHead，
+// 前端据此打「建议（更长且更新）」这一条合并文案——但实际被推荐的长链
+// （6800条/246轮，最后活动 2026-09-28）并不比落选短链（468条/6轮，
+// 2026-10-22 折叠）更新，「且更新」这一半是失实的：长短（条数/轮次）与新旧
+// （最后活动时间）是两个独立的事实，任何一条链都可能只占其一。改成两条独立
+// 读数——轮次优先的「更长」与最后活动优先的「更新」各自成立、各自标注理由
+// （含实际值），不再合成一条可能只对一半成立的表述让用户自行判断哪条更合
+// 用，而不是替用户把两个独立事实打包成一个「且」字。
 type RecoveryChainSet struct {
 	MainPath  string              `json:"mainPath"`
 	MainLabel string              `json:"mainLabel"`
 	Chains    []RecoveryChainView `json:"chains"`
-	// Longest is the path+head of the chain with the most messages. Ties prefer
-	// the main transcript, then the most recent activity, so the recommendation
-	// is stable rather than dependent on directory order.
+	// Longest is the path+head of the chain with the most turns (raw message
+	// count only breaks ties - see the sort below for why). Ties prefer the main
+	// transcript, then the most recent activity, so the recommendation is stable
+	// rather than dependent on directory order.
 	LongestPath string `json:"longestPath"`
 	LongestHead string `json:"longestHead"`
+	// Newest is the path+head of the chain with the most recent LastActivity,
+	// computed independently of Longest: a chain can be "longer" without being
+	// "newer" (or the other way around), and the panel shows each fact on its own
+	// row rather than folding them into one label (任务 1123). Ties prefer the
+	// main transcript, then message count, for the same stability reason.
+	NewestPath string `json:"newestPath"`
+	NewestHead string `json:"newestHead"`
 }
 
 // ListRecoveryChains enumerates every candidate chain for one conversation: the
@@ -170,14 +188,32 @@ func (a *App) ListRecoveryChains(mainPath string) (RecoveryChainSet, error) {
 		}
 		return set.Chains[i].LastActivity > set.Chains[j].LastActivity
 	})
-	// 任务 1019：longest（「更长且更新」推荐）只在真正重放过的链里选——
+	// 任务 1019：longest（更长）与 newest（更新）都只在真正重放过的链里选——
 	// 全部降级时留空，前端因此不标推荐，而不是把零读数的降级行推为赢家。
+	// Chains 已按轮次优先排好序，第一个非降级的就是「更长」（longest）。
 	for _, chain := range set.Chains {
 		if !chain.Degraded {
 			set.LongestPath = chain.Path
 			set.LongestHead = chain.HeadID
 			break
 		}
+	}
+	// 任务 1123：「更新」独立于「更长」计算——LastActivity 是字符串比较
+	// （RFC3339 UTC 恒定宽度，字典序即时间序），直接扫一遍取最大值即可，
+	// 不需要额外排序。同样跳过降级行（零读数不是「最新」）。平手时按当前
+	// 排序序（轮次优先）先出现者胜，与 longest 的平手规则一致。
+	newestIndex := -1
+	for i, chain := range set.Chains {
+		if chain.Degraded {
+			continue
+		}
+		if newestIndex == -1 || chain.LastActivity > set.Chains[newestIndex].LastActivity {
+			newestIndex = i
+		}
+	}
+	if newestIndex >= 0 {
+		set.NewestPath = set.Chains[newestIndex].Path
+		set.NewestHead = set.Chains[newestIndex].HeadID
 	}
 	return set, nil
 }

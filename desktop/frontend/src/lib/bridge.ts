@@ -349,9 +349,15 @@ export interface RecoveryChainSet {
   mainPath: string;
   mainLabel: string;
   chains: RecoveryChainView[];
-  /** The chain with the most messages, recommended as the merge target. */
+  /** The chain with the most turns (message count only breaks ties). */
   longestPath: string;
   longestHead: string;
+  /** 任务 1123：the chain with the most recent lastActivity, computed
+   *  independently of longestPath/longestHead — a chain can be "longer"
+   *  without being "newer" (or vice versa), so the panel labels each fact
+   *  on its own row instead of folding them into one "且" claim. */
+  newestPath: string;
+  newestHead: string;
 }
 
 // 任务 1011 — 会话健康与自愈（设置页「工作阶段版本与修复」分区）。
@@ -4122,7 +4128,7 @@ function makeMockApp(): AppBindings {
       return [];
     },
     async ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet> {
-      return { mainPath, mainLabel: mainPath, chains: [], longestPath: "", longestHead: "" };
+      return { mainPath, mainLabel: mainPath, chains: [], longestPath: "", longestHead: "", newestPath: "", newestHead: "" };
     },
     async ListSessionVersionGroups(): Promise<SessionVersionGroupView[]> {
       return [];

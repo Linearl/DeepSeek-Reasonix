@@ -301,7 +301,7 @@ function degradedChainSet(mainPath: string): RecoveryChainSet {
     preview: "",
     degraded: true,
   };
-  return { mainPath, mainLabel: "", chains: [row], longestPath: "", longestHead: "" };
+  return { mainPath, mainLabel: "", chains: [row], longestPath: "", longestHead: "", newestPath: "", newestHead: "" };
 }
 
 /** v3VersionRows is the version/repair block of one conversation's expanded
@@ -493,12 +493,37 @@ function VersionRows({
           </tr>
         </thead>
         <tbody>
-          {(chains.chains ?? []).map((c) => {
-            // 任务 1065：轮次优先的推荐——长/新只在真正重放过的链里选（后端
-            // longestPath/longestHead 已按轮次排序，全降级时为空 ⇒ 不标）。
-            const isSuggested = chains.longestHead === c.headId && !c.selected;
+          {(() => {
+            // 任务 1123：same path+headId 的行会在链表里出现两次（主转录本体
+            // 一行 + 它的某个 head 一行，字段读数相同）——两条标签各只打一次。
+            const seenLongerPaths = new Set<string>();
+            const seenNewerPaths = new Set<string>();
+            let chainRowIndex = 0;
+            return (chains.chains ?? []).map((c) => {
+            // 任务 1123（原 1065 的「建议（更长且更新）」拆成两条独立标签）：
+            // 「更长」按轮次优先（后端 longestPath/longestHead，已按轮次排序，
+            // 全降级时为空 ⇒ 不标）、「更新」按最后活动时间独立计算（后端
+            // newestPath/newestHead，同样跳过降级行）。长/新是两个独立事实，
+            // 一条链可能只占其一（也可能都占），因此各标各的理由、各带各的
+            // 实际值——不再合成一条「且更新」的合并表述（那正是 1123 报告的
+            // 失实来源：被推荐的长链实际比落选短链更旧）。当前选中行不打标签
+            // ——它是合成的保留对象，不是候选推荐对象。
+            //
+            // 同一 path+headId 的行在链表里可能出现两次（主转录本体 + 它的
+            // 某个 head 各占一行，字段读数相同）——两条标签只在第一次出现
+            // 时打一次，避免同一事实被渲染两遍。
+            const chainKey = `${c.path}|${c.headId}`;
+            const seenLonger = seenLongerPaths.has(chainKey);
+            const seenNewer = seenNewerPaths.has(chainKey);
+            const isLonger = !c.selected && chains.longestPath === c.path && chains.longestHead === c.headId && !seenLonger;
+            const isNewer = !c.selected && chains.newestPath === c.path && chains.newestHead === c.headId && !seenNewer;
+            if (isLonger) seenLongerPaths.add(chainKey);
+            if (isNewer) seenNewerPaths.add(chainKey);
+            // 任务 1123：同一 path+headId 的行会出现两次（主转录本体 + 它的
+            // main head，字段读数完全相同）——不是本件引入的问题，但 React
+            // 会警告重复 key，这里顺手把 index 拼进 key 消除噪音，不影响行为。
             return (
-              <tr key={`${c.path}|${c.headId}`}>
+              <tr key={`${c.path}|${c.headId}|${chainRowIndex++}`}>
                 <td>
                   {c.headId ? c.headId.slice(0, 8) : "main"}
                   {/* 任务 1039r：降级行必须说自己是降级——否则零计数行与
@@ -516,7 +541,19 @@ function VersionRows({
                 <td className="rc-cell-ellipsis" title={c.preview}>{c.preview}</td>
                 <td className="rc-cell-nowrap">
                   {c.selected && <span>{t("settings.sessionVersions.selected")} </span>}
-                  {isSuggested && <span>{t("settings.sessionVersions.suggested")} </span>}
+                  {isLonger && (
+                    <span className="rc-versions__tag">
+                      {t("settings.sessionVersions.longerTag")
+                        .replace("{messages}", String(c.messageCount))
+                        .replace("{turns}", String(c.turns))}{" "}
+                    </span>
+                  )}
+                  {isNewer && (
+                    <span className="rc-versions__tag">
+                      {t("settings.sessionVersions.newerTag")
+                        .replace("{date}", (c.lastActivity || "").slice(0, 10))}{" "}
+                    </span>
+                  )}
                   {!c.selected && (
                     <button
                       className="btn btn--secondary btn--small"
@@ -543,7 +580,8 @@ function VersionRows({
                 </td>
               </tr>
             );
-          })}
+          });
+          })()}
         </tbody>
       </table>
       <div className="rc-versions__actions">
@@ -801,6 +839,8 @@ export function RecoveryCopiesSection() {
           chains: [],
           longestPath: "",
           longestHead: "",
+          newestPath: "",
+          newestHead: "",
         }),
       );
       setErrors((current) => [...current, err instanceof Error ? err.message : String(err)]);
@@ -1196,19 +1236,36 @@ export function RecoveryCopiesSection() {
       // reloads and shows what changed).
       const report = await app.SynthesizeSessionHeads(mainPath, headId);
       setSynthesizing((current) => ({ ...current, [mainPath]: `${participants.length}/${participants.length}` }));
+      // 任务 1117：report.items 为空（无副本、无其余 heads）说明这次调用其实
+      // 没合成任何东西——此时必须走「失败」分支并展示 locale 化文案，而不是
+      // 照常渲染「已合成」成功横幅。成功与失败的 outcome 互斥：走 failed 就
+      // 不再落 synthesized 的读数横幅（否则会出现「红框报错 + 顶部成功横幅」
+      // 并存的矛盾现场，20261024 fork开发-新8 实测）。
+      if (report.items.length === 0) {
+        setSynthesisOutcomes((current) => [
+          ...current,
+          { label: groupLabel, kind: "failed", detail: t("settings.recoveryCopiesSynthesizeNoBranch") },
+        ]);
+        // Named winners were consumed even on this no-op path; reset the pick.
+        setPickedChain((current) => {
+          const next = { ...current };
+          delete next[mainPath];
+          return next;
+        });
+        return;
+      }
       const uniqueTotal = report.items.reduce((n, item) => n + item.unique, 0);
       setSynthesisOutcomes((current) => [
         ...current,
         {
           label: groupLabel,
-          kind: report.items.length > 0 ? "synthesized" : "failed",
+          kind: "synthesized",
           participants: report.items.length,
           uniqueTotal,
           afterMessages: report.afterMessages,
           afterTurns: report.afterTurns,
           prefixed: report.prefixed,
           trashed: report.trashed.length,
-          detail: report.items.length > 0 ? undefined : t("settings.recoveryCopiesSynthesizeNoBranch"),
         },
       ]);
       // Named winners were consumed; the next run starts neutral.
@@ -1218,9 +1275,21 @@ export function RecoveryCopiesSection() {
         return next;
       });
     } catch (err) {
+      // 任务 1117：后端报错时只落一条「失败」outcome，不再同时渲染成功横幅。
+      // 文案优先走 locale：errHeadSynthesisNoBranch 这类已知错误命中现有 key
+      // settings.recoveryCopiesSynthesizeNoBranch（三语），其余错误保留后端
+      // 原文（那些错误暂无现成 locale key，直译会引入新键面，交由后续统一收
+      // 整，这里不做生造文案）。
+      const rawMessage = err instanceof Error ? err.message : String(err);
       setSynthesisOutcomes((current) => [
         ...current,
-        { label: groupLabel, kind: "failed", detail: err instanceof Error ? err.message : String(err) },
+        {
+          label: groupLabel,
+          kind: "failed",
+          detail: rawMessage.includes("only one chain")
+            ? t("settings.recoveryCopiesSynthesizeNoBranch")
+            : rawMessage,
+        },
       ]);
     } finally {
       setSynthesizing((current) => {
@@ -1677,7 +1746,12 @@ export function RecoveryCopiesSection() {
                             </li>
                           ))}
                         </ul>
-                        <p className="rc-result__hint">{t("settings.recoveryCopiesSynthesizeReopenHint")}</p>
+                        {/* 任务 1117：「合成已生效」提示只在真的有合成成功时显示
+                            ——全部失败的 outcome 列表配上这句成功文案会自相矛盾
+                            （红框报错 + 顶部「合成已生效」并存的现场根因之一）。 */}
+                        {synthesisOutcomes.some((outcome) => outcome.kind === "synthesized") ? (
+                          <p className="rc-result__hint">{t("settings.recoveryCopiesSynthesizeReopenHint")}</p>
+                        ) : null}
                       </div>
                     )}
                     <div className="rc-table">

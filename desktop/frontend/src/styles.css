@@ -46441,6 +46441,18 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, currentColor 14%, transparent);
   white-space: nowrap;
 }
+/* 任务 1123：候选链推荐拆成「更长」「更新」两条独立标签——各带自己的实际
+   值（条数/轮次、最后活动日期），不再合并成一条可能只对一半成立的表述；
+   两条标签若同时命中同一链，视觉上并列展示、各自独立可读。 */
+.rc-versions__tag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  font-size: 0.8em;
+  font-weight: 500;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  white-space: nowrap;
+}
 .rc-copy__unique-badge {
   margin-left: 6px;
   padding: 1px 7px;
