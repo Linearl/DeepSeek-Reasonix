@@ -1,19 +1,22 @@
 // Run: npx tsx --tsconfig tsconfig.tsx-runner.json --import ./scripts/css-stub-register.mjs src/__tests__/tl1121-1122-message-layout.test.tsx
 //
-// 任务1121（P1）+1122（P2）合并验收：消息卡片图文排版统一 + 时间戳位置统一。
+// 任务1136（P0 重做）+1122（P2）：消息卡片图文排版统一基准 + 时间戳位置统一。
 //
-// 1121（图文上下分离 + 防竖排）：
-//  ① 用户消息带图（UserMessage + MessageAttachments）：文字块与图片图块
-//     （.msg-attachment-gallery）上下分离，图片不再 inline 挤压正文成竖排单字；
-//  ② steer 引导消息带图（SteerCard）：1091 已有的上下分离不回退，且随 1121
-//     一并走 .msg-attachment-gallery 大图块（非 1091 时代的 56px 缩略图卡）；
+// 1136（图文排版回归 17 包前用户消息基准——用户 2026-10-25 加急令）：
+//  1121 的 gallery 大图块（.msg-attachment-gallery，图片最大 320px 直排）实测
+//  回归（图片过大 + 三类消息不统一），本件整体回退 gallery 形态，三类消息
+//  （用户消息 / steer 引导 / 未应用引导 notice）统一到「17 包前用户消息」
+//  布局：文字在上、图片在下、多图横排、56px 小缩略图。
+//  ① 用户消息带图（UserMessage + MessageAttachments）：文字块与附件容器
+//     （.msg-attachments）上下分离，图片渲染为 .msg-attachment--image 缩略卡；
+//  ② steer 引导消息带图（SteerCard）：同一缩略卡形态（1091 上下分离不回退）；
 //  ③ 助手消息带图（AssistantMessage Markdown img）：`.md > img / p > img` 的
 //     `display:block + max-width:100%` 防竖排契约源码级钉住（JSDOM 无布局引擎，
 //     无法直接断言盒模型，改为读 CSS 文本断言规则存在——与 1012 ③「源码钉住」
 //     同一手法）；
-//  ④ 防竖排源码断言：.msg-attachment-gallery img 的 `display:block` +
-//     `max-width:100%`（block 化后 img 不再与首字同行，窄容器也不会把正文
-//     压成竖排）。
+//  ④ 统一基准源码断言：.msg-attachment__icon--image 56×56 小缩略图 + 
+//     .msg-attachments flex-wrap 横排（多图一行排开、超出容器宽换行）+
+//     gallery 大图块零残留（防回潮）。
 //
 // 1122（三类消息时间戳统一卡片下方）：
 //  ⑤ 普通用户消息：time.msg-meta__time 在 .msg-meta 行（卡片下方）；
@@ -28,8 +31,8 @@
 //  ⑩ 助手消息（AssistantMessage createdAt）：时间戳渲染在下方 .msg-meta 行。
 //
 // 1091 零回归：tl1066-steer-image.test.tsx 独立钉住 steer 图文分离/复制按钮
-// 出卡片契约（27/0），本文件不重复断言其内部细节，只验证 1121 gallery 化后
-// steer 面仍满足「文字块在图块之前」。
+// 出卡片契约（27/0），本文件不重复断言其内部细节，只验证 1136 回退后 steer
+// 面仍满足「文字块在附件容器之前」。
 //
 // DOM/桥接模式复用 tl1066/tl1092：JSDOM + css-stub-register +
 // LocaleProvider(preloadLocale("zh"))。
@@ -155,20 +158,23 @@ function stampedText(body: string): string {
   ].join("\n");
 }
 
-console.log("\ntl1121+1122 message layout + timestamp position");
+console.log("\ntl1136+1122 message layout (17-pack-era thumbnail baseline) + timestamp position");
 
-// ④ 防竖排源码断言：.msg-attachment-gallery img 的 display:block + max-width:100%
-// （JSDOM 无布局引擎，改源码级钉住 CSS 规则存在——与 1012 ③ 手法一致）
+// ④ 统一基准源码断言（1136 重做）：56×56 小缩略图 + 附件容器 flex-wrap 横排
+// + gallery 大图块零残留（JSDOM 无布局引擎，改源码级钉住 CSS 规则存在——
+// 与 1012 ③ 手法一致）
 {
   const here = dirname(fileURLToPath(import.meta.url));
   const css = readFileSync(resolve(here, "../styles.css"), "utf8");
-  ok(/\.msg-attachment-gallery__item img \{[^}]*display: block;/s.test(css), "④ gallery img display:block（防 inline 挤压正文竖排）");
-  ok(/\.msg-attachment-gallery__item img \{[^}]*max-width: 100%;/s.test(css), "④ gallery img max-width:100%（窄容器夹住宽度）");
+  ok(/\.msg-attachment__icon--image \{[^}]*width: 56px;[^}]*height: 56px;/s.test(css), "④ 缩略图 56×56 小图基准（17 包前用户消息形态，非大图直排）");
+  ok(/\.msg-attachments \{[^}]*flex-wrap: wrap;/s.test(css), "④ 附件容器 flex-wrap 横排（多图一行排开，超出容器宽换行）");
+  ok(!css.includes(".msg-attachment-gallery"), "④ styles.css 无 1121 gallery 大图块残留（回退干净）");
+  ok(!readFileSync(resolve(here, "../components/MessageAttachments.tsx"), "utf8").includes("msg-attachment-gallery"), "④ 组件无 MessageImageGallery/gallery 类名残留（回退干净）");
   // Markdown 内联图（助手消息路径）的防竖排契约（MarkdownImage.css 既有规则，
-  // 1121 验收要求「窄容器下图片不出现在文字流内」覆盖助手消息带图场景）。
+  // 原 1121 验收要求「窄容器下图片不出现在文字流内」覆盖助手消息带图场景）。
   const mdCss = readFileSync(resolve(here, "../components/MarkdownImage.css"), "utf8");
   ok(/\.md p > img \{[^}]*display: block;/s.test(mdCss) && /\.md p > img \{[^}]*max-width: 100%;/s.test(mdCss),
-    "③ 助手消息 Markdown 图 display:block + max-width:100%（1121 防竖排契约不回退）");
+    "③ 助手消息 Markdown 图 display:block + max-width:100%（防竖排契约不回退）");
 }
 
 // ── DOM 渲染：用户消息 / steer / 协作卡 / notice / 助手消息 ──
@@ -204,37 +210,43 @@ console.log("\ntl1121+1122 message layout + timestamp position");
     };
   };
 
-  // ① 用户消息带图：文字块在图块之前（上下分离，非 inline 混排）
+  // ① 用户消息带图：文字块在附件容器之前（上下分离）+ 图片走 56px 缩略卡
   {
     const { host, cleanup } = await renderIn(
       React.createElement(UserMessage, { id: "u-1121", text: `看下这张图 ${IMG_REF}` }),
     );
     const textBlock = host.querySelector(".msg--user .msg__text");
-    const gallery = host.querySelector(".msg-attachment-gallery");
-    ok(textBlock !== null && gallery !== null, "① 用户消息文字块与图块均渲染");
+    const attachRow = host.querySelector(".msg--user .msg-attachments");
+    ok(textBlock !== null && attachRow !== null, "① 用户消息文字块与附件容器均渲染");
     ok(
-      textBlock !== null && gallery !== null
-        && Boolean(textBlock.compareDocumentPosition(gallery) & Node.DOCUMENT_POSITION_FOLLOWING),
-      "① 用户消息文字块在图块之前（上下分离，非嵌进文字流）",
+      textBlock !== null && attachRow !== null
+        && Boolean(textBlock.compareDocumentPosition(attachRow) & Node.DOCUMENT_POSITION_FOLLOWING),
+      "① 用户消息文字块在附件容器之前（文字上/图下，非嵌进文字流）",
     );
-    await waitFor(() => Boolean(host.querySelector(".msg-attachment-gallery__item img")));
-    ok(host.querySelector(".msg-attachment-gallery__item img") !== null, "① 用户消息图块渲染 <img>（preview 就绪）");
+    await waitFor(() => Boolean(host.querySelector(".msg-attachment--image img")));
+    ok(host.querySelector(".msg-attachment--image") !== null, "① 用户消息图片渲染为缩略卡（17 包前基准，非大图块）");
+    eq(host.querySelector(".msg-attachment-gallery"), null, "① 用户消息无 gallery 大图块（1121 形态已回退）");
     await cleanup();
   }
 
-  // ② steer 引导消息带图：1091 分离不回退 + 1121 gallery 化
+  // ② steer 引导消息带图：1091 分离不回退 + 同一缩略卡形态（三类统一基准）
   {
     const { host, cleanup } = await renderIn(
       React.createElement(SteerCard, { id: "s-1121", text: `${STEER_NOTICE_PREFIX}看看这张截图 ${IMG_REF}` }),
     );
+    // TranscriptCards 侧的 MessageAttachments 是独立 lazy 实例（Message.tsx
+    // 同款模式但模块对象不同），首渲染挂 Suspense——先等附件容器提交再断言。
+    await waitFor(() => Boolean(host.querySelector(".steer-line__bubble .msg-attachments")));
     const textBlock = host.querySelector(".steer-line__text");
-    const gallery = host.querySelector(".msg-attachment-gallery");
-    ok(textBlock !== null && gallery !== null, "② steer 气泡文字块与图块均渲染（1091 分离不回退）");
+    const attachRow = host.querySelector(".steer-line__bubble .msg-attachments");
+    ok(textBlock !== null && attachRow !== null, "② steer 气泡文字块与附件容器均渲染（1091 分离不回退）");
     ok(
-      textBlock !== null && gallery !== null
-        && Boolean(textBlock.compareDocumentPosition(gallery) & Node.DOCUMENT_POSITION_FOLLOWING),
-      "② steer 气泡文字块在图块之前（上下分离）",
+      textBlock !== null && attachRow !== null
+        && Boolean(textBlock.compareDocumentPosition(attachRow) & Node.DOCUMENT_POSITION_FOLLOWING),
+      "② steer 气泡文字块在附件容器之前（文字上/图下）",
     );
+    ok(attachRow !== null && attachRow.querySelector(".msg-attachment--image") !== null, "② steer 气泡图片渲染为同一缩略卡（与用户消息同款）");
+    eq(host.querySelector(".msg-attachment-gallery"), null, "② steer 气泡无 gallery 大图块（1121 形态已回退）");
     await cleanup();
   }
 
@@ -317,6 +329,14 @@ console.log("\ntl1121+1122 message layout + timestamp position");
     const noticeText = host.querySelector(".notice-line__text");
     const time = host.querySelector(".notice-line__time");
     ok(noticeLine !== null && noticeText !== null && time !== null, "⑨ notice 卡片/正文/时间戳均渲染");
+    // 1136: notice（第三类消息）带图同样渲染统一缩略卡（.msg-attachments 容器
+    // 内 .msg-attachment--image），与用户消息/steer 气泡同款——三类消息统一基准。
+    // （MessageAttachments 为 lazy 组件，先等附件容器提交再断言。）
+    await waitFor(() => Boolean(host.querySelector(".notice-line__body .msg-attachments")));
+    const noticeAttachRow = host.querySelector(".notice-line__body .msg-attachments");
+    ok(noticeAttachRow !== null, "⑨ notice 带图渲染附件容器（三类统一基准）");
+    ok(noticeAttachRow !== null && noticeAttachRow.querySelector(".msg-attachment--image") !== null, "⑨ notice 图片渲染为同一缩略卡（与用户消息/steer 同款）");
+    eq(host.querySelector(".msg-attachment-gallery"), null, "⑨ notice 无 gallery 大图块（1121 形态已回退）");
     // 1122: .notice-line__time 不再是 .notice-line__text 内部末尾的子元素，
     // 而是 .notice-line 卡片容器的末尾子节点（actionsRow/detail 之后）——
     // 卡片是 flex column，时间戳落在正文下方（「卡片下方」统一位置口径）。
@@ -353,5 +373,5 @@ console.log("\ntl1121+1122 message layout + timestamp position");
   }
 }
 
-process.stdout.write(`\ntl1121+1122 message layout: ${passed} passed, ${failed} failed\n`);
+process.stdout.write(`\ntl1136+1122 message layout: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
