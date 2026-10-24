@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/config"
 	"reasonix/internal/provider"
 	"reasonix/internal/agent"
+	"reasonix/internal/store"
 )
 
 // 任务 1065：「选 HEAD → 反向合成最长链」的后端面。
@@ -110,5 +114,139 @@ func TestSynthesizeSessionHeadsRefusesSingleChain(t *testing.T) {
 		t.Fatal("a conversation with one chain has nothing to synthesize; the call must be refused")
 	} else if !strings.Contains(err.Error(), "only one chain") {
 		t.Fatalf("refusal must say what is missing, got %v", err)
+	}
+}
+
+// 任务 1117：「未选 HEAD」对纯 v3 头会话不再误报 only one chain。
+//
+// 现场（20261024 fork开发-新8，3 个 v3 版本 1691/966/254 轮）：会话没有
+// recovery 副本文件（都已入回收站或已包含），只有 canonical event log 里的
+// 多个 v3 heads。用户未选 HEAD 直接点「以选定 HEAD 合成最长链」，旧代码的
+// headID=="" 路径只扫 recoveryCopiesByMain 的副本文件、不扫 v3 heads，
+// copies 为空 → len(report.Items)==0 → 误报 errHeadSynthesisNoBranch，
+// 而会话实际有 3 条链。
+//
+// 本测试钉住修复：fixture 手写一份 schema-2 事件日志（两个 live head——
+// 主 head 带 q1/a1，fork head 带独立的 q2/a2，两链都活着、互不覆盖），旁边
+// 不放任何 recovery 副本文件。headID 为空调用 SynthesizeSessionHeads，
+// 断言不再命中 errHeadSynthesisNoBranch（扫描面已补扫 v3 heads，Items 非
+// 空）——数据层引擎对「只有 v3 heads 没有副本」的情况会返回
+// ErrNoRecoveryBranches，那是另一条路径的兜底（本测试只验证「未选 HEAD 不
+// 再被误判成只有一条链」这一层修复，不要求这条路径真正完成一次文件级合并
+// ——纯 v3 会话的合并本质是 head 切换，文件层面没有东西可搬）。
+//
+// 事件日志手写而不复用 Session.Save/ForkHead：agent 层的 save/fork 路径带
+// 自己的状态机（lease probe、checkpoint 自播种等），这些都会在 fixture 里
+// 引入与本测试无关的读数；直接写最小 schema-2 事件序列能让「两个 live head、
+// 无副本」这个前提变得可读可核对，不受 agent 内部保存状态机的摆布。
+func TestSynthesizeSessionHeadsUnselectedHeadSeesV3Heads(t *testing.T) {
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "heads-synth-1117-v3only.jsonl")
+	eventsPath := store.SessionEventLog(path)
+	t.Cleanup(func() {
+		_ = os.Remove(path)
+		_ = os.Remove(eventsPath)
+	})
+
+	mainHead := agent.SessionMainHead
+	forkHead := agent.NewHeadID()
+	q1, a1, q2, a2, q3, a3 := agent.NewMessageID(), agent.NewMessageID(), agent.NewMessageID(), agent.NewMessageID(), agent.NewMessageID(), agent.NewMessageID()
+	base := time.Date(2026, 10, 24, 10, 0, 0, 0, time.UTC)
+
+	msgEntry := func(head, parent, turn, id string, role provider.Role, content string, at time.Time) any {
+		return map[string]any{
+			"schema_version": 2,
+			"type":           "message",
+			"id":             id,
+			"head":           head,
+			"turn":           turn,
+			"at":             at.UTC().Format(time.RFC3339Nano),
+			"parent":         parent,
+			"digest":         "",
+			"msgs":           []any{map[string]any{"role": string(role), "content": content, "id": id}},
+		}
+	}
+	forkEntry := func(head, newHead, from string, at time.Time) any {
+		return map[string]any{
+			"schema_version": 2,
+			"type":           "fork",
+			"head":           head,
+			"new_head":       newHead,
+			"from":           from,
+			"kind":           agent.HeadKindFork,
+			"at":             at.UTC().Format(time.RFC3339Nano),
+		}
+	}
+
+	// Two live heads that genuinely diverge (neither covers the other): the
+	// main head carries q1/a1 then q3/a3 (after the fork point), the fork head
+	// carries only q1/a1 then q2/a2 off that same fork point. Both are live,
+	// main is the selected head (no explicit select marker - the replay's own
+	// default picks the most recently active live head, which with these
+	// timestamps is main). This mirrors the panel's real "unselected HEAD"
+	// state: the user is looking at the conversation with its current main
+	// selected, with a second diverged head they have not picked yet.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	entries := []any{
+		msgEntry(mainHead, "", "", q1, provider.RoleUser, "q1", base.Add(-4*time.Second)),
+		msgEntry(mainHead, q1, "", a1, provider.RoleAssistant, "a1", base.Add(-3*time.Second)),
+		forkEntry(mainHead, forkHead, a1, base.Add(-2*time.Second)),
+		msgEntry(forkHead, a1, "", q2, provider.RoleUser, "q2", base.Add(-1*time.Second)),
+		msgEntry(forkHead, q2, "", a2, provider.RoleAssistant, "a2", base),
+		msgEntry(mainHead, a1, "", q3, provider.RoleUser, "q3", base.Add(2*time.Second)),
+		msgEntry(mainHead, q3, "", a3, provider.RoleAssistant, "a3", base.Add(3*time.Second)),
+	}
+	for _, e := range entries {
+		if err := enc.Encode(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(eventsPath, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	heads, err := agent.ListSessionHeads(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	liveCount := 0
+	for _, h := range heads {
+		if !h.Retired {
+			liveCount++
+		}
+	}
+	if liveCount < 2 {
+		t.Fatalf("fixture must carry at least two live v3 heads, got %d (%+v)", liveCount, heads)
+	}
+	// Sanity: no recovery copies beside the main (this is the whole point of
+	// the fixture) - recoveryCopiesByMain must come back empty.
+	if list, _, err := recoveryCopiesByMain(dir); err != nil || len(list[path]) != 0 {
+		t.Fatalf("fixture must have no recovery copies, list=%v err=%v", list[path], err)
+	}
+
+	app := newBranchDeleteApp(t)
+	report, err := app.SynthesizeSessionHeads(path, "")
+	// The specific bug this test exists for: errHeadSynthesisNoBranch ("this
+	// conversation has only one chain") must never be the verdict when the
+	// session genuinely carries two live v3 heads and no recovery copies - the
+	// call must succeed (nil error) with the v3 heads recorded as participants,
+	// so the panel can show "还有 N 条链" instead of misreporting single-chain.
+	if err != nil {
+		t.Fatalf("a v3-only multi-head conversation must not be refused when no HEAD is picked: report=%+v err=%v", report, err)
+	}
+	// The pre-run reading must have picked up both live v3 heads as
+	// participants (Items is the existence proof the panel renders before
+	// running the merge).
+	if len(report.Items) < 2 {
+		t.Fatalf("the pre-run reading must list both live v3 heads as participants: %+v", report)
+	}
+	for _, item := range report.Items {
+		if item.Path != path {
+			t.Fatalf("v3 head participants must reference the canonical transcript, got %+v", item)
+		}
 	}
 }
