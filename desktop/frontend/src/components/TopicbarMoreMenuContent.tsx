@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import {
   Check,
+  ChevronLeft,
   ChevronRight,
   ClipboardList,
   Copy,
@@ -30,7 +31,8 @@ import type { ExternalOpenerView, TabMeta } from "../lib/types";
 // 收敛为 7 项：会话摘要 / 复制和导出 ▸ / 会话视图 ▸ / 改动 / 终端 / 打开方式 ▸ 。
 // 二级可达零丢失：复制会话·导出会话（MD/JSON/PDF/图片）·路径·日志路径·会话ID
 // 全并入「复制和导出 ▸」；转录·轨迹并入「会话视图 ▸」；每个含二级子菜单的一级
-// 项右侧固定渲染一个 ChevronRight（▶）展开引导。
+// 项右侧固定渲染一个展开引导（tl 1148：关闭态 ▷ 表示「有子菜单」，打开态翻为
+// ◁ 指向子菜单实际的左弹方向）。
 //
 // 已知坑（方案文档踩坑清单，勿"优化"回去）：
 //   · 二级菜单必须向左展开（right: calc(100% + 4px)）——菜单贴屏幕右侧，
@@ -85,6 +87,17 @@ function moveMenuFocus(event: ReactKeyboardEvent<HTMLDivElement>) {
     : event.key === "ArrowDown" ? (current + 1 + items.length) % items.length
     : (current - 1 + items.length) % items.length;
   items[next]?.focus();
+}
+
+// tl 1148：二级子菜单固定向左弹出（.topicbar__more-submenu 用
+// right: calc(100% + 4px)，一级菜单贴屏幕右缘、向右弹会出屏）。指示箭头随
+// aria-expanded 翻转——关闭态 ChevronRight（▷，平台惯例=此项有子菜单），打开态
+// ChevronLeft（◁，指向子菜单实际出现的方向），消除「箭头朝右、菜单左弹」的方向
+// 歧义。不做「优先右弹、越界左翻」的动态定位（B 方案）：本菜单一律贴右缘，向右
+// 弹几乎必然越界，动态测量只会常走左翻分支还引入布局跳动。
+function SubmenuIndicator({ open }: { open: boolean }) {
+  const Icon = open ? ChevronLeft : ChevronRight;
+  return <Icon className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />;
 }
 
 // 通用二级子菜单：向左展开、内部移动焦点、ArrowRight/Escape 收起并把焦点还给
@@ -245,8 +258,8 @@ export function TopicbarMoreMenuContent({
         >
           <Copy size={14} />
           <span>{t("topicBar.copyAndExport")}</span>
-          {/* tl 1119：含二级子菜单的一级项固定渲染 ▶ 展开引导。 */}
-          <ChevronRight className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />
+          {/* tl 1119：含二级子菜单的一级项固定渲染展开引导；tl 1148：打开态翻 ◁。 */}
+          <SubmenuIndicator open={submenu === "copyExport"} />
         </button>
         {submenu === "copyExport" && (
           <SubmenuShell label={t("topicBar.copyAndExport")} submenuRef={copyExportMenuRef} onCloseSubmenu={() => closeSubmenu("copyExport")}>
@@ -338,8 +351,8 @@ export function TopicbarMoreMenuContent({
           >
             <MessageSquareText size={14} />
             <span>{t("topicBar.sessionView")}</span>
-            {/* tl 1119：含二级子菜单的一级项固定渲染 ▶ 展开引导。 */}
-            <ChevronRight className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />
+            {/* tl 1119：含二级子菜单的一级项固定渲染展开引导；tl 1148：打开态翻 ◁。 */}
+            <SubmenuIndicator open={submenu === "views"} />
           </button>
           {submenu === "views" && (
             <SubmenuShell label={t("topicBar.sessionView")} submenuRef={viewsMenuRef} onCloseSubmenu={() => closeSubmenu("views")}>
@@ -403,8 +416,8 @@ export function TopicbarMoreMenuContent({
         >
           <FolderOpen size={14} />
           <span>{t("topicBar.openIn")}</span>
-          {/* tl 1119：含二级子菜单的一级项固定渲染 ▶ 展开引导。 */}
-          <ChevronRight className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />
+          {/* tl 1119：含二级子菜单的一级项固定渲染展开引导；tl 1148：打开态翻 ◁。 */}
+          <SubmenuIndicator open={submenu === "openers"} />
         </button>
         {submenu === "openers" && openers && (
           <SubmenuShell label={t("topicBar.openIn")} submenuRef={openersMenuRef} onCloseSubmenu={() => closeSubmenu("openers")}>
