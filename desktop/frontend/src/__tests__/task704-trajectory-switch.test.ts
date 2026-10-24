@@ -133,8 +133,12 @@ ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajec
 // → 4 稳定/18 推荐/34 可选（992 漏同步三键同窗收口）。本 pin 随 1005
 // 窗口补步进）。任务 1024（draftRewrite）+ 1069（stalledIntentNudge）两次
 // 叠加入表 → optional 38；本 pin 此前漏跟 1024，随 1069 一并补齐。
-ok(/stable: 4,\s*\n\s*recommended: 18,\s*\n\s*optional: 38,/.test(tiers),
-  "LAB_TIER_COUNTS at the 1069 口径 (4 stable / 18 recommended / 38 optional)");
+// 任务 1072：renderArtifact 整功能移除出表 → 37/73。任务 1070：
+// standardContinuation 叠加入表 → 38/74。tl 1097：logManagement 叠加入表 →
+// 39/75（主线漏跟本 pin）。tl 1125：tabManagement + viewLayout 两容器
+// 「可选 → 推荐」→ 20 推荐/37 可选/75 总数（合并态实测真值一并收口）。
+ok(/stable: 4,\s*\n\s*recommended: 20,\s*\n\s*optional: 37,/.test(tiers),
+  "LAB_TIER_COUNTS at the tl 1125 口径 (4 stable / 20 recommended / 37 optional)");
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -156,9 +160,12 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 //    （本 pin 此前漏跟 1024，随 1069 一并补齐）。任务 1072：renderArtifact
 //    整功能移除出表 → 37/73（合并态实测口径：36+1=37 可选、72+1=73 总数）。
 //    任务 1070：standardContinuation 叠加入表 → 38/74（合并态实测真值：
-//    562 门禁 44/0 直读 optional=38、length=74，禁推演）。
+//    562 门禁 44/0 直读 optional=38、length=74，禁推演）。tl 1097：
+//    logManagement 叠加入表 → 39/75（主线漏跟本 pin）。tl 1125：
+//    tabManagement + viewLayout 两容器「可选 → 推荐」→ 20 推荐/37 可选/
+//    75 总数（562 门禁 44/0 直读，禁推演）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 38") && tierTest.includes("length === 74"),
+ok(tierTest.includes("counts.optional === 37") && tierTest.includes("length === 75"),
   "task562 test pins the 74-entry register (1069+1072+1070 合并态实测口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);

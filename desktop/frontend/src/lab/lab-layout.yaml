@@ -194,9 +194,11 @@ groups:
       #   行1 标签栏自适应压缩（experimental_tab_compress，506）；
       #   行2 标签权限指示（tab_permission_indicator 三档，651）。
       # 已存偏好零迁移：两键原样保留，升级后行为不突变。
+      # tl 1125：标签页管理合并卡升「推荐」（用户 2026-10-24 指令，与视图布局
+      # 一并；配置键/默认值/卡内成员档位零变化，只动容器徽章档）。
       - id: tabManagement
         labelKey: settings.tabManagement
-        tier: optional
+        tier: recommended
         onKeys: [experimentalTabCompress, tabModeTintNonDefault]
       # 任务 782：视图布局（合并卡，742 先例）——分栏 + 轨迹视图。容器档 =
       # 成员最高档（可选）；卡内两行各读各键各写各 setter，配置键零变化。
@@ -206,9 +208,10 @@ groups:
       # 开=zcode 同款下拉框省空间）。
       # 任务 959 ①：对话表格按栏宽自动换行入卡为成员行（940 先例，默认关=
       # 宽表横滚布局不变）。
+      # tl 1125：视图布局合并卡升「推荐」（与标签页管理一并，同指令）。
       - id: viewLayout
         labelKey: settings.viewLayout
-        tier: optional
+        tier: recommended
         onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalDraftRewrite]
         members:
           - id: splitView

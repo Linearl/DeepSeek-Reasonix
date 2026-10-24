@@ -282,7 +282,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 742：「标签页管理」合并卡（条目级合并 506+651）。合并是入口层
   // 组织，不降级任何成员特性（tabCompress 仍推荐、tabModeTint 仍未稳定，
   // 见各自条目）；容器卡本身按任务书定可选档。
-  tabManagement: "optional",
+  // tl 1125：标签页管理合并卡升「推荐」（用户 2026-10-24 指令：标签管理/
+  // 视图布局两特性徽章档位提升为推荐——推荐 = 核心特性，不开启体验有缺口）。
+  tabManagement: "recommended",
   // 任务 742：心跳任务后台化（默认关）。按 550 口径定可选——不开启不影响
   // 任何调度行为，只是心跳会话照旧出现在标签栏。
   heartbeatBackground: "optional",
@@ -294,7 +296,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // viewLayout 全可选成员 → 可选）。合并是入口层组织，不降级任何成员特性。
   searchHistory: "recommended",
   inputSelection: "optional",
-  viewLayout: "optional",
+  // tl 1125：视图布局合并卡升「推荐」（tl 1125 同指令，与 tabManagement 一并）。
+  viewLayout: "recommended",
   // 任务 826：左右边栏 hover 展开（左右各一行，独立开关，默认关）。按 550
   // 口径定可选——不开启时不渲染任何热区、不挂任何事件，左右栏行为与引入前
   // 完全一致（铁律 2）。
@@ -375,11 +378,16 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 任务 1070：standardContinuation（Standard 流续跑总闸）按可选档入表——
  * 可选 37→38、总数 73→74（Go 侧同步 64→65）。
  * tl 1097：logManagement（日志管理，纯前端容器 id，无配置键）按可选档入表
- * ——可选 38→39、总数 74→75（Go 渲染表无条目，同 tabManagement 豁免）。 */
+ * ——可选 38→39、总数 74→75（Go 渲染表无条目，同 tabManagement 豁免）。
+ * tl 1125：tabManagement（标签页管理合并卡，纯前端容器 id）+ viewLayout
+ * （视图布局合并卡，同为纯前端容器 id）两特性档位「可选 → 推荐」（用户
+ * 2026-10-24 指令：推荐 = 核心特性，不开启体验有缺口）——推荐 18→20、
+ * 可选 39→37、总数不变 75（两 id 均为纯前端容器，Go 渲染表无条目，registry
+ * 计数不变仍 66，同 tabManagement 豁免）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
-  recommended: 18,
-  optional: 39,
+  recommended: 20,
+  optional: 37,
   unstable: 13,
   retired: 1,
 };

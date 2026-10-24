@@ -113,11 +113,15 @@ console.log("\ntask 562 lab three-tier badges");
   // 可选 37→38、总数 73→74（Go 侧同步 64→65）。
   // tl 1097：logManagement（日志管理，纯前端容器 id，无配置键）按可选档入表
   // ——可选 38→39、总数 74→75（Go 渲染表无条目，同 tabManagement 豁免）。
-  ok(counts.stable === 4 && counts.recommended === 18 && counts.optional === 39 && counts.unstable === 13 && counts.retired === 1,
-    `register counts are 4 稳定/18/39/13/1 (got ${JSON.stringify(counts)})`);
+  // tl 1125：tabManagement（标签页管理合并卡）+ viewLayout（视图布局合并卡）
+  // 两特性档位「可选 → 推荐」（用户 2026-10-24 指令：推荐 = 核心特性，不开启
+  // 体验有缺口）——推荐 18→20、可选 39→37、总数不变 75（两 id 均为纯前端
+  // 容器 id，Go 渲染表无条目，registry 计数不变仍 66，同 tabManagement 豁免）。
+  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 37 && counts.unstable === 13 && counts.retired === 1,
+    `register counts are 4 稳定/20/37/13/1 (got ${JSON.stringify(counts)})`);
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 75, `register holds exactly 75 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 18 && LAB_TIER_COUNTS.optional === 39 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/18/39/13/1");
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 37 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/20/37/13/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -269,12 +273,13 @@ console.log("\ntask 562 lab three-tier badges");
   ok(agg("sessionStore") === "optional", `sessionStore aggregates to 可选 over its unstable member (got ${String(agg("sessionStore"))})`);
   ok(agg("devDebug") === "unstable", `devDebug aggregates to 未稳定 (got ${String(agg("devDebug"))})`);
   // 任务 782：界面组三张合并卡逐卡钉聚合终值——容器徽章 = 成员最高档
-  // （searchHistory 三成员 [推荐,推荐,可选] → 推荐；viewLayout / inputSelection
-  // 全可选成员 → 可选）。
+  // （searchHistory 三成员 [推荐,可选] → 推荐；inputSelection 全可选成员 → 可选）。
+  // tl 1125：viewLayout 容器档位「可选 → 推荐」（用户指令），聚合输入
+  // [推荐,可选×8]，卡头终值 单枚 推荐（推荐压过成员可选）。
   ok(JSON.stringify(railTiersForDefault("searchHistory")) === JSON.stringify(["recommended", "optional"]) && agg("searchHistory") === "recommended",
     `searchHistory: input [推荐,推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("searchHistory"))} → ${String(agg("searchHistory"))})`);
-  ok(JSON.stringify(railTiersForDefault("viewLayout")) === JSON.stringify(["optional"]) && agg("viewLayout") === "optional",
-    `viewLayout: all-optional members aggregate to 可选 (got ${JSON.stringify(railTiersForDefault("viewLayout"))})`);
+  ok(JSON.stringify(railTiersForDefault("viewLayout")) === JSON.stringify(["recommended", "optional"]) && agg("viewLayout") === "recommended",
+    `viewLayout: tl 1125 推荐 container + optional members aggregate to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("viewLayout"))} → ${String(agg("viewLayout"))})`);
   ok(JSON.stringify(railTiersForDefault("inputSelection")) === JSON.stringify(["optional"]) && agg("inputSelection") === "optional",
     `inputSelection: all-optional members aggregate to 可选 (got ${JSON.stringify(railTiersForDefault("inputSelection"))})`);
   // 任务 961：automation/efficiency 两张合并卡钉聚合终值——容器徽章 =
