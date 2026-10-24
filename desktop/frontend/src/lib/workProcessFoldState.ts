@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { Item } from "./useController";
 
 // 任务 463：composer 的「收起/展开全部工作过程」按钮是双向开关，其渲染方向
 // 必须与 transcript 的真实折叠状态一致（用户手动折叠/展开部分块后不得错位）。
@@ -21,24 +22,38 @@ export type WorkProcessFoldAggregate = {
    * 空会话/纯预览面的行为与改动前一致（点击是无操作）。
    */
   allCollapsed: boolean;
+  /**
+   * 任务 1082：当前有活跃会话的 transcript 上报的整轮 items（run strip 的
+   * 工具/文件/汇总读数数据源）。null = 没有任何存活 transcript（此时 run
+   * strip 本就不渲染，汇总随之不渲染）。快照引用逐轮变化（items 数组随
+   * 每次事件重建），getSnapshot 必须按引用返回，否则 useSyncExternalStore
+   * 会陷入无限重渲染。
+   */
+  activeItems: readonly Item[] | null;
 };
 
-const EMPTY_AGGREGATE: WorkProcessFoldAggregate = { allCollapsed: false };
+const EMPTY_AGGREGATE: WorkProcessFoldAggregate = { allCollapsed: false, activeItems: null };
 
-const surfaces = new Map<string, WorkProcessFoldSurfaceState>();
+type SurfaceState = WorkProcessFoldSurfaceState & { activeItems: readonly Item[] | null };
+
+const surfaces = new Map<string, SurfaceState>();
 const listeners = new Set<() => void>();
 let aggregate: WorkProcessFoldAggregate = EMPTY_AGGREGATE;
 
 function recompute(): void {
   let allCollapsed = surfaces.size > 0;
+  let activeItems: readonly Item[] | null = null;
   for (const surface of surfaces.values()) {
     if (!surface.hasFoldables || !surface.allCollapsed) {
       allCollapsed = false;
-      break;
     }
+    // 有活跃会话的 transcript（预览/历史面 activeItems 恒 null，不上报）。
+    if (surface.activeItems) activeItems = surface.activeItems;
   }
-  const next = allCollapsed ? { allCollapsed: true } : EMPTY_AGGREGATE;
-  if (next === aggregate) return;
+  const next = allCollapsed
+    ? { allCollapsed: true, activeItems }
+    : { allCollapsed: false, activeItems };
+  if (next.allCollapsed === aggregate.allCollapsed && next.activeItems === aggregate.activeItems) return;
   aggregate = next;
   for (const listener of listeners) listener();
 }
@@ -46,13 +61,15 @@ function recompute(): void {
 /** Transcript 在折叠状态或可折叠块集合变化时上报（tabId 缺失的预览面不上报）。 */
 export function publishWorkProcessFoldState(
   tabId: string,
-  state: WorkProcessFoldSurfaceState,
+  state: WorkProcessFoldSurfaceState & { activeItems?: readonly Item[] },
 ): void {
   const previous = surfaces.get(tabId);
+  const activeItems = state.activeItems ?? null;
   if (previous
     && previous.hasFoldables === state.hasFoldables
-    && previous.allCollapsed === state.allCollapsed) return;
-  surfaces.set(tabId, state);
+    && previous.allCollapsed === state.allCollapsed
+    && previous.activeItems === activeItems) return;
+  surfaces.set(tabId, { hasFoldables: state.hasFoldables, allCollapsed: state.allCollapsed, activeItems });
   recompute();
 }
 

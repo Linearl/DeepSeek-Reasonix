@@ -7,6 +7,7 @@ import { useContext } from "react";
 import { ChevronRight } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { CompactionItem, SegmentModel } from "../lib/transcriptRows";
+import { countTools } from "../lib/turnToolTally";
 import { useTick, resolveRunningDurationMs, workStatusLabel } from "../lib/workStatus";
 import { compactionLiveReadout } from "../lib/compactionLive";
 import { LiveStreamContext } from "./LiveStreamContext";
@@ -76,8 +77,10 @@ export function ProcessFoldHeader({
   // hidden until the backend's 500ms noise floor passes (it sends 0).
   const readout = compactionLiveReadout(compactionItem ?? {}, now, t);
   // Surface what the closed fold hides — a bare duration reads as pure timing
-  // and users have no way to know process detail sits behind it.
-  const toolCount = displayItems.reduce((n, it) => n + (it.kind === "tool" ? 1 : 0), 0);
+  // and users have no way to know process detail sits behind it. 任务 1082:
+  // toolCount moves to the shared turnToolTally single source so the fold
+  // header and the run-strip tally can never drift apart.
+  const toolCount = countTools(displayItems);
   const thoughtCount = displayItems.reduce((n, it) => n + (it.kind === "assistant" ? 1 : 0), 0);
   const countParts: string[] = [];
   if (!hasCompaction) {

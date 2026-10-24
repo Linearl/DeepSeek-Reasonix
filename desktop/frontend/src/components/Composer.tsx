@@ -61,6 +61,7 @@ import { observeComposerMenuViewport } from "../lib/composerMenuViewport";
 import { resolveComposerContentSizing } from "../lib/composerSizing";
 import { useToast } from "../lib/toast";
 import { readStatusLabel, turnPhaseStatusLabel } from "../lib/readStatus";
+import { turnTallyLabel } from "../lib/turnToolTally";
 import { type CollaborationMode, type CommandInfo, type ComposerInsertRequest, type ContextInfo, type DirEntry, type EffortInfo, type GoalRuntime, type HistoryMessage, type Mode, type PromptHistoryEntry, type QualityFloor, type SessionMeta, type SessionReference, type SlashArgItem, type SlashArgsResult, type SubagentPolicy, type ToolApprovalMode, type BalanceInfo, type WireReadStatus } from "../lib/types";
 import { ComposerPinnedFilesShelf } from "./ComposerPinnedFilesShelf";
 import {
@@ -4954,6 +4955,11 @@ export function Composer({
   // 全部折叠时按钮变「展开全部工作过程」+ 向上图标，否则保持原有「收起」。
   const workProcessFoldAggregate = useWorkProcessFoldAggregate();
   const allFoldsCollapsed = workProcessFoldAggregate.allCollapsed;
+  // 任务 1082：运行态也能看见「本轮动了什么」——run strip 右侧的轻量汇总
+  // （12 工具 · 3 文件 · 1 检索）。数据是 transcript 随折叠状态上报的整轮
+  // items（工作过程折叠头的 displayItems 超集，工具计数同源同口径）；零
+  // 工具轮返回 null，纯对话不制造噪音。折叠头文案与改动前逐字一致。
+  const runTallyLabel = turnTallyLabel(workProcessFoldAggregate.activeItems ?? [], t);
   const foldToggleLabel = allFoldsCollapsed ? t("composer.expandAll") : t("composer.collapseAll");
   const [collapseFlashed, setCollapseFlashed] = useState(false);
   const localPauseSinceRef = useRef<number | null>(null);
@@ -5738,6 +5744,11 @@ export function Composer({
                   numbers for completed turns. */}
               {runMetrics && (runMetrics.tps || runMetrics.tokens) && <span className="composer-run-strip__metrics">{` · ${runMetrics.elapsed}${runMetrics.tokens ? ` · ${runMetrics.tokens}` : ""}${runMetrics.tps ? ` · ${runMetrics.tps}` : ""}`}</span>}
             </span>
+            {/* 任务 1082：本轮工具/文件/检索汇总——折叠头之外的运行态可见面。
+                零工具轮（纯对话）runTallyLabel 为 null，整段不渲染。 */}
+            {runTallyLabel && (
+              <span className="composer-run-strip__tally" aria-hidden="true">{runTallyLabel}</span>
+            )}
           </div>
         )}
         <span className="sr-only" role="status">{readStatusText || runStateText}</span>
