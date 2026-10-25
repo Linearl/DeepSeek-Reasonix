@@ -584,6 +584,10 @@ type SettingsView struct {
 	// re-applies it (config + live controller mirror), so a flip shows without
 	// a restart.
 	StandardContinuation bool `json:"standardContinuation"`
+	// tl 1105: 中断自动续轮 readback. Same snapshot shape: the settings save
+	// re-applies it (config + live controller mirror), so a flip shows without
+	// a restart.
+	InterruptedAutoResume bool `json:"interruptedAutoResume"`
 	// Task 979: capability-group disclosure layer readback (tasks 953/954/955
 	// shared switch: use_capability group rows + group cards, session_hub L0
 	// aggregation entry, standing-directory group attribution). Boot snapshot.
@@ -2017,6 +2021,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalDraftRewrite: cfg.Agent.ExperimentalDraftRewrite,
 		// 任务 1070: Standard 流续跑总闸 readback.
 		StandardContinuation: cfg.Agent.StandardContinuation,
+		// tl 1105: 中断自动续轮 readback.
+		InterruptedAutoResume: cfg.Agent.InterruptedAutoResume,
 		// Task 979: capability-group disclosure lab switch readback (953/954/955 shared).
 		ExperimentalCapabilityGroups: cfg.Agent.ExperimentalCapabilityGroups,
 		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).

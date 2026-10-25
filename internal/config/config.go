@@ -2300,6 +2300,15 @@ type AgentConfig struct {
 	// standard_continuation, default off — off keeps the pre-1070 behaviour
 	// verbatim. Off does not touch the ExplicitFlow dedicated flows.
 	StandardContinuation bool `toml:"standard_continuation"`
+	// InterruptedAutoResume (tl 1105): when on, a turn that stops with a
+	// genuine outcome-unknown interruption gets exactly ONE host continuation
+	// turn carrying the already-persisted bounded recovery summary, instead of
+	// idling until the user manually opens the next round (the 2026-10-23
+	// 装机链 incident: a restart_update execute killed the in-flight
+	// verification call; the recovery panel was ignored and the session went
+	// dead until the user manually sent a message). Default off — off keeps the
+	// pre-1105 idle stop byte-for-byte.
+	InterruptedAutoResume bool `toml:"interrupted_auto_resume"`
 	// StalledIntentNudgeLimit caps the stalled-intent repair per run.
 	// 0 keeps the built-in default (1). Values above 3 are clamped.
 	StalledIntentNudgeLimit int `toml:"stalled_intent_nudge_limit"`

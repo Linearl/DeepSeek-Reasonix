@@ -459,6 +459,11 @@ func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn
 			if handled, contErr := o.maybeAskAutoContinueTurn(ctx, err); handled {
 				return contErr
 			}
+			// tl 1105: a genuine outcome-unknown interruption is the second
+			// shape the host resumes by itself (experimental, default off).
+			if handled, contErr := o.maybeInterruptedAutoContinueTurn(ctx, err); handled {
+				return contErr
+			}
 			return err
 		}
 		if !o.c.goals.active() {
@@ -466,6 +471,12 @@ func (o *turnOrchestrator) runGoalLoopWithPreparedTurn(ctx context.Context, turn
 			// owns the explicit recovery action, matching the pre-auto-continuation
 			// contract; only an active Goal may continue through its FSM below.
 			o.c.goalUsageTee.setActiveRecorder(nil)
+			// tl 1105: the same interrupted-turn auto-resume gate applies to the
+			// Standard/Delivery boundary stop — an outcome-unknown interruption
+			// is not the readiness boundary's contract.
+			if handled, contErr := o.maybeInterruptedAutoContinueTurn(ctx, err); handled {
+				return contErr
+			}
 			return err
 		}
 		// FinalReadinessError is absorbed below: the Goal FSM continues with
@@ -497,10 +508,19 @@ func (o *turnOrchestrator) runEditedGoalLoopWithImageRefsRawDisplay(ctx context.
 			if handled, contErr := o.maybeAskAutoContinueTurn(ctx, err); handled {
 				return contErr
 			}
+			// tl 1105: same interrupted-turn auto-resume shape as the plain loop.
+			if handled, contErr := o.maybeInterruptedAutoContinueTurn(ctx, err); handled {
+				return contErr
+			}
 			return err
 		}
 		if !o.c.goals.active() {
 			o.c.goalUsageTee.setActiveRecorder(nil)
+			// tl 1105: same interrupted-turn auto-resume gate at the
+			// Standard/Delivery boundary.
+			if handled, contErr := o.maybeInterruptedAutoContinueTurn(ctx, err); handled {
+				return contErr
+			}
 			return err
 		}
 	}

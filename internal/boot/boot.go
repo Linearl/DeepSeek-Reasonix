@@ -2707,6 +2707,8 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		AutopilotAskAutoContinue:   opts.AutopilotAskAutoContinue,
 		// 任务 1070：Standard 流续跑总闸（boot snapshot，默认关）。
 		StandardContinuation: cfg.Agent.StandardContinuation,
+		// tl 1105：中断自动续轮（boot snapshot，默认关）。
+		InterruptedAutoResume: cfg.Agent.InterruptedAutoResume,
 		// Task 231: the managed-path pre-approval snapshot. All five flags ship
 		// false (default-off experimental); the two home-derived dirs give the
 		// classifier its skills/stores boundaries, and hooks classify by the

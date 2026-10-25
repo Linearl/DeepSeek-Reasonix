@@ -74,6 +74,10 @@ var labFeatureTiers = []labFeatureTier{
 	// 等价现状（铁律 2）。开启后 Standard 会话续跑通道可达，但既有边界不变：
 	// 有界上限、无进展即停、planMode/只读/ForbidMutation/subagentDepth 排除。
 	{"standardContinuation", LabTierOptional, []string{"standard_continuation"}},
+	// tl 1105：中断自动续轮（outcome_unknown 中断→一次宿主续轮，默认关，
+	// 与 standardContinuation 同族不同触发源——后者管续跑通道可达性，本项
+	// 管中断停轮后是否有兜底触发源消费恢复摘要）。
+	{"interruptedAutoResume", LabTierOptional, []string{"interrupted_auto_resume"}},
 	// 任务 517：B1/B2/B3 三开关合并为「安全 / 成本控制」单键；三个 legacy 键
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
 	// 任务 722：三个细粒度子开关（条件渲染，nil=跟随总开关不落盘）同归本卡。
@@ -253,6 +257,9 @@ var labSpecialKeys = map[string]bool{
 	// 任务 1070：standard_continuation 是 Standard 流续跑总闸的实验室特性键
 	// （无 experimental_ 前缀，随 standardContinuation 档位族登记）。
 	"standard_continuation": true,
+	// tl 1105：interrupted_auto_resume 是中断自动续轮的实验室特性键
+	// （无 experimental_ 前缀，随 interruptedAutoResume 档位族登记）。
+	"interrupted_auto_resume": true,
 	// 任务 1056：network_retry_budget 是 [network.retry_budget] 实验室特性键
 	// （无 experimental_ 前缀，随 networkRetryBudget 档位族登记）。
 	"network_retry_budget": true,
@@ -1007,6 +1014,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "trace_as_state = %v   # task 60: Trace-as-State compaction (reasoning in summaries, re-read routing, guarded folds)\n", c.Agent.TraceAsState)
 	fmt.Fprintf(&b, "stalled_intent_nudge = %v   # task 117: nudge when model announces next step instead of taking it\n", c.Agent.StalledIntentNudge)
 	fmt.Fprintf(&b, "standard_continuation = %v   # task 1070: open the Standard-flow same-Run continuation total gate (bounded todo / stalled-intent / handoff nudges); dedicated ExplicitFlow runs unaffected (default off)\n", c.Agent.StandardContinuation)
+	fmt.Fprintf(&b, "interrupted_auto_resume = %v   # tl 1105: an outcome-unknown interrupted turn gets one host continuation turn instead of idling (default off)\n", c.Agent.InterruptedAutoResume)
 	if c.Agent.StalledIntentNudgeLimit > 0 {
 		fmt.Fprintf(&b, "stalled_intent_nudge_limit = %d   # max stalled-intent nudges per run (1-3; default 1)\n", c.Agent.StalledIntentNudgeLimit)
 	}
