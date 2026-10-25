@@ -78,6 +78,20 @@ function click(target: Element) {
   target.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }));
 }
 
+// tl 1153：hover 用 pointerover/pointerout 派发（React 据此合成 onPointerEnter/
+// onPointerLeave，与真实鼠标路径一致）；延时断言用真实计时器等待。
+function hover(target: Element) {
+  target.dispatchEvent(new dom.window.MouseEvent("pointerover", { bubbles: true, cancelable: true }));
+}
+
+function unhover(target: Element) {
+  target.dispatchEvent(new dom.window.MouseEvent("pointerout", { bubbles: true, cancelable: true }));
+}
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 console.log("\ntopicbar more menu: 1119+1120 collapse contract");
 let rootElement = document.getElementById("root")!;
 // 每轮重渲染前 root.unmount() 后必须换新的 root 容器节点——react-dom 的 root 一旦
@@ -255,6 +269,64 @@ const reopenedOpenerItems = Array.from(rootElement.querySelectorAll<HTMLButtonEl
 await act(async () => { press(reopenedOpenerItems[0]!, "ArrowLeft"); });
 await waitFor("openers submenu close via ArrowLeft", () => rootElement.querySelector('.topicbar__more-menu [role="menu"][aria-label="打开方式"]') === null);
 ok(true, "ArrowRight 展开 / ArrowLeft 收起 子菜单");
+
+// ---- tl 1153：二级菜单 hover ~300ms 自动展开（标准 submenu 交互） ----
+resetRoot();
+await render();
+await untilRendered("hover section render");
+const hoverItems = Array.from(rootElement.querySelectorAll<HTMLButtonElement>('.topicbar__more-menu .topicbar__menu-item'));
+const copyExportHoverTrigger = hoverItems[1]!;
+const viewsHoverTrigger = hoverItems[2]!;
+const openersHoverTrigger = hoverItems[5]!;
+const submenuOf = (label: string) => rootElement.querySelector(`.topicbar__more-menu [role="menu"][aria-label="${label}"]`);
+
+// 扫过不弹：停留不足时限不展开。
+await act(async () => { hover(copyExportHoverTrigger); });
+await act(async () => { await waitMs(50); });
+ok(submenuOf("复制和导出") === null, "tl1153 hover 停留不足 ~300ms 不展开（扫过不弹）");
+// 停留到时限自动展开（不点击）。
+await act(async () => { await waitMs(340); });
+ok(submenuOf("复制和导出") !== null, "tl1153 hover 停留 ~300ms 后「复制和导出」二级自动展开（不点击）");
+
+// 移入子菜单不关闭：hover 二级项后面板保持展开。
+const copyExportHoverSubItems = Array.from(rootElement.querySelectorAll<HTMLButtonElement>('.topicbar__more-submenu [role="menuitem"]'));
+await act(async () => { hover(copyExportHoverSubItems[0]!); });
+await act(async () => { await waitMs(40); });
+ok(submenuOf("复制和导出") !== null, "tl1153 鼠标移入子菜单不关闭");
+
+// 移出已展开的触发项不收起面板（收起仍走既有关闭逻辑：外点/Escape/切项）。
+await act(async () => { unhover(copyExportHoverTrigger); });
+await act(async () => { await waitMs(340); });
+ok(submenuOf("复制和导出") !== null, "tl1153 移出已展开的触发项不收起面板（关闭走既有关闭逻辑）");
+
+// hover 互斥切换：hover 另一触发项到时限后新子菜单展开、原子菜单收起；触发项
+// aria-expanded 与 tl 1148 箭头（◁）同步翻转——hover 路径零回归。
+await act(async () => { hover(viewsHoverTrigger); });
+await act(async () => { await waitMs(340); });
+ok(submenuOf("会话视图") !== null, "tl1153 hover 另一触发项（会话视图）到时限后自动展开");
+ok(submenuOf("复制和导出") === null, "tl1153 hover 切换后原子菜单收起（同时最多一个二级展开）");
+ok(viewsHoverTrigger.getAttribute("aria-expanded") === "true", "tl1153 hover 展开后触发项 aria-expanded=true（与点击路径一致）");
+const hoverSwitchIndicator = viewsHoverTrigger.querySelector(".topicbar__more-submenu-indicator");
+ok(hoverSwitchIndicator?.classList.contains("lucide-chevron-left") === true, "tl1153 hover 展开后箭头翻 ◁（tl1148 经 hover 路径零回归）");
+
+// 未到时限就移出触发项：挂起计时器被取消、不展开（打开方式 ▸）。
+await act(async () => { hover(openersHoverTrigger); });
+await act(async () => { await waitMs(60); });
+await act(async () => { unhover(openersHoverTrigger); });
+await act(async () => { await waitMs(340); });
+ok(submenuOf("打开方式") === null, "tl1153 未到时限移出触发项：挂起计时器取消、不展开");
+
+// 点击回归：hover 展开后点击触发项仍按原语义切换（收起→再点击展开）。
+await act(async () => { click(viewsHoverTrigger); });
+ok(submenuOf("会话视图") === null, "tl1153 hover 展开后点击触发项仍收起（点击切换语义不变）");
+await act(async () => { click(viewsHoverTrigger); });
+await waitFor("views submenu reopen via click after hover", () => submenuOf("会话视图") !== null);
+ok(true, "tl1153 点击仍可展开二级菜单");
+
+// Escape 回归：hover 流程下（焦点未进子菜单）Escape 仍关闭整个菜单。
+const closeCallsBefore = calls.filter((name) => name === "close").length;
+await act(async () => { press(hoverItems[0]!, "Escape"); });
+ok(calls.filter((name) => name === "close").length === closeCallsBefore + 1, "tl1153 hover 流程下 Escape 仍关闭整个菜单");
 
 // ---- terminalEnabled=false 场景下一级结构仍保持收敛 ----
 resetRoot();
