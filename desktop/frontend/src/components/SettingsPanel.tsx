@@ -942,8 +942,9 @@ const PROXY_MODES = ["auto", "custom", "off"] as const;
 // EFFORT_PRESETS and the alias folding live in lib/effortTiers.ts (task 254,
 // user ruling on task 251: four honest tiers, wire keeps the eight-level set).
 // Re-exported here because the subagent pickers import them from this module.
+// 任务 1151：foldEffortMenu 支撑子代理 effort 行的动态档位域渲染。
 export { EFFORT_PRESETS, normalizeEffortForMenu } from "../lib/effortTiers";
-import { EFFORT_PRESETS } from "../lib/effortTiers";
+import { EFFORT_PRESETS, foldEffortMenu } from "../lib/effortTiers";
 const COMPACT_RATIO_PRESETS = [
   [0.7, "settings.compactRatioPreset.70", "settings.compactRatioPresetEffect.70"],
   [0.8, "settings.compactRatioPreset.80", "settings.compactRatioPresetEffect.80"],
@@ -4289,7 +4290,12 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
   const subagentRef = toRef(s.subagentModel, s);
   const subagentOption = modelOptionFromRef(subagentRef, s);
   const subagentOverride = subagentOption?.providerView?.modelOverrides?.find(item => item.model === subagentOption.model);
-  const subagentLevels = subagentRef ? (subagentOverride?.supportedEfforts?.length ? subagentOverride.supportedEfforts : subagentOption?.providerView?.supportedEfforts ?? []) : [];
+  // 任务 1151：档位菜单来自后端按生效模型（显式子代理模型，否则主模型）计算的
+  // wire 合法域（config.EffortMenuDomain，与 dispatch 校验同源），MiMo 词表按
+  // aliasFold 身份标记折叠；字段缺失（旧夹具）时退回 config 声明词表链。
+  const subagentLevels = Array.isArray(s.subagentEffortLevels)
+    ? foldEffortMenu(s.subagentEffortLevels, Boolean(s.subagentEffortAliasFold))
+    : subagentRef ? (subagentOverride?.supportedEfforts?.length ? subagentOverride.supportedEfforts : subagentOption?.providerView?.supportedEfforts ?? []) : [];
 
   const visionRef = s.visionModel === "auto" ? "auto" : toRef(s.visionModel, s);
   const plannerSelectRef = plannerRef === defaultRef ? "" : plannerRef;
@@ -4674,6 +4680,11 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
                   </option>
                 ))}
               </SettingsSelect>
+              {/* 任务 1151：后端判定已保存档位会被 dispatch 丢弃时给出解释；
+                  仍以 disabled 项保留原值——换回支持的模型会自动恢复生效。 */}
+              {s.subagentEffort && s.subagentEffortApplies === false && (
+                <p role="status" className="web-search-assignment-hint">{t("settings.subagentEffortUnsupported", { level: s.subagentEffort })}</p>
+              )}
             </SettingsField>
 
             <details className="settings-subagent-advanced"><summary>{t("settings.subagentAdvanced")}</summary>

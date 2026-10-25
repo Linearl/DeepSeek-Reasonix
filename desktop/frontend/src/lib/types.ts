@@ -1497,6 +1497,20 @@ export interface SkillView {
   body?: string;
   configuredModel?: string;
   configuredEffort?: string;
+  // 任务 1151：该 profile 生效模型（per-name 覆盖 → frontmatter model → 继承链）
+  // 的 effort 合法档位域（含 composer 的 auto，wire 非法档已过滤）；
+  // effortAliasFold 为 MiMo 身份标记；effortApplies=false 表示已保存档位会被
+  // 运行时丢弃。缺字段（旧 mock/测试夹具）时前端回退静态四档。
+  effortLevels?: string[];
+  effortAliasFold?: boolean;
+  effortApplies?: boolean;
+}
+
+/** 任务 1151：EffortDomainForRef 的返回形状——一个模型引用的 effort 菜单域。 */
+export interface EffortDomainView {
+  supported: boolean;
+  levels: string[];
+  aliasFold?: boolean;
 }
 export interface SkillRootSkillView {
   name: string;

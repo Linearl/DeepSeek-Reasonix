@@ -2578,6 +2578,8 @@ export const zh: Record<DictKey, string> = {
   "settings.subagentModelDefault": "跟随主代理模型",
   "settings.subagentEffort": "子代理 effort",
   "settings.subagentEffortDefault": "auto（模型服务默认）",
+  // 任务 1151：已保存档位在当前生效模型上会被运行时丢弃。
+  "settings.subagentEffortUnsupported": "已保存的「{level}」不在当前子代理模型的支持范围内；子代理将使用模型默认强度，换回支持的模型后自动恢复。",
   "settings.subagentHint": "作用于 task 和 runAs=subagent skills；工具调用参数或单个 skill 配置会覆盖它。",
   "settings.subagentDepth": "子代理嵌套深度",
   "settings.subagentDepthHint": "控制第一层子代理能否再派发一层 reviewer 或 worker 子代理。",

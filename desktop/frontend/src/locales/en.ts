@@ -2587,6 +2587,8 @@ export const en = {
   "settings.subagentModelDefault": "Follow parent agent model",
   "settings.subagentEffort": "Subagent effort",
   "settings.subagentEffortDefault": "auto (provider default)",
+  // Task 1151: the saved level is dropped at dispatch for the effective model.
+  "settings.subagentEffortUnsupported": "The saved level \"{level}\" is not offered by the current subagent model; subagents run at the model's default until a model that supports it is selected.",
   "settings.subagentHint": "Applies to task and runAs=subagent skills unless a tool call or skill-specific config overrides it.",
   "settings.subagentDepth": "Subagent nesting depth",
   "settings.subagentDepthHint": "Controls whether a first-layer subagent may dispatch one more reviewer or worker subagent.",

@@ -1938,6 +1938,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.subagentModelDefault": "跟隨主代理模型",
   "settings.subagentEffort": "子代理 effort",
   "settings.subagentEffortDefault": "auto（模型服務預設）",
+  // 任務 1151：已儲存檔位在當前生效模型上會被執行時丟棄。
+  "settings.subagentEffortUnsupported": "已儲存的「{level}」不在目前子代理模型的支援範圍內；子代理將使用模型預設強度，換回支援的模型後自動恢復。",
   "settings.subagentHint": "作用於 task 和 runAs=subagent skills；工具呼叫參數或單個 skill 設定會覆蓋它。",
   "settings.subagentDepth": "子代理巢狀深度",
   "settings.subagentDepthHint": "控制第一層子代理能否再派發一層 reviewer 或 worker 子代理。",
