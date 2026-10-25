@@ -25611,9 +25611,14 @@ button.statusbar__mcp:focus-visible {
   display: grid;
   /* Task 266-A: one row must hold every control. Task 441: the leading slot
      is the six-dot drag handle (or the row glyph on non-movable rows) and the
-     up/down arrows are gone — handle/text/edit/merge/guide/dismiss still fit
-     one line (select-mode checkbox + editing badge included). */
-  grid-template-columns: auto minmax(0, 1fr) repeat(4, auto);
+     up/down arrows are gone. 任务998 added the per-row enqueue time, so the
+     capacity is handle + text + time/edit/merge/guide/dismiss — 6 tracks
+     could no longer hold the row (tl 1128: the dismiss control wrapped onto
+     a second line). The 1fr text column keeps absorbing the squeeze, so the
+     single-height line stands. Select-mode rows carry one more control (the
+     checkbox) and widen further via .composer-guidance-item--select below;
+     the editing badge swaps into the edit slot, never alongside it. */
+  grid-template-columns: auto minmax(0, 1fr) repeat(5, auto);
   align-items: center;
   gap: 8px;
   padding: 5px 6px 5px 8px;
@@ -25622,6 +25627,15 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--bg-elev) 78%, transparent);
   color: var(--fg-dim);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+}
+
+/* tl 1128: select mode adds the row checkbox on top of the every-control
+   row — icon | check | text | time | edit | merge | guide | dismiss all stay
+   on one grid line (the dismiss control used to wrap onto a second line once
+   the checkbox joined). The 1fr text column absorbs narrow-dock squeeze and
+   the __text line-clamp keeps the row single-height. */
+.composer-guidance-item--select {
+  grid-template-columns: auto auto minmax(0, 1fr) repeat(5, auto);
 }
 
 .composer-guidance-item__icon {

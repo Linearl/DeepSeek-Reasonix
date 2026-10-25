@@ -508,7 +508,7 @@ export function ComposerGuidanceShelf({
                       : t("composer.guidanceSend");
               return (
                 <div
-                  className={`composer-guidance-item${editing ? " composer-guidance-item--editing" : ""}${dragId === item.id ? " composer-guidance-item--dragging" : ""}`}
+                  className={`composer-guidance-item${selectMode ? " composer-guidance-item--select" : ""}${editing ? " composer-guidance-item--editing" : ""}${dragId === item.id ? " composer-guidance-item--dragging" : ""}`}
                   key={item.id}
                   // Task 289 (root cause: the card body had no click handler, so
                   // anything outside the tiny text button felt stuck open). The

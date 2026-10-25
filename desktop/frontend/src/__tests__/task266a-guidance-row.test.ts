@@ -45,8 +45,14 @@ const styles = readFileSync(join(root, "styles.css"), "utf8");
 // ── 266-A + 441: grid capacity keeps every control on ONE row ──────────────
 {
   const itemRule = styles.slice(styles.indexOf(".composer-guidance-item {"), styles.indexOf(".composer-guidance-item__icon"));
-  ok(/grid-template-columns:\s*auto minmax\(0, 1fr\) repeat\(4, auto\)/.test(itemRule),
-    "the row grid holds 1 auto + text + 4 auto slots (handle/text/edit/merge/guide/dismiss all fit one line)");
+  // tl 1128: 任务998 added the per-row enqueue time, so the capacity grew to
+  // 5 auto slots (time/edit/merge/guide/dismiss) behind handle + 1fr text —
+  // still ONE line, which is the design intent this pin guards.
+  ok(/grid-template-columns:\s*auto minmax\(0, 1fr\) repeat\(5, auto\)/.test(itemRule),
+    "the row grid holds 1 auto + text + 5 auto slots (handle/text/time/edit/merge/guide/dismiss all fit one line)");
+  const selectRule = styles.slice(styles.indexOf(".composer-guidance-item--select {"), styles.indexOf(".composer-guidance-item__icon"));
+  ok(/grid-template-columns:\s*auto auto minmax\(0, 1fr\) repeat\(5, auto\)/.test(selectRule),
+    "select-mode rows widen to 8 tracks so the checkbox never pushes the dismiss control to a second line (tl 1128)");
   ok(/min-height: 32px/.test(itemRule),
     "the single-height baseline (32px) is retained");
   const handleRule = styles.slice(styles.indexOf(".composer-guidance-item__handle {"), styles.indexOf(".composer-guidance-item__handle:hover"));
