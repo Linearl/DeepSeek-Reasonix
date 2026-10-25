@@ -150,6 +150,18 @@ type SessionCollabConfig struct {
 	// the host's existing recovery selection path. The tool gates on
 	// confirm=true before this probe ever runs.
 	AdoptSessionVersion func(scope, workspaceRoot, topicID, sessionPath, versionID string) error
+	// 任务 1145：注册表空壳触达（铁律 2 软开关，默认关——两个探针都 nil 时
+	// delete_session 行为与既有版本逐字节一致）。开关注册在 [agent]
+	// session_collab_registry_shell_cleanup，由 boot 按快照注入；空壳 =
+	// 注册表登记过、但磁盘上无任何主转录文件的 topic（两套真相源分叉的残留）。
+	//
+	// RegistryShellProbe 判定 ref 是否为一个注册表空壳的 topic_id（只认
+	// topic_id 精确匹配——按标题认空壳会在「空壳与活会话同名」时误指活会话，
+	// 任务书 AC6）。命中返回 (topicID, 标题, true)。
+	RegistryShellProbe func(ref string) (topicID, title string, ok bool)
+	// RegistryShellTrash 把注册表空壳移出桌面注册表（树/分组/标题表一并收敛，
+	// 与桌面删除动作同一写路径）。dryRun=true 只验证可操作性，不动数据。
+	RegistryShellTrash func(topicID string, dryRun bool) error
 }
 
 // collabStatusEvent appends one event to the configured stream, if any.
@@ -1545,6 +1557,17 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
 	return out
+}
+
+// ScanAddressable exposes the exact directory scan behind the collaboration
+// tools (list_addressable_sessions / get_session_info / get_session_status /
+// delete_session all resolve through scanAddressable). Task 1145: the desktop
+// topic-inventory reconcile consumes THIS function as its fourth source, so
+// "what the tools can address" and "what the reconcile compares against" are
+// the same bytes — one source of truth for session existence (the main
+// transcript file on disk), never a second reimplementation of the scan.
+func ScanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity {
+	return scanAddressable(sessionDir, workspaceRoot)
 }
 
 // collabRefMatches is the two-sided compare: exact (case-insensitive) first so
