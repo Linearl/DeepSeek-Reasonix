@@ -2818,7 +2818,13 @@ export function Composer({
     const submitPendingKey = pendingKey;
     const submitTabId = tabId;
     const ownsDraft = () => activeDraftKeyRef.current !== submitDraftKey || pendingKeyRef.current === submitPendingKey;
-    if (draftIsSubmitting(submitDraftKey)) return;
+    if (draftIsSubmitting(submitDraftKey)) {
+      // tl1162：受理慢（runtime 重建窗口可达数十秒）时 submitting latch 挂着，
+      // Enter 重发此前在这里被静默吞掉——用户看到的是「发了没反应」。改发一条
+      // 提示后返回，latch 语义不变。
+      showToast(t("composer.submitInFlight"), "info");
+      return;
+    }
     const unresolved = pendingFollowups.get(submitPendingKey);
     if (unresolved) {
       updateSubmittingForDraft(submitDraftKey, true);
@@ -2930,7 +2936,9 @@ export function Composer({
           if (!finishing && !localDurableGuidance && onSteer) {
             try {
               await onSteer(guidanceSubmitText, submitTabId);
-              clearSubmittedDraft(submitDraftKey);
+              // tl1162：steer 受理也可能慢（runtime 重建窗口）。返回时草稿已被
+              // 用户改写就不再清——与下方主分支同一指纹守卫。
+              if (followupDraftFingerprint(submitDraftKey) === submittedDraft) clearSubmittedDraft(submitDraftKey);
             } catch (error) {
               showToast(formatInboxError(error, locale), "warn");
             }
@@ -3006,7 +3014,15 @@ export function Composer({
         return;
       }
       await onSend(displayText, submitText, submitTabId, structured);
-      clearSubmittedDraft(submitDraftKey);
+      // tl1162（切模型后输入丢失+重发无响应）：非 running 主分支的受理等待没
+      // 有上界——切模型/切 effort 触发 runtime 重建时（desktop.log 2026-10-25
+      // 23:34 事故：set-effort fallback 重建 61s，controller_submit 阻塞 27s），
+      // await onSend 挂起的窗口内用户可能已切走会话又切回，或在输入框重写了
+      // 新内容。迟到的无条件 clearSubmittedDraft 会把此刻输入框里的新内容一并
+      // 吞掉（followup/steer/durable 分支均有指纹守卫，唯独这条最高频路径漏
+      // 了）。只在草稿仍是提交时的那份（指纹一致）才清；已被改写则保留用户
+      // 当前输入，由用户自行决定重发或丢弃。
+      if (followupDraftFingerprint(submitDraftKey) === submittedDraft) clearSubmittedDraft(submitDraftKey);
     } catch (error) {
       showToast(formatInboxError(error, locale), "warn");
     } finally {

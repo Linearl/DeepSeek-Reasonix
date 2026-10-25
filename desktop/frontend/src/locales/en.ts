@@ -76,6 +76,7 @@ export const en = {
   "common.loading": "Loading…",
   "composer.readOnlyChannel": "Channel conversation is read-only",
 "composer.blockedDisabled": "Sending is unavailable in the current state",
+  "composer.submitInFlight": "The previous message is still being admitted; please wait. The composer clears once it is admitted",
   "composer.workspaceStarting": "Workspace is still starting",
   "app.splashSubtitle": "Agent Workspace",
 
