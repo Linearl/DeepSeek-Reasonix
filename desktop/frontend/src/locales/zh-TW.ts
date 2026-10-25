@@ -1032,8 +1032,8 @@ export const zhTW: Record<DictKey, string> = {
   "heartbeat.notifyChannelsOnHint": "AI 輸出會即時推送到已連線的飛書/QQ 機器人",
   "heartbeat.notifyChannelsOffHint": "只建立桌面對話，不推送到機器人",
   "heartbeat.fieldNewConversation": "對話模式",
-  "heartbeat.newConversationEachRunOn": "每次執行新建對話",
-  "heartbeat.newConversationEachRunOff": "複用同一對話",
+  "heartbeat.newConversationEachRunOn": "每輪新建對話",
+  "heartbeat.newConversationEachRunOff": "固定同一對話",
 
   "status.jobs": "{n} 個執行中",
   "status.restartUpdate": "快速切換版本",

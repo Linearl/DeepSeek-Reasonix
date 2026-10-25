@@ -1380,8 +1380,8 @@ export const zh: Record<DictKey, string> = {
   "heartbeat.notifyChannelsOnHint": "AI 输出会实时推送到已连接的飞书/QQ 机器人",
   "heartbeat.notifyChannelsOffHint": "只创建桌面对话，不推送到机器人",
   "heartbeat.fieldNewConversation": "对话模式",
-  "heartbeat.newConversationEachRunOn": "每次执行新建对话",
-  "heartbeat.newConversationEachRunOff": "复用同一对话",
+  "heartbeat.newConversationEachRunOn": "每轮新建对话",
+  "heartbeat.newConversationEachRunOff": "固定同一对话",
 
   "status.jobs": "{n} 个运行中",
   "status.restartUpdate": "快速切换版本",

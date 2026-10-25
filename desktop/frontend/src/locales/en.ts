@@ -1384,7 +1384,7 @@ export const en = {
   "heartbeat.notifyChannelsOffHint": "Only create a desktop conversation; do not push to bots",
   "heartbeat.fieldNewConversation": "Conversation mode",
   "heartbeat.newConversationEachRunOn": "New conversation each run",
-  "heartbeat.newConversationEachRunOff": "Reuse same conversation",
+  "heartbeat.newConversationEachRunOff": "One fixed conversation",
 
   "status.jobs": "{n} running",
   "status.restartUpdate": "Quick version switch",
