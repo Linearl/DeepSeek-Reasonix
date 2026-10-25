@@ -40,7 +40,8 @@ console.log("\nlinkifyLocalPaths — drive paths");
 eq(firstPath("文件在 D:\\Project\\Jhtj\\20250804_000000_001_中停时分析\\05-静态验收.md 已生成"),
   "D:\\Project\\Jhtj\\20250804_000000_001_中停时分析\\05-静态验收.md",
   "issue case: Chinese dirs and underscores survive");
-eq(firstPath("see D:\\a\\b c.md note"), "D:\\a\\b", "unescaped space still ends the path");
+eq(firstPath("see D:\\a\\b c.md note"), "D:\\a\\b c.md",
+  "task 1138: space + extension-bearing segment joins the path");
 eq(firstPath("see D:\\a\\b\\ c.md"), "D:\\a\\b c.md", "escaped space unescapes to the real path");
 eq(firstPath("saved C:/Users/me/AppData/Local/x.md here"), "C:/Users/me/AppData/Local/x.md",
   "forward-slash drive path");
@@ -93,6 +94,29 @@ eq(pathCount("see C:\\docs\\NUL.txt"), 0, "reserved DOS device path stays inert"
 eq(pathCount("see C:\\docs\\COM1.log"), 0, "numbered DOS device path stays inert");
 eq(firstPath("see C:\\docs\\nullifier.txt"), "C:\\docs\\nullifier.txt", "ordinary device-like name remains linkable");
 eq(firstPath("见 C:\\Program\\ Files\\ (x86) 完成"), "C:\\Program Files (x86)", "escaped-space path with (x86) keeps its closing paren");
+
+console.log("\nlinkifyLocalPaths — spaced segments (task 1138)");
+
+eq(firstPath("安装 C:\\Program Files\\app.exe 完成"), "C:\\Program Files\\app.exe",
+  "spaced continuation with a separator is absorbed");
+eq(firstPath("see D:\\My Docs\\report final.md ok"), "D:\\My Docs\\report final.md",
+  "extension-bearing segments keep the walk alive across spaces");
+eq(firstPath("C:\\x see D:\\y\\z.txt"), "C:\\x",
+  "bare word after the path never continues it");
+eq(firstPath("C:\\x 已生成 文件"), "C:\\x",
+  "CJK bare words never continue the path");
+eq(firstPath("build in C:\\tools now done"), "C:\\tools",
+  "plain words stop the walk even when another path follows later");
+eq(firstPath("see \\nas\\share\\my docs\\x.md ok"), "\\\\nas\\share\\my docs\\x.md",
+  "UNC share path with a spaced directory");
+eq(firstPath("file:///D:/x/y.md note"), "file:///D:/x/y.md",
+  "file URLs are not extended across spaces");
+eq(pathCount("see C:\\safe.txt:payload extra"), 0,
+  "ADS colon still rejects the candidate after a spaced extension");
+eq(firstPath("C:\\x file.md 是文档"), "C:\\x file.md",
+  "extension segment absorbed; CJK prose after it stops the walk");
+eq(pathCount("run C:\\tools\\check.exe and exit"), 1,
+  "prose behind the path stays plain (single chip per path)");
 
 console.log("\nsegment alternation");
 

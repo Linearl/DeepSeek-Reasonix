@@ -35,6 +35,16 @@ const PATH_CHAR = String.raw`(?:\\[ \t]|[^\s<>"|?*:：${SENT_PUNCT}])`;
 // validated with the shared parser below so malformed file URLs stay inert.
 const FILE_RE = new RegExp(String.raw`file://[^\s<>"|?*${SENT_PUNCT}]+`, "g");
 const DRIVE_RE = new RegExp(String.raw`[A-Za-z]:[\\/]${PATH_CHAR}+`, "g");
+// Space-separated continuations of a drive/UNC path (task 1138): the initial
+// regex stops at an unescaped space ("C:\Program" in `C:\Program Files\app.exe`),
+// but the acceptance bar requires space-bearing paths to linkify. After the
+// initial match, absorb further space-separated segments that themselves look
+// path-like — a segment counts only when it contains a separator (`\` `/`) or
+// a file extension (`report.md`). Bare words ("see", "已生成") never continue
+// a path, so prose after a path keeps the match short (precision first).
+const SPACE_SEG_RE = new RegExp(String.raw`[ \t]+${PATH_CHAR}+`);
+const SEG_HAS_SEPARATOR_RE = /[\\/]/;
+const SEG_HAS_EXTENSION_RE = /\.[A-Za-z0-9]{1,12}$/;
 // UNC share paths: the plugin runs on parsed markdown text nodes, where
 // CommonMark backslash escaping has already folded `\\` into `\`. A share
 // therefore arrives as `\nas\share\docs\report.md` (single leading
@@ -80,6 +90,26 @@ function stripTrailingClosers(raw: string): string {
   return stripped;
 }
 
+// Extends a drive/UNC match across single spaces into spaced path segments
+// ("C:\Program" + " Files\app.exe"). Each absorbed segment must independently
+// carry path signal (separator or extension); the walk stops at the first
+// bare word, so trailing prose never joins the path. file:/// URLs are not
+// extended — a literal space in a file URL is already invalid form.
+function spacedPathEnd(text: string, start: number): number {
+  let end = start;
+  for (;;) {
+    const seg = SPACE_SEG_RE.exec(text.slice(end));
+    if (seg === null) return end;
+    const segment = seg[0].trim();
+    const segEnd = end + seg[0].length;
+    if (!SEG_HAS_SEPARATOR_RE.test(segment) && !SEG_HAS_EXTENSION_RE.test(segment)) return end;
+    // An alternate-data-stream colon ("C:\a b.md:payload") ends the walk; the
+    // caller's colon guard then rejects the whole candidate.
+    if (text[segEnd] === ":" && !/\s/.test(text[segEnd + 1] ?? "")) return segEnd;
+    end = segEnd;
+  }
+}
+
 export interface LocalPathSegment {
   /** Raw text to render (keeps the original spelling, escapes intact). */
   text: string;
@@ -103,7 +133,8 @@ export function linkifyLocalPaths(text: string): LocalPathSegment[] {
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
       const match = m;
-      const matchEnd = match.index + match[0].length;
+      let matchEnd = match.index + match[0].length;
+      if (kind !== "file") matchEnd = spacedPathEnd(text, matchEnd);
       if (!hasValidPrefixBoundary(text, match.index, kind)) {
         continue;
       }
@@ -124,7 +155,7 @@ export function linkifyLocalPaths(text: string): LocalPathSegment[] {
       // RegExpExecArray has no start/end — compare via index/length.
       const overlapped = matches.some((p) => !(matchEnd <= p.start || match.index >= p.end));
       if (!overlapped) {
-        matches.push({ start: match.index, end: matchEnd, raw: match[0], kind });
+        matches.push({ start: match.index, end: matchEnd, raw: text.slice(match.index, matchEnd), kind });
       }
       if (match.index === re.lastIndex) re.lastIndex += 1; // guard against zero-width
     }

@@ -27,6 +27,9 @@ const { window } = dom;
 const opened: string[] = [];
 const openedWith: Array<[string, string]> = [];
 const browsed: string[] = [];
+// Task 1138: when set, the next OpenLocalPath rejects — the chip must surface
+// an error toast instead of failing silently.
+let openFailure: Error | null = null;
 type MockOpeners = {
   openers: Array<{ id: string; name: string; kind: "editor" | "file-manager" }>;
   preferred: string;
@@ -39,6 +42,7 @@ let resolveStaleOpeners: ((value: MockOpeners) => void) | undefined;
     App: {
       OpenLocalPath: async (path: string) => {
         opened.push(path);
+        if (openFailure) throw openFailure;
       },
       ExternalOpeners: async (): Promise<MockOpeners> => {
         if (openerRaceMode) {
@@ -93,13 +97,17 @@ const { default: ReactMarkdown, defaultUrlTransform } = await import("react-mark
 const { default: remarkGfm } = await import("remark-gfm");
 const { remarkLocalPathLinks } = await import("../lib/localPathLinks");
 const { localPathFromHref, RichMarkdownLink } = await import("../components/githubLink");
+const { ToastProvider } = await import("../lib/toast");
 
 const markdownUrlTransform = (value: string) =>
   localPathFromHref(value) !== null ? value : defaultUrlTransform(value);
 
 const components = { a: RichMarkdownLink };
 
-async function renderClick(markdown: string, strictMode = false): Promise<HTMLAnchorElement[]> {
+async function renderClick(
+  markdown: string,
+  opts: { strictMode?: boolean; wrapToast?: boolean } = {},
+): Promise<HTMLAnchorElement[]> {
   const container = window.document.createElement("div");
   window.document.body.appendChild(container);
   const root = createRoot(container);
@@ -108,8 +116,9 @@ async function renderClick(markdown: string, strictMode = false): Promise<HTMLAn
     { remarkPlugins: [remarkGfm, remarkLocalPathLinks], urlTransform: markdownUrlTransform, components },
     markdown,
   );
+  const tree = opts.wrapToast ? createElement(ToastProvider, null, markdownElement) : markdownElement;
   await act(async () => {
-    root.render(strictMode ? createElement(StrictMode, null, markdownElement) : markdownElement);
+    root.render(opts.strictMode ? createElement(StrictMode, null, tree) : tree);
   });
   return Array.from(container.querySelectorAll("a"));
 }
@@ -195,7 +204,7 @@ console.log("\nheadless click-to-open e2e");
 // 6. React StrictMode replays effect setup and cleanup in development. Opener
 // discovery after that replay must still populate the context menu.
 {
-  const anchors = await renderClick("[严格模式](file:///D:/strict.md)", true);
+  const anchors = await renderClick("[严格模式](file:///D:/strict.md)", { strictMode: true });
   await act(async () => {
     anchors[0].dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await Promise.resolve();
@@ -254,6 +263,51 @@ console.log("\nheadless click-to-open e2e");
 {
   const anchors = await renderClick("版本 1.2.3 已发布");
   ok(anchors.length === 0, "no anchors for plain text");
+}
+
+console.log("\ntask 1138 — spaced-path chips, failure toast, inline-code precision");
+
+// 10. A space-bearing absolute path renders exactly one chip and a click
+// forwards the FULL spaced path to the native opener.
+{
+  const anchors = await renderClick("安装 C:\\Program Files\\app.exe 完成");
+  ok(anchors.length === 1, "spaced drive path renders exactly one chip");
+  ok(anchors[0].getAttribute("data-path-kind") === "file", "file chip carries data-path-kind=file");
+  await act(async () => {
+    anchors[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+  ok(opened[opened.length - 1] === "C:/Program Files/app.exe",
+    `click forwarded the full spaced path (${opened[opened.length - 1]})`);
+}
+
+// 11. A trailing separator marks the chip as a directory.
+{
+  const anchors = await renderClick("[输出目录](file:///D:/docs/)");
+  ok(anchors.length === 1 && anchors[0].getAttribute("data-path-kind") === "directory",
+    "trailing separator renders a directory chip");
+}
+
+// 12. A failed open (missing path) surfaces a visible error toast — never a
+// silent catch.
+{
+  openFailure = new Error("open failed: no such file");
+  const anchors = await renderClick("打开 file:///D:/missing/报告.md 查看", { wrapToast: true });
+  await act(async () => {
+    anchors[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+  });
+  const toast = window.document.querySelector(".toast--error");
+  ok(toast !== null && (toast.textContent ?? "").includes("no such file"),
+    "failed open shows an error toast with the reason");
+  openFailure = null;
+}
+
+// 13. Recognition precision: inline code is never chipified — a plain code
+// span that happens to contain a path must stay inert (task 1138 acceptance 4).
+{
+  const anchors = await renderClick("配置在 `C:\\Windows\\System32\\cmd.exe` 里");
+  ok(anchors.length === 0, "inline code containing a path renders no chip");
+  ok(window.document.querySelectorAll("code").length === 1, "the code span still renders as code");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
