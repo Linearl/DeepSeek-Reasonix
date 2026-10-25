@@ -477,6 +477,34 @@ func (a *App) mirrorStandardContinuationToControllers(enabled bool) {
 	}
 }
 
+// SetInterruptedAutoResume (tl 1105) toggles the interrupted-turn auto-resume
+// gate (lab switch interrupted_auto_resume). The config save is the durable
+// half; the live half mirrors the flag into every running controller so the
+// next run of an already-open session applies it without a restart.
+func (a *App) SetInterruptedAutoResume(enabled bool) error {
+	if err := a.applyConfigOnly(func(c *config.Config) error { return c.SetInterruptedAutoResume(enabled) }); err != nil {
+		return err
+	}
+	a.mirrorInterruptedAutoResumeToControllers(enabled)
+	return nil
+}
+
+// mirrorInterruptedAutoResumeToControllers pushes the tl-1105 flag into every
+// live controller (same shape as mirrorStandardContinuationToControllers).
+func (a *App) mirrorInterruptedAutoResumeToControllers(enabled bool) {
+	a.mu.RLock()
+	tabs := append([]*WorkspaceTab(nil), a.runtimeTabsLocked()...)
+	a.mu.RUnlock()
+	for _, tab := range tabs {
+		if tab == nil {
+			continue
+		}
+		if setter, ok := a.controllerForTab(tab).(interface{ SetInterruptedAutoResume(bool) }); ok {
+			setter.SetInterruptedAutoResume(enabled)
+		}
+	}
+}
+
 // SetExperimentalWorkflowPanel toggles the workflow visualization panel
 // (task 686): the command-palette entry opening the DAG flow view. Pure
 // frontend gate: the settings save re-applies the boot snapshot, so the

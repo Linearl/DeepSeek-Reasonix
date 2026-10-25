@@ -1558,6 +1558,16 @@ func (c *Config) SetStandardContinuation(enabled bool) error {
 	return nil
 }
 
+// SetInterruptedAutoResume toggles the tl-1105 interrupted-turn auto-resume
+// gate (lab switch interrupted_auto_resume, default off). When on, a turn that
+// stops with a genuine outcome-unknown interruption gets one host continuation
+// turn carrying the already-persisted bounded recovery summary instead of
+// idling. Off keeps the pre-1105 idle stop byte-for-byte.
+func (c *Config) SetInterruptedAutoResume(enabled bool) error {
+	c.Agent.InterruptedAutoResume = enabled
+	return nil
+}
+
 // SetDecisionPatternFilePath overrides the solidified decision-patterns file
 // location (task 801 修订七). Empty restores the default
 // global-workspace/docs/decision-patterns.md. A non-empty value must name a

@@ -152,6 +152,15 @@ type Controller struct {
 	// reachable (agent side still requires its own boot snapshot). Off = zero
 	// tag = pre-1070 behaviour verbatim.
 	standardContinuation bool
+	// interruptedAutoResume (tl 1105, default off) mirrors the lab switch
+	// interrupted_auto_resume: when on, a turn that stops with a genuine
+	// interruption (outcome unknown — the 2026-10-23 装机链 shape: the
+	// restart_update execute killed the in-flight verification call) gets
+	// exactly ONE host continuation turn carrying the already-persisted
+	// bounded recovery summary, instead of idling until the user manually
+	// sends a message to open the next round. Off (the zero value) keeps the
+	// pre-1105 idle stop byte-for-byte.
+	interruptedAutoResume bool
 	// explicitAskGranted is the task-806b explicit ask grant: the user said,
 	// in this session, that the run must ask them instead of deciding alone —
 	// revoking the unattended premise every autopilot auto-answer rests on.
@@ -733,6 +742,14 @@ type Options struct {
 	// reachable. The agent side still requires its own boot snapshot, so an
 	// off snapshot keeps the pre-1070 behaviour regardless.
 	StandardContinuation bool
+	// InterruptedAutoResume (tl 1105, default off, 铁律 2) mirrors the lab
+	// switch interrupted_auto_resume: when on, a turn that stops with a
+	// genuine interruption (outcome unknown — the restart_update-execute
+	// shape) gets exactly ONE host continuation turn carrying the
+	// already-persisted bounded recovery summary, instead of idling until
+	// the user manually opens the next round. Off keeps the pre-1105 idle
+	// stop byte-for-byte.
+	InterruptedAutoResume bool
 	// PreapproveManaged carries the task-231 master switch, its four category
 	// checkboxes, and the three home-derived paths the classifier matches on.
 	// Boot resolves it from config; the zero value keeps every approval prompt
@@ -1023,6 +1040,7 @@ func New(opts Options) *Controller {
 		autopilotAskTimeoutEnabled: opts.AutopilotAskTimeoutEnabled,
 		autopilotAskAutoContinue:   opts.AutopilotAskAutoContinue,
 		standardContinuation:       opts.StandardContinuation,
+		interruptedAutoResume:      opts.InterruptedAutoResume,
 		preapproveManaged:          opts.PreapproveManaged,
 		goals: goalMachine{
 			tokenBudget: opts.GoalTokenBudget,
@@ -4007,6 +4025,38 @@ func (c *Controller) StandardContinuation() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.sessionSettings.standardContinuation
+}
+
+// SetInterruptedAutoResume (tl 1105) mirrors the lab switch
+// interrupted_auto_resume into this session: when on, a turn that stops with
+// a genuine outcome-unknown interruption gets exactly ONE host continuation
+// turn carrying the already-persisted bounded recovery summary. Off (the
+// default) keeps the pre-1105 idle stop byte-for-byte.
+func (c *Controller) SetInterruptedAutoResume(v bool) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.interruptedAutoResume = v
+	c.sessionSettings.interruptedAutoResume = v
+	c.mu.Unlock()
+}
+
+// InterruptedAutoResume reports the tl-1105 interrupted-turn auto-resume gate.
+func (c *Controller) InterruptedAutoResume() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// Read the boot-mirrored field first: New() seeds Controller.interruptedAutoResume
+	// from Options (the boot path), while Set* writes both. A reader that only
+	// consulted sessionSettings would see the off zero-value even when boot
+	// turned the switch on — the 2026-10-24 返修 trap (TestInterruptedAutoResumeBootsFromOptions).
+	if c.interruptedAutoResume {
+		return true
+	}
+	return c.sessionSettings.interruptedAutoResume
 }
 
 // SetAgentPreset writes the role through to the session quality floor:

@@ -150,6 +150,8 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"decisionPatterns": func(c *Config, on bool) error { return c.SetExperimentalDecisionPatterns(on) },
 	// 任务 1070：Standard 流续跑总闸（默认关；见 render.go lab 表注释）。
 	"standardContinuation": func(c *Config, on bool) error { return c.SetStandardContinuation(on) },
+	// tl 1105：中断自动续轮（默认关；outcome_unknown 中断→一次宿主续轮）。
+	"interruptedAutoResume": func(c *Config, on bool) error { return c.SetInterruptedAutoResume(on) },
 	"safetyCostControl":    func(c *Config, on bool) error { return c.SetExperimentalSafetyCostControl(on) },
 	"stalledIntentNudge":   func(c *Config, on bool) error { return c.SetStalledIntentNudge(on) },
 	// ── infra / storage ──

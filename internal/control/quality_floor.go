@@ -91,4 +91,8 @@ type sessionSettings struct {
 	// tagged ContinuationStandardFlow (the agent side still requires its own
 	// boot snapshot to act on the tag). Default off = pre-1070 verbatim.
 	standardContinuation bool
+	// interruptedAutoResume (tl 1105) mirrors the lab switch
+	// interrupted_auto_resume: when on, an outcome-unknown interrupted turn
+	// gets one host continuation turn instead of idling. Default off.
+	interruptedAutoResume bool
 }

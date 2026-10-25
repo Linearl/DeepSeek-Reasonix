@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -35,8 +36,11 @@ type scriptedBudgetProvider struct {
 	mu     sync.Mutex
 	policy provider.ContextBudgetPolicy
 	errs   []error
-	reqs   []provider.Request
-	texts  []string
+	// errorsByAttempt, when non-empty, indexes errors per attempt instead of
+	// errs (dense-incident shape: overflow on attempt 1, success on attempt 2).
+	errorsByAttempt []error
+	reqs            []provider.Request
+	texts           []string
 }
 
 func (p *scriptedBudgetProvider) Name() string { return "scripted-budget" }
@@ -48,7 +52,14 @@ func (p *scriptedBudgetProvider) Stream(_ context.Context, req provider.Request)
 	p.reqs = append(p.reqs, req)
 	idx := len(p.reqs) - 1
 	var err error
-	if idx < len(p.errs) {
+	// errorsByAttempt drives the dense-incident case: a real DeepSeek body whose
+	// reported prompt (752k) is PAST the configured hard input ceiling (window −
+	// protocol reserve), so the first physical recovery must be the overflow
+	// compaction (the incident's path), not an output trim that keeps an
+	// already-unsendable prompt.
+	if idx < len(p.errorsByAttempt) {
+		err = p.errorsByAttempt[idx]
+	} else if idx < len(p.errs) {
 		err = p.errs[idx]
 	}
 	text := "ok"
@@ -286,4 +297,127 @@ func TestThreeStateMaxOutputTokens(t *testing.T) {
 	if err := a.applyAdmissionToRequest(&neg); err != nil || neg.MaxTokens != -1 {
 		t.Fatalf("explicit omit = %d err=%v", neg.MaxTokens, err)
 	}
+}
+
+// tl 1083 (2026-10-22 incident): a user-configured max_output_tokens reservation
+// that pushes the request past the window (messages 752k + completion 327k >
+// 1M) must land on the COMPACTED retry path — the summary rebuild, not the
+// learned-output retry, because the oversized completion cannot be rescued by
+// trimming it alone. This pins the B half of the incident (「回退全量投影」=
+// handing the turn the full transcript is forbidden); the C half (the grep-able
+// notice with the recovery kind and token numbers) is asserted on the same run.
+func TestIncidentOutputReservationRecoversByCompaction(t *testing.T) {
+	prov := &scriptedBudgetProvider{
+		policy: provider.ContextBudgetPolicy{
+			WindowMode: provider.ContextWindowShared, AutoOutputTokens: 384_000,
+			MaxOutputTokens: 384_000, LimitMode: provider.OutputLimitOmitWhenSafe,
+		},
+		errorsByAttempt: []error{
+			// The incident's shape: a max_output_tokens reservation that pushes
+			// the request past the window, and — as in the dense real world —
+			// the reported prompt sits PAST the hard input ceiling so the first
+			// physical recovery must be the overflow compaction (the incident's
+			// path), not an output trim that keeps an unsendable prompt.
+			&provider.ContextLimitError{
+				APIError:         &provider.APIError{Provider: "p", Status: 400, Body: "context"},
+				WindowTokens:     1_048_576,
+				RequestedTokens:  1_080_357,
+				PromptTokens:     1_048_000,
+				CompletionTokens: 327_766,
+			},
+			nil,
+		},
+	}
+	recoveryNotices := []event.Event{}
+	sink := event.FuncSink(func(e event.Event) {
+		if e.Kind == event.Notice && e.Detail != "" && strings.Contains(e.Detail, "recovery=") {
+			recoveryNotices = append(recoveryNotices, e)
+		}
+	})
+	a := newBudgetAgentSink(t, prov, sink)
+	// 260 turns puts the canonical transcript well past the window, so the
+	// provider-reported prompt (752k) is consistent with a genuinely oversized
+	// session (the incident's shape) and the overflow compaction has real work
+	// to do — a smaller fixture would let the overflow fire on a prompt the
+	// estimator already sees as tiny, which is not the incident.
+	a.sess.conversation.Replace(foldableSessionOverForce(260).Messages)
+
+	got := a.streamWithSamplingRecovery(context.Background(), 1)
+	if got.err != nil {
+		t.Fatalf("incident recovery failed: %v", got.err)
+	}
+	prov.mu.Lock()
+	if len(prov.reqs) != 3 {
+		prov.mu.Unlock()
+		visible := a.modelVisibleMessages()
+		t.Fatalf("requests = %d, want rejected sampling, one summary, and the compacted retry (last admission=%+v, est=%d)",
+			len(prov.reqs), a.lastAdmission(), a.estimatedVisibleRequestTokens(visible))
+	}
+	if !requestContains(prov.reqs[1], "Compact the preceding conversation prefix") {
+		prov.mu.Unlock()
+		t.Fatal("the second request must be the overflow compaction summary — not a learned-output retry of the oversized reservation")
+	}
+	if sameProviderRequestExceptMaxTokens(prov.reqs[0], prov.reqs[2]) {
+		prov.mu.Unlock()
+		t.Fatal("the retry must be rebuilt on the compacted projection, not the rejected full view")
+	}
+	// C: the recovery is grep-able and names the kind + observed tokens.
+	// Accept the learned-retry or compacted frame (the compaction summary itself
+	// can carry a second observed overflow), but the FIRST frame must be one of
+	// the two legitimate recovery kinds with numbers attached.
+	prov.mu.Unlock()
+	if len(recoveryNotices) == 0 {
+		t.Fatal("missing the context-limit recovery notice (tl 1083 C)")
+	}
+	first := recoveryNotices[0]
+	if !strings.Contains(first.Detail, "window=1048576") || !strings.Contains(first.Detail, "prompt=1048000") ||
+		!strings.Contains(first.Detail, "completion=327766") {
+		t.Fatalf("recovery notice detail = %q, want the observed window/prompt/completion numbers", first.Detail)
+	}
+	if a.lastAdmission().LastRecovery != contextRecoveryCompacted {
+		t.Fatalf("last recovery = %s, want compacted", a.lastAdmission().LastRecovery)
+	}
+	// B: the context occupancy must not blow up after recovery — the retried
+	// view stays inside the window (the incident's 1.0→4.7x blowup shape).
+	visible := a.modelVisibleMessages()
+	if est := a.estimatedVisibleRequestTokens(visible); est > 1_048_576 {
+		t.Fatalf("post-recovery visible estimate = %d tokens, exceeds the window — full-transcript fallback", est)
+	}
+}
+
+// tl 1083 非超窗回归（任务书验收第三条）: a 400 that is NOT a context-limit
+// overflow (e.g. a malformed-parameter rejection) must keep the pre-change
+// behavior — no compaction, no projection rebuild, no learned-budget state,
+// terminal error surfaced as-is.
+func TestNonContext400KeepsPlainFailurePath(t *testing.T) {
+	prov := &scriptedBudgetProvider{
+		policy: provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowShared, LimitMode: provider.OutputLimitOmitWhenSafe},
+		errs:   []error{&provider.APIError{Provider: "p", Status: 400, Body: `{"error":{"message":"invalid temperature","param":"temperature"}}`}},
+	}
+	a := newBudgetAgent(t, prov)
+	a.sess.conversation.Replace(foldableSessionOverForce(45).Messages)
+
+	got := a.streamWithSamplingRecovery(context.Background(), 1)
+	if got.err == nil {
+		t.Fatal("expected the original 400 to surface")
+	}
+	prov.mu.Lock()
+	defer prov.mu.Unlock()
+	if len(prov.reqs) != 1 {
+		t.Fatalf("provider requests = %d, want 1 (no compaction, no retry)", len(prov.reqs))
+	}
+	if provider.AsContextLimitError(got.err) != nil {
+		t.Fatalf("a parameter 400 must not be classified as a context limit: %v", got.err)
+	}
+}
+
+// newBudgetAgentSink is newBudgetAgent with a custom sink, so the notice test
+// can observe events without touching the discard-sink default fixture.
+func newBudgetAgentSink(t *testing.T, p provider.Provider, sink event.Sink) *Agent {
+	t.Helper()
+	sess := NewSession("")
+	sess.Replace([]provider.Message{{Role: provider.RoleUser, Content: "continue"}})
+	registry := tool.NewRegistry()
+	registry.Add(budgetTestTool{})
+	return New(p, registry, sess, Options{ContextWindow: 1_048_576, CompactRatio: 2, MaxOutputTokens: 0, Temperature: 0.25}, sink)
 }
