@@ -46871,6 +46871,40 @@ button.statusbar__mcp:focus-visible {
   border-radius: 50%;
 }
 
+/* tl1157: the classic header folds time + colour filtering into one dropdown
+   panel. The trigger lights one neutral dot while any filter is active (the
+   summary lives in the tooltip); the panel widens past the old 84px time
+   menu, and its footer "clear filters" is a distinct quiet action row. */
+.project-tree__filter-badge {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.project-tree__filter-panel {
+  min-width: 168px;
+  max-height: min(420px, 70vh);
+  overflow-y: auto;
+}
+
+.project-tree__filter-clear {
+  justify-content: center;
+  color: var(--fg-faint);
+}
+
+.project-tree__filter-clear:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.project-tree__filter-clear:not(:disabled):hover {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+
 /* Each candidate chain's own preview text - the last thing that branch said. Numbers
    tell you which chain is longest; the preview tells you which one you want. */
 .rc-chain__preview {
