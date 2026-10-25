@@ -321,7 +321,7 @@ const HISTORY_PAGE_TURNS = 60;
 export type TurnPhaseName = "working" | "checking" | "verifying" | "reviewing" | string;
 export type Item =
   | { kind: "user"; id: string; submissionId?: string; text: string; submitText?: string; failed?: boolean; createdAt?: number; checkpointTurn?: number; historyTurn?: number; inboxItemId?: string }
-  | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; createdAt?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[] }
+  | { kind: "assistant"; id: string; text: string; reasoning: string; streaming: boolean; wasStreamed?: true; reasoningComplete?: boolean; reasoningDurationMs?: number; workDurationMs?: number; createdAt?: number; memoryCitations?: MemoryCitation[]; searchSources?: SearchSource[]; turnDoneAt?: number; turnUsage?: import("./turnToolTally").TurnUsageSnapshot }
   | { kind: "phase"; id: string; text: string }
   | { kind: "notice"; id: string; level: "info" | "warn"; text: string; detail?: string; code?: string; suggestion?: string; title?: string; variant?: "delivery" | "completion"; action?: "continue_delivery" | "open_changes" | "recover_context" | "consolidate_recovery" | "manual_continue" | "view_versions"; recoveryId?: string; completionSummary?: WireCompletionSummary; decisionReceipt?: WireDecisionReceipt; missing?: string[]; inboxItemId?: string; steerDeferred?: boolean; createdAt?: number }
   | {
@@ -621,6 +621,10 @@ export interface State extends ReadStatusHost {
   promptEpoch: number;
   turnTokens: number;
   turnTotalTokens: number;
+  // 任务 1137: prompt-side tokens accumulated across this turn's usage events
+  // (same event chain as turnTokens; prompt derivation mirrors usageTotalTokens).
+  // Snapshot onto the turn's last assistant item at turn_done, then reset.
+  turnInputTokens: number;
   turnCost: number;
   turnRateBand?: AggregatedRateBand;
   // Cumulative argument characters of the tool call currently streaming its
@@ -739,6 +743,7 @@ export const initialState: State = {
   lastTurnOutputEstimated: false,
   turnTokens: 0,
   turnTotalTokens: 0,
+  turnInputTokens: 0,
   turnCost: 0,
   turnRateBand: undefined,
   turnArgChars: 0,
@@ -1423,7 +1428,7 @@ function endPromptWaitIfIdle(s: State, now = Date.now()): State {
   return endPromptWait(s, now);
 }
 
-function resetTurnTiming(now = Date.now()): Pick<State, "turnStartAt" | "turnDoneAt" | "turnWaitAccumMs" | "promptWaitStartedAt" | "turnTokens" | "turnTotalTokens" | "turnOutputTokens" | "turnOutputChars" | "turnOutputCharsAtUsage" | "turnOutputEstimated" | "turnModelActiveAt" | "turnModelActiveMs" | "turnCost" | "turnRateBand" | "turnArgChars" | "pendingRequestModelMs"> {
+function resetTurnTiming(now = Date.now()): Pick<State, "turnStartAt" | "turnDoneAt" | "turnWaitAccumMs" | "promptWaitStartedAt" | "turnTokens" | "turnTotalTokens" | "turnInputTokens" | "turnOutputTokens" | "turnOutputChars" | "turnOutputCharsAtUsage" | "turnOutputEstimated" | "turnModelActiveAt" | "turnModelActiveMs" | "turnCost" | "turnRateBand" | "turnArgChars" | "pendingRequestModelMs"> {
   return {
     turnStartAt: now,
     turnDoneAt: 0,
@@ -1431,6 +1436,7 @@ function resetTurnTiming(now = Date.now()): Pick<State, "turnStartAt" | "turnDon
     promptWaitStartedAt: undefined,
     turnTokens: 0,
     turnTotalTokens: 0,
+    turnInputTokens: 0,
     turnOutputTokens: 0,
     turnOutputChars: 0,
     turnOutputCharsAtUsage: 0,
@@ -2169,6 +2175,12 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         ? (e.usage.contextPromptTokens ?? 0)
         : (e.usage.promptTokens ?? 0);
       const turnTokens = settled.turnTokens + (e.usage?.completionTokens ?? 0);
+      // 任务 1137: prompt-side accumulation on the same event chain as
+      // turnTokens; prompt 口径与 usageTotalTokens 的推导同式
+      // (promptTokens 优先，缺省时 cacheHit+cacheMiss)。
+      const turnInputTokens = settled.turnInputTokens + (e.usage
+        ? (e.usage.promptTokens || (e.usage.cacheHitTokens + e.usage.cacheMissTokens))
+        : 0);
       const turnOutputTokens = updateContextGauge
         ? settled.turnOutputTokens + (e.usage?.completionTokens ?? 0)
         : settled.turnOutputTokens;
@@ -2189,7 +2201,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const usage = updateContextGauge ? e.usage : settled.usage;
       // The completed round's usage now accounts for the streamed tool-call
       // arguments, so drop the live estimate rather than double-count it.
-      return { ...settled, usage, context: { ...settled.context, used, sessionTokens }, turnTokens, turnOutputTokens, turnOutputCharsAtUsage, turnOutputEstimated, turnTotalTokens, turnCost, turnRateBand, turnArgChars: updateContextGauge ? 0 : settled.turnArgChars, sessionTokens, sessionCost, sessionCurrency, usageSeq: settled.usageSeq + 1, lastRequestTps, pendingRequestModelMs: updateContextGauge ? undefined : settled.pendingRequestModelMs };
+      return { ...settled, usage, context: { ...settled.context, used, sessionTokens }, turnTokens, turnInputTokens, turnOutputTokens, turnOutputCharsAtUsage, turnOutputEstimated, turnTotalTokens, turnCost, turnRateBand, turnArgChars: updateContextGauge ? 0 : settled.turnArgChars, sessionTokens, sessionCost, sessionCurrency, usageSeq: settled.usageSeq + 1, lastRequestTps, pendingRequestModelMs: updateContextGauge ? undefined : settled.pendingRequestModelMs };
     }
     case "read_status":
       return applyReadStatusEvent(s, e);
@@ -2454,9 +2466,22 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
         if (completedItems[i].kind === "user") break;
         if (completedItems[i].kind === "assistant") { lastAssistantIndex = i; break; }
       }
+      // 任务 1137: 回合尾部信息带的 token/完成时刻快照，写在回合最后一个
+      // assistant 条目上（与 workDurationMs 同一落点先例）。读数与状态栏
+      // 同源：outputTokens = turnTokens（状态栏回合读数同字段），inputTokens
+      // = turnInputTokens（usage 事件链累积），estimated = turnOutputEstimated。
+      // 整回合零 usage（如本地失败轮）不写 turnUsage——信息带按无值降级。
+      const turnUsageSnapshot = s.turnTokens > 0 || s.turnInputTokens > 0
+        ? { inputTokens: s.turnInputTokens, outputTokens: s.turnTokens, ...(s.turnOutputEstimated ? { estimated: true } : {}) }
+        : undefined;
       const finalized = completedItems.map((it, index) =>
         it.kind === "assistant" && index === lastAssistantIndex
-          ? { ...it, workDurationMs: Math.max(it.workDurationMs ?? 0, workDurationMs ?? 0) || undefined }
+          ? {
+              ...it,
+              workDurationMs: Math.max(it.workDurationMs ?? 0, workDurationMs ?? 0) || undefined,
+              turnDoneAt: now,
+              ...(turnUsageSnapshot ? { turnUsage: turnUsageSnapshot } : {}),
+            }
           : it,
       );
       // A todo-only readiness card is retracted once the turn's own items

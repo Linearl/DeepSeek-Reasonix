@@ -20,7 +20,8 @@ import { stripMemoryCompilerExecution } from "../lib/memoryCompilerDisplay";
 import { invocationSegmentsFromMessage, type InvocationMetadataMap } from "../lib/invocationDisplay";
 import { messageActionLabelKey, type MessageActionScope } from "../lib/messageActions";
 // 任务 1155：回合尾部统计复用输入框状态行的同一计数库与格式化（turnToolTally）。
-import { turnTallyText, type TurnTally } from "../lib/turnToolTally";
+// 任务 1137：回合尾部信息带（文件明细 / token 快照 / 完成时刻）同库扩展。
+import { turnTallyText, type TurnTailInfo, type TurnTally } from "../lib/turnToolTally";
 import type { Item } from "../lib/useController";
 import type { CheckpointMeta } from "../lib/types";
 import { InvocationBadge } from "./InvocationBadge";
@@ -38,6 +39,17 @@ const SearchSourcesPanel = lazy(() => import("./SearchSourcesPanel").then((modul
 const MessageAttachments = lazy(() => import("./MessageAttachments").then((module) => ({ default: module.MessageAttachments })));
 export type TurnActionMenu = "summary" | "rewind" | "fork";
 export const InvocationMetadataContext = createContext<InvocationMetadataMap>({});
+
+// 任务 1137：回合尾部信息带的文件明细默认可见数——超过折叠为「+N 个文件」。
+const TURN_TAIL_FILES_VISIBLE = 5;
+// 与 checkpoint tooltip 同一 basename 惯例：chip 只显文件名，全路径进 title。
+function fileBasename(path: string): string {
+  return path.split(/[/\\]/).pop() || path;
+}
+// token 读数与状态栏 formatTokenCount 同格式（toLocaleString 全量）。
+function formatTurnTokens(tokens: number): string {
+  return tokens.toLocaleString();
+}
 type ImSourceMessage = {
   provider: string;
   label: string;
@@ -824,6 +836,7 @@ export function TurnActions({
   hoverMenus = false,
   isLastTurn = false,
   tally,
+  tail,
 }: {
   text: string;
   turn?: number;
@@ -840,9 +853,15 @@ export function TurnActions({
    *  状态行同库同口径 turnToolTally）。零工具轮（纯对话）调用方传 undefined
    *  或 tools=0，本行不渲染统计——与输入框行为一致。 */
   tally?: TurnTally;
+  /** 任务 1137：回合尾部信息带三要素（文件明细 / token 快照 / 完成时刻），
+   *  与 tally 同一聚合链（turnTailInfo）。文件空 + usage/doneAt 皆无时整段
+   *  不渲染（历史回合无快照、零工具轮无文件各自降级）。 */
+  tail?: TurnTailInfo;
 }) {
   const t = useT();
   const [confirmScope, setConfirmScope] = useState<MessageActionScope | null>(null);
+  // 任务 1137：文件明细折叠态（默认只显示前 5 个，余量折叠进「+N 个文件」）。
+  const [filesExpanded, setFilesExpanded] = useState(false);
   const canAct = onRewind != null && turn != null;
   const actionDisabledReason = (scope: string): string => {
     if (rewindDisabled || actionPending) return t("rewind.disabledRunning");
@@ -941,6 +960,14 @@ export function TurnActions({
   // 任务 1155：回合尾部的本轮统计文案。与输入框状态行同库同格式化
   // （turnToolTally.turnTallyText）；零工具轮为 null，整段不渲染。
   const tallyText = tally ? turnTallyText(tally, t) : null;
+  // 任务 1137：回合尾部信息带。token 读数与状态栏同源（turn_done 时快照自
+  // State.turnTokens/turnInputTokens），完成时刻经 CardTime（1122 同款三档
+  // 格式化，历史回合降级为后端入库的 createdAt）。文件明细超过
+  // TURN_TAIL_FILES_VISIBLE 折叠为「+N 个文件」，点击展开/收起。
+  const tailFiles = tail?.files ?? [];
+  const tailUsage = tail?.usage;
+  const visibleFilesExpanded = tailFiles.length > TURN_TAIL_FILES_VISIBLE;
+  const shownFiles = visibleFilesExpanded && !filesExpanded ? tailFiles.slice(0, TURN_TAIL_FILES_VISIBLE) : tailFiles;
   const toggleMenu = (menu: TurnActionMenu) => {
     setConfirmScope(null);
     onOpenMenu?.(openMenu === menu ? null : menu);
@@ -1046,6 +1073,44 @@ export function TurnActions({
           回合向上翻各见其值。aria-hidden 与输入框状态行的统计 span 同契约
           （装饰性重复读数，读屏不重复播报）。 */}
       {tallyText && <span className="turn-actions__tally" aria-hidden="true">{tallyText}</span>}
+      {/* 任务 1137：回合尾部信息带的 token 消耗与完成时刻，紧跟 1155 统计
+          同一空白区。token 格式「↑输入 ↓输出」（estimated 加 ≈ 前缀，与状态
+          栏 markEstimated 同语义）；完成时刻经 CardTime（1122 三档格式化）。
+          历史回合无 usage 快照 → 只显示时刻；纯对话轮无文件 → 卡片整段不渲染。 */}
+      {(tailUsage || tail?.doneAt != null) && (
+        <span className="turn-actions__meta" title={t("turnActions.turnMetaTitle")}>
+          {tailUsage && (
+            <span className="turn-actions__tokens">
+              {tailUsage.estimated ? "≈" : ""}↑{formatTurnTokens(tailUsage.inputTokens)} ↓{formatTurnTokens(tailUsage.outputTokens)}
+            </span>
+          )}
+          {tailUsage && tail?.doneAt != null && <span className="turn-actions__meta-sep" aria-hidden="true">·</span>}
+          <CardTime createdAt={tail?.doneAt} className="turn-actions__time" />
+        </span>
+      )}
+      {/* 任务 1137：本轮修改文件卡片——换行块占满工具栏行第二行（行容器本就
+          flex-wrap）。明细与 1155 的 files 计数同源（toolFilePaths），计数是
+          明细的 size，两处口径永不漂移。零工具轮不渲染。 */}
+      {tailFiles.length > 0 && (
+        <div className="turn-actions__files">
+          <span className="turn-actions__files-label">{t("turnActions.turnFiles")}</span>
+          <span className="turn-actions__file-chips">
+            {shownFiles.map((file) => (
+              <span key={file} className="turn-actions__file-chip" title={file}>{fileBasename(file)}</span>
+            ))}
+            {visibleFilesExpanded && (
+              <button
+                type="button"
+                className="turn-actions__files-toggle"
+                aria-expanded={filesExpanded}
+                onClick={() => setFilesExpanded((value) => !value)}
+              >
+                {filesExpanded ? t("turnActions.filesFewer") : t("turnActions.filesMore", { n: tailFiles.length - TURN_TAIL_FILES_VISIBLE })}
+              </button>
+            )}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

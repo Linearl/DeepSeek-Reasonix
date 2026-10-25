@@ -150,8 +150,9 @@ export function useTranscriptRowRenderer({
         return <TurnActions
           text={row.text} turn={row.turn} openMenu={openMenu}
           // 任务 1155：该回合自己的工具/文件/检索统计（行构建时静态算出，
-          // 与输入框状态行同库同口径）。
-          tally={row.tally}
+          // 与输入框状态行同库同口径）。任务 1137：同源回合尾部信息带
+          // （文件明细 / token 快照 / 完成时刻）一并传入。
+          tally={row.tally} tail={row.tail}
           onOpenMenu={(menu) => setOpenAction(menu ? { turn: row.turn, menu } : null)}
           checkpoint={checkpointsByTurn.get(row.turn)} actionPending={actionPending}
           rewindDisabled={rewindDisabled} hoverMenus={actionHoverMenus}

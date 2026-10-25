@@ -4837,6 +4837,11 @@ export const en = {
   "turnActions.summary": "Compress",
   "turnActions.rewind": "Rewind",
   "turnActions.copyEmpty": "No text to copy for this turn",
+  // Task 1137: turn-tail info band (files-touched card + token usage + completion time).
+  "turnActions.turnFiles": "Files this turn",
+  "turnActions.filesMore": "+{n} more",
+  "turnActions.filesFewer": "Show less",
+  "turnActions.turnMetaTitle": "Turn input/output tokens and completion time",
   "transcript.jumpToBottom": "Jump to bottom",
   "markdown.tableExpandAll": "Expand all {n} rows",
   "markdown.tableCollapse": "Collapse table",
