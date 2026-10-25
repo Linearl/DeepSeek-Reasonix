@@ -1,0 +1,34 @@
+/* tl 1127: 未导入消息大窗口浏览。动态 import 独立 chunk（同 SessionEventsPanel.css
+   先例），不占 styles.css 的 app-shell 预算。尺寸帽 min(960px,90vw)×
+   min(640px,85vh) 覆盖 .modal 默认 440px 窄帽；列表按 events-repair-dialog 的
+   flex 高度链独立滚动（min-height:0 是关键），contain 隔离滚动链不带动 transcript。 */
+.unfiled-viewer-backdrop {
+  z-index: var(--z-modal);
+}
+.unfiled-viewer {
+  max-width: min(960px, 90vw);
+  height: min(640px, 85vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.unfiled-viewer__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.unfiled-viewer__head-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.unfiled-viewer__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}

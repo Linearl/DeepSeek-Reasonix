@@ -5143,6 +5143,8 @@ a[href] {
 .unfiled-card__body--open {
   max-height: 64em; /* 展开后仍留上限（≈40 行）兜底，避免 50KB+ 全文再次撑爆 */
 }
+/* tl 1127: 大窗口浏览器的样式在 components/UnfiledInputsViewer.css（动态 import
+   独立 chunk，不占 app-shell 预算）。 */
 .notice-line__details {
   margin-top: 4px;
   color: var(--fg-faint);
