@@ -10,6 +10,8 @@ import { isHostRecoveryGuidance } from "./hostRecoverySteer";
 import { stableStringHash } from "./stableStringHash";
 import { isBatchedReadOnlyTool, isSteerNoticeText, type ExtensionItem, type Item } from "./useController";
 import { appendTurnActionCopyText } from "./turnActionCopy";
+// 任务 1155：回合尾部统计复用输入框状态行的同一计数库（同库同口径，勿另算）。
+import { turnTally, type TurnTally } from "./turnToolTally";
 import { isCreationGroupableTool, toolGroupKind, type ToolGroupKind } from "../components/ToolGroup";
 import type { SessionExperience } from "./sessionExperience";
 import type { ProcessFoldPreference } from "./processFoldPreference";
@@ -549,7 +551,7 @@ type TranscriptRowContent =
   | { kind: "answer"; key: string; item: AssistantItem }
   | { kind: "notice"; key: string; item: NoticeItem }
   | { kind: "extension"; key: string; item: ExtensionItem }
-  | { kind: "turn-actions"; key: string; turn: number; text: string };
+  | { kind: "turn-actions"; key: string; turn: number; text: string; tally: TurnTally };
 
 export type TranscriptRow = TranscriptRowContent & { layoutVariant?: TranscriptRowLayoutVariant };
 
@@ -818,6 +820,28 @@ export interface BuildRowsOptions {
 
 function numericRevision(value: string): number { return Number.parseInt(stableStringHash(value), 36) >>> 0; }
 
+// 任务 1155：turn-actions 行携带该回合自己的工具/文件/检索统计（渲染在工具栏
+// 行的空白区，历史回合各见其值）。统计在行构建时静态算出——turn-actions 行
+// 只在回合 settle 后构建，此后数值不再变化，无需任何订阅或定时刷新。
+//
+// 1141 约束（禁全量扫描）：流式期间每 chunk 都会重建行模型，但活跃回合不构
+// 建 turn-actions 行（不触统计），已 settle 回合的内容不再变化。这里按回合
+// 身份 + 内容签名（条数 + 末条 id）缓存聚合结果，settle 回合在后续重建中
+// 直接命中缓存，不重复解析工具 args；缓存按回合一条，超界整表清空（回合数
+// 量级远低于界，实际不会触发）。
+const turnTallyMemo = new Map<string, { sig: string; tally: TurnTally }>();
+
+function turnTallyForActionsRow(model: TurnModel): TurnTally {
+  const identity = turnStableIdentity(model);
+  const sig = `${model.turnItems.length}:${model.turnItems[model.turnItems.length - 1]?.id ?? ""}`;
+  const cached = turnTallyMemo.get(identity);
+  if (cached && cached.sig === sig) return cached.tally;
+  const tally = turnTally(model.turnItems);
+  if (turnTallyMemo.size >= 1024) turnTallyMemo.clear();
+  turnTallyMemo.set(identity, { sig, tally });
+  return tally;
+}
+
 /** Builds stable complete-turn units for windowing and logical anchoring. */
 export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: BuildRowsOptions): TimelineBlock[] {
   const reversedBlocks: TimelineBlock[] = [];
@@ -865,7 +889,7 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
       (model.actionText.trim() || options.hasCheckpointForTurn?.(turn)) &&
       user
     ) {
-      modelRows.push({ kind: "turn-actions", key: `ta:${user.id}`, turn, text: model.actionText, layoutVariant: "static" });
+      modelRows.push({ kind: "turn-actions", key: `ta:${user.id}`, turn, text: model.actionText, tally: turnTallyForActionsRow(model), layoutVariant: "static" });
     }
     for (let index = modelRows.length - 1; index >= 0; index -= 1) {
       const row = modelRows[index];

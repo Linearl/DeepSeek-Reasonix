@@ -8093,6 +8093,18 @@ body > .mermaid-diagram--fullscreen {
   right: auto;
   left: 0;
 }
+/* 任务 1155：回合尾部的本轮统计（工具/文件/检索）。落在 turn-actions 行内
+   动作按钮之后的空白区，弱化字色与输入框状态行读数（composer-run-strip__tally）
+   同风格；零工具轮整段不渲染（React 侧控制）。 */
+.turn-actions__tally {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
 
 /* ── diff ────────────────────────────────────────────────────────────────── */
 .diff {
