@@ -2012,7 +2012,8 @@
   text-align: left;
 }
 
-.heartbeat-bind-topic .heartbeat-project-menu {
+.heartbeat-bind-topic .heartbeat-project-menu,
+.heartbeat-bind-topic__menu {
   min-width: 280px;
   max-width: 360px;
   max-height: 280px;
