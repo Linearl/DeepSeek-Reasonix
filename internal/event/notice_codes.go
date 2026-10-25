@@ -101,6 +101,12 @@ const (
 	NoticeCodeSessionReclaimed                                  = "session_reclaimed"
 	NoticeCodeReasoningReplayRepair                             = "reasoning_replay_repair"
 	NoticeCodeTurnStalled                                       = "turn_stalled"
+	// NoticeCodeTurnStalledCompacting (任务1147): same silence measurement as
+	// turn_stalled, but a compaction pass is in flight — the neutral copy
+	// tells the user the turn is waiting on compaction instead of urging a
+	// Stop (2026-10-24 field report: a healthy chunked compaction read as a
+	// failure because the stall warning kept firing during it).
+	NoticeCodeTurnStalledCompacting = "turn_stalled_compacting"
 	// NoticeCodeCollabReplyNudge (task 530): a turn closed with unanswered
 	// require_reply cross-session mail and the host injected one visible
 	// reply reminder into the conversation.

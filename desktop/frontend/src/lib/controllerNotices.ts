@@ -90,6 +90,10 @@ const noticeCodeKeys: Record<string, DictKey> = {
   decision_receipt: "notice.decisionReceiptTitle",
   context_editing_fallback: "notice.contextEditingFallback",
   turn_stalled: "notice.turnStalled",
+  // 任务1147：分块压缩运行期间的静默告警走中性文案——用户实测压缩全程被
+  // 「卡住了请点击停止」诱导按失败处置；压缩中静默是等待单次摘要请求，
+  // 不是卡死。
+  turn_stalled_compacting: "notice.turnStalledCompacting",
   // Task 325: autopilot is yolo-only, so both gate outcomes get their own copy
   // instead of falling through to the backend's bilingual fallback string.
   autopilot_requires_yolo: "notice.autopilotRequiresYolo",

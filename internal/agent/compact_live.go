@@ -192,6 +192,29 @@ func (a *Agent) compactionLiveBegin(trigger string) { a.compactionLive.begin(tri
 // Done, aborts, and panics all seal the pass.
 func (a *Agent) compactionLiveStop() { a.compactionLive.stop() }
 
+// CompactionRunning reports whether a compaction pass is in flight. 任务1147:
+// the turn-stall watchdog consults it so a silent stretch inside a chunked
+// compaction surfaces as a neutral "compaction running" notice instead of the
+// "looks stuck, press Stop" warning (a pending summarizer request reads as a
+// stall from the liveness tracker's seat, and the user was aborting healthy
+// compactions because of it).
+func (a *Agent) CompactionRunning() bool {
+	if a == nil {
+		return false
+	}
+	a.compactionLive.mu.Lock()
+	defer a.compactionLive.mu.Unlock()
+	return a.compactionLive.active
+}
+
+// CompactionLiveBeginForTest / CompactionLiveStopForTest drive the meter
+// window directly, same convention as SetSessionReplayLimitsForTest — the
+// turn-stall watchdog test (control) needs a live pass without staging a real
+// compaction request.
+func (a *Agent) CompactionLiveBeginForTest(trigger string) { a.compactionLiveBegin(trigger) }
+
+func (a *Agent) CompactionLiveStopForTest() { a.compactionLiveStop() }
+
 // compactionLiveAddOutput feeds one summarizer chunk into the meter and emits
 // a CompactionProgress event when the gate admits it. runSummaryRequest calls
 // this per chunk; with no active pass it is a cheap mutex-guarded no-op, and

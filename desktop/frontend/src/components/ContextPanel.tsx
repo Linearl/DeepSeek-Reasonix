@@ -14,7 +14,7 @@ import { labFlagEnabled, onLabFlagsChange } from "../lib/labFlags";
 import { PlanUsageCard } from "./PlanUsageCard";
 import { OpenCodeGoUsageSidebarCard } from "./OpenCodeGoUsageSidebarCard";
 import type { Item } from "../lib/useController";
-import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate } from "../lib/contextPanelUtils";
+import { contextWindowStatus, contextReadoutSource, contextReadoutSourceKey, formatCacheHitRate, compactionWindowOverride } from "../lib/contextPanelUtils";
 import { resolveSessionGroupTitle, sessionRecoveryDisplay, type SessionPanelIdentity, type SessionRecoveryStatus } from "../lib/sessionInfoPanel";
 import { normalizeRecoveryLineageView } from "../lib/sessionRecoveryVersions";
 export { contextSessionCache } from "../lib/contextSessionCache";
@@ -593,6 +593,16 @@ export function ContextPanel({
   const derivedRequestCount = Math.max(readFiles.length + changedFiles.length, 0);
   const requestCount = info?.requestCount && info.requestCount > 0 ? info.requestCount : derivedRequestCount;
   const windowStatus = contextWindowStatus(rawUsagePct, compactPct);
+  // 任务1147：压缩运行态覆盖——压缩中显示中性「正在压缩…N/22」替代超限红条；
+  // 失败显示独立文案。完成卡不覆盖，压缩后读数即时照常显示。
+  const compactionOverride = compactionWindowOverride(items);
+  const compactionOverrideLabel = compactionOverride?.phase === "running"
+    ? (compactionOverride.total ?? 0) > 0
+      ? t("context.windowStatusCompacting", { done: compactionOverride.done ?? 0, total: compactionOverride.total ?? 0 })
+      : t("compaction.working")
+    : t("compaction.failed");
+  const capacityTone = compactionOverride ? (compactionOverride.phase === "running" ? "notice" : "warn") : windowStatus.tone;
+  const capacityStatusLabel = compactionOverride ? compactionOverrideLabel : t(windowStatus.key);
   const balanceLabel = balance?.available && balance.display ? balance.display : "-";
   const turnEstimated = usage?.estimated === true || info?.estimated === true;
   const sessionEstimated = info?.sessionEstimated === true || context?.estimated === true;
@@ -695,10 +705,10 @@ export function ContextPanel({
         <section className="context-panel__overview">
           <section className="context-panel__usage">
             <SectionHeading title={t("context.windowTitle")} />
-            <div className={`context-panel__capacity-card context-panel__capacity-card--${windowStatus.tone}`}>
+            <div className={`context-panel__capacity-card context-panel__capacity-card--${capacityTone}`}>
               <div className="context-panel__capacity-top">
                 <span className="context-panel__capacity-flags">
-                  <span className="context-panel__capacity-status">{t(windowStatus.key)}</span>
+                  <span className="context-panel__capacity-status">{capacityStatusLabel}</span>
                   {/* 任务1025: 读数来源标记——「实测」=上次响应已校准；「估算」=
                       新会话首轮/切 provider 首轮。窗口环与分段条同一权威值口径。 */}
                   <span className="context-panel__readout-source" title={readoutSourceTitle}>
@@ -714,7 +724,7 @@ export function ContextPanel({
                     补 title 让被省略的完整读数悬停可见（与 aria 摘要同源）。 */}
                 <strong title={usageSummary}>{usedLabel}/{windowLabel}</strong>
               </div>
-              <div className="context-panel__usage-progress context-panel__capacity-meter" aria-label={`${t(windowStatus.key)}. ${usageSummary}. ${compactSummary}`}>
+              <div className="context-panel__usage-progress context-panel__capacity-meter" aria-label={`${capacityStatusLabel}. ${usageSummary}. ${compactSummary}`}>
                 <div className="context-panel__capacity-scale" aria-hidden="true">
                   <span className="context-panel__capacity-pin context-panel__capacity-pin--used" style={{ left: `${pinLayout.usagePct}%` }}>{rawUsagePct}%</span>
                   {pinLayout.compactLabelVisible && (
