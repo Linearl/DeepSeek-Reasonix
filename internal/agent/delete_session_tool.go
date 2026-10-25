@@ -30,6 +30,11 @@ type DeleteSessionImpact struct {
 	// mid-turn right now — kept separate so a caller can tell "busy" from
 	// "has history".
 	TurnInFlight bool `json:"turnInFlight,omitempty"`
+	// Shell marks a task-1145 registry shell (registered in the desktop
+	// registry, no main transcript on disk). omitempty keeps every pre-1145
+	// answer byte-identical; when true, SessionPath is empty — there is no
+	// file to trash, the delete converges on the registry entry.
+	Shell bool `json:"shell,omitempty"`
 }
 
 // DeleteSessionResult reports the outcome of a move-to-trash.
@@ -113,6 +118,15 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
 	id, err := ResolveTarget(ids, p.Target)
 	if err != nil {
+		// 任务 1145：注册表空壳触达（软开关，默认关）。目录（磁盘主转录）解析
+		// 不到时，若宿主探针认定该 ref 是一个注册表空壳 topic（只认 topic_id），
+		// 走空壳清理面而不是 not found——树里可见（注册表有）但目录查不到的
+		// 条目从此不再死循环。探针未注入（开关关）时保持原错误逐字节不变。
+		if t.cfg.RegistryShellProbe != nil && t.cfg.RegistryShellTrash != nil {
+			if shellID, shellTitle, ok := t.cfg.RegistryShellProbe(p.Target); ok {
+				return t.executeShell(shellID, shellTitle, p.Confirm)
+			}
+		}
 		return "", err
 	}
 	// Guard: the calling session must not delete itself. That is a self-
@@ -188,4 +202,35 @@ func (t deleteSessionTool) Execute(_ context.Context, args json.RawMessage) (str
 	}
 	outJSON, _ := json.Marshal(out)
 	return string(outJSON), nil
+}
+
+// executeShell is the task-1145 registry-shell face of delete_session: same
+// dry-run → confirm contract, but the target is a registry entry with no main
+// transcript on disk, so the impact carries shell=true and an empty session
+// path (nothing on disk to trash — the write converges on the registry).
+func (t deleteSessionTool) executeShell(shellID, shellTitle string, confirm bool) (string, error) {
+	impact := DeleteSessionImpact{Title: shellTitle, Shell: true}
+	if !confirm {
+		out, _ := json.Marshal(map[string]any{
+			"status": "dry_run",
+			"impact": impact,
+			// The next step must exist: confirm really does converge the shell.
+			"note": "registry shell (registered, no session file on disk) — re-run with confirm=true to remove it from the desktop registry (tree, groups, title table)",
+		})
+		return string(out), nil
+	}
+	if err := t.cfg.RegistryShellTrash(shellID, false); err != nil {
+		return "", fmt.Errorf("delete_session: removing registry shell %q failed: %w", shellID, err)
+	}
+	out, _ := json.Marshal(map[string]any{
+		"status": "trashed",
+		"result": DeleteSessionResult{
+			ContactID:    shellID,
+			SessionPath:  "",
+			Trashed:      true,
+			RestoreUntil: "registry entry removed; there was no session file to restore",
+		},
+		"impact": impact,
+	})
+	return string(out), nil
 }

@@ -2001,6 +2001,17 @@ type AgentConfig struct {
 	// (session_collab_allow_delete) and needs no panel surface; enable by
 	// editing config.toml and restarting.
 	SessionCollabDeleteUnreadGate bool `toml:"session_collab_delete_unread_gate"`
+	// SessionCollabRegistryShellCleanup enables the task-1145 registry-shell
+	// convergence (软开关, default off): with it on, the desktop topic
+	// inventory reconcile treats "registered in the desktop registry but no
+	// main transcript on disk" as a shell — reports it as a mismatch kind,
+	// removes it from the registry (tree, groups, title table; the same write
+	// path the desktop Delete uses), and wires delete_session's shell probes
+	// so a tree-visible shell stops dead-ending on "not in the contact
+	// directory". Off = the prior behavior byte-for-byte (the shell mismatch
+	// KINDS are still reported — observation is side-effect free). Boot-time
+	// snapshot: flipping it applies after a restart.
+	SessionCollabRegistryShellCleanup bool `toml:"session_collab_registry_shell_cleanup"`
 	// SessionCollabReplyNudge enables the task-530 turn-closure reply reminder:
 	// when a turn closes with settled-but-unanswered require_reply mail, the
 	// host injects ONE visible reminder round. Off (the default) keeps turns

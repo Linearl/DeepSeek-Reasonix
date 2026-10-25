@@ -286,6 +286,15 @@ type Options struct {
 	// OnDeleteSession lets a host move a collaborating session to trash on the
 	// agent's behalf (task 154 sub-item A). Nil omits the delete_session tool.
 	OnDeleteSession func(contactID, sessionPath string, dryRun bool) (agent.DeleteSessionImpact, agent.DeleteSessionResult, error)
+	// OnRegistryShellProbe / OnRegistryShellTrash (task 1145) give
+	// delete_session reach into registry shells (registered in the desktop
+	// tree, no main transcript on disk) so a tree-visible entry stops
+	// dead-ending on "not in the contact directory". The host closure decides
+	// shell-ness (and the iron-rule-2 switch) at call time; nil — every CLI
+	// host and any host that declines — keeps the tool's behavior identical
+	// to the pre-1145 versions.
+	OnRegistryShellProbe func(ref string) (topicID, title string, ok bool)
+	OnRegistryShellTrash func(topicID string, dryRun bool) error
 	// OnRenameSession lets a host retitle a collaborating session on the agent's
 	// behalf (task 170). Metadata only, so a running session is safe to rename.
 	// Nil omits the rename_session tool.
@@ -2363,6 +2372,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			// (软开关 default off; boot-time snapshot — a flip applies on
 			// restart, like the other collab gates).
 			DeleteUnreadGate: cfg.Agent.SessionCollabDeleteUnreadGate,
+			// 任务 1145: registry-shell reachability for delete_session. The
+			// host closure owns the shell verdict AND the iron-rule-2 switch
+			// (both at call time); nil probes (CLI hosts, tests) leave the
+			// tool byte-identical to its pre-1145 behavior.
+			RegistryShellProbe: opts.OnRegistryShellProbe,
+			RegistryShellTrash: opts.OnRegistryShellTrash,
 			// Task 158.B: the transcript path is bound by the control layer
 			// AFTER boot, so `sessionPath` above is empty for a fresh desktop
 			// session. Resolving at call time keeps a self-directed call

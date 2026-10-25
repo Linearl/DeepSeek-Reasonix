@@ -974,6 +974,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// unconditionally like the gates above — omit-on-default would let a
 	// hand-added line vanish on the next config rewrite (task 321's lesson).
 	fmt.Fprintf(&b, "session_collab_delete_unread_gate = %v   # task 509: delete_session refuses while the target has unconsumed inbox mail (queued≠read; default off)\n", c.Agent.SessionCollabDeleteUnreadGate)
+	// 任务 1145: registry-shell convergence (软开关 default off). Rendered
+	// unconditionally like the gates above — omit-on-default would let a
+	// hand-added line vanish on the next config rewrite (task 321's lesson).
+	fmt.Fprintf(&b, "session_collab_registry_shell_cleanup = %v   # task 1145: reconcile removes registry topics with no session file on disk (shell) and lets delete_session clear them (default off)\n", c.Agent.SessionCollabRegistryShellCleanup)
 	fmt.Fprintf(&b, "experimental_cascade_approval = %v   # task 225: forward a dispatched session's approvals to its task source (off by default)\n", c.Agent.ExperimentalCascadeApproval)
 	// 任务 408: durable pending-decision cards. Rendered unconditionally like
 	// the gates above — omit-on-default would let a hand-added line vanish on

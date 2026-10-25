@@ -46,6 +46,11 @@ type TopicInventoryMismatch struct {
 	SessionPath   string `json:"sessionPath,omitempty"`
 	Detail        string `json:"detail"`
 	Handling      string `json:"handling"`
+	// Repaired marks a task-1145 shell mismatch the reconcile already
+	// converged (switch on, removal succeeded) — the entry documents what was
+	// done instead of pending action. omitempty keeps every pre-1145 payload
+	// unchanged.
+	Repaired bool `json:"repaired,omitempty"`
 }
 
 // TopicInventoryReconcileResult is the queryable reconcile state.
@@ -245,6 +250,14 @@ func (a *App) reconcileTopicInventory(ctx context.Context) *TopicInventoryReconc
 			})
 		}
 	}
+
+	// Task 1145: the fourth source — the agent-side contact directory
+	// (agent.ScanAddressable, the very scan the tools resolve through). Shell
+	// mismatches (registry entry, no main transcript on disk) are listed
+	// always; the registry removal rides the
+	// [agent] session_collab_registry_shell_cleanup switch (default off) and
+	// happens inside, so the reported state is post-repair truth.
+	a.reconcileRegistryShells(result)
 
 	a.storeTopicInventory(result)
 	return result
