@@ -1374,6 +1374,7 @@ export const zh: Record<DictKey, string> = {
   "heartbeat.approvalModeAskHint": "需审批的调用会等待你；Ask 不是只读模式",
   "heartbeat.approvalModeAutoHint": "执行自动继续；实质性计划选择仍会询问",
   "heartbeat.approvalModeYoloHint": "跳过普通提示；deny 与强制新鲜审批仍生效",
+  "heartbeat.approvalModeAutoFallbackHint": "全局默认为 Auto；无人值守任务已降级为 YOLO（Auto 的计划询问无人在场会卡住任务），需要可在此改回",
   "heartbeat.notifyChannels": "推送到机器人",
   "heartbeat.notifyChannelsOn": "开启",
   "heartbeat.notifyChannelsOff": "关闭",

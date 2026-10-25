@@ -1377,6 +1377,7 @@ export const en = {
   "heartbeat.approvalModeAskHint": "Approval-gated calls wait for you; Ask is not read-only",
   "heartbeat.approvalModeAutoHint": "Execution continues automatically; material plan choices still ask",
   "heartbeat.approvalModeYoloHint": "Skip ordinary tool prompts; deny and fresh approvals remain",
+  "heartbeat.approvalModeAutoFallbackHint": "Global default is Auto; demoted to YOLO for this unattended task (Auto's planning questions would stall it). Change here if needed",
   "heartbeat.notifyChannels": "Push to bot channels",
   "heartbeat.notifyChannelsOn": "On",
   "heartbeat.notifyChannelsOff": "Off",

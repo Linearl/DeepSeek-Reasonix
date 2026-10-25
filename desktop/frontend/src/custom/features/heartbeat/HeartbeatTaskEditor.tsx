@@ -9,7 +9,7 @@ import type { WorkspaceView } from "../../../lib/types";
 import { CycleEditor } from "./HeartbeatCycleEditor";
 import { CirclePlaySolid, mergeEngineRunState } from "./HeartbeatShared";
 import { useHeartbeatT } from "./heartbeat.i18n";
-import { changeHeartbeatFrequency, describeCron, formatCronNext, formatRelativeTime, isCronExpr, nextCronRunAt, type HeartbeatFrequencyType } from "./heartbeat.presentation";
+import { changeHeartbeatFrequency, describeCron, formatCronNext, formatRelativeTime, isCronExpr, nextCronRunAt, type HeartbeatApprovalMode, type HeartbeatFrequencyType } from "./heartbeat.presentation";
 import type { HeartbeatTask } from "./heartbeat.types";
 
 function normalizeMode(mode: "ask" | "auto" | "yolo" | undefined): "ask" | "auto" | "yolo" {
@@ -25,6 +25,7 @@ export function TaskEditor({
   onDirtyChange,
   onOpenTopic,
   onTrigger, onDiscard, onToggleEnabled, onSaveAsNew,
+  globalApprovalDefault = "",
 }: {
   onDiscard?: () => void;
   onToggleEnabled?: () => Promise<boolean>;
@@ -36,6 +37,9 @@ export function TaskEditor({
   onDirtyChange?: (dirty: boolean) => void;
   onOpenTopic?: (scope: string, workspaceRoot: string, topicId: string) => void;
   onTrigger?: (id: string) => void;
+  // tl 1142：全局默认审批模式（设置→默认工具审批模式），空串=尚未读到。
+  // 仅用于新建草稿的 auto 降级提示，不参与保存。
+  globalApprovalDefault?: HeartbeatApprovalMode | "";
 }) {
   const t = useHeartbeatT();
   const m = useManagementT();
@@ -511,6 +515,11 @@ export function TaskEditor({
              normalizeMode(draft.approvalMode) === "auto" ? t("heartbeat.approvalModeAutoHint") :
              t("heartbeat.approvalModeAskHint")}
           </span>
+          {/* tl 1142：新建草稿因「全局默认 auto 降级」落到 yolo 时给出说明，
+              用户可在此手动改回 auto（编辑器三档可见可改，降级只发生在新建入口）。 */}
+          {isNew && globalApprovalDefault === "auto" && normalizeMode(draft.approvalMode) === "yolo" && (
+            <span className="heartbeat-editor__mode-hint">{t("heartbeat.approvalModeAutoFallbackHint")}</span>
+          )}
         </div>
 
         {/* Push to bot channels */}
