@@ -2,15 +2,22 @@
 // The fold body is NOT rendered here: an open fold contributes its body rows
 // to the virtual row model (they mount only when scrolled into view), a closed
 // fold builds no React subtree at all.
+// tl 1141: while a CONCISE fold is closed and its segment still runs, a
+// single-line live status (current action + reasoning preview) renders under
+// the head button — all state stays local to this component.
 
-import { useContext } from "react";
+import { useContext, useMemo } from "react";
 import { ChevronRight } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { CompactionItem, SegmentModel } from "../lib/transcriptRows";
 import { countTools } from "../lib/turnToolTally";
 import { useTick, resolveRunningDurationMs, workStatusLabel } from "../lib/workStatus";
 import { compactionLiveReadout } from "../lib/compactionLive";
+import { clampLine, hasLiveAssistant, latestReasoningText, latestRunningTool, LIVE_TEXT_THROTTLE_MS, useThrottledValue } from "../lib/workProcessLiveStatus";
+import { useWorkProcessPresentation } from "../lib/sessionExperience";
+import { subjectOf } from "../lib/tools";
 import { LiveStreamContext } from "./LiveStreamContext";
+import { ReasoningSummary } from "./ReasoningSummary";
 
 export function ProcessFoldHeader({
   segment,
@@ -94,6 +101,29 @@ export function ProcessFoldHeader({
       : countParts.length > 0
         ? `${baseLabel} · ${countParts.join(" · ")}`
         : baseLabel;
+  // ── tl 1141: concise 档运行中的动态过程状态行（当前动作 + 思考摘要）──
+  // standard/deep 渲染路径零改动：conciseLive 为 false 时以下全部短路，
+  // 渲染输出与本节引入前逐字节一致（不叠状态行）。
+  const presentation = useWorkProcessPresentation();
+  const conciseLive = presentation.experience === "concise" && !open && hasRunningWork;
+  // 帧预算约束①：扫描只在此渲染期发生，useMemo 以 displayItems 引用为依赖
+  // ——仅工具/思考事件到达（行模型重建）时重算；秒 tick 重渲染引用不变，
+  // 缓存命中零扫描。纯函数从尾部倒序首中即返，与千步会话规模无关。
+  const liveReasoning = useMemo(() => {
+    if (!conciseLive) return "";
+    const streaming = hasLiveAssistant(displayItems, live?.id);
+    return streaming ? (live?.reasoning ?? "") : latestReasoningText(displayItems);
+  }, [conciseLive, displayItems, live?.id, live?.reasoning]);
+  const throttledReasoning = useThrottledValue(liveReasoning, LIVE_TEXT_THROTTLE_MS);
+  const liveActionText = useMemo(() => {
+    if (!conciseLive) return "";
+    const tool = latestRunningTool(displayItems);
+    if (!tool) return "";
+    const base = t("transcript.liveAction", { name: tool.resolvedName || tool.name });
+    const subject = tool.subject || subjectOf(tool.name, tool.args);
+    return clampLine(subject ? `${base} · ${subject}` : base);
+  }, [conciseLive, displayItems, t]);
+  const showLiveStatus = conciseLive && Boolean(liveActionText || throttledReasoning);
   return (
     <div className={`turn-collapse${open ? " turn-collapse--open" : ""}`} data-kind="reasoning" data-entrance={displayItems[0]?.id || undefined}>
       <button
@@ -105,6 +135,23 @@ export function ProcessFoldHeader({
         <span className="turn-collapse__label" data-creation-label={label}>{label}</span>
         {!hasRunningWork && <ChevronRight className={`reasoning__chevron${open ? " reasoning__chevron--open" : ""}`} size={12} />}
       </button>
+      {showLiveStatus && (
+        <div className="turn-collapse__live-status" data-live-status="">
+          {liveActionText && <span className="turn-collapse__live-action">{liveActionText}</span>}
+          {throttledReasoning && (
+            <>
+              <span className="turn-collapse__live-thinking">{t("transcript.liveThinking")}</span>
+              <ReasoningSummary
+                text={throttledReasoning}
+                streaming
+                maxChars={160}
+                onOpen={onToggle}
+                className="turn-collapse__live-summary"
+              />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -4837,6 +4837,9 @@ export const en = {
   "chat.loadOlder": "Load earlier messages",
   "transcript.toolCount": "{n} tools",
   "transcript.thoughtCount": "{n} thoughts",
+  // tl 1141: concise-tier live status line while a turn runs (action + thinking prefix).
+  "transcript.liveAction": "Running {name}",
+  "transcript.liveThinking": "Thinking",
   // Task 1082: run-strip turn tally (tools/files/searches); fold header copy untouched.
   "transcript.tally.tools": "{n} tools",
   "transcript.tally.files": "{n} files",

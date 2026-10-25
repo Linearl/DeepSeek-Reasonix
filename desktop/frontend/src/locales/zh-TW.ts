@@ -3369,6 +3369,9 @@ export const zhTW: Record<DictKey, string> = {
   "chat.loadOlder": "載入更早的訊息",
   "transcript.toolCount": "{n} 個工具",
   "transcript.thoughtCount": "{n} 段思考",
+  // tl 1141：concise 檔執行中的動態過程狀態行（當前動作 + 思考摘要前綴）。
+  "transcript.liveAction": "正在 {name}",
+  "transcript.liveThinking": "思考中",
   // 任務 1082：run strip 的本輪工具/檔案/搜尋彙總（折疊頭文案不動）。
   "transcript.tally.tools": "{n} 工具",
   "transcript.tally.files": "{n} 檔案",
