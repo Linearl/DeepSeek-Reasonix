@@ -25,6 +25,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 
 	"reasonix/internal/agent"
@@ -174,10 +175,17 @@ func (a *App) reconcileRegistryShells(result *TopicInventoryReconcileResult) {
 	// address but the tree does not list. Archived sessions are the normal
 	// post-delete state (not listed by design); sessions under unregistered
 	// project roots belong to an unregistered project, not to this class.
-	registeredRoots := map[string]bool{}
+	// Membership resolves on the session file's own directory, NOT on
+	// id.Workspace: the shared scan derives Workspace for the all-projects
+	// sweep as the sessions-parent slug path (<state>/projects/<slug>), which
+	// never equals a registered root — keying on it would silently swallow
+	// every project-scope session out of this observation class.
+	registeredSessionDirs := map[string]bool{}
 	f := loadProjectsFile()
 	for _, p := range f.Projects {
-		registeredRoots[normalizeProjectRoot(p.Root)] = true
+		if dir := config.ProjectSessionDir(p.Root); dir != "" {
+			registeredSessionDirs[strings.ToLower(filepath.Clean(dir))] = true
+		}
 	}
 	for _, id := range agent.ScanAddressable(config.SessionDir(), globalWorkspaceRoot()) {
 		topicID := strings.TrimSpace(id.TopicID)
@@ -193,7 +201,7 @@ func (a *App) reconcileRegistryShells(result *TopicInventoryReconcileResult) {
 		if _, onDisk := directory[strings.ToLower(topicID)]; !onDisk {
 			continue
 		}
-		if id.Scope == "project" && !registeredRoots[normalizeProjectRoot(id.Workspace)] {
+		if id.Scope == "project" && !registeredSessionDirs[strings.ToLower(filepath.Dir(id.SessionPath))] {
 			continue
 		}
 		result.Mismatches = append(result.Mismatches, TopicInventoryMismatch{
