@@ -30656,22 +30656,13 @@ button.statusbar__mcp:focus-visible {
   }
 }
 
-@container (max-width: 340px) {
-  .workbench-dock__tabs {
-    width: auto;
-  }
-
-  .workbench-dock__tab {
-    flex: 0 0 30px;
-    width: 30px;
-    padding: 0;
-    gap: 0;
-  }
-
-  .workbench-dock__tab-label {
-    display: none;
-  }
-}
+/* tl1129 返修（用户 20261025 拍板：最小宽度基线保 2 字 tab 可读）：删除原
+   @container (max-width: 340px) 的 icon-only 段（tab 压成 30px、label 隐藏）。
+   该段是 2026-06（c80ba8ad76）在 dock 正常宽度 ≥280 时代加的极窄兜底；
+   tl1108 引入 246 窄态 rail 后该段成为日常态——246 rail 下「概览/文件/改动」
+   两字标签永远消失。dock clamp 下限 246（creation 252），≤340 区间只可能是
+   窄态 rail 本身；删除后由上方 520 断点均分接管，默认 3-4 个两字 tab 在 246
+   下完整显示，label 的 ellipsis 基础规则保留作极值兜底。 */
 
 /* Task 259: wrap mode — only while the todo-sidebar experiment is on. Tabs keep
    a fixed quarter-width cell so the default dock width fits exactly four per
