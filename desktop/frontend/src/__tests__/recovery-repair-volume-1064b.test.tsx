@@ -190,13 +190,16 @@ console.log("\nrepair receipt volume delta + action status (queue-tail volume fi
   // 赛跑时回执时有时无). Just wait for the handler's own deferral to land.
   await act(async () => { repairDiet?.click(); });
   await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-  // The repair reloads the list (onReload), which collapses the row; re-open it
-  // so the receipt is on screen for the read. Two flushes: the reload's own
-  // lazy chain/record load is an async chain of its own.
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  // 任务 1146：repair 的 onReload 不再折叠行——行保持展开，回执原地可见。
+  // 不能再按旧行为点 toggle「重开行」：那会把仍展开的行折叠掉、回执随子树
+  // 卸载而消失。两个等待：onReload 的列表重取与链/修复日志的惰性重拉各自
+  // 是一条 async 链。
   await flush();
   await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
-  const note = document.querySelector(".rc-versions__health")?.textContent || bodyText();
+  // 任务 1146：行保持展开后 VersionRows 不再重挂载，repair 顺手刷新的健康
+  // 检查块（healthy）会渲染在回执块之前——读全部 health 块的拼接，不依赖
+  // 渲染顺序挑第一个。
+  const note = (Array.from(document.querySelectorAll(".rc-versions__health")).map((n) => n.textContent || "").join(" | ")) || bodyText();
   ok(note.includes("Repaired"), "② a successful repair reports the repaired receipt");
   ok(note.includes("promote_head(done)") && note.includes("fold_images(done)"), "② action names carry their done/skipped status");
   ok(note.includes("4.0 KB") && note.includes("2.0 KB"), "② the receipt shows the before→after size comparison");
@@ -213,9 +216,10 @@ console.log("\nrepair receipt volume delta + action status (queue-tail volume fi
   );
   await act(async () => { repairPlain?.click(); });
   await flush();
-  await act(async () => { (document.querySelector(".rc-modal .rc-toggle") as HTMLButtonElement).click(); });
+  // 任务 1146：行保持展开（不再折叠），无需也不能点 toggle 重开——见 ②。
+  // health 块的拼接读法同 ②。
   await flush();
-  const note = document.querySelector(".rc-versions__health")?.textContent || bodyText();
+  const note = (Array.from(document.querySelectorAll(".rc-versions__health")).map((n) => n.textContent || "").join(" | ")) || bodyText();
   ok(note.includes("size unchanged"), "③ an unchanged size says so rather than showing a fake delta");
   ok(!note.includes("4.0 KB → 4.0 KB"), "③ no redundant before→after line when nothing shrank");
   await act(async () => root.unmount());
