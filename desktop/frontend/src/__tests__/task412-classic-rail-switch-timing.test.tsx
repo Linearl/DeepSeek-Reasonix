@@ -88,7 +88,7 @@ console.log("\ntask 412 classic rail + switch timing");
 
 // ── Part 2: layout-switch timing probes (evidence-first) ────────────────────
 {
-  const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+  const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
   ok(panel.includes('"layout switch started"') && panel.includes('"layout switch applied"') && panel.includes('"layout switch painted"'), "three timing probes wired: started → applied → painted");
   ok(panel.includes("from=${from} to=${style}") && panel.includes("durationMs="), "probes record direction (from/to) and durationMs (data decides optimization)");
   ok(/reportFrontendLog\("layout-switch"/.test(panel), "probes land in desktop.log via reportFrontendLog (the 4MB rolling channel)");

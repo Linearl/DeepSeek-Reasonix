@@ -37,7 +37,7 @@ function ok(value: boolean, label: string) {
 
 const wallSource = readFileSync(fileURLToPath(new URL("../components/LabPicksWall.tsx", import.meta.url)), "utf8");
 const dialogSource = readFileSync(fileURLToPath(new URL("../components/LabPickDetailDialog.tsx", import.meta.url)), "utf8");
-const panelSource = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+const panelSource = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../lab/labPaneRegistry.ts", import.meta.url)), "utf8");
 const yamlText = readFileSync(fileURLToPath(new URL("../../public/fork-features.yaml", import.meta.url)), "utf8");
 
 console.log("\ntask 563 lab picks wall");

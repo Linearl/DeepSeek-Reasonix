@@ -28,7 +28,7 @@ function ok(value: boolean, label: string) {
   else { process.stdout.write(`  FAIL  ${label}\n`); failed += 1; }
 }
 
-const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../lab/labPaneRegistry.ts", import.meta.url)), "utf8");
 const form = readFileSync(fileURLToPath(new URL("../components/SettingsForm.tsx", import.meta.url)), "utf8");
 const css = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
 const zh = readFileSync(fileURLToPath(new URL("../locales/zh.ts", import.meta.url)), "utf8");
@@ -122,7 +122,10 @@ function familySlice(titleKey: string): string {
 // ⑥ 组件/样式合同。
 {
   ok(form.includes("export function LabSectionCard"), "LabSectionCard is defined in SettingsForm");
-  ok(panel.includes('import { LabSectionCard, SettingsField, SettingsSection } from "./SettingsForm"'), "SettingsPanel imports LabSectionCard");
+  // tl 1134：实验室主体拆进 ExperimentalLabSection.tsx 后，SettingsForm 的
+  // import 集按 TS6133 裁剪（SettingsSection 留在主面板侧），断言改按
+  // 「LabSectionCard 确从 SettingsForm 导入」的形态匹配（语义不变）。
+  ok(/import \{[^}]*LabSectionCard[^}]*\} from "\.\/SettingsForm"/.test(panel), "SettingsPanel imports LabSectionCard");
   const block = css.slice(css.indexOf(".lab-section-card {"), css.indexOf("@media (max-width: 800px) {\n  /* 窄屏下 settings-field 栈化"));
   const bareColors = block.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g) ?? [];
   ok(bareColors.length === 0, `family-card CSS carries no token-bypassing colors (found ${bareColors.length})`);

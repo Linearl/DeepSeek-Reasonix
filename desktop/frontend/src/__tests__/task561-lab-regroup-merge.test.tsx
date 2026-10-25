@@ -41,7 +41,7 @@ function ok(value: boolean, label: string) {
   else { process.stdout.write(`  FAIL  ${label}\n`); failed += 1; }
 }
 
-const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../lab/labPaneRegistry.ts", import.meta.url)), "utf8");
 
 function cardSlice(startMarker: string, endMarker: string): string {
   const start = panel.indexOf(startMarker);

@@ -72,7 +72,7 @@ console.log("\ntask 783 usage monitoring card + OpenCode Go sidebar + readBack p
 
 // ── ② 侧栏化：挂载点 + 渲染门 + 三态渲染 ──
 {
-  const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+  const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
   const contextPanel = readFileSync(fileURLToPath(new URL("../components/ContextPanel.tsx", import.meta.url)), "utf8");
   ok(panel.includes('{selected === "usageMonitoring" && ('), "usageMonitoring pane branch exists in SettingsPanel");
   ok(!panel.includes('{selected === "opencodeGoUsage" && ('), "the standalone opencodeGoUsage pane branch is gone");

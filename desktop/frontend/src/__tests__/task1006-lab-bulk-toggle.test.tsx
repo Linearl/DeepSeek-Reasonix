@@ -171,7 +171,7 @@ for (const k of bulkKeys) {
 ok(bulkKeys.every((k) => k in zh && k in zhTW), "zh / zh-TW carry every labBulk key (三语平行)");
 
 // ── ⑤ 入口按钮 + SettingsPanel 接线（源级）──
-const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
 ok(panel.includes('t("settings.labBulk.button")'), "lab page renders the bulk-toggle entry button");
 ok(panel.includes("<LabBulkToggleDialog"), "SettingsPanel mounts LabBulkToggleDialog");
 ok(panel.includes("experimental-lab__bulk-toggle"), "entry button rides the order-row pill class");

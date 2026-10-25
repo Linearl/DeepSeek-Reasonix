@@ -562,7 +562,10 @@ ok(themePackKind({ builtin: false }) === "user", "legacy builtin=false falls bac
 ok(overviewSource.includes("appearance-overview"), "appearance overview present");
 ok(overviewSource.includes("settings.themeGallery.browse"), "overview has browse themes");
 ok(overviewSource.includes("settings.themeGallery.disable") || overviewSource.includes("handleDisable"), "overview can disable pack");
-const settingsPageShell = settingsSource.slice(settingsSource.indexOf("function SettingsPageShell"), settingsSource.indexOf("export function settingsPageLayout"));
+// tl 1134：SettingsPageShell 迁独立文件（实验室二级 chunk 拆分的共享下沉面），
+// 切片源同步改读 SettingsPageShell.tsx（断言语义不变：可访问名仍在、无重复视觉头）。
+const shellSource = readFileSync(resolve(testDir, "../components/SettingsPageShell.tsx"), "utf8");
+const settingsPageShell = shellSource.slice(shellSource.indexOf("function SettingsPageShell"), shellSource.indexOf("export function settingsPageLayout"));
 ok(settingsPageShell.includes("aria-label={settingsTabPageTitle(tab, t)}") && !settingsPageShell.includes("settings-page__header"), "settings pages retain accessible names without a duplicate visual header");
 ok(overviewSource.includes("initialCreateBaseStyle"), "base-style copy opens a prefilled theme editor");
 ok(overviewSource.includes('role="radiogroup"') && overviewSource.includes("aria-checked"), "overview segmented controls expose selection semantics");

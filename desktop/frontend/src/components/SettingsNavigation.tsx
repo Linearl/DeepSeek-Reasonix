@@ -53,7 +53,10 @@ export type SettingsNavigationItem = {
   id: SettingsTab;
   label: string;
   meta: string;
-  searchTerms?: string;
+  /* 任务 1134：searchTerms 支持惰性 getter——重量级词表（如实验室 63+ 条目
+   * 的三语标签拼接）只在首次真正过滤（normalized 非空）时构建；空查询短路
+   * 分支不触碰 getter，设置面板首挂零索引成本。 */
+  searchTerms?: string | (() => string);
 };
 
 export function SettingsNavigation({
@@ -78,7 +81,9 @@ export function SettingsNavigation({
       const tabs = group.tabs.filter((id) => {
         if (groupMatches) return true;
         const item = itemById.get(id);
-        return item ? `${item.label} ${item.meta} ${item.searchTerms ?? ""}`.toLocaleLowerCase().includes(normalized) : false;
+        if (!item) return false;
+        const terms = typeof item.searchTerms === "function" ? item.searchTerms() : (item.searchTerms ?? "");
+        return `${item.label} ${item.meta} ${terms}`.toLocaleLowerCase().includes(normalized);
       });
       return { ...group, tabs };
     }).filter((group) => group.tabs.length > 0);

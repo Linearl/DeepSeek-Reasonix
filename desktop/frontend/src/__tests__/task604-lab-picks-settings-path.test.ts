@@ -24,7 +24,7 @@ function ok(value: boolean, label: string) {
 
 const wallSource = readFileSync(fileURLToPath(new URL("../components/LabPicksWall.tsx", import.meta.url)), "utf8");
 const dialogSource = readFileSync(fileURLToPath(new URL("../components/LabPickDetailDialog.tsx", import.meta.url)), "utf8");
-const panelSource = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+const panelSource = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
 
 console.log("\ntask 604 lab picks settings-location hint");
 
