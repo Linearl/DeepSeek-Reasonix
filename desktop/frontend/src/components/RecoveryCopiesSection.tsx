@@ -145,16 +145,24 @@ type DeleteOutcome = {
  *  文件层无事可做（其余版本住在同一份事件日志里），此前它因 report.items
  *  非空而照走 "synthesized" 成功回执，用户看到「合成已生效……落败分支还在
  *  回收站里」却面对一套纹丝不动的列表（用户 20261025 复测现场）。v3only 是
- *  诚实的「无可做」回执：不算成功（不触发生效横幅），也不算失败（不是错误）。 */
+ *  诚实的「无可做」回执：不算成功（不触发生效横幅），也不算失败（不是错误）。
+ *
+ *  任务 1146 返修2（用户 20261025 裁决）：kind 增加 "v3synthesized"——返修后
+ *  v3-only 形态的合成真实生效：主线切到选定 head（switchedTo）+ 落败 heads
+ *  走 1064 retire 标记清理（retiredHeads）。横幅如实报两件事各自发生与否，
+ *  不再沿用文件级成功文案（「落败分支在回收站里」对 retire 语义是失实的：
+ *  head 清理不走文件回收站）。 */
 type SynthesisOutcome = {
   label: string;
-  kind: "synthesized" | "failed" | "v3only";
+  kind: "synthesized" | "failed" | "v3only" | "v3synthesized";
   participants?: number;
   uniqueTotal?: number;
   afterMessages?: number;
   afterTurns?: number;
   prefixed?: number;
   trashed?: number;
+  switched?: boolean;
+  retired?: number;
   detail?: string;
 };
 
@@ -1302,35 +1310,52 @@ export function RecoveryCopiesSection() {
         return;
       }
       // 任务 1146 返修：先判定这次合成有没有文件级效果。合成引擎对纯 v3 头
-      // 会话（无副本文件）无事可做——其余版本住在主转录自己的事件日志里，无
-      // 文件可搬（recovery_head_synthesize.go 的 v3-only 提前返回形态）。该
-      // 形态下 report.items 非空（携带各 head 的读数，1117 语义），旧判定只
-      // 看 items.length，于是照走 "synthesized" 成功回执 + 「合成已生效」
-      // 横幅——可落败分支根本不存在、列表纹丝不动，用户复测的「合成已生效
-      // 但列表仍不刷新」正是这里虚报的成功在误导（重拉回来的数据没变，因为
-      // 数据本来就没变）。判定：promoted 或 trashed 非空才算文件级生效。
+      // 会话（无副本文件）在文件层无事可做——其余版本住在主转录自己的事件日
+      // 志里。判定：promoted 或 trashed 非空才算文件级生效。
       const fileEffective = report.promoted || report.trashed.length > 0;
       if (!fileEffective) {
         // 参与项全部是主转录自身的 v3 heads（path === report.mainPath）：
-        // 纯 v3 头会话——给出诚实的「无可做」回执并指出现有出路（版本表的
-        // 「切换到此版本」按钮，该入口真实存在）。
+        // 纯 v3 头会话。
         const v3Only = report.items.every((item) => item.path === report.mainPath);
-        setSynthesisOutcomes((current) => [
-          ...current,
-          v3Only
-            ? { label: groupLabel, kind: "v3only", detail: t("settings.recoveryCopiesSynthesizeNoCopyBranch") }
-            : {
-                // 有副本参与却没有文件级效果（全部被跳过/归档失败）：按失败
-                // 处理，透传后端 skipped 明细供诊断（1039 先例：后端原文不
-                // 加工直出），skipped 缺席时退回「没有可合成的分支」。
-                label: groupLabel,
-                kind: "failed",
-                detail:
-                  report.skipped.length > 0
-                    ? report.skipped.join("; ")
-                    : t("settings.recoveryCopiesSynthesizeNoBranch"),
-              },
-        ]);
+        // 任务 1146 返修2（用户 20261025 裁决）：v3-only 形态的合成现在真实
+        // 生效——后端切换主线到选定 head（switchedTo）并按 1064 的 retire 标
+        // 记清理落败 heads（retiredHeads）。横幅如实报两件事各自发生与否；
+        // retire 不走文件回收站（隐藏 + 下次单写轮换裁掉、轮换前可重放找回），
+        // 文件级成功文案的「落败分支已归档到回收站」在这里是失实表述，不用。
+        const retiredCount = report.retiredHeads?.length ?? 0;
+        if (v3Only && (report.switchedTo || retiredCount > 0)) {
+          const detail = report.switchedTo
+            ? retiredCount > 0
+              ? t("settings.recoveryCopiesV3SynthesizedBoth").replace("{count}", String(retiredCount))
+              : t("settings.recoveryCopiesV3SynthesizedSwitched")
+            : t("settings.recoveryCopiesV3SynthesizedRetired").replace("{count}", String(retiredCount));
+          setSynthesisOutcomes((current) => [
+            ...current,
+            { label: groupLabel, kind: "v3synthesized", switched: Boolean(report.switchedTo), retired: retiredCount, detail },
+          ]);
+        } else if (v3Only) {
+          // 后端确认无事可做（无落败分支、无需切换）——保留诚实的「无可做」
+          // 回执并指出现有出路（版本表的「切换到此版本」按钮，该入口真实存在）。
+          setSynthesisOutcomes((current) => [
+            ...current,
+            { label: groupLabel, kind: "v3only", detail: t("settings.recoveryCopiesSynthesizeNoCopyBranch") },
+          ]);
+        } else {
+          // 有副本参与却没有文件级效果（全部被跳过/归档失败）：按失败
+          // 处理，透传后端 skipped 明细供诊断（1039 先例：后端原文不
+          // 加工直出），skipped 缺席时退回「没有可合成的分支」。
+          setSynthesisOutcomes((current) => [
+            ...current,
+            {
+              label: groupLabel,
+              kind: "failed",
+              detail:
+                report.skipped.length > 0
+                  ? report.skipped.join("; ")
+                  : t("settings.recoveryCopiesSynthesizeNoBranch"),
+            },
+          ]);
+        }
         // Named winners were consumed even on this no-op path; reset the pick.
         setPickedChain((current) => {
           const next = { ...current };
@@ -1605,11 +1630,26 @@ export function RecoveryCopiesSection() {
                       </span>
                     )}
                   </div>
-                  {set.chains.map((chain, index) => {
+                  {/* 任务 1146 返修2（协调线 2120）：「当前主线」只标当前激活的
+                      那条链。旧判定只比文件路径，同文件多 head 时每条 head 链都
+                      命中 → 双标（同一条 jsonl 的两条 v3 head 链都挂「当前主
+                      线」）。改为：主转录文件内、后端标记为当前选中的 head
+                      （RecoveryChainView.Selected，与版本表「当前选中」同源）
+                      才标；无任何 Selected 读数（降级行 / schema-1 整文件行）
+                      时退回旧行为——单行场景不回归。 */}
+                  {(() => {
+                    const mainRows = set.chains.filter((c) => c.path === set.mainPath);
+                    const selectedMainExists = mainRows.some((c) => c.selected);
+                    return set.chains.map((chain, index) => {
                     // 任务 1065：推荐按轮次优先（后端 longestPath/longestHead
                     // 已按轮次排序），全降级时留空 ⇒ 降级行永不被推荐。
                     const recommended =
                       chain.path === set.longestPath && chain.headId === set.longestHead;
+                    const isCurrentMain =
+                      chain.path === set.mainPath &&
+                      (selectedMainExists
+                        ? Boolean(chain.selected)
+                        : mainRows.length === 1);
                     return (
                       <div
                         className={`rc-chain${recommended ? " rc-chain--recommended" : ""}${
@@ -1618,7 +1658,7 @@ export function RecoveryCopiesSection() {
                         key={`${chain.path}#${chain.headId}`}
                       >
                         <span className="rc-chain__name">
-                          {chain.path === set.mainPath
+                          {isCurrentMain
                             ? t("settings.recoveryCopiesChainCurrent")
                             : `${t("settings.recoveryCopiesChainCandidate")} ${index}`}
                         </span>
@@ -1653,7 +1693,8 @@ export function RecoveryCopiesSection() {
                         </button>
                       </div>
                     );
-                  })}
+                    });
+                  })()}
                 </div>
               );
             })()}
@@ -1870,6 +1911,12 @@ export function RecoveryCopiesSection() {
                             （红框报错 + 顶部「合成已生效」并存的现场根因之一）。 */}
                         {synthesisOutcomes.some((outcome) => outcome.kind === "synthesized") ? (
                           <p className="rc-result__hint">{t("settings.recoveryCopiesSynthesizeReopenHint")}</p>
+                        ) : null}
+                        {/* 任务 1146 返修2：v3-only 生效合成走专属下一步提示——
+                            head 清理走 retire 标记（隐藏 + 下次单写轮换裁掉），
+                            文件级文案的「落败分支还在回收站里」在这里失实。 */}
+                        {synthesisOutcomes.some((outcome) => outcome.kind === "v3synthesized") ? (
+                          <p className="rc-result__hint">{t("settings.recoveryCopiesV3SynthesizedHint")}</p>
                         ) : null}
                       </div>
                     )}

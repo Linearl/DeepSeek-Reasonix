@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/provider"
-	"reasonix/internal/agent"
 	"reasonix/internal/store"
 )
 
@@ -248,5 +248,159 @@ func TestSynthesizeSessionHeadsUnselectedHeadSeesV3Heads(t *testing.T) {
 		if item.Path != path {
 			t.Fatalf("v3 head participants must reference the canonical transcript, got %+v", item)
 		}
+	}
+}
+
+// 任务 1146 返修2（用户 20261025 裁决）：v3-only 形态的合成升级为生效语义。
+//
+// 上一版对「无副本文件、只有 v3 heads」的会话只做诚实回执（报告各 head 读数
+// 后原样返回，列表纹丝不动）；用户预期合成按钮在这里同样生效：选定 HEAD →
+// 主线切换到它 + 其余落败 heads 从候选链/版本表清理。清理复用 1064 的 retire
+// 标记（可恢复：独有条目在下一次单写轮换前仍可重放找回），切换复用版本表
+// 「切换到此版本」的同一入口（chooseSessionHead）。
+//
+// 本测试钉住三条路径：
+//
+//	① 显式选定落败链（fork head）→ 先切换（RetireSessionHead 拒绝 retire 当前
+//	   选中链，顺序不可反）后清理，报告如实记 SwitchedTo/RetiredHeads；
+//	② 未选 HEAD（保持当前主线）→ 不切换、只清理其余活链；
+//	③ 未知 headID → 明确报错，不静默。
+//
+// fixture 复用 1117 的手写 schema-2 事件序列（两个 live head、无副本文件）。
+func writeV3OnlyTwoHeadFixture(t *testing.T) (path, mainHead, forkHead string) {
+	t.Helper()
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path = filepath.Join(dir, "heads-synth-1146r2-v3only.jsonl")
+	eventsPath := store.SessionEventLog(path)
+	t.Cleanup(func() {
+		_ = os.Remove(path)
+		_ = os.Remove(eventsPath)
+	})
+	mainHead = agent.SessionMainHead
+	forkHead = agent.NewHeadID()
+	q1, a1, q2, a2, q3, a3 := agent.NewMessageID(), agent.NewMessageID(), agent.NewMessageID(), agent.NewMessageID(), agent.NewMessageID(), agent.NewMessageID()
+	base := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
+
+	msgEntry := func(head, parent, turn, id string, role provider.Role, content string, at time.Time) any {
+		return map[string]any{
+			"schema_version": 2,
+			"type":           "message",
+			"id":             id,
+			"head":           head,
+			"turn":           turn,
+			"at":             at.UTC().Format(time.RFC3339Nano),
+			"parent":         parent,
+			"digest":         "",
+			"msgs":           []any{map[string]any{"role": string(role), "content": content, "id": id}},
+		}
+	}
+	forkEntry := func(head, newHead, from string, at time.Time) any {
+		return map[string]any{
+			"schema_version": 2,
+			"type":           "fork",
+			"head":           head,
+			"new_head":       newHead,
+			"from":           from,
+			"kind":           agent.HeadKindFork,
+			"at":             at.UTC().Format(time.RFC3339Nano),
+		}
+	}
+	// main：q1/a1 + 分叉点后的 q3/a3（最后活动更新 ⇒ 重放默认选中 main）；
+	// fork：q1/a1 之后接独立的 q2/a2。两链互不覆盖。
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	for _, e := range []any{
+		msgEntry(mainHead, "", "", q1, provider.RoleUser, "q1", base.Add(-4*time.Second)),
+		msgEntry(mainHead, q1, "", a1, provider.RoleAssistant, "a1", base.Add(-3*time.Second)),
+		forkEntry(mainHead, forkHead, a1, base.Add(-2*time.Second)),
+		msgEntry(forkHead, a1, "", q2, provider.RoleUser, "q2", base.Add(-1*time.Second)),
+		msgEntry(forkHead, q2, "", a2, provider.RoleAssistant, "a2", base),
+		msgEntry(mainHead, a1, "", q3, provider.RoleUser, "q3", base.Add(2*time.Second)),
+		msgEntry(mainHead, q3, "", a3, provider.RoleAssistant, "a3", base.Add(3*time.Second)),
+	} {
+		if err := enc.Encode(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(eventsPath, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path, mainHead, forkHead
+}
+
+func liveHeadIDs(t *testing.T, path string) map[string]agent.SessionHead {
+	t.Helper()
+	heads, err := agent.ListSessionHeads(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]agent.SessionHead{}
+	for _, h := range heads {
+		if !h.Retired {
+			out[h.ID] = h
+		}
+	}
+	return out
+}
+
+func TestSynthesizeSessionHeadsV3OnlySwitchesToChosenHeadAndRetiresLosers(t *testing.T) {
+	path, mainHead, forkHead := writeV3OnlyTwoHeadFixture(t)
+
+	app := newBranchDeleteApp(t)
+	report, err := app.SynthesizeSessionHeads(path, forkHead)
+	if err != nil {
+		t.Fatalf("v3-only synthesis with a picked HEAD must act: report=%+v err=%v", report, err)
+	}
+	if report.SwitchedTo != forkHead {
+		t.Fatalf("the main line must have switched to the chosen head, got SwitchedTo=%q", report.SwitchedTo)
+	}
+	if len(report.RetiredHeads) != 1 || report.RetiredHeads[0] != mainHead {
+		t.Fatalf("the losing head must be retired, got %+v", report.RetiredHeads)
+	}
+	live := liveHeadIDs(t, path)
+	fork, ok := live[forkHead]
+	if !ok || !fork.Selected {
+		t.Fatalf("the chosen head must now be the selected live head: %+v", live)
+	}
+	if _, ok := live[mainHead]; ok {
+		t.Fatalf("the losing head must be retired out of the live set: %+v", live)
+	}
+	if report.AfterMessages == 0 || report.AfterTurns == 0 {
+		t.Fatalf("the report must carry the post-run reading of the new main: %+v", report)
+	}
+}
+
+func TestSynthesizeSessionHeadsV3OnlyUnselectedKeepsMainAndRetiresOthers(t *testing.T) {
+	path, mainHead, forkHead := writeV3OnlyTwoHeadFixture(t)
+
+	app := newBranchDeleteApp(t)
+	report, err := app.SynthesizeSessionHeads(path, "")
+	if err != nil {
+		t.Fatalf("v3-only synthesis without a picked HEAD keeps the current main: report=%+v err=%v", report, err)
+	}
+	if report.SwitchedTo != "" {
+		t.Fatalf("the main head is already selected; no switch must be recorded, got %q", report.SwitchedTo)
+	}
+	if len(report.RetiredHeads) != 1 || report.RetiredHeads[0] != forkHead {
+		t.Fatalf("the other live chain must be retired, got %+v", report.RetiredHeads)
+	}
+	live := liveHeadIDs(t, path)
+	if _, ok := live[forkHead]; ok {
+		t.Fatalf("the losing head must be retired: %+v", live)
+	}
+	if h, ok := live[mainHead]; !ok || !h.Selected {
+		t.Fatalf("the main head must stay selected: %+v", live)
+	}
+}
+
+func TestSynthesizeSessionHeadsV3OnlyRefusesUnknownHead(t *testing.T) {
+	path, _, _ := writeV3OnlyTwoHeadFixture(t)
+
+	app := newBranchDeleteApp(t)
+	if _, err := app.SynthesizeSessionHeads(path, "no-such-head"); err == nil {
+		t.Fatal("an unknown head id must be refused, not silently ignored")
 	}
 }

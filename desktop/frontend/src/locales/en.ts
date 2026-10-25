@@ -4617,6 +4617,12 @@ export const en = {
   "settings.recoveryCopiesOutcomeSynthesized": "Synthesized",
   "settings.recoveryCopiesSynthesizePrefixed": "losing chain prefix grafted",
   "settings.recoveryCopiesSynthesizeReopenHint": "The synthesis has taken effect. Reopen the conversation in its project (or refresh the tab) to see the merged content — losing branches are still in the trash.",
+  // 任务 1146 返修2: effective v3-only synthesis — main-line switch + losing
+  // heads cleaned up via the 1064 retire marker (no file trash involved).
+  "settings.recoveryCopiesV3SynthesizedBoth": "Switched to the selected version and cleaned up {count} losing branch(es)",
+  "settings.recoveryCopiesV3SynthesizedSwitched": "Switched to the selected version; no losing branches to clean up",
+  "settings.recoveryCopiesV3SynthesizedRetired": "Cleaned up {count} losing branch(es); the selected version is already the main line",
+  "settings.recoveryCopiesV3SynthesizedHint": "The main line was switched, or losing versions were cleaned up (retire marker: hidden now, pruned at the next rotation, recoverable from the session log until then). Refresh the conversation or reopen the tab to see the latest content.",
   "settings.sessionVersions.title": "Session versions and repair (v3 event log)",
   "settings.sessionVersions.hint": "Reads the v3 event-log heads: messages / turns / last activity / preview, marking the current selection plus two independent reason tags — \"longer\" and \"newer\" — each with its own actual values, so you can judge for yourself instead of taking one merged claim at face value. Switching is reversible; repairs back up first and write a repair record — local only, no model calls.",
   "settings.sessionVersions.empty": "No multi-version conversations found.",

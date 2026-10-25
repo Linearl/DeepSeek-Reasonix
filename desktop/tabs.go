@@ -9433,6 +9433,18 @@ func (a *App) knownSessionDirs() []string {
 		}
 		add(dir)
 	}
+	// 任务 1146 返修：引擎侧 project-scope 容器目录（<state>/projects/<slug>/
+	// sessions）也要进校验面。heartbeat/子会话（guardian）由引擎托管创建、住在
+	// 这里，而版本面板的扫描面（recoveryScanDirectories）与协作名册
+	// （collabRoster→AllProjectSessionDirs）都已枚举它们——列得出来、却过不了
+	// sessionDirForPath，面板上就是「session path outside known session dirs」
+	// 红字（20261025 用户装机实测）。此处复用任务 186 的容器目录解析先例
+	// （config.AllProjectSessionDirs：只认 <MemoryUserDir>/projects/<已存在
+	// slug>/sessions 这一引擎托管形态，不放宽为任意路径——路径校验是安全边界，
+	// 目录包含关系仍由 validateSessionPath 逐条把关）。
+	for _, dir := range config.AllProjectSessionDirs() {
+		add(dir)
+	}
 	a.mu.RLock()
 	for _, tab := range a.tabs {
 		add(tabSessionDir(tab))

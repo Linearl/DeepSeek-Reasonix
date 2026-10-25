@@ -476,6 +476,10 @@ export interface HeadSynthesisReport {
   afterMessages: number;
   afterTurns: number;
   skipped: string[];
+  // 任务 1146 返修2：v3-only 形态的生效读数——主线切到的 head（空=无需切换）
+  // 与被清理（retire 标记）的落败 head 列表。
+  switchedTo?: string;
+  retiredHeads?: string[];
 }
 
 export interface DesktopShellStatusView {
