@@ -205,6 +205,8 @@ func (a *App) clearSessionBuildOptions(tab *WorkspaceTab, snap tabRuntimeSnapsho
 		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
+		OnRegistryShellProbe:       a.resolveRegistryShell,
+		OnRegistryShellTrash:       a.trashRegistryShell,
 		OnRenameSession:            a.renameCollabSession,
 		OnMoveTopicToGroup:         a.moveCollabTopicToGroup,
 		OnManageSessions:           a.AgentManageSessions,
