@@ -4,11 +4,18 @@ import type { HistoryLoadTrigger, Item } from "../lib/useController";
 import type { Translator } from "../lib/i18n";
 import type { DictKey } from "../lib/i18n";
 import { buildTrajectoryLedger, trajectorySummary, type TrajectoryKind, type TrajectoryRecord } from "../lib/trajectoryLedger";
-import { buildTrajectorySequenceTimeline, buildTrajectoryTimeline, formatTrajectoryClock, formatTrajectoryDuration, pointerRangeToDomain, recordIdsInFocus, type TrajectoryTimelineModel } from "../lib/trajectoryTimeline";
+import { buildTrajectorySequenceTimeline, formatTrajectoryClock, formatTrajectoryDuration, pointerRangeToDomain, recordIdsInFocus, trajectorySpanRect, type TrajectoryTimelineModel } from "../lib/trajectoryTimeline";
 import { buildTrajectorySearchIndex, trajectorySearchMatches, type TrajectoryLedgerProjectionOptions } from "../lib/trajectorySearchIndex";
 
 // 任务 704 — 轨迹视图（DSH 同款可观测性视图，A 路线）。
 // 任务 1112 — 时间轴三行分色甘特 + 工具栏三开关 + 全文搜索 + 行可读摘要。
+// 任务 1131 — 时间轴模式对齐 DSH：默认 = sequence 等宽序位（DSH TrajectoryView
+//   .tsx:347 两布尔默认 false → 'sequence'，事件 1/N 等宽满铺）；「时长」开关 =
+//   duration 真实耗时占比（序位拼接天然压缩空闲）。渲染百分比统一经
+//   trajectorySpanRect 换算（DSH 渲染层同款），最小可见宽由纯 CSS min-width
+//   兜底——修复 1112 默认态事件被墙钟空闲稀释成细线（「每个事件都很窄」）与
+//   durationOn 态模型单位混用导致的 span 溢出。真实时间墙钟投影（time）不再
+//   直接上 UI（lib 保留供后续 actual 模式）。
 //
 // 纯投影视图：只消费 transcript 读投影（items），不碰存储（597 纪律）。
 // 四层 = 工具栏（1112，三开关 + 搜索）+ 时间线总览（三行泳道，1112）+
@@ -224,14 +231,16 @@ const DRAG_THRESHOLD_PX = 3;
 const LANE_LABEL_KEYS: DictKey[] = ["trajectory.lane.input", "trajectory.lane.model", "trajectory.lane.tool"];
 
 /** The timeline overview (②): a three-lane gantt (input/model/tool) projecting
- * every record onto one domain (DSH 同款，任务 1112 三行分色). Sequence/duration
- * modes need record order only, so history sessions render fully without
- * persisted time anchors; time/actual keep the measured domain. Drag a range
- * to focus the ledger; click to clear. Hover tracks a crosshair line; spans
- * carry precise clock+duration titles; running records draw a start marker. */
+ * every record onto one domain (DSH 同款，任务 1112 三行分色；1131 模式对齐：
+ * sequence 等宽序位为默认、duration 真实耗时为开关态). Both modes need record
+ * order only, so history sessions render fully without persisted time anchors.
+ * Drag a range to focus the ledger; click to clear. Hover tracks a crosshair
+ * line; spans carry precise titles; running records draw a start marker.
+ * Span rectangles are normalized here once via trajectorySpanRect (DSH 渲染层
+ * 同款换算); minimum visible width is pure CSS (min-width), never JS. */
 function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searchMatchIds, t }: {
   model: TrajectoryTimelineModel;
-  mode: "duration" | "time";
+  mode: "sequence" | "duration";
   focus: TrajectoryTimelineModel["focus"];
   onFocus: (focus: TrajectoryTimelineModel["focus"]) => void;
   onSpanClick: (recordId: string) => void;
@@ -290,22 +299,23 @@ function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searc
   };
 
   const domain = model.t1 - model.t0;
+  // 1131：模型域（序位/ms）→ 容器百分比的唯一换算口；DSH 渲染层同款。
+  const leftPct = (value: number): number => ((value - model.t0) / Math.max(1e-9, domain)) * 100;
   const spanTitle = (span: { recordId: string; start: number; width: number; kind: TrajectoryKind; running: boolean; ttftFraction?: number }): string => {
-    const at = mode === "time" ? model.t0 + span.start * (model.t1 - model.t0) : undefined;
     const parts: string[] = [];
-    if (at != null) parts.push(formatTrajectoryClock(Math.round(at)));
-    if (span.width > 0 && mode === "time") {
-      parts.push(formatTrajectoryDuration(Math.round(span.width * (model.t1 - model.t0))));
-    }
-    if (span.ttftFraction != null && mode === "time") {
-      parts.push(`TTFT ${formatTrajectoryDuration(Math.round(span.ttftFraction * span.width * (model.t1 - model.t0)))}`);
+    if (mode === "duration" && span.width > 0) {
+      // duration 模型：span.width 即真实毫秒（1131 起无耗时记录 0 宽走 marker）。
+      parts.push(formatTrajectoryDuration(span.width));
+      if (span.ttftFraction != null) {
+        parts.push(`TTFT ${formatTrajectoryDuration(span.ttftFraction * span.width)}`);
+      }
     }
     if (span.running) parts.push(t("trajectory.running"));
     return parts.length > 0 ? parts.join(" · ") : t(KIND_LABEL_KEYS[span.kind]);
   };
 
-  const focusLeft = focus ? ((focus.start - model.t0) / domain) * 100 : 0;
-  const focusWidth = focus ? ((focus.end - focus.start) / domain) * 100 : 0;
+  const focusLeft = focus ? leftPct(focus.start) : 0;
+  const focusWidth = focus ? ((focus.end - focus.start) / Math.max(1e-9, domain)) * 100 : 0;
 
   return (
     <div
@@ -323,32 +333,35 @@ function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searc
         <span key={key} className="traj-timeline__lane-label" style={{ top: `${lane * 14}px` }}>{t(key)}</span>
       ))}
       <div className="traj-timeline__plot">
-        {model.spans.map((span) => (
-          <span
-            key={span.recordId}
-            className={`traj-timeline__span traj-timeline__span--${span.kind}${span.running ? " traj-timeline__span--running" : ""}${span.failed ? " traj-timeline__span--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(span.recordId) ? " traj-timeline__span--search-dim" : ""}`}
-            style={{ left: `${span.start * 100}%`, width: `${Math.max(model.unitScale != null ? model.unitScale * 100 : 0.4, span.width * 100)}%`, top: span.lane != null ? `${span.lane * 14}px` : "42px" }}
-            title={spanTitle(span)}
-            onClick={(event) => { event.stopPropagation(); onSpanClick(span.recordId); }}
-          >
-            {span.ttftFraction != null && (
-              <span className="traj-timeline__ttft" style={{ width: `${span.ttftFraction * 100}%` }} />
-            )}
-          </span>
-        ))}
+        {model.spans.map((span) => {
+          const rect = trajectorySpanRect(model, span);
+          return (
+            <span
+              key={span.recordId}
+              className={`traj-timeline__span traj-timeline__span--${span.kind}${span.running ? " traj-timeline__span--running" : ""}${span.failed ? " traj-timeline__span--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(span.recordId) ? " traj-timeline__span--search-dim" : ""}`}
+              style={{ left: `${rect.leftPct}%`, width: `max(2px, calc(${rect.widthPct}% - 2px))`, top: span.lane != null ? `${span.lane * 14}px` : "42px" }}
+              title={spanTitle(span)}
+              onClick={(event) => { event.stopPropagation(); onSpanClick(span.recordId); }}
+            >
+              {span.ttftFraction != null && (
+                <span className="traj-timeline__ttft" style={{ width: `${span.ttftFraction * 100}%` }} />
+              )}
+            </span>
+          );
+        })}
         {model.markers.map((marker) => (
           <span
             key={marker.recordId}
             className={`traj-timeline__marker traj-timeline__marker--${marker.kind}${marker.failed ? " traj-timeline__marker--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(marker.recordId) ? " traj-timeline__marker--search-dim" : ""}`}
-            style={{ left: `${marker.start * 100}%`, top: marker.lane != null ? `${marker.lane * 14}px` : "42px" }}
+            style={{ left: `${leftPct(marker.start)}%`, top: marker.lane != null ? `${marker.lane * 14}px` : "42px" }}
             title={spanTitle(marker)}
             onClick={(event) => { event.stopPropagation(); onSpanClick(marker.recordId); }}
           />
         ))}
         {model.turnBoundaries.map((boundary) => (
-          <span key={`turn-${boundary.turn}`} className="traj-timeline__turn-line" style={{ left: `${boundary.start * 100}%` }} title={t("trajectory.turn.label", { turn: boundary.turnLabel ?? boundary.turn })} />
+          <span key={`turn-${boundary.turn}`} className="traj-timeline__turn-line" style={{ left: `${leftPct(boundary.start)}%` }} title={t("trajectory.turn.label", { turn: boundary.turnLabel ?? boundary.turn })} />
         ))}
-        {focus && <span className="traj-timeline__focus" style={{ left: `${focusLeft}%`, width: `${Math.max(0.4, focusWidth)}%` }} />}
+        {focus && <span className="traj-timeline__focus" style={{ left: `${focusLeft}%`, width: `${focusWidth}%` }} />}
         {dragPreview && dragPreview.end - dragPreview.start > 0.001 && (
           <span
             className="traj-timeline__drag"
@@ -428,20 +441,23 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
     return ledger.records.filter((record) => record.turn >= minTurn);
   }, [ledger, windowTurns]);
   const hiddenCount = ledger.records.length - windowedRecords.length;
-  // 1112 时间轴投影：真实时间（time）模式 = 锚可用记录按 epoch-ms 投影，其余
-  // （含历史无锚会话）降级为 sequence 等宽序位（DSH 默认 sequence 同款）——
-  // 两者共用同一渲染，「有锚画真实位置、无锚画等宽序位」。
-  const timeline = useMemo(() => buildTrajectoryTimeline(windowedRecords), [windowedRecords]);
-  const sequenceTimeline = useMemo(() => buildTrajectorySequenceTimeline(windowedRecords, "sequence"), [windowedRecords]);
-  const timelineModel = useMemo(() => (durationOn ? sequenceTimeline : timeline), [durationOn, timeline, sequenceTimeline]);
+  // 1131 时间轴投影（DSH 模式对齐）：默认 = sequence 等宽序位（每个事件 1/N
+  // 等宽满铺，DSH TrajectoryView.tsx:347 两布尔默认 false → 'sequence' 同款）；
+  // 「时长」开关 = duration 真实耗时占比（序位拼接天然压缩空闲，DSH
+  // 'duration' 同款）。1112 默认的真实时间墙钟投影会把 span 稀释成细线（用户
+  // 反馈「每个事件都很窄」的根因），已退出 UI（lib 保留）。两模式都只依赖
+  // 记录顺序，历史无锚会话完整呈现（1111 结论）。
+  const timeline = useMemo(() => buildTrajectorySequenceTimeline(windowedRecords, "sequence"), [windowedRecords]);
+  const durationTimeline = useMemo(() => buildTrajectorySequenceTimeline(windowedRecords, "duration"), [windowedRecords]);
+  const timelineModel = useMemo(() => (durationOn ? durationTimeline : timeline), [durationOn, timeline, durationTimeline]);
 
   // 1112 搜索索引：窗口内记录级倒排（纯内存拼接，React memo 缓存）。
   const searchIndex = useMemo(() => buildTrajectorySearchIndex(windowedRecords), [windowedRecords]);
   const searchMatchIds = useMemo(() => trajectorySearchMatches(searchIndex, query), [searchIndex, query]);
   // 拖选聚焦（DSH 同款）：区间外的台账行降透明；无锚记录永不落在区间内。
   const focusIds = useMemo(
-    () => (focus ? recordIdsInFocus(windowedRecords, focus) : null),
-    [focus, windowedRecords],
+    () => (focus && timelineModel ? recordIdsInFocus(timelineModel, focus) : null),
+    [focus, timelineModel],
   );
   const rows = useMemo(
     () => projectTrajectoryRows(windowedRecords, { equalWidth: true, collapsedTurns: turnsCollapsed, collapsedCalls: callsCollapsed, searchMatchIds, focusIds }),
@@ -548,7 +564,7 @@ export function TrajectoryView({ items, running, hydrating, hasOlderHistory, loa
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      {timelineModel && <TrajectoryTimelineBar model={timelineModel} mode={durationOn ? "duration" : "time"} focus={focus} onFocus={setFocus} onSpanClick={setSelectedId} searchMatchIds={searchMatchIds} t={t} />}
+      {timelineModel && <TrajectoryTimelineBar model={timelineModel} mode={durationOn ? "duration" : "sequence"} focus={focus} onFocus={setFocus} onSpanClick={setSelectedId} searchMatchIds={searchMatchIds} t={t} />}
       <div className="traj__scroll" ref={scrollRef} onScroll={handleScroll}>
         {body}
       </div>

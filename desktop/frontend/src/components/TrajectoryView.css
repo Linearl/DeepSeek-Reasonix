@@ -419,6 +419,8 @@
 .traj-timeline__focus {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  /* 1131：最小可见宽由 CSS 兜底（DSH .selection min-width 同款），不再依赖 JS。 */
+  min-width: 2px;
 }
 
 .traj-timeline__drag {
