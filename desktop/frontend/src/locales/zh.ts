@@ -4835,6 +4835,9 @@ export const zh: Record<DictKey, string> = {
   "chat.loadOlder": "加载更早的消息",
   "transcript.toolCount": "{n} 个工具",
   "transcript.thoughtCount": "{n} 段思考",
+  // tl 1141：concise 档运行中的动态过程状态行（当前动作 + 思考摘要前缀）。
+  "transcript.liveAction": "正在 {name}",
+  "transcript.liveThinking": "思考中",
   // 任务 1082：run strip 的本轮工具/文件/检索汇总（折叠头文案不动）。
   "transcript.tally.tools": "{n} 工具",
   "transcript.tally.files": "{n} 文件",
