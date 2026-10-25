@@ -139,17 +139,23 @@ type App struct {
 	// Task 421: bounded effort re-fetch (see effort_fetch.go). effortCache
 	// holds the last completed EffortInfo per tab ID ("" = the active-tab
 	// form) so a read that blows the timeout serves this instead of stalling
-	// the switch-tab ancillary batch. Display data only. The stub, the
-	// limit override and reconcileReadProbe are test-only
+	// the switch-tab ancillary batch. Display data only. Task 1161: entries
+	// whose tab-state fingerprint still matches and that are young enough
+	// also serve the fast path (freshCachedEffortForTab) while a single-
+	// flight background refresh (effortRefreshing) recomputes. The stub, the
+	// limit overrides and reconcileReadProbe are test-only
 	// (catalogReconcileHook convention: set before concurrent calls,
 	// zero/nil in production). Task 639: reconcileReadProbe fires right
 	// before the effort read path runs a real session reconcile, so tests
 	// can count reconcile executions behind the tab memo.
-	effortReadStub          func(tabID string) EffortInfo
-	effortReadLimitOverride time.Duration
-	effortCacheMu           sync.Mutex
-	effortCache             map[string]effortCacheEntry
-	reconcileReadProbe      func(tabID string)
+	effortReadStub              func(tabID string) EffortInfo
+	effortReadLimitOverride     time.Duration
+	effortStaleServeAgeOverride time.Duration
+	effortCacheMu               sync.Mutex
+	effortCache                 map[string]effortCacheEntry
+	effortRefreshMu             sync.Mutex
+	effortRefreshing            map[string]bool
+	reconcileReadProbe          func(tabID string)
 
 	// Task 889: in-flight effort-read phase trail (effort_phase_trail.go);
 	// observability only, no verdict or fallback reads it.
