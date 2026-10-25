@@ -8,7 +8,7 @@
 // OpenLocalPath binding instead of the system browser.
 
 import { visit } from "unist-util-visit";
-import type { Parent, Link, Root, Text } from "mdast";
+import type { InlineCode, Parent, Link, Root, Text } from "mdast";
 import { hasDisallowedWindowsPathSyntax, isLocalFileHref } from "./localFileUrl";
 import { unescapeRefPath } from "./refToken";
 
@@ -204,6 +204,15 @@ export function localPathHref(path: string): string {
  * nodes (text + link alternation), so the markdown renderer hands them to
  * RichMarkdownLink which routes them to the native opener.
  *
+ * Task 1138 follow-up: an inline code span whose ENTIRE value is one
+ * recognizable absolute path linkifies too. LLM answers overwhelmingly print
+ * paths inside backticks, and the DSH reference renders such spans as chips.
+ * Only the whole-span form qualifies (precision first): mixed content like
+ * `path=C:\x\y.md` stays inert, and relative paths never match because the
+ * recognizer only accepts drive/UNC/file-URL shapes. The chip itself carries
+ * the inline-code styling (.md-rich-link--local), so no code semantics are
+ * visibly lost.
+ *
  * Collection and replacement are separate passes: replacing during the visit
  * would re-visit the freshly inserted link children and nest anchors.
  */
@@ -230,6 +239,24 @@ export function remarkLocalPathLinks() {
               }
             : { type: "text", value: seg.text },
         ),
+      });
+    });
+    visit(tree, "inlineCode", (node: InlineCode, index: number | undefined, parent) => {
+      if (parent === undefined || parent === null || index === undefined || index === null) return;
+      // Same nesting guard: a link label like [`C:\x\y.md`](u) already sits in
+      // an anchor; rewriting it would nest <a> elements.
+      if (parent.type === "link" || parent.type === "linkReference") return;
+      const segments = linkifyLocalPaths(node.value);
+      if (segments.length !== 1 || segments[0].path === undefined) return;
+      plan.push({
+        parent,
+        index,
+        nodes: [{
+          type: "link",
+          url: localPathHref(segments[0].path),
+          title: null,
+          children: [{ type: "text", value: node.value }],
+        }],
       });
     });
     // Back-to-front keeps earlier indices valid within the same parent.

@@ -302,12 +302,24 @@ console.log("\ntask 1138 — spaced-path chips, failure toast, inline-code preci
   openFailure = null;
 }
 
-// 13. Recognition precision: inline code is never chipified — a plain code
-// span that happens to contain a path must stay inert (task 1138 acceptance 4).
+// 13. Task 1138 follow-up: a code span whose ENTIRE value is one absolute
+// path chipifies (LLM answers overwhelmingly print paths in backticks; DSH
+// renders such spans as chips). Non-path and mixed-content spans stay inert
+// (task 1138 acceptance 4, precision first).
 {
   const anchors = await renderClick("配置在 `C:\\Windows\\System32\\cmd.exe` 里");
-  ok(anchors.length === 0, "inline code containing a path renders no chip");
-  ok(window.document.querySelectorAll("code").length === 1, "the code span still renders as code");
+  ok(anchors.length === 1, "whole-span absolute path inside backticks renders a chip");
+  await act(async () => {
+    anchors[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+  ok(opened[opened.length - 1] === "C:/Windows/System32/cmd.exe",
+    `code-span chip click forwards the decoded path (${opened[opened.length - 1]})`);
+  ok(window.document.querySelectorAll("code").length === 0, "the path span no longer renders as raw code");
+}
+{
+  const anchors = await renderClick("先跑 `npm run build`，再改 `src/lib/foo.ts`，输出见 `path=D:\\x\\y.md` 记录");
+  ok(anchors.length === 0, "non-path / relative / mixed-content spans render no chips");
+  ok(window.document.querySelectorAll("code").length === 3, "all three code spans still render as code");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
