@@ -83,13 +83,21 @@ export function turnTally(items: readonly Item[]): TurnTally {
   return { tools, files: files.size, searches };
 }
 
-/** run strip 的汇总行文案：「12 工具 · 3 文件 · 1 检索」；零工具轮返回 null。 */
-export function turnTallyLabel(items: readonly Item[], t: Translator): string | null {
-  const tally = turnTally(items);
+/**
+ * 任务 1155：把聚合值格式化为「12 工具 · 3 文件 · 1 检索」；零工具轮返回
+ * null（纯对话不制造噪音）。run strip（输入框状态行）与回合尾部工具栏共用
+ * 这一个格式化函数——两处文案由同一份代码产出，口径永不漂移。
+ */
+export function turnTallyText(tally: TurnTally, t: Translator): string | null {
   if (tally.tools === 0) return null;
   return [
     t("transcript.tally.tools", { n: tally.tools }),
     t("transcript.tally.files", { n: tally.files }),
     t("transcript.tally.searches", { n: tally.searches }),
   ].join(" · ");
+}
+
+/** run strip 的汇总行文案：「12 工具 · 3 文件 · 1 检索」；零工具轮返回 null。 */
+export function turnTallyLabel(items: readonly Item[], t: Translator): string | null {
+  return turnTallyText(turnTally(items), t);
 }

@@ -19,6 +19,8 @@ import { useWorkProcessPresentation } from "../lib/sessionExperience";
 import { stripMemoryCompilerExecution } from "../lib/memoryCompilerDisplay";
 import { invocationSegmentsFromMessage, type InvocationMetadataMap } from "../lib/invocationDisplay";
 import { messageActionLabelKey, type MessageActionScope } from "../lib/messageActions";
+// 任务 1155：回合尾部统计复用输入框状态行的同一计数库与格式化（turnToolTally）。
+import { turnTallyText, type TurnTally } from "../lib/turnToolTally";
 import type { Item } from "../lib/useController";
 import type { CheckpointMeta } from "../lib/types";
 import { InvocationBadge } from "./InvocationBadge";
@@ -821,6 +823,7 @@ export function TurnActions({
   rewindDisabled = false,
   hoverMenus = false,
   isLastTurn = false,
+  tally,
 }: {
   text: string;
   turn?: number;
@@ -833,6 +836,10 @@ export function TurnActions({
   hoverMenus?: boolean;
   /** true when this is the last user turn — disables "summarize after" */
   isLastTurn?: boolean;
+  /** 任务 1155：该回合自己的工具/文件/检索统计（行构建时静态算出，与输入框
+   *  状态行同库同口径 turnToolTally）。零工具轮（纯对话）调用方传 undefined
+   *  或 tools=0，本行不渲染统计——与输入框行为一致。 */
+  tally?: TurnTally;
 }) {
   const t = useT();
   const [confirmScope, setConfirmScope] = useState<MessageActionScope | null>(null);
@@ -931,6 +938,9 @@ export function TurnActions({
   // an explicit reason instead of silently vanishing from an otherwise
   // identical action row.
   const hasCopyText = text.trim() !== "";
+  // 任务 1155：回合尾部的本轮统计文案。与输入框状态行同库同格式化
+  // （turnToolTally.turnTallyText）；零工具轮为 null，整段不渲染。
+  const tallyText = tally ? turnTallyText(tally, t) : null;
   const toggleMenu = (menu: TurnActionMenu) => {
     setConfirmScope(null);
     onOpenMenu?.(openMenu === menu ? null : menu);
@@ -1031,6 +1041,11 @@ export function TurnActions({
           </div>
         </>
       )}
+      {/* 任务 1155：本轮统计常驻在回合尾部工具栏行（复制/分支/回滚图标旁的
+          空白区）。回合 settle 后行构建时数值已静态化，无运行期刷新；历史
+          回合向上翻各见其值。aria-hidden 与输入框状态行的统计 span 同契约
+          （装饰性重复读数，读屏不重复播报）。 */}
+      {tallyText && <span className="turn-actions__tally" aria-hidden="true">{tallyText}</span>}
     </div>
   );
 }

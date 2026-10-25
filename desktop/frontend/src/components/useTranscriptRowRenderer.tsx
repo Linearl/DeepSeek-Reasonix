@@ -149,6 +149,9 @@ export function useTranscriptRowRenderer({
         const openMenu = openAction?.turn === row.turn ? openAction.menu : null;
         return <TurnActions
           text={row.text} turn={row.turn} openMenu={openMenu}
+          // 任务 1155：该回合自己的工具/文件/检索统计（行构建时静态算出，
+          // 与输入框状态行同库同口径）。
+          tally={row.tally}
           onOpenMenu={(menu) => setOpenAction(menu ? { turn: row.turn, menu } : null)}
           checkpoint={checkpointsByTurn.get(row.turn)} actionPending={actionPending}
           rewindDisabled={rewindDisabled} hoverMenus={actionHoverMenus}
