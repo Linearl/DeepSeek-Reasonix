@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Copy, ExternalLink, File, Folder, FolderOpen, Hash, Mail, Save } from "lucide-react";
 import { app, openExternal } from "../lib/bridge";
 import { writeClipboardText } from "../lib/clipboard";
 import { t } from "../lib/i18n";
 import { localPathFromHref } from "../lib/localFileUrl";
+import { localPathHref, relativePathFromHref } from "../lib/localPathLinks";
 import type { ExternalOpenerView, ExternalOpenersView } from "../lib/types";
 import { useToast } from "../lib/toast";
+import { MarkdownImageTabContext } from "./MarkdownImageContext";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 
 export { localPathFromHref } from "../lib/localFileUrl";
@@ -329,6 +331,93 @@ function LocalPathMarkdownLink({
   );
 }
 
+// Task 1158: a workspace-relative path chip ("docs/issues/design/x.md").
+// The recognizer (linkifyLocalPaths, kind "rel") only vouches for the SHAPE;
+// existence and the anchor are decided by the authoritative backend probe
+// ResolveOpenablePathForTab — it resolves the token against the session's
+// project root (never the desktop process cwd) and stats the target. Three
+// outcomes: resolved → the full LocalPathMarkdownLink chip (rich menu
+// inherited); missing / probe failure / no tab context → plain text, never a
+// dead-looking chip. Before the probe settles the chip renders optimistically
+// and a click awaits the in-flight probe instead of doing nothing.
+function RelativePathMarkdownLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  const { showToast } = useToast();
+  const tabId = useContext(MarkdownImageTabContext);
+  const relPath = relativePathFromHref(href);
+  const [resolved, setResolved] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const probeRef = useRef<Promise<string | null> | null>(null);
+
+  useEffect(() => {
+    if (!tabId || !relPath) {
+      setFailed(true);
+      return;
+    }
+    let cancelled = false;
+    const probe = app.ResolveOpenablePathForTab(tabId, relPath)
+      .then((absolute) => {
+        if (cancelled) return null;
+        if (absolute) setResolved(absolute);
+        else setFailed(true);
+        return absolute || null;
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+        return null;
+      });
+    probeRef.current = probe;
+    return () => {
+      cancelled = true;
+    };
+  }, [relPath, tabId]);
+
+  const openResolved = useCallback(async () => {
+    const absolute = await (probeRef.current ?? Promise.resolve(null));
+    if (absolute) {
+      openLink(localPathHref(absolute), showToast);
+      return;
+    }
+    showToast(t("localPath.openFailed", { path: relPath ?? href, error: t("localPath.notFound") }), "error");
+  }, [href, relPath, showToast]);
+
+  if (!relPath || failed) {
+    return <span>{children}</span>;
+  }
+  if (resolved !== null) {
+    return <LocalPathMarkdownLink href={localPathHref(resolved)} path={resolved}>{children}</LocalPathMarkdownLink>;
+  }
+  // Probe pending: optimistic chip with the 1138 visual, clicks deferred to
+  // the probe outcome (no dead click, no premature open).
+  return (
+    <a
+      className="md-rich-link md-rich-link--local"
+      href={href}
+      data-path-kind="file"
+      onClick={(event) => {
+        event.preventDefault();
+        void openResolved();
+      }}
+      onAuxClick={(event) => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        void openResolved();
+      }}
+      onMouseDown={(event) => {
+        if (event.button === 1) event.preventDefault();
+      }}
+    >
+      <File aria-hidden="true" size={13} strokeWidth={2} />
+      <span className="md-rich-link__label">{children}</span>
+    </a>
+  );
+}
+
 export function RichMarkdownLink({
   href,
   children,
@@ -362,6 +451,9 @@ export function RichMarkdownLink({
   const local = localPathFromHref(href);
   if (local !== null) {
     return <LocalPathMarkdownLink href={href ?? ""} path={local} children={children} />;
+  }
+  if (relativePathFromHref(href) !== null) {
+    return <RelativePathMarkdownLink href={href ?? ""}>{children}</RelativePathMarkdownLink>;
   }
 
   const iconKind = classifyLinkIcon(href);

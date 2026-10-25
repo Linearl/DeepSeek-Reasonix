@@ -374,6 +374,7 @@ export const zh: Record<DictKey, string> = {
   "topicBar.copyAndExport": "复制和导出",
   "topicBar.sessionView": "会话视图",
   "localPath.openFailed": "无法打开 {path}：{error}",
+  "localPath.notFound": "目标不存在或不可打开",
   "externalOpener.openIn": "使用 {name} 打开",
   "externalOpener.openDefault": "使用默认应用打开",
   "externalOpener.reveal": "在文件管理器中显示",

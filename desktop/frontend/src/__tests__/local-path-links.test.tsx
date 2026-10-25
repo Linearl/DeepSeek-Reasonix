@@ -5,7 +5,7 @@
 // links; sentence punctuation and non-path lookalikes must not be captured.
 // Also covers the file:/// href round-trip used by RichMarkdownLink.
 
-import { linkifyLocalPaths, localPathHref, remarkLocalPathLinks } from "../lib/localPathLinks";
+import { linkifyLocalPaths, localPathHref, relPathHref, relativePathFromHref, remarkLocalPathLinks } from "../lib/localPathLinks";
 import { localPathFromHref } from "../components/githubLink";
 
 let passed = 0;
@@ -118,6 +118,38 @@ eq(firstPath("C:\\x file.md 是文档"), "C:\\x file.md",
 eq(pathCount("run C:\\tools\\check.exe and exit"), 1,
   "prose behind the path stays plain (single chip per path)");
 
+console.log("\nlinkifyLocalPaths — workspace-relative tokens (task 1158)");
+
+eq(firstPath("设计见 docs/issues/design/plan.md，先看"), "docs/issues/design/plan.md",
+  "relative path with slashes and an extension");
+eq(firstPath("报告 docs/设计稿/首页.png 已出"), "docs/设计稿/首页.png",
+  "CJK segments in a relative path");
+eq(firstPath("see ./docs/x.md and ../lib/y.ts"), "./docs/x.md",
+  "dot-prefixed relative forms match; second path keeps its own match");
+eq(firstPath("(details in docs/x.md)"), "docs/x.md", "parenthesised relative path");
+eq(pathCount("见docs/issues/x.mdfinish"), 0,
+  "CJK fused into the FIRST segment stays inert (cannot tell prose from a directory)");
+eq(pathCount("设计稿/x.md"), 0, "CJK-first directory token stays inert (same ambiguity, precision first)");
+eq(pathCount("src/lib/foo.ts"), 1, "bare relative path linkifies");
+eq(pathCount("比例是 3/4 没错"), 0, "numeric slash pair is not a path");
+eq(pathCount("比较 and/or 的用法"), 0, "word slash word without extension is not a path");
+eq(pathCount("日期 2026/10/25 截止"), 0, "date is not a path");
+eq(pathCount("目录 docs/plain 只是文件夹"), 0, "extension-less directory token is not a path");
+eq(pathCount("文档见 https://example.com/a/b.png 在线版"), 0, "URL tail is not carved into a relative chip");
+eq(pathCount("/usr/local/bin.sh"), 0, "POSIX absolute path stays inert (not a relative token)");
+eq(pathCount("see C:/docs/report.md now"), 1, "drive path wins; rel fragment does not double-match");
+eq(pathCount("single.md"), 0, "no slash means no relative chip");
+eq(pathCount("path=docs/x.md"), 1, "config-style prefix is split off; the path itself chips");
+
+console.log("\nrelpath href round-trip");
+
+const relHref = relPathHref("docs/设计稿/首页.png");
+eq(relativePathFromHref(relHref), "docs/设计稿/首页.png", "CJK rel path survives href encode/decode");
+eq(relativePathFromHref("relpath://docs/x.md"), "docs/x.md", "plain ASCII rel href decodes");
+eq(relativePathFromHref("file:///D:/x.md"), null, "file href is not a rel href");
+eq(relativePathFromHref("relpath:///abs/x.md"), null, "absolute shape inside the rel scheme is rejected");
+eq(relativePathFromHref("https://example.com/a.png"), null, "non-rel scheme is rejected");
+
 console.log("\nsegment alternation");
 
 const segs = linkifyLocalPaths("见 D:\\x\\y.md 然后 file:///C:/a/b.txt 完成");
@@ -172,9 +204,12 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { renderToStaticMarkup } from "react-dom/server";
 
 // Mirrors MarkdownRenderer: valid local file anchors survive the default
-// sanitizer, including authority-form UNC links.
+// sanitizer, including authority-form UNC links. Task 1158: relpath:// anchors
+// (workspace-relative chips) survive the same way.
 const markdownUrlTransform = (value: string) =>
-  localPathFromHref(value) !== null ? value : defaultUrlTransform(value);
+  localPathFromHref(value) !== null || relativePathFromHref(value) !== null
+    ? value
+    : defaultUrlTransform(value);
 
 const html = renderToStaticMarkup(
   <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>
@@ -245,7 +280,8 @@ const codeRelative = renderToStaticMarkup(
     {"改一下 `src/lib/foo.ts` 这个文件。"}
   </ReactMarkdown>,
 );
-ok(!codeRelative.includes("<a"), "relative path inside backticks stays inert (scoped trim)");
+ok(codeRelative.includes('href="relpath://src/lib/foo.ts"'),
+  "relative path inside backticks renders as a rel chip (task 1158; user overrode the inert rule)");
 
 const codeMixed = renderToStaticMarkup(
   <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>

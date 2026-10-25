@@ -376,6 +376,7 @@ export const en = {
   "topicBar.copyAndExport": "Copy and export",
   "topicBar.sessionView": "Session view",
   "localPath.openFailed": "Could not open {path}: {error}",
+  "localPath.notFound": "target does not exist or cannot be opened",
   "externalOpener.openIn": "Open in {name}",
   "externalOpener.openDefault": "Open with default application",
   "externalOpener.reveal": "Reveal in file manager",
