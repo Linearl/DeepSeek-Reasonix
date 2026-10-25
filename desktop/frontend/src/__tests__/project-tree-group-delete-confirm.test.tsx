@@ -226,8 +226,19 @@ async function openMenuAndSelect(index: number, label: string) {
     headers()[index].dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
   });
-  const item = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
+  let item = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
     .find((el) => (el.textContent ?? "").trim() === label) as HTMLElement | undefined;
+  // tl 1149：管理类操作（清空/解散/删除及会话）收进「分组管理 ▸」inline 二级；
+  // 一级找不到目标行时先展开二级再找（子行展开后才进 DOM）。
+  if (!item) {
+    const manageTrigger = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
+      .find((el) => (el.textContent ?? "").includes("projectTree.groupManage")) as HTMLElement | undefined;
+    if (manageTrigger) {
+      await act(async () => { manageTrigger.click(); await flush(); });
+      item = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
+        .find((el) => (el.textContent ?? "").trim() === label) as HTMLElement | undefined;
+    }
+  }
   ok(Boolean(item), `菜单含「${label}」`);
   if (item) await act(async () => { item.click(); await flush(); });
 }

@@ -57,7 +57,6 @@ import {
   renameProjectGroupViaCatalog,
   type ProjectGroupCatalogBindings,
 } from "../lib/projectGroupCatalog";
-import { MoveToGroupPanel } from "./MoveToGroupPanel";
 import { NewGroupPanel } from "./NewGroupPanel";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { loadReadActivityStore, markReadKeysRead, persistReadActivity, readActivityEquals, readActivityKeysInScope, readActivityKeysInSubtree, READ_ACTIVITY_CHANGED_EVENT } from "../lib/readActivity";
@@ -855,8 +854,6 @@ export function ProjectTree({
   // grouping feature had no visible way in.
   const [blankMenuPoint, setBlankMenuPoint] = useState<ContextMenuPoint | null>(null);
   const [collapsedProjectGroups, setCollapsedProjectGroups] = useState<ReadonlySet<string>>(loadProjectGroupCollapsed);
-  // Which project the "move to group" panel is acting on.
-  const [groupTarget, setGroupTarget] = useState<ProjectNode | null>(null);
   // Task 892-B ⑤: roster source. false = localStorage only (pre-892 backend /
   // dev mock); true = the backend catalog (desktop-projects.json projectGroups)
   // is the source of truth and localStorage is only the fallback shadow.
@@ -903,8 +900,12 @@ export function ProjectTree({
   }, []);
 
   const handleMoveToGroup = useCallback((root: string, groupId: string | null) => {
+    // The destination is what makes a mis-sorted tree explainable after the fact; the move
+    // itself is fork-only organisation with no other trace. (Telemetry moved here from the
+    // retired MoveToGroupPanel — tl 1149 replaced that floating panel with the in-menu
+    // submenu below, and the log line must survive the panel.)
+    reportFrontendLog("project-groups", "project moved to group", `group=${groupId ?? "none"}`);
     setAssign((current) => moveProjectToGroup(current, root, groupId));
-    setGroupTarget(null);
   }, []);
 
   const groupForProjectRoot = useCallback(
@@ -914,6 +915,35 @@ export function ProjectTree({
     },
     [assign, groups],
   );
+
+  // tl 1149: the project context menu's "move to group" entry. It used to open
+  // the MoveToGroupPanel floating panel (screen-centred) — replaced by an in-menu
+  // submenu so the interaction matches every other row of the same menu (就近弹
+  // 出，tl 720 的二级形态). Same options as the panel: ungrouped (only when the
+  // project currently sits in a group), every roster group (its own group
+  // disabled), and the create-group entry via the shared NewGroupPanel.
+  const projectGroupMoveItems = useCallback((root: string): ContextMenuItem[] => {
+    const currentGroupId = groupForProjectRoot(root)?.id ?? null;
+    return [
+      ...(currentGroupId !== null ? [{
+        key: "move:ungrouped",
+        label: t("projectGroup.ungrouped"),
+        onSelect: () => handleMoveToGroup(root, null),
+      }] : []),
+      ...groups.map((group): ContextMenuItem => ({
+        key: `move:${group.id}`,
+        label: group.title,
+        disabled: currentGroupId === group.id,
+        onSelect: () => handleMoveToGroup(root, group.id),
+      })),
+      {
+        key: "move:new-group",
+        icon: <FolderPlus size={13} />,
+        label: t("projectGroup.createNew"),
+        onSelect: () => setNewGroupOpen(true),
+      },
+    ];
+  }, [groups, groupForProjectRoot, handleMoveToGroup, t]);
 
   // A1: create the group, then put the current project in it. Without the second
   // step a new group would be an empty row with no obvious way to fill it.
@@ -1721,7 +1751,7 @@ export function ProjectTree({
           ? [{
               key: "markAllRead",
               icon: <CheckCheck size={13} />,
-              label: t("projectTree.markAllRead"),
+              label: t("projectTree.markRead"),
               onSelect: () => {
                 markAllRead(readActivityKeysInScope(treeWithRemoteSessions, openRequest.scope, openRequest.workspaceRoot));
                 closeMenu();
@@ -2191,13 +2221,13 @@ export function ProjectTree({
       ...(scope === "project"
         ? [
             {
+              // tl 1149: in-menu submenu instead of the screen-centred
+              // MoveToGroupPanel — same options, anchored to the row.
+              type: "submenu" as const,
               key: "move-to-project-group",
               icon: <FolderInput size={13} />,
               label: t("projectGroup.moveInto"),
-              onSelect: () => {
-                setGroupTarget({ ...node, root: projectPath ?? node.root });
-                closeMenu();
-              },
+              items: projectGroupMoveItems(projectPath ?? node.root),
             },
             {
               key: "relocate-project",
@@ -2296,13 +2326,13 @@ export function ProjectTree({
       ...(scope === "project"
         ? [
             {
+              // tl 1149: in-menu submenu instead of the screen-centred
+              // MoveToGroupPanel — same options, anchored to the row.
+              type: "submenu" as const,
               key: "move-to-project-group",
               icon: <FolderInput size={13} />,
               label: t("projectGroup.moveInto"),
-              onSelect: () => {
-                setGroupTarget({ ...node, root: projectPath ?? node.root });
-                closeMenu();
-              },
+              items: projectGroupMoveItems(projectPath ?? node.root),
             },
             {
               key: "relocate-project",
@@ -3542,17 +3572,9 @@ export function ProjectTree({
         ariaLabel={t("projectTree.newGroup")}
         onClose={() => setBlankMenuPoint(null)}
       />
-      <MoveToGroupPanel
-        open={groupTarget !== null}
-        onClose={() => setGroupTarget(null)}
-        projectLabel={groupTarget?.label ?? ""}
-        groups={groups}
-        currentGroupId={groupForProjectRoot(groupTarget?.root)?.id ?? null}
-        onMove={(groupId) => {
-          if (groupTarget?.root) handleMoveToGroup(groupTarget.root, groupId);
-        }}
-        onCreateGroup={handleAddGroup}
-      />
+      {/* tl 1149: the MoveToGroupPanel floating panel is retired — the project
+          context menu's "move to group" row now carries the same options as an
+          in-menu submenu (projectGroupMoveItems), anchored to the row. */}
     </div>
   );
 }
