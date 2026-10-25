@@ -304,6 +304,13 @@ export interface SettingsView {
   webSearchModelOverridden?: boolean;
   subagentModel: string;
   subagentEffort: string;
+  // 任务 1151：agent.subagent_effort 所作用模型（显式子代理模型，否则主模型）
+  // 的 effort 合法档位域（含 auto，wire 非法档已过滤）；空数组=该模型无 effort
+  // 旋钮。缺字段（旧夹具）时回退 config 声明词表链。
+  subagentEffortLevels?: string[];
+  subagentEffortAliasFold?: boolean;
+  // false = 已保存档位会被运行时丢弃（boot 告警 + 模型默认强度兜底）。
+  subagentEffortApplies?: boolean;
   autoPlan: string;
   providers: ProviderView[];
   officialProviders: ProviderView[];

@@ -145,6 +145,7 @@ import type {
   SkillRootView,
   SkillSuggestion,
   SkillView,
+  EffortDomainView,
   TaskEvent,
   TaskSnapshot,
   SlashArgsResult,
@@ -1426,6 +1427,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetEffort(level: string): Promise<void>;
   EffortForTab(tabID: string): Promise<EffortInfo>;
   SetEffortForTab(tabID: string, level: string): Promise<void>;
+  // 任务 1151：一个模型引用的 effort 菜单域（子代理 profile 编辑器按选中模型
+  // 渲染档位）；空 ref 解析继承链（agent.subagent_model → 主模型）。
+  EffortDomainForRef(ref: string): Promise<EffortDomainView>;
   // ReloadRuntime rebuilds the tab's agent runtime in place (tools, skills,
   // commands, hooks, providers, MCP servers) via boot.Rebuild, keeping the
   // session. Busy tabs queue one reload for when they go idle.
@@ -3194,6 +3198,10 @@ function makeMockApp(): AppBindings {
     webSearchModelStatus: "ready",
     subagentModel: "",
     subagentEffort: "",
+    // 任务 1151：mock 域取默认连接的声明词表（dev 兜底；真实后端按能力映射过滤）。
+    subagentEffortLevels: ["auto", "disabled", "low", "high", "max"],
+    subagentEffortAliasFold: false,
+    subagentEffortApplies: true,
     defaultSubagentPolicy: "balanced",
     autoPlan: "off",
     providers: [
@@ -6142,6 +6150,10 @@ function makeMockApp(): AppBindings {
         },
         async EffortForTab() {
           return this.Effort();
+        },
+        // 任务 1151：mock 域 = mock 主模型的声明词表；真实后端按能力映射逐档过滤。
+        async EffortDomainForRef(_ref: string) {
+          return { supported: true, levels: ["auto", "high", "max"], aliasFold: false };
         },
         async SetEffort(level: string) {
           mockEffort = level || "auto";

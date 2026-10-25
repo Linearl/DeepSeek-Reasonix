@@ -12,6 +12,7 @@ import type { MCPToolView, SettingsView, SkillView, SubagentProfileInput } from 
 import { InlineConfirmButton } from "./InlineConfirmButton";
 import { CopyButton } from "./CopyButton";
 import { allRefs, EFFORT_PRESETS, ModelPicker, normalizeEffortForMenu, toRef } from "./SettingsPanel";
+import { foldEffortCurrent, foldEffortMenu } from "../lib/effortTiers";
 import { Tooltip } from "./Tooltip";
 
 const NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
@@ -267,21 +268,36 @@ function EffortPicker({
   disabled,
   ariaLabel,
   onPick,
+  levels,
+  aliasFold,
 }: {
   value: string;
   inheritedValue: string;
   disabled: boolean;
   ariaLabel: string;
   onPick: (level: string) => void;
+  // 任务 1151：该 profile 生效模型的原始档位域（含 auto）；缺省回退静态四档。
+  levels?: string[];
+  aliasFold?: boolean;
 }) {
   const t = useT();
+  // 行内已有独立的 inherit 选项（= auto），域透传出的 auto 去重。
+  const menu = (Array.isArray(levels)
+    ? foldEffortMenu(levels, Boolean(aliasFold))
+    : [...EFFORT_PRESETS]
+  ).filter((level) => level !== "auto");
+  // 显示值按同一身份规则折叠：仅 MiMo 词表把兼容别名折到诚实档位，诚实词表
+  // （anthropic 族/声明 max）原样显示。
+  const current = Array.isArray(levels)
+    ? foldEffortCurrent(levels, value, Boolean(aliasFold))
+    : normalizeEffortForMenu(value);
   return <div className="settings-model-picker subagents-effort-picker">
-    <SettingsSelect value={normalizeEffortForMenu(value)} disabled={disabled} aria-label={ariaLabel}
+    <SettingsSelect value={current} disabled={disabled} aria-label={ariaLabel}
       title={t("subagents.effectiveValue", { value: value || inheritedValue })}
       onValueChange={onPick}
       options={[
         { value: "", label: t("subagents.inheritDefault"), hint: t("subagents.effectiveValue", { value: inheritedValue }) },
-        ...EFFORT_PRESETS.map(level => ({ value: level, label: level })),
+        ...menu.map(level => ({ value: level, label: level })),
       ]} />
   </div>;
 }
@@ -348,6 +364,8 @@ function BuiltinSubagentRow({
             inheritedValue={inheritedEffort}
             ariaLabel={`${skill.name}: ${t("subagents.effort")}`}
             onPick={onSetEffort}
+            levels={skill.effortLevels}
+            aliasFold={skill.effortAliasFold}
           />
         </div>
         <div className="subagents-builtin-overrides__status">
@@ -522,6 +540,25 @@ function SubagentProfileForm({
   const [color, setColor] = useState<ProjectColorKey>((editingSkill?.color as ProjectColorKey) ?? "");
   const [model, setModel] = useState(editingSkill?.model ?? "");
   const [effort, setEffort] = useState(editingSkill?.effort ?? "");
+  // 任务 1151：effort 档位域随表单内选中的模型联动——编辑态沿用该 profile 的
+  // 域作为初始值，模型变化后经 EffortDomainForRef 重查（空 ref=继承链）。
+  const [effortDomain, setEffortDomain] = useState<{ levels: string[]; aliasFold: boolean } | null>(
+    Array.isArray(editingSkill?.effortLevels)
+      ? { levels: editingSkill.effortLevels, aliasFold: Boolean(editingSkill.effortAliasFold) }
+      : null,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    app.EffortDomainForRef(model)
+      .then((domain) => {
+        if (cancelled) return;
+        setEffortDomain({ levels: asArray<string>(domain.levels), aliasFold: Boolean(domain.aliasFold) });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [model]);
   const [toolMode, setToolMode] = useState<"all" | "custom">(
     editingSkill?.allowedTools && editingSkill.allowedTools.length > 0 ? "custom" : "all",
   );
@@ -611,7 +648,7 @@ function SubagentProfileForm({
       <label className="set-label">{t("settings.subagentEffort")}</label>
       <SettingsSelect className="mem-select set-grow" value={normalizeEffortForMenu(effort)} disabled={busy} onValueChange={(value) => setEffort(value)}>
         <option value="">{t("settings.subagentEffortDefault")}</option>
-        {EFFORT_PRESETS.map((level) => (
+        {(effortDomain ? foldEffortMenu(effortDomain.levels, effortDomain.aliasFold) : [...EFFORT_PRESETS]).filter((level) => level !== "auto").map((level) => (
           <option key={level} value={level}>
             {level}
           </option>
