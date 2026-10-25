@@ -17,6 +17,7 @@ import {
   RIGHT_DOCK_MIN_RENDER_WIDTH,
   RIGHT_DOCK_TREE_MIN_WIDTH,
   saveRightDockTreeWidth,
+  saveSideDockUserWidthActive,
   saveSidebarCollapsed,
   saveSidebarWidth,
   saveTerminalHeight,
@@ -242,8 +243,10 @@ export function useShellGeometry(input: { appRef: RefObject<HTMLDivElement | nul
     // tl1129: 与 App.tsx 的同名命令保持同一语义——显式写入 dock 宽度 = 用户
     // 意图，置位 sideDockUserWidthActive，窄态 preferred 尊重用户值（本文件
     // 是 app-runtime 平行实现，尚未挂载；三态公式的迁移随架构切换一起做，
-    // 这里先保证数据层语义一致，避免切换后 bug 复活）。
+    // 这里先保证数据层语义一致，避免切换后 bug 复活）。tl1129 返修：置位随
+    // localStorage 持久化（折叠/展开、跨重启保留用户宽度）。
     useLayoutStore.getState().setSideDockUserWidthActive(true);
+    saveSideDockUserWidthActive(true);
   });
 
   const ensureWorkspacePanelWidth = useCommittedCommand((width: number) => {

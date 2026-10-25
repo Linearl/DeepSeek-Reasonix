@@ -19,6 +19,10 @@ import { loadLayoutSize, loadOptionalLayoutSize, saveLayoutSize } from "../lib/l
 import { applySetState } from "./setState";
 
 const SIDEBAR_COLLAPSED_KEY = "reasonix.sidebar.collapsed";
+// tl1129 返修（用户 20261025 拍板：宽度记忆为核心）：用户显式调过 dock 宽度
+// 的指示位随 localStorage 持久化——折叠/展开、跨重启都不丢（旧版 94e9e1cd0
+// 对照：preferred 恒等于持久化的 rightDockTreeWidth，宽度天然有记忆）。
+const RIGHT_DOCK_USER_WIDTH_ACTIVE_KEY = "reasonix.rightDock.userWidthActive";
 const SIDEBAR_DEFAULT_WIDTH = 264;
 export const SIDEBAR_MIN_WIDTH = 264;
 export const CREATION_SIDEBAR_MIN_WIDTH = 236;
@@ -124,6 +128,25 @@ function loadSidebarCollapsed(): boolean {
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
   } catch {
     return false;
+  }
+}
+
+// tl1129 返修：用户宽度指示位的持久化读写（sidebarCollapsed 同款布尔键风格）。
+export function loadSideDockUserWidthActive(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(RIGHT_DOCK_USER_WIDTH_ACTIVE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveSideDockUserWidthActive(active: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RIGHT_DOCK_USER_WIDTH_ACTIVE_KEY, active ? "1" : "0");
+  } catch {
+    /* ignore storage failures */
   }
 }
 
@@ -347,12 +370,15 @@ export type LayoutState = {
    *  由面板上报，App 据此把面板宽度抬到 min(720, vw×46%)/用户值；关闭全部
    *  标签后回落 246。会话内状态（不持久化）。 */
   sideDockWideActive: boolean;
-  /** tl1129: 用户显式调过 dock 宽度的指示（拖动分隔条松手 / 键盘 resize /
-   *  双击复位经 setSavedWorkspacePanelWidth 写入时置位）。置位后窄态不再把
-   *  preferred 钉死在 246 rail，而是尊重 rightDockTreeWidth 里的用户值——
-   *  修复「拖宽后自动回缩」。清位只在关面板收口（closeWorkspacePanel），
-   *  切 tab / 宽态翻窄不清（dock 宽度跨 tab 一致是既有语义）。会话内状态
-   *  （不持久化）。 */
+  /** tl1129 返修（用户 20261025 拍板：宽度记忆为核心）：用户显式调过 dock
+   *  宽度的指示（拖动分隔条松手 / 键盘 resize / 双击复位经
+   *  setSavedWorkspacePanelWidth、宽度预设档经 onWidthPreset 写入时置位）。
+   *  置位后窄态不再把 preferred 钉死在 246 rail，而是尊重 rightDockTreeWidth
+   *  里的用户值——修复「拖宽后自动回缩」。★持久化（localStorage）：折叠/
+   *  展开不重置、跨重启保留（旧版 94e9e1cd0 对照：宽度记忆是既有行为，
+   *  tl1108 三态公式引入后丢失）。生产代码无任何自动清位调用——切 tab /
+   *  折叠 / 关面板 / 宽态翻窄都不清；setSideDockUserWidthActive(false) 仅
+   *  作为「用户显式放弃宽度记忆」的预留入口（当前无调用者）。 */
   sideDockUserWidthActive: boolean;
   rightDockMode: RightDockMode;
   terminalPanelOpen: boolean;
@@ -395,7 +421,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   workspacePanelMaximized: false,
   workspacePreviewActive: false,
   sideDockWideActive: false,
-  sideDockUserWidthActive: false,
+  sideDockUserWidthActive: loadSideDockUserWidthActive(),
   rightDockMode: loadRightDockMode(""),
   terminalPanelOpen: loadTerminalPanelOpen(),
   terminalHeight: loadTerminalHeight(),

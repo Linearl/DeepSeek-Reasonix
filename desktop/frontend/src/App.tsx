@@ -259,6 +259,7 @@ import {
   defaultRightDockTreeWidth,
   defaultSidebarWidth,
   saveRightDockTreeWidth,
+  saveSideDockUserWidthActive,
   saveSidebarCollapsed,
   saveSidebarWidth,
   saveTerminalHeight,
@@ -1742,7 +1743,8 @@ export default function App() {
   const sideDockWideActive = useLayoutStore((s) => s.sideDockWideActive);
   // tl1129: 用户显式调过宽度（拖动/键盘/双击复位写入 rightDockTreeWidth）后，
   // 窄态不再把 preferred 钉死在 246——否则拖宽松手瞬间被公式打回 rail（装机
-  // 反馈的「宽度调整好后自动回缩」）。用户值随面板会话存活：关面板才清。
+  // 反馈的「宽度调整好后自动回缩」）。tl1129 返修：指示位持久化，折叠/展开
+  // 与跨重启都保留用户宽度（用户拍板：宽度记忆为核心）。
   const sideDockUserWidthActive = useLayoutStore((s) => s.sideDockUserWidthActive);
   const sideDockWideTargetWidth = useMemo(() => {
     const viewportCap = Math.round(viewportWidth * SIDE_DOCK_WIDE_VIEWPORT_RATIO);
@@ -3056,7 +3058,10 @@ export default function App() {
       saveRightDockTreeWidth(next);
       // tl1129: 显式写入 dock 宽度（拖动松手/键盘/双击复位）= 用户意图，置位后
       // 窄态 preferred 尊重该值，不再被 246 rail 公式打回（拖宽松手即缩的根因）。
+      // tl1129 返修：置位随 localStorage 持久化——折叠/展开、跨重启都保留用户
+      // 宽度（用户拍板：宽度记忆为核心；旧版 94e9e1cd0 对照=宽度本有记忆）。
       useLayoutStore.getState().setSideDockUserWidthActive(true);
+      saveSideDockUserWidthActive(true);
     },
     [closeTransientOverlays, rightDockTreeWidthClamp, workspacePanelAvailableWidth],
   );
@@ -3289,10 +3294,11 @@ export default function App() {
     setWorkspacePanelMaximized(false);
     setWorkspacePanelOpen(false);
     saveWorkspacePanelOpen(false, activeWorkspaceRoot);
-    // tl1129: 关面板 = 一次收口——用户宽度指示一并清，重开回落 246 rail
-    // （与「关最后文件回落」同族的收口语义；切 tab 不在此列，dock 宽度跨
-    // tab 一致）。
-    useLayoutStore.getState().setSideDockUserWidthActive(false);
+    // tl1129 返修（用户 20261025 拍板：宽度记忆为核心）：关面板/折叠不再清
+    // 用户宽度指示——折叠→展开必须保持用户宽度（装机反馈的「拖宽后折叠再
+    // 展开重置最窄」根因：第一轮在此清位，展开后公式回落 246 rail）。置位
+    // 已随 localStorage 持久化，跨重启同样保留。tl1108 的「回落 246」只对
+    // 从未调过宽度的用户生效；切 tab 不清的既有语义不变。
   }, [activeWorkspaceRoot, closeTransientOverlays, rightDockHover, workspacePanelOpen]);
   closeWorkspacePanelRef.current = closeWorkspacePanel;
 
@@ -6715,7 +6721,9 @@ export default function App() {
                       setRightDockTreeWidth(next);
                       saveRightDockTreeWidth(next);
                       // tl1129: 预设档同样是用户显式宽度意图，与拖动同权置位。
+                      // tl1129 返修：置位随 localStorage 持久化（同上）。
                       useLayoutStore.getState().setSideDockUserWidthActive(true);
+                      saveSideDockUserWidthActive(true);
                       if (workspacePanelMaximized) setWorkspacePanelMaximized(false);
                     }}
                     onPreviewModeChange={handleWorkspacePreviewModeChange}
