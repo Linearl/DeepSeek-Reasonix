@@ -376,8 +376,9 @@ export type LayoutState = {
    *  置位后窄态不再把 preferred 钉死在 246 rail，而是尊重 rightDockTreeWidth
    *  里的用户值——修复「拖宽后自动回缩」。★持久化（localStorage）：折叠/
    *  展开不重置、跨重启保留（旧版 94e9e1cd0 对照：宽度记忆是既有行为，
-   *  tl1108 三态公式引入后丢失）。清位 = 用户显式放弃宽度记忆（复位经
-   *  setSideDockUserWidthActive(false)），切 tab / 折叠 / 宽态翻窄都不清。 */
+   *  tl1108 三态公式引入后丢失）。生产代码无任何自动清位调用——切 tab /
+   *  折叠 / 关面板 / 宽态翻窄都不清；setSideDockUserWidthActive(false) 仅
+   *  作为「用户显式放弃宽度记忆」的预留入口（当前无调用者）。 */
   sideDockUserWidthActive: boolean;
   rightDockMode: RightDockMode;
   terminalPanelOpen: boolean;
