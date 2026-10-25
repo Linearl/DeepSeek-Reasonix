@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { Archive, ArchiveX, ArrowDown, CheckCheck, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
+import { Archive, ArrowDown, CheckCheck, ClipboardPen, Pencil, Plus, Folder, FolderPlus, Search, BriefcaseBusiness, Copy, FolderOpen, XCircle, Check, FileJson, FileText, ListCollapse, ListRestart, MessageSquare, Clock, Pin, MoreHorizontal, Minimize2, Maximize2, GitBranch, Sparkles, Cloud, SwatchBook, FolderInput, Filter, Server } from "lucide-react";
 import { asArray } from "../lib/array";
 import { useToast } from "../lib/toast";
 import { app } from "../lib/bridge";
+import { writeClipboardText } from "../lib/clipboard";
+import { OpenerIcon } from "./ExternalOpener";
 import { cachedSessionPurpose, loadSessionPurpose, setCachedSessionPurpose, subscribeSessionPurposes } from "../lib/sessionPurpose";
 import { onProjectTreeChangedV2 } from "../lib/sessionCatalogBridge";
 import { createRepairNoticeGate, sessionCatalogNotice, type SessionCatalogNotice } from "../lib/sessionCatalogPresentation";
@@ -12,12 +14,12 @@ import { isRuntimeSessionNode, isTopicNode, loadWorkbenchOrganizeMode, loadWorkb
 export * from "../lib/projectTreeTopic";
 import { arrangeClassicProjectTree, arrangeWorkbenchTree, classicTopicWindow, CLASSIC_TOPIC_PREVIEW_LIMIT, projectTreeBodyState, projectTreeWithoutBuiltinWorkspaceNodes, splitPinnedProjectTree, type PinnedTreeSections } from "../lib/projectTreePresentation";
 export * from "../lib/projectTreePresentation";
-import type { ProjectNode, ProjectTreeChangedV2, SessionCatalogStatus } from "../lib/types";
+import type { ExternalOpenersView, ProjectNode, ProjectTreeChangedV2, SessionCatalogStatus } from "../lib/types";
 import { topicActivityTime } from "../lib/session";
 import { useT, type Translator } from "../lib/i18n";
 import { requestTopicVersions } from "../lib/sessionRecoveryVersionHostBridge";
 import { PROJECT_COLOR_OPTIONS, projectColorValue, type ProjectColorKey, type ProjectColorOption } from "../lib/projectColors";
-import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, projectTreeWithoutTopics, reloadProjectTreeTopics, useProjectTreeArchiveController, type ProjectTreeRefresh, type ProjectTreeRefreshOptions } from "../lib/projectTreeArchive";
+import { projectTreeSessionArchiveTargetKey, projectTreeTopicArchiveTargetKey, projectTreeWithoutTopics, isTopicArchiveForceableError, reloadProjectTreeTopics, topicArchiveForceableReason, useProjectTreeArchiveController, type ProjectTreeRefresh, type ProjectTreeRefreshOptions } from "../lib/projectTreeArchive";
 import { topicShortcutLabel, type TopicShortcutEntry } from "../lib/topicShortcuts";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
 import { Tooltip } from "./Tooltip";
@@ -243,6 +245,7 @@ export function ProjectTree({
   showShortcutBadges = false,
   shortcutPlatform,
   onVisibleTopicsChange,
+  logDirectory = "",
 }: ProjectTreeProps) {
   const t = useT();
   const { showToast } = useToast();
@@ -286,9 +289,10 @@ export function ProjectTree({
   const [isolatingProject, setIsolatingProject] = useState<string | null>(null);
   const [worktreeAvailability, setWorktreeAvailability] = useState<Record<string, { available: boolean; reason?: string }>>({});
   const [confirmArchiveTarget, setConfirmArchiveTarget] = useState<string | null>(null);
-  // Force-archive arms in the same two-step way as the ordinary archive (first click
-  // arms, second performs). Kept as its own target so arming one never runs the other.
-  const [confirmForceArchiveTarget, setConfirmForceArchiveTarget] = useState<string | null>(null);
+  // tl 1103: the "Open with ▸" submenu discovers the machine's external openers
+  // once per mount (the backend caches discovery for 15s) — the sidebar context
+  // menu is built synchronously per row, so the menu reads this snapshot.
+  const [externalOpeners, setExternalOpeners] = useState<ExternalOpenersView | null>(null);
   const [confirmRemoveProject, setConfirmRemoveProject] = useState<string | null>(null);
   const [dragProjectRoot, setDragProjectRoot] = useState<string | null>(null);
   const [dropProject, setDropProject] = useState<{ root: string; position: ProjectDropPosition } | null>(null);
@@ -767,6 +771,19 @@ export function ProjectTree({
     };
   }, []);
 
+  // tl 1103: discovery for the topic context menu's "Open with ▸" submenu.
+  // One pull per mount (backend caches 15s); a failure just leaves the submenu
+  // empty — the row menu must not lose its other items over a discovery miss.
+  useEffect(() => {
+    let cancelled = false;
+    void app.ExternalOpeners().then((view) => {
+      if (!cancelled) setExternalOpeners(view);
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Close the time-filter menu on outside click or Escape; move focus into the
   // menu on open and back to the trigger on Escape so it is keyboard-operable.
   useEffect(() => {
@@ -1201,12 +1218,31 @@ export function ProjectTree({
   // Deliberately skips the active-work red flag — that is TrashTopicForce's contract —
   // while the file move itself still goes through the removal guard (recycle semantics).
   const trashTopicForceAny = (topicId: string) => remoteSessionActions.remove(topicId, () => app.TrashTopicForce(topicId));
+  // tl 1103: the trash menu item's only entry. The ordinary TrashTopic runs
+  // first; when it fails with a lease-busy-class error (the exact family
+  // TrashTopicForce exists for — the backend marks them) a confirm dialog
+  // offers the force path with the failure reason spelled out. Any other
+  // failure keeps the plain error toast. Cancelling does nothing.
+  const trashTopicForceableAny = (topicId: string) => remoteSessionActions.remove(topicId, () =>
+    trashTopic(topicId, async (error) => {
+      if (!isTopicArchiveForceableError(error)) return false;
+      const confirmed = await app.ConfirmAction({
+        title: t("history.moveToTrash"),
+        message: t("projectTree.forceArchiveConfirm", { reason: topicArchiveForceableReason(error) }),
+        detail: "",
+        confirmLabel: t("projectTree.forceArchiveTopic"),
+        cancelLabel: t("common.cancel"),
+        destructive: true,
+      }).catch(() => false);
+      if (!confirmed) return true;
+      await trashTopicForceAny(topicId);
+      return true;
+    }));
   const startRenameTopic = (node: ProjectNode, label: string) => {
     setMenuNodeKey(null);
     setMenuProject(null);
     setMenuPoint(null);
     setConfirmArchiveTarget(null);
-    setConfirmForceArchiveTarget(null);
     setEditingTopic(node.topicId ?? null);
     setTopicDraft(label);
   };
@@ -1641,21 +1677,20 @@ export function ProjectTree({
         // 938：记住右键的行元素——「编辑职责」弹窗的锚点（菜单关闭后仍指向该行）。
         purposeEditorAnchorRef.current = event.currentTarget as HTMLElement;
       };
+      // tl 1103 会话右键菜单（一级 9 项 / 17 功能，二级聚合）——顺序即需求规格表：
+      //   置顶 / 重命名 / AI 重命名 / 已读 ── 分组 ▸ ── 复制 ▸ / 打开方式 ▸ /
+      //   编辑职责 ── 移到回收站（唯一 danger 项）。
+      // 强制归档不再占一级：回收站失败且后端标记 forceable（lease busy 类）时弹
+      // 二次确认走 force（trashTopicForceableAny）；其他失败照常报错。远端会话
+      // 无本地路径/工作区，复制 ▸ 打开方式 ▸ 两项不渲染。
+      const organizationItems = organization.topicMenuItems(node, t);
+      const workspaceForOpen = openRequest?.workspaceRoot ?? node.root ?? "";
+      const copyToClipboard = (value: string) => {
+        void writeClipboardText(value)
+          .then(() => showToast(t("msg.copied")))
+          .catch(() => {});
+      };
       const topicMenuItems: ContextMenuItem[] = [
-        // wt-zcode-288：会话行右键「全部已读」——当前上下文 = 该会话所属工作区
-        // （project scope 即同一工作区；Global 会话即整个 Global 区）的全部会话。
-        ...(openRequest
-          ? [{
-              key: "markAllRead",
-              icon: <CheckCheck size={13} />,
-              label: t("projectTree.markAllRead"),
-              onSelect: () => {
-                markAllRead(readActivityKeysInScope(treeWithRemoteSessions, openRequest.scope, openRequest.workspaceRoot));
-                closeMenu();
-              },
-            }]
-          : []),
-        ...organization.topicMenuItems(node, t),
         ...(projectTreeTopicMenuOffersPin(variant)
           ? [
               {
@@ -1679,6 +1714,82 @@ export function ProjectTree({
           disabled: aiRenamingTopic !== null || Boolean(node.remoteSession),
           onSelect: () => void aiRenameSession(topicId),
         },
+        // wt-zcode-288：会话行右键「已读」（tl 1149：单条会话语境不再叫「全部已读」；
+        // 分组右键的同名操作作用于整个分组，保留原名）——当前上下文 = 该会话所属
+        // 工作区（project scope 即同一工作区；Global 会话即整个 Global 区）。
+        ...(openRequest
+          ? [{
+              key: "markAllRead",
+              icon: <CheckCheck size={13} />,
+              label: t("projectTree.markAllRead"),
+              onSelect: () => {
+                markAllRead(readActivityKeysInScope(treeWithRemoteSessions, openRequest.scope, openRequest.workspaceRoot));
+                closeMenu();
+              },
+            }]
+          : []),
+        { type: "separator" as const, key: "ctx-sep-group" },
+        // 「移动到分组」「移出分组」（task 720/144 的两项）收进「分组 ▸」二级，
+        // 行为不变；无分组可用时整个二级入口不渲染。
+        ...(organizationItems.length > 0 ? [{
+          type: "submenu" as const,
+          key: "grouping",
+          icon: <FolderInput size={13} />,
+          label: t("projectTree.grouping"),
+          items: organizationItems,
+        }] : []),
+        { type: "separator" as const, key: "ctx-sep-copy" },
+        // tl 1103 新增「复制 ▸」：会话路径 / 日志路径 / 会话 ID，取值口径与
+        // topicbar 复制菜单（lib/sessionInfoCopy）一致；嵌套叶子点击后菜单
+        // 自动关闭（ContextMenu 契约），无需再调 closeMenu。
+        ...(!node.remoteSession ? [{
+          type: "submenu" as const,
+          key: "copy-info",
+          icon: <Copy size={13} />,
+          label: t("projectTree.copyInfo"),
+          items: [
+            {
+              key: "copy-session-path",
+              icon: <Folder size={13} />,
+              label: t("topicBar.copySessionPath"),
+              disabled: !sessionPath,
+              onSelect: () => copyToClipboard(sessionPath),
+            },
+            {
+              key: "copy-log-path",
+              icon: <FileText size={13} />,
+              label: t("topicBar.copyLogPath"),
+              disabled: !logDirectory,
+              onSelect: () => copyToClipboard(logDirectory),
+            },
+            {
+              key: "copy-session-id",
+              icon: <FileJson size={13} />,
+              label: t("topicBar.copySessionId"),
+              disabled: !topicId,
+              onSelect: () => copyToClipboard(topicId),
+            },
+          ] satisfies ContextMenuItem[],
+        }] : []),
+        // tl 1103 新增「打开方式 ▸」：复用 ExternalOpener 的发现列表（挂载时
+        // 拉取一次）；目标路径 = 该会话的工作区，点击经 OpenLocalPathInExternalOpener
+        // 调起（既有桥，偏好不回写——与 split-button 主键语义一致）。
+        ...(!node.remoteSession && workspaceForOpen && (externalOpeners?.openers.length ?? 0) > 0 ? [{
+          type: "submenu" as const,
+          key: "open-with",
+          icon: <FolderOpen size={13} />,
+          label: t("projectTree.openWith"),
+          items: (externalOpeners?.openers ?? []).map((opener): ContextMenuItem => ({
+            key: `open:${opener.id}`,
+            icon: <OpenerIcon opener={opener} />,
+            label: opener.name,
+            onSelect: () => {
+              void app.OpenLocalPathInExternalOpener(workspaceForOpen, opener.id).catch((err) => {
+                showToast(t("externalOpener.failed", { name: opener.name, error: err instanceof Error ? err.message : String(err) }), "error");
+              });
+            },
+          })),
+        }] : []),
         // 938：编辑会话职责（sidecar purpose）——仅本地会话行可编辑（远端会话
         // 无本地 sidecar），弹窗走 SetSessionPurpose 既有写链。
         {
@@ -1693,6 +1804,7 @@ export function ProjectTree({
             setPurposeEditorSessionPath(sessionPath);
           },
         },
+        { type: "separator" as const, key: "ctx-sep-trash" },
         {
           key: "trash",
           icon: <Archive className={topicTrashing ? "project-tree__archive-spinner" : undefined} size={13} />,
@@ -1700,19 +1812,10 @@ export function ProjectTree({
           disabled: archiveBlocked || topicTrashing,
           danger: true,
           onSelect: () => {
-            if (confirmArchiveTarget === archiveTargetKey) void trashTopicAny(topicId);
+            // tl 1103：普通回收站先行；lease busy 类失败由 trashTopicForceableAny
+            // 弹二次确认引导到 force——一级不再单列「强制归档」。
+            if (confirmArchiveTarget === archiveTargetKey) void trashTopicForceableAny(topicId);
             else setConfirmArchiveTarget(archiveTargetKey);
-          },
-        },
-        {
-          key: "forceArchive",
-          icon: <ArchiveX size={13} />,
-          label: confirmForceArchiveTarget === archiveTargetKey ? t("history.confirmForceArchive") : t("projectTree.forceArchiveTopic"),
-          disabled: topicTrashing,
-          danger: true,
-          onSelect: () => {
-            if (confirmForceArchiveTarget === archiveTargetKey) void trashTopicForceAny(topicId);
-            else setConfirmForceArchiveTarget(archiveTargetKey);
           },
         },
       ];

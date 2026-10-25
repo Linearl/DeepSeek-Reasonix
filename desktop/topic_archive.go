@@ -28,7 +28,32 @@ type topicArchiveTrace struct {
 }
 
 func (a *App) TrashTopic(topicID string) error {
-	return friendlySessionFileError(a.trashTopic(topicID, false))
+	return markTopicArchiveForceable(friendlySessionFileError(a.trashTopic(topicID, false)))
+}
+
+// tl 1103: the only errors TrashTopicForce can actually clear are the
+// active-work gate and a held session lease (it skips the gate and reclaims
+// self-held leases). Those failures are marked with a stable machine code over
+// the Wails boundary (same "reasonix_error:" channel as inbox_app.go) so the
+// frontend can offer the force path — every other failure (file locked by a
+// scanner, disk full, …) passes through unmarked and must never be steered
+// toward force. The human-readable cause stays in the message: an older
+// frontend that only toasts the text loses nothing.
+const topicArchiveForceablePrefix = "reasonix_error:topic_archive_forceable: "
+
+type topicArchiveForceableError struct{ cause error }
+
+func (e *topicArchiveForceableError) Error() string { return topicArchiveForceablePrefix + e.cause.Error() }
+func (e *topicArchiveForceableError) Unwrap() error { return e.cause }
+
+func markTopicArchiveForceable(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, errTopicHasActiveWork) || errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, agent.ErrSessionLeaseHeld) {
+		return &topicArchiveForceableError{cause: err}
+	}
+	return err
 }
 
 // TrashTopicForce is the force-archive entry point used by the UI for a topic

@@ -5566,6 +5566,7 @@ export default function App() {
                 showShortcutBadges={showTopicBadges}
                 shortcutPlatform={desktopPlatform}
                 onVisibleTopicsChange={handleVisibleTopicsChange}
+                logDirectory={topicbarLogDirectory}
               /></Suspense>
           </section>
 
