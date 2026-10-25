@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"reasonix/internal/event"
 	"reasonix/internal/sessioninbox"
@@ -44,7 +45,7 @@ func (c *Controller) RunInboxTurn(ctx context.Context, id string) error {
 		c.inbox.mu.Lock()
 		c.inbox.trackActive(id)
 		c.inbox.mu.Unlock()
-		c.emitInboxUserInput(id, firstNonEmptyStr(env.DisplayText, env.SubmitText))
+		c.emitInboxUserInput(id, firstNonEmptyStr(env.DisplayText, env.SubmitText), meta.CreatedAt)
 		return nil
 	}, run)
 }
@@ -78,11 +79,22 @@ func (c *Controller) prepareInboxRun(env sessioninbox.PromptEnvelope) (func(cont
 // triggered turn (collab mail, idle-turn bridge, bot/ACP) starts with no user
 // row on the transcript. Best-effort by contract: a nil/empty sink or blank
 // display must never fail the admission that is already reserved.
-func (c *Controller) emitInboxUserInput(itemID, display string) {
+//
+// at (tl 1152) is the item's durable CreatedAt (enqueue wall clock). It rides
+// the event (and the turn-event ledger) so a replayed or late delivery — the
+// next-morning frontend reprojecting overnight turns through the seq-gap
+// repair — stamps the bubble with the real send time instead of the replay
+// batch's processing time (the 2026-10-25 "overnight bubbles all show 09:34"
+// report). Zero keeps the legacy unstamped behaviour.
+func (c *Controller) emitInboxUserInput(itemID, display string, at time.Time) {
 	if c == nil || strings.TrimSpace(display) == "" {
 		return
 	}
-	c.sink.Emit(event.Event{Kind: event.UserInput, Text: display, ItemID: itemID})
+	var atMs int64
+	if !at.IsZero() {
+		atMs = at.UnixMilli()
+	}
+	c.sink.Emit(event.Event{Kind: event.UserInput, Text: display, ItemID: itemID, At: atMs})
 }
 
 // submitPreparedInboxTurn starts an already-classified inbox envelope without
@@ -90,13 +102,13 @@ func (c *Controller) emitInboxUserInput(itemID, display string) {
 // display is the envelope's user-visible text (task 580): once admission
 // succeeds it is announced to frontends as a UserInput event so the consumed
 // message renders as a user row immediately instead of waiting for a history
-// reload.
-func (c *Controller) submitPreparedInboxTurn(itemID, display string, run func(context.Context) error) admissionResult {
+// reload. at is the item's durable CreatedAt (tl 1152, see emitInboxUserInput).
+func (c *Controller) submitPreparedInboxTurn(itemID, display string, at time.Time, run func(context.Context) error) admissionResult {
 	return c.runGuardedInbox(run, func() {
 		c.inbox.mu.Lock()
 		c.inbox.trackActive(itemID)
 		c.inbox.mu.Unlock()
-		c.emitInboxUserInput(itemID, display)
+		c.emitInboxUserInput(itemID, display, at)
 	})
 }
 

@@ -53,6 +53,14 @@ type Event struct {
 	// ItemID correlates Steer / TurnDone / unapplied-steer with a durable
 	// session-inbox entry. Empty for legacy text-only guidance.
 	ItemID string `json:"itemId,omitempty"`
+	// At (tl 1152) mirrors event.Event.At: the payload's durable domain time
+	// (unix ms), stamped by the emitter from the inbox item's CreatedAt — not
+	// the serialize/replay instant (that is what desktop's emittedAt is, and
+	// replays re-stamp it). Additive omitempty: older frontends ignore it. The
+	// field persists inside the turn-event ledger's Envelope.Event, so a
+	// replayed user_input keeps its original send time and a replay batch no
+	// longer collapses every overnight bubble onto one wall-clock point.
+	At int64 `json:"at,omitempty"`
 	// SessionPath routes frames emitted by detached Serve controllers. Older
 	// clients ignore the omitted/unknown field and keep single-session behavior.
 	SessionPath string `json:"sessionPath,omitempty"`

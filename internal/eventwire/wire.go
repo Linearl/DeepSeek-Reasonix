@@ -80,7 +80,7 @@ type StreamAttempt struct {
 func ToWire(e event.Event) Event {
 	// WorkflowNode payload (task 685) copies for that kind only and stays nil
 	// otherwise, so it rides the base literal instead of a switch case.
-	w := Event{Kind: kindNames[e.Kind], PromptKind: e.PromptKind, TurnID: e.TurnID, Sequence: e.Sequence, Status: string(e.Status), Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ItemID: e.ItemID, SessionPath: e.SessionPath, SessionReset: e.SessionReset, Workflow: toWireWorkflowNode(e.Workflow)}
+	w := Event{Kind: kindNames[e.Kind], PromptKind: e.PromptKind, TurnID: e.TurnID, Sequence: e.Sequence, Status: string(e.Status), Text: e.Text, Detail: e.Detail, Reasoning: e.Reasoning, ItemID: e.ItemID, At: e.At, SessionPath: e.SessionPath, SessionReset: e.SessionReset, Workflow: toWireWorkflowNode(e.Workflow)}
 	if e.ItemID != "" {
 		promptEvent := false
 		switch e.Kind {

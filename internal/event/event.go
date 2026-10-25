@@ -667,6 +667,16 @@ type Event struct {
 	ReadStatus         *ReadStatusPayload        // ReadStatus: one logical read's delivery state
 	ReadPause          *provider.ReadPause       // TurnDone: durable display-only pause receipt
 	ItemID             string                    // correlates durable inbox events
+	// At (tl 1152) is the event's domain wall clock (unix milliseconds) — the
+	// moment the payload's durable record was created, NOT the emit/serialize
+	// instant. UserInput/Steer carry the inbox item's CreatedAt so a delayed or
+	// replayed delivery (next-morning frontend startup reprojecting overnight
+	// turns) stamps the bubble with the real send time instead of the replay
+	// batch's processing time (many bubbles sharing one "09:34"). Zero means
+	// "not stamped": consumers keep their existing fallback. The field rides
+	// the turn-event ledger (ToWire → Envelope.Event), so replays return the
+	// original time rather than re-stamping.
+	At                 int64                     // domain time (unix ms); 0 = unstamped
 	SessionPath        string                    // routes Serve frames
 	SessionReset       bool                      // SessionChanged came from /new or /clear, not resume/recovery
 	Workspace          *WorkspaceChangedPayload  // WorkspaceChanged (host-local)

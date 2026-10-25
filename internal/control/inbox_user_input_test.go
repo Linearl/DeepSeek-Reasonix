@@ -176,8 +176,104 @@ func TestRunInboxTurnRejectedReplayEmitsNoSecondUserInput(t *testing.T) {
 func TestEmitInboxUserInputSkipsBlankDisplay(t *testing.T) {
 	rec := &inboxUserInputRecorder{}
 	c := newInboxUserInputController(t, rec)
-	c.emitInboxUserInput("item-1", "   ")
+	c.emitInboxUserInput("item-1", "   ", time.Time{})
 	if events := rec.userInputEvents(); len(events) != 0 {
 		t.Fatalf("blank display emitted %d UserInput events, want 0", len(events))
 	}
+}
+
+// tl 1152: the UserInput event must carry the item's durable enqueue time as
+// At (unix ms), not just Text/ItemID. The frontend stamps the bubble from this
+// field; a replay batch (next-morning seq-gap repair reprojecting overnight
+// turns) then preserves each message's own time instead of collapsing every
+// bubble onto the replay instant ("overnight messages all show 09:34"). Both
+// consumption paths are pinned against the SAME stored meta.CreatedAt — the
+// contract is "event time == durable enqueue time", not "event time == emit
+// time" — and a zero-time direct emit stays unstamped (0 omits on the wire).
+func TestInboxUserInputCarriesEnqueueTime(t *testing.T) {
+	enqueueAt := func(t *testing.T, c *Controller, display string) time.Time {
+		t.Helper()
+		snap, err := c.EnqueueInbox(InboxRequest{
+			Intent:  sessioninbox.IntentFollowup,
+			Display: display,
+			Submit:  display,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, err := c.ensureInbox()
+		if err != nil {
+			t.Fatal(err)
+		}
+		meta, _, err := st.ReadItem(snap.ItemID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if meta.CreatedAt.IsZero() {
+			t.Fatalf("stored CreatedAt is zero; test prerequisite broken")
+		}
+		return meta.CreatedAt
+	}
+
+	assertAt := func(t *testing.T, events []event.Event, want time.Time) {
+		t.Helper()
+		if len(events) != 1 {
+			t.Fatalf("UserInput events = %d, want 1", len(events))
+		}
+		if got := events[0].At; got != want.UnixMilli() {
+			t.Fatalf("UserInput At = %d, want item enqueue time %d", got, want.UnixMilli())
+		}
+	}
+
+	t.Run("dispatcher path", func(t *testing.T) {
+		rec := &inboxUserInputRecorder{}
+		c := newInboxUserInputController(t, rec)
+		display := "夜间入队的跨会话消息"
+		enqueue := enqueueAt(t, c, display)
+		snap, err := c.EnqueueInbox(InboxRequest{
+			Intent:  sessioninbox.IntentFollowup,
+			Display: display,
+			Submit:  display,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.TrySubmitInboxItem(snap.ItemID); err != nil {
+			t.Fatal(err)
+		}
+		rec.waitTurnDone(t, 1)
+		assertAt(t, rec.userInputEvents(), enqueue)
+	})
+
+	t.Run("synchronous bridge path", func(t *testing.T) {
+		rec := &inboxUserInputRecorder{}
+		c := newInboxUserInputController(t, rec)
+		display := "空闲开轮桥消费的夜间条目"
+		enqueue := enqueueAt(t, c, display)
+		snap, err := c.EnqueueInbox(InboxRequest{
+			Intent:  sessioninbox.IntentFollowup,
+			Display: display,
+			Submit:  display,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.RunInboxTurn(context.Background(), snap.ItemID); err != nil {
+			t.Fatal(err)
+		}
+		assertAt(t, rec.userInputEvents(), enqueue)
+	})
+
+	t.Run("zero time stays unstamped", func(t *testing.T) {
+		rec := &inboxUserInputRecorder{}
+		c := newInboxUserInputController(t, rec)
+		c.emitInboxUserInput("item-1", "无元数据时间的直发", time.Time{})
+		events := rec.userInputEvents()
+		if len(events) != 1 {
+			t.Fatalf("UserInput events = %d, want 1", len(events))
+		}
+		if events[0].At != 0 {
+			t.Fatalf("UserInput At = %d, want 0 for zero-time emit", events[0].At)
+		}
+	})
 }
