@@ -137,8 +137,10 @@ ok(tiers.includes('trajectoryView: "optional"'), "frontend tier register: trajec
 // standardContinuation 叠加入表 → 38/74。tl 1097：logManagement 叠加入表 →
 // 39/75（主线漏跟本 pin）。tl 1125：tabManagement + viewLayout 两容器
 // 「可选 → 推荐」→ 20 推荐/37 可选/75 总数（合并态实测真值一并收口）。
-ok(/stable: 4,\s*\n\s*recommended: 20,\s*\n\s*optional: 37,/.test(tiers),
-  "LAB_TIER_COUNTS at the tl 1125 口径 (4 stable / 20 recommended / 37 optional)");
+// tl 1132：startupSplash（可选）+ startupLoading（纯前端容器，同
+// tabManagement 豁免）叠加入表 → 39 可选/77 总数（合并态实测真值一并收口）。
+ok(/stable: 4,\s*\n\s*recommended: 20,\s*\n\s*optional: 39,/.test(tiers),
+  "LAB_TIER_COUNTS at the tl 1132 口径 (4 stable / 20 recommended / 39 optional)");
 
 // 8. Three-locale keys.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
@@ -163,10 +165,11 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 //    562 门禁 44/0 直读 optional=38、length=74，禁推演）。tl 1097：
 //    logManagement 叠加入表 → 39/75（主线漏跟本 pin）。tl 1125：
 //    tabManagement + viewLayout 两容器「可选 → 推荐」→ 20 推荐/37 可选/
-//    75 总数（562 门禁 44/0 直读，禁推演）。
+//    75 总数（562 门禁 44/0 直读，禁推演）。tl 1132：startupSplash +
+//    startupLoading 叠加入表 → 39/77（562 门禁直读，禁推演）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
-ok(tierTest.includes("counts.optional === 37") && tierTest.includes("length === 75"),
-  "task562 test pins the 74-entry register (1069+1072+1070 合并态实测口径)");
+ok(tierTest.includes("counts.optional === 39") && tierTest.includes("length === 77"),
+  "task562 test pins the 77-entry register (tl 1132 合并态实测口径)");
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);
 if (!process.exitCode) process.stdout.write("task 704 trajectory switch contract: OK\n");

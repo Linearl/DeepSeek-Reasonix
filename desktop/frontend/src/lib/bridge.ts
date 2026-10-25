@@ -1563,6 +1563,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 1024: composer 草稿优化（发送左侧改写按钮；re-applied on settings
   // save, no restart）。
   SetExperimentalDraftRewrite(enabled: boolean): Promise<void>;
+  // tl 1132: DSH 式启动遮罩（off = 不渲染，on = 核心区就绪后淡出；
+  // re-applied on settings save, no restart）。
+  SetExperimentalStartupSplash(enabled: boolean): Promise<void>;
   // 任务 1070: Standard 流续跑总闸（普通对话续跑通道开闸；re-applied on
   // settings save + live controller mirror, next run applies）。
   SetStandardContinuation(enabled: boolean): Promise<void>;
@@ -6464,6 +6467,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalApprovalSelect() {},
     async SetExperimentalTableWrap() {},
     async SetExperimentalSendTargetSelect() {},    async SetExperimentalDraftRewrite() {},
+    async SetExperimentalStartupSplash() {},
     async SetStandardContinuation() {},
     async SetExperimentalWorkflowPanel() {},
     async SetTabPermissionIndicator() {},

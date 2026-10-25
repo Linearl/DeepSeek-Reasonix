@@ -126,6 +126,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 复用 940 形态机制）。展示形态开关按 550 口径定档可选——不开启时
 	// composer 发送目标区与引入前逐字节一致（铁律 2，默认关）。
 	{"sendTargetSelect", LabTierOptional, []string{"experimental_send_target_select"}},
+	// tl 1132：启动遮罩（DSH 式启动画面，logo+副文案+点动画，核心 UI 挂载
+	// 完成后淡出）。展示类开关按 550 口径定档可选——默认关（用户 2026-10-24
+	// steer：做成实验特性允许开关方便 A/B 对比），关闭时 splash 不渲染、
+	// 启动行为与引入前一致（铁律 2）。
+	{"startupSplash", LabTierOptional, []string{"experimental_startup_splash"}},
 	// 任务 742：心跳任务后台化（默认关）。开启后心跳触发不进标签栏（复用 264
 	// detached 语义，提交成功后 park）；档位按 550 口径可选——不开启不影响
 	// 任何调度行为，只是标签栏照旧出现会话。
@@ -534,6 +539,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off keeps the three-button group byte-for-byte (铁律 2).
 		fmt.Fprintf(&b, "experimental_send_target_select = %v   # desktop: composer split-pane send-target picker form — off (default) = segmented left/right/both button group, on = compact dropdown (task-940 form mechanism reused) (task 959; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSendTargetSelect)
+		// tl 1132: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123
+		// lesson). Off never renders the startup splash (铁律 2 zero regression).
+		fmt.Fprintf(&b, "experimental_startup_splash = %v   # desktop: DSH-style startup splash overlay (logo + subtitle + pulse dots) covering the main region until the core UI is mounted — off (default) = never renders, on = shows until ready then fades out (tl 1132; settings save re-applies, no restart)\n", c.Desktop.ExperimentalStartupSplash)
 		// 任务 686: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off renders no palette entry at all (铁律 2 zero regression).

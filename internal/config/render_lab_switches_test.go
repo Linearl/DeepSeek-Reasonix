@@ -60,6 +60,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalTableWrap = true // tableWrap
 	// 任务 959 ②：发送目标选择器形态（默认关=三按钮组）。
 	orig.Desktop.ExperimentalSendTargetSelect = true // sendTargetSelect
+	// tl 1132：启动遮罩（默认关=不渲染 splash）。
+	orig.Desktop.ExperimentalStartupSplash = true // startupSplash
 	// 任务 686：工作流可视化面板（默认关）。
 	orig.Desktop.ExperimentalWorkflowPanel = true              // workflowPanel
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
@@ -125,6 +127,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_table_wrap = true",
 		// 任务 959 ②：发送目标形态键无条件渲染（fixed-key-set rule）。
 		"experimental_send_target_select = true",
+		// tl 1132：启动遮罩键无条件渲染（fixed-key-set rule）。
+		"experimental_startup_splash = true",
 		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
 		"experimental_workflow_panel = true",
 		"experimental_question_search = true",
