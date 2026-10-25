@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKe
 import {
   Check,
   ChevronLeft,
-  ChevronRight,
   ClipboardList,
   Copy,
   FileDown,
@@ -31,8 +30,8 @@ import type { ExternalOpenerView, TabMeta } from "../lib/types";
 // 收敛为 7 项：会话摘要 / 复制和导出 ▸ / 会话视图 ▸ / 改动 / 终端 / 打开方式 ▸ 。
 // 二级可达零丢失：复制会话·导出会话（MD/JSON/PDF/图片）·路径·日志路径·会话ID
 // 全并入「复制和导出 ▸」；转录·轨迹并入「会话视图 ▸」；每个含二级子菜单的一级
-// 项右侧固定渲染一个展开引导（tl 1148：关闭态 ▷ 表示「有子菜单」，打开态翻为
-// ◁ 指向子菜单实际的左弹方向）。
+// 项右侧固定渲染一个展开引导（tl 1148：子菜单固定左弹，箭头一律 ◁ 指向子菜单
+// 实际出现的方向——未展开的静态默认也朝左，弹出前后方向恒一致）。
 // tl 1153：二级菜单补平台标准 submenu 交互——hover 一级触发项 ~300ms 自动展开
 // （不点击），鼠标移入子菜单不关闭，移出菜单区域仍走既有关闭逻辑（外点/Escape）；
 // 触发项交互集中在 SubmenuTrigger + scheduleHoverOpen/cancelHoverOpen，1149 新增
@@ -94,21 +93,21 @@ function moveMenuFocus(event: ReactKeyboardEvent<HTMLDivElement>) {
 }
 
 // tl 1148：二级子菜单固定向左弹出（.topicbar__more-submenu 用
-// right: calc(100% + 4px)，一级菜单贴屏幕右缘、向右弹会出屏）。指示箭头随
-// aria-expanded 翻转——关闭态 ChevronRight（▷，平台惯例=此项有子菜单），打开态
-// ChevronLeft（◁，指向子菜单实际出现的方向），消除「箭头朝右、菜单左弹」的方向
-// 歧义。不做「优先右弹、越界左翻」的动态定位（B 方案）：本菜单一律贴右缘，向右
-// 弹几乎必然越界，动态测量只会常走左翻分支还引入布局跳动。
-function SubmenuIndicator({ open }: { open: boolean }) {
-  const Icon = open ? ChevronLeft : ChevronRight;
-  return <Icon className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />;
+// right: calc(100% + 4px)，一级菜单贴屏幕右缘、向右弹会出屏）。tl 1148 补修
+//（20261025 用户验证反馈）：首轮「关闭态 ▷（有子菜单惯例）/打开态 ◁」弹出后方向
+// 虽对，但未展开时静态 ▷ 仍与左弹方向冲突；静态默认即子菜单实际弹出方向，箭头
+// 一律 ◁，弹出前后恒一致。不做「优先右弹、越界左翻」的动态定位（B 方案）：本菜单
+// 一律贴右缘，向右弹几乎必然越界，动态测量只会常走左翻分支还引入布局跳动；若日后
+// 改为右弹，在此恢复按 open 翻转图标。
+function SubmenuIndicator() {
+  return <ChevronLeft className="topicbar__more-submenu-indicator" size={14} aria-hidden="true" />;
 }
 
 // tl 1153：二级菜单 hover 触发延迟（平台惯例 ~300ms：短暂扫过不弹，停留才弹）。
 export const SUBMENU_HOVER_OPEN_DELAY_MS = 300;
 
 // tl 1153：二级触发项组件化——aria-haspopup/aria-expanded、ArrowRight 键盘展开、
-// 点击切换、tl 1148 箭头翻转与 hover ~300ms 自动展开（tl 1153）集中在此；1149 新增
+// 点击切换、tl 1148 指示箭头与 hover ~300ms 自动展开（tl 1153）集中在此；1149 新增
 // 二级菜单（分组移动/分组管理）复用本组件即获得同一套交互。hover 展开只切状态不
 // 移动焦点（鼠标场景焦点留在原处），键盘/点击展开仍走 openSubmenu 的焦点进入路径；
 // touch/pen 不做 hover 展开（手指按下即触发 pointerenter，展开语义仍归点击）。
@@ -158,8 +157,8 @@ function SubmenuTrigger({
     >
       <Icon size={14} />
       <span>{label}</span>
-      {/* tl 1119：含二级子菜单的一级项固定渲染展开引导；tl 1148：打开态翻 ◁。 */}
-      <SubmenuIndicator open={open} />
+      {/* tl 1119：含二级子菜单的一级项固定渲染展开引导；tl 1148 补修：静态默认即 ◁（=左弹方向）。 */}
+      <SubmenuIndicator />
     </button>
   );
 }
