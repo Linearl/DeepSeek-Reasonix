@@ -71,6 +71,7 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
   };
   const visionOf = (model: string): boolean | null => overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), model))?.vision ?? null;
   const audioOf = (model: string): boolean | null => overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), model))?.audio ?? null;
+  const supportedEffortsOf = (model: string): string[] => overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), model))?.supportedEfforts ?? [];
   const fetchModels = async () => {
     const generation = epoch.current, fingerprint = identity;
     setFetching(true); setError(null);
@@ -142,7 +143,7 @@ export function ProviderModelsEditor({ provider, disabled, canFetch, onChange, o
     </div>
     {editor && <Suspense fallback={null}><ProviderModelDialog
       baseURL={provider.baseUrl} candidates={provider.models} contextDefault={provider.contextWindow || undefined}
-      initial={editor.original ? { model: editor.original, contextWindow: contextWindowOf(editor.original), maxOutputTokens: outputTokensOf(editor.original), vision: visionOf(editor.original), audio: audioOf(editor.original), highSpeed: (provider.highSpeedModels ?? []).includes(editor.original), efforts: overrides.find((item) => item.model === matchingModelKey(overrides.map((item) => item.model), editor.original))?.supportedEfforts ?? [] } : undefined}
+      initial={editor.original ? { model: editor.original, contextWindow: contextWindowOf(editor.original), maxOutputTokens: outputTokensOf(editor.original), vision: visionOf(editor.original), audio: audioOf(editor.original), highSpeed: (provider.highSpeedModels ?? []).includes(editor.original), efforts: supportedEffortsOf(editor.original) } : undefined}
       // Task 1053: 弹窗内 effort 编辑区的继承基准——连接级词表（模型级未声明时
       // 沿用它，与后端 model > connection > auto 的优先级一致）。
       connectionEfforts={connectionLevels}
