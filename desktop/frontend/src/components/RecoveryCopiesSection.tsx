@@ -139,10 +139,16 @@ type DeleteOutcome = {
 
 /** SynthesisOutcome is one synthesis run's record (任务 1065): what went in
  *  (participants + their unique counts) and what the new main reads as afterwards,
- *  so "总条数≈并集" is checkable on screen rather than asserted. */
+ *  so "总条数≈并集" is checkable on screen rather than asserted.
+ *
+ *  任务 1146 返修：kind 增加 "v3only"——纯 v3 头会话（无副本文件）的合成在
+ *  文件层无事可做（其余版本住在同一份事件日志里），此前它因 report.items
+ *  非空而照走 "synthesized" 成功回执，用户看到「合成已生效……落败分支还在
+ *  回收站里」却面对一套纹丝不动的列表（用户 20261025 复测现场）。v3only 是
+ *  诚实的「无可做」回执：不算成功（不触发生效横幅），也不算失败（不是错误）。 */
 type SynthesisOutcome = {
   label: string;
-  kind: "synthesized" | "failed";
+  kind: "synthesized" | "failed" | "v3only";
   participants?: number;
   uniqueTotal?: number;
   afterMessages?: number;
@@ -1295,6 +1301,44 @@ export function RecoveryCopiesSection() {
         });
         return;
       }
+      // 任务 1146 返修：先判定这次合成有没有文件级效果。合成引擎对纯 v3 头
+      // 会话（无副本文件）无事可做——其余版本住在主转录自己的事件日志里，无
+      // 文件可搬（recovery_head_synthesize.go 的 v3-only 提前返回形态）。该
+      // 形态下 report.items 非空（携带各 head 的读数，1117 语义），旧判定只
+      // 看 items.length，于是照走 "synthesized" 成功回执 + 「合成已生效」
+      // 横幅——可落败分支根本不存在、列表纹丝不动，用户复测的「合成已生效
+      // 但列表仍不刷新」正是这里虚报的成功在误导（重拉回来的数据没变，因为
+      // 数据本来就没变）。判定：promoted 或 trashed 非空才算文件级生效。
+      const fileEffective = report.promoted || report.trashed.length > 0;
+      if (!fileEffective) {
+        // 参与项全部是主转录自身的 v3 heads（path === report.mainPath）：
+        // 纯 v3 头会话——给出诚实的「无可做」回执并指出现有出路（版本表的
+        // 「切换到此版本」按钮，该入口真实存在）。
+        const v3Only = report.items.every((item) => item.path === report.mainPath);
+        setSynthesisOutcomes((current) => [
+          ...current,
+          v3Only
+            ? { label: groupLabel, kind: "v3only", detail: t("settings.recoveryCopiesSynthesizeNoCopyBranch") }
+            : {
+                // 有副本参与却没有文件级效果（全部被跳过/归档失败）：按失败
+                // 处理，透传后端 skipped 明细供诊断（1039 先例：后端原文不
+                // 加工直出），skipped 缺席时退回「没有可合成的分支」。
+                label: groupLabel,
+                kind: "failed",
+                detail:
+                  report.skipped.length > 0
+                    ? report.skipped.join("; ")
+                    : t("settings.recoveryCopiesSynthesizeNoBranch"),
+              },
+        ]);
+        // Named winners were consumed even on this no-op path; reset the pick.
+        setPickedChain((current) => {
+          const next = { ...current };
+          delete next[mainPath];
+          return next;
+        });
+        return;
+      }
       const uniqueTotal = report.items.reduce((n, item) => n + item.unique, 0);
       setSynthesisOutcomes((current) => [
         ...current,
@@ -1799,19 +1843,27 @@ export function RecoveryCopiesSection() {
                     {synthesisOutcomes.length > 0 && (
                       <div className="rc-result">
                         <ul className="rc-outcomes">
-                          {synthesisOutcomes.map((outcome) => (
-                            <li
-                              key={outcome.label}
-                              className={outcome.kind === "failed" ? "rc-outcome--failed" : "rc-outcome--ok"}
-                            >
-                              <span className="rc-outcome__label">{outcome.label}</span>
-                              <span>
-                                {outcome.kind === "failed"
-                                  ? outcome.detail ?? ""
-                                  : `${t("settings.recoveryCopiesOutcomeSynthesized")} ${outcome.participants} · ${t("settings.recoveryCopiesUnique")} ${outcome.uniqueTotal} → ${outcome.afterMessages} · ${outcome.afterTurns} ${t("settings.recoveryCopiesColTurns")}${outcome.prefixed ? ` · ${t("settings.recoveryCopiesSynthesizePrefixed")} ${outcome.prefixed}` : ""}${outcome.trashed ? ` · ${t("settings.recoveryCopiesArchived")} ${outcome.trashed}` : ""}`}
-                              </span>
-                            </li>
-                          ))}
+                    {synthesisOutcomes.map((outcome) => (
+                      <li
+                        key={outcome.label}
+                        className={
+                          outcome.kind === "failed"
+                            ? "rc-outcome--failed"
+                            : outcome.kind === "v3only"
+                              ? // 任务 1146 返修：「无可做」回执走中性样式——绿
+                                // 色成功面会把无事发生读成「已成功」。
+                                "rc-outcome--blocked"
+                              : "rc-outcome--ok"
+                        }
+                      >
+                        <span className="rc-outcome__label">{outcome.label}</span>
+                        <span>
+                          {outcome.kind === "synthesized"
+                            ? `${t("settings.recoveryCopiesOutcomeSynthesized")} ${outcome.participants} · ${t("settings.recoveryCopiesUnique")} ${outcome.uniqueTotal} → ${outcome.afterMessages} · ${outcome.afterTurns} ${t("settings.recoveryCopiesColTurns")}${outcome.prefixed ? ` · ${t("settings.recoveryCopiesSynthesizePrefixed")} ${outcome.prefixed}` : ""}${outcome.trashed ? ` · ${t("settings.recoveryCopiesArchived")} ${outcome.trashed}` : ""}`
+                            : outcome.detail ?? ""}
+                        </span>
+                      </li>
+                    ))}
                         </ul>
                         {/* 任务 1117：「合成已生效」提示只在真的有合成成功时显示
                             ——全部失败的 outcome 列表配上这句成功文案会自相矛盾

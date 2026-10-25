@@ -77,9 +77,11 @@ function bodyText(): string {
 /** outcomeText collects the synthesis outcome rows only (the rc-outcomes list
  *  inside .rc-result) - the raw error text can appear in unrelated dev-only
  *  console/log surfaces the panel doesn't own, so assertions about "does the
- *  user see this error" must be scoped to the outcome list, not the whole page. */
+ *  user see this error" must be scoped to the outcome list, not the whole page.
+ *  任务 1146 返修：--blocked 一并收进——v3-only 诚实回执复用该中性样式，它也
+ *  是用户可见的 outcome 行。 */
 function outcomeText(): string {
-  return Array.from(document.querySelectorAll(".rc-outcome--ok, .rc-outcome--failed"))
+  return Array.from(document.querySelectorAll(".rc-outcome--ok, .rc-outcome--failed, .rc-outcome--blocked"))
     .map((el) => el.textContent || "")
     .join("\n");
 }
@@ -168,16 +170,24 @@ console.log("\nrecovery head synthesis v3-only no-misreport + banner mutual excl
 const EN_NO_BRANCH = "This conversation has only one chain; there is nothing to synthesize.";
 const EN_SYNTHESIZED = "Synthesized";
 const EN_REOPEN_HINT = "The synthesis has taken effect.";
+// 任务 1146 返修：v3-only 无文件级效果的诚实回执文案（en.ts）。
+const EN_NO_COPY_BRANCH = "This conversation has no mergeable copy branches";
 
-// A. 纯 v3 头会话未选 HEAD 合成、后端返回 items>0（修复后应有的正确行为）：
-//    成功横幅照常出现，不是误报「只有一条链」。
+// A. 纯 v3 头会话未选 HEAD 合成、后端返回 items>0：
+//    1117 当年修的是「only one chain」误报——这个意图保留（不再出现该误报）。
+//    但「已合成」成功回执 + 「合成已生效」横幅是虚报：v3-only 形态文件级无事
+//    可做，列表纹丝不动，用户据此预期「合成后只剩一个链」并复测出「列表仍不
+//    刷新」（tl 1146 返修工单 20261025）。本场景按 1146 返修改钉：诚实回执 +
+//    不显示成功横幅。mock 的 promoted:false + trashed:[] 正是后端 v3-only
+//    提前返回的形态（recovery_head_synthesize.go len(copies)==0 分支）。
 {
   stubBridge({});
   const root = await openAndExpand();
   await runSynthesizeToCompletion();
-  ok(outcomeText().includes(EN_SYNTHESIZED), "A 成功合成路径照常渲染合成结果（不再是 only one chain 误报）");
-  ok(!outcomeText().includes(EN_NO_BRANCH), "A 纯 v3 头会话未选 HEAD 不再出现「只有一条链」误报文案");
-  ok(bodyText().includes(EN_REOPEN_HINT), "A 成功后照常显示「合成已生效」提示（互斥的另一面：真成功时这句要出现）");
+  ok(!outcomeText().includes(EN_NO_BRANCH), "A 纯 v3 头会话未选 HEAD 不再出现「只有一条链」误报文案（1117 意图保留）");
+  ok(!outcomeText().includes(EN_SYNTHESIZED), "A 无文件级效果不虚报「已合成」读数（1146 返修）");
+  ok(!bodyText().includes(EN_REOPEN_HINT), "A 无文件级效果不显示「合成已生效」横幅（1146 返修：落败分支根本不存在）");
+  ok(outcomeText().includes(EN_NO_COPY_BRANCH), "A 显示 v3-only 诚实回执（含版本表「切换」出路指引）");
   await act(async () => root?.unmount());
 }
 

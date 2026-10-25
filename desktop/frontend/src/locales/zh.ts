@@ -4603,6 +4603,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesSynthesizeWarn": "其余分支的独有事件会并入这条链（重复事件零双份），落败分支进入回收站（可恢复）。",
   "settings.recoveryCopiesSynthesizing": "正在合成",
   "settings.recoveryCopiesSynthesizeNoBranch": "该会话只有一条链，没有可合成的分支。",
+  "settings.recoveryCopiesSynthesizeNoCopyBranch": "该会话没有可合并的副本分支——其余版本都住在同一份事件日志里，文件级合成无事可做。要把某条链设为主线，请用版本表中的「切换到此版本」按钮。",
   "settings.recoveryCopiesOutcomeSynthesized": "已合成",
   "settings.recoveryCopiesSynthesizePrefixed": "拼接落败链前缀",
   "settings.recoveryCopiesSynthesizeReopenHint": "合成已生效。请到项目中重新打开该会话（或刷新标签页）才能看到合成后的内容——落败分支还在回收站里。",

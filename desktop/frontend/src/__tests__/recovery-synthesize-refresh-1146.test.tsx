@@ -406,5 +406,76 @@ console.log("\nrecovery panel auto-refresh after synthesis/version ops (1146)");
   await act(async () => root?.unmount());
 }
 
+// ⑥ 用户复测场景（返修主断言，tl 1146 [20261025-1210] 勘误块）：纯 v3 头会话
+//    无副本文件，两条候选链都是主转录事件日志里的 head 链（GC开发专员形态：
+//    main + 命名 head，版本表同源两版本）。对它按合成，后端文件级 no-op
+//    （promoted:false + trashed:[]，items 携带 v3 head 读数——1117 的 v3-only
+//    提前返回形态）。面板必须给诚实回执，不再虚报「已合成 / 合成已生效」：
+//    旧形态里用户正是被这个虚构的成功横幅误导为「合成已生效、列表该刷新」，
+//    而列表不动是因为数据本来就没变（首轮 refetch 修法重拉回来也仍是旧态）。
+const V3_ONLY_REPORT: HeadSynthesisReport = {
+  mainPath: MAIN_PATH,
+  promoted: false,
+  trashed: [],
+  items: [{ path: MAIN_PATH, unique: 0, shared: 8, uniqueToHead: 0, archived: false }],
+  afterMessages: 12,
+  afterTurns: 6,
+  skipped: [],
+};
+{
+  const spies = freshSpies();
+  // override 直接替换 base 的合成桩——base 桩里的 spy 计数不会跑，这里自行计数。
+  stubBridge({ SynthesizeSessionHeads: async () => { spies.synthCalls += 1; return V3_ONLY_REPORT; } }, spies);
+  const root = await openAndExpand();
+  ok(document.querySelectorAll(".rc-chain").length === 2, "⑥ the v3-only conversation shows both head chains before the attempt");
+  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
+    b.textContent?.includes("Synthesize longest chain"),
+  );
+  await act(async () => { synthBtn?.click(); });
+  await flush();
+  const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
+    .find((b) => b.textContent?.trim() === "Start synthesis");
+  await act(async () => { confirmBtn?.click(); });
+  await flush();
+
+  ok(spies.synthCalls === 1, "⑥ the synthesis call reached the backend once");
+  ok(!bodyText().includes("Synthesized"), "⑥ the file-level no-op does NOT claim a Synthesized outcome (虚报面)");
+  ok(!bodyText().includes("The synthesis has taken effect."), "⑥ the file-level no-op does NOT show the taken-effect banner（虚构成功横幅是用户复测误导源）");
+  ok(bodyText().includes("no mergeable copy branches"), "⑥ the honest v3-only receipt is shown instead（含版本表切换出口指引）");
+  ok(document.querySelectorAll(".rc-chain").length === 2, "⑥ the list renders the unchanged truth as-is (两链仍如实显示——数据没变)");
+  await act(async () => root?.unmount());
+}
+
+// ⑦ 有副本参与却无文件级效果（引擎跑过但全部跳过/归档失败）：按失败回执处
+//    理，透传后端 skipped 明细——同样不得虚报成功横幅。
+const STALLED_REPORT: HeadSynthesisReport = {
+  mainPath: MAIN_PATH,
+  promoted: false,
+  trashed: [],
+  items: [{ path: "/sessions/gc-recovery-copy.jsonl", unique: 4, shared: 8, uniqueToHead: 0, archived: false }],
+  afterMessages: 12,
+  afterTurns: 6,
+  skipped: ["/sessions/gc-recovery-copy.jsonl"],
+};
+{
+  const spies = freshSpies();
+  stubBridge({ SynthesizeSessionHeads: async () => { spies.synthCalls += 1; return STALLED_REPORT; } }, spies);
+  const root = await openAndExpand();
+  const synthBtn = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((b) =>
+    b.textContent?.includes("Synthesize longest chain"),
+  );
+  await act(async () => { synthBtn?.click(); });
+  await flush();
+  const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
+    .find((b) => b.textContent?.trim() === "Start synthesis");
+  await act(async () => { confirmBtn?.click(); });
+  await flush();
+
+  ok(spies.synthCalls === 1, "⑦ the synthesis call reached the backend once");
+  ok(!bodyText().includes("The synthesis has taken effect."), "⑦ the stalled run does NOT show the taken-effect banner");
+  ok(bodyText().includes("/sessions/gc-recovery-copy.jsonl"), "⑦ the skipped detail is surfaced verbatim for diagnosis");
+  await act(async () => root?.unmount());
+}
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
