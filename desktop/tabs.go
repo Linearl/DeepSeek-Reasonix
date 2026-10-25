@@ -5331,7 +5331,11 @@ func (a *App) resolveSessionBindingWalk(sessionPath string) (sessionBinding, boo
 	scanStart := time.Now()
 	var scanMs, metaMs time.Duration
 	var probed []bindingFileStamp
-	record := func(path string) { probed = bindingWalkProbe(probed, path) }
+	// Task 1161: the walk's own probes (candidate transcripts, the matched
+	// transcript) stamp existence-only — a live session appends to its
+	// transcript between resolves and that cannot move the binding. Sidecar
+	// probes (bindingRecordMeta) keep the full mtime/size fingerprint.
+	record := func(path string) { probed = bindingWalkProbeTranscript(probed, path) }
 	defer func() {
 		total := time.Since(resolveStart)
 		if total.Milliseconds() < slowSessionReconcileLogMs {

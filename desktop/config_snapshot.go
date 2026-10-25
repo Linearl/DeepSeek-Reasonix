@@ -195,6 +195,28 @@ func configFileStampOf(path string) configFileStamp {
 	return configFileStamp{exists: true, size: info.Size(), mtime: info.ModTime()}
 }
 
+// sessionTranscriptStampOf fingerprints a session transcript file for the
+// binding caches — existence only, deliberately not size/mtime (task 1161).
+// A live session appends to its transcript constantly (every turn, every
+// streamed event), so an mtime/size fingerprint here invalidated the
+// session-binding memo and the task-691 resolve cache on EVERY read of an
+// active tab — field evidence (desktop.log 2026-10-25 23:37-23:39):
+// memo_hit=false with reconcile_walk_ms 8571-9767 on every switch-tab effort
+// read, each blowing the 2s cap. The binding outcome never reads transcript
+// content: sessionBindingInDir consults only the branch-meta sidecar, the
+// project registries, and path existence, so an appended-to transcript
+// cannot move a binding. The changes that CAN move one still register:
+// a move/delete/rename flips the exists bit (and changes the memo key's
+// sessionPath field outright), and the sidecar keeps its full mtime/size
+// fingerprint (bindingRecordMeta), so topic renames and scope changes
+// re-heal exactly as before.
+func sessionTranscriptStampOf(path string) configFileStamp {
+	if _, err := os.Stat(path); err != nil {
+		return configFileStamp{}
+	}
+	return configFileStamp{exists: true}
+}
+
 func configStampsUnchanged(oldSources []string, oldStamps []configFileStamp, sources []string, stamps []configFileStamp) bool {
 	if len(oldSources) != len(sources) || len(oldStamps) != len(stamps) {
 		return false
