@@ -63,6 +63,12 @@ type promptHistoryCursor struct {
 	Nonce   string `json:"n"`
 	Session int    `json:"s"`
 	Offset  int    `json:"o"`
+	// Anchor of the last entry the previous page returned (tl 1150). Appends
+	// land above the cursor (entries are newest-first), so a rescan shifts
+	// offsets; the anchor is stable across rescans and re-derives the offset.
+	// Zero values mean "no anchor" (legacy cursor) — raw offset semantics.
+	AnchorAt   int64 `json:"aa,omitempty"`
+	AnchorTurn int   `json:"au,omitempty"`
 }
 
 type promptHistoryTape struct {
@@ -71,7 +77,48 @@ type promptHistoryTape struct {
 	currentPath string
 	displays    sessionDisplayMap
 	sessions    []promptHistorySessionFile
-	loaded      map[string][]PromptHistoryEntry
+	loaded      map[string]*promptHistoryLoadedFile
+}
+
+// promptHistoryFileStamp snapshots the growth-signal file of a session at scan
+// time (promptHistoryStamp). Comparing stamps lets the tape notice appends.
+type promptHistoryFileStamp struct {
+	path    string
+	size    int64
+	modTime time.Time
+	missing bool
+}
+
+// promptHistoryLoadedFile pairs the scanned entries with the file stamp they
+// were read from, so a cached session can be revalidated cheaply.
+type promptHistoryLoadedFile struct {
+	entries []PromptHistoryEntry
+	stamp   promptHistoryFileStamp
+}
+
+// promptHistoryStamp stats the file whose growth signals new user turns for a
+// session: the event log when it exists and is non-empty (the append-only
+// transcript the kernel writes between checkpoints), else the .jsonl checkpoint
+// itself. It mirrors collectEventLogUserPrompts' data-source choice so the
+// cache revalidation and the scan always look at the same bytes — the same
+// recency rule as agent.SessionContentModTime, kept here with the size so a
+// same-timestamp append is still detected (tl 1150).
+func promptHistoryStamp(path string) promptHistoryFileStamp {
+	target := path
+	if logPath := store.SessionEventLog(path); logPath != "" {
+		if info, err := os.Stat(logPath); err == nil && !info.IsDir() && info.Size() > 0 {
+			target = logPath
+		}
+	}
+	stamp := promptHistoryFileStamp{path: target}
+	info, err := os.Stat(target)
+	if err != nil || info.IsDir() {
+		stamp.missing = true
+		return stamp
+	}
+	stamp.size = info.Size()
+	stamp.modTime = info.ModTime()
+	return stamp
 }
 
 // ScanPromptHistory returns the next prompt-history tape segment. The request is
@@ -152,7 +199,7 @@ func newPromptHistoryTape(dir, currentPath string) (*promptHistoryTape, error) {
 		dir:         dir,
 		currentPath: currentPath,
 		displays:    loadSessionDisplays(dir),
-		loaded:      map[string][]PromptHistoryEntry{},
+		loaded:      map[string]*promptHistoryLoadedFile{},
 	}
 	sessions, err := promptHistorySessionFiles(dir)
 	if err != nil {
@@ -192,6 +239,15 @@ func (t *promptHistoryTape) readOlder(cursor string, limit int) PromptHistoryRes
 	if c.Offset < 0 {
 		c.Offset = 0
 	}
+	// tl 1150: a rescan (the cache above revalidates against the file) can
+	// shift offsets when newer turns were appended into the newest session. If
+	// the cursor anchors there, re-derive the offset from the anchor entry so
+	// pagination neither duplicates nor skips what earlier pages returned.
+	if c.Session == 0 && (c.AnchorAt != 0 || c.AnchorTurn != 0) {
+		if entries, err := t.entriesForSession(0); err == nil {
+			c.Offset = promptHistoryOffsetAfterAnchor(entries, c.AnchorAt, c.AnchorTurn, c.Offset)
+		}
+	}
 
 	out := make([]PromptHistoryEntry, 0, limit)
 	sessionIndex := c.Session
@@ -214,7 +270,7 @@ func (t *promptHistoryTape) readOlder(cursor string, limit int) PromptHistoryRes
 	}
 
 	if sessionIndex < len(t.sessions) {
-		if entries, ok := t.loaded[t.sessions[sessionIndex].path]; ok && offset >= len(entries) {
+		if cached, ok := t.loaded[t.sessions[sessionIndex].path]; ok && offset >= len(cached.entries) {
 			sessionIndex++
 			offset = 0
 		}
@@ -222,9 +278,42 @@ func (t *promptHistoryTape) readOlder(cursor string, limit int) PromptHistoryRes
 	hasOlder := sessionIndex < len(t.sessions)
 	olderCursor := ""
 	if hasOlder {
-		olderCursor = encodePromptHistoryCursor(promptHistoryCursor{Nonce: t.nonce, Session: sessionIndex, Offset: offset})
+		var anchorAt int64
+		var anchorTurn int
+		if len(out) > 0 {
+			anchorAt = out[len(out)-1].At
+			anchorTurn = out[len(out)-1].Turn
+		}
+		olderCursor = encodePromptHistoryCursor(promptHistoryCursor{
+			Nonce: t.nonce, Session: sessionIndex, Offset: offset,
+			AnchorAt: anchorAt, AnchorTurn: anchorTurn,
+		})
 	}
 	return PromptHistoryResult{Entries: out, Nonce: t.nonce, OlderCursor: olderCursor, HasOlder: hasOlder}
+}
+
+// promptHistoryOffsetAfterAnchor re-derives a page offset from the last entry
+// the previous page returned. Entries are sorted newest-first, so the first
+// entry strictly older than the anchor is where the next page continues; the
+// anchor itself (same At and Turn) was already returned. A missing anchor
+// (entry no longer present, e.g. after a compaction) falls back to the raw
+// offset.
+func promptHistoryOffsetAfterAnchor(entries []PromptHistoryEntry, anchorAt int64, anchorTurn, fallback int) int {
+	for i, entry := range entries {
+		if entry.At > anchorAt {
+			continue
+		}
+		if entry.At == anchorAt {
+			if entry.Turn > anchorTurn {
+				continue
+			}
+			if entry.Turn == anchorTurn {
+				return i + 1
+			}
+		}
+		return i
+	}
+	return fallback
 }
 
 func (t *promptHistoryTape) readAll() []PromptHistoryEntry {
@@ -245,12 +334,20 @@ func (t *promptHistoryTape) entriesForSession(index int) ([]PromptHistoryEntry, 
 		return nil, nil
 	}
 	path := t.sessions[index].path
-	if entries, ok := t.loaded[path]; ok {
-		return entries, nil
+	if cached, ok := t.loaded[path]; ok {
+		if cached.stamp == promptHistoryStamp(path) {
+			return cached.entries, nil
+		}
+		// The backing file grew (new user turns appended after the tape cached
+		// this session) or reappeared: rescan so the panel stays in step with
+		// the transcript. Both surfaces read the same session files — the tape
+		// must not serve a snapshot the transcript has already moved past
+		// (tl 1150).
 	}
 	info, err := os.Stat(path)
+	stamp := promptHistoryStamp(path)
+	t.loaded[path] = &promptHistoryLoadedFile{stamp: stamp}
 	if err != nil {
-		t.loaded[path] = nil
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
@@ -258,10 +355,9 @@ func (t *promptHistoryTape) entriesForSession(index int) ([]PromptHistoryEntry, 
 	}
 	entries, err := scanPromptHistoryFile(path, info, sessionDisplayResolverFromMap(t.displays, path))
 	if err != nil {
-		t.loaded[path] = nil
 		return nil, err
 	}
-	t.loaded[path] = entries
+	t.loaded[path] = &promptHistoryLoadedFile{entries: entries, stamp: stamp}
 	return entries, nil
 }
 
