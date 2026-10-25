@@ -158,7 +158,15 @@ detect_install_root() {
   # 2) walk up from running desktop process
   local exe=""
   if command -v powershell >/dev/null 2>&1; then
-    exe=$(powershell -NoProfile -Command "(Get-Process reasonix-desktop -ErrorAction SilentlyContinue | Select-Object -First 1).Path" 2>/dev/null | tr -d '\r' | head -1)
+    # Some instances expose an empty Path (elevated / other session). Filter them
+    # out, otherwise the first hit blanks out detection and staging is silently skipped.
+    exe=$(powershell -NoProfile -Command "(Get-Process reasonix-desktop -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1).Path" 2>/dev/null | tr -d '\r' | head -1)
+  fi
+  if [ -n "$exe" ]; then
+    # powershell returns a Windows path; MSYS dirname/[ -f ] reject backslashes.
+    if command -v cygpath >/dev/null 2>&1; then
+      exe=$(cygpath -u "$exe" 2>/dev/null || printf '%s' "$exe")
+    fi
   fi
   if [ -n "$exe" ] && [ -f "$exe" ]; then
     local d
@@ -172,13 +180,21 @@ detect_install_root() {
     done
   fi
   # 3) common locations
-  local cand
-  for cand in \
+  # LOCALAPPDATA/PROGRAMFILES arrive as Windows paths (backslashes) which MSYS
+  # file tests reject, so normalise through cygpath first. The per-user NSIS
+  # install also nests one extra "Programs" level under AppData/Local.
+  local cand raw
+  for raw in \
+    "${LOCALAPPDATA:-$HOME/AppData/Local}/Programs/Reasonix" \
     "${LOCALAPPDATA:-$HOME/AppData/Local}/Reasonix" \
     "${PROGRAMFILES:-C:/Program Files}/Reasonix" \
     "${PROGRAMFILES:-C:/Program Files}/Reasonix Studio" \
     "${PROGRAMFILES_X86:-C:/Program Files (x86)}/Reasonix"
   do
+    cand="$raw"
+    if command -v cygpath >/dev/null 2>&1; then
+      cand=$(cygpath -u "$raw" 2>/dev/null || printf '%s' "$raw")
+    fi
     if [ -f "$cand/current.json" ]; then
       echo "$cand"
       return 0
