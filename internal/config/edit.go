@@ -1911,6 +1911,58 @@ func (c *Config) SetExperimentalHighSpeedModel(enabled bool) error {
 	return nil
 }
 
+// SetProviderModelEffort writes (or clears) a per-model reasoning-effort
+// default on the named provider's model_overrides entry (task 1053 — the
+// model-level sibling of the entry-level SetProviderEffort). An empty level
+// clears it back to the connection-level vocabulary; a declared level must be
+// one the model actually supports (its own supported_efforts when declared,
+// otherwise the connection-level list) so a doomed value never reaches disk.
+// When neither level declares a vocabulary the edit is refused: there is no
+// level list to validate against, and guessing one would silently pin a value
+// the endpoint may reject.
+func (c *Config) SetProviderModelEffort(provider, model, level string) error {
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	if provider == "" || model == "" {
+		return fmt.Errorf("set model effort: provider and model are required")
+	}
+	for i := range c.Providers {
+		if c.Providers[i].Name != provider {
+			continue
+		}
+		p := &c.Providers[i]
+		if !p.HasModel(model) {
+			return fmt.Errorf("set model effort: model %q is not configured on provider %q", model, provider)
+		}
+		ov := p.ModelOverrides[model]
+		ov.DefaultEffort = normalizeEffortLevel(level)
+		if ov.DefaultEffort == "auto" {
+			ov.DefaultEffort = ""
+		}
+		if ov.DefaultEffort != "" {
+			supported := normalizedEffortLevels(ov.SupportedEfforts)
+			if len(supported) == 0 {
+				supported = normalizedSupportedEfforts(p)
+			}
+			if len(supported) == 0 {
+				return fmt.Errorf("set model effort: no effort vocabulary is declared for model %q; declare supported efforts first", model)
+			}
+			if !containsString(supported, ov.DefaultEffort) {
+				return fmt.Errorf("set model effort: level %q is not supported by model %q (supported: %s)", ov.DefaultEffort, model, strings.Join(supported, "|"))
+			}
+		}
+		if modelOverrideEmpty(ov) {
+			delete(p.ModelOverrides, model)
+		} else if p.ModelOverrides == nil {
+			p.ModelOverrides = map[string]ProviderModelOverride{model: ov}
+		} else {
+			p.ModelOverrides[model] = ov
+		}
+		return nil
+	}
+	return fmt.Errorf("set model effort: no provider %q", provider)
+}
+
 // SetProviderModelHighSpeed marks (enabled) or unmarks (!enabled) a single
 // model of the named provider as high-throughput (task 468 — the write side
 // of the user-maintained HighSpeedModels list; the panel's model dialog saves

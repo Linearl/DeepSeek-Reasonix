@@ -143,6 +143,41 @@ func setDefaultModelEffortConfig(c *config.Config, level string) error {
 	return c.UpsertProvider(updated)
 }
 
+// setModelEffortConfig writes (or clears) a per-model reasoning-effort level
+// from the model settings effort rows (task 1053 — any model, not just the
+// default). The ref is "provider/model=level"; "provider/model" alone (or an
+// "auto" level) clears it back to the connection/protocol default. The level
+// is validated by config.SetProviderModelEffort against the model's own
+// vocabulary (its model_overrides supported_efforts, falling back to the
+// connection list) so a pick that would be rejected at runtime never reaches
+// disk.
+func setModelEffortConfig(c *config.Config, ref string) error {
+	raw := strings.TrimSpace(ref)
+	if raw == "" {
+		return fmt.Errorf("model effort ref is required")
+	}
+	modelRef, level, _ := strings.Cut(raw, "=")
+	modelRef = strings.TrimSpace(modelRef)
+	level = strings.TrimSpace(level)
+	if modelRef == "" {
+		return fmt.Errorf("model effort ref is required")
+	}
+	// Canonicalise the ref the same way the panel's pickers do: a bare model
+	// name resolves to the (first) provider that lists it, a bare provider
+	// name resolves to its default model. No fallback onto an unrelated
+	// configured model — an unresolvable ref must error instead of silently
+	// writing the level onto whatever the default happens to be.
+	entry, found := c.ResolveModel(modelRef)
+	if !found {
+		return fmt.Errorf("unknown model %q", modelRef)
+	}
+	provider, model := entry.Name, entry.Model
+	if level == "" || strings.EqualFold(level, "auto") {
+		level = ""
+	}
+	return c.SetProviderModelEffort(provider, model, level)
+}
+
 func setSubagentProfileModelConfig(c *config.Config, name, ref string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {

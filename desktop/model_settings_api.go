@@ -314,6 +314,12 @@ func applyModelPreference(c *config.Config, change ModelSettingsChange) error {
 		return setSubagentEffortConfig(c, change.Ref)
 	case "default_effort":
 		return setDefaultModelEffortConfig(c, change.Ref)
+	case "model_effort":
+		// Task 1053: the per-model effort level rides the ref as
+		// "provider/model=level" — one Ref keeps the closed
+		// ModelSettingsChange set intact. "auto" (or a bare ref) clears the
+		// model back to the connection/protocol default.
+		return setModelEffortConfig(c, change.Ref)
 	case "profile_model":
 		return setSubagentProfileModelConfig(c, change.Name, change.Ref)
 	case "profile_effort":

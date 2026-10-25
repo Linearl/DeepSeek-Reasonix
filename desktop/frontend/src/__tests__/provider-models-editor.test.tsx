@@ -29,6 +29,10 @@ const override = { model: "existing", contextWindow: 32768, maxOutputTokens: 409
 const result = applyModelDraft([override], { model: "renamed", contextWindow: "", maxOutputTokens: -1, vision: null, audio: null }, "existing")[0];
 assert.equal(result.reasoningProtocol, "kimi");
 assert.deepEqual(result.supportedEfforts, ["high"]);
+// Task 1053 rebase: an empty context draft still means "clear to inherited"
+// (contextWindow 0) — the 1104 dialog owns that contract with an explicit
+// reset button next to the field; the per-model effort vocabulary rides the
+// same apply chain via the optional `efforts` field without touching it.
 assert.equal(result.contextWindow, 0);
 assert.equal(result.maxOutputTokens, -1);
 assert.equal(result.vision, null);
@@ -133,6 +137,42 @@ await click("Add selected models");
 assert.deepEqual(provider.models, ["existing", "manual", "remote"]);
 // changes 计数：添加手动模型 + 应用 existing 弹窗 + 发现添加 = 3 次 onChange。
 assert.equal(changes, 3);
+
+// tl 1053 验收：弹窗内 effort 编辑区——segmented 预设（EFFORT_PRESETS 渲染
+// 契约：none/low/medium/high 四档）+ 自定义等级输入（大小写/空白归一，永不存
+// auto）+ 已存词表预选 + apply 落 override.supportedEfforts（default 仍在
+// 词表内则保留）。
+await act(async () => { optionsButton.click(); });
+for (let i = 0; i < 150 && !dialog(); i++) await new Promise((r) => setTimeout(r, 20));
+assert.ok(dialog(), "reopen the unified dialog for the effort editor");
+const segButtons = Array.from(dialog()!.querySelectorAll<HTMLButtonElement>(".provider-add-segmented .provider-add-segmented__item"));
+assert.deepEqual(segButtons.map((b) => b.textContent?.trim()), ["none", "low", "medium", "high"], "EFFORT_PRESETS contract: four segmented levels in the dialog");
+const highButton = segButtons.find((b) => b.textContent?.trim() === "high")!;
+assert.equal(highButton.getAttribute("aria-selected"), "true", "stored vocabulary preselects its levels");
+assert.ok(dialog()!.textContent?.includes("Custom levels — this model declares its own vocabulary."), "declared-vocabulary hint when a list is stored");
+const lowButton = segButtons.find((b) => b.textContent?.trim() === "low")!;
+await act(async () => lowButton.click());
+assert.equal(lowButton.getAttribute("aria-selected"), "true", "toggling a preset selects it");
+const customInput = dialog()!.querySelector<HTMLInputElement>('input[placeholder="Custom level (press Enter)"]')!;
+assert.ok(customInput, "custom effort level input present");
+await fill(customInput, "  XHigh  ");
+await act(async () => customInput.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+assert.ok(Array.from(dialog()!.querySelectorAll("label.set-check")).find((label) => label.textContent?.trim() === "xhigh"), "custom level normalized (lowercase/trim) and listed");
+assert.equal(Array.from(dialog()!.querySelectorAll("label.set-check")).some((label) => label.textContent?.trim() === "auto"), false, "auto is never stored as a level");
+await submit();
+const existingOverride = provider.modelOverrides?.find((m) => m.model === "existing");
+assert.deepEqual([...(existingOverride?.supportedEfforts ?? [])].sort(), ["high", "low", "xhigh"], "applied vocabulary lands on the override");
+assert.equal(existingOverride?.defaultEffort, "high", "in-vocabulary default survives the apply");
+// 空词表模型（manual 无声明、连接也无词表）→ 无预选 + 「未声明」提示。
+const manualRowButton = Array.from(document.querySelectorAll<HTMLButtonElement>('button[aria-label="Model settings: manual"]'))[0];
+assert.ok(manualRowButton, "manual model row has its own settings entry");
+await act(async () => { manualRowButton.click(); });
+for (let i = 0; i < 150 && !dialog(); i++) await new Promise((r) => setTimeout(r, 20));
+assert.ok(dialog(), "manual model dialog opens");
+assert.equal(Array.from(dialog()!.querySelectorAll<HTMLButtonElement>(".provider-add-segmented .provider-add-segmented__item")).some((b) => b.getAttribute("aria-selected") === "true"), false, "no levels preselected without a stored vocabulary");
+assert.ok(dialog()!.textContent?.includes("No vocabulary declared here or at the connection level"), "inheritance hint when nothing is declared");
+await act(async () => { dialog()!.dispatchEvent(new dom.window.Event("cancel", { cancelable: true })); });
+assert.equal(dialog(), null);
 
 await click("Refresh models");
 await act(async () => { provider = { ...provider, baseUrl: "https://other.test/v1" }; render(); });

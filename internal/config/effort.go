@@ -366,6 +366,20 @@ func normalizeProviderEffortFields(e *ProviderEntry) {
 	e.DefaultEffort = normalizeEffortLevel(e.DefaultEffort)
 	e.SupportedEfforts = normalizedSupportedEfforts(e)
 	e.ModelOverrides = normalizedModelOverrides(e.ModelOverrides)
+	// Task 1053: a model override's default_effort with no vocabulary of its
+	// own inherits the connection list (model > connection > auto). Once the
+	// connection list is known, validate the inherited level against it —
+	// normalizedModelOverrides could not, because the entry is not in scope
+	// there.
+	for model, ov := range e.ModelOverrides {
+		if ov.DefaultEffort == "" || len(ov.SupportedEfforts) > 0 || len(e.SupportedEfforts) == 0 {
+			continue
+		}
+		if !containsString(e.SupportedEfforts, ov.DefaultEffort) {
+			ov.DefaultEffort = ""
+			e.ModelOverrides[model] = ov
+		}
+	}
 }
 
 func normalizeStoredEffort(raw string) string {
@@ -725,10 +739,15 @@ func normalizedModelOverrides(overrides map[string]ProviderModelOverride) map[st
 		if ov.ContextWindow < 0 {
 			ov.ContextWindow = 0
 		}
-		if ov.DefaultEffort != "" && !containsString(ov.SupportedEfforts, ov.DefaultEffort) {
+		// A default_effort is validated against the model's OWN vocabulary
+		// when one is declared. An empty list means the model inherits the
+		// connection vocabulary (task 1053), which normalizeProviderEffortFields
+		// cannot see from here — validate it in normalizeProviderEffortFields
+		// where the connection entry is at hand instead of clearing it here.
+		if ov.DefaultEffort != "" && len(ov.SupportedEfforts) > 0 && !containsString(ov.SupportedEfforts, ov.DefaultEffort) {
 			ov.DefaultEffort = ""
 		}
-		if ov.ReasoningProtocol == "" && len(ov.SupportedEfforts) == 0 && ov.DefaultEffort == "" && ov.Vision == nil && ov.ContextWindow == 0 {
+		if overrideIsEmpty(ov) {
 			continue
 		}
 		out[model] = ov
@@ -737,6 +756,16 @@ func normalizedModelOverrides(overrides map[string]ProviderModelOverride) map[st
 		return nil
 	}
 	return out
+}
+
+// overrideIsEmpty reports whether a model override carries no user intent at
+// all. It mirrors modelOverrideEmpty in render.go (same field set, same rule):
+// a default_effort declared without its own supported_efforts list still
+// carries intent — the model inherits the connection vocabulary but pins one
+// level on it (task 1053) — so it must not be silently dropped on load.
+func overrideIsEmpty(ov ProviderModelOverride) bool {
+	return ov.ReasoningProtocol == "" && len(ov.SupportedEfforts) == 0 && ov.DefaultEffort == "" &&
+		ov.Vision == nil && ov.Audio == nil && ov.ContextWindow == 0 && ov.MaxOutputTokens == 0
 }
 
 // ReasoningCapabilityForEntry returns the provider-level reasoning capability

@@ -348,8 +348,14 @@ type SettingsView struct {
 	// model (task 1042) — empty means "auto"/model default. Levels offered by
 	// the panel come from the connection's declared supported_efforts, the
 	// same ProviderView round-trip the subagent effort row already uses.
-	DefaultEffort          string `json:"defaultEffort"`
-	PlannerModel           string `json:"plannerModel"`
+	DefaultEffort string `json:"defaultEffort"`
+	// ModelEfforts maps every configured "provider/model" ref (the same refs
+	// the panel's model pickers offer) to its per-model default effort level
+	// (task 1053 — the model-level sibling of DefaultEffort). "" / a missing
+	// entry means "auto"; the vocabulary each row offers still rides the
+	// ProviderView.modelOverrides round-trip.
+	ModelEfforts           map[string]string `json:"modelEfforts"`
+	PlannerModel           string            `json:"plannerModel"`
 	GuardianModel          string `json:"guardianModel"`
 	Autopilot              bool   `json:"autopilot"`
 	AutopilotMaxRuntime    string `json:"autopilotMaxRuntime"`
@@ -1895,6 +1901,7 @@ func (a *App) Settings() SettingsView {
 		ModelSettingsFingerprint:             modelSettingsEditFingerprint(cfg),
 		DefaultModel:                         cfg.DefaultModel,
 		DefaultEffort:                        desktopDefaultModelEffort(cfg),
+		ModelEfforts:                         desktopModelEfforts(cfg),
 		PlannerModel:                         cfg.Agent.PlannerModel,
 		GuardianModel:                        cfg.Agent.GuardianModel,
 		Autopilot:                            cfg.Desktop.Autopilot,
@@ -3345,6 +3352,37 @@ func desktopDefaultModelEffort(c *config.Config) string {
 		return ""
 	}
 	return strings.TrimSpace(entry.DefaultEffort)
+}
+
+// desktopModelEfforts reads every configured model's per-model default effort
+// level (task 1053). Keys are canonical "provider/model" refs so the panel's
+// effort rows can look a level up without re-deriving the ref; a model whose
+// model_overrides entry carries no default_effort contributes nothing (auto).
+// Config.ResolveModel applies the per-model override to the returned entry
+// (applyModelOverride), so entry.DefaultEffort is the effective level with the
+// model-level declaration winning over the connection-level one — the same
+// precedence the runtime resolver uses.
+func desktopModelEfforts(c *config.Config) map[string]string {
+	if c == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, p := range c.Providers {
+		for _, model := range p.ModelList() {
+			ref := p.Name + "/" + model
+			entry, ok := c.ResolveModel(ref)
+			if !ok {
+				continue
+			}
+			if level := strings.TrimSpace(entry.DefaultEffort); level != "" {
+				out[ref] = level
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // SetSubagentEffort sets (or clears) the default effort used by subagent entry points.

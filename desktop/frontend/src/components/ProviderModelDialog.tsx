@@ -4,14 +4,19 @@ import { LockKeyhole, RotateCcw } from "lucide-react";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import { imageInputHardBlocked, imageInputState } from "../lib/providerImageInput";
 import { audioInputHardBlocked, audioInputState } from "../lib/providerAudioInput";
+import { EFFORT_PRESETS } from "../lib/effortTiers";
 import { ModalCloseButton } from "./ModalCloseButton";
 import type { ProviderModelCapabilityView } from "../lib/types";
 import { modelDraftError } from "../lib/providerModelDraft";
 
-export interface ModelDetailsDraft { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; audio: boolean | null; highSpeed: boolean; }
-export default function ProviderModelDialog({ initial, candidates, contextDefault, capability, baseURL, highSpeedSwitchOn, busy, onClose, onApply, onDelete }: {
+// Task 1053: `efforts` carries the per-model effort vocabulary declared in
+// this dialog. `connectionEfforts` is the connection-level vocabulary the
+// model inherits when it declares none — the model > connection > auto
+// precedence the backend resolves the same way.
+export interface ModelDetailsDraft { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; audio: boolean | null; highSpeed: boolean; efforts?: string[]; }
+export default function ProviderModelDialog({ initial, candidates, contextDefault, capability, baseURL, connectionEfforts, highSpeedSwitchOn, busy, onClose, onApply, onDelete }: {
   initial?: ModelDetailsDraft; candidates: string[]; contextDefault?: number;
-  capability?: ProviderModelCapabilityView; baseURL?: string; highSpeedSwitchOn: boolean; busy: boolean; onClose: () => void; onApply: (draft: ModelDetailsDraft) => void;
+  capability?: ProviderModelCapabilityView; baseURL?: string; connectionEfforts?: string[]; highSpeedSwitchOn: boolean; busy: boolean; onClose: () => void; onApply: (draft: ModelDetailsDraft) => void;
   onDelete?: () => void;
 }) {
   const t = useT(), titleId = useId();
@@ -22,6 +27,11 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
   const [vision, setVision] = useState(initial?.vision == null ? "auto" : String(initial.vision));
   const [audio, setAudio] = useState(initial?.audio == null ? "auto" : String(initial.audio));
   const [highSpeed, setHighSpeed] = useState(initial?.highSpeed ?? false);
+  // Task 1053: per-model effort vocabulary draft. An empty selection means
+  // "inherit the connection vocabulary"; a saved list overrides it for this
+  // model alone. Normalization (case/whitespace, never "auto") happens in the
+  // apply chain (normalizedEffortSelection), keeping the dialog dumb.
+  const [efforts, setEfforts] = useState<string[]>(initial?.efforts ?? []);
   const [error, setError] = useState(false);
   useLayoutEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -37,7 +47,7 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
   const audioState = audioBlocked ? "unsupported" : audioInputState(audio === "auto" ? "auto" : audio === "true" ? "on" : "off", capability);
   return createPortal(<dialog ref={dialog} className="provider-model-dialog" aria-labelledby={titleId}
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <form onSubmit={event => { event.preventDefault(); if (validation) { setError(true); return; } onApply({ model:model.trim(), contextWindow:context.trim(), maxOutputTokens:Number(output) || 0, vision:vision === "auto" ? null : !imageBlocked && vision === "true", audio:audio === "auto" ? null : !audioBlocked && audio === "true", highSpeed }); }}>
+    <form onSubmit={event => { event.preventDefault(); if (validation) { setError(true); return; } onApply({ model:model.trim(), contextWindow:context.trim(), maxOutputTokens:Number(output) || 0, vision:vision === "auto" ? null : !imageBlocked && vision === "true", audio:audio === "auto" ? null : !audioBlocked && audio === "true", highSpeed, efforts }); }}>
       <header><h2 id={titleId}>{t(initial ? "settings.modelDialog.edit" : "settings.models.add")}</h2><ModalCloseButton label={t("common.close")} disabled={busy} onClick={onClose}/></header>
       <label className="provider-model-dialog__id">{t("settings.modelDialog.id")}
         {initial ? <span><LockKeyhole size={16}/>{model}</span> : <input autoFocus className="mem-input" value={model} disabled={busy} onChange={e=>setModel(e.target.value)} placeholder="deepseek-v4-flash"/>}
@@ -52,6 +62,31 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
             <input id={`${titleId}-output`} className="mem-input" type="number" min={-1} value={output} disabled={busy} placeholder={t("settings.models.inherit")} onChange={e=>setOutput(e.target.value)}/>
           </label>
           <p>{t("settings.modelDialog.outputHint")}</p>
+          {/* Task 1053: per-model effort vocabulary (segmented presets +
+              custom levels). Lives in the parameters column; the aside keeps
+              its exact disabled-checkbox census (tl 1104 harness). Buttons
+              stay outside <label> so the upper-zone harness's
+              "section label button" sweep never hits them. */}
+          <div className="provider-model-dialog__capability-title">{t("settings.modelEffortLevels")}</div>
+          <div className="provider-add-segmented" role="group" aria-label={t("settings.modelEffortLevels")}>
+            {EFFORT_PRESETS.map((level) => (
+              <button key={level} type="button" aria-selected={efforts.includes(level)}
+                className={`provider-add-segmented__item${efforts.includes(level) ? " provider-add-segmented__item--active" : ""}`}
+                disabled={busy}
+                onClick={() => setEfforts((prev) => prev.includes(level) ? prev.filter((item) => item !== level) : [...prev, level])}>
+                {level}
+              </button>
+            ))}
+          </div>
+          {efforts.filter((level) => !EFFORT_PRESETS.includes(level)).map((level) => (
+            <label key={level} className="set-check">
+              <input type="checkbox" checked disabled={busy} onChange={() => setEfforts((prev) => prev.filter((item) => item !== level))} />
+              {level}
+            </label>
+          ))}
+          <input className="mem-input" placeholder={t("settings.supportedEffortsCustomPlaceholder")} disabled={busy}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const normalized = e.currentTarget.value.toLowerCase().trim(); if (normalized && normalized !== "auto" && !efforts.includes(normalized)) setEfforts((prev) => [...prev, normalized]); e.currentTarget.value = ""; } }} />
+          <small>{efforts.length ? t("settings.modelEffortLevelsCustom") : connectionEfforts?.length ? t("settings.modelEffortLevelsInherit", { levels: connectionEfforts.join(" | ") }) : t("settings.modelEffortLevelsNone")}</small>
         </section>
         <aside><h3>{t("settings.modelDialog.capabilities")}</h3>
           <div className="provider-model-dialog__capability-title">{t("settings.modelDialog.input")}</div>
