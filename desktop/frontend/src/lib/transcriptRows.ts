@@ -11,7 +11,7 @@ import { stableStringHash } from "./stableStringHash";
 import { isBatchedReadOnlyTool, isSteerNoticeText, type ExtensionItem, type Item } from "./useController";
 import { appendTurnActionCopyText } from "./turnActionCopy";
 // 任务 1155：回合尾部统计复用输入框状态行的同一计数库（同库同口径，勿另算）。
-import { turnTally, type TurnTally } from "./turnToolTally";
+import { turnTally, turnTailInfo, type TurnTailInfo, type TurnTally } from "./turnToolTally";
 import { isCreationGroupableTool, toolGroupKind, type ToolGroupKind } from "../components/ToolGroup";
 import type { SessionExperience } from "./sessionExperience";
 import type { ProcessFoldPreference } from "./processFoldPreference";
@@ -551,7 +551,7 @@ type TranscriptRowContent =
   | { kind: "answer"; key: string; item: AssistantItem }
   | { kind: "notice"; key: string; item: NoticeItem }
   | { kind: "extension"; key: string; item: ExtensionItem }
-  | { kind: "turn-actions"; key: string; turn: number; text: string; tally: TurnTally };
+  | { kind: "turn-actions"; key: string; turn: number; text: string; tally: TurnTally; tail: TurnTailInfo };
 
 export type TranscriptRow = TranscriptRowContent & { layoutVariant?: TranscriptRowLayoutVariant };
 
@@ -842,6 +842,23 @@ function turnTallyForActionsRow(model: TurnModel): TurnTally {
   return tally;
 }
 
+// 任务 1137：turn-actions 行再携带回合尾部信息带的其余三要素——文件明细
+// （与 tally.files 同一 toolFilePaths 口径，计数是这份明细的 size）、回合
+// token 快照、完成时刻。缓存与 1155 的 tally memo 同一签名同一生命周期
+// （settle 后静态化；活跃回合不构建该行，不触聚合）。
+const turnTailMemo = new Map<string, { sig: string; tail: TurnTailInfo }>();
+
+function turnTailForActionsRow(model: TurnModel): TurnTailInfo {
+  const identity = turnStableIdentity(model);
+  const sig = `${model.turnItems.length}:${model.turnItems[model.turnItems.length - 1]?.id ?? ""}`;
+  const cached = turnTailMemo.get(identity);
+  if (cached && cached.sig === sig) return cached.tail;
+  const tail = turnTailInfo(model.turnItems);
+  if (turnTailMemo.size >= 1024) turnTailMemo.clear();
+  turnTailMemo.set(identity, { sig, tail });
+  return tail;
+}
+
 /** Builds stable complete-turn units for windowing and logical anchoring. */
 export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: BuildRowsOptions): TimelineBlock[] {
   const reversedBlocks: TimelineBlock[] = [];
@@ -889,7 +906,7 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
       (model.actionText.trim() || options.hasCheckpointForTurn?.(turn)) &&
       user
     ) {
-      modelRows.push({ kind: "turn-actions", key: `ta:${user.id}`, turn, text: model.actionText, tally: turnTallyForActionsRow(model), layoutVariant: "static" });
+      modelRows.push({ kind: "turn-actions", key: `ta:${user.id}`, turn, text: model.actionText, tally: turnTallyForActionsRow(model), tail: turnTailForActionsRow(model), layoutVariant: "static" });
     }
     for (let index = modelRows.length - 1; index >= 0; index -= 1) {
       const row = modelRows[index];

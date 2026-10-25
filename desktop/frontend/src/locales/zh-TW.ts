@@ -3369,6 +3369,11 @@ export const zhTW: Record<DictKey, string> = {
   "turnActions.summary": "壓縮",
   "turnActions.rewind": "回溯",
   "turnActions.copyEmpty": "該回合沒有文字可複製",
+  // 任務 1137：回合尾部資訊帶（本輪修改檔案卡片 + token 消耗 + 完成時刻）。
+  "turnActions.turnFiles": "本輪檔案",
+  "turnActions.filesMore": "+{n} 個檔案",
+  "turnActions.filesFewer": "收起",
+  "turnActions.turnMetaTitle": "本回合輸入/輸出 token 與完成時間",
   "transcript.jumpToBottom": "跳到底部",
   "markdown.tableExpandAll": "展開全部 {n} 行",
   "markdown.tableCollapse": "收起表格",

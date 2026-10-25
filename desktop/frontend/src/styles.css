@@ -8106,6 +8106,84 @@ body > .mermaid-diagram--fullscreen {
   -webkit-user-select: text;
 }
 
+/* 任务 1137：回合尾部信息带（token 消耗 + 完成时刻）。与 1155 统计 span
+   同一空白区同一弱化风格；token 用「↑输入 ↓输出」紧凑读数，时刻经 CardTime
+   （1122 三档格式化）。历史回合无快照时只显示时刻。 */
+.turn-actions__meta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.turn-actions__meta-sep {
+  color: var(--fg-faint);
+}
+/* 完成时刻复用 CardTime（time 元素），与同信息带 token 读数同弱化基调。 */
+.turn-actions__time {
+  color: inherit;
+  font-size: inherit;
+}
+
+/* 任务 1137：本轮修改文件卡片——turn-actions 行容器本就 flex-wrap，此块
+   flex-basis 100% 独占第二行。零工具轮整段不渲染（React 侧控制）。 */
+.turn-actions__files {
+  flex: 0 0 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.turn-actions__files-label {
+  flex: 0 0 auto;
+  padding-top: 1px;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.turn-actions__file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.turn-actions__file-chip {
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  color: var(--fg-dim);
+  background: var(--bg-soft);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.turn-actions__files-toggle {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.turn-actions__files-toggle:hover {
+  text-decoration: underline;
+}
+
 /* ── diff ────────────────────────────────────────────────────────────────── */
 .diff {
   margin: 4px 0;
