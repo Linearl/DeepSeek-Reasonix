@@ -598,7 +598,7 @@ export function ContextPanel({
   const compactionOverride = compactionWindowOverride(items);
   const compactionOverrideLabel = compactionOverride?.phase === "running"
     ? (compactionOverride.total ?? 0) > 0
-      ? t("context.windowStatusCompacting", { done: compactionOverride.done ?? 0, total: compactionOverride.total })
+      ? t("context.windowStatusCompacting", { done: compactionOverride.done ?? 0, total: compactionOverride.total ?? 0 })
       : t("compaction.working")
     : t("compaction.failed");
   const capacityTone = compactionOverride ? (compactionOverride.phase === "running" ? "notice" : "warn") : windowStatus.tone;
