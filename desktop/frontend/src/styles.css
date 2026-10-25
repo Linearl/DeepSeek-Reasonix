@@ -45860,6 +45860,65 @@ button.statusbar__mcp:focus-visible {
 }
 
 
+/* New-group composer panel (NewGroupPanel — the session-tree create-group
+   dialog). tl 1149 retired the MoveToGroupPanel; only the classes the
+   composer still uses survive here. */
+.move-group-panel {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-menu);
+  width: min(320px, calc(100% - 48px));
+  max-height: min(60vh, 420px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  color: var(--fg);
+}
+
+.move-group__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.move-group__header svg {
+  color: var(--fg-faint);
+  flex: none;
+}
+
+.move-group__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-md);
+}
+
+.move-group__create {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+}
+
+.move-group__input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: var(--text-md);
+}
+
 /* ── MCP Apps inline surface ─────────────────────────────────────────── */
 .mcp-app-card {
   margin-top: 8px;
