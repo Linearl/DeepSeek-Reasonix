@@ -415,3 +415,107 @@ func TestReconcileMemoWarmCallBudget(t *testing.T) {
 		t.Fatalf("reconciles = %d after heal + 20 warm calls, want 1", got)
 	}
 }
+
+// appendToTranscript grows a session transcript file the way a live session
+// does (streamed events, one append per turn) — size and mtime both move.
+func appendToTranscript(t *testing.T, sessionPath string) {
+	t.Helper()
+	f, err := os.OpenFile(sessionPath, os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		t.Fatalf("open transcript for append: %v", err)
+	}
+	if _, err := f.WriteString(`{"type":"event"}` + "\n"); err != nil {
+		t.Fatalf("append transcript: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close transcript: %v", err)
+	}
+}
+
+// TestBindingResolveCacheIgnoresTranscriptAppends is the task-1161 acceptance
+// gate for the resolve half: a live session appends to its transcript between
+// resolves, and that append must NOT bust the task-691 cache — before 1161
+// the probed mtime/size stamp mismatched on every resolve of an active tab
+// and each one re-ran the full directory walk (the 8-12s reconcile_walk
+// behind the effort-read timeouts). A sidecar rewrite (real binding truth)
+// still re-walks exactly once.
+func TestBindingResolveCacheIgnoresTranscriptAppends(t *testing.T) {
+	app, _, sessionPath, walks := newBindingResolveFixture(t)
+
+	if _, ok := app.resolveSessionBinding(sessionPath); !ok {
+		t.Fatalf("prime resolve missed")
+	}
+	if got := walks.Load(); got != 1 {
+		t.Fatalf("walks after prime = %d, want 1", got)
+	}
+
+	appendToTranscript(t, sessionPath)
+	if _, ok := app.resolveSessionBinding(sessionPath); !ok {
+		t.Fatalf("post-append resolve missed")
+	}
+	if got := walks.Load(); got != 1 {
+		t.Fatalf("walks after transcript append = %d, want 1 (append must not bust the cache)", got)
+	}
+
+	// Sidecar content is still binding truth: a rewrite re-walks once.
+	if err := pinSessionBranchMeta(sessionPath, "project", t.TempDir(), "topic_1161", "Moved topic"); err != nil {
+		t.Fatalf("pinSessionBranchMeta: %v", err)
+	}
+	got, ok := app.resolveSessionBinding(sessionPath)
+	if !ok || got.topicID != "topic_1161" {
+		t.Fatalf("post-sidecar resolve = (%+v, %v), want the new topic", got, ok)
+	}
+	if got := walks.Load(); got != 2 {
+		t.Fatalf("walks after sidecar rewrite = %d, want 2 (full sidecar fingerprint regressed)", got)
+	}
+}
+
+// TestReconcileMemoSurvivesTranscriptAppends extends the task-1161 gate to
+// the memo half: an active tab's transcript appends between reads, and the
+// memo must keep serving the settled binding across them. Removing the
+// transcript AND its sidecar still busts the memo (the exists bits flipped —
+// changes that can move the binding; the sidecar alone would keep the
+// meta-fallback branch resolving by design, same as the task-691 move test).
+func TestReconcileMemoSurvivesTranscriptAppends(t *testing.T) {
+	app, tab, reconciles := newReconcileMemoFixture(t)
+
+	projectRoot := t.TempDir()
+	sessionPath, err := createEmptySessionFile(t.TempDir(), "test-model")
+	if err != nil {
+		t.Fatalf("createEmptySessionFile: %v", err)
+	}
+	if err := pinNewEmptySessionBranchMeta(sessionPath, "project", projectRoot, "topic_1161", "Task 1161 topic"); err != nil {
+		t.Fatalf("pinNewEmptySessionBranchMeta: %v", err)
+	}
+	app.mu.Lock()
+	tab.SessionPath = sessionPath
+	app.mu.Unlock()
+
+	if _, ok := app.reconcileTabWithPinnedSessionMeta(tab); !ok {
+		t.Fatalf("heal missed")
+	}
+	if got := reconciles.Load(); got != 1 {
+		t.Fatalf("reconciles after heal = %d, want 1", got)
+	}
+
+	appendToTranscript(t, sessionPath)
+	if _, ok := app.reconcileTabWithPinnedSessionMeta(tab); !ok {
+		t.Fatalf("post-append reconcile missed")
+	}
+	if got := reconciles.Load(); got != 1 {
+		t.Fatalf("reconciles after transcript append = %d, want 1 (append must not bust the memo)", got)
+	}
+
+	if err := os.Remove(sessionPath); err != nil {
+		t.Fatalf("remove transcript: %v", err)
+	}
+	if err := os.Remove(agent.BranchMetaPath(sessionPath)); err != nil {
+		t.Fatalf("remove sidecar: %v", err)
+	}
+	if _, ok := app.reconcileTabWithPinnedSessionMeta(tab); ok {
+		t.Fatalf("reconcile served a binding for a deleted session")
+	}
+	if got := reconciles.Load(); got != 2 {
+		t.Fatalf("reconciles after transcript delete = %d, want 2 (exists bit must still bust the memo)", got)
+	}
+}

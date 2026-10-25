@@ -221,11 +221,16 @@ func TestEffortForTabFallbackStillBoundedAfterSnapshot(t *testing.T) {
 	// could leave the cache empty when the stubbed read below fires; the
 	// direct read plus the production store makes the primed state a fact
 	// instead of a timing outcome.
-	app.storeEffortCache(tab.ID, effortDirectRead(app, tab.ID))
+	app.storeEffortCache(tab.ID, effortDirectRead(app, tab.ID), app.effortServeFingerprintOf(tab.ID))
 
 	// From here the read source is artificially stalled; the caller must be
 	// served within the (shortened) cap from the primed cache, with notice.
+	// Task 1161: expire the fast path first (age override + one window) so
+	// this exercises the task-421 degradation path proper — with a servable
+	// entry EffortForTab answers instantly from cache and never stalls at all.
 	app.effortReadLimitOverride = 100 * time.Millisecond
+	app.effortStaleServeAgeOverride = time.Millisecond
+	time.Sleep(5 * time.Millisecond)
 	notices := make(chan event.Event, 4)
 	tab.sink.SetBotSink(event.FuncSink(func(e event.Event) {
 		if e.Kind == event.Notice {

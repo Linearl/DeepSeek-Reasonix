@@ -36,6 +36,14 @@ import (
 // resolve. Concurrent callers of the same path join one walk (single flight)
 // instead of stampeding — that is the storm half of the fix.
 //
+// Task 1161 refinement: the session-file probes (candidate + matched
+// transcript) stamp existence-only (sessionTranscriptStampOf) — a live
+// session appends to its transcript between resolves, and an mtime/size
+// stamp there busted the entry on EVERY resolve of an active tab, which is
+// what kept reconcile_walk_ms in the 8-12s range behind the 2026-10-25
+// effort-read timeouts. Moves/deletes still flip the exists bit; the sidecar
+// keeps its full fingerprint.
+//
 // Deliberately not tracked (same reasoning as task 609): directory mtimes,
 // unrelated session files, and the branch-meta contents of candidate paths
 // that never validated — none of them can move a resolved binding without
@@ -52,10 +60,15 @@ type bindingResolveKey struct {
 }
 
 // bindingFileStamp pins one file path the walk consulted to its then-current
-// fingerprint.
+// fingerprint. existsOnly marks transcript probes (task 1161): lookup must
+// re-validate them against a fresh sessionTranscriptStampOf, not a full
+// configFileStampOf — comparing an existence-only stamp against a full
+// mtime/size stat would mismatch on every resolve and turn the cache into a
+// per-call re-walk.
 type bindingFileStamp struct {
-	path  string
-	stamp configFileStamp
+	path       string
+	stamp      configFileStamp
+	existsOnly bool
 }
 
 // bindingResolveEntry is the cached outcome of one walk plus the fingerprints
@@ -149,6 +162,14 @@ func (a *App) bindingResolveLookup(key bindingResolveKey, cachePath string) (ses
 		return sessionBinding{}, false, false
 	}
 	for _, f := range probed {
+		// Task 1161: transcript probes re-validate existence-only (matching
+		// how they were captured); everything else keeps the full fingerprint.
+		if f.existsOnly {
+			if sessionTranscriptStampOf(f.path) != f.stamp {
+				return sessionBinding{}, false, false
+			}
+			continue
+		}
 		if configFileStampOf(f.path) != f.stamp {
 			return sessionBinding{}, false, false
 		}
@@ -249,6 +270,23 @@ func bindingWalkProbe(probed []bindingFileStamp, path string) []bindingFileStamp
 	return append(probed, bindingFileStamp{path: filepath.Clean(path), stamp: configFileStampOf(path)})
 }
 
+// bindingWalkProbeTranscript is the transcript-file twin of bindingWalkProbe:
+// same dedupe, existence-only stamp (sessionTranscriptStampOf). Task 1161:
+// the walk probes the candidate transcript and the matched transcript per
+// directory; a live session appends to its transcript between reads, so a
+// full mtime/size stamp there busted the cache on EVERY resolve of an active
+// tab and sent each one back into the full directory walk. Sidecar probes
+// keep the full stamp (bindingRecordMeta below) — sidecar content is binding
+// truth.
+func bindingWalkProbeTranscript(probed []bindingFileStamp, path string) []bindingFileStamp {
+	for _, f := range probed {
+		if sameDesktopPath(f.path, path) {
+			return probed
+		}
+	}
+	return append(probed, bindingFileStamp{path: filepath.Clean(path), stamp: sessionTranscriptStampOf(path), existsOnly: true})
+}
+
 // bindingProbeCandidate reports the file validateSessionPath would Lstat for
 // (dir, sessionPath) when its cheap pre-checks pass — the path whose
 // existence decides this directory's answer. best effort: a false ok just
@@ -282,7 +320,8 @@ func bindingProbeCandidate(dir, sessionPath string) (string, bool) {
 
 // bindingRecordMeta stamps the branch-meta sidecar a resolved binding was
 // read from, so a sidecar rewrite (topic rename, scope change) invalidates
-// the entry.
+// the entry. The sidecar keeps its full mtime/size fingerprint — unlike the
+// transcript probes (task 1161), its content is binding truth.
 func bindingRecordMeta(probed []bindingFileStamp, sessionFile string) []bindingFileStamp {
 	if metaPath := agent.BranchMetaPath(sessionFile); metaPath != "" {
 		probed = bindingWalkProbe(probed, metaPath)

@@ -50,7 +50,13 @@ import (
 // files knownSessionDirs/legacyMigrationTargetForDir read. Task 691 adds the
 // session file and its branch-meta sidecar — the reconcile resolves the tab's
 // session path against disk, so a moved, deleted, or externally rewritten
-// session must re-heal.
+// session must re-heal. Task 1161: the session file's own stamp is
+// existence-only (sessionTranscriptStampOf) — a live session appends to its
+// transcript between reads, and that append moves no input the reconcile
+// reads, so an mtime/size stamp here kept the memo permanently busted on
+// active tabs (the 8-12s reconcile_walk behind the 2026-10-25 effort-read
+// timeouts). The sidecar keeps its full fingerprint: its content IS binding
+// truth.
 type tabReconcileMemoKey struct {
 	sessionPath   string
 	scope         string
@@ -87,7 +93,10 @@ func (a *App) tabReconcileMemoKeyOf(tab *WorkspaceTab) tabReconcileMemoKey {
 	key.projectsStamp = configFileStampOf(filepath.Join(desktopConfigDir(), desktopProjectsFile))
 	key.orgStamp = configFileStampOf(filepath.Join(desktopConfigDir(), desktopProjectOrganizationFile))
 	if sessionPath != "" {
-		key.sessionStamp = configFileStampOf(sessionPath)
+		// Task 1161: existence-only for the transcript itself — appends cannot
+		// move the binding, and their mtime churn kept this memo dead on
+		// active tabs.
+		key.sessionStamp = sessionTranscriptStampOf(sessionPath)
 		if metaPath := agent.BranchMetaPath(sessionPath); metaPath != "" {
 			key.metaStamp = configFileStampOf(metaPath)
 		}
