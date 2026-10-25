@@ -73,6 +73,14 @@ type HeadSynthesisReport struct {
 	// Skipped names branches the run could not fold (lease held, unloadable):
 	// they stay in the list and are deletable through 1064.
 	Skipped []string `json:"skipped"`
+	// SwitchedTo is the head the conversation now points at after a v3-only
+	// synthesis (任务 1146 返修2): the chosen HEAD became the selected chain.
+	// Empty when no switch was needed (the chosen head was already selected).
+	SwitchedTo string `json:"switchedTo,omitempty"`
+	// RetiredHeads lists the v3 head ids the run folded away via the 1064
+	// retire marker — hidden from the versions table immediately, recoverable
+	// by replay until the next single-writer rotation prunes them.
+	RetiredHeads []string `json:"retiredHeads,omitempty"`
 }
 
 // errHeadSynthesisNoBranch is what the panel shows when a conversation has no
@@ -87,7 +95,7 @@ var errHeadSynthesisNoBranch = errors.New("this conversation has only one chain;
 // its v3 log, or empty to keep the current main as the HEAD.
 func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisReport, error) {
 	mainPath, headID = strings.TrimSpace(mainPath), strings.TrimSpace(headID)
-	report := HeadSynthesisReport{MainPath: mainPath, HeadID: headID, Trashed: []string{}, Items: []HeadSynthesisItem{}, Skipped: []string{}}
+	report := HeadSynthesisReport{MainPath: mainPath, HeadID: headID, Trashed: []string{}, Items: []HeadSynthesisItem{}, Skipped: []string{}, RetiredHeads: []string{}}
 	if mainPath == "" {
 		return report, fmt.Errorf("no session path given")
 	}
@@ -176,45 +184,117 @@ func (a *App) SynthesizeSessionHeads(mainPath, headID string) (HeadSynthesisRepo
 	}
 	report.Items = append(report.Items, headItems...)
 	if len(copies) == 0 {
-		// 无文件级副本、只有 v3 heads：文件级合并引擎（Consolidate...）只会
-		// 因为「没有副本文件」报 ErrNoRecoveryBranches，那不是本次调用的失
-		// 败——「还有别的链」的判断已经在上面做完（能走到这行意味着
-		// len(headItems)>0），这里只是文件级引擎对「v3-only 无副本可搬」这
-		// 一合法形态的固有反应，不是用户看到的「合成失败」。直接返回报告
-		// （错误为 nil），面板据此渲染「还有 N 条链（v3 版本）」。
-		return report, nil
-	}
-
-	// Run the merge under the same mutation locks the desktop merge uses.
-	consolidation, runErr := func() (agent.ConsolidationReport, error) {
-		defer a.lockRuntimeMutation("synthesize-session-heads")()
-		a.sessionRemovalMu.Lock()
-		defer a.sessionRemovalMu.Unlock()
-		// Force + ArchiveLeftovers + WinnerPath: the user picked the HEAD
-		// against the visible chain list (1.34's rule), so a non-covering winner
-		// is promoted with the previous main archived whole, and every leftover
-		// branch is folded into the same recoverable trash.
-		return agent.ConsolidateSessionRecoveryBranchesWithOptions(mainPath, agent.ConsolidateOptions{
-			Force:            true,
-			ArchiveLeftovers: true,
-			WinnerPath:       winnerPath,
-		})
-	}()
-	if runErr != nil {
-		if errors.Is(runErr, agent.ErrNoRecoveryBranches) {
-			// 走到这里意味着「有副本文件」（len(copies)>0 才会调引擎），引擎
-			// 却说没有可合并的分支——通常是副本都在扫描与加锁之间被别的路径
-			//（回收站清理/另一次合并）抢先处理掉了，这不是纯 v3 头会话的
-			// 误报路径（那条在上面 len(copies)==0 时已经提前返回了）。
+		// 任务 1146 返修2（用户 20261025 裁决）：v3-only 形态的合成不再停在
+		// 诚实回执——单文件多分支（heads 全在主转录事件日志、无副本文件）时
+		// 「合成」的语义在这里同样成立：选定 HEAD，其余落败 heads 从候选链/
+		// 版本表清理。两个动作全部复用既有机制，不发明新存储形态：
+		//  - 切换走 chooseSessionHead（版本表「切换到此版本」的同一生产入口：
+		//    开着的控制器 SwitchBranch 原地切，关着的会话 SelectSessionHead 落
+		//    选择标记，目录 catalog 随之对账）；
+		//  - 清理走 1064 的 retire 标记（agent.RetireSessionHead：当前选中链
+		//    拒绝 retire——所以先切换后清理，顺序不可反；独有条目在下一次单
+		//    写轮换时才裁掉，轮换前可随时重放找回，比文件回收站更保守的可恢
+		//    复路径）。
+		live := make([]agent.SessionHead, 0, len(heads))
+		for _, h := range heads {
+			if !h.Retired {
+				live = append(live, h)
+			}
+		}
+		// 保留对象：显式指定的 headID；缺省 = 当前选中链（headList 恰标记一
+		// 个 Selected——显式选择优先、最近活动兜底，与重放口径一致）。
+		chosen := strings.TrimSpace(headID)
+		if chosen == "" {
+			for _, h := range live {
+				if h.Selected {
+					chosen = h.ID
+					break
+				}
+			}
+		}
+		selectedID := ""
+		known := false
+		for _, h := range live {
+			if h.Selected {
+				selectedID = h.ID
+			}
+			if h.ID == chosen {
+				known = true
+			}
+		}
+		if chosen == "" || !known {
+			return report, fmt.Errorf("session head not found: %s", headID)
+		}
+		// 落败分支 = 其余有内容的活链。零计数头是中断 fork 的残根而非分支，
+		// 不在合成语义内（仍可经 1064 单独删除）。
+		losers := []agent.SessionHead{}
+		for _, h := range live {
+			if h.ID != chosen && h.MessageCount > 0 {
+				losers = append(losers, h)
+			}
+		}
+		if len(losers) == 0 && chosen == selectedID {
+			// 没有落败分支、也无需切换：真只有一条有内容的链。
 			return report, errHeadSynthesisNoBranch
 		}
-		return report, friendlySessionFileError(runErr)
+		if chosen != selectedID {
+			if err := a.chooseSessionHead(RecoveryPreferenceRequest{Path: mainPath, HeadID: chosen}); err != nil {
+				return report, err
+			}
+			report.SwitchedTo = chosen
+		}
+		a.sessionRemovalMu.Lock()
+		for _, h := range losers {
+			err := agent.RetireSessionHead(mainPath, h.ID)
+			if err == nil {
+				report.RetiredHeads = append(report.RetiredHeads, h.ID)
+				continue
+			}
+			// 单个头被并发写者占着不拖垮整次合成：记入 skipped（与文件级路径
+			// 的 Skipped 语义一致），其余落败头继续。
+			if errors.Is(err, agent.ErrSessionFileLockHeld) || errors.Is(err, agent.ErrSessionLeaseHeld) {
+				report.Skipped = append(report.Skipped, h.ID)
+				continue
+			}
+			a.sessionRemovalMu.Unlock()
+			return report, friendlySessionFileError(err)
+		}
+		a.sessionRemovalMu.Unlock()
+		if report.RetiredHeads == nil {
+			report.RetiredHeads = []string{}
+		}
+	} else {
+		// Run the merge under the same mutation locks the desktop merge uses.
+		consolidation, runErr := func() (agent.ConsolidationReport, error) {
+			defer a.lockRuntimeMutation("synthesize-session-heads")()
+			a.sessionRemovalMu.Lock()
+			defer a.sessionRemovalMu.Unlock()
+			// Force + ArchiveLeftovers + WinnerPath: the user picked the HEAD
+			// against the visible chain list (1.34's rule), so a non-covering winner
+			// is promoted with the previous main archived whole, and every leftover
+			// branch is folded into the same recoverable trash.
+			return agent.ConsolidateSessionRecoveryBranchesWithOptions(mainPath, agent.ConsolidateOptions{
+				Force:            true,
+				ArchiveLeftovers: true,
+				WinnerPath:       winnerPath,
+			})
+		}()
+		if runErr != nil {
+			if errors.Is(runErr, agent.ErrNoRecoveryBranches) {
+				// 走到这里意味着「有副本文件」（len(copies)>0 才会调引擎），引擎
+				// 却说没有可合并的分支——通常是副本都在扫描与加锁之间被别的路径
+				//（回收站清理/另一次合并）抢先处理掉了，这不是纯 v3 头会话的
+				// 误报路径（那条在上面 len(copies)==0 时已经提前返回了）。
+				return report, errHeadSynthesisNoBranch
+			}
+			return report, friendlySessionFileError(runErr)
+		}
+		report.Promoted = consolidation.Promoted
+		report.WinnerPath = consolidation.WinnerPath
+		report.Prefixed = consolidation.Prefixed
+		report.Trashed = consolidation.Trashed
+		report.Skipped = consolidation.SkippedNotCovered
 	}
-	report.Promoted = consolidation.Promoted
-	report.WinnerPath = consolidation.WinnerPath
-	report.Prefixed = consolidation.Prefixed
-	report.Trashed = consolidation.Trashed
-	report.Skipped = consolidation.SkippedNotCovered
 
 	// Post-run reading of the new main: the panel shows it next to the pre-run
 	// counts so "总条数≈并集" is checkable on screen.
