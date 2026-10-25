@@ -4612,6 +4612,7 @@ export const en = {
   "settings.recoveryCopiesSynthesizeWarn": "Every other branch's unique events are folded into this chain (duplicates stay single), and losing branches move to the recoverable trash.",
   "settings.recoveryCopiesSynthesizing": "Synthesizing",
   "settings.recoveryCopiesSynthesizeNoBranch": "This conversation has only one chain; there is nothing to synthesize.",
+  "settings.recoveryCopiesSynthesizeNoCopyBranch": "This conversation has no mergeable copy branches — the other versions live inside the same event log, so there is nothing to merge at the file level. To make a chain the main line, use the versions table's \"switch to this version\" button.",
   "settings.recoveryCopiesOutcomeSynthesized": "Synthesized",
   "settings.recoveryCopiesSynthesizePrefixed": "losing chain prefix grafted",
   "settings.recoveryCopiesSynthesizeReopenHint": "The synthesis has taken effect. Reopen the conversation in its project (or refresh the tab) to see the merged content — losing branches are still in the trash.",

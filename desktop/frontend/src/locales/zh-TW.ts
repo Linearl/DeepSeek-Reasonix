@@ -3164,6 +3164,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesSynthesizeWarn": "其餘分支的獨有事件會併入這條鏈（重複事件零雙份），落敗分支進入回收站（可恢復）。",
   "settings.recoveryCopiesSynthesizing": "正在合成",
   "settings.recoveryCopiesSynthesizeNoBranch": "該工作階段只有一條鏈，沒有可合成的分支。",
+  "settings.recoveryCopiesSynthesizeNoCopyBranch": "該工作階段沒有可合併的副本分支——其餘版本都住在同一份事件日誌裡，檔案級合成無事可做。要把某條鏈設為主線，請用版本表中的「切換到此版本」按鈕。",
   "settings.recoveryCopiesOutcomeSynthesized": "已合成",
   "settings.recoveryCopiesSynthesizePrefixed": "拼接落敗鏈前綴",
   "settings.recoveryCopiesSynthesizeReopenHint": "合成已生效。請到專案中重新開啟該工作階段（或重新整理標籤頁）才能看到合成後的內容——落敗分支還在回收站裡。",
