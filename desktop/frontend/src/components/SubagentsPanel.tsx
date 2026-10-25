@@ -281,9 +281,11 @@ function EffortPicker({
   aliasFold?: boolean;
 }) {
   const t = useT();
-  const menu = Array.isArray(levels)
+  // 行内已有独立的 inherit 选项（= auto），域透传出的 auto 去重。
+  const menu = (Array.isArray(levels)
     ? foldEffortMenu(levels, Boolean(aliasFold))
-    : [...EFFORT_PRESETS];
+    : [...EFFORT_PRESETS]
+  ).filter((level) => level !== "auto");
   // 显示值按同一身份规则折叠：仅 MiMo 词表把兼容别名折到诚实档位，诚实词表
   // （anthropic 族/声明 max）原样显示。
   const current = Array.isArray(levels)
@@ -646,11 +648,7 @@ function SubagentProfileForm({
       <label className="set-label">{t("settings.subagentEffort")}</label>
       <SettingsSelect className="mem-select set-grow" value={normalizeEffortForMenu(effort)} disabled={busy} onValueChange={(value) => setEffort(value)}>
         <option value="">{t("settings.subagentEffortDefault")}</option>
-        {effortDomain ? foldEffortMenu(effortDomain.levels, effortDomain.aliasFold).map((level) => (
-          <option key={level} value={level}>
-            {level}
-          </option>
-        )) : EFFORT_PRESETS.map((level) => (
+        {(effortDomain ? foldEffortMenu(effortDomain.levels, effortDomain.aliasFold) : [...EFFORT_PRESETS]).filter((level) => level !== "auto").map((level) => (
           <option key={level} value={level}>
             {level}
           </option>

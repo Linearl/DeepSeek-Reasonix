@@ -4292,9 +4292,10 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
   const subagentOverride = subagentOption?.providerView?.modelOverrides?.find(item => item.model === subagentOption.model);
   // 任务 1151：档位菜单来自后端按生效模型（显式子代理模型，否则主模型）计算的
   // wire 合法域（config.EffortMenuDomain，与 dispatch 校验同源），MiMo 词表按
-  // aliasFold 身份标记折叠；字段缺失（旧夹具）时退回 config 声明词表链。
+  // aliasFold 身份标记折叠；行内已有独立的 auto 选项，域透传出的 auto 去重。
+  // 字段缺失（旧夹具）时退回 config 声明词表链。
   const subagentLevels = Array.isArray(s.subagentEffortLevels)
-    ? foldEffortMenu(s.subagentEffortLevels, Boolean(s.subagentEffortAliasFold))
+    ? foldEffortMenu(s.subagentEffortLevels, Boolean(s.subagentEffortAliasFold)).filter((level) => level !== "auto")
     : subagentRef ? (subagentOverride?.supportedEfforts?.length ? subagentOverride.supportedEfforts : subagentOption?.providerView?.supportedEfforts ?? []) : [];
 
   const visionRef = s.visionModel === "auto" ? "auto" : toRef(s.visionModel, s);
