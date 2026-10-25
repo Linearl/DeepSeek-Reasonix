@@ -101,3 +101,62 @@ export function turnTallyText(tally: TurnTally, t: Translator): string | null {
 export function turnTallyLabel(items: readonly Item[], t: Translator): string | null {
   return turnTallyText(turnTally(items), t);
 }
+
+/**
+ * 任务 1137：该回合动过的文件路径明细（去重保序）。与 turnTally 的 files
+ * 计数走同一个 toolFilePaths——计数是这份明细的 size，两处口径永不漂移。
+ */
+export function turnFilePaths(items: readonly Item[]): string[] {
+  const files: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (item.kind !== "tool") continue;
+    for (const path of toolFilePaths(item)) {
+      if (seen.has(path)) continue;
+      seen.add(path);
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+/** 任务 1137：回合级 token 快照（turn_done 时由 useController 写入回合最后
+ *  一个 assistant 条目）。字段与状态栏同源：outputTokens = State.turnTokens
+ *  （状态栏回合读数同字段），inputTokens = State.turnInputTokens（usage 事件
+ *  链的 prompt 累积，与 usageTotalTokens 的 prompt 口径同式）。 */
+export interface TurnUsageSnapshot {
+  inputTokens: number;
+  outputTokens: number;
+  /** 回合内任一发 usage 带 estimated 标记（状态栏 ≈ 前缀同语义）。 */
+  estimated?: boolean;
+}
+
+/** 任务 1137：回合尾部信息带的三要素聚合。 */
+export interface TurnTailInfo {
+  /** 该回合动过的文件明细（turnFilePaths；零工具轮为空数组）。 */
+  files: string[];
+  /** 回合 token 快照（运行时回合经 turn_done 落条目；历史回合后端不存，undefined）。 */
+  usage?: TurnUsageSnapshot;
+  /** 回合完成时刻（epoch ms）：运行时回合 = turn_done 到达时刻；历史回合
+   *  降级为后端入库的最后 assistant 消息 createdAt。两者皆无 → undefined。 */
+  doneAt?: number;
+}
+
+/**
+ * 任务 1137：从一回合的条目聚合尾部信息带。文件走 turnFilePaths（与
+ * tally.files 同口径）；token/完成时刻读回合最后一个 assistant 条目上的
+ * 快照（useController 在 turn_done 写入）。纯函数，无任何订阅。
+ */
+export function turnTailInfo(items: readonly Item[]): TurnTailInfo {
+  const files = turnFilePaths(items);
+  let lastAssistant: Extract<Item, { kind: "assistant" }> | undefined;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === "assistant") { lastAssistant = item; break; }
+  }
+  return {
+    files,
+    usage: lastAssistant?.turnUsage,
+    doneAt: lastAssistant?.turnDoneAt ?? lastAssistant?.createdAt,
+  };
+}
