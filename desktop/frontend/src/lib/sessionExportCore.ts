@@ -1,4 +1,5 @@
 import { isLocalFileHref } from "./localFileUrl";
+import { isRelativePathHref } from "./localPathLinks";
 
 const PDF_PAGE_WIDTH = 595.28;
 const PDF_PAGE_HEIGHT = 841.89;
@@ -80,8 +81,11 @@ export function transformExportMarkdownUrl(
   if (key === "src" && isSafeInlineExportImage(trimmed)) return trimmed;
   // Local-path anchors from remarkLocalPathLinks are kept so an exported
   // document stays clickable; everything else goes through the default
-  // transform which blanks javascript: and other unsafe schemes.
-  if (key === "href" && isLocalFileHref(trimmed)) return trimmed;
+  // transform which blanks javascript: and other unsafe schemes. relpath://
+  // anchors (task 1158 relative chips) survive the transform too, but the
+  // export's `a` component renders them as plain text — a static export has
+  // no session root to resolve them against, and a dead link would be worse.
+  if (key === "href" && (isLocalFileHref(trimmed) || isRelativePathHref(trimmed))) return trimmed;
   return fallback(value);
 }
 

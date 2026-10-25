@@ -219,7 +219,11 @@ const staticMarkdownComponents: Components = {
       </pre>
     );
   },
-  a: ({ href, children }) => <a href={href}>{children}</a>,
+  a: ({ href, children }) =>
+    // relpath:// chips (task 1158) degrade to plain text in a static export:
+    // no session root exists to resolve them against, so keep the label and
+    // drop the dead anchor.
+    href?.startsWith("relpath://") ? <span>{children}</span> : <a href={href}>{children}</a>,
   img: ({ src, alt, title }) => {
     if (isSafeInlineExportImage(src)) {
       return <img src={src} alt={alt ?? ""} title={title} />;
