@@ -1,8 +1,33 @@
 import type { DictKey } from "../locales/en";
+import type { Item } from "./useController";
 
 export interface ContextWindowStatus {
   tone: "good" | "notice" | "warn";
   key: DictKey;
+}
+
+// 任务1147：压缩运行态的窗口区覆盖。用户实测（2026-10-24）：分块压缩全程
+// 容量卡钉着「已超过窗口上限」红条+反复弹「卡住了请停止」，读作失败——
+// 实际压缩在推进并最终成功。以最新一张压缩卡的阶段覆盖容量卡状态行：
+// pending=压缩中（中性，替代红条），failed=失败（独立可辨识文案）；
+// 完成卡不覆盖（正常显示压缩后读数）。
+export interface CompactionWindowOverride {
+  phase: "running" | "failed";
+  done?: number;
+  total?: number;
+}
+
+export function compactionWindowOverride(items: Item[] | undefined): CompactionWindowOverride | null {
+  for (let i = (items?.length ?? 0) - 1; i >= 0; i--) {
+    const item = items![i]!;
+    if (item.kind !== "compaction") continue;
+    // 任务867：新一轮 CompactionStarted 把失败卡翻回 pending，同一张卡
+    // pending/failed 互斥；倒序首张即最新阶段。
+    if (item.pending) return { phase: "running", done: item.done, total: item.total };
+    if (item.failed) return { phase: "failed" };
+    return null;
+  }
+  return null;
 }
 
 export function formatCacheHitRate(hitTokens: number, missTokens: number): string {
