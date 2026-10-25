@@ -16,6 +16,12 @@ import { buildTrajectorySearchIndex, trajectorySearchMatches, type TrajectoryLed
 //   兜底——修复 1112 默认态事件被墙钟空闲稀释成细线（「每个事件都很窄」）与
 //   durationOn 态模型单位混用导致的 span 溢出。真实时间墙钟投影（time）不再
 //   直接上 UI（lib 保留供后续 actual 模式）。
+// 任务 1131 返修（wt-tl1131-2）— 行布局面对齐 DSH：泳道几何收口到 CSS
+//   --traj-lane-* 变量（22px 统一行高、标签列 44px 固定宽、行带内垂直居中、
+//   overflow hidden 硬约束）；laneOf 系统类折进三行（DSH laneFor 同款），
+//   删除系统类记录的像素直排第四排兜底与 marker 垂直半身位上提——装机实测
+//   「标签三排挤压/内容四排溢出」的三个溢出源。模式面（sequence 等宽满铺/
+//   耗时占比换算）不动。
 //
 // 纯投影视图：只消费 transcript 读投影（items），不碰存储（597 纪律）。
 // 四层 = 工具栏（1112，三开关 + 搜索）+ 时间线总览（三行泳道，1112）+
@@ -330,7 +336,7 @@ function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searc
       onPointerLeave={() => setHover(null)}
     >
       {LANE_LABEL_KEYS.map((key, lane) => (
-        <span key={key} className="traj-timeline__lane-label" style={{ top: `${lane * 14}px` }}>{t(key)}</span>
+        <span key={key} className="traj-timeline__lane-label" style={{ top: `calc(var(--traj-lane-pitch) * ${lane} + var(--traj-lane-inset))` }}>{t(key)}</span>
       ))}
       <div className="traj-timeline__plot">
         {model.spans.map((span) => {
@@ -339,7 +345,7 @@ function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searc
             <span
               key={span.recordId}
               className={`traj-timeline__span traj-timeline__span--${span.kind}${span.running ? " traj-timeline__span--running" : ""}${span.failed ? " traj-timeline__span--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(span.recordId) ? " traj-timeline__span--search-dim" : ""}`}
-              style={{ left: `${rect.leftPct}%`, width: `max(2px, calc(${rect.widthPct}% - 2px))`, top: span.lane != null ? `${span.lane * 14}px` : "42px" }}
+              style={{ left: `${rect.leftPct}%`, width: `max(2px, calc(${rect.widthPct}% - 2px))`, top: `calc(var(--traj-lane-pitch) * ${span.lane} + var(--traj-lane-span-top))` }}
               title={spanTitle(span)}
               onClick={(event) => { event.stopPropagation(); onSpanClick(span.recordId); }}
             >
@@ -353,7 +359,7 @@ function TrajectoryTimelineBar({ model, mode, focus, onFocus, onSpanClick, searc
           <span
             key={marker.recordId}
             className={`traj-timeline__marker traj-timeline__marker--${marker.kind}${marker.failed ? " traj-timeline__marker--failed" : ""}${searchMatchIds != null && !searchMatchIds.has(marker.recordId) ? " traj-timeline__marker--search-dim" : ""}`}
-            style={{ left: `${leftPct(marker.start)}%`, top: marker.lane != null ? `${marker.lane * 14}px` : "42px" }}
+            style={{ left: `${leftPct(marker.start)}%`, top: `calc(var(--traj-lane-pitch) * ${marker.lane} + var(--traj-lane-marker-top))` }}
             title={spanTitle(marker)}
             onClick={(event) => { event.stopPropagation(); onSpanClick(marker.recordId); }}
           />

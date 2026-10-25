@@ -293,16 +293,28 @@
   opacity: 0.3;
 }
 
-/* ── 时间线总览（②）：台账上方固定条，start/duration 左右投影 ── */
+/* ── 时间线总览（②）：台账上方固定条，start/duration 左右投影 ──
+   tl-1131 返修（装机实测「标签三排挤压/内容四排溢出」）：几何全部收口到
+   --traj-lane-* 变量——22px 统一行高（DSH 对照 20-24px/行）、标签列 44px
+   固定宽（DSH .plot grid-template-columns 同款）、overflow hidden 硬约束
+   （DSH .plot 同款），标签与 span 同行带垂直居中对齐。 */
 
 .traj-timeline {
+  /* 统一行高：每条泳道 22px（DSH 对照约 20-24px/行取中值）。 */
+  --traj-lane-pitch: 22px;
+  /* 首行上方/末行下方留白。 */
+  --traj-lane-inset: 4px;
+  /* 8px 高 span 在 22px 行带内的垂直居中偏移（inset + (pitch-8)/2 = 4+7）。 */
+  --traj-lane-span-top: 11px;
+  /* 10px 高 marker 在行带内的垂直居中偏移（inset + (pitch-10)/2 = 4+6）。 */
+  --traj-lane-marker-top: 10px;
   position: relative;
   flex: none;
-  height: 50px;
+  height: calc(var(--traj-lane-pitch) * 3 + var(--traj-lane-inset) * 2);
   margin: 0 14px;
   border-bottom: 1px solid var(--border-soft);
-  background:
-    linear-gradient(to right, var(--border-soft), var(--border-soft)) 0 50% / 100% 1px no-repeat;
+  /* 行边界硬约束（DSH .plot overflow hidden 同款）：任何内容不得溢出行容器。 */
+  overflow: hidden;
   cursor: crosshair;
   touch-action: none;
   user-select: none;
@@ -311,11 +323,18 @@
 .traj-timeline__lane-label {
   position: absolute;
   left: 0;
+  /* 标签列固定宽度（DSH 44px 同款）：容纳最宽标签「模型/Tools」+ 3px 右边距，不截断。 */
   width: 44px;
-  text-align: right;
+  /* 整行带高 + 带内垂直居中：标签与该行 span 严格同带对齐。 */
+  height: var(--traj-lane-pitch);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 3px; /* DSH .labels span right:3px 同款 */
   font-size: var(--text-2xs);
   color: var(--text-3);
-  line-height: 14px;
+  /* 行高 1（DSH 同款）：字形不跨行带，杜绝相邻行字形互相挤压出「残字」。 */
+  line-height: 1;
 }
 
 .traj-timeline__plot {
@@ -372,7 +391,9 @@
   position: absolute;
   width: 2px;
   height: 10px;
-  transform: translate(-50%, -50%);
+  /* 仅水平居中于锚点；垂直位置由行带几何接管（--traj-lane-marker-top，
+     tl-1131 返修：旧写法的双向半身位位移会把标记上提 5px 闯入上一行带）。 */
+  transform: translateX(-50%);
   border-radius: 1px; /* 833-radius-wl:micro */
   background: var(--fg-faint);
 }

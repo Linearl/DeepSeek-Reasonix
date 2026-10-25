@@ -26,13 +26,17 @@ import type { TrajectoryKind, TrajectoryRecord } from "./trajectoryLedger";
 /** Timeline lanes (1111 调研 §1.1): 0 输入 / 1 模型 / 2 工具。 */
 export type TrajectoryLane = 0 | 1 | 2;
 
-/** record.kind → lane（compaction/notice/phase 归灰系统行，随其时间锚所在序位取整）。 */
-export function laneOf(kind: TrajectoryKind): TrajectoryLane | null {
+/** record.kind → lane（tl-1131 返修：系统类折进三行，DSH timeline.ts laneFor
+ * 同款——compacted 归模型行、其余归输入行；旧版返回 null 会被渲染层兜底画成
+ * 三行之外的第四排，正是「内容出现四排」溢出的根因）。 */
+export function laneOf(kind: TrajectoryKind): TrajectoryLane {
   switch (kind) {
     case "user": return 0;
+    case "notice": return 0;
+    case "phase": return 0;
     case "assistant": return 1;
+    case "compaction": return 1;
     case "tool": return 2;
-    default: return null;
   }
 }
 
@@ -45,8 +49,8 @@ export interface TrajectorySpan {
   width: number;
   /** TTFT fraction of the span (assistant only, live-only data). */
   ttftFraction?: number;
-  /** 泳道行（0 输入/1 模型/2 工具）；null = 系统类记录不进三行（仅作轮次边界锚）。 */
-  lane: TrajectoryLane | null;
+  /** 泳道行（0 输入/1 模型/2 工具；系统类经 laneOf 折入三行，tl-1131 返修）。 */
+  lane: TrajectoryLane;
   running: boolean;
   failed: boolean;
 }
