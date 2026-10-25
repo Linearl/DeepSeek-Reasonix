@@ -163,20 +163,21 @@ ok(topLevelItems[1]!.getAttribute("aria-haspopup") === "menu", "复制和导出 
 ok(topLevelItems[2]!.getAttribute("aria-haspopup") === "menu", "会话视图 是子菜单触发项（aria-haspopup=menu）");
 ok(topLevelItems[5]!.getAttribute("aria-haspopup") === "menu", "打开方式 是子菜单触发项（aria-haspopup=menu）");
 
-// ---- ▶ 展开引导指示（tl 1119）+ 方向随弹出翻转（tl 1148） ----
-// tl 1148：子菜单固定左弹（CSS right: calc(100% + 4px)），指示箭头关闭态 ▷
-// （lucide-chevron-right，惯例=有子菜单）、打开态翻 ◁（lucide-chevron-left，
-// 指向子菜单实际出现的方向）。lucide 图标渲染为 svg 且带 `lucide-chevron-*`
+// ---- ▶ 展开引导指示（tl 1119）+ 方向与弹出一致（tl 1148） ----
+// tl 1148：子菜单固定左弹（CSS right: calc(100% + 4px)），指示箭头一律 ◁
+// （lucide-chevron-left，指向子菜单实际出现的方向）；tl 1148 补修（20261025 用户
+// 验证反馈）：未展开的静态默认也朝左（首轮关闭态 ▷ 与左弹方向冲突），弹出前后
+// 方向恒一致。lucide 图标渲染为 svg 且带 `lucide-chevron-*`
 // class，可直接按 class 断言图标身份。
 const submenuTriggers = topLevelItems.filter((item) => item.getAttribute("aria-haspopup") === "menu");
 ok(submenuTriggers.length === 3, "一级菜单含 3 个子菜单触发项（复制和导出/会话视图/打开方式）");
 for (const [index, trigger] of submenuTriggers.entries()) {
   const indicator = trigger.querySelector(".topicbar__more-submenu-indicator");
   ok(indicator !== null, `第 ${index + 1} 个子菜单触发项带 .topicbar__more-submenu-indicator ▶ 指示`);
-  ok(indicator?.classList.contains("lucide-chevron-right") === true,
-    `tl1148 关闭态：第 ${index + 1} 个指示箭头朝右（▷，表示有子菜单）`);
-  ok(indicator?.classList.contains("lucide-chevron-left") === false,
-    `tl1148 关闭态：第 ${index + 1} 个指示箭头未翻转（非 ◁）`);
+  ok(indicator?.classList.contains("lucide-chevron-left") === true,
+    `tl1148 补修 关闭态：第 ${index + 1} 个指示箭头静态默认朝左（◁，=子菜单左弹方向）`);
+  ok(indicator?.classList.contains("lucide-chevron-right") === false,
+    `tl1148 补修 关闭态：第 ${index + 1} 个指示箭头不再朝右（非 ▷）`);
 }
 
 // ---- 二级可达零丢失（tl 1120）：复制和导出 ▸ ----
@@ -255,12 +256,12 @@ ok(openerItems.length === 1 && openerItems[0]!.textContent?.trim() === "Code", "
 await act(async () => { press(openerItems[0]!, "Escape"); });
 await waitFor("openers submenu close", () => rootElement.querySelector('.topicbar__more-menu [role="menu"][aria-label="打开方式"]') === null);
 ok(document.activeElement === openersTrigger, "Escape 关闭子菜单并把焦点还给触发项");
-// tl1148：子菜单收起后箭头恢复关闭态 ▷（方向与「有子菜单」惯例一致）。
+// tl1148 补修：子菜单收起后箭头恢复静态默认 ◁（=左弹方向，弹出前后恒一致）。
 const reclosedOpenersIndicator = openersTrigger.querySelector(".topicbar__more-submenu-indicator");
-ok(reclosedOpenersIndicator?.classList.contains("lucide-chevron-right") === true,
-  "tl1148 收起后：打开方式 触发项箭头恢复 ▷");
-ok(reclosedOpenersIndicator?.classList.contains("lucide-chevron-left") === false,
-  "tl1148 收起后：打开方式 触发项箭头不再是 ◁");
+ok(reclosedOpenersIndicator?.classList.contains("lucide-chevron-left") === true,
+  "tl1148 补修 收起后：打开方式 触发项箭头恢复静态默认 ◁");
+ok(reclosedOpenersIndicator?.classList.contains("lucide-chevron-right") === false,
+  "tl1148 补修 收起后：打开方式 触发项箭头不朝右（非 ▷）");
 await act(async () => { press(openersTrigger, "ArrowRight"); });
 await waitFor("openers submenu reopen via ArrowRight", () => rootElement.querySelector('.topicbar__more-menu [role="menu"][aria-label="打开方式"]') !== null);
 const reopenedOpenerItems = Array.from(rootElement.querySelectorAll<HTMLButtonElement>('.topicbar__more-submenu [role="menuitemradio"]'));
@@ -300,14 +301,14 @@ await act(async () => { await waitMs(340); });
 ok(submenuOf("复制和导出") !== null, "tl1153 移出已展开的触发项不收起面板（关闭走既有关闭逻辑）");
 
 // hover 互斥切换：hover 另一触发项到时限后新子菜单展开、原子菜单收起；触发项
-// aria-expanded 与 tl 1148 箭头（◁）同步翻转——hover 路径零回归。
+// aria-expanded 翻转，tl 1148 箭头保持 ◁（恒为左弹方向）——hover 路径零回归。
 await act(async () => { hover(viewsHoverTrigger); });
 await act(async () => { await waitMs(340); });
 ok(submenuOf("会话视图") !== null, "tl1153 hover 另一触发项（会话视图）到时限后自动展开");
 ok(submenuOf("复制和导出") === null, "tl1153 hover 切换后原子菜单收起（同时最多一个二级展开）");
 ok(viewsHoverTrigger.getAttribute("aria-expanded") === "true", "tl1153 hover 展开后触发项 aria-expanded=true（与点击路径一致）");
 const hoverSwitchIndicator = viewsHoverTrigger.querySelector(".topicbar__more-submenu-indicator");
-ok(hoverSwitchIndicator?.classList.contains("lucide-chevron-left") === true, "tl1153 hover 展开后箭头翻 ◁（tl1148 经 hover 路径零回归）");
+ok(hoverSwitchIndicator?.classList.contains("lucide-chevron-left") === true, "tl1153 hover 展开后箭头为 ◁（tl1148 经 hover 路径零回归）");
 
 // 未到时限就移出触发项：挂起计时器被取消、不展开（打开方式 ▸）。
 await act(async () => { hover(openersHoverTrigger); });
