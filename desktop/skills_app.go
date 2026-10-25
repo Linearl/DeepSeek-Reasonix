@@ -72,6 +72,15 @@ type SkillView struct {
 	// built-ins have no editable frontmatter file to carry Model/Effort.
 	ConfiguredModel  string `json:"configuredModel,omitempty"`
 	ConfiguredEffort string `json:"configuredEffort,omitempty"`
+	// Task 1151: the effort menu domain of this profile's effective model
+	// (per-name override, then frontmatter model, then the inherit chain) —
+	// the same wire-legal mapping the global agent.subagent_effort row
+	// renders. Empty list = the effective model offers no effort knob.
+	// EffortApplies reports whether the persisted ConfiguredEffort level
+	// survives dispatch for that model.
+	EffortLevels    []string `json:"effortLevels"`
+	EffortAliasFold bool     `json:"effortAliasFold,omitempty"`
+	EffortApplies   bool     `json:"effortApplies"`
 }
 
 type SkillRootSkillView struct {
@@ -133,6 +142,7 @@ func (a *App) SkillsSettings() SkillsSettingsView {
 
 	disabled := map[string]bool{}
 	var configuredModels, configuredEfforts map[string]string
+	var effortCfg *config.Config
 	if cfg, err := config.LoadForRootReadOnly(workspaceRoot); err == nil {
 		out.AllowImplicitInvocation = cfg.ImplicitSkillInvocationEnabled()
 		for _, name := range cfg.Skills.DisabledSkills {
@@ -142,6 +152,7 @@ func (a *App) SkillsSettings() SkillsSettingsView {
 		}
 		configuredModels = cfg.Agent.SubagentModels
 		configuredEfforts = cfg.Agent.SubagentEfforts
+		effortCfg = cfg
 	}
 	out.SkillRoots = a.cachedSkillRootsView(workspaceRoot)
 	for _, s := range ctrl.AllSkills() {
@@ -166,6 +177,17 @@ func (a *App) SkillsSettings() SkillsSettingsView {
 		// of it across the JSON bridge for nothing.
 		if s.RunAs == skill.RunSubagent {
 			view.Body = s.Body
+			// Task 1151: the row's effort picker renders the wire-legal domain
+			// of this profile's effective model — the alias-aware per-name
+			// override first, then the frontmatter model, then the inherit
+			// chain (desktopSubagentEffortDomain resolves it).
+			if effortCfg != nil {
+				effortRef := view.ConfiguredModel
+				if effortRef == "" {
+					effortRef = strings.TrimSpace(s.Model)
+				}
+				view.EffortLevels, view.EffortAliasFold, view.EffortApplies = desktopSubagentEffortDomain(effortCfg, effortRef, view.ConfiguredEffort)
+			}
 		}
 		out.Skills = append(out.Skills, view)
 	}

@@ -47,7 +47,10 @@ func (a *App) defaultSettingsView() SettingsView {
 	defaults := config.Default()
 	return SettingsView{
 		WebSearchModels: []string{},
-		Providers:       []ProviderView{}, OfficialProviders: officialProviderViews(map[string]bool{}, ""),
+		// Task 1151: keep the effort-domain shape stable even when the config
+		// itself failed to load — the subagent effort row renders "inherit only".
+		SubagentEffortLevels: []string{},
+		Providers:            []ProviderView{}, OfficialProviders: officialProviderViews(map[string]bool{}, ""),
 		ProviderPresets: providerPresetViewsForRootWithResolver(nil, a.activeWorkspaceRoot(), nil),
 		ProviderKinds:   nonNil(provider.Kinds()),
 		Permissions:     PermissionsView{Mode: "ask", Allow: []string{}, Ask: []string{}, Deny: []string{}},

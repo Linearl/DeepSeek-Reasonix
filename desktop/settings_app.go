@@ -356,10 +356,10 @@ type SettingsView struct {
 	// ProviderView.modelOverrides round-trip.
 	ModelEfforts           map[string]string `json:"modelEfforts"`
 	PlannerModel           string            `json:"plannerModel"`
-	GuardianModel          string `json:"guardianModel"`
-	Autopilot              bool   `json:"autopilot"`
-	AutopilotMaxRuntime    string `json:"autopilotMaxRuntime"`
-	AutopilotApprovalGrace string `json:"autopilotApprovalGrace"`
+	GuardianModel          string            `json:"guardianModel"`
+	Autopilot              bool              `json:"autopilot"`
+	AutopilotMaxRuntime    string            `json:"autopilotMaxRuntime"`
+	AutopilotApprovalGrace string            `json:"autopilotApprovalGrace"`
 	// Task 477: the experimental ask-timeout sub-option — the switch (default
 	// off) and its wait in seconds (effective value, so the panel never shows
 	// a bare 0; unset reads as the built-in 15).
@@ -660,15 +660,27 @@ type SettingsView struct {
 	ColdCacheCompactMinBytes     int64 `json:"coldCacheCompactMinBytes"`
 	ColdCacheCompactIdleMinutes  int   `json:"coldCacheCompactIdleMinutes"`
 
-	VisionModel                  string                     `json:"visionModel"`
-	WebSearchModel               string                     `json:"webSearchModel"`
-	WebSearchModels              []string                   `json:"webSearchModels"`
-	WebSearchModelStatus         string                     `json:"webSearchModelStatus"`
-	WebSearchModelReason         string                     `json:"webSearchModelReason"`
-	EffectiveWebSearchModel      string                     `json:"effectiveWebSearchModel"`
-	WebSearchModelOverridden     bool                       `json:"webSearchModelOverridden"`
-	SubagentModel                string                     `json:"subagentModel"`
-	SubagentEffort               string                     `json:"subagentEffort"`
+	VisionModel              string   `json:"visionModel"`
+	WebSearchModel           string   `json:"webSearchModel"`
+	WebSearchModels          []string `json:"webSearchModels"`
+	WebSearchModelStatus     string   `json:"webSearchModelStatus"`
+	WebSearchModelReason     string   `json:"webSearchModelReason"`
+	EffectiveWebSearchModel  string   `json:"effectiveWebSearchModel"`
+	WebSearchModelOverridden bool     `json:"webSearchModelOverridden"`
+	SubagentModel            string   `json:"subagentModel"`
+	SubagentEffort           string   `json:"subagentEffort"`
+	// Task 1151: the effort menu domain of the model agent.subagent_effort
+	// applies to (an explicit subagent model, else the main model) — the same
+	// capability mapping the dispatch path validates against, pre-filtered to
+	// levels that reach the wire. An empty list means the model offers no
+	// effort knob; the row then offers only the inherit option.
+	SubagentEffortLevels    []string `json:"subagentEffortLevels"`
+	SubagentEffortAliasFold bool     `json:"subagentEffortAliasFold"`
+	// SubagentEffortApplies reports whether the persisted SubagentEffort level
+	// survives dispatch for the effective model (auto/empty is always true).
+	// False = the runtime drops it with a boot warning; the row keeps the raw
+	// value visible as a disabled option plus an explanatory hint.
+	SubagentEffortApplies        bool                       `json:"subagentEffortApplies"`
 	AutoPlan                     string                     `json:"autoPlan"`
 	Providers                    []ProviderView             `json:"providers"`
 	OfficialProviders            []ProviderView             `json:"officialProviders"`
@@ -1901,6 +1913,11 @@ func (a *App) Settings() SettingsView {
 	settingsBlock("active_ctrl_lock", time.Since(activeCtrlStart), 0, "ctrl_present="+boolLabel(ctrl != nil))
 	storageMode := config.SessionStorageMode(cfg)
 	storageEffective := a.sessionStorageBootMode(storageMode)
+	// Task 1151: the subagent effort row renders the wire-legal menu of the
+	// model the setting applies to (explicit subagent model, else the main
+	// model), computed from the same capability mapping dispatch validates
+	// against — never from a static preset list.
+	subEffortLevels, subEffortFold, subEffortApplies := desktopSubagentEffortDomain(cfg, "", cfg.Agent.SubagentEffort)
 	v := SettingsView{
 		ModelSettingsFingerprint:             modelSettingsEditFingerprint(cfg),
 		DefaultModel:                         cfg.DefaultModel,
@@ -2097,6 +2114,9 @@ func (a *App) Settings() SettingsView {
 		WebSearchModels:                 []string{},
 		SubagentModel:                   cfg.Agent.SubagentModel,
 		SubagentEffort:                  cfg.Agent.SubagentEffort,
+		SubagentEffortLevels:            subEffortLevels,
+		SubagentEffortAliasFold:         subEffortFold,
+		SubagentEffortApplies:           subEffortApplies,
 		AutoPlan:                        "off", // deprecated JSON compatibility for older frontends
 		Providers:                       []ProviderView{},
 		OfficialProviders:               []ProviderView{},
@@ -3123,44 +3143,44 @@ func (a *App) rebuildSettingTurnLockedWithModel(setting string, tab *WorkspaceTa
 func (a *App) buildSettingReplacementController(tab *WorkspaceTab, snap tabRuntimeSnapshot, runtime normalizedTabRuntime, model, prevPath, setting string, oldCtrl control.SessionAPI, carried []provider.Message, reload bool) (control.SessionAPI, normalizedTabRuntime, string, error) {
 	opts := boot.Options{
 		Model: model, RequireKey: false,
-		RuntimeReload:            boot.RuntimeReload{ForceFullRebuild: reload},
-		StatsSource:              "desktop",
-		TaskStore:                a.taskStore(),
-		WorktreeProjectOpener:    appWorktreeProjectOpener{app: a}, // 任务128：注册为项目并开后台 tab
-		OnConfigLoadWarnings:     a.configLoadWarningsHandler(),
-		Sink:                     snap.sink,
-		WorkspaceRoot:            snap.workspaceRoot,
-		SessionDir:               sessionDirForSnapshot(snap),
-		EffortOverride:           cloneStringPtr(snap.effort),
-		SharedHost:               a.lookupSharedHost(snap.sharedHostKey),
-		CleanupPendingReconciler: reconcileDesktopCleanupPending,
-		SubagentParentLive:       a.subagentParentProbeForBuild(tab),
-		SessionRecoveryMeta:      a.tabSessionRecoveryMeta(tab),
-		PinnedContextLoader:      pinnedContextLoader(snap.workspaceRoot),
-		OnSessionRecovered:       a.handleTabSessionRecovered(tab),
-		OnSessionTransition:      a.handleTabSessionTransition(tab),
-		BeforeInboxDispatch:      a.beforeInboxDispatch,
-		OnInboxDispatchExhausted: a.inboxDispatchExhausted,
-		OnSessionTitleChanged:    a.onSessionTitleChanged,
-		OnCreateCollabSession:    a.createCollabSession,
-		OnSessionStatus:          a.collabSessionStatus,
-		OnSessionWorkDetail:      a.collabSessionWorkDetail,
-		OnSessionInfo:            a.collabSessionInfo,
-		OnSessionGroup:           a.collabSessionGroup,
-		OnSessionGroupMatch:      a.collabSessionGroupMatch,
-		OnSessionVersions:        a.collabSessionVersions,
-		OnAdoptSessionVersion:    a.collabAdoptSessionVersion,
-		OnSessionStop:            a.collabSessionStop,
-		OnSessionSetModel:        a.collabSessionSetModel,
-		OnSessionTurnStatus:      a.collabSessionTurnStatus,
-		OnCascadeDelegate:        cascadeDelegateFor,
+		RuntimeReload:             boot.RuntimeReload{ForceFullRebuild: reload},
+		StatsSource:               "desktop",
+		TaskStore:                 a.taskStore(),
+		WorktreeProjectOpener:     appWorktreeProjectOpener{app: a}, // 任务128：注册为项目并开后台 tab
+		OnConfigLoadWarnings:      a.configLoadWarningsHandler(),
+		Sink:                      snap.sink,
+		WorkspaceRoot:             snap.workspaceRoot,
+		SessionDir:                sessionDirForSnapshot(snap),
+		EffortOverride:            cloneStringPtr(snap.effort),
+		SharedHost:                a.lookupSharedHost(snap.sharedHostKey),
+		CleanupPendingReconciler:  reconcileDesktopCleanupPending,
+		SubagentParentLive:        a.subagentParentProbeForBuild(tab),
+		SessionRecoveryMeta:       a.tabSessionRecoveryMeta(tab),
+		PinnedContextLoader:       pinnedContextLoader(snap.workspaceRoot),
+		OnSessionRecovered:        a.handleTabSessionRecovered(tab),
+		OnSessionTransition:       a.handleTabSessionTransition(tab),
+		BeforeInboxDispatch:       a.beforeInboxDispatch,
+		OnInboxDispatchExhausted:  a.inboxDispatchExhausted,
+		OnSessionTitleChanged:     a.onSessionTitleChanged,
+		OnCreateCollabSession:     a.createCollabSession,
+		OnSessionStatus:           a.collabSessionStatus,
+		OnSessionWorkDetail:       a.collabSessionWorkDetail,
+		OnSessionInfo:             a.collabSessionInfo,
+		OnSessionGroup:            a.collabSessionGroup,
+		OnSessionGroupMatch:       a.collabSessionGroupMatch,
+		OnSessionVersions:         a.collabSessionVersions,
+		OnAdoptSessionVersion:     a.collabAdoptSessionVersion,
+		OnSessionStop:             a.collabSessionStop,
+		OnSessionSetModel:         a.collabSessionSetModel,
+		OnSessionTurnStatus:       a.collabSessionTurnStatus,
+		OnCascadeDelegate:         cascadeDelegateFor,
 		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
-		OnDeleteSession:          a.deleteCollabSession,
-		OnRegistryShellProbe:     a.resolveRegistryShell,
-		OnRegistryShellTrash:     a.trashRegistryShell,
-		OnRenameSession:          a.renameCollabSession,
-		OnMoveTopicToGroup:       a.moveCollabTopicToGroup,
-		OnManageSessions:         a.AgentManageSessions,
+		OnDeleteSession:           a.deleteCollabSession,
+		OnRegistryShellProbe:      a.resolveRegistryShell,
+		OnRegistryShellTrash:      a.trashRegistryShell,
+		OnRenameSession:           a.renameCollabSession,
+		OnMoveTopicToGroup:        a.moveCollabTopicToGroup,
+		OnManageSessions:          a.AgentManageSessions,
 	}
 	// Task 890: hand the outgoing controller's background-job manager and
 	// write lease to the replacement — both branches below (boot.Rebuild

@@ -230,7 +230,7 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 		OnSessionSetModel:          a.collabSessionSetModel,
 		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
-		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
+		OnCascadeSourceCapability:  cascadeSourceCapabilityFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRegistryShellProbe:       a.resolveRegistryShell,
@@ -498,4 +498,98 @@ func (a *App) currentProviderEntryForTab(tabID string) (*config.ProviderEntry, e
 		afterTimeout:     a.effortReadAfterTimeout(tabID),
 	})
 	return entry, nil
+}
+
+// EffortDomainView is the effort menu domain of one model reference
+// (task 1151): what the subagent-profile editor may offer while that model is
+// picked. An empty ref resolves the inherit chain (agent.subagent_model, then
+// the main model) — the same domain the global agent.subagent_effort row
+// renders, so both surfaces stay in lockstep.
+type EffortDomainView struct {
+	Supported bool     `json:"supported"`
+	Levels    []string `json:"levels"`
+	AliasFold bool     `json:"aliasFold,omitempty"`
+}
+
+// EffortDomainForRef resolves the effort menu domain for a model ref
+// (task 1151): config.EffortMenuDomain over the resolved entry — the same
+// capability mapping the dispatch path validates against, pre-filtered to
+// levels that reach the wire. An unknown ref yields an empty domain; the
+// editor then offers only the inherit option instead of a stale vocabulary.
+func (a *App) EffortDomainForRef(ref string) EffortDomainView {
+	out := EffortDomainView{Levels: []string{}}
+	cfg, _, err := a.loadDesktopUserConfigForView()
+	if err != nil {
+		return out
+	}
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		ref = desktopSubagentEffortModelRef(cfg, "")
+	}
+	if ref == "" {
+		return out
+	}
+	entry, ok := cfg.ResolveModel(ref)
+	if !ok {
+		return out
+	}
+	menu, fold := config.EffortMenuDomain(entry)
+	if menu != nil {
+		out.Levels = menu
+	}
+	out.Supported = len(out.Levels) > 0
+	out.AliasFold = fold
+	return out
+}
+
+// desktopSubagentEffortModelRef resolves the model a subagent effort setting
+// applies to. explicitRef (a per-profile override or frontmatter model) wins;
+// the chain mirrors the dispatch resolution: agent.subagent_model, then the
+// main (default) model, then the new-session chat model — the same order the
+// write path (setSubagentEffortConfig) validates against.
+func desktopSubagentEffortModelRef(cfg *config.Config, explicitRef string) string {
+	if cfg == nil {
+		return ""
+	}
+	ref := strings.TrimSpace(explicitRef)
+	if ref == "" {
+		ref = strings.TrimSpace(cfg.Agent.SubagentModel)
+	}
+	if ref == "" {
+		ref = strings.TrimSpace(cfg.DefaultModel)
+	}
+	if ref == "" {
+		if resolved, _, ok := cfg.ResolveNewSessionChatModel(); ok {
+			ref = resolved
+		}
+	}
+	return ref
+}
+
+// desktopSubagentEffortDomain projects the effort menu domain of the model a
+// subagent effort setting applies to for the settings views (task 1151).
+// levels is the wire-legal menu (composer's "auto" alias included; an empty
+// list means the model offers no effort knob); aliasFold is the MiMo identity
+// mark; applies reports whether the persisted stored level survives dispatch
+// for this model (an empty stored level is auto and always applies).
+func desktopSubagentEffortDomain(cfg *config.Config, explicitRef, stored string) (levels []string, aliasFold, applies bool) {
+	levels, aliasFold = []string{}, false
+	applies = strings.TrimSpace(stored) == ""
+	ref := desktopSubagentEffortModelRef(cfg, explicitRef)
+	if ref == "" || cfg == nil {
+		return levels, aliasFold, applies
+	}
+	entry, ok := cfg.ResolveModel(ref)
+	if !ok {
+		return levels, aliasFold, applies
+	}
+	menu, fold := config.EffortMenuDomain(entry)
+	if menu != nil {
+		levels = menu
+	}
+	aliasFold = fold
+	if !applies {
+		applies = config.EffortLevelReachesWire(entry, stored)
+	}
+	return levels, aliasFold, applies
 }
