@@ -51,12 +51,29 @@ func (l *turnLiveness) stalledFor(now time.Time) (time.Duration, bool) {
 func (c *Controller) warnIfTurnStalled(now time.Time) {
 	c.mu.Lock()
 	running := c.running
+	executor := c.executor
 	c.mu.Unlock()
 	if !running {
 		return
 	}
 	silence, ok := c.liveness.stalledFor(now)
 	if !ok {
+		return
+	}
+	// 任务1147: a silent stretch while a compaction pass is in flight is the
+	// summarizer request still generating, not a wedged turn. The 2026-10-24
+	// field report had a healthy chunked compaction (1.3M→250K) read as a
+	// failure because this warning kept urging Stop during it — surface the
+	// same silence as a neutral "compaction running" notice instead. The
+	// warned CAS above already claimed this stretch, so the cadence (one
+	// notice per silent stretch, re-armed by progress) is unchanged.
+	if executor.CompactionRunning() {
+		c.sink.Emit(event.Event{
+			Kind:  event.Notice,
+			Code:  event.NoticeCodeTurnStalledCompacting,
+			Level: event.LevelInfo,
+			Text:  fmt.Sprintf("No progress for %s because a context compaction is running; the turn is waiting on its result.", silence.Round(time.Minute)),
+		})
 		return
 	}
 	c.sink.Emit(event.Event{
