@@ -221,5 +221,60 @@ const uppercase = renderToStaticMarkup(
 );
 ok(!uppercase.includes("file:///"), "uppercase FILE:/// stays inert (case-sensitive allowlist)");
 
+console.log("\nremark plugin — inline code spans (task 1138 follow-up)");
+
+const codePath = renderToStaticMarkup(
+  <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>
+    {"配置在 `D:\\Project\\x\\05-静态验收.md`，请检查。"}
+  </ReactMarkdown>,
+);
+ok(codePath.includes('href="file:///D:/Project/x/05-%E9%9D%99%E6%80%81%E9%AA%8C%E6%94%B6.md"'),
+  "whole-span absolute path inside backticks renders as a chip anchor");
+ok(codePath.includes("05-静态验收.md"), "chip label keeps the original span text");
+
+const codeSpaced = renderToStaticMarkup(
+  <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>
+    {"`C:\\Program Files\\app.exe` 已安装"}
+  </ReactMarkdown>,
+);
+ok(codeSpaced.includes('href="file:///C:/Program%20Files/app.exe"'),
+  "spaced absolute path in backticks linkifies whole");
+
+const codeRelative = renderToStaticMarkup(
+  <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>
+    {"改一下 `src/lib/foo.ts` 这个文件。"}
+  </ReactMarkdown>,
+);
+ok(!codeRelative.includes("<a"), "relative path inside backticks stays inert (scoped trim)");
+
+const codeMixed = renderToStaticMarkup(
+  <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>
+    {"`path=D:\\x\\y.md` 输出"}
+  </ReactMarkdown>,
+);
+ok(!codeMixed.includes("<a"), "mixed-content span stays inert (whole-span rule)");
+
+const codePlain = renderToStaticMarkup(
+  <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>
+    {"先跑 `npm run build` 再看输出。"}
+  </ReactMarkdown>,
+);
+ok(!codePlain.includes("<a"), "non-path inline code stays inert");
+ok(codePlain.includes("<code>npm run build</code>"), "non-path inline code still renders as code");
+
+const codeAds = renderToStaticMarkup(
+  <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>
+    {"见 `C:\\safe.txt:payload` 说明"}
+  </ReactMarkdown>,
+);
+ok(!codeAds.includes("<a"), "ADS lookalike inside backticks stays inert");
+
+const codeNested = renderToStaticMarkup(
+  <ReactMarkdown remarkPlugins={[remarkLocalPathLinks]} urlTransform={markdownUrlTransform}>
+    {"[`D:\\x\\y.md`](https://example.com)"}
+  </ReactMarkdown>,
+);
+ok(!codeNested.includes("file:///"), "inline code inside a link label is not re-linkified (no nested anchors)");
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
