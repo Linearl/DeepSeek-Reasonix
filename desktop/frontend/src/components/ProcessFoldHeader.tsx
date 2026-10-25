@@ -113,7 +113,13 @@ export function ProcessFoldHeader({
   const liveReasoning = useMemo(() => {
     if (!conciseLive) return "";
     const streaming = hasLiveAssistant(displayItems, live?.id);
-    return streaming ? (live?.reasoning ?? "") : latestReasoningText(displayItems);
+    // tl 1160: live 指针命中只说明"尾部 assistant 就是当前流式项"，不保证
+    // 缓冲非空——中断恢复/重连把指针重新挂上（或回滚清空缓冲）时 id 命中而
+    // reasoning=""，此时直接取空值会把 item 上已落盘的快照顶成空白（动态行
+    // 消失、时长行照走的现场构象）。缓冲有内容才优先 live（比快照及时），
+    // 空缓冲一律回退 latestReasoningText。
+    const liveText = streaming ? (live?.reasoning ?? "") : "";
+    return liveText || latestReasoningText(displayItems);
   }, [conciseLive, displayItems, live?.id, live?.reasoning]);
   const throttledReasoning = useThrottledValue(liveReasoning, LIVE_TEXT_THROTTLE_MS);
   const liveActionText = useMemo(() => {
