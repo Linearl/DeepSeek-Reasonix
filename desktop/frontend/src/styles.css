@@ -8121,6 +8121,15 @@ body > .mermaid-diagram--fullscreen {
   user-select: text;
   -webkit-user-select: text;
 }
+/* token 数字读数：等宽数字（tabular-nums）保证多回合上下翻时各位数字纵向
+   对齐；字色取 --fg-dim 比信息带基调（--fg-faint）深半档——读数为主、
+   分隔点与时刻为辅，弱化带内分层；与 composer-run-strip__tally 同源。 */
+.turn-actions__tokens {
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .turn-actions__meta-sep {
   color: var(--fg-faint);
 }
