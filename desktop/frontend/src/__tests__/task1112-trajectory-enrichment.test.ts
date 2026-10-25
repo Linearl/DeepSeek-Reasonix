@@ -1,8 +1,9 @@
 // Run: tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/task1112-trajectory-enrichment.test.ts
 // 任务 1112: trajectory view enrichment (three-lane gantt, filters, readable
 // summaries, search). The timeline projection must map every kind to its lane
-// (user→input/assistant→model/tool→tool, everything else degrades to a
-// marker-only system record), and the sequence timeline must build fully from
+// (user→input/assistant→model/tool→tool; tl-1131 返修起系统类也折进三行——
+// DSH laneFor 同款：compaction→模型行、notice/phase→输入行，不再留 null 兜底
+// 画出三行之外的第四排), and the sequence timeline must build fully from
 // record order alone (the 1111 finding: equal-width mode needs no time
 // anchors, so history sessions render completely). The search index must
 // AND-match across turn numbers/kind labels/title/preview, and the row
@@ -35,10 +36,12 @@ function tool(id: string, extra: Partial<Extract<Item, { kind: "tool" }>> = {}):
 
 console.log("\n任务 1112 trajectory enrichment: lanes, filters, summaries, search");
 
-// ① Lane mapping: user→0 输入, assistant→1 模型, tool→2 工具, system kinds null.
+// ① Lane mapping: user→0 输入, assistant→1 模型, tool→2 工具; system kinds
+//    fold into the three lanes (tl-1131 返修: DSH laneFor 同款, no null lane).
 {
   ok(laneOf("user") === 0 && laneOf("assistant") === 1 && laneOf("tool") === 2, "user/assistant/tool map to lanes 0/1/2");
-  ok(laneOf("compaction") === null && laneOf("notice") === null && laneOf("phase") === null, "system kinds stay out of the three lanes");
+  ok(laneOf("compaction") === 1 && laneOf("notice") === 0 && laneOf("phase") === 0,
+    "system kinds fold into the three lanes (compaction→model, notice/phase→input; DSH laneFor 同款)");
 }
 
 // ② Three-lane gantt on a real-time domain: spans carry lane + turn boundaries.
