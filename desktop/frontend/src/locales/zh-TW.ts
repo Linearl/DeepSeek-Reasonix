@@ -3168,6 +3168,12 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesOutcomeSynthesized": "已合成",
   "settings.recoveryCopiesSynthesizePrefixed": "拼接落敗鏈前綴",
   "settings.recoveryCopiesSynthesizeReopenHint": "合成已生效。請到專案中重新開啟該工作階段（或重新整理標籤頁）才能看到合成後的內容——落敗分支還在回收站裡。",
+  // 任務 1146 返修2：v3-only 形態的生效合成——主線切換 + 落敗 heads 走 1064
+  // retire 標記清理（不走檔案回收站）。橫幅如實報兩件事各自發生與否。
+  "settings.recoveryCopiesV3SynthesizedBoth": "已切換至選定版本並清理 {count} 個落敗分支",
+  "settings.recoveryCopiesV3SynthesizedSwitched": "已切換至選定版本；沒有落敗分支可清理",
+  "settings.recoveryCopiesV3SynthesizedRetired": "已清理 {count} 個落敗分支（選定版本即目前主線）",
+  "settings.recoveryCopiesV3SynthesizedHint": "主線已切換或落敗版本已清理（retire 標記：先隱藏，下次輪換才裁掉，輪換前可從工作階段記錄找回）。請重新整理該工作階段或重新開啟標籤頁查看最新內容。",
   "settings.sessionVersions.title": "工作階段版本與修復（v3 事件日誌）",
   "settings.sessionVersions.hint": "讀取 v3 events 日誌的版本（head）讀數：條數 / 輪次 / 最後活動 / 預覽，標註當前選中，以及「更長」「更新」兩條獨立理由標籤（各帶實際值，供自行判斷）。切換可撤銷；修復先備份再執行並留修復記錄，全程純本地不呼叫模型。",
   "settings.sessionVersions.empty": "沒有發現多版本的工作階段。",
