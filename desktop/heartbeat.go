@@ -222,6 +222,13 @@ type HeartbeatEngine struct {
 	// off, which keeps the baseline visible-tab behaviour byte-for-byte.
 	heartbeatBackground func() bool
 
+	// topicExists (tl 1059) resolves whether a topic id names a real
+	// conversation, gating the create-only explicit topicId binding on both
+	// editor paths (agent upsert + panel save). Nil (tests, CLI engines built
+	// without wiring) = the existence check is skipped — the binding is then
+	// trusted, matching how a hand-edited config's topicId is trusted today.
+	topicExists func(topicID string) bool
+
 	// Task 500 (reuse-session rotation): the engine-owned state sidecar cache
 	// and an injectable stats resolver. rotationStats nil = real filesystem
 	// resolution via the topic-session index; tests override it to keep the
@@ -1136,6 +1143,12 @@ func (e *HeartbeatEngine) ReplaceTasks(tasks []HeartbeatTask) error {
 	// loaded: a stale panel save (e.g. toggling enabled) must not clear the
 	// runHistory that a background execution persisted meanwhile.
 	tasks = mergeHeartbeatDiskRunHistory(tasks, expected.cfg.Tasks)
+	// tl 1059: an explicit topicId binding on a NEW task must reference a real
+	// conversation and stay incompatible with per-run-fresh mode; existing rows
+	// keep the disk binding either way.
+	if err := e.validateHeartbeatTopicBindings(tasks, expected.cfg.Tasks); err != nil {
+		return err
+	}
 	if err := e.writeTasks(tasks, expected, true, "panel-save"); err != nil {
 		return err
 	}
@@ -1176,6 +1189,10 @@ func (e *HeartbeatEngine) ReplaceConfig(update HeartbeatConfigUpdate) (Heartbeat
 		return expected.view(), ErrHeartbeatConfigConflict
 	}
 	tasks := mergeHeartbeatDiskRunHistory(update.Tasks, expected.cfg.Tasks)
+	// tl 1059: same create-only binding gate as ReplaceTasks — see there.
+	if err := e.validateHeartbeatTopicBindings(tasks, expected.cfg.Tasks); err != nil {
+		return expected.view(), err
+	}
 	if err := e.writeTasks(tasks, expected, true, "panel-save-cas"); err != nil {
 		return expected.view(), err
 	}

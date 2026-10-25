@@ -76,9 +76,26 @@ func TestHeartbeatUpsertRejectsUnknownFields(t *testing.T) {
 
 func TestHeartbeatUpsertRejectsEngineOwnedFields(t *testing.T) {
 	withFakeManager(t)
-	_, err := heartbeatTaskUpsert{}.Execute(context.Background(), json.RawMessage(`{"expected_revision":1,"topicId":"t1"}`))
-	if err == nil || !strings.Contains(err.Error(), "topicId") || !strings.Contains(err.Error(), "engine-owned") {
+	// tl 1059: topicId is create-only and decoded at this layer (the desktop
+	// adapter enforces create-vs-update); lastRunAt is unconditionally
+	// engine-owned and rejected here by name.
+	_, err := heartbeatTaskUpsert{}.Execute(context.Background(), json.RawMessage(`{"expected_revision":1,"lastRunAt":123}`))
+	if err == nil || !strings.Contains(err.Error(), "lastRunAt") || !strings.Contains(err.Error(), "engine-owned") {
 		t.Fatalf("engine-owned field must be rejected by name, got %v", err)
+	}
+}
+
+// tl 1059: topicId decodes into the patch (Provided included) instead of being
+// rejected at the decode layer — the desktop adapter decides create-vs-update.
+func TestHeartbeatUpsertDecodesTopicIDAsProvided(t *testing.T) {
+	fake := withFakeManager(t)
+	upsert := heartbeatTaskUpsert{}
+	if _, err := upsert.Execute(context.Background(), json.RawMessage(`{"expected_revision":1,"title":"t","prompt":"p","interval":"30m","topicId":"topic_x"}`)); err != nil {
+		t.Fatal(err)
+	}
+	patch := fake.upsert.Patch
+	if patch.TopicID != "topic_x" || !patch.Provided["topicId"] {
+		t.Fatalf("topicId not decoded as provided: value=%q provided=%v", patch.TopicID, patch.Provided["topicId"])
 	}
 }
 

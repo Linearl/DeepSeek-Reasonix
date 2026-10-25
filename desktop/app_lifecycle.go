@@ -303,6 +303,11 @@ func (a *App) startupStartBackgroundLoops() {
 		applyGoMemLimit(cfg)
 	}
 	a.heartbeat = newHeartbeatEngine(a)
+	// tl 1059: the create-only explicit topicId binding checks candidates
+	// against the live session directory (same roster the panel's session
+	// picker lists), so a binding accepted on save always names a real
+	// conversation.
+	a.heartbeat.topicExists = a.heartbeatTopicExists
 	// 任务 1011 检测路 2: the delayed startup sweep replays recent sessions
 	// read-only and badges the flagged ones; repairs stay on the open path
 	// and the panel button, never in this sweep.
