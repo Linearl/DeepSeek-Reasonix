@@ -26,7 +26,7 @@ function ok(value: boolean, label: string) {
   else { process.stdout.write(`  FAIL  ${label}\n`); failed += 1; }
 }
 
-const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
 const styles = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
 
 console.log("\ntask 626 lab group headers");

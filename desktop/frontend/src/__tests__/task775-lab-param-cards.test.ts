@@ -28,7 +28,7 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 const frontendRoot = `${here}../..`;
 const repoRoot = `${frontendRoot}/../..`;
 const yamlText = readFileSync(`${frontendRoot}/src/lab/lab-layout.yaml`, "utf8");
-const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8");
+const panel = readFileSync(`${frontendRoot}/src/components/SettingsPanel.tsx`, "utf8") + "\n" + readFileSync(`${frontendRoot}/src/components/ExperimentalLabSection.tsx`, "utf8") + "\n" + readFileSync(`${frontendRoot}/src/lab/labPaneRegistry.ts`, "utf8");
 const registry = readFileSync(`${frontendRoot}/src/lab/labParamFields.ts`, "utf8");
 const view = readFileSync(`${frontendRoot}/src/lib/settingsViewTypes.ts`, "utf8");
 

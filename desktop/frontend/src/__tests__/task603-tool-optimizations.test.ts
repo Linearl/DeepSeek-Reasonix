@@ -51,7 +51,7 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
 // ② SettingsPanel wiring（722 起 rail 分组/条目数据驱动：组词表在
 // labLayoutTypes，条目与其灯读数在 labLayoutDefault——锚点随机制迁移）。
 {
-  const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+  const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
   const layoutTypes = readFileSync(fileURLToPath(new URL("../lab/labLayoutTypes.ts", import.meta.url)), "utf8");
   const layoutDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
   // 任务 992（用户 1018 21:34）：工具优化整体并入 infra 组，原独立 tool-opt

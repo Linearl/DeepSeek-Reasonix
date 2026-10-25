@@ -25,7 +25,7 @@ function ok(value: boolean, label: string) {
   else { process.stdout.write(`  FAIL  ${label}\n`); failed += 1; }
 }
 
-const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
 const bridge = readFileSync(fileURLToPath(new URL("../lib/bridge.ts", import.meta.url)), "utf8");
 const tiers = readFileSync(fileURLToPath(new URL("../lib/experimentTiers.ts", import.meta.url)), "utf8");
 const zh = readFileSync(fileURLToPath(new URL("../locales/zh.ts", import.meta.url)), "utf8");

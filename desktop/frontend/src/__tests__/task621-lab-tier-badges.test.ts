@@ -31,7 +31,7 @@ function ok(value: boolean, label: string) {
 
 console.log("\ntask 621 badge placement + suffix cleanup");
 
-const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../lab/labPaneRegistry.ts", import.meta.url)), "utf8");
 const card = readFileSync(fileURLToPath(new URL("../components/SettingsOpenCodeGoUsageCard.tsx", import.meta.url)), "utf8");
 const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", import.meta.url)), "utf8");
 
@@ -90,7 +90,10 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
   const badBare = bare.filter((s) => !panel.includes(s));
   ok(missingBadge.length === 0, `master switch rows keep their badges (missing: ${JSON.stringify(missingBadge)})`);
   ok(badBare.length === 0, `sibling/dial rows render bare labels (violations: ${JSON.stringify(badBare)})`);
-  ok(panel.includes("{feature.badgeTier ? <TierBadge tier={feature.badgeTier} translator={t} /> : null}"),
+  // tl 1134：rail 行 memo 化后 TierBadge 落在 LabRailItem 子组件里，
+  // translator prop 名随上下文改为 translator——断言按「单枚聚合徽章」形态
+  // 匹配（774 契约不变，同 task562 ⑤ 修法）。
+  ok(panel.includes("{feature.badgeTier ? <TierBadge tier={feature.badgeTier}"),
     "rail rows keep exactly ONE aggregated tier badge (non-regression; 任务774 徽章聚合：卡头单枚最高档，任务724 布局数据驱动)");
 }
 

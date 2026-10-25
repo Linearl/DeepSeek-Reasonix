@@ -332,7 +332,7 @@ console.log("\ntask 562 lab three-tier badges");
 
 // ⑤ pane wiring in SettingsPanel (46/46) + rail render site.
 {
-  const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8");
+  const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../lab/labPaneRegistry.ts", import.meta.url)), "utf8");
   const wrapped = new Set([...panel.matchAll(/labLabel\("([a-zA-Z]+)"/g)].map((m) => m[1]));
   const missing: string[] = [];
   for (const id of Object.keys(EXPERIMENT_FEATURE_TIERS) as TierFeatureId[]) {
@@ -349,7 +349,10 @@ console.log("\ntask 562 lab three-tier badges");
   // 多枚 .map 渲染必须消失——卡头不再出现两枚档位徽章。
   ok(panel.includes("badgeTier: labEntryBadgeTier(labLayoutResolved.layout, entry.id)"),
     "rail features table sources the aggregated badge tier from the resolved layout");
-  ok(panel.includes("{feature.badgeTier ? <TierBadge tier={feature.badgeTier} translator={t} /> : null}"),
+  // tl 1134：rail 行 memo 化后 TierBadge 落在 LabRailItem 子组件里，
+  // translator prop 名随上下文改为 translator——断言按「单枚聚合徽章 + 无
+  // .map 多枚渲染」的形态匹配（774 契约不变）。
+  ok(panel.includes("{feature.badgeTier ? <TierBadge tier={feature.badgeTier}"),
     "rail rows render exactly one aggregated tier badge");
   ok(!panel.includes("labEntryBadgeTiers"), "the multi-badge rail mapping is gone from SettingsPanel");
   const card = readFileSync(fileURLToPath(new URL("../components/SettingsOpenCodeGoUsageCard.tsx", import.meta.url)), "utf8");
