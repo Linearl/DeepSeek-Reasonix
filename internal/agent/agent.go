@@ -1902,6 +1902,16 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	// retry, manual dismiss) are skipped because only still-pending records
 	// settle. Run fully returns before the controller publishes running=false,
 	// so the panel's turn-end probe already sees the settled snapshot.
+	//
+	// 任务 1143（中断记录采集口径）: before that snapshot, re-stamp stale
+	// records the transcript already contradicts — a record whose call has a
+	// paired tool result is proven returned, so a mid-tool crash revival or an
+	// over-broad ledger reopen must not present it as「结果未知」to the panel
+	// or the turn status. Settlement lands before the prior snapshot, so both
+	// the task-717 dismissal and the controller's recovery_required turn
+	// status read the corrected state, and a plain-text turn (no tool call,
+	// hence no beginToolRecovery) still settles.
+	a.settlePairedTranscriptResults()
 	priorPending := a.PendingToolRecovery()
 	defer func() { a.ResolveInterruptedByNewTurn(priorPending) }()
 	if err := a.prepareProtocolRecovery(ctx); err != nil {

@@ -36,6 +36,12 @@ const noticeCodeSideEffectFreeAutoResolved = "tool_recovery_side_effect_free"
 // 「未生效」 is the only truthful state and no human confirmation is needed.
 const sideEffectFreeResolution = "side_effect_free"
 
+// pairedTranscriptResultResolution marks a record re-stamped from its paired
+// tool result (任务 1143): the effect outcome is proven by the transcript's own
+// result message, so a stale started/unknown state from a mid-tool crash or an
+// over-broad ledger reopen must not present the call as「结果未知」.
+const pairedTranscriptResultResolution = "paired_transcript_result"
+
 // noSideEffectTools is the task-433 enumerable whitelist: tools whose calls
 // cannot produce an external effect by construction, so an interrupted call is
 // auto-resolved as not started instead of stranding the turn behind the review
@@ -205,6 +211,7 @@ func (a *Agent) beginToolRecovery(ctx context.Context, p *toolCallPlan) error {
 	// session reloaded with such a record must not light up the review panel.
 	// Task 482（fence 退役）: this settle is the one part of the old barrier
 	// path that stays — it cleans the record state, it no longer gates writes.
+	a.settlePairedTranscriptResults() // 任务 1143: 转录已配对结果的残留记录先按证据结算
 	a.resolveSideEffectFreeInterruptedCalls()
 	// Task 482（fence 退役）: the former write barrier lived here — with a
 	// pending unresolved write effect, non-exempt writes were stopped with a
@@ -351,6 +358,68 @@ func (a *Agent) resolveSideEffectFreeInterruptedCalls() {
 	}
 }
 
+// 任务 1143（中断记录采集口径）：pairedTranscriptResultStates collects the
+// tool-call → result evidence the transcript itself already carries. A record
+// can survive as started/unknown when the process died between the record's
+// begin checkpoint and its finish update (or a ledger reopen proved only
+// "was started"); the paired tool result message is the stronger fact — the
+// tool demonstrably returned. Interrupted placeholders are not evidence and
+// stay excluded; for repeated results of one call the newest (backward scan)
+// wins, matching how the rest of the recovery chain reads the tail.
+func pairedTranscriptResultStates(msgs []provider.Message) map[string]provider.ToolRunState {
+	states := map[string]provider.ToolRunState{}
+	for _, m := range slices.Backward(msgs) {
+		if m.Role != provider.RoleTool || m.ToolCallID == "" {
+			continue
+		}
+		if _, seen := states[m.ToolCallID]; seen {
+			continue
+		}
+		if provider.IsInterruptedPlaceholder(m) {
+			continue
+		}
+		states[m.ToolCallID] = provider.ToolResultRunState(m)
+	}
+	return states
+}
+
+// settlePairedTranscriptResults fixes stale unresolved records the transcript
+// already contradicts (任务 1143): a record stuck in started/unknown whose call
+// has a paired tool result is re-stamped from that result (completed/failed/
+// not_started) with a host-sourced resolution. Called at the turn boundary
+// next to the task-433 settle so a record revived by a mid-tool crash or an
+// over-broad ledger reopen cannot outlive its own completion evidence. Scans
+// the transcript directly — the read-side filter in PendingToolRecovery hides
+// exactly these records, so settling through it would see nothing. Best
+// effort like the other metadata settles: a rejected update keeps the record
+// as-is and the read-side filter still answers truthfully.
+func (a *Agent) settlePairedTranscriptResults() {
+	if a == nil || a.sess.conversation == nil {
+		return
+	}
+	states := pairedTranscriptResultStates(a.sess.conversation.Snapshot())
+	if len(states) == 0 {
+		return
+	}
+	for _, m := range a.sess.conversation.Snapshot() {
+		for _, call := range m.ToolCalls {
+			if call.Recovery == nil || !unresolvedToolRecord(*call.Recovery) {
+				continue
+			}
+			state, ok := states[call.ID]
+			if !ok || state == provider.ToolRunUnknown {
+				continue
+			}
+			resolved := *call.Recovery
+			resolved.State = state
+			resolved.Resolution = pairedTranscriptResultResolution
+			resolved.ResolutionSource = "host"
+			resolved.ResolvedAt = time.Now().UnixMilli()
+			a.sess.conversation.setToolRecoveryRecord(call.ID, resolved)
+		}
+	}
+}
+
 // autoResolveSideEffectFreeRecord marks one record as「未生效」(never started)
 // with a host-sourced resolution and emits a trace notice naming only the tool
 // and the verdict. Like the host-verified-absent path this checkpoint is best
@@ -413,11 +482,18 @@ func retainUnresolvedToolRecords(previous, next []provider.Message) []provider.M
 
 // PendingToolRecovery reads durable execution facts, independent of prompt-tail
 // consumption. Records are detached before leaving the session boundary.
+//
+// 任务 1143（中断记录采集口径）：a record whose call has a paired, non-placeholder
+// tool result in the transcript is no longer reported as interrupted/unknown —
+// the result message is the proof the tool returned, so「工具已成功返回 + 纯文本
+// 收尾」must not surface as「结果未知」. Only a call with no answered result
+// (the genuine interruption shape) stays pending here.
 func (a *Agent) PendingToolRecovery() []provider.ToolCallRecord {
 	result := []provider.ToolCallRecord{}
 	if a == nil || a.sess.conversation == nil {
 		return result
 	}
+	paired := pairedTranscriptResultStates(a.sess.conversation.Snapshot())
 	seen := map[string]bool{}
 	for _, m := range slices.Backward(a.sess.conversation.Snapshot()) {
 		for _, call := range m.ToolCalls {
@@ -431,6 +507,10 @@ func (a *Agent) PendingToolRecovery() []provider.ToolCallRecord {
 			}
 			seen[id] = true
 			if !unresolvedToolRecord(r) {
+				continue
+			}
+			// 转录已配对明确结果：工具已返回，不再按「结果未知」上报。
+			if state, ok := paired[r.Identity.CallID]; ok && state != provider.ToolRunUnknown {
 				continue
 			}
 			r.Arguments = append(json.RawMessage(nil), r.Arguments...)
