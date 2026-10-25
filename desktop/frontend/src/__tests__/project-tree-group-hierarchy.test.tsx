@@ -233,6 +233,15 @@ function headers(): HTMLElement[] {
   );
 }
 
+// tl 1149：移动行收进「分组移动 ▸」inline 二级——先展开它，子行才渲染进 DOM。
+async function expandGroupMoveSubmenu() {
+  const trigger = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
+    .find((el) => (el.textContent ?? "").includes("projectTree.groupMove")) as HTMLElement | undefined;
+  ok(Boolean(trigger), "「分组移动 ▸」trigger present in the group menu");
+  if (trigger) await act(async () => { trigger.click(); await flush(); });
+}
+
+
 function groupBlock(title: string): HTMLElement | null {
   return [...document.querySelectorAll(".project-tree__group")].find(
     (el) => el.querySelector(".project-tree__group-main")?.getAttribute("title") === title,
@@ -256,6 +265,7 @@ console.log("\nsession group hierarchy — controller & render (task 350)");
     headers()[0].dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
   });
+  await expandGroupMoveSubmenu();
   const nestItem = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
     .find((el) => (el.textContent ?? "").includes("projectTree.nestGroupUnder:B")) as HTMLElement | undefined;
   ok(Boolean(nestItem), "context menu offers 移到子层 for a top-level group");
@@ -344,6 +354,7 @@ console.log("\nsession group hierarchy — controller & render (task 350)");
     headers()[1].dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
   });
+  await expandGroupMoveSubmenu();
   const topItem = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
     .find((el) => (el.textContent ?? "").includes("projectTree.moveGroupToTopLevel")) as HTMLElement | undefined;
   ok(Boolean(topItem), "nested group menu offers 移到顶层");
@@ -405,6 +416,7 @@ console.log("\nsession group hierarchy — controller & render (task 350)");
     headers()[2].dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
   });
+  await expandGroupMoveSubmenu();
   const menuTexts = [...document.querySelectorAll("[role=\"menuitem\"], .context-menu__item, button")]
     .map((el) => el.textContent ?? "");
   ok(menuTexts.some((text) => text.includes("projectTree.moveGroupToTopLevel")), "level-3 menu offers 移到顶层");

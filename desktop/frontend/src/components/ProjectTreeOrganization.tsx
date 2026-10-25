@@ -757,6 +757,27 @@ export function ProjectTreeGroupRows({
       const nestInto = nestTargets(groups, group.id)
         .filter((target) => target.id !== (group.parent ?? ""))
         .slice(0, 4);
+      // tl 1149: the flat "move under X / move to top level" rows collapsed
+      // into one 「分组移动 ▸」 submenu. Same moves, same order (nest targets
+      // first, then the top-level escape hatch for nested groups) — one level
+      // less of menu length per group in the roster.
+      const groupMoveItems: ContextMenuItem[] = [
+        // Task 350 → 892: display-only hierarchy moves — nest under any
+        // legal group at any depth (cycle- and depth-guarded by canNestUnder).
+        // No authority follows the pointer (层级≠指挥权).
+        ...nestInto.map((target) => ({
+          key: `nest:${target.id}`,
+          icon: <FolderMinus size={13} />,
+          label: t("projectTree.nestGroupUnder", { title: target.title }),
+          onSelect: () => { organization.nestGroup(key, group.id, target.id); setMenuGroup(null); },
+        })),
+        ...(nested ? [{
+          key: "move-to-top",
+          icon: <FolderMinus size={13} />,
+          label: t("projectTree.moveGroupToTopLevel"),
+          onSelect: () => { organization.nestGroup(key, group.id, null); setMenuGroup(null); },
+        }] : []),
+      ];
       return <div key={group.id} className={`project-tree__group${collapsed ? " project-tree__group--collapsed" : ""}${nested ? " project-tree__group--nested" : ""}`}>
         <div
           role="button"
@@ -893,27 +914,22 @@ export function ProjectTreeGroupRows({
           point={menuPoint}
           items={[
             // wt-zcode-288：会话分组头右键「全部已读」——成员会话一次标记已读。
+            // tl 1149：分组语境的「全部已读」保留原名（单条会话菜单才叫「已读」）。
             ...(onMarkAllRead && members.length > 0 ? [{
               key: "mark-all-read",
               icon: <CheckCheck size={13} />,
               label: t("projectTree.markAllRead"),
               onSelect: () => { onMarkAllRead(members); setMenuGroup(null); },
             }] : []),
-            // Task 350 → 892: display-only hierarchy moves — nest under any
-            // legal group at any depth (≤4 inline targets, cycle- and
-            // depth-guarded by canNestUnder), or back to the top level. No
-            // authority follows the pointer (层级≠指挥权).
-            ...nestInto.map((target) => ({
-              key: `nest:${target.id}`,
+            // tl 1149：N 条「移到 X 子层 / 移到顶层」一级平铺收进「分组移动 ▸」
+            // 二级——分组多时一级菜单不再随分组数线性变长。语义与方向不变：
+            // 仍是 display-only 层级移动（cycle/depth-guarded nestGroup）。
+            ...(groupMoveItems.length > 0 ? [{
+              type: "submenu" as const,
+              key: "group-move",
               icon: <FolderMinus size={13} />,
-              label: t("projectTree.nestGroupUnder", { title: target.title }),
-              onSelect: () => { organization.nestGroup(key, group.id, target.id); setMenuGroup(null); },
-            })),
-            ...(nested ? [{
-              key: "move-to-top",
-              icon: <FolderMinus size={13} />,
-              label: t("projectTree.moveGroupToTopLevel"),
-              onSelect: () => { organization.nestGroup(key, group.id, null); setMenuGroup(null); },
+              label: t("projectTree.groupMove"),
+              items: groupMoveItems,
             }] : []),
             // Task 892-B: 「新建子分组」(827 form on the session tree) — opens an
             // inline composer right below this group's header; Enter files it
@@ -926,80 +942,92 @@ export function ProjectTreeGroupRows({
               onSelect: () => { setCreatingUnder(group.id); setGroupDraft(""); setMenuGroup(null); if (collapsed) organization.toggleGroup(key, group.id); },
             },
             { key: "rename", icon: <Pencil size={13} />, label: t("projectTree.renameGroup"), onSelect: () => { setEditingGroup(group.id); setGroupDraft(group.title); setMenuGroup(null); } },
-            { key: "clear", icon: <Eraser size={13} />, label: t("projectTree.clearGroup"), onSelect: () => { organization.clearGroup(key, group.id); setMenuGroup(null); } },
-            // Task 892-B ④: proposal-first delete — confirm=false returns a
-            // zero-write plan; the dialog then offers the A-slice's two options:
-            // children promoted to top (default) or cascade (whole subtree).
-            // No binding → pre-892 immediate CAS dissolve (same promote result).
-            { key: "dissolve", icon: <FolderMinus size={13} />, label: t("projectTree.dissolveGroup"), onSelect: () => {
-              setMenuGroup(null);
-              void (async () => {
-                const plan = await organization.deleteGroupPropose(key, group.id);
-                if (plan === null) { organization.dissolveGroup(key, group.id); return; }
-                const promoted = plan.promoted ?? [];
-                const unfiled = plan.unfiledTopics ?? [];
-                // cascadeRef: the checkbox lives inside the dialog's ReactNode
-                // message; its value is read back after the dialog resolves.
-                const cascadeRef = { current: false };
-                const titles = promoted.map((id) => groups.find((candidate) => candidate.id === id)?.title ?? id);
-                const confirmed = await confirmDelete({
-                  title: t("projectTree.dissolveGroup"),
-                  message: <>
-                    <p>{t("projectTree.deleteGroupPlanIntro", { title: group.title })}</p>
-                    {unfiled.length > 0 && <p>{t("projectTree.deleteGroupPlanUnfiled", { count: String(unfiled.length) })}</p>}
-                    {promoted.length > 0 && <>
-                      <p>{t("projectTree.deleteGroupPlanPromote", { count: String(promoted.length), titles: titles.join(", ") })}</p>
-                      <label className="reasonix-confirm-dialog__cascade">
-                        <input
-                          type="checkbox"
-                          aria-label={t("projectTree.deleteGroupPlanCascade", { count: String(promoted.length) })}
-                          onChange={(event) => { cascadeRef.current = event.target.checked; }}
-                        />
-                        {t("projectTree.deleteGroupPlanCascade", { count: String(promoted.length) })}
-                      </label>
-                    </>}
-                    {plan.batch && unfiled.length > 0 && <p>{t("projectTree.deleteGroupPlanBatch", { count: String(unfiled.length) })}</p>}
-                  </>,
-                  confirmLabel: t("projectTree.dissolveGroup"),
-                  cancelLabel: t("common.cancel"),
-                  tone: "danger",
-                  wide: Boolean(plan.batch),
-                });
-                if (!confirmed) return;
-                await organization.deleteGroupExecute(key, group.id, cascadeRef.current);
-              })();
-            } },
-            { key: "delete-sessions", icon: <Trash2 size={13} />, label: t("projectTree.deleteGroupSessions"), danger: true, onSelect: () => {
-              setMenuGroup(null);
-              // Destructive variant of dissolve (task 17 S3): every session goes
-              // to the recycle path first - never a hard delete - and one
-              // failure must not strand the remaining sessions.
-              void (async () => {
-                const members = (group.topicIds ?? []).slice();
-                if (members.length > 0) {
-                  const confirmed = await app.ConfirmAction({
-                    title: t("projectTree.deleteGroupSessions"),
-                    message: t("projectTree.deleteGroupSessionsConfirm", { count: String(members.length) }),
-                    detail: t("projectTree.deleteGroupSessionsDetail"),
-                    confirmLabel: t("projectTree.deleteGroupSessions"),
-                    cancelLabel: t("common.cancel"),
-                    destructive: true,
-                  });
-                  if (!confirmed) return;
-                  for (const topicID of members) {
-                    try {
-                      await app.TrashTopic(topicID);
-                    } catch (error) {
-                      console.warn("trash topic failed", topicID, error);
+            // tl 1149：低频管理操作（清空/解散/删除及会话）收进「分组管理 ▸」
+            // 二级；高频读写项（已读/分组移动/新建子分组/重命名）留在一级。
+            // 取舍按使用频率：重命名与新建子分组是整理动作（常用），清空与两级
+            // 删除是破坏性动作（罕用+均有确认/回收路径兜底）。
+            {
+              type: "submenu" as const,
+              key: "group-manage",
+              icon: <Eraser size={13} />,
+              label: t("projectTree.groupManage"),
+              items: [
+                { key: "clear", icon: <Eraser size={13} />, label: t("projectTree.clearGroup"), onSelect: () => { organization.clearGroup(key, group.id); setMenuGroup(null); } },
+                // Task 892-B ④: proposal-first delete — confirm=false returns a
+                // zero-write plan; the dialog then offers the A-slice's two options:
+                // children promoted to top (default) or cascade (whole subtree).
+                // No binding → pre-892 immediate CAS dissolve (same promote result).
+                { key: "dissolve", icon: <FolderMinus size={13} />, label: t("projectTree.dissolveGroup"), onSelect: () => {
+                  setMenuGroup(null);
+                  void (async () => {
+                    const plan = await organization.deleteGroupPropose(key, group.id);
+                    if (plan === null) { organization.dissolveGroup(key, group.id); return; }
+                    const promoted = plan.promoted ?? [];
+                    const unfiled = plan.unfiledTopics ?? [];
+                    // cascadeRef: the checkbox lives inside the dialog's ReactNode
+                    // message; its value is read back after the dialog resolves.
+                    const cascadeRef = { current: false };
+                    const titles = promoted.map((id) => groups.find((candidate) => candidate.id === id)?.title ?? id);
+                    const confirmed = await confirmDelete({
+                      title: t("projectTree.dissolveGroup"),
+                      message: <>
+                        <p>{t("projectTree.deleteGroupPlanIntro", { title: group.title })}</p>
+                        {unfiled.length > 0 && <p>{t("projectTree.deleteGroupPlanUnfiled", { count: String(unfiled.length) })}</p>}
+                        {promoted.length > 0 && <>
+                          <p>{t("projectTree.deleteGroupPlanPromote", { count: String(promoted.length), titles: titles.join(", ") })}</p>
+                          <label className="reasonix-confirm-dialog__cascade">
+                            <input
+                              type="checkbox"
+                              aria-label={t("projectTree.deleteGroupPlanCascade", { count: String(promoted.length) })}
+                              onChange={(event) => { cascadeRef.current = event.target.checked; }}
+                            />
+                            {t("projectTree.deleteGroupPlanCascade", { count: String(promoted.length) })}
+                          </label>
+                        </>}
+                        {plan.batch && unfiled.length > 0 && <p>{t("projectTree.deleteGroupPlanBatch", { count: String(unfiled.length) })}</p>}
+                      </>,
+                      confirmLabel: t("projectTree.dissolveGroup"),
+                      cancelLabel: t("common.cancel"),
+                      tone: "danger",
+                      wide: Boolean(plan.batch),
+                    });
+                    if (!confirmed) return;
+                    await organization.deleteGroupExecute(key, group.id, cascadeRef.current);
+                  })();
+                } },
+                { key: "delete-sessions", icon: <Trash2 size={13} />, label: t("projectTree.deleteGroupSessions"), danger: true, onSelect: () => {
+                  setMenuGroup(null);
+                  // Destructive variant of dissolve (task 17 S3): every session goes
+                  // to the recycle path first - never a hard delete - and one
+                  // failure must not strand the remaining sessions.
+                  void (async () => {
+                    const members = (group.topicIds ?? []).slice();
+                    if (members.length > 0) {
+                      const confirmed = await app.ConfirmAction({
+                        title: t("projectTree.deleteGroupSessions"),
+                        message: t("projectTree.deleteGroupSessionsConfirm", { count: String(members.length) }),
+                        detail: t("projectTree.deleteGroupSessionsDetail"),
+                        confirmLabel: t("projectTree.deleteGroupSessions"),
+                        cancelLabel: t("common.cancel"),
+                        destructive: true,
+                      });
+                      if (!confirmed) return;
+                      for (const topicID of members) {
+                        try {
+                          await app.TrashTopic(topicID);
+                        } catch (error) {
+                          console.warn("trash topic failed", topicID, error);
+                        }
+                      }
                     }
-                  }
-                }
-                // Task 892-B: route the shell removal through the A-slice too
-                // (children promote, cascade=false); without the binding this
-                // lands on the same CAS filter the old dissolveGroup used.
-                await organization.deleteGroupExecute(key, group.id, false);
-              })();
-            } },
+                    // Task 892-B: route the shell removal through the A-slice too
+                    // (children promote, cascade=false); without the binding this
+                    // lands on the same CAS filter the old dissolveGroup used.
+                    await organization.deleteGroupExecute(key, group.id, false);
+                  })();
+                } },
+              ],
+            },
           ]}
           minWidth={178}
           ariaLabel={t("projectTree.renameGroup")}

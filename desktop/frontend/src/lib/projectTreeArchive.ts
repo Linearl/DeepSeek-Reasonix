@@ -44,6 +44,26 @@ export function projectTreeSessionArchiveTargetKey(sessionPath: string): string 
   return JSON.stringify(["session", sessionPath.trim()]);
 }
 
+// tl 1103: the desktop backend marks the archive failures TrashTopicForce can
+// actually clear (active-work gate, session-lease-busy family) with this
+// stable machine code — same "reasonix_error:" channel as the inbox errors.
+// Only marked failures may raise the force-archive confirm; every other
+// failure (file locked by a scanner, disk full, …) must surface as a plain
+// error and never be steered toward force.
+export const TOPIC_ARCHIVE_FORCEABLE_PREFIX = "reasonix_error:topic_archive_forceable: ";
+
+export function isTopicArchiveForceableError(error: unknown): boolean {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw.startsWith(TOPIC_ARCHIVE_FORCEABLE_PREFIX);
+}
+
+/** The human-readable backend cause with the machine prefix stripped — this is
+ * what the confirm dialog shows as the failure reason. */
+export function topicArchiveForceableReason(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw.startsWith(TOPIC_ARCHIVE_FORCEABLE_PREFIX) ? raw.slice(TOPIC_ARCHIVE_FORCEABLE_PREFIX.length) : raw;
+}
+
 export async function runProjectTreeArchiveJob({
   archive,
   commit,
@@ -155,7 +175,12 @@ export function useProjectTreeArchiveController({
   const [trashingSessions, setTrashingSessions] = useState<Set<string>>(new Set());
   const archiveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
-  const trashTopic = useCallback(async (topicId: string) => {
+  // tl 1103: when the archive fails, `onArchiveFailed` decides how the failure
+  // is surfaced — return true after handling it (e.g. the force-archive confirm
+  // consumed a lease-busy failure) and the plain error toast is skipped; return
+  // false to keep the generic toast. The reload still runs on every path so a
+  // failed mutation never leaves stale rows behind.
+  const trashTopic = useCallback(async (topicId: string, onArchiveFailed?: (error: unknown) => Promise<boolean> | boolean) => {
     if (!beginTrashingTopic(topicId)) return;
     const folderKey = projectTreeFolderKeyForTopic(treeRef.current, topicId);
     const reloadOptions: ProjectTreeRefreshOptions = {
@@ -187,7 +212,13 @@ export function useProjectTreeArchiveController({
         },
         finishPending: () => endTrashingTopic(topicId),
         recover: async (err) => {
-          showToast(err instanceof Error ? err.message : String(err), "error");
+          let handled = false;
+          try {
+            handled = (await onArchiveFailed?.(err)) === true;
+          } catch {
+            handled = false;
+          }
+          if (!handled) showToast(err instanceof Error ? err.message : String(err), "error");
           await refreshRef.current(reloadOptions);
         },
       });

@@ -32,4 +32,7 @@ export interface ProjectTreeProps {
   showShortcutBadges?: boolean;
   shortcutPlatform?: ShortcutPlatform;
   onVisibleTopicsChange?: (topics: TopicShortcutEntry[]) => void;
+  /** tl 1103 会话右键「复制 ▸」的「日志路径」取值（应用根 logs/desktop，与
+   * topicbar 复制菜单同一装配层来源）；缺省时该项禁用。 */
+  logDirectory?: string;
 }
