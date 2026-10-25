@@ -890,7 +890,7 @@ func (c *Controller) TrySubmitInboxItem(id string) (sessioninbox.InboxReceipt, e
 	}
 	// Start the classified envelope directly. Submit would parse @tokens again
 	// and mix live workspace bytes with the enqueue-time snapshot.
-	result := c.submitPreparedInboxTurn(id, firstNonEmptyStr(env.DisplayText, env.SubmitText), run)
+	result := c.submitPreparedInboxTurn(id, firstNonEmptyStr(env.DisplayText, env.SubmitText), meta.CreatedAt, run)
 	if result != turnStarted {
 		if err := st.SetState(id, sessioninbox.StateQueued, ""); err != nil {
 			_ = st.ForcePause(true, 1)

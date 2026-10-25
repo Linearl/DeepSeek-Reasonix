@@ -33,6 +33,57 @@ func openTestLedger(t *testing.T, sessionPath, sessionID string) *Ledger {
 	return ledger
 }
 
+// tl 1152: the ledger is the replay source for reconnecting frontends. A
+// UserInput event's domain time (`at`, the inbox item's enqueue wall clock)
+// must survive the append → reopen → Replay round trip unchanged — a replay
+// batch reprojects overnight turns the next morning, and re-stamping there is
+// exactly the "every bubble shows 09:34" regression this field exists to kill.
+func TestLedgerReplayKeepsUserInputDomainTime(t *testing.T) {
+	sessionPath := testSessionPath(t)
+	const at = int64(1792958041000)
+	l := openTestLedger(t, sessionPath, "session")
+	if _, err := l.Begin(); err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	appended, ok, err := l.Append(event.Event{Kind: event.UserInput, Text: "夜间跨会话消息", ItemID: "msg_1", At: at}, event.TurnInProgress)
+	if err != nil || !ok {
+		t.Fatalf("append user_input: ok=%v err=%v", ok, err)
+	}
+	if appended.Sequence == 0 {
+		t.Fatalf("in-memory ledger returned seq 0; expected persisted path")
+	}
+	if err := l.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	reopened, err := Open(sessionPath, "session")
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := reopened.Close(); err != nil {
+			t.Errorf("Close reopened ledger: %v", err)
+		}
+	})
+	view, err := reopened.Replay(0)
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	var userInput *eventwire.Event
+	for i := range view.Events {
+		if view.Events[i].Event.Kind == "user_input" {
+			userInput = &view.Events[i].Event
+			break
+		}
+	}
+	if userInput == nil {
+		t.Fatalf("replay view has no user_input event: %d envelopes", len(view.Events))
+	}
+	if userInput.At != at {
+		t.Fatalf("replayed user_input At = %d, want %d (domain time must survive the ledger round trip)", userInput.At, at)
+	}
+}
+
 func TestLedgerPersistsMonotonicEventsAndExactlyOneTerminal(t *testing.T) {
 	path := testSessionPath(t)
 	l, err := Open(path, "session")

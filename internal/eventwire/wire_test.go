@@ -13,6 +13,38 @@ import (
 	"reasonix/internal/provider"
 )
 
+// tl 1152: the UserInput frame carries the durable enqueue time as `at` so a
+// replayed batch keeps each message's own send time. Unstamped events omit the
+// field entirely (omitempty) — older frontends and older ledgers are
+// byte-compatible.
+func TestToWireUserInputCarriesDomainTime(t *testing.T) {
+	const at = int64(1792958041000) // 2026-10-25 00:47:21 +08:00
+	w := ToWire(event.Event{Kind: event.UserInput, Text: "夜间跨会话消息", ItemID: "msg_1", At: at})
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	s := string(b)
+	for _, want := range []string{`"kind":"user_input"`, `"itemId":"msg_1"`, `"at":1792958041000`} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("user_input JSON = %s, want it to contain %s", s, want)
+		}
+	}
+
+	stamped := ToWire(event.Event{Kind: event.UserInput, Text: "带时间", At: at})
+	if stamped.At != at {
+		t.Fatalf("ToWire At = %d, want %d (domain time must survive serialization)", stamped.At, at)
+	}
+
+	unstamped, err := json.Marshal(ToWire(event.Event{Kind: event.UserInput, Text: "无时间直发"}))
+	if err != nil {
+		t.Fatalf("marshal unstamped: %v", err)
+	}
+	if strings.Contains(string(unstamped), `"at"`) {
+		t.Fatalf("unstamped JSON = %s, want no at field (omitempty keeps old ledgers byte-compatible)", unstamped)
+	}
+}
+
 func TestToWireRetryingJSON(t *testing.T) {
 	recovery := &event.RecoveryStatus{Phase: "headers", NextAttemptAt: 1700000000000, WaitedMs: 14000, WaitBudgetMs: 600000, Waiting: true}
 	w := ToWire(event.Event{Kind: event.Retrying, RetryAttempt: 3, RetryMax: 10, RetryScope: event.RetryScopeStream, Recovery: recovery})

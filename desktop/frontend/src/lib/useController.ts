@@ -2327,7 +2327,12 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // Task 258: the receipt-time guidance_bubble already rendered this item;
       // the consume-time event must not double it.
       if (e.itemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === e.itemId)) return s;
-      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${e.text ?? ""}`, inboxItemId: e.itemId, createdAt: e.emittedAt ?? Date.now() }] };
+      // tl 1152: prefer the event's durable domain time when the backend
+      // stamps one (same field user_input uses); steer emitters don't set it
+      // yet, so emittedAt (backend emit clock) stays the live fallback — both
+      // outrank the local processing clock, which a replay batch would
+      // collapse every notice onto.
+      return { ...s, seq: s.seq + 1, items: [...s.items, { kind: "notice", id: `s${s.seq}`, level: "info", text: `${STEER_NOTICE_PREFIX}${e.text ?? ""}`, inboxItemId: e.itemId, createdAt: e.at ?? e.emittedAt ?? Date.now() }] };
     case "user_input": {
       // 任务580: a durable inbox item just became a NEW turn's input. The wire
       // protocol has no other user-message channel (composer submissions
@@ -2353,7 +2358,14 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       return {
         ...s,
         seq: s.seq + 1,
-        items: [...items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: Date.now() }],
+        // tl 1152: the bubble time is the message's durable send time (the
+        // inbox item's enqueue wall clock, persisted in the turn-event ledger),
+        // not the moment this event was processed. A next-morning replay batch
+        // (seq-gap repair reprojecting overnight turns) used to stamp every
+        // bubble with the replay instant — many rows sharing one "09:34" while
+        // the transcript's own createdAt says 00:41/01:01. Older backends send
+        // no `at`; Date.now() stays the fallback.
+        items: [...items, { kind: "user", id: `u${s.seq}`, text, inboxItemId: e.itemId || undefined, createdAt: e.at ?? Date.now() }],
       };
     }
     case "approval_request": {
