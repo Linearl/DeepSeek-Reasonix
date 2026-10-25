@@ -69,6 +69,14 @@ let resolveStaleOpeners: ((value: MockOpeners) => void) | undefined;
         openedWith.push([path, id]);
       },
       RevealPath: async () => {},
+      // Task 1158: the relative-path chip probe. probeMap decides which
+      // relative tokens "exist" under the fake session root; missing keys
+      // return "" (= degrade to plain text). probeGate (when set) holds every
+      // probe open so tests can observe the optimistic pending chip.
+      ResolveOpenablePathForTab: async (_tabID: string, path: string) => {
+        if (probeGate) await probeGate;
+        return probeMap[path] ?? "";
+      },
     },
   },
 };
@@ -80,6 +88,11 @@ let resolveStaleOpeners: ((value: MockOpeners) => void) | undefined;
 
 let passed = 0;
 let failed = 0;
+// Task 1158: relative token → resolved absolute path under the fake session
+// root. Empty/absent = target missing = chip must degrade to plain text.
+const probeMap: Record<string, string> = {};
+// When set, probes hang until released — used to pin the optimistic pending chip.
+let probeGate: Promise<void> | null = null;
 function ok(value: unknown, label: string) {
   if (value) {
     process.stdout.write(`  PASS  ${label}\n`);
@@ -95,19 +108,25 @@ const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { default: ReactMarkdown, defaultUrlTransform } = await import("react-markdown");
 const { default: remarkGfm } = await import("remark-gfm");
-const { remarkLocalPathLinks } = await import("../lib/localPathLinks");
+const { remarkLocalPathLinks, relativePathFromHref } = await import("../lib/localPathLinks");
 const { localPathFromHref, RichMarkdownLink } = await import("../components/githubLink");
 const { ToastProvider } = await import("../lib/toast");
+const { MarkdownImageTabContext } = await import("../components/MarkdownImageContext");
 
 const markdownUrlTransform = (value: string) =>
-  localPathFromHref(value) !== null ? value : defaultUrlTransform(value);
+  localPathFromHref(value) !== null || relativePathFromHref(value) !== null
+    ? value
+    : defaultUrlTransform(value);
 
 const components = { a: RichMarkdownLink };
 
 async function renderClick(
   markdown: string,
-  opts: { strictMode?: boolean; wrapToast?: boolean } = {},
+  opts: { strictMode?: boolean; wrapToast?: boolean; tabId?: string } = {},
 ): Promise<HTMLAnchorElement[]> {
+  // Drop previous cases' containers: assertions below query the DOCUMENT for
+  // menus/toasts/all anchors, so leftovers from earlier roots would leak in.
+  window.document.body.innerHTML = "";
   const container = window.document.createElement("div");
   window.document.body.appendChild(container);
   const root = createRoot(container);
@@ -116,7 +135,14 @@ async function renderClick(
     { remarkPlugins: [remarkGfm, remarkLocalPathLinks], urlTransform: markdownUrlTransform, components },
     markdown,
   );
-  const tree = opts.wrapToast ? createElement(ToastProvider, null, markdownElement) : markdownElement;
+  // Task 1158: the transcript tab reaches RelativePathMarkdownLink through
+  // MarkdownImageTabContext (the same channel MarkdownImage uses). No provider
+  // = no tab = the chip must degrade to plain text.
+  let tree = markdownElement;
+  if (opts.tabId !== undefined) {
+    tree = createElement(MarkdownImageTabContext.Provider, { value: opts.tabId }, markdownElement);
+  }
+  tree = opts.wrapToast ? createElement(ToastProvider, null, tree) : tree;
   await act(async () => {
     root.render(opts.strictMode ? createElement(StrictMode, null, tree) : tree);
   });
@@ -302,10 +328,10 @@ console.log("\ntask 1138 — spaced-path chips, failure toast, inline-code preci
   openFailure = null;
 }
 
-// 13. Task 1138 follow-up: a code span whose ENTIRE value is one absolute
-// path chipifies (LLM answers overwhelmingly print paths in backticks; DSH
-// renders such spans as chips). Non-path and mixed-content spans stay inert
-// (task 1138 acceptance 4, precision first).
+// 13. Task 1138 follow-up, amended by task 1158 (user ruling 2026-10-25):
+// a code span whose ENTIRE value is one path chipifies. Whole-span RELATIVE
+// paths now chip too (resolved through the probe); non-path and
+// mixed-content spans stay inert (task 1138 acceptance 4, precision first).
 {
   const anchors = await renderClick("配置在 `C:\\Windows\\System32\\cmd.exe` 里");
   ok(anchors.length === 1, "whole-span absolute path inside backticks renders a chip");
@@ -317,9 +343,91 @@ console.log("\ntask 1138 — spaced-path chips, failure toast, inline-code preci
   ok(window.document.querySelectorAll("code").length === 0, "the path span no longer renders as raw code");
 }
 {
-  const anchors = await renderClick("先跑 `npm run build`，再改 `src/lib/foo.ts`，输出见 `path=D:\\x\\y.md` 记录");
-  ok(anchors.length === 0, "non-path / relative / mixed-content spans render no chips");
-  ok(window.document.querySelectorAll("code").length === 3, "all three code spans still render as code");
+  probeMap["src/lib/foo.ts"] = "D:/ws/src/lib/foo.ts";
+  const anchors = await renderClick("先跑 `npm run build`，再改 `src/lib/foo.ts`，输出见 `path=D:\\x\\y.md` 记录", { tabId: "tab-1158" });
+  ok(anchors.length === 1, "only the whole-span relative path chips; non-path / mixed-content spans stay inert");
+  // Let the probe settle: the optimistic chip upgrades to the full local chip.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  const upgraded = Array.from(window.document.querySelectorAll("a"));
+  ok(upgraded.length === 1 && (upgraded[0].getAttribute("href") ?? "").startsWith("file:///D:/ws/src/lib/foo.ts"),
+    "probed relative span upgrades to the resolved local chip");
+  await act(async () => {
+    upgraded[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+  ok(opened[opened.length - 1] === "D:/ws/src/lib/foo.ts",
+    `resolved relative chip click opens the absolute path (${opened[opened.length - 1]})`);
+  ok(window.document.querySelectorAll("code").length === 2, "the remaining two spans still render as code");
+  delete probeMap["src/lib/foo.ts"];
+}
+
+// 14. Task 1158: workspace-relative path chips end to end.
+{
+  // Plain-text occurrence, probe hit → chip, click opens the anchored
+  // absolute path (the probe resolves against the session root backend-side).
+  probeMap["docs/issues/design/plan.md"] = "D:/ws/docs/issues/design/plan.md";
+  // Hold the probe open to pin the optimistic pending chip: it rides the
+  // relpath scheme until the probe resolves.
+  let releaseProbe: () => void = () => {};
+  probeGate = new Promise<void>((resolve) => {
+    releaseProbe = resolve;
+  });
+  const pendingChip = await renderClick("设计见 docs/issues/design/plan.md，先看再改", { tabId: "tab-1158" });
+  ok(pendingChip.length === 1, "relative path in plain text renders one chip");
+  ok((pendingChip[0].getAttribute("href") ?? "").startsWith("relpath://docs/issues/design/plan.md"),
+    "pending relative chip href rides the relpath scheme");
+  releaseProbe();
+  probeGate = null;
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  const resolvedChip = Array.from(window.document.querySelectorAll("a"));
+  ok(resolvedChip.length === 1 && (resolvedChip[0].getAttribute("href") ?? "").startsWith("file:///D:/ws/"),
+    "probe hit upgrades the chip to the resolved absolute href");
+  await act(async () => {
+    resolvedChip[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+  ok(opened[opened.length - 1] === "D:/ws/docs/issues/design/plan.md",
+    `relative chip click opens via the session-root anchor (${opened[opened.length - 1]})`);
+  delete probeMap["docs/issues/design/plan.md"];
+
+  // Probe miss (target does not exist) → degrade to plain text.
+  const missing = await renderClick("配置在 docs/missing/gone.md 里", { tabId: "tab-1158" });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  ok(Array.from(window.document.querySelectorAll("a")).every((a) => !a.textContent?.includes("docs/missing/gone.md")),
+    "missing target degrades to plain text (no clickable chip)");
+
+  // No tab provider → no anchor to resolve against → plain text.
+  const noTab = await renderClick("配置在 docs/issues/design/plan.md 里");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  ok(noTab.length === 0 || !(noTab[0].getAttribute("href") ?? "").startsWith("relpath://"),
+    "no tab context means the relative token never becomes a chip");
+
+  // Misfire guards: slash-bearing non-paths must never chip.
+  const negatives = await renderClick(
+    [
+      "比例是 3/4 没错",
+      "比较 and/or 的用法",
+      "日期 2026/10/25 截止",
+      "文档见 https://example.com/a/b.png 在线版",
+      "目录 docs/plain 只是文件夹",
+    ].join("\n\n"),
+    { tabId: "tab-1158" },
+  );
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  // The https URL is a legitimate GFM autolink anchor (goes to the browser);
+  // what must never appear is a rel/file chip for any lookalike token.
+  ok(negatives.every((a) => {
+    const href = a.getAttribute("href") ?? "";
+    return !href.startsWith("relpath://") && !href.startsWith("file:///");
+  }), "slash lookalikes never produce path chips (browser autolink excepted)");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

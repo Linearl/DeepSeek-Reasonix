@@ -79,6 +79,16 @@ assert.equal(
   transformExportMarkdownUrl("https://example.com/image.png", "src", fallbackUrlTransform),
   "filtered:https://example.com/image.png",
 );
+// Task 1158: relpath:// chips survive the export transform (the export `a`
+// component then renders them as plain text instead of a dead link).
+assert.equal(
+  transformExportMarkdownUrl("relpath://docs/issues/design/plan.md", "href", fallbackUrlTransform),
+  "relpath://docs/issues/design/plan.md",
+);
+assert.equal(
+  transformExportMarkdownUrl("relpath://D:/abs.md", "href", fallbackUrlTransform),
+  "filtered:relpath://D:/abs.md",
+);
 
 const pdf = createRasterPdf(
   [

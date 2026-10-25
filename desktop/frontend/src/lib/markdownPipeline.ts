@@ -34,6 +34,7 @@ import {
   type VirtualMarkdownTableData,
 } from "./largeMarkdownTable";
 import { isLocalFileHref } from "./localFileUrl";
+import { isRelativePathHref } from "./localPathLinks";
 import { contentRevision } from "./contentRevision";
 import { markdownSelectionTextFromBlocks } from "./markdownSelectionProjection";
 export { estimateHastBytes } from "./markdownByteEstimate";
@@ -84,9 +85,11 @@ export function defaultMarkdownUrlTransform(value: string): string {
 
 // Local file hrefs come from local-path linkification (remarkLocalPathLinks)
 // or explicit Markdown links and must survive URL sanitisation, which would
-// otherwise blank them along with javascript: and friends.
+// otherwise blank them along with javascript: and friends. relpath:// hrefs
+// (task 1158) are workspace-relative path chips; RelativePathMarkdownLink
+// resolves them through the per-tab backend probe before opening.
 export function markdownUrlTransform(value: string): string {
-  return isLocalFileHref(value) ? value : defaultMarkdownUrlTransform(value);
+  return isLocalFileHref(value) || isRelativePathHref(value) ? value : defaultMarkdownUrlTransform(value);
 }
 
 // Images use a separate protocol policy because their bytes are resolved and

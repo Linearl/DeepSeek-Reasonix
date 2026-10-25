@@ -57,6 +57,29 @@ const UNC_RE = new RegExp(
   "g",
 );
 
+// Task 1158: workspace-relative paths ("docs/issues/design/x.md") linkify
+// against the session's project root. A relative token must carry at least
+// one forward slash AND end in a file extension — "and/or", "3/4" and dates
+// ("2026/10/25") stay inert. Segment characters exclude the slash set, the
+// scheme/drive breakers (`:` kills "https://" and "C:"), and shell/config
+// noise that historically rides in front of real paths (`~`, `=`, `#`, `%`,
+// quotes, backticks): `path=docs/x.md` then matches only `docs/x.md`.
+const REL_SEG_CHAR = String.raw`[^\s<>"'|?:：${SENT_PUNCT}/\\~=#[%\`]`;
+const REL_RE = new RegExp(String.raw`${REL_SEG_CHAR}+(?:/${REL_SEG_CHAR}+)+`, "g");
+const REL_HAS_EXTENSION_RE = /\.[A-Za-z0-9]{1,12}$/;
+// CJK prose routinely touches a path with no space ("见docs/x.md"), and the
+// first segment cannot be told apart from a real CJK directory name. Rule:
+// the FIRST segment must be CJK-free (precision first — such tokens stay
+// plain text and the backend probe would reject them anyway), while CJK in
+// LATER segments is accepted ("docs/设计稿/首页.png" is a real shape).
+const REL_CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+// A rel match is only a whole token when the preceding character cannot
+// continue it. ASCII token characters (including both slashes) reject — that
+// is what keeps the tail of "https://x/a/b.png" from linkifying; CJK and
+// other non-ASCII neighbours are allowed because Chinese prose routinely
+// touches a path with no space in between.
+const REL_PREFIX_RE = /[A-Za-z0-9._/\\-]/;
+
 const DRIVE_PREFIX_RE = /[:/A-Za-z]/;
 const UNC_PREFIX_RE = /[\\/\w:；：，。、！？（）]/;
 // A file URL must start a URI-like token. Without this guard, the matcher can
@@ -64,10 +87,11 @@ const UNC_PREFIX_RE = /[\\/\w:；：，。、！？（）]/;
 // clickable suffix that was never a local path.
 const FILE_PREFIX_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./\\:+-?#&=";
 
-function hasValidPrefixBoundary(text: string, start: number, kind: "file" | "drive" | "unc"): boolean {
+function hasValidPrefixBoundary(text: string, start: number, kind: "file" | "drive" | "unc" | "rel"): boolean {
   if (start === 0) return true;
   const previous = text[start - 1];
   if (kind === "file") return !FILE_PREFIX_CHARS.includes(previous);
+  if (kind === "rel") return !REL_PREFIX_RE.test(previous);
   return kind === "drive" ? !DRIVE_PREFIX_RE.test(previous) : !UNC_PREFIX_RE.test(previous);
 }
 
@@ -110,11 +134,15 @@ function spacedPathEnd(text: string, start: number): number {
   }
 }
 
+export type LocalPathKind = "file" | "drive" | "unc" | "rel";
+
 export interface LocalPathSegment {
   /** Raw text to render (keeps the original spelling, escapes intact). */
   text: string;
   /** When present, this segment is a clickable local path. */
   path?: string;
+  /** Which recognizer produced `path`; "rel" resolves against a project root. */
+  kind?: LocalPathKind;
 }
 
 /**
@@ -122,11 +150,12 @@ export interface LocalPathSegment {
  * Pure function — unit tests cover the full recognition matrix here.
  */
 export function linkifyLocalPaths(text: string): LocalPathSegment[] {
-  const matches: Array<{ start: number; end: number; raw: string; kind: "file" | "drive" | "unc" }> = [];
-  const patterns: Array<[RegExp, "file" | "drive" | "unc"]> = [
+  const matches: Array<{ start: number; end: number; raw: string; kind: LocalPathKind }> = [];
+  const patterns: Array<[RegExp, LocalPathKind]> = [
     [FILE_RE, "file"],
     [DRIVE_RE, "drive"],
     [UNC_RE, "unc"],
+    [REL_RE, "rel"],
   ];
   for (const [re, kind] of patterns) {
     re.lastIndex = 0;
@@ -134,12 +163,30 @@ export function linkifyLocalPaths(text: string): LocalPathSegment[] {
     while ((m = re.exec(text)) !== null) {
       const match = m;
       let matchEnd = match.index + match[0].length;
-      if (kind !== "file") matchEnd = spacedPathEnd(text, matchEnd);
+      if (kind !== "file" && kind !== "rel") matchEnd = spacedPathEnd(text, matchEnd);
       if (!hasValidPrefixBoundary(text, match.index, kind)) {
+        continue;
+      }
+      // Absolute recognizers must win before the relative one is even
+      // considered — a rel match overlapping an earlier drive/UNC/file match
+      // is a fragment of that absolute path ("x/y.md" inside "C:/x/y.md").
+      if (matches.some((p) => !(matchEnd <= p.start || match.index >= p.end))) {
         continue;
       }
       if (kind === "file" && !isLocalFileHref(stripTrailingClosers(match[0]))) {
         continue;
+      }
+      // The extension gate reads the STRIPPED token: "docs/x.md)" is a path
+      // followed by a closer, "and/or)" is still not a path.
+      const relToken = stripTrailingClosers(match[0]);
+      if (kind === "rel") {
+        if (!REL_HAS_EXTENSION_RE.test(relToken)) {
+          continue;
+        }
+        const firstSegment = relToken.slice(0, relToken.indexOf("/"));
+        if (REL_CJK_RE.test(firstSegment)) {
+          continue;
+        }
       }
       // FILE_RE stops before a question mark so it cannot consume query
       // syntax. Do not linkify the safe-looking prefix of a file URL that has
@@ -153,10 +200,7 @@ export function linkifyLocalPaths(text: string): LocalPathSegment[] {
         continue;
       }
       // RegExpExecArray has no start/end — compare via index/length.
-      const overlapped = matches.some((p) => !(matchEnd <= p.start || match.index >= p.end));
-      if (!overlapped) {
-        matches.push({ start: match.index, end: matchEnd, raw: text.slice(match.index, matchEnd), kind });
-      }
+      matches.push({ start: match.index, end: matchEnd, raw: text.slice(match.index, matchEnd), kind });
       if (match.index === re.lastIndex) re.lastIndex += 1; // guard against zero-width
     }
   }
@@ -171,7 +215,7 @@ export function linkifyLocalPaths(text: string): LocalPathSegment[] {
     const path = m.kind === "unc" ? "\\" + stripTrailingClosers(m.raw) : stripTrailingClosers(m.raw);
     const decodedPath = unescapeRefPath(path);
     if (path && !hasDisallowedWindowsPathSyntax(decodedPath)) {
-      segments.push({ text: m.raw, path: decodedPath });
+      segments.push({ text: m.raw, path: decodedPath, kind: m.kind });
     } else {
       segments.push({ text: m.raw });
     }
@@ -197,6 +241,32 @@ export function localPathHref(path: string): string {
     }
   }
   return "file:///" + encodeURI(path.replace(/\\/g, "/")).replace(/#/g, "%23");
+}
+
+// Task 1158: workspace-relative paths cannot masquerade as file:/// URLs —
+// that scheme means "absolute" to every downstream gate. They ride in a
+// dedicated scheme instead; RelativePathMarkdownLink resolves them through
+// the per-tab backend probe (ResolveOpenablePathForTab) before opening.
+const RELPATH_SCHEME = "relpath://";
+
+export function relPathHref(path: string): string {
+  return RELPATH_SCHEME + encodeURI(path.replace(/\\/g, "/")).replace(/#/g, "%23");
+}
+
+/** Inverse of relPathHref. Non-relpath hrefs (and absolute shapes) return null. */
+export function relativePathFromHref(href?: string): string | null {
+  if (!href || !href.startsWith(RELPATH_SCHEME)) return null;
+  try {
+    const path = decodeURIComponent(href.slice(RELPATH_SCHEME.length));
+    if (!path || path.startsWith("/") || path.startsWith("\\") || /^[A-Za-z]:/.test(path)) return null;
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+export function isRelativePathHref(href?: string): boolean {
+  return relativePathFromHref(href) !== null;
 }
 
 /**
@@ -233,7 +303,9 @@ export function remarkLocalPathLinks() {
           seg.path !== undefined
             ? {
                 type: "link",
-                url: localPathHref(seg.path),
+                // "rel" rides the relpath:// scheme — RelativePathMarkdownLink
+                // resolves it against the session root via the backend probe.
+                url: seg.kind === "rel" ? relPathHref(seg.path) : localPathHref(seg.path),
                 title: null,
                 children: [{ type: "text", value: seg.text }],
               }
@@ -253,7 +325,7 @@ export function remarkLocalPathLinks() {
         index,
         nodes: [{
           type: "link",
-          url: localPathHref(segments[0].path),
+          url: segments[0].kind === "rel" ? relPathHref(segments[0].path) : localPathHref(segments[0].path),
           title: null,
           children: [{ type: "text", value: node.value }],
         }],
