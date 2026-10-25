@@ -1064,6 +1064,38 @@ func (a *App) SetCollabGuidanceMerge(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetCollabGuidanceMerge(enabled) })
 }
 
+// dreamCurationTaskTitle / dreamCurationTaskPrompt 预设 Dream 记忆整理任务的
+// 固定内容（tl 1142：prompt 固化协调线 2026-10-24 七条记忆整理原则——旧版只覆盖
+// 「写入」，缺整理原则，导致从预设新建的任务只会新增不会查重归并）。
+const (
+	dreamCurationTaskTitle  = "Dream 记忆整理"
+	dreamCurationTaskPrompt = "你是记忆整理任务，每轮两段，全部完成后用简短要点汇报。\n" +
+		"一、dream 偏好收集：调用 dream 工具扫描最近项目会话中的用户偏好，校验后写入项目 memory；" +
+		"若工具不可用或实验未开启，说明原因后继续第二段。汇报新写入几条、跳过几条。\n" +
+		"二、记忆整理（按七条原则处置近期记忆；动作用 memory:remember / memory:forget）：\n" +
+		"① 查重优先：真重复组合并为一条最全版本，删其余；\n" +
+		"② 过时条目更新不新建：被新事实取代的记忆在原条目上改；\n" +
+		"③ 修正类必须回写原条目，或原条加「已被 XXX 修正」标注；\n" +
+		"④ 战役状态类归并压缩：多版合并为一条最新状态 + 历史一句话；\n" +
+		"⑤ 用户偏好 / feedback 类不删（长期资产）；\n" +
+		"⑥ 判据 / 坑位类同族合并并互相加关联；\n" +
+		"⑦ 每处理一组在汇报里列「合并组：A+B→C」。\n" +
+		"安全边界：每轮处置 ≤15 条；删除前先读原文确认独立价值已被覆盖；一律走 memory 工具通道，禁止直接改 memory 文件；工具不可用则说明原因结束。"
+)
+
+// heartbeatApprovalFromGlobalDefault maps the global desktop default tool
+// approval posture to a heartbeat task's approvalMode (tl 1142). ask stays ask;
+// unknown/empty values normalize to ask (same fallback the settings page
+// displays); "auto" — and only "auto" — is demoted to "yolo": an unattended
+// heartbeat run has nobody present to answer auto's planning questions, so
+// following "auto" verbatim would deadlock the run.
+func heartbeatApprovalFromGlobalDefault(mode string) string {
+	if config.NormalizeToolApprovalMode(mode) == "auto" {
+		return "yolo"
+	}
+	return config.NormalizeToolApprovalMode(mode)
+}
+
 // CreateDreamHeartbeatTask ensures a scheduled dream pass exists so the
 // experiment can be exercised without hand-editing heartbeat-tasks.json.
 // Returns created=true when a new task was appended; an existing Dream task
@@ -1080,8 +1112,7 @@ func (a *App) CreateDreamHeartbeatTask() (created bool, err error) {
 		return false, errors.New("heartbeat engine is not running")
 	}
 	view := a.heartbeat.ReloadConfig()
-	const title = "Dream 记忆整理"
-	const prompt = "调用 dream 工具跑一轮记忆整理：扫描最近项目会话中的用户偏好，校验后写入项目 memory。若工具不可用或实验未开启，说明原因后结束。完成后用简短要点汇报本轮 dream 结果（新写入几条、跳过几条）。"
+	title, prompt := dreamCurationTaskTitle, dreamCurationTaskPrompt
 	for i, task := range view.Tasks {
 		if task.Title == title || strings.Contains(strings.ToLower(task.ID), "dream-curation") {
 			if !task.Enabled {
@@ -1111,8 +1142,11 @@ func (a *App) CreateDreamHeartbeatTask() (created bool, err error) {
 		Scope:                  scope,
 		WorkspaceRoot:          workspaceRoot,
 		NewConversationEachRun: true,
-		ApprovalMode:           "auto",
-		CreatedAt:              time.Now().UnixMilli(),
+		// tl 1142: follow the global default, demoting "auto" to "yolo" —
+		// same rule as the panel's manual-create path; the old hard-coded
+		// "auto" risked deadlocking unattended runs on planning questions.
+		ApprovalMode: heartbeatApprovalFromGlobalDefault(cfg.DesktopDefaultToolApprovalMode()),
+		CreatedAt:    time.Now().UnixMilli(),
 	})
 	if _, serr := a.heartbeat.ReplaceConfig(HeartbeatConfigUpdate{
 		Revision: view.Revision,
