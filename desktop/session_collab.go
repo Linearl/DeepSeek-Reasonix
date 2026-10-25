@@ -1673,6 +1673,25 @@ func (a *App) collabRoster() []sessioncollab.Identity {
 	return out
 }
 
+// heartbeatTopicExists (tl 1059) reports whether topicID names a real
+// conversation, using the same session directory the collaboration roster
+// lists — the single source the heartbeat panel's session picker offers, so a
+// binding accepted here is exactly one the picker showed. Injected into the
+// heartbeat engine at startup to gate the create-only explicit topicId field.
+// Archived sessions resolve too: resuming a conversation from the archive is
+// unusual but harmless (the run opens it like any other binding).
+func (a *App) heartbeatTopicExists(topicID string) bool {
+	if a == nil || strings.TrimSpace(topicID) == "" {
+		return false
+	}
+	for _, id := range a.collabRoster() {
+		if id.TopicID == topicID {
+			return true
+		}
+	}
+	return false
+}
+
 // projectRootForSessionDir recovers the project root from a
 // <state>/projects/<slug>/sessions layout so a scanned session can name the
 // workspace it belongs to. Empty when the layout is unexpected.

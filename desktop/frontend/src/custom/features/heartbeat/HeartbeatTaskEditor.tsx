@@ -7,6 +7,7 @@ import { app } from "../../../lib/bridge";
 import { providerDisplayLabel } from "../../../lib/providerLabel";
 import type { WorkspaceView } from "../../../lib/types";
 import { CycleEditor } from "./HeartbeatCycleEditor";
+import { HeartbeatSessionPicker } from "./HeartbeatSessionPicker";
 import { CirclePlaySolid, mergeEngineRunState } from "./HeartbeatShared";
 import { useHeartbeatT } from "./heartbeat.i18n";
 import { changeHeartbeatFrequency, describeCron, formatCronNext, formatRelativeTime, isCronExpr, nextCronRunAt, type HeartbeatApprovalMode, type HeartbeatFrequencyType } from "./heartbeat.presentation";
@@ -546,8 +547,15 @@ export function TaskEditor({
           </span>
         </div>
 
-      {/* New conversation per run */}
-      <div className="heartbeat-editor__field">
+      {/* New conversation per run + 复用已有会话（对话模式三态）
+          两控件组合出三种语义（引擎判定：reuseSession 优先，tl 1059 实锤于
+          heartbeat.go 的 heartbeatReuseMode / heartbeatFreshConversationMode）：
+          ①「每轮新建对话」开 = 每次执行创建全新会话，互不延续；
+          ②「每轮新建」关（默认）= 固定同一个会话——绑定了已有会话就直接续它，
+            未绑定则首次运行自动创建并绑定（现行为）；
+          ③「复用已有会话续跑」开 = 把每次执行追加到绑定的已有会话，此时①失效。
+          ①与「绑定会话」互斥；③优先于①。 */}
+      <div className="heartbeat-editor__field" data-testid="heartbeat-conversation-mode">
         <label>{t("heartbeat.fieldNewConversation")}</label>
         <div className="set-seg" style={{ alignSelf: "flex-start" }}>
           <button
@@ -558,12 +566,45 @@ export function TaskEditor({
           </button>
           <button
             className={`set-seg__btn${draft.newConversationEachRun ? " set-seg__btn--on" : ""}`}
-            onClick={() => setDraft((prev) => ({ ...prev, newConversationEachRun: true }))}
+            // ①与显式绑定互斥：切到每轮新建时清掉绑定，避免保存被引擎拒绝。
+            title={draft.topicId ? t("heartbeat.bindTopicExclusive") : undefined}
+            onClick={() => setDraft((prev) => ({ ...prev, newConversationEachRun: true, topicId: undefined }))}
           >
             {t("heartbeat.newConversationEachRunOn")}
           </button>
         </div>
+        <span className="heartbeat-editor__mode-hint">
+          {draft.reuseSession
+            ? t("heartbeat.reuseSessionPrecedence")
+            : draft.newConversationEachRun
+              ? t("heartbeat.conversationModeHintOn")
+              : t("heartbeat.conversationModeHintOff")}
+        </span>
       </div>
+
+      {/* 绑定会话（tl 1059，仅新建可选）：显式指定任务绑定的已有会话，
+          首跑直接注入该会话而非自建；不选 = 现行为（首跑自建并绑定）。
+          与「每轮新建对话」互斥（选中后禁用）。 */}
+      {isNew && (
+        <div className="heartbeat-editor__field" data-testid="heartbeat-bind-topic-field">
+          <label>
+            {t("heartbeat.fieldBindTopic")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
+          </label>
+          <HeartbeatSessionPicker
+            value={draft.topicId}
+            disabled={Boolean(draft.newConversationEachRun)}
+            onChange={(topicId) => setDraft((prev) => ({ ...prev, topicId }))}
+            onOpenTopic={onOpenTopic}
+            taskScope={draft.scope}
+            taskRoot={draft.workspaceRoot}
+          />
+          <span className="heartbeat-editor__mode-hint">
+            {draft.newConversationEachRun
+              ? t("heartbeat.bindTopicExclusive")
+              : t("heartbeat.bindTopicHint")}
+          </span>
+        </div>
+      )}
 
       {/* 复用已有会话续跑（task 437）：开 = 每次运行把 prompt 追加到绑定的会话
           （上下文连续、不新增会话）；目标会话忙时跳过等下次。默认关 = 现有行为。 */}

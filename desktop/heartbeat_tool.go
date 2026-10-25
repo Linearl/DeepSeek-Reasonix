@@ -128,8 +128,31 @@ func (a heartbeatManagerAdapter) UpsertTask(req builtin.HeartbeatUpsertRequest) 
 		if err := applyHeartbeatPatch(&edited, patch); err != nil {
 			return builtin.HeartbeatUpsertResult{}, err
 		}
+		// tl 1059: an explicit conversation binding on CREATE. The binding is
+		// validated here (not in applyHeartbeatPatch) so the create-vs-update
+		// distinction stays visible in one place: resolveHeartbeatTopic uses a
+		// pre-bound TopicID on the very first run in both resume and legacy
+		// modes ("explicit binding beats first-run binding"), while
+		// newConversationEachRun contradicts a fixed binding by definition.
+		if strings.TrimSpace(patch.TopicID) != "" {
+			if edited.NewConversationEachRun {
+				return builtin.HeartbeatUpsertResult{}, fmt.Errorf("field \"topicId\": cannot be combined with newConversationEachRun — per-run-fresh conversations have no fixed binding; drop one of the two")
+			}
+			if !e.topicBindingTargetExists(strings.TrimSpace(patch.TopicID)) {
+				return builtin.HeartbeatUpsertResult{}, fmt.Errorf("field \"topicId\": %q does not match any known conversation — pick the id from the session directory (heartbeat_task_list shows each task's bound topicId; the panel's session picker lists the rest)", patch.TopicID)
+			}
+			edited.TopicID = strings.TrimSpace(patch.TopicID)
+		}
 		tasks = append(tasks, edited)
 	} else {
+		// tl 1059: topicId stays engine-owned on the update path. The scheduler
+		// owns the binding after creation (mergeHeartbeatDiskRunHistory and the
+		// run-state merge both treat it as run state), and a mid-life re-bind
+		// would race in-flight runs and silently swap the conversation a
+		// resume-mode task appends to.
+		if set := patch.Provided; set != nil && set["topicId"] {
+			return builtin.HeartbeatUpsertResult{}, fmt.Errorf("field \"topicId\": engine-owned after creation and cannot be changed by an update — create the task with topicId to bind it, or delete and recreate the task with the new binding")
+		}
 		idx := -1
 		for i := range tasks {
 			if tasks[i].ID == patch.ID {
@@ -232,6 +255,46 @@ func (a heartbeatManagerAdapter) SetEnabled(req builtin.HeartbeatSetEnabledReque
 
 func heartbeatRevisionConflict(current uint64) error {
 	return fmt.Errorf("%w (expected revision %d stale; current revision is %d) — call heartbeat_task_list again, re-apply your edit on top of the fresh list, and retry with the new expected_revision; do not blind-retry", ErrHeartbeatConfigConflict, current-1, current)
+}
+
+// topicBindingTargetExists resolves the injected topicExists gate (tl 1059).
+// Nil gate = trusted binding: tests and hand-seeded engines skip the check,
+// exactly like a hand-edited config's topicId is trusted today.
+func (e *HeartbeatEngine) topicBindingTargetExists(topicID string) bool {
+	return e.topicExists == nil || e.topicExists(topicID)
+}
+
+// validateHeartbeatTopicBindings checks the explicit topicId bindings (tl 1059)
+// the caller introduced on NEW tasks — ids absent from the on-disk list. Rows
+// that already exist on disk keep the disk binding (mergeHeartbeatDiskRunHistory
+// forces TopicID back to the disk value), so a panel save can never re-bind an
+// existing task through this path and the engine's mid-life re-bind protection
+// holds on both editor surfaces. Shared by the panel save (ReplaceTasks /
+// ReplaceConfig) and the agent upsert adapter's create branch.
+func (e *HeartbeatEngine) validateHeartbeatTopicBindings(submitted, disk []HeartbeatTask) error {
+	if len(submitted) == 0 {
+		return nil
+	}
+	diskIDs := make(map[string]bool, len(disk))
+	for _, d := range disk {
+		diskIDs[d.ID] = true
+	}
+	for _, t := range submitted {
+		if diskIDs[t.ID] {
+			continue // existing row: the binding is disk-owned run state
+		}
+		binding := strings.TrimSpace(t.TopicID)
+		if binding == "" {
+			continue // no explicit binding: first-run self-binding, unchanged
+		}
+		if t.NewConversationEachRun {
+			return fmt.Errorf("task %q: topicId cannot be combined with newConversationEachRun — per-run-fresh conversations have no fixed binding; drop one of the two", t.Title)
+		}
+		if !e.topicBindingTargetExists(binding) {
+			return fmt.Errorf("task %q: topicId %q does not match any known conversation — bind an existing conversation from the session picker", t.Title, binding)
+		}
+	}
+	return nil
 }
 
 // heartbeatMissingRequired names every required-for-create field the caller
