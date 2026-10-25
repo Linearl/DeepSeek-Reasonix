@@ -38,6 +38,7 @@ var (
 	screenshotProcMonitorFromPt = screenshotUser32.NewProc("MonitorFromPoint")
 	screenshotProcGetMonitorInf = screenshotUser32.NewProc("GetMonitorInfoW")
 	screenshotProcGetSysMetrics = screenshotUser32.NewProc("GetSystemMetrics")
+	screenshotProcEnumMonitors  = screenshotUser32.NewProc("EnumDisplayMonitors")
 	screenshotProcGetDC         = screenshotUser32.NewProc("GetDC")
 	screenshotProcReleaseDC     = screenshotUser32.NewProc("ReleaseDC")
 	screenshotGdi32             = windows.NewLazySystemDLL("gdi32.dll")
@@ -98,9 +99,22 @@ type ScreenMetrics struct {
 // MonitorFromPoint with MONITOR_DEFAULTTONEAREST keeps a cursor parked on a
 // dead coordinate from failing the call.
 func cursorMonitorRect() (left, top, right, bottom int32, err error) {
+	hmon, left, top, right, bottom, err := cursorMonitorHandle()
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	_ = hmon
+	return left, top, right, bottom, nil
+}
+
+// cursorMonitorHandle is cursorMonitorRect plus the HMONITOR itself, which
+// the DXGI duplication path (tl 1130) needs to match the cursor display to
+// its IDXGIOutput (both sides are physical pixels in the PMv2 product
+// process, so the handles and rects line up).
+func cursorMonitorHandle() (hmon uintptr, left, top, right, bottom int32, err error) {
 	var cur screenshotPoint
 	if r, _, callErr := screenshotProcGetCursorPos.Call(uintptr(unsafe.Pointer(&cur))); r == 0 {
-		return 0, 0, 0, 0, fmt.Errorf("GetCursorPos failed: %v", callErr)
+		return 0, 0, 0, 0, 0, fmt.Errorf("GetCursorPos failed: %v", callErr)
 	}
 	// The point must stay referenced until the syscall returns: LazyProc.Call
 	// keeps no liveness for its arguments, so a collected stack object would
@@ -110,20 +124,35 @@ func cursorMonitorRect() (left, top, right, bottom int32, err error) {
 	// Pack the POINT as a single uintptr (x low word, y high word) exactly as
 	// the win32 by-value signature expects.
 	packed := uintptr(uint32(uint16(cur.x)) | (uint32(uint16(cur.y)) << 16))
-	hmon, _, _ := screenshotProcMonitorFromPt.Call(packed, monitorDefaultToNearest)
+	hmon, _, _ = screenshotProcMonitorFromPt.Call(packed, monitorDefaultToNearest)
 	if hmon == 0 {
-		return 0, 0, 0, 0, fmt.Errorf("MonitorFromPoint failed for cursor at (%d,%d)", cur.x, cur.y)
+		return 0, 0, 0, 0, 0, fmt.Errorf("MonitorFromPoint failed for cursor at (%d,%d)", cur.x, cur.y)
 	}
 	info := screenshotMonitorInfo{cbSize: monitorInfoHeaderSize}
 	if r, _, callErr := screenshotProcGetMonitorInf.Call(hmon, uintptr(unsafe.Pointer(&info))); r == 0 {
-		return 0, 0, 0, 0, fmt.Errorf("GetMonitorInfo failed: %v", callErr)
+		return 0, 0, 0, 0, 0, fmt.Errorf("GetMonitorInfo failed: %v", callErr)
 	}
 	runtime.KeepAlive(info)
 	m := info.rcMonitor
 	if m.right-m.left <= 0 || m.bottom-m.top <= 0 {
-		return 0, 0, 0, 0, fmt.Errorf("monitor at cursor has no visible size (%dx%d)", m.right-m.left, m.bottom-m.top)
+		return 0, 0, 0, 0, 0, fmt.Errorf("monitor at cursor has no visible size (%dx%d)", m.right-m.left, m.bottom-m.top)
 	}
-	return m.left, m.top, m.right, m.bottom, nil
+	return hmon, m.left, m.top, m.right, m.bottom, nil
+}
+
+// enumMonitorHandles lists every attached monitor's HMONITOR. The virtual-
+// desktop capture (tl 1130) stitches one desktop-duplication frame per
+// output, and EnumDisplayMonitors is the only handle-level enumeration API.
+// The NewCallback closure appends from the enumeration thread — capture is
+// synchronous and gesture-frequency, so the data race window is nil.
+func enumMonitorHandles() []uintptr {
+	var handles []uintptr
+	cb := syscall.NewCallback(func(hmon, _hwnd, _rect uintptr) uintptr {
+		handles = append(handles, hmon)
+		return 1 // TRUE: keep enumerating
+	})
+	screenshotProcEnumMonitors.Call(0, 0, cb, 0)
+	return handles
 }
 
 // captureScreenRectToPNG blits the given virtual-desktop rectangle into a
@@ -215,14 +244,24 @@ func captureScreenRectToPNG(outputPath string, left, top, right, bottom int32) (
 }
 
 // captureScreenAtCursor captures the full screen of the monitor holding the
-// mouse cursor (tl 1087 plan A) into outputPath, returning the pixel size and
-// virtual-desktop origin of the captured display so the overlay can map its
-// client coordinates onto screenshot pixels.
+// mouse cursor into outputPath, returning the pixel size and virtual-desktop
+// origin of the captured display so the overlay can map its client
+// coordinates onto screenshot pixels.
+//
+// tl 1130: the primary path is DXGI desktop duplication — the probe verified
+// the legacy BitBlt path returns a stale GDI-mirror snapshot that misses
+// windows composited after the mirror's last refresh (the user-visible
+// all-black capture). BitBlt stays as the degraded backstop for machines
+// where duplication cannot start (RDP sessions, driver blocks).
 func captureScreenAtCursor(outputPath string) (w, h, originX, originY int, err error) {
-	left, top, right, bottom, err := cursorMonitorRect()
+	hmon, left, top, right, bottom, err := cursorMonitorHandle()
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
+	if w, h, originX, originY, err = dxgiCaptureAtCursor(outputPath, hmon, left, top, right, bottom); err == nil {
+		return w, h, originX, originY, nil
+	}
+	// Legacy fallback: same BitBlt blit the tl 1087 path used.
 	w, h, err = captureScreenRectToPNG(outputPath, left, top, right, bottom)
 	if err != nil {
 		return 0, 0, 0, 0, err
@@ -267,11 +306,18 @@ func virtualScreenMetrics() (ScreenMetrics, error) {
 }
 
 // captureVirtualScreenPNG captures the entire virtual desktop (all monitors)
-// — tl 1088's cross-monitor capture primitive.
+// — tl 1088's cross-monitor capture primitive. tl 1130: per-output desktop
+// duplication frames are stitched into one PNG (duplication is per-output by
+// design); BitBlt stays as the degraded backstop.
 func captureVirtualScreenPNG(outputPath string) (ScreenMetrics, error) {
 	m, err := virtualScreenMetrics()
 	if err != nil {
 		return ScreenMetrics{}, err
+	}
+	if derr := dxgiCaptureVirtualDesktop(outputPath, m); derr == nil {
+		// The stitched canvas is exactly the virtual-desktop pixel size
+		// (physical coordinates both sides, PMv2 process).
+		return m, nil
 	}
 	w, h, err := captureScreenRectToPNG(outputPath, int32(m.X), int32(m.Y), int32(m.X+m.Width), int32(m.Y+m.Height))
 	if err != nil {

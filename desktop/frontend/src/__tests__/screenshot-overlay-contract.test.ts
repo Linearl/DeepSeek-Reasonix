@@ -95,7 +95,7 @@ ok(
 );
 
 ok(
-  /\{attachmentInputEnabled && !heroMode && \(\s*<div className="composer-meta__control composer-meta__control--screenshot">/.test(composerSource),
+  /\{attachmentInputEnabled && !heroMode && \(\s*<div className="composer-screenshot-picker">/.test(composerSource),
   "the screenshot button is gated by attachmentInputEnabled and hidden in hero mode",
 );
 

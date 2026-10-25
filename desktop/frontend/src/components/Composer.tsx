@@ -5990,24 +5990,6 @@ export function Composer({
                 </Tooltip>
               </div>
             )}
-            {/* tl 1087：输入框工具栏的「截图」按钮（只做按钮，不做全局快捷键）。
-                点击 → 后端抓鼠标所在屏全屏 → 覆盖层框选+标注 → 双击确认进附件。
-                与上面的「+」菜单同族：draft-only 编辑动作，运行中仍可用。 */}
-            {attachmentInputEnabled && !heroMode && (
-              <div className="composer-meta__control composer-meta__control--screenshot">
-                <Tooltip label={t("composer.screenshotButtonHint")}>
-                  <button
-                    type="button"
-                    className="composer-screenshot-trigger"
-                    onClick={() => setScreenshotOverlayOpen(true)}
-                    disabled={disabled || readOnly}
-                    aria-label={t("composer.screenshotButton")}
-                  >
-                    <Crop size={16} aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              </div>
-            )}
             {/* 任务 465 两维矩阵：徽章只标第二维（计划/目标）。第一维 autopilot
                 在右侧模式条第四档呈现；两维同开时徽章与档位同时可见。 */}
             {!heroMode && (planModeOn || goalModeOn) && (
@@ -6287,6 +6269,26 @@ export function Composer({
                       )}
                     </Suspense>
                   </AnchoredPopover>
+                </div>
+              )}
+              {/* tl 1087：输入框工具栏的「截图」按钮（只做按钮，不做全局快捷键）。
+                  点击 → 后端抓鼠标所在屏全屏 → 覆盖层框选+标注 → 双击确认进附件。
+                  与上面的「+」菜单同族：draft-only 编辑动作，运行中仍可用。
+                  tl 1130：从左侧「+」号旁移到输入栏右侧（emoji 按钮右边）。 */}
+              {attachmentInputEnabled && !heroMode && (
+                <div className="composer-screenshot-picker">
+                  <Tooltip label={t("composer.screenshotButtonHint")}>
+                    <button
+                      type="button"
+                      className={`composer__btn composer-screenshot-trigger${screenshotOverlayOpen ? " composer__btn--on" : ""}`}
+                      onClick={() => setScreenshotOverlayOpen(true)}
+                      disabled={disabled || readOnly}
+                      aria-label={t("composer.screenshotButton")}
+                      aria-pressed={screenshotOverlayOpen}
+                    >
+                      <Crop size={14} aria-hidden="true" />
+                    </button>
+                  </Tooltip>
                 </div>
               )}
               {/* Task 261: explicit history picker - picking never replaces the

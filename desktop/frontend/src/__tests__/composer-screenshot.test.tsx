@@ -230,6 +230,30 @@ async function main() {
   eq(button?.getAttribute("aria-label"), "Screenshot", "button carries the localized label");
   ok(overlay() === null, "overlay is closed before the button is pressed");
 
+  // tl 1130: the button moved from the left "+"-menu cluster to the right side
+  // of the input bar, right after the emoji button — same composer__btn family
+  // as its new toolbar neighbours.
+  const sendToolbar = button?.closest(".composer-toolbar-send");
+  ok(sendToolbar !== null, "screenshot button lives in the composer-toolbar-send (right side of the input bar)");
+  const emojiBlock = document.querySelector(".composer-emoji-picker");
+  ok(emojiBlock !== null, "emoji picker block is rendered");
+  ok(
+    emojiBlock !== null && button !== null && (emojiBlock.nextElementSibling === button.closest(".composer-screenshot-picker")),
+    "screenshot button block sits directly after the emoji button block",
+  );
+  eq(
+    button?.classList.contains("composer__btn"),
+    true,
+    "screenshot button uses the composer__btn family (right-toolbar styling)",
+  );
+
+  // tl 1130 capture-race guard: while the capture is still in flight the
+  // overlay mounts with data-capture-ready="loading" and the stylesheet hides
+  // it (display:none) — a visible black loading frame is what the legacy
+  // BitBlt path used to photograph as the desktop. The loading attribute
+  // window is unobservable here (the mock resolves within one flushTimers),
+  // so the loading-state contract is pinned statically in
+  // screenshot-overlay-loading-css.test.ts.
   await act(async () => {
     button?.click();
     await flushTimers();

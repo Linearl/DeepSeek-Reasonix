@@ -49129,6 +49129,13 @@ button.statusbar__mcp:focus-visible {
   user-select: none;
   background: var(--shadow-color);
 }
+/* tl 1130：抓屏竞态防护。capture 未就绪（loading）时覆盖层不得上屏——
+   根背景是 --shadow-color:#000 纯黑，若在 Go 抓屏执行前渲染，抓屏会把
+   这层黑帧当成「桌面」拍进底图（探针实证：BitBlt 抓的是已上屏内容）。
+   display:none 保证抓屏执行瞬间屏幕上仍是真实桌面。错误态不受影响。 */
+.screenshot-overlay[data-capture-ready="loading"] {
+  display: none;
+}
 .screenshot-overlay__image {
   position: absolute;
   inset: 0;
@@ -49347,32 +49354,16 @@ button.statusbar__mcp:focus-visible {
   color: var(--panel);
   font: 700 10px/1 system-ui, sans-serif;
 }
-/* Composer toolbar screenshot trigger — same family as the content "+". */
+/* Composer toolbar screenshot trigger — tl 1130 起住在输入栏右侧
+   （composer-screenshot-picker 容器，与 emoji 入口同族），视觉身份由
+   composer__btn 提供；本类保留为稳定钩子（测试/定位），只补齐布局。 */
+.composer-screenshot-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
 .composer-screenshot-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--composer-control-radius, 7px);
-  background: transparent;
-  color: var(--fg-dim);
-  cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
-}
-.composer-screenshot-trigger:hover:not(:disabled),
-.composer-screenshot-trigger:focus-visible {
-  outline: none;
-  color: var(--fg);
-  border-color: var(--border);
-  background: var(--bg-soft);
-}
-.composer-screenshot-trigger:focus-visible {
-  box-shadow: var(--focus-ring);
-}
-.composer-screenshot-trigger:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
