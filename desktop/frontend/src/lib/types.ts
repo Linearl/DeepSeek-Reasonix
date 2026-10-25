@@ -468,6 +468,13 @@ export interface WireEvent extends RecoveryEventFields {
   streamAttempt?: WireStreamAttempt;
   /** Durable session-inbox item id for steer / TurnDone correlation. */
   itemId?: string;
+  /** tl 1152: the payload's durable domain time (unix ms) — user_input carries
+   * the inbox item's enqueue wall clock. Stamped by the backend emitter, NOT
+   * the wire-serialization instant (that's emittedAt, re-stamped on replays);
+   * it persists inside the turn-event ledger, so a replay batch keeps each
+   * message's own send time instead of collapsing onto the replay instant.
+   * Absent on older backends — consumers keep their existing fallback. */
+  at?: number;
   sessionPath?: string; // Serve multi-session routing tag; absent locally.
   workspace?: WireWorkspaceChanged;
   /** turn_phase: working | checking | verifying | reviewing */
