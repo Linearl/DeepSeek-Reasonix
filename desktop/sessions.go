@@ -750,6 +750,21 @@ func restoreSubagentArtifacts(dir, itemDir string) error {
 	return nil
 }
 
+// isSessionShapedFileName reports whether a file name names a file the session
+// surfaces may touch as a conversation transcript: a primary transcript, or a
+// guardian sidecar. The guardian transcript is a session-shaped conversation in
+// its own right — it is written through the same save path as a main
+// transcript (internal/guardian Session.Save) and the versions panel lists it
+// as a conversation the user can scan and preview (任务 1146 返修). The
+// guardian exclusion in store.IsSessionTranscriptName is scan-time
+// classification — a sidecar must not shadow its parent session in directory
+// listings (incident F154-4) — not a containment verdict; this boundary only
+// asks whether the file is transcript-shaped at all, while directory
+// containment is enforced separately below.
+func isSessionShapedFileName(name string) bool {
+	return store.IsSessionTranscriptName(name) || strings.HasSuffix(name, ".guardian.jsonl")
+}
+
 func validateSessionPath(dir, sessionPath string) (string, string, error) {
 	if strings.TrimSpace(sessionPath) == "" {
 		return "", "", fmt.Errorf("empty session path")
@@ -766,7 +781,7 @@ func validateSessionPath(dir, sessionPath string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	if !store.IsSessionTranscriptName(filepath.Base(absPath)) {
+	if !isSessionShapedFileName(filepath.Base(absPath)) {
 		return "", "", fmt.Errorf("not a session file: %s", sessionPath)
 	}
 	rel, err := filepath.Rel(absDir, absPath)
