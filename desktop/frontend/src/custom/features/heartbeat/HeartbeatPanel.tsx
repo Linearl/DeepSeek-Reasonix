@@ -39,13 +39,15 @@ import { useHeartbeatT, type HeartbeatTranslator } from "./heartbeat.i18n";
 // 静态导入：Vite 保证 CSS 在模块 evaluate 前注入 DOM，避免首次访问自动化页
 // 无样式闪烁（FOUC）。node 单测通过 css-stub-register.mjs 的 loader hook 解析。
 import "./heartbeat.css";
-import { formatInterval, formatTaskNextRun, prepareTasksByNextRun } from "./heartbeat.presentation";
+import { formatInterval, formatTaskNextRun, prepareTasksByNextRun, normalizeHeartbeatApproval, demoteAutoForHeartbeat, type HeartbeatApprovalMode } from "./heartbeat.presentation";
 import { TaskEditor } from "./HeartbeatTaskEditor";
 import { CirclePlaySolid } from "./HeartbeatShared";
 export { changeHeartbeatFrequency, cronToInterval, heartbeatNextRunAt, intervalToCron, nextCycleRunAt, prepareTasksByNextRun } from "./heartbeat.presentation";
 export { heartbeatBuildCycleInterval } from "./HeartbeatCycleEditor";
 export { TaskEditor } from "./HeartbeatTaskEditor";
 export { mergeEngineRunState } from "./HeartbeatShared";
+
+
 
 // 任务 327：有 maxRuns 的任务在列表上给出已跑次数 k/N；跑满且已被引擎禁用的
 // 任务显示终态「已完成（已自动禁用）」——否则它和「用户手动暂停」在列表里长
@@ -233,6 +235,23 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
 
   useEffect(() => { if (active) void loadTasks(); else { editorIntent.current++; dismiss(); } }, [active, loadTasks, dismiss]);
 
+  // tl 1142：全局默认审批模式（设置→默认工具审批模式）。手动新建跟随它，
+  // 推荐区例外（保留 ask 安全默认）。读取失败保持 ""，新建时按 ask 兜底。
+  const [globalApprovalDefault, setGlobalApprovalDefault] = useState<HeartbeatApprovalMode | "">("");
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    app.Settings()
+      .then((view) => {
+        if (!cancelled) setGlobalApprovalDefault(normalizeHeartbeatApproval((view as { defaultToolApprovalMode?: unknown } | null)?.defaultToolApprovalMode));
+      })
+      .catch(() => {
+        // 读取失败回到未知态：新建按 ask 兜底，不沿用上一轮读到的旧值。
+        if (!cancelled) setGlobalApprovalDefault("");
+      });
+    return () => { cancelled = true; };
+  }, [active]);
+
   const save = useCallback(
     async (mutate: (current: HeartbeatTask[]) => HeartbeatTask[]): Promise<HeartbeatTask[] | null> => {
       try {
@@ -269,18 +288,19 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
     } catch {
       // 生成失败时使用本地 fallback id，仍可正常打开新建详情
     }
-    // 不设 createdAt：isNew=true，详情显示项目字段、删除按钮禁用
+    // 不设 createdAt：isNew=true，详情显示项目字段、删除按钮禁用。
+    // tl 1142：approvalMode 跟随全局默认，auto 降级 yolo（编辑器内提示）。
     openUnsavedDraft({
       id,
       title: "",
       prompt: "",
       interval: "30m",
       enabled: true,
-      approvalMode: "yolo",
+      approvalMode: demoteAutoForHeartbeat(globalApprovalDefault === "" ? "ask" : globalApprovalDefault),
       newConversationEachRun: false,
       notifyChannels: false,
     }, intent);
-  }, [openUnsavedDraft]);
+  }, [openUnsavedDraft, globalApprovalDefault]);
 
   const handleAddToScope = useCallback(async (scopeKey: string) => {
     const intent = ++editorIntent.current;
@@ -290,16 +310,18 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
     } catch {      // 生成失败时使用本地 fallback id
     }
     const isProject = scopeKey !== "global";
+    // tl 1142：与 handleAdd 同规则——跟随全局默认，auto 降级 yolo。
     openUnsavedDraft({
       id,
       title: "",
       prompt: "",
       interval: "30m",
       enabled: true,
+      approvalMode: demoteAutoForHeartbeat(globalApprovalDefault === "" ? "ask" : globalApprovalDefault),
       scope: isProject ? "project" : "global",
       workspaceRoot: isProject ? scopeKey : "",
     }, intent);
-  }, [openUnsavedDraft]);
+  }, [openUnsavedDraft, globalApprovalDefault]);
 
   // 建议区：用预设内容打开未保存草稿，由用户确认后再创建。
   // 动态推荐：建议只在"对应标题的任务不存在"时显示——添加后消失，删除后恢复。
@@ -952,7 +974,8 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                   onToggleEnabled={() => handleToggle(entries[editing.id]?.baseline ?? editing)} onSaveAsNew={saveAsNew}
                   onDelete={() => handleDelete(editing.id)}
                   onDiscard={() => { const id = editing.id; drafts().discard(id); if (!drafts().entries[id]) { setEditing(null); setDetailOpen(false); } }}
-                  onCloseDetail={() => setDetailOpen(false)} onOpenTopic={onOpenTopic} onTrigger={handleTrigger} />
+                  onCloseDetail={() => setDetailOpen(false)} onOpenTopic={onOpenTopic} onTrigger={handleTrigger}
+                  globalApprovalDefault={globalApprovalDefault} />
               ) : (
                 <div className="heartbeat-split__empty">
                   <div className="heartbeat-split__empty-inner">

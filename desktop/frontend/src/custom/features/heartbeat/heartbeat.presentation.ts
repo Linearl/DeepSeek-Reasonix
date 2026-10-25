@@ -441,3 +441,19 @@ export function taskNextRun(task: HeartbeatTask, t: HeartbeatTranslator): string
   const now = Date.now();
   return formatTaskNextRun(taskNextRunAt(task, now), now, t);
 }
+
+// ── tl 1142：审批档跟随全局默认 ────────────────────────────────────────────
+export type HeartbeatApprovalMode = "ask" | "auto" | "yolo";
+
+// 手动新建 heartbeat 任务的审批档跟随设置里的全局默认（设置→默认工具审批
+// 模式）。归一化与设置页同规则：合法三态原样返回，非法/缺失/读取失败一律
+// ask（安全默认；desktop 侧 heartbeatApprovalFromGlobalDefault 同规则）。
+export function normalizeHeartbeatApproval(value: unknown): HeartbeatApprovalMode {
+  return value === "ask" || value === "auto" || value === "yolo" ? value : "ask";
+}
+
+// auto 降级：无人值守任务的 auto「计划询问」无人在场，等于任务卡死；落
+// yolo（跳过审批、无询问点）。ask 原样保留。
+export function demoteAutoForHeartbeat(mode: HeartbeatApprovalMode): "ask" | "yolo" {
+  return mode === "auto" ? "yolo" : mode;
+}

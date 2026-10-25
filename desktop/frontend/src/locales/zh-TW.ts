@@ -1026,6 +1026,7 @@ export const zhTW: Record<DictKey, string> = {
   "heartbeat.approvalModeAskHint": "需審批的呼叫會等待你；Ask 不是唯讀模式",
   "heartbeat.approvalModeAutoHint": "執行自動繼續；實質性計畫選擇仍會詢問",
   "heartbeat.approvalModeYoloHint": "跳過普通提示；deny 與強制新鮮審批仍生效",
+  "heartbeat.approvalModeAutoFallbackHint": "全域預設為 Auto；無人值守任務已降級為 YOLO（Auto 的計畫詢問無人在場會卡住任務），需要可在此改回",
   "heartbeat.notifyChannels": "推送到機器人",
   "heartbeat.notifyChannelsOn": "開啟",
   "heartbeat.notifyChannelsOff": "關閉",
