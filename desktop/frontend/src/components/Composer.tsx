@@ -6314,6 +6314,24 @@ export function Composer({
                   </AnchoredPopover>
                 </div>
               )}
+              {/* 任务 1024：草稿优化改写按钮（实验特性默认关=不渲染，
+                  工具栏与引入前逐字节一致）。任务 1052：点击先弹上下文长度档位
+                  弹窗（2/5/10/20KB 四档+取消），选档后交辅助模型改写、回填输入
+                  框；不自动发送。tl 1115：与停止按钮位置互换——改写在左、
+                  停止紧邻发送键（用户 2026-10-24 要求）。 */}
+              {draftRewriteOn && (
+                <Tooltip label={t("composer.rewriteDraft")}>
+                  <button
+                    className="composer__btn composer__btn--rewrite"
+                    type="button"
+                    onClick={openDraftRewritePicker}
+                    disabled={draftRewriting || readOnly}
+                    aria-label={t("composer.rewriteDraft")}
+                  >
+                    {draftRewriting ? <RefreshCw size={14} className="composer__rewrite-spin" /> : <Wand2 size={14} />}
+                  </button>
+                </Tooltip>
+              )}
               {/* 任务510（a 保出口）：unknown 降级态不再隐藏停止按钮——降级提示
                   （run strip「连接中断／状态待同步」+ 输入禁用）保留，但安全出口
                   必须始终在场。unknown 下 tooltip/aria 明示状态未知，点击照常
@@ -6338,23 +6356,6 @@ export function Composer({
                     {stopView.phase === "grace" && stopView.countdownSeconds != null
                       ? <span className="composer__stop-countdown">{t("composer.stopCountdown", { n: stopView.countdownSeconds })}</span>
                       : <Square size={12} fill="currentColor" />}
-                  </button>
-                </Tooltip>
-              )}
-              {/* 任务 1024：草稿优化改写按钮——发送左侧（实验特性默认关=不渲染，
-                  工具栏与引入前逐字节一致）。任务 1052：点击先弹上下文长度档位
-                  弹窗（2/5/10/20KB 四档+取消），选档后交辅助模型改写、回填输入
-                  框；不自动发送。 */}
-              {draftRewriteOn && (
-                <Tooltip label={t("composer.rewriteDraft")}>
-                  <button
-                    className="composer__btn composer__btn--rewrite"
-                    type="button"
-                    onClick={openDraftRewritePicker}
-                    disabled={draftRewriting || readOnly}
-                    aria-label={t("composer.rewriteDraft")}
-                  >
-                    {draftRewriting ? <RefreshCw size={14} className="composer__rewrite-spin" /> : <Wand2 size={14} />}
                   </button>
                 </Tooltip>
               )}

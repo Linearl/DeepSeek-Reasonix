@@ -421,5 +421,41 @@ function clickControl(node: HTMLElement | null) {
   dom.window.close();
 }
 
+// ── tl 1115 运行态按钮次序：改写在左、停止紧邻发送键（位置互换） ──────────
+// 用户要求输入栏运行态下「停止」（红色方块）与「草稿改写」位置互换——互换后
+// 工具栏次序为 … → 改写 → 停止 → 发送。document order 即视觉从左到右。
+{
+  const dom = installDom();
+  applyLabFlags({ draftRewrite: true });
+  stubBridge();
+  const { root } = await renderComposer({ running: true });
+  const rewrite = rewriteButton();
+  const stop = document.querySelector<HTMLButtonElement>("button.composer__btn--stop");
+  const send = sendButton();
+  ok(rewrite !== null, "tl1115 running: the rewrite button renders");
+  ok(stop !== null, "tl1115 running: the stop button renders");
+  if (rewrite && stop && send) {
+    const positions = [...document.querySelectorAll("button.composer__btn--rewrite, button.composer__btn--stop, button.composer__btn--send")];
+    ok(positions.indexOf(rewrite) < positions.indexOf(stop),
+      "tl1115 running: the rewrite button sits LEFT of the stop button (swapped from stop-then-rewrite)");
+    ok(positions.indexOf(stop) < positions.indexOf(send),
+      "tl1115 running: the stop button sits LEFT of the send button (adjacent to send)");
+  }
+  await act(async () => root.unmount());
+  dom.window.close();
+}
+
+// ── tl 1115 空闲态：无停止键、改写键照常渲染（两态验收之 idle 侧） ────────
+{
+  const dom = installDom();
+  applyLabFlags({ draftRewrite: true });
+  stubBridge();
+  const { root } = await renderComposer({ running: false });
+  ok(document.querySelector("button.composer__btn--stop") === null, "tl1115 idle: no stop button renders");
+  ok(rewriteButton() !== null, "tl1115 idle: the rewrite button still renders");
+  await act(async () => root.unmount());
+  dom.window.close();
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
