@@ -40,15 +40,18 @@ ok(
   "workbench + menu keeps blank project and existing folder before remote connection",
 );
 
-// Classic/creation "+": no longer a direct picker; renders a menu that
-// contains the remote connection item.
+// Classic/creation "+": no longer a direct picker; renders a menu.
+// Task 1157: the classic menu is now the three-entry create list (new project
+// ▸ submenu / new project group / remote connection) — the remote item moved
+// from projectTreeHeaderAddItems into classicCreateItems, still wired to the
+// same openRemoteConnectFlow callback.
 ok(
   /project-tree__add-project[\s\S]*?aria-haspopup="menu"/.test(addControlsSource),
   "classic/creation + button opens a menu instead of the direct picker",
 );
 ok(
-  /ProjectTreeHeaderAddControl[\s\S]*?items=\{classicHeaderAddItems\}/.test(treeSource),
-  "classic/creation + menu is the two-item local/remote list",
+  /ProjectTreeHeaderAddControl[\s\S]*?items=\{classicCreateItems\}/.test(treeSource),
+  "classic/creation + menu is the three-entry create list (task 1157: new project submenu / new project group / remote)",
 );
 
 // Empty state: primary local + secondary remote.
