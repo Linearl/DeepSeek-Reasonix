@@ -197,12 +197,19 @@ export function ContextMenu({
       case "Tab":
         // Let the browser continue from the invoking control in tab order.
         point?.keyboardTarget?.focus({ preventScroll: true });
+        clearHoverTimers();
+        setExpanded(null);
         onClose();
         event.stopPropagation();
         return;
       case "Escape":
         event.preventDefault();
         event.stopPropagation();
+        // The chain closes through onClose; folding the panel here too keeps
+        // the internal state honest when a caller keeps `open` true across
+        // the close (tests, delayed unmounts).
+        clearHoverTimers();
+        setExpanded(null);
         onClose();
         return;
       default: return;
@@ -261,6 +268,16 @@ export function ContextMenu({
             onMouseEnter={(event) => {
               if (nested || unusable) return;
               scheduleFlyoutOpen(item.key, event.currentTarget);
+            }}
+            onMouseLeave={() => {
+              // A pointer that merely passed through must not open the panel
+              // after it left: cancel the pending dwell timer. An already-open
+              // panel stays (the pointer may be travelling into it) — sibling
+              // rows and outside clicks are what fold it.
+              if (hoverOpenTimerRef.current !== null) {
+                window.clearTimeout(hoverOpenTimerRef.current);
+                hoverOpenTimerRef.current = null;
+              }
             }}
             onClick={(event) => {
               event.stopPropagation();

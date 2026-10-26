@@ -108,7 +108,9 @@ ok(treeSource.includes("key: `move:${group.id}`"), "each roster group is one sub
 // ── ⑤ 箭头方向规则（两体系各自一致） ─────────────────────────────────────────
 console.log("\ntl1149 ⑤ submenu arrow semantics (two consistent systems)");
 
-ok(contextMenuSource.includes('{active ? "▾" : "▸"}'), "sidebar ContextMenu submenu arrows are ▾/▸ (inline expand/collapse — no left/right ambiguity)");
+// tl 1168: the sidebar submenu became a floating right-opening panel (hover/tap/→) —
+// the arrow points right permanently; the ◁ left-opening rule stays scoped to the topicbar system.
+ok(contextMenuSource.includes('aria-hidden="true">▸</span>'), "sidebar ContextMenu submenu arrows stay ▸ (tl 1168: floating right-opening panel, hover/tap/→; no ▾ inline state left)");
 ok(topicbarSource.includes("<SubmenuIndicator />"), "topicbar floating submenus keep the 1148 ◁ indicator (points at the left-open panel)");
 ok(topicbarSource.includes("fixed 左弹") || topicbarSource.includes("◁"), "the 1148 rule stays scoped to the topicbar floating system");
 
