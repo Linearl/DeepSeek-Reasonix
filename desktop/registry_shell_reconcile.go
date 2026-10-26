@@ -12,9 +12,17 @@ package main
 //     ⇒ shell 失配（可观测）；开关开启时自动移出（复用桌面删除写路径
 //     deleteTopic，含 tombstone / 分组 / 标题表收敛）。
 //  2. resolveRegistryShell —— delete_session 的空壳识别探针（只认 topic_id，
-//     防同名标题误指活会话，任务书 AC6）。
+//     防同名标题误指活会话，任务书 AC6）。任务 tl-1144 起终审判据挂
+//     heartbeatTopicIsShell 原始语义（同一函数体）：topic-state 有真实历史
+//     或已知会话目录索引到主转录文件的 topic 一律不是空壳（AC4 反放宽）。
 //  3. trashRegistryShell —— delete_session confirm 后的空壳清理，清理前
-//     复核仍是空壳（TOCTOU：识别与执行之间可能已有新回合落盘）。
+//     复核仍是空壳（TOCTOU：识别与执行之间可能已有新回合落盘，tl-1144 起
+//     复核与探针同用 heartbeatTopicIsShellOnApp），幂等（已不在注册表 =
+//     安静收尾），每一处跳过/拒绝打印原因。
+//
+// 注意（tl-1144 边界）：入口 1 的对账判据维持 1145 时的「注册表 × 目录」
+// 差集语义（其测试与上报面锚定该语义），与本文件探针/清理的原始语义终审
+// 是两回事——统一属后续任务，不在本件范围。
 //
 // 铁律 2：写路径（自动移出 / 空壳删除）全部挂在
 // [agent] session_collab_registry_shell_cleanup（默认关）之下，关闭态行为
@@ -220,6 +228,12 @@ func (a *App) reconcileRegistryShells(result *TopicInventoryReconcileResult) {
 // whether ref names a displayable registry topic that the directory cannot
 // see (a shell). Only exact topic ids match — a title must never nominate a
 // shell while a live conversation with the same title exists (AC6).
+//
+// 任务 tl-1144：判定终审走 heartbeatTopicIsShell 原始语义（同一函数体，不是
+// 再实现）——目录查无只是预检；topic-state 里有真实历史（CreatedAtMS>0）或
+// 任一已知会话目录索引到主转录文件的 topic 都不是空壳，哪怕目录扫描因视图
+// 分叉看不见它（AC4：有文件但未在通讯录的注册表残留不得被当成空壳删除）。
+// 每一次拒绝都打印原因，不做静默跳过。
 func (a *App) resolveRegistryShell(ref string) (topicID, title string, ok bool) {
 	if !registryShellCleanupEnabled() {
 		return "", "", false
@@ -228,16 +242,39 @@ func (a *App) resolveRegistryShell(ref string) (topicID, title string, ok bool) 
 	if topicID == "" {
 		return "", "", false
 	}
-	if _, inRegistry := registryShellRefs()[topicID]; !inRegistry {
+	shellRef, inRegistry := registryShellRefs()[topicID]
+	if !inRegistry {
 		return "", "", false
 	}
 	if a.tabReferencedTopicIDs()[topicID] {
+		slog.Info("desktop: registry shell probe declined", "topic", topicID,
+			"reason", "a tab references the topic (possibly being created right now)")
 		return "", "", false
 	}
 	if directoryTopicIDs()[strings.ToLower(topicID)] {
+		slog.Info("desktop: registry shell probe declined", "topic", topicID,
+			"reason", "the contact directory addresses it (a live session, not a shell)")
+		return "", "", false
+	}
+	if !heartbeatTopicIsShellOnApp(a, topicID, registryShellScopeRoot(shellRef)) {
+		slog.Info("desktop: registry shell probe declined", "topic", topicID,
+			"reason", "heartbeatTopicIsShell verdict is false (real history per topic-state, or a session file exists in a known session dir)")
 		return "", "", false
 	}
 	return topicID, a.registryTopicTitle(topicID), true
+}
+
+// registryShellScopeRoot maps a registry ref to the topic-state root its
+// records live under: global scope keys by the empty root — the same
+// normalization ensureTopicIndexedState applies and heartbeatRunScope lands
+// on for the built-in global workspace. Querying any other root could MISS a
+// real-history record and fall through to the file-based fallback, which
+// would RELAX the shell verdict (AC4) — so the ref's own scope decides.
+func registryShellScopeRoot(ref registryShellRef) string {
+	if ref.scope == "global" {
+		return ""
+	}
+	return ref.root
 }
 
 // registryTopicTitle resolves the display title the tree shows for a registry
@@ -261,16 +298,43 @@ func (a *App) registryTopicTitle(topicID string) string {
 // between probe and confirm is enough time for a first transcript to land),
 // then converges the registry through the desktop's own delete path
 // (tombstone + groups + title table + tree refresh).
+//
+// 任务 tl-1144：终审判据同样是 heartbeatTopicIsShell 原始语义（与探针同源，
+// 防 TOCTOU 之外再防「探针后语义分叉」）；幂等——topic 已不在注册表时按
+// 「已不存在」安静收尾（日志留痕，不报错、不补 tombstone）；每一处跳过/
+// 拒绝都打印原因（不静默跳过）。
 func (a *App) trashRegistryShell(topicID string, dryRun bool) error {
 	topicID = strings.TrimSpace(topicID)
 	if topicID == "" {
 		return fmt.Errorf("topicID is required")
 	}
-	if a.tabReferencedTopicIDs()[topicID] || directoryTopicIDs()[strings.ToLower(topicID)] {
-		return fmt.Errorf("topic %q is no longer a registry shell (a tab references it, or a session file exists on disk) — refusing the shell cleanup", topicID)
+	shellRef, inRegistry := registryShellRefs()[topicID]
+	if !inRegistry {
+		// 幂等回执：重复清理（或并发清理赢家）落到这里。注册表已无此条目，
+		// 无事可做也不算失败——再跑 deleteTopic 只会徒增一次 tombstone 写。
+		slog.Info("desktop: registry shell cleanup skipped", "topic", topicID,
+			"reason", "already absent from the registry (idempotent re-run, nothing to converge)")
+		return nil
+	}
+	if a.tabReferencedTopicIDs()[topicID] {
+		slog.Warn("desktop: registry shell cleanup refused", "topic", topicID,
+			"reason", "a tab references the topic — it may be a session being created right now")
+		return fmt.Errorf("topic %q is no longer a registry shell (a tab references it) — refusing the shell cleanup", topicID)
+	}
+	if directoryTopicIDs()[strings.ToLower(topicID)] {
+		slog.Warn("desktop: registry shell cleanup refused", "topic", topicID,
+			"reason", "the contact directory addresses it — a session file exists on disk")
+		return fmt.Errorf("topic %q is no longer a registry shell (a session file exists on disk) — refusing the shell cleanup", topicID)
+	}
+	if !heartbeatTopicIsShellOnApp(a, topicID, registryShellScopeRoot(shellRef)) {
+		slog.Warn("desktop: registry shell cleanup refused", "topic", topicID,
+			"reason", "heartbeatTopicIsShell verdict is false — the topic-state table holds real history (CreatedAtMS>0) or a known session dir indexes a transcript")
+		return fmt.Errorf("topic %q is not a registry shell by the heartbeat shell verdict (real history per topic-state, or a session file exists) — refusing the shell cleanup", topicID)
 	}
 	if dryRun {
 		return nil
 	}
+	slog.Info("desktop: removing registry shell", "topic", topicID,
+		"converges", "desktop-projects.json (topics/pinned/groups/tombstone), topic titles, topic-state sqlite")
 	return a.deleteTopic(topicID)
 }

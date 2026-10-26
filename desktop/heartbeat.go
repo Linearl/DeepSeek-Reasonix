@@ -1226,7 +1226,6 @@ func (e *HeartbeatEngine) prunePendingTopicsLocked(tasks []HeartbeatTask) {
 }
 
 // heartbeatTopicIsShell reports whether a topic is an empty shell left by a
-// heartbeatTopicIsShell reports whether a topic is an empty shell left by a
 // heartbeat run that created it but never wrote real history (#9614).
 //
 // Two signals, in order of precedence:
@@ -1241,13 +1240,26 @@ func (e *HeartbeatEngine) prunePendingTopicsLocked(tasks []HeartbeatTask) {
 //     "no real session file".
 //
 // Returns false when the topic holds real history or cannot be assessed.
+//
+// The body lives in heartbeatTopicIsShellOnApp so the delete_session
+// registry-shell face (task tl-1144) consumes the exact same verdict instead
+// of a reimplementation that could drift; this method is a thin delegate.
 func (e *HeartbeatEngine) heartbeatTopicIsShell(topicID, workspaceRoot string) bool {
+	return heartbeatTopicIsShellOnApp(e.app, topicID, workspaceRoot)
+}
+
+// heartbeatTopicIsShellOnApp is the engine-free face of heartbeatTopicIsShell
+// (task tl-1144): the delete_session registry-shell probe and trash call this
+// so every shell verdict in the codebase comes from this one body. Semantics
+// are byte-identical to the engine method by construction — the method is the
+// delegate, this is the body.
+func heartbeatTopicIsShellOnApp(app *App, topicID, workspaceRoot string) bool {
 	topicID = strings.TrimSpace(topicID)
-	if topicID == "" || e.app == nil {
+	if topicID == "" || app == nil {
 		return false
 	}
-	if e.app.topicState != nil {
-		snap, err := e.app.topicState.snapshot(workspaceRoot)
+	if app.topicState != nil {
+		snap, err := app.topicState.snapshot(workspaceRoot)
 		if err == nil {
 			if rec, ok := snap.Records[topicID]; ok {
 				return rec.CreatedAtMS == 0
@@ -1258,13 +1270,20 @@ func (e *HeartbeatEngine) heartbeatTopicIsShell(topicID, workspaceRoot string) b
 	// actually registered (was created, e.g. a heartbeat topic that lingered in
 	// desktop-projects.json) but has no real session file. An unregistered,
 	// never-created topic id is NOT a shell to archive.
-	return e.topicRegistered(topicID) && !e.topicHasAnySessionFile(topicID)
+	return topicRegisteredInRegistry(topicID) && !topicHasAnySessionFileOnApp(app, topicID)
 }
 
 // topicRegistered reports whether the topic exists in the project registry
 // (globalTopics or any project's Topics), i.e. it was created at some point.
 // An arbitrary/never-created id must never be treated as a shell to archive.
 func (e *HeartbeatEngine) topicRegistered(topicID string) bool {
+	return topicRegisteredInRegistry(topicID)
+}
+
+// topicRegisteredInRegistry is the body of topicRegistered, shared with the
+// App-level shell verdict (tl-1144). It reads desktop-projects.json only —
+// no engine state — so the engine method adds nothing but the receiver.
+func topicRegisteredInRegistry(topicID string) bool {
 	if topicID == "" {
 		return false
 	}
@@ -1288,10 +1307,17 @@ func (e *HeartbeatEngine) topicRegistered(topicID string) bool {
 // session for the topic. A real session carries a main *.jsonl that the
 // topic-session index sees; a shell has none.
 func (e *HeartbeatEngine) topicHasAnySessionFile(topicID string) bool {
-	if topicID == "" || e.app == nil {
+	return topicHasAnySessionFileOnApp(e.app, topicID)
+}
+
+// topicHasAnySessionFileOnApp is the engine-free face of
+// topicHasAnySessionFile (tl-1144): same body, shared with the App-level
+// shell verdict.
+func topicHasAnySessionFileOnApp(app *App, topicID string) bool {
+	if topicID == "" || app == nil {
 		return false
 	}
-	for _, dir := range e.app.knownSessionDirs() {
+	for _, dir := range app.knownSessionDirs() {
 		index, err := topicSessionIndexForDir(dir)
 		if err != nil {
 			continue
