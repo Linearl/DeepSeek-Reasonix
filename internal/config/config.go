@@ -1807,6 +1807,15 @@ type AgentConfig struct {
 	// untouched (the gate hides only the shipped built-in). Applies on restart
 	// (boot snapshot), like every boot-resolved switch.
 	ExperimentalGeneralPurposeSubagent bool `toml:"experimental_general_purpose_subagent"`
+	// ExperimentalEffortCrossModelMap (task 1169) enables rank-based effort
+	// mapping across model vocabularies on a per-request model switch: the
+	// carried depth keeps its relative position in the destination's
+	// reachable depth list (deepseek max → the destination's ceiling) via
+	// MapEffortAcrossVocabularies instead of collapsing to auto when the
+	// destination cannot spell the level. Off by default: off keeps the
+	// 1161b fold byte-identical — an unmappable depth lands on auto exactly
+	// as before, so the switch is a pure rollback path.
+	ExperimentalEffortCrossModelMap bool `toml:"experimental_effort_cross_model_map"`
 	// Task 265 (lab intake): the three fork-only agent-behaviour features below
 	// ship ON via nil-means-on pointers — they are existing behaviour being
 	// given an off switch, not new behaviour, so the default must not regress
