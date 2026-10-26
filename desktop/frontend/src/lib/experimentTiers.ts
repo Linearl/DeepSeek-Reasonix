@@ -84,7 +84,6 @@ export type TierFeatureId =
   // 任务 846: 配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
   | "homePointer"
   | "runtimeReuse"
-  | "zcodeTaskBus"
   // 任务 790: ACP 常驻监听（loopback TCP，每连接独立 client 面，默认关）。
   | "acpListen"
   | "modelCapabilityFilter"
@@ -265,10 +264,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   eventsRotation: "optional",
   sessionStorage: "unstable",
   homePointer: "unstable",
-  // ── infra（基础设施，7 项；785 退役 S1 常驻底座开关，790 增 acpListen）──────
+  // ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
   // 任务 1005 批1 转档：runtimeReuse 升「稳定」（992 刚升推荐的四项之一）。
   runtimeReuse: "stable",
-  zcodeTaskBus: "unstable",
   acpListen: "unstable",
   // 任务 789: 编辑证据门宽松模式（放宽 evidence gate 属行为变更；
   // toolOptimizations 卡成员）。任务 992：用户 1018 升可选——本注册表

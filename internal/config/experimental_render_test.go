@@ -35,8 +35,6 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	c.Desktop.ExperimentalLifecycleNoiseGate = true
 
 	c.Agent.ExperimentalModelCapabilityFilter = true
-	// Task 439: the built-in zcode task bus switch must survive the render.
-	c.Desktop.ExperimentalZcodeTaskBus = true
 	// Task 545: the session-cwd follow switch must survive the render.
 	c.Agent.ExperimentalSessionCwdFollow = true
 	// Task 632: the general-purpose subagent switch must survive the render.
@@ -59,7 +57,6 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_safety_cost_control = true",
 		"experimental_orphan_lease_reclaim = true",
 		"experimental_recovery_orphan_sweep = true",
-		"experimental_zcode_task_bus = true",
 		"experimental_session_cwd_follow = true",
 		"experimental_general_purpose_subagent = true",
 	} {
@@ -95,7 +92,6 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		"experimental_event_wait_recheck = false",
 		"experimental_orphan_lease_reclaim = false",
 		"experimental_recovery_orphan_sweep = false",
-		"experimental_zcode_task_bus = false",
 		"experimental_session_cwd_follow = false",
 		"experimental_general_purpose_subagent = false",
 		"trace_as_state = false",

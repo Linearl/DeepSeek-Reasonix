@@ -423,7 +423,6 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       // 任务 785：S1 常驻底座开关条目已随底座退役移除。
       entries: [
         { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "stable", onKeys: ["experimentalRuntimeReuse"] },
-        { id: "zcodeTaskBus", labelKey: "settings.zcodeTaskBus", tier: "unstable", onKeys: ["experimentalZcodeTaskBus"] },
         // 任务 790：ACP 常驻监听（与 yaml 同序同值——回退安全网）。
         { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable", onKeys: ["experimentalACPListen"] },
         { id: "pathRules", labelKey: "settings.pathRules", tier: "unstable", onKeys: ["experimentalPathRules"] },

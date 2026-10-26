@@ -12,11 +12,10 @@ package main
 // Serve, boot.Build session assembly, shared transcript persistence — so a
 // client that reconnects resumes via session/load).
 //
-// The shape mirrors zcode_task_bus.go (task 439): the flag-off path is the
-// zero-behaviour path — the function returns before touching the network, so
-// a default config behaves byte-for-byte like a build without the feature.
-// A bind failure (port already held) is a visible degraded state reported by
-// the lab card, never a desktop crash.
+// The flag-off path is the zero-behaviour path — the function returns before
+// touching the network, so a default config behaves byte-for-byte like a build
+// without the feature. A bind failure (port already held) is a visible
+// degraded state reported by the lab card, never a desktop crash.
 //
 // Session assembly deliberately mirrors internal/cli's acpFactory rather than
 // importing it: internal/cli drags the CLI TUI dependency tree into the
@@ -45,8 +44,8 @@ import (
 )
 
 // acpListenDefaultPort is the loopback port the resident ACP listener binds
-// when acp_listen_port is unset. It sits next to — never on — the task bus
-// endpoint at 8787.
+// when acp_listen_port is unset (tl-1048: the former 8787 task-bus neighbour
+// reference is retired along with the bus itself).
 const acpListenDefaultPort = 8790
 
 // acpListenAddr returns the listen address for the resident ACP listener. The

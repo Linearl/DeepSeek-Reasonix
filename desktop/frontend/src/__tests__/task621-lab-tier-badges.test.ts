@@ -129,7 +129,6 @@ for (const locale of ["zh", "en", "zh-TW"]) {
     "settings.opencodeGoUsage",
     "settings.lifecycleNoiseGate",
     "settings.cdpDebugPort",
-    "settings.zcodeTaskBus",
     "settings.outputStyle",
     "settings.coldCacheCompact",
   ];

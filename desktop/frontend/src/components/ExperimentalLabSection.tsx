@@ -406,10 +406,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
       reportFrontendLog("settings", "output style open dir failed", String(e));
     }
   };
-  // Task 439: the built-in bus status loads on demand — only while its lab
-  // entry is open, and again after every apply() (which reloads s). The
-  // card renders the serve 状态灯 and the enrolled roles from it.
-  const [zcodeBusStatus, setZcodeBusStatus] = useState<Awaited<ReturnType<typeof app.ZcodeTaskBusStatus>> | null>(null);
   // 任务 790: resident ACP listener live state for its lab card.
   const [acpListenStatus, setACPListenStatus] = useState<Awaited<ReturnType<typeof app.ACPListenStatus>> | null>(null);
   // 任务 727：心跳会话轮换状态按需加载——只在安全/成本控制卡打开时读一次
@@ -429,20 +425,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
       alive = false;
     };
   }, [selected]);
-  useEffect(() => {
-    if (selected !== "zcodeTaskBus") return undefined;
-    let alive = true;
-    void app.ZcodeTaskBusStatus()
-      .then((st) => {
-        if (alive) setZcodeBusStatus(st);
-      })
-      .catch(() => {
-        if (alive) setZcodeBusStatus(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [selected, s.experimentalZcodeTaskBus]);
   useEffect(() => {
     if (selected !== "acpListen") return undefined;
     let alive = true;
@@ -3484,60 +3466,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-          {selected === "zcodeTaskBus" && (
-            // Task 439: built-in zcode task bus. The listener arms at desktop
-            // boot, so a flip needs a restart — same banner pattern as the
-            // CDP endpoint. When on, the card doubles as the serve 状态灯:
-            // endpoint, live state, and the enrolled roles (`reasonix bus
-            // enroll` writes them; the mailbox itself stays the existing
-            // 跨会话信箱 surface).
-            <SettingsField
-              label={labLabel("zcodeTaskBus", t("settings.zcodeTaskBus"))}
-              hint={
-                zcodeBusStatus && zcodeBusStatus.err
-                  ? `${t("settings.zcodeTaskBus.notRunning")} ${zcodeBusStatus.err}`
-                  : zcodeBusStatus && zcodeBusStatus.running
-                    ? `${t("settings.zcodeTaskBus.running")} ${zcodeBusStatus.endpoint}`
-                    : Boolean(s.experimentalZcodeTaskBus) && zcodeBusStatus && !zcodeBusStatus.running
-                      ? t("settings.zcodeTaskBus.awaitRestart")
-                      : t("settings.zcodeTaskBusHint")
-              }
-              icon={<Server size={18} />}
-            >
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalZcodeTaskBus) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalZcodeTaskBus(on);
-                      setRestartNeeded(true);
-                    })}
-                  >
-                    {t(on ? "settings.zcodeTaskBus.on" : "settings.zcodeTaskBus.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-              {Boolean(s.experimentalZcodeTaskBus) && zcodeBusStatus && zcodeBusStatus.roles.length > 0 && (
-                // roles 可视化, same shape as the sessionCollab roster rows:
-                // each enrolled role and the bus contact it maps to.
-                <SettingsField label={t("settings.zcodeTaskBus.roles")} hint={t("settings.zcodeTaskBusRolesHint")} icon={<Server size={18} />} stacked>
-                  <ul className="set-rules">
-                    {zcodeBusStatus.roles.map((role) => (
-                      <li key={role}>
-                        <code>zcode-{role}</code>
-                      </li>
-                    ))}
-                  </ul>
-                </SettingsField>
-              )}
-            </SettingsField>
-          )}
           {selected === "acpListen" && (
             // 任务 790: resident ACP listener. The listener arms at desktop
             // boot, so a flip needs a restart — same banner pattern as the
-            // task bus. When on, the card doubles as the 状态灯: bound
+            // CDP endpoint. When on, the card doubles as the 状态灯: bound
             // loopback address while running, bind failure, or the
             // await-restart note. 127.0.0.1 is pinned in the host; the port
             // (acp_listen_port, default 8790) is a config key, not a UI field.

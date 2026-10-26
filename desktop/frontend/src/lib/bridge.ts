@@ -6,7 +6,7 @@ import type * as GeneratedApp from "../../wailsjs/go/main/App";
 import type { InvocationRequest } from "./invocationDisplay";
 import type { PlanUsageResult } from "./planUsage";
 import type { FollowupBindings } from "./pendingFollowup";
-import type { ACPListenStatusView, OutputStyleListView, QuickCommandEntry, ZcodeTaskBusStatusView } from "./settingsViewTypes";
+import type { ACPListenStatusView, OutputStyleListView, QuickCommandEntry } from "./settingsViewTypes";
 import { addBreadcrumb } from "./breadcrumbs";
 import { maybeShare } from "./queryCoalesce";
 import { makeMockSessionCatalogBindings } from "./sessionCatalogBridge";
@@ -1637,9 +1637,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 342: WebView2 CDP debug endpoint switch (loopback-only random port;
   // ships off; the browser args are read at startup — restart to apply).
   SetExperimentalCDPDebugPort(enabled: boolean): Promise<void>;
-  // Task 439: built-in zcode task bus (lab switch; listener arms at boot).
-  SetExperimentalZcodeTaskBus(enabled: boolean): Promise<void>;
-  ZcodeTaskBusStatus(): Promise<ZcodeTaskBusStatusView>;
   // Task 790: resident ACP listener (lab switch; listener arms at boot).
   SetExperimentalACPListen(enabled: boolean): Promise<void>;
   SetACPListenPort(port: number): Promise<void>;
@@ -6534,10 +6531,6 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
     async SetExperimentalCDPDebugPort() {},
-    async SetExperimentalZcodeTaskBus() {},
-    async ZcodeTaskBusStatus() {
-      return { enabled: false, running: false, addr: "", endpoint: "", roles: [] as string[], err: "" };
-    },
     async SetExperimentalACPListen() {},
     async SetACPListenPort() {},
     async ACPListenStatus() {

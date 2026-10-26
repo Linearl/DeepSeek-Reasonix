@@ -1425,15 +1425,6 @@ func (c *Config) SetExperimentalOutputStyleUI(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalZcodeTaskBus toggles the task-439 built-in zcode task bus.
-// It ships off (铁律 2): the zero value starts no listener. The listener is
-// armed at desktop boot, so the flip applies on the next restart — the lab
-// card communicates that.
-func (c *Config) SetExperimentalZcodeTaskBus(enabled bool) error {
-	c.Desktop.ExperimentalZcodeTaskBus = enabled
-	return nil
-}
-
 // SetExperimentalACPListen toggles the task-790 resident ACP listener. It
 // ships off (铁律 2): the zero value starts no listener. The listener is
 // armed at desktop boot, so the flip applies on the next restart — the lab

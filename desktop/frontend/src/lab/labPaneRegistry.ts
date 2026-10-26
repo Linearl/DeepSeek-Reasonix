@@ -81,8 +81,6 @@ export type ExperimentFeatureId =
   // 随「交互与呈现」合并卡退役为卡内成员行（union id 摘除，742 先例）。
   // Task 257: full access (yolo).
   | "fullAccess"
-  // Task 439: built-in zcode task bus (embedded loopback bus MCP host).
-  | "zcodeTaskBus"
   // 任务 790: resident ACP listener (loopback TCP, one client surface per
   // connection; default off, restart to apply).
   | "acpListen"
@@ -168,7 +166,6 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   // 任务 846: data-home migration wizard pane.
   "homePointer",
   "runtimeReuse",
-  "zcodeTaskBus",
   "acpListen",
   "pathRules",
   "orphanHandling",

@@ -193,11 +193,7 @@ func (a *App) startupStartLocalServices(ctx context.Context) {
 	if servepoolEnabled() {
 		a.startServePool(ctx)
 	}
-	// Task 439: built-in zcode task bus, opt-in via the lab switch (default
-	// off): the desktop hosts the bus MCP endpoint itself, no external
-	// `reasonix serve`/vbs needed.
 	if cfg, err := config.Load(); err == nil {
-		a.startZcodeTaskBus(cfg)
 		// Task 790: resident ACP listener, opt-in via the lab switch (default
 		// off): external ACP clients connect over loopback TCP instead of
 		// spawning `reasonix acp`.
