@@ -4,6 +4,9 @@
 // "move to group" entry is built on. Covers expand (click and hover), disabled
 // leaves, nested selection closing the whole menu, and re-expansion after a
 // close so a stale expansion cannot leak into the next open.
+// tl 1168: the expanded section renders as its own floating flyout panel
+// (hover opens it too — see tl1168-topic-grouping-flyout), so row lookups
+// span the root panel AND the flyout; the behaviour chain is unchanged.
 
 import { JSDOM } from "jsdom";
 import { StrictMode } from "react";
@@ -49,8 +52,13 @@ const items: ContextMenuItem[] = [
 function menu(): HTMLElement {
   return document.body.querySelector(".context-menu")!;
 }
+function flyout(): HTMLElement | null {
+  return document.body.querySelector(".context-menu--flyout");
+}
 function row(label: string): HTMLButtonElement | null {
-  return Array.from(menu().querySelectorAll<HTMLButtonElement>("button[role=\"menuitem\"]"))
+  // The leaves live in the flyout panel (a sibling of the root panel), so the
+  // lookup spans the whole portal output.
+  return Array.from(document.querySelectorAll<HTMLButtonElement>("button[role=\"menuitem\"]"))
     .find((button) => button.textContent?.includes(label)) ?? null;
 }
 
@@ -69,9 +77,12 @@ await act(async () => {
 ok(Boolean(menu()), "open renders the menu");
 ok(row("Two") === null, "no second-level rows before the section expands");
 
-// Click expands too (keyboard shares this path via Enter).
+// Click expands too (keyboard shares this path via Enter; tl 1168: the leaves
+// land in the floating flyout panel, not inline rows of the level-1 menu).
 await act(async () => { row("Move")!.click(); });
-ok(row("Two") !== null, "clicking the submenu row expands its leaves in place");
+ok(row("Two") !== null, "clicking the submenu row expands its leaves into the flyout panel");
+ok(Boolean(flyout()?.textContent?.includes("Two")) && !menu().textContent!.includes("Two"),
+  "the expanded leaves render in the second-level panel (level-1 stays short)");
 ok(row("One")!.disabled, "a disabled leaf renders disabled");
 ok(!row("Two")!.disabled, "the selectable leaf is enabled");
 
