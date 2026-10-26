@@ -242,6 +242,16 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 		if !ok {
 			// tl 1172: L1 被门槛正确拒绝后的降级动作（L1 现状不变，见函数头）。
 			if slim.Enabled && overLimit && !profitable {
+				// park 闸与 L1 同一语义：上次压缩落地的尺寸 +10% 增长或新活动
+				// 才允许再压。没有这道闸，物化回明文的会话会在同尺寸下每个
+				// tick 重压一次——正是验收 2 要防的「频繁重写」。
+				if hasPark && parkPtr.activityAt == c.LastActivityAt &&
+					c.EventsBytes < int64(float64(parkPtr.attemptSize)*eventsIdleSweepParkRegrow) {
+					skips["parked: awaiting regrowth or new activity"]++
+					results = append(results, eventsIdleSweepResult{Path: c.Path, Skipped: true,
+						Error: "parked: awaiting regrowth or new activity"})
+					continue
+				}
 				switch {
 				case c.Busy && !c.TabOpen:
 					// 外部运行时持有 lease：不争抢，等它空闲的 tick。
