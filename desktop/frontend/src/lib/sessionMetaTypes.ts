@@ -4,6 +4,10 @@ export interface SessionMeta {
   preview: string;
   title?: string; // user-chosen name; falls back to preview when empty
   turns: number;
+  // tl 1177: the newest noise-filtered user messages, newest first — the
+  // session wall card's hover overlay scans these. Empty until the backend
+  // has re-projected the session's listing at least once.
+  recentExcerpts?: string[];
   turnsState?: "unknown" | "valid" | "corrupt" | string;
   createdAt: number; // unix milliseconds
   lastActivityAt: number; // unix milliseconds

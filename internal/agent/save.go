@@ -1912,12 +1912,16 @@ func (s *Session) upgradeTruncatedTranscriptForWrite(path string) error {
 // disk, when it was created/last active, the first user message as a preview, and
 // a rough turn count.
 type SessionInfo struct {
-	Path                 string
-	CreatedAt            time.Time
-	LastActivityAt       time.Time
-	ModTime              time.Time // compatibility alias for LastActivityAt
-	Preview              string
-	Turns                int
+	Path           string
+	CreatedAt      time.Time
+	LastActivityAt time.Time
+	ModTime        time.Time // compatibility alias for LastActivityAt
+	Preview        string
+	Turns          int
+	// RecentExcerpts carry the newest noise-filtered user messages (newest
+	// first, tl 1177) for the session wall's hover overlay. Like Preview they
+	// are a listing projection — stale/empty on sessions not yet re-projected.
+	RecentExcerpts       []string
 	CountsKnown          bool
 	Scope                string
 	WorkspaceRoot        string
@@ -2550,6 +2554,7 @@ func ListSessionOrderWithRecoveryPreferenceResolver(dir string, resolve Recovery
 		recoveryPreferred := false
 		turns := 0
 		preview := ""
+		var recentExcerpts []string
 		schemaVersion := 0
 		revision := int64(0)
 		contentDigest := ""
@@ -2578,6 +2583,7 @@ func ListSessionOrderWithRecoveryPreferenceResolver(dir string, resolve Recovery
 			recoveryPreferred = resolve(full, meta)
 			turns = meta.Turns
 			preview = meta.Preview
+			recentExcerpts = meta.RecentExcerpts
 			schemaVersion = meta.SchemaVersion
 			revision = meta.Revision
 			contentDigest = meta.ContentDigest
@@ -2617,6 +2623,7 @@ func ListSessionOrderWithRecoveryPreferenceResolver(dir string, resolve Recovery
 			RecoveryPreferred:    recoveryPreferred,
 			Turns:                turns,
 			Preview:              preview,
+			RecentExcerpts:       recentExcerpts,
 			SchemaVersion:        schemaVersion,
 			Revision:             revision,
 			ContentDigest:        contentDigest,
@@ -2687,22 +2694,80 @@ func SessionPreviewWithError(path string) (string, int, error) {
 // exactly these messages to the .jsonl, so this is byte-for-byte equivalent to
 // decoding the file — letting the autosave path persist the counts into the
 // sidecar without a disk read.
+// sessionPreviewNoiseless extracts the displayable prose of one user turn:
+// transient/host blocks, pasted-text chrome and leading @file references are
+// the noise rows the preview must not show. Empty output marks a noise-only
+// turn (a bare file dump, an empty steer) that carries nothing recognizable —
+// the tail-first walk skips it and keeps looking at older turns.
+func sessionPreviewNoiseless(msg provider.Message) string {
+	text := strings.TrimSpace(StripPasteDisplayLabel(previewProse(UserMessageText(msg))))
+	// previewProse deliberately keeps a prompt that is nothing but @file
+	// references verbatim ("there is nothing else to show"); for the preview
+	// that IS the noise the user asked us to filter (tl 1177), so a remaining
+	// @-leading text marks a noise-only turn.
+	if strings.HasPrefix(text, "@") {
+		return ""
+	}
+	return text
+}
+
+// SessionPreviewFromMessages returns the session preview and the number of
+// user-role turns so the picker can show "5 turns · 'help me debug the…'".
+//
+// tl 1177: the preview is tail-first — it walks from the newest user turn
+// backwards and takes the first one with displayable prose, because the latest
+// exchange is what tells the user whether this is the session they want (the
+// old first-turn preview read stale once a conversation moved on). Noise-only
+// turns are skipped; if every turn is noise the preview stays empty rather
+// than leaking chrome text.
 func SessionPreviewFromMessages(msgs []provider.Message) (string, int) {
 	first := ""
 	turns := 0
-	for _, m := range msgs {
-		if IsUserAuthoredTurnMessage(m) {
-			turns++
-			if first == "" {
-				first = truncatePreview(previewProse(UserMessageText(m)))
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if !IsUserAuthoredTurnMessage(m) {
+			continue
+		}
+		turns++
+		if first == "" {
+			if prose := sessionPreviewNoiseless(m); prose != "" {
+				first = truncatePreview(prose)
 			}
 		}
 	}
 	return first, turns
 }
 
-// previewSession returns the first user message (truncated) and the number of
-// user-role messages so the picker can show "5 turns · 'help me debug the…'".
+// recentExcerptCount is how many closing user messages the hover excerpts
+// carry — enough to recognize a session at a glance, small enough that the
+// sidecar stays tiny.
+const recentExcerptCount = 3
+
+// SessionRecentExcerptsFromMessages returns up to n recent user messages
+// (newest first), noise-filtered the same way as the preview. This is the
+// data behind the session wall card's hover overlay: the preview line is one
+// sentence, the excerpts let the user scan the actual closing exchanges
+// without opening the transcript.
+func SessionRecentExcerptsFromMessages(msgs []provider.Message, n int) []string {
+	if n <= 0 {
+		return nil
+	}
+	var out []string
+	for i := len(msgs) - 1; i >= 0 && len(out) < n; i-- {
+		m := msgs[i]
+		if !IsUserAuthoredTurnMessage(m) {
+			continue
+		}
+		if prose := sessionPreviewNoiseless(m); prose != "" {
+			out = append(out, truncatePreview(prose))
+		}
+	}
+	return out
+}
+
+// previewSession returns the session preview (the newest recognizable user
+// message, truncated — tl 1177 tail-first) and the number of user-role
+// messages so the picker can show "5 turns · 'help me debug the…'".
 // Errors are swallowed — a malformed file just shows up with an empty preview.
 func previewSession(path string) (string, int) {
 	preview, turns, _ := previewSessionWithError(path)

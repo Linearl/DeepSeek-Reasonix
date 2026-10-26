@@ -14,12 +14,13 @@
 //   - Clicking a card jumps straight into that session (including ones not
 //     currently open — resume handles the hydration); Esc / backdrop closes.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { useMountTransition } from "../lib/useMountTransition";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { paletteSessionDisplayTitle, paletteSessionHint, sessionActivityTime } from "../lib/session";
-import { applySessionWallQuery, groupSessionsForWall, type SessionWallGroupMode } from "../lib/sessionWall";
+import { applySessionWallQuery, applySessionWallOpenOnly, groupSessionsForWall, type SessionWallGroupMode } from "../lib/sessionWall";
+import { loadSessionWallCollapsed, loadSessionWallOpenOnly, saveSessionWallCollapsed, saveSessionWallOpenOnly } from "../lib/sessionWallPrefs";
 import type { SessionMeta } from "../lib/types";
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -29,17 +30,31 @@ export function SessionWallPanel({
   load,
   onClose,
   onResume,
+  initialOpenOnly,
 }: {
   open: boolean;
   load: () => Promise<SessionMeta[]>;
   onClose: () => void;
   onResume: (session: SessionMeta) => void;
+  // tl 1175: true forces the「仅已打开」filter on for this open (the「跳转标签页」
+  // entry presets it); undefined falls back to the persisted preference.
+  initialOpenOnly?: boolean;
 }) {
   const t = useT();
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<SessionWallGroupMode>("project");
+  // tl 1175: the「仅已打开」filter. The persisted value is the user's last
+  // manual toggle; `initialOpenOnly` (when defined) presets this open without
+  // rewriting what the user persisted.
+  const [openOnly, setOpenOnly] = useState(false);
+  // tl 1176: collapsed project groups (project mode only — time-mode day
+  // buckets are not foldable: their keys are dates, so a persisted "collapsed
+  // yesterday" would silently mismatch after midnight, and the browsing intent
+  // there is a timeline, not "hide this workspace"). Reloaded from prefs on
+  // every open edge, so the state survives restarts.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
   const isOpenRef = useRef(false);
   isOpenRef.current = open;
@@ -73,13 +88,20 @@ export function SessionWallPanel({
     };
   }, [open, load]);
 
-  // Re-init whenever the wall opens: clear the query and mode, steal focus.
+  // Re-init whenever the wall opens: clear the query and mode, resolve the
+  // open-only filter (preset beats persisted), reload the collapsed groups,
+  // steal focus.
   useLayoutEffect(() => {
     if (open) {
       setQuery("");
       setMode("project");
+      setOpenOnly(initialOpenOnly ?? loadSessionWallOpenOnly());
+      setCollapsed(new Set(loadSessionWallCollapsed()));
       inputRef.current?.focus();
     }
+    // loadSessionWallOpenOnly / loadSessionWallCollapsed are read once per
+    // open edge on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Callback ref: focus the input as soon as it mounts while the wall is open.
@@ -114,7 +136,39 @@ export function SessionWallPanel({
     [t],
   );
 
-  const filtered = useMemo(() => applySessionWallQuery(sessions, query), [sessions, query]);
+  // tl 1175: toggling the「仅已打开」filter persists it for the next restart.
+  const toggleOpenOnly = useCallback(() => {
+    setOpenOnly((current) => {
+      const next = !current;
+      saveSessionWallOpenOnly(next);
+      return next;
+    });
+  }, []);
+
+  // tl 1176: collapsing a project group persists the whole set. The group key
+  // (workspace root / the global marker) is restart-stable, so the array can
+  // be rewritten verbatim on every toggle.
+  const toggleGroupCollapsed = useCallback((key: string) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveSessionWallCollapsed([...next]);
+      return next;
+    });
+  }, []);
+
+  // tl 1176: while searching, every matching group expands automatically —
+  // a group the query hits is by definition what the user is looking for, so
+  // hiding its cards behind a fold would defeat the search. Clearing the
+  // query restores the persisted folds (this is a derived override, never
+  // written back, so the user's fold memory is untouched).
+  const foldsActive = mode === "project" && !query.trim();
+
+  const filtered = useMemo(
+    () => applySessionWallOpenOnly(applySessionWallQuery(sessions, query), openOnly),
+    [sessions, query, openOnly],
+  );
   const groups = useMemo(
     () => groupSessionsForWall(filtered, mode, { globalLabel: t("sessionWall.globalGroup"), dayLabel }),
     [filtered, mode, dayLabel, t],
@@ -162,6 +216,14 @@ export function SessionWallPanel({
             ))}
           </div>
           <button
+            type="button"
+            className={`session-wall__filter${openOnly ? " session-wall__filter--on" : ""}`}
+            aria-pressed={openOnly}
+            onClick={toggleOpenOnly}
+          >
+            {t("sessionWall.openOnly")}
+          </button>
+          <button
             className="palette__esc"
             type="button"
             onClick={onClose}
@@ -178,37 +240,75 @@ export function SessionWallPanel({
           {!loaded ? null : filtered.length === 0 ? (
             <div className="session-wall__empty">{sessions.length === 0 ? t("sessionWall.empty") : t("palette.empty")}</div>
           ) : (
-            groups.map((g) => (
-              <div className="session-wall__group" key={g.key}>
-                <div className="session-wall__group-title">
-                  <span className="session-wall__group-name">{g.label}</span>
-                  <span className="session-wall__group-count">{t("sessionWall.count", { n: g.sessions.length })}</span>
+            groups.map((g) => {
+              // tl 1176: folds apply in project mode only, and never while
+              // searching (hit groups must expand — see foldsActive).
+              const isFolded = foldsActive && collapsed.has(g.key);
+              const head =
+                mode === "project" ? (
+                  <button
+                    type="button"
+                    className={`session-wall__group-head${isFolded ? " session-wall__group-head--folded" : ""}`}
+                    aria-expanded={!isFolded}
+                    onClick={() => toggleGroupCollapsed(g.key)}
+                  >
+                    <ChevronDown className="session-wall__group-chevron" size={14} aria-hidden="true" />
+                    <span className="session-wall__group-name">{g.label}</span>
+                    {/* Folded groups keep their count — that number is the
+                        whole point of the collapsed row. */}
+                    <span className="session-wall__group-count">{t("sessionWall.count", { n: g.sessions.length })}</span>
+                  </button>
+                ) : (
+                  <div className="session-wall__group-title">
+                    <span className="session-wall__group-name">{g.label}</span>
+                    <span className="session-wall__group-count">{t("sessionWall.count", { n: g.sessions.length })}</span>
+                  </div>
+                );
+              return (
+                <div className="session-wall__group" key={g.key}>
+                  {head}
+                  {!isFolded && (
+                    <div className="session-wall__grid">
+                      {g.sessions.map((s) => {
+                        const title = paletteSessionDisplayTitle(s, t("history.emptySession"));
+                        const hint = paletteSessionHint(s);
+                        // tl 1177: hover excerpts — the newest user messages,
+                        // newest first, so the card answers "is this the one?"
+                        // without opening the transcript. Absent on sessions
+                        // the backend has not re-projected yet (no overlay).
+                        const excerpts = s.recentExcerpts?.filter(Boolean) ?? [];
+                        return (
+                          <button
+                            type="button"
+                            key={s.path}
+                            className="session-wall__card"
+                            title={excerpts.length > 0 ? undefined : title}
+                            onClick={() => onResume(s)}
+                          >
+                            <span className="session-wall__card-title">{title}</span>
+                            {hint && <span className="session-wall__card-hint">{hint}</span>}
+                            <span className="session-wall__card-meta">
+                              <span>{dayLabel(sessionActivityTime(s))}</span>
+                              <span>{t(s.turns === 1 ? "history.turnOne" : "history.turnOther", { n: s.turns })}</span>
+                              {s.open && <span className="session-wall__card-open">{t("sessionWall.openBadge")}</span>}
+                            </span>
+                            {excerpts.length > 0 && (
+                              <span className="session-wall__card-excerpts" role="tooltip">
+                                {excerpts.map((line, i) => (
+                                  <span className="session-wall__card-excerpt" key={i}>
+                                    {line}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="session-wall__grid">
-                  {g.sessions.map((s) => {
-                    const title = paletteSessionDisplayTitle(s, t("history.emptySession"));
-                    const hint = paletteSessionHint(s);
-                    return (
-                      <button
-                        type="button"
-                        key={s.path}
-                        className="session-wall__card"
-                        title={title}
-                        onClick={() => onResume(s)}
-                      >
-                        <span className="session-wall__card-title">{title}</span>
-                        {hint && <span className="session-wall__card-hint">{hint}</span>}
-                        <span className="session-wall__card-meta">
-                          <span>{dayLabel(sessionActivityTime(s))}</span>
-                          <span>{t(s.turns === 1 ? "history.turnOne" : "history.turnOther", { n: s.turns })}</span>
-                          {s.open && <span className="session-wall__card-open">{t("sessionWall.openBadge")}</span>}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
         <div className="session-wall__foot">

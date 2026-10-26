@@ -54,6 +54,15 @@ export function applySessionWallQuery(sessions: SessionMeta[], query: string): S
   });
 }
 
+// applySessionWallOpenOnly is the tl 1175「仅已打开」filter. Off returns the
+// input as-is (same array — the off face is a zero-behaviour no-op, same
+// contract as insertSessionWallEntry); on keeps only sessions that are
+// currently open (resume-able tabs).
+export function applySessionWallOpenOnly(sessions: SessionMeta[], openOnly: boolean): SessionMeta[] {
+  if (!openOnly) return sessions;
+  return sessions.filter((s) => s.open);
+}
+
 const GLOBAL_PROJECT_KEY = "global:";
 
 // sessionWallProjectKey buckets a session by its workspace; sessions without
