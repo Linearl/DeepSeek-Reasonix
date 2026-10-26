@@ -5798,6 +5798,8 @@ export const zhTW: Record<DictKey, string> = {
   "screenshot.title": "截圖",
   "screenshot.capturing": "正在擷取螢幕…",
   "screenshot.captureFailed": "擷取螢幕失敗，請確認已連接顯示器後重試。",
+  // tl 1167：截圖預覽載入失敗——附帶後端給出的原因。
+  "screenshot.previewFailed": "預覽載入失敗：{reason}",
   "screenshot.close": "關閉",
   "screenshot.toolbarLabel": "截圖工具",
   "screenshot.tool.rect": "矩形",

@@ -74,7 +74,11 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
   const t = useT();
   const { showToast } = useToast();
   const [capture, setCapture] = useState<Capture | null>(null);
-  const [captureError, setCaptureError] = useState(false);
+  // tl 1167: the raw failure, not a bare flag — a preview that fails to load
+  // must say so visibly instead of silently painting black. The error is kept
+  // un-translated and rendered through describeCaptureFailure so the message
+  // tracks the active locale at paint time (t's identity is not stable).
+  const [captureError, setCaptureError] = useState<unknown>(null);
   const [selection, setSelection] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [tool, setTool] = useState<ScreenshotTool>("rect");
   const [history, setHistory] = useState(emptyHistory());
@@ -114,7 +118,7 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
     if (!open) return;
     let cancelled = false;
     setCapture(null);
-    setCaptureError(false);
+    setCaptureError(null);
     setSelection(null);
     setHistory(emptyHistory());
     setDraftAnnotation(null);
@@ -128,7 +132,7 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
           await app.ReleaseScreenshotCapture(shot.path).catch(() => {});
           return;
         }
-        const dataUrl = await app.AttachmentDataURL(shot.path).catch(() => "");
+        const dataUrl = await loadCapturePreview(shot.path);
         if (cancelled) {
           await app.ReleaseScreenshotCapture(shot.path).catch(() => {});
           return;
@@ -143,7 +147,7 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
         setCapture({ path: shot.path, width: shot.width, height: shot.height, x: shot.x, y: shot.y, dataUrl });
       } catch (error) {
         console.warn("[screenshot] capture failed", error);
-        if (!cancelled) setCaptureError(true);
+        if (!cancelled) setCaptureError(error);
       }
     })();
     return () => {
@@ -167,13 +171,13 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
     try {
       const shot = virtual ? await app.CaptureScreenshotVirtualDesktop() : await app.CaptureScreenshotAtCursor();
       capturePathRef.current = shot.path;
-      const dataUrl = await app.AttachmentDataURL(shot.path).catch(() => "");
+      const dataUrl = await loadCapturePreview(shot.path);
       await primeScreenshotImageCache(dataUrl);
       setCapture({ path: shot.path, width: shot.width, height: shot.height, x: shot.x, y: shot.y, dataUrl });
-      setCaptureError(false);
+      setCaptureError(null);
     } catch (error) {
       console.warn("[screenshot] re-capture failed", error);
-      setCaptureError(true);
+      setCaptureError(error);
     }
   }, []);
 
@@ -472,7 +476,7 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
     >
       {captureError ? (
         <div className="screenshot-overlay__error">
-          <p>{t("screenshot.captureFailed")}</p>
+          <p>{describeCaptureFailure(t, captureError)}</p>
           <button type="button" onClick={onClose}>{t("screenshot.close")}</button>
         </div>
       ) : !capture ? (
@@ -619,6 +623,34 @@ export function ScreenshotOverlay({ open, onClose, onConfirm }: ScreenshotOverla
   );
 
   return createPortal(body, document.body);
+}
+
+// ---- capture preview (tl 1167) -------------------------------------------
+
+// A failed preview must be visible, never a silent black frame. The capture
+// temp path is an os.MkdirTemp absolute path; the generic AttachmentDataURL
+// bridge only serves workspace attachment relative paths and rejects it (a
+// security invariant we must not loosen), which is exactly what used to paint
+// the overlay black — the old code swallowed the rejection into an empty
+// string. Previews now go through the screenshot-specific bridge, and every
+// failure carries the backend reason into the overlay's error pane.
+class PreviewLoadError extends Error {}
+
+async function loadCapturePreview(path: string): Promise<string> {
+  try {
+    const url = await app.ScreenshotPreviewDataURL(path);
+    if (!url) throw new Error("empty preview data URL");
+    return url;
+  } catch (error) {
+    console.warn("[screenshot] preview load failed", error);
+    const reason = error instanceof Error && error.message ? error.message : String(error);
+    throw new PreviewLoadError(reason);
+  }
+}
+
+function describeCaptureFailure(t: Translator, error: unknown): string {
+  if (error instanceof PreviewLoadError) return t("screenshot.previewFailed", { reason: error.message });
+  return t("screenshot.captureFailed");
 }
 
 // ---- canvas drawing ------------------------------------------------------

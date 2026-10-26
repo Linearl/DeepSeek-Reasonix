@@ -5816,6 +5816,8 @@ export const en = {
   "screenshot.title": "Screenshot",
   "screenshot.capturing": "Capturing the screen…",
   "screenshot.captureFailed": "Screen capture failed. Check that a display is connected and try again.",
+  // tl 1167: the capture preview failed to load — shown with the backend reason.
+  "screenshot.previewFailed": "Preview failed to load: {reason}",
   "screenshot.close": "Close",
   "screenshot.toolbarLabel": "Screenshot tools",
   "screenshot.tool.rect": "Rectangle",
