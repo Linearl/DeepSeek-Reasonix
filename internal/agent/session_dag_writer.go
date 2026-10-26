@@ -67,6 +67,12 @@ func appendSessionDAGEntries(sessionPath string, entries []sessionDAGEntry, sync
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return 0, err
 	}
+	// tl 1172 L2: 归档态日志（明文缺失）先物化再追加——O_CREATE 直接追加会在
+	// 明文缺失时另起空日志，把归档里的历史从读取视野里切断。保存路径的探针
+	// 已先物化过，这里是追加原语的独立防线（一次 stat 短路）。
+	if _, err := ensureSessionEventLogPlain(sessionPath); err != nil {
+		return 0, err
+	}
 	data, err := encodeSessionDAGEntries(entries, time.Now().UTC())
 	if err != nil {
 		return 0, err

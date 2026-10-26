@@ -192,6 +192,14 @@ func limitsForSessionLog(path string, limits sessionReplayLimits) sessionReplayL
 	if limits.maxBytes != defaultSessionEventReplayMaxBytes {
 		return limits
 	}
+	// tl 1172 L2: the read-path materialization chokepoint. Every replay budget
+	// flows through here (probe/load/health/selfheal/replay), so a compressed-
+	// at-rest log (.events.jsonl.zst only) materializes before its size is
+	// measured and the budget below is sized on the same plaintext world as
+	// before the archive existed. 明文在时一次 stat 短路，热路径零增量。
+	if _, err := ensureSessionEventLogPlain(path); err != nil {
+		return limits
+	}
 	size := sessionEventLogSize(path)
 	if size <= 0 {
 		return limits

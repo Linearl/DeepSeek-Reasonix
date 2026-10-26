@@ -55,8 +55,8 @@ func loadSessionUserTimesTail(path string, byteBudget, chunk int64) (map[string]
 	if strings.TrimSpace(path) == "" {
 		return times, false
 	}
-	f, err := os.Open(store.SessionEventLog(path))
-	if err != nil {
+	f := openSessionEventLogForTailScan(path)
+	if f == nil {
 		return times, false
 	}
 	defer f.Close()
@@ -117,6 +117,28 @@ func loadSessionUserTimesTail(path string, byteBudget, chunk int64) (map[string]
 		end = start
 	}
 	return times, startedAtTop
+}
+
+// openSessionEventLogForTailScan opens the plaintext log for the reverse tail
+// scan; a compressed-at-rest log materializes first (tl 1172 L2). 物化失败按
+// 「未见」语义返回 nil——这是只读优化路径，调用方本就带自己的回退。
+func openSessionEventLogForTailScan(path string) *os.File {
+	plain := store.SessionEventLog(path)
+	f, err := os.Open(plain)
+	if err == nil {
+		return f
+	}
+	if !os.IsNotExist(err) {
+		return nil
+	}
+	if _, ensureErr := ensureSessionEventLogPlain(path); ensureErr != nil {
+		return nil
+	}
+	f, err = os.Open(plain)
+	if err != nil {
+		return nil
+	}
+	return f
 }
 
 // sessionUserTimesTailEntry declares only the fields the overlay needs. Leaving

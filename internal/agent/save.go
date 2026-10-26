@@ -2382,6 +2382,8 @@ func migrateSessionSidecars(oldPath, newPath, newID string) error {
 	for _, pair := range [][2]string{
 		{store.SessionGoalState(oldPath), store.SessionGoalState(newPath)},
 		{store.SessionEventLog(oldPath), store.SessionEventLog(newPath)},
+		// tl 1172 L2: 归档态日志随会话迁移，否则 fork/改名后历史留在旧名字下。
+		{store.SessionEventLogZst(oldPath), store.SessionEventLogZst(newPath)},
 		{store.SessionEventLogDamaged(oldPath), store.SessionEventLogDamaged(newPath)},
 		{store.SessionTurnEventLog(oldPath), store.SessionTurnEventLog(newPath)},
 		{store.SessionTurnEventLogDamaged(oldPath), store.SessionTurnEventLogDamaged(newPath)},
