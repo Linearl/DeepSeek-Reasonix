@@ -1759,8 +1759,10 @@ export function ProjectTree({
             }]
           : []),
         { type: "separator" as const, key: "ctx-sep-group" },
-        // 「移动到分组」「移出分组」（task 720/144 的两项）收进「分组 ▸」二级，
-        // 行为不变；无分组可用时整个二级入口不渲染。
+        // 分组整理（task 720/144）收进「分组 ▸」二级：各分组一行（当前组禁用）
+        // + 「移出分组」。tl 1149b 返修：行必须是本层的叶子——ContextMenu 只展开
+        // 一层 submenu，之前在二级里再嵌「移动到分组 ▸」整段点不动（nested 即
+        // disabled）；无分组可用时整个二级入口不渲染。
         ...(organizationItems.length > 0 ? [{
           type: "submenu" as const,
           key: "grouping",
