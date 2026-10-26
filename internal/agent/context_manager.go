@@ -5,11 +5,57 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync/atomic"
 	"time"
 
 	"reasonix/internal/provider"
 )
+
+// 任务978 实验开关（默认关）：REASONIX_EXPERIMENT_TL978_EARLY_FOLD=1 时生效。
+// 治理对象是「投影失效回退全量」（tl 正文所谓 token_mode=full 全量暴露档）会话的
+// 压缩重建迟滞：视图回退全量后，压缩是唯一的回投影正道，但原 0.8×窗口触发线让
+// canonical 在回退态多涨一整段——摘要请求随体积变大，越窗 400/超时的概率随之
+// 上升，「越大越压不动」的恶性循环入口就在这里（ai-passport 20261018 现场
+// fold_tokens=1501109 才落成，对照投影侧车 54536）。
+var earlyFoldEnabled = os.Getenv("REASONIX_EXPERIMENT_TL978_EARLY_FOLD") == "1"
+
+const (
+	// fallbackEarlyFoldRatio 把回退态触发线压到原线的这一比例：0.80×0.75=0.60×
+	// 窗口，与任务719 受限尾视图的 tailViewTargetShare 同档——回退态的会话
+	// 在 60% 窗口处开始重建投影，摘要输入更小、一次成功率更高。投影有效态
+	// 不受影响：健康会话的 0.8 线原样保留（正常小会话不得被反复压缩是本件
+	// 最大回归红线，TestTask978HealthyProjectionNeverEarlyFolds 钉住）。
+	fallbackEarlyFoldRatio = 0.75
+	// maintenanceRetryGrowthRatioFallback 是回退态下同 turn 重试门的增长门槛
+	// （原 5% 见 maintenanceRetryGrowthRatio）。回退全量态里每 1% 窗口的涨量
+	// 都是真实发送体积的增长，等满 5%（1M 窗=50K tokens）才允许重试意味着
+	// 全量视图要多发好几轮；压到 1% 让重试随涨量尽快发生。一次 Prepare 仍然
+	// 只跑一次 ladder，且受维护单飞门（任务920）与 failedTurn 记录约束，
+	// 不会退化成摘要请求风暴（978 现场「请求数+12」的教训）。
+	maintenanceRetryGrowthRatioFallback = 0.01
+)
+
+// projectionFallbackActive reports the tl-978 full-fallback state: the
+// projection is unusable AND the canonical transcript still fits under the
+// hard input ceiling. Past the ceiling 任务719's bounded tail view owns the
+// request and est >= hard force-folds regardless of the trigger line, so the
+// moved trigger only needs to speak for the in-between state — the exact
+// window where the raw full transcript keeps getting sent (烧缓存、涨 events)
+// while compaction waits for the 0.8 line.
+func (a *Agent) projectionFallbackActive() bool {
+	if a == nil || a.sess.conversation == nil {
+		return false
+	}
+	if a.sess.tailView.active() {
+		return false
+	}
+	msgs, _ := a.sess.conversation.snapshotMessagesVersion()
+	a.sess.compactionMu.Lock()
+	st := a.sess.compactionState
+	a.sess.compactionMu.Unlock()
+	return !projectionValid(st, msgs)
+}
 
 // compactionProgress is how compaction is faring in this session: whether a
 // fold stopped reducing, how many ran back to back, and which retries already
@@ -132,6 +178,12 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	}
 	fold := a.compactTrigger()
 	hard := a.hardInputCeiling()
+	// 任务978（实验开关默认关）：回退全量态把触发线前移到 0.60×窗口，让投影
+	// 重建在 canonical 更小时启动。投影有效态走原线——这条分支必须永远摸不到
+	// 健康会话，见 fallbackEarlyFoldRatio 与 TestTask978HealthyProjectionNeverEarlyFolds。
+	if earlyFoldEnabled && a.projectionFallbackActive() {
+		fold = max(1, int(float64(fold)*fallbackEarlyFoldRatio))
+	}
 	// 任务822: every threshold comparison below (fold trigger, hard ceiling,
 	// backoff bypass, rescue eligibility) must read the session's physical
 	// occupancy, not the degraded view's clamped size. 任务719's bounded tail
