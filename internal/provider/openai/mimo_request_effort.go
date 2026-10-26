@@ -30,6 +30,24 @@ var zhipuRequestEffortVocabulary = []string{"disabled", "low", "medium", "high",
 // 2013). Keep in sync with internal/config's M3.1 /effort levels.
 var minimaxM31RequestEffortVocabulary = []string{"low", "medium", "high", "xhigh", "max"}
 
+// deepSeekRequestEffortVocabulary is the canonical output domain of
+// NormalizeEffort for an official DeepSeek entry (task 1161b): the generic
+// deepseek branch of internal/config's NormalizeEffort emits
+// disabled|high|max, and the v4/vision SKUs additionally pass low through
+// (their model table lists it), so the union is these four values. The
+// per-request probe used to come up empty for DeepSeek — the vocabulary map
+// above only covered MiMo/Zhipu/M3.1 — so SetSessionEffortOverride declined
+// EVERY level as level-not-in-vocabulary and every /effort switch paid the
+// full runtime rebuild (observed 2026-10-25: 2-3.8s per switch, four
+// consecutive path=fallback lines, while the same-level short circuit never
+// fired because the user was changing depth). DeepSeek's wire layer has been
+// request-scoped all along (requestEffort/applyReasoning read
+// EffortOverride), so the probe face now matches it. Keep in sync with
+// internal/config's deepseek NormalizeEffort branch and this file's
+// reasoning_capability deepseek capability ({disabled,low,high,max} for the
+// full-depth SKU family).
+var deepSeekRequestEffortVocabulary = []string{"disabled", "low", "high", "max"}
+
 // requestEffortVocabularyFor picks the per-request EffortOverride vocabulary
 // for a client: MiMo gets its canonical four-level set when the entry declares
 // no supported_efforts of its own — the canonical set is exactly what
@@ -41,9 +59,12 @@ var minimaxM31RequestEffortVocabulary = []string{"low", "medium", "high", "xhigh
 // instead of the probe admitting a level the next request rejects; GLM gets
 // its canonical five-level set under the same condition — an explicit list
 // stays the probe face because internal/config's NormalizeEffort emits from it
-// verbatim; the MiniMax M3.1 family gets its reasoning_effort domain under the
-// same condition (task 1031); every other endpoint keeps the
-// configured/derived vocabulary unchanged.
+// verbatim; the MiniMax M3.1 family gets its reasoning_effort domain under
+// the same condition (task 1031); official DeepSeek endpoints get their
+// canonical depth set (task 1161b, host-gated like MiMo/Zhipu — a third-party
+// gateway that merely declares the deepseek protocol keeps its derived
+// vocabulary, since its per-request contract is unverified); every other
+// endpoint keeps the configured/derived vocabulary unchanged.
 func requestEffortVocabularyFor(baseURL, model string, configured []string) []string {
 	if IsMiMo(baseURL) && !hasExplicitSupportedEfforts(configured) {
 		return mimoRequestEffortVocabulary
@@ -53,6 +74,9 @@ func requestEffortVocabularyFor(baseURL, model string, configured []string) []st
 	}
 	if IsMiniMax(baseURL) && IsMiniMaxM31(model) && !hasExplicitSupportedEfforts(configured) {
 		return minimaxM31RequestEffortVocabulary
+	}
+	if IsDeepSeek(baseURL) && !hasExplicitSupportedEfforts(configured) {
+		return deepSeekRequestEffortVocabulary
 	}
 	return configured
 }

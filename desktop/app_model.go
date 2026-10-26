@@ -407,39 +407,103 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 	}
 	if ctrl := a.controllerForTab(tab); ctrl != nil {
 		if !modelSwitchPersonaBoundary(switchSnap.workspaceRoot, tab.model, switchEntry) {
-			if setter, ok := ctrl.(interface {
-				SetSessionModelOverride(string, agent.ModelOverrideExtras) bool
-			}); ok {
-				extras, identity, extrasErr := modelSwitchExtras(switchSnap.workspaceRoot, switchRef, switchEntry)
-				if extrasErr != nil {
-					return false, extrasErr
-				}
-				if setter.SetSessionModelOverride(switchRef, extras) {
-					if idSetter, ok := ctrl.(interface {
-						SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput *bool)
-					}); ok {
-						idSetter.SetModelIdentity(switchRef, identity.label, identity.balanceURL, identity.balanceKey, identity.imageInput, identity.audioInput)
-					}
-					a.mu.Lock()
-					tab.model = switchRef
-					tab.Label = identity.label
-					a.saveTabsLocked()
-					a.mu.Unlock()
-					// Same sidecar rationale as the rebuild path: empty sessions do
-					// not autosave a turn, so persisting the provider identity here
-					// keeps a later startup on the provider the tab actually runs, and keeps last-click-wins across overlapping switches.
-					if path := a.currentSessionPathFor(tab); path != "" {
-						if err := agent.SetBranchModelPreserveUpdated(path, switchRef); err != nil {
-							return false, fmt.Errorf("persist selected model: %w", err)
+			// Task 1161b: fold the carried effort onto the destination before
+			// the arm — a level the destination cannot express (deepseek max →
+			// MiMo) would fail the destination's boot gate inside Resolve and
+			// decline the whole fast path, and even a successful arm would
+			// keep the stale depth riding requests the destination's gate
+			// rejects. The fold is the same NormalizeEffort mapping the
+			// build+swap path applies (max→high on MiMo, low/medium→high on
+			// generic deepseek); a fold error means "no expressible depth" and
+			// lands on auto, exactly like the rebuild path's effortOverride
+			// normalization. auto (nil/empty) carries as auto — the inherit
+			// default never becomes a concrete level.
+			foldedEffort := ""
+			foldFrom := ""
+			foldKnown := false
+			if switchEntry != nil {
+				foldKnown = true
+				a.mu.RLock()
+				carried := cloneStringPtr(tab.effort)
+				a.mu.RUnlock()
+				if carried != nil {
+					display := config.EffortDisplay(&config.ProviderEntry{Effort: *carried})
+					if display == "auto" {
+						foldedEffort = "" // auto is the inherit default; it carries as auto on every destination.
+					} else if normalized, err := config.NormalizeEffort(switchEntry, display); err != nil {
+						foldedEffort = ""
+						foldFrom = display
+					} else {
+						foldedEffort = normalized
+						if normalized != display {
+							foldFrom = display
 						}
 					}
-					// A model switch changes the pricing context; discard the
-					// session-local automatic wallet hint, same as the rebuild path.
-					tab.clearRuntimeDisplayCurrency()
-					slog.Info("desktop: model switch", "tab", tabID, "path", "fast-per-request", "model", switchRef, "elapsed_ms", time.Since(switchStarted).Milliseconds()) // task 148/602: fast path observability (paired against runtime build end path=fallback); elapsed_ms: task 909.
-					return true, nil
 				}
 			}
+			extras, identity, extrasErr := modelSwitchExtras(switchSnap.workspaceRoot, switchRef, switchEntry)
+			if extrasErr != nil {
+				return false, extrasErr
+			}
+			arm := func() bool {
+				if setter, ok := ctrl.(interface {
+					SetSessionModelOverride(string, agent.ModelOverrideExtras) bool
+				}); ok {
+					return setter.SetSessionModelOverride(switchRef, extras)
+				}
+				return false
+			}
+			if effortSetter, ok := ctrl.(interface {
+				SetSessionModelOverrideWithEffort(string, agent.ModelOverrideExtras, string) bool
+			}); ok && foldKnown {
+				if !effortSetter.SetSessionModelOverrideWithEffort(switchRef, extras, foldedEffort) {
+					return false, nil
+				}
+			} else if !arm() {
+				return false, nil
+			}
+			if idSetter, ok := ctrl.(interface {
+				SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput *bool)
+			}); ok {
+				idSetter.SetModelIdentity(switchRef, identity.label, identity.balanceURL, identity.balanceKey, identity.imageInput, identity.audioInput)
+			}
+			a.mu.Lock()
+			tab.model = switchRef
+			if foldKnown {
+				// Task 1161b: the tab now runs the folded depth — the value the
+				// destination actually expresses ("" = auto), the same shape the
+				// build+swap swapModelController persists.
+				tab.effort = cloneStringPtr(&foldedEffort)
+			}
+			tab.Label = identity.label
+			a.saveTabsLocked()
+			a.mu.Unlock()
+			// Task 1161b: the fold is user-visible state — say so, or a silent
+			// max→high reads as the switch having lost the setting.
+			if foldFrom != "" {
+				foldedDisplay := foldedEffort
+				if foldedDisplay == "" {
+					foldedDisplay = "auto (provider default)"
+				}
+				a.noticeForTab(tabID, fmt.Sprintf("effort %s is not available on %s; switched to %s", foldFrom, switchEntry.Name, foldedDisplay))
+			}
+			// Same sidecar rationale as the rebuild path: empty sessions do
+			// not autosave a turn, so persisting the provider identity here
+			// keeps a later startup on the provider the tab actually runs, and keeps last-click-wins across overlapping switches.
+			if path := a.currentSessionPathFor(tab); path != "" {
+				if err := agent.SetBranchModelPreserveUpdated(path, switchRef); err != nil {
+					return false, fmt.Errorf("persist selected model: %w", err)
+				}
+			}
+			// A model switch changes the pricing context; discard the
+			// session-local automatic wallet hint, same as the rebuild path.
+			tab.clearRuntimeDisplayCurrency()
+			logAttrs := []any{"tab", tabID, "path", "fast-per-request", "model", switchRef, "elapsed_ms", time.Since(switchStarted).Milliseconds()} // task 148/602: fast path observability (paired against runtime build end path=fallback); elapsed_ms: task 909.
+			if foldFrom != "" {
+				logAttrs = append(logAttrs, "effort_fold", foldFrom+"->"+foldedEffort) // task 1161b: the depth that rode the switch.
+			}
+			slog.Info("desktop: model switch", logAttrs...)
+			return true, nil
 		} else {
 			// Task 602: the official DeepSeek-V4-Pro persona is baked into the
 			// session's cache-stable system prompt and has no override seam —
@@ -498,7 +562,7 @@ func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, 
 		OnSessionSetModel:          a.collabSessionSetModel,
 		OnSessionTurnStatus:        a.collabSessionTurnStatus,
 		OnCascadeDelegate:          cascadeDelegateFor,
-		OnCascadeSourceCapability: cascadeSourceCapabilityFor,
+		OnCascadeSourceCapability:  cascadeSourceCapabilityFor,
 		OnFallbackSwitch:           a.fallbackSwitch,
 		OnDeleteSession:            a.deleteCollabSession,
 		OnRegistryShellProbe:       a.resolveRegistryShell,

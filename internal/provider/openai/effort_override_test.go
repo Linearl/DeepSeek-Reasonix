@@ -385,3 +385,57 @@ func TestEffortOverrideMiMoDeclaredEffortsRuleBothGates(t *testing.T) {
 		t.Fatal("capability must still reject none under an explicit declaration excluding it")
 	}
 }
+
+// Task 1161b: the official DeepSeek probe face used to come up empty — the
+// vocabulary table only covered MiMo/Zhipu/M3.1 — so SetSessionEffortOverride
+// declined every level and every /effort switch paid the full runtime rebuild
+// (observed 2026-10-25: four consecutive 2-3.8s path=fallback switches). The
+// wire layer has been request-scoped all along; the probe must say so.
+func TestPerRequestEffortsOfficialDeepSeek(t *testing.T) {
+	for _, model := range []string{"deepseek-flash", "deepseek-v4-flash", "deepseek-pro"} {
+		c := newTestClient(t, model, map[string]any{"reasoning_protocol": "deepseek"})
+		if got := c.PerRequestEfforts(); !slices.Equal(got, deepSeekRequestEffortVocabulary) {
+			t.Fatalf("%s PerRequestEfforts = %v, want %v", model, got, deepSeekRequestEffortVocabulary)
+		}
+		// Every probe-admitted level must also pass the Stream gate, so a
+		// fast-path switch can never arm a value the next request rejects.
+		for _, level := range c.PerRequestEfforts() {
+			if err := c.reasoning.Validate(c.model, level); err != nil {
+				t.Fatalf("%s: probe level %q rejected by the capability gate: %v", model, level, err)
+			}
+		}
+	}
+}
+
+// The host gate keeps the canonical set scoped to official DeepSeek endpoints:
+// a third-party gateway that merely declares the deepseek protocol keeps its
+// derived (configured) vocabulary, because its per-request contract is
+// unverified.
+func TestPerRequestEffortsDeepSeekProtocolOffHostStaysDerived(t *testing.T) {
+	cfg := provider.Config{Name: "gw", BaseURL: "https://gateway.example.com/v1", Model: "deepseek-flash", APIKey: "k", Extra: map[string]any{"reasoning_protocol": "deepseek"}}
+	p, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if got := p.(*client).PerRequestEfforts(); len(got) != 0 {
+		t.Fatalf("off-host deepseek-protocol PerRequestEfforts = %v, want empty (derived)", got)
+	}
+}
+
+// An explicit supported_efforts declaration stays the probe face for DeepSeek
+// too — same rule as MiMo/GLM/M3.1.
+func TestPerRequestEffortsDeepSeekDeclaredRule(t *testing.T) {
+	cfg := provider.Config{Name: "ds", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4", APIKey: "k", Extra: map[string]any{
+		"reasoning_protocol": "deepseek",
+		"supported_efforts":  []string{"high"},
+	}}
+	p, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c := p.(*client)
+	if got := c.PerRequestEfforts(); !slices.Equal(got, []string{"high"}) {
+		t.Fatalf("declared PerRequestEfforts = %v, want [high]", got)
+	}
+	assertRejectedEffort(t, c, "max")
+}

@@ -119,3 +119,39 @@ func TestEffortLevelReachesWireBasics(t *testing.T) {
 		t.Fatal("empty stored level is auto and always applies")
 	}
 }
+
+// Task 1161a: a thinking-locked entry (explicit `thinking = "disabled"` on the
+// OpenAI-compatible family) drops every depth override at the wire — the
+// adapter validates the override against its locked {disabled} capability at
+// Stream time. The composite capability read re-widens through the
+// richer-table rule, so without the lock face here the menu offered depths
+// the runtime would reject per request. The menu must carry only the lock's
+// own value (plus the composer's auto alias), in lockstep with the two
+// settings surfaces that already read EffortMenuDomain (task 1151).
+func TestEffortMenuDomainThinkingLockedEntry(t *testing.T) {
+	entry := &ProviderEntry{Kind: "openai", BaseURL: "https://api.deepseek.com", Model: "deepseek-flash", Thinking: "disabled"}
+	levels, _ := EffortMenuDomain(entry)
+	want := []string{"auto", "disabled"}
+	if len(levels) != len(want) {
+		t.Fatalf("locked levels = %v, want %v", levels, want)
+	}
+	for i, level := range want {
+		if levels[i] != level {
+			t.Fatalf("locked levels[%d] = %q, want %q", i, levels[i], level)
+		}
+	}
+	if !EffortLevelReachesWire(entry, "disabled") {
+		t.Fatal("the lock's own value must reach the wire")
+	}
+	for _, level := range []string{"low", "high", "max"} {
+		if EffortLevelReachesWire(entry, level) {
+			t.Fatalf("locked entry must drop %q at the menu, not at request time", level)
+		}
+	}
+	// The anthropic kind is exempt: its thinking field is a protocol switch
+	// with its own lift, not the OpenAI-family lock.
+	anthropic := &ProviderEntry{Kind: "anthropic", BaseURL: "https://api.anthropic.com", Model: "claude-sonnet-4.6", Thinking: "disabled"}
+	if !EffortLevelReachesWire(anthropic, "high") {
+		t.Fatal("anthropic thinking=disabled is not the OpenAI-family lock; high must keep reaching the wire")
+	}
+}

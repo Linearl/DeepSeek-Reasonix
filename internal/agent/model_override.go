@@ -72,7 +72,37 @@ type sessionModelOverride struct {
 // every entry-derived scalar now follows the destination. Returning false
 // tells the caller to fall back to the rebuild path instead of arming a
 // destination the session cannot vouch for.
+//
+// The session's own effort selection rides the resolve (see the effortSel
+// carry below); hosts that fold the effort onto the destination themselves
+// use SetSessionModelOverrideWithEffort.
 func (a *Agent) SetSessionModelOverride(ref string, extras ModelOverrideExtras) bool {
+	return a.setSessionModelOverride(ref, extras, a.sessionEffortOverrideValue())
+}
+
+// SetSessionModelOverrideWithEffort arms the destination together with the
+// effort the host has already folded onto it (task 1161b). A cross-vocabulary
+// model switch carries the outgoing effort (deepseek max) onto a destination
+// that cannot express it (MiMo folds max→high); without this seam the carried
+// value would fail the destination's boot gate inside Resolve and decline the
+// whole fast path, and even a successful arm would keep the stale session
+// override riding requests the destination's gate rejects. The host passes
+// the normalized level ("" = auto/provider default); the override is adopted
+// only when the destination's per-request vocabulary lists it, so a fast-path
+// switch can never arm a depth the next request would reject — the same gate
+// SetSessionEffortOverride applies, evaluated against the destination.
+func (a *Agent) SetSessionModelOverrideWithEffort(ref string, extras ModelOverrideExtras, effort string) bool {
+	return a.setSessionModelOverride(ref, extras, effort)
+}
+
+// setSessionModelOverride is the shared arm path: effort is the level the
+// destination must express (already folded by the caller for the WithEffort
+// seam; the session's stored selection otherwise). Empty clears the
+// session-scoped depth override — auto/provider default — once the
+// destination is effort-varying; a non-effort-varying destination keeps the
+// stored override untouched (its configured depth was resolved at
+// construction and the per-request channel does not exist there).
+func (a *Agent) setSessionModelOverride(ref string, extras ModelOverrideExtras, effort string) bool {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		a.sessionModel.Store((*sessionModelOverride)(nil))
@@ -100,14 +130,39 @@ func (a *Agent) SetSessionModelOverride(ref string, extras ModelOverrideExtras) 
 	// Carry the session's effort selection into the resolved entry so the new
 	// provider's configured depth matches what the tab is running; the
 	// per-request EffortOverride keeps riding every request on top of it.
+	// Task 1161b: the WithEffort seam passes the host-folded level instead, so
+	// the destination is constructed at a depth it actually accepts.
+	effort = strings.ToLower(strings.TrimSpace(effort))
 	var effortSel *string
-	if effort := strings.TrimSpace(a.sessionEffortOverrideValue()); effort != "" {
+	if effort != "" {
 		effortSel = &effort
 	}
 	prov, err := a.svc.modelResolver.Resolve(provider.Selection{Ref: ref, Effort: effortSel})
 	if err != nil {
 		slog.Info("agent: model override declined", "reason", "resolve-failed", "ref", ref, "err", err.Error())
 		return false
+	}
+	// Task 1161b: adopt the depth on the destination only through its own
+	// per-request vocabulary — the same contract SetSessionEffortOverride
+	// enforces, evaluated against the destination instead of the outgoing
+	// provider. A non-varying destination keeps its stored override untouched
+	// (the configured depth was resolved at construction; there is no
+	// per-request channel to adopt into).
+	if varying, ok := prov.(effortVarying); ok {
+		if effort != "" {
+			listed := false
+			for _, l := range varying.PerRequestEfforts() {
+				if strings.EqualFold(strings.TrimSpace(l), effort) {
+					listed = true
+					break
+				}
+			}
+			if !listed {
+				slog.Info("agent: model override declined", "reason", "effort-not-in-vocabulary", "ref", ref, "effort", effort)
+				return false
+			}
+		}
+		a.sessionEffort.Store(effort)
 	}
 	// Task 602: no family gate — the destination is a fully constructed
 	// adapter from the boot resolver and every destination-scoped surface

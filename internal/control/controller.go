@@ -1380,6 +1380,19 @@ func (c *Controller) SetSessionModelOverride(ref string, extras agent.ModelOverr
 	return c.executor.SetSessionModelOverride(ref, extras)
 }
 
+// SetSessionModelOverrideWithEffort arms the destination together with the
+// host-folded effort (task 1161b): the folded level feeds the destination's
+// construction and is adopted through its per-request vocabulary, so a
+// cross-vocabulary switch (deepseek max → MiMo high) lands the depth the
+// destination actually expresses instead of declining the arm or carrying a
+// stale depth the next request would reject.
+func (c *Controller) SetSessionModelOverrideWithEffort(ref string, extras agent.ModelOverrideExtras, effort string) bool {
+	if c.executor == nil {
+		return false
+	}
+	return c.executor.SetSessionModelOverrideWithEffort(ref, extras, effort)
+}
+
 // controllerModelIdentity is the model-identity surface a hot model switch
 // rebinds (task 602). A full rebuild derives every field from the new entry;
 // the fast path rebinds them atomically through SetModelIdentity, and the
