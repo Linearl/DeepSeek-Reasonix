@@ -1417,6 +1417,14 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   PickScreenshotExportFile(): Promise<string>;
   /** tl 1088: put the final PNG on the OS clipboard as a real image. */
   CopyScreenshotToClipboard(dataUrl: string): Promise<void>;
+  /** tl 1167: 截图预览专用桥——抓帧临时 PNG 是 os.MkdirTemp 绝对路径，AttachmentDataURL
+   *  只服务 .reasonix/attachments 相对路径（安全不变量，勿放宽），喂绝对路径会被拒，
+   *  且旧代码把错误吞成空串把覆盖层 paint 成黑屏。Go 侧判据：绝对路径 + 父目录名
+   *  reasonix-screenshot- 前缀（与 ReleaseScreenshotCapture 同判据）+ 位于
+   *  os.TempDir() 之下 + 图片扩展名白名单 + 字节级格式探测；违规返回明确错误，
+   *  绝不静默空串。契约对齐 desktop App.ScreenshotPreviewDataURL（wails generate
+   *  禁用，手写契约）。 */
+  ScreenshotPreviewDataURL(path: string): Promise<string>;
   AttachDropped(path: string): Promise<DroppedItem>;
   AttachmentDataURL(path: string): Promise<string>;
   Models(): Promise<ModelInfo[]>;
@@ -6130,6 +6138,12 @@ function makeMockApp(): AppBindings {
       return "screenshot-mock.png";
     },
     async CopyScreenshotToClipboard(_dataUrl: string) {},
+    async ScreenshotPreviewDataURL(path: string) {
+      // tl 1167 browser-dev mock: the mock capture bindings hand out mock
+      // attachment paths (the real bridge's absolute-path guard is a Go-side
+      // concern), so serve the same fixture map the overlay used to read.
+      return mockAttachmentDataURLs.get(path) ?? mockPreviewImageDataURL;
+    },
     async AttachmentDataURL(path: string) {
       return mockAttachmentDataURLs.get(path) ?? mockPreviewImageDataURL;
     },

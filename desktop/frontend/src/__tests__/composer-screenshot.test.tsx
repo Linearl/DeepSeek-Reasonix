@@ -147,10 +147,15 @@ function installBridgeApp(methods: Record<string, unknown>) {
   } as never;
 }
 
-const captureCalls: { released: string[]; savedAttachments: string[] } = {
+const captureCalls: { released: string[]; savedAttachments: string[]; previews: string[] } = {
   released: [],
   savedAttachments: [],
+  previews: [],
 };
+
+// tl 1167: the preview bridge is switchable so the failure scene can flip it
+// to a rejection after the happy path has run.
+let previewImpl: (path: string) => Promise<string> = async () => "data:image/svg+xml,mock";
 
 async function renderComposer(props: Partial<Parameters<typeof Composer>[0]> = {}) {
   const rootEl = document.getElementById("root");
@@ -212,7 +217,10 @@ async function main() {
       x: 0,
       y: 0,
     }),
-    AttachmentDataURL: async () => "data:image/svg+xml,mock",
+    ScreenshotPreviewDataURL: async (path: string) => {
+      captureCalls.previews.push(path);
+      return previewImpl(path);
+    },
     ReleaseScreenshotCapture: async (path: string) => {
       captureCalls.released.push(path);
     },
@@ -284,6 +292,36 @@ async function main() {
   ok(overlay() === null, "Escape closes the overlay");
   eq(captureCalls.savedAttachments.length, 0, "Escape saves no attachment");
   ok(captureCalls.released.includes(".reasonix/attachments/mock-screen.png"), "Escape releases the backend capture temp file");
+
+  console.log("\ntl 1167 a failed preview is visible, never a black frame");
+
+  // The happy path went through the screenshot-specific bridge with the
+  // capture path; pin that before flipping the bridge into failure mode.
+  ok(
+    captureCalls.previews.includes(".reasonix/attachments/mock-screen.png"),
+    "the preview loads through ScreenshotPreviewDataURL with the capture path",
+  );
+
+  previewImpl = async () => {
+    throw new Error("screenshot preview path must be absolute: .reasonix/attachments/mock-screen.png");
+  };
+  await act(async () => {
+    button?.click();
+    await flushTimers();
+  });
+  const errorPane = document.querySelector(".screenshot-overlay__error");
+  ok(errorPane !== null, "a failed preview renders the visible error pane (not a silent black frame)");
+  const errorText = errorPane?.textContent ?? "";
+  ok(errorText.includes("Preview failed to load"), "the pane names the preview failure (localized)");
+  ok(errorText.includes("must be absolute"), "the backend rejection reason is surfaced verbatim");
+  eq(overlay()?.getAttribute("data-capture-ready"), "error", "overlay reports the error state, not ready/loading");
+
+  // The error pane is not a dead end: its close button tears the overlay down.
+  await act(async () => {
+    errorPane?.querySelector<HTMLButtonElement>("button")?.click();
+    await flushTimers();
+  });
+  ok(overlay() === null, "the error pane's close button closes the overlay");
 
   process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
   if (failed > 0) process.exit(1);

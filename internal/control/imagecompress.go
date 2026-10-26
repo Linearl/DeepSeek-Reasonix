@@ -2,6 +2,8 @@ package control
 
 import (
 	"bytes"
+	"encoding/base64"
+	"fmt"
 	"image"
 	_ "image/gif" // register gif decoder
 	"image/jpeg"
@@ -10,6 +12,11 @@ import (
 	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // register webp decoder
 )
+
+// MaxImageAttachmentBytes is the attachment image ceiling; the desktop
+// screenshot preview bridge (tl 1167) stats against it before reading the
+// capture temp file, so the constant has exactly one definition.
+const MaxImageAttachmentBytes = maxImageAttachmentBytes
 
 // maxVisionDim caps the longest image side sent to a model. OpenAI and Anthropic
 // downscale to roughly this server-side anyway, so a larger upload only wastes
@@ -68,4 +75,26 @@ func scaledDims(w, h, m int) (int, int) {
 	}
 	nw := max(w*m/h, 1)
 	return nw, m
+}
+
+// PreviewImageDataURL compresses in-memory image bytes for the desktop preview
+// channel and encodes them as a data URL. An empty mime means detect-from-bytes
+// (the tl 1167 screenshot preview bridge has no trusted mime to pass): bytes
+// that are not a recognisable image are an explicit error, never an empty
+// string — the overlay must show a visible failure, not silently paint black.
+func PreviewImageDataURL(raw []byte, mime string) (string, error) {
+	if len(raw) == 0 {
+		return "", fmt.Errorf("preview image payload is empty")
+	}
+	if len(raw) > maxImageAttachmentBytes {
+		return "", fmt.Errorf("preview image payload exceeds %d bytes", maxImageAttachmentBytes)
+	}
+	if mime == "" {
+		mime = detectedImageMime(raw)
+		if mime == "" {
+			return "", fmt.Errorf("preview payload is not a recognised image format")
+		}
+	}
+	raw, mime = compressForVision(raw, mime)
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw), nil
 }

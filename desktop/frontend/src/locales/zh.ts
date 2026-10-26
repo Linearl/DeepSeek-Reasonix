@@ -5805,6 +5805,8 @@ export const zh: Record<DictKey, string> = {
   "screenshot.title": "截图",
   "screenshot.capturing": "正在抓取屏幕…",
   "screenshot.captureFailed": "抓屏失败，请确认已连接显示器后重试。",
+  // tl 1167：截图预览加载失败——附带后端给出的原因。
+  "screenshot.previewFailed": "预览加载失败：{reason}",
   "screenshot.close": "关闭",
   "screenshot.toolbarLabel": "截图工具",
   "screenshot.tool.rect": "矩形",

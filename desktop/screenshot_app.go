@@ -92,6 +92,64 @@ func (a *App) ReleaseScreenshotCapture(path string) error {
 	return os.RemoveAll(dir)
 }
 
+// ScreenshotPreviewDataURL returns a preview data URL for the temp PNG a
+// capture binding just produced (tl 1167). The capture path is an
+// os.MkdirTemp absolute path, which the generic AttachmentDataURL bridge must
+// reject — cleanAttachmentPath only serves workspace .reasonix/attachments
+// relative paths, and that security invariant stays untouched; routing the
+// preview through it was exactly what painted the overlay black. The guard
+// mirrors ReleaseScreenshotCapture's (an absolute path, inside a
+// reasonix-screenshot-* directory, under os.TempDir()) plus an image
+// extension whitelist, so both screenshot bridges share one criteria instead
+// of drifting apart again. Every refusal is an explicit error — never a
+// silent empty string.
+func (a *App) ScreenshotPreviewDataURL(path string) (string, error) {
+	const op = "screenshot preview"
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", fmt.Errorf("%s path is empty", op)
+	}
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("%s path must be absolute: %s", op, path)
+	}
+	dir := filepath.Dir(path)
+	if !strings.HasPrefix(filepath.Base(dir), "reasonix-screenshot-") {
+		return "", fmt.Errorf("%s path is not inside a reasonix-screenshot capture directory: %s", op, path)
+	}
+	// Windows filesystems are case-insensitive; compare the temp prefix the
+	// same way so a casing difference cannot turn a real capture into a
+	// spurious rejection.
+	tmpRoot := strings.TrimSuffix(filepath.Clean(os.TempDir()), string(filepath.Separator))
+	if !strings.HasPrefix(strings.ToLower(dir), strings.ToLower(tmpRoot)+string(filepath.Separator)) {
+		return "", fmt.Errorf("%s path is outside the temp directory: %s", op, path)
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+	default:
+		return "", fmt.Errorf("%s only serves image files, got %q extension: %s", op, filepath.Ext(path), path)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("%s stat: %w", op, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("%s path must not be a symlink", op)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%s path is not a regular file", op)
+	}
+	if info.Size() > control.MaxImageAttachmentBytes {
+		return "", fmt.Errorf("%s image exceeds the %d byte ceiling", op, control.MaxImageAttachmentBytes)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("%s read: %w", op, err)
+	}
+	// mime "" lets the control side detect the format from the bytes; a file
+	// that merely wears an image extension is rejected there.
+	return control.PreviewImageDataURL(raw, "")
+}
+
 // SaveScreenshotAttachment stores the overlay's final PNG (annotations
 // baked in) under the active tab's workspace attachments and returns the
 // relative @-reference path — the same link the paste/drop image chain uses.
