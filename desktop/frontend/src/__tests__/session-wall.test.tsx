@@ -213,6 +213,108 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
   dom.window.localStorage.clear();
 }
 
+// 4d. tl 1176 collapsible project groups: fold hides the group's cards but
+//     keeps the count, persists across restarts, searching auto-expands hit
+//     groups, and time mode has no fold heads at all.
+{
+  const sessions: SessionMeta[] = [
+    session({ preview: "甲1", workspaceRoot: "C:/work/alpha", open: false }),
+    session({ preview: "甲2", workspaceRoot: "C:/work/alpha", open: false }),
+    session({ preview: "乙1", workspaceRoot: "C:/work/beta", open: false }),
+  ];
+  dom.window.localStorage.clear();
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const mount = async () => {
+    await act(async () => {
+      root.render(
+        createElement(
+          LocaleProvider,
+          null,
+          createElement(SessionWallPanel, { open: true, load: async () => sessions, onClose: () => {}, onResume: () => {} }),
+        ),
+      );
+    });
+  };
+  await mount();
+  eq(container.querySelectorAll(".session-wall__card").length, 3, "fold initial: 3 cards across 2 project groups");
+  eq(container.querySelectorAll(".session-wall__group-head").length, 2, "fold initial: project mode renders 2 fold heads");
+
+  // Fold the alpha group (first head): its 2 cards drop out, the count stays.
+  const heads = () => [...container.querySelectorAll(".session-wall__group-head")] as HTMLButtonElement[];
+  const alphaHead = heads().find((h) => h.textContent?.includes("alpha"));
+  ok(alphaHead !== undefined, "fold: the alpha head exists");
+  await act(async () => {
+    alphaHead!.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  });
+  eq(container.querySelectorAll(".session-wall__card").length, 1, "fold alpha: only beta's card remains");
+  eq(alphaHead!.getAttribute("aria-expanded"), "false", "fold alpha: head reports collapsed");
+  ok(alphaHead!.textContent!.includes("2"), "fold alpha: the collapsed row still shows the count (2)");
+  eq(JSON.stringify(JSON.parse(dom.window.localStorage.getItem("sessionWall:prefs:v1")!).collapsed), JSON.stringify(["C:/work/alpha"]), "fold alpha: persists to localStorage");
+
+  // Searching auto-expands hit groups: query matching an alpha session shows
+  // its card despite the fold, and nothing is written back.
+  const input = container.querySelector(".session-wall__input") as HTMLInputElement;
+  const type = async (value: string) => {
+    await act(async () => {
+      // React controlled inputs need the native value setter — assigning
+      // el.value directly is swallowed by React's value tracking.
+      const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, "value")!.set!;
+      setter.call(input, value);
+      input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    });
+  };
+  await type("甲2");
+  eq(container.querySelectorAll(".session-wall__card").length, 1, "search vs fold: the hit card in a folded group is visible");
+  ok((container.querySelector(".session-wall__card") as HTMLElement).textContent!.includes("甲2"), "search vs fold: the visible card is the hit");
+  eq(JSON.stringify(JSON.parse(dom.window.localStorage.getItem("sessionWall:prefs:v1")!).collapsed), JSON.stringify(["C:/work/alpha"]), "search vs fold: the fold memory is untouched");
+  await type("");
+  eq(container.querySelectorAll(".session-wall__card").length, 1, "search cleared: the persisted fold applies again (beta only)");
+
+  // Time mode: no fold heads (day buckets are not foldable).
+  const modeBtns = [...container.querySelectorAll(".session-wall__mode")] as HTMLButtonElement[];
+  await act(async () => {
+    modeBtns.find((b) => b.getAttribute("aria-pressed") === "false")!.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  });
+  eq(container.querySelectorAll(".session-wall__group-head").length, 0, "time mode: no fold heads");
+  eq(container.querySelectorAll(".session-wall__card").length, 3, "time mode: all cards visible");
+
+  // Restart persistence: a fresh root reads the fold back from prefs.
+  await act(async () => {
+    root.unmount();
+  });
+  container.remove();
+  const container2 = document.createElement("div");
+  document.body.appendChild(container2);
+  const root2 = createRoot(container2);
+  await act(async () => {
+    root2.render(
+      createElement(
+        LocaleProvider,
+        null,
+        createElement(SessionWallPanel, { open: true, load: async () => sessions, onClose: () => {}, onResume: () => {} }),
+      ),
+    );
+  });
+  eq(container2.querySelectorAll(".session-wall__card").length, 1, "fold restart: the persisted fold applies (beta only)");
+  const alphaHead2 = ([...container2.querySelectorAll(".session-wall__group-head")] as HTMLButtonElement[]).find((h) =>
+    h.textContent?.includes("alpha"),
+  );
+  ok(alphaHead2 !== undefined, "fold restart: the alpha head exists");
+  await act(async () => {
+    alphaHead2!.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  });
+  eq(container2.querySelectorAll(".session-wall__card").length, 3, "fold restart: re-expanding restores all 3 cards");
+  eq(JSON.stringify(JSON.parse(dom.window.localStorage.getItem("sessionWall:prefs:v1")!).collapsed), JSON.stringify([]), "fold restart: the emptied fold set persists");
+
+  await act(async () => {
+    root2.unmount();
+  });
+  container2.remove();
+  dom.window.localStorage.clear();
+}
+
 // 5. Panel: static smoke — the open wall renders its chrome (empty state,
 //    because data loads in an effect; effects belong to the root below).
 {

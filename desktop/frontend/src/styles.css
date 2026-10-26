@@ -14990,6 +14990,34 @@ button.statusbar__mcp:focus-visible {
   flex: none;
   font-weight: 500;
 }
+/* tl 1176: collapsible project-group header — a full-row button that mirrors
+   the plain title metrics, with a chevron that folds flat when collapsed. */
+.session-wall__group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px 5px;
+  border: none;
+  background: transparent;
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  color: var(--fg-faint);
+  text-align: left;
+  cursor: pointer;
+}
+.session-wall__group-head:hover .session-wall__group-name {
+  color: var(--fg);
+}
+.session-wall__group-chevron {
+  flex: none;
+  align-self: center;
+  transition: transform 120ms ease;
+}
+.session-wall__group-head--folded .session-wall__group-chevron {
+  transform: rotate(-90deg);
+}
 .session-wall__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));

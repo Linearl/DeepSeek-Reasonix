@@ -11,6 +11,10 @@ const STORAGE_KEY = "sessionWall:prefs:v1";
 export interface SessionWallPrefs {
   // tl 1175: the wall's「仅已打开」filter, as the user last left it.
   openOnly?: boolean;
+  // tl 1176: collapsed project groups (workspace roots / the global marker),
+  // as the user last left them. Only project-mode groups persist — time-mode
+  // day buckets are not foldable, so they never appear here.
+  collapsed?: string[];
 }
 
 function loadPrefs(): SessionWallPrefs {
@@ -21,6 +25,10 @@ function loadPrefs(): SessionWallPrefs {
     if (typeof parsed !== "object" || parsed === null) return {};
     const out: SessionWallPrefs = {};
     if ((parsed as SessionWallPrefs).openOnly === true) out.openOnly = true;
+    const rawCollapsed: unknown = (parsed as { collapsed?: unknown }).collapsed;
+    if (Array.isArray(rawCollapsed)) {
+      out.collapsed = rawCollapsed.filter((k): k is string => typeof k === "string");
+    }
     return out;
   } catch {
     return {};
@@ -42,4 +50,14 @@ export function loadSessionWallOpenOnly(): boolean {
 
 export function saveSessionWallOpenOnly(value: boolean): void {
   savePrefs({ openOnly: value });
+}
+
+// tl 1176: the collapsed set persists as a whole (toggle → rewrite the array);
+// group keys are workspace roots or the global marker, both restart-stable.
+export function loadSessionWallCollapsed(): string[] {
+  return loadPrefs().collapsed ?? [];
+}
+
+export function saveSessionWallCollapsed(keys: string[]): void {
+  savePrefs({ collapsed: keys });
 }
