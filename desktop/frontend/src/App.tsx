@@ -6926,6 +6926,7 @@ export default function App() {
             <SessionWallPanel
               open={sessionWallOpen}
               load={listSessions}
+              loadExcerpts={(session) => app.SessionTailExcerpts(session.path)}
               initialOpenOnly={wallPresetOpenOnly ? true : undefined}
               onClose={() => {
                 reportFrontendLog("sessionWall", "closed", "esc/backdrop/button");
