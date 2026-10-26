@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,36 @@ func TestCompressForVisionPassesThroughUndecodable(t *testing.T) {
 	out, mime := compressForVision(raw, "image/svg+xml")
 	if mime != "image/svg+xml" || !bytes.Equal(out, raw) {
 		t.Error("an undecodable mime must pass through unchanged")
+	}
+}
+
+// tl 1167: the desktop screenshot preview bridge serves os.MkdirTemp capture
+// files whose format is only provable from the bytes (no trusted mime), so the
+// exported entry point must detect, compress, and encode — and must refuse
+// anything else with an explicit error (a silent empty string is what painted
+// the overlay black in the first place).
+func TestPreviewImageDataURLServesRealImage(t *testing.T) {
+	url, err := PreviewImageDataURL(makeTestPNG(t, 100, 80), "")
+	if err != nil {
+		t.Fatalf("PreviewImageDataURL: %v", err)
+	}
+	if !strings.HasPrefix(url, "data:image/png;base64,") || len(url) <= len("data:image/png;base64,") {
+		t.Fatalf("data URL malformed: %q", url[:min(40, len(url))])
+	}
+}
+
+func TestPreviewImageDataURLRejectsNonImage(t *testing.T) {
+	if _, err := PreviewImageDataURL([]byte("definitely not an image"), ""); err == nil {
+		t.Fatal("text payload must be rejected, not served as an empty string")
+	}
+	if _, err := PreviewImageDataURL(nil, ""); err == nil {
+		t.Fatal("empty payload must be rejected")
+	}
+}
+
+func TestPreviewImageDataURLRejectsOversize(t *testing.T) {
+	huge := make([]byte, maxImageAttachmentBytes+1)
+	if _, err := PreviewImageDataURL(huge, ""); err == nil {
+		t.Fatal("over-ceiling payload must be rejected")
 	}
 }
