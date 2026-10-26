@@ -79,7 +79,7 @@ import type { CommandOutcome } from "./lib/commandOutcome";
 import { useController, type Item } from "./lib/useController";
 import { replayPendingPromptsForActiveTab } from "./lib/promptReplay";
 import { noteStageTiming, setSessionMonitorEnabled } from "./lib/sessionMonitor";
-import { reportBootUiStateApplied } from "./lib/bootTimeline";
+import { reportBootFirstPaint, reportBootUiStateApplied } from "./lib/bootTimeline";
 import { FeedbackPanel, setFeedbackEnabled } from "./components/FeedbackPanel";
 // 任务 856 ①：信件/群聊两面板的挂载与入口合一进 CollabHubPanel；App 侧仅
 // 保留未读徽标 hook（320 遗留 #1 接线）。设置页副入口仍直接调
@@ -802,6 +802,7 @@ export default function App() {
   // 任务 824 ④: 持久化 UI 状态（折叠/分屏/面板）apply 取证——mount 后读
   // store 已应用状态与分屏初始值一次性上报（0930 报告 P6「未打点未核行」的
   // 取证重点）。纯观测，一次调用，不进入任何渲染决策。
+  // tl 1163: 同点追加首次内容绘制（FCP）上报——前端首帧桥接到进程时间轴。
   useEffect(() => {
     const layout = useLayoutStore.getState();
     reportBootUiStateApplied({
@@ -810,6 +811,7 @@ export default function App() {
       workspacePanelOpen: layout.workspacePanelOpen,
       terminalPanelOpen: layout.terminalPanelOpen,
     });
+    reportBootFirstPaint();
   }, []);
   useEffect(() => {
     const secondaryId = splitState.secondaryTabId;
