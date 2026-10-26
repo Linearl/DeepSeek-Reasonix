@@ -6,6 +6,7 @@ import { providerProtocolLabel, providerProtocolChoices } from "../lib/providerP
 import { providerSupportsServerWebSearch } from "../lib/providerSearch";
 import { providerDefaultLabel, providerDisplayLabel } from "../lib/providerLabel";
 import { labFlagEnabled } from "../lib/labFlags";
+import { writeClipboardText } from "../lib/clipboard";
 import { reportFrontendLog } from "../lib/frontendLog";
 
 export { providerSupportsServerWebSearch } from "../lib/providerSearch";
@@ -7836,9 +7837,31 @@ function UpdatesSection({
           <div className="updates-control__summary">
             <div className="updates-control__version">
               {t("updater.currentVersion", { v: version || "…" })}
+              {version && (
+                <button
+                  type="button"
+                  className="chip chip--icon updates-control__copy"
+                  aria-label={t("updater.copyVersion")}
+                  title={t("updater.copyVersion")}
+                  onClick={() => void writeClipboardText(version)}
+                >
+                  <Clipboard size={14} aria-hidden="true" />
+                </button>
+              )}
             </div>
             {buildTime && (
-              <div className="updates-control__built">{t("updater.builtAt", { at: buildTime })}</div>
+              <div className="updates-control__built">
+                {t("updater.builtAt", { at: buildTime })}
+                <button
+                  type="button"
+                  className="chip chip--icon updates-control__copy"
+                  aria-label={t("updater.copyBuildTime")}
+                  title={t("updater.copyBuildTime")}
+                  onClick={() => void writeClipboardText(buildTime)}
+                >
+                  <Clipboard size={14} aria-hidden="true" />
+                </button>
+              </div>
             )}
             <div className={`updates-control__status updates-control__status--${updateStatusTone}`} role="status" aria-live="polite">
               {updateStatus && (
