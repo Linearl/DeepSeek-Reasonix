@@ -68,6 +68,7 @@ func invalidateSessionListingProjection(path string) (int64, error) {
 
 func persistSessionListingProjection(path string, msgs []provider.Message, revision int64, contentDigest string) {
 	preview, turns := SessionPreviewFromMessages(msgs)
+	excerpts := SessionRecentExcerptsFromMessages(msgs, recentExcerptCount)
 	if err := UpdateBranchMeta(path, false, func(meta *BranchMeta) error {
 		// The transcript commit and this repairable projection are separate
 		// critical sections. A newer writer may already have advanced the
@@ -78,6 +79,7 @@ func persistSessionListingProjection(path string, msgs []provider.Message, revis
 		}
 		meta.Preview = preview
 		meta.Turns = turns
+		meta.RecentExcerpts = excerpts
 		meta.SchemaVersion = BranchMetaCountsVersion
 		meta.ListingRevision = revision
 		meta.ListingContentDigest = contentDigest

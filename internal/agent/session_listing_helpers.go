@@ -28,9 +28,10 @@ type SessionOrderInfo struct {
 	ParentID             string
 	RecoveryPreferred    bool
 	// Counts are trusted only when their listing identity matches the transcript.
-	Turns         int
-	Preview       string
-	SchemaVersion int
+	Turns          int
+	Preview        string
+	RecentExcerpts []string
+	SchemaVersion  int
 	// The transcript and listing identities also fence async listing backfills.
 	Revision             int64
 	ContentDigest        string
@@ -62,6 +63,7 @@ func sessionInfoFromOrder(session SessionOrderInfo, preview string, turns int, c
 		ModTime:              session.ModTime,
 		Preview:              preview,
 		Turns:                turns,
+		RecentExcerpts:       session.RecentExcerpts,
 		CountsKnown:          countsKnown,
 		Scope:                session.Scope,
 		WorkspaceRoot:        session.WorkspaceRoot,

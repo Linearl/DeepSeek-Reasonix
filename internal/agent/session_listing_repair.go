@@ -245,6 +245,7 @@ func commitSessionListingReplay(ctx context.Context, path string, meta BranchMet
 	}
 
 	preview, turns := SessionPreviewFromMessages(msgs)
+	meta.RecentExcerpts = SessionRecentExcerptsFromMessages(msgs, recentExcerptCount)
 	ledgerCurrent := meta.Revision > 0 && strings.TrimSpace(meta.ContentDigest) == state.DigestHex
 	if meta.Recovered && strings.TrimSpace(meta.RecoveryDigest) != state.DigestHex {
 		ledgerCurrent = false

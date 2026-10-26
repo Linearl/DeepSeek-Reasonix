@@ -136,7 +136,8 @@ func TestSessionPreviewCachedRejectsProjectionFromPreviousTranscriptGeneration(t
 	if preview, turns, ok := SessionPreviewCached(path); ok {
 		t.Fatalf("previous-generation projection reported fresh: preview=%q turns=%d", preview, turns)
 	}
-	if preview, turns := SessionPreview(path); preview != "new preview" || turns != 2 {
-		t.Fatalf("decode fallback=(%q,%d), want (%q,2)", preview, turns, "new preview")
+	// tl 1177 tail-first: the decode fallback previews the newest user turn.
+	if preview, turns := SessionPreview(path); preview != "follow up" || turns != 2 {
+		t.Fatalf("decode fallback=(%q,%d), want (%q,2)", preview, turns, "follow up")
 	}
 }

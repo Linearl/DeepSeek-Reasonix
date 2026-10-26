@@ -238,3 +238,74 @@ func TestRawSteerRemainsGuidanceNotAUserTurn(t *testing.T) {
 		t.Fatal("a real steer with RawContent must not start a new user turn")
 	}
 }
+
+// TestSessionPreviewFromMessagesPrefersTailAndSkipsNoise is the tl 1177
+// contract: the preview walks from the newest user turn backwards, skips
+// noise-only turns (bare @file dumps, pasted-label chrome, host turns,
+// steers), and lands on the newest message the user can actually recognize.
+// The first turn still works as the deep fallback.
+func TestSessionPreviewFromMessagesPrefersTailAndSkipsNoise(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "sys"},
+		{Role: provider.RoleUser, Content: "fix the login bug"},
+		{Role: provider.RoleAssistant, Content: "done"},
+		// Noise-only tail: a bare @file dump carries nothing recognizable.
+		{Role: provider.RoleUser, Content: "@a.go @b.go"},
+		// A steer must not become the preview either.
+		{Role: provider.RoleUser, Origin: provider.MessageOriginHost, Content: "Host progress check: still working"},
+		// Newest recognizable user turn.
+		{Role: provider.RoleUser, Content: "[Pasted text #1 · 20 lines]\nnow debug the flaky test"},
+		{Role: provider.RoleAssistant, Content: "on it"},
+	}
+	preview, turns := SessionPreviewFromMessages(msgs)
+	if preview != "now debug the flaky test" {
+		t.Fatalf("preview = %q, want the newest recognizable turn", preview)
+	}
+	// 3 user-authored turns: the login bug, the @file dump, the pasted one.
+	if turns != 3 {
+		t.Fatalf("turns = %d, want 3", turns)
+	}
+
+	// All-noise transcript: the preview stays empty instead of leaking chrome.
+	noise := []provider.Message{
+		{Role: provider.RoleUser, Content: "@only.files"},
+		{Role: provider.RoleUser, Content: "@more.files"},
+	}
+	if preview, turns := SessionPreviewFromMessages(noise); preview != "" || turns != 2 {
+		t.Fatalf("all-noise preview = (%q,%d), want empty preview with turns kept", preview, turns)
+	}
+}
+
+// TestSessionRecentExcerptsFromMessages is the tl 1177 hover-overlay contract:
+// up to n newest recognizable user messages, newest first, same noise filter
+// as the preview.
+func TestSessionRecentExcerptsFromMessages(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleUser, Content: "first task"},
+		{Role: provider.RoleAssistant, Content: "ok"},
+		{Role: provider.RoleUser, Content: "@noise.files"},
+		{Role: provider.RoleUser, Content: "second task"},
+		{Role: provider.RoleUser, Content: "third task"},
+		{Role: provider.RoleUser, Origin: provider.MessageOriginHost, Content: "Host progress check: still working"},
+		{Role: provider.RoleUser, Content: "newest task"},
+	}
+	got := SessionRecentExcerptsFromMessages(msgs, 3)
+	want := []string{"newest task", "third task", "second task"}
+	if len(got) != len(want) {
+		t.Fatalf("excerpts = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("excerpts[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	// Fewer usable turns than n: return what exists, order preserved.
+	if got := SessionRecentExcerptsFromMessages(msgs[:2], 3); len(got) != 1 || got[0] != "first task" {
+		t.Fatalf("short excerpts = %v, want [first task]", got)
+	}
+	// n <= 0 is empty.
+	if got := SessionRecentExcerptsFromMessages(msgs, 0); got != nil {
+		t.Fatalf("n=0 excerpts = %v, want nil", got)
+	}
+}

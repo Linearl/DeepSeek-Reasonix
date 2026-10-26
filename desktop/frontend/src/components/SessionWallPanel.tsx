@@ -272,12 +272,17 @@ export function SessionWallPanel({
                       {g.sessions.map((s) => {
                         const title = paletteSessionDisplayTitle(s, t("history.emptySession"));
                         const hint = paletteSessionHint(s);
+                        // tl 1177: hover excerpts — the newest user messages,
+                        // newest first, so the card answers "is this the one?"
+                        // without opening the transcript. Absent on sessions
+                        // the backend has not re-projected yet (no overlay).
+                        const excerpts = s.recentExcerpts?.filter(Boolean) ?? [];
                         return (
                           <button
                             type="button"
                             key={s.path}
                             className="session-wall__card"
-                            title={title}
+                            title={excerpts.length > 0 ? undefined : title}
                             onClick={() => onResume(s)}
                           >
                             <span className="session-wall__card-title">{title}</span>
@@ -287,6 +292,15 @@ export function SessionWallPanel({
                               <span>{t(s.turns === 1 ? "history.turnOne" : "history.turnOther", { n: s.turns })}</span>
                               {s.open && <span className="session-wall__card-open">{t("sessionWall.openBadge")}</span>}
                             </span>
+                            {excerpts.length > 0 && (
+                              <span className="session-wall__card-excerpts" role="tooltip">
+                                {excerpts.map((line, i) => (
+                                  <span className="session-wall__card-excerpt" key={i}>
+                                    {line}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
                           </button>
                         );
                       })}

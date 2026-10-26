@@ -15064,6 +15064,41 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* tl 1177: hover excerpts — the newest user messages, shown as an overlay
+   covering the card itself: it can never be clipped by the scrolling list
+   (an upward popover would be cut off on the first row) and never shifts
+   the grid. */
+.session-wall__card-excerpts {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-local-raised);
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.session-wall__card {
+  position: relative;
+}
+.session-wall__card:hover .session-wall__card-excerpts,
+.session-wall__card:focus-visible .session-wall__card-excerpts {
+  display: flex;
+}
+.session-wall__card-excerpt {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-wall__card-excerpt:first-child {
+  font-weight: 600;
+}
 .session-wall__card-meta {
   display: flex;
   align-items: center;

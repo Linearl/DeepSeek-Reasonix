@@ -536,7 +536,9 @@ func TestPreviewStripsDeliveryMarkerAndSyntheticTurns(t *testing.T) {
 		{Role: provider.RoleUser, Content: "帮我写一个魂斗罗游戏\n\n" + DeliveryRuntimeMarker},
 	}
 	preview, turns := SessionPreviewFromMessages(msgs)
-	if preview != "你是谁？" {
+	// tl 1177 tail-first: the newest recognizable turn wins ("帮我写一个魂斗罗
+	// 游戏" with its delivery marker stripped); the steer stays excluded.
+	if preview != "帮我写一个魂斗罗游戏" {
 		t.Fatalf("preview = %q", preview)
 	}
 	if turns != 2 {

@@ -315,6 +315,50 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
   dom.window.localStorage.clear();
 }
 
+// 4e. tl 1177 hover excerpts: cards with recentExcerpts render the overlay
+//     rows (newest first); cards without them render exactly as before.
+{
+  const sessions: SessionMeta[] = [
+    session({ preview: "老会话", workspaceRoot: "C:/work/alpha", open: false }),
+    session({
+      preview: "新会话",
+      workspaceRoot: "C:/work/alpha",
+      open: false,
+      recentExcerpts: ["结尾提问三", "结尾提问二", "结尾提问一"],
+    }),
+  ];
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      createElement(
+        LocaleProvider,
+        null,
+        createElement(SessionWallPanel, { open: true, load: async () => sessions, onClose: () => {}, onResume: () => {} }),
+      ),
+    );
+  });
+  const cards = [...container.querySelectorAll(".session-wall__card")];
+  eq(cards.length, 2, "excerpts: both cards render");
+  const withExcerpts = cards.find((c) => c.querySelector(".session-wall__card-excerpts"));
+  ok(withExcerpts !== undefined, "excerpts: the card with recentExcerpts renders the overlay");
+  eq(withExcerpts!.querySelectorAll(".session-wall__card-excerpt").length, 3, "excerpts: all 3 rows render");
+  eq(
+    withExcerpts!.querySelector(".session-wall__card-excerpt")!.textContent,
+    "结尾提问三",
+    "excerpts: the first row is the newest message",
+  );
+  const bare = cards.find((c) => !c.querySelector(".session-wall__card-excerpts"));
+  ok(bare !== undefined, "excerpts: the card without recentExcerpts has no overlay");
+  ok(bare!.getAttribute("title") !== null, "excerpts: the bare card keeps its native title fallback");
+
+  await act(async () => {
+    root.unmount();
+  });
+  container.remove();
+}
+
 // 5. Panel: static smoke — the open wall renders its chrome (empty state,
 //    because data loads in an effect; effects belong to the root below).
 {

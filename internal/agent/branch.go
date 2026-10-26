@@ -98,8 +98,12 @@ type BranchMeta struct {
 	// Turns/Preview accelerate listings; the listing identity binds them to the
 	// transcript generation they describe, so a failed projection write makes
 	// old counts visibly stale instead of silently reusable.
-	Turns                int               `json:"turns,omitempty"`
-	Preview              string            `json:"preview,omitempty"`
+	Turns   int    `json:"turns,omitempty"`
+	Preview string `json:"preview,omitempty"`
+	// RecentExcerpts are the newest noise-filtered user messages (newest
+	// first, tl 1177): the session wall's hover overlay scans them instead of
+	// opening the transcript. Same projection lifecycle as Preview.
+	RecentExcerpts       []string          `json:"recent_excerpts,omitempty"`
 	ListingRevision      int64             `json:"listing_revision,omitempty"`
 	ListingContentDigest string            `json:"listing_content_digest,omitempty"`
 	InFlightTurn         *InFlightTurnMeta `json:"in_flight_turn,omitempty"`
