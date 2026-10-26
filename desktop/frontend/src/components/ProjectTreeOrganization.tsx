@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
-import { CheckCheck, Eraser, FolderInput, FolderMinus, FolderPlus, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { CheckCheck, Eraser, FolderMinus, FolderPlus, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { app } from "../lib/bridge";
 import { asArray } from "../lib/array";
 import type { Translator } from "../lib/i18n";
@@ -441,23 +441,26 @@ export function useProjectTreeOrganization({
       const key = projectTreeOrganizationKey(node);
       const groups = groupsRef.current[key] ?? [];
       const ownGroups = new Set(groups.filter((group) => group.topicIds?.includes(topicID)).map((group) => group.id));
+      // Task 720: right-click move — picking a group runs the same full-roster
+      // move as a drag drop. The group the topic already sits in is disabled,
+      // and the standalone "remove from group" row (task 144) stays the way
+      // out.
+      // tl 1149b 返修: these rows render inside ProjectTree's 「分组 ▸」
+      // second-level section (tl 1103), and the sidebar ContextMenu expands
+      // exactly ONE submenu level — a nested submenu renders disabled there
+      // ("one level is the deal"), which is how the old "move-to-group ▸"
+      // flyout-in-a-submenu went dead (包30 user report: 对话→分组→移动到分组
+      // 点不动). The roster is therefore flat leaves at THIS level: one row
+      // per group, then the escape hatch. Same moves, same order as the
+      // retired flyout.
       return [
-        // Task 720: right-click move — a flyout listing every group of this
-        // workspace; picking one runs the same full-roster move as a drag
-        // drop. The group the topic already sits in is disabled, and the
-        // standalone "remove from group" row (task 144) stays the way out.
-        ...(groups.length > 0 ? [{
-          type: "submenu" as const,
-          key: "move-to-group",
-          icon: <FolderInput size={13} />,
-          label: t("projectTree.moveToGroup"),
-          items: groups.map((group): ContextMenuItem => ({
-            key: `move:${group.id}`,
-            label: group.title,
-            disabled: ownGroups.has(group.id),
-            onSelect: () => moveTopicIntoGroup(key, topicID, group.id),
-          })),
-        }] : []),
+        ...groups.map((group): ContextMenuItem => ({
+          key: `move:${group.id}`,
+          label: group.title,
+          disabled: ownGroups.has(group.id),
+          onSelect: () => moveTopicIntoGroup(key, topicID, group.id),
+        })),
+        ...(ownGroups.size > 0 ? [{ type: "separator" as const, key: "move-sep" }] : []),
         ...(ownGroups.size > 0
           ? [{ key: "remove-from-group", icon: <FolderMinus size={13} />, label: t("projectTree.removeFromGroup"), onSelect: () => removeTopicFromGroups(node) }]
           : []),
