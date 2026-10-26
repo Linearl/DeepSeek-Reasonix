@@ -31,7 +31,7 @@ import { ShellInterpreterFields } from "./SettingsShellSupport";
 import { CHANNEL_ICONS } from "./channelIcons";
 import { botAccessEntryCount, botAccessReady, botConnectionCredentialSummary, botConnectionLabel, botConnectionScopeLabel, botConnectionSecretEnv, botConnectionSecretPatch, botInstallTargetForConnection, botInstallTargetMatchesConnection, botTargetHint, botTargetLabel, diagnosticMessage, diagnosticReportDetail, firstConnectionRemote, formatInstallTimeLeft, formatInstallUserCode, qqBotAdded, type BotInstallTarget, type BotOfficialInstallTarget } from "./botConnectionSettings";
 import { app, COMPACT_RATIO_MAX_PERCENT, COMPACT_RATIO_MIN_PERCENT, onRuntimeRebuilt, openExternal } from "../lib/bridge";
-import { takeSettingsViewPrefetch, peekSettingsPrefetchStartedAt } from "../lib/settingsPrefetch";
+import { takeSettingsViewPrefetch, peekSettingsPrefetchStartedAt, invalidateSettingsViewPrefetch } from "../lib/settingsPrefetch";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
 import { createLatestRequestGate, mergedFetchedProviderModels, mergeProviderModelContextWindows, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
@@ -214,7 +214,7 @@ export function SettingsPanel({
     terminalThemeSaveQueue.current = createTerminalThemeSaveQueue((next) => app.SetDesktopTerminalTheme(next));
   }
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (opts?: { preferPrefetch?: boolean }) => {
     const seq = ++settingsLoadSeq.current;
     const applicationSeq = ++modelApplicationSeq.current;
     // 任务 1098（阶段 1 补打点）：起点优先取预取发起时刻（入口点击），没有
@@ -227,8 +227,12 @@ export function SettingsPanel({
     try {
       const [view, application] = await Promise.all([
         // 任务 739：入口点击时已预发请求（lib/settingsPrefetch），挂载即消费；
-        // 无预取（保存后 reload / TTL 过期 / 预取失败已弃）则照旧现拉。
-        takeSettingsViewPrefetch() ?? app.Settings(),
+        // 无预取（TTL 过期 / 预取失败已弃）则照旧现拉。tl 1179：预取只服务
+        // 挂载首屏读（显式 preferPrefetch）——写后读（保存/背景/错误读回）
+        // 一律现拉。设置面板内切 tab 会经 openPage 钩子重新填预取缓存（写前
+        // 快照留存 TTL 10s），保存后的读回若吃到它，UI/行为就停在旧态，表现
+        // 为「开关点两次才生效」。
+        (opts?.preferPrefetch ? takeSettingsViewPrefetch() : null) ?? app.Settings(),
         Promise.resolve().then(() => app.GetModelSettingsApplication()).catch(() => null),
       ]);
       const next = normalizeSettingsView(view);
@@ -256,7 +260,8 @@ export function SettingsPanel({
     }
   }, []);
   useEffect(() => {
-    void reload();
+    // tl 1179：只有挂载首屏读消费预取（739 收益保留）；写后读一律现拉。
+    void reload({ preferPrefetch: true });
   }, [reload]);
   // 任务 1098（阶段 1 补打点）：reload() 只在「数据就绪」时打了一半（dataReady），
   // 这里在数据就绪后、内容真正画出来（下一次 paint）再补一条「首屏可交互」总
@@ -377,6 +382,9 @@ export function SettingsPanel({
   const applyQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const runApply = useCallback(async (fn: () => Promise<unknown>, scope: string): Promise<boolean> => {
     const seq = ++settingsApplySeq.current;
+    // tl 1179：写盘前作废留存预取（切 tab 会经 openPage 钩子填写前快照）——
+    // 防它跨越本次写盘被「关面板 10s 内重开」的挂载读复用。
+    invalidateSettingsViewPrefetch();
     trackScope(scope, 1);
     setErr(null);
     setWarning(null);
@@ -429,6 +437,8 @@ export function SettingsPanel({
   }, [runApply]);
   const runBackgroundApply = useCallback(async (fn: () => Promise<void>) => {
     const seq = ++settingsApplySeq.current;
+    // tl 1179：同 runApply——后台写盘同样作废留存预取。
+    invalidateSettingsViewPrefetch();
     setErr(null);
     setWarning(null);
     try {
@@ -458,6 +468,8 @@ export function SettingsPanel({
     const seq = ++terminalThemeSaveSeq.current;
     const previous = getTerminalThemePreference();
     terminalThemeSavePending.current = true;
+    // tl 1179：同 runApply——写盘前作废留存预取（写后 reload 默认现拉）。
+    invalidateSettingsViewPrefetch();
     setErr(null);
     setWarning(null);
     applyTerminalThemePreference(next);
