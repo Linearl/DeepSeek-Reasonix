@@ -160,6 +160,21 @@ export class TranscriptKernel {
   private intentValue: ViewportIntent = "tail";
   private anchorValue: LogicalAnchor = { kind: "tail" };
   private anchors = new Map<string, LogicalAnchor>();
+  // tl 1184: the last measured "is the viewport at the bottom" verdict.
+  private atBottomValue = true;
+  // tl 1184: the scrollTop seen at the previous observation. Intent only ever
+  // changes on a REAL displacement; content growth leaves scrollTop untouched
+  // and therefore must not touch the verdict.
+  private lastScrollTop = -1;
+  // tl 1184: per-session snapshot of atBottomValue, written when a surface is
+  // switched away from. Why a plain boolean rather than re-deriving it from the
+  // stored anchor: while output streams the content keeps growing, so a scroll
+  // event landing after the user reached the bottom compares an OLD scrollTop
+  // against a NEW scrollHeight and concludes atBottom=false. That demotes the
+  // intent to "reader" and stores a block anchor, so switching back parks the
+  // view mid-transcript instead of at the bottom. A boolean captured at
+  // switch-away time cannot be corrupted by growth that happens afterwards.
+  private bottomBySession = new Map<string, boolean>();
   private userGesture = false;
   private tailFrame: number | null = null;
   private anomalyCount = 0;
@@ -213,7 +228,12 @@ export class TranscriptKernel {
   }
 
   replaceSurface(session: string): { generation: number; anchor: LogicalAnchor } {
-    if (this.session) this.anchors.set(this.session, this.anchorValue);
+    if (this.session) {
+      this.anchors.set(this.session, this.anchorValue);
+      // tl 1184: capture the bottom verdict alongside the anchor (the anchor
+      // alone can be a growth artifact - see bottomBySession).
+      this.bottomBySession.set(this.session, this.atBottomValue);
+    }
     this.clearNativeGestureLease();
     this.cancelActive("surface-replaced");
     this.deferredStructural = null;
@@ -229,8 +249,20 @@ export class TranscriptKernel {
     // A restored anchor has never been aligned against THIS surface's
     // geometry - its first correction is a legitimate restore, not a drift.
     this.alignedAnchor = null;
-    this.anchorValue = this.anchors.get(session) ?? { kind: "tail" };
-    this.intentValue = this.anchorValue.kind === "tail" ? "tail" : "reader";
+    // tl 1184: if the surface was parked at the bottom when it was switched
+    // away from, restore "follow the tail" unconditionally. A block anchor in
+    // that case is an artifact of streaming growth, not a deliberate reader
+    // position, so honouring it would drop the user mid-transcript on every
+    // tab switch made while output streams.
+    const storedAnchor = this.anchors.get(session) ?? { kind: "tail" };
+    if (this.bottomBySession.get(session) === true) {
+      this.anchorValue = { kind: "tail" };
+      this.intentValue = "tail";
+      this.atBottomValue = true;
+    } else {
+      this.anchorValue = storedAnchor;
+      this.intentValue = storedAnchor.kind === "tail" ? "tail" : "reader";
+    }
     // Task 931 (AC8): record the restored block key so its first correction
     // keeps the pre-931 exemption even when it rides a passive restore (the
     // explicit restore transaction may have expired while the block was still
@@ -263,6 +295,17 @@ export class TranscriptKernel {
     if (!this.userGesture) return false;
     this.writeTop = null;
     const atBottom = snapshot.scrollHeight - snapshot.clientHeight - snapshot.scrollTop <= BOTTOM_THRESHOLD_PX;
+    // tl 1184: a reader who stays put while output streams keeps the SAME
+    // scrollTop while scrollHeight grows - the naive atBottom above then flips
+    // to false even though the user never moved. Only a real scrollTop change
+    // expresses user intent, so gate the verdict on displacement; otherwise
+    // streaming silently corrupts "was at the bottom" and the next tab switch
+    // restores a stale block anchor instead of the tail.
+    const displaced = snapshot.scrollTop !== this.lastScrollTop;
+    if (displaced) {
+      this.lastScrollTop = snapshot.scrollTop;
+      this.atBottomValue = atBottom;
+    }
     this.intentValue = atBottom ? "tail" : "reader";
     this.anchorValue = this.intentValue === "tail" ? { kind: "tail" } : this.capture(snapshot);
     this.anchors.set(this.session, this.anchorValue);
