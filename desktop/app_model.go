@@ -420,11 +420,13 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 			// default never becomes a concrete level.
 			foldedEffort := ""
 			foldFrom := ""
+			foldNote := ""
 			foldKnown := false
 			if switchEntry != nil {
 				foldKnown = true
 				a.mu.RLock()
 				carried := cloneStringPtr(tab.effort)
+				srcRef := tab.model
 				a.mu.RUnlock()
 				if carried != nil {
 					display := config.EffortDisplay(&config.ProviderEntry{Effort: *carried})
@@ -433,6 +435,26 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 					} else if normalized, err := config.NormalizeEffort(switchEntry, display); err != nil {
 						foldedEffort = ""
 						foldFrom = display
+						// Task 1169: behind experimental_effort_cross_model_map,
+						// a depth the destination cannot spell is rank-mapped
+						// onto its relative slot (deepseek max → the
+						// destination's ceiling) instead of collapsing to auto.
+						// The source entry rides the same per-root snapshot as
+						// the switch, and the read happens only on this
+						// already-rare fold-failure path — the direct-hit
+						// majority pays nothing. MapEffortAcrossVocabularies
+						// returns destination-vocabulary values only (it
+						// re-checks the wire gates), so the 1161b
+						// vocabulary check downstream keeps holding as the
+						// safety net.
+						if cfg, cfgErr := config.LoadForRoot(switchSnap.workspaceRoot); cfgErr == nil && cfg.Agent.ExperimentalEffortCrossModelMap {
+							if srcEntry, srcOK := cfg.ResolveModel(srcRef); srcOK {
+								if mapped, note, mapOK := config.MapEffortAcrossVocabularies(srcEntry, switchEntry, display); mapOK {
+									foldedEffort = mapped
+									foldNote = note
+								}
+							}
+						}
 					} else {
 						foldedEffort = normalized
 						if normalized != display {
@@ -479,13 +501,19 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 			a.saveTabsLocked()
 			a.mu.Unlock()
 			// Task 1161b: the fold is user-visible state — say so, or a silent
-			// max→high reads as the switch having lost the setting.
+			// max→high reads as the switch having lost the setting. Task 1169:
+			// a special mapping (a destination whose only depth is thinking-off)
+			// carries its own explanatory note instead of the generic fold copy.
 			if foldFrom != "" {
-				foldedDisplay := foldedEffort
-				if foldedDisplay == "" {
-					foldedDisplay = "auto (provider default)"
+				if foldNote != "" {
+					a.noticeForTab(tabID, foldNote)
+				} else {
+					foldedDisplay := foldedEffort
+					if foldedDisplay == "" {
+						foldedDisplay = "auto (provider default)"
+					}
+					a.noticeForTab(tabID, fmt.Sprintf("effort %s is not available on %s; switched to %s", foldFrom, switchEntry.Name, foldedDisplay))
 				}
-				a.noticeForTab(tabID, fmt.Sprintf("effort %s is not available on %s; switched to %s", foldFrom, switchEntry.Name, foldedDisplay))
 			}
 			// Same sidecar rationale as the rebuild path: empty sessions do
 			// not autosave a turn, so persisting the provider identity here
