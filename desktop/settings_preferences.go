@@ -431,6 +431,16 @@ func (a *App) SetExperimentalSendTargetSelect(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSendTargetSelect(enabled) })
 }
 
+// SetExperimentalSmoothScrollFollow toggles smooth streaming scroll follow
+// (tl 1165): off (default) keeps every streaming tail write instant — the
+// exact pre-1165 behaviour with no extra listeners or animations; on switches
+// tail follow to native smooth scrollTo behind the DSH ScrollFollow guards.
+// Pure frontend gate: the settings save re-applies the boot snapshot, so the
+// change is visible without a restart.
+func (a *App) SetExperimentalSmoothScrollFollow(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSmoothScrollFollow(enabled) })
+}
+
 // SetExperimentalDraftRewrite toggles the composer 草稿优化 lab switch
 // (任务 1024): off (default) renders no rewrite button and no layout change; on
 // adds it to the composer toolbar, left of the send button. Pure frontend gate:

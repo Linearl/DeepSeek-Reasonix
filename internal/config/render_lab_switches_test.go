@@ -60,6 +60,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalTableWrap = true // tableWrap
 	// 任务 959 ②：发送目标选择器形态（默认关=三按钮组）。
 	orig.Desktop.ExperimentalSendTargetSelect = true // sendTargetSelect
+	// tl 1165：流式滚动平滑跟随（默认关=瞬移定位不变）。
+	orig.Desktop.ExperimentalSmoothScrollFollow = true // smoothScrollFollow
 	// tl 1132：启动遮罩（默认关=不渲染 splash）。
 	orig.Desktop.ExperimentalStartupSplash = true // startupSplash
 	// 任务 686：工作流可视化面板（默认关）。
@@ -127,6 +129,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_table_wrap = true",
 		// 任务 959 ②：发送目标形态键无条件渲染（fixed-key-set rule）。
 		"experimental_send_target_select = true",
+		// tl 1165：流式滚动平滑跟随键无条件渲染（fixed-key-set rule）。
+		"experimental_smooth_scroll_follow = true",
 		// tl 1132：启动遮罩键无条件渲染（fixed-key-set rule）。
 		"experimental_startup_splash = true",
 		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
@@ -235,6 +239,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"desktop.experimental_sidebar_hover_right": got.Desktop.ExperimentalSidebarHoverRight,
 		// 任务 940：composer 权限选择器形态键往返。
 		"desktop.experimental_approval_select": got.Desktop.ExperimentalApprovalSelect,
+		// tl 1165：流式滚动平滑跟随键往返。
+		"desktop.experimental_smooth_scroll_follow": got.Desktop.ExperimentalSmoothScrollFollow,
 		// (retired from render — task 473 single-key fold.)
 		"desktop.experimental_split_view":      got.Desktop.ExperimentalSplitView,
 		"desktop.experimental_session_monitor": got.Desktop.ExperimentalSessionMonitor,

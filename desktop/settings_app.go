@@ -463,6 +463,11 @@ type SettingsView struct {
 	// group vs compact dropdown). Rendered in both views for the 81/123
 	// two-view lesson; pure frontend gate, settings save re-applies.
 	ExperimentalSendTargetSelect bool `json:"experimentalSendTargetSelect"`
+	// tl 1165: smooth streaming scroll follow gate (off = instant per-write
+	// tail positioning unchanged, on = native smooth scrollTo behind the DSH
+	// ScrollFollow guards). Rendered in both views for the 81/123 two-view
+	// lesson; pure frontend gate, settings save re-applies.
+	ExperimentalSmoothScrollFollow bool `json:"experimentalSmoothScrollFollow"`
 	// tl 1132: DSH-style startup splash overlay gate (off = never renders).
 	// Rendered in both views for the 81/123 two-view lesson; pure frontend
 	// gate, settings save re-applies.
@@ -809,6 +814,11 @@ type DesktopStartupSettingsView struct {
 	// group vs compact dropdown). Rendered in both views for the 81/123
 	// two-view lesson; pure frontend gate, settings save re-applies.
 	ExperimentalSendTargetSelect bool `json:"experimentalSendTargetSelect"`
+	// tl 1165: smooth streaming scroll follow gate; the frontend reads this
+	// snapshot on every streaming tail write, so omitting it here would pin
+	// the smooth follow off forever (two-view lesson). Pure frontend gate,
+	// settings save re-applies.
+	ExperimentalSmoothScrollFollow bool `json:"experimentalSmoothScrollFollow"`
 	// tl 1132: the startup splash overlay gate, rendered in this view too
 	// (81/123 two-view lesson) — the boot snapshot is what the splash
 	// decision reads, so omitting it here would pin the splash off forever.
@@ -1683,6 +1693,9 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalTableWrap = cfg.Desktop.ExperimentalTableWrap
 		// 任务 959 ②: send-target picker form readback (two-view lesson).
 		view.ExperimentalSendTargetSelect = cfg.Desktop.ExperimentalSendTargetSelect
+		// tl 1165: smooth streaming scroll follow readback (two-view lesson) —
+		// the boot snapshot gates the streaming tail-write path itself.
+		view.ExperimentalSmoothScrollFollow = cfg.Desktop.ExperimentalSmoothScrollFollow
 		// tl 1132: startup splash overlay readback (two-view lesson) — the
 		// boot snapshot gates whether the splash renders at all.
 		view.ExperimentalStartupSplash = cfg.Desktop.ExperimentalStartupSplash
@@ -1979,6 +1992,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalTableWrap: cfg.Desktop.ExperimentalTableWrap,
 		// 任务 959 ②: send-target picker form readback (two-view lesson).
 		ExperimentalSendTargetSelect: cfg.Desktop.ExperimentalSendTargetSelect,
+		// tl 1165: smooth streaming scroll follow readback (two-view lesson).
+		ExperimentalSmoothScrollFollow: cfg.Desktop.ExperimentalSmoothScrollFollow,
 		// tl 1132: startup splash overlay readback (two-view lesson).
 		ExperimentalStartupSplash: cfg.Desktop.ExperimentalStartupSplash,
 		// 任务 686: workflow visualization panel readback (two-view lesson).

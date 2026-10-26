@@ -252,6 +252,16 @@ type DesktopConfig struct {
 	// buttons cost a whole meta slot). It ships off (铁律 2); pure frontend
 	// gate: the settings save re-applies the boot snapshot, no restart.
 	ExperimentalSendTargetSelect bool `toml:"experimental_send_target_select"`
+	// ExperimentalSmoothScrollFollow switches streaming scroll follow from the
+	// instant per-write jump to the DSH ScrollFollow animated follow (tl 1165):
+	// with the zero value (default) every streaming tail write keeps the exact
+	// pre-1165 `scrollTop = scrollHeight` assignment — same element writes, no
+	// extra listeners, byte-identical scrollTop trajectory (铁律 2); on, tail
+	// follow issues native smooth scrollTo requests behind the four DSH
+	// guards (outstanding-target gate, reader-gesture cancel, reduced-motion
+	// fallback to instant, near-bottom immediate positioning). Pure frontend
+	// gate: the settings save re-applies the boot snapshot, no restart.
+	ExperimentalSmoothScrollFollow bool `toml:"experimental_smooth_scroll_follow"`
 	// ExperimentalStartupSplash gates the DSH-style startup splash (tl 1132):
 	// the centred logo + subtitle + pulse-dots overlay that covers the main
 	// region until the core UI (tab strip / draft / composer / transcript) is

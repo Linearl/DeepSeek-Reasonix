@@ -131,6 +131,8 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"approvalSelect":      func(c *Config, on bool) error { return c.SetExperimentalApprovalSelect(on) },
 	"tableWrap":           func(c *Config, on bool) error { return c.SetExperimentalTableWrap(on) },
 	"sendTargetSelect":    func(c *Config, on bool) error { return c.SetExperimentalSendTargetSelect(on) },
+	// tl 1165：流式滚动平滑跟随（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
+	"smoothScrollFollow":  func(c *Config, on bool) error { return c.SetExperimentalSmoothScrollFollow(on) },
 	"draftRewrite":        func(c *Config, on bool) error { return c.SetExperimentalDraftRewrite(on) },
 	// tl 1132：启动遮罩（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
 	"startupSplash": func(c *Config, on bool) error { return c.SetExperimentalStartupSplash(on) },
