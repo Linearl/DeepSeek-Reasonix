@@ -60,6 +60,50 @@ func TestScreenshotPreviewDataURLServesOwnTempCapture(t *testing.T) {
 	}
 }
 
+// tl 1178: end to end, a wide capture (beyond the 1568px model-vision budget)
+// must reach the overlay at full resolution — the preview is painted for human
+// eyes, and the old code blurred it through compressForVision before encoding.
+func TestScreenshotPreviewDataURLKeepsCaptureResolution(t *testing.T) {
+	a := &App{}
+	dir := filepath.Join(t.TempDir(), "reasonix-screenshot-preview")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	img := image.NewRGBA(image.Rect(0, 0, 3000, 2000))
+	for y := range 2000 {
+		for x := range 3000 {
+			img.SetRGBA(x, y, color.RGBA{R: uint8(x % 256), G: uint8(y % 256), B: uint8((x ^ y) % 256), A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
+	path := filepath.Join(dir, "screen-000003.png")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("write png: %v", err)
+	}
+	got, err := a.ScreenshotPreviewDataURL(path)
+	if err != nil {
+		t.Fatalf("own capture temp file must be served: %v", err)
+	}
+	const marker = ";base64,"
+	if !strings.HasPrefix(got, "data:image/png"+marker) {
+		t.Fatalf("mime must stay image/png, got %q", got[:min(60, len(got))])
+	}
+	decoded, err := base64.StdEncoding.DecodeString(got[strings.Index(got, marker)+len(marker):])
+	if err != nil {
+		t.Fatalf("payload is not base64: %v", err)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(decoded))
+	if err != nil {
+		t.Fatalf("decode preview payload: %v", err)
+	}
+	if cfg.Width != 3000 || cfg.Height != 2000 {
+		t.Fatalf("preview dims = %dx%d, want 3000x2000 (full capture resolution)", cfg.Width, cfg.Height)
+	}
+}
+
 func TestScreenshotPreviewDataURLRejectsForeignPaths(t *testing.T) {
 	a := &App{}
 	// Relative attachment-style paths stay AttachmentDataURL's business — and
