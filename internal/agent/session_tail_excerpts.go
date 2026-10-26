@@ -25,9 +25,10 @@ import (
 // user text never reaches that size, while an embedded base64 image would
 // only burn the parse budget.
 //
-// A tail window can land entirely on assistant/tool traffic; when the first
-// window yields fewer than n excerpts and the file extends past it, one wider
-// read retries before giving up with whatever was found.
+// A tail window can land entirely on assistant/tool traffic (a long closing
+// execution); collection therefore stops only after n excerpt-eligible
+// messages, and when the first window yields fewer than n the read widens once
+// before giving up with whatever was found.
 func SessionTailUserExcerpts(sessionPath string, n int) []string {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if n <= 0 || sessionPath == "" {
@@ -37,15 +38,13 @@ func SessionTailUserExcerpts(sessionPath string, n int) []string {
 	if err != nil || info.IsDir() || info.Size() == 0 {
 		return nil
 	}
-	msgs, covered := readSessionTailMessages(sessionPath, info.Size(), sessionTailExcerptWindow)
+	msgs, covered := readSessionTailMessages(sessionPath, info.Size(), sessionTailExcerptWindow, n)
 	excerpts := SessionRecentExcerptsFromMessages(msgs, n)
 	if len(excerpts) >= n || covered || info.Size() <= sessionTailExcerptWindow {
 		return excerpts
 	}
-	if wider, wideCovered := readSessionTailMessages(sessionPath, info.Size(), sessionTailExcerptMaxWindow); len(wider) > 0 {
-		if retry := SessionRecentExcerptsFromMessages(wider, n); len(retry) > len(excerpts) || wideCovered {
-			return retry
-		}
+	if wider, _ := readSessionTailMessages(sessionPath, info.Size(), sessionTailExcerptMaxWindow, n); len(wider) > 0 {
+		return SessionRecentExcerptsFromMessages(wider, n)
 	}
 	return excerpts
 }
@@ -57,29 +56,27 @@ const (
 	sessionTailExcerptWindow = 128 * 1024
 	// sessionTailExcerptMaxWindow bounds the single retry read.
 	sessionTailExcerptMaxWindow = 1024 * 1024
-	// maxTailExcerptLines caps how many decoded messages one window feeds the
-	// excerpt walk, bounding the hover's work regardless of message density.
-	maxTailExcerptLines = 64
 	// maxTailExcerptBytes skips decoding one oversized line. Excerpts display
 	// at 80 runes (truncatePreview); anything longer than this is an embedded
 	// payload, not a hoverable question.
 	maxTailExcerptBytes = 64 * 1024
 )
 
-// readSessionTailMessages decodes the complete lines inside the last window
-// bytes of path, oldest first, capped at maxTailExcerptLines messages.
-// covered reports whether the window reached the file start (no older lines
-// exist), so the caller knows a retry cannot find more.
-func readSessionTailMessages(path string, size, window int64) ([]provider.Message, bool) {
-	if window > size {
-		window = size
+// readSessionTailMessages decodes complete lines inside the last window bytes
+// of path, walking newest first and stopping once n excerpt-eligible messages
+// are in hand; the returned slice is oldest first, the order the shared
+// excerpt walk expects. covered reports whether the window reached the file
+// start (no older lines exist), so the caller knows a retry cannot find more.
+func readSessionTailMessages(path string, size int64, window int, n int) ([]provider.Message, bool) {
+	if int64(window) > size {
+		window = int(size)
 	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, false
 	}
 	defer f.Close()
-	start := size - window
+	start := size - int64(window)
 	buf := make([]byte, window)
 	if _, err := f.ReadAt(buf, start); err != nil && err != io.EOF {
 		return nil, false
@@ -93,23 +90,29 @@ func readSessionTailMessages(path string, size, window int64) ([]provider.Messag
 		}
 	}
 	// A tail write in flight leaves a partial final line; drop it.
-	if n := len(buf); n > 0 && buf[n-1] != '\n' {
+	if length := len(buf); length > 0 && buf[length-1] != '\n' {
 		if i := bytes.LastIndexByte(buf, '\n'); i >= 0 {
 			buf = buf[:i+1]
 		} else {
 			return nil, start == 0
 		}
 	}
-	msgs := make([]provider.Message, 0, 8)
-	for len(buf) > 0 {
-		i := bytes.IndexByte(buf, '\n')
-		var line []byte
-		if i >= 0 {
-			line, buf = buf[:i], buf[i+1:]
-		} else {
-			line, buf = buf, nil
+	// Split the window once, then walk the line starts newest first.
+	type lineSpan struct{ lo, hi int }
+	spans := make([]lineSpan, 0, 32)
+	for offset := 0; offset < len(buf); {
+		i := bytes.IndexByte(buf[offset:], '\n')
+		if i < 0 {
+			spans = append(spans, lineSpan{offset, len(buf)})
+			break
 		}
-		line = bytes.TrimSpace(line)
+		spans = append(spans, lineSpan{offset, offset + i})
+		offset += i + 1
+	}
+	parsed := make([]provider.Message, 0, 8)
+	eligible := 0
+	for i := len(spans) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(buf[spans[i].lo:spans[i].hi])
 		if len(line) == 0 || len(line) > maxTailExcerptBytes {
 			continue
 		}
@@ -117,12 +120,18 @@ func readSessionTailMessages(path string, size, window int64) ([]provider.Messag
 		if err := json.Unmarshal(line, &m); err != nil {
 			continue
 		}
-		msgs = append(msgs, m)
-		if len(msgs) >= maxTailExcerptLines {
-			break
+		parsed = append(parsed, m)
+		if IsUserAuthoredTurnMessage(m) && sessionPreviewNoiseless(m) != "" {
+			eligible++
+			if eligible >= n {
+				break
+			}
 		}
 	}
-	// The collected window is newest last; the excerpt walk wants oldest
-	// first, which is exactly the file order retained above.
-	return msgs, start == 0
+	// parsed is newest first; reverse to the file order (oldest first) the
+	// shared excerpt walk expects.
+	for i, j := 0, len(parsed)-1; i < j; i, j = i+1, j-1 {
+		parsed[i], parsed[j] = parsed[j], parsed[i]
+	}
+	return parsed, start == 0
 }
