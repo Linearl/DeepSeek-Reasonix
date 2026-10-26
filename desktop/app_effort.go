@@ -30,11 +30,38 @@ func (a *App) effortForTabDirect(tabID string) EffortInfo {
 	if !cap.Supported {
 		return EffortInfo{Supported: false, Current: "auto", Default: cap.Default, Levels: []string{}}
 	}
+	// Task 1161a: the composer menu reads EffortMenuDomain — the same
+	// capability mapping the dispatch path validates against, pre-filtered to
+	// levels that reach the wire. The raw vocabulary and the wire can drift
+	// (a thinking-locked entry keeps the full depth menu but the runtime drops
+	// every non-default level with a boot warning), and a level that would
+	// never be honoured must never render as pickable. Both surfaces the
+	// composer reads (levels and the labelled options) are filtered from this
+	// single source, in lockstep with the settings surfaces that already read
+	// EffortMenuDomain (task 1151).
 	levels := cap.Levels
 	if levels == nil {
 		levels = []string{}
 	}
-	return EffortInfo{Supported: true, Current: config.EffortDisplay(entry), Default: cap.Default, Levels: levels, Options: config.ReasoningCapabilityForEntry(entry).Options, AliasFold: cap.AliasFold}
+	options := config.ReasoningCapabilityForEntry(entry).Options
+	menu, _ := config.EffortMenuDomain(entry)
+	if menu != nil {
+		levels = menu
+		if len(options) > 0 {
+			allowed := make(map[string]bool, len(menu))
+			for _, level := range menu {
+				allowed[strings.ToLower(strings.TrimSpace(level))] = true
+			}
+			filtered := make([]provider.ReasoningOption, 0, len(options))
+			for _, option := range options {
+				if allowed[strings.ToLower(strings.TrimSpace(option.ID))] {
+					filtered = append(filtered, option)
+				}
+			}
+			options = filtered
+		}
+	}
+	return EffortInfo{Supported: true, Current: config.EffortDisplay(entry), Default: cap.Default, Levels: levels, Options: options, AliasFold: cap.AliasFold}
 }
 
 func (a *App) SetEffort(level string) error {

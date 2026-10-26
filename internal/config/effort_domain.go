@@ -47,6 +47,18 @@ func EffortLevelReachesWire(e *ProviderEntry, level string) bool {
 	if e == nil {
 		return false
 	}
+	// Task 1161a: a thinking-locked entry (an explicit `thinking = "disabled"`
+	// config on the OpenAI-compatible family) rejects every depth the locked
+	// {disabled} capability does not list — the adapter validates the override
+	// against its construction-time locked face at Stream time. The composite
+	// capability read below re-widens through the richer-table rule, which
+	// would bless depths the real client rejects, so evaluate the lock here
+	// first: only the lock's own value reaches the wire. The anthropic kind is
+	// exempt — its thinking field is a protocol switch with its own lift, not
+	// this lock.
+	if e.Kind != "anthropic" && strings.EqualFold(strings.TrimSpace(e.Thinking), "disabled") {
+		return normalizeEffortLevel(level) == "disabled"
+	}
 	probe := *e
 	normalized, err := NormalizeEffort(&probe, level)
 	if err != nil {
