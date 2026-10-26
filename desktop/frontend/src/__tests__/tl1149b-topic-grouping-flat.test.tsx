@@ -6,6 +6,10 @@
 //   「移动到分组 ▸」flyout 收进会话菜单「分组 ▸」二级后，它成了嵌套 submenu，
 //   渲染即禁用；tl 1149 与其同包交付，被记为 1149 缺陷。
 //   返修: topicMenuItems 平铺——分组行就是「分组 ▸」的本层叶子。
+//   tl 1168 再返修（用户验收反馈）: 入口文案改「移动到分组」（动作语义，共用
+//   projectGroup.moveInto 键），ContextMenu 的 submenu 自此是 hover 停留展开的
+//   浮动二级面板——「平铺叶子」语义不变，但它们渲染在第二级面板里，不再撑长
+//   一级菜单。本文件的 harness 同步改用 moveInto 键。
 //   本文件钉三层:
 //   A. 会话节点全链（真实 ContextMenu + 真实 controller + CAS 落盘）:
 //      「分组 ▸」可展开 → 分组叶子（当前组禁用/目标组可选）→ 点击 →
@@ -102,7 +106,8 @@ function TopicGroupingHarness({ bindings, onItems }: {
   onItems: (items: ContextMenuItem[]) => void;
 }) {
   const organization = useProjectTreeOrganization({ tree: [folder], refresh: async () => {}, bindings });
-  // 与 ProjectTree.tsx 会话菜单同构：organizationItems.length > 0 才渲染二级。
+  // 与 ProjectTree.tsx 会话菜单同构：organizationItems.length > 0 才渲染二级
+  // （tl 1168 起入口文案 = projectGroup.moveInto「移动到分组」）。
   const organizationItems = organization.topicMenuItems(topicNode, t);
   onItems(organizationItems);
   return <ContextMenu
@@ -113,14 +118,14 @@ function TopicGroupingHarness({ bindings, onItems }: {
     items={organizationItems.length > 0 ? [{
       type: "submenu" as const,
       key: "grouping",
-      label: t("projectTree.grouping"),
+      label: t("projectGroup.moveInto"),
       items: organizationItems,
     }] : []}
     onClose={() => {}}
   />;
 }
 
-console.log("\ntl1149b A: 会话节点「对话→分组→移动到分组」全链（真实 ContextMenu + CAS 落盘）");
+console.log("\ntl1149b A: 会话节点「对话→移动到分组→目标分组」全链（真实 ContextMenu + CAS 落盘；tl 1168 起二级为浮动 flyout 面板）");
 {
   const roster: SessionGroup[] = [
     { id: "holding", title: "Holding", topicIds: ["t1"] },
@@ -135,11 +140,12 @@ console.log("\ntl1149b A: 会话节点「对话→分组→移动到分组」全
     await flush();
   });
 
-  // 结构前提：平铺——「分组 ▸」的 items 里没有任何嵌套 submenu（根因不复入）。
+  // 结构前提：平铺——「移动到分组 ▸」的 items 里没有任何嵌套 submenu（根因不
+  // 复入）；tl 1168 起这些叶子渲染进第二级浮动面板，仍是入口的直接叶子。
   ok(latestItems.every((item) => item.type !== "submenu"), "the grouping section items are flat leaves (no nested submenu)");
 
-  const groupingTrigger = findMenuItem("projectTree.grouping");
-  ok(Boolean(groupingTrigger) && groupingTrigger!.disabled === false, "「分组 ▸」second-level entry is present and clickable");
+  const groupingTrigger = findMenuItem("projectGroup.moveInto");
+  ok(Boolean(groupingTrigger) && groupingTrigger!.disabled === false, "「移动到分组 ▸」second-level entry is present and clickable (tl 1168 action wording)");
   await act(async () => { groupingTrigger!.click(); await flush(); });
 
   const holdingRow = findMenuItem("Holding");

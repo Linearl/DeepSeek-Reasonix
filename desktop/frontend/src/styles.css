@@ -30273,6 +30273,14 @@ button.statusbar__mcp:focus-visible {
   }
 }
 
+/* tl 1168: the submenu flyout — a second fixed panel anchored beside its
+   trigger row (hover to open, tap for touch, →/← for keyboard). It shares the
+   .context-menu chrome (border/shadow/scroll); only the width cap differs, so
+   a long group title never pushes the panel past the viewport edge. */
+.context-menu--flyout {
+  max-width: min(320px, calc(100vw - 16px));
+}
+
 .context-menu__item {
   width: 100%;
   min-height: 30px;

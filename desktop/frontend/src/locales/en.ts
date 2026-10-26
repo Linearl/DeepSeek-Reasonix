@@ -1789,7 +1789,6 @@ export const en = {
   "projectTree.newGroup": "New project group",
   "projectTree.markAllRead": "Mark all read",
   "projectTree.markRead": "Mark read",
-  "projectTree.grouping": "Group",
   "projectTree.copyInfo": "Copy",
   "projectTree.openWith": "Open with",
   "projectTree.groupMove": "Group move",

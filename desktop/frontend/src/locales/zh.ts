@@ -1786,7 +1786,6 @@ export const zh: Record<DictKey, string> = {
   "projectTree.newGroup": "新建项目分组",
   "projectTree.markAllRead": "全部已读",
   "projectTree.markRead": "已读",
-  "projectTree.grouping": "分组",
   "projectTree.copyInfo": "复制",
   "projectTree.openWith": "打开方式",
   "projectTree.groupMove": "分组移动",

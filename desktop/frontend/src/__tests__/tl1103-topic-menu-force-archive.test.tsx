@@ -214,7 +214,8 @@ assertOrdered(menuSlice, [
 ok(!menuSlice.includes('key: "forceArchive"'), "acceptance: the force-archive item is gone from the top level");
 ok(!treeSource.includes("confirmForceArchiveTarget"), "the two-step force-arm state is gone (confirm dialog replaced it)");
 ok(menuSlice.includes('key: "move-to-group"') === false, "「移动到分组」is no longer a TOP-LEVEL row key in ProjectTree (it lives inside the grouping submenu items array)");
-ok(treeSource.includes('label: t("projectTree.grouping")') && treeSource.includes("items: organizationItems"), "organization move/remove rows are wrapped into the 「分组 ▸」 submenu, behaviour unchanged");
+// tl 1168: the entry label moved to the action wording 「移动到分组」 (shared projectGroup.moveInto key); wrapping unchanged.
+ok(treeSource.includes('label: t("projectGroup.moveInto")') && treeSource.includes("items: organizationItems"), "organization move/remove rows are wrapped into the 「移动到分组 ▸」 submenu (tl 1168 action wording), behaviour unchanged");
 ok(treeSource.includes("organizationItems.length > 0"), "the grouping submenu renders only when the workspace has groups");
 
 // 复制 ▸：取值口径 = 会话路径 / 日志路径 / 会话 ID（与 topicbar 复制菜单同键）
@@ -266,7 +267,7 @@ const en = (await import("../locales/en")).en as unknown as Record<string, strin
 const zhTw = (await import("../locales/zh-TW")).zhTW as unknown as Record<string, string>;
 const newKeys = [
   "projectTree.forceArchiveConfirm",
-  "projectTree.grouping",
+  "projectGroup.moveInto",
   "projectTree.copyInfo",
   "projectTree.openWith",
   "projectTree.forceArchiveTopic",
