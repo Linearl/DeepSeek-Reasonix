@@ -15,9 +15,9 @@ import (
 	"reasonix/internal/config"
 )
 
-// Compile-time pin, same discipline as zcodeTaskBusBindings: the frontend
-// calls these bindings, so deleting either must fail the build instead of
-// resurfacing as a dead selector behind a clicking switch.
+// Compile-time pin: the frontend calls these bindings, so deleting either
+// must fail the build instead of resurfacing as a dead selector behind a
+// clicking switch.
 type acpListenBindings interface {
 	SetExperimentalACPListen(bool) error
 	SetACPListenPort(int) error

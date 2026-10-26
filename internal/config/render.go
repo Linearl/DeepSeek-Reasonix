@@ -175,11 +175,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 846：配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
 	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
 	{"homePointer", LabTierUnstable, []string{"experimental_home_pointer"}},
-	// ── infra（基础设施，7 项；785 退役 S1 常驻底座开关，790 增 acpListen）──────
+	// ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
 	// 任务 1005 批1 转档：runtimeReuse 随 autopilot/sessionCollab/fullAccess
 	// 一同入「稳定」档（992 刚升推荐的四项中的第四项，用户 1018 拍板批1）。
 	{"runtimeReuse", LabTierStable, []string{"experimental_runtime_reuse"}},
-	{"zcodeTaskBus", LabTierUnstable, []string{"experimental_zcode_task_bus"}},
+	// tl-1048：zcodeTaskBus 卡随 8787 任务总线退役（原 unstable，键 experimental_zcode_task_bus）。
 	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}},               // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
 	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},                   // 任务 545：会话 cwd 跟随，默认关新实验
 	{"tabModeTint", LabTierUnstable, []string{"tab_permission_indicator", "experimental_tab_mode_tint"}}, // 任务 651：标签权限指示三档（badge|off|background），后者为 504 legacy 别名键
@@ -583,9 +583,6 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 385a: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_output_style_ui = %v   # desktop: gate the lab 回答风格 (output style) section (task 385a; UI surface only)\n", c.Desktop.ExperimentalOutputStyleUI)
-		// Task 439: fixed-key-set rule — an unlisted key would be dropped on
-		// every save and the lab switch would flip itself back off.
-		fmt.Fprintf(&b, "experimental_zcode_task_bus = %v   # desktop: built-in zcode task bus (task 439; embedded 127.0.0.1:8787 bus MCP at boot, [serve.bus_mcp] role table; restart to apply)\n", c.Desktop.ExperimentalZcodeTaskBus)
 		// Task 790: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_acp_listen = %v   # desktop: resident ACP listener (task 790; loopback-only TCP, one client surface per connection; restart to apply)\n", c.Desktop.ExperimentalACPListen)

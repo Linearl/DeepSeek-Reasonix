@@ -89,7 +89,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 
 	// infra（基础设施；785 退役 S1 常驻底座开关条目）
 	orig.Agent.ExperimentalRuntimeReuse = true            // runtimeReuse
-	orig.Desktop.ExperimentalZcodeTaskBus = true          // zcodeTaskBus
 	orig.Desktop.ExperimentalACPListen = true             // acpListen (task 790)
 	orig.Desktop.ACPListenPort = 8791                     // acpListen family key
 	orig.Desktop.ExperimentalPathRules = true             // pathRules
@@ -141,7 +140,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_quick_commands = true",
 		"experimental_cdp_debug_port = true",
 		"experimental_output_style_ui = true",
-		"experimental_zcode_task_bus = true",
 		"experimental_acp_listen = true",
 		"acp_listen_port = 8791",
 		"experimental_path_rules = true",
@@ -250,7 +248,6 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"desktop.experimental_feedback":             got.Desktop.ExperimentalFeedback,
 		"desktop.experimental_cdp_debug_port":       got.Desktop.ExperimentalCDPDebugPort,
 		"desktop.experimental_lifecycle_noise_gate": got.Desktop.ExperimentalLifecycleNoiseGate,
-		"desktop.experimental_zcode_task_bus":       got.Desktop.ExperimentalZcodeTaskBus,
 		"desktop.experimental_acp_listen":           got.Desktop.ExperimentalACPListen,
 		"desktop.experimental_path_rules":           got.Desktop.ExperimentalPathRules,
 		"desktop.experimental_local_server":         got.Desktop.ExperimentalLocalServer,

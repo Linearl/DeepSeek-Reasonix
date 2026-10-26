@@ -573,13 +573,6 @@ func (a *App) SetExperimentalCDPDebugPort(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCDPDebugPort(enabled) })
 }
 
-// SetExperimentalZcodeTaskBus toggles the built-in zcode task bus (task 439).
-// Ships off; the listener arms at desktop boot, so a flip needs a restart —
-// the lab card communicates that.
-func (a *App) SetExperimentalZcodeTaskBus(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalZcodeTaskBus(enabled) })
-}
-
 // SetExperimentalACPListen toggles the resident ACP listener (task 790).
 // Ships off; the listener arms at desktop boot, so a flip needs a restart —
 // the lab card communicates that.

@@ -537,18 +537,6 @@ type DesktopConfig struct {
 	// keeps reading [agent] output_style, so a hand-written toml entry still
 	// applies without this switch.
 	ExperimentalOutputStyleUI bool `toml:"experimental_output_style_ui"`
-	// ExperimentalZcodeTaskBus is the task-439 lab switch for the built-in
-	// zcode task bus. It ships OFF (铁律 2): with the zero value the desktop
-	// starts no listener at all and behaves byte-for-byte like a build
-	// without the feature — the pre-439 workflow (an externally launched
-	// `reasonix serve` kept alive by a startup-folder vbs) stays the only way
-	// the bus runs. When ON, the desktop hosts the bus MCP endpoint itself
-	// (127.0.0.1:8787, an embedded goroutine instead of the external
-	// process), mounting the same routes as [serve.bus_mcp] and reading the
-	// same role table, so `reasonix bus enroll` output keeps working
-	// unchanged. The listener is armed at boot: a flip applies on the next
-	// restart, and the lab card says so.
-	ExperimentalZcodeTaskBus bool `toml:"experimental_zcode_task_bus"`
 	// ExperimentalACPListen is the task-790 lab switch for the resident ACP
 	// listener. It ships OFF (铁律 2): with the zero value the desktop starts
 	// no listener at all — no port bound, no goroutine, byte-for-byte the
@@ -561,8 +549,7 @@ type DesktopConfig struct {
 	// applies on the next restart, and the lab card says so.
 	ExperimentalACPListen bool `toml:"experimental_acp_listen"`
 	// ACPListenPort is the TCP port the resident ACP listener binds on
-	// 127.0.0.1 when ExperimentalACPListen is on. 0 (the default) means 8790 —
-	// next to, but never colliding with, the task bus endpoint on 8787.
+	// 127.0.0.1 when ExperimentalACPListen is on. 0 (the default) means 8790.
 	ACPListenPort int `toml:"acp_listen_port"`
 	// ExperimentalHomePointer is the task-846 lab switch for changing the
 	// Reasonix data home through the settings wizard (home-pointer.json +
