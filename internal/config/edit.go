@@ -1205,6 +1205,20 @@ func (c *Config) SetExperimentalSendTargetSelect(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalSmoothScrollFollow toggles smooth streaming scroll follow
+// (tl 1165): off (default) keeps every streaming tail write instant — the
+// exact pre-1165 `scrollTop = scrollHeight` assignment with no extra
+// listeners or animations (铁律 2); on switches tail follow to native smooth
+// scrollTo requests behind the DSH ScrollFollow guards (an outstanding smooth
+// target finishes before another is issued, a reader gesture cancels the
+// animation, reduced motion falls back to instant positioning). Pure frontend
+// gate: the settings save re-applies the boot snapshot, so a change is
+// visible without a restart.
+func (c *Config) SetExperimentalSmoothScrollFollow(enabled bool) error {
+	c.Desktop.ExperimentalSmoothScrollFollow = enabled
+	return nil
+}
+
 // SetExperimentalStartupSplash toggles the DSH-style startup splash overlay
 // (tl 1132): off (default) never renders the splash — startup keeps the exact
 // pre-gate behaviour; on shows the centred logo overlay until the core UI is

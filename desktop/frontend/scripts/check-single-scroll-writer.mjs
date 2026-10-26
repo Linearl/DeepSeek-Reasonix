@@ -39,6 +39,13 @@ const ALLOWED_WRITERS = new Set([
 const ALLOWED_RAW_SCROLLTOP = new Set([
   "lib/transcriptViewportWriter.ts",
   "lib/useReasoningScrollFollow.ts",
+  // lib/smoothTailFollow.ts (tl 1165): the shared DSH-ScrollFollow helper. It
+  // owns no surface of its own — the reasoning pane's inner scroller uses it
+  // directly (same non-Transcript surface as useReasoningScrollFollow), and
+  // the Transcript path reaches it only inside the TranscriptViewportWriter
+  // gateway (writer-held follower instance), so no transcript write escapes
+  // the single-writer invariant.
+  "lib/smoothTailFollow.ts",
   "components/SettingsPanel.tsx",
   "components/RemoteConnectWizard.tsx",
   "components/WorkspacePanel.tsx",

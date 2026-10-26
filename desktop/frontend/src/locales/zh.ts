@@ -3379,6 +3379,10 @@ export const zh: Record<DictKey, string> = {
 "settings.sendTargetSelectHint": "分栏开启时输入区的发送目标（发送到左栏/发送到右栏/同时发送到两栏）改为下拉框选择，省出按钮组空间。目标含义与按钮组完全一致。默认关闭（保持原按钮组）；改动即时生效。",
 "settings.sendTargetSelect.on": "下拉框",
 "settings.sendTargetSelect.off": "按钮组",
+"settings.smoothScrollFollow": "流式滚动平滑跟随",
+"settings.smoothScrollFollowHint": "流式输出时滚动跟随改为原生平滑动画（对齐 DSH ScrollFollow），并带三条防线：上一个平滑动画未完成不发新目标、用户一滚立即取消动画、系统开启减少动效时自动退化为瞬移定位。默认关闭（保持瞬移定位，行为与引入前完全一致）；改动即时生效。",
+"settings.smoothScrollFollow.on": "平滑",
+"settings.smoothScrollFollow.off": "瞬移",
 "composer.splitTargetMenuTitle": "发送目标",
 // 任务 704：轨迹视图界面文案（台账/切换/空态）。
 "trajectory.label": "轨迹",

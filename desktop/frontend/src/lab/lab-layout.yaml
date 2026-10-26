@@ -225,7 +225,7 @@ groups:
       - id: viewLayout
         labelKey: settings.viewLayout
         tier: recommended
-        onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalDraftRewrite]
+        onKeys: [experimentalSplitView, experimentalTrajectoryView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalSmoothScrollFollow, experimentalDraftRewrite]
         members:
           - id: splitView
             labelKey: settings.splitView
@@ -249,6 +249,11 @@ groups:
           # 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。
           - id: sendTargetSelect
             labelKey: settings.sendTargetSelect
+            tier: optional
+          # tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线；默认
+          # 关=瞬移定位逐字节不变）。
+          - id: smoothScrollFollow
+            labelKey: settings.smoothScrollFollow
             tier: optional
           # 任务 1024：composer 草稿优化（改写按钮）——发送左侧新增改写入口，
           # 辅助模型改写草稿回填输入框，不自动发送。默认关=按钮不出现、布局零变化。

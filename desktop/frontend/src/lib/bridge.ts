@@ -1568,6 +1568,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // button group unchanged, on = dropdown; re-applied on settings save, no
   // restart).
   SetExperimentalSendTargetSelect(enabled: boolean): Promise<void>;
+  // tl 1165: smooth streaming scroll follow (off = instant tail positioning
+  // unchanged, on = native smooth scrollTo behind the DSH ScrollFollow guards;
+  // re-applied on settings save, no restart).
+  SetExperimentalSmoothScrollFollow(enabled: boolean): Promise<void>;
   // 任务 1024: composer 草稿优化（发送左侧改写按钮；re-applied on settings
   // save, no restart）。
   SetExperimentalDraftRewrite(enabled: boolean): Promise<void>;
@@ -6482,7 +6486,9 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSidebarHoverRight() {},
     async SetExperimentalApprovalSelect() {},
     async SetExperimentalTableWrap() {},
-    async SetExperimentalSendTargetSelect() {},    async SetExperimentalDraftRewrite() {},
+    async SetExperimentalSendTargetSelect() {},
+    async SetExperimentalSmoothScrollFollow() {},
+    async SetExperimentalDraftRewrite() {},
     async SetExperimentalStartupSplash() {},
     async SetStandardContinuation() {},
     async SetExperimentalWorkflowPanel() {},

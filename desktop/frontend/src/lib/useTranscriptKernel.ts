@@ -381,9 +381,12 @@ export function useTranscriptKernel({
     const current = snapshot();
     if (!current) return;
     inputRevisionRef.current += 1;
+    // tl 1165: cancel an outstanding smooth follow before reader motion owns
+    // the viewport (DSH interrupt) — inert while the lab switch is off.
+    writer.interruptViewport();
     kernel.beginUserGesture(current, owner);
     refresh();
-  }, [kernel, refresh, snapshot]);
+  }, [kernel, refresh, snapshot, writer]);
 
   const finishGesture = useCallback((resumed: ReturnType<TranscriptKernel["endUserGesture"]>) => {
     inputRevisionRef.current += 1;
@@ -406,8 +409,11 @@ export function useTranscriptKernel({
 
   const claimNativeInput = useCallback(() => {
     inputRevisionRef.current += 1;
+    // tl 1165: keyboard and React-capture wheel entries cancel an outstanding
+    // smooth follow too (inert with the switch off or while idle).
+    writer.interruptViewport();
     renewGestureLease();
-  }, [renewGestureLease]);
+  }, [renewGestureLease, writer]);
 
   const releaseNativeInput = useCallback(() => {
     writer.freeze(false);
@@ -461,12 +467,18 @@ export function useTranscriptKernel({
       // the lease mid-scroll and the next geometry commit yanked the view.
       // Renew-only: intent is still derived from the actual displacement in
       // observeNativeScroll, never from the wheel event itself.
-      if (event.deltaY !== 0) renewGestureLease();
+      if (event.deltaY !== 0) {
+        // tl 1165: a reader wheel also cancels an outstanding smooth follow
+        // before the browser delivers the displaced scroll events (DSH
+        // interrupt) — inert with the lab switch off or while idle.
+        writer.interruptViewport();
+        renewGestureLease();
+      }
       if (event.deltaY < 0) requestOlderAtTop();
     };
     element.addEventListener("wheel", onWheel, { passive: true });
     return () => element.removeEventListener("wheel", onWheel);
-  }, [renewGestureLease, requestOlderAtTop, scrollElement]);
+  }, [renewGestureLease, requestOlderAtTop, scrollElement, writer]);
 
   const onPointerDownCapture = useCallback((event: { clientX: number; pointerType?: string }) => {
     // Touch has its own start/end stream. Its compatibility pointerup must
@@ -512,10 +524,14 @@ export function useTranscriptKernel({
 
   const scrollToBottom = useCallback(() => {
     endGesture();
+    // tl 1165: an outstanding smooth follow would gate the explicit jump's
+    // write, so cancel it first — the button then issues a fresh target (or
+    // an instant near-bottom landing) through the normal tail write.
+    writer.interruptViewport();
     kernel.cancelActive("jump-to-bottom");
     kernel.scrollToTail();
     refresh();
-  }, [endGesture, kernel, refresh]);
+  }, [endGesture, kernel, refresh, writer]);
 
   // scheduleTailSync is the guarded counterpart of scrollToBottom: the kernel declines
   // it while the reader owns the viewport (intentValue !== "tail") or a finger is down.

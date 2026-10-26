@@ -106,6 +106,9 @@ export interface SettingsView {
   // vs dropdown, task-940 mechanism reused); default off, pure frontend
   // gate — settings save re-applies.
   experimentalSendTargetSelect?: boolean;
+  // tl 1165: smooth streaming scroll follow (DSH ScrollFollow guards);
+  // default off, pure frontend gate — settings save re-applies.
+  experimentalSmoothScrollFollow?: boolean;
   // tl 1132: DSH-style startup splash overlay (off = never renders, on =
   // covers the main region until the core UI is mounted then fades out);
   // default off, pure frontend gate — settings save re-applies.

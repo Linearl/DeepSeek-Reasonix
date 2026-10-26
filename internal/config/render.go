@@ -106,11 +106,14 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关归提效
 	// 组（同 messageMerge 的跨会话展示族先例）；档位按 550 口径建议可选。
 	{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}},
-	// ── ui（界面，15 项）────────────────────────────────────────
+	// ── ui（界面，16 项）────────────────────────────────────────
 	// 任务 704：轨迹视图（DSH 同款可观测性视图，纯前端投影）。展示类开关按
 	// 550 口径定档可选——不开启时标题栏与转录视图与引入前完全一致（铁律 2，
 	// 默认关）。
 	{"trajectoryView", LabTierOptional, []string{"experimental_trajectory_view"}},
+	// 任务 1165：流式滚动跟随改原生平滑动画（对齐 DSH ScrollFollow）。展示形态
+	// 开关按 550 口径定档可选——不开启时流式滚动与引入前逐字节一致（铁律 2，默认关）。
+	{"smoothScrollFollow", LabTierOptional, []string{"experimental_smooth_scroll_follow"}},
 	{"tabCompress", LabTierRecommended, []string{"experimental_tab_compress"}},
 	// 任务 826：左右边栏 hover 展开（300ms 防误触）+ 离开 15s 延时折叠（只回收
 	// hover 自动展开，手动展开不回收）。两键左右独立（各写各的 setter），按 550
@@ -546,6 +549,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off keeps the three-button group byte-for-byte (铁律 2).
 		fmt.Fprintf(&b, "experimental_send_target_select = %v   # desktop: composer split-pane send-target picker form — off (default) = segmented left/right/both button group, on = compact dropdown (task-940 form mechanism reused) (task 959; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSendTargetSelect)
+		// tl 1165: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123
+		// lesson). Off keeps every streaming tail write byte-for-byte (铁律 2).
+		fmt.Fprintf(&b, "experimental_smooth_scroll_follow = %v   # desktop: smooth streaming scroll follow — off (default) = instant per-write tail positioning exactly as before, on = native smooth scrollTo behind the DSH ScrollFollow guards (outstanding-target gate, reader-gesture cancel, reduced-motion instant fallback) (tl 1165; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSmoothScrollFollow)
 		// tl 1132: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off never renders the startup splash (铁律 2 zero regression).

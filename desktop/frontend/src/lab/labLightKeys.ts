@@ -69,6 +69,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalTableWrap: (s: SettingsView) => Boolean(s.experimentalTableWrap),
   // 任务 959 ②：composer 发送目标选择器形态二选一（默认关=三按钮组）。
   experimentalSendTargetSelect: (s: SettingsView) => Boolean(s.experimentalSendTargetSelect),
+  // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款；默认关=瞬移定位不变）。
+  experimentalSmoothScrollFollow: (s: SettingsView) => Boolean(s.experimentalSmoothScrollFollow),
   // 任务 742：心跳任务后台化（默认关；开启后心跳触发不进标签栏）。
   experimentalHeartbeatBackground: (s: SettingsView) => Boolean(s.experimentalHeartbeatBackground),
   experimentalTrajectoryView: (s: SettingsView) => Boolean(s.experimentalTrajectoryView),

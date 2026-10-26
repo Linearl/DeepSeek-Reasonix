@@ -1367,6 +1367,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* tl 1165：流式滚动平滑跟随（视图布局卡成员行，940/959 同族——
+                  读自己的键写自己的 setter）。DSH ScrollFollow 同款四条防线：
+                  smooth 跟随+未完成目标不发新请求+手势取消+reduced-motion 退化。
+                  关（默认）=每次流式尾部写入瞬移定位逐字节不变、不挂任何额外
+                  事件；开=原生平滑 scrollTo。纯前端门：保存即生效，免重启。 */}
+              <SettingsField label={labLabel("smoothScrollFollow", t("settings.smoothScrollFollow"))} hint={t("settings.smoothScrollFollowHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalSmoothScrollFollow) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalSmoothScrollFollow(on))}
+                    >
+                      {t(on ? "settings.smoothScrollFollow.on" : "settings.smoothScrollFollow.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* 任务 1024：composer 草稿优化（改写按钮）——发送左侧新增改写
                   入口，辅助模型改写草稿回填输入框，不自动发送。默认关=无按钮、
                   布局零变化；保存即换态免重启。 */}

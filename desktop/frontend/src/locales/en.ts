@@ -3389,6 +3389,10 @@ export const en = {
 "settings.sendTargetSelectHint": "With the split view on, the composer's send target (left pane / right pane / both) becomes a compact dropdown instead of the button group, saving composer-row space. Target semantics are identical. Off by default (keeps the button group); changes apply immediately.",
 "settings.sendTargetSelect.on": "Dropdown",
 "settings.sendTargetSelect.off": "Buttons",
+"settings.smoothScrollFollow": "Smooth streaming scroll follow",
+"settings.smoothScrollFollowHint": "During streaming, tail following animates with native smooth scrolling (DSH ScrollFollow parity) under three guards: an unfinished animation is never interrupted by a new target, any reader gesture cancels it immediately, and prefers-reduced-motion falls back to instant positioning. Off by default (keeps the exact instant behaviour); changes apply immediately.",
+"settings.smoothScrollFollow.on": "Smooth",
+"settings.smoothScrollFollow.off": "Instant",
 "composer.splitTargetMenuTitle": "Send to",
 // 任务 704: trajectory view surface strings (ledger / switch / empty state).
 "trajectory.label": "Trajectory",
