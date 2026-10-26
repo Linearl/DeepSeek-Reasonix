@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { useProjectTreeOrganization, type ProjectTreeOrganizationController } from "../components/ProjectTreeOrganization";
+import type { ContextMenuItem } from "../components/ContextMenu";
 import type { Translator } from "../lib/i18n";
 import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 
@@ -185,9 +186,11 @@ console.log("\nproject tree organization races");
   await cleanup(dom, root);
 }
 
-// Task 720: right-click "move to group" — the menu offers a submenu with every
-// group, and picking a leaf runs the same full-roster move as a drag drop
-// (leave every other group, join the target) through the CAS save chain.
+// Task 720: right-click "move to group" — the grouping section offers one row
+// per group (tl 1149b: flat leaves — the sidebar ContextMenu expands exactly
+// one submenu level, so the old nested flyout rendered disabled), and picking
+// a leaf runs the same full-roster move as a drag drop (leave every other
+// group, join the target) through the CAS save chain.
 {
   let state: SessionGroup[] = [
     { id: "holding", title: "Holding", topicIds: ["t1"] },
@@ -217,14 +220,18 @@ console.log("\nproject tree organization races");
   const t = ((key: string) => key) as unknown as Translator;
   const topicNode: ProjectNode = { key: "project-/repo", kind: "topic", label: "T1", root: "/repo", topicId: "t1", children: [] };
   const menuItems = organization!.topicMenuItems(topicNode, t);
-  const submenu = menuItems.find((item) => item.type === "submenu");
-  ok(submenu?.type === "submenu" && submenu.key === "move-to-group", "topic menu offers the move-to-group submenu");
-  const leaves = submenu?.type === "submenu" ? submenu.items : [];
-  ok(leaves.length === 2, "submenu lists every group of the workspace");
-  ok(leaves.some((leaf) => (!leaf.type || leaf.type === "item") && leaf.key === "move:holding" && leaf.disabled === true), "the group the topic already sits in is disabled");
+  // tl 1149b 适配（语义变更：嵌套 submenu → 平铺叶子）：ContextMenu 只展开一层
+  // submenu，二级里的「移动到分组 ▸」嵌套项渲染即 disabled（包30 实测点不动），
+  // 分组行现在是「分组 ▸」的本层叶子。移动语义与顺序不变。
+  const isLeaf = (item: ContextMenuItem): item is Extract<ContextMenuItem, { type?: "item"; onSelect: () => void }> =>
+    item.type !== "submenu" && item.type !== "separator" && "onSelect" in item;
+  ok(menuItems.every((item) => item.type !== "submenu"), "topic menu keeps NO nested submenu (ContextMenu expands one level; a nested one renders disabled)");
+  const leaves = menuItems.filter(isLeaf).filter((leaf) => leaf.key.startsWith("move:"));
+  ok(leaves.length === 2, "the grouping section lists every group of the workspace");
+  ok(leaves.some((leaf) => leaf.key === "move:holding" && leaf.disabled === true), "the group the topic already sits in is disabled");
   const targetLeaf = leaves.find((leaf) => leaf.key === "move:target");
   ok(Boolean(targetLeaf) && targetLeaf!.disabled !== true, "the destination group is selectable");
-  ok(menuItems.some((item) => item.type !== "submenu" && "key" in item && item.key === "remove-from-group"), "the standalone remove-from-group row stays");
+  ok(menuItems.some((item) => "key" in item && item.key === "remove-from-group"), "the standalone remove-from-group row stays");
 
   await act(async () => {
     if (targetLeaf && "onSelect" in targetLeaf) targetLeaf.onSelect();
@@ -235,10 +242,9 @@ console.log("\nproject tree organization races");
   ok(lastSaved!.find((group) => group.id === "target")?.topicIds?.includes("t1") === true, "the target group gains the topic");
 
   const after = organization!.topicMenuItems(topicNode, t);
-  const afterSubmenu = after.find((item) => item.type === "submenu");
-  const afterLeaves = afterSubmenu?.type === "submenu" ? afterSubmenu.items : [];
-  ok(afterLeaves.some((leaf) => (!leaf.type || leaf.type === "item") && leaf.key === "move:target" && leaf.disabled === true)
-    && afterLeaves.some((leaf) => (!leaf.type || leaf.type === "item") && leaf.key === "move:holding" && leaf.disabled !== true),
+  const afterLeaves = after.filter(isLeaf).filter((leaf) => leaf.key.startsWith("move:"));
+  ok(afterLeaves.some((leaf) => leaf.key === "move:target" && leaf.disabled === true)
+    && afterLeaves.some((leaf) => leaf.key === "move:holding" && leaf.disabled !== true),
     "the optimistic roster flips which destination is disabled");
 
   // A dissolved target must not produce a write.
@@ -248,11 +254,11 @@ console.log("\nproject tree organization races");
   });
   ok(saves === 1, "moving into an unknown group writes nothing");
 
-  // An ungrouped topic only gets the submenu (no remove row).
+  // An ungrouped topic gets the move rows but no remove row.
   const stray: ProjectNode = { key: "project-/repo", kind: "topic", label: "T2", root: "/repo", topicId: "t2", children: [] };
   const strayItems = organization!.topicMenuItems(stray, t);
-  ok(strayItems.some((item) => item.type === "submenu") && !strayItems.some((item) => item.type !== "submenu" && "key" in item && item.key === "remove-from-group"),
-    "an ungrouped topic is offered the move submenu without a remove row");
+  ok(strayItems.some((item) => "key" in item && item.key === "move:target") && !strayItems.some((item) => "key" in item && item.key === "remove-from-group"),
+    "an ungrouped topic is offered the move rows without a remove row");
   await cleanup(dom, root);
 }
 
