@@ -3724,6 +3724,8 @@ export const zhTW: Record<DictKey, string> = {
   "config.doctorHint": "或執行：reasonix doctor repair",
   "updater.currentVersion": "當前版本：{v}",
 "updater.builtAt": "建置於 {at}",
+"updater.copyVersion": "複製版本號",
+"updater.copyBuildTime": "複製編譯時間",
   "updater.checkButton": "檢查更新",
   "updater.checking": "正在檢查更新…",
   "updater.upToDate": "已是最新版本。",

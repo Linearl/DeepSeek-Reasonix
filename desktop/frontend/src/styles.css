@@ -19759,6 +19759,13 @@ button.statusbar__mcp:focus-visible {
   line-height: 1.35;
 }
 
+/* tl 1171: inline copy affordance next to the version string and build time.
+   Kept small and baseline-aligned so the summary stays one glance. */
+.updates-control__copy {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 .updates-control__status {
   display: flex;
   align-items: center;

@@ -5191,6 +5191,8 @@ export const zh: Record<DictKey, string> = {
   "settings.metricsHint": "默认开启。发送匿名轮次统计、更新错误、运行健康与设置快照，并用随机安装 ID 统计 DAU。可能包含归一化的自定义 Provider 和模型名；不含对话、提示词、密钥、路径、URL、记忆、工具输出或文件内容。",
   "updater.currentVersion": "当前版本：{v}",
 "updater.builtAt": "编译于 {at}",
+"updater.copyVersion": "复制版本号",
+"updater.copyBuildTime": "复制编译时间",
   "updater.checkButton": "检查更新",
   "updater.checking": "正在检查更新…",
   "updater.upToDate": "已是最新版本。",
