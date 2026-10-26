@@ -94,3 +94,6 @@ site/.generated/
 
 # 任务 701：Web 壳独立构建产物（vite.web.config.ts → dist-web）
 /desktop/frontend/dist-web/
+
+# tl 1163: per-boot startup breakdown (cwd-relative, one line per launch)
+/startup-metrics.log

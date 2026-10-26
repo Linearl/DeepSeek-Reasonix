@@ -49,6 +49,13 @@ type bootTimeline struct {
 	legs      []bootTimelineLeg
 	arrivals  []bootTimelineArrival
 	emitted   bool
+
+	// tl 1163：主链里程碑（进程时间轴相对 ms，首到生效）。覆盖任务 824 五段
+	// 之外的「main → wails.Run → startup → domReady → window shown →
+	// frontend ready」骨架，让 WebView2 冷启动段（pre_wails_done → startup_cb）
+	// 第一次有独立读数。
+	markNames []string
+	markMs    map[string]int64
 }
 
 // bootTimelineLeg is one P3/P4 controller build (a "leg"): the desktop-side
@@ -61,14 +68,21 @@ type bootTimelineLeg struct {
 }
 
 // bootTimelineArrival is one frontend-side arrival: a tab's hydrate landing
-// (P5) or the shell's persisted UI state applying (P6). AtMs is relative to
-// the FRONTEND page load (performance.now origin), a different clock from the
-// Go-side wall_ms — the summary names the fields accordingly.
+// (P5), the shell's persisted UI state applying (P6), or the renderer's
+// first-contentful-paint (tl 1163). AtMs is relative to the FRONTEND page load
+// (performance.now origin), a different clock from the Go-side wall_ms — the
+// summary names the fields accordingly. EpochMs is the wall-clock instant of
+// the same event (renderer Date.now()); when present it bridges the event onto
+// the Go process timeline as AtGoMs (same machine, same clock source).
 type bootTimelineArrival struct {
-	Kind      string // "hydrate" | "ui"
+	Kind      string // "hydrate" | "ui" | "fcp"
 	TabID     string
 	AtMs      int64
 	HydrateMs int64 // hydrate-only: the hydrate's own wall clock
+
+	EpochMs   int64
+	AtGoMs    int64 // epochMs - startedAt.UnixMilli(); valid only when AtGoValid
+	AtGoValid bool
 }
 
 // bootTimelineObs is the process-wide collector. Desktop boots exactly one
@@ -80,6 +94,46 @@ var bootTimelineObs = &bootTimeline{startedAt: bootTimelineStartedAt}
 // bootLegSlotQueueLogMs：slot 等待超过该值才值得一行日志（0930 基线的锁等
 // 4-6.6s 远高于此；阈值只滤掉常态零等待）。
 const bootLegSlotQueueLogMs = 100
+
+// bootTimelineNoteMark records one main-chain milestone as its process-relative
+// ms (first arrival wins: a milestone is a point in time, not an accumulator —
+// repeated calls keep the earliest reading). Pure计时 + map 写；emitted 后
+// no-op，与既有 note 纪律一致。
+func bootTimelineNoteMark(name string) {
+	bootTimelineNoteMarkAt(name, time.Since(bootTimelineStartedAt))
+}
+
+// bootTimelineNoteMarkAt is the injectable-clock form of bootTimelineNoteMark
+// (tests pin the reading instead of racing time.Since).
+func bootTimelineNoteMarkAt(name string, d time.Duration) {
+	obs := bootTimelineObs
+	obs.mu.Lock()
+	defer obs.mu.Unlock()
+	if obs.emitted {
+		return
+	}
+	if obs.markMs == nil {
+		obs.markMs = make(map[string]int64)
+	}
+	if _, seen := obs.markMs[name]; seen {
+		return
+	}
+	obs.markNames = append(obs.markNames, name)
+	obs.markMs[name] = d.Milliseconds()
+}
+
+// renderMarksLocked renders the milestones in arrival order as "name=12ms …"
+// (caller holds mu).
+func renderMarksLocked(obs *bootTimeline) string {
+	if len(obs.markNames) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(obs.markNames))
+	for _, name := range obs.markNames {
+		parts = append(parts, name+"="+strconv.FormatInt(obs.markMs[name], 10)+"ms")
+	}
+	return strings.Join(parts, " ")
+}
 
 // bootTimelineNoteP1 records one P1 serial-stage duration.
 func bootTimelineNoteP1(name string, d time.Duration) {
@@ -153,6 +207,14 @@ func bootTimelineNoteFrontendEvent(detail string) {
 	arrival := bootTimelineArrival{Kind: kind, TabID: fields["tab"], AtMs: atMs}
 	if hydrateMs, err := strconv.ParseInt(fields["hydrateMs"], 10, 64); err == nil {
 		arrival.HydrateMs = hydrateMs
+	}
+	// tl 1163: the renderer's wall-clock instant bridges the event onto the
+	// Go process timeline (same machine, same clock source). Older callers
+	// without epochMs keep the front-end-axis-only shape — pure增量。
+	if epochMs, err := strconv.ParseInt(fields["epochMs"], 10, 64); err == nil {
+		arrival.EpochMs = epochMs
+		arrival.AtGoMs = epochMs - bootTimelineObs.startedAt.UnixMilli()
+		arrival.AtGoValid = true
 	}
 	obs := bootTimelineObs
 	obs.mu.Lock()
@@ -230,16 +292,24 @@ func renderP1Locked(obs *bootTimeline) string {
 
 // bootTimelineEmitSummary emits the one boot:summary line. Idempotent: the
 // first trigger wins, later triggers and every collector note become no-ops.
-// Returns whether this call actually emitted.
+// Returns whether this call actually emitted. tl 1163：同一次 emit 把一行式
+// breakdown 追加落盘到 startup-metrics.log（cwd，best effort——文件写失败只
+// 留 debug 行，绝不影响 slog 输出与调用方）。
 func bootTimelineEmitSummary(trigger string) bool {
 	obs := bootTimelineObs
 	obs.mu.Lock()
-	defer obs.mu.Unlock()
 	if obs.emitted {
+		obs.mu.Unlock()
 		return false
 	}
 	obs.emitted = true
+	line := renderStartupMetricsLineLocked(obs, trigger)
 	slog.Info("boot: summary", append([]any{"trigger", trigger}, bootSummaryAttrsLocked(obs)...)...)
+	obs.mu.Unlock()
+	// File IO stays outside the collector lock: a slow disk must not stall a
+	// concurrent note. appendStartupMetricsFile is best effort and never fails
+	// its caller.
+	appendStartupMetricsFile(startupMetricsPath(), line)
 	return true
 }
 
@@ -251,6 +321,9 @@ func bootSummaryAttrsLocked(obs *bootTimeline) []any {
 	attrs := make([]any, 0, 24)
 	attrs = append(attrs, "wall_ms", time.Since(obs.startedAt).Milliseconds())
 	attrs = append(attrs, "tabs", obs.tabs)
+	if summary := renderMarksLocked(obs); summary != "" {
+		attrs = append(attrs, "marks", summary)
+	}
 	if summary := renderP1Locked(obs); summary != "" {
 		attrs = append(attrs, "p1", summary)
 	}
@@ -304,12 +377,21 @@ func bootSummaryAttrsLocked(obs *bootTimeline) []any {
 		}
 	}
 	hydrateAt := make([]int64, 0, len(obs.arrivals))
+	hydrateAtGo := make([]int64, 0, len(obs.arrivals))
 	hydrateMs := make([]int64, 0, len(obs.arrivals))
 	var uiAtMs int64 = -1
+	var uiAtGoMs int64 = -1
+	var fcpAtMs int64 = -1
+	var fcpAtGoMs int64 = -1
 	for _, arrival := range obs.arrivals {
 		switch arrival.Kind {
 		case "hydrate":
 			hydrateAt = append(hydrateAt, arrival.AtMs)
+			// The bridged process-axis reading only when the renderer supplied
+			// epochMs — the _go field must never carry a front-end-axis value.
+			if arrival.AtGoValid {
+				hydrateAtGo = append(hydrateAtGo, arrival.AtGoMs)
+			}
 			if arrival.HydrateMs > 0 {
 				hydrateMs = append(hydrateMs, arrival.HydrateMs)
 			}
@@ -318,18 +400,41 @@ func bootSummaryAttrsLocked(obs *bootTimeline) []any {
 			if uiAtMs < 0 || arrival.AtMs < uiAtMs {
 				uiAtMs = arrival.AtMs
 			}
+			if arrival.AtGoValid && (uiAtGoMs < 0 || arrival.AtGoMs < uiAtGoMs) {
+				uiAtGoMs = arrival.AtGoMs
+			}
+		case "fcp":
+			// First report wins: FCP happens once per page load.
+			if fcpAtMs < 0 {
+				fcpAtMs = arrival.AtMs
+				if arrival.AtGoValid {
+					fcpAtGoMs = arrival.AtGoMs
+				}
+			}
 		}
 	}
 	if len(hydrateAt) > 0 {
 		attrs = append(attrs, "hydrate_tabs", len(hydrateAt),
 			"hydrate_at_p50_ms", percentile(hydrateAt, 50),
 			"hydrate_at_p95_ms", percentile(hydrateAt, 95))
+		if len(hydrateAtGo) > 0 {
+			attrs = append(attrs, "hydrate_at_go_p50_ms", percentile(hydrateAtGo, 50))
+		}
 		if len(hydrateMs) > 0 {
 			attrs = append(attrs, "hydrate_ms_p50_ms", percentile(hydrateMs, 50))
 		}
 	}
 	if uiAtMs >= 0 {
 		attrs = append(attrs, "ui_at_ms", uiAtMs)
+	}
+	if uiAtGoMs >= 0 {
+		attrs = append(attrs, "ui_at_go_ms", uiAtGoMs)
+	}
+	if fcpAtMs >= 0 {
+		attrs = append(attrs, "fcp_at_ms", fcpAtMs)
+		if fcpAtGoMs >= 0 {
+			attrs = append(attrs, "fcp_at_go_ms", fcpAtGoMs)
+		}
 	}
 	return attrs
 }

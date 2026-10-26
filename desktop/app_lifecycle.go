@@ -126,6 +126,9 @@ func (a *App) Platform() string {
 // bound call. It captures the Wails context (needed for EventsEmit), then kicks
 // off the initialization in a background goroutine so the webview loads immediately.
 func (a *App) startup(ctx context.Context) {
+	// tl 1163: first line of the OnStartup callback — the pre_wails_done →
+	// startup_cb gap is the WebView2 cold-start segment. Pure计时，零行为。
+	bootTimelineNoteMark("startup_cb")
 	a.ctx = ctx
 	a.shuttingDown.Store(false)
 	a.startupRegisterProcessHelpers()
@@ -487,6 +490,9 @@ func (a *App) trayReadySignal() <-chan struct{} {
 // markTabsRestored closes the tabsRestored gate exactly once. Safe when the
 // channel was never created (tests that drive App without startup).
 func (a *App) markTabsRestored() {
+	// tl 1163: restore path endpoint milestone (before the lock — the mark
+	// only touches the bootTimeline collector, never a.mu).
+	bootTimelineNoteMark("tabs_restored")
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.tabsRestored == nil {

@@ -46,3 +46,6 @@
 /desktop
 # Wails dependency-change cache
 /frontend/package.json.md5
+
+# tl 1163: per-boot startup breakdown (wails dev cwd = desktop/)
+/startup-metrics.log
