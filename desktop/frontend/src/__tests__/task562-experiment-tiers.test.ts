@@ -181,12 +181,17 @@ console.log("\ntask 562 lab three-tier badges");
   // tl 1097：logManagement（日志管理，纯前端容器 id，无配置键，同 tabManagement
   // 豁免）——Go 渲染表无条目，registry 计数不变（仍 66）。
   // tl 1132：startupSplash 入表（两侧共享）——Go registry 66→67。
-  ok(Object.keys(goTiers).length === 67, `Go registry parses to 67 entries (got ${Object.keys(goTiers).length})`);
+  // tl 1105（c75109788 重组重交付，纯 Go 面单 commit）：interruptedAutoResume
+  // （中断自动续轮，interrupted_auto_resume 键，Optional 档）只在 Go 侧登记
+  // ——Go registry 67→68；前端 experimentTiers 暂无该 id，同 networkRetryBudget
+  // 口径计入 Go-only config-only 豁免（后续设置页入口补前端注册时两侧转共享，
+  // 此处同步收回）。
+  ok(Object.keys(goTiers).length === 68, `Go registry parses to 68 entries (got ${Object.keys(goTiers).length})`);
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
   const feOnly = feIds.filter((id) => !goIds.includes(id));
-  ok(JSON.stringify(goOnly) === JSON.stringify(["networkRetryBudget", "sessionCwdFollow"]),
+  ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "networkRetryBudget", "sessionCwdFollow"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
   // tl 1132：startupLoading（「启动与加载」纯前端容器 id，Go 渲染表无条目，
   // 同 tabManagement 豁免）加入 feOnly。

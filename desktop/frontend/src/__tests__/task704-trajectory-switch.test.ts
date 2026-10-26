@@ -26,7 +26,12 @@ function ok(cond: boolean, label: string) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const frontendRoot = path.resolve(here, "..", "..");
 const repoRoot = path.resolve(frontendRoot, "..", "..");
-const panel = fs.readFileSync(path.join(frontendRoot, "src/components/SettingsPanel.tsx"), "utf8");
+// 1134（45381165f）实验室二级 chunk 拆分：union 定义自 SettingsPanel.tsx
+// 下沉 src/lab/labPaneRegistry.ts，viewLayout 卡成员行与 setter 接线随迁
+// src/components/ExperimentalLabSection.tsx——本文件仅有的两条 panel 源码锚
+// 拆双源读取（件5b 随迁补钉；锚文本逐字未变，非接线缺失）。
+const labPaneRegistry = fs.readFileSync(path.join(frontendRoot, "src/lab/labPaneRegistry.ts"), "utf8");
+const labSection = fs.readFileSync(path.join(frontendRoot, "src/components/ExperimentalLabSection.tsx"), "utf8");
 const view = fs.readFileSync(path.join(frontendRoot, "src/lib/settingsViewTypes.ts"), "utf8");
 const types = fs.readFileSync(path.join(frontendRoot, "src/lib/types.ts"), "utf8");
 const bridge = fs.readFileSync(path.join(frontendRoot, "src/lib/bridge.ts"), "utf8");
@@ -116,10 +121,10 @@ ok(labYaml.includes("- id: trajectoryView") && labYaml.includes("labelKey: setti
   "lab-layout.yaml carries the trajectoryView entry (724 数据源)");
 // 1005 ③ 锚点随动：782 把 splitView/trajectoryView 收进 viewLayout 卡（条目级
 // 合并、键与 setter 零变化），union 落 viewLayout，成员行由 labLabel 渲染。
-ok(panel.includes('| "viewLayout"') && panel.includes('labLabel("trajectoryView"'),
+ok(labPaneRegistry.includes('| "viewLayout"') && labSection.includes('labLabel("trajectoryView"'),
   "ExperimentFeatureId union routes trajectoryView through the 782 viewLayout card");
-ok(panel.includes("Boolean(s.experimentalTrajectoryView) === on") &&
-  panel.includes("app.SetExperimentalTrajectoryView(on)"),
+ok(labSection.includes("Boolean(s.experimentalTrajectoryView) === on") &&
+  labSection.includes("app.SetExperimentalTrajectoryView(on)"),
   "detail card wires the setter");
 // 成员行在 union 中部（后随注释行），行尾分号可有可无——按行锚定，不再
 // 锁死「union 最后一位」的旧形态（727 插入 heartbeatRotation 后位移）。
