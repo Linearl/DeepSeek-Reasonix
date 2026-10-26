@@ -333,6 +333,10 @@ func (a *App) shutdown(context.Context) {
 // but before the StartHidden window is presented. It restores saved geometry,
 // then delegates presentation to the platform-aware shell coordinator.
 func (a *App) domReady(_ context.Context) {
+	// tl 1163: the WebView2 navigation reached DOM-ready — the startup_cb →
+	// dom_ready gap is the frontend page load on the process timeline.
+	// Pure计时，零行为。
+	bootTimelineNoteMark("dom_ready")
 	// JSC has installed its lazy signal handlers by this point. Restore the
 	// SA_ONSTACK flags required by Go; this is a no-op outside Linux.
 	repairWebKitSignalHandlers()
@@ -382,9 +386,17 @@ func (a *App) domReady(_ context.Context) {
 	}
 
 	a.showMainWindowFrom("startup_dom_ready")
+	// tl 1163: the window is presented — this mark is the user-visible endpoint
+	// the 941ms baseline measured (dom_ready → window_shown = geometry restore
+	// + presentation). Pure计时，零行为。
+	bootTimelineNoteMark("window_shown")
 }
 
 func (a *App) completeFrontendStartup() {
+	// tl 1163: frontend heartbeat declared the webview healthy — the
+	// dom_ready → frontend_ready gap is the frontend hydrate/attach tail on
+	// the process timeline. Pure计时，零行为。
+	bootTimelineNoteMark("frontend_ready")
 	a.markDesktopHealthy()
 	// 任务 824 ⑤: webview 就绪是启动链用户体感的终点；再等 10s 让各 tab 的
 	// hydrate 到达（P5）与 UI apply（P6）落进收集窗，然后发 boot:summary

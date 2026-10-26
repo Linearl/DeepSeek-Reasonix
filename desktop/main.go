@@ -119,6 +119,10 @@ func preparePrimaryDesktopRuntime(app *App) {
 }
 
 func main() {
+	// tl 1163: the main-chain milestone origin — everything before this line
+	// (Go runtime init, package inits) is what main_enter hides from the
+	// boot:summary marks list. Pure计时，零行为。
+	bootTimelineNoteMark("main_enter")
 	// 任务 846：home 指针文件应用 + 迁移期双开拒绝。必须发生在日志装配之前
 	// （logs\desktop 也随 home 走），且在任何路径相关子系统解析 home 之前。
 	// 缺省零行为：没有 home-pointer.json 时 ApplyHomePointerEnv 不动任何东西，
@@ -206,6 +210,11 @@ func main() {
 	// Other platforms provide a no-op implementation.
 	scheduleWebKitSignalHandlerRepair()
 
+	// tl 1163: everything after this point (window creation, WebView2
+	// environment, frontend page load) hides inside wails.Run until the
+	// OnStartup callback fires — the pre_wails_done → startup_cb gap IS the
+	// WebView2 cold-start segment the 941ms baseline could not attribute.
+	bootTimelineNoteMark("pre_wails_done")
 	err := wails.Run(&options.App{
 		Title:     title,
 		Width:     width,
