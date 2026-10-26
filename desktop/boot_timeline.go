@@ -431,7 +431,10 @@ func bootSummaryAttrsLocked(obs *bootTimeline) []any {
 		attrs = append(attrs, "ui_at_go_ms", uiAtGoMs)
 	}
 	if fcpAtMs >= 0 {
-		attrs = append(attrs, "fcp_at_ms", fcpAtMs, "fcp_at_go_ms", fcpAtGoMs)
+		attrs = append(attrs, "fcp_at_ms", fcpAtMs)
+		if fcpAtGoMs >= 0 {
+			attrs = append(attrs, "fcp_at_go_ms", fcpAtGoMs)
+		}
 	}
 	return attrs
 }
