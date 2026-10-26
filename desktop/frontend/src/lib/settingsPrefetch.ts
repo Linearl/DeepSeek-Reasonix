@@ -52,3 +52,11 @@ export function takeSettingsViewPrefetch(): Promise<SettingsView> | null {
   cached = null;
   return hit;
 }
+
+/** tl 1179：写盘动作发起前作废留存预取。设置面板内切 tab 会经 openPage 钩子
+ *  重新填缓存（写前快照，TTL 10s 内留存）；若它跨越一次写盘被后续入口复用
+ *  （关面板 10s 内重开 → 挂载读吃到跨写旧快照），面板会显示旧态。写前作废
+ *  让「预取只服务未被写盘打断的读」——重新挂载时现拉，宁慢勿旧。 */
+export function invalidateSettingsViewPrefetch(): void {
+  cached = null;
+}
