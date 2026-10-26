@@ -4721,6 +4721,10 @@ export const zhTW: Record<DictKey, string> = {
 "settings.sendTargetSelectHint": "分欄開啟時輸入區的發送目標（發送到左欄/發送到右欄/同時發送到兩欄）改為下拉框選擇，省出按鈕組空間。目標含義與按鈕組完全一致。預設關閉（保持原按鈕組）；變更即時生效。",
 "settings.sendTargetSelect.on": "下拉框",
 "settings.sendTargetSelect.off": "按鈕組",
+"settings.smoothScrollFollow": "串流滾動平滑跟隨",
+"settings.smoothScrollFollowHint": "串流輸出時滾動跟隨改為原生平滑動畫（對齊 DSH ScrollFollow），並帶三條防線：上一個平滑動畫未完成不發新目標、使用者一滾立即取消動畫、系統開啟減少動效時自動退化為瞬移定位。預設關閉（保持瞬移定位，行為與引入前完全一致）；變更即時生效。",
+"settings.smoothScrollFollow.on": "平滑",
+"settings.smoothScrollFollow.off": "瞬移",
 "composer.splitTargetMenuTitle": "發送目標",
 // 任務 704：軌跡視圖介面文案（台帳/切換/空態）。
 "trajectory.label": "軌跡",

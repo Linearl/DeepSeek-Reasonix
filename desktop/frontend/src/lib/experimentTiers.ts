@@ -20,7 +20,7 @@ export type LabTier = "stable" | "recommended" | "optional" | "unstable" | "reti
  * （经发布验证的默认能力压过一切「建议开启」类档位）。 */
 export const LAB_TIER_ORDER: readonly LabTier[] = ["stable", "recommended", "optional", "unstable", "retired"];
 
-/** Every 表A feature id (49 items as of 任务 707 — the register mirrors the Go
+/** Every 表A feature id (78 items as of tl 1165 — the register mirrors the Go
  * labFeatureTiers registry; see the LAB_TIER_COUNTS note for the items
  * 562's original 46 missed). The union is the type-level gate: a badge
  * can only ever reference a feature that carries a tier. */
@@ -160,6 +160,10 @@ export type TierFeatureId =
   // 任务 959 ②: composer 发送目标选择器形态二选一（默认关=三按钮组，开=
   // 下拉框，复用 940 形态机制）。界面组「视图布局」卡成员。
   | "sendTargetSelect"
+  // tl 1165: 流式滚动平滑跟随（DSH ScrollFollow 同款：smooth 跟随+未完成
+  // 目标不发新请求+手势取消+reduced-motion 退化；默认关=瞬移定位逐字节
+  // 不变）。界面组「视图布局」卡成员。
+  | "smoothScrollFollow"
   // 任务 686: 工作流可视化面板（DAG 流程图 + 运行进展点亮，palette 入口；
   // 后端 685 编排引擎未落地，当前为前端 fixture 预览）。未稳定档（开发
   // 测试中），默认关=palette 逐字节不变。
@@ -326,6 +330,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 任务 959 ②：composer 发送目标形态二选一（默认关=三按钮组）。展示形态
   // 开关按 550 口径定可选——不开启时发送目标区与引入前逐字节一致（铁律 2）。
   sendTargetSelect: "optional",
+  // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线）。展示形态
+  // 开关按 550 口径定可选——不开启时流式滚动与引入前逐字节一致（铁律 2）。
+  smoothScrollFollow: "optional",
   // 任务 961：automation/efficiency 两张条目级合并卡容器档 = 成员最高档
   // （782 合并卡语义同源：smartAutomation 三成员全可选 → 可选；
   // interactionPresentation 快捷指令推荐压过两可选 → 推荐）。合并是入口层
@@ -399,11 +406,14 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 计数不变仍 66，同 tabManagement 豁免）。
  * tl 1132：startupSplash（启动遮罩，可选，Go 渲染表同步 +1 → 67）+
  * startupLoading（「启动与加载」纯前端容器 id，同 tabManagement 豁免）——
- * 可选 37→39、总数 75→77。 */
+ * 可选 37→39、总数 75→77。
+ * tl 1165：smoothScrollFollow（流式滚动平滑跟随，DSH ScrollFollow 同款四条
+ * 防线，默认关）按可选档入表——可选 39→40、总数 77→78（Go 渲染表同步
+ * 67→68）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 20,
-  optional: 39,
+  optional: 40,
   unstable: 13,
   retired: 1,
 };

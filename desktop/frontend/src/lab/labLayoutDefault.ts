@@ -235,7 +235,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.viewLayout",
           // tl 1125：视图布局合并卡升「推荐」（与标签页管理一并，同指令）。
           tier: "recommended",
-          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalDraftRewrite"],
+          onKeys: ["experimentalSplitView", "experimentalTrajectoryView", "experimentalSidebarHoverLeft", "experimentalSidebarHoverRight", "experimentalApprovalSelect", "experimentalTableWrap", "experimentalSendTargetSelect", "experimentalSmoothScrollFollow", "experimentalDraftRewrite"],
           members: [
             { id: "splitView", labelKey: "settings.splitView", tier: "optional" },
             { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
@@ -246,6 +246,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "tableWrap", labelKey: "settings.tableWrap", tier: "optional" },
             // 任务 959 ②：发送目标选择器形态二选一（默认关=三按钮组）。
             { id: "sendTargetSelect", labelKey: "settings.sendTargetSelect", tier: "optional" },
+            // tl 1165：流式滚动平滑跟随（DSH ScrollFollow 同款四条防线；默认
+            // 关=瞬移定位逐字节不变）。
+            { id: "smoothScrollFollow", labelKey: "settings.smoothScrollFollow", tier: "optional" },
             // 任务 1024：composer 草稿优化（默认关=改写按钮不出现、布局零变化）。
             { id: "draftRewrite", labelKey: "settings.draftRewrite", tier: "optional" },
           ],

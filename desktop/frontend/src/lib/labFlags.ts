@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "draftRewrite" | "startupSplash";
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "collabHub" | "trajectoryView" | "opencodeGoUsage" | "sidebarHoverLeft" | "sidebarHoverRight" | "workflowPanel" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "startupSplash";
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -74,6 +74,14 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // left/right/both button group is byte-for-byte unchanged. A flip applies
   // on settings save (no restart).
   sendTargetSelect: false,
+  // tl 1165: smooth streaming scroll follow (experimental_smooth_scroll_follow)
+  // ships off (铁律 2) — with it off every streaming tail write keeps the
+  // instant per-write positioning exactly as before, with no extra listeners
+  // or animations; on switches tail follow to native smooth scrollTo behind
+  // the DSH ScrollFollow guards (outstanding-target gate, reader-gesture
+  // cancel, reduced-motion instant fallback). A flip applies on settings
+  // save (no restart).
+  smoothScrollFollow: false,
   // 任务 1024：composer 草稿优化（发送左侧改写按钮）。默认关（铁律 2）——
   // 关闭时 composer 工具栏与引入前逐字节一致；保存即换态免重启。
   draftRewrite: false,
@@ -109,7 +117,7 @@ export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): v
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",
-    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} draftRewrite=${flags.draftRewrite} startupSplash=${flags.startupSplash}`,
+    `questionSearch=${flags.questionSearch} subagentTps=${flags.subagentTps} completionSummary=${flags.completionSummary} quickCommands=${flags.quickCommands} subagentPanel=${flags.subagentPanel} sessionWall=${flags.sessionWall} tabCompress=${flags.tabCompress} subagentDetail=${flags.subagentDetail} collabHub=${flags.collabHub} trajectoryView=${flags.trajectoryView} opencodeGoUsage=${flags.opencodeGoUsage} sidebarHoverLeft=${flags.sidebarHoverLeft} sidebarHoverRight=${flags.sidebarHoverRight} workflowPanel=${flags.workflowPanel} perfMonitor=${flags.perfMonitor} approvalSelect=${flags.approvalSelect} tableWrap=${flags.tableWrap} sendTargetSelect=${flags.sendTargetSelect} smoothScrollFollow=${flags.smoothScrollFollow} draftRewrite=${flags.draftRewrite} startupSplash=${flags.startupSplash}`,
   );
   for (const listener of listeners) listener();
 }
