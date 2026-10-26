@@ -1759,15 +1759,17 @@ export function ProjectTree({
             }]
           : []),
         { type: "separator" as const, key: "ctx-sep-group" },
-        // 分组整理（task 720/144）收进「分组 ▸」二级：各分组一行（当前组禁用）
-        // + 「移出分组」。tl 1149b 返修：行必须是本层的叶子——ContextMenu 只展开
-        // 一层 submenu，之前在二级里再嵌「移动到分组 ▸」整段点不动（nested 即
-        // disabled）；无分组可用时整个二级入口不渲染。
+        // 分组整理（task 720/144）：各分组一行（当前组禁用）+ 分隔线 +
+        // 「移出分组」（末尾出口）。tl 1168 返修：入口文案改动作语义「移动到
+        // 分组」（与项目行入口共用 projectGroup.moveInto 三语键），ContextMenu
+        // 的 submenu 自此是 hover 停留展开的浮动二级面板（点击=触屏、→/←=
+        // 键盘），分组叶子不再撑长一级菜单；仍只此一层——嵌套 submenu 照旧
+        // disabled；无分组可用时整个入口不渲染。
         ...(organizationItems.length > 0 ? [{
           type: "submenu" as const,
           key: "grouping",
           icon: <FolderInput size={13} />,
-          label: t("projectTree.grouping"),
+          label: t("projectGroup.moveInto"),
           items: organizationItems,
         }] : []),
         { type: "separator" as const, key: "ctx-sep-copy" },
