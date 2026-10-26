@@ -1612,6 +1612,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // Task 575: heavy-bash write guard under optimistic_write (ships off).
   // Task 815: lab optimistic-parallel card entry.
   SetExperimentalBashHeavyGuard(enabled: boolean): Promise<void>;
+  // tl-1166: reasoning-only final repair (ships on; restart to apply).
+  SetExperimentalReasoningOnlyContinuation(enabled: boolean): Promise<void>;
   // Task 163: OpenCode Go usage card switch + the usage query itself. baseUrl
   // is allow-listed host-side; off (the default) never reaches either call.
   SetExperimentalOpenCodeGoUsage(enabled: boolean): Promise<void>;
@@ -6522,6 +6524,7 @@ function makeMockApp(): AppBindings {
     },
     async SetExperimentalActiveTabResident() {},
     async SetExperimentalBashHeavyGuard() {},
+    async SetExperimentalReasoningOnlyContinuation() {},
     async SetExperimentalOpenCodeGoUsage() {},
     async GetOpenCodeGoUsage() { return { tiers: [], note: "no-key" }; },
     // Task 287: unsupported in the browser mock — plan surfaces stay hidden.

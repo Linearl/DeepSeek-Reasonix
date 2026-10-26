@@ -532,6 +532,10 @@ type SettingsView struct {
 	// 铁律 2). Task 815: settings-view mirror for the lab optimistic-parallel
 	// card entry.
 	ExperimentalBashHeavyGuard bool `json:"experimentalBashHeavyGuard"`
+	// tl-1166: reasoning-only final repair (B continuation reminder + C
+	// fallback body). Readback is the RESOLVED gate (config nil = on), so the
+	// toggle always writes an explicit value.
+	ReasoningOnlyContinuation bool `json:"reasoningOnlyContinuation"`
 	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
 	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
@@ -893,6 +897,10 @@ type DesktopStartupSettingsView struct {
 	// 铁律 2). Task 815: settings-view mirror for the lab optimistic-parallel
 	// card entry.
 	ExperimentalBashHeavyGuard bool `json:"experimentalBashHeavyGuard"`
+	// tl-1166: reasoning-only final repair (B continuation reminder + C
+	// fallback body). Readback is the RESOLVED gate (config nil = on), so the
+	// toggle always writes an explicit value.
+	ReasoningOnlyContinuation bool `json:"reasoningOnlyContinuation"`
 	// Task 163: OpenCode Go usage card switch (default false; 铁律 2).
 	ExperimentalOpenCodeGoUsage bool `json:"experimentalOpenCodeGoUsage"`
 	// ExperimentalFullAccess is the full-access (yolo) lab switch (task 257).
@@ -1743,6 +1751,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalActiveTabResident = cfg.Agent.ExperimentalActiveTabResident
 		// Task 575: heavy-bash write guard readback (task 815 lab entry).
 		view.ExperimentalBashHeavyGuard = cfg.Sandbox.ExperimentalBashHeavyGuard
+		// tl-1166: resolved readback (nil config key reads as on).
+		view.ReasoningOnlyContinuation = cfg.ReasoningOnlyContinuationEnabled()
 		// Task 163: usage card switch readback.
 		view.ExperimentalOpenCodeGoUsage = cfg.Agent.ExperimentalOpenCodeGoUsage
 		view.ExperimentalFullAccess = cfg.Agent.ExperimentalFullAccess
@@ -2034,7 +2044,9 @@ func (a *App) Settings() SettingsView {
 		// Task 192: residency policy readback.
 		ExperimentalActiveTabResident: cfg.Agent.ExperimentalActiveTabResident,
 		// Task 575: heavy-bash write guard readback (task 815 lab entry).
-		ExperimentalBashHeavyGuard:     cfg.Sandbox.ExperimentalBashHeavyGuard,
+		ExperimentalBashHeavyGuard: cfg.Sandbox.ExperimentalBashHeavyGuard,
+		// tl-1166: resolved readback (nil config key reads as on).
+		ReasoningOnlyContinuation:      cfg.ReasoningOnlyContinuationEnabled(),
 		ExperimentalFullAccess:         cfg.Agent.ExperimentalFullAccess,
 		ExperimentalToolOptimizations:  cfg.Agent.ExperimentalToolOptimizations,
 		ExperimentalMultiEditInjection: cfg.Agent.ExperimentalMultiEditInjection,

@@ -2208,6 +2208,19 @@ type AgentConfig struct {
 	SafetyLoopStreakNote   *bool `toml:"safety_loop_streak_note"`
 	SafetyEventWaitRecheck *bool `toml:"safety_event_wait_recheck"`
 
+	// ExperimentalReasoningOnlyContinuation (tl-1166): the reasoning-only
+	// final repair — a final that carries ONLY reasoning (empty visible
+	// answer) gets ONE host reminder to answer directly (B), and a still
+	// reasoning-only follow-up is displayed as a synthesized body holding
+	// both thinking segments (C). nil (the key absent from config.toml) means
+	// ENABLED: the switch only alters turns that are already broken (today
+	// they end with a blank answer), normal turns are byte-identical, and the
+	// whole flow is bounded to one continuation per turn. An explicit false
+	// restores the historical empty-body stop. Read through
+	// ReasoningOnlyContinuationEnabled() only — reading the raw pointer would
+	// silently miss the default.
+	ExperimentalReasoningOnlyContinuation *bool `toml:"experimental_reasoning_only_continuation"`
+
 	// ExperimentalOrphanHandling is the single merged orphan switch (task 449):
 	// it gates BOTH halves of the task-244 orphan flow — reclaiming a session
 	// lease whose recorded owner PID is dead (B5: crash leftover; a live

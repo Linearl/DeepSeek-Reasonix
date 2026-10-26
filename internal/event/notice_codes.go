@@ -145,6 +145,16 @@ const (
 	// durable queue keeps the item (it runs as the next turn's input), and the
 	// model never sees the notice.
 	NoticeCodeSteerDegraded = "steer_degraded"
+	// NoticeCodeReasoningOnlyContinuation (tl-1166 B): a final carried ONLY
+	// reasoning with an empty visible answer; the host injected ONE reminder
+	// asking the model to answer directly (its thinking stays in history).
+	// Informational — the continuation round follows immediately.
+	NoticeCodeReasoningOnlyContinuation = "reasoning_only_continuation"
+	// NoticeCodeReasoningOnlyFinal (tl-1166 C): the continuation still produced
+	// no visible answer, so the fallback body (both thinking segments,
+	// chronological) was synthesized into the assistant message. The notice
+	// card carries the retry action.
+	NoticeCodeReasoningOnlyFinal = "reasoning_only_final"
 )
 
 // 任务1079: high-frequency failure notices now carry an actionable next step

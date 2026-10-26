@@ -133,6 +133,10 @@ export function useTranscriptRowRenderer({
             // continuation prompt into the composer so the user drives the
             // next round by hand (same onPrompt shape as delivery continue).
             : row.item.action === "manual_continue" ? () => onPrompt(t("notice.retryExhaustedContinuePrompt"))
+              // tl-1166: the C fallback notice's retry button — the prompt IS
+              // the retry (no regenerate API); the model sees its synthesized
+              // body and answers again in the visible channel.
+              : row.item.action === "retry_reasoning_only" ? () => onPrompt(t("notice.reasoningOnlyRetryPrompt"))
               : row.item.code === "session_recovery_forked" && onConsolidateRecovery ? () => onConsolidateRecovery()
                 // Task 658: opens the same version dialog as the history
                 // panel's View versions button, via the topic fixed entry.

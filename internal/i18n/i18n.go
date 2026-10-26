@@ -41,7 +41,17 @@ type Messages struct {
 	CompletionUncertain    string // completion validator could not confirm the result; work is kept
 	ReasoningReplayRepair  string // provider rejected replayed thinking blocks; history repaired and retried once
 	// Host guard/recovery notices (event.Notice texts the fronts render verbatim).
-	EmptyFinal                       string // empty_final: no visible answer; retrying
+	EmptyFinal string // empty_final: no visible answer; retrying
+	// tl-1166: reasoning-only finals. ReasoningOnlyContinuation is the B
+	// reminder's info notice; ReasoningOnlyFinal is the C fallback warn notice
+	// (both thinking segments were synthesized into the message body);
+	// ReasoningOnlyFinalBody opens that body; the two segment labels head each
+	// thinking segment in chronological order.
+	ReasoningOnlyContinuation        string // reasoning_only_continuation
+	ReasoningOnlyFinal               string // reasoning_only_final
+	ReasoningOnlyFinalBody           string // opening marker of the C fallback body
+	ReasoningOnlyThinking1           string // first thinking segment label
+	ReasoningOnlyThinking2           string // second thinking segment label
 	ExecutorHandoff                  string // executor_handoff: answered without using tools
 	ToolBudget                       string // tool_budget: tool-call round limit reached
 	TaskBudget                       string // tool_budget variant: task spend budget reached

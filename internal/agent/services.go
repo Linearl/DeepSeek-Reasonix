@@ -116,6 +116,11 @@ type agentServices struct {
 	// loopStreakNote gates task 244 B2's neutral Continue. streak note
 	// (Options.LoopStreakNote → run_loop text-repeat branch).
 	loopStreakNote bool
+	// reasoningOnlyContinuation gates tl-1166's B continuation reminder and
+	// C fallback body (Options.ReasoningOnlyContinuation → run_loop /
+	// reasoning_only_final). On by default via config; off restores the
+	// historical empty-body stop.
+	reasoningOnlyContinuation bool
 	// feedbackNudge gates the task-172 feedback touchpoints
 	// (Options.FeedbackNudge → run_loop T1/T2 injection points). Boot passes
 	// the AND of both config switches, so the agent sees one ready-made dial.
@@ -151,37 +156,38 @@ func newAgentServices(
 	configWrite tool.ConfigWriteApprover, hooks ToolHooks, opts Options,
 ) agentServices {
 	return agentServices{
-		prov:                  prov,
-		modelResolver:         opts.ModelResolver,
-		tools:                 tools,
-		pricing:               opts.Pricing,
-		quoteContext:          opts.QuoteContext,
-		sink:                  sink,
-		gate:                  gate,
-		extensions:            opts.Extensions,
-		recoveryGate:          opts.RecoveryGate,
-		planTrust:             planTrust,
-		sandboxEscape:         sandboxEscape,
-		configWrite:           configWrite,
-		worktreeProjectOpener: opts.WorktreeProjectOpener,
-		hooks:                 hooks,
-		jobs:                  opts.Jobs,
-		memQueue:              opts.MemoryQueue,
-		writeScheduler:        opts.WriteScheduler,
-		workspaceLease:        opts.WorkspaceLease,
-		optimisticWrite:       opts.OptimisticWrite,
-		bashHeavyGuard:        opts.BashHeavyGuard,
-		loopStreakNote:        opts.LoopStreakNote,
-		feedbackNudge:         opts.FeedbackNudge,
-		collabReplyNudge:      opts.CollabReplyNudge,
-		warnState:             missingReasoningWarnStateFor(opts.MissingReasoningWarnStateDir),
-		mutationObserver:      opts.MutationObserver,
-		writeRoots:            opts.WriteRoots,
-		writeAccess:           opts.WriteAccessGate,
-		writeAccessExpandable: opts.SubagentDepth == 0 && !opts.DisableWriteAccessExpand,
-		workspaceRoot:         strings.TrimSpace(opts.WriteWorkspaceRoot),
-		sessionTemp:           opts.SessionTemp,
-		homeDir:               strings.TrimSpace(opts.HomeDir),
-		stateRoot:             strings.TrimSpace(opts.StateRoot),
+		prov:                      prov,
+		modelResolver:             opts.ModelResolver,
+		tools:                     tools,
+		pricing:                   opts.Pricing,
+		quoteContext:              opts.QuoteContext,
+		sink:                      sink,
+		gate:                      gate,
+		extensions:                opts.Extensions,
+		recoveryGate:              opts.RecoveryGate,
+		planTrust:                 planTrust,
+		sandboxEscape:             sandboxEscape,
+		configWrite:               configWrite,
+		worktreeProjectOpener:     opts.WorktreeProjectOpener,
+		hooks:                     hooks,
+		jobs:                      opts.Jobs,
+		memQueue:                  opts.MemoryQueue,
+		writeScheduler:            opts.WriteScheduler,
+		workspaceLease:            opts.WorkspaceLease,
+		optimisticWrite:           opts.OptimisticWrite,
+		bashHeavyGuard:            opts.BashHeavyGuard,
+		loopStreakNote:            opts.LoopStreakNote,
+		reasoningOnlyContinuation: opts.ReasoningOnlyContinuation,
+		feedbackNudge:             opts.FeedbackNudge,
+		collabReplyNudge:          opts.CollabReplyNudge,
+		warnState:                 missingReasoningWarnStateFor(opts.MissingReasoningWarnStateDir),
+		mutationObserver:          opts.MutationObserver,
+		writeRoots:                opts.WriteRoots,
+		writeAccess:               opts.WriteAccessGate,
+		writeAccessExpandable:     opts.SubagentDepth == 0 && !opts.DisableWriteAccessExpand,
+		workspaceRoot:             strings.TrimSpace(opts.WriteWorkspaceRoot),
+		sessionTemp:               opts.SessionTemp,
+		homeDir:                   strings.TrimSpace(opts.HomeDir),
+		stateRoot:                 strings.TrimSpace(opts.StateRoot),
 	}
 }

@@ -8,8 +8,14 @@ import { readPauseItem } from "./readPause";
 // manual route (history panel → select the conversation → View versions). The
 // inline button opens the same version dialog directly, so the notice carries
 // its own action instead of only describing one.
-function inlineActionForCode(code?: string): "view_versions" | undefined {
-  return code === "session_concurrent_writer" ? "view_versions" : undefined;
+// tl-1166: the C fallback notice (reasoning_only_final) carries the retry
+// action — one click drops a re-answer prompt into the composer (the
+// manual_continue pattern; there is no regenerate API, the prompt IS the
+// retry).
+function inlineActionForCode(code?: string): "view_versions" | "retry_reasoning_only" | undefined {
+  if (code === "session_concurrent_writer") return "view_versions";
+  if (code === "reasoning_only_final") return "retry_reasoning_only";
+  return undefined;
 }
 
 // 任务1079：六条高频失败提示的「怎么办」行——按 notice code 从 locale 词典
@@ -111,6 +117,10 @@ const noticeCodeKeys: Record<string, DictKey> = {
   // 路径的 steer_degraded notice 相同（消息将在下一轮发送，不会丢失），仅是
   // same-session 适配文案（无 messageId / get_message_status）。
   steer_degraded: "notice.steerDegraded",
+  // tl-1166: reasoning-only finals — B 的续写提醒（info）与 C 的保底合成正文
+  // 告警（warn，带重试按钮）。
+  reasoning_only_continuation: "notice.reasoningOnlyContinuation",
+  reasoning_only_final: "notice.reasoningOnlyFinal",
 };
 
 const streamInterruptReasonCodeKeys: Record<string, DictKey> = {

@@ -354,6 +354,18 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 		// HTTP 400 "Invalid request parameters" (#9566). Repair the arguments
 		// before the commit so the replayed body stays legal.
 		calls = repairTruncatedToolCallArgs(calls)
+		// tl-1166 C (fallback): once B's single continuation reminder is spent,
+		// a further reasoning-only final is converted into a visible body that
+		// carries BOTH thinking segments (the original turn's and the
+		// continuation round's, chronological order) — B failing must not cost
+		// the user the only answer they can see. Shape-gated: a round with tool
+		// calls / Responses items / server search did real work and is never
+		// rewritten.
+		if reasoningOnlyFinalShape(text, reasoning, calls, responsesItems, serverSearch) {
+			if synthesized, ok := a.maybeSynthesizeReasoningOnlyDisplay(state, text, reasoning); ok {
+				text = synthesized
+			}
+		}
 		// Keep reasoning_content on the assistant turn for display and session
 		// archive. Most OpenAI-compatible backends do not replay it; providers
 		// with an explicit round-trip contract retain the raw provider text.
@@ -374,7 +386,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
 		})
 
 		if len(calls) == 0 {
-			cont, ferr := a.handleFinalResponse(ctx, state, text, reasoning, usage)
+			cont, ferr := a.handleFinalResponse(ctx, state, text, reasoning, usage, responsesItems, serverSearch)
 			if !cont {
 				return ferr
 			}
@@ -461,7 +473,9 @@ func sleepRecovery(ctx context.Context, delay time.Duration) bool {
 // readiness boundary, empty-final retry, executor handoff nudge, steer drain,
 // and final compaction. cont=true continues the tool loop; cont=false returns
 // err from Run (err may be nil for a clean final answer).
-func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, text, reasoning string, usage *provider.Usage) (cont bool, err error) {
+// responsesItems/serverSearch ride along so the tl-1166 reasoning-only branch
+// can prove the round did NO structured work before injecting anything.
+func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, text, reasoning string, usage *provider.Usage, responsesItems []json.RawMessage, serverSearch []provider.ServerSearchCall) (cont bool, err error) {
 	if a.readPipelineActive() {
 		instruction, pause := a.readContinuation(true)
 		if pause != nil {
@@ -662,6 +676,22 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		return true, nil
 	}
 	if !hasVisibleFinalAnswer(text) {
+		// tl-1166 B (primary repair): the model ended with ONLY reasoning —
+		// the visible answer is empty while minutes of thinking carry the
+		// actual answer. Inject ONE host reminder (established
+		// HostGeneratedUserMessage channel) asking for a direct answer; the
+		// reasoning stays durable on the committed assistant message. Plan A
+		// (auto-retry the whole round via the empty-result判空 + retry
+		// whitelist) is REJECTED by design (user ruling 2026-10-26) and must
+		// not be reinstated here: reasoning is an attempt-level buffer that is
+		// NOT durable until the commit boundary, so a full-round retry would
+		// discard everything the model thought (5+ minutes of tokens and wall
+		// clock) and the fresh round may reason-only again. B keeps the
+		// thinking in history and pays one bounded continuation instead.
+		if reasoningOnlyFinalShape(text, reasoning, nil, responsesItems, serverSearch) &&
+			a.maybeInjectReasoningOnlyContinuation(state, reasoning, usage) {
+			return true, nil
+		}
 		// Harness-style termination accepts a reasoning-only clean stop. Only
 		// explicit internal callers that require visible output retain the
 		// bounded synthetic retry below. A truly empty response is classified

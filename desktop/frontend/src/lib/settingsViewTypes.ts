@@ -159,6 +159,10 @@ export interface SettingsView {
   // Task 575: heavy-bash write guard under optimistic_write (ships off).
   // Task 815: settings-view mirror for the lab optimistic-parallel card entry.
   experimentalBashHeavyGuard?: boolean;
+  // tl-1166: reasoning-only final repair (B continuation reminder + C
+  // fallback body). Readback is the resolved gate (config nil = on), so the
+  // toggle always writes an explicit value. Restart to apply.
+  reasoningOnlyContinuation?: boolean;
   // Task 163: OpenCode Go subscription usage card (ships off; no query while off).
   experimentalOpenCodeGoUsage?: boolean;
   // Task 257: full access (yolo) — all declared write dirs pass, bash unwrapped (ships off; restart to apply).
