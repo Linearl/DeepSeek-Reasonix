@@ -3,19 +3,42 @@
 package main
 
 // DXGI Desktop Duplication capture for the desktop screenshot button
-// (tl 1130 root fix). The previous path (GetDC(NULL) + BitBlt) is a probe-
-// verified dead end on modern Windows: BitBlt returns a stale GDI-mirror
-// snapshot that never picks up windows composited after the last mirror
-// refresh — including the screenshot overlay's own black loading frame, which
-// is exactly the all-black capture the user saw. Desktop duplication hands
-// back the DWM-composed frame directly, so every visible window (WebView2
-// included) is in the pixels.
+// (tl 1130, reworked tl-1130b). The first shipping round still produced
+// all-black captures on the user's machine; this round reproduced the black
+// capture on the dev machine itself (live test: 100% near-black) and traced
+// it to two silent failure modes the old code had no defense against:
+//
+//  1. DPI-caliber split. The staging texture was sized from the output's
+//     desktop rectangle — which follows the *process user32 caliber*. In a
+//     DPI-virtualized process that rect is scaled down (1280x800) while the
+//     duplicated frame is the monitor's physical size (1920x1200);
+//     CopyResource(dst, src) with mismatched sizes fails WITHOUT a usable
+//     error and Map hands back an all-zero texture. Probe-verified: the
+//     mismatch experiment returns hr=0 yet 100% near-black pixels.
+//  2. Static-desktop placeholder delivery. The first AcquireNextFrame after
+//     DuplicateOutput hands back a black placeholder (LastPresentTime == 0,
+//     probe: 100% near-black). The old retry loop "best"-fell back to exactly
+//     that placeholder when the desktop was static (no new frames within the
+//     timeout), returning a black PNG with err == nil — the signature the
+//     user saw on a quiet desktop. (A dev machine with live terminal
+//     windows never sits still, which is why the machine-level probe never
+//     caught it.)
+//
+// The reworked chain therefore: reads the frame's real geometry and format
+// from IDXGIOutputDuplication::GetDesc (physical ModeDesc, immune to the
+// caliber split; rejects non-8bpp-BGRA formats such as HDR FP16 outright —
+// probe also showed a format mismatch copies silently as black), and treats
+// placeholder/black frames as non-deliverable: a capture either returns a
+// genuinely lit frame or an error the caller falls back on (BitBlt), never a
+// black PNG dressed up as success.
 //
 // Pure syscall, no CGO — same style as screenshot_screen_windows.go. COM
 // interface calls go through explicit vtable slots; every slot index below
-// was taken from the Windows 10 SDK declaration blocks (shared/dxgi.h,
-// shared/dxgi1_2.h, um/d3d11.h) and pinned by unit test, then verified live
-// on a real session (live test + probe PNGs in the wt tmp dir).
+// was re-counted this round from the Windows 10 SDK headers shipped on this
+// machine (shared/dxgi.h, shared/dxgi1_2.h COBJMACROS macro order) and
+// pinned by unit test: IDXGIFactory1::EnumAdapters1=12, IDXGIOutput::GetDesc=7,
+// IDXGIOutput1::DuplicateOutput=22, IDXGIOutputDuplication::AcquireNextFrame=8
+// /ReleaseFrame=14/GetDesc=7.
 //
 // The duplication chain (D3D11 device + output duplication) is rebuilt per
 // capture: screenshot captures are user-gesture frequency, and per-call
@@ -25,6 +48,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"log/slog"
 	"os"
 	"syscall"
 	"time"
@@ -40,10 +64,23 @@ const (
 	dxgiErrorWaitTimeout    = 0x887A0027
 	coinitMultithreaded     = 0x0
 	// AcquireNextFrame timeout (ms): the first frame after DuplicateOutput is
-	// delivered immediately; a second frame only shows up on the next desktop
-	// change, so a short wait + stale-first-frame semantics is fine for a
-	// gesture-frequency capture.
+	// delivered immediately; later frames only appear on desktop changes.
 	dxgiAcquireTimeoutMs = 200
+	// liveFrameAttempts bounds the placeholder/timeout retry loop. Worst case
+	// ~6 × (200ms timeout + 33ms gap) ≈ 1.4s, still under a gesture-visible
+	// hang; a static desktop exhausts it and the caller falls back to BitBlt.
+	liveFrameAttempts = 6
+	// A frame counts as "black" when every sampled pixel channel is < 8 and
+	// black pixels exceed this ratio. Real desktops — even dark-themed ones —
+	// carry window edges, taskbar icons and text far above channel 8, so
+	// 99.9% near-black is only reachable by placeholder/uninitialized
+	// textures (probe: placeholder frames measure exactly 100%).
+	nearBlackChannelMax  = 8
+	nearBlackRatioReject = 0.999
+	// nearBlackPixelStride samples every Nth pixel: statistical verdict over
+	// 2.3M pixels does not need every one of them, and the loop drops from
+	// ~10ms to ~1ms at stride 4.
+	nearBlackPixelStride = 4
 )
 
 // COM vtable slots (0-based, x64). IUnknown is identical on every interface;
@@ -65,7 +102,8 @@ const (
 
 	idxgiOutput1DuplicateOutput = 22 // Output1 own methods: GetDisplayModeList1(19)..GetDisplaySurfaceData1(21), DuplicateOutput last
 
-	idxgiDuplAcquireNextFrame = 8  // IDXGIObject(3..6) + GetDesc(7)
+	idxgiDuplGetDesc          = 7  // IDXGIOutputDuplication::GetDesc (DXGI_OUTDUPL_DESC)
+	idxgiDuplAcquireNextFrame = 8  // AcquireNextFrame first of the own block
 	idxgiDuplReleaseFrame     = 14 // AcquireNextFrame(8)..UnMapDesktopSurface(13), ReleaseFrame last
 
 	d3d11DeviceCreateTexture2D = 5  // after CreateBuffer(3), CreateTexture1D(4)
@@ -154,12 +192,12 @@ func hrOK(r uintptr) bool { return int32(r) >= 0 }
 // RECT, Monitor HMONITOR, Rotation, BitsPerColor, ColorSpace) — the tail
 // fields after Monitor are padding-only for our use.
 type dxgiOutputDesc struct {
-	deviceName        [32]uint16
+	deviceName         [32]uint16
 	desktopCoordinates struct{ left, top, right, bottom int32 }
-	monitor           uintptr
-	rotation          uint32
-	bitsPerColor      uint32
-	colorSpace        uint32
+	monitor            uintptr
+	rotation           uint32
+	bitsPerColor       uint32
+	colorSpace         uint32
 }
 
 type d3d11TextureDesc struct {
@@ -182,6 +220,23 @@ type d3d11MappedSubresource struct {
 	depthPitch uint32
 }
 
+// dxgiDuplDesc mirrors DXGI_OUTDUPL_DESC (40 bytes, dxgi1_2.h): ModeDesc is
+// DXGI_MODE_DESC (Width, Height, RefreshRate RATIONAL{num,den}, Format,
+// ScanlineOrdering, Scaling), followed by Rotation and
+// DesktopImageInSystemMemory. Width/Height are the duplicated frame's PHYSICAL
+// pixel size — unlike IDXGIOutput's DesktopCoordinates, which follows the
+// process's user32 DPI caliber and is virtualized (scaled down) in a
+// DPI-unaware process.
+type dxgiDuplDesc struct {
+	width, height           uint32
+	refreshNum, refreshDen  uint32
+	format                  uint32
+	scanlineOrdering        uint32
+	scaling                 uint32
+	rotation                uint32
+	desktopImageInSystemMem uint32
+}
+
 // dxgiSession bundles the duplication chain for one capture call: a device
 // created on the output's own adapter plus the duplication interface. Every
 // field is released by close().
@@ -189,10 +244,20 @@ type dxgiSession struct {
 	device      unsafe.Pointer
 	context     unsafe.Pointer
 	duplication unsafe.Pointer
-	width       int
-	height      int
-	originX     int
-	originY     int
+	// width/height/origin keep the output's user32-caliber desktop rectangle:
+	// the caliber the overlay's coordinate mapping speaks (same process, same
+	// GetCursorPos/GetMonitorInfo numbers), unchanged from the BitBlt era.
+	width   int
+	height  int
+	originX int
+	originY int
+	// modeWidth/modeHeight/modeFormat come from the duplication's own
+	// DXGI_OUTDUPL_DESC: the frame's physical geometry and surface format.
+	// Staging is built from these — never from the rect, which split calibers
+	// in DPI-virtualized processes and silently copied into a black texture.
+	modeWidth  int
+	modeHeight int
+	modeFormat uint32
 }
 
 func (s *dxgiSession) close() {
@@ -306,6 +371,37 @@ func duplicateOnOutput(o *dxgiAdapterOutput) (*dxgiSession, error) {
 	d.originY = int(o.desc.desktopCoordinates.top)
 	d.width = int(o.desc.desktopCoordinates.right - o.desc.desktopCoordinates.left)
 	d.height = int(o.desc.desktopCoordinates.bottom - o.desc.desktopCoordinates.top)
+
+	// The duplication's own GetDesc is the frame's ground truth: physical
+	// ModeDesc size and the real surface format. Every silent-black mode this
+	// file guards against is caught here, before any pixel is copied.
+	var dd dxgiDuplDesc
+	if r := vcall(duplication, idxgiDuplGetDesc, uintptr(unsafe.Pointer(&dd))); !hrOK(r) {
+		d.close()
+		return nil, fmt.Errorf("IDXGIOutputDuplication::GetDesc failed: 0x%x", r)
+	}
+	d.modeWidth, d.modeHeight, d.modeFormat = int(dd.width), int(dd.height), dd.format
+	if d.modeWidth <= 0 || d.modeHeight <= 0 {
+		d.close()
+		return nil, fmt.Errorf("duplication reports an empty mode (%dx%d)", d.modeWidth, d.modeHeight)
+	}
+	if d.modeWidth != d.width || d.modeHeight != d.height {
+		// DPI caliber split: this process's user32 view of the monitor is
+		// virtualized, so the overlay's selection coordinates could not be
+		// mapped onto the physical frame anyway. Fail loudly (BitBlt speaks
+		// the same user32 caliber and stays correct) instead of CopyResource-
+		// failing silently into black pixels.
+		d.close()
+		return nil, fmt.Errorf("dpi caliber mismatch: duplication frame %dx%d vs user32 rect %dx%d (virtualized process)",
+			d.modeWidth, d.modeHeight, d.width, d.height)
+	}
+	if d.modeFormat != dxgiFormatB8G8R8A8Unorm {
+		// HDR / AdvancedColor outputs hand back FP16 or R10G10B10A2; a
+		// B8G8R8A8 staging copy of those is hr=0 but all-zero pixels
+		// (probe-verified). Say so instead of delivering black.
+		d.close()
+		return nil, fmt.Errorf("unsupported capture format %d (HDR advanced color); only 87 (B8G8R8A8) is decoded", d.modeFormat)
+	}
 	return d, nil
 }
 
@@ -335,11 +431,11 @@ func (s *dxgiSession) acquireFrame() ([]uint8, int64, error) {
 	defer comRelease(texture)
 
 	stagingDesc := d3d11TextureDesc{
-		width:          uint32(s.width),
-		height:         uint32(s.height),
+		width:          uint32(s.modeWidth),
+		height:         uint32(s.modeHeight),
 		mipLevels:      1,
 		arraySize:      1,
-		format:         dxgiFormatB8G8R8A8Unorm,
+		format:         dxgiFormatB8G8R8A8Unorm, // duplicateOnOutput rejected any other mode format
 		sampleCount:    1,
 		usage:          d3d11UsageStaging,
 		cpuAccessFlags: d3d11CpuAccessRead,
@@ -351,7 +447,9 @@ func (s *dxgiSession) acquireFrame() ([]uint8, int64, error) {
 	defer comRelease(staging)
 
 	// ID3D11DeviceContext::CopyResource (dst, src) copies the desktop texture
-	// into the CPU-readable staging texture.
+	// into the CPU-readable staging texture. Sizes/formats match the frame by
+	// construction (both from the duplication's own mode), which is what makes
+	// a silent empty-copy impossible from here on.
 	vcall(s.context, d3d11ContextCopyResource, uintptr(staging), uintptr(texture))
 
 	var mapped d3d11MappedSubresource
@@ -363,38 +461,99 @@ func (s *dxgiSession) acquireFrame() ([]uint8, int64, error) {
 	defer vcall(s.context, d3d11ContextUnmap, uintptr(staging), 0)
 
 	rowBytes := int(mapped.rowPitch)
-	out := make([]uint8, s.width*s.height*4)
-	src := unsafe.Slice((*uint8)(mapped.data), rowBytes*s.height)
-	for y := 0; y < s.height; y++ {
-		copy(out[y*s.width*4:(y+1)*s.width*4], src[y*rowBytes:y*rowBytes+s.width*4])
+	out := make([]uint8, s.modeWidth*s.modeHeight*4)
+	src := unsafe.Slice((*uint8)(mapped.data), rowBytes*s.modeHeight)
+	for y := 0; y < s.modeHeight; y++ {
+		copy(out[y*s.modeWidth*4:(y+1)*s.modeWidth*4], src[y*rowBytes:y*rowBytes+s.modeWidth*4])
 	}
 	return out, lastPresent, nil
 }
 
-// acquireLiveFrame takes the first REAL desktop frame. The driver hands back
-// a black placeholder for the first AcquireNextFrame after DuplicateOutput
-// (LastPresentTime == 0 — the probe measured 100% near-black on it), so the
-// placeholder is dropped and the next composited frame is taken; a timeout
-// with an already-held frame is not fatal (a static desktop produces no new
-// frames).
+// nearBlackRatio samples a 4-bytes-per-pixel buffer (BGRA or RGBA — the
+// verdict only reads the three color channels, which are all three of them
+// below the threshold in either layout) and returns the fraction of pixels
+// whose channels are all under nearBlackChannelMax. This is the shared
+// all-black verdict for the duplication path and the BitBlt fallback.
+func nearBlackRatio(pix []uint8, w, h int) float64 {
+	if w <= 0 || h <= 0 {
+		return 1
+	}
+	sampled, black := 0, 0
+	for y := 0; y < h; y++ {
+		row := pix[y*w*4 : (y+1)*w*4]
+		for x := 0; x < w; x += nearBlackPixelStride {
+			i := x * 4
+			sampled++
+			if row[i] < nearBlackChannelMax && row[i+1] < nearBlackChannelMax && row[i+2] < nearBlackChannelMax {
+				black++
+			}
+		}
+	}
+	if sampled == 0 {
+		return 1
+	}
+	return float64(black) / float64(sampled)
+}
+
+// liveFrameVerdict is the accept/deliver decision for one acquired
+// duplication frame: LastPresentTime==0 is the driver's black placeholder
+// (probe: exactly 100% near-black), and a real-time frame that is still all
+// black is a silent copy failure — neither may ever be delivered as a
+// success. Two consecutive real-time black frames mean the environment is
+// blacking frames structurally (stop retrying, fall back).
+func liveFrameVerdict(lastPresent int64, blackRatio float64, blackFrames int) (deliver bool, keepWaiting bool, blackFramesOut int) {
+	if lastPresent == 0 {
+		return false, true, blackFrames // placeholder frame: never deliverable
+	}
+	if blackRatio > nearBlackRatioReject {
+		blackFrames++
+		if blackFrames >= 2 {
+			return false, false, blackFrames
+		}
+		return false, true, blackFrames
+	}
+	return true, false, blackFrames
+}
+
+// acquireLiveFrame takes the first REAL desktop frame: LastPresentTime != 0
+// and not all-black. The tl-1130 first round delivered its "best" buffer on
+// timeout — which on a static desktop is precisely the black placeholder —
+// as a success; that path is gone. Now: placeholder frames are skipped, a
+// single real-time black frame is retried once, a second is a hard stop, and
+// an exhausted budget (static desktop: no new frames arrive) is an explicit
+// error the caller answers with the BitBlt fallback. A capture either
+// returns lit pixels or an error — never black dressed up as success.
 func (s *dxgiSession) acquireLiveFrame() ([]uint8, error) {
-	var best []uint8
-	for attempt := 0; attempt < 4; attempt++ {
+	blackFrames := 0
+	var lastErr error
+	for attempt := 0; attempt < liveFrameAttempts; attempt++ {
 		pix, present, err := s.acquireFrame()
 		if err != nil {
-			if best != nil {
-				return best, nil
-			}
-			return nil, err
+			// WAIT_TIMEOUT on a quiet desktop is the expected shape here; the
+			// budget loop rides it out in case the overlay/gesture produces a
+			// frame after all.
+			lastErr = err
+			time.Sleep(33 * time.Millisecond) // wait out one DWM frame
+			continue
 		}
-		best = pix
 		s.releaseFrame()
-		if present != 0 {
+		ratio := nearBlackRatio(pix, s.modeWidth, s.modeHeight)
+		deliver, wait, bf := liveFrameVerdict(present, ratio, blackFrames)
+		blackFrames = bf
+		slog.Info("[screenshot] duplication frame verdict",
+			"attempt", attempt, "lastPresent", present, "nearBlack", fmt.Sprintf("%.4f", ratio),
+			"deliver", deliver, "blackFramesSoFar", blackFrames)
+		if deliver {
 			return pix, nil
 		}
-		time.Sleep(33 * time.Millisecond) // wait out one DWM frame
+		if !wait {
+			return nil, fmt.Errorf("desktop duplication keeps returning all-black frames (near-black %.3f, %d in a row)", ratio, blackFrames)
+		}
 	}
-	return best, nil
+	if lastErr != nil {
+		return nil, fmt.Errorf("no live desktop frame within budget (static desktop?): %v", lastErr)
+	}
+	return nil, fmt.Errorf("no live desktop frame within budget")
 }
 
 // releaseFrame closes the duplication frame so the OS can keep compositing.
@@ -466,6 +625,8 @@ func dxgiCaptureAtCursor(outputPath string, targetHmon uintptr, left, top, right
 		}
 		session, err := duplicateOnOutput(o)
 		if err != nil {
+			// Caliber/format/duplication failures are the fallback's cue, not
+			// a capture result; the caller answers with BitBlt and logs why.
 			return 0, 0, 0, 0, err
 		}
 		pix, err := session.acquireLiveFrame()
@@ -473,12 +634,17 @@ func dxgiCaptureAtCursor(outputPath string, targetHmon uintptr, left, top, right
 			session.close()
 			return 0, 0, 0, 0, err
 		}
-		encErr := encodePNG(outputPath, bgraToRGBAImage(pix, session.width, session.height))
+		// modeWidth/Height == width/height here (duplicateOnOutput rejects a
+		// caliber split), and the PNG pixel size must equal the geometry the
+		// overlay receives: the frontend crops by mapping selection
+		// coordinates straight onto image pixels.
+		encErr := encodePNG(outputPath, bgraToRGBAImage(pix, session.modeWidth, session.modeHeight))
+		w, h, ox, oy := session.modeWidth, session.modeHeight, session.originX, session.originY
 		session.close()
 		if encErr != nil {
 			return 0, 0, 0, 0, encErr
 		}
-		return session.width, session.height, session.originX, session.originY, nil
+		return w, h, ox, oy, nil
 	}
 	return 0, 0, 0, 0, fmt.Errorf("no DXGI output for the cursor monitor (hmon 0x%x)", targetHmon)
 }
@@ -500,23 +666,28 @@ func dxgiCaptureVirtualDesktop(outputPath string, m ScreenMetrics) error {
 		}
 	}()
 	canvas := image.NewRGBA(image.Rect(0, 0, m.Width, m.Height))
-	captured := 0
+	captured, failedReasons := 0, 0
+	var lastFail error
 	for i := range outputs {
 		o := &outputs[i]
 		session, err := duplicateOnOutput(o)
 		if err != nil {
+			lastFail = err
+			failedReasons++
 			continue
 		}
 		pix, err := session.acquireLiveFrame()
 		if err != nil {
 			session.close()
+			lastFail = err
+			failedReasons++
 			continue
 		}
 		// Paste the frame at its virtual-desktop origin. The canvas is in
 		// pixels and both sides are physical coordinates (PMv2), so the copy
 		// is byte-for-byte.
-		rowBytes := session.width * 4
-		for y := 0; y < session.height; y++ {
+		rowBytes := session.modeWidth * 4
+		for y := 0; y < session.modeHeight; y++ {
 			canvasY := y + session.originY - m.Y
 			if canvasY < 0 || canvasY >= m.Height {
 				continue
@@ -524,7 +695,7 @@ func dxgiCaptureVirtualDesktop(outputPath string, m ScreenMetrics) error {
 			src := pix[y*rowBytes : y*rowBytes+rowBytes]
 			dstX := session.originX - m.X
 			dst := canvas.Pix[canvasY*canvas.Stride:]
-			for x := 0; x < session.width; x++ {
+			for x := 0; x < session.modeWidth; x++ {
 				px := dstX + x
 				if px < 0 || px >= m.Width {
 					continue
@@ -541,7 +712,13 @@ func dxgiCaptureVirtualDesktop(outputPath string, m ScreenMetrics) error {
 		captured++
 	}
 	if captured == 0 {
+		if lastFail != nil {
+			return fmt.Errorf("desktop duplication failed on every output (%d attempts): %w", failedReasons, lastFail)
+		}
 		return fmt.Errorf("desktop duplication failed on every output")
+	}
+	if failedReasons > 0 {
+		slog.Warn("[screenshot] virtual-desktop stitch partially degraded", "captured", captured, "failed", failedReasons, "lastError", fmt.Sprint(lastFail))
 	}
 	return encodePNG(outputPath, canvas)
 }
