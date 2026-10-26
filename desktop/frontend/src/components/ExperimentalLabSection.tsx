@@ -231,9 +231,13 @@ function LogManagementLabPane({ s, busy, apply }: { s: SettingsView; busy: boole
         <p className="settings-field__hint" data-testid="alert-log-usage">{usageText}</p>
       )}
       <SettingsField label={t("settings.logManagement.openDirLabel")} icon={<Folder size={18} />} stacked>
+        {/* tl 1180: `set-seg__btn` is a CHILD class of `.set-seg` (the segmented
+            control's inner button). Used standalone it inherits no frame, border
+            or background and reads as bare clickable text. Use the same standard
+            secondary button every other action on this pane uses. */}
         <button
           type="button"
-          className="set-seg__btn"
+          className="btn btn--secondary btn--small"
           disabled={busy}
           onClick={() => void apply(async () => { await app.OpenLogDir(); })}
         >
