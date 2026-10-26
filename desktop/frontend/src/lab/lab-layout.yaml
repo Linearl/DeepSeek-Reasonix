@@ -444,10 +444,7 @@ groups:
         labelKey: settings.runtimeReuse
         tier: stable
         onKeys: [experimentalRuntimeReuse]
-      - id: zcodeTaskBus
-        labelKey: settings.zcodeTaskBus
-        tier: unstable
-        onKeys: [experimentalZcodeTaskBus]
+      # tl-1048：zcodeTaskBus 随 8787 任务总线退役出 rail（原 unstable）。
       # 任务 790：ACP 常驻监听（loopback TCP，每连接独立 client 面；默认关，
       # 重启生效）。815：tier optional→unstable——修正与内置 default/前端注册
       # 表/Go labFeatureTiers 三方的既有漂移（722 同构锚要求 yaml=default）。
