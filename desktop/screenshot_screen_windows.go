@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"log/slog"
 	"os"
 	"runtime"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -232,6 +234,17 @@ func captureScreenRectToPNG(outputPath string, left, top, right, bottom int32) (
 		}
 	}
 
+	// All-black defense (tl-1130b): the first two shipping rounds delivered
+	// black PNGs because the capture paths had no verdict on their own pixels.
+	// A GDI mirror that never refreshed (fullscreen-exclusive / driver quirk /
+	// protected desktop) blits out a fully black DIB with hr == 0 — pass that
+	// on as an error so the caller surfaces a visible failure instead of a
+	// black overlay. nearBlackRatio reads only the three color channels, so it
+	// accepts this RGBA layout unchanged.
+	if ratio := nearBlackRatio(img.Pix, w, h); ratio > nearBlackRatioReject {
+		return 0, 0, fmt.Errorf("BitBlt produced an all-black frame (near-black %.3f; GDI mirror unavailable — fullscreen exclusive, driver block, or protected desktop)", ratio)
+	}
+
 	f, err := os.Create(outputPath)
 	if err != nil {
 		return 0, 0, fmt.Errorf("create %s: %w", outputPath, err)
@@ -243,30 +256,68 @@ func captureScreenRectToPNG(outputPath string, left, top, right, bottom int32) (
 	return w, h, nil
 }
 
+// Capture-path seams: indirection points the fallback-chain tests swap to
+// script dxgi/bitblt outcomes without a desktop session. Production always
+// sees the real implementations below.
+var (
+	dxgiCaptureAtCursorFn = dxgiCaptureAtCursor
+	blitCaptureRectFn     = captureScreenRectToPNG
+)
+
 // captureScreenAtCursor captures the full screen of the monitor holding the
-// mouse cursor into outputPath, returning the pixel size and virtual-desktop
+// cursor into outputPath, returning the pixel size and virtual-desktop
 // origin of the captured display so the overlay can map its client
 // coordinates onto screenshot pixels.
 //
-// tl 1130: the primary path is DXGI desktop duplication — the probe verified
-// the legacy BitBlt path returns a stale GDI-mirror snapshot that misses
-// windows composited after the mirror's last refresh (the user-visible
-// all-black capture). BitBlt stays as the degraded backstop for machines
-// where duplication cannot start (RDP sessions, driver blocks).
+// tl 1130: the primary path is DXGI desktop duplication; tl-1130b hardens it
+// — frame geometry/format from the duplication's own mode descriptor, and a
+// pixel-level black-frame verdict so neither a placeholder frame nor a
+// silently-empty staging copy can ship as a black PNG. Every failure reason
+// is logged (logs\desktop\desktop.log) before the BitBlt fallback runs, and
+// BitBlt carries the same all-black defense: a capture that would come out
+// black is an error, never a success the user sees as a black overlay.
 func captureScreenAtCursor(outputPath string) (w, h, originX, originY int, err error) {
 	hmon, left, top, right, bottom, err := cursorMonitorHandle()
 	if err != nil {
+		slog.Warn("[screenshot] cursor monitor resolution failed", "error", err)
 		return 0, 0, 0, 0, err
 	}
-	if w, h, originX, originY, err = dxgiCaptureAtCursor(outputPath, hmon, left, top, right, bottom); err == nil {
+	dxgiStart := time.Now()
+	w, h, originX, originY, dxgiErr := dxgiCaptureAtCursorFn(outputPath, hmon, left, top, right, bottom)
+	if dxgiErr == nil {
+		logScreenshotOutcome("dxgi", time.Since(dxgiStart), w, h, nil)
 		return w, h, originX, originY, nil
 	}
-	// Legacy fallback: same BitBlt blit the tl 1087 path used.
-	w, h, err = captureScreenRectToPNG(outputPath, left, top, right, bottom)
+	slog.Warn("[screenshot] desktop duplication path failed; falling back to BitBlt",
+		"error", dxgiErr, "elapsed", time.Since(dxgiStart).String(),
+		"hmon", fmt.Sprintf("0x%x", hmon), "rect", fmt.Sprintf("(%d,%d)-(%d,%d)", left, top, right, bottom))
+
+	// Legacy fallback: same BitBlt blit the tl 1087 path used (with its own
+	// all-black defense, so an unavailable GDI mirror surfaces as an error).
+	blitStart := time.Now()
+	w, h, err = blitCaptureRectFn(outputPath, left, top, right, bottom)
 	if err != nil {
-		return 0, 0, 0, 0, err
+		slog.Warn("[screenshot] BitBlt fallback also failed — capture is unavailable on this machine",
+			"error", err, "dxgiError", dxgiErr, "elapsed", time.Since(blitStart).String())
+		return 0, 0, 0, 0, fmt.Errorf("%v (duplication: %v)", err, dxgiErr)
 	}
+	logScreenshotOutcome("bitblt", time.Since(blitStart), w, h, nil)
 	return w, h, int(left), int(top), nil
+}
+
+// logScreenshotOutcome records a successful capture. Successes are logged
+// only with REASONIX_SCREENSHOT_DEBUG=1 (failures always log — the point of
+// the user-side evidence trail is that a black or failed capture leaves a
+// line behind even when the user cannot reproduce it on demand).
+func logScreenshotOutcome(path string, elapsed time.Duration, w, h int, extra error) {
+	if os.Getenv("REASONIX_SCREENSHOT_DEBUG") != "1" {
+		return
+	}
+	kv := []any{"path", path, "elapsed", elapsed.String(), "width", w, "height", h}
+	if extra != nil {
+		kv = append(kv, "note", fmt.Sprint(extra))
+	}
+	slog.Info("[screenshot] capture ok", kv...)
 }
 
 // screenMetricsAtCursor reports the bounds of the monitor holding the cursor
@@ -308,21 +359,28 @@ func virtualScreenMetrics() (ScreenMetrics, error) {
 // captureVirtualScreenPNG captures the entire virtual desktop (all monitors)
 // — tl 1088's cross-monitor capture primitive. tl 1130: per-output desktop
 // duplication frames are stitched into one PNG (duplication is per-output by
-// design); BitBlt stays as the degraded backstop.
+// design); BitBlt stays as the degraded backstop — both paths behind the
+// tl-1130b black-frame defenses, failures logged for the evidence trail.
 func captureVirtualScreenPNG(outputPath string) (ScreenMetrics, error) {
 	m, err := virtualScreenMetrics()
 	if err != nil {
 		return ScreenMetrics{}, err
 	}
+	dxgiStart := time.Now()
 	if derr := dxgiCaptureVirtualDesktop(outputPath, m); derr == nil {
+		logScreenshotOutcome("dxgi-virtual", time.Since(dxgiStart), m.Width, m.Height, nil)
 		// The stitched canvas is exactly the virtual-desktop pixel size
 		// (physical coordinates both sides, PMv2 process).
 		return m, nil
+	} else {
+		slog.Warn("[screenshot] desktop duplication stitch failed; falling back to BitBlt",
+			"error", derr, "elapsed", time.Since(dxgiStart).String())
 	}
 	w, h, err := captureScreenRectToPNG(outputPath, int32(m.X), int32(m.Y), int32(m.X+m.Width), int32(m.Y+m.Height))
 	if err != nil {
 		return ScreenMetrics{}, err
 	}
+	logScreenshotOutcome("bitblt-virtual", time.Since(dxgiStart), w, h, nil)
 	m.Width, m.Height = w, h
 	return m, nil
 }

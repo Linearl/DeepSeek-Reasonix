@@ -14,6 +14,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -154,10 +155,13 @@ func TestDXGIEncodePNGOutputIsDecodable(t *testing.T) {
 // TestDXGILiveCapture is the live-desktop integration half, gated behind
 // TL1130_LIVE_CAPTURE=1 because a headless CI runner has no desktop session
 // to duplicate (this is an explicit opt-in gate, not a silent skip: with the
-// variable set on a real session the test must pass). It proves the full
-// chain — monitor resolution, output matching, duplication, pixel readback —
-// and asserts the captured frame is not the all-black frame the legacy BitBlt
-// path produced (probe reading: a live desktop is ~0% near-black).
+// variable set on a real session the test must pass). It pins the product
+// contract after the tl-1130b rework: the full chain (captureScreenAtCursor)
+// always delivers a genuinely lit frame — via duplication when the calibers
+// line up, via the BitBlt fallback when the duplication path refuses (DPI
+// caliber split, HDR format, static desktop) — and the duplication path
+// itself must either deliver or refuse with a NAMED reason, never hand back
+// the all-black placeholder the first round shipped as a success.
 func TestDXGILiveCapture(t *testing.T) {
 	if os.Getenv("TL1130_LIVE_CAPTURE") != "1" {
 		t.Skip("live desktop capture is opt-in: run with TL1130_LIVE_CAPTURE=1 on a real session")
@@ -195,10 +199,33 @@ func TestDXGILiveCapture(t *testing.T) {
 		}
 	}
 
+	// The duplication path alone may legitimately refuse on this machine —
+	// but only for a named, understood reason (the silent-black modes are
+	// exactly what tl-1130b closed). Anything else is a regression.
+	dxgiPath := t.TempDir() + "/dxgi.png"
+	_, _, _, _, dxgiErr := dxgiCaptureAtCursor(dxgiPath, hmon, left, top, right, bottom)
+	if dxgiErr == nil {
+		t.Logf("duplication delivered on this machine (calibers aligned)")
+	} else {
+		named := strings.Contains(dxgiErr.Error(), "dpi caliber mismatch") ||
+			strings.Contains(dxgiErr.Error(), "unsupported capture format") ||
+			strings.Contains(dxgiErr.Error(), "no live desktop frame") ||
+			strings.Contains(dxgiErr.Error(), "all-black frames") ||
+			strings.Contains(dxgiErr.Error(), "no DXGI output")
+		t.Logf("duplication refused (ok, fallback answers): %v", dxgiErr)
+		if !named {
+			t.Errorf("duplication failed with an UNNAMED error — not one of the guarded modes: %v", dxgiErr)
+		}
+	}
+
+	// The product contract: the full chain returns a lit frame no matter
+	// which path served it. Sample the decoded PNG and require a genuinely
+	// lit frame with a wide margin — the pre-tl1130b code produced 100%
+	// near-black right here, which is the regression signature.
 	path := t.TempDir() + "/live-capture.png"
-	w, h, originX, originY, err := dxgiCaptureAtCursor(path, hmon, left, top, right, bottom)
+	w, h, originX, originY, err := captureScreenAtCursor(path)
 	if err != nil {
-		t.Fatalf("dxgiCaptureAtCursor: %v", err)
+		t.Fatalf("captureScreenAtCursor: %v", err)
 	}
 	if w <= 0 || h <= 0 {
 		t.Fatalf("capture is empty: %dx%d", w, h)
@@ -207,9 +234,6 @@ func TestDXGILiveCapture(t *testing.T) {
 		t.Errorf("capture origin (%d,%d) != monitor rect origin (%d,%d)", originX, originY, left, top)
 	}
 
-	// The probe's reading for a real desktop is near-black ≈ 0%; the bug this
-	// file fixes produced a fully black frame. Sample the decoded PNG and
-	// require a genuinely lit frame with a wide margin.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read capture: %v", err)
@@ -233,7 +257,140 @@ func TestDXGILiveCapture(t *testing.T) {
 	if ratio > 0.9 {
 		t.Errorf("captured frame is %.1f%% near-black — the all-black regression signature", ratio*100)
 	}
-	t.Logf("live capture %dx%d origin(%d,%d): near-black %.2f%% (%d monitors attached)", w, h, originX, originY, ratio*100, len(handles))
+	t.Logf("live capture %dx%d origin(%d,%d): near-black %.2f%% (%d monitors attached, duplication refused=%v)", w, h, originX, originY, ratio*100, len(handles), dxgiErr != nil)
+}
+
+// TestDXGIDuplDescLayout pins DXGI_OUTDUPL_DESC to its dxgi1_2.h size: the
+// ModeDesc head is Width+Height (8) + RefreshRate RATIONAL (8) + Format +
+// ScanlineOrdering + Scaling (12) = 28, plus Rotation and
+// DesktopImageInSystemMemory = 36 bytes total. GetDesc(slot 7) writes 36
+// bytes, so a drifted layout reads frame geometry from the wrong offsets —
+// exactly the class of silent ABI mistake the first round shipped.
+func TestDXGIDuplDescLayout(t *testing.T) {
+	if size := unsafe.Sizeof(dxgiDuplDesc{}); size != 36 {
+		t.Fatalf("unsafe.Sizeof(dxgiDuplDesc) = %d, want 36 (DXGI_OUTDUPL_DESC)", size)
+	}
+}
+
+// TestNearBlackRatio pins the all-black verdict the delivery decision leans
+// on: full black → 1, lit content → ~0, and the sampling stride must not
+// miss a small lit region.
+func TestNearBlackRatio(t *testing.T) {
+	const w, h = 64, 64
+	black := make([]uint8, w*h*4) // zeroed = all-black BGRA
+	if r := nearBlackRatio(black, w, h); r != 1 {
+		t.Fatalf("nearBlackRatio(all black) = %f, want 1", r)
+	}
+	lit := make([]uint8, w*h*4)
+	for i := 0; i < len(lit); i += 4 {
+		lit[i], lit[i+1], lit[i+2] = 200, 200, 200
+	}
+	if r := nearBlackRatio(lit, w, h); r != 0 {
+		t.Fatalf("nearBlackRatio(all lit) = %f, want 0", r)
+	}
+	// A small lit island (2x2 pixels in the top-left corner) must drag the
+	// ratio clearly off 1 — the verdict that keeps a mostly-black-but-real
+	// desktop deliverable.
+	island := make([]uint8, w*h*4)
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 2; x++ {
+			island[(y*w+x)*4] = 255
+		}
+	}
+	if r := nearBlackRatio(island, w, h); r >= nearBlackRatioReject {
+		t.Fatalf("nearBlackRatio(small lit island) = %f, want < %f", r, nearBlackRatioReject)
+	}
+	// The verdict is layout-agnostic: RGBA and BGRA read the same, alpha is
+	// never consulted.
+	rgba := make([]uint8, w*h*4)
+	for i := 3; i < len(rgba); i += 4 {
+		rgba[i] = 0 // transparent alpha must not flip the verdict
+	}
+	if r := nearBlackRatio(rgba, w, h); r != 1 {
+		t.Fatalf("nearBlackRatio(zeroed rgba) = %f, want 1", r)
+	}
+}
+
+// TestLiveFrameVerdict pins the delivery rules: the LastPresentTime==0
+// placeholder is never deliverable, one real-time black frame retries, two in
+// a row hard-stops, and a lit real-time frame delivers immediately. This is
+// the decision whose absence shipped two rounds of black captures.
+func TestLiveFrameVerdict(t *testing.T) {
+	// Placeholder frame (probe: exactly 100% near-black, LPT == 0).
+	deliver, wait, bf := liveFrameVerdict(0, 1.0, 0)
+	if deliver || !wait || bf != 0 {
+		t.Fatalf("placeholder: deliver=%v wait=%v black=%d, want false/true/0", deliver, wait, bf)
+	}
+	// First real-time black frame: retry once.
+	deliver, wait, bf = liveFrameVerdict(42, 1.0, 0)
+	if deliver || !wait || bf != 1 {
+		t.Fatalf("first black: deliver=%v wait=%v black=%d, want false/true/1", deliver, wait, bf)
+	}
+	// Second consecutive real-time black frame: stop, fall back.
+	deliver, wait, bf = liveFrameVerdict(43, 1.0, 1)
+	if deliver || wait || bf != 2 {
+		t.Fatalf("second black: deliver=%v wait=%v black=%d, want false/false/2", deliver, wait, bf)
+	}
+	// A lit real-time frame delivers regardless of prior placeholders.
+	deliver, wait, bf = liveFrameVerdict(44, 0.01, 0)
+	if !deliver || wait || bf != 0 {
+		t.Fatalf("lit frame: deliver=%v wait=%v black=%d, want true/false/0", deliver, wait, bf)
+	}
+	// A mostly-dark-but-real desktop (dark theme with icon/clock islands)
+	// stays deliverable: only ≥99.9% near-black rejects.
+	deliver, _, _ = liveFrameVerdict(45, 0.98, 0)
+	if !deliver {
+		t.Fatal("98% near-black real frame rejected; want delivered")
+	}
+}
+
+// TestCaptureFallbackChain scripts both capture paths through the seams and
+// pins the tl-1130b contract: a dxgi failure must be answered by the BitBlt
+// fallback, and when BitBlt is black too (its own defense), the returned
+// error names BOTH reasons — never a silent success, never a black PNG.
+func TestCaptureFallbackChain(t *testing.T) {
+	origDXGI, origBlit := dxgiCaptureAtCursorFn, blitCaptureRectFn
+	defer func() { dxgiCaptureAtCursorFn, blitCaptureRectFn = origDXGI, origBlit }()
+
+	// dxgi ok: no fallback happens (blit seam must stay untouched).
+	dxgiCalls, blitCalls := 0, 0
+	dxgiCaptureAtCursorFn = func(_ string, _ uintptr, _, _, _, _ int32) (int, int, int, int, error) {
+		dxgiCalls++
+		return 100, 200, 0, 0, nil
+	}
+	blitCaptureRectFn = func(_ string, _, _, _, _ int32) (int, int, error) {
+		blitCalls++
+		return 0, 0, fmt.Errorf("must not be called")
+	}
+	w, h, _, _, err := captureScreenAtCursor(t.TempDir() + "/a.png")
+	if err != nil || w != 100 || h != 200 || dxgiCalls != 1 || blitCalls != 0 {
+		t.Fatalf("dxgi-ok path: w=%d h=%d err=%v dxgi=%d blit=%d", w, h, err, dxgiCalls, blitCalls)
+	}
+
+	// dxgi fails, blit delivers: success comes from the fallback.
+	dxgiCaptureAtCursorFn = func(_ string, _ uintptr, _, _, _, _ int32) (int, int, int, int, error) {
+		return 0, 0, 0, 0, fmt.Errorf("dpi caliber mismatch: duplication frame 1920x1200 vs user32 rect 1280x800")
+	}
+	blitCaptureRectFn = func(path string, _, _, _, _ int32) (int, int, error) {
+		_ = os.WriteFile(path, []byte("png"), 0o644)
+		return 300, 400, nil
+	}
+	w, h, _, _, err = captureScreenAtCursor(t.TempDir() + "/b.png")
+	if err != nil || w != 300 || h != 400 {
+		t.Fatalf("fallback path: w=%d h=%d err=%v", w, h, err)
+	}
+
+	// Both fail: the error must name both reasons.
+	blitCaptureRectFn = func(_ string, _, _, _, _ int32) (int, int, error) {
+		return 0, 0, fmt.Errorf("BitBlt produced an all-black frame")
+	}
+	_, _, _, _, err = captureScreenAtCursor(t.TempDir() + "/c.png")
+	if err == nil {
+		t.Fatal("both-paths-failed returned nil error; want combined failure")
+	}
+	if !strings.Contains(err.Error(), "all-black") || !strings.Contains(err.Error(), "caliber mismatch") {
+		t.Fatalf("combined error lost a reason: %v", err)
+	}
 }
 
 // TestDXGIFactoryVsDeviceProbe is a diagnostic harness for the tl 1130 hunt:
@@ -268,13 +425,13 @@ func TestDXGIFactoryVsDeviceProbe(t *testing.T) {
 			continue
 		}
 		var adesc struct {
-			desc    [128]uint16
-			vendor  uint32
-			device  uint32
-			subSys  uint32
-			rev     uint32
-			mem     [3]uint
-			_       uintptr
+			desc   [128]uint16
+			vendor uint32
+			device uint32
+			subSys uint32
+			rev    uint32
+			mem    [3]uint
+			_      uintptr
 		}
 		hr := vcall(adapter, 8, uintptr(unsafe.Pointer(&adesc)))
 		t.Logf("factory adapter %d: GetDesc(slot8) hr=0x%x vendor=0x%x name=%q", ai, uint32(hr), adesc.vendor, syscall.UTF16ToString(adesc.desc[:]))
