@@ -168,10 +168,6 @@ func (a *App) shutdownBody() {
 	// death mode (taskkill, crash).
 	a.closeServePool()
 	a.lifecycle.tracker.mark("closing_serve_pool_done")
-	// Task 439: stop the embedded zcode task bus with the process. No-op
-	// when the lab switch never armed it (the default).
-	a.closeZcodeTaskBus()
-	a.lifecycle.tracker.mark("closing_zcode_task_bus_done")
 	// Task 790: stop the resident ACP listener with the process. No-op when
 	// the lab switch never armed it (the default).
 	a.closeACPListener()

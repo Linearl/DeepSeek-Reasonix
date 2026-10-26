@@ -477,7 +477,8 @@ type App struct {
 	gatewayState
 	// Task 439: the embedded zcode task bus (lab switch
 	// experimental_zcode_task_bus, 铁律 2 default off). Nil = not running,
-	// the only state a default install ever reaches.
+	// the only state a default install ever reaches. tl-1048: the bus host
+	// retires; the field dies with zcode_task_bus.go in the same commit.
 	zcodeTaskBus *zcodeTaskBusHost
 	// Task 790: the resident ACP listener (lab switch experimental_acp_listen,
 	// 铁律 2 default off). Nil = not running, the only state a default
