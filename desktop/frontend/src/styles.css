@@ -14928,6 +14928,28 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   background: var(--bg-soft);
 }
+/* tl 1175: the「仅已打开」filter toggle — a standalone pressed-state button
+   beside the mode switch, sharing the mode button's metrics. */
+.session-wall__filter {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-faint);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.session-wall__filter:hover {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+.session-wall__filter--on {
+  color: var(--fg);
+  background: var(--bg-soft);
+  border-color: var(--accent, var(--border));
+}
 .session-wall__meta {
   flex: none;
   padding: 6px 16px 0;

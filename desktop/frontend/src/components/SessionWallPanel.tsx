@@ -19,7 +19,8 @@ import { useT } from "../lib/i18n";
 import { useMountTransition } from "../lib/useMountTransition";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { paletteSessionDisplayTitle, paletteSessionHint, sessionActivityTime } from "../lib/session";
-import { applySessionWallQuery, groupSessionsForWall, type SessionWallGroupMode } from "../lib/sessionWall";
+import { applySessionWallQuery, applySessionWallOpenOnly, groupSessionsForWall, type SessionWallGroupMode } from "../lib/sessionWall";
+import { loadSessionWallOpenOnly, saveSessionWallOpenOnly } from "../lib/sessionWallPrefs";
 import type { SessionMeta } from "../lib/types";
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -29,17 +30,25 @@ export function SessionWallPanel({
   load,
   onClose,
   onResume,
+  initialOpenOnly,
 }: {
   open: boolean;
   load: () => Promise<SessionMeta[]>;
   onClose: () => void;
   onResume: (session: SessionMeta) => void;
+  // tl 1175: true forces the「仅已打开」filter on for this open (the「跳转标签页」
+  // entry presets it); undefined falls back to the persisted preference.
+  initialOpenOnly?: boolean;
 }) {
   const t = useT();
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<SessionWallGroupMode>("project");
+  // tl 1175: the「仅已打开」filter. The persisted value is the user's last
+  // manual toggle; `initialOpenOnly` (when defined) presets this open without
+  // rewriting what the user persisted.
+  const [openOnly, setOpenOnly] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const isOpenRef = useRef(false);
   isOpenRef.current = open;
@@ -73,13 +82,17 @@ export function SessionWallPanel({
     };
   }, [open, load]);
 
-  // Re-init whenever the wall opens: clear the query and mode, steal focus.
+  // Re-init whenever the wall opens: clear the query and mode, resolve the
+  // open-only filter (preset beats persisted), steal focus.
   useLayoutEffect(() => {
     if (open) {
       setQuery("");
       setMode("project");
+      setOpenOnly(initialOpenOnly ?? loadSessionWallOpenOnly());
       inputRef.current?.focus();
     }
+    // loadSessionWallOpenOnly is read once per open edge on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Callback ref: focus the input as soon as it mounts while the wall is open.
@@ -114,7 +127,19 @@ export function SessionWallPanel({
     [t],
   );
 
-  const filtered = useMemo(() => applySessionWallQuery(sessions, query), [sessions, query]);
+  // tl 1175: toggling the「仅已打开」filter persists it for the next restart.
+  const toggleOpenOnly = useCallback(() => {
+    setOpenOnly((current) => {
+      const next = !current;
+      saveSessionWallOpenOnly(next);
+      return next;
+    });
+  }, []);
+
+  const filtered = useMemo(
+    () => applySessionWallOpenOnly(applySessionWallQuery(sessions, query), openOnly),
+    [sessions, query, openOnly],
+  );
   const groups = useMemo(
     () => groupSessionsForWall(filtered, mode, { globalLabel: t("sessionWall.globalGroup"), dayLabel }),
     [filtered, mode, dayLabel, t],
@@ -161,6 +186,14 @@ export function SessionWallPanel({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className={`session-wall__filter${openOnly ? " session-wall__filter--on" : ""}`}
+            aria-pressed={openOnly}
+            onClick={toggleOpenOnly}
+          >
+            {t("sessionWall.openOnly")}
+          </button>
           <button
             className="palette__esc"
             type="button"

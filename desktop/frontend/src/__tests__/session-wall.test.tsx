@@ -128,6 +128,91 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
   eq(groups[0].sessions.length, 1, "time mode: sessions stay in their day bucket");
 }
 
+// 4b. tl 1175「仅已打开」filter: off = same array (zero behaviour), on =
+//     keeps only open sessions. Persisted via sessionWallPrefs (localStorage).
+{
+  const openA = session({ preview: "开着 A", open: true });
+  const openB = session({ preview: "开着 B", open: true });
+  const closedC = session({ preview: "关着 C", open: false });
+  const input = [openA, closedC];
+  eq(wall.applySessionWallOpenOnly(input, false), input, "openOnly off: returns the identical array reference");
+  const on = wall.applySessionWallOpenOnly([openA, openB, closedC], true);
+  eq(on.length, 2, "openOnly on: closed sessions drop out");
+  eq(on.every((s) => s.open), true, "openOnly on: every survivor is open");
+}
+
+// 4c. tl 1175 panel contract: the「跳转标签页」entry presets the filter
+//     (initialOpenOnly), the toggle persists, and the off face keeps every
+//     card (current behaviour unchanged).
+{
+  const sessions: SessionMeta[] = [
+    session({ preview: "开着甲", workspaceRoot: "C:/work/alpha", open: true }),
+    session({ preview: "开着乙", workspaceRoot: "C:/work/alpha", open: true }),
+    session({ preview: "关着丙", workspaceRoot: "C:/work/alpha", open: false }),
+  ];
+  dom.window.localStorage.clear();
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const view = (props: Record<string, unknown> = {}) =>
+    createElement(
+      LocaleProvider,
+      null,
+      createElement(SessionWallPanel, { open: true, load: async () => sessions, onClose: () => {}, onResume: () => {}, ...props }),
+    );
+
+  // Preset on (跳转标签页 face): only open sessions render as cards, and the
+  // wall is still the grouped grid (not a second list surface).
+  await act(async () => {
+    root.render(view({ initialOpenOnly: true }));
+  });
+  eq(container.querySelectorAll(".session-wall__card").length, 2, "openOnly preset: only the 2 open sessions render as cards");
+  ok(container.querySelectorAll(".session-wall__grid").length >= 1, "openOnly preset: the surface is still the grid wall");
+  const filterBtn = container.querySelector(".session-wall__filter") as HTMLButtonElement;
+  ok(filterBtn !== null, "openOnly preset: the filter toggle renders");
+  eq(filterBtn?.getAttribute("aria-pressed"), "true", "openOnly preset: toggle reports pressed");
+
+  // Toggling off restores the unfiltered wall (off face = current behaviour).
+  await act(async () => {
+    filterBtn.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  });
+  eq(container.querySelectorAll(".session-wall__card").length, 3, "openOnly toggled off: all 3 cards render (unchanged behaviour)");
+  eq((container.querySelector(".session-wall__filter") as HTMLButtonElement)?.getAttribute("aria-pressed"), "false", "openOnly toggled off: toggle reports unpressed");
+  eq(dom.window.localStorage.getItem("sessionWall:prefs:v1"), JSON.stringify({ openOnly: false }), "openOnly toggle: the off state persists to localStorage");
+
+  // Reopen with no preset: the persisted value wins.
+  await act(async () => {
+    root.unmount();
+  });
+  container.remove();
+  const container2 = document.createElement("div");
+  document.body.appendChild(container2);
+  const root2 = createRoot(container2);
+  await act(async () => {
+    root2.render(createElement(
+      LocaleProvider,
+      null,
+      createElement(SessionWallPanel, { open: true, load: async () => sessions, onClose: () => {}, onResume: () => {} }),
+    ));
+  });
+  eq(container2.querySelectorAll(".session-wall__card").length, 3, "openOnly reopen: persisted off state applies (3 cards)");
+
+  // Preset on again writes through the manual toggle too: flipping the
+  // pre-set filter on persists openOnly=true.
+  const btn2 = container2.querySelector(".session-wall__filter") as HTMLButtonElement;
+  await act(async () => {
+    btn2.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  });
+  eq(container2.querySelectorAll(".session-wall__card").length, 2, "openOnly manual toggle on: closed sessions drop");
+  eq(dom.window.localStorage.getItem("sessionWall:prefs:v1"), JSON.stringify({ openOnly: true }), "openOnly manual toggle: the on state persists");
+
+  await act(async () => {
+    root2.unmount();
+  });
+  container2.remove();
+  dom.window.localStorage.clear();
+}
+
 // 5. Panel: static smoke — the open wall renders its chrome (empty state,
 //    because data loads in an effect; effects belong to the root below).
 {

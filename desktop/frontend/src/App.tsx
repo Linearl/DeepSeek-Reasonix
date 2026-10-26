@@ -4768,27 +4768,31 @@ export default function App() {
     setPaletteSessions(await listSessions().catch(() => []));
     setPaletteExtensionActions(await app.ExtensionActions(activeTabIdRef.current ?? "").catch(() => []));
   }, [closeTransientOverlays, listSessions, setPaletteExtensionActions]);
-  // tl 1101：命令面板内部视图（宫格 / 跳转标签页）。视图切换不关闭面板；Esc
-  // 关面板时一并复位到宫格（下次打开仍是默认视图）。
-  const [paletteView, setPaletteView] = useState<"grid" | "tabs">("grid");
-  useEffect(() => {
-    if (!paletteOpen) setPaletteView("grid");
-  }, [paletteOpen]);
-  // 面板视图消费点（宫格 / 标签页列表按 paletteView 分支渲染）。
-  const paletteActiveView = paletteView;
+  // tl 1101：命令面板内部视图（宫格 / 跳转标签页）。tl 1175：「跳转标签页」
+  // 并入会话图墙（同一图墙 + 预置「仅已打开」过滤），面板内第二套渲染退役，
+  // 视图固定为宫格。图墙的「仅已打开」预置开关：跳转标签页入口置 true，
+  // 「跳转会话」入口置 false（走持久化偏好）。
+  const [wallPresetOpenOnly, setWallPresetOpenOnly] = useState(false);
   useGlobalShortcut("commandPalette.open", () => {
     setPaletteOpen((current) => {
       if (!current) void openPalette();
       return !current; // ← fix: toggle the state so the palette actually opens/closes
     });
   }, [openPalette]);
-  // tl 1101：跳转标签页（Ctrl+Shift+T）——直接打开面板并切到标签页视图，不等
-  // 输入关键词；跳转会话（Ctrl+P）同理直达会话图墙。
+  // tl 1101：跳转标签页（Ctrl+Shift+T）/ 跳转会话（Ctrl+P）。tl 1175：两入口
+  // 统一为同一张会话图墙——跳转标签页预置「仅已打开」过滤（图墙自身加载快照，
+  // 不再借道命令面板）；跳转会话维持「面板 + 图墙」堆叠（tl 1101 既有形态）。
+  // 实验开关关闭时快捷键不注册（与「跳转会话」条目同一条 lab 门控语义，
+  // 维持 task 505「switch off → never opens」契约）。
   useGlobalShortcut("palette.gotoTab", () => {
-    void openPalette().then(() => setPaletteView("tabs"));
-  }, [openPalette]);
+    setWallPresetOpenOnly(true);
+    setSessionWallOpen(true);
+  }, [], sessionWallEnabled);
   useGlobalShortcut("palette.gotoTopic", () => {
-    void openPalette().then(() => setSessionWallOpen(true));
+    void openPalette().then(() => {
+      setWallPresetOpenOnly(false);
+      setSessionWallOpen(true);
+    });
   }, [openPalette]);
   useGlobalShortcut("palette.searchQuestions", () => {
     if (!questionSearchEnabled || !activeTabId) return;
@@ -4853,19 +4857,29 @@ export default function App() {
   // 既有键不冲突（Ctrl+P / Ctrl+Shift+T / Ctrl+Shift+F / Ctrl+Shift+L / F1 /
   // Ctrl+Alt+B 均空闲；Ctrl+K 已归 commandPalette.open，不重复注册）。
   const paletteItems = useMemo<PaletteItem[]>(() => {
-    // 会话组：跳转标签页 / 搜索历史提问 / 定时任务（跳转会话走下方 lab 门控插条，
-    // 与 task 505 的 insertSessionWallEntry 同一条语义）。
+    // 会话组：搜索历史提问 / 定时任务。「跳转标签页」与「跳转会话」一样走
+    // lab 门控插条（tl 1175 起它也指向会话图墙，须受同一实验开关约束）。
     const sessionCmds: PaletteItem[] = [
-      {
-        id: "cmd-goto-tab",
-        group: t("palette.group.session"),
-        title: t("palette.cmd.gotoTab"),
-        icon: <Layers size={15} />,
-        compact: true,
-        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.gotoTab", desktopPlatform), desktopPlatform),
-        keywords: ["tab", "tabs", "goto", "标签", "标签页", "跳转"],
-        run: () => setPaletteView("tabs"),
-      },
+      ...(sessionWallEnabled
+        ? [
+            {
+              id: "cmd-goto-tab",
+              group: t("palette.group.session"),
+              title: t("palette.cmd.gotoTab"),
+              icon: <Layers size={15} />,
+              compact: true,
+              shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.gotoTab", desktopPlatform), desktopPlatform),
+              keywords: ["tab", "tabs", "goto", "标签", "标签页", "跳转"],
+              // tl 1175:「跳转标签页」= 打开同一张会话图墙并预置「仅已打开」
+              // 过滤；面板内的标签页列表视图退役（两入口统一，不再维护第二套
+              // 渲染）。
+              run: () => {
+                setWallPresetOpenOnly(true);
+                setSessionWallOpen(true);
+              },
+            } satisfies PaletteItem,
+          ]
+        : []),
       {
         id: "cmd-search-questions",
         group: t("palette.group.session"),
@@ -5097,10 +5111,14 @@ export default function App() {
           compact: true,
           shortcutLabel: formatShortcutCombo(defaultShortcutCombo("palette.gotoTopic", desktopPlatform), desktopPlatform),
           expandable: true,
-          expand: () => setSessionWallOpen(true),
+          expand: () => {
+            setWallPresetOpenOnly(false);
+            setSessionWallOpen(true);
+          },
           keywords: ["session", "wall", "jump", "sessions", "跳转", "会话", "图墙"],
           run: () => {
             reportFrontendLog("sessionWall", "open requested", "palette entry");
+            setWallPresetOpenOnly(false);
             setSessionWallOpen(true);
           },
         },
@@ -5121,20 +5139,6 @@ export default function App() {
     );
     return cmdsWithWorkflow;
   }, [t, paletteSessions, paletteExtensionActions, remoteHosts, remoteStatuses, activeTab?.id, handleNewTab, openTrash, onResumeSession, openRemoteWorkspaceFromStatus, connectAndOpenRemoteWorkspace, openRightDockMode, showToast, sessionWallEnabled, workflowPanelEnabled, questionSearchEnabled, desktopPlatform]);
-  // tl 1101「跳转标签页」：列全部打开的标签页（含浮动标签）+ 就地切换；右侧边栏
-  // 不单独做搜索（用户明确统一走这里），palette 输入框的模糊筛选天然覆盖。
-  const paletteTabItems = useMemo<PaletteItem[]>(() => {
-    return visibleTabs.map((tab) => ({
-      id: `tab-${tab.id}`,
-      group: t("palette.group.tabs"),
-      title: tab.topicTitle || tab.filePath?.split("/").filter(Boolean).pop() || t("palette.tab.untitled"),
-      hint: tab.workspaceName || tab.scope,
-      icon: <Layers size={15} />,
-      compact: true,
-      keywords: [tab.topicTitle, tab.workspaceName, tab.scope].filter(Boolean) as string[],
-      run: () => void handleTabChange(tab.id),
-    }));
-  }, [visibleTabs, t, handleTabChange]);
   // Delete / rename act on disk, then re-fetch so the panel reflects the change.
   const onDeleteSession = useCallback(
     async (path: string) => {
@@ -6908,19 +6912,21 @@ export default function App() {
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        items={paletteActiveView === "tabs" ? paletteTabItems : paletteItems}
-        placeholder={paletteActiveView === "tabs" ? t("palette.gotoTab.placeholder") : t("palette.placeholder")}
-        emptyText={paletteActiveView === "tabs" ? t("palette.gotoTab.empty") : t("palette.empty")}
+        items={paletteItems}
+        placeholder={t("palette.placeholder")}
+        emptyText={t("palette.empty")}
       />
 
       {/* Task 505: the session graph wall, reachable only through the gated
-          palette entry (switch off → never opens, chunk never loads). */}
+          palette entry (switch off → never opens, chunk never loads). tl 1175:
+          also the「跳转标签页」surface, with the open-only filter preset. */}
       {sessionWallOpen && (
         <Suspense fallback={null}>
           <SessionWallBoundary>
             <SessionWallPanel
               open={sessionWallOpen}
               load={listSessions}
+              initialOpenOnly={wallPresetOpenOnly ? true : undefined}
               onClose={() => {
                 reportFrontendLog("sessionWall", "closed", "esc/backdrop/button");
                 setSessionWallOpen(false);
