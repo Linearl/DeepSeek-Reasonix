@@ -55,7 +55,11 @@ func seedShellProjectScene(t *testing.T) (root, dir, livePath string) {
 	if err := ensureTopicIndexedWithCreatedAt("project", root, "topic-live", "Live", topicTitleSourceManual, time.Now().UnixMilli()); err != nil {
 		t.Fatalf("seed live topic: %v", err)
 	}
-	if err := ensureTopicIndexedWithCreatedAt("project", root, "topic-shell", "Shell", topicTitleSourceAuto, time.Now().UnixMilli()); err != nil {
+	// 任务 tl-1144：空壳必须是 #9614 的真实形态——CreatedAtMS==0（心跳建了题
+	// 但从未落过真实历史）。CreatedAtMS>0 在 heartbeatTopicIsShell 原始语义下
+	// 是「有真实历史」，探针必须放过它（AC4 反放宽），用 now 播种的旧写法在
+	// 新判据下不是空壳。
+	if err := ensureTopicIndexedWithCreatedAt("project", root, "topic-shell", "Shell", topicTitleSourceAuto, 0); err != nil {
 		t.Fatalf("seed shell topic: %v", err)
 	}
 	return root, dir, livePath
