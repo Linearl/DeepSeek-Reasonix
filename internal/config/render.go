@@ -217,6 +217,7 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_gc_child_session":              "task 540：GC 远端派生子会话（serve 域开关，能力经 /capabilities 下发给 GrandCouncil 客户端，桌面实验室 tab 无入口）",
 	"experimental_pending_cards":                 "task 408：异步决策点回访待批卡片（审批语义外的用户级记账，config.toml 开关，实验室 tab 无入口）",
 	"experimental_general_purpose_subagent":      "task 632：通用型写者 profile 暴露开关（任务 632 交付，档位待用户定档后入表A；实验室 tab 暂无入口）",
+	"experimental_effort_cross_model_map":        "tl 1169：切模型档位按相对位置映射（rank-based）的总闸——desktop 模型快路径消费，实验室 tab 暂无入口（手写 TOML 键；默认关=1161b 折叠行为不变）",
 	// 任务 979：experimental_capability_groups 自本豁免表转正入表A（见
 	// tool-opt 段 capabilityGroups 条目）——953/954/955 设置页入口补齐。
 }
@@ -842,6 +843,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// Task 632: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "experimental_general_purpose_subagent = %v   # task 632: expose the built-in general-purpose writer profile (task profile=\"general-purpose\"; off = absent from the skill index, restart to apply)\n", c.Agent.ExperimentalGeneralPurposeSubagent)
+	// tl 1169: explicit render — same lost-save lesson; the rank-based
+	// cross-model effort map only arms behind this switch (default off keeps
+	// the 1161b fold byte-identical).
+	fmt.Fprintf(&b, "experimental_effort_cross_model_map = %v   # tl 1169: rank-map the carried effort onto the destination's relative depth slot on a per-request model switch (off = an unmappable depth lands on auto, the 1161b fold)\n", c.Agent.ExperimentalEffortCrossModelMap)
 	// Task 265 lab intake: existing behaviour given an off switch, so the
 	// pointers render through their nil-means-on helpers (an absent key and an
 	// explicit true render identically, and turning one off stays recorded).
