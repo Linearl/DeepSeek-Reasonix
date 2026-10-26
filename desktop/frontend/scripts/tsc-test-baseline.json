@@ -3,7 +3,7 @@
     "note": "任务 745：tsconfig.test.json 补 **/*.tsx 后的存量类型诊断一次性登记（含 .ts 面 71 条，即 desktop-frontend CI 既有失败原因）。本文件由 scripts/tsc-test-gate.mjs 比对：名单外新诊断即红；无自动刷新通道，条目只减不增——还清后人工删除对应 file+code 行。已知盲区：同文件同错误码的新增诊断会被基线吸收（以层级换低噪声）。",
     "generated": "2026-10-10",
     "commit": "c04c3fa53",
-    "pairs": 227,
+    "pairs": 226,
     "diagnostics": 472
   },
   "entries": {
@@ -357,9 +357,6 @@
       "TS2739",
       "TS2741",
       "TS6196"
-    ],
-    "src/__tests__/settings-zcode-task-bus.test.ts": [
-      "TS6133"
     ],
     "src/__tests__/shell-support-install.test.tsx": [
       "TS2741"
