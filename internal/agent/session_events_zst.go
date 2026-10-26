@@ -96,6 +96,22 @@ func sessionEventZstDecoder() *zstd.Decoder {
 	return zstDecoder
 }
 
+// sessionEventZstStreamDecoder binds a stream to the pooled decoder (or a
+// fresh one when pool construction failed). release 必须**恰好调用一次**：
+// 池化解码器只允许 Reset(nil) 放回流——对它调 Close 会把池子毒死（后续
+// Reset 报 "decoder used after Close"，实测 2026-10-26）；现建解码器才 Close。
+func sessionEventZstStreamDecoder(src io.Reader) (dec *zstd.Decoder, release func(), err error) {
+	if pooled := sessionEventZstDecoder(); pooled != nil {
+		pooled.Reset(src)
+		return pooled, func() { pooled.Reset(nil) }, nil
+	}
+	fresh, freshErr := zstd.NewReader(src, zstd.WithDecoderConcurrency(sessionEventZstIOConcurrency))
+	if freshErr != nil {
+		return nil, nil, freshErr
+	}
+	return fresh, fresh.Close, nil
+}
+
 // sessionEventLogPlainPath mirrors store.ResolveSessionEventLog: either input
 // form (transcript path or resolved event-log path) normalizes here.
 func sessionEventLogPlainPath(sessionPathOrLog string) string {
@@ -186,41 +202,40 @@ func materializeSessionEventLogZst(plain, zst string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
-	var dec *zstd.Decoder
-	if pooled := sessionEventZstDecoder(); pooled != nil {
-		dec = pooled
-		dec.Reset(src)
-		defer dec.Reset(nil)
-	} else {
-		fresh, freshErr := zstd.NewReader(src, zstd.WithDecoderConcurrency(sessionEventZstIOConcurrency))
-		if freshErr != nil {
-			preserveBrokenZst(zst, freshErr)
-			return fmt.Errorf("session events archive: create decoder: %w", freshErr)
-		}
-		dec = fresh
-		defer dec.Close()
+	dec, releaseDec, setupErr := sessionEventZstStreamDecoder(src)
+	if setupErr != nil {
+		src.Close()
+		preserveBrokenZst(zst, setupErr)
+		return fmt.Errorf("session events archive: create decoder: %w", setupErr)
 	}
 	header, err := readSessionEventZstHeader(dec.IOReadCloser())
 	if err != nil {
-		dec.Close()
+		// Windows 句柄纪律（同 compressSessionEventLogZstLocked）：先放开
+		// 解码器、关掉自己的 src，再挪走坏归档——否则 rename 以「正由另一
+		// 进程使用」失败。
+		releaseDec()
+		src.Close()
 		preserveBrokenZst(zst, err)
 		return fmt.Errorf("session events archive header: %w", err)
 	}
 	tmp := plain + ".materializing"
 	dst, dstErr := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if dstErr != nil {
-		dec.Close()
+		releaseDec()
+		src.Close()
 		return dstErr
 	}
 	_, copyErr := io.Copy(dst, dec.IOReadCloser())
-	dec.Close()
+	releaseDec()
 	if copyErr == nil {
 		copyErr = dst.Sync()
 	}
 	if closeErr := dst.Close(); copyErr == nil {
 		copyErr = closeErr
 	}
+	// 解码收尾：src 到此读完了，显式关闭——后面 size 校验失败要挪走坏归档，
+	// rename/remove 同样不能顶着未关句柄做（Windows）。
+	src.Close()
 	if copyErr != nil {
 		_ = os.Remove(tmp)
 		preserveBrokenZst(zst, copyErr)
@@ -332,10 +347,13 @@ func compressSessionEventLogZstLocked(plain, zst, reason string) (before, after 
 	if err != nil {
 		return before, 0, err
 	}
-	defer src.Close()
+	// 注意：src 必须在删除明文之前显式关闭——Windows 的 os.Open 不带
+	// FILE_SHARE_DELETE，句柄未关时 os.Remove 会以「正由另一进程使用」失败
+	// （实测 2026-10-26），归档退化为「两者并存」残件态。不用 defer。
 	tmp := zst + ".tmp"
 	dst, dstErr := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if dstErr != nil {
+		src.Close()
 		return before, 0, dstErr
 	}
 	enc, encErr := zstd.NewWriter(dst,
@@ -347,6 +365,7 @@ func compressSessionEventLogZstLocked(plain, zst, reason string) (before, after 
 	if encErr != nil {
 		dst.Close()
 		_ = os.Remove(tmp)
+		src.Close()
 		return before, 0, fmt.Errorf("session events archive: create encoder: %w", encErr)
 	}
 	header, err := json.Marshal(sessionEventZstHeader{
@@ -362,6 +381,9 @@ func compressSessionEventLogZstLocked(plain, zst, reason string) (before, after 
 	}
 	if err == nil {
 		_, err = io.Copy(enc, src)
+	}
+	if closeErr := src.Close(); err == nil {
+		err = closeErr
 	}
 	if err == nil {
 		err = enc.Close()
