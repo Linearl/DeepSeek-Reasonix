@@ -377,3 +377,108 @@ func (p *reasoningSensitiveProvider) Name() string { return "strict" }
 func (p *reasoningSensitiveProvider) RequiresToolCallReasoning() bool { return true }
 
 func (p *reasoningSensitiveProvider) RequiresReasoningRoundTrip() bool { return true }
+
+// namedVaryingProvider combines a family name with a per-request effort
+// vocabulary, standing in for a destination adapter whose probe is live.
+type namedVaryingProvider struct {
+	varyingProvider
+	name string
+}
+
+func (p *namedVaryingProvider) Name() string { return p.name }
+
+// Task 1161b: the host folds the outgoing effort onto the destination before
+// the hot switch (deepseek max → MiMo high). The WithEffort seam must adopt
+// the folded level through the destination's own per-request vocabulary — a
+// level the destination cannot express declines the whole arm (the caller
+// keeps its rebuild fallback) instead of arming a depth the next request
+// rejects.
+func TestSetSessionModelOverrideWithEffortAdoptsDestinationVocabulary(t *testing.T) {
+	home := &namedVaryingProvider{varyingProvider: varyingProvider{efforts: []string{"disabled", "low", "high", "max"}}, name: "fake"}
+	mimoLike := &namedVaryingProvider{varyingProvider: varyingEfforts("none", "low", "medium", "high"), name: "mimo"}
+	resolver := &fakeModelResolver{providers: map[string]provider.Provider{
+		"mimo/m1": mimoLike,
+	}}
+	a := New(home, nil, NewSession("s"), Options{ModelResolver: resolver}, event.Discard)
+
+	// The outgoing effort (max) is stored on the session — the deepseek-era
+	// depth a cross-vocabulary switch must fold.
+	if !a.SetSessionEffortOverride("max") {
+		t.Fatal("seed the outgoing effort override")
+	}
+	if got := a.effortOverrideForRequest(); got != "max" {
+		t.Fatalf("seeded override = %q, want max", got)
+	}
+
+	// Destination-listed level: the folded value (high) is adopted — the
+	// destination flips AND the stored depth follows it.
+	if !a.SetSessionModelOverrideWithEffort("mimo/m1", ModelOverrideExtras{}, "high") {
+		t.Fatal("destination-listed effort rejected")
+	}
+	if got := a.providerForRequest(); got != provider.Provider(mimoLike) {
+		t.Fatal("destination did not flip on the WithEffort arm")
+	}
+	if got := a.effortOverrideForRequest(); got != "high" {
+		t.Fatalf("override after fold = %q, want high (the folded level rides requests)", got)
+	}
+	// The folded level also fed the construction resolve — the destination was
+	// built at the depth it will run, not the stale carried one.
+	if got := resolver.last.Effort; got == nil || *got != "high" {
+		t.Fatalf("resolve Selection.Effort = %v, want high", resolver.last.Effort)
+	}
+
+	// A level outside the destination's vocabulary declines the whole arm:
+	// destination and depth both stay where they were.
+	if a.SetSessionModelOverrideWithEffort("mimo/m1", ModelOverrideExtras{}, "max") {
+		t.Fatal("off-vocabulary effort accepted")
+	}
+	if got := a.providerForRequest(); got != provider.Provider(mimoLike) {
+		t.Fatal("declined arm disturbed the armed destination")
+	}
+	if got := a.effortOverrideForRequest(); got != "high" {
+		t.Fatalf("override after declined arm = %q, want high (untouched)", got)
+	}
+
+	// Empty effort = auto/provider default: the arm succeeds and the stored
+	// depth override clears, matching the rebuild path's auto semantics.
+	if !a.SetSessionModelOverrideWithEffort("mimo/m1", ModelOverrideExtras{}, "") {
+		t.Fatal("empty-effort arm rejected")
+	}
+	if got := a.effortOverrideForRequest(); got != "" {
+		t.Fatalf("override after auto arm = %q, want empty", got)
+	}
+	if got := resolver.last.Effort; got != nil {
+		t.Fatalf("resolve Selection.Effort = %v, want nil (auto)", got)
+	}
+}
+
+// varyingEfforts builds a varyingProvider vocabulary inline for readability.
+func varyingEfforts(levels ...string) varyingProvider {
+	return varyingProvider{efforts: levels}
+}
+
+// A destination without a per-request channel keeps the stored override
+// untouched on a WithEffort arm: its configured depth was resolved at
+// construction (the folded level still fed Selection.Effort), and there is no
+// per-request override to adopt into.
+func TestSetSessionModelOverrideWithEffortNonVaryingDestination(t *testing.T) {
+	home := &namedVaryingProvider{varyingProvider: varyingProvider{efforts: []string{"disabled", "low", "high", "max"}}, name: "fake"}
+	other := &namedFakeProvider{name: "other"}
+	resolver := &fakeModelResolver{providers: map[string]provider.Provider{"other/b": other}}
+	a := New(home, nil, NewSession("s"), Options{ModelResolver: resolver}, event.Discard)
+	if !a.SetSessionEffortOverride("max") {
+		t.Fatal("seed the outgoing effort override")
+	}
+	if !a.SetSessionModelOverrideWithEffort("other/b", ModelOverrideExtras{}, "high") {
+		t.Fatal("non-varying destination WithEffort arm rejected")
+	}
+	if got := a.providerForRequest(); got != provider.Provider(other) {
+		t.Fatal("destination did not flip")
+	}
+	if got := a.effortOverrideForRequest(); got != "max" {
+		t.Fatalf("override = %q, want max (non-varying destinations keep the stored override)", got)
+	}
+	if got := resolver.last.Effort; got == nil || *got != "high" {
+		t.Fatalf("resolve Selection.Effort = %v, want high (folded level feeds construction)", got)
+	}
+}
