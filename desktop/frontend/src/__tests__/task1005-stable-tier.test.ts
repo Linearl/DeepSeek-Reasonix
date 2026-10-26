@@ -119,8 +119,11 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
 }
 
 // ── ③ 禁用态两分支文案（四个 pane）──────────────────────────────
+// 1134（45381165f）实验室二级 chunk 拆分：ExperimentalSection 整体搬入
+// ExperimentalLabSection.tsx，本段与 ④ 的源码锚随迁（1005 漏跟同步，
+// wt-reds-cleanup 件5c 补）。
 {
-  const panel = read("src/components/SettingsPanel.tsx");
+  const panel = read("src/components/ExperimentalLabSection.tsx");
   const panes = ["autopilot", "sessionCollab", "fullAccess", "runtimeReuse"] as const;
   for (const id of panes) {
     ok(panel.includes(`disabled={busy || labStableLocked("${id}")}`),
@@ -134,7 +137,7 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
 
 // ── ④ 开发者模式（单项 toggle + N 计数小字）─────────────────────
 {
-  const panel = read("src/components/SettingsPanel.tsx");
+  const panel = read("src/components/ExperimentalLabSection.tsx");
   ok(panel.includes('globalThis.localStorage?.getItem("reasonix.lab.devMode") === "1"') &&
      panel.includes('globalThis.localStorage?.setItem("reasonix.lab.devMode"'),
     "developer-mode preference persists in localStorage (reasonix.lab.devMode)");
