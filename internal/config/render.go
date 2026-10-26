@@ -170,7 +170,12 @@ var labFeatureTiers = []labFeatureTier{
 	{"cdpDebugPort", LabTierUnstable, []string{"experimental_cdp_debug_port"}},
 	{"lifecycleNoiseGate", LabTierUnstable, []string{"experimental_lifecycle_noise_gate"}},
 	// ── storage（存储，3 项；846 增 homePointer）──────────────────
-	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation"}},
+	// tl 1172：experimental_events_slim_oversize 以家族子键并入本卡（477
+	// ask-timeout / 575 bash_heavy_guard 先例）——events 超限三级降级瘦身
+	// （L1 折叠保留 10% 门槛；L2 整文件 zstd 归档无损可逆；L3 超大 tool 结果
+	// 确定性裁剪头尾+标记），档位可选，默认关=超限且 fold 不回本的会话维持
+	// 现状（left in place + WARN），铁律 2。
+	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation", "experimental_events_slim_oversize"}},
 	{"sessionStorage", LabTierUnstable, []string{"session_storage"}},
 	// 任务 846：配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
 	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
