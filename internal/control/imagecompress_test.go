@@ -2,10 +2,12 @@ package control
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -77,9 +79,10 @@ func TestCompressForVisionPassesThroughUndecodable(t *testing.T) {
 
 // tl 1167: the desktop screenshot preview bridge serves os.MkdirTemp capture
 // files whose format is only provable from the bytes (no trusted mime), so the
-// exported entry point must detect, compress, and encode — and must refuse
-// anything else with an explicit error (a silent empty string is what painted
-// the overlay black in the first place).
+// exported entry point must detect, encode — and refuse anything else with an
+// explicit error (a silent empty string is what painted the overlay black in
+// the first place). Since tl 1178 the payload itself is served verbatim unless
+// it exceeds the preview byte ceiling.
 func TestPreviewImageDataURLServesRealImage(t *testing.T) {
 	url, err := PreviewImageDataURL(makeTestPNG(t, 100, 80), "")
 	if err != nil {
@@ -103,5 +106,94 @@ func TestPreviewImageDataURLRejectsOversize(t *testing.T) {
 	huge := make([]byte, maxImageAttachmentBytes+1)
 	if _, err := PreviewImageDataURL(huge, ""); err == nil {
 		t.Fatal("over-ceiling payload must be rejected")
+	}
+}
+
+// makeNoisePNG builds a PNG whose pixels are deterministic high-entropy noise,
+// so the encoded size tracks the raw pixel data (deflate cannot compress it) —
+// the reliable way to get a payload past previewLosslessMaxBytes in a test.
+func makeNoisePNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	rng := rand.New(rand.NewSource(1))
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.SetRGBA(x, y, color.RGBA{
+				R: uint8(rng.Intn(256)), G: uint8(rng.Intn(256)),
+				B: uint8(rng.Intn(256)), A: 255,
+			})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// tl 1178: the preview is painted for human eyes on a local surface, so a wide
+// capture must keep its full resolution — the model-vision rescale budget
+// (maxVisionDim) does not apply to this channel while the payload fits under
+// previewLosslessMaxBytes. 3000px wide is a ordinary desktop capture the old
+// code blurred down to 1568.
+func TestPreviewImageDataURLKeepsCaptureResolution(t *testing.T) {
+	raw := makeTestPNG(t, 3000, 2000)
+	url, err := PreviewImageDataURL(raw, "")
+	if err != nil {
+		t.Fatalf("PreviewImageDataURL: %v", err)
+	}
+	const prefix = "data:image/png;base64,"
+	if !strings.HasPrefix(url, prefix) {
+		t.Fatalf("mime must stay image/png, got %q", url[:min(40, len(url))])
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(url, prefix))
+	if err != nil {
+		t.Fatalf("payload is not base64: %v", err)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(decoded))
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if cfg.Width != 3000 || cfg.Height != 2000 {
+		t.Fatalf("preview dims = %dx%d, want 3000x2000 (full capture resolution)", cfg.Width, cfg.Height)
+	}
+}
+
+// tl 1178: degradation is byte-size-gated, not automatic. A capture under
+// previewLosslessMaxBytes is served verbatim (byte-identical — the desktop
+// bridge pins the same invariant end to end); one above it falls back to the
+// vision pipeline so the data URL handed across the IPC bridge stays bounded.
+func TestPreviewImageDataURLDegradesOnlyAboveThreshold(t *testing.T) {
+	small := makeTestPNG(t, 100, 80)
+	url, err := PreviewImageDataURL(small, "")
+	if err != nil {
+		t.Fatalf("PreviewImageDataURL: %v", err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(url, "data:image/png;base64,"))
+	if err != nil {
+		t.Fatalf("payload is not base64: %v", err)
+	}
+	if !bytes.Equal(decoded, small) {
+		t.Fatalf("an under-ceiling capture must be served verbatim (got %d bytes, want %d)", len(decoded), len(small))
+	}
+
+	raw := makeNoisePNG(t, 1700, 1700)
+	if len(raw) <= previewLosslessMaxBytes {
+		t.Fatalf("fixture is %d bytes, must exceed the %d byte threshold to exercise this path", len(raw), previewLosslessMaxBytes)
+	}
+	url, err = PreviewImageDataURL(raw, "")
+	if err != nil {
+		t.Fatalf("PreviewImageDataURL: %v", err)
+	}
+	decoded, err = base64.StdEncoding.DecodeString(strings.TrimPrefix(url, "data:image/png;base64,"))
+	if err != nil {
+		t.Fatalf("payload is not base64: %v", err)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(decoded))
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if cfg.Width != maxVisionDim || cfg.Height != maxVisionDim {
+		t.Fatalf("over-ceiling capture dims = %dx%d, want the vision budget %dx%d", cfg.Width, cfg.Height, maxVisionDim, maxVisionDim)
 	}
 }

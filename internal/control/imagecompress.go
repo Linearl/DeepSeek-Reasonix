@@ -77,11 +77,27 @@ func scaledDims(w, h, m int) (int, int) {
 	return nw, m
 }
 
-// PreviewImageDataURL compresses in-memory image bytes for the desktop preview
-// channel and encodes them as a data URL. An empty mime means detect-from-bytes
-// (the tl 1167 screenshot preview bridge has no trusted mime to pass): bytes
-// that are not a recognisable image are an explicit error, never an empty
-// string — the overlay must show a visible failure, not silently paint black.
+// previewLosslessMaxBytes is the byte ceiling under which the desktop preview
+// is served the capture bytes verbatim (tl 1178). The preview is painted for
+// human eyes on a local surface — it has no vision-token budget — so this path
+// has no resolution cap and no re-encode; feeding it the model-vision pipeline
+// (compressForVision: rescale to maxVisionDim, JPEG q85 for lossy mimes) was
+// exactly what blurred tl 1167's screenshot overlay on wide captures. The
+// ceiling only guards the IPC hop: a base64 data URL is ~1.37x its payload,
+// and handing the frontend a tens-of-MB string is a jank source of its own.
+// Captures above the ceiling fall back to the vision pipeline so the data URL
+// stays bounded; typical screenshots (hundreds of KB to a few MB) never hit
+// that degrade path. The vision chain's own callers (attachments, refs) are
+// untouched — this constant means nothing to them.
+const previewLosslessMaxBytes = 4 << 20
+
+// PreviewImageDataURL encodes in-memory image bytes for the desktop preview
+// channel as a data URL, serving them verbatim unless the payload alone
+// exceeds previewLosslessMaxBytes (then, and only then, the vision pipeline
+// degrades it). An empty mime means detect-from-bytes (the tl 1167 screenshot
+// preview bridge has no trusted mime to pass): bytes that are not a
+// recognisable image are an explicit error, never an empty string — the
+// overlay must show a visible failure, not silently paint black.
 func PreviewImageDataURL(raw []byte, mime string) (string, error) {
 	if len(raw) == 0 {
 		return "", fmt.Errorf("preview image payload is empty")
@@ -95,6 +111,8 @@ func PreviewImageDataURL(raw []byte, mime string) (string, error) {
 			return "", fmt.Errorf("preview payload is not a recognised image format")
 		}
 	}
-	raw, mime = compressForVision(raw, mime)
+	if len(raw) > previewLosslessMaxBytes {
+		raw, mime = compressForVision(raw, mime)
+	}
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(raw), nil
 }
