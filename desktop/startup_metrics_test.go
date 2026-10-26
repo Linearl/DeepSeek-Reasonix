@@ -159,6 +159,7 @@ func TestStartupMetricsLineFormat(t *testing.T) {
 	}
 	for _, want := range []string{
 		" trigger=frontend-ready+10s",
+		" pid=",
 		" version=",
 		" channel=",
 		" wall_ms=",

@@ -44,12 +44,15 @@ func startupMetricsPath() string {
 // Format (one line, key=value, space-separated; values containing spaces are
 // double-quoted):
 //
-//	[startup] ts=2026-10-26T12:34:56+08:00 trigger=frontend-ready+10s version=… channel=… wall_ms=941 tabs=2 marks="main_enter=2ms …" p1="…" legs=2 …
+//	[startup] ts=2026-10-26T12:34:56+08:00 pid=12345 trigger=frontend-ready+10s version=… channel=… wall_ms=941 tabs=2 marks="main_enter=2ms …" p1="…" legs=2 …
 func renderStartupMetricsLineLocked(obs *bootTimeline, trigger string) string {
 	attrs := bootSummaryAttrsLocked(obs)
 	var b strings.Builder
 	b.WriteString("[startup] ts=")
 	b.WriteString(time.Now().Format(time.RFC3339))
+	// pid anchors the line to its process: the launch-loop harness (Defender
+	// A/B experiment, tl 1163) matches "its own" line among appended history.
+	b.WriteString(" pid=" + strconv.Itoa(os.Getpid()))
 	b.WriteString(" trigger=" + trigger)
 	b.WriteString(" version=" + version)
 	b.WriteString(" channel=" + channel)
