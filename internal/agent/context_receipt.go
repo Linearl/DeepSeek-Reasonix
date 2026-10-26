@@ -66,7 +66,16 @@ func (a *Agent) maintenanceRetryDue(r *ContextMaintenanceReceipt, est int) bool 
 	if est <= 0 || window <= 0 || r.InputTokens <= 0 {
 		return false
 	}
-	return est >= r.InputTokens+int(float64(window)*maintenanceRetryGrowthRatio)
+	// 任务978（实验开关默认关）：投影失效回退全量态把增长门槛从 5% 压到 1%。
+	// 回退态里视图就是全量 canonical，涨量即真实发送体积的增长；等满 5% 窗口
+	// 才放行重试意味着全量视图要多发好几轮（978 现场的滞留形态）。健康投影态
+	// 维持原门槛——受限视图/正常视图的涨量没有同等的紧迫性，防同 turn 重试
+	// 风暴的原语义原样保留。
+	ratio := maintenanceRetryGrowthRatio
+	if earlyFoldEnabled && a.projectionFallbackActive() {
+		ratio = maintenanceRetryGrowthRatioFallback
+	}
+	return est >= r.InputTokens+int(float64(window)*ratio)
 }
 
 func (a *Agent) emitContextMaintenance(r *ContextMaintenanceReceipt) {
