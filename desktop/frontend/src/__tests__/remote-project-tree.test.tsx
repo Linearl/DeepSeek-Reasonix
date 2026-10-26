@@ -2,6 +2,15 @@
 // Source-contract test: the remote project group's tree behavior — session
 // rows, the + action, the remote context menu, the connection badge, and
 // the local-action guards — is wired exactly once and in the remote shape.
+//
+// 件5d 预存红随迁（wt-reds-cleanup）：上游 8-9 月分层重构把 App.tsx 单体的
+// remote 接线整体搬入 app-runtime/*（投影层 conversationProjection、owner 层
+// remoteComposerOwner/composerModeOwner/useTerminalPanelCommands 等，漂移起点
+// 27fa47f76 + a141c4aa1「separate runtime composition from the shared page
+// tree」），本 harness 的 19 条实现形态源码锚全部随迁到新落点。逐条定性均为
+// 「测试过时」：每个行为在新层有逐字等价承接（localDockBlocked/localTools-
+// Enabled/todo dismissal remote 门/terminal enabled 门等），无一行行为删除
+// （基线 3f104b77e 实测同红 20/19，非本线引入）。
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -34,6 +43,17 @@ const topicbarMenuSource = readFileSync(resolve(here, "../components/TopicbarMor
 const bridgeSource = readFileSync(resolve(here, "../lib/remoteProjectBridge.ts"), "utf8");
 const remoteOpenSource = readFileSync(resolve(here, "../../../remote_projects.go"), "utf8");
 const remotePendingSelectionSource = readFileSync(resolve(here, "../../../remote_tab_pending_selection.go"), "utf8");
+// 件5d 随迁：27fa47f76/a141c4aa1 分层重构后的新落点（App.tsx 单体 → 投影/owner 层）。
+const compositionSource = readFileSync(resolve(here, "../app-runtime/useAppSessionComposition.ts"), "utf8");
+const projectionSource = readFileSync(resolve(here, "../app-runtime/conversationProjection.ts"), "utf8");
+const remoteComposerOwnerSource = readFileSync(resolve(here, "../app-runtime/remoteComposerOwner.ts"), "utf8");
+const composerModeOwnerSource = readFileSync(resolve(here, "../app-runtime/composerModeOwner.ts"), "utf8");
+const paletteSource = readFileSync(resolve(here, "../app-runtime/usePaletteCommands.tsx"), "utf8");
+const todoPanelSource = readFileSync(resolve(here, "../app-runtime/useTodoPanelCommands.ts"), "utf8");
+const terminalCommandsSource = readFileSync(resolve(here, "../app-runtime/useTerminalPanelCommands.ts"), "utf8");
+const composerRouterSource = readFileSync(resolve(here, "../app-runtime/useComposerRouter.ts"), "utf8");
+const runtimeViewSource = readFileSync(resolve(here, "../app-shell/AppRuntimeView.tsx"), "utf8");
+const submissionAdapterSource = readFileSync(resolve(here, "../app-runtime/desktopSubmissionAdapter.ts"), "utf8");
 const explicitEnsureSource = remoteSource.match(
   /const ensureRemoteGroupSessions[\s\S]*?\n  const openRemoteWindow/,
 )?.[0] ?? "";
@@ -54,7 +74,8 @@ ok(
   "session rows open the matching in-app remote session",
 );
 ok(
-  /rows\.map\(\(row\): ProjectNode =>/.test(remoteSource) && /mergeRemoteSessionsIntoTree\(tree, remoteSessions, t\)/.test(source) &&
+  /rows\.map\(\(row\): ProjectNode =>/.test(remoteSource) &&
+    /mergeRemoteSessionsIntoTree\(tree, sessions, t, runtime\)/.test(remoteSource) &&
     /root: node\.remote!\.workspace/.test(remoteSource) && /sessionPath: row\.path/.test(remoteSource),
   "remote group children render with the active workspace and session identity",
 );
@@ -75,7 +96,8 @@ ok(
   "remote groups swap out the local project menu",
 );
 ok(
-  /app\.OpenRemoteProjectTab\(ref\.hostId, ref\.workspace,[\s\S]*?newSession: true/.test(remoteSource) &&
+  /key: "remote-new-session"[\s\S]*?openRemoteProject\(ref, \{ newSession: true \}\)/.test(remoteSource) &&
+    /app\.OpenRemoteProjectTab\(request\.remote\.hostId, request\.remote\.workspace, request\.options\)/.test(appSource) &&
     /app\.ConnectRemoteHost\(ref\.hostId\)[\s\S]*?waitForRemoteConnection\(ref\.hostId\)[\s\S]*?app\.OpenRemoteWorkspace\(ref\.hostId, ref\.workspace\)/.test(remoteSource),
   "in-app tabs use the remote-session bridge while the browser surface reconnects first",
 );
@@ -105,42 +127,43 @@ ok(
   "an explicit session refresh preserves the last successful rows and cache when Serve fails",
 );
 ok(
-  /useComposerModeActions\(\{[\s\S]*?remote: remoteSurfaceActive/.test(appSource) &&
-    /if \(remote && activeTabId\)[\s\S]*?SetRemoteTabComposerProfile\(/.test(modeActionsSource),
+  /useComposerModeActions\(\{[\s\S]*?remote: remoteSurfaceActive,/.test(compositionSource) &&
+    /if \(input\.remote\) \{[\s\S]*?ports\.setRemote\(tabId, patch\.collaborationMode \?\? "normal", patch\.toolApprovalMode \?\? "ask", ""\)/.test(composerModeOwnerSource),
   "remote composer mode changes publish all axes through one remote transaction",
 );
 ok(
-  /tab\.id === tabId && tab\.remote[\s\S]*?SetRemoteTabGoal\(tabId, trimmed\)/.test(appSource) &&
-    /onSend=\{remoteSurfaceActive \? remoteComposerSend : handleSend\}/.test(appSource),
+  /setGoal: \(tab, goal, remote\) => remote \? app\.SetRemoteTabGoal\(tab, goal\)/.test(submissionAdapterSource) &&
+    /onSend=\{remoteSurfaceActive \? remoteComposerSend : handleComposerSend\}/.test(appSource),
   "remote goal activation and goal-draft submission stay on the remote controller",
 );
 ok(
-  /remoteRuntimeCommand\(trimmed\)[\s\S]*?command\?\.method === "setModel"[\s\S]*?session\[command\.method\]\(command\.value\)[\s\S]*?await send/.test(remoteIntegrationSource) &&
+  /remoteRuntimeCommand\(trimmed\)/.test(remoteIntegrationSource) &&
+    /command\?\.method === "setModel" \|\| command\?\.method === "setEffort"[\s\S]*?ports\[command\.method\]\(command\.value\)[\s\S]*?await ports\.send/.test(remoteComposerOwnerSource) &&
     /\^\\\/\(model\|effort\)/.test(remoteIntegrationSource),
   "remote model and effort slash commands bypass optimistic conversational submit",
 );
 ok(
   /trimmed === "\/new"[\s\S]*?method: "newSession"/.test(remoteIntegrationSource) &&
     /trimmed === "\/clear"[\s\S]*?method: "clearSession"/.test(remoteIntegrationSource) &&
-    /command\?\.method === "clearSession"[\s\S]*?requestClear\(\)/.test(remoteIntegrationSource) &&
-    /command\?\.method === "newSession"[\s\S]*?openRemoteNewSession\(activeRemote, session\.retryHydration\)/.test(remoteIntegrationSource),
+    /command\?\.method === "clearSession"[\s\S]*?ports\.requestClear\(\)/.test(remoteComposerOwnerSource) &&
+    /command\?\.method === "newSession"[\s\S]*?ports\.newSession\(input\.remote, \{ newSession: true \}\)/.test(remoteComposerOwnerSource),
   "remote clear and new commands bypass optimistic submit and use session rotation",
 );
 ok(
   /verb === "compact"[\s\S]*?method: "compact"/.test(remoteIntegrationSource) &&
     /const management = new Set\(\[[\s\S]*?"context"[\s\S]*?"goal"[\s\S]*?"mcp"/.test(remoteIntegrationSource) &&
-    /command\?\.method === "runManagementCommand"[\s\S]*?session\.runManagementCommand\(trimmed, command\.rehydrate\)/.test(remoteIntegrationSource) &&
-    /command\?\.method === "compact"[\s\S]*?session\.compact\(command\.value\)/.test(remoteIntegrationSource) &&
+    /command\?\.method === "runManagementCommand"[\s\S]*?ports\.runManagementCommand\(input\.commandText, command\.rehydrate\)/.test(remoteComposerOwnerSource) &&
+    /command\?\.method === "compact"[\s\S]*?ports\.compact\(command\.value\)/.test(remoteComposerOwnerSource) &&
     /verb === "goal" && remoteGoalCommandStartsTurn\(trimmed\)/.test(remoteIntegrationSource) &&
     /rehydrate: verb === "branch" \|\| verb === "switch" \|\| verb === "rewind"/.test(remoteIntegrationSource),
   "remote non-turn management commands bypass optimistic conversational submit",
 );
 ok(
-  /if \(activeTab\?\.remote\) return openRemoteNewSession\(activeTab\.remote, remoteSession\.retryHydration\)/.test(appSource),
+  /if \(activeTab\?\.remote\) \{[\s\S]*?openRemoteProjectCommand\(activeTab\.remote, \{ newSession: true \}\)/.test(appSource),
   "global New Session routes the active remote tab through its Serve controller",
 );
 ok(
-  /item\.id !== "cmd-terminal" && item\.id !== "cmd-reload-runtime"/.test(appSource),
+  /remoteSurfaceActive \? cmds\.filter\(\(item\) => item\.id !== "cmd-terminal" && item\.id !== "cmd-reload-runtime"\) : cmds/.test(paletteSource),
   "remote command palettes hide local-only terminal and runtime reload actions",
 );
 ok(
@@ -161,54 +184,58 @@ ok(
   "remote composer disables local attachment input and native file paths",
 );
 ok(
-  /localDurableGuidance=\{!remoteSurfaceActive\}/.test(appSource) &&
-    /if \(!localDurableGuidance && onSteer\)[\s\S]*?await onSteer\(guidanceSubmitText, submitTabId\)/.test(composerSource) &&
-    /app\.SteerRemoteTab\(sourceTabId, text\.trim\(\)\)/.test(appSource),
+  /localDurableGuidance: !remoteActive/.test(projectionSource) &&
+    /if \(!finishing && !localDurableGuidance && onSteer\)[\s\S]*?await onSteer\(guidanceSubmitText, submitTabId\)/.test(composerSource) &&
+    /app\.SteerRemoteTab\(sourceTabId, text\.trim\(\)\)/.test(composerRouterSource),
   "running remote guidance uses the Serve inbox instead of the local durable inbox",
 );
 ok(
-  /remoteSurfaceActive \? remoteSession\.transcript\.items : state\.items/.test(appSource) &&
+  /const exportItems = remoteSurfaceActive \? remoteSession\.transcript\.items : state\.items;/.test(compositionSource) &&
     /sessionItemsToMarkdown\(sessionTitle, exportItems, exportLive\)/.test(appSource),
   "remote exports use the visible remote transcript",
 );
 ok(
   /const visibleRuntimeState = remoteSurfaceActive \? remoteSession\.transcript : state/.test(appSource) &&
     /tabId=\{remoteSurfaceActive \? undefined : activeTabId\}/.test(appSource) &&
-    /onCancelJob=\{remoteSurfaceActive \? remoteSession\.cancelJob : cancelJob\}/.test(appSource) &&
-    /backgroundRuntimes=\{remoteSurfaceActive \? \[\] : backgroundRuntimes\}/.test(appSource),
+    /onCancelJob: core\.remoteSurfaceActive \? core\.remoteSession\.cancelJob : runtime\.composer\.cancelJob/.test(runtimeViewSource) &&
+    /backgroundRuntimes: remote \? \[\] : backgroundRuntimes/.test(projectionSource),
   "remote status and context chrome never fall back to local session telemetry",
 );
 ok(
-  /turnPhase=\{visibleRuntimeState\.turnPhase\}/.test(appSource) &&
-    /turnStartAt=\{visibleRuntimeState\.turnStartAt\}/.test(appSource) &&
-    /liveStore=\{remoteSurfaceActive \? remoteSession\.liveStore : liveStore\}/.test(appSource) &&
-    /goalRuntime=\{remoteSurfaceActive \? remoteSession\.goalRuntime : state\.meta\?\.goalRuntime\}/.test(appSource) &&
+  /turnPhase: runtime\.turnPhase, turnStartAt: runtime\.turnStartAt,/.test(projectionSource) &&
+    /liveStore: core\.remoteSession\.liveStore/.test(runtimeViewSource) &&
+    /goalRuntime: remote \? remote\.goalRuntime : local\.meta\?\.goalRuntime/.test(projectionSource) &&
     /context=\{visibleRuntimeState\.context\}/.test(appSource),
   "remote composer timing, tokens, live stream, and cost use the visible remote runtime",
 );
 ok(
-  /localWorkspaceDockBlocked = remoteSurfaceActive && \(rightDockMode === "files" \|\| rightDockMode === "changed"\)/.test(appSource) &&
-    /surfaceWorkspacePanelRenderable = effectiveWorkspacePanelRenderable && !localWorkspaceDockBlocked/.test(appSource) &&
-    /\{surfaceWorkspacePanelRenderable && \([\s\S]*?<WorkspacePanel/.test(appSource),
+  /const localDockBlocked = !input\.localToolsEnabled && \(input\.dockMode === "files" \|\| input\.dockMode === "changed"\);/.test(projectionSource) &&
+    /const dockVisible = input\.chatVisible && input\.dockRenderable && !localDockBlocked;/.test(projectionSource) &&
+    /localToolsEnabled: !remoteActive/.test(projectionSource),
   "remote surfaces do not mount the local Files or Changes workspace panel",
 );
 ok(
-  /session\.pauseGoal\(\)/.test(remoteIntegrationSource) && /session\.resumeGoal\(\)/.test(remoteIntegrationSource),
+  /remote \? ports\.pauseGoal\(\) : ports\.pauseLocal\(tabId\)/.test(remoteComposerOwnerSource) &&
+    /remote \? ports\.resumeGoal\(\) : ports\.resumeLocal\(tabId\)/.test(remoteComposerOwnerSource),
   "remote Goal pause and resume actions route to the remote session",
 );
 ok(
-  /for \(let i = visibleRuntimeState\.items\.length - 1/.test(appSource) &&
-    /!remoteSurfaceActive && activeTabId && todoBatch/.test(appSource),
+  /items: visibleRuntimeState\.items,/.test(compositionSource) &&
+    /for \(let i = items\.length - 1; i >= 0; i--\)/.test(todoPanelSource) &&
+    /!remote && activeTabId && todoBatch/.test(todoPanelSource),
   "remote todo shelf projects the visible transcript without calling the local dismissal backend",
 );
 ok(
-  /if \(remoteSurfaceActive\) return;[\s\S]*?setTerminalPanelOpen/.test(appSource) &&
-    /!remoteSurfaceActive && terminalContentVisible/.test(appSource) &&
+  /if \(!input\.enabled\) return;/.test(terminalCommandsSource) &&
+    /enabled: conversationView\.localToolsEnabled/.test(compositionSource) &&
+    /localToolsEnabled: !remoteActive/.test(projectionSource) &&
+    /open: shell\.terminalPanelOpen && !core\.remoteSurfaceActive/.test(runtimeViewSource) &&
     /disabled=\{!terminalEnabled\}/.test(topicbarMenuSource),
   "remote surfaces disable terminal shortcuts, mounting, and menu actions",
 );
 ok(
-  /SetRemoteTabComposerProfile\(activeTabId, controllerMode, toolApprovalMode, ""\)/.test(modeActionsSource) &&
+  /ports\.setRemote\(tabId, mode, request\.mode, input\.goal\)/.test(composerModeOwnerSource) &&
+    /desktopBridge\.setRemoteTabComposerProfile\(tabId, mode, approvalMode, goal\)/.test(compositionSource) &&
     !/Promise\.allSettled\(\[[\s\S]*?SetRemoteTabGoal\(activeTabId, goal\)/.test(modeActionsSource),
   "remote collaboration changes rely on the atomic backend transaction instead of tunnel rollback",
 );
@@ -243,7 +270,7 @@ ok(
 );
 ok(
   /existing\.selectionRevision\+\+/.test(remoteOpenSource) &&
-    /a\.goRemoteTabSafe\("remoteTabResume"[\s\S]*?restoreRejectedRemoteTabOpenSelection/.test(remotePendingSelectionSource),
+    /a\.goRemoteTabSafe\("remoteTabResume"[\s\S]*?resumeRemoteTabSessionPathForOpenSelection/.test(remotePendingSelectionSource),
   "session switches resume in the background behind a generation guard",
 );
 ok(
