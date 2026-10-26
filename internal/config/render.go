@@ -925,6 +925,14 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "safety_event_wait_recheck = %v   # task 722: B3 sub-switch override (absent = follow experimental_safety_cost_control)\n", *c.Agent.SafetyEventWaitRecheck)
 	}
 
+	// tl-1166: the reasoning-only continuation switch renders CONDITIONALLY —
+	// nil means the default-on and must stay absent from the file (same
+	// lost-save lesson as the task-722 sub-switches above: an unconditional
+	// line would silently freeze the follower state).
+	if c.Agent.ExperimentalReasoningOnlyContinuation != nil {
+		fmt.Fprintf(&b, "experimental_reasoning_only_continuation = %v   # tl-1166: reasoning-only final repair (absent = on; explicit false restores the empty-body stop)\n", *c.Agent.ExperimentalReasoningOnlyContinuation)
+	}
+
 	fmt.Fprintf(&b, "experimental_orphan_handling = %v   # task 449: merged orphan switch — B5 reclaim a session lease whose recorded owner process is dead (live foreign owners still respected) + B4 settle recovery-store operations past the covered durable sequence at open\n", c.Agent.ExperimentalOrphanHandling)
 
 	// Task 449: legacy keys stay rendered (post-migration they read false) so

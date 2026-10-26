@@ -179,6 +179,13 @@ type terminalProtocolState struct {
 	// emptyFinalBlocks counts consecutive reasoning-only stops retried for a
 	// visible final answer.
 	emptyFinalBlocks int
+	// tl-1166: reasoningOnlyContinues counts the B continuation reminders
+	// injected this turn (ceiling maxReasoningOnlyContinuations = 1).
+	// reasoningOnlyFirstReasoning preserves the ORIGINAL turn's thinking so
+	// the C fallback body can show both segments (original + continuation) —
+	// B failing must not cost the user the only visible answer they can get.
+	reasoningOnlyContinues      int
+	reasoningOnlyFirstReasoning string
 	// rejectedTemplateBlocks counts fixed provider rejection sentences seen
 	// this run (task 286 / #10721). Kept separate from emptyFinalBlocks: the
 	// causes differ (provider filter vs no output), the ceilings differ, and

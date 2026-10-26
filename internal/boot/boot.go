@@ -2273,6 +2273,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// Task 517: the B2 gate rides the merged safety/cost switch.
 		// Task 722: fine-grained sub-switch override (nil = inherit the master).
 		LoopStreakNote: cfg.SafetyLoopStreakNoteEnabled(),
+		// tl-1166: reasoning-only final repair (B continuation reminder + C
+		// fallback body). Config default is ON; an explicit false restores the
+		// historical empty-body stop. Boot snapshot: restart to apply.
+		ReasoningOnlyContinuation: cfg.ReasoningOnlyContinuationEnabled(),
 		// Task 172: feedback touchpoints — FeedbackNudgeEnabled ANDs the nudge
 		// dial with the parent feedback switch, so the agent sees one dial that
 		// already respects the parent-wins rule. Boot snapshot: restart to apply.

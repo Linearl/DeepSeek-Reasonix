@@ -2544,6 +2544,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
+            {/* tl-1166: the reasoning-only final repair joins the same card as
+                a sibling row (bashHeavyGuard precedent: own key, own setter,
+                no tier badge). Ships ON — the readback is the resolved gate,
+                so the toggle always writes an explicit value. Restart to
+                apply (the gate rides the agent Options boot snapshot). */}
+            <SettingsField label={t("settings.reasoningOnlyContinuation")} hint={t("settings.reasoningOnlyContinuationHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.reasoningOnlyContinuation) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalReasoningOnlyContinuation(on))}
+                  >
+                    {t(on ? "settings.reasoningOnlyContinuation.on" : "settings.reasoningOnlyContinuation.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
             </>
           )}
           {selected === "autopilot" && (

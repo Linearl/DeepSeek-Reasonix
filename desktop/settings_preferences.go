@@ -686,6 +686,15 @@ func (a *App) SetExperimentalBashHeavyGuard(enabled bool) error {
 	})
 }
 
+// SetExperimentalReasoningOnlyContinuation toggles the tl-1166 reasoning-only
+// final repair (ships ON; restart to apply — the gate rides the agent Options
+// boot snapshot).
+func (a *App) SetExperimentalReasoningOnlyContinuation(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error {
+		return c.SetExperimentalReasoningOnlyContinuation(enabled)
+	})
+}
+
 // SetExperimentalEditEvidenceRelaxed toggles the task-789 relaxed edit
 // evidence gate (ships off; restart to apply — the tool surface is composed
 // per session; task 815 lands the settings-page entry for the unified

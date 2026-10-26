@@ -1673,6 +1673,26 @@ func (c *Config) SetSafetyIdleTerminate(enabled bool) error {
 	return nil
 }
 
+// ReasoningOnlyContinuationEnabled reports the tl-1166 gate. nil (the key
+// absent from config.toml) means ENABLED — the repair only alters turns that
+// already end with a blank answer, so the default-on cannot touch healthy
+// turns; an explicit false restores the historical empty-body stop.
+func (c *Config) ReasoningOnlyContinuationEnabled() bool {
+	if c.Agent.ExperimentalReasoningOnlyContinuation != nil {
+		return *c.Agent.ExperimentalReasoningOnlyContinuation
+	}
+	return true
+}
+
+// SetExperimentalReasoningOnlyContinuation writes the tl-1166 switch
+// explicitly. The value is an override: once written it no longer follows the
+// default-on; clearing back to "follow" is a hand-edit of config.toml (delete
+// the line).
+func (c *Config) SetExperimentalReasoningOnlyContinuation(enabled bool) error {
+	c.Agent.ExperimentalReasoningOnlyContinuation = &enabled
+	return nil
+}
+
 // SetSafetyLoopStreakNote writes the B2 sub-switch explicitly (task 722).
 func (c *Config) SetSafetyLoopStreakNote(enabled bool) error {
 	c.Agent.SafetyLoopStreakNote = &enabled

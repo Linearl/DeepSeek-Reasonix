@@ -1422,6 +1422,14 @@ type Options struct {
 	// repeated loop injects a bounded neutral "Continue." host note instead of
 	// pausing. Off (default) keeps the nudge-then-pause contract untouched.
 	LoopStreakNote bool
+
+	// ReasoningOnlyContinuation enables tl-1166: a final that carries ONLY
+	// reasoning (empty visible answer) gets one host reminder to answer
+	// directly (B), and a still-reasoning-only follow-up is displayed as a
+	// synthesized body holding both thinking segments (C). Boot passes the
+	// config default (ON — the switch only alters turns that are already
+	// broken); off restores the historical empty-body stop.
+	ReasoningOnlyContinuation bool
 	// FeedbackNudge enables the task-172 feedback touchpoints: one feedback-inbox
 	// invitation after a completed turn (T1) and one short guidance note after a
 	// mid-turn user steer (T2). Boot passes cfg.FeedbackNudgeEnabled(), which
