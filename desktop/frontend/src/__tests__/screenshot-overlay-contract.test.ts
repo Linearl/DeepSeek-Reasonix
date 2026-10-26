@@ -168,5 +168,44 @@ ok(
   "the backend clipboard write path exists (CF_PNG + CF_DIB via syscall)",
 );
 
+console.log("\ntl 1167 screenshot preview contract");
+
+const enSource = readFileSync(resolve(here, "../locales/en.ts"), "utf8");
+const zhSource = readFileSync(resolve(here, "../locales/zh.ts"), "utf8");
+const zhTWSource = readFileSync(resolve(here, "../locales/zh-TW.ts"), "utf8");
+
+ok(
+  /loadCapturePreview\(shot\.path\)/.test(overlaySource) &&
+    /app\.ScreenshotPreviewDataURL\(path\)/.test(overlaySource) &&
+    !/AttachmentDataURL\(shot\.path\)/.test(overlaySource),
+  "the overlay loads the capture preview through the screenshot-specific bridge (the capture path is absolute; AttachmentDataURL must keep rejecting it)",
+);
+
+ok(
+  !/\.catch\(\(\) => ""\)/.test(overlaySource),
+  "the silent empty-string preview fallback is gone — a failed preview must be visible, never a black frame",
+);
+
+ok(
+  /class PreviewLoadError/.test(overlaySource) && /console\.warn\("\[screenshot\] preview load failed"/.test(overlaySource),
+  "preview failures are logged and carry the backend reason into the overlay's error state",
+);
+
+ok(
+  /screenshot\.previewFailed/.test(enSource) && /screenshot\.previewFailed/.test(zhSource) && /screenshot\.previewFailed/.test(zhTWSource),
+  "all three locales carry the visible preview-failure message",
+);
+
+const previewBackendSource = readFileSync(resolve(here, "../../../screenshot_app.go"), "utf8");
+ok(
+  /func \(a \*App\) ScreenshotPreviewDataURL\(/.test(backendSource),
+  "the backend exposes the screenshot preview bridge",
+);
+ok(
+  /reasonix-screenshot-/.test(previewBackendSource) && /os\.TempDir\(\)/.test(previewBackendSource) &&
+    /filepath\.IsAbs/.test(previewBackendSource),
+  "the preview bridge guards on the same capture-dir prefix as release, plus absolute path and temp-root containment",
+);
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
