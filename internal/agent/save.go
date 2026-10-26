@@ -2743,6 +2743,11 @@ func SessionPreviewFromMessages(msgs []provider.Message) (string, int) {
 // sidecar stays tiny.
 const recentExcerptCount = 3
 
+// RecentExcerptCount is the exported hover-excerpt width (tl-1177b): the
+// desktop's on-demand tail reader (SessionTailUserExcerpts) shares this
+// constant so the sidecar field and the hover computation never drift apart.
+const RecentExcerptCount = recentExcerptCount
+
 // SessionRecentExcerptsFromMessages returns up to n recent user messages
 // (newest first), noise-filtered the same way as the preview. This is the
 // data behind the session wall card's hover overlay: the preview line is one
