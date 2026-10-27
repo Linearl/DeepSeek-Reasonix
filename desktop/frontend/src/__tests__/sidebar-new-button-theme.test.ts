@@ -19,7 +19,13 @@ import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const srcRoot = resolve(testDir, "..");
-const styles = readFileSync(resolve(srcRoot, "styles.css"), "utf8");
+// tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+const styles = [
+  readFileSync(resolve(srcRoot, "styles.css"), "utf8"),
+  readFileSync(resolve(srcRoot, "styles/mode-classic.css"), "utf8"),
+  readFileSync(resolve(srcRoot, "styles/mode-workbench.css"), "utf8"),
+  readFileSync(resolve(srcRoot, "styles/mode-creation.css"), "utf8"),
+].join("\n");
 const appTsx = readFileSync(resolve(srcRoot, "App.tsx"), "utf8");
 const sidebarRegion = readFileSync(resolve(srcRoot, "app-shell/SidebarRegion.tsx"), "utf8");
 

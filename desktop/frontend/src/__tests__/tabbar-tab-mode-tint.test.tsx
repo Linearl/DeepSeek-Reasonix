@@ -290,7 +290,10 @@ labFlags.applyLabFlags({});
 //    每档 tint token 必须与徽章规则同 token 源（软徽章=--mode-*-fg、
 //    实心徽章=--mode-*-bg），禁裸色值——徽章与背景色两指示颜色一致。
 {
-  const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "styles.css"), "utf8");
+  // tl1191: tabbar 规则移入 mode-classic.css，合并四文件源（五档选择器仍在
+  // 同一 mode 文件内保持原相对顺序）。
+  const css = ["../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css", "../styles/mode-creation.css"]
+    .map((p) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), p), "utf8")).join("\n");
   const palette: Array<[string, string]> = [];
   for (const match of css.matchAll(/\.tabbar \.tabbar__tab\[data-mode-tint="([a-z]+)"\] \{ --tab-tint-color: ([^;]+); \}/g)) {
     palette.push([match[1], match[2].trim()]);
