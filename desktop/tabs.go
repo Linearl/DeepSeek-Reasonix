@@ -2518,6 +2518,24 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 	// every open entry (project/global/topic-session, active or not) funnels here.
 	scope, workspaceRoot = normalizeWorkspaceScope(scope, workspaceRoot)
 	actualRoot, sessionPath := a.resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath)
+	// tl1197（1074 家族第 3 形态）: 携带 topic 身份却没有具体会话文件的打开
+	// （openGlobalTab / findTopicSessionForTarget 未命中是唯一来源）必须在
+	// 新建空壳之前先按 topic 身份跨 scope 找既有会话。topic id 是进程全局
+	// 对话身份（1095 同款立场）：只要任何 scope 下存在该 topic 的会话，
+	// 本次打开就跟随那个 binding —— 否则 global 目标会在 global 目录新建
+	// 同 topic 空壳文件，扫描后把同一对话画进 Global 区（跨区影子条目，
+	// 20261025 用户两次截图的「剧情核对」）。新建分支只对「全世界都没有
+	// 会话文件的真新话题」生效。
+	if boundPath, boundScope, boundRoot, bound := a.findTopicSessionAcrossScopes(topicID, sessionPath); bound {
+		sessionPath = boundPath
+		scope = boundScope
+		workspaceRoot = boundRoot
+		if scope == "global" {
+			actualRoot = globalWorkspaceRoot()
+		} else {
+			actualRoot = boundRoot
+		}
+	}
 	tr.mark("resolve")
 	releaseAdmission, err := a.beginProjectRuntimeAdmission(scope, actualRoot)
 	if err != nil {

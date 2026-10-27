@@ -27,6 +27,68 @@ func (a *App) resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath stri
 	return actualRoot, sessionPath
 }
 
+// findTopicSessionAcrossScopes resolves a topic id to its best session file
+// across EVERY known session directory, regardless of scope (tl1197, third
+// shape of the 1074 family). Two entry shapes:
+//   - sessionPath empty (openGlobalTab / findTopicSessionForTarget missed):
+//     any existing session of the topic wins — the open follows its binding
+//     instead of minting a same-topic shell under the global directory.
+//   - sessionPath present but content-free (a leftover global shell that the
+//     scope-filtered resolver itself picked, because the project-bound owner
+//     was filtered out): a content-bearing owner outranks the shell — the
+//     #7305 rule that an empty session must not hijack the conversation the
+//     user actually had, applied across scopes.
+// A concrete content-bearing currentPath is always respected (the caller
+// already resolved the owner; task 754 corrections stay authoritative).
+func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string, string, string, bool) {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" {
+		return "", "", "", false
+	}
+	currentPath = strings.TrimSpace(currentPath)
+	if currentPath != "" && sessionFileHasConversationContent(currentPath) {
+		// Fast path: the caller already holds a content-bearing session of
+		// this topic — always respected. Skips the cross-directory scan on
+		// the common open path.
+		return "", "", "", false
+	}
+	var best topicSessionMatch
+	var bestContent bool
+	found := false
+	for _, dir := range a.knownSessionDirs() {
+		for _, match := range topicSessionMatches(dir, topicID) {
+			content := sessionFileHasConversationContent(match.path)
+			if !found || (content && !bestContent) ||
+				(content == bestContent && match.updatedAt.After(best.updatedAt)) {
+				best = match
+				bestContent = content
+				found = true
+			}
+		}
+	}
+	if !found || best.path == currentPath {
+		return "", "", "", false
+	}
+	if currentPath != "" && !bestContent {
+		// The caller pinned a content-free session and no owner exists
+		// anywhere — keep the caller's pick rather than churning bindings.
+		return "", "", "", false
+	}
+	binding, ok := a.resolveSessionBinding(best.path)
+	if !ok {
+		return "", "", "", false
+	}
+	scope := strings.TrimSpace(binding.scope)
+	if scope != "project" {
+		return best.path, "global", "", true
+	}
+	root := normalizeProjectRoot(binding.workspaceRoot)
+	if root == "" {
+		return "", "", "", false
+	}
+	return best.path, "project", root, true
+}
+
 func (a *App) sessionHasLiveController(path string) bool {
 	key := sessionRuntimeKey(path)
 	if a == nil || key == "" {

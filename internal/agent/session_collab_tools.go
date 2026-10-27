@@ -1503,6 +1503,13 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 	seenPath := map[string]bool{}
 	seenStem := map[string]bool{}
 	seenContact := map[string]string{}
+	// tl1197（1074 家族第 3 形态）: topic id 是进程全局对话身份——同一 topic
+	// 的多个物理会话文件（正主 + 空壳/副本）在目录语义上是同一个可寻址对话，
+	// 只出一条 Identity。残留的空壳（如 global 目标曾经新建的跨 scope 壳）
+	// 否则会让 get_session_info 按标题命中多条同 id、让名册重复列行。
+	// 收敛规则与写入端 findTopicSessionAcrossScopes 同型：内容承载者
+	// （turns 更大）优先，其次更新时间新；被替换条目天然让位。
+	seenTopic := map[string]int{}
 	add := func(ids []sessioncollab.Identity, workspace, scope string, archived bool) {
 		for _, id := range ids {
 			key := strings.ToLower(id.SessionPath)
@@ -1524,6 +1531,18 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 					continue
 				}
 				seenContact[id.ContactID] = id.SessionPath
+			}
+			if id.TopicID != "" {
+				if idx, dup := seenTopic[id.TopicID]; dup {
+					if addressableTopicCandidateBetter(id, out[idx]) {
+						id.Workspace = workspace
+						id.Scope = scope
+						id.Archived = archived
+						out[idx] = id
+					}
+					continue
+				}
+				seenTopic[id.TopicID] = len(out)
 			}
 			id.Workspace = workspace
 			id.Scope = scope
@@ -1568,6 +1587,17 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 // transcript file on disk), never a second reimplementation of the scan.
 func ScanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity {
 	return scanAddressable(sessionDir, workspaceRoot)
+}
+
+// addressableTopicCandidateBetter decides whether candidate should replace the
+// incumbent entry for an already-seen topic id (tl1197). More turns wins —
+// the content-bearing session represents the conversation — then a newer
+// update time; ties keep the incumbent so equal shells never churn.
+func addressableTopicCandidateBetter(candidate, incumbent sessioncollab.Identity) bool {
+	if candidate.Turns != incumbent.Turns {
+		return candidate.Turns > incumbent.Turns
+	}
+	return candidate.UpdatedAt > incumbent.UpdatedAt
 }
 
 // collabRefMatches is the two-sided compare: exact (case-insensitive) first so
