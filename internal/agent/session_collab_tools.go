@@ -14,6 +14,7 @@ import (
 	"reasonix/internal/sessioncollab"
 	"reasonix/internal/store"
 	"reasonix/internal/tool"
+	"reasonix/internal/topicregistry"
 )
 
 // SessionCollabConfig carries host knobs for the task 19 collaboration tools.
@@ -1534,7 +1535,9 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 			}
 			if id.TopicID != "" {
 				if idx, dup := seenTopic[id.TopicID]; dup {
-					if addressableTopicCandidateBetter(id, out[idx]) {
+					// tl1208: 候选的 scope/workspace 此时还未写回 id，显式传参
+					// 供注册表唯一归属直查比较。
+					if addressableTopicCandidateBetter(id, workspace, scope, out[idx]) {
 						id.Workspace = workspace
 						id.Scope = scope
 						id.Archived = archived
@@ -1591,13 +1594,40 @@ func ScanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 
 // addressableTopicCandidateBetter decides whether candidate should replace the
 // incumbent entry for an already-seen topic id (tl1197). More turns wins —
-// the content-bearing session represents the conversation — then a newer
+// the content-bearing session represents the conversation — then the session
+// under the topic-registry's unique owner scope (tl1208: 注册表唯一归属直查；
+// 注册表无条目——headless 冷机/索引未建——时跳过该级）， then a newer
 // update time; ties keep the incumbent so equal shells never churn.
-func addressableTopicCandidateBetter(candidate, incumbent sessioncollab.Identity) bool {
+// candidateScope/candidateWorkspace 是候选尚未写回 id 的归属字段。
+func addressableTopicCandidateBetter(candidate sessioncollab.Identity, candidateScope, candidateWorkspace string, incumbent sessioncollab.Identity) bool {
 	if candidate.Turns != incumbent.Turns {
 		return candidate.Turns > incumbent.Turns
 	}
+	if owner, ok := topicregistry.OwnerOf(candidate.TopicID); ok {
+		candOwned := addressableIdentityInOwnerScope(candidateScope, candidateWorkspace, owner)
+		incOwned := addressableIdentityInOwnerScope(incumbent.Scope, incumbent.Workspace, owner)
+		if candOwned != incOwned {
+			return candOwned
+		}
+	}
 	return candidate.UpdatedAt > incumbent.UpdatedAt
+}
+
+// addressableIdentityInOwnerScope reports whether an identity's directory
+// placement (scope + workspace) matches the registry's unique owner scope.
+// Root compare is Clean+EqualFold: the registry normalizes roots on the
+// desktop side, the scan derives them from directory layout — same path may
+// differ in case (Windows) and trailing separators.
+func addressableIdentityInOwnerScope(scope, workspace string, owner topicregistry.Entry) bool {
+	if owner.Scope == topicregistry.ScopeGlobal {
+		return scope != "project"
+	}
+	if scope != topicregistry.ScopeProject {
+		return false
+	}
+	workspace = filepath.Clean(strings.TrimSpace(workspace))
+	root := filepath.Clean(strings.TrimSpace(owner.Root))
+	return workspace != "" && root != "" && strings.EqualFold(workspace, root)
 }
 
 // collabRefMatches is the two-sided compare: exact (case-insensitive) first so

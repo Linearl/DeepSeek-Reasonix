@@ -3,6 +3,7 @@ package sessioncatalog
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"strings"
 )
 
@@ -82,12 +83,27 @@ func (c *Catalog) ListTopics(ctx context.Context, req TopicPageRequest) (TopicPa
 				}
 			}
 			if !hasContent && !item.Pinned {
-				shadowed, shadowErr := c.topicContentBearingElsewhere(ctx, item.Scope, rootKey, item.TopicID)
-				if shadowErr != nil {
-					return TopicPage{Items: []TopicRecord{}, Revision: out.Revision}, shadowErr
+				// tl1208: 先直查注册表唯一归属（desktop 注入钩子）：归属不在
+				// 本 scope ⇒ 让位（免目录 SQL）；归属在本 scope ⇒ 注册表权威
+				// 保留；查无条目（headless 未注入/索引未建）⇒ 回落 1197 的
+				// 内容承载查询，行为逐字节不变。
+				ownerConsulted := false
+				if c.opts.TopicOwner != nil {
+					if ownerScope, ownerRoot, ok := c.opts.TopicOwner(item.TopicID); ok {
+						ownerConsulted = true
+						if !topicOwnedByRow(ownerScope, ownerRoot, item) {
+							continue
+						}
+					}
 				}
-				if shadowed {
-					continue
+				if !ownerConsulted {
+					shadowed, shadowErr := c.topicContentBearingElsewhere(ctx, item.Scope, rootKey, item.TopicID)
+					if shadowErr != nil {
+						return TopicPage{Items: []TopicRecord{}, Revision: out.Revision}, shadowErr
+					}
+					if shadowed {
+						continue
+					}
 				}
 			}
 			item.Sessions = sessions
@@ -175,6 +191,22 @@ func cursorForTopic(topic TopicRecord, req TopicPageRequest) *pageCursor {
 		SortOrder: topicPageManualSortValue(topic),
 		Activity:  topicPageSortValue(topic, req.SortMode), TopicID: topic.TopicID,
 	}
+}
+
+// topicOwnedByRow 报告注册表唯一归属是否落在一行目录记录的 scope 上
+// （tl1208）。root 比较用 Clean+EqualFold：注册表侧是 desktop 规整过的绝
+// 对路径，目录记录侧来自投影 targets——同一根路径在 Windows 下可能只有
+// 大小写/尾分隔符差异。
+func topicOwnedByRow(ownerScope, ownerRoot string, item TopicRecord) bool {
+	if ownerScope == "global" {
+		return item.Scope == "global"
+	}
+	if ownerScope != "project" || item.Scope != "project" {
+		return false
+	}
+	root := filepath.Clean(strings.TrimSpace(ownerRoot))
+	row := filepath.Clean(strings.TrimSpace(item.WorkspaceRoot))
+	return root != "" && row != "" && strings.EqualFold(root, row)
 }
 
 // topicContentBearingElsewhere reports whether topicID has at least one

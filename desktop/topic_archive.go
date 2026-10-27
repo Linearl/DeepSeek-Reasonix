@@ -43,7 +43,9 @@ const topicArchiveForceablePrefix = "reasonix_error:topic_archive_forceable: "
 
 type topicArchiveForceableError struct{ cause error }
 
-func (e *topicArchiveForceableError) Error() string { return topicArchiveForceablePrefix + e.cause.Error() }
+func (e *topicArchiveForceableError) Error() string {
+	return topicArchiveForceablePrefix + e.cause.Error()
+}
 func (e *topicArchiveForceableError) Unwrap() error { return e.cause }
 
 func markTopicArchiveForceable(err error) error {
@@ -515,33 +517,11 @@ func cleanupTransientBlankTopicRegistration(meta agent.BranchMeta) {
 		return
 	}
 	scope, root := meta.DefaultScope(), normalizeProjectRoot(meta.WorkspaceRoot)
-	_ = updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
-		changed := false
-		if scope != "project" {
-			if next := removeString(f.GlobalTopics, topicID); !sameStringList(next, f.GlobalTopics) {
-				f.GlobalTopics, changed = next, true
-			}
-			if next := removeString(f.GlobalPinnedTopics, topicID); !sameStringList(next, f.GlobalPinnedTopics) {
-				f.GlobalPinnedTopics, changed = next, true
-			}
-			if next, removed := groupsWithoutTopic(f.GlobalGroups, topicID); removed {
-				f.GlobalGroups, f.GlobalGroupsRevision, changed = next, f.GlobalGroupsRevision+1, true
-			}
-			return changed, nil
-		}
-		if index := projectIndexByRoot(f.Projects, root); index >= 0 {
-			project := &f.Projects[index]
-			if next := removeString(project.Topics, topicID); !sameStringList(next, project.Topics) {
-				project.Topics, changed = next, true
-			}
-			if next := removeString(project.PinnedTopics, topicID); !sameStringList(next, project.PinnedTopics) {
-				project.PinnedTopics, changed = next, true
-			}
-			if next, removed := groupsWithoutTopic(project.Groups, topicID); removed {
-				project.Groups, project.GroupsRevision, changed = next, project.GroupsRevision+1, true
-			}
-		}
-		return changed, nil
+	// tl1208: 瞬时空壳的注册清理走写口收点——只摘自己 scope（onlyScope
+	// 保留原语义）、不写墓碑（原语义：瞬时空壳可被后续合法登记复活）。
+	_ = unregisterTopic(topicID, topicUnregisterOpts{
+		tombstone: false,
+		onlyScope: &topicScopeRef{scope: scope, root: root},
 	})
 	titleRoot := topicTitleRoot(scope, root)
 	_ = deleteTopicState(titleRoot, topicID)

@@ -205,7 +205,8 @@ func (a *App) openForkedSessionTabWithWorkspace(sourceTab *WorkspaceTab, newPath
 
 	if opened.workspaceReferenced && scope == "project" {
 		rememberWorkspace(workspaceRoot)
-		if err := prependTopicInProjectsFile(workspaceRoot, topicID, true); err != nil {
+		// tl1208: 隔离 fork 的话题登记走写口收点。
+		if err := registerTopic("project", workspaceRoot, topicRegisterOpts{ensureProject: true}, topicID); err != nil {
 			slog.Warn("desktop: persist isolated fork topic", "workspace", workspaceRoot, "topic", topicID, "err", err)
 		}
 		a.registerProjectRoot(workspaceRoot)

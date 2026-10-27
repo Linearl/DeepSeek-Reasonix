@@ -90,6 +90,11 @@ type Options struct {
 	QueueCapacity int
 	Now           func() time.Time
 	OnRevision    func(uint64, []string, string)
+	// TopicOwner 是 topic 注册唯一归属的直查钩子（tl1208，desktop 注入）。
+	// ListTopics 的跨 scope 空壳让位先问它：归属不在本 scope ⇒ 让位（免
+	// 目录 SQL），归属在本 scope ⇒ 保留，查无条目 ⇒ 回落既有内容承载查询。
+	// serve/headless 不注入时行为与 1197 版本逐字节一致。
+	TopicOwner func(topicID string) (scope, root string, ok bool)
 }
 
 type DirectoryTarget struct {
