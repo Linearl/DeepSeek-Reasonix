@@ -631,6 +631,14 @@ type Agent struct {
 	// behind the in-flight compaction gate. Bind-time only, same discipline
 	// as toolRoundGap: nil = no host hook.
 	compactionSettled func()
+	// hostStateRebuild (tl-1194 压缩后宿主状态刷新) fires on the agent goroutine
+	// inside endMaintenance, immediately BEFORE compactionSettled, from the same
+	// deferred single-flight release — so every maintenance exit (prune-only,
+	// fold ladder, rescue, failure, panic) refreshes host-owned state (memory
+	// region, live snapshot) and parked turns are only released after the
+	// refresh has landed. Bind-time only, same nil discipline as
+	// compactionSettled: nil = no host hook.
+	hostStateRebuild func()
 	// maintaining (任务920) counts real maintenance transactions in flight —
 	// set once prepareOnce commits past the below-trigger fast path, cleared
 	// on return. Fast paths (below trigger, blocked/stuck views) never touch
@@ -1057,6 +1065,21 @@ func (a *Agent) SetCompactionSettledHook(fn func()) {
 	a.compactionSettled = fn
 }
 
+// SetHostStateRebuildHook registers the host callback fired when a real
+// maintenance transaction closes (tl-1194 压缩后宿主状态刷新). It runs on the
+// agent goroutine from the same deferred release as the 920 settle hook, but
+// strictly BEFORE it: the controller rebuilds host-owned state (memory region
+// of the system prompt, live memory snapshot) while the gate is still closed,
+// so a parked turn released by compactionSettled observes the refreshed state.
+// Same discipline as SetCompactionSettledHook: bind-time only, nil = no host
+// hook (benchmarks and compaction-only paths pay nothing).
+func (a *Agent) SetHostStateRebuildHook(fn func()) {
+	if a == nil {
+		return
+	}
+	a.hostStateRebuild = fn
+}
+
 // CompactionInFlight reports whether a real maintenance transaction is in
 // flight (任务920 压缩单飞门). The gate source is the maintaining counter set
 // past the below-trigger fast path, not compactionRunMu: the mutex is also
@@ -1070,13 +1093,19 @@ func (a *Agent) CompactionInFlight() bool {
 }
 
 // endMaintenance releases one in-flight maintenance slot and, on the last
-// release, fires the host settle hook so the controller drains turns parked
-// behind the compaction gate. Deferred in prepareOnce, so every exit path
-// (prune-only, fold ladder, rescue, failure, panic) pays it — a parked turn
-// can never outlive its gate (任务920 S3: 失败/超时后队列放行不卡死).
+// release, refreshes host-owned state (tl-1194) and fires the host settle hook
+// so the controller drains turns parked behind the compaction gate. Deferred in
+// prepareOnce, so every exit path (prune-only, fold ladder, rescue, failure,
+// panic) pays it — a parked turn can never outlive its gate (任务920 S3:
+// 失败/超时后队列放行不卡死). The rebuild hook runs strictly before the settle
+// hook: parked turns are only released after the refresh has landed (候选 B
+// 顺序保证，同步串行，无独立 goroutine).
 func (a *Agent) endMaintenance() {
 	if a.maintaining.Add(-1) > 0 || a.maintaining.Load() < 0 {
 		return
+	}
+	if a.hostStateRebuild != nil {
+		a.hostStateRebuild()
 	}
 	if a.compactionSettled != nil {
 		a.compactionSettled()

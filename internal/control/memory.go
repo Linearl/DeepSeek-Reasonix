@@ -165,6 +165,26 @@ func (m *memoryManager) applyBackgroundWrite(mem *memory.Set) {
 	m.applyWrite(mem, "")
 }
 
+// ReloadFromDisk re-discovers memory from disk without a preceding write — the
+// read-side counterpart of applyWrite (tl-1194 步骤 2). Host-state rebuild
+// points (the post-compaction refresh) need the live snapshot to track edits
+// that never went through a controller write path: direct frontmatter edits in
+// the memory panel's files, AGENTS.md/REASONIX.md instruction files, external
+// tools. The next real user turn's session-context then reflects the fresh
+// snapshot. No-op when memory is disabled (set == nil, the zero-value manager).
+// Serialization matches applyWrite's contract: this takes writeMu itself (the
+// disk re-discovery must not interleave with a concurrent write's reload), and
+// callers must not hold m.mu or m.writeMu.
+func (m *memoryManager) ReloadFromDisk() {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	mem := m.current()
+	if mem == nil {
+		return
+	}
+	m.applyWrite(mem, "")
+}
+
 // quickAdd appends a one-line note to the doc-memory file for scope (project
 // REASONIX.md by default) — the write side of "#<note>". Returns the file written.
 func (m *memoryManager) quickAdd(scope memory.Scope, note string) (string, error) {
