@@ -13,7 +13,14 @@ func TestAnnotateInlineImageRejection(t *testing.T) {
 
 	t.Run("400 with inline images gains hint", func(t *testing.T) {
 		err := &APIError{Provider: "p", Status: 400, Body: `{"error":{"message":"Invalid request parameters"}}`}
+		base := err.Error()
 		got := AnnotateInlineImageRejection(err, true)
+		// tl 1190: the ORIGINAL error object comes back — annotating must not
+		// re-wrap, or the trusted ContextLimitError/OutputLimitError wrappers
+		// above it would be stripped.
+		if got != err {
+			t.Fatalf("expected the original error in place, got %T", got)
+		}
 		var api *APIError
 		if !errors.As(got, &api) || api.Hint == "" {
 			t.Fatalf("expected annotated APIError with hint, got %v", got)
@@ -24,8 +31,8 @@ func TestAnnotateInlineImageRejection(t *testing.T) {
 		if !strings.Contains(api.Hint, "data: URL") {
 			t.Errorf("hint must name the data-URL fact, got: %s", api.Hint)
 		}
-		if api.Error() != err.Error()+"\n"+api.Hint {
-			t.Errorf("Error() must append the hint as its own line")
+		if api.Error() != base+"\n"+api.Hint {
+			t.Errorf("Error() must append the hint as its own line exactly once")
 		}
 	})
 
@@ -76,6 +83,27 @@ func TestAnnotateInlineImageRejection(t *testing.T) {
 		var api *APIError
 		if !errors.As(got, &api) || api.Hint == "" {
 			t.Fatalf("expected wrapped APIError to gain hint, got %v", got)
+		}
+	})
+
+	// tl 1190 (2026-10-27 deepseek incident): the old copy-and-return stripped
+	// the trusted overflow wrapper SendWithRetry had just parsed, so the
+	// agent's context recovery never saw the provider's four token numbers and
+	// every image-carrying overflow turn died unrecovered. The wrapper must
+	// survive the annotation.
+	t.Run("context limit wrapper survives annotation", func(t *testing.T) {
+		apiErr := &APIError{Provider: "deepseek", Status: 400, Body: "context"}
+		wrapped := &ContextLimitError{APIError: apiErr, WindowTokens: 1_048_576, PromptTokens: 737_203}
+		got := AnnotateInlineImageRejection(wrapped, true)
+		if got != wrapped {
+			t.Fatalf("expected the original wrapper, got %T", got)
+		}
+		limit := AsContextLimitError(got)
+		if limit == nil || limit.WindowTokens != 1_048_576 || limit.PromptTokens != 737_203 {
+			t.Fatalf("ContextLimitError numbers must survive, got %+v", limit)
+		}
+		if apiErr.Hint == "" || !strings.Contains(apiErr.Hint, hintFragment) {
+			t.Fatalf("hint must be set on the shared APIError, got %q", apiErr.Hint)
 		}
 	})
 }
