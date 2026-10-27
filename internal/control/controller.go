@@ -1159,6 +1159,10 @@ func New(opts Options) *Controller {
 		// compaction the moment the pass settles (agent goroutine, every exit
 		// path). Without this the parked FIFO strands until the next submit.
 		c.executor.SetCompactionSettledHook(c.onCompactionSettled)
+		// tl-1194 压缩后宿主状态刷新: rebuild host-owned state (memory region,
+		// live snapshot) from the same deferred release, strictly BEFORE the
+		// settle hook so released parked turns observe the refreshed state.
+		c.executor.SetHostStateRebuildHook(c.rebuildHostState)
 	}
 	// Auto Guard is built into Auto. Ask and YOLO bypass it through the mode
 	// provider, so no separate enablement state is needed.
@@ -4406,7 +4410,10 @@ func (c *Controller) NewSession() error {
 	if c.sessionDir != "" {
 		freshPath = agent.NewSessionPath(c.sessionDir, c.activeLabel())
 	}
-	freshSession := agent.NewSession(c.basePrompt())
+	// tl-1194: /new must serve the LATEST instruction files and memory, not the
+	// boot-time base copy — same refresh contract as the post-compaction
+	// rebuild (freshSessionBasePrompt falls back to the boot copy unwired).
+	freshSession := agent.NewSession(c.freshSessionBasePrompt())
 	commitTransition, err := c.prepareSessionTransition(freshPath, "new", freshSession)
 	if err != nil {
 		return fmt.Errorf("bind new session: %w", err)
@@ -4506,7 +4513,10 @@ func (c *Controller) ClearSession() error {
 	if c.sessionDir != "" {
 		freshPath = agent.NewSessionPath(c.sessionDir, c.activeLabel())
 	}
-	freshSession := agent.NewSession(c.basePrompt())
+	// tl-1194: /clear refreshes the base from the latest on-disk memory, same
+	// contract as /new (freshSessionBasePrompt; extension-owned base passes
+	// through untouched).
+	freshSession := agent.NewSession(c.freshSessionBasePrompt())
 	commitTransition, err := c.prepareSessionTransition(freshPath, "clear", freshSession)
 	if err != nil {
 		if destroy.Async {
@@ -7646,4 +7656,95 @@ func (c *Controller) MemorySystemReload() func() string {
 		return nil
 	}
 	return c.memorySystemReload
+}
+
+// rebuildHostState is the unified post-maintenance host-state rebuild (tl-1194,
+// 触发点候选 B). The agent fires it from endMaintenance — the deferred
+// single-flight release, so prune-only / fold-ladder / rescue / failure / panic
+// exits all land here — strictly before the 920 settle hook, so parked turns
+// are only released after the refresh. Steps 1 and 2 run at any time (the
+// SetLeadingSystemPrompt write takes the session mutex; an in-flight request
+// keeps its old snapshot and never tears): step 1 rebuilds the # Memory region
+// of the leading system prompt from the boot-time clean base plus the latest
+// on-disk memory (same assembly as boot: skills policy + sessionCollab index +
+// persona); step 2 re-reads the live memory snapshot so the per-turn
+// session-context tracks edits that bypassed the controller's write paths.
+//
+// Hard guards (架构方案 §九/§十):
+//   - whole-body recover: a panic keeps the previous prompt and never kills
+//     the session; the settle hook still fires (parked turns drain);
+//   - extension-owned base (baseOverridden) skips step 1 entirely — composing
+//     the boot base over an extension prompt would wipe the extension segment;
+//   - idempotent: an unchanged rebuild leaves the leading message byte-identical
+//     (SetLeadingSystemPromptWithReason returns false) and the live snapshot
+//     re-read is a pure disk refresh;
+//   - no disk I/O under c.mu: the reload closure runs off-lock; c.mu is taken
+//     once, briefly, to capture the session pointer and the override flag
+//     together (closing the swap race with ApplyExtensionSystemPrompt — worst
+//     case the write lands on an orphaned session about to be replaced).
+//
+// Step 3 (tool-surface two-layer swap, pendingToolRebuild + admission-entry
+// drain, gated by rotating/running/finishing) and step 4 (resume
+// normalization via selfHealAfterResume) are tl-1195 scope.
+func (c *Controller) rebuildHostState() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Warn("host state rebuild panicked; keeping previous prompt", "panic", r)
+		}
+	}()
+	if c == nil {
+		return
+	}
+	reload := c.memorySystemReload
+	if reload == nil || c.executor == nil {
+		return
+	}
+	// Step 1: # Memory region rebuild. One brief c.mu pass captures the
+	// executor session and the extension-override flag together; the disk read
+	// (reload) then runs off-lock.
+	c.mu.Lock()
+	sess := c.executor.Session()
+	overridden := c.prompt.baseOverridden
+	c.mu.Unlock()
+	if !overridden && sess != nil {
+		if prompt := reload(); prompt != "" {
+			if changed := sess.SetLeadingSystemPromptWithReason(prompt, compactMemoryRefreshReason); changed {
+				slog.Info("memory region of the system prompt refreshed after maintenance", "reason", compactMemoryRefreshReason)
+				if c.sink != nil {
+					c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
+						Text: "Durable memory and instruction files were refreshed into the system prompt."})
+				}
+			}
+		}
+	}
+	// Step 2: live memory snapshot re-read from disk. Runs even when an
+	// extension owns the base prompt: session-context is transcript state and
+	// benefits from the fresh snapshot regardless of who owns the prefix.
+	c.memory.ReloadFromDisk()
+}
+
+// compactMemoryRefreshReason is the rewrite-boundary reason recorded on the
+// executor session when the post-maintenance memory refresh rewrites the
+// leading system prompt.
+const compactMemoryRefreshReason = "compact_memory_refresh"
+
+// freshSessionBasePrompt assembles the leading system prompt for a same-tab
+// fresh session (/new, /clear). The boot-time base copy carried in
+// c.prompt.base goes stale the moment memory or an instruction file changes on
+// disk, so when boot wired the memoryReload closure it is re-consulted here —
+// the same assembly the post-maintenance rebuild uses, keeping /new and /clear
+// identical to a rebuild (tl-1194 保护条款②: same constraints as clause ①).
+// An extension-owned base passes through untouched, and a nil closure
+// (tests/bench builds without boot wiring) falls back to the boot copy.
+func (c *Controller) freshSessionBasePrompt() string {
+	base := c.basePrompt()
+	if c.promptBaseOverridden() {
+		return base
+	}
+	if reload := c.MemorySystemReload(); reload != nil {
+		if rebuilt := reload(); rebuilt != "" {
+			return rebuilt
+		}
+	}
+	return base
 }
