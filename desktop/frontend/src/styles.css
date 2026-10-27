@@ -15088,7 +15088,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-2);
   pointer-events: none;
 }
 .session-wall-hover-layer__title {
