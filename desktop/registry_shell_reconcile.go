@@ -38,12 +38,13 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
+	"reasonix/internal/topicregistry"
 )
 
 // Topic-inventory mismatch kinds added by task 1145. Stable identifiers, like
 // the task-550 kinds in topic_inventory.go.
 const (
-	topicInventoryRegistryTopicWithoutDirectory = "registry_topic_without_directory_entry"
+	topicInventoryRegistryTopicWithoutDirectory   = "registry_topic_without_directory_entry"
 	topicInventoryDirectorySessionWithoutRegistry = "directory_session_without_registry_entry"
 
 	topicInventoryHandlingShellObserved = "开启 [agent] session_collab_registry_shell_cleanup（重启生效）后由对账自动移出，或用 delete_session(target=<topic_id>) 清理（1145 空壳触达）"
@@ -84,7 +85,18 @@ func directoryTopicIDs() map[string]bool {
 // registryShellRefs snapshots the desktop registry's displayable topic
 // entries (global + every project) with their scope/root/pinned state.
 // Tombstoned ids (deletedTopics) are not displayable and never shell entries.
+// tl1208: 条目集合改直查唯一归属索引——一 id 一行由 map 结构保证（原
+// 「global registration wins」去重规则由注册表重建裁决承接：遗留跨 scope
+// 重复行判给 project，global 侧是 1074 家族影子）；空索引（headless 冷机
+// /未配置）回落既有 loadProjectsFile 扫描，语义同旧版。
 func registryShellRefs() map[string]registryShellRef {
+	if entries := topicregistry.Snapshot(); len(entries) > 0 {
+		refs := make(map[string]registryShellRef, len(entries))
+		for _, e := range entries {
+			refs[e.TopicID] = registryShellRef{scope: e.Scope, root: e.Root, pinned: e.Pinned}
+		}
+		return refs
+	}
 	f := loadProjectsFile()
 	deleted := map[string]bool{}
 	for _, id := range f.DeletedTopics {
@@ -213,13 +225,13 @@ func (a *App) reconcileRegistryShells(result *TopicInventoryReconcileResult) {
 			continue
 		}
 		result.Mismatches = append(result.Mismatches, TopicInventoryMismatch{
-			Kind:        topicInventoryDirectorySessionWithoutRegistry,
-			Scope:       id.Scope,
+			Kind:          topicInventoryDirectorySessionWithoutRegistry,
+			Scope:         id.Scope,
 			WorkspaceRoot: id.Workspace,
-			TopicID:     topicID,
-			SessionPath: id.SessionPath,
-			Detail:      "磁盘主转录存在、agent 目录可寻址，但桌面注册表（树）无条目：漏登类（1145）",
-			Handling:    topicInventoryHandlingUnregistered,
+			TopicID:       topicID,
+			SessionPath:   id.SessionPath,
+			Detail:        "磁盘主转录存在、agent 目录可寻址，但桌面注册表（树）无条目：漏登类（1145）",
+			Handling:      topicInventoryHandlingUnregistered,
 		})
 	}
 }

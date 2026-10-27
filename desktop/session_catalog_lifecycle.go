@@ -16,6 +16,9 @@ import (
 )
 
 func (a *App) runSessionCatalog(ctx context.Context) {
+	// tl1208: 先预热 topic 注册唯一归属索引（重建先于直查的 boot 面），
+	// 随后 Open 注入的 TopicOwner 钩子与侧栏/壳对账直查都有暖索引可问。
+	topicRegistryWarmup()
 	path := sessioncatalog.DefaultPath()
 	freshGeneration := false
 	if strings.TrimSpace(path) != "" {

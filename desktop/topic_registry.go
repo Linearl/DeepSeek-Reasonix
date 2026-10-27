@@ -82,6 +82,14 @@ func topicRegistrySourceView(f desktopProjectFile) topicregistry.SourceView {
 	return view
 }
 
+// topicRegistryWarmup 是启动期预热面（重建先于直查的 boot 时序）：在会话
+// 目录列表/侧栏/壳对账的首次直查之前完成索引构建。失败不阻断启动——
+// OwnerOf/Snapshot 的 ensureFresh 兜底会在首查时就地重建。
+func topicRegistryWarmup() {
+	ensureTopicRegistryConfigured()
+	_ = topicregistry.SyncFromSource()
+}
+
 // syncTopicRegistryIndex 在收点完成磁盘变更后同步唯一归属索引。
 // 失败只告警不回滚：索引是派生数据，下次 stamp 过期会自动重建
 // （重建先于直查由 OwnerOf/Snapshot 的 ensureFresh 保证）。

@@ -1281,11 +1281,15 @@ func (e *HeartbeatEngine) topicRegistered(topicID string) bool {
 }
 
 // topicRegisteredInRegistry is the body of topicRegistered, shared with the
-// App-level shell verdict (tl-1144). It reads desktop-projects.json only —
-// no engine state — so the engine method adds nothing but the receiver.
+// App-level shell verdict (tl-1144). tl1208: 先直查 topic 注册唯一归属索引
+// （写口随写同步 + stamp 过期自动重建），未命中再回落逐列表扫描——兜底路径
+// 保持旧行为（索引按设计剔除墓碑行，回落保证墓碑残留异常态判定不漂移）。
 func topicRegisteredInRegistry(topicID string) bool {
 	if topicID == "" {
 		return false
+	}
+	if _, ok := topicRegistryOwnerOf(topicID); ok {
+		return true
 	}
 	f := loadProjectsFile()
 	for _, t := range f.GlobalTopics {
