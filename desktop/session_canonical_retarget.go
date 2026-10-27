@@ -46,6 +46,12 @@ func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string,
 		return "", "", "", false
 	}
 	currentPath = strings.TrimSpace(currentPath)
+	if currentPath != "" && sessionFileHasConversationContent(currentPath) {
+		// Fast path: the caller already holds a content-bearing session of
+		// this topic — always respected. Skips the cross-directory scan on
+		// the common open path.
+		return "", "", "", false
+	}
 	var best topicSessionMatch
 	var bestContent bool
 	found := false
@@ -63,11 +69,10 @@ func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string,
 	if !found || best.path == currentPath {
 		return "", "", "", false
 	}
-	if currentPath != "" {
-		// Respect a concrete owner; only dethrone a content-free shell.
-		if sessionFileHasConversationContent(currentPath) || !bestContent {
-			return "", "", "", false
-		}
+	if currentPath != "" && !bestContent {
+		// The caller pinned a content-free session and no owner exists
+		// anywhere — keep the caller's pick rather than churning bindings.
+		return "", "", "", false
 	}
 	binding, ok := a.resolveSessionBinding(best.path)
 	if !ok {

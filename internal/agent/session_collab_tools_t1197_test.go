@@ -93,6 +93,35 @@ func TestScanAddressableTopicDedupKeepsDistinctTopics(t *testing.T) {
 	}
 }
 
+// 验收 1 的端到端钉：get_session_info 按标题解析（ResolveTarget）在
+// 正主+空壳同 topic 同题的场景下唯一命中正主，不再报「matches N sessions」。
+func TestResolveTargetByTitleUniqueAfterTopicCollapse(t *testing.T) {
+	dir := t.TempDir()
+	topicID := "topic_20261025-152234_t1197"
+	shell := filepath.Join(dir, "20261027-082459.297801600-session.jsonl")
+	owner := filepath.Join(dir, "20261025-152313.841311900-owner.jsonl")
+	for _, p := range []string{shell, owner} {
+		if err := os.WriteFile(p, []byte(""), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := SaveBranchMeta(shell, BranchMeta{TopicID: topicID, TopicTitle: "剧情核对", Scope: "global"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveBranchMeta(owner, BranchMeta{TopicID: topicID, TopicTitle: "剧情核对", Scope: "project", Turns: 7}); err != nil {
+		t.Fatal(err)
+	}
+
+	ids := scanAddressable(dir, dir)
+	resolved, err := ResolveTarget(ids, "剧情核对")
+	if err != nil {
+		t.Fatalf("ResolveTarget by title must be unique after collapse: %v", err)
+	}
+	if resolved.SessionPath != owner {
+		t.Fatalf("resolved to %q, want the content-bearing owner %q", resolved.SessionPath, owner)
+	}
+}
+
 type sessionIdentityProbe struct {
 	path  string
 	turns int
