@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"reasonix/internal/config"
 	"reasonix/internal/fileutil"
@@ -542,9 +543,22 @@ func (s Store) ListAll() []Memory {
 // PinnedGuidanceBudgetChars caps the total pinned-body runes session-context
 // carries. Guidance that must always hold belongs in REASONIX.md/AGENTS.md
 // instructions; pinned memory is the bounded middle tier between instructions
-// and retrieval-only facts, and the cap is enforced at write time so the
-// snapshot always equals exactly what the user curated.
+// and retrieval-only facts. The cap is enforced at write time for growth only:
+// a save that would enlarge the total past the cap is rejected, while replacing
+// or shrinking an existing pinned body always passes. Legacy guidance that
+// predates the field can still sit over the cap (the write-time-only check
+// never saw it accumulate); curation tools — /memory usage display, unpin,
+// MaterializeLegacyPinned — surface and shrink that overshoot, and the budget
+// never blocks a repair.
 const PinnedGuidanceBudgetChars = 1500
+
+// BodyChars counts the runes a fact contributes to the pinned budget: the
+// trimmed body exactly as it rides session-context. Both the budget check and
+// the /memory usage display go through here so they always report the same
+// number.
+func BodyChars(m Memory) int {
+	return utf8.RuneCountInString(strings.TrimSpace(m.Body))
+}
 
 // pinnedGuidance snapshots explicitly pinned facts (plus legacy global
 // user/feedback, which ResolveActivation keeps pinned for compatibility) for
