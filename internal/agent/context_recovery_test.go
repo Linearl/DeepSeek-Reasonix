@@ -258,8 +258,9 @@ func TestUnnumberedOverflowFallbackLadderBoundedAtFive(t *testing.T) {
 
 func TestContextLimitRecoveryPublishesUnknownGatewayBudget(t *testing.T) {
 	// tl 1190: numbers sized so the corrected cap clears the 4096 minimum —
-	// 32768 − 12000 − max(1200, 8192) = 12576. A correction that would land
-	// below the minimum must NOT resend (compaction owns it instead).
+	// 32768 − 12000 − max(1200, reserve(32768)=256) = 19568. A correction that
+	// would land below the minimum must NOT resend (compaction owns it
+	// instead).
 	limit := &provider.ContextLimitError{
 		APIError:         &provider.APIError{Provider: "compatible", Status: 400, Body: "context"},
 		WindowTokens:     32_768,
@@ -277,8 +278,8 @@ func TestContextLimitRecoveryPublishesUnknownGatewayBudget(t *testing.T) {
 		t.Fatalf("unknown gateway recovery failed: %v", got.err)
 	}
 	prov.mu.Lock()
-	if len(prov.reqs) != 2 || prov.reqs[0].MaxTokens != 0 || prov.reqs[1].MaxTokens != 12_576 {
-		t.Fatalf("unknown gateway requests = %+v, want omitted then 12576", prov.reqs)
+	if len(prov.reqs) != 2 || prov.reqs[0].MaxTokens != 0 || prov.reqs[1].MaxTokens != 19_568 {
+		t.Fatalf("unknown gateway requests = %+v, want omitted then 19568", prov.reqs)
 	}
 	prov.mu.Unlock()
 	budget := a.ContextMaintenanceSnapshot().ContextBudget
@@ -287,7 +288,7 @@ func TestContextLimitRecoveryPublishesUnknownGatewayBudget(t *testing.T) {
 	}
 	if budget.Source != provider.ContextBudgetSourceLearned || budget.WindowMode != provider.ContextWindowShared.String() ||
 		budget.AutoOutputTokens != 20_000 || budget.RequestedOutputTokens != 20_000 ||
-		budget.EffectiveOutputTokens != 12_576 || budget.PhysicalRemaining != 12_576 || !budget.Clipped ||
+		budget.EffectiveOutputTokens != 19_568 || budget.PhysicalRemaining != 19_568 || !budget.Clipped ||
 		budget.LastRecovery != contextRecoveryLearnedRetry {
 		t.Fatalf("unknown gateway retry budget = %+v", budget)
 	}
@@ -297,12 +298,13 @@ func TestContextLimitRecoveryPublishesUnknownGatewayBudget(t *testing.T) {
 // agent turn — the request must NOT be resent; the recovery escalates to
 // overflow compaction (or fails the turn when nothing is compactable).
 func TestContextLimitBelowMinimumOutputSkipsResend(t *testing.T) {
+	// learned window 20000: 20000 − 17000 − max(1700, 256) = 1300 < 4096.
 	limit := &provider.ContextLimitError{
 		APIError:         &provider.APIError{Provider: "compatible", Status: 400, Body: "context"},
 		WindowTokens:     20_000,
-		RequestedTokens:  25_000,
-		PromptTokens:     10_000,
-		CompletionTokens: 15_000,
+		RequestedTokens:  20_500,
+		PromptTokens:     17_000,
+		CompletionTokens: 3_500,
 	}
 	prov := &scriptedBudgetProvider{
 		policy: provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowUnknown, LimitMode: provider.OutputLimitOmitWhenSafe},

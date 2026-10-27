@@ -82,7 +82,7 @@ func (a *Agent) retryNumberedContextLimit(ctx context.Context, frozen samplingRe
 	if prompt <= 0 {
 		prompt = a.estimatedRequestTokens(frozen.req)
 	}
-	physical := window - prompt - contextSafetyMargin(prompt)
+	physical := window - prompt - contextSafetyMargin(prompt, outputBudgetReserveForWindow(window))
 	if physical >= minPreciseRetryOutputTokens && budget.retries < maxPreciseContextRetries {
 		next := freezeProviderRequest(frozen.req)
 		next.MaxTokens = physical

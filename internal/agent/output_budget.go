@@ -691,13 +691,14 @@ func outputBudgetReserveForWindow(window int) int {
 // cap. The incident's cold estimate undershot the provider's real prompt count
 // by ~8.5% (679,724 local vs 737,203 real); admission clipped max_tokens to
 // exactly window−est−reserve, so the whole estimation error landed on the
-// wire and the request 400'd. The margin is max(est×10%, 8192): proportional
-// so it scales with the request, floored at the protocol cushion so tiny
-// requests stay capped by the reserve alone.
+// wire and the request 400'd. The margin is max(est×10%, reserve): floored at
+// the window-scaled protocol reserve — 8192 on the incident's 1M window,
+// scaling down with small windows exactly like outputBudgetReserveForWindow
+// (a flat 8192 floor would tax a 20K window at 41% and churn compaction).
 const contextSafetyMarginRatio = 0.10
 
-func contextSafetyMargin(est int) int {
-	return max(int(float64(est)*contextSafetyMarginRatio), outputBudgetReserve)
+func contextSafetyMargin(est, reserve int) int {
+	return max(int(float64(est)*contextSafetyMarginRatio), reserve)
 }
 
 // admitSummaryOutputBudget uses the summary request's dedicated protocol
@@ -770,7 +771,7 @@ func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens
 	// summary admission opts out (see admitSummaryOutputBudget).
 	safety := 0
 	if applySafetyMargin {
-		safety = contextSafetyMargin(est)
+		safety = contextSafetyMargin(est, reserveTokens)
 	}
 	physical := window - est - reserveTokens - safety
 	adm.PhysicalRemaining = physical

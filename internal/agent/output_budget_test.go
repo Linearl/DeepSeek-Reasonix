@@ -235,14 +235,33 @@ func (p *sharedWindowTestProvider) SharedWindowInputPolicy() provider.SharedWind
 	return p.policy
 }
 
-func TestEffectiveOutputBudgetClipsSharedWindowRequest(t *testing.T) {
+// tl 1190 L0: the safety margin (max(est×10%, 8192)) moves the near-window
+// line — a request whose estimate leaves less than the margin of headroom is
+// refused locally (overflow compaction owns it) instead of being sent with a
+// completion cap that a ~10% tokenizer underestimate would doom.
+func TestEffectiveOutputBudgetRefusesNearWindowUnderSafetyMargin(t *testing.T) {
 	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
 	a := &Agent{agentConfig: agentConfig{contextWindow: 1_048_576}, svc: agentServices{prov: prov}, sess: sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}}}
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 950_000)}}
-	// Calibrate this session at one token per rune. The 950K prompt fits, but
-	// not beside the provider's full 128K output default.
 	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 950_000})
 	a.setPromptTokenCalibration(950_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
+
+	// est=950000: window − est − reserve − margin = 1048576−950000−8192−95000 < 0.
+	_, _, err := a.effectiveOutputBudget(provider.Request{Messages: msgs})
+	if !errors.Is(err, ErrCompactionRequired) {
+		t.Fatalf("near-window request err = %v, want ErrCompactionRequired under the safety margin", err)
+	}
+}
+
+func TestEffectiveOutputBudgetClipsSharedWindowRequest(t *testing.T) {
+	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
+	a := &Agent{agentConfig: agentConfig{contextWindow: 1_048_576}, svc: agentServices{prov: prov}, sess: sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}}}
+	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 880_000)}}
+	// Calibrate this session at one token per rune. The 880K prompt fits under
+	// the tl 1190 margin (est×10% = 88000), but not beside the provider's full
+	// 128K output default: the cap clips to 1048576−880000−8192−88000 = 72384.
+	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 880_000})
+	a.setPromptTokenCalibration(880_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
 
 	got, clipped, err := a.effectiveOutputBudget(provider.Request{Messages: msgs})
 	if err != nil {
@@ -254,8 +273,8 @@ func TestEffectiveOutputBudgetClipsSharedWindowRequest(t *testing.T) {
 	if got <= 0 || got >= prov.budget {
 		t.Fatalf("clipped budget = %d, want 0 < budget < %d", got, prov.budget)
 	}
-	if got+950_000 > a.contextWindow-outputBudgetReserve {
-		t.Fatalf("input + output = %d, exceeds reserved shared window %d", got+950_000, a.contextWindow-outputBudgetReserve)
+	if got+880_000 > a.contextWindow-outputBudgetReserve {
+		t.Fatalf("input + output = %d, exceeds reserved shared window %d", got+880_000, a.contextWindow-outputBudgetReserve)
 	}
 }
 
@@ -291,18 +310,20 @@ func TestCalibratedOutputBudgetKeepsCJKConservativeFloor(t *testing.T) {
 	a := &Agent{agentConfig: agentConfig{contextWindow: 1_048_576}, svc: agentServices{prov: prov}, sess: sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}}}
 	previous := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("x", 300_000)}}
 	a.setPromptTokenCalibration(75_000, requestCalibrationShapeOf(provider.Request{Messages: previous}))
-	// Enough unrepresented CJK that the reply no longer fits beside it: at the
-	// corrected unit 430K runes leave most of a 1M window free.
+	// Enough unrepresented CJK that the reply no longer fits beside it — but
+	// sized to still clear the tl 1190 safety margin (est×10%): at the
+	// corrected unit 1,073,000 runes price ~879,750, leaving
+	// 1048576−879750−8192−87975 = 72659 of output budget.
 	current := append(append([]provider.Message(nil), previous...), provider.Message{
 		Role:             provider.RoleAssistant,
-		ReasoningContent: strings.Repeat("字", 1_200_000),
+		ReasoningContent: strings.Repeat("字", 1_073_000),
 		ToolCalls:        []provider.ToolCall{{ID: "call_1", Name: "bash", Arguments: `{}`}},
 	})
 
 	// The unrepresented CJK runes are priced at the cold rate: 3 bytes each at
 	// ~4 chars per token, i.e. 0.75 tokens per rune against a real ~0.6.
 	calibrated := a.estimatedPromptTokens(current)
-	wantFloor := 75_000 + 1_200_000*3/4
+	wantFloor := 75_000 + 1_073_000*3/4
 	if calibrated < wantFloor {
 		t.Fatalf("calibrated estimate %d fell below mixed-script safety floor %d", calibrated, wantFloor)
 	}
@@ -394,21 +415,23 @@ func TestCalibratedOutputBudgetCountsToolSchemasOnce(t *testing.T) {
 
 func TestPrepareSamplingRequestClipsSharedWindowOutput(t *testing.T) {
 	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
-	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 950_000)}}
+	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 880_000)}}
 	sess := NewSession("")
 	sess.Replace(msgs)
 	// compactRatio 2 disables auto maintenance for this output-clip test
 	a := &Agent{agentConfig: agentConfig{contextWindow: 1_048_576, compactRatio: 2}, svc: agentServices{prov: prov, tools: tool.NewRegistry()},
 		sess: sessionRuntime{conversation: sess, output: outputBudgetState{outputBudget: prov.budget}}}
-	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 950_000})
-	a.setPromptTokenCalibration(950_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
+	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 880_000})
+	a.setPromptTokenCalibration(880_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
 
+	// tl 1190 L0: the prepared cap clears the safety margin — 880K est prices
+	// 88000 of margin, leaving 1048576−880000−8192−88000 = 72384 of output.
 	prepared, err := a.prepareSamplingRequest(context.Background())
 	if err != nil {
 		t.Fatalf("prepareSamplingRequest: %v", err)
 	}
-	if prepared.req.MaxTokens <= 0 || prepared.req.MaxTokens >= prov.budget {
-		t.Fatalf("prepared MaxTokens = %d, want a clipped positive budget below %d", prepared.req.MaxTokens, prov.budget)
+	if prepared.req.MaxTokens != 72_384 {
+		t.Fatalf("prepared MaxTokens = %d, want the margin-aware clip 72384", prepared.req.MaxTokens)
 	}
 }
 
