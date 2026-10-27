@@ -1,0 +1,25 @@
+{
+  "description": "tl-1210 按需补 keywords 补丁：只补基准集中「该命中但未进 top8/排名失准」的条目，add_keywords 追加到条目既有 keywords（merge 语义）。约束：补强条目数 <= 全库 20%（37 条池上限 7 条，本补丁 5 条 = 13.5%）。每条对应基准集失败案例：m03(web-scraping MISS)、m05(book2skill rank7)、m07(destructive rank4)、m18(user-work-profile rank2)、m29(computer-use rank2)。",
+  "patches": [
+    {
+      "name": "web-scraping-experience",
+      "add_keywords": "视频下载 下载视频 爬虫 反爬 拦截 风控"
+    },
+    {
+      "name": "obsidian-book2skill-pipeline",
+      "add_keywords": "文档转技能 文档转成技能 可复用技能 技能制作"
+    },
+    {
+      "name": "destructive-command-safety",
+      "add_keywords": "删东西 删除文件 规矩 注意事项"
+    },
+    {
+      "name": "user-work-profile",
+      "add_keywords": "主业 工作方向 工作画像 个人偏好 AI使用习惯"
+    },
+    {
+      "name": "computer-use-system-profile",
+      "add_keywords": "硬件配置 电脑配置 机器性能 硬件水平 内存"
+    }
+  ]
+}
