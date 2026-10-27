@@ -3,6 +3,7 @@ import { mockProviderTemplate, mockPreset, mockBundlePreset, mockKimiAPIModels, 
 // Wails and the browser mock share this React-to-Go contract.
 // @ts-ignore generated locally; fresh checkouts use the disabled drift check below.
 import type * as GeneratedApp from "../../wailsjs/go/main/App";
+import type { main as GeneratedModels } from "../../wailsjs/go/models";
 import type { InvocationRequest } from "./invocationDisplay";
 import type { PlanUsageResult } from "./planUsage";
 import type { FollowupBindings } from "./pendingFollowup";
@@ -1032,6 +1033,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   CloseMainWindow(): Promise<void>;
   // ── Heartbeat ──
   HeartbeatListTasks(): Promise<unknown>;
+  /** tl1206: 开轮仲裁记账查询——某会话最近一次开轮结果与跳过原因。
+   *  生成物（App.d.ts）有、手写契约现场补齐（_CheckGenToApp 防线，L894 同先例）。 */
+  WakeLedgerFor(sessionPath: string): Promise<GeneratedModels.wakeLedgerEntry | boolean>;
   HeartbeatReloadTasks(): Promise<unknown>;
   HeartbeatSaveTasks(tasks: unknown): Promise<void>;
   HeartbeatReloadConfig(): Promise<unknown>;
