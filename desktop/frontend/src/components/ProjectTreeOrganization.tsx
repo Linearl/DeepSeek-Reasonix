@@ -6,7 +6,7 @@ import type { Translator } from "../lib/i18n";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { isTopicNode, projectTreeGroupActiveCount, projectTreeGroupDotStatus, projectTreeTopicArchiveBlocked } from "../lib/projectTreeTopic";
 import { loadSessionGroupCollapsed, persistSessionGroupCollapsed } from "../lib/projectGroups";
-import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargets, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
+import { canNestUnder, childGroups, inheritedMemberIDs, nestGroup as nestInRoster, nestTargetRows, placeGroup, topLevelGroups, unnestGroup as unnestInRoster, type GroupDropZone } from "../lib/sessionGroupTree";
 import type { ProjectTreeRefresh } from "../lib/projectTreeArchive";
 import type { DeleteGroupsPlan, ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
 import { ContextMenu, contextMenuPointFromEvent, type ContextMenuItem, type ContextMenuPoint } from "./ContextMenu";
@@ -753,26 +753,36 @@ export function ProjectTreeGroupRows({
       // Task-892: children render at every level (the depth-2 gate is gone).
       const kids = childGroups(groups, group.id);
       const canDrop = organization.canDropTopicInto(key);
-      // Menu economy: at most four inline nest targets — beyond that the roster
-      // is big enough that the context menu should not grow linearly with it.
-      // The group's own parent is excluded (re-nesting where it already sits is
-      // a no-op); every other legal target is offered at any depth.
-      const nestInto = nestTargets(groups, group.id)
-        .filter((target) => target.id !== (group.parent ?? ""))
-        .slice(0, 4);
+      // tl 1198: the old cap of four inline nest targets (the slice(0, 4)
+      // menu-economy cut) silently hid every group past the roster's first
+      // four — a deep group like reasonix-for-ai at depth 2 was impossible to
+      // reach from the menu even though nestGroup accepts any depth. The menu
+      // now walks the whole tree: every legal target at any depth, in tree
+      // order, each row carrying its ancestor path ("4.reasonix /
+      // reasonix-for-ai") so same-titled groups at different depths stay
+      // distinguishable. The group's own parent is excluded (re-nesting where
+      // it already sits is a no-op); itself and its subtree are excluded by
+      // canNestUnder's cycle guard. The panel scrolls (max-height + overflow),
+      // so a big roster no longer truncates the choices.
+      const nestInto = nestTargetRows(groups, group.id);
       // tl 1149: the flat "move under X / move to top level" rows collapsed
       // into one 「分组移动 ▸」 submenu. Same moves, same order (nest targets
       // first, then the top-level escape hatch for nested groups) — one level
       // less of menu length per group in the roster.
+      // tl 1198: with no other legal target left (empty roster, or the group
+      // is the only one), the submenu stays visible but disabled instead of
+      // disappearing — the entry point is discoverable even when unusable.
       const groupMoveItems: ContextMenuItem[] = [
         // Task 350 → 892: display-only hierarchy moves — nest under any
         // legal group at any depth (cycle- and depth-guarded by canNestUnder).
         // No authority follows the pointer (层级≠指挥权).
         ...nestInto.map((target) => ({
-          key: `nest:${target.id}`,
+          key: `nest:${target.group.id}`,
           icon: <FolderMinus size={13} />,
-          label: t("projectTree.nestGroupUnder", { title: target.title }),
-          onSelect: () => { organization.nestGroup(key, group.id, target.id); setMenuGroup(null); },
+          label: target.ancestorTitles.length > 0
+            ? t("projectTree.nestGroupUnder", { title: `${target.ancestorTitles.join(" / ")} / ${target.group.title}` })
+            : t("projectTree.nestGroupUnder", { title: target.group.title }),
+          onSelect: () => { organization.nestGroup(key, group.id, target.group.id); setMenuGroup(null); },
         })),
         ...(nested ? [{
           key: "move-to-top",
@@ -927,13 +937,16 @@ export function ProjectTreeGroupRows({
             // tl 1149：N 条「移到 X 子层 / 移到顶层」一级平铺收进「分组移动 ▸」
             // 二级——分组多时一级菜单不再随分组数线性变长。语义与方向不变：
             // 仍是 display-only 层级移动（cycle/depth-guarded nestGroup）。
-            ...(groupMoveItems.length > 0 ? [{
+            // tl 1198：无任何合法目标时该项保留但禁用（点不开），不再整项
+            // 消失——入口可发现，且语义是「无处可移」而非「没有此功能」。
+            {
               type: "submenu" as const,
               key: "group-move",
               icon: <FolderMinus size={13} />,
               label: t("projectTree.groupMove"),
+              disabled: groupMoveItems.length === 0,
               items: groupMoveItems,
-            }] : []),
+            },
             // Task 892-B: 「新建子分组」(827 form on the session tree) — opens an
             // inline composer right below this group's header; Enter files it
             // as this group's child via the A-slice CreateSessionGroup (parentId
