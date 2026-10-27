@@ -262,6 +262,12 @@ export class TranscriptKernel {
     } else {
       this.anchorValue = storedAnchor;
       this.intentValue = storedAnchor.kind === "tail" ? "tail" : "reader";
+      // tl 1184b: derive the bottom verdict from the restored anchor. Without
+      // this the field keeps the PREVIOUS surface's value (lastScrollTop is a
+      // single global, so a neighbouring session's bottom state leaks in), and
+      // the second tab switch back wrongly believes the reader is parked at the
+      // tail -> the view gets yanked to the bottom.
+      this.atBottomValue = storedAnchor.kind === "tail";
     }
     // Task 931 (AC8): record the restored block key so its first correction
     // keeps the pre-931 exemption even when it rides a passive restore (the

@@ -105,5 +105,57 @@ process.stdout.write("\n[tl 1184] tab-switch bottom restoration\n");
   ok(k.intent === "tail", "D3: first visit defaults to tail follow");
 }
 
+// --- Direction 4 (tl 1184b): SECOND round trip must not yank the reader -------
+// User-reported failure: "来回切换 2 次，第一次正常，第二次还是有问题".
+// Root cause: replaceSurface's else-branch never set atBottomValue, so the field
+// carried the PREVIOUS surface's verdict into the restored one (lastScrollTop is
+// a single global, so a bottom-parked neighbour leaks its `true` in). On the
+// second switch back the kernel wrongly believed the reader was at the tail.
+{
+  const k = freshKernel();
+  // tab-A: reader parked mid-transcript.
+  k.replaceSurface("tab-A");
+  k.beginUserGesture(snapshot(SCROLLED_UP_TOP));
+  k.observeNativeScroll(snapshot(SCROLLED_UP_TOP));
+  ok(k.intent === "reader", "D4: tab-A parked as reader");
+
+  // tab-B: parked at the bottom (this is what poisons the shared state).
+  k.replaceSurface("tab-B");
+  k.observeNativeScroll(snapshot(AT_BOTTOM_TOP));
+  ok(k.intent === "tail", "D4: tab-B parked at tail");
+
+  // First round trip back to tab-A — this one already worked before the fix.
+  k.replaceSurface("tab-A");
+  ok(k.intent === "reader", "D4: first switch back keeps reader");
+  k.beginUserGesture(snapshot(SCROLLED_UP_TOP));
+  k.observeNativeScroll(snapshot(SCROLLED_UP_TOP));
+  ok(k.intent === "reader", "D4: first return still reader after restore scroll");
+
+  // Second round trip — the reported failure window.
+  k.replaceSurface("tab-B");
+  k.observeNativeScroll(snapshot(AT_BOTTOM_TOP));
+  k.replaceSurface("tab-A");
+  ok(k.intent === "reader", "D4: SECOND switch back must still be reader (regression)");
+  ok(k.anchor.kind !== "tail", "D4: second restore anchor is not tail");
+  k.beginUserGesture(snapshot(SCROLLED_UP_TOP));
+  k.observeNativeScroll(snapshot(SCROLLED_UP_TOP));
+  ok(k.intent === "reader", "D4: second return still reader after restore scroll");
+}
+
+// --- Direction 5 (tl 1184b): bottom-parked tab stays bottom across two trips -
+{
+  const k = freshKernel();
+  k.replaceSurface("tab-C");
+  k.observeNativeScroll(snapshot(AT_BOTTOM_TOP)); // at bottom
+  k.replaceSurface("tab-D");
+  k.beginUserGesture(snapshot(SCROLLED_UP_TOP));
+  k.observeNativeScroll(snapshot(SCROLLED_UP_TOP)); // D is a reader
+  k.replaceSurface("tab-C");
+  ok(k.intent === "tail", "D5: first switch back restores tail for bottom-parked tab");
+  k.replaceSurface("tab-D");
+  k.replaceSurface("tab-C");
+  ok(k.intent === "tail", "D5: second switch back still restores tail (no reader leak)");
+}
+
 process.stdout.write(`\n[tl 1184] passed=${passed} failed=${failed}\n`);
 if (failed > 0) process.exit(1);
