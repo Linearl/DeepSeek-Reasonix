@@ -56,6 +56,7 @@ func assertNoTranscriptCopies(t *testing.T, path string) {
 }
 
 func TestDAGSaveCreatesSchemaTwoLogAndAppendsDelta(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	probe, err := probeSessionEventLog(path)
@@ -111,6 +112,7 @@ func TestDAGSaveDisabledByEnvKeepsSchemaOne(t *testing.T) {
 }
 
 func TestDAGSaveLocalMetadataBecomesPatch(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	msgs := s.Snapshot()
@@ -134,6 +136,7 @@ func TestDAGSaveLocalMetadataBecomesPatch(t *testing.T) {
 }
 
 func TestDAGSaveSystemPromptRefreshKeepsLaterIDs(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	before := s.Snapshot()
@@ -159,6 +162,7 @@ func TestDAGSaveSystemPromptRefreshKeepsLaterIDs(t *testing.T) {
 // 任务549: every rewind entry — especially the automated content_edit kind —
 // must carry the writer id, so a multi-writer storm is attributable per event.
 func TestDAGSaveContentEditRewindCarriesWriter(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	msgs := s.Snapshot()
@@ -194,6 +198,7 @@ func TestDAGSaveContentEditRewindCarriesWriter(t *testing.T) {
 }
 
 func TestDAGSaveTruncationRewindsWithoutErasingBytes(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1", "q2", "a2")
 	logBefore, _ := os.ReadFile(store.SessionEventLog(path))
@@ -228,9 +233,9 @@ func TestDAGSaveUpgradesSchemaOneLogOnlyUnderLease(t *testing.T) {
 	t.Setenv(SessionLogSchemaEnv, "v1")
 	path := dagTestSession(t)
 	v1 := dagSavedSession(t, path, "q1", "a1")
-	if err := os.Unsetenv(SessionLogSchemaEnv); err != nil {
-		t.Fatal(err)
-	}
+	// The upgrade leg needs the DAG route on: v2 pins it without depending on
+	// the build default, which is the flat route since tl-1173 P1.
+	t.Setenv(SessionLogSchemaEnv, "v2")
 	loaded, err := LoadSession(path)
 	if err != nil {
 		t.Fatal(err)
@@ -273,6 +278,7 @@ func TestDAGSaveUpgradesSchemaOneLogOnlyUnderLease(t *testing.T) {
 }
 
 func TestDAGSaveConcurrentWritersForkInsteadOfConflicting(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	a := dagSavedSession(t, path, "q1", "a1")
 	b, err := LoadSession(path)
@@ -333,6 +339,7 @@ func TestDAGSaveConcurrentWritersForkInsteadOfConflicting(t *testing.T) {
 }
 
 func TestDAGSaveBehindDiskReportsStalePrefix(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	a := dagSavedSession(t, path, "q1", "a1")
 	b, err := LoadSession(path)
@@ -357,6 +364,7 @@ func TestDAGSaveBehindDiskReportsStalePrefix(t *testing.T) {
 }
 
 func TestDAGSaveRedactionCompactErasesBytesUnderLease(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	lease, err := TryAcquireSessionLease(path)
 	if err != nil {
@@ -394,6 +402,7 @@ func TestDAGSaveRedactionCompactErasesBytesUnderLease(t *testing.T) {
 }
 
 func TestDAGSaveOversizeLogRotatesUnderLease(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	lease, err := TryAcquireSessionLease(path)
 	if err != nil {
@@ -421,6 +430,7 @@ func TestDAGSaveOversizeLogRotatesUnderLease(t *testing.T) {
 }
 
 func TestDAGSaveCrashAtAppendRecoversOnNextSave(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1")
 	s.Add(provider.Message{Role: provider.RoleAssistant, Content: "a1"})
@@ -450,6 +460,7 @@ func TestDAGSaveCrashAtAppendRecoversOnNextSave(t *testing.T) {
 }
 
 func TestDAGSaveConcurrentGoroutinesExtendTheirOwnHeads(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	a := dagSavedSession(t, path, "q1", "a1")
 	b, err := LoadSession(path)
@@ -508,6 +519,7 @@ func TestExportSessionSchemaOneWritesReadableSchemaOneSession(t *testing.T) {
 }
 
 func TestDAGSaveIndependentIdenticalTranscriptsConverge(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	a := dagSavedSession(t, path, "q1", "a1")
 	b := NewSession("sys")
@@ -532,6 +544,7 @@ func TestDAGSaveIndependentIdenticalTranscriptsConverge(t *testing.T) {
 }
 
 func TestDAGSaveUnrelatedWriterForksInsteadOfRewinding(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	dagSavedSession(t, path, "q1", "a1", "q2", "a2")
 	b := NewSession("sys")
