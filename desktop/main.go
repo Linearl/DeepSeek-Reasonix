@@ -118,6 +118,18 @@ func preparePrimaryDesktopRuntime(app *App) {
 	prepareCDPDebugEndpoint()
 }
 
+// sandboxWebviewUserDataPath returns the WebView2 user-data folder for
+// REASONIX_HOME-sandboxed runs (tests / tl 1181 cold-start measurement): the
+// go-webview2 default is a process-global %APPDATA% folder that two concurrent
+// instances fight over. Empty string keeps the built-in default untouched.
+func sandboxWebviewUserDataPath() string {
+	home := strings.TrimSpace(os.Getenv("REASONIX_HOME"))
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, "webview2")
+}
+
 func main() {
 	// tl 1163: the main-chain milestone origin — everything before this line
 	// (Go runtime init, package inits) is what main_enter hides from the
@@ -270,6 +282,14 @@ func main() {
 			Theme:                windows.SystemDefault,
 			ZoomFactor:           zoomFactor,
 			WebviewGpuIsDisabled: windowsWebview2GPUDisabled(),
+			// tl 1181 定位测量（仅 REASONIX_HOME 显式设置时生效）：go-webview2
+			// 缺省把 WebView2 用户数据目录放在全局 %APPDATA%\reasonix-desktop.exe\
+			// EBWebView（见 cdp_debug_port_windows.go 注释），不随 home 走——
+			// 测量沙箱实例与用户真实实例会争用同一目录锁，wails.Run 早期即失败
+			// 退出。REASONIX_HOME 已是测试/CI 的 home 隔离约定（config.ReasonixHomeDir
+			// 同源），此处把 WebView2 数据目录一并收进沙箱；生产（env 未设）
+			// 返回空串，dataPath 走 go-webview2 既有缺省，逐字节不变。
+			WebviewUserDataPath: sandboxWebviewUserDataPath(),
 		},
 		Linux: &linux.Options{
 			ProgramName: "Reasonix",
