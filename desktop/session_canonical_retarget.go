@@ -27,6 +27,55 @@ func (a *App) resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath stri
 	return actualRoot, sessionPath
 }
 
+// findTopicSessionAcrossScopes resolves a topic id to its existing session
+// file across EVERY known session directory, regardless of scope (tl1197,
+// third shape of the 1074 family). The scope-filtered resolver
+// (findTopicSessionForTarget) answers "where does this topic live under this
+// target"; a global target that misses while the topic's only content-bearing
+// session is project-bound used to fall through to createEmptySessionFile and
+// mint a same-topic shell under the global directory — the on-disk seed of
+// the cross-tree shadow entry. Following the existing binding instead keeps
+// one conversation on exactly one tree. Content-bearing sessions outrank
+// empty shells so a leftover shell can never hijack the binding, matching
+// findTopicSessionForTargetByContent's #7305 rule. currentPath non-empty
+// means the caller already has a concrete session — never re-resolve.
+func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string, string, string, bool) {
+	topicID = strings.TrimSpace(topicID)
+	if topicID == "" || strings.TrimSpace(currentPath) != "" {
+		return "", "", "", false
+	}
+	var best topicSessionMatch
+	var bestContent bool
+	found := false
+	for _, dir := range a.knownSessionDirs() {
+		for _, match := range topicSessionMatches(dir, topicID) {
+			content := sessionFileHasConversationContent(match.path)
+			if !found || (content && !bestContent) ||
+				(content == bestContent && match.updatedAt.After(best.updatedAt)) {
+				best = match
+				bestContent = content
+				found = true
+			}
+		}
+	}
+	if !found {
+		return "", "", "", false
+	}
+	binding, ok := a.resolveSessionBinding(best.path)
+	if !ok {
+		return "", "", "", false
+	}
+	scope := strings.TrimSpace(binding.scope)
+	if scope != "project" {
+		return best.path, "global", "", true
+	}
+	root := normalizeProjectRoot(binding.workspaceRoot)
+	if root == "" {
+		return "", "", "", false
+	}
+	return best.path, "project", root, true
+}
+
 func (a *App) sessionHasLiveController(path string) bool {
 	key := sessionRuntimeKey(path)
 	if a == nil || key == "" {
