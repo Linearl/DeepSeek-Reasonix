@@ -146,6 +146,7 @@ import { StartupSplash } from "./components/StartupSplash";
 import { OnboardingOverlay } from "./components/OnboardingOverlay";
 import { dismissOnboarding, shouldOpenOnboarding } from "./lib/onboarding";
 import { pruneRecentClosedTabs, pushRecentClosedTab, type RecentClosedTab } from "./lib/tabOverviewModel";
+import { loadModeStylesheet, normalizeDesktopLayoutStyle, type DesktopLayoutStyle } from "./lib/desktopLayoutStyle";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet";
 import { WorktreeBadge } from "./components/WorktreeBadge";
 import { CopyButton } from "./components/CopyButton";
@@ -411,25 +412,10 @@ function isThemeMode(value: string): value is Theme {
   return value === "auto" || value === "light" || value === "dark";
 }
 
-type DesktopLayoutStyle = "classic" | "workbench" | "creation";
-
-function normalizeDesktopLayoutStyle(style: string | undefined): DesktopLayoutStyle {
-  if (style === "creation") return "creation";
-  if (style === "classic") return "classic";
-  return "workbench";
-}
+// tl1191: the layout-mode type/normalizer live in lib/desktopLayoutStyle.ts
+// (shared with SettingsPanel / the lab chunk); App's private copy was folded
+// away when the mode stylesheets moved behind lib loaders.
 const SHOW_CONTEXT_DOCK = true;
-
-// tl1191: prefetch the classic-only chrome chunk when the synchronous
-// first-paint cache says classic — the same advisory source as the
-// desktopLayoutStyle initializer (task 40's no-flash rule). The dynamic
-// imports run in parallel with the app-shell stylesheet download, so the real
-// header is ready by React mount instead of painting a skeleton frame.
-// Non-classic users never trigger these imports.
-if (normalizeDesktopLayoutStyle(loadCachedLayoutStyle() ?? "workbench") === "classic") {
-  void import("./components/AppChrome");
-  void import("./components/TabOverviewPanel");
-}
 
 // First paint: apply the cached accent before React renders. The authoritative
 // theme and accent arrive asynchronously from the desktop config, so without a
@@ -1072,6 +1058,15 @@ export default function App() {
   const [desktopLayoutStyle, setDesktopLayoutStyle] = useState<DesktopLayoutStyle>(
     () => normalizeDesktopLayoutStyle(loadCachedLayoutStyle() ?? "workbench"),
   );
+  // tl1191: the active mode's stylesheet is prefetched before mount (main.tsx
+  // startupModeAssetPrefetch); this effect covers authoritative changes —
+  // first apply of the desktop config and user switches. Idempotent per mode
+  // (module cache), so a repeat import is a no-op.
+  useEffect(() => {
+    loadModeStylesheet(desktopLayoutStyle).catch((error) => {
+      console.error("failed to load layout stylesheet", error);
+    });
+  }, [desktopLayoutStyle]);
   const singleSurfaceLayout = desktopLayoutStyle === "workbench" || desktopLayoutStyle === "creation";
   const { configLoadWarnings, applySnapshot: applyConfigWarningSnapshot, reload: reloadConfigWarnings, dismiss: dismissConfigWarnings } = useConfigLoadWarnings();
   // History/trash overlay: one value for the entry point and the compositions that

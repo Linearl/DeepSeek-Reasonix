@@ -1,0 +1,1081 @@
+/*
+ * tl1191 mode stylesheet — workbench.
+ *
+ * Extracted verbatim (block order preserved) from styles.css by the one-shot
+ * splitter; ownership rule: every selector in a moved block carries a `--workbench` modifier
+ * signature, so this file can only ever match while the workbench layout is
+ * active. Loaded on demand next to its layout chunk (lib/modeAssets.ts) —
+ * never part of the app-shell stylesheet. Equality with the pre-split
+ * styles.css is asserted by src/__tests__/mode-css-split.test.ts.
+ */
+
+/* Chrome-hidden variants: rows shift up by one (3 rows total: content, terminal, statusbar). */
+.layout.layout--workbench-chrome-hidden.layout--terminal-drawer-open .sidebar {
+  grid-row: 1 / 3 !important;
+}
+.layout.layout--workbench-chrome-hidden.layout--terminal-drawer-open .workspace-panel-resizer {
+  grid-row: 1 / 3 !important;
+}
+.layout.layout--workbench-chrome-hidden.layout--terminal-drawer-open .workbench-dock {
+  grid-row: 1 / 3 !important;
+}
+.layout.layout--workbench-chrome-hidden.layout--terminal-drawer-open {
+  grid-template-rows: minmax(0, 1fr) var(--terminal-height, 280px) var(--statusbar-height) !important;
+  transition:
+    grid-template-columns 0.16s ease,
+    min-width 0.16s ease,
+    grid-template-rows 0.22s cubic-bezier(0.2, 0.72, 0.2, 1) !important;
+}
+.layout--workbench-chrome-hidden.layout--terminal-drawer-open .statusbar {
+  grid-row: 3;
+}
+.layout--workbench-chrome-hidden.layout--terminal-open {
+  grid-template-rows: minmax(0, 1fr) minmax(220px, min(42vh, 440px)) var(--statusbar-height);
+}
+.layout--workbench-chrome-hidden.layout--terminal-open .workbench-dock {
+  grid-row: 2;
+}
+
+.layout--workbench-chrome-hidden.layout--terminal-open .statusbar {
+  grid-row: 3;
+}
+
+.layout--workbench-chrome-hidden {
+  --app-chrome-height: 0px;
+  grid-template-rows: minmax(0, 1fr) var(--statusbar-height);
+  background: var(--bg);
+}
+
+.layout--workbench-chrome-hidden .sidebar,
+.layout--workbench-chrome-hidden .chat-pane,
+.layout--workbench-chrome-hidden .workspace-panel-resizer,
+.layout--workbench-chrome-hidden .context-inspector,
+.layout--workbench-chrome-hidden .workbench-dock {
+  grid-row: 1;
+}
+.layout--workbench-chrome-hidden .terminal-drawer-resizer {
+  grid-row: 1;
+}
+.layout--workbench-chrome-hidden .terminal-drawer {
+  grid-row: 2;
+}
+
+.layout--workbench-chrome-hidden .statusbar {
+  grid-row: 2;
+}
+
+.app--darwin .layout--workbench-chrome-hidden.layout--sidebar-collapsed .topicbar {
+  padding-left: 96px;
+}
+
+.app--darwin .layout--workbench-chrome-hidden.layout--workspace-maximized .workbench-dock__tools {
+  padding-left: 96px;
+}
+/* When the dock is closed in workbench mode, the fixed top-right dock-toggle
+/* When the dock is closed in workbench mode, the fixed top-right dock-toggle
+   overlaps the topic bar's right edge; leave room so the actions don't
+   collide with it. When the dock is open it occupies the right column, so no
+   extra margin is needed. Classic/creation keep the toggle inside the actions
+   row, so the extra margin does not apply there. */
+.layout--workbench:not(.layout--workspace-open) .topicbar__actions {
+  margin-right: 36px;
+}
+/* Topic hover/active effect: full row width (remove left margin) */
+:root[data-theme-style] .sidebar--workbench .project-tree__topic {
+  margin-left: 0;
+}
+
+/* Weaken topic time display */
+:root[data-theme-style] .sidebar--workbench .project-tree__topic-side {
+  font-size: var(--text-xs);
+  color: color-mix(in srgb, var(--fg-faint) 72%, transparent);
+}
+:root[data-theme-style] .sidebar--workbench .project-tree__topic-side--empty {
+  visibility: hidden;
+}
+/* Ensure consistent topic height regardless of time/status presence */
+:root[data-theme-style] .sidebar--workbench .project-tree__topic {
+  min-height: 34px;
+  height: 34px;
+  box-sizing: border-box;
+}
+:root[data-theme-style] .sidebar--workbench .project-tree__topic-main {
+  min-height: 34px;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+/* Sidebar: keep search & header fixed, only list scrolls */
+:root[data-theme-style] .sidebar--workbench .project-tree {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+:root[data-theme-style] .sidebar--workbench .project-tree__search,
+:root[data-theme-style] .sidebar--workbench .project-tree__header {
+  flex: 0 0 auto;
+}
+:root[data-theme-style] .sidebar--workbench .project-tree__list,
+:root[data-theme-style] .sidebar--workbench .project-tree__list--workbench {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Folder: no active background, but very weak hover hint */
+:root[data-theme-style] .sidebar--workbench .project-tree__folder:hover,
+:root[data-theme-style] .sidebar--workbench .project-tree__folder--active:hover,
+:root[data-theme-style] .sidebar--workbench .project-tree__folder--menu-open:hover {
+  background: color-mix(in srgb, var(--sidebar-hover) 60%, transparent);
+}
+:root[data-theme-style] .sidebar--workbench .project-tree__folder--active,
+:root[data-theme-style] .sidebar--workbench .project-tree__folder--menu-open {
+  background: transparent;
+}
+
+/* Topic name left-aligned with project name */
+:root[data-theme-style] .sidebar--workbench .project-tree__topic-main {
+  padding-left: 30px !important;
+}
+
+/* Active topic: keep text style unchanged (no color/font-weight change) */
+:root[data-theme-style] .sidebar--workbench .project-tree__topic--active .project-tree__topic-label {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* Folder action icons: hidden by default, show on folder hover */
+:root[data-theme-style] .sidebar--workbench .project-tree__folder-action-slot {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast);
+}
+:root[data-theme-style] .sidebar--workbench .project-tree__folder:hover .project-tree__folder-action-slot,
+:root[data-theme-style] .sidebar--workbench .project-tree__folder:focus-within .project-tree__folder-action-slot,
+:root[data-theme-style] .sidebar--workbench .project-tree__folder-action-slot:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+:root[data-theme-style] .layout--workbench-chrome-hidden {
+  --app-chrome-height: 0px;
+  grid-template-rows: minmax(0, 1fr) var(--statusbar-height);
+  background: var(--bg);
+}
+
+:root[data-theme-style] .app--darwin .layout--workbench-chrome-hidden {
+  --app-chrome-height: 0px;
+}
+
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar,
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn,
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__icon-btn,
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__action-btn {
+  box-shadow: none;
+}
+
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar {
+  background: var(--bg-elev);
+}
+
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__identity,
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__title-row,
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__title-row h1,
+:root[data-theme-style] .layout--workbench-chrome-hidden .tooltip-trigger:has(.topicbar__icon-btn) {
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+}
+
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__icon-btn,
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn {
+  background: transparent;
+  filter: none;
+}
+
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__icon-btn:hover,
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__icon-btn:focus-visible,
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn:hover:not(.topicbar__chrome-btn--blocked),
+:root[data-theme-style] .layout--workbench-chrome-hidden .topicbar__chrome-btn:focus-visible:not(.topicbar__chrome-btn--blocked) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.sidebar--workbench .sidebar__head,
+.sidebar--workbench .sidebar__quick-actions,
+.sidebar--workbench .sidebar__utility-row {
+  --wails-draggable: no-drag;
+}
+
+.sidebar--workbench .sidebar__quick-action,
+.sidebar--workbench .sidebar__utility-button {
+  min-width: 0;
+  border: 0;
+  font: inherit;
+}
+
+.sidebar--workbench .sidebar__quick-action,
+.sidebar--workbench .sidebar__utility-button {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar--workbench {
+  --sidebar-entry-content-inset: 8px;
+  --sidebar-workbench-border: color-mix(in srgb, var(--border-soft) 82%, var(--fg-faint));
+  --sidebar-workbench-fill: color-mix(in srgb, var(--sidebar-hover) 78%, var(--bg-elev));
+  --sidebar-workbench-fill-strong: color-mix(in srgb, var(--bg-elev) 88%, var(--sidebar-bg));
+  --sidebar-workbench-active: color-mix(in srgb, var(--accent) 12%, var(--bg-elev));
+  --sidebar-workbench-active-border: color-mix(in srgb, var(--accent) 28%, transparent);
+  padding: 16px 16px 10px;
+}
+
+.app--darwin .sidebar--workbench,
+.sidebar--workbench {
+  padding: 14px 12px 10px;
+}
+
+.app--darwin .layout--workbench-chrome-hidden .sidebar--workbench {
+  padding-top: 46px;
+}
+
+.sidebar--workbench .sidebar__head {
+  flex: 0 0 auto;
+  min-height: 30px;
+  margin: 0 0 6px;
+}
+
+.sidebar--workbench .sidebar__brand {
+  flex: 0 0 30px;
+  min-height: 30px;
+  gap: 10px;
+  padding: 0 12px;
+  margin-bottom: 0;
+  color: var(--fg);
+  font-size: 19px;
+  font-weight: 520;
+  line-height: 1.2;
+}
+
+:root[data-theme-style] .sidebar--workbench .sidebar__brand {
+  flex: 0 0 30px;
+  min-height: 30px;
+  padding: 0 12px;
+  margin-bottom: 0;
+}
+
+.sidebar--workbench .sidebar__brand--workbench {
+  align-items: center;
+}
+
+.sidebar--workbench .sidebar__brand-logo--workbench {
+  width: 118px;
+  height: 24px;
+  margin-left: -14px;
+}
+
+.sidebar--workbench .sidebar__brand svg {
+  flex: 0 0 auto;
+  color: var(--fg-dim);
+  stroke-width: 1.9;
+}
+
+.sidebar--workbench .sidebar__new {
+  flex: 0 0 38px;
+  height: 38px;
+  min-height: 38px;
+  margin: 0 0 14px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 14px; /* 833-radius-wl:large */
+  background: color-mix(in srgb, var(--sidebar-hover) 88%, var(--bg-elev));
+  color: var(--fg-dim);
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 520;
+}
+
+.sidebar--workbench .sidebar__new:hover {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--fg-faint) 18%, transparent);
+  background: color-mix(in srgb, var(--sidebar-hover) 94%, var(--bg-elev));
+  filter: none;
+  transform: none;
+}
+
+.sidebar--workbench .sidebar__quick-actions {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 5px;
+  margin: 0 0 10px;
+}
+
+.sidebar--workbench .sidebar__quick-action {
+  justify-content: flex-start;
+  gap: 14px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 14px;
+  font-weight: 510;
+  letter-spacing: 0;
+  text-align: left;
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+
+.sidebar--workbench .sidebar__quick-action svg {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, currentColor 84%, var(--fg-faint));
+  stroke-width: 1.85;
+}
+
+.sidebar--workbench .sidebar__quick-action span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar--workbench .sidebar__quick-action:hover {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+
+.sidebar--workbench .sidebar__quick-action--active,
+.sidebar--workbench .sidebar__quick-action--active:hover {
+  border-color: var(--sidebar-workbench-active-border);
+  background: var(--sidebar-workbench-active);
+  color: var(--fg);
+}
+
+.sidebar--workbench .sidebar__section--projects {
+  gap: 0;
+}
+
+.sidebar--workbench .project-tree {
+  --project-tree-action-column: 26px;
+  --project-tree-action-gap: 4px;
+  --project-tree-edge-gap: 0px;
+  --project-tree-row-radius: 8px;
+  gap: 4px;
+}
+
+:root[data-theme-style] .sidebar--workbench .project-tree {
+  --project-tree-action-column: 26px;
+  --project-tree-action-gap: 4px;
+  gap: 4px;
+}
+
+.sidebar--workbench .project-tree__search {
+  display: none;
+}
+
+.sidebar--workbench .project-tree__header {
+  min-height: 28px;
+  padding: 6px 0 2px 8px;
+  color: var(--fg-faint);
+  font-size: 14px;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:root[data-theme-style] .sidebar--workbench .project-tree__header {
+  min-height: 28px;
+  padding: 6px 0 2px 8px;
+  font-size: 14px;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sidebar--workbench .project-tree__header-title {
+  gap: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sidebar--workbench .project-tree__header-actions {
+  display: grid;
+  grid-template-columns: auto repeat(3, var(--project-tree-action-column));
+  gap: var(--project-tree-action-gap);
+  justify-content: end;
+  align-items: center;
+  opacity: 0.72;
+  transition: opacity var(--dur-fast);
+}
+
+.sidebar--workbench .project-tree__header:hover .project-tree__header-actions,
+.sidebar--workbench .project-tree__header:focus-within .project-tree__header-actions {
+  opacity: 1;
+}
+
+.sidebar--workbench .project-tree__header-actions .project-tree__add-project,
+.sidebar--workbench .project-tree__header-actions .project-tree__collapse-all,
+.sidebar--workbench .project-tree__header-actions .project-tree__header-action-btn {
+  width: 22px;
+  height: 22px;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+}
+
+.sidebar--workbench .project-tree__header-actions .project-tree__add-project:hover:not(:disabled),
+.sidebar--workbench .project-tree__header-actions .project-tree__collapse-all:hover:not(:disabled),
+.sidebar--workbench .project-tree__header-actions .project-tree__header-action-btn:hover {
+  border-color: transparent;
+  background: var(--sidebar-hover);
+}
+
+.sidebar--workbench .project-tree__header-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--project-tree-action-column);
+  height: var(--project-tree-action-column);
+}
+
+.sidebar--workbench .project-tree__header-action-slot {
+  width: var(--project-tree-action-column);
+  height: var(--project-tree-action-column);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:root[data-theme-style] .sidebar--workbench .project-tree__header-action-slot,
+:root[data-theme-style] .sidebar--workbench .project-tree__header-icon-btn {
+  flex-basis: var(--project-tree-action-column);
+  width: var(--project-tree-action-column);
+  height: var(--project-tree-action-column);
+}
+
+.sidebar--workbench .project-tree__header-action-slot--filter,
+:root[data-theme-style] .sidebar--workbench .project-tree__header-action-slot--filter {
+  flex-basis: auto;
+  width: auto;
+  min-width: var(--project-tree-action-column);
+}
+
+.sidebar--workbench .project-tree__header-icon-btn {
+  --wails-draggable: no-drag;
+  width: var(--project-tree-action-column);
+  height: var(--project-tree-action-column);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-faint);
+  opacity: 0.9;
+  transition: color var(--dur-fast), background var(--dur-fast), opacity var(--dur-fast), transform var(--dur-fast);
+}
+
+.sidebar--workbench .project-tree__header-icon-btn:hover:not(:disabled),
+.sidebar--workbench .project-tree__header-icon-btn--active {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+  opacity: 1;
+}
+
+.sidebar--workbench .project-tree__header-action-slot--filter .project-tree__header-icon-btn,
+:root[data-theme-style] .sidebar--workbench .project-tree__header-action-slot--filter .project-tree__header-icon-btn {
+  flex-basis: auto;
+  width: auto;
+  min-width: var(--project-tree-action-column);
+  padding: 0 6px;
+}
+
+.sidebar--workbench .project-tree__header-action-slot--filter .project-tree__time-filter-label {
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.sidebar--workbench .project-tree__header-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.36;
+}
+
+.sidebar--workbench .project-tree__header-icon-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.sidebar--workbench .project-tree__list {
+  margin: 0 -2px;
+  padding: 0 2px 2px;
+  gap: 0;
+}
+
+:root[data-theme-style] .sidebar--workbench .project-tree__list {
+  margin: 0 -2px;
+  padding: 0 2px 2px;
+}
+
+.sidebar--workbench .project-tree__list--workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sidebar--workbench .project-tree__section {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sidebar--workbench .project-tree__section--pinned {
+  margin-bottom: 12px;
+}
+
+.sidebar--workbench .project-tree__section-title {
+  min-height: 28px;
+  padding: 6px 0 2px 8px;
+  color: var(--fg-faint);
+  font-size: 14px;
+  font-weight: 620;
+  line-height: 1.35;
+}
+
+:root[data-theme-style] .sidebar--workbench .project-tree__section-title {
+  min-height: 28px;
+  padding: 6px 0 2px 8px;
+  font-size: 14px;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sidebar--workbench .project-tree__section-title--pinned,
+:root[data-theme-style] .sidebar--workbench .project-tree__section-title--pinned {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 0 0 8px;
+  color: var(--fg-dim);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.sidebar--workbench .project-tree__section-title-icon,
+:root[data-theme-style] .sidebar--workbench .project-tree__section-title-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--fg-faint);
+  stroke-width: 1.9;
+}
+
+.sidebar--workbench .project-tree__folder {
+  height: 32px;
+  min-height: 32px;
+  margin: 2px 0 0;
+  border-radius: var(--radius-md);
+  color: var(--fg-dim);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* Task 827 ②: the workbench skin renders project titles at 15px — keep the
+   token in step so the group title stays exactly one step larger here too.
+   The :root-qualified selector matches the skin override's specificity, so
+   the workbench value wins regardless of rule order. */
+:root .sidebar--workbench,
+:root[data-theme-style] .sidebar--workbench {
+  --project-tree-project-font: 15px;
+}
+/* Task 827 ③: the workbench project row uses an 8px icon-to-label gap;
+   the group row follows it so both titles share one column. */
+.sidebar--workbench .project-tree__group-main {
+  gap: 8px;
+}
+
+:root[data-theme-style] .sidebar--workbench .project-tree__folder {
+  height: 32px;
+  min-height: 32px;
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.sidebar--workbench .project-tree__folder:hover,
+.sidebar--workbench .project-tree__folder--active:hover,
+.sidebar--workbench .project-tree__folder--menu-open:hover {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+
+.sidebar--workbench .project-tree__folder--active,
+.sidebar--workbench .project-tree__folder--menu-open {
+  background: transparent;
+  color: var(--fg);
+}
+
+.sidebar--workbench .project-tree__folder--pinned .project-tree__folder-label {
+  color: var(--fg);
+  font-weight: 640;
+}
+
+.sidebar--workbench .project-tree__folder--menu-open,
+.sidebar--workbench .project-tree__folder--menu-open:hover {
+  background: var(--sidebar-hover);
+}
+
+.sidebar--workbench .project-tree__folder-main {
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.sidebar--workbench .project-tree__folder-main > svg {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  color: var(--fg-dim);
+  stroke-width: 1.9;
+}
+
+.sidebar--workbench .project-tree__folder:hover .project-tree__folder-icon,
+.sidebar--workbench .project-tree__folder--active:hover .project-tree__folder-icon {
+  color: var(--fg);
+}
+
+.sidebar--workbench .project-tree__folder-color {
+  display: none;
+}
+
+.sidebar--workbench .project-tree__folder-action-slot {
+  flex: 0 0 var(--project-tree-action-column);
+  width: var(--project-tree-action-column);
+  height: var(--project-tree-action-column);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar--workbench .project-tree__folder-action {
+  --wails-draggable: no-drag;
+  width: var(--project-tree-action-column);
+  height: var(--project-tree-action-column);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-faint);
+  opacity: 0.84;
+  transition: color var(--dur-fast), background var(--dur-fast), opacity var(--dur-fast), transform var(--dur-fast);
+}
+
+.sidebar--workbench .project-tree__folder-action:hover,
+.sidebar--workbench .project-tree__folder-action[aria-expanded="true"] {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+  opacity: 1;
+}
+
+.sidebar--workbench .project-tree__folder-action:active {
+  transform: translateY(1px);
+}
+
+.sidebar--workbench .project-tree__folder-action--active {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.sidebar--workbench .project-tree__new-topic {
+  width: 22px;
+  height: 22px;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+.sidebar--workbench .project-tree__new-topic:hover {
+  border-color: transparent;
+  background: var(--sidebar-hover);
+}
+
+.sidebar--workbench .project-tree__topic {
+  min-height: 34px;
+  margin: 0;
+  padding-right: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--fg-dim);
+  font-size: 14px;
+}
+
+.sidebar--workbench .project-tree__topic:hover {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+
+.sidebar--workbench .project-tree__topic--active,
+.sidebar--workbench .project-tree__topic--active:hover {
+  background: color-mix(in srgb, var(--sidebar-hover) 90%, var(--bg-elev));
+  color: var(--fg);
+}
+
+.sidebar--workbench .project-tree__topic--active::before {
+  content: none;
+}
+
+.sidebar--workbench .project-tree__topic-main {
+  min-height: 34px;
+  gap: 10px;
+  padding: 0 12px 0 48px !important;
+}
+
+.sidebar--workbench .project-tree__topic-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: block;
+  line-height: 1.25;
+}
+
+.sidebar--workbench .project-tree__topic-heading {
+  gap: 6px;
+}
+
+.sidebar--workbench .project-tree__topic-label {
+  color: currentColor;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.sidebar--workbench .project-tree__topic--active .project-tree__topic-label {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.sidebar--workbench .project-tree__topic-im {
+  max-width: 64px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+}
+
+.sidebar--workbench .project-tree__topic-side {
+  flex: 0 0 auto;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  color: var(--fg-faint);
+  font-size: var(--text-md);
+  font-weight: 520;
+  line-height: 1;
+  white-space: nowrap;
+  transition: opacity var(--dur-fast), transform var(--dur-fast);
+}
+
+.sidebar--workbench .project-tree__topic-time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar--workbench .project-tree__topic-state {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  opacity: 0.78;
+}
+
+.sidebar--workbench .project-tree__topic-state--thinking,
+.sidebar--workbench .project-tree__topic-state--streaming {
+  border: 2px solid color-mix(in srgb, currentColor 26%, transparent);
+  border-top-color: currentColor;
+  background: transparent;
+  animation: project-tree-spin 0.9s linear infinite;
+}
+
+.sidebar--workbench .project-tree__topic-state--waiting_confirmation {
+  background: var(--warn);
+  /* Waiting is paused-for-user: never spin like thinking/streaming. */
+  animation: none;
+}
+
+.sidebar--workbench .project-tree__topic-state--paused {
+  background: var(--fg-faint);
+}
+
+.sidebar--workbench .project-tree__topic-state--error {
+  background: var(--err);
+}
+
+.sidebar--workbench .project-tree__topic--active .project-tree__topic-side {
+  color: var(--fg-faint);
+}
+
+.sidebar--workbench .sidebar__nav--footer {
+  flex: 0 0 auto;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 6px 0 0;
+  border-top: 0;
+}
+
+.sidebar--workbench .sidebar__nav--footer .sidebar__navitem,
+.sidebar--workbench .sidebar__nav--footer .sidebar-im__summary {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  color: var(--fg-dim);
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+
+.sidebar--workbench .sidebar__nav--footer .sidebar__navitem:hover,
+.sidebar--workbench .sidebar__nav--footer .sidebar-im__summary:hover,
+.sidebar--workbench .sidebar__nav--footer .sidebar-im--expanded .sidebar-im__summary {
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+
+.sidebar--workbench .sidebar__nav--footer .sidebar-im__summary-status {
+  max-width: 92px;
+  font-size: var(--text-sm);
+  font-weight: 560;
+}
+
+.sidebar--workbench .sidebar__nav--footer .sidebar-im__panel {
+  margin-top: 5px;
+  border-color: var(--sidebar-workbench-border);
+  border-radius: var(--radius-md);
+  background: var(--sidebar-workbench-fill-strong);
+}
+
+.sidebar--workbench .sidebar__utility-row {
+  display: grid;
+  /* 任务 320 UI 规格（20261002）：回收站/信件中心/自动化/设置 = 4 列同排；
+     任务 409 群聊入行（兑现 320 预留位）。644：收件箱改名信件中心。
+     任务 684（20261009）：列数写死（repeat(4)/(5)）每次图标增减都要同步扩列，
+     忘改即折行（656b 修的 4+1 两行正是 5 按钮 4 列失配）。改为自动列：
+     grid-auto-flow: column + grid-auto-columns: minmax(0, 1fr) —— 列数=按钮数，
+     增删图标免改 CSS 恒单行等距；窄宽下按钮 min-width:0 压缩、图标
+     flex:0 0 auto，只缩间距/按钮不折行。 */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.sidebar--workbench .sidebar__utility-row .tooltip-trigger {
+  min-width: 0;
+}
+
+.sidebar--workbench .sidebar__utility-button {
+  width: 100%;
+  height: 32px;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-faint);
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+
+.sidebar--workbench .sidebar__utility-button:hover {
+  border-color: var(--sidebar-workbench-border);
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+
+.sidebar--workbench .sidebar__utility-button svg {
+  flex: 0 0 auto;
+  stroke-width: 1.9;
+}
+
+/* Task 412: classic's bottom rail now renders the same utility-row markup as
+   workbench (SidebarRegion), but every utility style above lives under
+   .sidebar--workbench — mirror the layout scope for classic so the three
+   icons sit on one horizontal rail instead of the old vertical NavButton
+   column. Tokens are the same mixes the workbench block defines; spelled out
+   because --sidebar-workbench-* are scoped to .sidebar--workbench. */
+.sidebar:not(.sidebar--workbench) .sidebar__nav--footer .sidebar__utility-row {
+  display: grid;
+  /* 任务 320 UI 规格（20261002）：classic 同排；任务 409 群聊入行。
+     任务 684（20261009）：与 workbench 规则同改自动列（列数=按钮数，增删
+     图标免改 CSS 恒单行等距，窄宽压缩不折行）——两处必须同步，失配即折行
+     （656b 教训）。 */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+  --wails-draggable: no-drag;
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-faint);
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button:hover {
+  border-color: color-mix(in srgb, var(--border-soft) 82%, var(--fg-faint));
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button svg {
+  flex: 0 0 auto;
+  stroke-width: 1.9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar--workbench .project-tree__topic-state--thinking,
+  .sidebar--workbench .project-tree__topic-state--streaming,
+  .project-tree__topic-action--busy svg,
+  .project-tree__archive-spinner {
+    animation: none;
+  }
+}
+
+@media (max-height: 760px) {
+  .sidebar--workbench .sidebar__quick-actions {
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .sidebar--workbench .sidebar__quick-action {
+    height: 34px;
+    gap: 8px;
+    padding: 0 9px;
+    font-size: 12.5px;
+    font-weight: 560;
+  }
+
+  .sidebar--workbench .sidebar__quick-action svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .sidebar--workbench .project-tree__header {
+    padding-top: 10px;
+  }
+}
+
+.app--windows-frameless.app--workbench {
+  --windows-window-controls-height: 40px;
+}
+
+/* Workbench hides AppChrome, so its dock is also the native title surface.
+/* Workbench hides AppChrome, so its dock is also the native title surface.
+   Keep the Windows caption buttons on a dedicated first row and render the
+   complete dock tab strip below it, matching Classic's separated chrome. */
+.app--windows-frameless.app--workbench .workbench-dock__tools,
+:root[data-theme-style] .app--windows-frameless.app--workbench .workbench-dock__tools {
+  position: relative;
+  height: calc(40px + var(--windows-window-controls-height));
+  padding: var(--windows-window-controls-height) 12px 0;
+}
+
+.app--windows-frameless.app--workbench .workbench-dock__tools::before,
+:root[data-theme-style] .app--windows-frameless.app--workbench .workbench-dock__tools::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--windows-window-controls-height) - 1px);
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--border-soft);
+  pointer-events: none;
+}
+
+/* Task 447: wrap mode under the frameless Workbench title strip. The rules
+   above pin the tools row to calc(40px + caption) at the same 0-5-0 as this
+   selector, so this block must follow them in source order to win: the caption
+   padding stays, the height goes auto, and the wrapped second tab row grows
+   the strip instead of clipping under the caption buttons. */
+.app--windows-frameless.app--workbench .workbench-dock__tools--wrap,
+:root[data-theme-style] .app--windows-frameless.app--workbench .workbench-dock__tools--wrap {
+  height: auto;
+  min-height: calc(40px + var(--windows-window-controls-height));
+  padding: var(--windows-window-controls-height) 12px 6px;
+}
+
+/* macOS keeps dock tabs and the fixed workspace toggle in one title row. The
+   toggle stays anchored to the window edge while this row reserves its hit
+   area; the four tabs share the remaining width instead of sliding under it. */
+.app--darwin.app--workbench .workbench-dock__tools,
+:root[data-theme-style] .app--darwin.app--workbench .workbench-dock__tools {
+  padding-right: 48px;
+}
+
+.app--darwin.app--workbench .workbench-dock__tabs,
+:root[data-theme-style] .app--darwin.app--workbench .workbench-dock__tabs {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  gap: 2px;
+}
+
+.app--darwin.app--workbench .workbench-dock__tab,
+:root[data-theme-style] .app--darwin.app--workbench .workbench-dock__tab {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  padding: 0 5px;
+  gap: 4px;
+  justify-content: center;
+}
+
+.app--darwin.app--workbench .workbench-dock__tab-label,
+:root[data-theme-style] .app--darwin.app--workbench .workbench-dock__tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Workbench keeps its workspace toggle in the fixed top-right dock-toggle
+/* Workbench keeps its workspace toggle in the fixed top-right dock-toggle
+   instead of an AppChrome rail; shift it left of the Windows caption strip
+   (min/max/close) so it never sits under the window controls. Same safe inset
+   as the classic-mode panel toggle. */
+.app--windows-frameless.app--workbench .app__dock-toggle,
+:root[data-theme-style] .app--windows-frameless.app--workbench .app__dock-toggle {
+  right: calc(var(--windows-window-controls-safe) + 8px);
+}
+/* Project grouping (#9222): workbench grouped containers + move/new-group panels. */
+.sidebar--workbench .project-tree__group {
+  display: flex;
+  flex-direction: column;
+}
+.sidebar--workbench .project-tree__group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font-size: var(--text-md);
+  font-weight: 560;
+  cursor: pointer;
+  user-select: none;
+}
+.sidebar--workbench .project-tree__group-title:hover {
+  background: var(--sidebar-hover);
+}
