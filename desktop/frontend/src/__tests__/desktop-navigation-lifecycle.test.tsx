@@ -99,6 +99,14 @@ try {
   assert.ok(calls.includes("classic-session"));
   assert.ok(calls.includes("history-close"));
 
+  // tl 1189: a resume click that cannot resolve to a tab surfaces a visible
+  // notice — the silent Promise.resolve() gate must never come back in any
+  // layout, with or without a turn running (the gate lived above this queue).
+  calls.length = 0;
+  const invalidResume = api.enqueueNavigation({ kind: "resume-session", session: { scope: "global", path: "orphan.jsonl" } as SessionMeta });
+  await invalidResume;
+  assert.ok(calls.includes("notice:history.failedOpenSession"), "a failed resume click surfaces a visible notice, never silence");
+
   calls.length = 0;
   const failed = topic("failed");
   pending.get("failed")!.reject(new Error("fixture failure")); await failed;
