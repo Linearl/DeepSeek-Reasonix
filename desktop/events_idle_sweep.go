@@ -115,6 +115,15 @@ type eventsIdleSweepCandidate struct {
 	// session WITHOUT TabOpen is lease-held by another runtime and is never
 	// touched while busy.
 	TabOpen bool
+	// LandingBytes is the tl 1186 fold-landing 口径: where the maintenance
+	// fold's product lands for THIS session (agent.SessionFoldLandingBytes —
+	// the survivor-union after the repair retire CompactSessionFile runs).
+	// 0 keeps the task-1073 proxy: for schema-1 logs the transcript IS the
+	// product, and for unreadable/archived logs there is no honest prediction.
+	// The old proxy measured the selected chain (the view); on deep-branch
+	// multi-head logs the view is a fraction of the product (11MiB vs ~100MB
+	// 实测), so the estimate promised savings the rotation could not deliver.
+	LandingBytes int64
 }
 
 // eventsIdleSweepDecision is the whole per-session policy in one testable
@@ -235,9 +244,14 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 		// Task 1073 P0-1: the sweep now shares the save path's profitability
 		// guard — a fold that would save <10% of the log is refused here too,
 		// so the pass no longer burns its 3-rewrite budget on rewrites that
-		// free nothing (73 measured no-gain sweeps). The LiveBytes proxy is
-		// the main transcript the candidate already carries.
-		profitable := agent.EventsFoldProfitable(c.EventsBytes, c.LiveBytes)
+		// free nothing (73 measured no-gain sweeps). tl 1186 corrects the
+		// estimate's 口径: the second input is the fold's predicted LANDING
+		// (the repair-retire survivor union, measured once per over-limit
+		// schema-2 candidate in tick), not the main transcript — on deep-branch
+		// multi-head logs the transcript (view) is far below the landing, so
+		// the old proxy passed sessions whose rotation then freed [−217, 0]
+		// bytes, and pinned the very sessions the sweep exists for.
+		profitable := agent.EventsFoldProfitable(c.EventsBytes, foldLandingBytes(c))
 		ok, reason := eventsIdleSweepDecision(knobs.enabled, overLimit, c.Busy, profitable, c.EventsBytes, parkPtr, c.LastActivityAt)
 		if !ok {
 			// tl 1172: L1 被门槛正确拒绝后的降级动作（L1 现状不变，见函数头）。
@@ -353,6 +367,17 @@ func runEventsIdleSweepPass(cands []eventsIdleSweepCandidate, knobs eventsIdleSw
 	return results
 }
 
+// foldLandingBytes is the profitability estimate's second input (tl 1186):
+// the fold's predicted landing when the agent measured one, else the task-1073
+// view proxy — schema-1 logs fold to their transcript, so there the proxy IS
+// the landing and the behavior is byte-for-byte the old one.
+func foldLandingBytes(c eventsIdleSweepCandidate) int64 {
+	if c.LandingBytes > 0 {
+		return c.LandingBytes
+	}
+	return c.LiveBytes
+}
+
 // slimAttempt runs the L2 archive (and, only when the archived size still
 // exceeds the cap, the L3 deterministic trim followed by one re-archive) and
 // records the park on success so the landed size gates re-entry until new
@@ -463,13 +488,29 @@ func (l *eventsIdleSweepLoop) tick(now time.Time) {
 			// stale concurrent head — the retire probe (a replay) is then spent
 			// only on the rare multi-head log, never on the single-head majority.
 			multiHead := false
+			dagSchema := false
 			if meta, ok, metaErr := agent.LoadBranchMeta(info.Path); metaErr == nil && ok {
 				multiHead = meta.LogSchema == 2 && meta.HeadCount > 1
+				dagSchema = meta.LogSchema == 2
+			}
+			// tl 1186: measure the fold-landing 口径 for the rare candidates the
+			// estimate actually gates — over-limit schema-2 logs in plaintext
+			// form. It costs one DAG replay each, but replaces the far costlier
+			// futile 100MB-class load+rewrite the view proxy used to trigger
+			// (freed ∈ [−217, 0] measured), and is what lets retireable
+			// multi-head sessions pass honestly. Schema-1 and archived logs
+			// keep the proxy (agent returns 0 for them by contract).
+			landing := int64(0)
+			live := statFileSize(info.Path)
+			overLimit := agent.EventsLogAboveThreshold(eventsBytes, live, knobs.factor, knobs.capMB)
+			if overLimit && dagSchema {
+				landing = agent.SessionFoldLandingBytes(info.Path)
 			}
 			cands = append(cands, eventsIdleSweepCandidate{
 				Path:           info.Path,
 				EventsBytes:    eventsBytes,
-				LiveBytes:      statFileSize(info.Path),
+				LiveBytes:      live,
+				LandingBytes:   landing,
 				LastActivityAt: info.LastActivityAt.UnixMilli(),
 				Busy:           busy,
 				MultiHead:      multiHead,
