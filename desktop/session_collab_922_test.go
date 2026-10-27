@@ -1,13 +1,16 @@
 package main
 
-// 任务 922（886 机制②桥盲区）：sessionCollabTargets 构造可见 tab target 不带
-// ctrl 字段，而 sweepIdleInboxTurns 对 t.ctrl == nil 静默 continue——空闲桥对
-// 全部可见 tab 全盲（2026-10-14 新6 现场：超限长会话 reattach 后停在可见 tab，
+// 任务 922（886 机制②桥盲区）：可见 tab target 曾不带 ctrl 字段，而
+// sweepIdleInboxTurns 对 t.ctrl == nil 静默 continue——空闲桥对全部可见 tab
+// 全盲（2026-10-14 新6 现场：超限长会话 reattach 后停在可见 tab，
 // queued_followup 4 次 drain 空转，桥全程看不见；佐证：全量生产日志
-// decision=skip:active_tab 0 条——该分支当时不可达）。本文件钉死修复：
-//   - ctrl==nil 的可见 tab target 经 tabByID.Ctrl 兜底被桥纳入并真开轮；
+// decision=skip:active_tab 0 条——该分支当时不可达）。修复先经 tabByID.Ctrl
+// 桥侧兜底（922 原形）；任务 1206 把解析收口仲裁层：扫描器
+// （sessionCollabTargets，搬入 session_wake_arbiter.go）扫描时验活并回填
+// ctrl，桥不再二次解析。本文件钉死现行契约：
+//   - 可见 tab target 由扫描器自带 ctrl，桥视图完整（不再有盲区形状）；
 //   - active tab 仍带 activeTab 标记（边界 2 在 sweepTargets 内拦截，不变）；
-//   - runtime 解析不到的 target 丢弃但不 panic（快照与 sweep 之间的关闭竞态）。
+//   - ctrl 仍解析不到的 target 丢弃但不 panic（快照与 sweep 之间的关闭竞态）。
 
 import (
 	"context"
@@ -49,8 +52,9 @@ func (c *bridgeSweepController) runCount() int {
 }
 
 // TestIdleTurnSweepResolvesVisibleTabCtrlByID 是 922 验收②的正面用例：可见
-// tab 的 target 快照 ctrl==nil（盲区原形状），修复后经 tabByID.Ctrl 兜底进入
-// 桥视图，并在空闲窗口到期后真的开出一轮消费队首——「被桥纳入拉起」的完整链。
+// tab 的 target 由仲裁层扫描器自带 ctrl（1206 收口形态；922 原形是桥侧
+// tabByID 兜底），桥视图完整，并在空闲窗口到期后真的开出一轮消费队首——
+// 「被桥纳入拉起」的完整链。
 func TestIdleTurnSweepResolvesVisibleTabCtrlByID(t *testing.T) {
 	dir := t.TempDir()
 	path := sessionFileWithContact(t, dir, "visible", "sc_bridge")
@@ -66,8 +70,8 @@ func TestIdleTurnSweepResolvesVisibleTabCtrlByID(t *testing.T) {
 	if len(live) != 1 || live[0].tabID != "tab-bridge" || live[0].contactID != "sc_bridge" {
 		t.Fatalf("live targets = %+v, want the visible tab bound to sc_bridge", live)
 	}
-	if live[0].ctrl != nil {
-		t.Fatal("precondition: sessionCollabTargets must not carry ctrl (the 886 blind-spot shape)")
+	if live[0].ctrl == nil {
+		t.Fatal("sessionCollabTargets must carry ctrl since 1206 (the arbiter scanner resolves it; the bridge must not re-resolve)")
 	}
 
 	covered := map[string]bool{}

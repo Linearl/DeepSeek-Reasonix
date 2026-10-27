@@ -516,6 +516,10 @@ type App struct {
 	// sessionCollab is the task 19 delivery pump: it moves talk_to_session
 	// mailbox messages into the target tab's inbox. Nil until startup.
 	sessionCollab *sessionCollabPump
+	// wake is the 任务1206 开轮仲裁层（579 族 SSOT）：canWakeSession 三态判定 +
+	// claimWake 幂等认领 + recordWakeOutcome 记账单点。值类型零值可用，四触发源
+	// 经 App 方法访问，无指针初始化次序问题。
+	wake wakeArbiter
 	// autopilotResume is the 任务731 abnormal-stop auto-resume watchdog
 	// (579 家族第三形态): event-driven bounded continuation for unattended
 	// sessions. Nil until startup; every entry point is nil-safe.
