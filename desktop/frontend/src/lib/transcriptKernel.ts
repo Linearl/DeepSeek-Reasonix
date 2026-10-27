@@ -108,7 +108,12 @@ type DeferredStructuralTransaction = {
 };
 
 const TRANSACTION_TTL_MS = 1_000;
-const BOTTOM_THRESHOLD_PX = 4;
+// tl 1204: exported as the single source of truth for "counts as at the
+// bottom". Every reader (kernel verdict, hook isAtBottom, diagnostics panels)
+// must derive from this constant - a second copy of the formula is exactly the
+// "anchor semantics set in the render layer" failure mode this ticket removes.
+export const TRANSCRIPT_BOTTOM_THRESHOLD_PX = 4;
+const BOTTOM_THRESHOLD_PX = TRANSCRIPT_BOTTOM_THRESHOLD_PX;
 // Task 753 (root cause 2): an anchored restore that would move the viewport
 // further than this (or one viewport height, whichever is larger) is a yank,
 // not a correction - the reader's anchored block drifted (large collapse or
@@ -300,7 +305,7 @@ export class TranscriptKernel {
     // an input owner can turn that geometry observation into a new intent.
     if (!this.userGesture) return false;
     this.writeTop = null;
-    const atBottom = snapshot.scrollHeight - snapshot.clientHeight - snapshot.scrollTop <= BOTTOM_THRESHOLD_PX;
+    const atBottom = this.isViewportAtBottom(snapshot);
     // tl 1184: a reader who stays put while output streams keeps the SAME
     // scrollTop while scrollHeight grows - the naive atBottom above then flips
     // to false even though the user never moved. Only a real scrollTop change
@@ -319,6 +324,36 @@ export class TranscriptKernel {
     // exemption — the reader has moved, the restored key is no longer special.
     this.surfaceRestoreKey = null;
     return true;
+  }
+
+  /** tl 1204: the authoritative "is this viewport at the bottom" verdict.
+   * The same formula used to live in the hook's render-time isAtBottom and in
+   * two diagnostics sites — four places that could (and did) disagree with the
+   * kernel's own verdict. This method is the one copy. */
+  isViewportAtBottom(snapshot: { scrollTop: number; scrollHeight: number; clientHeight: number }): boolean {
+    return snapshot.scrollHeight - snapshot.clientHeight - snapshot.scrollTop <= BOTTOM_THRESHOLD_PX;
+  }
+
+  /** tl 1204: the authoritative restore-landing entry — the ONE place that
+   * decides how a freshly restored surface is positioned, derived from the
+   * authoritative anchor alone. A tail anchor lands on the bottom synchronously
+   * (the 1187 template) with scheduleTailSync as the single rAF fallback; a
+   * block anchor opens the restore transaction and lands it in the same tick
+   * when the caller can supply block geometry (the hydrate-complete frame can,
+   * the DOM is mounted by then). Callers — the replaceSurface effect and the
+   * hydrate-complete frame — must not re-derive tail/block semantics; asking
+   * this method IS the protocol. Returns whether the position was applied
+   * synchronously. */
+  restoreLanding(blockTop?: (blockKey: string) => number | undefined): boolean {
+    if (this.anchorValue.kind === "block") {
+      const transaction = this.begin("restore", this.anchorValue);
+      if (!transaction) return false;
+      return blockTop ? this.correctAnchor(transaction, blockTop) : true;
+    }
+    const transaction = this.begin("tail-sync", this.anchorValue);
+    const landed = transaction ? this.correctAnchor(transaction, () => undefined) : false;
+    if (!landed) this.scheduleTailSync();
+    return landed;
   }
 
   beginUserGesture(snapshot: TranscriptViewportSnapshot, owner: "selection" | "native" = "native"): void {
@@ -537,7 +572,25 @@ export class TranscriptKernel {
       if (generation !== this.generationValue || this.intentValue !== "tail" || this.userGesture) return;
       const transaction = this.begin("tail-sync", { kind: "tail" });
       if (!transaction || !this.active) return;
-      this.writeAndFinish(this.active, "tail-follow", Number.POSITIVE_INFINITY);
+      const written = this.writeAndFinish(this.active, "tail-follow", Number.POSITIVE_INFINITY);
+      if (!written) {
+        // tl 1204: this rAF pass is THE async fallback of the restore protocol
+        // (chain b). When even it cannot land the write the recovery is
+        // exhausted — say so on the diagnostic stream instead of failing
+        // silently, so a "stopped mid-way" report has a traceable outcome.
+        // A refused write may already have finished the transaction
+        // (native-clamp), so the id rides the same optional chain as
+        // reportAnomaly.
+        this.emit({
+          session: this.session,
+          generation: this.generationValue,
+          transaction: this.active?.transaction.id ?? 0,
+          owner: "tail-follow",
+          intent: this.intentValue,
+          geometryRevision: this.geometryVersion,
+          outcome: "tail-sync-fallback-exhausted",
+        });
+      }
     });
   }
 
