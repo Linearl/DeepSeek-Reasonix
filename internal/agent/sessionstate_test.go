@@ -36,6 +36,9 @@ var sessionReset = map[string]bool{
 	// 任务1114: same ownership as rebuildPending — an in-flight overflow diet
 	// belongs to the replaced lineage's fallback episode.
 	"dietPending": true,
+	// tl1203: same ownership as rebuildPending — the forced stale-rebuild
+	// arming belongs to the replaced lineage's stale-serving episode.
+	"staleRebuildArmed": true,
 	// 任务 1021: the compression-session pass counter starts fresh with a new
 	// conversation — an old episode's round numbers must not ride into the new
 	// lineage's first compaction.

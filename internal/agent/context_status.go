@@ -9,9 +9,10 @@ type ContextMaintenanceSnapshot struct {
 	ProjectedTokens int
 	// ProjectionValid reports whether the projected view is actually bound to
 	// the current transcript and lineage (task 549). When false the projected
-	// figure equals the canonical one — the fallback view — and a frontend can
-	// label the readout instead of presenting a full-transcript size as normal
-	// usage.
+	// figure is the fallback view: since tl1203 that is the stale fold over
+	// the canonical tail when a body is present (the frontend can label the
+	// readout), and the canonical-level figure only for the body-less
+	// degradation ladder.
 	ProjectionValid   bool
 	SummaryTokens     int
 	LastSavedTokens   int
@@ -69,6 +70,13 @@ func (a *Agent) ContextMaintenanceSnapshot() ContextMaintenanceSnapshot {
 	if valid {
 		if projected := modelVisibleFromProjection(state.Projection, canonical); len(projected) > 0 {
 			visible = projected
+		}
+	} else if len(state.Projection.Messages) > 0 {
+		// tl1203: a stale body still serves the wire — the panel reads the
+		// stale fold, not the canonical fallback, so the share stays folded
+		// while the rebuild replaces the projection.
+		if staleView := modelVisibleFromProjection(state.Projection, canonical); len(staleView) > 0 {
+			visible = staleView
 		}
 	}
 	trigger := a.compactTrigger()
