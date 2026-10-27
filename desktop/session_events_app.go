@@ -12,7 +12,6 @@ import (
 	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/control"
-	"reasonix/internal/store"
 )
 
 // TabSessionEventsSize (task 997) is the current-conversation half of the
@@ -37,11 +36,8 @@ func (a *App) TabSessionEventsSize(tabID string) int64 {
 	if sp == "" {
 		return 0
 	}
-	info, err := os.Stat(store.SessionEventLog(sp))
-	if err != nil {
-		return 0
-	}
-	return info.Size()
+	// tl 1172 L2: 归档态按归档字节数计（明文优先，缺失回落 .zst）。
+	return agent.SessionEventLogZstSize(sp)
 }
 
 // SessionEventsEntry is one session's event-log footprint for the task-333
@@ -172,10 +168,7 @@ func (a *App) SessionEventsInventory() SessionEventsInventoryView {
 		if meta.DeletedAt != 0 {
 			continue
 		}
-		eventsBytes := int64(0)
-		if info, err := os.Stat(store.SessionEventLog(meta.Path)); err == nil {
-			eventsBytes = info.Size()
-		}
+		eventsBytes := agent.SessionEventLogZstSize(meta.Path)
 		liveBytes := int64(0)
 		if info, err := os.Stat(meta.Path); err == nil {
 			liveBytes = info.Size()

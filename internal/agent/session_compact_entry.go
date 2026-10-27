@@ -75,11 +75,10 @@ func CompactSessionFile(sessionPath string) (before, after int64, err error) {
 // oversized gate watches and the one the user-facing before/after numbers
 // refer to (task 275: 300MB+ .events.jsonl files). The compat jsonl is
 // deliberately excluded: it tracks transcript content, not log bloat.
+// tl 1172 L2: 归档态按归档字节数计（SessionEventLogZstSize 口径），面板的
+// 前后对照在压缩态会话上仍是真实磁盘占用。
 func sessionCompactFileSize(sessionPath string) int64 {
-	if info, err := os.Stat(store.SessionEventLog(sessionPath)); err == nil {
-		return info.Size()
-	}
-	return 0
+	return SessionEventLogZstSize(sessionPath)
 }
 
 // sessionCompactRepairDAG prepares a schema-2 log for the forced rotation:

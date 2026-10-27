@@ -131,6 +131,9 @@ func TestSessionSidecarFiles(t *testing.T) {
 		p + ".meta",
 		"/home/u/.reasonix/sessions/abc.goal-state.json",
 		"/home/u/.reasonix/sessions/abc.events.jsonl",
+		// tl 1172 L2: 归档态事件日志随会话删除/迁移，清单必须列它——漏列等于
+		// 删会话时把 100MB 级历史留在盘上（泄漏「已删除」的对话）。
+		"/home/u/.reasonix/sessions/abc.events.jsonl.zst",
 		"/home/u/.reasonix/sessions/abc.events.jsonl.damaged",
 		"/home/u/.reasonix/sessions/abc.events.jsonl.rotating",
 		"/home/u/.reasonix/sessions/abc.turns.jsonl",

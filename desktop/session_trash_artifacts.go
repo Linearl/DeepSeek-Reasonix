@@ -22,6 +22,9 @@ func sessionTrashArtifacts(sessionPath, key string) []sessionTrashArtifact {
 		{src: store.SessionMeta(sessionPath), name: trashName(store.SessionMeta)},
 		{src: store.SessionGoalState(sessionPath), name: trashName(store.SessionGoalState)},
 		{src: store.SessionEventLog(sessionPath), name: trashName(store.SessionEventLog)},
+		// tl 1172 L2: 归档态事件日志随会话进出回收站——漏列等于删会话时把
+		// 100MB 级历史留在盘上，恢复时又缺历史。
+		{src: store.SessionEventLogZst(sessionPath), name: trashName(store.SessionEventLogZst)},
 		{src: store.SessionEventLogDamaged(sessionPath), name: trashName(store.SessionEventLogDamaged)},
 		{src: store.SessionEventLogRotating(sessionPath), name: trashName(store.SessionEventLogRotating)},
 		{src: store.SessionEventIndex(sessionPath), name: trashName(store.SessionEventIndex)},

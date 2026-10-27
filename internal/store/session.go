@@ -27,6 +27,12 @@ const (
 	SessionEventLogSuffix         = ".events.jsonl"
 	SessionEventLogDamagedSuffix  = SessionEventLogSuffix + ".damaged"
 	SessionEventLogRotatingSuffix = SessionEventLogSuffix + ".rotating"
+	// SessionEventLogZstSuffix 是事件日志的整文件 zstd 归档形态（tl 1172 L2，
+	// 照 codex rollout 的 .jsonl.zst 同款机制）：<id>.events.jsonl.zst。它不改变
+	// append-only 语义：归档只发生在空闲维护窗口（lease/文件锁保护），任何读取
+	// 与追加都会先物化回明文（agent.ensureSessionEventLogPlain），稳态下明文与
+	// .zst 只存在其一；两者并存（压缩中途崩溃）时明文是事实源。
+	SessionEventLogZstSuffix = SessionEventLogSuffix + ".zst"
 	SessionTurnEventLogSuffix     = ".turns.jsonl"
 	SessionConflictLogSuffix      = ".conflicts.jsonl"
 	// SessionRepairLogSuffix 是会话自愈修复记录（任务 1011：<stem>.repairlog.jsonl）。
@@ -119,6 +125,17 @@ func SessionEventLog(sessionPath string) string {
 		return ""
 	}
 	return sessionStem(sessionPath) + SessionEventLogSuffix
+}
+
+// SessionEventLogZst is the whole-file zstd archive of the event log
+// (<id>.events.jsonl.zst, tl 1172 L2). It is a storage form, not a separate
+// log: readers and writers materialize it back to SessionEventLog before use
+// (the agent layer owns that discipline), so nothing here beyond the path.
+func SessionEventLogZst(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + SessionEventLogZstSuffix
 }
 
 // SessionEventLogDamaged is the salvage sidecar for event-log bytes that tail
@@ -328,6 +345,7 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionMeta(sessionPath),
 		SessionGoalState(sessionPath),
 		SessionEventLog(sessionPath),
+		SessionEventLogZst(sessionPath),
 		SessionEventLogDamaged(sessionPath),
 		SessionEventLogRotating(sessionPath),
 		SessionTurnEventLog(sessionPath),

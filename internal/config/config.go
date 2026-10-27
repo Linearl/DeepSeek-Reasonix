@@ -65,7 +65,13 @@ type Config struct {
 	EventsRotationFactor float64 `toml:"events_rotation_factor"`
 	// EventsRotationCapMB is the optional auto-mode absolute ceiling in MiB
 	// (0 = disabled). Factor and cap OR together.
-	EventsRotationCapMB int64               `toml:"events_rotation_cap_mb"`
+	EventsRotationCapMB int64 `toml:"events_rotation_cap_mb"`
+	// ExperimentalEventsSlimOversize 启用任务 1172 的三级降级瘦身（默认关，
+	// 档位可选）：auto+cap 下 fold 不回本（省 <10%）的超限 events 日志不再
+	// 「left in place」，而是 L2 整文件 zstd 归档（无损可逆，读/写先物化回
+	// 明文）、仍超限再 L3 确定性裁剪超大 tool 结果（头尾保留+标记）。折叠
+	// 10% 门槛原样保留——本开关补的是「门槛不满足时的动作」，不是门槛。
+	ExperimentalEventsSlimOversize bool `toml:"experimental_events_slim_oversize"`
 	UI                  UIConfig            `toml:"ui"`
 	CLI                 CLIConfig           `toml:"cli"`
 	Desktop             DesktopConfig       `toml:"desktop"`

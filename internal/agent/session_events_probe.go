@@ -57,6 +57,8 @@ func probeSessionEventLogWithLimits(sessionPath string, limits sessionReplayLimi
 	if !sessionEventSidecarsFit(sessionPath) {
 		return sessionEventLogProbe{}, nil
 	}
+	// tl 1172 L2: 压缩态日志的物化收口在 limitsForSessionLog（本函数第 52 行
+	// 已经过它）——到这里明文必然就位，下方的 stat 看到的世界与引入前一致。
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
