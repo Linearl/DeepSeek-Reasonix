@@ -28,12 +28,18 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 export function SessionWallPanel({
   open,
   load,
+  loadExcerpts,
   onClose,
   onResume,
   initialOpenOnly,
 }: {
   open: boolean;
   load: () => Promise<SessionMeta[]>;
+  // tl 1177b 方案B: on-demand hover excerpts — the panel pulls the newest user
+  // messages per card when it is hovered/focused, so sessions saved before any
+  // excerpts sidecar existed answer on the first hover. Absent prop (tests)
+  // keeps the panel rendering from the list field only.
+  loadExcerpts?: (session: SessionMeta) => Promise<string[]>;
   onClose: () => void;
   onResume: (session: SessionMeta) => void;
   // tl 1175: true forces the「仅已打开」filter on for this open (the「跳转标签页」
@@ -55,6 +61,13 @@ export function SessionWallPanel({
   // there is a timeline, not "hide this workspace"). Reloaded from prefs on
   // every open edge, so the state survives restarts.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  // tl 1177b 方案B: per-card hover excerpt cache, reset on every open edge.
+  // "pending" holds the card's native title back so the conversation-name
+  // tooltip cannot flash while the fetch is in flight; "ready" settles the
+  // overlay (possibly empty — the title comes back for noise-only sessions).
+  const [tailExcerpts, setTailExcerpts] = useState<Map<string, { status: "pending" } | { status: "ready"; lines: string[] }>>(
+    () => new Map(),
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const isOpenRef = useRef(false);
   isOpenRef.current = open;
@@ -97,6 +110,8 @@ export function SessionWallPanel({
       setMode("project");
       setOpenOnly(initialOpenOnly ?? loadSessionWallOpenOnly());
       setCollapsed(new Set(loadSessionWallCollapsed()));
+      setTailExcerpts(new Map());
+      requestedExcerptsRef.current = new Set();
       inputRef.current?.focus();
     }
     // loadSessionWallOpenOnly / loadSessionWallCollapsed are read once per
@@ -134,6 +149,30 @@ export function SessionWallPanel({
       return new Date(ms).toLocaleDateString();
     },
     [t],
+  );
+
+  // tl 1177b 方案B: cards the list field cannot answer pull their excerpts on
+  // first hover/focus. The ref dedupes requests synchronously (one fetch per
+  // card per open even under double render); a failed fetch degrades to "no
+  // excerpts" — the native title returns rather than the card going mute.
+  const requestedExcerptsRef = useRef<Set<string>>(new Set());
+  const requestExcerpts = useCallback(
+    (session: SessionMeta) => {
+      if (!loadExcerpts) return;
+      if ((session.recentExcerpts?.filter(Boolean).length ?? 0) > 0) return;
+      if (requestedExcerptsRef.current.has(session.path)) return;
+      requestedExcerptsRef.current.add(session.path);
+      setTailExcerpts((prev) => new Map(prev).set(session.path, { status: "pending" }));
+      void loadExcerpts(session)
+        .then((lines) => {
+          setTailExcerpts((prev) => new Map(prev).set(session.path, { status: "ready", lines: Array.isArray(lines) ? lines : [] }));
+        })
+        .catch((error: unknown) => {
+          reportFrontendLog("sessionWall", "excerpt load failed", error instanceof Error ? error.message : String(error));
+          setTailExcerpts((prev) => new Map(prev).set(session.path, { status: "ready", lines: [] }));
+        });
+    },
+    [loadExcerpts],
   );
 
   // tl 1175: toggling the「仅已打开」filter persists it for the next restart.
@@ -274,15 +313,23 @@ export function SessionWallPanel({
                         const hint = paletteSessionHint(s);
                         // tl 1177: hover excerpts — the newest user messages,
                         // newest first, so the card answers "is this the one?"
-                        // without opening the transcript. Absent on sessions
-                        // the backend has not re-projected yet (no overlay).
-                        const excerpts = s.recentExcerpts?.filter(Boolean) ?? [];
+                        // without opening the transcript. tl 1177b 方案B: the
+                        // list field stays as the instant source; cards it
+                        // cannot answer pull the tail on first hover, and the
+                        // native title (the conversation name — the exact
+                        // fallback tl-1177 bans) is held back while the fetch
+                        // is in flight so it cannot flash first.
+                        const tail = tailExcerpts.get(s.path);
+                        const excerpts = (tail?.status === "ready" ? tail.lines : s.recentExcerpts)?.filter(Boolean) ?? [];
+                        const holdTitle = excerpts.length === 0 && tail?.status === "pending";
                         return (
                           <button
                             type="button"
                             key={s.path}
                             className="session-wall__card"
-                            title={excerpts.length > 0 ? undefined : title}
+                            title={excerpts.length > 0 || holdTitle ? undefined : title}
+                            onMouseEnter={() => requestExcerpts(s)}
+                            onFocus={() => requestExcerpts(s)}
                             onClick={() => onResume(s)}
                           >
                             <span className="session-wall__card-title">{title}</span>
@@ -294,6 +341,9 @@ export function SessionWallPanel({
                             </span>
                             {excerpts.length > 0 && (
                               <span className="session-wall__card-excerpts" role="tooltip">
+                                {/* tl 1177b: the title stays visible while
+                                    hovering — the overlay never covers it. */}
+                                <span className="session-wall__card-excerpt-title">{title}</span>
                                 {excerpts.map((line, i) => (
                                   <span className="session-wall__card-excerpt" key={i}>
                                     {line}

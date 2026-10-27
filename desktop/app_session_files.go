@@ -13,6 +13,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/sessioncatalog"
+	"reasonix/internal/store"
 )
 
 // Fork forks the requested source tab into a new tab, keeping code intact,
@@ -137,6 +138,20 @@ func (a *App) activeSessionDir() string {
 func (a *App) ListSessions() []SessionMeta {
 	dir := a.activeSessionDir()
 	return a.listSessionsFromDir(dir, a.activeSessionPath(dir))
+}
+
+// SessionTailExcerpts returns the newest noise-filtered user messages of one
+// session, computed on demand from the tail of its transcript (tl-1177b 方案
+// B). The session wall's hover overlay calls this per card, so sessions saved
+// before any excerpts sidecar existed still answer on the first hover instead
+// of falling back to the conversation name. Read-only: an unreadable or
+// non-transcript path just yields no excerpts.
+func (a *App) SessionTailExcerpts(sessionPath string) []string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" || !store.IsSessionTranscriptName(filepath.Base(sessionPath)) {
+		return nil
+	}
+	return agent.SessionTailUserExcerpts(sessionPath, agent.RecentExcerptCount)
 }
 
 // ListSessionsForTab returns sessions from the directory owned by tabID. Task

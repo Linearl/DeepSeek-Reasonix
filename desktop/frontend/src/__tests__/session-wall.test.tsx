@@ -358,6 +358,91 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
   });
   container.remove();
 }
+// 4f. tl 1177b 方案B hover excerpts: a card the list field cannot answer pulls
+//     the tail once on first hover/focus; the overlay re-renders the card
+//     title as its first row (hovering never hides the title); the native
+//     title is held back while the fetch is in flight and returns when the
+//     answer is empty.
+{
+  const sessions: SessionMeta[] = [
+    session({ preview: "旧会话甲", workspaceRoot: "C:/work/alpha", open: false }),
+    session({ preview: "旧会话乙", workspaceRoot: "C:/work/alpha", open: false }),
+  ];
+  const fetched: string[] = [];
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      createElement(
+        LocaleProvider,
+        null,
+        createElement(SessionWallPanel, {
+          open: true,
+          load: async () => sessions,
+          loadExcerpts: async (s) => {
+            fetched.push(s.path);
+            return s.preview === "旧会话甲" ? ["结尾提问三", "结尾提问二", "结尾提问一"] : [];
+          },
+          onClose: () => {},
+          onResume: () => {},
+        }),
+      ),
+    );
+  });
+  const cardFor = (preview: string) =>
+    ([...container.querySelectorAll(".session-wall__card")] as HTMLButtonElement[]).find(
+      (c) => c.querySelector(".session-wall__card-title")?.textContent === preview,
+    )!;
+  ok(cardFor("旧会话甲") !== undefined, "hover fetch: both bare cards render");
+  eq(cardFor("旧会话甲")!.getAttribute("title") !== null, true, "hover fetch: native title present before hover");
+  eq(fetched.length, 0, "hover fetch: nothing fetched before hover");
+
+  const mouseover = () => new dom.window.MouseEvent("mouseover", { bubbles: true });
+  await act(async () => {
+    cardFor("旧会话甲")!.dispatchEvent(mouseover());
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  const overlay = cardFor("旧会话甲")!.querySelector(".session-wall__card-excerpts");
+  ok(overlay !== undefined, "hover fetch: the hovered card renders the overlay");
+  eq(
+    overlay!.querySelector(".session-wall__card-excerpt-title")!.textContent,
+    "旧会话甲",
+    "hover fetch: the overlay keeps the card title visible (not covered)",
+  );
+  eq(overlay!.querySelectorAll(".session-wall__card-excerpt").length, 3, "hover fetch: all 3 excerpt rows render");
+  eq(
+    overlay!.querySelector(".session-wall__card-excerpt")!.textContent,
+    "结尾提问三",
+    "hover fetch: the first excerpt row is the newest message",
+  );
+  eq(cardFor("旧会话甲")!.getAttribute("title"), null, "hover fetch: the native title is gone once excerpts render");
+  const other = cardFor("旧会话乙")!;
+  ok(other.querySelector(".session-wall__card-excerpts") === null, "hover fetch: the untouched card stays bare");
+
+  await act(async () => {
+    cardFor("旧会话甲")!.dispatchEvent(mouseover());
+    cardFor("旧会话乙")!.dispatchEvent(mouseover());
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  eq(fetched.length, 2, "hover fetch: one fetch per card (re-hover does not refetch)");
+  ok(
+    cardFor("旧会话乙")!.querySelector(".session-wall__card-excerpts") === null,
+    "hover fetch: an empty answer renders no overlay",
+  );
+  eq(
+    cardFor("旧会话乙")!.getAttribute("title") !== null,
+    true,
+    "hover fetch: an empty answer restores the native title fallback",
+  );
+
+  await act(async () => {
+    root.unmount();
+  });
+  container.remove();
+}
 
 // 5. Panel: static smoke — the open wall renders its chrome (empty state,
 //    because data loads in an effect; effects belong to the root below).

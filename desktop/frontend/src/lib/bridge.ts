@@ -1236,6 +1236,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   RewriteDraftForTab(tabID: string, draft: string, context: string, contextBudgetKB: number): Promise<string>;
   ListSessions(): Promise<SessionMeta[]>;
   ListSessionsForTab(tabID: string): Promise<SessionMeta[]>;
+  // tl-1177b 方案B：图墙卡片 hover 时按需取最近用户消息摘录（尾窗实时计算，
+  // 不依赖列表字段；空数组 = 该会话无可识别摘录，前端回落原生 title）。
+  SessionTailExcerpts(sessionPath: string): Promise<string[]>;
   ListTrashedSessions(): Promise<SessionMeta[]>;
   ResumeSession(path: string): Promise<HistoryMessage[]>;
   ResumeSessionForTab(tabID: string, path: string): Promise<HistoryMessage[]>;
@@ -5117,6 +5120,11 @@ function makeMockApp(): AppBindings {
     },
     async ListSessionsForTab() {
       return sessions.map((s) => ({ ...s }));
+    },
+    async SessionTailExcerpts(_sessionPath: string) {
+      // Mock sessions have no real transcript behind them: no excerpts, the
+      // card falls back to the native title exactly like an unreadable file.
+      return [];
     },
     ...makeMockHistoryCatalogBindings(sessions),
     async ListTrashedSessions() {
