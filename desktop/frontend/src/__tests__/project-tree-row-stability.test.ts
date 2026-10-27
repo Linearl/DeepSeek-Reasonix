@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const styles = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
+// tl1191: mode-scoped rules (sidebar--workbench variants) live in src/styles/mode-*.css now.
+const styles = [
+  readFileSync(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8"),
+  readFileSync(fileURLToPath(new URL("../styles/mode-classic.css", import.meta.url)), "utf8"),
+  readFileSync(fileURLToPath(new URL("../styles/mode-workbench.css", import.meta.url)), "utf8"),
+  readFileSync(fileURLToPath(new URL("../styles/mode-creation.css", import.meta.url)), "utf8"),
+].join("\n");
 
 assert.match(
   styles,
