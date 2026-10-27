@@ -61,36 +61,36 @@ func (c *Catalog) ListTopics(ctx context.Context, req TopicPageRequest) (TopicPa
 			// lineage is re-anchored, unless the topic is explicitly pinned.
 			hasOrdinary := false
 			for _, session := range sessions {
-			if session.OrdinaryVisible || (!session.Recovered && !session.RecoveryCopy) {
-				hasOrdinary = true
-				break
+				if session.OrdinaryVisible || (!session.Recovered && !session.RecoveryCopy) {
+					hasOrdinary = true
+					break
+				}
 			}
-		}
-		if !hasOrdinary && !item.Pinned {
-			continue
-		}
-		// tl1197（1074 家族第 3 形态）: 本 scope 的行若全部由无内容空壳会话
-		// 撑着（turns==0，如 global 目标曾经新建的同 topic 空壳），而同一
-		// topic 身份在其它 scope 拥有承载内容的正主会话，则本 scope 不为它
-		// 出行——列表归属跟随内容，空壳不产生跨区影子条目。全世界的会话都
-		// 无内容（刚新建、还没说话）时照常显示；pinned 豁免对齐上行。
-		hasContent := false
-		for _, session := range sessions {
-			if session.Turns > 0 {
-				hasContent = true
-				break
-			}
-		}
-		if !hasContent && !item.Pinned {
-			shadowed, shadowErr := c.topicContentBearingElsewhere(ctx, item.Scope, rootKey, item.TopicID)
-			if shadowErr != nil {
-				return TopicPage{Items: []TopicRecord{}, Revision: out.Revision}, shadowErr
-			}
-			if shadowed {
+			if !hasOrdinary && !item.Pinned {
 				continue
 			}
-		}
-		item.Sessions = sessions
+			// tl1197（1074 家族第 3 形态）: 本 scope 的行若全部由无内容空壳会话
+			// 撑着（turns==0，如 global 目标曾经新建的同 topic 空壳），而同一
+			// topic 身份在其它 scope 拥有承载内容的正主会话，则本 scope 不为它
+			// 出行——列表归属跟随内容，空壳不产生跨区影子条目。全世界的会话都
+			// 无内容（刚新建、还没说话）时照常显示；pinned 豁免对齐上行。
+			hasContent := false
+			for _, session := range sessions {
+				if session.Turns > 0 {
+					hasContent = true
+					break
+				}
+			}
+			if !hasContent && !item.Pinned {
+				shadowed, shadowErr := c.topicContentBearingElsewhere(ctx, item.Scope, rootKey, item.TopicID)
+				if shadowErr != nil {
+					return TopicPage{Items: []TopicRecord{}, Revision: out.Revision}, shadowErr
+				}
+				if shadowed {
+					continue
+				}
+			}
+			item.Sessions = sessions
 			hydrateTopicDisplay(&item)
 			out.Items = append(out.Items, item)
 			if len(out.Items) > req.Limit {
