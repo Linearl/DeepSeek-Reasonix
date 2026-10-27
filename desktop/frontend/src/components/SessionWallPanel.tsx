@@ -39,6 +39,7 @@ export function SessionWallPanel({
   open,
   load,
   loadExcerpts,
+  loadAgentReply,
   onClose,
   onResume,
   initialOpenOnly,
@@ -50,6 +51,10 @@ export function SessionWallPanel({
   // excerpts sidecar existed answer on the first hover. Absent prop (tests)
   // keeps the panel rendering from the list field only.
   loadExcerpts?: (session: SessionMeta) => Promise<string[]>;
+  // tl-1188 返修: the closing assistant reply rides the same hover fetch —
+  // excerpts alone showed only the user's questions (no information value).
+  // Absent prop (tests / older callers) simply skips the reply segment.
+  loadAgentReply?: (session: SessionMeta) => Promise<string>;
   onClose: () => void;
   onResume: (session: SessionMeta) => void;
   // tl 1175: true forces the「仅已打开」filter on for this open (the「跳转标签页」
@@ -75,7 +80,7 @@ export function SessionWallPanel({
   // "pending" holds the card's native title back so the conversation-name
   // tooltip cannot flash while the fetch is in flight; "ready" settles the
   // overlay (possibly empty — the title comes back for noise-only sessions).
-  const [tailExcerpts, setTailExcerpts] = useState<Map<string, { status: "pending" } | { status: "ready"; lines: string[] }>>(
+  const [tailExcerpts, setTailExcerpts] = useState<Map<string, { status: "pending" } | { status: "ready"; lines: string[]; agentReply?: string }>>(
     () => new Map(),
   );
   const inputRef = useRef<HTMLInputElement>(null);
@@ -219,16 +224,20 @@ export function SessionWallPanel({
       if (requestedExcerptsRef.current.has(session.path)) return;
       requestedExcerptsRef.current.add(session.path);
       setTailExcerpts((prev) => new Map(prev).set(session.path, { status: "pending" }));
-      void loadExcerpts(session)
-        .then((lines) => {
-          setTailExcerpts((prev) => new Map(prev).set(session.path, { status: "ready", lines: Array.isArray(lines) ? lines : [] }));
+      // tl-1188: the closing reply rides the same hover fetch. Its failure
+      // degrades to "no reply" without taking the excerpts down with it.
+      const excerptsPromise = loadExcerpts(session);
+      const agentPromise = loadAgentReply ? loadAgentReply(session).catch(() => "") : Promise.resolve("");
+      void Promise.all([excerptsPromise, agentPromise])
+        .then(([lines, agentReply]) => {
+          setTailExcerpts((prev) => new Map(prev).set(session.path, { status: "ready", lines: Array.isArray(lines) ? lines : [], agentReply }));
         })
         .catch((error: unknown) => {
           reportFrontendLog("sessionWall", "excerpt load failed", error instanceof Error ? error.message : String(error));
           setTailExcerpts((prev) => new Map(prev).set(session.path, { status: "ready", lines: [] }));
         });
     },
-    [loadExcerpts],
+    [loadExcerpts, loadAgentReply],
   );
 
   // tl 1175: toggling the「仅已打开」filter persists it for the next restart.
@@ -281,6 +290,9 @@ export function SessionWallPanel({
     const s = hoverLayer.session;
     const tail = tailExcerpts.get(s.path);
     const excerpts = (tail?.status === "ready" ? tail.lines : s.recentExcerpts)?.filter(Boolean) ?? [];
+    // tl-1188: the closing assistant reply renders above the user excerpts —
+    // the newest answer is what tells the reader whether to open the card.
+    const agentReply = tail?.status === "ready" ? tail.agentReply ?? "" : "";
     const activityAt = sessionActivityTime(s);
     const relative = topicActivityLabel(activityAt, t);
     const date = dayLabel(activityAt);
@@ -302,6 +314,9 @@ export function SessionWallPanel({
           <Folder size={12} aria-hidden="true" />
           <span>{hoverLayer.groupLabel}</span>
         </div>
+        {agentReply && (
+          <div className="session-wall-hover-layer__agent-reply">{agentReply}</div>
+        )}
         {excerpts.length > 0 && (
           <div className="session-wall-hover-layer__excerpts">
             {excerpts.map((line, i) => (

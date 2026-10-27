@@ -49,6 +49,49 @@ func SessionTailUserExcerpts(sessionPath string, n int) []string {
 	return excerpts
 }
 
+// SessionTailAgentReply returns the closing assistant message of one session's
+// transcript tail, shortened for the hover overlay (tl-1188 返修: user excerpts
+// alone carry little information value — the reader wants the final answer
+// next to them). It reads the same tail window as SessionTailUserExcerpts and
+// walks newest-first, so the first displayable assistant prose wins; an empty
+// string means no assistant reply sits in the tail window.
+func SessionTailAgentReply(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" {
+		return ""
+	}
+	info, err := os.Stat(sessionPath)
+	if err != nil || info.IsDir() || info.Size() == 0 {
+		return ""
+	}
+	msgs, _ := readSessionTailMessages(sessionPath, info.Size(), sessionTailExcerptWindow, recentExcerptCount)
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if m.Role != provider.RoleAssistant {
+			continue
+		}
+		text := strings.TrimSpace(previewProse(strings.TrimSpace(m.Content)))
+		if text == "" {
+			continue
+		}
+		return truncateTailAgentReply(text)
+	}
+	return ""
+}
+
+const tailAgentReplyMaxRunes = 240
+
+// truncateTailAgentReply bounds the reply for the overlay. The hover card is
+// an external layered popover since tl-1188, so it can afford a few lines —
+// unlike the 80-rune list preview (truncatePreview).
+func truncateTailAgentReply(s string) string {
+	runes := []rune(s)
+	if len(runes) <= tailAgentReplyMaxRunes {
+		return s
+	}
+	return strings.TrimSpace(string(runes[:tailAgentReplyMaxRunes])) + "…"
+}
+
 const (
 	// sessionTailExcerptWindow is the first tail read. Three user messages
 	// almost always sit within the last 128KB even after long closing

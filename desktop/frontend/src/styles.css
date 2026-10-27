@@ -14635,6 +14635,22 @@ button.statusbar__mcp:focus-visible {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* tl-1188: the closing assistant reply sits above the user excerpts, split
+   off by a hairline. Four clamped lines (the Go side bounds the text at 240
+   runes) keep the layer inside its 520px ceiling while carrying the answer
+   the reader is actually looking for. */
+.session-wall-hover-layer__agent-reply {
+  color: var(--fg);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
 .session-wall__card-meta {
   display: flex;
   align-items: center;
