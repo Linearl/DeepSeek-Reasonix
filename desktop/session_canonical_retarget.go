@@ -27,23 +27,25 @@ func (a *App) resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath stri
 	return actualRoot, sessionPath
 }
 
-// findTopicSessionAcrossScopes resolves a topic id to its existing session
-// file across EVERY known session directory, regardless of scope (tl1197,
-// third shape of the 1074 family). The scope-filtered resolver
-// (findTopicSessionForTarget) answers "where does this topic live under this
-// target"; a global target that misses while the topic's only content-bearing
-// session is project-bound used to fall through to createEmptySessionFile and
-// mint a same-topic shell under the global directory — the on-disk seed of
-// the cross-tree shadow entry. Following the existing binding instead keeps
-// one conversation on exactly one tree. Content-bearing sessions outrank
-// empty shells so a leftover shell can never hijack the binding, matching
-// findTopicSessionForTargetByContent's #7305 rule. currentPath non-empty
-// means the caller already has a concrete session — never re-resolve.
+// findTopicSessionAcrossScopes resolves a topic id to its best session file
+// across EVERY known session directory, regardless of scope (tl1197, third
+// shape of the 1074 family). Two entry shapes:
+//   - sessionPath empty (openGlobalTab / findTopicSessionForTarget missed):
+//     any existing session of the topic wins — the open follows its binding
+//     instead of minting a same-topic shell under the global directory.
+//   - sessionPath present but content-free (a leftover global shell that the
+//     scope-filtered resolver itself picked, because the project-bound owner
+//     was filtered out): a content-bearing owner outranks the shell — the
+//     #7305 rule that an empty session must not hijack the conversation the
+//     user actually had, applied across scopes.
+// A concrete content-bearing currentPath is always respected (the caller
+// already resolved the owner; task 754 corrections stay authoritative).
 func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string, string, string, bool) {
 	topicID = strings.TrimSpace(topicID)
-	if topicID == "" || strings.TrimSpace(currentPath) != "" {
+	if topicID == "" {
 		return "", "", "", false
 	}
+	currentPath = strings.TrimSpace(currentPath)
 	var best topicSessionMatch
 	var bestContent bool
 	found := false
@@ -58,8 +60,14 @@ func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string,
 			}
 		}
 	}
-	if !found {
+	if !found || best.path == currentPath {
 		return "", "", "", false
+	}
+	if currentPath != "" {
+		// Respect a concrete owner; only dethrone a content-free shell.
+		if sessionFileHasConversationContent(currentPath) || !bestContent {
+			return "", "", "", false
+		}
 	}
 	binding, ok := a.resolveSessionBinding(best.path)
 	if !ok {
