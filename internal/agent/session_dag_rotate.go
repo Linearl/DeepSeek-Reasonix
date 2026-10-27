@@ -92,9 +92,22 @@ func sessionDAGLogOversized(st *sessionDAGState) bool {
 // chain it could not measure); messages decoded from this log always marshal.
 // Caller holds st.mu for reading (sessionDAGLogOversized).
 func (st *sessionDAGState) rotatedContentBytesLocked() int64 {
+	return st.unionContentBytesLocked(st.liveHeads())
+}
+
+// unionContentBytesLocked is the shared head-union measurement: the given
+// heads' chains deduped by node id, each node measured once (任务 884), head
+// system overrides counted like materialize does. tl 1186 factors it out so
+// the fold-landing prediction (session_fold_landing.go) measures its survivor
+// set with the exact expression the rotation gate trusts — the two 口径 cannot
+// drift. A marshal failure reads as zero — the same under-count direction as
+// the old per-chain skip (which dropped the whole chain it could not measure);
+// messages decoded from this log always marshal.
+// Caller holds st.mu for reading.
+func (st *sessionDAGState) unionContentBytesLocked(headIDs []string) int64 {
 	seen := make(map[string]struct{}, len(st.nodes))
 	union := make([]provider.Message, 0, len(st.nodes))
-	for _, id := range st.liveHeads() {
+	for _, id := range headIDs {
 		for _, mid := range st.chainIDs(id) {
 			if _, dup := seen[mid]; dup {
 				continue

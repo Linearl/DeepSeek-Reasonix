@@ -368,3 +368,57 @@ func TestEventsIdleSweepPassSkipsNoGainFold(t *testing.T) {
 		t.Fatalf("no-gain candidate must land a skip row: %+v", results)
 	}
 }
+
+// tl 1186 验收（口径失真回归，pass 级）：收益判据的第二个入参从视图代理换成
+// 折叠落地口径。现场形态（1073 A/B 成因②）：视图 11MiB / 链 ~100MB 的深分叉
+// 会话，视图口径判「能省 ~89%」并放行，真实旋转 freed ∈ [−217, 0]；落地口径
+// （repair 退休后幸存头链 union，agent.SessionFoldLandingBytes）如实拒绝。
+// 可退休头形态落地≈视图，照常放行；无测量（schema-1/归档/坏档）回退视图
+// 代理，逐字节旧行为。门槛数字（10%）不动。
+func TestEventsIdleSweepPassUsesLandingBytesForProfitability(t *testing.T) {
+	const mb = int64(1) << 20
+	activity := int64(1790600000000)
+	cands := []eventsIdleSweepCandidate{
+		// 深分叉不可退休形态：视图代理 11MB（旧口径会放行），真实落地 96MB。
+		{Path: "branch-no-shrink.jsonl", EventsBytes: 100 * mb, LiveBytes: 11 * mb, LandingBytes: 96 * mb, LastActivityAt: activity},
+		// 可退休头形态：落地≈视图，放行（真实折叠）。
+		{Path: "branch-shrink.jsonl", EventsBytes: 100 * mb, LiveBytes: 11 * mb, LandingBytes: 11 * mb, LastActivityAt: activity},
+		// 无落地测量（schema-1/归档/坏档形态）：回退视图代理，旧行为原样。
+		{Path: "legacy.jsonl", EventsBytes: 100 * mb, LiveBytes: 20 * mb, LastActivityAt: activity},
+	}
+	h := &sweepPassHarness{byPath: map[string][2]int64{
+		"branch-shrink.jsonl": {100 * mb, 12 * mb},
+		"legacy.jsonl":        {100 * mb, 21 * mb},
+	}}
+	park := map[string]eventsIdleSweepPark{}
+	results := runEventsIdleSweepPass(cands, sweepKnobs, park, nil, h.compact, eventsIdleSweepSlim{}, nil)
+
+	for _, asked := range h.asked {
+		if asked == "branch-no-shrink.jsonl" {
+			t.Fatalf("landing 口径必须拒绝空转折叠（视图口径的谎报形态）: asked=%v", h.asked)
+		}
+	}
+	if len(h.asked) != 2 {
+		t.Fatalf("shrink 与 fallback 两个候选必须照常放行: asked=%v", h.asked)
+	}
+	skippedNoShrink := 0
+	for _, res := range results {
+		if res.Path == "branch-no-shrink.jsonl" && res.Skipped && res.Error == "fold would not shrink" {
+			skippedNoShrink++
+		}
+	}
+	if skippedNoShrink != 1 {
+		t.Fatalf("no-shrink 候选必须落一条 skip 行: %+v", results)
+	}
+}
+
+// tl 1186：无落地测量时逐字节回退视图代理——schema-1/归档/坏档形态的行为与
+// 引入前完全一致（1172 铁律：关态=现状）。
+func TestFoldLandingBytesFallsBackToViewProxy(t *testing.T) {
+	if got := foldLandingBytes(eventsIdleSweepCandidate{LiveBytes: 5}); got != 5 {
+		t.Fatalf("no landing measurement must fall back to the view proxy: got %d", got)
+	}
+	if got := foldLandingBytes(eventsIdleSweepCandidate{LiveBytes: 5, LandingBytes: 7}); got != 7 {
+		t.Fatalf("a landing measurement must take precedence: got %d", got)
+	}
+}
