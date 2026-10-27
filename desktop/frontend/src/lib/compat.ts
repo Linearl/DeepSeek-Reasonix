@@ -1,3 +1,8 @@
+// tl1181 探针（纯 performance.mark，零行为）：compat 是 main.tsx 的首个
+// import，其模块体先于 main.tsx 体求值——这个 mark 即「应用模块图求值起点」，
+// main.tsx 的 tl1181 段级计时以它为原点。
+performance.mark("tl1181:compat-top");
+
 type ObjectConstructorWithHasOwn = ObjectConstructor & {
   hasOwn?: (value: object, property: PropertyKey) => boolean;
 };

@@ -444,6 +444,12 @@ func (a *App) ReportDesktopWebViewReady() {
 	if a.desktopShell.coordinator != nil {
 		first, healthy := a.desktopShell.coordinator.markFrontendHeartbeat(time.Now())
 		if first {
+			// tl 1181：首次心跳 ≈ 前端挂载完成点（heartbeat chunk 加载 + 首帧
+			// rAF）。与 frontend_ready 区分口径——后者要等 healthy 判定（距首跳
+			// ≥2s，心跳间隔 3s，实际落在首跳后 3s 的下一个 tick），所以
+			// dom_ready→frontend_ready 的大头是这条健康规则的等待，不是挂载耗时。
+			// 纯计时，零行为；新增 mark 不改变 frontend_ready 既有语义。
+			bootTimelineNoteMark("frontend_mounted")
 			a.goSafe("startDesktopTrayAfterFrontendReady", func() { a.startTray() })
 		}
 		if healthy {

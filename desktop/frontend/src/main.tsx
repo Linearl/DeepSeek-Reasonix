@@ -20,6 +20,14 @@ import { initTheme } from "./lib/theme";
 import { initConversationWidth } from "./lib/conversationWidth";
 import { startupModeAssetPrefetch } from "./lib/desktopLayoutStyle";
 import appShellStylesheetURL from "./styles.css?url";
+import { reportFrontendLog } from "./lib/frontendLog";
+
+// tl1181 探针（纯 performance.mark，零行为）：dom_ready→frontend_ready 段的
+// 分段计时——①模块图求值（compat-top 起，上面首个 import 已打点）②挂载前
+// 并行集（CSS/locale/mode 预取）③React 首帧 ④心跳 chunk。读数经既有
+// boot-timeline 通道落 desktop.log（不带 kind= 前缀，Go 收集器按 kind 解析、
+// 无 kind 静默跳过，不污染 boot:summary 既有字段）。
+performance.mark("tl1181:main-body-top");
 
 // Install first so startup/runtime failures paint a useful error instead of a
 // featureless webview background, with the recent console trail attached.
@@ -95,6 +103,34 @@ const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 const rootElement = root;
 
+// tl1181：读回探针 marks，一行经既有 boot-timeline 通道上报（fire-and-forget，
+// 纯诊断；网关不可达时 console 与环形缓冲仍留证据）。全部取值来自
+// performance.mark 时间线，不引入任何新计时器、不改任何加载顺序。
+function reportMountSegments(): void {
+  const at = (name: string): number => {
+    const entry = performance.getEntriesByName(`tl1181:${name}`)[0];
+    return entry ? Math.round(entry.startTime * 10) / 10 : -1;
+  };
+  const compatTop = at("compat-top");
+  const firstFrame = at("first-frame");
+  const seg = (name: string, from: number, to: number): string =>
+    `${name}=${(to - from).toFixed(1)}`;
+  const detail = [
+    "seg=mount",
+    seg("module_eval_ms", compatTop, at("main-body-top")),
+    seg("body_sync_ms", at("main-body-top"), at("parallel-start")),
+    seg("parallel_ms", at("parallel-start"), at("parallel-done")),
+    seg("css_ms", at("parallel-start"), at("css-loaded")),
+    seg("locale_ms", at("parallel-start"), at("locale-done")),
+    seg("render_first_frame_ms", at("parallel-done"), firstFrame),
+    seg("hb_chunk_ms", at("render-scheduled"), at("heartbeat-installed")),
+    seg("mount_total_ms", compatTop, firstFrame),
+    `atMs=${Math.round(firstFrame)}`,
+    `epochMs=${Date.now()}`,
+  ].join(" ");
+  reportFrontendLog("boot-timeline", "tl1181 mount segments", detail, "info");
+}
+
 async function mountApp() {
   // The HTML boot shell paints immediately with critical inline styles. Load
   // the full stylesheet and detected locale in parallel, then replace that
@@ -104,13 +140,18 @@ async function mountApp() {
   // renders with mode styles already in — no unstyled-mode first frame.
   const preloadLocaleForMount = async () => {
     await preloadDetectedLocale();
+    performance.mark("tl1181:locale-done");
   };
+  performance.mark("tl1181:parallel-start");
   const stylesResult = await Promise.allSettled([
     new Promise<void>((resolve, reject) => {
       const link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = appShellStylesheetURL;
-      link.onload = () => resolve();
+      link.onload = () => {
+        performance.mark("tl1181:css-loaded");
+        resolve();
+      };
       link.onerror = () => reject(new Error(`failed to load desktop stylesheet: ${appShellStylesheetURL}`));
       document.head.appendChild(link);
     }),
@@ -126,6 +167,7 @@ async function mountApp() {
     if (modeResult.status === "rejected") console.error("failed to preload layout-mode assets", modeResult.reason);
   }
   if (localeResult.status === "rejected") console.error("failed to preload desktop locale", localeResult.reason);
+  performance.mark("tl1181:parallel-done");
   createRoot(rootElement).render(
     <StrictMode>
       <ErrorBoundary>
@@ -137,9 +179,18 @@ async function mountApp() {
       </ErrorBoundary>
     </StrictMode>,
   );
+  performance.mark("tl1181:render-scheduled");
 
   void import("./lib/desktopWebViewHeartbeat").then(({ installDesktopWebViewHeartbeat }) => {
     installDesktopWebViewHeartbeat();
+    performance.mark("tl1181:heartbeat-installed");
+  });
+
+  // tl1181：首帧后读回全部分段（rAF 与心跳自身的首次上报同帧排队，读数即
+  // 「心跳首跳可用」时刻）。
+  requestAnimationFrame(() => {
+    performance.mark("tl1181:first-frame");
+    reportMountSegments();
   });
 }
 
