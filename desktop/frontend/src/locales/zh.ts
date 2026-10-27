@@ -2558,6 +2558,7 @@ export const zh: Record<DictKey, string> = {
   "settings.modelEffortHint": "auto 使用模型默认力度。可选级别取决于该连接声明的支持等级。",
   "settings.modelEffortUnsupported": "该连接未声明 effort 等级，暂无选项可选。可在连接的高级设置中声明支持等级后启用。",
   "settings.modelEffortRow": "推理力度 — {model}",
+  "settings.modelEffortUndeclaredSummary": "{count} 个模型未声明 effort 等级，已折叠为本行——在连接的高级设置中声明后即可逐个调整。",
   "settings.modelEffortRowHint": "auto 使用该模型自己的默认力度。模型级选择优先于连接级；等级在该模型的编辑弹窗中声明（连接设置 → 模型列表）。",
   "settings.modelEffortLevels": "effort 等级",
   "settings.modelEffortLevelsCustom": "自定义等级 —— 该模型声明了自己的词表。",

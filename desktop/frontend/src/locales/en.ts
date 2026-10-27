@@ -2567,6 +2567,7 @@ export const en = {
   "settings.modelEffortHint": "auto uses the model's default depth. Available levels depend on the connection's declared supported efforts.",
   "settings.modelEffortUnsupported": "This connection does not declare an effort vocabulary, so no levels are offered. Declare supported efforts in its advanced connection settings to enable this.",
   "settings.modelEffortRow": "Reasoning effort — {model}",
+  "settings.modelEffortUndeclaredSummary": "{count} models without a declared effort vocabulary are collapsed into this line — declare levels in a connection's advanced settings to adjust them individually.",
   "settings.modelEffortRowHint": "auto uses the model's own default depth. A model-level choice wins over the connection-level one; declare the levels in the model's edit dialog (connection settings → model list).",
   "settings.modelEffortLevels": "Effort levels",
   "settings.modelEffortLevelsCustom": "Custom levels — this model declares its own vocabulary.",

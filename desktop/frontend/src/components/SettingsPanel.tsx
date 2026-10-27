@@ -4549,18 +4549,35 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
                 gets the same effort picker the default model already had
                 (1042). Levels resolve exactly like the backend does: the
                 model's own supported_efforts (modelOverrides round-trip)
-                wins, otherwise the connection vocabulary, otherwise auto. */}
-            {refs.filter((ref) => ref !== defaultRef).map((ref) => {
-              const option = modelOptionFromRef(ref, s);
-              if (!option) return null;
-              const override = option.providerView?.modelOverrides?.find((item) => item.model === option.model);
-              const levels = override?.supportedEfforts?.length ? override.supportedEfforts : option.providerView?.supportedEfforts ?? [];
-              const level = s.modelEfforts?.[ref] ?? s.modelEfforts?.[`${option.provider}/${option.model}`] ?? "";
+                wins, otherwise the connection vocabulary, otherwise auto.
+                Task 1207: rows split into declared (editable, labeled with
+                the connection so same-named models stay distinguishable)
+                and undeclared (collapsed into one summary line — the
+                15+-row cartesian wall of disabled pickers was the reported
+                clutter). A row with a stored level stays editable even when
+                the connection declares nothing, so existing choices remain
+                visible and clearable. */}
+            {(() => {
+              const rows = refs.filter((ref) => ref !== defaultRef).map((ref) => {
+                const option = modelOptionFromRef(ref, s);
+                if (!option) return null;
+                const override = option.providerView?.modelOverrides?.find((item) => item.model === option.model);
+                const levels = override?.supportedEfforts?.length ? override.supportedEfforts : option.providerView?.supportedEfforts ?? [];
+                const level = s.modelEfforts?.[ref] ?? s.modelEfforts?.[`${option.provider}/${option.model}`] ?? "";
+                return { ref, option, levels, level };
+              }).filter((row): row is NonNullable<typeof row> => row !== null);
+              const editable = rows.filter((row) => row.levels.length > 0 || row.level);
+              const undeclared = rows.filter((row) => row.levels.length === 0 && !row.level);
               return (
-                <SettingsField key={ref} className="model-assignment-effort" label={<ModelSettingHelp label={`${t("settings.modelEffortRow", { model: option.model })}`} text={t("settings.modelEffortRowHint")} />}>
+                <>
+              {editable.map(({ ref, option, levels, level }) => {
+                const connLabel = modelProviderLabel(option.provider, option.providerView, t);
+                const rowLabel = t("settings.modelEffortRow", { model: `${connLabel} · ${option.model}` });
+                return (
+                <SettingsField key={ref} className="model-assignment-effort" label={<ModelSettingHelp label={rowLabel} text={t("settings.modelEffortRowHint")} />}>
                   <SettingsSelect
                     className="mem-select set-grow"
-                    aria-label={t("settings.modelEffortRow", { model: option.model })}
+                    aria-label={rowLabel}
                     value={level}
                     disabled={busy || levels.length === 0}
                     onValueChange={(value) => void apply(() => saveModelSettings(s, {kind: "preference", field: "model_effort", ref: `${option.provider}/${option.model}=${value}`}))}
@@ -4575,8 +4592,17 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
                   </SettingsSelect>
                   <span className="model-assignment-connection">{levels.length === 0 ? t("settings.modelEffortUnsupported") : ""}</span>
                 </SettingsField>
+                );
+              })}
+              {undeclared.length > 0 && (
+                <p className="web-search-assignment-hint">
+                  {t("settings.modelEffortUndeclaredSummary", { count: undeclared.length })}
+                  {onOpenProviders && <button type="button" className="btn btn--secondary btn--small" onClick={onOpenProviders}>{t("settings.webSearchModelConnections")}</button>}
+                </p>
+              )}
+                </>
               );
-            })}
+            })()}
 
             <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.plannerModel")} text={t("providerUI.plannerModelHelp")} />}>
               <ModelPicker
