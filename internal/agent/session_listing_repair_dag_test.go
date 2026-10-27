@@ -11,6 +11,7 @@ import (
 // A listing repair replays the transcript and rewrites the event index; on a
 // schema-2 log that index is the head index and must stay schema 2.
 func TestListingRepairKeepsSchemaTwoHeadIndex(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	dagSavedSession(t, path, "q1", "a1")
 	if err := os.Remove(store.SessionEventIndex(path)); err != nil {

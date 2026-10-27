@@ -927,6 +927,7 @@ func TestSessionEventLogSizeAcceptsResolvedLogPath(t *testing.T) {
 // the resolved log path, and replayFrom must still size the budget to the file rather than
 // refusing it with the default.
 func TestReplayFromResolvedPathSizesBudget(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := filepath.Join(t.TempDir(), "20260911-065117.149415700-minimax-MiniMax-M3.jsonl")
 	sessionWithTurns(t, path, 3)
 

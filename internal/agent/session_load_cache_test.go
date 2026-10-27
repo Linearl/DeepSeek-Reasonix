@@ -51,6 +51,7 @@ func p18Digest(t *testing.T, s *Session) string {
 }
 
 func TestP18LoadCacheSecondLoadHitsAndMatches(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	dir := t.TempDir()
 	path := filepath.Join(dir, "p18.jsonl")
 	if err := p18RoundSession(t, 40).Save(path); err != nil {
@@ -145,6 +146,7 @@ func TestP18LoadCacheUserMessagesMatchReplay(t *testing.T) {
 }
 
 func TestP18LoadCacheMissOnGenerationRotation(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	dir := t.TempDir()
 	path := filepath.Join(dir, "p18.jsonl")
 	if err := p18RoundSession(t, 6).Save(path); err != nil {
@@ -181,6 +183,7 @@ func TestP18LoadCacheMissOnGenerationRotation(t *testing.T) {
 }
 
 func TestP18LoadCacheMissOnTailTruncatedState(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	dir := t.TempDir()
 	path := filepath.Join(dir, "p18.jsonl")
 	if err := p18RoundSession(t, 6).Save(path); err != nil {

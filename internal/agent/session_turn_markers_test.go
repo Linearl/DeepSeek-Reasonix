@@ -9,6 +9,7 @@ import (
 )
 
 func TestDAGTurnMarkersRideTheNextSave(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	if !s.QueueTurnBegin("turn-1", true) {
@@ -68,6 +69,7 @@ func TestDAGTurnMarkersAreNotQueuedForSchemaOne(t *testing.T) {
 }
 
 func TestDAGTurnContinuedOnOtherHead(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	a := dagSavedSession(t, path, "q1", "a1")
 	b, err := LoadSession(path)

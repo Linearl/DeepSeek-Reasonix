@@ -41,6 +41,7 @@ func forkLines(t *testing.T, sessionPath string) []map[string]any {
 // reachable again. This test reproduces that topology end to end through the
 // public save path and pins the wire format plus the steady state that follows.
 func TestConcurrentForkDetachedTranscriptRecordsForkFrom(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	dagSavedSession(t, path, "q1", "a1")
 	b, err := LoadSession(path)
