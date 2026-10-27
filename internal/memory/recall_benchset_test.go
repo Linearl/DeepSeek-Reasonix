@@ -29,8 +29,8 @@ type recallBenchCase struct {
 }
 
 type recallBenchsetFile struct {
-	Description string             `json:"description"`
-	Cases       []recallBenchCase  `json:"cases"`
+	Description string            `json:"description"`
+	Cases       []recallBenchCase `json:"cases"`
 }
 
 type recallPatchEntry struct {
