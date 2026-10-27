@@ -9,6 +9,13 @@ import (
 
 type controllerPromptState struct {
 	base string
+	// baseOverridden marks that ApplyExtensionSystemPrompt replaced the
+	// boot-composed base with an extension-owned prompt AND swapped the whole
+	// executor session (SetSession(NewSession(prompt))). While set, every
+	// # Memory region rebuild must skip (tl-1194 保护条款①): the rebuild
+	// composes from the boot-time clean base, so writing it back would wipe
+	// the extension segment verbatim out of the leading system message.
+	baseOverridden bool
 }
 
 // PinnedContextLoader resolves the sidecar-owned desired context for the
@@ -36,12 +43,16 @@ func newControllerPromptState(base string, executor *agent.Agent) controllerProm
 
 // ApplyExtensionSystemPrompt replaces only the host/extension-owned base
 // prompt. Pinned context is transcript state and is never composed into it.
+// The swap also replaces the whole executor session, so it arms
+// baseOverridden: the post-compaction memory rebuild (tl-1194) must not
+// re-compose the boot base over an extension-owned prompt.
 func (c *Controller) ApplyExtensionSystemPrompt(prompt string) {
 	if c == nil || c.executor == nil {
 		return
 	}
 	c.mu.Lock()
 	c.prompt.base = prompt
+	c.prompt.baseOverridden = true
 	c.mu.Unlock()
 	c.executor.SetSession(agent.NewSession(prompt))
 }
@@ -50,6 +61,14 @@ func (c *Controller) basePrompt() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.prompt.base
+}
+
+// promptBaseOverridden reports whether an extension owns the base prompt
+// (tl-1194 保护条款①). Brief c.mu hold; no I/O under the lock.
+func (c *Controller) promptBaseOverridden() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.prompt.baseOverridden
 }
 
 // SystemPrompt returns the authoritative host/extension system prompt.
