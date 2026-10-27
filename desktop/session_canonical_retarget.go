@@ -38,6 +38,7 @@ func (a *App) resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath stri
 //     was filtered out): a content-bearing owner outranks the shell — the
 //     #7305 rule that an empty session must not hijack the conversation the
 //     user actually had, applied across scopes.
+//
 // A concrete content-bearing currentPath is always respected (the caller
 // already resolved the owner; task 754 corrections stay authoritative).
 func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string, string, string, bool) {
