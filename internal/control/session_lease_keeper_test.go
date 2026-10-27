@@ -470,18 +470,27 @@ func TestSessionLeaseKeeperTransitionFailureKeepsCurrentOwner(t *testing.T) {
 }
 
 func TestSessionInUseMessageNamesHolder(t *testing.T) {
+	// tl 1201: holder liveness decides the wording. A pid that probes dead is
+	// the crashed-process leftover form and must NOT read as a second live
+	// window; inject ProcessAlive so this test pins both branches without
+	// depending on whether pid 12345 happens to exist on the host.
+	const liveHolderPID = 12345
+	origAlive := agent.ProcessAlive
+	agent.ProcessAlive = func(pid int) bool { return pid == liveHolderPID }
+	t.Cleanup(func() { agent.ProcessAlive = origAlive })
+
 	acquired := time.Date(2026, 7, 6, 3, 4, 0, 0, time.UTC)
-	err := &agent.SessionLeaseError{
+	live := &agent.SessionLeaseError{
 		Path: "/tmp/x.jsonl",
 		Info: &agent.SessionLeaseInfo{
 			SessionPath: "/tmp/x.jsonl",
 			WriterID:    "writer-nonce-should-not-appear",
-			PID:         12345,
+			PID:         liveHolderPID,
 			Hostname:    "devbox",
 			AcquiredAt:  acquired,
 		},
 	}
-	msg := SessionInUseMessage(err)
+	msg := SessionInUseMessage(live)
 	if !strings.Contains(msg, "another Reasonix process") {
 		t.Fatalf("message %q missing holder wording", msg)
 	}
@@ -496,6 +505,24 @@ func TestSessionInUseMessageNamesHolder(t *testing.T) {
 	}
 	if strings.Contains(msg, "/tmp/x.jsonl") {
 		t.Fatalf("message %q leaks the session path", msg)
+	}
+
+	dead := &agent.SessionLeaseError{
+		Path: "/tmp/x.jsonl",
+		Info: &agent.SessionLeaseInfo{
+			SessionPath: "/tmp/x.jsonl",
+			WriterID:    "writer-nonce-should-not-appear",
+			PID:         liveHolderPID + 1,
+			Hostname:    "devbox",
+			AcquiredAt:  acquired,
+		},
+	}
+	deadMsg := SessionInUseMessage(dead)
+	if !strings.Contains(deadMsg, "crashed Reasonix process") || !strings.Contains(deadMsg, "restart Reasonix") {
+		t.Fatalf("dead-holder message %q missing crashed-process + restart guidance (tl 1201)", deadMsg)
+	}
+	if strings.Contains(deadMsg, "writer-nonce-should-not-appear") {
+		t.Fatalf("dead-holder message %q leaks the writer id", deadMsg)
 	}
 }
 
