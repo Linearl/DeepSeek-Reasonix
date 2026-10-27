@@ -269,26 +269,11 @@ export function useTranscriptKernel({
     writer.freeze(false);
     const restored = kernel.replaceSurface(sessionKey);
     writer.attach(scrollRef.current, restored.generation);
-    if (restored.anchor.kind === "block") {
-      kernel.begin("restore", restored.anchor);
-    } else {
-      // tl 1187: a restored tail anchor means "this surface owns the bottom",
-      // but until now nothing executed the landing — the write was left to
-      // downstream chains that do not always fire. The geometryRevision effect
-      // skips identical revision strings (two plain streaming sessions share
-      // one), the child remount's rAF dies on the generation gate (layout
-      // effects run child-first, so it was registered before replaceSurface
-      // bumped the generation), and the ResizeObserver needs a size change.
-      // With all three quiet the reused scroller kept its stale scrollTop
-      // while background growth moved the bottom — the reported second
-      // round-trip drift. Land the tail here, synchronously, the same way the
-      // block branch schedules its restore: through a kernel transaction and
-      // the single writer. A refused write (geometry not ready yet) re-arms
-      // the kernel's own rAF retry instead of dropping the request.
-      const transaction = kernel.begin("tail-sync", restored.anchor);
-      const landed = transaction ? kernel.correctAnchor(transaction, () => undefined) : false;
-      if (!landed) kernel.scheduleTailSync();
-    }
+    // tl 1204: the restore protocol has ONE synchronous landing site and it is
+    // the kernel's own authority (chain a of two). The 1187 inline tail-sync
+    // moved into kernel.restoreLanding so the hydrate-complete frame asks the
+    // exact same authority instead of re-deriving tail/block semantics here.
+    kernel.restoreLanding();
     refresh();
   }, [kernel, refresh, sessionKey, writer]);
 
@@ -368,6 +353,20 @@ export function useTranscriptKernel({
     prependAwaitingGeometryRef.current = false;
     settleGeometry(beforePaint);
   }, [settleGeometry]);
+
+  // tl 1204: the hydrate-complete frame's entry into the restore protocol.
+  // When a full reload (resident-stale) swaps placeholder content for the real
+  // history, the DOM of that commit is mounted by layout-effect time but the
+  // paint has not happened yet — landing HERE is what turns "visible scroll
+  // from the top" (1196 form 2) into "first frame already at the target".
+  // Pure authority delegation: tail → synchronous bottom write, block →
+  // synchronous restore via the measured block geometry, fallback → the
+  // kernel's single rAF retry with a visible diagnostic when it exhausts.
+  const restoreLanding = useCallback(() => {
+    const element = scrollRef.current;
+    kernel.restoreLanding(element ? (key) => blockTop(element, key) : undefined);
+    refresh();
+  }, [kernel, refresh]);
 
   const beginAnchorRestore = useCallback((anchor?: LogicalAnchor) => {
     const restoreAnchor = anchor ?? kernel.anchor;
@@ -592,8 +591,11 @@ export function useTranscriptKernel({
   }, [kernel, refresh]);
 
   const geometry = snapshot();
+  // tl 1204: the bottom verdict asks the kernel's single authority (same
+  // threshold, same formula the kernel's own intent transitions use) instead
+  // of a render-layer copy that could disagree with it.
   const isAtBottom = geometry
-    ? geometry.scrollHeight - geometry.clientHeight - geometry.scrollTop <= 4
+    ? kernel.isViewportAtBottom(geometry)
     : kernel.intent === "tail";
 
   return {
@@ -610,6 +612,7 @@ export function useTranscriptKernel({
     beginStructural,
     beginAnchorRestore,
     commitViewportGeometry,
+    restoreLanding,
     beginGesture,
     endGesture,
     settleGeometry,
