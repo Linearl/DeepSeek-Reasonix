@@ -426,4 +426,25 @@ func TestBuildWiresMemorySystemReload(t *testing.T) {
 	if !strings.Contains(refreshed, "prefers TAB indentation") {
 		t.Fatalf("memory reloader did not pick up the newly written memory document\n got: %.200q...", refreshed)
 	}
+	// tl-1194 验收④ 段落同构: the refresh mirrors the boot assembly, so every
+	// markdown section the boot system prompt carried (memory policy header,
+	// skills policy block, sessionCollab index, persona headings) must survive
+	// the refresh — this is the regression guard against the historical
+	// "first compaction dropped segments" bug.
+	for _, heading := range markdownHeadings(systemMessage(res.Controller.History())) {
+		if !strings.Contains(refreshed, heading) {
+			t.Fatalf("refresh dropped a boot prompt section %q\n got: %.400q...", heading, refreshed)
+		}
+	}
+}
+
+// markdownHeadings returns the ATX headings of a composed system prompt.
+func markdownHeadings(prompt string) []string {
+	var headings []string
+	for _, line := range strings.Split(prompt, "\n") {
+		if strings.HasPrefix(line, "#") {
+			headings = append(headings, strings.TrimSpace(line))
+		}
+	}
+	return headings
 }
