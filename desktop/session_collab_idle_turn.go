@@ -27,11 +27,16 @@ import (
 // 问题（568 诊断 + 2026-10-07 调研核实）：desktop pump 每 4s 只做投递——MailStore →
 // 目标会话 inbox 落箱 → Ack，不含任何开轮；消费锚定在「目标会话的 turn 内」。steer
 // 在目标空闲时无法注入当轮，降级为排队 follow-up 后，controller 内建调度器对
-// detached runtime 全数失效：desktop/turn_admission.go 的 beforeInboxDispatch 只在
-// 可见 tab 里找 owner，detached runtime 找不到 → 返回 ErrInboxRuntimeUnpublished →
-// dispatchInboxOnce 把这次 kick 当 idle 丢弃（579 已改为留痕 + 有界重试）→ 消息
-// 永远躺在持久信箱（实测 21 会话 600+ 条、单会话最高 233 条，夜间无人值守时段
-// 损失约 5 小时产能）。
+// detached runtime 失效：（568 时代诊断）desktop/turn_admission.go 的
+// beforeInboxDispatch 当时只在可见 tab 里找 owner，detached runtime 找不到 →
+// 返回 ErrInboxRuntimeUnpublished → dispatchInboxOnce 把这次 kick 当 idle 丢弃
+// （579 已改为留痕 + 有界重试）→ 消息永远躺在持久信箱（实测 21 会话 600+ 条、
+// 单会话最高 233 条，夜间无人值守时段损失约 5 小时产能）。
+// ★2026-10-27 更正（tl 1185）：上一段「只在可见 tab 里找 owner」是 568 时代现场，
+// 现状 owner 查找已遍历 runtimeTabsLocked（tabs+detachedSessions，见
+// turn_admission.go beforeInboxDispatch）——真正的残留盲区改为「重启后 Ctrl=nil
+// 的 skeleton tab 三条 target 路径全部拒绝」，由 dormant 反查收窄守卫修复。历史
+// 因果链保留于此，勿再拿旧文当现状引用。→
 //
 // Bot/ACP 有现成开轮链路：Controller.RunInboxTurn（internal/control/inbox_run.go，
 // 注释原文 "Bot and ACP use this path"），调用方在 internal/acp/inbox_drain.go:38 与

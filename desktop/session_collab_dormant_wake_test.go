@@ -16,7 +16,9 @@ package main
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -449,5 +451,107 @@ func TestDormantWakeYieldsWhenSessionBecomesActive(t *testing.T) {
 	b.mu.Unlock()
 	if strikes != 0 {
 		t.Fatalf("race yield must not burn budget, strikes=%d", strikes)
+	}
+}
+
+// 任务 1185 硬要求①（守卫判据双向可证伪）：dormant 反查的覆盖判据从「有 tab 面」
+// 收窄为「有活 runtime」（Ctrl 已发布 || 构建在飞 buildCancel!=nil）。正向：重启后
+// Ctrl=nil 的 published skeleton tab（619②：启动只构建 active+autopilot，其余
+// 恢复为 skeleton）无人拥有，必须落入 dormant 候选——否则 queued follow-up 整夜
+// 无人消费（三次装机现场实锤）。反向：构建在飞的 tab 已有机制运行，必须排除，
+// 否则 wake 会竞争出第二次构建，表现为偶发双份回答（比不开轮更难查）。
+
+// pathedStub answers Ctrl.SessionPath() — tabMatchesSessionKey falls back to
+// it when the tab-level path doesn't match; bare stubSessionAPI embeds a nil
+// interface and panics on that path.
+type pathedStub struct {
+	stubSessionAPI
+	path string
+}
+
+func (s pathedStub) SessionPath() string { return s.path }
+
+func TestSessionHasLiveRuntimeForPathGuardsDormantClaim(t *testing.T) {
+	sp := filepath.Join(t.TempDir(), "sessions", "s1185", "session.jsonl")
+	other := filepath.Join(t.TempDir(), "sessions", "other", "session.jsonl")
+	ctrl := pathedStub{path: sp}
+
+	cases := []struct {
+		name     string
+		tabs     map[string]*WorkspaceTab
+		detached map[string]*WorkspaceTab
+		wantLive bool
+		why      string
+	}{
+		{
+			name:     "restored skeleton tab is a dormant candidate",
+			tabs:     map[string]*WorkspaceTab{"tab-skel": {ID: "tab-skel", SessionPath: sp}},
+			wantLive: false,
+			why:      "skeleton owns nothing — claiming it is the 1185 fix",
+		},
+		{
+			name:     "in-flight build is excluded (would double-build)",
+			tabs:     map[string]*WorkspaceTab{"tab-boot": {ID: "tab-boot", SessionPath: sp, buildCancel: func() {}}},
+			wantLive: true,
+			why:      "a booting tab has machinery running — a second build races the first",
+		},
+		{
+			name:     "published controller is excluded",
+			tabs:     map[string]*WorkspaceTab{"tab-live": {ID: "tab-live", SessionPath: sp, Ctrl: ctrl}},
+			wantLive: true,
+			why:      "a live runtime owns the session",
+		},
+		{
+			name:     "detached skeleton is a dormant candidate too",
+			detached: map[string]*WorkspaceTab{"tab-dskel": {ID: "tab-dskel", SessionPath: sp}},
+			wantLive: false,
+			why:      "a parked skeleton also owns nothing",
+		},
+		{
+			name:     "detached booting tab is excluded",
+			detached: map[string]*WorkspaceTab{"tab-dboot": {ID: "tab-dboot", SessionPath: sp, buildCancel: func() {}}},
+			wantLive: true,
+			why:      "detached build in flight — same double-build edge",
+		},
+		{
+			name:     "removed tab with live ctrl does not count",
+			tabs:     map[string]*WorkspaceTab{"tab-gone": {ID: "tab-gone", SessionPath: sp, Ctrl: ctrl, removed: true}},
+			wantLive: false,
+			why:      "a removed tab is not a surface",
+		},
+		{
+			name:     "unrelated session path is not claimed",
+			tabs:     map[string]*WorkspaceTab{"tab-else": {ID: "tab-else", SessionPath: other, Ctrl: pathedStub{path: other}}},
+			wantLive: false,
+			why:      "the guard must match by session path, not by existence",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &App{tabs: tc.tabs, detachedSessions: tc.detached}
+			if got := a.sessionHasLiveRuntimeForPath(sp); got != tc.wantLive {
+				t.Fatalf("sessionHasLiveRuntimeForPath = %v, want %v (%s)", got, tc.wantLive, tc.why)
+			}
+		})
+	}
+	if (&App{tabs: map[string]*WorkspaceTab{"tab-skel": {ID: "tab-skel", SessionPath: sp}}}).sessionHasLiveRuntimeForPath("") {
+		t.Fatal("empty session path must not match any tab (runtime key guard)")
+	}
+}
+
+// 任务 1185 接线防回归：两处 dormant 接入点（collectDormant 的 seam 注入 +
+// build-time re-check）必须用收窄后的活 runtime 判据。源码断言 + 下限自证：
+// 旧名 sessionHasTabForPath 残留 = 红；新判据调用点 <2 = 红（防扫描面缩坏假绿）。
+func TestDormantWiringUsesLiveRuntimeGuard(t *testing.T) {
+	src, err := os.ReadFile("session_collab_dormant_wake.go")
+	if err != nil {
+		t.Fatalf("read wiring source: %v", err)
+	}
+	body := string(src)
+	if strings.Contains(body, "sessionHasTabForPath") {
+		t.Fatal("dormant wiring still references the old any-tab-surface guard (sessionHasTabForPath) — the 1185 blind spot is back")
+	}
+	if n := strings.Count(body, "app.sessionHasLiveRuntimeForPath"); n < 2 {
+		t.Fatalf("want >=2 wired call sites (collectDormant seam + build-time re-check), got %d", n)
 	}
 }
