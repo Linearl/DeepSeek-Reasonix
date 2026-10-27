@@ -198,6 +198,40 @@ assert.equal(saved.defaultEffort, "", "none protocol clears the default on save"
     "the disabled row explains how to enable it");
 }
 
+// ── ⑤ Task 1207: declared rows stay editable, undeclared collapse ───────────
+{
+  const mixed = {
+    ...baseSettings(),
+    defaultModel: "auto",
+    providers: [
+      { ...baseProvider, name: "custom-a", supportedEfforts: ["high"], defaultEffort: "high" },
+      { ...baseProvider, name: "custom-b", baseUrl: "https://b.example.com/v1", models: ["model-b"], default: "model-b", supportedEfforts: [] },
+    ],
+  };
+  await act(async () => root.render(
+    <LocaleProvider>
+      <ModelsSection s={mixed as any} busy={false} subtab="usage"
+        onOpenProviders={() => {}}
+        apply={async (fn) => { await fn(); return true; }}
+        backgroundApply={async (fn) => { await fn(); }} />
+    </LocaleProvider>,
+  ));
+  // 20261027 用户拍板：偏好面只保留默认模型一行——非默认模型的 effort 行
+  // 全部移除（per-model 词表声明只在「编辑模型」弹窗；1207 的逐模型行与
+  // 聚合摘要行均按此整体移除）。
+  // 精确口径：逐模型行的 aria-label 是「Reasoning effort — {model}」（带
+  // 破折号）；默认行是纯「Reasoning effort」。ModelPicker 等其它按钮的
+  // aria-label 也会带模型名，不能用宽匹配。
+  const defaultRows = document.querySelectorAll('button[aria-label="Reasoning effort"]');
+  ok(defaultRows.length === 1, "1207-final: exactly one effort row (the default model)");
+  const perModelRows = document.querySelectorAll('button[aria-label*="Reasoning effort — "]');
+  ok(perModelRows.length === 0,
+    "1207-final: no per-model effort rows remain (declared and undeclared alike)");
+  ok(document.body.textContent?.includes("collapsed into this line") !== true &&
+    document.body.textContent?.includes("已折叠为本行") !== true,
+    "1207-final: the aggregation summary line is gone with the rows");
+}
+
 await act(async () => root.unmount());
 process.stdout.write(`\n${passed} passed, ${failed} failed, ${passed + failed} total\n`);
 if (failed > 0) process.exit(1);

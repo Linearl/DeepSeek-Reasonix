@@ -4545,38 +4545,10 @@ export function ModelsSection({ s, busy, apply, backgroundApply, subtab, onboard
               );
             })()}
 
-            {/* Task 1053: the per-model effort rows — every configured model
-                gets the same effort picker the default model already had
-                (1042). Levels resolve exactly like the backend does: the
-                model's own supported_efforts (modelOverrides round-trip)
-                wins, otherwise the connection vocabulary, otherwise auto. */}
-            {refs.filter((ref) => ref !== defaultRef).map((ref) => {
-              const option = modelOptionFromRef(ref, s);
-              if (!option) return null;
-              const override = option.providerView?.modelOverrides?.find((item) => item.model === option.model);
-              const levels = override?.supportedEfforts?.length ? override.supportedEfforts : option.providerView?.supportedEfforts ?? [];
-              const level = s.modelEfforts?.[ref] ?? s.modelEfforts?.[`${option.provider}/${option.model}`] ?? "";
-              return (
-                <SettingsField key={ref} className="model-assignment-effort" label={<ModelSettingHelp label={`${t("settings.modelEffortRow", { model: option.model })}`} text={t("settings.modelEffortRowHint")} />}>
-                  <SettingsSelect
-                    className="mem-select set-grow"
-                    aria-label={t("settings.modelEffortRow", { model: option.model })}
-                    value={level}
-                    disabled={busy || levels.length === 0}
-                    onValueChange={(value) => void apply(() => saveModelSettings(s, {kind: "preference", field: "model_effort", ref: `${option.provider}/${option.model}=${value}`}))}
-                  >
-                    <option value="">{t("common.auto")}</option>
-                    {level && !levels.includes(level) && <option value={level} disabled>{level}</option>}
-                    {levels.map((effortLevel) => (
-                      <option key={effortLevel} value={effortLevel}>
-                        {effortLevel}
-                      </option>
-                    ))}
-                  </SettingsSelect>
-                  <span className="model-assignment-connection">{levels.length === 0 ? t("settings.modelEffortUnsupported") : ""}</span>
-                </SettingsField>
-              );
-            })}
+            {/* 20261027 用户拍板：偏好面只保留默认模型一行（上方 1042 形态）。
+                per-model 词表声明只在「编辑模型」弹窗（1053①）；
+                已存 modelEfforts 数据保留（后端照常生效），不做 UI 入口
+                （1207 的逐模型行/聚合行按此整体移除）。 */}
 
             <SettingsField className="model-assignment-row" label={<ModelSettingHelp label={t("settings.plannerModel")} text={t("providerUI.plannerModelHelp")} />}>
               <ModelPicker

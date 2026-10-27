@@ -1239,6 +1239,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // tl-1177b 方案B：图墙卡片 hover 时按需取最近用户消息摘录（尾窗实时计算，
   // 不依赖列表字段；空数组 = 该会话无可识别摘录，前端回落原生 title）。
   SessionTailExcerpts(sessionPath: string): Promise<string[]>;
+  // tl-1188 返修：hover 浮层补结尾 agent 消息（只渲染用户摘录没有信息量）。
+  // 尾窗同源实时计算；空串 = 尾窗内无可显示的 assistant 回复。
+  SessionTailAgentReply(sessionPath: string): Promise<string>;
   ListTrashedSessions(): Promise<SessionMeta[]>;
   ResumeSession(path: string): Promise<HistoryMessage[]>;
   ResumeSessionForTab(tabID: string, path: string): Promise<HistoryMessage[]>;
@@ -5125,6 +5128,10 @@ function makeMockApp(): AppBindings {
       // Mock sessions have no real transcript behind them: no excerpts, the
       // card falls back to the native title exactly like an unreadable file.
       return [];
+    },
+    async SessionTailAgentReply(_sessionPath: string) {
+      // Same mock contract: no transcript, no closing reply.
+      return "";
     },
     ...makeMockHistoryCatalogBindings(sessions),
     async ListTrashedSessions() {

@@ -1917,8 +1917,6 @@ export const zhTW: Record<DictKey, string> = {
   "settings.modelEffort": "推理力度",
   "settings.modelEffortHint": "auto 使用模型預設力度。可選等級取決於該連線宣告的支援等級。",
   "settings.modelEffortUnsupported": "該連線未宣告 effort 等級，暫無選項可選。可在連線的進階設定中宣告支援等級後啟用。",
-  "settings.modelEffortRow": "推理力度 — {model}",
-  "settings.modelEffortRowHint": "auto 使用該模型自己的預設力度。模型級選擇優先於連線級；等級在該模型的編輯對話框中宣告（連線設定 → 模型清單）。",
   "settings.modelEffortLevels": "effort 等級",
   "settings.modelEffortLevelsCustom": "自訂等級 —— 該模型宣告了自己的詞彙表。",
   "settings.modelEffortLevelsInherit": "沿用連線級詞彙表：{levels}。",

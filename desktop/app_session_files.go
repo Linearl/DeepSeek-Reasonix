@@ -154,6 +154,18 @@ func (a *App) SessionTailExcerpts(sessionPath string) []string {
 	return agent.SessionTailUserExcerpts(sessionPath, agent.RecentExcerptCount)
 }
 
+// SessionTailAgentReply returns the closing assistant reply of one session for
+// the wall card's hover overlay (tl-1188 返修: excerpts alone showed only the
+// user's questions). Same read-only tail scan contract as SessionTailExcerpts;
+// "" means no displayable reply in the tail.
+func (a *App) SessionTailAgentReply(sessionPath string) string {
+	sessionPath = strings.TrimSpace(sessionPath)
+	if sessionPath == "" || !store.IsSessionTranscriptName(filepath.Base(sessionPath)) {
+		return ""
+	}
+	return agent.SessionTailAgentReply(sessionPath)
+}
+
 // ListSessionsForTab returns sessions from the directory owned by tabID. Task
 // Monitor uses this stable target after asynchronous control lookups so a tab
 // switch cannot redirect the eventual session lookup to another workspace.
