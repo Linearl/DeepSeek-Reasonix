@@ -68,7 +68,10 @@ ok(orgSource.includes('key: "group-move"') && orgSource.includes('label: t("proj
 ok(orgSource.includes("const groupMoveItems: ContextMenuItem[]"), "the move rows are built once per group (nest targets first, then top level)");
 ok(orgSource.indexOf("nestGroupUnder") < orgSource.indexOf("groupMoveItems]") === false ? true : true, "ordering sanity (informational)");
 const orgMenuSlice = orgSource.slice(orgSource.indexOf("const groupMoveItems"), orgSource.indexOf("{menuGroup === group.id"));
-ok(orgMenuSlice.includes("nestTargets") || orgSource.slice(orgSource.lastIndexOf("const nestInto"), orgSource.indexOf("const groupMoveItems")).includes("nestTargets"), "move items derive from the same nestTargets computation (no second source of truth)");
+// tl 1198: the data source evolved from nestTargets to nestTargetRows (same
+// pure hierarchy layer, tree-ordered, any depth) — the "no second source of
+// truth" contract is unchanged, only the helper's name moved.
+ok(orgMenuSlice.includes("nestTargetRows") || orgSource.slice(orgSource.lastIndexOf("const nestInto"), orgSource.indexOf("const groupMoveItems")).includes("nestTargetRows"), "move items derive from the same nestTargetRows computation (no second source of truth)");
 ok(orgMenuSlice.includes('"move-to-top"') && orgMenuSlice.includes("moveGroupToTopLevel"), "「移到顶层」lives inside the same submenu");
 ok(/items: groupMoveItems/.test(orgSource), "the submenu carries exactly the groupMoveItems array");
 

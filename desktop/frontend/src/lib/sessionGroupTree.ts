@@ -134,6 +134,41 @@ export function nestTargets(groups: SessionGroup[], id: string): SessionGroup[] 
   return groups.filter((group) => canNestUnder(groups, id, group.id));
 }
 
+/** One row of the group-move menu (tl 1198): the target group plus the full
+ * display path its row should show. */
+export type NestTargetRow = {
+  group: SessionGroup;
+  /** Ancestor titles from the tree root down to the target's direct parent —
+   * empty for a top-level target. The row label joins these with the group's
+   * own title ("4.reasonix / reasonix-for-ai"), so same-titled groups at
+   * different depths stay distinguishable. */
+  ancestorTitles: string[];
+};
+
+/** The group-move menu's target list (tl 1198): EVERY legal target at ANY
+ * depth, walked in tree order (each group is followed by its own descendants),
+ * each row carrying its ancestor chain for the hierarchy prefix. Same legality
+ * as nestTargets (cycle-safe, broken-chain-safe, orphans excluded) plus the
+ * menu's no-op filter — the group's current parent is not offered, because
+ * re-nesting where it already sits changes nothing. The dragged group itself
+ * and its whole subtree never appear: canNestUnder rejects them (cycle guard).
+ * Orphaned groups render at top level on screen but their broken chains still
+ * exclude them as parents (backend rejects those saves too). */
+export function nestTargetRows(groups: SessionGroup[], id: string): NestTargetRow[] {
+  const currentParent = parentOf(groups.find((group) => group.id === id));
+  const rows: NestTargetRow[] = [];
+  const walk = (parentID: string, ancestors: string[]) => {
+    for (const group of childGroups(groups, parentID)) {
+      if (group.id !== currentParent && canNestUnder(groups, id, group.id)) {
+        rows.push({ group, ancestorTitles: ancestors });
+      }
+      walk(group.id, [...ancestors, group.title]);
+    }
+  };
+  walk("", []);
+  return rows;
+}
+
 /** nestGroup returns the roster with the parent pointer set; everything else
  * about the group is preserved bit for bit. */
 export function nestGroup(groups: SessionGroup[], childID: string, parentID: string): SessionGroup[] {
