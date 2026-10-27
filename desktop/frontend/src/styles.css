@@ -27206,6 +27206,18 @@ button.statusbar__mcp:focus-visible {
   user-select: none;
 }
 
+/* tl1191: Suspense skeleton for the classic-only chrome chunk (module-level
+   prefetch makes it near-invisible). The row geometry lives here — shared
+   skeleton stays in the app-shell stylesheet — so a late chunk paints into a
+   reserved row with zero layout shift and keeps the drag region alive. */
+.app-chrome--loading {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  height: var(--app-chrome-height);
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
 .app-chrome button {
   --wails-draggable: no-drag;
 }
