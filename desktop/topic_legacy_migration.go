@@ -171,7 +171,8 @@ func migrateLegacySessionsIntoGlobalTopicsWithGates(dir string, migrationDone, r
 		}
 		return repairedTopicIDs
 	}
-	_ = prependTopicsInProjectsFile(workspaceRoot, migratedTopicIDs, false)
+	// tl1208: 迁移批量补登走写口收点（respectTombstones：扫描不复活墓碑）。
+	_ = registerTopic(scopeForTopicRoot(workspaceRoot), workspaceRoot, topicRegisterOpts{respectTombstones: true}, migratedTopicIDs...)
 	// Same fresh tombstone re-check as the repair pass: these are whole-map
 	// saves, so a concurrent DeleteTopic of an unrelated topic must not have
 	// its title written back by this migration batch.
@@ -322,7 +323,9 @@ func repairIndexedSessionTopicsWithGate(dir string, repairDone func(string) bool
 		}
 	}
 	if len(repairedTopicIDs) > 0 {
-		if err := prependTopicsInProjectsFile(workspaceRoot, repairedTopicIDs, false); err != nil {
+		// tl1208: 修复扫描批量补登走写口收点（respectTombstones：在磁盘锁内
+		// 重滤墓碑，DeleteTopic 落在扫描快照之后仍然获胜）。
+		if err := registerTopic(scopeForTopicRoot(workspaceRoot), workspaceRoot, topicRegisterOpts{respectTombstones: true}, repairedTopicIDs...); err != nil {
 			deferred = true
 		}
 		if titlesChanged || sourcesChanged {

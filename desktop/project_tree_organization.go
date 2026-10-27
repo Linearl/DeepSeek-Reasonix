@@ -443,6 +443,7 @@ func normalizeOrganizationTarget(scope, workspaceRoot string) (string, string, e
 // ReorderTopics persists a manual order without dropping topics omitted by a
 // partially loaded client. The manual flag preserves activity sorting for
 // existing users until they explicitly drag a topic.
+// tl1208: 列表变更体收口到 reorderTopicOrder（保序重排，不改归属成员）。
 func (a *App) ReorderTopics(scope, workspaceRoot string, orderedTopicIDs []string) error {
 	scope, workspaceRoot, err := normalizeOrganizationTarget(scope, workspaceRoot)
 	if err != nil {
@@ -451,28 +452,7 @@ func (a *App) ReorderTopics(scope, workspaceRoot string, orderedTopicIDs []strin
 	if len(orderedTopicIDs) == 0 {
 		return fmt.Errorf("orderedTopicIDs is required")
 	}
-	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
-		if scope == "global" {
-			next, orderErr := completeTopicOrder(orderedTopicIDs, f.GlobalTopics)
-			if orderErr != nil {
-				return false, orderErr
-			}
-			changed := !sameStringList(next, f.GlobalTopics) || !f.GlobalManualTopicOrder
-			f.GlobalTopics, f.GlobalManualTopicOrder = next, true
-			return changed, nil
-		}
-		i := projectIndexByRoot(f.Projects, workspaceRoot)
-		if i < 0 {
-			return false, fmt.Errorf("project %q not found", workspaceRoot)
-		}
-		next, orderErr := completeTopicOrder(orderedTopicIDs, f.Projects[i].Topics)
-		if orderErr != nil {
-			return false, orderErr
-		}
-		changed := !sameStringList(next, f.Projects[i].Topics) || !f.Projects[i].ManualTopicOrder
-		f.Projects[i].Topics, f.Projects[i].ManualTopicOrder = next, true
-		return changed, nil
-	}); err != nil {
+	if err := reorderTopicOrder(scope, workspaceRoot, orderedTopicIDs); err != nil {
 		return err
 	}
 	a.emitProjectTreeMetadataChanged()

@@ -3394,7 +3394,8 @@ func (a *App) ensureBlankTab(scope, workspaceRoot string) (TabMeta, error) {
 		a.mu.Unlock()
 		return TabMeta{}, err
 	}
-	_ = prependTopicInProjectsFile(workspaceRoot, topicID, false)
+	// tl1208: 新建话题登记走写口收点（ensureProject=false 语义保留）。
+	_ = registerTopic(scopeForTopicRoot(workspaceRoot), workspaceRoot, topicRegisterOpts{}, topicID)
 
 	tabID := a.newUniqueTabIDLocked()
 	created = &WorkspaceTab{
@@ -6396,100 +6397,28 @@ func updateProjectsFile(mutator func(*desktopProjectFile) (bool, error)) error {
 	return saveProjectsFile(stripBuiltinProjects(f))
 }
 
-func prependTopicInProjectsFile(workspaceRoot, topicID string, ensureProject bool) error {
-	// Single-topic prepends are intentional writes (topic creation, a live tab
-	// indexing its session, restore from trash): they clear any delete
-	// tombstone so the topic fully returns instead of landing in a half-state
-	// where only its title resurfaces.
-	return prependTopicsInProjectsFileOpts(workspaceRoot, []string{topicID}, ensureProject, false)
-}
-
-func prependTopicsInProjectsFile(workspaceRoot string, topicIDs []string, ensureProject bool) error {
-	// Batch prepends come from the legacy migration and index-repair scans:
-	// they must respect delete tombstones so a scan never resurrects a topic
-	// the user removed.
-	return prependTopicsInProjectsFileOpts(workspaceRoot, topicIDs, ensureProject, true)
-}
-
-func prependTopicsInProjectsFileOpts(workspaceRoot string, topicIDs []string, ensureProject, respectTombstones bool) error {
-	workspaceRoot = normalizeProjectRoot(workspaceRoot)
-	topicIDs = uniqueStrings(topicIDs)
-	if len(topicIDs) == 0 {
-		return nil
-	}
-	return updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
-		// Tombstones are checked under the projects-file lock: a DeleteTopic
-		// that lands between a scan reading DeletedTopics and this write must
-		// not be resurrected by the stale batch.
-		live := topicIDs
-		changed := false
-		if respectTombstones {
-			live = make([]string, 0, len(topicIDs))
-			for _, id := range topicIDs {
-				if !containsDesktopString(f.DeletedTopics, id) {
-					live = append(live, id)
-				}
-			}
-			if len(live) == 0 {
-				return false, nil
-			}
-		} else {
-			for _, id := range topicIDs {
-				if next := removeString(f.DeletedTopics, id); !sameStringList(next, f.DeletedTopics) {
-					f.DeletedTopics = next
-					changed = true
-				}
-			}
-		}
-		if workspaceRoot == "" {
-			next := uniqueStrings(append(append([]string(nil), live...), f.GlobalTopics...))
-			if sameStringList(next, f.GlobalTopics) {
-				return changed, nil
-			}
-			f.GlobalTopics = next
-			return true, nil
-		}
-		for i, p := range f.Projects {
-			if !sameProjectRoot(p.Root, workspaceRoot) {
-				continue
-			}
-			next := uniqueStrings(append(append([]string(nil), live...), p.Topics...))
-			if sameStringList(next, p.Topics) {
-				return changed, nil
-			}
-			f.Projects[i].Topics = next
-			return true, nil
-		}
-		if !ensureProject {
-			return changed, nil
-		}
-		// Defensive: the loop above already checked every project with
-		// sameProjectRoot, so this is normally unreachable. It stays as a second
-		// guard because the append is the only place a new root enters the file.
-		if projectRootExists(f, workspaceRoot) {
-			return changed, nil
-		}
-		f.Projects = append(f.Projects, desktopProject{Root: workspaceRoot, Topics: live})
-		return true, nil
-	})
-}
+// tl1208: 三个旧写口 helper（prependTopicInProjectsFile /
+// prependTopicsInProjectsFile / prependTopicsInProjectsFileOpts）整体迁入
+// topic_registry.go 的写口收点 registerTopic（unregister 收点对应
+// removeTopicFromProjectsFile）；此处不再保留本地实现。
 
 // indexNewTopicForSidebar prepends a freshly created topic to the projects-file
 // index the sidebar renders from, then reads that index back so topic creation
 // can tell "listed" apart from "silently not listed".
 //
 // One successful call lands the topic in both sidebar data sources: the write
-// goes through updateProjectsFile, and saveProjectsFile mirrors the resulting
+// goes through the registerTopic funnel, and saveProjectsFile mirrors the resulting
 // order into the organization sidecar (global.topicOrder) on the way out.
 // Failures here are usually transient lock/IO errors, hence the single retry;
 // the read-back also catches a write that reports success but changes nothing.
 func indexNewTopicForSidebar(workspaceRoot, topicID string) error {
 	ensureProject := workspaceRoot != ""
-	err := prependTopicInProjectsFile(workspaceRoot, topicID, ensureProject)
+	// tl1208: 写口收点（前置插入语义不变；索引随写同步）。
+	err := registerTopic(scopeForTopicRoot(workspaceRoot), workspaceRoot, topicRegisterOpts{ensureProject: ensureProject}, topicID)
 	if err == nil && topicIndexedInProjectsFile(workspaceRoot, topicID) {
 		return nil
 	}
-	retryErr := prependTopicInProjectsFile(workspaceRoot, topicID, ensureProject)
+	retryErr := registerTopic(scopeForTopicRoot(workspaceRoot), workspaceRoot, topicRegisterOpts{ensureProject: ensureProject}, topicID)
 	if retryErr == nil && topicIndexedInProjectsFile(workspaceRoot, topicID) {
 		return nil
 	}
@@ -6500,6 +6429,15 @@ func indexNewTopicForSidebar(workspaceRoot, topicID string) error {
 		err = fmt.Errorf("topic %q absent from the sidebar index after the write", topicID)
 	}
 	return err
+}
+
+// scopeForTopicRoot 由项目根推导注册 scope（空根 = global）。tl1208 收点
+// 调用侧共用，避免各处重复推导。
+func scopeForTopicRoot(workspaceRoot string) string {
+	if strings.TrimSpace(workspaceRoot) == "" {
+		return "global"
+	}
+	return "project"
 }
 
 // topicIndexedInProjectsFile reports whether topicID is listed in the sidebar
@@ -6521,48 +6459,8 @@ func topicIndexedInProjectsFile(workspaceRoot, topicID string) bool {
 	return false
 }
 
-func removeTopicFromProjectsFile(topicID string) error {
-	topicID = strings.TrimSpace(topicID)
-	if topicID == "" {
-		return nil
-	}
-	return updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
-		changed := false
-		if next := removeString(f.GlobalTopics, topicID); !sameStringList(next, f.GlobalTopics) {
-			f.GlobalTopics = next
-			changed = true
-		}
-		if next := removeString(f.GlobalPinnedTopics, topicID); !sameStringList(next, f.GlobalPinnedTopics) {
-			f.GlobalPinnedTopics = next
-			changed = true
-		}
-		if next, removed := groupsWithoutTopic(f.GlobalGroups, topicID); removed {
-			f.GlobalGroups = next
-			f.GlobalGroupsRevision++
-			changed = true
-		}
-		if next := prependUniqueString(f.DeletedTopics, topicID); !sameStringList(next, f.DeletedTopics) {
-			f.DeletedTopics = next
-			changed = true
-		}
-		for i, p := range f.Projects {
-			if next := removeString(p.Topics, topicID); !sameStringList(next, p.Topics) {
-				f.Projects[i].Topics = next
-				changed = true
-			}
-			if next := removeString(p.PinnedTopics, topicID); !sameStringList(next, p.PinnedTopics) {
-				f.Projects[i].PinnedTopics = next
-				changed = true
-			}
-			if next, removed := groupsWithoutTopic(p.Groups, topicID); removed {
-				f.Projects[i].Groups = next
-				f.Projects[i].GroupsRevision++
-				changed = true
-			}
-		}
-		return changed, nil
-	})
-}
+// tl1208: removeTopicFromProjectsFile 已迁入 topic_registry.go 的
+// unregisterTopic 收点（含墓碑/分组成员清扫语义），此处不再保留本地实现。
 
 func normalizeProjectRoot(root string) string {
 	root = strings.TrimSpace(root)
@@ -7501,7 +7399,8 @@ func ensureTopicIndexedState(scope, workspaceRoot, topicID, title, source string
 		// A migrated scope prunes tombstoned SQLite rows before mirroring. Clear
 		// the tombstone first for an explicit restore; if the authoritative state
 		// write then fails, restore the tombstone so the topic cannot be half shown.
-		if err := prependTopicInProjectsFile(workspaceRoot, topicID, true); err != nil {
+		// tl1208: 登记一律走写口收点 registerTopic（默认路径清墓碑复活）。
+		if err := registerTopic(scope, workspaceRoot, topicRegisterOpts{ensureProject: true}, topicID); err != nil {
 			return err
 		}
 	}
@@ -7513,7 +7412,7 @@ func ensureTopicIndexedState(scope, workspaceRoot, topicID, title, source string
 	}
 	if err != nil {
 		if wasDeleted {
-			if rollbackErr := removeTopicFromProjectsFile(topicID); rollbackErr != nil {
+			if rollbackErr := unregisterTopic(topicID, topicUnregisterOpts{tombstone: true}); rollbackErr != nil {
 				return errors.Join(err, fmt.Errorf("restore topic tombstone: %w", rollbackErr))
 			}
 		}
@@ -7522,7 +7421,8 @@ func ensureTopicIndexedState(scope, workspaceRoot, topicID, title, source string
 	if wasDeleted {
 		return nil
 	}
-	return prependTopicInProjectsFile(workspaceRoot, topicID, true)
+	// tl1208: 常规补登同样走收点（前置插入语义不变，索引随写同步）。
+	return registerTopic(scope, workspaceRoot, topicRegisterOpts{ensureProject: true}, topicID)
 }
 
 // telemetry
@@ -8211,7 +8111,8 @@ func (a *App) deleteTopic(topicID string) error {
 	// Publish the tombstone before clearing any per-scope state. A concurrent
 	// session repair may already hold a stale title snapshot, but its commit-time
 	// merge will now see the tombstone and cannot resurrect this topic.
-	if err := removeTopicFromProjectsFile(topicID); err != nil {
+	// tl1208: 注销走写口收点（全 scope 清扫 + 墓碑）。
+	if err := unregisterTopic(topicID, topicUnregisterOpts{tombstone: true}); err != nil {
 		return err
 	}
 	roots = append(roots, "")
@@ -8237,41 +8138,14 @@ func (a *App) deleteTopic(topicID string) error {
 
 // SetTopicPinned controls whether a topic is pinned to the top of its project
 // or Global section in the desktop project tree.
+// tl1208: 置顶翻转经 registerTopic 的 pinUpdate 模式收口（发现逻辑在磁盘
+// 锁内按原语义执行，见 registerTopicPinMutator）。
 func (a *App) SetTopicPinned(topicID string, pinned bool) error {
 	topicID = strings.TrimSpace(topicID)
 	if topicID == "" {
 		return fmt.Errorf("topicID is required")
 	}
-	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
-		for i, p := range f.Projects {
-			m := loadTopicTitles(p.Root)
-			if _, ok := m[topicID]; !ok && !containsDesktopString(p.Topics, topicID) {
-				continue
-			}
-			next := removeString(f.Projects[i].PinnedTopics, topicID)
-			if pinned {
-				next = prependUniqueString(f.Projects[i].PinnedTopics, topicID)
-			}
-			if sameStringList(next, f.Projects[i].PinnedTopics) {
-				return false, nil
-			}
-			f.Projects[i].PinnedTopics = next
-			return true, nil
-		}
-		globalTitles := loadTopicTitles("")
-		if _, ok := globalTitles[topicID]; !ok && !containsDesktopString(f.GlobalTopics, topicID) {
-			return false, fmt.Errorf("topic %q not found", topicID)
-		}
-		next := removeString(f.GlobalPinnedTopics, topicID)
-		if pinned {
-			next = prependUniqueString(f.GlobalPinnedTopics, topicID)
-		}
-		if sameStringList(next, f.GlobalPinnedTopics) {
-			return false, nil
-		}
-		f.GlobalPinnedTopics = next
-		return true, nil
-	}); err != nil {
+	if err := registerTopic("global", "", topicRegisterOpts{pinUpdate: true, pinned: pinned}, topicID); err != nil {
 		return err
 	}
 	a.emitProjectTreeMetadataChanged()

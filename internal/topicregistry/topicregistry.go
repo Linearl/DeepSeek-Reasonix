@@ -221,6 +221,15 @@ func Refresh() bool {
 	return changed
 }
 
+// SyncFromSource 无条件从权威源全量重建索引并落缓存。desktop 写口在改盘
+// 成功后调用一次：索引随即与文件一致（写后即同步，读侧直查不悬空）。
+func SyncFromSource() error {
+	if cfg.rebuild == nil {
+		return fmt.Errorf("topicregistry: sync without a rebuild source is refused")
+	}
+	return rebuild(true)
+}
+
 // NormalizeTopicID 规整 topicId（trim）。导出给写口与读侧共用同一规整。
 func NormalizeTopicID(s string) string { return strings.TrimSpace(s) }
 
