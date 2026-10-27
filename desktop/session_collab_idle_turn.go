@@ -784,12 +784,11 @@ func (p *sessionCollabPump) idleTurnTargetViews(live []sessionCollabTarget, fill
 		if t.contactID != "" {
 			filled[t.contactID] = true
 		}
+		// 任务1206：ctrl 解析收口仲裁层——扫描器（sessionCollabTargets/LiveTargets，
+		// 均在 session_wake_arbiter.go）已在扫描时验活并回填 ctrl。此处只剩
+		// 「快照与 sweep 之间 runtime 消失」的竞态留痕（886 形态），不再经
+		// tabByID 二次判定。
 		ctrl := t.ctrl
-		if ctrl == nil && t.tabID != "" {
-			if tab := p.app.tabByID(t.tabID); tab != nil {
-				ctrl = tab.Ctrl
-			}
-		}
 		if ctrl == nil {
 			// 留痕不再静默：target 快照与 sweep 之间 runtime 消失正是 886
 			// 隐蔽盲区的形状，一行日志让下一次现场可直接读出。

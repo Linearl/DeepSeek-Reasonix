@@ -83,16 +83,21 @@ func inboxRestartGateUp(snap sessioninbox.InboxSnapshot) bool {
 // publication path as the 254/49-A2 resume family, AFTER them: a roster
 // resume that already cleared the pause makes the gate-shape probe below a
 // no-op, so the two chains compose without double settle or double notice.
+// 任务1206（开轮仲裁 SSOT）：清门前问仲裁层——runtime 活性/责任方由
+// canWakeSession 单点判定（tab.Ready/tab.Ctrl 直读已废，源码守卫钉住）；
+// 构建未发布时不清不踢，构建完成的 runtime:rebuilt kick 是那条时间线上
+// 的负责人。时机未变：仍是恢复点同位、dial 内判、709 原语清门。
 func (a *App) autoContinueInboxGateForTab(tab *WorkspaceTab) {
-	if a == nil || tab == nil || tab.Ctrl == nil {
+	if a == nil || tab == nil {
 		return
 	}
 	a.mu.RLock()
-	eligible := tab.autopilot && tab.Ready && !tab.removed
+	posture := tab.autopilot
+	sessionPath := tab.SessionPath
 	id := tab.ID
 	a.mu.RUnlock()
-	if !eligible {
-		// 有人值守（或未就绪）：门照旧弹，行为与现状逐字节一致（验收②）。
+	if !posture {
+		// 有人值守：门照旧弹，行为与现状逐字节一致（验收②）。
 		return
 	}
 	// dial（task 254 用户裁决）在函数内判：off = 用户要求一切会话手动控制，
@@ -100,7 +105,18 @@ func (a *App) autoContinueInboxGateForTab(tab *WorkspaceTab) {
 	if a.autonomousUpdateResumeMode() == "off" {
 		return
 	}
-	snap := tab.Ctrl.InboxSnapshot()
+	// 任务1206：问仲裁层——「可开轮?谁负责」。runtime 未活（skeleton/构建在飞）
+	// 或路径不可寻址时不清不踢：此处的 kick 只会踢空，责任在那条时间线的
+	// 构建完成 kick（notifyTabRuntimeRebuiltAtEpoch）。
+	verdict := a.canWakeSession(sessionPath)
+	if !verdict.RuntimeLive {
+		return
+	}
+	ctrl := a.wakeLiveCtrlForSessionPath(sessionPath)
+	if ctrl == nil {
+		return
+	}
+	snap := ctrl.InboxSnapshot()
 	if !inboxRestartGateUp(snap) {
 		return
 	}
@@ -111,22 +127,40 @@ func (a *App) autoContinueInboxGateForTab(tab *WorkspaceTab) {
 	}
 	// 任务840 顺序：已消费引导的停靠行先结算下架，再清门。
 	a.settlePlannedRestartGuidanceForTab(tab)
-	cleared, err := tab.Ctrl.ResumeInboxAutoPause()
+	cleared, err := ctrl.ResumeInboxAutoPause()
 	if err != nil {
+		a.recordWakeOutcome(wakeLedgerEntry{
+			SessionPath: sessionPath,
+			Claimant:    string(wakeClaimantRestore),
+			Outcome:     wakeFailed,
+			Reason:      "resume_inbox_auto_pause: " + err.Error(),
+		})
 		slog.Warn("desktop: unattended recovery gate auto-continue failed", "tab", id, "err", err)
 		return
 	}
 	if !cleared {
 		// 用户在快照与清门之间恰好暂停（709 竞态口），或门已被同恢复点
 		// 的名册链清掉——两种都不留痕、不踢派发。
+		a.recordWakeOutcome(wakeLedgerEntry{
+			SessionPath: sessionPath,
+			Claimant:    string(wakeClaimantRestore),
+			Outcome:     wakeSkipped,
+			Reason:      "gate_race_user_pause_or_already_cleared",
+		})
 		return
 	}
+	a.recordWakeOutcome(wakeLedgerEntry{
+		SessionPath: sessionPath,
+		Claimant:    string(wakeClaimantRestore),
+		Outcome:     wakeResumed,
+		Reason:      "restart_gate_cleared+dispatch_kick",
+	})
 	slog.Info("desktop: unattended recovery gate auto-continued (868)", "tab", id, "recovered", snap.RecoveredN)
 	a.noticeCodeForTab(id, event.LevelInfo, event.NoticeCodeUnattendedGateAutoContinue, unattendedGateAutoContinueText)
 	// 踢一次派发：ClaimItem 的暂停闸已开，积压队列由常规调度器按 FIFO
 	// 开轮消化（与启动时 runtime 发布后的 kick 同路径；忙时自动拒绝，
 	// 回合完成自动再踢）。
-	if kicker, ok := tab.Ctrl.(interface{ NotifyInboxRuntimeReady() }); ok {
+	if kicker, ok := ctrl.(interface{ NotifyInboxRuntimeReady() }); ok {
 		kicker.NotifyInboxRuntimeReady()
 	}
 }

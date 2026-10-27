@@ -900,6 +900,23 @@ func (p *sessionCollabPump) drain(respectBackoff bool) SessionCollabDrainResult 
 		if !ok || id.Archived || strings.TrimSpace(id.SessionPath) == "" {
 			continue
 		}
+		// 任务1206（开轮仲裁 SSOT）：补位前问仲裁层——「可开轮?谁负责」。
+		// 责任方已在（可见 tab/detached/构建在飞）则让位，下一 pass 的 live
+		// targets 自然接管；租约在他处不空转撞锁；认领竞争失败（桥/恢复链
+		// 已在拉起）即短路——887 的「桥+drain 同窗双开」由此收口。时机未变：
+		// 仍是同一循环、同一 backoff、同一 pass。
+		release, gate := p.app.wakeStandUpGate(id.SessionPath, wakeClaimantDrain)
+		if !gate.Granted {
+			p.app.recordWakeOutcome(wakeLedgerEntry{
+				SessionPath: id.SessionPath,
+				ContactID:   contact,
+				Claimant:    string(wakeClaimantDrain),
+				Outcome:     gate.Outcome,
+				Reason:      gate.Reason,
+				At:          now,
+			})
+			continue
+		}
 		// Open the session so the next pass can deliver. When
 		// experimental_collab_background_delivery is on, drain() already
 		// returned early above — this path only runs with the switch off.
@@ -916,9 +933,26 @@ func (p *sessionCollabPump) drain(respectBackoff bool) SessionCollabDrainResult 
 			// provider env-var NAME from config validation errors, never the
 			// key value; RedactError also strips any provider-echoed key text.
 			p.deferContactRetry(contact, now)
+			p.app.recordWakeOutcome(wakeLedgerEntry{
+				SessionPath: id.SessionPath,
+				ContactID:   contact,
+				Claimant:    string(wakeClaimantDrain),
+				Outcome:     wakeFailed,
+				Reason:      secrets.RedactError(err),
+				At:          now,
+			})
+			release()
 			log.Printf("[session-collab] cannot open session for contact %s (%s): %v", contact, id.Title, secrets.RedactError(err))
 			continue
 		}
+		p.app.recordWakeOutcome(wakeLedgerEntry{
+			SessionPath: id.SessionPath,
+			ContactID:   contact,
+			Claimant:    string(wakeClaimantDrain),
+			Outcome:     wakeOpened,
+			At:          now,
+		})
+		release()
 		log.Printf("[session-collab] opened session %q to accept a message for contact %s (background=%v)", id.Title, contact, collabOpenDetached())
 	}
 	return result
@@ -1944,56 +1978,10 @@ func (a *App) collabSessionTurnStatus(contactID string) (status string, known bo
 	return "", false
 }
 
-// sessionCollabLiveTargets is every place a message can land without first
-// standing anything up: visible tabs bound to a session, plus detached runtimes
-// whose tab was closed but whose work is still alive. Only the contacts in
-// pendingContacts are considered, so an idle pass costs nothing.
-func (a *App) sessionCollabLiveTargets(pendingContacts []string) []sessionCollabTarget {
-	want := map[string]bool{}
-	for _, c := range pendingContacts {
-		want[c] = true
-	}
-	out := append([]sessionCollabTarget(nil), a.sessionCollabTargets()...)
-	seen := map[string]bool{}
-	for _, t := range out {
-		seen[t.contactID] = true
-	}
-
-	a.mu.Lock()
-	detached := make([]*WorkspaceTab, 0, len(a.detachedSessions))
-	for _, tab := range a.detachedSessions {
-		if tab != nil {
-			detached = append(detached, tab)
-		}
-	}
-	a.mu.Unlock()
-
-	for _, tab := range detached {
-		if tab.Ctrl == nil || tab.ReadOnly || tab.Takeover.Spectator {
-			continue
-		}
-		path := strings.TrimSpace(tab.Ctrl.SessionPath())
-		if path == "" {
-			continue
-		}
-		contact := agent.SessionContactID(path)
-		if contact == "" || seen[contact] {
-			continue
-		}
-		if len(want) > 0 && !want[contact] {
-			continue
-		}
-		seen[contact] = true
-		out = append(out, sessionCollabTarget{
-			tabID:     tab.ID,
-			contactID: contact,
-			detached:  true,
-			topicID:   strings.TrimSpace(tab.TopicID),
-			ctrl:      tab.Ctrl,
-		})
-	}
-	return out
-}
+// sessionCollabLiveTargets / sessionCollabTargets 于任务 1206 搬入仲裁层
+// （session_wake_arbiter.go）：「哪里能承接投递/开轮」的表面扫描就是 tab 态
+// 判定本体，四触发源共用一个出处（wakeSurfaceLive 单点语义）。本文件保留
+// 全部调用点与 sessionCollabTarget 类型。
 
 // collabRosterIndex maps contact_id to the newest identity that owns it.
 func (a *App) collabRosterIndex() map[string]sessioncollab.Identity {
@@ -2007,47 +1995,7 @@ func (a *App) collabRosterIndex() map[string]sessioncollab.Identity {
 	return out
 }
 
-// sessionCollabTargets snapshots open tabs that own a registered contact_id.
-// Sessions that never registered one are skipped: nothing can address them yet.
-func (a *App) sessionCollabTargets() []sessionCollabTarget {
-	a.mu.Lock()
-	tabs := make([]*WorkspaceTab, 0, len(a.tabs))
-	for _, tab := range a.tabs {
-		if tab != nil && !tab.removed {
-			tabs = append(tabs, tab)
-		}
-	}
-	// Snapshot under the same lock as the tabs: a concurrent close could flip
-	// activeTabID between the read and the loop, and an unlocked read would be a
-	// data race.
-	activeTabID := a.activeTabID
-	a.mu.Unlock()
-
-	var out []sessionCollabTarget
-	seen := map[string]bool{}
-	for _, tab := range tabs {
-		if tab.Ctrl == nil || tab.ReadOnly || tab.Takeover.Spectator {
-			continue
-		}
-		path := strings.TrimSpace(tab.Ctrl.SessionPath())
-		if path == "" {
-			continue
-		}
-		key := strings.ToLower(path)
-		if seen[key] {
-			continue
-		}
-		contact := agent.SessionContactID(path)
-		if contact == "" {
-			continue
-		}
-		seen[key] = true
-		out = append(out, sessionCollabTarget{
-			tabID:     tab.ID,
-			contactID: contact,
-			activeTab: tab.ID == activeTabID,
-			topicID:   strings.TrimSpace(tab.TopicID),
-		})
-	}
-	return out
-}
+// （sessionCollabTargets 本体已搬入仲裁层 session_wake_arbiter.go，任务 1206：
+// 「可见 tab 是否承接投递」的 Ctrl/ReadOnly/Spectator 判定是 tab 态语义的单点，
+// 由 wakeSurfaceLive 承载；可见臂自 1206 起回填 ctrl，消费方不再各自经 tabByID
+// 二次解析——922 的桥侧解析块随之移除。）

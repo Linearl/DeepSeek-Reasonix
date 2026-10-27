@@ -277,6 +277,21 @@ func (p *sessionCollabPump) wakeDormantRuntime(id sessioncollab.Identity) (contr
 	if ctrl, _ := p.app.dormantWakeCtrlForSessionPath(id.SessionPath); ctrl != nil {
 		return ctrl, nil
 	}
+	// 任务1206（幂等闸）：开流前向仲裁层认领。认领失败 = 另一触发源（①drain
+	// 补位 / ③恢复链）正在拉起同一会话——按竞态让位（ErrTurnRunning 同门：
+	// 不计 strike、不写 570 回执），队列消息由认领方拉起的 runtime 消化。
+	release, ok := p.app.claimWake(id.SessionPath, wakeClaimantBridge)
+	if !ok {
+		p.app.recordWakeOutcome(wakeLedgerEntry{
+			SessionPath: id.SessionPath,
+			ContactID:   id.ContactID,
+			Claimant:    string(wakeClaimantBridge),
+			Outcome:     wakeSkipped,
+			Reason:      wakeStandUpInFlightReason,
+		})
+		return nil, control.ErrTurnRunning
+	}
+	defer release()
 	log.Printf("[session-collab] dormant wake: standing up runtime for contact %s (%s)", id.ContactID, id.SessionPath)
 	var err error
 	if collabOpenDetached() {
@@ -291,103 +306,57 @@ func (p *sessionCollabPump) wakeDormantRuntime(id sessioncollab.Identity) (contr
 		// receipt detail (recordIdleTurnExhausted formats lastErr verbatim);
 		// open errors may echo provider env-var names (same class drain
 		// already redacts).
+		p.app.recordWakeOutcome(wakeLedgerEntry{
+			SessionPath: id.SessionPath,
+			ContactID:   id.ContactID,
+			Claimant:    string(wakeClaimantBridge),
+			Outcome:     wakeFailed,
+			Reason:      "wake open: " + secrets.RedactError(err),
+		})
 		return nil, errors.New("wake open: " + secrets.RedactError(err))
 	}
 	deadline := time.Now().Add(dormantWakeCtrlTimeout)
 	for {
 		ctrl, startupErr := p.app.dormantWakeCtrlForSessionPath(id.SessionPath)
 		if ctrl != nil {
+			p.app.recordWakeOutcome(wakeLedgerEntry{
+				SessionPath: id.SessionPath,
+				ContactID:   id.ContactID,
+				Claimant:    string(wakeClaimantBridge),
+				Outcome:     wakeOpened,
+			})
 			return ctrl, nil
 		}
 		if startupErr != "" {
 			// Build already failed (lease held elsewhere, bad config): fail
 			// fast instead of burning the whole timeout on each strike.
+			p.app.recordWakeOutcome(wakeLedgerEntry{
+				SessionPath: id.SessionPath,
+				ContactID:   id.ContactID,
+				Claimant:    string(wakeClaimantBridge),
+				Outcome:     wakeFailed,
+				Reason:      "wake build failed: " + secrets.RedactError(errors.New(startupErr)),
+			})
 			return nil, errors.New("wake build failed: " + secrets.RedactError(errors.New(startupErr)))
 		}
 		if time.Now().After(deadline) {
+			p.app.recordWakeOutcome(wakeLedgerEntry{
+				SessionPath: id.SessionPath,
+				ContactID:   id.ContactID,
+				Claimant:    string(wakeClaimantBridge),
+				Outcome:     wakeFailed,
+				Reason:      fmt.Sprintf("runtime for %s did not publish within %s", id.ContactID, dormantWakeCtrlTimeout),
+			})
 			return nil, fmt.Errorf("runtime for %s did not publish within %s", id.ContactID, dormantWakeCtrlTimeout)
 		}
 		time.Sleep(dormantWakeCtrlPoll)
 	}
 }
 
-// dormantWakeCtrlForSessionPath returns the published controller bound to
-// sessionPath across visible tabs AND detached runtimes (controllerForSessionPath
-// only scans a.tabs — a parked stand-up would otherwise read as "never
-// published" and burn the whole wake timeout), plus the first build error of a
-// bound tab so a failed build can fail the wake fast.
-func (a *App) dormantWakeCtrlForSessionPath(sessionPath string) (control.SessionAPI, string) {
-	want := sessionRuntimeKey(sessionPath)
-	if want == "" || a == nil {
-		return nil, ""
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	var startupErr string
-	for _, tab := range a.tabs {
-		if tab == nil || tab.removed {
-			continue
-		}
-		if !tabMatchesSessionKey(tab, want) {
-			continue
-		}
-		if tab.Ctrl != nil {
-			return tab.Ctrl, ""
-		}
-		if startupErr == "" {
-			startupErr = tab.StartupErr
-		}
-	}
-	for _, tab := range a.detachedSessions {
-		if tab == nil || tab.Ctrl == nil {
-			continue
-		}
-		if tabMatchesSessionKey(tab, want) {
-			return tab.Ctrl, ""
-		}
-	}
-	return nil, startupErr
-}
-
-// sessionHasLiveRuntimeForPath reports whether a tab bound to sessionPath
-// (visible or detached) owns a LIVE runtime: a published controller
-// (Ctrl != nil) or an in-flight boot (buildCancel != nil). The dormant sweep
-// narrows its coverage check to this — the old "any tab surface" form treated
-// a restored skeleton tab (published, Ctrl==nil, no build queued — 任务 619 ②)
-// as covered while nothing actually owned it: both live bridge paths demand a
-// controller (session_collab.go) and the dormant reverse-lookup skipped the
-// skeleton, so no path ever claimed it and queued follow-ups sat unconsumed
-// all night (任务 1185). The in-flight arm guards the other edge: a booting
-// tab already has machinery running — waking it again would race a second
-// build and surface duplicate turns, which is harder to diagnose than a
-// missed wake.
-func (a *App) sessionHasLiveRuntimeForPath(sessionPath string) bool {
-	want := sessionRuntimeKey(sessionPath)
-	if want == "" || a == nil {
-		return false
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	for _, tab := range a.tabs {
-		if tab == nil || tab.removed {
-			continue
-		}
-		if !tabMatchesSessionKey(tab, want) {
-			continue
-		}
-		// Ctrl==nil && buildCancel==nil: a published skeleton owns nothing —
-		// a dormant candidate, not a covered session (任务 1185).
-		if tab.Ctrl != nil || tab.buildCancel != nil {
-			return true
-		}
-	}
-	for _, tab := range a.detachedSessions {
-		if tab != nil && tabMatchesSessionKey(tab, want) && (tab.Ctrl != nil || tab.buildCancel != nil) {
-			return true
-		}
-	}
-	return false
-}
+// dormantWakeCtrlForSessionPath 与 sessionHasLiveRuntimeForPath 于任务 1206
+// 搬入仲裁层（session_wake_arbiter.go）：dormant 反查不再自带 tab/runtime
+// 判定，与另外三个触发源共用 canWakeSession 单点。本文件保留两者的调用点
+// （seam 注入 + build-time 复查 + wake attach 探测），判定本体在仲裁层。
 
 // isActiveSessionPath is the fire-time 边界2 guard: true when the session's
 // tab is currently the focused surface.

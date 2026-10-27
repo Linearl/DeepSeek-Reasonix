@@ -504,10 +504,25 @@ func (a *App) UnreadMailCount(tabID string) (int, error) {
 }
 
 // SetInboxPaused pauses or resumes dispatch.
+// 任务1206（开轮仲裁 SSOT）：面板 resume 前问仲裁层——owner 是用户手里这个
+// tab（inboxCtrl 已保证 ctrl 已发布），裁决与原因落记账单点（1007 的
+// 「已读没开轮、责任无处查」在恢复方向也可查）。不改变动作本身：用户意志
+// 的暂停/恢复照旧直达 controller。
 func (a *App) SetInboxPaused(tabID string, paused bool) error {
 	ctrl, err := a.inboxCtrl(tabID)
 	if err != nil {
 		return err
+	}
+	if !paused {
+		if sessionPath := strings.TrimSpace(ctrl.SessionPath()); sessionPath != "" {
+			verdict := a.canWakeSession(sessionPath)
+			a.recordWakeOutcome(wakeLedgerEntry{
+				SessionPath: sessionPath,
+				Claimant:    string(wakeClaimantPanel),
+				Outcome:     wakeResumed,
+				Reason:      "panel_resume owner=" + string(verdict.Owner),
+			})
+		}
 	}
 	if err := ctrl.SetInboxPaused(paused); err != nil {
 		return inboxWailsError(err)
