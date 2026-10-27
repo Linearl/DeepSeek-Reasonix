@@ -188,11 +188,12 @@ func withSessionLeaseContentionRetry[T any](acquire func() (T, error)) (T, error
 			if errors.Is(err, agent.ErrSessionLeaseHeld) {
 				// Task 272 G4: the retry loop used to give up silently — a
 				// lease that outlived the contention window (i.e. a real
-				// foreign holder) left no trace in desktop.log. Log it with the same content the user sees. tl 1201: also surface
-				// the canonical path as its own field — the holder text
-				// carries it only when the identity sidecar survived, and
-				// the 2026-10-27 17:03 burst was six sessions deep with no
-				// per-session field to tell them apart.
+				// foreign holder) left no trace in desktop.log. Log it with
+				// the same content the user sees.
+				// tl 1201: also surface the canonical path as its own field —
+				// the holder text carries it only when the identity sidecar
+				// survived, and the 2026-10-27 17:03 burst was six sessions
+				// deep with no per-session field to tell them apart.
 				args := []any{"attempts", attempt + 1, "holder", err.Error()}
 				var leaseErr *agent.SessionLeaseError
 				if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Path != "" {
