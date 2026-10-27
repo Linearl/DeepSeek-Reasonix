@@ -194,7 +194,12 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	// failed-receipt backoff holds forever. Observed provider usage keeps
 	// priority: it is the authoritative measurement the maintenance contract
 	// (issue 7935) is written against.
-	if policy.ObservedInputTokens <= 0 && a.sess.tailView.active() {
+	//
+	// tl1203: a stale-serving projection body is the same shape — the old fold
+	// shrinks the request payload while the canonical transcript is the size
+	// the rebuild must shrink, so the physical occupancy owns the thresholds
+	// here too (otherwise the forced stale rebuild parks with no pressure).
+	if policy.ObservedInputTokens <= 0 && (a.sess.tailView.active() || a.staleProjectionServing()) {
 		est = a.maintenanceOccupancyEstimate()
 		prepared.InputTokens = est
 	}
@@ -664,7 +669,11 @@ func (a *Agent) warnProjectionFallback(reason string, st CompactionState, est, w
 		return
 	}
 	a.sess.compaction.fallbackWarnAt = time.Now()
-	slog.Warn("agent: context view fell back to the full canonical transcript",
+	// tl1203: with a stale body in memory the wire serves the old fold over
+	// the canonical tail (never the full transcript), so the message names the
+	// episode instead of claiming a full-canonical fallback. The body-less
+	// shape (no_projection) still degrades per 任务719.
+	slog.Warn("agent: context projection invalid — fallback view serves the wire",
 		"reason", reason, "view_tokens", est, "window", window,
 		"projection_version", st.Projection.ProjectionVersion,
 		"prompt_cache_key", st.PromptCacheKey)

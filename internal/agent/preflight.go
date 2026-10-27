@@ -31,6 +31,17 @@ var ErrNoFoldableRegion = errors.New("context is above the maintenance threshold
 // unconditionally — once it outgrows the hard input ceiling the view degrades
 // to a bounded recent-tail window (boundedTailView), so the request cannot
 // overflow the window while compaction rebuilds the projection.
+//
+// tl1203: an unusable projection whose BODY is still in memory (content drift,
+// a lineage-mismatched sidecar) never falls back to the full canonical
+// transcript at all — the last projection keeps serving (its covered digest
+// plus the uncovered canonical tail, spliced by modelVisibleFromProjection)
+// while a background rebuild replaces it. No competitor falls back to the full
+// transcript after compaction either: codex physically rewrites the
+// transcript, zcode edits its SQLite store in place, DSH snapshot projections
+// never keep a full event stream to fall back to. Serving the stale fold is
+// the fail-open view; the full-canonical shape remains only for explicit
+// semantic invalidations (rewind clears the body) and body-less episodes.
 func (a *Agent) modelVisibleMessages() []provider.Message {
 	if a == nil || a.sess.conversation == nil {
 		return nil
@@ -48,6 +59,22 @@ func (a *Agent) modelVisibleMessages() []provider.Message {
 			// 任务719: the projection is authoritative again — forget the
 			// degraded-window evaluation so a later episode starts fresh.
 			a.sess.tailView.clear()
+			// tl1203: a valid projection ends the stale-serving episode; the
+			// next invalidation gets its own forced rebuild.
+			a.sess.staleRebuildArmed.Store(false)
+			return visible
+		}
+	}
+	// tl1203: stale-serving branch. The projection body is present but its
+	// covered-prefix check failed — serve the old fold over the CURRENT
+	// canonical tail instead of the full transcript. The splice is exactly the
+	// valid-path shape (covered digest, live system refresh, canonical
+	// messages past CoveredCount verbatim), so the only stale part is the
+	// summarized prefix — never the recent turns.
+	if len(st.Projection.Messages) > 0 {
+		if visible := modelVisibleFromProjection(st.Projection, msgs); len(visible) > 0 {
+			a.sess.tailView.clear()
+			a.kickStaleProjectionRebuild()
 			return visible
 		}
 	}
@@ -170,6 +197,8 @@ func (a *Agent) invalidateProjection(reason string) {
 	// first maintenance check warn immediately instead of waiting out the
 	// previous episode's throttle.
 	a.sess.compaction.fallbackWarnAt = time.Time{}
+	// tl1203: a new invalidation episode re-arms the forced stale rebuild.
+	a.sess.staleRebuildArmed.Store(false)
 	if path != "" {
 		if err := RemoveCompactionState(path); err != nil {
 			slog.Warn("agent: remove context projection", "err", err)
@@ -231,8 +260,41 @@ func (a *Agent) kickProjectionRebuild(reason string) {
 	if used < fold && !degraded {
 		return
 	}
-	if !a.sess.rebuildPending.CompareAndSwap(false, true) {
+	a.armRebuildEpisode(reason)
+}
+
+// kickStaleProjectionRebuild (tl1203) forces the background rebuild while a
+// stale projection body serves the wire. The pressure gates cannot arm it on
+// their own: the stale view sits far below the fold trigger, so
+// kickProjectionRebuild's `used < fold` gate would silently skip exactly the
+// episode this rebuild exists for. One forced episode per stale-serving
+// episode (staleRebuildArmed) — an episode that cannot converge hands back to
+// the normal track instead of re-summarizing an oversized canonical on every
+// request (the 978 finding: the bigger the canonical, the harder the summary).
+func (a *Agent) kickStaleProjectionRebuild() {
+	if a == nil || a.svc.prov == nil {
 		return
+	}
+	if a.compactTrigger() <= 0 {
+		return
+	}
+	if !a.sess.staleRebuildArmed.CompareAndSwap(false, true) {
+		return
+	}
+	if !a.armRebuildEpisode("stale_projection_serving") {
+		// A rebuild is already in flight — that episode IS this stale view's
+		// rebuild attempt. If it lands, the valid path clears the flag; if it
+		// fails, the episode stays consumed (no per-request re-summarizing).
+		return
+	}
+}
+
+// armRebuildEpisode arms the singleflight background rebuild goroutine
+// (任务549): rebuildPending deduplicates so a burst of invalidations queues
+// one episode, not one per trigger. Reports whether this call armed it.
+func (a *Agent) armRebuildEpisode(reason string) bool {
+	if !a.sess.rebuildPending.CompareAndSwap(false, true) {
+		return false
 	}
 	go func() {
 		defer a.sess.rebuildPending.Store(false)
@@ -291,6 +353,7 @@ func (a *Agent) kickProjectionRebuild(reason string) {
 		slog.Warn("agent: post-invalidation projection rebuild round budget exhausted — normal track continues",
 			"reason", reason, "rounds", projectionRebuildMaxRounds)
 	}()
+	return true
 }
 
 // projectionRebuildSettled reports whether the rebuild episode is over: a
@@ -400,10 +463,16 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		a.sess.compactionState = CompactionState{}
 		a.sess.checkpointState = "none"
 		a.sess.compactionMu.Unlock()
-		// Task 549: record every drop that forces the full-canonical fallback —
-		// a lineage change (model/workspace switch, upgrade) or a sidecar with
-		// no usable projection body. This was invisible before: the panel then
-		// showed canonical-level numbers with no trail to explain them.
+		// Task 549: record every drop that forces a rebuild — a lineage change
+		// (model/workspace switch, upgrade) or a sidecar with no usable
+		// projection body. This was invisible before: the panel then showed
+		// canonical-level numbers with no trail to explain them. tl1203 keeps
+		// the drop itself: a sidecar whose body cannot be verified against the
+		// transcript on FIRST LOAD never serves the wire — the background
+		// rebuild below, with the 任务719 tail view as the over-ceiling
+		// stopgap, owns the gap. The running-process stale-serving branch in
+		// modelVisibleMessages is the tl1203 fix; it only trusts bodies that
+		// this process folded itself.
 		reason := "no_maintenance_signal"
 		if !keyOK {
 			reason = "lineage_key_changed"
@@ -428,6 +497,9 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 	valid := len(st.Projection.Messages) > 0 && projectionValid(st, msgs)
 	if !valid && len(st.Projection.Messages) > 0 {
 		// Keep blocked receipts / telemetry; drop unusable projection body.
+		// tl1203: first-load bodies that fail verification still drop — the
+		// stale-serving branch only trusts folds this process installed. The
+		// kick below re-arms the background rebuild for the gap.
 		st.Projection = ContextProjection{}
 	}
 	a.sess.compactionState = st
@@ -443,8 +515,8 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 	}
 	a.sess.compactionMu.Unlock()
 	if !valid && len(st.Projection.Messages) == 0 {
-		// The sidecar carried receipts only (or an unusable body that was just
-		// dropped): the next view is full canonical until something folds.
+		// Receipts-only sidecars and dropped unusable bodies: the next view is
+		// the 任务719 degradation ladder until the background rebuild lands.
 		a.kickProjectionRebuild("projection_body_invalid")
 	}
 }

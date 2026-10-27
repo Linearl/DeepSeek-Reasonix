@@ -56,7 +56,15 @@ type sessionRuntime struct {
 	// dietPending deduplicates the 任务1114 overflow diet kick: one projection
 	// fallback episode arms at most one automatic strip+fold rewrite, the same
 	// way rebuildPending arms at most one summary rebuild.
-	dietPending     atomic.Bool
+	dietPending atomic.Bool
+	// staleRebuildArmed (tl1203) marks that the CURRENT stale-serving episode
+	// already consumed its one forced background rebuild. While an unusable
+	// projection body serves the wire, the view sits far below the fold
+	// trigger, so the pressure gates never arm a rebuild on their own; this
+	// flag gives the stale view exactly one forced episode. It clears when a
+	// valid projection serves again (preflight) or the lineage resets, so the
+	// next invalidation episode re-arms.
+	staleRebuildArmed atomic.Bool
 	compaction      compactionProgress
 	compactionState CompactionState
 	// 任务 1021: a compression SESSION spans every back-to-back pass of one
@@ -121,6 +129,9 @@ func (r *sessionRuntime) reset(s *Session) {
 	r.compaction.lastTurn.Store(0)
 	r.compactionSessionPass.Store(0) // 任务 1021: a new lineage starts a fresh session count
 	r.rebuildPending.Store(false)
+	// tl1203: a new conversation starts unarmed — the flag belongs to the
+	// replaced lineage's stale-serving episode, same as rebuildPending.
+	r.staleRebuildArmed.Store(false)
 	// 任务1114: a new conversation has no overflow diet in flight — the flag
 	// belongs to the replaced lineage's fallback episode, same as rebuildPending.
 	r.dietPending.Store(false)

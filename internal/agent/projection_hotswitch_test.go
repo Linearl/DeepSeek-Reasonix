@@ -220,7 +220,11 @@ func TestModelHotSwitchBackRestoresOriginalNamespace(t *testing.T) {
 
 // 任务638 acceptance 4: real content drift still fails closed — the view
 // falls back to the full canonical transcript (with or without a model
-// switch) and the namespace is NOT rewritten over a stale fold.
+// 任务638 acceptance 4 (as amended by tl1203): real content drift still fails
+// closed on the NAMESPACE — the cache key is never rewritten over a stale
+// fold, with or without a model switch, and the projection reports invalid —
+// but the WIRE is fail-open: the stale fold keeps serving (digest + uncovered
+// canonical tail) instead of falling back to the full canonical transcript.
 func TestModelHotSwitchStillFailsClosedOnContentDrift(t *testing.T) {
 	fx := newHotSwitchFixture(t)
 	a := fx.agent
@@ -230,12 +234,9 @@ func TestModelHotSwitchStillFailsClosedOnContentDrift(t *testing.T) {
 	a.sess.conversation.Messages[1].Content = "task-one-EDITED"
 
 	wire := a.modelVisibleMessages()
-	if len(wire) != len(fx.canonical) {
-		t.Fatalf("drifted wire len = %d, want the full canonical %d (fail closed)", len(wire), len(fx.canonical))
-	}
-	if wire[1].Content != "task-one-EDITED" {
-		t.Fatalf("wire[1] = %q, want the edited canonical turn", wire[1].Content)
-	}
+	// tl1203: the stale fold serves — sys + digest + the uncovered tail —
+	// never the 7-message canonical.
+	assertProjectedWire(t, wire, fx.canonical)
 	if got := a.sess.compactionState.PromptCacheKey; got != fx.baseKey {
 		t.Fatalf("key drifted to %q without a valid fold; want %q untouched", got, fx.baseKey)
 	}
@@ -247,8 +248,8 @@ func TestModelHotSwitchStillFailsClosedOnContentDrift(t *testing.T) {
 	if !a.SetSessionModelOverride("other/b", ModelOverrideExtras{}) {
 		t.Fatal("override declined")
 	}
-	if wire := a.modelVisibleMessages(); len(wire) != len(fx.canonical) {
-		t.Fatalf("drifted wire under switch len = %d, want full canonical", len(wire))
+	if wire := a.modelVisibleMessages(); len(wire) != 4 {
+		t.Fatalf("drifted wire under switch len = %d, want the stale 4-message projected view", len(wire))
 	}
 	if got := a.sess.compactionState.PromptCacheKey; got != fx.baseKey {
 		t.Fatalf("key rebound over stale content: %q, want %q", got, fx.baseKey)

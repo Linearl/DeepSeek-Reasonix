@@ -82,17 +82,39 @@ func (s *tailViewState) active() bool {
 // canonical transcript is the session's true size — the view only bounds the
 // request payload (任务719), so threshold decisions that read the clamped view
 // would never fire again. Otherwise the current view is authoritative.
+//
+// tl1203: a stale-serving projection body has the same shape — the old fold
+// keeps the request payload small, but the canonical transcript is the size
+// the rebuild actually has to shrink, so threshold decisions read the physical
+// occupancy while the stale body serves. Without this the forced stale rebuild
+// (kickStaleProjectionRebuild) arms an episode whose Prepare reads the tiny
+// stale view, finds no pressure, and parks ("no progress this round").
 func (a *Agent) maintenanceOccupancyEstimate() int {
 	if a == nil || a.sess.conversation == nil {
 		return 0
 	}
-	if a.sess.tailView.active() {
+	if a.sess.tailView.active() || a.staleProjectionServing() {
 		canonical, _ := a.sess.conversation.snapshotMessagesVersion()
 		if len(canonical) > 0 {
 			return a.estimatedVisibleRequestTokens(canonical)
 		}
 	}
 	return a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
+}
+
+// staleProjectionServing reports whether a projection body that fails its
+// covered-prefix check is currently serving the wire (tl1203): body present,
+// validation failed, so modelVisibleMessages returns the stale fold instead of
+// the canonical transcript.
+func (a *Agent) staleProjectionServing() bool {
+	if a == nil || a.sess.conversation == nil {
+		return false
+	}
+	msgs, _ := a.sess.conversation.snapshotMessagesVersion()
+	a.sess.compactionMu.Lock()
+	st := a.sess.compactionState
+	a.sess.compactionMu.Unlock()
+	return len(st.Projection.Messages) > 0 && !projectionValid(st, msgs)
 }
 
 // tailViewTarget is the content budget of the degraded view.
