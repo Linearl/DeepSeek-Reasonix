@@ -269,7 +269,26 @@ export function useTranscriptKernel({
     writer.freeze(false);
     const restored = kernel.replaceSurface(sessionKey);
     writer.attach(scrollRef.current, restored.generation);
-    if (restored.anchor.kind === "block") kernel.begin("restore", restored.anchor);
+    if (restored.anchor.kind === "block") {
+      kernel.begin("restore", restored.anchor);
+    } else {
+      // tl 1187: a restored tail anchor means "this surface owns the bottom",
+      // but until now nothing executed the landing — the write was left to
+      // downstream chains that do not always fire. The geometryRevision effect
+      // skips identical revision strings (two plain streaming sessions share
+      // one), the child remount's rAF dies on the generation gate (layout
+      // effects run child-first, so it was registered before replaceSurface
+      // bumped the generation), and the ResizeObserver needs a size change.
+      // With all three quiet the reused scroller kept its stale scrollTop
+      // while background growth moved the bottom — the reported second
+      // round-trip drift. Land the tail here, synchronously, the same way the
+      // block branch schedules its restore: through a kernel transaction and
+      // the single writer. A refused write (geometry not ready yet) re-arms
+      // the kernel's own rAF retry instead of dropping the request.
+      const transaction = kernel.begin("tail-sync", restored.anchor);
+      const landed = transaction ? kernel.correctAnchor(transaction, () => undefined) : false;
+      if (!landed) kernel.scheduleTailSync();
+    }
     refresh();
   }, [kernel, refresh, sessionKey, writer]);
 
