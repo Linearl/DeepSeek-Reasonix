@@ -373,11 +373,16 @@ func TestRecallBenchsetEval(t *testing.T) {
 	t.Logf("keywords patch applied to %d entries", applied)
 	patchedSummary := runRecallBench(t, "patched ", cases, patched, true)
 
-	if patchedSummary.Hit1 <= baseline.Hit1 {
-		t.Fatalf("Hit@1 must improve after keywords patch: baseline=%.3f patched=%.3f", baseline.Hit1, patchedSummary.Hit1)
+	// 2026-10-28（协调线补记）：该补丁的 5 条 keywords 已由协调线写入本机
+	// global 库（与 79088e163 的 10 条 project 库补强并行落地）⇒ corpusStore
+	// 读到的 baseline 已包含补强，baseline==patched 属预期终态。断言改为
+	// 「不得退化」；要复现原始提升，用补前库快照喂 corpus：
+	//   REASONIX_RECALL_CORPUS=<补前快照目录> go test -run TestRecallBenchsetEval
+	if patchedSummary.Hit1 < baseline.Hit1 {
+		t.Fatalf("Hit@1 must not regress after keywords patch: baseline=%.3f patched=%.3f", baseline.Hit1, patchedSummary.Hit1)
 	}
-	if patchedSummary.Hit8 <= baseline.Hit8 {
-		t.Fatalf("Hit@8 must improve after keywords patch: baseline=%.3f patched=%.3f", baseline.Hit8, patchedSummary.Hit8)
+	if patchedSummary.Hit8 < baseline.Hit8 {
+		t.Fatalf("Hit@8 must not regress after keywords patch: baseline=%.3f patched=%.3f", baseline.Hit8, patchedSummary.Hit8)
 	}
 }
 

@@ -13,17 +13,17 @@ import (
 // CI/新环境无该库时显式 Skip（有意的环境依赖，不是构造失败的静默跳过）。
 // 判据只消费 searchMemories（recall.go），不触碰 BM25Score/Tokens/floor（卡验收5）。
 
-type recallBenchCase struct {
+type recallBench1210Case struct {
 	ID      string   `json:"id"`
 	Query   string   `json:"query"`
 	Expects []string `json:"expects"`
 	Note    string   `json:"note"`
 }
 
-type recallBenchFile struct {
+type recallBench1210File struct {
 	Version int               `json:"version"`
 	Note    string            `json:"note"`
-	Cases   []recallBenchCase `json:"cases"`
+	Cases   []recallBench1210Case `json:"cases"`
 }
 
 func TestRecallBench1210Baseline(t *testing.T) {
@@ -31,7 +31,7 @@ func TestRecallBench1210Baseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bench data: %v", err)
 	}
-	var bf recallBenchFile
+	var bf recallBench1210File
 	if err := json.Unmarshal(raw, &bf); err != nil {
 		t.Fatalf("parse bench data: %v", err)
 	}
