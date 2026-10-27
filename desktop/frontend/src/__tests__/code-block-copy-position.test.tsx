@@ -60,8 +60,14 @@ ok(copy?.parentElement === wrap, "copy button is a wrapper child");
 notOk(pre?.contains(copy ?? null), "copy button is outside the scrollable pre");
 ok(copy?.previousElementSibling === pre, "copy button follows pre as a sibling");
 
-const stylesPath = fileURLToPath(new URL("../styles.css", import.meta.url));
-const css = readFileSync(stylesPath, "utf8");
+// tl1191: mode-scoped rules (creation code-block variants) live in
+// src/styles/mode-*.css now.
+const css = [
+  "../styles.css",
+  "../styles/mode-classic.css",
+  "../styles/mode-workbench.css",
+  "../styles/mode-creation.css",
+].map((p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8")).join("\n");
 
 ok(selectorPresent(css, ".code-block__wrap:hover .code-block__copy"), "hover reveal targets the wrapper");
 notOk(selectorPresent(css, ".code:hover .code-block__copy"), "hover reveal no longer depends on pre descendants");
