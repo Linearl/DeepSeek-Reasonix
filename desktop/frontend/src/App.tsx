@@ -4711,12 +4711,15 @@ export default function App() {
   }), [enqueueNavigationWithIntent, noteNavigationIntent, showToast, t]);
 
   const onResumeSession = useCallback((session: SessionMeta): Promise<void> => {
-    // Split view (task 70, D): with a split open, a turn running in one pane must not
-    // freeze navigation in the other — the write that turn reserved is scoped to its
-    // own tab, so moving the other pane elsewhere is safe.
-    if (state.running && !singleSurfaceLayout && !splitTabId) return Promise.resolve();
+    // tl 1189：有 turn 在跑时点击会话卡片/命令面板不再被静默吞掉。早先的
+    // running 闸（task 70, D 只放开了 split 场景）在经典布局无 split 时依旧
+    // 生效，点击毫无反馈——用户无法区分「没反应」和「坏了」。放行是安全的：
+    // 后端打开本就幂等（目标已有 tab 原地激活，该 tab 自己的 turn 继续跑；
+    // 没有 tab 则新建），turn 的写预留按 tab 隔离，切走不产生写冲突；失败
+    // 路径全部落导航队列 catch 的可见 toast（failedOpenProject/failedOpen
+    // Session 等），不再有静默分支。单表面布局此前也不设此闸。
     return enqueueNavigation({ kind: "resume-session", session });
-  }, [enqueueNavigation, singleSurfaceLayout, state.running, splitTabId]);
+  }, [enqueueNavigation]);
 
   const onRecoveryCreated = useCallback(() => {
     bumpProjectRevision();
