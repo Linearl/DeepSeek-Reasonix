@@ -19,14 +19,17 @@ type policyWindowProvider struct {
 func (p *policyWindowProvider) ContextBudgetPolicy() provider.ContextBudgetPolicy { return p.policy }
 
 func TestAdmitOutputBudgetClipsIssue8909AndScreenshot(t *testing.T) {
+	// tl 1190 L0: want = window − est − reserve(8192) − safetyMargin(max(est×10%, 8192)).
+	// issue8909: 1048576 − 810882 − 8192 − 81088 = 148414.
+	// screenshot: 1048576 − 917189 − 8192 − 91718 = 31477.
 	cases := []struct {
 		name      string
 		prompt    int
 		requested int
 		want      int
 	}{
-		{name: "issue8909", prompt: 810_882, requested: 354_469, want: 229_502},
-		{name: "screenshot", prompt: 917_189, requested: 245_760, want: 123_195},
+		{name: "issue8909", prompt: 810_882, requested: 354_469, want: 148_414},
+		{name: "screenshot", prompt: 917_189, requested: 245_760, want: 31_477},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -63,13 +66,49 @@ func TestAdmitOutputBudgetUsesOfficialAutoWhenConfigIsZero(t *testing.T) {
 	if err := a.applyAdmissionToRequest(&req); err != nil {
 		t.Fatal(err)
 	}
-	if req.MaxTokens != 229_502 {
-		t.Fatalf("auto official clip = %d, want 229502", req.MaxTokens)
+	if req.MaxTokens != 148_414 {
+		t.Fatalf("auto official clip = %d, want 148414", req.MaxTokens)
 	}
 }
 
-func TestAdmitOutputBudgetOmitsWhenSafeHasRoom(t *testing.T) {
-	prov := &policyWindowProvider{policy: provider.ContextBudgetPolicy{
+// tl 1190 验收① (L0): the 2026-10-27 deepseek shape — the local estimate
+// undershoots the provider's real prompt count by ~10%, so admission must clip
+// the completion cap by the safety margin and the request that leaves must
+// STILL fit the window under the provider's own arithmetic.
+func TestAdmissionSafetyMarginAbsorbsTenPercentUnderestimate(t *testing.T) {
+	const realPrompt = 737_203 // what the provider reported in the incident
+	est := realPrompt * 10 / 11 // int(737203/1.1) = 670184, pure integer math
+	prov := &sharedWindowTestProvider{budget: 360_660, shared: true}
+	a := &Agent{
+		agentConfig: agentConfig{contextWindow: 1_048_576},
+		svc:         agentServices{prov: prov},
+		sess:        sessionRuntime{output: outputBudgetState{outputBudget: 360_660}},
+	}
+	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("x", 2_600_000)}}
+	// Calibrate the estimator to read exactly real/1.1 — a 10% underestimate
+	// (the incident measured ~8.5%; 10% is the acceptably-worse bound).
+	shape := requestCalibrationShapeOf(provider.Request{Messages: msgs})
+	a.setPromptTokenCalibration(est, shape)
+	adm, err := a.admitOutputBudget(provider.Request{Messages: msgs, MaxTokens: 360_660})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adm.PromptTokens != est {
+		t.Fatalf("estimator read %d, want the calibrated %d", adm.PromptTokens, est)
+	}
+	// effective = window − est − reserve(8192) − margin(est×10%); with est just
+	// under real×10/11 the margin absorbs the whole bias up to window−real−reserve.
+	want := 1_048_576 - 670_184 - 8_192 - 67_018 // = 303182
+	if !adm.Clipped || adm.EffectiveOutputTokens != want || adm.PhysicalRemaining != want {
+		t.Fatalf("adm=%+v, want clipped %d (margin-absorbed)", adm, want)
+	}
+	if adm.EffectiveOutputTokens+realPrompt > 1_048_576 {
+		t.Fatalf("admission would send a doomed request: %d + real %d > window %d",
+			adm.EffectiveOutputTokens, realPrompt, 1_048_576)
+	}
+}
+
+func TestAdmitOutputBudgetOmitsWhenSafeHasRoom(t *testing.T) {	prov := &policyWindowProvider{policy: provider.ContextBudgetPolicy{
 		WindowMode:       provider.ContextWindowShared,
 		AutoOutputTokens: provider.DeepSeekMaxOutputTokens,
 		MaxOutputTokens:  provider.DeepSeekMaxOutputTokens,

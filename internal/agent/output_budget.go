@@ -30,6 +30,93 @@ var learnedOutputBudgetCache = struct {
 	entries map[string]learnedOutputBudgetCacheEntry
 }{entries: make(map[string]learnedOutputBudgetCacheEntry)}
 
+// tl 1190 L2: provider-level prompt-estimation correction. Every trusted
+// ContextLimitError carries the provider's exact prompt count; the ratio
+// real/local-estimate is folded into an EWMA keyed by the provider instance
+// name and applied to later COLD estimates on that provider (see
+// estimatedShapeTokens — a session-calibrated estimate already carries the
+// provider's own measurement and must not stack the factor). Keying IS the
+// reset semantics the task asks for: switching provider (or model route) reads
+// a different key — no factor bleeds across. The factor only grows on fresh
+// provider evidence (ratio > 1 updates; a success re-measures the estimate
+// WITH the factor already inside it, so it carries no unbiased signal and
+// must not decay it) and is clamped to [1, 4] so one corrupt reply cannot
+// price a session out of its window. In-memory, 24h TTL — same lifetime
+// contract as the learned output budget above.
+const (
+	promptCorrectionEWMAAlpha = 0.5
+	promptCorrectionFactorMin = 1.0
+	promptCorrectionFactorMax = 4.0
+	promptCorrectionTTL       = 24 * time.Hour
+)
+
+type promptCorrectionEntry struct {
+	factor    float64
+	expiresAt time.Time
+}
+
+var promptCorrectionCache = struct {
+	sync.Mutex
+	entries map[string]promptCorrectionEntry
+}{entries: make(map[string]promptCorrectionEntry)}
+
+// noteProviderPromptCorrection records one trusted overflow observation:
+// real is the provider-reported prompt count, estimated our local estimate of
+// the same request. Ratios at or below 1 are ignored — the estimator did not
+// undershoot, so there is nothing to correct.
+func noteProviderPromptCorrection(providerName string, real, estimated int) {
+	if strings.TrimSpace(providerName) == "" || real <= 0 || estimated <= 0 {
+		return
+	}
+	ratio := float64(real) / float64(estimated)
+	if ratio <= promptCorrectionFactorMin {
+		return
+	}
+	now := time.Now()
+	promptCorrectionCache.Lock()
+	defer promptCorrectionCache.Unlock()
+	factor := ratio
+	if cur, ok := promptCorrectionCache.entries[providerName]; ok && cur.expiresAt.After(now) && cur.factor > 0 {
+		factor = cur.factor*(1-promptCorrectionEWMAAlpha) + ratio*promptCorrectionEWMAAlpha
+	}
+	promptCorrectionCache.entries[providerName] = promptCorrectionEntry{
+		factor:    min(max(factor, promptCorrectionFactorMin), promptCorrectionFactorMax),
+		expiresAt: now.Add(promptCorrectionTTL),
+	}
+}
+
+func promptCorrectionFactor(providerName string) float64 {
+	if strings.TrimSpace(providerName) == "" {
+		return 1
+	}
+	now := time.Now()
+	promptCorrectionCache.Lock()
+	defer promptCorrectionCache.Unlock()
+	cur, ok := promptCorrectionCache.entries[providerName]
+	if !ok {
+		return 1
+	}
+	if !cur.expiresAt.After(now) {
+		delete(promptCorrectionCache.entries, providerName)
+		return 1
+	}
+	return cur.factor
+}
+
+// requestProviderName names the destination serving the next request — the
+// L2 correction cache key. Follows providerForRequest so a hot model switch
+// re-keys the factor exactly when the wire destination changes.
+func (a *Agent) requestProviderName() string {
+	if a == nil {
+		return ""
+	}
+	dest := a.providerForRequest()
+	if nilutil.IsNil(dest) {
+		return ""
+	}
+	return strings.TrimSpace(dest.Name())
+}
+
 type outputBudgetState struct {
 	outputBudget int
 	// lastUsage caches the latest provider telemetry for per-turn readouts.
@@ -437,7 +524,19 @@ func (a *Agent) estimatedShapeTokens(shape requestCalibrationShape) int {
 	} else {
 		text = int(float64(shape.requestChars) * fallbackTokPerChar)
 	}
-	return text + shape.imageTokens
+	total := text + shape.imageTokens
+	// tl 1190 L2: the provider-level EWMA correction from trusted overflows
+	// rides on the COLD estimate only. The session calibration is measured on
+	// this same provider's usage — stacking the factor on top of it would
+	// double-count (a calibrated-to-real estimate ×4 priced a 1M view at 4.2M
+	// in the incident replay). A calibrated estimate needs no provider-level
+	// bias correction; a cold one does.
+	if _, calibrated := a.calibratedPromptTokens(shape); !calibrated {
+		if factor := promptCorrectionFactor(a.requestProviderName()); factor > 1 {
+			total = int(math.Ceil(float64(total) * factor))
+		}
+	}
+	return total
 }
 
 func isCJKRune(r rune) bool {
@@ -573,7 +672,7 @@ func (a *Agent) effectiveOutputBudget(req provider.Request) (int, bool, error) {
 }
 
 func (a *Agent) admitOutputBudget(req provider.Request) (contextAdmission, error) {
-	return a.admitOutputBudgetWithReserve(req, outputBudgetReserveForWindow(a.effectiveContextWindow()), false)
+	return a.admitOutputBudgetWithReserve(req, outputBudgetReserveForWindow(a.effectiveContextWindow()), false, true)
 }
 
 // outputBudgetReserveForWindow preserves the original safety ratio: the 8K
@@ -587,19 +686,40 @@ func outputBudgetReserveForWindow(window int) int {
 	return min(outputBudgetReserve, max(minOutputBudgetReserve, window/128))
 }
 
+// tl 1190 L0 (2026-10-27 deepseek incident): the estimator's residual bias is
+// absorbed by a proportional margin instead of flowing 1:1 into the output
+// cap. The incident's cold estimate undershot the provider's real prompt count
+// by ~8.5% (679,724 local vs 737,203 real); admission clipped max_tokens to
+// exactly window−est−reserve, so the whole estimation error landed on the
+// wire and the request 400'd. The margin is max(est×10%, reserve): floored at
+// the window-scaled protocol reserve — 8192 on the incident's 1M window,
+// scaling down with small windows exactly like outputBudgetReserveForWindow
+// (a flat 8192 floor would tax a 20K window at 41% and churn compaction).
+const contextSafetyMarginRatio = 0.10
+
+func contextSafetyMargin(est, reserve int) int {
+	return max(int(float64(est)*contextSafetyMarginRatio), reserve)
+}
+
 // admitSummaryOutputBudget uses the summary request's dedicated protocol
 // reserve instead of the ordinary-turn reserve. Unknown gateways are treated
 // as shared when an effective window exists: summary planning already makes
 // that conservative assumption, so execution must enforce the same contract.
+// tl 1190: the summary path deliberately KEEPS the pre-1190 arithmetic (no
+// proportional safety margin) — its input is pre-planned by the fold ladder
+// (summaryInputBudget / 任务 1003 pre-fold / slim rung), and a margin here
+// would refuse the slim rung locally before the provider ever sees it — the
+// one rung dense-tokenizer overflows recover through
+// (TestUnnumberedSummaryOverflowSkipsReplanToTranscript pins this).
 func (a *Agent) admitSummaryOutputBudget(req provider.Request) (contextAdmission, error) {
-	return a.admitOutputBudgetWithReserve(req, protocolReserveTokens, true)
+	return a.admitOutputBudgetWithReserve(req, protocolReserveTokens, true, false)
 }
 
 func shouldUseSharedWindowForAdmission(mode provider.ContextWindowMode, observedWindow int, conservativeUnknown bool) bool {
 	return mode == provider.ContextWindowUnknown && (observedWindow > 0 || conservativeUnknown)
 }
 
-func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens int, conservativeUnknown bool) (contextAdmission, error) {
+func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens int, conservativeUnknown bool, applySafetyMargin bool) (contextAdmission, error) {
 	adm := contextAdmission{
 		ReserveTokens: reserveTokens,
 		LastRecovery:  a.lastAdmission().LastRecovery,
@@ -644,7 +764,16 @@ func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens
 	}
 	est := a.estimatedRequestTokens(req)
 	adm.PromptTokens = est
-	physical := window - est - reserveTokens
+	// tl 1190 L0: the send-time cap is window − est − reserve − safetyMargin.
+	// A cold estimate that undershoots the provider tokenizer (the incident:
+	// −8.5%) used to consume the margin 1:1; now the margin is explicit and
+	// the estimated error must exceed it before a request can overflow. The
+	// summary admission opts out (see admitSummaryOutputBudget).
+	safety := 0
+	if applySafetyMargin {
+		safety = contextSafetyMargin(est, reserveTokens)
+	}
+	physical := window - est - reserveTokens - safety
 	adm.PhysicalRemaining = physical
 	shared := policy.WindowMode == provider.ContextWindowShared
 	if !shared {

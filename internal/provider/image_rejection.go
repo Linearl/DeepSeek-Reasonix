@@ -29,7 +29,17 @@ func AnnotateInlineImageRejection(err error, hasInlineDataImages bool) error {
 	if apiErr.Hint != "" {
 		return err
 	}
-	annotated := *apiErr
-	annotated.Hint = "The rejected request carried inline image data (image_url with a data: URL). Some OpenAI-compatible endpoints accept image parts only as public http(s) URLs and reject base64 data URLs with an opaque 400 like this one. If this endpoint is one of them: set vision = false in this model's model_overrides so attachments and view_image fall back to the image-understanding channel, or use an endpoint that accepts inline base64 images."
-	return &annotated
+	// tl 1190 (2026-10-27 deepseek incident): annotate the APIError IN PLACE
+	// and return the original error untouched. The old copy-and-return turned
+	// the error into a bare *APIError, stripping the trusted wrapper the retry
+	// layer had just attached (ContextLimitError carrying the provider's four
+	// exact token numbers — SendWithRetry parses the overflow body and returns
+	// it early). On a request that carried data-URL images every parsed
+	// overflow lost its numbers at this line: the agent's context recovery saw
+	// a generic 400, never fired, and each turn died on its first attempt
+	// (desktop.log.1 12:01–12:04: 6 turns, 1 request each, 0 recoveries).
+	// Setting Hint on the shared APIError keeps every wrapper intact for
+	// AsContextLimitError / AsOutputLimitError.
+	apiErr.Hint = "The rejected request carried inline image data (image_url with a data: URL). Some OpenAI-compatible endpoints accept image parts only as public http(s) URLs and reject base64 data URLs with an opaque 400 like this one. If this endpoint is one of them: set vision = false in this model's model_overrides so attachments and view_image fall back to the image-understanding channel, or use an endpoint that accepts inline base64 images."
+	return err
 }
