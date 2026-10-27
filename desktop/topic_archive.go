@@ -50,7 +50,7 @@ func markTopicArchiveForceable(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, errTopicHasActiveWork) || errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, agent.ErrSessionLeaseHeld) {
+	if errors.Is(err, errTopicHasActiveWork) || errors.Is(err, errSessionBusyElsewhere) || errors.Is(err, errSessionBusyZombie) || errors.Is(err, agent.ErrSessionLeaseHeld) {
 		return &topicArchiveForceableError{cause: err}
 	}
 	return err

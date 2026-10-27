@@ -790,7 +790,7 @@ func runAgent(args []string, version string) int {
 	// resumed path is already held, making this a no-op.
 	if err := rebindCLIControllerAuthority(leases, ctrl); err != nil {
 		_ = cliReturnFailedTakeover(takeoverBinding, leases, takeoverManager)
-		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseHintFor(err))
 		return 1
 	}
 	if takeoverBinding != nil {
@@ -987,7 +987,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	if *resume != "" {
 		if err := leases.Rebind(*resume); err != nil {
 			if errors.Is(err, agent.ErrSessionLeaseHeld) {
-				fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
+				fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseHintFor(err))
 			} else {
 				fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 			}
@@ -1031,7 +1031,7 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 	// Fresh sessions take the lease too (defensive: the path is brand new); a
 	// resumed path is already held, making this a no-op.
 	if err := rebindCLIControllerAuthority(leases, ctrl); err != nil {
-		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseHintFor(err))
 		return 1
 	}
 
@@ -1267,7 +1267,7 @@ func chatREPL(args []string, version string) int {
 	// resumed path is already held, making this a no-op.
 	if err := rebindCLIControllerAuthority(leases, ctrl); err != nil {
 		_ = cliReturnFailedTakeover(takeoverBinding, leases, takeoverManager)
-		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseCloseHint)
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, control.SessionInUseMessage(err)+"; "+control.SessionLeaseHintFor(err))
 		return 1
 	}
 	reclaimCLIRecoveryBranches(ctrl.SessionDir())
