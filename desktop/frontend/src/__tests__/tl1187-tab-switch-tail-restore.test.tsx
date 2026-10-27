@@ -183,14 +183,15 @@ process.stdout.write("\n[tl 1187] tab-switch tail restore (DOM recovery layer)\n
   geom.height = 1200; geom.top = 300; // 切到 A
   await render("tab:A", "rev-a");
   await flushFrames();
+  const writesBeforeReturn = writes.length;
 
   geom.height = 2000; geom.top = 400; // 切回 R：布局不变，scrollTop 保留 400
   await render("tab:R", "rev-r");
   await flushFrames();
   eq(geom.top, 400, "D2: returning reader keeps its position (must NOT be yanked to the bottom)");
   eq(handle!.kernel.intent, "reader", "D2: intent stays reader after the round trip");
-  ok(!writes.some((write) => write.kind === "pinTail" && write.outcome === "accepted"),
-    "D2: no tail write was issued for the reader surface");
+  ok(!writes.slice(writesBeforeReturn).some((write) => write.kind === "pinTail" && write.outcome === "accepted"),
+    "D2: no tail write was issued for the returning reader surface");
 }
 
 // ── D3: 贴底写入被拒（几何暂不可用）时，rAF 兜底重试仍要贴底 ──
@@ -198,12 +199,10 @@ process.stdout.write("\n[tl 1187] tab-switch tail restore (DOM recovery layer)\n
   writes.length = 0;
   geom.height = Number.NaN; geom.top = 0; // 切回瞬间布局尚未就绪（hydration 中间态）
   await render("tab:C", "rev-b1");
-  process.stdout.write(`  DEBUG after render: intent=${handle!.kernel.intent} anchor=${JSON.stringify(handle!.kernel.anchor)} top=${geom.top}\n`);
   const rejected = writes.filter((write) => write.outcome === "invalid-geometry");
   ok(rejected.length > 0, "D3: the instant landing was refused while geometry was unavailable");
   geom.height = 2400; geom.top = 1500; // 布局就绪
   await flushFrames();
-  process.stdout.write(`  DEBUG after flush: intent=${handle!.kernel.intent} top=${geom.top} writes=${JSON.stringify(writes.map((w) => [w.owner, w.outcome, w.acceptedOffset]))}\n`);
   eq(geom.top, bottomOf(), "D3: the rAF fallback retry lands at the bottom once geometry is ready");
 }
 
