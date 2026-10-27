@@ -176,6 +176,18 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
 	if a.effectiveContextWindow() <= 0 || len(visible) == 0 {
 		return prepared, nil
 	}
+	// 任务 1183: when the provider's own usage anchors the context size, the
+	// trigger judges on that real count instead of the local estimate — the
+	// estimate's ~7% undershoot (tokenizer, image and tool-definition drift)
+	// let sessions ride past the configured ratio. Every threshold below (fold
+	// trigger, hard ceiling, rescue eligibility) reads this one value; without
+	// a trusted baseline the estimate stands exactly as before. The 978
+	// early-fold line below keeps reshaping `fold` only — threshold geometry
+	// and measurement caliber are orthogonal.
+	if obs, ok := a.observedContextTokens(visible); ok {
+		est = obs
+		prepared.InputTokens = est
+	}
 	fold := a.compactTrigger()
 	hard := a.hardInputCeiling()
 	// 任务978（实验开关默认关）：回退全量态把触发线前移到 0.60×窗口，让投影
