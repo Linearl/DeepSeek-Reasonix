@@ -173,12 +173,21 @@ func (a *App) sessionHasLiveRuntimeForPath(sessionPath string) bool {
 	return a.canWakeSession(sessionPath).RuntimeLive
 }
 
-// wakeLiveCtrlForSessionPath 返回该会话已发布控制器（跨可见 tab 与 detached
-// runtime 扫描）。供触发源在问过仲裁层之后取用责任方的控制器——直接读
-// tab.Ctrl 在触发源里被源码守卫禁止。
-func (a *App) wakeLiveCtrlForSessionPath(sessionPath string) control.SessionAPI {
-	ctrl, _ := a.dormantWakeCtrlForSessionPath(sessionPath)
-	return ctrl
+// wakeTabRuntimeLive 是仲裁层的 per-tab 臂：这张表面（非 removed）是否持有活
+// runtime（Ctrl 已发布或构建在飞）。恢复链③作用在具体 tab 上（tab 可以还没有
+// SessionPath），问的是「这张表面的 runtime 活不活」，与路径臂同判据（1185
+// 语义），同在本文件单点定义。
+func wakeTabRuntimeLive(tab *WorkspaceTab) bool {
+	return tab != nil && !tab.removed && (tab.Ctrl != nil || tab.buildCancel != nil)
+}
+
+// wakeTabLiveCtrl 是 per-tab 臂的取用器：触发源从仲裁层拿已发布控制器，
+// 不直接读 tab.Ctrl（源码守卫钉住）。
+func wakeTabLiveCtrl(tab *WorkspaceTab) control.SessionAPI {
+	if !wakeTabRuntimeLive(tab) {
+		return nil
+	}
+	return tab.Ctrl
 }
 
 // dormantWakeCtrlForSessionPath returns the published controller bound to

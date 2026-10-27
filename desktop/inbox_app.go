@@ -514,14 +514,18 @@ func (a *App) SetInboxPaused(tabID string, paused bool) error {
 		return err
 	}
 	if !paused {
-		if sessionPath := strings.TrimSpace(ctrl.SessionPath()); sessionPath != "" {
-			verdict := a.canWakeSession(sessionPath)
-			a.recordWakeOutcome(wakeLedgerEntry{
-				SessionPath: sessionPath,
-				Claimant:    string(wakeClaimantPanel),
-				Outcome:     wakeResumed,
-				Reason:      "panel_resume owner=" + string(verdict.Owner),
-			})
+		// 会话路径经窄接口取（部分测试桩不实现 SessionPath，缺了就跳过问询，
+		// 动作照旧）。
+		if sp, ok := ctrl.(interface{ SessionPath() string }); ok {
+			if sessionPath := strings.TrimSpace(sp.SessionPath()); sessionPath != "" {
+				verdict := a.canWakeSession(sessionPath)
+				a.recordWakeOutcome(wakeLedgerEntry{
+					SessionPath: sessionPath,
+					Claimant:    string(wakeClaimantPanel),
+					Outcome:     wakeResumed,
+					Reason:      "panel_resume owner=" + string(verdict.Owner),
+				})
+			}
 		}
 	}
 	if err := ctrl.SetInboxPaused(paused); err != nil {

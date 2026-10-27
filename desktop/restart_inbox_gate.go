@@ -83,8 +83,8 @@ func inboxRestartGateUp(snap sessioninbox.InboxSnapshot) bool {
 // publication path as the 254/49-A2 resume family, AFTER them: a roster
 // resume that already cleared the pause makes the gate-shape probe below a
 // no-op, so the two chains compose without double settle or double notice.
-// 任务1206（开轮仲裁 SSOT）：清门前问仲裁层——runtime 活性/责任方由
-// canWakeSession 单点判定（tab.Ready/tab.Ctrl 直读已废，源码守卫钉住）；
+// 任务1206（开轮仲裁 SSOT）：清门前问仲裁层——runtime 活性由 per-tab 臂
+// wakeTabRuntimeLive 单点判定（tab.Ready/tab.Ctrl 直读已废，源码守卫钉住）；
 // 构建未发布时不清不踢，构建完成的 runtime:rebuilt kick 是那条时间线上
 // 的负责人。时机未变：仍是恢复点同位、dial 内判、709 原语清门。
 func (a *App) autoContinueInboxGateForTab(tab *WorkspaceTab) {
@@ -105,14 +105,10 @@ func (a *App) autoContinueInboxGateForTab(tab *WorkspaceTab) {
 	if a.autonomousUpdateResumeMode() == "off" {
 		return
 	}
-	// 任务1206：问仲裁层——「可开轮?谁负责」。runtime 未活（skeleton/构建在飞）
-	// 或路径不可寻址时不清不踢：此处的 kick 只会踢空，责任在那条时间线的
-	// 构建完成 kick（notifyTabRuntimeRebuiltAtEpoch）。
-	verdict := a.canWakeSession(sessionPath)
-	if !verdict.RuntimeLive {
-		return
-	}
-	ctrl := a.wakeLiveCtrlForSessionPath(sessionPath)
+	// 任务1206：问仲裁层（per-tab 臂）——「可开轮?谁负责」。runtime 未活
+	// （skeleton/构建在飞）时不清不踢：此处的 kick 只会踢空，责任在那条
+	// 时间线的构建完成 kick（notifyTabRuntimeRebuiltAtEpoch）。
+	ctrl := wakeTabLiveCtrl(tab)
 	if ctrl == nil {
 		return
 	}
