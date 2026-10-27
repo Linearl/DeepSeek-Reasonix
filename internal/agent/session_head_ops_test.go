@@ -9,6 +9,7 @@ import (
 )
 
 func TestForkHeadStartsANewHeadAndKeepsTheOldChain(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1", "q2", "a2")
 	msgs := s.Snapshot()
@@ -59,6 +60,7 @@ func TestForkHeadStartsANewHeadAndKeepsTheOldChain(t *testing.T) {
 }
 
 func TestSwitchHeadMovesTheSessionBackAndForth(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	fork, err := s.ForkHead(path, s.Snapshot()[1].ID, HeadKindRewind, "")
@@ -98,6 +100,7 @@ func TestSwitchHeadMovesTheSessionBackAndForth(t *testing.T) {
 }
 
 func TestHeadMarkersOnDiskSelectRetireRename(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	fork, err := s.ForkHead(path, s.Snapshot()[1].ID, HeadKindFork, "side")
@@ -155,6 +158,7 @@ func TestHeadOperationsRefuseSchemaOneSessions(t *testing.T) {
 }
 
 func TestHeadListMarksCoveredHeads(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	fork, err := s.ForkHead(path, s.Snapshot()[2].ID, HeadKindFork, "")

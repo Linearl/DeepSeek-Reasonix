@@ -44,6 +44,7 @@ func headsByKind(t *testing.T, path string) (main, other SessionHead) {
 }
 
 func TestAppendForShutdownWithoutLockKeepsTailOnFreshHead(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "q2"})
@@ -101,6 +102,7 @@ func TestAppendForShutdownWithoutLockKeepsTailOnFreshHead(t *testing.T) {
 }
 
 func TestAppendForShutdownWithoutLockAfterTornTail(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "q2"})
@@ -153,6 +155,7 @@ func TestAppendForShutdownWithoutLockAfterTornTail(t *testing.T) {
 }
 
 func TestAppendForShutdownWithoutLockWritesMarkersOnTheSameHead(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1")
 	if !s.QueueTurnBegin("turn-1", false) {
@@ -278,6 +281,7 @@ func TestReplayPastTornLineBetweenEntriesTerminates(t *testing.T) {
 }
 
 func TestRotationCarriesAppendsThatLandedDuringReplace(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	st := dagReplay(t, path)
@@ -301,6 +305,7 @@ func TestRotationCarriesAppendsThatLandedDuringReplace(t *testing.T) {
 }
 
 func TestUnlockedAppendWaitsForRotationMarkerThenReappends(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	dagSavedSession(t, path, "q1", "a1")
 	st := dagReplay(t, path)

@@ -15,6 +15,7 @@ import (
 // — it never uses it to decide what to append — so the baseline value stands in
 // while the transcript is unchanged, and must not once it moves.
 func TestSnapshotDigestReusesPersistedBaselineForSchemaTwo(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	s := NewSession("system")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "task"})

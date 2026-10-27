@@ -20,12 +20,30 @@ const (
 	dagRouteUpgrade
 )
 
-// SessionLogSchemaEnv is the emergency switch back to the schema-1 writer for
-// sessions that have not been upgraded yet; upgraded logs stay schema 2.
+// SessionLogSchemaEnv overrides the writer route for sessions that do not
+// carry a DAG log yet: "v1" forces the schema-1 flat writer, "v2" forces the
+// DAG writer (tests, and an escape hatch while the DAG route is being
+// retired). An unset or unknown value follows the build default below. Logs
+// that already carry a DAG entry stay schema 2 regardless of this variable.
 const SessionLogSchemaEnv = "REASONIX_SESSION_LOG"
 
+// defaultNewSessionDAGWriter is the build default for sessions without a DAG
+// log yet. tl-1173 P1 (DAG 退役开关化第一步) flips it to false: brand-new and
+// bare-checkpoint sessions stay on the schema-1 flat writer, while any log
+// that already carries a DAG entry keeps its native route forever (the
+// probe.dag branch in dagSaveRoute runs before this switch). Existing DAG
+// sessions keep loading and appending unchanged; the rollback is one line —
+// flip this constant back to true and new sessions upgrade on lease again.
+const defaultNewSessionDAGWriter = false
+
 func dagWriterEnabled() bool {
-	return os.Getenv(SessionLogSchemaEnv) != "v1"
+	switch os.Getenv(SessionLogSchemaEnv) {
+	case "v1":
+		return false
+	case "v2":
+		return true
+	}
+	return defaultNewSessionDAGWriter
 }
 
 // probeLogForSave classifies the event log for a save, refusing a schema this
@@ -47,10 +65,13 @@ func probeLogForSave(path string) (sessionEventLogProbe, error) {
 	return probe, nil
 }
 
-// dagSaveRoute decides whether a save runs on the schema-2 path. An existing
-// schema-1 log is only upgraded by the lease holder; a session with no log
-// yet (new, or a bare checkpoint) starts schema 2 unless another runtime
-// holds it. Foreign files and overlong names stay on the schema-1 path.
+// dagSaveRoute decides whether a save runs on the schema-2 path. A log that
+// already carries a DAG entry stays native forever. Everything else — a new
+// session, a bare checkpoint, an existing schema-1 log — follows
+// dagWriterEnabled: since tl-1173 P1 the build default is the schema-1 flat
+// writer, and the upgrade-on-lease branches below only run when that switch
+// is re-enabled (REASONIX_SESSION_LOG=v2 or the default constant flipped
+// back). Foreign files and overlong names stay on the schema-1 path.
 func (s *Session) dagSaveRoute(path string, probe sessionEventLogProbe) dagRoute {
 	if probe.dag {
 		return dagRouteNative

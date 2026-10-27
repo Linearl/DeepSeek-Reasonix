@@ -3,7 +3,6 @@ package boot
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"reasonix/internal/ablation"
@@ -59,9 +58,9 @@ model = "x"
 		t.Fatalf("schema-1 session must have no heads yet: %v %v", heads, err)
 	}
 
-	if err := os.Unsetenv("REASONIX_SESSION_LOG"); err != nil {
-		t.Fatal(err)
-	}
+	// The upgrade leg needs the DAG route on: v2 pins it without depending on
+	// the build default, which is the flat route since tl-1173 P1.
+	t.Setenv("REASONIX_SESSION_LOG", "v2")
 	lease, err := agent.TryAcquireSessionLease(path)
 	if err != nil {
 		t.Fatalf("lease: %v", err)
