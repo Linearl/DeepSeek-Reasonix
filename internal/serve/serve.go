@@ -262,7 +262,7 @@ var registerDetachedHookForTest func()
 // sessionInUseError renders a lease refusal for HTTP clients using the shared
 // CLI wording, without the session file path.
 func sessionInUseError(err error) string {
-	return control.SessionInUseMessage(err) + "; " + control.SessionLeaseCloseHint
+	return control.SessionInUseMessage(err) + "; " + control.SessionLeaseHintFor(err)
 }
 
 // AuthToken returns the pre-shared token when in token mode, or "" otherwise.

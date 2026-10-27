@@ -3823,8 +3823,17 @@ func (a *App) closeTabRuntime(tabID string, allowDetach bool) error {
 	// DeleteSession/topic/workspace removal from trashing the same files while
 	// this save is in flight.
 	if err := a.snapshotTabDurable(tab); err != nil {
-		slog.Warn("desktop: snapshot before closing tab failed", "tab", tabID, "err", err)
-		return fmt.Errorf("save current session before closing tab: %w", err)
+		// tl 1201: a stale write authority used to make EVERY close attempt
+		// fail its mandatory pre-close save ("标签页未能关闭，请重试" loops).
+		// Re-bind once and retry before giving up; any other failure (or a
+		// still-held lease) keeps the original refusal.
+		if isSessionWriteAuthorityError(err) && a.restoreTabWriteAuthorityAfterStale(tab) {
+			err = a.snapshotTabDurable(tab)
+		}
+		if err != nil {
+			slog.Warn("desktop: snapshot before closing tab failed", "tab", tabID, "err", err)
+			return fmt.Errorf("save current session before closing tab: %w", err)
+		}
 	}
 	if err := a.saveTabSessionMetaForCurrentSession(tab); err != nil {
 		slog.Warn("desktop: session metadata before closing tab failed", "tab", tabID, "err", err)
@@ -5719,6 +5728,12 @@ func (a *App) tabSnapshotLoop(tab *WorkspaceTab) {
 			continue
 		}
 		if snapshotErr != nil && tab.saveFailures <= maxTabSnapshotFailureRetries {
+			// tl 1201: a stale write authority never heals by retrying —
+			// re-bind (or re-acquire) the lease once per burst before the
+			// next attempt. Remaining failures keep the visible warn below.
+			if isSessionWriteAuthorityError(snapshotErr) && a.restoreTabWriteAuthorityAfterStale(tab) {
+				slog.Info("desktop: re-bound session write authority after stale autosave failure", "tab", tab.ID)
+			}
 			delay := tabSnapshotRetryDelay(tab.saveFailures)
 			attempt := tab.saveFailures
 			tab.saveMu.Unlock()

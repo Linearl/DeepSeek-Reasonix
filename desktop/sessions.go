@@ -170,6 +170,27 @@ func sessionTelemetryPath(sessionPath string) string {
 // writer id, hostname, or path.
 var errSessionBusyElsewhere = errors.New("session is in use by another Reasonix window or process")
 
+// errSessionBusyZombie is the tl 1201 classification for a refusal whose
+// recorded holder pid is DEAD: no window exists to close, so the old
+// "in use by another window" text sent the user into the close-the-other-
+// window loop. The actionable repair is the restart that reaps the crashed
+// holder. Still sanitized (no path).
+var errSessionBusyZombie = errors.New("this session was left locked by a crashed Reasonix process — restart Reasonix to clear it, then retry")
+
+// sessionLeaseBusyClassification maps a lease-held refusal onto the sanitized
+// busy error. A holder pid that is alive (or unknown) is real mutual
+// exclusion and reports errSessionBusyElsewhere unchanged; a DEAD pid is the
+// zombie leftover form and reports errSessionBusyZombie (tl 1201).
+func sessionLeaseBusyClassification(err error) error {
+	var leaseErr *agent.SessionLeaseError
+	if errors.As(err, &leaseErr) && leaseErr != nil && leaseErr.Info != nil {
+		if pid := leaseErr.Info.PID; pid > 0 && pid != os.Getpid() && !agent.ProcessAlive(pid) {
+			return errSessionBusyZombie
+		}
+	}
+	return errSessionBusyElsewhere
+}
+
 // acquireSessionRemovalGuard wraps agent.TryAcquireSessionRemovalGuard with
 // the sanitized busy error. The guard holds the session's save and lease
 // locks across the destructive operation and deletes the lock files
@@ -182,7 +203,7 @@ func acquireSessionRemovalGuard(sessionPath string) (*agent.SessionRemovalGuard,
 	})
 	if err != nil {
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
-			return nil, errSessionBusyElsewhere
+			return nil, sessionLeaseBusyClassification(err)
 		}
 		return nil, err
 	}

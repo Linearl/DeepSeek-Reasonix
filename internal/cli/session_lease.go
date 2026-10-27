@@ -42,7 +42,7 @@ func sessionLeaseResumeRefusal(err error) string {
 // sessionLeaseHeldNotice is the in-TUI refusal for /resume and /switch, where
 // exiting to rerun with --copy is not the natural move.
 func sessionLeaseHeldNotice(err error) string {
-	return control.SessionInUseMessage(err) + "; " + control.SessionLeaseCloseHint
+	return control.SessionInUseMessage(err) + "; " + control.SessionLeaseHintFor(err)
 }
 
 // rebindSessionLease moves the chat TUI's session lease to path before the

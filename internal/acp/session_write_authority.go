@@ -86,7 +86,7 @@ func (s *service) sessionTransitionHandler(id string) func(control.SessionTransi
 		if err != nil {
 			if errors.Is(err, agent.ErrSessionLeaseHeld) {
 				return fmt.Errorf("bind target session: %s; %s",
-					control.SessionInUseMessage(err), control.SessionLeaseCloseHint)
+					control.SessionInUseMessage(err), control.SessionLeaseHintFor(err))
 			}
 			return fmt.Errorf("bind target session: %w", err)
 		}
@@ -166,7 +166,7 @@ func (s *service) sessionRecoveredHandlerFor(id string, owner acpController) fun
 		if err != nil {
 			if errors.Is(err, agent.ErrSessionLeaseHeld) {
 				return fmt.Errorf("bind recovery session: %s; %s",
-					control.SessionInUseMessage(err), control.SessionLeaseCloseHint)
+					control.SessionInUseMessage(err), control.SessionLeaseHintFor(err))
 			}
 			return fmt.Errorf("bind recovery session: %w", err)
 		}

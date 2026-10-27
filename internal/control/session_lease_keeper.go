@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 
@@ -215,7 +216,7 @@ func (k *SessionLeaseKeeper) handleSessionRecovered(c *Controller, requireOwner 
 		k.mu.Unlock()
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
 			return true, fmt.Errorf("bind recovery session: %s; %s",
-				SessionInUseMessage(err), SessionLeaseCloseHint)
+				SessionInUseMessage(err), SessionLeaseHintFor(err))
 		}
 		// The detailed error can contain a machine-local path. Keep it in
 		// diagnostics and return path-free text to every frontend.
@@ -280,7 +281,7 @@ func (k *SessionLeaseKeeper) handleSessionTransitionWith(info SessionTransitionI
 		k.mu.Unlock()
 		if errors.Is(err, agent.ErrSessionLeaseHeld) {
 			return fmt.Errorf("bind target session: %s; %s",
-				SessionInUseMessage(err), SessionLeaseCloseHint)
+				SessionInUseMessage(err), SessionLeaseHintFor(err))
 		}
 		slog.Error("control: bind target session lease", "reason", info.Reason, "err", err)
 		return fmt.Errorf("bind target session: unable to secure transcript")
@@ -620,13 +621,49 @@ func (k *SessionLeaseKeeper) unbindControllerLocked() {
 
 // SessionLeaseCloseHint is the universal way out of a lease refusal, appended
 // by surfaces that have no copy escape hatch (in-TUI switches, serve, ACP).
+// Direct uses are only correct when the holder is known live or unknown — for
+// a dead holder pid the advice is a dead-end loop (tl 1201: the user has no
+// other window to close). Prefer SessionLeaseHintFor wherever the lease error
+// is at hand.
 const SessionLeaseCloseHint = "close the other Reasonix window or process first"
+
+// SessionLeaseHintFor renders the actionable next step for a lease refusal.
+// The holder identity decides: a live foreign pid keeps the classic close-the-
+// other-window hint (real cross-process mutual exclusion, tl 1201 acceptance
+// 4); this process's own pid points at the instance's own runtimes; a DEAD pid
+// is a zombie leftover — no window exists to close, so the hint names the
+// crashed process and the restart that clears it instead of looping the user.
+func SessionLeaseHintFor(err error) string {
+	var leaseErr *agent.SessionLeaseError
+	if !errors.As(err, &leaseErr) || leaseErr == nil || leaseErr.Info == nil || leaseErr.Info.PID <= 0 {
+		return SessionLeaseCloseHint
+	}
+	info := leaseErr.Info
+	if info.PID == os.Getpid() {
+		return "this session is held by another runtime of this Reasonix instance; wait for its work to finish or restart Reasonix, then retry"
+	}
+	if !agent.ProcessAlive(info.PID) {
+		return fmt.Sprintf("stale lease from a crashed Reasonix process (pid %d%s); restart Reasonix to clear it — no window is holding it",
+			info.PID, leaseAcquiredSinceSuffix(info))
+	}
+	return SessionLeaseCloseHint
+}
+
+// leaseAcquiredSinceSuffix renders ", since HH:MM" for a usable acquire time.
+func leaseAcquiredSinceSuffix(info *agent.SessionLeaseInfo) string {
+	if info == nil || info.AcquiredAt.IsZero() {
+		return ""
+	}
+	return ", since " + info.AcquiredAt.Local().Format("15:04")
+}
 
 // SessionInUseMessage renders a lease-acquisition failure as the shared
 // operator-facing "who is holding this" line used by the CLI, serve, and ACP.
 // It names the holder from the lease info when available and degrades to a
-// generic line otherwise. The session file path is deliberately omitted — the
-// caller already knows which session it asked for.
+// generic line otherwise. A dead holder pid is reported as the crashed-process
+// leftover it is (tl 1201) instead of implying a second live window. The
+// session file path is deliberately omitted — the caller already knows which
+// session it asked for.
 func SessionInUseMessage(err error) string {
 	const fallback = "this session is in use by another Reasonix window or process"
 	var leaseErr *agent.SessionLeaseError
@@ -634,6 +671,10 @@ func SessionInUseMessage(err error) string {
 		return fallback
 	}
 	info := leaseErr.Info
+	if info.PID != os.Getpid() && !agent.ProcessAlive(info.PID) {
+		return fmt.Sprintf("this session was left locked by a crashed Reasonix process (pid %d%s); restart Reasonix to clear it, then retry",
+			info.PID, leaseAcquiredSinceSuffix(info))
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "this session is in use by another Reasonix process (pid %d", info.PID)
 	if host := strings.TrimSpace(info.Hostname); host != "" {

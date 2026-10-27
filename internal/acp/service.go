@@ -555,7 +555,7 @@ func sessionLeaseBindError(method string, err error) *RPCError {
 	if errors.Is(err, agent.ErrSessionLeaseHeld) {
 		return &RPCError{
 			Code:    ErrInvalidRequest,
-			Message: method + ": " + control.SessionInUseMessage(err) + "; " + control.SessionLeaseCloseHint,
+			Message: method + ": " + control.SessionInUseMessage(err) + "; " + control.SessionLeaseHintFor(err),
 		}
 	}
 	return &RPCError{Code: ErrInternal, Message: method + ": session lease: " + err.Error()}
