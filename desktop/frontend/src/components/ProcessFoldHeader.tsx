@@ -16,7 +16,6 @@ import { compactionLiveReadout } from "../lib/compactionLive";
 import { clampLine, hasLiveAssistant, latestReasoningText, latestRunningTool, LIVE_TEXT_THROTTLE_MS, useThrottledValue } from "../lib/workProcessLiveStatus";
 import { useWorkProcessPresentation } from "../lib/sessionExperience";
 import { subjectOf } from "../lib/tools";
-import { probeLiveStatus, head40ForProbe } from "../lib/liveStatusDebug";
 import { LiveStreamContext } from "./LiveStreamContext";
 import { ReasoningSummary } from "./ReasoningSummary";
 
@@ -131,48 +130,6 @@ export function ProcessFoldHeader({
     return clampLine(subject ? `${base} · ${subject}` : base);
   }, [conciseLive, displayItems, t]);
   const showLiveStatus = conciseLive && Boolean(liveActionText || throttledReasoning);
-  // ── tl 1160 诊断探针（定因后摘除）：运行中 fold 的取数链路现场取证 ──
-  // 只在 hasRunningWork 的 fold 上做独立腿扫描（诊断件，成本与生产 memo 同
-  // 级、事件驱动）；非运行 fold 零扫描零上报。日志经 reportFrontendLog 落
-  // desktop.log，字段清单见 lib/liveStatusDebug.ts 模块注释。
-  const probeLegs = useMemo(() => {
-    if (!hasRunningWork) return null;
-    let tail: string = "-";
-    for (let index = displayItems.length - 1; index >= 0; index -= 1) {
-      const item = displayItems[index];
-      if (item.kind === "assistant") {
-        tail = item.id;
-        break;
-      }
-    }
-    const tool = latestRunningTool(displayItems);
-    return {
-      hasLive: hasLiveAssistant(displayItems, live?.id),
-      tail,
-      tool: tool ? `${tool.id}:${tool.resolvedName || tool.name}` : "-",
-      snap: latestReasoningText(displayItems),
-    };
-  }, [hasRunningWork, displayItems, live?.id]);
-  if (probeLegs) {
-    probeLiveStatus({
-      seg: segment.key,
-      exp: presentation.experience,
-      open,
-      run: hasRunningWork,
-      concise: conciseLive,
-      n: displayItems.length,
-      liveId: live?.id ?? "-",
-      hasLive: probeLegs.hasLive,
-      tail: probeLegs.tail,
-      tool: probeLegs.tool,
-      snap: head40ForProbe(probeLegs.snap),
-      liveRLen: live ? (live.reasoning?.length ?? 0) : -1,
-      liveRDone: live ? live.reasoningComplete : "-",
-      eff: head40ForProbe(liveReasoning),
-      act: head40ForProbe(liveActionText),
-      shown: showLiveStatus,
-    });
-  }
   return (
     <div className={`turn-collapse${open ? " turn-collapse--open" : ""}`} data-kind="reasoning" data-entrance={displayItems[0]?.id || undefined}>
       <button
