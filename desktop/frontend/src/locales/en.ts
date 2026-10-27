@@ -991,6 +991,10 @@ export const en = {
   "composer.capsuleHistoryLoading": "Loading transcript…",
   "composer.capsuleHistoryEmpty": "Nothing to show in this transcript",
   "composer.capsuleHistoryFailed": "Failed to load the sub-agent transcript.",
+  // tl1202: a running sub-agent's transcript lands only on completion — show a
+  // pending note instead of a failure red note; a failed read is retryable.
+  "composer.capsuleHistoryPending": "The sub-agent is still running; its transcript becomes readable once it finishes.",
+  "composer.capsuleHistoryRetry": "Retry",
   "composer.capsuleStatusRunning": "running",
   "composer.capsuleStatusCompleted": "completed",
   "composer.capsuleStatusFailed": "failed",

@@ -30,10 +30,11 @@ import type { SubagentArtifactView } from "../lib/types";
 // transcript).
 const LazyTranscript = lazy(async () => ({ default: (await import("./Transcript")).Transcript }));
 
-// 任务440: transcript read states for the dock detail view. loading/failed/
-// empty mirror the capsule history view; a running entry re-pulls every 2s so
-// the message stream keeps up with the child's work (the same cadence the
-// capsule's live clock uses), an ended entry reads once.
+// 任务440 (as amended by tl1202): transcript read states for the dock detail
+// view. loading/failed/empty mirror the capsule history view; only an ENDED
+// entry reads (once — the transcript is final), a failed read offers a manual
+// retry. A running entry never reads: the transcript does not exist until the
+// child completes, so the detail falls back to the progress preview.
 interface DockLiveTranscriptState {
   loading: boolean;
   failed: boolean;
@@ -41,8 +42,6 @@ interface DockLiveTranscriptState {
 }
 
 const EMPTY_DOCK_LIVE: DockLiveTranscriptState = { loading: false, failed: false, messages: [] };
-
-export const SUBAGENT_LIVE_POLL_MS = 2000;
 
 // Task 495: right-dock "子代理" tab body, modeled on the zcode subagent
 // directory (SubagentDirectorySidePane): a running section and an ended
@@ -159,13 +158,20 @@ const DirectoryRow = memo(function DirectoryRow({
  *  preview), in the wider dock body, with a back button and an explicit
  *  read-only notice — no input surface by design.
  *
- *  任务440: when the entry carries a persisted transcript ref and the App
- *  injected the read bridge, the view renders the child's actual work
- *  process (message stream / tool calls) instead of the truncated preview —
- *  re-pulling every SUBAGENT_LIVE_POLL_MS while the child is still running so
- *  the stream keeps up live (this is the supplement's "运行中也能看" next to
- *  zcode). Without a ref (ephemeral run) or without the bridge the view falls
- *  back to the memory-only preview, byte for byte the 507 behavior. */
+ *  任务440 (as amended by tl1202): when the entry carries a persisted
+ *  transcript ref and the App injected the read bridge, an ENDED view renders
+ *  the child's actual work process (message stream / tool calls) instead of
+ *  the truncated preview. tl1202: the transcript is written only on
+ *  completion (internal/agent subagent_store_terminal.go SaveOutcome is the
+ *  first Session.Save; ReadSubagentSession answers "has not been saved yet"
+ *  before that), so a RUNNING view no longer polls a read that could only
+ *  fail — it shows the memory-only progress preview (near-live via the
+ *  transcript event stream) plus an explicit "running, readable after it
+ *  finishes" note, and the parent's running→ended re-render triggers the one
+ *  real read automatically. Without a ref (ephemeral run) or without the
+ *  bridge the view falls back to the memory-only preview, byte for byte the
+ *  507 behavior. A failed ended-read surfaces copy plus a manual retry
+ *  button instead of a dead red note. */
 function SubagentDetailView({
   entry,
   onBack,
@@ -192,39 +198,41 @@ function SubagentDetailView({
   const durationSeconds = entryDurationSeconds(entry);
   const startedClock = entryStartedClock(entry);
   const ref = entry.ref;
-  const liveEnabled = Boolean(ref && onReadSubagent && sessionPath);
+  // tl1202: running entries never fire a transcript read — the <ref>.jsonl is
+  // only written on completion, so the read would fail every time (the 1202
+  // bug: a live "读取子代理历史失败" red note for the whole run). The running
+  // detail shows the progress preview instead; the running→ended transition
+  // re-runs the effect below and performs the one real read.
+  const liveEnabled = Boolean(ref && onReadSubagent && sessionPath && !entry.running);
   const [live, setLive] = useState<DockLiveTranscriptState>(liveEnabled ? { loading: true, failed: false, messages: [] } : EMPTY_DOCK_LIVE);
+  // tl1202: manual retry counter for a failed ended-read (bumped by the
+  // retry button; the effect re-subscribes and pulls again).
+  const [liveAttempt, setLiveAttempt] = useState(0);
   const liveSeq = useRef(0);
   useEffect(() => {
-    if (!ref || !onReadSubagent || !sessionPath) return;
+    if (!ref || !onReadSubagent || !sessionPath || entry.running) return;
     const seq = ++liveSeq.current;
     let cancelled = false;
-    const pull = () => {
-      onReadSubagent(sessionPath, ref)
-        .then((messages) => {
-          if (cancelled || seq !== liveSeq.current) return;
-          setLive({ loading: false, failed: false, messages });
-        })
-        .catch(() => {
-          if (cancelled || seq !== liveSeq.current) return;
-          setLive({ loading: false, failed: true, messages: [] });
-        });
-    };
-    pull();
-    // A running child keeps the stream fresh; an ended one reads once — its
-    // transcript is final (the parent re-render supplies the new running
-    // flag, and the effect re-subscribes on that transition).
-    if (!entry.running) {
-      return () => {
-        cancelled = true;
-      };
-    }
-    const timer = window.setInterval(pull, SUBAGENT_LIVE_POLL_MS);
+    // Show the loading state for a first read (or after a failure/retry), but
+    // keep already-loaded content on screen while a refresh re-pulls — a
+    // continue_from re-read must not blank the pane.
+    setLive((prev) => (prev.messages.length > 0 && !prev.failed ? prev : { loading: true, failed: false, messages: [] }));
+    onReadSubagent(sessionPath, ref)
+      .then((messages) => {
+        if (cancelled || seq !== liveSeq.current) return;
+        setLive({ loading: false, failed: false, messages });
+      })
+      .catch(() => {
+        if (cancelled || seq !== liveSeq.current) return;
+        setLive({ loading: false, failed: true, messages: [] });
+      });
+    // The transcript is final once the child has ended — a single read
+    // suffices (the parent re-render supplies the running flag, and the
+    // effect re-subscribes on that transition).
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
-  }, [ref, sessionPath, onReadSubagent, entry.running]);
+  }, [ref, sessionPath, onReadSubagent, entry.running, liveAttempt]);
   // Value-keyed projection: a poll returning identical content re-renders the
   // wrapper but not the transcript tree.
   const liveItems = useMemo(() => historyMessagesToItems(live.messages, "subagent-dock").items, [live.messages]);
@@ -262,13 +270,19 @@ function SubagentDetailView({
       {liveEnabled ? (
         <div
           className="subagents-panel__live"
-          data-subagents-live={entry.running ? "running" : "ended"}
+          data-subagents-live="ended"
           data-subagents-live-state={live.loading ? "loading" : live.failed ? "failed" : liveItems.length === 0 ? "empty" : "ready"}
         >
           {live.loading ? (
             <div className="subagents-panel__detailview-note">{t("composer.capsuleHistoryLoading")}</div>
           ) : live.failed ? (
-            <div className="subagents-panel__detailview-note">{t("composer.capsuleHistoryFailed")}</div>
+            <>
+              <div className="subagents-panel__detailview-note">{t("composer.capsuleHistoryFailed")}</div>
+              {/* tl1202: a failed read is retryable, not a dead red note. */}
+              <button type="button" className="subagents-panel__retry" data-subagents-retry onClick={() => setLiveAttempt((n) => n + 1)}>
+                {t("composer.capsuleHistoryRetry")}
+              </button>
+            </>
           ) : liveItems.length === 0 ? (
             <div className="subagents-panel__detailview-note">{t("composer.capsuleHistoryEmpty")}</div>
           ) : (
@@ -279,6 +293,15 @@ function SubagentDetailView({
         </div>
       ) : (
         <>
+          {/* tl1202: a ref-bearing running entry says "running, readable once
+              it finishes" instead of implying an error — its transcript is
+              written only on completion; the progress preview below is the
+              near-live view of the work in progress. */}
+          {entry.running && ref ? (
+            <p className="subagents-panel__detailview-note" data-subagents-live-pending="true">
+              {t("composer.capsuleHistoryPending")}
+            </p>
+          ) : null}
           {error ? (
             <div className="subagents-panel__detailview-block subagents-panel__detailview-block--error">
               <div className="subagents-panel__detailview-label">{t("subagent.preview.notice")}</div>
@@ -310,7 +333,7 @@ function SubagentDetailView({
             </div>
           ) : null}
           {progress?.truncated ? <div className="subagents-panel__detailview-note">{t("subagent.preview.truncated")}</div> : null}
-          {!summary && !error && !hasPreview ? (
+          {!summary && !error && !hasPreview && !(entry.running && ref) ? (
             <p className="subagents-panel__detailview-note">{t("subagentPanel.detailNoPreview")}</p>
           ) : null}
         </>

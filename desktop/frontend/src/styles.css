@@ -29533,6 +29533,26 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
 }
 
+/* tl1202: retry affordance for a failed transcript read — same quiet button
+   chrome as the back button, placed under the failed note. */
+.subagents-panel__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.subagents-panel__retry:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+
 .workbench-dock__body {
   flex: 1 1 auto;
   min-height: 0;
