@@ -50,6 +50,12 @@ const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
 import type { SessionMeta } from "../lib/types";
 
+// tl 1188: the hover layer opens after SESSION_WALL_HOVER_OPEN_DELAY_MS; a
+// little over that covers the timer fire plus the excerpt fetch microtasks.
+const HOVER_WAIT = wall.SESSION_WALL_HOVER_OPEN_DELAY_MS + 100;
+const flush = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const hoverLayer = () => document.querySelector<HTMLElement>(".session-wall-hover-layer");
+
 console.log("\nsession graph wall (task 505)");
 
 const BASE = new Date(2026, 9, 5, 12, 0, 0).getTime(); // fixed local noon
@@ -315,8 +321,10 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
   dom.window.localStorage.clear();
 }
 
-// 4e. tl 1177 hover excerpts: cards with recentExcerpts render the overlay
-//     rows (newest first); cards without them render exactly as before.
+// 4e. tl 1177 hover excerpts → tl 1188 external layer: the list field's
+//     excerpts (newest first) surface in the body-portal hover layer on
+//     hover, OUTSIDE the card; the card itself renders exactly as before
+//     (no in-card overlay, native title intact while unhovered).
 {
   const sessions: SessionMeta[] = [
     session({ preview: "老会话", workspaceRoot: "C:/work/alpha", open: false }),
@@ -339,30 +347,54 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
       ),
     );
   });
-  const cards = [...container.querySelectorAll(".session-wall__card")];
+  const cards = [...container.querySelectorAll(".session-wall__card")] as HTMLElement[];
   eq(cards.length, 2, "excerpts: both cards render");
-  const withExcerpts = cards.find((c) => c.querySelector(".session-wall__card-excerpts"));
-  ok(withExcerpts !== undefined, "excerpts: the card with recentExcerpts renders the overlay");
-  eq(withExcerpts!.querySelectorAll(".session-wall__card-excerpt").length, 3, "excerpts: all 3 rows render");
   eq(
-    withExcerpts!.querySelector(".session-wall__card-excerpt")!.textContent,
+    cards.some((c) => c.querySelector(".session-wall__card-excerpts")),
+    false,
+    "excerpts: no card renders an in-card overlay anymore (tl 1188 removed it)",
+  );
+  ok(hoverLayer() === null, "excerpts: no hover layer before any hover");
+  const cardFor = (preview: string) => cards.find((c) => c.querySelector(".session-wall__card-title")?.textContent === preview)!;
+  await act(async () => {
+    cardFor("新会话")!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+    await flush(HOVER_WAIT);
+  });
+  const layer = hoverLayer();
+  ok(layer !== null, "excerpts: hovering the excerpt card pops the external layer");
+  eq(
+    layer!.querySelectorAll(".session-wall-hover-layer__excerpt").length,
+    3,
+    "excerpts: all 3 list-field rows render in the layer",
+  );
+  eq(
+    layer!.querySelector(".session-wall-hover-layer__excerpt")!.textContent,
     "结尾提问三",
     "excerpts: the first row is the newest message",
   );
-  const bare = cards.find((c) => !c.querySelector(".session-wall__card-excerpts"));
-  ok(bare !== undefined, "excerpts: the card without recentExcerpts has no overlay");
-  ok(bare!.getAttribute("title") !== null, "excerpts: the bare card keeps its native title fallback");
+  eq(
+    layer!.querySelector(".session-wall-hover-layer__title")!.textContent,
+    "新会话",
+    "excerpts: the layer carries the card title",
+  );
+  await act(async () => {
+    cardFor("新会话")!.dispatchEvent(new dom.window.MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    await flush(0);
+  });
+  ok(hoverLayer() === null, "excerpts: leaving the card closes the layer");
+  const bare = cardFor("老会话")!;
+  ok(bare.getAttribute("title") !== null, "excerpts: the bare card keeps its native title fallback");
 
   await act(async () => {
     root.unmount();
   });
   container.remove();
 }
-// 4f. tl 1177b 方案B hover excerpts: a card the list field cannot answer pulls
-//     the tail once on first hover/focus; the overlay re-renders the card
-//     title as its first row (hovering never hides the title); the native
-//     title is held back while the fetch is in flight and returns when the
-//     answer is empty.
+// 4f. tl 1177b 方案B hover excerpts → tl 1188 external layer: a card the
+//     list field cannot answer pulls the tail once on first hover/focus and
+//     the tail fills the body-portal layer; the layer keeps the card title
+//     visible; the native title is held back while the fetch is in flight
+//     and returns when the answer is empty (the layer then shows meta only).
 {
   const sessions: SessionMeta[] = [
     session({ preview: "旧会话甲", workspaceRoot: "C:/work/alpha", open: false }),
@@ -398,39 +430,53 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
   eq(cardFor("旧会话甲")!.getAttribute("title") !== null, true, "hover fetch: native title present before hover");
   eq(fetched.length, 0, "hover fetch: nothing fetched before hover");
 
-  const mouseover = () => new dom.window.MouseEvent("mouseover", { bubbles: true });
   await act(async () => {
-    cardFor("旧会话甲")!.dispatchEvent(mouseover());
-    await Promise.resolve();
-    await Promise.resolve();
+    cardFor("旧会话甲")!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+    await flush(HOVER_WAIT);
   });
-  const overlay = cardFor("旧会话甲")!.querySelector(".session-wall__card-excerpts");
-  ok(overlay !== undefined, "hover fetch: the hovered card renders the overlay");
+  const layer = hoverLayer();
+  ok(layer !== null, "hover fetch: the hovered card pops the external layer");
+  eq(layer!.parentElement, document.body, "hover fetch: the layer is portaled to document.body (outside the wall DOM)");
+  ok(container.querySelector(".session-wall-hover-layer") === null, "hover fetch: the layer lives outside the wall container");
   eq(
-    overlay!.querySelector(".session-wall__card-excerpt-title")!.textContent,
+    layer!.querySelector(".session-wall-hover-layer__title")!.textContent,
     "旧会话甲",
-    "hover fetch: the overlay keeps the card title visible (not covered)",
+    "hover fetch: the layer keeps the card title visible",
   );
-  eq(overlay!.querySelectorAll(".session-wall__card-excerpt").length, 3, "hover fetch: all 3 excerpt rows render");
+  eq(layer!.querySelectorAll(".session-wall-hover-layer__excerpt").length, 3, "hover fetch: all 3 tail excerpt rows render in the layer");
   eq(
-    overlay!.querySelector(".session-wall__card-excerpt")!.textContent,
+    layer!.querySelector(".session-wall-hover-layer__excerpt")!.textContent,
     "结尾提问三",
     "hover fetch: the first excerpt row is the newest message",
   );
+  ok(
+    (layer!.querySelector(".session-wall-hover-layer__meta")?.textContent ?? "").length > 0,
+    "hover fetch: the layer carries the meta line (turns · relative time · date)",
+  );
+  eq(
+    layer!.querySelector(".session-wall-hover-layer__project")!.textContent,
+    "alpha",
+    "hover fetch: the layer carries the group folder name",
+  );
   eq(cardFor("旧会话甲")!.getAttribute("title"), null, "hover fetch: the native title is gone once excerpts render");
-  const other = cardFor("旧会话乙")!;
-  ok(other.querySelector(".session-wall__card-excerpts") === null, "hover fetch: the untouched card stays bare");
+  ok(hoverLayer()!.querySelectorAll(".session-wall-hover-layer__excerpt").length === 3, "hover fetch: exactly one layer exists for the hovered card");
 
   await act(async () => {
-    cardFor("旧会话甲")!.dispatchEvent(mouseover());
-    cardFor("旧会话乙")!.dispatchEvent(mouseover());
-    await Promise.resolve();
-    await Promise.resolve();
+    cardFor("旧会话乙")!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+    await flush(HOVER_WAIT);
   });
   eq(fetched.length, 2, "hover fetch: one fetch per card (re-hover does not refetch)");
+  const layerB = hoverLayer()!;
+  ok(layerB !== null, "hover fetch: the second card pops its own layer");
+  eq(
+    layerB.querySelector(".session-wall-hover-layer__title")!.textContent,
+    "旧会话乙",
+    "hover fetch: switching cards swaps the layer content (no stale first card)",
+  );
+  eq(layerB.querySelectorAll(".session-wall-hover-layer__excerpt").length, 0, "hover fetch: an empty answer renders no excerpt rows");
   ok(
-    cardFor("旧会话乙")!.querySelector(".session-wall__card-excerpts") === null,
-    "hover fetch: an empty answer renders no overlay",
+    layerB.querySelector(".session-wall-hover-layer__meta") !== null,
+    "hover fetch: the empty-answer layer still carries the meta block",
   );
   eq(
     cardFor("旧会话乙")!.getAttribute("title") !== null,
@@ -438,10 +484,143 @@ function session(overrides: Partial<SessionMeta> = {}): SessionMeta {
     "hover fetch: an empty answer restores the native title fallback",
   );
 
+  // Back to the first card: the dedupe ref holds — no second fetch for it.
+  await act(async () => {
+    cardFor("旧会话甲")!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+    await flush(HOVER_WAIT);
+  });
+  eq(fetched.length, 2, "hover fetch: re-hover does not refetch (one fetch per card per open)");
+  eq(
+    hoverLayer()!.querySelector(".session-wall-hover-layer__title")!.textContent,
+    "旧会话甲",
+    "hover fetch: returning to the first card restores its layer content",
+  );
+
   await act(async () => {
     root.unmount();
   });
   container.remove();
+}
+
+// 4g. tl 1188 hover layer contract: timer-gated open, instant close, focus
+//     support, and the stylesheet's non-interactive guarantee.
+{
+  const sessions: SessionMeta[] = [
+    session({ preview: "延迟会话", workspaceRoot: "C:/work/alpha", open: false, recentExcerpts: ["第一条"] }),
+    session({ preview: "第二会话", workspaceRoot: "C:/work/alpha", open: false, recentExcerpts: ["甲一", "甲二", "甲三", "甲四", "甲五", "甲六", "甲七", "甲八"] }),
+  ];
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      createElement(
+        LocaleProvider,
+        null,
+        createElement(SessionWallPanel, { open: true, load: async () => sessions, onClose: () => {}, onResume: () => {} }),
+      ),
+    );
+  });
+  const cardFor = (preview: string) =>
+    ([...container.querySelectorAll(".session-wall__card")] as HTMLButtonElement[]).find(
+      (c) => c.querySelector(".session-wall__card-title")?.textContent === preview,
+    )!;
+
+  // The 350ms gate: sweeping past a card must not pop the layer.
+  await act(async () => {
+    cardFor("延迟会话")!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+    await flush(50);
+  });
+  ok(hoverLayer() === null, "layer contract: no layer before the open delay elapses");
+  await act(async () => {
+    await flush(HOVER_WAIT);
+  });
+  ok(hoverLayer() !== null, "layer contract: the layer opens after the delay");
+
+  // Leave closes instantly; the timer must not resurrect the layer.
+  await act(async () => {
+    cardFor("延迟会话")!.dispatchEvent(new dom.window.MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+    await flush(0);
+  });
+  ok(hoverLayer() === null, "layer contract: leaving the card closes the layer instantly");
+  await act(async () => {
+    await flush(HOVER_WAIT);
+  });
+  ok(hoverLayer() === null, "layer contract: the cancelled timer does not resurrect the layer");
+
+  // Keyboard focus opens the same layer (parity with the pointer path).
+  await act(async () => {
+    cardFor("延迟会话")!.focus();
+    await flush(HOVER_WAIT);
+  });
+  ok(hoverLayer() !== null, "layer contract: keyboard focus opens the layer");
+  await act(async () => {
+    cardFor("延迟会话")!.blur();
+    await flush(0);
+  });
+  ok(hoverLayer() === null, "layer contract: blur closes the layer");
+
+  // Multi-card switching: hovering another card replaces the content and
+  // never leaves a second layer behind.
+  await act(async () => {
+    cardFor("第二会话")!.dispatchEvent(new dom.window.MouseEvent("mouseover", { bubbles: true }));
+    await flush(HOVER_WAIT);
+  });
+  eq(document.querySelectorAll(".session-wall-hover-layer").length, 1, "layer contract: exactly one layer exists while hovering another card");
+  eq(
+    hoverLayer()!.querySelector(".session-wall-hover-layer__title")!.textContent,
+    "第二会话",
+    "layer contract: the layer follows the newly hovered card",
+  );
+  eq(
+    hoverLayer()!.querySelectorAll(".session-wall-hover-layer__excerpt").length,
+    8,
+    "layer contract: a full-width (8-line) list field renders all 8 excerpt rows",
+  );
+  // Click jumps AND dismisses the layer (the wall hands off to onResume).
+  await act(async () => {
+    cardFor("第二会话")!.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+    await flush(0);
+  });
+  ok(hoverLayer() === null, "layer contract: clicking the card dismisses the layer");
+
+  await act(async () => {
+    root.unmount();
+  });
+  container.remove();
+
+  // The layer must never steal the pointer: pointer-events stay off, and it
+  // sits at the menu level (above the wall's drawer backdrop) like the
+  // project tree's hover card.
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  ok(/\.session-wall-hover-layer\s*\{[^}]*pointer-events:\s*none/.test(css), "layer contract: the stylesheet keeps pointer-events off the layer");
+  ok(/\.session-wall-hover-layer\s*\{[^}]*z-index:\s*var\(--z-menu\)/.test(css), "layer contract: the layer sits at the menu level above the wall backdrop");
+  ok(/\.session-wall-hover-layer\s*\{[^}]*min-width:\s*600px/.test(css), "layer contract: the layer carries the ~9x-card-area elastic width (min 600px)");
+  ok(/\.session-wall-hover-layer\s*\{[^}]*max-height:\s*520px/.test(css), "layer contract: the layer carries the elastic height ceiling (max 520px)");
+}
+
+// 4h. tl 1188 flip math (pure function, no DOM): right of the card first;
+//     past the right edge flips to the left; neither side fitting clamps
+//     inside the viewport; the top never spills past the bottom.
+{
+  const origin = wall.sessionWallHoverLayerOrigin;
+  const wide = origin({ left: 100, right: 300, top: 200, bottom: 300 }, { width: 1600, height: 900 });
+  eq(wide.left, 310, "flip: a wide viewport keeps the layer right of the card");
+  eq(wide.flippedX, false, "flip: no flip when the right side fits");
+  eq(wide.top, 200, "flip: the top aligns with the card when it fits");
+
+  const flipped = origin({ left: 800, right: 1000, top: 200, bottom: 300 }, { width: 1600, height: 900 });
+  eq(flipped.left, 160, "flip: a card near the right edge flips the layer to its left");
+  eq(flipped.flippedX, true, "flip: the flipped flag marks the left placement");
+
+  const squeezed = origin({ left: 300, right: 700, top: 0, bottom: 10 }, { width: 1024, height: 600 });
+  eq(squeezed.left, 386, "flip: a narrow viewport clamps the layer inside the right edge");
+  eq(squeezed.flippedX, false, "flip: the clamp is not a flip");
+
+  const low = origin({ left: 0, right: 200, top: 500, bottom: 560 }, { width: 1024, height: 600 });
+  eq(low.top, 172, "flip: a card near the bottom lifts the layer above the viewport edge");
+  const high = origin({ left: 0, right: 200, top: 3, bottom: 60 }, { width: 1024, height: 600 });
+  eq(high.top, 8, "flip: the layer never rises past the top margin");
 }
 
 // 5. Panel: static smoke — the open wall renders its chrome (empty state,

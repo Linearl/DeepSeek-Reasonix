@@ -472,6 +472,7 @@ export function SessionWallPanel({
           </span>
         </div>
       </div>
+      </div>
       {renderHoverLayer()}
     </>
   );
