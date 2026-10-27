@@ -10,6 +10,10 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const styles = [
   readFileSync(resolve(testDir, "../components/ProviderCatalogPicker.css"), "utf8"),
   readFileSync(resolve(testDir, "../styles.css"), "utf8"),
+  // tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+  readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
   readFileSync(resolve(testDir, "../components/CompactRatioSettings.css"), "utf8"),
 ].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
@@ -170,7 +174,13 @@ eq(finalDeclaration(".transcript__header", "padding-left"), "var(--transcript-in
 eq(finalDeclaration(".transcript--empty", "padding"), "16px 32px", "empty transcript keeps its own horizontal inset");
 
 {
-  const stylesheet = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+  // tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+  const stylesheet = [
+    readFileSync(resolve(testDir, "../styles.css"), "utf8"),
+    readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
+    readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
+    readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+  ].join("\n");
   const dom = new JSDOM(
     `<!doctype html><html><head><style>${stylesheet}</style></head><body>
       <div class="transcript__row"><div class="md"><p id="inside">inside</p></div></div>
