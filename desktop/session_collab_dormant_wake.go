@@ -20,8 +20,10 @@ package main
 //   - 只读：ProbeSnapshot 不建目录、不取写锁、不跑 recovery——4s/15s 节奏的
 //     探测绝不能改写 manifest（否则探测本身会把队列标成 recovered+paused）。
 //   - 防空转（验收④）：只有 probe 真实看到 StateQueued 队首才生成 view；
-//     archived / 无 contact / 已有 runtime / 已有任何 tab 表面（含 Ctrl=nil
-//     的构建中 tab、ReadOnly/Spectator 接管面）一律不拉起；UserPaused 队列
+//     archived / 无 contact / 已有活 runtime（Ctrl 已发布或构建在飞
+//     buildCancel!=nil；ReadOnly/Spectator 接管面同判）一律不拉起；
+//     Ctrl=nil 且无构建排队的 restored skeleton tab（任务 619 ②）**不算**
+//     覆盖——它无人拥有，正是 1185 的盲区，必须由桥认领；UserPaused 队列
 //     绝不唤醒（709：暂停是用户意志）。
 //   - 有界（验收③）：拉起失败走 sweepTargets 既有的 579 三振预算——3 次后
 //     封存队首、写 570 open_retry_exhausted 回执（消息保留不丢弃）。
@@ -75,9 +77,10 @@ type dormantQueuedTarget struct {
 // collectDormant is the pure core of the 887 reverse lookup (seams injected so
 // the sweep logic is unit-testable without a desktop App — same pattern as
 // idleTurnTargetView). covered = contacts with a live runtime this pass;
-// hasTab = the session path has ANY tab surface (visible/detached, Ctrl nil or
-// not, read-only or not) — a bound tab means other machinery owns the session,
-// the wake must not double-stand-up. probe is the read-only manifest peek.
+// hasLiveRuntime = the session path has a tab that owns a runtime (published
+// controller or in-flight boot — 任务 1185 narrowed this from "any tab
+// surface": a restored skeleton owns nothing and must be claimed); probe is
+// the read-only manifest peek.
 func collectDormant(
 	roster map[string]sessioncollab.Identity,
 	covered map[string]bool,
@@ -230,7 +233,7 @@ func (p *sessionCollabPump) dormantIdleTurnTargets(now time.Time, covered map[st
 		p.dormant = collectDormant(
 			app.collabRosterIndex(),
 			covered,
-			app.sessionHasTabForPath,
+			app.sessionHasLiveRuntimeForPath,
 			sessioninbox.ProbeSnapshot,
 			func(contact, sessionPath string, err error) {
 				// Rate-limited by the probe interval itself (≤1 log / 15s per
@@ -245,7 +248,7 @@ func (p *sessionCollabPump) dormantIdleTurnTargets(now time.Time, covered map[st
 
 	views := make([]idleTurnTargetView, 0, len(candidates))
 	for _, c := range candidates {
-		if covered[c.contactID()] || app.sessionHasTabForPath(c.id.SessionPath) {
+		if covered[c.contactID()] || app.sessionHasLiveRuntimeForPath(c.id.SessionPath) {
 			continue
 		}
 		views = append(views, dormantTurnView(c, dormantWakeDeps{
@@ -346,12 +349,19 @@ func (a *App) dormantWakeCtrlForSessionPath(sessionPath string) (control.Session
 	return nil, startupErr
 }
 
-// sessionHasTabForPath reports whether ANY tab surface (visible or detached,
-// controller published or still building, read-only or not) is bound to
-// sessionPath. A bound tab means other machinery owns the session — the
-// dormant wake must not double-stand-up a booting tab or meddle with a
-// takeover surface.
-func (a *App) sessionHasTabForPath(sessionPath string) bool {
+// sessionHasLiveRuntimeForPath reports whether a tab bound to sessionPath
+// (visible or detached) owns a LIVE runtime: a published controller
+// (Ctrl != nil) or an in-flight boot (buildCancel != nil). The dormant sweep
+// narrows its coverage check to this — the old "any tab surface" form treated
+// a restored skeleton tab (published, Ctrl==nil, no build queued — 任务 619 ②)
+// as covered while nothing actually owned it: both live bridge paths demand a
+// controller (session_collab.go) and the dormant reverse-lookup skipped the
+// skeleton, so no path ever claimed it and queued follow-ups sat unconsumed
+// all night (任务 1185). The in-flight arm guards the other edge: a booting
+// tab already has machinery running — waking it again would race a second
+// build and surface duplicate turns, which is harder to diagnose than a
+// missed wake.
+func (a *App) sessionHasLiveRuntimeForPath(sessionPath string) bool {
 	want := sessionRuntimeKey(sessionPath)
 	if want == "" || a == nil {
 		return false
@@ -362,12 +372,17 @@ func (a *App) sessionHasTabForPath(sessionPath string) bool {
 		if tab == nil || tab.removed {
 			continue
 		}
-		if tabMatchesSessionKey(tab, want) {
+		if !tabMatchesSessionKey(tab, want) {
+			continue
+		}
+		// Ctrl==nil && buildCancel==nil: a published skeleton owns nothing —
+		// a dormant candidate, not a covered session (任务 1185).
+		if tab.Ctrl != nil || tab.buildCancel != nil {
 			return true
 		}
 	}
 	for _, tab := range a.detachedSessions {
-		if tab != nil && tabMatchesSessionKey(tab, want) {
+		if tab != nil && tabMatchesSessionKey(tab, want) && (tab.Ctrl != nil || tab.buildCancel != nil) {
 			return true
 		}
 	}
