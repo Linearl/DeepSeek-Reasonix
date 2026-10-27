@@ -245,6 +245,18 @@ func (w *loggingResponseWriter) Write(p []byte) (int, error) {
 	return w.ResponseWriter.Write(p)
 }
 
+// Flush forwards to the wrapped writer when it supports flushing. The MCP
+// streamable transport (mounted at /mcp, tl 1182) answers with SSE and
+// type-asserts http.Flusher on the handler's writer — without this proxy
+// the assertion fails against the logging wrapper and the client's
+// standalone SSE channel never completes its handshake, wedging session
+// close.
+func (w *loggingResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // handleStatus makes the gateway handshake-compatible with single-serve
 // clients (GrandCouncil's ConnectionTester probes GET /status and expects a
 // JSON body containing "label" or "plan"). It only answers after the gateway
