@@ -34,6 +34,14 @@ func (a *App) runSessionCatalog(ctx context.Context) {
 		OnRevision: func(revision uint64, roots []string, reason string) {
 			a.emitProjectTreeChangedV2(revision, roots, reason)
 		},
+		// tl1208: 会话目录列表直查 topic 注册唯一归属——跨 scope 空壳让位
+		// 先问注册表，再回落 1197 内容承载查询。
+		TopicOwner: func(topicID string) (string, string, bool) {
+			if entry, ok := topicRegistryOwnerOf(topicID); ok {
+				return entry.Scope, entry.Root, true
+			}
+			return "", "", false
+		},
 	})
 	if err != nil {
 		slog.Warn("desktop: open session catalog", "err", err)

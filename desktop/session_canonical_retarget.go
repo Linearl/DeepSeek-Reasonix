@@ -9,6 +9,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/sessioncatalog"
+	"reasonix/internal/topicregistry"
 )
 
 func (a *App) resolveOpenTopicSessionPath(scope, workspaceRoot, sessionPath string) (string, string) {
@@ -56,11 +57,30 @@ func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string,
 	var best topicSessionMatch
 	var bestContent bool
 	found := false
+	// tl1208: 注册表唯一归属直查——候选同为内容承载/同为空壳时，落在归属
+	// scope 的会话文件优先于 UpdatedAt 启发式；注册表无条目（headless 冷机
+	// /索引未建）时保持 1197 启发式不变。
+	owner, ownerOK := topicRegistryOwnerOf(topicID)
+	matchBetter := func(match topicSessionMatch, content bool) bool {
+		if !found {
+			return true
+		}
+		if content != bestContent {
+			return content // 内容承载者优先（1197 规则不变）
+		}
+		if ownerOK {
+			mo := topicMatchOwnedByOwner(match, owner)
+			bo := topicMatchOwnedByOwner(best, owner)
+			if mo != bo {
+				return mo
+			}
+		}
+		return match.updatedAt.After(best.updatedAt)
+	}
 	for _, dir := range a.knownSessionDirs() {
 		for _, match := range topicSessionMatches(dir, topicID) {
 			content := sessionFileHasConversationContent(match.path)
-			if !found || (content && !bestContent) ||
-				(content == bestContent && match.updatedAt.After(best.updatedAt)) {
+			if matchBetter(match, content) {
 				best = match
 				bestContent = content
 				found = true
@@ -88,6 +108,16 @@ func (a *App) findTopicSessionAcrossScopes(topicID, currentPath string) (string,
 		return "", "", "", false
 	}
 	return best.path, "project", root, true
+}
+
+// topicMatchOwnedByOwner 报告一个候选会话文件是否落在注册表唯一归属的
+// scope 里（tl1208）。归属为 global 时只认 global 目录候选；归属为项目时
+// 认同根项目候选。
+func topicMatchOwnedByOwner(match topicSessionMatch, owner topicregistry.Entry) bool {
+	if owner.Scope == topicregistry.ScopeGlobal {
+		return match.scope != "project"
+	}
+	return match.scope == "project" && sameProjectRoot(match.workspaceRoot, owner.Root)
 }
 
 func (a *App) sessionHasLiveController(path string) bool {
