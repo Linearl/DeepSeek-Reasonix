@@ -17,7 +17,13 @@ import {
 let passed = 0;
 let failed = 0;
 const testDir = dirname(fileURLToPath(import.meta.url));
-const stylesSource = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+// tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+const stylesSource = [
+  readFileSync(resolve(testDir, "../styles.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+].join("\n");
 const sessionActionsSource = readFileSync(resolve(testDir, "../components/TopicbarSessionActions.tsx"), "utf8");
 const terminalPanelSource = readFileSync(resolve(testDir, "../components/TerminalPanel.tsx"), "utf8");
 const terminalViewSource = readFileSync(resolve(testDir, "../components/TerminalView.tsx"), "utf8");

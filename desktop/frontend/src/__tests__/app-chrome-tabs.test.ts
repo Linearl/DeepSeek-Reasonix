@@ -27,7 +27,14 @@ const bridgeSource = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
 const workspacePanelSource = readFileSync(resolve(testDir, "../components/WorkspacePanel.tsx"), "utf8");
 const rewindCommitSource = readFileSync(resolve(testDir, "../lib/rewindCommit.ts"), "utf8");
 const layoutStoreSource = readFileSync(resolve(testDir, "../store/layout.ts"), "utf8");
-const stylesSource = readFileSync(resolve(testDir, "../styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+// tl1191: layout-mode rules moved to src/styles/mode-*.css; the chrome/tabbar
+// contract now spans the shared stylesheet plus all three mode sheets.
+const stylesSource = [
+  readFileSync(resolve(testDir, "../styles.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
 let passed = 0;
 let failed = 0;

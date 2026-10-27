@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const projectTreeSource = readFileSync(new URL("../components/ProjectTree.tsx", import.meta.url), "utf8");
-const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+// tl1191: mode-scoped rules (sidebar--workbench variants) live in src/styles/mode-*.css now.
+const styles = [
+  readFileSync(new URL("../styles.css", import.meta.url), "utf8"),
+  readFileSync(new URL("../styles/mode-classic.css", import.meta.url), "utf8"),
+  readFileSync(new URL("../styles/mode-workbench.css", import.meta.url), "utf8"),
+  readFileSync(new URL("../styles/mode-creation.css", import.meta.url), "utf8"),
+].join("\n");
 
 assert.ok(
   projectTreeSource.includes('className="project-tree__section-title project-tree__section-title--pinned"'),

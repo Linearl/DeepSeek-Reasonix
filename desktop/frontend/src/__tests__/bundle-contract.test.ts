@@ -48,7 +48,12 @@ const markdownSource = readFileSync(resolve(here, "../components/Markdown.tsx"),
 const localPathLinksSource = readFileSync(resolve(here, "../lib/localPathLinks.ts"), "utf8");
 const i18nSource = readFileSync(resolve(here, "../lib/i18n.tsx"), "utf8");
 const mainSource = readFileSync(resolve(here, "../main.tsx"), "utf8");
-const stylesSource = readFileSync(resolve(here, "../styles.css"), "utf8");
+// tl1191: mode-scoped rules live in the per-mode sheets now; footer variants
+// assert against the combined source.
+const stylesSource = readFileSync(resolve(here, "../styles.css"), "utf8") +
+  readFileSync(resolve(here, "../styles/mode-classic.css"), "utf8") +
+  readFileSync(resolve(here, "../styles/mode-workbench.css"), "utf8") +
+  readFileSync(resolve(here, "../styles/mode-creation.css"), "utf8");
 
 console.log("\nbundle contract");
 

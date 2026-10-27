@@ -18,6 +18,7 @@ import { initTextSize } from "./lib/textSize";
 import { initTypographyPreferences } from "./lib/typographyPreferences";
 import { initTheme } from "./lib/theme";
 import { initConversationWidth } from "./lib/conversationWidth";
+import { startupModeAssetPrefetch } from "./lib/desktopLayoutStyle";
 import appShellStylesheetURL from "./styles.css?url";
 
 // Install first so startup/runtime failures paint a useful error instead of a
@@ -98,6 +99,9 @@ async function mountApp() {
   // The HTML boot shell paints immediately with critical inline styles. Load
   // the full stylesheet and detected locale in parallel, then replace that
   // shell in one React commit so users never see an unstyled application.
+  // tl1191 joins the same parallel set with the active layout mode's own
+  // stylesheet (and classic's lazy chrome chunk), so the first React commit
+  // renders with mode styles already in — no unstyled-mode first frame.
   const preloadLocaleForMount = async () => {
     await preloadDetectedLocale();
   };
@@ -111,11 +115,15 @@ async function mountApp() {
       document.head.appendChild(link);
     }),
     preloadLocaleForMount(),
+    ...startupModeAssetPrefetch(),
   ]);
   const [styleResult, localeResult] = stylesResult;
   if (styleResult.status === "rejected") {
     console.error("failed to load desktop stylesheet", styleResult.reason);
     return;
+  }
+  for (const modeResult of stylesResult.slice(2)) {
+    if (modeResult.status === "rejected") console.error("failed to preload layout-mode assets", modeResult.reason);
   }
   if (localeResult.status === "rejected") console.error("failed to preload desktop locale", localeResult.reason);
   createRoot(rootElement).render(

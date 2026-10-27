@@ -125,6 +125,12 @@ const RemoteSessionSurface = lazy(() => import("./components/RemoteSessionSurfac
 // 任务 704: the trajectory surface is a lab-gated lazy chunk — with the switch
 // off (default, 铁律 2) it costs the startup bundle nothing.
 const TrajectoryView = lazy(() => import("./components/TrajectoryView").then((module) => ({ default: module.TrajectoryView })));
+// tl1191: the window chrome (top tab bar) only renders in the classic layout
+// (`!appChromeHidden`), so its subtree is a classic-only lazy chunk — workbench
+// and creation users never download it. Prefetched below for classic users so
+// the first paint mounts the real header without a skeleton flash.
+const AppChrome = lazy(() => import("./components/AppChrome").then((module) => ({ default: module.AppChrome })));
+const TabOverviewPanel = lazy(() => import("./components/TabOverviewPanel").then((module) => ({ default: module.TabOverviewPanel })));
 import { setSurfaceViewTab, useSurfaceView, setSurfaceView } from "./lib/trajectoryViewPreference";
 /** Footer decision surface kinds. Runtime blockers are explicit recovery choices. */
 import { StatusBar } from "./components/StatusBar";
@@ -139,9 +145,8 @@ import { Tooltip } from "./components/Tooltip";
 import { StartupSplash } from "./components/StartupSplash";
 import { OnboardingOverlay } from "./components/OnboardingOverlay";
 import { dismissOnboarding, shouldOpenOnboarding } from "./lib/onboarding";
-import { AppChrome } from "./components/AppChrome";
-import { TabOverviewPanel } from "./components/TabOverviewPanel";
 import { pruneRecentClosedTabs, pushRecentClosedTab, type RecentClosedTab } from "./lib/tabOverviewModel";
+import { loadModeStylesheet, normalizeDesktopLayoutStyle, type DesktopLayoutStyle } from "./lib/desktopLayoutStyle";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet";
 import { WorktreeBadge } from "./components/WorktreeBadge";
 import { CopyButton } from "./components/CopyButton";
@@ -407,13 +412,9 @@ function isThemeMode(value: string): value is Theme {
   return value === "auto" || value === "light" || value === "dark";
 }
 
-type DesktopLayoutStyle = "classic" | "workbench" | "creation";
-
-function normalizeDesktopLayoutStyle(style: string | undefined): DesktopLayoutStyle {
-  if (style === "creation") return "creation";
-  if (style === "classic") return "classic";
-  return "workbench";
-}
+// tl1191: the layout-mode type/normalizer live in lib/desktopLayoutStyle.ts
+// (shared with SettingsPanel / the lab chunk); App's private copy was folded
+// away when the mode stylesheets moved behind lib loaders.
 const SHOW_CONTEXT_DOCK = true;
 
 // First paint: apply the cached accent before React renders. The authoritative
@@ -1057,6 +1058,15 @@ export default function App() {
   const [desktopLayoutStyle, setDesktopLayoutStyle] = useState<DesktopLayoutStyle>(
     () => normalizeDesktopLayoutStyle(loadCachedLayoutStyle() ?? "workbench"),
   );
+  // tl1191: the active mode's stylesheet is prefetched before mount (main.tsx
+  // startupModeAssetPrefetch); this effect covers authoritative changes —
+  // first apply of the desktop config and user switches. Idempotent per mode
+  // (module cache), so a repeat import is a no-op.
+  useEffect(() => {
+    loadModeStylesheet(desktopLayoutStyle).catch((error) => {
+      console.error("failed to load layout stylesheet", error);
+    });
+  }, [desktopLayoutStyle]);
   const singleSurfaceLayout = desktopLayoutStyle === "workbench" || desktopLayoutStyle === "creation";
   const { configLoadWarnings, applySnapshot: applyConfigWarningSnapshot, reload: reloadConfigWarnings, dismiss: dismissConfigWarnings } = useConfigLoadWarnings();
   // History/trash overlay: one value for the entry point and the compositions that
@@ -5394,46 +5404,58 @@ export default function App() {
         style={layoutStyle}
       >
         {!appChromeHidden && (
-          <AppChrome
-            platform={desktopPlatform}
-            browserPreviewChrome={browserPreviewChrome}
-            workbenchChrome={sidebarWorkbench}
-            tabs={visibleTabs}
-            activeTabId={visibleTabId}
-            revealActiveSignal={tabRevealSignal}
-            commandCompact={true}
-            sidebarTogglePressed={sidebarTogglePressed}
-            sidebarExpandBlocked={sidebarExpandBlocked}
-            sidebarCollapsed={sidebarCollapsed}
-            sidebarToggleTitle={sidebarToggleTitle}
-            workspacePanelMaximized={workspacePanelMaximized}
-            workspacePanelRenderable={effectiveWorkspacePanelRenderable}
-            workspacePanelLabel={effectiveWorkspacePanelRenderable ? t("rightDock.collapse") : t("rightDock.expand")}
-            onToggleSidebar={toggleSidebar}
-            onToggleWorkspacePanel={toggleWorkspacePanel}
-            onTabChange={(id) => void handleTabChange(id)}
-            onTabClose={(id) => void handleTabClose(id)}
-            onTabsClose={(ids, nextActiveTabId) => void handleTabsClose(ids, nextActiveTabId)}
-            onTabStopAndClose={(id) => void stopAndCloseTab(id)}
-            onTabsReorder={(ids) => void handleTabsReorder(ids)}
-            onNewTab={() => void handleNewTab()}
-            onOpenPalette={() => void openPalette()}
-            tabOverview={
-              <TabOverviewPanel
-                tabs={visibleTabs}
-                activeTabId={visibleTabId}
-                recentClosedTabs={recentClosedTabs}
-                onActivateTab={(id) => void handleTabChange(id)}
-                onCloseTab={(id) => void handleTabClose(id)}
-                onReopenClosedTab={reopenRecentClosedTab}
-                variant={sidebarWorkbench ? "workbench" : "tools"}
+          /* tl1191: classic-only lazy chunk (prefetched for classic users, see
+             module top). The skeleton reserves the exact grid chrome row so a
+             late chunk never shifts layout; the grid row height comes from
+             `--app-chrome-height`, not from this element's content. */
+          <Suspense fallback={<div className="app-chrome app-chrome--loading" aria-hidden="true" />}>
+            <AppChrome
+              platform={desktopPlatform}
+              browserPreviewChrome={browserPreviewChrome}
+              workbenchChrome={sidebarWorkbench}
+              tabs={visibleTabs}
+              activeTabId={visibleTabId}
+              revealActiveSignal={tabRevealSignal}
+              commandCompact={true}
+              sidebarTogglePressed={sidebarTogglePressed}
+              sidebarExpandBlocked={sidebarExpandBlocked}
+              sidebarCollapsed={sidebarCollapsed}
+              sidebarToggleTitle={sidebarToggleTitle}
+              workspacePanelMaximized={workspacePanelMaximized}
+              workspacePanelRenderable={effectiveWorkspacePanelRenderable}
+              workspacePanelLabel={effectiveWorkspacePanelRenderable ? t("rightDock.collapse") : t("rightDock.expand")}
+              onToggleSidebar={toggleSidebar}
+              onToggleWorkspacePanel={toggleWorkspacePanel}
+              onTabChange={(id) => void handleTabChange(id)}
+              onTabClose={(id) => void handleTabClose(id)}
+              onTabsClose={(ids, nextActiveTabId) => void handleTabsClose(ids, nextActiveTabId)}
+              onTabStopAndClose={(id) => void stopAndCloseTab(id)}
+              onTabsReorder={(ids) => void handleTabsReorder(ids)}
+              onNewTab={() => void handleNewTab()}
+              onOpenPalette={() => void openPalette()}
+              tabOverview={
+              /* tl1191: separate boundary so the overview chunk (racing the
+                 chrome chunk) suspends only the overview slot, not the whole
+                 header; the trigger button appearing one frame late is
+                 invisible, a re-falling header would flash. */
+              <Suspense fallback={null}>
+                <TabOverviewPanel
+                  tabs={visibleTabs}
+                  activeTabId={visibleTabId}
+                  recentClosedTabs={recentClosedTabs}
+                  onActivateTab={(id) => void handleTabChange(id)}
+                  onCloseTab={(id) => void handleTabClose(id)}
+                  onReopenClosedTab={reopenRecentClosedTab}
+                  variant={sidebarWorkbench ? "workbench" : "tools"}
+                />
+              </Suspense>
+              }
+              splitTabId={splitTabId}
+              onToggleSplit={toggleSplitForTab}
+              onFetchLastSessionWorkspace={fetchLastSessionWorkspace}
+              onNewTabInWorkspace={(hint) => void handleNewTabInWorkspace(hint)}
               />
-            }
-            splitTabId={splitTabId}
-            onToggleSplit={toggleSplitForTab}
-            onFetchLastSessionWorkspace={fetchLastSessionWorkspace}
-            onNewTabInWorkspace={(hint) => void handleNewTabInWorkspace(hint)}
-          />
+          </Suspense>
         )}
         <a className="skip-to-composer" href="#composer-input">
           {t("shortcuts.skipToComposer")}

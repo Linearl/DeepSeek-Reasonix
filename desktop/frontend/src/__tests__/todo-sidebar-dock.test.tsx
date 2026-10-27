@@ -284,7 +284,9 @@ console.log("\ntodo sidebar dock (task 259)");
   const fs = await import("node:fs");
   const path = await import("node:path");
   const url = await import("node:url");
-  const stylesSource = fs.readFileSync(path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "../styles.css"), "utf8")
+  // tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+  const stylesSource = ["../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css", "../styles/mode-creation.css"]
+    .map((p) => fs.readFileSync(path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), p), "utf8")).join("\n")
     .replace(/\/\*[\s\S]*?\*\//g, "");
 
   function matchingBlocks(selector: string): string[] {

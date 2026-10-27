@@ -41,7 +41,13 @@ import {
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const packSource = readFileSync(resolve(testDir, "../lib/themePack.ts"), "utf8");
-const stylesSource = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+// tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+const stylesSource = [
+  readFileSync(resolve(testDir, "../styles.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+].join("\n");
 const appViewSource = readFileSync(resolve(testDir, "../app-shell/AppRuntimeView.tsx"), "utf8");
 const exportOwnerSource = readFileSync(resolve(testDir, "../app-runtime/useSessionExportCommands.ts"), "utf8");
 const composerRouterSource = readFileSync(resolve(testDir, "../app-runtime/useComposerRouter.ts"), "utf8");
@@ -538,8 +544,12 @@ ok(packSource.includes("baseAppearance"), "tracks base appearance for restore");
 ok(stylesSource.includes(".theme-bg"), "background layer CSS present");
 ok(stylesSource.includes("data-theme-scene=\"task\""), "task scene CSS present");
 // Theme pack section must not *apply* backdrop-filter (comments may mention it).
-const themeBgIdx = stylesSource.indexOf("Theme Pack V1");
-const themeBgSlice = themeBgIdx >= 0 ? stylesSource.slice(themeBgIdx) : "";
+// tl1191: the "from Theme Pack V1 to end-of-file" slice is defined over the
+// shared stylesheet only — the mode sheets are separate files loaded on
+// demand, not later sections of the same cascade.
+const mainStylesheet = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+const themeBgIdx = mainStylesheet.indexOf("Theme Pack V1");
+const themeBgSlice = themeBgIdx >= 0 ? mainStylesheet.slice(themeBgIdx) : "";
 ok(
   !/^\s*backdrop-filter\s*:/m.test(themeBgSlice) && !/^\s*-webkit-backdrop-filter\s*:/m.test(themeBgSlice),
   "theme pack CSS does not apply backdrop-filter",

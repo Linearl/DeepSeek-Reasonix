@@ -13,7 +13,13 @@ import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 // Strip comments so declaration parsing never matches prose inside them.
-const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+// tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+const styles = [
+  readFileSync(resolve(testDir, "../styles.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+].join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
 let passed = 0;
 let failed = 0;

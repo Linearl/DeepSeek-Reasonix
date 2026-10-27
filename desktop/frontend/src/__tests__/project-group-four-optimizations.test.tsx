@@ -48,7 +48,13 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http:
 const thisFile = fileURLToPath(import.meta.url);
 const dir = dirname(thisFile);
 const treeSource = readFileSync(resolve(dir, "../components/ProjectTree.tsx"), "utf8");
-const cssSource = readFileSync(resolve(dir, "../styles.css"), "utf8");
+// tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+const cssSource = [
+  resolve(dir, "../styles.css"),
+  resolve(dir, "../styles/mode-classic.css"),
+  resolve(dir, "../styles/mode-workbench.css"),
+  resolve(dir, "../styles/mode-creation.css"),
+].map((p) => readFileSync(p, "utf8")).join("\n");
 const libSource = readFileSync(resolve(dir, "../lib/projectGroups.ts"), "utf8");
 
 // ── 验收 ④：reorderProjectGroups（数据层行为） ──────────────────────────────

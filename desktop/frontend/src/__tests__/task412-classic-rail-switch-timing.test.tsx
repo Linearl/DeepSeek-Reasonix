@@ -76,7 +76,9 @@ console.log("\ntask 412 classic rail + switch timing");
 
 // ── Part 1b: classic-scoped CSS mirrors the workbench rail ──────────────────
 {
-  const css = readFileSync(fileURLToPath(new URL("../styles.css", import.meta.url)), "utf8");
+  // tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+  const css = ["../styles.css", "../styles/mode-classic.css", "../styles/mode-workbench.css", "../styles/mode-creation.css"]
+    .map((p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8")).join("\n");
   const classicRule = css.match(/\.sidebar:not\(\.sidebar--workbench\) \.sidebar__nav--footer \.sidebar__utility-row\s*\{[^}]*\}/);
   // 任务 320 UI 规格（20261002）：行内加入收件箱（邮箱图标）；任务 409 群聊入行。
   // 任务 684：列数不再写死——自动列（列数=按钮数），增删图标免改 CSS 恒单行

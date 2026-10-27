@@ -1,5 +1,8 @@
 // tl 1134：桌面布局样式归一——自 SettingsPanel.tsx 下沉（实验室二级 chunk 拆分）。
-// 主面板与实验室二级 chunk 两边共用；App.tsx 有一份独立副本（本件不动）。
+// 主面板与实验室二级 chunk 两边共用；tl1191 起 App.tsx 也改为共用本模块
+// （App.tsx 原有一份逐字节等价的本地副本，随模式分包一并收口）。
+
+import { loadCachedLayoutStyle } from "./layoutPreferences";
 
 export type DesktopLayoutStyle = "classic" | "workbench" | "creation";
 
@@ -13,4 +16,36 @@ export function normalizeDesktopLayoutStyle(style: string | undefined): DesktopL
   // picker honest — accept what the picker and App.tsx both offer.
   if (style === "creation") return "creation";
   return "workbench";
+}
+
+// tl1191: per-mode stylesheets. The three mode stylesheets are split out of
+// styles.css verbatim (block order preserved; ownership asserted by
+// src/__tests__/mode-css-split.test.ts) so each layout downloads only its own
+// mode rules. The dynamic imports stay out of the initial chunk; Vite emits
+// one CSS chunk per file and injects it on first import (idempotent after).
+export function loadModeStylesheet(mode: DesktopLayoutStyle): Promise<unknown> {
+  switch (mode) {
+    case "classic":
+      return import("../styles/mode-classic.css");
+    case "workbench":
+      return import("../styles/mode-workbench.css");
+    case "creation":
+      return import("../styles/mode-creation.css");
+  }
+}
+
+// tl1191: startup prefetch for the boot parallel-load set (main.tsx
+// mountApp). Reads the same synchronous first-paint cache as the
+// desktopLayoutStyle initializer (task 40's no-flash rule) so the active
+// mode's stylesheet — and, for classic, the lazy chrome chunk — is already
+// in flight before React mounts; a mode the cache guessed wrong about gets
+// loaded by App's effect instead. Failure here degrades to unstyled-mode
+// rendering and must not block the boot sequence (main.tsx allSettled).
+export function startupModeAssetPrefetch(): Promise<unknown>[] {
+  const mode = normalizeDesktopLayoutStyle(loadCachedLayoutStyle() ?? "workbench");
+  const jobs: Promise<unknown>[] = [loadModeStylesheet(mode)];
+  if (mode === "classic") {
+    jobs.push(import("../components/AppChrome"), import("../components/TabOverviewPanel"));
+  }
+  return jobs;
 }

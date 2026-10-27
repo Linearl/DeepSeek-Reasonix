@@ -21,7 +21,13 @@ import type { ReactNode } from "react";
 import type { WireAsk } from "../lib/types";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const styles = readFileSync(resolve(testDir, "../styles.css"), "utf8");
+// tl1191: mode-scoped rules live in src/styles/mode-*.css now.
+const styles = [
+  readFileSync(resolve(testDir, "../styles.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-classic.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-workbench.css"), "utf8"),
+  readFileSync(resolve(testDir, "../styles/mode-creation.css"), "utf8"),
+].join("\n");
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
 Object.assign(globalThis, {
