@@ -53,6 +53,16 @@ func runServePool(addr, tokenFile, token string) int {
 		gwToken = loadOrCreateGatewayTokenCLI()
 	}
 	gw := servepool.NewGateway(mgr, gwToken)
+	// tl 1182: mount the task-bus MCP surface when [serve.bus_mcp] is
+	// configured, same as the desktop host — the pool gateway becomes the
+	// single external MCP entry (per-role bearer auth lives inside the bus
+	// handlers; every other path keeps the gateway bearer check).
+	if mcpHandler, eventsHandler, busErr := servepool.BusHandlersFromConfig(); busErr != nil {
+		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "bus-mcp disabled by config:", busErr)
+	} else if mcpHandler != nil {
+		gw.SetBus(mcpHandler, eventsHandler)
+		fmt.Printf("bus-mcp mounted on gateway (/mcp, /bus/events)\n")
+	}
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
