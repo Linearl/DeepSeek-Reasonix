@@ -915,6 +915,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if _, err := memory.StoreFor(config.MemoryUserDir(), root).MigrateV2(); err != nil {
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Memory metadata migration did not complete.", Detail: err.Error()})
 	}
+	// Record activation: pinned on facts that only pin through the legacy
+	// default, so the pinned budget and /memory act on explicit choices.
+	// Injection is unchanged; each rewrite keeps a rollback revision, and the
+	// budget check passes by construction — a body-for-body replacement never
+	// grows the total.
+	if _, err := memory.StoreFor(config.MemoryUserDir(), root).MaterializeLegacyPinned(); err != nil {
+		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Legacy pinned-memory materialization did not complete.", Detail: err.Error()})
+	}
 	mem := memory.Load(memory.Options{CWD: root, UserDir: config.MemoryUserDir()})
 	projectChecks := instruction.ExtractHostChecks(mem.Docs)
 	// sysPromptBase is the assembled prefix up to (but not including) the memory

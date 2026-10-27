@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"reasonix/internal/fileutil"
 )
@@ -152,24 +151,105 @@ func (s Store) validateSave(m Memory) error {
 }
 
 // validatePinnedBudget rejects a save that would push the total pinned-body
-// runes over PinnedGuidanceBudgetChars. Legacy virtually-pinned guidance
-// counts — it occupies the same prefix — so an over-budget store forces
-// curation before anything new can be pinned.
+// runes over PinnedGuidanceBudgetChars while also growing that total. A store
+// that already sits over budget stays writable: replacing or shrinking an
+// existing pinned body never worsens the overshoot, so curation can proceed —
+// the write-only check used to leave the store blind to legacy guidance
+// accumulating past the cap, after which every pinned write failed and the
+// only escape was silently downgrading preferences to relevant. Legacy
+// virtually-pinned guidance counts — it occupies the same prefix.
 func (s Store) validatePinnedBudget(m Memory) error {
 	if ResolveActivation(m) != ActivationPinned {
 		return nil
 	}
-	total := utf8.RuneCountInString(strings.TrimSpace(m.Body))
-	for _, pinned := range s.pinnedGuidance() {
+	newTotal := BodyChars(m)
+	currentTotal := 0
+	guidance := s.pinnedGuidance()
+	for _, pinned := range guidance {
+		chars := BodyChars(pinned)
+		currentTotal += chars
 		if pinned.ID == m.ID || (m.ID == "" && pinned.Name == m.Name) {
-			continue
+			continue // this save replaces that body; its old size only counts in currentTotal
 		}
-		total += utf8.RuneCountInString(strings.TrimSpace(pinned.Body))
+		newTotal += chars
 	}
-	if total <= PinnedGuidanceBudgetChars {
+	if newTotal <= PinnedGuidanceBudgetChars || newTotal <= currentTotal {
 		return nil
 	}
-	return fmt.Errorf("pinning this fact would put pinned guidance at %d chars, over the %d budget: rules that must always hold belong in REASONIX.md/AGENTS.md instructions; unpin or consolidate existing pinned facts first", total, PinnedGuidanceBudgetChars)
+	return pinnedBudgetError(newTotal, guidance, m)
+}
+
+// pinnedBudgetError renders the rejection as numbers plus a ranked ledger: the
+// writer sees the exact overshoot and a copyable /memory unpin line for the
+// largest entry it did not itself write, instead of a dead end that pushes
+// curation toward silently downgrading facts.
+func pinnedBudgetError(newTotal int, guidance []Memory, m Memory) error {
+	deficit := newTotal - PinnedGuidanceBudgetChars
+	var b strings.Builder
+	fmt.Fprintf(&b, "pinning this fact would put pinned guidance at %d chars, over the %d budget (deficit %d): rules that must always hold belong in REASONIX.md/AGENTS.md instructions\n",
+		newTotal, PinnedGuidanceBudgetChars, deficit)
+	fmt.Fprintf(&b, "pinned budget total=%d limit=%d deficit=%d; current pinned entries (name | chars | scope | updated_at | legacy):\n",
+		newTotal, PinnedGuidanceBudgetChars, deficit)
+	suggest := ""
+	suggestChars := 0
+	for _, pinned := range guidance {
+		legacy := "no"
+		if NormalizeActivation(string(pinned.Activation)) == "" {
+			legacy = "yes"
+		}
+		fmt.Fprintf(&b, "  %s | %d | %s | %s | %s\n",
+			pinned.Name, BodyChars(pinned), NormalizeFactScope(string(pinned.Scope)),
+			formatMemoryDay(pinned.UpdatedAt), legacy)
+		isSelf := pinned.ID == m.ID || (m.ID == "" && pinned.Name == m.Name)
+		if !isSelf && BodyChars(pinned) > suggestChars {
+			suggest, suggestChars = pinned.Name, BodyChars(pinned)
+		}
+	}
+	if suggest != "" {
+		fmt.Fprintf(&b, "frees the most budget: /memory unpin %s", suggest)
+	}
+	return fmt.Errorf("%s", b.String())
+}
+
+func formatMemoryDay(t time.Time) string {
+	if t.IsZero() {
+		return "unknown"
+	}
+	return t.UTC().Format("2006-01-02")
+}
+
+// PinnedGuidanceUsage reports how much of the pinned budget the store currently
+// occupies: resolved-pinned fact count and total body runes. /memory renders it
+// so an overshoot is visible before it blocks a write, not only after.
+func (s Store) PinnedGuidanceUsage() (facts, chars int) {
+	for _, m := range s.pinnedGuidance() {
+		facts++
+		chars += BodyChars(m)
+	}
+	return facts, chars
+}
+
+// MaterializeLegacyPinned records an explicit activation: pinned on every fact
+// that only rides session-context through ResolveActivation's legacy default.
+// Injection is unchanged — the same bodies pin before and after — but the
+// virtually-pinned set is emptied, so the budget check and the /memory ledger
+// act on explicit curation instead of an invisible default. Each rewrite goes
+// through the normal save path: the pre-materialization state lands in
+// .revisions and /memory revisions|restore can roll it back. Idempotent; runs
+// at boot next to MigrateV2. Returns the number of facts materialized.
+func (s Store) MaterializeLegacyPinned() (int, error) {
+	materialized := 0
+	for _, fact := range s.ListAll() {
+		if NormalizeActivation(string(fact.Activation)) != "" || ResolveActivation(fact) != ActivationPinned {
+			continue
+		}
+		fact.Activation = ActivationPinned
+		if _, err := s.SaveWithOptions(fact, SaveOptions{}); err != nil {
+			return materialized, err
+		}
+		materialized++
+	}
+	return materialized, nil
 }
 
 func (s Store) SaveWithOptions(m Memory, opts SaveOptions) (SaveResult, error) {

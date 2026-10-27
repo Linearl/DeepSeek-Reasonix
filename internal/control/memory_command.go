@@ -253,6 +253,14 @@ func RenderMemorySummary(set *memory.Set, now time.Time) string {
 	}
 	var b strings.Builder
 	b.WriteString("memory\n")
+	if len(facts) > 0 {
+		// Budget occupancy up front: an overshoot must be visible before it
+		// blocks a pin, not only through a failed write.
+		pinnedFacts, pinnedChars := set.Store.PinnedGuidanceUsage()
+		fmt.Fprintf(&b, "\npinned: %d facts, %d / %d chars (%d%%)\n",
+			pinnedFacts, pinnedChars, memory.PinnedGuidanceBudgetChars,
+			pinnedChars*100/memory.PinnedGuidanceBudgetChars)
+	}
 	if len(set.Docs) > 0 {
 		b.WriteString("\ninstructions (low -> high precedence)\n")
 		for index, doc := range set.Docs {
@@ -273,6 +281,12 @@ func RenderMemorySummary(set *memory.Set, now time.Time) string {
 			pinned := ""
 			if memory.ResolveActivation(fact) == memory.ActivationPinned {
 				pinned = " activation=pinned"
+				if memory.NormalizeActivation(string(fact.Activation)) == "" {
+					// Legacy default, not a recorded choice: the fact only pins
+					// because pre-field global user/feedback always did.
+					pinned += "(legacy)"
+				}
+				pinned += fmt.Sprintf(" chars=%d", memory.BodyChars(fact))
 			}
 			fmt.Fprintf(&b, "    revision=%d scope=%s type=%s freshness=%s%s\n",
 				fact.Revision,
