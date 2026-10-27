@@ -14,12 +14,22 @@
 //   - Clicking a card jumps straight into that session (including ones not
 //     currently open — resume handles the hydration); Esc / backdrop closes.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ChevronDown, Folder, Search } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { useMountTransition } from "../lib/useMountTransition";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { paletteSessionDisplayTitle, paletteSessionHint, sessionActivityTime } from "../lib/session";
-import { applySessionWallQuery, applySessionWallOpenOnly, groupSessionsForWall, type SessionWallGroupMode } from "../lib/sessionWall";
+import { topicActivityLabel } from "../lib/projectTreeTopic";
+import {
+  applySessionWallQuery,
+  applySessionWallOpenOnly,
+  groupSessionsForWall,
+  SESSION_WALL_EXCERPT_TARGET,
+  SESSION_WALL_HOVER_OPEN_DELAY_MS,
+  sessionWallHoverLayerOrigin,
+  type SessionWallGroupMode,
+} from "../lib/sessionWall";
 import { loadSessionWallCollapsed, loadSessionWallOpenOnly, saveSessionWallCollapsed, saveSessionWallOpenOnly } from "../lib/sessionWallPrefs";
 import type { SessionMeta } from "../lib/types";
 
@@ -71,6 +81,14 @@ export function SessionWallPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const isOpenRef = useRef(false);
   isOpenRef.current = open;
+  // tl 1188: the hover excerpt layer — a body portal floating OUTSIDE the
+  // card (the user: hover content must live outside the card, "显示的区域
+  // 不局限于卡片本身的大小"). Same shape as the project tree's hover card:
+  // a hover timer opens it, the rect fixes its anchor, mouseleave cancels.
+  // The excerpt data itself is NOT re-fetched here — the layer reads the
+  // same tailExcerpts cache the card feeds, so a late fetch updates it live.
+  const [hoverLayer, setHoverLayer] = useState<{ session: SessionMeta; groupLabel: string; left: number; top: number } | null>(null);
+  const hoverLayerTimerRef = useRef<number | null>(null);
   // Keep the wall mounted through its exit animation after `open` flips
   // false; `status` drives the enter/exit keyframes via data-state.
   const { mounted, status } = useMountTransition(open, 200);
@@ -112,6 +130,11 @@ export function SessionWallPanel({
       setCollapsed(new Set(loadSessionWallCollapsed()));
       setTailExcerpts(new Map());
       requestedExcerptsRef.current = new Set();
+      setHoverLayer(null);
+      if (hoverLayerTimerRef.current !== null) {
+        window.clearTimeout(hoverLayerTimerRef.current);
+        hoverLayerTimerRef.current = null;
+      }
       inputRef.current?.focus();
     }
     // loadSessionWallOpenOnly / loadSessionWallCollapsed are read once per
@@ -141,6 +164,36 @@ export function SessionWallPanel({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // tl 1188: a pending hover timer must not survive the panel unmounting.
+  useEffect(() => {
+    return () => {
+      if (hoverLayerTimerRef.current !== null) window.clearTimeout(hoverLayerTimerRef.current);
+    };
+  }, []);
+
+  // tl 1188: the hover layer opens on a delay (anti-flicker, same 350ms gate
+  // as the project tree's hover card) and closes the moment the pointer or
+  // focus leaves the card. Re-scheduling on another card replaces both the
+  // timer and — when the new timer fires — the layer content, so switching
+  // cards never leaves a stale layer behind.
+  const cancelHoverLayer = useCallback(() => {
+    if (hoverLayerTimerRef.current !== null) {
+      window.clearTimeout(hoverLayerTimerRef.current);
+      hoverLayerTimerRef.current = null;
+    }
+    setHoverLayer((current) => (current === null ? current : null));
+  }, []);
+  const scheduleHoverLayer = useCallback((element: HTMLElement, session: SessionMeta, groupLabel: string) => {
+    if (hoverLayerTimerRef.current !== null) window.clearTimeout(hoverLayerTimerRef.current);
+    hoverLayerTimerRef.current = window.setTimeout(() => {
+      hoverLayerTimerRef.current = null;
+      if (!element.isConnected) return;
+      const rect = element.getBoundingClientRect();
+      const { left, top } = sessionWallHoverLayerOrigin(rect, { width: window.innerWidth, height: window.innerHeight });
+      setHoverLayer({ session, groupLabel, left, top });
+    }, SESSION_WALL_HOVER_OPEN_DELAY_MS);
+  }, []);
+
   const dayLabel = useCallback(
     (ms: number) => {
       const days = Math.round((startOfDay(new Date()) - startOfDay(new Date(ms))) / 86_400_000);
@@ -155,11 +208,14 @@ export function SessionWallPanel({
   // first hover/focus. The ref dedupes requests synchronously (one fetch per
   // card per open even under double render); a failed fetch degrades to "no
   // excerpts" — the native title returns rather than the card going mute.
+  // tl 1188: "cannot answer" now means "fewer than the layer's full width" —
+  // the external layer shows up to 8 excerpts, so a sidecar carrying the old
+  // 3-wide field still pulls the tail instead of starving the layer.
   const requestedExcerptsRef = useRef<Set<string>>(new Set());
   const requestExcerpts = useCallback(
     (session: SessionMeta) => {
       if (!loadExcerpts) return;
-      if ((session.recentExcerpts?.filter(Boolean).length ?? 0) > 0) return;
+      if ((session.recentExcerpts?.filter(Boolean).length ?? 0) >= SESSION_WALL_EXCERPT_TARGET) return;
       if (requestedExcerptsRef.current.has(session.path)) return;
       requestedExcerptsRef.current.add(session.path);
       setTailExcerpts((prev) => new Map(prev).set(session.path, { status: "pending" }));
@@ -215,13 +271,59 @@ export function SessionWallPanel({
 
   if (!mounted) return null;
 
+  // tl 1188: the external hover layer (project-tree hover-card pattern: a
+  // body portal the card's own box can never clip). It reads the same
+  // tailExcerpts cache the cards feed, so a tail fetch landing after the
+  // layer opened fills it live; an excerpt-less session still shows the
+  // meta block (turns · relative time · date · group folder).
+  const renderHoverLayer = () => {
+    if (!hoverLayer) return null;
+    const s = hoverLayer.session;
+    const tail = tailExcerpts.get(s.path);
+    const excerpts = (tail?.status === "ready" ? tail.lines : s.recentExcerpts)?.filter(Boolean) ?? [];
+    const activityAt = sessionActivityTime(s);
+    const relative = topicActivityLabel(activityAt, t);
+    const date = dayLabel(activityAt);
+    return createPortal(
+      <div className="session-wall-hover-layer" style={{ left: hoverLayer.left, top: hoverLayer.top }} aria-hidden="true">
+        <div className="session-wall-hover-layer__title">{paletteSessionDisplayTitle(s, t("history.emptySession"))}</div>
+        <div className="session-wall-hover-layer__meta">
+          {[
+            t(s.turns === 1 ? "history.turnOne" : "history.turnOther", { n: s.turns }),
+            // Past 7 days the relative label IS the date — showing both would
+            // repeat the same string (10/20 · 10/20).
+            relative !== date ? relative : "",
+            date,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+        <div className="session-wall-hover-layer__project">
+          <Folder size={12} aria-hidden="true" />
+          <span>{hoverLayer.groupLabel}</span>
+        </div>
+        {excerpts.length > 0 && (
+          <div className="session-wall-hover-layer__excerpts">
+            {excerpts.map((line, i) => (
+              <div className="session-wall-hover-layer__excerpt" key={i}>
+                {line}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>,
+      document.body,
+    );
+  };
+
   return (
-    <div
-      className="drawer-backdrop drawer-backdrop--subtle session-wall-backdrop"
-      data-state={status}
-      onClick={onClose}
-      role="presentation"
-    >
+    <>
+      <div
+        className="drawer-backdrop drawer-backdrop--subtle session-wall-backdrop"
+        data-state={status}
+        onClick={onClose}
+        role="presentation"
+      >
       <div
         className="session-wall"
         data-state={status}
@@ -315,22 +417,36 @@ export function SessionWallPanel({
                         // newest first, so the card answers "is this the one?"
                         // without opening the transcript. tl 1177b 方案B: the
                         // list field stays as the instant source; cards it
-                        // cannot answer pull the tail on first hover, and the
-                        // native title (the conversation name — the exact
-                        // fallback tl-1177 bans) is held back while the fetch
-                        // is in flight so it cannot flash first.
+                        // cannot answer pull the tail on first hover. tl 1188:
+                        // the excerpts render in the EXTERNAL hover layer (the
+                        // body portal below) — the card itself only suppresses
+                        // its native title while the excerpts exist or a fetch
+                        // is in flight, so the browser tooltip cannot stack on
+                        // top of the layer.
                         const tail = tailExcerpts.get(s.path);
-                        const excerpts = (tail?.status === "ready" ? tail.lines : s.recentExcerpts)?.filter(Boolean) ?? [];
-                        const holdTitle = excerpts.length === 0 && tail?.status === "pending";
+                        const hasExcerpts =
+                          ((tail?.status === "ready" ? tail.lines : s.recentExcerpts)?.filter(Boolean).length ?? 0) > 0;
+                        const holdTitle = hasExcerpts || tail?.status === "pending";
                         return (
                           <button
                             type="button"
                             key={s.path}
                             className="session-wall__card"
-                            title={excerpts.length > 0 || holdTitle ? undefined : title}
-                            onMouseEnter={() => requestExcerpts(s)}
-                            onFocus={() => requestExcerpts(s)}
-                            onClick={() => onResume(s)}
+                            title={holdTitle ? undefined : title}
+                            onMouseEnter={(e) => {
+                              requestExcerpts(s);
+                              scheduleHoverLayer(e.currentTarget, s, g.label);
+                            }}
+                            onMouseLeave={cancelHoverLayer}
+                            onFocus={(e) => {
+                              requestExcerpts(s);
+                              scheduleHoverLayer(e.currentTarget, s, g.label);
+                            }}
+                            onBlur={cancelHoverLayer}
+                            onClick={() => {
+                              cancelHoverLayer();
+                              onResume(s);
+                            }}
                           >
                             <span className="session-wall__card-title">{title}</span>
                             {hint && <span className="session-wall__card-hint">{hint}</span>}
@@ -339,18 +455,6 @@ export function SessionWallPanel({
                               <span>{t(s.turns === 1 ? "history.turnOne" : "history.turnOther", { n: s.turns })}</span>
                               {s.open && <span className="session-wall__card-open">{t("sessionWall.openBadge")}</span>}
                             </span>
-                            {excerpts.length > 0 && (
-                              <span className="session-wall__card-excerpts" role="tooltip">
-                                {/* tl 1177b: the title stays visible while
-                                    hovering — the overlay never covers it. */}
-                                <span className="session-wall__card-excerpt-title">{title}</span>
-                                {excerpts.map((line, i) => (
-                                  <span className="session-wall__card-excerpt" key={i}>
-                                    {line}
-                                  </span>
-                                ))}
-                              </span>
-                            )}
                           </button>
                         );
                       })}
@@ -368,6 +472,7 @@ export function SessionWallPanel({
           </span>
         </div>
       </div>
-    </div>
+      {renderHoverLayer()}
+    </>
   );
 }

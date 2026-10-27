@@ -124,6 +124,55 @@ export function groupSessionsForWall(
   return groups;
 }
 
+// ── tl 1188: the external hover layer ────────────────────────────────────
+// The card's in-card excerpt overlay could only ever show ~3 clipped lines
+// (the user: "现在的卡片尺寸只能显示三行还是截断的，意义不大"), so hover
+// content moved to a body portal sized ~9x the card area. These constants
+// and the origin function below keep the geometry in one testable,
+// React-free place; the CSS implements the same numbers as an elastic range.
+
+// The layer's target footprint — the user asked for ~9x the card area
+// (cards are ≥210px × ~140px ⇒ ≈630×420). CSS carries the elastic range
+// (min 600×380 / max 720×520); the flip math uses this midpoint so the
+// decision stays stable across the range.
+export const SESSION_WALL_HOVER_LAYER_EST_W = 630;
+export const SESSION_WALL_HOVER_LAYER_EST_H = 420;
+
+// Hover-open delay: same anti-flicker gate as the project tree's hover card
+// (350ms) — sweeping the cursor across the wall must not pop layers.
+export const SESSION_WALL_HOVER_OPEN_DELAY_MS = 350;
+
+// tl 1177b raised the hover data width to 8 (backend recentExcerptCount); a
+// list field already carrying the full width skips the on-demand tail fetch.
+export const SESSION_WALL_EXCERPT_TARGET = 8;
+
+// sessionWallHoverLayerOrigin picks where the hover layer anchors. Preferred
+// face is right of the card; when the layer would spill past the right edge
+// it flips to the card's left; when neither side fits (narrow window) it
+// clamps inside the viewport. Vertically it aligns with the card's top edge,
+// clamped so a tall layer never spills past the bottom or the top. `flippedX`
+// is returned for tests (and debuggability), not consumed by the DOM.
+export function sessionWallHoverLayerOrigin(
+  rect: { left: number; right: number; top: number; bottom: number },
+  viewport: { width: number; height: number },
+): { left: number; top: number; flippedX: boolean } {
+  const GAP = 10;
+  const MARGIN = 8;
+  let left = rect.right + GAP;
+  let flippedX = false;
+  if (left + SESSION_WALL_HOVER_LAYER_EST_W > viewport.width - MARGIN) {
+    const leftSide = rect.left - GAP - SESSION_WALL_HOVER_LAYER_EST_W;
+    if (leftSide >= MARGIN) {
+      left = leftSide;
+      flippedX = true;
+    } else {
+      left = Math.max(MARGIN, viewport.width - MARGIN - SESSION_WALL_HOVER_LAYER_EST_W);
+    }
+  }
+  const top = Math.max(MARGIN, Math.min(rect.top, viewport.height - MARGIN - SESSION_WALL_HOVER_LAYER_EST_H));
+  return { left, top, flippedX };
+}
+
 // insertSessionWallEntry is the palette gate. Off (the default): the input
 // array is returned as-is — same reference, byte-for-byte identical palette.
 // On: a copy with `entry` inserted right after the "cmd-reload-runtime" chip,
