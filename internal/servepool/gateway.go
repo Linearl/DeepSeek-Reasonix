@@ -48,6 +48,15 @@ type Gateway struct {
 	// selector (task 539): a desktop-held session's guided messages route
 	// into the holding tab's controller. nil keeps the plain forward.
 	inboxGate InboxGateFunc
+	// busMCP/busEvents carry the task-bus surface mounted via SetBus
+	// (tl 1182): the busmcp streamable-HTTP handler and the /bus/events
+	// hook receiver. Both authenticate every request with per-role bearer
+	// tokens inside the handlers, so the gateway bearer check does not
+	// apply to them; nil keeps both paths unmounted (they then fall
+	// through the normal gateway auth and answer 404 like any unknown
+	// route — fail-closed, see ServeHTTP).
+	busMCP    http.Handler
+	busEvents http.Handler
 }
 
 // proxyEntry is one cached reverse proxy tagged with the serve port it
@@ -89,6 +98,27 @@ func (g *Gateway) SetVirtualSource(id string, src VirtualSource) {
 	g.virtualMu.Lock()
 	defer g.virtualMu.Unlock()
 	g.virtuals[id] = &src
+}
+
+// SetBus mounts the task-bus surface on the gateway (tl 1182): mcpHandler
+// is the busmcp streamable-HTTP endpoint served at /mcp (POST for JSON-RPC,
+// GET for the optional SSE stream, DELETE for session end), eventsHandler
+// the hook receiver at /bus/events. Port convergence: with the bus mounted,
+// 18789 is the single external entry for MCP clients and the standalone
+// serve's 8787 becomes an internal/local detail.
+//
+// Authentication is deliberately split: these two paths are answered
+// WITHOUT the gateway bearer check because the bus handlers authenticate
+// every request themselves with per-role bearer tokens (fail-closed on an
+// unknown token) — byte-for-byte the standalone serve's posture, where the
+// auth gate exempts exactly /mcp and /bus/events for the same reason. A
+// gateway token is and remains meaningless on the bus paths, and every
+// other gateway path keeps the strict bearer check, so the gateway-token
+// semantics are not weakened by the mount. Call before serving traffic;
+// nil handlers keep the paths unmounted.
+func (g *Gateway) SetBus(mcpHandler, eventsHandler http.Handler) {
+	g.busMCP = mcpHandler
+	g.busEvents = eventsHandler
 }
 
 // TakeoverGateRequest is one intercepted remote takeover call (task 249).
@@ -162,6 +192,23 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// duration, and remote address in the desktop rolling log.
 		log.Printf("[gateway] %s %s -> %d in %s remote=%s", r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond), r.RemoteAddr)
 	}()
+	// tl 1182: exact-match bus paths split BEFORE the gateway bearer check.
+	// The mounted bus authenticates with per-role tokens inside its handlers
+	// (fail-closed), so routing them through authorized() would 401 every
+	// MCP client — the exact failure handleProxy's Authorization overwrite
+	// has on /p/<id>/mcp. Unmounted gateways never enter this branch: the
+	// paths then fall through the normal gateway auth (401 without a
+	// gateway token) and answer 404 with one, so an absent bus can never
+	// open an unauthenticated route. Exact matching keeps the exemption as
+	// narrow as the mount, mirroring serve's busPublicPaths.
+	if g.busMCP != nil && (r.URL.Path == "/mcp" || r.URL.Path == "/bus/events") {
+		if r.URL.Path == "/mcp" {
+			g.busMCP.ServeHTTP(rec, r)
+		} else {
+			g.busEvents.ServeHTTP(rec, r)
+		}
+		return
+	}
 	if !g.authorized(r) {
 		http.Error(rec, "unauthorized", http.StatusUnauthorized)
 		return

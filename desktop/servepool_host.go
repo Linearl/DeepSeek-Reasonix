@@ -75,6 +75,18 @@ func (a *App) startServePool(ctx context.Context) {
 	// Task 539: guided messages for desktop-held sessions (yielding window)
 	// inject into the holding tab's controller.
 	a.installServePoolInboxGate(gw)
+	// tl 1182: mount the task-bus MCP surface on the gateway when
+	// [serve.bus_mcp] is configured — 18789 becomes the single external
+	// entry for MCP clients (port convergence; the standalone serve's 8787
+	// stays a local/internal detail). The bus handlers carry their own
+	// per-role bearer auth, so the gateway bearer semantics on every other
+	// path are unchanged.
+	if mcpHandler, eventsHandler, busErr := servepool.BusHandlersFromConfig(); busErr != nil {
+		slog.Warn("servepool: bus-mcp disabled by config", "err", busErr)
+	} else if mcpHandler != nil {
+		gw.SetBus(mcpHandler, eventsHandler)
+		slog.Info("servepool: bus-mcp mounted on gateway")
+	}
 	port := gatewayPort()
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
