@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -4128,5 +4129,67 @@ func TestCreateTopicLandsInBothSidebarSources(t *testing.T) {
 				t.Fatalf("sidebar tree has no node for topic %q", meta.ID)
 			}
 		})
+	}
+}
+
+// tl 1189: a resume click now reaches the backend unconditionally even while a
+// turn is running, so the idempotent-reuse contract must hold: reopening a
+// session that already has a tab activates that tab in place instead of
+// spawning a second surface — the "switch to the existing tab" branch of the
+// click contract (the "no tab yet" branch is the plain first open above it).
+func TestReopenExistingTopicTabActivatesItInPlace(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	projectRoot := robustTempDir(t)
+	app := NewApp()
+	app.ctx = context.Background()
+	t.Cleanup(func() { app.shutdown(context.Background()) })
+
+	first, err := app.CreateTopic("project", projectRoot, "跳转A")
+	if err != nil {
+		t.Fatalf("create topic A: %v", err)
+	}
+	second, err := app.CreateTopic("project", projectRoot, "跳转B")
+	if err != nil {
+		t.Fatalf("create topic B: %v", err)
+	}
+
+	metaA1, err := app.OpenProjectTab(projectRoot, first.ID)
+	if err != nil {
+		t.Fatalf("open A: %v", err)
+	}
+	metaB, err := app.OpenProjectTab(projectRoot, second.ID)
+	if err != nil {
+		t.Fatalf("open B: %v", err)
+	}
+	if app.activeTabID != metaB.ID {
+		t.Fatalf("active tab after opening B = %q, want %q", app.activeTabID, metaB.ID)
+	}
+
+	metaA, err := app.OpenProjectTab(projectRoot, first.ID)
+	if err != nil {
+		t.Fatalf("reopen A: %v", err)
+	}
+	tabs := app.ListTabs()
+	if len(tabs) != 2 {
+		t.Fatalf("tabs after reopen = %d, want 2 (reopen reuses the existing surface)", len(tabs))
+	}
+	if metaA.ID != metaA1.ID {
+		t.Fatalf("reopen resolved to a new tab %q, want the existing %q", metaA.ID, metaA1.ID)
+	}
+	if app.activeTabID != metaA.ID {
+		t.Fatalf("active tab after reopen = %q, want the reopened %q", app.activeTabID, metaA.ID)
+	}
+	activeSeen := 0
+	for _, tab := range tabs {
+		if tab.Active {
+			activeSeen++
+			if tab.ID != metaA.ID {
+				t.Fatalf("Active flag on tab %q, want reopened tab %q", tab.ID, metaA.ID)
+			}
+		}
+	}
+	if activeSeen != 1 {
+		t.Fatalf("tabs reporting Active = %d, want exactly 1", activeSeen)
 	}
 }
