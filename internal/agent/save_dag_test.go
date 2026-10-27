@@ -496,6 +496,7 @@ func TestDAGSaveConcurrentGoroutinesExtendTheirOwnHeads(t *testing.T) {
 }
 
 func TestExportSessionSchemaOneWritesReadableSchemaOneSession(t *testing.T) {
+	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")
 	dst := filepath.Join(t.TempDir(), "export.jsonl")
