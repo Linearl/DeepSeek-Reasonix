@@ -120,8 +120,60 @@ function blockSignature(block: string): "classic" | "workbench" | "creation" | n
 }
 
 // --- inputs
-const mergeBase = execFileSync("git", ["merge-base", "HEAD", "main-v2-stable"], { cwd: frontendRoot, encoding: "utf8" }).trim();
-const baseStyles = execFileSync("git", ["show", `${mergeBase}:desktop/frontend/src/styles.css`], { cwd: frontendRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+const SKELETON_BLOCK = ".app-chrome--loading";
+// Baseline resolution, deliberately merge-state independent: the old probe
+// (`git merge-base HEAD main-v2-stable`) silently degraded to "HEAD itself"
+// once the split landed on the mainline, re-flagging every mode block as an
+// addition. Order:
+//   1. MODE_SPLIT_BASELINE_SHA env pin: a frozen stylesheet for point-in-time
+//      audits (point it at a pre-split commit and run it against a tree of
+//      that era to reproduce the original split read; also the escape hatch
+//      for rewritten history);
+//   2. otherwise a rolling HEAD baseline: the stylesheets as committed in
+//      HEAD. A frozen split-era baseline would go red on ordinary mainline
+//      CSS evolution (unrelated legit commits move blocks too), so the
+//      default baseline rolls with HEAD and keeps every assertion live in
+//      both pre-merge (branch-local) and post-merge (mainline) states.
+// The baseline's own skeleton block is always stripped before comparison: the
+// skeleton is the harness's single declared addition, so stripping keeps
+// "exactly one addition" true for any baseline choice; the skeleton's home in
+// the shared stylesheet is still guarded by its own assertions below.
+const BASELINE_ENV = "MODE_SPLIT_BASELINE_SHA";
+const envPin = process.env[BASELINE_ENV]?.trim() || "";
+// `git show <rev>:<path>` takes repo-root-relative paths.
+const sheetPaths = [
+  "desktop/frontend/src/styles.css",
+  "desktop/frontend/src/styles/mode-classic.css",
+  "desktop/frontend/src/styles/mode-workbench.css",
+  "desktop/frontend/src/styles/mode-creation.css",
+];
+function showOrNull(rev: string, path: string): string | null {
+  try {
+    return execFileSync("git", ["show", `${rev}:${path}`], { cwd: frontendRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return null;
+  }
+}
+let baselineHow = "";
+const baseParts: string[] = [];
+if (envPin) {
+  const pinned = showOrNull(envPin, sheetPaths[0]);
+  if (pinned === null) {
+    process.stderr.write(`mode css split: ${BASELINE_ENV}=${envPin} has no ${sheetPaths[0]}.\n`);
+    process.exit(1);
+  }
+  baselineHow = `${envPin.slice(0, 10)} ${BASELINE_ENV} pin (frozen)`;
+  baseParts.push(pinned);
+} else {
+  baselineHow = `HEAD ${execFileSync("git", ["rev-parse", "--short=10", "HEAD"], { cwd: frontendRoot, encoding: "utf8" }).trim()} (rolling)`;
+  for (const path of sheetPaths) {
+    const text = showOrNull("HEAD", path);
+    // Mode sheets carry a declaration banner; strip it exactly like the
+    // working-tree copies below so both sides compare CSS blocks only.
+    if (text !== null) baseParts.push(path.endsWith("styles.css") ? text : stripBanner(text));
+  }
+}
+const baseStyles = baseParts.join("\n");
 const mainStyles = readFileSync(resolve(frontendRoot, "src/styles.css"), "utf8");
 // Strip each mode file's declaration banner so the inventory compares CSS
 // blocks only (the banner would otherwise fuse with the first rule into a
@@ -137,14 +189,15 @@ const appSource = readFileSync(resolve(frontendRoot, "src/App.tsx"), "utf8");
 const layoutLibSource = readFileSync(resolve(frontendRoot, "src/lib/desktopLayoutStyle.ts"), "utf8");
 const mainSource = readFileSync(resolve(frontendRoot, "src/main.tsx"), "utf8");
 
-console.log(`\nmode css split (merge-base ${mergeBase.slice(0, 10)})`);
+console.log(`\nmode css split (baseline: ${baselineHow})`);
 
 // --- 1. block inventory: nothing lost, one declared addition
 // Comparison key strips leading whitespace: a block's leading gap is file
 // formatting (banners, blank-line runs), not rule content.
 const norm = (b: string) => b.replace(/^\s+/, "");
-const SKELETON_BLOCK = ".app-chrome--loading";
-const baseBlocks = parseBlocks(baseStyles).map(norm);
+// Skeleton stripped per-block after the single parse (never text-spliced back
+// into the source: block boundaries stay byte-faithful).
+const baseBlocks = parseBlocks(baseStyles).filter((b) => !b.includes(SKELETON_BLOCK)).map(norm);
 const nowBlocks = [
   ...parseBlocks(mainStyles),
   ...parseBlocks(classicStyles),
