@@ -21,10 +21,11 @@ func writeTailFixture(t *testing.T, msgs []provider.Message) string {
 }
 
 // TestSessionTailUserExcerptsTailWindow is the tl-1177b 方案 B contract for a
-// session whose newest exchanges sit inside the first tail window: the newest
-// three recognizable user messages come back, newest first, with the same
-// noise filter as the sidecar path (host turns, steers, @file dumps, paste
-// chrome).
+// session whose newest exchanges sit inside the first tail window: every
+// recognizable user message comes back, newest first, with the same noise
+// filter as the sidecar path (host turns, steers, @file dumps, paste chrome).
+// tl 1188 raised the width to 8, so all four recognizable fixture messages
+// now come back (the fixture holds fewer than the width).
 func TestSessionTailUserExcerptsTailWindow(t *testing.T) {
 	path := writeTailFixture(t, []provider.Message{
 		{Role: provider.RoleSystem, Content: "sys"},
@@ -38,7 +39,7 @@ func TestSessionTailUserExcerptsTailWindow(t *testing.T) {
 		{Role: provider.RoleUser, Content: "[Pasted text #1 · 20 lines]\nnewest task"},
 	})
 	got := SessionTailUserExcerpts(path, RecentExcerptCount)
-	want := []string{"newest task", "third task", "second task"}
+	want := []string{"newest task", "third task", "second task", "first task"}
 	if len(got) != len(want) {
 		t.Fatalf("excerpts = %v, want %v", got, want)
 	}

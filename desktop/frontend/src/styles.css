@@ -15064,56 +15064,74 @@ button.statusbar__mcp:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* tl 1177: hover excerpts — the newest user messages, shown as an overlay
-   covering the card itself: it can never be clipped by the scrolling list
-   (an upward popover would be cut off on the first row) and never shifts
-   the grid. tl 1177b: the overlay re-renders the card title as its first
-   row in the title's own style, so hovering never hides the title (验收
-   #2: 浮层不遮挡卡片标题). */
-.session-wall__card-excerpts {
-  display: none;
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-local-raised);
+/* tl 1188: the hover excerpt layer — a body portal floating OUTSIDE the card
+   (the in-card overlay could only ever show ~3 clipped lines inside a ≥210px
+   cell; the user: 显示区域不能局限于卡片本身). Same treatment as
+   .project-tree__hover-card: position:fixed so no scroll container can clip
+   it, and pointer-events:none so it never eats the card's click nor breaks
+   the mouseleave that closes it. Size is the user's ~9x-card-area target as
+   an elastic range (cards are ≥210×~140 ⇒ ≈630×420); max-height bounds a
+   long excerpt wall, min sizes keep short content from collapsing. Theme
+   tokens only — a body portal escapes every card-scoped cascade. */
+.session-wall-hover-layer {
+  position: fixed;
+  z-index: var(--z-menu);
+  min-width: 600px;
+  max-width: 720px;
+  min-height: 380px;
+  max-height: 520px;
+  overflow: hidden;
+  display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-  padding: 8px 10px;
-  border: 1px solid var(--accent, var(--border));
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--bg);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
 }
-.session-wall__card-excerpt-title {
-  font-size: 12.5px;
-  font-weight: 600;
-  line-height: 1.35;
+.session-wall-hover-layer__title {
   color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.session-wall-hover-layer__meta {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+.session-wall-hover-layer__project {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+}
+.session-wall-hover-layer__project svg {
+  flex: 0 0 auto;
+}
+.session-wall-hover-layer__excerpts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+/* Two clamped lines per excerpt: 8 × 2 lines fits the 520px ceiling with the
+   meta block, so every excerpt of a full-width (8-line) fetch stays visible —
+   the layer grows with its content instead of silently clipping its tail. */
+.session-wall-hover-layer__excerpt {
+  color: var(--fg);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  overflow-wrap: anywhere;
-  margin-bottom: 3px;
-  padding-bottom: 3px;
-  border-bottom: 1px solid var(--border);
-}
-.session-wall__card {
-  position: relative;
-}
-.session-wall__card:hover .session-wall__card-excerpts,
-.session-wall__card:focus-visible .session-wall__card-excerpts {
-  display: flex;
-}
-.session-wall__card-excerpt {
-  font-size: var(--text-xs);
-  line-height: 1.4;
-  color: var(--fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.session-wall__card-excerpt:first-child {
-  font-weight: 600;
 }
 .session-wall__card-meta {
   display: flex;

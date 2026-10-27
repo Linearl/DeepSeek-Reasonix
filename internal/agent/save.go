@@ -2741,9 +2741,11 @@ func SessionPreviewFromMessages(msgs []provider.Message) (string, int) {
 }
 
 // recentExcerptCount is how many closing user messages the hover excerpts
-// carry — enough to recognize a session at a glance, small enough that the
-// sidecar stays tiny.
-const recentExcerptCount = 3
+// carry. tl 1188 raised it from 3 to 8: the excerpts moved from the card's
+// in-card overlay (where 3 lines was all a ≥210px cell could show) to an
+// external ~630×420 hover layer, which has room for a real scan. The
+// sidecar grows by a few hundred bytes per session — still tiny.
+const recentExcerptCount = 8
 
 // RecentExcerptCount is the exported hover-excerpt width (tl-1177b): the
 // desktop's on-demand tail reader (SessionTailUserExcerpts) shares this
