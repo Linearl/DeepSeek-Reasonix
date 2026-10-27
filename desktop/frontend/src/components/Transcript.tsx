@@ -208,7 +208,7 @@ export function Transcript(props: TranscriptProps) {
   const autoLoadOlder = useAutoLoadOlderEnabled();
   const requestOlderAtTopRef = useRef<(() => void) | null>(null);
   const { kernel: transcriptKernel, setScroller: setKernelScroller, snapshot,
-    beginGesture, beginStructural, scrollElement, scrollToBottom, scheduleTailSync, safeMode, scrollRef, setScrollMode, writeOffset, jumpToBlock, onScroll, endGesture, commitViewportGeometry, onWheelCapture, isAtBottom, intent, onTouchStartCapture, onTouchEndCapture, onKeyDownCapture, onPointerDownCapture, beginAnchorRestore,
+    beginGesture, beginStructural, scrollElement, scrollToBottom, scheduleTailSync, safeMode, scrollRef, setScrollMode, writeOffset, jumpToBlock, onScroll, endGesture, commitViewportGeometry, restoreLanding, onWheelCapture, isAtBottom, intent, onTouchStartCapture, onTouchEndCapture, onKeyDownCapture, onPointerDownCapture, beginAnchorRestore,
   } = useTranscriptKernel({
     sessionKey: surfaceKey,
     geometryRevision: `${contentRevision}:${footerHeight}:${experience}:${toolGrouping}:${historyMutation?.seq ?? 0}`,
@@ -668,15 +668,36 @@ export function Transcript(props: TranscriptProps) {
       if (!geometry || (!empty && geometry.visibleBlocks.length === 0)) return;
       if (committedSurfaceRef.current === commitKey) return;
       committedSurfaceRef.current = commitKey;
-      // Fork (#9567): the remounted surface can park wherever its first paint
-      // lands — resetScroll's tail intent was observed lost after
-      // model-takeover remounts, leaving the newest turns above the viewport.
-      // Enforce the tail once the incoming surface has committed its paint.
-      setScrollMode("tail-follow");
-      scrollToBottom();
+      // Fork (#9567): the remounted surface could park wherever its first paint
+      // landed. It used to fix that with an unconditional
+      // setScrollMode("tail-follow") + scrollToBottom() — a third restore chain
+      // that overrode the kernel's verdict and dragged reader-parked sessions
+      // to the bottom (1196 forms 2/3). tl 1204 collapsed every landing onto
+      // the kernel authority: ask it to land (tail → bottom, block → the
+      // reader's anchored position); the paint-ready receipt keeps its
+      // navigation-handshake duty unchanged.
+      restoreLanding();
       onSurfacePaintReady(surfaceCommitToken, safeMode ? "degraded" : "ready");
     });
-  }, [empty, hydrating, safeMode, snapshot, onSurfacePaintReady, projection, surfaceCommitToken, transcriptKernel]);
+  }, [empty, hydrating, restoreLanding, safeMode, snapshot, onSurfacePaintReady, projection, surfaceCommitToken, transcriptKernel]);
+  // tl 1204 (restoring chain a, hydrate leg): when a full reload finishes
+  // (resident-stale fetch swaps placeholder content for the real history), the
+  // real blocks are mounted by layout-effect time but NOT yet painted. Landing
+  // here — synchronously, before the browser paints — is what makes "should be
+  // at the bottom" read as "first frame already at the bottom" (1196 form 2:
+  // the visible top-to-bottom scroll). The kernel authority decides where to
+  // land: tail → bottom, reader → its anchored block. Once per surface.
+  const landedSurfaceRef = useRef("");
+  useLayoutEffect(() => {
+    if (empty) return;
+    if (hydrating) {
+      landedSurfaceRef.current = "";
+      return;
+    }
+    if (landedSurfaceRef.current === surfaceKey) return;
+    landedSurfaceRef.current = surfaceKey;
+    restoreLanding();
+  }, [empty, hydrating, restoreLanding, surfaceKey]);
   // 任务874: transcript 空白哨兵 + 有界自恢复。2026-10-13 19:10 实录：大会话
   // reset 重建后 items 已在 state，视口可见块却为 0（渲染层丢失）；kernel 的
   // blank-viewport anomaly 只重观察一次且不落 desktop.log，空白持续到用户重开

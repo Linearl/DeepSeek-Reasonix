@@ -3,6 +3,7 @@ import { Activity, CircleStop, Download, Flag, X } from "lucide-react";
 import { app } from "../lib/bridge";
 import { useI18n, type Locale } from "../lib/i18n";
 import { useToast } from "../lib/toast";
+import { TRANSCRIPT_BOTTOM_THRESHOLD_PX } from "../lib/transcriptKernel";
 import "./ScrollDiagnosticPanel.css";
 import {
   isTranscriptScrollDiagnosticsBuild,
@@ -94,7 +95,8 @@ function diagnosticSample(element: HTMLElement | null, totalRows: number): Recor
     firstVisibleIndex,
     firstVisibleTop,
     mode: element.dataset.scrollMode,
-    atBottom: bottomDistance <= 4,
+    // tl 1204: the verdict threshold is the kernel's single constant.
+    atBottom: bottomDistance <= TRANSCRIPT_BOTTOM_THRESHOLD_PX,
     scrollable: element.scrollHeight - element.clientHeight > 4,
   };
 }

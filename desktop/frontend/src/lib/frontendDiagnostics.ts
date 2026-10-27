@@ -8,6 +8,7 @@
  */
 
 import { notifyFrontendDiagnosticStart, setFrontendDiagnosticSink } from "./frontendDiagnosticBridge";
+import { TRANSCRIPT_BOTTOM_THRESHOLD_PX } from "./transcriptKernel";
 import type { FrontendDiagnosticFields } from "./frontendDiagnosticBridge";
 
 export { isFrontendDiagnosticsBuild } from "./frontendDiagnosticsBuild";
@@ -372,7 +373,8 @@ function transcriptGeometry(element: HTMLElement | null): EventFields {
     clientHeight: element.clientHeight,
     bottomDistance,
     scrollable: element.scrollHeight - element.clientHeight > 4,
-    atBottom: bottomDistance <= 4,
+    // tl 1204: the verdict threshold is the kernel's single constant.
+    atBottom: bottomDistance <= TRANSCRIPT_BOTTOM_THRESHOLD_PX,
   };
 }
 

@@ -578,10 +578,13 @@ export class TranscriptKernel {
         // (chain b). When even it cannot land the write the recovery is
         // exhausted — say so on the diagnostic stream instead of failing
         // silently, so a "stopped mid-way" report has a traceable outcome.
+        // A refused write may already have finished the transaction
+        // (native-clamp), so the id rides the same optional chain as
+        // reportAnomaly.
         this.emit({
           session: this.session,
           generation: this.generationValue,
-          transaction: this.active.transaction.id,
+          transaction: this.active?.transaction.id ?? 0,
           owner: "tail-follow",
           intent: this.intentValue,
           geometryRevision: this.geometryVersion,
