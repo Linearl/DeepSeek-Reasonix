@@ -83,6 +83,9 @@ export type TierFeatureId =
   | "sessionStorage"
   // 任务 846: 配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
   | "homePointer"
+  // tl 1174: 冷会话 transcript zstd 归档（可选档，默认关——关时保存/加载
+  // 行为与引入前一致；Go 渲染表同步登记 LabTierOptional）。
+  | "jsonlZstd"
   | "runtimeReuse"
   // 任务 790: ACP 常驻监听（loopback TCP，每连接独立 client 面，默认关）。
   | "acpListen"
@@ -260,10 +263,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // ── dev-debug（开发调试，2 项）───────────────────────────────
   cdpDebugPort: "unstable",
   lifecycleNoiseGate: "unstable",
-  // ── storage（存储，3 项；846 增 homePointer）────────────────
+  // ── storage（存储，4 项；846 增 homePointer，tl-1174 增 jsonlZstd）────
   eventsRotation: "optional",
   sessionStorage: "unstable",
   homePointer: "unstable",
+  // tl 1174: 冷会话 transcript zstd 归档——档位与 Go 渲染表 LabTierOptional
+  // 双侧一致（562 门禁）。
+  jsonlZstd: "optional",
   // ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
   // 任务 1005 批1 转档：runtimeReuse 升「稳定」（992 刚升推荐的四项之一）。
   runtimeReuse: "stable",
@@ -411,8 +417,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 20,
-  optional: 40,
-  unstable: 13,
+  optional: 41,
+  unstable: 12,
   retired: 1,
 };
 

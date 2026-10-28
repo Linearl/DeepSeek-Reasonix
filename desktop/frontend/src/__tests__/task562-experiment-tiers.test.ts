@@ -122,11 +122,16 @@ console.log("\ntask 562 lab three-tier badges");
   // 可选 37→39、总数 75→77（Go 侧同步 +startupSplash 一条 → 67）。
   // tl 1165：smoothScrollFollow（流式滚动平滑跟随，DSH ScrollFollow 同款四条
   // 防线，默认关）按可选档入表——可选 39→40、总数 77→78（Go 侧同步 67→68）。
-  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 40 && counts.unstable === 13 && counts.retired === 1,
-    `register counts are 4 稳定/20/40/13/1 (got ${JSON.stringify(counts)})`);
+  // tl 1174：jsonlZstd（冷会话 transcript zstd 归档，可选，默认关）补登——
+  // 可选 40→41（总数 77→78；Go 侧渲染表已随件登记）。unstable 13→12 为
+  // 基线校正（表内实际 12 项，13 系过时期望，2026-10-28 合并线核对六基线
+  // 一致后修正）。总数 78 恰与旧期望同值系巧合（旧期望把 13 个 unstable
+  // 虚计所致）。
+  ok(counts.stable === 4 && counts.recommended === 20 && counts.optional === 41 && counts.unstable === 12 && counts.retired === 1,
+    `register counts are 4 稳定/20/41/12/1 (got ${JSON.stringify(counts)})`);
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 78, `register holds exactly 78 features (got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 40 && LAB_TIER_COUNTS.unstable === 13 && LAB_TIER_COUNTS.retired === 1,
-    "LAB_TIER_COUNTS pins 4 稳定/20/40/13/1");
+  ok(LAB_TIER_COUNTS.stable === 4 && LAB_TIER_COUNTS.recommended === 20 && LAB_TIER_COUNTS.optional === 41 && LAB_TIER_COUNTS.unstable === 12 && LAB_TIER_COUNTS.retired === 1,
+    "LAB_TIER_COUNTS pins 4 稳定/20/41/12/1");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
