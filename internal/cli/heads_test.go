@@ -12,7 +12,12 @@ import (
 	"reasonix/internal/provider"
 )
 
-func newSchemaTwoChatTUI(t *testing.T) (chatTUI, *control.Controller, *agent.Session, string) {
+// newBranchFlowChatTUI builds a fresh flat session (schema-1 since tl-1173 P1;
+// new sessions no longer carry an in-log DAG head) for the /branch and /switch
+// command flows. The returned path is the source log; after /branch the
+// controller binds a NEW session object (the child file), so tests must reach
+// the live session through ctrl.Executor() rather than the original one.
+func newBranchFlowChatTUI(t *testing.T) (chatTUI, *control.Controller, string) {
 	t.Helper()
 	dir := t.TempDir()
 	sess := agent.NewSession("sys")
@@ -27,20 +32,31 @@ func newSchemaTwoChatTUI(t *testing.T) (chatTUI, *control.Controller, *agent.Ses
 	}
 	t.Cleanup(ctrl.Close)
 	m := newChatTUI(ctrl, "", make(chan event.Event, 1), 80)
-	return m, ctrl, sess, path
+	return m, ctrl, path
 }
 
-func TestBranchAndSwitchCommandsMoveBetweenHeadsInPlace(t *testing.T) {
-	m, ctrl, sess, path := newSchemaTwoChatTUI(t)
+// TestBranchAndSwitchCommandsMoveBetweenSessionFiles pins the flat-session
+// /branch semantics: branching at the tip copies the conversation into a child
+// session FILE (the schema-1 path branchTip has always taken; in-log DAG heads
+// are a schema-2-only legacy retired with tl1227), marks it current in the
+// tree, and /switch moves back to the parent log and forward again by name.
+func TestBranchAndSwitchCommandsMoveBetweenSessionFiles(t *testing.T) {
+	m, ctrl, path := newBranchFlowChatTUI(t)
 	m.runBranchCommand("/branch experiment")
-	if ctrl.SessionPath() != path {
-		t.Fatalf("/branch moved the session to %q, want the same log", ctrl.SessionPath())
+	childPath := ctrl.SessionPath()
+	if childPath == path {
+		t.Fatal("/branch on a flat session must move to a child session file, got the same log")
+	}
+	if meta, ok, err := agent.LoadBranchMeta(childPath); err != nil || !ok || meta.Name != "experiment" || meta.ParentID != agent.BranchID(path) {
+		t.Fatalf("child meta = %+v ok=%v err=%v, want name experiment parented on the source log", meta, ok, err)
 	}
 	tree := strings.Join(*m.pendingCommit, "\n")
 	if !strings.Contains(tree, "experiment") || !strings.Contains(tree, "current") {
-		t.Fatalf("/branch tree must list the new head as current:\n%s", tree)
+		t.Fatalf("/branch tree must list the new branch as current:\n%s", tree)
 	}
-	sess.Add(provider.Message{Role: provider.RoleUser, Content: "on the branch"})
+	// The controller bound a fresh session object for the child file; grow the
+	// live one (not the source session the fixture captured).
+	ctrl.Executor().Session().Add(provider.Message{Role: provider.RoleUser, Content: "on the branch"})
 	if err := ctrl.Snapshot(); err != nil {
 		t.Fatal(err)
 	}
@@ -50,15 +66,13 @@ func TestBranchAndSwitchCommandsMoveBetweenHeadsInPlace(t *testing.T) {
 	}
 	m.sessionSwitch = false
 	m.runSwitchCommand("/switch experiment")
-	if got := ctrl.History(); len(got) != 4 || got[3].Content != "on the branch" || !m.sessionSwitch {
-		t.Fatalf("/switch by name: history %d switch %v", len(got), m.sessionSwitch)
-	}
-	if heads, err := agent.ListSessionHeads(path); err != nil || len(heads) != 2 || !heads[1].Selected {
-		t.Fatalf("heads = %+v err=%v", heads, err)
+	if got := ctrl.History(); len(got) != 4 || got[3].Content != "on the branch" || !m.sessionSwitch || ctrl.SessionPath() != childPath {
+		t.Fatalf("/switch by name: history %d switch %v path %q", len(got), m.sessionSwitch, ctrl.SessionPath())
 	}
 }
 
 func TestSessionsDiagnoseCountsSessionLogHeadsAndCleanupLeavesThem(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 「单日志多头不构成恢复组」场景不可达——tl-1173 P1 起新会话扁平、ForkHead 对扁平会话拒绝（session log is not schema 2），存量 DAG 日志已由 MigrateSessionDAGLog 一次性迁移且 tl1227 ListSessionHeads 垫片恒空，显式退役非静默")
 	t.Setenv("REASONIX_HOME", t.TempDir())
 	dir := t.TempDir()
 	path := filepath.Join(dir, "log.jsonl")
