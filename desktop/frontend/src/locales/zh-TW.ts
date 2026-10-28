@@ -4131,6 +4131,9 @@ export const zhTW: Record<DictKey, string> = {
   "composer.capsuleHistoryLoading": "正在讀取歷史…",
   "composer.capsuleHistoryEmpty": "該歷史沒有可顯示的內容",
   "composer.capsuleHistoryFailed": "讀取子代理歷史失敗。",
+  // tl1202：執行中子代理的轉錄僅在結束後落盤——詳情給佔位語義而非失敗紅字；讀取失敗可手動重試。
+  "composer.capsuleHistoryPending": "子代理執行中，轉錄將在其結束後可讀。",
+  "composer.capsuleHistoryRetry": "重試",
   "composer.capsuleStatusRunning": "執行中",
   "composer.capsuleStatusCompleted": "已完成",
   "composer.capsuleStatusFailed": "失敗",
