@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"reasonix/internal/sandbox"
 	"reasonix/internal/tool"
@@ -28,6 +29,13 @@ type multiEdit struct {
 	workDir  string
 	overlay  FileOverlay
 	readBack bool
+	// skipFailed lights the tl-1218 ③ skip-failed mode
+	// (experimental_multi_edit_skip_failed): one failed edit no longer aborts
+	// the batch — the step is skipped, later steps still run against the
+	// buffer as left by the applied ones, and the final response reports every
+	// edit (index + applied/failed + reason). The zero value keeps the atomic
+	// all-or-nothing semantics verbatim.
+	skipFailed bool
 }
 
 // editStep is one edit in a multi_edit operation. Mirrors edit_file's args
@@ -119,17 +127,27 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 	}
 	content := src.content
 
-	// Apply edits in order against the running in-memory buffer. Any failure
-	// returns before the write, leaving the file untouched — that's the
-	// safety guarantee that makes multi_edit preferable to chained
-	// edit_file calls.
+	// Apply edits in order against the running in-memory buffer. With
+	// skipFailed off (the default) any failure returns before the write,
+	// leaving the file untouched — that's the atomicity guarantee that makes
+	// multi_edit preferable to chained edit_file calls. With skipFailed on
+	// (tl-1218 ③) a failed step is skipped and later steps still run; the
+	// file is written only when at least one edit applied, and the response
+	// carries a per-edit report.
 	applied := 0
 	usedFuzzy := false
 	receipts := make([]editReplacementReceipt, 0, len(p.Edits))
 	var spanStart, spanEnd int // union of replaced regions in the CURRENT buffer
+	var failures []editStepFailure
+	stepApplied := make([]int, len(p.Edits))
 	for i, step := range p.Edits {
 		if step.OldString == "" {
-			return "", fmt.Errorf("edit %d: old_string is required", i+1)
+			err := fmt.Errorf("edit %d: old_string is required", i+1)
+			if m.skipFailed {
+				failures = append(failures, editStepFailure{index: i + 1, erred: err, reason: err.Error()})
+				continue
+			}
+			return "", err
 		}
 		result := applyOldStringEdit(content, step.OldString, step.NewString, step.ReplaceAll)
 		switch {
@@ -139,19 +157,39 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 			}
 			content = result.updated
 			applied += result.applied
+			stepApplied[i] = result.applied
 			usedFuzzy = usedFuzzy || result.fuzzy
 			receipts = append(receipts, result.receipt)
 		case result.matches == 0:
-			return "", fmt.Errorf("edit %d: %w", i+1, oldStringNotFoundError(p.Path, step.OldString, content))
+			err := oldStringNotFoundError(p.Path, step.OldString, content)
+			if m.skipFailed {
+				failures = append(failures, editStepFailure{index: i + 1, erred: fmt.Errorf("edit %d: %w", i+1, err), reason: err.Error()})
+				continue
+			}
+			return "", fmt.Errorf("edit %d: %w", i+1, err)
 		default:
-			return "", fmt.Errorf("edit %d: %w", i+1, oldStringNotUniqueError(p.Path, step.OldString, content, result.matches, true))
+			err := oldStringNotUniqueError(p.Path, step.OldString, content, result.matches, true)
+			if m.skipFailed {
+				failures = append(failures, editStepFailure{index: i + 1, erred: fmt.Errorf("edit %d: %w", i+1, err), reason: err.Error()})
+				continue
+			}
+			return "", fmt.Errorf("edit %d: %w", i+1, err)
 		}
+	}
+	// Skip-failed mode with NOTHING applied: the batch-level report would be
+	// empty prose, so the call fails exactly like the baseline — the first
+	// failure's own error (diagnostics intact), file untouched.
+	if len(failures) > 0 && applied == 0 {
+		return "", failures[0].erred
 	}
 
 	if err := src.write(ctx, m.overlay, p.Path, content); err != nil {
 		return "", fmt.Errorf("write %s: %w", p.Path, err)
 	}
-	summary := fmt.Sprintf("multi_edit %s: %d edits applied (%d total replacements)", p.Path, len(p.Edits), applied)
+	// With skip-failed mode on and steps skipped, the applied-step count (not
+	// the total) leads the summary; the per-edit report below names each
+	// skipped step. Pure-success batches keep len(p.Edits), byte-identical.
+	summary := fmt.Sprintf("multi_edit %s: %d edits applied (%d total replacements)", p.Path, len(p.Edits)-len(failures), applied)
 	if usedFuzzy {
 		summary += " (fuzzy match)"
 	}
@@ -160,7 +198,61 @@ func (m multiEdit) Execute(ctx context.Context, args json.RawMessage) (string, e
 		first, last := readBackSpanLines(content, spanStart, spanEnd)
 		summary = withReadBack(ctx, summary, p.Path, content, src.postWriteSnapshot(p.Path, content), first, last)
 	}
+	if len(failures) > 0 {
+		summary += "\n" + formatEditStepReport(stepApplied, failures)
+	}
 	return summary, nil
+}
+
+// editStepFailure records one skipped step for the tl-1218 ③ per-edit report.
+type editStepFailure struct {
+	index  int
+	erred  error
+	reason string
+}
+
+// Per-edit report bounds (tl-1218 ③): reasons echo the per-edit errors, which
+// can quote file content, so each reason is truncated at 300 bytes and the
+// whole report at 4KB.
+const (
+	editReportMaxReasonBytes = 300
+	editReportMaxTotalBytes  = 4096
+)
+
+// formatEditStepReport renders the tl-1218 ③ per-edit report: one line per
+// edit with its index and outcome (applied replacement count or the failure
+// reason). Only emitted when at least one step failed, so a fully successful
+// multi_edit keeps its baseline output verbatim.
+func formatEditStepReport(appliedCounts []int, failures []editStepFailure) string {
+	failedByIndex := make(map[int]string, len(failures))
+	for _, f := range failures {
+		reason := f.reason
+		// The 300-byte cap covers the WHOLE row (index prefix included), so a
+		// truncated line still reads as one bounded entry.
+		prefix := fmt.Sprintf("  edit %d: failed: ", f.index)
+		if room := editReportMaxReasonBytes - len(prefix); len(reason) > room {
+			reason = reason[:room-3] + "..."
+		}
+		failedByIndex[f.index] = reason
+	}
+	var b strings.Builder
+	b.WriteString("per-edit report (failed edits were skipped; the file was written with the applied ones):\n")
+	total := 0
+	for i := range appliedCounts {
+		var row string
+		if reason, failed := failedByIndex[i+1]; failed {
+			row = fmt.Sprintf("  edit %d: failed: %s\n", i+1, reason)
+		} else {
+			row = fmt.Sprintf("  edit %d: applied (%d replacement(s))\n", i+1, appliedCounts[i])
+		}
+		if total+len(row) > editReportMaxTotalBytes {
+			b.WriteString("  …(report truncated at 4KB)\n")
+			break
+		}
+		b.WriteString(row)
+		total += len(row)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // unionReadBackSpan folds one step's replaced region into the running union.

@@ -63,6 +63,10 @@ type Workspace struct {
 	// value (off) keeps both tools byte-identical to the pre-family surface
 	// (铁律 2).
 	ToolOptimizations bool
+	// MultiEditSkipFailed lights the tl-1218 ③ skip-failed mode on multi_edit:
+	// one failed edit no longer aborts the batch (per-edit report instead).
+	// The zero value (off) keeps the atomic semantics verbatim (铁律 2).
+	MultiEditSkipFailed bool
 }
 
 // Tools returns the built-in tools bound to the workspace, ready to Add to a
@@ -83,7 +87,7 @@ func (w Workspace) Tools(enabled ...string) []tool.Tool {
 		"read_file":                      readFile{workDir: w.Dir, paths: w.ReadPaths, forbidRoots: forbidRoots, overlay: w.FileOverlay},
 		"write_file":                     writeFile{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay, receipt: w.FileWriteReceipt},
 		"edit_file":                      editFile{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay, readBack: w.ToolOptimizations},
-		"multi_edit":                     multiEdit{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay, readBack: w.ToolOptimizations},
+		"multi_edit":                     multiEdit{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay, readBack: w.ToolOptimizations, skipFailed: w.MultiEditSkipFailed},
 		"move_file":                      moveFile{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig},
 		"notebook_edit":                  notebookEdit{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay},
 		"delete_range":                   deleteRange{workDir: w.Dir, roots: roots, guard: w.SessionGuard, managed: w.ManagedConfig, overlay: w.FileOverlay},
