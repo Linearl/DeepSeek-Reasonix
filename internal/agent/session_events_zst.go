@@ -205,7 +205,7 @@ func materializeSessionEventLogZst(plain, zst string) error {
 	dec, releaseDec, setupErr := sessionEventZstStreamDecoder(src)
 	if setupErr != nil {
 		src.Close()
-		preserveBrokenZst(zst, setupErr)
+		preserveBrokenZst(zst, setupErr, "events")
 		return fmt.Errorf("session events archive: create decoder: %w", setupErr)
 	}
 	header, err := readSessionEventZstHeader(dec.IOReadCloser())
@@ -215,7 +215,7 @@ func materializeSessionEventLogZst(plain, zst string) error {
 		// 进程使用」失败。
 		releaseDec()
 		src.Close()
-		preserveBrokenZst(zst, err)
+		preserveBrokenZst(zst, err, "events")
 		return fmt.Errorf("session events archive header: %w", err)
 	}
 	tmp := plain + ".materializing"
@@ -238,7 +238,7 @@ func materializeSessionEventLogZst(plain, zst string) error {
 	src.Close()
 	if copyErr != nil {
 		_ = os.Remove(tmp)
-		preserveBrokenZst(zst, copyErr)
+		preserveBrokenZst(zst, copyErr, "events")
 		return fmt.Errorf("session events archive decode: %w", copyErr)
 	}
 	if header.PlainBytes > 0 {
@@ -248,7 +248,7 @@ func materializeSessionEventLogZst(plain, zst string) error {
 			if statErr == nil {
 				mismatch = fmt.Errorf("plain_bytes mismatch: header %d != materialized %d", header.PlainBytes, info.Size())
 			}
-			preserveBrokenZst(zst, mismatch)
+			preserveBrokenZst(zst, mismatch, "events")
 			return mismatch
 		}
 	}
@@ -267,6 +267,13 @@ func materializeSessionEventLogZst(plain, zst string) error {
 // readSessionEventZstHeader consumes the self-describing first line and
 // validates the kind marker.
 func readSessionEventZstHeader(r io.Reader) (sessionEventZstHeader, error) {
+	return readZstArchiveHeader(r, sessionEventZstKind)
+}
+
+// readZstArchiveHeader is the kind-parameterized header reader shared by the
+// tl-1172 events archive and the tl-1174 transcript archive (same self
+// describing first-line shape).
+func readZstArchiveHeader(r io.Reader, wantKind string) (sessionEventZstHeader, error) {
 	var header sessionEventZstHeader
 	buffered := bufio.NewReaderSize(r, 64<<10)
 	line, err := buffered.ReadBytes('\n')
@@ -282,23 +289,24 @@ func readSessionEventZstHeader(r io.Reader) (sessionEventZstHeader, error) {
 	if err := json.Unmarshal(bytes.TrimSuffix(line, []byte{'\n'}), &header); err != nil {
 		return header, err
 	}
-	if header.Kind != sessionEventZstKind {
+	if header.Kind != wantKind {
 		return header, fmt.Errorf("unknown archive kind %q", header.Kind)
 	}
 	return header, nil
 }
 
 // preserveBrokenZst moves an undecodable archive aside so the bytes stay
-// available for manual recovery, mirroring the .damaged convention.
-func preserveBrokenZst(zst string, cause error) {
+// available for manual recovery, mirroring the .damaged convention. label
+// names the archive family in the log line ("events"/"transcript").
+func preserveBrokenZst(zst string, cause error, label string) {
 	damaged := zst + ".damaged"
 	if err := os.Rename(zst, damaged); err != nil {
-		slog.Warn("session: broken events archive could not be moved aside",
-			"zst", zst, "err", secrets.RedactError(err))
+		slog.Warn("session: broken archive could not be moved aside",
+			"family", label, "zst", zst, "err", secrets.RedactError(err))
 		return
 	}
-	slog.Warn("session: broken events archive moved aside (manual recovery possible)",
-		"zst", damaged, "cause", secrets.RedactError(cause))
+	slog.Warn("session: broken archive moved aside (manual recovery possible)",
+		"family", label, "zst", damaged, "cause", secrets.RedactError(cause))
 }
 
 // CompressSessionEventLogZst archives the plaintext event log to
@@ -402,7 +410,7 @@ func compressSessionEventLogZstLocked(plain, zst, reason string) (before, after 
 	}
 	// 发布前校验：从 tmp 解出头部，确认帧可读、原字节数对得上。校验失败
 	// 丢弃残件保留明文——压缩失败绝不能演变成数据丢失。
-	if err := validateZstArchive(tmp, before); err != nil {
+	if err := validateZstArchiveKind(tmp, before, sessionEventZstKind); err != nil {
 		_ = os.Remove(tmp)
 		return before, before, fmt.Errorf("session events archive validation failed (plaintext kept): %w", err)
 	}
@@ -433,6 +441,12 @@ func compressSessionEventLogZstLocked(plain, zst, reason string) (before, after 
 // 数据帧完整性由编码器 CRC（WithEncoderCRC）在写路径保证，这里确认头可解、
 // 流可推进即可。
 func validateZstArchive(path string, wantPlain int64) error {
+	return validateZstArchiveKind(path, wantPlain, sessionEventZstKind)
+}
+
+// validateZstArchiveKind is the kind-parameterized form shared by the tl-1172
+// and tl-1174 archives.
+func validateZstArchiveKind(path string, wantPlain int64, wantKind string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -443,7 +457,7 @@ func validateZstArchive(path string, wantPlain int64) error {
 		return decErr
 	}
 	defer dec.Close()
-	header, err := readSessionEventZstHeader(dec.IOReadCloser())
+	header, err := readZstArchiveHeader(dec.IOReadCloser(), wantKind)
 	if err != nil {
 		return err
 	}

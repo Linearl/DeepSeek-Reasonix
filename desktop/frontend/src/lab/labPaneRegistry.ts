@@ -99,6 +99,8 @@ export type ExperimentFeatureId =
   | "sessionStore"
   // 任务 846: change-data-home wizard card (storage group; unstable, default off).
   | "homePointer"
+  // tl-1174: cold-session transcript zstd archive card (storage group; optional, default off).
+  | "jsonlZstd"
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
   // 任务 943：族拆两卡——本 id 收窄为 readBack 面；multi_edit 直注独立卡。
   // 任务 971：扩为聚合页——readBack + multi_edit 直注 + restart_update 三开关
@@ -165,6 +167,8 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "sessionStore",
   // 任务 846: data-home migration wizard pane.
   "homePointer",
+  // tl-1174: cold-session transcript zstd archive pane (storage group).
+  "jsonlZstd",
   "runtimeReuse",
   "acpListen",
   "pathRules",

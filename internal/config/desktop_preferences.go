@@ -545,6 +545,19 @@ type DesktopConfig struct {
 	// migrated home behind an unreachable reset control. Reset-to-default
 	// lives behind the same switch.
 	ExperimentalHomePointer bool `toml:"experimental_home_pointer"`
+	// ExperimentalJsonlZstd is the tl-1174 lab switch for cold-session
+	// whole-file zstd compression of the primary session transcript
+	// (.jsonl -> .jsonl.zst; 机制照 tl-1172 events 归档与 codex rollout 的
+	// .jsonl.zst 同款). It ships OFF (铁律 2 / 验收 1): with the zero value no
+	// transcript is ever compressed and no archive file is created — session
+	// files stay byte-for-byte identical to a build without the feature. The
+	// hot/cold tiering contract (unsimplifiable): hot sessions (active within
+	// the cold threshold) keep plaintext append-shaped storage; cold sessions
+	// are archived whole-file; reads materialize transparently; the next
+	// append/rewrite materializes back to plaintext. The desktop idle sweep
+	// reads the switch live per tick, so a flip applies on the next tick
+	// without a restart (task 921 precedent).
+	ExperimentalJsonlZstd bool `toml:"experimental_jsonl_zstd"`
 }
 
 // DesktopQuestionSearchEnabled reports whether the topic-bar question-search

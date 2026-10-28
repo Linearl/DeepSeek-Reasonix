@@ -2522,14 +2522,28 @@ func ListSessionOrderWithRecoveryPreferenceResolver(dir string, resolve Recovery
 	}
 	var out []SessionOrderInfo
 	for _, e := range entries {
-		if e.IsDir() || !store.IsSessionTranscriptName(e.Name()) {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		// tl 1174：归档态主转录（<id>.jsonl.zst）照常被发现——发现锚从
+		// 「明文名」扩展为「明文或归档名」。Path 归一为明文名：load/meta/
+		// lease/删除全部按明文名工作（首次打开时冷读透明物化）。明文在
+		// （并存残件态）时跳过归档——明文优先（1172 同款事实源规则）。
+		if store.IsSessionTranscriptZstName(name) {
+			plain := store.SessionTranscriptPlainName(name)
+			if _, err := os.Stat(filepath.Join(dir, plain)); err == nil {
+				continue
+			}
+			name = plain
+		} else if !store.IsSessionTranscriptName(name) {
 			continue
 		}
 		info, err := e.Info()
 		if err != nil {
 			continue
 		}
-		full := filepath.Join(dir, e.Name())
+		full := filepath.Join(dir, name)
 		if !IsVisibleSession(full) {
 			continue
 		}

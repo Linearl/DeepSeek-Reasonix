@@ -394,6 +394,15 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           tier: "unstable",
           onKeys: ["homePointer"],
         },
+        // tl-1174：冷会话主转录整文件 zstd 压缩（可选档，默认关）。热会话
+        // 保持明文；冷读透明解压；恢复活跃时物化回明文；关=逐字节一致。
+        // 空闲 sweep 每 tick 现读开关，保存即生效免重启。
+        {
+          id: "jsonlZstd",
+          labelKey: "settings.jsonlZstd",
+          tier: "optional",
+          onKeys: ["experimentalJsonlZstd"],
+        },
         // 任务 775：后台会话闲置释放（308-O4）——首批 kind:param 参数卡
         // （无开关纯字段卡；字段绑定在 labParamFields，与 yaml 同构同值）。
         // 任务 781：补 tier——闲置释放=recommended（rail 显推荐徽章）。

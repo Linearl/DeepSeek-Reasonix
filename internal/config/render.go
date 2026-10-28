@@ -169,7 +169,7 @@ var labFeatureTiers = []labFeatureTier{
 	// ── dev-debug（开发调试，2 项）───────────────────────────────
 	{"cdpDebugPort", LabTierUnstable, []string{"experimental_cdp_debug_port"}},
 	{"lifecycleNoiseGate", LabTierUnstable, []string{"experimental_lifecycle_noise_gate"}},
-	// ── storage（存储，3 项；846 增 homePointer）──────────────────
+	// ── storage（存储，4 项；846 增 homePointer，tl-1174 增 jsonlZstd）───────
 	// tl 1172：experimental_events_slim_oversize 以家族子键并入本卡（477
 	// ask-timeout / 575 bash_heavy_guard 先例）——events 超限三级降级瘦身
 	// （L1 折叠保留 10% 门槛；L2 整文件 zstd 归档无损可逆；L3 超大 tool 结果
@@ -180,6 +180,12 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 846：配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
 	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
 	{"homePointer", LabTierUnstable, []string{"experimental_home_pointer"}},
+	// tl-1174：冷会话主转录整文件 zstd 压缩（热会话保持明文，冷读透明解压、
+	// 恢复活跃时物化回明文）。存储优化型实验开关，档位=可选（用户 20261026 定：
+	// 未来稳定后再考虑提升到推荐）——不开启时会话文件与引入前逐字节一致
+	// （铁律 2，默认关）：不压、不建归档、无额外文件，空闲 sweep 每 tick
+	// 现读开关（921 先例），翻转免重启。
+	{"jsonlZstd", LabTierOptional, []string{"experimental_jsonl_zstd"}},
 	// ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
 	// 任务 1005 批1 转档：runtimeReuse 随 autopilot/sessionCollab/fullAccess
 	// 一同入「稳定」档（992 刚升推荐的四项中的第四项，用户 1018 拍板批1）。
@@ -583,6 +589,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 846: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_home_pointer = %v   # desktop: expose the change-data-home lab card + transactional migration wizard (task 846; off = no entry, no pointer file, zero behaviour)\n", c.Desktop.ExperimentalHomePointer)
+		// tl-1174: fixed-key-set rule (same as above) — cold-session transcript
+		// zstd archive; off = no compression, no archive files, byte-identical.
+		fmt.Fprintf(&b, "experimental_jsonl_zstd = %v   # desktop: cold-session transcript whole-file zstd archive (tl-1174; hot stays plaintext, cold reads materialize transparently, off = byte-identical)\n", c.Desktop.ExperimentalJsonlZstd)
 		fmt.Fprintf(&b, "max_cached_tabs = %d   # desktop: resident tab-state limit for the LRU prune (0 = unlimited, task 161)\n", c.Desktop.MaxCachedTabs)
 		fmt.Fprintf(&b, "history_body_budget_mb = %d   # desktop: transcript body cache ceiling in MiB (task 161; 0 = default 192)\n", c.Desktop.HistoryBodyBudgetMb)
 		fmt.Fprintf(&b, "markdown_budget_mb = %d   # desktop: markdown parse-cache ceiling in MiB (task 161; 0 = default 256)\n", c.Desktop.MarkdownBudgetMb)

@@ -176,6 +176,8 @@ export interface SettingsView {
   experimentalLocalServer?: boolean;
   /** Task 846: change-data-home lab switch; gates the migration wizard write path. */
   experimentalHomePointer?: boolean;
+  /** tl-1174: cold-session transcript zstd archive (storage group, optional tier, default off). */
+  experimentalJsonlZstd?: boolean;
   // Task 134: structured path-scope evaluation (docs/PATH_SCOPE_RULES.md).
   experimentalPathRules?: boolean;
   // Task 161: transcript cache tuning (experimental; user values ignored while off).

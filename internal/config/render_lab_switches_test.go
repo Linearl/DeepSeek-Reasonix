@@ -86,6 +86,11 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	// storage（存储）
 	orig.SessionStorage = "dual_write_read_v4" // M7 (sessionStorage)
 	orig.EventsAutoRotation = "auto"           // M7 (eventsRotation)
+	// 任务 846：数据目录向导入口（unstable）。
+	orig.Desktop.ExperimentalHomePointer = true // homePointer
+	// tl-1174：冷会话转录 zstd 归档（可选档）。storage 组第 4 项——本断言
+	// 缺席 ⇒ 渲染表漏键 ⇒ 下一次设置保存把开关静默翻回默认（81/123 教训）。
+	orig.Desktop.ExperimentalJsonlZstd = true // jsonlZstd
 
 	// infra（基础设施；785 退役 S1 常驻底座开关条目）
 	orig.Agent.ExperimentalRuntimeReuse = true            // runtimeReuse
@@ -106,6 +111,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"optimistic_write = true",
 		"session_storage = \"dual_write_read_v4\"",
 		"events_auto_rotation = \"auto\"",
+		// 任务 846：数据目录入口键无条件渲染（fixed-key-set rule）。
+		"experimental_home_pointer = true",
+		// tl-1174：冷压缩开关键无条件渲染（fixed-key-set rule）。
+		"experimental_jsonl_zstd = true",
 		"collab_inbox_merge = \"same_sender\"",
 		"collab_guidance_merge = true",
 		"trace_as_state = true",
@@ -197,6 +206,13 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	}
 	if EventsAutoRotationMode(&got) != "auto" {
 		t.Errorf("events_auto_rotation = %q, want auto", EventsAutoRotationMode(&got))
+	}
+	// 任务 846 + tl-1174：storage 组后两键往返。
+	if !got.Desktop.ExperimentalHomePointer {
+		t.Error("desktop.experimental_home_pointer did not round-trip")
+	}
+	if !got.Desktop.ExperimentalJsonlZstd {
+		t.Error("desktop.experimental_jsonl_zstd did not round-trip")
 	}
 	if NormalizeCollabInboxMerge(got.Agent.CollabInboxMerge) != "same_sender" {
 		t.Errorf("collab_inbox_merge = %q, want same_sender", got.Agent.CollabInboxMerge)

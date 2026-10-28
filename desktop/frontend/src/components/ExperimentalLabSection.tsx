@@ -1997,6 +1997,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               <Suspense fallback={<div className="empty" />}><HomePointerLabPane enabled={Boolean(s.experimentalHomePointer)} /></Suspense>
             </>
           )}
+          {selected === "jsonlZstd" && (
+            /* tl-1174: cold-session transcript zstd archive. Storage
+               optimization, optional tier, default off; the idle sweep reads
+               the switch per tick so a flip applies without a restart. */
+            <SettingsField label={labLabel("jsonlZstd", t("settings.jsonlZstd"))} hint={t("settings.jsonlZstd.hint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalJsonlZstd) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalJsonlZstd(on))}
+                  >
+                    {t(on ? "settings.jsonlZstd.on" : "settings.jsonlZstd.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
           {selected === "pathRules" && (
             /* Task 564: retired (task 551 paradigm, UI side) — the structured
                path-scope evaluation never wired into the runtime (zero

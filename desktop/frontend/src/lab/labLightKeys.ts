@@ -128,6 +128,8 @@ export const LAB_LIGHT_KEYS = {
   eventsRotationNonDefault: (s: SettingsView) => (s.eventsAutoRotation ?? "manual") !== "off",
   /** 数据目录灯：实验开关开（向导入口可见）即亮（task 846）。 */
   homePointer: (s: SettingsView) => Boolean(s.experimentalHomePointer),
+  /** tl-1174 冷压缩灯：实验开关开即亮（空闲 sweep 读活开关，免重启）。 */
+  experimentalJsonlZstd: (s: SettingsView) => Boolean(s.experimentalJsonlZstd),
 } as const;
 
 /** The validation whitelist: every id a layout document may reference. */

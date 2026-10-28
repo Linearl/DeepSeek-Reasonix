@@ -33,13 +33,21 @@ const (
 	// 与追加都会先物化回明文（agent.ensureSessionEventLogPlain），稳态下明文与
 	// .zst 只存在其一；两者并存（压缩中途崩溃）时明文是事实源。
 	SessionEventLogZstSuffix = SessionEventLogSuffix + ".zst"
-	SessionTurnEventLogSuffix     = ".turns.jsonl"
-	SessionConflictLogSuffix      = ".conflicts.jsonl"
+	// SessionTranscriptZstSuffix 是主转录的整文件 zstd 归档形态（tl 1174，
+	// 与 SessionEventLogZstSuffix 同款机制）：<id>.jsonl.zst。冷分层语义：
+	// 热会话（冷阈值内活跃）保持明文；冷会话整文件压缩；读取透明解压（首次
+	// 打开物理物化）；恢复活跃追加/重写时回到明文。稳态下明文与 .zst 只存在
+	// 其一；两者并存（压缩中途崩溃）时明文是事实源。开关
+	// experimental_jsonl_zstd（默认关）守压缩的「写」面——物化解压不随开关，
+	// 关态下已存在的归档必须照常可开。
+	SessionTranscriptZstSuffix = SessionTranscriptSuffix + ".zst"
+	SessionTurnEventLogSuffix  = ".turns.jsonl"
+	SessionConflictLogSuffix   = ".conflicts.jsonl"
 	// SessionRepairLogSuffix 是会话自愈修复记录（任务 1011：<stem>.repairlog.jsonl）。
 	// 它属于会话侧车：分类侧不得自行拼写该后缀，删除会话时必须一并清掉。
-	SessionRepairLogSuffix        = ".repairlog.jsonl"
-	SessionEventIndexSuffix       = ".event-index.json"
-	SessionDisplayIndexSuffix     = ".display-index.json"
+	SessionRepairLogSuffix    = ".repairlog.jsonl"
+	SessionEventIndexSuffix   = ".event-index.json"
+	SessionDisplayIndexSuffix = ".display-index.json"
 	// SessionMetaFileSuffix is the full classification tail of SessionMeta
 	// (which appends ".meta" to the whole transcript path, historical layout).
 	SessionMetaFileSuffix  = SessionTranscriptSuffix + ".meta"
@@ -136,6 +144,41 @@ func SessionEventLogZst(sessionPath string) string {
 		return ""
 	}
 	return sessionStem(sessionPath) + SessionEventLogZstSuffix
+}
+
+// SessionTranscriptZst is the whole-file zstd archive of the primary
+// transcript (<id>.jsonl.zst, tl 1174). Same storage-form discipline as
+// SessionEventLogZst: the agent layer materializes it back to the plain
+// transcript before use; this only spells the path.
+func SessionTranscriptZst(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + SessionTranscriptZstSuffix
+}
+
+// IsSessionTranscriptZstName reports whether name is an archived primary
+// transcript (<id>.jsonl.zst). The events-archive sibling
+// (<id>.events.jsonl.zst) is excluded: it classifies with its own constants
+// and must never be discovered as a session.
+func IsSessionTranscriptZstName(name string) bool {
+	name = strings.TrimSpace(name)
+	return strings.HasSuffix(name, SessionTranscriptZstSuffix) &&
+		!strings.HasSuffix(name, SessionEventLogZstSuffix)
+}
+
+// zstArchiveTail is the generic zstd archive tail both archive forms share
+// (<id>.events.jsonl.zst, tl 1172; <id>.jsonl.zst, tl 1174).
+const zstArchiveTail = ".zst"
+
+// SessionTranscriptPlainName strips the archive tail from a discovered
+// transcript-archive name ("<id>.jsonl.zst" -> "<id>.jsonl") so every consumer
+// (load, meta/lease sidecars, deletion) works on the canonical plain spelling.
+// Only the ".zst" tail comes off — the ".jsonl" part of the full archive
+// suffix is the transcript identity and must survive the strip. Anything that
+// is not an archive name reports unchanged.
+func SessionTranscriptPlainName(zstName string) string {
+	return strings.TrimSuffix(zstName, zstArchiveTail)
 }
 
 // SessionEventLogDamaged is the salvage sidecar for event-log bytes that tail
@@ -348,6 +391,9 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionEventLogZst(sessionPath),
 		SessionEventLogDamaged(sessionPath),
 		SessionEventLogRotating(sessionPath),
+		// tl-1174：归档态主转录也是会话拥有的字节——删除会话漏掉它等于
+		// 泄露「已删除」的对话（与 SessionEventLogZst 同理）。
+		SessionTranscriptZst(sessionPath),
 		SessionTurnEventLog(sessionPath),
 		SessionTurnEventLogDamaged(sessionPath),
 		SessionEventIndex(sessionPath),
