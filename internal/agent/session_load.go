@@ -34,17 +34,11 @@ type sessionLoadResult struct {
 	tailTruncated bool
 }
 
-// sessionTranscriptTailThresholdBytes is the schema-2 log size past which a first
-// paint replays only the trailing window. A 467 MiB log cost ~19s of pure decoding
-// while materializing its 3880 messages took 5ms (task 187 follow-up, measured
-// 2026-09-20), so the stall the user sees is the decode. Below the threshold the
-// full replay stays, so small sessions cannot change behaviour.
-const sessionTranscriptTailThresholdBytes = int64(32 << 20)
-
-// sessionTranscriptTailWindowBytes is how much of a large log a first paint
-// replays: roughly 1/25 of the 467 MiB case, which is the difference between a
-// multi-second stall and a paint.
-const sessionTranscriptTailWindowBytes = int64(20 << 20)
+// tl1227: the schema-2-only first-paint tail window
+// (sessionTranscriptTailThresholdBytes / sessionTranscriptTailWindowBytes /
+// replaySessionDAGTail) retired with the read split; first paint and full
+// reads share the single schema-1 path, whose trailing-replace replay is
+// already bounded.
 
 // loadSessionMessages returns the session transcript, preferring the event log
 // when the native layer owns it and it holds at least one decodable record.
