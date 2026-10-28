@@ -23,6 +23,7 @@ import { collabTitleFor, rememberCollabContactNames, shortContactId } from "../l
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
 import { groupForProject, loadProjectGroupAssign, loadProjectGroups } from "../lib/projectGroups";
+import { onCollabMailChanged as onCollabMailChangedRuntime } from "../lib/inboxEvents";
 import { acquireOverlayOrder } from "../lib/stackingOrder";
 
 export type CollabMailEntry = {
@@ -173,6 +174,16 @@ const openListeners = new Set<(open: boolean) => void>();
  */
 export const collabInboxRetryDelaysMs = [2_000, 4_000, 8_000, 15_000];
 
+/**
+ * tl1230（用户钦定方案）：信件列表首屏只加载 20 条，滚动到接近底部再增量
+ * 加载——「信件读取中…」长时间不出数据的 UI 侧根治：首屏小页 + 渲染减负。
+ * 后端 List 本就支持任意 limit（hard max 500，collab_inbox_app.go 注释契约），
+ * 本改动零后端变更。collabInboxMaxPageSize 对齐后端 hard max：达到后停止增
+ * 长——后端给不出更多，必须由前端自停，否则滚动会反复空拉。
+ */
+export const collabInboxFirstPageSize = 20;
+export const collabInboxMaxPageSize = 500;
+
 export function isCollabInboxOpen(): boolean {
   return panelOpen;
 }
@@ -216,12 +227,31 @@ export function onCollabInboxOpenChange(cb: (open: boolean) => void): () => void
   return () => openListeners.delete(cb);
 }
 
+// tl1226（用户验收实测「全部已读后角标不清零」）：面板内写操作（已读/消除/
+// 恢复/裁决/保留期/清理规则/清理/删除/清空）成功后广播——未读角标 hook 订阅
+// 本通知即时重查 CountUnreadCollabMail。计数真相源始终是后端（inbox.jsonl +
+// seen.json），这里只补「写侧→读侧」的刷新通路，不造第二份计数状态。
+const mailChangedListeners = new Set<() => void>();
+
+export function notifyCollabMailChanged(): void {
+  for (const listener of mailChangedListeners) listener();
+}
+
+export function onCollabMailChanged(cb: () => void): () => void {
+  mailChangedListeners.add(cb);
+  return () => mailChangedListeners.delete(cb);
+}
+
 /**
  * 任务 320 遗留 #1：图标行收件箱按钮的未读徽标数 —— 未读（收件方 seen 游标
  * 未覆盖）且未消除的统一表条目数，与面板默认视图的「待处理」口径一致。
- * 刷新时机（派单钦定）：挂载时 + 面板每次开/合切换时 —— 打开路径会应用保留期
- * （可能清理旧信），关闭路径紧随刚发生的已读/消除，两个时刻的数字都可能变；
- * 不做轮询。网关不可达时保留上次数值（与面板 refresh 的容错同款）。
+ * 刷新时机（派单钦定 + tl1226 补口 + tl1226b 补口）：挂载时 + 面板每次开/合
+ * 切换时 + 面板内任一写操作成功广播时 + 后端投递 CollabMailChanged 事件到达
+ * 时（tl1226b ①「新信到达角标即涨」：投递侧观察者经 Wails 事件通知，不引轮
+ * 询）——打开路径会应用保留期（可能清理旧信），关闭路径紧随刚发生的已读/消
+ * 除，写广播让「全部已读」等面板内动作不必等开/合即清角标，投递广播让新信
+ * 不必等任何面板交互即涨角标。网关不可达时保留上次数值（与面板 refresh 的
+ * 容错同款）。
  */
 export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): number {
   const b: CollabInboxBindings = bindings ?? app;
@@ -239,8 +269,10 @@ export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): numbe
         });
     };
     refresh();
-    const off = onCollabInboxOpenChange(refresh);
-    return () => { alive = false; off(); };
+    const offOpen = onCollabInboxOpenChange(refresh);
+    const offChanged = onCollabMailChanged(refresh);
+    const offArrived = onCollabMailChangedRuntime(refresh);
+    return () => { alive = false; offOpen(); offChanged(); offArrived(); };
   }, [b]);
   return count;
 }
@@ -351,6 +383,15 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showDismissed, setShowDismissed] = useState(false);
   const [snapshot, setSnapshot] = useState<CollabMailSnapshot | null>(null);
+  // tl1230：列表懒加载水位——首屏 20 条，滚动近底增量 +20，写操作回读快照
+  // 可能带更大的默认页（后端默认 limit 50），此时水位上对齐防「越滚越少」。
+  const [pageSize, setPageSize] = useState(collabInboxFirstPageSize);
+  // tl1230：滚动面板根（.collab-inbox-panel 自身是 overflow:auto 的滚动容器，
+  // 嵌入形态亦同）。
+  const panelScrollRef = useRef<HTMLDivElement | null>(null);
+  // tl1230：refresh 在途标记——滚动连发时一页未回不放下一页（快照整体替换，
+  // 并发回包乱序会把小页后写覆盖大页）。
+  const fetchingRef = useRef(false);
   const [chains, setChains] = useState<CollabMailChains | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -467,6 +508,8 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
   }, []);
 
   const refresh = useCallback(async () => {
+    // tl1230：在途标记先立——滚动触发的新页请求期间，再次近底滚动不再放页。
+    fetchingRef.current = true;
     setLoading(true);
     // 任务587：the banner describes the LATEST attempt only — starting a new
     // read retires the previous attempt's error (it returns as a fresh
@@ -476,7 +519,9 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
       if (view === "chains") {
         setChains(await b.ListCollabMailChains(bucket, 100));
       } else {
-        setSnapshot(await b.ListCollabMail(bucket, from.trim(), to.trim(), state, 100, showDismissed, order));
+        // tl1230：limit=pageSize（首屏 20，滚动递增），offset 恒 0——快照整
+        // 体替换保持单一真相源，过滤/排序/revision 语义不因拼页漂移。
+        setSnapshot(await b.ListCollabMail(bucket, from.trim(), to.trim(), state, pageSize, showDismissed, order));
       }
       // 任务587：success stops the recovery loop and resets its backoff for
       // the next failure.
@@ -493,9 +538,10 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
         "warn");
       scheduleRetry();
     } finally {
+      fetchingRef.current = false;
       setLoading(false);
     }
-  }, [b, bucket, from, to, state, order, showDismissed, view, cancelRetry, scheduleRetry]);
+  }, [b, bucket, from, to, state, order, showDismissed, view, pageSize, cancelRetry, scheduleRetry]);
 
   useEffect(() => {
     refreshRef.current = () => void refresh();
@@ -511,6 +557,45 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
 
   // unmount cleanup: no retry timer may outlive the panel.
   useEffect(() => cancelRetry, [cancelRetry]);
+
+  // ── tl1230：信件列表懒加载（首屏 20 条 + 滚动近底增量 +20）──────────────
+  // 过滤/排序/视图任一变化都回到首屏页（新查询从头翻页，水位沿用旧值会把新
+  // 查询直接放到第 N 页的语义）。
+  const resetPaging = useCallback(() => {
+    setPageSize(collabInboxFirstPageSize);
+  }, []);
+
+  const growPage = useCallback(() => {
+    // busy（写操作在途）与 fetchingRef（读在途）都挡：快照整体替换方案下，
+    // 并发读回包乱序会把小页后写覆盖大页。到后端 hard max 自停（setPageSize
+    // 同值 bail-out，不会再触发 refresh，自动续载效应不会成环）。
+    if (busy || fetchingRef.current) return;
+    setPageSize((size) => (size >= collabInboxMaxPageSize ? size : size + collabInboxFirstPageSize));
+  }, [busy]);
+
+  const onPanelScroll = useCallback(() => {
+    // 已到底（Truncated 翻假）就不再放页——滚动事件在满载后仍会连发，不能让
+    // 它们反复空拉。
+    if (!snapshot?.truncated) return;
+    const el = panelScrollRef.current;
+    if (!el) return;
+    // 距底 64px 内视为「想看更多」。滚动容器是面板根本体（overflow:auto，
+    // 独立/嵌入两形态一致，见 styles.css .collab-inbox-panel）。
+    if (el.scrollTop + el.clientHeight < el.scrollHeight - 64) return;
+    growPage();
+  }, [growPage, snapshot]);
+
+  // tl1230：截断态但内容不足以滚动（大屏 + 矮列表）时自动续载一页——否则
+  // 「永远到不了底」，剩余信件成死胡同。无布局度量（clientHeight=0，含测试
+  // harness）不介入，jsdom 下该效应恒惰性、由测试显式驱动滚动。
+  useEffect(() => {
+    if (loading || busy || view !== "list") return;
+    if (!snapshot?.truncated) return;
+    const el = panelScrollRef.current;
+    if (!el || el.clientHeight <= 0) return;
+    if (el.scrollHeight > el.clientHeight) return;
+    growPage();
+  }, [snapshot, loading, busy, view, growPage]);
 
   // 任务461-P4: dropdown options — one addressable session per contact id,
   // labeled by session name, hover showing 项目 › 分组 › 会话名 › contact_id.
@@ -549,7 +634,15 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
   const act = async (fn: () => Promise<CollabMailSnapshot>) => {
     setBusy(true);
     try {
-      setSnapshot(await fn());
+      const next = await fn();
+      setSnapshot(next);
+      // tl1230：写操作回读快照是后端默认页（默认 limit 50）——可能比当前已
+      // 加载页更高。水位上对齐到回读页，防后续滚动增量反而缩小列表。
+      setPageSize((size) => Math.max(size, next.returned));
+      // tl1226：写成功即广播（已读/消除/恢复/裁决/保留期/清理规则都走本口），
+      // 未读角标 hook 收到后重查 CountUnreadCollabMail——「全部已读」后角标
+      // 不必等面板开/合即清零。
+      notifyCollabMailChanged();
       setView("list");
     } catch (err) {
       // keep the previous snapshot on failure; 任务587：the failure itself
@@ -560,6 +653,24 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     }
   };
 
+  // tl1230：懒加载后「全部已读」的口径仍是「当前视图全部未读」——截断态先
+  // 取一页全量（后端 hard max）再汇总未读 id，防止 27 封未读只清掉已加载的
+  // 20 封（tl1226 用户实测「全部已读→角标清零」在懒加载下的复发形态）。
+  // 取全量失败退回已加载页并留痕：至少读完看得见的，不静默吞。
+  const markAllRead = async () => {
+    let ids = rows.filter((entry) => !entry.read).map((entry) => entry.id);
+    if (snapshot?.truncated) {
+      try {
+        const full = await b.ListCollabMail(bucket, from.trim(), to.trim(), state, collabInboxMaxPageSize, showDismissed, order);
+        ids = (full.entries ?? []).filter((entry) => !entry.read).map((entry) => entry.id);
+      } catch (err) {
+        reportFrontendLog("collab-inbox", "mark-all-read full fetch failed", String(err), "warn");
+      }
+    }
+    if (ids.length === 0) return;
+    await act(() => b.MarkCollabMailRead(ids));
+  };
+
   // 任务620（立即清理）：与面板打开路径同一套写侧维护（保留期 + 清理规则，
   // 去任务511节流），后端一并带回清理后的新快照——失败保留旧快照并留痕。
   const cleanNow = async () => {
@@ -567,6 +678,10 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     try {
       const result = await b.CleanCollabMailNow();
       setSnapshot(result.snapshot);
+      // tl1230：与 act 同款水位对齐（清理回读也是后端默认页）。
+      setPageSize((size) => Math.max(size, result.snapshot.returned));
+      // tl1226：清理物理移除信件，未读数可能变小——同样广播给角标。
+      notifyCollabMailChanged();
       setView("list");
       setCleanNote(t(result.removed > 0 ? "collabInbox.cleaned" : "collabInbox.cleanNothing", { n: result.removed }));
       if (cleanNoteTimer.current !== null) clearTimeout(cleanNoteTimer.current);
@@ -609,6 +724,8 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     setBusy(true);
     try {
       setSnapshot(await b.DeleteCollabMail(ids));
+      // tl1226：删除移除留档（含未读），广播角标重查。
+      notifyCollabMailChanged();
       setMulti(false);
       setSelected(new Set());
     } catch (err) {
@@ -639,6 +756,8 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     try {
       const result = await b.ClearAllCollabMail();
       setSnapshot(result.snapshot);
+      // tl1226：清空全部留档，未读必然归零——广播角标重查。
+      notifyCollabMailChanged();
       setMulti(false);
       setSelected(new Set());
     } catch (err) {
@@ -676,7 +795,13 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
   // 内部，DOM 同处一树，样式可被壳层容器约束）；独立模式保持 portal-at-root
   // （task 121/123 规则——settings 覆盖层打开时也可见）。
   const panelTree = (
-    <div className="collab-inbox-panel" role="dialog" aria-label={t("collabInbox.title")}>
+    <div
+      className="collab-inbox-panel"
+      role="dialog"
+      aria-label={t("collabInbox.title")}
+      ref={panelScrollRef}
+      onScroll={onPanelScroll}
+    >
       {/* 任务716 ①（用户拖拽定稿）：头部=标题横排（nowrap 防窄容器竖排截断）+
           关闭按钮右上角；副标题按定稿③不设。
           任务 856 ①：embedded（协作中心信件视图）时头部由 Hub 壳承担，不渲染。 */}
@@ -752,14 +877,14 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
           <button
             type="button"
             className={`collab-inbox-panel__state${view === "list" ? " collab-inbox-panel__state--on" : ""}`}
-            onClick={() => setView("list")}
+            onClick={() => { setView("list"); resetPaging(); }}
           >
             {t("collabInbox.view.list")}
           </button>
           <button
             type="button"
             className={`collab-inbox-panel__state${view === "chains" ? " collab-inbox-panel__state--on" : ""}`}
-            onClick={() => setView("chains")}
+            onClick={() => { setView("chains"); resetPaging(); }}
           >
             {t("collabInbox.view.chains")}
           </button>
@@ -773,7 +898,7 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
               type="button"
               aria-pressed={order === name}
               className={`collab-inbox-panel__state${order === name ? " collab-inbox-panel__state--on" : ""}`}
-              onClick={() => setOrder(name)}
+              onClick={() => { setOrder(name); resetPaging(); }}
             >
               {t(`collabInbox.order.${name}` as "collabInbox.order.desc")}
             </button>
@@ -784,7 +909,7 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
             type="button"
             className="btn btn--secondary btn--small"
             disabled={busy}
-            onClick={() => void act(() => b.MarkCollabMailRead(rows.filter((entry) => !entry.read).map((entry) => entry.id)))}
+            onClick={() => void markAllRead()}
           >
             {t("collabInbox.markAllRead")}
           </button>
@@ -809,7 +934,7 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
             role="tab"
             aria-selected={bucket === name}
             className={`collab-inbox-panel__bucket${bucket === name ? " collab-inbox-panel__bucket--on" : ""}`}
-            onClick={() => setBucket(name)}
+            onClick={() => { setBucket(name); resetPaging(); }}
           >
             {t(`collabInbox.bucket.${name}` as "collabInbox.bucket.all")}
           </button>
@@ -823,7 +948,7 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
               key={name}
               type="button"
               className={`collab-inbox-panel__state${state === name ? " collab-inbox-panel__state--on" : ""}`}
-              onClick={() => setState(name)}
+              onClick={() => { setState(name); resetPaging(); }}
             >
               {t(`collabInbox.state.${name}` as "collabInbox.state.all")}
             </button>
@@ -843,7 +968,7 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
             className="collab-inbox-panel__filter"
             aria-label={t("collabInbox.from")}
             value={from}
-            onChange={(event) => setFrom(event.target.value)}
+            onChange={(event) => { setFrom(event.target.value); resetPaging(); }}
           >
             {renderFilterOptions()}
           </select>
@@ -854,7 +979,7 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
             className="collab-inbox-panel__filter"
             aria-label={t("collabInbox.to")}
             value={to}
-            onChange={(event) => setTo(event.target.value)}
+            onChange={(event) => { setTo(event.target.value); resetPaging(); }}
           >
             {renderFilterOptions()}
           </select>
@@ -863,7 +988,7 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
           <input
             type="checkbox"
             checked={showDismissed}
-            onChange={(event) => setShowDismissed(event.target.checked)}
+            onChange={(event) => { setShowDismissed(event.target.checked); resetPaging(); }}
           />
           {t("collabInbox.showDismissed")}
         </label>

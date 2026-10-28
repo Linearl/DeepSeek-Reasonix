@@ -419,7 +419,8 @@ await act(async () => setCollabInboxOpen(false));
 assert.equal(document.querySelector(".collab-inbox-panel"), null, "closing unmounts the panel");
 
 // 任务 320 遗留 #1：图标行未读徽标 hook —— 挂载取一次数；面板开/合各刷新一次
-// （打开路径可能触发保留期清理，关闭路径紧随已读/消除，两个时刻都可能变）。
+// （打开路径可能触发保留期清理，关闭路径紧随已读/消除，两个时刻都可能变）；
+// tl1226 补第三条（写操作成功广播，回归断言见下文 P8 节）。
 // 徽标的按钮接线与 >99 折叠由 App.tsx 承担（integrity 锚点锁接缝）。
 let unreadCount = 3;
 const badgeBindings: CollabInboxBindings = {
@@ -477,6 +478,32 @@ await act(async () => {
 });
 assert.match(p8Panel!.textContent ?? "", /×9/, "the folded cluster renders a ×N count chip");
 
+// ── tl1226：全部已读后未读角标即时清零（写侧广播 → 角标重查）─────────────
+// 徽标节（上文）钉了挂载 + 开/合两条刷新时机；这里钉第三条：面板内写操作
+// 成功后角标 hook 即时重查 CountUnreadCollabMail——用户实测「全部已读后
+// 左下角角标仍挂 27」的回归断言，面板不动、无开/合过渡。
+const tl1226BadgeCount = () => snapshot.entries.filter((e) => !e.read).length;
+let tl1226CountCalls = 0;
+const tl1226BadgeBindings: CollabInboxBindings = {
+  ...bindings,
+  async CountUnreadCollabMail() {
+    tl1226CountCalls += 1;
+    return tl1226BadgeCount();
+  },
+};
+function Tl1226BadgeProbe() {
+  const n = useCollabInboxUnreadCount(tl1226BadgeBindings);
+  return <span className="badge-probe-tl1226">{n}</span>;
+}
+const tl1226Host = document.createElement("div");
+document.body.appendChild(tl1226Host);
+const tl1226Root = createRoot(tl1226Host);
+await act(async () => {
+  tl1226Root.render(<Tl1226BadgeProbe />);
+});
+assert.equal(document.querySelector(".badge-probe-tl1226")!.textContent, "1", "tl1226: badge reads 1 unread on mount (folded cluster is unread)");
+const tl1226CallsBeforeRead = tl1226CountCalls;
+
 // 一键批量已读：把当前视图未读条目的 id 集合发到后端；折叠条目只带 primary
 // id，整簇展开由 Go 侧 MarkRead 完成（此处钉「未读集合到达后端」这一接缝）。
 // 任务716 ③：按钮落位视图工具条。
@@ -488,6 +515,261 @@ await act(async () => {
 const readCall = calls.filter((c) => c.name === "MarkCollabMailRead").pop();
 assert.deepEqual(readCall?.args[0], ["m_dup"], "mark-all-read sends exactly the unread entry ids");
 assert.match(p8Panel!.textContent ?? "", /Snapshot 6\.0\.0/, "the mark-read snapshot refreshes the panel in place");
+// tl1226：写成功 → 广播 → 角标重查（未读 1 → 0），全程无开/合过渡。
+assert.equal(
+  tl1226CountCalls > tl1226CallsBeforeRead,
+  true,
+  "tl1226: a successful mark-all-read notifies the badge hook to re-query the backend",
+);
+assert.equal(
+  document.querySelector(".badge-probe-tl1226")!.textContent,
+  "0",
+  "tl1226: the unread badge clears right after mark-all-read without any open/close transition",
+);
+await act(async () => tl1226Root.unmount());
+tl1226Host.remove();
+
+// ── tl1226b ①：新信到达角标即涨（后端投递 CollabMailChanged 事件 → 角标重查）──
+// tl1226 钉了挂载/开合/写广播三条刷新时机；这里钉第四条：后端投递观察者发的
+// CollabMailChanged 运行时事件到达 → hook 即时重查 CountUnreadCollabMail——
+// 新信不必等任何面板交互即涨角标（不引轮询；Go 侧契约见
+// desktop/collab_mail_arrival_test.go）。harness 默认无 window.runtime，这里
+// 装一个捕获 EventsOn 订阅的假运行时来驱动事件。
+{
+  let arrivedUnread = 2;
+  let arrivedCountCalls = 0;
+  const runtimeHandlers = new Map<string, Array<(payload?: unknown) => void>>();
+  (dom.window as unknown as { runtime: unknown }).runtime = {
+    EventsOn: (name: string, cb: (payload?: unknown) => void) => {
+      const list = runtimeHandlers.get(name) ?? [];
+      list.push(cb);
+      runtimeHandlers.set(name, list);
+      return () => {
+        runtimeHandlers.set(name, (runtimeHandlers.get(name) ?? []).filter((fn) => fn !== cb));
+      };
+    },
+  };
+  (dom.window as unknown as { go: unknown }).go = { main: { App: {} } };
+  const arrivedBindings: CollabInboxBindings = {
+    ...bindings,
+    async CountUnreadCollabMail() {
+      arrivedCountCalls += 1;
+      return arrivedUnread;
+    },
+  };
+  function ArrivedBadgeProbe() {
+    const n = useCollabInboxUnreadCount(arrivedBindings);
+    return <span className="badge-probe-arrived">{n}</span>;
+  }
+  const arrivedHost = document.createElement("div");
+  document.body.appendChild(arrivedHost);
+  const arrivedRoot = createRoot(arrivedHost);
+  await act(async () => {
+    arrivedRoot.render(<ArrivedBadgeProbe />);
+  });
+  assert.equal(document.querySelector(".badge-probe-arrived")!.textContent, "2", "tl1226b: badge mounts at 2 unread");
+  const callsBeforeArrival = arrivedCountCalls;
+  arrivedUnread = 3;
+  await act(async () => {
+    for (const fn of runtimeHandlers.get("CollabMailChanged") ?? []) fn({ id: "m_new", from: "sc_a", to: "sc_b" });
+  });
+  assert.equal(
+    arrivedCountCalls > callsBeforeArrival,
+    true,
+    "tl1226b: a CollabMailChanged runtime event re-queries the unread count",
+  );
+  assert.equal(
+    document.querySelector(".badge-probe-arrived")!.textContent,
+    "3",
+    "tl1226b: the badge rises on mail arrival without any user interaction",
+  );
+  // 卸载即注销订阅：此后事件不再触发重查（不泄漏监听器）。
+  await act(async () => {
+    arrivedRoot.unmount();
+  });
+  const callsAfterUnmount = arrivedCountCalls;
+  await act(async () => {
+    for (const fn of runtimeHandlers.get("CollabMailChanged") ?? []) fn({ id: "m_new2" });
+  });
+  assert.equal(
+    arrivedCountCalls,
+    callsAfterUnmount,
+    "tl1226b: after unmount the runtime-event subscription is gone (no re-query)",
+  );
+  arrivedHost.remove();
+}
+
+// ── tl1230：信件列表懒加载（首屏 20 条 + 滚动近底增量加载）─────────────────
+// 用户钦定方案：首屏只加载 20 条（治「信件读取中…」长时间不出数据），滚动
+// 接近底部再增量。后端 List 天然支持任意 limit（Go 侧零改动），这里的接缝职
+// 责：①首屏请求 limit=20 且只渲染 20 行；②近底滚动逐页 +20；③Truncated 翻
+// 假后滚动不再放页。jsdom 无布局度量，滚动用显式钉 scrollTop/clientHeight/
+// scrollHeight 后派发冒泡 scroll 事件驱动（嵌入形态面板本体即滚动容器）。
+{
+  const pagedFixture = Array.from({ length: 45 }, (_, i) =>
+    entry({ id: `m_page_${i}`, preview: `paged mail ${i}` }),
+  );
+  const pagedLimits: number[] = [];
+  const pagedBindings: CollabInboxBindings = {
+    ...bindings,
+    async ListCollabMail(bucket, from, to, state, limit, includeDismissed, order) {
+      pagedLimits.push(limit);
+      const size = Math.min(limit, pagedFixture.length);
+      return {
+        revision: "10.0.0",
+        settings: { retention: "7d" },
+        total: pagedFixture.length,
+        returned: size,
+        truncated: size < pagedFixture.length,
+        entries: pagedFixture.slice(0, size),
+      };
+    },
+  };
+  const pagedHost = document.createElement("div");
+  document.body.appendChild(pagedHost);
+  const pagedRoot = createRoot(pagedHost);
+  await act(async () => {
+    pagedRoot.render(
+      <LocaleProvider>
+        <CollabInboxPanel bindings={pagedBindings} directory={directory} embedded />
+      </LocaleProvider>,
+    );
+  });
+  const pagedPanel = pagedHost.querySelector(".collab-inbox-panel");
+  assert.ok(pagedPanel, "tl1230: the paged panel renders");
+  assert.deepEqual(pagedLimits, [20], "tl1230: the first screen fetches exactly limit=20");
+  assert.equal(
+    pagedPanel!.querySelectorAll(".collab-inbox-panel__row").length,
+    20,
+    "tl1230: only the first 20 entries render on the first screen",
+  );
+
+  // 滚动近底 → 增量 +20。jsdom 的度量全为 0（自动续载效应按 clientHeight=0
+  // 恒惰性），这里显式钉出「距底 0px」的布局态再派发滚动（600+400 = 距底，
+  // 过 64px 近底阈值）。
+  const pinMetric = (el: HTMLElement, prop: string, value: number) =>
+    Object.defineProperty(el, prop, { configurable: true, value });
+  const scrollPanel = pagedPanel as HTMLElement;
+  pinMetric(scrollPanel, "scrollTop", 600);
+  pinMetric(scrollPanel, "clientHeight", 400);
+  pinMetric(scrollPanel, "scrollHeight", 1000);
+  await act(async () => {
+    scrollPanel.dispatchEvent(new dom.window.Event("scroll", { bubbles: true }));
+  });
+  assert.deepEqual(pagedLimits, [20, 40], "tl1230: scrolling near the bottom fetches the next page");
+  assert.equal(
+    pagedPanel!.querySelectorAll(".collab-inbox-panel__row").length,
+    40,
+    "tl1230: 40 entries render after one page growth",
+  );
+
+  await act(async () => {
+    scrollPanel.dispatchEvent(new dom.window.Event("scroll", { bubbles: true }));
+  });
+  assert.deepEqual(pagedLimits, [20, 40, 60], "tl1230: the second scroll loads the tail page");
+  assert.equal(
+    pagedPanel!.querySelectorAll(".collab-inbox-panel__row").length,
+    45,
+    "tl1230: all 45 entries render once fully loaded",
+  );
+
+  // Truncated 翻假：继续滚动不得再放页（后端已无更多，空拉 = 白读）。
+  const callsWhenComplete = pagedLimits.length;
+  await act(async () => {
+    scrollPanel.dispatchEvent(new dom.window.Event("scroll", { bubbles: true }));
+  });
+  assert.equal(
+    pagedLimits.length,
+    callsWhenComplete,
+    "tl1230: scrolling after truncation cleared stops fetching",
+  );
+  await act(async () => {
+    pagedRoot.unmount();
+  });
+  pagedHost.remove();
+}
+
+// tl1230 × tl1226 交叉回归：懒加载后「全部已读」必须仍是全量口径——截断态
+// （27 封未读只加载了 20 封）下点「全部已读」，先取一页全量再汇总未读 id，
+// 不得只清已加载页（否则角标残留 7，tl1226 的用户实测场景复发）。
+{
+  const unreadMany = Array.from({ length: 27 }, (_, i) =>
+    entry({ id: `m_unread_${i}`, preview: `unread mail ${i}` }),
+  );
+  let fullFetchLimit = 0;
+  const truncatedBindings: CollabInboxBindings = {
+    ...bindings,
+    async ListCollabMail(bucket, from, to, state, limit, includeDismissed, order) {
+      if (limit >= 500) {
+        fullFetchLimit = limit;
+        return {
+          revision: "11.0.0",
+          settings: { retention: "7d" },
+          total: unreadMany.length,
+          returned: unreadMany.length,
+          truncated: false,
+          entries: unreadMany,
+        };
+      }
+      const size = Math.min(limit, unreadMany.length);
+      return {
+        revision: "11.0.0",
+        settings: { retention: "7d" },
+        total: unreadMany.length,
+        returned: size,
+        truncated: size < unreadMany.length,
+        entries: unreadMany.slice(0, size),
+      };
+    },
+    async MarkCollabMailRead(ids) {
+      calls.push({ name: "MarkCollabMailRead", args: [ids] });
+      const readIds = new Set(ids);
+      const entries = unreadMany.map((e) => (readIds.has(e.id) ? { ...e, read: true } : e));
+      return {
+        revision: "12.0.0",
+        settings: { retention: "7d" },
+        total: entries.length,
+        returned: entries.length,
+        truncated: false,
+        entries,
+      };
+    },
+  };
+  const truncHost = document.createElement("div");
+  document.body.appendChild(truncHost);
+  const truncRoot = createRoot(truncHost);
+  await act(async () => {
+    truncRoot.render(
+      <LocaleProvider>
+        <CollabInboxPanel bindings={truncatedBindings} directory={directory} embedded />
+      </LocaleProvider>,
+    );
+  });
+  const truncPanel = truncHost.querySelector(".collab-inbox-panel");
+  assert.ok(truncPanel, "tl1230: the truncated 27-unread panel renders");
+  assert.equal(
+    truncPanel!.querySelectorAll(".collab-inbox-panel__row").length,
+    20,
+    "tl1230: the 27-unread list starts at the 20-entry first screen",
+  );
+  const markAllBtn = Array.from(truncPanel!.querySelectorAll<HTMLButtonElement>("button"))
+    .find((b) => b.textContent === "Mark all read");
+  assert.ok(markAllBtn, "tl1230: the mark-all-read button shows while truncated");
+  await act(async () => {
+    markAllBtn!.click();
+  });
+  assert.equal(fullFetchLimit, 500, "tl1230: mark-all-read fetches a full page while truncated");
+  const truncReadCall = calls.filter((c) => c.name === "MarkCollabMailRead").pop();
+  assert.equal(
+    Array.isArray(truncReadCall?.args[0]) && (truncReadCall!.args[0] as string[]).length,
+    27,
+    "tl1230: mark-all-read covers ALL 27 unread entries, not just the loaded 20",
+  );
+  await act(async () => {
+    truncRoot.unmount();
+  });
+  truncHost.remove();
+}
 
 await act(async () => root.unmount());
 dom.window.close();
