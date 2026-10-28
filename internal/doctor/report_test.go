@@ -226,3 +226,47 @@ func TestHomeIsolationWarningDetectsMismatch(t *testing.T) {
 		t.Fatalf("REASONIX_HOME set should silence warning, got %q", got)
 	}
 }
+
+// tl1173s2 落点②：doctor 报告标注会话日志形态——每个会话的 events 侧车要么是
+// 扁平 schema-1（现役默认），要么是 schema-2 DAG 封存残留（tl1227 读退役后读
+// 路径只服务扁平 JSONL）。报告只给聚合计数（dag_logs），不带任何路径。
+func TestCollectSessionsReportsLogFormatDAGLeftovers(t *testing.T) {
+	dir := t.TempDir()
+	writeLog := func(name, head string) {
+		t.Helper()
+		body := head + "\n" + `{"schema_version":1,"type":"append","at":"2026-01-01T00:00:00Z","message_index":1,"messages":[]}` + "\n"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeLog("flat-one.events.jsonl", `{"schema_version":1,"type":"replace","at":"2026-01-01T00:00:00Z","message_index":0,"messages":[]}`)
+	writeLog("sealed-dag.events.jsonl", `{"schema_version":2,"type":"dag_append","at":"2026-01-01T00:00:00Z"}`)
+	writeLog("flat-two.events.jsonl", `{"schema_version":1,"type":"append","at":"2026-01-01T00:00:00Z","message_index":0,"messages":[]}`)
+
+	report := collectSessions(dir)
+	if report.DAGLogs != 1 {
+		t.Fatalf("DAGLogs = %d, want 1 (one sealed schema-2 leftover among flat logs)", report.DAGLogs)
+	}
+	raw, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"flat-one", "sealed-dag", "flat-two", dir} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatalf("log-format marker leaked a machine-local name %q: %s", secret, raw)
+		}
+	}
+
+	text := RenderText(Report{Sessions: SessionsReport{DAGLogs: report.DAGLogs}})
+	if !strings.Contains(text, "log format   dag:1") {
+		t.Fatalf("text report missing the log format line:\n%s", text)
+	}
+	if !strings.Contains(text, "flat JSONL") {
+		t.Fatalf("log format line should say reads serve the flat JSONL:\n%s", text)
+	}
+
+	allFlat := RenderText(Report{Sessions: SessionsReport{}})
+	if !strings.Contains(allFlat, "log format   dag:0") {
+		t.Fatalf("all-flat dir should read dag:0:\n%s", allFlat)
+	}
+}
