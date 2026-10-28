@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"time"
 
@@ -108,24 +107,11 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 	if probe.futureSchema {
 		return sessionLoadResult{fromEvents: true}, fmt.Errorf("session event log for %s uses schema %d; this build supports up to %d", sessionPath, probe.schemaVersion, sessionDAGSchemaVersion)
 	}
-	if probe.dag {
-		st, err := replaySessionDAG(ctx, logPath, limits)
-		if err != nil {
-			rememberSessionReplayRefusal(logPath, err)
-			return sessionLoadResult{fromEvents: true, dag: true}, err
-		}
-		headID := st.selectedHead()
-		msgs, times := st.materialize(headID)
-		hasher.addAll(msgs)
-		return sessionLoadResult{
-			msgs: msgs, times: times, fromEvents: true, damaged: st.damaged, dag: true,
-			head:      HeadRef{HeadID: headID, LeafID: st.heads[headID].leaf, LogGeneration: st.generation, LogOffset: st.lastGoodEnd},
-			headCount: len(st.heads),
-			state:     st,
-			openTurn:  st.heads[headID].openTurn,
-			events:    loadHeadEvents(st, headID, sessionPath),
-		}, nil
-	}
+	// tl1227 读侧单路径化：schema-2 DAG 读分支已退役。存量 DAG 日志由
+	// MigrateSessionDAGLog 一次性无损迁移为 schema-1（原字节存
+	// .dagbak-tl1227 备份）；残余 schema-2 日志（v2 逃生门产物或迁移窗口
+	// 遗漏）弃读封存——native 条件不中，落到下方 .jsonl checkpoint 兜底，
+	// 不再有任何 DAG 重放读路径。
 	if probe.native && probe.size > 0 {
 		replay, replayErr := replaySessionEventLogWithContext(ctx, logPath, limits, hasher)
 		if replayErr != nil {
@@ -145,11 +131,9 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 }
 
 // loadSessionTranscriptTail is the first-paint entry point for a session whose log
-// may be too large to replay whole. For a schema-2 log above
-// sessionTranscriptTailThresholdBytes it replays only the trailing window and
-// reports tailTruncated so the reader can page earlier history in; for anything
-// else - including every write path, which needs the complete transcript - it
-// delegates to loadSessionTranscript unchanged.
+// may be too large to replay whole. tl1227 读侧单路径化后首画与全量读走同一条
+// schema-1 路径（其内部自带 trailing-replace 有界重放），本入口保留签名供
+// 首画/导出调用方使用，行为等价 loadSessionTranscript。
 //
 // It is deliberately a separate entry point rather than a switch inside
 // loadSessionTranscript: that function backs save, recovery and export, and a
@@ -162,42 +146,7 @@ func loadSessionTranscriptTail(ctx context.Context, sessionPath string, limits s
 	if _, err := ensureSessionTranscriptPlain(sessionPath); err != nil {
 		return sessionLoadResult{}, fmt.Errorf("session transcript materialize: %w", err)
 	}
-	limits = limitsForSessionLog(sessionPath, limits)
-	probe, err := probeSessionEventLogWithLimits(sessionPath, limits)
-	if err != nil || !probe.dag || probe.size <= sessionTranscriptTailThresholdBytes {
-		return loadSessionTranscript(ctx, sessionPath, limits, hasher)
-	}
-	startedAt := time.Now()
-	st, err := replaySessionDAGTail(ctx, store.SessionEventLog(sessionPath), sessionTranscriptTailWindowBytes, limits)
-	if err != nil {
-		// An unaligned or empty window is not an error the user should see: the
-		// full replay is slow but correct, so fall back to it.
-		return loadSessionTranscript(ctx, sessionPath, limits, hasher)
-	}
-	headID := st.selectedHead()
-	msgs, times := st.materialize(headID)
-	hasher.addAll(msgs)
-	// Task 196: the first paint's own payload deserves a line. The window is capped in
-	// bytes, not in messages, so a 20 MiB window can still carry an enormous page - and if
-	// what the user waits on is the transfer rather than the decode, this is the line that
-	// says so instead of leaving it to inference.
-	slog.Info("session: first-paint tail transcript",
-		"path", sessionPath,
-		"log_bytes", probe.size,
-		"window_bytes", sessionTranscriptTailWindowBytes,
-		"window_from", st.windowStart,
-		"messages", len(msgs),
-		"tail_truncated", true,
-		"replay_ms", time.Since(startedAt).Milliseconds())
-	return sessionLoadResult{
-		msgs: msgs, times: times, fromEvents: true, damaged: st.damaged, dag: true,
-		tailTruncated: true,
-		head:          HeadRef{HeadID: headID, LeafID: st.heads[headID].leaf, LogGeneration: st.generation, LogOffset: st.lastGoodEnd},
-		headCount:     len(st.heads),
-		state:         st,
-		openTurn:      st.heads[headID].openTurn,
-		events:        loadHeadEvents(st, headID, sessionPath),
-	}, nil
+	return loadSessionTranscript(ctx, sessionPath, limits, hasher)
 }
 
 func loadSessionMessagesFromJSONL(path string, hasher *sessionTranscriptHasher) ([]provider.Message, error) {

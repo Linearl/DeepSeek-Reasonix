@@ -1,13 +1,8 @@
 package agent
 
 import (
-	"context"
-	"fmt"
 	"os"
-	"slices"
 	"time"
-
-	"reasonix/internal/store"
 )
 
 // sessionHeadState is what a Session knows about its schema-2 log position;
@@ -323,21 +318,11 @@ func (st *sessionDAGState) reachable() map[string]struct{} {
 
 // ListSessionHeads replays a schema-2 log and returns its heads. A schema-1
 // session has no heads and returns nil, nil.
+//
+// tl1227 读侧单路径化：schema-2 头重放已退役。存量 DAG 日志由
+// MigrateSessionDAGLog 迁移为 schema-1（无头形态），残余 schema-2 日志弃读
+// 封存。本入口保留签名供 desktop 版本/lineage 面调用，恒返回空 = 「无版本
+// 对象」的被动收敛（tl1173 §4.2 同款：版本 UI 自然无对象可展示）。
 func ListSessionHeads(path string) ([]SessionHead, error) {
-	probe, err := probeSessionEventLog(path)
-	if err != nil {
-		return nil, err
-	}
-	if !probe.dag {
-		return nil, nil
-	}
-	st, err := replaySessionDAG(context.Background(), store.SessionEventLog(path), defaultSessionReplayLimits)
-	if err != nil {
-		return nil, fmt.Errorf("list session heads: %w", err)
-	}
-	heads := st.headList()
-	slices.SortStableFunc(heads, func(a, b SessionHead) int {
-		return a.CreatedAt.Compare(b.CreatedAt)
-	})
-	return heads, nil
+	return nil, nil
 }
