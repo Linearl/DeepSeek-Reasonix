@@ -144,6 +144,8 @@ func TestSessionPathSuffixArgsFromKnownSet(t *testing.T) {
 		"SessionTurnEventLogSuffix": "turn-ledger classification",
 		"SessionConflictLogSuffix":  "conflict-log classification",
 		"SessionRepairLogSuffix":    "self-heal repair-log classification (task 1071: excluded from transcript-name classification so it never derives its own sidecars)",
+		"SessionEventLogZstSuffix":  "events-archive exclusion tail in IsSessionTranscriptZstName (tl 1172: <id>.events.jsonl.zst must not classify as a transcript archive)",
+		"SessionTranscriptZstSuffix": "transcript-archive classification tail (tl 1174: <id>.jsonl.zst is the archived primary transcript)",
 	}
 	checked := map[string]bool{
 		"TrimPrefix": true, "TrimSuffix": true,

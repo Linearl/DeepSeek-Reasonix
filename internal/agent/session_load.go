@@ -80,6 +80,13 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 	if err := ctx.Err(); err != nil {
 		return sessionLoadResult{}, err
 	}
+	// tl 1174：冷读透明的收口点（tl 1172 在 limitsForSessionLog 收口的同款
+	// 选择——所有读会话的路径都从本函数或 Tail 变体过）。归档态转录在此
+	// 物化回明文，后续探针/重放/预算按明文世界进行，上层读取链无感。开关
+	// 关闭态只多一次存在性 stat（明文在 = 短路，零增量）。
+	if _, err := ensureSessionTranscriptPlain(sessionPath); err != nil {
+		return sessionLoadResult{}, fmt.Errorf("session transcript materialize: %w", err)
+	}
 	// Adapt the byte budget here rather than at each caller. The budget exists so a damaged
 	// log cannot exhaust memory while decoding into a larger graph, and the file size is known
 	// before decoding - so it can be sized to the file instead of refusing it. The DAG replay
@@ -150,6 +157,10 @@ func loadSessionTranscript(ctx context.Context, sessionPath string, limits sessi
 func loadSessionTranscriptTail(ctx context.Context, sessionPath string, limits sessionReplayLimits, hasher *sessionTranscriptHasher) (sessionLoadResult, error) {
 	if err := ctx.Err(); err != nil {
 		return sessionLoadResult{}, err
+	}
+	// tl 1174：与 loadSessionTranscript 同款冷读透明收口（首画入口）。
+	if _, err := ensureSessionTranscriptPlain(sessionPath); err != nil {
+		return sessionLoadResult{}, fmt.Errorf("session transcript materialize: %w", err)
 	}
 	limits = limitsForSessionLog(sessionPath, limits)
 	probe, err := probeSessionEventLogWithLimits(sessionPath, limits)

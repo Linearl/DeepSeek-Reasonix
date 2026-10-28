@@ -189,5 +189,9 @@ func writeSessionMessagesContext(ctx context.Context, path string, msgs []provid
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("write session messages: %w", err)
 	}
+	// tl 1174：恢复活跃即物化（红线 4）。发布的是全量重写的新明文——若归档
+	// 还在（压缩后未打开过就被保存），它已是过期残件；明文优先规则本就让
+	// 它失效，这里顺手清掉维持「稳态只存其一」。best-effort。
+	cleanupStaleSessionTranscriptZst(path)
 	return nil
 }
