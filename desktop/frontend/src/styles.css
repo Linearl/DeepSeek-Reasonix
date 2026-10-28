@@ -34631,6 +34631,129 @@ button.statusbar__mcp:focus-visible {
   font-size: calc(11px * var(--font-scale));
   font-variant-numeric: tabular-nums;
 }
+/* ── tl1224 阶段二：明细开关 + 协议三大段视图 ─────────────────────────
+ * checkbox 做小一号置于色条上方（参考 Ctrl+K 过滤条件），勾选状态会话内
+ * 保持；三段间横线分割复用既有 border-soft 横线语言；全部用已定义 theme
+ * token，不引入新色值。明细子项各自彩色，解决段多了主题色不够用的问题。 */
+.context-composition__detail-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 6px;
+  color: var(--fg-faint);
+  font-size: calc(10px * var(--font-scale));
+  cursor: pointer;
+  user-select: none;
+}
+.context-composition__detail-toggle:hover {
+  color: var(--fg-dim);
+}
+.context-composition__detail-checkbox {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.context-composition__sections {
+  display: flex;
+  flex-direction: column;
+}
+.context-composition__section {
+  padding: 6px 0 7px;
+}
+/* 段间横线分割：复用既有 border-soft 横线样式 */
+.context-composition__section + .context-composition__section {
+  padding-top: 7px;
+  border-top: 1px solid var(--border-soft);
+}
+.context-composition__section-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.context-composition__section-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 650;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.context-composition__section-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0 0 0 11px;
+  list-style: none;
+}
+.context-composition__section-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+/* 三段三色：系统提示词 / 工具列表 / 用户消息 */
+.context-composition__seg--section-systemPrompt,
+.context-composition__dot--section-systemPrompt {
+  background: var(--accent);
+}
+.context-composition__seg--section-tools,
+.context-composition__dot--section-tools {
+  background: var(--warn);
+}
+.context-composition__seg--section-userMessages,
+.context-composition__dot--section-userMessages {
+  background: color-mix(in srgb, var(--ok) 65%, var(--fg-faint));
+}
+/* 勾选明细后的彩色子项（段多了主题色不够用的解法） */
+.context-composition__dot--item-systemBase {
+  background: var(--accent);
+}
+.context-composition__dot--item-standingMemory {
+  background: var(--ok);
+}
+.context-composition__dot--item-catalog {
+  background: color-mix(in srgb, var(--accent) 55%, var(--fg-faint));
+}
+.context-composition__dot--item-runtime {
+  background: color-mix(in srgb, var(--fg-faint) 75%, transparent);
+}
+.context-composition__dot--item-builtinTools {
+  background: var(--warn);
+}
+.context-composition__dot--item-mcpTools {
+  background: color-mix(in srgb, var(--warn) 55%, var(--fg-faint));
+}
+.context-composition__dot--item-history {
+  background: color-mix(in srgb, var(--ok) 65%, var(--fg-faint));
+}
+.context-composition__dot--item-images {
+  background: color-mix(in srgb, var(--ok) 35%, var(--fg-faint));
+}
+.context-composition__dot--item-recall {
+  background: var(--info);
+}
+.context-composition__dot--item-skillBodies {
+  background: color-mix(in srgb, var(--info) 45%, var(--fg-faint));
+}
+/* 64K 注入警告线刻度：复用距压缩刻度的视觉语言（细竖线），超线转警告色 */
+.context-ring-popover__mark--inject {
+  background: color-mix(in srgb, var(--fg-faint) 70%, transparent);
+}
+.context-ring-popover__mark--inject-over {
+  background: var(--warn);
+}
+/* 超线状态：圆环与浮层弧线转警告色（被动可见，无弹窗） */
+.context-ring--overinject .context-ring__arc {
+  stroke: var(--warn);
+}
+.context-ring-popover--overinject .context-ring-popover__arc {
+  stroke: var(--warn);
+}
 /* 多通道额度卡：当前只有 opencode-go 有额度端点，且只对它自己的 provider 显示 */
 .context-quota {
   margin-top: 8px;

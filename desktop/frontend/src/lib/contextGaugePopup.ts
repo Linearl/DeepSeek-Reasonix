@@ -162,3 +162,100 @@ export function compositionSegments(
   const shares = normalizeShares(allTokens, totalTokens);
   return rows.map((row, index) => ({ ...row, share: shares[index] }));
 }
+
+// ── tl1224 阶段二：协议三大段明细视图 ─────────────────────────────────────
+// 请求结构三段：System prompt（基础+指令文件+随 session-context 注入的常驻
+// 记忆/目录/运行时快照）、Tool list（内置+MCP 同在 tools 数组）、User
+// messages（历史+图片+每轮召回+技能正文）。默认视图（平铺四项）零改动；勾选
+// 「明细」后切到本结构。核实归属见 internal/agent/context_composition.go。
+
+export type CompositionSectionKey = "systemPrompt" | "tools" | "userMessages";
+
+export interface CompositionDetailItem {
+  key: string;
+  labelKey: DictKey;
+  tokens: number;
+  /** Percent of the whole composition, one decimal (matches the flat legend口径). */
+  share: number;
+}
+
+export interface CompositionSection {
+  key: CompositionSectionKey;
+  labelKey: DictKey;
+  /** Section total = Σ子项. */
+  tokens: number;
+  /** Percent of the whole composition, one decimal. */
+  share: number;
+  items: CompositionDetailItem[];
+}
+
+const DETAIL_ITEM_DEFS: ReadonlyArray<{
+  key: string;
+  labelKey: DictKey;
+  section: CompositionSectionKey;
+  tokens: (c: ContextCompositionInfo) => number;
+}> = [
+  { key: "systemBase", labelKey: "context.subitem.systemBase", section: "systemPrompt", tokens: (c) => c.systemPromptTokens },
+  { key: "standingMemory", labelKey: "context.subitem.standingMemory", section: "systemPrompt", tokens: (c) => c.standingMemoryTokens ?? 0 },
+  { key: "catalog", labelKey: "context.subitem.catalog", section: "systemPrompt", tokens: (c) => c.catalogTokens ?? 0 },
+  { key: "runtime", labelKey: "context.subitem.runtime", section: "systemPrompt", tokens: (c) => c.runtimeTokens ?? 0 },
+  { key: "builtinTools", labelKey: "context.segment.builtinTools", section: "tools", tokens: (c) => c.builtinToolTokens },
+  { key: "mcpTools", labelKey: "context.segment.mcpTools", section: "tools", tokens: (c) => c.mcpToolTokens },
+  { key: "history", labelKey: "context.subitem.history", section: "userMessages", tokens: (c) => c.messageTokens },
+  { key: "images", labelKey: "context.segment.images", section: "userMessages", tokens: (c) => c.imageTokens ?? 0 },
+  { key: "recall", labelKey: "context.subitem.recall", section: "userMessages", tokens: (c) => c.recallTokens ?? 0 },
+  { key: "skillBodies", labelKey: "context.subitem.skillBodies", section: "userMessages", tokens: (c) => c.skillTokens },
+];
+
+const SECTION_ORDER: ReadonlyArray<{ key: CompositionSectionKey; labelKey: DictKey }> = [
+  { key: "systemPrompt", labelKey: "context.section.systemPrompt" },
+  { key: "tools", labelKey: "context.section.tools" },
+  { key: "userMessages", labelKey: "context.section.userMessages" },
+];
+
+/**
+ * compositionThreeSections groups the composition by the request's protocol
+ * structure. Zero-token sub-items drop (same rule as the flat legend), a
+ * section whose every sub-item is zero drops, and Σ段 = totalTokens holds by
+ * construction (the Go side carves the detail fields out of messageTokens).
+ * Shares reuse normalizeShares so the section bar can never disagree with its
+ * own legend.
+ */
+export function compositionThreeSections(
+  composition: ContextCompositionInfo | null | undefined,
+): CompositionSection[] {
+  if (!composition || composition.totalTokens <= 0) return [];
+  const itemsBySection = new Map<CompositionSectionKey, CompositionDetailItem[]>();
+  for (const section of SECTION_ORDER) itemsBySection.set(section.key, []);
+  for (const def of DETAIL_ITEM_DEFS) {
+    const tokens = Math.max(0, def.tokens(composition));
+    if (tokens <= 0) continue;
+    itemsBySection.get(def.section)!.push({ key: def.key, labelKey: def.labelKey, tokens, share: 0 });
+  }
+  const sections: CompositionSection[] = [];
+  for (const section of SECTION_ORDER) {
+    const items = itemsBySection.get(section.key)!;
+    if (items.length === 0) continue;
+    const tokens = items.reduce((sum, item) => sum + item.tokens, 0);
+    sections.push({ key: section.key, labelKey: section.labelKey, tokens, share: 0, items });
+  }
+  if (sections.length === 0) return [];
+  // Shares over the WHOLE composition (not per-section) so every number on
+  // screen reads against the same denominator as the flat legend; the flat
+  // legend's 「其他」残余 carries here as rounding into the largest sections.
+  const flat = compositionSegments(composition);
+  const flatTotal = flat.reduce((sum, row) => sum + row.tokens, 0);
+  const sectionTokens = sections.map((section) => section.tokens);
+  const sectionShares = normalizeShares(sectionTokens, flatTotal);
+  const itemTokens = sections.flatMap((section) => section.items.map((item) => item.tokens));
+  const itemShares = normalizeShares(itemTokens, flatTotal);
+  let cursor = 0;
+  sections.forEach((section, index) => {
+    section.share = sectionShares[index];
+    section.items.forEach((item) => {
+      item.share = itemShares[cursor];
+      cursor += 1;
+    });
+  });
+  return sections;
+}

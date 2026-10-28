@@ -877,6 +877,16 @@ export interface ContextCompositionInfo {
   /** 任务1040: resolution-derived image price as its own bucket; absent on older hosts (treated as 0). */
   imageTokens?: number;
   totalTokens: number;
+  // tl1224 阶段二三段式明细：协议三大段的子项归属（旧宿主省略=0）。
+  // 跨会话记忆/能力目录/运行时快照随 <session-context> 信封走 host 生成
+  // user 消息；每轮召回随最新 user 消息尾部。四者与 messageTokens 同级，
+  // Σ(全部字段) = totalTokens。
+  standingMemoryTokens?: number;
+  catalogTokens?: number;
+  runtimeTokens?: number;
+  recallTokens?: number;
+  /** tl1224 阶段二：末次渲染的能力目录块字节数——64K 警告线的比较量；0=未渲染。 */
+  directoryBytes?: number;
 }
 
 export interface UsageSourceStats {

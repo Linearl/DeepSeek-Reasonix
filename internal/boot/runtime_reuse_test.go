@@ -13,6 +13,7 @@ import (
 	"reasonix/internal/agent/testutil"
 	"reasonix/internal/event"
 	"reasonix/internal/plugin"
+	"reasonix/internal/skill"
 )
 
 // TestRuntimeAssemblyReuseFeedsDiscovery is the task-363A behavior proof: a
@@ -174,4 +175,86 @@ func first60(s string) string {
 		return s
 	}
 	return s[:60]
+}
+
+// tl1224 禁用仍注入修复（回归钉）：the reuse branch used to build its live
+// skill store with NO config filters, so a no-op/provider/MCP-only rebuild
+// re-admitted config-disabled skills and excluded roots into the per-turn
+// injection (skills catalog + capability directory read Controller.Skills /
+// the store's List). Round 1 boots with both skills enabled; round 2 reuses
+// the assembly AFTER the config gained disabled_skills + excluded_paths — the
+// rebuilt controller's live skill view must honor both filters.
+func TestRuntimeAssemblyReuseStoreAppliesDisabledAndExcluded(t *testing.T) {
+	isolateConfigHome(t)
+	dir := robustTempDir(t)
+	t.Chdir(dir)
+	registerBootTokenProfileTestProvider()
+	setBootTokenProfileTestProvider(t, testutil.NewMock("reuse-filter", testutil.Turn{Text: "ok"}))
+	writeFile(t, dir, "reasonix.toml", mcpCapabilityTestProviderConfig)
+	writeFile(t, dir, ".reasonix/skills/stayingskill.md",
+		"---\ndescription: stays enabled across the rebuild\n---\nplaybook body")
+	writeFile(t, dir, ".reasonix/skills/toggledskill.md",
+		"---\ndescription: disabled in config after round one\n---\nplaybook body")
+	writeFile(t, dir, ".agents/skills/excludedskill.md",
+		"---\ndescription: lives under an excluded root\n---\nplaybook body")
+
+	baseOpts := func() Options {
+		return Options{Sink: event.Discard, MCPHostProfile: plugin.HostProfileInteractive}
+	}
+	res1, err := BuildRuntime(context.Background(), baseOpts())
+	if err != nil {
+		t.Fatalf("round1 BuildRuntime: %v", err)
+	}
+	t.Cleanup(res1.Controller.Close)
+	if names := skillNames(res1.Controller.Skills()); !names["toggledskill"] || !names["excludedskill"] || !names["stayingskill"] {
+		t.Fatalf("round1 must discover all three skills, got %v", names)
+	}
+
+	// The config change a UI toggle (or a hand edit) persists between builds.
+	writeFile(t, dir, "reasonix.toml", mcpCapabilityTestProviderConfig+`
+[skills]
+disabled_skills = ["toggledskill"]
+excluded_paths = ["`+filepath.ToSlash(filepath.Join(dir, ".agents", "skills"))+`"]
+`)
+
+	assembly := res1.Assembly
+	assembly.SystemPrompt = "SENTINEL-REUSE-FILTER"
+	opts2 := baseOpts()
+	opts2.RuntimeReload = RuntimeReload{ReuseAssembly: assembly, PreviousPlan: FullReusePlan()}
+	res2, err := BuildRuntime(context.Background(), opts2)
+	if err != nil {
+		t.Fatalf("round2 BuildRuntime: %v", err)
+	}
+	t.Cleanup(res2.Controller.Close)
+	if res2.Snapshot == nil || !strings.HasPrefix(res2.Snapshot.SystemPrompt(), "SENTINEL-REUSE-FILTER") {
+		t.Fatal("round2 did not take the reuse branch; the filter assertions below would prove nothing")
+	}
+	names := skillNames(res2.Controller.Skills())
+	if names["toggledskill"] {
+		t.Fatalf("config-disabled skill re-entered the injection view after a reuse rebuild: %v", names)
+	}
+	if names["excludedskill"] {
+		t.Fatalf("excluded-root skill re-entered the injection view after a reuse rebuild: %v", names)
+	}
+	if !names["stayingskill"] {
+		t.Fatalf("enabled skill must survive the reuse rebuild: %v", names)
+	}
+	// Management surface keeps seeing the disabled skill (it lives on a
+	// non-excluded root) so it can be re-enabled; the excluded root stays
+	// hidden from every surface — that is what excluded_paths means.
+	all := skillNames(res2.Controller.AllSkills())
+	if !all["toggledskill"] {
+		t.Fatalf("AllSkills must still list the disabled skill for management: %v", all)
+	}
+	if all["excludedskill"] {
+		t.Fatalf("excluded root must stay hidden from the management surface too: %v", all)
+	}
+}
+
+func skillNames(skills []skill.Skill) map[string]bool {
+	out := map[string]bool{}
+	for _, sk := range skills {
+		out[sk.Name] = true
+	}
+	return out
 }

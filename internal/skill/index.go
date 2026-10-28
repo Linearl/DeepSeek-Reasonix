@@ -1,14 +1,10 @@
 package skill
 
 import (
-	"fmt"
 	"strings"
 
 	"reasonix/internal/textutil"
 )
-
-// IndexMaxChars caps the session-context skills catalog; bodies never enter it.
-const IndexMaxChars = 4000
 
 const missingDescPlaceholder = `(no description — frontmatter is missing a "description:" line; tell the user to add one)`
 
@@ -72,11 +68,11 @@ func catalogBlock(skills []Skill) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	joined := strings.Join(lines, "\n")
-	if r := []rune(joined); len(r) > IndexMaxChars {
-		joined = string(r[:IndexMaxChars]) + fmt.Sprintf("\n… (truncated %d chars)", len(r)-IndexMaxChars)
-	}
-	return "```\n" + joined + "\n```"
+	// Task 1224 phase 2: the former 4000-rune cap (rows silently cut past it —
+	// the same capability-visibility failure as the directory's 64KB cap) is
+	// retired; every enabled skill renders. The catalog carries one line per
+	// skill, so growth stays linear and small next to the conversation.
+	return "```\n" + strings.Join(lines, "\n") + "\n```"
 }
 
 // ApplyIndex appends the skills index to basePrompt, or returns it unchanged

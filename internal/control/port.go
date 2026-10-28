@@ -302,6 +302,9 @@ type Status interface {
 	// prompt / builtin tools / skills / MCP tools / messages) for the composer
 	// gauge popup — task 442. Zero total means no data yet.
 	ContextComposition() agent.ContextComposition
+	// ContextDirectoryBytes reports the last rendered capability directory
+	// block's byte size (tl1224 阶段二 64KB warning line); 0 = not rendered yet.
+	ContextDirectoryBytes() int
 	Balance(ctx context.Context) (*billing.Balance, error)
 	Jobs() []jobs.View
 	Todos() []evidence.TodoItem

@@ -955,8 +955,26 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if canReuseSkills {
 		skills = opts.ReuseAssembly.Skills
 		allSkills = skills
-		skillStore = skill.New(skill.Options{ProjectRoot: root, Stderr: io.Discard})
-		allSkillStore = skillStore
+		// tl1224 禁用仍注入修复：the reuse branch used to build the live store
+		// with NO config filters — a no-op/provider/MCP-only rebuild swapped in
+		// an unfiltered store, so config-disabled skills and excluded roots
+		// re-entered the per-turn injection (skills catalog + capability
+		// directory) even though the reused enabled list was filtered. The
+		// store mirrors the fresh path's filters; List() itself re-scans lazily
+		// so reuse keeps its rediscovery-free cost. The management store stays
+		// disabled-name-free (it must list hidden skills), same as the fresh
+		// path — two stores, one filter delta.
+		skillStore = skill.New(skill.Options{
+			ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(),
+			PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(),
+			DisabledNames: collabDisabledSkillNames(cfg), DisableBuiltinNames: featureGatedBuiltinNames(cfg),
+			MaxDepth: cfg.SkillMaxDepth(), Stderr: io.Discard,
+		})
+		allSkillStore = skill.New(skill.Options{
+			ProjectRoot: root, CustomPaths: cfg.SkillCustomPaths(), PluginPaths: cfg.PluginPackageSkillOwners(),
+			PluginAgentPaths: cfg.PluginPackageAgentOwners(), ExcludedPaths: cfg.SkillExcludedPaths(),
+			MaxDepth: cfg.SkillMaxDepth(), Stderr: io.Discard,
+		})
 		if s := strings.TrimSpace(opts.ReuseAssembly.SystemPrompt); s != "" {
 			sysPrompt = s
 		}
