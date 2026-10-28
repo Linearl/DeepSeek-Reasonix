@@ -34,7 +34,9 @@ func (c *Controller) withTurnContext(ctx context.Context, realUserTurn bool) con
 		// the same block; it is discovery metadata, and use_capability stays
 		// the drill-down entry for both.
 		if c.capabilityDirectory != nil {
-			if block, stats := c.capabilityDirectory(); block != "" {
+			block, stats := c.capabilityDirectory()
+			c.trackDirectoryPressure(stats)
+			if block != "" {
 				executorSections.CapabilityCatalog = block
 				plannerSections.CapabilityCatalog = block
 				if stats.Truncated {
@@ -54,14 +56,36 @@ func (c *Controller) withTurnContext(ctx context.Context, realUserTurn bool) con
 	return agent.WithTurnContextBundle(ctx, bundle)
 }
 
-// noteDirectoryTruncation logs the 20KB ratchet crossing once per distinct
-// drop count so a persistently oversized catalog warns without spamming every
-// turn.
+// noteDirectoryTruncation logs the budget-cap crossing once per distinct drop
+// count so a persistently oversized catalog warns without spamming every turn.
 func (c *Controller) noteDirectoryTruncation(stats capability.DirectoryStats) {
 	prev := c.directoryTruncationDropped.Swap(int64(stats.Dropped))
 	if prev == int64(stats.Dropped) {
 		return
 	}
-	slog.Warn("control: capability directory truncated at 20KB cap",
-		"rows", stats.Rows, "dropped", stats.Dropped, "bytes", stats.Bytes)
+	slog.Warn("control: capability directory truncated at budget cap",
+		"rows", stats.Rows, "dropped", stats.Dropped, "bytes", stats.Bytes,
+		"cap_bytes", capability.DirectoryMaxBytes)
+}
+
+// trackDirectoryPressure fires the near-cap collision warning (task 1224
+// phase 1) before truncation starts hiding rows: one warn per climb past the
+// warn thresholds, reset while the catalog sits back under them so the next
+// climb warns again. Truncation has its own louder warning, so the pressure
+// latch only handles the not-yet-truncated window.
+func (c *Controller) trackDirectoryPressure(stats capability.DirectoryStats) {
+	switch {
+	case stats.Truncated:
+		return
+	case stats.NearCap:
+		if !c.directoryPressureWarned.CompareAndSwap(false, true) {
+			return
+		}
+		slog.Warn("control: capability directory nearing budget cap",
+			"bytes", stats.Bytes, "warn_bytes", capability.DirectoryWarnBytes,
+			"rows", stats.Rows+stats.Dropped, "warn_rows", capability.DirectoryWarnRows,
+			"cap_bytes", capability.DirectoryMaxBytes)
+	default:
+		c.directoryPressureWarned.Store(false)
+	}
 }

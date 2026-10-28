@@ -208,10 +208,14 @@ type Controller struct {
 	pinnedContextLoader     PinnedContextLoader
 	sessionContextStatic    sessioncontext.Sections
 	capabilityDirectory     func() (string, capability.DirectoryStats)
-	// directoryTruncationDropped dedupes the 20KB ratchet warning (task 969):
-	// it stores the last observed drop count so a persistent overflow logs once
-	// per distinct count instead of once per turn.
+	// directoryTruncationDropped dedupes the over-budget truncation warning
+	// (task 969): it stores the last observed drop count so a persistent
+	// overflow logs once per distinct count instead of once per turn.
 	directoryTruncationDropped atomic.Int64
+	// directoryPressureWarned latches the near-cap collision warning (task
+	// 1224): one warn per climb past the warn thresholds, reset when the
+	// catalog shrinks back under them so the next climb warns again.
+	directoryPressureWarned atomic.Bool
 	sessionDir                 string
 	// sessionV4 mirrors transcripts into the experimental v4 store when set.
 	sessionV4 *SessionV4Bridge
