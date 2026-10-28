@@ -84,6 +84,7 @@ func waitForColdTailSelfHeal(t *testing.T, path string) {
 // 钉①a：anchor 陈旧（事件日志权威且超前）的大会话首屏走尾窗，最新内容可见，
 // 指纹取 ledger 身份。
 func TestColdHistoryTailFirstPaintOnStaleAnchor(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 冷尾快读依赖 schema-2 事件侧车+probe.dag 尾窗——tl-1173 P1 起新会话扁平写无事件侧车，tl1227 schema-2 尾窗读退役后本路径不可达；扁平会话冷首屏快读欠账已登记 tl1173 待落地，显式退役非静默")
 	app := historySliceTestApp(t)
 	tab := newColdHistoryTab(t, app)
 	path := filepath.Join(tabSessionDir(tab), "stale-anchor.jsonl")
@@ -134,6 +135,7 @@ func TestColdHistoryTailFirstPaintOnStaleAnchor(t *testing.T) {
 // 钉①b：display index 缺失的大会话首屏同样走尾窗；后台自愈（扫描+回写）
 // 收敛出一个通过验证的 index。
 func TestColdHistoryTailFirstPaintOnMissingIndex(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 冷尾快读依赖 schema-2 事件侧车+probe.dag 尾窗——tl-1173 P1 起新会话扁平写无事件侧车，tl1227 schema-2 尾窗读退役后本路径不可达；扁平会话冷首屏快读欠账已登记 tl1173 待落地，显式退役非静默")
 	app := historySliceTestApp(t)
 	tab := newColdHistoryTab(t, app)
 	path := filepath.Join(tabSessionDir(tab), "missing-index.jsonl")
@@ -156,6 +158,7 @@ func TestColdHistoryTailFirstPaintOnMissingIndex(t *testing.T) {
 // 钉②：首屏尾窗页的 cursor 在自愈完成后照常翻页——非 Stale、返回更早内容、
 // 页与页的消息序衔接。
 func TestColdHistoryTailPagePagingAfterSelfHeal(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 冷尾快读依赖 schema-2 事件侧车+probe.dag 尾窗——tl-1173 P1 起新会话扁平写无事件侧车，tl1227 schema-2 尾窗读退役后本路径不可达；扁平会话冷首屏快读欠账已登记 tl1173 待落地，显式退役非静默")
 	app := historySliceTestApp(t)
 	tab := newColdHistoryTab(t, app)
 	path := filepath.Join(tabSessionDir(tab), "paging.jsonl")
@@ -190,6 +193,7 @@ func TestColdHistoryTailPagePagingAfterSelfHeal(t *testing.T) {
 // 钉③：同一请求参数下，尾窗页与全量重放页在返回窗口内除 turn 标注外逐字段
 // 一致（entryID/order/message 内容/refs）——读侧等价。
 func TestColdHistoryTailPageMatchesFullReplayTail(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 冷尾快读依赖 schema-2 事件侧车+probe.dag 尾窗——tl-1173 P1 起新会话扁平写无事件侧车，tl1227 schema-2 尾窗读退役后本路径不可达；扁平会话冷首屏快读欠账已登记 tl1173 待落地，显式退役非静默")
 	app := historySliceTestApp(t)
 	tab := newColdHistoryTab(t, app)
 	path := filepath.Join(tabSessionDir(tab), "equivalence.jsonl")
@@ -263,6 +267,7 @@ func TestColdHistoryTailPageMatchesFullReplayTail(t *testing.T) {
 // 同进程顺序执行、OS cache 条件一致；结构性结论（尾窗窗口 << 全量解码）对
 // 噪声稳健，生产口径以 451 的 cold-* 分相 desktop.log 打点为准。
 func TestColdHistoryTailFirstPaintTimingAgainstFullPass(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 冷尾快读依赖 schema-2 事件侧车+probe.dag 尾窗——tl-1173 P1 起新会话扁平写无事件侧车，tl1227 schema-2 尾窗读退役后本路径不可达；扁平会话冷首屏快读欠账已登记 tl1173 待落地，显式退役非静默")
 	// --- S4 形态：anchor 陈旧，「前」= 全量事件日志重放 ---
 	app := historySliceTestApp(t)
 	s4Tab := newColdHistoryTab(t, app)
