@@ -40,6 +40,12 @@ type sessionLoadResult struct {
 // reads share the single schema-1 path, whose trailing-replace replay is
 // already bounded.
 
+// sessionTranscriptTailThresholdBytes survives the tl1227 retirement as the
+// large-log threshold reused by the tl1220 save-path observation counter
+// (save_dag_observation.go): logs at or below this size are not counted as
+// nil_cache+oversize replays.
+const sessionTranscriptTailThresholdBytes = int64(32 << 20)
+
 // loadSessionMessages returns the session transcript, preferring the event log
 // when the native layer owns it and it holds at least one decodable record.
 // Foreign files squatting the log path (legacy import leftovers) are ignored
