@@ -101,6 +101,13 @@ type inboxState struct {
 	// activeItemIDs includes the running follow-up and every accepted steer.
 	// TurnDone durable-acks the set so multi-steer rounds leave no orphans.
 	activeItemIDs map[string]struct{}
+	// stallRequeue (tl-1213) lists the items the preflight-stall watchdog
+	// found still steer_accepted when it aborted the turn, bound to the turn
+	// generation. onInboxTurnDone requeues them as follow-up (the pump's own
+	// rejected-steer semantics) instead of acknowledging them done, so queued
+	// guidance survives the collapsed turn and runs at the next dispatch.
+	stallRequeue    []string
+	stallRequeueGen uint64
 	// activeOwnership mirrors activeItemIDs for lock-free recovery checks while
 	// the Store owns its transaction lock. admittingOwnership covers the narrow
 	// durable-claim -> active-registration transition.
@@ -919,8 +926,11 @@ func (c *Controller) receiptForAdmissionResult(id string, st *sessioninbox.Store
 // onInboxTurnDone acknowledges durable completion of every active inbox item
 // (running follow-up + all steers accepted this turn). Dispatch of the next
 // item is deferred until the finishing window closes so admission is not
-// rejected as busy.
-func (c *Controller) onInboxTurnDone() {
+// rejected as busy. tl-1213: items the preflight-stall watchdog armed for
+// requeue (still steer_accepted when their turn was auto-aborted) are put back
+// on the queue as follow-up instead of acknowledged, so guidance queued for a
+// collapsed turn runs at the next dispatch instead of dying with it.
+func (c *Controller) onInboxTurnDone(generation uint64) {
 	c.inbox.mu.Lock()
 	// Keep these IDs published as live ownership while SnapshotActivity runs.
 	// Inbox recovery can therefore proceed without waiting on extension hooks,
@@ -975,8 +985,26 @@ func (c *Controller) onInboxTurnDone() {
 	if beforeAck != nil {
 		beforeAck()
 	}
+	// tl-1213: requeue the watchdog-armed set (guidance that never reached the
+	// model) instead of acking it done. flushSteerQueue may already have
+	// flipped a row to steer_consumed while rendering its unapplied note — the
+	// body still never entered a provider request, so the reset to queued is
+	// sound. A row that fails to requeue falls through to the ordinary ack so
+	// today's semantics survive any store error.
+	requeue := make(map[string]struct{})
+	for _, id := range c.takeSteerRequeue(generation) {
+		requeue[id] = struct{}{}
+	}
 	ackFailed := false
 	for _, id := range ids {
+		if _, ok := requeue[id]; ok {
+			if err := st.SetState(id, sessioninbox.StateQueued, ""); err == nil {
+				if err := st.ConvertIntent(id, sessioninbox.IntentFollowup); err == nil {
+					continue
+				}
+			}
+			slog.Warn("controller: preflight-stall steer requeue failed; acknowledging instead", "id", id)
+		}
 		if err := st.AckDequeue(id); err != nil {
 			if errors.Is(err, sessioninbox.ErrNotFound) {
 				continue

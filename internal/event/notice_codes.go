@@ -107,6 +107,14 @@ const (
 	// Stop (2026-10-24 field report: a healthy chunked compaction read as a
 	// failure because the stall warning kept firing during it).
 	NoticeCodeTurnStalledCompacting = "turn_stalled_compacting"
+	// NoticeCodeTurnPreflightStallAbort (tl-1213): the turn-level watchdog
+	// auto-terminated a turn whose last tool outcome was a preflight (not_run)
+	// failure and which produced no further events for the abort threshold.
+	// The turn used to hang in "running" forever (2026-10-28 field incident:
+	// 40 minutes of dead air, steer/followup delivery fully blocked). The
+	// notice is the user-visible error face; the turn lands as failed with a
+	// controller TurnPreflightStallAbortError cause, never as a silent finish.
+	NoticeCodeTurnPreflightStallAbort = "turn_preflight_stall_abort"
 	// NoticeCodeCollabReplyNudge (task 530): a turn closed with unanswered
 	// require_reply cross-session mail and the host injected one visible
 	// reply reminder into the conversation.

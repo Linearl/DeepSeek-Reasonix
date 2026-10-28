@@ -439,8 +439,13 @@ type Controller struct {
 	// turnGeneration increments only on a deadlock self-heal to invalidate the
 	// abandoned turn's late completion — its finishGuardedTurn must not clear
 	// the freshly reopened gate or emit TurnDone over the new turn.
-	turnGeneration     uint64
-	memorySystemReload func() string
+	turnGeneration uint64
+	// preflightStallAbort (tl-1213) binds one watchdog fire to the turn
+	// generation it aborted. finishGuardedTurn consumes it to rewrite the
+	// terminal from "interrupted by cancel" to failed-with-cause, so an
+	// automatic abort is never recorded as a user stop or a silent finish.
+	preflightStallAbort *preflightStallAbort
+	memorySystemReload  func() string
 	// closed marks the controller as terminally torn down (close() ran). It
 	// seals turn admission: without it, a submit arriving AFTER close cleared
 	// the parked queue — but while a still-running turn's TurnDone delivery
@@ -1709,6 +1714,15 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 	}
 	done.Receipt = bindCompletionLogSources(done.Receipt, c.History())
 	done = c.applyTurnDoneProtocol(done, cancelRequested)
+	// tl-1213: a watchdog-aborted turn must not present as a user stop. The
+	// cancel machinery unwinds it as a cancellation, so the cause is rewritten
+	// to the stall abort — the ledger records failed-with-cause, the notice
+	// already told the user why, and terminalTurnStatus lands on TurnFailed
+	// instead of a silent interrupted.
+	if armed := c.takePreflightStallAbort(completion); armed != nil && errors.Is(err, context.Canceled) {
+		done.Err = &TurnPreflightStallAbortError{ToolName: armed.cause.toolName, CallID: armed.cause.callID, Silence: armed.silence}
+		done.Cancelled = false
+	}
 	c.applyToolRecoveryTurnStatus(&done, completion)
 	var readErr *agent.IncompleteReadError
 	if errors.As(err, &readErr) {
@@ -1726,7 +1740,11 @@ func (c *Controller) finishGuardedTurn(err error, completion *guardedTurnComplet
 	// Ack active durable items before exposing TurnDone. Frontends commonly
 	// refresh the inbox from that event and must not observe already-consumed
 	// steers in the completed turn. Dispatch still waits for finishing to clear.
-	c.onInboxTurnDone()
+	generation := uint64(0)
+	if completion != nil {
+		generation = completion.generation
+	}
+	c.onInboxTurnDone(generation)
 	c.sink.Emit(done)
 }
 

@@ -119,7 +119,13 @@ func (c *Controller) runSynchronousTurn(
 	defer event.RecordTurnCompletion(c.sink)
 	defer func() {
 		finish()
-		c.onInboxTurnDone()
+		// tl-1213: the synchronous path has no completion object, so the
+		// watchdog requeue set is matched against the live generation — equal
+		// to the fire-time generation unless a deadlock self-heal bumped it.
+		c.mu.Lock()
+		generation := c.turnGeneration
+		c.mu.Unlock()
+		c.onInboxTurnDone(generation)
 	}()
 	err := run(ctx)
 	// 任务1017 批B (acceptance ②): a context-canceled result must name its
