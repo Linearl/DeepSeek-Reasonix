@@ -419,7 +419,8 @@ await act(async () => setCollabInboxOpen(false));
 assert.equal(document.querySelector(".collab-inbox-panel"), null, "closing unmounts the panel");
 
 // 任务 320 遗留 #1：图标行未读徽标 hook —— 挂载取一次数；面板开/合各刷新一次
-// （打开路径可能触发保留期清理，关闭路径紧随已读/消除，两个时刻都可能变）。
+// （打开路径可能触发保留期清理，关闭路径紧随已读/消除，两个时刻都可能变）；
+// tl1226 补第三条（写操作成功广播，回归断言见下文 P8 节）。
 // 徽标的按钮接线与 >99 折叠由 App.tsx 承担（integrity 锚点锁接缝）。
 let unreadCount = 3;
 const badgeBindings: CollabInboxBindings = {
@@ -477,6 +478,32 @@ await act(async () => {
 });
 assert.match(p8Panel!.textContent ?? "", /×9/, "the folded cluster renders a ×N count chip");
 
+// ── tl1226：全部已读后未读角标即时清零（写侧广播 → 角标重查）─────────────
+// 徽标节（上文）钉了挂载 + 开/合两条刷新时机；这里钉第三条：面板内写操作
+// 成功后角标 hook 即时重查 CountUnreadCollabMail——用户实测「全部已读后
+// 左下角角标仍挂 27」的回归断言，面板不动、无开/合过渡。
+const tl1226BadgeCount = () => snapshot.entries.filter((e) => !e.read).length;
+let tl1226CountCalls = 0;
+const tl1226BadgeBindings: CollabInboxBindings = {
+  ...bindings,
+  async CountUnreadCollabMail() {
+    tl1226CountCalls += 1;
+    return tl1226BadgeCount();
+  },
+};
+function Tl1226BadgeProbe() {
+  const n = useCollabInboxUnreadCount(tl1226BadgeBindings);
+  return <span className="badge-probe-tl1226">{n}</span>;
+}
+const tl1226Host = document.createElement("div");
+document.body.appendChild(tl1226Host);
+const tl1226Root = createRoot(tl1226Host);
+await act(async () => {
+  tl1226Root.render(<Tl1226BadgeProbe />);
+});
+assert.equal(document.querySelector(".badge-probe-tl1226")!.textContent, "1", "tl1226: badge reads 1 unread on mount (folded cluster is unread)");
+const tl1226CallsBeforeRead = tl1226CountCalls;
+
 // 一键批量已读：把当前视图未读条目的 id 集合发到后端；折叠条目只带 primary
 // id，整簇展开由 Go 侧 MarkRead 完成（此处钉「未读集合到达后端」这一接缝）。
 // 任务716 ③：按钮落位视图工具条。
@@ -488,6 +515,19 @@ await act(async () => {
 const readCall = calls.filter((c) => c.name === "MarkCollabMailRead").pop();
 assert.deepEqual(readCall?.args[0], ["m_dup"], "mark-all-read sends exactly the unread entry ids");
 assert.match(p8Panel!.textContent ?? "", /Snapshot 6\.0\.0/, "the mark-read snapshot refreshes the panel in place");
+// tl1226：写成功 → 广播 → 角标重查（未读 1 → 0），全程无开/合过渡。
+assert.equal(
+  tl1226CountCalls > tl1226CallsBeforeRead,
+  true,
+  "tl1226: a successful mark-all-read notifies the badge hook to re-query the backend",
+);
+assert.equal(
+  document.querySelector(".badge-probe-tl1226")!.textContent,
+  "0",
+  "tl1226: the unread badge clears right after mark-all-read without any open/close transition",
+);
+await act(async () => tl1226Root.unmount());
+tl1226Host.remove();
 
 await act(async () => root.unmount());
 dom.window.close();

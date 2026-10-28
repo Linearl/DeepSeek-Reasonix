@@ -216,12 +216,28 @@ export function onCollabInboxOpenChange(cb: (open: boolean) => void): () => void
   return () => openListeners.delete(cb);
 }
 
+// tl1226（用户验收实测「全部已读后角标不清零」）：面板内写操作（已读/消除/
+// 恢复/裁决/保留期/清理规则/清理/删除/清空）成功后广播——未读角标 hook 订阅
+// 本通知即时重查 CountUnreadCollabMail。计数真相源始终是后端（inbox.jsonl +
+// seen.json），这里只补「写侧→读侧」的刷新通路，不造第二份计数状态。
+const mailChangedListeners = new Set<() => void>();
+
+export function notifyCollabMailChanged(): void {
+  for (const listener of mailChangedListeners) listener();
+}
+
+export function onCollabMailChanged(cb: () => void): () => void {
+  mailChangedListeners.add(cb);
+  return () => mailChangedListeners.delete(cb);
+}
+
 /**
  * 任务 320 遗留 #1：图标行收件箱按钮的未读徽标数 —— 未读（收件方 seen 游标
  * 未覆盖）且未消除的统一表条目数，与面板默认视图的「待处理」口径一致。
- * 刷新时机（派单钦定）：挂载时 + 面板每次开/合切换时 —— 打开路径会应用保留期
- * （可能清理旧信），关闭路径紧随刚发生的已读/消除，两个时刻的数字都可能变；
- * 不做轮询。网关不可达时保留上次数值（与面板 refresh 的容错同款）。
+ * 刷新时机（派单钦定 + tl1226 补口）：挂载时 + 面板每次开/合切换时 + 面板内
+ * 任一写操作成功广播时 —— 打开路径会应用保留期（可能清理旧信），关闭路径
+ * 紧随刚发生的已读/消除，写广播让「全部已读」等面板内动作不必等开/合即清
+ * 角标；不做轮询。网关不可达时保留上次数值（与面板 refresh 的容错同款）。
  */
 export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): number {
   const b: CollabInboxBindings = bindings ?? app;
@@ -239,8 +255,9 @@ export function useCollabInboxUnreadCount(bindings?: CollabInboxBindings): numbe
         });
     };
     refresh();
-    const off = onCollabInboxOpenChange(refresh);
-    return () => { alive = false; off(); };
+    const offOpen = onCollabInboxOpenChange(refresh);
+    const offChanged = onCollabMailChanged(refresh);
+    return () => { alive = false; offOpen(); offChanged(); };
   }, [b]);
   return count;
 }
@@ -550,6 +567,10 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     setBusy(true);
     try {
       setSnapshot(await fn());
+      // tl1226：写成功即广播（已读/消除/恢复/裁决/保留期/清理规则都走本口），
+      // 未读角标 hook 收到后重查 CountUnreadCollabMail——「全部已读」后角标
+      // 不必等面板开/合即清零。
+      notifyCollabMailChanged();
       setView("list");
     } catch (err) {
       // keep the previous snapshot on failure; 任务587：the failure itself
@@ -567,6 +588,8 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     try {
       const result = await b.CleanCollabMailNow();
       setSnapshot(result.snapshot);
+      // tl1226：清理物理移除信件，未读数可能变小——同样广播给角标。
+      notifyCollabMailChanged();
       setView("list");
       setCleanNote(t(result.removed > 0 ? "collabInbox.cleaned" : "collabInbox.cleanNothing", { n: result.removed }));
       if (cleanNoteTimer.current !== null) clearTimeout(cleanNoteTimer.current);
@@ -609,6 +632,8 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     setBusy(true);
     try {
       setSnapshot(await b.DeleteCollabMail(ids));
+      // tl1226：删除移除留档（含未读），广播角标重查。
+      notifyCollabMailChanged();
       setMulti(false);
       setSelected(new Set());
     } catch (err) {
@@ -639,6 +664,8 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     try {
       const result = await b.ClearAllCollabMail();
       setSnapshot(result.snapshot);
+      // tl1226：清空全部留档，未读必然归零——广播角标重查。
+      notifyCollabMailChanged();
       setMulti(false);
       setSelected(new Set());
     } catch (err) {
