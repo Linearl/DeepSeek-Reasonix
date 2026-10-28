@@ -359,5 +359,44 @@ console.log("\nsubagent panel dock (task 495)");
   container.remove();
 }
 
+// 9. tl1209: the per-child terminate button rides RUNNING rows only — clicking
+//    it calls the injected bridge (App CancelSubagentForTab) with the row ref;
+//    ended rows and the no-bridge panel stay byte-for-byte the pre-1209 body.
+{
+  const liveCard = subagentTool({
+    id: "t-live", status: "running", startedAt: 5_000,
+    subagentProgress: { phase: "tool", reasoning: "", text: "", notice: "", lastActivityAt: 5_500, truncated: false, startedAt: 5_000, ref: "sub-live" },
+  });
+  const doneCard = subagentTool({
+    id: "t-done", name: "explore", status: "done", startedAt: 1_000,
+    subagentProgress: { phase: "completed", reasoning: "", text: "", notice: "", lastActivityAt: 1_000, truncated: false, startedAt: 1_000, durationMs: 4_000 },
+  });
+  const dir = buildSubagentDirectory([doneCard, liveCard]);
+
+  const calls: string[] = [];
+  const terminate = async (ref: string) => { calls.push(ref); return true; };
+
+  // Static markup: without the bridge prop no terminate button renders anywhere.
+  const bareMarkup = renderToStaticMarkup(createElement(LocaleProvider, null,
+    createElement(SubagentsDockPanel, { directory: dir, sessionPath: "C:/s.jsonl" })));
+  eq(bareMarkup.includes("subagents-panel__terminate"), false, "tl1209: without the bridge prop no terminate button renders");
+
+  // Live DOM: the running row carries exactly one button; ended rows never do.
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(createElement(LocaleProvider, null,
+      createElement(SubagentsDockPanel, { directory: dir, sessionPath: "C:/s.jsonl", onTerminateSubagent: terminate })));
+  });
+  eq(document.querySelectorAll(".subagents-panel__terminate").length, 1, "tl1209: exactly one terminate button (the running row)");
+  const btn = document.querySelector('[data-subagent-terminate="sub-live"]') as HTMLButtonElement | null;
+  ok(btn !== null, "tl1209: the button is keyed to the running row's ref");
+  await act(async () => { btn?.click(); });
+  eq(calls.join(","), "sub-live", "tl1209: clicking terminate calls the injected bridge with the row ref");
+  await act(async () => { root.unmount(); });
+  container.remove();
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
