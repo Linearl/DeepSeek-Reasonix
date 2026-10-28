@@ -17,6 +17,10 @@ type JobView struct {
 	ID        string `json:"id"`
 	Kind      string `json:"kind"`
 	Label     string `json:"label"`
+	// Detail is the untruncated source text behind Label (tl1033: a bash
+	// job's full command). The capsule hover card prefers it; row display,
+	// stop buttons and the status bar keep using the preview-sized Label.
+	Detail    string `json:"detail,omitempty"`
 	Status    string `json:"status"`
 	StartedAt int64  `json:"startedAt"`
 	Tps       int    `json:"tps,omitempty"` // sub-agent streaming rate (tok/s), omitted when unknown (#9521)
@@ -100,7 +104,7 @@ func (a *App) jobsForCtrl(ctrl control.SessionAPI, out []JobView) []JobView {
 		return out
 	}
 	for _, v := range ctrl.Jobs() {
-		out = append(out, JobView{ID: v.ID, Kind: v.Kind, Label: v.Label, Status: v.Status, StartedAt: v.StartedAt, Tps: v.Tps})
+		out = append(out, JobView{ID: v.ID, Kind: v.Kind, Label: v.Label, Detail: v.Detail, Status: v.Status, StartedAt: v.StartedAt, Tps: v.Tps})
 	}
 	return out
 }

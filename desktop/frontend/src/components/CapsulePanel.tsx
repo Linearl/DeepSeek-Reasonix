@@ -560,8 +560,12 @@ export function CapsuleIndicator({
               <span className="capsule-panel__copy">
                 {/* 任务1033: the native title attr clipped long command labels to
                     one ellipsized line — the wrap-mode Tooltip shows the full
-                    text (72ch wrap, 30-line cap, copy when truncated). */}
-                <Tooltip label={entry.job.label || entry.job.kind} wrap fill>
+                    text (72ch wrap, 30-line cap, copy when truncated). The
+                    hover source is job.detail (the untruncated command the Go
+                    side now ships alongside the display-sized label); jobs
+                    without one (task kind, recovered pre-tl1033 metas) fall
+                    back to the label. The row text stays the short label. */}
+                <Tooltip label={entry.job.detail || entry.job.label || entry.job.kind} wrap fill>
                   <strong>{entry.job.label || entry.job.kind}</strong>
                 </Tooltip>
                 <small className="capsule-panel__elapsed" data-elapsed={formatCapsuleElapsed(entry.job.startedAt, now)}>
