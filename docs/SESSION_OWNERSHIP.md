@@ -5,6 +5,21 @@ how rewind and workspace isolation interact.
 
 ## Session writers
 
+> **Log format status (tl-1173 P1 + tl-1227, 2026-10-28):** new sessions no
+> longer adopt format 2. A session's event log now has one of two forms —
+> **flat** (format 1: position-based records; the writer default since
+> tl-1173 P1 for brand-new, bare-checkpoint, and previously format-1
+> sessions) or a **sealed format-2 leftover** (a DAG log created before the
+> retirement; the read path ignores its DAG structure and serves the flat
+> JSONL beside it). The format-2 description below now applies only to those
+> sealed leftovers, and the format-1 → format-2 upgrade on save runs only
+> when `REASONIX_SESSION_LOG=v2` re-enables the DAG writer. For
+> troubleshooting: `reasonix doctor` reports how many sealed format-2 logs
+> sit in the sessions dir (`dag_logs`, shown as the `log format` line),
+> `reasonix dag-sessions` is the whole-library census, and
+> `scripts/tl1227-dag-migrate` is the one-time lossless migration to flat
+> (original bytes kept at `<log>.dagbak-tl1227`).
+
 A conversation lives in an append-only event log, `<id>.events.jsonl`
 (session format 2). Every message entry carries its own id and the id of its
 parent, so the log is a DAG: each path from a leaf back to the root is one
