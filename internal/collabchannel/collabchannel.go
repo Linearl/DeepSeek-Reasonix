@@ -480,6 +480,43 @@ func (s *Store) RemoveMember(ref, actor, target string) error {
 	return s.memberOp(id, target, false, "")
 }
 
+// Dissolve destroys the channel outright (tl1217): members, messages and
+// fanout rows go with it in one transaction. Owner-only — the mirror of
+// CreateChannelWithOwner, and the exit the owner never had: Leave refuses the
+// owner (803 last-owner rule), so a human-founded group was undestroyable
+// (the 20261028 deadlock: no invite worked, no leave allowed, no dissolve
+// existed). The deputy does NOT inherit this — removal stays owner-only, same
+// as RemoveMember. Unknown refs fail with ErrNotFound via resolve.
+func (s *Store) Dissolve(ref, actor string) error {
+	if strings.TrimSpace(actor) == "" {
+		return errors.New("collabchannel: actor identity is required")
+	}
+	id, err := s.requireOwner(ref, actor)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// fanout keys on message_id only (no channel_id column) — clear it first,
+	// while the messages subquery can still see its rows.
+	if _, err := tx.Exec(`DELETE FROM fanout WHERE message_id IN (SELECT id FROM messages WHERE channel_id = ?)`, id); err != nil {
+		return fmt.Errorf("collabchannel: dissolve fanout %s: %w", id, err)
+	}
+	for _, stmt := range []string{
+		`DELETE FROM messages WHERE channel_id = ?`,
+		`DELETE FROM members WHERE channel_id = ?`,
+		`DELETE FROM channels WHERE id = ?`,
+	} {
+		if _, err := tx.Exec(stmt, id); err != nil {
+			return fmt.Errorf("collabchannel: dissolve %s: %w", id, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // requireOwner resolves the channel and checks the actor owns it.
 func (s *Store) requireOwner(ref, actor string) (string, error) {
 	if actor == "" {

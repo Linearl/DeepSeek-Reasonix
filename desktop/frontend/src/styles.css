@@ -40715,6 +40715,7 @@ button.statusbar__mcp:focus-visible {
   padding-top: 8px;
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
 }
 .channel-chat__create {
   position: absolute;

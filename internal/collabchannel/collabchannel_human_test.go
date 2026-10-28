@@ -349,3 +349,89 @@ func TestExportMarkdownShowsTypesAndOwner(t *testing.T) {
 		t.Fatalf("ownerless channel must not render an owner line:\n%s", b2)
 	}
 }
+
+// tl1217 验收：解散通道——群主专用硬删，关闭 20261028 死锁（群主既不能邀人
+// 也不能退群更不能销毁）。钉四条：①群主可解散且 members/messages/fanout
+// 全清、其他群零波及 ②非群主（含副管理员）与无主老群一律拒绝 ③未知 ref
+// ErrNotFound ④解散后 resolve/ListChannels 不再见该群。
+func TestDissolveOwnerOnlyDestroysEverything(t *testing.T) {
+	s, _, _ := newStore(t)
+	humanOwned, err := s.CreateChannelWithOwner("h群", "topic", 0, MemberTypeHuman, HumanLocal, "sc_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Publish(humanOwned.ID, HumanLocal, "人类的发言"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Publish(humanOwned.ID, "sc_a", "agent 的回复"); err != nil {
+		t.Fatal(err)
+	}
+	// 留一个 fanout 行：human 消息也产 fanout（drain 跳过投递只落库）。
+	if rows, _ := s.FanoutStates(humanOwned.ID); len(rows) == 0 {
+		t.Fatal("precondition: publish should create fanout rows")
+	}
+	other, err := s.CreateChannelWithOwner("别的群", "", 0, MemberTypeHuman, HumanLocal, "sc_z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := s.CreateChannel("无主老群", "", 0, "sc_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 非群主拒绝（session 成员）。
+	if err := s.Dissolve(humanOwned.ID, "sc_a"); !errors.Is(err, ErrNotOwner) {
+		t.Fatalf("non-owner dissolve must be refused: %v", err)
+	}
+	// 副管理员也不行（解散比移除成员更重，不随 856 管理权下放）。
+	if _, err := s.SetDeputy(humanOwned.ID, "sc_a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Dissolve(humanOwned.ID, "sc_a"); !errors.Is(err, ErrNotOwner) {
+		t.Fatalf("deputy dissolve must be refused (owner-only): %v", err)
+	}
+	// 无主老群拒绝。
+	if err := s.Dissolve(old.ID, HumanLocal); !errors.Is(err, ErrNotOwner) {
+		t.Fatalf("ownerless channel dissolve must be refused: %v", err)
+	}
+	// 未知 ref → ErrNotFound（与成员操作同语义）。
+	if err := s.Dissolve("chan_nope", HumanLocal); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown ref must be ErrNotFound: %v", err)
+	}
+
+	// 群主解散成功：库内四表全清。
+	if err := s.Dissolve(humanOwned.ID, HumanLocal); err != nil {
+		t.Fatalf("owner dissolve: %v", err)
+	}
+	if _, err := s.Channel(humanOwned.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("dissolved channel must be gone: %v", err)
+	}
+	if chans, _ := s.ListChannels(); len(chans) != 2 {
+		t.Fatalf("the untouched channel and the ownerless one should remain: %+v", chans)
+	}
+	var members, messages, fanout int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM members WHERE channel_id = ?`, humanOwned.ID).Scan(&members); err != nil || members != 0 {
+		t.Fatalf("members must be empty (err=%v n=%d)", err, members)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE channel_id = ?`, humanOwned.ID).Scan(&messages); err != nil || messages != 0 {
+		t.Fatalf("messages must be empty (err=%v n=%d)", err, messages)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM fanout WHERE fanout_id IN (SELECT fanout_id FROM fanout)`).Scan(&fanout); err != nil {
+		t.Fatal(err)
+	}
+	// fanout 无 channel_id，直接按量验证：解散后库里不应再有该群消息的 fanout。
+	// other 群从未发言 → 全库 fanout 应为 0。
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM fanout`).Scan(&fanout); err != nil || fanout != 0 {
+		t.Fatalf("fanout must be fully cleared (err=%v n=%d)", err, fanout)
+	}
+
+	// 幂等语义：再解散同一 ref → ErrNotFound（群已不存在，不再是权限问题）。
+	if err := s.Dissolve(humanOwned.ID, HumanLocal); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("re-dissolve must be ErrNotFound: %v", err)
+	}
+
+	// 其他群完好可用。
+	if err := s.Invite(other.ID, HumanLocal, "sc_new"); err != nil {
+		t.Fatalf("the untouched channel keeps working: %v", err)
+	}
+}
