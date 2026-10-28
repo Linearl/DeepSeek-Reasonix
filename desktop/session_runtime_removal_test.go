@@ -22,6 +22,7 @@ import (
 // archive, collab delete) closes removed runtimes through. A second close of
 // the now-absent entry is a silent no-op.
 func TestCloseRemovedSessionRuntimeInvalidatesGraphCache(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 移除漏斗失效接线仍在，但图缓存条目来自 schema-2/DAG 加载——tl-1173 P1 起新会话扁平不入图缓存，「加载即入缓存」前置条件不可满足，场景退役非静默")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "removed.jsonl")
 	s := agent.NewSession("")

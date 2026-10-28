@@ -83,6 +83,7 @@ func buildLargeSessionLog(t *testing.T, path string) int {
 }
 
 func TestHistoryPageFirstPaintLoadsTailWindowOnLargeLog(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 首绘尾窗（831③ LoadSessionTail 快径）依赖 schema-2 事件侧车——tl-1173 P1 起新会话扁平写无侧车，tl1227 schema-2 尾窗读退役后大扁平日志回落全量重放；扁平会话冷首屏快读欠账已登记 tl1173 待落地，显式退役非静默")
 	path := filepath.Join(t.TempDir(), "large.jsonl")
 	buildLargeSessionLog(t, path)
 

@@ -105,6 +105,7 @@ func transcriptFilesIn(t *testing.T, dir string) int {
 }
 
 func TestForkForTabSwitchesSchemaTwoTabInPlace(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): schema-2 同日志多头 tab 原位重水化（ForkForTab→ForkHead→ListSessionHeads 断言）——tl-1173 P1 起新会话扁平、fork 走文件级分支，in-place 头切换场景不可达，显式退役非静默")
 	fx := newSchemaTwoTabFixture(t)
 	meta, err := fx.app.ForkForTab("test", 1)
 	if err != nil {
@@ -129,6 +130,7 @@ func TestForkForTabSwitchesSchemaTwoTabInPlace(t *testing.T) {
 }
 
 func TestCommitRewindForTabSwitchesSchemaTwoTabInPlace(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): schema-2 同日志多头 tab 原位重水化（rewind fork 头+undo retire 断言走 ListSessionHeads）——tl-1173 P1 起新会话扁平、rewind 走文件级分支，in-place 头切换场景不可达，显式退役非静默")
 	fx := newSchemaTwoTabFixture(t)
 	plan := fx.app.PreviewRewindForTab("test", 1, "both")
 	if !plan.OK || !plan.CanFiles || !plan.CanConversation {
@@ -175,6 +177,7 @@ func TestCommitRewindForTabSwitchesSchemaTwoTabInPlace(t *testing.T) {
 }
 
 func TestChooseRecoveryBranchSwitchesOpenTabHeadInPlace(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): schema-2 打开 tab 的头原位切换/改名依赖单日志多头（ForkHead+ListSessionHeads+RenameSessionHead）——tl-1173 P1 起新会话扁平后场景不可达，显式退役非静默")
 	fx := newSchemaTwoTabFixture(t)
 	if _, err := fx.app.ForkForTab("test", 1); err != nil {
 		t.Fatal(err)
@@ -204,6 +207,7 @@ func TestChooseRecoveryBranchSwitchesOpenTabHeadInPlace(t *testing.T) {
 }
 
 func TestGetRecoveryLineageListsHeadsAndCleansCoveredOnes(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): heads 谱系列表/清理依赖单日志多头（ForkHead 对扁平新会话拒绝+tl1227 垫片恒空），场景不可达，显式退役非静默")
 	isolateDesktopUserDirs(t)
 	ctx := context.Background()
 	dir := config.SessionDir()

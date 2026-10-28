@@ -101,6 +101,7 @@ func TestDeleteRecoveryBranchRefusesPlainTranscript(t *testing.T) {
 }
 
 func TestDeleteSessionVersionHeadRefusesSelectedHead(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 1064 选中头删除约束依赖单日志多头（ForkHead 对扁平新会话拒绝+tl1227 ListSessionHeads 垫片恒空），场景不可达，显式退役非静默")
 	// sessionDirForPath only trusts known session dirs, so the fixture lives
 	// under the app's real global session dir (the same contract the versions
 	// panel operates under in production).

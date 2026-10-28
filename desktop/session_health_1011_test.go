@@ -77,6 +77,7 @@ func Test1011DesktopHealRefusesPathsOutsideSessionDirs(t *testing.T) {
 }
 
 func Test1011DesktopVersionGroupsListMultiHeadSessions(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 需求 E 多头分组列表依赖单日志多头 fixture（ForkHead 对扁平新会话拒绝）——tl-1173 P1 起新会话扁平、tl1227 heads 垫片恒空后多头形态不可达，显式退役非静默")
 	isolateDesktopUserDirs(t)
 	dir := desktopSessionDir(globalWorkspaceRoot())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -106,6 +107,7 @@ func Test1011DesktopVersionGroupsListMultiHeadSessions(t *testing.T) {
 }
 
 func Test1011DesktopRepairOffPostureLeavesDataUntouched(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 自愈关闭姿态 fixture 依赖 ForkHead 造单日志多头 head_lag 形态——tl-1173 P1 起新会话扁平、ForkHead 对扁平会话拒绝后场景不可达，显式退役非静默")
 	isolateDesktopUserDirs(t)
 	root := globalWorkspaceRoot()
 	// 显式关闭：项目 reasonix.toml 写 false（设置页翻转即时生效的同一读取面）。
@@ -149,6 +151,7 @@ func Test1011DesktopRepairOffPostureLeavesDataUntouched(t *testing.T) {
 }
 
 func Test1011DesktopRepairOnPostureFixesAndLogs(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 自愈修复链依赖 ForkHead 造单日志多头 head_lag 形态——tl-1173 P1 起新会话扁平、ForkHead 对扁平会话拒绝后场景不可达，显式退役非静默")
 	isolateDesktopUserDirs(t)
 	root := globalWorkspaceRoot()
 	if err := os.MkdirAll(root, 0o755); err != nil {
