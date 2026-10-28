@@ -289,6 +289,65 @@ func (e *HeartbeatEngine) writeTasks(tasks []HeartbeatTask, expected heartbeatCo
 	return nil
 }
 
+// mutateTasks runs one CAS-protected edit of the whole task list (migrated
+// here from the removed tl-547 autopilot guard, tl 1211). Every engine-side
+// task-table rewrite that is not a panel save goes through it so they share
+// the conflict retry and the in-memory/disk snapshot bookkeeping the panel's
+// saves rely on — a write that skipped recordConfigSnapshotLocked would make
+// the next panel save report a phantom conflict. writer names the caller
+// (task 941) and is stamped into every config write and conflict-retry log
+// line this edit produces.
+func (e *HeartbeatEngine) mutateTasks(writer string, mutate func(tasks []HeartbeatTask) ([]HeartbeatTask, bool, error)) error {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		expected, err := e.readConfigSnapshot()
+		if err != nil {
+			return err
+		}
+		if expected.exists && expected.cfg.SchemaVersion > heartbeatSchemaVersion {
+			return fmt.Errorf("heartbeat config schemaVersion %d is newer than this binary supports (%d); upgrade Reasonix before editing", expected.cfg.SchemaVersion, heartbeatSchemaVersion)
+		}
+		// The closure may reslice (a deletion shrinks the list), so the header
+		// it returns is the one that gets persisted — a reslice inside the
+		// closure would otherwise be invisible to this caller.
+		tasks, changed, err := mutate(append([]HeartbeatTask(nil), expected.cfg.Tasks...))
+		if err != nil {
+			return err
+		}
+		if !changed {
+			return nil
+		}
+		if err := e.writeTasks(tasks, expected, true, writer); err != nil {
+			if errors.Is(err, ErrHeartbeatConfigConflict) {
+				// Task 941: a silent CAS retry hides exactly the storm this
+				// task exists to diagnose — every steal is now one log line.
+				slog.Warn("heartbeat config CAS conflict, retrying",
+					"writer", writer, "attempt", attempt)
+				lastErr = err
+				continue
+			}
+			return err
+		}
+		latest, err := e.readConfigSnapshot()
+		if err != nil {
+			return err
+		}
+		e.recordConfigSnapshotLocked(latest)
+		e.tasks = latest.cfg.Tasks
+		e.prunePendingTopicsLocked(e.tasks)
+		return nil
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return ErrHeartbeatConfigConflict
+}
+
 // heartbeatConfigChangeSummary condenses one full-table save into a log-sized
 // string: added (+id) and removed (-id) rows, plus per changed row the JSON
 // field names that actually differ. Field names come from a JSON map diff, so
