@@ -199,6 +199,7 @@ func Test1116HydrateStillOverWindowCriterion(t *testing.T) {
 // and fold the old text so the estimate lands under the window — with exact
 // action statuses and counts, never a bare bool.
 func Test1116ImageDominantProjectionDietRegression(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: selfheal diet 读回经已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	const window = 100_000 // far below the image-dominated estimate
 	path := imageDominantSession(t, t.TempDir(), "img95.jsonl", window)
 

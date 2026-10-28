@@ -7,6 +7,7 @@ import "testing"
 // (c) be idempotent — a second run on an already-compact log is a no-op
 // rewrite, not an error.
 func TestCompactSessionFileRewritesAndIsIdempotent(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: compact 维护链仍在（probe.dag 门后），读回断言依赖已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	dagLinearLog(t, path)
 

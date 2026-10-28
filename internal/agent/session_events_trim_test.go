@@ -15,6 +15,7 @@ import (
 // 标记（红线：可识别、可解释），其余消息不动；重写走 SaveRewriteCompact
 // （失败不损原日志），lease 取不到即失败。
 func TestTrimSessionOversizeToolResults(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: trim 工具链仍在（文件层），读回断言依赖已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	fx := bigTrimFixture(t, path)
 	plain := store.SessionEventLog(path)

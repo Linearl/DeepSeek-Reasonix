@@ -265,6 +265,7 @@ func TestRetireStaleConcurrentHeadsPidlessWriterFallback(t *testing.T) {
 // 判定 retire（产品行为，非夹具手工 retire）→ CompactSessionFile（sweep 生产
 // 动作）物理清除其字节 → 会话可正常打开、main 链逐字保留、heads 只剩 main。
 func TestRetireStaleConcurrentHeadsThenSweepCompactsAndSessionOpens(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: retire→sweep→重开全链的「重开」环节依赖已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	_, base := dagLinearLog(t, path)
 	host, err := os.Hostname()

@@ -52,6 +52,7 @@ func waitForDietSettled1114(t *testing.T, a *Agent) bool {
 // 过硬顶时必须自动跑完一次 Diet：剥净 data: 载荷、估算落回溢出线下、
 // repairlog 落一条带 strip+fold 的记录、备份目录存在。
 func Test1114OverflowDietFiresOnFallbackEpisode(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: selfheal diet 经 schema-2 读面取样；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	const window = 100_000
 	path := imageDominantSession(t, t.TempDir(), "overflow.jsonl", window)
 	a := agentOnDisk1114(t, path)
@@ -104,6 +105,7 @@ func Test1114OverflowDietFiresOnFallbackEpisode(t *testing.T) {
 // ② 门槛钉：canonical 未过硬顶时 fallback 观测不得动手——重建（813）才是
 // 又快又省的正道，本地重写只留给「发不出去」的量级。
 func Test1114OverflowDietSkippedBelowCeiling(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: selfheal diet 经 schema-2 读面取样；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	const window = 100_000
 	path := imageDominantSession(t, t.TempDir(), "small.jsonl", window)
 	a := agentOnDisk1114(t, path)
@@ -140,6 +142,7 @@ func Test1114OverflowDietSkippedBelowCeiling(t *testing.T) {
 // ③ 单飞钉：同一 episode 至多一次 Diet——in-flight 标志位挡住重复 kick，
 // 不产生第二个备份目录或第二条修复记录。
 func Test1114OverflowDietDeduplicatesWhileInFlight(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: selfheal diet 经 schema-2 读面取样；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	const window = 100_000
 	path := imageDominantSession(t, t.TempDir(), "dup.jsonl", window)
 	a := agentOnDisk1114(t, path)

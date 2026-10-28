@@ -308,9 +308,9 @@ func TestDAGSaveConcurrentWritersForkInsteadOfConflicting(t *testing.T) {
 	if events[0].Class != HeadDivergenceLocal {
 		t.Fatalf("event class = %q, want %q", events[0].Class, HeadDivergenceLocal)
 	}
-	heads, err := ListSessionHeads(path)
-	if err != nil || len(heads) != 2 || heads[1].Kind != HeadKindConcurrent || heads[1].MessageCount != 4 || heads[0].MessageCount != 4 {
-		t.Fatalf("heads = %+v err=%v", heads, err)
+	heads := dagHeadsByAge(t, path)
+	if len(heads) != 2 || heads[1].Kind != HeadKindConcurrent || heads[1].MessageCount != 4 || heads[0].MessageCount != 4 {
+		t.Fatalf("heads = %+v", heads)
 	}
 	st := dagReplay(t, path)
 	if got := dagChain(st, SessionMainHead); strings.Join(got, ",") != "sys,q1,a1,q2-from-a" {
@@ -496,6 +496,7 @@ func TestDAGSaveConcurrentGoroutinesExtendTheirOwnHeads(t *testing.T) {
 }
 
 func TestExportSessionSchemaOneWritesReadableSchemaOneSession(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: schema-2→schema-1 导出能力随读路径退役；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	t.Setenv(SessionLogSchemaEnv, "v2") // pin the DAG route: the flat route is the default since tl-1173 P1
 	path := dagTestSession(t)
 	s := dagSavedSession(t, path, "q1", "a1")

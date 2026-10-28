@@ -93,6 +93,7 @@ func Test1116BackupFailsFastOnUnreadableTranscript(t *testing.T) {
 // 持有该会话租约时（.lease.lock 被 OS 句柄占用），备份必须成功、Diet 必须
 // 执行、report.Actions 精确计数（strip/fold 各一次 done，绝无 promote/hydrate）。
 func Test1116SelfHealDietHeldLeaseBackupSucceeds(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: selfheal 备份经 schema-2 读面取样；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "heldlease.jsonl")
 	seedMinimalDAG(t, path)

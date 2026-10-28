@@ -206,6 +206,7 @@ func Test1011SelfHealPromotesHeadAndHydratesCheckpoint(t *testing.T) {
 }
 
 func Test1011SelfHealDietStripsImagesAndFolds(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: selfheal diet 读回经已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := filepath.Join(t.TempDir(), "diet.jsonl")
 	// 一条链：一条巨大图片消息 + 大量旧文本 + 几条新消息。
 	base := time.Date(2026, 10, 19, 8, 0, 0, 0, time.UTC)

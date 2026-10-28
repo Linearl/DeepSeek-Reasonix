@@ -20,6 +20,7 @@ import (
 // 的现场既成事实），产品行为只是清理已不可达的字节——rotateSessionDAG
 // 从建仓起就丢弃不可达节点，本件只是让死会话也能走到这个入口。
 func TestCompactSessionFileClearsUnreachableRowsUnderCap(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: compact 维护链仍在（probe.dag 门后），读回断言依赖已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	_, base := dagLinearLog(t, path)
 	// main 链 4 条小消息（live 水位），随后一条 6MB 大消息撑大 live。

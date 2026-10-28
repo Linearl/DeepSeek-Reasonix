@@ -112,6 +112,7 @@ func TestSessionDAGTailWindowStartSnapsToLineBoundary(t *testing.T) {
 // property: below the threshold the first-paint entry point is byte-for-byte the
 // ordinary load.
 func TestLoadSessionTranscriptTailLeavesSmallSessionsAlone(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: 首画尾窗随读路径退役（Tail 直通扁平读）；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	_, _ = dagWideLog(t, path, 8)
 

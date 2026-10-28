@@ -60,6 +60,7 @@ func samplesPresent(msgs []provider.Message, samples map[string]string) error {
 //     随机抽 10 条历史逐字一致；
 //   - 「压缩 → 追加」直连形态：物化 → 追加 → 明文回归、归档清理、新旧消息俱全。
 func TestSessionEventsZstCompressRoundTripAndAppend(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: zstd 文件层链仍在，读回断言依赖已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	plain := store.SessionEventLog(path)
 	samples, count := dagBigFixture(t, path)
