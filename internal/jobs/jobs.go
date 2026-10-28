@@ -64,6 +64,11 @@ type View struct {
 	Label     string `json:"label"`
 	Status    string `json:"status"`
 	StartedAt int64  `json:"startedAt"` // unix milliseconds
+	// Detail is the untruncated source text behind Label (tl1033: a bash job's
+	// full command). Label is a display-sized preview; surfaces that can wrap —
+	// the capsule hover card — prefer Detail and fall back to Label when empty.
+	// Machine-facing projections keep excluding it (see ArtifactView).
+	Detail string `json:"detail,omitempty"`
 	// Tps is the sub-agent's latest sampled streaming rate in tokens/second
 	// (fork #9521 popover heartbeat). Zero means "no sample yet".
 	Tps int `json:"tps,omitempty"`
@@ -124,6 +129,9 @@ type Job struct {
 	ID        string
 	Kind      string // "bash" | "task"
 	Label     string
+	// Detail is the untruncated source text behind Label (tl1033). Same lock
+	// discipline as the other snapshot fields; written once at Start.
+	Detail    string
 	SessionID string
 
 	mu          sync.Mutex
@@ -417,7 +425,7 @@ func validatePathSegment(name, field string) error {
 // artifact was created. The job is observable to Wait / list calls as Failed
 // with the validation error recorded in artifactErr, and no run goroutine is
 // started so the manager's wg is unaffected.
-func (m *Manager) startInvalid(parentSession, kind, label string, validationErr error) *Job {
+func (m *Manager) startInvalid(parentSession, kind, label, detail string, validationErr error) *Job {
 	finishedAt := nowMs()
 	m.mu.Lock()
 	m.seq++
@@ -426,6 +434,7 @@ func (m *Manager) startInvalid(parentSession, kind, label string, validationErr 
 		ID:               id,
 		Kind:             kind,
 		Label:            label,
+		Detail:           detail,
 		SessionID:        parentSession,
 		status:           Failed,
 		startedAt:        finishedAt,
@@ -513,6 +522,7 @@ func (m *Manager) writeJobMetaLocked(j *Job, st Status) error {
 		ID:               j.ID,
 		Kind:             j.Kind,
 		Label:            j.Label,
+		Detail:           j.Detail,
 		SessionID:        j.SessionID,
 		OwnerID:          m.ownerID,
 		Status:           st,
@@ -1039,7 +1049,7 @@ func (m *Manager) RunningForSession(parentSession string) []View {
 		// runtime idle early. The public view remains "running" while a stop is
 		// in flight; clients may render a local "stopping" state after they
 		// request cancellation.
-		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Status: string(Running), StartedAt: j.startedAt, Tps: int(j.rate.Load())})
+		out = append(out, View{ID: j.ID, Kind: j.Kind, Label: j.Label, Detail: j.Detail, Status: string(Running), StartedAt: j.startedAt, Tps: int(j.rate.Load())})
 		j.mu.Unlock()
 	}
 	return out
@@ -1735,6 +1745,7 @@ func (m *Manager) loadSessionArtifacts(parentSession, sessionPath, dir string) {
 			ID:               id,
 			Kind:             meta.Kind,
 			Label:            meta.Label,
+			Detail:           meta.Detail,
 			SessionID:        parentSession,
 			status:           meta.Status,
 			startedAt:        meta.StartedAt,

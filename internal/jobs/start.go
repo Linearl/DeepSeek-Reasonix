@@ -12,13 +12,21 @@ import (
 // StartForSession launches a job owned by parentSession. Session-scoped readers
 // only see jobs whose owner matches the active session.
 func (m *Manager) StartForSession(parentSession, kind, label string, run func(ctx context.Context, out io.Writer) (string, error)) *Job {
+	// tl1033: no Detail — the label is all the hover card has for this job.
+	return m.StartForSessionDetail(parentSession, kind, label, "", run)
+}
+
+// StartForSessionDetail is StartForSession plus the untruncated source text
+// behind the label (tl1033: the bash tool passes the full command so the
+// capsule hover card can wrap it; label stays a display-sized preview).
+func (m *Manager) StartForSessionDetail(parentSession, kind, label, detail string, run func(ctx context.Context, out io.Writer) (string, error)) *Job {
 	parentSession = strings.TrimSpace(parentSession)
 	kind = strings.TrimSpace(kind)
 	if err := validatePathSegment(parentSession, "parentSession"); err != nil {
-		return m.startInvalid(parentSession, kind, label, err)
+		return m.startInvalid(parentSession, kind, label, detail, err)
 	}
 	if err := validatePathSegment(kind, "kind"); err != nil {
-		return m.startInvalid(parentSession, kind, label, err)
+		return m.startInvalid(parentSession, kind, label, detail, err)
 	}
 	m.mu.Lock()
 	m.seq++
@@ -30,6 +38,7 @@ func (m *Manager) StartForSession(parentSession, kind, label string, run func(ct
 		ID:               id,
 		Kind:             kind,
 		Label:            label,
+		Detail:           strings.TrimSpace(detail),
 		SessionID:        parentSession,
 		status:           Running,
 		startedAt:        startedAt,
