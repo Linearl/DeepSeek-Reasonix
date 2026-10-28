@@ -33946,6 +33946,9 @@ button.statusbar__mcp:focus-visible {
 .project-tree__group-main {
   display: flex;
   align-items: center;
+  /* tl 1199: the header title starts a pointer drag on press (mouse path) —
+     native text selection must not race it. */
+  user-select: none;
   /* Task 827 ③: gap 7 matches the project row's icon-to-label gap
      (:root[data-theme-style] .project-tree__folder-main), so every row's title
      starts at indent + icon column + 7. */
@@ -38073,6 +38076,13 @@ button.statusbar__mcp:focus-visible {
 }
 .project-tree__pgroup-main--drop-after::after {
   bottom: -2px;
+}
+/* tl 1199 ②: a project drag hovering a group header paints this row-level
+   landing highlight (unlike the reorder bands above, the whole row lights up:
+   the drop means "into this group", mirroring the session-side nest-target). */
+.project-tree__pgroup-main--drop-into {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .project-tree__pgroup-main--dragging {
   cursor: grabbing;

@@ -77,6 +77,13 @@ type WorkbenchHeaderMenu = "more" | "add" | null;
 // (acceptance ⑤): each side sets and matches only its own type, and each side
 // gates its dragover/drop on its own state (dragGroupId vs dragProjectRoot).
 const PROJECT_GROUP_DRAG_TYPE = "application/x-reasonix-project-group-id";
+// tl 1199 ②: the project-row drag gains its own dedicated MIME type too. The
+// in-app discrimination runs on the dragProjectRoot state (a topic drag never
+// sets it), but the state is gone by the time a cross-window drop fires, and
+// the plain-text fallback alone would be ambiguous with topic drags (both
+// write text/plain). With its own type the group header can accept a project
+// drop without ever mistaking a topic id for a project root.
+const PROJECT_ROW_DRAG_TYPE = "application/x-reasonix-project-root";
 
 type CollapseSnapshot = {
   expanded: Set<string>;
@@ -295,6 +302,10 @@ export function ProjectTree({
   const [confirmRemoveProject, setConfirmRemoveProject] = useState<string | null>(null);
   const [dragProjectRoot, setDragProjectRoot] = useState<string | null>(null);
   const [dropProject, setDropProject] = useState<{ root: string; position: ProjectDropPosition } | null>(null);
+  // tl 1199 ②: the project-group header a project drag currently hovers — the
+  // "drop into this group" landing highlight (row-level, unlike the reorder
+  // bands). Null when no project drag is over a legal target group.
+  const [projectDropInto, setProjectDropInto] = useState<string | null>(null);
   const [collapseSnapshot, setCollapseSnapshot] = useState<CollapseSnapshot | null>(null);
   const [platform, setPlatform] = useState("");
   const [workbenchHeaderMenu, setWorkbenchHeaderMenu] = useState<WorkbenchHeaderMenu>(null);
@@ -1566,6 +1577,9 @@ export function ProjectTree({
   const clearProjectDrag = useCallback(() => {
     setDragProjectRoot(null);
     setDropProject(null);
+    // tl 1199 ②: the group-header landing highlight belongs to the same
+    // gesture — it must never outlive the drag.
+    setProjectDropInto(null);
   }, []);
 
   useEffect(() => {
@@ -2105,9 +2119,14 @@ export function ProjectTree({
         return;
       }
       event.dataTransfer.effectAllowed = "move";
+      // tl 1199 ②: the dedicated type rides alongside text/plain (some drop
+      // targets only read the plain-text channel) so the group header can
+      // tell a project drag from a topic drag even via the dataTransfer.
+      event.dataTransfer.setData(PROJECT_ROW_DRAG_TYPE, projectDragKey);
       event.dataTransfer.setData("text/plain", projectDragKey);
       setDragProjectRoot(projectDragKey);
       setDropProject(null);
+      setProjectDropInto(null);
     };
     const handleProjectDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
       if (!draggableProject || !dragProjectRoot || dragProjectRoot === projectDragKey) return;
@@ -2122,11 +2141,28 @@ export function ProjectTree({
     };
     const handleProjectDrop = (event: ReactDragEvent<HTMLDivElement>) => {
       if (!draggableProject) return;
-      const draggedRoot = dragProjectRoot || event.dataTransfer.getData("text/plain");
+      const draggedRoot = dragProjectRoot
+        || event.dataTransfer.getData(PROJECT_ROW_DRAG_TYPE)
+        || event.dataTransfer.getData("text/plain");
       const position = dropProject?.root === projectDragKey ? dropProject?.position ?? "after" : "after";
       event.preventDefault();
       clearProjectDrag();
-      if (draggedRoot && draggedRoot !== projectDragKey) void commitProjectReorder(draggedRoot, projectDragKey, position);
+      if (!draggedRoot || draggedRoot === projectDragKey) return;
+      // tl 1199 ②: a drop on a row of ANOTHER group is a move, not a reorder —
+      // it runs the exact chain the row menu's 「移动到分组」 uses
+      // (handleMoveToGroup), so the drag can never diverge from the menu (the
+      // pre-fix bug: a cross-group drop only rewrote the flat order, the
+      // membership never changed, and the row silently stayed in its old
+      // group). Same group (or both ungrouped) keeps the flat reorder.
+      if (scope === "project") {
+        const sourceGroupId = groupForProjectRoot(draggedRoot)?.id ?? null;
+        const targetGroupId = groupForProjectRoot(projectRoot)?.id ?? null;
+        if (sourceGroupId !== targetGroupId) {
+          handleMoveToGroup(draggedRoot, targetGroupId);
+          return;
+        }
+      }
+      void commitProjectReorder(draggedRoot, projectDragKey, position);
     };
     const openProjectMenu = (event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>) => {
       event.preventDefault();
@@ -2193,15 +2229,9 @@ export function ProjectTree({
         label: t("projectTree.renameProject"),
         onSelect: () => startRenameProject(key, projectRoot, projectLabel),
       },
+      // tl 1200 ①（用户 20261027 拍板）：「在文件资源管理器中显示」「移动到
+      // 分组」上移至颜色区之前——高频路径/入口操作不再沉到菜单尾段。
       { type: "separator" as const, key: "color-separator" },
-      ...PROJECT_COLOR_OPTIONS.map((option): ContextMenuItem => ({
-        key: `color-${option.key || "default"}`,
-        label: colorMenuLabel(projectColorLabel(t, option.key), option.key, (node.projectColor || "") === option.key),
-        onSelect: () => {
-          void setProjectColor(colorTargetRoot, option.key);
-        },
-      })),
-      { type: "separator" as const, key: "path-separator" },
       {
         key: "reveal",
         icon: <FolderOpen size={13} />,
@@ -2212,6 +2242,39 @@ export function ProjectTree({
           closeMenu();
         },
       },
+      ...(scope === "project"
+        ? [
+            {
+              // tl 1149: in-menu submenu instead of the screen-centred
+              // MoveToGroupPanel — same options, anchored to the row.
+              // tl 1200 ①: moved above the color section (user decision).
+              type: "submenu" as const,
+              key: "move-to-project-group",
+              icon: <FolderInput size={13} />,
+              label: t("projectGroup.moveInto"),
+              items: projectGroupMoveItems(projectPath ?? node.root),
+            },
+          ]
+        : []),
+      { type: "separator" as const, key: "color-menu-separator" },
+      {
+        // tl 1200 ②（用户 20261027 拍板）：9 色平铺收拢为一级「颜色 ▸」+
+        // 二级浮动面板。二级交互（hover 停留 180ms 展开/移出关闭/键盘 → 进 ←
+        // 出）由 ContextMenu 的 tl 1168 flyout 基建提供，叶子零额外接线；
+        // 9 个选项、key 与 setProjectColor 落盘链原样保留（零功能丢失）。
+        type: "submenu" as const,
+        key: "color",
+        icon: <SwatchBook size={13} />,
+        label: t("projectTree.color"),
+        items: PROJECT_COLOR_OPTIONS.map((option): ContextMenuItem => ({
+          key: `color-${option.key || "default"}`,
+          label: colorMenuLabel(projectColorLabel(t, option.key), option.key, (node.projectColor || "") === option.key),
+          onSelect: () => {
+            void setProjectColor(colorTargetRoot, option.key);
+          },
+        })),
+      },
+      { type: "separator" as const, key: "path-separator" },
       {
         key: "copy-path",
         icon: <Copy size={13} />,
@@ -2225,15 +2288,8 @@ export function ProjectTree({
       ...(scope === "project"
         ? [
             {
-              // tl 1149: in-menu submenu instead of the screen-centred
-              // MoveToGroupPanel — same options, anchored to the row.
-              type: "submenu" as const,
-              key: "move-to-project-group",
-              icon: <FolderInput size={13} />,
-              label: t("projectGroup.moveInto"),
-              items: projectGroupMoveItems(projectPath ?? node.root),
-            },
-            {
+              // tl 1200 ①:「移动到分组」已上移至颜色区之前；尾段保留低频
+              // 管理项（relocate/versions/remove），序见任务回执清单。
               key: "relocate-project",
               icon: <FolderOpen size={13} />,
               label: t("projectTree.relocateProject"),
@@ -3184,12 +3240,20 @@ export function ProjectTree({
         const members = pinnedTreeSections.projects.filter((node) => groupForProjectRoot(node.root)?.id === group.id);
         const collapsed = collapsedProjectGroups.has(group.id);
         const groupDropPosition = dropGroup?.id === group.id && dragGroupId !== group.id ? dropGroup?.position ?? null : null;
+        // tl 1199 ②: a project drag hovering this header paints the row-level
+        // "drop into" highlight — but only when the move would actually change
+        // something (the dragged project is not already this group's member).
+        const projectDropTarget = dragGroupId === null
+          && dragProjectRoot !== null
+          && dragProjectRoot !== GLOBAL_PROJECT_ORDER_KEY
+          && (groupForProjectRoot(dragProjectRoot)?.id ?? null) !== group.id;
+        const projectLanding = projectDropTarget && projectDropInto === group.id;
         const groupMenuOpen = groupMenuId === group.id;
         const kidGroups = groups.filter((candidate) => candidate.parent === group.id);
         return (
           <div key={group.id} className="project-tree__group">
             <div
-              className={`project-tree__group-main project-tree__pgroup-main${groupDropPosition ? ` project-tree__pgroup-main--drop-${groupDropPosition}` : ""}${dragGroupId === group.id ? " project-tree__pgroup-main--dragging" : ""}${groupMenuOpen ? " project-tree__pgroup-main--menu-open" : ""}`}
+              className={`project-tree__group-main project-tree__pgroup-main${groupDropPosition ? ` project-tree__pgroup-main--drop-${groupDropPosition}` : ""}${projectLanding ? " project-tree__pgroup-main--drop-into" : ""}${dragGroupId === group.id ? " project-tree__pgroup-main--dragging" : ""}${groupMenuOpen ? " project-tree__pgroup-main--menu-open" : ""}`}
               role="button"
               tabIndex={0}
               aria-expanded={!collapsed}
@@ -3229,25 +3293,57 @@ export function ProjectTree({
                 setDropGroup(null);
               }}
               onDragOver={(event) => {
-                // Only a group drag (its own MIME type) may land on a group
-                // row; project drags carry a different type and keep flowing
-                // to the project rows (acceptance ⑤).
-                if (!dragGroupId || dragGroupId === group.id) return;
+                // Only a group drag (its own MIME type) may reorder group rows.
+                if (dragGroupId) {
+                  if (dragGroupId === group.id) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const position: ProjectDropPosition = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                  setDropGroup((current) => {
+                    if (current?.id === group.id && current?.position === position) return current;
+                    return { id: group.id, position };
+                  });
+                  return;
+                }
+                // tl 1199 ②: a project drag may land ON a group header — that
+                // moves the project into the group through the exact chain the
+                // row menu's 「移动到分组」 uses (handleMoveToGroup). The drag
+                // is just another trigger for the same write, never a second
+                // mechanism. Same-group hovers stay rejected (the standard
+                // not-allowed cursor is the feedback) and the Global pseudo-
+                // project never lands on a group.
+                if (!dragProjectRoot || dragProjectRoot === GLOBAL_PROJECT_ORDER_KEY) return;
+                if ((groupForProjectRoot(dragProjectRoot)?.id ?? null) === group.id) return;
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
-                const rect = event.currentTarget.getBoundingClientRect();
-                const position: ProjectDropPosition = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
-                setDropGroup((current) => {
-                  if (current?.id === group.id && current?.position === position) return current;
-                  return { id: group.id, position };
-                });
+                setProjectDropInto((current) => current === group.id ? current : group.id);
               }}
               onDragLeave={(event) => {
                 if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
                   setDropGroup((current) => current?.id === group.id ? null : current);
+                  setProjectDropInto((current) => current === group.id ? null : current);
                 }
               }}
               onDrop={(event) => {
+                // tl 1199 ②: a project drop on the header moves the project
+                // into this group via handleMoveToGroup (same as the menu).
+                const droppedProjectRoot = dragProjectRoot
+                  || event.dataTransfer.getData(PROJECT_ROW_DRAG_TYPE)
+                  || "";
+                if (!dragGroupId && droppedProjectRoot && droppedProjectRoot !== GLOBAL_PROJECT_ORDER_KEY) {
+                  event.preventDefault();
+                  clearProjectDrag();
+                  if ((groupForProjectRoot(droppedProjectRoot)?.id ?? null) === group.id) {
+                    // Defensive: same-group drops never land (dragover rejects
+                    // them), so this only fires for a stale-state edge — still
+                    // report it instead of failing silently.
+                    showToast(t("projectTree.projectAlreadyInGroup", { title: group.title }));
+                    return;
+                  }
+                  handleMoveToGroup(droppedProjectRoot, group.id);
+                  return;
+                }
                 event.preventDefault();
                 const draggedId = dragGroupId || event.dataTransfer.getData(PROJECT_GROUP_DRAG_TYPE);
                 const position = dropGroup?.id === group.id ? dropGroup?.position ?? "after" : "after";

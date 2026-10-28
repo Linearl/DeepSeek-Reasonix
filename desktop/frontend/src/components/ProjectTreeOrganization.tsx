@@ -655,13 +655,23 @@ export function ProjectTreeGroupRows({
     };
   }, [draggingGroup, groups, key, organization]);
 
-  const beginGroupPress = (id: string) => {
+  // tl 1199: pointerType gates the entry delay. A mouse press starts the drag
+  // machine immediately — the same press-and-move feel as the topic rows
+  // (HTML5 drag on the title); the 350ms long-press stays for touch/pen so a
+  // scroll gesture on the header never hijacks into a drag. The grip handle
+  // (task 169) remains the visible affordance either way.
+  const beginGroupPress = (id: string, pointerType: string | undefined) => {
     groupDragRef.current = { from: id, to: id, zone: "after", moved: false };
     // The flag only exists to swallow the click of the release that just
     // dragged. Scoped to the gesture: if no click materialised (release over
     // another header fires it on a common ancestor), the stale flag must not
     // eat the user's next real click on a group header.
     groupSuppressClickRef.current = false;
+    if (pointerType === "mouse") {
+      groupPressTimerRef.current = null;
+      setDraggingGroup(id);
+      return;
+    }
     groupPressTimerRef.current = window.setTimeout(() => {
       groupPressTimerRef.current = null;
       setDraggingGroup(id);
@@ -795,7 +805,11 @@ export function ProjectTreeGroupRows({
         <div
           role="button"
           tabIndex={0}
-          className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}${groupDropTarget && groupDropTarget.id === group.id && groupDropTarget.id !== draggingGroup ? (groupDropTarget.zone === "into" ? " project-tree__group-main--nest-target" : " project-tree__group-main--reorder-target") : ""}${draggingGroup === group.id ? " project-tree__group-main--dragging" : ""}`}
+          // tl 1199: the dragging paint follows the drag being in motion
+          // (the pointer left the source row), not the machine state — with
+          // the mouse press now entering the machine instantly, gating on
+          // `moved` keeps a plain click from flashing the dim/affordance.
+          className={`project-tree__group-main${canDrop ? " project-tree__group-main--drop-target" : ""}${groupDropTarget && groupDropTarget.id === group.id && groupDropTarget.id !== draggingGroup ? (groupDropTarget.zone === "into" ? " project-tree__group-main--nest-target" : " project-tree__group-main--reorder-target") : ""}${draggingGroup === group.id && groupDragRef.current.moved ? " project-tree__group-main--dragging" : ""}`}
           // Task 313: the group header used to ride the children depth (the
           // caller passes folder depth + 1), sitting 22px right of the project
           // folder row. Rewriting to the folder row's own formula —
@@ -816,7 +830,14 @@ export function ProjectTreeGroupRows({
             organization.toggleGroup(key, group.id);
           }}
           onPointerDown={(event) => {
-            if (event.button === 0) beginGroupPress(group.id);
+            if (event.button !== 0) return;
+            // tl 1199: the row's inline widgets keep their plain click
+            // meaning — a press on the fold chevron / count / activity badge
+            // never enters the drag machine. The grip handle has its own
+            // stopPropagation path and never reaches this handler.
+            const target = event.target;
+            if (target instanceof Element && target.closest(".project-tree__group-chevron,.project-tree__group-count,.project-tree__group-state,.project-tree__group-active-count")) return;
+            beginGroupPress(group.id, event.pointerType);
           }}
           onPointerUp={cancelGroupPress}
           onPointerLeave={cancelGroupPress}
