@@ -777,6 +777,126 @@ func (a *App) MoveTopicToGroup(scope, workspaceRoot, topicID, groupID, groupTitl
 	return desktopGroup{}, nil, false, fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
 }
 
+type desktopBatchMoveToGroupItem struct {
+	TopicID string `json:"topicId"`
+	OK      bool   `json:"ok"`
+	// AlreadyFiled: the topic was already only in the target group, so nothing
+	// was written for it (same semantics as MoveTopicToGroup's third return).
+	AlreadyFiled bool   `json:"alreadyFiled"`
+	Error        string `json:"error,omitempty"`
+}
+
+type desktopBatchMoveToGroupResult struct {
+	Items     []desktopBatchMoveToGroupItem `json:"items"`
+	Succeeded int                           `json:"succeeded"`
+	Failed    int                           `json:"failed"`
+	Group     desktopGroup                  `json:"group"`
+}
+
+// BatchMoveToGroup files several topics into one group AND removes each from
+// every other group (MoveTopicToGroup's task-170 semantics, applied batch-wise).
+// tl1240: the whole batch is ONE read-modify-write of the groups file — N
+// single-topic CAS calls would race each other on the same file and amplify
+// IO through retries. One CAS retry loop covers the batch like the single move.
+func (a *App) BatchMoveToGroup(scope, workspaceRoot string, topicIDs []string, groupID, groupTitle string) (desktopBatchMoveToGroupResult, error) {
+	result := desktopBatchMoveToGroupResult{Items: []desktopBatchMoveToGroupItem{}}
+	ordered := normalizedBatchTopicIDs(topicIDs)
+	if len(ordered) == 0 {
+		return result, fmt.Errorf("topicId is required")
+	}
+	groupID = strings.TrimSpace(groupID)
+	groupTitle = strings.TrimSpace(groupTitle)
+	if groupID == "" && groupTitle == "" {
+		return result, fmt.Errorf("group or groupId is required")
+	}
+	for _, topicID := range ordered {
+		result.Items = append(result.Items, desktopBatchMoveToGroupItem{TopicID: topicID})
+	}
+	// CAS retry, same contract as MoveTopicToGroup: the sidebar may hold the
+	// snapshot we just read, and a lost update would silently drop the moves.
+	for attempt := 0; attempt < 5; attempt++ {
+		snapshot, err := a.GetProjectGroups(scope, workspaceRoot)
+		if err != nil {
+			return result, err
+		}
+		groups := append([]desktopGroup(nil), snapshot.Groups...)
+		target := -1
+		for i, g := range groups {
+			if groupID != "" {
+				if strings.EqualFold(strings.TrimSpace(g.ID), groupID) {
+					target = i
+					break
+				}
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(g.Title), groupTitle) {
+				target = i
+				break
+			}
+		}
+		if target < 0 {
+			if groupID == "" {
+				groupID = "collab-" + strings.ToLower(groupTitle)
+			}
+			if groupTitle == "" {
+				// An id with no title is not a usable label; the sidebar shows
+				// the id rather than an empty row.
+				groupTitle = groupID
+			}
+			groups = append(groups, desktopGroup{ID: groupID, Title: groupTitle, TopicIDs: []string{}})
+			target = len(groups) - 1
+		}
+		changed := false
+		for idx := range result.Items {
+			item := &result.Items[idx]
+			topicID := item.TopicID
+			alreadyFiled := groupContainsTopic(groups[target], topicID)
+			removedFrom := 0
+			for i := range groups {
+				if i == target || !groupContainsTopic(groups[i], topicID) {
+					continue
+				}
+				kept := make([]string, 0, len(groups[i].TopicIDs))
+				for _, member := range groups[i].TopicIDs {
+					if member != topicID {
+						kept = append(kept, member)
+					}
+				}
+				groups[i].TopicIDs = kept
+				removedFrom++
+			}
+			if !alreadyFiled {
+				groups[target].TopicIDs = append(groups[target].TopicIDs, topicID)
+			}
+			item.AlreadyFiled = alreadyFiled && removedFrom == 0
+			item.OK = true
+			if !item.AlreadyFiled {
+				changed = true
+			}
+		}
+		moved := groups[target]
+		if !changed {
+			// Every topic is already only in the target group: nothing to write.
+			result.Group = moved
+			return result, nil
+		}
+		saved, err := a.SaveSessionGroupsVersioned(scope, workspaceRoot, snapshot.Revision, groups)
+		if err != nil {
+			return result, err
+		}
+		if saved.Applied {
+			result.Group = moved
+			return result, nil
+		}
+		// Revision moved underneath us: reset per-topic flags and recompute
+		// against the fresh snapshot on the next attempt.
+		for idx := range result.Items {
+			result.Items[idx] = desktopBatchMoveToGroupItem{TopicID: result.Items[idx].TopicID}
+		}
+	}
+	return result, fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
+}
+
 // groupContainsTopic reports whether a group lists the topic.
 func groupContainsTopic(group desktopGroup, topicID string) bool {
 	for _, member := range group.TopicIDs {

@@ -174,6 +174,11 @@ func (a *App) trashTopic(topicID string, force bool) (retErr error) {
 	return nil
 }
 
+// commitTopicArchive runs the single-topic archive: it takes the two global
+// mutation gates, scans the trash targets, then hands off to
+// commitTopicArchiveTargets for phases 3-12. tl1240 splits the gates/scan from
+// the per-topic core so the batch endpoint (topic_archive_batch.go) can hold
+// the gates once and share one target scan across the whole batch.
 func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force bool) (fallbackRuntimeTarget, []string, error) {
 	trace.phase = "runtime_lock"
 	releaseRuntime, ok := a.tryLockRuntimeMutation("trash-topic")
@@ -186,14 +191,24 @@ func (a *App) commitTopicArchive(topicID string, trace *topicArchiveTrace, force
 		return fallbackRuntimeTarget{}, nil, errTopicArchiveBusy
 	}
 	defer a.sessionRemovalMu.Unlock()
-	trace.phase = "active_work_check"
-	if !force && a.topicHasActiveRuntimeWork(topicID) {
-		return fallbackRuntimeTarget{}, nil, errTopicHasActiveWork
-	}
 	trace.phase = "target_scan"
 	targets, err := a.topicTrashTargets(topicID)
 	if err != nil {
 		return fallbackRuntimeTarget{}, nil, err
+	}
+	return a.commitTopicArchiveTargets(topicID, targets, trace, force)
+}
+
+// commitTopicArchiveTargets runs phases 3-12 of the topic archive assuming both
+// global mutation gates (runtime rebuild/admission + sessionRemovalMu) are
+// already held by the caller. targets comes from the caller's target scan; a
+// nil/empty slice behaves like the single path with no matches. force is only
+// set by the single-topic force entry point — the batch endpoint is regular
+// archive only, so a topic that needs force stays a per-topic action.
+func (a *App) commitTopicArchiveTargets(topicID string, targets []topicTrashTarget, trace *topicArchiveTrace, force bool) (fallbackRuntimeTarget, []string, error) {
+	trace.phase = "active_work_check"
+	if !force && a.topicHasActiveRuntimeWork(topicID) {
+		return fallbackRuntimeTarget{}, nil, errTopicHasActiveWork
 	}
 	trace.phase = "force_reclaim_self_lease"
 	if force {
@@ -313,6 +328,15 @@ type topicTrashTarget struct {
 }
 
 func (a *App) topicTrashTargets(topicID string) ([]topicTrashTarget, error) {
+	return a.topicTrashTargetsFromIndexes(topicID, topicSessionIndexForDir)
+}
+
+// topicTrashTargetsFromIndexes resolves a topic's trash targets using the given
+// per-directory index getter. The single-topic path passes
+// topicSessionIndexForDir directly (index built per dir, cached by signature as
+// before); the batch path passes a memoized getter so the whole batch pays one
+// disk pass per directory instead of one per topic (tl1240).
+func (a *App) topicTrashTargetsFromIndexes(topicID string, dirIndex func(dir string) (topicSessionDirIndex, error)) ([]topicTrashTarget, error) {
 	topicID = strings.TrimSpace(topicID)
 	var targets []topicTrashTarget
 	seen := map[string]bool{}
@@ -333,7 +357,7 @@ func (a *App) topicTrashTargets(topicID string) ([]topicTrashTarget, error) {
 		return nil
 	}
 	for _, dir := range a.knownSessionDirs() {
-		index, err := topicSessionIndexForDir(dir)
+		index, err := dirIndex(dir)
 		if err != nil {
 			return nil, err
 		}
