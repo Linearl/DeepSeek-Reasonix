@@ -50,6 +50,7 @@ func panelHeadsHits() int64 {
 // ——此前每次展开都全额重放（事故样本实测 2s+/次），这是「懒加载不重付」
 // 的核心断言。
 func Test1019PanelHeadsCacheAvoidsReplay(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 面板 heads 读数走单日志多头重放缓存——tl-1173 P1 起新会话扁平无多头、tl1227 ListSessionHeads 垫片恒空后面板被动收敛零改动，重放缓存场景不可达，显式退役非静默")
 	isolateDesktopUserDirs(t)
 	resetPanelHeadsScanForTest(t)
 	dir := desktopSessionDir(globalWorkspaceRoot())
@@ -290,6 +291,7 @@ func Test1019DesktopRecoveryChainsSamplePanel(t *testing.T) {
 // ListRecoveryChains reject ⇒ 整页「设置加载失败。重试」。这条测试把
 // 重放上限收窄到夹具尺寸之下，钉住「重放被拒 ⇒ 降级行」而不是「整页挂」。
 func Test1039PanelHeadsReplayLimitErrorDegrades(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 重放上限降级面依赖面板 heads 重放真实发生——tl-1173 P1 起新会话扁平、tl1227 ListSessionHeads 垫片恒空后面板无重放可拒（重放仅存于写侧/迁移器），场景不可达，显式退役非静默")
 	isolateDesktopUserDirs(t)
 	resetPanelHeadsScanForTest(t)
 	// 面板预算放行（夹具远小于 256MB），但把重放上限收窄到夹具之下：

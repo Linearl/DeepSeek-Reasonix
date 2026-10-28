@@ -204,6 +204,7 @@ func TestChooseRecoveryBranchSwitchesOpenTabHeadInPlace(t *testing.T) {
 }
 
 func TestGetRecoveryLineageListsHeadsAndCleansCoveredOnes(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): heads 谱系列表/清理依赖单日志多头（ForkHead 对扁平新会话拒绝+tl1227 垫片恒空），场景不可达，显式退役非静默")
 	isolateDesktopUserDirs(t)
 	ctx := context.Background()
 	dir := config.SessionDir()

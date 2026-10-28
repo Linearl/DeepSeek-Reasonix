@@ -62,6 +62,7 @@ func writeSchema2EventLog(t *testing.T, path string, msgCount int, base time.Tim
 }
 
 func TestListRecoveryChainsSplitsLongerAndNewer(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 手写 schema-2 事件日志 fixture 经产品读面已弃读封存（tl1227 读侧单路径化：DAG 日志不读）——「更长且更新」恢复链比较场景不可达，显式退役非静默")
 	dir := config.SessionDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
