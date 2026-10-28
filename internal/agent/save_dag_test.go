@@ -308,9 +308,9 @@ func TestDAGSaveConcurrentWritersForkInsteadOfConflicting(t *testing.T) {
 	if events[0].Class != HeadDivergenceLocal {
 		t.Fatalf("event class = %q, want %q", events[0].Class, HeadDivergenceLocal)
 	}
-	heads, err := ListSessionHeads(path)
-	if err != nil || len(heads) != 2 || heads[1].Kind != HeadKindConcurrent || heads[1].MessageCount != 4 || heads[0].MessageCount != 4 {
-		t.Fatalf("heads = %+v err=%v", heads, err)
+	heads := dagHeadsByAge(t, path)
+	if len(heads) != 2 || heads[1].Kind != HeadKindConcurrent || heads[1].MessageCount != 4 || heads[0].MessageCount != 4 {
+		t.Fatalf("heads = %+v", heads)
 	}
 	st := dagReplay(t, path)
 	if got := dagChain(st, SessionMainHead); strings.Join(got, ",") != "sys,q1,a1,q2-from-a" {

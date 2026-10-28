@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,19 @@ func dagContents(msgs []provider.Message) []string {
 		out = append(out, m.Content)
 	}
 	return out
+}
+
+// dagHeadsByAge replays the log and lists its heads oldest-first — the order
+// the retired ListSessionHeads entry point used to return. tl1227 读侧退役后
+// 写语义测试经这条通道断言图状态，不经过产品读面。
+func dagHeadsByAge(t *testing.T, path string) []SessionHead {
+	t.Helper()
+	st := dagReplay(t, path)
+	heads := st.headList()
+	slices.SortStableFunc(heads, func(a, b SessionHead) int {
+		return a.CreatedAt.Compare(b.CreatedAt)
+	})
+	return heads
 }
 
 // dagLinearLog writes log header + system + user + assistant + user on main.
@@ -135,10 +149,7 @@ func TestDAGForkRewindSelectRetireSemantics(t *testing.T) {
 	if got := st.selectedHead(); got != SessionMainHead {
 		t.Fatalf("selectedHead after retire = %q", got)
 	}
-	heads, err := ListSessionHeads(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	heads := dagHeadsByAge(t, path)
 	if len(heads) != 2 || heads[0].ID != SessionMainHead || heads[1].ID != "F" {
 		t.Fatalf("heads = %+v", heads)
 	}
@@ -294,9 +305,15 @@ func TestDAGReplayHonorsRecordBudget(t *testing.T) {
 	}
 }
 
-func TestLoadSessionReadsSelectedHeadOfDAGLog(t *testing.T) {
+// TestLoadSessionArchivesDAGLogWithoutReading pins the tl1227 retirement
+// semantics: a schema-2 log still on disk (v2 escape-hatch output, or a
+// session the migration window missed) is sealed, not read — LoadSession no
+// longer replays the graph, falls through to the .jsonl checkpoint, and with
+// no checkpoint present reports the missing file. The sealed bytes stay
+// untouched on disk for the migration tool and any future reader.
+func TestLoadSessionArchivesDAGLogWithoutReading(t *testing.T) {
 	path := dagTestSession(t)
-	ids, base := dagLinearLog(t, path)
+	_, base := dagLinearLog(t, path)
 	dagAppend(t, path,
 		sessionDAGEntry{Type: sessionDAGTypeFork, Head: SessionMainHead, NewHead: "F", From: "A1", Kind: HeadKindConcurrent, At: base.Add(30 * time.Second)},
 		dagMessageEntry(t, "F", "A1", "", dagMsg(provider.RoleUser, "from-other-writer", "U9"), base.Add(31*time.Second)),
@@ -305,47 +322,22 @@ func TestLoadSessionReadsSelectedHeadOfDAGLog(t *testing.T) {
 	if err != nil || !probe.dag || probe.native || probe.futureSchema {
 		t.Fatalf("probe = %+v err=%v", probe, err)
 	}
-	s, err := LoadSession(path)
+	logBefore, err := os.ReadFile(store.SessionEventLog(path))
 	if err != nil {
-		t.Fatalf("LoadSession: %v", err)
+		t.Fatal(err)
 	}
-	if got := dagContents(s.Messages); strings.Join(got, ",") != "sys,q1,a1,from-other-writer" {
-		t.Fatalf("loaded newest head %v", got)
+	if _, err := LoadSession(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sealed log must not be read back as a session, err = %v", err)
 	}
-	ref, ok := s.Head()
-	if !ok || ref.HeadID != "F" || ref.LeafID != "U9" || ref.LogGeneration != 1 || ref.LogOffset <= 0 {
-		t.Fatalf("head ref = %+v ok=%v", ref, ok)
+	if _, err := LoadSessionUserMessages(path); err == nil {
+		t.Fatal("user-message listing must not read the sealed DAG log")
 	}
-	if s.Messages[1].ID != ids[1] || s.LeafID() != "U9" {
-		t.Fatalf("ids not preserved: %q leaf %q", s.Messages[1].ID, s.LeafID())
+	logAfter, err := os.ReadFile(store.SessionEventLog(path))
+	if err != nil {
+		t.Fatal(err)
 	}
-	users, err := LoadSessionUserMessages(path)
-	if err != nil || len(users) != 2 || users[1].Message.Content != "from-other-writer" || !users[1].At.Equal(base.Add(31*time.Second)) {
-		t.Fatalf("user messages = %+v err=%v", users, err)
-	}
-	// A save extends the loaded head in place: the log grows by the new entry,
-	// the selected-head cache follows, and no transcript copy appears.
-	before, _ := os.ReadFile(store.SessionEventLog(path))
-	s.Add(dagMsg(provider.RoleAssistant, "reply", ""))
-	if err := s.Save(path); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-	after, _ := os.ReadFile(store.SessionEventLog(path))
-	if !strings.HasPrefix(string(after), string(before)) || len(after) == len(before) {
-		t.Fatal("save must append to the schema-2 log without rewriting it")
-	}
-	if b, err := os.ReadFile(path); err != nil || !strings.Contains(string(b), `"reply"`) {
-		t.Fatalf("checkpoint not written: %v", err)
-	}
-	reloaded, err := LoadSession(path)
-	if err != nil || reloaded.LeafID() != s.LeafID() || len(reloaded.Messages) != 5 {
-		t.Fatalf("reload after save: err=%v leaf %q vs %q len %d", err, reloaded.LeafID(), s.LeafID(), len(reloaded.Messages))
-	}
-	entries, _ := os.ReadDir(filepath.Dir(path))
-	for _, entry := range entries {
-		if store.IsSessionTranscriptName(entry.Name()) && entry.Name() != filepath.Base(path) {
-			t.Fatalf("save created a transcript copy: %s", entry.Name())
-		}
+	if string(logBefore) != string(logAfter) {
+		t.Fatal("sealed log bytes must stay untouched")
 	}
 }
 

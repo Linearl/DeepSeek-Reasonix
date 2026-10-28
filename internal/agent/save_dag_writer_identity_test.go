@@ -38,6 +38,13 @@ func buildLogWithoutWriterIdentity(t *testing.T) (string, []provider.Message) {
 		parent, digest = m.ID, d
 	}
 	dagAppend(t, path, entries...)
+	// tl1227: the retired DAG read path used to load such a log directly; the
+	// flat fallback now needs the compatibility checkpoint a real save chain
+	// always lands (saveDAGLocked → writeDAGCheckpointCache), so seed it here
+	// to mirror the on-disk shape a real schema-2 log ships with.
+	if err := writeSessionMessages(path, msgs); err != nil {
+		t.Fatalf("seed checkpoint: %v", err)
+	}
 	return path, msgs
 }
 

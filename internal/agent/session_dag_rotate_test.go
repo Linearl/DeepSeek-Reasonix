@@ -128,8 +128,11 @@ func TestDAGUpgradeFromSchemaOneKeepsIDsAndTranscript(t *testing.T) {
 			t.Fatalf("message %d changed across upgrade: %+v vs %+v", i, again.Messages[i], loaded.Messages[i])
 		}
 	}
-	if ref, ok := again.Head(); !ok || ref.HeadID != SessionMainHead || ref.LeafID != loaded.Messages[2].ID {
-		t.Fatalf("head after upgrade = %+v ok=%v", ref, ok)
+	// tl1227: the Session object no longer carries a schema-2 head position
+	// (the session read path retired); the upgraded log's head is asserted
+	// from the replayed graph instead.
+	if head := st.heads[st.selectedHead()]; head == nil || head.leaf != loaded.Messages[2].ID {
+		t.Fatalf("head after upgrade = %+v want leaf %s", head, loaded.Messages[2].ID)
 	}
 	if b, _ := os.ReadFile(path); string(b) != string(checkpointBefore) {
 		t.Fatal("upgrade must not touch the .jsonl checkpoint")
