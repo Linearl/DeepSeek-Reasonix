@@ -13,10 +13,19 @@ import (
 // existed anywhere in the repo).
 
 // invalidateTestScope starts every case from a clean cache and restores the
-// invalidation counter baseline implicitly via deltas.
+// invalidation counter baseline implicitly via deltas. The byte ceilings are
+// pinned explicitly: these tests size their synthetic states in the
+// hundreds of MiB to exercise the accounting, which must stay admissible
+// regardless of the production defaults (64/64 MiB since tl1228).
 func invalidateTestScope(t *testing.T) {
 	t.Helper()
-	t.Cleanup(resetGraphCacheForTest)
+	SetSessionGraphCacheMaxBytes(int64(2) << 30)
+	SetSessionGraphCacheEntryMaxBytes(int64(1) << 30)
+	t.Cleanup(func() {
+		SetSessionGraphCacheMaxBytes(0)
+		SetSessionGraphCacheEntryMaxBytes(0)
+		resetGraphCacheForTest()
+	})
 	resetGraphCacheForTest()
 }
 

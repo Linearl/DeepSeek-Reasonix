@@ -39,12 +39,20 @@ const (
 // (dag_graph_cache_max_mb / dag_graph_cache_entry_max_mb, 0 in the file means
 // "use the default"):
 //
-//   - total cap (default 2 GiB): the sum of cached entries is evicted
-//     LRU-until-under, so the worst retained set is exactly the cap;
-//   - per-entry cap (default 1 GiB): a single state above it is refused
-//     admission entirely, so one monster session cannot pin the whole budget
-//     after its session is gone. The known-worst real log (728 MB, task 196)
-//     stays well under and keeps its cache hits.
+//   - total cap (default 64 MiB since tl1228): the sum of cached entries is
+//     evicted LRU-until-under, so the worst retained set is exactly the cap;
+//   - per-entry cap (default 64 MiB since tl1228): a single state above it is
+//     refused admission entirely, so one monster session cannot pin the whole
+//     budget after its session is gone.
+//
+// tl1228 (2026-10-28): the 499-era defaults (2 GiB total / 1 GiB entry) let
+// the retained replayed payloads reach 397 MB on the tl1223 heap profile —
+// 64% of inuse, the largest single contributor — while the phase-1
+// acceptance caps applyMessage-retained memory at ≤150 MB. The config layer
+// (dag_graph_cache_max_mb / dag_graph_cache_entry_max_mb, defaults 64/64)
+// pushes the same numbers on the desktop, so both layers agree. Sessions
+// above the entry ceiling lose cache service and replay fully on their next
+// save under the save-path lock (tl1223 P1-2 / task 196 family follow-up).
 //
 // The accounted bytes are st.size — the replayed log byte count every
 // replayFrom refreshes — not a deep walk: replay/snapshot payload dominates
@@ -54,8 +62,8 @@ const (
 // paths both fall through to a correct full replay), so the caps trade
 // replay time, never correctness.
 const (
-	sessionGraphCacheMaxBytesDefault       = int64(2) << 30
-	sessionGraphCacheEntryMaxBytesDefault  = int64(1) << 30
+	sessionGraphCacheMaxBytesDefault       = int64(64) << 20
+	sessionGraphCacheEntryMaxBytesDefault  = int64(64) << 20
 	sessionGraphCacheMaxBytesMin           = int64(16) << 20
 	sessionGraphCacheMaxBytesMax           = int64(64) << 30
 	sessionGraphCacheEntryMaxBytesMin      = int64(16) << 20

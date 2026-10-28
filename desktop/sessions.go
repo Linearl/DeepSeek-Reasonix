@@ -400,6 +400,12 @@ func trashSessionMatchesLive(sessionPath, trashPath string) (bool, error) {
 	return agent.SessionsShareContent(sessionPath, trashPath)
 }
 
+// sessionFileHasConversationContent answers through agent's bounded content
+// probe (tl1228): same verdict as the LoadSession+HasContent it replaces, but
+// never materializing message bodies. The resolve phase of every session open
+// ran a full replay here just for this boolean (measured 3.87s on a big
+// session, tl1223); the probe turns it into a byte scan. The error contract
+// is unchanged: a failed load reads as no content.
 func sessionFileHasConversationContent(sessionPath string) bool {
 	if strings.TrimSpace(sessionPath) == "" || agent.IsCleanupPending(sessionPath) {
 		return false
@@ -408,11 +414,7 @@ func sessionFileHasConversationContent(sessionPath string) bool {
 	if err != nil || info.IsDir() || info.Size() == 0 {
 		return false
 	}
-	session, err := agent.LoadSession(sessionPath)
-	if err != nil {
-		return false
-	}
-	return session.HasContent()
+	return agent.SessionHasConversationContent(sessionPath)
 }
 
 func trashSessionArtifactsBeforeMove(dir, sessionPath, key string, beforeMove func()) error {

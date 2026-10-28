@@ -619,6 +619,12 @@ func runtimeTopicRowIsBlank(node ProjectNode, sessions []catalogRuntimeSnapshot)
 // that cannot be decoded keeps the row: render filtering stays conservative,
 // and only the discard path owns the strict sessionPathHasNoContent
 // semantics.
+//
+// tl1228: the content answer comes from agent's bounded probe (same verdict
+// as the LoadSession+HasContent it replaces, none of the payload
+// materialization — this check runs per transcript row on tree renders). The
+// Err variant preserves this caller's own error direction: undecodable input
+// keeps the row, exactly what the replaced LoadSession error branch did.
 func runtimeSessionTranscriptBlank(path string) bool {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -638,11 +644,11 @@ func runtimeSessionTranscriptBlank(path string) bool {
 	if info.Size() == 0 {
 		return true
 	}
-	session, err := agent.LoadSession(resolved)
+	has, err := agent.ProbeSessionConversationContent(resolved)
 	if err != nil {
 		return false
 	}
-	return !session.HasContent()
+	return !has
 }
 
 // ordinaryTreeHidesBlankShell is the one stable visibility rule for unnamed
