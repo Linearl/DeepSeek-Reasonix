@@ -100,6 +100,12 @@ export type TierFeatureId =
   // 共用一键，默认关=零行为，用户拍板提效类可选档）。toolOptimizations
   // 聚合页成员行。
   | "capabilityGroups"
+  // tl-1218: multi_edit 三条增强（①错误详情增强 ②证据门连坐收窄 ③跳过
+  // 失败项模式——三个独立开关，默认关重启生效）。toolOptimizations 聚合页
+  // 成员行（与 multi_edit 直注成组成员行）。
+  | "multiEditErrorDetail"
+  | "multiEditEvidenceNarrow"
+  | "multiEditSkipFailed"
   // 任务 677→856 ③: 协作中心入口总开关（信件中心+群聊两图标合一；原
   // 「群聊入口」开关 collabGroupView 随语义一次性迁移为 collabHub，未稳定档沿用）。
   | "collabHub"
@@ -291,6 +297,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 拍板提效类可选档（config.go 注释原文）；默认关=零行为（铁律 2），九件
   // 协作工具保持直挂。toolOptimizations 聚合页成员行，重启生效。
   capabilityGroups: "optional",
+  // tl-1218：multi_edit 三条增强（①错误详情增强 ②证据门连坐收窄 ③跳过
+  // 失败项模式）。可选档——不开启只小幅影响（拦截信息少附行内容/连坐维持/
+  // 单点失败即整批中止）；默认关=与基线逐字节一致（铁律 2）。聚合页成员
+  // 行，重启生效。
+  multiEditErrorDetail: "optional",
+  multiEditEvidenceNarrow: "optional",
+  multiEditSkipFailed: "optional",
   // 任务 727：心跳会话轮换（自动化/成本域）。桥接 heartbeat-rotation.json
   // 的 enabled 字段（缺文件=内置默认开）——「不开启只小幅影响」定可选档。
   heartbeatRotation: "optional",
@@ -407,12 +420,17 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 可选 37→39、总数 75→77。
  * tl 1165：smoothScrollFollow（流式滚动平滑跟随，DSH ScrollFollow 同款四条
  * 防线，默认关）按可选档入表——可选 39→40、总数 77→78（Go 渲染表同步
- * 67→68）。 */
+ * 67→68）。
+ * tl-1218：multi_edit 三条增强（multiEditErrorDetail / multiEditEvidenceNarrow /
+ * multiEditSkipFailed，toolOptimizations 聚合页成员行）按可选档入表——
+ * 可选 40→43、总数 77→80（Go 渲染表同步 69→72）。⚠️ 基线 8552b0abf 的
+ * 注册表实为 77 项/12 未稳定（jsonlZstd 前端注册随主线包43 cd03595ac 才
+ * 对齐），本计数按本 wt 基线实值落；滚合后由主会话按新 tip 回调（81/13）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 4,
   recommended: 20,
-  optional: 40,
-  unstable: 13,
+  optional: 43,
+  unstable: 12,
   retired: 1,
 };
 

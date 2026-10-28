@@ -3587,6 +3587,61 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
               <p className="approval-mode-hint">{t("settings.capabilityGroups.risk")}</p>
             </SettingsField>
+            {/* tl-1218：multi_edit 三条增强（①错误详情增强 ②证据门连坐收窄
+                ③跳过失败项模式）——三个独立开关的卡内成员行，与 multi_edit
+                直注成组成员行。boot 快照，重启生效；默认关=与基线逐字节一致
+                （铁律 2）。 */}
+            <SettingsField label={labLabel("multiEditErrorDetail", t("settings.multiEditErrorDetail"))} hint={t("settings.multiEditErrorDetailHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalMultiEditErrorDetail) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalMultiEditErrorDetail(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.multiEditErrorDetail.on" : "settings.multiEditErrorDetail.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+            <SettingsField label={labLabel("multiEditEvidenceNarrow", t("settings.multiEditEvidenceNarrow"))} hint={t("settings.multiEditEvidenceNarrowHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalMultiEditEvidenceNarrow) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalMultiEditEvidenceNarrow(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.multiEditEvidenceNarrow.on" : "settings.multiEditEvidenceNarrow.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+            <SettingsField label={labLabel("multiEditSkipFailed", t("settings.multiEditSkipFailed"))} hint={t("settings.multiEditSkipFailedHint")} icon={<Sparkles size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalMultiEditSkipFailed) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalMultiEditSkipFailed(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.multiEditSkipFailed.on" : "settings.multiEditSkipFailed.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
             </>
           )}
         </div>

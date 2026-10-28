@@ -211,6 +211,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 三件共用一键，config.go 用户拍板「提效类可选档」）——979 补设置页入口
 	// 自豁免表转正；工具优化聚合页成员行，重启生效（boot 快照三处门控）。
 	{"capabilityGroups", LabTierOptional, []string{"experimental_capability_groups"}},
+	// tl-1218：multi_edit 三条增强（工具优化聚合页成员行，可选档，默认关
+	// 重启生效）。①错误详情增强 ②证据门连坐收窄 ③跳过失败项模式。
+	{"multiEditErrorDetail", LabTierOptional, []string{"experimental_multi_edit_error_detail"}},
+	{"multiEditEvidenceNarrow", LabTierOptional, []string{"experimental_multi_edit_evidence_narrow"}},
+	{"multiEditSkipFailed", LabTierOptional, []string{"experimental_multi_edit_skip_failed"}},
 	// ── network（网络，1 项）────────────────────────────────────
 	// 任务 1056：网络重试预算分级（dial 短超时快退避 + MaxRetries/DialTimeout
 	// 配置化 + 强制重解析 DNS + turn 级 wall-clock 上限）。未稳定档默认关——
