@@ -131,6 +131,10 @@ func (a *App) startup(ctx context.Context) {
 	bootTimelineNoteMark("startup_cb")
 	a.ctx = ctx
 	a.shuttingDown.Store(false)
+	// tl1226 遗留①（新信到达角标即涨）：注册投递→Wails 事件（CollabMailChanged）
+	// 观察者。放在远程窗口早退之前——远程窗口的侧栏同样挂未读角标，本进程内
+	// 的投递同样要通知到。
+	a.watchCollabMailArrivals()
 	a.startupRegisterProcessHelpers()
 	a.startWindowsWebView2StartupFallback(ctx)
 	publishCDPDebugEndpoint()
