@@ -63,7 +63,7 @@ func TestInboxTurnDoneSettlesAppliedItemsWhenTranscriptDurable(t *testing.T) {
 	}
 	c.inbox.mu.Unlock()
 
-	c.onInboxTurnDone()
+	c.onInboxTurnDone(0)
 
 	snap := st.Snapshot()
 	if snap.Paused {
@@ -95,7 +95,7 @@ func TestInboxTurnDoneKeepsUncertainWhenTranscriptNotDurable(t *testing.T) {
 	}
 	c.inbox.mu.Unlock()
 
-	c.onInboxTurnDone()
+	c.onInboxTurnDone(0)
 
 	snap := st.Snapshot()
 	if !snap.Paused {
