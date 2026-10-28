@@ -202,6 +202,7 @@ var _ sync.Locker = &sync.Mutex{}
 // the agent counters: the invalidation counter moves and a follow-up
 // Invalidate finds nothing left for that path.
 func TestReleaseDetachedSessionInvalidatesGraphCache(t *testing.T) {
+	t.Skip("tl1236 DAG 读退役善后(1227 后续): 释放失效接线仍在，但图缓存条目来自 DAG 重放加载——tl-1173 P1 起新会话扁平不入图缓存，「加载即入缓存」前置条件不可满足，场景退役非静默（接线由既有 invalidates 族断言保留）")
 	t.Setenv("REASONIX_HOME", t.TempDir())
 	a := newIdleReleaseTestApp(t)
 
