@@ -383,14 +383,6 @@ type SettingsView struct {
 	// （0=无限制，有效值 0 或 2..100，1 非法）。
 	ExperimentalAskRoundLimit bool `json:"experimentalAskRoundLimit"`
 	AskRoundLimit             int  `json:"askRoundLimit"`
-	// Task 326: autopilot guard task dials — interval in minutes (effective
-	// value, so the panel never shows a bare 0) and the self-close policy for a
-	// watched session that goes quiet. Task 547 gates them behind the
-	// auto-creation opt-in: off (the default) means autopilot never creates a
-	// guard, and guards a previous version created are disabled at the sweep.
-	ExperimentalAutopilotGuardAutocreate bool   `json:"experimentalAutopilotGuardAutocreate"`
-	AutopilotGuardInterval               int    `json:"autopilotGuardInterval"`
-	AutopilotGuardQuiescent              string `json:"autopilotGuardQuiescent"`
 	// Task 81 / 123: the Settings panel renders these two experiment switches from
 	// this view; carrying them only on DesktopStartupSettingsView left both switches
 	// permanently reading "off" and impossible to turn on (fixed 2026-09-15).
@@ -1954,9 +1946,6 @@ func (a *App) Settings() SettingsView {
 		AuthorizePaidQuotaAlloc:              cfg.Desktop.AuthorizePaidQuotaAlloc,
 		ExperimentalAskRoundLimit:            cfg.Desktop.ExperimentalAskRoundLimit,
 		AskRoundLimit:                        cfg.AskRoundLimitEffective(),
-		ExperimentalAutopilotGuardAutocreate: cfg.Desktop.ExperimentalAutopilotGuardAutocreate,
-		AutopilotGuardInterval:               cfg.AutopilotGuardIntervalMinutes(),
-		AutopilotGuardQuiescent:              cfg.AutopilotGuardQuiescentPolicy(),
 		// The Settings panel reads these switches from this view (see the struct note).
 		ExperimentalRestartUpdate: cfg.Desktop.ExperimentalRestartUpdate,
 		ForkNotice:                cfg.DesktopForkNoticeEnabled(),

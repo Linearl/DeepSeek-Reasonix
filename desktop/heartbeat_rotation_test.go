@@ -3,8 +3,8 @@ package main
 // Task 500 — tests for the reuse-session rotation mechanism (handoff relay).
 // Acceptance matrix: eligibility partition, threshold verdicts (size / turns /
 // suggest-only age), the requested→pending→rotating→done relay with grouped
-// topics (shared-session tasks rotate together; manual and guard tasks never
-// do), pending re-carry + attempts cap, bootstrap one-shot delivery, and
+// topics (shared-session tasks rotate together; manual tasks never do),
+// pending re-carry + attempts cap, bootstrap one-shot delivery, and
 // byte-for-byte normal behavior when nothing is over threshold or the
 // mechanism is disabled.
 
@@ -110,7 +110,6 @@ func TestHeartbeatRotationEligibleMatrix(t *testing.T) {
 		{"legacy fixed topic", HeartbeatTask{ID: "b", Enabled: true}, true},
 		{"fresh per run", HeartbeatTask{ID: "c", Enabled: true, NewConversationEachRun: true}, false},
 		{"fresh+reuse (reuse wins, still a reuser)", HeartbeatTask{ID: "d", Enabled: true, NewConversationEachRun: true, ReuseSession: true}, true},
-		{"guard", HeartbeatTask{ID: "autoguard-topic_x", Enabled: true, ReuseSession: true}, false},
 		{"goal mode", HeartbeatTask{ID: "e", Enabled: true, GoalMode: true}, false},
 		{"disabled", HeartbeatTask{ID: "f", Enabled: false, ReuseSession: true}, false},
 	}
@@ -191,9 +190,9 @@ func TestHeartbeatRotationSuccessorID(t *testing.T) {
 	}
 }
 
-// rotationRelayFixture seeds two reuse tasks + one manual task + one guard,
-// all bound to one shared conversation, with an over-threshold stats resolver
-// and a threshold config marking the manual task.
+// rotationRelayFixture seeds two reuse tasks + one manual task, all bound to
+// one shared conversation, with an over-threshold stats resolver and a
+// threshold config marking the manual task.
 type rotationRelayFixture struct {
 	engine *HeartbeatEngine
 	app    *App
@@ -213,9 +212,6 @@ func newRotationRelayFixture(t *testing.T, manualID string) *rotationRelayFixtur
 		{ID: "task-a", Title: "任务A", Prompt: "tick-a", Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID},
 		{ID: "task-b", Title: "任务B", Prompt: "tick-b", Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID},
 		{ID: manualID, Title: "手动线", Prompt: "tick-m", Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID},
-		// Task 942: the guard row records the user global gear (what the
-		// creation path stamps now), not the pre-942 hardcoded "ask".
-		{ID: "autoguard-" + old.ID, Title: "Autopilot guard", Prompt: autopilotGuardPrompt, Interval: "15m", Enabled: true, ReuseSession: true, TopicID: old.ID, ApprovalMode: app.autopilotGuardApprovalMode()},
 	}
 	if err := engine.saveTasks(tasks); err != nil {
 		t.Fatal(err)
@@ -257,7 +253,7 @@ func TestHeartbeatRotationHandoffRelayEndToEnd(t *testing.T) {
 	f := newRotationRelayFixture(t, "task-manual")
 
 	// 1) Detection: one rotation for the shared topic, group = [task-a task-b]
-	// (manual and guard excluded).
+	// (manual excluded).
 	f.engine.reconcileRotationsCheap()
 	state := engineRotationState(t, f.engine)
 	rot, ok := state.Rotations[f.topic]
@@ -316,8 +312,8 @@ func TestHeartbeatRotationHandoffRelayEndToEnd(t *testing.T) {
 	}
 
 	// 5) The handoff document lands → relay completes: one new topic, one
-	// successor per group task, old rows retired in place, manual and guard
-	// rows untouched.
+	// successor per group task, old rows retired in place, manual rows
+	// untouched.
 	if err := os.WriteFile(handoffPath, []byte("# 交接\n五节内容"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -366,9 +362,6 @@ func TestHeartbeatRotationHandoffRelayEndToEnd(t *testing.T) {
 	}
 	if !byID["task-manual"].Enabled || byID["task-manual"].TopicID != f.topic {
 		t.Fatal("manual task must stay enabled on the old topic")
-	}
-	if !byID["autoguard-"+f.topic].Enabled {
-		t.Fatal("guard task must stay untouched")
 	}
 	if _, stale := state.Bootstrap["task-manual"]; stale {
 		t.Fatal("manual task must never get a bootstrap entry")
