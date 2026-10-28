@@ -8766,6 +8766,23 @@ body > .mermaid-diagram--fullscreen {
   overflow-y: hidden;
   scrollbar-width: none;           /* Firefox */
 }
+/* 2026-10-28 修正（tl1191 分包连坐）：autosize 测量 textarea 的隐藏规则原只写在
+   mode-creation.css 的一个混合块里（同块还有两条 creation 布局变体，整块被判给该
+   布局），classic/workbench 用户不加载该文件 ⇒ 测量层可见可点：它空着显示
+   data-placeholder 灰字、盖在真实输入与控件行之上（I-beam 光标 + 按钮点不动 +
+   文字双影）。此处恢复为全局规则；布局变体与全局等价，已随之删除。 */
+.composer__input.composer__input--measure {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+}
 .composer__rich-input {
   width: 100%;
   min-height: calc(var(--font-content) * 1.55);

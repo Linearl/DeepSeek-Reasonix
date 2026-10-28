@@ -1534,20 +1534,10 @@
   line-height: 1.55;
 }
 
-.composer__input.composer__input--measure,
-.app--creation .composer__input.composer__input--measure,
-:root[data-theme-style] .app--creation .composer__input.composer__input--measure {
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 100%;
-  height: 0 !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  overflow: hidden !important;
-  visibility: hidden;
-  pointer-events: none;
-  user-select: none;
-}
+/* 2026-10-28：原此处整块还含全局选择器 `.composer__input.composer__input--measure`
+   （隐藏 autosize 测量 textarea）。它被两条 .app--creation 变体连坐判成本文件专属，
+   非 creation 用户因此丢掉隐藏规则 → 测量层可见（灰 placeholder 重影 + I-beam 挡按钮）。
+   该全局规则已移到 styles.css，creation 变体与全局逐字等价，一并删除，勿在此重加。 */
 
 .app--creation .composer__input::placeholder,
 :root[data-theme-style] .app--creation .composer__input::placeholder {
