@@ -69,15 +69,15 @@ func noteSessionDAGNilCacheLargeReplay(reason string, logBytes int64) {
 // many of those sidecars classify as DAG (probe.dag hit) — the tl1173 §4.3
 // retirement-condition source.
 type SessionDAGCensus struct {
-	ScannedDirs      int   // directories actually scanned
-	DirErrors        int   // directories that could not be read
-	EventLogSessions int   // sessions with an event-log sidecar (plain or archived)
-	DAGSessions      int   // probe.dag hits — the retirement counter
-	NativeSessions   int   // schema-1 event logs
-	OtherSessions    int   // present but not classifiable as ours (foreign/future/unreadable)
-	ArchivedOnly     int   // of EventLogSessions: zst archive with no plaintext sibling
-	DAGArchivedOnly  int   // of DAGSessions: zst archive with no plaintext sibling
-	TotalLogBytes    int64 // plaintext bytes (archive: header plain_bytes) summed over sidecars
+	ScannedDirs      int   `json:"scanned_dirs"`       // directories actually scanned
+	DirErrors        int   `json:"dir_errors"`         // directories that could not be read
+	EventLogSessions int   `json:"event_log_sessions"` // sessions with an event-log sidecar (plain or archived)
+	DAGSessions      int   `json:"dag_sessions"`       // probe.dag hits — the retirement counter
+	NativeSessions   int   `json:"native_sessions"`    // schema-1 event logs
+	OtherSessions    int   `json:"other_sessions"`     // present but not classifiable as ours (foreign/future/unreadable)
+	ArchivedOnly     int   `json:"archived_only"`      // of EventLogSessions: zst archive with no plaintext sibling
+	DAGArchivedOnly  int   `json:"dag_archived_only"`  // of DAGSessions: zst archive with no plaintext sibling
+	TotalLogBytes    int64 `json:"total_log_bytes"`    // plaintext bytes (archive: header plain_bytes) summed over sidecars
 }
 
 // CensusStoredDAGSessions scans each directory (flat, one session per
@@ -94,6 +94,12 @@ func CensusStoredDAGSessions(dirs []string) SessionDAGCensus {
 		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
+			if os.IsNotExist(err) {
+				// An absent optional root (e.g. the experimental sessions-v4
+				// store on a machine that never enabled it) is not an error —
+				// it holds zero sessions by definition.
+				continue
+			}
 			census.DirErrors++
 			continue
 		}

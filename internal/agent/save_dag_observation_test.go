@@ -144,10 +144,11 @@ func TestCensusStoredDAGSessions(t *testing.T) {
 		t.Fatalf("census materialized the archived events log at %s", plain)
 	}
 
-	// A missing directory is a counted dir error, not a crash.
+	// A missing directory is an absent optional root: silently zero, not an
+	// error. Only real read failures (e.g. permission) count as dir errors.
 	missing := CensusStoredDAGSessions([]string{filepath.Join(dir, "nope")})
-	if missing.ScannedDirs != 0 || missing.DirErrors != 1 {
-		t.Fatalf("missing dir: scanned=%d errors=%d, want 0/1", missing.ScannedDirs, missing.DirErrors)
+	if missing.ScannedDirs != 0 || missing.DirErrors != 0 {
+		t.Fatalf("missing dir: scanned=%d errors=%d, want 0/0", missing.ScannedDirs, missing.DirErrors)
 	}
 }
 
