@@ -1,7 +1,9 @@
 package control
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -236,4 +238,69 @@ func latestControlSessionContext(messages []provider.Message) (sessioncontext.Sn
 		}
 	}
 	return sessioncontext.Snapshot{}, false
+}
+
+// Task 1224 phase 1 acceptance ③: the near-cap collision warning fires once
+// per climb past the warn thresholds while rows are still fully visible, and
+// the truncation warning carries the cap in its fields (no "20KB" hard-code
+// left behind by the 20KB→64KB raise).
+func TestTurnContextDirectoryPressureWarnsOncePerClimb(t *testing.T) {
+	sess := agent.NewSession("stable system")
+	executor := agent.New(nil, tool.NewRegistry(), sess, agent.Options{}, event.Discard)
+	var stats capability.DirectoryStats
+	c := New(Options{
+		Executor:             executor,
+		SessionContextStatic: sessioncontext.Sections{Workspace: "workspace"},
+		CapabilityDirectory: func() (string, capability.DirectoryStats) {
+			return "```\n- skill:a\n```", stats
+		},
+	})
+	var logs bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	// Climb 1: one near-cap warn, full rows still visible.
+	stats = capability.DirectoryStats{Bytes: 62 * 1024, Rows: 620, NearCap: true}
+	c.withTurnContext(context.Background(), true)
+	if got := strings.Count(logs.String(), "nearing budget cap"); got != 1 {
+		t.Fatalf("near-cap climb 1 logged %d warnings, want 1:\n%s", got, logs.String())
+	}
+	if !strings.Contains(logs.String(), "bytes=63488") || !strings.Contains(logs.String(), "cap_bytes=65536") {
+		t.Fatalf("near-cap warning missing the readings:\n%s", logs.String())
+	}
+	// Steady near-cap state: no re-warn every turn.
+	c.withTurnContext(context.Background(), true)
+	if got := strings.Count(logs.String(), "nearing budget cap"); got != 1 {
+		t.Fatalf("steady near-cap state re-warned (%d warnings), want 1", got)
+	}
+	// Back under the thresholds: the latch resets silently.
+	stats = capability.DirectoryStats{Bytes: 40, Rows: 1}
+	c.withTurnContext(context.Background(), true)
+	if got := strings.Count(logs.String(), "nearing budget cap"); got != 1 {
+		t.Fatalf("recovery state logged a warning (%d total), want 1", got)
+	}
+	// Climb 2 after recovery: warns again.
+	stats = capability.DirectoryStats{Bytes: 62 * 1024, Rows: 620, NearCap: true}
+	c.withTurnContext(context.Background(), true)
+	if got := strings.Count(logs.String(), "nearing budget cap"); got != 2 {
+		t.Fatalf("near-cap climb 2 logged %d cumulative warnings, want 2:\n%s", got, logs.String())
+	}
+	// Truncation path: the growth-ratchet warning names the budget cap instead
+	// of the retired 20KB hard-code (mirrors the tl1223 sighting rows=168
+	// dropped=233).
+	logs.Reset()
+	stats = capability.DirectoryStats{Bytes: 20 * 1024, Rows: 168, Dropped: 233, Truncated: true}
+	c.withTurnContext(context.Background(), true)
+	if got := strings.Count(logs.String(), "truncated at budget cap"); got != 1 {
+		t.Fatalf("truncation warning missing:\n%s", logs.String())
+	}
+	for _, want := range []string{"rows=168", "dropped=233", "cap_bytes=65536"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("truncation warning missing %s:\n%s", want, logs.String())
+		}
+	}
+	if strings.Contains(logs.String(), "20KB") {
+		t.Fatalf("truncation warning still hard-codes 20KB:\n%s", logs.String())
+	}
 }
