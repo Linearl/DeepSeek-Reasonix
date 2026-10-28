@@ -4880,7 +4880,7 @@ export const zh: Record<DictKey, string> = {
   "transcript.processedDuration": "已处理 {s}s",
   "notice.info": "提示",
   "notice.remoteTurnInterrupted": "远程连接已中断，本轮对话的状态暂不可知；重连后会话将从服务端恢复。",
-  "notice.remoteProviderUnreachable": "凭证通道或模型服务不可达，已停止重试：{detail}",
+  "notice.remoteProviderUnreachable": "凭证通道或模型服务不可达，重试已达上限：{detail}",
   "notice.warning": "警告",
   "notice.askSubmitFailed": "提交回答失败：{error}",
   "notice.details": "详情",
