@@ -2229,10 +2229,31 @@ export default function App() {
       // 任务 595 四档单选：autopilot 持有时点任意档（含 yolo——模式条上 yolo
       // 档是普通 yolo，不是 autopilot 的别名）= 一次调用内原子离开 autopilot
       // 落到该档，走 SetApprovalTierForTab；「autopilot 切不到 yolo」即此修。
+      // tl1232：合成标签 collaborationMode 必须随旗一起离档（标 "autopilot"
+      // 时归位 "normal"——标签优先级 goal>plan>autopilot>normal，goal/plan
+      // 标签不因 autopilot 产生故不动也不标 pending，免增无谓粘性）。标签卡
+      // 在 "autopilot" 时 Composer.chooseTaskMode 的
+      // `nextMode !== collaborationMode` 守卫会把后续每次第四档点击整段吞掉
+      //（引擎侧其实已接受/已离开），而纠标签的 wire meta 是 fire-and-forget
+      // + seq 竞态 + 仅活跃 tab 水合，一旦丢失且档位切换不推 tab 事件，标签
+      // 永久卡死 = 「autopilot 再也选不上」（desktop.log 2026-10-29
+      // 05:34:49 后零后端调用实证）。pending 标记让陈旧 tab-strip 列表在
+      // 真值到达前盖不回来。
       const autopilotDrops = composerProfile.autopilot;
+      const dropsLabelStuck = autopilotDrops && composerProfile.collaborationMode === "autopilot";
       patchActiveComposerProfile(
-        autopilotDrops ? { toolApprovalMode: m, autopilot: false } : { toolApprovalMode: m },
-        autopilotDrops ? ["toolApprovalMode", "autopilot"] : ["toolApprovalMode"],
+        autopilotDrops
+          ? {
+              toolApprovalMode: m,
+              autopilot: false,
+              ...(dropsLabelStuck ? { collaborationMode: "normal" as const } : {}),
+            }
+          : { toolApprovalMode: m },
+        dropsLabelStuck
+          ? ["toolApprovalMode", "autopilot", "collaborationMode"]
+          : autopilotDrops
+            ? ["toolApprovalMode", "autopilot"]
+            : ["toolApprovalMode"],
       );
       if (autopilotDrops) {
         void setControllerApprovalTier(m);
@@ -2240,7 +2261,7 @@ export default function App() {
       }
       void setControllerToolApprovalMode(m);
     },
-    [activeTabId, composerProfile.autopilot, patchActiveComposerProfile, setControllerApprovalTier, setControllerToolApprovalMode, toolApprovalMode],
+    [activeTabId, composerProfile.autopilot, composerProfile.collaborationMode, patchActiveComposerProfile, setControllerApprovalTier, setControllerToolApprovalMode, toolApprovalMode],
   );
   // Fork: sub-agent delegation tier is a per-tab setting; the + menu is the
   // only entry point now (it needs no frequent switching).
