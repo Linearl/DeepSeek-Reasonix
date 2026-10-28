@@ -33,10 +33,17 @@ func tl1228FixtureMB() int {
 func tl1228BuildDAGSession(b testing.TB, mb int) string {
 	b.Helper()
 	path := filepath.Join(b.TempDir(), "bench.jsonl")
+	// Real-text bodies: the tl1223 production logs carry plain text/base64,
+	// whose JSON escaping is ~1:1. (A zero-byte body would inflate through
+	// unicode-escape form (6 bytes per byte) and measure a log six times
 	const bodyBytes = 4096
-	body := string(make([]byte, bodyBytes)) // zero bytes: compressible, content length is what matters
+	bodyRunes := make([]byte, bodyBytes)
+	for i := range bodyRunes {
+		bodyRunes[i] = byte('a' + i%26)
+	}
+	body := string(bodyRunes)
 	base := time.Date(2026, 1, 8, 10, 0, 0, 0, time.UTC)
-	entryOverhead := 512
+	entryOverhead := 768
 	perEntry := bodyBytes + entryOverhead
 	n := mb << 20 / perEntry
 	if n < 8 {
