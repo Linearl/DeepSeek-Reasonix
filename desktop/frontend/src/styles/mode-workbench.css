@@ -904,45 +904,12 @@
   stroke-width: 1.9;
 }
 
-/* Task 412: classic's bottom rail now renders the same utility-row markup as
-   workbench (SidebarRegion), but every utility style above lives under
-   .sidebar--workbench — mirror the layout scope for classic so the three
-   icons sit on one horizontal rail instead of the old vertical NavButton
-   column. Tokens are the same mixes the workbench block defines; spelled out
-   because --sidebar-workbench-* are scoped to .sidebar--workbench. */
-.sidebar:not(.sidebar--workbench) .sidebar__nav--footer .sidebar__utility-row {
-  display: grid;
-  /* 任务 320 UI 规格（20261002）：classic 同排；任务 409 群聊入行。
-     任务 684（20261009）：与 workbench 规则同改自动列（列数=按钮数，增删
-     图标免改 CSS 恒单行等距，窄宽压缩不折行）——两处必须同步，失配即折行
-     （656b 教训）。 */
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 6px;
-  --wails-draggable: no-drag;
-}
-.sidebar:not(.sidebar--workbench) .sidebar__utility-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 32px;
-  min-width: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--fg-faint);
-  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
-}
-.sidebar:not(.sidebar--workbench) .sidebar__utility-button:hover {
-  border-color: color-mix(in srgb, var(--border-soft) 82%, var(--fg-faint));
-  background: var(--sidebar-hover);
-  color: var(--fg);
-}
-.sidebar:not(.sidebar--workbench) .sidebar__utility-button svg {
-  flex: 0 0 auto;
-  stroke-width: 1.9;
-}
+/* Task 412（2026-10-28 迁出）：classic 底部工具条的 4 段镜像规则原在本文件，
+   但它们是 classic 的否定限定选择器（:not 排除 workbench 修饰类），只服务
+   classic；tl1191 模式 CSS 分包后 classic 用户根本不加载本文件
+   （config layout_style=classic 实测丢失 ⇒ 底部四键竖排）。
+   已整体搬到 styles/mode-classic.css 末尾，选择器与 token 拼法原样保留；
+   本处只留指针，勿在 workbench 侧重加。 */
 
 @media (prefers-reduced-motion: reduce) {
   .sidebar--workbench .project-tree__topic-state--thinking,

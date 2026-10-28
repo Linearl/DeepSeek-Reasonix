@@ -1997,3 +1997,43 @@
 .tabbar .tabbar__tab--active[data-mode-tint] {
   background: color-mix(in srgb, var(--tab-tint-color) 10%, var(--chat-bg));
 }
+
+/* 任务 412 镜像段（2026-10-28 自查迁回）：classic 的底部工具条与 workbench
+   同款 utility-row markup，但这 4 段规则原本落在 mode-workbench.css（选择器
+   含 .sidebar--workbench 字样，被 tl1191 分片器判给 workbench）。classic 用户
+   只加载本文件 ⇒ 分包后底部四键退回竖排（2026-10-28 实测）。此处整体接收，
+   选择器与 token 拼法原样保留；⚠️ 与 mode-workbench.css 的
+   .sidebar--workbench 对应段保持同步（656b 折行教训）。 */
+.sidebar:not(.sidebar--workbench) .sidebar__nav--footer .sidebar__utility-row {
+  display: grid;
+  /* 任务 320 UI 规格（20261002）：classic 同排；任务 409 群聊入行。
+     任务 684（20261009）：与 workbench 规则同改自动列（列数=按钮数，增删
+     图标免改 CSS 恒单行等距，窄宽压缩不折行）——两处必须同步，失配即折行
+     （656b 教训）。 */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 6px;
+  --wails-draggable: no-drag;
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-faint);
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button:hover {
+  border-color: color-mix(in srgb, var(--border-soft) 82%, var(--fg-faint));
+  background: var(--sidebar-hover);
+  color: var(--fg);
+}
+.sidebar:not(.sidebar--workbench) .sidebar__utility-button svg {
+  flex: 0 0 auto;
+  stroke-width: 1.9;
+}

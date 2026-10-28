@@ -3,6 +3,9 @@
 // （App.tsx 原有一份逐字节等价的本地副本，随模式分包一并收口）。
 
 import { loadCachedLayoutStyle } from "./layoutPreferences";
+import classicStylesheetURL from "../styles/mode-classic.css?url";
+import workbenchStylesheetURL from "../styles/mode-workbench.css?url";
+import creationStylesheetURL from "../styles/mode-creation.css?url";
 
 export type DesktopLayoutStyle = "classic" | "workbench" | "creation";
 
@@ -18,19 +21,36 @@ export function normalizeDesktopLayoutStyle(style: string | undefined): DesktopL
   return "workbench";
 }
 
-// tl1191: per-mode stylesheets. The three mode stylesheets are split out of
-// styles.css verbatim (block order preserved; ownership asserted by
-// src/__tests__/mode-css-split.test.ts) so each layout downloads only its own
-// mode rules. The dynamic imports stay out of the initial chunk; Vite emits
-// one CSS chunk per file and injects it on first import (idempotent after).
+// tl1191（2026-10-28 修）：per-mode stylesheets 改为 ?url + <link> 注入。
+// 原实现用 dynamic import 让 Vite 自动注入 CSS chunk；实测在 Wails 自定义
+// 协议下产物存在却不生效（症状：utility-row 的 flex 丢失 ⇒ 侧栏工具键竖排、
+// 输入框重影）。主 styles.css 一直走 ?url + 手动 <link>（main.tsx），本模块
+// 对齐同一机制：按需注入语义不变（只加载当前模式的文件），启动加速保留。
+const injectedModeLinks = new Map<string, Promise<void>>();
+
+function linkStylesheetOnce(href: string): Promise<void> {
+  const existing = injectedModeLinks.get(href);
+  if (existing) return existing;
+  const job = new Promise<void>((resolve, reject) => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => reject(new Error(`failed to load mode stylesheet: ${href}`));
+    document.head.appendChild(link);
+  });
+  injectedModeLinks.set(href, job);
+  return job;
+}
+
 export function loadModeStylesheet(mode: DesktopLayoutStyle): Promise<unknown> {
   switch (mode) {
     case "classic":
-      return import("../styles/mode-classic.css");
-    case "workbench":
-      return import("../styles/mode-workbench.css");
+      return linkStylesheetOnce(classicStylesheetURL);
     case "creation":
-      return import("../styles/mode-creation.css");
+      return linkStylesheetOnce(creationStylesheetURL);
+    default:
+      return linkStylesheetOnce(workbenchStylesheetURL);
   }
 }
 
