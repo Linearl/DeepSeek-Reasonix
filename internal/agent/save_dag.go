@@ -261,6 +261,10 @@ func (s *Session) dagStateForSave(ctx context.Context, path string, now time.Tim
 		if err != nil {
 			return nil, err
 		}
+		// tl-1220 counter ①: pure observation of the nil_cache + >32MiB
+		// combination (tl1173 rev2.1 §五). Only full replays reach here; the
+		// extended fast path above never pays this call.
+		noteSessionDAGNilCacheLargeReplay(reason, st.size)
 	}
 	replayMs := time.Since(replayStart2).Milliseconds()
 	slog.Debug("session: dag state for save", "path", canonicalSessionSavePath(path), "extended", extended, "reason", reason,
