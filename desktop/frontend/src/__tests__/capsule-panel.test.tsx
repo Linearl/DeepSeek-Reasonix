@@ -997,5 +997,17 @@ section("任务 558 限高：列表内部滚动 CSS 契约（空态走 .capsule-
   ok(source.includes('className="capsule-panel__empty"'), "空数据走空态分支，不渲染限高列表（无怪异大空块）");
 }
 
+section("tl1209 源级契约：前台子代理行走单子代理终止链（不落 job 取消链）");
+{
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(resolve(here, "../components/CapsulePanel.tsx"), "utf8");
+  // 行为链（渲染+点击+ref 传递）由 subagent-panel-dock 断言闭合（同一 App 注
+  // 入桥）；这里锁 capsule 侧的承重契约：subagent kind 的停止绝不 fall through
+  // 到 jobs 管理器——取消 job id 什么也停不掉。
+  ok(source.includes('if (entry.job.kind === "subagent") {'), "stop() 对子代理行走独立分支");
+  ok(source.includes("onCancelSubagent(entry.tabId, entry.job.id)"), "子代理终止按 (tabId, ref) 走注入的单子代理桥");
+  ok(source.includes("? Boolean(onCancelSubagent)"), "子代理行停止按钮以桥 prop 存在为渲染前提（无桥逐字节回到 pre-1209）");
+}
+
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
