@@ -15,6 +15,7 @@ import (
 // the first-paint loader: below the size threshold it must behave exactly like
 // LoadSession, including not claiming the transcript is truncated.
 func TestLoadSessionTailMatchesFullLoadForSmallSessions(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: Tail 直通扁平读后 DAG 对等性场景不再可达；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	_, _ = dagWideLog(t, path, 8)
 
@@ -41,6 +42,7 @@ func TestLoadSessionTailMatchesFullLoadForSmallSessions(t *testing.T) {
 // property behind wiring the tail into hydrate: a first-paint Session that is
 // about to be written must be replaced by the complete transcript first.
 func TestUpgradeTruncatedTranscriptForWriteRestoresFullHistory(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: 截断转录升级写链读回经已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	_, _ = dagWideLog(t, path, 12)
 
@@ -80,6 +82,7 @@ func TestUpgradeTruncatedTranscriptForWriteRestoresFullHistory(t *testing.T) {
 // TestSaveUpgradesTruncatedTranscriptBeforeWriting is the end-to-end form: a
 // truncated Session must never reach disk, because a save is a full rewrite.
 func TestSaveUpgradesTruncatedTranscriptBeforeWriting(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: 截断转录升级写链读回经已删读面；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	_, _ = dagWideLog(t, path, 12)
 
@@ -148,6 +151,7 @@ func TestSessionReplayRefusalCacheIsKeyedOnLogState(t *testing.T) {
 // TestLoadSessionTranscriptServesRefusalsWithoutReplaying proves the guard is on
 // the load path, not just available as a helper.
 func TestLoadSessionTranscriptServesRefusalsWithoutReplaying(t *testing.T) {
+	t.Skip("tl1227 DAG 读退役: refusal 缓存断言依赖 schema-2 读面场景；存量 DAG 日志由 MigrateSessionDAGLog 一次性迁移为 schema-1，读侧单路径化后本场景不再可达")
 	path := dagTestSession(t)
 	dagLinearLog(t, path)
 	logPath := store.SessionEventLog(path)
