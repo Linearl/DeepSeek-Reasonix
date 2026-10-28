@@ -76,9 +76,16 @@ type LSPReport struct {
 }
 
 type SessionsReport struct {
-	Dir      string                  `json:"dir,omitempty"`
-	Count    int                     `json:"count"`
-	Bytes    int64                   `json:"bytes"`
+	Dir   string `json:"dir,omitempty"`
+	Count int    `json:"count"`
+	Bytes int64  `json:"bytes"`
+	// DAGLogs is the session-log format marker for this dir (tl1173s2): how
+	// many event-log sidecars classify as schema-2 DAG logs (probe.dag hit,
+	// tl-1220 census). A session's log format is either flat (schema-1, the
+	// post-tl1173 default) or one of these schema-2 leftovers — sealed since
+	// tl-1227: the read path ignores their DAG structure and serves the flat
+	// JSONL. 0 means every log in the dir is flat.
+	DAGLogs  int                     `json:"dag_logs"`
 	Recovery RecoveryLifecycleReport `json:"recovery"`
 	Error    string                  `json:"error,omitempty"`
 }
@@ -309,6 +316,7 @@ func RenderText(r Report) string {
 	fmt.Fprintf(&b, "  dir          %s\n", valueOr(r.Sessions.Dir, "unavailable"))
 	fmt.Fprintf(&b, "  saved        %d\n", r.Sessions.Count)
 	fmt.Fprintf(&b, "  bytes        %d\n", r.Sessions.Bytes)
+	fmt.Fprintf(&b, "  log format   dag:%d (schema-2 sealed leftovers; reads serve the flat JSONL, everything else is flat schema-1)\n", r.Sessions.DAGLogs)
 	fmt.Fprintf(&b, "  recovery     %d events, %d versions created, %d disk adoptions, %d shutdown recoveries\n",
 		r.Sessions.Recovery.Events, r.Sessions.Recovery.PhysicalVersionsCreated,
 		r.Sessions.Recovery.DiskAdoptions, r.Sessions.Recovery.ShutdownRecoveries)
@@ -388,6 +396,11 @@ func collectSessions(dir string) SessionsReport {
 		r.Error = err.Error()
 	}
 	r.Recovery = collectRecoveryLifecycle(dir)
+	// tl1173s2: reuse the tl-1220 census classifier (probe.dag semantics live
+	// in one place) for the log-format marker. Read-only: the census classifies
+	// log heads without materializing, repairing, or decompressing to disk.
+	census := agent.CensusStoredDAGSessions([]string{dir})
+	r.DAGLogs = census.DAGSessions
 	return r
 }
 
