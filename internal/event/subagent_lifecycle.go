@@ -10,6 +10,11 @@ type SubagentLifecycleInfo struct {
 	Ref               string
 	ParentToolCallID  string
 	Skill             string
+	// Description is the dispatch line the parent model passed with the call
+	// (tl1209). Like Skill it is caller-supplied labeling, not transcript
+	// content — running-work panels prefer it over Skill so same-profile
+	// children are distinguishable.
+	Description       string
 	Model             string
 	Effort            string
 	Status            string

@@ -743,6 +743,34 @@ func (a *Agent) SetTools(tools *tool.Registry) {
 	a.svc.tools = tools
 }
 
+// SubagentRunCanceler is implemented by the sub-agent dispatch tools whose
+// runs can be cancelled individually by transcript ref (tl1209).
+type SubagentRunCanceler interface {
+	CancelSubagentRun(ref string) bool
+}
+
+// CancelSubagentRun cancels one running foreground (synchronous) sub-agent by
+// transcript ref (tl1209): it reaches the task/read-only-task dispatch tool
+// through the agent's current registry — the same registry a hot rebuild
+// replaces — so the cancel always lands on the tool instance the turn is
+// actually executing, with no static reference to go stale. Background
+// children cancel through the jobs manager instead and are untouched.
+func (a *Agent) CancelSubagentRun(ref string) bool {
+	if a == nil || a.svc.tools == nil {
+		return false
+	}
+	for _, name := range []string{tool.HostTask, tool.HostReadOnlyTask} {
+		tl, ok := a.svc.tools.Get(name)
+		if !ok {
+			continue
+		}
+		if canceler, ok := tl.(SubagentRunCanceler); ok && canceler.CancelSubagentRun(ref) {
+			return true
+		}
+	}
+	return false
+}
+
 // SetReasoningLanguage updates the visible reasoning language preference for
 // subsequent user-role messages emitted by this agent.
 func (a *Agent) SetReasoningLanguage(lang string) {

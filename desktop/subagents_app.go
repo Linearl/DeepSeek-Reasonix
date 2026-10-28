@@ -40,6 +40,9 @@ type SubagentArtifactView struct {
 	Outcome       string `json:"outcome,omitempty"`
 	Kind          string `json:"kind,omitempty"` // task|skill
 	Name          string `json:"name,omitempty"`
+	// Description is the persisted dispatch line (tl1209). The ended directory
+	// prefers it over Name so same-profile records stay distinguishable.
+	Description   string `json:"description,omitempty"`
 	Model         string `json:"model,omitempty"`
 	ParentSession string `json:"parentSession,omitempty"`
 	// HasTranscript reports whether the <ref>.jsonl transcript exists on
@@ -97,6 +100,7 @@ func (a *App) ListSubagentsByParent(sessionPath string) ([]SubagentArtifactView,
 			Outcome:       artifact.Meta.Outcome,
 			Kind:          artifact.Meta.Kind,
 			Name:          artifact.Meta.Name,
+			Description:   artifact.Meta.Description,
 			Model:         artifact.Meta.Model,
 			ParentSession: artifact.Meta.ParentSession,
 			HasTranscript: statErr == nil,
