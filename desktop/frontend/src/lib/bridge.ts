@@ -1533,6 +1533,12 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // while on, multi_edit joins the model-visible tools. Boot snapshot,
   // restart to apply.
   SetExperimentalMultiEditInjection(enabled: boolean): Promise<void>;
+  // tl-1218: multi_edit three enhancements (richer error detail / narrowed
+  // evidence-gate collateral / skip-failed batch mode — independent switches,
+  // default off, restart to apply).
+  SetExperimentalMultiEditErrorDetail(enabled: boolean): Promise<void>;
+  SetExperimentalMultiEditEvidenceNarrow(enabled: boolean): Promise<void>;
+  SetExperimentalMultiEditSkipFailed(enabled: boolean): Promise<void>;
   // 任务 979: capability-group disclosure layer (tasks 953/954/955 shared
   // switch: use_capability group rows + group cards, session_hub L0
   // aggregation entry, standing-directory group attribution). Boot snapshot,
@@ -6499,6 +6505,9 @@ function makeMockApp(): AppBindings {
     async SetExperimentalFullAccess() {},
     async SetExperimentalToolOptimizations() {},
     async SetExperimentalMultiEditInjection() {},
+    async SetExperimentalMultiEditErrorDetail() {},
+    async SetExperimentalMultiEditEvidenceNarrow() {},
+    async SetExperimentalMultiEditSkipFailed() {},
     async SetExperimentalCapabilityGroups() {},
     async SetExperimentalEditEvidenceRelaxed() {},
     async SetAutonomousUpdateResume() {},
