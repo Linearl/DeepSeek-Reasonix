@@ -90,7 +90,11 @@ func (s *Set) recallIndex() *RecallIndex {
 	s.recallMu.Lock()
 	defer s.recallMu.Unlock()
 	if !s.recallBuilt {
-		s.recall = BuildRecallIndex(s.Store)
+		// tl1193: behind the per-snapshot lazy build sits a process-resident
+		// index keyed by the store's stat fingerprint, so snapshot swaps that
+		// leave the pool's files unchanged reuse the already-built index
+		// instead of re-reading and re-tokenizing the pool per swap.
+		s.recall = recallIndexFor(s.Store)
 		s.recallBuilt = true
 	}
 	return s.recall
